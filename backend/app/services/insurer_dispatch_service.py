@@ -453,6 +453,58 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
             "nao sei onde", "infiltra", "mancha", "subsolo", "laje"))
         slots["vazamento_aparente_opcao"] = "2" if escondido else "1"
 
+    # ---- ONDE E O VAZAMENTO (encanador, galho "vazamento em dispositivo") ---
+    # 📊 "Certo! Onde? 1-Cano 2-Torneira 3-Sifao 4-Registro 5-Descarga
+    #     6-Nao sei o local exato" -- 1 tela / 1 sessao (9694992d, protocolo
+    #     52652744).
+    #
+    # 🔴 O slot `vazamento_local` JA e coletado pela atendente (esta em
+    #    `required_slots` do encanador). O que faltava era traduzi-lo para a
+    #    tecla -- sem isto o passo fica CALADO.
+    #
+    # ⚠️ O default e `6 - Nao sei o local exato`, opcao da PROPRIA URA. Chutar
+    #    "1 - Cano" manda o prestador com ferramenta de tubulacao para um sifao
+    #    de pia, e a visita queima uma das 2 utilizacoes da apolice.
+    if not str(slots.get("vazamento_local_opcao") or "").strip():
+        _onde = _norm(" ".join(str(slots.get(c) or "") for c in
+                               ("vazamento_local", "problema_descricao",
+                                "problema_relato", "descricao")))
+        # ⚠️ A ORDEM importa: "cano" aparece dentro de frases sobre torneira e
+        #    sifao ("o cano da torneira"), entao o dispositivo especifico vence
+        #    o generico -- e o generico fica por ultimo.
+        if any(p in _onde for p in ("torneira", "misturador", "bica")):
+            slots["vazamento_local_opcao"] = "2"
+        elif any(p in _onde for p in ("sifao", "ralo da pia", "cuba")):
+            slots["vazamento_local_opcao"] = "3"
+        elif any(p in _onde for p in ("registro", "valvula")):
+            slots["vazamento_local_opcao"] = "4"
+        elif any(p in _onde for p in ("descarga", "caixa acoplada",
+                                      "vaso sanitario", "privada")):
+            slots["vazamento_local_opcao"] = "5"
+        elif any(p in _onde for p in ("cano", "tubulacao", "encanamento",
+                                      "prumada")):
+            slots["vazamento_local_opcao"] = "1"
+        else:
+            slots["vazamento_local_opcao"] = "6"
+
+    # ---- QUAL O MATERIAL DA TUBULACAO (mesmo galho) ------------------------
+    # 📊 "E qual o material? 1-Ferro 2-Cobre 3-PVC 4-Nao sei o material"
+    # 🔴 Default `4`. Cobre e ferro pedem macarico ou rosqueadeira; PVC pede
+    #    cola. Inventar "PVC" -- o palpite mais provavel -- manda o prestador
+    #    sem a ferramenta, e ele vai embora sem consertar.
+    if not str(slots.get("material_tubulacao_opcao") or "").strip():
+        _mat = _norm(" ".join(str(slots.get(c) or "") for c in
+                              ("vazamento_local", "problema_descricao",
+                               "problema_relato", "descricao")))
+        if "pvc" in _mat or "plastic" in _mat:
+            slots["material_tubulacao_opcao"] = "3"
+        elif "cobre" in _mat:
+            slots["material_tubulacao_opcao"] = "2"
+        elif "ferro" in _mat or "galvaniz" in _mat:
+            slots["material_tubulacao_opcao"] = "1"
+        else:
+            slots["material_tubulacao_opcao"] = "4"
+
     # ---- QUANTOS PNEUS -----------------------------------------------
     # 📊 Duas telas, duas seguradoras, a mesma pergunta:
     #     yelum/hdi "Quantos pneus foram furados/danificados?

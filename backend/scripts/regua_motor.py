@@ -267,6 +267,47 @@ _AMANDUS_COMPANY_ID = "3aa75902-a3d5-4c5d-ac4b-66cbfbc782fe"
 _ESPELHO_CACHE: Optional[List[str]] = None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 🔴 C13 — O ESPELHO LIA O PRÓPRIO ECO E CHAMAVA DE PALAVRA DO CLIENTE
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 📊 Medido em 22/08/2026, auditando os apelidos do encanador. `tubulacao`
+#    marcava 3 vezes, e as TRÊS eram isto:
+#
+#      "o que vc ve nessa imagem?
+#       [contexto visual — imagem enviada pelo cliente]:
+#       a imagem mostra uma tubulação..."
+#
+#    🔴 **É o próprio Claude descrevendo uma foto**, gravado como mensagem
+#    `role='user'`. O Espelho contava a descrição que a IA escreveu como se
+#    fosse a palavra do segurado — e o item da E8 pagava 4 pontos por isso.
+#
+# ⚠️ E a segunda fonte é a mesma armadilha um nível acima: TELA DE URA COLADA
+#    no chat. `hidraulica` marcava 6, e duas eram o menu da Porto colado
+#    ("como eu posso te ajudar? servicos para veiculo...").
+#    📊 É exatamente o falso positivo que o próprio C6 nomeia (`lavadora` x
+#    "Lavadora de louças"), movido do corpus para o Espelho.
+#
+# 📊 A contaminação é pequena no total — 13 textos distintos em 10.457 — mas
+#    está CONCENTRADA nos termos técnicos, que são justamente os que viram
+#    apelido. Filtrar 0,1% muda o veredito de vários apelidos.
+_MARCAS_DE_ECO = (
+    "[contexto visual",          # 🔴 texto que a PRÓPRIA IA escreveu
+    "a imagem mostra",
+    "*1 -*",                     # tela de URA colada no chat
+    "selecione uma das opcoes",
+    "informe o tipo de servico",
+    "assistencia 24h para qual seguro",
+    "escolha a opcao desejada",
+    "como eu posso te ajudar?",
+)
+
+
+def _e_eco(texto: str) -> bool:
+    """A mensagem é eco — a IA ou a URA, não o cliente."""
+    return any(m in texto for m in _MARCAS_DE_ECO)
+
+
 def vocabulario_do_espelho(*, recarregar: bool = False) -> List[str]:
     """As mensagens do SEGURADO, normalizadas, das corretoras REAIS.
 
@@ -304,8 +345,9 @@ def vocabulario_do_espelho(*, recarregar: bool = False) -> List[str]:
                   .eq("role", "user").range(inicio, inicio + 999).execute().data)
         if not pagina:
             break
-        fora += [_norm(m.get("content") or "") for m in pagina
-                 if m.get("conversation_id") in conversas]
+        fora += [t for t in (_norm(m.get("content") or "") for m in pagina
+                             if m.get("conversation_id") in conversas)
+                 if not _e_eco(t)]
         if len(pagina) < 1000:
             break
         inicio += 1000
@@ -361,4 +403,5 @@ __all__ = [
     "Rota", "rotas", "rota_de", "seguradoras",
     "tem_banco", "supabase", "controle_do_mascarador", "eventos_observados",
     "vocabulario_do_espelho", "apelidos_conferidos", "apelido_colide",
+    "_e_eco",
 ]

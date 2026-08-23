@@ -342,10 +342,24 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 🔴 A URA de 2026 escreve "Que bom que voltou! Gostaria de
             # continuar com o CPF/CNPJ 030.###?". A frase antiga sumiu.
             # 📊 Em 18/08 so o cerebro salvou esta tela, por sorte.
-            "anchor": (r"em nossa [úu]ltima conversa,? utilizamos o cpf"
+            # 🔴 CPF **ou CNPJ**. 📊 Medido em 22/08/2026: das 5 telas
+            #    "em nossa última conversa" do corpus, QUATRO dizem `CPF/CNPJ`
+            #    e casavam; a quinta diz só `CNPJ` — é o galho do condomínio,
+            #    onde o titular é PJ — e ficava ÓRFÃ.
+            #
+            # ⚠️ A resposta é `2` (reidentificar), e é por isso que o furo doía:
+            #    caindo no cérebro, um `1` abriria o chamado no CNPJ do cliente
+            #    ANTERIOR. O WhatsApp é da corretora e atende N clientes.
+            "anchor": (r"em nossa [úu]ltima conversa,? utilizamos o cp[fj]"
                        r"|que bom que voltou.{0,80}cpf"
                        r"|continuar com o cpf"),
             "reply": "2",
+            "constante_justificada": (
+                "🔴 `1 - Sim, continuar com o CPF anterior` x `2 - Não, inserir outro`. "
+                "O WhatsApp é DA CORRETORA e atende N clientes: o CPF lembrado é o do "
+                "atendimento ANTERIOR, quase nunca o deste caso. `2` é a única resposta "
+                "que não abre chamado na apólice de outra pessoa — e o corredor tem o CPF "
+                "certo em `titular_cpf`, então reidentificar não custa nada."),
             "notes": "1-Sim (continuar com o CPF anterior) 2-Não, inserir outro CPF/CNPJ",
         },
         {
@@ -5515,6 +5529,47 @@ _ALLIANZ_RESID_FOLHAS = [
               "na RUA é da concessionária, não da assistência. Vai a "
               "`regras_para_o_cliente` — o segurado precisa conferir ANTES, ou o "
               "prestador vem e não tem o que fazer."},
+
+    # 🔴 O LOCAL DO VAZAMENTO — a folha que só o galho residencial-CPF alcança.
+    #
+    # 📊 Tela real (sessão 9694992d, 13/07/2026, protocolo 52652744):
+    #     "Certo! Onde?  *1 -* Cano  *2 -* Torneira  *3 -* Sifão  *4 -* Registro
+    #      *5 -* Descarga  *6 -* Não sei o local exato  *7 -* Voltar"
+    #
+    # 🔴 SEIS ALTERNATIVAS DE CONTEÚDO. Constante aqui seria o nono defeito
+    #    deste corredor: "Cano" fixo faz o prestador vir com ferramenta de
+    #    tubulação para um sifão de pia — e o erro só aparece quando ele chega,
+    #    com a utilização da apólice já consumida.
+    #
+    # ⚠️ A âncora exige a PRIMEIRA OPÇÃO, não só "Onde?" — mesmo princípio do
+    #    `o_que_aconteceu`. `onde\?` seco casaria a tela de endereço.
+    #    E `[\s\S]` porque `match_ura_step` compila com DOTALL mas a tela real
+    #    tem quebra de linha entre a pergunta e as opções.
+    {"step": "local_do_vazamento",
+     "anchor": r"onde\?[\s\S]{0,30}\*?1\s*-\*?\s*cano[\s\S]{0,40}torneira",
+     "reply": "{vazamento_local_opcao}", "requires": ["vazamento_local_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["encanador"],
+     "notes": "📊 1 tela / 1 sessão (9694992d). 1-Cano 2-Torneira 3-Sifão "
+              "4-Registro 5-Descarga 6-Não sei o local exato. 🔴 Derivado de "
+              "`vazamento_local`, que a atendente já coleta; sem palavra que "
+              "case, o default é 6 — a opção HONESTA da própria URA."},
+
+    # 🔴 O MATERIAL — e "4 - Não sei" é resposta LEGÍTIMA da URA, não desistência.
+    #
+    # 📊 "E qual o material? *1 -* Ferro *2 -* Cobre *3 -* PVC
+    #     *4 -* Não sei o material *5 -* Voltar"   (sessão 9694992d)
+    #
+    # ⚠️ Constante "3 - PVC" seria o palpite mais provável e o mais caro: cobre
+    #    e ferro pedem maçarico ou rosqueadeira, PVC pede cola. A corretora
+    #    quase nunca sabe o material — e a URA oferece "Não sei" exatamente
+    #    para isso. Mesmo padrão do `pet_especie_opcao -> "3 - Outros"`.
+    {"step": "material_da_tubulacao",
+     "anchor": r"e qual o material\?[\s\S]{0,40}\*?1\s*-\*?\s*ferro",
+     "reply": "{material_tubulacao_opcao}", "requires": ["material_tubulacao_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["encanador"],
+     "notes": "📊 1 tela / 1 sessão (9694992d). 1-Ferro 2-Cobre 3-PVC 4-Não sei. "
+              "🔴 Derivado do relato; sem palavra de material, o default é 4 — "
+              "dizer 'não sei' é honesto, dizer 'PVC' inventa o fato."},
 
     # ---- o galho do ENCANADOR --------------------------------------------
     {"step": "vazamento_aparente",
