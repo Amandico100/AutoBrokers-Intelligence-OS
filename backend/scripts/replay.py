@@ -8,6 +8,7 @@ NOOP            casou um passo `noop`                        ✅
 ORFA_INOCUA     não casou, e `_tela_pede_alguma_coisa` = False   ⚪ tolerável
 ORFA_FUNCIONAL  não casou, e `_tela_pede_alguma_coisa` = True    🔴 é o defeito
 HANDOFF         não casou, mas dispara `detect_handoff_trigger`  ⊘ fora do denominador
+CAPTURADA       não casou, mas `extract_capture_anchors` a LÊ     ⊘ fora do denominador
 ```
 
 🔴 **O eixo B vale 35 dos 100 pontos porque esta é a única medida que reproduziu.**
@@ -39,6 +40,7 @@ NOOP = "NOOP"
 ORFA_INOCUA = "ORFA_INOCUA"
 ORFA_FUNCIONAL = "ORFA_FUNCIONAL"
 HANDOFF = "HANDOFF"
+CAPTURADA = "CAPTURADA"
 
 
 class Tela(NamedTuple):
@@ -67,6 +69,11 @@ class Replay(NamedTuple):
     @property
     def orfas_funcionais(self) -> List[Tela]:
         return [t for t in self.telas if t.classe == ORFA_FUNCIONAL]
+
+    @property
+    def capturadas(self) -> int:
+        """Telas de DESFECHO — quem as lê é `extract_capture_anchors` (C9)."""
+        return sum(1 for t in self.telas if t.classe == CAPTURADA)
 
     @property
     def handoffs(self) -> int:
@@ -177,6 +184,31 @@ def replay(rota, *, sessoes_no_acervo: Optional[int] = None) -> Replay:
         elif M.detect_handoff_trigger(pb, texto):
             classe = HANDOFF
             nome = None
+        # ==================================================================
+        # 🔴 C9 — A TELA DO DESFECHO CONTAVA COMO BURACO
+        # ==================================================================
+        #
+        # Terceiro ponto cego da mesma familia (C8, P-084-30). A tela de
+        # RESUMO com o protocolo nao casa passo nenhum -- **e nao deve**: nao
+        # ha o que responder. Quem a le e `extract_capture_anchors`, que tira
+        # dela o protocolo e o agendamento que vao para o segurado.
+        #
+        # 📊 Medido em 22/08/2026 na rota de referencia: as duas telas
+        #    contadas como orfa devolviam
+        #       protocol=51014008
+        #       schedule={'day': 'terca-feira, {data}',
+        #                 'periodo': '13:00 as 18:00 (tarde)'}
+        #    🔴 **A regua chamava de defeito exatamente a tela que prova que a
+        #    rota chegou ao fim.**
+        #
+        # ⚠️ Vem DEPOIS do handoff, e a ordem importa: uma tela que dispara
+        #    gatilho E tem captura e handoff -- o motor para nela, e o que a
+        #    regua mede tem de ser o que o motor faz.
+        #
+        # ⚠️ E sai do denominador, como o HANDOFF: ler nao e responder.
+        elif M.extract_capture_anchors(pb, texto):
+            classe = CAPTURADA
+            nome = None
         else:
             pede = M.tela_pede_alguma_coisa(pb, texto)
             classe = ORFA_FUNCIONAL if pede else ORFA_INOCUA
@@ -200,6 +232,7 @@ def imprimir_detalhado(r: Replay, limite: int = 12) -> str:
          f"  NOOP .................... {r.noops}",
          f"  ORFA_INOCUA ............. {r.orfas_inocuas}",
          f"  HANDOFF ................. {r.handoffs}   (fora do denominador)",
+         f"  CAPTURADA ............... {r.capturadas}   (fora do denominador)",
          f"  ORFA_FUNCIONAL .......... {len(r.orfas_funcionais)}   <-- o defeito"]
     d = r.determinismo
     L.append(f"  determinismo ............ "

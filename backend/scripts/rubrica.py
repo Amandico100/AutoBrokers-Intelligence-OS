@@ -29,6 +29,7 @@ from __future__ import annotations
 import datetime as dt
 import glob
 import os
+import collections
 import re
 import sys
 from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
@@ -334,10 +335,30 @@ def eixo_b(rota, r: RP.Replay) -> List[Item]:
     #    `_COMO_PERGUNTAR`: aquele não tinha como falhar; este, como passar.
     passos = [p for p in (pb.get("ura_steps") or [])
               if not p.get("only_subservices") or rota.servico in p["only_subservices"]]
+    # ⚠️ 🔴 SO PASSO DE UM CORREDOR SO.
+    #
+    #    📊 `avisos_informativos_familia` vive em alfa E allianz. A note dele
+    #    diz "5 telas" -- verdade num corredor -- e o corpus da allianz tem 23.
+    #    **Um passo compartilhado nao tem um numero verdadeiro por corredor**, e
+    #    cobra-lo aqui acusaria de mentira uma nota que esta certa.
+    #
+    #    Foi a terceira volta deste item, e as duas anteriores tambem foram
+    #    casamento largo demais: recontar na populacao errada (C10) e ler a
+    #    frase errada da note (a regex solta de `ocorr`).
+    _familia = collections.Counter(
+        str(p.get("step") or "") for _pb in M.CP._PLAYBOOKS.values()
+        for p in (_pb.get("ura_steps") or []))
+    passos = [p for p in passos if _familia[str(p.get("step") or "")] <= 1]
     com_numero, reproduzem = 0, 0
     for p in passos:
         nota = p.get("notes") or ""
-        m = re.search(r"(\d+)\s*ocorr", nota)
+        # ⚠️ A PRIMEIRA afirmacao medida da note, e a unidade colada nela.
+        #    📊 `r"(\d+)\s*ocorr"` solto pegava numero de OUTRA frase:
+        #    porto/residencial `menu_raiz` diz *"13 msgs / 8 sessoes ...
+        #    SINGULAR, 8 de 8 ocorrencias"* -- o `8 ocorr` fala do ROTULO ser
+        #    singular, nao da contagem do passo, que e 13. A regua acusava a
+        #    note de "a parte maior que o todo" por ler a frase errada.
+        m = re.search(r"(\d+)\s*(?:msgs?|telas?|ocorr\w*)", nota)
         if not m:
             continue
         com_numero += 1
@@ -345,11 +366,51 @@ def eixo_b(rota, r: RP.Replay) -> List[Item]:
         anc = p.get("anchor")
         if not anc:
             continue
+        # ==============================================================
+        # 🔴 C10 — O ITEM ERA IMPOSSIVEL: 0/2 EM 73 DE 73
+        # ==============================================================
+        #
+        # 📊 Medido em 22/08/2026: **nenhuma das 73 rotas** ganhava um ponto
+        #    sequer aqui. Um item que ninguem pode ganhar nao mede nada -- ele
+        #    so tampa toda rota em 100/102, em silencio. Mesmo formato do C1.
+        #
+        # A causa: as duas pontas contavam populacoes DIFERENTES.
+        #    o numero da `note`  <- medido no ACERVO (28.096 eventos)
+        #    o recount da regua  <- feito no CORPUS versionado (781 telas
+        #                           no residencial da Allianz), e ainda
+        #                           filtrado pela ROTA (102 telas)
+        #
+        # 📊 `menu_tipo_servico` declara 64; a rota ve 4 e o corredor ve 32.
+        #    Nenhuma tolerancia de +-20% fecha isso, **e nao deveria**: os
+        #    numeros das notes estao CERTOS, so nao sao do corpus.
+        #
+        # 🔴 A PERGUNTA REPRODUZIVEL, e ela pode falhar:
+        #    **o corpus e AMOSTRA do acervo, entao a contagem dele nunca pode
+        #    EXCEDER o numero declarado** -- e a ancora tem de achar ao menos
+        #    uma tela, senao a note descreve algo que nao existe mais.
+        #
+        # 📊 E o criterio ja acusou um defeito real:
+        #    `porto/residencial menu_raiz` declara 8 e o corpus tem 13.
+        #    A parte maior que o todo.
+        #
+        # ⚠️ Reconta no corpus do CORREDOR, nao no da rota: a `note` descreve
+        #    um PASSO, e o passo e do corredor -- nao de um oficio so.
         try:
-            real = sum(1 for t in r.telas if re.search(anc, M._norm(t.texto), re.I))
+            _corpus = [l["text"] for l in RP.carregar_corpus(rota.seguradora,
+                                                             rota.ramo)]
+            # 🔴 TELAS DISTINTAS, e a unidade e a que a PROPRIA note usa.
+            #    📊 A note escreve `N telas / M sessoes`. Contar OCORRENCIAS
+            #    comparava o N com o M e acusava 12 notes CERTAS de mentir:
+            #       cnpj_condominio  "1 tela / 5 sessoes"  -> 5 ocorrencias
+            #       link_por_sms     "1 tela / 10 sessoes" -> 10 ocorrencias
+            #    Com telas distintas, **20 das 21 recontam** -- e a 21a era
+            #    defeito de verdade. Mesmo erro de unidade que a base do E13
+            #    cometeu no mesmo dia (rota x tela em vez de linha de corpus).
+            real = len({M._norm(t) for t in _corpus
+                        if re.search(anc, M._norm(t), re.I)})
         except re.error:
             continue
-        if declarado and abs(real - declarado) <= 0.20 * declarado:
+        if declarado and 1 <= real <= declarado:
             reproduzem += 1
     pn = 2 if (com_numero and reproduzem == com_numero) else (1 if reproduzem else 0)
     itens.append(Item("B", "notes com contagem que RECONTA", pn, 2,

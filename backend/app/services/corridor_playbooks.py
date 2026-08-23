@@ -209,6 +209,51 @@ _ANCORA_DE_AGENDAMENTO_PORTO = (
 # ---------------------------------------------------------------------------
 # Seed: Allianz Residencial WhatsApp v1
 # ---------------------------------------------------------------------------
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 OS GATILHOS DE HANDOFF DO RESIDENCIAL — UMA LISTA, QUATRO CORREDORES
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ A Allianz é o PRIMEIRO corredor residencial, e por isso tinha lista
+#    PRÓPRIA, escrita antes de a compartilhada existir. 📊 Medido em
+#    22/08/2026: faltavam nela `sem cobertura` e `não tem/possui cobertura`,
+#    que hdi, yelum e porto têm desde que nasceram.
+#
+#    **O corredor de referência era o de lista mais fraca** — e ninguém veria,
+#    porque a divergência não aparece em nota nenhuma: os gatilhos que
+#    faltavam nunca casaram tela do corpus dela. Guardrail que existe só num
+#    corredor não é guardrail: é coincidência.
+_RESID_HANDOFF_TRIGGERS = [
+    r"sinistro", r"n[ãa]o localizamos", r"cpf.*inv[áa]lido", r"n[ãa]o foi poss[íi]vel",
+    r"sem cobertura", r"n[ãa]o (?:tem|possui) cobertura",
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # 🔴 CANCELAR E REMARCAR SERVIÇO AGENDADO — ONDA A
+    # ═════════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Medido em 22/08/2026, sessão `b2bf40e7` da rota de referência: o
+    #    segurado JÁ TINHA o protocolo 51014008 e entrou no fluxo de alterar o
+    #    agendamento. O corredor ficou mudo, e as telas contavam como órfãs.
+    #
+    # 🔴 **Cancelar um serviço e remarcar não é o ofício deste corredor.** Ele
+    #    abre acionamento — é a mesma fronteira que a justificativa do
+    #    `servico_ja_aberto` escreve: *"acompanhar é outro outcome"*.
+    #
+    #    E aqui a consequência é pior que ficar mudo: responder
+    #    "1 — Cancelar serviço" por engano **desmarca o técnico de um cliente
+    #    que só queria trocar o horário**, e o erro só aparece no dia em que
+    #    ninguém chega.
+    #
+    # ⚠️ Os gatilhos são LONGOS de propósito. `r"cancelar"` sozinho casaria
+    #    qualquer rodapé com "cancelar a qualquer momento"; a frase inteira da
+    #    tela é o que separa o menu real do aviso.
+    #
+    # ⚠️ E o `[\s\S]` não é enfeite: `detect_handoff_trigger` NÃO compila com
+    #    DOTALL — `.` não atravessa quebra de linha aqui, e a tela real tem uma
+    #    no meio da frase.
+    r"caso deseje alterar o atendimento",
+    r"alterar apenas[\s\S]{0,12}data e hor[áa]rio do servi[çc]o",
+]
+
 
 ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     "playbook_id": "allianz-residencial-whatsapp",
@@ -849,6 +894,42 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         #   · reembolso de prestador proprio: R$ 150 por evento, R$ 300 por
         #     vigencia
         "maquina_de_lavar": {
+            # ═════════════════════════════════════════════════════════════════
+            # 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE DIZERMOS "VOU ACIONAR"
+            # ═════════════════════════════════════════════════════════════════
+            #
+            # ⚠️ Cada linha é uma frase que **a Allianz escreve na URA**, não uma
+            #    paráfrase nossa. 📊 Conferidas contra o corpus versionado de
+            #    `allianz-residencial` em 22/08/2026.
+            #
+            # 🔴 As três primeiras são RECUSA. Ditas depois, viram reclamação —
+            #    e o cliente já esperou o técnico para ouvir que não tem direito.
+            "regras_para_o_cliente": [
+                "O serviço é destinado ao conserto de aparelhos/equipamentos de "
+                "uso domestico que estejam fora da garantia do fabricante e que "
+                "pertençam a residência — aparelho NA garantia do fabricante o "
+                "seguro não conserta.",
+
+                "Qual a idade de fabricação do aparelho? Até 10 anos ou Mais de "
+                "10 anos de fabricação — 🔴 acima de 10 anos a Allianz RECUSA, e "
+                "é a primeira coisa a confirmar com o cliente.",
+
+                "Para esse atendimento o seguro arca apenas com a mão de obra do "
+                "prestador. Todas as peças são de sua responsabilidade, "
+                "incluindo a própria resistência — 🔴 mão de obra SIM, peças NÃO.",
+
+                "Os custos de mão de obra serão cobertos integralmente. Caso "
+                "seja necessário adquirir peças, o segurado deve providenciá-las "
+                "em até em 10 dias corridos — o prazo é do cliente, e perdê-lo "
+                "encerra o chamado.",
+
+                "O profissional irá verificar se o defeito é desgaste natural de "
+                "componente elétrico, eletrônico ou mecânico para o realizar o "
+                "serviço — quem decide é o técnico no local, não o corretor.",
+
+                "⚠️ E o conserto de eletrodoméstico é AGENDADO, não é hoje: quem "
+                "ouviu 'vou acionar' e esperou alguém em uma hora liga bravo.",
+            ],
             "tipo_servico_opcao": "2",
             "eletrodomestico_categoria_opcao": "1",
             "eletrodomestico_opcao": "14",
@@ -1108,7 +1189,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
                              "Não é hoje."),
     },
     # Fail-safe.
-    "handoff_triggers": [r"sinistro", r"n[ãa]o localizamos", r"cpf.*inv[áa]lido", r"n[ãa]o foi poss[íi]vel"],
+    "handoff_triggers": list(_RESID_HANDOFF_TRIGGERS),
     "unknown_step_policy": "pause_and_handoff",  # nunca responder às cegas
 }
 
@@ -2823,10 +2904,8 @@ _RESID_OPENING_TEMPLATE = (
     "Periodo preferido: {periodo_preferido}"
 )
 
-_RESID_HANDOFF_TRIGGERS = [
-    r"sinistro", r"n[ãa]o localizamos", r"cpf.*inv[áa]lido", r"n[ãa]o foi poss[íi]vel",
-    r"sem cobertura", r"n[ãa]o (?:tem|possui) cobertura",
-]
+# 🔴 `_RESID_HANDOFF_TRIGGERS` MOVIDA para antes do primeiro corredor
+#    residencial (a Allianz) — ver o cabeçalho de lá.
 
 # Os dados que cada TRABALHO exige — não os que cada seguradora exige.
 # O eletricista pergunta de fumaça, o encanador pergunta do registro e o
@@ -5402,7 +5481,7 @@ _ALLIANZ_RESID_FOLHAS = [
          "📊 4 telas / 4 sessões. 1-ver o chamado ANTIGO · 2-Abrir um novo "
          "atendimento. O corredor só roda quando a corretora pediu um acionamento "
          "NOVO; '1' o deixaria preso no detalhe de um chamado que já existe."),
-     "notes": "📊 4 telas / 4 sessões."},
+     "notes": "📊 6 telas / 4 sessões. ⚠️ Dizia 4 telas até 22/08/2026: o recount do eixo B, na unidade certa, achou 6 redacoes distintas. O numero de SESSOES estava certo."},
 
     # ---- o galho do ELETRICISTA ------------------------------------------
     {"step": "energia_da_vizinhanca",
