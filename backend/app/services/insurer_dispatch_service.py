@@ -419,6 +419,37 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         # sem luz").
         slots["problema_eletrico_opcao"] = "2" if curto else "1"
 
+    # ---- O MEIO DE TRANSPORTE DEPOIS DO GUINCHO (hdi / yelum) --------
+    #
+    # 📊 A tela: "Voce tem cobertura para *meio de transporte emergencial para
+    #    retornar a sua residencia ou continuar a viagem*. Lembrando que nao e
+    #    permitido o segurado seguir viagem dentro do guincho. Sabendo disso,
+    #    deseja solicitar o servico de meio de transporte? Botao 1: Sim
+    #    Botao 2: Nao" -- hdi 5 sessoes, yelum 4.
+    #
+    # 🔴 A tecla EXISTIA no corredor e NADA a preenchia: a regua acusava
+    #    `meio_transporte_opcao` como a unica tecla sem origem do corredor de
+    #    auto da hdi, e passo que exige slot sem origem fica CALADO -- a mesma
+    #    familia dos 2min22 de 19/08.
+    #
+    # ⚠️ E o default aqui NAO e simetrico com os outros desta funcao. "Sim"
+    #    ABRE UM SEGUNDO SERVICO que o segurado nao pediu, e leva a tres
+    #    perguntas (destino, passageiros, bagagens) que o corredor so sabe
+    #    responder se o caso trouxer os dados. Por isso o default e **"Nao"**:
+    #    o guincho ja esta aberto quando esta tela aparece, e nao abrir um
+    #    extra e reversivel -- a corretora abre depois, se o segurado quiser.
+    #
+    # 🔴 E para que ninguem perca o beneficio por ignorancia, a cobertura esta
+    #    escrita em `regras_para_o_cliente` do guincho: o segurado OUVE que tem
+    #    direito, antes de "vou acionar".
+    if not str(slots.get("meio_transporte_opcao") or "").strip():
+        quer_carona = any(p in texto for p in (
+            "carona", "taxi", "táxi", "uber", "meio de transporte",
+            "como eu volto", "como volto", "preciso chegar em casa",
+            "voltar para casa", "ir para casa", "continuar a viagem",
+            "transporte emergencial", "carro reserva"))
+        slots["meio_transporte_opcao"] = "Sim" if quer_carona else "Não"
+
     # ---- QUAL ANIMAL DOMESTICO (consulta veterinaria) ----------------
     # 📊 "Atendimento para qual animal domestico? *1 -* Cachorro
     #    *2 -* Gato *3 -* Outros" -- 1 sessao (c58a171a), que chega ao protocolo.
@@ -514,15 +545,32 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
     # 🔴 "Mais de um pneu" MUDA O SERVICO para GUINCHO: um borracheiro leva um
     #    estepe, nao dois. Constante aqui manda borracheiro para carro que
     #    precisa de reboque -- e o prestador chega, olha, e vai embora.
+    #
+    # ⚠️ 🔴 E AS DUAS TELAS TAMBEM NAO RESPONDEM IGUAL — 23/08/2026.
+    #
+    # 📊 A tela REAL da hdi/yelum: "Certo! Quantos pneus foram furados/
+    #    danificados? **Botao 1: Apenas um pneu · Botao 2: Mais de um pneu ·
+    #    Botao 3: Voltar**" -- botao, e a resposta e o ROTULO. A da alfa e da
+    #    allianz e menu NUMERADO, e a resposta e o numero.
+    #
+    # 🔴 Uma variavel so servia as duas, e devolvia numero para as quatro.
+    #    E o mesmo defeito do `pane_detalhe_opcao`, achado na mesma auditoria:
+    #    📊 das 25 teclas que esta funcao deriva, estas eram as duas ultimas em
+    #    que a FORMA da resposta nao batia com a convencao do dono.
+    #
+    # ⚠️ A DECISAO e uma so -- um pneu ou mais de um -- e continua num lugar so.
+    #    O que se separa e a FORMA, e cada seguradora recebe a dela.
     if not str(slots.get("pneus_quantidade_opcao") or "").strip():
         varios = any(p in texto for p in (
             "dois pneus", "2 pneus", "tres pneus", "3 pneus", "quatro pneus",
             "4 pneus", "mais de um pneu", "varios pneus", "dois furos",
             "os dois", "ambos os pneus"))
-        slots["pneus_quantidade_opcao"] = "2" if varios else "1"
-    # a alfa usa outro nome para a MESMA pergunta
-    if not str(slots.get("pneus_furados_opcao") or "").strip():
-        slots["pneus_furados_opcao"] = slots["pneus_quantidade_opcao"]
+        # hdi e yelum: BOTAO, responde-se o rotulo
+        slots["pneus_quantidade_opcao"] = (
+            "Mais de um pneu" if varios else "Apenas um pneu")
+        # alfa e allianz: menu NUMERADO, responde-se o numero
+        if not str(slots.get("pneus_furados_opcao") or "").strip():
+            slots["pneus_furados_opcao"] = "2" if varios else "1"
 
     # ---- O QUE ACONTECEU COM A CHAVE (auto) --------------------------
     # 📊 yelum/hdi: "O que aconteceu com a chave? Dentro do veiculo (chave
@@ -635,22 +683,55 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
     #
     # ⚠️ "Não sei" (8) é uma opção HONESTA da própria URA, e é o default quando
     #    o relato não diz nada — melhor que afirmar um defeito que ninguém viu.
+    #
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 E A TECLA QUE NÃO EXISTE — a tela da pane é uma LISTA, sem números
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 23/08/2026, ONDA C. A tela real, idêntica em hdi-auto e yelum-auto:
+    #
+    #     Por favor, selecione a opção que condiz com a pane do veículo
+    #     Problemas elétricos      Selecione essa opção se está com problema...
+    #     Luzes do painel          Selecione essa opção se as luzes do painel...
+    #     Vazamento  ·  Superaquecimento  ·  Problemas no motor
+    #     Problema na embreagem  ·  Problema no câmbio  ·  Não sei
+    #     Mais opções  ·  Voltar
+    #
+    # 🔴 **Não há um único número nessa tela.** É uma LISTA do WhatsApp, e a
+    #    resposta é o TÍTULO DA LINHA. Esta derivação devolvia "1".."8" — uma
+    #    tecla de um menu que não existe.
+    #
+    # ⚠️ E o comentário logo acima já dizia o certo: *"a sessão real de socorro
+    #    mecânico da HDI (71caf82f) apertou **'Problemas elétricos'**"*. O
+    #    documento nomeava o RÓTULO e o código emitia o NÚMERO — §9.3 na forma
+    #    pura, e por isso o guarda `test_spec031_yelum_v3` estava vermelho:
+    #    ele esperava `Problemas no motor` e recebia `5`.
+    #
+    # 🔴 O que a URA faz com a resposta errada está no próprio acervo:
+    #    *"Não entendi. Lembre-se que, para responder, você precisa selecionar
+    #    o botão indicando a opção escolhida"* — e a sessão 697abd09, que
+    #    recebeu essa tela, terminou em *"vamos te encaminhar para um de
+    #    nossos analistas"*. Formato errado não é resposta ruim: é atendimento
+    #    perdido.
+    #
+    # ⚠️ `pane_detalhe` existe em DOIS playbooks e só neles — hdi-auto e
+    #    yelum-auto, medido. Não há corredor numerado para preservar.
     if not str(slots.get("pane_detalhe_opcao") or "").strip():
         if any(p in texto for p in ("eletric", "eletrico", "bateria", "alternador",
                                     "nao liga", "nao pega", "nao da partida",
                                     "descarregad", "injec", "ignic")):
-            slots["pane_detalhe_opcao"] = "1"
+            slots["pane_detalhe_opcao"] = "Problemas elétricos"
         elif any(p in texto for p in ("luz do painel", "luzes do painel", "painel aceso",
                                       "luz acesa", "lampada do painel")):
-            slots["pane_detalhe_opcao"] = "2"
+            slots["pane_detalhe_opcao"] = "Luzes do painel"
         elif any(p in texto for p in ("vazando", "vazamento", "oleo no chao",
                                       "perdendo oleo", "perdendo agua")):
-            slots["pane_detalhe_opcao"] = "3"
+            slots["pane_detalhe_opcao"] = "Vazamento"
         elif any(p in texto for p in ("superaquec", "esquentando", "fervendo",
                                       "temperatura alta", "radiador")):
-            slots["pane_detalhe_opcao"] = "4"
+            slots["pane_detalhe_opcao"] = "Superaquecimento"
         elif any(p in texto for p in ("motor", "fundiu", "batendo pino", "morreu andando")):
-            slots["pane_detalhe_opcao"] = "5"
+            slots["pane_detalhe_opcao"] = "Problemas no motor"
         # 🔴 A ORDEM AQUI É REGRA, E ELA CUSTOU UM CONTROLE VERMELHO.
         #    A primeira versão testava embreagem antes e punha "nao entra marcha"
         #    na lista dela. 📊 O relato "Não entra marcha, problema no câmbio"
@@ -659,12 +740,12 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
         #    A peça NOMEADA vence o sintoma. "nao entra marcha" sozinho é
         #    vocabulário de câmbio, e por isso desceu para o ramo 7.
         elif any(p in texto for p in ("embreagem", "pedal da embreagem", "patinando")):
-            slots["pane_detalhe_opcao"] = "6"
+            slots["pane_detalhe_opcao"] = "Problema na embreagem"
         elif any(p in texto for p in ("cambio", "transmiss", "marcha", "engatar")):
-            slots["pane_detalhe_opcao"] = "7"
+            slots["pane_detalhe_opcao"] = "Problema no câmbio"
         else:
             # 🔴 "Não sei" é opção da URA, e é a resposta honesta de quem não sabe.
-            slots["pane_detalhe_opcao"] = "8"
+            slots["pane_detalhe_opcao"] = "Não sei"
 
     # ---- "O que aconteceu?" (ENCANADOR) ------------------------------
     # 📊 A tela real, allianz-residencial, 4 sessões:

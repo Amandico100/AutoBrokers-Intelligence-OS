@@ -623,15 +623,25 @@ if derivar:
     # teste ela volta na proxima edicao.
     for _relato, _slot, _esperado, _porque in [
         # 1) a peca NOMEADA vence o sintoma
-        ("A embreagem nao engata mais",          "pane_detalhe_opcao", "6", "embreagem nomeada"),
-        ("Nao entra marcha, problema no cambio", "pane_detalhe_opcao", "7", "cambio vence sintoma"),
+        # ⚠️ 🔴 OS ESPERADOS DESTE SLOT ERAM NUMEROS, E VENCERAM EM 23/08/2026.
+        #    A tela da pane na hdi e na yelum -- os DOIS unicos playbooks que
+        #    tem `pane_detalhe` -- e uma LISTA do WhatsApp: dez linhas, nenhum
+        #    numero. A resposta e o TITULO DA LINHA. Enquanto a derivacao
+        #    devolvia "6", o corredor respondia uma tecla que nao existe, e
+        #    📊 a URA responde a isso com "Nao entendi. Lembre-se que, para
+        #    responder, voce precisa selecionar o botao" -- a sessao 697abd09
+        #    terminou assim, num analista humano.
+        #    A REGRA DE ORDEM que este bloco guarda continua identica; o que
+        #    mudou foi a forma da resposta.
+        ("A embreagem nao engata mais",          "pane_detalhe_opcao", "Problema na embreagem", "embreagem nomeada"),
+        ("Nao entra marcha, problema no cambio", "pane_detalhe_opcao", "Problema no câmbio", "cambio vence sintoma"),
         # 2) "telhado" CONTEM "telha" -- e a cobertura provisoria e a que impede
         #    a casa de encher de agua na mesma noite
         ("Uma telha quebrou com o vento",      "outro_servico_opcao", "4", "telha = substituicao"),
         ("O vento destelhou parte do telhado", "outro_servico_opcao", "5", "telhado = cobertura"),
         # 3) o default e a opcao HONESTA da propria URA, nunca a primeira tecla
         ("Preciso de um servico ai",   "outro_servico_opcao", "7", "Outros, nao Dedetizacao"),
-        ("O carro parou e eu nao sei", "pane_detalhe_opcao",  "8", "Nao sei, nao Motor"),
+        ("O carro parou e eu nao sei", "pane_detalhe_opcao",  "Não sei", "Nao sei, nao Motor"),
         # 4) o corredor so roda para acionamento NOVO
         ("Quero abrir um chamado de encanador",    "solicitacao_existente_opcao", "2", "novo"),
         ("Quero acompanhar o chamado que ja abri", "solicitacao_existente_opcao", "1", "acompanhar"),

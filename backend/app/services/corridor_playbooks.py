@@ -1850,6 +1850,13 @@ _CANCELAR_E_HUMANO = [
     r"seu atendimento foi cancelado",
     r"permite alterar apenas[\s\S]{0,25}data e hor[áa]rio",
     r"n[ãa]o foi reagendado",
+    # ⚠️ 🔴 E A REDACAO DA HDI/YELUM, que so pode entrar ESTREITA.
+    #    📊 Medido em 23/08/2026: `cancelar servi[çc]o` sozinho casa **40 telas
+    #    em 23 rotas** -- porque aparece no LINK de acompanhamento ("caso
+    #    deseje alterar ou cancelar o servico acesse..."). Como gatilho, mataria
+    #    metade do produto. O que identifica o MENU e o par de botoes:
+    #    📊 assim, casa 2 telas -- hdi e yelum, socorro_mecanico, e mais nada.
+    r"acompanhar andamento[\s\S]{0,30}cancelar servi[çc]o",
 ]
 
 _AUTO_HANDOFF_TRIGGERS = [
@@ -2368,8 +2375,27 @@ _YELUM_FAMILY_STEPS = [
     {"step": "pane_detalhe", "anchor": r"selecione a op[çc][ãa]o que condiz com a pane",
      "reply": "{pane_detalhe_opcao}", "requires": ["pane_detalhe_opcao"],
      "fallback_adaptive": True,
-     "notes": "📊 9 opções. Vem do RELATO, nunca fixo — a tecla decide reboque x "
-              "mecânico no local. Sem relato utilizável, o adaptativo lê a tela."},
+     "notes": "📊 10 linhas, e NENHUM número: é LISTA do WhatsApp, e a resposta "
+              "é o TÍTULO DA LINHA ('Problemas elétricos'), nunca '1'. Vem do "
+              "RELATO — a linha decide reboque x mecânico no local. Sem relato "
+              "utilizável, o adaptativo lê a tela."},
+    # 🔴 O AVISO QUE DEVOLVE A ESCOLHA DO SERVICO — sessao 3dc92fcf.
+    #
+    # 📊 "Agora que voce ja sabe desta informacao, por favor, selecione abaixo
+    #    o servico que melhor atendera o problema do veiculo. Botao 1: Recarga
+    #    de bateria  Botao 2: Guincho". A URA explica uma regra (a recarga
+    #    pode resolver) e DEVOLVE a escolha entre dois servicos.
+    #
+    # ⚠️ Os rotulos NAO sao os do menu principal ("Pane ou Defeito"), entao
+    #    `servico_opcao` nao serve aqui. A resposta e o proprio subservico da
+    #    rota, declarado por subservico -- que e uma das quatro origens.
+    {"step": "servico_apos_aviso",
+     "anchor": r"agora que voc[êe] j[áa] sabe desta informa[çc][ãa]o",
+     "reply": "{servico_pos_aviso_opcao}", "requires": ["servico_pos_aviso_opcao"],
+     "fallback_adaptive": True,
+     "notes": "📊 1 tela / 1 sessão (3dc92fcf). Botão 1: Recarga de bateria · "
+              "Botão 2: Guincho. 🔴 A rota JÁ decidiu qual é — a tela só "
+              "reapresenta depois de explicar que a recarga pode bastar."},
     {"step": "endereco_como", "anchor": r"op[çc][õo]es para informar o endere[çc]o onde o ve[íi]culo est[áa]",
      "reply": "Digitar endereço", "notes": "variante jan/2026: Digitar endereço / Compartilhar / Informar o CEP / Não sei"},
     {"step": "endereco_direto_2026",
@@ -4389,7 +4415,10 @@ _FAMILIA_YH_TRONCO = [
                 r"est[áa] a caminho e faltam aproximadamente|"
                 r"a previs[ãa]o de chegada informada para o servi[çc]o|"
                 r"chegar[áa] para te atender entre"),
-     "reply": "", "noop": True, "notes": "📊 7 telas (hdi-auto)."},
+     # ⚠️ 📊 8, nao 7: recontado nos QUATRO corredores que carregam o
+     #    passo (hdi auto+resid, yelum auto+resid), nao so em hdi-auto (C16).
+     "reply": "", "noop": True,
+     "notes": "📊 8 telas / 20 sessões nos quatro corredores da família."},
 
     # ---- pesquisa de satisfacao: opiniao que nao e nossa ------------------
     # 🔴 O corredor RESIDENCIAL da Yelum já tem esta regra escrita; o de AUTO
@@ -4399,6 +4428,44 @@ _FAMILIA_YH_TRONCO = [
                 r"o qu[ãa]o satisfeito voc[êe] est[áa]|"
                 r"muito obrigada por ter respondido"),
      "reply": "", "noop": True, "notes": "📊 yelum 3 telas / 22 ses · hdi 3 / 14."},
+
+    # 🔴 MAIS DE UM VEICULO NA APOLICE — E A ESCOLHA E PELA PLACA.
+    #
+    # 📊 Sessao bb5b0f11 (hdi) e uma da yelum: "Identificamos que ha mais de um
+    #    veiculo para esta apolice, por favor, *digite o numero* indicando o
+    #    veiculo... 1 - Placa XXX ... 18 - Nenhuma das opcoes anteriores".
+    #    DEZOITO opcoes. Responder "1" fixo pegaria o carro errado numa apolice
+    #    com frota — e e exatamente o defeito que o teste Allianz de 12/07 ja
+    #    pegou uma vez. `vehicle_by_plate` escolhe pela placa QUE NOS ENVIAMOS.
+    {"step": "escolher_veiculo_multiplo",
+     "anchor": r"mais de um ve[íi]culo para esta ap[óo]lice",
+     "dynamic": "vehicle_by_plate", "reply": "{veiculo_opcao}",
+     "fallback_adaptive": True,
+     "notes": "📊 2 telas / 2 sessões (hdi 1 · yelum 1)."},
+
+    # 🔴 A URA LEMBRA DO ULTIMO CLIENTE — E O WHATSAPP E DA CORRETORA.
+    #
+    # 📊 Sessao 697abd09: a conversa ABRE com "Ola *{NOME} - {CORRETORA}*...
+    #    Deseja continuar o seu atendimento para a placa *{PLACA}*?" — e essa
+    #    placa e a do ATENDIMENTO ANTERIOR, que pode ser de outro segurado da
+    #    mesma corretora. Aceitar abriria assistencia na apolice errada.
+    #
+    # ⚠️ E a mesma licao ja escrita no `menu_raiz` da Porto: primeira vez
+    #    RE-IDENTIFICA; depois que o nosso CPF foi enviado, o cliente exibido
+    #    ja e o nosso e ai sim se segue.
+    #
+    # ⚠️ A resposta vai pelo ROTULO, nao pelo numero: os botoes nao foram
+    #    capturados nesta tela, e a familia hdi/yelum responde por rotulo em
+    #    todos os outros passos. Confirmar os rotulos esta em PENDENCIAS.
+    {"step": "continuar_com_placa_lembrada",
+     "anchor": r"deseja continuar o seu atendimento para a placa",
+     "reply": "Não", "reply_if_step_done": {"step": "identificacao_dado", "reply": "Sim"},
+     "constante_justificada": (
+         "🔴 A placa exibida e a do atendimento ANTERIOR neste mesmo WhatsApp, "
+         "que e o da CORRETORA -- pode ser de outro segurado dela. `Nao` "
+         "re-identifica; `Sim` so depois que o nosso CPF foi enviado nesta "
+         "sessao, e ai o cliente exibido e o nosso."),
+     "notes": "📊 1 tela / 1 sessão (697abd09)."},
 
     # ---- fim de conversa: tres telas, tres significados -------------------
     # 🔴 `encerrada_por_inatividade` NÃO é um noop qualquer: a URA DESLIGOU. Um
@@ -4411,7 +4478,8 @@ _FAMILIA_YH_TRONCO = [
                 r"tempo maximo de espera para este atendimento foi excedido|"
                 r"esta conversa ser[áa] encerrada"),
      "reply": "", "noop": True,
-     "notes": "📊 yelum 2 telas / 7 ses · hdi 1 / 2. 🔴 A URA DESLIGOU — noop é o "
+     "notes": "📊 3 telas / 9 sessões nos QUATRO corredores da família "
+              "(yelum auto+resid · hdi auto+resid). 🔴 A URA DESLIGOU — noop é o "
               "menos pior, não o certo. Ver PENDENCIAS."},
     {"step": "seguimos_a_disposicao", "anchor": r"seguimos [àa] disposi[çc][ãa]o",
      "reply": "", "noop": True, "notes": "📊 yelum 6 ses · hdi 5 ses."},
@@ -4476,13 +4544,17 @@ _FAMILIA_YH_TRONCO = [
     #    importa vira noop e o segurado não sabe quando o técnico vem.
     {"step": "chegada_prevista", "anchor": r"a chegada do prestador est[áa] (?:agendado|prevista)",
      "reply": "", "noop": True,
-     "notes": "📊 1 tela em cada. 🔴 É a ÚNICA fonte de data/período no residencial "
+     # ⚠️ 📊 2 telas somando os quatro corredores da família (C16).
+     "notes": "📊 2 telas nos quatro corredores. 🔴 É a ÚNICA fonte de data/período no residencial "
               "da família. Vem ANTES de `senha_e_orientacoes` de propósito."},
     {"step": "senha_e_orientacoes",
      "anchor": (r"4 [úu]ltimos digitos do n[úu]mero informado|"
                 r"senha para a visita t[ée]cnica corresponde|"
                 r"4 d[íi]gitos finais\*? do n[úu]mero|pessoa maior de 18 anos"),
-     "reply": "", "noop": True, "notes": "📊 yelum 5 telas / 11 ses · hdi 3 / 6."},
+     # ⚠️ 📊 7 telas DISTINTAS somando os quatro corredores (C16) --
+     #    "yelum 5 · hdi 3" contava cada corredor por si, e 5 < 7.
+     "reply": "", "noop": True,
+     "notes": "📊 7 telas / 17 sessões nos quatro corredores da família."},
     {"step": "resumo_endereco_residencial",
      "anchor": (r"estamos prontos para seguir com a sua solicita[çc][ãa]o de "
                 r"assist[êe]ncia 24 horas para o endere[çc]o"),
@@ -4507,8 +4579,11 @@ _FAMILIA_YH_PNEU = [
     {"step": "pneu_quantos", "anchor": r"quantos pneus foram furados",
      "reply": "{pneus_quantidade_opcao}", "requires": ["pneus_quantidade_opcao"],
      "fallback_adaptive": True, "only_subservices": ["pneu"],
-     "notes": "📊 1-Apenas um 2-Mais de um. 🔴 'Mais de um pneu' muda o serviço para "
-              "GUINCHO. Constante aqui manda borracheiro para carro que precisa de reboque."},
+     "notes": "📊 Botão 1: Apenas um pneu · Botão 2: Mais de um pneu · Botão 3: "
+              "Voltar — é BOTÃO, e a resposta é o RÓTULO, nunca o número. 🔴 'Mais "
+              "de um pneu' muda o serviço para GUINCHO: um borracheiro leva UM "
+              "estepe. Constante aqui manda borracheiro para carro que precisa de "
+              "reboque, e o prestador chega, olha e vai embora."},
     {"step": "pneu_estepe", "anchor": r"voc[êe] possui um estepe",
      "reply": "{estepe_situacao}", "requires": ["estepe_situacao"],
      "fallback_adaptive": True, "only_subservices": ["pneu"],
@@ -4541,6 +4616,45 @@ _FAMILIA_YH_GUINCHO = [
      "fallback_adaptive": True, "only_subservices": ["guincho"],
      "notes": "📊 yelum 4 ses · hdi 5 ses. 🔴 'Sim' ABRE UM SEGUNDO SERVIÇO (táxi) que "
               "o segurado não pediu — mas ele PODE ter direito e não saber. Vem do caso."},
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O TAXI QUE A URA ABRE DEPOIS DO GUINCHO — TRES TELAS ORFAS
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Sessao 68f511d9 (hdi/auto/guincho): quem respondeu "Sim" ao meio de
+    #    transporte recebeu tres perguntas que o corredor nao conhecia —
+    #    destino, passageiros e bagagens. As tres eram ORFAS FUNCIONAIS.
+    #
+    # 🔴 DUAS DELAS NAO TEM DEFAULT HONESTO, e por isso vao com `sem_chute`:
+    #    um ENDERECO errado manda o taxi para o lugar errado, e um numero de
+    #    passageiros a menos **deixa gente na estrada** — que e literalmente a
+    #    licao ja escrita no `taxi_passageiros` da porto. Sem o dado no caso, o
+    #    passo chama gente; nao chuta.
+    #
+    # ⚠️ E o galho inteiro so acontece se `meio_transporte_opcao` vier "Sim" —
+    #    que agora nasce do RELATO do segurado, nao de um default (ver
+    #    `_derivar_teclas_do_caso`). Quem nao pediu carona nao entra aqui.
+    {"step": "transporte_destino",
+     "anchor": r"e para onde devemos te levar",
+     "reply": "{transporte_destino}", "requires": ["transporte_destino"],
+     "sem_chute": True, "only_subservices": ["guincho"],
+     "notes": "📊 1 tela / 1 sessão (68f511d9). 🔴 É para onde vai a PESSOA, não "
+              "o veículo — `local_destino` é a oficina, e mandar o táxi para a "
+              "oficina levaria o segurado para o lugar errado."},
+    {"step": "transporte_passageiros",
+     "anchor": r"para quantos passageiros",
+     "reply": "{taxi_passageiros}", "requires": ["taxi_passageiros"],
+     "sem_chute": True, "only_subservices": ["guincho"],
+     "notes": "📊 1 tela / 1 sessão (68f511d9). Campo LIVRE, não menu. 🔴 Mesma "
+              "lição do `taxi_passageiros` da porto: um a menos e alguém fica "
+              "na estrada."},
+    {"step": "transporte_bagagens",
+     "anchor": r"possui bagagens", "reply": "Sim", "only_subservices": ["guincho"],
+     "constante_justificada": (
+         "🔴 O erro nao e simetrico, e e a mesma forma do `cilindrada_moto`: um "
+         "carro que cabe bagagem atende quem nao tem nenhuma; o contrario deixa "
+         "as malas na rua, ao lado de um carro que vai para o guincho. Quem "
+         "esta sendo rebocado quase sempre esvazia o porta-malas."),
+     "notes": "📊 1 tela / 1 sessão (68f511d9). Botão 1: Sim · 2: Não · 3: Voltar."},
     {"step": "destino_ja_tem", "anchor": r"j[áa] possui o endere[çc]o para onde devemos levar",
      "reply": "{tem_destino}", "fallback_adaptive": True, "only_subservices": ["guincho"],
      "notes": "📊 1+1 ses."},
@@ -4585,6 +4699,140 @@ _FAMILIA_YH = (_FAMILIA_YH_TRONCO + _FAMILIA_YH_PNEU
 for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
                YELUM_RESIDENCIAL_WHATSAPP_V1, HDI_RESIDENCIAL_WHATSAPP_V1):
     _pb_yh["ura_steps"] = list(_pb_yh["ura_steps"]) + [dict(p) for p in _FAMILIA_YH]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# AS ROTAS DA HDI, TRANSCRITAS — e cada uma no endereço dela
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ 🔴 POR QUE NÃO ESTÁ NO BLOCO DO SUBSERVIÇO: os quatro subserviços de auto
+#    vivem em `_AUTO_SUBSERVICES`, que é UM dicionário copiado para as ONZE
+#    seguradoras. Escrever a sessão da HDI lá empilharia dez transcrições de
+#    dez seguradoras antes de uma linha de código — e `chaveiro` é pior ainda,
+#    porque o primeiro `"chaveiro": {` do arquivo é o do corredor RESIDENCIAL
+#    da Allianz. O marcador `ROTA <seguradora>/<ramo>/<serviço>` dá a cada rota
+#    um endereço próprio (C17).
+#
+# ROTA hdi/auto/guincho
+# 📊 sessão 21a53457, assistência 9538531, 45 telas.
+#    CPF/CNPJ ou PLACA → "atendimento para o veículo ou residencial?" → nome →
+#    eco do veículo (ECOSPORT) → perfil (Sou segurado) → "você é a pessoa no
+#    local?" = Não → nome e celular de quem está → cor do veículo → rodovia? →
+#    "Pode me dizer o que aconteceu?" = Pane ou Defeito → vítimas? = Não →
+#    polícia? = Não → "enviaremos o serviço de *Guincho*" → CEP de origem →
+#    número → confirma → complemento/referência → garagem? → câmbio/rodas
+#    travadas? → elétrico/híbrido? → rebaixado? → situação de risco →
+#    ocupantes → destino (CEP) → agora ou agendar? → ABERTA → cobertura de
+#    MEIO DE TRANSPORTE → resumo → assistência 9538531 → orientações.
+#    🔴 A rota que tem o galho do TÁXI: quem responde "Sim" ao meio de
+#    transporte recebe mais três perguntas (sessão 68f511d9).
+#
+# ROTA hdi/auto/pneu
+# 📊 sessão 886066e5, assistência 8837507, 44 telas.
+#    ... → "Pode me dizer o que aconteceu?" = Pneu Furado → "Quantos pneus
+#    foram furados/danificados?" → "Você possui um estepe?" = Em condições →
+#    "Possui chave de roda e macaco em boas condições?" → 🔴 a URA anuncia
+#    *Guincho* na tela 19 e **corrige para *Troca de Pneus* na tela 25**,
+#    depois de saber do estepe → "Lembrando: por questões de segurança não
+#    conseguimos enviar troca de pneus para Rodovias e Marginais" → lugar
+#    seguro? → endereço em CINCO telas (rua, número, bairro, cidade, estado) →
+#    risco → ocupantes → agora → assistência 8837507 → orientações.
+#
+# ROTA hdi/auto/socorro_mecanico
+# 📊 sessão 71caf82f, assistência 9662631, 38 telas.
+#    ... → "Pode me dizer o que aconteceu?" = Pane ou Defeito → "selecione a
+#    opção que condiz com a pane" = **Problemas elétricos** → descreva em suas
+#    palavras → "enviaremos um prestador para realizar a *recarga da sua
+#    bateria*" → endereço → risco → ocupantes → agora → assistência 9662631.
+#    🔴 É a sessão que prova por que `pane_detalhe_opcao` não pode ser
+#    constante: foi essa tecla que trouxe um MECÂNICO em vez de um guincho.
+#
+# ROTA hdi/auto/chaveiro
+# 📊 sessão 697abd09, 26 telas, **SEM protocolo** — e é o que ela tem a dizer.
+#    A URA abriu lembrando a placa do atendimento ANTERIOR, o fluxo andou até
+#    "onde o veículo está parado", a resposta não veio no formato de botão
+#    ("Não entendi. Lembre-se que, para responder, você precisa selecionar o
+#    botão"), e a sessão terminou em "vamos te encaminhar para um de nossos
+#    analistas".
+#    ⚠️ Uma sessão só, e sem desfecho: as regras de cobertura de chaveiro da
+#    HDI **não estão medidas**. Está em PENDENCIAS, e é COLETA.
+#
+# ROTA hdi/auto/bateria
+# 🔵 SEM_CORPUS. Na HDI a recarga de bateria chega por `socorro_mecanico`
+#    ("Pane ou Defeito" → "Problemas elétricos"), e não pela tecla própria.
+
+for _sv_hdi, _regras_hdi, _exp_hdi in (
+    ("guincho", [
+        "Você tem cobertura para meio de transporte emergencial para retornar "
+        "à sua residência ou continuar a viagem. Lembrando que não é permitido "
+        "o segurado seguir viagem dentro do guincho — 🔴 é um serviço A MAIS, "
+        "que a maioria não sabe que tem. O corredor não o abre sozinho: se "
+        "você quiser, diga, e ele é pedido junto.",
+
+        "Por não possuir o endereço de destino neste momento o seu veículo "
+        "será removido para o pátio do guincheiro. É necessário que você "
+        "informe o endereço de destino em até 24 horas úteis através deste "
+        "canal — 🔴 o caso NÃO acaba no protocolo: sem o destino em 24h úteis "
+        "o carro fica no pátio, e a partir daí a diária é do segurado.",
+
+        "Por favor, aguarde a chegada do prestador com chaves e documentos em "
+        "mãos. Quando concluir o serviço, o prestador pedirá para você assinar "
+        "o checklist. Confira as informações e assine-o — ⚠️ depois da "
+        "assinatura não há a quem reclamar de avaria.",
+
+        "Não se esqueça de retirar os pertences pessoais do interior do "
+        "veículo.",
+     ],
+     "🔴 Termina no número da ASSISTÊNCIA (não é 'protocolo' na HDI) e num link "
+     "de acompanhamento. ⚠️ Pode terminar SEM destino: aí o veículo vai para o "
+     "pátio do guincheiro e ficam 24 horas úteis para informar para onde levar."),
+
+    ("pneu", [
+        "Por questões de segurança não conseguimos enviar o serviço de troca "
+        "de pneus para Rodovias e Marginais — 🔴 é EXCLUSÃO, não recomendação: "
+        "em rodovia ou marginal o serviço vira GUINCHO, e tem de ser dito "
+        "antes de o segurado esperar por um borracheiro que não vem.",
+
+        "Por favor, aguarde a chegada do prestador com chaves e documentos em "
+        "mãos. Quando concluir o serviço, o prestador pedirá para você assinar "
+        "o checklist. Confira as informações e assine-o.",
+
+        "Para sua segurança, não informe a placa através do telefone ou pelo "
+        "WhatsApp, somente ao prestador que chegar no local para te atender.",
+     ],
+     "🔴 Dois desfechos, e a URA troca de um para o outro NO MEIO: com estepe, "
+     "chave de roda e macaco em condições, vem *Troca de Pneus* no local; sem "
+     "isso, vem *Guincho*. 📊 Na sessão 886066e5 a URA anunciou Guincho na tela "
+     "19 e corrigiu para Troca de Pneus na 25. ⚠️ E em rodovia/marginal só há "
+     "guincho."),
+
+    ("chaveiro", [
+        "Para continuar, precisamos entender onde o veículo está parado. Essa "
+        "informação é importante para sua segurança e para definirmos o tipo "
+        "de atendimento — ⚠️ na HDI o LUGAR muda o serviço, não só o endereço.",
+
+        "Lembre-se que, para responder, você precisa selecionar o botão "
+        "indicando a opção escolhida — 🔴 responder por texto onde a URA espera "
+        "botão foi o que encerrou a única sessão desta rota em 'vamos te "
+        "encaminhar para um de nossos analistas'.",
+     ],
+     "⚠️ NÃO MEDIDO. 📊 A única sessão desta rota (697abd09) terminou num "
+     "analista humano, sem número de assistência. As regras de cobertura de "
+     "chaveiro da HDI não estão no acervo — está em PENDENCIAS, e é COLETA. "
+     "🔴 Não se escreve aqui o desfecho da Allianz: seria inventar."),
+):
+    HDI_AUTO_WHATSAPP_V1["subservices"][_sv_hdi]["regras_para_o_cliente"] = _regras_hdi
+    HDI_AUTO_WHATSAPP_V1["subservices"][_sv_hdi]["expectativa_do_desfecho"] = _exp_hdi
+
+# 🔴 A tecla do "Agora que você já sabe desta informação" — por subserviço,
+#    porque é o SUBSERVIÇO que ela reapresenta. Botão 1: Recarga de bateria ·
+#    Botão 2: Guincho.
+for _pb_yh2 in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
+    _pb_yh2["subservices"]["guincho"]["servico_pos_aviso_opcao"] = "Guincho"
+    _pb_yh2["subservices"]["bateria"]["servico_pos_aviso_opcao"] = "Recarga de bateria"
+    if "socorro_mecanico" in _pb_yh2["subservices"]:
+        _pb_yh2["subservices"]["socorro_mecanico"]["servico_pos_aviso_opcao"] = (
+            "Recarga de bateria")
 
 # 🔴 AS DUAS TELAS QUE NUNCA PODEM VIRAR PASSO.
 #    📊 yelum 2 telas / 2 ses · hdi 2 telas / 6 ses:

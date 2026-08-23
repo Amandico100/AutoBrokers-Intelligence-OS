@@ -401,6 +401,22 @@ def conferir(seguradora: str, ramo: str, derivados: Set[str]) -> List[Achado]:
 
             # ---------------------------------------------------- A · SLOT
             slots = _RX_SLOT.findall(reply)
+            # ⚠️ 🔴 `sem_chute` NAO E UM PASSO SEM ORIGEM: E UM PASSO QUE
+            #    DECLARA QUE NAO HA ORIGEM HONESTA.
+            #
+            # A regra A existe porque slot sem origem faz o passo ficar CALADO,
+            # e silencio e pior que resposta errada. Com `sem_chute` o motor
+            # tem um ramo EXPLICITO, antes de qualquer palpite:
+            # `state = needs_human`, `reason = "sem_chute:<slots>"`. E o oposto
+            # de silencio -- e chamar gente, com o motivo escrito.
+            #
+            # 🔴 Sao as perguntas em que o default E o erro: endereco de destino
+            #    do taxi, numero de passageiros, tipo de bateria, situacao de
+            #    risco. Acusar isto de defeito faria um executor que otimiza a
+            #    nota **apagar o `sem_chute`** para calar o guarda -- e voltar a
+            #    chutar exatamente onde nao se pode chutar.
+            if passo.get("sem_chute"):
+                continue
             for slot in slots:
                 if origens_do_slot(pb, slot, derivados):
                     continue

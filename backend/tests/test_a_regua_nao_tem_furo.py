@@ -91,6 +91,24 @@ PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 MUTACOES = [
     # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
 
+    # FURO 18 (C18) - o arquivo com MAIS TELAS vencia o com CONTROLE.
+    # A mutacao devolve a ordem antiga: telas primeiro, controle so no
+    # desempate. 📊 `hdi/auto/chaveiro` volta a escolher um arquivo sem
+    # nenhuma linha de CONTROLE e perde os 3 pontos.
+    ("scripts/rubrica.py",
+     "melhor = max(candidatos, key=lambda c: (c[1] >= 3, c[2], c[1]), default=None)",
+     "melhor = max(candidatos, key=lambda c: (c[1], c[2]), default=None)  # MUTACAO",
+     "🔴 a rota recebe o CONTROLE do guarda que foi escrito para ela"),
+
+    # FURO 17 (C17) - a rota nao tinha ONDE escrever a propria transcricao.
+    # A mutacao volta a ler o bloco do SERVICO, que e compartilhado por ate
+    # onze seguradoras. 📊 `hdi/auto/guincho` volta a ler a sessao da ALLIANZ
+    # e perde os 4 pontos.
+    ("scripts/rubrica.py",
+     "    bloco = _transcricao_da_rota(rota)",
+     "    bloco = _fonte_do_bloco(rota.servico)  # DESLIGADO PELA MUTACAO",
+     "🔴 a rota tem endereco proprio para a transcricao"),
+
     # FURO 16 (C16) - O PASSO COMPARTILHADO ERA APAGADO DO EXAME.
     # A mutacao reinstala exatamente a v3: se o passo aparece em mais de um
     # playbook, a `note` dele e lida como vazia. 📊 `allianz/auto` volta a
@@ -536,6 +554,71 @@ certo(_quebrado_c16.pontos < _it_c16.pontos,
 certo(_restaurado_c16.pontos == _it_c16.pontos,
       "🔴 CONTROLE: e a note foi RESTAURADA -- o guarda nao deixa lixo para tras",
       f"{_restaurado_c16.pontos}/2 vs {_it_c16.pontos}/2")
+
+
+
+# =============================================================================
+# 🔴 C17 - CADA ROTA TEM ONDE ESCREVER A PROPRIA TRANSCRICAO
+# =============================================================================
+#
+# 📊 `_fonte_do_bloco` e indexado por SERVICO, e servico nao identifica rota:
+#    `hdi/auto/guincho` lia o mesmo one-liner de `_AUTO_SUBSERVICES["guincho"]`
+#    que `allianz/auto/guincho`, onde esta escrita uma sessao DA ALLIANZ. O
+#    item fazia a coisa certa e nao creditava a hdi -- mas a hdi nao tinha
+#    lugar nenhum. 📊 Das 41 rotas com telas, **22 liam citacao de outra rota**.
+#
+# ⚠️ A prova NAO mudou: a sessao citada continua tendo de estar no corpus DESTA
+#    rota. O marcador so diz ONDE procurar.
+print()
+print("=" * 74)
+print("[C17] cada rota tem endereco proprio para a transcricao")
+print("=" * 74)
+
+_rota_c17 = [_r for _r in _RB.M.rotas()
+             if (_r.seguradora, _r.ramo, _r.servico) == ("hdi", "auto", "guincho")][0]
+_it_c17 = [_i for _i in _RB.eixo_a(_rota_c17, _RPc8.replay(_rota_c17))
+           if "transcrita" in _i.nome][0]
+certo(_it_c17.pontos == _it_c17.maximo,
+      "🔴 a rota tem endereco proprio para a transcricao",
+      f"{_it_c17.pontos}/{_it_c17.maximo}: {_it_c17.evidencia}")
+
+# 🔴 CONTROLE: e a prova continua sendo a SESSAO. Um marcador que cite sessao
+#    de outra rota nao vale nada -- senao o C17 teria virado um afrouxamento.
+_bloco_c17 = _RB._transcricao_da_rota(_rota_c17)
+certo(_bloco_c17 is not None and "ROTA hdi/auto/guincho" in _bloco_c17,
+      "🔴 CONTROLE: a janela lida e a do MARCADOR desta rota, nao a do vizinho",
+      (_bloco_c17 or "")[:70])
+_rota_c17b = [_r for _r in _RB.M.rotas()
+              if (_r.seguradora, _r.ramo, _r.servico) == ("allianz", "auto", "guincho")][0]
+certo(_RB._transcricao_da_rota(_rota_c17b) != _bloco_c17,
+      "🔴 CONTROLE: e a MESMA rota de guincho em outra seguradora le OUTRA "
+      "janela — se fossem a mesma, uma citacao pagaria as duas")
+
+# =============================================================================
+# 🔴 C18 - O ARQUIVO COM MAIS TELAS VENCIA O COM CONTROLE
+# =============================================================================
+#
+# 📊 `hdi/auto/chaveiro`: `test_o_atlas_conta_certo.py` (10 telas, 0 controles)
+#    vencia `test_o_corredor_da_hdi_responde_a_ura_dela.py` (3 telas, 14
+#    controles), e a rota levava 0 de 3 em CONTROLE havendo um guarda escrito
+#    para ela. O ponto nao faltava: era procurado no arquivo errado.
+print()
+print("=" * 74)
+print("[C18] entre arquivos que ja cobrem, ganha o que tambem GUARDA")
+print("=" * 74)
+
+_rota_c18 = [_r for _r in _RB.M.rotas()
+             if (_r.seguradora, _r.ramo, _r.servico) == ("hdi", "auto", "chaveiro")][0]
+_itens_c18 = _RB.eixo_e(_rota_c18, _RPc8.replay(_rota_c18))
+_cob = [_i for _i in _itens_c18 if "toca >=3 telas" in _i.nome][0]
+_ctl = [_i for _i in _itens_c18 if "CONTROLE" in _i.nome][0]
+certo(_ctl.pontos == _ctl.maximo,
+      "🔴 a rota recebe o CONTROLE do guarda que foi escrito para ela",
+      f"{_ctl.pontos}/{_ctl.maximo}: {_ctl.evidencia}")
+# 🔴 CONTROLE: e a COBERTURA nao foi afrouxada no caminho.
+certo(_cob.pontos == _cob.maximo,
+      "🔴 CONTROLE: e a cobertura continua provada — o criterio de telas nao "
+      "foi rebaixado", f"{_cob.pontos}/{_cob.maximo}: {_cob.evidencia}")
 
 print()
 print("=" * 74)

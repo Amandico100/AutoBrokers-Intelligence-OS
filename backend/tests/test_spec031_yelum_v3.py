@@ -62,6 +62,18 @@ SLOTS = {
     "problema_descricao": "motor falhando, precisa de guincho",
     "telefone_contato": "48998171110",
     "pessoa_no_local": "Sergio",
+    # ⚠️ 🔴 ESTE SLOT NAO ESTAVA AQUI, E O REPLAY PASSAVA. Depois da decisao 2
+    #    do Founder (SPEC-084.1), `situacao_risco` e uma das QUATRO perguntas
+    #    sem default honesto: afirmar que o segurado NAO esta numa via escura,
+    #    sem ele ter dito, e a resposta que o manda esperar sozinho no escuro.
+    #    Sem o dado, o passo agora vai a `needs_human` com
+    #    `reason=sem_chute:situacao_risco_opcao` -- de proposito.
+    #
+    # 🔴 A sessao REAL de 16/03/2026 respondeu "Nenhuma das anteriores", entao
+    #    quem replica aquele fluxo tem de trazer o que aquele segurado disse.
+    #    Colocar o dado no caso e reproduzir a sessao; trocar a expectativa por
+    #    `needs_human` seria apagar o replay integral, que e o valor do teste.
+    "situacao_risco_opcao": "Nenhuma das anteriores",
 }
 
 
@@ -159,6 +171,26 @@ def run():
                 ok_all = False
                 check(f"passo falhou em: {msg[:60]}", False, (expected, outs[-1:], sy.get("state"), sy.get("reason")))
     check("replay integral 16/03/2026: todos os passos correspondem ao fluxo real", ok_all)
+
+    # 🔴 CONTROLE DA DECISAO 2: o replay so passa porque o CASO trouxe
+    #    `situacao_risco_opcao`. Sem ele, a MESMA tela tem de chamar gente --
+    #    senao o slot acima estaria decorando, e um default escondido passaria.
+    _sem = dict(SLOTS)
+    _sem.pop("situacao_risco_opcao")
+    _sr = dispatch.new_dispatch_session(case_id="yl-ctrl", company_id="co",
+                                        playbook_ref="yelum-auto-whatsapp@v3",
+                                        subservice="guincho", slots=_sem)
+    _sr = dispatch.start_dispatch(_sr)
+    _n = len(_outs(_sr))
+    _sr = dispatch.handle_insurer_message(
+        _sr, "Você se encontra em uma das situações de risco abaixo? Via com "
+             "pouca iluminação Via com pouco movimento Nenhuma das anteriores Voltar")
+    check("CONTROLE: sem o dado no caso, a situacao de risco vira needs_human "
+          "(sem_chute), e nada e respondido a URA",
+          _sr.get("state") == "needs_human"
+          and "sem_chute" in str(_sr.get("reason") or "")
+          and len(_outs(_sr)) == _n,
+          (_sr.get("state"), _sr.get("reason"), _outs(_sr)[_n:]))
     check("replay: nenhum needs_human no caminho feliz", sy["state"] not in ("needs_human",), (sy.get("state"), sy.get("reason")))
 
     # PONTO DE NAO-RETORNO: modo teste cancela com 'Sair'.

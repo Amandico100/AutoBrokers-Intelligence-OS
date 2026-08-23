@@ -277,7 +277,8 @@ def eixo_a(rota, r: RP.Replay) -> List[Item]:
                            f"({nivel}: {marca}): {' '.join(sorted(boas)) or '-'}")))
 
     # ── 4 · a transcrição no bloco do subserviço ───────────────────────────
-    bloco = _fonte_do_bloco(rota.servico)
+    # 🔴 C17: o endereço é DA ROTA, não do serviço. Ver `_transcricao_da_rota`.
+    bloco = _transcricao_da_rota(rota)
     if bloco is None:
         itens.append(Item("A", "transcrita no bloco do subservico", 0, 4,
                           "o subservico vem de `_auto_playbook`, nao ha bloco onde escrever",
@@ -312,6 +313,72 @@ def eixo_a(rota, r: RP.Replay) -> List[Item]:
 # ═════════════════════════════════════════════════════════════════════════════
 # EIXO B — COBERTURA (35). O peso está aqui: é a única medida que reproduziu.
 # ═════════════════════════════════════════════════════════════════════════════
+def _transcricao_da_rota(rota) -> Optional[str]:
+    """Onde ESTA rota pode escrever a própria transcrição.
+
+    🔴 C17 — 26 ROTAS NÃO TINHAM ONDE ESCREVER.
+
+    `_fonte_do_bloco` é indexado por SERVIÇO, e serviço não identifica rota.
+    📊 Medido em 23/08/2026, nas 41 rotas que têm telas:
+
+    ```
+     8  ganham o item
+    22  o bloco tem citação, mas de OUTRA rota
+     4  o bloco não tem citação nenhuma
+     7  SEM_FABRICA
+    ```
+
+    As 22 são o caso interessante. `hdi/auto/guincho` lê o mesmo one-liner de
+    `_AUTO_SUBSERVICES["guincho"]` que `allianz/auto/guincho` — e lá está
+    escrita a sessão `dc6c0345`, que é da allianz. O item faz a coisa certa e
+    não credita a hdi (a sessão tem de estar no corpus DA ROTA). Mas então a
+    hdi não tem lugar nenhum: escrever a sessão dela naquele comentário seria
+    empilhar dez transcrições de dez seguradoras antes de uma linha de código.
+
+    🔴 E `chaveiro` é pior: o primeiro `"chaveiro": {` do arquivo é o do
+    corredor RESIDENCIAL da Allianz. `hdi/auto/chaveiro`,
+    `porto/residencial/chaveiro` e `yelum/residencial/chaveiro` liam todos o
+    bloco de um corredor que não é o delas.
+
+    A rota passa a ter um endereço próprio: um comentário aberto por
+
+        # ROTA <seguradora>/<ramo>/<serviço>
+
+    e a janela é o bloco de comentário CONTÍGUO a partir dele — a primeira
+    linha que não for comentário fecha, como no C14.
+
+    ⚠️ Isto NÃO afrouxa o item: a prova continua sendo a mesma, e é a que
+    importa — a sessão citada tem de estar no corpus DESTA rota. O marcador só
+    diz ONDE procurar. Quem escrever o marcador e citar sessão alheia continua
+    com zero.
+
+    📊 E o conserto sozinho não move nota nenhuma: no commit em que entra não
+    existe um único marcador escrito. Ele abre a porta; atravessá-la é
+    trabalho de corredor, uma rota por vez.
+    """
+    with open(FONTE_DO_CORREDOR, encoding="utf-8") as fh:
+        fonte = fh.read()
+    alvo = f"{rota.seguradora}/{rota.ramo}/{rota.servico}"
+    padrao = re.compile(r"^([ \t]*)#[^\n]*\bROTA\s+" + re.escape(alvo) + r"\b",
+                        re.M)
+    m = padrao.search(fonte)
+    if not m:
+        # ⚠️ Sem marcador, vale o bloco do subserviço — é onde os corredores
+        #    residenciais já escrevem, e tirá-los agora seria queda estrutural.
+        return _fonte_do_bloco(rota.servico)
+    fim = m.start()
+    while True:
+        prox = fonte.find("\n", fim)
+        if prox < 0:
+            fim = len(fonte)
+            break
+        linha = fonte[fim:prox]
+        if linha.strip() and not linha.lstrip().startswith("#"):
+            break
+        fim = prox + 1
+    return fonte[m.start():fim]
+
+
 _CORREDORES_DO_PASSO: Optional[Dict[Tuple[str, str], set]] = None
 
 
@@ -815,7 +882,33 @@ def eixo_e(rota, r: RP.Replay, *, mutacoes_ok: Optional[Tuple[int, int]] = None)
         candidatos.append((caminho, tocadas, controles, ""))
 
     itens: List[Item] = []
-    melhor = max(candidatos, key=lambda c: (c[1], c[2]), default=None)
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 C18 — O ARQUIVO COM MAIS TELAS VENCIA O COM CONTROLE
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # Os dois itens do eixo E saem do MESMO arquivo — e a escolha era por
+    # `(telas_tocadas, controles)`, nessa ordem. Uma tela a mais decidia tudo.
+    #
+    # 📊 Medido em 23/08/2026, `hdi/auto/chaveiro`:
+    #
+    # ```
+    #   test_o_atlas_conta_certo.py .................. 10 telas ·  0 controles
+    #   test_o_corredor_da_hdi_responde_a_ura_dela.py   3 telas · 14 controles
+    # ```
+    #
+    # 🔴 O primeiro vencia, e a rota levava **0 de 3 em CONTROLE** — havendo um
+    #    guarda escrito para ela, com quatorze linhas de controle, chamando o
+    #    motor nas telas dela. O ponto não estava faltando: estava sendo
+    #    procurado no arquivo errado.
+    #
+    # ⚠️ A ordenação nova NÃO afrouxa a cobertura: o primeiro critério é
+    #    `telas >= 3`, que é o próprio limiar do item. Nenhum arquivo abaixo
+    #    dele passa na frente. Entre os que já provaram cobertura, ganha o que
+    #    também GUARDA — e a cobertura segue como desempate final.
+    #
+    # 📊 Efeito medido nas 73: **4 rotas ganham 3 pontos, nenhuma perde**
+    #    (hdi chaveiro · hdi pneu · hdi socorro_mecanico · yelum guincho).
+    melhor = max(candidatos, key=lambda c: (c[1] >= 3, c[2], c[1]), default=None)
     if melhor is None or melhor[1] < 0:
         nomes = [os.path.basename(c[0]) for c in candidatos]
         itens.append(Item("E", "teste nomeia a rota, chama o motor, toca >=3 telas", 0, 6,

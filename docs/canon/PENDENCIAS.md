@@ -7675,3 +7675,90 @@ número certo.
 **O que destrava:** 🤖 ONDA D (yelum), ONDA E (porto) e a onda da hdi.
 **O que custa esquecer:** o item volta a parecer inganhável e alguém propõe
 afrouxá-lo — que foi como ele chegou à v3.
+
+### P-084-45 `hdi/auto/chaveiro` tem UMA sessão e ela não chegou ao fim · 🧑
+
+📊 23/08/2026, ONDA C. A rota fecha em **83/106**, e os 19 que faltam são três
+itens que dependem do mesmo fato ausente:
+
+```
+a ROTA foi percorrida ate o fim ...... 12   nenhuma sessão com protocolo
+o cliente recebe protocolo+dia+periodo  5   não há protocolo para capturar
+>=2 sessoes distintas ................  2   há uma
+```
+
+🔴 A única sessão (`697abd09`) terminou em *"vamos te encaminhar para um de
+nossos analistas"* — porque a resposta foi dada em TEXTO onde a URA esperava
+BOTÃO. As regras de cobertura de chaveiro da HDI **não estão no acervo**, e o
+`expectativa_do_desfecho` da rota diz isso com todas as letras em vez de copiar
+o desfecho da Allianz.
+
+⚠️ E há um dado que falta junto: os RÓTULOS DOS BOTÕES da tela
+*"Deseja continuar o seu atendimento para a placa X?"*. O corpus guardou o
+texto e não as opções. O passo responde `"Não"` (re-identificar) porque essa é
+a decisão segura — a placa exibida é a do atendimento ANTERIOR, e o WhatsApp é
+da corretora — mas o rótulo exato não foi medido.
+
+**O que destrava:** 🧑 uma coleta de chaveiro de auto na HDI que chegue ao
+número da assistência, com print dos botões da tela de abertura.
+**O que custa esquecer:** 19 pontos que parecem dívida de código e são coleta —
+e alguém escreve um desfecho inventado para preencher a lacuna.
+
+### P-084-46 `hdi/auto/bateria` é SEM_CORPUS porque na HDI a bateria não tem tecla própria · 🤖
+
+📊 O menu da HDI oferece "Recarga de bateria" como opção de
+*"Pode me dizer o que aconteceu?"*, mas a sessão real de recarga (`71caf82f`)
+entrou por **"Pane ou Defeito" → "Problemas elétricos"** e foi classificada
+como `socorro_mecanico`. Por isso `bateria` fica sem uma tela sequer.
+
+⚠️ Não é o mesmo caso de `allianz/auto/chaveiro` (P-084-40, tecla apresentada e
+nunca apertada): aqui a tecla existe **e o caminho real passa por outra**.
+**O que destrava:** 🤖 decidir se `hdi/auto/bateria` e `hdi/auto/socorro_mecanico`
+são a mesma rota com dois nomes. Se forem, uma delas sai do denominador como
+`ROTA_INDISTINGUIVEL`, que é o que a régua já faz com `socorro_mecanico`.
+**O que custa esquecer:** a tabela mostra uma rota vazia que ninguém consegue
+preencher, e a coleta é mandada atrás de uma sessão que não existe.
+
+### P-084-47 `hdi/auto/pneu`: uma sessão, e ela tem 323 dias · 🧑
+
+📊 `886066e5`, de 03/10/2025 — a mais recente da rota. A régua tira 2 pontos por
+`>=2 sessoes distintas` e 2 por `a mais recente tem <180 dias`, e os dois são
+**avisos de validade**, não defeitos: a rota fecha em 98/106 e responde todas as
+telas que tem.
+
+⚠️ O risco real não é a nota: é a URA ter mudado desde outubro e o corpus não
+saber. 📊 Na mesma rota, a URA já anunciou *Guincho* na tela 19 e corrigiu para
+*Troca de Pneus* na 25 — um fluxo que muda de serviço no meio é exatamente o que
+uma redação nova quebra em silêncio.
+**O que destrava:** 🧑 uma coleta nova de troca de pneu na HDI.
+
+### P-084-48 A tecla certa na FORMA errada — duas achadas, e a classe fechada · ✅🤖
+
+📊 23/08/2026. Auditoria das 25 teclas que `_derivar_teclas_do_caso` preenche,
+cruzando a FORMA do valor com a convenção do corredor dono:
+
+```
+pane_detalhe_opcao      hdi + yelum   devolvia "5"  → a tela é LISTA, sem número
+pneus_quantidade_opcao  hdi + yelum   devolvia "1"  → a tela é BOTÃO, sem número
+```
+
+🔴 As duas foram consertadas nesta onda, e a **classe inteira** ficou fechada por
+`test_a_tecla_tem_a_forma_da_seguradora.py`, que reprova qualquer derivação
+futura cuja forma não bata com a do dono.
+
+⚠️ Fica registrado porque a auditoria só cobre o que a DERIVAÇÃO escreve. As
+outras três origens — constante-por-subserviço, coleta e padrão-do-motor — não
+passam por ela. 📊 Hoje elas são declaradas dentro do playbook da própria
+seguradora, então a forma tende a estar certa por construção; mas isso é uma
+tendência, não um guarda.
+**O que destrava:** 🤖 estender a auditoria às constantes por subserviço.
+**O que custa esquecer:** o defeito é invisível para todos os outros guardas —
+a decisão está CERTA, só a forma está errada, e a URA responde *"Não entendi"* e
+manda para um analista. Formato errado não é resposta ruim: é atendimento
+perdido.
+
+### P-084-49 `desambiguacao_veiculo_ou_residencial`: âncora que não casa nada — ver P-084-43 · 🤖
+
+📊 Confirmado na ONDA C com a população certa do C16: `declarado 23 · real 0`
+nos dois corredores que carregam o passo. Continua aberto para a onda da HDI e
+da yelum.
