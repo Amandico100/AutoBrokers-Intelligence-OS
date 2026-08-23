@@ -278,6 +278,101 @@ certo(PS.servico_da_sessao(
 
 print()
 print("=" * 74)
+print("[6] 🔴 TOKIO: o numero do turno 3 e do CHAT, nao do chamado")
+print("=" * 74)
+
+T_CPF = "Olá, Fulano - Corretora X! Digite o CPF/CNPJ do titular do Seguro."
+T_TICKET = "Seu protocolo de atendimento é 68977599"
+T_MENU = ("Clique no botão abaixo para acessar o menu de serviços do *Seguro "
+          "Automóvel* 🚙")
+T_LINK = ("Clique no link abaixo para solicitar ou acompanhar *ASSISTÊNCIA "
+          "AUTOMÓVEL 24H E GUINCHO:* (Guincho, chaveiro, pane e pneu furado)")
+T_ALGO_MAIS = ("Posso te ajudar em algo mais?" + Q + "Botão 1: Outro serviço" +
+               Q + "Botão 2: Menu inicial" + Q + "Botão 3: Encerrar")
+
+pb_tk = CP.get_playbook("tokio-auto-whatsapp@v1")
+
+# 🔴 O QUE ESTE GUARDA PROTEGE, e vale mais que os pontos: a tokio manda um
+#    numero no turno 3, ANTES de qualquer escolha de servico. Ele e o protocolo
+#    do CHAT. Se `extract_capture_anchors` o colhesse como `protocol`, o
+#    corredor encerraria dizendo "assistencia aberta, protocolo 68977599"
+#    enquanto NADA foi aberto -- e o segurado ligaria com um numero que nao
+#    existe.
+certo(not (CP.extract_capture_anchors(pb_tk, T_TICKET) or {}).get("protocol"),
+      "🔴 tokio: o numero do turno 3 NAO e colhido como protocolo",
+      str(CP.extract_capture_anchors(pb_tk, T_TICKET)))
+
+# 🔴 CONTROLE: e o mecanismo de captura FUNCIONA -- noutra seguradora, o
+#    numero de verdade e colhido. Sem esta metade, um `protocol` sempre vazio
+#    passaria igual.
+certo((CP.extract_capture_anchors(
+        CP.get_playbook("allianz-auto-whatsapp@v1"),
+        "Protocolo: *52440449* Você receberá um link por SMS") or {}
+       ).get("protocol") == "52440449",
+      "🔴 CONTROLE: e o protocolo de VERDADE, noutra seguradora, e colhido")
+
+for tela, rotulo in ((T_CPF, "pede o CPF/CNPJ"),
+                     (T_MENU, "o menu de servicos do seguro auto"),
+                     (T_ALGO_MAIS, "posso te ajudar em algo mais")):
+    st = IDS.start_dispatch(sessao("tokio-auto-whatsapp@v1", "guincho"))
+    st, rt = responder(st, tela)
+    certo(rt is not None, f"🔴 tokio/auto/guincho responde: {rotulo}",
+          f"respondeu {rt!r}")
+
+st = IDS.start_dispatch(sessao("tokio-auto-whatsapp@v1", "guincho"))
+st, rt = responder(st, T_LINK)
+certo(rt is None,
+      "🔴 e fica CALADO no link -- ele e o DESFECHO da tokio "
+      "(`OUTCOME_ENCAMINHA`), nao uma pergunta", f"respondeu {rt!r}")
+
+print()
+print("=" * 74)
+print("[7] PORTO residencial: o eletrodomestico em TRES paginas de menu")
+print("=" * 74)
+
+PE = [
+    ("O que você precisa?" + Q + "Eletrodoméstico" + Q +
+     "Reparo de produtos de linha branca" + Q + "Encanador" + Q + "Voltar",
+     "o menu de servico da residencia"),
+    ("O que você precisa?" + Q + "Conserto ou reparo" + Q +
+     "Conversão de gás" + Q + "Contratar instalação" + Q + "Não encontrei",
+     "conserto x conversao de gas x instalacao"),
+    ("O conserto ou reparo é para o quê?" + Q + "Máquina de lavar roupa" + Q +
+     "Lava e seca" + Q + "Secadora" + Q + "Mais opções",
+     "a pagina 1 do menu de aparelhos"),
+    ("O conserto ou reparo é para o quê?" + Q + "Geladeira expositora" + Q +
+     "Geladeira" + Q + "Geladeira side by side" + Q + "Mais opções",
+     "a pagina 2 do menu de aparelhos"),
+]
+for tela, rotulo in PE:
+    sp2 = IDS.start_dispatch(sessao(
+        "porto-residencial-whatsapp@v1", "eletrodomesticos",
+        problema_descricao="a geladeira parou de gelar",
+        eletrodomestico_opcao="Geladeira",
+        # ⚠️ Os slots que o corredor da porto usa nesta arvore. Sem eles quem
+        #    responderia e o cerebro (`fallback_adaptive`), que nao roda aqui --
+        #    e o que este guarda mede e que o corredor SABE a tela e responde o
+        #    que o caso diz. O caminho do cerebro tem guarda proprio.
+        servico_texto="Eletrodoméstico",
+        eletrodomestico_rotulo="Geladeira"))
+    sp2, rp2 = responder(sp2, tela)
+    certo(rp2 is not None,
+          f"🔴 porto/residencial/eletrodomesticos responde: {rotulo}",
+          f"respondeu {rp2!r}")
+
+# 🔴 CONTROLE: e esta rota NAO recebe `regras_para_o_cliente` de proposito.
+#    A unica sessao dela abandona no terceiro submenu, sem protocolo, e a unica
+#    frase do corpus que casaria a regua e um aviso de mascaramento -- que nao e
+#    regra ao cliente. Preencher com ela seria ganhar 3 pontos enganando a regua.
+_sub_pe = (CP.get_playbook("porto-residencial-whatsapp@v1")
+           .get("subservices") or {}).get("eletrodomesticos") or {}
+certo(not _sub_pe.get("regras_para_o_cliente"),
+      "🔴 CONTROLE: e esta rota segue SEM `regras_para_o_cliente` -- a "
+      "unica sessao dela abandona antes de qualquer regra de cobertura",
+      str(_sub_pe.get("regras_para_o_cliente"))[:60])
+
+print()
+print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")
 print("=" * 74)
 sys.exit(1 if FAIL else 0)

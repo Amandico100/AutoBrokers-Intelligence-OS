@@ -8071,3 +8071,39 @@ a mais recente tem <180 dias ........... 8 rotas  🧑 coleta nova (a URA muda)
 [P-084-60]). O que trava é o ACERVO, e cada linha do
 [`ROTEIRO-DE-COLETA.md`](reports/ROTEIRO-DE-COLETA.md) diz o que pedir e com que
 CONTROLE.
+
+### P-084-63 As duas listas de vocabulário eram declaradas IGUAIS — e divergiram · ✅
+
+📊 23/08/2026. `infer_ramo_servico` (atlas) diz no próprio docstring:
+
+> *"Os termos abaixo são os MESMOS de `corridor_playbooks._SUBSERVICE_ALIASES` —
+> de propósito. (…) inventar um vocabulário próprio aqui seria um segundo
+> classificador para divergir do primeiro com o tempo."*
+
+🔴 **Conferido termo a termo: não eram os mesmos.** O classificador declarava
+`reboque`, `remocao`, `chave`, `carga`, `estepe`, `linha branca` e
+`troca de pneu`; a tabela de apelidos não tinha NENHUM dos sete. A divergência
+que o parágrafo temia já tinha acontecido — e o parágrafo continuava afirmando
+que não, que é o pior dos dois mundos: quem lê para de conferir.
+
+⚠️ Importa porque as duas pontas atendem caminhos diferentes:
+`infer_ramo_servico` traduz o texto do SEGURADO e já devolve a chave canônica;
+`canonical_subservice` traduz a palavra que a ATENDENTE escreve na chamada da
+ferramenta. Se ela disser "reboque" ou "chave", o corredor precisa saber que
+trabalho é esse — e não sabia.
+
+📊 **E esta edição não move a nota de nenhuma rota, o que foi declarado antes de
+escrever.** O item conta apelidos VIVOS no Espelho, e somando os sete nenhum
+serviço chega aos três: `reboque` e `estepe` têm ZERO ocorrências de cliente
+(`reboque` só aparecia em portal colado, e o filtro do C15 o removeu).
+
+🔴 Escrever `"guincho": "guincho"` faria a conta fechar em três serviços — e
+seria **comprar ponto**: `canonical_subservice("guincho")` já devolve "guincho"
+sem alias nenhum. Tautologia não é vocabulário, e a régua estaria medindo
+strings no código outra vez.
+
+**O que destrava os 36 pontos que faltam:** 🧑 vocabulário de segurado no
+Espelho. ⚠️ E há um limite estrutural que vale escrever: **o Espelho é o chat da
+CORRETORA com o AutoBrokers** — quem digita é o corretor, relatando. A palavra
+do segurado chega de segunda mão, e por isso este item vai ficar difícil por
+construção, não por descuido.

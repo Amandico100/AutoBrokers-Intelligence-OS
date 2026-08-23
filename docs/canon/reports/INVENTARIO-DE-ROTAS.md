@@ -1,6 +1,6 @@
 # Inventário de rotas — a régua aplicada às 73
 
-> Gerado em **2026-08-23T15:50:51+00:00** · commit `f156c8c`
+> Gerado em **2026-08-23T16:41:09+00:00** · commit `4430647`
 > 📊 acervo no momento da geração: **543 sessões** em 10 seguradoras
 
 🔴 A nota é sempre sobre o **denominador real**. Item dispensado sai do
@@ -55,15 +55,15 @@ invisível não é.** É por isso que este inventário tem três colunas, e não
 | hdi | residencial | encanador | **89/106** | quase(106) | a ROTA foi percorrida ate o fim (+12) · o cliente recebe protocolo + dia + periodo (+5) | 🤖 client_summary com dia + período | 14 |
 | bradesco | auto | guincho | **85/106** | quase(106) | a ROTA foi percorrida ate o fim (+12) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 72 |
 | hdi | auto | chaveiro | **83/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) · >=2 sessoes distintas (+2) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 5 |
+| tokio | auto | guincho | **72/94** | parcial(94) | o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) · o handoff casa >=1 tela REAL (+3) | 🤖 client_summary com dia + período · 🤖 ampliar handoff_triggers contra o corpus · 🧑 acesso ao Espelho para conferir os apelidos | 72 |
+| porto | residencial | eletrodomesticos | **69/94** | parcial(94) | o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) · expectativa_do_desfecho existe (+3) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos · 🤖 escrever as regras que a URA diz ao segurado | 0 |
 | allianz | residencial | eletrodomesticos | **77/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 0 |
 | porto | auto | vidros | **71/100** | parcial(100) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · >=2 sessoes distintas (+2) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período | 0 |
 | bradesco | auto | bateria | **75/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 16 |
 | yelum | residencial | eletrodomesticos | **75/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 0 |
-| tokio | auto | guincho | **66/94** | parcial(94) | o freio casa >=1 tela REAL (+8) · teste nomeia a rota, chama o motor, toca >=3 telas (+6) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🤖 client_summary com dia + período · 🤖 ampliar handoff_triggers contra o corpus · 🧑 acesso ao Espelho para conferir os apelidos | 72 |
 | hdi | residencial | chaveiro | **73/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 5 |
 | yelum | auto | bateria | **73/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 16 |
 | allianz | residencial | desentupimento | **72/106** | parcial(106) | a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🤖 client_summary com dia + período · 🤖 ampliar handoff_triggers contra o corpus · 🧑 acesso ao Espelho para conferir os apelidos | 1 |
-| porto | residencial | eletrodomesticos | **63/94** | parcial(94) | o freio casa >=1 tela REAL (+8) · teste nomeia a rota, chama o motor, toca >=3 telas (+6) · o cliente recebe protocolo + dia + periodo (+5) · apelidos do jeito que o cliente fala (+4) | 🧑 coleta: +1 sessão desta rota · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos · 🤖 escrever as regras que a URA diz ao segurado | 0 |
 | hdi | residencial | eletricista | **57/106** | esqueleto(106) | zero orfas funcionais (+20) · a ROTA foi percorrida ate o fim (+12) · o freio casa >=1 tela REAL (+8) · o cliente recebe protocolo + dia + periodo (+5) | 🤖 mapear 3 tela(s) · 🤖 client_summary com dia + período · 🧑 acesso ao Espelho para conferir os apelidos | 12 |
 | alfa | auto | bateria | **SEM_CORPUS** | SEM_CORPUS | não há uma linha desta rota no corpus | 🧑 coleta dirigida: 1 acionamento observado desta rota | 16 |
 | alfa | auto | chaveiro | **SEM_CORPUS** | SEM_CORPUS | não há uma linha desta rota no corpus | 🧑 coleta dirigida: 1 acionamento observado desta rota | 5 |
@@ -133,15 +133,15 @@ invisível não é.** É por isso que este inventário tem três colunas, e não
 | hdi | residencial | encanador | 8 | 30 | 26 | 10 | 15 | — |
 | bradesco | auto | guincho | 8 | 30 | 26 | 6 | 15 | — |
 | hdi | auto | chaveiro | 6 | 30 | 26 | 6 | 15 | — |
+| tokio | auto | guincho | 6 | 30 | 15 | 6 | 15 | — |
+| porto | residencial | eletrodomesticos | 6 | 30 | 18 | 0 | 15 | — |
 | allianz | residencial | eletrodomesticos | 8 | 30 | 18 | 6 | 15 | — |
 | porto | auto | vidros | 4 | 30 | 18 | 4 | 15 | — |
 | bradesco | auto | bateria | 6 | 30 | 18 | 6 | 15 | — |
 | yelum | residencial | eletrodomesticos | 6 | 30 | 18 | 6 | 15 | — |
-| tokio | auto | guincho | 6 | 30 | 15 | 6 | 9 | — |
 | hdi | residencial | chaveiro | 4 | 30 | 18 | 6 | 15 | — |
 | yelum | auto | bateria | 4 | 30 | 18 | 6 | 15 | — |
 | allianz | residencial | desentupimento | 6 | 30 | 15 | 6 | 15 | — |
-| porto | residencial | eletrodomesticos | 6 | 30 | 18 | 0 | 9 | — |
 | hdi | residencial | eletricista | 8 | 10 | 18 | 6 | 15 | — |
 | alfa | auto | bateria | — | — | — | — | — | — |
 | alfa | auto | chaveiro | — | — | — | — | — | — |

@@ -1717,6 +1717,47 @@ _SUBSERVICE_ALIASES = {
     "hidraulica": "encanador", "encanamento": "encanador",
     "vazamento": "encanador", "torneira": "encanador",
     "desentupidor": "desentupimento",
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ⚠️ 🔴 AS DUAS LISTAS ERAM DECLARADAS IGUAIS — E DIVERGIRAM
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # `infer_ramo_servico` (atlas/templater.py) diz, no próprio docstring:
+    #
+    #   *"Os termos abaixo são os MESMOS de
+    #    `corridor_playbooks._SUBSERVICE_ALIASES` — de propósito. (…) inventar
+    #    um vocabulário próprio aqui seria um segundo classificador para
+    #    divergir do primeiro com o tempo."*
+    #
+    # 📊 Conferido em 23/08/2026, termo a termo: **não eram os mesmos.** O
+    #    classificador declara `reboque`, `remocao`, `chave`, `carga`,
+    #    `estepe`, `linha branca` e `troca de pneu`; esta tabela não tinha
+    #    NENHUM dos sete. A divergência que o comentário temia já tinha
+    #    acontecido — e o comentário continuava afirmando que não.
+    #
+    # 🔴 Importa porque as duas pontas atendem caminhos diferentes:
+    #    `infer_ramo_servico` traduz o texto do SEGURADO e já devolve a chave
+    #    canônica; `canonical_subservice` traduz a palavra que a ATENDENTE
+    #    escreve na chamada da ferramenta. Se a atendente disser "reboque" ou
+    #    "chave", o corredor precisa saber que trabalho é esse — e não sabia.
+    #
+    # ⚠️ `trancad` fica de fora de propósito: é PREFIXO, e esta tabela é de
+    #    correspondência EXATA. Ele funciona lá (substring no blob) e nunca
+    #    casaria aqui.
+    #
+    # 📊 E o que esta edição NÃO faz: ela não muda a nota de nenhuma rota. O
+    #    item `apelidos do jeito que o cliente fala` conta apelidos VIVOS no
+    #    Espelho, e depois de somar os sete nenhum serviço chega aos três que o
+    #    item pede — `reboque` e `estepe` têm ZERO ocorrências de cliente
+    #    (`reboque` só aparecia em portal colado, e o filtro do C15 o removeu).
+    #    🔴 **Escrever `"guincho": "guincho"` faria a conta fechar e seria
+    #       comprar ponto**: `canonical_subservice("guincho")` já devolve
+    #       "guincho" sem alias nenhum. Tautologia não é vocabulário.
+    "reboque": "guincho", "remocao": "guincho",
+    "chave": "chaveiro",
+    "carga": "bateria",
+    "estepe": "pneu", "troca de pneu": "pneu",
+    "linha branca": "eletrodomesticos",
 }
 
 

@@ -1689,6 +1689,17 @@ def infer_ramo_servico(labels: List[str], full_text: str) -> Tuple[str, str]:
     de propósito. A Porto chama de "elétrica" e "hidráulica" o que a Allianz e a
     HDI chamam de eletricista e encanador; inventar um vocabulário próprio aqui
     seria um segundo classificador para divergir do primeiro com o tempo.
+
+    ⚠️ 🔴 E EM 23/08/2026 ESSA AFIRMAÇÃO ERA FALSA. 📊 Conferido termo a termo:
+    `reboque`, `remocao`, `chave`, `carga`, `estepe`, `linha branca` e
+    `troca de pneu` estavam AQUI e não estavam lá. A divergência que este
+    parágrafo temia já tinha acontecido, e o parágrafo continuava dizendo que
+    não — que é o pior dos dois mundos, porque quem lê para de conferir.
+
+    🔴 Os sete foram levados para `_SUBSERVICE_ALIASES` (menos `trancad`, que é
+    PREFIXO e lá a correspondência é exata). **Quem acrescentar termo aqui tem
+    de acrescentar lá**, e `test_o_classificador_nomeia_o_subservico` é o
+    guarda que cobra isso.
     """
     blob = (" ".join(labels) + " " + str(full_text or "")).lower()
     servico = ""
