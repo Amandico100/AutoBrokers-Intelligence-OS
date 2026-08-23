@@ -7862,3 +7862,69 @@ diferentes; placa ausente não escolhe nada) e mutação no harness.
 CRUA em vez do texto normalizado. `pick_option_by_plate` era a única com
 `dynamic:` no produto; se nascer outra, ela precisa do mesmo teste contra a
 tela do corpus, não contra uma string escrita à mão.
+
+### P-084-54 A cortesia no fim da tela silenciava o ABANDONO no começo dela · ✅
+
+📊 23/08/2026. Ao remover o passo `central_sem_atendimento` (ONDA B), a tela de
+abandono da alfa **continuou muda** — caiu num `noop` mais largo:
+
+```
+"Poxa! No momento eu nao consigo te ajudar. Por favor, entre em contato com a
+ nossa Central de atendimento nos telefones: Capitais 4003-2532 ...
+ Obrigado por entrar em contato!"
+```
+
+🔴 `avisos_informativos_familia` tinha `obrigado por entrar em contato!` na
+alternação. O motor casa o passo ANTES do gatilho, e o `noop` retorna na hora —
+então o gatilho `n[ãa]o consigo te ajudar`, declarado na própria alfa, nunca
+disparava. **Consertar o passo dedicado não bastou: o defeito mudou de dono e
+ficou igualmente invisível.**
+
+📊 A frase aparece em 4 telas do corpus inteiro, e as QUATRO são a mesma tela de
+abandono. Nenhuma tela de cortesia fica órfã com a remoção.
+
+⚠️ **E a correção geral foi medida e RECUSADA.** Fazer o motor conferir o
+handoff antes de retornar num `noop` parece a resposta certa e não é:
+📊 **287 telas em 12 pares (corredor, passo)** passariam a chamar humano — entre
+elas as 63 do link de acompanhamento da allianz (*"caso deseje alterar o
+atendimento acesse..."*) e 96 menus da porto que apenas LISTAM "sinistro" como
+opção. O comentário do motor já avisa disso. A ordem está certa.
+
+**O que fica:** 🤖 a mesma pergunta vale para os outros `noop` largos. Um passo
+`noop` cujo texto casa um gatilho de handoff é sempre suspeito — a lista de 12
+pares está no comentário do passo e é o ponto de partida.
+
+### P-084-55 `ar_condicionado` e `limpeza_caixa_dagua` não podem provar o handoff — e não é defeito · 🧑
+
+📊 As duas fecham em 99/106 e 89/96, e o item que falta nas duas é
+`o handoff casa >=1 tela REAL` (+3). Nenhuma tela do corpus DELAS dispara um
+gatilho — e os gatilhos existem, estão declarados no corredor e são provados por
+`chaveiro` (3 telas), `eletricista` (2), `encanador` (1), `eletrodomesticos` (1)
+e `maquina_de_lavar` (2).
+
+🔴 É propriedade da AMOSTRA, não do corredor: nas 2 sessões de ar-condicionado e
+nas 3 de caixa d'água nada deu errado. Inventar um gatilho para ganhar 3 pontos
+seria comprar ponto — e um gatilho a mais é um caminho a menos para o segurado.
+**O que destrava:** 🧑 coleta — qualquer sessão dessas rotas em que a apólice não
+cubra, o CPF seja recusado ou a URA transfira.
+**O que custa esquecer:** alguém "conserta" declarando um gatilho largo, e aí
+sim quebra o produto.
+
+### P-084-56 `desentupimento` e `eletrodomesticos` não chegam ao protocolo em NENHUMA sessão · 🧑
+
+📊 3 sessões cada, e as seis terminam sem número: cinco em *"Vou transferir seu
+caso para um especialista"* e uma no CPF recusado. As duas rotas **respondem
+100% das telas que pedem algo** (27 de 27 e 29 de 29) — o que falta não é
+condução, é desfecho no acervo.
+
+```
+a ROTA foi percorrida ate o fim ......  12
+o cliente recebe protocolo+dia+periodo   5
+o freio casa >=1 tela REAL ...........   8
+```
+
+🔴 E o que a Allianz promete nesses dois serviços — prazo, limite de metragem no
+desentupimento, quem paga a quebra de alvenaria — **não está no acervo**. Por
+isso a `expectativa_do_desfecho` das duas diz "NÃO MEDIDO" em vez de copiar a do
+encanador: são serviços diferentes, com regras de cobertura diferentes.
+**O que destrava:** 🧑 uma coleta de cada uma que chegue ao protocolo.

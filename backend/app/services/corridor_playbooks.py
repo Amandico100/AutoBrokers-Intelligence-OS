@@ -456,9 +456,19 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             #    Sem o filtro, o motor cobraria da rota do pet um slot que ela
             #    nunca coleta, e o acionamento pararia por falta de um dado que
             #    ninguém pediu.
-            "only_subservices": ["ar_condicionado", "chaveiro", "desentupimento",
-                                 "eletricista", "eletrodomesticos", "encanador",
-                                 "limpeza_caixa_dagua", "maquina_de_lavar"],
+            # ⚠️ 🔴 E A `consulta_veterinaria` ENTROU — 23/08/2026, medido.
+            #    O comentario acima confundia DUAS telas diferentes. A rota do
+            #    pet ve as duas:
+            #      tela 10  "Agora, me confirme o numero da residencia."
+            #      tela 26  "informe o endereco onde esta o Pet (incluindo CEP)"
+            #    A primeira e a confirmacao do endereco DA APOLICE, igual as
+            #    outras oito; a segunda e onde o BICHO esta, que pode ser outro
+            #    lugar. Escopar a rota inteira para fora por causa da tela 26
+            #    deixava a tela 10 ORFA — 📊 sessao c58a171a, que chega ao
+            #    protocolo 51494798.
+            "only_subservices": ["ar_condicionado", "chaveiro", "consulta_veterinaria",
+                                 "desentupimento", "eletricista", "eletrodomesticos",
+                                 "encanador", "limpeza_caixa_dagua", "maquina_de_lavar"],
             "anchor": r"(?:informe|confirme) o n[úu]mero da resid[êe]ncia",
             "reply": "{endereco_numero}",
             "requires": ["endereco_numero"],
@@ -2945,6 +2955,75 @@ ALFA_AUTO_WHATSAPP_V1 = _auto_playbook(
 )
 ALFA_AUTO_WHATSAPP_V1["subservice_menu_map"] = {"guincho": "3", "bateria": "1", "pneu": "6", "chaveiro": "7"}
 ALFA_AUTO_WHATSAPP_V1["finalize_abort_reply"] = "SAIR"
+
+# ══════════════════════════════════════════════════════════════════════════
+# AS ROTAS DA ALFA, TRANSCRITAS — a URA é a da Allianz, palavra por palavra
+# ══════════════════════════════════════════════════════════════════════════
+
+# ROTA alfa/auto/guincho
+# 📊 sessão 665b5bad, protocolo 50274607, 34 telas, entre 4 sessões da rota.
+#    CPF → confirma veículo (RENEGADE TRAILHAWK, 1) → telefone → tipo do
+#    veículo = 1 → "O que você precisa?" = 3 (reboque para pane mecânica) →
+#    "para quando" = Agora → rodas travadas? = 2 → acesso do reboque = 1 →
+#    endereço de ORIGEM → referência → PCD = 2 → endereço de DESTINO (UF,
+#    cidade, logradouro, número) → RESUMO → protocolo 50274607.
+#    🔴 E no meio dela está a tela que a ALFA tem e a Allianz não: **"Poxa! No
+#    momento eu não consigo te ajudar. Por favor, entre em contato com a nossa
+#    Central de atendimento nos telefones"** — abandono para o telefone. Ela é
+#    `handoff_trigger` da alfa, e desde 23/08/2026 o gatilho FUNCIONA: o passo
+#    `noop` que o silenciava foi removido (ver o comentário no lugar dele).
+
+# ROTA alfa/auto/pneu
+# 📊 sessão 1b13140b, protocolo 52675121, 23 telas — a ÚNICA da rota.
+#    ... → "O que você precisa?" = 6 (borracheiro para troca de pneu) →
+#    "Quantos pneus furaram?" = 1 → "Os equipamentos para troca (chave de roda,
+#    macaco e step) estão no veículo e em boas condições?" → endereço →
+#    "por segurança, precisamos confirmar o número do endereço" → referência →
+#    PCD = 2 → RESUMO → confirmada → protocolo 52675121.
+#    ⚠️ Uma sessão só: `>=2 sessoes distintas` fica de fora, e é COLETA.
+
+# ROTA alfa/auto/bateria · ROTA alfa/auto/chaveiro
+# 🔵 SEM_CORPUS. As duas são teclas do mesmo menu que guincho e pneu (1 e 7) e
+#    ninguém as pressionou no período do acervo.
+
+for _sv_af, _regras_af, _exp_af in (
+    ("guincho", [
+        "É necessário que um responsável maior de 18 anos esteja no local "
+        "indicado com a chave e documento do veículo — sem isso o guincho vai "
+        "embora e a utilização da apólice já foi consumida.",
+
+        "Em caso de remoção do veículo, por favor, retire seus pertences e "
+        "confira o check-list antes de assinar — 🔴 depois da assinatura não há "
+        "a quem reclamar de avaria.",
+
+        "Aguarde em local seguro próximo ao veículo — ⚠️ e a ALFA tem um "
+        "desfecho que a Allianz não tem: se ela não conseguir abrir pelo "
+        "WhatsApp, manda para a Central por telefone. Aí o acionamento sai da "
+        "conversa e vira trabalho de uma pessoa.",
+     ],
+     "🔴 Termina em PROTOCOLO, com dois endereços: origem e destino. ⚠️ E pode "
+     "NÃO terminar: 📊 a sessão 665b5bad recebeu 'Poxa! No momento eu não "
+     "consigo te ajudar' e foi mandada para a Central de atendimento — é "
+     "handoff com o telefone no dossiê, não falha do corredor."),
+
+    ("pneu", [
+        "Os equipamentos para troca (chave de roda, macaco e step) estão no "
+        "veículo e em boas condições? — 🔴 é a pergunta que decide o serviço: "
+        "sem estepe e ferramentas, a troca de pneu vira REBOQUE.",
+
+        "É necessário que um responsável maior de 18 anos esteja no local "
+        "indicado com a chave e documento do veículo.",
+
+        "Em caso de remoção do veículo, por favor, retire seus pertences e "
+        "confira o check-list antes de assinar — vale também aqui, porque a "
+        "troca de pneu pode terminar em remoção.",
+     ],
+     "🔴 Termina em PROTOCOLO. ⚠️ Dois desfechos: troca NO LOCAL, se o estepe e "
+     "as ferramentas estiverem no carro, ou REBOQUE até a borracharia, se não "
+     "estiverem. A pergunta que decide isso é da URA, não nossa."),
+):
+    ALFA_AUTO_WHATSAPP_V1["subservices"][_sv_af]["regras_para_o_cliente"] = _regras_af
+    ALFA_AUTO_WHATSAPP_V1["subservices"][_sv_af]["expectativa_do_desfecho"] = _exp_af
 # Alfa às vezes não abre guincho pelo WhatsApp ("no momento eu não consigo te
 # ajudar" → central 4003-2532): vira handoff com o telefone no dossiê.
 ALFA_AUTO_WHATSAPP_V1["handoff_triggers"] = ALFA_AUTO_WHATSAPP_V1["handoff_triggers"] + [
@@ -5647,8 +5726,41 @@ _ALFA_ALLIANZ_FAMILIA = [
      "anchor": (r"faremos o poss[íi]vel para que o profissional chegue|"
                 r"respons[áa]vel maior de 18 anos esteja no local|"
                 r"sua assist[êe]ncia foi confirmada|"
-                r"siga o passo a passo a seguir de acordo com seu aparelho|"
-                r"obrigado por entrar em contato!"),
+                r"siga o passo a passo a seguir de acordo com seu aparelho"),
+     # ══════════════════════════════════════════════════════════════════════
+     # ⚠️ 🔴 `obrigado por entrar em contato!` SAIU DAQUI — 23/08/2026
+     # ══════════════════════════════════════════════════════════════════════
+     #
+     # 📊 A frase aparece em **4 telas do corpus inteiro, e as QUATRO são a
+     #    MESMA tela**: o abandono da alfa.
+     #
+     #      "Poxa! No momento eu nao consigo te ajudar. Por favor, entre em
+     #       contato com a nossa Central de atendimento nos telefones:
+     #       Capitais 4003-2532 ... Obrigado por entrar em contato!"
+     #
+     # 🔴 A cortesia está no FIM da tela e o ABANDONO está no começo. Como o
+     #    motor casa o passo ANTES do gatilho de handoff, este `noop` engolia a
+     #    tela inteira e o gatilho `n[ãa]o consigo te ajudar` — declarado na
+     #    própria alfa — nunca disparava. A URA mandava o segurado para o
+     #    telefone e o corredor ficava calado.
+     #
+     # ⚠️ **E não adiantou remover o passo dedicado que fazia isso**: ao tirar
+     #    `central_sem_atendimento`, a tela caiu neste `noop` mais largo e o
+     #    defeito continuou igual, invisível. Foi preciso medir de novo.
+     #
+     # 🔴 E A CORREÇÃO GERAL FOI MEDIDA E RECUSADA. Fazer o motor conferir o
+     #    handoff antes de retornar num `noop` parece a resposta certa e não é:
+     #    📊 **287 telas em 12 pares (corredor, passo)** passariam a chamar
+     #    humano, entre elas as 63 do link de acompanhamento da allianz
+     #    ("caso deseje alterar o atendimento acesse...") e 96 menus da porto
+     #    que apenas LISTAM "sinistro" como opção. O comentário do motor já
+     #    avisa: *"menus reais listam Sinistro/Acidente como OPÇÕES, e isso não
+     #    significa que o caso é sinistro"*. A ordem está certa; o que estava
+     #    errado era esta alternativa.
+     #
+     # ⚠️ Nenhuma tela de cortesia fica órfã com isso: não existe, no acervo,
+     #    uma tela que diga "Obrigado por entrar em contato!" sem estar
+     #    abandonando o atendimento.
      # ⚠️ 📊 6, não 5: recontado em 23/08/2026 na população certa — os dois
      #    corredores que carregam o passo (alfa + allianz), não um só (C16).
      "reply": "", "noop": True,
@@ -6457,12 +6569,80 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["consulta_veterinaria"] = {
     "outro_servico_opcao": "6",
     "required_slots": [
         "titular_cpf", "telefone_contato", "problema_descricao", "qual_seguro_opcao",
+        # ⚠️ 🔴 O E-MAIL, e ele e da ROTA DO PET e de mais nenhuma.
+        #    📊 "Agora, informe o endereco onde esta o Pet (incluindo CEP) e o
+        #    email do segurado." — a clinica usa o e-mail para mandar o
+        #    encaminhamento. Sem ele o passo ficaria calado, e passo calado e
+        #    a familia dos 2min22.
+        "email_segurado",
     ],
 }
 ALLIANZ_RESIDENCIAL_WHATSAPP_V1.setdefault("subservice_labels", {}).update({
     "limpeza_caixa_dagua": "limpeza de caixa d'agua",
     "consulta_veterinaria": "consulta veterinaria",
 })
+
+# ══════════════════════════════════════════════════════════════════════════
+# AS DUAS ROTAS QUE NÃO CHEGAM AO PROTOCOLO — e o que elas TÊM a dizer
+# ══════════════════════════════════════════════════════════════════════════
+
+# ROTA allianz/residencial/desentupimento
+# 📊 3 sessões, 34 telas, **NENHUMA com protocolo**: a sessão 2540f42f, a
+#    sessão 8ad1d251 e a sessão 96f220ca terminam em *"Vou transferir seu caso para um
+#    especialista"*. O corredor responde 27 de 27 telas que pedem algo e
+#    mesmo assim não há desfecho para capturar: é COLETA, não corredor.
+#    ⚠️ Por isso `a ROTA foi percorrida ate o fim`, `protocolo + dia +
+#    periodo` e `o freio casa >=1 tela REAL` ficam sem ponto, e está certo —
+#    inventar um protocolo aqui seria mentir sobre o que a rota faz.
+
+# ROTA allianz/residencial/eletrodomesticos
+# 📊 3 sessões (21610390, 7c22675f, eb7c521e), 39 telas, **nenhuma com
+#    protocolo** — mesmo caso. A sessão 21610390 é a única tela de documento
+#    recusado do acervo inteiro (*"CPF ou CNPJ informado não é válido"*), e é
+#    dela que saiu o gatilho de handoff `cpf...inválido`.
+#    ⚠️ A URA lista aqui a COBERTURA por escrito, e é o que a rota tem de mais
+#    útil: quais aparelhos entram em cada linha.
+
+for _sv_rd, _regras_rd, _exp_rd in (
+    ("desentupimento", [
+        "Ainda não consigo entender fotos, vídeos ou áudios — 🔴 mandar foto do "
+        "cano entupido para a URA não adianta: ela não lê. Descreva por texto, "
+        "ou o atendimento trava esperando uma resposta que nunca chega.",
+
+        "Digite SAIR em qualquer momento caso queira finalizar nossa conversa "
+        "— ⚠️ e SAIR encerra de verdade: o que já foi informado se perde.",
+
+        "Para facilitar a localização, por favor, informe o complemento do "
+        "endereço (se houver), e/ou referência do local — sem referência, o "
+        "prestador roda o quarteirão e o prazo corre.",
+     ],
+     "⚠️ NÃO MEDIDO ATÉ O FIM. 📊 As três sessões desta rota terminam em 'Vou "
+     "transferir seu caso para um especialista', sem número de protocolo. O que "
+     "a Allianz promete no desentupimento — prazo, limite de metragem, quem "
+     "paga a quebra de alvenaria — **não está no acervo**. Está em PENDENCIAS, "
+     "e é COLETA. 🔴 Não se copia aqui o desfecho do encanador: são serviços "
+     "diferentes, com regras de cobertura diferentes."),
+
+    ("eletrodomesticos", [
+        "Linha Branca (Microondas; Fogão; Forno; Cooktop; Frigobar; Adega; "
+        "Filtro de água; Lavadora de louças; Coifa e exaustor de ar; Máquina "
+        "de Lavar e secar roupas) — 🔴 é a LISTA DE COBERTURA, escrita pela "
+        "própria URA. O que não está nela não é linha branca, e cai noutro "
+        "menu ou fora da cobertura.",
+
+        "Ainda não consigo entender fotos, vídeos ou áudios — ⚠️ o segurado "
+        "quase sempre quer mandar foto do aparelho. Não adianta: descreva o "
+        "defeito por texto.",
+
+        "Digite SAIR em qualquer momento caso queira finalizar nossa conversa.",
+     ],
+     "⚠️ NÃO MEDIDO ATÉ O FIM. 📊 As três sessões terminam sem protocolo — duas "
+     "num especialista e uma no CPF recusado. 🔴 A rota SABE conduzir (responde "
+     "29 de 29 telas que pedem algo), e o que falta é uma sessão que chegue ao "
+     "número. Está em PENDENCIAS, e é COLETA."),
+):
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"][_sv_rd]["regras_para_o_cliente"] = _regras_rd
+    ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"][_sv_rd]["expectativa_do_desfecho"] = _exp_rd
 _SUBSERVICE_ALIASES.update({
     "limpeza de caixa d agua": "limpeza_caixa_dagua",
     "limpeza de caixa dagua": "limpeza_caixa_dagua",
@@ -6475,6 +6655,69 @@ _SUBSERVICE_ALIASES.update({
 
 ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = list(
     ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"]) + [
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O PET — TRES TELAS QUE NINGUEM RESPONDIA (ONDA F, 23/08/2026)
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 Sessao c58a171a, protocolo 51494798. Depois de raca e idade, a URA
+    #    pergunta PESO e PORTE — e as duas ficavam mudas. Nao sao enfeite: e o
+    #    porte que decide se a clinica mais proxima atende o animal.
+    {"step": "pet_peso", "anchor": r"^qual o peso\?",
+     "reply": "{pet_peso}", "requires": ["pet_peso"], "fallback_adaptive": True,
+     "only_subservices": ["consulta_veterinaria"],
+     "notes": "📊 1 tela / 1 sessão (c58a171a). Campo LIVRE. 🔴 O `^` é "
+              "obrigatório: sem ele a âncora casaria 'qual o peso' dentro de "
+              "outra frase — `match_ura_step` compila com DOTALL, e `^` é o "
+              "início da mensagem inteira."},
+    {"step": "pet_porte", "anchor": r"^qual o porte\?",
+     "reply": "{pet_porte}", "requires": ["pet_porte"], "fallback_adaptive": True,
+     "only_subservices": ["consulta_veterinaria"],
+     "notes": "📊 1 tela / 1 sessão (c58a171a). 🔴 O porte decide se a clínica "
+              "mais próxima atende o animal — cachorro de grande porte não "
+              "entra em qualquer consultório."},
+    # 🔴 E A TELA QUE PEDE DUAS COISAS DE UMA VEZ.
+    #    "Agora, informe o endereco onde esta o Pet (incluindo CEP) e o email
+    #     do segurado."
+    #    ⚠️ O EMAIL nao e um dado que o corredor tinha. Ele passa a ser COLETA
+    #    (`required_slots`), que e uma das quatro origens legitimas: quem tem o
+    #    email do segurado e a corretora, e ela informa antes de acionar.
+    {"step": "pet_endereco_e_email",
+     "anchor": r"endere[çc]o onde est[áa] o pet",
+     "reply": "{local_atual} - {email_segurado}",
+     "requires": ["local_atual", "email_segurado"], "fallback_adaptive": True,
+     "only_subservices": ["consulta_veterinaria"],
+     "notes": "📊 1 tela / 1 sessão (c58a171a). 🔴 A tela pede DUAS coisas: "
+              "onde o BICHO está (pode não ser o endereço da apólice) e o "
+              "e-mail do segurado, que a clínica usa para mandar o "
+              "encaminhamento."},
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 A CAIXA D'AGUA — MATERIAL E ESCADA (ONDA F, 23/08/2026)
+    # ══════════════════════════════════════════════════════════════════════
+    {"step": "caixa_dagua_material",
+     "anchor": r"modelo/material da caixa d.?[áa]gua",
+     "reply": "3", "only_subservices": ["limpeza_caixa_dagua"],
+     "constante_justificada": (
+         "📊 O menu e '1 - Fibra de vidro, polietileno ou inox · 2 - Amianto ou "
+         "cimento · 3 - Outros/nao sei'. O corredor NAO sabe o material da "
+         "caixa d'agua de ninguem, e afirmar 'fibra' num telhado de amianto "
+         "muda o servico e o EPI que o prestador leva. `3 - Outros/nao sei` e "
+         "opcao da PROPRIA URA e e a resposta honesta de quem nao sabe -- a "
+         "mesma forma do `pet_especie_opcao`, que tambem cai em 'Outros'."),
+     "notes": "📊 1 tela / 1 sessão (bb6e16d4)."},
+    {"step": "caixa_dagua_escada",
+     "anchor": r"precisa que o prestador leve escada",
+     "reply": "1", "only_subservices": ["limpeza_caixa_dagua"],
+     "constante_justificada": (
+         "🔴 O erro nao e simetrico. `1 - Sim` faz o prestador LEVAR escada, e "
+         "ela sobra se nao precisar; `2 - Nao` faz ele chegar sem escada numa "
+         "caixa a quatro metros do chao, olhar para cima e ir embora -- com a "
+         "utilizacao da apolice ja consumida. A propria tela avisa que 'nao "
+         "esta previsto o destelhamento do local para execucao do servico': "
+         "sem escada, nao ha outro jeito de subir."),
+     "notes": "📊 1 tela / 1 sessão (bb6e16d4). A tela traz junto a REGRA dos "
+              "4,5 metros — vai a `regras_para_o_cliente`."},
+
     {"step": "caixa_dagua_agendar",
      "anchor": r"limpeza de caixa d.?[áa]gua\*? dever[áa] ser agendado",
      "reply": "1", "only_subservices": ["limpeza_caixa_dagua"],
