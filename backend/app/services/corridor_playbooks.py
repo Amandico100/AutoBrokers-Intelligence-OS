@@ -2160,7 +2160,15 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
                   "Chaveiro para o veículo / Táxi"},
         {"step": "bateria_submenu", "anchor": r"entendi\. o que voc[êe] precisa",
          "reply": "{bateria_tipo_opcao}", "requires": ["bateria_tipo_opcao"],
-         "sem_chute": True, "only_subservices": ["bateria", "bateria_nova"],
+         # ⚠️ 🔴 E `tecnico` ENTRA — 23/08/2026, medido. Na Porto, escolher
+         #    "Bateria nova", "Troca de bateria" ou "Na garantia" leva a
+         #    "vou te ajudar com o agendamento de um TÉCNICO", e o resumo sai
+         #    com *Serviço:* Técnico. 📊 Sessão e5318468, protocolo
+         #    1-124279107688: o acervo a classifica como `tecnico` — e é o que
+         #    a URA abriu — mas ela PASSA por esta tela. Sem `tecnico` no
+         #    escopo, a tela ficava órfã na rota por onde ela chega.
+         "sem_chute": True,
+         "only_subservices": ["bateria", "bateria_nova", "tecnico"],
          "notes": "🔴 Recarga / Bateria nova / Troca / Na garantia são QUATRO TRABALHOS, e o corredor dizia 'Recarga' sempre. ⚠️ `only_subservices` é a regra 1 (pergunta só o que a rota precisa): sem ele o passo alcançava as 8 rotas de porto/auto, inclusive guincho e vidros, que nunca veem esta tela."},
         # VIDROS na Porto NÃO abre chamado aqui — DESFECHO = encaminha.
         # 📊 URA real 03/08/2026, três mensagens seguidas:
@@ -3727,7 +3735,9 @@ PORTO_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         {"step": "menu_raiz", "anchor": r"escolha a op[çc][ãa]o desejada",
          "reply": "Informar outro CPF/CNPJ",
          "reply_if_step_done": {"step": "pedir_cpf", "reply": "Serviço para residência"},
-         "notes": "📊 13 msgs / 8 sessões. Na 1ª volta re-identifica (o CPF lembrado é o do "
+         # ⚠️ 📊 15 telas DISTINTAS nos DOIS corredores da porto (auto +
+         #    residencial), nao 13 mensagens num so. Recontado em 23/08/2026.
+         "notes": "📊 15 telas / 14 sessões nos dois corredores. Na 1ª volta re-identifica (o CPF lembrado é o do "
                   "cliente ANTERIOR); depois do nosso CPF, entra na linha residencial pelo "
                   "rótulo medido — SINGULAR, 8 de 8 ocorrências. "
                   "⚠️ Vem DEPOIS de `servico_ja_aberto_menu`: a mesma frase abre as duas "
@@ -4288,7 +4298,11 @@ _PORTO_TRONCO = [
 
     # ---- desfecho --------------------------------------------------------
     {"step": "resumo_confira", "anchor": r"confira o resumo da sua solicita[çc][ãa]o",
-     "reply": "", "noop": True, "notes": "📊 5 msgs / 4 sessões. CARDÁPIO: a escolha vem depois."},
+     # ⚠️ 📊 8, nao 5: recontado nos DOIS corredores que carregam o passo
+     #    (porto auto + residencial), nao num so (C16).
+     "reply": "", "noop": True,
+     "notes": "📊 8 telas / 9 sessões nos dois corredores da porto. CARDÁPIO: a "
+              "escolha vem depois."},
     {"step": "protocolo_recebido", "anchor": r"aqui est[áa] (?:o )?seu protocolo de atendimento",
      "reply": "", "noop": True,
      "notes": "📊 auto 11/11 · residencial 5/4. É o DESFECHO. Quem lê o número é "
@@ -4766,6 +4780,7 @@ for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
 #    da Allianz. O marcador `ROTA <seguradora>/<ramo>/<serviço>` dá a cada rota
 #    um endereço próprio (C17).
 #
+
 # ROTA hdi/auto/guincho
 # 📊 sessão 21a53457, assistência 9538531, 45 telas.
 #    CPF/CNPJ ou PLACA → "atendimento para o veículo ou residencial?" → nome →
@@ -4780,6 +4795,7 @@ for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
 #    🔴 A rota que tem o galho do TÁXI: quem responde "Sim" ao meio de
 #    transporte recebe mais três perguntas (sessão 68f511d9).
 #
+
 # ROTA hdi/auto/pneu
 # 📊 sessão 886066e5, assistência 8837507, 44 telas.
 #    ... → "Pode me dizer o que aconteceu?" = Pneu Furado → "Quantos pneus
@@ -4791,6 +4807,7 @@ for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
 #    seguro? → endereço em CINCO telas (rua, número, bairro, cidade, estado) →
 #    risco → ocupantes → agora → assistência 8837507 → orientações.
 #
+
 # ROTA hdi/auto/socorro_mecanico
 # 📊 sessão 71caf82f, assistência 9662631, 38 telas.
 #    ... → "Pode me dizer o que aconteceu?" = Pane ou Defeito → "selecione a
@@ -4800,6 +4817,7 @@ for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
 #    🔴 É a sessão que prova por que `pane_detalhe_opcao` não pode ser
 #    constante: foi essa tecla que trouxe um MECÂNICO em vez de um guincho.
 #
+
 # ROTA hdi/auto/chaveiro
 # 📊 sessão 697abd09, 26 telas, **SEM protocolo** — e é o que ela tem a dizer.
 #    A URA abriu lembrando a placa do atendimento ANTERIOR, o fluxo andou até
@@ -4810,6 +4828,7 @@ for _pb_yh in (YELUM_AUTO_WHATSAPP_V1, HDI_AUTO_WHATSAPP_V1,
 #    ⚠️ Uma sessão só, e sem desfecho: as regras de cobertura de chaveiro da
 #    HDI **não estão medidas**. Está em PENDENCIAS, e é COLETA.
 #
+
 # ROTA hdi/auto/bateria
 # 🔵 SEM_CORPUS. Na HDI a recarga de bateria chega por `socorro_mecanico`
 #    ("Pane ou Defeito" → "Problemas elétricos"), e não pela tecla própria.
@@ -4881,6 +4900,7 @@ for _sv_hdi, _regras_hdi, _exp_hdi in (
 # AS ROTAS DA YELUM, TRANSCRITAS — mesma URA da HDI, corpus próprio
 # ══════════════════════════════════════════════════════════════════════════
 #
+
 # ROTA yelum/auto/guincho
 # 📊 sessão 350492ce, assistência 9692522, entre 5 sessões da rota.
 #    CPF/CNPJ → 🔴 "Não encontrei este CNPJ" → PLACA → "Automóvel ou
@@ -4896,6 +4916,7 @@ for _sv_hdi, _regras_hdi, _exp_hdi in (
 #    9913657, *Agendamento:* 07:30) e `8a0d25a4` abre com a pesquisa do
 #    atendimento anterior pendente.
 #
+
 # ROTA yelum/auto/pneu
 # 📊 sessão 8ce9f29d, assistência 9295129, 2 sessões na rota.
 #    ... → "Pode me dizer o que aconteceu?" = Pneu Furado → quantos pneus →
@@ -4905,6 +4926,7 @@ for _sv_hdi, _regras_hdi, _exp_hdi in (
 #    ⚠️ A yelum abre com *Dicas rápidas* que trazem a regra do RELÓGIO:
 #    **12 minutos sem resposta e a conversa é encerrada**.
 #
+
 # ROTA yelum/auto/socorro_mecanico
 # 📊 sessão 927d8cea, assistência 9755758, 5 sessões na rota.
 #    CPF → 🔴 "Encontramos *mais de uma apólice*" (handoff: a escolha da
@@ -4913,6 +4935,7 @@ for _sv_hdi, _regras_hdi, _exp_hdi in (
 #    Defeito → "recarga da sua bateria" → endereço → agora → assistência
 #    9755758 → orientações.
 #
+
 # ROTA yelum/auto/bateria
 # 📊 sessão 69816f6b, 22 telas, **SEM protocolo** — e é o que ela tem a dizer.
 #    A URA abriu com "Poderia me informar o seu nome?" (redação curta, que era
@@ -4923,6 +4946,7 @@ for _sv_hdi, _regras_hdi, _exp_hdi in (
 #    percorrida ate o fim` nem `protocolo + dia + periodo`: é COLETA, e está em
 #    PENDENCIAS.
 #
+
 # ROTA yelum/auto/chaveiro
 # 🔵 SEM_CORPUS. A URA lista chaveiro na própria saudação ("consigo te ajudar
 #    com os serviços de guincho, socorro mecânico ou chaveiro") e ninguém o
@@ -5853,24 +5877,34 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) 
     {"step": "taxi_passageiros",
      "anchor": r"eu vou chamar um t[áa]xi para voc[êe]\. s[ãa]o quantos passageiros",
      "reply": "{taxi_passageiros_opcao}", "requires": ["taxi_passageiros_opcao"],
-     "sem_chute": True, "only_subservices": ["taxi"],
+     # ⚠️ 🔴 O TÁXI DA PORTO VEM ENCADEADO AO GUINCHO — 23/08/2026.
+     #    📊 Sessão c5cafa8b: DEPOIS do protocolo do guincho a URA pergunta
+     #    "Você também precisa solicitar um táxi?" e, com o Sim, faz as três
+     #    perguntas do táxi DENTRO da sessão de guincho. Escopar só em `taxi`
+     #    deixava as três ÓRFÃS na rota por onde elas realmente acontecem.
+     "sem_chute": True, "only_subservices": ["taxi", "guincho"],
      "notes": "🔴 '1 a 4' x 'Mais de 4'. O corredor dizia '1 a 4' e CINCO PESSOAS FICARIAM NA ESTRADA. ⚠️ `fallback_adaptive` saiu: ele mandava o cérebro escolher, que é o mesmo default com um parágrafo de justificativa. 📊 1/1."},
     {"step": "taxi_cadeirinha",
      "anchor": r"caso o t[áa]xi tenha que transportar alguma crian[çc]a",
-     "reply": "", "noop": True, "only_subservices": ["taxi"],
+     "reply": "", "noop": True, "only_subservices": ["taxi", "guincho"],
      "notes": "📊 1/1. 🔴 REGRA AO CLIENTE: criança de até 7 anos exige que VOCÊ "
               "disponibilize bebê conforto/cadeirinha."},
     {"step": "taxi_mesmo_endereco",
      "anchor": (r"o t[áa]xi deve ir para o mesmo endere[çc]o|"
                 r"o endere[çc]o [ée] o mesmo de destino do guincho"),
-     "reply": "Sim", "only_subservices": ["taxi"],
+     # ⚠️ 🔴 E O ESCOPO SEGUE O ENCADEAMENTO, não o nome do subserviço.
+     #    📊 As duas telas aparecem em sessões classificadas como `guincho`
+     #    (c5cafa8b) e `bateria` (c470d13d), porque o táxi é oferecido DEPOIS
+     #    do serviço principal. Escopar só em `taxi` — que é `SEM_CORPUS` —
+     #    deixava as telas órfãs em toda rota por onde elas realmente passam.
+     "reply": "Sim", "only_subservices": ["taxi", "guincho", "bateria"],
      "constante_justificada": (
          "📊 2 sessões. O táxi da porto só é oferecido no encadeamento do guincho, e "
          "nas duas o destino é o mesmo. Se o caso trouxer `local_destino` diferente, "
          "é outro trabalho — e o corredor não tem como saber disso nesta tela."),
-     "notes": "📊 2/2."},
+     "notes": "📊 2 telas / 2 sessões (uma de guincho, uma de bateria)."},
     {"step": "taxi_destino_sabe", "anchor": r"voc[êe] j[áa] sabe (?:a)?onde o t[áa]xi dever[áa] te levar",
-     "reply": "Sim", "only_subservices": ["taxi"],
+     "reply": "Sim", "only_subservices": ["taxi", "guincho", "bateria"],
      "constante_justificada": "📊 1 sessão. O corredor só abre táxi com `local_destino` no caso.",
      "notes": "📊 1/1."},
     {"step": "taxi_sem_paradas", "anchor": r"o t[áa]xi ir[áa] at[ée] o endere[çc]o de destino",
@@ -5903,6 +5937,217 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) 
               "virar guincho — e aí é OUTRO acionamento."},
 ]
 
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 ONDA E — AS TELAS DA PORTO QUE NINGUÉM RESPONDIA (23/08/2026)
+# ══════════════════════════════════════════════════════════════════════════
+PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    # ---- CHAVEIRO: o submenu com uma opção só, e a chave reserva ---------
+    {"step": "chaveiro_porto_tipo",
+     "anchor": r"de qual servi[çc]o de chaveiro voc[êe] precisa",
+     # ⚠️ 🔴 O RÓTULO É SÓ A PRIMEIRA LINHA. Numa LISTA do WhatsApp cada opção
+     #    tem título e descrição, e a tela cola as duas:
+     #      título     "Abrir porta do veículo"
+     #      descrição  "ou porta mala, combustível ou baú"
+     #    A primeira versão respondia as duas juntas, e o conferidor pegou:
+     #    *"responde o rótulo … e ele NÃO ESTÁ entre as opções da tela — a URA
+     #    rejeita e o turno se perde"*. É a mesma família do `pane_detalhe`:
+     #    resposta certa na forma errada não é resposta.
+     "reply": "Abrir porta do veículo",
+     "constante_justificada": (
+         "📊 O menu tem TRES linhas e so uma e servico: 'Abrir porta do "
+         "veiculo'. As outras duas sao 'Nao encontrei o assunto' e 'Voltar'. "
+         "Nao ha o que escolher."),
+     "notes": "📊 1 tela / 1 sessão (d0d64bfc)."},
+    {"step": "chaveiro_chave_reserva",
+     "anchor": r"chave reserva guardada em outro local",
+     "reply": "Não",
+     "constante_justificada": (
+         "🔴 `Sim` TROCA o servico pedido por outro: em vez de abrir o veiculo, "
+         "um prestador vai BUSCAR uma chave reserva em outro endereco. So faz "
+         "sentido se o segurado tiver chave reserva E alguem para entrega-la -- "
+         "dois fatos que o caso nao traz. `Nao` mantem o servico que ele pediu, "
+         "e foi o que a sessao real fez: seguiu para 'Chaveiro para abrir "
+         "Porta' e chegou ao protocolo 1-125125129657."),
+     "notes": "📊 1 tela / 1 sessão (d0d64bfc)."},
+
+    # ---- GUINCHO: a saudação que é MENU DE VEÍCULO -----------------------
+    #
+    # 🔴 "Valmor, como eu posso te ajudar? *1* - JEEP, ano 2025, placa T#####4
+    #    *2* - Outro veículo *3* - Mais assuntos" — responder "1" fixo pega o
+    #    carro errado numa apólice com dois, e 📊 uma das duas sessões LISTA
+    #    DOIS. `vehicle_by_plate` escolhe pela placa que nós enviamos.
+    {"step": "veiculo_no_como_posso_ajudar",
+     "anchor": r"como eu posso te ajudar\?[\s\S]{0,60}placa",
+     "dynamic": "vehicle_by_plate", "reply": "{veiculo_opcao}",
+     "fallback_adaptive": True,
+     "notes": "📊 2 telas / 2 sessões. 🔴 Uma delas lista DOIS carros."},
+    {"step": "mais_algumas_informacoes",
+     "anchor": r"vou precisar que voc[êe] me informe s[óo] mais algumas informa[çc][õo]es",
+     "reply": "", "noop": True, "notes": "📊 1 tela / 1 sessão. Aviso."},
+
+    # ---- TÉCNICO: o agendamento em TRÊS telas ----------------------------
+    {"step": "agendar_data_porto",
+     "anchor": r"informe para quando voc[êe] quer agendar o servi[çc]o",
+     "reply": "{data_agendamento}", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 1 sessão (b1ff65f2). Formato dd/mm/aaaa."},
+    {"step": "agendar_periodo_porto",
+     "anchor": r"qual per[íi]odo voc[êe] prefere",
+     "reply": "{periodo_agendamento_opcao}", "requires": ["periodo_agendamento_opcao"],
+     "fallback_adaptive": True,
+     "notes": "📊 1 tela / 1 sessão. *1* - Manhã *2* - Tarde *3* - Noite — "
+              "NUMERADA, ao contrário da maioria das telas da Porto."},
+    {"step": "agendar_horario_porto",
+     "anchor": r"e qual hor[áa]rio\?",
+     "reply": "{hora_agendamento}", "fallback_adaptive": True,
+     "notes": "📊 1 tela / 1 sessão. Lista de FAIXAS ('Entre 12h00 e 12h30') — "
+              "a resposta é o rótulo da faixa, não um horário livre."},
+]
+
+# ══════════════════════════════════════════════════════════════════════════
+# AS ROTAS DA PORTO, TRANSCRITAS — e o protocolo, que voltou a existir (C19)
+# ══════════════════════════════════════════════════════════════════════════
+#
+
+# ROTA porto/auto/guincho
+# 📊 sessão c5cafa8b, protocolo 1-408029004672, 37 telas, entre 5 sessões.
+#    CPF → menu raiz → "Como eu posso te ajudar?" = Serviços para veículo →
+#    "Você quer atendimento para o veículo Kia, placa M####61?" = Sim → "De que
+#    atendimento você precisa?" = Novo serviço → "O que você precisa?" =
+#    Guincho (reboque) → "Remoção de veículo" → "Para quando" → endereço de
+#    ORIGEM (por texto; a URA também oferece formulário nativo) → complemento →
+#    referência → "Você já sabe onde o guincho deve levar?" → endereço de
+#    DESTINO → "é você que está no local?" → telefone → "Como você quer
+#    prosseguir?" = Confirmar solicitação → **"Tudo certo com o seu
+#    agendamento 🙂 previsto para hoje, em até 60 minutos"** → protocolo →
+#    "*Importante* - alguém maior de 18 anos..." → 🔴 **"Você também precisa
+#    solicitar um táxi?"** e o galho encadeado do TÁXI.
+#    ⚠️ É a rota que prova o ENCADEAMENTO: as três telas de táxi acontecem
+#    DENTRO da sessão de guincho, e é por isso que o escopo delas inclui
+#    `guincho` e `bateria`, não só `taxi`.
+#
+
+# ROTA porto/auto/bateria
+# 📊 4 sessões: a sessão c470d13d chega ao fim com táxi encadeado, e a sessão
+#    f4838bb3 mostra o galho da BATERIA NOVA — "precisamos agendar a *visita
+#    técnica de um prestador da Porto*" → "Você quer
+#    seguir com o agendamento?" → "Posso continuar o agendamento?" → e a tela
+#    do PREÇO: *"o prestador fornecerá as informações sobre a marca, descarte,
+#    garantia e o valor da bateria"*.
+#    🔴 E a sessão e3b1561f mostra o outro fim: **"a solicitação de agendamento foi
+#    encerrada e a solicitação cancelada"** — que agora é handoff, porque o
+#    caso morreu e quem precisa saber disso é uma pessoa.
+#
+
+# ROTA porto/auto/chaveiro
+# 📊 sessão d0d64bfc, protocolo 1-125125129657, 34 telas — a ÚNICA da rota.
+#    ... → "O que você precisa?" = Chaveiro para veículo → "E de qual serviço
+#    de chaveiro você precisa?" = **Abrir porta do veículo** → 🔴 "Caso você
+#    tenha uma chave reserva guardada em outro local, posso pedir para um
+#    prestador buscar e levar até você. Gostaria desse serviço?" = **Não** →
+#    cor → "para quando" → endereço → quem está no local → celular →
+#    "*Serviço*: Auto - Chaveiro para abrir Porta" → Confirmar → protocolo.
+#
+
+# ROTA porto/auto/tecnico
+# 📊 2 sessões. A sessão e5318468 (protocolo 1-124279107688) entra pelo submenu de
+#    BATERIA — "Recarga / Bateria nova / Troca / Na garantia" — e a URA
+#    responde *"vou te ajudar com o agendamento de um TÉCNICO"*: o resumo sai
+#    com *Serviço:* Técnico. É por isso que `bateria_submenu` tem `tecnico` no
+#    escopo. A sessão b1ff65f2 mostra o AGENDAMENTO em três telas: data (dd/mm/aaaa),
+#    período (*1* Manhã *2* Tarde *3* Noite) e faixa de horário ("Entre 12h00
+#    e 12h30").
+#
+
+# ROTA porto/auto/vidros
+# 📊 sessão 0c1e8e3e, 19 telas, **SEM protocolo — e isso é o certo**: vidros na
+#    Porto é `OUTCOME_ENCAMINHA`. A URA entrega um formulário
+#    (porto.vc/reparovidros) e diz *"esse acionamento para vidros não irá
+#    afetar a sua classe de bônus"*. Não há protocolo para capturar, e por isso
+#    a rota não pode ganhar `a ROTA foi percorrida ate o fim` nem `o freio casa
+#    >=1 tela REAL` — o freio é da confirmação, e aqui não se confirma nada.
+#    ⚠️ Está em PENDENCIAS: é limite do MODELO da régua, não do corredor.
+#
+
+# ROTA porto/auto/pneu · ROTA porto/auto/taxi · ROTA porto/auto/bateria_nova
+# 🔵 SEM_CORPUS. As três aparecem como rótulo nos menus da Porto e nenhuma foi
+#    percorrida sozinha no período do acervo — o táxi só apareceu ENCADEADO ao
+#    guincho, e a bateria nova só dentro do submenu de bateria.
+
+for _sv_pt, _regras_pt, _exp_pt in (
+    ("guincho", [
+        "É necessário ter alguém maior de 18 anos para acompanhar o serviço. "
+        "Se ninguém for encontrado, o prestador aguardará por até 15 minutos "
+        "no local — 🔴 QUINZE MINUTOS, e depois ele vai embora com a "
+        "utilização da apólice já consumida.",
+
+        "Durante esse tempo serão feitas tentativas de contato por telefone "
+        "para o número informado na abertura da assistência — ⚠️ é o telefone "
+        "que a corretora informou, não necessariamente o do segurado. Se for "
+        "outro, diga antes.",
+
+        "A solicitação será confirmada somente após a finalização do "
+        "agendamento — 🔴 escolher 'tenho urgência' NÃO abre nada sozinho: o "
+        "chamado só existe depois da confirmação no fim da conversa.",
+     ],
+     "🔴 Termina em 'Tudo certo com o seu agendamento' + PROTOCOLO no formato "
+     "`1-############`, com previsão ('hoje, em até 60 minutos'). ⚠️ E pode "
+     "CONTINUAR: a Porto oferece um TÁXI encadeado depois do guincho, com três "
+     "perguntas próprias — quantos passageiros, mesmo endereço e para onde."),
+
+    ("bateria", [
+        "Para solicitar a nova bateria, precisamos agendar a visita técnica de "
+        "um prestador da Porto, que irá indicar a bateria mais adequada pro "
+        "seu veículo — 🔴 BATERIA NOVA NÃO É SOCORRO: é visita AGENDADA, e não "
+        "resolve hoje quem está com o carro parado.",
+
+        "Durante a visita, o prestador fornecerá as informações sobre a marca, "
+        "descarte, garantia e o valor da bateria — 🔴 o valor é do SEGURADO, "
+        "negociado com o prestador, e muda conforme a marca. Quem espera "
+        "bateria de graça vai ter uma surpresa na porta de casa.",
+
+        "É necessário ter alguém maior de 18 anos para acompanhar o serviço. "
+        "Se ninguém for encontrado, o prestador aguardará por até 15 minutos "
+        "no local.",
+     ],
+     "🔴 DOIS desfechos diferentes, e a tecla do submenu decide qual: RECARGA "
+     "termina em protocolo com previsão em minutos; BATERIA NOVA termina em "
+     "VISITA TÉCNICA AGENDADA, com o valor da bateria por conta do segurado. "
+     "⚠️ E há um terceiro fim, medido: a URA cancela sozinha se o agendamento "
+     "não for concluído — 'a solicitação de agendamento foi encerrada e a "
+     "solicitação cancelada'."),
+
+    ("chaveiro", [
+        "É necessário ter alguém maior de 18 anos para acompanhar o serviço. "
+        "Se ninguém for encontrado, o prestador aguardará por até 15 minutos "
+        "no local — ⚠️ e no chaveiro isso é mais apertado que nos outros: sem "
+        "alguém com documento, o prestador não abre o veículo.",
+
+        "A solicitação será confirmada somente após a finalização do "
+        "agendamento — 🔴 o chamado só existe depois da confirmação.",
+
+        "Durante esse tempo serão feitas tentativas de contato por telefone "
+        "para o número informado na abertura da assistência.",
+     ],
+     "🔴 Termina em '*Serviço*: Auto - Chaveiro para abrir Porta' e PROTOCOLO "
+     "`1-############`. ⚠️ A Porto oferece um caminho ALTERNATIVO no meio: "
+     "buscar uma chave reserva guardada em outro local. O corredor recusa por "
+     "padrão, porque é outro serviço e depende de a chave existir."),
+):
+    PORTO_AUTO_WHATSAPP_V1["subservices"][_sv_pt]["regras_para_o_cliente"] = _regras_pt
+    PORTO_AUTO_WHATSAPP_V1["subservices"][_sv_pt]["expectativa_do_desfecho"] = _exp_pt
+
+# 🔴 E O CANCELAMENTO QUE A URA ANUNCIA — handoff, nunca silêncio.
+#    📊 "Certo, Alvaro. A solicitacao de agendamento foi encerrada e a
+#    solicitacao cancelada." seguida de "me conte o motivo para ter desistido".
+#    O caso MORREU: um corredor que fica calado aqui segue monitorando um
+#    atendimento que não existe mais — a família dos `corridor_runs`
+#    abandonados. E quem precisa saber que a solicitação caiu é uma pessoa.
+PORTO_AUTO_WHATSAPP_V1["handoff_triggers"] = (
+    list(PORTO_AUTO_WHATSAPP_V1["handoff_triggers"]) + [
+        r"agendamento foi encerrada e a solicita[çc][ãa]o cancelada",
+        r"motivo para ter desistido de agendar",
+    ])
+
 # --------------------------------------------------------------------------
 # PORTO · auto · BATERIA NOVA
 # --------------------------------------------------------------------------
@@ -5922,10 +6167,30 @@ _ativar_subservico(
     espera_no_local=True,
 )
 PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) + [
+    # ⚠️ 🔴 O ESCOPO ERA ESTREITO DEMAIS — 23/08/2026, ONDA E.
+    #    📊 A tela da visita tecnica aparece na sessao f4838bb3, que o acervo
+    #    classifica como `bateria` (nao `bateria_nova`): o segurado entrou pelo
+    #    submenu de bateria e SO DEPOIS escolheu a nova. Escopar apenas em
+    #    `bateria_nova` deixava a tela ORFA na rota por onde ela chega.
     {"step": "bateria_nova_visita",
-     "anchor": r"precisamos agendar a\s*[\s\S]{0,3}visita t[ée]cnica de um prestador",
-     "reply": "", "noop": True, "only_subservices": ["bateria_nova"],
-     "notes": "📊 1/1."},
+     "anchor": r"visita t[ée]cnica de um prestador",
+     "reply": "", "noop": True, "only_subservices": ["bateria_nova", "bateria"],
+     "notes": "📊 1 tela / 1 sessão (f4838bb3). Aviso — a decisão vem nas duas "
+              "telas seguintes."},
+    # 🔴 E AS DUAS TELAS QUE DECIDEM O AGENDAMENTO.
+    #    "Voce quer seguir com o agendamento?" e "Posso continuar o
+    #    agendamento?" — 📊 2 telas / 1 sessao. `Nao` CANCELA a solicitacao
+    #    inteira, e a propria URA confirma na tela seguinte: "a solicitacao de
+    #    agendamento foi encerrada e a solicitacao cancelada".
+    {"step": "agendamento_seguir_porto",
+     "anchor": r"quer seguir com o agendamento|posso continuar o agendamento",
+     "reply": "Sim", "only_subservices": ["bateria_nova", "bateria", "tecnico"],
+     "constante_justificada": (
+         "🔴 Quem pediu BATERIA NOVA na Porto so tem um caminho: a visita "
+         "tecnica agendada. `Nao` aqui CANCELA a solicitacao inteira -- a "
+         "propria URA confirma isso na tela seguinte. Nao ha escolha do "
+         "cliente a tomar aqui: ele ja escolheu quando pediu o servico."),
+     "notes": "📊 2 telas / 1 sessão (f4838bb3)."},
     {"step": "bateria_nova_preco",
      "anchor": r"prestador fornecer[áa] as informa[çc][õo]es sobre a marca, descarte",
      "reply": "", "noop": True, "only_subservices": ["bateria_nova"],
@@ -6447,7 +6712,9 @@ _PORTO_AUTO_FOLHAS = [
     {"step": "resumo_confira_auto",
      "anchor": r"antes de confirmar a solicita[çc][ãa]o, confira as informa[çc][õo]es",
      "reply": "", "noop": True,
-     "notes": "📊 3 msgs / 3 sessões. CARDÁPIO: a escolha vem na bolha seguinte."},
+     # ⚠️ 📊 7 telas DISTINTAS, nao 3: "3 msgs" contava OCORRENCIAS numa
+     #    amostra antiga. Recontado em 23/08/2026 no corpus de porto/auto.
+     "notes": "📊 7 telas / 7 sessões. CARDÁPIO: a escolha vem na bolha seguinte."},
     {"step": "pode_ligar_qualquer",
      "anchor": r"posso te ligar (?:no n[úu]mero abaixo|em qualquer um deles)",
      "reply": "1",
@@ -7409,8 +7676,37 @@ def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     case = re.sub(r"[^A-Z0-9]", "", str(placa or "").upper())
     if not case:
         return ""
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O NUMERO DA OPCAO VEM EM NEGRITO, E A REGRA NAO PREVIA — 23/08/2026
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # 📊 A tela REAL da Allianz, copiada do corpus:
+    #
+    #     "Por favor, confirme o veiculo para atendimento:
+    #      *1* - X1, placa EP#-###1
+    #      *2* - Outro veiculo
+    #      *0* - Sair"
+    #
+    #    E a da Porto: "*1* - JEEP, ano 2025, placa TB#-##44".
+    #
+    # 🔴 A regex exigia `(\d+)\s*-` — DIGITO colado no hifen. Com `*1* - ` o
+    #    `*` entra no meio e nada casa. 📊 Medido: a funcao devolvia `''` nas
+    #    telas reais da allianz E da porto, e so acertava a string do
+    #    docstring, que foi escrita a mao SEM asteriscos.
+    #
+    # ⚠️ É a §9.5 na forma pura: **casar o texto do teste não é responder a
+    #    tela**. O comentario do passo dizia "'1' fixo pegou o carro ERRADO
+    #    numa apolice com 2 veiculos (teste Allianz 12/07)" — a licao estava
+    #    escrita, o guarda existia, e ele nao alcancava a tela que a URA manda.
+    #
+    # ⚠️ O `_norm` do corredor REMOVE o asterisco, mas esta funcao recebe a
+    #    mensagem CRUA (o motor passa `insurer_message`), e tem de receber:
+    #    a placa mascarada usa `#`, que o `_norm` mantem, e o texto cru e o que
+    #    preserva o alinhamento entre opcao e placa.
     matches = []
-    for opt, masked in re.findall(r"(\d+)\s*-\s*[^\n]*?placa\s+([A-Z0-9#\-]+)", str(insurer_message), re.IGNORECASE):
+    for opt, masked in re.findall(
+            r"\*?(\d+)\*?\s*[-\u2013]\s*[^\n]*?\*?placa\*?\s+\*?([A-Z0-9#\-]+)",
+            str(insurer_message), re.IGNORECASE):
         if bate_com_mascara(masked, case) is True:
             matches.append(opt)
     return matches[0] if len(matches) == 1 else ""

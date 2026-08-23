@@ -366,6 +366,17 @@ def _transcricao_da_rota(rota) -> Optional[str]:
         # ⚠️ Sem marcador, vale o bloco do subserviço — é onde os corredores
         #    residenciais já escrevem, e tirá-los agora seria queda estrutural.
         return _fonte_do_bloco(rota.servico)
+    # 🔴 A JANELA FECHA NA PRIMEIRA LINHA QUE NAO FOR COMENTARIO —
+    #    **inclusive a linha EM BRANCO**, e e a mesma regra do C14.
+    #
+    # ⚠️ A primeira versao deste laco deixava a linha em branco passar, e o
+    #    efeito apareceu no primeiro bloco com cinco marcadores seguidos:
+    #    a janela de `porto/auto/bateria` engolia as sessoes citadas nos
+    #    marcadores de chaveiro, tecnico e vidros. 📊 Medido: o item listava
+    #    `[c470d13d, e3b1561f, d0d64bfc, e5318468, b1ff65f2]` para UMA rota.
+    #    🔴 O C14 nasceu consertando exatamente isto -- a janela de uma rota
+    #    nao pode depender do paragrafo da vizinha -- e o C17 repetiu o erro
+    #    do outro lado do arquivo.
     fim = m.start()
     while True:
         prox = fonte.find("\n", fim)
@@ -373,7 +384,7 @@ def _transcricao_da_rota(rota) -> Optional[str]:
             fim = len(fonte)
             break
         linha = fonte[fim:prox]
-        if linha.strip() and not linha.lstrip().startswith("#"):
+        if not linha.lstrip().startswith("#"):
             break
         fim = prox + 1
     return fonte[m.start():fim]

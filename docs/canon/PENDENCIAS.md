@@ -7811,3 +7811,54 @@ ponta a ponta, que exigiria coletar altura, comprimento e carroceria no
 cadastro do veículo — não no meio da conversa com a URA.
 **O que custa esquecer:** alguém lê "handoff" como buraco e escreve passos que
 escolhem equipamento de reboque por palpite.
+
+### P-084-52 `porto/auto/vidros` não pode ganhar 25 pontos — e o motivo é o MODELO da régua · 🤖
+
+📊 23/08/2026, ONDA E. A rota fecha em **71/100** e quatro itens estão fora de
+alcance por construção, não por qualidade:
+
+```
+a ROTA foi percorrida ate o fim ......  12   exige PROTOCOLO capturado
+o cliente recebe protocolo+dia+periodo   5   idem
+o freio casa >=1 tela REAL ...........   8   exige tela de CONFIRMAÇÃO
+```
+
+🔴 **Vidros na Porto é `OUTCOME_ENCAMINHA`.** A URA entrega um formulário
+(`porto.vc/reparovidros`) e avisa que *"esse acionamento para vidros não irá
+afetar a sua classe de bônus"*. Não há protocolo porque não há chamado aberto;
+não há freio porque não há confirmação a segurar.
+
+⚠️ A régua já conhece `OUTCOME_ENCAMINHA` — o corredor o declara — mas os três
+itens acima só sabem medir o desfecho `abre`. Uma rota que faz exatamente o que
+deve fazer perde 25 pontos por isso.
+**O que destrava:** 🤖 um item de eixo A/B que aceite `referral`/`tracking_link`
+como desfecho quando o subserviço é `OUTCOME_ENCAMINHA` — com o mesmo rigor:
+tem de haver o LINK real capturado por `extract_capture_anchors`, não uma
+dispensa.
+**O que custa esquecer:** alguém lê 71 e vai "consertar" um corredor que está
+certo, escrevendo um protocolo que a Porto nunca dá.
+
+### P-084-53 A escolha do veículo pela PLACA nunca funcionou na tela real · ✅
+
+📊 23/08/2026. `pick_option_by_plate` exigia `(\d+)\s*-` — dígito colado no
+hífen. A URA manda o número **em negrito**:
+
+```
+"*1* - X1, placa EP#-###1   *2* - Outro veículo   *0* - Sair"      allianz
+"*1* - JEEP, ano 2025, placa TB#-##44  *2* - FIAT, placa QQ#-##11" porto
+```
+
+🔴 Medido: a função devolvia `''` nas telas reais das DUAS seguradoras. Só
+acertava a string do próprio docstring, escrita à mão sem asteriscos.
+
+⚠️ **É a §9.5 na forma pura**: casar o texto do teste não é responder a tela. O
+comentário do passo dizia, desde julho, *"'1' fixo pegou o carro ERRADO numa
+apólice com 2 veículos"* — a lição estava escrita, o guarda existia, e ele não
+alcançava a tela que a URA manda.
+
+Consertado nesta onda, com CONTROLE nos dois sentidos (duas placas dão teclas
+diferentes; placa ausente não escolhe nada) e mutação no harness.
+**O que fica:** 🤖 a mesma pergunta vale para as outras funções que leem a tela
+CRUA em vez do texto normalizado. `pick_option_by_plate` era a única com
+`dynamic:` no produto; se nascer outra, ela precisa do mesmo teste contra a
+tela do corpus, não contra uma string escrita à mão.

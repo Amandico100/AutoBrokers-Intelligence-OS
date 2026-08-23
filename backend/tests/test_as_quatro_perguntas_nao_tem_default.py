@@ -187,10 +187,23 @@ print("=" * 74)
 
 pb_porto = CP.get_playbook("porto-auto-whatsapp@v1")
 bat = [p for p in pb_porto["ura_steps"] if p.get("step") == "bateria_submenu"]
-certo(bool(bat) and set(bat[0].get("only_subservices") or []) ==
-      {"bateria", "bateria_nova"},
-      "🔴 `bateria_submenu` só existe nas rotas de bateria",
-      f"only_subservices={bat[0].get('only_subservices') if bat else None}")
+# ⚠️ 🔴 A LISTA EXATA VENCEU EM 23/08/2026, E A LIÇÃO MIGROU (§9.3).
+#
+# Esta asserção exigia `== {"bateria", "bateria_nova"}`. 📊 A medição da ONDA E
+# mostrou que a MESMA tela aparece na rota `tecnico` da Porto: escolher
+# "Bateria nova" leva a *"vou te ajudar com o agendamento de um TÉCNICO"*, e o
+# resumo sai com *Serviço:* Técnico (sessão e5318468, protocolo
+# 1-124279107688). Com o escopo de duas, a tela ficava ÓRFÃ na rota por onde
+# ela chega.
+#
+# 🔴 A regra 1 nunca foi "duas rotas": é **pergunta só o que AQUELA rota
+#    precisa**. O que a guarda tem de provar é que o escopo EXCLUI quem nunca
+#    vê a tela — e é isso que as duas asserções seguintes fazem, chamando o
+#    MOTOR. Uma lista literal aqui só engessava a medição.
+_escopo_bat = set(bat[0].get("only_subservices") or []) if bat else set()
+certo(bool(bat) and _escopo_bat and not (_escopo_bat & {"guincho", "vidros", "pneu"}),
+      "🔴 `bateria_submenu` NÃO alcança rotas que nunca veem a tela",
+      f"only_subservices={sorted(_escopo_bat)}")
 
 TELA_BAT = "Entendi. O que você precisa? Recarga de bateria Bateria nova Troca de bateria Na garantia Voltar"
 certo(CP.match_ura_step(pb_porto, TELA_BAT, subservice="guincho") is None,
