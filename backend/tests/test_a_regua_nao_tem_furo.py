@@ -91,6 +91,18 @@ PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 MUTACOES = [
     # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
 
+    # FURO 16 (C16) - O PASSO COMPARTILHADO ERA APAGADO DO EXAME.
+    # A mutacao reinstala exatamente a v3: se o passo aparece em mais de um
+    # playbook, a `note` dele e lida como vazia. 📊 `allianz/auto` volta a
+    # `com_numero == 0` e o item volta a dar zero por vacuidade.
+    ("scripts/rubrica.py",
+     '        nota = p.get("notes") or ""',
+     '        nota = ("" if sum(1 for _b in M.CP._PLAYBOOKS.values()'
+     '             for _q in (_b.get("ura_steps") or [])'
+     '             if _q.get("step") == p.get("step")) > 1'
+     '             else (p.get("notes") or ""))  # DESLIGADO PELA MUTACAO',
+     "🔴 o passo compartilhado continua no exame das notes"),
+
     # FURO 8 (C8) - A REGUA PUNIA O HANDOFF CORRETO.
     # 📊 22/08/2026: 28 telas em 6 rotas disparavam
     #    `detect_handoff_trigger` e eram contadas como ORFA FUNCIONAL --
@@ -466,6 +478,40 @@ certo(_rota_c8 is not None and _RPc8.replay(_rota_c8).pedem_algo ==
       _RPc8.replay(_rota_c8).respondidas +
       len(_RPc8.replay(_rota_c8).orfas_funcionais),
       "🔴 CONTROLE: e o handoff nao entrou no denominador nem no numerador")
+
+
+# =============================================================================
+# 🔴 C16 - O PASSO COMPARTILHADO CONTINUA NO EXAME DAS `notes`
+# =============================================================================
+#
+# 📊 A v3 do item excluia do exame todo passo presente em mais de um playbook.
+#    Em `allianz/auto`, dos ~60 passos do corredor **1 sobrevivia**, e ele nao
+#    tem numero: `com_numero == 0` e a rota levava 0 de 2 -- por nao ter nada
+#    que pudesse ser conferido. 28 rotas estavam assim.
+#
+# ⚠️ E o incentivo era pior que o zero: para ganhar o ponto era preciso
+#    DUPLICAR o passo por corredor -- a §5 do CLAUDE.md ao contrario.
+#
+# ⚠️ As provas de fundo estao em `test_o_passo_compartilhado_ainda_e_conferido.py`.
+#    Esta aqui existe porque a mutacao precisa de uma assercao NESTE arquivo.
+print()
+print("=" * 74)
+print("[C16] o passo compartilhado continua no exame das notes")
+print("=" * 74)
+
+_rota_c16 = [_r for _r in _RB.M.rotas()
+             if (_r.seguradora, _r.ramo, _r.servico) == ("allianz", "auto", "guincho")][0]
+_it_c16 = [_i for _i in _RB.eixo_b(_rota_c16, _RPc8.replay(_rota_c16))
+           if "notes" in _i.nome][0]
+_m_c16 = _re.search(r"(\d+) de (\d+) notes", _it_c16.evidencia)
+certo(_m_c16 is not None and int(_m_c16.group(2)) >= 1,
+      "🔴 o passo compartilhado continua no exame das notes",
+      f"com_numero=0 -> o item daria 0 de 2 e ninguem poderia evitar "
+      f"| {_it_c16.evidencia}")
+# 🔴 CONTROLE: e o exame ainda REPROVA -- a rota nao ganha os 2 de graca.
+certo(_it_c16.pontos < 2,
+      "🔴 CONTROLE: e ele AINDA acusa -- notes sub-declaradas seguem vermelhas",
+      f"{_it_c16.pontos}/2: {_it_c16.evidencia}")
 
 print()
 print("=" * 74)

@@ -312,6 +312,62 @@ def eixo_a(rota, r: RP.Replay) -> List[Item]:
 # ═════════════════════════════════════════════════════════════════════════════
 # EIXO B — COBERTURA (35). O peso está aqui: é a única medida que reproduziu.
 # ═════════════════════════════════════════════════════════════════════════════
+_CORREDORES_DO_PASSO: Optional[Dict[Tuple[str, str], set]] = None
+
+
+def corredores_do_passo() -> Dict[Tuple[str, str], set]:
+    """`{(nome_do_passo, ancora): {(seguradora, ramo), ...}}` — quem CARREGA.
+
+    🔴 C16 — O FILTRO DE FAMÍLIA APAGAVA O EXAME INTEIRO, E O ITEM DAVA ZERO
+    POR VACUIDADE.
+
+    A v3 deste item resolvia o passo compartilhado **excluindo-o**:
+    `passos = [p for p in passos if _familia[step] <= 1]`. A intenção estava
+    certa — *"um passo compartilhado não tem um número verdadeiro por
+    corredor"* — mas o remédio apagava a pergunta em vez de respondê-la.
+
+    📊 Medido em 23/08/2026, em `allianz/auto`: dos ~60 passos do corredor,
+    **1 sobrevivia ao filtro**, e ele não tem número. Com `com_numero == 0`,
+    a linha do `pn` cai no `else` e a rota leva **0 de 2** — por não ter nada
+    que pudesse ser conferido. As quatro rotas de auto da Allianz, as quatro
+    da alfa e mais 20 estavam nessa situação: um item que ninguém pode ganhar,
+    exatamente o defeito que o C10 nomeou e que voltou por outra porta.
+
+    ⚠️ E o efeito colateral é pior que o zero: qualquer executor que quisesse
+    o ponto teria de **duplicar o passo** por corredor — a §5 do CLAUDE.md ao
+    contrário, com a régua pagando por isso.
+
+    🔴 A resposta certa já estava escrita uma linha acima, e só precisava de
+    mais um passo: *"a note descreve um PASSO, e o passo é do corredor"*. Se
+    o passo vive em N corredores, a contagem dele é a dos N — a mesma frase,
+    levada até o fim.
+    """
+    global _CORREDORES_DO_PASSO
+    if _CORREDORES_DO_PASSO is None:
+        mapa: Dict[Tuple[str, str], set] = collections.defaultdict(set)
+        for rt in M.rotas():
+            _pb = M.get_playbook(rt.ref)
+            if not _pb:
+                continue
+            for _p in _pb.get("ura_steps") or []:
+                if _p.get("anchor"):
+                    mapa[(str(_p.get("step") or ""), _p["anchor"])].add(
+                        (rt.seguradora, rt.ramo))
+        _CORREDORES_DO_PASSO = mapa
+    return _CORREDORES_DO_PASSO
+
+
+_CORPUS_DO_CORREDOR: Dict[Tuple[str, str], List[str]] = {}
+
+
+def _corpus_de(seguradora: str, ramo: str) -> List[str]:
+    chave = (seguradora, ramo)
+    if chave not in _CORPUS_DO_CORREDOR:
+        _CORPUS_DO_CORREDOR[chave] = [l["text"] for l in
+                                      RP.carregar_corpus(seguradora, ramo)]
+    return _CORPUS_DO_CORREDOR[chave]
+
+
 def eixo_b(rota, r: RP.Replay) -> List[Item]:
     pb = M.get_playbook(rota.ref)
     itens: List[Item] = []
@@ -391,20 +447,16 @@ def eixo_b(rota, r: RP.Replay) -> List[Item]:
     #    `_COMO_PERGUNTAR`: aquele não tinha como falhar; este, como passar.
     passos = [p for p in (pb.get("ura_steps") or [])
               if not p.get("only_subservices") or rota.servico in p["only_subservices"]]
-    # ⚠️ 🔴 SO PASSO DE UM CORREDOR SO.
+    # ⚠️ 🔴 O PASSO COMPARTILHADO FICA — o que muda e ONDE ele e recontado.
     #
     #    📊 `avisos_informativos_familia` vive em alfa E allianz. A note dele
-    #    diz "5 telas" -- verdade num corredor -- e o corpus da allianz tem 23.
-    #    **Um passo compartilhado nao tem um numero verdadeiro por corredor**, e
-    #    cobra-lo aqui acusaria de mentira uma nota que esta certa.
+    #    dizia "5 telas" -- verdade num corredor -- e a v2 do item acusava de
+    #    mentira uma nota certa. A v3 consertou isso EXCLUINDO o passo, e assim
+    #    apagou 59 dos 60 passos de `allianz/auto`: com nada a conferir, o item
+    #    dava 0 de 2 por vacuidade. Ver `corredores_do_passo`.
     #
-    #    Foi a terceira volta deste item, e as duas anteriores tambem foram
-    #    casamento largo demais: recontar na populacao errada (C10) e ler a
-    #    frase errada da note (a regex solta de `ocorr`).
-    _familia = collections.Counter(
-        str(p.get("step") or "") for _pb in M.CP._PLAYBOOKS.values()
-        for p in (_pb.get("ura_steps") or []))
-    passos = [p for p in passos if _familia[str(p.get("step") or "")] <= 1]
+    #    Agora a note de um passo compartilhado declara a contagem DOS
+    #    CORREDORES QUE O CARREGAM, e e recontada na mesma populacao.
     com_numero, reproduzem = 0, 0
     for p in passos:
         nota = p.get("notes") or ""
@@ -449,11 +501,13 @@ def eixo_b(rota, r: RP.Replay) -> List[Item]:
         #    `porto/residencial menu_raiz` declara 8 e o corpus tem 13.
         #    A parte maior que o todo.
         #
-        # ⚠️ Reconta no corpus do CORREDOR, nao no da rota: a `note` descreve
-        #    um PASSO, e o passo e do corredor -- nao de um oficio so.
+        # ⚠️ Reconta no corpus dos CORREDORES QUE CARREGAM O PASSO, nao no da
+        #    rota: a `note` descreve um PASSO. Se ele vive em alfa e allianz,
+        #    o numero dele e o das duas -- e e por isso que a populacao aqui
+        #    nao e mais um corredor so (C16).
         try:
-            _corpus = [l["text"] for l in RP.carregar_corpus(rota.seguradora,
-                                                             rota.ramo)]
+            _corpus = [t for _ck in corredores_do_passo()[(str(p.get("step") or ""), anc)]
+                       for t in _corpus_de(*_ck)] or _corpus_de(rota.seguradora, rota.ramo)
             # 🔴 TELAS DISTINTAS, e a unidade e a que a PROPRIA note usa.
             #    📊 A note escreve `N telas / M sessoes`. Contar OCORRENCIAS
             #    comparava o N com o M e acusava 12 notes CERTAS de mentir:
