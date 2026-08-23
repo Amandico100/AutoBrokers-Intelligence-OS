@@ -157,8 +157,39 @@ def telefone_br_valido(valor) -> bool:
     return not re.search(r"(\d)\1{6,}", d)
 
 
+def _catalogo_de_subservicos() -> str:
+    """📊 SPEC-084.2 C3 — O CONTRATO PASSA A SER GERADO.
+
+    O texto anterior era escrito à mão e anunciava **9 dos 17** subserviços do
+    produto. Ficavam invisíveis ao modelo: `socorro_mecanico`, `tecnico`,
+    `bateria_nova`, `taxi`, `vidros`, `ar_condicionado`, `consulta_veterinaria`
+    e `limpeza_caixa_dagua`.
+
+    🔴 Trabalho que o contrato não nomeia é trabalho que o atendente não sabe
+    pedir — e `socorro_mecanico` é rota AAA em duas seguradoras.
+    """
+    from app.services.corridor_playbooks import subservicos_por_linha
+    por_linha = subservicos_por_linha()
+    return " ".join(
+        f"{ln.upper()}: {' | '.join(por_linha.get(ln, []))}."
+        for ln in ("auto", "residencial") if por_linha.get(ln))
+
+
 class InsurerDispatchInput(BaseModel):
     subservice: str = Field(description=(
+        "Subserviço, pelo NOME CANÔNICO. " + _catalogo_de_subservicos() + " "
+        # 🔴 SPEC-084.2 C3 — a diferença que decide reboque × mecânico.
+        "GUINCHO × SOCORRO MECÂNICO: se o carro precisa ser LEVADO a algum "
+        "lugar, é `guincho` (e só ele pede `local_destino`). Se o segurado diz "
+        "que o carro não pega, morreu, apagou, está falhando ou 'deu pane' e o "
+        "reparo pode ser NO LOCAL, é `socorro_mecanico` — o mecânico vai até o "
+        "veículo. Na dúvida, `socorro_mecanico`: a própria URA converte em "
+        "reboque quando o reparo no local não resolve. "
+        # 🔴 O único trabalho que existe nas duas linhas.
+        "CHAVEIRO existe em AUTO e em RESIDENCIAL e NÃO se deduz: informe "
+        "sempre `line_kind`, senão o acionamento vira handoff. "
+        "Nem toda seguradora faz todos: sem corredor observado a ferramenta "
+        "devolve handoff com o motivo escrito — nunca improvise. "
         "Subserviço. Residencial: eletricista | chaveiro | encanador | "
         "desentupimento | maquina_de_lavar | eletrodomesticos. "
         # 🔴 SPEC-082: `maquina_de_lavar` e um subservico PROPRIO, e nao um
@@ -168,8 +199,7 @@ class InsurerDispatchInput(BaseModel):
         # o aparelho certo escrito nele.
         "Use `maquina_de_lavar` quando o segurado falar em maquina de lavar, "
         "lavadora, lava-roupas ou lava-e-seca. Para OUTRO eletrodomestico "
-        "(geladeira, fogao, micro-ondas, ar-condicionado) use `eletrodomesticos`. "
-        "AUTO: guincho | bateria | pneu | chaveiro."))
+        "(geladeira, fogao, micro-ondas, ar-condicionado) use `eletrodomesticos`."))
     insurer_key: Optional[str] = Field(default=None, description=(
         "Seguradora da apólice (allianz | porto | hdi | yelum | tokio | alfa | azul | bradesco | mapfre | zurich). "
         "ATENÇÃO: apólice Liberty = use 'yelum' (a Liberty foi rebatizada para Yelum — MESMA seguradora, MESMO corredor). "
@@ -433,20 +463,49 @@ class InsurerDispatchTool(BaseTool):
         from app.services.corridor_playbooks import resolve_playbook_ref
 
         insurer = str(kwargs.get("insurer_key") or "").strip()
+        from app.services.corridor_playbooks import (
+            canonical_subservice as _canon, linha_do_subservico as _linha)
+
         line = str(kwargs.get("line_kind") or "").strip().lower()
-        subservice = str(kwargs.get("subservice") or "").strip().lower()
+        subservice = _canon(kwargs.get("subservice") or "")
         if not line:
-            # `chaveiro` NÃO entra aqui de propósito: ele existe nos dois lados —
-            # chaveiro do carro e chaveiro da casa. Enquanto só a Allianz tinha
-            # corredor residencial, deduzir era quase inofensivo. Com HDI e Porto
-            # residenciais no ar, um chaveiro de CARRO sem `line_kind` iria para
-            # o menu residencial e pediria o número da casa a quem está parado no
-            # acostamento.
+            # ══════════════════════════════════════════════════════════════
+            # 🔴 SPEC-084.2 C3 · AQUI HAVIA UMA LISTA ESCRITA À MÃO
+            # ══════════════════════════════════════════════════════════════
             #
-            # Ambíguo não se deduz: pergunta-se.
-            line = "auto" if subservice in ("guincho", "bateria", "pneu",
-                                            "pane_seca", "vidros") else ""
-            if not line and subservice in ("chaveiro",):
+            # `("guincho","bateria","pneu","pane_seca","vidros")` decidia a
+            # linha. Ela não conhecia `socorro_mecanico`, `tecnico`,
+            # `bateria_nova` nem `taxi` — quatro subserviços de auto que
+            # nasceram depois dela. Conhecia `pane_seca`, que é APELIDO e não
+            # é rota. E comparava a string CRUA, então 📊 **26 apelidos**
+            # (`reboque`, `pane`, `parabrisa`, `carro nao liga`…) também não
+            # eram reconhecidos.
+            #
+            # 🔴 O estrago medido: **5 rotas resolviam o corredor da linha
+            #    ERRADA**, duas delas AAA. `socorro_mecanico` na HDI ia para o
+            #    corredor RESIDENCIAL, e o produto respondia *"a hdi não atende
+            #    'socorro_mecanico' por este canal"* — falso, sobre uma rota
+            #    86/88.
+            #
+            # ⚠️ E `chave` era o pior caso: apelido de `chaveiro`, ele deveria
+            #    cair no ramo do handoff logo abaixo — e como AQUELE ramo
+            #    também comparava a string crua, o guarda do chaveiro era
+            #    CONTORNADO. O incidente que o comentário antigo dizia estar
+            #    impedindo acontecia por baixo dele.
+            #
+            # 🔴 `linha_do_subservico` DERIVA a resposta dos playbooks, que já
+            #    declaram `line_kind` e `subservices`. Não há segunda lista
+            #    para divergir da primeira.
+            line, ambiguo = _linha(subservice)
+            if ambiguo:
+                # O trabalho existe nas DUAS linhas — 📊 hoje só `chaveiro`:
+                # chaveiro do carro e chaveiro da casa. Ambíguo não se deduz,
+                # pergunta-se, e a pergunta é `line_kind`. Um chaveiro de CARRO
+                # mandado ao menu residencial pediria o número da casa a quem
+                # está parado no acostamento.
+                #
+                # 📊 CONTROLE do conserto: as 14 rotas de chaveiro continuam
+                #    caindo aqui — nem uma a mais, nem uma a menos.
                 return None, insurer
 
         # Sem seguradora não há para onde mandar. Adivinhar o destino é pior que
@@ -665,9 +724,18 @@ class InsurerDispatchTool(BaseTool):
         o atendente pedia a placa ao segurado). Para AUTO, resolve placa/veículo/
         titular server-side via porta provider.vehicle (a mesma do portal de
         vidros). Best-effort: falha nunca derruba o acionamento."""
+        # 📊 SPEC-084.2 C3 — era `("guincho","bateria","pneu")`, TERCEIRA
+        # cópia da mesma lista, e esta decide se o produto busca placa, veículo
+        # e titular na InfoCap. Medido: sem `line_kind`,
+        # `zurich/socorro_mecanico`, `azul/tecnico`, `porto/vidros` e
+        # `zurich/vidros` NÃO buscavam a placa — e chegavam a `ready_to_send`
+        # assim mesmo, com o atendente empurrado a pedir a placa ao segurado.
+        # 🔴 É literalmente o incidente de 11/07/2026 que o docstring desta
+        #    função descreve, de volta por uma lista desatualizada.
+        from app.services.corridor_playbooks import linha_do_subservico as _linha_ic
         is_auto = (
             str(kwargs.get("line_kind") or "").lower() == "auto"
-            or str(kwargs.get("subservice") or "").lower() in ("guincho", "bateria", "pneu")
+            or _linha_ic(kwargs.get("subservice"))[0] == "auto"
         )
         cpf = "".join(ch for ch in str(kwargs.get("titular_cpf") or "") if ch.isdigit())
         precisa = not str(kwargs.get("veiculo_placa") or "").strip() or not str(kwargs.get("titular_nome") or "").strip()
@@ -758,7 +826,17 @@ class InsurerDispatchTool(BaseTool):
         from app.services.corridor_playbooks import insurer_contact_env_var, resolve_insurer_contact
 
         playbook_ref, insurer_key = self._resolve_playbook_ref(kwargs)
-        line = "auto" if str(kwargs.get("line_kind") or "").lower() == "auto" or str(kwargs.get("subservice") or "").lower() in ("guincho", "bateria", "pneu") else "residencial"
+        # 📊 SPEC-084.2 C3 — QUARTA cópia da mesma lista.
+        # ⚠️ Hoje INERTE: `resolve_insurer_contact` recebe `line_kind` e o
+        #    descarta (`insurer_contact_env_var` monta
+        #    `INSURER_CONTACT_{KEY}_ASSISTENCIA`, sem a linha). Ficava certo
+        #    por acidente. Derivar agora impede que ela passe a errar no dia em
+        #    que o parâmetro voltar a ter função — e a falha seria a pior:
+        #    a mensagem de um `socorro_mecanico` saindo pelo WhatsApp
+        #    RESIDENCIAL da seguradora.
+        from app.services.corridor_playbooks import linha_do_subservico as _linha_ct
+        line = ("auto" if str(kwargs.get("line_kind") or "").lower() == "auto"
+                else (_linha_ct(kwargs.get("subservice"))[0] or "residencial"))
         digits = lambda s: "".join(ch for ch in str(s or "") if ch.isdigit())  # noqa: E731
         insurer_phone = resolve_insurer_contact(insurer_key or "allianz", line_kind=line)
         if not insurer_phone:

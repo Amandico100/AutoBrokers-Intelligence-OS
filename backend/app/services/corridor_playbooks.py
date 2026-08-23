@@ -7881,6 +7881,90 @@ def list_playbooks() -> List[str]:
     return sorted(_PLAYBOOKS.keys())
 
 
+# ==========================================================================
+# 🔴 DE QUE LINHA É ESTE TRABALHO — DERIVADO, NUNCA ESCRITO À MÃO
+# ==========================================================================
+#
+# 📊 SPEC-084.2 C3. A ferramenta de acionamento deduzia a linha com uma lista
+#    literal de cinco nomes: `("guincho","bateria","pneu","pane_seca","vidros")`.
+#    Ela nunca soube dos QUATRO subserviços de auto que nasceram depois dela —
+#    `socorro_mecanico`, `tecnico`, `bateria_nova`, `taxi`.
+#
+# 🔴 O estrago, medido: **5 rotas resolviam o corredor da linha ERRADA**, e
+#    duas delas são AAA. `socorro_mecanico` na HDI caía no corredor
+#    RESIDENCIAL, e o produto respondia ao segurado *"a hdi não atende
+#    'socorro_mecanico' por este canal"* — uma frase FALSA sobre uma rota
+#    86/88. A ferramenta não mentia sobre a HDI; mentia sobre qual porta da HDI
+#    ela tinha batido.
+#
+# ⚠️ E a lista errava por EXISTIR, não por estar incompleta. Ela era um resumo
+#    à mão de uma tabela que os playbooks já declaram: `pane_seca` — que é
+#    APELIDO, não rota — estava lá, enquanto quatro rotas reais não estavam.
+#    É a assinatura de uma lista mantida por memória.
+#
+# 📊 Outras duas rotas (`zurich/socorro_mecanico`, `azul/tecnico`) resolviam
+#    certo POR ACIDENTE: essas seguradoras não têm corredor residencial, e o
+#    `or "auto"` do final as salvava. No dia em que a Zurich ganhasse um
+#    residencial, quebrariam sozinhas, sem ninguém tocar nelas.
+#
+# 🔴 E o veredito que decidiu o desenho: derivada dos 14 playbooks, a tabela
+#    aponta UM ÚNICO subserviço ambíguo — `chaveiro`, que existe nas duas
+#    linhas. É exatamente a exceção que a ferramenta precisava declarar numa
+#    SEGUNDA lista à mão. **Uma derivação que descobre sozinha a única exceção
+#    que a lista precisava escrever é a prova de que a lista era um resumo mal
+#    copiado da tabela.**
+#
+# 📊 A comparação, medida antes de escrever:
+#
+#        rotas com corredor errado   5 → 0
+#        rotas → handoff (chaveiro)  14 → 14   ← o guarda NÃO afrouxou
+#        apelidos de auto que erram  25 → 0
+_LINHAS_POR_SUBSERVICO: Dict[str, set] = {}
+for _ref_ln, _pb_ln in _PLAYBOOKS.items():
+    for _sv_ln in (_pb_ln.get("subservices") or {}):
+        _LINHAS_POR_SUBSERVICO.setdefault(_sv_ln, set()).add(
+            str(_pb_ln.get("line_kind") or ""))
+
+
+def linha_do_subservico(subservice: Any) -> Tuple[str, bool]:
+    """`(linha, ambíguo)` do subserviço — DERIVADO dos playbooks.
+
+    `("auto", False)` · `("residencial", False)` · `("", True)` quando o
+    trabalho existe nas DUAS linhas (📊 hoje só `chaveiro`) · `("", False)`
+    quando nenhum corredor o declara.
+
+    🔴 Ambíguo NÃO se deduz: quem chama devolve handoff e pergunta. Um chaveiro
+    de CARRO mandado ao menu residencial pede o número da casa a quem está
+    parado no acostamento.
+
+    ⚠️ Canonicaliza a entrada. A lista literal anterior comparava a string
+    CRUA, e por isso 📊 **26 apelidos** — `reboque`, `pane`, `carro nao liga`,
+    `parabrisa`, `chave`… — não chegavam ao corredor de auto. `chave` era o
+    pior: ele deveria cair no ramo do handoff, e como o ramo também testava a
+    string crua, o guarda do chaveiro era CONTORNADO.
+    """
+    linhas = _LINHAS_POR_SUBSERVICO.get(canonical_subservice(subservice)) or set()
+    if len(linhas) == 1:
+        return next(iter(linhas)), False
+    return "", len(linhas) > 1
+
+
+def subservicos_por_linha() -> Dict[str, List[str]]:
+    """`{"auto": [...], "residencial": [...]}` — a lista que o CONTRATO publica.
+
+    📊 O `description` escrito à mão anunciava 9 subserviços; o produto tem 17.
+    Ficavam INVISÍVEIS ao modelo: `socorro_mecanico`, `tecnico`,
+    `bateria_nova`, `taxi`, `vidros`, `ar_condicionado`, `consulta_veterinaria`
+    e `limpeza_caixa_dagua`. Trabalho que o contrato não nomeia é trabalho que
+    o atendente não sabe pedir.
+    """
+    fora: Dict[str, List[str]] = {}
+    for sub, linhas in _LINHAS_POR_SUBSERVICO.items():
+        for ln in linhas:
+            fora.setdefault(ln, []).append(sub)
+    return {k: sorted(v) for k, v in fora.items()}
+
+
 # ---------------------------------------------------------------------------
 # Seleção de playbook e contato por seguradora (SPEC-031)
 # ---------------------------------------------------------------------------
