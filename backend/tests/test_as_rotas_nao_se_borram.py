@@ -210,8 +210,15 @@ print("  2. O CASO EXATO QUE QUEBROU — eletricista da Allianz residencial")
 print("=" * 74)
 
 PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
+# ⚠️ `qual_seguro_opcao` entrou aqui em 22/08/2026, e é §9.3: o FATO mudou.
+#    📊 O BLOCO 1 desta SPEC achou que a tela "Qual o seguro que deseja
+#    utilizar?" tem TRÊS opções (Residencial / Condomínio / Empresa) e que o
+#    corredor respondia `1` fixo — decidindo o tipo de imóvel pelo cliente.
+#    Virou slot, e o caso completo do teste tem de trazê-lo.
+#    🔴 Manter o caso antigo ensinaria a ignorar o vermelho.
 caso_eletrico = dict(BASE, problema_descricao="tomadas da cozinha sem energia",
-                     risco_confirmado_sem_fumaca="sim")
+                     risco_confirmado_sem_fumaca="sim",
+                     qual_seguro_opcao="1")
 falta_eletrico = CP.missing_slots_for_subservice(PB, "eletricista", caso_eletrico)
 
 certo("aparelho_marca" not in falta_eletrico and "aparelho_modelo" not in falta_eletrico,
@@ -238,10 +245,32 @@ plano = IDS.build_dry_run_plan("allianz-residencial-whatsapp@v1", "eletricista",
                                caso_eletrico)
 certo(plano.get("ok") is True, "o plano do eletricista e montado",
       str(plano.get("error")))
-pendentes = [p["step"] for p in plano.get("steps") or [] if "[PENDENTE:" in p["reply"]]
+# ⚠️ 🔴 ESTA ASSERÇÃO ESTAVA PASSANDO POR VACUIDADE, e o conserto de cima é
+#    que a acordou. Enquanto `caso_eletrico` não tinha `qual_seguro_opcao`, o
+#    plano NÃO MONTAVA: `plano["steps"]` vinha vazio, `pendentes` vinha vazio,
+#    e o verde não queria dizer nada. 📊 Com o plano montando, ela apontou três
+#    passos — e os três estão em branco DE PROPÓSITO:
+#      `cnpj_condominio` e `uf_do_local` .... `fallback_adaptive`: o cérebro responde
+#      `escolher_entre_dois_enderecos` ...... sem `requires` por decisão escrita
+#                                            (a lista de endereços muda a cada
+#                                             sessão; nenhuma das quatro origens
+#                                             serve, e o código diz isso)
+#
+# 🔴 As MESMAS três isenções que `missing_slots_for_subservice` aplica, e que a
+#    parte 1 deste arquivo já aplica. Um guarda mais rígido que o motor acusa
+#    defeito onde não há — e aprender a ignorar guarda é pior que não ter.
+_isento = {p.get("step") for p in (PB.get("ura_steps") or [])
+           if p.get("fallback_adaptive") or p.get("noop")
+           or (("{" in str(p.get("reply") or "")) and not p.get("requires"))}
+pendentes = [p["step"] for p in plano.get("steps") or []
+             if "[PENDENTE:" in p["reply"] and p["step"] not in _isento]
 certo(not pendentes,
-      "🔴 nenhum passo do plano sai com lacuna",
+      "🔴 nenhum passo do plano sai com lacuna NÃO PREVISTA",
       f"sairiam em branco na URA: {pendentes}")
+# 🔴 CONTROLE: e o plano TEM passos — senão o de cima volta a ser vácuo.
+certo(len(plano.get("steps") or []) >= 5,
+      "🔴 CONTROLE: o plano do eletricista tem passos de verdade",
+      f"{len(plano.get('steps') or [])} passos")
 
 passos_do_plano = {p["step"] for p in plano.get("steps") or []}
 certo("aparelho_marca" not in passos_do_plano,

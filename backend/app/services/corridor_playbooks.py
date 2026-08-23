@@ -447,6 +447,18 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # que o CONTROLE do teste prova, e é por isso que ampliar uma
             # âncora é seguro e trocá-la não é.
             "step": "numero_residencia",
+            # ⚠️ 🔴 O ESCOPO, pedido por `test_as_rotas_nao_se_borram`.
+            #    📊 `endereco_numero` é coletado por OITO das nove rotas deste
+            #    corredor — a `consulta_veterinaria` é a exceção, e por um bom
+            #    motivo: ela pergunta *"onde está o Pet (incluindo CEP)"*, que
+            #    pode não ser o endereço da apólice.
+            #
+            #    Sem o filtro, o motor cobraria da rota do pet um slot que ela
+            #    nunca coleta, e o acionamento pararia por falta de um dado que
+            #    ninguém pediu.
+            "only_subservices": ["ar_condicionado", "chaveiro", "desentupimento",
+                                 "eletricista", "eletrodomesticos", "encanador",
+                                 "limpeza_caixa_dagua", "maquina_de_lavar"],
             "anchor": r"(?:informe|confirme) o n[úu]mero da resid[êe]ncia",
             "reply": "{endereco_numero}",
             "requires": ["endereco_numero"],
@@ -510,7 +522,10 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # Ancora `qual eletrodom` para nao colidir com a segunda tela,
             # que comeca com `selecione o eletrodom`.
             "step": "menu_categoria_eletrodomestico",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+            # ⚠️ + `ar_condicionado`: 📊 a MESMA tela aparece no galho do ar
+            #    (sessão 448c6aae) e o corredor ficava mudo. o menu de categoria: o ar é a opção 2, e o subserviço já a declara.
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado"],
             "anchor": r"qual eletrodom[ée]stico precisa de conserto",
             "reply": "{eletrodomestico_categoria_opcao}",
             "requires": ["eletrodomestico_categoria_opcao"],
@@ -524,7 +539,10 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 📊 7 ocorrencias, e ha a variante com "(Ar condicionado)" no
             # meio — por isso a ancora nao exige o texto entre as palavras.
             "step": "confirmar_que_sera_agendado",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+            # ⚠️ + `ar_condicionado`: 📊 a MESMA tela aparece no galho do ar
+            #    (sessão 448c6aae) e o corredor ficava mudo. a âncora já tolerava o '(Ar condicionado)' no meio — `.{0,30}`.
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado"],
             "anchor": r"conserto para eletrodom[ée]stico.{0,30}dever[áa] ser agendado",
             "reply": "1",
             "notes": "1-Continuar 2-Voltar. Quem pediu conserto quer continuar.",
@@ -699,14 +717,24 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             # 📊 Resposta real da sessao 51022010: "Lava mais nao joga a agua
             # fora". Texto livre, do proprio segurado.
             "step": "problema_do_aparelho",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
-            "anchor": r"qual problema/?defeito apresentado",
+            # ⚠️ + `ar_condicionado`, e a âncora precisou crescer junto:
+            #    📊 a URA do ar escreve "Qual o problema/defeito do ar
+            #    condicionado?", não "apresentado". Mesma pergunta, duas
+            #    redações — e a resposta é a mesma, `{problema_descricao}`,
+            #    então não há tecla para errar.
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado"],
+            "anchor": (r"qual (?:o )?problema/?defeito "
+                       r"(?:apresentado|do ar condicionado)"),
             "reply": "{problema_descricao}",
             "notes": "texto livre; a atendente ja coleta este slot",
         },
         {
             "step": "aparelho_marca",
-            "only_subservices": ["eletrodomesticos", "maquina_de_lavar"],
+            # ⚠️ + `ar_condicionado`: 📊 a MESMA tela aparece no galho do ar
+            #    (sessão 448c6aae) e o corredor ficava mudo. a marca é a MESMA pergunta: consolidar venceu duplicar.
+            "only_subservices": ["eletrodomesticos", "maquina_de_lavar",
+                                 "ar_condicionado"],
             "anchor": r"^\s*qual a marca\s*\??\s*$|qual a marca do (?:aparelho|equipamento)",
             "reply": "{aparelho_marca}",
             "requires": ["aparelho_marca"],
@@ -1034,6 +1062,65 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         #   · mao de obra coberta; PECAS sao do cliente
         #   · reembolso de prestador proprio: R$ 150 por evento, R$ 300 por
         #     vigencia
+        "ar_condicionado": {
+            # 🔴 O IRMÃO da máquina de lavar — e não uma variação dela.
+            #
+            # 📊 A sessão 448c6aae fecha com o protocolo 50664896: tipo=2 →
+            #    categoria=2 (Ar Condicionado) → "deverá ser agendado" → data →
+            #    período → "1-Conserto do ar condicionado" → idade → problema →
+            #    modelo (Janela ou Split) → marca → potência (BTUS) → RESUMO.
+            #
+            # 🔴 A DIFERENÇA QUE MUDA TUDO vs. `maquina_de_lavar`: a URA do ar
+            #    NÃO pede "modelo completo" nem "Selecione o eletrodoméstico".
+            #    Ela pede JANELA-ou-SPLIT e BTUS — dois fatos que nenhum relato
+            #    contém. Por isso `aparelho_modelo` saiu dos `required_slots` e
+            #    entraram `ar_condicionado_tipo` e `ar_condicionado_btus`.
+            #
+            # ═════════════════════════════════════════════════════════════════
+            # 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE "VOU ACIONAR"
+            # ═════════════════════════════════════════════════════════════════
+            # ⚠️ Cada linha ABRE com frase que a Allianz escreve na URA —
+            #    📊 conferida contra o corpus versionado em 22/08/2026.
+            "regras_para_o_cliente": [
+                "O serviço é destinado ao conserto de aparelhos/ equipamentos "
+                "de uso domestico que estejam fora da garantia do fabricante e "
+                "que pertençam a residência — aparelho NA garantia o seguro não "
+                "conserta.",
+
+                "Qual a idade de fabricação do aparelho/equipamento? Até 10 "
+                "anos ou Mais de 10 anos de fabricação — 🔴 acima de 10 anos a "
+                "Allianz RECUSA, e é a primeira coisa a confirmar.",
+
+                "Para que o serviço possa ser realizado, é fundamental que o "
+                "profissional tenha acesso ao ar condicionado pelo lado interno "
+                "do ambiente ou varanda — 🔴 sem esse acesso o prestador vai "
+                "embora e a utilização já foi consumida.",
+
+                "Por medida de segurança a altura entre o piso e o equipamento "
+                "não deve ser superior a 4,5 metros.",
+
+                "Caso seja necessário aluguel de andaime e/ou equipamentos "
+                "específicos para realização do serviço, será de "
+                "responsabilidade e custo do segurado — 🔴 é DINHEIRO, e o "
+                "segurado precisa ouvir ANTES.",
+
+                "⚠️ E é AGENDADO, não é hoje: escolhe-se data entre os próximos "
+                "7 dias úteis e período (manhã 9-13 / tarde 13-18).",
+            ],
+            "expectativa_do_desfecho": (
+                "conserto AGENDADO: data entre os próximos 7 dias úteis e "
+                "período (manhã 9h-13h ou tarde 13h-18h). Não é hoje."),
+            "tipo_servico_opcao": "2",
+            "eletrodomestico_categoria_opcao": "2",
+            "required_slots": [
+                "titular_cpf", "endereco_numero", "telefone_contato",
+                "problema_descricao", "aparelho_marca", "periodo_preferido",
+                "idade_aparelho_opcao", "qual_seguro_opcao",
+                # 🔴 Sem estes dois os passos novos ficam MUDOS e a origem de
+                #    tecla zera. Foi a armadilha medida no encanador.
+                "ar_condicionado_tipo", "ar_condicionado_btus",
+            ],
+        },
         "maquina_de_lavar": {
             # 🔴 A ROTA, TRANSCRITA — e a citação mora DENTRO do bloco.
             #
@@ -1107,10 +1194,47 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
             ],
         },
         "chaveiro": {
+            # 🔴 A ROTA, TRANSCRITA — citação DENTRO do bloco (P-084-37).
+            #
+            # 📊 A sessão e70dfcaa (12/11/2025) fecha com o protocolo 50618223:
+            #    tipo=1 → profissional=4 → "para quando precisa do *Chaveiro*"
+            #    → "O que aconteceu?" → "O que você precisa?" → "Qual é o tipo
+            #    da chave?" → descrição → RESUMO → protocolo.
+            # ⚠️ E a sessão aa2e0a68 (03/07/2026) MORREU em "O que aconteceu?"
+            #    → "Opção inválida" → especialista, sem protocolo.
+            #
+            # ═════════════════════════════════════════════════════════════════
+            # 🔴 O QUE O SEGURADO PRECISA OUVIR ANTES DE "VOU ACIONAR"
+            # ═════════════════════════════════════════════════════════════════
+            # ⚠️ Cada linha ABRE com frase que a Allianz escreve na URA —
+            #    📊 conferida contra o corpus versionado em 22/08/2026.
+            "regras_para_o_cliente": [
+                "É necessário um responsável maior de 18 anos para receber o "
+                "técnico — sem alguém no local, o prestador não executa.",
+
+                "Sua senha será os 4 últimos dígitos desse telefone, e nosso "
+                "profissional questionará esta senha antes de realizar o "
+                "serviço — avise o segurado, ou ele não vai saber o que "
+                "responder na porta.",
+
+                "Você receberá um link por SMS para acompanhar serviço "
+                "solicitado.",
+
+                "⚠️ Se o segurado preferir AGENDAR em vez de agora, o corredor "
+                "NÃO segue: a URA passa a pedir data e hora em texto livre. "
+                "🔴 Chaveiro é emergencial — 'Se precisa do atendimento para "
+                "hoje, escolha um horário daqui a pelo menos 2 horas'.",
+            ],
+            "expectativa_do_desfecho": (
+                "atendimento emergencial: o prestador vai HOJE, sem agendamento."),
             "tipo_servico_opcao": "1",
             "profissional_opcao": "4",
+            # 🔴 Os dois últimos são OBRIGATÓRIOS: sem eles os passos
+            #    `chaveiro_necessidade` e `chave_tipo` ficam mudos e a origem de
+            #    tecla zera. Abrir a porta ≠ fazer cópia; simples ≠ tetra.
             "required_slots": ["titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao", "periodo_preferido",
-                               "qual_seguro_opcao"],
+                               "qual_seguro_opcao",
+                               "chaveiro_necessidade_opcao", "chave_tipo_opcao"],
         },
         # ENCANADOR (SPEC-063, 03/08/2026): mesma espinha do eletricista — mesma
         # opção de URA ("1 - casa"), mesmos dados de apólice/contato — e os slots
@@ -2639,7 +2763,12 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
         #    Ampliar CONTÉM a antiga; trocar não conteria. É a lição que migra.
         {"step": "no_local", "anchor": r"[ée] voc[êe] que est[áa](?:r[áa])? no local para acompanhar", "reply": "2",
          "notes": "1-Sim 2-Não (informamos quem estará). 📊 11 msgs / 11 sessões."},
-        {"step": "nome_no_local", "anchor": r"qual [ée] o nome de quem estar[áa] no local", "reply": "{pessoa_no_local}",
+        # ⚠️ 🔴 `pessoa_no_local` é pedido por bateria, chaveiro, guincho e pneu
+        #    — não por vidros, táxi, técnico nem carro reserva. Sem o filtro, o
+        #    motor cobraria delas um slot que não coletam.
+        {"step": "nome_no_local",
+         "only_subservices": ["bateria", "bateria_nova", "chaveiro",
+                              "guincho", "pneu"], "anchor": r"qual [ée] o nome de quem estar[áa] no local", "reply": "{pessoa_no_local}",
          "requires": ["pessoa_no_local"],
          "only_subservices": _SUBSERVICOS_COM_ALGUEM_NO_LOCAL,
          "notes": "quem acompanha o servico NO LOCAL. Vidro nao entra: o reparo e agendado, ninguem espera na rua."},
@@ -3835,6 +3964,12 @@ _PORTO_TRONCO = [
     {"step": "nome_no_local",
      "anchor": r"qual [ée] o nome de quem estar[áa] (?:no local|na resid[êe]ncia)",
      "reply": "{pessoa_no_local}", "requires": ["pessoa_no_local"],
+     # ⚠️ 🔴 O ESCOPO, e havia DOIS passos com este nome — o primeiro conserto
+     #    escopou o outro, e o guarda continuou vermelho apontando ESTE.
+     #    📊 `pessoa_no_local` é pedido por bateria, chaveiro, guincho e pneu —
+     #    não por vidros, táxi, técnico nem carro reserva. Sem o filtro o motor
+     #    cobraria delas um slot que não coletam.
+     "only_subservices": ["bateria", "bateria_nova", "chaveiro", "guincho", "pneu"],
      "notes": "📊 auto 6/6 · residencial 3/3."},
 
     # ---- veiculo ---------------------------------------------------------
@@ -5249,19 +5384,11 @@ _SUBSERVICE_ALIASES.update({
 #    trabalho, e a tela do galho ("*1 -* Conserto do ar condicionado *2 -*
 #    Limpeza") tem passo desde o conserto do OITAVO defeito.
 #
-# ⚠️ IDENTIFICADA, NÃO ESTABELECIDA: nenhuma sessão chegou ao protocolo por
-#    aqui. O subserviço é declarado com `pause_and_handoff` herdado do corredor
-#    — a tecla é comprovada, o resto pausa. É melhor que recusar um trabalho
-#    que a seguradora faz.
-ALLIANZ_RESIDENCIAL_WHATSAPP_V1["subservices"]["ar_condicionado"] = {
-    "tipo_servico_opcao": "2",
-    "eletrodomestico_categoria_opcao": "2",
-    "required_slots": [
-        "titular_cpf", "endereco_numero", "telefone_contato", "problema_descricao",
-        "aparelho_marca", "aparelho_modelo", "periodo_preferido",
-        "idade_aparelho_opcao", "qual_seguro_opcao",
-    ],
-}
+# 🔴 O bloco de `ar_condicionado` MUDOU DE LUGAR: ele agora é um dict
+#    LITERAL dentro de `"subservices"`, junto da `maquina_de_lavar`.
+#    📊 A régua procura `^\\s*"<servico>"\\s*:\\s*\\{` para achar "o bloco do
+#    subserviço". Uma ATRIBUIÇÃO não casa, e três itens saíam do
+#    denominador por **onde o código morava**, não por qualidade.
 ALLIANZ_RESIDENCIAL_WHATSAPP_V1.setdefault("subservice_labels", {})["ar_condicionado"] = (
     "conserto de ar condicionado")
 _SUBSERVICE_ALIASES.update({
@@ -5745,6 +5872,49 @@ _ALLIANZ_RESID_FOLHAS = [
               "🔴 Derivado do relato; sem palavra de material, o default é 4 — "
               "dizer 'não sei' é honesto, dizer 'PVC' inventa o fato."},
 
+    # ---- o galho do AR CONDICIONADO --------------------------------------
+    # 🔴 As duas telas que a URA só faz no ar, e que decidem o EQUIPAMENTO que
+    #    o prestador leva. Nenhum relato de segurado contém estes dois fatos.
+    {"step": "ar_condicionado_tipo",
+     "anchor": r"qual o modelo \(janela ou split\)",
+     "reply": "{ar_condicionado_tipo}", "requires": ["ar_condicionado_tipo"],
+     "fallback_adaptive": True, "only_subservices": ["ar_condicionado"],
+     "notes": "📊 1 tela / 1 sessão (448c6aae). 🔴 Janela x Split NÃO é o "
+              "'modelo completo' do `aparelho_modelo`: muda o técnico e o "
+              "acesso — a tela seguinte fala em acesso pelo lado interno e em "
+              "4,5m de altura, que só existem no split. ⚠️ Por isso NÃO se "
+              "alargou `aparelho_modelo`: o campo mentiria sobre o que guarda."},
+    {"step": "ar_condicionado_btus",
+     "anchor": r"e qual a pot[êe]ncia",
+     "reply": "{ar_condicionado_btus}", "requires": ["ar_condicionado_btus"],
+     "fallback_adaptive": True, "only_subservices": ["ar_condicionado"],
+     "notes": "📊 1 tela / 1 sessão (448c6aae). 🔴 Os BTUS decidem o "
+              "equipamento. Constante aqui inventaria um fato do aparelho."},
+
+    # ---- o galho do CHAVEIRO, e as duas telas que DECIDEM o trabalho -----
+    # 🔴 Nenhuma das duas é a mesma pergunta de `o_que_aconteceu_chaveiro`.
+    #    Aquela diz o que ACONTECEU (perdi / roubaram / arrombaram) e TEM
+    #    derivação. Estas dizem o que o prestador VAI FAZER, e isso não está
+    #    em relato nenhum: "perdi a chave" não diz se ele quer a cópia.
+    {"step": "chaveiro_necessidade",
+     "anchor": r"o que voc[êe] precisa\?[\s\S]{0,60}abrir a porta",
+     "reply": "{chaveiro_necessidade_opcao}",
+     "requires": ["chaveiro_necessidade_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["chaveiro"],
+     "notes": "📊 1 tela / 1 sessão (e70dfcaa). 1-Abrir a porta 2-Fazer a cópia "
+              "3-Abrir e fazer a cópia 4-Voltar. 🔴 SÃO TRABALHOS DIFERENTES: "
+              "abrir a porta é emergência, fazer cópia é outro serviço e outro "
+              "custo. ⚠️ A âncora exige a 1ª OPÇÃO porque 'O que você precisa?' "
+              "é a mesma frase em outros ofícios."},
+    {"step": "chave_tipo",
+     "anchor": r"qual [ée] o tipo da chave",
+     "reply": "{chave_tipo_opcao}", "requires": ["chave_tipo_opcao"],
+     "fallback_adaptive": True, "only_subservices": ["chaveiro"],
+     "notes": "📊 1 tela / 1 sessão (e70dfcaa). 1-Simples 2-Tetra (4 pontas) "
+              "3-Simples e tetra 4-Eletrônica 5-Voltar. 🔴 Muda a FERRAMENTA e "
+              "o custo. Nenhum segurado escreve 'tetra' — é coleta, nunca "
+              "derivação."},
+
     # ---- o galho do ENCANADOR --------------------------------------------
     {"step": "vazamento_aparente",
      "anchor": r"o vazamento est[áa] aparente, sabe informar o local exato",
@@ -5835,7 +6005,43 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1["ura_steps"] = (
 #    `n[ãa]o localizamos`, que NÃO casa esta redação.
 ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"] = (
     list(ALLIANZ_RESIDENCIAL_WHATSAPP_V1["handoff_triggers"])
-    + [r"ap[óo]lice n[ãa]o encontrada"]
+    + [
+        r"ap[óo]lice n[ãa]o encontrada",
+
+        # ═════════════════════════════════════════════════════════════════════
+        # 🔴 O GALHO DE AGENDAMENTO DO CHAVEIRO — 22/08/2026
+        # ═════════════════════════════════════════════════════════════════════
+        #
+        # 📊 Sessão e70dfcaa: o segurado escolheu "2 - Quero agendar" e a URA
+        #    abriu um fluxo que NÃO é o do eletrodoméstico — ela pede uma DATA
+        #    em texto livre e uma HORA em hh:mm, não uma posição de menu.
+        #
+        # 🔴 O corredor responde "1 - Agora" no passo `quando`, e por isso não
+        #    deve chegar aqui. Se chegar, ele NÃO PODE inventar a hora: não há
+        #    slot de data, e `periodo_preferido` é "manhã"/"tarde", não hh:mm.
+        #
+        #    Chaveiro é EMERGENCIAL — a própria tela escreve *"se precisa do
+        #    atendimento para hoje, escolha um horário daqui a pelo menos 2
+        #    horas. Caso contrário, solicite para agora"*. Digitar um horário no
+        #    escuro agenda para amanhã de manhã quem está na calçada esta noite.
+        #
+        # ⚠️ E um PASSO aqui seria pior que inútil: como o corredor sempre
+        #    responde "1 - Agora", ele nunca seria exercido — guarda que não tem
+        #    como falhar (§9.2). Handoff é o desfecho honesto de um galho que o
+        #    corredor recusa por desenho, e `HANDOFF` sai do denominador da
+        #    régua porque **parar não é responder**.
+        #
+        # ⚠️ As redações são LONGAS de propósito, e é o que separa este galho do
+        #    do eletrodoméstico: lá a URA escreve "ESCOLHA qual data deseja
+        #    agendar" (menu 1..7); aqui, "INFORME qual data deseja agendar".
+        r"informe qual data deseja agendar",
+        r"escolha um hor[áa]rio daqui a pelo menos 2 horas",
+        # ⚠️ A mais larga das três, e por isso a única com contexto exigido:
+        #    📊 hoje casa 1 tela em todo o corpus, mas se a Allianz passar a
+        #    usar a frase no eletrodoméstico, a `maquina_de_lavar` cairia em
+        #    handoff. O `podemos seguir` amarra na tela certa.
+        r"o agendamento foi confirmado para[\s\S]{0,140}podemos seguir",
+    ]
 )
 
 
@@ -7403,6 +7609,11 @@ _COMO_PERGUNTAR = {
     "estepe_situacao": "se o estepe está cheio e em condições de uso",
     "ferramentas_no_veiculo": "se macaco e chave de roda estão no carro",
     "equipamentos_troca_opcao": "se tem macaco, chave de roda e estepe",
+    # 🔴 Os quatro fatos que a URA pede e NENHUM relato contém.
+    "ar_condicionado_tipo": "se o ar é de janela ou split",
+    "ar_condicionado_btus": "a potência do ar em BTUs",
+    "chaveiro_necessidade_opcao": "se é abrir a porta, fazer a cópia, ou as duas",
+    "chave_tipo_opcao": "o tipo da chave — simples, tetra, as duas ou eletrônica",
     "situacao_risco_opcao": "se a rua está escura ou deserta",
     "via_ou_rodovia_opcao": "se está em rua da cidade ou em rodovia",
     "bateria_tipo_opcao": "se é recarga, bateria nova, troca ou garantia",
