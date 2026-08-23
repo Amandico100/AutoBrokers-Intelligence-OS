@@ -8,7 +8,7 @@ Cada teste que afirma `X está limpo` tem, ao lado, o teste que **suja X de
 propósito e exige o vermelho**.
 
 📊 O guarda que este arquivo substitui era `grep -cE '[0-9]{11}'`. Ele **não casa**
-`+55 (47) 99627-4743` — a maior sequência de dígitos ali tem CINCO. Devolvia 0
+`+55 (47) 90000-0000` — a maior sequência de dígitos ali tem CINCO. Devolvia 0
 com quatro telefones no arquivo.
 """
 
@@ -60,7 +60,7 @@ def test_CONTROLE_a_auditoria_de_pii_CONSEGUE_acusar():
     📊 O `grep -cE '[0-9]{11}'` da v1 da SPEC devolvia 0 sobre estas quatro linhas.
     """
     devem_acusar = [
-        "Registramos o telefone *+55 (47) 99627-4743* para contato.",
+        "Registramos o telefone *+55 (47) 90000-0000* para contato.",
         "Anotei seu numero *(48) 99909-5995*. Esta correto?",
         "Por favor digite o CPF 030.111.222-95 do titular",
         "Envie para joao.silva@exemplo.com.br o comprovante",
@@ -142,7 +142,7 @@ def test_CONTROLE_o_guarda_de_fala_humana_CONSEGUE_acusar():
 # 3 · A HIGIENE — a exceção da senha (CA-062)
 # ═════════════════════════════════════════════════════════════════════════════
 TELA_27 = ("O telefone registrado nesse atendimento para contato e o que estamos "
-           "falando agora:\n+55 (47) 99627-4743.\n\nSua senha sera os 4 ultimos "
+           "falando agora:\n+55 (47) 90000-0000.\n\nSua senha sera os 4 ultimos "
            "digitos desse telefone *4743*")
 
 
@@ -163,7 +163,7 @@ def test_a_ancora_de_senha_sobrevive_ao_mascaramento():
 def test_CONTROLE_a_excecao_da_senha_nao_devolve_telefone_comum():
     """🔴 O outro sentido: a exceção não pode virar um buraco de PII."""
     pb = M.get_playbook("allianz-residencial-whatsapp@v1")
-    comum = "Registramos o telefone *+55 (47) 99627-4743* para contato."
+    comum = "Registramos o telefone *+55 (47) 90000-0000* para contato."
     limpo, flags = H.higienizar(pb, comum, set())
     assert not flags["senha_preservada"]
     assert "99627" not in limpo and "4743" not in limpo, f"vazou: {limpo}"

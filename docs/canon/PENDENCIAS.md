@@ -4433,7 +4433,7 @@ Quando a URA pede o CPF, **o que foi digitado é o CPF** — e ele vira o rótul
 aresta. Exemplo literal do mapa ativo da Allianz:
 
 ```
-5b7ca670e1f1|110.014.961-91 -> 2bd9b17f842c
+5b7ca670e1f1|111.111.111-11 -> 2bd9b17f842c
 ```
 
 📊 Os **nós** já são mascarados (`{TELEFONE}`, `{PLACA}`, `{CAMINHO}`). **As
@@ -8156,3 +8156,30 @@ pode existir** no produto saudável. E: o `print` de falha de um guarda precisa
 COMEÇAR com `FALHA`/`FALHOU` — um 🔴 na frente faz a bateria reportar *"a
 mutação é enfeite"*, apontando o diagnóstico para o teste quando a causa está no
 `print`.
+
+### P-084-66 🔴 A PII escrita à mão no CÓDIGO — 89 em 117 arquivos · 🧑
+
+📊 23/08/2026. O mascarador cobre o CORPUS. **Comentário e fixture não.** Uma
+tela real transcrita para explicar um passo traz o dado do segurado junto.
+
+```
+166  primeira varredura, sem filtro estrutural
+ 85  com o filtro — 🔴 e ele engolia placa REAL
+101  com o filtro corrigido: a medida honesta
+ 89  restantes, em 117 arquivos, depois da limpeza desta SPEC
+```
+
+⚠️ Boa parte dos 89 **não é dado de pessoa** — `0800` e central de atendimento
+têm forma de telefone e são endereço comercial publicado. A triagem é o primeiro
+trabalho.
+
+🔴 **O que destrava:** autorização do Founder ([`CHANGE-ADDENDA`](CHANGE-ADDENDA.md),
+ESSENCIAL). A varredura cruza dez SPECs e mexe em fixture que guardas diferentes
+comparam entre si: a placa mascarada e a placa do caso mudam JUNTAS ou o guarda
+vira enfeite — aconteceu três vezes na limpeza parcial, e foi achado medindo.
+
+**O que custa esquecer:** dado de segurado real fica versionado para sempre no
+histórico do git, onde nenhuma limpeza futura o alcança.
+
+**A ferramenta existe:** `python scripts/auditar_pii_no_codigo.py [--em <prefixo>]`
+— ⚠️ ela nunca imprime o valor, só a forma e uma sombra.

@@ -6,7 +6,7 @@
 ## 1. QR code não gerava — causa-raiz e fix definitivo
 
 A instância GO da Resulta ainda estava REGISTRADA no número antigo de teste
-(jid 554796274743, "Reconnecting") — com sessão registrada o WhatsApp NUNCA
+(jid 554790000000, "Reconnecting") — com sessão registrada o WhatsApp NUNCA
 emite QR novo, e o logout do GO não limpa a sessão. Fix em 3 camadas:
 - **Manual (feito agora):** instância zumbi `autobrokers-go-teste` apagada no
   GO (`DELETE /instance/delete/{uuid}`, chave global — endpoint confirmado na

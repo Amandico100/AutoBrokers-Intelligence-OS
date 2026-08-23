@@ -102,7 +102,7 @@ def _norm(text: str) -> str:
 # a última mensagem do acionamento, a que fecha o caso::
 #
 #     *Resumo da solicitação*
-#     *Placa:* AZH0926
+#     *Placa:* AAA0926
 #     *Assistência:* 9662631        <- hdi, auto
 #     *Assistência:* 9666474        <- yelum, residencial (encanador)
 #     Assistência: 52339760         <- allianz
@@ -1983,7 +1983,7 @@ _ALLIANZ_FAMILY_AUTO_STEPS = [
     "constante_justificada": (
         "📊 A tela ECOA o veículo que a própria URA encontrou pela placa que NÓS enviamos. Confirmar é confirmar o que mandamos. ⚠️ Quando há MAIS DE UM veículo na apólice a tela é outra, e ali o passo é `escolher_veiculo`, com `dynamic: vehicle_by_plate`."),
      "dynamic": "vehicle_by_plate", "fallback_adaptive": True,
-     "notes": "escolhe a opção cuja placa mascarada casa com a placa do caso (JC#-###9 ↔ JCL9A59); sem match → adaptativo"},
+     "notes": "escolhe a opção cuja placa mascarada casa com a placa do caso (AA#-###9 ↔ AAA9A59); sem match → adaptativo"},
     {"step": "confirmar_telefone", "anchor": r"deseja adicionar outro n[úu]mero", "reply": "{telefone_adicionar_opcao}",
      "requires": ["telefone_adicionar_opcao"], "notes": "1=Sim (informa telefone_contato) 2=Não (usa o registrado)"},
     {"step": "informar_telefone", "anchor": r"informe \*?o n[úu]mero de celular completo\*? com ddd",
@@ -5826,6 +5826,10 @@ _ZURICH_TRONCO = [
      "notes": "📊 2/2. 🔴 A zurich promete DATA e HORA ('prevista para o dia DD/MM às "
               "HH:MM'), não 'em N minutos'. Vai a `expectativa_do_desfecho`."},
     {"step": "telefones_acompanhamento", "anchor": r"para acompanhar o status da assist[êe]ncia 24h",
+     # ⚠️ Os dois números abaixo são a CENTRAL PUBLICADA da seguradora, não dado
+     #    de pessoa: é o telefone que a própria URA manda ao segurado. Ficam
+     #    inteiros de propósito — a auditoria de PII no código os acusa pela
+     #    FORMA, e esta linha é a resposta a essa acusação.
      "reply": "", "noop": True, "notes": "📊 2/2. 0800 729 1400 · +55 11 4133 6932."},
     {"step": "como_continuar_agora", "anchor": r"como voc[êe] quer continuar agora",
      "reply": "Encerrar atendimento", "notes": "📊 2/2."},
@@ -6547,7 +6551,7 @@ PORTO_AUTO_WHATSAPP_V1["ura_steps"] = list(PORTO_AUTO_WHATSAPP_V1["ura_steps"]) 
 
     # ---- GUINCHO: a saudação que é MENU DE VEÍCULO -----------------------
     #
-    # 🔴 "Valmor, como eu posso te ajudar? *1* - JEEP, ano 2025, placa T#####4
+    # 🔴 "Fulano, como eu posso te ajudar? *1* - JEEP, ano 2025, placa T#####4
     #    *2* - Outro veículo *3* - Mais assuntos" — responder "1" fixo pega o
     #    carro errado numa apólice com dois, e 📊 uma das duas sessões LISTA
     #    DOIS. `vehicle_by_plate` escolhe pela placa que nós enviamos.
@@ -8361,7 +8365,7 @@ def inject_address_slots(slots: Dict[str, Any]) -> Dict[str, Any]:
 #
 # Esta regra nasceu dentro de `pick_option_by_plate` (menu de veículos, 12/07) e
 # saiu para cá porque a MESMA armadilha reaparece na conferência do resumo
-# final: `"JC#-###9" == "JCL9A59"` dá **False** e reprovaria o veículo CERTO.
+# final: `"AA#-###9" == "AAA9A59"` dá **False** e reprovaria o veículo CERTO.
 # Um segundo comparador escrito à mão ao lado deste seria a duplicação que a
 # CLAUDE.md §5 proíbe — e, pior, os dois divergiriam no primeiro caractere de
 # máscara novo que uma seguradora inventasse.
@@ -8378,11 +8382,11 @@ def bate_com_mascara(mascarado: str, do_caso: str) -> Optional[bool]:
     Comprimentos diferentes NÃO são divergência: são ausência de base de
     comparação. Os dois erros clássicos que este tipo ternário fecha:
 
-      `"JC#-###9" == "JCL9A59"`  → False  → reprovaria o veículo certo
+      `"AA#-###9" == "AAA9A59"`  → False  → reprovaria o veículo certo
       `"125" in "1253"`          → True   → aprovaria o endereço errado
 
-    Pontuação e separador saem dos dois lados antes de comparar (`JC#-###9` e
-    `JCL9A59` viram `JC####9` e `JCL9A59`, ambos de 7).
+    Pontuação e separador saem dos dois lados antes de comparar (`AA#-###9` e
+    `AAA9A59` viram `AA####9` e `AAA9A59`, ambos de 7).
     """
     a = re.sub(rf"[^A-Za-z0-9{re.escape(_CARACTERE_DE_MASCARA)}]", "", str(mascarado or "")).upper()
     b = re.sub(r"[^A-Za-z0-9]", "", str(do_caso or "")).upper()
@@ -8393,8 +8397,8 @@ def bate_com_mascara(mascarado: str, do_caso: str) -> Optional[bool]:
 
 def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     """Escolhe a opção do menu de veículos pela PLACA MASCARADA da URA.
-    Ex.: '1 - 2500, placa JD#-###2 / 2 - HILUX SW4, placa JC#-###9' com placa
-    do caso JCL9A59 → '2' (prefixo JC e final 9 casam). '' = sem match seguro.
+    Ex.: '1 - 2500, placa AB#-###2 / 2 - HILUX SW4, placa AA#-###9' com placa
+    do caso AAA9A59 → '2' (prefixo AA e final 9 casam). '' = sem match seguro.
 
     A comparação em si mora em `bate_com_mascara`. Aqui ficou só o que é DESTE
     passo: achar as opções na tela e nunca chutar veículo (`None` — comprimento
@@ -8410,11 +8414,11 @@ def pick_option_by_plate(insurer_message: str, placa: str) -> str:
     # 📊 A tela REAL da Allianz, copiada do corpus:
     #
     #     "Por favor, confirme o veiculo para atendimento:
-    #      *1* - X1, placa EP#-###1
+    #      *1* - X1, placa AA#-###1
     #      *2* - Outro veiculo
     #      *0* - Sair"
     #
-    #    E a da Porto: "*1* - JEEP, ano 2025, placa TB#-##44".
+    #    E a da Porto: "*1* - JEEP, ano 2025, placa BB#-##44".
     #
     # 🔴 A regex exigia `(\d+)\s*-` — DIGITO colado no hifen. Com `*1* - ` o
     #    `*` entra no meio e nada casa. 📊 Medido: a funcao devolvia `''` nas

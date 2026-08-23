@@ -130,7 +130,7 @@ ROWS = [
 
 SLOTS = {
     "titular_cpf": "50021648034", "titular_nome": "Eduardo Teste",
-    "veiculo_placa": "JCL9A59", "local_atual": "Rua Piaui, 325, Bucareim, Joinville SC",
+    "veiculo_placa": "AAA9A59", "local_atual": "Rua Piaui, 325, Bucareim, Joinville SC",
     "local_destino": "Oficina X, Rua B, 2, Centro, Joinville SC",
     "problema_descricao": "bateria descarregada", "telefone_contato": "47988087463",
     "pessoa_no_local": "Eduardo", "ponto_referencia": "em frente ao mercado",

@@ -5,7 +5,7 @@
 > (`deploy-triggers-e-envs.md`) — ela tem os fatos operacionais e credenciais-chave.
 
 ## Estado ao escrever isto
-- Evolution GO é o canal OFICIAL (main `1285fe5`): pareado (554796274743), inbound
+- Evolution GO é o canal OFICIAL (main `1285fe5`): pareado (554790000000), inbound
   + foto + PDF + áudio VALIDADOS pelo founder ("TUDO FUNCIONOU PERFEITAMENTE").
 - Cartógrafo v2 pronto (re-identificação, dados completos, saída p/ humano,
   detecção de FORMULÁRIO NATIVO → nó `app_form` + encerra ramo).

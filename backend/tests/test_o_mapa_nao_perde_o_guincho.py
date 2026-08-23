@@ -33,7 +33,7 @@ não a palavra, não o `24h`.
 E O SEGUNDO DEFEITO, no mesmo pipeline
 =======================================
 📊 141 CPF, 34 CNPJ, 105 placas e 52 telefones gravados como **rótulo de
-aresta**: `5b7ca670e1f1|110.014.961-91 -> 2bd9b17f842c`. A URA pediu o CPF, o
+aresta**: `5b7ca670e1f1|111.111.111-11 -> 2bd9b17f842c`. A URA pediu o CPF, o
 segurado digitou, e o que ele digitou virou a aresta. Os nós eram mascarados;
 a escolha do humano não passava por lugar nenhum.
 """
@@ -145,15 +145,15 @@ def teste_a_opcao_do_guincho_nao_e_descartada() -> None:
     #
     # Sem eles, o teste acima passaria se alguém simplesmente desligasse todo o
     # mascaramento — e aí a correção teria trocado um defeito por um vazamento.
-    checar("{CPF}" in T.templatize("110.014.961-91", rotulo_de_campo=False),
+    checar("{CPF}" in T.templatize("111.111.111-11", rotulo_de_campo=False),
            "🔴 CONTROLE — CPF continua sendo mascarado neste modo",
-           T.templatize("110.014.961-91", rotulo_de_campo=False))
-    checar("{TELEFONE}" in T.templatize("(47) 99627-4743", rotulo_de_campo=False),
+           T.templatize("111.111.111-11", rotulo_de_campo=False))
+    checar("{TELEFONE}" in T.templatize("(47) 90000-0000", rotulo_de_campo=False),
            "🔴 CONTROLE — telefone continua sendo mascarado",
-           T.templatize("(47) 99627-4743", rotulo_de_campo=False))
-    checar(not T._real_options([T.templatize("Placa: QJQ0A91")]),
+           T.templatize("(47) 90000-0000", rotulo_de_campo=False))
+    checar(not T._real_options([T.templatize("Placa: AAA0A91")]),
            "🔴 CONTROLE — eco de dado do cliente CONTINUA sendo descartado",
-           "'Placa: QJQ0A91' não é clique de menu")
+           "'Placa: AAA0A91' não é clique de menu")
 
     # 🔴 E o caso que SÓ o filtro de placeholder segura.
     #
@@ -172,7 +172,7 @@ def teste_a_opcao_do_guincho_nao_e_descartada() -> None:
            "CONTROLE — e opção de verdade continua passando")
 
     # A tela inteira (não o título solto) mantém a rede antiga ligada.
-    checar(T.templatize("Placa: QJQ0A91") != "Placa: QJQ0A91",
+    checar(T.templatize("Placa: AAA0A91") != "Placa: AAA0A91",
            "CONTROLE — em TELA, o rótulo de campo continua valendo")
 
 
@@ -219,12 +219,12 @@ def teste_o_que_o_segurado_digitou_nao_vira_aresta() -> None:
     exec(compile(corpo, "_choice_label", "exec"), ns)  # noqa: S102
     rotulo = ns["_choice_label"]
 
-    checar("{CPF}" in (rotulo({"text": "110.014.961-91"}) or ""),
+    checar("{CPF}" in (rotulo({"text": "111.111.111-11"}) or ""),
            "🔴 o CPF digitado vira {CPF} na aresta, não o número",
-           str(rotulo({"text": "110.014.961-91"})))
-    checar("{CPF}" in (rotulo({"interactive": {"title": "110.014.961-91"}}) or ""),
+           str(rotulo({"text": "111.111.111-11"})))
+    checar("{CPF}" in (rotulo({"interactive": {"title": "111.111.111-11"}}) or ""),
            "e pelo caminho do interativo também",
-           str(rotulo({"interactive": {"title": "110.014.961-91"}})))
+           str(rotulo({"interactive": {"title": "111.111.111-11"}})))
 
     # 🔴 O CONTROLE: mascarar não pode comer a navegação.
     checar(rotulo({"text": "2"}) == "2",
@@ -248,7 +248,7 @@ def teste_o_que_o_segurado_digitou_nao_vira_aresta() -> None:
     # `"{CPF}" in longo or len(longo) <= 60` — e o `or` a deixava passar de
     # graça. A mutação "mascarar DEPOIS de cortar" ficou VERDE. Guarda com
     # `or` frouxo é guarda que não guarda.
-    atravessa = "x" * 50 + " 110.014.961-91"
+    atravessa = "x" * 50 + " 111.111.111-11"
     longo = rotulo({"text": atravessa}) or ""
     checar("{CPF}" in longo,
            "🔴 CONTROLE — mascara ANTES de cortar em 60",

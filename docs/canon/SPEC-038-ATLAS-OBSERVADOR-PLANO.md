@@ -81,7 +81,7 @@ Messenger (decisão da corretora; perde ferramentas Business).
 ## ARQUITETURA DE EXECUÇÃO (arquivos e mudanças — nível implementação)
 
 ### Onda 0 — SPIKE de verificação (DECISÃO 18/07: no número do founder, já pareado)
-Sem chip novo: usa o **554796274743** (pessoal do founder, JÁ pareado no GO como
+Sem chip novo: usa o **554790000000** (pessoal do founder, JÁ pareado no GO como
 canal de teste — nada em produção real). Proteções para o número pessoal:
 - O filtro de borda vale DESDE O PRIMEIRO EVENTO: só conversas com números de
   seguradora do registry são processadas; amigos/grupos/status = descartados na

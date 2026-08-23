@@ -725,8 +725,8 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
 # numa conversa de atendimento perderia o horário do mesmo jeito.
 #
 # O conserto separa os dois jeitos reais de escrever placa: em CAIXA ALTA ela
-# pode ter separador (`QJQ 0A91`, `ABC-1D23`); em minúscula — que é como o
-# segurado digita no WhatsApp — ela vem colada (`qjq0a91`). Uma sequência de
+# pode ter separador (`AAA 0A91`, `ABC-1D23`); em minúscula — que é como o
+# segurado digita no WhatsApp — ela vem colada (`aaa0a91`). Uma sequência de
 # três letras minúsculas SEPARADA por espaço do resto é frase, não placa.
     (re.compile(r"(?<![A-Za-z0-9])(?-i:[A-Z]{3}[-\s]?\d[A-Z0-9]\d{2}|[a-z]{3}\d[a-z0-9]\d{2})(?![A-Za-z0-9])",
                 re.IGNORECASE), "{PLACA}"),
@@ -1019,7 +1019,7 @@ _PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
 ]
 
 # Rótulos de campo que costumam preceder um VALOR de cliente numa linha
-# "Rótulo: valor" (Placa: QJQ0A91 / Modelo: Gol / Nome: ...).
+# "Rótulo: valor" (Placa: AAA0A91 / Modelo: Gol / Nome: ...).
 #
 # A segunda metade da lista veio das telas de COMPROVANTE, medidas em
 # 28/07/2026. "Assistência: 8923467" (Yelum) e "Agendamento: 28/01/2026, entre
@@ -1419,7 +1419,7 @@ def templatize(text: str, *, documento_publico: bool = False,
     # 🔴 `_LABELED_VALUE` NASCEU PARA LER TELA, E A CARTA DO ACERVO É PROSA.
     #
     # Ele está ancorado em `^` porque nasceu de COMPROVANTE, onde cada campo
-    # ocupa uma linha: `Placa: QJQ0A91`. Uma carta destilada nunca é tela — é
+    # ocupa uma linha: `Placa: AAA0A91`. Uma carta destilada nunca é tela — é
     # um parágrafo que começa por onde o destilador quis. 📊 Três das 1.536
     # cartas da Allianz começavam com uma palavra que está na lista de rótulos,
     # e a linha inteira virou `{VALOR}`:
@@ -1486,7 +1486,7 @@ def _vale_neste_modo(padrao: str, documento_publico: bool) -> bool:
 
 def _aplicar_rotulo(s: str) -> str:
     """A parte de `templatize` que depende de `_LABELED_VALUE`. Ver o chamador."""
-    # "Placa: QJQ0A91" → "Placa: {VALOR}" (o valor após o rótulo é dado do cliente)
+    # "Placa: AAA0A91" → "Placa: {VALOR}" (o valor após o rótulo é dado do cliente)
     def _mask_labeled(m: re.Match) -> str:
         val = m.group(2).strip()
         # não mascara se o "valor" já é placeholder ou é curtíssimo/opção
@@ -1517,7 +1517,7 @@ def _aplicar_rotulo(s: str) -> str:
         # Com dois-pontos é rótulo de formulário e o valor é do cliente. Sem
         # dois-pontos, só é valor se PARECER valor: começa com dígito
         # ("Assistência 8923467") ou é um código/nome em caixa alta
-        # ("Placa QJQ0A91"). Prosa em minúscula é frase, não campo.
+        # ("Placa AAA0A91"). Prosa em minúscula é frase, não campo.
         if ":" not in m.group(1):
             primeira = val.split()[0]
             # Valor começa com letra ou dígito. "Cidade/CEP onde o reparo será

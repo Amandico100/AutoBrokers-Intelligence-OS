@@ -56,14 +56,14 @@ def run():
     tmpl, weav = _bootstrap()
 
     # 1) PII scrub
-    t = tmpl.templatize("Identifiquei a placa QJQ0A91 do CPF 030.743.279-36, tel (47) 98808-7463.")
-    check("placa mascarada", "{PLACA}" in t and "QJQ0A91" not in t, t)
+    t = tmpl.templatize("Identifiquei a placa AAA0A91 do CPF 030.743.279-36, tel (47) 98808-7463.")
+    check("placa mascarada", "{PLACA}" in t and "AAA0A91" not in t, t)
     check("cpf mascarado", "{CPF}" in t and "030.743" not in t, t)
     check("telefone mascarado", "{TELEFONE}" in t and "98808" not in t, t)
 
-    # 2) "Placa: QJQ0A91" → valor mascarado
-    t2 = tmpl.templatize("Placa: QJQ0A91\nModelo: Gol\nNome: Joao da Silva")
-    check("valor rotulado mascarado", "QJQ0A91" not in t2 and "{VALOR}" in t2, t2)
+    # 2) "Placa: AAA0A91" → valor mascarado
+    t2 = tmpl.templatize("Placa: AAA0A91\nModelo: Gol\nNome: Joao da Silva")
+    check("valor rotulado mascarado", "AAA0A91" not in t2 and "{VALOR}" in t2, t2)
 
     # 3) screen_node estrutura
     node = tmpl.screen_node("O que aconteceu com a chave?\nBotão 1: Dentro do veículo\nBotão 2: Perda\nBotão 3: Voltar")

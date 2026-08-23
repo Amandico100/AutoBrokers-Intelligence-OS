@@ -242,9 +242,9 @@ def run():
     check("agente ON = responde (sem observacao)", now_on is False)
 
     # ---------- 2) captura de canal (observacao) ----------
-    ok_in = asyncio.run(cap.capture_channel_message("c1", "554796274743", "5547999112233",
+    ok_in = asyncio.run(cap.capture_channel_message("c1", "554790000000", "5547999112233",
                                                     "meu carro quebrou", "in", "M1"))
-    ok_out = asyncio.run(cap.capture_channel_message("c1", "554796274743", "5547999112233",
+    ok_out = asyncio.run(cap.capture_channel_message("c1", "554790000000", "5547999112233",
                                                      "Ja estou vendo, um minuto", "out", "M2"))
     tr = store.get("attendance_transcripts", [])
     check("cliente e atendente humana capturados no cofre", ok_in and ok_out and len(tr) == 2

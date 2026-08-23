@@ -675,7 +675,7 @@ certo(_RB.M.extract_capture_anchors(_pb_porto, _limpo).get("protocol")
 # 🔴 CONTROLE 1: e o mascarador NAO virou peneira -- telefone e CPF continuam
 #    apagados na MESMA passagem.
 _SUJO = ("Aqui está seu protocolo 👇 1-408029004672. Meu telefone e "
-         "(47) 99627-4743 e o CPF 529.982.247-25")
+         "(47) 90000-0000 e o CPF 529.982.247-25")
 _lsujo = _H.higienizar(_pb_porto, _SUJO, set())[0]
 certo(not _H.auditar_pii(_lsujo) and "99627" not in _lsujo
       and "529.982" not in _lsujo,
@@ -699,7 +699,7 @@ certo(any(_re.search(r"protocolo de atendimento[^\d]{0,6}\d-\d{6,}", t)
 # 📊 `pick_option_by_plate` exigia `(\d+)\s*-` -- digito colado no hifen. A URA
 #    da Allianz e da Porto manda o numero EM NEGRITO:
 #
-#      "*1* - X1, placa EP#-###1   *2* - Outro veiculo   *0* - Sair"
+#      "*1* - X1, placa AA#-###1   *2* - Outro veiculo   *0* - Sair"
 #
 #    Com o `*` no meio, nada casava: a funcao devolvia '' nas telas reais das
 #    DUAS seguradoras, e so acertava a string do docstring, escrita a mao sem
@@ -715,21 +715,21 @@ print("[C20] a escolha pela placa casa a tela REAL, com o numero em negrito")
 print("=" * 74)
 
 _TELA_ALLIANZ = ("Por favor, confirme o veículo para atendimento: "
-                 "*1* - X1, placa EP#-###1 *2* - Outro veículo *0* - Sair")
-_TELA_PORTO = ("Valmor, como eu posso te ajudar? "
-               "*1* - JEEP, ano 2025, placa TB#-##44 "
+                 "*1* - X1, placa AA#-###1 *2* - Outro veículo *0* - Sair")
+_TELA_PORTO = ("Fulano, como eu posso te ajudar? "
+               "*1* - JEEP, ano 2025, placa BB#-##44 "
                "*2* - FIAT, ano 2019, placa QQ#-##11 *3* - Outro veículo")
 
-certo(_RB.M.CP.pick_option_by_plate(_TELA_ALLIANZ, "EPB1231") == "1",
+certo(_RB.M.CP.pick_option_by_plate(_TELA_ALLIANZ, "AAA1231") == "1",
       "🔴 a escolha pela placa casa a tela REAL, com o numero em negrito",
-      f"devolveu {_RB.M.CP.pick_option_by_plate(_TELA_ALLIANZ, 'EPB1231')!r}")
+      f"devolveu {_RB.M.CP.pick_option_by_plate(_TELA_ALLIANZ, 'AAA1231')!r}")
 
 # 🔴 CONTROLE 1: com DOIS veiculos, a placa decide QUAL -- e a resposta muda.
 certo(_RB.M.CP.pick_option_by_plate(_TELA_PORTO, "QQQ1111") == "2"
-      and _RB.M.CP.pick_option_by_plate(_TELA_PORTO, "TBC1244") == "1",
+      and _RB.M.CP.pick_option_by_plate(_TELA_PORTO, "BBB1244") == "1",
       "🔴 CONTROLE: com dois veiculos na tela, cada placa da uma tecla",
       f"{_RB.M.CP.pick_option_by_plate(_TELA_PORTO, 'QQQ1111')!r} / "
-      f"{_RB.M.CP.pick_option_by_plate(_TELA_PORTO, 'TBC1244')!r}")
+      f"{_RB.M.CP.pick_option_by_plate(_TELA_PORTO, 'BBB1244')!r}")
 
 # 🔴 CONTROLE 2: e placa que NAO esta na tela continua sem resposta -- a
 #    funcao nao pode chutar veiculo, que e o defeito que ela existe para

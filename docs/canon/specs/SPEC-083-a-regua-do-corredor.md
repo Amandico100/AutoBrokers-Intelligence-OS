@@ -994,7 +994,7 @@ Coerente com `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`. Por isso o corpus é **global po
 
 ```
 tela  7  "*1 -* R. ### ##TEVES J#####, ### - AP 1101 BLOCO A …"   ← DADO
-tela 10  "Registramos o telefone *+55 (47) 99627-4743* …"          ← DADO
+tela 10  "Registramos o telefone *+55 (47) 90000-0000* …"          ← DADO
 tela 16  "*1 -* 20/08/2026 (Quinta) *2 -* 21/08/2026 …"            ← DADO, e muda TODO DIA
 tela 25  "*RESUMO* … *Quando:* Quinta-feira, 20/08/2026 …"         ← DADO
 ```
@@ -1030,7 +1030,7 @@ ESQUELETOS DIFERENTES                 →  🟠 ACHADO. Duas hipóteses, e a
 📊 Das 29 telas da sessão validada, **quatro** trazem telefone em claro:
 
 ```
-#10  "Registramos o telefone *+55 (47) 99627-4743* … Deseja adicionar outro número?"
+#10  "Registramos o telefone *+55 (47) 90000-0000* … Deseja adicionar outro número?"
 #11  "Por favor, informe *o número de celular completo* com DDD"
 #12  "Obrigada! Anotei seu número *(48) 99909-5995*. Está correto?"
 #27  "Sua senha será os 4 últimos dígitos desse telefone *4743*"
@@ -1608,7 +1608,7 @@ o vazamento que `O-ATLAS-E-UM-SO-E-E-DE-TODAS.md` (linhas 73-95) nomeia como o
 real. **CONTROLE:** uma linha com `"Rafael, escolha"` tem de ser **acusada**;
 `"{NOME}, escolha"` tem de **passar**.
 
-🔴 **A v1 usava `grep -cE '[0-9]{11}'`.** Ele **não casa** `+55 (47) 99627-4743` — a maior sequência de dígitos ali tem **cinco**. Devolvia 0 com quatro telefones no arquivo. *"Um guarda que não tem como falhar não guarda nada"* (CLAUDE.md §9.3).
+🔴 **A v1 usava `grep -cE '[0-9]{11}'`.** Ele **não casa** `+55 (47) 90000-0000` — a maior sequência de dígitos ali tem **cinco**. Devolvia 0 com quatro telefones no arquivo. *"Um guarda que não tem como falhar não guarda nada"* (CLAUDE.md §9.3).
 
 **Guarda:** `test_o_corpus_nao_vaza_pii.py` — com **linha de controle**: injeta uma linha com telefone real (tem de acusar) e a mesma mascarada (tem de passar). **As duas passando, ou as duas falhando, o guarda não guarda.**
 

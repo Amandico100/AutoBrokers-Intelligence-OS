@@ -2,7 +2,7 @@
 
 O defeito
 ---------
-`_LABELED_VALUE` mascara "Rótulo: valor" — "Placa: QJQ0A91" vira
+`_LABELED_VALUE` mascara "Rótulo: valor" — "Placa: AAA0A91" vira
 "Placa: {VALOR}". Mas os dois-pontos eram OPCIONAIS e o valor era `(.+)$`,
 guloso até o fim da linha. Resultado:
 
@@ -24,7 +24,7 @@ A regra agora
 -------------
 Com dois-pontos, é rótulo de formulário e o valor é do cliente — mascara.
 Sem dois-pontos, só mascara se o valor PARECER valor: começa com dígito
-("Assistência 8923467") ou é código/nome em caixa alta ("Placa QJQ0A91").
+("Assistência 8923467") ou é código/nome em caixa alta ("Placa AAA0A91").
 Prosa em minúscula é frase, não campo.
 
 Este teste anda nas duas direções de propósito. Um mascarador que só é testado
@@ -90,8 +90,8 @@ CONHECIMENTO = [
 
 # Rótulos de verdade, de tela de comprovante — estes TÊM de ser mascarados.
 DADOS_DE_CLIENTE = [
-    "Placa: QJQ0A91",
-    "Placa QJQ0A91",
+    "Placa: AAA0A91",
+    "Placa AAA0A91",
     "Nome: João da Silva",
     "Assistência: 8923467",
     "Assistência 8923467",

@@ -302,7 +302,7 @@ def rodar():
     DESTINO = "Rua Sao Jose, 90 - Centro - Sao Jose - SC"
     SLOTS_ALLIANZ = {
         "titular_cpf": "11122233344", "titular_nome": "Joao da Silva",
-        "veiculo_placa": "JCL9A59", "veiculo_descricao": "Toyota Hilux SW4 2019",
+        "veiculo_placa": "AAA9A59", "veiculo_descricao": "Toyota Hilux SW4 2019",
         "local_atual": CERTO, "local_destino": DESTINO,
         "problema_descricao": "nao liga", "quando": "agora",
         "telefone_contato": "48991072089", "servico_opcao": "3",
@@ -312,7 +312,7 @@ def rodar():
 
     def _rajada_da_ura(origem):
         """O resumo em DUAS bolhas: os dados numa, a pergunta final na outra."""
-        corpo = ("*RESUMO DA SOLICITACAO*\n*Placa:* JC#-###9\n*Veiculo:* HILUX SW4\n"
+        corpo = ("*RESUMO DA SOLICITACAO*\n*Placa:* AA#-###9\n*Veiculo:* HILUX SW4\n"
                  "*Servico:* reboque para pane mecanica\n"
                  f"*Origem:* {origem}\n*Destino:* {DESTINO}")
         s = dispatch.new_dispatch_session(

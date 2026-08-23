@@ -391,7 +391,7 @@ def normalizar_peca(texto: Optional[str]) -> str:
 
 
 def normalizar_placa(texto: Optional[str]) -> str:
-    """'qjq-0a91' e 'QJQ0A91' sao o mesmo carro. So alfanumerico, maiusculo."""
+    """'aaa-0a91' e 'AAA0A91' sao o mesmo carro. So alfanumerico, maiusculo."""
     return "".join(c for c in _fold(texto).upper() if c.isalnum())
 
 

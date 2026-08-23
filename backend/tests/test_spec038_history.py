@@ -119,7 +119,7 @@ def run():
                          "message": {"conversation": "Enviaremos o guincho. Confirma?"}}},
         ]},
     ]}}
-    integ = {"purpose": "observer", "company_id": "c1", "identifier": "554796274743"}
+    integ = {"purpose": "observer", "company_id": "c1", "identifier": "554790000000"}
     res = asyncio.run(hist.ingest_history_sync(integ, body))
     check("2 conversas vistas, 1 de seguradora", res["conversations"] == 2 and res["insurer_conversations"] == 1, res)
     evs = store.get("observed_events", [])

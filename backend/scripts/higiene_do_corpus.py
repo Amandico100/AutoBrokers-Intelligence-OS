@@ -249,7 +249,7 @@ def _preservar_capturas(playbook: Dict[str, Any], cru: str,
 
 # ── a auditoria de PII (SPEC-083 Bloco A, VERIFY) ────────────────────────────
 # 🔴 A v1 da SPEC usava `grep -cE '[0-9]{11}'`. Ele NÃO casa
-# `+55 (47) 99627-4743` — a maior sequência de dígitos ali tem CINCO. Devolvia
+# `+55 (47) 90000-0000` — a maior sequência de dígitos ali tem CINCO. Devolvia
 # 0 com quatro telefones no arquivo. *"Um guarda que não tem como falhar não
 # guarda nada"* (CLAUDE.md §9.3). Os padrões abaixo são os da própria SPEC.
 _AUDITORIA = (

@@ -408,7 +408,7 @@ INFOCAP = {
     "ok": True, "status": "found",
     "policy": {"numapo": "312520261149211", "seguradora": "LIBERTY SEGUROS S/A",
                "seguradora_abrev": "LIBE", "active": True},
-    "vehicle": {"placa": "QJQ0A91", "chassi": "98867513WJKH74022",
+    "vehicle": {"placa": "AAA0A91", "chassi": "98867513WJKH74022",
                 "veiculo": "NIVUS COMFORTLINE 1.0 200 TSI FLEX AUT", "ano": "2022"},
     "client": {"nome": "RAFAEL LACAU DA SILVEIRA", "cpf_cnpj": "03074327936",
                "logradouro": "RUA CAPITAO ROMUALDO DE BARROS", "numero": "705",

@@ -510,7 +510,7 @@ def auditar(destino: str) -> int:
     """🔴 O VERIFY que CONSEGUE falhar (SPEC-083 Bloco A).
 
     A v1 da SPEC usava `grep -cE '[0-9]{11}'`. Ele **não casa**
-    `+55 (47) 99627-4743` — a maior sequência de dígitos ali tem CINCO.
+    `+55 (47) 90000-0000` — a maior sequência de dígitos ali tem CINCO.
     Devolvia 0 com quatro telefones no arquivo.
     """
     total = sujas = 0

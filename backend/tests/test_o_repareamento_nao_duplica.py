@@ -527,8 +527,8 @@ def teste_o_observer_number_continua_estavel():
     np = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(np)
 
-    checar(np.identidade_pareada({"data": {"jid": "554796274743:12@s.whatsapp.net"}})
-           == ("554796274743:12@s.whatsapp.net", "+554796274743"),
+    checar(np.identidade_pareada({"data": {"jid": "554790000000:12@s.whatsapp.net"}})
+           == ("554790000000:12@s.whatsapp.net", "+554790000000"),
            "o sufixo de dispositivo sai do telefone",
            "sem isso, trocar de aparelho viraria uma linha nova")
     checar(np.identidade_pareada({"data": {"LoggedIn": True}}) == (None, None),

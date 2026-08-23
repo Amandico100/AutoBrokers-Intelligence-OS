@@ -317,7 +317,7 @@ def run():
     check("yelum menu inicial -> Automóvel", _outs(sy)[-1] == "Automóvel", _outs(sy)[-1:])
     sy = dispatch.handle_insurer_message(sy, "Para começar, me informe somente o CPF ou CNPJ do títular da apólice. Exemplo: 123.456.789-00 ou 12.345.678/0001-00")
     check("yelum URA 2026 pede CPF -> CPF", _outs(sy)[-1] == "11122233344", _outs(sy)[-1:])
-    sy = dispatch.handle_insurer_message(sy, "Identifiquei em seu cadastro a placa QJQ0A91. Deseja continuar com o atendimento para o veículo ou atendimento residencial? Botão 1: Automóvel Botão 2: Residencial")
+    sy = dispatch.handle_insurer_message(sy, "Identifiquei em seu cadastro a placa AAA0A91. Deseja continuar com o atendimento para o veículo ou atendimento residencial? Botão 1: Automóvel Botão 2: Residencial")
     check("yelum 'identifiquei a placa' -> Automóvel (era o passo do loop!)", _outs(sy)[-1] == "Automóvel", _outs(sy)[-1:])
     sy = dispatch.handle_insurer_message(sy, "Por favor, me informe o seu nome ou como gostaria de ser chamado.")
     check("yelum nome do operador", _outs(sy)[-1] == "Atendimento", _outs(sy)[-1:])

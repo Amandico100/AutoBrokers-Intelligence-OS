@@ -16,7 +16,7 @@ E nada impedia a repetição. 📊 Medido em 04/08/2026 no Supabase
       FROM portal_jobs WHERE journey='abrir_atendimento';
     -->  39 jobs   para   5 pedidos distintos
 
-Um único pedido — placa QJQ0A91, dano em 05/07/2026, "vidro de porta" — tem 30
+Um único pedido — placa AAA0A91, dano em 05/07/2026, "vidro de porta" — tem 30
 jobs. Não machucou ninguém por um motivo que não vai durar: o gate do worker
 está desligado e nenhum dos 39 chegou ao passo 7.
 
@@ -102,7 +102,7 @@ INFOCAP = {
     "ok": True, "status": "found",
     "policy": {"numapo": "312520261149211", "seguradora": "LIBERTY SEGUROS S/A",
                "seguradora_abrev": "LIBE", "active": True},
-    "vehicle": {"placa": "QJQ0A91", "chassi": "98867513WJKH74022",
+    "vehicle": {"placa": "AAA0A91", "chassi": "98867513WJKH74022",
                 "veiculo": "COMPASS LIMITED 2.0 4X2 16V AUT. (FLEX)"},
     "client": {"nome": "RAFAEL LACAU DA SILVEIRA", "cpf_cnpj": "03074327936",
                "logradouro": "RUA CAPITÃO ROMUALDO DE BARROS", "numero": "705",
@@ -111,7 +111,7 @@ INFOCAP = {
 }
 
 
-def pedido(peca="vidro de porta", data="05/07/2026", placa="QJQ0A91", descricao="") -> dict:
+def pedido(peca="vidro de porta", data="05/07/2026", placa="AAA0A91", descricao="") -> dict:
     """O formato mínimo que `chave_de_idempotencia` lê dos params."""
     return {"placa": placa, "data_dano": data,
             "dano": {"peca": peca, "descricao": descricao,
@@ -207,8 +207,8 @@ def teste_a_grafia_nao_inventa_pedido():
                pp.chave_de_idempotencia(pedido(peca=variacao), EMPRESA) == base,
                pp.chave_de_idempotencia(pedido(peca=variacao), EMPRESA))
 
-    for placa in ("qjq0a91", "QJQ-0A91", " QJQ0A91 "):
-        checar(f"placa '{placa}' bate com 'QJQ0A91'",
+    for placa in ("aaa0a91", "AAA-0A91", " AAA0A91 "):
+        checar(f"placa '{placa}' bate com 'AAA0A91'",
                pp.chave_de_idempotencia(pedido(placa=placa), EMPRESA) == base)
 
     for data in ("5/7/2026", "05-07-2026", "05.07.2026", "05/07/26"):

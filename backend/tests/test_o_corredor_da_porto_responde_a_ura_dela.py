@@ -10,7 +10,7 @@ bateria   "Você quer seguir com o agendamento?"        Não = CANCELA tudo
 bateria   "a solicitação de agendamento foi encerrada e a solicitação cancelada"
 chaveiro  "E de qual serviço de chaveiro você precisa?"
 chaveiro  "Caso você tenha uma chave reserva guardada em outro local..."
-guincho   "Valmor, como eu posso te ajudar? 1 - JEEP, placa ... 2 - Outro"
+guincho   "Fulano, como eu posso te ajudar? 1 - JEEP, placa ... 2 - Outro"
 guincho   o TÁXI encadeado: passageiros · mesmo endereço · para onde
 tecnico   agendamento em três telas: data · período · faixa de horário
 tecnico   "Entendi. O que você precisa? Recarga / Bateria nova / Troca"
@@ -85,8 +85,8 @@ TELA_CHAVE_RESERVA = ("Tudo bem. Caso você tenha uma chave reserva guardada em 
                       "outro local, posso pedir para um prestador buscar e "
                       "levar até você. Gostaria desse serviço?" + Q +
                       "Botão 1: Sim" + Q + "Botão 2: Não" + Q + "Botão 3: Voltar")
-TELA_MENU_VEIC = ("Valmor, como eu posso te ajudar?" + Q +
-                  "*1* - JEEP, ano 2025, placa TB#-##44" + Q +
+TELA_MENU_VEIC = ("Fulano, como eu posso te ajudar?" + Q +
+                  "*1* - JEEP, ano 2025, placa BB#-##44" + Q +
                   "*2* - FIAT, ano 2019, placa QQ#-##11" + Q +
                   "*3* - Outro veículo" + Q + "*4* - Mais assuntos")
 TELA_TAXI_MESMO = ("O táxi deve ir para o mesmo endereço informado para o "
@@ -195,9 +195,9 @@ certo(r5 == "2", "🔴 porto/auto/guincho: a placa QQQ1111 é a SEGUNDA da lista
       f"respondeu {r5!r}")
 
 # 🔴 CONTROLE: outra placa, outra tecla.
-s6 = IDS.start_dispatch(sessao("guincho", veiculo_placa="TBC1244"))
+s6 = IDS.start_dispatch(sessao("guincho", veiculo_placa="BBB1244"))
 s6, r6 = responder(s6, TELA_MENU_VEIC)
-certo(r6 == "1", "🔴 CONTROLE: com a placa TBC1244 a resposta MUDA para 1",
+certo(r6 == "1", "🔴 CONTROLE: com a placa BBB1244 a resposta MUDA para 1",
       f"respondeu {r6!r}")
 
 print()

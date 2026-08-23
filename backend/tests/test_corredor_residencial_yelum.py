@@ -432,7 +432,7 @@ def teste_o_protocolo_agora_e_capturado():
            "'*Assistência:* 9666474' e capturado", str(m and m.group(1)))
 
     for nome, texto, esperado in (
-        ("hdi auto", "*Resumo da solicitação*\n\n*Placa:* AZH0926\n*Assistência:* 9662631", "9662631"),
+        ("hdi auto", "*Resumo da solicitação*\n\n*Placa:* AAA0926\n*Assistência:* 9662631", "9662631"),
         ("allianz", "Assistência: 52339760", "52339760"),
         ("hdi finaliza", "Assistência:  9662631  \nFinalizamos o atendimento.", "9662631"),
     ):

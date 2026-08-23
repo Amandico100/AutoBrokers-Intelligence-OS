@@ -105,7 +105,7 @@ DESTINO = "Rua São José, 90 - Centro - São José - SC"
 
 SLOTS = {
     "titular_cpf": "11122233344", "titular_nome": "João da Silva",
-    "veiculo_placa": "JCL9A59", "veiculo_descricao": "Toyota Hilux SW4 2019",
+    "veiculo_placa": "AAA9A59", "veiculo_descricao": "Toyota Hilux SW4 2019",
     "local_atual": CERTO, "local_destino": DESTINO,
     "problema_descricao": "não liga", "quando": "agora",
     "telefone_contato": "48991072089", "servico_opcao": "3",
@@ -114,7 +114,7 @@ SLOTS = {
 
 def _resumo_allianz(origem: str, servico: str = "reboque para pane mecânica") -> str:
     return ("*RESUMO DA SOLICITAÇÃO*\n"
-            "*Placa:* JC#-###9\n"
+            "*Placa:* AA#-###9\n"
             "*Veículo:* HILUX SW4\n"
             f"*Serviço:* {servico}\n"
             f"*Origem:* {origem}\n"
@@ -155,26 +155,26 @@ def _passos(session) -> list:
 
 
 # ===========================================================================
-# [C1] A MÁSCARA — comparar `JC#-###9` com `JCL9A59` sem mentir para nenhum lado
+# [C1] A MÁSCARA — comparar `AA#-###9` com `AAA9A59` sem mentir para nenhum lado
 # ===========================================================================
 def teste_a_mascara_nao_e_comparada_como_texto() -> None:
     print("\n[C1] a placa vem mascarada, e mascarado não se compara com ==")
-    checar("JC#-###9" != "JCL9A59", "o erro clássico: == entre máscara e placa dá False",
+    checar("AA#-###9" != "AAA9A59", "o erro clássico: == entre máscara e placa dá False",
            "reprovaria o veículo CERTO")
-    checar(PB.bate_com_mascara("JC#-###9", "JCL9A59") is True, "máscara da placa certa bate")
-    checar(PB.bate_com_mascara("JD#-###2", "JCL9A59") is False, "máscara de OUTRO veículo não bate")
+    checar(PB.bate_com_mascara("AA#-###9", "AAA9A59") is True, "máscara da placa certa bate")
+    checar(PB.bate_com_mascara("AB#-###2", "AAA9A59") is False, "máscara de OUTRO veículo não bate")
     # CONTROLE do próprio [C1]: sem esta linha, um `return None` embutido faria
     # as duas de cima passarem sem comparar nada.
-    checar(PB.bate_com_mascara("JC#-##9", "JCL9A59") is None,
+    checar(PB.bate_com_mascara("AA#-##9", "AAA9A59") is None,
            "comprimento diferente = NÃO COMPARÁVEL (nem sim nem não)")
-    checar(PB.bate_com_mascara("", "JCL9A59") is None, "máscara vazia não vira veredito")
+    checar(PB.bate_com_mascara("", "AAA9A59") is None, "máscara vazia não vira veredito")
 
     # A peça que já existia continua inteira — e passou a USAR a generalização,
     # em vez de ganhar uma cópia ao lado (CLAUDE.md §5).
-    menu = "1 - COROLLA, placa JD#-###2\n2 - HILUX SW4, placa JC#-###9"
-    checar(PB.pick_option_by_plate(menu, "JCL9A59") == "2", "pick_option_by_plate segue escolhendo a 2")
+    menu = "1 - COROLLA, placa AB#-###2\n2 - HILUX SW4, placa AA#-###9"
+    checar(PB.pick_option_by_plate(menu, "AAA9A59") == "2", "pick_option_by_plate segue escolhendo a 2")
     checar(PB.pick_option_by_plate(menu, "ZZZ0Z00") == "", "e segue não chutando veículo")
-    checar(PB.pick_option_by_plate("1 - X, placa JC#-###9\n2 - Y, placa JC#-###9", "JCL9A59") == "",
+    checar(PB.pick_option_by_plate("1 - X, placa AA#-###9\n2 - Y, placa AA#-###9", "AAA9A59") == "",
            "duas opções que casam continuam devolvendo '' (ambiguidade não é escolha)")
 
 
@@ -184,7 +184,7 @@ def teste_a_mascara_nao_e_comparada_como_texto() -> None:
 def teste_o_resumo_e_lido_campo_a_campo() -> None:
     print("\n[C2] o resumo vira campos — uma etiqueta por linha e várias na mesma")
     r = PB.ler_resumo(_resumo_allianz(CERTO))
-    checar(r.get("placa") == "JC#-###9", "placa lida", str(r.get("placa")))
+    checar(r.get("placa") == "AA#-###9", "placa lida", str(r.get("placa")))
     checar(str(r.get("servico", "")).startswith("reboque"), "serviço lido", str(r.get("servico")))
     checar(r.get("origem") == CERTO, "origem lida", str(r.get("origem")))
     checar(r.get("destino") == DESTINO, "destino lido", str(r.get("destino")))
@@ -231,7 +231,7 @@ def teste_tres_caracteres_no_numero_da_rua_reprovam() -> None:
            "a barra separa cidade de UF", str(PB.parse_address_br("R. das Flores, 250, Centro, Palhoça/SC")))
     checar(PB.parse_address_br("R. das Flores, 250, Centro, Palhoça/SC").get("uf") == "SC",
            "e a UF deixa de ficar vazia")
-    casa = {"local_atual": "Rua das Flores, 250 - Centro - Palhoça - SC", "veiculo_placa": "JCL9A59"}
+    casa = {"local_atual": "Rua das Flores, 250 - Centro - Palhoça - SC", "veiculo_placa": "AAA9A59"}
     com_barra = PB.conferir_confirmacao(pb, ["Origem: R. das Flores, 250, Centro, Palhoça/SC\n"
                                              "Podemos confirmar o atendimento?"],
                                         casa, "guincho", parse_address=PB.parse_address_br)
@@ -306,7 +306,7 @@ def teste_o_sim_sai_das_opcoes_da_propria_tela() -> None:
 def teste_os_outros_tres_campos_tambem_reprovam() -> None:
     print("\n[C6] placa de outro carro, serviço trocado, destino que ninguém pediu")
     pb = PB.get_playbook("allianz-auto-whatsapp@v1")
-    outro = _resumo_allianz(CERTO).replace("JC#-###9", "JD#-###2")
+    outro = _resumo_allianz(CERTO).replace("AA#-###9", "AB#-###2")
     v = PB.conferir_confirmacao(pb, [outro], SLOTS, "guincho", parse_address=PB.parse_address_br)
     checar(v["ok"] is False and any(d["campo"] == "placa" for d in v["divergencias"]),
            "placa de OUTRO veículo da apólice reprova", str(v["divergencias"]))

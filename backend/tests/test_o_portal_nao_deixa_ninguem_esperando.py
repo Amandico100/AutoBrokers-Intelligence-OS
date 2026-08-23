@@ -62,7 +62,7 @@ VIGIA = _carregar()
 
 
 def _job(status, *, minutos_atras=0, iniciado_ha=None, evidence=None, error=None,
-         peca="vidro de porta", placa="QJQ0A91"):
+         peca="vidro de porta", placa="AAA0A91"):
     criado = AGORA - timedelta(minutes=minutos_atras)
     return {
         "id": "job-1", "company_id": "empresa-1", "status": status,
@@ -91,7 +91,7 @@ def teste_o_worker_que_nao_pega_vira_handoff():
         # O segurado não pode ouvir "aguarde" quando ninguém está trabalhando.
         texto = achado["para_o_segurado"].lower()
         checar("equipe" in texto, "o segurado é avisado de que um humano assumiu")
-        checar("vidro de porta" in texto and "qjq0a91" in texto.lower(),
+        checar("vidro de porta" in texto and "aaa0a91" in texto.lower(),
                "a mensagem diz de QUAL pedido está falando",
                achado["para_o_segurado"][:100])
 

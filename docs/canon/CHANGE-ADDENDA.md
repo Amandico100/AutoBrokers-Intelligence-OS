@@ -3719,3 +3719,60 @@ ingestão.
 - Vai para `PENDENCIAS.md` com dono 🤖 e o que destrava: gravar `selectedButtonID`
   no ingestor. 🔴 **E com o controle que prova o conserto:** as 13 sessões longas
   indefinidas da yelum têm de cair depois dele.
+
+---
+
+## SPEC-084.1 · A PII escrita à mão no código — **ESSENCIAL**
+
+**Data:** 23/08/2026 · **Autorização:** 🧑 **PENDENTE do Founder**
+
+### Problema
+
+O corpus é mascarado e tem guarda (`test_o_corpus_nao_vaza_pii`, 📊 20 asserções
+verdes). **Comentário e fixture não passam pelo mascarador.** Quando alguém
+transcreve uma tela real para explicar um passo — e esta SPEC transcreveu muitas
+—, o dado do segurado entra no repositório por uma porta que nenhum guarda
+vigiava.
+
+### Evidência
+
+📊 `backend/scripts/auditar_pii_no_codigo.py` (NOVO), sobre `git ls-files`:
+
+```
+166  primeira varredura, sem filtro estrutural
+ 85  com o filtro — 🔴 e ele engolia placa REAL
+101  com o filtro corrigido: a medida honesta
+ 89  restantes, em 117 arquivos, depois da limpeza desta SPEC
+```
+
+🔴 A correção do próprio filtro é o achado mais instrutivo: a regra *"poucos
+dígitos distintos → inventado"* valia para tudo, e uma placa real de 4 dígitos
+que repete um deles passava por fabricada. **Um detector que se engana para
+menos é pior que nenhum — ele dá licença.**
+
+### Consequência
+
+⚠️ Nem tudo dos 89 é dado de pessoa: número **publicado** de seguradora (`0800`,
+central de atendimento) tem forma de telefone e é endereço comercial. O
+subconjunto que preocupa é menor, e a triagem é o primeiro trabalho da varredura.
+
+🔴 O que impede fazê-la aqui é material, não preguiça: **ela cruza dez SPECs e
+mexe em fixture que guardas diferentes comparam entre si.** A placa mascarada e a
+placa do caso têm de mudar JUNTAS, ou o teste que prova
+`"AA#-###9" != "AAA9A59"` para de provar. Trocar de um lado só transforma um
+guarda em enfeite — e foi exatamente o que aconteceu três vezes na limpeza
+parcial desta SPEC, achado por medição.
+
+### Decisão
+
+- ✅ **Executado nesta SPEC:** os 12 identificadores que apareciam nos arquivos
+  que a 084.1 tocou, com substituição que **preserva a forma**, 38 arquivos
+  reescritos e 14 testes afetados rodados verdes.
+- ✅ **Entregue:** o auditor, que ⚠️ **nunca imprime o valor** — só a forma
+  (`LLLDLDD`) e uma sombra de 8 dígitos.
+- ⏸️ **NÃO executado:** a varredura dos 89 restantes. É mudança além do texto da
+  SPEC e depende de decisão do Founder (§11).
+- 🔴 **Controle exigido para quando for autorizada:** a contagem do auditor tem
+  de CAIR e a suíte tem de ficar como estava — medida num `git worktree` em
+  `HEAD`, **com uma linha de controle que prove que o worktree executa**. Sem
+  ela, um `cd` que falha faz tudo parecer "já vermelho antes".

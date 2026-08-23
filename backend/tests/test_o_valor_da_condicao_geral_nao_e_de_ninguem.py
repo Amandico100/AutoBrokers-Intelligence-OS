@@ -286,7 +286,7 @@ def teste_a_ressalva_nao_abriu_a_porta_para_gente():
         ("CPF", "O segurado portador do CPF 123.456.789-00 pediu o boleto de R$ 500,00."),
         ("telefone", "Ligar para (11) 98765-4321 e informar o valor de R$ 500,00."),
         ("e-mail", "Mandar para fulano.silva@gmail.com o comprovante de R$ 500,00."),
-        ("placa", "Placa: QJQ0A91 com franquia de R$ 500,00."),
+        ("placa", "Placa: AAA0A91 com franquia de R$ 500,00."),
         ("nome", "Bom dia, Maria Aparecida da Silva! Seu limite é de R$ 500,00."),
         ("endereço", "Rua das Flores, 220 — sinistro de R$ 500,00."),
         ("CNPJ", "A empresa 12.345.678/0001-90 recebeu R$ 500,00."),

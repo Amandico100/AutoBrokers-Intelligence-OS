@@ -220,7 +220,7 @@ def _choice_label(choice: Optional[Dict[str, Any]]) -> Optional[str]:
     📊 Medido nos 10 mapas ativos: 141 CPF, 34 CNPJ, 105 placas e 52 telefones
     gravados como rótulo de aresta. Exemplo literal do mapa da Allianz:
 
-        aresta  5b7ca670e1f1|110.014.961-91 -> 2bd9b17f842c
+        aresta  5b7ca670e1f1|111.111.111-11 -> 2bd9b17f842c
 
     A URA pediu o CPF; o segurado digitou; **o que ele digitou é a aresta**.
 
@@ -231,7 +231,7 @@ def _choice_label(choice: Optional[Dict[str, Any]]) -> Optional[str]:
     ⚠️ A ORDEM IMPORTA: mascarar ANTES de cortar em 60. Cortar primeiro parte o
     placeholder no meio (`{TELEFO`) e o resultado nem é mais um marcador.
 
-    ⚠️ E isto muda a CHAVE da aresta, de propósito: `A|110.014.961-91` e
+    ⚠️ E isto muda a CHAVE da aresta, de propósito: `A|111.111.111-11` e
     `A|123.456.789-00` passam a colapsar em `A|{CPF}`. Era uma aresta por
     segurado onde deveria haver uma por ROTA — o mapa media pessoas e achava
     que media caminhos. Mapa já gravado não se conserta com isto: precisa

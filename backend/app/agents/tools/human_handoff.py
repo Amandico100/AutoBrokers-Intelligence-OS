@@ -211,7 +211,7 @@ _TRACO = "━━━━━━━━━━"
 
 
 def _fone_bonito(bruto: Any) -> str:
-    """(47) 99627-4743 em vez de 5547996274743.
+    """(47) 90000-0000 em vez de 5547996274743.
 
     Não é enfeite: a atendente compara este número com o que está na tela do
     celular dela, e comparar 13 dígitos colados é onde o olho erra.

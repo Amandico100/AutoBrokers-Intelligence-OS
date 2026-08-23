@@ -25,7 +25,7 @@ O que quebra é a **ponte de dados** entre o atendente (WhatsApp) e a tool `port
   | | Job WhatsApp (travou) | Job com dados reais (chega no 80%) |
   |---|---|---|
   | insurer | `Liberty` | `Yelum` |
-  | placa | `ABC1D23` (inventada) | `QJQ0A91` (real) |
+  | placa | `ABC1D23` (inventada) | `AAA0A91` (real) |
   | `segurado` | ausente | presente |
   | local | `SP/São Paulo` | `SC/Florianópolis` |
 
@@ -33,7 +33,7 @@ O que quebra é a **ponte de dados** entre o atendente (WhatsApp) e a tool `port
   O connector consulta `/documento` (financeiro/comissão) e mascara o endereço. **A placa não está lá.**
 - **Descoberta desta spec (o que a SPEC-024 errou):** a InfoCap TEM o veículo, no endpoint **`/itens`**
   (`GET /itens?codfil=<>&nosnum=<>`), que **nenhuma parte do código chama**. Ao chamar, veio tudo real:
-  `placa=QJQ0A91`, `chassi=98867513WJKH74022`, `veiculo=COMPASS LIMITED...`, `fipe=170470`,
+  `placa=AAA0A91`, `chassi=98867513WJKH74022`, `veiculo=COMPASS LIMITED...`, `fipe=170470`,
   `anofab/anomod=2018`, `renavam`, as `garantias` (inclui "VIDROS VIP") e até a **tabela de franquia de
   vidros** em `observacoes` (Para-brisa R$630, Laterais R$195, Retrovisores R$335…). O endereço do
   segurado vem do `/cliente` (`enderecos[padrao]`: logradouro/número/bairro/**cep**/cidade/**estado**).

@@ -146,7 +146,7 @@ INFOCAP = {
     "ok": True, "status": "found",
     "policy": {"numapo": "312520261149211", "seguradora": "LIBERTY SEGUROS S/A",
                "seguradora_abrev": "LIBE", "active": True},
-    "vehicle": {"placa": "QJQ0A91", "chassi": "98867513WJKH74022",
+    "vehicle": {"placa": "AAA0A91", "chassi": "98867513WJKH74022",
                 "veiculo": "COMPASS LIMITED 2.0 4X2 16V AUT. (FLEX)"},
     "client": {"nome": "RAFAEL LACAU DA SILVEIRA", "cpf_cnpj": "03074327936",
                "logradouro": "RUA CAPITAO ROMUALDO DE BARROS", "numero": "705",
@@ -406,7 +406,7 @@ def teste_o_pedido_continua_nao_abrindo_duas_vezes():
 CASO_AUTO = {
     "subservice": "guincho", "insurer_key": "allianz", "line_kind": "auto",
     "titular_cpf": "52998224725", "titular_nome": "Rafael Lacau",
-    "veiculo_placa": "QJQ0A91", "telefone_contato": "48991234567",
+    "veiculo_placa": "AAA0A91", "telefone_contato": "48991234567",
     "local_atual": "Rua Capitao Romualdo de Barros, 705, Florianopolis, SC",
     "local_destino": "Oficina Central, Sao Jose, SC", "pessoa_no_local": "Rafael",
     "quando": "agora", "problema_descricao": "o carro nao liga e esta na rua",

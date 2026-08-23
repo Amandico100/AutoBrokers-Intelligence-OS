@@ -143,8 +143,8 @@ def _msg_event(remote, text, from_me=False, mid="M1"):
 def run():
     print("== SPEC-038 Bloco A — Observador ==\n")
     intake, store, redis = _bootstrap()
-    integ_obs = {"purpose": "observer", "company_id": "c1", "identifier": "554796274743"}
-    integ_att = {"purpose": "attendance", "company_id": "c1", "identifier": "554796274743"}
+    integ_obs = {"purpose": "observer", "company_id": "c1", "identifier": "554790000000"}
+    integ_att = {"purpose": "attendance", "company_id": "c1", "identifier": "554790000000"}
     hdi = "551155020700@s.whatsapp.net"      # registry HDI
     amigo = "5547999112233@s.whatsapp.net"   # NÃO-seguradora
 
@@ -164,7 +164,7 @@ def run():
     # 3) FILTRO DE BORDA: amigo → NADA armazenado + contador
     r3 = asyncio.run(intake.observer_tap(integ_obs, _msg_event(amigo, "oi mano", mid="A3")))
     check("amigo descartado (nada armazenado)", len(store["observed_events"]) == 2)
-    drops = redis.hashes.get("atlas:drops:554796274743", {})
+    drops = redis.hashes.get("atlas:drops:554790000000", {})
     check("contador de descarte non_insurer", drops.get("non_insurer", 0) >= 1, drops)
     check("observer ainda consome no descarte", isinstance(r3, dict))
 

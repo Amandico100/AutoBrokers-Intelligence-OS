@@ -64,7 +64,7 @@ INFOCAP = {
     "policy": {"numapo": "312520261149211", "codfil": "1", "nosnum": "99793",
                "seguradora": "LIBERTY SEGUROS S/A", "seguradora_abrev": "LIBE",
                "inivig": "04/05/2026", "fimvig": "04/05/2027", "active": True},
-    "vehicle": {"placa": "QJQ0A91", "chassi": "98867513WJKH74022",
+    "vehicle": {"placa": "AAA0A91", "chassi": "98867513WJKH74022",
                 "veiculo": "COMPASS LIMITED 2.0 4X2 16V AUT. (FLEX)", "fipe": "170470", "ano": "2018"},
     "client": {"nome": "RAFAEL LACAU DA SILVEIRA", "cpf_cnpj": "03074327936",
                "email": "rafael@resultaseguros.com.br", "telefone": "4832331732",
@@ -103,7 +103,7 @@ def run():
     p, e = pp.build_portal_params(FLAT, PROFILE, INFOCAP)
     check("valido -> sem erro", e is None and p is not None, e)
     check("insurer normalizado Liberty->Yelum", p["insurer_name"] == "Yelum")
-    check("placa REAL da InfoCap", p["placa"] == "QJQ0A91")
+    check("placa REAL da InfoCap", p["placa"] == "AAA0A91")
     check("segurado.apolice da InfoCap", p["segurado"]["apolice"] == "312520261149211")
     check("segurado.chassi da InfoCap", p["segurado"]["chassi"] == "98867513WJKH74022")
     check("segurado.ultimos_6_chassi", p["segurado"]["ultimos_6_chassi"] == "H74022")
@@ -130,8 +130,8 @@ def run():
     sem_placa = {**INFOCAP, "vehicle": {**INFOCAP["vehicle"], "placa": ""}}
     p, e = pp.build_portal_params(FLAT, PROFILE, sem_placa)
     check("sem placa -> pede placa_informada", p is None and e and "placa_informada" in e)
-    p, e = pp.build_portal_params({**FLAT, "placa_informada": "qjq0a91"}, PROFILE, sem_placa)
-    check("placa_informada cobre o buraco (upper)", e is None and p["placa"] == "QJQ0A91")
+    p, e = pp.build_portal_params({**FLAT, "placa_informada": "aaa0a91"}, PROFILE, sem_placa)
+    check("placa_informada cobre o buraco (upper)", e is None and p["placa"] == "AAA0A91")
 
     # sem seguradora -> erro (nunca chuta)
     p, e = pp.build_portal_params(FLAT, PROFILE, {**INFOCAP, "policy": {}})

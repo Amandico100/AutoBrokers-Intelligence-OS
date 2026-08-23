@@ -4,7 +4,7 @@ Rodar: python backend/tests/test_spec031_allianz_fixes.py
 
 - loop guard POR PASSO: '1' legitimo em passos seguidos NAO pausa; mesmo passo
   com mesma resposta 3x pausa;
-- veiculo pela PLACA MASCARADA (2 carros na apolice: 'JD#-###2' vs 'JC#-###9');
+- veiculo pela PLACA MASCARADA (2 carros na apolice: 'AB#-###2' vs 'AA#-###9');
 - noops Allianz (termo de privacidade, dicas, fique tranquilo, opcao invalida)
   nao geram resposta do adaptativo;
 - sessao test_aborted SELADA: nova saudacao da URA nao recebe resposta (zumbi).
@@ -53,7 +53,7 @@ router = _load("app.services.dispatch_router", "app/services/dispatch_router.py"
 
 SLOTS = {
     "titular_cpf": "50021648034", "titular_nome": "Eduardo Teste",
-    "veiculo_placa": "JCL9A59", "local_atual": "Rua Piaui, 325, Bucareim, Joinville SC",
+    "veiculo_placa": "AAA9A59", "local_atual": "Rua Piaui, 325, Bucareim, Joinville SC",
     "local_destino": "Oficina X, Rua B, 2, Centro, Joinville SC",
     "problema_descricao": "bateria descarregada, nao liga",
     "telefone_contato": "47988087463", "pessoa_no_local": "Eduardo",
@@ -75,10 +75,10 @@ def run():
     os.environ["DISPATCH_FINALIZE_MODE"] = "test"
 
     # ---------- pick_option_by_plate ----------
-    menu = "Por favor, confirme o veiculo para atendimento:\n\n1 - 2500,  placa JD#-###2\n2 - HILUX SW4,  placa JC#-###9\n3 - Outro veiculo\n0 - Sair"
-    check("placa: escolhe a HILUX (opcao 2)", pb.pick_option_by_plate(menu, "JCL9A59") == "2", pb.pick_option_by_plate(menu, "JCL9A59"))
+    menu = "Por favor, confirme o veiculo para atendimento:\n\n1 - 2500,  placa AB#-###2\n2 - HILUX SW4,  placa AA#-###9\n3 - Outro veiculo\n0 - Sair"
+    check("placa: escolhe a HILUX (opcao 2)", pb.pick_option_by_plate(menu, "AAA9A59") == "2", pb.pick_option_by_plate(menu, "AAA9A59"))
     check("placa: sem match seguro -> vazio", pb.pick_option_by_plate(menu, "ZZZ0Z00") == "")
-    check("placa: ambiguidade -> vazio", pb.pick_option_by_plate("1 - A, placa JC#-###9\n2 - B, placa JC#-###9", "JCL9A59") == "")
+    check("placa: ambiguidade -> vazio", pb.pick_option_by_plate("1 - A, placa AA#-###9\n2 - B, placa AA#-###9", "AAA9A59") == "")
 
     # ---------- Fluxo Allianz real: '1' repetido NAO pausa + veiculo certo ----------
     s = dispatch.new_dispatch_session(case_id="a", company_id="co", playbook_ref="allianz-auto-whatsapp@v1", subservice="bateria", slots=dict(SLOTS))

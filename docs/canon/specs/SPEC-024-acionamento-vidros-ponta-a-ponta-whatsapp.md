@@ -15,7 +15,7 @@ Segurado pediu acionamento de vidro. O atendente identificou na InfoCap, mas o j
 | Campo | Teste direto (✅ chega nos 80%) | Job do WhatsApp (❌ falhou) |
 |---|---|---|
 | `insurer_name` | `Yelum` | **`Liberty`** (nome legado; portal usa Yelum) |
-| `placa` | `QJQ0A91` (real, da apólice) | **`ABC1D23`** (INVENTADA pelo LLM) |
+| `placa` | `AAA0A91` (real, da apólice) | **`ABC1D23`** (INVENTADA pelo LLM) |
 | `segurado` | 9 campos (apólice, chassi, veículo, endereço, cep…) | **ausente / vazio** |
 | `local` | SC / Florianópolis / CEP real | **SP / São Paulo / CEP `01000-000`** (INVENTADOS) |
 

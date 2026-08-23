@@ -298,7 +298,7 @@ enfileirada no instante da reentrega — que é o único instante em que ela exi
 |---|---|---|---|---|---|
 | AutoFleet | `211462781935860` (grupo/LID) | **16/07/2026** | 22 recebidos + 8 enviados | **27 min**, um deles de **23 min** | conversa inteira num único dia com marcadores de "passo a passo"; **o alvo principal** |
 | AutoFleet | `110681340772419` (grupo/LID) | **28/07/2026** | 1 | 2min15 | ao lado do texto que explica o caminho da Bradesco por telefone e pelo corretor online |
-| Resulta | `554796274743` | **29/07/2026** | 7 enviados | 5min15 | mais recente da Resulta com marcador de ensino |
+| Resulta | `554790000000` | **29/07/2026** | 7 enviados | 5min15 | mais recente da Resulta com marcador de ensino |
 | AutoFleet | `554899694442` | **30/06/2026** | 2 enviados + 4 recebidos | 3min | |
 | AutoFleet | `554891314384` | 25/11/25 a 25/06/26 | 10 enviados | 1min23 | disperso, menor prioridade |
 
