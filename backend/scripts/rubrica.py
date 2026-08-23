@@ -26,6 +26,8 @@ C, D ou E enquanto B < 8.**
 
 from __future__ import annotations
 
+import ast
+import io
 import datetime as dt
 import glob
 import os
@@ -865,6 +867,31 @@ def eixo_d(rota, r: RP.Replay, *, tem_espelho: bool = False) -> List[Item]:
 # ═════════════════════════════════════════════════════════════════════════════
 # EIXO E — PROVA (15). Se alguém quebrar isto amanhã, algo fica vermelho?
 # ═════════════════════════════════════════════════════════════════════════════
+def _mutacoes_declaradas_no_repo() -> int:
+    """Quantas mutações o arquivo da régua DECLARA — por `ast`, sem executar.
+
+    ⚠️ Ler por `ast` e não importar é deliberado: importar o arquivo de teste
+    executa as asserções dele (é o que `VM._carregar_mutacoes` faz, apesar do
+    que o docstring dele diz), e a régua não pode rodar a suíte para se medir.
+    """
+    caminho = os.path.join(M.RAIZ_BACKEND, "tests", "test_a_regua_nao_tem_furo.py")
+    try:
+        arvore = ast.parse(io.open(caminho, encoding="utf-8").read())
+    except (OSError, SyntaxError):
+        return 0
+    for no in arvore.body:
+        alvos = no.targets if isinstance(no, ast.Assign) else []
+        if not any(isinstance(a, ast.Name) and a.id == "MUTACOES" for a in alvos):
+            continue
+        try:
+            valor = ast.literal_eval(no.value)
+        except (ValueError, TypeError, SyntaxError):
+            return 0
+        return len([x for x in valor
+                    if isinstance(x, (list, tuple)) and len(x) == 4])
+    return 0
+
+
 def eixo_e(rota, r: RP.Replay, *, mutacoes_ok: Optional[Tuple[int, int]] = None) -> List[Item]:
     """🔴 Avaliado POR ARQUIVO, e a nota da rota é a do MELHOR arquivo que a nomeia.
 
@@ -939,9 +966,32 @@ def eixo_e(rota, r: RP.Replay, *, mutacoes_ok: Optional[Tuple[int, int]] = None)
                           "nao rodado (use --verificar-mutacoes)"))
     else:
         boas, total = mutacoes_ok
-        itens.append(Item("E", "a mutacao fica vermelha (EXECUTADA)",
-                          6 if (total and boas == total) else 0, 6,
-                          f"{boas} de {total} mutacoes executadas e vermelhas"))
+        # ══════════════════════════════════════════════════════════════════
+        # 🔴 SPEC-084.2 · A TUPLA PRECISA BATER COM O QUE O REPO DECLARA
+        # ══════════════════════════════════════════════════════════════════
+        #
+        # 📊 Achado por um subagente em 23/08/2026: a régua vinha sendo medida
+        #    com `mutacoes_ok=(12,12)` passado à mão, enquanto
+        #    `test_a_regua_nao_tem_furo` declarava **11** mutações. O item vale
+        #    6 pontos em TODAS as rotas, e ninguém conferia o número.
+        #
+        # ⚠️ O item nunca leu o valor — só `boas == total` —, então a nota não
+        #    mudava. Mas um número afirmado sem fonte, num item de 6 pontos,
+        #    é exatamente o que a §12.1 proíbe: **quem lê o relatório acredita
+        #    no número, não na aritmética.**
+        #
+        # 🔴 Agora a tupla é CONFERIDA contra o `MUTACOES` do arquivo, por
+        #    `ast` (sem executar nada). Divergiu, o item cai e diz por quê —
+        #    em vez de dar 6 pontos calado.
+        declaradas = _mutacoes_declaradas_no_repo()
+        if declaradas and total != declaradas:
+            itens.append(Item("E", "a mutacao fica vermelha (EXECUTADA)", 0, 6,
+                              f"a tupla diz {total} mutacoes e o repo declara "
+                              f"{declaradas} — numero sem fonte (§12.1)"))
+        else:
+            itens.append(Item("E", "a mutacao fica vermelha (EXECUTADA)",
+                              6 if (total and boas == total) else 0, 6,
+                              f"{boas} de {total} mutacoes executadas e vermelhas"))
     return itens
 
 

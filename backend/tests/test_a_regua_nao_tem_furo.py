@@ -89,6 +89,19 @@ PB = CP._PLAYBOOKS["allianz-residencial-whatsapp@v1"]
 #    relatorio. E a diferenca entre um guarda e um enfeite.
 # ===========================================================================
 MUTACOES = [
+    # FURO 6 (C6) - A TELA DO FORMULARIO NATIVO ERA ORFA INOCUA.
+    #
+    # 📊 23/08/2026: 5 telas em 2 rotas disparavam `detect_native_flow` e
+    #    saiam do denominador. As duas tiravam AAA(106) 102/106 com a tela que
+    #    TRAVA o acionamento fora da conta -- a regua PREMIANDO o buraco.
+    #
+    # A mutacao devolve o replay cego. `hdi/auto/guincho` volta de 82/106 para
+    # 102/106, e o guarda tem de cair.
+    ("scripts/replay.py",
+     "        flow = M.detect_native_flow(pb, texto)",
+     "        flow = None  # DESLIGADO PELA MUTACAO",
+     "o formulario nativo NAO e uma tela inocua"),
+
     # (arquivo, texto_de, texto_para, rotulo_da_assercao_que_deve_cair)
 
     # FURO 20 (C20) - a escolha pela placa nao casava a tela REAL.
@@ -737,6 +750,41 @@ certo(_RB.M.CP.pick_option_by_plate(_TELA_PORTO, "QQQ1111") == "2"
 certo(_RB.M.CP.pick_option_by_plate(_TELA_PORTO, "ZZZ9999") == "",
       "🔴 CONTROLE: placa que nao esta na tela NAO escolhe nada",
       f"devolveu {_RB.M.CP.pick_option_by_plate(_TELA_PORTO, 'ZZZ9999')!r}")
+
+print()
+print("=" * 74)
+print("[C6] a tela do FORMULARIO NATIVO nao e uma tela inocua")
+print("=" * 74)
+
+# 🔴 O quarto ponto cego da familia C8/C9/P-084-30 -- e o unico que erra para
+#    o lado do PREMIO. O replay nunca chamava `detect_native_flow`, entao a
+#    tela que TRAVA o acionamento saia do denominador como orfa inocua, e o
+#    item "zero orfas funcionais" dava 20/20 a duas rotas que nao respondem o
+#    formulario.
+import replay as _RPF                                            # noqa: E402
+
+_com_flow = {}
+for _rota_f in _RB.M.rotas():
+    _rp_f = _RPF.replay(_rota_f)
+    if _rp_f.formularios:
+        _com_flow[str(_rota_f)] = _rp_f
+
+certo(len(_com_flow) == 2,
+      "📊 duas rotas tem formulario nativo no corpus",
+      str(sorted(_com_flow)))
+
+_telas_flow = [t for rp in _com_flow.values() for t in rp.telas
+               if str(t.passo or "").startswith("flow")]
+certo(_telas_flow and all(t.classe != _RPF.ORFA_INOCUA for t in _telas_flow),
+      "o formulario nativo NAO e uma tela inocua",
+      f"classes: {[t.classe for t in _telas_flow]}")
+
+# 🔴 CONTROLE: as rotas CONTINUAM tendo orfas inocuas de verdade -- a classe
+#    nao sumiu, so deixou de abrigar o formulario. Sem esta metade, apagar a
+#    classe inteira passaria verde.
+certo(sum(rp.orfas_inocuas for rp in _com_flow.values()) > 0,
+      "🔴 CONTROLE: a classe ORFA_INOCUA continua existindo nas mesmas rotas",
+      str({k: v.orfas_inocuas for k, v in _com_flow.items()}))
 
 print()
 print("=" * 74)

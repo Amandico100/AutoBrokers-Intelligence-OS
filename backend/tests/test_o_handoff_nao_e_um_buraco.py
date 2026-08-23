@@ -91,8 +91,28 @@ print("     inverter mediria outro corredor — em `insurer_dispatch_service`")
 print("     o gatilho só é lido quando NENHUM passo casou")
 
 FONTE = open(os.path.join(RAIZ, "scripts", "replay.py"), encoding="utf-8").read()
-i_passo = FONTE.find("passo = M.match_ura_step(pb, texto, subservice=rota.servico)")
+
+# 🔴 ATUALIZADO em 23/08/2026 — SPEC-084.2 C6, CLAUDE.md §9.3.
+#
+#    Esta ancora era a linha literal `passo = M.match_ura_step(...)`. O C6 pos
+#    o FORMULARIO NATIVO na frente do passo, e a linha virou
+#    `passo = (None if flow is not None else M.match_ura_step(...))` — entao a
+#    busca devolvia -1 e o guarda caia por nao achar o texto, nao por a ordem
+#    ter mudado. **Guarda que reprova sem que o invariante tenha mudado ensina
+#    a desligar guarda.**
+#
+# ⚠️ E a LICAO CRESCEU em vez de morrer: agora sao TRES em ordem, e a de cima
+#    e a unica divergencia declarada em relacao ao motor. No motor,
+#    `_responder_formulario_nativo` vem DEPOIS do laco de passos; aqui vem
+#    ANTES, de proposito, porque uma ancora de texto que casasse a tela do
+#    formulario compraria de volta os 20 pontos que o C6 tirou. A URA nao
+#    aceita texto naquela tela.
+i_flow = FONTE.find("flow = M.detect_native_flow(pb, texto)")
+i_passo = FONTE.find("else M.match_ura_step(pb, texto, subservice=rota.servico))")
 i_hand = FONTE.find("elif M.detect_handoff_trigger(pb, texto):")
+certo(0 < i_flow < i_passo,
+      "🔴 o FORMULARIO NATIVO vem antes do passo — a divergencia declarada (C6)",
+      f"flow em {i_flow}, passo em {i_passo}")
 certo(0 < i_passo < i_hand,
       "🔴 `match_ura_step` vem ANTES de `detect_handoff_trigger`",
       f"passo em {i_passo}, gatilho em {i_hand}")

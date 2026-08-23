@@ -57,6 +57,27 @@ match_ura_step = CP.match_ura_step
 extract_capture_anchors = CP.extract_capture_anchors
 detect_finalize_anchor = CP.detect_finalize_anchor
 detect_handoff_trigger = CP.detect_handoff_trigger
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 C6 · O MOTOR DO FORMULÁRIO NATIVO, QUE ESTA CAMADA NUNCA APONTOU
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 23/08/2026: `detect_native_flow` existia no motor, estava listada em
+#    `detector_do_eixo_e.py` como FUNÇÃO DO MOTOR — e não tinha ponteiro aqui.
+#    Nenhum consumidor da régua conseguia chamá-la sem furar esta camada, que é
+#    a única autorizada a abrir `corridor_playbooks`.
+#
+# 🔴 O furo tinha DOIS andares: `replay.py` não chamava a função, e esta camada
+#    não a oferecia. A tela que TRAVA o acionamento saía do denominador como
+#    "órfã inócua", e o item *"zero órfãs funcionais"* dava 20/20 a duas rotas
+#    que não respondem o formulário.
+detect_native_flow = CP.detect_native_flow
+native_flow = CP.native_flow
+montar_resposta_de_flow = CP.montar_resposta_de_flow
+flow_components = CP._flow_components
+# o vocabulário que `new_dispatch_session` injeta sozinha — o resto do que o
+# corredor promete ter quando o formulário chegar
+slots_com_padrao_do_motor = IDS._slots_com_padrao_do_motor
 canonical_subservice = CP.canonical_subservice
 missing_slots_for_subservice = CP.missing_slots_for_subservice
 render_reply = CP.render_reply
@@ -465,4 +486,7 @@ __all__ = [
     "tem_banco", "supabase", "controle_do_mascarador", "eventos_observados",
     "vocabulario_do_espelho", "apelidos_conferidos", "apelido_colide",
     "_e_eco",
+    # C6 — o formulário nativo
+    "detect_native_flow", "native_flow", "montar_resposta_de_flow",
+    "flow_components", "slots_com_padrao_do_motor",
 ]
