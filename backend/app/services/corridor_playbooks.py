@@ -1862,6 +1862,34 @@ _AUTO_CLIENT_INSTRUCTIONS_GUINCHO = [
     "É preciso alguém maior de 18 anos no local para acompanhar o guincho.",
     "Você vai receber um SMS/link com a previsão de chegada do prestador.",
 ]
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 SOCORRO MECÂNICO — O MECÂNICO VAI ATÉ O CARRO, E A URA SABE DISSO
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 Medido em 23/08/2026: quem pedia socorro mecânico na HDI ou na Yelum
+#    recebia *"É preciso alguém maior de 18 anos no local para acompanhar o
+#    GUINCHO"* — porque `_ativar_subservico` liga a ROTA e não liga a
+#    INSTRUÇÃO, e a fábrica caía no `client_instructions` do corredor, que é a
+#    do guincho. A palavra `guincho` nomeia um caminhão que não vem.
+#
+# 📊 E o corpus já separa as duas: a tela `*Orientações importantes:*` aparece
+#    em duas variantes, e a que NÃO tem a linha dos pertences pessoais só
+#    ocorre em pneu e socorro mecânico — nunca em guincho.
+#
+# 🔴 E A REGRA DOS 18 ANOS NÃO ENTRA AQUI, de propósito. 📊 Varrido o acervo:
+#    ela não aparece em NENHUMA tela de `hdi-auto`, `yelum-auto`,
+#    `zurich-auto`, `bradesco-auto`, `mapfre-auto` ou `tokio-auto` — 0 de
+#    1.539 telas. Ela é texto de alfa/allianz/azul/porto que a fábrica copiou
+#    para os onze corredores. Copiar seria inventar, que é a razão já escrita
+#    em HDI_RESIDENCIAL. ⚠️ Nos outros seis corredores a invenção continua, e
+#    tirá-la é decisão de escopo maior — fica em PENDENCIAS.
+_AUTO_CLIENT_INSTRUCTIONS_MECANICO = [
+    "Aguarde perto do veículo, em local seguro, com as chaves e os documentos "
+    "em mãos — o mecânico vai atender o carro onde ele está.",
+    "Quando o serviço terminar, o prestador vai pedir sua assinatura num "
+    "checklist: confira as informações antes de assinar.",
+]
+
 _AUTO_CLIENT_INSTRUCTIONS_LOCAL = [
     "Aguarde em local seguro próximo ao veículo.",
     "É preciso alguém maior de 18 anos no local para acompanhar o serviço.",
@@ -4385,12 +4413,27 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
     # da senha "são da Allianz — copiá-las para cá seria inventar". Na YELUM elas
     # são MEDIDAS, palavra por palavra, em 3 sessões cada.
     "client_instructions": [
-        "📊 A senha da visita técnica são os 4 ÚLTIMOS DÍGITOS do celular informado da pessoa que "
-        "estará no local (ou do WhatsApp que pediu a assistência). Ela deve ser repassada ao "
-        "técnico assim que ele chegar — sem a senha, o prestador não executa o serviço.",
-        "📊 É necessária a presença de uma pessoa MAIOR DE 18 ANOS no local para receber e "
-        "acompanhar o prestador. Se for preciso trocar peças, o material fica por conta do "
-        "segurado (a mão de obra é que está coberta).",
+        # 🔴 ESTE TEXTO O CLIENTE LÊ, e ele saía com 📊 na frente.
+        #    O 📊 é marcador INTERNO (CLAUDE.md §12.1) e significa "número
+        #    medido" — para o segurado é um rabisco no meio da frase. Ele foi
+        #    para o comentário, que é onde mora.
+        #
+        # 📊 VERBATIM da URA da Yelum residencial, 3 sessões.
+        #
+        # 🔴 E DUAS AFIRMAÇÕES CAÍRAM JUNTO, porque nenhuma está no corpus:
+        #    · *"sem a senha, o prestador não executa o serviço"* — a URA diz
+        #      que os 4 dígitos SÃO a senha; não que o serviço é recusado.
+        #    · *"a mão de obra é que está coberta"* — verdade no encanador, e
+        #      FALSA no eletrodoméstico, onde a mesma URA diz "coberto a mão de
+        #      obra E PEÇAS (até o limite contratado)". Regra de CORREDOR não
+        #      pode decidir cobertura de ROTA.
+        "A senha da visita técnica são os 4 últimos dígitos do celular "
+        "informado da pessoa que estará no local — ou do WhatsApp de onde a "
+        "assistência foi pedida. Repasse essa senha ao técnico assim que ele "
+        "chegar.",
+        "Para receber o prestador é necessário ter uma pessoa maior de 18 anos "
+        "no local. Se for preciso trocar peças, o material fica por conta do "
+        "segurado.",
     ],
     "handoff_triggers": _RESID_HANDOFF_TRIGGERS + [
         # 📊 '*Saionara - Resulta*, por ser um item essencial, vou te transferir
@@ -9474,6 +9517,17 @@ _COMO_PERGUNTAR = {
     #    corretor tinha de perguntar e o bloco nunca ensinou como. Buraco
     #    pré-existente, achado pelo próprio guarda em 22/08/2026.
     "local_seguro": "se ele está num lugar seguro para esperar",
+    # 🔴 SPEC-084.2 C5 — os dois slots que o GATE cobra e o `required_slots`
+    #    não declara. O guarda de 23/08 varre `required_slots`; quem cobra de
+    #    verdade é `missing_slots_for_subservice`, que soma os `requires` dos
+    #    passos. 📊 Medido: 54 slots cobrados, 2 sem redação.
+    # ⚠️ `transporte_destino` é para onde vai a PESSOA. `local_destino` é a
+    #    oficina — mandar o táxi para a oficina leva o segurado ao lugar errado.
+    "transporte_destino": "para onde ele quer ser levado enquanto o carro vai "
+                          "para a oficina — é o destino DELE, não o do veículo",
+    "eletrodomestico_opcao": "qual é o aparelho — geladeira, freezer, fogão, "
+                             "micro-ondas, máquina de lavar, secadora ou "
+                             "lava-louças (a tecla certa depende disso)",
     # 🔴 OS TRÊS DO FORMULÁRIO NATIVO DA FAMÍLIA HDI/YELUM — SPEC-084.2 C2.
     #
     # 📊 A tela do formulário aparece 6 vezes no corpus (hdi/guincho 3,
@@ -9760,11 +9814,26 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
             if not texto or texto.startswith("📊"):
                 continue
             # assinatura = as palavras que carregam o sentido, sem a redacao
+            # 🔴 SPEC-084.2 C5 · A PONTUAÇÃO ENTRAVA NA ASSINATURA.
+            #
+            #    `_norm` tira acento e não tira pontuação, então `local` e
+            #    `local.` eram palavras DIFERENTES — e a interseção de duas
+            #    redações da mesma regra encolhia a cada ponto final.
+            #
+            # 📊 Medido: a regra dos "18 anos" da Yelum residencial dividia com
+            #    a do corredor de auto as palavras `maior`, `anos` e `local` —
+            #    e o `local.` dela, com ponto, derrubava a conta para 2. Duas
+            #    linhas da mesma regra no bloco da atendente, por um caractere.
+            #
+            # ⚠️ O defeito era LATENTE: enquanto todas as redações terminavam
+            #    igual, ninguém via. Foi uma frase mais longa que o expôs.
             assinatura = frozenset(
-                w for w in _norm(texto).split()
-                if len(w) > 3 and w not in ("para", "pelo", "pela", "esta",
-                                            "sera", "deve", "necessario",
-                                            "precisa", "sobre", "and"))
+                w.strip(".,;:!?()—–“”\"'")
+                for w in _norm(texto).split()
+                if len(w.strip(".,;:!?()—–“”\"'")) > 3
+                and w.strip(".,;:!?()—–“”\"'") not in (
+                    "para", "pelo", "pela", "esta", "sera", "deve",
+                    "necessario", "precisa", "sobre", "and"))
             if assinatura in assinaturas:
                 continue
             # sobreposicao alta com algo que ja entrou = mesma regra
@@ -9776,9 +9845,24 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
             # "guincho" so vale para um. Frase que cita o servico errado faz o
             # cliente achar que a atendente se perdeu.
             _ESPECIFICAS = ("guincho", "reboque", "veiculo", "chaves", "carro")
+            # 🔴 SPEC-084.2 C5 · O LIMIAR ERA ASSIMÉTRICO — e isso o quebrava.
+            #
+            #    Era `0.6 * len(assinatura)`, proporcional ao texto NOVO. 📊
+            #    Consequência medida: quanto mais RICA a redação que chega,
+            #    mais impossível ela colapsar com a que já entrou. Ao reescrever
+            #    a regra da Yelum com a redação verbatim da URA — mais completa
+            #    e mais útil ao cliente —, a mesma regra dos "18 anos" passou a
+            #    aparecer DUAS vezes no bloco da atendente.
+            #
+            # ⚠️ O critério certo é `min`: duas frases dizem a mesma coisa
+            #    quando a MENOR delas está quase inteira dentro da maior. O
+            #    desempate genérico-vs-específico, logo abaixo, continua sendo
+            #    quem decide QUAL fica — então "min" não faz a redação pobre
+            #    vencer a rica: faz as duas serem comparadas.
             colidiu = next(
                 (a for a in assinaturas
-                 if len(assinatura & a) >= max(3, int(len(assinatura) * 0.6))),
+                 if len(assinatura & a) >= max(3, int(min(len(assinatura),
+                                                          len(a)) * 0.6))),
                 None)
             if colidiu is not None:
                 nova_e_generica = not any(p in _norm(texto) for p in _ESPECIFICAS)
@@ -10350,3 +10434,51 @@ for _pb_flow in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
         _req_flow = list(_sub_flow.get("required_slots") or [])
         _sub_flow["required_slots"] = _req_flow + [
             x for x in _SLOTS_DO_FORMULARIO_NATIVO_HDI_YELUM if x not in _req_flow]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 A INSTRUÇÃO É DO SERVIÇO, NÃO DO CORREDOR — SPEC-084.2 C5
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 Medido: **9 pares (corredor × subserviço)** herdavam o texto do GUINCHO
+#    sendo outra coisa — mandavam o segurado esperar um caminhão que não vem.
+#    `_ativar_subservico` liga a rota e não liga a instrução, e o `or` da
+#    montagem cai no `client_instructions` do corredor.
+#
+# ⚠️ E `[]` (lista vazia) precisa ser uma DECISÃO, não um acidente: ver o
+#    conserto em `insurer_dispatch_service`, onde `or` virou `in`. Sem aquele
+#    conserto, os `[]` abaixo não fazem nada e o guincho volta.
+for _pb_sm in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1,
+               ZURICH_AUTO_WHATSAPP_V1):
+    if "socorro_mecanico" in (_pb_sm.get("subservices") or {}):
+        _pb_sm.setdefault("client_instructions_por_subservico", {})[
+            "socorro_mecanico"] = list(_AUTO_CLIENT_INSTRUCTIONS_MECANICO)
+
+# 📊 azul-auto e porto-auto têm texto PRÓPRIO medido para o técnico, e ele não
+#    fala em chave nem em documento — fala em espera de 15 minutos.
+_AUTO_CLIENT_INSTRUCTIONS_TECNICO = [
+    "É necessário ter alguém maior de 18 anos no local para acompanhar o "
+    "serviço.",
+    "Se não encontrar ninguém, o prestador aguarda até 15 minutos e tenta "
+    "contato pelo telefone informado na abertura.",
+]
+for _pb_tc, _svs_tc in ((AZUL_AUTO_WHATSAPP_V1, ("tecnico",)),
+                        (PORTO_AUTO_WHATSAPP_V1, ("tecnico", "bateria_nova"))):
+    for _sv_tc in _svs_tc:
+        if _sv_tc in (_pb_tc.get("subservices") or {}):
+            _pb_tc.setdefault("client_instructions_por_subservico", {})[
+                _sv_tc] = list(_AUTO_CLIENT_INSTRUCTIONS_TECNICO)
+
+# 🔴 SILÊNCIO É MELHOR QUE A INSTRUÇÃO DO GUINCHO.
+#    📊 Nenhuma tela de orientação foi observada em `porto/taxi`,
+#    `porto/vidros` e `zurich/vidros`. Herdar a do guincho manda o segurado
+#    procurar o documento do carro e esperar um caminhão: no táxi ele é o
+#    transportado, e no vidro o reparo é agendado. Lista vazia é a mesma
+#    decisão já tomada em HDI/PORTO residencial.
+#    ⚠️ Fica em PENDENCIAS: o texto certo existe, só não foi capturado ainda.
+for _pb_sil, _svs_sil in ((PORTO_AUTO_WHATSAPP_V1, ("taxi", "vidros")),
+                          (ZURICH_AUTO_WHATSAPP_V1, ("vidros",))):
+    for _sv_sil in _svs_sil:
+        if _sv_sil in (_pb_sil.get("subservices") or {}):
+            _pb_sil.setdefault("client_instructions_por_subservico", {})[
+                _sv_sil] = []

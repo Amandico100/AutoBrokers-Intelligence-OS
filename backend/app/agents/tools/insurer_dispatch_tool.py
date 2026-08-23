@@ -699,23 +699,28 @@ class InsurerDispatchTool(BaseTool):
                             f"'{quem} não tem corredor para {trabalho}', e diga ao cliente que um "
                             "atendente da corretora vai assumir — o que ele já contou fica registrado.")}
             if plan.get("missing_slots"):
-                friendly = {
-                    "titular_cpf": "CPF do titular",
-                    "endereco_numero": "número da residência",
-                    "telefone_contato": "telefone de contato",
-                    "problema_descricao": "descrição do problema",
-                    "periodo_preferido": "período preferido (manhã ou tarde)",
-                    "risco_confirmado_sem_fumaca": "confirmação de que NÃO há fumaça/faísca/cheiro de queimado",
-                    "aparelho_marca_modelo": "marca e modelo do aparelho",
-                    "aparelho_idade": "idade aproximada do aparelho",
-                    "veiculo_placa": "placa do veículo (a InfoCap costuma ter — confirme)",
-                    "titular_nascimento": "data de nascimento do titular (a Mapfre exige para validar)",
-                    "local_atual": "onde o veículo está agora (endereço com referência)",
-                    "local_destino": "para onde levar o veículo (destino do guincho)",
-                    "quando": "quando precisa (agora ou uma data para agendar)",
-                    "pessoa_no_local": "quem vai estar com o veículo no local",
-                }
-                faltam = [friendly.get(s, s) for s in plan["missing_slots"]]
+                # ══════════════════════════════════════════════════════════
+                # 🔴 SPEC-084.2 C5 · AQUI HAVIA UMA SEGUNDA FONTE DE VERDADE
+                # ══════════════════════════════════════════════════════════
+                #
+                # Um dicionário `friendly` escrito à mão traduzia os slots que
+                # faltam para português. 📊 Medido em 23/08/2026: **14 chaves
+                # aqui contra 58 em `_COMO_PERGUNTAR`**, e `friendly.get(s, s)`
+                # devolvia a CHAVE CRUA para 40 dos slots que o portão cobra.
+                #
+                # 🔴 O que a atendente lia, numa rota de máquina de lavar:
+                #    *"Ainda faltam estes dados: número da residência; telefone
+                #    de contato; descrição do problema; aparelho_marca;
+                #    aparelho_modelo; período preferido; idade_aparelho_opcao."*
+                #    Três identificadores no meio de uma frase em português —
+                #    e é esse texto que ela repete ao cliente.
+                #
+                # ⚠️ Uma fonte só: mudou o corredor, mudou o que a ferramenta
+                #    diz, no mesmo commit. `_COMO_PERGUNTAR` é onde o produto
+                #    já escreve como se pergunta cada coisa.
+                from app.services.corridor_playbooks import _COMO_PERGUNTAR
+                faltam = [_COMO_PERGUNTAR.get(s, s.replace("_", " "))
+                          for s in plan["missing_slots"]]
                 return {
                     "status": "missing_data",
                     "missing": plan["missing_slots"],

@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 from app.services.corridor_playbooks import (
+    _COMO_PERGUNTAR,
     _norm as _norm_corredor,
     MAX_CORRECOES_POR_CAMPO,
     MAX_CORRECOES_POR_SESSAO,
@@ -2164,6 +2165,25 @@ def handle_insurer_message(
                 session["state"] = "needs_human"
                 session["reason"] = f"sem_chute:{','.join(rendered['missing'])}"
                 session["missing_slots"] = rendered["missing"]
+                # 🔴 SPEC-084.2 C5 · O DOSSIÊ É LIDO POR GENTE, NO WHATSAPP.
+                #
+                #    📊 Medido: o humano recebia *"Motivo:
+                #    sem_chute:transporte_destino"* — uma flag interna e um
+                #    identificador, numa mensagem escrita para uma pessoa que
+                #    precisa agir em minutos.
+                #
+                # ⚠️ `falta_para_a_ura` já é o campo que o dossiê imprime em
+                #    português — *"A seguradora pediu e não temos: …"* — e o
+                #    ramo `sem_chute` era o único dos três que não o
+                #    preenchia. Uma linha, e o humano passa a ler a pergunta
+                #    em vez do nome do campo.
+                session["falta_para_a_ura"] = {
+                    "campo": step_name,
+                    "slot": ",".join(rendered["missing"]),
+                    "rotulo": "; ".join(
+                        _COMO_PERGUNTAR.get(x, x.replace("_", " "))
+                        for x in rendered["missing"]),
+                }
                 session["ultimo_passo_sem_dado"] = {
                     "step": step_name,
                     "faltou": list(rendered["missing"]),
@@ -2807,7 +2827,20 @@ def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
     # esperar um caminhão que não vem.
     por_sub = playbook.get("client_instructions_por_subservico") or {}
     sub_do_caso = canonical_subservice(session.get("subservice"))
-    instrucoes = por_sub.get(sub_do_caso) or playbook.get("client_instructions") or []
+    # 🔴 SPEC-084.2 C5 · `in`, não `or` — LISTA VAZIA É UMA DECISÃO.
+    #
+    #    `por_sub.get(sub) or playbook.get(...)` faz uma lista vazia cair no
+    #    `or` e herdar o texto do corredor. 📊 Consequência medida: `porto/taxi`,
+    #    `porto/vidros` e `zurich/vidros` — rotas sem NENHUMA tela de orientação
+    #    no acervo — recebiam a instrução do GUINCHO, mandando o segurado
+    #    procurar o documento do carro e esperar um caminhão. No táxi ele é o
+    #    transportado; no vidro o reparo é agendado.
+    #
+    # ⚠️ Silêncio é melhor que a instrução errada, e para o silêncio EXISTIR o
+    #    `[]` precisa vencer o `or`. É a mesma decisão que HDI e PORTO
+    #    residencial já tomavam — e que não funcionava, pela mesma linha.
+    instrucoes = (por_sub[sub_do_caso] if sub_do_caso in por_sub
+                  else playbook.get("client_instructions") or [])
     for instruction in instrucoes[:2]:
         lines.append(instruction)
     lines.append("Qualquer coisa até lá, é só me chamar por aqui 🙂")
