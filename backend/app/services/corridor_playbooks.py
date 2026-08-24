@@ -9603,7 +9603,15 @@ _COMO_PERGUNTAR = {
     #    sabe traduzir. `test_a_atendente_sabe_conduzir_um_acionamento` guarda
     #    isso, e foi ele quem pegou estas seis.
     "email_segurado": "o e-mail do segurado — a clínica manda o encaminhamento por ele",
-    "chaveiro_porta_opcao": "se o problema é na porta PRINCIPAL da casa ou numa porta interna — só a principal é coberta",
+    "chaveiro_porta_opcao": (
+        # 🔴 3ª volta do JUIZ 1 · A REGRA TEM DONO, E ELA AFIRMAVA PARA DOIS.
+        #    📊 Medido: `chaveiro_porta_opcao` é exigido por hdi/residencial E
+        #    yelum/residencial. A restrição *"só a principal é coberta"* tem
+        #    **2 telas na HDI** — *"limitado a portas ou portões principais
+        #    para acesso ao interior da residência"* — e **ZERO na yelum**.
+        # ⚠️ A pergunta vale para as duas; a AFIRMAÇÃO, só para uma.
+        "se o problema é na porta PRINCIPAL ou numa interna — ⚠️ regra da "
+        "HDI: só a principal é coberta"),
     "geladeira_medicacao_opcao": "se a geladeira guarda medicamento — se guardar, o atendimento é prioritário",
     "encanador_tipo_opcao": "o que está vazando, com as palavras dele",
     # 🔴 SPEC-084.2, JUIZ 1 · dizia "instalação não é coberta" e não há tela

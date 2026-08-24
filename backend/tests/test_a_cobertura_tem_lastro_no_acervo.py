@@ -56,11 +56,23 @@ CAPTURA = {"protocol": "9662631",
 
 # 🔴 As palavras que transformam uma frase em AFIRMAÇÃO DE COBERTURA — a que o
 #    segurado usa para decidir se aceita o serviço e quanto vai pagar.
+#
+# 🔴 AFINADO na 3ª volta do JUIZ 1, que furou a primeira redação. Ela tinha
+#    `n[ãa]o\s+(?:est[áa]\s+)?cobert` — casa *"não ESTÁ coberta"* e **não**
+#    casa *"não É coberta"*, que é literalmente o texto do blocker 2 que este
+#    guarda nasceu para pegar. 📊 Provado: das três frases que o docstring diz
+#    existir para pegar, ele via duas.
+#
+# ⚠️ **Um guarda cuja porta de entrada é uma lista de frases do passado só
+#    memoriza os defeitos já achados.** O verbo agora é livre entre a negação e
+#    o radical, e a família ganhou as formas que faltavam.
 _AFIRMA_COBERTURA = re.compile(
-    r"est[áa]\s+cobert|n[ãa]o\s+(?:est[áa]\s+)?cobert|"
+    r"est[áa]\s+cobert|"
+    r"n[ãa]o\s+(?:\S+\s+){0,2}cobert|"
+    r"sem\s+cobertura|n[ãa]o\s+tem\s+cobertura|fora\s+da\s+cobertura|"
     r"por\s+conta\s+do\s+segurado|por\s+conta\s+do\s+cliente|"
-    r"ser[áa]\s+negad|recusad|"
-    r"voc[êe]\s+vai\s+receber\s+um\s+sms|"
+    r"ser[áa]\s+negad|recusad|n[ãa]o\s+cobre|"
+    r"voc[êe]\s+(?:vai\s+)?receber[áa]?\s+um\s+sms|"
     r"n[ãa]o\s+afeta\s+a\s+sua\s+classe|n[ãa]o\s+ir[áa]\s+afetar",
     re.IGNORECASE)
 
@@ -182,6 +194,58 @@ if i >= 0:
 certo(len(bloco) <= 7000,
       "\U0001F4CA e o bloco cabe no teto — dar dono não foi pago subindo o teto",
       f"{len(bloco)} caracteres")
+
+print()
+print("=" * 74)
+print("[4] AS OUTRAS DUAS SUPERFÍCIES QUE ALCANÇAM GENTE")
+print("=" * 74)
+print("     o briefing da atendente, e o texto que a ferramenta devolve ao LLM")
+
+# 🔴 3ª volta do JUIZ 1: *"ele varre `client_summary_from_capture` e mais nada.
+#    O briefing da atendente e o `content` de `missing_data` também alcançam
+#    gente."* Um guarda que olha uma porta de três não guarda a casa.
+#
+# ⚠️ A exigência aqui é a mesma, e a razão de existir é outra: o briefing é
+#    lido por quem PODE conferir — a atendente tem a apólice na frente. Mas
+#    ela repete o que lê, e 📊 foi assim que a regra da ALLIANZ chegou ao
+#    segurado da YELUM.
+_todo_corpus = " ".join(
+    " ".join(str(l.get("text") or "") for l in RP.carregar_corpus(seg, ramo))
+    for seg, ramo in sorted({(r.seguradora, r.ramo) for r in rotas}))
+
+
+def _tem_lastro(frase: str) -> bool:
+    for gat, las in _LASTRO:
+        if re.search(gat, frase, re.IGNORECASE):
+            return bool(re.search(las, _todo_corpus, re.IGNORECASE))
+    return False
+
+
+_sem_lastro_2 = []
+for _l in bloco.splitlines():
+    if _AFIRMA_COBERTURA.search(_l) and not _tem_lastro(_l):
+        _sem_lastro_2.append("briefing: " + _l.strip()[:58])
+for _slot, _red in sorted(CP._COMO_PERGUNTAR.items()):
+    if _AFIRMA_COBERTURA.search(str(_red)) and not _tem_lastro(str(_red)):
+        _sem_lastro_2.append(f"_COMO_PERGUNTAR[{_slot}]: {str(_red)[:46]}")
+
+certo(not _sem_lastro_2,
+      "\U0001F534 nem o briefing nem a redação da ferramenta afirmam cobertura "
+      "sem tela no acervo",
+      "; ".join(_sem_lastro_2[:4]))
+
+# 🔴 CONTROLE: as duas superfícies TÊM texto para varrer — senão a linha acima
+#    passaria por vácuo.
+certo(len(bloco) > 3000 and len(CP._COMO_PERGUNTAR) > 30,
+      "\U0001F534 CONTROLE: as duas superfícies não estão vazias",
+      f"briefing={len(bloco)} chars · redações={len(CP._COMO_PERGUNTAR)}")
+
+# 🔴 CONTROLE 2: o detector CONSEGUE acusar nelas. Esta é a frase EXATA que o
+#    JUIZ 1 achou em `_COMO_PERGUNTAR` e que a primeira redação do detector
+#    NÃO via — ele casava "não ESTÁ coberta" e não "não É coberta".
+certo(_AFIRMA_COBERTURA.search(
+        "se é reparo ou instalação nova — instalação não é coberta") is not None,
+      "\U0001F534 CONTROLE: o texto EXATO do blocker 2 seria acusado hoje")
 
 print()
 print("=" * 74)
