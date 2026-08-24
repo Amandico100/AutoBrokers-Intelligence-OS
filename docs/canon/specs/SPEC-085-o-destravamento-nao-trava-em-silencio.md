@@ -23,8 +23,8 @@
 prédio: mensagem ao cliente, dossiê ao suporte, chamado na seguradora.
 **FREQUÊNCIA 2** — roda em todo atendimento que não fecha sozinho, 📊 **33,2% deles**.
 **SUPERFÍCIE 3** — território que ninguém mapeou: 📊 **quatro vigias** que não se
-conhecem, **TRÊS cadeias de handoff** que passam umas pelas outras, **18 lugares** que
-escrevem `needs_human` em 3 arquivos, e o estado do travamento morando em Redis com TTL
+conhecem, **TRÊS cadeias de handoff** que passam umas pelas outras, **19 lugares** que
+escrevem `needs_human` em 3 arquivos, em **16 famílias de `reason`**, e o estado do travamento morando em Redis com TTL
 de 6h. ⚠️ **A v1 desta SPEC contava duas cadeias e três escritores. Era 3 e 18.**
 
 > 🔴 **Time: equipe completa + red team + juiz final com contexto fresco.**
@@ -303,7 +303,16 @@ cap 200. 📊 `grep -rn "deflection:"` → **uma ocorrência: a própria escrita
 - **O contrato da ferramenta ganhou campos para os slots do portão** — 📊 **10** `Field(...)`
   em `insurer_dispatch_tool.py:437-535` (a v1 dizia "7").
 - 📊 **Os 8 passos que respondiam errado estão fechados** — `python backend/scripts/conferir_respostas.py --todas` → `OK nenhum passo responde sem confirmacao`, exit 0.
-- 📊 **`fallback_adaptive` foi de 29 para 228 passos** (14 corredores, 805 passos, 28,3%).
+- 📊 **`fallback_adaptive` foi de 29 para 228 passos** (14 corredores, 805 passos, **28,3%**),
+e **18** passos `sem_chute`.
+
+> ⚠️ 🔴 **E este número foi contestado e sobreviveu — registrado porque a diferença
+> ensina.** Uma contagem TEXTUAL do fonte dá **138** e **9**:
+> `grep -c '"fallback_adaptive": True'` → 138 · `grep -c '"sem_chute": True'` → 9.
+> 📊 **Carregando o módulo, são 228 e 18** — porque parte dos passos recebe a marca
+> **em tempo de import**, e nem `grep` nem AST enxergam isso.
+> 🔴 **A verdade que importa é a de execução.** Quem for medir marca de passo neste
+> repositório **carrega o módulo**; contar no texto subestima em 39%.
 
 > 🔴 **O que a 084 NÃO tocou: o que acontece DEPOIS de entrar.** As três travas da §2.3 e a
 > retomada estreita da §2.4 são exatamente o mesmo código de antes dela. **É esta SPEC.**
@@ -379,17 +388,23 @@ pior que a mentira.** A ordem é: **primeiro exista o colega, depois se promete 
 
 > **Unidade = a menor coisa que dá para ENTREGAR e PROVAR sozinha.**
 
-| # | unidade | ALC/REV/FREQ | **RISCO** | **SUP** | time |
+| # | unidade | ALC/REV/FREQ | **RISCO** | **SUP** | time (§2.3 do protocolo, por extenso) |
 |---|---|:---:|:---:|:---:|---|
-| **F0** | o travamento vira linha de banco | 0/2/2 | **4** | 2 | builder + juiz + verificador |
-| **F1** | mascarar `slots` antes de gravar + backfill das 12 | 3/2/2 | **7**·piso | 0 | builder + juiz da superfície |
-| **A** | `needs_human` deixa de ser `completed` | 2/2/2 | **6** | 1 | + verificador + desenhista |
-| **B** | o handoff do corredor chega em alguém | 3/3/2 | **8**·piso | 2 | + investigador + desenhista |
-| **C** | a mensagem ao segurado deixa de prometer | 3/3/2 | **8**·piso | 0 | builder + juiz da superfície |
-| **D** | a retomada cobre mais que `insurer_closed` | 3/3/2 | **8**·piso | 2 | + verificador + desenhista |
-| **E** | a tela que destrava um acionamento | 2/3/1 | **6**·piso | 2 | + verificador + desenhista |
-| **F** | `HUMAN_REQUESTED` deixa de ter dois sentidos | 2/2/2 | **6** | 2 | + verificador + desenhista |
-| **G** | a prova ponta a ponta | 3/0/2 | **5** | 3 | + investigador + desenhista |
+| **F0** | o travamento vira linha de banco | 0/2/2 | **4** | 2 | builder · juiz · verificador |
+| **F1** | 🔴 **construir** o mascarador + o gêmeo/referência + backfill | 3/2/2 | **7**·piso | 2 | builder · juiz · verificador · investigador · desenhista da prova |
+| **A** | `needs_human` deixa de ser `completed`, e sai de voo | 2/2/2 | **6** | 2 | builder · juiz da superfície · verificador · desenhista da prova |
+| **B** | o handoff dos caminhos B **e C** chega em alguém | 3/3/2 | **8**·piso | 2 | builder · juiz da superfície · verificador · desenhista da prova · **RED TEAM** |
+| **C** | a mensagem ao segurado deixa de prometer | 3/3/2 | **8**·piso | 0 | builder · JUIZ DA SUPERFÍCIE |
+| **D** | a retomada cobre as 16 famílias | 3/3/2 | **8**·piso | 2 | builder · juiz da superfície · verificador · desenhista da prova · **RED TEAM** |
+| **E** | a tela que destrava, **somando** à fonte viva | 2/3/1 | **6**·piso | 2 | builder · juiz da superfície · verificador · desenhista da prova |
+| **F** | `HUMAN_REQUESTED` deixa de ter dois sentidos | 2/2/2 | **6** | 2 | builder · juiz da superfície · verificador · desenhista da prova |
+| **G** | a prova ponta a ponta, pelos caminhos B **e C** | 3/0/2 | **5** | 3 | builder · juiz · verificador · investigador · desenhista da prova |
+
+⚠️ 🔴 **Nenhuma célula usa `+`.** O `PROTOCOLO-AUTOBROKERS-AAA.md` §2.3 é literal:
+*"Ambiguidade de time não é defeito de redação: é o único defeito que esta seção pode
+ter."* A v1 desta SPEC usava `+ investigador`, e lida como *"a linha de cima mais isto"* o
+**B perdia o verificador**. ⚠️ **A §0.1 declara que esta tabela É o entregável da passada
+de enquadramento** — ela não pode ser ambígua.
 
 🔴 **INTEGRADOR entra** — §3 do protocolo: 3 ou mais unidades no mesmo lote.
 🔴 **RED TEAM entra** nos blocos **B**, **C** e **D** — RISCO 8 com superfície ≥1.
@@ -403,10 +418,26 @@ pior que a mentira.** A ordem é: **primeiro exista o colega, depois se promete 
 
 > **Nada nesta SPEC pode ser medido antes disto. É a primeira entrega e o primeiro gate.**
 
-### F0.1 O que se grava
+### F0.1 O que se grava — 🔴 e de UM ponto de estrangulamento, nunca dos sítios
 
-Quando uma sessão de acionamento entra em `needs_human` — nas três saídas da §2.3 — grava
-uma linha **durável**, com:
+⛔ **NÃO instrumente as três saídas da §2.3.** 📊 São **19 sítios em 3 arquivos** que
+escrevem `needs_human` (`dispatch_router.py:1453` · `insurer_dispatch_service.py` ×17 ·
+`dispatch_watchdog.py:299`), produzindo **16 famílias de `reason`**:
+
+```bash
+grep -rn 'state"\] *= *"needs_human"\|"state": *"needs_human"' backend/app/ --include=*.py
+```
+
+🔴 **Instrumentar três deixaria 13 famílias invisíveis — inclusive `sentinela_stall`, que a
+§2.5 chama de "a única com prova em produção" e que a G.1b EXIGE no ensaio.** A v1 desta
+SPEC mandava fazer isso, e o ensaio dela não teria linha para mostrar.
+
+**Grave de UM ponto por onde tudo passa** — a transição para `needs_human`, dentro de
+`save_active_dispatch` / `registrar_checkpoint`. ⚠️ Se o investigador provar que não existe
+ponto único, ele **lista os 19** no relatório e instrumenta os 19 — nunca um subconjunto
+silencioso.
+
+A linha **durável** tem:
 
 ```
 company_id            🔴 obrigatório, e é o filtro do repository (CLAUDE.md §7)
@@ -460,14 +491,22 @@ ROLLBACK escritos antes de rodar** (`CLAUDE.md` §8).
 ⚠️ 🔴 **E o piso da §2.4 do protocolo dispara aqui duas vezes:** *"migration que altera
 dado, estrutura, trava ou **quem pode ler**"*. Policy é quem pode ler. **RISCO 6, sem
 discussão.**
-🔴 **Leia `MIGRATIONS-AUTHORITY.md` antes** — 📊 e saiba que o ledger mente: 3 das 9
-migrations da SPEC-084 estão aplicadas de fato e ausentes de `schema_migrations`.
+🔴 **Leia `MIGRATIONS-AUTHORITY.md` antes** — 📊 e saiba que **o ledger mente**: das 9
+migrations que entram no merge da branch atual, **3 estão aplicadas de fato e ausentes de
+`schema_migrations`** (conferidas objeto por objeto).
+⚠️ **Elas são das SPECs 072, 075 e 078 — a SPEC-084 não criou migration nenhuma**, e os
+relatórios dela dizem isso. A v1 desta SPEC escreveu *"as 9 migrations da SPEC-084"* e
+era rótulo errado sobre número certo.
 **VERIFY confere o OBJETO, nunca o ledger.**
 
 ### F0.3 O gate da FASE 0 — e ele é o mais duro da SPEC
 
 ```
 1. um acionamento de teste entra em needs_human  →  a linha existe no banco
+1b. 🔴 E O GATE CONTA FAMÍLIAS, não casos: o relatório traz a saída de
+    `grep -rn 'session["reason"] = '` e diz, de CADA família, se ela grava.
+    ⛔ Família sem linha reprova. ⚠️ Sem isto, instrumentar UM sítio passa
+       nos cinco itens deste gate.
 2. 🔴 A LINHA DE CONTROLE: um acionamento que TERMINA BEM  →  NENHUMA linha
       (senão o que se está gravando não é travamento, é qualquer coisa)
 3. o `reason` gravado é o COMPLETO, com os slots
@@ -496,17 +535,77 @@ migrations da SPEC-084 estão aplicadas de fato e ausentes de `schema_migrations
 **P-180.** 📊 12 linhas de `work_steps.output_summary` guardam `titular_cpf`,
 `telefone_contato` e `client_phone` **sem máscara**, de 18 a 19/08/2026.
 
-🔴 **E o que torna isto defeito de construção, não esquecimento:** no **mesmo registro**, o
-`transcript` **está mascarado** — `R. #####ES JÚN###`. **A máscara existe, roda, e não foi
-aplicada ao objeto `slots`. Não falta a função: falta uma chamada.**
+### ⛔ DUAS PREMISSAS DA v1 ERAM FALSAS, e as duas foram medidas
+
+**FALSA 1 — *"a máscara existe e não foi chamada"*.** 🔴 **NÃO EXISTE mascarador de PII
+para a sessão.** 📊 O único filtro no caminho é `snapshot_duravel`
+(`insurer_dispatch_service.py:191-210`), e o que ele filtra é **nome de credencial**:
+
+```python
+_CHAVES_PROIBIDAS = ("token", "secret", "senha_acesso_portal", "api_key",
+                     "password_hash", "authorization", "credential")
+# e a docstring diz, literal: "Nada com cara de CREDENCIAL atravessa"
+```
+
+📊 **E o `#####` do `transcript` NÃO é nosso: é a máscara DA SEGURADORA.** É para isso que
+existe `bate_com_mascara` / `_CARACTERE_DE_MASCARA = "#*?•●"`
+(`corridor_playbooks.py:8644`, documentado como *"Allianz/HDI/Yelum … Porto e Azul"*).
+Medido nas 12 linhas: **0 de 42 saídas NOSSAS mascaradas**, e em 9 das 12 não há `#`
+nenhum. ⚠️ Os mascaradores que existem no repositório são de outros assuntos:
+`egress_guard.redact_headers` (cabeçalho HTTP), `atlas/templater._mascara_complemento`
+(o corpus), `billing_collection._mascarar_documento`, `numero_pareado.mascarar`.
+
+> 🔴 **Logo o trabalho é CONSTRUIR um mascarador, não acrescentar uma chamada.**
+> Isso muda o time, o tempo e a prova. A v1 dizia *"falta uma linha"*.
+
+**FALSA 2 — *"basta mascarar o `output_summary`"*.** ⛔ **Essa coluna é o PAYLOAD DE
+RESTAURAÇÃO da sessão.** 📊 O caminho inteiro:
 
 ```
-F1.1   aplicar o mascarador ao `slots` antes de gravar `output_summary`
-F1.2   backfill das 12 linhas existentes
-F1.3   🔴 O GUARDA TEM DE FALHAR HOJE:
-       grava um passo com CPF, e prova que o que foi ao banco NÃO o contém.
-       ⚠️ Rode-o ANTES do conserto e mostre-o VERMELHO no relatório.
-       Um guarda que nasce verde não provou nada.
+snapshot_duravel  →  work_steps.output_summary   (dispatch_router.py:519, :530)
+                  →  _ultimo_retrato             (:627-642)
+                  →  sessao_restaurada           →  _gravar_no_redis (:733-735)
+                  →  session["slots"]
+                  →  render_reply(step, session["slots"])
+                       (insurer_dispatch_service.py:1229, :2169)
+                  →  ⛔ A RESPOSTA QUE VAI PARA A URA
+```
+
+**Mascarar ali faz um acionamento restaurado responder `###.###.###-##` à seguradora.**
+⚠️ Hoje a restauração só cobre `monitoring` — mas **o BLOCO D existe para alargar isso**,
+e a v1 estava plantando a bomba para o próprio bloco pisar.
+
+### O trabalho, refeito
+
+```
+F1.1   🔴 CONSTRUIR o mascarador de PII da sessão. O desenhista responde
+       três coisas ANTES de o builder escrever:
+         (a) QUAIS campos     — a lista sai do dado, não da memória:
+               SELECT DISTINCT jsonb_object_keys(output_summary->'slots')
+                 FROM work_steps WHERE output_summary ? 'slots';
+         (b) QUAL formato     — ⛔ e ele NÃO pode colidir com
+               `_CARACTERE_DE_MASCARA` ("#*?•●"), que é como o corredor
+               reconhece a máscara DA SEGURADORA. Colidir quebra
+               `bate_com_mascara` e o corredor passa a "reconhecer"
+               o próprio mascaramento como resposta da URA.
+         (c) reusável        — 🔴 CLAUDE.md §5: há quatro mascaradores no
+               repositório. Consolide num, ou justifique o quinto por escrito.
+
+F1.2   🔴 O MASCARADO NÃO SUBSTITUI O PAYLOAD. Duas saídas, e o
+       investigador escolhe com o motivo escrito:
+         (i)  um campo GEMEO durável só para leitura humana/auditoria,
+              e o `output_summary` continua sendo o payload;
+         (ii) o `output_summary` guarda REFERÊNCIA (id) ao dado sensível,
+              e a restauração resolve a referência.
+       ⛔ O que NÃO se faz: mascarar no lugar. Quebra a restauração.
+
+F1.3   backfill das 12 linhas existentes
+
+F1.4   🔴 O GUARDA TEM DE FALHAR HOJE, e são DOIS:
+         (a) grava um passo com CPF, e o que foi ao banco não o contém
+         (b) ⛔ O CONTROLE QUE A v1 NÃO TINHA: uma sessão gravada e
+             RESTAURADA responde à URA com o CPF REAL, não com a máscara.
+       ⚠️ Rode os dois ANTES do conserto e mostre-os VERMELHOS no relatório.
 ```
 
 ⚠️ **Escala:** as 12 linhas vêm de **4 acionamentos** — os únicos com rastro durável. Com
@@ -561,6 +660,28 @@ A.2   🔴 O CONSERTO É O `:757`: a reconciliação passa a usar
          `test_aborted` os quatro campos estão CERTOS — um edit em bloco
          quebra os três. O conserto é condicional, por construção.
 
+      ⛔ E HÁ UM EFEITO COLATERAL QUE ESTE BLOCO TEM DE FECHAR JUNTO:
+         📊 `waiting_input` ESTÁ em `_STATUS_EM_VOO_WORK_RUN` (`:360-362`).
+         A varredura de órfãos (`reconciliar_acionamentos_orfaos`, `:646`)
+         seleciona `status IN _STATUS_EM_VOO ... LIMIT 50` (`:678`), e a
+         única saída — expirar em 7 dias (`:714-722`) — só vale para
+         `error_code == _ERRO_ORFAO`. O run de travamento carrega
+         `needs_human:<reason>`. 🔴 **Ele NUNCA expira, e é revarrido a cada
+         boot, para sempre.**
+         ⚠️ Com 📊 33,2% travando e a FASE 0 tornando tudo durável, a janela
+            de 50 enche de runs estacionados e **os órfãos DE VERDADE
+            (`ura`/`human_phase` perdidos do cache) deixam de ser detectados**
+            — exatamente o que o comentário do `:757` diz existir para evitar.
+            📊 Hoje há 4 acionamentos e o teto ainda não morde.
+
+      🔴 A.2 TEM DE DIZER O QUE TIRA O RUN DE VOO. Três saídas possíveis, e
+         o investigador escolhe com o motivo escrito:
+           (i)   a varredura passa a ignorar `waiting_input` com
+                 `error_code LIKE 'needs_human:%'`
+           (ii)  a expiração de 7 dias deixa de exigir `_ERRO_ORFAO`
+           (iii) o destravamento (BLOCO E) fecha o run ao assumir/arquivar
+         ⚠️ (iii) sozinho não basta: um travamento que ninguém assume fica.
+
 A.3   os três campos passam a concordar. 📊 São DOIS sítios, não um:
         `dispatch_router.py:553-562`  o `result_summary` é escrito quando
            `status == "completed"` e o `error_code` quando
@@ -610,6 +731,15 @@ B.0   ⛔ O CAMINHO C ENTRA AQUI, E É O PRIMEIRO.
          `state`, `transcript`, `sentinela_attempts`, `wd_*`.
          ✅ O id existe: `session["mirror_conversation_id"]`,
             gravado em `dispatch_mirror.py:55-60`. **Use esse.**
+         ⛔ E ELE PODE FALTAR: `mirror_session` retorna cedo com
+            `DISPATCH_MIRROR=0`, sem entradas novas, ou se
+            `_get_or_create_conversation` devolver `None`.
+            🔴 SEM ID, O AVISO SAI SEM MARCADOR — e o relatório conta
+               quantas vezes isso aconteceu.
+            ⛔ `reivindicar_o_aviso(None, ...)` gravaria `handoff_realerta:None`,
+               que é UMA CHAVE GLOBAL: calaria o handoff de TODAS as
+               corretoras por 6h. **É isolamento entre corretoras (CLAUDE.md
+               §7), e o JUIZ 4 reprova.**
          ⛔ Inventar uma segunda chave é o "segundo marcador de aviso" que o
             gate da §8 proíbe.
 
@@ -747,7 +877,13 @@ retomada de URA.
 **Gate D:** 🔴 para cada uma das **16 famílias que o comando do D.1 devolver** — e o
 relatório traz **a saída do comando**, não a lista copiada daqui — diz **retoma / não
 retoma / vai direto ao humano**, com o porquê. ⚠️ Família nova que o comando devolver e
-não estiver na lista **também entra**: o gate cobra o comando, não o texto. ⚠️ **CONTROLE:** um `sem_chute` **não** retoma, e a prova é o
+não estiver na lista **também entra**: o gate cobra o comando, não o texto.
+
+⛔ **E O CONTROLE POSITIVO, sem o qual este gate passa com DIFF VAZIO:** 🔴 uma família
+classificada como **retomável** retoma **UMA** vez e **não retoma duas**. ⚠️ O controle
+negativo sozinho (`sem_chute` não retoma) **já é verdade hoje, com zero linha alterada**
+— as 16 classificações são artefato de relatório, e sem o controle positivo a retomada
+pode embarcar como prosa. ⚠️ **CONTROLE:** um `sem_chute` **não** retoma, e a prova é o
 teste que falha se alguém o fizer retomar.
 
 ---
@@ -757,8 +893,19 @@ teste que falha se alguém o fizer retomar.
 📊 Hoje: `dispatch_monitor.py` tem 52 linhas e só GET. **Não existe.**
 
 ```
-E.1   a Fila (app/dashboard/atendimentos/fila) passa a mostrar acionamento travado
-      🔴 e a fonte é a linha durável da FASE 0, nunca o Redis
+E.1   ⛔ A FILA JÁ MOSTRA ACIONAMENTO TRAVADO. A v1 dizia "passa a mostrar",
+      e está errado: 📊 `lib/attendance/dispatch-states.ts:110` mapeia
+      `needs_human → 'precisa_de_voce'`, e `api/dashboard/atendimentos/
+      route.ts:102-117` lê `/api/dispatch/active` e chama
+      `stageFromDispatchState`.
+
+      🔴 A LINHA DURÁVEL DA FASE 0 SOMA À FONTE REDIS. NÃO A SUBSTITUI.
+      ⛔ "nunca o Redis" tiraria da tela **todo acionamento EM VOO** — a
+         FASE 0 só grava em `needs_human` — e esvaziaria o dedup
+         `dispatchClientPhones` (`:113-116`, `:144`), fazendo as conversas
+         suprimidas voltarem DUPLICADAS.
+      ⚠️ O que a FASE 0 acrescenta é o que o Redis perde: o travamento que
+         **já passou das 6h de TTL**. Hoje esse some da Fila e de tudo.
 
 E.2   dois botões, e não mais que dois:
         ASSUMIR    →  vira `assumido_por_humano`, com quem
@@ -779,8 +926,14 @@ E.4   🔴 e o `release` deixa de apagar o caso: hoje
 código.** 📊 Uma pasta `[slug]` ao lado de uma `[templateId]` na mesma posição já derrubou
 o produto inteiro por 1h40 com todos os gates verdes.
 
-**Gate E:** um acionamento travado aparece na Fila, é assumido, e o estado muda no banco.
-⚠️ **CONTROLE:** um acionamento **não** travado **não** aparece.
+**Gate E:** um acionamento travado **há mais de 6h** (fora do Redis) aparece na Fila, é
+assumido, e o estado muda no banco.
+
+⚠️ **CONTROLE 1:** um acionamento **não** travado **não** aparece como `precisa_de_voce`.
+
+⛔ **CONTROLE 2 — A REGRESSÃO, e sem ele o CONTROLE 1 certifica o defeito:** um
+acionamento **EM VOO** (`ura` / `human_phase`, vindo do Redis) **continua aparecendo** na
+Fila, no estágio dele. 🔴 E o dedup por telefone continua suprimindo a conversa gêmea.
 
 ---
 
@@ -921,8 +1074,14 @@ incapaz de colar números de corretoras diferentes?**
 ✅  o ensaio G1 e o CONTROLE G2, os dois no relatório
 ✅  🔴 dois tenants reais, teste automático de isolamento
 ✅  🔴 npm run test:rotas-montam + next start + UMA requisição a /api/…
+✅  🔴 TODO GUARDA NOVO É COLETÁVEL PELO `pytest` E ENTRA NO `gate.yml`
+       ⛔ 📊 P-183: 151 dos 278 `test_*.py` são scripts com `main()`, invisíveis
+          ao `pytest`, e **14 estão vermelhos**. O `gate.yml` não roda `pytest`
+          nem os 151. **Um guarda desta SPEC escrito naquele estilo nasce
+          certificado e nunca executado.**
+       ⚠️ Esta SPEC NÃO conserta a P-183 (§9) — ela só se recusa a alimentá-la.
 ✅  🔴 nenhum motor paralelo: nem tabela nova para assunto que já tem tabela,
-       nem segundo marcador de aviso, nem terceiro vigia
+       nem segundo marcador de aviso, nem terceiro vigia, nem quinto mascarador
 ✅  relatório completo, com a §0.1 preenchida ANTES de o time ser montado
 ✅  as pendências que esta SPEC TOCOU: FECHADA / CONTINUA / MORREU (§1 do protocolo)
 ```

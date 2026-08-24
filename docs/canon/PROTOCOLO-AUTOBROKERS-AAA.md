@@ -5,7 +5,7 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> v5 · 24/08/2026 · ✅ ENTREGUE · e as 4 pendências da volta 3, fechadas · vale para **toda** SPEC, execução, ideia nova, incidente e
+> v6 · 24/08/2026 · ✅ ENTREGUE · 🔴 e com a primeira lição MEDIDA em execução (§6.0.1) · vale para **toda** SPEC, execução, ideia nova, incidente e
 > agente da Central.
 >
 > ⚠️ **A v1 reprovou por sete blockers. A v2, por mais cinco — e dois deles o
@@ -539,14 +539,54 @@ grep -rn "não conta como volta" docs/    # só pode sobrar dentro de bloco ⛔ 
       blocker  → conserta
       pendência → PENDENCIAS.md, e SEGUE
 ⑤ julga de novo:
-      🔴 VOLTA 2 — O MESMO JUIZ. Ele sabe o que cobrou.
+      🔴 VOLTA 2 — O MESMO JUIZ, e ele responde UMA pergunta:
+         **"os meus achados fecharam?"** ⛔ ELE NÃO DÁ NOTA AO DOCUMENTO.
       🔴 VOLTA 3 — UM JUIZ NOVO, contexto limpo, que NÃO vê as voltas
-         anteriores. Se ele reprovar por outra coisa, o defeito é do produto;
-         se reprovar pelo mesmo, o primeiro juiz estava certo; se liberar,
-         o primeiro estava ancorado na própria reprovação.
+         anteriores. ⛔ **A NOTA É A DELE.**
 
 🔴 TODA VOLTA CONTA. Sem exceção, e sem juiz decidindo se a própria
    reprovação foi boa o bastante para contar.
+```
+
+### ⛔ 6.0.1 · POR QUE A NOTA É SÓ DO JUIZ NOVO — 📊 medido em 24/08/2026
+
+**A primeira SPEC escrita sob este protocolo (a 085) rodou as três voltas:**
+
+```
+volta 1   juiz A, contexto limpo    FAIL  76/100   4 blockers
+volta 2   juiz A, retomado          FAIL  87/100   4 itens     ← +11
+volta 3   juiz B, NUNCA VIU AS OUTRAS   FAIL  62/100   9 blockers  ← 🔴 −25
+```
+
+🔴 **O juiz retomado deu a nota MAIS ALTA das três, e o juiz novo achou QUATRO
+instruções que quebrariam produção** — uma delas na seção que o juiz A tinha chamado,
+na volta 1, de *"o melhor bloco da SPEC"*, e nunca mais reabriu.
+
+> **O mecanismo:** o juiz retomado julga **a resolução dos próprios achados**, não o
+> documento. Ele dá pontos por consertos que ele mesmo pediu, e **não reexamina o que já
+> aprovou.** Uma nota que sobe assim mede o executor obedecendo — não o artefato.
+
+⚠️ **Isto era hipótese quando a regra foi escrita** (*"suspeito que a ancoragem seja o
+mecanismo da escalada"*). 📊 **Agora é medição, e o efeito é maior do que a hipótese
+previa: não é só escalada para achados menores — é CEGUEIRA ao que ele já elogiou.**
+
+⚠️ **E o juiz novo também erra.** 📊 Na mesma volta ele mediu `fallback_adaptive` por
+`grep`/AST e achou 138; carregando o módulo são **228** — parte dos passos recebe a marca
+em tempo de import. **A §4 vale para ele igual: o executor reproduz antes de aplicar, e
+devolve com o número se não bater.** Foi o que aconteceu, e a SPEC guardou a lição.
+
+### ⚠️ 6.0.2 · E o teto de 3 tem uma brecha que esta mesma execução abriu
+
+A porta ③ diz *"3 voltas **sem o produto mudar**"*. 📊 Na 085 o produto mudou nas três —
+logo a porta **nunca disparou**, e o laço poderia seguir indefinidamente enquanto houvesse
+conserto a fazer. **Um laço produtivo também precisa acabar.**
+
+```
+🔴 O TETO É 3 VOLTAS DE JUIZ. Ponto. Mudando o produto ou não.
+   Na terceira, o orquestrador CLASSIFICA (abaixo) — e classificar
+   não é parar: quase sempre é entregar o que passou e avançar.
+⚠️  Precisa de uma quarta? É decisão do Founder, e vai ESCRITA no relatório
+   com o que a terceira achou. Nunca por iniciativa do orquestrador.
 ```
 
 ### As três portas
@@ -925,8 +965,15 @@ difícil de aplicar ao próprio — registrado aqui porque volta a acontecer.
 
 ✅ **O INTEGRADOR** já ganhara gatilho na v4: 3 ou mais unidades no mesmo lote.
 
-🔴 **Fica UMA aberta, e ela só fecha rodando:** nenhum orquestrador tinha rodado sob
-este protocolo. **A SPEC-085 é a primeira.**
+✅ **E A ÚLTIMA FECHOU: a SPEC-085 rodou sob ele**, e o que a execução ensinou está na
+§6.0.1 e na §6.0.2 — **as duas primeiras regras deste documento que vieram de MEDIR, e
+não de ler.** 🔴 As duas contradizem o que eu tinha escrito por hipótese, e as duas
+tornam o laço mais barato: a volta 2 deixa de produzir uma nota falsamente alta, e o
+teto passa a ser alcançável.
+
+⚠️ **O que continua por medir:** o protocolo governou a **escrita** de uma SPEC. **Ainda
+não governou a EXECUÇÃO de nenhuma** — nem um builder, nem um verificador mecânico, nem
+um red team rodaram sob ele. **Isso fecha na 085 executada.**
 
 ⚠️ **O que continua por medir:** 💭 **nenhum orquestrador rodou sob este protocolo
 ainda.** Tudo aqui é análise de documento contra repositório. **A prova é a
