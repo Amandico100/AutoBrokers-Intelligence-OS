@@ -5,7 +5,7 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> v7 · 24/08/2026 · ✅ ENTREGUE · 🔴 o PAINEL PARALELO (§6.0.0) e as lições medidas (§6.0.1, §6.0.2) · vale para **toda** SPEC, execução, ideia nova, incidente e
+> v8 · 24/08/2026 · ✅ ENTREGUE · 🔴 o PAINEL (§6.0.0), as lições medidas (§6.0.1–2) e a LICENÇA DE AUTONOMIA (§7.6) · vale para **toda** SPEC, execução, ideia nova, incidente e
 > agente da Central.
 >
 > ⚠️ **A v1 reprovou por sete blockers. A v2, por mais cinco — e dois deles o
@@ -871,6 +871,58 @@ ELENCO MÍNIMO, e ninguém mais:
 🔴 E o incidente é a condição (1) ou (4) do CLAUDE.md §10 quando houver
    risco de perda de dado ou vazamento — aí para tudo e avisa o Founder.
 ```
+
+---
+
+## ⛔ 7.6 · A LICENÇA DE AUTONOMIA — proibir a parada não basta
+
+📊 **Medido na primeira execução real, 24/08/2026.** O executor fechou a FASE 0 com
+trabalho excelente — e **parou, com três perguntas. DUAS ele podia ter decidido sozinho.**
+
+🔴 **A culpa era do protocolo.** Ele dizia *"não peça aprovação entre blocos"* e **nunca
+disse COMO decidir sozinho.** Proibir a parada sem dar o critério produz exatamente isto:
+um executor cuidadoso, que para para não errar.
+
+**A conta que ele roda ANTES de considerar perguntar:**
+
+```
+① O TESTE DO PRODUTO (§1) — muda um byte que chega ao segurado, à corretora,
+   ao banco ou à segurança?      NÃO → PENDÊNCIA, e SEGUE.
+
+② É uma das OITO condições do CLAUDE.md §10?    NÃO → não é motivo de parada.
+
+③ Precisa da MÃO do Founder — variável, QR, senha, pagamento, preço?
+   SIM → 🔴 ANOTA NA CAIXA DO FOUNDER e SEGUE. Ele resolve em paralelo.
+```
+
+> 🔴 **Só para se os três derem SIM — e ainda assim só se, sem aquilo, o próximo bloco
+> for IMPOSSÍVEL, não apenas incômodo.**
+
+### 🔴 A REGRA DOS 30 MINUTOS — para o que aparece fora do bloco atual
+
+```
+conserta em ≤ 30 min  E  toca ≤ 2 arquivos  E  não precisa de desenho?
+    → CONSERTA, e uma linha no relatório dizendo que foi fora de escopo
+qualquer outra coisa
+    → PENDÊNCIA: o que é · o que destrava · de quem é · o que custa esquecer
+
+⛔ Se o conserto exige DECIDIR algo (qual formato, qual tabela, qual ordem),
+   não cabe nos 30 minutos. É pendência. Sem exceção.
+```
+
+⚠️ **O critério não é *"é importante?"* — quase tudo é.** É **"cabe agora sem me tirar do
+bloco?"**
+
+### 📋 A CAIXA DO FOUNDER
+
+Uma seção do relatório chamada `PARA O FOUNDER`, que o executor **vai acrescentando**.
+⛔ **Nunca se para para entregar uma linha dela.** O orquestrador entrega a caixa inteira,
+de uma vez, no fim.
+
+Cada linha: **o que é · o que ele faz · o que custa esquecer · bloqueia? (quase sempre NÃO)**
+
+> 🔴 **A caixa é o que troca TRÊS paradas por UMA entrega.** Sem ela, todo item de Founder
+> vira um semáforo vermelho no meio da execução.
 
 ---
 
