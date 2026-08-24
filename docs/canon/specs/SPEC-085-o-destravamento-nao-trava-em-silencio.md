@@ -113,8 +113,15 @@ SELECT agent_name, channel, count(*) FROM conversations GROUP BY 1,2 ORDER BY 3 
   Motor de Acionamento        1      ← 🔴 o robô
 ```
 
-> 🔴 **O robô conversou com segurado no WhatsApp TRÊS vezes na história do produto.**
-> `04/07` (379 msgs) · `06/07` (2 msgs) · **`18/08` (165 msgs) — a máquina de lavar.**
+> 🔴 **O robô conversou pelo WhatsApp TRÊS vezes na história do produto:**
+> `04/07` (379 msgs, `AutoBrokers`) · `06/07` (2 msgs) · `18/08` (165 msgs,
+> `Motor de Acionamento` — este é robô × **URA**, não robô × segurado).
+>
+> ⚠️ 🔴 **E a MÁQUINA DE LAVAR NÃO É nenhuma dessas linhas** — a v1 desta SPEC
+> confundia a CONVERSA com o RUN. 📊 Ela é o `work_run` **`e5279497`**,
+> **19/08/2026 16:35–16:41 BRT**, Resulta × Allianz residencial: o único dos quatro
+> acionamentos que chegou a **`monitoring`** — protocolo capturado, chamado aberto —
+> e o único **sem `error_code`**.
 
 **Logo o "33,2% terminam com o cliente falando" media o TIME HUMANO da corretora não
 respondendo.** É um fato de negócio real, e **não é o assunto desta SPEC.**
@@ -127,7 +134,7 @@ Os achados de **mecanismo** continuam de pé, porque são **código lido, não d
 ✅ as TRÊS travas que tornam `needs_human` terminal        (§2.3, arquivo:linha)
 ✅ a retomada que cobre 1 de 16 famílias                   (§2.4)
 ✅ as TRÊS cadeias de handoff, e a que nunca fala          (§2.5)
-✅ 3 de 5 corretoras sem destino de suporte                (§2.6, medido)
+✅ 1 de 3 corretoras sem destino — a AutoFleet             (§2.6, medido)
 ✅ a mensagem que promete o que ninguém garante            (§2.7)
 ✅ `HUMAN_REQUESTED` com dois sentidos opostos             (§2.8)
 ✅ nenhuma tela destrava um acionamento                    (§2.9)
@@ -253,17 +260,38 @@ Ouve nada.
 nunca entrou em `HUMAN_REQUESTED` (a fonte do Vigia). **O cliente foi avisado de que um
 colega vai assumir, e nenhum sistema guarda que alguém precisa assumir.**
 
-### 2.6 📊 Três de cinco corretoras não têm para quem avisar
+### 2.6 📊 UMA corretora não tem para quem avisar — e é a única pareada de verdade
+
+> ⚠️ **A v1 dizia "3 das 5". Errado, e o erro era de DENOMINADOR** — o mesmo tipo do
+> 33,2% da §2.2. 📊 `companies` tem 5 linhas, mas **2 são tenants TÉCNICOS**
+> (`is_technical = true`). **Corretoras de verdade são TRÊS** — e a **Resulta TEM** destino
+> ativo. Dizer que ela não tem faria alguém consertar o que funciona.
 
 ```sql
-corretoras ....................................................... 5
-  com destino em `human_support_destinations` .................... 2
-  com `companies.acionamento_profile.suporte_humano_whatsapp` .... 0
-  com `integrations.alert_target` com dígito ..................... 0
-conversas em HUMAN_REQUESTED agora ............................... 0
+SELECT company_name, is_technical,
+       (SELECT count(*) FROM human_support_destinations d
+         WHERE d.company_id = c.id AND d.is_active) AS ativos
+  FROM companies c ORDER BY is_technical, company_name;
+
+  AMANDUS SEGUROS                client     1 ativo  (2 cadastrados)
+  Resulta Seguros                client     1 ativo
+  🔴 AutoFleet                    client     0
+  AutoBrokers Blueprint Studio   TÉCNICO    0        ← não é corretora
+  AutoBrokers Global Knowledge   TÉCNICO    0        ← não é corretora
+
+  com `acionamento_profile.suporte_humano_whatsapp` ...... 0 (nenhuma)
+  conversas em HUMAN_REQUESTED agora ..................... 0
 ```
 
-> 🔴 **Para 3 das 5, todo handoff termina em uma linha de log.**
+> 🔴 **UMA de TRÊS não tem destino — e é a AutoFleet, a única corretora pareada de
+> verdade, com 380 conversas espelhadas.** Para ela, todo handoff termina numa linha de log.
+
+⚠️ 🔴 **E há uma distinção que o BLOCO B tem de respeitar:** *ausente* e *recusado* são
+caminhos de código diferentes. **Recusado é fail-closed deliberado** — o destino é
+compartilhado com outra corretora, e `_destino_e_compartilhado` barra de propósito.
+**Ausente é silêncio.** 📊 Hoje nenhum destino é compartilhado, logo o estado da AutoFleet
+é **ausente**. **Fundir os dois num único `sem_destino_de_suporte` apaga a diferença que
+decide se a corretora precisa CADASTRAR um destino ou PARAR DE COMPARTILHAR o que tem.**
 
 ### 2.7 A mensagem ao segurado promete o que ninguém garante
 
@@ -272,7 +300,7 @@ conversas em HUMAN_REQUESTED agora ............................... 0
 > *"Estou finalizando um detalhe do seu atendimento com a seguradora e um colega da equipe
 > vai assumir daqui a pouquinho, tá bom? Já já te retorno 🙂"*
 
-🔴 Ela sai **antes** de qualquer tentativa de avisar alguém, e para 3 das 5 corretoras não
+🔴 Ela sai **antes** de qualquer tentativa de avisar alguém, e para a AutoFleet não
 há ninguém a avisar. **É o mesmo defeito do SMS que cinco corredores nunca mandam.**
 
 ⚠️ **E o dossiê mente para o humano também:** `insurer_dispatch_service.py:2853` grava,
@@ -402,7 +430,7 @@ FASE 0    O TRAVAMENTO VIRA LINHA DE BANCO         ← antes de tudo, sem exceç
 FASE 1    A SEGURANÇA                              ← antes de tocar as tabelas
 ──────────────────────────────────────────────────────────────────────────────
 BLOCO A   o estado diz a verdade
-BLOCO B   o humano é chamado DE VERDADE            ← 3 de 5 não têm destino
+BLOCO B   o humano é chamado DE VERDADE            ← a AutoFleet não tem destino
 BLOCO C   o segurado ouve a verdade
 BLOCO D   a retomada deixa de cobrir 8 de 38
 BLOCO E   a tela que destrava
@@ -416,7 +444,7 @@ quatro acionamentos com rastro durável na história inteira. **Consertar antes 
 consertar no escuro, e a SPEC-084 já provou o custo disso.**
 
 🔴 **A FASE 1 vem antes dos blocos porque eles ESCREVEM nas tabelas que hoje guardam
-CPF em claro** (P-180). Ampliar a escrita antes de mascarar multiplica o problema.
+CPF em claro** (P-223). Ampliar a escrita antes de mascarar multiplica o problema.
 
 ⚠️ **B vem antes de C de propósito.** Parar de mentir ao segurado (C) sem ter para quem
 avisar (B) transforma "um colega vai assumir" em "ninguém vai te atender" — **verdade
@@ -498,7 +526,7 @@ travado_em / destravado_em
 ⚠️ **Onde isto mora é decisão do investigador do bloco**, e ele tem **duas candidatas
 reais**: estender `work_runs`/`work_steps` (que já é o espelho durável e já tem
 `error_code`), ou dar escritor à **`human_review_tasks`**, que 📊 tem schema completo
-(`motivo`, `veredito`, `revisado_por`) e **zero linhas desde sempre** (P-182).
+(`motivo`, `veredito`, `revisado_por`) e **zero linhas desde sempre** (P-225).
 
 > 🔴 **CLAUDE.md §5 — consolidar antes de duplicar.** Criar uma terceira tabela para o
 > mesmo assunto **reprova no gate**. Se nenhuma das duas servir, a justificativa vai
@@ -572,7 +600,7 @@ era rótulo errado sobre número certo.
 
 ## FASE 1 · A SEGURANÇA — antes de escrever mais
 
-**P-180.** 📊 12 linhas de `work_steps.output_summary` guardam `titular_cpf`,
+**P-223.** 📊 12 linhas de `work_steps.output_summary` guardam `titular_cpf`,
 `telefone_contato` e `client_phone` **sem máscara**, de 18 a 19/08/2026.
 
 ### ⛔ DUAS PREMISSAS DA v1 ERAM FALSAS, e as duas foram medidas
@@ -655,7 +683,7 @@ F1.4   🔴 O GUARDA TEM DE FALHAR HOJE, e são DOIS:
 
 ## BLOCO A · O ESTADO DIZ A VERDADE
 
-**P-181.** 📊 Os dois únicos `needs_human` duráveis estão em `work_runs` com
+**P-224.** 📊 Os dois únicos `needs_human` duráveis estão em `work_runs` com
 **`status = 'completed'`**. E um deles tem **três campos com três verdades**:
 
 ```
@@ -802,7 +830,10 @@ B.2   🔴 quando NÃO há destino, isso deixa de ser um `warning`:
         · vira estado durável `sem_destino_de_suporte`
         · e aparece na tela da corretora — ela precisa saber que está surda
 
-B.3   📊 3 das 5 corretoras não têm destino. O relatório diz, nominalmente,
+B.3   📊 1 de 3 corretoras não tem destino: a AutoFleet, que é a única
+      pareada de verdade. 🔴 E o bloco distingue AUSENTE de RECUSADO — são
+      dois estados, e confundi-los dá a instrução errada à corretora.
+      O relatório diz, nominalmente,
       quais são, e o que cada uma precisa configurar.
       🧑 Configurar é do Founder/corretora — 🤖 detectar e avisar é nosso.
 
@@ -1034,7 +1065,7 @@ G.3   a medição da §2.2 rodada DE NOVO, com a mesma query, e as duas lado a l
       ACONTECE. O número honesto é "quantos travamentos agora têm linha",
       não "a taxa caiu".
 
-G.4   os guardas dos 14 vermelhos que esta SPEC toca (P-183):
+G.4   os guardas dos 14 vermelhos que esta SPEC toca (P-226):
       test_handoff_chega_em_alguem.py sai do vermelho, e o relatório diz
       se foi defeito de produto ou asserção vencida.
 ```
@@ -1115,11 +1146,11 @@ incapaz de colar números de corretoras diferentes?**
 ✅  🔴 dois tenants reais, teste automático de isolamento
 ✅  🔴 npm run test:rotas-montam + next start + UMA requisição a /api/…
 ✅  🔴 TODO GUARDA NOVO É COLETÁVEL PELO `pytest` E ENTRA NO `gate.yml`
-       ⛔ 📊 P-183: 151 dos 278 `test_*.py` são scripts com `main()`, invisíveis
+       ⛔ 📊 P-226: 151 dos 278 `test_*.py` são scripts com `main()`, invisíveis
           ao `pytest`, e **14 estão vermelhos**. O `gate.yml` não roda `pytest`
           nem os 151. **Um guarda desta SPEC escrito naquele estilo nasce
           certificado e nunca executado.**
-       ⚠️ Esta SPEC NÃO conserta a P-183 (§9) — ela só se recusa a alimentá-la.
+       ⚠️ Esta SPEC NÃO conserta a P-226 (§9) — ela só se recusa a alimentá-la.
 ✅  🔴 nenhum motor paralelo: nem tabela nova para assunto que já tem tabela,
        nem segundo marcador de aviso, nem terceiro vigia, nem quinto mascarador
 ✅  relatório completo, com a §0.1 preenchida ANTES de o time ser montado
@@ -1138,7 +1169,7 @@ com o que destrava**.
 | 📊 as **47 conversas que nunca ouviram o bot** | é outro defeito: nunca engatou. Vira pendência com a medição |
 | **P-084-67** — o `galaxy_message` / `flow_id` | 5 rotas param por falta de canal, não por travamento. **É SPEC própria** |
 | a **causa** de cada travamento (URA mudou, credencial venceu) | é a **SPEC-087**, a auto-atualização. Esta SPEC trata o **sintoma**, e isso é deliberado |
-| **P-183** — os 151 guardas invisíveis ao `pytest` | 🔴 grande demais para caber aqui, e **afeta toda SPEC futura**. Esta SPEC só conserta o guarda que ela toca |
+| **P-226** — os 151 guardas invisíveis ao `pytest` | 🔴 grande demais para caber aqui, e **afeta toda SPEC futura**. Esta SPEC só conserta o guarda que ela toca |
 | reescrever o marcador de aviso | ⛔ **é da SPEC-086, e está pronto** |
 | ligar qualquer agente | ⛔ **decisão do Founder, e não é desta SPEC** |
 

@@ -33,8 +33,9 @@ Você vai executar a **SPEC-085 · O destravamento não trava em silêncio** do 
 **Tudo até hoje foi TESTE.** Isso muda a interpretação de quase todo dado:
 
 - 📊 Das **648** conversas, **588 são do ESPELHO** — conversas **humanas** da corretora no WhatsApp, espelhadas para o painel. `espelho_chat.py:592` grava `role='assistant'` para **a pessoa que atendeu**, não para o robô.
-- 🔴 **O robô falou com segurado no WhatsApp TRÊS vezes na história do produto**: `04/07` (379 msgs) · `06/07` (2) · **`18/08` (165) — a máquina de lavar.**
-- ✅ **A máquina de lavar é o ÚNICO teste ponta a ponta com cliente real e sem travas. NÃO SE REGRIDE DELA. É a referência viva.**
+- 🔴 **O robô falou pelo WhatsApp TRÊS vezes na história**: `04/07` (379 msgs) · `06/07` (2) · `18/08` (165, robô × **URA**).
+- ✅ **A MÁQUINA DE LAVAR é o `work_run` `e5279497`, 19/08/2026 16:35–16:41 BRT** — Resulta × Allianz residencial, o único dos 4 acionamentos que chegou a `monitoring` (protocolo capturado) e o único sem `error_code`. 🔴 **É a referência viva, e NÃO SE REGRIDE DELA.**
+- ⚠️ Os outros três: um `cancelled` em `human_phase`, um `needs_human:sentinela_stall`, um `test_aborted`. **n = 1.**
 - ⚠️ **Muita coisa parece "pela metade" porque o teste foi até o fim e CLICOU EM SAIR** por causa da trava de finalização. **Meio-caminho no dado NÃO é prova de defeito** — confira o motivo antes de consertar.
 
 > 🔴 **Corolário duro:** se você achar um número que parece um problema grande, **pergunte primeiro de onde vieram aquelas linhas.** Foi assim que a v1 desta SPEC afirmou *"33,2% dos atendimentos travam"* medindo, na verdade, **o time humano da corretora não respondendo**.
@@ -49,7 +50,7 @@ Você vai executar a **SPEC-085 · O destravamento não trava em silêncio** do 
 3. docs/canon/specs/SPEC-085-...-silencio.md    o trabalho
 4. docs/canon/reports/SPEC-084.2-EXECUTION-REPORT.md
 5. docs/canon/MIGRATIONS-AUTHORITY.md           antes de QUALQUER SQL
-6. docs/canon/PENDENCIAS.md                     P-180, P-181, P-182, P-183, P-93
+6. docs/canon/PENDENCIAS.md                     P-223, P-224, P-225, P-226, P-93
 ```
 
 ## 2. PREFLIGHT
@@ -141,7 +142,7 @@ Elas estão no documento, mas repito porque custaram três rodadas de juiz:
 
 ⚠️ **Todo número sai com a consulta que o produziu.** 📊 medido · 💭 ilustrativo. Número sem marca, em documento novo, é defeito de revisão (`CLAUDE.md` §12.1).
 
-🔴 **E a regra de drenagem:** as pendências que esta SPEC tocar saem com **FECHADA / CONTINUA / MORREU**. As que ela toca: **P-180, P-181, P-182, P-93** — e a **P-183**, que já está parcialmente fechada e cujos **14 guardas em quarentena** incluem o guarda central desta SPEC.
+🔴 **E a regra de drenagem:** as pendências que esta SPEC tocar saem com **FECHADA / CONTINUA / MORREU**. As que ela toca: **P-223, P-224, P-225, P-93** — e a **P-226**, que já está parcialmente fechada e cujos **14 guardas em quarentena** incluem o guarda central desta SPEC.
 
 ## 7. QUANDO PARAR E PERGUNTAR
 

@@ -105,9 +105,64 @@ segurado: um agente ativo sem uma linha de instrução, sem nenhuma trava.
 **Não está entre os doze bloqueios da SPEC-063.**
 - **Dono:** 🤖 SPEC-063 Bloco A
 
-## P-183 · 🟡 Metade da suíte era invisível ao `pytest` — **os 151 já rodam; faltam triar 14**
+> ⚠️ 🔴 **RENUMERADAS em 24/08/2026.** As quatro pendências abertas hoje nasceram como
+> **P-180 a P-183** — quatro números que **já existiam** neste arquivo (linhas 5482, 5512,
+> 5651 e 5673). Um auditor externo achou uma das colisões; medindo, eram **quatro**.
+> 📊 O maior número em uso era **P-222**; as novas passaram a ser **P-223 a P-226**.
+> **A causa é estrutural e continua aberta: não há nada que impeça a próxima colisão.**
 
-### ✅ 24/08/2026 — A INVISIBILIDADE FECHOU. A dívida dos 14 continua.
+## P-226 · 🟡 Metade da suíte era invisível ao `pytest` — **os 151 já rodam; faltam triar 14**
+
+### ✅ 24/08/2026 — A INVISIBILIDADE FECHOU. E a dívida é **48**, não 14.
+
+🔴 **A primeira correção de hoje estava pela metade, e um auditor externo achou:**
+`pytest tests/` não coletava zero — **abortava a sessão inteira** (`INTERNALERROR: SystemExit`), porque **60 arquivos chamam `sys.exit()` em nível de módulo** e o import da
+coleta os executa. E o meu "151" era subconjunto. 📊 O universo real:
+
+```
+279  test_*.py
+  6  com `def test_`   → o pytest roda
+273  sem `def test_`   → rodam como PROCESSO
+       151 com main()  ← o que a v1 pegava
+       122 sem main()  ← 🔴 asserções em nível de módulo. Invisíveis para TODOS.
+```
+
+📊 **E quando os 122 começaram a rodar, apareceram 28 vermelhos novos:**
+
+```
+42 de 273 guardas-script VERMELHOS   (15,4%) — eram 14 conhecidos + 28 achados
+ 6 asserções vermelhas nos 6 arquivos que SÃO pytest de verdade
+                                      (5 em test_a_rubrica_e_honesta, 1 em spec051)
+🔴 TOTAL: 48
+```
+
+✅ **Depois da quarentena: `233 passed, 42 xfailed in 440s`** — verde e verdadeiro, e
+`pytest tests/` voltou de **0** para **322 testes coletados**.
+
+⚠️ **Os 6 dos arquivos pytest NÃO estão no CI ainda**, e o motivo está escrito: pô-los
+em `xfail` exigiria editar guardas que não são meus para consertar. **Ficam registrados,
+e os cinco da régua são o achado mais grave do lote** — ver abaixo.
+
+### 🔴 OS CINCO DA RÉGUA — a nota devolve **102 numa escala de 100**
+
+📊 `test_a_rubrica_e_honesta.py`, rodado direto: **5 failed, 8 passed**.
+
+```
+:72   assert 102 == 96    "o denominador mudou; a nota passou a medir outra coisa"
+:371  assert 102 == 100-4  o mesmo 102, por outro caminho
+:133  assert []            "o replay não acha NENHUMA órfã funcional. Ou o corredor
+                            ficou perfeito — e aí esta asserção precisa ser reescrita
+                            com a prova — ou a MEDIDA AFROUXOU e ninguém viu"
+:199  "o subserviço já tem regra própria — a mutação precisa mudar de lugar"
+:253  assert 9 == 15       "o eixo E deixou de fechar"
+```
+
+🔴 **VEREDITO: é BLOCKER, e vai para a SPEC-089.** Pela letra do §1 do protocolo, nota
+de régua é medição de execução → pendência. **Mas o que a régua decide é se um corredor
+está bom o bastante, e corredor chega em segurado.** Uma régua que devolve 102 e **parou
+de achar órfã** aprova o que deveria reprovar. ⚠️ **Não entra na 085** — é da 083/089.
+
+### O registro de como ficou:
 
 📊 `backend/tests/test_todos_os_guardas_script_rodam.py` roda **cada guarda-script como
 PROCESSO** e lê o exit code. Saída real: **138 passed, 14 xfailed in 182.64s**. E entrou no
@@ -133,7 +188,7 @@ escreve em NEGRITO"*. **Os dois são do corredor, e não devem esperar a triagem
 
 ### O registro original:
 
-## P-183 · 🔴 Metade da suíte de testes é invisível ao `pytest`, e **14 estão vermelhos**
+## P-226 · 🔴 Metade da suíte de testes é invisível ao `pytest`, e **14 estão vermelhos**
 
 **Aberta em:** 24/08/2026 · **Dono:** 🤖 execução · **Achada** conferindo uma prescrição que
 não reproduzia
@@ -189,7 +244,7 @@ guarda nada"*. Aqui é pior — **os guardas têm como falhar, ESTÃO falhando, 
 - **O que custa esquecer:** toda SPEC daqui em diante declara gate verde sobre uma suíte
   onde **54% dos arquivos não são executados por nada**.
 
-## P-180 · 🔴 CPF e telefone em claro em `work_steps`, e a máscara existe
+## P-223 · 🔴 CPF e telefone em claro em `work_steps`, e a máscara existe
 
 **Aberta em:** 24/08/2026 · **Dono:** 🤖 execução · **Achada** medindo para a SPEC-085
 
@@ -217,7 +272,7 @@ rastro durável na história do produto. A 73 rotas ligadas, isto vira o padrão
 - **O que custa esquecer:** é dado de titular de apólice em repouso, sem necessidade
   operacional — e a auditoria seguinte acha isto antes de achar qualquer outra coisa.
 
-## P-181 · 🔴 `needs_human` é gravado como `status = 'completed'`
+## P-224 · 🔴 `needs_human` é gravado como `status = 'completed'`
 
 **Aberta em:** 24/08/2026 · **Dono:** 🤖 SPEC-085 · **Achada** medindo para a SPEC-085
 
@@ -234,7 +289,7 @@ diz *"Simulação completa"*.
 - **O que custa esquecer:** todo painel que filtrar por `status` mostra **zero**
   travamentos, para sempre, com o produto travando.
 
-## P-182 · `human_review_tasks` tem schema completo e **nenhum escritor**
+## P-225 · `human_review_tasks` tem schema completo e **nenhum escritor**
 
 **Aberta em:** 24/08/2026 · **Dono:** 🤖 SPEC-085
 

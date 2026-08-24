@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""O `pytest` passa a enxergar os guardas escritos como SCRIPT — P-183.
+"""O `pytest` passa a enxergar os guardas escritos como SCRIPT — P-226.
 
 📊 Medido em 24/08/2026:
 
@@ -9,8 +9,15 @@
       desses, VERMELHOS quando rodados um a um .................  14
 
     grep -rn "rotas-montam" .github/  →  vazio
-    gate.yml roda `broker_outcome_regression_pack.py` e `npx tsc --noEmit`.
-    NÃO roda pytest, e NÃO roda os 151.
+    gate.yml rodava `broker_outcome_regression_pack.py` e `npx tsc --noEmit`.
+    NÃO rodava pytest, e NÃO rodava os 151.
+
+⚠️ **No passado, e o tempo verbal importa:** o mesmo commit que criou este
+arquivo acrescentou o passo do pytest ao `gate.yml`. A primeira redação daqui
+dizia "NÃO roda" no presente — **o conserto documentando o mundo de antes do
+conserto, dentro do conserto.** Achado por um auditor externo, e corrigido.
+🔴 E fica valendo o aviso maior: **na `origin/main` o passo ainda não existe.**
+Até o merge, os guardas continuam rodando em lugar nenhum para quem clona a main.
 
 🔴 **Os 151 rodam bem sozinhos e devolvem exit 1 corretamente.** O problema era
 que `pytest tests/` coletava ZERO deles — as funções não começam com `test_` —
@@ -49,7 +56,7 @@ coisas de uma vez:
     PASSAR também quebra**, obrigando a tirá-lo daqui. Quarentena que não
     esvazia vira aterro (`PROTOCOLO-AUTOBROKERS-AAA` §1).
 
-⚠️ **A quarentena não é perdão.** Cada linha é dívida registrada na P-183, e
+⚠️ **A quarentena não é perdão.** Cada linha é dívida registrada na P-226, e
 sair dela exige um veredito: o vermelho é **defeito de produto** (conserta o
 produto) ou **asserção vencida** (conserta o teste)? — `CLAUDE.md` §9.3:
 *"quando um fato muda, o teste muda com ele, e a lição migra em vez de morrer"*.
@@ -80,33 +87,101 @@ TETO_SEGUNDOS = 120
 # ---------------------------------------------------------------------------
 QUARENTENA = {
     "test_o_acionamento_nao_pede_o_impossivel":
-        "P-183 · 12 falhas · fixture de `local_seguro` vencida pela SPEC-084.1",
+        "P-226 · 12 falhas · fixture de `local_seguro` vencida pela SPEC-084.1",
     "test_o_corredor_conhece_a_tela_que_esta_na_frente":
-        "P-183 · 2 falhas · o motor não faz noop de verdade sobre o RESUMO",
+        "P-226 · 2 falhas · o motor não faz noop de verdade sobre o RESUMO",
     "test_o_negrito_da_seguradora_nao_emudece_o_corredor":
-        "P-183 · 1 falha · o freio não freia quando a URA escreve em negrito",
+        "P-226 · 1 falha · o freio não freia quando a URA escreve em negrito",
     "test_handoff_chega_em_alguem":
-        "P-183 · 2 falhas · asserções vencidas — 🔴 é o guarda central da SPEC-085 (G.4)",
-    "test_corredores_novos": "P-183 · a triar",
-    "test_corredor_residencial_yelum": "P-183 · a triar",
-    "test_golden_do_eletricista": "P-183 · a triar",
-    "test_destilador_nao_paga_duas_vezes": "P-183 · a triar",
-    "test_o_clique_nao_se_perde": "P-183 · a triar",
-    "test_memorias_nao_vaza_inteligencia": "P-183 · a triar",
-    "test_o_encaminhamento_chega_ao_segurado": "P-183 · a triar",
-    "test_sem_corredor_de_vidro_nao_e_beco": "P-183 · a triar",
-    "test_o_que_acontece_quando_o_agente_liga": "P-183 · a triar",
-    "test_spec062_porteira_de_cobranca": "P-183 · a triar",
+        "P-226 · 2 falhas · asserções vencidas — 🔴 é o guarda central da SPEC-085 (G.4)",
+    "test_corredores_novos": "P-226 · a triar",
+    "test_corredor_residencial_yelum": "P-226 · a triar",
+    "test_golden_do_eletricista": "P-226 · a triar",
+    "test_destilador_nao_paga_duas_vezes": "P-226 · a triar",
+    "test_o_clique_nao_se_perde": "P-226 · a triar",
+    "test_memorias_nao_vaza_inteligencia": "P-226 · a triar",
+    "test_o_encaminhamento_chega_ao_segurado": "P-226 · a triar",
+    "test_sem_corredor_de_vidro_nao_e_beco": "P-226 · a triar",
+    "test_o_que_acontece_quando_o_agente_liga": "P-226 · a triar",
+    "test_spec062_porteira_de_cobranca": "P-226 · a triar",
+
+    # -----------------------------------------------------------------------
+    # 🔴 OS 28 QUE APARECERAM QUANDO A DESCOBERTA PASSOU DE 151 PARA 273.
+    #    Eram invisíveis para TODO MUNDO até 24/08/2026 — nem o pytest os via,
+    #    nem esta lista os via, nem o CI. 📊 Com eles, o vermelho real é
+    #    42 de 273 guardas-script (15,4%), mais 6 asserções nos arquivos que
+    #    são pytest de verdade. Total: 48.
+    # -----------------------------------------------------------------------
+    "test_a_fonte_comercial_bate_com_a_infocap":
+        "P-226 · a triar",
+    "test_as_ferramentas_de_relatorio_comercial":
+        "P-226 · a triar",
+    "test_duas_medicoes_nao_se_atropelam":
+        "P-226 · a triar",
+    "test_infocap_policy_output_guard":
+        "P-226 · a triar",
+    "test_o_agente_responde_a_tela_inteira":
+        "P-226 · a triar",
+    "test_o_cerebro_assume_quando_falta_dado":
+        "P-226 · 🔴 TOCA A SPEC-085 — o cérebro e missing_slots",
+    "test_o_corredor_residencial_nao_trava":
+        "P-226 · 🔴 TOCA A SPEC-085 — travamento de corredor",
+    "test_o_formulario_nao_e_inocuo":
+        "P-226 · 🔴 TOCA A SPEC-092 — o formulário do WhatsApp",
+    "test_o_handoff_nao_e_um_buraco":
+        "P-226 · 🔴 TOCA A SPEC-085 — handoff",
+    "test_spec016_1_answer_quality":
+        "P-226 · a triar",
+    "test_spec016_e2e_stub":
+        "P-226 · a triar",
+    "test_spec016_policy_intelligence":
+        "P-226 · a triar",
+    "test_spec017_dispatch":
+        "P-226 · 🔴 TOCA A SPEC-085 — dispatch",
+    "test_spec031_auto_dispatch":
+        "P-226 · 🔴 TOCA A SPEC-085 — auto-dispatch",
+    "test_spec031_history_porto_fixes":
+        "P-226 · a triar",
+    "test_spec031_ops_hardening":
+        "P-226 · a triar",
+    "test_spec034_onda1":
+        "P-226 · a triar",
+    "test_spec034_onda2":
+        "P-226 · a triar",
+    "test_spec038_history":
+        "P-226 · a triar",
+    "test_spec038_observer":
+        "P-226 · a triar",
+    "test_spec040_onda1_attendance_capture":
+        "P-226 · a triar",
+    "test_spec040_onda3_distiller":
+        "P-226 · a triar",
+    "test_spec042_lapidador":
+        "P-226 · a triar",
+    "test_spec049_pareamento_alerta_garimpo":
+        "P-226 · a triar",
+    "test_spec050_qr_variaveis_conhecimento_agentes":
+        "P-226 · a triar",
+    "test_spec073_portal_worker_mutations":
+        "P-226 · a triar",
+    "test_template_de_artefato_existe":
+        "P-226 · a triar",
+    "test_zurich_cobranca":
+        "P-226 · a triar",
 }
 
 
 def _e_guarda_script(caminho: Path) -> bool:
-    """É um guarda escrito como script, invisível ao pytest?
+    """É um guarda que o `pytest` NÃO consegue rodar sozinho?
 
-    Três condições, e as três importam:
-      · tem `def main(`      — é script, não módulo de asserções
-      · NÃO tem `def test_`  — se tivesse, o pytest já o veria
-      · tem bloco `__main__` — 📊 os 151 têm; sem ele não roda sozinho
+    🔴 **A regra é UMA só:** se o arquivo não tem `def test_`, o pytest não tem
+    o que chamar nele — então ele roda como PROCESSO, que é como foi escrito.
+
+    ⚠️ 📊 **A primeira versão deste arquivo exigia também `def main(` e
+    `__main__`, e por isso pegava 151 de 273.** Os outros **122** guardam as
+    asserções em nível de módulo, sem `main()` — rodam igual como script e
+    devolvem exit code igual. Ficavam de fora por uma condição que não servia
+    a nada, e **é onde estavam os 5 vermelhos da régua**.
     """
     if caminho.resolve() == AQUI:
         return False
@@ -114,7 +189,7 @@ def _e_guarda_script(caminho: Path) -> bool:
         fonte = caminho.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    if "def main(" not in fonte or "__main__" not in fonte:
+    if fonte.startswith("def test_"):
         return False
     return not any(marca in fonte for marca in
                    ("\ndef test_", "\nasync def test_", "\nclass Test"))
@@ -139,14 +214,38 @@ def test_ha_guardas_script_para_rodar():
     o defeito que este arquivo existe para matar. Este teste é o guarda do
     guarda: ele falha quando não há nada a guardar.
 
-    📊 O piso é 100: eram 151 em 24/08/2026. Cair abaixo disso é sinal de que a
+    📊 O piso é 250: eram **273** em 24/08/2026. Cair abaixo é sinal de que a
     descoberta parou de achar, não de que os guardas sumiram.
     """
-    assert len(GUARDAS) >= 100, (
-        f"a descoberta achou só {len(GUARDAS)} guardas-script; eram 151 em "
+    assert len(GUARDAS) >= 250, (
+        f"a descoberta achou só {len(GUARDAS)} guardas-script; eram 273 em "
         "24/08/2026. Se eles foram convertidos para pytest de verdade, baixe "
         "este piso NO MESMO commit que os converteu — e diga isso no relatório."
     )
+
+
+def test_a_exclusao_bate_com_a_descoberta():
+    """🔴 As DUAS listas têm de ser a mesma, e este teste é o que garante.
+
+    `conftest.py` tira da coleta do pytest exatamente os arquivos que este
+    módulo roda como processo. **São duas listas, escritas em dois arquivos.**
+
+    ⚠️ Duas listas que precisam concordar e vivem separadas divergem — é o
+    defeito nº 1 deste projeto. Se elas divergirem:
+
+    ```
+    excluído e NÃO rodado  →  🔴 um guarda some em silêncio
+    rodado e NÃO excluído  →  🔴 o pytest importa e a sessão morre de novo
+    ```
+    """
+    from conftest import collect_ignore  # type: ignore[import-not-found]
+
+    excluidos = set(collect_ignore)
+    rodados = set(GUARDAS)
+    somem = excluidos - rodados
+    matam = rodados - excluidos
+    assert not somem, f"excluídos do pytest e rodados por ninguém: {sorted(somem)}"
+    assert not matam, f"rodados aqui mas não excluídos — o pytest vai importar: {sorted(matam)}"
 
 
 @pytest.mark.parametrize("nome", list(_parametros()))
