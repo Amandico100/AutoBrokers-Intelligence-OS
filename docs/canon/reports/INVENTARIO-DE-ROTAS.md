@@ -1,6 +1,6 @@
 # Inventário de rotas — a régua aplicada às 73
 
-> Gerado em **2026-08-23T16:41:09+00:00** · commit `4430647`
+> Gerado em **2026-08-24T01:43:13+00:00** · commit `0fbfcd8`
 > 📊 acervo no momento da geração: **543 sessões** em 10 seguradoras
 
 🔴 A nota é sempre sobre o **denominador real**. Item dispensado sai do

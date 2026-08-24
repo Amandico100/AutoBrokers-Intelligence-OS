@@ -286,6 +286,86 @@ leva** — é a P-084-67, o `galaxy_message` que o parser não reconhece, medido
 **0 de 28.096 eventos**. Corredor e canal são coisas diferentes, e os guardas
 passaram a distingui-las.
 
+### 3.2 A SEGUNDA volta — e a nota caiu, porque eu piorei uma coisa
+
+📊 O JUIZ 1 reprovou de novo: **68 → 61**. A queda é justa, e o motivo é o mais
+instrutivo desta SPEC.
+
+🔴 **Consertar o achado do JUIZ 3 criou um defeito maior.** Subir
+`instrucoes[:2]` para `[:4]` fez a linha *"Você vai receber um SMS/link com a
+previsão de chegada do prestador"* sair de **zero para dez rotas** de entrega ao
+segurado — e ela não tem lastro:
+
+```
+telas com `sms` ou `previsão de chegada`, por corredor de auto:
+   azul 0/321 · mapfre 0/75 · porto 0/521 · tokio 0/70 · yelum 0/607
+```
+
+Cinco corredores com **ZERO**. E onde existe, diz outra coisa: hdi e yelum
+escrevem *"enviaremos **POR AQUI** o resumo e o link"* — o canal oposto. E a
+previsão de chegada não está em SMS nenhum: 📊 as 23 ocorrências de *"previsão"*
+no corpus estão dentro do próprio chat, na tela de resumo, **antes** de
+confirmar.
+
+⚠️ **E a condenação estava escrita por mim, no commit anterior**, na P-084-70:
+*"afirmar sem base pode fazer o segurado adiar o atendimento"*. Descrevi a
+classe, declarei a pendência, e no commit seguinte promovi mais um caso dela de
+0 para 10 rotas.
+
+A frase virou o que o produto **de fato faz**: *"assim que a seguradora me
+passar a previsão de chegada, eu te aviso por aqui"* — verdade em todas as
+rotas, e o canal certo justamente onde a URA diz *"por aqui"*.
+
+### 3.3 🔴 E dois consertos meus tinham sido REVERTIDOS em silêncio
+
+📊 Dois consertos já aplicados e verificados **sumiram do arquivo sem que
+ninguém os desfizesse**. A causa é a mecânica da própria bateria:
+`verificar_mutacoes` **copia** o arquivo, muta, roda e **restaura da cópia** — e
+os juízes rodavam a bateria na MESMA árvore em que eu escrevia. Um deles copiou
+antes de uma edição e restaurou depois.
+
+⚠️ É a família da P-084-74, um nível pior: ali o guarda acusava **depois**; aqui
+**não há guarda nenhum**, porque o arquivo restaurado é válido e todos os testes
+passam — eles só medem uma verdade antiga.
+
+🔴 **E o que revelou foi um juiz reprovando DUAS VEZES o mesmo defeito.** A
+segunda reprovação não era teimosia dele: era o arquivo tendo voltado.
+
+📊 **E o modo de conferir virou lição:** `grep` acusou o P1 de segurança como
+revertido quando ele estava vivo — o padrão tinha acento diferente.
+**Conserto se confere MEDINDO no motor, não procurando string.**
+
+Está em [P-084-80], com o que destrava: juiz e executor não podem trabalhar na
+mesma árvore.
+
+### 3.4 Regra de cobertura passou a ter dono
+
+*"A mão de obra é coberta; as PEÇAS são por conta do cliente"* é regra da
+**Allianz** — e o briefing a lia à atendente que estava acionando a **Yelum**,
+cuja URA diz o contrário em eletrodomésticos. 🔴 **O produto se contradizia
+dentro do mesmo atendimento:** a atendente afirmava uma coisa e, vinte minutos
+depois, o WhatsApp dizia a outra.
+
+⚠️ Consertei primeiro no lugar errado — reescrevendo o texto de UMA regra — e
+desfiz. O defeito não é da frase: é do **briefing**, que funde as seguradoras.
+Agora cada bloco sai com `[SEGURADORA · serviço]`.
+
+📊 Isso levou o bloco de 6.8k para 7.4k, acima do teto. **A saída não foi subir
+o teto:** donos com regra idêntica dividem um bloco, e o cabeçalho encolheu →
+**6.982 de 7.000**.
+
+### 3.5 E o guarda que o juiz pediu duas vezes
+
+> *"Nenhum guarda compara uma afirmação de cobertura contra o corpus da rota que
+> a recebe. Enquanto isso não existir, esta auditoria só acontece quando um juiz
+> a faz à mão."*
+
+`test_a_cobertura_tem_lastro_no_acervo` — toda afirmação de cobertura que
+alcança um humano tem de apontar uma tela do corredor que a recebe. Com os dois
+lados do controle: a frase do SMS **é reconhecida** como afirmação e a porto tem
+**zero** telas de `sms` (logo seria reprovada); a afirmação **verdadeira** sobre
+classe de bônus **tem** tela.
+
 ---
 
 ## 4. Migrations
