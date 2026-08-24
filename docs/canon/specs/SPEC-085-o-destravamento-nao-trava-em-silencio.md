@@ -5,7 +5,7 @@
 > Hoje ele não consegue, ninguém sabe, e ninguém pode. As três coisas são
 > defeitos separados, com consertos separados, e esta SPEC trata as três.
 >
-> v1 · 24/08/2026 · escrita sob o `PROTOCOLO-AUTOBROKERS-AAA.md` v4
+> v2 · 24/08/2026 · escrita sob o `PROTOCOLO-AUTOBROKERS-AAA.md` v5
 > Depende de: SPEC-084 ✅ · SPEC-084.1 ✅ · SPEC-084.2 ✅
 > Branch: `feat/spec085-o-destravamento-nao-trava-em-silencio`
 
@@ -22,9 +22,10 @@
 **ALCANCE 3** — o segurado é quem fica sem atendimento. **REVERSIBILIDADE 3** — sai do
 prédio: mensagem ao cliente, dossiê ao suporte, chamado na seguradora.
 **FREQUÊNCIA 2** — roda em todo atendimento que não fecha sozinho, 📊 **33,2% deles**.
-**SUPERFÍCIE 3** — território que ninguém mapeou: 📊 quatro vigias que não se conhecem,
-duas cadeias de handoff que passam uma pela outra, e o estado do travamento morando em
-Redis com TTL de 6h.
+**SUPERFÍCIE 3** — território que ninguém mapeou: 📊 **quatro vigias** que não se
+conhecem, **TRÊS cadeias de handoff** que passam umas pelas outras, **18 lugares** que
+escrevem `needs_human` em 3 arquivos, e o estado do travamento morando em Redis com TTL
+de 6h. ⚠️ **A v1 desta SPEC contava duas cadeias e três escritores. Era 3 e 18.**
 
 > 🔴 **Time: equipe completa + red team + juiz final com contexto fresco.**
 
@@ -38,9 +39,9 @@ pontuada** — §5. A SUPERFÍCIE 3 do lote **não se herda**: cada bloco monta 
 | dimensão | referência inspecionável | 🧑 |
 |---|---|:---:|
 | **honestidade com o segurado** | `app/agents/honestidade_do_handoff.py` — o fiscal que reescreve resposta mentirosa, com os três estados `HANDOFF_OK` / `FALHA_DO_HANDOFF` / `SUCESSO_DO_HANDOFF`. **É o caminho A já consertado; o caminho B tem de chegar nele.** | proposta |
-| **estado durável** | `work_runs` + `work_steps` como já usados por `intelligence.*` — 📊 2.628 runs escritos, contra **4** de acionamento | proposta |
+| **estado durável** | `work_runs` + `work_steps` como já usados por `intelligence.*` — 📊 **2.619** runs escritos, contra **4** de acionamento | proposta |
 | **retomada** | `dispatch_router.py:1574-1596`, a retomada de `insurer_closed`: teto de tentativas, guarda de idempotência, e a condição de "não repetir se já capturou protocolo" | proposta |
-| **aviso a quem espera** | `handoff_watchdog.py:135-192` + o marcador Redis de `human_handoff.py:69-152` — **a SPEC-086 já construiu isto e não pode ser desfeito** | proposta |
+| **aviso a quem espera** | `handoff_watchdog.py:135-192` + o marcador Redis de `human_handoff.py:69-152` — ⚠️ **o CÓDIGO existe e não pode ser desfeito; o documento `SPEC-086` NÃO EXISTE** (§3.2) | proposta |
 | **tela de destravamento** | `app/dashboard/personalizacao/conectores/portais/` + `POST /api/dashboard/portal-jobs` `retry\|archive`, com a regra espelhada em `lib/portal/hitl.ts` × `backend/portal_worker/guardrails.py:269` | proposta |
 | **segurança / PII** | o mascarador que **já roda** no `transcript` (`R. #####ES JÚN###`) e **não** no objeto `slots` | proposta |
 
@@ -75,7 +76,8 @@ O único espelho durável é `work_runs`, e ele tem:
 
 ```sql
 SELECT workflow_key, status::text, count(*) FROM work_runs GROUP BY 1,2 ORDER BY 3 DESC;
---  intelligence.*            2.628      (os robôs internos)
+--  intelligence.*            2.619      (os robôs internos)
+--  bridge.routine / system / test  9
 --  acionamento.seguradora  completed 3
 --  acionamento.seguradora  cancelled 1
 ```
@@ -124,7 +126,7 @@ denominador** — 596 conversas contra 22, porque a produção real começou em 
 O estado nasce em `insurer_dispatch_service.py`, em três saídas:
 
 ```python
-2252  if step.get("sem_chute"):                    # 18 passos
+2251  if step.get("sem_chute"):                    # 18 passos
 2253      session["state"] = "needs_human"
 2254      session["reason"] = f"sem_chute:{...}"
 2289  if step.get("fallback_adaptive") or not decisao:   # o cérebro assume
@@ -144,7 +146,10 @@ TRAVA 1 · O VIGIA VÊ E VAI EMBORA
 TRAVA 2 · O ESPELHO DURÁVEL FECHA COMO SUCESSO
    dispatch_router.py:757         UPDATE work_runs SET status='completed'
    porque FASES_ENCERRADAS (insurer_dispatch_service.py:138) contém `needs_human`.
-   🔴 Depois disso nem a varredura de órfãos a vê (filtra _STATUS_EM_VOO_WORK_RUN, :359).
+   ⚠️  E a varredura de órfãos TAMBÉM não a vê — mas por OUTRO motivo: ela
+      filtra `_STATUS_EM_VOO_WORK_RUN`, que 📊 é uma tupla literal INDEPENDENTE
+      (`dispatch_router.py:360-362`), NÃO derivada de FASES_ENCERRADAS.
+      🔴 A v1 desta SPEC ligava as duas e mandava auditar a relação errada.
 
 TRAVA 3 · A SESSÃO EVAPORA
    dispatch_router.py:263         TTL de 6h para tudo que não é `monitoring`.
@@ -152,7 +157,7 @@ TRAVA 3 · A SESSÃO EVAPORA
 ```
 
 ⚠️ **E há uma nuance que muda o conserto:** `try_route_insurer_inbound` tem early-return
-para `test_aborted` (`:1278`) e `monitoring` (`:1286`), **mas não para `needs_human`**. Se
+para `test_aborted` (`:1278`) e `monitoring` (`:1285`), **mas não para `needs_human`**. Se
 a seguradora mandar outra mensagem, o caso **pode** escapar via `_emit(next_state="ura")`.
 🔴 **O travamento não é um cadeado no estado — é que ninguém INICIA.** A URA encerra por
 inatividade, e o silêncio vira definitivo.
@@ -166,25 +171,44 @@ if (reason == "insurer_closed"
         and not (session.get("captured") or {}).get("protocol")):
 ```
 
-📊 O relatório da SPEC-084.2 §10 mede o universo: **das 72 sessões, 38 não chegam a
-protocolo** — 17 por `handoff_trigger`, **8 por `insurer_closed`**, 5 sem `flow_token`.
+📊 O relatório da SPEC-084.2 §10 mede o universo: **das 72 sessões, **38 não chegam a
+protocolo** — 17 por `handoff_trigger`, **8 por `insurer_closed`**, 5 sem `flow_token`,
+e ⚠️ **8 com gravação interrompida** (`SPEC-084.2-EXECUTION-REPORT.md:506-509`), que são
+artefato de medição e não travamento. **17+8+5 = 30; o 38 só fecha com a quarta classe.**
 
 > 🔴 **Só as 8 têm retomada.** `missing_slots:`, `sem_chute:`, `handoff_trigger:`,
 > `loop_guard`, `conferencia_divergente:`, `subservico_invalido` e `playbook_not_found`
 > caem direto em avisar cliente → dossiê → gravar. **Ninguém tenta de novo.**
 
-### 2.5 🔴 São DUAS cadeias de handoff, e só uma foi consertada
+### 2.5 🔴 São **TRÊS** cadeias de handoff, e só uma foi consertada
 
-| | **caminho A** — a ferramenta da atendente | **caminho B** — o corredor de URA |
-|---|---|---|
-| onde | `agents/tools/human_handoff.py` | `services/dispatch_router.py:1572-1636` |
-| escreve `conversations.status='HUMAN_REQUESTED'` | ✅ `:608` | 🔴 **NUNCA** |
-| avisa o cliente | depois, e só se o dossiê saiu | 🔴 **antes, e independentemente** (`:1610-1618`) |
-| se não há destino | `FALHA_DO_HANDOFF` (`:637`, `:679`) | 🔴 **só um `warning` no log** (`:1620-1629`) |
-| fiscal de honestidade | ✅ `honestidade_do_handoff.py:192` | 🔴 nenhum |
-| entra no radar do `handoff_watchdog` | ✅ (ele lê `HUMAN_REQUESTED`, `:123`) | 🔴 **não entra** |
+> ⚠️ **A v1 desta SPEC contava DUAS.** 🔴 A terceira é a única com prova em produção — e
+> era a única que nenhum bloco alcançava.
 
-🔴 **E no ramo `insurer_closed` é pior:** `clear_active_dispatch` (`:1631` → `:310`)
+| | **A** · a ferramenta da atendente | **B** · o corredor de URA | 🔴 **C** · o vigia |
+|---|---|---|---|
+| onde | `agents/tools/human_handoff.py` | `services/dispatch_router.py:1572-1637` | **`tasks/dispatch_watchdog.py:221-323`** |
+| escreve `HUMAN_REQUESTED` | ✅ `:608` | 🔴 **NUNCA** | 🔴 **NUNCA** |
+| avisa o cliente | depois, e só se o dossiê saiu | 🔴 **antes, e independentemente** (`:1610-1618`) | ⛔ **NÃO FALA COM ELE. NUNCA.** |
+| se não há destino | `FALHA_DO_HANDOFF` (`:642`, `:684`) | 🔴 só um `warning` (`:1620-1629`) | 🔴 `_support_alert` próprio (`:189`) |
+| fiscal de honestidade | ✅ `honestidade_do_handoff.py:192` | 🔴 nenhum | 🔴 nenhum |
+| radar do `handoff_watchdog` | ✅ (lê `HUMAN_REQUESTED`, `:123`) | 🔴 não entra | 🔴 não entra |
+| marcador e teto da SPEC-086 | ✅ é dono deles | 🔴 não usa | 🔴 não usa |
+
+📊 **Medido no caminho C** — `dispatch_watchdog.py`, contagem de ocorrências:
+
+```bash
+client_phone 0 · send_to_client 0 · HUMAN_REQUESTED 0
+reivindicar_o_aviso 0 · contar_lembrete 0
+# e `:299-300`  session["state"] = "needs_human" ; reason = "sentinela_stall"
+```
+
+🔴 **E ELE É O QUE DISPAROU DE VERDADE.** 📊 Dos **dois** únicos `needs_human` duráveis da
+história do produto, um tem `error_code = 'needs_human:sentinela_stall'` — **este caminho.**
+O segurado cujo acionamento morre pela sentinela **não ouve nem a mentira do `:1614`.**
+Ouve nada.
+
+🔴 **E no ramo `insurer_closed` é pior:** `clear_active_dispatch` (`:1632` → `:310`)
 **apaga a sessão do Redis**. O caso some de `/api/dispatch/active` (a fonte da Fila) **e**
 nunca entrou em `HUMAN_REQUESTED` (a fonte do Vigia). **O cliente foi avisado de que um
 colega vai assumir, e nenhum sistema guarda que alguém precisa assumir.**
@@ -203,7 +227,7 @@ conversas em HUMAN_REQUESTED agora ............................... 0
 
 ### 2.7 A mensagem ao segurado promete o que ninguém garante
 
-`dispatch_router.py:1613`, literal:
+`dispatch_router.py:1614`, literal:
 
 > *"Estou finalizando um detalhe do seu atendimento com a seguradora e um colega da equipe
 > vai assumir daqui a pouquinho, tá bom? Já já te retorno 🙂"*
@@ -276,14 +300,19 @@ cap 200. 📊 `grep -rn "deflection:"` → **uma ocorrência: a própria escrita
 - **Escada de correção antes do handoff** (`:1905-1930`): divergência de conferência tenta
   corrigir até um teto por campo antes de desistir.
 - **O formulário nativo é tentado ANTES do gatilho de handoff** (`:2325-2332`).
-- **O contrato da ferramenta ganhou 7 campos** (`insurer_dispatch_tool.py:437-535`).
-- 📊 **Os 8 passos que respondiam errado estão fechados** — `python scripts/conferir_respostas.py --todas` → `OK nenhum passo responde sem confirmacao`, exit 0.
+- **O contrato da ferramenta ganhou campos para os slots do portão** — 📊 **10** `Field(...)`
+  em `insurer_dispatch_tool.py:437-535` (a v1 dizia "7").
+- 📊 **Os 8 passos que respondiam errado estão fechados** — `python backend/scripts/conferir_respostas.py --todas` → `OK nenhum passo responde sem confirmacao`, exit 0.
 - 📊 **`fallback_adaptive` foi de 29 para 228 passos** (14 corredores, 805 passos, 28,3%).
 
 > 🔴 **O que a 084 NÃO tocou: o que acontece DEPOIS de entrar.** As três travas da §2.3 e a
 > retomada estreita da §2.4 são exatamente o mesmo código de antes dela. **É esta SPEC.**
 
-### 3.2 A SPEC-086 já construiu o freio de excesso — 🔴 não desfazer
+### 3.2 O freio de excesso já está construído — 🔴 não desfazer
+
+> ⚠️ 📊 **E há uma armadilha de nome:** **não existe arquivo `SPEC-086*` em
+> `docs/canon/specs/`.** O conserto vive no **código**, com os guardas abaixo, e o
+> documento nunca foi escrito. **Não procure a SPEC-086 — leia o código.**
 
 | peça | onde | quem usa |
 |---|---|---|
@@ -365,7 +394,8 @@ pior que a mentira.** A ordem é: **primeiro exista o colega, depois se promete 
 🔴 **INTEGRADOR entra** — §3 do protocolo: 3 ou mais unidades no mesmo lote.
 🔴 **RED TEAM entra** nos blocos **B**, **C** e **D** — RISCO 8 com superfície ≥1.
 🔴 **Um worktree por builder** quando dois tocarem `dispatch_router.py` (§7 MODO EXECUÇÃO):
-📊 os blocos **B, C, D e F** tocam esse arquivo. **A integração é SERIAL.**
+📊 os blocos **A, B, C, D e F** tocam esse arquivo — ⚠️ **o A também**, em `:528`,
+`:553-562` e `:757`. **A integração é SERIAL.**
 
 ---
 
@@ -403,10 +433,33 @@ reais**: estender `work_runs`/`work_steps` (que já é o espelho durável e já 
 > mesmo assunto **reprova no gate**. Se nenhuma das duas servir, a justificativa vai
 > escrita no relatório, com o que falta em cada uma.
 
-### F0.2 A migration
+### F0.2 A migration — 🔴 e ela leva POLICY, não só coluna
 
-Se houver migration, ela é **expand-first**, **idempotente**, e sai com **APPLY / VERIFY /
+📊 **Medido em 24/08/2026, e muda o desenho:**
+
+```sql
+SELECT relname, relrowsecurity, (SELECT count(*) FROM pg_policies p
+        WHERE p.tablename = c.relname) FROM pg_class c ...
+
+  human_review_tasks   RLS ligado   policies 0     ← candidata da F0.1
+  work_runs            RLS ligado   policies 0     ← candidata da F0.1
+  work_steps           RLS ligado   policies 0
+  work_events          RLS ligado   policies 0
+  conversations        RLS ligado   policies 4
+  human_support_destinations        policies 4
+```
+
+🔴 **As duas candidatas da FASE 0 são exatamente as tabelas sem policy.** O `CLAUDE.md`
+§7 é literal: *"O backend usa service role: **RLS sem policy não protege nada** contra
+erro de filtro no código."*
+
+**Logo a migration da FASE 0 leva as duas coisas:** a estrutura **e** a policy por
+`company_id`. Ela é **expand-first**, **idempotente**, e sai com **APPLY / VERIFY /
 ROLLBACK escritos antes de rodar** (`CLAUDE.md` §8).
+
+⚠️ 🔴 **E o piso da §2.4 do protocolo dispara aqui duas vezes:** *"migration que altera
+dado, estrutura, trava ou **quem pode ler**"*. Policy é quem pode ler. **RISCO 6, sem
+discussão.**
 🔴 **Leia `MIGRATIONS-AUTHORITY.md` antes** — 📊 e saiba que o ledger mente: 3 das 9
 migrations da SPEC-084 estão aplicadas de fato e ausentes de `schema_migrations`.
 **VERIFY confere o OBJETO, nunca o ledger.**
@@ -418,8 +471,14 @@ migrations da SPEC-084 estão aplicadas de fato e ausentes de `schema_migrations
 2. 🔴 A LINHA DE CONTROLE: um acionamento que TERMINA BEM  →  NENHUMA linha
       (senão o que se está gravando não é travamento, é qualquer coisa)
 3. o `reason` gravado é o COMPLETO, com os slots
-4. 🔴 dois tenants: a corretora A não vê a linha da corretora B
-      (teste automático com DOIS tenants reais — CLAUDE.md §7)
+4. 🔴 dois tenants — **e o teste tem de FICAR VERMELHO quando o filtro sai**
+      ⛔ "a corretora A não vê a linha da B" **passa sempre** com service role e
+         zero policies, porque a consulta nunca roda sem o filtro.
+      🔴 O guarda de verdade tem DUAS metades:
+         (a) o teste chama o repository com A e não vê a linha de B;
+         (b) 🔴 A MUTAÇÃO: apaga o `.eq("company_id", ...)` e o teste
+             FICA VERMELHO. Se não ficar, ele não guarda nada.
+      ⚠️ O relatório traz as duas saídas: com filtro e sem.
 5. a linha sobrevive ao TTL de 6h da sessão Redis
       🔴 prova: apaga a chave do Redis à mão, e a linha continua lá
 ```
@@ -462,18 +521,36 @@ current_step_key    test_aborted
 result_summary      "Simulação completa"
 ```
 
+### ⛔ A CAUSA É UMA LINHA, NÃO A LISTA — e a v1 mandava mexer na lista
+
+📊 **`STATUS_WORK_RUN_POR_FASE` (`insurer_dispatch_service.py:146`) JÁ mapeia
+`needs_human` → `waiting_input`**, e o comentário de `:143-145` diz por quê:
+*"o trabalho existe, não terminou, e depende de algo de fora"*.
+**A distinção já existe no vocabulário. O defeito é `dispatch_router.py:757`
+atropelá-la.**
+
 ```
-A.1   `FASES_ENCERRADAS` (insurer_dispatch_service.py:138) deixa de tratar
-      `needs_human` como encerramento bem-sucedido
-A.2   a reconciliação (dispatch_router.py:757) passa a gravar um status que
-      DISTINGUE travado de concluído
-A.3   🔴 e os três campos passam a concordar — ou o `result_summary` some
+A.1   ⛔ NÃO TIRE `needs_human` de FASES_ENCERRADAS.
+      📊 A lista tem TRÊS consumidores, e um deles está CERTO hoje:
+        dispatch_router.py:528   "succeeded" if fase not in FASES_ENCERRADAS
+                                 else "waiting_input"   ← JÁ ACERTA
+        dispatch_router.py:757   UPDATE work_runs = 'completed'  ← O DEFEITO
+        ura_simulator.py:65      `and estado_atual != "needs_human"`
+      🔴 Tirar da tupla faria o `:528` gravar `succeeded` no lugar de
+         `waiting_input` — **piorando o único lugar que hoje está certo.**
+
+A.2   🔴 O CONSERTO É O `:757`: a reconciliação passa a usar
+      STATUS_WORK_RUN_POR_FASE em vez de `completed` fixo.
+
+A.3   os três campos passam a concordar. 📊 O sítio que os desalinha é
+      `dispatch_router.py:553-562`: o `result_summary` é escrito quando
+      `status == "completed"`, o `error_code` quando `fase == "needs_human"`,
+      e **nenhum dos dois é limpo depois**.
 ```
 
-⚠️ **Cuidado medido:** `FASES_ENCERRADAS` também alimenta a varredura de órfãos
-(`:359`, `_STATUS_EM_VOO_WORK_RUN`). **Mudar a lista sem olhar a varredura pode ressuscitar
-sessões que devem ficar mortas.** O investigador mapeia os dois usos antes de o builder
-tocar.
+⚠️ 📊 **E a v1 desta SPEC errava o aviso:** dizia que `FASES_ENCERRADAS` alimenta
+`_STATUS_EM_VOO_WORK_RUN`. **Não alimenta** — `dispatch_router.py:360-362` é uma tupla
+literal independente. O aviso mandava o executor auditar a relação errada.
 
 **Gate A:** um `needs_human` gravado é distinguível de um sucesso **por consulta SQL**, e
 📊 **a consulta é escrita no relatório**. ⚠️ **Controle:** um acionamento que deu certo
@@ -486,6 +563,16 @@ continua saindo como `completed`.
 > 🔴 **É o bloco mais importante da SPEC.** Nada adianta se não há para quem avisar.
 
 ```
+B.0   ⛔ O CAMINHO C ENTRA AQUI, E É O PRIMEIRO.
+      `dispatch_watchdog.py:299-323`, o `_sentinela_recover`:
+        🔴 ele passa a AVISAR O SEGURADO — hoje não avisa nada
+        🔴 escreve o estado durável, como B e A
+        🔴 REUSA o marcador e o teto (`human_handoff.py:69-152`),
+           em vez do `_support_alert` próprio de `:189`
+      ⚠️ 📊 É a única cadeia com `needs_human` durável em produção
+         (`sentinela_stall`). Consertar B e C sem ela é consertar o que
+         nunca disparou e deixar de fora o que disparou.
+
 B.1   o caminho B ganha o que o caminho A já tem:
         · escreve `conversations.status = 'HUMAN_REQUESTED'`  (ou o que o BLOCO F decidir)
         · o resultado do envio decide o desfecho — FALHA_DO_HANDOFF quando não saiu
@@ -519,7 +606,7 @@ grava o estado. ⚠️ **CONTROLE:** numa corretora **sem** destino, ele grava
 ## BLOCO C · O SEGURADO OUVE A VERDADE
 
 ```
-C.1   a mensagem de dispatch_router.py:1613 deixa de sair ANTES do dossiê
+C.1   a mensagem de dispatch_router.py:1614 deixa de sair ANTES do dossiê
 
 C.2   o que o segurado ouve passa a depender do que aconteceu:
         dossiê saiu           →  "um colega vai assumir"
@@ -567,10 +654,17 @@ D.3   o que retomar herda de dispatch_router.py:1574-1596:
         não repetir se já capturou protocolo
 ```
 
-⚠️ 🔴 **E a P-93 é pré-requisito deste bloco:** a chave de idempotência bloqueia todo status
-menos `failed` — **inclusive `needs_human`**. Hoje o segurado ouve *"já existe atendimento
-aberto"* para um atendimento que não existe. **Sem fechar isso, a retomada bate na porta
-trancada.**
+⚠️ **Sobre a P-93, e a v1 desta SPEC errou o alcance dela.** 📊 A P-93 aparece **duas
+vezes** em `PENDENCIAS.md`; a que interessa (`:1651`) é do **portal de vidros**
+(`idx_portal_jobs_pedido_vivo`), e a frase *"já existe atendimento aberto"* mora em
+`agents/tools/portal_params.py:501` — **portal, não URA**. 📊 A própria pendência mede:
+*"Alcance hoje: **zero**. Os 91 jobs históricos têm `idempotency_key IS NULL`."*
+
+🔴 **Logo ela NÃO é pré-requisito do BLOCO D.** Vale só para a sub-rota de vidros que cai
+no portal via `use_portal` (§3.3). Os `idempotency_key` do caminho de URA
+(`dispatch_router.py:422, :458, :531`) são dedup de `work_runs`/`work_steps` e **não
+bloqueiam retomada nenhuma**. ⚠️ O executor NÃO abre `portal_jobs` antes de tocar a
+retomada de URA.
 
 **Gate D:** para cada um dos 8 motivos, o relatório diz **retoma / não retoma / vai direto
 ao humano**, com o porquê. ⚠️ **CONTROLE:** um `sem_chute` **não** retoma, e a prova é o
