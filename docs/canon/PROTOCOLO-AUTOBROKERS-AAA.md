@@ -5,7 +5,7 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> v4 · 24/08/2026 · ✅ ENTREGUE pela porta ③ da §6 · vale para **toda** SPEC, execução, ideia nova, incidente e
+> v5 · 24/08/2026 · ✅ ENTREGUE · e as 4 pendências da volta 3, fechadas · vale para **toda** SPEC, execução, ideia nova, incidente e
 > agente da Central.
 >
 > ⚠️ **A v1 reprovou por sete blockers. A v2, por mais cinco — e dois deles o
@@ -73,7 +73,9 @@ pronto"*. **A §1 manda tudo para lá e não dizia quem tira.**
 
 ```
 🔴 TODA SPEC QUE COMEÇA FECHA OU RE-JUSTIFICA AS PENDÊNCIAS QUE ELA TOCA.
-   O investigador as lista no início; o relatório diz de cada uma:
+   Quem as lista é o INVESTIGADOR — ⚠️ e onde não houver um, que é a maioria das
+   células, é o ORQUESTRADOR, que registra de qualquer jeito (§4).
+   O relatório diz de cada uma:
    FECHADA (com a prova) · CONTINUA (com o que destrava, novo) · MORREU
    (a razão dela deixou de existir — e isso conta como fechada)
 
@@ -197,21 +199,39 @@ não é régua, é pedágio.**
 
 ### 2.3 A tabela
 
-```
-                         SUPERFÍCIE 0        SUPERFÍCIE 1–2       SUPERFÍCIE 3
-                         uma decisão,        alguns lugares,      território novo,
-                         um lugar            que eu listo         ou lote inteiro
- ──────────────────────────────────────────────────────────────────────────────
-  RISCO 0–1              🔴 ninguém.         builder              builder + juiz
-  ninguém sente          Faz e pronto        + juiz               + verificador
+🔴 **Cada célula está escrita por extenso, de propósito.** A v3 usava `+ verificador` e
+não dizia **a que** somava — à célula de cima, ou à da esquerda. **Ambiguidade de time não
+é defeito de redação: é o único defeito que esta seção pode ter.**
 
-  RISCO 2–5              builder             builder + juiz       + investigador
-  a corretora sente      + juiz              + verificador        + desenhista da prova
-
-  RISCO 6+               builder             + verificador        equipe completa
-  o segurado sente,      + JUIZ DA           + desenhista         + red team
-  e não volta atrás        superfície          da prova           + juiz final fresco
 ```
+                     SUPERFÍCIE 0        SUPERFÍCIE 1–2       SUPERFÍCIE 3
+                     uma decisão,        alguns lugares,      território novo,
+                     um lugar            que eu listo         ou lote inteiro
+ ───────────────────────────────────────────────────────────────────────
+  RISCO 0–1          🔴 NINGUÉM           builder             builder
+  ninguém sente        faz e pronto      juiz                juiz
+                                                             verificador
+ ───────────────────────────────────────────────────────────────────────
+  RISCO 2–5          builder             builder             builder
+  a corretora sente  juiz                juiz                juiz
+                                         verificador         verificador
+                                                             investigador
+                                                             desenhista da prova
+ ───────────────────────────────────────────────────────────────────────
+  RISCO 6+           builder             builder             builder(es)
+  o segurado sente,  JUIZ DA             juiz da superfície  investigador
+  e não volta atrás    SUPERFÍCIE        verificador         desenhista da prova
+                                         desenhista da       verificador
+                                           prova             juiz por superfície
+                                                             RED TEAM
+                                                             integrador
+                                                             JUIZ FINAL fresco
+```
+
+⚠️ **E os rótulos das linhas são TÍPICOS, não definições.** *"ninguém sente"* descreve o
+caso comum de RISCO 0–1; **quem manda é a soma dos três números.** Um trabalho que roda em
+todo atendimento e não sai do prédio soma 2 e cai na linha do meio sem que a corretora
+sinta nada — **e está certo.** 🔴 **Se o rótulo e a soma discordarem, a soma vence.**
 
 ⛔ **A célula "ninguém" dispensa o JUIZ. Ela nunca dispensa o passo ② da §6.**
 
@@ -335,6 +355,10 @@ mede a diferença entre eles.
    MECÂNICO          🔴 determinístico. Não opina
                      ⛔ 📊 ESSA LISTA NÃO BASTA: é exatamente a que deixou o
                         produto 1h40 no chão com tudo verde (CLAUDE.md §9.1)
+                     🔴 E "migrations" aqui é a `MIGRATIONS-AUTHORITY.md`, não a
+                        `schema_migrations`: 📊 o ledger MENTE neste repositório
+                        (3 das 9 da SPEC-084 estão aplicadas e ausentes dele).
+                        ⚠️ O VERIFY confere o OBJETO no banco, nunca o ledger
                      🔴 Mexeu em `app/`, `middleware.ts`, `instrumentation.ts`,
                         `next.config.js` ou variável de ambiente:
                           npm run test:rotas-montam   +   next start
@@ -884,13 +908,25 @@ classificação, e a classificação é esta:
   registrado abaixo, e o documento ENTREGA.
 ```
 
-⚠️ **O que sobrou, e vai para `PENDENCIAS.md` em vez de segurar o documento:** o
-INTEGRADOR ganhou gatilho mas nenhuma célula o nomeia; as células escritas com `+`
-não dizem a que somam; a listagem inicial das pendências é do INVESTIGADOR, que não
-existe em 7 das 9 células; e o protocolo nunca nomeia `MIGRATIONS-AUTHORITY.md`
-embora mande o verificador rodar migrations. 🔴 **Nenhum dos quatro muda o time nem
-a hora de parar** — que é o teste, e é o teste que autoriza entregar com eles
-abertos.
+### ✅ AS QUATRO QUE SOBRARAM DA VOLTA 3 — fechadas na v5
+
+🔴 **E uma delas eu classifiquei errado.** Escrevi que *"nenhuma das quatro muda o
+time"*. ⚠️ **A das células com `+` muda:** `+ verificador` sem dizer a que soma deixa o
+leitor montar **três ou cinco pessoas** para a mesma nota. **Isso é blocker pela §1, e
+eu chamei de redação.** 🔴 O teste do produto é fácil de aplicar ao achado dos outros e
+difícil de aplicar ao próprio — registrado aqui porque volta a acontecer.
+
+| # | o que era | o conserto |
+|---|---|---|
+| 1 | as células com `+` não diziam a que somavam — **3 ou 5 pessoas para a mesma nota** | as **nove células por extenso**, nenhuma soma implícita |
+| 2 | os rótulos (*"ninguém sente"*) podiam contradizer a aritmética | são **típicos, não definições** — **se discordarem, a soma vence** |
+| 3 | a listagem das pendências era do INVESTIGADOR, ausente da maioria das células | onde não houver, é do **ORQUESTRADOR** |
+| 4 | o verificador rodava *"migrations"* sem conhecer a `MIGRATIONS-AUTHORITY.md` | nomeada, **com a razão medida: o ledger mente** — o VERIFY confere o objeto |
+
+✅ **O INTEGRADOR** já ganhara gatilho na v4: 3 ou mais unidades no mesmo lote.
+
+🔴 **Fica UMA aberta, e ela só fecha rodando:** nenhum orquestrador tinha rodado sob
+este protocolo. **A SPEC-085 é a primeira.**
 
 ⚠️ **O que continua por medir:** 💭 **nenhum orquestrador rodou sob este protocolo
 ainda.** Tudo aqui é análise de documento contra repositório. **A prova é a

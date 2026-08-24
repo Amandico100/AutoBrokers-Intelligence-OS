@@ -105,6 +105,62 @@ segurado: um agente ativo sem uma linha de instrução, sem nenhuma trava.
 **Não está entre os doze bloqueios da SPEC-063.**
 - **Dono:** 🤖 SPEC-063 Bloco A
 
+## P-183 · 🔴 Metade da suíte de testes é invisível ao `pytest`, e **14 estão vermelhos**
+
+**Aberta em:** 24/08/2026 · **Dono:** 🤖 execução · **Achada** conferindo uma prescrição que
+não reproduzia
+
+📊 **Medido, com os comandos:**
+
+```bash
+arquivos tests/test_*.py .................................. 278
+  script com main(), sem `def test_`, INVISÍVEIS ao pytest .. 151
+  desses, rodados um a um agora: VERMELHOS ................. 14
+```
+
+```bash
+# rodando cada um e lendo o exit code, nao a saida
+for f in tests/test_*.py; do
+  grep -q "^def test_" "$f" || { python "$f" >/dev/null 2>&1 || echo "VERMELHO $f"; }
+done
+```
+
+**Os 14:**
+
+```
+test_o_acionamento_nao_pede_o_impossivel.py     VERMELHO -- 12 falhas
+test_o_corredor_conhece_a_tela_que_esta_na_frente.py       2
+test_o_negrito_da_seguradora_nao_emudece_o_corredor.py     1
+test_handoff_chega_em_alguem.py             test_corredores_novos.py
+test_corredor_residencial_yelum.py          test_golden_do_eletricista.py
+test_destilador_nao_paga_duas_vezes.py      test_o_clique_nao_se_perde.py
+test_memorias_nao_vaza_inteligencia.py      test_spec062_porteira_de_cobranca.py
+test_o_encaminhamento_chega_ao_segurado.py  test_sem_corredor_de_vidro_nao_e_beco.py
+test_o_que_acontece_quando_o_agente_liga.py
+```
+
+🔴 **E o CI não roda nenhum dos dois jeitos.** `.github/workflows/gate.yml` executa
+`python tests/broker_outcome_regression_pack.py` e `npx tsc --noEmit`. **Não roda `pytest`,
+e não roda os 151 scripts.** Os 14 vermelhos não aparecem em lugar nenhum do processo.
+
+⚠️ **Por que isto passou tanto tempo:** os 151 são **scripts** — `def main()` e
+`raise SystemExit(main())` — com funções que **não começam com `test_`**. Rodados direto,
+funcionam e devolvem exit 1 corretamente. Rodados por `pytest`, coletam **zero** e a suíte
+fica **verde por vacuidade**. `pytest tests/` sobre `test_o_acionamento_nao_pede_o_impossivel.py`
+diz *"no tests collected"* — e um arquivo que coleta zero é indistinguível de um que passou.
+
+🔴 **É o `CLAUDE.md` §9.3 na forma mais cara:** *"um guarda que não tem como falhar não
+guarda nada"*. Aqui é pior — **os guardas têm como falhar, ESTÃO falhando, e ninguém roda.**
+
+⚠️ **E um dos 14 é o guarda central da SPEC-085:** `test_handoff_chega_em_alguem.py`.
+
+- **Destrava:** decidir **um** jeito de rodar (renomear as funções para `test_*`, **ou** um
+  coletor que execute os 151 scripts) e pôr isso no `gate.yml`. 🔴 **E antes disso, saber
+  quais dos 14 são defeito de produto e quais são asserção vencida** — `CLAUDE.md` §9.3:
+  *"quando um fato muda, o teste muda com ele, e a lição migra em vez de morrer"*.
+- **O que custa esquecer:** toda SPEC daqui em diante declara gate verde sobre uma suíte
+  onde **54% dos arquivos não são executados por nada**.
+
 ## P-180 · 🔴 CPF e telefone em claro em `work_steps`, e a máscara existe
 
 **Aberta em:** 24/08/2026 · **Dono:** 🤖 execução · **Achada** medindo para a SPEC-085
