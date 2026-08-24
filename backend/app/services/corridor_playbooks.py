@@ -4513,9 +4513,30 @@ YELUM_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "informado da pessoa que estará no local — ou do WhatsApp de onde a "
         "assistência foi pedida. Repasse essa senha ao técnico assim que ele "
         "chegar.",
+        # 🔴 SPEC-084.2, achado do JUIZ 1 (BLOCKER) · QUEM PAGA A PEÇA
+        #    DEPENDE DA ROTA, E ISTO AQUI É DO CORREDOR.
+        #
+        #    O C5 tirou o parêntese *"(a mão de obra é que está coberta)"* e
+        #    **deixou a oração principal** — que é justamente a que decide quem
+        #    paga. 📊 Medido no corpus da yelum residencial:
+        #
+        #      encanador/eletricista → *"Caso precise realizar a troca de
+        #                               peças, o material fica por conta do
+        #                               segurado"*                       ✅
+        #      eletrodomésticos      → *"Está coberto a mão de obra E PEÇAS
+        #                               (até o limite de cobertura
+        #                               contratada)"*                    🔴
+        #
+        # ⚠️ A frase geral dizia ao segurado da geladeira que a peça é por
+        #    conta dele — quando a própria URA da Yelum a cobre. Ou ele paga o
+        #    que não devia, ou recusa o serviço e some; nos dois casos foi a
+        #    corretora que escreveu a frase.
+        #
+        # 🔴 Aqui fica só o que vale para TODA a residência. A regra da peça
+        #    desceu para `client_instructions_por_subservico`, onde cada rota
+        #    diz a verdade dela.
         "Para receber o prestador é necessário ter uma pessoa maior de 18 anos "
-        "no local. Se for preciso trocar peças, o material fica por conta do "
-        "segurado.",
+        "no local.",
     ],
     "handoff_triggers": _RESID_HANDOFF_TRIGGERS + [
         # 📊 '*Saionara - Resulta*, por ser um item essencial, vou te transferir
@@ -9719,11 +9740,28 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
                      if s not in _NAO_SE_PERGUNTA]
             if not pedir:
                 continue
+            # 🔴 SPEC-084.2, achado do JUIZ 3 (RUIM 6) · A CHAVE É
+            #    (RAMO, SUBSERVIÇO), NÃO SÓ O SUBSERVIÇO.
+            #
+            # 📊 Exatamente um subserviço existe nos DOIS ramos: `chaveiro`
+            #    (11 rotas de auto + 4 de residencial). Agrupá-los numa linha
+            #    só fazia a atendente ler, para quem está trancado FORA DO
+            #    CARRO, até sete perguntas de casa — incluindo *"de que seguro
+            #    ele fala — o da RESIDÊNCIA"*, *"se é casa, apartamento ou
+            #    condomínio"* e uma **afirmação de cobertura do contrato
+            #    residencial**. E, na volta, "a placa do veículo" para quem
+            #    está trancado fora de casa.
+            #
+            # ⚠️ Só o `chaveiro` colide hoje, então a mudança custa UMA linha a
+            #    mais no bloco — e evita doze perguntas erradas.
+            _ramo_rota = ("auto" if str(pb.get("line_kind") or "") == "auto"
+                          else "residencial")
+            _chave_rota = f"{rota}|{_ramo_rota}"
+            _nome_rota = str(rotulos.get(rota) or rota).replace("_", " ")
             reg = por_rota.setdefault(
-                rota, {"nome": str(rotulos.get(rota) or rota).replace("_", " "),
-                       "slots": [], "cias": [], "ramos": set()})
-            reg["ramos"].add("auto" if str(pb.get("line_kind") or "") == "auto"
-                             else "residencial")
+                _chave_rota, {"nome": _nome_rota,
+                              "slots": [], "cias": [], "ramos": set()})
+            reg["ramos"].add(_ramo_rota)
             for s in pedir:
                 if s not in reg["slots"]:
                     reg["slots"].append(s)
@@ -10560,11 +10598,25 @@ for _pb_f2 in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
 # ⚠️ E `[]` (lista vazia) precisa ser uma DECISÃO, não um acidente: ver o
 #    conserto em `insurer_dispatch_service`, onde `or` virou `in`. Sem aquele
 #    conserto, os `[]` abaixo não fazem nada e o guincho volta.
-for _pb_sm in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1,
-               ZURICH_AUTO_WHATSAPP_V1):
+# 🔴 SPEC-084.2, achado do JUIZ 1 · A ZURICH SAIU DAQUI.
+#
+#    O C5 escreveu, no bloco acima, que copiar texto para corredor onde ele não
+#    foi medido *"seria inventar"* — e no mesmo commit deu à Zurich o verbatim
+#    da HDI/Yelum. 📊 `zurich-auto` tem **0 de 253** telas de orientação no
+#    acervo. O critério que a própria SPEC escreveu manda dar SILÊNCIO.
+#
+# ⚠️ E o silêncio aqui é melhor que a alternativa anterior: sem entrada
+#    própria, a Zurich cairia no `client_instructions` do corredor, que é a do
+#    GUINCHO — mandando esperar um caminhão quem pediu um mecânico. Lista
+#    vazia impede as duas coisas.
+for _pb_sm in (HDI_AUTO_WHATSAPP_V1, YELUM_AUTO_WHATSAPP_V1):
     if "socorro_mecanico" in (_pb_sm.get("subservices") or {}):
         _pb_sm.setdefault("client_instructions_por_subservico", {})[
             "socorro_mecanico"] = list(_AUTO_CLIENT_INSTRUCTIONS_MECANICO)
+
+if "socorro_mecanico" in (ZURICH_AUTO_WHATSAPP_V1.get("subservices") or {}):
+    ZURICH_AUTO_WHATSAPP_V1.setdefault(
+        "client_instructions_por_subservico", {})["socorro_mecanico"] = []
 
 # 📊 azul-auto e porto-auto têm texto PRÓPRIO medido para o técnico, e ele não
 #    fala em chave nem em documento — fala em espera de 15 minutos.
@@ -10594,3 +10646,36 @@ for _pb_sil, _svs_sil in ((PORTO_AUTO_WHATSAPP_V1, ("taxi", "vidros")),
         if _sv_sil in (_pb_sil.get("subservices") or {}):
             _pb_sil.setdefault("client_instructions_por_subservico", {})[
                 _sv_sil] = []
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 QUEM PAGA A PEÇA DEPENDE DA ROTA — SPEC-084.2, achado do JUIZ 1
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 A mesma URA da Yelum residencial diz coisas OPOSTAS em duas rotas, e as
+#    duas foram lidas no corpus versionado:
+#
+#      encanador       "Está coberto a mão de obra do prestador de serviços.
+#                       Material novo (peças) fica por conta do segurado!"
+#      eletrodoméstico "Está coberto a mão de obra E PEÇAS (até o limite de
+#                       cobertura contratada) para reparo de eletrodomésticos"
+#
+# ⚠️ Regra de cobertura mora na ROTA. No corredor ela vira uma afirmação que é
+#    verdadeira em algumas rotas e falsa nas outras — e ninguém percebe, porque
+#    o texto é o mesmo.
+_YELUM_RESID_PECA_POR_CONTA = (
+    "Se for preciso trocar peças, o material fica por conta do segurado — a "
+    "mão de obra do prestador está coberta.")
+_YELUM_RESID_PECA_COBERTA = (
+    "A mão de obra e as peças estão cobertas, até o limite contratado na sua "
+    "apólice.")
+for _sv_pc, _txt_pc in (
+        ("encanador", _YELUM_RESID_PECA_POR_CONTA),
+        ("eletricista", _YELUM_RESID_PECA_POR_CONTA),
+        ("eletrodomesticos", _YELUM_RESID_PECA_COBERTA),
+):
+    if _sv_pc in (YELUM_RESIDENCIAL_WHATSAPP_V1.get("subservices") or {}):
+        YELUM_RESIDENCIAL_WHATSAPP_V1.setdefault(
+            "client_instructions_por_subservico", {})[_sv_pc] = list(
+                YELUM_RESIDENCIAL_WHATSAPP_V1.get("client_instructions") or []
+            ) + [_txt_pc]

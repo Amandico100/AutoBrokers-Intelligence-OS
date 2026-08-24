@@ -89,8 +89,43 @@ def cobrados_de(rota):
     ses = M.IDS.new_dispatch_session(
         case_id="guarda", company_id="guarda",
         playbook_ref=rota.ref, subservice=rota.servico, slots={})
-    falta = ses.get("missing_slots") or []
-    return [s for s in falta if s != CP.SUBSERVICO_INVALIDO]
+    falta = [s for s in (ses.get("missing_slots") or [])
+             if s != CP.SUBSERVICO_INVALIDO]
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 E O QUE O PORTÃO **DEIXOU DE COBRAR** — achado do JUIZ 4
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # A primeira redação deste guarda definia a população como os
+    # `missing_slots` do portão — **exatamente o conjunto que esta mesma SPEC
+    # estreitou**. Um guarda circular: ele media a régua que o C1 encolheu, e
+    # por isso ficava verde enquanto cinco rotas AAA iam a `needs_human` numa
+    # tela que está no corpus.
+    #
+    # 📊 O que faltava: `situacao_risco_opcao`, `bateria_tipo_opcao` e
+    #    `taxi_passageiros_opcao` — slots que um PASSO exige, o motor NÃO
+    #    injeta, e a regra do sufixo `_opcao` isentava. As duas regras se
+    #    contradiziam: uma diz *"o motor preenche"*, `sem_chute` diz *"não
+    #    existe default honesto"*.
+    #
+    # ⚠️ A pergunta certa não é *"o que o portão cobra?"* — é **"o que o
+    #    CORREDOR vai precisar quando a tela chegar?"**. Quem responde isso são
+    #    os `requires` dos passos, menos o que o motor de fato injeta.
+    tem = {k for k, v in (ses.get("slots") or {}).items() if str(v or "").strip()}
+    alvo = CP.canonical_subservice(rota.servico)
+    pb = CP.get_playbook(rota.ref) or {}
+    for passo in pb.get("ura_steps") or []:
+        # `fallback_adaptive` fica de fora: ali o cérebro responde, e é o
+        # desenho declarado. O que entra é o que TRAVA.
+        if passo.get("fallback_adaptive") or passo.get("noop"):
+            continue
+        only = passo.get("only_subservices")
+        if only and alvo not in [str(x).lower() for x in only]:
+            continue
+        for campo in passo.get("requires") or []:
+            if campo not in tem and campo not in falta:
+                falta.append(campo)
+    return falta
 
 
 print("=" * 74)

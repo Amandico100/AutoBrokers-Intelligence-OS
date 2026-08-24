@@ -8183,3 +8183,147 @@ histórico do git, onde nenhuma limpeza futura o alcança.
 
 **A ferramenta existe:** `python scripts/auditar_pii_no_codigo.py [--em <prefixo>]`
 — ⚠️ ela nunca imprime o valor, só a forma e uma sombra.
+
+---
+
+## SPEC-084.2 — O CONTRATO
+
+### P-084-67 🔴 O `flow_id` NUNCA CHEGA — `galaxy_message` não é parseado · 🤖
+
+📊 23/08/2026, varredura dos 28.096 eventos de `observed_events`: o marcador
+`[FORMULARIO NATIVO]` aparece **0 vezes**. As telas de abertura de formulário da
+família HDI/Yelum chegam como `{"kind":"buttons","options":[]}` — **sem
+`flow_id`, sem `flow_token`, sem marcador**.
+
+🔴 A causa está medida: `evolution_inbound._interactive_from_message` reconhece
+`("flow", "mpm", "wa_payment_details", "review_and_pay")`, e o bot da HDI/Yelum
+usa o rótulo **legado `galaxy_message`**. ⚠️ `evolution_go.py` já documenta esse
+mesmo fato do lado do ENVIO; ninguém cruzou com o lado da LEITURA.
+
+**Consequência:** mesmo com o C2 e o C4 aplicados, o produto monta a resposta do
+formulário e **pausa** — sem `flow_token` o envio é recusado
+(`formulario_pronto_sem_flow_token`). O que os dois consertos entregam é
+*"resposta pronta no dossiê, com motivo"* em vez de *"órfã silenciosa"*. É ganho
+real, e **não é acionamento automático**.
+
+**O que destrava:** 🤖 uma linha (`elif name in ("flow", "galaxy_message", …)`)
+— mas ela mexe no parser de TODA interativa de entrada e merece bloco próprio
+com controle. **O que custa esquecer:** o formulário é o último portão antes do
+protocolo; 📊 na sessão `8ac461dc` o clique humano foi seguido do desfecho em 40
+segundos.
+
+### P-084-68 O QUARTO formulário da yelum não foi transcrito · 🤖
+
+📊 `1579547063352571` — *"Automóvel - Informar endereço V2"*, yelum, 03/08/2026,
+sessão `8a0d25a4`. O `response_message` dele está no acervo e não foi lido.
+
+⚠️ E há um agravante medido: o passo `destino_como` responde **texto** a uma tela
+que é esse formulário — a âncora `para onde devemos levar o ve[íi]culo` casa as
+duas, e `match_ura_step` roda antes de `_responder_formulario_nativo`. O corredor
+envia `"Digitar endereço"` como texto para uma tela que só aceita clique.
+
+### P-084-69 Qual `flow_id` ecoar de volta não é decidível offline · 🤖
+
+📊 O mesmo formulário V2 tem id `857030507196739` na HDI e `3206000179602236` na
+yelum. `montar_resposta_de_flow` devolve `flow_schema["flow_id"]`, então
+responder à yelum ecoaria o id da HDI. `evolution_go` diz que esse campo é *"o
+que diz à seguradora QUAL formulário está sendo respondido"*.
+
+⚠️ **Se a yelum validar, a resposta é descartada em silêncio e a janela queima.**
+O C4 registrou os dois ids apontando para o mesmo objeto, o que resolve a
+LEITURA. Qual ecoar depende de medição no ar — 🧑 e só o Founder libera envio.
+
+### P-084-70 A regra dos "18 anos" é afirmada onde o acervo não a mostra · 🤖
+
+📊 Varrido o acervo por corredor: `"18 anos"` não aparece em **nenhuma** tela de
+`hdi-auto` (375), `yelum-auto` (607), `zurich-auto` (253), `bradesco-auto` (159),
+`mapfre-auto` (75) e `tokio-auto` (70) — **0 de 1.539** — e os seis afirmam a
+regra ao cliente. Ela é texto de alfa/allianz/azul/porto que `_auto_playbook`
+copiou para os onze corredores.
+
+⚠️ O C5 tirou a regra apenas do texto NOVO do `socorro_mecanico`, onde havia de
+escrever de qualquer forma. Tirá-la dos seis é decisão de escopo maior, **e a
+assimetria pesa nos dois sentidos**: afirmar sem base pode fazer o segurado
+adiar o atendimento; remover uma regra verdadeira faz o prestador chegar e não
+poder trabalhar. Precisa de coleta, não de escolha.
+
+### P-084-71 `hdi/residencial` e `porto/residencial` não dão instrução nenhuma · 🤖
+
+📊 Os dois declaram `client_instructions: []` com a nota de que *"copiar seria
+inventar"* — e o corpus falsifica a nota: `"18 anos"` aparece em
+`hdi-residencial` (1 tela) e em `porto-residencial` (7). O texto EXISTE medido
+nesses corredores. São **10 pares** em que o cliente hoje não recebe instrução
+alguma por uma decisão que já venceu (§9.3).
+
+### P-084-72 `eletrodomestico_opcao` está em duas listas que se contradizem · 🤖
+
+📊 Ele está em `_NAO_SE_PERGUNTA` (*"o motor preenche"*) **e** em
+`required_slots` de hdi/yelum (*"a corretora informa antes de acionar"*). A
+Allianz tem default (`"15"`); hdi e yelum não. O C5 deu redação ao slot, o que
+tapa o sintoma — a contradição entre as duas listas fica.
+
+### P-084-73 O sufixo `_opcao` vale em metade dos caminhos do portão · 🤖
+
+📊 A regra *"o que o MOTOR preenche não se cobra do cliente"* vale no laço dos
+`requires` de passo e **não** no de `required_slots`. É por isso que
+`idade_aparelho_opcao` e `eletrodomestico_opcao` chegam ao portão. Não é defeito
+hoje — os dois SÃO coleta legítima —, mas uma regra por sufixo aplicada em
+metade dos caminhos é armadilha para quem escrever a próxima tecla.
+
+### P-084-74 🔴 A mutação foi commitada OUTRA VEZ · ✅ (o guarda pegou)
+
+📊 O commit `8a3ebf3` (C6) levou `flow = None  # DESLIGADO PELA MUTACAO` dentro
+de `scripts/replay.py`. A árvore de trabalho tinha o código real; o commit, não.
+Mesma causa do C12: `git commit` rodado enquanto a bateria de mutações tinha o
+arquivo mutado.
+
+✅ Corrigido no commit seguinte, e quem pegou foi
+`test_nenhuma_mutacao_foi_commitada`, que pergunta ao OBJETO COMMITADO.
+
+⚠️ **Segunda vez que isto acontece, e o guarda só ACUSA DEPOIS.** 🔴 E o risco
+aumentou nesta SPEC: os JUÍZES rodam a bateria na MESMA árvore de trabalho em que
+o executor escreve — 📊 durante esta sessão, `git status` mostrou
+`scripts/replay.py` e depois `corridor_playbooks.py` modificados por processo de
+juiz, sem que o executor tivesse tocado neles.
+
+🤖 **O que destrava:** um `pre-commit` que recuse commit enquanto houver mutação
+aplicada, ou um lock que a bateria segure — a trava do C11 impede duas mutações
+simultâneas e **não** impede um commit no meio de uma. **O que custa esquecer:**
+entre o commit sujo e a próxima rodada do guarda, qualquer clone mede com o
+instrumento cego.
+
+### P-084-75 `tudo_que_sera_pedido` é declarada e nunca chamada · 🤖
+
+📊 `grep -rn` no repo: uma definição, e uso só em teste. Ela já sabe ler
+`native_flows` — se estivesse ligada ao bloco da atendente, o C2 não teria
+existido. É a mesma família de `schedule_agendado` e `ticket_de_entrada`.
+
+### P-084-76 `resolve_insurer_contact` recebe `line_kind` e o descarta · 🤖
+
+📊 `insurer_contact_env_var` monta `INSURER_CONTACT_{KEY}_ASSISTENCIA`, sem a
+linha. Um parâmetro que existe, é passado com cuidado em dois lugares e não faz
+nada — §12.1: **o nome mente sobre o que guarda**. E há quatro seguradoras com
+corredor auto E residencial, que provavelmente não atendem no mesmo número.
+⚠️ O C3 fez a linha passar a ser derivada ali, para que o dia em que o parâmetro
+voltar a ter função não comece errado.
+
+### P-084-77 `confirm_first` roda ANTES da validação de subserviço · 🤖
+
+📊 `subservice="banho_de_gato"`, `insurer_key="hdi"`, `line_kind="auto"` devolve
+`confirm_first`. O produto manda o atendente **confirmar dados com o cliente**
+para um serviço que não existe; o `sem_corredor` só aparece na segunda chamada,
+depois de o segurado já ter confirmado. Handoff atrasado de uma volta inteira.
+
+### P-084-78 Rotas sem apelido: `tecnico`, `bateria_nova` e `taxi` · 🤖
+
+📊 `_SUBSERVICE_ALIASES` não tem nenhum apelido para os três. Quatro rotas do
+produto só são alcançáveis se o modelo escrever o nome canônico exato. ⚠️ O C3
+pelo menos as fez aparecer no `description` do contrato.
+
+### P-084-79 O corpus não guarda `msg_type` nem `interactive` · 🤖
+
+📊 As chaves do `.jsonl` são `company_id, servico, servico_nivel, session_id,
+text, wa_timestamp`. O replay só enxerga o caminho por TEXTO; o caminho por
+metadado, o `flow_token` e a guarda de formulário desconhecido são **invisíveis
+à régua**, para sempre, com este corpus. 🤖 `gerar_corpus_de_telas.py` já lê as
+duas colunas de `observed_events` — carregá-las no `.jsonl` é barato.

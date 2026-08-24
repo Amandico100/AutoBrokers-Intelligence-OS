@@ -189,7 +189,12 @@ ses = IDS.handle_insurer_message(ses, "E para onde devemos te levar?")
 certo(ses.get("state") == "needs_human",
       "\U0001F4CA o passo `sem_chute` continua indo para humano — não inventa",
       str(ses.get("state")))
-rotulo = str((ses.get("falta_para_a_ura") or {}).get("rotulo") or "")
+# 🔴 ATUALIZADO na rodada dos juízes · `falta_para_a_ura` alimenta o CÉREBRO,
+#    e o `sem_chute` existe para NÃO acordá-lo. O dossiê humano passou a ter
+#    campo próprio (`motivo_legivel`) — dois consumidores com necessidades
+#    opostas não podem dividir um campo.
+rotulo = str((ses.get("motivo_legivel")
+              or ses.get("falta_para_a_ura") or {}).get("rotulo") or "")
 certo(rotulo and "_" not in rotulo,
       "\U0001F534 e o dossiê diz a PERGUNTA, não o nome do campo",
       f"rotulo={rotulo!r}")

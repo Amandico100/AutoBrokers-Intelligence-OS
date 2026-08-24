@@ -41,6 +41,8 @@ from app.services.corridor_playbooks import (
     get_playbook,
     match_ura_step,
     missing_slots_for_subservice,
+    _flow_components,
+    _resolver_opcao_de_flow,
     montar_resposta_de_flow,
     native_flow,
     parse_address_br,
@@ -890,10 +892,33 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
     # ⚠️ E o "não" explícito conta: quem escreve "estou num lugar seguro,
     #    movimentado" RESPONDEU a pergunta — e não precisa ouvi-la de novo.
     if not str(slots.get("situacao_risco_opcao") or "").strip():
-        _sit = _norm(" ".join(str(slots.get(c) or "") for c in
-                              ("local_atual", "problema_descricao",
-                               "problema_relato", "situacao_risco",
-                               "descricao")))
+        # 🔴 SPEC-084.2, achado do JUIZ 2 (P1) · O ENDEREÇO NÃO RESPONDE A
+        #    PERGUNTA DE SEGURANÇA — e ele estava respondendo.
+        #
+        # 📊 Medido: `local_atual="Rodovia Castello Branco km 42, em frente ao
+        #    posto de gasolina"` derivava `"Nenhuma das anteriores"`, que o C2
+        #    copia para `local_situacao`, que vira `rb_InformacoesLocal="6"` —
+        #    **"Local Seguro"** enviado à seguradora sobre um carro parado no
+        #    acostamento de uma rodovia.
+        #
+        # ⚠️ E o agravante é do próprio produto: o prompt do atendimento manda
+        #    coletar *"o endereço COM UMA REFERÊNCIA"*. Ele pede exatamente o
+        #    texto que envenenava a inferência — e como o valor derivado
+        #    SATISFAZIA o portão, a atendente nunca era levada a perguntar.
+        #
+        # 🔴 A assimetria é a regra: o ramo PERIGOSO pode ler o endereço (quem
+        #    escreve "acostamento da Anhanguera, sem iluminação" relatou um
+        #    fato), mas o ramo SEGURO **não pode**. Ponto de referência não é
+        #    localização: "em frente ao posto" descreve o que se vê, não onde
+        #    se está. É a mesma forma do `via_ou_rodovia_opcao` cinco linhas
+        #    acima, que testa o ramo perigoso primeiro e por isso resiste.
+        _campos_de_risco = ("local_atual", "problema_descricao",
+                            "problema_relato", "situacao_risco", "descricao")
+        _sit = _norm(" ".join(str(slots.get(c) or "") for c in _campos_de_risco))
+        # ⚠️ O ramo SEGURO lê só o RELATO — nunca o endereço.
+        _relato = _norm(" ".join(str(slots.get(c) or "") for c in
+                                 ("problema_descricao", "problema_relato",
+                                  "situacao_risco", "descricao")))
         if any(p in _sit for p in (
                 "pouca iluminacao", "sem iluminacao", "mal iluminad",
                 # ⚠️ RADICAL, nao a palavra: `_norm` tira acento mas nao
@@ -906,10 +931,27 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
                 "pouco movimento", "sem movimento", "deserto", "desert",
                 "nao passa ninguem", "lugar ermo", "ermo", "isolad")):
             slots["situacao_risco_opcao"] = "Via com pouco movimento"
-        elif any(p in _sit for p in (
+        elif (any(p in _sit for p in (
                 "lugar seguro", "local seguro", "bem iluminad", "movimentad",
                 "em casa", "na garagem", "no estacionamento",
-                "posto de gasolina", "dentro do posto", "shopping")):
+                "posto de gasolina", "dentro do posto", "shopping"))
+                # 🔴 …DESDE QUE não seja PONTO DE REFERÊNCIA nem RODOVIA.
+                #
+                #    A primeira redação deste conserto proibia o ramo seguro de
+                #    ler `local_atual` inteiro. Grossa demais: *"estou no
+                #    estacionamento do shopping, bem iluminado"* é o segurado
+                #    dizendo ONDE ESTÁ, e o produto deve ouvi-lo.
+                #
+                # ⚠️ O que envenena não é o campo — é a FORMA. *"em frente ao
+                #    posto"* descreve o que se VÊ; *"dentro do posto"* descreve
+                #    onde se ESTÁ. E "km", "rodovia" e "acostamento" derrubam
+                #    qualquer conclusão de segurança, venha de onde vier.
+                and not any(p in _sit for p in (
+                    "em frente", "proximo a", "proximo ao", "perto d",
+                    "ao lado d", "de frente", "referencia"))
+                and not any(p in _sit for p in (
+                    "km ", "km.", "rodovia", "acostamento", "marginal",
+                    "faixa da esquerda", "pista"))):
             slots["situacao_risco_opcao"] = "Nenhuma das anteriores"
 
     # ---- A MESMA PERGUNTA, NA TELA QUE VIROU FORMULÁRIO -------------------
@@ -1081,6 +1123,37 @@ def new_dispatch_session(
     inject_address_slots(merged_slots)
 
     missing = missing_slots_for_subservice(playbook, subservice, merged_slots)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 PRESENÇA NÃO É RESPOSTA — achado do JUIZ 4 / JUIZ 2
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # `missing_slots_for_subservice` pergunta *"o campo está preenchido?"* e
+    # nunca *"o valor serve?"*. 📊 Medido: um `local_situacao` com o texto
+    # `"na rua, em frente ao numero 100"` PASSA o portão — e morre na tela do
+    # formulário com `valor_nao_reconhecido`, depois de ~25 telas de URA, com o
+    # segurado esperando.
+    #
+    # ⚠️ Isso vale **só para campo de ESCOLHA FECHADA do formulário nativo**,
+    # onde a seguradora publicou a lista de opções e o produto tem como
+    # conferir. Campo de texto livre continua sendo texto livre — conferir ali
+    # seria inventar um vocabulário que a URA não declarou.
+    #
+    # 🔴 E a conferência é a MESMA que o envio usa (`_resolver_opcao_de_flow`),
+    # não uma segunda: se o portão aprovasse por um critério e o envio
+    # recusasse por outro, o produto teria duas verdades sobre o mesmo valor.
+    for _flow_pt in (playbook.get("native_flows") or {}).values():
+        for _tela_pt, _comp_pt in _flow_components(_flow_pt):
+            _slot_pt = str(_comp_pt.get("slot") or "")
+            if not _slot_pt or _slot_pt in missing:
+                continue
+            if not (_comp_pt.get("options") or []):
+                continue          # texto livre: não há lista para conferir
+            _val_pt = merged_slots.get(_slot_pt)
+            if not str(_val_pt or "").strip():
+                continue          # ausência já é tratada pelo portão
+            if _resolver_opcao_de_flow(_comp_pt, _val_pt) is None:
+                missing.append(_slot_pt)
     session = {
         "case_id": case_id,
         "company_id": company_id,
@@ -2172,12 +2245,16 @@ def handle_insurer_message(
                 #    identificador, numa mensagem escrita para uma pessoa que
                 #    precisa agir em minutos.
                 #
-                # ⚠️ `falta_para_a_ura` já é o campo que o dossiê imprime em
-                #    português — *"A seguradora pediu e não temos: …"* — e o
-                #    ramo `sem_chute` era o único dos três que não o
-                #    preenchia. Uma linha, e o humano passa a ler a pergunta
-                #    em vez do nome do campo.
-                session["falta_para_a_ura"] = {
+                # 🔴 CORRIGIDO na rodada dos juízes: `falta_para_a_ura`
+                #    alimenta o CÉREBRO, e o `sem_chute` existe justamente para
+                #    NÃO consultá-lo — senão seria o mesmo default de antes com
+                #    um parágrafo de justificativa. `test_as_quatro_perguntas_
+                #    nao_tem_default` guarda essa fronteira, e pegou.
+                #
+                # ⚠️ O dossiê precisa da mesma frase em português SEM alimentar
+                #    o cérebro. São dois consumidores com necessidades opostas,
+                #    e por isso são dois campos.
+                session["motivo_legivel"] = {
                     "campo": step_name,
                     "slot": ",".join(rendered["missing"]),
                     "rotulo": "; ".join(
@@ -2685,6 +2762,7 @@ def reply_human_phase(
     # razão de `pending_insurer_messages` ser zerado na linha acima.
     session.pop("ultimo_passo_sem_dado", None)
     session.pop("falta_para_a_ura", None)
+    session.pop("motivo_legivel", None)
     return session
 
 
@@ -2742,7 +2820,11 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
                     linhas.append(f"  (o caso diz \"{det.get('valor_recebido')}\" e isso não casa com "
                                   "nenhuma opção da tela)")
 
-    falta = session.get("falta_para_a_ura") or {}
+    # ⚠️ Os dois: `falta_para_a_ura` é o que o cérebro recebe;
+    #    `motivo_legivel` é o que o `sem_chute` grava SEM acordar o cérebro.
+    #    O dossiê é lido por gente e quer a frase, venha de onde vier.
+    falta = (session.get("falta_para_a_ura")
+             or session.get("motivo_legivel") or {})
     if falta.get("rotulo"):
         linhas.append("")
         linhas.append(f"*A seguradora pediu e não temos:* {falta['rotulo']}")
@@ -2841,7 +2923,20 @@ def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:
     #    residencial já tomavam — e que não funcionava, pela mesma linha.
     instrucoes = (por_sub[sub_do_caso] if sub_do_caso in por_sub
                   else playbook.get("client_instructions") or [])
-    for instruction in instrucoes[:2]:
+    # 🔴 SPEC-084.2, achado do JUIZ 3 (RUIM 5) · O CORTE COMIA A LINHA QUE
+    #    RESPONDE À ÚNICA PERGUNTA DO SEGURADO.
+    #
+    #    Era `instrucoes[:2]`. 📊 Nas 10 rotas de guincho há TRÊS instruções
+    #    escritas, e a terceira é *"Você vai receber um SMS/link com a previsão
+    #    de chegada do prestador"* — a única frase do produto inteiro que
+    #    responde a *"quando alguém chega?"*. Ela estava escrita, revisada, e
+    #    cortada por um `[:2]`.
+    #
+    # ⚠️ O teto existe por uma razão real: mensagem longa no WhatsApp não é
+    #    lida. Mas 2 era um número, não uma medida. 📊 O maior conjunto de
+    #    instruções do produto tem 3 linhas; com 4 nenhuma rota é truncada
+    #    hoje, e o teto continua impedindo que alguém despeje dez.
+    for instruction in instrucoes[:4]:
         lines.append(instruction)
     lines.append("Qualquer coisa até lá, é só me chamar por aqui 🙂")
     return "\n".join(lines)

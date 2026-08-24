@@ -100,6 +100,11 @@ TELA_ROTA_CHAVEIRO = (
     "dentro do veículo\nPerda\nPerdeu a chave\nQuebrou\nA chave quebrou")
 
 CASO = {
+    # 🔴 ATUALIZADO — SPEC-084.2 C4: o registro do SEGUNDO formulário nativo fez
+    #    `hdi/auto/chaveiro` passar a bater nele, e o formulário exige
+    #    `local_situacao`. Sem o slot, a rota trava — que é exatamente o
+    #    defeito que o C4 tornou visível. A fixture segue o produto.
+    "local_situacao": "Local Seguro",
     "titular_cpf": "11122233344", "veiculo_placa": "BBB2222",
     "titular_nome": "Cliente", "local_atual": "Rua X, 100, Florianópolis, SC",
     "local_destino": "Oficina Y, São José, SC",
@@ -294,7 +299,21 @@ for tela in CHAVEIRO:
     sc = IDS.start_dispatch(sessao(
         "chaveiro", problema_descricao="tranquei a chave dentro do carro"))
     sc, rc = responder(sc, tela)
-    certo(sc.get("state") != "needs_human" or rc is not None,
+    # 🔴 ATUALIZADO na rodada dos juízes — SPEC-084.2, CLAUDE.md §9.3.
+    #
+    #    Depois do C4, uma destas telas é o SEGUNDO formulário nativo. O
+    #    corredor a reconhece e MONTA a resposta — e para em
+    #    `formulario_pronto_sem_flow_token`, porque 📊 o `flow_token` nunca
+    #    chega: o botão da HDI/Yelum se chama `galaxy_message` e o parser não o
+    #    reconhece (P-084-67, declarada e medida em 0 de 28.096 eventos).
+    #
+    # ⚠️ *"O corredor não soube responder"* e *"o corredor respondeu e o canal
+    #    não levou"* são coisas OPOSTAS, e o guarda tem de distinguir: a
+    #    primeira é defeito de corredor; a segunda é limite externo declarado.
+    _resposta_pronta = str(sc.get("reason") or "").startswith(
+        "formulario_pronto_")
+    certo(sc.get("state") != "needs_human" or rc is not None
+          or _resposta_pronta,
           "🔴 hdi/auto/chaveiro não trava em: " + " ".join(tela.split())[:48],
           f"state={sc.get('state')!r} reason={sc.get('reason')!r}")
 

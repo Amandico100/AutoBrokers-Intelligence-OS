@@ -124,9 +124,20 @@ _PREENCHIMENTO = {
     "ar_condicionado_tipo": "split",
     "ar_condicionado_btus": "9000",
     "email_segurado": "segurado@exemplo.com.br",
+    # 🔴 Achado do JUIZ 4 · O MEDIDOR TEM DE FALAR A LÍNGUA DO CONTRATO.
+    #    Estes três valores eram texto livre, e 📊 o formulário os RECUSAVA
+    #    (`valor_nao_reconhecido`) — o instrumento carimbava `ready_to_send`
+    #    com um valor que a seguradora não aceita. Agora são as redações que a
+    #    própria `description` ensina, que é o que um atendente escreveria.
     "veiculo_em_garagem": "nao",
-    "veiculo_nivel_rua": "sim",
-    "local_situacao": "na rua, em frente ao numero 100",
+    "veiculo_nivel_rua": "Subsolo",
+    "local_situacao": "Local Seguro",
+    "situacao_risco_opcao": "Nenhuma das anteriores",
+    "bateria_tipo_opcao": "Recarga de bateria",
+    "taxi_passageiros_opcao": "1",
+    "via_ou_rodovia_opcao": "Via local",
+    "profissional_opcao": "Eletricista",
+    "servico_opcao": "Assistência",
     "transporte_destino": "para casa",
     "taxi_passageiros": "2",
 }

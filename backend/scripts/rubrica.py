@@ -984,7 +984,22 @@ def eixo_e(rota, r: RP.Replay, *, mutacoes_ok: Optional[Tuple[int, int]] = None)
         #    `ast` (sem executar nada). Divergiu, o item cai e diz por quê —
         #    em vez de dar 6 pontos calado.
         declaradas = _mutacoes_declaradas_no_repo()
-        if declaradas and total != declaradas:
+        # 🔴 FAIL-CLOSED — achado do JUIZ 0.
+        #
+        #    A primeira redação era `if declaradas and total != declaradas`. Um
+        #    `cwd` errado, um rename ou um `SyntaxError` fazia `declaradas`
+        #    valer 0, o `and` curto-circuitava, e o item devolvia **6 pontos em
+        #    todas as rotas** afirmando um número inventado — com a frase exata
+        #    que a §12.1 proíbe.
+        #
+        # ⚠️ **Zero MEDIDO e zero NÃO MEDIDO não são a mesma coisa** — é a
+        #    mesma lição que o `medir_rota.py` documenta sobre o `cwd`. Não
+        #    conseguir ler vale ZERO, e diz que não conseguiu.
+        if not declaradas:
+            itens.append(Item("E", "a mutacao fica vermelha (EXECUTADA)", 0, 6,
+                              "nao consegui LER o `MUTACOES` do arquivo da "
+                              "regua — zero medido nao e zero nao medido"))
+        elif total != declaradas:
             itens.append(Item("E", "a mutacao fica vermelha (EXECUTADA)", 0, 6,
                               f"a tupla diz {total} mutacoes e o repo declara "
                               f"{declaradas} — numero sem fonte (§12.1)"))

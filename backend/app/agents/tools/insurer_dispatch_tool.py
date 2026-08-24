@@ -190,8 +190,7 @@ class InsurerDispatchInput(BaseModel):
         "sempre `line_kind`, senão o acionamento vira handoff. "
         "Nem toda seguradora faz todos: sem corredor observado a ferramenta "
         "devolve handoff com o motivo escrito — nunca improvise. "
-        "Subserviço. Residencial: eletricista | chaveiro | encanador | "
-        "desentupimento | maquina_de_lavar | eletrodomesticos. "
+
         # 🔴 SPEC-082: `maquina_de_lavar` e um subservico PROPRIO, e nao um
         # `eletrodomesticos` generico. Motivo medido: a URA pede a tecla do
         # aparelho numa lista de quinze, e o generico responde "15 - Outros".
@@ -313,8 +312,20 @@ class InsurerDispatchInput(BaseModel):
         "[residencial encanador] O que está vazando, com as palavras do "
         "cliente (torneira, vaso, cano, caixa d'água...)"))
     encanador_instalacao_opcao: Optional[str] = Field(default=None, description=(
+        # 🔴 SPEC-084.2, achado do JUIZ 1 (BLOCKER) · AQUI DIZIA "instalação
+        #    nova NÃO é coberta", e isso é INVENÇÃO.
+        #
+        # 📊 O slot só existe em `porto/residencial/encanador`, e a tela que o
+        #    origina é alcançada pela tecla *"5 - Instalações"* de um menu que a
+        #    própria URA abre com *"listamos abaixo os SERVIÇOS DISPONÍVEIS
+        #    para você"*. As três frases de "instalação não coberta" do corpus
+        #    são de FIOS (eletricista), FECHADURAS (chaveiro) e LUMINÁRIA — e
+        #    a da luminária diz *"realizada de forma particular"*, que é outra
+        #    coisa. **Ambíguo não é negativo, e aqui foi escrito como
+        #    negativo.**
         "[residencial encanador] É REPARO de algo que quebrou, ou INSTALAÇÃO "
-        "nova? 🔴 Instalação nova NÃO é coberta — não prometa antes de saber."))
+        "nova? A cobertura de instalação VARIA por apólice — pergunte, e não "
+        "prometa nem negue antes de a seguradora responder."))
 
     # --- Residencial: chaveiro ---
     chaveiro_necessidade_opcao: Optional[str] = Field(default=None, description=(
@@ -413,15 +424,102 @@ class InsurerDispatchInput(BaseModel):
         "ou parado na rua? 🔴 PERGUNTE: responder 'não' sem saber faz a "
         "seguradora PULAR a pergunta que escolhe o tipo de guincho."))
     veiculo_nivel_rua: Optional[str] = Field(default=None, description=(
-        "[auto guincho HDI/Yelum] Só quando está em garagem: subsolo | acima "
-        "do nível da rua | nível da rua com restrição | nível da rua com "
-        "acesso livre. 🔴 Esta resposta escolhe o EQUIPAMENTO (plataforma, "
-        "asa-delta, munck). Não deduza de 'rampa' — ela cabe em duas opções."))
+        # 🔴 Achado do JUIZ 4: esta descrição ensinava quatro redações e 📊 DUAS
+        #    eram RECUSADAS pelo formulário — o hífen do título real
+        #    (`Nível da rua - com restrição de acesso`) matava o casamento por
+        #    substring. Um modelo obediente escrevia o que lhe foi ensinado e
+        #    travava o acionamento. Agora são os títulos EXATOS da seguradora.
+        "[auto guincho HDI/Yelum] Só quando está em garagem. Use uma destas "
+        "quatro, exatamente: 'Subsolo' | 'Acima do nível da rua' | 'Nível da "
+        "rua - com restrição de acesso' | 'Nível da rua - com acesso livre'. "
+        "🔴 Esta resposta escolhe o EQUIPAMENTO (plataforma, asa-delta, "
+        "munck). Não deduza de 'rampa' — ela cabe em duas opções."))
     local_situacao: Optional[str] = Field(default=None, description=(
         "[auto guincho HDI/Yelum] Como é o lugar: 'local seguro' | 'escuro ou "
         "mal iluminado' | 'pouca circulação de pessoas'. 🔴 Decide a "
         "PRIORIDADE do atendimento — dizer 'seguro' sem perguntar rebaixa quem "
         "está parado num lugar perigoso."))
+
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 O BURACO DA REGRA DO SUFIXO — achado do JUIZ 4
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # A regra *"o que o MOTOR preenche não se cobra do cliente"* isenta todo
+    # slot terminado em `_opcao`. 📊 Medido: para **7 slots em 33 pares (rota ×
+    # passo)** o motor NÃO preenche — e o portão, cego por essa regra, carimba
+    # `ready_to_send`.
+    #
+    # 🔴 Três deles são `sem_chute`, que declara literalmente *"esta pergunta
+    #    NÃO tem default honesto"*. As duas regras se contradiziam: uma diz que
+    #    o motor preenche, a outra diz que não existe o que preencher.
+    #
+    # 📊 O estrago, medido rodando as telas REAIS do corpus pelo motor: cinco
+    #    rotas AAA vão a `needs_human` numa tela que existe no acervo —
+    #    `azul/bateria` e `porto/bateria` (o submenu recarga × bateria nova),
+    #    `hdi/socorro_mecanico` e `yelum/socorro_mecanico` (a situação de
+    #    risco) e `porto/guincho` (quantas pessoas no táxi).
+    #
+    # ⚠️ É a MESMA classe do C1, um andar acima: a sessão nascia
+    #    `ready_to_send` — o produto prometia acionar — e travava no meio da
+    #    conversa com a URA rodando. Declarar os três é o ramo (a) da mesma
+    #    decisão: pergunta de verdade, sem default honesto, precisa de onde
+    #    morar.
+    #
+    # 🔵 Os outros quatro NÃO entram, e a distinção é medida: dois são
+    #    `fallback_adaptive` (o cérebro responde — é o desenho declarado) e
+    #    dois são tecla de menu que o motor injeta a partir do subserviço.
+    situacao_risco_opcao: Optional[str] = Field(default=None, description=(
+        "[auto HDI/Yelum] O segurado está numa situação de risco? Responda com "
+        "as palavras da própria URA: 'Via com pouca iluminação' | 'Via com "
+        "pouco movimento' | 'Nenhuma das anteriores'. 🔴 PERGUNTE — esta "
+        "resposta muda a PRIORIDADE do atendimento, e presumir 'nenhuma' "
+        "rebaixa quem está parado num lugar perigoso."))
+    bateria_tipo_opcao: Optional[str] = Field(default=None, description=(
+        "[auto bateria] É RECARGA da bateria que está no carro, ou o segurado "
+        "quer comprar uma BATERIA NOVA? 🔴 São serviços diferentes e a URA "
+        "pergunta — recarga é assistência, bateria nova é venda."))
+    taxi_passageiros_opcao: Optional[str] = Field(default=None, description=(
+        "[auto guincho, só quando há táxi] Quantas pessoas vão no táxi. "
+        "⚠️ Só pergunte se o segurado JÁ pediu o transporte — quem só quer o "
+        "guincho não deve ouvir esta pergunta."))
+
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 CARREGAR NÃO É COBRAR — a distinção que faltava ao C1
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # O C1 tratou "o portão não deve cobrar isto" e "o contrato não precisa
+    # declarar isto" como a mesma decisão. **São opostas.**
+    #
+    #   o PORTÃO não cobra  →  ninguém é interrogado à toa por um galho que
+    #                          quase nunca é tomado
+    #   o CONTRATO carrega  →  quando o galho É tomado, a resposta tem onde
+    #                          morar
+    #
+    # 🔴 Sem a segunda metade, a tela chega, o passo pede o slot, e o
+    #    acionamento morre em `needs_human` com a URA rodando — que é
+    #    exatamente o defeito que esta SPEC veio consertar, um andar acima.
+    #
+    # ⚠️ O portão continua pulando `sem_chute`: declarar aqui **não** faz
+    #    ninguém perguntar antes da hora.
+    transporte_destino: Optional[str] = Field(default=None, description=(
+        "[auto guincho, só quando há táxi] Para onde a PESSOA quer ser levada. "
+        "🔴 Não confunda com `local_destino`, que é para onde vai o VEÍCULO — "
+        "mandar o táxi para a oficina leva o segurado ao lugar errado. "
+        "⚠️ Só pergunte se ele JÁ pediu o transporte."))
+    via_ou_rodovia_opcao: Optional[str] = Field(default=None, description=(
+        "[auto] O veículo está numa VIA LOCAL (rua de cidade) ou numa RODOVIA? "
+        "⚠️ Em rodovia pedagiada, quem tira o carro da pista é a "
+        "concessionária — a seguradora atende depois disso."))
+    profissional_opcao: Optional[str] = Field(default=None, description=(
+        "[residencial Allianz] Qual profissional a URA deve chamar, com o nome "
+        "que ela usa no menu (ex.: 'Eletricista', 'Encanador', 'Chaveiro'). "
+        "⚠️ Só quando o menu do serviço não decidir sozinho."))
+    servico_opcao: Optional[str] = Field(default=None, description=(
+        "[auto] A opção do menu de serviços, com o rótulo da própria URA. "
+        "⚠️ O motor costuma derivar isto do subserviço — preencha só se a "
+        "ferramenta pedir."))
 
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
@@ -691,7 +789,14 @@ class InsurerDispatchTool(BaseTool):
 
                 return {"status": "sem_corredor", "handoff_necessario": True,
                         "missing": [], "content": (
-                            f"A {quem} não atende '{trabalho}' por este canal de assistência — "
+                            # 🔴 SPEC-084.2, JUIZ 1 · "a seguradora nao atende X" e uma afirmacao
+                            #    sobre a APOLICE DE TERCEIRO, e o produto nao sabe
+                            #    isso. 📊 Medido: a Azul lista "Taxi" em SETE telas do
+                            #    acervo e `subservice_supported` diz False -- porque
+                            #    NAO TEMOS CORREDOR MAPEADO, que e outra coisa. A
+                            #    primeira frase e verdade sobre o produto; a segunda e
+                            #    falsa sobre a seguradora.
+                            f"Não temos corredor mapeado para '{trabalho}' na {quem} — "
                             "e sinistro (colisão, roubo, incêndio) NUNCA se abre por aqui. "
                             "NÃO peça mais nenhum dado ao cliente por causa disto: não falta dado, "
                             "falta caminho. NÃO tente acionar por outro corredor e NÃO invente protocolo. "

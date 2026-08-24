@@ -173,11 +173,29 @@ certo(0 < i_trava < i_cerebro,
 
 # 🔴 E o cérebro NÃO pode ser consultado nesse caminho.
 trecho = FONTE[i_trava:i_cerebro]
-certo("falta_para_a_ura" not in trecho,
+
+# 🔴 AFINADO na rodada dos juízes da SPEC-084.2 · A ATRIBUIÇÃO, NÃO A MENÇÃO.
+#
+#    A busca era pelo nome cru, e um COMENTÁRIO que explicasse por que o campo
+#    não pode ser usado ali derrubava o guarda. Guarda que reprova a explicação
+#    do próprio invariante ensina a apagar a explicação.
+#
+# ⚠️ E o que alimenta o cérebro é a ESCRITA no campo. `session["falta_..."] =`
+#    é o fato; citar o nome em prosa não é.
+_ESCRITA_NO_CEREBRO = 'session["falta_para_a_ura"]'
+certo(_ESCRITA_NO_CEREBRO not in trecho,
       "🔴 o caminho `sem_chute` NÃO alimenta o cérebro — seria o mesmo "
       "default com um parágrafo de justificativa")
 certo('"needs_human"' in trecho and "return session" in trecho,
       "🔴 e ele para em `needs_human`, com o motivo gravado")
+
+# 🔴 CONTROLE: a busca CONSEGUE achar a escrita — ela existe no ramo do cérebro,
+#    logo abaixo. Sem esta linha, um erro de recorte faria a de cima passar por
+#    vácuo.
+certo(_ESCRITA_NO_CEREBRO in FONTE[i_cerebro:i_cerebro + 4000],
+      "🔴 CONTROLE: a mesma busca ACHA a escrita no ramo do cérebro",
+      "se ela não acha em lugar nenhum, a asserção acima não guarda nada")
+
 
 # =============================================================================
 print()
