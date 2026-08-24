@@ -28,16 +28,27 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
    · [`docs/canon/PORTAIS-E-CORREDORES.md`](docs/canon/PORTAIS-E-CORREDORES.md) — **portal, corredor e Atlas: qual é qual.**
    · [`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`](docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md) — **o Atlas é UM só, de todas as corretoras.** Antes de tocar em `ura_maps`, no Tecelão, em playbook, corredor ou prompt de atendimento.
    · [`docs/canon/PENDENCIAS.md`](docs/canon/PENDENCIAS.md) — **o que ficou pendente, e o que destrava cada coisa.**
-4. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
-5. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
-6. [`docs/canon/MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) — **antes de qualquer SQL**.
+4. [`docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md`](docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md) — **como se monta a equipe de agentes, quem julga, e quando o laço para.** Antes de montar time, escrever SPEC, executar, avaliar ideia nova ou atender incidente. §1, §2 e §6 resolvem 90% dos casos.
+5. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
+6. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
+7. [`docs/canon/MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) — **antes de qualquer SQL**.
 
-Preflight: `git rev-parse --show-toplevel` (deve ser `AutoBrokers-Opus-Exec`) · `git branch --show-current` · `git rev-parse HEAD` (registrar no relatório) · `git status --short` (limpo ao iniciar).
+Preflight, nesta ordem:
+
+```bash
+git rev-list --count HEAD..origin/main   # 🔴 TEM DE SER 0
+git branch --show-current
+git rev-parse HEAD                       # registrar no relatório
+git status --short                       # limpo ao iniciar
+```
+
+🔴 **A árvore de trabalho é a que está em dia com a `origin/main`, e o preflight MEDE isso — não presume pelo nome da pasta.** ⚠️ 📊 Medido em 24/08/2026: `AutoBrokers-FIX` → **0 atrás** · `AutoBrokers-Opus-Exec` → **169 atrás**, último commit de 16/08. Este arquivo nomeava a segunda, e uma sessão que obedecesse começaria em SPECs, `PENDENCIAS` e código vencidos — que é como nasce motor paralelo (§5). **Contagem diferente de zero: pare e pergunte qual árvore usar.**
 
 ## 3. Ordem de autoridade
 
 ```text
 CLAUDE.md (processo)
+→ PROTOCOLO-AUTOBROKERS-AAA (como se julga e quando se para)
 → SPEC-052 (cérebro: conhecimento, memória, contexto, aprendizagem)
 → SPEC-053 (Work OS: harness, contratos, fronteiras)
 → 054 schema/segurança · 055 Work Runs/HITL · 056 Skills/Tools

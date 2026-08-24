@@ -341,6 +341,16 @@ Fábrica.** O EasyPanel constrói a `main`.
 - **Destrava:** merge com o gate final da SPEC (CLAUDE.md §13.8).
 - **Dono:** 🧑 Founder decide quando · 🤖 prepara.
 
+🔴 **E há um segundo fato, medido em 24/08/2026:** as duas árvores de trabalho
+divergiram. 📊 `AutoBrokers-FIX` → **0 commits atrás** da `origin/main`;
+`AutoBrokers-Opus-Exec` → **169 atrás**, último commit de 16/08. O `CLAUDE.md`
+nomeava a segunda no preflight — **corrigido**: o preflight agora **mede**
+(`git rev-list --count HEAD..origin/main` tem de ser 0) em vez de presumir pelo nome.
+⚠️ **Falta a decisão do Founder:** as duas árvores continuam, ou uma é aposentada?
+A `Opus-Exec` tem `feat/spec072` não mesclada e rascunhos das SPECs 073–078 não
+versionados — **nada foi tocado lá**.
+- **Dono desta parte:** 🧑 Founder.
+
 ## P-24 · Binários soltos no repositório
 
 📊 `exp.bin` (5,2 KB) e `mensal.xlsx` (6,1 KB) na raiz, commitados sem contexto.

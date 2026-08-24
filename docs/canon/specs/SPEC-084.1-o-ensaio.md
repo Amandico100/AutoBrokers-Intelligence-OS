@@ -1132,8 +1132,13 @@ para CADA Cᵢ dos SEIS, um de cada vez:
 
 TETO: 3 voltas por rota. Bateu sem liberar → `PRECISA_DE_HUMANO` com dossiê.
 🔴 NUNCA um verde forçado.
-⚠️ Reprovação sem motivo acionável NÃO conta como volta — 🔴 **e quem decide se é
-acionável é o JUIZ, não o executor**, que se beneficiaria da decisão.
+
+⛔ **REVOGADO em 24/08/2026 pelo `PROTOCOLO-AUTOBROKERS-AAA.md` §6:** a cláusula
+*"reprovação sem motivo acionável não conta como volta, e quem decide é o juiz"*
+tornava o teto **inalcançável** — o juiz que reprova era o mesmo que decidia se a
+própria reprovação valia. 🔴 **Agora toda volta conta**, e a **volta 3 é um juiz
+NOVO**, que não vê as anteriores. O laço do PROTOCOLO §6 vale; este fica como
+registro histórico.
 ```
 
 ### 7.3 A regra que vale para o juiz também

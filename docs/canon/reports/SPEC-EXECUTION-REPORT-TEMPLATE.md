@@ -14,6 +14,7 @@
 4. Nunca afirmar que algo funciona só porque existe código. Prova é saída de teste ou consulta ao banco.
 5. Nenhum segredo, hash, token ou credencial — apenas presença/ausência.
 6. O relatório é pré-condição do gate final. SPEC sem relatório completo **não** faz merge na `main`.
+7. 🔴 A **§0.1** é preenchida **antes de montar time**, não no fim. Ela é o insumo do juiz, e não o resumo do que aconteceu.
 
 ---
 
@@ -44,6 +45,40 @@
 - [ ] `CLAUDE.md`, `EXECUTION-MASTER-PLAN.md` e `FOUNDER-DECISIONS.md` foram lidos no início.
 
 Qualquer item não marcado exige explicação nominal na §10.
+
+---
+
+## 0.1 O PROTOCOLO AAA — as duas contas, a referência e o laço
+
+> 🔴 Obrigatória. `PROTOCOLO-AUTOBROKERS-AAA.md` §2 diz *"o orquestrador escreve
+> as duas contas no relatório"*, e §5 diz que referência que não está escrita não existe
+> para o juiz. **Este é o lugar.** Uma linha por unidade de trabalho.
+
+| unidade | ALC | REV | FREQ | **RISCO** | **SUP** | piso? | time montado |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| <bloco/rota/peça> | | | | | | §2.4 | |
+
+⚠️ Modo **IDEIA** ou **INCIDENTE**: escreva `—` nas contas e diga qual modo (§2.5/§7).
+
+**Referência por dimensão** (§5) — e marque se o Founder confirmou:
+
+| dimensão | referência inspecionável | 🧑 confirmada? |
+|---|---|:---:|
+| | | proposta / confirmada / **não avaliada** |
+
+**O laço** (§6) — 🔴 **toda volta conta**, e a volta 3 é juiz NOVO:
+
+| unidade | voltas | porta de saída | juiz da volta 3 |
+|---|:---:|---|---|
+| | | liberou / só pendências / **STALLED** | mesmo achado / outro / liberou |
+
+🔴 **STALLED exige a classificação da §6:** qual das oito condições do `CLAUDE.md` §10
+ele é — ou, se nenhuma, **o que foi entregue mesmo assim** e o que foi para `PENDENCIAS.md`.
+
+**Blockers rebaixados a pendência pelo orquestrador** (§4) — vazio é resposta válida:
+
+| achado do juiz (verbatim) | motivo do rebaixamento | teste do produto |
+|---|---|---|
 
 ---
 
