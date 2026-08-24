@@ -491,6 +491,73 @@ async def _evento(db, company_id: str, run_id: str, tipo: str, mensagem: str, *,
                        tipo, type(e).__name__)
 
 
+def decidir_travamento(fase: str, fase_anterior: str) -> Optional[str]:
+    """PURO. O travamento mudou de estado nesta transição de fase? — SPEC-085 F0.
+
+    Devolve o novo `work_runs.unblock_state`, ou `None` quando nada mudou.
+
+    🔴 ESTA FUNÇÃO É A LINHA DE CONTROLE DA §F0.3 ITEM 2, ESCRITA EM CÓDIGO.
+    Um acionamento que vai bem — `ura → captured → monitoring` — devolve `None`
+    em toda transição, e o run termina com `unblock_state IS NULL`. **Um
+    gravador que grava sempre não mede nada**; a prova de que este mede é que
+    ele sabe ficar calado.
+
+    PURA porque a §F0.3 cobra o gate por FAMÍLIA de motivo, não por caso: dá
+    para percorrer as 16 famílias sem banco, sem Redis e sem rede. Guarda que
+    só existe dentro de um `await` é guarda que ninguém consegue rodar
+    (`insurer_dispatch_service.acionamento_liberado` diz o mesmo, e pelo mesmo
+    motivo).
+
+    ⚠️ O QUE ELA DELIBERADAMENTE NÃO DECIDE: `assumido_por_humano`,
+    `resolvido` e `abandonado`. Esses três nascem de um clique, não de uma
+    transição de fase, e o dono deles é o BLOCO E. Escrever meia máquina de
+    estados aqui é garantir que o BLOCO E a reescreva.
+    """
+    if fase == "needs_human":
+        return "travado"
+    # A fuga que a §2.3 da SPEC descreve: `try_route_insurer_inbound` não tem
+    # early-return para `needs_human`, então a URA voltando a falar pode
+    # devolver o caso a `ura` sozinha. Isso É um destravamento, e até hoje não
+    # deixava rastro nenhum.
+    if fase_anterior == "needs_human" and fase:
+        return "retomado_pelo_robo"
+    return None
+
+
+async def _marcar_travamento(db, run_id: str, fase: str, fase_anterior: str) -> None:
+    """IO. Aplica a decisão de `decidir_travamento` sem pisar em decisão humana.
+
+    🔴 Os dois filtros são a parte que importa, e não são estilo:
+
+      `travado`             só quando a coluna está NULL — um caso que já foi
+                            assumido por uma pessoa e volta a travar continua
+                            com o nome de quem o assumiu.
+      `retomado_pelo_robo`  só quando estava exatamente em `travado` — se uma
+                            pessoa assumiu e o caso andou, quem andou foi ela,
+                            e creditar o robô é a mesma classe de mentira do
+                            `dossier_sent = True` incondicional que custou o
+                            "Dossiê entregue à equipe" de 18/08.
+
+    Best-effort: falhar aqui nunca derruba o acionamento — mas sai como ERROR,
+    porque sem esta linha o travamento volta a ser invisível, que é o defeito
+    inteiro desta SPEC.
+    """
+    novo = decidir_travamento(fase, fase_anterior)
+    if not novo or not run_id:
+        return
+    try:
+        q = db.client.table("work_runs").update({"unblock_state": novo}).eq("id", run_id)
+        if novo == "travado":
+            q = q.is_("unblock_state", "null")
+        else:
+            q = q.eq("unblock_state", "travado")
+        await q.execute()
+    except Exception as e:  # noqa: BLE001
+        logger.error("[ACIONAMENTO DURAVEL] run %s nao recebeu unblock_state='%s' (%s) — "
+                     "o travamento deste caso nao vai aparecer na Fila",
+                     run_id, novo, type(e).__name__)
+
+
 async def registrar_checkpoint(company_id: str, insurer_phone: str,
                                session: Dict[str, Any]) -> Optional[str]:
     """Grava a fase atual do acionamento como etapa durável do Work Run.
@@ -561,6 +628,9 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
             campos["error_message"] = ("O acionamento precisa de uma pessoa da corretora "
                                        "para continuar.")
         await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
+
+        await _marcar_travamento(db, run_id, fase,
+                                 str(session.get("_checkpoint_fase") or ""))
 
         if fase != str(session.get("_checkpoint_fase") or ""):
             await _evento(db, company_id, run_id, "step.completed",

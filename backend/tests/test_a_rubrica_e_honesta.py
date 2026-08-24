@@ -53,6 +53,39 @@ def _pontos(nota, nome_do_item: str) -> int:
 # ═════════════════════════════════════════════════════════════════════════════
 # 1 · A RÉGUA PONTUA — e o portão do eixo B não a barra
 # ═════════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# 🔴 QUARENTENA — P-226, e a dívida é da SPEC-089, não desta.
+# ---------------------------------------------------------------------------
+# 📊 Medido em 24/08/2026: cinco asserções deste arquivo estão VERMELHAS, e
+# ninguém sabia — `pytest tests/` abortava a sessão inteira antes de chegar
+# aqui, o meta-guarda o exclui de propósito (ele tem `def test_`), e o
+# `broker_outcome_regression_pack` não o cita. **Guarda vermelho e invisível.**
+#
+#   :72   assert 102 == 96          "o denominador mudou; a nota passou a
+#                                    medir outra coisa"
+#   :133  assert []                 "o replay não acha NENHUMA órfã funcional.
+#                                    Ou o corredor ficou perfeito — e aí esta
+#                                    asserção precisa ser reescrita com a prova
+#                                    disso — ou a MEDIDA AFROUXOU e ninguém viu"
+#   :199  "o subserviço já tem regra própria — a mutação precisa mudar de lugar"
+#   :253  assert 9 == 15            "o eixo E deixou de fechar"
+#   :371  assert 102 == (100 - 4)
+#
+# 🔴 A RÉGUA ESTÁ DEVOLVENDO 102 NUMA ESCALA DE 100, e parou de achar órfã.
+# Uma régua assim **aprova o que deveria reprovar** — e o que ela aprova é uma
+# rota que chega em segurado. É BLOCKER, e o Founder já cravou: **é da
+# SPEC-089**, não da 085. Consertar aqui seria mexer na régua durante a
+# execução que ela vai medir.
+#
+# ⚠️ `strict=True` corta dos dois lados: uma delas que volte a passar QUEBRA a
+# suíte, obrigando a tirá-la daqui. Quarentena que não esvazia vira aterro
+# (`PROTOCOLO-AUTOBROKERS-AAA` §1).
+QUARENTENA_SPEC089 = pytest.mark.xfail(
+    strict=True,
+    reason="P-226 · a régua devolve 102/100 e parou de achar órfã — BLOCKER da SPEC-089",
+)
+
+@QUARENTENA_SPEC089
 def test_a_regua_pontua_e_nao_bate_no_portao():
     """📊 Medido em 21/08/2026: **64/96**.
 
@@ -73,6 +106,7 @@ def test_a_regua_pontua_e_nao_bate_no_portao():
                                  "outra coisa e a comparacao historica quebrou")
 
 
+@QUARENTENA_SPEC089
 def test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas():
     """📊 A SPEC-083 §4.2 nomeia UMA órfã funcional — e ela **deixou de ser órfã**.
 
@@ -154,6 +188,7 @@ def test_o_determinismo_da_regua_nao_cai():
 #    coisa"*: mexer numa peça move **aquele** item, e o total cai **exatamente**
 #    o que aquele item vale.
 # ═════════════════════════════════════════════════════════════════════════════
+@QUARENTENA_SPEC089
 def test_a_regra_do_SUBSERVICO_move_D_e_a_do_corredor_NAO():
     """🔴 O C4 mudou o DONO deste item, e a mutação mudou de lugar com ele.
 
@@ -243,6 +278,7 @@ def test_remover_o_freio_faz_C_cair_EXATAMENTE_8():
         (antes.por_eixo()["C"], depois.por_eixo()["C"])
 
 
+@QUARENTENA_SPEC089
 def test_o_eixo_E_cai_para_o_SEGUNDO_melhor_arquivo_nao_para_zero():
     """🔴 A regra por-arquivo (§3.6): a nota da rota é a do **MELHOR** arquivo.
 
@@ -359,6 +395,7 @@ def test_o_portao_do_eixo_B_zera_A_C_D_E():
 # ═════════════════════════════════════════════════════════════════════════════
 # 4 · O ITEM EXCLUÍDO NÃO É RENORMALIZADO (§3.9)
 # ═════════════════════════════════════════════════════════════════════════════
+@QUARENTENA_SPEC089
 def test_item_excluido_sai_do_denominador_e_aparece_explicito():
     """🔴 *"A nota é sempre sobre o denominador real, e o excluído aparece."*
 

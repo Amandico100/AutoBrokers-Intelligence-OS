@@ -3,14 +3,23 @@
 
 📊 Medido em 24/08/2026:
 
-    arquivos tests/test_*.py .................................. 278
-      escritos como SCRIPT — `def main()` + `sys.exit(main())`,
-      sem nenhuma função `test_` ............................... 151
-      desses, VERMELHOS quando rodados um a um .................  14
+    arquivos tests/test_*.py .................................. 279
+      escritos como SCRIPT, sem nenhuma função `test_` ......... 273
+        desses, com `def main()` ............................... 151
+        ⚠️ e 122 SEM `main()` — asserções em nível de módulo.
+           A primeira regra de descoberta pedia `main()` e deixava
+           esses 122 de fora. 🔴 A regra virou UMA: sem `def test_`,
+           roda como PROCESSO.
+      desses, VERMELHOS quando rodados um a um .................  42
 
     grep -rn "rotas-montam" .github/  →  vazio
     gate.yml rodava `broker_outcome_regression_pack.py` e `npx tsc --noEmit`.
-    NÃO rodava pytest, e NÃO rodava os 151.
+    NÃO rodava pytest, e NÃO rodava os 273.
+
+⚠️ 🔴 **Estes números tinham DUAS contagens neste mesmo arquivo** — o cabeçalho
+dizia 151/14 e a `QUARENTENA` logo abaixo listava 273/42. Duas listas que
+precisam concordar, escritas separado, divergindo **dentro do arquivo que
+existe para impedir exatamente isso**. Corrigido em 24/08/2026, na SPEC-085.
 
 ⚠️ **No passado, e o tempo verbal importa:** o mesmo commit que criou este
 arquivo acrescentou o passo do pytest ao `gate.yml`. A primeira redação daqui
@@ -78,6 +87,118 @@ RAIZ = PASTA.parent
 TETO_SEGUNDOS = 120
 
 # ---------------------------------------------------------------------------
+# 🔴 OS ARQUIVOS QUE UM GUARDA PODE MUTAR — E TEM DE DEVOLVER
+# ---------------------------------------------------------------------------
+# 📊 Medido em 24/08/2026, SPEC-085. Dois guardas verdes ficavam VERMELHOS no
+# lote e passavam sozinhos:
+#
+#     test_o_handoff_nao_e_um_buraco   sozinho: exit 0 · no lote: exit 1
+#     test_o_formulario_nao_e_inocuo   sozinho: exit 0 · no lote: exit 1
+#
+# 🔴 A causa não estava neles. Rodando `test_duas_medicoes_nao_se_atropelam`
+# imediatamente antes, o vermelho REPRODUZ:
+#
+#     IndexError: list index out of range
+#     if f"{r.seguradora}/{r.ramo}/{r.servico}" in achou][0]
+#
+# `achou` é montado por `replay()` **sobre o `corridor_playbooks` ao vivo**.
+# Lista vazia quer dizer uma coisa só: **o corredor estava errado no instante
+# em que aquele guarda rodou.**
+#
+# ⚠️ E o mutador é justamente o guarda que existe para provar que isso não
+# acontece: `test_duas_medicoes_nao_se_atropelam` dispara DUAS medições em
+# threads, e cada medição muta e restaura `corridor_playbooks.py`. Ele está
+# VERMELHO — logo a trava que protege o corredor **não segura hoje**. O
+# docstring dele registra o quase-acidente real de 22/08/2026: as restaurações
+# correram umas por cima das outras e o produto ficou com uma **âncora morta**,
+# *"só pego por um `git status` de rotina"*.
+#
+# 🔴 E ele está em QUARENTENA. `xfail` esconde a FALHA dele — não esconde o
+# EFEITO COLATERAL. O resultado é o pior tipo de vermelho: **o guarda errado
+# fica vermelho, e quem investigar vai procurar defeito onde não há.**
+#
+# ⚠️ E ESSA HIPÓTESE FOI DERRUBADA POR MEDIÇÃO — o registro fica porque o erro
+# ensina. 📊 Rodar `test_duas_medicoes_nao_se_atropelam` imediatamente antes
+# dos dois reproduziu UMA vez e **não reproduziu na seguinte, com a mesma
+# ordem**. E numa rodada completa, não interrompida, os acusados foram OUTROS
+# TRÊS — que passam limpos sozinhos, com o mesmo sha256 antes e depois.
+#
+# 🔴 O que sobra é **processo solto**: alguém lança a medição e não a espera, e
+# a mutação cai na janela de quem estiver rodando na hora. Por isso este
+# arquivo NÃO acusa um guarda: ele restaura o arquivo, registra a janela, e
+# reprova a SESSÃO no fim (`test_nenhuma_janela_ficou_suja`). Ver logo abaixo.
+ARQUIVOS_COMPARTILHADOS = (
+    RAIZ / "app" / "services" / "corridor_playbooks.py",
+    RAIZ / "scripts" / "replay.py",
+)
+
+
+def _impressao_dos_compartilhados() -> dict:
+    """sha256 de cada arquivo que os guardas mutam-e-restauram. Ausente = None,
+    para que apagar um arquivo também seja detectado."""
+    import hashlib
+
+    marcas = {}
+    for caminho in ARQUIVOS_COMPARTILHADOS:
+        try:
+            marcas[caminho.name] = hashlib.sha256(caminho.read_bytes()).hexdigest()
+        except OSError:
+            marcas[caminho.name] = None
+    return marcas
+
+
+# ---------------------------------------------------------------------------
+# 🔴 A PRIMEIRA VERSÃO DISTO ACUSAVA INOCENTE — e o registro fica.
+# ---------------------------------------------------------------------------
+# Ela reprovava o guarda em cuja janela o arquivo mudou. 📊 O controle derrubou
+# a acusação: os três acusados numa rodada real —
+# `test_o_comparador_ve_resposta_errada`, `test_o_espelho_nao_aprende_com_a_amandus`
+# e `test_o_espelho_nao_le_o_proprio_eco` — rodados SOZINHOS devolvem exit 0 e
+# deixam os dois arquivos com o MESMO sha256.
+#
+# 🔴 Logo quem muta é um **processo solto**: um guarda lança a medição e não a
+# espera, o processo sobrevive a ele, e a mutação cai na janela de quem estiver
+# rodando na hora. Acusar essa janela é acusar a vítima — que é literalmente o
+# defeito que esta checagem existe para matar. Escrever a acusação errada com
+# mais confiança é pior que não ter checagem (`CLAUDE.md` §9.3).
+#
+# O que ela faz agora, e as três coisas importam:
+#   1. **RESTAURA** o arquivo do retrato tirado no início da sessão — o resto
+#      da rodada volta a medir o produto de verdade, em vez de cascatear
+#      vermelhos inocentes;
+#   2. **REGISTRA** a janela, sem culpar ninguém;
+#   3. **REPROVA A SESSÃO** no fim, com todas as janelas listadas.
+_RETRATO_DA_SESSAO: dict = {}
+_JANELAS_SUJAS: list = []
+
+
+def _guardar_retrato_da_sessao() -> None:
+    """Os bytes dos compartilhados, uma vez por sessão. É o que a restauração
+    devolve — e é o estado que o `test_a_arvore_nao_tem_mutacao_vazada` já
+    conferiu estar limpo antes de qualquer guarda rodar."""
+    if _RETRATO_DA_SESSAO:
+        return
+    for caminho in ARQUIVOS_COMPARTILHADOS:
+        try:
+            _RETRATO_DA_SESSAO[caminho] = caminho.read_bytes()
+        except OSError:
+            pass
+
+
+def _devolver_o_que_foi_sujado(nome: str, antes: dict, depois: dict) -> None:
+    """Restaura e registra. ⚠️ NÃO reprova o guarda: ele pode ser a vítima."""
+    mudados = [f for f, sha in depois.items() if antes.get(f) != sha]
+    if not mudados:
+        return
+    _JANELAS_SUJAS.append((nome, tuple(mudados)))
+    for caminho, bytes_originais in _RETRATO_DA_SESSAO.items():
+        try:
+            if caminho.read_bytes() != bytes_originais:
+                caminho.write_bytes(bytes_originais)
+        except OSError:
+            pass
+
+# ---------------------------------------------------------------------------
 # 📊 Os 14 vermelhos medidos em 24/08/2026. Comando que produziu a lista:
 #
 #   for f in tests/test_*.py; do grep -q "^def test_" "$f" ||
@@ -126,10 +247,6 @@ QUARENTENA = {
         "P-226 · 🔴 TOCA A SPEC-085 — o cérebro e missing_slots",
     "test_o_corredor_residencial_nao_trava":
         "P-226 · 🔴 TOCA A SPEC-085 — travamento de corredor",
-    "test_o_formulario_nao_e_inocuo":
-        "P-226 · 🔴 TOCA A SPEC-092 — o formulário do WhatsApp",
-    "test_o_handoff_nao_e_um_buraco":
-        "P-226 · 🔴 TOCA A SPEC-085 — handoff",
     "test_spec016_1_answer_quality":
         "P-226 · a triar",
     "test_spec016_e2e_stub":
@@ -168,6 +285,24 @@ QUARENTENA = {
         "P-226 · a triar",
     "test_zurich_cobranca":
         "P-226 · a triar",
+
+    # -----------------------------------------------------------------------
+    # ✅ SAÍRAM DAQUI EM 24/08/2026 — SPEC-085, e foi o `strict=True` que forçou.
+    #
+    #   test_o_handoff_nao_e_um_buraco    exit 0 · 8 asserções verdes
+    #   test_o_formulario_nao_e_inocuo    exit 0
+    #
+    # 📊 Os dois PASSAM. Enquanto `pytest tests/` estava morto ninguém rodava a
+    # quarentena inteira, então ninguém viu. Assim que a suíte voltou a rodar,
+    # os dois apareceram como XPASS e DERRUBARAM o gate — que é exatamente o
+    # que este `strict` existe para fazer.
+    #
+    # 🔴 A lição, e ela é o motivo de esta nota ficar aqui: **uma quarentena
+    # só é honesta enquanto alguém a executa.** Uma lista de vermelhos que não
+    # roda não é dívida registrada; é dívida esquecida com aparência de
+    # registro (`PROTOCOLO-AUTOBROKERS-AAA` §1 — quarentena que não esvazia
+    # vira aterro).
+    # -----------------------------------------------------------------------
 }
 
 
@@ -248,10 +383,76 @@ def test_a_exclusao_bate_com_a_descoberta():
     assert not matam, f"rodados aqui mas não excluídos — o pytest vai importar: {sorted(matam)}"
 
 
+# ---------------------------------------------------------------------------
+# 🔴 A ÁRVORE ESTÁ LIMPA ANTES DE MEDIR? — SPEC-085, 24/08/2026
+# ---------------------------------------------------------------------------
+# 📊 Medido ao vivo, e custou meia investigação: quatro rodadas de
+# `pytest tests/` na mesma árvore deram 2, 2, 7 e 11 vermelhos — **conjuntos
+# diferentes** — e TODOS os acusados passavam quando rodados sozinhos.
+#
+# A causa não era corrida, nem `.pyc`, nem timeout. Era isto, no disco:
+#
+#     ALLIANZ_RESIDENCIAL_WHATSAPP_V1
+#     -   "schedule_agendado": (
+#     +   "schedule_agendado_DESLIGADO": (
+#
+# 🔴 Uma mutação de teste que VAZOU — o processo foi morto no meio da janela e o
+# `finally` da restauração nunca rodou. A âncora que captura **quando o
+# prestador vem** ficou desligada, no corredor `allianz-residencial`, que é o
+# do ÚNICO acionamento ponta a ponta da história do produto.
+#
+# 📊 Restaurada a linha, `test_a_maquina_de_lavar_vai_ate_o_fim` foi de
+# **107 verdes / 3 vermelhas** para **112 verdes / 0 vermelhas**, duas vezes.
+#
+# ⚠️ POR QUE ISTO NÃO É O `test_nenhuma_mutacao_foi_commitada`. Aquele pergunta
+# ao **objeto commitado** (`git show HEAD:...`), e o docstring dele avisa que
+# *"`git status` limpo não prova nada aqui"*. Ele fecha a porta do COMMIT sujo
+# com árvore limpa. 🔴 Este fecha a OPOSTA: **árvore suja com commit limpo** —
+# em que o commit está certo e toda medição da rodada está mentindo. Os dois
+# são necessários, e nenhum cobre o lado do outro.
+#
+# ⚠️ E é sem `git` de propósito: 📊 59 dos 456 commits de agosto tocam
+# `corridor_playbooks.py`. Reprovar toda árvore com edição legítima seria um
+# guarda que ninguém aguenta. O que se procura é o MARCADOR do arnês de
+# mutação, que nunca deve existir fora de uma janela viva.
+MARCAS_DE_MUTACAO = (
+    "DESLIGADO PELA MUTACAO",
+    "DESLIGADA_PELA_MUTACAO",
+    "_DESLIGADO",
+    "# MUTACAO",
+)
+
+
+def test_a_arvore_nao_tem_mutacao_vazada():
+    """🔴 RODA ANTES DE TUDO. Se a árvore está mutada, todo número desta rodada
+    é sobre um produto que não existe — e o vermelho aparece em guardas
+    inocentes, sorteados pela âncora que ficou desligada."""
+    sujos = []
+    for caminho in ARQUIVOS_COMPARTILHADOS:
+        try:
+            fonte = caminho.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for numero, linha in enumerate(fonte.splitlines(), start=1):
+            if any(m in linha for m in MARCAS_DE_MUTACAO):
+                sujos.append(f"{caminho.name}:{numero}: {linha.strip()[:90]}")
+    _guardar_retrato_da_sessao()
+    assert not sujos, (
+        "MUTAÇÃO VAZADA NA ÁRVORE — nenhuma medição desta rodada vale:\n  "
+        + "\n  ".join(sujos)
+        + "\n\nUm processo de medição foi morto no meio da janela e a "
+          "restauração não rodou.\nRestaure o arquivo ANTES de olhar qualquer "
+          "vermelho: eles são consequência,\nnão causa. 🔴 E confira se a "
+          "mutação não foi commitada — é o outro lado desta\nporta, e quem "
+          "guarda é `test_nenhuma_mutacao_foi_commitada.py`."
+    )
+
+
 @pytest.mark.parametrize("nome", list(_parametros()))
 def test_o_guarda_script_passa(nome: str):
     """Roda o guarda como PROCESSO — do jeito que o autor dele o escreveu."""
     caminho = PASTA / nome
+    antes = _impressao_dos_compartilhados()
     ambiente = dict(os.environ)
     # 🔴 Sem isto os guardas com emoji morrem de UnicodeEncodeError no Windows,
     #    e o vermelho seria do terminal, não do produto.
@@ -267,6 +468,12 @@ def test_o_guarda_script_passa(nome: str):
             f"{nome}: passou de {TETO_SEGUNDOS}s sem terminar. Guarda que trava "
             "não guarda — ou ele espera rede, ou ele tem laço."
         )
+    # 🔴 RESTAURA ANTES DE JULGAR. O arquivo compartilhado volta ao retrato da
+    # sessão, e a janela vai para `_JANELAS_SUJAS`. Ninguém é acusado aqui — a
+    # sessão é reprovada no fim, por `test_nenhuma_janela_ficou_suja`.
+    # Restaurar no meio é o que impede a cascata: sem isso, um único vazamento
+    # deixa vermelhos todos os guardas seguintes que leem o corredor.
+    _devolver_o_que_foi_sujado(nome, antes, _impressao_dos_compartilhados())
     if r.returncode != 0:
         cauda = "\n".join((r.stdout or "").strip().splitlines()[-25:])
         erro = "\n".join((r.stderr or "").strip().splitlines()[-10:])
@@ -274,3 +481,38 @@ def test_o_guarda_script_passa(nome: str):
             f"{nome} devolveu exit {r.returncode}.\n\n--- saída ---\n{cauda}\n"
             + (f"\n--- stderr ---\n{erro}\n" if erro else "")
         )
+
+
+def test_nenhuma_janela_ficou_suja():
+    """🔴 RODA POR ÚLTIMO. A sessão inteira mediu o produto de verdade?
+
+    📊 Medido em 24/08/2026: numa rodada completa e **não interrompida**, o
+    `corridor_playbooks.py` terminou com
+
+        - "schedule_agendado": (
+        + "schedule_agendado_DESLIGADO": (
+
+    a âncora que captura **quando o prestador vem**, no corredor
+    `allianz-residencial` — o do único acionamento ponta a ponta do produto.
+
+    ⚠️ **Não se sabe QUEM.** Os guardas em cuja janela o arquivo mudou passam
+    limpos quando rodados sozinhos, com o mesmo sha256 antes e depois. A
+    conclusão que sobra é um **processo solto**: alguém lança a medição e não a
+    espera, e a mutação cai na janela de quem estiver rodando na hora.
+
+    🔴 Por isso este teste acusa a SESSÃO, não um guarda. Nomear a janela é
+    honesto; nomear o culpado seria inventar. E as janelas listadas aqui são a
+    pista para quem for triar — `PENDENCIAS.md` P-231.
+    """
+    assert not _JANELAS_SUJAS, (
+        f"{len(_JANELAS_SUJAS)} janela(s) em que um arquivo compartilhado mudou "
+        "sozinho durante a rodada:\n  "
+        + "\n  ".join(f"durante {nome}: {', '.join(arquivos)}"
+                      for nome, arquivos in _JANELAS_SUJAS)
+        + "\n\n🔴 Os arquivos JÁ FORAM RESTAURADOS — o resto da rodada é válido.\n"
+          "O que não é válido é o produto ficar assim depois de um `Ctrl-C`, um\n"
+          "timeout de CI ou uma máquina desligada no instante errado, porque aí\n"
+          "ninguém restaura. A âncora fica morta e o segurado fica sem socorro.\n"
+          "⚠️ Não procure defeito nos guardas listados: eles são a janela, não\n"
+          "o autor. Ver PENDENCIAS.md P-231."
+    )

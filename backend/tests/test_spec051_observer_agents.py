@@ -98,7 +98,25 @@ def test_media_enrichment_and_agent_orchestration_contracts():
     assert "incremental=True" in sentinel and "atlas:sentinela:watermark:" in sentinel
     assert 'detail.get("signature") == signature' in sentinel
     assert '"status": "draft"' in distiller
-    assert '"status": "pending_review"' in distiller
+    # 🔴 ASSERÇÃO ATUALIZADA — 24/08/2026, e a lição migrou em vez de morrer.
+    #
+    # 📊 A versão anterior casava a adjacência literal `"status": "pending_review"`,
+    # e ela quebrou quando o destilador ganhou o ramo de PII:
+    #
+    #     attendance_distiller.py:473
+    #     "status": "rejected_pii" if achados else "pending_review",
+    #
+    # O comportamento guardado não regrediu — ele MELHOROU. Casar a adjacência
+    # fazia o teste reprovar quem acrescentou um guarda de PII, que é o
+    # contrário do que ele existe para fazer (`CLAUDE.md` §9.3).
+    #
+    # ⚠️ E este arquivo estava VERMELHO e INVISÍVEL: `pytest tests/` abortava a
+    # sessão antes de chegar aqui, e o `broker_outcome_regression_pack` o roda
+    # como SCRIPT — o `__main__` dele não chama esta função.
+    assert '"pending_review"' in distiller, (
+        "o destilador deixou de marcar carta limpa como pending_review")
+    assert '"rejected_pii"' in distiller, (
+        "o destilador deixou de separar carta com PII — o ramo rejected_pii sumiu")
     assert "rebuild_agent_memories" in memory
     assert "/espelho/run" in admin
     # A rodada manual processa SO o que e novo — e a garantia disso esta no

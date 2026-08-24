@@ -8645,3 +8645,231 @@ a previsão de chegada, eu te aviso por aqui"* tem transporte real — o
 follow-up de 45 min. ⚠️ Mas em **alfa, bradesco, mapfre e tokio** nada no acervo
 dispararia o repasse. Não é mentira (a frase é condicional), é promessa que
 naqueles quatro não se cumpre. **O que destrava:** 🧑 medir em produção.
+
+---
+
+# 🔴 SPEC-085 — FASE 0 (24/08/2026)
+
+## P-227 · 🧑 `INSURER_DISPATCH_LIVE` está declarada DUAS vezes no EasyPanel, com valores opostos
+
+📊 Medido em 24/08/2026 no ambiente de `autobrokers-smith-api`/`-worker`. Três
+chaves aparecem duplicadas com valores que se contradizem:
+
+```
+INSURER_DISPATCH_LIVE=true      ...  INSURER_DISPATCH_LIVE=false
+DISPATCH_FINALIZE_MODE=live     ...  DISPATCH_FINALIZE_MODE=test
+ENV=sandbox                     ...  ENV=production
+```
+
+📊 **Rodando as funções reais** (`dispatch_live_enabled` e `finalize_live_for`,
+`insurer_dispatch_service.py:298` e `:349`) nos quatro cenários:
+
+| cenário | envia? | finaliza? |
+|---|:---:|:---:|
+| hoje, 1ª ocorrência vencendo | `False` | `False` |
+| hoje, última vencendo | `False` | `False` |
+| 🔴 **freio solto, 1ª vencendo** | **`True`** | **`True`** |
+| freio solto, última vencendo | `False` | `False` |
+
+🔴 **Hoje o produto está seguro por UM motivo só: `ACIONAMENTO_FREIO_DE_EMERGENCIA=true`.**
+O freio é o que segura, não as duas variáveis. No instante em que alguém o
+soltar — que é o gesto normal do go-live — o resultado depende de qual duplicata
+o parser do EasyPanel escolhe, e **isso não é legível do repositório.**
+
+- **Destrava:** 🧑 Founder — apagar a duplicata das três chaves. Uma linha cada.
+- **Custa se esquecer:** o gesto de soltar o freio pode abrir envio real E
+  finalização real ao mesmo tempo, sem ninguém ter decidido isso. **É um
+  guincho de verdade indo à casa de alguém por causa de uma linha repetida.**
+- ⚠️ **E `CARTOGRAPHER_MODE=1` continua ligado** — o Cartógrafo manda WhatsApp
+  real para seguradora (P-32, mesma família, mesma decisão pendente).
+
+## P-228 · 🤖 As 5 asserções vermelhas da régua — **BLOCKER, e é da SPEC-089**
+
+📊 `pytest tests/test_a_rubrica_e_honesta.py` — invisível até 24/08/2026, porque
+`pytest tests/` abortava a sessão antes de chegar nele:
+
+```
+:72   assert 102 == 96        "o denominador mudou; a nota passou a medir outra coisa"
+:133  assert []               "o replay não acha NENHUMA órfã funcional. Ou o corredor
+                               ficou perfeito — e aí esta asserção precisa ser reescrita
+                               com a prova disso — ou a MEDIDA AFROUXOU e ninguém viu"
+:199  "o subserviço já tem regra própria — a mutação precisa mudar de lugar"
+:253  assert 9 == 15          "o eixo E deixou de fechar"
+:371  assert 102 == (100 - 4)
+```
+
+🔴 **A régua da SPEC-083 está devolvendo 102 numa escala de 100, e parou de achar
+órfã.** Uma régua assim **aprova o que deveria reprovar**, e o que ela aprova é
+uma rota que chega em segurado. **Passa no TESTE DO PRODUTO: é BLOCKER.**
+
+⚠️ **Mas não é desta SPEC.** Decisão do Founder, 24/08: é da SPEC-089. Consertar
+durante a 085 seria mexer na régua no meio da execução que ela vai medir.
+
+- **Destrava:** 🤖 SPEC-089 · **Onde está:** `xfail(strict=True)` com
+  `QUARENTENA_SPEC089`, visível no CI a partir de agora.
+
+## P-229 · 🤖 `test_o_corredor_residencial_nao_trava` — a tela some, e o CONTROLE some junto
+
+📊 Rodado em 24/08/2026: 25 verdes, **2 vermelhas**, e as duas são a mesma tela:
+
+```
+[FALHOU] a redacao NOVA de `Qual seguro deseja utilizar?` volta a casar
+[FALHOU] CONTROLE: a redacao ANTIGA do `qual O seguro QUE deseja` ainda casa
+```
+
+🔴 **A nova E o controle da antiga falham juntos** — o casador não perdeu uma
+redação, perdeu a **tela**. E é o `allianz-residencial`, o corredor do
+`work_run e5279497`, a única travessia ponta a ponta da história do produto.
+A SPEC-085 §2.2 é literal: *"NÃO SE REGRIDE DISSO"*.
+
+- **Destrava:** 🤖 triagem — defeito de produto ou fixture vencida pela
+  SPEC-084.1? As outras duas quarentenas com `local_seguro`
+  (`test_spec031_auto_dispatch`, `test_spec017_dispatch`) são fixture vencida
+  com alta confiança; **esta não**, porque o controle cai junto.
+- **Custa se esquecer:** o único corredor com prova de funcionamento pode ter
+  parado de casar uma tela, e ninguém saberia até um segurado ligar.
+
+## P-230 · 🤖 `test_o_handoff_nao_e_um_buraco` está na quarentena e **passa**
+
+📊 Rodado em 24/08/2026: **8 asserções verdes, 0 vermelhas.** Ele está listado em
+`QUARENTENA` como `xfail(strict=True)`, e `strict` corta dos dois lados: um
+guarda da quarentena que volte a passar **quebra a suíte**, obrigando a tirá-lo.
+
+- **Destrava:** 🤖 confirmar o exit code num ambiente limpo e removê-lo da lista.
+- **Custa se esquecer:** quarentena que não esvazia vira aterro
+  (`PROTOCOLO-AUTOBROKERS-AAA` §1), e um `xfail(strict)` que passa derruba o
+  gate por um motivo que não é o defeito de ninguém.
+
+---
+
+## ✅ O que a SPEC-085 FECHOU ou RE-JUSTIFICOU (§11.1 do CLAUDE.md)
+
+| # | estado | a prova |
+|---|---|---|
+| **P-34** | ✅ **MORREU** | *"varredura de órfão dispara 1× por processo; falta uma linha no laço de manutenção"*. 📊 Falso: `reconciliar_acionamentos_orfaos` está registrada em `buffer_processor.py:370`, id `dispatch_reconcile_check`, com intervalo por env. |
+| **P-102 / P-116** | ✅ **FECHADA** | *"`human_support_destinations` tem 2 linhas, ambas da AMANDUS"*. 📊 Hoje 3 linhas, 2 corretoras — a **Resulta tem** destino ativo (`whatsapp_group`/`evolution`). Só a AutoFleet está sem, **e isso não é defeito**: nada está em produção ainda, e a Resulta é a referência (decisão do Founder, 24/08). |
+| **P-30** | ✅ **MORREU** | *"Resulta e AutoFleet dividem o mesmo grupo; o handoff está RECUSADO nas duas"*. 📊 Os `md5` dos `destination_ref` mostram **zero compartilhamento**. A Resulta tem ref própria; a AutoFleet **não tem linha** — o estado dela é *ausente*, não *recusado*, e são caminhos de código diferentes (`dispatch_router.py:1629` vs. a recusa de `_destino_e_compartilhado`). |
+| **P-31 / P-91** | ⚠️ **CONTINUA, com o texto invertido** | Ambas dizem que o padrão de `INSURER_DISPATCH_LIVE` é **ABERTO** e que `DISPATCH_FINALIZE_MODE=test` é o que segura. 📊 Os dois são falsos desde 14/08/2026: o padrão do código é FECHADO (`insurer_dispatch_service.py:345`) e o de `finalize` é `live` (`:375`). **O que continua é a pendência real — agora reescrita como P-227.** Seguir a instrução antiga ("apague a linha `=false`") hoje não liga nada. |
+| **P-225** | ⚠️ **RE-JUSTIFICADA** | *"`human_review_tasks` tem schema completo e nenhum escritor"*. 📊 **Tem escritor**: `app/services/evals/juiz_llm.py:196`. Zero linhas porque nunca disparou. Por isso a FASE 0 **não** a usou: `veredito boolean` e `amostra NOT NULL` são forma de eval, e travamento não tem veredito booleano. |
+| **P-226** | ⚠️ **CONTINUA, e cresceu** | 📊 O cabeçalho do meta-guarda dizia 151/14 e a `QUARENTENA` dele listava 273/42 — **duas contagens divergentes dentro do arquivo que existe para impedir divergência.** Corrigido. E `pytest tests/` entrou no `gate.yml` como job próprio (`guardas`), fechando o lado B: 📊 6 asserções de arquivos pytest-nativos estavam vermelhas e **nenhum executor as tocava**. |
+
+## P-231 · 🔴 Uma mutação de teste VAZOU para o corredor — e desligou a âncora do único acionamento que deu certo
+
+📊 Achado ao vivo em 24/08/2026, durante a FASE 0 da SPEC-085.
+
+### O sintoma, e por que ele engana
+
+Quatro rodadas de `pytest tests/` na mesma árvore, sem alterar uma linha entre elas:
+
+```
+rodada A  15m12   2 vermelhos
+rodada B  07m34   2 vermelhos   os MESMOS dois
+rodada C  13m57   7 vermelhos   conjunto DIFERENTE
+rodada D  13m08  11 vermelhos   conjunto DIFERENTE de novo
+
+📊 TODOS os acusados, rodados SOZINHOS: exit 0.
+```
+
+⚠️ Vítima que muda de rodada para rodada parece corrida, e eu escrevi que era.
+**Não era.** Nem corrida, nem `.pyc` (rodada D já estava com
+`PYTHONDONTWRITEBYTECODE=1` e o `__pycache__` apagado), nem timeout
+(📊 zero ocorrências de `passou de 120s` no log).
+
+### A causa, no disco
+
+```diff
+  ALLIANZ_RESIDENCIAL_WHATSAPP_V1
+- "schedule_agendado": (
++ "schedule_agendado_DESLIGADO": (
+```
+
+🔴 **Uma mutação de teste que vazou e ficou.** Um processo de medição foi morto
+no meio da janela e o `finally` da restauração nunca rodou. A âncora que captura
+**quando o prestador vem** ficou desligada — no corredor `allianz-residencial`,
+que é o do `work_run e5279497`, **o único acionamento ponta a ponta da história
+do produto.**
+
+📊 **A prova, restaurando a linha:** `test_a_maquina_de_lavar_vai_ate_o_fim` foi
+de **107 verdes / 3 vermelhas** para **112 verdes / 0 vermelhas**, duas vezes
+seguidas. As três vermelhas eram *"o QUANDO é capturado do RESUMO"* e o controle
+dele — exatamente o que a âncora desligada deixa de fazer.
+
+🔴 **E o conjunto de vítimas muda porque depende de QUAL âncora ficou
+desligada.** Cada vazamento diferente derruba um grupo diferente de guardas,
+todos inocentes. Quem investigar vai procurar defeito onde não há — foi o que
+eu fiz por meia investigação.
+
+### ⚠️ Parte disso fui eu, e o registro fica
+
+Eu matei duas rodadas de `pytest` com um `kill` de tarefa em segundo plano. **É
+um gesto normal**, e é justamente por isso que ele importa: qualquer `Ctrl-C`,
+timeout de CI ou desligamento de máquina no instante errado produz o mesmo
+estrago, e **ninguém fica sabendo**. O `git status` de rotina que pegou o
+quase-acidente de 22/08 é sorte, não controle.
+
+### O que já foi fechado nesta SPEC
+
+✅ **A árvore é conferida ANTES de medir** — `test_a_arvore_nao_tem_mutacao_vazada`
+procura os marcadores do arnês (`DESLIGADO PELA MUTACAO`, `_DESLIGADO`,
+`# MUTACAO`) em `corridor_playbooks.py` e `scripts/replay.py`, e reprova a
+rodada inteira com o `arquivo:linha`. Ciclo vermelho→verde provado com a
+mutação REAL que vazou.
+
+✅ **Quem vaza fica vermelho no próprio nome** — o meta-guarda tira o sha256 dos
+dois arquivos antes e depois de CADA guarda. Antes, o vermelho aparecia no
+guarda seguinte.
+
+⚠️ **Sem `git`, de propósito:** 📊 59 dos 456 commits de agosto tocam
+`corridor_playbooks.py`. Reprovar toda árvore com edição legítima seria um
+guarda que ninguém aguenta.
+
+⚠️ **E isto NÃO é o `test_nenhuma_mutacao_foi_commitada`:** aquele pergunta ao
+objeto commitado e o docstring dele avisa que *"`git status` limpo não prova
+nada aqui"* — ele fecha a porta do **commit sujo com árvore limpa**. Este fecha
+a **oposta**. Os dois são necessários.
+
+### 📊 E a prova final: são OITO janelas, e o vazamento continua depois do pytest sair
+
+Rodada completa com o conserto desta SPEC — restaurar no meio + acusar a sessão:
+
+```
+antes:  6 vermelhos (inocentes)   árvore SUJA, com a âncora morta
+agora:  1 vermelho — o da SESSÃO  305 passed, 45 xfailed em 12m45
+        árvore limpa antes: 0  ·  árvore limpa depois: 0
+```
+
+As **8 janelas** registradas não têm nada em comum:
+
+```
+durante test_nenhuma_mutacao_foi_commitada.py   corridor_playbooks.py
+durante test_o_atendimento_tem_memoria.py       corridor_playbooks.py
+durante test_o_eco_nao_inventa_escolha.py       replay.py
+durante test_o_espelho_nao_aprende_com_a_amandus.py  corridor_playbooks.py
+durante test_rotulo_nao_come_a_frase.py         replay.py
+durante test_spec062_prontidao_e_sli.py         corridor_playbooks.py
+```
+
+🔴 Guardas de assuntos completamente diferentes. **A única coisa que eles têm em
+comum é estarem rodando na hora.** E o fecho: segundos DEPOIS de o pytest sair,
+`git status` acusou `corridor_playbooks.py` modificado; no comando seguinte o
+`git diff` voltou **vazio**, com 📊 **2 processos python ainda vivos**. Um
+processo solto terminando o ciclo mutar-restaurar **fora da sessão de teste**.
+
+⚠️ **Consequência operacional imediata:** `git add -A` neste repositório pode
+commitar uma mutação a qualquer momento, mesmo com a suíte parada. Adicione
+arquivo por nome. É a P-084.1 C12 com uma janela maior do que ela supunha.
+
+### O que continua aberto
+
+🔴 `test_duas_medicoes_nao_se_atropelam` — o guarda que prova que duas medições
+concorrentes **não** corrompem o corredor — **está vermelho e em quarentena.**
+A trava do C11 não segura hoje, e o `xfail` esconde isso.
+
+- **Destrava:** 🤖 triagem da P-226 para esse guarda. **Fura a fila**: é o único
+  da quarentena cujo vermelho tem efeito colateral no código do produto.
+- **Custa se esquecer:** 🔴 o arquivo em risco é o dos **73 corredores**. Uma
+  âncora morta ali é uma tela de URA que o corredor deixa de reconhecer — um
+  segurado parado na estrada sem socorro. **Não é dívida de teste.**
+- ⚠️ **A não-determinismo já estava no CI:** o `gate.yml` anterior já rodava
+  `test_todos_os_guardas_script_rodam.py`. A SPEC-085 não o introduziu — ela o
+  tornou visível, e agora ele grita o motivo certo.

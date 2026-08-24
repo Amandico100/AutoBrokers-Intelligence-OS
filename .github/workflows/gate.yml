@@ -61,25 +61,6 @@ jobs:
           PYTHONUTF8: '1'
         run: python tests/broker_outcome_regression_pack.py
 
-      - name: Rodar os 151 guardas-script que o pytest nao via
-        # 🔴 P-183. Ate 24/08/2026 este CI rodava DOIS comandos, e nenhum
-        # deles via os guardas escritos como script: `def main()` +
-        # `sys.exit(main())`, sem funcao `test_`. Eram 151 de 278 arquivos --
-        # 54% da suite -- e 14 estavam VERMELHOS ha semanas sem ninguem saber.
-        #
-        # `tests/test_todos_os_guardas_script_rodam.py` roda cada um como
-        # PROCESSO e le o exit code. Os 14 conhecidos estao em quarentena como
-        # xfail(strict=True): a suite fica verde e VERDADEIRA, um guarda novo
-        # que fique vermelho QUEBRA, e um da quarentena que volte a passar
-        # tambem quebra -- obrigando a tira-lo de la.
-        #
-        # 📊 138 passed, 14 xfailed em 183s (medido em 24/08/2026).
-        working-directory: backend
-        env:
-          PYTHONIOENCODING: utf-8
-          PYTHONUTF8: '1'
-        run: python -m pytest tests/test_todos_os_guardas_script_rodam.py -q
-
       - name: Gerar o manifesto de release
         if: always()
         working-directory: backend
@@ -99,6 +80,55 @@ jobs:
           name: manifesto-${{ github.sha }}
           path: backend/manifesto.json
           retention-days: 30
+
+  guardas:
+    name: Guardas — a suite inteira, e ela roda de verdade
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rodar a suite
+        # 🔴 P-183 / P-226 — E ESTE PASSO SO EXISTE PORQUE OS DOIS LADOS DO
+        # DEFEITO FORAM FECHADOS. Vale registrar os dois, porque cada um
+        # escondia o outro:
+        #
+        #   lado A  273 de 279 `test_*.py` sao SCRIPTS (`def main()` +
+        #           `sys.exit(main())`). O pytest nao os coletava, e um arquivo
+        #           que coleta zero e indistinguivel de um que passou.
+        #           → `tests/test_todos_os_guardas_script_rodam.py` roda cada um
+        #             como PROCESSO e le o exit code.
+        #
+        #   lado B  🔴 `pytest tests/` nao coletava zero: ABORTAVA A SESSAO
+        #           (`INTERNALERROR> SystemExit`, pelo `sys.exit()` de nivel de
+        #           modulo). Com a sessao morta, os 6 arquivos que SAO pytest de
+        #           verdade tambem nunca rodavam -- e 📊 seis assercoes deles
+        #           estavam VERMELHAS, inclusive "a regua devolve 102 numa
+        #           escala de 100".
+        #           → `tests/conftest.py` tira os 273 da coleta padrao.
+        #
+        # ⚠️ E POR QUE UM COMANDO SO: `pytest tests/` JA INCLUI o meta-guarda
+        # (ele tem `def test_`). Um passo dedicado a ele rodaria os 273 scripts
+        # DUAS VEZES, ~3min a toa. Um comando, uma resposta.
+        #
+        # 📊 Medido em 24/08/2026, nesta maquina:
+        #     pytest tests/ (sem o meta-guarda) .... 68 passed, 6 failed, 9m52
+        #     depois da triagem .................... 74 passed, 5 xfailed
+        #     meta-guarda .......................... 138 passed, 14 xfailed, 3m
+        #
+        # ⚠️ SEM `pip install` DE PROPOSITO: guarda que precise de dependencia
+        # nao roda aqui, e guarda que nao roda nao guarda. Os que dependem de
+        # banco ou rede se declaram SKIP_AMBIENTE e nao derrubam o gate.
+        working-directory: backend
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
+        run: python -m pytest tests/ -q
 
   tipos:
     name: Tipos do painel
