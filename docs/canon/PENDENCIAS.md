@@ -334,10 +334,24 @@ devolveu 404.
 
 # ⚫ HIGIENE
 
-## P-23 · A `main` está 117 commits atrás
+## P-23 · A `main` está **230** commits atrás, e são **DEZ** branches
 
 📊 **Nada deste trabalho está em produção — nem o conserto de segurança da
 Fábrica.** O EasyPanel constrói a `main`.
+
+⚠️ **Remedido em 24/08/2026, e envelheceu:** era 117; são **230** na maior, e
+**dez branches** à frente:
+
+```
+spec084 +230 · spec083 +162 · spec078 +158 · fix/pos-077 +95 · spec077 +92
+spec075  +89 · spec074  +82 · spec073  +69 · spec072     +59 · spec070 +49
+```
+
+🔴 **E o que está parado não é abstrato — são estes três, todos medidos:** o produto
+mandando `rb_InformacoesLocal="6"` (**LOCAL SEGURO**) para um carro no km 42 de
+rodovia; o segurado da geladeira ouvindo que **a peça é por conta dele** quando a URA
+da yelum diz *"coberto a mão de obra E PEÇAS"*; e a promessa de SMS sem lastro em
+cinco corredores. **Os três estão consertados numa branch, e os três continuam no ar.**
 - **Destrava:** merge com o gate final da SPEC (CLAUDE.md §13.8).
 - **Dono:** 🧑 Founder decide quando · 🤖 prepara.
 

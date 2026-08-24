@@ -5,7 +5,7 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> v3 · 24/08/2026 · vale para **toda** SPEC, execução, ideia nova, incidente e
+> v4 · 24/08/2026 · ✅ ENTREGUE pela porta ③ da §6 · vale para **toda** SPEC, execução, ideia nova, incidente e
 > agente da Central.
 >
 > ⚠️ **A v1 reprovou por sete blockers. A v2, por mais cinco — e dois deles o
@@ -33,7 +33,8 @@ entrega. A segunda sozinha produz um sistema que entrega lixo.
 ```
 Se eu consertar isto, muda UM BYTE do que chega:
    · ao SEGURADO       (mensagem, protocolo, prazo, cobrança)
-   · à CORRETORA       (tela, relatório, alerta, decisão)
+   · à CORRETORA       (tela, alerta, decisão, e o RELATÓRIO QUE O PRODUTO
+                        GERA — 🔴 nunca o relatório de execução da SPEC)
    · ao BANCO          (dado gravado, estado, integridade)
    · ou à SEGURANÇA    (acesso, isolamento, vazamento)
 
@@ -94,9 +95,12 @@ QUANTAS PESSOAS.** São perguntas diferentes, e somá-las produz um número que 
 responde nenhuma das duas.
 
 > 📊 **Foi exatamente esse o defeito da v1.** Neste produto — um atendente de
-> seguros que vive no WhatsApp — o alcance está quase sempre no máximo: 26 das 66
-> SPECs trazem mensagem, corredor, portal ou atendimento no nome do arquivo. Uma
-> conta feita só de alcance é **constante**, e uma constante não decide nada.
+> seguros que vive no WhatsApp — o alcance está quase sempre no máximo: **14 de 65
+> SPECs** trazem *mensagem*, *corredor*, *portal* ou *atendimento* no nome do
+> arquivo, e **24** com o recorte largo (mais *whatsapp*, *acionamento*, *cobrança*,
+> *atendente*). ⚠️ A v2 escrevia *"26 de 66"* e **não reproduzia com nenhum dos
+> dois recortes.** Uma conta feita só de alcance é **constante**, e uma constante
+> não decide nada.
 
 ### 2.1 O RISCO — 0 a 8
 
@@ -135,6 +139,30 @@ mensagem — o `git revert` é trivial, e o que ele deixa para trás não é.
 3    território que ninguém mapeou — ou um lote de trabalho que já existe
      e nunca foi julgado junto
 ```
+
+#### 🔴 O LOTE PONTUA UMA VEZ, E NÃO É O TIME DE CADA PEÇA
+
+```
+UM LOTE (SUPERFÍCIE 3)  →  paga UMA passada de ENQUADRAMENTO com o time da
+                           célula 6+/3, e o entregável dela é UM SÓ:
+                           a LISTA DAS UNIDADES, cada uma já pontuada.
+
+CADA UNIDADE           →  pontua sozinha, e monta o time dela.
+                           🔴 A SUPERFÍCIE 3 do lote NÃO se herda.
+```
+
+🔴 **E UNIDADE DE TRABALHO tem definição, porque sem ela a conta dá dois times que
+diferem por 10×:**
+
+> **A menor coisa que dá para ENTREGAR e PROVAR sozinha.** Se A precisa de B para
+> ser provada, A e B são **uma** unidade. Se as duas provam sozinhas, são **duas**.
+
+⚠️ 📊 **O caso que exigiu esta regra está na fila:** a SPEC-089 são **31 rotas que
+já existem e nunca foram provadas ponta a ponta**. Ao pé da letra da §2.2 isso é
+SUPERFÍCIE 3 → nove papéis, uma vez. Ao pé da letra da §7 (*"por unidade de
+trabalho"*) a unidade é a rota → dois a quatro papéis, **trinta e uma vezes**.
+**Com a regra acima: uma passada de enquadramento nas 31, e depois o time de cada
+rota** — que é o que a SPEC-084.1 já fazia chamando de ONDAS.
 
 🔴 **A SUPERFÍCIE tem uma pergunta, e ela é a trava:**
 
@@ -185,6 +213,18 @@ não é régua, é pedágio.**
   e não volta atrás        superfície          da prova           + juiz final fresco
 ```
 
+⛔ **A célula "ninguém" dispensa o JUIZ. Ela nunca dispensa o passo ② da §6.**
+
+🔴 **O VERIFICADOR MECÂNICO NÃO É UM PAPEL QUE A CONTA CONVOCA — É UM PASSO DO
+LAÇO.** Ele roda sempre que houve edição, inclusive na célula que não monta ninguém.
+Na célula "ninguém" quem o roda é quem editou.
+
+⚠️ 📊 **Por que isto está escrito duas vezes:** a célula RISCO 0–1 × SUPERFÍCIE 0
+aceita *"tirar `eslint.ignoreDuringBuilds` de `next.config.js`"* — e `next.config.js`
+é nomeado no `CLAUDE.md` §9.1 como gatilho de `test:rotas-montam` + `next start`,
+**porque é a classe de mudança que deixou o produto 1h40 no chão.** E não há rede
+embaixo: 📊 `grep -rn "rotas-montam" .github/` → **vazio**. O CI não roda.
+
 ⚠️ **O orquestrador escreve as DUAS contas no relatório**, com os quatro números.
 Uma nota sem eles é palpite disfarçado.
 
@@ -215,8 +255,8 @@ abriu um buraco pior, medido neste repositório:**
   *"ninguém, faz e pronto"* — num repositório onde o `CLAUDE.md` §7 diz que *"RLS sem
   policy não protege nada"*.
 - 📊 **Índice é as duas coisas.** `CREATE UNIQUE INDEX` sem `CONCURRENTLY` pega
-  `ACCESS EXCLUSIVE` e **trava escrita** — 274 `CREATE INDEX` nas migrations, e só
-  **12** `CONCURRENTLY`. E o índice `(company_id, idempotency_key)` de `20260804_02`
+  `ACCESS EXCLUSIVE` e **trava escrita** — 📊 **40 `CREATE UNIQUE INDEX`** nas
+  migrations (314 `CREATE INDEX` no total) e **só 12 `CONCURRENTLY`**. E o índice `(company_id, idempotency_key)` de `20260804_02`
   **É a fronteira entre corretoras**: *"com ele o isolamento passa a ser estrutural"*.
   **A isenção dispensava do piso o artefato que implementa um gatilho do próprio piso.**
 
@@ -307,6 +347,8 @@ mede a diferença entre eles.
 🗡️ RED TEAM          missão: FAZER QUEBRAR. Só a partir de RISCO 6 com SUPERFÍCIE 3
 
 🧩 INTEGRADOR        procura o que só aparece na junção das partes
+                     🔴 convocado por NÚMERO DE UNIDADES, não por célula:
+                        3 ou mais unidades no mesmo lote → ele entra
 
 🏁 JUIZ FINAL        contexto limpo, olha o sistema, não o diff
 ```
@@ -515,6 +557,42 @@ grep -rn "não conta como volta" docs/    # só pode sobrar dentro de bloco ⛔ 
    por cansaço. Nenhuma das três é uma porta.
 ```
 
+### ⛔ 6.1 · "ENTREGUE" NÃO É "NO AR" — e o laço parava na palavra errada
+
+📊 **Medido em 24/08/2026:** dez branches à frente da `main`, a maior com **230
+commits**. O EasyPanel constrói a `main`. **Logo: nada disso está no ar** — inclusive
+os três consertos que a §1 deste arquivo usa como prova de que o laço vale a pena.
+
+```
+feat/spec084 +230  ·  spec083 +162  ·  spec078 +158  ·  fix/pos-077 +95
+spec077  +92  ·  spec075  +89  ·  spec074  +82  ·  spec073 +69
+spec072  +59  ·  spec070  +49
+```
+
+🔴 **O laço fecha em ENTREGA. A entrega tem três etapas, e as três são do
+orquestrador:**
+
+```
+① o gate da SPEC fecha             → o relatório está completo
+② A FILA DE INTEGRAÇÃO é DECLARADA → em que ordem esta SPEC funde, e o que
+                                      ela toca que outra branch também toca
+③ depois do merge, A REGRESSÃO RODA  → e o passo ② da §6 roda de novo,
+                                      na árvore fundida
+```
+
+🔴 **E a colisão se declara ANTES do merge, com um comando, nunca de memória:**
+
+```bash
+git diff --name-only main...<branch>   # em cada branch da fila
+# arquivo que aparece em duas → as duas fundem JUNTAS, ou uma rebasa na outra
+```
+
+⚠️ 🔴 **O que este protocolo NÃO decide:** *quando* fundir na `main` é do Founder
+(`CLAUDE.md` §13.8: sem gate final não há merge). **O que ele decide é que a SPEC
+não está concluída enquanto ② não estiver escrito** — uma SPEC verde numa branch que
+ninguém sabe integrar é trabalho pronto e desligado, que o `CLAUDE.md` §11.1
+aceita — **desde que anotado.**
+
 ---
 
 ## 7. OS MODOS — a mesma regra, cinco formas
@@ -531,8 +609,14 @@ grep -rn "não conta como volta" docs/    # só pode sobrar dentro de bloco ⛔ 
 
 ### 🧭 MODO INVESTIGAÇÃO — *ideia nova, auditoria, mapeamento, "isto funcionou?"*
 
-**A saída não é código. É uma recomendação com evidência.** 🔴 **Um elenco de quatro,
-REPLICADO por frente independente** — a largura é o que dimensiona.
+**A saída não é código. É uma recomendação com evidência.**
+
+🔴 **E são DOIS elencos, porque avaliar uma ideia e auditar o próprio sistema não
+são o mesmo trabalho.** O de baixo é o de IDEIA; o de AUDITORIA vem logo depois.
+
+⚠️ **E a largura tem teto:** 🔴 **quatro frentes.** Passou disso, o trabalho é largo
+demais para uma investigação só — **quebre em duas, com pergunta própria cada uma.**
+Sem teto, *"× largura"* seria o palpite disfarçado que a §2.3 proíbe.
 
 ```
 INVESTIGADOR    o que é, quem já usa, e desde quando funciona
@@ -551,6 +635,23 @@ SAÍDA:  FAZER AGORA · FAZER DEPOIS (com o que destrava) · NÃO FAZER (com o p
            para aprovar ideias.
         🔴 "FAZER" sai com as duas contas da §2 já feitas — é o que ele entrega
            para quem vai executar.
+```
+
+**E o elenco de AUDITORIA, MAPEAMENTO ou MEDIÇÃO — *"isto funcionou?", "o que falta
+fechar?", "como está o X?"*:**
+
+```
+MEDIDOR         mede o estado. 🔴 Todo número sai com a consulta que o produziu
+                ⚠️  e com a LINHA DE CONTROLE: o que teria que aparecer se a
+                   hipótese fosse falsa (CLAUDE.md §9.2)
+CÉTICO DA       tenta derrubar cada número: a consulta mede o que a frase diz?
+   MEDIDA       o denominador é o certo? o recorte foi escolhido depois?
+HISTÓRICO       por que está assim: acha a SPEC, o commit ou a decisão que
+                produziu o estado — sem isso a recomendação repete um erro velho
+JUIZ DO RISCO   o que quebra se ficar como está, e o que quebra se mudar
+
+SAÍDA:  o estado medido · o que está quebrado · o que destrava cada coisa
+        🔴 e o que ficou POR MEDIR — auditoria sem essa linha não é auditoria
 ```
 
 ### 📝 MODO SPEC — *escrever o documento que outro vai executar*
@@ -735,6 +836,50 @@ pegou o autor dela — que é o único teste que vale.
 que não reproduzia na §1, a alegação inflada sobre a primeira volta, a referência
 `allianz` que a SPEC-084 já rejeitara como outlier, e a §5 sem "quando" nem "onde"
 — **foram consertadas junto**, porque o custo era uma linha cada.
+
+### A VOLTA 3 — juiz novo, contexto limpo, sem ver as anteriores
+
+🔴 **Foi a volta desenhada para testar a ancoragem** (a §6 manda que a terceira seja
+um juiz que não vê as voltas anteriores). Ele escolheu **sete casos reais do
+repositório que este documento não usa como exemplo**, pontuou sozinho, e julgou cada
+time. 📊 **Em quatro dos sete o time saiu certo e ele disse isso** — e em dois deles
+*"sem o piso, a conta erraria os dois casos de segurança"*.
+
+| # | o defeito da v3 | o conserto |
+|---|---|---|
+| 1 | 🔴 o VERIFICADOR MECÂNICO era **incondicional na §6** e **opcional na §2.3** — e a célula que o dispensa aceita `next.config.js`, a classe que derrubou o produto por 1h40. 📊 E não há rede: `grep -rn "rotas-montam" .github/` → **vazio** | ele deixou de ser papel que a conta convoca e virou **passo do laço**. A célula "ninguém" dispensa o juiz, nunca o passo ② |
+| 2 | *"lote"* (§2.2) e *"por unidade de trabalho"* (§7) davam **9 papéis ou 90** para a mesma SPEC-089 — e **"unidade de trabalho" nunca era definida** | o lote paga **uma** passada de enquadramento cujo entregável é a lista das unidades; cada unidade pontua sozinha. E a definição: *"a menor coisa que dá para entregar e provar sozinha"* |
+| 3 | a §1 listava `relatório` como destino da corretora — **reabrindo o laço que ela existe para fechar** | *"o relatório que o PRODUTO gera — nunca o relatório de execução da SPEC"* |
+| 4 | o MODO INVESTIGAÇÃO aplicava o elenco de **avaliar ideia** a auditoria e medição, e *"× largura"* não tinha teto nem definição | **dois elencos** — IDEIA e AUDITORIA, este com MEDIDOR, CÉTICO DA MEDIDA, HISTÓRICO e JUIZ DO RISCO — e a largura tem **teto de quatro frentes** |
+
+⚠️ **E dois números meus não reproduziram**, o que o `CLAUDE.md` §12.1 chama de defeito
+de revisão: *"274 `CREATE INDEX`"* estava colado a uma frase sobre `CREATE UNIQUE
+INDEX` (📊 são **40**, de 314 no total), e *"26 das 66 SPECs"* não reproduz com
+recorte nenhum (📊 **14 de 65** estrito, **24** largo). **Os dois foram corrigidos com
+a consulta ao lado.**
+
+### 🛑 A PORTA ③ — e o protocolo se aplicando a si mesmo
+
+**Três voltas. O juiz da terceira não liberou.** Pela §6, isso obriga uma
+classificação, e a classificação é esta:
+
+```
+É uma das oito condições de parada do CLAUDE.md §10?
+   NÃO — não há risco de perda de dado, decisão comercial, conflito canônico,
+   P0 de segurança, ação física do Founder, mudança de escopo, custo
+   extraordinário, nem falta de acesso.
+
+→ 🔴 NÃO PARA. Os quatro blockers foram consertados, o que sobrou está
+  registrado abaixo, e o documento ENTREGA.
+```
+
+⚠️ **O que sobrou, e vai para `PENDENCIAS.md` em vez de segurar o documento:** o
+INTEGRADOR ganhou gatilho mas nenhuma célula o nomeia; as células escritas com `+`
+não dizem a que somam; a listagem inicial das pendências é do INVESTIGADOR, que não
+existe em 7 das 9 células; e o protocolo nunca nomeia `MIGRATIONS-AUTHORITY.md`
+embora mande o verificador rodar migrations. 🔴 **Nenhum dos quatro muda o time nem
+a hora de parar** — que é o teste, e é o teste que autoriza entregar com eles
+abertos.
 
 ⚠️ **O que continua por medir:** 💭 **nenhum orquestrador rodou sob este protocolo
 ainda.** Tudo aqui é análise de documento contra repositório. **A prova é a
