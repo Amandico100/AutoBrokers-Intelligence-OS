@@ -559,18 +559,29 @@ grep -rn "não conta como volta" docs/    # só pode sobrar dentro de bloco ⛔ 
 
 ### ⛔ 6.1 · "ENTREGUE" NÃO É "NO AR" — e o laço parava na palavra errada
 
-📊 **Medido em 24/08/2026:** dez branches à frente da `main`, a maior com **230
-commits**. O EasyPanel constrói a `main`. **Logo: nada disso está no ar** — inclusive
-os três consertos que a §1 deste arquivo usa como prova de que o laço vale a pena.
+📊 **Medido em 24/08/2026:** **230 commits** à frente da `main`. O EasyPanel constrói
+a `main`. **Logo: nada disso está no ar** — inclusive os três consertos que a §1 deste
+arquivo usa como prova de que o laço vale a pena.
 
+⚠️ 🔴 **E a primeira leitura deste número estava errada, do jeito que este documento
+mais teme:** eu escrevi *"dez branches à frente da `main`"*. Era verdade, e enganava —
+soa como dez frentes que alguém precisa costurar. 📊 A medição que faltava:
+
+```bash
+git rev-list --count feat/spec084..<cada uma das outras 9>   →  0, em todas
+git rev-list --count feat/spec084..main                      →  0
 ```
-feat/spec084 +230  ·  spec083 +162  ·  spec078 +158  ·  fix/pos-077 +95
-spec077  +92  ·  spec075  +89  ·  spec074  +82  ·  spec073 +69
-spec072  +59  ·  spec070  +49
-```
+
+**As dez são uma CORRENTE, não um leque.** A última contém todas, e a `main` é ancestral
+dela — **um merge, fast-forward, conflito impossível.** 🔴 **A lição é do `CLAUDE.md`
+§12.1 e vale para a §2 inteira: contar N não é medir a topologia.** Um número que descreve
+o tamanho e cala a FORMA leva o orquestrador a montar o time errado — aqui, um time de
+integração para um trabalho que o `git` faz sozinho.
 
 🔴 **O laço fecha em ENTREGA. A entrega tem três etapas, e as três são do
-orquestrador:**
+orquestrador** — ⚠️ e a ② pode sair **vazia**, como saiu aqui: *"medi, e não há fila,
+porque as branches são uma corrente"* é a resposta certa quando é a verdadeira. **O que
+a regra proíbe é não medir:**
 
 ```
 ① o gate da SPEC fecha             → o relatório está completo

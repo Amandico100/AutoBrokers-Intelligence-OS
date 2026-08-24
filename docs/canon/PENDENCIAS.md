@@ -81,13 +81,84 @@ dado atravessa tenants.**
   sistema **recusar-se a acionar** — não mandar para o lugar errado com aviso.
 - **Dono:** 🤖 SPEC-063 Bloco B · o Founder autorizou apagar o compartilhamento.
 
-## P-05 · A AutoFleet tem agente ativo sem prompt nenhum
+## P-05 · ✅ A AutoFleet tem agente ativo sem prompt nenhum — **NÃO É MAIS VERDADE**
+
+### ✅ 24/08/2026 — FECHADA: o fato mudou, e a pendência ficou descrevendo o passado
+
+📊 Medido no banco em 24/08 (`SELECT` em `agents` × `companies`): o agente `c95de02a`
+tem **638 caracteres** de `agent_system_prompt`, e o `agent_role` dele é **`core`** — o do
+chat interno da corretora, **não** o que fala com segurado. E os quatro agentes
+`attendance` do produto (AMANDUS, Blueprint Studio, AutoFleet, Resulta) estão todos
+`is_active = false`.
+
+⚠️ **O que fica de lição, e vale para as ~328 pendências abertas:** esta não foi
+consertada por ninguém que a lesse — o mundo mudou por baixo dela, e ela continuou
+aberta afirmando um fato morto. **Pendência que ninguém remede envelhece para mentira.**
+🔴 É a razão da regra de drenagem do `PROTOCOLO-AUTOBROKERS-AAA.md` §1: toda SPEC que
+começa **fecha ou re-justifica** as pendências que ela toca.
+
+**O registro original, preservado:**
 
 📊 Agente `c95de02a` — `is_active = true`, `agent_enabled = true`,
 **`agent_system_prompt = NULL`**. Com o defeito B1, é ele que responderia o
 segurado: um agente ativo sem uma linha de instrução, sem nenhuma trava.
 **Não está entre os doze bloqueios da SPEC-063.**
 - **Dono:** 🤖 SPEC-063 Bloco A
+
+## P-180 · 🔴 CPF e telefone em claro em `work_steps`, e a máscara existe
+
+**Aberta em:** 24/08/2026 · **Dono:** 🤖 execução · **Achada** medindo para a SPEC-085
+
+📊 **12 linhas** de `work_steps.output_summary` guardam `titular_cpf`,
+`telefone_contato` e `client_phone` **sem máscara**, de **18 a 19/08/2026**. São CPFs e
+telefones de pessoas reais, em tabela **durável**, que o backend lê com service role.
+
+```sql
+SELECT count(*), min(created_at)::date, max(created_at)::date FROM work_steps
+ WHERE output_summary::text ~ '"(titular_cpf|telefone_contato|client_phone)"\s*:\s*"[^"#*]';
+-- 12 | 2026-08-18 | 2026-08-19     (medido de dois jeitos, os dois dao 12)
+```
+
+🔴 **O que torna isto um defeito de construção, e não um esquecimento:** no MESMO
+registro, o `transcript` **está mascarado** — o endereço sai como `R. #####ES JÚN###`.
+**A máscara existe, roda, e não foi aplicada ao objeto `slots`.** Não falta a função:
+falta uma chamada.
+
+⚠️ **E escala com o volume.** As 12 linhas são de **4 acionamentos** — os únicos com
+rastro durável na história do produto. A 73 rotas ligadas, isto vira o padrão.
+
+- **Destrava:** aplicar o mascarador ao `slots` antes de gravar `output_summary`, e um
+  backfill nas 12. 🔴 **O guarda tem de ser um teste que FALHA hoje** — grava um passo
+  com CPF e prova que o que foi para o banco não o contém.
+- **O que custa esquecer:** é dado de titular de apólice em repouso, sem necessidade
+  operacional — e a auditoria seguinte acha isto antes de achar qualquer outra coisa.
+
+## P-181 · 🔴 `needs_human` é gravado como `status = 'completed'`
+
+**Aberta em:** 24/08/2026 · **Dono:** 🤖 SPEC-085 · **Achada** medindo para a SPEC-085
+
+📊 Os dois únicos `needs_human` duráveis da história — `needs_human:sentinela_stall` e
+`needs_human:missing_slots:problema_eletrico_opcao` — estão em `work_runs` com
+**`status = 'completed'`**. **Um travamento é indistinguível de um sucesso por status.**
+
+⚠️ E um deles (`448d3f08`) tem **três campos com três verdades**: `error_code` diz
+`needs_human:missing_slots`, `current_step_key` diz `test_aborted`, e o `result_summary`
+diz *"Simulação completa"*.
+
+- **Destrava:** um estado terminal que **nomeia o travamento**, e a SPEC-085 é quem o
+  define — esta pendência é insumo dela, não trabalho paralelo.
+- **O que custa esquecer:** todo painel que filtrar por `status` mostra **zero**
+  travamentos, para sempre, com o produto travando.
+
+## P-182 · `human_review_tasks` tem schema completo e **nenhum escritor**
+
+**Aberta em:** 24/08/2026 · **Dono:** 🤖 SPEC-085
+
+📊 **0 linhas**, com `motivo`, `veredito` e `revisado_por` prontos. A tabela do
+destravamento humano existe e nunca teve quem escrevesse nela. ⚠️ Mesma família da
+P-18 (`auxiliary_events` sem escritor) — **tabela sem escritor é promessa de schema.**
+
+- **Destrava:** decidir na SPEC-085 se ela é o registro do destravamento ou se morre.
 
 ## P-06 · O handoff mente ao segurado em todo caminho de falha
 
