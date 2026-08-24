@@ -85,7 +85,8 @@
 |---|---|---|
 | **083** | **A régua do corredor** — o que é uma rota AAA e a ferramenta que dá a nota | ✅ **v7 LIBERADA pelo juíz** (21/08, commit `4415928`) — 7 rodadas: 54→78→84→88→92→liberada. Aguardando execução |
 | **084** | A fábrica de rotas — as 73 rotas | ✅ **blocos 0–5 EXECUTADOS** (22/08) — 41 rotas medidas, 776→271 órfãs, 102 respostas erradas corrigidas |
-| **084.1** | **O ENSAIO** — o protocolo das 14 estações, para levar as 73 ao nível da máquina de lavar | ✅ **v4 LIBERADA pelo juíz, 91/100** (22/08) — 4 rodadas: 62→81→91→liberada. Aguardando execução |
+| **084.1** | **O ENSAIO** — as 14 estações aplicadas às 73 rotas | ✅ **EXECUTADA** (23/08) — 19 corredores AAA, era 1 · média 47,7%→88,4% |
+| **084.2** | **O CONTRATO** — os 6 consertos fora do corredor | ✅ **EXECUTADA** (24/08) — 19/19 passam o portao, eram 0 · 12/12 mutacoes vermelhas |
 | **085** | Travar em silêncio deixa de ser possível — Vigia/Sentinela/Cérebro | a escrever |
 | **086** | O Suporte Humano diz a verdade | a escrever |
 | **087** | O laço de auto-atualização (absorve a SPEC-080) | a escrever |
