@@ -5,7 +5,7 @@
 > Hoje ele não consegue, ninguém sabe, e ninguém pode. As três coisas são
 > defeitos separados, com consertos separados, e esta SPEC trata as três.
 >
-> v2 · 24/08/2026 · escrita sob o `PROTOCOLO-AUTOBROKERS-AAA.md` v5
+> v3 · 24/08/2026 · escrita sob o `PROTOCOLO-AUTOBROKERS-AAA.md` v5
 > Depende de: SPEC-084 ✅ · SPEC-084.1 ✅ · SPEC-084.2 ✅
 > Branch: `feat/spec085-o-destravamento-nao-trava-em-silencio`
 
@@ -190,7 +190,7 @@ artefato de medição e não travamento. **17+8+5 = 30; o 38 só fecha com a qua
 | onde | `agents/tools/human_handoff.py` | `services/dispatch_router.py:1572-1637` | **`tasks/dispatch_watchdog.py:221-323`** |
 | escreve `HUMAN_REQUESTED` | ✅ `:608` | 🔴 **NUNCA** | 🔴 **NUNCA** |
 | avisa o cliente | depois, e só se o dossiê saiu | 🔴 **antes, e independentemente** (`:1610-1618`) | ⛔ **NÃO FALA COM ELE. NUNCA.** |
-| se não há destino | `FALHA_DO_HANDOFF` (`:642`, `:684`) | 🔴 só um `warning` (`:1620-1629`) | 🔴 `_support_alert` próprio (`:189`) |
+| se não há destino | `FALHA_DO_HANDOFF` (`:642`, `:684`) | 🔴 só um `warning` (`:1620-1629`) | 🔴 transporte próprio, **sem marcador e sem teto** (`:311`) |
 | fiscal de honestidade | ✅ `honestidade_do_handoff.py:192` | 🔴 nenhum | 🔴 nenhum |
 | radar do `handoff_watchdog` | ✅ (lê `HUMAN_REQUESTED`, `:123`) | 🔴 não entra | 🔴 não entra |
 | marcador e teto da SPEC-086 | ✅ é dono deles | 🔴 não usa | 🔴 não usa |
@@ -297,9 +297,9 @@ cap 200. 📊 `grep -rn "deflection:"` → **uma ocorrência: a própria escrita
   **irreversível** ainda para.
 - **`sem_chute` nasceu** como terceira família de passo (`corridor_playbooks.py:9121`), fora
   da cobrança do portão. 18 passos.
-- **Escada de correção antes do handoff** (`:1905-1930`): divergência de conferência tenta
+- **Escada de correção antes do handoff** (`:1904-1932`): divergência de conferência tenta
   corrigir até um teto por campo antes de desistir.
-- **O formulário nativo é tentado ANTES do gatilho de handoff** (`:2325-2332`).
+- **O formulário nativo é tentado ANTES do gatilho de handoff** (`:2329-2338`).
 - **O contrato da ferramenta ganhou campos para os slots do portão** — 📊 **10** `Field(...)`
   em `insurer_dispatch_tool.py:437-535` (a v1 dizia "7").
 - 📊 **Os 8 passos que respondiam errado estão fechados** — `python backend/scripts/conferir_respostas.py --todas` → `OK nenhum passo responde sem confirmacao`, exit 0.
@@ -339,7 +339,7 @@ backend/app/services/insurer_dispatch_service.py  build_handoff_dossier
 
 - **`SUBSERVICO_INVALIDO` já não vira `missing_data`** — `insurer_dispatch_tool.py:801`
   devolve `sem_corredor` ou, para a família de vidros, **`use_portal`** com ordem explícita
-  de **não** chamar `request_human_agent` (`:822-831`). O laço de "perguntar ao cliente o
+  de **não** chamar `request_human_agent` (`:823-831`). O laço de "perguntar ao cliente o
   campo `subservico_invalido`" está morto.
 - **O caminho A do handoff não mente mais** — os três estados de
   `honestidade_do_handoff.py` e o `RuntimeError` no caminho síncrono (`:686-702`).
@@ -478,6 +478,10 @@ migrations da SPEC-084 estão aplicadas de fato e ausentes de `schema_migrations
          (a) o teste chama o repository com A e não vê a linha de B;
          (b) 🔴 A MUTAÇÃO: apaga o `.eq("company_id", ...)` e o teste
              FICA VERMELHO. Se não ficar, ele não guarda nada.
+             ⛔ RESTAURE POR CÓPIA DO ARQUIVO, NUNCA POR `git checkout`.
+                📊 Já custou trabalho não commitado neste projeto, e
+                `git diff --quiet` diz "idêntico" sobre arquivo que ele
+                nem rastreia — não serve de prova de restauração.
       ⚠️ O relatório traz as duas saídas: com filtro e sem.
 5. a linha sobrevive ao TTL de 6h da sessão Redis
       🔴 prova: apaga a chave do Redis à mão, e a linha continua lá
@@ -541,11 +545,29 @@ A.1   ⛔ NÃO TIRE `needs_human` de FASES_ENCERRADAS.
 
 A.2   🔴 O CONSERTO É O `:757`: a reconciliação passa a usar
       STATUS_WORK_RUN_POR_FASE em vez de `completed` fixo.
+      ✅ 📊 E é cirúrgico: o mapa (`:146-159`) atinge SÓ `needs_human` —
+         `encaminhado`, `resolvido` e `test_aborted` seguem `completed`.
 
-A.3   os três campos passam a concordar. 📊 O sítio que os desalinha é
-      `dispatch_router.py:553-562`: o `result_summary` é escrito quando
-      `status == "completed"`, o `error_code` quando `fase == "needs_human"`,
-      e **nenhum dos dois é limpo depois**.
+      ⛔ MAS O `UPDATE` GRAVA CINCO CAMPOS, NÃO UM (`:763-768`):
+           status  finished_at  updated_at  progress_percent  result_summary
+         Consertar só o `status` deixa a linha do travamento com
+         `finished_at` preenchido, `progress_percent = 100` e
+         `result_summary = "...a parte automática terminou aqui"`.
+         🔴 **É a mesma mentira do "Simulação completa" que a A.3 condena,
+            no mesmo UPDATE.**
+
+      🔴 LOGO: `finished_at`, `progress_percent` e `result_summary` mudam
+         **SOMENTE para `needs_human`**. ⚠️ Para `encaminhado`, `resolvido` e
+         `test_aborted` os quatro campos estão CERTOS — um edit em bloco
+         quebra os três. O conserto é condicional, por construção.
+
+A.3   os três campos passam a concordar. 📊 São DOIS sítios, não um:
+        `dispatch_router.py:553-562`  o `result_summary` é escrito quando
+           `status == "completed"` e o `error_code` quando
+           `fase == "needs_human"`, e **nenhum dos dois é limpo depois**
+        `dispatch_router.py:763-768`  o UPDATE da A.2, acima
+      ⚠️ A v2 desta SPEC dizia "**o** sítio", no singular, e desviava o
+         executor da própria linha que a A.2 manda editar.
 ```
 
 ⚠️ 📊 **E a v1 desta SPEC errava o aviso:** dizia que `FASES_ENCERRADAS` alimenta
@@ -567,11 +589,39 @@ B.0   ⛔ O CAMINHO C ENTRA AQUI, E É O PRIMEIRO.
       `dispatch_watchdog.py:299-323`, o `_sentinela_recover`:
         🔴 ele passa a AVISAR O SEGURADO — hoje não avisa nada
         🔴 escreve o estado durável, como B e A
-        🔴 REUSA o marcador e o teto (`human_handoff.py:69-152`),
-           em vez do `_support_alert` próprio de `:189`
+        🔴 REUSA o marcador e o teto (`human_handoff.py:69-152`)
+
+      ⛔ E SÓ A CHAMADA DE HANDOFF, QUE É A `:311`. 📊 `_support_alert`
+         está definida em `:189` e tem CINCO chamadores:
+           :311  o handoff        ← 🔴 O ÚNICO que este bloco toca
+           :408  ura_silent       :427  human_silent_alert
+           :435  never_started    :443  deadline
+         ⚠️ Os quatro últimos NÃO são handoff e FICAM COMO ESTÃO. Mexer na
+            definição cala *"a URA está calada há 20min"* e mais três avisos
+            que a corretora recebe hoje.
+
+      ⚠️ E `_support_alert` NÃO é um resolvedor paralelo: `:201-203` já reusa
+         o `_support_contact` do `dispatch_router`. É um TRANSPORTE diferente,
+         e o que falta nele é o LIMITADOR (marcador + teto), não o destino.
+
+      🔴 E O MARCADOR PRECISA DE UMA CHAVE QUE ESTE ARQUIVO NÃO LÊ.
+         `_CHAVE_DO_MARCADOR = "handoff_realerta:{}"` é por CONVERSA, e
+         📊 `dispatch_watchdog.py` nunca lê id de conversa — usa `case_id`,
+         `state`, `transcript`, `sentinela_attempts`, `wd_*`.
+         ✅ O id existe: `session["mirror_conversation_id"]`,
+            gravado em `dispatch_mirror.py:55-60`. **Use esse.**
+         ⛔ Inventar uma segunda chave é o "segundo marcador de aviso" que o
+            gate da §8 proíbe.
+
       ⚠️ 📊 É a única cadeia com `needs_human` durável em produção
          (`sentinela_stall`). Consertar B e C sem ela é consertar o que
          nunca disparou e deixar de fora o que disparou.
+
+      ✅ E UMA COSTURA JÁ PRONTA, de graça: o caminho C **já compartilha**
+         `build_handoff_dossier` (`dispatch_watchdog.py:301` ×
+         `dispatch_router.py:1624`). 🔴 Logo o **B.4** — "o dossiê para de
+         mentir" — **cobre o caminho C sem trabalho extra.** Diga isso no
+         relatório: é a única peça que B e C já tinham em comum.
 
 B.1   o caminho B ganha o que o caminho A já tem:
         · escreve `conversations.status = 'HUMAN_REQUESTED'`  (ou o que o BLOCO F decidir)
@@ -597,9 +647,18 @@ valores não têm dígito. **No dia em que alguém preencher `internal_numbers` 
 o terceiro fallback produz um destino colado de vários números — e manda um dossiê com CPF
 para um número que não existe.** Guarda obrigatório.
 
-**Gate B:** um handoff do corredor, numa corretora **com** destino, chega ao destino e
-grava o estado. ⚠️ **CONTROLE:** numa corretora **sem** destino, ele grava
-`sem_destino_de_suporte` e **não** declara sucesso. **Os dois casos no relatório.**
+**Gate B:** um handoff **do caminho B** (o corredor), numa corretora **com** destino,
+chega ao destino e grava o estado.
+
+⚠️ **CONTROLE 1:** numa corretora **sem** destino, ele grava `sem_destino_de_suporte`
+e **não** declara sucesso.
+
+⛔ **CONTROLE 2 — O CAMINHO C, e sem ele o B.0 não tem gate nenhum:** um
+`sentinela_stall` (`dispatch_watchdog.py:299`) **também** avisa o segurado, **também**
+grava o estado durável, e **também** passa pelo marcador. 🔴 **E o controle do controle:**
+os quatro alertas não-handoff (`:408`, `:427`, `:435`, `:443`) **continuam saindo**.
+
+**Os quatro casos no relatório.**
 
 ---
 
@@ -633,15 +692,34 @@ prompt.
 ## BLOCO D · A RETOMADA COBRE MAIS QUE 8 DE 38
 
 ```
-D.1   o investigador classifica os 7 motivos que hoje não retomam:
-        insurer_closed          ✅ já retoma
-        missing_slots:*         retomável? só se o dado puder chegar depois
-        sem_chute:*             🔴 NUNCA retoma sozinho — é o dado que não existe
-        handoff_trigger:*       🔴 a URA MANDOU falar com humano. Não insistir.
-        loop_guard              retomar repetiria o laço
-        conferencia_divergente  já tem escada própria (:1905-1930)
-        subservico_invalido     já resolvido (§3.3)
-        playbook_not_found      não é travamento: é rota inexistente
+D.1   🔴 SÃO DEZESSEIS FAMÍLIAS, NÃO OITO — e a lista sai do COMANDO,
+      nunca da memória:
+        grep -rn 'session\["reason"\] = ' backend/app/services/ backend/app/tasks/
+
+      📊 O que o comando devolve hoje, e o que já se sabe de cada uma:
+        insurer_closed                    ✅ já retoma (o único)
+        missing_slots:*                   retomável? só se o dado puder chegar
+        sem_chute:*                       🔴 NUNCA — é o dado que não existe
+        handoff_trigger:*                 🔴 a URA MANDOU chamar humano
+        loop_guard                        retomar repetiria o laço
+        conferencia_divergente:*          já tem escada própria (:1904-1932)
+        playbook_not_found                não é travamento: rota inexistente
+        human_phase_guard:*               o cérebro falhou 2×
+        🔴 sentinela_stall                a ÚNICA com prova em produção
+        🔴 formulario_envio_falhou        o envio FALHOU — é o caso em que a
+                                          causa mais obviamente pode ter mudado
+        formulario_incompleto:*           formulario_nativo_desconhecido
+        formulario_pronto_sem_transporte  confirmacao_bloqueada:*
+        encaminhamento_sem_link           formulario_pronto_sem_flow_token
+                                            ⚠️ fora por §9 (P-084-67)
+
+      ⛔ 📊 `subservico_invalido` NÃO EXISTE como `reason` — a v2 desta SPEC
+         o listava, e a §3.3 tem razão: o laço morreu. Sai da lista.
+
+D.1b  🔴 A REGRA PADRÃO, que o D.2 argumenta e a v2 não escrevia:
+        MOTIVO NÃO CLASSIFICADO → NÃO RETOMA. VAI DIRETO AO HUMANO.
+      ⚠️ O relatório NOMEIA o que caiu no padrão. Padrão silencioso é o
+         mesmo defeito que esta SPEC existe para matar.
 
 D.2   🔴 A REGRA QUE O BLOCO TEM DE ESCREVER, e ela é de negócio:
       "retomar" só vale quando A CAUSA PODE TER MUDADO.
@@ -666,8 +744,10 @@ no portal via `use_portal` (§3.3). Os `idempotency_key` do caminho de URA
 bloqueiam retomada nenhuma**. ⚠️ O executor NÃO abre `portal_jobs` antes de tocar a
 retomada de URA.
 
-**Gate D:** para cada um dos 8 motivos, o relatório diz **retoma / não retoma / vai direto
-ao humano**, com o porquê. ⚠️ **CONTROLE:** um `sem_chute` **não** retoma, e a prova é o
+**Gate D:** 🔴 para cada uma das **16 famílias que o comando do D.1 devolver** — e o
+relatório traz **a saída do comando**, não a lista copiada daqui — diz **retoma / não
+retoma / vai direto ao humano**, com o porquê. ⚠️ Família nova que o comando devolver e
+não estiver na lista **também entra**: o gate cobra o comando, não o texto. ⚠️ **CONTROLE:** um `sem_chute` **não** retoma, e a prova é o
 teste que falha se alguém o fizer retomar.
 
 ---
@@ -737,7 +817,11 @@ até o teto.
 
 ```
 G.1   O ENSAIO SECO, ponta a ponta, com a AMANDUS SEGUROS e SÓ com ela:
-        1. um acionamento entra em `missing_slots`
+        1. um acionamento entra em `missing_slots`      ← caminho B
+        🔴 1b. E O MESMO ROTEIRO INTEIRO ENTRANDO POR `sentinela_stall`,
+            que é o caminho C — a única família com prova em produção.
+            ⚠️ Sem esta linha, o executor fecha o ensaio verde tendo
+               pulado o B.0 inteiro.
         2. a linha durável nasce                          (FASE 0)
         3. o CPF nela está mascarado                      (FASE 1)
         4. o work_run NÃO diz `completed`                 (A)
