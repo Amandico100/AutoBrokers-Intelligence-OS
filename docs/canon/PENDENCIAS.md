@@ -5270,7 +5270,20 @@ sempre com migration nova"*. Vai junto com a migration do Bloco 6, que já toca
 conclui que o único tema que a SPEC-072 filtra é ilegal. É um `COMMENT` que
 mente, e §12.1 manda consertar o campo, não o texto.
 
-### ✅ 16/08/2026 — FECHADA: a cota entrou, e é cota mesmo
+### ✅ 16/08/2026 — FECHADA: o `COMMENT` foi reescrito com os 24 temas
+
+📊 `20260816_01_a_carta_diz_que_pergunta_responde.sql:68` — uma linha, dentro de
+uma migration que já ia sair, com `documentacao` entre os **24 valores medidos em
+16/08/2026**. Sem juiz, sem red team, sem bloco próprio.
+
+⚠️ **Corrigido em 24/08/2026:** até hoje este título dizia *"a cota entrou, e é cota
+mesmo"*, e o bloco abaixo conta a história da **P-178** (`COTA_DE_FACETA`), colada no
+lugar errado. A P-179 estava 🟢 por acidente e sem prova. Achado por um juiz que
+auditava outra coisa — e é a `PENDENCIAS.md` §índice-que-mente em ação.
+
+---
+
+### ✅ 16/08/2026 — FECHADA (é da **P-178**): a cota entrou, e é cota mesmo
 
 Decisão do Founder: *"a terceira linha do ORCAMENTO_GLOBAL logo depois do Bloco
 2, como parte do gate dele — a carta nova tem de ser recuperável, senão o bloco

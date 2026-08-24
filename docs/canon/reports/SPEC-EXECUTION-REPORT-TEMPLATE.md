@@ -75,10 +75,18 @@ Qualquer item não marcado exige explicação nominal na §10.
 🔴 **STALLED exige a classificação da §6:** qual das oito condições do `CLAUDE.md` §10
 ele é — ou, se nenhuma, **o que foi entregue mesmo assim** e o que foi para `PENDENCIAS.md`.
 
-**Blockers rebaixados a pendência pelo orquestrador** (§4) — vazio é resposta válida:
+**Blockers rebaixados a pendência pelo orquestrador** (§4) — ⚠️ tabela vazia é resposta válida **e dispensa o `N/A` da instrução 2**: nenhum rebaixamento é o resultado esperado.
 
 | achado do juiz (verbatim) | motivo do rebaixamento | teste do produto |
 |---|---|---|
+
+**As pendências que esta SPEC TOCOU** (§1, a regra de drenagem) — 🔴 o investigador as lista no início, e nenhuma sai daqui sem um dos três estados:
+
+| P-nnn | FECHADA (com a prova) · CONTINUA (com o que destrava, novo) · MORREU (a razão dela deixou de existir) |
+|---|---|
+| | |
+
+⚠️ O que a SPEC **não** tocou continua em `PENDENCIAS.md`, e não entra nesta tabela.
 
 ---
 

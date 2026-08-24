@@ -1378,7 +1378,12 @@ BATEU O TETO  não é silêncio, e não é liberação:
 
 🔴 **Três é o número.** Depois disso um modelo forte para de melhorar e começa a inventar — e invenção é exatamente a falha que se quer evitar num menu de URA.
 
-⚠️ **Reprovação sem motivo acionável não conta como volta.** O juiz que reprovar tem de dizer **qual conferência** falhou e **qual tela** a prova. "Está incompleto" não é reprovação — é ruído, e o executor devolve pedindo o motivo.
+⛔ **REVOGADO em 24/08/2026 pelo `PROTOCOLO-AUTOBROKERS-AAA.md` §6** — a cláusula
+*"reprovação sem motivo acionável não conta como volta"* tornava o teto de 3
+**inalcançável**, porque quem julgava se o motivo era acionável era o mesmo juiz que
+reprovava. 🔴 **Agora toda volta conta**, e a **volta 3 é um juiz NOVO** que não vê as
+anteriores. ⚠️ **O que continua valendo** é a segunda metade, que é obrigação do juiz e
+não desconto de volta: o juiz que reprovar tem de dizer **qual conferência** falhou e **qual tela** a prova. "Está incompleto" não é reprovação — é ruído, e o executor devolve pedindo o motivo.
 
 ### 6.4 O juiz também julga a SPEC
 

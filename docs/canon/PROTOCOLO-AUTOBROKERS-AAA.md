@@ -5,13 +5,14 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> v2 · 24/08/2026 · vale para **toda** SPEC, execução, ideia nova, incidente e
+> v3 · 24/08/2026 · vale para **toda** SPEC, execução, ideia nova, incidente e
 > agente da Central.
 >
-> ⚠️ **A v1 foi reprovada pelo próprio protocolo, na primeira volta, por sete
-> blockers.** O pior: a conta da §2 dava **nove agentes para consertar um
-> comentário de coluna** e **zero para levar 117 commits a produção**. O registro
-> do que mudou e por quê está na §11.
+> ⚠️ **A v1 reprovou por sete blockers. A v2, por mais cinco — e dois deles o
+> próprio conserto abriu.** O pior da v1: a conta dava **nove agentes para um
+> comentário de coluna** e **zero para 117 commits em produção**. O pior da v2:
+> ela isentava do piso a única migration de vazamento entre corretoras do
+> repositório. **As duas voltas estão na §11, com o que mudou e por quê.**
 
 ---
 
@@ -109,6 +110,9 @@ REVERSIBILIDADE  🔴 mede o que FICA depois de desfazer o gesto,
                  desfez, e não sobrou nada ........... 0
                  sobra dado, estrutura ou estado que
                  precisa de conserto próprio ......... 2
+                 ⚠️  a LINHA no ledger de migration NÃO
+                    conta: ela registra o gesto, e não
+                    é o que sobrou dele
                  saiu do prédio e não volta: mensagem
                  enviada, chamado aberto, portal
                  acionado, dinheiro movido ........... 3
@@ -137,6 +141,32 @@ mensagem — o `git revert` é trivial, e o que ele deixa para trás não é.
 > **"Eu consigo apontar TODOS os lugares que isto muda?"**
 > **Não consigo → SUPERFÍCIE 3.** Não saber *é* a definição de território novo.
 
+#### 🔴 E existem DOIS "não saber" — só um deles é SUPERFÍCIE
+
+```
+NÃO SEI ONDE ISTO PEGA         →  SUPERFÍCIE 3.
+                                  Território de código não mapeado: mais
+                                  gente, porque alguém tem de ir ver.
+
+NÃO SEI SE O MODELO OBEDECE    →  🔴 ISTO NÃO É SUPERFÍCIE. É PROVA.
+                                  Mais gente não torna um LLM previsível.
+```
+
+🔴 **Texto que instrui um modelo — prompt, playbook, regra de conduta — pontua pelos
+COMPORTAMENTOS que dirige de propósito, e sai com uma obrigação a mais, nunca com mais
+gente:**
+
+> **mostrar o modelo fazendo.** Um prompt é uma instrução, não uma garantia — **a prova
+> é a saída, nunca o texto.**
+
+⚠️ 📊 **Por que esta cláusula existe.** Sem ela, a trava daria SUPERFÍCIE 3 a
+**qualquer** linha de prompt — ninguém enumera as saídas de um LLM — e duas linhas em
+`prompts.py` sairiam com **nove papéis**, contra os **dois** que a mesma frase recebe
+num template. **A diferença seria só onde a frase está guardada**, que é o vício que a
+§2.4 existe para matar. E o custo é medido: **59 dos 456 commits de agosto/2026** tocam
+`prompts.py` ou `corridor_playbooks.py`. **Uma régua que convoca red team em 13% do mês
+não é régua, é pedágio.**
+
 ### 2.3 A tabela
 
 ```
@@ -164,23 +194,57 @@ Uma nota sem eles é palpite disfarçado.
 RISCO 6 no mínimo, independente da conta:
 
  · qualquer coisa que ENVIE       mensagem, acionamento, chamado, cobrança
- · migration que ALTERA DADO      ⚠️ COMMENT, índice e GRANT não alteram
-   OU ESTRUTURA                      nem dado nem estrutura — não disparam o piso
+ · migration que ALTERA DADO, ESTRUTURA, TRAVA, ou QUEM PODE LER
  · autenticação, sessão, ou o filtro `company_id`
  · qualquer coisa que leia de uma corretora e escreva noutra
 ```
 
-📊 **A v1 escrevia o piso por tipo de artefato — *"migration"* — e por isso mandava
-red team consertar um `COMMENT ON COLUMN`.**
+```
+⚠️  A ÚNICA isenção é o COMMENT: não altera dado, nem estrutura, nem
+   trava, nem permissão.   🔴 ÍNDICE E GRANT DISPARAM O PISO.
+```
+
+📊 **A v1 escrevia o piso por tipo de artefato — *"migration"* — e mandava red team
+consertar um `COMMENT ON COLUMN`. 🔴 A v2, consertando isso, isentou índice e GRANT — e
+abriu um buraco pior, medido neste repositório:**
+
+- 📊 **A única migration com `GRANT` do diretório canônico é a correção de vazamento
+  entre corretoras** — `20260727_03_seguranca_view_cutover.sql`, que fechou uma view
+  `SECURITY DEFINER` dando `SELECT/INSERT/UPDATE/DELETE` a `anon` e `authenticated`.
+  Ela não toca uma linha de dado: **muda quem PODE LER.** A isenção a fazia sair como
+  *"ninguém, faz e pronto"* — num repositório onde o `CLAUDE.md` §7 diz que *"RLS sem
+  policy não protege nada"*.
+- 📊 **Índice é as duas coisas.** `CREATE UNIQUE INDEX` sem `CONCURRENTLY` pega
+  `ACCESS EXCLUSIVE` e **trava escrita** — 274 `CREATE INDEX` nas migrations, e só
+  **12** `CONCURRENTLY`. E o índice `(company_id, idempotency_key)` de `20260804_02`
+  **É a fronteira entre corretoras**: *"com ele o isolamento passa a ser estrutural"*.
+  **A isenção dispensava do piso o artefato que implementa um gatilho do próprio piso.**
+
+🔴 **E a lição custou duas voltas para entrar:** exceção escrita por **tipo de
+artefato** volta a errar — mesmo quando o objetivo declarado era consertar exatamente
+isso. **O piso só sobrevive escrito por EFEITO.**
 
 ### 2.5 🔴 A conta vale para MUDANÇA, não para INVESTIGAÇÃO
 
-Avaliar uma ideia, auditar, mapear, responder *"como isto funciona hoje"* **não muda
-byte nenhum**: a conta dá zero, e daria zero sempre. Esses modos têm **elenco fixo**
-(§7), e o que os dimensiona é a **largura** — quantas frentes independentes — não o
-risco.
+Avaliar uma ideia, **auditar**, **mapear**, medir se algo funcionou — nada disso muda
+byte nenhum: a conta dá zero, e daria zero sempre. Todos usam o elenco do **MODO
+INVESTIGAÇÃO** (§7), e o que os dimensiona é a **largura** — quantas frentes
+independentes — nunca o risco.
 
 **E o que a investigação RECOMENDA é pontuado quando virar trabalho.**
+
+⚠️ 🔴 **E isto NÃO é a mesma coisa que a dispensa da §8.** A fronteira, escrita uma
+vez só, e vale para os dois lugares:
+
+```
+CONSULTA PONTUAL — a resposta cabe numa frase
+   "onde está X?" · "o que essa função faz?" · "esse arquivo existe?"
+   → 🔴 DISPENSADO (§8). Lê e responde. Não monta ninguém.
+
+VARREDURA — precisa de conclusão, e a conclusão vira decisão
+   "isto funcionou?" · "o que falta fechar?" · "serve para nós?"
+   → MODO INVESTIGAÇÃO (§7). Elenco fixo, dimensionado pela largura.
+```
 
 ### 2.6 📊 A conta, validada nos seis casos que reprovaram a v1
 
@@ -193,7 +257,20 @@ risco.
 | P-084-78 · três apelidos em `_SUBSERVICE_ALIASES` | **8** | **0** | 8 → nove papéis para três strings | **builder + juiz.** O juiz confere os três destinos |
 | P-23 · merge da `main`, 117 commits | **8** | **3** | 🔴 **0 — "ninguém, faz e pronto"** | **equipe completa + red team + juiz final fresco** |
 
-🔴 **O par que prova a conta é o último e o penúltimo:** a v1 dava a mesma nota
+### 📊 E os TRÊS casos que reprovaram a v2 — a segunda validação
+
+| caso | RISCO | SUP | v2 dava | **v3 dá** |
+|---|:---:|:---:|---|---|
+| `20260727_03` · o `GRANT` que fechou a view `SECURITY DEFINER` aberta a `anon` | **6** pelo piso | **1** | 🔴 **ninguém** — a v2 isentava GRANT | **builder + juiz + verificador** |
+| `20260804_02` · o índice `(company_id, idempotency_key)` — a fronteira estrutural | **6** pelo piso | **1** | 🔴 **ninguém** — a v2 isentava índice | **builder + juiz + verificador** |
+| duas linhas de texto em `ATTENDANCE_BASE_PROMPT` | **8** | **0** | **3** pela trava do "não saber" → nove papéis | **builder + juiz**, + a obrigação de **mostrar o modelo fazendo** |
+
+⚠️ 📊 **E o P-179 tem validação de fora, que ninguém planejou:** o conserto real foi
+feito em 16/08, **antes deste protocolo existir**, como uma linha dentro de
+`20260816_01_a_carta_diz_que_pergunta_responde.sql:68` — sem juiz, sem red team, sem
+bloco próprio. **O mundo já rodou a prescrição da v3, e ela estava certa.**
+
+🔴 **O par que prova a conta é o último e o penúltimo da primeira tabela:** a v1 dava a mesma nota
 (8) para três strings e para 117 commits em produção, e dava **zero** para o
 segundo por outro caminho. A v2 separa os dois por SUPERFÍCIE, que é o eixo que
 mede a diferença entre eles.
@@ -216,6 +293,13 @@ mede a diferença entre eles.
 
 ⚙️ VERIFICADOR       build, testes, lint, tipos, migrations, regressão
    MECÂNICO          🔴 determinístico. Não opina
+                     ⛔ 📊 ESSA LISTA NÃO BASTA: é exatamente a que deixou o
+                        produto 1h40 no chão com tudo verde (CLAUDE.md §9.1)
+                     🔴 Mexeu em `app/`, `middleware.ts`, `instrumentation.ts`,
+                        `next.config.js` ou variável de ambiente:
+                          npm run test:rotas-montam   +   next start
+                          + UMA REQUISIÇÃO A ROTA QUE EXECUTA CÓDIGO (/api/...)
+                        Arquivo estático responde 200 com o roteador morto
 
 ⚖️ JUÍZES            um por SUPERFÍCIE DE FALHA, nunca cinco genéricos
                      🔴 contexto fresco. Não recebem a narrativa do builder
@@ -355,7 +439,7 @@ referência resolve isso: o crítico olha dois artefatos e diz qual está melhor
    e o juiz julga contra ela. Se o Founder discordar depois, o alvo muda
    e a rodada se repete contra o alvo novo.
 
-🔴 ONDE FICA ESCRITA: na §2 do relatório de execução, ao lado das duas contas.
+🔴 ONDE FICA ESCRITA: na §0.1 do relatório de execução, ao lado das duas contas.
    Referência que não está escrita não existe para o juiz.
 
 🔴 Se o agente não achar referência inspecionável para uma dimensão,
@@ -373,11 +457,13 @@ humano em toda tela de identidade, dinheiro ou escolha-entre-existente-e-novo.**
 
 ## 6. O LAÇO — e as três portas de saída
 
-🔴 **Este laço é o único do canon.** Ele **substitui** o da `SPEC-084.1 §7.2` para
-toda execução daqui em diante, e revoga expressamente a cláusula
-*"reprovação sem motivo acionável não conta como volta"* — que tornava o teto
-inalcançável, porque quem decidia se o motivo era acionável era o próprio juiz
-que reprovava.
+🔴 **Este laço é o único do canon.** Ele **substitui o laço de QUALQUER SPEC** — nomeadamente `SPEC-084 §6.3` e `SPEC-084.1 §7.2`, ambas revogadas no próprio arquivo delas — e revoga a cláusula *"reprovação sem motivo acionável não conta como volta"*, que tornava o teto inalcançável porque quem decidia se o motivo era acionável era o próprio juiz que reprovava.
+
+⚠️ 📊 **E a forma de verificar isto é um comando, não uma leitura** — porque a v2 revogou só numa das duas e ninguém percebeu até o juiz rodar:
+
+```bash
+grep -rn "não conta como volta" docs/    # só pode sobrar dentro de bloco ⛔ REVOGADO
+```
 
 ```
 ① o builder entrega
@@ -437,19 +523,22 @@ que reprovava.
 
 | modo | a conta da §2 governa? | o que o dimensiona |
 |---|---|---|
-| 🧭 IDEIA | ❌ não (§2.5) | elenco fixo de 4 |
+| 🧭 INVESTIGAÇÃO · *ideia, auditoria, mapeamento, medição* | ❌ não (§2.5) | elenco de 4, × largura |
 | 📝 SPEC | ✅ sim | RISCO e SUPERFÍCIE **do que a SPEC vai mandar fazer** |
 | 🔨 EXECUÇÃO | ✅ sim, por unidade de trabalho | as duas contas |
 | 🤖 AGENTE | ✅ sim, e com três travas próprias | as duas contas |
 | 🚨 INCIDENTE | ❌ não | elenco mínimo, e o juiz vem depois |
 
-### 🧭 MODO IDEIA — *"surgiu isto no mundo, serve para nós?"*
+### 🧭 MODO INVESTIGAÇÃO — *ideia nova, auditoria, mapeamento, "isto funcionou?"*
 
-**A saída não é código. É uma recomendação com evidência.**
+**A saída não é código. É uma recomendação com evidência.** 🔴 **Um elenco de quatro,
+REPLICADO por frente independente** — a largura é o que dimensiona.
 
 ```
 INVESTIGADOR    o que é, quem já usa, e desde quando funciona
                 🔴 e o que MUDOU nos últimos 3 meses — o campo se move rápido
+                ⚠️  em AUDITORIA ele é quem MEDE o estado, e todo número sai
+                   com a consulta que o produziu
 ANALISTA        onde encaixa no AutoBrokers: qual peça existente ela substitui,
                 melhora ou duplica
                 🔴 CLAUDE.md §5: consolidar antes de duplicar
@@ -557,8 +646,9 @@ ELENCO MÍNIMO, e ninguém mais:
 ❌ não se aplica quando a tabela da §2.3 diz "ninguém" — RISCO 0–1 com
    SUPERFÍCIE 0. Trocar uma palavra num comentário é trocar uma palavra
 ❌ não se aplica a rodar um comando de leitura, ler um arquivo, ou responder
-   uma pergunta de FATO ("como isto funciona hoje?", "onde está X?")
-   ⚠️ avaliar uma IDEIA não é responder uma pergunta de fato — é MODO IDEIA
+   uma CONSULTA PONTUAL — "onde está X?", "o que essa função faz?"
+   ⚠️ varredura que vira conclusão NÃO é consulta pontual: é MODO
+      INVESTIGAÇÃO. A fronteira entre as duas está escrita na §2.5
 ❌ não substitui o CLAUDE.md: as regras invioláveis vencem este protocolo,
    e a §6 mostra como o STALLED se acomoda ao §10 em vez de contrariá-lo
 ❌ não substitui a SPEC: ela diz O QUE, este diz COMO
@@ -621,6 +711,25 @@ juiz a pendência. O que falhou foi a §2, que era a parte inventada e não medi
 | B5 | STALLED não é nenhuma das oito condições de parada do `CLAUDE.md` §10 — nascia morta | §6: STALLED é **classificação**, não parada. Ou cai numa das oito, ou entrega e avança |
 | B6 | o laço era cópia do que já falhara, e não revogava *"reprovação inacionável não conta como volta"* | §6 declara precedência, revoga a cláusula, e **toda volta conta** |
 | B7 | não havia modo para incidente, e a conta **atrasava** a volta do produto | §7: MODO INCIDENTE, elenco mínimo, conserto reversível, juiz adiado |
+
+### A VOLTA 2 — mais cinco, e dois deles o conserto da v1 abriu
+
+📊 **A prova de que a §2 funciona veio primeiro:** o juiz novo aplicou as §2.1–§2.5
+aos seis casos **antes** de abrir a §2.6, e chegou ao **mesmo time nos seis**. Isso não
+é palpite — é reprodução por um segundo leitor.
+
+| # | o defeito da v2 | o conserto |
+|---|---|---|
+| 1 | 🔴 a isenção de `GRANT` e `índice` da §2.4 dava **"ninguém"** à única migration de vazamento entre corretoras do repositório, e ao índice que **é** a fronteira estrutural | só o `COMMENT` fica isento; o piso passa a dizer **"altera dado, estrutura, TRAVA ou QUEM PODE LER"** |
+| 2 | **o B6 não fechou**: a cláusula estava viva também em `SPEC-084 §6.3`, e eu não rodei o `grep` que a §7 manda rodar | revogada nas duas, o §6 nomeia **qualquer SPEC**, e traz o comando de verificação escrito |
+| 3 | a trava *"não sei onde isto pega"* dava SUPERFÍCIE **3** a qualquer linha de prompt — **nove papéis para duas linhas**, em 13% dos commits do mês | §2.2: **dois "não saber"**. Não saber onde pega é superfície; não saber se o modelo obedece é **prova** |
+| 4 | o VERIFICADOR MECÂNICO da §3 listava exatamente os gates que deixaram o produto **1h40 no chão** com tudo verde | §3 passa a exigir `test:rotas-montam` + `next start` + **uma requisição a rota que executa código** |
+| 5 | §2.5 e §8 davam respostas opostas à mesma frase — *"três respostas"* de novo, na seção escrita para curar isso | a fronteira **CONSULTA PONTUAL × VARREDURA**, escrita uma vez e citada nos dois lugares. MODO IDEIA vira **MODO INVESTIGAÇÃO** |
+
+🔴 **E o defeito nº 2 é o mais instrutivo do documento inteiro:** a §7 manda *"depois de
+cada reescrita, `grep` por cada conceito que mudou de definição — releitura nunca achou
+nenhum deles"*. **Eu escrevi a regra e não a rodei.** O juiz rodou, e achou. A regra
+pegou o autor dela — que é o único teste que vale.
 
 **As pendências que o juiz achou e que reprovaram o teste do produto** — evidência
 que não reproduzia na §1, a alegação inflada sobre a primeira volta, a referência
