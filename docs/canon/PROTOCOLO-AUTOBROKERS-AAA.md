@@ -5,7 +5,7 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> v6 · 24/08/2026 · ✅ ENTREGUE · 🔴 e com a primeira lição MEDIDA em execução (§6.0.1) · vale para **toda** SPEC, execução, ideia nova, incidente e
+> v7 · 24/08/2026 · ✅ ENTREGUE · 🔴 o PAINEL PARALELO (§6.0.0) e as lições medidas (§6.0.1, §6.0.2) · vale para **toda** SPEC, execução, ideia nova, incidente e
 > agente da Central.
 >
 > ⚠️ **A v1 reprovou por sete blockers. A v2, por mais cinco — e dois deles o
@@ -588,6 +588,64 @@ conserto a fazer. **Um laço produtivo também precisa acabar.**
 ⚠️  Precisa de uma quarta? É decisão do Founder, e vai ESCRITA no relatório
    com o que a terceira achou. Nunca por iniciativa do orquestrador.
 ```
+
+### ⛔ 6.0.0 · O PAINEL — os juízes rodam EM PARALELO, e isto não é opção
+
+🔴 **A §3 sempre disse: *"um juíz por SUPERFÍCIE DE FALHA, nunca cinco genéricos"*.
+Na primeira execução real eu rodei UM genérico TRÊS VEZES, em série.** Esta seção existe
+para que isso não volte a acontecer.
+
+```
+❌ EM SÉRIE       escreve → juiz → conserta → juiz → conserta → juiz → conserta
+                  quatro esperas, e cada juíz só vê o que a lente DELE vê
+
+✅ EM PARALELO    escreve → 🔴 N JUÍZES DE UMA VEZ, uma lente cada
+                          → o orquestrador funde e aplica o TESTE DO PRODUTO
+                          → conserta TUDO junto
+                          → UM juíz novo confirma
+                  duas esperas, e N lentes em vez de uma repetida
+```
+
+📊 **A evidência, medida na SPEC-085.** Dois juízes com contexto limpo julgaram o mesmo
+documento, em voltas diferentes:
+
+```
+o primeiro achou   a terceira cadeia · a lista errada · o gate de RLS · a P-93
+o segundo achou    o mascarador que não existe · o payload de restauração ·
+                   a imortalidade · a Fila apagada · 19 sítios · a chave global ·
+                   o gate vazio · os guardas invisíveis · o "+"
+
+🔴 SOBREPOSIÇÃO: praticamente ZERO
+```
+
+> **Dois juízes competentes, o mesmo artefato, e acharam coisas quase inteiramente
+> diferentes.** Isso não é sorte — **é a lente.** Rodar o mesmo três vezes é ver a mesma
+> lente três vezes; rodar três lentes uma vez é ver três.
+
+**Quantas lentes, e quais:** o **número** sai da célula da §2.3; **quais** saem das
+superfícies de falha que o trabalho tem, e **a SPEC as nomeia**. As quatro que serviram
+aqui, e servem de ponto de partida:
+
+```
+⚖️ O CÉTICO DA MEDIDA       "este número mede o que a frase diz?"
+⚖️ O CÉTICO DO SEGURADO     "alguma coisa que sai daqui promete o que não se cumpre?"
+⚖️ O CÉTICO DA VIZINHA      "o que outra SPEC construiu continua de pé?"
+⚖️ O CÉTICO DO ISOLAMENTO   "alguma coisa nova atravessa corretora?"
+```
+
+⚠️ **E as três regras que fazem o painel funcionar:**
+
+```
+🔴 NENHUM JUÍZ VÊ O ACHADO DO OUTRO. Rodam cegos, ou viram um só.
+🔴 O ORQUESTRADOR FUNDE, e aplica o TESTE DO PRODUTO (§1) a CADA achado
+   antes de mandar consertar. É aqui que a pendência se separa do blocker.
+🔴 ACHADO REPETIDO POR DUAS LENTES SOBE DE PRIORIDADE. Achado único não
+   desce — 📊 a sobreposição medida foi zero, e os únicos eram os graves.
+```
+
+⚠️ **O que o painel NÃO dispensa:** a confirmação final por **um juíz novo**, depois do
+conserto. O painel acha; a confirmação prova que o conserto não criou defeito — 📊 e na
+SPEC-085 **dois consertos criaram defeito**, os dois pegos na volta seguinte.
 
 ### As três portas
 
