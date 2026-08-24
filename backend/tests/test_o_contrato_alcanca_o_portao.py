@@ -170,6 +170,33 @@ certo("titular_cpf" in _falso,
       "ACUSA — logo ela sabe reprovar",
       f"acusou: {sorted(_falso)[:5]}")
 
+# 🔴 CONTROLE DA METADE NOVA — achado do JUIZ 4.
+#
+#    O controle acima usa `titular_cpf`, que vem da metade VELHA da
+#    população (os `missing_slots` do portão). 📊 Apagando a varredura dos
+#    `requires`, o item [1] passa, o [2] passa e AQUELE controle continua
+#    vermelho do mesmo jeito — ou seja, **a metade que este guarda ganhou
+#    não tinha como falhar.**
+#
+# ⚠️ `situacao_risco_opcao` só existe na população NOVA: o portão não o
+#    cobra (é `sem_chute`), e ele aparece porque um PASSO o exige.
+_so_da_varredura_nova = set()
+for _r in rotas:
+    _ses_c = M.IDS.new_dispatch_session(
+        case_id="c", company_id="c", playbook_ref=_r.ref,
+        subservice=_r.servico, slots={})
+    _velha = {x for x in (_ses_c.get("missing_slots") or [])
+              if x != CP.SUBSERVICO_INVALIDO}
+    _so_da_varredura_nova |= set(cobrados_de(_r)) - _velha
+
+certo("situacao_risco_opcao" in _so_da_varredura_nova,
+      "\U0001F534 CONTROLE: a varredura dos `requires` produz slot que o "
+      "portão NÃO cobra — a metade nova do guarda tem como falhar",
+      f"só da metade nova: {sorted(_so_da_varredura_nova)[:6]}")
+certo(all(x in CAMPOS for x in _so_da_varredura_nova),
+      "   e TODOS eles têm campo no contrato — a metade nova está coberta",
+      str(sorted(x for x in _so_da_varredura_nova if x not in CAMPOS)))
+
 print()
 print("=" * 74)
 print("[3] E O CONTRATO NÃO CARREGA CAMPO QUE NINGUÉM COBRA")

@@ -1142,10 +1142,24 @@ def new_dispatch_session(
     # 🔴 E a conferência é a MESMA que o envio usa (`_resolver_opcao_de_flow`),
     # não uma segunda: se o portão aprovasse por um critério e o envio
     # recusasse por outro, o produto teria duas verdades sobre o mesmo valor.
+    # 🔴 JUIZ 4 · ESCOPADO POR SUBSERVIÇO.
+    #
+    #    A primeira redação varria os formulários do corredor inteiro. 📊 Um
+    #    `veiculo_nivel_rua` mal preenchido bloqueava **10 rotas** — bateria,
+    #    chaveiro, pneu, socorro mecânico —, e oito delas **nunca abrem aquele
+    #    formulário**. Bloquear cedo é bom; bloquear rota que não vê a tela é
+    #    interrogatório à toa.
+    #
+    # ⚠️ O critério é o que o produto JÁ usa para saber o que esta rota
+    #    precisa: se o slot não está em `required_slots` do subserviço, esta
+    #    rota não o coleta — e não faz sentido reprovar o valor dele.
+    _coletados_aqui = set(sub.get("required_slots") or [])
     for _flow_pt in (playbook.get("native_flows") or {}).values():
         for _tela_pt, _comp_pt in _flow_components(_flow_pt):
             _slot_pt = str(_comp_pt.get("slot") or "")
             if not _slot_pt or _slot_pt in missing:
+                continue
+            if _slot_pt not in _coletados_aqui:
                 continue
             if not (_comp_pt.get("options") or []):
                 continue          # texto livre: não há lista para conferir

@@ -14,7 +14,12 @@
 
 > **O achado, na frase que o define:**
 > *As 19 rotas AAA respondiam 100% das telas da URA, com 100% de determinismo.
-> E nenhuma acionava.*
+> E nenhuma passava o portão da ferramenta.*
+
+> 🔴 **Correção de linguagem, exigida pelo JUIZ 4 e adotada:** onde este
+> relatório dizia *"as 19 rotas acionam"*, leia-se **"passam o PORTÃO"**.
+> `acionar` é o que acontece na seguradora, e **nenhum acionamento real foi
+> feito nesta SPEC** — as proibições do Founder o impedem. Ver §3.6.
 
 ---
 
@@ -366,6 +371,46 @@ lados do controle: a frase do SMS **é reconhecida** como afirmação e a porto 
 **zero** telas de `sms` (logo seria reprovada); a afirmação **verdadeira** sobre
 classe de bônus **tem** tela.
 
+### 3.6 🔴 O JUIZ 4 reprovou a AFIRMAÇÃO — duas vezes — e ele estava certo
+
+📊 *"19 de 19 acionam pelo caminho real"* mede a **entrada** do corredor e era
+apresentada como o corredor inteiro. E o achado que mais dói é sobre o método:
+
+```
+df89432  só os slots que o portão COBRA + relato realista →  34 capturas
+0fbfcd8  só os slots que o portão COBRA + relato realista →  34 capturas
+0fbfcd8  o caso cheio do medidor                          →  +9, e o "antes" só
+                                                             tinha 11 sem_chute
+                                                             porque o relato do
+                                                             medidor era genérico
+```
+
+🔴 **As +9 capturas eram do INSTRUMENTO.** No mesmo commit em que declarei os
+sete campos, eu os acrescentei ao `_PREENCHIMENTO` do medidor — e as derivações
+que produzem aqueles valores já existiam antes. **O medidor mediu a própria
+generosidade.**
+
+⚠️ É a §9.2 virada contra mim: *"toda bateria precisa de controle"*. Eu rodei o
+controle do PORTÃO (tirar o CPF) e não rodei o do INSTRUMENTO (medir com o que
+o portão de fato cobra). O juiz rodou.
+
+**O que a segunda volta dele consertou de verdade**, e ele confirmou por
+medição: o portão confere valor pela mesma função do envio · `veiculo_nivel_rua`
+ensina os quatro títulos e **os quatro resolvem** · a população do guarda deixou
+de ser circular · o formulário passa a MONTAR · **zero regressões** (73/73 no
+portão, nenhuma sessão perdeu captura) · o interrogatório é **idêntico** ao de
+antes (565 slots cobrados nos dois commits).
+
+**E os cinco itens que ele deixou nomeados foram executados:**
+
+| item | o que era | estado |
+|---|---|---|
+| a frase do ar-condicionado | mandava usar `eletrodomesticos`, e o modelo apertava **1+15** numa URA cuja tela tem **2 = Ar Condicionado** | ✅ |
+| valor recusado sem saída | mesma mensagem de "dado ausente" → o atendente reenviava o mesmo valor → **laço fechado** | ✅ agora lista os títulos aceitos |
+| conferidor sem escopo | um valor ruim bloqueava **10 rotas**, e 8 nunca abrem aquele formulário | ✅ **10 → 2** |
+| `bateria_tipo_opcao` | *"galho raro"* — 📊 e é tomado em **7 de 7** sessões de bateria | ✅ passa a ser cobrado |
+| controle da metade nova do guarda | apagar a varredura dos `requires` não derrubava nada | ✅ |
+
 ---
 
 ## 4. Migrations
@@ -455,8 +500,19 @@ ligar agente e enviar mensagem, as duas primeiras proibições.
 
 ## 10. Declaração final
 
-**FATO.** Seis consertos executados, medidos e commitados sozinhos. **19 de 19
-rotas AAA acionam pelo caminho real da ferramenta** — eram 0. O portão continua
+**FATO.** Seis consertos executados, medidos e commitados sozinhos.
+📊 **As 19 rotas AAA passam o PORTÃO da ferramenta com o caso cheio — eram 0 de
+19.** Rodando as telas gravadas do corpus pelo motor, **16 dessas 19 chegam a um
+protocolo em ao menos uma sessão**, e **34 das 72 sessões** chegam; das 38 que
+não chegam, **25 param por motivo legítimo** (17 `handoff_trigger`, 8
+`insurer_closed`), **8 têm a gravação interrompida** e **5 param em
+`formulario_pronto_sem_flow_token`** — resposta montada, sem canal (P-084-67).
+
+⚠️ 📊 **E o ganho de capturas foi do MEDIDOR, não do produto.** Com apenas os
+slots que o portão COBRA e um relato realista, o número de capturas é **o mesmo
+de antes da SPEC**. Os sete campos novos são um SEGUNDO caminho para dados que
+a derivação por relato já produzia — robustez plausível, **não medida**. 💭
+Nenhum acionamento real foi feito. O portão continua
 cobrando o que é legítimo (controle 2 e 3). 12 de 12 mutações vermelhas. A régua
 passou a enxergar o formulário nativo, e a nota caiu e voltou, agora ganha.
 Nenhum motor paralelo foi criado.

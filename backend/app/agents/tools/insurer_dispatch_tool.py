@@ -198,7 +198,22 @@ class InsurerDispatchInput(BaseModel):
         # o aparelho certo escrito nele.
         "Use `maquina_de_lavar` quando o segurado falar em maquina de lavar, "
         "lavadora, lava-roupas ou lava-e-seca. Para OUTRO eletrodomestico "
-        "(geladeira, fogao, micro-ondas, ar-condicionado) use `eletrodomesticos`."))
+        # 🔴 JUIZ 4 · AQUI DIZIA "(… ar-condicionado) use `eletrodomesticos`",
+        #    e o catálogo GERADO cinco linhas acima lista `ar_condicionado`
+        #    como rota própria. **Não é contradição cosmética:**
+        #
+        # 📊 `ar_condicionado` responde `eletrodomestico_categoria_opcao="2"` e
+        #    tem três telas próprias; `eletrodomesticos` responde `"1"` (Linha
+        #    Branca) + `eletrodomestico_opcao="15"` (Outros). A nota do
+        #    playbook é literal: *"1-Linha Branca 2-Ar Condicionado
+        #    3-Geladeira/Freezer"*.
+        #
+        # ⚠️ Um modelo obediente apertava **1 e 15** numa URA cuja tela tem
+        #    **2 = Ar Condicionado**. É o defeito que a SPEC-082 consertou para
+        #    a máquina de lavar, reintroduzido por uma frase vencida.
+        "(geladeira, fogao, micro-ondas) use `eletrodomesticos`. "
+        "Para AR-CONDICIONADO use `ar_condicionado`, que é rota própria com "
+        "tecla própria na URA."))
     insurer_key: Optional[str] = Field(default=None, description=(
         "Seguradora da apólice (allianz | porto | hdi | yelum | tokio | alfa | azul | bradesco | mapfre | zurich). "
         "ATENÇÃO: apólice Liberty = use 'yelum' (a Liberty foi rebatizada para Yelum — MESMA seguradora, MESMO corredor). "
@@ -524,6 +539,34 @@ class InsurerDispatchInput(BaseModel):
     session_id: Optional[str] = Field(default=None, description="(injetado pelo runtime — NÃO preencher)")
 
 
+def _opcoes_recusadas(playbook_ref, subservice, kwargs, faltando):
+    """Dos slots que faltam, quais têm valor PRESENTE e não reconhecido.
+
+    🔴 Devolve `{slot: [titulos aceitos]}` — só para campo de escolha fechada
+    do formulário nativo, que é onde a seguradora publicou a lista. Campo de
+    texto livre não entra: ali não há lista para oferecer.
+    """
+    from app.services.corridor_playbooks import (
+        get_playbook, _flow_components, _resolver_opcao_de_flow)
+    pb = get_playbook(playbook_ref) or {}
+    fora = {}
+    for flow in (pb.get("native_flows") or {}).values():
+        for _tela, comp in _flow_components(flow):
+            slot = str(comp.get("slot") or "")
+            if slot not in (faltando or []):
+                continue
+            valor = kwargs.get(slot)
+            if not str(valor or "").strip():
+                continue          # ausente: a outra mensagem serve
+            if _resolver_opcao_de_flow(comp, valor) is not None:
+                continue
+            titulos = [str(o.get("title") or "") for o in comp.get("options") or []
+                       if str(o.get("title") or "").strip()]
+            if titulos:
+                fora[slot] = titulos
+    return fora
+
+
 class InsurerDispatchTool(BaseTool):
     name: str = "insurer_dispatch"
     description: str = (
@@ -826,6 +869,34 @@ class InsurerDispatchTool(BaseTool):
                 from app.services.corridor_playbooks import _COMO_PERGUNTAR
                 faltam = [_COMO_PERGUNTAR.get(s, s.replace("_", " "))
                           for s in plan["missing_slots"]]
+
+                # 🔴 JUIZ 4 · VALOR RECUSADO NÃO É DADO AUSENTE.
+                #
+                #    O portão passou a conferir o VALOR em campo de escolha
+                #    fechada. Mas a mensagem era a mesma dos dois casos, e ela
+                #    diz *"pergunte SOMENTE o que nunca foi informado"* — e o
+                #    dado FOI informado. 📊 O resultado é um laço fechado: o
+                #    portão bloqueia, o texto não diz por quê, o atendente
+                #    reenvia o mesmo valor, o portão bloqueia de novo — com o
+                #    segurado esperando.
+                #
+                # ⚠️ Quando a seguradora publicou a lista de opções, o produto
+                #    tem como dizer QUAIS são. Dizer é o conserto.
+                _opcoes_de = _opcoes_recusadas(playbook_ref, subservice,
+                                               kwargs, plan["missing_slots"])
+                if _opcoes_de:
+                    return {
+                        "status": "missing_data",
+                        "missing": list(_opcoes_de),
+                        "content": (
+                            "O valor informado não é uma das opções que a "
+                            "seguradora aceita nesta tela. Use EXATAMENTE uma "
+                            "destas: "
+                            + " · ".join(f"{c}: {' | '.join(v)}"
+                                         for c, v in _opcoes_de.items())
+                            + ". NÃO invente outra redação — a URA só aceita a "
+                            "opção literal."),
+                    }
                 return {
                     "status": "missing_data",
                     "missing": plan["missing_slots"],

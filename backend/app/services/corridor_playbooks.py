@@ -9610,8 +9610,8 @@ _COMO_PERGUNTAR = {
         #    **2 telas na HDI** — *"limitado a portas ou portões principais
         #    para acesso ao interior da residência"* — e **ZERO na yelum**.
         # ⚠️ A pergunta vale para as duas; a AFIRMAÇÃO, só para uma.
-        "se o problema é na porta PRINCIPAL ou numa interna — ⚠️ regra da "
-        "HDI: só a principal é coberta"),
+        "se a porta é a PRINCIPAL ou uma interna — ⚠️ na HDI só a "
+        "principal é coberta"),
     "geladeira_medicacao_opcao": "se a geladeira guarda medicamento — se guardar, o atendimento é prioritário",
     "encanador_tipo_opcao": "o que está vazando, com as palavras dele",
     # 🔴 SPEC-084.2, JUIZ 1 · dizia "instalação não é coberta" e não há tela
@@ -9694,7 +9694,7 @@ _COMO_PERGUNTAR = {
     "chave_tipo_opcao": "o tipo da chave — simples, tetra, as duas ou eletrônica",
     "situacao_risco_opcao": "se a rua está escura ou deserta",
     "via_ou_rodovia_opcao": "se está em rua da cidade ou em rodovia",
-    "bateria_tipo_opcao": "se é recarga, bateria nova, troca ou garantia",
+    "bateria_tipo_opcao": "se é recarga ou bateria nova",
     "taxi_passageiros_opcao": "quantas pessoas vão no táxi",
     "titular_cpf": "o CPF do titular da apólice",
     "titular_nome": "o nome do titular",
@@ -9978,9 +9978,8 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
         for dono, lista in regras.items():
             chave = _SEP.join(lista)
             por_texto.setdefault(chave, []).append(dono)
-        linhas += ["", "REGRAS DA SEGURADORA, que podem fazer o chamado ser "
-                       "recusado no local. 🔴 Cada bloco vale SÓ para quem o "
-                       "encabeça:"]
+        linhas += ["", "REGRAS DA SEGURADORA — podem fazer o chamado ser "
+                       "recusado. 🔴 Cada bloco vale SÓ para quem o encabeça:"]
         for chave, donos in sorted(por_texto.items(), key=lambda kv: sorted(kv[1])):
             linhas.append(f"  [{'; '.join(sorted(donos))}]")
             linhas += [f"    · {r}" for r in chave.split(_SEP)]
@@ -10792,3 +10791,29 @@ if "vidros" in (ZURICH_AUTO_WHATSAPP_V1.get("subservices") or {}):
 if "socorro_mecanico" in (ZURICH_AUTO_WHATSAPP_V1.get("subservices") or {}):
     ZURICH_AUTO_WHATSAPP_V1.setdefault(
         "client_instructions_por_subservico", {})["socorro_mecanico"] = []
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 `bateria_tipo_opcao` NÃO É UM GALHO RARO — achado do JUIZ 4
+# ══════════════════════════════════════════════════════════════════════════
+#
+# O C1 tirou os passos `sem_chute` do portão com a justificativa de que são
+# *"filhos de um galho que quase nunca é tomado"*. 📊 Medido no corpus, sessão
+# a sessão, a tela que exige `bateria_tipo_opcao`:
+#
+#     azul/bateria    3 de 3 sessões    100%
+#     porto/bateria   4 de 4 sessões    100%
+#
+# ⚠️ **Para estas duas rotas o galho é tomado SEMPRE.** A justificativa vale
+#    para `transporte_destino` (1 de 72) e `taxi_passageiros_opcao` (1 de 72),
+#    e não vale aqui. Sem cobrar, sobra a derivação por palavra-chave no relato
+#    e um `🔴 PERGUNTE` na descrição — e nada obriga.
+#
+# 🔴 É recarga OU bateria nova: serviços diferentes, um é assistência e o outro
+#    é venda. Chutar manda o prestador errado.
+for _pb_bt in (AZUL_AUTO_WHATSAPP_V1, PORTO_AUTO_WHATSAPP_V1):
+    _sub_bt = (_pb_bt.get("subservices") or {}).get("bateria")
+    if _sub_bt is not None:
+        _req_bt = list(_sub_bt.get("required_slots") or [])
+        if "bateria_tipo_opcao" not in _req_bt:
+            _sub_bt["required_slots"] = _req_bt + ["bateria_tipo_opcao"]

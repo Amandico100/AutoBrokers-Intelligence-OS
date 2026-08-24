@@ -8364,3 +8364,37 @@ enquanto não houver, **juiz e executor não podem trabalhar na mesma árvore**.
 
 **O que custa esquecer:** um conserto que some sem deixar rastro volta como
 defeito na produção, e o relatório da SPEC afirma que ele foi feito.
+
+### P-084-81 O medidor mediu a própria generosidade · ✅ (registrado)
+
+📊 O JUIZ 4 rodou a linha de controle que eu não rodei: com **apenas os slots que
+o portão COBRA** e um relato realista, o número de capturas é **o mesmo antes e
+depois da SPEC**. As +9 que eu atribuí ao produto vinham do `_PREENCHIMENTO` do
+medidor — eu declarei os sete campos e os acrescentei ao caso do medidor no
+mesmo commit, e as derivações que produzem aqueles valores já existiam.
+
+⚠️ **É a §9.2 virada contra mim.** Rodei o controle do PORTÃO (tirar o CPF) e
+não o do INSTRUMENTO. O valor real dos sete campos é um SEGUNDO caminho para
+dados que a derivação por relato já produzia — 💭 robustez plausível, **não
+medida**.
+
+**O que fica:** 🤖 o `acionamento_pelo_contrato` deveria ter DOIS modos — o caso
+cheio (mede o contrato) e o caso mínimo (mede o produto). Hoje só tem o
+primeiro, e ele é generoso por construção.
+
+### P-084-82 `confirm_first` roda antes da validação de subserviço · 🤖
+
+📊 Reconfirmado nesta SPEC: `subservice="banho_de_gato"` devolve `confirm_first`.
+O produto manda o atendente **confirmar dados com o cliente** para um serviço
+que não existe. É a P-084-77, e ela apareceu de novo ao testar o caminho do
+valor recusado — o `confirm_first` come qualquer diagnóstico melhor que venha
+depois.
+
+### P-084-83 4 dos 10 corredores nunca disparam o repasse de ETA · 🧑
+
+📊 Achado do JUIZ 1 na 3ª volta. A frase nova *"assim que a seguradora me passar
+a previsão de chegada, eu te aviso por aqui"* tem transporte real — o
+`dispatch_router` repassa telas que casam `previs[ãa]o de chegada`, e há
+follow-up de 45 min. ⚠️ Mas em **alfa, bradesco, mapfre e tokio** nada no acervo
+dispararia o repasse. Não é mentira (a frase é condicional), é promessa que
+naqueles quatro não se cumpre. **O que destrava:** 🧑 medir em produção.
