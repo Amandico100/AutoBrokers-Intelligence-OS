@@ -21,7 +21,10 @@
 
 **ALCANCE 3** — o segurado é quem fica sem atendimento. **REVERSIBILIDADE 3** — sai do
 prédio: mensagem ao cliente, dossiê ao suporte, chamado na seguradora.
-**FREQUÊNCIA 2** — roda em todo atendimento que não fecha sozinho, 📊 **33,2% deles**.
+**FREQUÊNCIA 2** — roda em todo atendimento que não fecha sozinho. ⚠️ 📊 **A frequência
+real é desconhecida** (§2.2): o robô falou com segurado **3 vezes** na história. Pontuo 2
+porque o gatilho é estrutural — toda rota que não fecha sozinha passa por aqui — e porque
+**a conta não pode ficar refém de um denominador que esta SPEC existe para criar.**
 **SUPERFÍCIE 3** — território que ninguém mapeou: 📊 **quatro vigias** que não se
 conhecem, **TRÊS cadeias de handoff** que passam umas pelas outras, **19 lugares** que
 escrevem `needs_human` em 3 arquivos, em **16 famílias de `reason`**, e o estado do travamento morando em Redis com TTL
@@ -92,34 +95,71 @@ análise, é que não existe onde medir.**
 antes de tornar o travamento visível seria um conserto **sem antes e sem depois**. Por isso
 a **FASE 0** existe, e por isso ela vem antes de tudo.
 
-### 2.2 📊 O tamanho do problema, pela única medida possível hoje
+### 2.2 ⛔ O TAMANHO DO PROBLEMA É DESCONHECIDO — e a v1 desta SPEC o inventou
 
-Como não há campo de desfecho, a medida é indireta: **a última mensagem é do cliente, e
-nada veio depois em mais de 24h.**
+> 🔴 **A v1 afirmava "33,2% das conversas travam". O número era real e media OUTRA COISA.**
+> Corrigido em 24/08/2026, depois que o Founder apontou o enquadramento errado.
 
-| corretora | conversas | terminam no cliente | **paradas >24h** | % |
-|---|---:|---:|---:|---:|
-| AutoFleet | 379 | 121 | 108 | 28,5% |
-| Resulta Seguros | 260 | 104 | 104 | 40,0% |
-| **subtotal (sem AMANDUS)** | **639** | **225** | **212** | **33,2%** |
-| AMANDUS (teste) | 9 | 7 | 7 | 77,8% |
+📊 **Medido:** das **648** conversas do banco, **588 são do ESPELHO** — conversas **humanas**
+da corretora no WhatsApp, espelhadas para o painel (`espelho_chat.py:592` grava
+`role='assistant'` para **a pessoa que atendeu**, não para o robô).
 
-**LINHA DE CONTROLE:** 📊 416 de 648 (64,2%) terminam **com o bot falando**. Se o motor
-estivesse morto, esse número seria ~0. **Ele responde na maioria, e para em um terço.**
+```sql
+SELECT agent_name, channel, count(*) FROM conversations GROUP BY 1,2 ORDER BY 3 DESC;
 
-**REFINO que separa o defeito do ruído:** 📊 das 224 paradas nos últimos 30 dias,
-**177 tiveram o bot falando antes e depois pararam** — esse é o perfil do defeito. As
-outras **47 nunca ouviram o bot**: é outro problema (nunca engatou), e **fica fora desta
-SPEC** (§9).
+  Espelho        whatsapp   588      ← HUMANO da corretora, espelhado
+  Smith Agent    web         58      ← chat interno, não é segurado
+  AutoBrokers    whatsapp     2      ← 🔴 o robô
+  Motor de Acionamento        1      ← 🔴 o robô
+```
 
-⚠️ **Ressalva honesta, e ela é obrigatória:** *"o cliente falou por último"* inclui quem
-disse "obrigado". **O 33,2% é um TETO, não uma medida limpa.** É exatamente por isso que a
-FASE 0 existe: depois dela, o número passa a ser contado, não estimado.
+> 🔴 **O robô conversou com segurado no WhatsApp TRÊS vezes na história do produto.**
+> `04/07` (379 msgs) · `06/07` (2 msgs) · **`18/08` (165 msgs) — a máquina de lavar.**
 
-📊 **E não está piorando.** Por semana, sem AMANDUS: 36,2% · 37,5% · 41,4% · 33,3%.
-⚠️ O corte "30 dias × 30 anteriores" daria **37,6% contra 4,5%** e seria **erro de
-denominador** — 596 conversas contra 22, porque a produção real começou em 03/08.
-**A taxa é estável em ~37%. Ninguém deve escrever "piorou 8×".**
+**Logo o "33,2% terminam com o cliente falando" media o TIME HUMANO da corretora não
+respondendo.** É um fato de negócio real, e **não é o assunto desta SPEC.**
+
+### ✅ E isto NÃO enfraquece a SPEC — fortalece a FASE 0
+
+Os achados de **mecanismo** continuam de pé, porque são **código lido, não dado medido**:
+
+```
+✅ as TRÊS travas que tornam `needs_human` terminal        (§2.3, arquivo:linha)
+✅ a retomada que cobre 1 de 16 famílias                   (§2.4)
+✅ as TRÊS cadeias de handoff, e a que nunca fala          (§2.5)
+✅ 3 de 5 corretoras sem destino de suporte                (§2.6, medido)
+✅ a mensagem que promete o que ninguém garante            (§2.7)
+✅ `HUMAN_REQUESTED` com dois sentidos opostos             (§2.8)
+✅ nenhuma tela destrava um acionamento                    (§2.9)
+✅ zero destravamentos em 26.803 eventos                   (§2.10)
+```
+
+🔴 **O que cai é só a ESTIMATIVA DE VOLUME — e a lição é exatamente a §2.1:**
+
+> **Não existe onde medir travamento. Tanto que eu tentei medir com o dado errado e não
+> percebi.** Se houvesse a linha durável da FASE 0, o erro seria impossível.
+
+### ⚠️ E o que isso muda no GATE desta SPEC
+
+```
+⛔ NÃO EXISTE "antes e depois de 33%". Não prometa queda de percentual.
+🔴 O número honesto da FASE 0 é: "quantos travamentos passaram a ter linha",
+   com denominador = os acionamentos que rodaram no período.
+⚠️ Hoje esse denominador é 3. Depois do canário e das rotas ligadas, cresce.
+   O gate mede COBERTURA (todo travamento tem linha?), nunca INCIDÊNCIA.
+```
+
+### 🔴 E a trava de contexto que vale para a execução inteira
+
+```
+⛔ TUDO até hoje foi TESTE. AMANDUS SEGUROS é corretora FICTÍCIA.
+   A única corretora pareada de verdade é a AUTOFLEET.
+⛔ O ÚNICO teste ponta a ponta com cliente real e SEM TRAVAS foi a
+   MÁQUINA DE LAVAR (18/08). 🔴 NÃO SE REGRIDE DISSO. É a referência viva.
+⚠️ Muita coisa parece "pela metade" porque o teste foi até o fim e
+   CLICOU EM SAIR por causa da trava de finalização. 🔴 Meio-caminho no
+   dado NÃO é prova de defeito — confira o motivo antes de consertar.
+```
 
 ### 2.3 As TRÊS travas que tornam `needs_human` terminal
 
@@ -668,7 +708,7 @@ A.2   🔴 O CONSERTO É O `:757`: a reconciliação passa a usar
          `error_code == _ERRO_ORFAO`. O run de travamento carrega
          `needs_human:<reason>`. 🔴 **Ele NUNCA expira, e é revarrido a cada
          boot, para sempre.**
-         ⚠️ Com 📊 33,2% travando e a FASE 0 tornando tudo durável, a janela
+         ⚠️ Com as 73 rotas ligadas e a FASE 0 tornando tudo durável, a janela
             de 50 enche de runs estacionados e **os órfãos DE VERDADE
             (`ura`/`human_phase` perdidos do cache) deixam de ser detectados**
             — exatamente o que o comentário do `:757` diz existir para evitar.

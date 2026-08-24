@@ -105,6 +105,34 @@ segurado: um agente ativo sem uma linha de instrução, sem nenhuma trava.
 **Não está entre os doze bloqueios da SPEC-063.**
 - **Dono:** 🤖 SPEC-063 Bloco A
 
+## P-183 · 🟡 Metade da suíte era invisível ao `pytest` — **os 151 já rodam; faltam triar 14**
+
+### ✅ 24/08/2026 — A INVISIBILIDADE FECHOU. A dívida dos 14 continua.
+
+📊 `backend/tests/test_todos_os_guardas_script_rodam.py` roda **cada guarda-script como
+PROCESSO** e lê o exit code. Saída real: **138 passed, 14 xfailed in 182.64s**. E entrou no
+`.github/workflows/gate.yml`, que até hoje rodava dois comandos e não via nenhum dos 151.
+
+⚠️ **Por que NÃO foi um `conftest.py` com `pytest_collect_file`:** 🔴 tentado e descartado
+— o hook é **aditivo**, o coletor padrão tenta IMPORTAR o mesmo arquivo, e o `sys.exit()`
+de nível de módulo derruba a sessão (`INTERNALERROR> SystemExit`). Registrado para
+ninguém repetir.
+
+🔴 **A quarentena é `xfail(strict=True)` e corta dos dois lados:** guarda novo vermelho
+**quebra**; guarda da quarentena que volte a passar **também quebra**, obrigando a tirá-lo.
+
+📊 **E a mutação provou:** tirei `test_o_negrito_da_seguradora_nao_emudece_o_corredor` da
+quarentena → **1 failed**. Restaurado **por cópia**, nunca por `git checkout`, e conferido.
+
+⚠️ **O QUE FALTA:** triar os 14 — **defeito de produto** ou **asserção vencida**
+(`CLAUDE.md` §9.3). Três já têm diagnóstico, e 🔴 **dois cheiram a defeito de produto**:
+*"o motor não faz noop de verdade sobre o RESUMO"* e 🔴 *"o freio não freia quando a URA
+escreve em NEGRITO"*. **Os dois são do corredor, e não devem esperar a triagem dos 14.**
+
+- **Dono:** 🤖 execução · **Destrava:** um veredito por guarda
+
+### O registro original:
+
 ## P-183 · 🔴 Metade da suíte de testes é invisível ao `pytest`, e **14 estão vermelhos**
 
 **Aberta em:** 24/08/2026 · **Dono:** 🤖 execução · **Achada** conferindo uma prescrição que

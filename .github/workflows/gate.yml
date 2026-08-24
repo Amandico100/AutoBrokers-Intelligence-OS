@@ -61,6 +61,25 @@ jobs:
           PYTHONUTF8: '1'
         run: python tests/broker_outcome_regression_pack.py
 
+      - name: Rodar os 151 guardas-script que o pytest nao via
+        # 🔴 P-183. Ate 24/08/2026 este CI rodava DOIS comandos, e nenhum
+        # deles via os guardas escritos como script: `def main()` +
+        # `sys.exit(main())`, sem funcao `test_`. Eram 151 de 278 arquivos --
+        # 54% da suite -- e 14 estavam VERMELHOS ha semanas sem ninguem saber.
+        #
+        # `tests/test_todos_os_guardas_script_rodam.py` roda cada um como
+        # PROCESSO e le o exit code. Os 14 conhecidos estao em quarentena como
+        # xfail(strict=True): a suite fica verde e VERDADEIRA, um guarda novo
+        # que fique vermelho QUEBRA, e um da quarentena que volte a passar
+        # tambem quebra -- obrigando a tira-lo de la.
+        #
+        # 📊 138 passed, 14 xfailed em 183s (medido em 24/08/2026).
+        working-directory: backend
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
+        run: python -m pytest tests/test_todos_os_guardas_script_rodam.py -q
+
       - name: Gerar o manifesto de release
         if: always()
         working-directory: backend
