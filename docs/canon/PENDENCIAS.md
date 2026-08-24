@@ -8327,3 +8327,40 @@ text, wa_timestamp`. O replay só enxerga o caminho por TEXTO; o caminho por
 metadado, o `flow_token` e a guarda de formulário desconhecido são **invisíveis
 à régua**, para sempre, com este corpus. 🤖 `gerar_corpus_de_telas.py` já lê as
 duas colunas de `observed_events` — carregá-las no `.jsonl` é barato.
+
+### P-084-80 🔴 A BATERIA DE MUTAÇÕES REVERTEU EDIÇÕES EM SILÊNCIO · 🤖
+
+📊 23/08/2026, durante a rodada dos juízes da SPEC-084.2. Dois consertos já
+aplicados e verificados **sumiram do arquivo sem que ninguém os desfizesse**:
+
+```
+_COMO_PERGUNTAR["encanador_instalacao_opcao"]   voltou ao texto inventado
+as regras medidas de porto/taxi e porto/vidros  sumiram do corredor
+```
+
+🔴 **A causa é a mecânica da própria bateria.** `verificar_mutacoes` COPIA o
+arquivo, aplica a mutação, roda o teste e **restaura a partir da cópia**. Os
+juízes rodaram a bateria na MESMA árvore de trabalho em que o executor
+escrevia: um deles copiou `corridor_playbooks.py` **antes** de uma edição e
+restaurou **depois** — apagando-a, sem erro, sem diff, sem aviso.
+
+⚠️ É a família da P-084-74 (a mutação commitada), um nível pior: ali o guarda
+acusava DEPOIS; aqui **não há guarda nenhum**, porque o arquivo restaurado é
+sintaticamente válido e todos os testes passam — eles só medem uma verdade
+antiga.
+
+📊 E o modo de descobrir foi um juiz reprovando duas vezes o mesmo defeito:
+*"consertou onde eu apontei o dedo e deixou intacta a superfície ao lado"*. A
+segunda reprovação não era teimosia do juiz — era o arquivo tendo voltado.
+
+🔴 **E ela também explica por que grep não bastou:** conferir por texto acusou
+o P1 de segurança como revertido quando ele estava vivo (o padrão tinha acento
+diferente). **Conserto se confere MEDINDO no motor, não procurando string.**
+
+**O que destrava:** 🤖 (a) um lock de arquivo que a bateria segure e que
+qualquer escrita respeite; ou (b) a bateria rodar SEMPRE em `git worktree`
+próprio — o que já é a prática para medir régua, e vale igual para mutar. ⚠️ E,
+enquanto não houver, **juiz e executor não podem trabalhar na mesma árvore**.
+
+**O que custa esquecer:** um conserto que some sem deixar rastro volta como
+defeito na produção, e o relatório da SPEC afirma que ele foi feito.

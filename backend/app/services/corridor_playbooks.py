@@ -1489,7 +1489,7 @@ ALLIANZ_RESIDENCIAL_WHATSAPP_V1: Dict[str, Any] = {
         "eletrodomesticos": [
             "O aparelho precisa ter até 10 anos de fabricação.",
             "Precisa estar FORA da garantia do fabricante e pertencer à residência segurada.",
-            "A mão de obra é coberta; as PEÇAS são por conta do cliente.",
+                "A mão de obra é coberta; as PEÇAS são por conta do cliente.",
             "São 2 utilizações por vigência (Linha Branca e Ar-Condicionado contam separado).",
             "O técnico pode precisar levar o aparelho para a base dele.",
         ],
@@ -1860,7 +1860,26 @@ _AUTO_CAPTURE_ANCHORS = {
 _AUTO_CLIENT_INSTRUCTIONS_GUINCHO = [
     "Aguarde em local seguro, com as chaves e o documento do veículo.",
     "É preciso alguém maior de 18 anos no local para acompanhar o guincho.",
-    "Você vai receber um SMS/link com a previsão de chegada do prestador.",
+    # 🔴 BLOCKER da 2ª volta do JUIZ 1, e ele é MEU: subir o teto de
+    #    `instrucoes[:2]` para `[:4]` promoveu esta linha de **zero para dez
+    #    rotas** de entrega ao segurado — e ela não tem lastro.
+    #
+    # 📊 Telas com `sms` ou `previsão de chegada`, por corredor de auto:
+    #      azul 0/321 · mapfre 0/75 · porto 0/521 · tokio 0/70 · yelum 0/607
+    #    Cinco corredores com ZERO. E onde existe, diz outra coisa: hdi e yelum
+    #    escrevem *"enviaremos POR AQUI o resumo e o link"* — o canal OPOSTO —,
+    #    e alfa/allianz/bradesco falam em link para ACOMPANHAR o serviço, nunca
+    #    em previsão de chegada.
+    #
+    # ⚠️ E o dano é o que a P-084-70 já nomeia: **quem espera um SMS não liga
+    #    de volta.** O segurado da Porto (0 de 521 telas) ficaria esperando uma
+    #    mensagem que nunca sai.
+    #
+    # 🔴 A troca não é "apagar" — é dizer o que o AutoBrokers de fato faz. Esta
+    #    frase é verdade em TODAS as rotas, e é o canal certo justamente onde a
+    #    URA diz "por aqui".
+    "Assim que a seguradora me passar a previsão de chegada, eu te aviso "
+    "por aqui.",
 ]
 # ══════════════════════════════════════════════════════════════════════════
 # 🔴 SOCORRO MECÂNICO — O MECÂNICO VAI ATÉ O CARRO, E A URA SABE DISSO
@@ -9587,7 +9606,17 @@ _COMO_PERGUNTAR = {
     "chaveiro_porta_opcao": "se o problema é na porta PRINCIPAL da casa ou numa porta interna — só a principal é coberta",
     "geladeira_medicacao_opcao": "se a geladeira guarda medicamento — se guardar, o atendimento é prioritário",
     "encanador_tipo_opcao": "o que está vazando, com as palavras dele",
-    "encanador_instalacao_opcao": "se é reparo ou instalação nova — instalação não é coberta",
+    # 🔴 SPEC-084.2, JUIZ 1 · dizia "instalação não é coberta" e não há tela
+    #    que sustente. A URA da porto lista *"5 - Instalações"* dentro de um
+    #    menu que ela mesma abre com *"listamos abaixo os SERVIÇOS DISPONÍVEIS
+    #    para você"*. **Ambíguo não é negativo.**
+    #
+    # ⚠️ Este conserto foi feito uma vez e REVERTIDO em silêncio — a bateria de
+    #    mutações de um juiz copiou o arquivo antes da edição e restaurou
+    #    depois. Ver P-084-80.
+    "encanador_instalacao_opcao": "se é reparo do que quebrou ou instalação "
+                                  "nova — a cobertura de instalação varia, "
+                                  "então pergunte antes de prometer",
     "chaveiro_alvo_opcao": "se é a porta da casa, o portão ou um cômodo",
     "fechadura_tipo_opcao": "que tipo de fechadura é",
     "estepe_opcao": "se tem estepe, macaco e chave de roda no carro",
@@ -9902,17 +9931,51 @@ def conhecimento_de_assistencia(playbook_refs: Sequence[str]) -> str:
             linhas.append(f"  · {', '.join(sorted(rotas))} — {texto}")
 
     # As regras que a seguradora declara na própria tela.
-    regras = []
+    #
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔴 REGRA DE COBERTURA PRECISA DE DONO — 2ª volta do JUIZ 1
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # A lista era fundida entre TODAS as seguradoras e todos os subserviços, e
+    # saía sem cabeçalho. 📊 O efeito medido: *"A mão de obra é coberta; as
+    # PEÇAS são por conta do cliente"* — regra da **Allianz** — era lida à
+    # atendente que estava acionando a **Yelum**, cuja URA diz o CONTRÁRIO em
+    # eletrodomésticos (*"coberto a mão de obra E PEÇAS"*).
+    #
+    # ⚠️ O produto se contradizia dentro do mesmo atendimento: a atendente
+    #    afirmava uma coisa, e vinte minutos depois o WhatsApp dizia a outra.
+    #
+    # 🔴 Cobertura é da ROTA. Uma regra sem dono é uma regra que alguém vai
+    #    aplicar na rota errada — e quem paga a diferença é o segurado.
+    regras: Dict[str, List[str]] = {}
     for ref in refs:
         pb = get_playbook(ref) or {}
+        cia = str(pb.get("insurer_key") or "").upper()
+        rotulos_r = pb.get("subservice_labels") or {}
         for _rota, lista in sorted((pb.get("regras_para_o_cliente") or {}).items()):
+            nome_r = str(rotulos_r.get(_rota) or _rota).replace("_", " ")
+            dono = f"{cia} · {nome_r}" if cia else nome_r
             for r in lista or []:
-                if r not in regras:
-                    regras.append(r)
+                regras.setdefault(dono, [])
+                if r not in regras[dono]:
+                    regras[dono].append(r)
     if regras:
-        linhas += ["", "REGRAS DA SEGURADORA que o cliente precisa ouvir ANTES "
-                       "(elas podem fazer o chamado ser recusado no local):"]
-        linhas += [f"  · {r}" for r in regras]
+        # ⚠️ Dar dono a cada regra levou o bloco de 6.8k para 7.4k, acima do
+        #    teto de 7.000. **A saída não é subir o teto** — é agrupar os donos
+        #    que dizem a MESMA coisa, que é o mesmo desenho já usado nas
+        #    perguntas por ramo. 📊 O ganho vem de graça: rotas com regra
+        #    idêntica dividem um bloco, e a atribuição continua explícita.
+        _SEP = chr(10)
+        por_texto: Dict[str, List[str]] = {}
+        for dono, lista in regras.items():
+            chave = _SEP.join(lista)
+            por_texto.setdefault(chave, []).append(dono)
+        linhas += ["", "REGRAS DA SEGURADORA, que podem fazer o chamado ser "
+                       "recusado no local. 🔴 Cada bloco vale SÓ para quem o "
+                       "encabeça:"]
+        for chave, donos in sorted(por_texto.items(), key=lambda kv: sorted(kv[1])):
+            linhas.append(f"  [{'; '.join(sorted(donos))}]")
+            linhas += [f"    · {r}" for r in chave.split(_SEP)]
 
     # O que o cliente tem de saber para receber o prestador.
     # 🔴 DUAS PENEIRAS, e as duas foram medidas na primeira geracao do bloco.
@@ -10679,3 +10742,45 @@ for _sv_pc, _txt_pc in (
             "client_instructions_por_subservico", {})[_sv_pc] = list(
                 YELUM_RESIDENCIAL_WHATSAPP_V1.get("client_instructions") or []
             ) + [_txt_pc]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 🔴 AS REGRAS MEDIDAS DE `taxi` E `vidros` — reaplicadas (P-084-80)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# 📊 O silêncio destas duas rotas foi medido sobre o MOLDE `*Orientações
+#    importantes:*`, e é falso sobre o acervo. As regras existem verbatim em
+#    `porto-auto`:
+#
+#      táxi   *"caso o táxi tenha que transportar alguma criança com idade até
+#              7 anos, é necessário que você disponibilize o bebê conforto, a
+#              cadeirinha ou o assento de elevação"*
+#      táxi   *"o táxi irá até o endereço de destino que você informou SEM
+#              FAZER PARADAS durante o caminho"*
+#      vidros *"esse acionamento para vidros não irá afetar a sua classe de
+#              bônus"*
+#
+# ⚠️ A do bônus é a que mais importa: é a pergunta que o segurado faz antes de
+#    aceitar qualquer acionamento, e a resposta é BOA. Calá-la fazia o produto
+#    esconder uma vantagem que a seguradora oferece.
+#
+# 🔴 Este bloco foi escrito uma vez e sumiu — restaurado por cima por uma
+#    bateria de mutações que rodava na mesma árvore. Ele fica no FIM do
+#    arquivo de propósito: é o último a ser aplicado, e por isso vence
+#    qualquer default anterior.
+PORTO_AUTO_WHATSAPP_V1.setdefault("client_instructions_por_subservico", {})["taxi"] = [
+    "Se for transportar criança de até 7 anos, você precisa providenciar o "
+    "bebê conforto, a cadeirinha ou o assento de elevação.",
+    "O táxi vai direto até o endereço de destino que você informou, sem fazer "
+    "paradas no caminho.",
+]
+PORTO_AUTO_WHATSAPP_V1["client_instructions_por_subservico"]["vidros"] = [
+    "Este acionamento de vidros NÃO afeta a sua classe de bônus.",
+]
+# 🔵 A zurich segue em silêncio: 📊 0 de 253 telas de orientação no acervo dela.
+if "vidros" in (ZURICH_AUTO_WHATSAPP_V1.get("subservices") or {}):
+    ZURICH_AUTO_WHATSAPP_V1.setdefault(
+        "client_instructions_por_subservico", {})["vidros"] = []
+if "socorro_mecanico" in (ZURICH_AUTO_WHATSAPP_V1.get("subservices") or {}):
+    ZURICH_AUTO_WHATSAPP_V1.setdefault(
+        "client_instructions_por_subservico", {})["socorro_mecanico"] = []

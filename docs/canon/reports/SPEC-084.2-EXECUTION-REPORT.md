@@ -209,6 +209,85 @@ agora é ganho por uma tela respondida. As cinco rotas com formulário têm hoje
 
 ---
 
+## 3.1 A rodada dos juízes — e ela mudou a SPEC
+
+Cinco juízes, e **dois reprovaram**. O laço é da SPEC: *"a liberação é do juiz"*.
+
+| juiz | nota | veredito | o que achou |
+|---|---|---|---|
+| 0 · a régua | **86** | APROVADO | 🔴 um **fail-open** meu: o contador de mutações devolvia 6 pontos quando não conseguia ler o arquivo |
+| 1 · a cobertura | **68** | 🔴 REPROVADO | dois BLOCKERs: quem paga a peça, e uma cobertura inventada |
+| 2 · a segurança | **78** | APROVADO | 🔴 P1: o **endereço** respondia a pergunta de segurança |
+| 3 · o segurado | **82** | APROVADO | a linha que diz *quando* alguém chega era cortada por um `[:2]` |
+| 4 · o contrato | **62** | 🔴 reprova a **afirmação** | *"19 de 19 acionam"* media a ENTRADA do corredor |
+
+### O que cada um achou, e o que era meu
+
+🔴 **JUIZ 2 (P1) — o pior de todos, e era meu.** O C2 copiava
+`situacao_risco_opcao` para `local_situacao`, e aquele slot era derivado varrendo
+`local_atual` — o **endereço**. 📊 Medido: um carro no km 42 de rodovia, com
+*"em frente ao posto de gasolina"* no endereço, fazia o produto enviar
+`rb_InformacoesLocal="6"` = **LOCAL SEGURO** à seguradora. O comentário que eu
+mesmo escrevi no C2 diz que isso *"rebaixa, no escuro, quem está parado num
+lugar perigoso"*.
+
+⚠️ E a primeira redação do conserto foi **grossa demais**: proibir o ramo seguro
+de ler `local_atual` reprovava *"estou no estacionamento do shopping, bem
+iluminado"*, que é o segurado dizendo onde está. **O que envenena não é o campo,
+é a FORMA:** *"em frente ao posto"* descreve o que se VÊ; *"dentro do posto"*,
+onde se ESTÁ.
+
+🔴 **JUIZ 1 (BLOCKER) — o C5 consertou metade do defeito que ele mesmo nomeou.**
+Tirou o parêntese *"(a mão de obra é que está coberta)"* e **deixou a oração
+principal** — que é a que decide quem paga. 📊 A URA da yelum diz *"material por
+conta do segurado"* só em encanador e eletricista; em eletrodomésticos ela diz
+**"coberto a mão de obra E PEÇAS"**. O produto dizia ao segurado da geladeira
+que a peça é por conta dele.
+
+🔴 **JUIZ 4 — a afirmação central estava errada.** *"19 de 19 acionam pelo
+caminho real"* mede a ENTRADA do corredor. Rodando as telas REAIS do corpus pelo
+motor, rotas AAA iam a `needs_human` por slots `_opcao` que um PASSO exige, o
+motor não injeta, e a regra do sufixo isentava. **As duas regras se
+contradiziam:** uma diz *"o motor preenche"*, `sem_chute` diz *"não existe
+default honesto"*.
+
+**A distinção que faltava ao C1: CARREGAR não é COBRAR.**
+
+```
+o PORTÃO não cobra  →  ninguém é interrogado à toa por um galho que quase
+                       nunca é tomado
+o CONTRATO carrega  →  quando o galho É tomado, a resposta tem onde morar
+```
+
+Eu tratei as duas como a mesma decisão. São opostas.
+
+🔴 **E o guarda que escrevi era CIRCULAR:** sua população eram os
+`missing_slots` do portão — exatamente o conjunto que esta SPEC estreitou. Ele
+ficava verde enquanto rotas travavam.
+
+🔴 **JUIZ 0 — um fail-open meu.** `_mutacoes_declaradas_no_repo` devolvia 0
+quando não conseguia ler o arquivo, e o `and` curto-circuitava: o item de 6
+pontos passava a valer 6 **em todas as rotas** com um número inventado. **Zero
+MEDIDO e zero NÃO MEDIDO não são a mesma coisa.**
+
+### E o portão passou a conferir VALOR, não só presença
+
+📊 Um `local_situacao` com o texto *"na rua, em frente ao numero 100"* **passava**
+o portão e morria na tela do formulário, depois de ~25 telas de URA, com o
+segurado esperando. Agora o portão confere — só em campo de escolha fechada, e
+pela **mesma função que o envio usa**, senão seriam duas verdades sobre o mesmo
+valor.
+
+### O que sobrou, e é limite declarado
+
+📊 Quatro rotas ainda param no caminho inteiro, em
+`formulario_pronto_sem_flow_token`: **o corredor MONTA a resposta e o canal não a
+leva** — é a P-084-67, o `galaxy_message` que o parser não reconhece, medido em
+**0 de 28.096 eventos**. Corredor e canal são coisas diferentes, e os guardas
+passaram a distingui-las.
+
+---
+
 ## 4. Migrations
 
 **N/A — justificado.** Nenhuma migration criada, alterada ou aplicada. A
