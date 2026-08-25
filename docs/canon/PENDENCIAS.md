@@ -8294,3 +8294,256 @@ não de pessoa — sai como `...4725` no gêmeo mascarado.
 - **Destrava:** 🤖 uma exceção nomeada para telefone de seguradora, escrita como
   ENUM e não como string solta (casa com a P-233).
 - **Custa se esquecer:** quem lê o gêmeo não vê para qual URA o caso foi.
+
+---
+
+# 🔴 O QUE A SPEC-092 DEIXOU ABERTO (25/08/2026)
+
+## P-092-01 · 🤖 A definição do formulário viaja como **repr de Python**, não JSON
+
+📊 Medido em 25/08/2026. O schema completo — `data-source`, `required`,
+`visible` — está dentro do `response_message`, mas **não como JSON**:
+
+```
+'data-source':[{'id':'1','title':'Sim'},{'id':'0','title':'Não'}]
+```
+
+Aspas simples, escapadas dentro de uma string que já está dentro de outra. 🔴
+**Nenhum caminhante de JSON o encontra** — foi por isso que o extrator devolveu
+18 componentes **sem opção nenhuma**, e o CONTROLE (o formulário da HDI, que já
+está transcrito e portanto É extraível) foi o que apontou que o culpado era o
+extrator.
+
+⚠️ **E `data-source` tem DUAS formas**, o que dobra o trabalho:
+
+```
+inline    'data-source': [{'id':'1','title':'Sim'}, …]        (HDI)
+ligação   'data-source': '${data.dt_TiposEndereco}'           (Yelum endereço)
+          resolve em 'screenState':{'data':{'dt_TiposEndereco': …}}
+```
+
+Um transcritor que só entenda a primeira produz componente **sem opção** — e
+componente sem opção não pode ser respondido.
+
+- **Destrava:** 🤖 um decodificador de repr embutido, com o formulário da HDI
+  como **linha de controle** (ele já está transcrito, então o extrator certo
+  tem de reproduzi-lo).
+- **Custa se esquecer:** cada formulário novo continua exigindo transcrição
+  manual, e a SPEC-092 §8 item 5 (*"cada família com o próprio formulário
+  mapeado"*) fica impossível de escalar.
+
+## P-092-02 · 🤖 A 4ª tela da Yelum: 6 telas e 18 campos recuperados, **zero ids**
+
+📊 `1579547063352571` — *"Automóvel - Informar endereço V2"*, Yelum, 03/08/2026,
+`source=live`. Mora dentro de `interactive.raw_out`, um blob de 11.940
+caracteres — a **terceira** forma de armazenamento do acervo, que nenhum leitor
+conhece.
+
+```
+📊 recuperado:  6 telas · 18 campos · nome e rótulo · 0 ocorrências de PII
+🔴 faltando:    os `id` das opções (depende da P-092-01)
+```
+
+🔴 **Este é o formulário cuja resposta é PARA ONDE O GUINCHO VAI.** Entregar meio
+schema seria pior que nenhum: `montar_resposta_de_flow` trataria o campo como
+respondível e o produto mandaria um id inventado.
+
+- **Destrava:** 🤖 a P-092-01.
+- **Custa se esquecer:** o segurado é atendido, mas por uma pessoa — o
+  acionamento não fecha sozinho nessa tela.
+- **O que JÁ protege:** `test_a_tela_sem_schema_nao_e_chutada` — tela sem schema
+  vira `needs_human` com motivo, e id nunca é inventado a partir do título.
+
+## P-092-03 · 🧑 O `format` do envio exige patch 0007 do GO e rebuild de imagem
+
+📊 O patch 0005 fixa `Format: waE2E.InteractiveResponseMessage_Body_DEFAULT`
+(**0**) em código, e a captura real traz `body.format = 1` = `EXTENSIONS`.
+O Python **não controla isso**: o campo nem sai do achatador.
+
+⚠️ **Nenhuma medição diz que isso quebra** — a prova de 03/08 teve 200 com
+`DEFAULT`. O que se sabe é que **não é o que o cliente humano manda**.
+
+- **Destrava:** 🤖 escrever o patch 0007 (o GO lê `format` do corpo) · 🧑 rebuild
+  da imagem e deploy.
+- **Custa se esquecer:** se a seguradora validar o campo, a resposta é descartada
+  em silêncio — e o sintoma é indistinguível de tudo o mais que esta SPEC mata.
+- **O que JÁ protege:** `test_o_formato_do_envio_e_honesto` fixa a lista fechada
+  de chaves do fio e **quebra** no dia em que o GO mudar, obrigando a reescrever
+  a história em vez de deixá-la vencida.
+
+## P-092-04 · 🤖 O fixture "exemplar de ouro" é uma cópia TRUNCADA da captura
+
+📊 `backend/tests/fixtures/clique_humano_no_formulario_18_07.json` tem
+`wa_flow_response_params.response_message` com **46 caracteres**. A linha real no
+banco tem **4.854**.
+
+🔴 **O Gate D da SPEC exige `paramsJSON` "byte a byte igual ao exemplar de
+ouro".** Contra este fixture, isso consagraria a truncagem.
+
+- **Destrava:** 🤖 regerar o fixture a partir da linha real, mascarado — e
+  **conferir o `sha256` contra o banco**, senão o próximo truncamento passa igual.
+- **Custa se esquecer:** um gate que compara contra um exemplar errado aprova o
+  errado com toda a confiança de quem compara byte a byte.
+
+## P-092-05 · 🤖 `app.services.__init__` importa `fastembed`, e o CI não instala
+
+📊 `ura_simulator.simulate` faz `from app.services import insurer_dispatch_service`
+**dentro da função**. O `app/services/__init__.py` importa `fastembed`, e o
+`gate.yml` **não roda `pip install`**.
+
+🔴 **O ensaio inteiro é irrodável em CI por uma dependência de embeddings que ele
+não usa.** E o mesmo vale para qualquer caminho que faça `from app.services
+import X`.
+
+- **Destrava:** 🤖 importar por módulo (`from app.services.insurer_dispatch_service
+  import …`) ou tornar o `__init__` preguiçoso.
+- **Custa se esquecer:** todo guarda que exercite o simulador tem de montar o
+  pacote à mão — como o desta SPEC teve de fazer — e um dia alguém não vai fazer.
+
+## P-092-06 · 🤖 A TERCEIRA régua com o mesmo ponto cego
+
+📊 Achado do investigador, fora do escopo. `conversation_auditor.detect_drift`
+(`:56-67`) chama **só** `match_ura_step`, nunca `detect_native_flow` — o mesmo
+furo que o `replay.py` tinha antes do C6.
+
+🔴 **Toda tela de formulário com `expected` é contada como drift/regressão hoje.**
+
+- **Destrava:** 🤖 a mesma inversão da D.2, no auditor.
+- **Custa se esquecer:** a régua acusa regressão onde o produto acertou, e quem
+  olhar o painel aprende a ignorá-lo.
+
+## P-092-07 · 🤖 Um QUINTO `flow_id` que ninguém contou
+
+📊 `hdi-auto`, 2026-07-15T16:35:46Z, sessão `68f511d9` — *"…preencha o formulário
+para informar **onde o veículo está**"*. É o gêmeo de ORIGEM do formulário de
+DESTINO da P-084-68.
+
+Hoje não casa flow nem passo, e cai em `formulario_nativo_desconhecido` pelo
+marcador — **comportamento correto**. Mas o `flow_id` dele não está entre os
+quatro que o `corridor_playbooks.py` lista.
+
+- **Destrava:** 🤖 extrair o id do `raw_out` daquela sessão (depende da P-092-01).
+- **Custa se esquecer:** a contagem de formulários conhecidos está errada, e
+  planejamento em cima dela também.
+
+## P-092-08 · 🤖 Dois corredores residenciais com resíduo do gatilho antigo
+
+📊 `hdi-residencial-whatsapp@v1` (`:3972`) e `yelum-residencial-whatsapp@v1`
+(`:4570`) ainda carregam o `handoff_trigger` `r"formulario nativo"`, removido dos
+de auto em 03/08. Os dois **não declaram `native_flows`**.
+
+⚠️ **Não é defeito hoje** — o gatilho é lido depois de
+`_responder_formulario_nativo`, então o motor já pausa antes. É assimetria.
+
+- **Destrava:** 🤖 remover, junto com a próxima revisão dos residenciais.
+- **Custa se esquecer:** o próximo leitor conclui que residencial trata
+  formulário de outro jeito, e não trata.
+
+## P-092-09 · 🤖 59 telas de corpus sem playbook, fora de toda medição
+
+📊 `tokio-residencial.jsonl` e `tokio-condominio.jsonl` — `list_playbooks()`
+devolve 14 refs e nenhuma cobre esses dois arquivos. **Ficaram fora de toda
+medição de corpus, em silêncio.**
+
+- **Destrava:** 🤖 declarar os dois playbooks, ou tirar os arquivos do corpus com
+  o motivo escrito.
+- **Custa se esquecer:** toda medição sobre "o corpus inteiro" exclui 59 telas
+  sem dizer.
+
+## P-092-10 · 🤖 O formulário não tem trava de laço: 8 telas iguais = 8 envios
+
+📊 Achado do red team, com linha de controle — **e não é desta SPEC**:
+
+```
+volta 1..8: state=ura envios=1..8
+BASE 8b49fdb envios=8  ·  HEAD envios=8
+_would_loop diria laço? True   ← existe, responde certo, e NUNCA é chamado
+step_counts = None   retry_count = None
+```
+
+🔴 O formulário nativo **é** o passo de confirmação da família HDI/Yelum — a
+própria `_POLITICA_DE_RETOMADA` escreve isso para justificar `DIRETO_AO_HUMANO`.
+Uma URA que reapresenta a tela recebe N confirmações. **A duplicação que a
+política fecha entre sessões está aberta dentro de uma.**
+
+⚠️ A guarda por bolha (painel) fecha o caso da RAJADA; não fecha o caso da URA
+reapresentando a mesma tela em turnos diferentes.
+
+- **Destrava:** 🤖 chamar `_would_loop` em `_responder_formulario_nativo`, ou
+  contar o formulário em `step_counts`.
+- **Custa se esquecer:** N prestadores confirmados para um acionamento só.
+
+## P-092-11 · 🤖 `formulario_envio_falhou` cobre um caso em que se SABE que nada saiu
+
+📊 Achado do red team. `raise ValueError("envelope_do_flow ausente")` mora
+**dentro do mesmo `try`** cujo `except` grava `formulario_envio_falhou`:
+
+```
+OK  flow_id-dict   state=needs_human  reason=formulario_envio_falhou  envios=0
+OK  flow_id-lista  state=needs_human  reason=formulario_envio_falhou  envios=0
+```
+
+Zero chamadas ao transporte, e o motivo é o único da lista que significa *"pode
+ter chegado, não dá para saber"*. Quem tria lê "envio falhou" e evita reenviar —
+quando nada foi enviado.
+
+- **Destrava:** 🤖 um motivo próprio (`formulario_sem_envelope`), classificado
+  em `_POLITICA_DE_RETOMADA` com o porquê.
+- **Custa se esquecer:** o humano não reenvia uma resposta que nunca saiu.
+
+## P-092-12 · 🤖 `params` sobrescreve o `flow_token` no `paramsJSON`
+
+📊 `corpo = {"flow_token": token, **params}` — se `params` trouxer a chave
+`flow_token`, ela vence. E o comentário três linhas abaixo raciocina
+**exatamente ao contrário** para `wa_flow_response_params` (*"vai por ÚLTIMO de
+propósito"*).
+
+💭 Latente: hoje `params` vem do nosso schema. Mas a assimetria entre duas linhas
+vizinhas é o tipo de coisa que o próximo leitor resolve para o lado errado.
+
+- **Destrava:** 🤖 pôr o `flow_token` por último, ou recusar `params` que o traga.
+
+## P-092-13 · 🤖 Comentário vencido sobre `version`, no arquivo que decide o envio
+
+📊 `evolution_go.py:189` afirma *"as QUATRO capturas trazem version=3 (4 de 4)"*.
+Cinco linhas acima do valor, `:283-286` ainda diz 💭 *"**1** é o que o fork do
+Baileys usa … a captura de 18/07 **não traz este campo**"*.
+
+🔴 `CLAUDE.md` §9.3 e §12.1: **texto vencido reinfecta o leitor seguinte.** O
+próximo a ler o 💭 reverte para 1.
+
+⚠️ E o mesmo vale para o patch Go 0005, cujo comentário *"a única instância
+capturada não traz version nenhum"* foi declarado falsificado e **não corrigido**
+— mas mexer no patch exige rebuild de imagem (P-092-03).
+
+- **Destrava:** 🤖 apagar o 💭 vencido do Python; 🧑 o do Go junto do patch 0007.
+
+## P-092-14 · 🤖 O corpus não exercita a guarda que ele atesta
+
+📊 Achado da lente da medida. A varredura que prova que a inversão D.2 é estreita
+roda sobre 4.220 telas — e `a_tela_e_formulario()` devolve **True em zero
+delas**, porque o corpus foi colhido **antes** do conserto do `galaxy_message` e
+não tem marcador nem `interactive`.
+
+> **O controle mede a população que a mudança não alcança.**
+
+E a projeção correta não é "uma tela": 📊 **25 telas mencionam formulário e casam
+passo de URA**; 21 (9 azul + 12 porto) dizem *"Ou, se preferir, preencha o
+formulário abaixo"*. A guarda de `options` (painel) as protege — mas isso vale
+para a forma que o parser vê, e a de azul/porto **não foi medida**.
+
+- **Destrava:** 🤖 recolher o corpus depois do BLOCO B, com `interactive`.
+- **Custa se esquecer:** a régua continua medindo um produto diferente do que roda.
+
+## P-092-15 · 🤖 Números do relatório que a lente da medida corrigiu
+
+📊 Três afirmações minhas não reproduzem, e ficam corrigidas aqui:
+
+| eu escrevi | 📊 o número certo |
+|---|---|
+| *"50 das 62, de 13 a 20 s antes"* | **57–59** conforme a definição; intervalo **10–296 s**, mediana **64 s**. 💭 O `50` veio da tabela de controle da B.2 (que são `button_reply`) e migrou para uma frase sobre `flow_reply` |
+| *"`response_message` tem 4.854 caracteres"* | 4.854 é **um** exemplar. Os outros: 6.388 · 1.933 · 1.933 · 3.908 |
+| *"id opaco `pd-dc-…`, não reconstruível do título"* | 📊 **8 linhas** de 1.602 cliques com id; **1.112 têm `id == title`**. A conclusão continua certa; a **razão** generalizava 0,5% do acervo |
+
+- **Custa se esquecer:** número sem marca, em documento novo, é defeito de
+  revisão — e número **com** marca que não reproduz é pior.
