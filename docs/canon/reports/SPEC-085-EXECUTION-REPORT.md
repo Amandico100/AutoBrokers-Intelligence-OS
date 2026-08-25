@@ -1,6 +1,7 @@
 # SPEC-085 · Relatório de execução — o destravamento não trava em silêncio
 
-> Branch `feat/spec085-o-destravamento-nao-trava-em-silencio` · início `35cf0a7`
+> Branch `feat/spec085-o-destravamento-nao-trava-em-silencio`
+> · início `35cf0a7` · **final `e527705`** (painel + juiz de confirmação)
 > Preflight §11: `HEAD..origin/main` = **0** · árvore limpa · `PYTHONIOENCODING=utf-8`
 >
 > 📊 medido · 💭 ilustrativo (`CLAUDE.md` §12.1). Número sem marca, aqui, é defeito.
