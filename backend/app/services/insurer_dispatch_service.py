@@ -1758,8 +1758,33 @@ def _responder_formulario_nativo(
     #
     # Vetar contra a SESSÃO fecha os dois caminhos de uma vez, porque é a sessão
     # que guarda o id — e é dela que a moldura o tira.
+    # 🔴 E A PERGUNTA CERTA NÃO É "ESTE ID É CONHECIDO?", É "ELE É O DESTE
+    # FORMULÁRIO?" — achado do TERCEIRO juiz, datado por commit.
+    #
+    # 📊 O playbook tem TRÊS flows, não um. `857030507196739` e
+    # `3206000179602236` apontam para o MESMO schema (`is` → True, e é essa a
+    # razão de o eco existir), mas `2887131368288279` é **outro formulário**:
+    # âncora diferente, nome diferente, 2 telas em vez de 3.
+    #
+    # 📊 Medido ponta a ponta, dois turnos, playbook real — a sessão lembra do
+    # formulário A e a tela é o B::
+    #
+    #     wa_flow_response_params.flow_id   = 857030507196739   ← form A
+    #     wa_flow_response_params.flow_name = "…(local e ocupantes)…"  ← form B
+    #     params                            = form B (2 campos)
+    #
+    # **A moldura contradiz a si mesma dentro do mesmo payload.**
+    #
+    # ⚠️ E a linha de controle diz de quem é: BASE `8b49fdb` ecoava
+    # `2887131368288279` (certo); o conserto do painel (`dec2a74`) passou a
+    # ecoar `857030507196739`, e dois juízes passaram por cima.
+    #
+    # 🔴 `is not flow` em vez de `is None`: **o id da sessão tem de apontar
+    # para o MESMO objeto de schema** que acabou de ser resolvido. Um id de
+    # outro formulário é tão inaceitável quanto um id que ninguém conhece —
+    # e é pior, porque parece certo.
     _id_da_sessao = str(session.get("flow_id_ativo") or "").strip()
-    if _id_da_sessao and native_flow(playbook, _id_da_sessao) is None:
+    if _id_da_sessao and native_flow(playbook, _id_da_sessao) is not flow:
         session["state"] = "needs_human"
         session["reason"] = "formulario_nativo_desconhecido"
         return session

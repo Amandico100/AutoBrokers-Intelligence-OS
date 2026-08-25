@@ -830,3 +830,98 @@ def test_a_SESSAO_grava_o_flow_id_ativo():
         "moldura tira o id que a seguradora confere")
     assert sessao.get("flow_token") == "t:1:2"
     assert sessao.get("envelope_do_flow") == "galaxy_message"
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O TERCEIRO JUIZ — a pergunta certa não é "é conhecido?", é "é ESTE?"
+# ---------------------------------------------------------------------------
+
+def _dois_formularios():
+    """Os DOIS formulários do playbook que são objetos DIFERENTES.
+
+    📊 O playbook tem três flows: `857030507196739` e `3206000179602236`
+    apontam para o **mesmo** schema (é a razão de o eco existir), mas
+    `2887131368288279` é **outro formulário** — âncora diferente, nome
+    diferente, 2 telas em vez de 3.
+    """
+    import importlib.util as _il
+
+    pb = _carregar("_painel_pb3", RAIZ / "app" / "services" / "corridor_playbooks.py")
+    playbook = pb.HDI_AUTO_WHATSAPP_V1
+    return pb, playbook
+
+
+def test_os_DOIS_formularios_do_playbook_sao_objetos_DIFERENTES():
+    """A premissa deste bloco, conferida em vez de suposta.
+
+    ⚠️ Se um dia os dois virarem o mesmo objeto, o teste abaixo passa por
+    tautologia — e é exatamente o defeito que o painel cometeu ao comparar
+    `nf['857…'] is nf['3206…']` consigo mesmo.
+    """
+    pb, playbook = _dois_formularios()
+    a = pb.native_flow(playbook, "857030507196739")
+    b = pb.native_flow(playbook, "2887131368288279")
+    assert a is not None and b is not None
+    assert a is not b, (
+        "os dois formulários viraram o mesmo objeto — o teste abaixo deixou "
+        "de medir o que diz medir")
+    # e o par que É o mesmo, de propósito: HDI e Yelum do MESMO formulário
+    assert pb.native_flow(playbook, "3206000179602236") is a, (
+        "o par HDI/Yelum deixou de compartilhar o schema — é ele que a §C "
+        "existe para ecoar corretamente")
+
+
+def test_o_id_de_OUTRO_formulario_na_sessao_e_RECUSADO():
+    """🔴 O achado do terceiro juiz, e a linha de controle o data por commit.
+
+    📊 Medido ponta a ponta, dois turnos: a sessão lembra do formulário A e a
+    tela é o B. A moldura saía assim::
+
+        wa_flow_response_params.flow_id   = 857030507196739       ← form A
+        wa_flow_response_params.flow_name = "…(local e ocupantes)…"  ← form B
+        params                            = form B (2 campos)
+
+    **Ela contradizia a si mesma dentro do mesmo payload.**
+
+    ⚠️ E a linha de controle diz de quem é: BASE `8b49fdb` ecoava
+    `2887131368288279` (certo); o conserto do painel passou a ecoar o id do A,
+    e **dois juízes passaram por cima**.
+
+    🔴 A pergunta certa não é *"este id é conhecido?"* — é *"ele é o DESTE
+    formulário?"*. Um id de outro formulário é pior que um desconhecido, porque
+    **parece certo**.
+    """
+    pb, playbook = _dois_formularios()
+    sessao = {"state": "ura", "slots": dict(SLOTS_COMPLETOS), "transcript": [],
+              # a sessão lembra do formulário A…
+              "flow_id_ativo": "857030507196739",
+              "flow_token": "T", "envelope_do_flow": "galaxy_message"}
+    # …e a tela é a do B
+    saida = M._responder_formulario_nativo(
+        sessao, playbook,
+        "Para continuar, precisamos entender onde o veículo está parado.",
+        interactive=None)
+    assert saida is not None and saida["state"] == "needs_human", (
+        "o produto respondeu o formulário B ecoando o id do formulário A — a "
+        "moldura contradiz a si mesma dentro do mesmo payload")
+    assert saida["reason"] == "formulario_nativo_desconhecido"
+
+
+def test_CONTROLE_o_id_do_MESMO_formulario_passa():
+    """§9.3 — e este controle é o que protege o BLOCO C inteiro.
+
+    O par HDI/Yelum compartilha o schema **de propósito**: `857030507196739` e
+    `3206000179602236` são o mesmo formulário sob duas marcas. Um veto por
+    IGUALDADE DE ID quebraria justamente o que a §C existe para fazer.
+    """
+    pb, playbook = _dois_formularios()
+    for id_da_sessao in ("857030507196739", "3206000179602236"):
+        sessao = {"state": "ura", "slots": dict(SLOTS_COMPLETOS), "transcript": [],
+                  "flow_id_ativo": id_da_sessao,
+                  "flow_token": "T", "envelope_do_flow": "galaxy_message"}
+        saida = M._responder_formulario_nativo(
+            sessao, playbook, TEXTO_DA_TELA, interactive=None)
+        assert saida is not None
+        assert saida.get("reason") != "formulario_nativo_desconhecido", (
+            f"o id {id_da_sessao} foi recusado — ele aponta para o MESMO "
+            "schema que a tela, e é o par que a §C existe para ecoar")
