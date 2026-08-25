@@ -1487,6 +1487,50 @@ def registrar_formulario_nativo(session: Dict[str, Any],
     return True
 
 
+def _moldura_da_resposta(session: Dict[str, Any],
+                         montado: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """`wa_flow_response_params` — a moldura que diz QUAL formulário foi respondido.
+
+    🔴 TUDO AQUI SE ECOA DO CONVITE. Nada se deriva do schema quando o
+    convite disse outra coisa, e o motivo é medido.
+
+    📊 **O `flow_id` é POR SEGURADORA** (P-084-69). O MESMO formulário tem
+    id `857030507196739` na HDI e `3206000179602236` na Yelum — 📊 conferido
+    campo a campo em 25/08/2026, e os cinco nomes são **idênticos**::
+
+        hdi   857030507196739  ckb_SituacoesVeiculo | rb_EmGaragemOuEstacionamento
+                               | rb_InformacoesLocal | rb_NivelDaRua | rb_Ocupantes
+        yelum 3206000179602236 ckb_SituacoesVeiculo | rb_EmGaragemOuEstacionamento
+                               | rb_InformacoesLocal | rb_NivelDaRua | rb_Ocupantes
+
+    ⚠️ Um registro só, apontado pelos dois playbooks — e por isso
+    `montar_resposta_de_flow` devolve **sempre o id da HDI**. Responder à Yelum
+    com o id da HDI é o defeito mais silencioso desta SPEC:
+
+    > **Se a Yelum validar, a resposta é descartada SEM ERRO, sem log, e a
+    > janela de 12 minutos queima com o segurado esperando.**
+
+    📊 E o `title` também se ecoa: a captura real da HDI traz
+    `wa_flow_response_params` com **quatro** chaves — `flow_id`, `flow_name`,
+    `response_message` e `title` — e o produto mandava **duas**. O `title` é o
+    rótulo do botão que abriu o formulário (*"Informar condições"*), e ele
+    chega no convite como `flow_cta`. Inventar seria adivinhar; ecoar é de
+    graça.
+
+    ⚠️ `response_message` continua **fora**, e de propósito: são 📊 4.854
+    caracteres de eco das telas, e ninguém mediu se a seguradora exige. Mandar
+    um campo grande inventado é pior que omitir um campo que talvez seja
+    decoração — e a P-092 registra a medição que falta.
+    """
+    ecoado = str(session.get("flow_id_ativo") or "").strip()
+    moldura = {
+        "flow_id": ecoado or montado.get("flow_id"),
+        "flow_name": montado.get("flow_name"),
+        "title": str(session.get("flow_cta") or "").strip() or None,
+    }
+    return {k: v for k, v in moldura.items() if v} or None
+
+
 def _responder_formulario_nativo(
     session: Dict[str, Any],
     playbook: Dict[str, Any],
@@ -1583,12 +1627,7 @@ def _responder_formulario_nativo(
                 flow_token=token,
                 nome_do_envelope=envelope,
                 params=montado["params"],
-                flow_response_params={
-                    k: v for k, v in (
-                        ("flow_id", montado.get("flow_id")),
-                        ("flow_name", montado.get("flow_name")),
-                    ) if v
-                } or None,
+                flow_response_params=_moldura_da_resposta(session, montado),
             )
         except Exception as exc:  # noqa: BLE001 — transporte nunca derruba o motor
             enviado = False
