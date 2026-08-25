@@ -26,6 +26,38 @@ _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 DEDUP_NAMESPACES = {"z-api": "", "uazapi": "uazapi:", "evolution": "evolution:", "evolution-go": "evolution-go:"}
 
 
+#: Quantos inbounds a allowlist descartou desde que o processo subiu.
+#:
+#: 🔴 SEM ISTO O DESCARTE É UM `return` MUDO. 📊 Se a allowlist ficar mal
+#: configurada no dia em que a corretora ligar o atendimento, o sintoma é
+#: *"ninguém escreveu"* — e isso é **indistinguível de um dia fraco**.
+#:
+#: ⛔ Conta, e só. Nunca o telefone: `CLAUDE.md` §13.3 — presença, nunca
+#: conteúdo.
+_DESCARTADOS_PELA_ALLOWLIST = {"total": 0}
+
+
+def descartes_da_allowlist() -> int:
+    """Quantos inbounds a allowlist barrou neste processo."""
+    return int(_DESCARTADOS_PELA_ALLOWLIST["total"])
+
+
+def allowlist_ativa() -> bool:
+    """A allowlist está FILTRANDO alguma coisa? ⛔ Não revela número nenhum."""
+    import os
+
+    return bool([x for x in str(os.getenv("ATTENDANT_INBOUND_ALLOWLIST", "") or "").split(",")
+                 if x.strip()])
+
+
+def allowlist_tamanho() -> int:
+    """Quantas entradas a allowlist tem. ⛔ O TAMANHO, nunca os dígitos."""
+    import os
+
+    return len([x for x in str(os.getenv("ATTENDANT_INBOUND_ALLOWLIST", "") or "").split(",")
+                if x.strip()])
+
+
 def attendant_inbound_allowed(phone: str, allowlist: Optional[str] = "__env__") -> bool:
     """Allowlist de teste do atendente (S17 — piloto em número pessoal).
 
@@ -59,7 +91,11 @@ def attendant_inbound_allowed(phone: str, allowlist: Optional[str] = "__env__") 
             entries |= _variants(item)
     if not entries:
         return True
-    return bool(_variants(phone) & entries)
+    permitido = bool(_variants(phone) & entries)
+    if not permitido:
+        # ⛔ SÓ O CONTADOR. O telefone não entra aqui, nem em log.
+        _DESCARTADOS_PELA_ALLOWLIST["total"] += 1
+    return permitido
 
 
 def generate_webhook_token() -> str:

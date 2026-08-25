@@ -704,10 +704,26 @@ def _sinais_do_codigo() -> dict:
             os.getenv("DISPATCH_FINALIZE_MODE", "live")).strip().lower()
         sinais["finalize_abre_de_verdade"] = sorted(
             ref for ref in _PLAYBOOKS if finalize_live_for(ref))
+        # 🔴 A ALLOWLIST DE ENTRADA — SPEC-093 BLOCO B.
+        #
+        # 📊 Ela decide quem pode escrever para o produto, e em produção tinha
+        # **um** número: todo o resto sumia antes de existir. O sintoma de uma
+        # allowlist mal configurada é *"ninguém escreveu"* — indistinguível de um
+        # dia fraco. Aqui ela passa a ser **visível**.
+        #
+        # ⛔ Presença, tamanho e quantos foram barrados. **Nunca um dígito**
+        # (`CLAUDE.md` §13.3 — presença, nunca conteúdo).
+        from app.services.whatsapp.channel_security import (
+            allowlist_ativa, allowlist_tamanho, descartes_da_allowlist)
+
+        sinais["allowlist_ativa"] = bool(allowlist_ativa())
+        sinais["allowlist_tamanho"] = int(allowlist_tamanho())
+        sinais["allowlist_descartes"] = int(descartes_da_allowlist())
     except Exception:  # noqa: BLE001
         sinais["acionamento_env_aberta"] = None
         sinais["freio_de_emergencia_armado"] = None
         sinais["finalize_modo"] = None
+        sinais["allowlist_ativa"] = None
         sinais["finalize_abre_de_verdade"] = None
 
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em

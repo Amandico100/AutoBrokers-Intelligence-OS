@@ -357,11 +357,60 @@ def _canal_de_plataforma(svc: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
+#: O destino do alerta de deriva de rota. 🔴 Variável PRÓPRIA, e o motivo
+#: é medido.
+_ENV_DESTINO_DO_ALERTA = "ATLAS_ALERTA_DESTINO"
+
+
 def _founder_alert_number() -> str:
+    """Para quem vai o alerta quando um corredor sai do lugar.
+
+    🔴 ISTO LIA A ALLOWLIST DE ENTRADA, E OS DOIS USOS COLIDIAM.
+
+    📊 Medido na SPEC-093: `ATTENDANT_INBOUND_ALLOWLIST` decide **quem pode
+    escrever para o produto**, e esta função a usava como **para quem o produto
+    escreve**. Duas responsabilidades numa variável é o defeito; usá-la para as
+    duas é o sintoma.
+
+    ⚠️ **E o estrago era silencioso:** o BLOCO B existe para esvaziar a
+    allowlist (env vazia = todos, que é o que produção quer). Esvaziando-a,
+    `raw.split(",")[0]` devolvia `""` — telefone vazio, alerta para ninguém.
+    E 📊 há **14 linhas de `route_drift` de 25/08**, todas `structural`/
+    `escalated` com `needs_founder=true`.
+
+    > 🔴 O BLOCO B, sem este conserto, apagaria em silêncio o alarme que avisa
+    > quando um corredor sai do lugar — no exato dia em que corredores começam a
+    > atender cliente real.
+
+    ## A ordem, e por que ela é conservadora
+
+    1. `ATLAS_ALERTA_DESTINO` — a variável própria, que é a resposta certa;
+    2. a allowlist, **só como herça**, e com AVISO no log.
+
+    ⚠️ O passo 2 fica de propósito: tirá-lo hoje quebraria o alerta **agora**,
+    porque `ATLAS_ALERTA_DESTINO` ainda não está no ambiente. Com o aviso, o dia
+    em que a allowlist esvaziar o log **diz** que o alerta ficou sem destino —
+    em vez de o alarme simplesmente parar.
+    """
     import os
 
-    raw = os.getenv("ATTENDANT_INBOUND_ALLOWLIST", "") or ""
-    return raw.split(",")[0].strip() or ""
+    proprio = str(os.getenv(_ENV_DESTINO_DO_ALERTA, "") or "").strip()
+    if proprio:
+        return proprio.split(",")[0].strip()
+
+    heranca = str(os.getenv("ATTENDANT_INBOUND_ALLOWLIST", "") or "").split(",")[0].strip()
+    if heranca:
+        logger.warning(
+            "[SENTINELA ROTAS] destino do alerta veio da ATTENDANT_INBOUND_ALLOWLIST "
+            "(herança). Configure %s — esvaziar a allowlist deixa o alerta sem "
+            "destino.", _ENV_DESTINO_DO_ALERTA)
+        return heranca
+
+    logger.error(
+        "[SENTINELA ROTAS] 🔴 ALERTA DE DERIVA SEM DESTINO: nem %s nem "
+        "ATTENDANT_INBOUND_ALLOWLIST têm valor. O alarme de corredor fora do "
+        "lugar NÃO chega a ninguém.", _ENV_DESTINO_DO_ALERTA)
+    return ""
 
 
 async def check_atlas_sentinela() -> int:
