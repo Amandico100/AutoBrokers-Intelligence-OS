@@ -88,7 +88,9 @@ def sem_coordenadas(meta: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return limpo
 
 _SESSION_GAP = timedelta(hours=2)
-_RAW_CAP_BYTES = 50_000
+# O teto do cru mora em `evolution_inbound._TETO_DO_CRU_BYTES`, junto da
+# funcao que o aplica. Uma constante que nomeia um limite e nao e' lida
+# por ninguem e' pior que nenhuma: alguem a muda e nada acontece.
 
 
 # ------------------------------------------------------------------ #
@@ -327,17 +329,35 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
         # escrito isso — um id não é um rótulo, e mentir aqui é pior que calar.
         return kind, rotulo, interactive, None
 
-    return "unknown", None, None, None
+    # 🔴 A.2 · O `unknown` DEIXA DE SER QUATRO NULOS.
+    #
+    # Esta linha devolvia `("unknown", None, None, None)`: a mensagem existiu,
+    # virou linha, e não sobrou **nada** dela. 📊 É a mesma perda que apagou
+    # 37 eventos de Porto e Azul para sempre (P-084-38) — lá guardou-se o nome
+    # das gavetas, aqui não se guardava nem isso.
+    #
+    # ⚠️ `msg_type` continua `unknown` de propósito: mudá-lo mexeria em todo
+    # consumidor que conta tipos. O que muda é que a linha passa a LEMBRAR.
+    return "unknown", None, ({"kind": "desconhecido", "cru": _raw_capped(msg)}
+                             if isinstance(msg, dict) and msg else None), None
 
 
 def _raw_capped(message: Any) -> Optional[Dict[str, Any]]:
-    try:
-        blob = json.dumps(message, ensure_ascii=False, default=str)
-        if len(blob.encode("utf-8")) > _RAW_CAP_BYTES:
-            return {"_truncated": True, "keys": sorted(message.keys()) if isinstance(message, dict) else []}
-        return message if isinstance(message, dict) else None
-    except Exception:  # noqa: BLE001
-        return None
+    """O cru com teto — 🔴 e a implementação MUDOU DE CASA, não foi copiada.
+
+    Ela mora agora em `evolution_inbound.cru_limitado`, o parser canônico que
+    este módulo já importa — o mesmo movimento que a P-56 fez com a busca
+    tolerante, e pelo mesmo motivo escrito no comentário de :203: *"aprender
+    uma grafia nova em dois arquivos separados é como o segundo deles fica
+    para trás"*.
+
+    ⚠️ Duas cópias do mesmo teto divergiriam no dia em que uma delas mudasse,
+    e o lado que ficasse para trás perderia dado em silêncio — que é
+    exatamente o defeito que esta SPEC está consertando (`CLAUDE.md` §5).
+    """
+    from app.services.whatsapp.evolution_inbound import cru_limitado
+
+    return cru_limitado(message)
 
 
 # ------------------------------------------------------------------ #

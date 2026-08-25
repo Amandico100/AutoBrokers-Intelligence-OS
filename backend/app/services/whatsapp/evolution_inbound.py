@@ -109,6 +109,121 @@ _INVOLUCROS_DE_RESPOSTA = (
 )
 
 
+#: As chaves de id de UMA OPÇÃO — o mesmo alfabeto do clique, menos `name`.
+#:
+#: 🔴 Derivado de `_CHAVES_DE_ID`, nunca copiado: as duas listas descrevem a
+#: mesma coisa em pontas opostas da conversa, e duas cópias divergem. Quem
+#: acrescentar uma grafia nova lá acerta aqui de graça.
+#:
+#: ⚠️ `name` sai. Numa opção ele não é id — e num botão de formulário nativo
+#: `name` vale `galaxy_message`, que viraria o "id" de toda opção da tela.
+_CHAVES_DE_ID_DE_OPCAO = tuple(c for c in _CHAVES_DE_ID if c != "name")
+
+#: Teto do cru guardado. Mesmo número do observador, e a razão é a mesma: um
+#: payload de mídia inteiro não cabe numa linha de acervo.
+_TETO_DO_CRU_BYTES = 50_000
+
+
+def _valor_tolerante(d: Any, chaves: Tuple[str, ...]) -> str:
+    """O valor de uma chave, seja qual for a grafia que o fio usou.
+
+    🔴 ESTA FUNÇÃO EXISTE PORQUE O MESMO DEFEITO ESTAVA VIVO EM DUAS PONTAS.
+
+    📊 Medido em 25/08/2026 sobre o cru dos dois acervos: o fio manda
+    **`buttonID`** e **`rowID`**, com **D maiúsculo**. O parser lia
+    ``b.get("buttonId")`` e ``row.get("rowId")``. Resultado, nas duas tabelas::
+
+        list      6.726 + 3.318 opções   `id` preenchido em ZERO
+        buttons   3.832 + 1.397 opções   `id` preenchido em ZERO
+        ──────────────────────────────────────────────────────
+        15.273 opções de convite, e nenhuma com id
+
+    ⚠️ E o título sempre veio: só o id caía. Um acervo que guarda o rótulo e
+    perde o identificador não permite responder — 📊 as respostas mostram id
+    opaco de servidor (``pd-dc-<ts>-<hash>-0``), **não reconstruível a partir
+    do título**.
+
+    O `observer_intake.py:203` já conta esta MESMA história do lado da
+    RESPOSTA — *"`_text_from_message` lia `selectedButtonId`, d minúsculo"* — e
+    a busca tolerante que a resolveu mudou de casa para cá. **Ela nunca foi
+    aplicada ao lado do CONVITE.** É a mesma cura, no gêmeo esquecido.
+    """
+    if not isinstance(d, dict):
+        return ""
+    normalizadas = {str(k).lower().replace("_", ""): v for k, v in d.items()}
+    for chave in chaves:
+        v = normalizadas.get(chave)
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+        if isinstance(v, int):
+            return str(v)
+    return ""
+
+
+#: Os invólucros que carregam uma TELA — o que a seguradora mostrou.
+_CONTAINERS_DE_TELA = ("buttonsMessage", "templateMessage", "listMessage",
+                       "interactiveMessage")
+
+
+def cru_da_tela(message: Any) -> Optional[Dict[str, Any]]:
+    """O cru da TELA que a seguradora mandou — e só dela.
+
+    🔴 NÃO é a mensagem inteira, e a diferença é de PII.
+
+    O invólucro de tela é o que a SEGURADORA escreveu: o texto do menu, as
+    opções, os identificadores, os metadados do formulário. Nada ali é do
+    segurado. Já `contextInfo` cita a mensagem anterior — que pode ser
+    qualquer coisa que a pessoa do atendimento digitou. **Ele fica de fora.**
+
+    ⚠️ Guardar a mensagem inteira seria mais fácil e traria dado de segurado
+    para uma tabela durável sem ninguém decidir isso. Guardar só a tela é o
+    recorte que responde à pergunta desta SPEC — *como era o convite?* — sem
+    ampliar o que se retém sobre quem está do outro lado.
+
+    📊 O `flow_token` FICA, e é decisão registrada: ele traz os dois
+    telefones (medido: `uuid:<seguradora>:<cliente>`), e esta tabela já guarda
+    os dois em `counterparty` e `observer_number`, como colunas de primeira
+    classe. Não é classe nova de exposição, e o Gate A depende dele.
+    ⛔ O que ele **nunca** faz é chegar ao checkpoint durável do Work Run:
+    `_CHAVES_PROIBIDAS` corta toda chave com "token", e a sessão nunca guarda
+    o `interactive` inteiro — só campos nomeados, em `registrar_formulario_nativo`.
+    """
+    if not isinstance(message, dict):
+        return None
+    tela = {k: v for k, v in message.items()
+            if k in _CONTAINERS_DE_TELA and isinstance(v, dict)}
+    if not tela:
+        return None
+    limpa = {k: {kk: vv for kk, vv in v.items() if kk != "contextInfo"}
+             for k, v in tela.items()}
+    return cru_limitado(limpa)
+
+
+def cru_limitado(message: Any) -> Optional[Dict[str, Any]]:
+    """O payload cru, com teto — a memória que permite consertar depois.
+
+    🔴 Mora aqui, no parser canônico, e não no observador: os DOIS acervos e o
+    corredor ao vivo passam por esta função, e guardar o cru num só deles
+    recria a assimetria que esta SPEC existe para matar. 📊 O caminho
+    `history_sync` guardou apenas `sorted(m.keys())` e perdeu 37 eventos de
+    Porto e Azul **para sempre** (P-084-38).
+
+    ⚠️ Acima do teto guarda-se o nome das gavetas, que é melhor que nada e
+    **pior que o conteúdo** — é exatamente o que aconteceu com Porto e Azul.
+    O teto existe porque uma linha de acervo não comporta um vídeo.
+    """
+    try:
+        blob = json.dumps(message, ensure_ascii=False, default=str)
+        if len(blob.encode("utf-8")) > _TETO_DO_CRU_BYTES:
+            return {"_truncado": True,
+                    "chaves": sorted(message.keys()) if isinstance(message, dict) else []}
+        return message if isinstance(message, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _niveis_de(m: Dict[str, Any], fundo: int = 2) -> list:
     """Os escalares do payload agrupados por profundidade, chaves normalizadas.
 
@@ -188,11 +303,12 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
                 continue
             title = _clean((b.get("buttonText") or {}).get("displayText"))
             if title:
-                options.append({"id": _clean(b.get("buttonId")), "title": title})
+                options.append({"id": _valor_tolerante(b, _CHAVES_DE_ID_DE_OPCAO), "title": title})
         if body or options:
             lines = [body] if body else []
             lines += [f"Botão {i}: {o['title']}" for i, o in enumerate(options, 1)]
-            return "\n".join(lines), {"kind": "buttons", "options": options}
+            return "\n".join(lines), {"kind": "buttons", "options": options,
+                                        "cru": cru_da_tela(message)}
 
     # --- templateMessage (hydratedTemplate) ---
     tpl = message.get("templateMessage")
@@ -206,11 +322,13 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
                     continue
                 qr = b.get("quickReplyButton")
                 if isinstance(qr, dict) and _clean(qr.get("displayText")):
-                    options.append({"id": _clean(qr.get("id")), "title": _clean(qr.get("displayText"))})
+                    options.append({"id": _valor_tolerante(qr, _CHAVES_DE_ID_DE_OPCAO),
+                                    "title": _clean(qr.get("displayText"))})
             if body or options:
                 lines = [body] if body else []
                 lines += [f"Botão {i}: {o['title']}" for i, o in enumerate(options, 1)]
-                return "\n".join(lines), {"kind": "buttons", "options": options}
+                return "\n".join(lines), {"kind": "buttons", "options": options,
+                                          "cru": cru_da_tela(message)}
 
     # --- listMessage (modal de opções) ---
     lst = message.get("listMessage")
@@ -225,14 +343,14 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
                 title = _clean(row.get("title"))
                 if title:
                     options.append({
-                        "id": _clean(row.get("rowId")), "title": title,
+                        "id": _valor_tolerante(row, _CHAVES_DE_ID_DE_OPCAO), "title": title,
                         "description": _clean(row.get("description")),
                     })
         if body or options:
             lines = [body] if body else []
             for o in options:
                 lines.append(o["title"] + (f"\n{o['description']}" if o.get("description") else ""))
-            meta = {"kind": "list", "options": options}
+            meta = {"kind": "list", "options": options, "cru": cru_da_tela(message)}
             if button_label:
                 meta["button_label"] = button_label
             return "\n".join(lines), meta
@@ -255,14 +373,15 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
             if name == "quick_reply":
                 title = _clean(params.get("display_text"))
                 if title:
-                    options.append({"id": _clean(params.get("id")), "title": title})
+                    options.append({"id": _valor_tolerante(params, _CHAVES_DE_ID_DE_OPCAO),
+                                "title": title})
             elif name == "single_select":
                 for section in params.get("sections") or []:
                     for row in (section or {}).get("rows") or []:
                         title = _clean(row.get("title"))
                         if title:
                             options.append({
-                                "id": _clean(row.get("id")), "title": title,
+                                "id": _valor_tolerante(row, _CHAVES_DE_ID_DE_OPCAO), "title": title,
                                 "description": _clean(row.get("description")),
                             })
             elif name in ("flow", "mpm", "wa_payment_details", "review_and_pay"):
@@ -275,12 +394,32 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
         if flow_meta:
             lines = [body] if body else []
             lines.append(f"[FORMULARIO NATIVO: {flow_meta.get('cta') or 'formulário'}] (exige clique — não aceita texto)")
-            return "\n".join(lines), {"kind": "flow", "flow": flow_meta, "options": options}
+            return "\n".join(lines), {"kind": "flow", "flow": flow_meta,
+                                      "options": options, "cru": cru_da_tela(message)}
         if body or options:
             lines = [body] if body else []
             for o in options:
                 lines.append(o["title"] + (f"\n{o['description']}" if o.get("description") else ""))
-            return "\n".join(lines), {"kind": "list" if any(o.get("description") for o in options) else "buttons", "options": options}
+            return "\n".join(lines), {
+                "kind": "list" if any(o.get("description") for o in options) else "buttons",
+                "options": options, "cru": cru_da_tela(message)}
+
+    # --- 🔴 A.2 · O QUE NAO SE RECONHECE, SE GUARDA -----------------------
+    #
+    # Até aqui, uma tela de forma desconhecida devolvia `None` — e o observador
+    # a gravava como `("unknown", None, None, None)`: quatro nulos, msg_type
+    # `unknown` e **nenhuma memória de que ela existiu**.
+    #
+    # 📊 É a mesma perda que apagou Porto e Azul para sempre (P-084-38), com
+    # outro nome: forma que ninguém previu vira linha em branco, e quando
+    # alguém for consertar não há do que partir.
+    #
+    # ⚠️ A guarda é ESTREITA de propósito: só dispara quando um invólucro de
+    # TELA existe de verdade no payload. Mensagem de texto comum não passa por
+    # aqui (o chamador trata texto antes), e nenhuma outra forma vira convite.
+    if any(k in message and isinstance(message[k], dict) for k in _CONTAINERS_DE_TELA):
+        return "[INTERATIVA NAO RECONHECIDA]", {
+            "kind": "desconhecido", "options": [], "cru": cru_da_tela(message)}
 
     return None
 
