@@ -280,7 +280,7 @@ def eixo_a(rota, r: RP.Replay) -> List[Item]:
 
     # ── 4 · a transcrição no bloco do subserviço ───────────────────────────
     # 🔴 C17: o endereço é DA ROTA, não do serviço. Ver `_transcricao_da_rota`.
-    bloco = _fonte_do_bloco(rota.servico)  # DESLIGADO PELA MUTACAO
+    bloco = _transcricao_da_rota(rota)
     if bloco is None:
         itens.append(Item("A", "transcrita no bloco do subservico", 0, 4,
                           "o subservico vem de `_auto_playbook`, nao ha bloco onde escrever",
