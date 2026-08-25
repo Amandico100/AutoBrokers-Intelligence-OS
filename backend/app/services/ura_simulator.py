@@ -20,7 +20,20 @@ def script_from_transcript(transcript: List[Dict[str, Any]]) -> List[Dict[str, s
     script: List[Dict[str, Any]] = []
     for entry in transcript or []:
         if entry.get("direction") == "in":
-            script.append({"screen": str(entry.get("text") or ""), "expected": None})
+            item: Dict[str, Any] = {"screen": str(entry.get("text") or ""),
+                                    "expected": None}
+            # 🔴 SPEC-092 F.3 — O `interactive` VIAJA COM A TELA.
+            #
+            # 📊 Sem ele, o simulador chamava `handle_insurer_message` só com
+            # texto: `kind == "flow"` nunca chegava, `flow_token` nunca existia,
+            # e **todo formulário virava `formulario_pronto_sem_flow_token`**.
+            # O simulador exercitava o corredor e não exercitava o formulário.
+            #
+            # ⚠️ Ele só entra quando existe: uma tela de texto continua sendo
+            # uma tela de texto, e é essa a linha de controle da §F.4.
+            if isinstance(entry.get("interactive"), dict):
+                item["interactive"] = entry["interactive"]
+            script.append(item)
         elif entry.get("direction") == "out" and script:
             if script[-1]["expected"] is None:
                 script[-1]["expected"] = str(entry.get("text") or "")
@@ -28,7 +41,8 @@ def script_from_transcript(transcript: List[Dict[str, Any]]) -> List[Dict[str, s
 
 
 def simulate(playbook_ref: str, subservice: str, slots: Dict[str, Any],
-             script: List[Dict[str, Optional[str]]]) -> Dict[str, Any]:
+             script: List[Dict[str, Optional[str]]],
+             flow_sender: Optional[Any] = None) -> Dict[str, Any]:
     """Roda o motor de corredor contra o script. Divergência ≠ erro necessariamente
     (playbook pode ter melhorado) — é sinal para revisão humana/Auditor."""
     from app.services import insurer_dispatch_service as eng
@@ -45,7 +59,15 @@ def simulate(playbook_ref: str, subservice: str, slots: Dict[str, Any],
     for step_idx, item in enumerate(script or []):
         screen = str(item.get("screen") or "")
         before = len([t for t in session["transcript"] if t["direction"] == "out"])
-        session = eng.handle_insurer_message(session, screen)
+        # 🔴 SPEC-092 F.3 — os DOIS argumentos que faltavam.
+        #
+        # ⚠️ `flow_sender=None` continua sendo o padrão, e isso é deliberado:
+        # o ensaio não envia nada por acidente. Quem quiser exercitar o
+        # transporte passa um dublê e mede o que ele recebeu.
+        session = eng.handle_insurer_message(
+            session, screen,
+            interactive=item.get("interactive"),
+            flow_sender=flow_sender)
         outs = [t for t in session["transcript"] if t["direction"] == "out"]
         replied = outs[before]["text"] if len(outs) > before else None
         expected = item.get("expected")
