@@ -551,6 +551,32 @@ B)  manter `test`
        acionamento fictício e mais nada.
 ```
 
+## 🔴 E o Founder já indicou a direção, em 25/08
+
+> *"Nós vamos deixar o atendimento ser pedido e, se for fictício, elas vão
+> cancelar depois de feito."*
+
+📊 **Isso é a opção (A)** — `finalize` aberto, com o cancelamento feito **por
+pessoa, depois do fato**. É coerente com o resto do desenho: as duas estão
+olhando, e cancelar é o mesmo gesto de destravar.
+
+⚠️ **Mas o executor não pode inferir daí a configuração.** Faltam duas coisas
+que só o Founder decide, e as duas custam dinheiro se erradas:
+
+```
+1  abre em TODOS os corredores, ou só nos completos?
+   (`DISPATCH_FINALIZE_LIVE_PLAYBOOKS` gradua corredor a corredor)
+2  quanto tempo elas têm para cancelar antes de virar serviço de verdade?
+   🔴 não medido: ninguém sabe quanto a seguradora demora entre aceitar
+      e despachar. Pode ser minutos.
+```
+
+🔴 **A nº 2 é a que preocupa.** *"Cancelar depois"* só funciona se existir um
+"depois". **Se a seguradora despacha o guincho em dois minutos, não existe.**
+
+> **O executor MEDE isso no acervo antes de escrever o gate** — e, se não houver
+> dado, isso vira a primeira pergunta do piloto, não uma suposição.
+
 **O executor:** registra a decisão do Founder em `FOUNDER-DECISIONS.md`, atualiza
 a **P-168**, e **não toca em variável nenhuma**.
 
