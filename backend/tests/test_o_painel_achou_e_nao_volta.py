@@ -147,8 +147,12 @@ def test_CONTROLE_o_segredo_ESTAVA_no_payload():
     assert "galaxy_message" in json.dumps(meta["cru"], ensure_ascii=False).lower()
 
 
+# 🔴 `flow_metadata` SAIU desta lista pelo segundo juiz, e a mudança é o
+# conserto: cortando o objeto inteiro, ia junto o `flow_name` — o único rótulo
+# legível do formulário, e segredo de ninguém. Ver
+# `test_o_flow_name_SOBREVIVE_e_os_segredos_dele_NAO`.
 @pytest.mark.parametrize("chave", ["mediaKey", "directPath", "fileEncSHA256",
-                                   "flow_metadata", "www_proxy_secret"])
+                                   "www_proxy_secret", "flow_token_signature"])
 def test_o_cru_NAO_leva_chave_de_descriptografia_nem_segredo(chave):
     """🔴 `mediaKey` é chave de descriptografia. E `flow_metadata` traz
     `www_proxy_secret` e `flow_token_signature` — **segredo, numa tabela
@@ -726,3 +730,103 @@ def test_TRES_niveis_com_o_formulario_no_do_MEIO_e_lido():
     }}
     _, meta = P._interactive_from_message(payload)
     assert meta["kind"] == "flow", "três níveis viraram " + repr(meta["kind"])
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O SEGUNDO JUIZ — o veto que dois consertos meus tinham removido
+# ---------------------------------------------------------------------------
+
+def test_o_flow_name_SOBREVIVE_e_os_segredos_dele_NAO():
+    """🔴 O corte era por CONTAINER e levava junto o rótulo do formulário.
+
+    📊 Medido pelo segundo juiz: cortando `flow_metadata` inteiro, o `flow_name`
+    — *"Automóvel - Informar endereço V2"* — sumia do acervo. Ele é o único
+    rótulo legível do formulário e não é segredo de ninguém.
+
+    ⚠️ Cortar por NOME é mais estreito que cortar por container. Os dois
+    segredos continuam nomeados um a um.
+    """
+    payload = {"interactiveMessage": {
+        "body": {"text": TEXTO_DA_TELA},
+        "InteractiveMessage": {"NativeFlowMessage": {"buttons": [{
+            "name": "galaxy_message",
+            "buttonParamsJSON": json.dumps({
+                "flow_id": "857030507196739", "flow_token": "t:1:2",
+                "flow_metadata": {"flow_name": "Automóvel - Informar endereço V2",
+                                  "flow_json_version": 703,
+                                  "www_proxy_secret": "SEGREDO",
+                                  "flow_token_signature": "ASSINATURA"}}),
+        }]}},
+    }}
+    _, meta = P._interactive_from_message(payload)
+    cru = json.dumps(meta.get("cru"), ensure_ascii=False)
+    assert "Informar endereço V2" in cru, (
+        "o `flow_name` sumiu do cru — o corte por container levou junto o "
+        "único rótulo legível do formulário")
+    assert "SEGREDO" not in cru and "ASSINATURA" not in cru, (
+        "o segredo ficou: cortar por nome tem de alcançar os dois")
+
+
+def test_o_VETO_pega_o_flow_id_que_veio_da_SESSAO():
+    """🔴 O blocker do segundo juiz, e ele nasceu da SOMA de dois consertos meus.
+
+    `registrar_formulario_nativo` grava `session["flow_id_ativo"]` **antes de
+    qualquer veto**. A segunda chamada de `handle_insurer_message` passou a ser
+    cega ao `interactive` (conserto do B1), então o veto contra o ARGUMENTO não
+    podia rodar — e a moldura ecoava o id nunca conferido.
+
+    📊 Medido, com linha de controle contra três commits::
+
+        convite com flow_id que ninguém conhece + âncora conhecida
+                        state        envios  flow_id ECOADO
+        HEAD 88d2f31    ura             1    9999999999999999   ← errado
+        dec2a74         needs_human     0    —
+        BASE 8b49fdb    ura             1    857030507196739
+
+    ⚠️ Vetar contra a SESSÃO fecha os dois caminhos, porque é dela que a moldura
+    tira o id.
+    """
+    sessao = {"state": "ura", "slots": {}, "transcript": [],
+              "flow_id_ativo": "9999999999999999", "flow_token": "t",
+              "envelope_do_flow": "galaxy_message"}
+    saida = M._responder_formulario_nativo(
+        sessao, _playbook(), TEXTO_DA_TELA, interactive=None)
+    assert saida is not None and saida["state"] == "needs_human", (
+        "o id desconhecido que veio da SESSÃO foi respondido — é a resposta "
+        "bem-endereçada e errada que o comentário da moldura diz impedir")
+    assert saida["reason"] == "formulario_nativo_desconhecido"
+
+
+def test_CONTROLE_o_veto_da_SESSAO_LIBERA_o_id_conhecido():
+    """§9.3 — um veto que recusasse tudo pararia o produto inteiro."""
+    sessao = {"state": "ura", "slots": dict(SLOTS_COMPLETOS), "transcript": [],
+              "flow_id_ativo": "3206000179602236", "flow_token": "t",
+              "envelope_do_flow": "galaxy_message"}
+    saida = M._responder_formulario_nativo(
+        sessao, _playbook(), TEXTO_DA_TELA, interactive=None)
+    assert saida is not None
+    assert saida.get("reason") != "formulario_nativo_desconhecido", (
+        "o veto recusou um id que o playbook conhece")
+
+
+def test_a_SESSAO_grava_o_flow_id_ativo():
+    """🔴 O buraco que o segundo juiz mediu na bateria de mutação (MUT10).
+
+    📊 Ele mutou `registrar_formulario_nativo` para parar de gravar
+    `flow_id_ativo` e **191 testes continuaram verdes**. A metade "moldura"
+    estava guardada; a metade "registro" não.
+
+    ⚠️ Se ela quebrasse, **toda resposta à Yelum sairia com o id da HDI** — pelas
+    palavras do próprio arquivo, *"o defeito mais silencioso desta SPEC"*,
+    descartado sem erro e sem log.
+    """
+    sessao = {}
+    M.registrar_formulario_nativo(sessao, {
+        "kind": "flow",
+        "flow": {"flow_id": "3206000179602236", "flow_token": "t:1:2",
+                 "name": "galaxy_message", "cta": "Informar"}})
+    assert sessao.get("flow_id_ativo") == "3206000179602236", (
+        "a sessão parou de guardar o `flow_id` do convite — e é dele que a "
+        "moldura tira o id que a seguradora confere")
+    assert sessao.get("flow_token") == "t:1:2"
+    assert sessao.get("envelope_do_flow") == "galaxy_message"

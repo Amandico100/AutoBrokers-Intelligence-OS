@@ -1598,10 +1598,14 @@ def _moldura_da_resposta(session: Dict[str, Any],
     """
     # 🔴 SÓ ECOA O ID QUE FOI CONFERIDO CONTRA O PLAYBOOK.
     #
-    # `_responder_formulario_nativo` veta o convite cujo `flow_id` não está em
-    # `native_flows`, então quando chegamos aqui com `flow_id_ativo` preenchido
-    # ele **passou pelo veto**. Sem aquele veto, este eco entregava o id de um
-    # formulário desconhecido com os campos de outro.
+    # `_responder_formulario_nativo` veta `session["flow_id_ativo"]` contra
+    # `native_flows` **imediatamente antes** de montar a resposta — então quando
+    # chegamos aqui com ele preenchido, ele passou pelo veto.
+    #
+    # ⚠️ O veto já esteve no ARGUMENTO (`interactive.flow.flow_id`), e ali ele
+    # tinha um buraco: a segunda chamada de `handle_insurer_message` é cega ao
+    # `interactive` de propósito, e o veto simplesmente não rodava. Vetar contra
+    # a SESSÃO é vetar contra o mesmo lugar de onde este eco tira o id.
     ecoado = str(session.get("flow_id_ativo") or "").strip()
     moldura = {
         "flow_id": ecoado or montado.get("flow_id"),
@@ -1728,6 +1732,37 @@ def _responder_formulario_nativo(
             session["reason"] = "formulario_nativo_desconhecido"
             return session
         return None
+
+    # 🔴 O VETO MORA AQUI, CONTRA A SESSÃO — e não contra o argumento.
+    #
+    # A primeira versão vetava `interactive.flow.flow_id`. 📊 O segundo juiz
+    # mediu que isso deixava um buraco aberto pela soma de dois consertos meus:
+    #
+    #   · `registrar_formulario_nativo` grava `session["flow_id_ativo"]` **antes
+    #     de qualquer veto**;
+    #   · a segunda chamada passou a receber `interactive=None` (conserto do B1),
+    #     então `id_do_convite` é vazio e o veto **não pode rodar**;
+    #   · `detect_native_flow` acha o schema pela âncora, e a moldura ecoa o
+    #     `flow_id_ativo` **nunca conferido**.
+    #
+    # 📊 Medido, com linha de controle contra três commits::
+    #
+    #     convite com flow_id que ninguém conhece + âncora conhecida
+    #                     state        envios  flow_id ECOADO
+    #     HEAD 88d2f31    ura             1    9999999999999999   ← errado
+    #     dec2a74         needs_human     0    —
+    #     BASE 8b49fdb    ura             1    857030507196739
+    #
+    # ⚠️ É literalmente a linha que o comentário de `_moldura_da_resposta` diz
+    # estar impedindo: *"resposta bem-endereçada e ERRADA"*.
+    #
+    # Vetar contra a SESSÃO fecha os dois caminhos de uma vez, porque é a sessão
+    # que guarda o id — e é dela que a moldura o tira.
+    _id_da_sessao = str(session.get("flow_id_ativo") or "").strip()
+    if _id_da_sessao and native_flow(playbook, _id_da_sessao) is None:
+        session["state"] = "needs_human"
+        session["reason"] = "formulario_nativo_desconhecido"
+        return session
 
     montado = montar_resposta_de_flow(flow, session.get("slots") or {})
     session["flow_resposta"] = {
@@ -2391,14 +2426,16 @@ def handle_insurer_message(
     # 4.279 muda de comportamento — e ela muda de resposta errada para
     # `needs_human` com motivo escrito.
     #
-    # 🔴 E ATENÇÃO AO QUE ISTO SIGNIFICA DE VERDADE: sob esta guarda,
-    # `_responder_formulario_nativo` **nunca devolve `None`** — todos os seus
-    # caminhos com `e_formulario_agora=True` terminam em `return session`
-    # (desconhecido, incompleto, sem token, sem transporte, envio falhou, ou
-    # sucesso). Então isto **não** é *"formulário primeiro, passo depois se
-    # não for formulário"*. É **"para mensagem de formulário, o passo não
-    # roda"**. O contrato `None → siga o fluxo antigo` continua íntegro, mas
-    # governa apenas o ramo que esta guarda **não** toca.
+    # ⚠️ E ATENÇÃO AO QUE ISTO SIGNIFICA: sob esta guarda,
+    # `_responder_formulario_nativo` quase nunca devolve `None` — os caminhos
+    # com formulário terminam em `return session` (desconhecido, incompleto, sem
+    # token, sem transporte, envio falhou, sucesso).
+    #
+    # 🔴 A EXCEÇÃO É A SAÍDA PELO BOTÃO: quando o formulário é desconhecido
+    # **e** a tela oferece opção clicável, ele devolve `None` de propósito e o
+    # passo de URA assume. Uma versão anterior deste comentário dizia *"nunca
+    # devolve None"*, e 📊 o segundo juiz mediu que isso deixou de ser verdade
+    # no mesmo commit que criou a saída.
     if a_tela_e_formulario(insurer_message, interactive):
         pelo_formulario = _responder_formulario_nativo(
             session, playbook, insurer_message, interactive=interactive,

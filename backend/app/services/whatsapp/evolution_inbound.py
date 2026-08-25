@@ -295,8 +295,14 @@ _CONTAINERS_DE_TELA = ("buttonsMessage", "templateMessage", "listMessage",
 #: pessoa do atendimento digitou. `mediaKey` e amigos são **chave de
 #: descriptografia**. E `flow_metadata` traz `www_proxy_secret` e
 #: `flow_token_signature`: **segredo, numa tabela durável**.
+#
+# ⚠️ `flowmetadata` SAIU desta lista, e a diferença é medida: cortando o
+# objeto inteiro, ia junto o `flow_name` — *"Automóvel - Informar endereço V2"* —
+# que é o único rótulo legível do formulário e não é segredo de ninguém. Os dois
+# segredos que ele carrega já estão nomeados um a um logo abaixo, e cortar por
+# nome é mais estreito que cortar por container.
 _FORA_DO_CRU = ("contextinfo", "mediakey", "directpath", "fileencsha256",
-                "filesha256", "jpegthumbnail", "flowmetadata",
+                "filesha256", "jpegthumbnail",
                 "wwwproxysecret", "flowtokensignature", "mediakeytimestamp")
 
 
