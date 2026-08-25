@@ -186,6 +186,86 @@ def _canal_da_conversa(integrations, company_id: str, session: Dict[str, Any]):
     return integrations.get_platform_whatsapp_integration(company_id) if company_id else None
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-085 BLOCO B.0 — A TERCEIRA CADEIA DE HANDOFF
+# ---------------------------------------------------------------------------
+# 📊 São TRÊS cadeias, e esta é a única com prova em produção: dos dois
+# `needs_human` duráveis da história do produto, um tem
+# `error_code = 'needs_human:sentinela_stall'` — este caminho.
+#
+# 🔴 E era o único que NUNCA falava com o segurado. Medido por contagem no
+# arquivo, antes deste bloco:
+#
+#     client_phone 0 · send_to_client 0 · HUMAN_REQUESTED 0
+#     reivindicar_o_aviso 0 · contar_lembrete 0
+#
+# O caminho B (`dispatch_router`) ao menos manda "um colega vai assumir".
+# **Aqui o segurado não ouvia nem isso. Ouvia nada.**
+#
+# ⚠️ E o texto do aviso depende do que ACONTECEU com o dossiê. Mandar "um
+# colega vai assumir" quando o dossiê não saiu é a mesma mentira do
+# `dossier_sent = True` incondicional, um degrau acima — e não vale a pena
+# publicá-la por um bloco só para o BLOCO C corrigi-la depois.
+
+#: 🔴 As frases moram no MOTOR (`insurer_dispatch_service.aviso_de_handoff`),
+#: que é puro e que as três cadeias importam. Deixá-las aqui obrigaria o
+#: `dispatch_router` a importar de `app/tasks/` — camada invertida — ou a ter
+#: uma segunda cópia do texto: duas frases que precisam concordar, escritas
+#: separado, que é o defeito nº 1 deste projeto.
+#:
+#: ⚠️ E o import é TARDIO, dentro da função. Este arquivo é exercitado por
+#: testes que dublam `app.services`; um import de topo obrigaria todo dublê a
+#: conhecer nomes que não têm nada a ver com o que ele testa.
+
+
+async def _entregar_dossie_com_marcador(company_id: str, session: Dict[str, Any],
+                                        dossier: str, wa, integration) -> bool:
+    """O dossiê do Vigia, pelo MESMO marcador e MESMO teto do caminho A.
+
+    🔴 A regra mora em `dispatch_router.entregar_dossie_uma_vez` — UMA
+    implementação para as DUAS cadeias. Este arquivo já importa
+    `save_active_dispatch` e `_support_contact` de lá; a direção existe.
+
+    ⚠️ Duas cópias da mesma regra em arquivos diferentes é o "segundo marcador
+    de aviso" que a §8 da SPEC proíbe, com outro nome. Aqui fica só o
+    TRANSPORTE, que é o que muda entre as cadeias.
+    """
+    from app.services.dispatch_router import entregar_dossie_uma_vez
+
+    async def _enviar(texto: str) -> bool:
+        # `_support_alert` já engole a própria exceção e devolve SE saiu — é
+        # exatamente o contrato que a seam pede.
+        return await _support_alert(company_id, texto, wa, integration)
+
+    return await entregar_dossie_uma_vez(session, dossier, _enviar)
+
+
+async def _avisar_o_segurado(session: Dict[str, Any], wa, integration) -> bool:
+    """O segurado ouve o que aconteceu — uma vez por sessão.
+
+    🔴 A frase depende do desfecho do dossiê. Ver as duas constantes acima.
+    """
+    telefone = str(session.get("client_phone") or "").strip()
+    if not telefone or session.get("client_notified_handoff"):
+        return False
+    if not integration:
+        logger.error("[SENTINELA] ❌ o segurado NÃO foi avisado: não há canal de "
+                     "saída para esta corretora. case=%s", session.get("case_id"))
+        return False
+    from app.services.insurer_dispatch_service import aviso_de_handoff
+
+    texto = aviso_de_handoff(bool(session.get("dossier_sent")))
+    try:
+        wa.send_message(telefone, texto, integration)
+        # ⚠️ A flag só é marcada DEPOIS do envio, e por isso ela não mente.
+        session["client_notified_handoff"] = True
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.error("[SENTINELA] ❌ aviso ao segurado falhou (%s) — NAO entregue",
+                     type(e).__name__)
+        return False
+
+
 async def _support_alert(company_id: str, text: str, wa, integration) -> bool:
     """Avisa o suporte. Devolve SE o aviso saiu — não presume que saiu.
 
@@ -307,8 +387,13 @@ async def _sentinela_recover(
     # 02:01:25 para um dossiê que ninguém recebeu.
     #
     # Flag que mente é pior que flag ausente: ela encerra a investigação.
-    session["dossier_sent"] = bool(
-        await _support_alert(company_id, dossier, wa, integration))
+    #
+    # 🔴 SPEC-085 BLOCO B.0 — o dossiê passa pelo MARCADOR e pelo TETO, e o
+    # SEGURADO passa a ser avisado. Ver `_entregar_dossie_com_marcador` e
+    # `_avisar_o_segurado`, logo abaixo.
+    session["dossier_sent"] = await _entregar_dossie_com_marcador(
+        company_id, session, dossier, wa, integration)
+    await _avisar_o_segurado(session, wa, integration)
     # SPEC-050 (auditoria): a ação mais importante do Vigia agora aparece no
     # feed de Atividades da corretora (antes era invisível fora dos logs).
     try:

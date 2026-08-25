@@ -63,6 +63,17 @@ def _motor():
     return motor
 
 
+def _pii():
+    """O mascarador do retrato para humano — SPEC-085 FASE 1.
+
+    Tardio pelo mesmo motivo do `_motor()` acima, e por um a mais: quem dubla
+    este módulo em teste não deve ser obrigado a ter o mascarador em pé para
+    exercitar o roteamento, que é outro assunto."""
+    from app.services import pii_da_sessao
+
+    return pii_da_sessao
+
+
 _TTL_SECONDS = 6 * 3600
 _MONITOR_TTL_SECONDS = 24 * 3600  # updates da seguradora chegam por até ~1 dia
 
@@ -585,6 +596,26 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         agora = _agora().isoformat()
         retrato = _motor().snapshot_duravel(session)
 
+        # 🔴 O GÊMEO É BEST-EFFORT. O PAYLOAD NÃO É.
+        #
+        # A primeira versão da FASE 1 chamava o mascarador DENTRO do dicionário
+        # da etapa, e portanto dentro do `try` grande desta função. Um import
+        # que falhasse — um dublê de teste, uma dependência ausente — derrubava
+        # o checkpoint INTEIRO, e o acionamento voltava a morar só no Redis:
+        # o defeito que esta SPEC existe para matar, reintroduzido por um
+        # conserto de privacidade.
+        #
+        # ⚠️ A pergunta certa é qual falha é pior. Sem o gêmeo, a coluna fica
+        # nula e o backfill a preenche depois. Sem o payload, o acionamento
+        # some. **Perder o gêmeo é recuperável; perder o retrato não.**
+        try:
+            redigido = _pii().retrato_para_humano(session)
+        except Exception as e:  # noqa: BLE001
+            logger.error("[ACIONAMENTO DURAVEL] retrato mascarado indisponível "
+                         "(%s) — a etapa vai SEM o gêmeo, e o payload sobrevive",
+                         type(e).__name__)
+            redigido = None
+
         etapa = {
             "work_run_id": run_id,
             "company_id": str(company_id),
@@ -599,6 +630,14 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
             "finished_at": agora,
             "updated_at": agora,
         }
+        if redigido is not None:
+            # 🔴 O GÊMEO — SPEC-085 FASE 1. O `output_summary` acima é o PAYLOAD
+            # DE RESTAURAÇÃO e continua CRU: `_ultimo_retrato` →
+            # `sessao_restaurada` → `render_reply` → a URA. Mascarar ali faz um
+            # acionamento restaurado responder `...4725` à seguradora.
+            # Aqui vai a versão que uma PESSOA pode ler — e é a única que a
+            # tela de destravamento (BLOCO E) e o dossiê devem consultar.
+            etapa["output_redacted"] = redigido
         existente = await (db.client.table("work_steps").select("id, attempt_count")
                            .eq("work_run_id", run_id).eq("step_key", fase)
                            .limit(1).execute())
@@ -623,10 +662,44 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
                 "Simulação completa: o fluxo rodou até a confirmação final e foi "
                 "CANCELADO antes de abrir o serviço (modo teste)."
                 if fase == "test_aborted" else "Acionamento concluído.")
+            # 🔴 BLOCO A.3, a metade que faltava: O ERRO VENCIDO TAMBÉM SAI.
+            #
+            # 📊 Medido em produção: o run `448d3f08` está `completed` na fase
+            # `test_aborted` — o que é CORRETO — carregando
+            # `error_code = needs_human:missing_slots:problema_eletrico_opcao`,
+            # que é de um travamento ANTERIOR do mesmo caso. O campo era escrito
+            # ao travar e nunca limpo ao destravar.
+            #
+            # ⚠️ E a história não se perde: a etapa `needs_human` continua em
+            # `work_steps` e a transição em `work_events`. O `error_code` do RUN
+            # descreve o **desfecho**, não um momento — e um desfecho concluído
+            # não tem erro.
+            campos["error_code"] = None
+            campos["error_message"] = None
         if fase == "needs_human":
             campos["error_code"] = f"needs_human:{str(session.get('reason') or '')}"[:180]
             campos["error_message"] = ("O acionamento precisa de uma pessoa da corretora "
                                        "para continuar.")
+            # 🔴 BLOCO A.3 — OS TRÊS CAMPOS PASSAM A CONCORDAR.
+            #
+            # 📊 O defeito, medido em produção: um dos dois `needs_human`
+            # duráveis carrega TRÊS verdades diferentes na mesma linha —
+            #
+            #   error_code        needs_human:missing_slots:problema_eletrico_opcao
+            #   current_step_key  test_aborted
+            #   result_summary    "Simulação completa"
+            #
+            # A causa é que `finished_at` e `result_summary` são escritos quando
+            # a fase é terminal e **nunca limpos** quando ela deixa de ser. Um
+            # acionamento que passou por `test_aborted` e caiu em `needs_human`
+            # fica com o resumo do desfecho anterior.
+            #
+            # ⚠️ `None` é escrita, não omissão: omitir manteria o valor velho, e
+            # é isso que está errado.
+            campos["finished_at"] = None
+            campos["result_summary"] = (
+                "Parou e precisa de uma pessoa da corretora. Motivo: "
+                f"{str(session.get('reason') or 'não registrado')}")[:400]
         await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
 
         await _marcar_travamento(db, run_id, fase,
@@ -745,6 +818,24 @@ async def reconciliar_acionamentos_orfaos(limite: int = 50) -> Dict[str, int]:
                              "error_code, created_at")
                      .eq("workflow_key", WORKFLOW_ACIONAMENTO)
                      .in_("status", list(_STATUS_EM_VOO_WORK_RUN))
+                     # 🔴 BLOCO A.2 — O TRAVAMENTO SAI DA JANELA DA VARREDURA.
+                     #
+                     # Depois do conserto acima, um `needs_human` fica em
+                     # `waiting_input`, que ESTÁ em `_STATUS_EM_VOO_WORK_RUN`.
+                     # Sem este filtro ele seria revarrido a cada boot, para
+                     # sempre — e com as 73 rotas ligadas a janela de 50
+                     # encheria de casos estacionados, fazendo os órfãos DE
+                     # VERDADE deixarem de ser detectados. Seria trocar um
+                     # silêncio por outro.
+                     #
+                     # ⚠️ 📊 A FORMA DESTE FILTRO FOI MEDIDA, E A ÓBVIA ESTAVA
+                     # ERRADA: `.not_.like("error_code", "needs_human:%")` não
+                     # levanta erro e devolveu **0 de 4** — ele elimina também
+                     # os runs de `error_code` NULO, porque `NOT (NULL LIKE ...)`
+                     # é NULL, e NULL não passa. Isso deixaria a varredura cega
+                     # exatamente para os órfãos que ela existe para achar.
+                     # O `or_` abaixo devolve os 2 corretos.
+                     .or_("error_code.is.null,error_code.not.like.needs_human:*")
                      .order("created_at", desc=True).limit(int(limite)).execute())
         runs = res.data or []
     except Exception as e:  # noqa: BLE001
@@ -825,17 +916,50 @@ async def _reconciliar_um(db, run: Dict[str, Any], resumo: Dict[str, int]) -> No
         return
 
     if fase in _motor().FASES_ENCERRADAS:
-        # A máquina já entregou: em `needs_human` o dossiê foi para o suporte da
-        # corretora e o segurado foi avisado; em `test_aborted` o fluxo rodou até
-        # a confirmação e cancelou. Sumir do cache aqui é o fim natural do
-        # trabalho AUTOMÁTICO — gritar "órfão" seria alarme falso, e alarme falso
-        # é como se ensina uma equipe a ignorar alarme.
-        await (db.client.table("work_runs").update({
-            "status": "completed", "finished_at": _agora().isoformat(),
-            "updated_at": _agora().isoformat(), "progress_percent": 100,
-            "result_summary": ("Caso entregue à equipe da corretora — a parte "
-                               "automática do acionamento terminou aqui."),
-        }).eq("id", run_id).execute())
+        # Sumir do cache numa fase terminal é o fim natural do trabalho
+        # AUTOMÁTICO — gritar "órfão" seria alarme falso, e alarme falso é como
+        # se ensina uma equipe a ignorar alarme.
+        #
+        # 🔴 MAS "O AUTOMÁTICO ACABOU" NÃO É "O TRABALHO ACABOU" — BLOCO A.2.
+        #
+        # 📊 Este bloco gravava `completed` fixo para as QUATRO fases da lista, e
+        # por isso os dois únicos `needs_human` duráveis da história do produto
+        # estão em `work_runs` como **concluídos**. Um travamento marcado como
+        # sucesso é invisível para qualquer consulta que pergunte "o que ficou
+        # em pé?" — que é a pergunta inteira desta SPEC.
+        #
+        # ⚠️ E o conserto é CIRÚRGICO, de propósito: `status_duravel_da_fase`
+        # (`insurer_dispatch_service.py:146`) já mapeia `needs_human` →
+        # `waiting_input` e mantém `encaminhado`, `resolvido` e `test_aborted`
+        # em `completed`. **A distinção já existia no vocabulário do motor; o
+        # que faltava era este UPDATE deixar de atropelá-la.** Tirar
+        # `needs_human` de `FASES_ENCERRADAS` seria o conserto errado: a lista
+        # tem três consumidores, e o de `registrar_checkpoint` está CERTO hoje.
+        final = _motor().status_duravel_da_fase(fase)
+        agora_iso = _agora().isoformat()
+        if final == "completed":
+            campos = {
+                "status": final, "finished_at": agora_iso, "updated_at": agora_iso,
+                "progress_percent": 100,
+                "result_summary": ("Caso entregue à equipe da corretora — a parte "
+                                   "automática do acionamento terminou aqui."),
+            }
+        else:
+            # 🔴 `needs_human`. Os OUTROS QUATRO CAMPOS também mentiriam:
+            # `finished_at` diria que acabou, `progress_percent = 100` diria que
+            # foi até o fim, e o resumo diria "entregue". Consertar só o
+            # `status` deixaria a mesma mentira em quatro lugares.
+            motivo_do_caso = str(entrada.get("reason") or "").strip()
+            campos = {
+                "status": final,
+                "finished_at": None,
+                "updated_at": agora_iso,
+                "progress_percent": _progresso_da_fase(fase, final),
+                "result_summary": ("Parou e precisa de uma pessoa da corretora. "
+                                   f"Motivo: {motivo_do_caso or 'não registrado'}")[:400],
+                "unblock_state": "travado",
+            }
+        await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
         resumo["encerrados"] += 1
         return
 
@@ -1117,6 +1241,81 @@ async def resolver_destino_de_suporte(company_id: str) -> Dict[str, Any]:
 async def _support_contact(company_id: str) -> str:
     """Compatibilidade: devolve só o destino, vazio quando recusado."""
     return (await resolver_destino_de_suporte(company_id)).get("destino") or ""
+
+
+async def entregar_dossie_uma_vez(session: Dict[str, Any], dossier: str,
+                                  enviar) -> bool:
+    """O dossiê passa pelo MARCADOR e pelo TETO — SPEC-085 BLOCO B.
+
+    🔴 UMA implementação, usada pelas DUAS cadeias. O `dispatch_watchdog`
+    importa daqui (ele já importa `save_active_dispatch` e `_support_contact`
+    deste módulo). A §8 da SPEC proíbe "um segundo marcador de aviso", e duas
+    cópias da mesma regra em arquivos diferentes é exatamente isso com outro
+    nome — é o defeito nº 1 deste projeto.
+
+    `enviar` é uma SEAM **assíncrona**: `await enviar(texto)` devolve se saiu.
+    Cada cadeia tem o seu transporte (o Vigia usa `wa.send_message` por dentro
+    de um `await`; o roteador usa o `send_to_client` síncrono que recebeu), e a
+    REGRA não precisa saber disso.
+
+    ⚠️ A seam nasceu SÍNCRONA e estava errada: os dois transportes vivem dentro
+    de um loop já rodando, e a primeira versão tentou contornar isso com um
+    `run_until_complete` — que estoura exatamente no scheduler, que é o único
+    lugar onde este código roda. Async na seam é o conserto; contornar era o
+    defeito.
+
+    🔴 REUSA `human_handoff.py:69-152` — não reescreve. Aquele código é da
+    SPEC-086, está pronto, e o que faltava era estas cadeias usá-lo.
+
+    ⚠️ **A chave é por CONVERSA, e ela pode faltar.** Sai de
+    `session["mirror_conversation_id"]` (gravado por `dispatch_mirror`), que é
+    vazio com `DISPATCH_MIRROR=0` ou quando a conversa não pôde ser criada.
+    Sem id, o aviso **sai sem marcador** e a ocorrência é registrada.
+    **Nunca** `reivindicar_o_aviso(None, ...)`: isso gravaria
+    `handoff_realerta:None`, uma chave GLOBAL que calaria o handoff de TODAS as
+    corretoras por seis horas (`CLAUDE.md` §7 — isolamento entre corretoras).
+    """
+    conversa_id = str(session.get("mirror_conversation_id") or "").strip()
+    if not conversa_id:
+        logger.warning("[HANDOFF] sem id de conversa — o dossiê sai SEM "
+                       "marcador e pode repetir. case=%s", session.get("case_id"))
+        return bool(await enviar(dossier))
+
+    try:
+        from app.agents.tools.human_handoff import (
+            HORAS_ENTRE_AVISOS_PADRAO,
+            MAX_LEMBRETES_POR_CONVERSA,
+            contar_lembrete,
+            devolver_a_vez,
+            reivindicar_o_aviso,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # O import arrasta `app.agents` → `graph.py` → `langgraph`. Falhando,
+        # o dossiê SAI mesmo assim: o defeito grave é o silêncio, e a repetição
+        # é só incômodo — a mesma escolha que o marcador faz sem Redis.
+        logger.error("[HANDOFF] marcador indisponível (%s) — o dossiê sai sem ele",
+                     type(exc).__name__)
+        return bool(await enviar(dossier))
+
+    if await reivindicar_o_aviso(conversa_id, HORAS_ENTRE_AVISOS_PADRAO):
+        logger.info("[HANDOFF] a equipe já foi avisada desta conversa nas "
+                    "últimas %sh — ficando quieto", HORAS_ENTRE_AVISOS_PADRAO)
+        return bool(session.get("dossier_sent"))
+
+    if await contar_lembrete(conversa_id) > MAX_LEMBRETES_POR_CONVERSA:
+        # ⚠️ O teto cala o GRUPO, não o CASO: ele segue `needs_human`, com
+        # `unblock_state='travado'`, visível na Fila. Alarme que chega para
+        # sempre deixa de ser alarme.
+        logger.warning("[HANDOFF] teto de %s lembretes atingido — o caso segue "
+                       "travado e visível", MAX_LEMBRETES_POR_CONVERSA)
+        return bool(session.get("dossier_sent"))
+
+    saiu = bool(await enviar(dossier))
+    if not saiu:
+        # Reserva que não virou aviso tem de ser devolvida, senão uma falha de
+        # envio silencia o grupo pelas seis horas inteiras do marcador.
+        await devolver_a_vez(conversa_id)
+    return saiu
 
 
 async def _log_deflection(company_id: str, session: Dict[str, Any]) -> None:
@@ -1676,27 +1875,94 @@ async def try_route_insurer_inbound(
                 await save_active_dispatch(company_id, from_phone, retry["session"])
                 logger.info(f"[DISPATCH ROUTER] insurer_closed -> auto-retry iniciado case={session.get('case_id')}")
                 return True
+        # 🔴 SPEC-085 BLOCO C.1 — O AVISO AO SEGURADO DESCEU PARA DEPOIS DO DOSSIÊ.
+        #
+        # Ele saía AQUI, antes de qualquer tentativa de avisar alguém, e saía
+        # IGUAL nos dois casos: *"um colega da equipe vai assumir daqui a
+        # pouquinho"*. Numa corretora sem destino de suporte isso é uma promessa
+        # sobre uma pessoa que não existe.
+        #
+        # ⚠️ A ordem é a da §4 da SPEC, e ela é deliberada: **primeiro exista o
+        # colega, depois se promete o colega.** Ver o envio, logo abaixo do
+        # dossiê.
+
+        # DOSSIÊ MASTIGADO para o suporte humano da corretora (1x por sessão).
+        if not session.get("dossier_sent"):
+            # 🔴 SPEC-085 BLOCO B.2/B.3 — o resolvedor COMPLETO, não só o destino.
+            #
+            # `_support_contact` devolve string vazia tanto para "não existe"
+            # quanto para "existe e foi RECUSADO por ser compartilhado". São
+            # caminhos de código diferentes e dão instruções OPOSTAS à
+            # corretora:
+            #
+            #   ausente   → CADASTRE um destino em Personalização → Suporte
+            #   recusado  → PARE DE COMPARTILHAR o destino que você já tem
+            #
+            # Fundir os dois num `sem_destino_de_suporte` só apaga a diferença
+            # que decide o que a pessoa faz.
+            alvo = await resolver_destino_de_suporte(company_id)
+            support = str(alvo.get("destino") or "")
+            if support:
+                # 🔴 BLOCO B.1 — o caminho B passa pelo MESMO marcador e teto do
+                # caminho A. O `dossier_sent` desta sessão já impedia repetição
+                # DENTRO dela; o marcador impede repetição ENTRE sessões — uma
+                # retomada, ou um acionamento novo do mesmo caso em menos de
+                # seis horas, mandava um segundo dossiê ao grupo.
+                tentou = {"chamado": False, "ok": False}
+
+                async def _enviar(texto: str) -> bool:
+                    tentou["chamado"] = True
+                    try:
+                        send_to_client(support, texto)
+                        tentou["ok"] = True
+                        return True
+                    except Exception as e:  # noqa: BLE001
+                        logger.error("[DISPATCH ROUTER] dossier send failed: %s",
+                                     type(e).__name__)
+                        return False
+
+                saiu = await entregar_dossie_uma_vez(
+                    session, build_handoff_dossier(session, reason), _enviar)
+                session["dossier_sent"] = bool(saiu)
+                if tentou["chamado"] and not tentou["ok"]:
+                    # ⚠️ Montado e NÃO saiu. Isso não é "sem destino" — é falha
+                    # de envio, e some do log em cinco minutos se não virar
+                    # estado. São instruções diferentes para a corretora.
+                    session["suporte_indisponivel"] = "envio_falhou"
+                elif saiu:
+                    session.pop("suporte_indisponivel", None)
+            else:
+                # 🔴 DEIXA DE SER UM `warning`. Um estado que só existe no log
+                # é um estado que ninguém vê — é a SPEC inteira em miniatura.
+                # Ele viaja no retrato durável (`output_summary` /
+                # `output_redacted`) e é o que a Fila do BLOCO E lê.
+                session["suporte_indisponivel"] = (
+                    "recusado" if alvo.get("recusa") else "ausente")
+                session["suporte_indisponivel_motivo"] = str(
+                    alvo.get("recusa") or
+                    "nenhum destino de suporte cadastrado para esta corretora")[:200]
+                logger.error(
+                    "[DISPATCH ROUTER] handoff SEM destino (%s) para a company "
+                    "%s — o dossiê foi montado e NÃO tem para onde ir. %s",
+                    session["suporte_indisponivel"], company_id,
+                    session["suporte_indisponivel_motivo"])
+
+        # 🔴 SPEC-085 BLOCO C.2 — E SÓ AGORA O SEGURADO OUVE, pelo que
+        # REALMENTE aconteceu. `aviso_de_handoff` mora no motor porque as três
+        # cadeias fazem a mesma pergunta, e a resposta tem de ser a mesma: um
+        # `if` copiado em três lugares é onde a terceira cópia diverge.
         client_phone = str(session.get("client_phone") or "").strip()
         if client_phone and not session.get("client_notified_handoff"):
             try:
-                send_to_client(
-                    client_phone,
-                    "Estou finalizando um detalhe do seu atendimento com a seguradora e um colega da equipe vai assumir daqui a pouquinho, tá bom? Já já te retorno 🙂",
-                )
+                send_to_client(client_phone,
+                               _motor().aviso_de_handoff(bool(session.get("dossier_sent"))))
+                # ⚠️ A flag só é marcada DEPOIS do envio — e é ela que o
+                # `build_handoff_dossier` lê para dizer ao humano se o cliente
+                # já sabe. Marcá-la antes produziria as duas mentiras de uma vez.
                 session["client_notified_handoff"] = True
             except Exception as e:  # noqa: BLE001
-                logger.error(f"[DISPATCH ROUTER] handoff notify failed: {type(e).__name__}")
-        # DOSSIÊ MASTIGADO para o suporte humano da corretora (1x por sessão).
-        if not session.get("dossier_sent"):
-            support = await _support_contact(company_id)
-            if support:
-                try:
-                    send_to_client(support, build_handoff_dossier(session, reason))
-                    session["dossier_sent"] = True
-                except Exception as e:  # noqa: BLE001
-                    logger.error(f"[DISPATCH ROUTER] dossier send failed: {type(e).__name__}")
-            else:
-                logger.warning("[DISPATCH ROUTER] handoff SEM contato de suporte configurado (acionamento_profile.suporte_humano_whatsapp)")
+                logger.error("[DISPATCH ROUTER] handoff notify failed: %s",
+                             type(e).__name__)
         await _log_deflection(company_id, session)
         if reason == "insurer_closed":
             await clear_active_dispatch(company_id, from_phone)

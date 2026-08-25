@@ -136,6 +136,41 @@ class _Consulta:
         self.filtros.append(("in", col, [str(v) for v in vals]))
         return self
 
+    def is_(self, col, val):
+        """PostgREST `col=is.null` — SPEC-085 FASE 0.
+
+        🔴 O dublê aprendeu isto junto com o `or_`, e pelo mesmo motivo: o
+        `_marcar_travamento` só grava `unblock_state='travado'` **onde a coluna
+        está NULA**, para não pisar no nome de quem já assumiu o caso. Sem
+        conhecer o filtro, o dublê deixava o UPDATE casar zero linhas e a marca
+        nunca aparecia — o teste ficava vermelho por ignorância do dublê.
+        """
+        self.filtros.append(("is", col, str(val)))
+        return self
+
+    def or_(self, expressao):
+        """PostgREST `or=(a,b)` — SPEC-085 BLOCO A.2.
+
+        🔴 O dublê aprendeu isto porque a varredura de órfãos passou a excluir
+        os travamentos da janela, e um dublê que não conhece a consulta devolve
+        VAZIO em silêncio: o `try/except` de `reconciliar_acionamentos_orfaos`
+        engole o `AttributeError` e o resumo sai todo em zero. O teste ficaria
+        vermelho por ignorância, não por defeito — e, pior, poderia ficar VERDE
+        se a asserção fosse "não achou nada".
+
+        ⚠️ E ele aplica a regra DE VERDADE, com a armadilha do NULL incluída.
+        📊 Medido contra o banco real em 24/08/2026:
+
+            sem filtro ............................................ 4 runs
+            .not_.like("error_code","needs_human:%") .............. 0   🔴
+            .or_("error_code.is.null,error_code.not.like...") ..... 2   ✅
+
+        `NOT (NULL LIKE ...)` é NULL, e NULL não passa. Um dublê que ignorasse
+        isso deixaria o teste aprovar a forma que cega a varredura.
+        """
+        self.filtros.append(("or", None, str(expressao)))
+        return self
+
     def order(self, col, desc=False):
         self._ordem = (col, desc)
         return self
@@ -147,12 +182,47 @@ class _Consulta:
     def maybe_single(self):
         return self
 
+    @staticmethod
+    def _casa_clausula(linha, clausula: str) -> bool:
+        """Uma cláusula PostgREST: `col.op.valor`. Só o que a varredura usa."""
+        partes = clausula.split(".", 2)
+        if len(partes) < 2:
+            return False
+        col, op = partes[0], partes[1]
+        alvo = partes[2] if len(partes) > 2 else ""
+        valor = linha.get(col)
+        if op == "is" and alvo == "null":
+            return valor is None
+        if op == "not":
+            # `col.not.like.padrao` — e AQUI mora a armadilha do NULL: no
+            # Postgres, `NOT (NULL LIKE 'x%')` é NULL, e NULL não passa no
+            # WHERE. O dublê tem de reproduzir isso, senão aprova a forma que
+            # cega a varredura.
+            resto = alvo.split(".", 1)
+            if len(resto) == 2 and resto[0] in ("like", "ilike"):
+                if valor is None:
+                    return False
+                padrao = resto[1].replace("*", "")
+                return not str(valor).startswith(padrao)
+        return False
+
     def _casa(self, linha) -> bool:
         for tipo, col, val in self.filtros:
             if tipo == "eq" and str(linha.get(col)) != str(val):
                 return False
             if tipo == "in" and str(linha.get(col)) not in val:
                 return False
+            if tipo == "is":
+                # `is.null` casa NULO; `is.not.null` casa preenchido.
+                nulo = linha.get(col) is None
+                if val == "null" and not nulo:
+                    return False
+                if val != "null" and nulo:
+                    return False
+            if tipo == "or":
+                clausulas = [c for c in str(val).split(",") if c.strip()]
+                if not any(self._casa_clausula(linha, c) for c in clausulas):
+                    return False
         return True
 
     async def execute(self):
@@ -594,7 +664,26 @@ def teste_a_fase_que_fala_com_a_seguradora_nao_ressuscita():
 
 
 def teste_o_handoff_ja_feito_nao_vira_alarme_falso():
-    print("\n[F4] needs_human que sai do cache fecha — nao vira alarme falso")
+    """🔴 ASSERCOES ATUALIZADAS — SPEC-085 BLOCO A.2, e a licao MIGROU.
+
+    A versao anterior exigia que a varredura FECHASSE o travamento como
+    `completed`, com o rotulo "sumir do cache aqui e o fim natural da parte
+    automatica". Era verdade sob o desenho antigo, e era exatamente o defeito
+    que a SPEC-085 existe para matar:
+
+    📊 os DOIS unicos `needs_human` duraveis da historia do produto estavam em
+    `work_runs` como CONCLUIDOS — invisiveis para qualquer consulta que
+    pergunte "o que ficou em pe?".
+
+    ⚠️ "O AUTOMATICO ACABOU" NAO E "O TRABALHO ACABOU". O que este teste
+    guardava — *nao acordar ninguem por um handoff que ja aconteceu* — continua
+    guardado, e e o nome dele. O que muda e o desfecho: em vez de fechar, o run
+    fica `waiting_input` + `unblock_state='travado'`, e a varredura nem o ve.
+
+    `CLAUDE.md` §9.3: *"quando um fato muda, o teste muda com ele, e a licao
+    migra em vez de morrer"*.
+    """
+    print("\n[F4] needs_human que sai do cache NAO fecha e NAO vira alarme falso")
     _zerar()
     sessao = _sessao("needs_human", reason="handoff_trigger:sinistro")
     asyncio.run(ROTEADOR.save_active_dispatch(EMPRESA, SEGURADORA, sessao))
@@ -604,9 +693,19 @@ def teste_o_handoff_ja_feito_nao_vira_alarme_falso():
 
     ROTEADOR._memory_store.clear()
     resumo = asyncio.run(ROTEADOR.reconciliar_acionamentos_orfaos())
-    checar(resumo["encerrados"] == 1 and resumo["orfaos"] == 0,
-           "sumir do cache aqui e o fim natural da parte automatica", str(resumo))
-    checar(_run_unico().get("status") == "completed", "o run fecha")
+    checar(resumo["orfaos"] == 0,
+           "um handoff que ja aconteceu NAO vira alarme de orfao", str(resumo))
+    checar(resumo["vistos"] == 0,
+           "e o travamento nem entra na janela da varredura",
+           "senao ele seria revarrido a cada boot, para sempre — e com as 73 "
+           "rotas ligadas a janela de 50 encheria de casos estacionados, "
+           "fazendo os orfaos DE VERDADE deixarem de ser detectados")
+    checar(_run_unico().get("status") == "waiting_input",
+           "o run CONTINUA esperando uma pessoa — nao vira 'completed'",
+           "um travamento marcado como sucesso e invisivel para quem pergunta "
+           "o que ficou em pe")
+    checar(_run_unico().get("unblock_state") == "travado",
+           "com a marca que a Fila le")
     checar(not [e for e in BANCO.linhas("work_events") if e.get("severity") == "error"],
            "e ninguem e acordado por um handoff que ja aconteceu")
 

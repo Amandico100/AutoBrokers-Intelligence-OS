@@ -2850,9 +2850,77 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
             who = "corretora" if t.get("direction") == "out" else "seguradora"
             linhas.append(f"[{who}] {str(t.get('text'))[:160]}")
     linhas.append("")
-    linhas.append(f"Cliente no WhatsApp: {session.get('client_phone') or '?'} — ele JÁ foi avisado que a equipe vai assumir.")
+    # 🔴 SPEC-085 BLOCO B.4 — O DOSSIÊ PARA DE MENTIR PARA O HUMANO.
+    #
+    # 📊 Esta linha era INCONDICIONAL: dizia "ele JÁ foi avisado" mesmo quando o
+    # envio ao cliente estourou exceção (`dispatch_router.py`, ramo de
+    # `needs_human`, onde o `send_to_client` está dentro de um `try/except`).
+    #
+    # ⚠️ E a diferença muda o que a pessoa faz. Quem lê "já foi avisado"
+    # continua de onde parou; quem lê "NÃO foi avisado" **fala com o segurado
+    # primeiro** — que é o certo, porque ele está esperando.
+    #
+    # É a mesma família do `dossier_sent = True` incondicional que fez o feed
+    # anunciar "Dossiê entregue à equipe" para um dossiê que ninguém recebeu.
+    # Flag que mente encerra a investigação.
+    avisado = bool(session.get("client_notified_handoff"))
+    linhas.append(
+        f"Cliente no WhatsApp: {session.get('client_phone') or '?'} — "
+        + ("ele JÁ foi avisado que a equipe vai assumir."
+           if avisado else
+           "🔴 ele AINDA NÃO foi avisado. Fale com ele primeiro."))
     linhas.append("Próxima ação sugerida: continuar a conversa com a seguradora do ponto acima (espelho completo na página Conversas).")
     return "\n".join(linhas)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O QUE O SEGURADO OUVE QUANDO O ROBÔ NÃO CONSEGUE — SPEC-085 BLOCO C
+# ---------------------------------------------------------------------------
+# 📊 A frase antiga, `dispatch_router` no ramo de `needs_human`, literal:
+#
+#     "Estou finalizando um detalhe do seu atendimento com a seguradora e um
+#      colega da equipe vai assumir daqui a pouquinho, tá bom? Já já te retorno"
+#
+# 🔴 Ela saía ANTES de qualquer tentativa de avisar alguém, e saía IGUAL nos dois
+# casos. Para uma corretora sem destino de suporte, "um colega vai assumir" é
+# uma promessa sobre uma pessoa que não existe.
+#
+# ⚠️ É a mesma família do SMS que cinco corredores nunca mandavam: uma frase
+# condicional escrita como se fosse certa.
+#
+# Elas moram AQUI, no núcleo puro, porque as três cadeias de handoff as usam —
+# o roteador, o Vigia e quem vier. Duas cópias em arquivos diferentes é o
+# defeito nº 1 deste projeto com outro nome.
+
+#: Quando o dossiê SAIU. O segurado espera um serviço, não uma conversa: diz o
+#: que aconteceu e o que vem, e nada além.
+AVISO_EQUIPE_ASSUMIU = (
+    "Não consegui concluir o pedido com a seguradora por aqui. 😕\n"
+    "Já passei seu caso para um colega da equipe, com todos os dados que "
+    "você me deu — ele vai te retornar por este mesmo WhatsApp."
+)
+
+#: 🔴 E quando o dossiê NÃO saiu. Prometer "um colega vai assumir" aqui é dizer
+#: que existe alguém esperando quando não existe. A saída honesta inclui o
+#: caminho que o segurado pode tomar sozinho — ele pode estar na estrada, à
+#: noite, e a espera dele não é abstrata.
+AVISO_SEM_NINGUEM_PARA_ASSUMIR = (
+    "Não consegui concluir o pedido com a seguradora por aqui, e também não "
+    "consegui avisar a equipe agora. 😕\n"
+    "Seu pedido está registrado e eu sigo tentando. Se for urgente, ligue "
+    "direto para a assistência 24h da sua seguradora — o número está na sua "
+    "apólice e no cartão."
+)
+
+
+def aviso_de_handoff(dossie_saiu: bool) -> str:
+    """PURA. O que o segurado ouve, pelo que REALMENTE aconteceu.
+
+    🔴 Uma função e não um `if` espalhado: as três cadeias fazem a mesma
+    pergunta, e a resposta tem de ser a mesma. Um `if` copiado em três lugares
+    é onde a terceira cópia diverge.
+    """
+    return AVISO_EQUIPE_ASSUMIU if dossie_saiu else AVISO_SEM_NINGUEM_PARA_ASSUMIR
 
 
 def client_summary_from_capture(session: Dict[str, Any]) -> Optional[str]:

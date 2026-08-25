@@ -79,8 +79,24 @@ def teste_a_falha_nunca_declara_sucesso():
 
     # O ramo de conversa-não-encontrada não pode prometer nada.
     trecho_nao_achou = codigo.split("if not conversa:", 1)[-1][:900]
-    checar("Não consegui abrir a transferência" in trecho_nao_achou,
-           "conversa não encontrada admite que não conseguiu")
+    # 🔴 ASSERCAO ATUALIZADA — SPEC-085 BLOCO B, 24/08/2026.
+    #
+    # Ela procurava o literal "Nao consegui abrir a transferencia". O ramo hoje
+    # devolve `FALHA_DO_HANDOFF`, do `honestidade_do_handoff` — que diz mais e
+    # diz melhor: "HANDOFF_FALHOU · ninguem da equipe recebeu este caso. Nada
+    # foi enviado." e PROIBE verbo no passado sobre transferir.
+    #
+    # ⚠️ O comportamento guardado nao regrediu; ele MELHOROU, e o literal virou
+    # constante compartilhada. Casar a frase antiga fazia o teste reprovar quem
+    # consolidou a mensagem — o contrario do que ele existe para fazer
+    # (`CLAUDE.md` §9.3). A licao migra: o ramo tem de ADMITIR a falha, e a
+    # forma canonica de admitir e a constante.
+    checar("FALHA_DO_HANDOFF" in trecho_nao_achou,
+           "conversa não encontrada admite que não conseguiu",
+           "tem de devolver FALHA_DO_HANDOFF, que carrega o carimbo negativo")
+    checar("HANDOFF_OK" not in trecho_nao_achou,
+           "e NAO carimba sucesso no ramo de falha",
+           "o carimbo positivo e o que autoriza o agente a prometer humano")
     checar("atendente foi solicitado" not in trecho_nao_achou,
            "e não promete atendente nenhum")
 
@@ -110,8 +126,24 @@ def teste_o_humano_e_avisado_com_contexto():
     checar("get_whatsapp_service" in fonte, "que de fato ENVIA",
            "a versão antiga não tinha um único import de envio")
     checar("_montar_dossie" in fonte, "existe um dossiê")
-    for campo in ("user_name", "user_phone", "Motivo", "Últimas mensagens"):
+    # 🔴 ASSERCAO ATUALIZADA — SPEC-085 BLOCO B, 24/08/2026.
+    #
+    # Ela exigia o rotulo "Ultimas mensagens", que o dossie perdeu na reescrita
+    # de 14/08 (SPEC-071 Bloco 3.4). Aquela reescrita consertou quatro defeitos
+    # nomeados no docstring — faltava link, nao separava a IA de uma colega,
+    # nao dizia o que fazer, e nao dizia se alguem ja assumiu.
+    #
+    # ⚠️ O que o guarda protege e que o dossie LEVE A CONVERSA, nao o rotulo
+    # dela. A licao migra para a secao que existe hoje — e ganha a que mais
+    # importa, que e a que a reescrita acrescentou.
+    for campo in ("user_name", "user_phone", "*CONVERSA*"):
         checar(campo in fonte, f"o dossiê leva {campo}")
+    checar("O QUE FAZER" in fonte,
+           "e diz o que fazer, nao so o que aconteceu",
+           "diretriz do Founder: 'ela olha a mensagem e ja sabe o que fazer'")
+    checar("claimed_by_name" in fonte,
+           "e diz se alguem JA assumiu",
+           "sem isso duas atendentes correm para a mesma conversa")
     checar("Atendimentos → Conversas" in fonte,
            "e diz ao humano onde assumir a conversa")
 

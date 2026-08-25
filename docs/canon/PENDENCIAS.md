@@ -8650,38 +8650,46 @@ naqueles quatro não se cumpre. **O que destrava:** 🧑 medir em produção.
 
 # 🔴 SPEC-085 — FASE 0 (24/08/2026)
 
-## P-227 · 🧑 `INSURER_DISPATCH_LIVE` está declarada DUAS vezes no EasyPanel, com valores opostos
+## P-227 · ✅ A duplicação ACABOU — e sobrou uma coisa nova para saber
 
-📊 Medido em 24/08/2026 no ambiente de `autobrokers-smith-api`/`-worker`. Três
-chaves aparecem duplicadas com valores que se contradizem:
+### ✅ 24/08/2026 — FECHADA quanto à duplicação
+
+📊 O ambiente atual do `autobrokers-smith-api` traz **uma ocorrência de cada**:
+`INSURER_DISPATCH_LIVE=false` · `DISPATCH_FINALIZE_MODE=test`. O estado deixou de
+depender de qual duplicata a plataforma escolhe. **Era o defeito, e ele morreu.**
+
+### ⚠️ CONTINUA, e é outro: o freio de emergência não está mais armado
+
+📊 Medido rodando as funções reais contra o ambiente atual:
 
 ```
-INSURER_DISPATCH_LIVE=true      ...  INSURER_DISPATCH_LIVE=false
-DISPATCH_FINALIZE_MODE=live     ...  DISPATCH_FINALIZE_MODE=test
-ENV=sandbox                     ...  ENV=production
+ACIONAMENTO_FREIO_DE_EMERGENCIA   ausente  →  freio DESARMADO
+dispatch_live_enabled()                       False
+acionamento_liberado(agente LIGADO)           True     🔴 antes era False
+finalize_live_for(allianz-residencial@v1)     True
+finalize_live_for(allianz-auto@v1)            False
+finalize_live_for(porto-auto@v1)              False
 ```
 
-📊 **Rodando as funções reais** (`dispatch_live_enabled` e `finalize_live_for`,
-`insurer_dispatch_service.py:298` e `:349`) nos quatro cenários:
+🔴 **Eram três freios em série; hoje são dois.** Antes, mesmo com o agente
+ligado, o freio derrubava. Agora o que segura é `INSURER_DISPATCH_LIVE=false`
+**mais** os quatro `attendance` em `is_active=false`, e nada além disso.
 
-| cenário | envia? | finaliza? |
-|---|:---:|:---:|
-| hoje, 1ª ocorrência vencendo | `False` | `False` |
-| hoje, última vencendo | `False` | `False` |
-| 🔴 **freio solto, 1ª vencendo** | **`True`** | **`True`** |
-| freio solto, última vencendo | `False` | `False` |
+⚠️ **E a graduação de finalização está ligada para UM corredor:**
+`DISPATCH_FINALIZE_LIVE_PLAYBOOKS=allianz-residencial-whatsapp@v1`. Isso é o
+mecanismo funcionando como documentado (`insurer_dispatch_service.py:349`) — e é
+exatamente o corredor do `work_run e5279497`, a única travessia ponta a ponta.
+**Não é defeito; é a escada de go-live.** Mas muda o que um `true` significa:
 
-🔴 **Hoje o produto está seguro por UM motivo só: `ACIONAMENTO_FREIO_DE_EMERGENCIA=true`.**
-O freio é o que segura, não as duas variáveis. No instante em que alguém o
-soltar — que é o gesto normal do go-live — o resultado depende de qual duplicata
-o parser do EasyPanel escolhe, e **isso não é legível do repositório.**
+> Com o freio desarmado, escrever `INSURER_DISPATCH_LIVE=true` passa a abrir
+> **envio real E finalização real** no `allianz-residencial` — de uma vez, sem
+> terceira rede. Antes esse gesto ainda esbarrava no freio.
 
-- **Destrava:** 🧑 Founder — apagar a duplicata das três chaves. Uma linha cada.
-- **Custa se esquecer:** o gesto de soltar o freio pode abrir envio real E
-  finalização real ao mesmo tempo, sem ninguém ter decidido isso. **É um
-  guincho de verdade indo à casa de alguém por causa de uma linha repetida.**
-- ⚠️ **E `CARTOGRAPHER_MODE=1` continua ligado** — o Cartógrafo manda WhatsApp
-  real para seguradora (P-32, mesma família, mesma decisão pendente).
+- **Destrava:** 🧑 Founder — decidir se o freio volta a ficar armado até o
+  ensaio, ou se os dois freios bastam. **Não bloqueia a execução**: os quatro
+  agentes estão desligados e esta SPEC não liga nenhum.
+- ⚠️ **`CARTOGRAPHER_MODE=1` continua ligado** — o Cartógrafo manda WhatsApp
+  real para seguradora (P-32, decisão ainda pendente).
 
 ## P-228 · 🤖 As 5 asserções vermelhas da régua — **BLOCKER, e é da SPEC-089**
 
