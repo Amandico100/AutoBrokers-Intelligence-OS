@@ -8547,3 +8547,95 @@ para a forma que o parser vê, e a de azul/porto **não foi medida**.
 
 - **Custa se esquecer:** número sem marca, em documento novo, é defeito de
   revisão — e número **com** marca que não reproduz é pior.
+
+
+---
+
+## P-246 · 🔴 O vazamento de mutação está CONTIDO, não fechado
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução
+
+📊 Duas rodadas completas depois dos consertos de hoje:
+
+```
+13m25    557 passed · 0 falhas · árvore limpa
+11m57    557 passed · 1 falha  · árvore limpa
+         └─ test_a_arvore_ficou_limpa_no_fim
+```
+
+**O que foi consertado hoje:** o estouro de tempo passou a matar a **árvore** de
+processos (`taskkill /F /T`), a trava virou **do kernel** (`msvcrt.locking`), a
+espera dela caiu de 900s para 90s (contra um teto de 120s), e a rede de segurança
+passou a **restaurar** em vez de só acusar.
+
+🔴 **O que NÃO foi:** alguma mutação ainda escapa do `finally` de quem a fez, de
+forma intermitente. A árvore termina limpa — a rede restaura — **mas o gate fica
+vermelho sem que haja defeito de produto.**
+
+⚠️ **E isso tem custo próprio:** um gate que fica vermelho às vezes, por motivo
+que não é defeito, **ensina todo mundo a ignorá-lo.** É o `CLAUDE.md` §9.3 pelo
+avesso, e é exatamente o que o docstring do arquivo diz estar evitando.
+
+**O que destrava:** medir *qual* processo ainda escapa. A hipótese que sobra é a
+mutação que roda **dentro** do próprio pytest (in-process, `exec_module`), que
+nenhum `taskkill` alcança porque não é processo separado.
+
+**O que custa esquecer:** a suíte cresce a cada SPEC (322 → 463 → 601 em três
+dias). Um vermelho intermitente numa suíte de 601 testes vira ruído de fundo, e
+o próximo vermelho de verdade morre junto com ele.
+
+---
+
+## P-247 · 🔴 Um guarda que olha o `HEAD` não protege o commit que está nascendo
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução
+
+📊 Hoje, 25/08, um `git add -A` levou para o commit:
+
+```
+backend/scripts/rubrica.py
+-    decidem = CR.constantes_sem_justificativa(pb, rota.servico, ...)
++    decidem = []  # DESLIGADO PELA MUTACAO
+```
+
+**Havia dois guardas. Os dois falharam, e por motivos diferentes:**
+
+1. `_RETRATO_DA_SESSAO` vigiava `ARQUIVOS_COMPARTILHADOS` — uma lista de **dois
+   nomes**. `rubrica.py` não estava nela. ✅ **Consertado hoje:**
+   `test_nenhuma_mutacao_ficou_na_arvore` varre todo `.py` rastreado pela
+   **marca**, sem lista de alvos.
+
+2. 🔴 `test_nenhuma_mutacao_foi_commitada.py` pergunta ao objeto commitado
+   (`git show HEAD:...`). **Quando a bateria roda, o `HEAD` ainda é o commit
+   anterior.** Ele pega uma rodada tarde — e uma rodada tarde é depois do push.
+   ⛔ **Este continua aberto.**
+
+**O que destrava:** um `pre-commit` hook versionado (`core.hooksPath`), que é o
+único ponto entre `git add` e `git commit`. Um teste não roda ali.
+
+**O que custa esquecer:** 📊 é a **segunda vez** que uma mutação de `rubrica.py`
+entra num commit — a primeira em 22/08 (SPEC-084.1 C12). O guarda foi escrito
+depois da primeira e não impediu a segunda.
+
+---
+
+## P-248 · O `/health` não expõe o estado do Smith Worker
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução
+
+📊 Lido no `/health` da `smith-api` em 25/08 20:32: os 37 sinais de `codigo`
+**não incluem** o estado do worker. Duas lentes independentes discordaram sobre
+ele — uma disse "vivo" (📊 2.728 `run.succeeded` no banco), outra "nada o liga"
+(📊 `WORK_WORKER_IN_PROCESS` padrão OFF, sem serviço no compose, `CMD` só
+`uvicorn`). **As duas podem estar certas** se a env estiver ligada só no
+EasyPanel.
+
+⚠️ E `conferir_o_que_esta_no_ar.py` cobre **2 dos 4 serviços** — `smith-worker`
+e `smith-web` não têm digital. Não dá para responder "o deploy do Worker entrou?"
+
+**O que destrava:** acrescentar `worker_ligado` aos sinais, e uma digital para
+o Web.
+
+**O que custa esquecer:** uma pergunta de operação que hoje só se responde
+abrindo o painel do EasyPanel e lendo variável na mão — exatamente o que o
+bloco de sinais foi criado para eliminar.
