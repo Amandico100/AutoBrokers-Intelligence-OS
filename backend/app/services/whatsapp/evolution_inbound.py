@@ -124,6 +124,52 @@ _CHAVES_DE_ID_DE_OPCAO = tuple(c for c in _CHAVES_DE_ID if c != "name")
 _TETO_DO_CRU_BYTES = 50_000
 
 
+def _sub(d: Any, *nomes: str) -> Dict[str, Any]:
+    """O sub-dicionário chamado <nome>, seja qual for a grafia — e atravessando
+    um nível de invólucro homônimo.
+
+    🔴 ESTA FUNÇÃO É O BLOCO B INTEIRO, e ela existe porque o caminho real
+    do convite tem **três** diferenças do que o parser procurava — e nenhuma
+    delas é o rótulo do botão.
+
+    📊 Medido em 25/08/2026, no `quotedMessage` das quatro capturas `live`
+    da Yelum (03, 07, 17 e 19/08). O caminho de verdade é::
+
+        quotedMessage
+          .interactiveMessage
+            .InteractiveMessage        ← NÍVEL EXTRA, e com I maiúsculo
+              .NativeFlowMessage       ← N maiúsculo
+                .buttons[0].name              = "galaxy_message"
+                .buttons[0].buttonParamsJSON  ← JSON todo em maiúscula
+
+    E o parser procurava ``interactiveMessage.nativeFlowMessage`` e
+    ``buttonParamsJson``. Ele **nunca chegava aos botões**: caía no ramo final
+    com `options` vazio e `body` preenchido, e devolvia
+    ``{"kind": "buttons", "options": []}``.
+
+    ⚠️ É exatamente o sintoma medido no acervo — 50 das 62 respostas de
+    formulário têm, segundos antes, uma linha `buttons` com ZERO opções.
+
+    🔴 **Por isso acrescentar `galaxy_message` à lista, sozinho, não
+    consertaria nada.** A SPEC-092 §B.1 pede o rótulo; o rótulo é o terceiro
+    dos três, e o único que já estava escrito em algum lugar.
+
+    ⚠️ E é a MESMA família de defeito de `_valor_tolerante` (`buttonID` com D
+    maiúsculo) e da P-56 (`selectedButtonId`, 98,9% dos cliques). Terceira
+    aparição: **quem serializa o protobuf escolhe o nome das chaves, e não
+    avisa.** O lado da RESPOSTA já lia com grafia normalizada; o lado do
+    CONVITE lia com `.get()` cru.
+    """
+    if not isinstance(d, dict):
+        return {}
+    alvos = {n.lower().replace("_", "") for n in nomes}
+    for k, v in d.items():
+        if str(k).lower().replace("_", "") in alvos and isinstance(v, dict):
+            interno = _sub(v, *nomes)
+            return interno or v
+    return {}
+
+
 def _valor_tolerante(d: Any, chaves: Tuple[str, ...]) -> str:
     """O valor de uma chave, seja qual for a grafia que o fio usou.
 
@@ -192,8 +238,9 @@ def cru_da_tela(message: Any) -> Optional[Dict[str, Any]]:
     """
     if not isinstance(message, dict):
         return None
-    tela = {k: v for k, v in message.items()
-            if k in _CONTAINERS_DE_TELA and isinstance(v, dict)}
+    alvos = {n.lower().replace("_", ""): n for n in _CONTAINERS_DE_TELA}
+    tela = {alvos[str(k).lower().replace("_", "")]: v for k, v in message.items()
+            if str(k).lower().replace("_", "") in alvos and isinstance(v, dict)}
     if not tela:
         return None
     limpa = {k: {kk: vv for kk, vv in v.items() if kk != "contextInfo"}
@@ -356,19 +403,23 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
             return "\n".join(lines), meta
 
     # --- interactiveMessage (native flow: quick_reply/single_select/flow) ---
-    inter = message.get("interactiveMessage")
-    if isinstance(inter, dict):
-        body = _clean((inter.get("body") or {}).get("text")) or _clean((inter.get("header") or {}).get("title"))
-        nfm = inter.get("nativeFlowMessage") or {}
+    inter = _sub(message, "interactiveMessage") or message.get("interactiveMessage")
+    if isinstance(inter, dict) and inter:
+        body = (_clean(_sub(inter, "body").get("text"))
+                or _clean(_sub(inter, "header").get("title")))
+        nfm = _sub(inter, "nativeFlowMessage")
         options = []
         flow_meta: Optional[Dict[str, Any]] = None
         for b in (nfm.get("buttons") or []):
             if not isinstance(b, dict):
                 continue
-            name = _clean(b.get("name"))
+            name = _valor_tolerante(b, ("name",))
             try:
-                params = json.loads(b.get("buttonParamsJson") or "{}")
+                params = json.loads(
+                    _valor_tolerante(b, ("buttonparamsjson", "buttonparams")) or "{}")
             except Exception:  # noqa: BLE001
+                params = {}
+            if not isinstance(params, dict):
                 params = {}
             if name == "quick_reply":
                 title = _clean(params.get("display_text"))
@@ -384,12 +435,24 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
                                 "id": _valor_tolerante(row, _CHAVES_DE_ID_DE_OPCAO), "title": title,
                                 "description": _clean(row.get("description")),
                             })
-            elif name in ("flow", "mpm", "wa_payment_details", "review_and_pay"):
+            # 🔴 `galaxy_message` é o rótulo LEGADO da Meta, e é o que a
+            # família HDI/Yelum usa. 📊 Medido: nas quatro capturas `live` o
+            # botão do convite se chama `galaxy_message`, e `"flow"` não aparece
+            # em nenhuma delas.
+            #
+            # ⚠️ O lado do ENVIO documenta este MESMO fato desde 03/08
+            # (`evolution_go.montar_nfm_reply`), e ninguém tinha cruzado com o
+            # lado da LEITURA — as duas pontas do mesmo formulário, em dois
+            # arquivos, com a mesma descoberta feita uma vez só.
+            elif name in ("flow", "mpm", "wa_payment_details", "review_and_pay",
+                          "galaxy_message"):
                 flow_meta = {
                     "name": name,
-                    "cta": _clean(params.get("flow_cta")) or _clean(params.get("display_text")),
-                    "flow_id": params.get("flow_id") or params.get("flow_name"),
-                    "flow_token": params.get("flow_token"),
+                    "cta": (_valor_tolerante(params, ("flowcta",))
+                            or _valor_tolerante(params, ("displaytext",))),
+                    "flow_id": (_valor_tolerante(params, ("flowid",))
+                                or _valor_tolerante(params, ("flowname",))) or None,
+                    "flow_token": _valor_tolerante(params, ("flowtoken",)) or None,
                 }
         if flow_meta:
             lines = [body] if body else []
@@ -417,7 +480,8 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
     # ⚠️ A guarda é ESTREITA de propósito: só dispara quando um invólucro de
     # TELA existe de verdade no payload. Mensagem de texto comum não passa por
     # aqui (o chamador trata texto antes), e nenhuma outra forma vira convite.
-    if any(k in message and isinstance(message[k], dict) for k in _CONTAINERS_DE_TELA):
+    _normais = {str(k).lower().replace("_", "") for k in message}
+    if any(n.lower().replace("_", "") in _normais for n in _CONTAINERS_DE_TELA):
         return "[INTERATIVA NAO RECONHECIDA]", {
             "kind": "desconhecido", "options": [], "cru": cru_da_tela(message)}
 
