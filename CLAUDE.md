@@ -17,21 +17,46 @@ O corretor não compra ferramenta nem Skill. Compra **trabalho pronto, tempo rec
 
 Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora externa — nunca aparece em UI, código, tabela ou documentação canônica. **Smith** é o runtime técnico invisível, não é marca.
 
-## 2. Bootstrap de sessão — nesta ordem
+## 2. Bootstrap de sessão — 🔴 um NÚCLEO curto, e um ÍNDICE
 
-1. [`docs/canon/EXECUTION-MASTER-PLAN.md`](docs/canon/EXECUTION-MASTER-PLAN.md) — onde estamos.
-2. [`docs/canon/FOUNDER-DECISIONS.md`](docs/canon/FOUNDER-DECISIONS.md) — o que já foi decidido.
-3. [`docs/canon/GLOSSARIO.md`](docs/canon/GLOSSARIO.md) — **um termo, uma definição.** Se dois documentos discordarem, este vence.
-   · [`docs/canon/ONTOLOGIA-DO-TRABALHO.md`](docs/canon/ONTOLOGIA-DO-TRABALHO.md) — **o que é cada coisa e onde mora.** Antes de criar qualquer peça.
-   · [`docs/canon/CAMADAS-DE-CONEXAO.md`](docs/canon/CAMADAS-DE-CONEXAO.md) — **quem paga, quem conecta, quem usa.** Antes de criar conector.
-   · [`docs/canon/QUANDO-OFERECER-AUTOMACAO.md`](docs/canon/QUANDO-OFERECER-AUTOMACAO.md) — **quando o chat oferece automatizar, e quando fica quieto.**
-   · [`docs/canon/PORTAIS-E-CORREDORES.md`](docs/canon/PORTAIS-E-CORREDORES.md) — **portal, corredor e Atlas: qual é qual.**
-   · [`docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`](docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md) — **o Atlas é UM só, de todas as corretoras.** Antes de tocar em `ura_maps`, no Tecelão, em playbook, corredor ou prompt de atendimento.
-   · [`docs/canon/PENDENCIAS.md`](docs/canon/PENDENCIAS.md) — **o que ficou pendente, e o que destrava cada coisa.**
-4. [`docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md`](docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md) — **como se monta a equipe de agentes, quem julga, e quando o laço para.** Antes de montar time, escrever SPEC, executar, avaliar ideia nova ou atender incidente. §1, §2 e §6 resolvem 90% dos casos.
-5. [`docs/canon/README.md`](docs/canon/README.md) — índice canônico.
-6. A SPEC da etapa atual + **SPEC-052** e **SPEC-053**, sempre.
-7. [`docs/canon/MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) — **antes de qualquer SQL**.
+> ⚠️ **Isto era uma lista de leitura obrigatória de 13 documentos.** 📊 Medido em
+> 25/08/2026, ela somava **864.896 bytes (≈ 220 mil tokens)** por agente, por sessão —
+> e crescera **31% em quatro dias**. O `PENDENCIAS.md` sozinho era **54%** disso.
+> 🔴 **Um bootstrap grande demais para ser lido é um bootstrap que não é lido**, e
+> era o maior custo medido do projeto (`PROTOCOLO-AUTOBROKERS-AAA.md` §1).
+
+### 🔴 O NÚCLEO — leitura completa, sempre. ≈ 114 KB.
+
+```
+1. este arquivo                                   as regras invioláveis
+2. docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md        como se monta equipe, quem julga,
+                                                  quando o laço para
+3. docs/canon/GLOSSARIO.md                        um termo, uma definição.
+                                                  Se dois documentos discordarem, vence
+4. a SPEC da etapa atual
+```
+
+### O ÍNDICE — consulta quando a tarefa pedir, nunca "por via das dúvidas"
+
+| quando | abra |
+|---|---|
+| **antes de qualquer SQL** — obrigatório | [`MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) |
+| uma pendência foi citada por número | [`PENDENCIAS.md`](docs/canon/PENDENCIAS.md) — 🔴 **por número, nunca inteiro** · fechadas em [`PENDENCIAS-FECHADAS.md`](docs/canon/PENDENCIAS-FECHADAS.md) |
+| "onde estamos?" | [`EXECUTION-MASTER-PLAN.md`](docs/canon/EXECUTION-MASTER-PLAN.md) · [`ESTADO-DAS-SPECS.md`](docs/canon/ESTADO-DAS-SPECS.md) |
+| "isto já foi decidido?" | [`FOUNDER-DECISIONS.md`](docs/canon/FOUNDER-DECISIONS.md) |
+| vai criar uma peça nova | [`ONTOLOGIA-DO-TRABALHO.md`](docs/canon/ONTOLOGIA-DO-TRABALHO.md) |
+| vai criar conector | [`CAMADAS-DE-CONEXAO.md`](docs/canon/CAMADAS-DE-CONEXAO.md) |
+| o chat vai oferecer automação | [`QUANDO-OFERECER-AUTOMACAO.md`](docs/canon/QUANDO-OFERECER-AUTOMACAO.md) |
+| portal, corredor ou Atlas | [`PORTAIS-E-CORREDORES.md`](docs/canon/PORTAIS-E-CORREDORES.md) · [`O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`](docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md) |
+| arquitetura de fundo | **SPEC-052** (cérebro) · **SPEC-053** (Work OS) |
+| por que uma regra do protocolo existe | [`PROTOCOLO-AAA-EVIDENCIAS.md`](docs/canon/PROTOCOLO-AAA-EVIDENCIAS.md) |
+| índice geral | [`README.md`](docs/canon/README.md) |
+
+🔴 **E a regra que impede a lista de voltar a crescer:** nenhum documento entra no
+NÚCLEO sem que outro saia ou encolha. **O ÍNDICE cresce à vontade; o NÚCLEO, não.**
+
+⚠️ **Quem delega tarefa a um agente entrega um PACOTE** — o contrato, os arquivos por
+caminho, as regras pertinentes por número, os gates — **nunca o canon** (§1 do protocolo).
 
 Preflight, nesta ordem:
 

@@ -243,7 +243,7 @@ def replay(rota, *, sessoes_no_acervo: Optional[int] = None) -> Replay:
         #    📊 Custo medido da inversão: ZERO. Hoje nenhuma tela de flow casa
         #    passo nenhum, e as duas notas são as mesmas com ou sem ela. É
         #    guarda, não é queda.
-        flow = M.detect_native_flow(pb, texto)
+        flow = None  # DESLIGADO PELA MUTACAO
         passo = (None if flow is not None
                  else M.match_ura_step(pb, texto, subservice=rota.servico))
         if flow is not None:
