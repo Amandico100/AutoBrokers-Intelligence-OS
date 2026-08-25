@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCompanyMember, assertSameOrigin } from '@/lib/admin/admin-auth';
 import { decidirPatchDeAgente } from '@/lib/admin/admin-auth-policy';
 import { getTenantAgentConfig, patchTenantAgentConfig, roleForKey, setTenantAgentActive } from '@/lib/admin/tenant-agent-store';
+import { ativarTodosOsCorredores } from '@/lib/admin/tenant-corridor-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
   if (decisao.acao === 'toggle') {
     const toggled = await setTenantAgentActive(
       auth.supabase, auth.ctx.companyId, role, Boolean(body.is_active));
-    return NextResponse.json(toggled, { status: toggled.ok ? 200 : 400 });
+    if (!toggled.ok) return NextResponse.json(toggled, { status: 400 });
+
+    // 🔴 SPEC-093 BLOCO G — LIGAR O ATENDIMENTO LIGA OS CORREDORES JUNTO.
+    //
+    // > **Decisão do Founder, 25/08:** *"na hora que a corretora ligar o
+    // > atendimento, tudo pode estar ligado automaticamente. Ela pode desligar
+    // > no dashboard."*
+    //
+    // ⚠️ Só no RELIGAMENTO (`religou`), nunca num clique que não mudou nada:
+    // apertar `ligar` num agente já ligado não é evento. E `ativarTodosOsCorredores`
+    // **respeita quem ela pausou à mão** — ver `corridor-bulk-decision.ts`.
+    //
+    // 🔴 Best-effort, e é deliberado: falhar em ligar corredor **não pode**
+    // desfazer o toggle que já aconteceu. Mas sai no log, porque um "ligou tudo"
+    // que ligou nada é a família de silêncio que esta SPEC existe para matar.
+    let corredores: Awaited<ReturnType<typeof ativarTodosOsCorredores>> | null = null;
+    if ((toggled as { religou?: boolean }).religou) {
+      try {
+        corredores = await ativarTodosOsCorredores(
+          auth.supabase, auth.ctx.companyId, auth.ctx.userId ?? '');
+        if (!corredores.ok) {
+          console.error('[AGENTS] corredores NAO ativados:', corredores.error);
+        }
+      } catch (e) {
+        console.error('[AGENTS] corredores NAO ativados:', e);
+      }
+    }
+    return NextResponse.json({ ...toggled, corredores }, { status: 200 });
   }
 
   const input = {
