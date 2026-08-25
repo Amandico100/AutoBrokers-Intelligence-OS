@@ -5,7 +5,7 @@
 > registra que travou ali**. O cliente real deixa de ser descartado. E quem
 > escreveu de madrugada recebe **bom dia** em vez de silêncio.
 >
-> **v2** · 25/08/2026 · commit base `b8ef4e5` · repo `AutoBrokers-FIX`
+> **v3** · 25/08/2026 · commit base `0447db3` · repo `AutoBrokers-FIX`
 
 ## ⚠️ Isto NÃO é uma versão reduzida
 
@@ -201,9 +201,16 @@ guarda foi construída para o clique do dashboard; o do WhatsApp passa por baixo
 | deixa rastro | indireto | ✅ `unblock_state='retomado_pelo_robo'` | 🔴 **nenhum em Postgres** |
 | 📊 já agiu | — | **0 vezes** | **indeterminável** |
 
-🔴 **O Cérebro não deixa rastro nenhum** — `beat("cerebro")` é só Redis
-([heartbeat.py:73](../../backend/app/core/heartbeat.py#L73)). *"O Cérebro
-destravou quantos?"* é hoje uma pergunta sem resposta possível.
+🔴 **O Cérebro não deixa rastro nenhum — e é pior do que esta SPEC dizia.**
+
+⚠️ A v1 afirmava que `beat("cerebro")` era só Redis. 📊 O executor refutou:
+**`beat("cerebro")` não existe em lugar nenhum.** Os pulsos que existem são
+`conselho`, `espelho`, `espelho_atendimento` e `observador`. E `_adaptive_reply`
+([dispatch_watchdog.py:464](../../backend/app/tasks/dispatch_watchdog.py#L464))
+**não escreve tabela, não insere, não pulsa. Nem Redis ele tem.**
+
+*"O Cérebro destravou quantos?"* é hoje uma pergunta sem resposta possível — e a
+razão é mais simples e mais grave do que eu tinha escrito.
 
 ### E contar travamentos não dá por `unblock_state`
 
@@ -286,6 +293,11 @@ depois.**
 Um papel novo **`attendant`**, com uma permissão só: **alternar `is_active` do
 agente de atendimento.** Nada de prompt, nada de integração, nada de billing.
 
+✅ **E não precisa de migration.** 📊 O executor mediu: `company_members.role` é
+`character varying` **sem CHECK e sem enum** — as únicas constraints são as duas
+FK, a PK e a UNIQUE `(user_id, company_id)`. **Criar `attendant` é dado, não
+schema.**
+
 ```
 lib/admin/admin-auth-policy.ts
   + ATTENDANCE_TOGGLE_ROLES = TENANT_WRITE_ROLES ∪ {'attendant'}
@@ -328,11 +340,23 @@ depois não sabe o que havia. O conserto é **torná-la por corretora e
 observável**:
 
 ```
-1. o valor vazio passa a significar "todos", e isso vira COMENTÁRIO no código
-2. 🔴 o `/health` passa a expor `allowlist_ativa: true|false` e o TAMANHO
-   ⛔ nunca os números. `CLAUDE.md` §13.3 — presença, não conteúdo.
-3. quando ela descarta, o produto REGISTRA (contador, sem o telefone)
+⛔ 1. (SAIU — ja estava feito. Ver abaixo.)
+   2. 🔴 o `/health` passa a expor `allowlist_ativa: true|false` e o TAMANHO
+      ⛔ nunca os números. `CLAUDE.md` §13.3 — presença, não conteúdo.
+   3. quando ela descarta, o produto REGISTRA (contador, sem o telefone)
 ```
+
+⚠️ **O item 1 descrevia trabalho já feito, e o executor mediu:**
+
+```
+allowlist VAZIA    → telefone qualquer passa?   True
+allowlist None     → True
+allowlist 1 número → False
+```
+
+📊 `channel_security.py:60` já faz `if not entries: return True`, e a docstring
+já diz isso. **Vazio já significa "todos".** Esvaziar a variável no EasyPanel é
+tudo o que o item 1 pedia — e isso é 🧑 ação do Founder, não código.
 
 📊 **Por que o contador:** hoje o descarte é `return` mudo. Se a allowlist ficar
 mal configurada no dia do piloto, **o sintoma é "ninguém escreveu"** — e é
@@ -595,104 +619,97 @@ a **P-168**, e **não toca em variável nenhuma**.
 
 ---
 
-# BLOCO G · Todos os corredores ligados — e a tela que aguenta 73
+# BLOCO G · Ligar todos os corredores de uma vez
 
 > 🔴 **Decisão do Founder, 25/08:** *"na hora que a corretora ligar o atendimento,
 > tudo pode estar ligado automaticamente. Ela pode desligar no dashboard."*
 
-## G.1 · O estado de hoje
+## ⚠️ A v2 deste bloco estava inflada, e o executor derrubou com número
 
-📊 O mecanismo **existe**: `tenant_corridors` guarda o que cada corretora ativou,
-e `setTenantCorridorStatus` ([tenant-corridor-store.ts](../../lib/admin/tenant-corridor-store.ts))
-liga e pausa, um a um, pela tela
-[personalizacao/corredores](../../app/dashboard/personalizacao/corredores/CorridorGalleryClient.tsx).
-
-⚠️ **O que falta são duas coisas:**
+📊 Medido em `build_corridor_catalog()`, que é a fonte da tela:
 
 ```
-1  ligar TODOS de uma vez — hoje é um clique por corredor
-2  a tela lista os 73 numa coluna só, sem agrupamento e sem filtro
+CARTÕES que a tela lista .....  14      (10 seguradoras · auto 10 + residencial 4)
+SUBSERVIÇOS somados ..........  73
 ```
 
-## G.2 · Ligar tudo junto
+🔴 **Os 73 são subserviços, e eles aparecem como TEXTO dentro do cartão** — nunca
+como coisa clicável. O comentário da própria tela diz isso:
+*"quem liga e desliga é o corredor."*
 
-Quando a corretora ativa o agente de atendimento, **todos os corredores
-disponíveis passam a `ativo`** — numa única transação.
+**O que caiu do escopo, por ser falso:**
+
+| a v2 dizia | 📊 o medido |
+|---|---|
+| *"ela não clica 73 vezes"* | ela clica **no máximo 14** — já hoje |
+| *"a tela lista os 73 numa coluna só"* | lista **14** |
+| *"agrupar → 14 blocos em vez de 73 cartões"* | daria **10 blocos com 14 cartões dentro** |
+
+> ⛔ **O redesenho da tela SAI desta SPEC.** Agrupar 14 cartões em 10 blocos é
+> trabalho para economizar meia rolagem. **Filtros e agrupamento voltam quando o
+> catálogo crescer** — e aí com número medido, não com o meu chute.
+
+⚠️ **Isto é `CLAUDE.md` §11:** proposta de escopo, não corte silencioso. **O
+Founder pediu a organização da tela; eu estou dizendo que ela ainda não dói.**
+Se ele discordar, o bloco volta.
+
+## G.1 · O que fica — e é o que ele pediu de verdade
+
+**Um clique liga os 14, em vez de catorze.**
 
 ```
-⛔ NÃO é um laço de N chamadas: 73 escritas soltas deixam metade ligada
-   se a rede cair no meio, e "metade ligada" é o pior estado possível.
-🔴 É um upsert em lote, e ele é IDEMPOTENTE: ligar duas vezes não muda nada.
 ⚠️ E RESPEITA quem já foi desligado à mão: um corredor que a corretora
-   pausou de propósito NÃO volta sozinho.
+   pausou de propósito NÃO volta sozinho. Sem isso, o dashboard desfaz a
+   escolha dela toda manhã.
+🔴 IDEMPOTENTE: ligar duas vezes não muda nada.
 ```
 
-📊 Esse último ponto é o que separa *"começa com tudo ligado"* de *"o dashboard
-desfaz a escolha da corretora toda manhã"*.
+## G.2 · 🔴 A âncora, que a v2 não conhecia
+
+📊 O executor mediu, e isto derruba o gate ④ da v2:
+
+```
+ensureCorridorAnchor faz SELECT + INSERT POR CORREDOR em `corridor_templates`,
+antes de qualquer upsert.
+
+corridor_templates:  2 linhas, ambas scope='global' com company_id NULO
+e o ensureCorridorAnchor filtra .eq('company_id', companyId)
+```
+
+🔴 **Ele não acha nenhuma, e insere uma âncora nova para cada corredor.** O
+"ligar tudo" da primeira corretora são **14 SELECTs + 14 INSERTs, um a um**,
+antes do lote.
+
+> **Exigir "uma escrita só" sem lotear a âncora é exigir o impossível.** O bloco
+> passa a lotear as duas coisas — âncora e status — ou aceita o laço e diz
+> **por escrito** que ele é retomável.
+
+⚠️ **A decisão fica com o executor, e é honesta das duas formas:** o que não vale
+é um gate que ninguém consegue passar.
 
 ## G.3 · Corredor desligado vira handoff
 
-Um corredor pausado **não some** — ele passa para a pessoa.
-
-⚠️ **E isso já quase funciona:** 📊 o corredor que não sabe responder já degrada
-para `needs_human` e para `human_phase` sem chutar
+📊 O corredor que não sabe responder **já degrada** para `needs_human` e
+`human_phase` sem chutar
 ([insurer_dispatch_service.py:2740](../../backend/app/services/insurer_dispatch_service.py#L2740)).
-O bloco só precisa que **corredor pausado entre no mesmo caminho**, em vez de
-falhar de outro jeito.
-
-## G.4 · A tela organizada — 🔴 e o Founder deixou a decisão comigo
-
-> *"Talvez seja ideal ter uma lista de corredores por seguradoras e aí as
-> seguradoras têm os ramos e serviços. Não sei, você deve verificar."*
-
-📊 São **73 rotas** em ~14 seguradoras. Uma coluna de 73 cartões é o que a tela
-faz hoje — e ela já está longa demais na captura que o Founder mandou.
-
-**A decisão, e o motivo de cada parte:**
-
-```
-AGRUPAR por SEGURADORA        14 blocos em vez de 73 cartões
-  └ dentro, por RAMO          Auto · Residencial
-     └ os SERVIÇOS ficam como estão (a linha de chips já funciona)
-
-FECHADO por padrão, com o resumo na dobra:
-  "Porto Seguro · 2 ramos · 11 serviços · 2 de 2 ativos"
-
-UM FILTRO SÓ, e é o que a operação pergunta:
-  ( ) todos   ( ) ativos   ( ) desligados
-```
-
-⛔ **O que NÃO entra agora**, e por quê:
-
-| | |
-|---|---|
-| busca por texto | 14 blocos fechados cabem numa tela. Busca resolve problema que o agrupamento já resolveu |
-| filtro por serviço | 💭 ninguém pediu; e serviço é atributo de rota, não de escolha |
-| ordenar | a ordem alfabética é previsível, e previsível vale mais que configurável |
-
-> 🔴 **O critério: a corretora tem de conseguir responder "o que está ligado?"
-> sem rolar a página.** Hoje ela não consegue. Com 14 blocos fechados, consegue.
-
-⚠️ **E o rodapé da tela continua dizendo a verdade que já diz:** ativar é
-registro de configuração — *não liga canal, não abre portal, não envia nada.*
-Quem liga o atendimento é o botão do agente.
+O bloco só precisa que **corredor pausado entre no mesmo caminho.**
 
 ## O gate
 
 ```
-① a corretora liga o agente → todos os corredores disponíveis ficam ativos
-② 🔴 um corredor pausado À MÃO antes disso CONTINUA pausado    (a escolha dela vence)
-③ ligar duas vezes → nada muda                                  (idempotente)
-④ 🔴 a escrita é uma só: derrube a rede no meio e não sobra metade ligada
+① a corretora liga o agente → os 14 corredores disponíveis ficam ativos
+② 🔴 um corredor pausado À MÃO antes disso CONTINUA pausado   (a escolha dela vence)
+③ ligar duas vezes → nada muda                                 (idempotente)
+④ 🔴 derrube a conexão no meio e RETOME: o fim é o mesmo de uma rodada limpa
+   ⚠️ o gate mudou: prova RETOMABILIDADE, não "uma escrita só" — porque
+      a âncora torna a escrita única impossível sem loteá-la também
 ⑤ corredor pausado recebe atendimento → vai para handoff, não falha
-⑥ a tela mostra 14 blocos fechados, e o resumo bate com o banco
-⑦ o filtro "desligados" mostra exatamente os que estão pausados
-⑧ dois tenants: ligar tudo em A não liga nada em B
+⑥ dois tenants: ligar tudo em A não liga nada em B
 ```
 
 🔴 **A mutação obrigatória:** desligue a checagem do ② e o teste tem de ficar
-vermelho. Se continuar verde, o bloco está desfazendo a escolha da corretora
-sem ninguém perceber.
+vermelho. Se continuar verde, o bloco está desfazendo a escolha da corretora sem
+ninguém perceber.
 
 ---
 
