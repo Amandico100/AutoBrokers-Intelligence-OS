@@ -1487,6 +1487,27 @@ def registrar_formulario_nativo(session: Dict[str, Any],
     return True
 
 
+def a_tela_e_formulario(insurer_message: str,
+                        interactive: Optional[Dict[str, Any]]) -> bool:
+    """Esta mensagem é uma tela de formulário nativo?
+
+    🔴 DUAS CONDIÇÕES, E A SEGUNDA NÃO É REDUNDÂNCIA.
+
+    A primeira é o `kind` que o parser entrega. A segunda é o marcador de
+    texto — e ela existe porque 📊 `ura_simulator.py` e `replay.py` chamam
+    `handle_insurer_message(session, screen)` **sem o argumento `interactive`**.
+    Sem o marcador, o ensaio e a régua mediriam um produto diferente do que
+    roda em produção, que é o defeito mais caro que este projeto já teve.
+
+    ⚠️ As duas são equivalentes no ar: `evolution_inbound` anexa o marcador
+    **sempre** que reconhece um formulário, e só então. Guardar pelas duas é
+    de graça e cobre o caminho sem `interactive`.
+    """
+    if isinstance(interactive, dict) and interactive.get("kind") == "flow":
+        return True
+    return "FORMULARIO NATIVO" in str(insurer_message or "").upper()
+
+
 def _moldura_da_resposta(session: Dict[str, Any],
                          montado: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """`wa_flow_response_params` — a moldura que diz QUAL formulário foi respondido.
@@ -1611,7 +1632,21 @@ def _responder_formulario_nativo(
         return session
 
     live = bool(session.get("live")) and dispatch_live_enabled()
-    resumo = f"[FORMULÁRIO NATIVO respondido: {len(montado['params'])} campos]"
+    # 🔴 A FRASE NÃO PODE DIZER "respondido" QUANDO NADA SAIU.
+    #
+    # ⚠️ Trava da SPEC-092 §D: com `INSURER_DISPATCH_LIVE` fechado, `flow_sender`
+    # **nunca é chamado**, e a sessão segue para `state="ura"` — e o transcript
+    # dizia *"FORMULÁRIO NATIVO respondido"* para um formulário que ninguém
+    # enviou. Quem lê o dossiê não tinha como distinguir *"não enviei porque o
+    # freio está fechado"* de *"enviei e deu certo"*.
+    #
+    # O campo `dry_run` já existia e já era honesto; a FRASE ao lado dele não.
+    # É o mesmo defeito da SPEC-085, noutro arquivo: a flag foi consertada e o
+    # texto ao lado dela não.
+    resumo = (f"[FORMULÁRIO NATIVO respondido: {len(montado['params'])} campos]"
+              if live else
+              f"[FORMULÁRIO NATIVO pronto, NÃO enviado — envio real desligado: "
+              f"{len(montado['params'])} campos]")
     session.setdefault("transcript", []).append(
         {"direction": "out", "text": resumo, "at": _now(), "dry_run": not live,
          "step": "formulario_nativo"}
@@ -2176,6 +2211,42 @@ def handle_insurer_message(
     # listam "Sinistro"/"Acidente" como OPÇÕES (Porto opção 6, Bradesco opção 2) e
     # isso não significa que o caso é sinistro. Handoff só quando NENHUM passo
     # conhecido casou (a mensagem é sobre o caso, não um menu mapeado).
+    # 🔴 SPEC-092 D.2 — QUANDO A TELA É FORMULÁRIO, ELA DECIDE ANTES DO PASSO.
+    #
+    # 📊 P-084-68, reproduzida ponta a ponta: a âncora do passo `destino_como`
+    # é `r"para onde devemos levar o ve[íi]culo"`, e `match_ura_step` usa
+    # `re.search` com `IGNORECASE|DOTALL` — ela é uma **substring**. As duas
+    # telas a contêm::
+    #
+    #     tela de BOTÕES  (7×)  "…informe PARA ONDE DEVEMOS LEVAR O VEÍCULO.
+    #                            Qual dessas opções você prefere? Botão 1: …"
+    #     tela de FORM.   (1×)  "…preencha o formulário para informar
+    #                            PARA ONDE DEVEMOS LEVAR O VEÍCULO."
+    #
+    # Rodando o passo primeiro, o corredor responde **"Digitar endereço" como
+    # TEXTO** a uma tela que só aceita clique. Medido nos dois corredores:
+    # `state=ura`, `saida=[('destino_como','Digitar endereço')]`.
+    #
+    # 📊 E a inversão é estreita: sobre **4.220 telas reais** de 14 corredores,
+    # os formulários REGISTRADOS casam passo de URA **zero** vezes. Uma tela em
+    # 4.279 muda de comportamento — e ela muda de resposta errada para
+    # `needs_human` com motivo escrito.
+    #
+    # 🔴 E ATENÇÃO AO QUE ISTO SIGNIFICA DE VERDADE: sob esta guarda,
+    # `_responder_formulario_nativo` **nunca devolve `None`** — todos os seus
+    # caminhos com `e_formulario_agora=True` terminam em `return session`
+    # (desconhecido, incompleto, sem token, sem transporte, envio falhou, ou
+    # sucesso). Então isto **não** é *"formulário primeiro, passo depois se
+    # não for formulário"*. É **"para mensagem de formulário, o passo não
+    # roda"**. O contrato `None → siga o fluxo antigo` continua íntegro, mas
+    # governa apenas o ramo que esta guarda **não** toca.
+    if a_tela_e_formulario(insurer_message, interactive):
+        pelo_formulario = _responder_formulario_nativo(
+            session, playbook, insurer_message, interactive=interactive,
+            flow_sender=flow_sender)
+        if pelo_formulario is not None:
+            return pelo_formulario
+
     step = match_ura_step(playbook, insurer_message, subservice=session.get("subservice"))
     if step:
         # Passo "noop": mensagem informativa (fila, aguarde, "ainda não
@@ -2365,12 +2436,24 @@ def handle_insurer_message(
             step_counts[step_name] = int(step_counts.get(step_name) or 0) + 1
             return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
 
-    # FORMULÁRIO NATIVO (a tela que não aceita texto). Vem ANTES do gatilho de
-    # handoff porque o gatilho `formulario nativo` do corredor casaria primeiro
-    # e o caso viraria `needs_human` sem que ninguém tivesse tentado montar a
-    # resposta. O gatilho continua no corredor, e continua sendo a rede: quando
-    # o schema deste flow não é conhecido, esta função devolve None e a queda em
-    # needs_human acontece exatamente como antes.
+    # FORMULÁRIO NATIVO — A SEGUNDA CHAMADA, e ela cobre o que a primeira não vê.
+    #
+    # A primeira (antes do `match_ura_step`, ver D.2) só dispara quando a
+    # mensagem **se anuncia** como formulário: `kind == "flow"` ou o marcador
+    # no texto. Esta aqui pega o caso em que nem um nem outro chegaram e o
+    # formulário é reconhecido pela `prompt_anchor` do schema
+    # (`detect_native_flow`) — 📊 exatamente o que acontece com o corpus de
+    # telas colhido ANTES do conserto do `galaxy_message`, que não tem marcador.
+    #
+    # Vem ANTES do gatilho de handoff porque o gatilho `formulario nativo` do
+    # corredor casaria primeiro e o caso viraria `needs_human` sem que ninguém
+    # tivesse tentado montar a resposta.
+    #
+    # ⚠️ **O `None` aqui só acontece no ramo NÃO-formulário.** A frase antiga
+    # deste comentário — *"quando o schema não é conhecido, esta função
+    # devolve None"* — está errada e era errada antes da D.2: schema
+    # desconhecido com marcador presente devolve `session` com
+    # `formulario_nativo_desconhecido`. Nome errado reinfecta leitor seguinte.
     pelo_formulario = _responder_formulario_nativo(
         session, playbook, insurer_message, interactive=interactive, flow_sender=flow_sender)
     if pelo_formulario is not None:

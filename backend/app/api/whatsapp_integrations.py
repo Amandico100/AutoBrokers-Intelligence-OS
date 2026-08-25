@@ -248,6 +248,76 @@ class ProvaDeFormularioPayload(BaseModel):
     integration_id: Optional[str] = None
 
 
+#: Teto da varredura de numeros nossos. Bater nele RECUSA — ver `_destino_e_nosso`.
+_TETO_DE_NUMEROS_NOSSOS = 500
+
+
+def _chave_de_telefone(bruto: Any) -> str:
+    """A forma comparavel de um telefone brasileiro: DDD + os 8 finais.
+
+    🔴 Existe porque `55 47 99627-4743` e `47 9627-4743` sao o MESMO
+    aparelho, e uma comparacao de string exata diria que nao. Uma lista de
+    permissao que erre por grafia recusa o proprio dono e libera ninguem — ou,
+    pior, obriga alguem a afrouxa-la depois.
+
+    ⚠️ O corte e' nos 8 FINAIS de proposito: dois numeros so' colidem aqui
+    se tiverem o mesmo DDD e os mesmos oito digitos finais, que na pratica e' a
+    mesma linha. Normalizar por "tira o nono digito" pela posicao erraria em
+    numero fixo.
+    """
+    d = "".join(ch for ch in str(bruto or "") if ch.isdigit())
+    if not d:
+        return ""
+    if len(d) > 11 and d.startswith("55"):
+        d = d[2:]
+    if len(d) <= 8:
+        return d
+    return d[:2] + d[-8:]
+
+
+async def _destino_e_nosso(db: AsyncSupabaseClient, destino: str) -> bool:
+    """O destino da prova e' um numero NOSSO? 🔴 Na duvida, NAO.
+
+    ⛔ **SPEC-092 F.2.** Esta rota **envia de verdade** e nao passa por freio
+    nenhum: nao consulta `dispatch_live_enabled()` nem o freio de emergencia,
+    so' a chave interna. Ela e' segura porque o destino e' nosso — e essa
+    premissa nao estava escrita em lugar nenhum do codigo, so' na docstring.
+
+    > **Uma premissa de seguranca que existe so' na docstring nao e' uma
+    > trava: e' uma esperanca.** Quem passar o numero de uma seguradora manda
+    > uma resposta de formulario para ela, fora de qualquer acionamento, sem
+    > freio e sem registro de acionamento.
+
+    A lista de permissao sao os `paired_phone_e164` das integracoes ATIVAS —
+    os aparelhos que a plataforma controla. Fora dela, 400.
+
+    ⚠️ **Falha FECHADO em tres caminhos**: consulta que levanta, varredura
+    que bate no teto (nao provou exclusividade, entao nao provou nada), e
+    destino vazio. Truncar nao e' provar — e' a mesma licao do
+    `_destino_e_compartilhado` da SPEC-085.
+    """
+    alvo = _chave_de_telefone(destino)
+    if not alvo:
+        return False
+    try:
+        r = await (db.client.table("integrations")
+                   .select("paired_phone_e164")
+                   .eq("is_active", True)
+                   .limit(_TETO_DE_NUMEROS_NOSSOS).execute())
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PROVA FORMULARIO] nao foi possivel conferir se o destino "
+                     "e' nosso (%s) — recusando por seguranca", type(e).__name__)
+        return False
+    linhas = r.data or []
+    if len(linhas) >= _TETO_DE_NUMEROS_NOSSOS:
+        logger.error("[PROVA FORMULARIO] a varredura de numeros nossos bateu no "
+                     "teto de %s — nao provou nada, recusando", _TETO_DE_NUMEROS_NOSSOS)
+        return False
+    nossos = {_chave_de_telefone(l.get("paired_phone_e164")) for l in linhas}
+    nossos.discard("")
+    return alvo in nossos
+
+
 @router.post("/prova-de-formulario")
 async def prova_de_formulario(
     payload: ProvaDeFormularioPayload,
@@ -282,6 +352,19 @@ async def prova_de_formulario(
         raise HTTPException(status_code=400, detail="company_id is required")
     if not para:
         raise HTTPException(status_code=400, detail="para (numero de destino) is required")
+
+    # ⛔ SPEC-092 F.2 — O DESTINO TEM DE SER NOSSO.
+    #
+    # Esta rota manda DE VERDADE e nao passa por freio nenhum. Ate' aqui, o
+    # unico motivo de ela ser segura era a docstring dizer que o destino e'
+    # nosso. Agora o codigo confere.
+    if not await _destino_e_nosso(db, para):
+        logger.error("[PROVA FORMULARIO] destino RECUSADO: nao e' um numero "
+                     "nosso (empresa=%s)", company_id)
+        raise HTTPException(
+            status_code=400,
+            detail=("destino recusado: a prova de formulario so' envia para um "
+                    "numero da propria plataforma. Nenhuma mensagem foi enviada."))
 
     try:
         query = (
