@@ -1,11 +1,21 @@
-# SPEC-093 · O PILOTO — o atendimento real, com duas pessoas olhando
+# SPEC-093 · O ATENDIMENTO REAL LIGA E FUNCIONA
 
 > **O que ela entrega:** a Regina e a Saionara ligam o agente de manhã, assistem
 > pelo WhatsApp delas, e **quando ele trava, um clique o faz seguir — e o produto
 > registra que travou ali**. O cliente real deixa de ser descartado. E quem
 > escreveu de madrugada recebe **bom dia** em vez de silêncio.
 >
-> **v1** · 25/08/2026 · commit base `19f41ee` · repo `AutoBrokers-FIX`
+> **v2** · 25/08/2026 · commit base `b8ef4e5` · repo `AutoBrokers-FIX`
+
+## ⚠️ Isto NÃO é uma versão reduzida
+
+**É a lista do que está quebrado entre "a corretora aperta LIGAR" e "o cliente
+é atendido de ponta a ponta."** Nada aqui é adiado para depois; nada aqui é
+ensaio. Cada bloco existe porque 📊 foi medido quebrado hoje.
+
+⛔ **A SPEC-086 não é "a versão completa disto".** Ela é outra coisa — uma
+arquitetura de posse (quem "assume" a conversa), que o Founder decidiu **não
+usar**: *"não é para ela assumir. É para ele apenas destravar e monitorar."*
 
 ---
 
@@ -32,7 +42,8 @@ mostrar. `CLAUDE.md` §11: isto é **proposta de ordem**, não corte de escopo.
 > dela começa a mostrar o robô atendendo cliente de verdade. Quando o robô
 > trava numa tela que não sabe responder, ela dá UM clique e ele segue —
 > e o produto REGISTRA que travou ali. Quando ela sai, aperta DESLIGAR.
-> Quando volta, aperta LIGAR e quem escreveu no intervalo recebe um bom-dia.**
+> Quando volta, aperta LIGAR e quem escreveu no intervalo recebe um bom-dia.
+> **E ao ligar, os 73 corredores ligam junto — ela não clica 73 vezes.**
 
 ## 🔴 E o que ela NÃO faz — decisão do Founder, 25/08
 
@@ -584,10 +595,111 @@ a **P-168**, e **não toca em variável nenhuma**.
 
 ---
 
+# BLOCO G · Todos os corredores ligados — e a tela que aguenta 73
+
+> 🔴 **Decisão do Founder, 25/08:** *"na hora que a corretora ligar o atendimento,
+> tudo pode estar ligado automaticamente. Ela pode desligar no dashboard."*
+
+## G.1 · O estado de hoje
+
+📊 O mecanismo **existe**: `tenant_corridors` guarda o que cada corretora ativou,
+e `setTenantCorridorStatus` ([tenant-corridor-store.ts](../../lib/admin/tenant-corridor-store.ts))
+liga e pausa, um a um, pela tela
+[personalizacao/corredores](../../app/dashboard/personalizacao/corredores/CorridorGalleryClient.tsx).
+
+⚠️ **O que falta são duas coisas:**
+
+```
+1  ligar TODOS de uma vez — hoje é um clique por corredor
+2  a tela lista os 73 numa coluna só, sem agrupamento e sem filtro
+```
+
+## G.2 · Ligar tudo junto
+
+Quando a corretora ativa o agente de atendimento, **todos os corredores
+disponíveis passam a `ativo`** — numa única transação.
+
+```
+⛔ NÃO é um laço de N chamadas: 73 escritas soltas deixam metade ligada
+   se a rede cair no meio, e "metade ligada" é o pior estado possível.
+🔴 É um upsert em lote, e ele é IDEMPOTENTE: ligar duas vezes não muda nada.
+⚠️ E RESPEITA quem já foi desligado à mão: um corredor que a corretora
+   pausou de propósito NÃO volta sozinho.
+```
+
+📊 Esse último ponto é o que separa *"começa com tudo ligado"* de *"o dashboard
+desfaz a escolha da corretora toda manhã"*.
+
+## G.3 · Corredor desligado vira handoff
+
+Um corredor pausado **não some** — ele passa para a pessoa.
+
+⚠️ **E isso já quase funciona:** 📊 o corredor que não sabe responder já degrada
+para `needs_human` e para `human_phase` sem chutar
+([insurer_dispatch_service.py:2740](../../backend/app/services/insurer_dispatch_service.py#L2740)).
+O bloco só precisa que **corredor pausado entre no mesmo caminho**, em vez de
+falhar de outro jeito.
+
+## G.4 · A tela organizada — 🔴 e o Founder deixou a decisão comigo
+
+> *"Talvez seja ideal ter uma lista de corredores por seguradoras e aí as
+> seguradoras têm os ramos e serviços. Não sei, você deve verificar."*
+
+📊 São **73 rotas** em ~14 seguradoras. Uma coluna de 73 cartões é o que a tela
+faz hoje — e ela já está longa demais na captura que o Founder mandou.
+
+**A decisão, e o motivo de cada parte:**
+
+```
+AGRUPAR por SEGURADORA        14 blocos em vez de 73 cartões
+  └ dentro, por RAMO          Auto · Residencial
+     └ os SERVIÇOS ficam como estão (a linha de chips já funciona)
+
+FECHADO por padrão, com o resumo na dobra:
+  "Porto Seguro · 2 ramos · 11 serviços · 2 de 2 ativos"
+
+UM FILTRO SÓ, e é o que a operação pergunta:
+  ( ) todos   ( ) ativos   ( ) desligados
+```
+
+⛔ **O que NÃO entra agora**, e por quê:
+
+| | |
+|---|---|
+| busca por texto | 14 blocos fechados cabem numa tela. Busca resolve problema que o agrupamento já resolveu |
+| filtro por serviço | 💭 ninguém pediu; e serviço é atributo de rota, não de escolha |
+| ordenar | a ordem alfabética é previsível, e previsível vale mais que configurável |
+
+> 🔴 **O critério: a corretora tem de conseguir responder "o que está ligado?"
+> sem rolar a página.** Hoje ela não consegue. Com 14 blocos fechados, consegue.
+
+⚠️ **E o rodapé da tela continua dizendo a verdade que já diz:** ativar é
+registro de configuração — *não liga canal, não abre portal, não envia nada.*
+Quem liga o atendimento é o botão do agente.
+
+## O gate
+
+```
+① a corretora liga o agente → todos os corredores disponíveis ficam ativos
+② 🔴 um corredor pausado À MÃO antes disso CONTINUA pausado    (a escolha dela vence)
+③ ligar duas vezes → nada muda                                  (idempotente)
+④ 🔴 a escrita é uma só: derrube a rede no meio e não sobra metade ligada
+⑤ corredor pausado recebe atendimento → vai para handoff, não falha
+⑥ a tela mostra 14 blocos fechados, e o resumo bate com o banco
+⑦ o filtro "desligados" mostra exatamente os que estão pausados
+⑧ dois tenants: ligar tudo em A não liga nada em B
+```
+
+🔴 **A mutação obrigatória:** desligue a checagem do ② e o teste tem de ficar
+vermelho. Se continuar verde, o bloco está desfazendo a escolha da corretora
+sem ninguém perceber.
+
+---
+
 # BLOCO F · A prova — e ela roda com o agente DESLIGADO
 
 ```
-① os gates de A, B, C, D passam
+① os gates de A, B, C, D, G passam
 ② 🔴 os quatro agentes `attendance` continuam `is_active=false`
 ③ 🔴 zero mensagens enviadas durante toda a execução
 ④ a decisão do BLOCO E está escrita
@@ -643,7 +755,7 @@ P-093-10  `route_sentinel.py:363` usa a allowlist como destino de alerta
 ## 5. A ordem de execução
 
 ```
-E  (registro, 10 min)  →  A  →  B  →  C  →  D  →  F
+E  (registro, 10 min)  →  A  →  B  →  C  →  D  →  G  →  F
 ```
 
 🔴 **E vem primeiro** porque se a decisão for **(B) manter test**, os blocos A–D
