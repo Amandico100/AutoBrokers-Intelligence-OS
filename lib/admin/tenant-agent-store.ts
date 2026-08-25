@@ -14,6 +14,7 @@ import {
   type AgentRole, type TenantAgentConfigInput,
 } from '@/lib/admin/agent-blueprints-canonical';
 import { problemasDoUpdate, conferirPromptGravado } from '@/lib/admin/provision-tenant';
+import { decidirTransicaoDoToggle } from '@/lib/admin/toggle-transicao';
 
 export type AgentKey = 'autobrokers' | 'even';
 export function roleForKey(key: string): AgentRole | null {
@@ -82,18 +83,49 @@ export async function patchTenantAgentConfig(supabase: SupabaseClient, companyId
  * e o sistema captura (Espelho). O OBSERVADOR NUNCA DESLIGA — o botão governa
  * apenas se o agente RESPONDE. O gate correspondente vive no webhook (backend).
  */
+// SPEC-093 BLOCO D.1 - a decisao mora em arquivo SEM import, para o gate
+// poder roda-la em `node` puro. Ver `toggle-transicao.ts`.
 export async function setTenantAgentActive(
   supabase: SupabaseClient, companyId: string, role: AgentRole, isActive: boolean,
 ) {
   if (role !== 'attendance') return { ok: false as const, error: 'toggle_only_attendance' };
-  const { data: agent } = await supabase.from('agents').select('id, is_active')
+  const { data: agent } = await supabase.from('agents')
+    .select('id, is_active, desligado_em')
     .eq('company_id', companyId).eq('agent_role', role).maybeSingle();
   if (!agent?.id) return { ok: false as const, error: 'agent_not_provisioned' };
+
+  const transicao = decidirTransicaoDoToggle(agent.is_active, isActive);
+  const desligadoEmAntes: string | null = (agent as { desligado_em?: string | null }).desligado_em ?? null;
+
+  // 🔴 SPEC-093 BLOCO D.1 — DESDE QUANDO ESTÁVAMOS FORA.
+  //
+  // 📊 `updated_at` **não serve**: este mesmo arquivo o reescreve em
+  // `patchTenantAgentConfig`, em `resetTenantAgentConfig` e na linha abaixo. Um
+  // ajuste de prompt no meio do desligamento apagaria a resposta — e a idade é
+  // o que decide entre saudar a pessoa e mandar o caso para a fila humana
+  // (≤12h · 12–24h · >24h nunca).
+  //
+  // ⚠️ Escrita **só na transição**. Religar LIMPA. E um clique que não muda
+  // nada não toca na coluna: reescrever `desligado_em` a cada `desligar`
+  // apertado duas vezes rejuvenesceria o desligamento, e conversas que já
+  // passaram de 24h voltariam a parecer recentes.
+  const campos: Record<string, unknown> = {
+    is_active: isActive, updated_at: new Date().toISOString(),
+  };
+  if (transicao.desligou) campos.desligado_em = new Date().toISOString();
+  if (transicao.religou) campos.desligado_em = null;
+
   const { error } = await supabase.from('agents')
-    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .update(campos)
     .eq('id', agent.id).eq('company_id', companyId);
   if (error) return { ok: false as const, error: 'update_failed' };
-  return { ok: true as const, is_active: isActive };
+  return {
+    ok: true as const, is_active: isActive,
+    religou: transicao.religou,
+    // O valor de ANTES de limpar — é ele que diz há quanto tempo o atendimento
+    // esteve fora, e quem decide a saudação precisa dele.
+    desligado_em: transicao.religou ? desligadoEmAntes : (campos.desligado_em as string | null),
+  };
 }
 
 export async function resetTenantAgentConfig(supabase: SupabaseClient, companyId: string, role: AgentRole) {

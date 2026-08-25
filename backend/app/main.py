@@ -304,6 +304,15 @@ from app.api.dispatch_monitor import router as dispatch_monitor_router
 
 app.include_router(dispatch_monitor_router, tags=["Dispatch"])
 
+# === SPEC-093 BLOCO D — a saudação do religamento ===
+# 🔴 A PRÉVIA É `GET` E O ENVIO É `POST`, e não é decoração: 📊 o robô teve 4
+# conversas de WhatsApp em toda a história do produto, e a primeira vez que o
+# envio rodar será a maior coisa que ele já mandou sozinho. Um verbo que um
+# prefetch de navegador dispara não pode ser o que manda mensagem.
+from app.api.saudacao_religamento import router as saudacao_religamento_router
+
+app.include_router(saudacao_religamento_router, tags=["Saudação do religamento"])
+
 # === SPEC-063 — Catálogo de corredores para a tela (a lista vem do CÓDIGO) ===
 # A página de Corredores lia `corridor_templates` (2 linhas) enquanto o motor
 # executava 13 corredores de `corridor_playbooks.py`. Sem esta rota, a tela não
