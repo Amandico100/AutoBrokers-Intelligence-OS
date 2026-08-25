@@ -252,3 +252,65 @@ um red team rodaram sob ele. **Isso fecha na 085 executada.**
 ainda.** Tudo aqui é análise de documento contra repositório. **A prova é a
 primeira SPEC executada sob ele** — e o número a vigiar é se a §2 continua
 separando os casos quando eles não forem os seis que a calibraram.
+
+---
+
+# 🔴 25/08/2026 — o neto que mutava o corredor
+
+📊 **O mutador nunca foi um guarda desobediente. Era o próprio harness matando
+errado.**
+
+```
+test_a_regua_nao_tem_furo.py ............  16,3s
+VM.verificar → 12 mutações ..............  12 × 16,3 ≈ 196s
++ o exec_module in-process ..............  ≈ 212s por medição
+test_duas_medicoes lança DUAS ...........  ≈ 425s
+TETO_SEGUNDOS ...........................  120     🔴
+```
+
+`subprocess.run(timeout=)` faz `kill()` + `communicate()` no estouro. ⚠️ **No
+Windows `kill()` é `TerminateProcess`, que mata UM processo — não a árvore.** Os
+netos `medir_rota.py` sobreviviam ~5 min **mutando `corridor_playbooks.py` doze
+vezes cada**, e a mutação caía na janela de quem estivesse rodando na hora.
+
+📊 A ordem confirmou: o mutador é o índice **60** em `sorted(GUARDAS)`; os
+acusados eram **110, 122, 123, 127, 133** — todos depois dele.
+
+### 🔴 E a quarentena escondia a causa
+
+`test_duas_medicoes` está em `QUARENTENA` como `xfail`. O `pytest.fail` do
+estouro virava `xfailed` e **sumia do relatório**. O guarda certo ficava
+vermelho, e quem investigasse procuraria no lugar errado.
+
+> ⛔ **Regra nova, e ela custou um dia:** `xfail` num guarda que LANÇA PROCESSO
+> esconde o efeito colateral junto com a falha. Quarentena serve para asserção
+> vencida — **nunca para quem tem filho.**
+
+### Os dois consertos, e por que são estes
+
+```
+🔴 o estouro mata a ÁRVORE     taskkill /F /T (Windows) · killpg (POSIX)
+🔴 a trava é do KERNEL         msvcrt.locking / fcntl.flock sobre 1 byte
+   ⛔ nunca O_EXCL, nunca unlink ao soltar
+   o lock pertence ao HANDLE: o SO o solta quando o dono morre —
+   sem heurística de idade, sem PID, sem ninguém apagando `.lock`
+🔴 a espera da trava < o teto de quem espera    900s → 90s, contra TETO=120
+   uma espera maior que o teto de quem espera não é paciência:
+   é a garantia de que ninguém nunca vai chegar a esperar
+```
+
+📊 **Provado por `test_o_timeout_nao_deixa_neto_vivo.py`, 5 testes** — e o que dá
+direito à conclusão é a **linha de controle**: matando só o pai, o neto
+**sobrevive**; matando a árvore, **morre**. Sem ela os dois passariam por acaso.
+
+### E o passo 2º está instrumentado
+
+`backend/tests/conftest.py` passou a escrever uma linha por rodada de pytest —
+quando, quanto, sobre o quê, em que commit, local ou CI. **Na próxima SPEC o
+"9–14 rodadas" deixa de ser 💭 e vira 📊**, e só então o passo 3º é decidível.
+
+⚠️ **E uma correção de quem escreveu a regra:** *"13 commits × 16m44 = 3h37"* foi
+dito com cara de medição. 🔴 **Commit não é rodada.** O custo por rodada estava
+medido; o número de rodadas era chute. É a §12.1 contra o próprio autor.
+
+---

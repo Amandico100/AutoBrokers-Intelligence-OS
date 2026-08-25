@@ -146,3 +146,16 @@ backend/scripts/destilacao_max/lotes_autofleet/
 #     python backend/scripts/portal_factory.py lab api-infer --arquivo <har>
 docs/generated/portal-lab/
 .baseline/
+
+# O diario da bateria (`backend/tests/conftest.py`) e MEDICAO LOCAL:
+# uma linha por rodada de pytest. Fora do git de proposito — versiona-lo
+# deixaria a arvore suja a cada rodada e o preflight exige `git status`
+# limpo. O numero vai para o RELATORIO da SPEC, nao para o repositorio.
+backend/.diario-da-bateria.jsonl
+
+# 📊 25/08/2026 — `test_o_freio_de_vidros_nao_mata_a_cobranca.py:213` escreve
+# este arquivo FORA de `backend/`, como linha de controle, e o apaga no
+# `finally`. Se o processo morrer no meio da janela ele vaza untracked na raiz
+# do repositorio — o padrao exato da P-231. Ignorado para que o vazamento nunca
+# entre num commit por descuido.
+_fake_para_controle.py

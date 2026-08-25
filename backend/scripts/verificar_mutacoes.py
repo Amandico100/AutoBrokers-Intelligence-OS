@@ -131,48 +131,90 @@ def _assercao_vermelha(saida: str, rotulo: str) -> bool:
 #    processos Python separados (subagente, sessão, script de CI), e um
 #    `threading.Lock` não os enxergaria.
 _TRAVA = os.path.join(RAIZ, ".baseline", ".mutacao.lock")
-_ESPERA_MAX = 900.0        # 15 min: uma rodada completa das 6 mutações cabe
-_TRAVA_VELHA = 1800.0      # 30 min sem tocar = o dono morreu, a trava é lixo
+
+# 🔴 A ESPERA TEM DE SER MENOR QUE O TETO DE QUEM ESPERA.
+#
+# 📊 Medido em 25/08/2026: `_ESPERA_MAX` era **900s** e o
+# `TETO_SEGUNDOS` do harness que roda os guardas é **120s**. Quem esperava na
+# trava era morto pelo pytest **antes de entrar nela** — e morria com netos
+# vivos, que é como a mutação vazava. Uma espera maior que o teto de quem espera
+# não é paciência: é a garantia de que ninguém nunca vai chegar a esperar.
+_ESPERA_MAX = 90.0
 
 
 class MutadorOcupado(RuntimeError):
     """Outra medição está com o corredor mutado. Esperar é obrigatório."""
 
 
+# ---------------------------------------------------------------------------
+# 🔴 A TRAVA É DO KERNEL, NÃO DO ARQUIVO — e a diferença é a vida do processo.
+# ---------------------------------------------------------------------------
+# ⚠️ **A versão anterior tinha dois furos, e os dois eram silenciosos:**
+#
+#   1. `O_EXCL` + idade de 30 min. O PID era escrito (`os.write`) e **nunca
+#      lido**. Se o dono morresse, todo mundo esperava meia hora. E o inverso é
+#      pior: uma medição LEGÍTIMA que passasse de 30 min tinha a trava
+#      entregue a um segundo dono — 🔴 **dois donos mutando o mesmo arquivo,
+#      sem erro nenhum.**
+#
+#   2. A cura seria pior que a doença: alguém apagaria o `.lock` "para
+#      destravar", e o corredor podia estar mutado naquele instante.
+#
+# 📊 A trava agora é `msvcrt.locking` (Windows) / `fcntl.flock` (POSIX) sobre um
+# byte. **O lock pertence ao HANDLE, não ao arquivo.** O sistema operacional
+# fecha todo handle quando o processo morre — `TerminateProcess`, Ctrl-C, crash,
+# tanto faz — e o kernel solta a trava sozinho.
+#
+# Por isso: **nunca `O_EXCL`** (o arquivo persiste de propósito) e **nunca
+# `unlink`** ao soltar (apagar sob o nariz de quem espera recria a corrida).
+# Sem heurística de idade, sem PID, sem ninguém apagando nada.
+#
+# 📊 `msvcrt` é stdlib e existe nesta máquina. `filelock`, `pytest-xdist` e
+# `psutil` → ImportError, e nenhum está em `requirements*.txt`.
+def _travar_o_byte(fd: int) -> None:
+    """Toma o lock exclusivo do primeiro byte. Levanta OSError se ocupado."""
+    if os.name == "nt":
+        import msvcrt
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def _tomar_a_trava(espera: float = _ESPERA_MAX) -> int:
     os.makedirs(os.path.dirname(_TRAVA), exist_ok=True)
-    inicio = time.monotonic()
+    fim = time.monotonic() + espera
+    fd = os.open(_TRAVA, os.O_RDWR | os.O_CREAT)
     while True:
         try:
-            fd = os.open(_TRAVA, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
+            _travar_o_byte(fd)
             return fd
-        except FileExistsError:
-            # ⚠️ Trava órfã: um processo morto no meio deixaria todo mundo
-            #    esperando para sempre, e a cura seria pior — alguém apagaria
-            #    a trava "para destravar" e o problema voltaria calado.
-            try:
-                idade = time.time() - os.path.getmtime(_TRAVA)
-                if idade > _TRAVA_VELHA:
-                    os.unlink(_TRAVA)
-                    continue
-            except FileNotFoundError:
-                continue
-            if time.monotonic() - inicio > espera:
+        except OSError:
+            if time.monotonic() > fim:
+                os.close(fd)
                 raise MutadorOcupado(
                     f"outra medicao esta mutando o corredor ha mais de "
                     f"{espera:.0f}s (trava: {_TRAVA}). 🔴 NAO apague a trava: "
-                    f"o corredor pode estar mutado neste instante.")
-            time.sleep(0.5)
+                    f"o corredor pode estar mutado neste instante. "
+                    f"Se o dono morreu, o kernel ja soltou — tente de novo.")
+            time.sleep(0.25)
 
 
 def _soltar_a_trava(fd: int) -> None:
+    # ⚠️ Destravar antes de fechar é o correto, mas fechar sozinho ja basta:
+    # o SO solta o lock com o handle. O `unlink` NAO acontece de proposito.
     try:
-        os.close(fd)
+        if os.name == "nt":
+            import msvcrt
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
     finally:
         try:
-            os.unlink(_TRAVA)
-        except FileNotFoundError:
+            os.close(fd)
+        except OSError:
             pass
 
 

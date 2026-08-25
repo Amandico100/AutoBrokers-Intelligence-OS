@@ -72,7 +72,10 @@ produto) ou **asserção vencida** (conserta o teste)? — `CLAUDE.md` §9.3:
 """
 from __future__ import annotations
 
+import concurrent.futures as cf
+import re
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -452,6 +455,235 @@ def test_a_arvore_nao_tem_mutacao_vazada():
     )
 
 
+# ---------------------------------------------------------------------------
+# 🔴 O TIMEOUT PRECISA MATAR A ÁRVORE — e este foi o defeito mais caro do dia.
+# ---------------------------------------------------------------------------
+# 📊 Medido em 25/08/2026. Um guarda dava resultados diferentes conforme a
+# companhia:
+#
+#     no lote:   test_o_comparador_ve_resposta_errada    FALHOU
+#     sozinho:   o mesmo guarda                          PASSOU (16,21s)
+#
+# 🔴 A causa não estava nele. A cadeia, cronometrada:
+#
+#     test_a_regua_nao_tem_furo.py .................  16,3s
+#     VM.verificar(TESTE_DA_REGUA) → 12 mutações ...  12 × 16,3 ≈ 196s
+#     + o exec_module in-process ...................  ≈ 212s por medição
+#     test_duas_medicoes lança DUAS, serializadas ..  ≈ 425s
+#     TETO_SEGUNDOS ................................  120  🔴
+#
+# `subprocess.run(timeout=)` faz, no estouro, `process.kill()` + `communicate()`.
+# ⚠️ **No Windows `kill()` é `TerminateProcess`, que mata UM processo — não a
+# árvore.** Os dois netos `medir_rota.py` sobrevivem ao pai por ~5 minutos,
+# **mutando `corridor_playbooks.py` doze vezes cada**, e a mutação cai na janela
+# de quem estiver rodando na hora.
+#
+# 🔴 E o `stdout=DEVNULL` dos netos (`test_duas_medicoes:116,118`) é o que torna
+# a fuga SILENCIOSA: sem herdar os pipes, o `communicate()` do pai não bloqueia
+# neles e ninguém percebe que sobraram processos.
+#
+# 📊 A ordem confirma: em `sorted(GUARDAS)`, `test_duas_medicoes` é o índice 60;
+# os acusados são 110, 122, 123, 127 e 133 — **todos depois dele.**
+#
+# ⚠️ E o pior detalhe: `test_duas_medicoes` está em `QUARENTENA` como `xfail`.
+# O `pytest.fail` do estouro vira `xfailed` e **some do relatório** — a
+# quarentena escondia exatamente a causa. É o `CLAUDE.md` §9.3 na forma mais
+# cruel: o guarda certo fica vermelho, e quem investiga procura no lugar errado.
+def _matar_a_arvore(processo) -> None:
+    """Mata o processo E os filhos dele. Sem isto, o timeout vaza netos."""
+    if os.name == "nt":
+        # `taskkill /T` é builtin do Windows e derruba a árvore inteira.
+        # ⚠️ Silencioso de propósito: se o processo já morreu sozinho, o
+        # taskkill devolve erro, e esse erro não é notícia.
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(processo.pid)],
+            capture_output=True, check=False,
+        )
+    else:
+        # No CI Linux o grupo é o que mata a árvore.
+        try:
+            os.killpg(os.getpgid(processo.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        processo.kill()
+    except OSError:
+        pass
+
+
+def _rodar_matando_a_arvore(caminho, ambiente):
+    """`subprocess.run(timeout=)` com um estouro que não deixa neto vivo."""
+    kwargs = {}
+    if os.name != "nt":
+        # 🔴 Sem grupo próprio, `killpg` mataria o próprio pytest.
+        kwargs["start_new_session"] = True
+    processo = subprocess.Popen(
+        [sys.executable, str(caminho)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, errors="replace", cwd=str(RAIZ), env=ambiente, **kwargs
+    )
+    try:
+        saida, erro = processo.communicate(timeout=TETO_SEGUNDOS)
+    except subprocess.TimeoutExpired:
+        _matar_a_arvore(processo)
+        # 🔴 Depois de matar, DRENA. Sem isto os pipes ficam abertos e o
+        # `TimeoutExpired` seguinte vem sem a saída que explica o travamento.
+        try:
+            processo.communicate(timeout=10)
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+    return subprocess.CompletedProcess(
+        processo.args, processo.returncode, saida, erro
+    )
+
+
+# ---------------------------------------------------------------------------
+# 🔴 OS LEITORES PUROS RODAM JUNTOS — e a lista de exceções é o que segura.
+# ---------------------------------------------------------------------------
+# 📊 Medido em 25/08/2026: os 296 guardas-script custam **7m14 dos ~16m** da
+# bateria — 45% do relógio. E a bateria roda muitas vezes por SPEC.
+#
+# ⚠️ **Mas paralelizar tudo seria trocar lentidão por vermelho aleatório.** A
+# maioria dos guardas só LÊ a árvore; alguns MUTAM `corridor_playbooks.py`,
+# escrevem arquivo em caminho fixo, ou lançam processo. Dois desses ao mesmo
+# tempo colidem — e o vermelho cai em quem estiver por perto, não em quem errou.
+#
+# 🔴 **Por isso a lista é uma NEGATIVA, e ela erra para o lado seguro.** Na
+# dúvida, serial. Um guarda classificado errado como "puro" custa uma
+# investigação inteira; um classificado errado como "perigoso" custa segundos.
+#
+# ⚠️ **E o critério já errou uma vez, o que prova o ponto.** A primeira versão
+# procurava `write_text` e **não** `open(..., "w")` — e deixava passar
+# `test_o_freio_de_vidros_nao_mata_a_cobranca.py:213`, que escreve
+# `_fake_para_controle.py` num caminho fixo **fora do `backend/`** e o apaga no
+# `finally`. Dois em paralelo apagariam o arquivo um do outro entre a escrita e
+# a leitura, e o guarda cairia **por corrida, não por defeito**. Achado por
+# revisão externa; o padrão é o da P-231.
+_MARCAS_DE_PERIGO = (
+    # lança processo ou thread — o filho vive fora da janela do pai
+    r"subprocess", r"Popen", r"threading", r"Thread\(", r"multiprocessing",
+    # toca o arquivo que as medições mutam e restauram
+    r"corridor_playbooks", r"import replay", r"from replay", r"scripts\.replay",
+    # escreve ou apaga arquivo — inclusive fora de `backend/`
+    r"write_text", r"write_bytes", r"shutil\.copy", r"os\.remove", r"\.unlink\(",
+    r"""open\([^)]*,\s*["'](w|a|wb|ab)""",
+    # sai para a rede: cota, limite e latência são estado compartilhado
+    r"create_client", r"SUPABASE_URL", r"httpx\.", r"requests\.",
+)
+_RE_PERIGO = re.compile("|".join(_MARCAS_DE_PERIGO))
+
+
+def _nome_cru(p) -> str:
+    """🔴 `_parametros()` devolve `ParameterSet`, nao string.
+
+    Os que estao em QUARENTENA vem embrulhados com as marcas de `xfail`; os
+    outros vem crus. ⚠️ Medido em 25/08: tratar todos como string quebra a
+    COLETA inteira da suite (`TypeError: WindowsPath / ParameterSet`) — a
+    bateria nao roda um teste sequer. Um erro de coleta e pior que um vermelho:
+    ele nao diz o que quebrou, diz que nada rodou.
+    """
+    valores = getattr(p, "values", None)
+    return str(valores[0]) if valores else str(p)
+
+
+def _pode_em_paralelo(nome: str) -> bool:
+    try:
+        fonte = (PASTA / nome).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False          # não consegui ler = não arrisco
+    return not _RE_PERIGO.search(fonte)
+
+
+_PODE_EM_PARALELO = frozenset(
+    n for n in (_nome_cru(p) for p in _parametros()) if _pode_em_paralelo(n)
+)
+
+# 📊 4 CPUs nesta máquina. `cpu_count()-1` deixa um núcleo para o pytest e para
+# o sistema — encher todos faz o relógio piorar, não melhorar.
+_QUANTOS = max(2, (os.cpu_count() or 2) - 1)
+
+# O resultado de cada guarda pré-rodado. Quem não estiver aqui roda na hora.
+_JA_RODADOS: dict = {}
+_USOS_DO_CACHE = {"acertos": 0, "erros": 0}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _rodar_os_puros_juntos(request):
+    """Dispara os leitores puros de uma vez, antes do primeiro teste.
+
+    🔴 Roda ANTES de qualquer guarda serial de propósito: se um mutador
+    estivesse no ar durante a rajada, todos os leitores leriam o corredor
+    mutado. Com a rajada primeiro, a árvore ainda está no retrato da sessão.
+
+    ⚠️ **E só pré-roda o que esta sessão realmente selecionou.** A primeira
+    versão disto pré-rodava os 184 sempre — inclusive num
+    `pytest tests/x.py::test_y`, que passaria a custar minutos para rodar um
+    teste. 🔴 Otimização que só é rápida na rodada inteira e lentíssima na
+    rodada de um é uma armadilha para quem depura.
+    """
+    selecionados = {
+        item.callspec.params.get("nome")
+        for item in getattr(request.session, "items", [])
+        if getattr(item, "callspec", None) is not None
+    }
+    alvos = _PODE_EM_PARALELO & {n for n in selecionados if n}
+    if not alvos:
+        yield
+        return
+    ambiente = dict(os.environ)
+    ambiente.setdefault("PYTHONIOENCODING", "utf-8")
+
+    def _um(nome):
+        try:
+            return nome, _rodar_matando_a_arvore(PASTA / nome, ambiente)
+        except Exception as erro:            # noqa: BLE001
+            # Guarda a EXCEÇÃO, não engole: o teste dele a levanta de novo.
+            return nome, erro
+
+    with cf.ThreadPoolExecutor(max_workers=_QUANTOS) as pool:
+        for nome, saida in pool.map(_um, sorted(alvos)):
+            _JA_RODADOS[nome] = saida
+    yield
+
+
+def _resultado(nome, ambiente):
+    """O do cache, se houver — senão roda agora."""
+    if nome in _JA_RODADOS:
+        _USOS_DO_CACHE["acertos"] += 1
+        guardado = _JA_RODADOS[nome]
+        if isinstance(guardado, BaseException):
+            raise guardado
+        return guardado
+    _USOS_DO_CACHE["erros"] += 1
+    return _rodar_matando_a_arvore(PASTA / nome, ambiente)
+
+
+def test_a_paralelizacao_esta_mesmo_acontecendo():
+    """🔴 A LINHA DE CONTROLE da paralelização.
+
+    ⚠️ Se o `fixture` falhar em silêncio — nome errado, exceção engolida,
+    `_PODE_EM_PARALELO` vazio — **a bateria continua verde e o ganho some.**
+    Um ganho que desaparece sem avisar é pior que ganho nenhum: alguém vai
+    passar semanas achando que a suíte está rápida.
+
+    📊 O piso não é arbitrário: em 25/08 o critério classificou 184 de 296 como
+    puros. Metade disso ainda seria um ganho real; menos que isso quer dizer
+    que o critério mudou de comportamento e ninguém percebeu.
+    """
+    assert len(_PODE_EM_PARALELO) >= 90, (
+        f"só {len(_PODE_EM_PARALELO)} guardas classificados como paralelizáveis "
+        f"(eram 184 em 25/08). O critério ficou restritivo demais, ou a "
+        f"descoberta quebrou — e o ganho de tempo sumiu sem avisar."
+    )
+    # ⚠️ Numa rodada de um teste só, pré-rodar nada é o comportamento CERTO —
+    # por isso o piso da sessão, e não uma exigência incondicional.
+    assert _JA_RODADOS or len(_parametros()) < 50, (
+        "🔴 numa rodada completa o fixture não pré-rodou NADA. A paralelização "
+        "está desligada e a bateria só ficou mais lenta."
+    )
+
+
 @pytest.mark.parametrize("nome", list(_parametros()))
 def test_o_guarda_script_passa(nome: str):
     """Roda o guarda como PROCESSO — do jeito que o autor dele o escreveu."""
@@ -462,11 +694,7 @@ def test_o_guarda_script_passa(nome: str):
     #    e o vermelho seria do terminal, não do produto.
     ambiente.setdefault("PYTHONIOENCODING", "utf-8")
     try:
-        r = subprocess.run(
-            [sys.executable, str(caminho)],
-            capture_output=True, text=True, errors="replace",
-            timeout=TETO_SEGUNDOS, cwd=str(RAIZ), env=ambiente,
-        )
+        r = _resultado(nome, ambiente)
     except subprocess.TimeoutExpired:
         pytest.fail(
             f"{nome}: passou de {TETO_SEGUNDOS}s sem terminar. Guarda que trava "
@@ -500,17 +728,37 @@ def test_a_arvore_ficou_limpa_no_fim():
     §9.3 pelo avesso. **O que é dureza fica duro; o que é informação fica
     informação.**
     """
+    # 🔴 RESTAURA E DEPOIS REPROVA — e a ordem é a lição inteira.
+    #
+    # ⚠️ A primeira versão só ACUSAVA. 📊 Em 25/08 isso custou caro: uma rodada
+    # terminou com `replay.py` mutado (`elif False:  # DESLIGADO PELA MUTACAO`),
+    # o gate ficou vermelho — e **a árvore continuou mutada**. Toda rodada
+    # seguinte partiria de um produto adulterado, e o vermelho pareceria
+    # defeito de produto.
+    #
+    # 🔴 E a causa foi um conserto do mesmo dia: `_matar_a_arvore` mata também
+    # o processo que ia RESTAURAR no `finally`. **Contenção e restauração são
+    # objetivos opostos** — quem morre não limpa. Não dá para ter os dois no
+    # mesmo lugar, então a limpeza mora AQUI, no harness, que sobrevive.
+    #
+    # A ordem importa: restaura primeiro, reprova depois. Reprovar sem
+    # restaurar deixa a próxima pessoa depurando o rastro em vez do defeito.
     diferentes = []
     for caminho, bytes_originais in _RETRATO_DA_SESSAO.items():
         try:
             if caminho.read_bytes() != bytes_originais:
                 diferentes.append(caminho.name)
+                try:
+                    caminho.write_bytes(bytes_originais)
+                except OSError as erro:  # noqa: BLE001
+                    diferentes[-1] += f" (NAO CONSEGUI RESTAURAR: {erro})"
         except OSError:
             diferentes.append(f"{caminho.name} (ilegível)")
     assert not diferentes, (
         f"a sessão TERMINOU com {', '.join(diferentes)} diferente do início.\n"
-        "A restauração do meio falhou. 🔴 Não commite: `git add -A` aqui leva\n"
-        "uma mutação de teste para dentro do produto (P-084.1 C12, P-231)."
+        "🔴 JÁ RESTAUREI o(s) arquivo(s) — a árvore está limpa de novo.\n"
+        "Mas alguma mutação escapou do `finally` de quem a fez: procure um\n"
+        "guarda que estourou o tempo (P-084.1 C12, P-231)."
     )
 
 

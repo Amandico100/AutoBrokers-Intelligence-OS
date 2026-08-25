@@ -1,0 +1,5428 @@
+| Ordem | SPEC    | Tema                                                  |    Nota | O salto principal                                                       |
+| ----: | ------- | ----------------------------------------------------- | ------: | ----------------------------------------------------------------------- |
+|     0 | **092** | Formulário dentro do WhatsApp                         |  **99** | Já escrita; executar, não reescrever                                    |
+|     1 | **089** | **A Régua AAA é Honesta**                             | **100** | Consertar a medida antes de automatizar melhoria                        |
+|     2 | **086** | **Continuidade do Atendimento**                       | **100** | Resume Pack + humano + follow-up + encerramento verdadeiro              |
+|     3 | **087** | **Route Self-Healing Loop**                           |  **99** | URA mudou → detectar → propor → testar → publicar                       |
+|     4 | **090** | **Fábrica de Inteligência da Nova Corretora**         | **100** | Conversa real vira Atlas, rota, aliases, conhecimento e aprendizado     |
+|     5 | **091** | **Protocol & Process Registry**                       | **100** | Sistema aprende como criar/evoluir capacidades                          |
+|     6 | **088** | **Central de Agentes 2.0**                            |  **95** | Trabalhadores digitais claros, responsabilidades, runs e handoffs       |
+|     7 | **093** | **Claims Learning Shadow**                            |  **99** | Sinistro humano de hoje vira capacidade autônoma de amanhã              |
+|     8 | **094** | **Artifact & Delivery Hub Completion**                | **100** | Entregas finalmente excelentes                                          |
+|     9 | **095** | **Executive Intelligence 360 / InfoCap**              | **100** | Diretor de performance da corretora                                     |
+|    10 | **096** | **Chat Runtime Performance & Interaction Shell**      |  **99** | TTFT, streaming, composer e mobile                                      |
+|    11 | **097** | **Operations Workspace / Cases**                      |  **96** | Fila/Kanban/casos/segurados/Work Runs integrados                        |
+|    12 | **098** | **Identity, Scope & Company Soul Fabric**             |  **99** | Global/Corretora/Team/User/Entity corretamente separados                |
+|    13 | **099** | **Channel Fabric v2**                                 |  **98** | Multi-WhatsApp, e-mail, Slack, Teams, webchat e Meta Ads                |
+|    14 | **100** | **Skill & Capability Factory v2**                     | **100** | Agent Skills + DeepSeek + DeepAgents adaptados ao AutoBrokers           |
+|    15 | **101** | **Connector & Management-System Adapter Factory**     |  **99** | InfoCap → Quiver → Segfy → futuros sistemas                             |
+|    16 | **102** | **Knowledge & Memory Factory**                        | **100** | Ingestão, dedup, curadoria, candidate, publicação e esquecimento        |
+|    17 | **103** | **Auxiliary Marketplace & Automation Studio**         |  **98** | Official/Premium/Private/Partner + serviço custom premium               |
+|    18 | **104** | **Research Intelligence Pack v2**                     |  **95** | Agent-Reach ideas + Tavily + Firecrawl + fontes especializadas          |
+|    19 | **105** | **Trajectory / Replay / Fork**                        |  **99** | Reconstruir, pesquisar, comparar e bifurcar Work Runs                   |
+|    20 | **106** | **Dreams & Nightly Consolidation**                    |  **99** | Operação diária melhora memória e conhecimento governadamente           |
+|    21 | **107** | **Trust & Untrusted Content Gate**                    |  **98** | PII, sanitização e prompt injection em toda entrada externa             |
+|    22 | **108** | **AutoBrokers MetaHarness**                           | **100** | Medir continuamente qualidade, drift, custo, segurança e confiabilidade |
+|    23 | **109** | **AutoBrokers Engine v1**                             | **100** | Inteligência vertical passa a ser headless e reutilizável               |
+|    24 | **110** | **External Harness Gateway**                          |  **99** | ChatGPT, Claude e outros clientes chamam o Engine                       |
+|    25 | **111** | **Model & Cost Fabric**                               |  **92** | Managed AI + BYOK + External Harness + trial + routing                  |
+|    26 | **112** | **AutoBrokers Voice**                                 |  **88** | Conversa realtime usando o mesmo cérebro                                |
+|    27 | **113** | **Broker Growth & Creative Studio**                   |  **88** | Apresentações, infográficos, carrosséis, blog/SEO/AEO                   |
+|    28 | **114** | **Transformation Convergence & Production Readiness** | **100** | Gate final de todo o salto                                              |
+
+
+
+
+
+------------------------------------
+
+
+CONVERSA ANTES DAS SPECS, PLALNEJANDO E PENSANDO NAS MELHOORIAS:
+
+
+
+@GitHub 
+
+https://invokta.dev
+
+https://github.com/vinilana/invokta
+
+https://youtu.be/VHRq-KP8S08?is=9VVbgilr1TjPZeHm
+
+https://www.youtube.com/live/amuUUrOUwlQ?is=KhygZkyOCxsp6VTc
+
+Bom, eu coloquei aqui o GitHub do Auto Brokers, coloquei o GitHub da Invokta, coloquei também o que significa a Invokta, né? Coloquei dois vídeos do YouTube que explicam o agent engineer, né? O que significaria isso mais ou menos. É que dizem que a tendência hoje é não existir mais interface de front-end no futuro. Eu tô criando o Auto Brokers com back-end e com front-end. E, na verdade, o que tá acontecendo é que eu tenho toda a inteligência de atendimentos, vou ter todas as inteligências de auxiliares, de cobrança, auxiliares depois de renovação, talvez. E isso daí tudo vai ser feito com agente de IA. Mas algumas inteligências artificiais, como é o caso da Hickfield, que cria vídeos, a Memzero, acho que é o nome, ela também é um agente que não tem front-end. Eles são sempre só, principalmente, o back-end pra conectar no cloud, o cowork, no GPT Work, no Hermes, em outras inteligências artificiais que têm a interface do front-end para utilizar o back-end dessas inteligências artificiais, né? E aí elas fazem o serviço delas em qualquer harness, digamos assim. E eu tô criando, além do harness, eu tô criando o back-end, eu tô criando, digamos, a solução completa, né? No caso da Hickfield, que é essa de vídeos, né, criação de vídeos, que tem os MCPs de todas as criadoras de vídeos, assim, de imagens e tal. Ela não tem a mesma coisa que o CapCut, que o... o que mais? Outras ferramentas de corte de vídeos, de criação de vídeos, né? Mas o GPT Work, o Cloud Cowork, o Cloud, ele já usa o Hickfield e fazem, digamos, os vídeos utilizando o Hickfield, né? Então eu queria que você analisasse essa mesma ideia para o Auto Brokers, para eu utilizar o back-end, a inteligência dos atendimentos, tudo e poder utilizar, digamos, o MCP dentro do Cloud, o pessoal tem o... normalmente as pessoas já têm o Cloud, já têm o ChatGPT. E aí utilizar da mesma maneira que o Hickfield. Ao invés de ter um site todo que tenha que fazer dentro do Hickfield, que tenha que fazer dentro do Auto Brokers, faça, digamos, os atendimentos e todas as coisas dentro do Cloud e dentro do GPT Work também. Não sei se só ter uma das coisas ou ter as duas coisas, né? O Auto Brokers com o próprio harness, né, o próprio site ali que a gente pode utilizar, ou ter apenas a parte agêntica de back-end, que pode se conectar a tudo, ao GPT, ao Cloud. Então eu gostaria que você desse uma analisada e colocasse pra mim as notas, assim, ó, colocar fazer só a parte agêntica de back-end, eu dou uma nota de zero a 100, de tantos. Se for para ter a solução completa, aí zero de zero a 100 você dá tal nota. E me diga o que você acha, qual a sua opinião, a sua visão de negócio, visão de futuro, porque dizem que essas partes... o futuro é mais a parte agêntica, né? Então eu sairia da minha de ser um rival do ChatGPT e do Cloud, e eu seria, digamos, um parceiro deles pra as pessoas utilizarem eles. Então eu quero saber a sua opinião sobre isso.
+
+
+
+
+
+
+
+
+-----------------------------------
+
+
+Sim. **Eu mudaria a direção estratégica do AutoBrokers por causa dessa tese — mas não da forma extrema de abandonar o frontend.**
+
+Minha recomendação seria transformar o AutoBrokers em um produto **headless-first, multi-interface**:
+
+> **A inteligência operacional do AutoBrokers vira o produto principal.
+> O Dashboard AutoBrokers vira apenas uma das interfaces para consumir essa inteligência.
+> ChatGPT, Claude, WhatsApp e futuros agentes viram outras interfaces.**
+
+Isso muda bastante a posição competitiva da empresa.
+
+### Minhas notas
+
+| Estratégia                                                      |       Nota | Minha avaliação                                                        |
+| --------------------------------------------------------------- | ---------: | ---------------------------------------------------------------------- |
+| **Só backend agêntico, sem interface própria**                  | **71/100** | Futurista e elegante, mas dependente demais de terceiros               |
+| **AutoBrokers completo e fechado, tudo dentro do site próprio** | **82/100** | Bom produto, mas desperdiça a oportunidade de distribuição via agentes |
+| **AutoBrokers completo + Engine headless + MCP/API**            | **97/100** | **É a direção que eu escolheria**                                      |
+
+E separadamente:
+
+| Decisão sobre Invokta                                      |       Nota |
+| ---------------------------------------------------------- | ---------: |
+| **Adotar a ideia de Action Engine**                        | **98/100** |
+| **Reescrever o AutoBrokers usando Invokta**                | **25/100** |
+| **Usar conceitos/padrões da Invokta no AutoBrokers atual** | **95/100** |
+
+## O ponto mais importante: “o frontend vai desaparecer” está só parcialmente certo
+
+Eu não acredito que interfaces vão desaparecer.
+
+Acredito que **interfaces genéricas vão perder importância**.
+
+O ChatGPT, Claude e outros agentes estão se tornando uma espécie de **frontend universal**. Em vez de abrir dez aplicações e descobrir onde clicar, você fala:
+
+> “AutoBrokers, veja as parcelas vencidas da corretora, identifique quem precisa receber cobrança e prepare os envios.”
+
+O agente pode chamar o AutoBrokers por trás.
+
+Isso é real hoje. Claude permite conectar servidores MCP remotos personalizados, e a OpenAI já permite apps/MCP customizados no ChatGPT. O Apps SDK da OpenAI inclusive é pensado para conectar a experiência dentro do ChatGPT ao **backend existente do desenvolvedor**. ([Centro de Ajuda Anthropic][1])
+
+Mas há uma enorme diferença entre:
+
+**“o chat deixa de ser necessariamente o seu”**
+
+e
+
+**“você não precisa mais de interface própria”.**
+
+Para o AutoBrokers, ainda existem coisas que um chat universal não substitui bem: onboarding da corretora, conexões, permissões, fila de atendimentos, handoffs humanos, aprovações, acompanhamento dos Work Runs, configurações dos Auxiliares, auditoria, custos, billing, administração, saúde do sistema e tratamento de exceções.
+
+Portanto eu mudaria a frase para:
+
+> **O frontend deixa de ser o produto.**
+>
+> **O frontend passa a ser uma superfície do produto.**
+
+Essa diferença é gigantesca.
+
+---
+
+# E tem uma coisa muito interessante: você JÁ construiu boa parte disso
+
+Quando fui olhar seu GitHub atual, encontrei uma coincidência muito forte.
+
+A sua SPEC-053 já diz literalmente, conceitualmente, que o AutoBrokers **não deve competir com ChatGPT, Claude, Hermes ou outros agentes horizontais em generalidade**.
+
+Ela diz que o diferencial defensável está em:
+
+InfoCap, Quiver, WhatsApp operacional, apólices, Atlas, seguradoras, portais autenticados, atendimentos reais, conhecimento proprietário, Auxiliares específicos e experiência acumulada entre corretoras.
+
+Isso é exatamente a tese que você está descrevendo agora.
+
+E mais.
+
+A SPEC-056 já define:
+
+> Outcome
+> → Skill
+> → contexto
+> → Capability Pack
+> → tools autorizadas
+> → Work Run
+> → resultado validado
+
+Além de Skill Registry, Tool Gateway, Capability Registry, versionamento, autorização, tracing, custo, MCP e governança.
+
+Ou seja:
+
+**você não precisa transformar o AutoBrokers em outra coisa.**
+
+Precisa fazer uma mudança de fronteira arquitetural.
+
+Hoje mentalmente está mais ou menos assim:
+
+```text
+AUTOBROKERS
+│
+├── Dashboard
+├── Chat
+├── Atendimentos
+├── Work OS
+├── Auxiliares
+├── Agentes
+├── Conhecimento
+└── Backend
+```
+
+Eu passaria a pensar assim:
+
+```text
+                 AUTOBROKERS ENGINE
+          Insurance Intelligence Infrastructure
+
+                        │
+        ┌───────────────┼───────────────┐
+        │               │               │
+      DOMAIN          WORK OS        KNOWLEDGE
+      BRAIN              │               │
+        │            Work Runs           │
+      Atlas          Approvals          RAG
+    Corredores       Artifacts       Evidence
+      Skills         Durable Jobs      Memory
+        │               │               │
+        └───────────────┼───────────────┘
+                        │
+                 TOOL GATEWAY
+                        │
+               Capability Registry
+                   Vault / Auth
+                        │
+        Seguradoras / InfoCap / Quiver /
+        WhatsApp / Email / Portais / APIs
+                        │
+                 ACTION GATEWAY
+                        │
+       ┌────────────────┼─────────────────┐
+       │                │                 │
+ AutoBrokers Web     ChatGPT           Claude
+       │              MCP               MCP
+       │                │                 │
+       ├──────────── WhatsApp ────────────┤
+       │                                  │
+       └──── APIs / parceiros / futuro ───┘
+```
+
+Isso é muito poderoso.
+
+## A mudança de pensamento é esta
+
+Hoje você tem um **SaaS com agentes dentro**.
+
+Eu gostaria que ele se tornasse:
+
+> **uma infraestrutura de inteligência operacional para seguros que também possui seu próprio SaaS.**
+
+É uma diferença estratégica enorme.
+
+É mais próximo da lógica da **Stripe** do que da lógica do ChatGPT.
+
+A Stripe tem dashboard.
+
+Mas ninguém diria que o valor da Stripe é o dashboard.
+
+O valor é a infraestrutura de pagamentos.
+
+O Dashboard é uma interface excelente para controlá-la.
+
+No AutoBrokers:
+
+> **Dashboard ≠ produto inteiro.**
+>
+> **AutoBrokers Engine = produto.**
+
+---
+
+# O que a Invokta entendeu muito bem
+
+A definição da própria Invokta é excelente.
+
+Um Action Engine encapsula uma capacidade de domínio reutilizável atrás de um contrato estável, enquanto modelo, prompt, RAG, provider, ferramentas e implementação podem mudar por trás. Ela também deixa explícito que isso é um **conceito independente da Invokta, de TypeScript e até de MCP**.
+
+Esse detalhe é importantíssimo.
+
+Porque significa:
+
+**você pode aplicar a arquitetura da Invokta sem instalar a Invokta.**
+
+E eu faria exatamente isso.
+
+Além disso, a própria Invokta diz que **não é harness, não é workflow engine, não fornece model routing nem plataforma de observabilidade**. ([Invokta][2])
+
+O AutoBrokers já tem essas camadas.
+
+Por isso colocar Invokta no centro provavelmente criaria duplicação.
+
+E há outro fator: a Invokta está muito nova. O repositório está em aproximadamente **v0.6.1, lançada em 20 de agosto de 2026**, e o GitHub tinha cerca de 38 stars quando consultei. É um projeto muito interessante e em desenvolvimento rápido, mas ainda bastante jovem.  ([GitHub][3])
+
+Além disso, ela é TypeScript.
+
+Seu runtime central é Python/FastAPI/LangGraph.
+
+E sua própria arquitetura já determina que não deve nascer um segundo runtime concorrente.
+
+Portanto:
+
+> **Aprender com Invokta: SIM.**
+>
+> **Transformar AutoBrokers em Invokta: NÃO.**
+
+---
+
+# O que eu faria agora no AutoBrokers
+
+Eu faria isso em seis movimentos, sem desmontar nada do que já está funcionando:
+
+1. **Criaria oficialmente a fronteira “AutoBrokers Engine”.** Dashboard, ChatGPT, Claude e outros clientes nunca implementariam lógica de seguros. Eles apenas solicitariam outcomes ao Engine.
+
+2. **Transformaria as capacidades mais importantes em Actions de domínio estáveis.** Não exponha 150 tools pequenas do AutoBrokers para Claude decidir como montar um atendimento. Exponha coisas como `policy.answer-with-evidence`, `service.handle-request`, `claims.advance-case`, `collections.process-overdue`, `renewal.prepare-opportunity`, `operations.generate-briefing`. A complexidade fica dentro do AutoBrokers.
+
+3. **Criaria um único Invocation Gateway.** Tanto o Dashboard quanto MCP, API e futuros canais deveriam entrar pelo mesmo contrato lógico. Isso evita que “AutoBrokers no Claude” funcione diferente de “AutoBrokers no próprio site”.
+
+4. **Criaria o servidor MCP remoto oficial AutoBrokers.** MCP seria apenas um adapter. Isso é importante porque sua própria SPEC já tem a regra correta: **“MCP é protocolo; não é produto nem cérebro.”**
+
+5. **Faria um piloto com Claude e ChatGPT antes de mexer profundamente no frontend.** Escolheria 5–10 capacidades reais e colocaria o mesmo tenant usando AutoBrokers Web, Claude + AutoBrokers e ChatGPT + AutoBrokers. Depois mediria onde cada experiência ganha.
+
+6. **Só então reduziria investimentos em UI genérica.** Não gastaria meses tentando fazer o Chat do AutoBrokers superar ChatGPT ou Claude em UX genérica. Investiria frontend onde existe valor vertical: atendimentos, Work OS, aprovações, Auxiliares, configuração, supervisão, dados, governança e control plane.
+
+---
+
+# Há um detalhe técnico importante no seu código atual
+
+Eu **não exporia simplesmente suas APIs atuais para ChatGPT/Claude**.
+
+Por exemplo, seu `work_runs.py` atual foi construído para comunicação interna/BFF: exige `X-Internal-Key` e trabalha com `company_id` dentro desse contexto.
+
+Isso faz sentido internamente.
+
+Mas para MCP externo, a arquitetura precisa ser:
+
+```text
+Usuário conecta AutoBrokers
+        ↓
+OAuth
+        ↓
+identity
+        ↓
+tenant resolvido no servidor
+        ↓
+permissions / role
+        ↓
+Capability Registry
+        ↓
+Action
+```
+
+O Claude ou ChatGPT **jamais escolhe `company_id`**.
+
+O AutoBrokers sabe:
+
+> “este token é da Maria, da Resulta, papel X, permissões Y”.
+
+E executa somente naquele tenant.
+
+Esse pedaço é fundamental para o modelo multi-tenant.
+
+---
+
+# E eu NÃO deixaria Claude/ChatGPT orquestrarem o AutoBrokers internamente
+
+Esse ponto é muito importante.
+
+Imagine que você exponha:
+
+```text
+buscar_cliente
+buscar_apolice
+abrir_portal
+clicar_menu
+enviar_whatsapp
+buscar_documento
+gerar_boleto
+registrar_atendimento
+```
+
+E ensine Claude a montar o atendimento.
+
+Isso seria ruim.
+
+Aí você estaria novamente espalhando a inteligência em cada harness.
+
+O correto seria algo como:
+
+```text
+service.resolve-assistance
+```
+
+E **o AutoBrokers** decide internamente:
+
+```text
+contexto
+→ Atlas
+→ corredor
+→ seguradora
+→ tools
+→ evidência
+→ aprovação
+→ ação
+→ registro
+→ resultado
+```
+
+Claude apenas diz:
+
+> “Resolva a assistência deste segurado.”
+
+Isso é Action Engine de verdade.
+
+E se amanhã o cliente trocar Claude por ChatGPT, Gemini ou qualquer agente de 2028:
+
+**nada muda no AutoBrokers.**
+
+---
+
+# Isso cria um posicionamento de negócio muito melhor
+
+Hoje existe o risco de alguém interpretar o AutoBrokers como:
+
+> “um ChatGPT para corretoras”.
+
+Eu continuaria usando essa comparação para explicar a experiência, mas tecnologicamente eu iria além.
+
+Eu posicionaria internamente a empresa como:
+
+> **Insurance Intelligence Infrastructure**
+
+ou
+
+> **Operating Intelligence for Insurance Brokers**
+
+E o AutoBrokers seria acessível:
+
+**dentro do AutoBrokers, dentro do ChatGPT, dentro do Claude, pelo WhatsApp, via API e futuramente através de qualquer harness compatível.**
+
+Aí você deixa de competir diretamente pela interface.
+
+OpenAI melhora o ChatGPT?
+
+Ótimo para você.
+
+Anthropic melhora Claude?
+
+Ótimo para você.
+
+Gemini cria um harness excelente?
+
+Ótimo para você.
+
+Porque todos eles podem se tornar **clientes do AutoBrokers Engine**.
+
+Essa é uma posição estratégica muito melhor.
+
+---
+
+# Mas por que não matar o Dashboard então?
+
+Porque aí você entrega sua relação com o cliente para outro fornecedor.
+
+E já existem limitações concretas hoje.
+
+No ChatGPT, o suporte MCP completo com ações de escrita está atualmente em beta principalmente para **Business, Enterprise e Edu**; Pro tem limitações de MCP para leitura/fetch. Apps MCP personalizados também têm diferenças de superfície e administração. ([OpenAI Help Center][4])
+
+No Claude, conectores MCP remotos estão disponíveis em Pro, Max, Team e Enterprise, e a política/UX é diferente. ([Centro de Ajuda Anthropic][1])
+
+Imagine depender 100% disso.
+
+Uma mudança da OpenAI poderia afetar seu produto.
+
+Uma mudança da Anthropic poderia afetar seu onboarding.
+
+E você perderia parcialmente marca, relacionamento direto, analytics e controle da experiência.
+
+Por isso **71/100** para headless-only.
+
+É tecnologicamente sofisticado.
+
+Mas empresarialmente cria dependência demais.
+
+---
+
+# Minha visão para o AutoBrokers ficou ainda mais clara depois dessa análise
+
+Eu faria o AutoBrokers possuir **duas naturezas simultaneamente**:
+
+**AutoBrokers Workspace**
+A solução completa da corretora.
+
+Dashboard, Atendimentos, Work OS, Central de Agentes, Conhecimento, Auxiliares, Admin etc.
+
+E:
+
+**AutoBrokers Engine**
+A infraestrutura headless que executa a inteligência.
+
+Pode ser consumida por AutoBrokers Workspace, ChatGPT, Claude, WhatsApp, APIs, parceiros e futuros agentes.
+
+Você não precisa necessariamente mostrar esses dois nomes comercialmente agora.
+
+É uma divisão arquitetural.
+
+E isso deixa uma coisa muito interessante possível no futuro:
+
+> Uma corretora poderia praticamente nunca abrir o site do AutoBrokers — e ainda assim ser uma excelente cliente do AutoBrokers.
+
+Ela poderia trabalhar no Claude o dia inteiro.
+
+Outra poderia trabalhar no ChatGPT.
+
+Outra poderia usar somente o Dashboard AutoBrokers.
+
+Outra poderia misturar os três.
+
+**A inteligência, o histórico, os Work Runs, o Atlas, as regras, as autorizações e os resultados continuariam sendo AutoBrokers.**
+
+Essa, para mim, é a arquitetura mais próxima de **100/100** para o futuro que você está descrevendo.
+
+## Minha decisão final
+
+Eu **não pararia o desenvolvimento do frontend**.
+
+Eu também **não continuaria tratando o frontend como a fronteira do produto**.
+
+Eu faria uma mudança arquitetural agora:
+
+> **AUTOBROKERS = ENGINE PRIMEIRO.
+> DASHBOARD = FIRST-PARTY CLIENT.
+> CHATGPT/CLAUDE = THIRD-PARTY CLIENTS.
+> MCP/API = DISTRIBUTION LAYER.**
+
+E manteria o seu Smith/LangGraph, Work OS, Capability Registry, Tool Gateway, Vault, Atlas, Skills, Auxiliares e conhecimento como o coração.
+
+A ironia é que você já construiu cerca de **70–80% da arquitetura conceitual necessária para seguir a tese da Invokta**. O que falta principalmente é tornar essa fronteira **formal, externa, autenticada e harness-agnostic**.
+
+E é isso — muito mais do que trocar de framework — que eu colocaria como uma das próximas decisões arquiteturais importantes do AutoBrokers.
+
+**Nota final para essa mudança de direção específica do AutoBrokers: 97/100.**
+
+Os dois links do YouTube não ficaram diretamente legíveis pela ferramenta de navegação, então não estou atribuindo frases específicas aos vídeos; validei a tese que você descreveu contra a Invokta, o seu repositório atual e a documentação vigente de OpenAI e Anthropic.
+
+Como MCP, ChatGPT Apps e Claude Connectors estão mudando muito rápido, posso acompanhar especificamente esse ecossistema e avisar quando surgir algo que altere essa decisão arquitetural.
+
+[1]: https://support.anthropic.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp?utm_source=chatgpt.com "Getting Started with Custom Connectors Using Remote MCP | Anthropic Help Center"
+[2]: https://invokta.dev/ "Invokta — Build the task once. Invoke it anywhere."
+[3]: https://github.com/vinilana/invokta?utm_source=chatgpt.com "GitHub - vinilana/invokta: A TypeScript framework for reusable domain AI capabilities across direct, CLI, and MCP transports. · GitHub"
+[4]: https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt?utm_source=chatgpt.com "Developer mode and MCP apps in ChatGPT | OpenAI Help Center"
+
+
+
+
+
+
+
+
+
+
+----------------------------------
+
+
+
+EU VOU COLOCAR ABAIXO UMA LISTA DE IDEIAS E NOVAS FEATUES, ALGUMAS MUDAM A ESTRUTURA DO PROJEJTO, ALGUMAS POODEM SER CMPLETADAS UMAS NNAS OUTRAS, E ALGUMAS COISAS APARECERAM NOVAS NO PROOJETO.
+
+ESTA MEIOO BAGUNÇADO, É TUDO MEIO QUE UM RASCUNHO, MAS GOOSTARIA QUE VC ANALISASSE ESSAS QUEST\~ES E TROOUXESSE O QUE TEREI SALTOS DE GANHOS NO PROJETO E GANHOS EM SITUAÇOES ESPECIFICAS.
+
+QUER QUE ANALISE TUD, DE SUA PINIA SBRE ESSAS IDEIAS, NDE ELAS PODEM SER USADAS, SE DEVEMS USAR, SE DEVEMS MELHORAR O PRJETO, ETC…
+
+TEM AUTBRKERS ENGINE QUE VC JA FEZ UM ESTUDO E DEVE ENTRAR NNA SUA ANALISE JUNTO, TEM DEEPSEEK HARNESS QUE PODE TRAZER ALGUMAS IDEIAS PARA EU INCLUIR NO PRJETO E UMA SERIE DE UTRAS CISAS QUE PODEMOS EXECUTAR.
+
+QUER QUE DE UMA NTA DE 0 A 100 PARA ESSAS VARIAS SITUAÇÕES E IDEIAS E ESTRUTURAS QUE PDEMOS INCLUIR NO PROJETO MODELANDO O QUE EXISTE PARA NOSSA REALIDADE VISANDO QUE O PROJETO SEJA AINDA MELHOR.
+
+EU ESTOU CLOCANDO UMA LISTA GRANDE DE COISAS, MAS É PARA EU POODER IR FOCANDO NAS PRINCIPAIS E IR EXECUTANDO ELAS POUCO A POUCOO PARA NOO FINAL DE TUDO EU TER UM PROJETO MUITO MAIS VALIOSOO.
+
+VC DEVE ME AUDAR COM ISSO. É UM RASCUNHO… QUEROO QUE ANALISE O QUE FIZEMOS CM O AUTBROKERS ENGINE… E BUSQUE O QUE DEVE SER FEITO NO PROJETO AGORA.
+
+ESTAMS FOCADOS NA EXECUÇÃO DE MELHORIAS PARA O ATENDIMENTO NESSE MOOMENTOO. TEMOS SPECS 085 SENDOO EXECUTADA AGORA E TEREMOS VARIAS OUTRAS QUE PRECISAM SER EXECUTADAS, ATÉ A 092 SE NAO ESTOU ENGANADOO, MAS ABAIXOO TEM OUTRAS QUESTÕES QUE PODEM MELHORAR E MUITO O PROJETO.
+
+QUERO QUE AVALIE CADA PONTO, QUE PESQUISE PROFUNDAMENTE AS IDEIAS, PENSE NO PROJETO COMO ELE ESTA AGOORA E COOMO ELE VAI FICAR E AI DIGA A SUA VISÃO DO QUE DEVE VIR PRIMEIRO, O QUE É MAIS VALIOSO, O QUE DEVEMOS FAZER NA SUA VISÃO PARA TERMOS A MELHOR ESTRUTURA DE INTELIGENCIA ARTIFICIAL PARA CORRETORAS DE SEGUROS.
+
+AUTOBROKERS ENGINE - GPT. NAO MUDAR, MAS TER OS 2.
+
+—
+
+DEEPSEEK HARNESS - O QUE PODEMOS APRENDER E MELHORAR? O QUE PODE SER FEITO JUNTO COM O AUTOBROKERS ENGINE?
+
+AQUI TALVEZ POSSA ENTRAR O CNCEITO DE MARKETPLACE DE AUXILIARES GLOBAIS QUE SEJA FACIL PARA A PROPRIA CORRETOORA CNSEGUIR COLOCAR. MAS AI EU PERCOO O MEU SERVIÇO DE EU MESMO FAZER AUXILIARES EXCLUSIVOS SOB DEMANDA PARA AUTOMATIZAR OS PROCESSOS.
+
+—
+
+GROK BOT - SUBAGENTES ORQUESTRADOS PELO AUTOBROKERS. AUXILIARES PODEM SER ESSES SUBAGENTES? QUAL MELHOR FORMATO? HERMES, GROOKBOOT, ETC…
+
+UMA COISA QUE PODE TER A VER COM ISSO É O FATO DE ESTAR MEIO CONFUSO ESTRUTURA GLOBAL/CORRETOORA/USUARIO. MELHOROAR ISSO. BUSCAR REFERENCIAS DE TEAMS, SLAK. TBM QUERO CONECTAR OO SLAK PQ MUITAS COORREDORAS DEVEM USAR ISSO. SE TIVEREM OUTROS APPS SIMILARES DE EQUIPE, GESTÃO DAS EQUIPES DA CORRETORA, DEVEMOS COLOOCAR A AUTOOMATICAMENTE VIRAREM MEMOORIAS PARA A CORRETORA.
+
+—
+
+ESTRUTURA DE PRTOCOLOS: CRIEI PROTOCOLO DE CRIAÇÃO DE ROOTAS/COORREDOORES PARA ATENDIMENTOOS DE CADA SERVIÇO ESPECIFICO
+
+EX: **allianz**/resi/**maquina de lavar, yelum**/auto/**pneu., allianz**/auto/**guincho.**
+
+ESSE PROTOCOLO SERVE PARA QUALQUER LLM SABER COMO DEVE FAZER PARA CRIAR E ATUALIZAR UM SERVIÇO DE ALGUMA SEGURADORA X RAMO X SERVIÇO/ASSISTENCIA. TEM UM PROTOOCOL AGORA DETALHADO DE COMO MELHORAR UM SERVIÇO QUE JA TEMOS E DEIXAR FUNCIONANDO DE PONTA A PONTA E TBM CRIAR UM NOVO SERVIÇO QUE AINDA NAO TEMOS [EX: **mapfre**/auto/**chaveiro ]**  COM ISSO QUALQUER LLM E QUALQUER CHAT NOVO PODEM CRIAR UM NOVO SERVIÇO/CORREDOOR/PLAYBOOOK SEGUINDO ESSE PROOTOCOLO.
+
+DITO ISSOO, A IDEIA É TER PROTOCOLOS PARA TUDO:
+
+- COMO CRIAR UMA SKILL NOVA? TA MEIOO BAGUNÇADOO E COONFUOO SKILLS E AUXILIARES.
+- COMO CRIAR UM AUXILIAR NOVOO?
+- COMO IMPLANTAR UM NOVO SISTEMA DE GESTÃO ESTILO INFOCAP? QUIVER, SEGFY, ETC… PARA QUE ELES EXECUTEM AS MESMAS TAREFAS QUE FAZEM NA INFOCAP.
+- COMO COLOCAR UM CONECTOR NOVO?
+- RAG - PROOTOCOL COMPLETO DE COMO CRIAR NOVAS MEMORIAS A PARTIR DE UM NOVO BANCOO DE DADOS PARA DESTILAÇÃO, CURADORIA E PUBLICAÇÃO NAS MEMORIAS.
+- COMO INCLUIR INFORMAÇÕES NOVAS NO RAG E MEMORIAS?
+- COMO CRIAR UM AUXILIAR DE COBRANÇA DE OUTRA SEGURADORA QUE AINDA NAO TEMOS?
+- COMO CRIAR UMA NOVA SPEC PARA UMA NOVA FEATURE?
+
+POR EXEMPLO, AGORA EU QUERO TER SEMPRE A REGRA PARA CRIAR UMA SPEC QUE TENHAM SEMPRE SUBAGENTES AJUDANDO A LLM ORQUESTRADORA E JUIZES CRITICOS PARA TERMOS A QUALIDADE MAXIMA NA CRIAÇÃÕO DA SPEC E NA EXECUÇÃO DA SPEC. E ISSO EU QUEROO PARA TUDO QUE FOR DESENNVOLVIDO. TAMBÉM QUEROO O CONCEITOO DE TRIPLO AAA NAS EXECUÇÕES.
+
+—
+
+CENTRAL DE AGENTES
+
+JA CRIEI SPECS PARA VERIFICAR TUDO ISSO, MAS É PRECISO QUE TUDOO FUNCIONE.
+
+POR EXEMPLO, NUM ATENDIMENTOO QUE TRAVA, PRECISA SER DESTRAVADO PELA CENTRAL E SE NAO FOR DESTRAVADO, PRECISA SER AVISADO O HANDOFF.
+
+COLOCAR PRA FUNCIONAR O AGENTE DE **Follow-up**. ESTA MUITO RUIM AINDA ESSA PARTE. PRECISO ORGANIZAR MELHOR AS REGRAS PARA MANDAR MSG PRA FINALIZAR O ATENDIMENTNO CORRETAMENTE.
+
+NO CASO DE ATENDIMENTO, DURANTE O ACIONAMENTO PODE SER QUE O BOT DA SEGURADORA CHAME UM ATENDENTE HUMANO. POODEMOS ENVIAR UMA LISTA PARA O HUMANOO FAER O ACIONAMENTO?É SIMPLES? CMPLEXO? VAI CONSEGUIR FAER ISSO NO MEIOO DO ACIONAMENTO?
+
+NO ATENDIMENTO TEMOS ASSISTENCIA E OO SINISTRO VAI PARA HANDOFF. MAS PRECISAMOS IR APROVEITANDO TODA ESTRUTURA PARA ACUMULAR INTELIGENCIA PARA QUE N FUTURO SEJA MAIS FACIL DE ATENDER SINISTROOS SIMPLES SEM PRECISAR DE HUMANO. JA TEMOS UMA ESTRUTURA CUIDANDO DOS ATENDIMENTOS, MAS PODEMOS IR COLETANDO DADOS, CRIANDO A BASE PARA NO FUTURO FAZERMOS O MESMO NOS SINISTROS.
+
+—
+
+DREAMS:
+
+COOLOCAR NA CENTRAL DE AGENTES OU CRIAR UMA NOVA FUNÇÃ DE DREAMS PARA ATUALIAR AS MELHOROIAS DIARIAMENTE. TODAS AS NOITES AS MEMORIAS GLOBAIS, DA CORRETORA E USUARIO SAOO TRANSFOORMADAS EM CONHECIMENTO NOVO.
+
+MELHORAR A ESTRUTURA DE SEGUNDO CEREBRO DA CORRETORA, DOS USUARIOS. PENSAR BEM NA QUESTÃO DE SEPARAR OS USUARIOS E COORRETORA DA FOORMA CERTA.
+
+GRAPIFY, MEM0… QUAIS FERRAMENTAS USAR? QUAIS JA TENHO E SAO BOAS? QUAIS SUBATITUIR E SE VALE A PENA SUBSTITUIR.
+
+—
+
+CRIAR O JARVYS AO VIVO, CONVERSA AO VIVOO USANDO A ESTRUTURA DE 77 DOLARES.
+
+—
+
+COLOCAR A OPORTUNIDADE DE TER UMA IA DE GRAÇA PARA AS COORRETORAS TESTAREM OO SISTEMA E EU NAO GASTAR NADA. AI ELES ESTARÃO DENTRO E EU NAOO VU GASTAR.
+
+TBM É INTERESSANTE COLOCAR OOS PROVIDERS DE PACOTE DAS LLMS ESTILO O LIONCODE, LIONCLAW… PARA USAR O PACOOTE DO CLAUDE E DO GPT.
+
+—
+
+CRIAR LISTA DE CAPACIDADES E HABILIDADES E COISAS QUE SERIA IDEAL PARA AS CORRETORAS USAREM.
+
+- BAOYU INFOGRAFIC - GITHUB PARA INFOOGRAFICOS
+- CRIADOR DE APRESENTAÇÕES
+- CRIADOR DE CARROSSEIS DIARIOS
+- CRIADOR DE POSTS NO BLOOG PARA MELHORAR POSICIONAMENTO NO GOGLE.
+
+—
+
+MELHORIAS DO QUE TEMOS:
+
+- ENTREGAS ESTA MUITO RUIM.
+- IDENTIDADE DA CORRETORA NAOO ESTA FUNCIONANDO AUTOOMATICAMENTE. O QUE ESTA ACONTECENDO? COLOCAR O CONCEITOO DE SOUL NO SISTEMA.
+- CARTAS DO RAG NAO APARECEM NAS MEMORIAS DO DASHBOARD. E QUANDO CLICO NUME MEMORIA ELA ABRE, MAS NAO VAI ATÉ A MEMORIA.
+- JA TEM UMA SPEC DE META ADS, MAIS DE UM WHATSAPP CONECTADO. VER A MELHOR FORMA DE FAZER ISSO. 2 OU 3 QR CODES POPOR CORRETORA? QR CODE A NIVEL DE USUARIO?
+- COOLOCAR EMAIL COMO CANAL. QUAIS CANAIS DEVEMOOS TER ALEM DOO WHATSAPP E EMAIL?
+- CHAT PRINCIPAL ESTA TRAVANDO NA ESCRITA E DEMORANDO MUITO PARA COMEÇAR A PRIMEIRA RESPOSTA.
+- A CAIXA DE TEXTO DO CHAT PRINCIPAL ESTA FEITA E MUITO SIMPLES. PRECISAMOS TER MELHOR
+- NO MOBILE, QUANDO ESTAMOS USANDO O CHAT PRINCIPAL, TEM OS ATALHOS NNA PARTE DEBAIXOO E ESTA OCUPANDO MUITO ESPAÇO. MELHOROAR ISSO.
+- NOS ATENDIMENNTOS, MELHORAR FILA/KANBAN E COLOCAR OS CASOS NOVAMENNTE E S SEGURADS ATENDIDOS.
+
+—
+
+### INFOCAP E INFORMAÇÕES:
+
+PRECISO SABER O QUE REALMENTE A INFOCAP ENTREGA. FAER UMA ANALISE COMPLELTA, TALVE O IDEAL SEJA O FABLE.
+
+PRECISO QUE VC ENTRE NA INFOOCAP E VEJA QUAIS SAO AS INFORMAÇÕES QUE VC CONSEGUE VERIFICAR. ESSE LINK ABAIXO TEM TODAS AS INSTRUÇÕOES PARA NAVEGAÇÃO DENTRO DA INFOCAP E TODAS AS INFORMAÇÕES QUE APARECEM PARA NÓOS.
+
+EU QUERO QUE VC VEJA SE CONSEGUE DADOOS DFINANCEIROS, DADOS DE VENDAS, DADOS DE COMISSÕES POOPR VENDEDOR, SE APARECE QUEM VENDEU MAIS, QUEM VENDEU MENOS…
+
+TBM QUERO QUE VC ME DIGA QUAIS DADOS DE CONTABILIDADE APARECEM, SE VC CONSEGUE ALGUM DADO.
+
+QUAL É O OBJETIVO:
+
+CRIAR UM AUXILIAR DE RELATORIO MUITO PODEROSO PARA AMANHA. PRIMEIRO PRECISAMOS PENSAR NO AUXILIAR. PRECISO SABER QUAIS INFORMAÇÕES POODEMOS ACESSAR DENTRO DA INFOCAP E QUAL TIPO DE RELATORIO PODEMOS CRIAR.
+
+ALGUM RELATORIO DE COMPARAÇÃO DE QUEM VENDEU MAIS, NO ULTIMO TRIMENSTRE COMPAARADO AO TRIMESTRE ANTERIOR…
+
+PRECISO QUE VC VASCULHER TUDO QUE PUDER, TENTE ACESSAR QUALQUER INFORMAÇÃO QUE CONSEGUIR, FINANCEIRA, DE COMMISSÕES PAGAS PELAS SEGURADORAS, COMISSOES DE VENDAS, NUMERO DE VENDAS, ETC….
+
+E AI TRAGA O QUE VC CONSEGUE VER E QUAIS OS PRINCIPAIS RELATORIOS QUE PODEMOS CRIAR.
+
+TEM VARIOS LINKS AQUI ABAIXO
+
+[https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#26373178-0b36-4b0c-a68b-d05e40cf0b50](https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#26373178-0b36-4b0c-a68b-d05e40cf0b50)
+
+[https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#46bf7a42-5ab7-44a5-aeff-b20cb2e87afe](https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#46bf7a42-5ab7-44a5-aeff-b20cb2e87afe)
+
+[https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#82409b48-2ae6-47da-98d2-bdd0dd3b3ec4](https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#82409b48-2ae6-47da-98d2-bdd0dd3b3ec4)
+
+[https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#ae7092f4-a52d-4ba6-b04c-a636cfeb94f5](https://documenter.getpostman.com/view/33455116/2sAYkBrLmi#ae7092f4-a52d-4ba6-b04c-a636cfeb94f5)
+
+NALISE ESSES LINKS QUE EU COLOQUEI, MAS NESSA PAGINA TEM MUITO MAIS LINKS AINDA, MAIS OPÇÕES E PRECISO QUE VC ME AJUDE A PENSAR NO MELHOR AUXILIAR PARA FAZER JA NA SEQUENCIA PRA DEIXAR PRONTO NUMA SPEC SÓ.
+
+LEMBRANDO QUE TEMOS TODOS ESSES ARTEFATOS ABAIXO.
+
+Sistema
+
+Panorama da Corretora →	Aurora	Executivo, veredito primeiro
+
+[https://claude.ai/code/artifact/65231676-f07d-4121-ad06-607dbc94d3b8](https://claude.ai/code/artifact/65231676-f07d-4121-ad06-607dbc94d3b8)
+
+Carteira e Comissões →	Meridian	Ponte de variação, numeral tabular
+
+[https://claude.ai/code/artifact/faab4f49-d473-4aa0-9572-3d58fb09871f](https://claude.ai/code/artifact/faab4f49-d473-4aa0-9572-3d58fb09871f)
+
+Briefing Diário →	Obsidian	Escuro luminoso, para o celular
+
+[https://claude.ai/code/artifact/d6e9700f-380a-4f68-8f34-a372ed1bb43f](https://claude.ai/code/artifact/d6e9700f-380a-4f68-8f34-a372ed1bb43f)
+
+Produção e Funil →	Aurora	Conversão entre etapas
+
+[https://claude.ai/code/artifact/4c98d38d-9f33-4b89-abe3-3b5123ae8ce2](https://claude.ai/code/artifact/4c98d38d-9f33-4b89-abe3-3b5123ae8ce2)
+
+Radar de Renovações →	Meridian	R$ 892 mil vencendo
+
+[https://claude.ai/code/artifact/3171ae1e-96f5-4dfd-a353-4c3b9a28ca70](https://claude.ai/code/artifact/3171ae1e-96f5-4dfd-a353-4c3b9a28ca70)
+
+Dossiê do Segurado →	Aurora	Vai para o cliente do corretor
+
+[https://claude.ai/code/artifact/f280107b-2dbb-4a8b-8c90-6227023868c8](https://claude.ai/code/artifact/f280107b-2dbb-4a8b-8c90-6227023868c8)
+
+Sinistros e Seguradoras →	Meridian	Munição de negociação
+
+[https://claude.ai/code/artifact/f338681d-d934-4b6d-8ba5-339df815b627](https://claude.ai/code/artifact/f338681d-d934-4b6d-8ba5-339df815b627)
+
+Dossiê de Pesquisa →	Aurora	Texto conduz, número sustenta
+
+[https://claude.ai/code/artifact/be622638-e1a4-4da4-a7e4-fc0badf97f7b](https://claude.ai/code/artifact/be622638-e1a4-4da4-a7e4-fc0badf97f7b)
+
+QUAL CRIUZAMENTO DE DADOS, QUAL SERIA O RELATORIO MAIS INTELIGENTE QUE PODEMOS FAZER? MAS QUE NOS POSSAMOS CRIAR O AUXILIAR JA NA SEQUENCIA PARA EU AMANHA PEDIR ESSE RELATORIO PAPRA O CHAT E ELE ENTREGAR ESSE RELATORIO FEITO, COM COMPARAÕES, CRUZAMENTO DE DADOS,… PROJEÇÃO DAS VENDAS, S COLABORADORES QUE TÃO CAINDO, QUEM TA MELHORANDO, ETC…
+
+—
+
+### CAPACIDADE DE PESQUISA
+
+VERIFICAR ESSA IDEIA COM A FUNÇÃO QUE JA TEM DO FIRECRAWL E TAVILY
+
+Sim — **o Agent-Reach tem valor real**, não é encheção de linguiça. Mas ele **não é uma peça direta das SPECs 073/074/075**. Ele está em outra camada.
+
+### Minha nota para o AutoBrokers: **82/100**
+
+### Para instalar dentro do Portal Worker: **35/100**
+
+### Para criar capacidade de pesquisa/inteligência para Core, Marketing e futuros Auxiliares: **94/100**
+
+O ponto é entender **onde ele encaixa**.
+
+# Onde Agent-Reach poderia ser muito útil no AutoBrokers
+
+A aplicação mais interessante não é assistência ou cobrança.
+
+É criar um **Internet Intelligence Pack** para o Core e para futuros Auxiliares.
+
+Imagine o Core recebendo:
+
+> “Pesquise o que está acontecendo com a nova regra da SUSEP sobre X.”
+
+ou:
+
+> “Veja o que corretores estão reclamando da Porto esta semana.”
+
+ou:
+
+> “Pesquise notícias sobre aumento de sinistralidade de seguro auto.”
+
+ou:
+
+> “Encontre discussões sobre a nova API da Meta para WhatsApp.”
+
+ou ainda um Auxiliar de Inteligência Comercial:
+
+```
+LinkedIn
++
+sites das corretoras
++
+Google/Web
++
+YouTube
++
+RSS
++
+GitHub
+
+```
+
+↓
+
+```
+monitoramento de concorrentes
+prospecção
+pesquisa de mercado
+conteúdo para marketing
+novidades de seguradoras
+novas tecnologias
+
+```
+
+Nesse cenário o Agent-Reach fica muito interessante.
+
+### Especialmente para:
+
+**Core / chat principal:** 88/100
+
+**Marketing Intelligence:** 96/100
+
+**Pesquisa competitiva:** 96/100
+
+**Prospecção comercial:** 90/100
+
+**Portal Worker:** 35/100
+
+**Execuções transacionais de seguros:** 25/100
+
+---
+
+---
+
+# Meu veredito sobre Agent-Reach
+
+**Não é algo que eu colocaria no roadmap atual das SPECs.**
+
+Primeiro terminaria:
+
+**074 → 075.**
+
+Depois eu faria uma pequena investigação para criar:
+
+> **AutoBrokers Internet Intelligence Capability**
+
+E usaria Agent-Reach como **uma das referências ou até provider**, não necessariamente como autoridade arquitetural.
+
+### Nota final: **82/100**
+
+**Vale estudar? Sim.**
+
+**Vale copiar algumas ideias? Muito.**
+
+**Vale instalar agora no coração do AutoBrokers? Não.**
+
+**Pode virar uma feature poderosa mais tarde? Sim.**
+
+---
+
+# Agora: 5 repositórios que eu considero ainda mais estratégicos
+
+Eu filtrei pensando em coisas que realmente poderiam melhorar **Core, Auxiliares, Skills, Tools, Browser e memória** — e não simplesmente “repos de IA populares”.
+
+| Repo Nota AutoBrokers O que eu aproveitaria  |            |                                                                     |
+| -------------------------------------------- | ---------- | ------------------------------------------------------------------- |
+| **browserbase/skills**                       | **99/100** | Portal Profiler, browser-to-API, traces, skills de browser e testes |
+| **anthropics/skills**                        | **98/100** | padrão de Skills reutilizáveis para Core/Auxiliares                 |
+| **ComposioHQ/composio**                      | **95/100** | centenas de integrações externas + auth/tool layer                  |
+| **mem0ai/mem0**                              | **92/100** | memória longa e personalizada para Core/Atendimento                 |
+| **langchain-ai/deepagents**                  | **91/100** | subagentes, long-running work, context offloading, skills/HITL      |
+
+Vou explicar por quê.
+
+---
+
+## 1. Browserbase Skills — **99/100 - ACHO QUE JA FOI APLICADO**
+
+Este é o que eu estudaria **primeiro**.
+
+Não só porque mexe com browser.
+
+O repositório oficial possui Skills específicas como:
+
+**browser-trace**
+
+captura CDP/network/screenshots/DOM;
+
+**browser-to-api**
+
+observa tráfego HTTP de um site e tenta gerar uma especificação OpenAPI;
+
+**autobrowse**
+
+executa, observa onde falhou e melhora a automação;
+
+**ui-test**
+
+faz testes adversariais de UI;
+
+além de browser/search e outras capacidades. ([GitHub](https://github.com/browserbase/skills/blob/main/README.md?utm_source=chatgpt.com))
+
+Percebe a coincidência?
+
+Nós gastamos várias conversas fazendo:
+
+```
+F12
+HAR
+Network
+descobrir API
+HTML
+DOM
+screenshots
+
+```
+
+Eles criaram Skills exatamente para:
+
+```
+browser trace
+        ↓
+descobrir API
+        ↓
+gerar contrato
+        ↓
+reutilizar automação
+
+```
+
+### Aplicação no AutoBrokers
+
+Isso poderia acelerar brutalmente o onboarding de:
+
+- novas seguradoras;
+- novas journeys;
+- novos portais;
+- correções quando portal muda.
+
+Não significa substituir nosso Portal Worker.
+
+Significa **pegar ideias e possivelmente algumas Skills do Profiler**.
+
+Esse repo é quase um laboratório pronto para a ideia que estamos construindo.
+
+### Nota: **99/100**
+
+Esse é o único desta lista que eu avaliaria **já durante/antes da 075**, como benchmark arquitetural.
+
+---
+
+# 2. Anthropic Skills — **98/100**
+
+QUAIS SKILLS MODELAR? QUAIS EU DEVO ME INSPIRAR E TRANSFOORMAR EM ARMA PARA A OOPERAÇÃO DAS CORRETORAS? NAO DEVO COPIAR E SIM TRANSFOORMAR OS MODELOS E IDEIAS EM TAREFAS ESPECIFICAS PARA CORRETOROAS PODEREM USAR. AS SKILLS DEVEM DAR CAPACIDADES PARA AS CORRETORAS RESOLVEREM PROBLEMAS DOO DIA A DIA DENTRO DO AUTOBROKERS
+
+Esse repo é enorme conceitualmente.
+
+Anthropic transformou Skill em algo simples:
+
+```
+skill/
+  SKILL.md
+  scripts/
+  references/
+  assets/
+
+```
+
+A Skill carrega só quando precisa e pode trazer instruções, código determinístico, referências e recursos. O próprio sistema usa “progressive disclosure”: metadata sempre disponível, corpo da Skill quando acionada e recursos adicionais somente quando necessários. ([GitHub](https://github.com/anthropics/skills?utm_source=chatgpt.com))
+
+Isso é **muito interessante para Auxiliares**.
+
+Exemplo:
+
+```
+Skill: analisar-renovacao
+
+```
+
+poderia conter:
+
+```
+SKILL.md
+references/
+    regras-renovacao.md
+    checklist.md
+
+scripts/
+    calcular_dias.py
+    validar_campos.py
+
+```
+
+O agente não precisa ter tudo no prompt permanentemente.
+
+Só carrega quando necessário.
+
+### Maior valor
+
+Reduzir prompts gigantes.
+
+E principalmente transformar conhecimento em:
+
+> **procedimento reutilizável e versionável.**
+
+### Nota: **98/100**
+
+Eu consideraria este repo uma das melhores referências de arquitetura de skills atualmente. O GitHub mostra mais de 150 mil stars e inclui inclusive a especificação pública de Agent Skills. ([GitHub](https://github.com/anthropics/skills?utm_source=chatgpt.com))
+
+---
+
+# 3. Composio — **95/100**
+
+Este é bem diferente.
+
+O Composio resolve uma dor gigante dos agentes:
+
+> conectar agentes a aplicativos externos.
+
+Ele oferece toolkits, busca de tools, autenticação, contexto e MCP. O projeto declara suporte a **centenas/mais de mil toolkits** e possui uma camada chamada Rube que conecta agentes a apps como Gmail, Slack, GitHub e Notion via MCP. ([GitHub](https://github.com/composiohq/composio?utm_source=chatgpt.com))
+
+Imagine futuramente uma corretora:
+
+```
+Google Drive
+Gmail
+Slack
+HubSpot
+Pipedrive
+Notion
+Google Calendar
+Sheets
+
+```
+
+Hoje, teoricamente, precisaríamos criar integração por integração.
+
+Composio tenta transformar isso em:
+
+```
+Agent
+ ↓
+Composio
+ ↓
+OAuth
+ ↓
+500+ sistemas
+
+```
+
+### Onde vejo maior valor
+
+Não para seguradoras.
+
+Para **ecossistema SaaS das corretoras**.
+
+Exemplo:
+
+> “Pegue o relatório que chegou no Gmail e salve na pasta do Drive.”
+
+ou:
+
+> “Crie uma oportunidade no CRM quando entrar um lead qualificado.”
+
+ou:
+
+> “Crie uma reunião para o comercial.”
+
+É muito forte.
+
+### Cuidado
+
+Eu não entregaria a eles toda a autoridade do Tool Gateway.
+
+Eu usaria Composio como **provider de tools/connections**.
+
+### Nota: **95/100**
+
+---
+
+# 4. Mem0 — **92/100**
+
+Esse é focado em memória para agentes.
+
+Ele trabalha com:
+
+- memória do usuário;
+- memória da sessão;
+- memória do agente;
+- busca semântica;
+- keyword/BM25;
+- entidades;
+- raciocínio temporal;
+- graph memory opcional. ([GitHub](https://github.com/mem0ai/mem0/blob/main/AGENTS.md?utm_source=chatgpt.com))
+
+Para um chat principal como o Core isso pode ser muito forte.
+
+Imagine:
+
+> “O João costuma preferir franquia reduzida.”
+
+> “Esse cliente já reclamou duas vezes de demora em assistência.”
+
+> “A corretora sempre prefere entregar boletos via WhatsApp.”
+
+> “A funcionária Maria costuma tratar renovações da frota.”
+
+Mem0 tenta resolver justamente esse tipo de memória persistente.
+
+Eles também têm integração MCP/plugins e skills para integrar o Mem0 em projetos existentes. ([GitHub](https://github.com/mem0ai/mem0/blob/main/AGENTS.md?utm_source=chatgpt.com))
+
+### Eu substituiria nossa memória por Mem0?
+
+**Não automaticamente.**
+
+Eu usaria como **benchmark**.
+
+Testaria:
+
+```
+nossa memória
+versus
+Mem0
+
+```
+
+em:
+
+- precisão;
+- token cost;
+- temporal retrieval;
+- esquecimento;
+- tenant isolation.
+
+### Nota: **92/100**
+
+---
+
+# 5. DeepAgents — **91/100**
+
+Esse repo é praticamente uma tentativa de transformar a experiência de “Claude Code” em um harness genérico de agentes.
+
+Ele traz:
+
+- subagentes;
+- filesystem;
+- context offloading;
+- memória persistente;
+- human-in-the-loop;
+- skills;
+- ferramentas/MCP;
+- tarefas longas;
+- persistência/checkpointing. ([GitHub](https://github.com/langchain-ai/deepagents?utm_source=chatgpt.com))
+
+Tem mais de 20 mil stars e é construído em cima de LangGraph. ([GitHub](https://github.com/langchain-ai/deepagents?utm_source=chatgpt.com))
+
+O que acho particularmente interessante é:
+
+### Context isolation
+
+Um agente principal pode delegar:
+
+```
+pesquise seguradora
+
+```
+
+para um subagente,
+
+```
+analise apólice
+
+```
+
+para outro,
+
+e:
+
+```
+valide execução
+
+```
+
+para outro,
+
+sem destruir o contexto do Core.
+
+Isso é exatamente o tipo de arquitetura que permite agentes trabalharem por muito tempo.
+
+### Mas existe um alerta
+
+O próprio projeto é explícito: segue um modelo de **“trust the LLM”** e recomenda fazer a segurança no nível das tools/sandbox, não confiar que o modelo se auto-policiará. ([GitHub](https://github.com/langchain-ai/deepagents?utm_source=chatgpt.com))
+
+Isso significa que eu **não copiaria o modelo de segurança** para tarefas transacionais de seguros.
+
+Copiaria:
+
+- context offloading;
+- subagents;
+- todo lists;
+- long-running planning;
+- skills;
+- filesystem virtual;
+- padrões de delegação.
+
+### Nota: **91/100**
+
+---
+
+# Se eu tivesse que escolher apenas DOIS para estudar agora
+
+Seriam:
+
+**1. Browserbase Skills — 99/100**
+
+e
+
+**2. Anthropic Skills — 98/100.**
+
+Porque eles podem gerar ganho **sem exigir reescrever o AutoBrokers**.
+
+E há uma combinação muito interessante aqui:
+
+```
+Anthropic Skills
+        ↓
+procedimentos especializados
+
+Browserbase Skills
+        ↓
+capacidades de browser/discovery
+
+Composio
+        ↓
+integrações SaaS
+
+Mem0
+        ↓
+memória
+
+DeepAgents
+        ↓
+delegação longa/subagentes
+
+```
+
+Isso começa a parecer um **sistema operacional de capacidades para agentes**.
+
+E aí está o ponto estratégico:
+
+**não devemos instalar cinco frameworks.**
+
+Devemos estudar os cinco e extrair os padrões que fortalecem o AutoBrokers.
+
+Minha ordem de interesse seria:
+
+**Browserbase Skills → Anthropic Skills → Composio → Mem0 → DeepAgents.**
+
+E colocaria o **Agent-Reach depois deles**, como uma futura camada de **Internet Intelligence**, não como componente central das SPECs atuais.
+
+
+
+
+
+
+
+ABAIXO TEM UM ESTUDO SOBRE O RUFLO QUE PODE TER ALGUMAS IDEIAS PARA NÓS ADAPTARMOS. MAS TEM MUITAS COISAS QUE JA TEM NAS OUTRAS IDEIAS. ENTAO PRECISA AVALIAR BEM E SELECIOONAR SO OO QUE É REALMENTE LEGAL E O QUE NAOO TEM NAS OUTRAS IDEIAS OU O QUE O RUFLO TEM MELHOR.
+
+
+
+
+
+Sim. Eu fui além do README do Ruflo e comparei com o **repositório real do AutoBrokers Intelligence OS**, inclusive suas SPECs e relatórios de execução.
+
+## Minha conclusão
+
+**Eu NÃO transformaria o Ruflo no harness do AutoBrokers.**
+
+Para isso, minha nota é:
+
+# **32 / 100**
+
+### “Adotar/forkar Ruflo e fazer dele a estrutura central do harness do AutoBrokers”
+
+Mas há uma segunda avaliação muito diferente:
+
+# **91 / 100**
+
+### “Usar Ruflo como laboratório de ideias e incorporar seletivamente os melhores padrões ao harness nativo do AutoBrokers”
+
+E uma terceira:
+
+# **86 / 100**
+
+### “Usar Ruflo como harness de DESENVOLVIMENTO para Claude Code/Codex ajudarem a construir o AutoBrokers”
+
+Essa distinção é fundamental.
+
+O Ruflo é bom. Algumas coisas nele são excelentes. **Só que ele resolve um problema diferente do problema central do AutoBrokers.**
+
+---
+
+# 1. O que o Ruflo realmente é
+
+O próprio projeto se define como:
+
+> um **agent meta-harness para Claude Code e Codex**.
+
+Ele coloca uma camada ao redor dos agentes de programação adicionando memória, ferramentas, loops, swarm, workflows, segurança, hooks, aprendizagem etc. O `ruflo-core`, sozinho, registra **314 ferramentas MCP**, além de comandos, hooks, sessões persistentes, roteamento de modelos e diversos plugins.
+
+Então:
+
+**Ruflo não é um “LangGraph melhor”.**
+
+E também não é:
+
+**“um sistema operacional pronto para eu adaptar para corretoras de seguros”.**
+
+É muito mais:
+
+```text
+Claude Code / Codex
+        ↓
+      Ruflo
+        ↓
+coordenação de agentes
+memória
+hooks
+workflows
+swarm
+learning
+MCP
+security
+dev tooling
+```
+
+O Ruflo é **horizontal e genérico por definição**.
+
+E isso não é defeito.
+
+É exatamente o motivo pelo qual ele consegue ter plugins de swarm, browser, RAG, security, observability, DDD, SPARC, migrations, workflows, federation, knowledge graph etc.
+
+---
+
+# 2. O problema: o AutoBrokers JÁ TEM seu harness
+
+Foi aqui que a análise ficou especialmente interessante.
+
+Na sua própria **SPEC-053**, você já definiu explicitamente:
+
+> **“Nenhum runtime paralelo.”**
+
+E determinou que devem continuar:
+
+**Smith + LangGraph/LangChain + FastAPI + Supabase + Redis + Qdrant + MinIO.**
+
+Mais importante: sua arquitetura diz que **Smith continua sendo o runtime cognitivo central** e que não deve ser instalado Hermes, OpenClaw, Cowork ou outro framework como “segunda autoridade”.
+
+E o AutoBrokers já possui a própria ontologia:
+
+```text
+Outcome
+↓
+Skill
+↓
+Capability Pack
+↓
+Work Plan
+↓
+Work Run
+↓
+Work Steps
+↓
+Tools
+↓
+Approvals
+↓
+Artifacts
+↓
+Delivery
+↓
+Learning Signals
+```
+
+Isso está na arquitetura canônica do AutoBrokers.
+
+Ou seja:
+
+**você já está construindo o Ruflo do AutoBrokers.**
+
+Só que verticalizado para seguros.
+
+E, na minha avaliação, **isso é mais valioso do que Ruflo dentro do produto**.
+
+---
+
+# 3. E não está só no papel
+
+Isso também foi importante verificar.
+
+Seu Work OS já implementou:
+
+- `work_runs`;
+- `work_steps`;
+- leases;
+- heartbeat;
+- recuperação após restart;
+- Redis Streams;
+- outbox transacional;
+- side effects idempotentes;
+- HITL;
+- fingerprint de aprovação;
+- Smith Worker;
+- trilha append-only;
+- usage events.
+
+O relatório da SPEC-055 mostra testes reais para restart, duplicidade, approval e isolamento.
+
+E a SPEC-056 já entregou:
+
+**15 Tool Definitions, 15 releases, 8 Skills, 7 Capability Packs e 14 bindings por papel.**
+
+Além disso, o Tool Gateway foi criado exatamente para resolver um dos maiores problemas que o Ruflo também tenta resolver: **não entregar centenas de ferramentas ao modelo indiscriminadamente**.
+
+Portanto, instalar Ruflo agora para resolver isso seria mais ou menos:
+
+> construir uma segunda estrada ao lado de uma estrada que você já está terminando.
+
+---
+
+# 4. Onde haveria colisão
+
+Este é o quadro que eu usaria para decidir:
+
+| RufloAutoBrokers já tem/deve terMinha decisão |                                       |                                  |
+| --------------------------------------------- | ------------------------------------- | -------------------------------- |
+| AgentDB / memory                              | Supabase + Qdrant + Memory Fabric     | **Não instalar**                 |
+| Ruflo Workflows                               | Work Runs + LangGraph                 | **Não instalar**                 |
+| Ruflo agents                                  | Smith Agents/Subagents                | **Não substituir**               |
+| Ruflo Swarms                                  | Smith delegation                      | **Usar ideias apenas**           |
+| Ruflo MCP layer                               | Tool Gateway + MCP Gateway            | **Não duplicar**                 |
+| Ruflo RAG memory                              | SearchService/Qdrant/Memory Fabric    | **Usar algoritmos, não runtime** |
+| Ruflo model routing                           | Model Router AutoBrokers              | **Copiar padrões**               |
+| Ruflo hooks                                   | Smith lifecycle/hooks                 | **Muito interessante**           |
+| Ruflo observability                           | Work Run + tracing + Sentry/LangSmith | **Copiar padrões**               |
+| Ruflo AIDefence                               | Segurança AutoBrokers                 | **Muito interessante**           |
+| Ruflo MetaHarness                             | ainda é uma área diferenciada         | **Excelente candidato**          |
+| Ruflo Worktree/agents coding                  | desenvolvimento AutoBrokers           | **Excelente**                    |
+| Ruflo federation                              | desnecessário agora                   | **Ignorar**                      |
+| Ruflo 314 MCP tools                           | Tool Gateway mínimo                   | **Evitar**                       |
+| Self-learning automático                      | Learning Fabric governado             | **Somente conceitos**            |
+
+O ponto é:
+
+### talvez 20–30% conceitualmente interessante.
+
+### talvez 5–10% reaproveitável quase diretamente.
+
+### e provavelmente 70%+ desnecessário para o runtime do AutoBrokers.
+
+---
+
+# 5. O maior erro seria importar os 314 tools
+
+Isso iria contra exatamente aquilo que você acabou de corrigir.
+
+Antes da SPEC-056, o AutoBrokers colocava cerca de **13 ferramentas fixas** no Core e você já concluiu que isso gerava:
+
+custo de tokens, pior seleção de ferramentas e dificuldade de escalar o catálogo.
+
+A resposta que você construiu foi:
+
+```text
+Outcome
+↓
+Skill
+↓
+Capability Pack
+↓
+Capability
+↓
+Tool Release
+↓
+Policy
+↓
+Tool mínima necessária
+```
+
+E agora olhar para um sistema cujo core oferece **314 tools** e colocá-lo dentro do runtime seria andar na direção contrária.
+
+O AutoBrokers deve pensar:
+
+> “qual é o mínimo de poder necessário para resolver este Outcome?”
+
+Não:
+
+> “aqui estão 314 coisas; descubra o que fazer.”
+
+Esse princípio do seu Tool Gateway é melhor para o seu caso.
+
+---
+
+# 6. SWARM: aqui eu teria bastante cuidado
+
+O Ruflo tem uma implementação bastante sofisticada de swarm:
+
+- hierarchical;
+- mesh;
+- hierarchical-mesh;
+- ring;
+- star;
+- adaptive;
+- worktree isolation;
+- monitor;
+- Hive-Mind;
+- Byzantine;
+- Raft;
+- Gossip;
+- CRDT;
+- Quorum.
+
+E o próprio Ruflo recomenda hierarquia, cerca de **6–8 agentes** e papéis especializados para limitar drift.
+
+É tecnicamente interessante.
+
+Mas imagine colocar isso para:
+
+> “descubra qual é a cobertura do seguro do João.”
+
+Você pode facilmente transformar:
+
+```text
+1 Smith
++
+2 ferramentas
++
+Evidence Pack
+```
+
+em:
+
+```text
+coordinator
+researcher
+policy agent
+document agent
+reviewer
+consensus
+shared memory
+swarm state
+...
+```
+
+Bonito arquiteturalmente.
+
+Pior economicamente.
+
+Mais lento.
+
+Mais difícil de debugar.
+
+---
+
+# 7. Onde eu ROUBARIA a ideia do Ruflo: Workflow orchestration
+
+Aqui tem coisa boa.
+
+O Ruflo separa dois tipos de workflow:
+
+**workflow persistente**, com pause/resume/HITL;
+
+e
+
+**orquestração determinística de subagentes**, com primitivas simples como:
+
+```text
+agent()
+parallel()
+pipeline()
+phase()
+```
+
+Eu gosto muito desta segunda parte para o AutoBrokers.
+
+Não instalaria o engine deles.
+
+Mas talvez criaria algo parecido no Smith:
+
+```text
+delegate()
+parallel()
+pipeline()
+barrier()
+review()
+```
+
+Por exemplo:
+
+```text
+Relatório Executivo
+
+parallel:
+  ├─ agente comercial
+  ├─ agente financeiro
+  ├─ agente atendimento
+  └─ agente renovação
+
+        ↓
+
+aggregator
+
+        ↓
+
+reviewer
+
+        ↓
+
+Artifact
+```
+
+Isso é **Ruflo-inspired AutoBrokers**, não Ruflo dentro do AutoBrokers.
+
+Essa diferença é enorme.
+
+---
+
+# 8. Uma das melhores ideias: MetaHarness
+
+Talvez esta seja a parte do Ruflo que eu mais investigaria.
+
+O Ruflo possui o **MetaHarness**.
+
+Ele consegue analisar um harness e gerar coisas como:
+
+```text
+harnessFit
+compileConfidence
+taskCoverage
+toolSafety
+memoryUsefulness
+estimatedCost
+riskScore
+MCP surface
+threat model
+drift
+```
+
+E oferece:
+
+```text
+score
+genome
+mcp-scan
+threat-model
+oia-audit
+audit-trend
+similarity
+drift-from-history
+```
+
+### Isso é MUITO interessante para o AutoBrokers.
+
+Imagine dentro do seu Portal Admin:
+
+# Harness Health
+
+```text
+AUTOBROKERS CORE
+
+Tool Safety ............ 96
+Memory Quality ......... 91
+Skill Coverage ......... 87
+Eval Confidence ........ 94
+Context Efficiency ..... 89
+Cost Efficiency ........ 82
+Security ............... 97
+Drift .................. LOW
+```
+
+E ainda:
+
+```text
+Even
+98/100
+
+Auxiliar Renovação
+91/100
+
+Auxiliar Cobrança
+86/100
+⚠ Tool scope amplo demais
+```
+
+Isso teria valor real.
+
+Eu não necessariamente colocaria o pacote MetaHarness como dependência.
+
+**Eu copiaria a ideia e criaria o AutoBrokers Harness Evaluator.**
+
+Isso sim combina perfeitamente com o Control Plane.
+
+---
+
+# 9. Outra excelente ideia: segurança em três gates
+
+O plugin AIDefence do Ruflo formaliza uma sequência interessante:
+
+```text
+1. PII antes de persistir
+↓
+2. sanitização
+↓
+3. prompt-injection antes de conteúdo externo voltar ao LLM
+```
+
+Para o AutoBrokers isso é excelente porque vocês ingerem:
+
+- documentos;
+- PDFs;
+- páginas web;
+- portais;
+- WhatsApp;
+- APIs;
+- seguradoras;
+- eventualmente e-mails.
+
+Eu transformaria isso em um contrato formal:
+
+```text
+UNTRUSTED CONTENT GATE
+```
+
+antes de material externo entrar novamente no contexto do Smith.
+
+### Nota para copiar esse padrão:
+
+# **96/100**
+
+---
+
+# 10. Observabilidade: também copiaria bastante
+
+Ruflo correlaciona:
+
+```text
+task
+agent
+span
+trace
+tool
+duration
+token usage
+errors
+memory operations
+```
+
+e usa OpenTelemetry-style correlation IDs e trace trees.
+
+Você já possui Work Runs, LangSmith, custos, Sentry e observabilidade.
+
+Então não instalaria `ruflo-observability`.
+
+Mas padronizaria:
+
+```text
+trace_id
+run_id
+step_id
+agent_id
+tool_invocation_id
+company_id
+correlation_id
+```
+
+do começo ao fim.
+
+Isso deixaria seu Control Plane absurdamente melhor para responder:
+
+> “Por que essa operação falhou?”
+
+E visualizar:
+
+```text
+WORK RUN
+│
+├─ Context Planner    240 ms
+├─ Skill Resolver      38 ms
+├─ InfoCap            580 ms
+├─ Policy Evidence    190 ms
+├─ LLM               2.8 s
+└─ WhatsApp              X
+                       erro
+```
+
+Excelente inspiração.
+
+---
+
+# 11. Ruflo Memory: NÃO instalaria, mas há boas técnicas
+
+Ruflo possui AgentDB + HNSW + namespaces + memória de sessões.
+
+Também usa uma pipeline de recuperação bastante sensata:
+
+```text
+query expansion
+→ multi-query
+→ Reciprocal Rank Fusion
+→ recency boost
+→ MMR diversity
+→ session round-robin
+```
+
+### Isso vale estudar.
+
+Mas você já tem:
+
+```text
+Supabase
++
+Qdrant
++
+Memory Fabric
++
+SearchService
++
+Knowledge OS
+```
+
+E a própria arquitetura do AutoBrokers estabelece Qdrant como índice derivado e Supabase como autoridade.
+
+Portanto:
+
+### Ruflo AgentDB dentro do AutoBrokers:
+
+**15/100**
+
+### Adaptar RRF + MMR + recency + query expansion para o SearchService atual:
+
+**94/100**
+
+---
+
+# 12. Self-learning do Ruflo: interessante, mas perigoso para você
+
+Ruflo tem uma pipeline:
+
+```text
+RETRIEVE
+↓
+JUDGE
+↓
+DISTILL
+↓
+CONSOLIDATE
+```
+
+com trajetórias, padrões aprendidos, SONA, MicroLoRA, EWC etc.
+
+É fascinante para coding agents.
+
+Eu **não colocaria isso como aprendizado autônomo de negócio do AutoBrokers**.
+
+Porque uma conclusão errada sobre:
+
+- cobertura;
+- seguradora;
+- sinistro;
+- procedimento;
+- produto;
+- regra comercial;
+
+não pode simplesmente virar conhecimento porque “funcionou uma vez”.
+
+Aliás, sua arquitetura atual está melhor nesse aspecto.
+
+O AutoBrokers já adotou:
+
+```text
+execução
+↓
+Learning Signal
+↓
+Candidate
+↓
+curadoria
+↓
+teste/eval
+↓
+publicação
+```
+
+Sua SPEC-053 explicitamente permite que agente proponha patch para Skill, mas **não publique diretamente**.
+
+### Eu manteria exatamente essa filosofia.
+
+---
+
+# 13. Uma conclusão importante sobre genericidade
+
+Você perguntou:
+
+> “É genérico?”
+
+### Sim.
+
+Muito.
+
+E isso é simultaneamente a força e a fraqueza dele para o AutoBrokers.
+
+Ruflo precisa funcionar para alguém querendo:
+
+```text
+construir React
+analisar Rust
+refatorar Python
+pesquisar
+criar documentação
+auditar segurança
+operar agentes
+...
+```
+
+O AutoBrokers não.
+
+Seu diferencial é justamente NÃO ser genérico.
+
+Você conhece:
+
+```text
+cliente
+corretora
+apólice
+seguradora
+endosso
+sinistro
+renovação
+cotação
+prêmio
+vigência
+parcela
+comissão
+portal
+InfoCap
+Quiver
+WhatsApp
+procedimentos
+coberturas
+...
+```
+
+Esse conhecimento vertical é seu moat.
+
+---
+
+# 14. Minha arquitetura recomendada
+
+Eu faria:
+
+```text
+                  AUTOBROKERS
+                      │
+              ┌───────▼────────┐
+              │   CORE HARNESS │
+              │ Smith/LangGraph│
+              └───────┬────────┘
+                      │
+      ┌───────────────┼─────────────────┐
+      │               │                 │
+ Outcome Router   Context Planner   Skill Resolver
+      │               │                 │
+      └───────────────┼─────────────────┘
+                      │
+               Capability Pack
+                      │
+                 Tool Gateway
+                      │
+              ┌───────┴────────┐
+              │                │
+           Agents          Work Runs
+              │                │
+        Subagents         Checkpoints
+              │             HITL
+              │            Artifacts
+              └───────┬────────┘
+                      │
+                Learning Fabric
+                      │
+              Control Plane
+```
+
+E adicionaria uma camada nova, inspirada no Ruflo:
+
+```text
+            HARNESS INTELLIGENCE
+                    │
+     ┌──────────────┼──────────────┐
+     │              │              │
+ Harness Eval   Security Scan   Drift Detection
+     │              │              │
+     ├─ Skills      ├─ MCP         ├─ prompts
+     ├─ Tools       ├─ PII         ├─ Skills
+     ├─ Memory      ├─ injection   ├─ Tools
+     ├─ Evals       ├─ scopes      ├─ policies
+     └─ Costs       └─ egress      └─ models
+```
+
+Esse seria o **AutoBrokers MetaHarness**.
+
+Agora sim.
+
+### Nota:
+
+# **97/100**
+
+Porque aí Ruflo deixa de ser uma dependência arquitetural e passa a ser **inspiração competitiva**.
+
+---
+
+# 15. E existe um uso do Ruflo que eu testaria AGORA
+
+Não no produto.
+
+No **desenvolvimento do produto**.
+
+Hoje você usa Claude Code/Opus/Fable/Codex para construir uma base bastante grande.
+
+É justamente aí que Ruflo foi projetado para entrar.
+
+Por exemplo:
+
+```text
+CLAUDE CODE
+    │
+   Ruflo
+    │
+    ├─ architect
+    ├─ backend reviewer
+    ├─ security reviewer
+    ├─ DB reviewer
+    ├─ test reviewer
+    └─ integration reviewer
+```
+
+Cada um em worktree própria.
+
+O Ruflo já tem isolamento por Git worktree e coordenação de equipes de agentes.
+
+Isso poderia ajudar você a executar, por exemplo:
+
+```text
+"Audite a implementação da SPEC-082"
+```
+
+e deixar:
+
+```text
+Agent 1 → arquitetura
+Agent 2 → segurança
+Agent 3 → Supabase/RLS
+Agent 4 → LangGraph
+Agent 5 → frontend
+Agent 6 → regressão
+```
+
+entregando um consolidado.
+
+### Nesse papel eu daria:
+
+# **86/100**
+
+E testaria de forma isolada.
+
+---
+
+# 16. Portanto, minha recomendação final
+
+Eu **não faria**:
+
+```text
+AutoBrokers
+     ↓
+Ruflo
+     ↓
+Smith
+     ↓
+LangGraph
+```
+
+E muito menos:
+
+```text
+fork Ruflo
+↓
+personalizar centenas de módulos
+↓
+transformá-lo no AutoBrokers
+```
+
+Isso geraria manutenção, acoplamento, atualizações difíceis e duas filosofias arquiteturais.
+
+Eu faria:
+
+```text
+AUTOBROKERS HARNESS
+100% nosso
+       ↑
+       │
+ padrões selecionados
+       │
+Ruflo ─┼─ Claude Code
+       ├─ OpenAI/Codex
+       ├─ LangGraph
+       ├─ outros harnesses
+       └─ pesquisas
+```
+
+## Minha nota final
+
+**Ruflo como novo Core Harness do AutoBrokers:** **32/100**
+
+**Fork Ruflo e customizar profundamente para AutoBrokers:** **38/100**
+
+**Adicionar Ruflo inteiro ao runtime atual:** **18/100**
+
+**Usar alguns plugins dentro de produção:** **45/100**
+
+**Copiar/adaptar as melhores ideias arquiteturais:** **91/100**
+
+**Criar um “AutoBrokers MetaHarness” inspirado nele:** **97/100**
+
+**Usar Ruflo externamente para Claude Code/Codex desenvolverem o AutoBrokers:** **86/100**
+
+### Se eu tivesse que decidir hoje com um único comando:
+
+# **NÃO instalar Ruflo no AutoBrokers.**
+
+# **SIM estudar e absorver 6–8 padrões específicos dele.**
+
+# **SIM considerar Ruflo como ferramenta externa de engenharia.**
+
+E tem um detalhe particularmente forte: o seu próprio Execution Master Plan mostra que **Work Runs e Tool Gateway já foram construídos**, a Intelligence/Memory Fabric também avançou, e o caminho crítico agora está em terminar/cortar corretamente essas próprias estruturas — não começar outro harness.
+
+Então, neste momento do AutoBrokers, **Ruflo como inspiração pode acelerar. Ruflo como fundação provavelmente atrasaria.**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------------------------------------
+
+
+
+
+Sim. Depois de cruzar seu rascunho com o **estado real do AutoBrokers no GitHub**, com o que já foi executado nas SPECs, e com DeepSeek Harness, Grok Bot, Hermes, Agent Skills, DeepAgents, Composio, Mem0/Graphiti, Browserbase, Ruflo, Invokta, Agent-Reach e as mudanças atuais de ChatGPT/Claude, eu mudaria algumas prioridades.
+
+A principal conclusão é esta:
+
+> **O AutoBrokers não precisa de outro cérebro. Precisa transformar o cérebro que já tem em uma máquina de fabricar capacidades, provar qualidade, aprender com a operação e poder ser consumida de qualquer interface.**
+
+E eu **não interromperia a execução da 085** para instalar nenhum framework novo.
+
+## Minha visão do AutoBrokers que eu perseguiria
+
+Eu organizaria o futuro em sete camadas:
+
+```text
+                    AUTOBROKERS WORKSPACE
+       Dashboard · Atendimento · Work OS · Admin · Mobile
+                              │
+                              │
+             OUTROS CLIENTES / HARNESSES
+       ChatGPT · Claude · Slack · Teams · WhatsApp · API
+                              │
+                              ▼
+                    AUTOBROKERS ENGINE
+                Outcomes / Actions de seguros
+                              │
+            ┌─────────────────┼─────────────────┐
+            │                 │                 │
+        WORK OS          DOMAIN BRAIN       KNOWLEDGE
+        Work Runs          Atlas             RAG
+        Artifacts        Corredores         Memórias
+        Approvals        Playbooks          Evidence
+            │                 │                 │
+            └─────────────────┼─────────────────┘
+                              ▼
+                 CAPABILITY / SKILL LAYER
+                Skills · Auxiliares · Protocolos
+                    Capability Packs
+                              │
+                              ▼
+                       TOOL GATEWAY
+               Connectors · MCP · APIs · Browser
+                              │
+             InfoCap · Quiver · WhatsApp · Email
+             Seguradoras · Slack · Teams · Web
+                              │
+                              ▼
+                  LEARNING / DREAMING FABRIC
+                   operação → candidatos
+                 → validação → conhecimento
+                              │
+                              ▼
+                 AUTOBROKERS METAHARNESS
+          qualidade · custo · segurança · drift · evals
+```
+
+Esse desenho incorpora as melhores ideias que você trouxe **sem transformar AutoBrokers numa colcha de retalhos de 10 frameworks**.
+
+---
+
+# 1. O ranking geral das suas ideias
+
+A coluna **Nota** significa: quanto valor eu vejo se implementarmos corretamente no AutoBrokers.
+A coluna **Quando** significa prioridade, não qualidade.
+
+| Ideia                                                  |    Nota | Quando       | Minha decisão                                  |
+| ------------------------------------------------------ | ------: | ------------ | ---------------------------------------------- |
+| Terminar 085 — travamento silencioso                   | **100** | **P0 AGORA** | Continuar                                      |
+| 086 — suporte humano verdadeiro                        | **100** | **P0**       | Fazer                                          |
+| Follow-up realmente confiável                          |  **99** | **P0**       | Fazer logo após/junto da cadeia de atendimento |
+| Handoff humano com Resume Pack                         |  **99** | **P0**       | Incorporar                                     |
+| Protocolo universal de criação/execução de SPEC        | **100** | **P0**       | Criar já                                       |
+| Juízes + subagentes + Triple-A Quality Gate            | **100** | **P0**       | Tornar padrão                                  |
+| Corrigir Entregas / Artifact Hub                       | **100** | **P0**       | Corrigir                                       |
+| Corrigir latência/TTFT do chat principal               |  **99** | **P0**       | Corrigir                                       |
+| 087 — autoatualização de corredores                    |  **99** | **P1**       | Fazer                                          |
+| Capturar inteligência dos sinistros desde já           |  **98** | **P1**       | Fazer                                          |
+| Protocol Factory para tudo                             | **100** | **P1**       | Um dos maiores saltos                          |
+| Auxiliar de Inteligência Executiva InfoCap 360         |  **99** | **P1**       | Próxima grande feature                         |
+| AutoBrokers Engine headless                            |  **99** | **P1/P2**    | Estratégico                                    |
+| Action Gateway/MCP externo                             |  **98** | **P2**       | Depois de estabilizar ações                    |
+| Agent Skills compatible                                |  **98** | **P1/P2**    | Adaptar                                        |
+| Marketplace oficial de Auxiliares                      |  **98** | **P2**       | Sim                                            |
+| Auxiliares exclusivos sob demanda                      |  **97** | **P2**       | Manter como premium                            |
+| Global/Corretora/Equipe/Usuário bem separados          |  **99** | **P1**       | Fundamental                                    |
+| “Soul”/Identidade Operacional da corretora             |  **94** | **P1**       | Adaptar conceito                               |
+| Dreams / consolidação noturna                          |  **98** | **P2**       | Excelente                                      |
+| AutoBrokers MetaHarness                                |  **98** | **P2**       | Excelente                                      |
+| DeepSeek Harness — copiar padrões                      |  **96** | **P2**       | Sim                                            |
+| DeepSeek como novo runtime                             |  **25** | NÃO          | Não instalar                                   |
+| Grok Bot — conceito de trabalhadores persistentes      |  **94** | **P2**       | Copiar UX/modelo mental                        |
+| Auxiliar = subagente                                   |  **35** | NÃO          | Não fazer                                      |
+| DeepAgents — isolamento de subagentes                  |  **95** | **P2**       | Adaptar                                        |
+| Hermes — Soul/User/Memory/Skill separation             |  **94** | **P1/P2**    | Adaptar                                        |
+| Composio para integrações SaaS long-tail               |  **93** | **P2**       | Provider, não autoridade                       |
+| Slack                                                  |  **92** | **P2**       | Sim                                            |
+| Microsoft Teams                                        |  **84** | **P2/P3**    | Sim, conforme clientes                         |
+| E-mail como canal                                      |  **94** | **P1**       | Sim                                            |
+| Multi-WhatsApp                                         |  **96** | **P1**       | Sim                                            |
+| Agent-Reach dentro do Core                             |  **58** | NÃO agora    | Não                                            |
+| Internet Intelligence Pack                             |  **94** | **P2**       | Evoluir SPEC-060                               |
+| Browserbase Skills — padrões                           |  **97** | Auditoria    | Muito já foi absorvido                         |
+| Mem0 substituir memória atual                          |  **25** | NÃO          | Não                                            |
+| Graphiti substituir memória atual                      |  **32** | NÃO          | Não                                            |
+| Graph/temporal memory experimental                     |  **89** | **P3**       | Benchmark                                      |
+| Ruflo como runtime                                     |  **18** | NÃO          | Não                                            |
+| Ruflo como fonte de ideias                             |  **91** | **P2**       | Sim                                            |
+| MetaHarness inspirado no Ruflo                         |  **98** | **P2**       | Sim                                            |
+| Ruflo/LionClaw como harness externo de engenharia      |  **87** | Experimento  | Pode valer                                     |
+| Conversa de voz ao vivo                                |  **87** | **P3**       | Sim, mas depois                                |
+| Usar assinatura Claude/GPT do cliente como API do SaaS |  **15** | NÃO          | Não                                            |
+| BYOK — cliente fornece API key                         |  **91** | **P2/P3**    | Opcional                                       |
+| Cliente usar seu próprio ChatGPT/Claude + Engine       |  **98** | **P2**       | Excelente                                      |
+| IA gratuita com custo literalmente zero                |  **70** | P3           | Só em cenários específicos                     |
+| Apresentações inteligentes                             |  **92** | P2           | Sim, verticalizadas                            |
+| Infográficos Baoyu-like                                |  **86** | P3           | Adaptar ideias                                 |
+| Carrosséis automáticos                                 |  **75** | P3           | Útil, não moat                                 |
+| Blog SEO automatizado                                  |  **85** | P3           | Bom produto complementar                       |
+| Marketplace comunitário aberto agora                   |  **60** | Depois       | Governança insuficiente                        |
+| Automatizar sinistros agora                            |  **58** | Depois       | Primeiro aprender                              |
+| Coletar dados dos sinistros agora                      |  **99** | **P1**       | Sim                                            |
+
+---
+
+# 2. A ordem que eu faria a partir de AGORA
+
+Eu não colocaria AutoBrokers Engine, Dreams, Composio, voz e marketplace na frente do problema que está sendo resolvido agora.
+
+O atendimento é justamente o **primeiro domínio que vai provar que toda essa arquitetura funciona de verdade**.
+
+### FASE A — Fechar atendimento como produto confiável
+
+**1. Terminar a 085.**
+
+A regra deve ser absoluta:
+
+> **nenhum atendimento pode morrer em silêncio.**
+
+Se Espelho/Vigia não resolve → Sentinela → Cérebro → suporte/handoff.
+
+**2. Fazer a 086 como “Handoff Humano Verdadeiro”.**
+
+Não apenas “avisar um humano”.
+
+Tem que existir:
+
+```text
+ATENDIMENTO IA
+      ↓
+travou / humano da seguradora entrou
+      ↓
+RESUME PACK
+      ↓
+humano vê exatamente:
+- cliente
+- apólice
+- seguradora
+- corredor
+- etapa atual
+- o que já foi feito
+- o que foi coletado
+- o que falta
+- screenshots/evidências
+- sessão atual
+- ação seguinte prevista
+      ↓
+humano continua
+      ↓
+registra o que fez
+      ↓
+AutoBrokers reconcilia
+      ↓
+retoma o Work Run
+```
+
+Isso é muito superior a:
+
+> “Transferi seu atendimento.”
+
+Quando na realidade ninguém assumiu.
+
+### Nota: **99/100**
+
+---
+
+# 3. O Follow-up eu trataria como uma P0
+
+Eu concordo com sua percepção: se o follow-up está ruim, isso derruba a sensação de inteligência do atendimento inteiro.
+
+E eu **não criaria um “agente criativo de follow-up” solto**.
+
+Criaria uma máquina de estados.
+
+Algo aproximadamente assim:
+
+```text
+WAITING_CUSTOMER
+WAITING_INSURER
+WAITING_HUMAN
+WAITING_DOCUMENT
+WAITING_CONFIRMATION
+READY_TO_CLOSE
+CLOSED
+ABANDONED
+```
+
+Cada estado possui:
+
+* quem estamos esperando;
+* por quê;
+* quando voltamos;
+* máximo de tentativas;
+* canal;
+* horário permitido;
+* mensagem apropriada;
+* condição para cancelar follow-up;
+* condição para finalizar;
+* condição de handoff.
+
+A LLM pode **redigir a mensagem humana**.
+
+Ela não deveria decidir sozinha toda a política.
+
+Exemplo:
+
+```text
+POLICY
+2h sem resposta
+→ lembrete leve
+
+24h
+→ segundo lembrete
+
+48h
+→ encerramento condicionado
+
+respondeu?
+→ cancela todos os timers
+
+seguradora está processando?
+→ NÃO incomodar o segurado
+
+caso está em handoff?
+→ NÃO mandar mensagem de encerramento
+```
+
+### Nota: **99/100**
+
+Isso eu encaixaria imediatamente depois da cadeia 085/086.
+
+---
+
+# 4. Quando o robô da seguradora chama um humano
+
+Sim, dá para fazer o que você imaginou.
+
+E considero uma feature importante.
+
+Não mandaria simplesmente uma lista de texto.
+
+Criaria o **Operator Resume Pack**.
+
+Por exemplo:
+
+> **Allianz — Assistência Residencial**
+>
+> Cliente: João
+> Apólice: X
+> Serviço: Máquina de lavar
+> Etapa: confirmação de endereço
+>
+> Já informado:
+>
+> * CPF ✓
+> * apólice ✓
+> * endereço ✓
+> * telefone ✓
+> * descrição ✓
+>
+> Seguradora respondeu:
+> “Aguarde um de nossos atendentes.”
+>
+> Próxima ação prevista:
+> confirmar disponibilidade do prestador.
+>
+> Sessão: ativa.
+>
+> **[Assumir atendimento]**
+
+O humano entra **na mesma execução**.
+
+Depois:
+
+> “Prestador confirmado para amanhã 13–17h.”
+
+E o Work Run continua.
+
+Esse modelo será extremamente importante no começo, porque você não precisa atingir 100% autonomia para obter muito valor.
+
+### Complexidade técnica: **74/100**
+
+### Valor de produto: **99/100**
+
+---
+
+# 5. SINISTROS: não automatize ainda. Comece a “ensinar” agora.
+
+Essa ideia sua é excelente.
+
+Hoje:
+
+```text
+SINISTRO
+→ coleta básica
+→ humano
+```
+
+Eu manteria.
+
+Mas adicionaria uma coisa:
+
+# **Claim Learning Shadow**
+
+Em cada sinistro entregue ao humano, guardar estruturalmente:
+
+```text
+tipo de sinistro
+seguradora
+ramo
+produto
+documentos solicitados
+informações solicitadas
+perguntas feitas
+etapas executadas pelo humano
+portais/canais usados
+motivo do handoff
+decisões tomadas
+documentos faltantes
+resultado
+tempo
+erros
+exceções
+```
+
+Depois:
+
+```text
+100 sinistros
+      ↓
+agrupamento
+      ↓
+"estes 37 seguiram praticamente a mesma rota"
+      ↓
+candidato a corredor
+      ↓
+protocolo
+      ↓
+eval
+      ↓
+shadow mode
+      ↓
+autonomia limitada
+```
+
+Isso transforma seu atendimento humano de hoje em **dataset operacional para o produto de amanhã**.
+
+### Coletar agora: **99/100**
+
+### Automatizar agora: **58/100**
+
+### Automatizar simples depois de evidência: **95/100**
+
+---
+
+# 6. O maior salto arquitetural do seu rascunho talvez sejam os PROTOCOLOS
+
+Eu colocaria isso entre as 3 ideias mais importantes de tudo que você escreveu.
+
+O corredor:
+
+> Allianz / residencial / máquina de lavar
+
+é apenas a primeira manifestação.
+
+A ideia maior é:
+
+# **AutoBrokers Capability Engineering Protocols**
+
+Ou seja:
+
+> “Como o AutoBrokers aprende a criar AutoBrokers?”
+
+Você começa a transformar conhecimento de engenharia que está hoje na sua cabeça e nas conversas com Claude/Codex em **procedimentos executáveis e repetíveis**.
+
+## Eu criaria estes protocolos canônicos
+
+| Protocolo                                         |    Nota |
+| ------------------------------------------------- | ------: |
+| P00 — Como criar, executar e auditar um Protocolo | **100** |
+| Como escrever uma SPEC                            | **100** |
+| Como executar uma SPEC                            | **100** |
+| Como auditar uma implementação                    | **100** |
+| Como criar corredor novo                          | **100** |
+| Como melhorar corredor existente                  | **100** |
+| Como criar Skill                                  |  **99** |
+| Como criar Auxiliar                               |  **99** |
+| Como criar Connector                              |  **98** |
+| Como integrar novo sistema — Quiver/Segfy/etc.    | **100** |
+| Como ingerir nova base de conhecimento            | **100** |
+| Como transformar memória em Knowledge Candidate   | **100** |
+| Como publicar conhecimento                        | **100** |
+| Como criar Auxiliar para nova seguradora          |  **98** |
+| Como criar novo Artifact/Report                   |  **97** |
+| Como criar novo canal                             |  **97** |
+
+Mas existe uma regra:
+
+> **Protocolo não é um documento gigante dizendo “faça isso”.**
+
+Um protocolo deve possuir contrato.
+
+```text
+PROTOCOLO
+│
+├── quando usar
+├── autoridades que deve ler
+├── pré-condições
+├── inputs obrigatórios
+├── passos
+├── artefatos produzidos
+├── contratos/schema
+├── riscos
+├── segurança
+├── isolamento tenant
+├── testes
+├── controles
+├── juiz
+├── mutation tests
+├── E2E
+├── rollback
+├── observabilidade
+└── relatório final
+```
+
+Então qualquer Claude, Codex ou GPT novo consegue chegar e:
+
+> “Crie Mapfre / Auto / Chaveiro.”
+
+O agente não precisa **lembrar como o projeto funciona**.
+
+O protocolo ensina.
+
+Isso é extremamente defensável.
+
+---
+
+# 7. E isso resolve sua preocupação com SPEC + subagentes + juízes
+
+Eu faria isso **antes de escrever muitas SPECs novas**.
+
+Você já construiu uma versão muito boa disso na régua dos corredores: o executor não aprova o próprio trabalho e existem lentes independentes de julgamento. A SPEC-083 formalizou exatamente essa separação, e a 084.1/084.2 levou isso até corredores AAA e mutation tests.
+
+Eu generalizaria a filosofia.
+
+## PROTOCOLO DE SPEC
+
+### Orquestrador
+
+Responsável pelo documento final.
+
+### Subagentes sob demanda
+
+Não necessariamente todos em toda SPEC:
+
+```text
+Repo Auditor
+Domain Expert
+Architecture Reviewer
+Security/Tenant Reviewer
+Database Reviewer
+UX/Product Reviewer
+Testing/Eval Reviewer
+Migration Reviewer
+```
+
+### Depois entram três juízes que NÃO participaram da autoria
+
+**Juiz 1 — Verdade e Evidência**
+
+> Tudo que a SPEC afirma existe realmente?
+
+**Juiz 2 — Adversarial**
+
+> Como eu quebraria isso?
+
+**Juiz 3 — Execução e Regressão**
+
+> Dá realmente para executar?
+> O que vai quebrar ao redor?
+
+E então:
+
+```text
+SPEC
+ ↓
+EXECUTOR
+ ↓
+checks determinísticos
+ ↓
+tests
+ ↓
+mutation/adversarial
+ ↓
+E2E real
+ ↓
+juízes
+ ↓
+correções
+ ↓
+postflight
+```
+
+## Eu chamaria isso de Triple-A Engineering Gate
+
+Mas faria uma distinção.
+
+O **AAA dos corredores** continua significando qualidade operacional daquela rota.
+
+O **Triple-A Engineering Gate** é o método universal.
+
+Algo como:
+
+```text
+A1 — Authority
+provado pelas fontes e pelo código real
+
+A2 — Adversarial
+sobrevive a juiz, falha e mutação
+
+A3 — Application
+funciona de ponta a ponta no mundo real
+```
+
+### Nota: **100/100**
+
+Se fizer isso agora, **todas as próximas 30 SPECs ficam melhores**.
+
+É uma das poucas features que aumenta a qualidade de todas as outras features.
+
+---
+
+# 8. DeepSeek Harness: aqui estão as coisas que eu roubaria
+
+Eu **não instalaria DeepSeek Harness como novo runtime**.
+
+Ele ainda está em developer preview e o próprio projeto avisa que haverá mudanças incompatíveis. A arquitetura dele é muito interessante: modelo, tools, skills, sessions, sandboxes, storage, loop, scheduler e UI são plugins substituíveis. ([GitHub][1])
+
+### DeepSeek como runtime AutoBrokers: **25/100**
+
+Mas algumas ideias:
+
+## A. “Everything is a Plugin”
+
+Traduziria para:
+
+> **Everything is a Capability Pack**
+
+Hoje você já tem Skill Registry + Capability Packs + Tool Gateway.
+
+Excelente.
+
+Não crie outro Plugin Registry.
+
+---
+
+## B. Profiles
+
+DeepSeek possui diferentes profiles/modes.
+
+Eu criaria:
+
+```text
+ATTENDANCE SAFE
+mínimo de ferramentas
+Evidence
+Atlas
+handoff
+
+ANALYST
+InfoCap
+RAG
+Research
+Artifacts
+read-only
+
+OPERATOR
+leitura
++
+ações externas governadas
++
+approval
+
+CREATOR
+somente Admin interno
+cria candidatos a:
+Skill
+Auxiliar
+Protocolo
+Connector
+```
+
+### Nota: **97/100**
+
+Isso pode ser implementado através dos seus **Capability Packs**, não através do DeepSeek.
+
+---
+
+## C. Trajectory
+
+Essa talvez seja a melhor ideia.
+
+O DeepSeek mantém um log append-only do que o agente realmente recebeu e fez — incluindo contexto, tools e scheduling. ([DeepSeek][2])
+
+Você já tem Work Runs, steps, events, traces e checkpoints.
+
+Eu evoluiria para:
+
+# **AutoBrokers Trajectory**
+
+```text
+Work Run
+│
+├── contexto recebido
+├── evidência escolhida
+├── Skill escolhida
+├── modelo
+├── subagentes
+├── ferramentas
+├── input/output
+├── approvals
+├── retries
+├── decisões
+├── handoff
+├── custo
+└── resultado
+```
+
+Com:
+
+```text
+REPLAY
+FORK
+COMPARE
+SEARCH
+AUDIT
+LEARN
+```
+
+### Nota: **99/100**
+
+Isso conecta diretamente:
+
+**observabilidade + Central de Agentes + Dreams + MetaHarness + aprendizado**.
+
+---
+
+# 9. Grok Bot: eu copiaria a experiência, não a arquitetura de segurança
+
+O Grok Bot lançado em agosto de 2026 enfatiza agentes sempre ativos, conversas persistentes, múltiplos Bots em paralelo, rotinas e capacidade de trabalhar em aplicativos usando um computador persistente. ([SpaceXAI][3])
+
+Isso me deu uma conclusão clara sobre sua Central de Agentes.
+
+Hoje é fácil pensar em:
+
+> “tenho 15 agentes técnicos.”
+
+Eu mudaria a UX para:
+
+> “minha corretora tem trabalhadores digitais responsáveis por coisas.”
+
+Exemplo:
+
+```text
+AutoBrokers
+└─ coordenador
+
+Atendimento
+└─ operação dos segurados
+
+Renovação
+└─ carteira que vai vencer
+
+Cobrança
+└─ parcelas e follow-up
+
+Inteligência Comercial
+└─ resultados e oportunidades
+
+Pesquisa
+└─ mercado e seguradoras
+```
+
+Esses podem ter:
+
+* thread própria;
+* atividade atual;
+* últimas execuções;
+* rotina;
+* entregas;
+* falhas;
+* pendências;
+* custo;
+* coisas esperando aprovação.
+
+### Essa UX: **95/100**
+
+Mas não copiaria o modelo:
+
+> “cada Bot compartilha computador e credenciais”.
+
+Para corretoras e dados de seguros:
+
+### Nota: **30/100**
+
+Seu Vault + Capability Registry é melhor.
+
+---
+
+# 10. Auxiliar NÃO é Subagente
+
+Essa definição precisa ficar cristalina.
+
+A sua SPEC-058, inclusive, já tomou a decisão correta: o corretor compra um resultado; Auxiliar pode usar Skills, workflow, tools, rotina, Work Runs e eventualmente Agents/Subagents, mas não precisa ser um “Agent Smith dedicado”.
+
+Eu consolidaria a ontologia:
+
+| Termo                  | O que significa                                |
+| ---------------------- | ---------------------------------------------- |
+| **Action**             | resultado de domínio invocável                 |
+| **Skill**              | como fazer uma coisa                           |
+| **Tool**               | função técnica                                 |
+| **Connector**          | acesso autenticado                             |
+| **Agent**              | executor cognitivo com função                  |
+| **Subagent**           | executor temporário/delegado                   |
+| **Auxiliar**           | produto/trabalhador instalado na corretora     |
+| **Rotina**             | quando o trabalho começa                       |
+| **Workflow**           | sequência                                      |
+| **Work Run**           | execução real                                  |
+| **Artifact**           | resultado persistente                          |
+| **Protocol**           | como construir/evoluir uma capacidade          |
+| **AutoBrokers Engine** | onde as capacidades vivem e podem ser chamadas |
+
+Essa tabela eu tornaria **canônica**.
+
+---
+
+# 11. Marketplace de Auxiliares: você NÃO perde seu serviço personalizado
+
+Ao contrário.
+
+Eu criaria quatro níveis.
+
+### 1. AutoBrokers Official
+
+Instalação instantânea:
+
+* Cobrança;
+* Renovação;
+* Relatório Executivo;
+* Reputação;
+* Follow-up;
+* Documentos;
+* etc.
+
+### 2. AutoBrokers Premium Packs
+
+Produtos mais sofisticados.
+
+### 3. Auxiliares Privados
+
+A corretora diz:
+
+> “A gente tem um processo específico de conferência dessa planilha + e-mail + Quiver.”
+
+Você constrói.
+
+Ele pertence só a ela.
+
+### 4. Partner / Community Marketplace
+
+Somente no futuro, depois de segurança/evals.
+
+Portanto seu serviço customizado deixa de ser:
+
+> “a única maneira de criar Auxiliar”
+
+e passa a ser:
+
+> **AutoBrokers Solutions / Automation Studio**
+
+mais caro, mais sofisticado e focado nos processos únicos.
+
+### Marketplace oficial: **98/100**
+
+### Custom sob demanda: **97/100**
+
+### Community marketplace agora: **60/100**
+
+---
+
+# 12. Agent Skills: eu quero compatibilidade, não dependência
+
+O padrão Agent Skills hoje é extremamente interessante porque uma Skill pode ser:
+
+```text
+renewal-analysis/
+├── SKILL.md
+├── scripts/
+├── references/
+└── assets/
+```
+
+e é carregada por progressive disclosure: primeiro nome/descrição; corpo só quando acionada; demais recursos só se necessários. ([GitHub][4])
+
+Você já tem Skill Registry muito mais governado.
+
+Então eu faria:
+
+> **AutoBrokers Skill Registry continua sendo autoridade.**
+>
+> **Mas uma Skill AutoBrokers pode importar/exportar formato Agent Skills.**
+
+Isso tem um valor enorme para o AutoBrokers Engine.
+
+Uma Skill criada no AutoBrokers poderia futuramente ser utilizável por:
+
+* Claude;
+* Codex;
+* outros clients Agent-Skills-compatible.
+
+### Nota: **98/100**
+
+---
+
+# 13. Quais Skills específicas de CORRETORA eu criaria
+
+Não copiaria “PDF Skill”, “PowerPoint Skill” etc. como produto principal.
+
+Transformaria em armas de seguro.
+
+As primeiras que eu priorizaria seriam:
+
+| Skill AutoBrokers                       |    Nota |
+| --------------------------------------- | ------: |
+| Analisar apólice com evidência          | **100** |
+| Preparar renovação                      |  **99** |
+| Comparar coberturas/propostas           |  **99** |
+| Preparar atendimento para handoff       |  **99** |
+| Intake de sinistro                      |  **98** |
+| Analisar carteira                       |  **99** |
+| Avaliar desempenho comercial            |  **99** |
+| Auditoria documental                    |  **97** |
+| Preparar dossiê do segurado             |  **96** |
+| Pesquisar procedimento de seguradora    |  **98** |
+| Pesquisar mudança regulatória           |  **96** |
+| Preparar proposta executiva             |  **94** |
+| Identificar oportunidades de cross-sell |  **94** |
+| Recuperar leads esquecidos              |  **94** |
+| Preparar reunião com cliente            |  **92** |
+| Gerar briefing diário da corretora      |  **98** |
+
+Essas Skills depois alimentam:
+
+* Core;
+* Auxiliares;
+* Engine;
+* Marketplace.
+
+---
+
+# 14. DeepAgents: pegue o isolamento de contexto
+
+DeepAgents hoje é construído sobre LangGraph e já formaliza subagentes com contexto isolado, Skills próprias, permissões próprias, HITL e outputs estruturados. ([GitHub][5])
+
+Você já está em LangGraph.
+
+Então:
+
+### instalar outro runtime: **38/100**
+
+Mas copiar:
+
+```text
+Subagent
+→ objetivo estreito
+→ contexto próprio
+→ tool subset
+→ Skill subset
+→ orçamento
+→ output estruturado
+→ volta apenas o necessário
+```
+
+### **96/100**
+
+Exemplo:
+
+```text
+AutoBrokers
+
+"Faça meu relatório do trimestre"
+
+     ↓ parallel
+
+Commercial Analyst
+Finance Analyst
+Renewal Analyst
+Operations Analyst
+
+     ↓
+
+Executive Synthesizer
+
+     ↓
+
+Independent Reviewer
+
+     ↓
+
+Artifact
+```
+
+O Core não fica cheio de 80 mil tokens intermediários.
+
+---
+
+# 15. Global / Corretora / Usuário: eu melhoraria, mas NÃO destruiria o que você já tem
+
+Sua SPEC-052 já definiu corretamente:
+
+* Global;
+* Corretora;
+* Usuário;
+* conhecimento especializado de agente;
+* evidência episódica;
+* procedimentos separados de RAG.
+
+Eu preservaria.
+
+Mas adicionaria **dimensões de escopo**, não novos cérebros.
+
+```text
+GLOBAL
+│
+└─ CORRETORA
+   │
+   ├─ TEAM / ÁREA / SPACE
+   │
+   ├─ USUÁRIO
+   │
+   └─ ENTIDADES
+      ├─ cliente
+      ├─ apólice
+      ├─ caso
+      └─ sinistro
+
+RUN / THREAD
+= contexto de trabalho temporário
+```
+
+Essa camada TEAM é útil justamente para Slack e Teams.
+
+Slack já modela organização → workspace → canais e aplica scopes distintos até para canais privados; Teams diferencia standard, private e shared channels. ([Documentação do Slack][6])
+
+### Nota: **99/100**
+
+---
+
+# 16. Slack e Teams NÃO devem virar memória automaticamente
+
+Eu mudaria esta parte da sua ideia:
+
+> “conectar Slack e automaticamente virar memória.”
+
+Não.
+
+Melhor:
+
+```text
+Slack/Teams
+↓
+evento
+↓
+candidate extractor
+↓
+isso vale ser lembrado?
+↓
+qual escopo?
+↓
+quem tem permissão?
+↓
+por quanto tempo?
+↓
+contradiz algo?
+↓
+MEMORY CANDIDATE
+↓
+publicação governada
+```
+
+Uma mensagem num canal privado não pode virar uma “memória da corretora inteira”.
+
+O ACL precisa viajar junto.
+
+### Auto-memory direto: **25/100**
+
+### Memory Candidate com ACL herdado: **98/100**
+
+Isso é uma diferença estrutural importantíssima.
+
+---
+
+# 17. O “SOUL” pode resolver uma confusão real sua
+
+Hermes separa claramente:
+
+* `SOUL`: quem o agente é, tom e estilo;
+* `USER`: perfil do usuário;
+* `MEMORY`: fatos aprendidos;
+* `AGENTS`: regras/projeto. ([GitHub][7])
+
+Eu não criaria literalmente um `SOUL.md` como nova autoridade do AutoBrokers.
+
+Mas copiaria a separação.
+
+## AutoBrokers
+
+```text
+COMPANY FACTS
+Quem é a corretora?
+nome
+serviços
+localização
+equipe
+dados
+processos
+
+COMPANY SOUL
+Como ela fala e trabalha?
+tom
+princípios
+postura
+preferências
+padrões de comunicação
+
+USER PROFILE
+Quem é esta pessoa?
+cargo
+objetivos
+preferências
+responsabilidades
+
+AGENT ROLE
+Qual é a função do agente?
+permissões
+missão
+limites
+```
+
+Seu Brand Fabric atual já captura identidade, logo, cores, textos e provenance; mas isso é diferente de garantir que o **Context Assembly do chat** use uma identidade comportamental adequada em cada conversa.
+
+Portanto eu investigaria especificamente:
+
+> **Brand/Company Profile existe → por que não está entrando corretamente no Context Pack do Core?**
+
+E não criaria outro banco de identidade.
+
+### Nota: **94/100**
+
+---
+
+# 18. DREAMS: uma das melhores ideias do seu rascunho
+
+Aqui sua intuição está muito alinhada com o estado da arte.
+
+A OpenAI lançou em junho de 2026 uma arquitetura de “Dreaming” para sintetizar memória e lidar com staleness, continuidade e relevância. A Letta trabalha com “sleep-time compute”, em que o agente usa períodos ociosos para organizar e reescrever contexto aprendido fora do hot path. ([OpenAI][8])
+
+Mas eu faria uma mudança importante.
+
+Não:
+
+> “Toda noite todas as memórias viram conhecimento.”
+
+Isso contaminaria o sistema.
+
+Faria:
+
+# **AutoBrokers Nightly Consolidation**
+
+```text
+EVENTOS DO DIA
+│
+├─ conversas
+├─ Work Runs
+├─ correções humanas
+├─ handoffs
+├─ Slack/Teams
+├─ documentos
+├─ falhas
+└─ resultados
+       ↓
+EXTRAÇÃO
+       ↓
+candidatos
+       ↓
+deduplicação
+       ↓
+contradição
+       ↓
+temporalidade
+       ↓
+classificação de escopo
+       ↓
+┌───────────────────────────┐
+│ user memory               │
+│ company memory            │
+│ team memory               │
+│ entity fact               │
+│ Skill improvement         │
+│ Atlas candidate           │
+│ global knowledge candidate│
+│ discard                   │
+└───────────────────────────┘
+       ↓
+risk / eval
+       ↓
+publish ou review
+```
+
+E também:
+
+# **esquecer é parte do sistema**
+
+* preferência obsoleta;
+* informação superseded;
+* evento irrelevante;
+* duplicata;
+* contexto expirado.
+
+Não armazenar tudo.
+
+### Nota: **98/100**
+
+Isso deve **evoluir o Learning Fabric existente**, não instalar Letta/Mem0 como novo cérebro.
+
+---
+
+# 19. Mem0 / Graphiti
+
+Eu interpretei seu “Grapify” como provavelmente **Graphiti**, que é a referência mais próxima dessa ideia.
+
+Graphiti é interessante para grafos temporais e relações que mudam ao longo do tempo. Mem0 também trabalha com memória por `user_id`, `agent_id`, `run_id` e graph/entity linking. ([Zep][9])
+
+Mas seu Smith já possui:
+
+```text
+Supabase = truth
+Qdrant = index
+Memory Fabric
+Context Assembly
+provenance
+scope
+learning queue
+```
+
+E a SPEC-052 proíbe outra autoridade paralela.
+
+Então:
+
+**substituir por Mem0:** 25/100
+**substituir por Graphiti:** 32/100
+
+Mas eu faria um benchmark isolado:
+
+```text
+Nossa recuperação
+vs
+Nossa recuperação + entity graph
+vs
+Graphiti
+vs
+Mem0
+```
+
+Testando perguntas reais:
+
+> “Quais clientes do produtor X tiveram sinistro e renovam nos próximos 60 dias?”
+
+> “Que problemas da Porto começaram a aparecer depois da mudança de julho?”
+
+> “Qual pessoa normalmente resolve este tipo de caso?”
+
+Se o graph melhorar significativamente:
+
+> incorporamos **o padrão**, não necessariamente o produto.
+
+### Laboratório: **89/100**
+
+---
+
+# 20. AutoBrokers MetaHarness
+
+Essa ideia do Ruflo ficou ainda melhor depois da pesquisa atual.
+
+O MetaHarness do Ruflo mede coisas como:
+
+* harnessFit;
+* compileConfidence;
+* taskCoverage;
+* toolSafety;
+* memoryUsefulness;
+* custo;
+* threat model;
+* MCP surface;
+* drift entre versões. ([GitHub][10])
+
+Eu criaria a versão vertical.
+
+# **AutoBrokers Harness Health**
+
+Para cada:
+
+* Core;
+* Atendimento;
+* Auxiliar;
+* Skill;
+* Corredor;
+* Capability Pack.
+
+Exemplo:
+
+```text
+ATENDIMENTO
+
+Outcome Success ............. 96
+Evidence Coverage ........... 99
+Route Coverage .............. 94
+Silent Stall Rate .......... 0.3%
+Human Rescue Rate ........... 8%
+Tool Safety ................. 100
+Context Efficiency .......... 91
+Memory Provenance ........... 97
+Latency ..................... 86
+Cost / Resolution ........... 92
+Mutation Pass ............... 100
+Drift ....................... LOW
+```
+
+E em outro:
+
+```text
+AUXILIAR COBRANÇA
+
+Overall ..................... 87
+
+⚠ repasse de ferramenta muito amplo
+⚠ entrega falhou em 8% dos runs
+⚠ custo subiu 31%
+⚠ Skill mudou sem novos evals
+```
+
+### Nota: **98/100**
+
+Isso pode virar uma peça fantástica do **Control Plane**.
+
+---
+
+# 21. Browserbase Skills: você realmente já absorveu muita coisa
+
+O Browserbase hoje tem explicitamente:
+
+* browser trace;
+* browser-to-api;
+* autobrowse;
+* captura CDP;
+* DOM;
+* screenshots;
+* inferência best-effort de OpenAPI. ([GitHub][11])
+
+E olhando seu estado recente, você já avançou com:
+
+* Portal Worker;
+* profiler;
+* Browser Intelligence Lab;
+* corredores;
+* Glass;
+* fábrica de capability.
+
+Então eu **não criaria nova arquitetura Browserbase**.
+
+Eu faria apenas um **gap audit**:
+
+> “Do Browserbase Skills atual, quais três comportamentos ainda não implementamos?”
+
+Eu verificaria principalmente:
+
+1. `trace → API spec` sistemático;
+2. regressão automática quando portal muda;
+3. `autobrowse → repetir até passar N vezes`.
+
+### Conceito: **97/100**
+
+### Nova instalação/rebuild: **35/100**
+
+---
+
+# 22. Agent-Reach
+
+Mesma lógica.
+
+Você já tem uma arquitetura de pesquisa profunda bastante bem definida: Tavily para discovery/search e Firecrawl para crawl/extraction, com Evidence Pack e Research Orchestrator.
+
+Não instalar Agent-Reach no Core.
+
+Use como inspiração para adicionar **sources**:
+
+```text
+YouTube
+RSS
+Reddit
+LinkedIn quando permitido
+X quando permitido
+GitHub
+sites
+news
+```
+
+dentro de:
+
+# AutoBrokers Internet Intelligence Pack
+
+### Agent-Reach como nova autoridade: **48/100**
+
+### Adaptar source adapters: **92/100**
+
+### Internet Intelligence: **94/100**
+
+---
+
+# 23. Composio
+
+Aqui eu gosto bastante.
+
+Composio hoje oferece discovery/auth/execução para mais de 1.000 apps e usa poucas meta-tools para descobrir ferramentas just-in-time, em vez de jogar centenas de schemas no contexto. ([Composio][12])
+
+Para:
+
+```text
+Gmail
+Google Drive
+Slack
+Notion
+HubSpot
+Pipedrive
+Calendar
+Sheets
+CRM long-tail
+```
+
+pode economizar muito desenvolvimento.
+
+Mas:
+
+```text
+AutoBrokers
+      ↓
+Tool Gateway
+      ↓
+Capability
+      ↓
+Composio provider
+      ↓
+HubSpot
+```
+
+E nunca:
+
+```text
+AutoBrokers
+      ↓
+Composio decide tudo
+```
+
+InfoCap, WhatsApp, seguradoras e sistemas críticos eu tenderia a manter mais diretamente controlados.
+
+### Nota: **93/100**
+
+---
+
+# 24. AutoBrokers Engine continua sendo uma das 3 grandes apostas
+
+Nada do que encontrei mudou minha avaliação anterior.
+
+Na verdade ela ficou mais forte.
+
+O AutoBrokers deve conseguir expor:
+
+```text
+attendance.resolve-assistance
+
+policy.answer-with-evidence
+
+renewals.analyze-portfolio
+
+collections.run
+
+brokerage.executive-pulse
+
+claims.prepare-handoff
+
+research.insurance-market
+```
+
+E NÃO:
+
+```text
+click_button
+buscar_cliente
+abrir_pdf
+send_message
+get_document
+query_table
+```
+
+O consumidor pede o **resultado**.
+
+O AutoBrokers possui o conhecimento de como resolver.
+
+Isso é exatamente a separação que mantém seu moat.
+
+## Minha nota agora
+
+### **99/100**
+
+Mas eu faria depois de a cadeia crítica de atendimento estar sólida.
+
+Porque Engine externo amplifica duas coisas:
+
+> capacidade boa — e defeito ruim.
+
+Primeiro deixe o domínio confiável.
+
+Depois distribua.
+
+---
+
+# 25. E hoje o ChatGPT já valida essa direção
+
+ChatGPT Business/Enterprise/Edu já aceita apps MCP customizados com ações de escrita, e o Apps SDK foi explicitamente desenhado para conectar uma interface dentro do ChatGPT ao **backend existente** do desenvolvedor. ([OpenAI Help Center][13])
+
+Isso significa:
+
+```text
+ChatGPT
+   ↓
+AutoBrokers MCP/App
+   ↓
+AutoBrokers Engine
+   ↓
+Work Run
+```
+
+Pode existir ao lado de:
+
+```text
+Dashboard AutoBrokers
+   ↓
+AutoBrokers Engine
+```
+
+Perfeito.
+
+---
+
+# 26. A ideia de usar “o pacote do Claude/GPT que o cliente já paga”
+
+Aqui temos de separar duas coisas.
+
+## A — Cliente trabalha no Claude/ChatGPT dele
+
+E conecta:
+
+> AutoBrokers Engine.
+
+### **98/100**
+
+Excelente.
+
+O harness dele paga a inferência daquela conversa e o AutoBrokers fornece a inteligência vertical.
+
+---
+
+## B — AutoBrokers pega a assinatura Claude Pro/Max do cliente e usa como backend do SaaS
+
+### **15/100**
+
+Eu não faria.
+
+Anthropic é explícita hoje: desenvolvedores terceiros construindo produtos devem usar API key/Console e não podem oferecer login Claude.ai ou rotear requisições através das credenciais Free/Pro/Max de usuários. ([Claude][14])
+
+OpenAI também mantém assinatura ChatGPT e API como sistemas de cobrança separados. ([OpenAI Help Center][15])
+
+Mesmo que ferramentas como LionLab/LionClaw anunciem uso de assinaturas em contextos locais, isso **não transforma esse padrão em uma arquitetura segura para um SaaS multi-tenant**. ([LionLab][16])
+
+---
+
+# 27. Três modalidades que eu permitiria
+
+```text
+1. AUTOBROKERS MANAGED AI
+AutoBrokers fornece IA
+preço incluso/usage
+
+2. BYOK
+corretora coloca sua API key
+OpenAI / Anthropic / etc.
+
+3. EXTERNAL HARNESS
+corretora usa ChatGPT/Claude
+e chama AutoBrokers Engine
+```
+
+Esse modelo é excelente.
+
+### BYOK: **91/100**
+
+### External Harness: **98/100**
+
+---
+
+# 28. IA gratuita para experimentar
+
+Dá para reduzir brutalmente o custo.
+
+Mas eu não prometeria:
+
+> “zero custo de IA em qualquer uso”.
+
+Porque certas Actions do AutoBrokers podem continuar usando LLM internamente.
+
+Eu faria um plano gratuito com:
+
+* ações read-only;
+* dados de demonstração;
+* cache;
+* relatórios determinísticos;
+* modelo barato quando necessário;
+* limites;
+* possibilidade de usar ChatGPT/Claude como harness.
+
+Exemplo fantástico:
+
+> “Conecte seu ChatGPT e pergunte ao AutoBrokers sobre sua carteira.”
+
+O custo de conversa principal pode ficar do lado do harness do usuário.
+
+### Estratégia: **88/100**
+
+---
+
+# 29. INFOCAP: aqui existe uma oportunidade MUITO maior do que eu imaginava
+
+Os quatro links Postman Documenter que você enviou não ficaram legíveis pelo meu navegador nesta sessão, e os artifacts `claude.ai/code/artifact/...` também são superfícies autenticadas que eu não consigo inspecionar diretamente daqui.
+
+Mas isso acabou não sendo o maior problema.
+
+Porque encontrei uma fonte melhor:
+
+> **o seu próprio código mediu a API InfoCap ao vivo em 18/08/2026.**
+
+E descobriu coisas que inclusive contradisseram inferências anteriores da documentação.
+
+Por exemplo:
+
+* `/documentos_bi` possui a comissão;
+* `/renovacoes` possui produtor e repasse, mas **não possui `val_c`**;
+* os dois precisam ser cruzados por `nosnum`;
+* `tipo_doc=A` melhora enormemente a cobertura;
+* consultas grandes precisam ser fatiadas;
+* alguns 403 SigV4 significavam rota inexistente, não “falta de permissão”.
+
+Isso é excelente engenharia.
+
+---
+
+# 30. O que de fato já conseguimos extrair da InfoCap
+
+Com evidência atual:
+
+| Informação                                      | Situação                                          |
+| ----------------------------------------------- | ------------------------------------------------- |
+| Apólices                                        | ✅                                                 |
+| Prêmio                                          | ✅                                                 |
+| Comissão da corretora                           | ✅                                                 |
+| Base de comissão                                | ✅                                                 |
+| Produtor/vendedor                               | ✅                                                 |
+| Repasse ao produtor                             | ✅                                                 |
+| % repasse                                       | ✅                                                 |
+| Novo × renovação                                | ✅                                                 |
+| Seguradora                                      | ✅                                                 |
+| Ramo                                            | ✅                                                 |
+| Vigência                                        | ✅                                                 |
+| Vencimentos                                     | ✅                                                 |
+| Cliente                                         | ✅                                                 |
+| Telefone/e-mail em renovação                    | ✅                                                 |
+| Indicador de sinistro no vencimento             | ✅                                                 |
+| Parcelamento por apólice                        | ✅ em leitura específica                           |
+| Ranking vendedor                                | ✅                                                 |
+| Comparação temporal                             | ✅                                                 |
+| Série mensal                                    | ✅                                                 |
+| Projeção simples                                | ✅                                                 |
+| Contabilidade geral                             | ❌ não comprovado                                  |
+| DRE real                                        | ❌                                                 |
+| Caixa bancário realizado                        | ❌                                                 |
+| Contas a pagar completas                        | ❌ não comprovado                                  |
+| Folha/despesa                                   | ❌                                                 |
+| Comissão efetivamente liquidada pela seguradora | ⚠ precisa confirmar semântica/campo de liquidação |
+
+Portanto:
+
+## O AutoBrokers já consegue ser um **Diretor Comercial/Financeiro de Carteira**.
+
+Ainda não um contador.
+
+---
+
+# 31. Aliás, a SPEC-081 já construiu uma parte enorme do que você está pedindo
+
+A 081 explicitamente criou:
+
+> “quem vende, quanto rende, quanto custa”,
+
+com dados reais da InfoCap e cruzamentos inexistentes na interface original. Ela mediu em 2025 1.680 apólices tipo A, 717 novas, 963 renovações, 82 produtores e cobertura de 80,6% das apólices no mapa de produtores.
+
+E o código possui ferramenta determinística para:
+
+* ranking;
+* ticket;
+* comissão;
+* custo/repasse;
+* mix;
+* novo x renovação;
+* período anterior;
+* radar.
+
+Então:
+
+> **NÃO construir um novo motor de relatórios.**
+
+A próxima SPEC deve evoluir esse motor.
+
+---
+
+# 32. Eu criaria agora o AUXILIAR DE INTELIGÊNCIA EXECUTIVA 360
+
+Nome de produto provisório:
+
+# **Pulso 360 da Corretora**
+
+ou:
+
+# **Diretor de Performance**
+
+A corretora poderia perguntar:
+
+> “Como estamos este trimestre?”
+
+> “Quem está vendendo menos?”
+
+> “Quem mais cresceu?”
+
+> “Quem gera mais comissão líquida?”
+
+> “Quem vende muito mas deixa muita comissão em repasse?”
+
+> “Quem está caindo nos últimos 90 dias?”
+
+> “Qual seguradora está crescendo?”
+
+> “Qual ramo está desacelerando?”
+
+> “O que vai vencer nos próximos 60 dias?”
+
+> “Qual é nossa projeção para o fechamento do ano?”
+
+E ele entrega um Artifact completo.
+
+### Nota: **100/100**
+
+---
+
+# 33. O relatório ideal teria 8 blocos
+
+## 1 — VEREDITO EXECUTIVO
+
+Não começa com gráfico.
+
+Começa:
+
+> **A corretora acelerou 12% em comissão no trimestre, mas o crescimento está concentrado em 3 produtores e o volume de Auto caiu 8%. R$ 412 mil em prêmio vencem nos próximos 60 dias.**
+
+Esse é o CEO summary.
+
+---
+
+## 2 — AGORA × PERÍODO ANTERIOR
+
+```text
+Prêmio
+Comissão
+Apólices
+Ticket
+Novo
+Renovação
+```
+
+Trimestre atual × trimestre anterior.
+
+E, quando houver histórico suficiente:
+
+ano × ano anterior.
+
+---
+
+# 34. 3 — SELLER MOMENTUM
+
+Essa é a parte que você pediu.
+
+Para cada vendedor/produtor:
+
+```text
+últimos 90 dias
+vs
+90 dias anteriores
+```
+
+Comparar:
+
+* apólices;
+* prêmio;
+* comissão;
+* ticket;
+* repasse;
+* participação.
+
+Classificação:
+
+```text
+↑ ACELERANDO
+→ ESTÁVEL
+↓ DESACELERANDO
+⚠ QUEDA RELEVANTE
+★ DESTAQUE
+```
+
+Mas cuidado:
+
+nem todo `produtor` da InfoCap é funcionário.
+
+Seu próprio dado contém:
+
+* fechadores;
+* executivos;
+* indicadores;
+* canais;
+* parceiros.
+
+Portanto eu criaria:
+
+# `producer_identity_map`
+
+```text
+produtor_info_cap
+↓
+tipo:
+employee
+partner
+channel
+indicator
+other
+
+user_id opcional
+team_id opcional
+```
+
+Aí sim podemos dizer:
+
+> “colaborador X caiu.”
+
+Sem isso, o sistema pode chamar um canal parceiro de funcionário.
+
+---
+
+# 35. 4 — ECONOMIA REAL DO CANAL
+
+Uma grande sacada já presente na 081:
+
+Não basta saber quem gera comissão.
+
+Precisamos saber quanto fica.
+
+```text
+COMISSÃO
+-
+REPASSE
+=
+CONTRIBUIÇÃO APÓS REPASSE
+```
+
+Não chame isso de lucro.
+
+Ainda faltam:
+
+* salário;
+* imposto;
+* overhead;
+* marketing;
+* despesas.
+
+Mas é uma métrica extremamente poderosa.
+
+Mostrar:
+
+```text
+Produtor A
+Comissão 200k
+Repasse 50k
+Retenção 150k
+
+Produtor B
+Comissão 180k
+Repasse 5k
+Retenção 175k
+```
+
+Talvez B seja economicamente mais interessante apesar de faturar menos.
+
+Isso é inteligência de negócio real.
+
+---
+
+# 36. 5 — CONCENTRAÇÃO DE RISCO
+
+Eu adicionaria:
+
+```text
+% da comissão nos Top 3 vendedores
+% da comissão nas Top 3 seguradoras
+% do prêmio nos Top 3 ramos
+```
+
+E até HHI futuramente.
+
+Exemplo:
+
+> “42% da comissão da corretora depende de dois produtores.”
+
+Isso é informação de gestão.
+
+---
+
+# 37. 6 — RADAR DE RENOVAÇÃO
+
+Já existe boa parte.
+
+Mostrar:
+
+```text
+15 dias
+30 dias
+60 dias
+90 dias
+```
+
+Por:
+
+* prêmio;
+* vendedor;
+* seguradora;
+* ramo.
+
+E destacar:
+
+> “R$ 183 mil vencendo em 30 dias estão concentrados no vendedor X.”
+
+---
+
+# 38. 7 — PROJEÇÃO
+
+O código já possui base de projeção usando meses completos.
+
+Eu faria três níveis depois:
+
+```text
+Conservador
+Base
+Stretch
+```
+
+Mas inicialmente eu usaria somente uma projeção determinística transparente:
+
+> “Mantendo o ritmo médio dos meses completos…”
+
+Sem fingir uma previsão sofisticada de ML.
+
+Com mais histórico:
+
+* sazonalidade;
+* crescimento;
+* retention;
+* vendedor;
+* ramo;
+* seguradora.
+
+Aí evolui.
+
+---
+
+# 39. 8 — CONFIANÇA DOS DADOS
+
+Isso é algo que sua 081 fez muito certo.
+
+Mostrar:
+
+> “80,6% das apólices estão atribuídas a produtor.”
+
+Não esconder buraco.
+
+Eu colocaria no final:
+
+```text
+Qualidade do dado: 91/100
+
+Produtor identificado .... 80.6%
+Comissão atribuída ........ 86.2%
+Período completo .......... sim
+Fonte ..................... InfoCap
+Consultado ................. agora
+```
+
+Isso é muito enterprise.
+
+---
+
+# 40. Como eu usaria os seus artifacts
+
+Pelo que você descreveu:
+
+**Panorama da Corretora — Aurora**
+
+→ capa/Executive Verdict.
+
+**Carteira e Comissões — Meridian**
+
+→ economia, variações, rankings.
+
+**Briefing Diário — Obsidian**
+
+→ versão diária/mobile.
+
+**Produção e Funil — Aurora**
+
+→ evolução comercial.
+
+**Radar de Renovações — Meridian**
+
+→ exposição futura.
+
+**Dossiê do Segurado**
+
+→ outro Action, não misturar no relatório executivo.
+
+**Sinistros e Seguradoras**
+
+→ mais tarde entra no Performance 360 quando tivermos base suficiente.
+
+Então eu não faria oito produtos desconectados.
+
+Criaria:
+
+```text
+EXECUTIVE INTELLIGENCE ENGINE
+          ↓
+     diferentes views
+          ↓
+Panorama
+Carteira
+Briefing
+Produção
+Renovação
+```
+
+Um cérebro de dados.
+
+Múltiplos artifacts.
+
+---
+
+# 41. O relatório “mais inteligente possível” virá do cruzamento destes universos
+
+```text
+PRODUÇÃO
++
+COMISSÃO
++
+REPASSE
++
+VENDEDOR
++
+SEGURADORA
++
+RAMO
++
+RENOVAÇÃO
++
+SINISTRO
++
+ATENDIMENTO
++
+COTAÇÃO
+```
+
+Mas eu faria por etapas.
+
+**Agora** temos segurança suficiente para:
+
+```text
+Produção
+Comissão
+Repasse
+Vendedor
+Seguradora
+Ramo
+Renovação
+```
+
+**Depois** validaríamos joins/histórico para:
+
+```text
+Cotação
+Atendimento
+Sinistro
+```
+
+Aí fica absurdamente poderoso.
+
+Exemplo futuro:
+
+> “João está vendendo 14% menos, mas não é geração de proposta: sua conversão permanece estável. O problema é que recebeu 28% menos oportunidades.”
+
+Ou:
+
+> “Porto gera 19% da comissão, mas responde por 31% do volume de atendimento.”
+
+Ou:
+
+> “Este ramo tem bom prêmio, mas custo operacional muito maior.”
+
+Isso já começa a ser **Business Intelligence que um software de corretora tradicional dificilmente entrega**.
+
+---
+
+# 42. O que eu NÃO colocaria no primeiro Executive 360
+
+Não inventaria:
+
+* lucro;
+* DRE;
+* caixa;
+* CAC completo;
+* comissão “paga”;
+* produtividade humana baseada apenas em nome de produtor;
+* previsão AI sofisticada.
+
+Primeiro verdade.
+
+Depois sofisticação.
+
+---
+
+# 43. Ruflo: mantenho praticamente meu veredito anterior
+
+Eu não colocaria Ruflo dentro do runtime.
+
+Mas duas ideias ficaram ainda mais relevantes:
+
+### MetaHarness: **98/100**
+
+já expliquei.
+
+### Security Gate: **97/100**
+
+Qualquer conteúdo externo:
+
+```text
+web
+PDF
+email
+Slack
+portal
+MCP
+WhatsApp
+```
+
+passa por:
+
+```text
+PII / classification
+↓
+sanitization
+↓
+prompt-injection/untrusted-content gate
+↓
+context
+```
+
+O Ruflo possui explicitamente componentes de PII/prompt-injection nessa linha. ([GitHub][17])
+
+---
+
+# 44. Voz ao vivo
+
+Sim, colocaria.
+
+Mas não agora.
+
+E eu não usaria “Jarvys” como componente visível, porque sua SPEC-052 já determinou que Jarvys/Jarvis é só metáfora, não marca do produto.
+
+Chamaria:
+
+# **AutoBrokers Voice**
+
+ou
+
+# **Conversa ao Vivo**
+
+Hoje as APIs realtime estão muito mais maduras. A OpenAI, por exemplo, já possui voz streaming contínua, interrupção e delegation/tool use em tempo real. ([OpenAI][18])
+
+Mas a voz precisa usar:
+
+```text
+MESMO ENGINE
+MESMA MEMÓRIA
+MESMAS SKILLS
+MESMAS CAPABILITIES
+MESMOS WORK RUNS
+```
+
+Não criar:
+
+> “um segundo AutoBrokers de voz.”
+
+### Nota estratégica: **87/100**
+
+### Prioridade agora: **45/100**
+
+Texto primeiro impecável.
+
+---
+
+# 45. Multi-WhatsApp: não pensaria em “QR por usuário”
+
+Eu modelaria:
+
+# `ChannelConnection`
+
+A conexão pertence à **corretora**.
+
+Depois pode ser atribuída:
+
+```text
+connection
+├─ team
+├─ queue
+├─ purpose
+├─ assigned users
+└─ agents
+```
+
+Exemplo:
+
+```text
+Resulta
+├── WhatsApp Atendimento
+├── WhatsApp Comercial
+└── WhatsApp Cobrança
+```
+
+Os funcionários usam.
+
+Mas não são necessariamente donos técnicos da conexão.
+
+Se um número for pessoal/específico de funcionário:
+
+```text
+owner = tenant
+assigned_user = Maria
+```
+
+Isso evita uma arquitetura impossível de administrar quando a pessoa sai da empresa.
+
+### Nota: **96/100**
+
+---
+
+# 46. E-mail deve entrar
+
+Sim.
+
+### **94/100**
+
+Eu colocaria o mesmo contrato:
+
+```text
+WhatsApp
+Email
+Webchat
+Slack
+Teams
+Voice
+       ↓
+CHANNEL GATEWAY
+       ↓
+Conversation / Case / Work Item
+```
+
+Não criar um runtime diferente para cada canal.
+
+Minha ordem:
+
+| Canal               |              Prioridade |
+| ------------------- | ----------------------: |
+| WhatsApp            |                 **100** |
+| E-mail              |                  **94** |
+| Slack interno       |                  **92** |
+| Teams interno       |                  **84** |
+| Webchat             |                  **78** |
+| Voz                 |      **87**, mas depois |
+| Instagram/Messenger |                  **68** |
+| Telegram            | **45** para seu mercado |
+
+---
+
+# 47. As melhorias de produto que você citou não são “cosméticas”
+
+Minha priorização:
+
+### Chat demora para começar / trava digitando — **100/100**
+
+É P0.
+
+Medir:
+
+```text
+request
+↓
+Context Planner
+↓
+Skill Resolver
+↓
+RAG
+↓
+Tool setup
+↓
+provider
+↓
+FIRST TOKEN
+```
+
+Criar métrica:
+
+# **TTFT — Time To First Token**
+
+P50/P95.
+
+Você precisa saber exatamente **onde os segundos estão indo**.
+
+---
+
+### Entregas ruins — **100/100**
+
+Seu status canônico ainda registra a SPEC-057 parcialmente incompleta em uma parte tenant-facing do Artifact Hub.
+
+Isso é muito grave para percepção de valor.
+
+Não adianta:
+
+> IA trabalhar 8 minutos e produzir coisa ótima
+
+se o usuário não consegue:
+
+> encontrar / abrir / compartilhar / entender.
+
+Eu colocaria Entregas como um dos focos logo depois do atendimento crítico.
+
+---
+
+### Kanban / fila / casos / segurados — **92/100**
+
+Sim.
+
+Especialmente se o AutoBrokers começar a executar mais trabalhos.
+
+A UI precisa mostrar:
+
+```text
+novo
+em andamento
+aguardando cliente
+aguardando seguradora
+aguardando humano
+resolvido
+```
+
+---
+
+### Caixa de texto do chat — **82/100**
+
+Fazer melhor.
+
+Mas não antes da latência.
+
+---
+
+### Mobile shortcuts ocupando espaço — **74/100**
+
+Corrigir.
+
+Mas claramente abaixo de confiabilidade/latência.
+
+---
+
+### Card de memória não navega corretamente — **72/100**
+
+Bug real.
+
+Corrigir em sprint de acabamento.
+
+---
+
+# 48. O seu Masterplan de SPECs precisa de uma limpeza curta
+
+O estado atual no GitHub mostra uma situação importante:
+
+* 084.1 já foi executada;
+* 084.2 também;
+* 19 corredores chegaram ao gate;
+* o rascunho antigo que chamava “Ensaio” de 089 foi absorvido;
+* 057 ainda tem parte pendente;
+* 058 ainda tem uma pendência;
+* 062 não começou;
+* existem números duplicados em algumas SPECs antigas.
+
+Você diz que a 085 está em execução agora; eu trataria isso como estado mais recente da branch de trabalho.
+
+Mas antes de criar mais 15 números:
+
+# **faria uma limpeza do registry canônico.**
+
+Não uma semana de documentação.
+
+Uma correção objetiva:
+
+```text
+SPEC ID
+nome
+status
+branch
+commit
+executada?
+report?
+superseded by?
+dependências
+próxima
+```
+
+### Nota: **99/100**
+
+Porque o rascunho que você me mandou demonstra exatamente o custo de não ter isso: várias boas ideias já existem parcialmente em outro número.
+
+---
+
+# 49. O que eu considero os 10 MAIORES SALTOS de valor
+
+Se eu tivesse que cortar tudo que você escreveu e ficar somente com dez:
+
+### **1. Atendimento sem falha silenciosa**
+
+**100/100**
+
+### **2. Protocol Factory + Triple-A Engineering**
+
+**100/100**
+
+### **3. Executive Intelligence 360 / InfoCap**
+
+**100/100**
+
+### **4. AutoBrokers Engine**
+
+**99/100**
+
+### **5. Trajectory / Replay de Work Runs**
+
+**99/100**
+
+### **6. Segundo Cérebro com escopos corretos + Dreams**
+
+**99/100**
+
+### **7. AutoBrokers MetaHarness**
+
+**98/100**
+
+### **8. Skill/Auxiliary Factory + Marketplace**
+
+**98/100**
+
+### **9. Learning Shadow de Sinistros + operação**
+
+**98/100**
+
+### **10. Multi-interface: Dashboard + ChatGPT + Claude + canais**
+
+**98/100**
+
+Esses dez juntos mudam a natureza da empresa.
+
+---
+
+# 50. Minha sequência executiva recomendada
+
+Eu faria assim:
+
+## AGORA
+
+```text
+085
+↓
+PROTOCOLO-00 de SPEC/EXECUÇÃO/AAA
+↓
+086 + Resume Pack
+↓
+Follow-up correto
+↓
+087
+↓
+088 / Central de Agentes
+```
+
+Sem instalar DeepSeek, Ruflo, Mem0, Graphiti ou outro runtime.
+
+---
+
+## LOGO NA SEQUÊNCIA
+
+```text
+Entrega / Artifact Hub
++
+TTFT / performance do chat
++
+Multi-WhatsApp
++
+Email
+```
+
+Esses são problemas de produto visíveis.
+
+---
+
+## PRÓXIMO GRANDE BLOCO
+
+```text
+CAPABILITY ENGINEERING SYSTEM
+
+Protocol Factory
++
+Skill Factory
++
+Auxiliary Factory
++
+Connector Factory
++
+System Integration Factory
++
+Knowledge Ingestion Factory
+```
+
+E todos passam pelo Triple-A Engineering Gate.
+
+---
+
+## EM SEGUIDA
+
+# **Auxiliar de Inteligência Executiva 360**
+
+Eu colocaria esse muito alto porque:
+
+1. a infraestrutura já existe;
+2. os dados já foram medidos;
+3. gera valor executivo claro;
+4. vira demonstração extremamente forte;
+5. pode justificar ticket maior;
+6. cria dependência positiva diária.
+
+---
+
+## DEPOIS
+
+# **AutoBrokers Engine v1**
+
+Começaria pequeno:
+
+```text
+policy.answer-with-evidence
+brokerage.executive-pulse
+renewals.radar
+research.insurance
+```
+
+Primeiro read-heavy.
+
+Depois:
+
+```text
+collections
+attendance
+```
+
+com actions.
+
+---
+
+## DEPOIS
+
+```text
+Team scope
++
+Slack
++
+Teams
++
+Company Soul
++
+Dreams
++
+Memory consolidation
+```
+
+---
+
+## DEPOIS
+
+```text
+AutoBrokers MetaHarness
++
+Drift
++
+Security
++
+Quality Scores
++
+Cost/result
+```
+
+---
+
+## MAIS À FRENTE
+
+```text
+Voice
+Community Marketplace
+Graph-memory experimental
+creative studio
+autonomous simple claims
+```
+
+---
+
+# Minha conclusão final
+
+O seu rascunho tem muitas ideias boas, mas se você tentar executá-las como:
+
+> “vamos instalar DeepSeek + Ruflo + Mem0 + Graphiti + DeepAgents + Composio + Agent-Reach + Grok style…”
+
+**você piora o projeto.**
+
+O caminho mais valioso é o oposto:
+
+> **AutoBrokers absorve os melhores padrões deles e continua tendo uma única arquitetura.**
+
+A melhor versão do projeto que consigo enxergar é:
+
+> **AutoBrokers não é um chatbot para corretoras.**
+>
+> **É uma infraestrutura cognitiva vertical de seguros que sabe observar, lembrar, aprender, pesquisar, planejar, operar, delegar, provar o que fez, gerar trabalhos e ser consumida por qualquer interface.**
+
+O Dashboard continua.
+
+O ChatGPT pode chamar.
+
+O Claude pode chamar.
+
+O WhatsApp pode chamar.
+
+Os Auxiliares podem chamar.
+
+Os agentes podem chamar.
+
+Mas:
+
+> **a inteligência de seguro continua pertencendo ao AutoBrokers Engine.**
+
+E acima disso você coloca duas máquinas que, na minha avaliação, podem aumentar muito o valor da empresa:
+
+> **Capability Factory:** ensina o sistema a criar novas capacidades.
+
+e
+
+> **MetaHarness:** prova continuamente que essas capacidades continuam boas.
+
+Quando junta:
+
+```text
+OPERAÇÃO
+   ↓
+TRAJECTORY
+   ↓
+LEARNING SIGNAL
+   ↓
+DREAMS
+   ↓
+KNOWLEDGE / SKILL / ROUTE CANDIDATE
+   ↓
+PROTOCOL FACTORY
+   ↓
+AAA EVAL
+   ↓
+PUBLICAÇÃO
+   ↓
+METAHARNESS
+   ↓
+OPERAÇÃO MELHOR
+```
+
+você fecha o ciclo.
+
+**Esse ciclo, para mim, é o verdadeiro salto arquitetural escondido dentro de toda a lista que você me enviou.**
+
+[1]: https://github.com/deepseek-ai/deepseek-harness "https://github.com/deepseek-ai/deepseek-harness"
+[2]: https://deepseek.com/harness/en/ "https://deepseek.com/harness/en/"
+[3]: https://x.ai/news/introducing-grok-bot "https://x.ai/news/introducing-grok-bot"
+[4]: https://github.com/agentskills/agentskills "https://github.com/agentskills/agentskills"
+[5]: https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/deepagents/middleware/subagents.py "https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/deepagents/middleware/subagents.py"
+[6]: https://docs.slack.dev/apis/web-api/using-the-conversations-api/ "https://docs.slack.dev/apis/web-api/using-the-conversations-api/"
+[7]: https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/use-soul-with-hermes.md "https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/use-soul-with-hermes.md"
+[8]: https://openai.com/index/chatgpt-memory-dreaming/ "https://openai.com/index/chatgpt-memory-dreaming/"
+[9]: https://help.getzep.com/graphiti/getting-started/welcome "https://help.getzep.com/graphiti/getting-started/welcome"
+[10]: https://github.com/ruvnet/ruflo/blob/main/docs/metaharness-user-guide.md?utm_source=chatgpt.com "ruflo/docs/metaharness-user-guide.md at main · ruvnet/ruflo · GitHub"
+[11]: https://github.com/browserbase/skills/blob/main/skills/browser-to-api/SKILL.md "https://github.com/browserbase/skills/blob/main/skills/browser-to-api/SKILL.md"
+[12]: https://docs.composio.dev/ "https://docs.composio.dev/"
+[13]: https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt "https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt"
+[14]: https://code.claude.com/docs/en/legal-and-compliance "https://code.claude.com/docs/en/legal-and-compliance"
+[15]: https://help.openai.com/en/articles/8156019-is-api-usage-included-in-chatgpt-subscriptions-even-if-i-have-a-paid-chatgpt-account%25252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252523.pls "https://help.openai.com/en/articles/8156019-is-api-usage-included-in-chatgpt-subscriptions-even-if-i-have-a-paid-chatgpt-account%25252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252523.pls"
+[16]: https://www.lionlabs.com.br/lionclaw?utm_source=chatgpt.com "LionClaw: Assistente Pessoal de IA | Comunidade LionLabs"
+[17]: https://github.com/ruvnet/ruflo/wiki/Plugins?utm_source=chatgpt.com "Plugins · ruvnet/ruflo Wiki · GitHub"
+[18]: https://openai.com/index/continuous-voice-interaction-with-gpt-live/ "https://openai.com/index/continuous-voice-interaction-with-gpt-live/"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-------------------------
+
+
+
+ENTA VAMOS LA. QUEROO SEGUIR AS TUAS RECMENDAÇÕES E IDEIAS E SUGESTÕES, INCLUSIVE A SEQUENCIA DE IMPLANTAÇÕES. NAOO SEI SE CADA PARTE DESSAS QUE VC COLCU DEVE VIRAR UMA SPEC, SE JUNTAR ALGUMA COISA UMA NA UTRA, EU NAO ENTENDO DISSO E PRECISO QUE VC AVALIE CMO É A MELLHOR FORMA DE IMPLANTARMOS TODA MINHA LISTA DE RASCUNHOS QUE PASSEI, TODOS OS ITENS NUMA SEQUENCIA LOGICA QUE TRANSFORME O PROJETO EM ALGO REALMENTE EXTRAORDINARIO.
+
+ QUE EU JA TIVER NO PROJETO, PRECISAMOS MELLHORAR COM A NVA IDEIA. SE FR MELHRAR, DEVE ENTRAR. DEVEMOS MODELAR PRO MEU PROOJETO E NAO INSTALAR O QUE ELES TEM DIRETO NO AUTOBROKERS. QUERO O QUE VC FALOU... 
+O caminho mais valioso é o oposto:
+
+> **AutoBrokers absorve os melhores padrões deles e continua tendo uma única arquitetura.**
+
+A melhor versão do projeto que consigo enxergar é:
+
+> **AutoBrokers não é um chatbot para corretoras.**
+>
+> **É uma infraestrutura cognitiva vertical de seguros que sabe observar, lembrar, aprender, pesquisar, planejar, operar, delegar, provar o que fez, gerar trabalhos e ser consumida por qualquer interface.**
+
+O Dashboard continua.
+
+O ChatGPT pode chamar.
+
+O Claude pode chamar.
+
+O WhatsApp pode chamar.
+
+Os Auxiliares podem chamar.
+
+Os agentes podem chamar.
+
+Mas:
+
+> **a inteligência de seguro continua pertencendo ao AutoBrokers Engine.**
+
+E acima disso você coloca duas máquinas que, na minha avaliação, podem aumentar muito o valor da empresa:
+
+> **Capability Factory:** ensina o sistema a criar novas capacidades.
+
+e
+
+> **MetaHarness:** prova continuamente que essas capacidades continuam boas.
+
+OPERAÇÃO
+   ↓
+TRAJECTORY
+   ↓
+LEARNING SIGNAL
+   ↓
+DREAMS
+   ↓
+KNOWLEDGE / SKILL / ROUTE CANDIDATE
+   ↓
+PROTOCOL FACTORY
+   ↓
+AAA EVAL
+   ↓
+PUBLICAÇÃO
+   ↓
+METAHARNESS
+   ↓
+OPERAÇÃO MELHOR
+
+
+
+você fecha o ciclo.
+
+**Esse ciclo, para mim, é o verdadeiro salto arquitetural escondido dentro de toda a lista que você me enviou.**
+
+É ISSO QUE EU QUERO. MAS EU DEI UMA LISTA DE NOVAS IDEIAS, NOVAS FEATURES E TEM ALGUMAS MAIS IMPOORTANTES E PRIOORIDADES E OOUTRAS COM MENOS FORÇA, MAS QUE TBM TERÃO GANHOS IMPOORTANTES E EU QUERO COLOCOAR ELAS TBM. APENAS AS IDEIAS QUE NAO SÃO BOAS, QUE VÃO PIORAR O PROJEJTO DEVEME SER DESCARTADAS.
+
+ENTA AGORA QUE VC TEM TODAS AS IDEIAS DO MEU RASCUNHO E JA PENSOU SUERFICIALMENTNE SOOBRE CADA AUMA DELAS, PRECISO QUE NÓS TRANSFOORMEMOS ISSOO EM UMA SEQUENCIA DE NOVAS SPECS MUITO COMPLELTAS E DETALLHADISSIMAS, PARA SEREM EXECUTADAS NUMA SEQUENCIA LOGICA E QUE ESSE SALTO ESTEJA DADO QUANNDO FINALIZAR A EXECUÇÃO DESSAS SPECS. NOO MOMENTO EM QUE A ULTIMA FOR FINALIZADA, NOSSO PROJETO TERÁ DADO UM SALTO GIGANTESCO E SERA AINDA MAIS ROBUSTO E FORTE.
+
+MAS PRECISAMOS DE UMA ESTRUTURA DE EXECUÇÃO AGOORA. NAO QUERO SAIR ESCREVENEDOO AS SPECS DE QUALQUER MANEIRA. PRECISO QUE SEJA TUDO ESTUDADO, PESQUISADOO CM MINIMOOS DETALHES PARA NÓOS CONSEGUIRMOS PENSAR NAS MELELHOORES SPECS, ESCREVER ELAS DETALLAHADAS, ROOBUSTAS, COOMPLETISSIMAS E NOO FINAL TOODAS ELAS ESTARA ESCRITAS. MAS PRECISAMOS DE EUM METOODO PARA VC ESCREVER ESSAS SPECS DE FORMA CLARA E CMPLELETA. NAOO PDE SER SUPERFICIAL. PRECISAM SER SPECS DETALHADAS. O CLAUDE COODE MUITAS VEZES SIMPLIFICA AS SPECS, COLOCA MENOS IDEIAS DO QUE DEVERIA, MENOS DETALLHES DO QUE DEVERIA, DEIXA INFORMAÇÕES DE FORA E AI O TRABALHO TENDE A NAO FICAR TÃO BEM FEITO COMO DEVERIA.
+
+ENTAO PRECISAMOS DE EUM PLANO PARA ESCREVER TODAS ESSAS SPECS. POR MAIS QUE VC JA TENHA PENSAD NELAS, PRECISAMOOS DE UMA LISTA COOM UMA SEQUENCIA IDEAL DE SPECS QUE VC RECOMENDA. NÓS VAMOS CRIAR TODAS AS SPECS, DESDE AS MAIS IMPOORTANTES, COM MAIS IMPACTO ATÉ AS MENOS IMPORTANTES QUE FICARÃ MAIS PRO FINALA, MAS TODAS QUE TROUXEREM BENEFICIO REAL PRO PROJETO DEVEM ENTNRAR. SE NAO TROUXER BENEFICIO, SE PIORAR O PROJETO, SE JA TEMOS MELHOR... AI NAO VAMOS INCLUIR. MAS QUERO QUE TODA ESSA LISTA SEJA EXECUTADA EM LINHA RETA, UMA SPEC APOS A OUTRA ATE O FINAL.
+
+MAS PRIMEIRO DEVEMOS TER A LISTA E O METODO. TEMOS UM PROTOCOLO AUTOBROKERS AAA DE QUALIDADE QUE EU ACHO QUE VC NAO CONSEGUE EXECUTAR DAUQELA FORMA PQ NAO PODE ENVIAR SUBAGENTES. MAS DEPOIS QUE ESCREVERMOS TUDO DETALHADAMENTE, CADA SPEC PODERÁ SER REVISADA PELAS LLMS DE CODIGO E AI ELAS PASSARÃO PELO PROTOCOLO E PODERÃO SER LAPIDADAS. MAS O PRINCIPAL  JA ESTARÁ FEITO E TERMINADO.
+
+ENTAO PRECISAMOS DE EUM METODO PARA CRIAR AGORA. VC ANTES DE ESCREVER UMA SPEC, DEVE PESQUISAR PROFUNDAMENTE SOBRE O TEMA, SOBRE COMO USAR NO PROJEETO, SOBRE AS REFERENCIAS, SOBRE O QUE AS PESSOAS ESTÃO DIZENDO, COMO PODEMOS USAR ISSO DE FORMA VERTICAL, DEVE PENSAR NO DIA A DIA DAS CORRETORAS, ETC... DEVE PENSAR NO GANHO DE CADA SPEC, CADA IDEIA. E AI CONSTRUIR A SPEC COM O MAXIMO DE CONTEXTO POSSIVEL SOBRE EO TEMA, SOBRE O AUTOBROKERS... QUEREMOS GERAR VALOR PARA AS CORRETORAS. QUEREMOS QUE ELES TENHAM RESULTADOS, TENHAM AUTOOMAÇÕES PODEROSAS NO MUNDO DOS SEGUROS. VC PRECIS PENSAR EM COMO O MUNDO ESTA SEMPRE CAMINHANDO PARA TERMOS VALOR. PRECISAMOS USAR O MAXIMO DE VALOR EXISTENTE EM AUTOBROKERS ENGINE, EM DEEPSEEK HARNESS, EM PROTOCOLOS, EM TODAS AS IDEIAS QUE EEUE COLOQUEI. NAO QUERO QUE SEJA SÓ ESCRITA A SPEC. QUERO QUE ESEJA PLANEJADA UMA A UMA, ESTUDADA, PESQUISADA, ANALISADA, USAR REFERENCIAS, TRAER PRA NOSSA REALIDADE E AI CRIAR ESSAS SPECS UMA POR UMA.
+
+SEMPRE QUE VC ESCREVER UMA SPEC, PRECISARÁ DEIXAR DISPONIVEL PARA DOWNLOAD EM .md PARA EU COLOCAR NUMA PASTA. E AI DEPOIS DE TODAS ELAS PRONTAS, SEM EXCEÇÃO, EU VOU USAR O CLAUDE CODE PARA FAZER UMA REVISÃO USANDO O PROTOCOLO AUTOBROKERS AAA E CONSTRUIR AS FUNCIONALIDADES E IDEIAS DE FORMA MUITO BEM FEITA.
+
+MAS SEMPRE QUE TERMINAR UMA SPEC, VC DEVE ESCREVER UM RESUMO DA SPEC CRIADA, DEVE ESCREVER UM BREVE RESUMO CHECKLIST DA PROXIMA SPEC QUE VAMOS CRIAR, COM OBJETIVOS, IDEIAS, COMO ELA VAI SER, O QUE VAI ACONTECER COM O PROJETO, OS GANHOS, COMO VAI FICAR DEPOIS DE EXECUTADA EM RELAÇÃO AO QUE TEMOS HOJE... E ISSO É PARA EU ENTEDER DA SPEC, PARA EU PODER PESQUISAR E DAR MINHA OPINIÃO E ALGUMAS DICAS PARA CRIAÇÃO DE CADA SPEC ANTES DE VC COMEÇAR. TBM VC DEVE FAZER PERGUNTAS CASO TENEHA DUVIDAS OU SUGESTÕES QUE FAZEM O SISTEMA FICAR AINDA MELHOR PARA O PROJETO, PRINCIPALMEENTE PARA A OPERAÇÃO INTERNA DO AUTOBROKEKRS E PARA A OPERAÇÃO E AUTOMAÇÕES DAS CORRETORAS DE SEGUROS.
+
+ENTAO PRIMEIRA COISA É CRIAR UMA LISTA DEFINITIVA DAS SPECS E EXPLICAR COMO SERÁ OO METODO QUE SERA UTILIZADOO PARA ELAS SEREM EXTRAOORDINANRIAS, COOMPLELTISSIMAS, DETALHADAS, PESQUISADAS PROFUNDAMENTE, AS REFERENCIAS EXPLICADAS COM DETALLHES PARA FACILITAR O PROTOCOLO AAA. NO CASO DAS SPECS, ELAS FICARÃO PRONTAS, MAS SERÃO UMA ESPECIE DE RASCUNHOO QUE PRECISA SER VALIDADO DEPOOIS PELO CLAUDE COODE OOU PELOO CODEX QUE PUDEREM USAR O PROOTOCOLO AUTOBROKEKKERS AAA PARA ESSA VALIDAÇÃO E AJUSTES FINAIS.
+
+DEPOIS QUE ESSA LISTA E METODO ESTIVEREM PRONTOS, SEME NADA DE FORA, COM TODOS OS ITENS DENTRO DAS SPECS NA SEQUENCIA LOGICA, VC VAI TRAZER O RESUMO/CHECKLIST/VISAO GERAL DA PRIMEIRA SPEC QUE VC VAI CRIAR, CONFORME EU FALEI QUE VC DEVE FAZER SEMPRE DEPOIS DA ENTREGA PARA EU FALAR O QUE EU QUERO DA SPEC E AI VC ESCREVE ELA COM MAIS ALGUNS ARGUMENTOS MEUS TBM. E DEPOIS QUE EU EXPLICAR CADA SPEC, CADA ITEM, VC INICIA UMA IMERSÃO NOS CODIGOS ATUAIS, NO QUE TEMEOS HOJE, PESQUISA, TENDENCIAS, PRA ONDE ISSO ESTA CAMINHANDO, PRA ONDE É A EVOLUÇÃO, PARA ONDE DEVEMOS SEGUIR... COMO TEREMOS O MAIOR GANHO, MAS SEM ENCHER LINGUIÇA. É PRA EXECUTARMOS COISAS QUE FARÃO O PROJETO REALMENTE DAR UM SALTO. NA LISTA SERÁ DOS MAIORES GANHOS PARA OS MEENORES GANHOS. VC JA CRIOU UMA LISTA PRATICAMENTE COMPLETA DE TODAS AS COISAS E ITENS. QUERO TRANSFORMAR ISSO NUME LISTA DEFINITIVA, SEMPRE COM NOTAS, COM EXPLICAÇÕES... E AI IRMOS CRIAND SPEC POOR SPEC E AI E VOU EEXECUTAR TODAS ELAS NO FUTURO PROXIMO, CONFORME FALEI. MAS AGORA É ISSO... PRECISAMOS DE UM PROCESSO DE CRIAÇÃO DE SPECS DETALHADAS EM SEQUENCIA, EM LINHA RRETA, UAM A UMA, COM EXTREMA PROFNDIDADE E NADA DE COISAS SUPERFICIAIS E VC DEVE FAZER ESSE METOODO ACOONTNECER. SE TIVER DUVIDAS VC DEVE FALLAR. SE TIVER SUGESTÕES VC DEVE FALAR... E AI EU RESPONDO TUDO E VC CRIA A SPEC COM OO MELHOR METODO POSSIVEL E NO FINAL OS RESUMOS, PROXIMOS PAASOS, SUGESTÕOES E VIRA UM CICLO DE CRIAÇÃO DAS SPECS ATÉ O FINAL. REPIT: POR MAIS QUE TENHAM COISAS MAIS IMPOORTANTES E OOUTRAS MENOS IMPOOPOORTANTES, PRECISO QUE TUDOO ESTEJA CONTEMPLADO NA LISTA, TUDO ORGANIZAD NA LISTA PARA VIRAR SPEC. PRIMEIRO AS MAIORES PRIORIDADES E GANHOS... E ASSIM VAMOS ATÉ O FINAL. TUDO PRECISA ESTAR SEMPRE BEM CLARO O QUE SERA FEITO EM CADA SPEC PARA EU PODER AJUDAR E DAR MEU PONTO DE VISTA E TALVEZ DISCUTIR COM VC ANTES DE CRIAR AS SPECS, TRAZER NOVAS IDEIAS, SUGESTÕES. QUANTO MAIS CERTEIRO FORMOS, MAIS VALIOSO SERÁ O PROJETO.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------
+
+
+
+Sim. Agora temos material suficiente para transformar tudo isso em um **programa fechado de evolução do AutoBrokers**, em vez de continuar criando SPECs conforme as ideias aparecem.
+
+E encontrei uma informação importante ao conferir o repositório **hoje, 25 de agosto de 2026**: a SPEC-085 já foi finalizada e seu relatório registra o commit final `e527705`; portanto, ela não entra mais como trabalho futuro.  A SPEC-092 também já existe — “O formulário dentro do WhatsApp” — então não faz sentido reescrevê-la.
+
+Também considero decisiva a evolução do **Protocolo AAA v9**. A medição mostrou que o grande desperdício não era o juiz: era o enorme pedágio de contexto antes da primeira linha de código. O protocolo passou a privilegiar contexto enxuto, aquecimento do executor para refutar a SPEC e juízes julgando **produto/código depois da implementação**, não rodadas intermináveis lapidando o documento.
+
+Isso muda inclusive **como eu vou escrever nossas SPECs**.
+
+# 1. O método definitivo: AutoBrokers SPEC Foundry
+
+Não vamos simplesmente fazer:
+
+> ideia → escrever 3.000 linhas → Claude Code executar.
+
+Cada futura SPEC passará por um processo anterior de investigação.
+
+O processo será:
+
+```text
+IDEIA
+ ↓
+ASSESSMENT
+ ↓
+ESTADO REAL DO REPOSITÓRIO
+ ↓
+PESQUISA EXTERNA PROFUNDA
+ ↓
+VERTICALIZAÇÃO PARA SEGUROS
+ ↓
+ARCHITECTURE FIT
+ ↓
+FRONTEIRA DA SPEC
+ ↓
+DESENHO DO PRODUTO
+ ↓
+DESENHO TÉCNICO
+ ↓
+DESENHO DA PROVA
+ ↓
+SPEC + RESEARCH PACK
+ ↓
+SUA REVISÃO
+ ↓
+AAA WARM-UP NO CLAUDE CODE/CODEX
+ ↓
+EXECUÇÃO
+ ↓
+JUÍZES SOBRE O PRODUTO
+ ↓
+MUTATION / E2E / CANARY
+ ↓
+EXECUTION REPORT
+```
+
+Essa abordagem coincide com a evolução atual de Specification-Driven Development: o GitHub Spec Kit hoje separa um fluxo estruturado `Spec → Plan → Tasks → Implement` e inclusive adicionou uma fase anterior de **assessment da própria ideia**, justamente para decidir se vale construir, refinar, fundir ou matar antes da SPEC. ([GitHub Docs][1])
+
+## E haverá uma mudança importante na forma dos arquivos
+
+Eu **não quero confundir profundidade com gigantismo**.
+
+Cada SPEC que fizermos terá dois documentos:
+
+**`SPEC-xxx-nome.md`** será o contrato completo de execução: outcome, decisões, arquitetura, blocos, migrations, APIs, UX, falhas, segurança, testes, mutation, rollout, rollback e Definition of Done.
+
+**`SPEC-xxx-nome-RESEARCH-PACK.md`** guardará a investigação profunda: referências externas, repositórios analisados, discussões técnicas, alternativas, comparações, evidências, coisas descartadas e justificativas.
+
+Assim, **nada da pesquisa é perdido**, mas o executor não precisa carregar 80 mil tokens para começar.
+
+Isso converge também com Agent Skills: metadata mínima primeiro, instruções quando ativadas e referências/scripts apenas quando necessários. O padrão oficial recomenda justamente progressive disclosure em vez de jogar todo o conhecimento no contexto inicial. ([GitHub][2])
+
+# 2. O que toda SPEC nossa obrigatoriamente terá
+
+Toda SPEC futura terá aproximadamente **38 dimensões de completude**: resultado, valor de negócio, situação atual medida, pesquisa externa, alternativas descartadas, invariantes, ontologia, state machine, arquitetura, banco, APIs/tools/connectors, UX, multi-tenancy, ACL, memória/RAG, modelos/custos, segurança, PII, prompt injection, observabilidade, failure modes, HITL, SLO, migration/cutover, blocos de implementação, gates, testes, controles, mutation, adversarial, E2E, canary, rollback, métricas de sucesso e Definition of Done.
+
+Mas haverá uma regra ainda mais importante:
+
+> **REQUISITO e IMPLEMENTAÇÃO PROPOSTA serão coisas diferentes.**
+
+Por exemplo:
+
+**🔒 Requisito:** nenhum atendimento aguardando humano pode desaparecer.
+
+**💭 Implementação proposta:** talvez usar `work_runs.unblock_state`.
+
+Se no aquecimento o Claude Code descobrir que existe uma estrutura melhor no código atual, ele pode corrigir **a implementação**, mas não pode violar **o requisito**.
+
+Isso protege as SPECs contra exatamente o problema que já aconteceu no projeto: uma SPEC detalhadíssima pode estar detalhadamente errada porque partiu de uma premissa falsa.
+
+# 3. Nossa matriz de verdade
+
+Também vou incorporar permanentemente isto:
+
+**📊 MEDIDO** — reproduzimos de verdade.
+**🔎 REPO** — encontramos concretamente no código/schema.
+**🌐 EXTERNO** — referência externa verificável.
+**💭 HIPÓTESE** — precisa ser confirmada.
+**🔒 DECISÃO** — decisão de produto/arquitetura que queremos preservar.
+
+Eu não vou escrever:
+
+> “O sistema faz X.”
+
+se eu só inferi que deve fazer X.
+
+Escreverei:
+
+> 💭 “Parece existir X; o warm-up deve medir antes de implementar.”
+
+Isso reduz muito o risco de o Claude executar uma premissa falsa com perfeição.
+
+---
+
+# 4. A lista definitiva
+
+Eu consegui acomodar **praticamente tudo do seu rascunho** sem transformar cada ideia pequena em uma SPEC diferente.
+
+Algumas coisas foram fundidas porque pertencem ao mesmo mecanismo.
+
+Outras foram separadas porque possuem risco e arquitetura próprios.
+
+Esta é minha sequência recomendada:
+
+| Ordem | SPEC    | Tema                                                  |    Nota | O salto principal                                                       |
+| ----: | ------- | ----------------------------------------------------- | ------: | ----------------------------------------------------------------------- |
+|     0 | **092** | Formulário dentro do WhatsApp                         |  **99** | Já escrita; executar, não reescrever                                    |
+|     1 | **089** | **A Régua AAA é Honesta**                             | **100** | Consertar a medida antes de automatizar melhoria                        |
+|     2 | **086** | **Continuidade do Atendimento**                       | **100** | Resume Pack + humano + follow-up + encerramento verdadeiro              |
+|     3 | **087** | **Route Self-Healing Loop**                           |  **99** | URA mudou → detectar → propor → testar → publicar                       |
+|     4 | **090** | **Fábrica de Inteligência da Nova Corretora**         | **100** | Conversa real vira Atlas, rota, aliases, conhecimento e aprendizado     |
+|     5 | **091** | **Protocol & Process Registry**                       | **100** | Sistema aprende como criar/evoluir capacidades                          |
+|     6 | **088** | **Central de Agentes 2.0**                            |  **95** | Trabalhadores digitais claros, responsabilidades, runs e handoffs       |
+|     7 | **093** | **Claims Learning Shadow**                            |  **99** | Sinistro humano de hoje vira capacidade autônoma de amanhã              |
+|     8 | **094** | **Artifact & Delivery Hub Completion**                | **100** | Entregas finalmente excelentes                                          |
+|     9 | **095** | **Executive Intelligence 360 / InfoCap**              | **100** | Diretor de performance da corretora                                     |
+|    10 | **096** | **Chat Runtime Performance & Interaction Shell**      |  **99** | TTFT, streaming, composer e mobile                                      |
+|    11 | **097** | **Operations Workspace / Cases**                      |  **96** | Fila/Kanban/casos/segurados/Work Runs integrados                        |
+|    12 | **098** | **Identity, Scope & Company Soul Fabric**             |  **99** | Global/Corretora/Team/User/Entity corretamente separados                |
+|    13 | **099** | **Channel Fabric v2**                                 |  **98** | Multi-WhatsApp, e-mail, Slack, Teams, webchat e Meta Ads                |
+|    14 | **100** | **Skill & Capability Factory v2**                     | **100** | Agent Skills + DeepSeek + DeepAgents adaptados ao AutoBrokers           |
+|    15 | **101** | **Connector & Management-System Adapter Factory**     |  **99** | InfoCap → Quiver → Segfy → futuros sistemas                             |
+|    16 | **102** | **Knowledge & Memory Factory**                        | **100** | Ingestão, dedup, curadoria, candidate, publicação e esquecimento        |
+|    17 | **103** | **Auxiliary Marketplace & Automation Studio**         |  **98** | Official/Premium/Private/Partner + serviço custom premium               |
+|    18 | **104** | **Research Intelligence Pack v2**                     |  **95** | Agent-Reach ideas + Tavily + Firecrawl + fontes especializadas          |
+|    19 | **105** | **Trajectory / Replay / Fork**                        |  **99** | Reconstruir, pesquisar, comparar e bifurcar Work Runs                   |
+|    20 | **106** | **Dreams & Nightly Consolidation**                    |  **99** | Operação diária melhora memória e conhecimento governadamente           |
+|    21 | **107** | **Trust & Untrusted Content Gate**                    |  **98** | PII, sanitização e prompt injection em toda entrada externa             |
+|    22 | **108** | **AutoBrokers MetaHarness**                           | **100** | Medir continuamente qualidade, drift, custo, segurança e confiabilidade |
+|    23 | **109** | **AutoBrokers Engine v1**                             | **100** | Inteligência vertical passa a ser headless e reutilizável               |
+|    24 | **110** | **External Harness Gateway**                          |  **99** | ChatGPT, Claude e outros clientes chamam o Engine                       |
+|    25 | **111** | **Model & Cost Fabric**                               |  **92** | Managed AI + BYOK + External Harness + trial + routing                  |
+|    26 | **112** | **AutoBrokers Voice**                                 |  **88** | Conversa realtime usando o mesmo cérebro                                |
+|    27 | **113** | **Broker Growth & Creative Studio**                   |  **88** | Apresentações, infográficos, carrosséis, blog/SEO/AEO                   |
+|    28 | **114** | **Transformation Convergence & Production Readiness** | **100** | Gate final de todo o salto                                              |
+
+**São 29 etapas contando a 092 já existente; 28 trabalhos posteriores.**
+
+E a ordem não é simplesmente “maior nota primeiro”.
+
+Ela considera:
+
+> **valor × dependência × risco × efeito multiplicador.**
+
+Por exemplo, o AutoBrokers Engine tem nota 100, mas vem depois. Não faz sentido expor externamente uma inteligência que ainda não passou por todo o fortalecimento interno.
+
+---
+
+# 5. O que aconteceu com DeepSeek, Ruflo, Grok, Hermes etc.
+
+Nenhum ganhou uma SPEC “instalar framework”.
+
+Eles foram **distribuídos pelas SPECs onde suas melhores ideias geram valor**.
+
+DeepSeek entra principalmente em Capability Profiles, Trajectory e MetaHarness; o próprio Harness atual aposta em capabilities componíveis e cada execução rastreável, mas continua em developer preview — ótima referência, péssima razão para substituir Smith. ([DeepSeek][3])
+
+Grok Bot entra no modelo mental da Central de Agentes e Auxiliares persistentes.
+
+Hermes entra em Soul/User/Agent separation.
+
+Agent Skills entra na SPEC-100 e na portabilidade externa.
+
+DeepAgents entra em isolamento de contexto/subagentes.
+
+Browserbase entra em self-healing de rotas e Connector Factory.
+
+Composio entra como provider de integrações long-tail.
+
+Agent-Reach entra na Research Intelligence.
+
+Mem0 e Graphiti entram **como benchmark na SPEC Dreams**, e não como substitutos.
+
+Ruflo entra em Trajectory, Trust Gate e MetaHarness.
+
+Baoyu e outras referências visuais entram no Growth & Creative Studio.
+
+Essa é exatamente a filosofia:
+
+> **roubar padrões, não importar autoridades.**
+
+---
+
+# 6. O que foi realmente descartado
+
+Também não vamos transformar tudo em feature só porque apareceu no rascunho.
+
+Eu excluí como arquitetura: DeepSeek como runtime do produto; Ruflo como runtime; Mem0/Graphiti como novo cérebro; Auxiliar = Subagente; centenas de tools entregues diretamente ao modelo; Agent-Reach como segundo Research Engine; Slack/Teams bruto virando memória automaticamente; credenciais consumer Claude/ChatGPT usadas como backend do SaaS; marketplace comunitário sem governança; sinistros complexos autônomos já; segundo cérebro exclusivo para Voice.
+
+As **ideias boas dentro dessas propostas continuam contempladas** nas SPECs certas.
+
+---
+
+# 7. Há uma grande diferença entre SPEC-091, 100, 101, 102 e 103
+
+Isso vale esclarecer porque parece tudo “Factory”.
+
+A **091 Protocol Registry** ensina **como construir**.
+
+A **100 Skill & Capability Factory** constrói procedimentos/capacidades.
+
+A **101 Connector Factory** constrói acessos a sistemas externos.
+
+A **102 Knowledge & Memory Factory** constrói conhecimento confiável.
+
+A **103 Auxiliary Factory/Marketplace** transforma essas peças em **trabalhadores digitais instaláveis que entregam resultados**.
+
+Ou seja:
+
+```text
+PROTOCOLO
+ensina como construir
+        ↓
+SKILLS / CAPABILITIES
+dão capacidades
+        ↓
+CONNECTORS
+dão acesso
+        ↓
+KNOWLEDGE
+dá contexto
+        ↓
+AUXILIAR
+combina tudo para resolver um trabalho
+```
+
+Essa separação é muito importante.
+
+---
+
+# 8. E onde fecha o ciclo que você gostou
+
+Depois da 108 teremos aproximadamente:
+
+```text
+OPERAÇÃO
+   ↓
+SPEC-105 — TRAJECTORY
+   ↓
+Learning Signals existentes
+   ↓
+SPEC-106 — DREAMS
+   ↓
+SPEC-102 — Knowledge / Memory Factory
+SPEC-100 — Skill / Capability Factory
+SPEC-087 — Route Self-Healing
+   ↓
+SPEC-091 — Protocols
+   ↓
+AAA
+   ↓
+PUBLICAÇÃO
+   ↓
+SPEC-108 — METAHARNESS
+   ↓
+OPERAÇÃO MELHOR
+```
+
+Essa parte do programa é, para mim, **o grande salto arquitetural**.
+
+A partir dela, o produto não fica apenas maior.
+
+Ele passa a ter uma estrutura para **melhorar sem perder controle**.
+
+---
+
+# 9. E então vem o AutoBrokers Engine
+
+Só depois disso vamos externalizar.
+
+```text
+                      AUTOBROKERS ENGINE
+                             │
+          ┌──────────────────┼──────────────────┐
+          │                  │                  │
+      Dashboard           ChatGPT            Claude
+          │                  │                  │
+       WhatsApp            MCP/App            API
+          │                  │                  │
+        Voice             Auxiliar          outros
+```
+
+E ninguém externo recebe:
+
+> `click_button()`
+> `get_infocap()`
+> `send_whatsapp()`
+
+Recebe:
+
+> `policy.answer_with_evidence`
+> `renewals.analyze_portfolio`
+> `brokerage.executive_pulse`
+
+O **como fazer seguros continua sendo propriedade do AutoBrokers**.
+
+---
+
+# 10. Uma decisão metodológica muito importante
+
+Você falou que depois quer mandar todas as SPECs ao Claude Code/Codex para passar pelo AAA.
+
+Concordo, com uma pequena correção por causa do que o próprio protocolo acabou de medir.
+
+Não faremos:
+
+```text
+Minha SPEC
+↓
+juiz 1
+↓
+reescreve documento
+↓
+juiz 2
+↓
+reescreve documento
+↓
+juiz 3
+↓
+reescreve documento
+...
+```
+
+O Protocolo v9 mediu que isso começou a comprar **documento em vez de produto**.
+
+Faremos:
+
+```text
+SPEC COMPLETA + RESEARCH PACK
+            ↓
+AAA WARM-UP DO EXECUTOR
+            ↓
+"prove que esta SPEC está errada"
+            ↓
+corrige premissas falsas
+            ↓
+IMPLEMENTA
+            ↓
+JUÍZES JULGAM O CÓDIGO
+            ↓
+RED TEAM
+            ↓
+MUTATION
+            ↓
+E2E
+            ↓
+CONFIRMATION JUDGE
+```
+
+Isso é superior.
+
+Aqui no ChatGPT eu farei toda a investigação, comparação e planejamento profundo que puder, mas **não vou fingir que executei o painel de subagentes do Claude Code**. A última refutação contra o repositório vivo pertence ao executor.
+
+---
+
+# 11. Já deixei este Masterplan disponível em Markdown
+
+Ele contém o método completo, as 29 etapas, notas, escopo de cada SPEC, ideias incorporadas e ideias descartadas:
+
+[Baixar o AutoBrokers SPEC Transformation Masterplan](sandbox:/mnt/data/AUTOBROKERS_SPEC_TRANSFORMATION_MASTERPLAN_2026-08-25.md)
+
+Esse arquivo pode virar nossa **fonte de controle deste ciclo inteiro**.
+
+---
+
+# 12. PRIMEIRA SPEC QUE EU VOU CRIAR: SPEC-089
+
+Não é a 086.
+
+Minha recomendação é começarmos pela:
+
+# **SPEC-089 — A RÉGUA AAA É HONESTA**
+
+Há uma razão forte.
+
+O repositório atual já possui um teste específico chamado `test_a_rubrica_e_honesta.py`, e os commits mais recentes registraram que a régua chegou a produzir **102 numa escala de 100**, tratado explicitamente como blocker destinado à SPEC-089.
+
+Construir a 087 de autoevolução ou a 090 de inteligência usando uma régua que consegue mentir seria perigoso.
+
+## O objetivo da 089
+
+Depois dela:
+
+```text
+ROTA
+ ↓
+RÉGUA
+ ↓
+resultado que realmente significa alguma coisa
+ ↓
+AAA READY / NÃO READY
+ ↓
+e, quando houver prova real:
+AAA VALIDATED
+```
+
+A régua deverá:
+
+* nunca ultrapassar matematicamente o teto;
+* nunca ganhar ponto só porque alguém escreveu um campo;
+* diferenciar **não aplicável** de **não provado**;
+* possuir denominador correto;
+* possuir gates que dinheiro/pontos extras não compensam;
+* realmente conseguir reprovar;
+* chamar o motor real;
+* ter controles;
+* ter mutation;
+* medir corpus;
+* separar qualidade da rota de qualidade da ferramenta de medição.
+
+## O ganho dessa SPEC
+
+Ela não é uma feature bonita para o cliente.
+
+É algo mais valioso nesta fase:
+
+> **ela torna confiável a máquina que decidirá o que pode ser automatizado.**
+
+Então:
+
+**087 Self-Healing confia nela.**
+
+**090 Intelligence Factory confia nela.**
+
+**091 Protocol Factory usa seus gates.**
+
+**100 Skill Factory aprende sua filosofia.**
+
+**108 MetaHarness absorve sua lógica.**
+
+Ela é infraestrutura de qualidade.
+
+---
+
+# 13. Antes de eu escrever a 089, quero sua opinião sobre três decisões
+
+Não são perguntas técnicas que você precisa saber responder. São decisões de produto, e eu já tenho uma recomendação.
+
+**1. Eu recomendo que AAA seja uma certificação binária, e a nota seja apenas diagnóstico.** Ou a rota é certificada ou não é. Pode ter 97/100 e estar reprovada porque falhou num gate obrigatório. Não criaria “AA” e “A”, porque isso tende a transformar uma certificação operacional em videogame de pontuação.
+
+**2. Eu recomendo criar dois estados: `AAA_READY` e `AAA_VALIDATED`.** Uma rota pode passar corpus, replay, motor, mutation e simulação e estar pronta para produção; mas eu não diria que foi “validada” até termos uma prova E2E real. Isso evita que 30 rotas testadas artificialmente pareçam equivalentes à máquina de lavar realmente acionada.
+
+**3. Eu recomendo denominador normalizado por itens aplicáveis + gates não compensáveis.** Uma rota que não tem formulário nativo não deveria perder pontos por não testar formulário; mas faltar identificação de cliente, segurança, origem da tecla, desfecho, protocolo ou teste do motor não deveria poder ser compensado porque ela ganhou pontos em outros itens.
+
+Se você concordar com essas três decisões — ou quiser modificar alguma — **essa será a primeira informação que eu incorporarei na imersão da SPEC-089**.
+
+Depois da sua resposta, eu não vou imediatamente “inventar a SPEC”. Vou primeiro abrir profundamente a régua atual, reproduzir a anomalia, entender os cinco vermelhos, ler 083/084/084.1/084.2, pesquisar os melhores padrões atuais de eval/rubric/calibration, confrontar tudo com o AAA v9 e **só então escrever a SPEC-089 e seu Research Pack para download**.
+
+E quando entregar a 089, junto dela virá exatamente como você pediu: **resumo do que fizemos + mudança no AutoBrokers + ganhos + decisões + checklist completo da SPEC-086 + minhas sugestões e perguntas antes de começarmos a próxima.**
+
+[1]: https://github.github.com/spec-kit/?utm_source=chatgpt.com "GitHub Spec Kit | Spec Kit Documentation"
+[2]: https://github.com/agentskills/agentskills/blob/main/docs/specification.mdx?utm_source=chatgpt.com "agentskills/docs/specification.mdx at main · agentskills/agentskills · GitHub"
+[3]: https://deepseek.com/harness/en/?utm_source=chatgpt.com "DeepSeek Harness developer preview: Everything is a plugin"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

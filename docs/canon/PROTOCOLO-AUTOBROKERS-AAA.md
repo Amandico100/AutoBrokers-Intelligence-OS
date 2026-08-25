@@ -572,6 +572,80 @@ fatia isolada de desperdício medida — e o laço de juízes inteiro custou 59 
 ⚠️ **A suíte cresce a cada SPEC:** 322 testes em 24/08, **463** em 25/08. E o teto de
 `TETO_SEGUNDOS = 120` × 272 scripts dá **9h de cauda no pior caso**.
 
+### 📊 25/08 — a bateria aberta ao meio, e a ordem deixou de ser teoria
+
+```
+os 296 guardas-script     7m14      45% do relógio
+o resto do pytest         ~9m       55%
+                          ─────
+                          16m10     550 passed · 45 xfailed
+```
+
+🔴 **E dos 296, só 87 são perigosos.** O critério é mecânico — o guarda lança
+processo (`subprocess`, `Popen`, `Thread`), escreve arquivo, toca a rede, ou
+importa o compartilhado (`corridor_playbooks`, `replay`):
+
+```
+209  leitores puros    →  podem rodar EM PARALELO
+ 87  perigosos         →  ficam SERIAIS
+```
+
+💭 A 4 processos: `7m14 → ~3m30`. **~48 minutos por SPEC**, sem cortar um teste.
+
+## ✅ 25/08 — o passo 1º está FEITO
+
+📊 **O mutador nunca foi um guarda desobediente: era o harness matando errado.**
+`subprocess.run(timeout=)` mata com `TerminateProcess`, que no Windows derruba
+**um processo, não a árvore** — e os netos seguiam mutando o corredor por
+minutos, na janela de quem estivesse rodando.
+
+```
+🔴 o estouro mata a ÁRVORE      taskkill /F /T · killpg
+🔴 a trava é do KERNEL          msvcrt.locking / flock sobre 1 byte
+   ⛔ nunca O_EXCL, nunca unlink: o lock é do HANDLE, e o SO o solta
+      quando o dono morre. Sem idade, sem PID, sem ninguém "destravando".
+🔴 a espera da trava < o teto de quem espera     900s → 90s, contra TETO=120
+```
+
+> ⛔ **A regra que custou um dia:** `xfail` num guarda que **LANÇA PROCESSO**
+> esconde o efeito colateral junto com a falha. Quarentena é para asserção
+> vencida — **nunca para quem tem filho.**
+
+📊 Provado por `test_o_timeout_nao_deixa_neto_vivo.py`. O que dá direito à
+conclusão é a **linha de controle**: matando só o pai o neto **sobrevive**;
+matando a árvore, **morre**.
+
+**E o passo 2º está instrumentado:** `backend/tests/conftest.py` escreve uma
+linha por rodada. Na próxima SPEC o "9–14 rodadas" vira 📊, e só então o 3º é
+decidível. ⚠️ *"13 commits × 16m44 = 3h37"* foi dito com cara de medição —
+🔴 **commit não é rodada**, e a §12.1 vale contra quem a escreveu.
+
+📎 O diagnóstico inteiro, com os tempos e a ordem dos índices, está em
+[`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
+
+---
+
+## ⛔ Mas o passo 1º deixou de ser precaução e virou defeito medido
+
+📊 **Hoje, numa rodada real, o mesmo guarda deu os dois resultados:**
+
+```
+no lote:   test_o_comparador_ve_resposta_errada    FALHOU
+sozinho:   o mesmo guarda                          PASSOU (16,21s)
+```
+
+🔴 **É o processo solto do `test_todos_os_guardas_script_rodam.py`, vivo.** Alguém
+lança uma medição, não a espera, e a mutação de `corridor_playbooks.py` cai na
+janela de quem estiver rodando na hora.
+
+> ⛔ **Paralelizar antes da trava não alarga a janela — alarga QUEM CAI NELA.**
+> O mutador continua serial; o que muda é o número de vítimas por janela. Com
+> 209 em paralelo, um vermelho aleatório vira rotina — **e vermelho que vira
+> rotina é vermelho que ninguém lê** (`CLAUDE.md` §9.3).
+
+⚠️ **E a suíte segue crescendo:** 322 em 24/08 · 463 em 25/08 · **595** depois da
+SPEC-092. **+85% em dois dias.** A conta piora sozinha.
+
 ⛔ **MAS A ORDEM DO CONSERTO NÃO É ÓBVIA, e invertê-la troca um problema de tempo
 por um de PERDA DE DADO:**
 
@@ -579,6 +653,9 @@ por um de PERDA DE DADO:**
 1º  A TRAVA DA BATERIA (§10, acima).  📊 É a bateria rodando na árvore
     compartilhada que apagou dois consertos. Afinar QUANDO ela roda sem mudar
     ONDE ela roda troca lentidão por trabalho perdido.
+    🔴 **E em 25/08 isto deixou de ser risco e virou medição:** um guarda
+    vermelho no lote e verde sozinho, no mesmo dia. A trava é conserto de
+    defeito ATIVO — não é preparação para o paralelismo, é pré-requisito dele.
 
 2º  MEDIR QUANTAS VEZES ela roda de fato numa SPEC. 💭 9–14 é estimativa,
     não medição — e este documento não aceita de mais ninguém o que aceitaria

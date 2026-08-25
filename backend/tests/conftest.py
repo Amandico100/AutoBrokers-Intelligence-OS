@@ -76,3 +76,96 @@ def _sem_funcao_de_teste(caminho: Path) -> bool:
 collect_ignore = sorted(
     p.name for p in _PASTA.glob("test_*.py") if _sem_funcao_de_teste(p)
 )
+
+
+# ---------------------------------------------------------------------------
+# O DIARIO DA BATERIA — 🔴 o passo 2º do `PROTOCOLO-AUTOBROKERS-AAA.md` §10
+# ---------------------------------------------------------------------------
+# O protocolo manda consertar a bateria em três passos, nesta ordem:
+#
+#     1º  a trava      (o processo solto que muta a árvore compartilhada)
+#     2º  🔴 MEDIR QUANTAS VEZES ela roda de fato numa SPEC
+#     3º  só então os gates por nível
+#
+# ⚠️ **E o 2º nunca foi feito.** 📊 O custo POR RODADA está medido com três
+# pontos (19m01 · 16m26 · 14m46 → 16m44 ±13%). O **número de rodadas** não:
+# `9–14` é 💭 estimativa, e "13 commits × 16m44 = 3h37" é aritmética sobre um
+# chute — 🔴 **commit não é rodada.** Um commit pode não rodar a bateria, e uma
+# rodada pode não virar commit.
+#
+# É a `CLAUDE.md` §12.1 exatamente onde dói: um número 💭 ilustrativo citado
+# como 📊 medido — e desta vez por quem escreveu a regra.
+#
+# Este arquivo faz UMA coisa: **toda rodada de pytest deixa uma linha.** Na
+# próxima SPEC o 2º passo deixa de ser opinião, e o 3º passa a ser decidível.
+#
+# ⚠️ **Ele NUNCA pode quebrar a suíte.** Um diário que derruba a bateria que ele
+# mede é pior que diário nenhum — por isso todo o corpo vive num `except`
+# largo, e a falha dele é silenciosa de propósito.
+
+_DIARIO = Path(__file__).resolve().parent.parent / ".diario-da-bateria.jsonl"
+_COMECO: dict = {}
+
+
+def pytest_sessionstart(session):  # noqa: D401
+    """Guarda o instante e o alvo. Silencioso em qualquer erro."""
+    try:
+        import time
+
+        _COMECO["t"] = time.time()
+        # 🔴 O ALVO distingue bateria INTEIRA de rodada de um arquivo só — é
+        # exatamente essa diferença que o 3º passo precisa para decidir.
+        alvo = [a for a in getattr(session.config, "args", []) or []]
+        _COMECO["alvo"] = " ".join(alvo) if alvo else "(tudo)"
+    except Exception:
+        pass
+
+
+def pytest_sessionfinish(session, exitstatus):  # noqa: D401
+    """Uma linha por rodada: quando, quanto, sobre o quê, e em que commit."""
+    try:
+        import json
+        import os
+        import subprocess
+        import time
+        from datetime import datetime, timezone
+
+        if "t" not in _COMECO:
+            return
+
+        # 🔴 UMA COLETA NAO E UMA RODADA. Medido em 25/08: um
+        # `pytest tests/ --collect-only` entrou no diario como rodada de 4,4s
+        # com 595 "coletados" — e uma linha dessas na media destroi exatamente
+        # o numero que este arquivo existe para produzir. `CLAUDE.md` §12.1: o
+        # defeito nao e o numero errado, e o numero errado com marca de medido.
+        if getattr(session.config.option, "collectonly", False):
+            return
+
+        segundos = round(time.time() - _COMECO["t"], 1)
+
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+                cwd=str(Path(__file__).resolve().parent.parent),
+            ).stdout.strip() or "?"
+        except Exception:
+            commit = "?"
+
+        linha = {
+            "quando": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "segundos": segundos,
+            "alvo": _COMECO.get("alvo", "?"),
+            "commit": commit,
+            "saida": int(exitstatus),
+            "coletados": getattr(session, "testscollected", None),
+            "falhas": getattr(session, "testsfailed", None),
+            # ⚠️ CI e máquina do executor têm relógios diferentes; sem isto as
+            # duas populações somam e a média não descreve nenhuma das duas.
+            "onde": "ci" if os.environ.get("CI") else "local",
+        }
+        with open(_DIARIO, "a", encoding="utf-8") as f:
+            f.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    except Exception:
+        # 🔴 De propósito. Ver o cabeçalho.
+        pass

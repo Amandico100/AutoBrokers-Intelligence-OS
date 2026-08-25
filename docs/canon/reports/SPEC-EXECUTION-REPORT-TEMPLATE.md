@@ -270,3 +270,30 @@ Como reverter tudo o que esta SPEC entregou, se necessário:
 4. side effects já executados:
 5. o que NÃO é reversível e por quê:
 ```
+
+
+## 📊 A BATERIA — quantas vezes ela rodou nesta SPEC
+
+> 🔴 **Obrigatório.** É o passo 2º do `PROTOCOLO-AUTOBROKERS-AAA.md` §10, e sem
+> ele o passo 3º (gates por nível) continua sendo chute. **Commit não é rodada.**
+
+```bash
+python - <<'EOF'
+import json,io
+L=[json.loads(l) for l in io.open("backend/.diario-da-bateria.jsonl",encoding="utf-8")]
+inteiras=[x for x in L if x["alvo"] in ("(tudo)","tests/","tests")]
+print("rodadas no total ....", len(L))
+print("bateria INTEIRA .....", len(inteiras))
+print("segundos somados ....", round(sum(x["segundos"] for x in L)/60,1), "min")
+print("so as inteiras ......", round(sum(x["segundos"] for x in inteiras)/60,1), "min")
+EOF
+```
+
+| | |
+|---|---|
+| rodadas no total | |
+| das quais bateria inteira | |
+| **relógio total esperando a suíte** | |
+| **fração da execução** | |
+
+⚠️ Se o arquivo não existir, **diga isso** — é defeito do `conftest.py`, não ausência de dado.
