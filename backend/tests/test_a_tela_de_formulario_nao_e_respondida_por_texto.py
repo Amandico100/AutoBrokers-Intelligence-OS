@@ -237,8 +237,20 @@ def test_a_SEGUNDA_chamada_continua_existindo():
 # 4. ⛔ O CONTROLE DO GATE D — o freio fechado não pode PARECER resposta
 # ---------------------------------------------------------------------------
 
-def test_com_o_freio_fechado_o_transcript_NAO_diz_respondido():
-    """⛔ A trava que a SPEC-092 §D escreve por extenso.
+def test_as_TRES_frases_do_transcript_EXISTEM_no_fonte():
+    """As três frases existem — ⚠️ e é SÓ isso que este guarda prova.
+
+    🔴 O juiz de confirmação mutou o produto trocando os dois ramos de lugar
+    (passando a dizer *"respondido"* quando o envio FALHA) e **8 de 8 asserções
+    estáticas continuaram verdes**. Guarda que lê o fonte prova que a string
+    existe; nunca que o produto a escolhe.
+
+    ⚠️ Este arquivo mantém a asserção com a promessa REBAIXADA ao que ela de
+    fato mede — uma frase apagada por engano é um defeito real, e este guarda o
+    pega. Quem prova a ESCOLHA é `test_COMPORTAMENTAL_o_transcript_diz_FALHOU…`
+    em `test_o_painel_achou_e_nao_volta.py`, que chama o motor.
+
+    ⛔ A trava que a SPEC-092 §D escreve por extenso.
 
     Com `INSURER_DISPATCH_LIVE` fechado, `flow_sender` **nunca é chamado** e a
     sessão segue para `state="ura"` — exatamente como se tivesse respondido. O

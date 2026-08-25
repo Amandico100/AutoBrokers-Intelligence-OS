@@ -232,10 +232,23 @@ def test_a_tela_que_oferece_OUTRO_caminho_nao_e_sequestrada():
     ⚠️ Porto e Azul são justamente as duas **sem schema nenhum**. Sequestrá-las
     trocaria 21 acionamentos que funcionam por 21 que param.
     """
+    # 🔴 ASSERÇÃO MIGRADA pelo juiz de confirmação, e a mudança é o conserto.
+    #
+    # Ela exigia que `a_tela_e_formulario` recusasse pela só presença de
+    # `options`. 📊 O juiz mediu que isso devolvia a P-084-68 para uma tela de
+    # formulário **conhecida** que tivesse botão: ela voltava a ser respondida
+    # por texto.
+    #
+    # ⚠️ A decisão mudou de casa para `_responder_formulario_nativo`, que é o
+    # único lugar onde se sabe se o formulário é conhecido. Ver
+    # `test_o_formulario_DESCONHECIDO_com_botao_clicavel_usa_o_BOTAO`.
     com_botao = dict(INTER_DO_FORMULARIO, options=[{"id": "1", "title": "Digitar"}])
     assert M.a_tela_e_formulario(
         "Ou, se preferir, preencha o formulário abaixo.\n[FORMULARIO NATIVO: x]",
-        com_botao) is False
+        com_botao) is True, (
+        "a guarda voltou a recusar pela só presença de `options` — e aí uma "
+        "tela de formulário CONHECIDA com botão volta a ser respondida por "
+        "texto, que é a P-084-68 de volta")
 
 
 def test_o_simulador_SEM_interactive_continua_reconhecendo_pelo_marcador():
@@ -467,3 +480,249 @@ def test_CONTROLE_o_MESMO_aparelho_em_grafias_diferentes_COLIDE_de_proposito():
     assert (R._chave_de_telefone("5547999998888")
             == R._chave_de_telefone("+55 (47) 99999-8888")
             == R._chave_de_telefone("47999998888"))
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O JUIZ DE CONFIRMAÇÃO — e aqui os guardas são COMPORTAMENTAIS
+# ---------------------------------------------------------------------------
+#
+# O juiz mutou o produto trocando os dois ramos da frase de lugar — passando a
+# dizer "respondido" quando o envio FALHA — e **8 de 8 asserções continuaram
+# verdes**, porque liam o FONTE.
+#
+# > Guarda estático prova que a string existe; nunca que o produto a escolhe.
+#
+# ⛔ O `flow_sender` aqui é sempre um contador em memória. **Nada sai.**
+
+def _motor_ao_vivo():
+    """Uma cópia do motor com o portão de envio aberto — em MEMÓRIA.
+
+    ⛔ `INSURER_DISPATCH_LIVE` não é tocado: o que muda é um atributo do módulo
+    carregado por `importlib` neste processo, e o transporte é um dublê.
+    """
+    m = _carregar("_painel_motor_vivo", MOTOR_PY)
+    m.dispatch_live_enabled = lambda: True
+    return m
+
+
+SLOTS_COMPLETOS = {"veiculo_em_garagem": "nao", "veiculo_situacoes": "nenhuma",
+                   "local_situacao": "seguro", "ocupantes_particularidade": "nenhuma",
+                   "veiculo_nivel_rua": "nivel da rua"}
+
+TELA_FORM = TEXTO_DA_TELA + chr(10) + "[FORMULARIO NATIVO: Informar] (exige clique)"
+
+
+def _sessao_viva():
+    return {"state": "ura", "slots": dict(SLOTS_COMPLETOS), "subservice": "guincho",
+            "case_id": "c", "transcript": [], "live": True,
+            "playbook_ref": "hdi-auto-whatsapp@v1",
+            "flow_token": "TOKEN-DA-SESSAO", "envelope_do_flow": "galaxy_message",
+            "flow_id_ativo": "857030507196739"}
+
+
+def _ultima_saida(sessao):
+    saidas = [t for t in (sessao.get("transcript") or [])
+              if t.get("direction") == "out"]
+    return saidas[-1] if saidas else {}
+
+
+def test_COMPORTAMENTAL_o_transcript_diz_FALHOU_quando_o_envio_falha():
+    """🔴 O guarda que o juiz provou faltar. Este chama o MOTOR."""
+    M2 = _motor_ao_vivo()
+    ses = _sessao_viva()
+    M2.handle_insurer_message(ses, TELA_FORM, interactive=INTER_DO_FORMULARIO,
+                              flow_sender=lambda **k: False)
+    texto = _ultima_saida(ses).get("text", "")
+    assert "envio FALHOU" in texto, (
+        "o transcript não disse que o envio falhou: " + repr(texto))
+    assert "respondido" not in texto, (
+        "o dossiê diz `respondido` para um formulário que estourou — é a "
+        "contradição que chega a quem vai socorrer a pessoa")
+
+
+def test_COMPORTAMENTAL_o_transcript_diz_RESPONDIDO_quando_da_certo():
+    """A metade positiva: uma frase que dissesse sempre FALHOU passaria acima."""
+    M2 = _motor_ao_vivo()
+    ses = _sessao_viva()
+    M2.handle_insurer_message(ses, TELA_FORM, interactive=INTER_DO_FORMULARIO,
+                              flow_sender=lambda **k: True)
+    texto = _ultima_saida(ses).get("text", "")
+    assert "respondido" in texto and "FALHOU" not in texto, repr(texto)
+    assert ses["state"] == "ura"
+
+
+def test_COMPORTAMENTAL_B1_a_rajada_NAO_manda_a_resposta_duas_vezes():
+    """🔴 O blocker que o juiz mediu, e que o guarda anterior não via.
+
+    📊 Com linha de controle, rajada de duas bolhas com o MESMO `interactive`
+    (que `message_buffer_service` preserva pela janela **de propósito**):
+
+        bolha 2                                BASE  PRÉ-JUIZ  HEAD
+        "Estamos verificando as informações…"    2       2       1
+
+    ⚠️ A bolha *"você está na fila"* casa um passo `noop` e **retorna antes** da
+    segunda chamada — por isso ela media 1 e o defeito parecia fechado. Este
+    guarda usa uma bolha que **não** casa passo nenhum.
+    """
+    M2 = _motor_ao_vivo()
+    ses = _sessao_viva()
+    enviados = []
+
+    def _transporte(**k):
+        enviados.append(k)
+        return True
+
+    for bolha in (TELA_FORM, "Estamos verificando as informações, um instante."):
+        M2.handle_insurer_message(ses, bolha, interactive=INTER_DO_FORMULARIO,
+                                  flow_sender=_transporte)
+    assert len(enviados) == 1, (
+        "a resposta do formulário saiu %d vezes na mesma rajada — a segunda "
+        "bolha carregou o `interactive` da janela" % len(enviados))
+
+
+def test_CONTROLE_B1_a_bolha_do_formulario_MANDA_uma_vez():
+    """§9.3 — um motor que nunca enviasse passaria no teste acima."""
+    M2 = _motor_ao_vivo()
+    ses = _sessao_viva()
+    enviados = []
+
+    def _transporte(**k):
+        enviados.append(k)
+        return True
+
+    M2.handle_insurer_message(ses, TELA_FORM, interactive=INTER_DO_FORMULARIO,
+                              flow_sender=_transporte)
+    assert len(enviados) == 1, "a bolha do formulário não foi respondida"
+
+
+def test_COMPORTAMENTAL_B3_envelope_ausente_NAO_e_envio_que_falhou():
+    """🔴 O `raise` morava dentro do `try` do `formulario_envio_falhou`.
+
+    O dossiê dizia *"pode ter chegado, não dá para saber"* sobre uma mensagem
+    que **provadamente não saiu** — e quem tria decide diferente nos dois casos.
+    """
+    M2 = _motor_ao_vivo()
+    ses = _sessao_viva()
+    ses.pop("envelope_do_flow")
+    # ⚠️ E o `interactive` também não pode trazer `name`: 📊
+    # `registrar_formulario_nativo` reconstrói `envelope_do_flow` a partir
+    # dele logo no começo do turno. Sem isto o teste mediria o ECO, não a
+    # ausência — e ficaria verde com o defeito de pé.
+    sem_envelope = {"kind": "flow", "options": [],
+                    "flow": {"flow_id": "857030507196739",
+                             "flow_token": "t", "cta": "Informar"}}
+    enviados = []
+
+    def _transporte(**k):
+        enviados.append(k)
+        return True
+
+    M2.handle_insurer_message(ses, TELA_FORM, interactive=sem_envelope,
+                              flow_sender=_transporte)
+    assert not enviados, "chamou o transporte sem o envelope ecoado"
+    assert ses["reason"] == "formulario_sem_envelope", repr(ses.get("reason"))
+    assert "Nada saiu" in _ultima_saida(ses).get("text", "")
+
+
+def test_a_familia_NOVA_tem_veredito_de_retomada_escrito():
+    """⛔ Motivo não classificado cai no padrão silencioso — o defeito que a
+    SPEC-085 existe para matar."""
+    assert M._POLITICA_DE_RETOMADA.get("formulario_sem_envelope") == M.NAO_RETOMA
+
+
+# ---------------------------------------------------------------------------
+# 🔴 B2 — o segredo mora DENTRO da string JSON
+# ---------------------------------------------------------------------------
+
+def _com_segredo(metadata=True):
+    params = {"flow_id": "857030507196739", "flow_cta": "Informar",
+              "flow_token": "t:1:2"}
+    if metadata:
+        params["flow_metadata"] = {"flow_name": "Automóvel V2",
+                                   "www_proxy_secret": "SEGREDO-DE-TERCEIRO",
+                                   "flow_token_signature": "ASSINATURA"}
+    return {"interactiveMessage": {
+        "body": {"text": TEXTO_DA_TELA},
+        "InteractiveMessage": {"NativeFlowMessage": {"buttons": [{
+            "name": "galaxy_message", "buttonParamsJSON": json.dumps(params)}]}},
+    }}
+
+
+def test_B2_o_segredo_dentro_da_STRING_JSON_e_cortado():
+    """🔴 O corte andava só por dicionário, e no fio `flow_metadata` viaja
+    **dentro** do `buttonParamsJSON`, que é texto.
+
+    📊 Medido pelo juiz no acervo de produção:
+
+        www_proxy_secret dentro de string JSON ....... 4
+        www_proxy_secret como chave jsonb ............ 0
+
+    ⚠️ E o guarda anterior punha a chave num `header` — forma que **não ocorre
+    no fio**. Fixture deduzido em vez de medido, dentro do conserto disso.
+    """
+    _, meta = P._interactive_from_message(_com_segredo())
+    cru = json.dumps(meta.get("cru"), ensure_ascii=False)
+    assert "SEGREDO-DE-TERCEIRO" not in cru, (
+        "`www_proxy_secret` entrou no acervo durável")
+    assert "ASSINATURA" not in cru, "`flow_token_signature` entrou no acervo"
+
+
+def test_CONTROLE_B2_o_segredo_ESTAVA_la_e_o_RESTO_sobreviveu():
+    """§9.3 — sem isto, um corte que apagasse tudo passaria acima."""
+    payload = _com_segredo()
+    assert "SEGREDO-DE-TERCEIRO" in json.dumps(payload, ensure_ascii=False)
+    _, meta = P._interactive_from_message(payload)
+    cru = json.dumps(meta.get("cru"), ensure_ascii=False)
+    assert "857030507196739" in cru, "o corte levou junto o `flow_id`"
+    assert "galaxy_message" in cru, "o corte levou junto o nome do envelope"
+    assert meta["flow"]["flow_token"] == "t:1:2", (
+        "o `flow_token` que a RESPOSTA precisa foi perdido na leitura")
+
+
+# ---------------------------------------------------------------------------
+# Os residuais que o juiz mediu
+# ---------------------------------------------------------------------------
+
+def test_o_formulario_DESCONHECIDO_com_botao_clicavel_usa_o_BOTAO():
+    """📊 **21 telas** de azul/porto dizem *"Ou, se preferir, preencha o
+    formulário abaixo"* — têm botão **e** formulário, e são as duas seguradoras
+    **sem schema nenhum**. Mandá-las para `needs_human` trocaria 21 acionamentos
+    que funcionam por 21 que param."""
+    sessao = {"state": "ura", "slots": {}, "transcript": []}
+    saida = M._responder_formulario_nativo(
+        sessao, _playbook(),
+        "Ou, se preferir, preencha o formulário abaixo.\n[FORMULARIO NATIVO: x]",
+        interactive={"kind": "flow", "options": [{"id": "1", "title": "Digitar"}],
+                     "flow": {"flow_id": "id-que-ninguem-conhece", "flow_token": "t",
+                              "name": "galaxy_message", "cta": "x"}})
+    assert saida is None, (
+        "a tela com botão clicável foi para `needs_human` — o corredor tinha "
+        "outro caminho e deixou de usá-lo")
+
+
+def test_CONTROLE_sem_botao_o_desconhecido_CONTINUA_indo_para_gente():
+    """§9.3 — a saída de emergência não pode virar a regra."""
+    sessao = {"state": "ura", "slots": {}, "transcript": []}
+    saida = M._responder_formulario_nativo(
+        sessao, _playbook(), "[FORMULARIO NATIVO: x]",
+        interactive={"kind": "flow", "options": [],
+                     "flow": {"flow_id": "id-que-ninguem-conhece", "flow_token": "t",
+                              "name": "galaxy_message", "cta": "x"}})
+    assert saida is not None and saida["reason"] == "formulario_nativo_desconhecido"
+
+
+def test_TRES_niveis_com_o_formulario_no_do_MEIO_e_lido():
+    """📊 O juiz mediu que com três níveis o parser voltava a `buttons` — o
+    sintoma exato da P-084-68. O fio tem dois; o laço não depende disso."""
+    payload = {"interactiveMessage": {
+        "body": {"text": TEXTO_DA_TELA},
+        "InteractiveMessage": {
+            "NativeFlowMessage": {"buttons": [{
+                "name": "galaxy_message",
+                "buttonParamsJSON": json.dumps({"flow_id": "857030507196739",
+                                                "flow_token": "t", "flow_cta": "x"})}]},
+            "interactiveMessage": {"algoMaisFundo": {"x": 1}},
+        },
+    }}
+    _, meta = P._interactive_from_message(payload)
+    assert meta["kind"] == "flow", "três níveis viraram " + repr(meta["kind"])

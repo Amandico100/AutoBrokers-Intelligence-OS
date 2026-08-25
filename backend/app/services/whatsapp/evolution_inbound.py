@@ -327,6 +327,33 @@ def _sem_o_que_nao_e_a_tela(o: Any, prof: int = 0) -> Any:
                 if str(k).lower().replace("_", "") not in _FORA_DO_CRU}
     if isinstance(o, list):
         return [_sem_o_que_nao_e_a_tela(x, prof + 1) for x in o]
+    if isinstance(o, str) and o.lstrip()[:1] in ("{", "["):
+        # 🔴 O CORTE ENTRA NA STRING JSON — e sem isto ele não alcançava o
+        # segredo que ele mesmo nomeia.
+        #
+        # 📊 Medido pelo juiz de confirmação, no acervo de produção::
+        #
+        #     www_proxy_secret dentro de string JSON ....... 4
+        #     www_proxy_secret como chave jsonb ............ 0
+        #
+        # No fio, `flow_metadata` (com `www_proxy_secret` e
+        # `flow_token_signature`) viaja **dentro** do `buttonParamsJSON`, que é
+        # texto. Um corte que anda só por dicionário passa ao largo — e o guarda
+        # que o testava punha a chave num `header`, forma que **não ocorre no
+        # fio**. Fixture deduzido em vez de medido, dentro do conserto disso.
+        #
+        # ⚠️ Reserializar aqui é seguro: o `cru` existe para ser LIDO por gente,
+        # nunca para ser ecoado à seguradora. Quem ecoa byte a byte é o
+        # `paramsJSON` do envio, que não passa por esta função.
+        try:
+            dentro = json.loads(o)
+        except Exception:  # noqa: BLE001
+            return o
+        limpo = _sem_o_que_nao_e_a_tela(dentro, prof + 1)
+        try:
+            return json.dumps(limpo, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            return ""
     return o
 
 
@@ -524,7 +551,15 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
         # 🔴 O CORPO SE PROCURA EM TODOS OS NÍVEIS. Ver `_cadeia`.
         body = (_de_qualquer_nivel(cadeia, "body", "text")
                 or _de_qualquer_nivel(cadeia, "header", "title"))
-        nfm = _sub(inter, "nativeFlowMessage") or _sub(cadeia[0], "nativeFlowMessage")
+        # ⚠️ A cadeia INTEIRA, não só as pontas: 📊 o juiz mediu que com TRÊS
+        # níveis e o `NativeFlowMessage` no do meio o parser devolvia `buttons` —
+        # o sintoma exato da P-084-68. O fio tem dois níveis; o laço custa uma
+        # linha e não depende de o fio continuar tendo dois.
+        nfm: Dict[str, Any] = {}
+        for _nivel in cadeia:
+            nfm = _sub(_nivel, "nativeFlowMessage")
+            if nfm:
+                break
         options = []
         flow_meta: Optional[Dict[str, Any]] = None
         # 🔴 `Buttons` com B maiúsculo é lido. Medido pelo red team: sem

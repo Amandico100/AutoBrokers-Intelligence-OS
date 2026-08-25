@@ -123,8 +123,17 @@ def test_a_lista_nao_tem_familia_MORTA():
 def test_sao_dezesseis():
     """📊 O número que a SPEC afirma, conferido contra o fonte."""
     familias = _familias_do_fonte()
-    assert len(familias) == 16, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 16: "
+    # 🔴 DEZESSEIS VIROU DEZESSETE na SPEC-092, e a mudanca e' um conserto.
+    #
+    # `formulario_sem_envelope` nasceu porque `formulario_envio_falhou` cobria
+    # um caso em que se SABE que nada saiu — o envelope nao foi ecoado da
+    # captura e o transporte nunca foi chamado.
+    #
+    # ⚠️ O nome deste arquivo continua dizendo DEZESSEIS, e fica: ele nomeia
+    # o achado que o criou (📊 *uma* de dezesseis retomava). Renomear apagaria
+    # a historia; o numero vive aqui, medido do fonte.
+    assert len(familias) == 17, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 17: "
         f"{sorted(familias)}")
 
 
@@ -158,6 +167,10 @@ def test_sao_dezesseis():
     ("conferencia_divergente", M.NAO_RETOMA),
     ("loop_guard", M.NAO_RETOMA),
     ("playbook_not_found", M.NAO_RETOMA),
+    # 🔴 Sabe-se que NADA SAIU. `NAO_RETOMA` porque refazer da' no mesmo —
+    # falta a CAPTURA, nao a rede — e o motivo proprio existe para que quem
+    # tria saiba que **pode** reenviar sem risco de duplicar.
+    ("formulario_sem_envelope", M.NAO_RETOMA),
     ("formulario_pronto_sem_flow_token", M.NAO_RETOMA),
     ("formulario_pronto_sem_transporte", M.NAO_RETOMA),
 ])

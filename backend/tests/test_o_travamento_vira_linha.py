@@ -117,6 +117,21 @@ FAMILIAS_DE_TRAVAMENTO = {
     "formulario_envio_falhou",
     "formulario_incompleto",
     "formulario_nativo_desconhecido",
+    # 🔴 A DECIMA SETIMA, nascida na SPEC-092 pelo juiz de confirmacao.
+    #
+    # 📊 O `raise ValueError("envelope_do_flow ausente")` morava DENTRO do
+    # mesmo `try` cujo `except` grava `formulario_envio_falhou` — e o dossie
+    # saia dizendo *"pode ter chegado, nao da' para saber"* sobre uma
+    # mensagem que **provadamente nao saiu**: o transporte nunca foi chamado.
+    #
+    # ⚠️ Quem tria decide DIFERENTE nos dois casos: com "pode ter chegado"
+    # se evita reenviar; com "nao saiu" se clica em segundos.
+    #
+    # 🔴 E ESTE GUARDA FEZ O TRABALHO DELE: a familia nova quebrou a suite
+    # inteira ate' alguem a classificar. E' literalmente o que a §D.1b da
+    # SPEC-085 pede — *motivo nao classificado cai no padrao SILENCIOSO, e o
+    # padrao silencioso e' o defeito que aquela SPEC existe para matar*.
+    "formulario_sem_envelope",
     "formulario_pronto_sem_flow_token",
     "formulario_pronto_sem_transporte",
     "handoff_trigger",

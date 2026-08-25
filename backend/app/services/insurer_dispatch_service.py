@@ -1538,8 +1538,6 @@ def a_tela_e_formulario(insurer_message: str,
     #
     # 📊 E ela é segura para a família HDI/Yelum: os 4 convites de formulário do
     # acervo têm `options` **vazio**.
-    if interactive.get("options"):
-        return False
 
     # 🔴 O MARCADOR É POR BOLHA; O `interactive` É POR JANELA.
     #
@@ -1676,6 +1674,19 @@ def _responder_formulario_nativo(
     # 📊 E a família JÁ reusou frase de abertura entre ids diferentes
     # (`857030507196739` e `3206000179602236` compartilham `prompt_anchor`): um
     # terceiro id com a mesma frase é questão de quando, não de se.
+    # 🔴 A SAIDA PELO BOTAO VEM ANTES DO VETO.
+    #
+    # 📊 21 telas de azul/porto oferecem botao clicavel E formulario, e sao as
+    # duas seguradoras SEM SCHEMA NENHUM. O veto do `flow_id` desconhecido as
+    # mandaria todas para `needs_human` — trocando 21 acionamentos que
+    # funcionam por 21 que param.
+    #
+    # ⚠️ Ordem importa: o veto existe para impedir RESPOSTA ERRADA. Quando ha'
+    # outro caminho, nao ha' resposta a impedir — ha' um botao a clicar.
+    if (interactive or {}).get("options") and (
+            not id_do_convite or native_flow(playbook, id_do_convite) is None):
+        return None
+
     if id_do_convite and native_flow(playbook, id_do_convite) is None:
         session["state"] = "needs_human"
         session["reason"] = "formulario_nativo_desconhecido"
@@ -1696,6 +1707,22 @@ def _responder_formulario_nativo(
         # e se diz por quê. É esta guarda, e não uma lista no playbook, que
         # protege os formulários que ainda não foram capturados.
         marcador = "FORMULARIO NATIVO" in str(insurer_message or "").upper()
+
+        # 🔴 DESCONHECIDO, MAS COM OUTRO CAMINHO ABERTO: use o outro caminho.
+        #
+        # 📊 Medido: **25 telas do corpus** mencionam formulário E casam passo de
+        # URA; **21** (9 azul + 12 porto) dizem *"Ou, se preferir, preencha o
+        # formulário abaixo"* — têm botão clicável **e** formulário. Hoje o
+        # corredor responde o botão e o acionamento anda.
+        #
+        # ⚠️ Porto e Azul são justamente as duas **sem schema nenhum**: mandá-las
+        # para `needs_human` trocaria 21 acionamentos que funcionam por 21 que
+        # param.
+        #
+        # 🔴 E a decisão mora AQUI, e não em `a_tela_e_formulario`, porque só
+        # aqui se sabe se o formulário é conhecido. A primeira versão recusava
+        # pela só presença de `options` — e o juiz mediu que isso devolvia a
+        # P-084-68 para uma tela de formulário **conhecida** que tivesse botão.
         if e_formulario_agora or marcador:
             session["state"] = "needs_human"
             session["reason"] = "formulario_nativo_desconhecido"
@@ -1756,12 +1783,28 @@ def _responder_formulario_nativo(
     n_campos = len(montado["params"])
     enviado = None
     if live:
+        # 🔴 O ENVELOPE AUSENTE NÃO É "ENVIO QUE FALHOU" — conserto do B3.
+        #
+        # 📊 Medido pelo juiz: este `raise` morava DENTRO do mesmo `try` cujo
+        # `except` grava `formulario_envio_falhou`, e o dossiê saía dizendo
+        # *"pode ter chegado, não dá para saber"* sobre uma mensagem que
+        # **provadamente não saiu** — nem uma tentativa houve.
+        #
+        # ⚠️ Quem tria decide DIFERENTE nos dois casos: com "pode ter chegado"
+        # se evita reenviar; com "não saiu" se clica em segundos. O motivo
+        # próprio é o que separa as duas decisões.
+        if not session.get("envelope_do_flow"):
+            session["state"] = "needs_human"
+            session["reason"] = "formulario_sem_envelope"
+            session.setdefault("transcript", []).append(
+                {"direction": "out", "at": _now(), "dry_run": True, "enviado": False,
+                 "step": "formulario_nativo",
+                 "text": (f"[FORMULÁRIO NATIVO pronto e NÃO enviado — falta o "
+                          f"envelope ecoado da captura: {n_campos} campos. "
+                          f"Nada saiu.]")})
+            return session
+        envelope = str(session.get("envelope_do_flow") or "")
         try:
-            envelope = session.get("envelope_do_flow")
-            if not envelope:
-                # Sem o nome ecoado da captura, não se envia. Pausa com a
-                # resposta pronta — o humano marca em segundos.
-                raise ValueError("envelope_do_flow ausente: nao ecoado da captura")
             enviado = flow_sender(
                 flow_token=token,
                 nome_do_envelope=envelope,
@@ -2570,8 +2613,31 @@ def handle_insurer_message(
     # devolve None"* — está errada e era errada antes da D.2: schema
     # desconhecido com marcador presente devolve `session` com
     # `formulario_nativo_desconhecido`. Nome errado reinfecta leitor seguinte.
+    # 🔴 `interactive=None` AQUI, E ISSO É O CONSERTO DO B1.
+    #
+    # 📊 Medido pelo juiz de confirmação, com linha de controle, numa rajada de
+    # duas bolhas com o MESMO `interactive` de janela::
+    #
+    #     bolha 2                                BASE  PÉ-PAINEL  HEAD(defeito)
+    #     "você está na fila…"                    1        2          1
+    #     "Estamos verificando as informações…"     2        2          2
+    #     CONTROLE — sem `interactive` na 2ª       1        1          1
+    #
+    # A guarda `a_tela_e_formulario` protege a PRIMEIRA chamada. Esta segunda
+    # rodava para toda bolha que não casa passo, recebia o mesmo `interactive`
+    # (que `message_buffer_service` preserva pela janela **de propósito**) e
+    # reconstruía o schema pelo `flow_id` dela. ⚠️ A bolha que o painel escolheu
+    # casa um passo `noop` e **retorna antes** de chegar aqui — por isso deu 1, e
+    # por isso o defeito parecia fechado.
+    #
+    # Esta chamada existe para o caso em que **nenhum `interactive` chegou** e o
+    # formulário é reconhecido pela `prompt_anchor`. Passar `None` é dizer isso
+    # no código: aqui não se olha metadado de janela nenhum.
+    #
+    # ⚠️ O `flow_token` continua disponível: `registrar_formulario_nativo` o
+    # gravou na SESSÃO antes de tudo (linha ~2130), e é de lá que ele é lido.
     pelo_formulario = _responder_formulario_nativo(
-        session, playbook, insurer_message, interactive=interactive, flow_sender=flow_sender)
+        session, playbook, insurer_message, interactive=None, flow_sender=flow_sender)
     if pelo_formulario is not None:
         return pelo_formulario
 
@@ -3245,6 +3311,11 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     # ⚠️ P-084-67, fora do escopo desta SPEC por §9: faltam canal e token de
     # fluxo, e isso é SPEC própria. Registrado aqui para não cair no padrão em
     # silêncio.
+    # 🔴 Sabe-se que NADA SAIU: o envelope não foi ecoado da captura e o
+    # transporte nunca foi chamado. É `NAO_RETOMA` porque refazer dá no mesmo —
+    # falta a captura, não a rede —, e o motivo próprio existe para que quem tria
+    # saiba que **pode** reenviar sem risco de duplicar.
+    "formulario_sem_envelope": NAO_RETOMA,
     "formulario_pronto_sem_flow_token": NAO_RETOMA,
     "formulario_pronto_sem_transporte": NAO_RETOMA,
 }
