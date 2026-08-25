@@ -744,8 +744,18 @@ class InsurerDispatchTool(BaseTool):
                 f"Não existe corredor de acionamento para {quem} neste serviço. "
                 "NÃO tente acionar por outro caminho e NÃO invente protocolo. "
                 "Chame `request_human_agent` agora, com o motivo "
-                f"'sem corredor para {quem}', e diga ao cliente que um atendente "
-                "da corretora vai assumir — os dados que ele já deu ficam registrados.")}
+                f"'sem corredor para {quem}'. "
+                # 🔴 SPEC-085, painel: NÃO prometa a pessoa ANTES da ferramenta.
+                # A instrução antiga mandava dizer "um atendente da corretora vai
+                # assumir" — sem consultar destino de suporte, e ANTES de o
+                # handoff ter dado certo. É a promessa de agosto com outra roupa,
+                # e o fiscal não a pegava (o regex exigia sujeito e verbo que
+                # esta frase não tem; corrigido no mesmo painel).
+                # Quem autoriza a frase é o CARIMBO que a ferramenta devolve.
+                "Diga ao cliente SÓ o que a ferramenta devolver: com HANDOFF_OK, "
+                "que a equipe foi avisada; sem ele, que o pedido ficou registrado "
+                "e você segue com ele. Nunca prometa uma pessoa antes do carimbo. "
+                "Os dados que ele já deu ficam registrados de qualquer forma.")}
 
         # GUARDA ANTI-INVENÇÃO (incidente 2026-07-10: placa e telefone inventados
         # foram parar na seguradora). Determinístico, fora do alcance do LLM.
@@ -844,8 +854,13 @@ class InsurerDispatchTool(BaseTool):
                             "NÃO peça mais nenhum dado ao cliente por causa disto: não falta dado, "
                             "falta caminho. NÃO tente acionar por outro corredor e NÃO invente protocolo. "
                             "Chame `request_human_agent` agora, com o motivo "
-                            f"'{quem} não tem corredor para {trabalho}', e diga ao cliente que um "
-                            "atendente da corretora vai assumir — o que ele já contou fica registrado.")}
+                            f"'{quem} não tem corredor para {trabalho}'. "
+                            # 🔴 SPEC-085, painel — mesma correção do ramo acima.
+                            "Diga ao cliente SÓ o que a ferramenta devolver: com "
+                            "HANDOFF_OK, que a equipe foi avisada; sem ele, que o "
+                            "pedido ficou registrado e você segue com ele. Nunca "
+                            "prometa uma pessoa antes do carimbo. O que ele já "
+                            "contou fica registrado de qualquer forma.")}
             if plan.get("missing_slots"):
                 # ══════════════════════════════════════════════════════════
                 # 🔴 SPEC-084.2 C5 · AQUI HAVIA UMA SEGUNDA FONTE DE VERDADE

@@ -235,7 +235,8 @@ async def _entregar_dossie_com_marcador(company_id: str, session: Dict[str, Any]
     async def _enviar(texto: str) -> bool:
         # `_support_alert` já engole a própria exceção e devolve SE saiu — é
         # exatamente o contrato que a seam pede.
-        return await _support_alert(company_id, texto, wa, integration)
+        return await _support_alert(company_id, texto, wa, integration,
+                                    session=session)
 
     return await entregar_dossie_uma_vez(session, dossier, _enviar)
 
@@ -266,7 +267,8 @@ async def _avisar_o_segurado(session: Dict[str, Any], wa, integration) -> bool:
         return False
 
 
-async def _support_alert(company_id: str, text: str, wa, integration) -> bool:
+async def _support_alert(company_id: str, text: str, wa, integration,
+                         session: Optional[Dict[str, Any]] = None) -> bool:
     """Avisa o suporte. Devolve SE o aviso saiu — não presume que saiu.
 
     🔴 Devolvia `None` e engolia tudo. Quem chamava gravava `dossier_sent=True`
@@ -278,12 +280,31 @@ async def _support_alert(company_id: str, text: str, wa, integration) -> bool:
     muda é que a falha agora tem quem a conte.
     """
     try:
-        from app.services.dispatch_router import _support_contact
+        from app.services.dispatch_router import resolver_destino_de_suporte
 
-        contact = await _support_contact(company_id)
+        alvo = await resolver_destino_de_suporte(company_id)
+        contact = str(alvo.get("destino") or "")
         if not contact:
-            logger.warning("[VIGIA] sem contato de suporte p/ company %s: %s",
-                           company_id, text[:120])
+            # 🔴 AUSENTE ≠ RECUSADO, também aqui — painel da SPEC-085.
+            # O caminho A (`dispatch_router`) já distinguia os dois e gravava
+            # `suporte_indisponivel`; o Vigia fundia tudo num `False` e não
+            # gravava nada. A distinção decide o que a corretora FAZ:
+            # cadastrar um destino, ou parar de compartilhar o que tem.
+            _estado = "recusado" if alvo.get("recusa") else "ausente"
+            logger.error("[VIGIA] sem destino de suporte (%s) p/ company %s: %s",
+                         _estado, company_id, text[:120])
+            # 🔴 E A DISTINÇÃO CHEGA À TELA, não só ao log — juiz de confirmação.
+            #
+            # O comentário acima dizia *"a distinção decide o que a corretora
+            # FAZ"*, e ela só existia no `logger`. Ninguém gravava
+            # `session["suporte_indisponivel"]`, então a tela de destravamento
+            # mostrava `suporte: null` para todo travamento vindo do Vigia — e
+            # a corretora não sabia se faltava cadastrar destino ou se o destino
+            # dela estava compartilhado com outra corretora.
+            if session is not None:
+                session["suporte_indisponivel"] = _estado
+                if alvo.get("recusa"):
+                    session["suporte_indisponivel_motivo"] = str(alvo.get("recusa"))
             return False
         if not integration:
             logger.error(
@@ -393,15 +414,47 @@ async def _sentinela_recover(
     # `_avisar_o_segurado`, logo abaixo.
     session["dossier_sent"] = await _entregar_dossie_com_marcador(
         company_id, session, dossier, wa, integration)
-    await _avisar_o_segurado(session, wa, integration)
+    # 🔴 O RETORNO NÃO PODE SER DESCARTADO — juiz de confirmação da SPEC-085.
+    #
+    # Ele era. E duas linhas abaixo o feed afirmava, incondicionalmente, *"e o
+    # segurado foi avisado disso"*. 📊 Com `integration=None` — a condição
+    # documentada da Resulta em 18/08, só observador — as duas coisas caem
+    # juntas pela MESMA razão, então nesse caminho a frase era **sempre falsa**.
+    #
+    # A corretora lia que o segurado sabia, e não ligava para ele.
+    segurado_avisado = await _avisar_o_segurado(session, wa, integration)
     # SPEC-050 (auditoria): a ação mais importante do Vigia agora aparece no
     # feed de Atividades da corretora (antes era invisível fora dos logs).
+    # 🔴 O FEED DA CORRETORA PARA DE MENTIR — painel da SPEC-085, red team.
+    #
+    # Esta chamada era INCONDICIONAL, logo depois da flag que o commit anterior
+    # tornou honesta. Sem destino, com envio falhado ou sem canal, a flag ficava
+    # `False`, o segurado ouvia corretamente *"não consegui avisar a equipe"* —
+    # **e o feed anunciava que o dossiê foi entregue.**
+    #
+    # É textualmente o defeito de 02:01:25 de 18/08, um andar acima: a flag foi
+    # consertada e a frase ao lado dela não. Flag que mente encerra a
+    # investigação; feed que mente encerra antes ainda.
     try:
         from app.services.activity_log import log_activity
 
-        await log_activity(company_id, "acionamentos",
-                           "Dossiê entregue à equipe — acionamento travou",
-                           "A URA parou de responder e a recuperação automática esgotou; o caso foi passado com todos os dados.")
+        if session.get("dossier_sent"):
+            await log_activity(company_id, "acionamentos",
+                               "Dossiê entregue à equipe — acionamento travou",
+                               "A URA parou de responder e a recuperação automática esgotou; o caso foi passado com todos os dados.")
+        elif segurado_avisado:
+            await log_activity(company_id, "acionamentos",
+                               "🔴 Acionamento travou e o dossiê NÃO foi entregue",
+                               "A recuperação automática esgotou e não foi possível avisar a equipe. "
+                               "O caso está na Fila, esperando alguém — e o segurado foi avisado disso.")
+        else:
+            # 🔴 O PIOR DOS TRÊS, e o que a corretora precisa ler PRIMEIRO:
+            # ninguém sabe de nada. Nem a equipe, nem a pessoa que está parada.
+            await log_activity(company_id, "acionamentos",
+                               "🔴 Acionamento travou, a equipe NÃO foi avisada e o segurado TAMBÉM NÃO",
+                               "A recuperação automática esgotou e não houve canal para avisar ninguém. "
+                               "O caso está na Fila — e o segurado continua esperando sem saber. "
+                               "Ligue para ele.")
     except Exception:  # noqa: BLE001
         pass
     logger.warning(f"[SENTINELA] escada esgotada → needs_human case={session.get('case_id')}")
@@ -495,7 +548,7 @@ async def check_dispatch_watchdog() -> int:
                     f"⚠️ VIGIA: a URA ({label}) está calada há {URA_SILENT_ALERT_S // 60}min+ após "
                     f"nossa resposta (caso {case}). Pode ter rejeitado em silêncio. "
                     f"Última nossa: \"{str((_last_entry(session) or {}).get('text') or '')[:160]}\"",
-                    wa, integration,
+                    wa, integration, session=session,
                 )
             elif finding == "human_silent_nudge":
                 session["wd_human_nudge"] = True
@@ -513,7 +566,7 @@ async def check_dispatch_watchdog() -> int:
                     company_id,
                     f"⚠️ VIGIA: atendente humano da seguradora ({label}) sem responder há 20min+ "
                     f"(caso {case}). Vale um olhar humano.",
-                    wa, integration,
+                    wa, integration, session=session,
                 )
             elif finding == "never_started":
                 session["wd_never_started"] = True
@@ -521,7 +574,7 @@ async def check_dispatch_watchdog() -> int:
                     company_id,
                     f"🚨 VIGIA: acionamento do caso {case} ({label}) foi criado e NÃO começou "
                     f"em {NEVER_STARTED_S // 60}min (estado: {session.get('state')}). Verificar.",
-                    wa, integration,
+                    wa, integration, session=session,
                 )
             elif finding == "deadline":
                 session["wd_deadline"] = True
@@ -529,7 +582,7 @@ async def check_dispatch_watchdog() -> int:
                     company_id,
                     f"⏰ VIGIA: acionamento do caso {case} ({label}) está há 45min+ sem desfecho "
                     f"(estado: {session.get('state')}). Transcript no dashboard (Acionamento).",
-                    wa, integration,
+                    wa, integration, session=session,
                 )
             await save_active_dispatch(company_id, insurer_phone, session)
             actions += 1

@@ -154,6 +154,26 @@ _AFIRMACOES_DE_TRANSFERENCIA = re.compile(
     # (e) futuro-certo em nome de terceiros
     r"\b(?:eles?|ela|a\s+equipe)\s+(?:v[ãa]o|vai)\s+"
     r"(?:entrar\s+em\s+contato|te\s+chamar|falar\s+com\s+voc[eê]|retornar)"
+    r"|"
+    # (f) 🔴 "um atendente da corretora VAI ASSUMIR" — SPEC-085, painel.
+    #
+    # 📊 A alternativa (e) exige um sujeito de três formas (`eles|ela|a equipe`)
+    # E um verbo de quatro. `"um atendente da corretora vai assumir"` não casa
+    # nenhum dos dois, e passava inteiro. Medido pelo juiz do segurado, com a
+    # linha de controle que prova o fiscal saber reprovar:
+    #
+    #     PASSA    insurer_dispatch_tool.py:748 verbatim
+    #     PASSA    insurer_dispatch_tool.py:848 verbatim
+    #     REPROVA  a frase real do incidente de 17/08      <- o CONTROLE
+    #
+    # ⚠️ O SUJEITO CONTINUA EXIGIDO, e isso é deliberado: `assumir` sozinho é
+    # palavra comum ("posso assumir que você quer…"). O que se proíbe é
+    # prometer que uma PESSOA vai assumir, no futuro-certo, sem o carimbo da
+    # ferramenta.
+    r"\b(?:um|uma|o|a)\s+(?:\w+\s+){0,2}?"
+    r"(?:atendente|colega|analista|consultor[ae]?|especialista)\b"
+    r"[^.!?\n]{0,60}?\b(?:v[ãa]o|vai|ir[áa])\s+"
+    r"(?:assumir|te\s+atender|cuidar|continuar|seguir)"
     r")"
 )
 

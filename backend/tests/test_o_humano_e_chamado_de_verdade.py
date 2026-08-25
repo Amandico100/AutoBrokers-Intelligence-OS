@@ -364,11 +364,187 @@ def test_a_promessa_antiga_nao_sobrou_em_lugar_nenhum():
 
     A frase só pode existir onde o dossiê comprovadamente saiu.
     """
-    # ⚠️ Sobre o CÓDIGO, nunca sobre o arquivo: os três comentam o conserto
-    # CITANDO a frase antiga, e é assim que ela deve aparecer — como registro
-    # do que foi tirado. Um guarda que reprova a citação reprova a memória.
-    proibida = "colega da equipe vai assumir daqui a pouquinho"
-    for arquivo in (ROUTER, VIGIA, MOTOR):
-        codigo = _sem_comentario(arquivo.read_text(encoding="utf-8"))
-        assert proibida not in codigo, (
-            f"a promessa incondicional voltou ao CÓDIGO de {arquivo.name}")
+    # 🔴 ESTE GUARDA FOI REESCRITO NO PAINEL, E O MOTIVO É O PIOR POSSÍVEL:
+    # ele DIZIA "toda ocorrência" e varria TRÊS arquivos e UMA substring exata.
+    #
+    # 📊 O juiz do segurado achou a promessa viva onde ele não olhava —
+    # `insurer_dispatch_tool.py:748` e `:848`, mandando o LLM dizer *"um
+    # atendente da corretora vai assumir"* sem condição nenhuma, antes de
+    # `request_human_agent` ter sucesso. **Escrevi "toda" e implementei "três".**
+    #
+    # Agora ele varre `backend/app/` INTEIRO e usa o FISCAL — o mesmo
+    # `afirma_transferencia` que reescreve a resposta do agente — em vez de
+    # procurar um texto. Cobertura declarada virou cobertura real.
+    import ast
+
+    fiscal = _carregar_modulo("_spec085_fiscal_varredura",
+                              RAIZ / "app" / "agents" / "honestidade_do_handoff.py")
+
+    # 🔴 O REGISTRO. Cada literal que o fiscal sinaliza precisa de MOTIVO
+    # ESCRITO — e é isso que torna a cobertura real: promessa NOVA, em qualquer
+    # arquivo de `backend/app/`, quebra a suíte até alguém justificá-la.
+    #
+    # ⚠️ A varredura é larga de propósito e acusa coisa que não chega a
+    # segurado nenhum (docstring, regex de tela de URA, log, prompt de papel).
+    # Estreitar o fiscal para calar esses seria estreitar o fiscal que protege
+    # o segurado. **Larga e registrada vale mais que estreita e cega.**
+    ISENTOS = {"honestidade_do_handoff.py"}  # contém os exemplos que reprova
+    JUSTIFICADOS = {
+        # --- não é texto que chega ao segurado ---
+        ("prompts.py", "Você é o atendente da corretora no WhatsApp"):
+            "descrição do PAPEL do agente, não mensagem",
+        ("attendance_ficha.py", "A ficha do atendimento"):
+            "docstring do módulo",
+        ("corridor_playbooks.py", "sua resposta est[áa] diferente"):
+            "REGEX que casa tela da URA — é o que a seguradora escreve",
+        ("corridor_playbooks.py", "ainda n[ãa]o identificamos a sua resposta"):
+            "REGEX que casa tela da URA",
+        ("dispatch_router.py", "[HANDOFF] a equipe já foi avisada"):
+            "mensagem de LOG, para operador",
+        ("dispatch_watchdog.py", "A URA parou de responder e a recuperação"):
+            "feed de Atividades da CORRETORA, e condicional a `dossier_sent` "
+            "desde o painel da SPEC-085",
+        # --- promessa REAL, e guardada ---
+        ("insurer_dispatch_service.py", "Não consegui concluir o pedido com a seguradora"):
+            "🔴 é a promessa DE VERDADE — `AVISO_EQUIPE_ASSUMIU`. Ela só sai por "
+            "`aviso_de_handoff(True)`, isto é, quando o dossiê comprovadamente "
+            "saiu. O guarda dela é `test_o_texto_depende_do_desfecho_do_dossie`",
+        # --- 🔴 ACHADOS REAIS, REGISTRADOS E FORA DO ESCOPO DESTA SPEC ---
+        ("vigia_do_portal.py", "na seguradora e o sistema pediu uma "):
+            "P-235 · a QUARTA cadeia (portal) promete sem carimbo",
+        ("vigia_do_portal.py", "no sistema da seguradora agora"):
+            "P-235 · idem",
+        ("vigia_do_portal.py", ". Não vou te deixar no vácuo"):
+            "P-235 · idem",
+        ("vigia_do_portal.py", "Só não consegui concluir a última etapa"):
+            "P-235 · idem",
+    }
+
+    def _justificado(nome: str, texto: str) -> bool:
+        for (arq, trecho), _motivo in JUSTIFICADOS.items():
+            if arq == nome and trecho in texto:
+                return True
+        return False
+
+    culpados = []
+    for caminho in sorted((RAIZ / "app").rglob("*.py")):
+        if caminho.name in ISENTOS:
+            continue
+        try:
+            arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for no in ast.walk(arvore):
+            if not isinstance(no, ast.Constant) or not isinstance(no.value, str):
+                continue
+            texto = no.value
+            if "HANDOFF_OK" in texto:
+                continue  # o carimbo é o que AUTORIZA a frase
+            if not fiscal.afirma_transferencia(texto):
+                continue
+            if _justificado(caminho.name, texto):
+                continue
+            culpados.append(
+                f"{caminho.relative_to(RAIZ)}:{no.lineno}: {texto.strip()[:70]}")
+    assert not culpados, (
+        "promessa de transferência SEM o carimbo do handoff e SEM motivo "
+        "escrito:\n  " + "\n  ".join(culpados)
+        + "\n\n🔴 Quem autoriza a frase é o `HANDOFF_OK` que a ferramenta "
+          "devolve. Sem ele,\no segurado ouve que uma pessoa vai assumir e não "
+          "há pessoa nenhuma.\n⚠️ Se este literal não chega a segurado nenhum, "
+          "acrescente-o a `JUSTIFICADOS`\ncom o motivo — nunca estreite o "
+          "fiscal para calá-lo.")
+
+
+def test_o_registro_de_promessas_nao_tem_linha_MORTA():
+    """🔴 Registro que não esvazia vira aterro — `PROTOCOLO-AUTOBROKERS-AAA` §1.
+
+    Cada entrada de `JUSTIFICADOS` tem de casar algo REAL no código. Uma que
+    deixe de casar é dívida quitada que ninguém tirou da lista — e a próxima
+    pessoa lê uma isenção para um defeito que não existe mais.
+    """
+    import ast
+
+    fonte = Path(__file__).read_text(encoding="utf-8")
+    inicio = fonte.index("JUSTIFICADOS = {")
+    bloco = fonte[inicio:fonte.index("\n    }", inicio)]
+    pares = re.findall(r'\(\s*"([^"]+\.py)",\s*"([^"]+)"\s*\)', bloco)
+    assert len(pares) >= 11, f"o registro encolheu para {len(pares)} entradas"
+
+    mortas = []
+    for arquivo, trecho in pares:
+        achou = False
+        for caminho in (RAIZ / "app").rglob(arquivo):
+            if trecho in caminho.read_text(encoding="utf-8"):
+                achou = True
+                break
+        if not achou:
+            mortas.append(f"{arquivo} :: {trecho[:50]}")
+    assert not mortas, (
+        "entrada(s) do registro que não casam nada no código — tire-as:\n  "
+        + "\n  ".join(mortas))
+
+
+def test_CONTROLE_a_varredura_CONSEGUE_acusar():
+    """🔴 §9.3. Uma varredura que não achasse nada faria o teste acima passar
+    sobre um repositório cheio de promessas. Aqui ela é apontada para uma frase
+    fabricada e TEM de acusá-la."""
+    fiscal = _carregar_modulo("_spec085_fiscal_ctrl",
+                              RAIZ / "app" / "agents" / "honestidade_do_handoff.py")
+    assert fiscal.afirma_transferencia(
+        "diga ao cliente que um atendente da corretora vai assumir"), (
+        "o fiscal não reconhece a promessa que o juiz achou viva no código")
+    assert not fiscal.afirma_transferencia(
+        "Posso assumir que você quer o guincho para a oficina?"), (
+        "o fiscal virou grosseiro: `assumir` sozinho é palavra comum, e "
+        "reprovar isso ensinaria a ignorar o fiscal")
+
+
+# ---------------------------------------------------------------------------
+# 9. O FEED DA CORRETORA — juiz de confirmação da SPEC-085
+# ---------------------------------------------------------------------------
+
+def test_o_feed_NAO_afirma_que_o_segurado_foi_avisado():
+    """🔴 O conserto anterior consertou a flag e deixou a frase ao lado dela.
+
+    `_avisar_o_segurado` devolve `bool` e **o retorno era descartado**. Duas
+    linhas abaixo o feed afirmava, incondicionalmente:
+
+        "O caso está na Fila, esperando alguém — e o segurado foi avisado disso."
+
+    📊 Medido pelo juiz com `integration=None` — a condição documentada da
+    Resulta em 18/08, só observador: `dossier_sent=False`,
+    `client_notified_handoff=None`, e a frase saía assim mesmo.
+
+    ⚠️ Não é borda. `integration=None` derruba o dossiê **e** o aviso pela
+    MESMA razão, então nesse caminho a frase era **sempre falsa** — e a
+    corretora lia que o segurado sabia, e não ligava para ele.
+    """
+    codigo = _sem_comentario(VIGIA.read_text(encoding="utf-8"))
+    assert "segurado_avisado = await _avisar_o_segurado(" in codigo, (
+        "o retorno de `_avisar_o_segurado` voltou a ser descartado — o feed "
+        "não tem como saber se a pessoa foi avisada")
+    assert "elif segurado_avisado:" in codigo, (
+        "o feed voltou a decidir o texto sem olhar se o segurado foi avisado")
+
+
+def test_o_feed_tem_TRES_desfechos_e_eles_sao_DIFERENTES():
+    """§9.3 — prove que os três casos CONSEGUEM ser distinguidos.
+
+    Se dois ramos dissessem a mesma coisa, o guarda acima passaria e a
+    corretora continuaria lendo a mesma frase para situações que exigem
+    ações diferentes dela.
+    """
+    codigo = _sem_comentario(VIGIA.read_text(encoding="utf-8"))
+    titulos = [
+        "Dossiê entregue à equipe — acionamento travou",
+        "🔴 Acionamento travou e o dossiê NÃO foi entregue",
+        "🔴 Acionamento travou, a equipe NÃO foi avisada e o segurado TAMBÉM NÃO",
+    ]
+    for t in titulos:
+        assert t in codigo, f"sumiu o desfecho {t!r} do feed"
+    assert len(set(titulos)) == 3, "dois desfechos do feed dizem a mesma coisa"
+    assert "Ligue para ele." in codigo, (
+        "o pior dos três desfechos deixou de dizer à corretora o que FAZER — "
+        "e é o único em que ninguém sabe de nada, nem a equipe nem a pessoa "
+        "que está parada esperando")

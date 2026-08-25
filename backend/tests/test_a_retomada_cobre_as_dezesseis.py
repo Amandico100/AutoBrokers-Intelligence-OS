@@ -133,10 +133,18 @@ def test_sao_dezesseis():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("familia,esperado", [
-    # a causa PODE ter mudado
+    # a causa PODE ter mudado E refazer e' SEGURO
     ("insurer_closed", M.RETOMA),
-    ("formulario_envio_falhou", M.RETOMA),
     # não retoma, e uma pessoa continua
+    # 🔴 `formulario_envio_falhou` SAIU DE `RETOMA` NO PAINEL, e o motivo e'
+    # o melhor argumento que este arquivo tem:
+    #   O motivo nasce num `except Exception → enviado = False`. TIMEOUT entra
+    #   ai', e timeout NAO prova que o formulario nao chegou — o formulario
+    #   nativo E' o passo de confirmacao. No instante em que o motivo e'
+    #   gravado, `captured["protocol"]` esta' vazio POR CONSTRUCAO: o unico
+    #   freio antiduplicacao e' estruturalmente cego nesta familia.
+    # Retomar ali manda um SEGUNDO prestador a' casa de alguem.
+    ("formulario_envio_falhou", M.DIRETO_AO_HUMANO),
     ("missing_slots", M.DIRETO_AO_HUMANO),
     ("sem_chute", M.DIRETO_AO_HUMANO),
     ("handoff_trigger", M.DIRETO_AO_HUMANO),
@@ -186,10 +194,22 @@ def test_CONTROLE_POSITIVO_uma_familia_retomavel_RETOMA():
     """§D: *"o controle negativo sozinho JÁ É VERDADE HOJE, com zero linha
     alterada"*. Este é o que exige que a retomada exista."""
     assert M.pode_retomar(_sessao("insurer_closed")) is True
-    assert M.pode_retomar(_sessao("formulario_envio_falhou")) is True, (
-        "🔴 `formulario_envio_falhou` continua sem retomada — é a família em "
-        "que a causa mais obviamente pode ter mudado, e ela era uma das quinze "
-        "que caíam direto no dossiê")
+
+    # 🔴 E O CONTROLE FICOU MAIS FORTE DEPOIS DO PAINEL, nao mais fraco.
+    #
+    # A versao anterior exigia que `formulario_envio_falhou` TAMBEM retomasse.
+    # O red team derrubou (ver a tabela acima). Agora o guarda afirma o que
+    # sobrou, e afirma com numero: **exatamente UMA familia retoma**.
+    #
+    # ⚠️ Uma familia nova entrando em RETOMA quebra aqui, de proposito —
+    # `RETOMA` e' a unica classificacao cujo erro manda um prestador a mais a'
+    # casa de alguem, e ela nao pode crescer sem alguem olhar.
+    retomaveis = sorted(f for f, v in M._POLITICA_DE_RETOMADA.items()
+                        if v == M.RETOMA)
+    assert retomaveis == ["insurer_closed"], (
+        f"a lista de familias que retomam mudou: {retomaveis}. "
+        "RETOMA exige DUAS coisas — a causa poder ter mudado E refazer ser "
+        "seguro se a primeira tentativa tiver dado certo sem a gente saber.")
 
 
 def test_CONTROLE_POSITIVO_retoma_UMA_vez_e_nao_duas():

@@ -138,9 +138,8 @@ async def varrer_handoffs_parados() -> None:
         paradas = (db.table("conversations")
                    .select("id, company_id, session_id, user_name, user_phone, "
                            "last_message_at, human_handoff_reason, "
-                           "claimed_by, claimed_by_name, resolvido_em")
+                           "claimed_by, claimed_by_name, claimed_at, resolvido_em")
                    .eq("status", "HUMAN_REQUESTED")
-                   .is_("claimed_by", "null")
                    .lt("last_message_at", limite)
                    .order("last_message_at", desc=False)
                    .limit(_MAX_POR_PASSADA).execute().data or [])
@@ -230,12 +229,36 @@ async def varrer_handoffs_parados() -> None:
             logger.error("[HandoffWatchdog] conversa sem company_id — ignorada")
             continue
 
+        # 🔴 CLAIM FRESCO CALA; CLAIM ABANDONADO NÃO — painel da SPEC-085.
+        #
+        # A primeira versão deste conserto filtrava `claimed_by IS NULL` **na
+        # consulta**, e estava errada pelo lado que importa: uma conversa
+        # ASSUMIDA E ABANDONADA — alguém clicou em assumir, foi almoçar e não
+        # voltou — ficava PERMANENTEMENTE invisível ao Vigia. Antes do conserto
+        # ela gerava lembrete: chato, mas visível. Depois, silêncio.
+        #
+        # ⚠️ Trocar um excesso de aviso por um silêncio é trocar um defeito por
+        # um pior — é literalmente o que a SPEC-086 existe para impedir, por
+        # uma porta nova.
+        #
+        # A regra é por IDADE do claim, não pela existência dele. Enquanto a
+        # pessoa está com o caso na mão (menos que a cadência de re-alerta), o
+        # Vigia cala. Passado isso, ele volta a cobrar — e o texto DIZ que
+        # alguém assumiu, porque cobrar "ninguém assumiu" de um caso que tem
+        # dono é a mesma mentira ao contrário.
+        _dono = str(conversa.get("claimed_by") or "").strip()
+
         parada_ms = _parado_ha_ms(conversa, agora)
 
         # A TELEMETRIA VEM ANTES DO MARCADOR, e de propósito: ela mede a espera
         # de TODA conversa parada, inclusive as que o marcador vai silenciar. Se
         # dependesse do envio, o número sumiria justamente quando a fila
         # estivesse pior — e o gráfico melhoraria quanto mais gente esperasse.
+        #
+        # 🔴 E VEM ANTES DO CORTE DE CLAIM TAMBÉM — juiz de confirmação. O corte
+        # nasceu ACIMA deste bloco e tirava do `HANDOFF_ESPERA` justamente as
+        # conversas que TÊM dono. O comentário dizia "TODA conversa parada"; o
+        # código media as sem dono. Contrato quebrado por posição de linha.
         try:
             from app.services.observability import sli
 
@@ -243,6 +266,28 @@ async def varrer_handoffs_parados() -> None:
                           contexto={"minutos": round(parada_ms / 60000)})
         except Exception:  # noqa: BLE001
             pass
+
+        if _dono:
+            # 🔴 `claimed_at` ILEGÍVEL AVISA, NÃO CALA — juiz de confirmação.
+            #
+            # 📊 `_parado_ha_ms` devolve **0.0** para `None` e para `""`. Com o
+            # corte escrito como "idade < janela ⇒ continue", uma data ausente
+            # ou ilegível dava 0, passava no corte e calava a conversa **para
+            # sempre** — o mesmo furo que este bloco existe para fechar, mudado
+            # de `claimed_by` para `claimed_at`.
+            #
+            # A regra do módulo é "na dúvida, avisa". Data que não dá para ler
+            # é dúvida, então o claim conta como VELHO e o Vigia cobra.
+            _quando = conversa.get("claimed_at")
+            _idade_claim_ms = (_parado_ha_ms({"last_message_at": _quando}, agora)
+                               if _quando else None)
+            _janela_ms = realerta_h * 3_600_000
+            if _idade_claim_ms is not None and _idade_claim_ms < _janela_ms:
+                continue
+            logger.warning(
+                "[HandoffWatchdog] conversa ASSUMIDA e parada há mais de %sh "
+                "(ou sem data de claim legível) — o dono não voltou. empresa=%s",
+                realerta_h, company_id)
 
         if await _ja_avisado_recentemente(conversa_id, realerta_h):
             continue
@@ -279,8 +324,13 @@ async def varrer_handoffs_parados() -> None:
 
         horas = parada_ms / 3_600_000
         espera = f"{horas:.0f}h" if horas >= 1 else f"{parada_ms / 60000:.0f}min"
-        motivo = (f"⏳ AINDA SEM ATENDIMENTO há {espera} — "
-                  f"{conversa.get('human_handoff_reason') or 'motivo não registrado'}")
+        if _dono:
+            motivo = (f"⏳ ASSUMIDA POR {conversa.get('claimed_by_name') or 'alguém'} "
+                      f"E PARADA há {espera} — "
+                      f"{conversa.get('human_handoff_reason') or 'motivo não registrado'}")
+        else:
+            motivo = (f"⏳ AINDA SEM ATENDIMENTO há {espera} — "
+                      f"{conversa.get('human_handoff_reason') or 'motivo não registrado'}")
         if _ultimo:
             motivo += ("\n\n🔕 Este é o ÚLTIMO lembrete automático desta "
                        "conversa. Ela continua na Fila do painel — de lá "

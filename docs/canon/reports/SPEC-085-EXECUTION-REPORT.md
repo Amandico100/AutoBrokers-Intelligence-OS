@@ -18,6 +18,7 @@
 | **F-2** | ✅ **A duplicação de `INSURER_DISPATCH_LIVE` acabou.** O ambiente novo traz uma ocorrência de cada. Era P1 de configuração, e morreu. | nada — está feito | — | **NÃO** |
 | **F-3** | 📊 **`CARTOGRAPHER_MODE=1` continua ligado** — o Cartógrafo manda WhatsApp **real** para seguradora, sem ninguém do outro lado esperando. É a P-32, aberta desde 03/08. | decidir se continua ligado | mensagem nossa chegando em seguradora sem contexto | **NÃO** |
 | **F-4** | 🔴 **A régua da SPEC-083 devolve 102 numa escala de 100** e parou de achar órfã (5 asserções, `test_a_rubrica_e_honesta`). Uma régua assim **aprova o que deveria reprovar**, e o que ela aprova é rota que chega em segurado. | já decidido: é da **SPEC-089** | uma rota sobe sem estar pronta | **NÃO** |
+| **F-6** | 🔴 **Conserto de DADO não sobrevive ao código antigo em produção.** 📊 A migration `20260824_02` corrigiu as duas linhas defeituosas e **produção as reescreveu de volta** — o único escritor daquele `result_summary` é o ramo `final == "completed"` da reconciliação, que é o código antigo. O EasyPanel constrói a `main`; o conserto está na branch. ⚠️ E há um lado que VALIDA o desenho: `unblock_state` **sobreviveu**, porque o código antigo não conhece a coluna. | merge na `main` + deploy; **depois** rodar de novo o segundo bloco da migration (os dois `UPDATE`s são idempotentes por construção) | quem consultar `work_runs.status` antes do deploy vê o travamento como sucesso | **NÃO** |
 | **F-5** | 🔴 **A trava que impede duas medições de corromper os 73 corredores não segura.** 📊 Uma mutação vazada desligou `schedule_agendado` no `allianz-residencial` — a âncora de *quando o prestador vem*, no corredor da única travessia ponta a ponta. O vazamento **sobrevive ao fim do pytest**. | saber que **`git add -A` neste repositório pode commitar uma mutação a qualquer momento** — adicione arquivo por nome | âncora morta = tela de URA que o corredor deixa de reconhecer = segurado sem socorro | **NÃO** |
 
 ---
@@ -152,8 +153,22 @@ pytest-nativos estavam vermelhas e nenhum executor as tocava** — nem o pytest
 (que abortava a sessão), nem o meta-guarda (que os exclui de propósito), nem o
 `broker_outcome_regression_pack`.
 
-📊 **Suíte:** `305 passed · 45 xfailed · 1 failed` em 12m45 — e o `1 failed` era
-o da sessão, agora em `xfail` com motivo.
+📊 **Suíte, medida no fim, com LINHA DE CONTROLE** (25/08/2026, `pytest tests/ -q`
+sozinha na árvore, `PYTHONIOENCODING=utf-8`):
+
+```
+CONTROLE ANTES  backend/app = 493df211ecb71af9
+418 passed, 45 xfailed, 4 warnings in 834.10s (0:13:54)
+CONTROLE DEPOIS backend/app = 493df211ecb71af9
+VEREDITO: a arvore VOLTOU IGUAL. Vermelho, se houver, e' do produto.
+```
+
+🔴 **O controle é o que dá direito ao número.** Uma medição anterior saiu com um
+`F` e a árvore dividida com outro `pytest` rodando no mesmo diretório — e a
+suíte contém guardas que **escrevem no fonte** para provar que conseguem falhar.
+📊 Os três testes na posição do vermelho passavam sozinhos, que é exatamente a
+assinatura da mutação vazada de 24/08. Sem o sha256 antes/depois, esse verde não
+seria atribuível a nada.
 
 ---
 
@@ -246,6 +261,29 @@ cb6478f5  waiting_input · travado · SEM finished_at · 95% · resumo verdadeir
 373b8395  cancelled/human_phase   NÃO TOCADO                                  ✅
 e5279497  completed/monitoring    NÃO TOCADO                                  ✅
 ```
+
+### 🔴 CORREÇÃO — esta afirmação era VERDADEIRA quando escrita e é FALSA agora
+
+📊 O JUIZ 1 do painel refez o VERIFY **depois de tudo** e achou o que eu não
+tinha conferido: **produção reescreveu as linhas por cima do conserto.**
+
+```
+cb6478f5   status = completed              ← a migration gravou waiting_input
+           finished_at = 2026-08-25 00:05  ← a migration gravou NULL
+           progress_percent = 100          ← a migration gravou 95
+           unblock_state = travado         ← 🔴 ESTE sobreviveu
+```
+
+O único escritor daquele `result_summary` é o ramo `final == "completed"` da
+reconciliação — o **código antigo**. Produção constrói a `main`; o conserto está
+numa feature branch. **A varredura desfaz o `UPDATE` a cada boot.**
+
+> **Corrigir dado enquanto o código antigo roda em produção é corrida perdida.**
+
+⚠️ E há um lado que valida o desenho: `unblock_state` sobreviveu, porque o
+código antigo não conhece a coluna. **A coluna que esta SPEC criou é hoje o
+único campo de `work_runs` que diz a verdade sobre esse caso** — e a Fila do
+BLOCO E lê ela, não o `status`. Registrado em **P-236**, com o que destrava.
 
 ---
 
@@ -374,3 +412,117 @@ relatório que só conta acertos ensina a confiar demais no próximo.
 | guardas estáticos lendo **comentário e docstring** — reprovaram consertos que existiam | os próprios guardas ficaram vermelhos | `_bloco` exige âncora ÚNICA; `_sem_comentario` tira docstring |
 | a acusação de vazamento culpava **inocentes** | linha de controle: os três acusados passam sozinhos | meta-guarda, em "A PRIMEIRA VERSÃO DISTO ACUSAVA INOCENTE" |
 | `monitoring != waiting_input` no meu próprio controle | o teste ficou vermelho e o motor estava certo | o ensaio, no `test_CONTROLE_o_acionamento_que_DEU_CERTO` |
+
+---
+
+# 🔴 O JUIZ DE CONFIRMAÇÃO REPROVOU — e estava certo
+
+> O protocolo manda **um juiz novo** confirmar depois do painel, *"porque
+> conserto cria defeito"*. Ele voltou **NÃO CONFIRMADO** com dois blockers, e os
+> dois eram **consertos do painel que viraram defeito**. Isto é o registro do
+> que ele achou, do que foi feito e do que ficou.
+
+## B1 · O desfecho apagava o travamento da Fila — 🔴 CONSERTADO
+
+O painel tirou uma escrita sem filtro de `unblock_state` da reconciliação
+argumentando que ela *"pisaria em `assumido_por_humano`"*. **No mesmo diff, pôs
+uma escrita sem filtro da mesma coluna em `_encerrar_work_run`**, com só
+`.eq("id", run_id)`:
+
+```python
+"unblock_state": "resolvido" if final == "completed" else "abandonado",
+```
+
+📊 Medido pelo juiz com dublê de banco, por família:
+
+```
+reason=insurer_closed          antes='travado'  depois='abandonado'  na_Fila=False
+reason=human_phase_guard       antes='travado'  depois='travado'     na_Fila=True
+reason=formulario_envio_falhou antes='travado'  depois='travado'     na_Fila=True
+reason=missing_slots           antes='travado'  depois='travado'     na_Fila=True
+```
+
+**Dois gatilhos vivos, os dois normais.** (i) `insurer_closed` — *"a URA
+derrubou a conversa"*, a causa mais comum de travamento e a única família que
+retoma — chama `clear_active_dispatch` no mesmo turno. (ii) `stale` inclui
+`needs_human`, então uma sessão travada é velha **na hora**: o segurado B
+pedindo chaveiro na mesma seguradora arquivava o caso do segurado A.
+
+⚠️ E `abandonado` é o verbo do HUMANO: é o que o botão *arquivar* grava, e
+`test_arquivar_exige_motivo_escrito` exige motivo escrito porque *"arquivar é
+dizer 'ninguém vai continuar isto'"*. **A máquina arquivava sem motivo nenhum,
+por cima do nome de quem assumiu.**
+
+**Conserto:** `_fechar_travamento`, com três metades escritas na docstring —
+só `resolvido` (a máquina nunca abandona), só onde a marca existe
+(`IN ('travado','retomado_pelo_robo')`, que não alcança NULL nem
+`assumido_por_humano`), e nunca no desfecho ruim.
+
+## B2 · O feed consertou uma mentira e escreveu outra ao lado — 🔴 CONSERTADO
+
+`_avisar_o_segurado` devolve `bool` e **o retorno era descartado**. Duas linhas
+abaixo o feed afirmava, incondicionalmente: *"O caso está na Fila, esperando
+alguém — **e o segurado foi avisado disso**."*
+
+📊 Medido com `integration=None` — a condição documentada da Resulta em 18/08,
+só observador: `dossier_sent=False`, `client_notified_handoff=None`, frase
+idêntica. Não é borda: `integration=None` derruba o dossiê **e** o aviso pela
+mesma razão, então nesse caminho a frase era **sempre falsa**.
+
+**Conserto:** o feed passou a ter TRÊS desfechos, e o pior deles diz à corretora
+o que fazer: *"o segurado continua esperando sem saber. **Ligue para ele.**"*
+
+## O guarda que o painel deixou não conseguia enxergar nenhum dos dois
+
+`test_a_reconciliacao_nao_finge_que_o_travamento_terminou` conferia uma **string
+no fonte**. String não vê uma escrita nova a duzentas linhas de distância — e o
+juiz derrubou o guarda com duas mutações que o deixavam **verde**: inverter
+`if final != "completed":` e trocar `fase` por `""`.
+
+📊 **`tests/test_o_desfecho_nao_apaga_o_travamento.py` — comportamental, 7
+asserções, com ciclo vermelho→verde medido:**
+
+```
+mutação: a escrita sem guarda de volta        → 5 failed, 2 passed
+restauração POR CÓPIA, sha256 acd7c7aa63a3867c idêntico, 0 `if False:`
+verde de novo                                  → 7 passed
+```
+
+⚠️ **E ele quase nasceu falso.** A primeira versão ficava verde sob a mutação
+porque `_progresso_da_fase` chamava `_motor()`, o import morria e o
+`try/except` de `_encerrar_work_run` engolia:
+
+```
+ERROR [ACIONAMENTO DURAVEL] run run-A nao foi encerrado (ModuleNotFoundError)
+RESULTADO: travado   <- "passou", e o UPDATE nunca rodou
+```
+
+> **Guarda cujo alvo mora dentro de um `try/except` precisa provar que o corpo
+> do `try` RODOU.** Senão ele fica verde justamente quando o produto quebra.
+
+Por isso `_encerrar` agora afirma `finished_at` e `result_summary` antes de
+qualquer proibição.
+
+## As seis pendências do juiz que viraram conserto
+
+| # | o que era | por que passou no TESTE DO PRODUTO |
+|---|---|---|
+| 1 | `_destino_do_alert_target("5511999998888") → ''` | 📊 `json.loads` de número puro devolve `int` e não levanta: o `except` documentado como *"String crua… Formato antigo"* **nunca rodava para a única forma que descreve**. Destino virava vazio → dossiê não entregue → ninguém chamado |
+| 2 | `.limit(500)` sem `order` na prova de exclusividade | truncar não é provar. Acima do teto, um dossiê com CPF ia para o grupo de **outra corretora**. Agora bater no teto **recusa** |
+| 3 | `unblock_state='resolvido'` em todo run bem-sucedido | destruía a propriedade que `decidir_travamento` declara (*acionamento que vai bem termina com NULL*) e encheria `?estado=all` com todo acionamento que deu certo |
+| 4 | `claimed_at` nulo → idade 0 → conversa invisível **para sempre** | 📊 `_parado_ha_ms(None)` = 0.0. Era o mesmo furo que o conserto fechou, mudado de `claimed_by` para `claimed_at`. Agora data ilegível conta como claim VELHO — *na dúvida, avisa* |
+| 5 | a janela do claim usava a constante, não o env | quem configurasse `HANDOFF_REALERTA_HORAS` ficava com a janela discordando da própria cadência |
+| 6 | o `continue` do claim ficava **acima** da telemetria | o comentário do bloco promete medir *"TODA conversa parada"* e ele media as sem dono. Contrato quebrado por posição de linha |
+
+E `suporte_indisponivel` passou a ser **gravado** pelo Vigia, não só logado: a
+tela de destravamento mostrava `suporte: null` para todo travamento vindo dele,
+e a corretora não sabia se faltava cadastrar destino ou se o dela estava
+compartilhado.
+
+## As três decisões que o juiz julgou do zero
+
+| decisão | veredito |
+|---|---|
+| `formulario_envio_falhou` → `DIRETO_AO_HUMANO` | ✅ **de pé.** Conferido na fonte: o motivo nasce em `except Exception`, e o único freio antiduplicação (`captured["protocol"]`) está vazio **por construção** nesta família — o formulário nativo É o passo de confirmação |
+| filtro de claim fora da consulta | ✅ **certo na direção**, com três furos, todos consertados acima |
+| a marca saindo do UPDATE geral | ⚠️ **existiam três caminhos sem marca** — um era o B1, agora fechado; os outros dois estão em PENDÊNCIAS |

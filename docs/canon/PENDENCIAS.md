@@ -8937,3 +8937,225 @@ marcador de aviso"), e `reivindicar_o_aviso(None)` gravaria
   decidir uma chave canônica alternativa **no mesmo formato**.
 - **Custa se esquecer:** com `DISPATCH_MIRROR=0` o grupo da corretora pode
   receber o mesmo dossiê a cada passada do Vigia.
+
+---
+
+# 🔴 O QUE O PAINEL DA SPEC-085 DEIXOU ABERTO (25/08/2026)
+
+> Cinco lentes cegas entre si: 78 · 78 · 88 · 88 e o red team. **Zero
+> aprovações na primeira volta.** Treze achados passaram no TESTE DO PRODUTO e
+> foram consertados; estes ficaram.
+
+## P-235 · 🤖 A QUARTA cadeia — o vigia do portal promete sem carimbo
+
+📊 A varredura nova (`test_a_promessa_antiga_nao_sobrou_em_lugar_nenhum`, que
+agora percorre `backend/app/` inteiro com o fiscal `afirma_transferencia`)
+achou **quatro** mensagens ao segurado em `app/tasks/vigia_do_portal.py`:
+
+```
+:142  "…no sistema da seguradora agora — o canal automático não respondeu.
+       Já chamei alguém da nossa equipe…"
+:160  "…Não vou te deixar no vácuo: já passei pra alguém da nossa equipe
+       acompanhar e te retornar…"
+:217  "…Só não consegui concluir a última etapa por aqui. Já passei para nossa
+       equipe finalizar."
+:270  "…Já passei pra nossa equipe concluir — não some não…"
+```
+
+🔴 **É a mesma família que a SPEC-085 matou nos caminhos B e C**: a frase afirma,
+no passado, que alguém foi chamado — sem o carimbo que prova. E o portal é a
+cadeia com **mais** casos: 📊 33 dos 39 acionamentos de vidros caem em
+`needs_human` (o próprio comentário do arquivo diz).
+
+⚠️ **Fora do escopo da SPEC-085 de propósito** (§9): ela cobre B e C. A quarta
+cadeia precisa de um sinal de "o dossiê saiu?" que hoje ela não tem, e isso é
+desenho, não conserto de 30 minutos.
+
+- **Destrava:** 🤖 dar ao `vigia_do_portal` o mesmo `aviso_de_handoff(saiu)` —
+  a função já existe no motor e é pura.
+- **Custa se esquecer:** é a cadeia com mais volume, e o segurado de vidros
+  ouve uma promessa que ninguém garante.
+- **Onde está registrado:** no `JUSTIFICADOS` do guarda, com esta P ao lado.
+  **Promessa nova em qualquer arquivo de `backend/app/` quebra a suíte.**
+
+## P-236 · 🔴🧑 Conserto de DADO não sobrevive ao código antigo em produção
+
+📊 Medido pelo JUIZ 1, e confirmado por mim: a migration `20260824_02` corrigiu
+as duas linhas defeituosas, e **produção as reescreveu de volta**.
+
+```
+cb6478f5   status = completed              ← a migration gravou waiting_input
+           finished_at = 2026-08-25 00:05  ← a migration gravou NULL
+           progress_percent = 100          ← a migration gravou 95
+           result_summary = "Caso entregue à equipe…"
+           unblock_state = travado         ← 🔴 ESTE sobreviveu
+```
+
+🔴 **A causa é de SEQUÊNCIA, não de código.** O único escritor daquele
+`result_summary` é o ramo `final == "completed"` da reconciliação — o **código
+antigo**. Produção constrói a `main`; o conserto está numa feature branch. A
+varredura desfaz o `UPDATE` a cada boot.
+
+> **Corrigir dado enquanto o código antigo roda em produção é corrida perdida.
+> O conserto de dado só cola depois que o código sobe.**
+
+⚠️ E há um lado que VALIDA o desenho: `unblock_state` sobreviveu, porque o
+código antigo não conhece a coluna. **A coluna que esta SPEC criou é hoje o
+único campo de `work_runs` que diz a verdade sobre esse caso** — e a Fila do
+BLOCO E lê ela, não o `status`.
+
+- **Destrava:** 🧑 merge na `main` + deploy; **depois** rodar de novo o segundo
+  bloco da migration (os dois `UPDATE`s são idempotentes por construção).
+- **Custa se esquecer:** quem consultar `work_runs.status` antes do deploy vê o
+  travamento como sucesso, e o relatório afirmava o contrário. **Afirmação
+  corrigida.**
+
+## P-237 · 🤖 Duas retomadas simultâneas: não há lock
+
+📊 Achado do red team. `try_route_insurer_inbound` faz load → mutate → save sem
+lock; `grep lock` no arquivo devolve **zero**. Dois webhooks concorrentes
+carregam a MESMA sessão, ambos passam por `pode_retomar`, ambos chamam
+`start_live_dispatch` — **as duas aberturas já saíram para a URA** antes de o
+segundo `save` sobrescrever a chave.
+
+⚠️ **A SPEC-085 não alargou isto**: depois do painel, a única família em
+`RETOMA` é `insurer_closed`, que já retomava antes. Mas o BLOCO D chegou a
+admitir `formulario_envio_falhou`, e teria dobrado a exposição.
+
+- **Destrava:** 🤖 um lock por `dispatch:active:{company}:{digits}` no Redis,
+  ou um `attempt` idempotente no `work_runs`.
+- **Custa se esquecer:** dois prestadores na porta de alguém.
+
+## P-238 · 🔴 O Vigia inteiro morre sem Redis — e o produto CALA
+
+📊 Achado do red team. `check_dispatch_watchdog` começa em
+`redis.scan_iter("dispatch:active:*")`. Sem Redis, a varredura morre no `try` e
+devolve 0. As sessões caem em `_memory_store` (`dispatch_router.py:92`), que o
+`scan_iter` **não enxerga**.
+
+🔴 Resultado: nenhum Sentinela, nenhum dossiê, nenhum aviso. **O produto cala** —
+que é exatamente o que esta SPEC existe para impedir, por uma porta que ela não
+cobre.
+
+⚠️ O marcador e o contador falham ABERTO (repetem, não calam) e estão certos. O
+defeito está **antes** deles.
+
+- **Destrava:** 🤖 a varredura ler também o `_memory_store`, ou a lista durável
+  de `work_runs` com `unblock_state IS NULL` e fase em voo.
+- **Custa se esquecer:** uma queda de Redis vira silêncio total do acionamento,
+  e nada no produto acusa.
+
+## P-239 · 🤖 O dossiê das cadeias novas chega picotado em balões
+
+📊 Achado do JUIZ 2. Nem `dispatch_router` nem `dispatch_watchdog._support_alert`
+passam `bloco_unico=True` — só `human_handoff.py:549` passa. O dossiê das duas
+cadeias que a SPEC-085 acrescentou chega quebrado, que é o defeito de 18/08
+reaberto para quem tem de cumprir a promessa.
+
+- **Destrava:** 🤖 passar a bandeira nos dois transportes.
+- **Custa se esquecer:** quem recebe o dossiê no celular lê seis balões fora de
+  ordem em vez de um.
+
+## P-240 · 🤖 Três dívidas menores, medidas e nomeadas
+
+| # | o que é | medido por |
+|---|---|---|
+| a | `error_code` é cortado em `[:180]`; uma lista longa de slots perde o fim **em silêncio**, e nenhum teste cobre | JUIZ 1 |
+| b | o guarda de famílias lê **3 arquivos**; `dispatch_followup.py` já chama `save_active_dispatch` e hoje tem 0 `reason` — premissa de pé, nada a guarda | JUIZ 1 |
+| c | `test_o_segurado_nao_fica_no_escuro` sai **exit 1 por cp1252** no `print(__doc__)`, não por asserção. Com `PYTHONIOENCODING=utf-8`: exit 0 | JUIZ 3 |
+| d | o dossiê do caminho B é montado **antes** do aviso, então o ramo *"ele JÁ foi avisado"* é inalcançável ali. Erra para o lado seguro | JUIZ 2 |
+| e | a RLS usa `users_v2.company_id`; o app resolve por `company_members` (SPEC-047). Divergência na direção **segura** | JUIZ 4 |
+
+---
+
+# 🔴 O QUE O JUIZ DE CONFIRMAÇÃO DEIXOU ABERTO (25/08/2026)
+
+> Veredito **NÃO CONFIRMADO**: 2 blockers e 11 pendências. Os dois blockers e
+> seis pendências foram consertados na mesma rodada. Estas ficaram.
+
+## P-241 · 🤖 O marcador de aviso é por CONVERSA, não por acionamento
+
+📊 Achado do juiz de confirmação. `entregar_dossie_uma_vez` reivindica o aviso
+com `mirror_conversation_id`. Um **segundo** travamento na mesma conversa dentro
+de 6h devolve `True` — o segurado ouve *"já passei seu caso para um colega"* com
+o dossiê **deste** caso nunca enviado.
+
+⚠️ **Não foi mexido de propósito.** Devolver `session["dossier_sent"]` no lugar
+reintroduziria o defeito que o red team mediu: numa sessão nova a equipe FOI
+avisada há menos de 6h e o segurado ouviria *"não consegui avisar a equipe"* —
+falso. E a §8 da SPEC proíbe inventar um segundo marcador.
+
+- **Destrava:** 🤖 uma chave canônica por acionamento **no mesmo formato** do
+  marcador que já existe — desenho, não conserto de 30 minutos.
+- **Custa se esquecer:** o segundo travamento da mesma conversa promete uma
+  pessoa que não foi chamada para ele.
+
+## P-242 · 🤖 O fiscal do handoff acusa uma frase VERDADEIRA num turno seguinte
+
+📊 Medido nesta sessão, executando `afirma_transferencia` na fonte real:
+
+```
+True   "um atendente da corretora vai assumir seu caso"          <- deve acusar
+True   "Ja passei pra nossa equipe finalizar."                   <- deve acusar
+True   "um colega ja esta com seu caso e vai continuar por aqui" <- 🔴 falso positivo
+False  "Posso assumir que voce quer o guincho?"                  <- certo
+False  "Sou eu mesmo que vou continuar te ajudando por aqui."    <- certo
+```
+
+`_houve_handoff_confirmado` é por **turno**. Se o handoff aconteceu num turno
+anterior, a frase verdadeira do turno seguinte vira *"Ainda não consegui
+confirmar com a equipe"* — mentira na direção oposta.
+
+⚠️ **Fica assim de propósito, e a assimetria é a razão:** o falso negativo
+(promessa sem carimbo) é o defeito que esta SPEC existe para matar; o falso
+positivo entrega ao segurado a assistência 24h da própria apólice, que nunca
+faz mal. **Erra para o lado seguro.**
+
+- **Destrava:** 🤖 `_houve_handoff_confirmado` por CONVERSA em vez de por turno.
+- **Custa se esquecer:** o segurado ouve uma dúvida onde havia certeza.
+
+## P-243 · 🤖 O `retry_count` não sobrevive à tentativa que falha
+
+📊 Achado do juiz, confirmado na fonte: no fall-through de `insurer_closed` o
+código chama `clear_active_dispatch` e **nunca** `save_active_dispatch`, então
+`retry_count` morre na memória. O laço é impedido pela sessão deixar de existir,
+não pela marca.
+
+⚠️ O comentário foi **corrigido** para dizer isso. Persistir a marca exigiria
+regravar uma sessão que acabou de ser limpa — e sessão limpa é o que impede a
+"sessão zumbi" de 12/07 de voltar a falar com a seguradora.
+
+- **Destrava:** 🤖 um `attempt` idempotente no `work_runs`, que é durável e não
+  ressuscita sessão. Casa com a P-237.
+- **Custa se esquecer:** hoje, nada — é dívida de precisão, não de efeito.
+
+## P-244 · 🤖 Dois caminhos em que o travamento nunca é marcado
+
+📊 Achado do juiz. Além do B1 (fechado):
+
+1. A família `insurer_closed` não chega a `save_active_dispatch` no turno do
+   `needs_human`, então `registrar_checkpoint` não roda e a marca **nunca
+   nasce**. Com o B1 fechado ela deixa de ser arquivada — mas continua nascendo
+   invisível.
+2. O `_marcar_travamento` da reconciliação está num ramo que a varredura
+   **exclui hoje** pelo `.or_("error_code.is.null,error_code.not.like…")`. O
+   próprio comentário admite: *"estava fechado HOJE por acidente"*. É guarda de
+   string sem cobertura de comportamento.
+
+- **Destrava:** 🤖 marcar no ponto de estrangulamento também quando a família
+  encerra a sessão no mesmo turno.
+- **Custa se esquecer:** a causa **mais comum** de travamento é a que menos
+  aparece na Fila.
+
+## P-245 · 🤖 `insurer_phone` passou a ser mascarado no gêmeo
+
+📊 Colateral medido da reordenação do `_classificar`: o marcador `_TELEFONE`
+agora vence a lista segura, e `insurer_phone` — que é telefone de **empresa**,
+não de pessoa — sai como `...4725` no gêmeo mascarado.
+
+⚠️ Os campos que a tela de destravamento lê (`playbook_ref`, `subservice`,
+`missing_slots`, `suporte_indisponivel`) **não** são afetados.
+
+- **Destrava:** 🤖 uma exceção nomeada para telefone de seguradora, escrita como
+  ENUM e não como string solta (casa com a P-233).
+- **Custa se esquecer:** quem lê o gêmeo não vê para qual URA o caso foi.

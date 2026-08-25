@@ -105,7 +105,19 @@ _CHAVES_SEGURAS = (
     "insurer_phone", "insurer_key", "ramo", "servico", "retry_count",
     "sentinela_attempts", "mirror_idx", "mirror_conversation_id", "work_run_id",
     "created_at", "followup_at", "closing_at", "transcript_total", "live",
-    "missing_slots", "step_counts", "confirmacoes", "silencios_seguidos",
+    "missing_slots", "step_counts", "silencios_seguidos",
+    # 🔴 `confirmacoes` SAIU DAQUI — e ela estava errada desde a primeira linha.
+    #
+    # 📊 Ela guarda `tela` = os ÚLTIMOS 400 CARACTERES DA TELA DA URA e
+    # `anchor` (120) — `corridor_playbooks.py:9519`. É texto corrido, e o
+    # cabeçalho deste módulo diz, ele mesmo, que texto corrido é outro
+    # problema. Medido em produção: 2 gêmeos com `confirmacoes`, 533 caracteres.
+    #
+    # ⚠️ A URA ECOA O QUE MANDAMOS. Uma tela de confirmação repete nome,
+    # endereço e telefone de volta — e isso ia inteiro para uma coluna cujo
+    # `COMMENT` promete "PII mascarada" e que a RLS nova expõe a `authenticated`.
+    #
+    # Ela vira `{DICT:n}`, como toda estrutura não declarada.
     # SPEC-085 B.2/B.3: `ausente` | `recusado` | `envio_falhou`. É um enum de
     # três valores e é o que diz à corretora o que fazer — cadastrar um destino
     # ou parar de compartilhar o que ela tem.
@@ -134,12 +146,24 @@ def _cauda(valor: Any, quantos: int = 4) -> str:
 def _classificar(chave: str) -> str:
     """`documento` · `telefone` · `nome` · `placa` · `seguro` · `texto`."""
     k = str(chave or "").lower()
-    # 🔴 ANTES do teste de seguro: um identificador que carrega PII não pode
-    # ser resgatado por acidente se alguém o acrescentar à lista segura.
-    if k in _IDENTIFICADOR_COM_PII:
-        return "documento"
-    if k in _CHAVES_SEGURAS or k.endswith(_SUFIXOS_SEGUROS):
-        return "seguro"
+
+    # 🔴 A ORDEM É O CONSERTO, E ELA CUSTOU DOIS VAZAMENTOS MEUS.
+    #
+    # A primeira versão testava "é seguro?" antes de "é PII?", e o `case_id`
+    # atravessou com o telefone dentro. Eu consertei aquele caso pondo UM nome
+    # antes da lista segura — e **não generalizei**. O juiz do isolamento
+    # mediu o que sobrou:
+    #
+    #     "telefone_adicionar_opcao": "47999887766"      <- CRU
+    #     "titular_cpf_opcao":        "529.982.247-25"   <- CRU
+    #     "nome_do_condutor_opcao":   "Joao da Silva"    <- CRU
+    #
+    # 📊 E `telefone_adicionar_opcao` não é hipótese: é slot REAL, presente em
+    # 12 das 12 etapas duráveis. O sufixo `_opcao` vencia todo marcador de PII.
+    #
+    # ⚠️ **Marcador de PII vem PRIMEIRO. Sempre.** Um `titular_confirmou_opcao`
+    # (sim/não) passa a ser mascarado sem precisar — e isso é o preço certo:
+    # mascarar demais custa uma pista; mascarar de menos custa um CPF.
     for marca in _DOCUMENTO:
         if marca in k:
             return "documento"
@@ -152,6 +176,12 @@ def _classificar(chave: str) -> str:
     for marca in _NOME:
         if marca in k:
             return "nome"
+    # Identificador que carrega PII dentro (o `case_id` é montado a partir do
+    # telefone do segurado). Também antes da lista segura, pelo mesmo motivo.
+    if k in _IDENTIFICADOR_COM_PII:
+        return "documento"
+    if k in _CHAVES_SEGURAS or k.endswith(_SUFIXOS_SEGUROS):
+        return "seguro"
     return "texto"
 
 

@@ -177,17 +177,83 @@ def test_a_rota_usa_a_mesma_porta_do_PORTAL():
 # 5. BLOCO F — `HUMAN_REQUESTED` deixa de ter dois sentidos
 # ---------------------------------------------------------------------------
 
-def test_o_vigia_LE_claimed_by():
-    """📊 O select dele nem PEDIA a coluna que distingue os dois sentidos de
-    `HUMAN_REQUESTED`. Uma conversa já assumida continuava gerando
-    *"ATENDIMENTO PRECISA DE VOCÊ"* a cada 6h."""
+def _codigo_do_vigia() -> str:
     fonte = VIGIA.read_text(encoding="utf-8")
-    codigo = "\n".join(l.split("#", 1)[0] for l in fonte.splitlines()
-                       if l.split("#", 1)[0].strip())
+    return chr(10).join(l.split("#", 1)[0] for l in fonte.splitlines()
+                      if l.split("#", 1)[0].strip())
+
+
+def test_o_vigia_LE_claimed_by_e_claimed_at():
+    """📊 O select dele nem PEDIA a coluna que distingue os dois sentidos de
+    `HUMAN_REQUESTED`. Uma conversa ja assumida continuava gerando
+    *"ATENDIMENTO PRECISA DE VOCE"* a cada 6h."""
+    codigo = _codigo_do_vigia()
     assert "claimed_by" in codigo, "o Vigia continua sem pedir `claimed_by`"
-    assert 'is_("claimed_by", "null")' in codigo, (
-        "o Vigia lê `claimed_by` e não FILTRA por ele — ler sem usar é o mesmo "
-        "que não ler")
+    assert "claimed_at" in codigo, (
+        "o Vigia pede o DONO e nao pede DESDE QUANDO — sem a data ele so "
+        "consegue calar para sempre ou nao calar nunca")
+
+
+def test_CONTROLE_F2_o_claim_NAO_e_filtro_de_consulta():
+    """🔴 ASSERCAO MIGRADA no painel — e o conserto virou do avesso.
+
+    Ela exigia `is_("claimed_by", "null")` **na consulta**, com a frase *"ler
+    sem usar e o mesmo que nao ler"*. Estava errada pelo lado que importa:
+    filtrando ali, uma conversa ASSUMIDA E ABANDONADA — alguem clicou em
+    assumir, foi almocar e nao voltou — some do Vigia **para sempre**. Antes do
+    conserto ela gerava lembrete: chato, mas visivel. Depois, silencio.
+
+    ⚠️ Trocar excesso de aviso por silencio e trocar um defeito por um pior.
+    """
+    codigo = _codigo_do_vigia()
+    assert 'is_("claimed_by", "null")' not in codigo, (
+        "o filtro voltou para a consulta: um claim ABANDONADO fica invisivel "
+        "ao Vigia e ninguem nunca mais e cobrado por aquele caso")
+    # A decisao e' por IDADE, e a idade tem de ser comparada com a JANELA.
+    # ⚠️ Recortar "N caracteres depois de `_dono`" era fragil de proposito
+    # errado: o juiz de confirmacao mandou a telemetria para cima do corte
+    # (o contrato dela diz medir TODA conversa parada) e a janela desceu.
+    # Guarda que depende de distancia entre linhas quebra em refatoracao
+    # legitima e nao quebra em defeito. Este cobra as PECAS.
+    for peca in ("_idade_claim_ms", "_janela_ms", "realerta_h * 3_600_000"):
+        assert peca in codigo, (
+            f"sumiu `{peca}` — o Vigia deixou de decidir pela IDADE do claim: "
+            "ou ele cala para sempre, ou ele nao cala nunca")
+    assert "_REALERTA_HORAS_PADRAO * 3_600_000" not in codigo, (
+        "a janela do claim voltou a usar a CONSTANTE em vez do valor resolvido "
+        "por env — quem configurar HANDOFF_REALERTA_HORAS fica com a janela "
+        "discordando da propria cadencia de re-alerta")
+
+
+def test_claim_SEM_DATA_LEGIVEL_avisa_em_vez_de_calar():
+    """🔴 §9.3 e a regra do proprio modulo: *na duvida, avisa.*
+
+    📊 `_parado_ha_ms` devolve **0.0** para `None` e para `""`. Escrito como
+    "idade < janela ⇒ continue", uma data ausente dava 0, passava no corte e
+    calava a conversa **para sempre** — o mesmo furo que o bloco existe para
+    fechar, mudado de `claimed_by` para `claimed_at`.
+    """
+    codigo = _codigo_do_vigia()
+    assert "if _quando else None" in codigo, (
+        "`claimed_at` ausente voltou a virar idade 0 — e idade 0 CALA")
+    assert "_idade_claim_ms is not None and _idade_claim_ms < _janela_ms" in codigo, (
+        "o corte deixou de tratar 'data ilegivel' como claim VELHO")
+
+
+def test_o_claim_ABANDONADO_e_cobrado_com_OUTRO_texto():
+    """§9.3 — prove que os dois casos CONSEGUEM ser diferentes.
+
+    Cobrar *"ninguem assumiu"* de um caso que TEM dono e a mesma mentira ao
+    contrario. Se os dois ramos dissessem a mesma frase, o guarda acima
+    passaria e o produto continuaria mentindo.
+    """
+    codigo = _codigo_do_vigia()
+    assert "ASSUMIDA POR" in codigo, (
+        "sumiu o texto do claim abandonado — o dono some do aviso e quem le "
+        "nao sabe de quem cobrar")
+    assert "AINDA SEM ATENDIMENTO" in codigo, "sumiu o texto do caso sem dono"
+    assert "claimed_by_name" in codigo, (
+        "o aviso do claim abandonado deixou de nomear quem assumiu")
 
 
 def test_o_teto_deixou_de_ser_um_continue_MUDO():

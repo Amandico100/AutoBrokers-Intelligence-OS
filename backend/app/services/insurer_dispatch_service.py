@@ -2916,9 +2916,20 @@ AVISO_SEM_NINGUEM_PARA_ASSUMIR = (
 # ---------------------------------------------------------------------------
 # 🔴 QUEM PODE SER RETOMADO — SPEC-085 BLOCO D
 # ---------------------------------------------------------------------------
-# A regra é de NEGÓCIO, não de código:
+# A regra é de NEGÓCIO, não de código — e ela tem DUAS metades, não uma:
 #
-#     ## Retomar só vale quando A CAUSA PODE TER MUDADO.
+#     ## 1. A CAUSA PODE TER MUDADO?
+#     ## 2. E REFAZER É SEGURO **SE A PRIMEIRA TENTATIVA TIVER DADO CERTO
+#     ##    SEM A GENTE SABER**?
+#
+# 🔴 A SEGUNDA METADE FALTAVA, e a falta tinha nome: `formulario_envio_falhou`.
+# Escrevi que ela era a família em que a causa mais obviamente podia ter mudado
+# — e é. Mas o envio que estourou por TIMEOUT pode ter chegado; o formulário
+# nativo É o passo de confirmação; e refazer manda um segundo prestador.
+#
+# **"A causa pode ter mudado" autoriza tentar. Só "refazer é seguro" autoriza
+# tentar SOZINHO.** Sem a segunda, a regra troca um silêncio por um guincho a
+# mais na porta de alguém.
 #
 # Retomar `sem_chute` é inventar dado que não existe. Retomar `handoff_trigger`
 # é desobedecer a seguradora, que PEDIU um humano. E o que não deve ser
@@ -2947,15 +2958,26 @@ DIRETO_AO_HUMANO = "direto_ao_humano"
 NAO_RETOMA = "nao_retoma"
 
 _POLITICA_DE_RETOMADA: Dict[str, str] = {
-    # ---- A CAUSA PODE TER MUDADO ----
+    # ---- A CAUSA PODE TER MUDADO **E** REFAZER É SEGURO ----
     # A URA derrubou a conversa antes de abrir nada. O fluxo é idempotente até
     # o freio, então refazer é seguro — e é a única família que já retomava.
     "insurer_closed": RETOMA,
-    # 📊 O envio do formulário FALHOU. É, das dezesseis, aquela em que a causa
-    # mais obviamente pode ter mudado: rede, instância, timeout.
-    "formulario_envio_falhou": RETOMA,
 
     # ---- NÃO RETOMA, E UMA PESSOA CONTINUA ----
+    # 🔴 `formulario_envio_falhou` ESTAVA EM `RETOMA`, E ERA MEU ERRO.
+    #
+    # Eu escrevi: *"é a família em que a causa mais obviamente pode ter mudado
+    # — rede, instância, timeout"*. O red team derrubou com o caminho:
+    #
+    #   O motivo nasce num `except Exception → enviado = False`. **TIMEOUT ENTRA
+    #   AÍ — e timeout não prova que o formulário não chegou.** O formulário
+    #   nativo É o passo de confirmação. No instante em que o motivo é gravado,
+    #   o protocolo ainda não teve tempo de chegar, logo `captured["protocol"]`
+    #   está vazio POR CONSTRUÇÃO: o único freio antiduplicação é
+    #   estruturalmente cego exatamente nesta família.
+    #
+    # 🔴 Retomar ali manda um SEGUNDO prestador à casa de alguém.
+    "formulario_envio_falhou": DIRETO_AO_HUMANO,
     # Falta um dado que só uma pessoa consegue obter (ou confirmar).
     "missing_slots": DIRETO_AO_HUMANO,
     # 🔴 O dado NÃO EXISTE para ser chutado. Tentar de novo é inventar.

@@ -156,8 +156,44 @@ def test_a_reconciliacao_nao_finge_que_o_travamento_terminou():
         "100, a linha diz que o acionamento foi até o fim")
     assert '"progress_percent": 100' not in ramo_travado, (
         "o ramo de travamento grava `progress_percent = 100`")
-    assert '"unblock_state": "travado"' in ramo_travado, (
-        "a reconciliação não marca o travamento — ele não aparece na Fila")
+    # 🔴 ASSERCAO MIGRADA no painel — e a mudanca e' o conserto de um defeito.
+    #
+    # Ela exigia `"unblock_state": "travado"` DENTRO deste UPDATE. O JUIZ 1
+    # mostrou o problema: aqui a escrita ia com so' `.eq("id", run_id)`, sem o
+    # filtro `IS NULL` que a OUTRA copia do escritor tem e testa — e pisaria
+    # em `assumido_por_humano`, apagando o nome de quem assumiu o caso.
+    #
+    # ⚠️ Duas escritas da mesma coluna, uma com guarda e outra sem. A marca
+    # passou a sair por `_marcar_travamento`, que e' a que tem o filtro.
+    fonte_toda = ROUTER_PY.read_text(encoding="utf-8")
+    bloco = _bloco(fonte_toda, "if fase in _motor().FASES_ENCERRADAS:",
+                   ate="resumo[\"encerrados\"]")
+    # 🔴 A SEQUÊNCIA EXATA, NÃO "a string existe em algum lugar".
+    #
+    # O juiz de confirmação derrubou a primeira versão deste guarda com DUAS
+    # mutações que o deixavam VERDE:
+    #   · trocar `if final != "completed":` por `if final == "completed":`
+    #     — a chamada continua no arquivo, e a marca nunca é escrita;
+    #   · trocar `fase` por `""` no argumento — 📊 `decidir_travamento("","")`
+    #     devolve `None`, então a chamada roda e não grava nada.
+    #
+    # ⚠️ Guarda que só procura substring aprova as duas. Este exige a linha
+    # inteira, com a condição e o argumento, e por isso as duas o derrubam.
+    esperado = (chr(10).join([
+        'if final != "completed":',
+        '            await _marcar_travamento(db, run_id, fase, "")',
+    ]))
+    assert esperado in fonte_toda, (
+        "a marca de travamento na reconciliacao mudou de forma. Ela tem de "
+        "ser exatamente esta linha, com a condicao e o argumento:" + chr(10)
+        + esperado + chr(10) +
+        "Uma condicao invertida, ou `fase` trocado por vazio, fazem a "
+        "chamada existir no arquivo e nao gravar nada.")
+    assert "_marcar_travamento(" in bloco, (
+        "a reconciliacao nao marca mais o travamento — ele nao aparece na Fila")
+    assert '"unblock_state": "travado"' not in ramo_travado, (
+        "a marca voltou para o UPDATE geral, que nao tem o filtro IS NULL e "
+        "pisa em `assumido_por_humano`")
 
 
 def test_o_checkpoint_limpa_o_resumo_do_desfecho_anterior():

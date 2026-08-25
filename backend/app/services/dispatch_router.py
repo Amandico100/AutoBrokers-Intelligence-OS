@@ -744,13 +744,75 @@ async def _encerrar_work_run(company_id: str, session: Dict[str, Any], *,
             "updated_at": agora,
             "progress_percent": 100 if final == "completed" else _progresso_da_fase(fase, final),
             "result_summary": f"{motivo} (última fase: {fase or 'desconhecida'})"[:400],
+            # 🔴 `unblock_state` NÃO ENTRA AQUI. Ver `_fechar_travamento`, logo
+            # abaixo — e leia o porquê antes de "simplificar" trazendo de volta.
         }).eq("id", run_id).execute())
+        if final == "completed":
+            await _fechar_travamento(db, run_id)
         await _evento(db, company_id, run_id,
                       "run.succeeded" if final == "completed" else "run.cancelled",
                       motivo, payload={"fase": fase})
     except Exception as e:  # noqa: BLE001
         logger.error("[ACIONAMENTO DURAVEL] run %s nao foi encerrado (%s)",
                      run_id, type(e).__name__)
+
+
+async def _fechar_travamento(db, run_id: str) -> None:
+    """Fecha a marca de travamento — **só o desfecho BOM, e só onde ela existe.**
+
+    🔴 ESTA FUNÇÃO NASCEU DE UM CONSERTO QUE VIROU DEFEITO, e a história inteira
+    é o motivo de ela ser tão estreita.
+
+    A primeira versão escrevia, dentro do UPDATE de `_encerrar_work_run`::
+
+        "unblock_state": "resolvido" if final == "completed" else "abandonado"
+
+    com **só** `.eq("id", run_id)`. Era a mesma escrita sem guarda que este
+    mesmo painel tinha acabado de tirar da reconciliação, reintroduzida ao lado.
+    O juiz de confirmação mediu dois gatilhos vivos, os dois normais:
+
+    📊 **(i) supersede.** `needs_human` com `reason == "insurer_closed"` chama
+    `clear_active_dispatch` no mesmo turno. Fase `needs_human` ⇒
+    `final = "cancelled"` ⇒ a marca `travado` virava `abandonado`::
+
+        reason=insurer_closed  antes='travado'  depois='abandonado'  na_Fila=False
+
+    `insurer_closed` é *"a URA derrubou a conversa"* — a causa mais comum de
+    travamento e a única família que retoma.
+
+    📊 **(ii) sessão nova na mesma seguradora.** `stale` inclui `needs_human`,
+    então uma sessão travada é stale **na hora**, sem esperar os 45 min. Segurado
+    A trava; minutos depois o segurado B pede chaveiro na mesma seguradora; o
+    supersede arquiva o caso de A. **Ninguém nunca mais é chamado.**
+
+    ⚠️ E `abandonado` é o verbo do HUMANO, não da máquina: é o que o botão
+    *arquivar* grava, e `test_arquivar_exige_motivo_escrito` obriga a ter motivo
+    escrito, porque *"arquivar é dizer 'ninguém vai continuar isto'"*. A máquina
+    estava arquivando sem motivo nenhum, por cima do nome de quem assumiu.
+
+    ## A regra, então, é ESTREITA e tem três metades
+
+    1. **Só `resolvido`.** A máquina nunca abandona. Um travamento que o
+       acionamento não resolveu **continua na Fila**, que é o produto inteiro
+       desta SPEC: alguém tem de ligar para aquela pessoa.
+    2. **Só onde a marca EXISTE** (`travado` ou `retomado_pelo_robo`). Sem isso,
+       todo acionamento bem-sucedido gravaria `resolvido` e destruiria a
+       propriedade que `decidir_travamento` declara: *acionamento que vai bem
+       termina com `unblock_state IS NULL`*.
+    3. **Nunca por cima de `assumido_por_humano`.** O `IN` não alcança esse
+       valor — é a mesma assimetria de `_marcar_travamento`, pelo mesmo motivo.
+    """
+    try:
+        await (db.client.table("work_runs")
+               .update({"unblock_state": "resolvido"})
+               .eq("id", run_id)
+               .in_("unblock_state", ["travado", "retomado_pelo_robo"])
+               .execute())
+    except Exception as e:  # noqa: BLE001
+        # Falha aqui deixa a marca como está — o caso continua VISÍVEL na Fila.
+        # É o lado seguro: sobra um caso para conferir, não falta um.
+        logger.warning("[ACIONAMENTO DURAVEL] run %s: marca de travamento nao "
+                       "foi fechada (%s) — ele segue na Fila", run_id, type(e).__name__)
 
 
 def _agendar_reconciliacao_uma_vez() -> None:
@@ -957,9 +1019,21 @@ async def _reconciliar_um(db, run: Dict[str, Any], resumo: Dict[str, int]) -> No
                 "progress_percent": _progresso_da_fase(fase, final),
                 "result_summary": ("Parou e precisa de uma pessoa da corretora. "
                                    f"Motivo: {motivo_do_caso or 'não registrado'}")[:400],
-                "unblock_state": "travado",
             }
+        # 🔴 `unblock_state` SAIU DO UPDATE GERAL — painel da SPEC-085.
+        #
+        # Ele era escrito aqui com só `.eq("id", run_id)`, sem o filtro
+        # `IS NULL` que a OUTRA cópia do escritor (`_marcar_travamento`) tem e
+        # testa. Duas escritas da mesma coluna, uma com guarda e outra sem —
+        # e esta pisaria em `assumido_por_humano`, apagando o nome de quem
+        # assumiu o caso.
+        #
+        # ⚠️ Estava fechado HOJE por acidente: o `.or_(...)` da varredura
+        # exclui runs com `error_code LIKE 'needs_human:%'`. Quem limpar o
+        # `error_code` reabre. Acidente não é guarda.
         await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
+        if final != "completed":
+            await _marcar_travamento(db, run_id, fase, "")
         resumo["encerrados"] += 1
         return
 
@@ -1122,12 +1196,67 @@ async def start_live_dispatch(
     return {"ok": True, "session": session}
 
 
+def _destino_do_alert_target(raw: Any) -> str:
+    """O destino DENTRO de `integrations.alert_target` — SPEC-085, painel.
+
+    🔴 ESTA FUNÇÃO EXISTE PORQUE `_normalizar_destino` RECEBIA O OBJETO INTEIRO.
+    📊 O red team reproduziu, executando a fonte real:
+
+        {"label":"Grupo 24h","observer_scope":…}  → '24'
+        {"observer_scope":…,"internal_numbers":[a,b]}  → os dois COLADOS
+        {"number":"1203…@g.us"}                   → o grupo virava telefone
+
+    As duas primeiras formas **existem em produção**: `admin_atlas.py:470` grava
+    `{label, observer_scope}` e `whatsapp_channel.py:431` grava `{number}`. Um
+    label como *"Assistência 24h - 11 3003 4000"* produzia um telefone REAL de
+    terceiro — e o dossiê de handoff carrega nome, CPF e telefone do segurado
+    (`CLAUDE.md` §7). `_destino_e_compartilhado` não protegia: `'24'` não é
+    compartilhado com ninguém.
+
+    ⚠️ E o leitor certo JÁ EXISTIA e não tinha sido reusado:
+    `whatsapp/alerts.py:50` (`_alert_target_dict` + `.get("number") or
+    .get("group")`). Aqui é a mesma leitura, escrita uma vez.
+    """
+    alvo = raw
+    if isinstance(alvo, str):
+        try:
+            alvo = json.loads(alvo)
+        except Exception:  # noqa: BLE001
+            # String crua: é o valor, não um objeto. Formato antigo.
+            return _normalizar_destino(alvo)
+        # 🔴 O `except` ACIMA NUNCA RODAVA PARA A FORMA QUE ELE DESCREVE.
+        # 📊 Medido pelo juiz de confirmação: `json.loads("5511999998888")`
+        # devolve um **int**, não levanta. O número puro — exatamente o
+        # "formato antigo" que o comentário promete tratar — caía no
+        # `not isinstance(alvo, dict)` e virava `''`: destino nenhum, dossiê
+        # não entregue, e ninguém chamado. O JSON válido mais parecido com uma
+        # string crua é um número, e era o único que o caminho não pegava.
+        if not isinstance(alvo, (dict, list)):
+            return _normalizar_destino(raw)
+    if not isinstance(alvo, dict):
+        return ""
+    return _normalizar_destino(alvo.get("number") or alvo.get("group") or "")
+
+
 def _normalizar_destino(raw: Any) -> str:
-    """GRUPO do WhatsApp (…@g.us) é destino válido — não reduzir a dígitos."""
+    """GRUPO do WhatsApp (…@g.us) é destino válido — não reduzir a dígitos.
+
+    🔴 RECUSA ESTRUTURA. Antes, um `dict` virava `str(dict)` e os dígitos de
+    QUALQUER lugar dele — rótulo, escopo, lista de números internos — viravam
+    um "telefone". Quem tem um objeto usa `_destino_do_alert_target`.
+    """
+    if isinstance(raw, (dict, list, tuple, set)):
+        logger.error("[SUPORTE] destino veio como %s, não como texto — "
+                     "recusado. Use `_destino_do_alert_target`.",
+                     type(raw).__name__)
+        return ""
     s = str(raw or "").strip()
     if not s:
         return ""
-    return s if s.endswith("@g.us") else _digits(s)
+    # ⚠️ `@G.US` maiúsculo também é grupo. Sem o `lower()`, um grupo escrito em
+    # caixa alta caía no `_digits` e virava um telefone fabricado — medido pelo
+    # juiz do isolamento: `'120363042@G.US'` → `'120363042'`.
+    return s if s.lower().endswith("@g.us") else _digits(s)
 
 
 async def _destino_e_compartilhado(db, company_id: str, destino: str) -> Optional[str]:
@@ -1148,16 +1277,57 @@ async def _destino_e_compartilhado(db, company_id: str, destino: str) -> Optiona
     try:
         outras: set = set()
 
+        # 🔴 NORMALIZA OS DOIS LADOS, E NÃO FILTRA POR `is_active`.
+        #
+        # 📊 A versão anterior comparava o destino JÁ NORMALIZADO contra o
+        # `destination_ref` CRU, no banco. O juiz do isolamento mediu, com a
+        # linha de controle que prova a comparação saber distinguir:
+        #
+        #   CONTROLE-  só a A tem o destino ................ liberou (certo)
+        #   CONTROLE+  B tem o MESMO ref normalizado ....... RECUSA  (certo)
+        #   B gravou '(47) 3333-4444' ..................... *** LIBEROU ***
+        #   B tem o mesmo ref com is_active=False ......... *** LIBEROU ***
+        #   B gravou '120363@G.US' ........................ *** LIBEROU ***
+        #
+        # ⚠️ E o `is_active` era o pior dos três: um destino DESATIVADO na
+        # corretora B continua sendo **o grupo de WhatsApp da B**. O dossiê
+        # chega lá do mesmo jeito. "Inativo" descreve a configuração dela, não
+        # quem lê a mensagem.
+        #
+        # 🔴 A regra é RECUSAR, não avisar: um handoff que não sai é um
+        # problema operacional que alguém conserta em minutos; um CPF na
+        # conversa errada não se desfaz.
+        # 🔴 TRUNCAR NÃO É PROVAR — juiz de confirmação da SPEC-085.
+        #
+        # Uma varredura com teto e sem `order` responde "não achei colisão"
+        # tanto quando não há colisão quanto quando ela ficou depois da linha
+        # 500. As duas respostas são a mesma, e uma delas manda um dossiê com
+        # CPF de segurado para o grupo de OUTRA corretora.
+        #
+        # ⚠️ O `except` abaixo já recusa quando a consulta falha. O teto era o
+        # caminho em que ela **não falha** e mesmo assim não prova nada.
+        _TETO_DESTINOS, _TETO_EMPRESAS = 500, 200
         r1 = await (db.client.table("human_support_destinations")
                     .select("company_id, destination_ref")
-                    .eq("destination_ref", destino).eq("is_active", True)
-                    .limit(20).execute())
+                    .limit(_TETO_DESTINOS).execute())
+        if len(r1.data or []) >= _TETO_DESTINOS:
+            logger.error("[DISPATCH ROUTER] a varredura de destinos bateu no teto "
+                         "de %s — exclusividade NAO provada, recusando", _TETO_DESTINOS)
+            return ("não foi possível verificar se o destino é exclusivo desta "
+                    "corretora (lista de destinos maior que o teto da varredura)")
         for row in r1.data or []:
-            if str(row.get("company_id")) != str(company_id):
+            if str(row.get("company_id")) == str(company_id):
+                continue
+            if _normalizar_destino(row.get("destination_ref")) == destino:
                 outras.add(str(row.get("company_id")))
 
         r2 = await (db.client.table("companies")
-                    .select("id, acionamento_profile").limit(200).execute())
+                    .select("id, acionamento_profile").limit(_TETO_EMPRESAS).execute())
+        if len(r2.data or []) >= _TETO_EMPRESAS:
+            logger.error("[DISPATCH ROUTER] a varredura de corretoras bateu no teto "
+                         "de %s — exclusividade NAO provada, recusando", _TETO_EMPRESAS)
+            return ("não foi possível verificar se o destino é exclusivo desta "
+                    "corretora (mais corretoras que o teto da varredura)")
         for row in r2.data or []:
             if str(row.get("id")) == str(company_id):
                 continue
@@ -1222,7 +1392,8 @@ async def resolver_destino_de_suporte(company_id: str) -> Dict[str, Any]:
             res2 = await (db.client.table("integrations").select("alert_target")
                           .eq("company_id", company_id).limit(3).execute())
             for row in res2.data or []:
-                d = _normalizar_destino(row.get("alert_target"))
+                # 🔴 O OBJETO, LIDO COMO OBJETO. Ver `_destino_do_alert_target`.
+                d = _destino_do_alert_target(row.get("alert_target"))
                 if d:
                     saida["destino"], saida["fonte"] = d, "integrations.alert_target"
                     break
@@ -1298,14 +1469,38 @@ async def entregar_dossie_uma_vez(session: Dict[str, Any], dossier: str,
         return bool(await enviar(dossier))
 
     if await reivindicar_o_aviso(conversa_id, HORAS_ENTRE_AVISOS_PADRAO):
+        # 🔴 DEVOLVE `True`, E A CORREÇÃO É SOBRE O QUE O SEGURADO OUVE.
+        #
+        # Devolvia `session["dossier_sent"]`, que numa sessão NOVA é `False`. O
+        # chamador então escolhia `aviso_de_handoff(False)` e o segurado ouvia
+        # *"também não consegui avisar a equipe agora"* — **falso: avisaram, há
+        # menos de seis horas, sobre esta mesma conversa.**
+        #
+        # ⚠️ O contrato desta função é "a equipe SABE deste caso?", não "esta
+        # sessão mandou uma mensagem?". Quem reivindicou o aviso e o entregou
+        # respondeu por ela. Reproduzido pelo red team com dublê.
         logger.info("[HANDOFF] a equipe já foi avisada desta conversa nas "
                     "últimas %sh — ficando quieto", HORAS_ENTRE_AVISOS_PADRAO)
-        return bool(session.get("dossier_sent"))
+        return True
 
     if await contar_lembrete(conversa_id) > MAX_LEMBRETES_POR_CONVERSA:
         # ⚠️ O teto cala o GRUPO, não o CASO: ele segue `needs_human`, com
         # `unblock_state='travado'`, visível na Fila. Alarme que chega para
         # sempre deixa de ser alarme.
+        # 🔴 E AQUI A RESPOSTA É OUTRA, DE PROPÓSITO — a assimetria é a regra.
+        #
+        # O juiz de confirmação leu as duas metades e perguntou por que uma
+        # devolve `True` e a outra `session["dossier_sent"]`. Porque a pergunta
+        # que o SEGURADO faz não é "alguém foi avisado?", é **"alguém vem?"**.
+        #
+        #   marcador fresco → avisaram há < 6h e a equipe está com o caso na mão
+        #   TETO atingido   → avisaram MAX vezes e **ninguém pegou**
+        #
+        # No teto, dizer "já passei para a equipe" é verdade inútil: ela foi
+        # avisada e não agiu. Devolvendo `False`, o chamador escolhe
+        # `aviso_de_handoff(False)` — que é a saída honesta E que entrega ao
+        # segurado o caminho que ele pode tomar SOZINHO (a assistência 24h da
+        # própria apólice). É a única mensagem que ainda ajuda alguém parado.
         logger.warning("[HANDOFF] teto de %s lembretes atingido — o caso segue "
                        "travado e visível", MAX_LEMBRETES_POR_CONVERSA)
         return bool(session.get("dossier_sent"))
@@ -1871,6 +2066,26 @@ async def try_route_insurer_inbound(
         # foram para `pode_retomar`, no núcleo puro, porque a §F0.3 cobra o
         # gate por FAMÍLIA e isso tem de ser percorrível sem banco nem rede.
         if _motor().pode_retomar(session):
+            # 🔴 O TETO CONTA A TENTATIVA, NÃO O SUCESSO — painel da SPEC-085.
+            #
+            # `retry_count = 1` só era escrito DENTRO de `if retry.get("ok")`.
+            # Uma retomada que FALHASSE deixava o contador em 0, e o próximo
+            # inbound passava por `pode_retomar` de novo: **o teto de UMA
+            # tentativa só valia quando a tentativa dava certo.**
+            #
+            # ⚠️ Marcado ANTES de tentar. E o que impede o laço quando a
+            # tentativa FALHA não é esta marca — é a sessão deixar de existir.
+            #
+            # 📊 Medido pelo juiz de confirmação: no fall-through desta família
+            # o código chama `clear_active_dispatch` e **nunca**
+            # `save_active_dispatch`, então `retry_count` morre na memória. O
+            # próximo inbound da seguradora não acha sessão nenhuma e não chega
+            # aqui. O freio existe; ele só não é o que este comentário dizia.
+            #
+            # Fica assim de propósito: persistir a marca exigiria regravar uma
+            # sessão que acabou de ser limpa, e sessão limpa é o que impede a
+            # "sessão zumbi" de 12/07 de voltar a falar com a seguradora.
+            session["retry_count"] = int(session.get("retry_count") or 0) + 1
             await clear_active_dispatch(company_id, from_phone)
             retry = await start_live_dispatch(
                 company_id=company_id, case_id=str(session.get("case_id") or "retry"),
@@ -1881,7 +2096,7 @@ async def try_route_insurer_inbound(
                 insurer_phone=from_phone, sender=send_to_insurer,
             )
             if retry.get("ok"):
-                retry["session"]["retry_count"] = 1
+                retry["session"]["retry_count"] = int(session.get("retry_count") or 1)
                 await save_active_dispatch(company_id, from_phone, retry["session"])
                 logger.info(f"[DISPATCH ROUTER] insurer_closed -> auto-retry iniciado case={session.get('case_id')}")
                 return True
