@@ -78,6 +78,10 @@ def _carregar_parser():
 P = _carregar_parser()
 
 #: 💭 sintético, na 📊 forma medida do fio.
+#: 📊 O texto que a seguradora escreve na tela — e que a `prompt_anchor` lê.
+TEXTO_DA_SEGURADORA = ("Para que a remoção do veículo ocorra sem imprevistos, "
+                       "precisamos entender o local e as condições do veículo.")
+
 PARAMS = json.dumps({
     "flow_id": "000000000000001",
     "flow_cta": "Informar condicoes",
@@ -94,12 +98,29 @@ def convite(*, nivel_extra: bool, maiusculas: bool, rotulo: str,
     """
     botao = {"name": rotulo, chave_params: PARAMS}
     nfm_key = "NativeFlowMessage" if maiusculas else "nativeFlowMessage"
-    miolo = {nfm_key: {"buttons": [botao]},
-             "body": {"text": "Precisamos de mais detalhes."}}
+    # 🔴 O CORPO MORA SÓ NO NÍVEL DE FORA — como o fio manda.
+    #
+    # A primeira versão deste ajudante copiava o miolo inteiro para dentro
+    # (`{**miolo, interno: dict(miolo)}`), **dando `body` aos dois níveis**.
+    # 📊 O painel mediu que o fio não dá: o `interactiveMessage` de fora tem
+    # `body` + `header` + `InteractiveMessage`; o de dentro tem **só**
+    # `NativeFlowMessage`.
+    #
+    # ⚠️ Com o fixture errado, a suíte ficava verde sobre uma forma que **não
+    # existe no acervo** — e a perda do corpo (e da `prompt_anchor` junto) passou
+    # despercebida em 3 de 3 casos reais. É o `CLAUDE.md` §9.2 contra quem
+    # escreveu o teste: forma deduzida em vez de medida.
     if nivel_extra:
         interno = "InteractiveMessage" if maiusculas else "interactiveMessage"
-        return {"interactiveMessage": {**miolo, interno: dict(miolo)}}
-    return {"interactiveMessage": miolo}
+        return {"interactiveMessage": {
+            "body": {"text": TEXTO_DA_SEGURADORA},
+            "header": {"title": "Detalhes do atendimento"},
+            interno: {nfm_key: {"buttons": [botao]}},
+        }}
+    return {"interactiveMessage": {
+        "body": {"text": TEXTO_DA_SEGURADORA},
+        nfm_key: {"buttons": [botao]},
+    }}
 
 
 #: 📊 O convite REAL: os três fatores na forma que o fio manda.

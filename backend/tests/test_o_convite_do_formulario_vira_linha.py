@@ -117,16 +117,26 @@ def _lista(grafia_do_id: str) -> dict:
 #: 💭 Os valores são inventados.
 CONVITE_DE_FORMULARIO = {"interactiveMessage": {
     "body": {"text": "Precisamos de mais detalhes do atendimento."},
-    "nativeFlowMessage": {"buttons": [{
+    # 🔴 DOIS NÍVEIS, COM MAIÚSCULAS, E `buttonParamsJSON` — a forma do FIO.
+    #
+    # A primeira versão deste fixture escrevia UM nível, tudo minúsculo, e
+    # `buttonParamsJson` — enquanto o outro arquivo de teste desta MESMA SPEC
+    # declarava a forma de dois níveis. 📊 O painel achou a contradição: dois
+    # fixtures do mesmo diff descrevendo o mesmo payload de jeitos diferentes, e
+    # o corte de `contextInfo` sendo provado sobre a forma que **não acontece**.
+    "InteractiveMessage": {"NativeFlowMessage": {"buttons": [{
         "name": "galaxy_message",
-        "buttonParamsJson": json.dumps({
+        "buttonParamsJSON": json.dumps({
             "flow_id": "000000000000001",
             "flow_cta": "Informar condições",
             "flow_token": "00000000-0000-0000-0000-000000000000:5500000000000:5500000000000",
             "flow_action": "navigate",
             "flow_action_payload": {"screen": "scr_SituacaoVeiculo"},
         }),
-    }]},
+    }]}},
+    # ⚠️ O `contextInfo` mora no nível de FORA aqui; o teste do corte também
+    # o exercita **dentro** do nível extra e com C maiúsculo, que era por onde
+    # ele escapava.
     "contextInfo": {"quotedMessage": {"conversation": "SEGREDO DO ATENDIMENTO"}},
 }}
 
@@ -207,8 +217,10 @@ def test_a_tela_do_formulario_guarda_o_CRU():
     _, meta = P._interactive_from_message(CONVITE_DE_FORMULARIO)
     cru = meta.get("cru")
     assert cru, "a tela do formulário virou linha SEM o cru"
-    texto = json.dumps(cru, ensure_ascii=False)
-    for marcador in ("nativeFlowMessage", "galaxy_message", "buttonParamsJson",
+    # ⚠️ Comparação SEM CAIXA, porque a caixa é justamente o que varia — foi ela
+    # que produziu o defeito que este arquivo inteiro conserta.
+    texto = json.dumps(cru, ensure_ascii=False).lower()
+    for marcador in ("nativeflowmessage", "galaxy_message", "buttonparamsjson",
                      "flow_token", "flow_id", "flow_cta"):
         assert marcador in texto, (
             f"o cru perdeu `{marcador}` — sem ele não dá para responder nem "

@@ -253,69 +253,102 @@ _TETO_DE_NUMEROS_NOSSOS = 500
 
 
 def _chave_de_telefone(bruto: Any) -> str:
-    """A forma comparavel de um telefone brasileiro: DDD + os 8 finais.
+    """A forma comparavel de um telefone brasileiro: **DDD + o numero inteiro**.
 
-    🔴 Existe porque `55 47 99627-4743` e `47 9627-4743` sao o MESMO
-    aparelho, e uma comparacao de string exata diria que nao. Uma lista de
-    permissao que erre por grafia recusa o proprio dono e libera ninguem — ou,
-    pior, obriga alguem a afrouxa-la depois.
+    🔴 A PRIMEIRA VERSAO DESTA FUNCAO COMPARAVA `DDD + os 8 FINAIS`, E ISSO
+    COLIDIA. Medido pelo painel, em duas formas:
 
-    ⚠️ O corte e' nos 8 FINAIS de proposito: dois numeros so' colidem aqui
-    se tiverem o mesmo DDD e os mesmos oito digitos finais, que na pratica e' a
-    mesma linha. Normalizar por "tira o nono digito" pela posicao erraria em
-    numero fixo.
+        movel  47 9 3333-4444  ->  chave 4733334444
+        FIXO   47   3333-4444  ->  chave 4733334444     COLIDIAM
+        +55 12 92555-0147      ->  chave 1225550147
+        +1 212 555-0147        ->  chave 1225550147     COLIDIAM
+
+    ⚠️ Numa lista de PERMISSAO que autoriza envio real sem freio, colisao e'
+    autorizacao indevida. E a docstring antiga afirmava *"na pratica e' a mesma
+    linha"* — falso justamente para o par fixo/movel que a migracao do nono
+    digito criou.
+
+    Agora: tira o `55` **so** quando o que sobra tem 10 ou 11 digitos (DDD +
+    numero), e compara o numero INTEIRO. Duas linhas so' colidem se forem a
+    mesma.
     """
     d = "".join(ch for ch in str(bruto or "") if ch.isdigit())
     if not d:
         return ""
-    if len(d) > 11 and d.startswith("55"):
+    if d.startswith("55") and len(d) in (12, 13):
         d = d[2:]
-    if len(d) <= 8:
-        return d
-    return d[:2] + d[-8:]
+    return d
 
 
-async def _destino_e_nosso(db: AsyncSupabaseClient, destino: str) -> bool:
-    """O destino da prova e' um numero NOSSO? 🔴 Na duvida, NAO.
+async def _destino_e_nosso(db: AsyncSupabaseClient, company_id: str,
+                           destino: str) -> tuple:
+    """O destino da prova e' um aparelho **DESTA** corretora? 🔴 Na duvida, NAO.
 
-    ⛔ **SPEC-092 F.2.** Esta rota **envia de verdade** e nao passa por freio
-    nenhum: nao consulta `dispatch_live_enabled()` nem o freio de emergencia,
-    so' a chave interna. Ela e' segura porque o destino e' nosso — e essa
-    premissa nao estava escrita em lugar nenhum do codigo, so' na docstring.
+    Devolve `(permitido, numero_a_usar)`. 🔴 **O numero devolvido e' o que esta'
+    GRAVADO**, nunca o que o chamador mandou — ver o fim desta docstring.
 
-    > **Uma premissa de seguranca que existe so' na docstring nao e' uma
-    > trava: e' uma esperanca.** Quem passar o numero de uma seguradora manda
-    > uma resposta de formulario para ela, fora de qualquer acionamento, sem
-    > freio e sem registro de acionamento.
+    ⛔ **SPEC-092 F.2, corrigido pelo painel.** Esta rota **envia de verdade** e
+    nao passa por freio nenhum: nao consulta `dispatch_live_enabled()` nem o
+    freio de emergencia, so' a chave interna.
 
-    A lista de permissao sao os `paired_phone_e164` das integracoes ATIVAS —
-    os aparelhos que a plataforma controla. Fora dela, 400.
+    > **Uma premissa de seguranca que existe so' na docstring nao e' uma trava:
+    > e' uma esperanca.**
 
-    ⚠️ **Falha FECHADO em tres caminhos**: consulta que levanta, varredura
-    que bate no teto (nao provou exclusividade, entao nao provou nada), e
-    destino vazio. Truncar nao e' provar — e' a mesma licao do
-    `_destino_e_compartilhado` da SPEC-085.
+    🔴 E A PRIMEIRA VERSAO DESTA TRAVA ERA ELA MESMA UM VAZAMENTO. Ela
+    consultava `integrations` **sem filtro de `company_id`** — a lista de
+    permissao era GLOBAL. Medido pelo painel, ponta a ponta:
+
+        um usuario logado da Corretora A posta {"para": "<pareado da B>"}
+        a lista aceita, porque o numero e' "nosso"
+        o backend carrega a integracao DE A e dispara de verdade
+        -> mensagem real saindo do aparelho de A para o aparelho de B
+
+    E ela virava **oraculo de pertencimento**: `400` significava *"esse numero
+    nao e' de ninguem da plataforma"*, e qualquer outra resposta significava
+    *"e'"*. Qualquer corretora logada descobria quais aparelhos sao de clientes
+    AutoBrokers — inclusive de concorrentes — **sem enviar nada**.
+
+    `CLAUDE.md` §7: *"RLS + filtro obrigatorio no repository/service"*. O
+    backend usa service role; sem o `.eq("company_id", …)` aqui nao havia nem um
+    nem outro.
+
+    ## 🔴 E O NUMERO QUE VAI AO FIO E' O GRAVADO, NAO O DIGITADO
+
+    A versao anterior **comparava normalizado e enviava o cru**: `corpo["number"]
+    = para`, os digitos que o chamador mandou. Bastava uma colisao de chave para
+    a trava aprovar um numero e o produto entregar noutro. Devolvendo o valor
+    GRAVADO, a colisao deixa de ser explorave l: o pior caso vira "mandou para
+    outro aparelho NOSSO da mesma corretora".
+
+    ⚠️ Falha FECHADO em quatro caminhos: consulta que levanta, varredura que
+    bate no teto (truncar nao e' provar), destino vazio, e `company_id` vazio.
     """
     alvo = _chave_de_telefone(destino)
-    if not alvo:
-        return False
+    empresa = str(company_id or "").strip()
+    if not alvo or not empresa:
+        return (False, "")
     try:
         r = await (db.client.table("integrations")
                    .select("paired_phone_e164")
+                   .eq("company_id", empresa)
                    .eq("is_active", True)
                    .limit(_TETO_DE_NUMEROS_NOSSOS).execute())
     except Exception as e:  # noqa: BLE001
         logger.error("[PROVA FORMULARIO] nao foi possivel conferir se o destino "
-                     "e' nosso (%s) — recusando por seguranca", type(e).__name__)
-        return False
+                     "e' desta corretora (%s) — recusando por seguranca",
+                     type(e).__name__)
+        return (False, "")
     linhas = r.data or []
     if len(linhas) >= _TETO_DE_NUMEROS_NOSSOS:
-        logger.error("[PROVA FORMULARIO] a varredura de numeros nossos bateu no "
-                     "teto de %s — nao provou nada, recusando", _TETO_DE_NUMEROS_NOSSOS)
-        return False
-    nossos = {_chave_de_telefone(l.get("paired_phone_e164")) for l in linhas}
-    nossos.discard("")
-    return alvo in nossos
+        logger.error("[PROVA FORMULARIO] a varredura de numeros da corretora bateu "
+                     "no teto de %s — nao provou nada, recusando",
+                     _TETO_DE_NUMEROS_NOSSOS)
+        return (False, "")
+    for linha in linhas:
+        gravado = str(linha.get("paired_phone_e164") or "").strip()
+        if gravado and _chave_de_telefone(gravado) == alvo:
+            return (True, "".join(ch for ch in gravado if ch.isdigit()))
+    return (False, "")
 
 
 @router.post("/prova-de-formulario")
@@ -358,13 +391,16 @@ async def prova_de_formulario(
     # Esta rota manda DE VERDADE e nao passa por freio nenhum. Ate' aqui, o
     # unico motivo de ela ser segura era a docstring dizer que o destino e'
     # nosso. Agora o codigo confere.
-    if not await _destino_e_nosso(db, para):
-        logger.error("[PROVA FORMULARIO] destino RECUSADO: nao e' um numero "
-                     "nosso (empresa=%s)", company_id)
+    permitido, numero_gravado = await _destino_e_nosso(db, company_id, para)
+    if not permitido:
+        logger.error("[PROVA FORMULARIO] destino RECUSADO: nao e' um aparelho "
+                     "desta corretora (empresa=%s)", company_id)
         raise HTTPException(
             status_code=400,
             detail=("destino recusado: a prova de formulario so' envia para um "
-                    "numero da propria plataforma. Nenhuma mensagem foi enviada."))
+                    "aparelho desta corretora. Nenhuma mensagem foi enviada."))
+    # 🔴 O QUE VAI AO FIO E' O GRAVADO. Ver `_destino_e_nosso`.
+    para = numero_gravado
 
     try:
         query = (

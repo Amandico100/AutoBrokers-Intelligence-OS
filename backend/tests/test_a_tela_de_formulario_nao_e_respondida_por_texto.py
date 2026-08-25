@@ -171,8 +171,20 @@ def test_CONTROLE_a_tela_de_BOTOES_continua_sendo_respondida(nome):
 # 2. A GUARDA — as duas condições, e por que a segunda não é redundância
 # ---------------------------------------------------------------------------
 
-def test_a_guarda_reconhece_pelo_KIND():
-    assert M.a_tela_e_formulario("qualquer texto", {"kind": "flow"}) is True
+def test_a_guarda_reconhece_pelo_KIND_E_pelo_MARCADOR():
+    """🔴 ASSERÇÃO MIGRADA no painel, e a mudança e' o conserto.
+
+    Ela exigia que `kind == "flow"` SOZINHO bastasse. O painel mediu que isso
+    fazia a resposta sair **duas vezes**: `message_buffer_service` preserva o
+    `interactive` pela janela de debounce inteira, de proposito, e a bolha
+    seguinte da rajada — *"voce esta na fila"* — disparava de novo.
+
+    O `kind` e' por JANELA; o marcador e' por BOLHA. Precisam dos dois.
+    """
+    assert M.a_tela_e_formulario(
+        "[FORMULARIO NATIVO: x]", {"kind": "flow", "options": []}) is True
+    assert M.a_tela_e_formulario("qualquer texto", {"kind": "flow"}) is False, (
+        "o `kind` sozinho voltou a bastar — a resposta sai em dobro na rajada")
 
 
 def test_a_guarda_reconhece_pelo_MARCADOR_sem_interactive():
@@ -237,13 +249,19 @@ def test_com_o_freio_fechado_o_transcript_NAO_diz_respondido():
     porque o freio está fechado"* de *"enviei e deu certo"*.
     """
     fonte = MOTOR_PY.read_text(encoding="utf-8")
-    assert "NÃO enviado — envio real desligado" in fonte, (
+    # ⚠️ Fragmento CONTÍGUO: no fonte a frase e' uma f-string quebrada em duas
+    # linhas, entao a busca pela frase inteira nao acha nada.
+    assert "[FORMULÁRIO NATIVO pronto, NÃO enviado" in fonte, (
         "o transcript voltou a dizer `respondido` para um formulário que "
         "ninguém enviou")
-    i_cond = fonte.index("if live else")
-    i_resp = fonte.index("[FORMULÁRIO NATIVO respondido")
-    assert i_resp < i_cond, (
-        "a frase de sucesso deixou de estar sob a condição de `live`")
+    # 🔴 MIGRADO no painel: a frase deixou de ser um `if live else` e virou
+    # TRES desfechos, porque `live` sozinho nao distinguia *enviou e deu certo*
+    # de *enviou e falhou*.
+    assert "[FORMULÁRIO NATIVO montado e o envio FALHOU:" in fonte, (
+        "sumiu o desfecho do envio que falhou — o dossie volta a dizer "
+        "`respondido` para um formulario que estourou")
+    assert 'if live and enviado:' in fonte, (
+        "a frase de sucesso deixou de exigir que o envio TENHA dado certo")
 
 
 def test_as_DUAS_frases_do_transcript_sao_DIFERENTES():

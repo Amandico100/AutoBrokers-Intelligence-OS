@@ -91,6 +91,12 @@ class _Consulta:
         linhas = [{"paired_phone_e164": n} for n in self.b.numeros]
         return _Resposta(linhas[: self._limite] if self._limite else linhas)
 
+    # ⚠️ Este dublê ACEITA qualquer filtro de proposito: o assunto deste
+    # arquivo e' a semantica da recusa. Quem prova que o filtro de corretora
+    # existe de verdade e' `test_o_FILTRO_de_tenant_e_MESMO_aplicado`, com um
+    # dublê que REGISTRA os `.eq()` — porque um que so' devolve `self` nao
+    # consegue ficar vermelho quando o filtro sai.
+
 
 class BancoFalso:
     def __init__(self, numeros, explode=False):
@@ -105,8 +111,24 @@ class BancoFalso:
         return _Consulta(self)
 
 
+#: A corretora deste arquivo. O ISOLAMENTO entre corretoras e' medido em
+#: `test_o_painel_achou_e_nao_volta`, com um dublê que REGISTRA os filtros;
+#: aqui o assunto e' a semantica da recusa.
+EMPRESA = "empresa-de-teste"
+
+
 def _e_nosso(destino, numeros, explode=False):
-    return asyncio.run(F._destino_e_nosso(BancoFalso(numeros, explode), destino))
+    """🔴 ASSINATURA MIGRADA no painel, e a mudança e' o conserto.
+
+    Era `_destino_e_nosso(db, destino) -> bool`. O painel mediu que a lista de
+    permissão era **global** — uma corretora alcançava o aparelho pareado de
+    outra — e que a trava **comparava normalizado e enviava o cru**.
+
+    Agora e' `(db, company_id, destino) -> (permitido, numero_gravado)`.
+    """
+    permitido, _ = asyncio.run(
+        F._destino_e_nosso(BancoFalso(numeros, explode), EMPRESA, destino))
+    return permitido
 
 
 #: 💭 Números sintéticos. Nenhum telefone real entra num arquivo de teste.
@@ -150,11 +172,17 @@ def test_o_MESMO_aparelho_em_QUALQUER_grafia_e_nosso(grafia):
 
 
 def test_numeros_DIFERENTES_nao_colidem():
-    """§9.3 — a chave de comparação tem de conseguir dizer NÃO.
+    """🔴 REFORÇADO no painel: a chave era `DDD + 8 finais` e COLIDIA.
 
-    Se `_chave_de_telefone` colapsasse números distintos, todos os testes de
-    liberação acima passariam e a trava não travaria nada.
+    📊 `47 9 3333-4444` (móvel) e `47 3333-4444` (FIXO) davam a mesma chave —
+    e numa lista de PERMISSÃO que autoriza envio real sem freio, colisão é
+    autorização indevida.
+
+    §9.3 — e a chave de comparação tem de conseguir dizer NÃO: se ela
+    colapsasse números distintos, todos os testes de liberação acima passariam
+    e a trava não travaria nada.
     """
+    assert F._chave_de_telefone("5547933334444") != F._chave_de_telefone("554733334444")
     assert F._chave_de_telefone(NOSSO) != F._chave_de_telefone(OUTRO_NOSSO)
     assert F._chave_de_telefone(SEGURADORA) != F._chave_de_telefone(NOSSO)
     assert _e_nosso(OUTRO_NOSSO, [NOSSO]) is False
@@ -200,7 +228,7 @@ def test_a_rota_CHAMA_a_trava_antes_de_qualquer_envio():
     """Análise estática — a ordem importa: conferir depois de mandar não é
     conferir."""
     fonte = ROTA_PY.read_text(encoding="utf-8")
-    i_trava = fonte.index("await _destino_e_nosso(db, para)")
+    i_trava = fonte.index("await _destino_e_nosso(db, company_id, para)")
     i_envio = fonte.index("montar_nfm_reply")
     assert i_trava < i_envio, (
         "a trava do destino roda DEPOIS da montagem/envio — nessa ordem ela "
@@ -211,5 +239,7 @@ def test_a_recusa_DIZ_que_nada_foi_enviado():
     """🔴 Quem lê um 400 precisa saber se a mensagem saiu. *"Recusado"* sem essa
     frase deixa a corretora sem saber se ligou para a seguradora ou não."""
     fonte = ROTA_PY.read_text(encoding="utf-8")
+    assert "aparelho desta corretora" in fonte, (
+        "a recusa parou de dizer que o destino tem de ser DESTA corretora")
     assert "Nenhuma mensagem foi enviada." in fonte, (
         "a mensagem de recusa parou de dizer que nada saiu")

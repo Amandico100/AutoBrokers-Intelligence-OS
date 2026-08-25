@@ -160,14 +160,90 @@ def _sub(d: Any, *nomes: str) -> Dict[str, Any]:
     avisa.** O lado da RESPOSTA já lia com grafia normalizada; o lado do
     CONVITE lia com `.get()` cru.
     """
-    if not isinstance(d, dict):
-        return {}
+    cadeia = _cadeia(d, *nomes)
+    return cadeia[-1] if cadeia else {}
+
+
+#: Teto de profundidade da busca por invólucro homônimo.
+#:
+#: 🔴 SEM ELE O PARSER DERRUBAVA A ROTA DO WEBHOOK. Medido pelo red team:
+#: `json.loads` aceita 5.000 níveis de aninhamento, `_sub` recursava sem teto, e
+#: `webhook.py:1246` chama `normalize_evolution_inbound(body)` **sem
+#: `try/except`** — `RecursionError` virava 500 na rota e a mensagem da
+#: seguradora se perdia.
+#:
+#: ⚠️ 8 é folgado: 📊 a forma real do fio tem **dois** níveis homônimos.
+_TETO_DE_INVOLUCROS = 8
+
+
+def _cadeia(d: Any, *nomes: str) -> list:
+    """Todos os níveis homônimos, **do mais externo ao mais interno**.
+
+    🔴 ESTA FUNÇÃO EXISTE PORQUE `_sub` DEVOLVIA SÓ O MAIS INTERNO — E ISSO
+    APAGAVA O TEXTO DA SEGURADORA.
+
+    📊 Medido pelo painel, na forma real do fio: o `interactiveMessage` de fora
+    tem `body` + `header` + `InteractiveMessage`; o de dentro tem **só**
+    `NativeFlowMessage`. Procurando `body` no mais interno, não se acha nada::
+
+        flow_id           âncora ANTES   âncora DEPOIS(com o defeito)
+        2887131368288279  onde_parado    —
+        3206000179602236  condicoes      —
+
+    **3 de 3 casamentos de âncora viravam 0**, e `detect_native_flow` existe
+    exatamente para o caso *"o `flow_id` não chegou"* — a rede de segurança que
+    a própria SPEC-092 desenha.
+
+    ⚠️ **E o guarda não via porque o fixture era inventado:** ele copiava o
+    miolo para dentro (`interno: dict(miolo)`), dando `body` aos dois níveis. O
+    fio não dá. É o `CLAUDE.md` §9.2 contra quem o escreveu — forma deduzida em
+    vez de medida.
+    """
+    saida: list = []
+    atual = d
     alvos = {n.lower().replace("_", "") for n in nomes}
+    for _ in range(_TETO_DE_INVOLUCROS):
+        if not isinstance(atual, dict):
+            break
+        achou = None
+        for k, v in atual.items():
+            if str(k).lower().replace("_", "") in alvos and isinstance(v, dict):
+                achou = v
+                break
+        if achou is None:
+            break
+        saida.append(achou)
+        atual = achou
+    return saida
+
+
+def _lista_tolerante(d: Any, nome: str) -> list:
+    """A lista chamada `<nome>`, seja qual for a grafia que o fio usou.
+
+    ⚠️ `_sub` e `_valor_tolerante` já normalizavam; `buttons`, `sections` e
+    `rows` continuavam com `.get()` cru — tolerância assimétrica dentro do
+    arquivo cuja tese é *"quem serializa o protobuf escolhe o nome das chaves"*.
+    """
+    if not isinstance(d, dict):
+        return []
+    alvo = nome.lower().replace("_", "")
     for k, v in d.items():
-        if str(k).lower().replace("_", "") in alvos and isinstance(v, dict):
-            interno = _sub(v, *nomes)
-            return interno or v
-    return {}
+        if str(k).lower().replace("_", "") == alvo and isinstance(v, list):
+            return v
+    return []
+
+
+def _de_qualquer_nivel(cadeia: list, nome: str, chave: str) -> str:
+    """O valor de `<nome>.<chave>`, no nível em que ele existir.
+
+    Do mais externo para o mais interno: 📊 na forma real do fio o `body` mora
+    no de fora, e no fixture antigo morava nos dois.
+    """
+    for nivel in cadeia:
+        valor = _clean(_sub(nivel, nome).get(chave))
+        if valor:
+            return valor
+    return ""
 
 
 def _valor_tolerante(d: Any, chaves: Tuple[str, ...]) -> str:
@@ -213,6 +289,47 @@ _CONTAINERS_DE_TELA = ("buttonsMessage", "templateMessage", "listMessage",
                        "interactiveMessage")
 
 
+#: O que NUNCA entra no cru, em nenhuma profundidade e em nenhuma grafia.
+#:
+#: 🔴 `contextInfo` cita a mensagem anterior — pode ser qualquer coisa que a
+#: pessoa do atendimento digitou. `mediaKey` e amigos são **chave de
+#: descriptografia**. E `flow_metadata` traz `www_proxy_secret` e
+#: `flow_token_signature`: **segredo, numa tabela durável**.
+_FORA_DO_CRU = ("contextinfo", "mediakey", "directpath", "fileencsha256",
+                "filesha256", "jpegthumbnail", "flowmetadata",
+                "wwwproxysecret", "flowtokensignature", "mediakeytimestamp")
+
+
+def _sem_o_que_nao_e_a_tela(o: Any, prof: int = 0) -> Any:
+    """Tira do cru, em TODA profundidade e em QUALQUER grafia, o que não é tela.
+
+    🔴 A PRIMEIRA VERSÃO CORTAVA `kk != "contextInfo"`, COMPARAÇÃO EXATA E SÓ
+    NO PRIMEIRO NÍVEL — dentro do arquivo cuja tese inteira é que a grafia das
+    chaves varia. Medido pelo painel, com controle::
+
+        contextInfo  (grafia do corpus)   cru contem o citado?  False   ← cortava
+        ContextInfo  (grafia Go)          cru contem o citado?  True
+        context_info (snake)              cru contem o citado?  True
+        aninhado 2 níveis                 cru contem o citado?  True + mediaKey
+
+    ⚠️ E o mesmo serializador que produziu `InteractiveMessage`,
+    `NativeFlowMessage`, `buttonID`, `rowID` e `Header` é quem escolhe essa caixa.
+
+    ⚠️ **E o que sobra ainda pode ter dado de segurado**: 📊 a URA ecoa placa,
+    CPF e telefone no texto da própria tela (`buttonsMessage.contentText`). A
+    frase *"nada ali é do segurado"* era falsa e foi corrigida — o recorte
+    reduz a superfície, **não a zera**, e isso está na pendência.
+    """
+    if prof > 14:
+        return None
+    if isinstance(o, dict):
+        return {k: _sem_o_que_nao_e_a_tela(v, prof + 1) for k, v in o.items()
+                if str(k).lower().replace("_", "") not in _FORA_DO_CRU}
+    if isinstance(o, list):
+        return [_sem_o_que_nao_e_a_tela(x, prof + 1) for x in o]
+    return o
+
+
 def cru_da_tela(message: Any) -> Optional[Dict[str, Any]]:
     """O cru da TELA que a seguradora mandou — e só dela.
 
@@ -243,9 +360,7 @@ def cru_da_tela(message: Any) -> Optional[Dict[str, Any]]:
             if str(k).lower().replace("_", "") in alvos and isinstance(v, dict)}
     if not tela:
         return None
-    limpa = {k: {kk: vv for kk, vv in v.items() if kk != "contextInfo"}
-             for k, v in tela.items()}
-    return cru_limitado(limpa)
+    return cru_limitado({k: _sem_o_que_nao_e_a_tela(v) for k, v in tela.items()})
 
 
 def cru_limitado(message: Any) -> Optional[Dict[str, Any]]:
@@ -403,14 +518,19 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
             return "\n".join(lines), meta
 
     # --- interactiveMessage (native flow: quick_reply/single_select/flow) ---
-    inter = _sub(message, "interactiveMessage") or message.get("interactiveMessage")
+    cadeia = _cadeia(message, "interactiveMessage")
+    inter = cadeia[-1] if cadeia else None
     if isinstance(inter, dict) and inter:
-        body = (_clean(_sub(inter, "body").get("text"))
-                or _clean(_sub(inter, "header").get("title")))
-        nfm = _sub(inter, "nativeFlowMessage")
+        # 🔴 O CORPO SE PROCURA EM TODOS OS NÍVEIS. Ver `_cadeia`.
+        body = (_de_qualquer_nivel(cadeia, "body", "text")
+                or _de_qualquer_nivel(cadeia, "header", "title"))
+        nfm = _sub(inter, "nativeFlowMessage") or _sub(cadeia[0], "nativeFlowMessage")
         options = []
         flow_meta: Optional[Dict[str, Any]] = None
-        for b in (nfm.get("buttons") or []):
+        # 🔴 `Buttons` com B maiúsculo é lido. Medido pelo red team: sem
+        # isto, a mesma família de defeito que este arquivo inteiro documenta
+        # reabria a P-084-68 **por uma letra**.
+        for b in (_lista_tolerante(nfm, "buttons") or []):
             if not isinstance(b, dict):
                 continue
             name = _valor_tolerante(b, ("name",))
@@ -427,8 +547,8 @@ def _interactive_from_message(message: Dict[str, Any]) -> Optional[Tuple[str, Di
                     options.append({"id": _valor_tolerante(params, _CHAVES_DE_ID_DE_OPCAO),
                                 "title": title})
             elif name == "single_select":
-                for section in params.get("sections") or []:
-                    for row in (section or {}).get("rows") or []:
+                for section in _lista_tolerante(params, "sections"):
+                    for row in _lista_tolerante(section, "rows"):
                         title = _clean(row.get("title"))
                         if title:
                             options.append({

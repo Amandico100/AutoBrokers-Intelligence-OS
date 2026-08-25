@@ -329,17 +329,35 @@ def _extract_content(message: Dict[str, Any]) -> Tuple[str, Optional[str], Optio
         # escrito isso — um id não é um rótulo, e mentir aqui é pior que calar.
         return kind, rotulo, interactive, None
 
-    # 🔴 A.2 · O `unknown` DEIXA DE SER QUATRO NULOS.
+    # 🔴 O `unknown` VOLTOU A SER QUATRO NULOS — e a volta e' o conserto.
     #
-    # Esta linha devolvia `("unknown", None, None, None)`: a mensagem existiu,
-    # virou linha, e não sobrou **nada** dela. 📊 É a mesma perda que apagou
-    # 37 eventos de Porto e Azul para sempre (P-084-38) — lá guardou-se o nome
-    # das gavetas, aqui não se guardava nem isso.
+    # Esta linha chegou a devolver `{"kind":"desconhecido","cru": <mensagem
+    # INTEIRA>}`, para cumprir a A.2 da SPEC-092 (*"desconhecido guarda o cru"*).
+    # O painel mediu que isso **derrubava os dois portoes que descartam**:
     #
-    # ⚠️ `msg_type` continua `unknown` de propósito: mudá-lo mexeria em todo
-    # consumidor que conta tipos. O que muda é que a linha passa a LEMBRAR.
-    return "unknown", None, ({"kind": "desconhecido", "cru": _raw_capped(msg)}
-                             if isinstance(msg, dict) and msg else None), None
+    #   attendance_capture.py:139  `if msg_type=="unknown" and not text and
+    #                               not media_meta and not interactive: return False`
+    #   history_ingest.py:430      `if not text and not media_meta and
+    #                               not interactive: continue`
+    #
+    # Com `interactive` sempre verdadeiro, os dois deixavam de disparar. Medido:
+    # `protocolMessage`, `reactionMessage`, `contactMessage` (vCard),
+    # `pollCreationMessage`, `ptvMessage` e `editedMessage` passavam de
+    # **descartados** a **gravados** — em `attendance_transcripts`, a tabela cuja
+    # propria docstring diz *"PII vive AQUI e SO' aqui"*, hoje com ZERO linhas
+    # `unknown` em 155 mil.
+    #
+    # E o cru ali era a MENSAGEM INTEIRA via `_raw_capped`, **sem** o corte de
+    # `cru_da_tela`: levava `contactMessage.vcard` (nome + telefone de terceiro),
+    # `locationMessage` com latitude e longitude, e `mediaKey` — chave de
+    # descriptografia — para dentro de uma coluna que `sem_coordenadas` nao toca.
+    #
+    # ⚠️ **A A.2 continua cumprida, e no lugar certo**: o parser canonico
+    # devolve `kind='desconhecido'` COM o cru **quando existe involucro de TELA**
+    # — que e' o escopo da SPEC. Este fallback aqui cobre outra coisa: mensagem
+    # que nao e' tela nenhuma. Alargar a retencao de PII nele nao foi decidido
+    # por ninguem, e o efeito estava em duas portas que a SPEC nao mencionou.
+    return "unknown", None, None, None
 
 
 def _raw_capped(message: Any) -> Optional[Dict[str, Any]]:

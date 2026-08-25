@@ -1487,6 +1487,20 @@ def registrar_formulario_nativo(session: Dict[str, Any],
     return True
 
 
+_RE_MARCADOR_DE_FORMULARIO = re.compile(r"\[FORMULARIO NATIVO[^\]]*\][^\n]*",
+                                        re.IGNORECASE)
+
+
+def _sem_o_marcador(texto: str) -> str:
+    """O texto da seguradora, sem o marcador que NÓS anexamos.
+
+    🔴 O marcador carrega o `flow_cta`, que é string da seguradora. Deixar
+    esse pedaço entrar no casamento de âncora dá à seguradora o voto sobre qual
+    schema o produto responde. Ver `_responder_formulario_nativo`.
+    """
+    return _RE_MARCADOR_DE_FORMULARIO.sub("", str(texto or "")).strip()
+
+
 def a_tela_e_formulario(insurer_message: str,
                         interactive: Optional[Dict[str, Any]]) -> bool:
     """Esta mensagem é uma tela de formulário nativo?
@@ -1503,9 +1517,50 @@ def a_tela_e_formulario(insurer_message: str,
     **sempre** que reconhece um formulário, e só então. Guardar pelas duas é
     de graça e cobre o caminho sem `interactive`.
     """
-    if isinstance(interactive, dict) and interactive.get("kind") == "flow":
-        return True
-    return "FORMULARIO NATIVO" in str(insurer_message or "").upper()
+    tem_marcador = "FORMULARIO NATIVO" in str(insurer_message or "").upper()
+    if not isinstance(interactive, dict):
+        # Sem `interactive` só existe o texto: é o caminho do `ura_simulator` e
+        # do `replay`, e o marcador é o único sinal disponível.
+        return tem_marcador
+    if interactive.get("kind") != "flow":
+        return False
+
+    # 🔴 A TELA QUE OFERECE OUTRO CAMINHO NÃO É UM BECO.
+    #
+    # 📊 Medido pelo painel: **25 telas do corpus** mencionam formulário E casam
+    # passo de URA; **21** delas (9 azul + 12 porto) dizem *"Ou, se preferir,
+    # preencha o formulário abaixo"* — têm botão clicável **e** formulário.
+    # Hoje o corredor responde o botão e o acionamento anda.
+    #
+    # ⚠️ Sem esta linha, a inversão da D.2 mandaria as 21 para `needs_human` —
+    # e Porto e Azul são justamente as duas que **não têm schema nenhum**.
+    # Trocaria 21 acionamentos que funcionam por 21 que param.
+    #
+    # 📊 E ela é segura para a família HDI/Yelum: os 4 convites de formulário do
+    # acervo têm `options` **vazio**.
+    if interactive.get("options"):
+        return False
+
+    # 🔴 O MARCADOR É POR BOLHA; O `interactive` É POR JANELA.
+    #
+    # 📊 Medido pelo painel, com linha de controle contra o motor de `8b49fdb`:
+    #
+    #     rajada [FORMULÁRIO, "você está na fila"] com o MESMO interactive
+    #     ANTES  8b49fdb   RESPOSTAS DE FORMULÁRIO ENVIADAS = 1
+    #     DEPOIS (sem esta linha)                            = 2
+    #
+    # `message_buffer_service.py:111` **preserva o `interactive` pela janela de
+    # debounce inteira, de propósito** — e o comentário dele diz por quê: *"a URA
+    # da família HDI manda rajadas — o formulário e, logo atrás, um aviso de
+    # fila"*. `webhook.py:507` repassa esse mesmo `interactive` a **cada** bolha.
+    #
+    # ⚠️ E o dano tinha dois lados: a resposta saindo duas vezes, e a bolha
+    # *"você está na fila, aguarde"* virando `needs_human` — o segurado ouvindo
+    # *"não consegui concluir o pedido"* porque a URA disse **aguarde**.
+    #
+    # O marcador é anexado por `evolution_inbound` à bolha que **é** o
+    # formulário, e só a ela. Ele é o sinal de bolha; o `interactive` não é.
+    return tem_marcador
 
 
 def _moldura_da_resposta(session: Dict[str, Any],
@@ -1543,6 +1598,12 @@ def _moldura_da_resposta(session: Dict[str, Any],
     um campo grande inventado é pior que omitir um campo que talvez seja
     decoração — e a P-092 registra a medição que falta.
     """
+    # 🔴 SÓ ECOA O ID QUE FOI CONFERIDO CONTRA O PLAYBOOK.
+    #
+    # `_responder_formulario_nativo` veta o convite cujo `flow_id` não está em
+    # `native_flows`, então quando chegamos aqui com `flow_id_ativo` preenchido
+    # ele **passou pelo veto**. Sem aquele veto, este eco entregava o id de um
+    # formulário desconhecido com os campos de outro.
     ecoado = str(session.get("flow_id_ativo") or "").strip()
     moldura = {
         "flow_id": ecoado or montado.get("flow_id"),
@@ -1581,9 +1642,46 @@ def _responder_formulario_nativo(
     # a mensagem que chegou agora — o texto que abre o flow, ou os metadados da
     # interativa desta mensagem.
     e_formulario_agora = isinstance(interactive, dict) and interactive.get("kind") == "flow"
-    flow = detect_native_flow(playbook, insurer_message)
-    if flow is None and e_formulario_agora:
-        flow = native_flow(playbook, str(((interactive or {}).get("flow") or {}).get("flow_id") or ""))
+    # 🔴 O TEXTO DA SEGURADORA NÃO ESCOLHE O SCHEMA PELO CTA DELA.
+    #
+    # 📊 Medido pelo red team, com linha de controle: o BLOCO B anexa
+    # `[FORMULARIO NATIVO: {cta}]` ao texto, e `cta` é string da seguradora. Com
+    # o CTA carregando a frase de abertura de OUTRO formulário::
+    #
+    #     CONTROLE  cta='Informar local'       -> 2 campos
+    #     ATAQUE    cta com a frase do LONGO   -> 4 campos
+    #
+    # Um fator variou, o controle repetiu a rodada anterior: **o CTA era a
+    # causa**. A resposta saia com o `flow_id` de um formulário e o conjunto de
+    # campos de outro.
+    #
+    # ⚠️ A âncora se procura no que a seguradora **escreveu na tela**, nunca no
+    # rótulo que ela pôs no botão.
+    flow = detect_native_flow(playbook, _sem_o_marcador(insurer_message))
+    id_do_convite = str(((interactive or {}).get("flow") or {}).get("flow_id") or "").strip()
+
+    # 🔴 O `flow_id` DO CONVITE É VETO, NÃO FALLBACK.
+    #
+    # 📊 Medido pelo red team, com linha de controle. O schema era resolvido por
+    # TEXTO primeiro e o id do convite era só um *fallback* — nunca uma recusa.
+    # Com um `flow_id` que nenhum playbook conhece + uma âncora registrada::
+    #
+    #     BASE 8b49fdb   moldura flow_id=857030507196739   (id ERRADO -> descartada)
+    #     HEAD (sem veto) moldura flow_id=9999999999999999 (id CERTO, campos ERRADOS)
+    #
+    # ⚠️ **Trocava "resposta descartada" por "resposta bem-endereçada e
+    # errada"** — que é pior: a seguradora aceita, e o chamado abre com o campo
+    # que o formulário novo acrescentou faltando.
+    #
+    # 📊 E a família JÁ reusou frase de abertura entre ids diferentes
+    # (`857030507196739` e `3206000179602236` compartilham `prompt_anchor`): um
+    # terceiro id com a mesma frase é questão de quando, não de se.
+    if id_do_convite and native_flow(playbook, id_do_convite) is None:
+        session["state"] = "needs_human"
+        session["reason"] = "formulario_nativo_desconhecido"
+        return session
+    if flow is None and id_do_convite:
+        flow = native_flow(playbook, id_do_convite)
     if not flow:
         # Chegou um formulário e não sabemos qual é.
         #
@@ -1643,14 +1741,20 @@ def _responder_formulario_nativo(
     # O campo `dry_run` já existia e já era honesto; a FRASE ao lado dele não.
     # É o mesmo defeito da SPEC-085, noutro arquivo: a flag foi consertada e o
     # texto ao lado dela não.
-    resumo = (f"[FORMULÁRIO NATIVO respondido: {len(montado['params'])} campos]"
-              if live else
-              f"[FORMULÁRIO NATIVO pronto, NÃO enviado — envio real desligado: "
-              f"{len(montado['params'])} campos]")
-    session.setdefault("transcript", []).append(
-        {"direction": "out", "text": resumo, "at": _now(), "dry_run": not live,
-         "step": "formulario_nativo"}
-    )
+    # 🔴 A FRASE SÓ É ESCRITA DEPOIS DE SE SABER O QUE ACONTECEU.
+    #
+    # 📊 Medido pelo painel: ela era gravada ANTES da tentativa, com
+    # `dry_run=False`, e **ficava lá quando o envio estourava**. O dossiê que
+    # chega a quem vai socorrer a pessoa saía assim:
+    #
+    #     Motivo: formulario_envio_falhou
+    #     [corretora] [FORMULÁRIO NATIVO respondido: 5 campos]
+    #
+    # Duas linhas que se contradizem no mesmo cartão de WhatsApp — e é o mesmo
+    # defeito que o comentário do `live` ao lado diz estar matando, um ramo
+    # adiante. Consertar metade de uma mentira deixa a outra metade.
+    n_campos = len(montado["params"])
+    enviado = None
     if live:
         try:
             envelope = session.get("envelope_do_flow")
@@ -1667,10 +1771,22 @@ def _responder_formulario_nativo(
         except Exception as exc:  # noqa: BLE001 — transporte nunca derruba o motor
             enviado = False
             session["flow_envio_erro"] = type(exc).__name__
-        if not enviado:
-            session["state"] = "needs_human"
-            session["reason"] = "formulario_envio_falhou"
-            return session
+    if live and enviado:
+        resumo = f"[FORMULÁRIO NATIVO respondido: {n_campos} campos]"
+    elif live:
+        resumo = (f"[FORMULÁRIO NATIVO montado e o envio FALHOU: {n_campos} "
+                  f"campos — pode ter chegado, não dá para saber]")
+    else:
+        resumo = (f"[FORMULÁRIO NATIVO pronto, NÃO enviado — envio real "
+                  f"desligado: {n_campos} campos]")
+    session.setdefault("transcript", []).append(
+        {"direction": "out", "text": resumo, "at": _now(), "dry_run": not live,
+         "enviado": bool(enviado), "step": "formulario_nativo"}
+    )
+    if live and not enviado:
+        session["state"] = "needs_human"
+        session["reason"] = "formulario_envio_falhou"
+        return session
     session["state"] = "ura"
     return session
 
