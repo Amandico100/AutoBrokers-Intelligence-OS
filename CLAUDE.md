@@ -61,13 +61,33 @@ caminho, as regras pertinentes por número, os gates — **nunca o canon** (§1 
 Preflight, nesta ordem:
 
 ```bash
-git rev-list --count HEAD..origin/main   # 🔴 TEM DE SER 0
+git rev-list --count HEAD..origin/main   # 🔴 TEM DE SER 0 — estou em dia?
+git rev-list --count origin/main..HEAD   # ⚠️  o que AINDA NÃO SUBIU
 git branch --show-current
 git rev-parse HEAD                       # registrar no relatório
 git status --short                       # limpo ao iniciar
 ```
 
-🔴 **A árvore de trabalho é a que está em dia com a `origin/main`, e o preflight MEDE isso — não presume pelo nome da pasta.** ⚠️ 📊 Medido em 24/08/2026: `AutoBrokers-FIX` → **0 atrás** · `AutoBrokers-Opus-Exec` → **169 atrás**, último commit de 16/08. Este arquivo nomeava a segunda, e uma sessão que obedecesse começaria em SPECs, `PENDENCIAS` e código vencidos — que é como nasce motor paralelo (§5). **Contagem diferente de zero: pare e pergunte qual árvore usar.**
+🔴 **A árvore de trabalho é a que está em dia com a `origin/main`, e o preflight MEDE isso — não presume pelo nome da pasta.** ⚠️ 📊 Medido em 24/08/2026: `AutoBrokers-FIX` → **0 atrás** · `AutoBrokers-Opus-Exec` → **169 atrás**, último commit de 16/08. Este arquivo nomeava a segunda, e uma sessão que obedecesse começaria em SPECs, `PENDENCIAS` e código vencidos — que é como nasce motor paralelo (§5). **Contagem diferente de zero na primeira: pare e pergunte qual árvore usar.**
+
+### ⛔ E A SEGUNDA CONTAGEM É A QUE JÁ CUSTOU UM DIA
+
+🔴 **`origin/main..HEAD` diz o que existe só nesta máquina.** Em 25/08/2026,
+**25 commits** — a SPEC-085 inteira, o protocolo v9 e a SPEC-092 — ficaram locais,
+e a branch **nem existia no remoto**. O EasyPanel constrói a `main`, então ele
+reimplantou **o mesmo commit quatro vezes seguidas**, e da tela não dá para ver que
+não havia nada novo: o histórico mostra sucesso verde toda vez.
+
+```bash
+# 🔴 ENTREGAR NÃO É COMMITAR. É EMPURRAR.
+git rev-list --count origin/main..HEAD    # 0 = o trabalho está no ar
+git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+```
+
+⚠️ **E quem pede o deploy entrega o COMANDO, nunca a tarefa.** *"faça o merge na
+main"* não é instrução — é um pedido para a outra pessoa adivinhar o comando. 🔴 **O
+§6.1 do protocolo diz que a SPEC não está concluída enquanto a entrega não estiver
+escrita; e entrega escrita é `git push`, com a saída dele colada no relatório.**
 
 ## 3. Ordem de autoridade
 
