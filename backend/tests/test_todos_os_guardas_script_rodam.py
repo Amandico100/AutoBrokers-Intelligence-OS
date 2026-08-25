@@ -812,3 +812,102 @@ def test_nenhuma_janela_ficou_suja():
           "⚠️ Não procure defeito nos guardas listados: eles são a janela, não\n"
           "o autor. Ver PENDENCIAS.md P-231."
     )
+
+
+# ---------------------------------------------------------------------------
+# 🔴 A REDE SEM LISTA — porque toda lista escrita à mão fica velha.
+# ---------------------------------------------------------------------------
+# 📊 25/08/2026, e o defeito foi cometido por quem escreveu a rede: um
+# `git add -A` levou para o commit
+#
+#     backend/scripts/rubrica.py
+#     -    decidem = CR.constantes_sem_justificativa(pb, rota.servico, ...)
+#     +    decidem = []  # DESLIGADO PELA MUTACAO
+#
+# ⚠️ **E havia DOIS guardas para isso, e os dois falharam por motivos
+# diferentes:**
+#
+#   1. `_RETRATO_DA_SESSAO` vigia `ARQUIVOS_COMPARTILHADOS` — e a lista tem
+#      **dois** arquivos. `rubrica.py` não está nela. 🔴 E nunca vai estar de
+#      forma confiável: os alvos de mutação são declarados por cada teste que
+#      chama `VM.verificar(...)`, então a lista **é derivada de dado que muda**.
+#
+#   2. `test_nenhuma_mutacao_foi_commitada.py` pergunta ao objeto commitado
+#      (`git show HEAD:...`). 🔴 Quando a bateria roda, o `HEAD` ainda é o
+#      commit ANTERIOR — limpo. **Um guarda que inspeciona o `HEAD` não
+#      protege o commit que está sendo criado**; ele pega uma rodada tarde.
+#
+# Este teste fecha o primeiro buraco pelo único jeito que não envelhece:
+# **varre a árvore inteira procurando a MARCA**, em vez de vigiar nomes.
+#
+# ⚠️ A allowlist abaixo não é dos ARQUIVOS MUTÁVEIS — é dos arquivos que têm
+# direito de **escrever a marca em texto** (quem a define, quem a procura, e
+# quem a comenta). Ela é curta de propósito, e cresce só com revisão.
+_QUEM_PODE_FALAR_DA_MARCA = frozenset({
+    "test_a_regua_nao_tem_furo.py",          # declara as mutações
+    "test_nenhuma_mutacao_foi_commitada.py",  # procura no objeto commitado
+    "test_todos_os_guardas_script_rodam.py",  # este arquivo, nos comentários
+})
+
+_MARCA = "DESLIGADO PELA " + "MUTACAO"   # partido para não casar consigo mesmo
+
+
+def test_nenhuma_mutacao_ficou_na_arvore():
+    """🔴 Nenhum `.py` do produto carrega a marca de mutação.
+
+    ⛔ Este é o guarda que faltava quando uma mutação de `rubrica.py` entrou
+    num commit. Não depende de lista de alvos, então não envelhece com eles.
+    """
+    import subprocess as _sp
+
+    try:
+        saida = _sp.run(["git", "ls-files", "*.py"], cwd=str(RAIZ.parent),
+                        capture_output=True, text=True, timeout=60)
+        rastreados = [l for l in saida.stdout.splitlines() if l.strip()]
+    except Exception as erro:                      # noqa: BLE001
+        pytest.skip(f"git indisponível: {erro}")
+
+    if not rastreados:
+        pytest.skip("git ls-files não devolveu nada")
+
+    sujos = []
+    for rel in rastreados:
+        nome = rel.rsplit("/", 1)[-1]
+        if nome in _QUEM_PODE_FALAR_DA_MARCA:
+            continue
+        caminho = RAIZ.parent / rel
+        try:
+            if _MARCA in caminho.read_text(encoding="utf-8", errors="replace"):
+                sujos.append(rel)
+        except OSError:
+            continue
+
+    assert not sujos, (
+        "🔴 MUTAÇÃO NA ÁRVORE, em: " + ", ".join(sujos) + "\n"
+        "Alguém rodou a bateria de mutação e o `finally` dela não restaurou.\n"
+        "⛔ NÃO commite: `git add -A` aqui leva a mutação para dentro do\n"
+        "produto, e o guarda mutado fica VERDE medindo o que não existe\n"
+        "(SPEC-084.1 C12, P-231)."
+    )
+
+
+def test_a_allowlist_da_marca_nao_virou_gaveta():
+    """⚠️ A LINHA DE CONTROLE da allowlist acima.
+
+    🔴 Uma allowlist que cresce sem revisão vira o próprio buraco: basta
+    acrescentar o arquivo mutado a ela para o guarda ficar verde. O piso é
+    baixo de propósito — se ela passar de cinco nomes, alguém está usando a
+    allowlist como conserto.
+    """
+    assert len(_QUEM_PODE_FALAR_DA_MARCA) <= 5, (
+        f"a allowlist da marca tem {len(_QUEM_PODE_FALAR_DA_MARCA)} nomes. "
+        f"Ela existe para os arquivos que FALAM da marca, não para silenciar "
+        f"os que a carregam. Conserte a mutação, não a lista."
+    )
+    # e os três precisam existir de verdade — allowlist de arquivo fantasma
+    # esconde erro de digitação, que é como uma entrada morta vira permissão
+    for nome in _QUEM_PODE_FALAR_DA_MARCA:
+        assert (PASTA / nome).exists(), (
+            f"a allowlist cita `{nome}`, que não existe. Nome errado numa "
+            f"allowlist é uma porta aberta com cara de porta fechada."
+        )
