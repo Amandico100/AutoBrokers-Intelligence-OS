@@ -2913,6 +2913,128 @@ AVISO_SEM_NINGUEM_PARA_ASSUMIR = (
 )
 
 
+# ---------------------------------------------------------------------------
+# 🔴 QUEM PODE SER RETOMADO — SPEC-085 BLOCO D
+# ---------------------------------------------------------------------------
+# A regra é de NEGÓCIO, não de código:
+#
+#     ## Retomar só vale quando A CAUSA PODE TER MUDADO.
+#
+# Retomar `sem_chute` é inventar dado que não existe. Retomar `handoff_trigger`
+# é desobedecer a seguradora, que PEDIU um humano. E o que não deve ser
+# retomado vai para a pessoa **mais rápido**, não mais devagar.
+#
+# ⚠️ 📊 E ISTO NÃO É "RESSUSCITAR DEPOIS DAS 6h". Aquilo já foi julgado e
+# RECUSADO, por escrito, em `dispatch_router.reconciliar_acionamentos_orfaos`:
+# ela restaura `monitoring` e **não** restaura `ura` nem `human_phase`, porque
+# ali a sessão voltaria a FALAR com a seguradora num atendimento que já andou
+# sem nós — o bug "sessão zumbi" de 12/07 com outro nome. *"Menos automação;
+# nunca automação errada."* O BLOCO D é retomada **no instante do
+# `needs_human`**, com a sessão ainda viva, e herda os três freios da retomada
+# de `insurer_closed`: teto de UMA tentativa, guarda de idempotência, e nunca
+# repetir se o protocolo já foi capturado.
+#
+# 🔴 O PADRÃO É `direto_ao_humano`. Família nova que ninguém classificou NÃO
+# retoma — o inverso deixaria o produto tentando de novo, sozinho, uma coisa
+# que ninguém entendeu.
+
+#: A causa pode ter mudado sozinha: tenta UMA vez.
+RETOMA = "retoma"
+#: Não retoma, e uma pessoa consegue continuar de onde parou.
+DIRETO_AO_HUMANO = "direto_ao_humano"
+#: Não retoma, e uma pessoa continuando também não resolve — o que falta é
+#: CONSERTO (rota que não existe, corredor em laço). Vai para quem conserta.
+NAO_RETOMA = "nao_retoma"
+
+_POLITICA_DE_RETOMADA: Dict[str, str] = {
+    # ---- A CAUSA PODE TER MUDADO ----
+    # A URA derrubou a conversa antes de abrir nada. O fluxo é idempotente até
+    # o freio, então refazer é seguro — e é a única família que já retomava.
+    "insurer_closed": RETOMA,
+    # 📊 O envio do formulário FALHOU. É, das dezesseis, aquela em que a causa
+    # mais obviamente pode ter mudado: rede, instância, timeout.
+    "formulario_envio_falhou": RETOMA,
+
+    # ---- NÃO RETOMA, E UMA PESSOA CONTINUA ----
+    # Falta um dado que só uma pessoa consegue obter (ou confirmar).
+    "missing_slots": DIRETO_AO_HUMANO,
+    # 🔴 O dado NÃO EXISTE para ser chutado. Tentar de novo é inventar.
+    "sem_chute": DIRETO_AO_HUMANO,
+    # 🔴 A URA MANDOU chamar um humano. Retomar é desobedecer a seguradora.
+    "handoff_trigger": DIRETO_AO_HUMANO,
+    # O cérebro adaptativo errou duas vezes seguidas. A terceira não é melhor.
+    "human_phase_guard": DIRETO_AO_HUMANO,
+    # A escada de recuperação do Vigia já esgotou as tentativas dela.
+    "sentinela_stall": DIRETO_AO_HUMANO,
+    # A seguradora bloqueou a confirmação por um motivo que ela deu.
+    "confirmacao_bloqueada": DIRETO_AO_HUMANO,
+    # O encaminhamento existe mas veio sem o link — a pessoa consegue achá-lo.
+    "encaminhamento_sem_link": DIRETO_AO_HUMANO,
+    # Formulário nativo: falta campo, ou a forma dele é desconhecida.
+    "formulario_incompleto": DIRETO_AO_HUMANO,
+    "formulario_nativo_desconhecido": DIRETO_AO_HUMANO,
+
+    # ---- NÃO RETOMA, E CONTINUAR TAMBÉM NÃO RESOLVE ----
+    # A conferência já tem escada própria (as correções por campo, até o teto).
+    # Retomar por fora dela é atropelar um mecanismo que funciona.
+    "conferencia_divergente": NAO_RETOMA,
+    # 🔴 Retomar repetiria exatamente o laço que o guarda acabou de cortar.
+    "loop_guard": NAO_RETOMA,
+    # Não é travamento: a rota não existe. O conserto é criar o corredor.
+    "playbook_not_found": NAO_RETOMA,
+    # ⚠️ P-084-67, fora do escopo desta SPEC por §9: faltam canal e token de
+    # fluxo, e isso é SPEC própria. Registrado aqui para não cair no padrão em
+    # silêncio.
+    "formulario_pronto_sem_flow_token": NAO_RETOMA,
+    "formulario_pronto_sem_transporte": NAO_RETOMA,
+}
+
+
+def familia_do_motivo(reason: str) -> str:
+    """PURA. `missing_slots:titular_cpf,local_seguro` → `missing_slots`.
+
+    O motivo COMPLETO é o que vai para o `error_code` e para o dossiê — quem
+    tria precisa saber QUAIS slots faltaram. A política, porém, é por FAMÍLIA:
+    `missing_slots:cpf` e `missing_slots:endereco` não merecem regras
+    diferentes.
+    """
+    return str(reason or "").split(":", 1)[0].strip()
+
+
+def politica_de_retomada(reason: str) -> str:
+    """PURA. `retoma` · `direto_ao_humano` · `nao_retoma`.
+
+    🔴 O padrão é `direto_ao_humano`: motivo não classificado NUNCA retoma.
+    Um produto que tenta de novo, sozinho, uma coisa que ninguém entendeu é
+    pior que um produto que chama gente.
+    """
+    return _POLITICA_DE_RETOMADA.get(familia_do_motivo(reason), DIRETO_AO_HUMANO)
+
+
+def pode_retomar(session: Dict[str, Any]) -> bool:
+    """PURA. Esta sessão pode ser retomada AGORA? — os três freios da D.3.
+
+    Herdados da retomada de `insurer_closed`, que já os tinha:
+
+      1. a política da família permite;
+      2. teto de UMA tentativa (`retry_count`);
+      3. 🔴 e NUNCA depois de o protocolo ter sido capturado — aí o serviço
+         EXISTE, há um guincho a caminho, e reabrir manda um segundo. O
+         segurado recebe dois prestadores, a corretora responde por dois
+         acionamentos, e a seguradora vê duplicidade.
+
+    📊 O risco do item 3 não é teórico: até 03/08 o gatilho de `captured`
+    exigia protocolo E (agendamento OU eta OU link); o residencial da Allianz
+    não captura eta nem link, então protocolo sem agendamento caía no
+    re-acionamento como caminho NORMAL.
+    """
+    if politica_de_retomada(str(session.get("reason") or "")) != RETOMA:
+        return False
+    if int(session.get("retry_count") or 0) != 0:
+        return False
+    return not (session.get("captured") or {}).get("protocol")
+
+
 def aviso_de_handoff(dossie_saiu: bool) -> str:
     """PURA. O que o segurado ouve, pelo que REALMENTE aconteceu.
 

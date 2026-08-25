@@ -1858,9 +1858,19 @@ async def try_route_insurer_inbound(
         # captura eta nem link — então protocolo sem agendamento reconhecido
         # caía direto aqui, e o re-acionamento era o caminho normal, não a
         # exceção. Os dois consertos são o mesmo defeito visto de dois lados.
-        if (reason == "insurer_closed"
-                and int(session.get("retry_count") or 0) == 0
-                and not (session.get("captured") or {}).get("protocol")):
+        # 🔴 SPEC-085 BLOCO D — a condição sai de UMA família para as DEZESSEIS.
+        #
+        # 📊 Era `reason == "insurer_closed"`: das 16 famílias de motivo, UMA
+        # tinha retomada. As outras quinze caíam direto em avisar cliente →
+        # dossiê → gravar, e ninguém tentava de novo — inclusive
+        # `formulario_envio_falhou`, que é a família em que a causa mais
+        # obviamente pode ter mudado (rede, instância, timeout).
+        #
+        # ⚠️ Os TRÊS FREIOS continuam, e são os mesmos: política da família,
+        # teto de uma tentativa, e nunca depois do protocolo capturado. Eles
+        # foram para `pode_retomar`, no núcleo puro, porque a §F0.3 cobra o
+        # gate por FAMÍLIA e isso tem de ser percorrível sem banco nem rede.
+        if _motor().pode_retomar(session):
             await clear_active_dispatch(company_id, from_phone)
             retry = await start_live_dispatch(
                 company_id=company_id, case_id=str(session.get("case_id") or "retry"),

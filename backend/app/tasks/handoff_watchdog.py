@@ -117,10 +117,30 @@ async def varrer_handoffs_parados() -> None:
         db = getattr(bruto, "client", bruto)
         if db is None:
             return
+        # 🔴 SPEC-085 BLOCO F.2 — `claimed_by` ENTRA NO SELECT.
+        #
+        # 📊 `HUMAN_REQUESTED` significa DUAS coisas opostas neste produto:
+        #
+        #   "a IA pediu um humano"     human_handoff.py:608
+        #   "um humano JÁ assumiu"     api/dashboard/conversas/[id] (claim)
+        #                              e espelho_chat, que grava junto o
+        #                              `claimed_by_name`
+        #
+        # E este select **nem pedia a coluna que distingue as duas**. INFERÊNCIA
+        # de alta confiança, agora fechada: uma conversa já assumida por uma
+        # pessoa continuava gerando *"ATENDIMENTO PRECISA DE VOCÊ"* a cada 6h
+        # sempre que o cliente escrevesse por último.
+        #
+        # ⚠️ A desambiguação é por DADO, não por estado novo (§F.1, saída (b)):
+        # `claimed_by` já existe e já é escrita pelo `claim`. Um estado novo
+        # exigiria migration, backfill e todos os leitores — para uma distinção
+        # que o dado já carrega.
         paradas = (db.table("conversations")
                    .select("id, company_id, session_id, user_name, user_phone, "
-                           "last_message_at, human_handoff_reason")
+                           "last_message_at, human_handoff_reason, "
+                           "claimed_by, claimed_by_name, resolvido_em")
                    .eq("status", "HUMAN_REQUESTED")
+                   .is_("claimed_by", "null")
                    .lt("last_message_at", limite)
                    .order("last_message_at", desc=False)
                    .limit(_MAX_POR_PASSADA).execute().data or [])
@@ -238,6 +258,22 @@ async def varrer_handoffs_parados() -> None:
         # trocar um defeito por outro pior.
         _n = await _contar_lembrete(conversa_id)
         if _n > _MAX_LEMBRETES:
+            # 🔴 SPEC-085 BLOCO F.3 — o teto deixa de ser um `continue` MUDO.
+            #
+            # Ele estava certo em calar o grupo e errado em calar o REGISTRO:
+            # uma conversa passando do teto é o sinal mais forte que existe de
+            # que ninguém assumiu em 24 horas, e ele não aparecia em lugar
+            # nenhum. Quem olhasse o log via a conversa sumir.
+            #
+            # ⚠️ E a promessa da última mensagem — *"ela continua na Fila do
+            # painel, de lá ninguém a tira sozinho"* — só é verdade porque o
+            # `release` parou de devolver a conversa para `open` quando o
+            # handoff ainda está aberto (E.4). As duas coisas são um conserto
+            # só; separadas, esta frase seria mentira.
+            logger.warning(
+                "[HandoffWatchdog] conversa passou do teto de %s lembretes e o "
+                "grupo NÃO será avisado de novo — ela segue na Fila, esperando "
+                "alguém. empresa=%s", _MAX_LEMBRETES, company_id)
             continue
         _ultimo = _n == _MAX_LEMBRETES
 

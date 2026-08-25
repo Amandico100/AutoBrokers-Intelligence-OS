@@ -8881,3 +8881,59 @@ A trava do C11 não segura hoje, e o `xfail` esconde isso.
 - ⚠️ **A não-determinismo já estava no CI:** o `gate.yml` anterior já rodava
   `test_todos_os_guardas_script_rodam.py`. A SPEC-085 não o introduziu — ela o
   tornou visível, e agora ele grita o motivo certo.
+
+## P-232 · 🧑 O ensaio LIVE da SPEC-085 não foi feito — ele escreve, e a trava é SELECT
+
+📊 A SPEC-085 §G.1 pede o ensaio seco ponta a ponta **com a AMANDUS SEGUROS**.
+Ele foi feito como **travessia pura** (`test_o_ensaio_do_destravamento`), que
+percorre os dez pontos e a linha de controle sem banco, sem Redis e sem rede.
+
+🔴 **O que falta é o ensaio contra o tenant de verdade** — um acionamento
+entrando em `needs_human` na AMANDUS, a linha nascendo em `work_runs`, a Fila
+mostrando, uma pessoa assumindo. Isso **escreve**, e a trava da execução é
+*"somente SELECT fora das migrations desta SPEC"*.
+
+Os pontos que dependem de banco não ficaram sem prova: `test_acionamento_sobrevive`
+os exercita com o dublê completo (a linha nasce, sobrevive ao cache limpo, e a
+varredura não a atropela). O que o dublê não prova é o **ambiente**.
+
+- **Destrava:** 🧑 Founder — autorizar a escrita de teste no tenant AMANDUS, ou
+  pedir que ela entre como migration desta SPEC.
+- **Custa se esquecer:** os itens 1, 4 e 5 do §F0.3 (a linha aparece no banco ·
+  dois tenants com mutação · sobrevive ao TTL de 6h) ficam provados só por
+  construção e por dublê. **Nenhum deles está marcado verde no relatório.**
+
+## P-233 · 🤖 `suporte_indisponivel_motivo` fica mascarado, e a corretora perde o porquê
+
+O BLOCO B grava dois campos quando não há destino: `suporte_indisponivel`
+(`ausente` | `recusado` | `envio_falhou`) e `suporte_indisponivel_motivo`, o
+texto. O primeiro está entre as chaves seguras do mascarador; **o segundo não**,
+de propósito — texto livre é mascarado por padrão (fail-closed).
+
+⚠️ Hoje o motivo da recusa não carrega PII (*"destino de suporte compartilhado
+com N outra(s) corretora(s)"*), então mascará-lo é conservador demais. Mas
+abrir texto livre por exceção é como PII volta a passar.
+
+- **Destrava:** 🤖 transformar o motivo num ENUM, em vez de frase — aí ele é
+  seguro por construção e a corretora lê o porquê na tela.
+- **Custa se esquecer:** a tela do BLOCO E diz *"recusado"* sem dizer com quem
+  o destino é compartilhado, e a corretora não sabe o que consertar.
+
+## P-234 · 🤖 O `mirror_conversation_id` pode faltar, e aí o aviso sai sem marcador
+
+`entregar_dossie_uma_vez` usa `session["mirror_conversation_id"]` como chave do
+marcador. Ele vem de `dispatch_mirror`, e **pode não existir**: com
+`DISPATCH_MIRROR=0`, sem entradas novas no transcript, ou se a conversa não
+puder ser criada.
+
+🔴 Nesse caso o dossiê **sai sem marcador** — de propósito: o defeito grave é o
+silêncio, e a repetição é só incômodo. Mas ele pode repetir a cada varredura.
+
+⚠️ **Inventar uma segunda chave é proibido** (§8 da SPEC: "nenhum segundo
+marcador de aviso"), e `reivindicar_o_aviso(None)` gravaria
+`handoff_realerta:None`, uma chave GLOBAL que calaria TODAS as corretoras.
+
+- **Destrava:** 🤖 garantir o `mirror_conversation_id` antes do handoff, ou
+  decidir uma chave canônica alternativa **no mesmo formato**.
+- **Custa se esquecer:** com `DISPATCH_MIRROR=0` o grupo da corretora pode
+  receber o mesmo dossiê a cada passada do Vigia.

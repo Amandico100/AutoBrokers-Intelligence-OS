@@ -137,6 +137,56 @@ export async function GET(_req: NextRequest) {
     });
   }
 
+  // 2b) 🔴 SPEC-085 BLOCO E.1 — O TRAVAMENTO QUE JÁ PASSOU DAS 6h.
+  //
+  // ⚠️ ISTO **SOMA** À FONTE ACIMA. NÃO A SUBSTITUI, e a diferença é o bloco
+  // inteiro: o Redis tem TODO acionamento em voo (`ura`, `human_phase`,
+  // `monitoring`); a linha durável só nasce em `needs_human`. Trocar uma pela
+  // outra tiraria da tela todo acionamento vivo — e esvaziaria o dedup
+  // `dispatchClientPhones` logo acima, fazendo as conversas suprimidas
+  // voltarem DUPLICADAS.
+  //
+  // 📊 O que a linha durável acrescenta é exatamente o que o Redis perde: o
+  // TTL de `dispatch:active:*` é de 6 horas (`dispatch_router.py:66`), e um
+  // travamento mais velho que isso sumia da Fila, do Vigia e de tudo.
+  //
+  // 🔴 E ela lê `output_redacted`, o gêmeo mascarado — nunca o payload.
+  try {
+    const { data: travados } = await supabase
+      .from('work_runs')
+      .select('id, current_step_key, error_code, error_message, created_at, input_payload')
+      .eq('company_id', ctx.companyId)
+      .eq('runtime_kind', 'acionamento')
+      .eq('unblock_state', 'travado')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    for (const run of (travados || []) as any[]) {
+      const caseId = String(run.input_payload?.case_id || '');
+      // Dedup contra a fonte quente: um travamento cuja sessão AINDA está no
+      // Redis já apareceu acima, com o estágio dele. Aqui só entram os que o
+      // cache perdeu.
+      if (dispatches.some((d) => String(d.case_id || '') === caseId)) continue;
+      const insurer = insurerFromRef(run.input_payload?.playbook_ref);
+      const sub = String(run.input_payload?.subservice || '');
+      items.push({
+        key: `travado-${run.id}`,
+        stage: 'precisa_de_voce' as Stage,
+        kind: 'acionamento',
+        titulo: `${SERVICO_LABEL[sub] || sub || 'Assistência'} · ${insurer}`,
+        detalhe: String(run.error_message || 'O acionamento parou e precisa de uma pessoa.'),
+        cliente: null,
+        // ⚠️ Sem telefone: ele viria do payload cru, e esta lista não precisa
+        // dele para a pessoa agir. O que ela precisa está no dossiê.
+        telefone: null,
+        quando: run.created_at,
+        conversa_id: null,
+        protocolo: null,
+      });
+    }
+  } catch {
+    /* a Fila segue com a fonte quente — fail-soft, como o bloco acima */
+  }
+
   // 3) Conversas viram itens (sem duplicar quem já está num acionamento ativo)
   const now = Date.now();
   for (const c of convs || []) {

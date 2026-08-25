@@ -169,3 +169,208 @@ o da sessão, agora em `xfail` com motivo.
 | P-225 | ⚠️ **RE-JUSTIFICADA** | `human_review_tasks` **tem** escritor |
 | P-226 | ⚠️ **cresceu e ficou visível** | cabeçalho e quarentena divergiam (151/14 vs 273/42) — corrigido |
 | P-228 a P-231 | 🆕 | registradas |
+
+---
+
+## FASE 1 · O mascarador — e ele não era "uma linha"
+
+A §F1.1 da SPEC já corrigia a v1: **não faltava uma chamada, faltava o
+mascarador.** 📊 Os quatro do repositório foram lidos e nenhum serve:
+
+| onde | o que faz | por que não serve |
+|---|---|---|
+| `egress_guard.redact_headers` | cabeçalho HTTP | não é PII, é segredo em header |
+| `numero_pareado.mascarar` | `5547*****463` | 🔴 usa `*`, alfabeto de `_CARACTERE_DE_MASCARA` |
+| `billing_collection._mascarar_documento` | `...1234` | privado da cobrança, e só sabe documento |
+| `atlas/templater` | `{VALOR}` em texto | texto corrido, não dicionário tipado |
+
+`pii_da_sessao` consolida **a decisão**, não o algoritmo: ele é o único lugar
+que sabe que `titular_cpf` é documento e `eletrodomestico_opcao` não é PII.
+Reusa o formato `...1234` que o Founder já aceitou, e é **fail-closed** —
+campo desconhecido vira `{TEXTO:n}`.
+
+### 🔴 E a conferência no banco pegou um vazamento MEU
+
+Depois do backfill, medindo sem trazer um valor para a tela:
+
+```
+case_id CONTÉM o telefone do cliente ....... 12 de 12
+comprimento do case_id ..................... 15, sempre
+```
+
+**O `case_id` deste produto é montado a partir do telefone do segurado.** Ele
+tinha cara de identificador técnico e eu o declarei chave segura. ⚠️ **Um
+`assert` sobre a lista de chaves não pegaria isso — só a conferência do DADO
+pegou.** Corrigido, reescrito, e o VERIFY final:
+
+```
+gêmeo com o TELEFONE ..... 0      payload ainda tem CPF ......... 12/12
+gêmeo com o CPF .......... 0      payload mascarado por engano ... 0
+case_id em cauda ......... 12     corredor/serviço/fio .......... 12/12
+```
+
+**F1.4, os guardas ANTES do conserto:** 4 vermelhos de comportamento (*o CPF
+atravessou inteiro · o telefone atravessou · o nome atravessou · o checkpoint
+não grava o gêmeo*) e 6 verdes — que são os **controles**, e passam de
+propósito: eles guardam contra mascarar DEMAIS.
+
+---
+
+## BLOCO A · O travamento deixa de sair como sucesso
+
+A causa era **uma linha**: a reconciliação gravava `completed` fixo para as
+quatro `FASES_ENCERRADAS`. `status_duravel_da_fase` **já** mapeava
+`needs_human → waiting_input`. ⚠️ Tirar `needs_human` da lista seria o conserto
+errado — ela tem três consumidores e o de `registrar_checkpoint` está CERTO.
+
+### 📊 E a forma óbvia do filtro estava errada
+
+```
+sem filtro ......................................... 4 runs
+.not_.like("error_code", "needs_human:%") .......... 0   🔴
+.or_("error_code.is.null,error_code.not.like...") .. 2   ✅
+```
+
+`NOT (NULL LIKE ...)` é NULL, e NULL não passa. **A forma óbvia cega a varredura
+exatamente para os órfãos que ela existe para achar — e não levanta erro
+nenhum.** Só a medição contra o banco pegou.
+
+**E a A.3 tinha uma metade que a SPEC não viu:** o `error_code` também nunca era
+limpo ao CONCLUIR. Achado olhando as quatro linhas do banco.
+
+**migration `20260824_02`**, aplicada. VERIFY, com a linha de controle:
+
+```
+cb6478f5  waiting_input · travado · SEM finished_at · 95% · resumo verdadeiro ✅
+448d3f08  completed · error_code agora NULO · resto intacto                   ✅
+373b8395  cancelled/human_phase   NÃO TOCADO                                  ✅
+e5279497  completed/monitoring    NÃO TOCADO                                  ✅
+```
+
+---
+
+## BLOCO B · As três cadeias, e a terceira é a única com prova
+
+O caminho **C** (o Vigia) é o do `sentinela_stall` — um dos dois `needs_human`
+duráveis da história. **E era o único que nunca falava com o segurado.**
+
+- avisa o segurado, com o texto dependendo do desfecho do dossiê;
+- 🔴 **UMA** implementação do marcador (`entregar_dossie_uma_vez`) para as duas
+  cadeias — a §8 proíbe "um segundo marcador", e duas cópias da mesma regra é
+  isso com outro nome;
+- sem id de conversa, o aviso sai **sem** marcador — nunca
+  `reivindicar_o_aviso(None)`, que gravaria `handoff_realerta:None`, uma chave
+  **global** que calaria o handoff de TODAS as corretoras;
+- `ausente` · `recusado` · `envio_falhou` são **três** estados, porque dão
+  instruções opostas à corretora;
+- o dossiê para de dizer *"ele JÁ foi avisado"* quando o envio estourou.
+
+**CONTROLE:** os quatro alertas não-handoff do Vigia continuam saindo.
+
+---
+
+## BLOCO C · Primeiro exista o colega, depois se promete o colega
+
+O aviso ao segurado **desceu para depois do dossiê**. ⚠️ A ordem não é estilo:
+avisar primeiro obriga a escolher a frase antes de saber o que aconteceu, e a
+única frase possível aí é a otimista.
+
+A frase de FALHA passa por `afirma_transferencia` — o fiscal do caminho A —
+**no gate**, que é onde um regex sobre constante serve para alguma coisa.
+
+---
+
+## BLOCO D · De uma família para as dezesseis
+
+📊 A condição era `reason == "insurer_closed"`. Das 16 famílias, **uma** tinha
+retomada. A regra que faltava é de negócio, e é uma frase:
+
+> **Retomar só vale quando A CAUSA PODE TER MUDADO.**
+
+| veredito | famílias |
+|---|---|
+| **retoma** | `insurer_closed` · `formulario_envio_falhou` |
+| **direto ao humano** | `missing_slots` · `sem_chute` · `handoff_trigger` · `human_phase_guard` · `sentinela_stall` · `confirmacao_bloqueada` · `encaminhamento_sem_link` · `formulario_incompleto` · `formulario_nativo_desconhecido` |
+| **não retoma** (falta conserto) | `conferencia_divergente` · `loop_guard` · `playbook_not_found` · `formulario_pronto_sem_flow_token` · `formulario_pronto_sem_transporte` |
+
+🔴 **O padrão é `direto_ao_humano`.** Família nova sem veredito **quebra a
+suíte** — o gate cobra o comando, não o texto.
+
+⚠️ **E o BLOCO D NÃO é "ressuscitar depois das 6h".** Isso já foi julgado e
+recusado, por escrito, em `reconciliar_acionamentos_orfaos`, com o incidente da
+"sessão zumbi" de 12/07 atrás.
+
+**O CONTROLE POSITIVO**, que o gate exige em letras maiúsculas: uma família
+retomável retoma **uma** vez e não retoma duas; com protocolo capturado não
+retoma nunca.
+
+---
+
+## BLOCOS E e F · A tela que destrava, e o `release` que parou de apagar
+
+📊 O produto não tinha destravamento de acionamento: `dispatch_monitor.py` com
+52 linhas e só GET, a página do admin em leitura pura, e **zero** eventos de
+retomada em 26.803.
+
+`POST /api/dashboard/acionamentos-travados` com **dois botões e não mais que
+dois**. `assumir` é atômico (409 se outra pessoa chegou primeiro); `arquivar`
+exige motivo escrito.
+
+🔴 **A tela lê `output_redacted`, nunca `output_summary`** — e há guarda para
+isso nos dois arquivos. É para isso que a FASE 1 criou a coluna.
+
+**E.1, a armadilha:** a linha durável **SOMA** à fonte Redis. Substituir tiraria
+da tela todo acionamento EM VOO e esvaziaria o dedup por telefone, fazendo as
+conversas suprimidas voltarem duplicadas. Há controle para os dois.
+
+**F.1, a escolha (b) — 90/100 contra 55/100:** `claimed_by` **já existe e já é
+escrita** pelo `claim`. `HUMAN_REQUESTED + claimed_by NULL` = a IA pediu;
+`+ claimed_by` = alguém assumiu. Zero migration, expand-first por natureza.
+
+**F.2:** o select do Vigia nem pedia a coluna. Agora pede **e filtra**.
+
+**E.4 / F.3 são o mesmo conserto:** o `release` devolvia sempre para `open`, e o
+pedido sumia da Fila e do Vigia. Era o que tornava **mentira** a última
+mensagem do Vigia — *"ela continua na Fila do painel, de lá ninguém a tira
+sozinho"*. Agora, com handoff aberto, ele volta para a fila.
+
+---
+
+## BLOCO G · O ensaio, e a linha de controle
+
+O roteiro roda **duas vezes** — entrando por `missing_slots` (caminho B) e por
+`sentinela_stall` (caminho C). Sem a segunda, dá para fechar o ensaio verde
+tendo pulado o B.0 inteiro.
+
+🔴 **G.2, e é metade do arquivo:** a travessia do `e5279497` — o único
+acionamento ponta a ponta da história — não pode produzir marca nenhuma. E há
+o controle do controle: `decidir_travamento` **consegue** marcar, senão o
+anterior passaria com o produto morto.
+
+⚠️ **O que o ensaio NÃO prova, dito na cara:** o ensaio **live** contra o tenant
+da AMANDUS, com linhas de verdade no banco, **não foi feito** — ele escreve, e a
+trava é SELECT. Ele precisa do Founder. Os pontos que dependem de banco estão
+provados por `test_acionamento_sobrevive`, com o dublê completo.
+
+**G.4:** `test_handoff_chega_em_alguem` está **verde e fora da quarentena**.
+📊 As duas asserções eram **vencidas**, não defeito de produto: uma procurava o
+literal *"Não consegui abrir a transferência"* (hoje a constante
+`FALHA_DO_HANDOFF`), a outra o rótulo *"Últimas mensagens"* (que a reescrita do
+dossiê de 14/08 substituiu por `*CONVERSA*`).
+
+---
+
+## 🔴 Os defeitos que EU introduzi, e como cada um foi pego
+
+Ficam registrados porque a SPEC pede separar fato de inferência — e porque um
+relatório que só conta acertos ensina a confiar demais no próximo.
+
+| defeito meu | como foi pego | onde está documentado |
+|---|---|---|
+| `case_id` declarado seguro, e ele carrega o telefone | **conferência do DADO**, não do código | `pii_da_sessao`, no comentário de `_CHAVES_SEGURAS` |
+| o gêmeo dentro do `try` grande: um import falho derrubava o espelho durável inteiro | `test_acionamento_sobrevive` foi de 16 problemas para 2 | `dispatch_router`, antes de `redigido = ...` |
+| a seam de envio nasceu **síncrona**, com `run_until_complete` dentro de um loop que já roda | revisão do meu próprio diff, antes de rodar | `entregar_dossie_uma_vez`, no docstring |
+| `work_events` com três nomes de coluna errados, dentro de um `catch` mudo | conferência do schema | a rota, em `registrarEvento` |
+| guardas estáticos lendo **comentário e docstring** — reprovaram consertos que existiam | os próprios guardas ficaram vermelhos | `_bloco` exige âncora ÚNICA; `_sem_comentario` tira docstring |
+| a acusação de vazamento culpava **inocentes** | linha de controle: os três acusados passam sozinhos | meta-guarda, em "A PRIMEIRA VERSÃO DISTO ACUSAVA INOCENTE" |
+| `monitoring != waiting_input` no meu próprio controle | o teste ficou vermelho e o motor estava certo | o ensaio, no `test_CONTROLE_o_acionamento_que_DEU_CERTO` |

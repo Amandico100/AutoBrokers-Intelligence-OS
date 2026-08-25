@@ -69,17 +69,67 @@ def r1_o_protocolo_sozinho_ja_avisa() -> None:
 
 
 def r2_nao_reaciona_o_que_ja_esta_aberto() -> None:
-    fonte = (RAIZ / "app/services/dispatch_router.py").read_text(encoding="utf-8")
-    # A condição está partida em três linhas — recorto do `if` até o corpo dele,
-    # em vez de contar caracteres para trás (que pegava o comentário e não o
-    # código, e o comentário cita o protocolo sem ser a regra).
-    i = fonte.index('if (reason == "insurer_closed"')
-    bloco = fonte[i:fonte.index("await clear_active_dispatch", i) + 30]
+    """🔴 ASSERCAO ATUALIZADA — SPEC-085 BLOCO D, 24/08/2026.
+
+    Ela recortava o bloco a partir de `if (reason == "insurer_closed"` no
+    `dispatch_router`. Aquela condicao cobria UMA das dezesseis familias de
+    motivo; o BLOCO D a generalizou para `pode_retomar(session)`, no nucleo
+    PURO, e o literal deixou de existir.
+
+    ⚠️ A REGRA NAO MUDOU, e e' ela que este guarda protege: **com protocolo
+    capturado, nao se reabre**. O que mudou foi o ENDERECO dela — e agora da'
+    para exercita-la de verdade, em vez de procurar um texto no fonte.
+
+    `CLAUDE.md` §9.3: quando um fato muda, o teste muda com ele, e a licao
+    migra em vez de morrer. Aqui ela migrou E MELHOROU: de `grep` para chamada.
+    """
+    motor = _carregar_motor()
+    sem_protocolo = {"reason": "insurer_closed", "retry_count": 0, "captured": {}}
+    com_protocolo = {"reason": "insurer_closed", "retry_count": 0,
+                     "captured": {"protocol": "ABC123"}}
     checar(
-        'not (session.get("captured") or {}).get("protocol")' in bloco,
-        "a retomada automatica so roda se NAO houver protocolo",
-        "com protocolo, reabrir manda um SEGUNDO prestador",
+        motor.pode_retomar(sem_protocolo) is True,
+        "a retomada automatica roda quando NAO ha protocolo",
+        "sem o controle positivo, o guarda abaixo passa com a retomada morta",
     )
+    checar(
+        motor.pode_retomar(com_protocolo) is False,
+        "e NAO roda quando o protocolo ja foi capturado",
+        "com protocolo, reabrir manda um SEGUNDO prestador: o segurado recebe "
+        "dois, a corretora responde por dois, a seguradora ve duplicidade",
+    )
+    checar(
+        motor.pode_retomar({"reason": "insurer_closed", "retry_count": 1,
+                            "captured": {}}) is False,
+        "e o teto de UMA tentativa continua de pe",
+    )
+
+
+def _carregar_motor():
+    """O motor sem passar por `app.services.__init__`, que puxa `fastembed`.
+    📊 O `gate.yml` nao roda `pip install`."""
+    import importlib.util
+    import sys
+    import types
+
+    anteriores = {n: sys.modules.get(n) for n in ("app", "app.services")}
+    injetados = [n for n in anteriores if n not in sys.modules]
+    try:
+        for n in injetados:
+            m = types.ModuleType(n)
+            m.__path__ = [str(RAIZ / n.replace(".", "/"))]
+            sys.modules[n] = m
+        caminho = RAIZ / "app/services/insurer_dispatch_service.py"
+        spec = importlib.util.spec_from_file_location("_ciclo_motor", str(caminho))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    finally:
+        for n in injetados:
+            if anteriores.get(n) is None:
+                sys.modules.pop(n, None)
+            else:
+                sys.modules[n] = anteriores[n]
 
 
 def r5b_ma_noticia_tambem_passa() -> None:

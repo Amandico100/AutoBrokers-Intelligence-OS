@@ -123,6 +123,22 @@ class Consulta:
     def lt(self, c, v):
         return self
 
+    def is_(self, c, v):
+        """PostgREST `col=is.null` — SPEC-085 BLOCO F.2.
+
+        🔴 O dublê aprendeu isto porque o Vigia passou a FILTRAR por
+        `claimed_by is null`. `HUMAN_REQUESTED` significa duas coisas opostas
+        neste produto — *"a IA pediu um humano"* e *"um humano JA assumiu"* — e
+        `claimed_by` e' a coluna que as separa. O select nem a pedia.
+
+        ⚠️ Sem conhecer o filtro, o dublê levantava `AttributeError`, o
+        `try/except` do Vigia engolia, e a varredura devolvia ZERO conversas:
+        📊 o guarda do teto media "no maximo QUATRO avisos" e recebia **0** —
+        vermelho por ignorancia do dublê, nao por defeito do produto.
+        """
+        self.f["__is"] = (c, str(v))
+        return self
+
     def in_(self, c, vals):
         self.f["__in"] = list(vals)
         return self
@@ -138,7 +154,19 @@ class Consulta:
             pass
         r = R()
         if self.t == "conversations":
-            r.data = list(self.b.conversas)
+            linhas = list(self.b.conversas)
+            # 🔴 O filtro `is.null` aplicado de VERDADE: uma conversa ja'
+            # assumida (com `claimed_by`) sai da varredura, que e' o conserto
+            # do BLOCO F.2. Um dublê que ignorasse isso deixaria o teste
+            # aprovar um Vigia que continua cobrando quem ja' tem dono.
+            alvo = self.f.get("__is")
+            if alvo:
+                coluna, valor = alvo
+                if valor == "null":
+                    linhas = [c for c in linhas if c.get(coluna) is None]
+                else:
+                    linhas = [c for c in linhas if c.get(coluna) is not None]
+            r.data = linhas
         else:
             if self.b.mensagens_estouram:
                 raise RuntimeError("leitura de mensagens falhou")

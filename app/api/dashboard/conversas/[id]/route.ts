@@ -12,7 +12,9 @@ export const dynamic = 'force-dynamic';
  * POST → { action: 'claim' | 'release' | 'close' | 'send', text? }
  *   - claim:   assume o atendimento (atômico — 409 se outro humano já assumiu).
  *              status vira HUMAN_REQUESTED (IA pausa; webhook já respeita).
- *   - release: devolve ao atendente IA (status open, claim limpo).
+ *   - release: solta o claim. 🔴 Com handoff ABERTO volta para HUMAN_REQUESTED
+ *              (a fila), não para `open` — senão o pedido da IA some da Fila e
+ *              do Vigia, e o segurado vira problema de ninguém (SPEC-085 E.4).
  *   - close:   encerra a conversa.
  *   - send:    envia como humano (persiste + entrega no WhatsApp). Auto-claim
  *              se ninguém assumiu; 409 se OUTRO humano é o dono.
@@ -25,7 +27,7 @@ function internalKey(): string | null {
 async function loadScoped(supabase: ReturnType<typeof getSupabaseAdmin>, id: string, companyId: string) {
   const { data } = await supabase
     .from('conversations')
-    .select('id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name')
+    .select('id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, human_handoff_reason, resolvido_em')
     .eq('id', id)
     .eq('company_id', companyId)
     .maybeSingle();
@@ -103,13 +105,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (action === 'release') {
+    // 🔴 SPEC-085 BLOCO E.4 / F.3 — O `release` DEIXA DE APAGAR O PEDIDO.
+    //
+    // Ele devolvia SEMPRE para `open`. Quando a IA tinha pedido um humano e a
+    // pessoa devolvia sem resolver, o pedido sumia: a conversa saía do filtro
+    // `precisa_de_voce` da Fila **e** do select do Vigia, que procura
+    // `status = 'HUMAN_REQUESTED'`. O segurado voltava a ser problema de
+    // ninguém, e nenhum alarme sabia disso.
+    //
+    // ⚠️ E era o que tornava MENTIRA a última mensagem do Vigia: *"ela continua
+    // na Fila do painel — de lá ninguém a tira sozinho."* Tirava.
+    //
+    // 🔴 A regra é por DADO, não por estado novo (§F.1, saída (b)):
+    //
+    //   handoff ABERTO   (`human_handoff_reason` e sem `resolvido_em`)
+    //        → volta para HUMAN_REQUESTED **com `claimed_by` nulo**, que é
+    //          exatamente "a IA pediu e ninguém assumiu" — a fila de novo.
+    //   sem handoff aberto
+    //        → `open`, como sempre. Uma pessoa que só entrou para dar um oi
+    //          não deve criar um pedido de atendimento ao sair.
+    const handoffAberto = Boolean(conversation.human_handoff_reason) && !conversation.resolvido_em;
     const { error } = await supabase
       .from('conversations')
-      .update({ status: 'open', claimed_by: null, claimed_by_name: null, claimed_at: null })
+      .update({
+        status: handoffAberto ? 'HUMAN_REQUESTED' : 'open',
+        claimed_by: null,
+        claimed_by_name: null,
+        claimed_at: null,
+      })
       .eq('id', id)
       .eq('company_id', ctx.companyId);
     if (error) return NextResponse.json({ error: 'Erro ao devolver ao atendente IA' }, { status: 500 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, volta_para_a_fila: handoffAberto });
   }
 
   if (action === 'close') {
