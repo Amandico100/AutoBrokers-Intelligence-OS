@@ -35,7 +35,7 @@ import re
 import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.services.insurer_dispatch_service import (
     build_handoff_dossier,
@@ -483,8 +483,15 @@ async def _garantir_work_run(db, company_id: str, insurer_digits: str,
     return run_id
 
 
+#: Os únicos valores que `work_events.actor_type` aceita — há CHECK no banco.
+#: ⚠️ `human` **não está** aqui: escrever esse valor é um INSERT que o Postgres
+#: recusa, e um evento que nunca acontece.
+ATORES_VALIDOS = ("system", "worker", "user", "agent", "admin", "provider")
+
+
 async def _evento(db, company_id: str, run_id: str, tipo: str, mensagem: str, *,
-                  severidade: str = "info", payload: Optional[Dict[str, Any]] = None) -> None:
+                  severidade: str = "info", payload: Optional[Dict[str, Any]] = None,
+                  ator: str = "system") -> None:
     """Linha do tempo do Work Run. Sem dado do segurado: quem guarda o conteúdo
     da conversa é o Espelho, e `payload_redacted` tem esse nome por um motivo."""
     try:
@@ -492,7 +499,7 @@ async def _evento(db, company_id: str, run_id: str, tipo: str, mensagem: str, *,
             "company_id": str(company_id),
             "work_run_id": run_id,
             "event_type": tipo,
-            "actor_type": "system",
+            "actor_type": ator if ator in ATORES_VALIDOS else "system",
             "severity": severidade,
             "message_human": str(mensagem)[:1000],
             "payload_redacted": payload or {},
@@ -502,7 +509,116 @@ async def _evento(db, company_id: str, run_id: str, tipo: str, mensagem: str, *,
                        tipo, type(e).__name__)
 
 
-def decidir_travamento(fase: str, fase_anterior: str) -> Optional[str]:
+#: Quem, nesta casa, pode destravar um acionamento. 🔴 A ORDEM É A DE
+#: CRÉDITO: o humano vence todos, porque foi ele quem fez o trabalho.
+#:
+#: 📊 Medido em 25/08/2026: `work_runs.assumido_por_humano` = **0** e
+#: `work_events` com ator humano = **0** em 27.985 eventos. O clique da atendente
+#: no WhatsApp dela não deixava rastro nenhum — e a fase seguinte era creditada
+#: ao robô por `retomado_pelo_robo`.
+DESTRAVADORES = ("humano", "cerebro", "sentinela", "vigia", "robo")
+
+#: `work_events.actor_type` tem CHECK no banco e só aceita estes seis:
+#: `system | worker | user | agent | admin | provider`. ⚠️ `human` **não está na
+#: lista** — escrever esse valor é um evento que nunca acontece.
+_ATOR_DO_DESTRAVADOR = {
+    "humano": "user",
+    "cerebro": "agent",
+    "sentinela": "agent",
+    "vigia": "agent",
+    "robo": "system",
+}
+
+
+def tela_do_travamento(session: Dict[str, Any]) -> str:
+    """PURO. Em que TELA da URA o acionamento parou.
+
+    📊 Medido em produção: `reason` guarda a tela no próprio nome —
+    `missing_slots:problema_eletrico_opcao`, e `problema_eletrico_opcao` **é** a
+    tela. Quando o motivo não nomeia tela (`sentinela_stall`, `insurer_closed`),
+    a última chave de `step_counts` é a tela em que se estava.
+
+    ⚠️ `step_counts` só serve **na sessão viva**: dicionário Python preserva a
+    ordem de inserção, `jsonb` do Postgres **não** (reordena por tamanho e byte).
+    Por isso a tela vai no payload do evento, escrita aqui — e não é deduzida
+    depois lendo a coluna.
+    """
+    motivo = str(session.get("reason") or "")
+    if motivo.startswith("missing_slots:"):
+        tela = motivo.split(":", 1)[1].strip()
+        if tela:
+            return tela[:120]
+    passos = session.get("step_counts")
+    if isinstance(passos, dict) and passos:
+        return str(list(passos)[-1])[:120]
+    return ""
+
+
+def eventos_do_travamento(fase: str, fase_anterior: str,
+                          session: Dict[str, Any], *,
+                          segundos_travado: Optional[int] = None) -> List[Dict[str, Any]]:
+    """PURO. Que linhas de `work_events` esta transição de fase gera.
+
+    🔴 **UM EVENTO POR TRAVAMENTO, NÃO UM ESTADO POR RUN** — e essa é a
+    diferença inteira do BLOCO C.
+
+    📊 `work_runs.unblock_state` é **uma coluna**: um acionamento que trava,
+    destrava e trava de novo tem um só valor no fim, e as duas primeiras vezes
+    somem. A pergunta *"quantas vezes travou hoje"* não tem resposta possível a
+    partir de uma coluna que só guarda o último estado.
+
+    PURA pelo mesmo motivo de `decidir_travamento`: dá para percorrer as famílias
+    de travamento sem banco, sem Redis e sem rede. Quem escreve é
+    `_marcar_travamento`; quem **decide** é esta função.
+
+    ⚠️ O `por` sai de `session["destravado_por"]`, que o humano
+    (`note_manual_outbound`), o Cérebro e o Sentinela marcam. Sem marca nenhuma
+    o crédito é do robô — que continua sendo verdade quando a URA volta a falar
+    sozinha.
+    """
+    rota = str(session.get("playbook_ref") or "")[:180]
+    tela = tela_do_travamento(session)
+    eventos: List[Dict[str, Any]] = []
+
+    if fase == "needs_human" and fase_anterior != "needs_human":
+        eventos.append({
+            "tipo": "travamento.aberto",
+            "ator": "system",
+            "severidade": "warning",
+            "mensagem": ("O acionamento parou e precisa de uma pessoa da "
+                         f"corretora. Tela: {tela or 'não identificada'}."),
+            "payload": {
+                "rota": rota, "tela": tela,
+                "motivo": str(session.get("reason") or "")[:180],
+                "fase_anterior": str(fase_anterior or ""),
+            },
+        })
+
+    if fase_anterior == "needs_human" and fase and fase != "needs_human":
+        por = str(session.get("destravado_por") or "robo")
+        if por not in DESTRAVADORES:
+            por = "robo"
+        carga: Dict[str, Any] = {
+            "rota": rota, "tela": tela, "por": por, "fase": str(fase),
+        }
+        canal = str(session.get("canal_do_destrave") or "")
+        if canal:
+            carga["canal"] = canal
+        if segundos_travado is not None:
+            carga["segundos_travado"] = int(segundos_travado)
+        eventos.append({
+            "tipo": "travamento.destravado",
+            "ator": _ATOR_DO_DESTRAVADOR.get(por, "system"),
+            "severidade": "info",
+            "mensagem": f"Acionamento destravado por: {por}.",
+            "payload": carga,
+        })
+
+    return eventos
+
+
+def decidir_travamento(fase: str, fase_anterior: str, *,
+                       destravado_por: Optional[str] = None) -> Optional[str]:
     """PURO. O travamento mudou de estado nesta transição de fase? — SPEC-085 F0.
 
     Devolve o novo `work_runs.unblock_state`, ou `None` quando nada mudou.
@@ -531,11 +647,102 @@ def decidir_travamento(fase: str, fase_anterior: str) -> Optional[str]:
     # devolver o caso a `ura` sozinha. Isso É um destravamento, e até hoje não
     # deixava rastro nenhum.
     if fase_anterior == "needs_human" and fase:
+        # 🔴 BLOCO C.1 — A CONDIÇÃO A MAIS, E ELA CONSERTA UMA MENTIRA.
+        #
+        # 📊 Medido em 25/08/2026: `note_manual_outbound` só tocava no Redis.
+        # A atendente respondia a seguradora pelo WhatsApp dela, a fase saía de
+        # `needs_human`, e **o robô levava o crédito**. Zero linhas duráveis
+        # diziam que uma pessoa tinha trabalhado ali.
+        #
+        # ⚠️ `robo` explícito continua valendo como robô: a URA voltando a falar
+        # sozinha **é** retomada pelo robô, e apagar isso trocaria uma mentira
+        # por outra.
+        if destravado_por and destravado_por != "robo":
+            return None
         return "retomado_pelo_robo"
     return None
 
 
-async def _marcar_travamento(db, run_id: str, fase: str, fase_anterior: str) -> None:
+async def _gravar_eventos_de_travamento(db, company_id: str, run_id: str,
+                                        fase: str, fase_anterior: str,
+                                        session: Dict[str, Any]) -> None:
+    """IO. Escreve o que `eventos_do_travamento` decidiu — e cuida do relógio.
+
+    🔴 Best-effort de propósito: contar travamento nunca pode derrubar o
+    acionamento que está travando. Mas sai como ERROR, porque sem esta linha
+    duas semanas de piloto produzem **zero** linhas sobre onde o produto falha.
+
+    ⚠️ `travado_desde` e `destravado_por` são escritos NA SESSÃO, in place —
+    a mesma forma que `session["_checkpoint_fase"]` usa doze linhas abaixo, e
+    pelo mesmo motivo: quem salva a sessão é o chamador.
+    """
+    agora = _agora()
+    segundos = None
+    desde = str(session.get("travado_desde") or "")
+    if desde and fase_anterior == "needs_human":
+        try:
+            segundos = max(0, int((agora - datetime.fromisoformat(desde)).total_seconds()))
+        except Exception:  # noqa: BLE001 — relógio ruim não apaga o evento
+            segundos = None
+
+    eventos = eventos_do_travamento(fase, fase_anterior, session,
+                                    segundos_travado=segundos)
+    for ev in eventos:
+        try:
+            await _evento(db, company_id, run_id, ev["tipo"], ev["mensagem"],
+                          severidade=ev["severidade"], payload=ev["payload"],
+                          ator=ev["ator"])
+        except Exception as e:  # noqa: BLE001
+            logger.error("[TRAVAMENTO] evento '%s' do run %s NÃO gravado (%s) — "
+                         "este travamento não vai ser contado",
+                         ev["tipo"], run_id, type(e).__name__)
+
+    if fase == "needs_human" and fase_anterior != "needs_human":
+        session["travado_desde"] = agora.isoformat()
+    if fase_anterior == "needs_human" and fase and fase != "needs_human":
+        # O crédito vale para ESTE destravamento. Um travamento seguinte começa
+        # sem dono — senão o humano de hoje levaria o crédito de amanhã.
+        session["destravado_por"] = None
+        session["canal_do_destrave"] = None
+        session["travado_desde"] = None
+
+
+async def registrar_ato_do_agente(company_id: str, session: Dict[str, Any], *,
+                                  agente: str, mensagem: str,
+                                  payload: Optional[Dict[str, Any]] = None) -> bool:
+    """O que o Cérebro, o Sentinela e o Vigia fizeram — em linha durável.
+
+    🔴 BLOCO C.3. 📊 Hoje só existe `beat("cerebro")` no Redis: um pulso, sem
+    caso, sem rota, sem tela e sem histórico. O Founder pediu *"quero ver o
+    desempenho do Vigia, Sentinela e do Cérebro"* — e **dois dos três são
+    inauditáveis**.
+
+    ⚠️ Best-effort e sem PII: quem guarda o conteúdo da conversa é o Espelho.
+    Aqui vai o que uma pessoa precisa para julgar desempenho — qual agente, em
+    que rota, em que tela.
+    """
+    run_id = str(session.get("work_run_id") or "")
+    if not run_id or not company_id:
+        return False
+    try:
+        db = await _db()
+        if db is None:
+            return False
+        carga = dict(payload or {})
+        carga.setdefault("agente", agente)
+        carga.setdefault("rota", str(session.get("playbook_ref") or "")[:180])
+        carga.setdefault("tela", tela_do_travamento(session))
+        await _evento(db, company_id, run_id, f"agente.{agente}", mensagem,
+                      payload=carga, ator="agent")
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[AGENTE %s] ato não registrado (%s)", agente, type(e).__name__)
+        return False
+
+
+async def _marcar_travamento(db, run_id: str, fase: str, fase_anterior: str,
+                             company_id: str = "",
+                             session: Optional[Dict[str, Any]] = None) -> None:
     """IO. Aplica a decisão de `decidir_travamento` sem pisar em decisão humana.
 
     🔴 Os dois filtros são a parte que importa, e não são estilo:
@@ -553,8 +760,23 @@ async def _marcar_travamento(db, run_id: str, fase: str, fase_anterior: str) -> 
     porque sem esta linha o travamento volta a ser invisível, que é o defeito
     inteiro desta SPEC.
     """
-    novo = decidir_travamento(fase, fase_anterior)
-    if not novo or not run_id:
+    novo = decidir_travamento(fase, fase_anterior,
+                              destravado_por=str(session.get("destravado_por") or "")
+                              if session else None)
+    if not run_id:
+        return
+
+    # 🔴 BLOCO C.2 — OS EVENTOS SAEM MESMO QUANDO A COLUNA NÃO MUDA.
+    #
+    # ⚠️ E é exatamente esse o furo que o bloco fecha: um run que trava, destrava
+    # e trava de novo passa duas vezes por aqui com `novo == "travado"`, e a
+    # SEGUNDA não muda coluna nenhuma (o filtro `IS NULL` a barra, e com razão).
+    # Se os eventos dependessem de `novo`, o segundo travamento seria invisível.
+    if session is not None:
+        await _gravar_eventos_de_travamento(db, company_id, run_id, fase,
+                                            fase_anterior, session)
+
+    if not novo:
         return
     try:
         q = db.client.table("work_runs").update({"unblock_state": novo}).eq("id", run_id)
@@ -703,7 +925,8 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
 
         await _marcar_travamento(db, run_id, fase,
-                                 str(session.get("_checkpoint_fase") or ""))
+                                 str(session.get("_checkpoint_fase") or ""),
+                                 company_id=str(company_id), session=session)
 
         if fase != str(session.get("_checkpoint_fase") or ""):
             await _evento(db, company_id, run_id, "step.completed",
@@ -1033,7 +1256,8 @@ async def _reconciliar_um(db, run: Dict[str, Any], resumo: Dict[str, int]) -> No
         # `error_code` reabre. Acidente não é guarda.
         await db.client.table("work_runs").update(campos).eq("id", run_id).execute()
         if final != "completed":
-            await _marcar_travamento(db, run_id, fase, "")
+            await _marcar_travamento(db, run_id, fase, "",
+                                     company_id=str(company_id or ""), session=entrada)
         resumo["encerrados"] += 1
         return
 
@@ -1653,17 +1877,113 @@ async def _start_next_in_queue(
     logger.info(f"[DISPATCH ROUTER] queue drained -> started={result.get('ok')}")
 
 
-async def note_manual_outbound(company_id: str, insurer_phone: str, text: str) -> bool:
-    """Registra no transcript uma mensagem MANUAL da corretora (humano clicou/
-    digitou direto na conversa com a seguradora — fromMe). Sem isso o espelho
-    fica incompleto quando um humano copilota a URA (teste 2026-07-12)."""
+#: `work_runs.unblock_state` quando uma pessoa assume o caso. 🔴 O VALOR É
+#: ESTE, e não um nome novo, por três razões medidas:
+#:
+#: 1. 📊 o CHECK do banco (`work_runs_unblock_state_check`) aceita exatamente
+#:    `travado | retomado_pelo_robo | assumido_por_humano | resolvido |
+#:    abandonado`. Um sexto valor é um INSERT recusado — o clique não gravaria;
+#: 2. 📊 o botão *assumir* do painel (`acionamentos-travados/route.ts:162`) já
+#:    escreve este mesmo valor. É **o mesmo ato**, por outro canal;
+#: 3. 📊 o botão *arquivar* filtra `.in_(['travado','assumido_por_humano'])`.
+#:    Um valor novo faria o caso **sumir da Fila** — exatamente o defeito que
+#:    esta SPEC existe para matar.
+ASSUMIDO_POR_HUMANO = "assumido_por_humano"
+
+
+async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
+                               *, canal: str = "whatsapp") -> bool:
+    """Uma pessoa da corretora falou com a seguradora — e agora o produto SABE.
+
+    Registra no transcript a mensagem MANUAL (humano clicou/digitou direto na
+    conversa com a seguradora — `fromMe`). Sem isso o espelho fica incompleto
+    quando um humano copilota a URA (teste 2026-07-12).
+
+    ## 🔴 BLOCO C.1 — O CLIQUE DELA PARA DE SER CREDITADO AO ROBÔ
+
+    📊 Medido em 25/08/2026, no banco de produção:
+
+    ```
+    work_runs com unblock_state = 'assumido_por_humano' ....  0
+    work_events com ator humano em 27.985 eventos ..........  0
+    work_steps com marca `manual` ..........................  0
+    ```
+
+    Esta função tocava **só no Redis**. A atendente respondia a seguradora pelo
+    WhatsApp dela, o caso saía de `needs_human`, e `decidir_travamento` gravava
+    `retomado_pelo_robo`: **o robô levava o crédito do trabalho dela.** Duas
+    semanas de piloto produziriam zero linhas sobre quanto trabalho humano o
+    produto ainda custa.
+
+    ⚠️ **Sem tela e sem fluxo novo.** Ela continua clicando no WhatsApp dela. O
+    que muda é só que o produto passa a saber.
+
+    ## As três escritas, e por que a ordem é esta
+
+    1. a marca na SESSÃO — é ela que `decidir_travamento` vai olhar no próximo
+       checkpoint, e sem ela o crédito volta para o robô;
+    2. `work_runs.unblock_state` — **só onde está `travado`**, nunca por cima de
+       `resolvido` ou `abandonado`. Mesmo filtro atômico do botão do painel: se
+       outra pessoa assumiu primeiro, esta escrita não pisa nela;
+    3. `work_events` — a linha do tempo, com o canal. A coluna diz o estado de
+       agora; a linha do tempo responde *"quem assumiu, e quando?"*.
+
+    🔴 As duas últimas são **best-effort**: falhar em registrar nunca pode
+    desfazer o espelho, que é o que a função já fazia bem. Mas falham **alto**.
+    """
     session = await load_active_dispatch(company_id, insurer_phone)
     if not session or not str(text or "").strip():
         return False
     session.setdefault("transcript", []).append(
-        {"direction": "out", "text": str(text)[:2000], "manual": True}
+        {"direction": "out", "text": str(text)[:2000], "manual": True,
+         "at": _agora().isoformat(), "via": "humano"}
     )
+    # (1) A MARCA. Ela viaja na sessão até o próximo checkpoint, e é o que impede
+    #     `retomado_pelo_robo` de mentir sobre quem trabalhou.
+    session["destravado_por"] = "humano"
+    session["canal_do_destrave"] = str(canal or "whatsapp")[:40]
+    session["assumido_por_humano_em"] = _agora().isoformat()
     await save_active_dispatch(company_id, insurer_phone, session)
+    await _registrar_assuncao_humana(company_id, session, canal=canal)
+    return True
+
+
+async def _registrar_assuncao_humana(company_id: str, session: Dict[str, Any],
+                                     *, canal: str) -> bool:
+    """IO do C.1: a coluna e a linha do tempo. Best-effort, mas nunca calado."""
+    run_id = str(session.get("work_run_id") or "")
+    if not run_id or not company_id:
+        return False
+    db = await _db()
+    if db is None:
+        return False
+    assumiu = False
+    try:
+        # 🔴 O `.eq('unblock_state','travado')` é o que impede esta escrita de
+        # pisar em quem assumiu antes — mesma escolha atômica do botão do painel.
+        r = await (db.client.table("work_runs")
+                   .update({"unblock_state": ASSUMIDO_POR_HUMANO,
+                            "updated_at": _agora().isoformat()})
+                   .eq("id", run_id).eq("company_id", str(company_id))
+                   .eq("unblock_state", "travado").execute())
+        assumiu = bool(getattr(r, "data", None))
+    except Exception as e:  # noqa: BLE001
+        logger.error("[TRAVAMENTO] run %s NÃO recebeu '%s' (%s) — o trabalho "
+                     "desta pessoa vai ser creditado ao robô",
+                     run_id, ASSUMIDO_POR_HUMANO, type(e).__name__)
+    try:
+        await _evento(
+            db, str(company_id), run_id, "travamento.assumido",
+            "Uma pessoa da corretora respondeu à seguradora e assumiu este caso.",
+            payload={"por": "humano", "canal": str(canal or "whatsapp")[:40],
+                     "rota": str(session.get("playbook_ref") or "")[:180],
+                     "tela": tela_do_travamento(session),
+                     "estava_travado": assumiu},
+            ator="user")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[TRAVAMENTO] assunção humana do run %s sem linha do tempo "
+                     "(%s)", run_id, type(e).__name__)
+        return assumiu
     return True
 
 
@@ -1815,6 +2135,22 @@ async def try_route_insurer_inbound(
                 await beat("cerebro", 1)
             except Exception:  # noqa: BLE001
                 pass
+            # 🔴 BLOCO C.3 — O PULSO NÃO É RASTRO.
+            #
+            # 📊 `beat("cerebro")` é um número no Redis: sem caso, sem rota, sem
+            # tela e sem histórico. O Founder pediu *"quero ver o desempenho do
+            # Vigia, Sentinela e do Cérebro"* — e dois dos três eram
+            # inauditáveis. Aqui a redação vira linha durável.
+            #
+            # ⚠️ E quando a fase anterior era `needs_human`, foi o Cérebro que
+            # destravou: a marca faz o evento de destrave dizer `cerebro`, em
+            # vez do `robo` genérico.
+            if str(session.get("_checkpoint_fase") or "") == "needs_human":
+                session["destravado_por"] = "cerebro"
+            await registrar_ato_do_agente(
+                company_id, session, agente="cerebro",
+                mensagem="O Cérebro redigiu a resposta à seguradora e o guarda aprovou.",
+                payload={"tentativa": 1, "aprovado": True})
         elif verdict.get("silencio"):
             # SILÊNCIO DELIBERADO — e ele NÃO gasta chance.
             #
@@ -1897,6 +2233,16 @@ async def try_route_insurer_inbound(
                                                 sender=send_to_insurer)
                     session["human_phase_guard_fails"] = 0
                     logger.info("[DISPATCH ROUTER] retentativa ACEITA")
+                    # BLOCO C.3 — a SEGUNDA redação conta igual: um desempenho
+                    # que só registra os acertos de primeira não é desempenho.
+                    if str(session.get("_checkpoint_fase") or "") == "needs_human":
+                        session["destravado_por"] = "cerebro"
+                    await registrar_ato_do_agente(
+                        company_id, session, agente="cerebro",
+                        mensagem=("O Cérebro refez a resposta no mesmo turno e o "
+                                  "guarda aprovou."),
+                        payload={"tentativa": 2, "aprovado": True,
+                                 "recusa_anterior": motivo[:80]})
                 else:
                     # A retentativa também falhou: agora sim conta como recusa.
                     fails = int(session.get("human_phase_guard_fails") or 0) + 1

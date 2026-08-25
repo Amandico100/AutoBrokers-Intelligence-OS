@@ -179,9 +179,22 @@ def test_a_reconciliacao_nao_finge_que_o_travamento_terminou():
     #
     # ⚠️ Guarda que só procura substring aprova as duas. Este exige a linha
     # inteira, com a condição e o argumento, e por isso as duas o derrubam.
+    #
+    # ✅ A LIÇÃO MIGROU — SPEC-093 BLOCO C, 25/08/2026.
+    #
+    # A linha ganhou dois argumentos (`company_id` e `session`), porque agora
+    # ela também escreve os EVENTOS de travamento, e evento sem corretora e sem
+    # sessão não tem rota nem tela. 🔴 As duas mutações que derrubaram a
+    # primeira versão continuam derrubando esta — e uma TERCEIRA passa a
+    # derrubá-la: tirar a `session` faz a chamada rodar e não contar nada
+    # (`_gravar_eventos_de_travamento` só roda com sessão).
+    #
+    # ⚠️ Manter a afirmação vencida só ensinaria a ignorar teste (CLAUDE.md
+    # §9.3): o fato mudou, o teste muda com ele, e a lição é a mesma.
     esperado = (chr(10).join([
         'if final != "completed":',
-        '            await _marcar_travamento(db, run_id, fase, "")',
+        '            await _marcar_travamento(db, run_id, fase, "",',
+        '                                     company_id=str(company_id or ""), session=entrada)',
     ]))
     assert esperado in fonte_toda, (
         "a marca de travamento na reconciliacao mudou de forma. Ela tem de "

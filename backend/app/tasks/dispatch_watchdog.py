@@ -391,6 +391,28 @@ async def _sentinela_recover(
                 {"direction": "out", "text": reply, "at": datetime.now(timezone.utc).isoformat(),
                  "via": "sentinela"}
             )
+            # 🔴 BLOCO C.3 — O SENTINELA DEIXA RASTRO.
+            #
+            # 📊 Ele era inauditável: nem `beat`, nem linha em `work_events`.
+            # O único registro era `via: "sentinela"` no transcript — dentro do
+            # Espelho, que é conteúdo de conversa, não desempenho de agente.
+            #
+            # ⚠️ E se a fase era `needs_human`, quem destravou foi ELE: sem esta
+            # marca o crédito ia para o `robo` genérico, e a pergunta *"o
+            # Sentinela está recuperando casos?"* continuaria sem resposta.
+            try:
+                from app.services.dispatch_router import registrar_ato_do_agente
+
+                if str(session.get("_checkpoint_fase") or "") == "needs_human":
+                    session["destravado_por"] = "sentinela"
+                await registrar_ato_do_agente(
+                    company_id, session, agente="sentinela",
+                    mensagem=("O Sentinela respondeu à seguradora depois de um "
+                              "silêncio e recuperou o acionamento."),
+                    payload={"tentativa": attempts + 1,
+                             "teto": MAX_SENTINELA_ATTEMPTS})
+            except Exception as e:  # noqa: BLE001 — registro nunca derruba recuperação
+                logger.warning("[SENTINELA] ato não registrado (%s)", type(e).__name__)
             logger.info(f"[SENTINELA] recuperação {attempts + 1}/{MAX_SENTINELA_ATTEMPTS} "
                         f"case={session.get('case_id')}")
             return "recovered"

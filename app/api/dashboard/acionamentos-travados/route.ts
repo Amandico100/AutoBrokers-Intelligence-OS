@@ -172,8 +172,13 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
-    await registrarEvento(supabase, ctx.companyId, runId, 'run.resumed',
-      'Uma pessoa da corretora assumiu este acionamento travado.');
+    // 🔴 BLOCO C.1 — O CANAL VAI JUNTO. A SPEC pede o destravamento
+    // registrado *"com o canal (`whatsapp` | `dashboard`)"*: este é o
+    // `dashboard`; o `whatsapp` é `note_manual_outbound`. Mesma pergunta, duas
+    // portas — e uma só consulta as conta.
+    await registrarEvento(supabase, ctx.companyId, runId, 'travamento.assumido',
+      'Uma pessoa da corretora assumiu este acionamento travado.',
+      { por: 'humano', canal: 'dashboard' });
     return NextResponse.json({ ok: true, estado: ASSUMIDO });
   }
 
@@ -226,16 +231,29 @@ async function registrarEvento(
   runId: string,
   tipo: string,
   mensagem: string,
+  payload: Record<string, unknown> = {},
 ) {
   try {
     const { error } = await supabase.from('work_events').insert({
       work_run_id: runId,
       company_id: companyId,
       event_type: tipo,
-      actor_type: 'human',
+      // 🔴 `user`, NÃO `human` — e a diferença é entre gravar e não gravar.
+      //
+      // 📊 Medido em 25/08/2026: `work_events` tem CHECK
+      // (`ck_work_events_actor`) que aceita exatamente
+      // `system | worker | user | agent | admin | provider`. `human` **não está
+      // na lista**, então todo INSERT daqui era recusado pelo Postgres. 📊 E o
+      // banco confirma: **0 linhas** com ator humano em 27.985 eventos.
+      //
+      // ⚠️ O `catch` acima existe para que a falha apareça — e apareceria, no
+      // console, na primeira vez que alguém clicasse. Mas o efeito seria o
+      // mesmo defeito que esta função foi escrita para matar: o destravamento
+      // sem linha do tempo.
+      actor_type: 'user',
       severity: 'info',
       message_human: mensagem,
-      payload_redacted: {},
+      payload_redacted: payload,
     });
     if (error) {
       console.error('[acionamentos-travados] evento NAO registrado:', error.message);
