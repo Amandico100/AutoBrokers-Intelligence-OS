@@ -543,8 +543,19 @@ Com juiz e executor na mesma árvore, uma cópia feita antes de uma edição a
 
 ### 🔴 A BATERIA MECÂNICA é o maior sumidouro medido — e o conserto tem ordem
 
-📊 **19m01**, medido até o fim em 25/08/2026 — `418 passed, 45 xfailed in 1141s`.
-O `gate.yml` registrava **13 min** assinados com 📊 e data: **errado por 47%**.
+📊 **TRÊS medições da mesma suíte, no mesmo dia, na mesma máquina, mesmo resultado
+(`418 passed, 45 xfailed`):**
+
+```
+19m01  ·  16m26  ·  14m46        média 16m44,  amplitude ±13%
+```
+
+⚠️ **E o primeiro número sozinho me fez escrever "variação de 28%" — que era a
+diferença entre DOIS pontos, não a dispersão.** Com três, a leitura honesta é uma
+**faixa**, e nenhum ponto isolado a representa.
+
+🔴 **É a §6 outra vez, e agora contra mim:** um ponto não é uma medida. O `gate.yml`
+registrava **13 min** assinados com 📊 e data — **fora da faixa inteira**, e citável.
 
 ⚠️ **E duas lentes discordaram aqui.** Uma extrapolou ~25 min de uma rodada morta no
 timeout; a outra rodou até o fim e mediu 19m01. 🔴 **Venceu quem mediu** — é a §6
