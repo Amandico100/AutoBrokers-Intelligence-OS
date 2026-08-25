@@ -1,147 +1,118 @@
-# AQUECIMENTO — antes da SPEC-093
+# SPEC-093 — para o chat que já executou a 085 e a 092
 
-> **Cole isto inteiro num chat NOVO, aberto em `AutoBrokers-FIX`.**
-> Não é a execução: é o que vem antes. 💭 ~20 minutos.
-> 25/08/2026 · commit base `b8ef4e5`
+> **Cole isto no MESMO chat que executou as SPECs 085 e 092.** Ele já conhece o
+> sistema; isto é só o que mudou desde então. 💭 ~10 minutos, não 20.
+> 25/08/2026 · commit base `0447db3`
 
 ---
 
-Você vai executar uma SPEC do **AutoBrokers.ai** — mas **ainda não.**
+Você já executou a **SPEC-085** (o travamento vira linha de banco) e a
+**SPEC-092** (o formulário nativo dentro do WhatsApp). **Você não precisa
+reaprender o produto.** Isto é o delta.
 
-Primeiro você audita o terreno com as próprias mãos e responde doze perguntas.
-**O objetivo não é aprender o sistema. É calibrar o quanto desconfiar dele.**
-
-## ⛔ AS TRAVAS. Valem a partir desta linha.
+## ⛔ AS TRAVAS — as mesmas de sempre, e continuam valendo
 
 ```
-⛔ SOMENTE LEITURA no aquecimento. Nada alterado, nada commitado. No banco: só SELECT.
+⛔ SOMENTE LEITURA até eu liberar a execução. No banco: só SELECT.
 ⛔ NENHUMA MENSAGEM SAI. Para ninguém, por nenhum canal.
-⛔ NENHUMA ENTRADA EM PORTAL DE SEGURADORA. Bloqueio de conta não se desfaz.
-⛔ É PROIBIDO LIGAR AGENTE DE ATENDIMENTO. Os quatro estão desligados e continuam.
+⛔ NENHUMA ENTRADA EM PORTAL DE SEGURADORA.
+⛔ É PROIBIDO LIGAR AGENTE DE ATENDIMENTO. Os quatro estão desligados.
 ⛔ NÃO tocar em variável de ambiente de produção.
-⛔ NUNCA imprima CPF, telefone, apólice, placa ou nome de pessoa.
+⛔ NUNCA imprimir CPF, telefone, apólice, placa ou nome de pessoa.
 ```
 
-## O PRODUTO, em oito linhas
+## 🔴 PREFLIGHT — antes de qualquer coisa
 
-O AutoBrokers.ai é um SaaS multi-tenant para **corretoras de seguros**. O produto
-é um **atendente de IA que conversa com segurados no WhatsApp** e, quando alguém
-precisa de assistência 24h — guincho, chaveiro, pneu —, **ele mesmo conversa com
-a URA da seguradora, pelo WhatsApp**, para abrir o chamado. O caminho por cada
-URA chama-se **corredor**.
+```bash
+git rev-parse --show-toplevel        # tem de ser AutoBrokers-FIX
+git rev-list --count HEAD..origin/main   # 🔴 TEM DE SER 0
+git status --short                   # limpo
+```
 
-🔴 **A corretora vai ligar o atendimento para clientes REAIS em dias.** Duas
-atendentes humanas (Regina e Saionara) vão **assistir pelo WhatsApp delas** e,
-quando o robô travar, **dar um clique para ele seguir**. ⛔ **Elas não assumem o
-atendimento.** A SPEC-093 é o que falta para isso funcionar.
+⚠️ **Se o topo não for `AutoBrokers-FIX`, pare.** Existe uma cópia velha
+(`AutoBrokers-Opus-Exec`) 208 commits atrás, com um `CLAUDE.md` de 25/07.
 
-## A LEITURA — 🔴 o NÚCLEO, e nada além
+## O QUE MUDOU DESDE A SPEC-092
 
 ```
-CLAUDE.md
-docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md       🔴 inteiro. É curto de propósito.
-docs/canon/GLOSSARIO.md
+docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md    🔴 releia — mudou hoje
 docs/canon/specs/SPEC-093-o-atendimento-real-liga-e-funciona.md
 ```
 
-⛔ **NÃO leia o `PENDENCIAS.md`** (437 KB, e a §1 do protocolo proíbe). As que
-interessam, **por número**: `P-168` · `P-231` · `P-246` · `P-247` · `P-248`.
+📊 **Três coisas novas no protocolo, e elas mudam como você trabalha:**
 
-Banco: MCP do Supabase, `project_id = dcajcvlzcjbmyapmklil`
-(`ToolSearch`, query `select:mcp__claude_ai_Supabase__execute_sql`).
+1. **A bateria ficou 26% mais rápida** (16m10 → 12m41 de média). Os guardas
+   rodam em paralelo agora. ⚠️ **E `test_a_arvore_ficou_limpa_no_fim` fica
+   vermelho de vez em quando por vazamento de mutação (P-246) — é conhecido,
+   não é defeito seu, e a árvore termina limpa porque a rede restaura.**
+
+2. **`backend/tests/conftest.py` conta as rodadas.** 🔴 **O relatório final desta
+   SPEC TEM de trazer o número** — a query está no template. É o passo 2º do
+   protocolo, e ninguém nunca mediu.
+
+3. ⛔ **NUNCA `git add -A`.** 📊 Hoje isso levou uma mutação de `rubrica.py`
+   para dentro de um commit — **pela segunda vez** (P-247). Adicione arquivo por
+   arquivo.
 
 ---
 
-# 🔴 A REGRA QUE VALE MAIS QUE TODAS
+# 🔴 A REGRA QUE VALE MAIS QUE TODAS — e você já a conhece
 
-> **📊 = MEDIDO** — com a data, a fonte, e a consulta que produziu o número.
-> **💭 = ILUSTRATIVO** — hipótese. **Nunca citável como fato.**
+> **📊 = MEDIDO** · **💭 = ILUSTRATIVO**
 
-E a razão é a coisa mais importante deste prompt:
+E o motivo, atualizado com o que aconteceu hoje:
 
-> **A SPEC que você vai receber foi escrita depois de três lentes independentes
-> revisarem a proposta anterior. Elas acharam, entre outras coisas, que a
-> proposta afirmava ter fundações que 📊 têm 0, 1 e 4 linhas no banco.**
+> **Três lentes independentes revisaram a proposta de SPEC-086 (52 KB, escrita
+> por outro modelo). Elas acharam que ela declarava como "fundações existentes a
+> reusar" três coisas que 📊 têm 0, 1 e 4 linhas no banco.**
 >
-> 🔴 **Quem conhece o sistema inteiro erra assim. Você vai errar mais. A defesa
-> não é ler com atenção: é medir.**
+> 🔴 **A SPEC-093 foi escrita por mim, com os mesmos olhos. Presuma que ela
+> também erra.**
 
-## As doze perguntas
+## As oito perguntas
 
-⚠️ **Várias têm resposta óbvia E ERRADA, de propósito.** E **"não sei" é resposta
-valiosa** — o que não vale é responder de leitura o que só a medição decide.
+⚠️ Algumas têm resposta óbvia **E ERRADA**, de propósito.
 
----
+**1.** 📊 `company_members`: quais papéis existem e quantas pessoas em cada um?
+🔴 Que papel a Regina e a Saionara precisam ter **hoje** para apertar o botão de
+ligar o agente?
 
-**1.** 📊 Quantas conversas de WhatsApp o **robô** já teve com um segurado, na
-história deste produto? ⚠️ *Cuidado: a maior parte de `messages` é espelho de
-conversa **humana**. Separe.*
+**2.** 🔴 **A allowlist de entrada.** O que acontece com um telefone fora dela?
+`arquivo:linha`. **E quem MAIS lê essa variável no produto?**
+⚠️ *Esta segunda parte é a que separa quem mediu de quem leu.*
 
-**2.** 📊 `company_members`: quais papéis existem, e quantas pessoas em cada um?
-🔴 E qual papel a Regina e a Saionara precisam ter para apertar o botão de ligar
-o agente hoje?
+**3.** 📊 Com o agente **desligado**, o que acontece com a mensagem? E **ao
+religar**, com as que chegaram no intervalo?
 
-**3.** 🔴 **A allowlist de entrada.** Ache-a no código. O que acontece com um
-telefone que não está nela — a mensagem é guardada, descartada, ou bufferizada?
-`arquivo:linha`.
-
-**4.** 📊 Com o agente **desligado**, o que acontece com a mensagem de um cliente?
-E **ao religar**, o que acontece com as que chegaram no intervalo? *Siga o
-caminho, não presuma.*
-
-**5.** 🔴 **O clique da atendente.** Quando uma pessoa responde pelo WhatsApp da
+**4.** 🔴 **O clique da atendente.** Quando uma pessoa responde pelo WhatsApp da
 corretora e o corredor segue, **o produto registra que foi um humano?** Prove
-pelo dado, não pelo código.
+pelo dado.
 
-**6.** Para **Vigia**, **Sentinela** e **Cérebro**: onde cada um mora, quando
-dispara, e 📊 **quantas vezes cada um já destravou um acionamento?**
-⚠️ *Um dos três não deixa rastro nenhum em banco. Descubra qual.*
+**5.** Para **Vigia**, **Sentinela** e **Cérebro**: 📊 quantas vezes cada um já
+destravou um acionamento? ⚠️ *Um dos três não deixa rastro em banco. Qual?*
 
-**7.** 📊 **`work_effects` é a autoridade de efeitos externos deste produto, e a
-SPEC-093 vai usá-la para idempotência.** Confirme ou refute, com o número.
+**6.** 📊 **`work_effects` é a autoridade de efeitos externos deste produto.**
+Confirme ou refute, com o número.
 
-**8.** 🔴 `INSURER_DISPATCH_LIVE`, `DISPATCH_FINALIZE_MODE`,
-`ACIONAMENTO_FREIO_DE_EMERGENCIA`. Para cada uma: **o padrão no código** e **o
-valor real em produção**. ⚠️ *Existe um jeito de ler os três sem abrir o
-EasyPanel. Ache-o.*
-
-**9.** 📊 **Ligar um corredor na tela de Corredores liga o canal e passa a
+**7.** 📊 **Ligar um corredor na tela de Corredores liga o canal e passa a
 enviar mensagem para a seguradora.** Confirme ou refute, com `arquivo:linha`.
 
-**10.** 🔴 **Esvaziar a `ATTENDANT_INBOUND_ALLOWLIST` quebra alguma outra coisa
-do produto?** Procure quem mais a lê. ⚠️ *Esta é a pergunta que mais separa quem
-mediu de quem leu.*
-
-**11.** 🔴 **Ache um defeito real neste assunto que a SPEC-093 não aponta.** Um
-só, com evidência. ⚠️ *Não invente. "Procurei em X, Y e Z e não achei" também é
-resposta.*
-
-**12.** 🔴 **Liste o que você NÃO entendeu.**
-⛔ *"Entendi tudo" é resposta reprovada.* Este assunto tem duas tabelas de acervo
-que não se falam, 73 corredores, três destravadores e um clique que não deixa
-rastro. **Ninguém entende tudo numa tarde.** Eu preciso saber **onde está o seu
-ponto cego**, porque é lá que a execução vai doer.
+**8.** 🔴 **Ache um defeito real que a SPEC-093 não aponta**, com evidência.
+⚠️ *"Procurei em X, Y e Z e não achei" também é resposta.*
 
 ---
 
 ## COMO RESPONDER
 
-- **Evidência em cada resposta**: `arquivo:linha`, a consulta SQL, ou a saída do
-  comando.
+- **Evidência em cada resposta**: `arquivo:linha`, a consulta SQL, ou a saída.
 - **FATO** (medi) separado de **INFERÊNCIA** (deduzi).
-- Breve onde a resposta é simples, denso onde não é. **Eu vou ler tudo.**
-- 🔴 **DUAS DAS DOZE AFIRMAM ALGO FALSO, com todas as letras.** Ache-as e refute
-  **com o número**. ⚠️ Elas estão assinadas por quem está te dando a tarefa — **é
-  exatamente esse o teste.** Na execução, a SPEC vai te afirmar coisas erradas do
-  mesmo jeito, **e você é a última linha de defesa antes do segurado.**
+- 🔴 **DUAS DAS OITO AFIRMAM ALGO FALSO**, assinado por quem te dá a tarefa.
+  Ache-as e refute **com o número**. **É exatamente esse o teste.**
 
 ## Depois
 
-Você manda as doze respostas. **Eu corrijo o que estiver torto, aponto o que você
-não viu, e aí você executa a SPEC-093 do começo ao fim, sem parar.**
+Você manda as oito respostas. Eu corrijo o que estiver torto, e **aí você executa
+a SPEC-093 do começo ao fim, sem parar** — na ordem `E → A → B → C → D → G → F`.
 
-> 🔴 **E o que você mais leva daqui:**
-> **quando a SPEC disser algo que você mediu diferente, a SPEC está errada até
+> 🔴 **Quando a SPEC disser algo que você mediu diferente, a SPEC está errada até
 > prova em contrário.** Meça, mostre o número, e devolva.
-> **Foi assim que os piores defeitos das três últimas SPECs foram encontrados — e
-> um deles pela pessoa que estava no seu lugar.**
