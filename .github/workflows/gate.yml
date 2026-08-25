@@ -84,7 +84,9 @@ jobs:
   guardas:
     name: Guardas — a suite inteira, e ela roda de verdade
     runs-on: ubuntu-latest
-    # 📊 25/08/2026: a suite tem 463 testes e leva ~25 min nesta maquina.
+    # 📊 25/08/2026: 463 testes, 19m01 MEDIDO ate o fim nesta maquina
+    # (418 passed, 45 xfailed in 1141s). O comentario anterior dizia 9m52,
+    # assinado com data -- errado por 47%, e citavel. CLAUDE.md 9.3.
     # O teto era 25 -- estava a segundos de estourar sozinho e pintar de
     # VERMELHO um gate que passou. Um gate que falha por relogio ensina a
     # ignorar gate (CLAUDE.md 9.3). 45 da folga sem esconder lentidao: a

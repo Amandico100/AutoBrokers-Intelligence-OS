@@ -543,17 +543,23 @@ Com juiz e executor na mesma árvore, uma cópia feita antes de uma edição a
 
 ### 🔴 A BATERIA MECÂNICA é o maior sumidouro medido — e o conserto tem ordem
 
-📊 25/08/2026: `python -m pytest tests/` **não termina em 900s** — morto no timeout
-em 281 de 463 testes. 💭 Extrapolando, **~25 min por bateria**. E o `gate.yml`
-registrava 9m52 em 24/08: **a suíte dobrou de tamanho em um dia.**
+📊 **19m01**, medido até o fim em 25/08/2026 — `418 passed, 45 xfailed in 1141s`.
+O `gate.yml` registrava **13 min** assinados com 📊 e data: **errado por 47%**.
+
+⚠️ **E duas lentes discordaram aqui.** Uma extrapolou ~25 min de uma rodada morta no
+timeout; a outra rodou até o fim e mediu 19m01. 🔴 **Venceu quem mediu** — é a §6
+deste documento aplicada a ele mesmo.
 
 ```
- 4 baterias numa SPEC  →  1h40
- 9 baterias            →  3h45
-14 baterias            →  5h50   ← a JANELA INTEIRA das 5–8h
+📊 5 pushes tocando tests/ na SPEC-085  ×  19m01  =  95 min = 1,6 h
+   sobre 405 min de execução  →  QUASE UM QUARTO da fase é esperar a suíte
 ```
 
-**É maior que o laço de juízes**, que custou 2h16 na SPEC-085 inteira.
+🔴 **E ela não aparece em commit nenhum, porque acontece ENTRE eles.** É a maior
+fatia isolada de desperdício medida — e o laço de juízes inteiro custou 59 min.
+
+⚠️ **A suíte cresce a cada SPEC:** 322 testes em 24/08, **463** em 25/08. E o teto de
+`TETO_SEGUNDOS = 120` × 272 scripts dá **9h de cauda no pior caso**.
 
 ⛔ **MAS A ORDEM DO CONSERTO NÃO É ÓBVIA, e invertê-la troca um problema de tempo
 por um de PERDA DE DADO:**
