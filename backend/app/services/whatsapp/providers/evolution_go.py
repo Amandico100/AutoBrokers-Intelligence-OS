@@ -166,6 +166,29 @@ def rota_de_flow_reply(env: Optional[Dict[str, str]] = None) -> str:
     return rota if rota.startswith("/") else f"/{rota}"
 
 
+#: 📊 A `version` do `nativeFlowResponseMessage`, MEDIDA — não escolhida.
+#:
+#: 🔴 Valia `1`, com um `💭` honesto ao lado dizendo que era hipótese
+#: tirada de um fork do Baileys. A hipótese durou porque a bateria de 03/08
+#: parou na primeira forma que passou.
+#:
+#: 📊 25/08/2026 — as QUATRO capturas `live` da Yelum (03, 07, 17 e 19/08),
+#: lidas no `raw_out` de `observed_events`, trazem::
+#:
+#:     .interactiveResponseMessage.InteractiveResponseMessage
+#:      .NativeFlowResponseMessage.version = 3      (4 de 4)
+#:
+#: ⚠️ E mudar isto **não põe em risco a prova de 03/08**: a rodada 1 daquele
+#: dia variou `version` entre cinco formas e as cinco deram o mesmo 479 — o
+#: que a prova estabeleceu foi o EMBRULHO, e `version` foi descartado como
+#: causa naquela mesma bateria. *"Fator que não muda o resultado não é a causa"*
+#: corta para os dois lados: ele também não é a causa do 200.
+#:
+#: 🔴 E o comentário do patch Go 0005 dizia *"a única instância capturada
+#: não traz version nenhum"*. Ele está **falsificado**: as quatro trazem.
+VERSION_DA_RESPOSTA_DE_FLOW = 3
+
+
 def montar_nfm_reply(
     *,
     flow_token: str,
@@ -173,7 +196,7 @@ def montar_nfm_reply(
     nome_do_envelope: str,
     flow_response_params: Optional[Dict[str, Any]] = None,
     body_text: Optional[str] = None,
-    version: int = 1,
+    version: int = VERSION_DA_RESPOSTA_DE_FLOW,
 ) -> Dict[str, Any]:
     """O corpo waE2E de uma resposta de formulário nativo. PURO.
 
@@ -228,6 +251,31 @@ def montar_nfm_reply(
 
     return {
         "interactiveResponseMessage": {
+            # 🔴 `format` NÃO CHEGA AO FIO, e dizer isso aqui é o conserto.
+            #
+            # 📊 Medido em 25/08/2026, seguindo o campo até o fim:
+            #   1. `send_native_flow_response` ACHATA este dicionário para o
+            #      corpo plano que a rota do GO recebe, e leva só
+            #      `{number, name, paramsJSON, wrapInDocumentWithCaption,
+            #        version?, body?}` — `format` fica para trás;
+            #   2. e o patch 0005 do GO fixa em código
+            #      `Format: waE2E.InteractiveResponseMessage_Body_DEFAULT.Enum()`.
+            #
+            # ⚠️ Ou seja: **trocar este valor não muda um byte do que sai.** A
+            # SPEC-092 §D.3 manda trocar `"EXTENSIONS"` pelo que a captura mostra
+            # — e essa troca, sozinha, seria um conserto que não conserta, com
+            # o teste ficando verde. É a classe de defeito que esta SPEC existe
+            # para matar, aparecendo dentro do próprio conserto dela.
+            #
+            # 📊 O que a captura real mostra: `body.format = 1`, que é o valor
+            # numérico de `EXTENSIONS` no enum do protobuf. 🔴 Ou seja, o NOME
+            # escrito aqui sempre esteve certo; quem está errado é o GO, que
+            # manda `DEFAULT` (0). O conserto de verdade é um patch 0007, e ele
+            # exige rebuild da imagem — está na CAIXA DO FOUNDER.
+            #
+            # O valor fica como está **de propósito**: ele descreve o waE2E
+            # correto, e `test_o_formato_do_envio_e_honesto` guarda a fronteira
+            # para que ninguém "conserte" aqui achando que mudou o fio.
             "body": {"text": str(body_text or _CORPO_PADRAO_FLOW_REPLY), "format": "EXTENSIONS"},
             "nativeFlowResponseMessage": {
                 "name": envelope,
@@ -470,7 +518,7 @@ class EvolutionGoProvider:
         nome_do_envelope: str,
         flow_response_params: Optional[Dict[str, Any]] = None,
         body_text: Optional[str] = None,
-        version: int = 1,
+        version: int = VERSION_DA_RESPOSTA_DE_FLOW,
     ) -> SendResult:
         """Envia a resposta do formulário nativo — se houver rota provada.
 
