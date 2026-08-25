@@ -682,3 +682,56 @@ E os três foram achados por **outra pessoa** — nunca por releitura minha.
 > **Escrever *"um guarda que não tem como falhar não guarda nada"* não é o mesmo
 > que obedecê-la.** A defesa não é ler com atenção. A defesa é mutar o produto e
 > ver o guarda ficar vermelho.
+
+---
+
+# 🚀 A ENTREGA
+
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   8b49fdb..a9bf4d7  HEAD -> main
+exit=0
+
+$ git fetch origin && git rev-list --count origin/main..HEAD
+0
+$ git rev-parse --short origin/main
+a9bf4d7
+```
+
+📊 **Doze commits**, de `8b49fdb` a `a9bf4d7`.
+
+⚠️ **E um susto que virou prova.** O preflight do push acusou
+`corridor_playbooks.py` como modificado — o arquivo que a **F-5 da
+SPEC-085** avisa que pode voltar mutado de uma bateria. Não empurrei nada
+antes de medir::
+
+```
+conteúdo normalizado (LF)   árvore 0b02c13b6517153d = HEAD 0b02c13b6517153d
+bytes crus                  670.476 vs 659.657  (a conversão CRLF)
+guarda da árvore mutada     passa
+```
+
+Final de linha, não mutação. 🔴 **Mas `git status` disse `M` e `git diff`
+disse nada** — as duas coisas ao mesmo tempo, no arquivo que já vazou
+mutação uma vez. A diferença entre empurrar e não empurrar foi medir.
+
+---
+
+# ✅ O GATE DA SPEC, item por item
+
+| item do §8 | estado | prova |
+|---|:--:|---|
+| BLOCO A com os DOIS controles | ✅ | texto comum não gera linha · desconhecido guarda o cru |
+| BLOCO B com o reprocessamento provando que nada mais mudou | ✅ | 📊 82 convites crus reais: 78 idênticos, 4 mudaram — e são os 4 formulários |
+| BLOCO C com os ids DIFERENTES, provado | ✅ | 📊 e o guarda afirma os **dois** lados: ids diferentes entre marcas, schema COMPARTILHADO no par HDI/Yelum |
+| BLOCO D com o `paramsJSON` byte a byte igual ao exemplar de ouro | 🔴 **CORRIGIDO NA SPEC** | 📊 o exemplar do repositório é uma cópia truncada: `response_message` com **46** caracteres contra **4.854** da linha real. Ver C4 e P-092-04 |
+| BLOCO E | ⏳ **parcial** | o CONTROLE entregue (tela sem schema não é chutada); a transcrição é a P-092-01/02, e o motivo está medido |
+| BLOCO F com a linha de controle de texto | ✅ | |
+| a rota de prova recusa destino que não é nosso | ✅ | e **por corretora**, depois do painel |
+| dois tenants: teste que FICA VERMELHO quando o filtro sai | ✅ | 📊 o dublê **registra** os `.eq()`; o anterior não conseguia falhar |
+| `pytest tests/` verde | ✅ | 📊 **550 passed · 45 xfailed · 0 failed**, com controle sha256 |
+| se tocou `app/`: rotas + next start | ➖ | **não se aplica** — nenhum arquivo de `app/` ou `.ts` foi tocado |
+| nenhum motor paralelo | ✅ | `_raw_capped` **mudou de casa**; `_CHAVES_DE_ID_DE_OPCAO` é derivada, não copiada |
+| relatório completo com a §0.1 | ✅ | |
+| a TELEMETRIA do §11 | ✅ | inclusive o tempo até a primeira linha de código |
