@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** TA2-B — políticas de autorização puras (offline). */
-import { canWriteTenantConfig, isPlatformMaster, canAdminReadCompany, canProvisionTenant, sameOriginOk, tenantCompanyConsistent } from '../lib/admin/admin-auth-policy.ts';
+import { canWriteTenantConfig, isPlatformMaster, canAdminReadCompany, canProvisionTenant, sameOriginOk, tenantCompanyConsistent, canToggleAttendanceAgent, decidirPatchDeAgente } from '../lib/admin/admin-auth-policy.ts';
 
 let pass = 0, fail = 0; const failures = [];
 function assert(n, c) { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; failures.push(n); console.log(`  ✗ ${n}`); } }
@@ -38,6 +38,74 @@ assert('consistência: banco sem empresa bloqueia', tenantCompanyConsistent({ se
 assert('consistência: sessão sem empresa usa o banco', tenantCompanyConsistent({ sessionCompanyId: null, dbCompanyId: 'c1' }) === true);
 assert('consistência: divergência bloqueia', tenantCompanyConsistent({ sessionCompanyId: 'c2', dbCompanyId: 'c1' }) === false);
 assert('consistência: iguais ok', tenantCompanyConsistent({ sessionCompanyId: 'c1', dbCompanyId: 'c1' }) === true);
+
+
+// ===========================================================================
+// SPEC-093 BLOCO A — o papel `attendant`, e o portao POR CAMPO
+// ===========================================================================
+//
+// 📊 O problema medido em 25/08/2026: `company_members` tem 8 admin_company e
+// 2 member. O botao exige TENANT_WRITE_ROLES, entao `member` recebe 403 — e dar
+// `admin_company` as duas abriria prompt, integracoes e billing junto.
+//
+// 🔴 As duas ULTIMAS asserceos sao LINHAS DE CONTROLE, e sao obrigatorias:
+// sem elas, um bug que libere geral passa como sucesso (CLAUDE.md §9.3).
+
+console.log('\n== SPEC-093 BLOCO A — o papel attendant ==\n');
+
+const ATT = { role: 'attendant', isOwner: false };
+const MEM = { role: 'member', isOwner: false };
+const ADM = { role: 'admin_company', isOwner: false };
+
+// o papel, isolado
+assert('attendant PODE alternar atendimento', canToggleAttendanceAgent(ATT) === true);
+assert('member NAO pode alternar', canToggleAttendanceAgent(MEM) === false);
+assert('admin_company continua podendo alternar', canToggleAttendanceAgent(ADM) === true);
+assert('attendant NAO escreve configuracao', canWriteTenantConfig(ATT) === false);
+
+const decidir = (quem, agentRole, campos) =>
+  decidirPatchDeAgente({ ...quem, agentRole, camposDoCorpo: campos });
+
+// ① attendant alterna is_active -> permitido, e a acao e' toggle
+assert('① attendant alterna is_active do ATENDIMENTO',
+  decidir(ATT, 'attendance', ['is_active']).permitido === true);
+assert('① e a acao e TOGGLE, nao config',
+  decidir(ATT, 'attendance', ['is_active']).acao === 'toggle');
+
+// ② attendant tenta QUALQUER outro campo -> 403
+assert('② attendant NAO muda variables',
+  decidir(ATT, 'attendance', ['variables']).permitido === false);
+assert('② attendant NAO muda overrides',
+  decidir(ATT, 'attendance', ['overrides']).permitido === false);
+assert('② 🔴 corpo MISTO nao passa por baixo',
+  decidir(ATT, 'attendance', ['is_active', 'variables']).permitido === false);
+assert('② corpo VAZIO nao vira toggle',
+  decidir(ATT, 'attendance', []).permitido === false);
+
+// ②b — a condicao que a SPEC nao escreve: o agente CENTRAL nao e' dele
+assert('②b 🔴 attendant NAO alterna o agente CORE',
+  decidir(ATT, 'core', ['is_active']).permitido === false);
+
+// ③ attendant de OUTRA corretora: a rota resolve a empresa pela SESSAO, nunca
+//    pelo corpo — nao existe campo de empresa para forjar. A prova esta' no
+//    guarda pytest que le a rota.
+
+// ④ LINHA DE CONTROLE — member continua 403 no toggle
+assert('④ CONTROLE: member continua 403 no toggle',
+  decidir(MEM, 'attendance', ['is_active']).permitido === false);
+
+// ⑤ LINHA DE CONTROLE — admin_company continua podendo TUDO
+assert('⑤ CONTROLE: admin_company alterna',
+  decidir(ADM, 'attendance', ['is_active']).permitido === true);
+assert('⑤ CONTROLE: admin_company muda variables',
+  decidir(ADM, 'attendance', ['variables']).permitido === true);
+assert('⑤ CONTROLE: admin_company alterna o CORE',
+  decidir(ADM, 'core', ['is_active']).permitido === true);
+assert('⑤ CONTROLE: admin_company com corpo MISTO continua passando',
+  decidir(ADM, 'attendance', ['is_active', 'variables']).permitido === true);
+
+// e o dono, que nao tem papel nenhum
+assert('owner sem papel alterna', decidir({ role: null, isOwner: true }, 'attendance', ['is_active']).permitido === true);
 
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
