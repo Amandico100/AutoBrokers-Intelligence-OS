@@ -4424,6 +4424,25 @@ volta a olhar porque acha que foi feito.
 
 ## P-168 · 🔴 `INSURER_DISPATCH_LIVE=true` no ambiente contradiz a regra R1
 
+> 🔴 **ATUALIZADA em 25/08/2026 pela SPEC-093, BLOCO E** — agora com DONO e com a medição que faltava.
+
+📊 **O estado, lido no `/health` da `smith-api` em 25/08 20:32:**
+
+```
+acionamento_env_aberta        false      ← hoje fechado
+freio_de_emergencia_armado    true       ← e é SÓ o freio que fecha
+finalize_modo                 "test"
+finalize_abre_de_verdade      []         ← nenhum corredor abre chamado
+```
+
+⚠️ **A armadilha continua:** o piloto começa **desarmando o freio**, e no instante em que ele sai, `INSURER_DISPATCH_LIVE` volta ao que o ambiente disser. Com `DISPATCH_FINALIZE_MODE=test` escrito, os dois juntos são o **meio aberto**: o segurado ouve *"estou acionando"* e ninguém vem.
+
+🔴 **A decisão do Founder está registrada** em `FOUNDER-DECISIONS.md` como **D-093**: opção (A), `finalize` aberto, cancelamento por pessoa depois do fato. 📊 E a execução mediu a premissa dela: **12 cancelamentos após confirmação no acervo, mediana 34 min, 5 deles abaixo de 5 min.**
+
+- **Destrava:** 🧑 Founder — (a) decidir se abre em TODOS os corredores ou só nos completos (`DISPATCH_FINALIZE_LIVE_PLAYBOOKS`), e (b) alinhar `INSURER_DISPATCH_LIVE` no EasyPanel com a decisão.
+- **Custa se esquecer:** o freio de emergência é hoje a **única** coisa que separa o produto do meio aberto. Desarmá-lo sem alinhar o ambiente abre envio real E finalização de mentira no mesmo instante.
+- ⚠️ **O prazo continua sem medição:** o acervo diz quando alguém cancelou, nunca quando ficou tarde demais. São perguntas diferentes.
+
 **Aberta em:** 15/08/2026 · **Dono:** 🧑 Founder decide
 
 📊 Lido no bloco de variáveis de `autobrokers-smith-api` / `smith-worker`:

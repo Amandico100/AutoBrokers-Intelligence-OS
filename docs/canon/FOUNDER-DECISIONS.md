@@ -1504,3 +1504,90 @@ Zero inferência.
 Porto é de dezembro de 2012 e o vigente é de dezembro de 2025. **Treze anos.**
 Um contrato revogado respondendo com a autoridade de documento oficial é pior
 que documento nenhum: o segurado age sobre a resposta.
+
+
+---
+
+# 🔴 D-093 · O `finalize` abre de verdade, e o cancelamento é por pessoa, depois
+
+> **25/08/2026** · registrada pela execução da SPEC-093, BLOCO E.
+> ⛔ **Nenhuma variável de ambiente foi tocada.** Isto é registro.
+
+## O que o Founder decidiu
+
+> *"Nós vamos deixar o atendimento ser pedido e, se for fictício, elas vão
+> cancelar depois de feito."*
+
+📊 Isso é a **opção (A)** do BLOCO E: `DISPATCH_FINALIZE_MODE=live`, com o
+cancelamento feito **por pessoa, depois do fato**.
+
+## 🔴 A pergunta que a SPEC mandou MEDIR antes de aceitar
+
+A SPEC-093 §BLOCO E escreve, com todas as letras:
+
+> *"quanto tempo elas têm para cancelar antes de virar serviço de verdade?
+> 🔴 não medido: ninguém sabe quanto a seguradora demora entre aceitar e
+> despachar. Pode ser minutos."*
+>
+> *"A nº 2 é a que preocupa. 'Cancelar depois' só funciona se existir um
+> 'depois'."*
+
+**Medido em 25/08/2026, no acervo de conversas reais** (`observed_events`,
+sessões em que a seguradora confirmou e alguém depois falou em cancelar):
+
+```
+sessões com confirmação da seguradora ........... 128
+sessões em que a palavra "cancelar" aparece ......  86
+as duas coisas na mesma sessão ...................  56
+🔴 cancelamentos DEPOIS da confirmação ...........  12
+
+   mais rápido .....    0,0 min
+   mediana .........   34,3 min
+   mais lento ......  103,5 min
+   abaixo de 5 min .    5 de 12   ← 42%
+
+   seguradoras: allianz · porto · tokio
+```
+
+## ✅ O que isso responde
+
+**"Cancelar depois" EXISTE e é praticado.** 📊 Doze vezes no acervo, mediana de
+**34 minutos**. A premissa da decisão do Founder se sustenta: há um *depois*.
+
+## 🔴 O que isso NÃO responde — e é o que preocupa
+
+⚠️ **Eu medi quando um HUMANO cancelou. Não medi quando ficou TARDE DEMAIS.**
+
+São perguntas diferentes, e a segunda é a que custa dinheiro:
+
+```
+o que eu medi ......... quanto tempo depois da confirmação alguém cancelou
+o que a SPEC pergunta . quanto tempo a seguradora leva entre aceitar e DESPACHAR
+```
+
+📊 **E 5 dos 12 cancelamentos aconteceram em menos de 5 minutos.** 💭 Duas
+leituras cabem, e o acervo não separa: ou a pessoa percebeu o erro na hora, ou
+**ela sabia que tinha pouco tempo**. A segunda leitura é a que importa, e ela
+não é distinguível daqui.
+
+⚠️ **E o método é por palavra-chave** (`ILIKE '%cancel%'`), não por desfecho
+registrado. 📊 `work_runs` tem **4 acionamentos na história inteira** e
+**nenhum** chegou a `captured` — não existe a série durável que responderia
+isso direito.
+
+## 🔴 A recomendação da execução, e ela é conservadora
+
+> **A opção (A) está registrada como a decisão do Founder. O que a execução
+> acrescenta é o SEGUNDO parâmetro, que a SPEC deixou em aberto:**
+
+```
+1  abre em TODOS os corredores, ou só nos completos?
+   → 🧑 DECISÃO DO FOUNDER, não tomada. `DISPATCH_FINALIZE_LIVE_PLAYBOOKS`
+     gradua corredor a corredor, e o padrão dele hoje é o conservador.
+
+2  quanto tempo para cancelar?
+   → 📊 mediana de 34 min no acervo · 42% abaixo de 5 min
+     ⚠️ mas isso mede o CANCELAMENTO, não o PRAZO. O prazo continua não medido.
+```
+
+⛔ **A execução não tocou em variável nenhuma**, e o BLOCO F confere isso.
