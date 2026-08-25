@@ -30,9 +30,11 @@
 | **pedágio de leitura** | 📊 **87.855 bytes** — protocolo 28.121 · SPEC 27.724 · `CLAUDE.md` 21.491 · `O-FORMULARIO` 10.519 |
 | o que a §1 da v9 **proibiu** ler | 📊 **421.146 bytes** (`PENDENCIAS.md`) — **83% do pedágio evitado** |
 | painel (5 lentes, em paralelo) | 📊 **~32 min** de relógio · 5 lentes · **17 achados**, zero sobreposição total |
-| juiz de confirmação | 📊 **~20 min** · **3 blockers**, dois deles consertos do painel |
+| juiz de confirmação 1 | 📊 **~20 min** · **3 blockers** — **2** eram consertos do painel |
+| juiz de confirmação 2 | 📊 **~34 min** · **1 blocker** — nasceu da SOMA de dois consertos do juiz 1 |
 | **rodadas de painel** | **1** (o teto do protocolo é 3) |
-| **defeitos que o painel NÃO pegou** | 📊 **3** — todos pegos pelo juiz de confirmação, e 2 eram consertos do próprio painel |
+| **defeitos que o painel NÃO pegou** | 📊 **4** — 3 pelo juiz 1, 1 pelo juiz 2 |
+| 🔴 **achados que eram consertos da volta anterior** | 📊 **3 de 4** — a taxa cai (17 → 3 → 1) e a origem migra para o próprio conserto |
 | **razão docs/código na execução** | 📊 **0,000** — 2.378 linhas de código, **zero** de `.md` |
 
 🔴 **A v9 mediu a si mesma e acertou.** 📊 O número que a motivou era *"9h25 até
@@ -550,6 +552,96 @@ suíte inteira ficou vermelha até a família ser classificada.
 ⚠️ **O nome do arquivo continua dizendo DEZESSEIS, de propósito**: ele nomeia o
 achado que o criou (📊 *uma* de dezesseis retomava). Renomear apagaria a
 história; o número vive dentro, medido do fonte.
+
+---
+
+# 🔴 O SEGUNDO JUIZ — o defeito que nasce da SOMA de dois consertos certos
+
+> Ele também **não confirmou**. Um blocker — e ele é o mais instrutivo da SPEC,
+> porque **nenhum dos dois consertos que o produziram está errado sozinho.**
+
+## O blocker
+
+📊 `registrar_formulario_nativo` grava `session["flow_id_ativo"]` **antes de
+qualquer veto**. Então:
+
+```
+· eu ceguei a segunda chamada ao `interactive`  → para fechar a resposta em dobro
+· e criei a saída pelo botão                     → para não matar 21 telas de azul/porto
+
+  cada um faz exatamente o que promete.
+  juntos, tiram o veto do caminho.
+```
+
+Com o veto contra o **argumento**, a segunda chamada — cega de propósito —
+tinha `id_do_convite` vazio, e o veto **não podia rodar**. `detect_native_flow`
+achava o schema pela âncora e a moldura ecoava o `flow_id_ativo` nunca
+conferido:
+
+```
+convite com flow_id que ninguém conhece + âncora conhecida
+                 state         envios   flow_id ECOADO
+HEAD 88d2f31     ura              1     9999999999999999   ← errado
+dec2a74          needs_human      0     —
+BASE 8b49fdb     ura              1     857030507196739
+```
+
+🔴 **É literalmente a linha que o comentário da própria `_moldura_da_resposta`
+diz estar impedindo** — *"resposta bem-endereçada e ERRADA"*.
+
+**O conserto move o veto para a SESSÃO**, imediatamente antes de montar a
+resposta — porque é da sessão que a moldura tira o id. 📊 Reproduzido na árvore
+consertada, com os dois controles:
+
+```
+BLOCKER  id NOVO + botão        needs_human  envios=0
+BLOCKER  id NOVO, sem marcador  needs_human  envios=0
+CONTROLE id CONHECIDO           ura          envios=1  id=3206000179602236
+CONTROLE rajada de 2 bolhas                  envios=1     ← o B1 continua fechado
+```
+
+## 🔴 O buraco de guarda que ele achou, e que eu não teria achado
+
+📊 Ele mutou `registrar_formulario_nativo` para **parar de gravar** o
+`flow_id_ativo`, e **191 testes continuaram verdes**.
+
+A metade "moldura" estava guardada (mutá-la dava 3 vermelhos); a metade
+"registro", não. E se ela quebrasse, **toda resposta à Yelum sairia com o id da
+HDI** — pelas palavras do próprio arquivo, *"o defeito mais silencioso desta
+SPEC"*, descartado sem erro e sem log.
+
+## O conserto que ele me fez DESFAZER
+
+📊 `flow_metadata` saiu do corte do `cru`. Cortando o container inteiro ia junto
+o `flow_name` — *"Automóvel - Informar endereço V2"* — que é **o único rótulo
+legível do formulário e não é segredo de ninguém**.
+
+> **Cortar por NOME é mais estreito que cortar por CONTAINER.** Os dois segredos
+> que ele carrega já estavam nomeados um a um.
+
+## E três comentários que passaram a mentir
+
+Um deles dizia *"sob esta guarda, `_responder_formulario_nativo` **nunca**
+devolve `None`"* — e 📊 deixou de ser verdade **no mesmo commit** que criou a
+saída pelo botão. `CLAUDE.md` §12.1: texto vencido reinfecta o leitor seguinte.
+
+---
+
+## 🔴 O QUE TRÊS VOLTAS DE JUIZ ENSINARAM, E ESTÁ MEDIDO
+
+| volta | achados | quantos eram **consertos da volta anterior** |
+|---|:--:|:--:|
+| painel (5 lentes) | 17 | — |
+| juiz 1 | 3 | **2** |
+| juiz 2 | 1 | **1** |
+
+**A taxa cai, e a origem migra.** Na primeira volta o painel julgou o código
+escrito do zero; nas duas seguintes, os juízes julgaram sobretudo **o que os
+consertos criaram**.
+
+> É a §5 ⑥ do protocolo medindo a si mesma: *"UM JUIZ NOVO confirma — porque
+> CONSERTO CRIA DEFEITO"*. Aqui ele criou, duas vezes seguidas, e as duas foram
+> pegas por quem não tinha escrito o conserto.
 
 ---
 
