@@ -592,6 +592,63 @@ importa o compartilhado (`corridor_playbooks`, `replay`):
 
 💭 A 4 processos: `7m14 → ~3m30`. **~48 minutos por SPEC**, sem cortar um teste.
 
+## 📊 26/08 — o passo 2º está MEDIDO, e ele desmente quem o escreveu
+
+**Pela primeira vez no projeto, o número de rodadas da bateria numa SPEC não é
+chute.** O diário do `conftest.py` contou a SPEC-093 inteira:
+
+```
+rodadas de pytest no total ......  115
+   bateria INTEIRA ..............    9
+   parciais (um teste, um arquivo) 106
+
+relógio esperando a suíte .......  2h00
+   só as inteiras ...............  1h49
+   cada uma .....................  12,0 · 12,3 · 12,4 · 13,4 · 13,5 · 14,4 · 14,5 · 17,1
+```
+
+E a conta que importa:
+
+```
+SPEC-093, do primeiro ao último commit ...  4,0 horas
+   das quais a bateria ...................  2,0 horas   =  50%
+```
+
+### 🔴 O que isto derruba
+
+⚠️ **Eu escrevi *"13 commits × 16m44 = 3h37"* com cara de medição.** O medido é
+**2h00** — o chute estava **80% alto**. 📊 E a causa é a que a §12.1 descreve:
+**commit não é rodada.** Foram 11 commits e **9** rodadas inteiras, e as 106
+parciais custaram só ~10 minutos no total.
+
+> **A aritmética sobre uma unidade medida não herda a marca 📊 da unidade.**
+
+### ✅ E o que confirma
+
+📊 A paralelização entregou: as nove inteiras deram média **13m18**, contra
+**16m10** antes. Sem ela, as mesmas nove teriam custado **2h26** — a economia
+real foi de **~26 minutos nesta SPEC**.
+
+### 🔴 E o passo 3º agora é decidível — o que ele não era
+
+**Nove rodadas inteiras para seis blocos.** A alavanca que sobra não é rodar mais
+rápido: é **rodar menos vezes**.
+
+```
+hoje       9 inteiras × 13m18  =  2h00
+o alvo     4–5 inteiras        =  ~1h      →  a SPEC cai de 4h para ~3h
+```
+
+⚠️ **E o pré-requisito continua o mesmo:** 📊 273 dos arquivos de teste são
+scripts, **não existe mapa teste→módulo**, e sem ele *"rodar só o que prova a
+leaf"* é chute. **O mapa é o trabalho, não o corte.**
+
+⛔ **O que NÃO fazer:** cortar rodada por regra de tempo ("uma a cada duas
+horas"). 📊 As 106 parciais são baratas e são o que o executor usa para trabalhar
+— cortá-las economiza 10 minutos e cega o ciclo curto.
+
+---
+
 ## ✅ 25/08 — o passo 1º está FEITO
 
 📊 **O mutador nunca foi um guarda desobediente: era o harness matando errado.**
