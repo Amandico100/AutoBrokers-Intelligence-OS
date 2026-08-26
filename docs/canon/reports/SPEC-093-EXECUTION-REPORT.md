@@ -6,7 +6,7 @@
 **Pasta de trabalho:** `AutoBrokers-FIX`
 **Executor:** Opus 5 (1M) · sessão de 25–26/08/2026
 **Commit inicial:** `e760b0c`
-**Commit final:** `<preenchido no commit do relatório>`
+**Commit final:** `71defa6`
 **Estado final:** CONCLUÍDA COM RESSALVAS
 
 ---
