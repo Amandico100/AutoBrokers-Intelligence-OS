@@ -9552,3 +9552,104 @@ dois tenants em `work_waits`.
 (`MIGRATIONS-AUTHORITY.md` — 9 versões aplicadas sem arquivo).
 **O que custa esquecer:** o `ROLLBACK` de qualquer SPEC futura que a toque não
 tem como ser escrito.
+
+---
+
+# SPEC-089 · a régua não sobe quando deixa de medir
+
+## P-089-A · 🔴 A régua ainda não vê o corpo do atendimento
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+✅ O eixo F passou a ler `work_steps` e `work_events` — a régua **vê o
+travamento**. ⛔ Ela continua sem ver a conversa: o turno do agente, o do
+atendente e o do segurado.
+
+📊 A causa é a mesma que a SPEC nomeia e que este bloco **não** consertou: o
+corpus (`backend/tests/corpus/telas_reais/*.jsonl`, 16 arquivos, 4.279 linhas)
+**não tem campo `direction`** — só tem tela de seguradora.
+
+⚠️ **Reconstruir o corpus não era escopo desta SPEC** (a §C diz literalmente
+*"não é reconstruir o corpus"*), e continua não sendo. Mas a régua mede a rota
+do robô, não o atendimento.
+
+**O que destrava:** um corpus com `direction`, alimentado pelo Espelho — que já
+guarda os dois lados. **O que custa esquecer:** a régua diz `AAA` sobre uma rota
+cujo segurado ficou sem resposta, porque ela nunca olhou para essa metade.
+
+---
+
+## P-089-B · ⚠️ O eixo F cobre 4 acionamentos, não 43 rotas
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **destrava sozinha**
+
+📊 Medido: existem **4** `work_runs` de acionamento na história, todos
+`allianz-residencial-whatsapp@v1` (3 `eletricista`, 1 `maquina_de_lavar`).
+
+⚠️ Então o eixo F hoje tem dado para **duas** das 43 rotas. As outras 41 tiram
+nota cheia por *"não travou"* — que é a resposta **correta** (elas realmente não
+travaram: não houve acionamento nenhum nelas).
+
+🔴 **Mas é uma verdade fraca**, e a diferença importa: *"não travou porque é
+boa"* e *"não travou porque ninguém a usou"* dão a mesma nota hoje.
+
+**O que destrava:** o piloto. Na segunda-feira o número muda sozinho.
+**O que custa esquecer:** ler o eixo F de setembro como se fosse o de hoje.
+
+---
+
+## 🔴 P-089-C · O nome do item `>=85% deterministico` mente sobre o corte
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **cosmético, mas §12.1**
+
+O corte subiu para **100%** e a chave interna do item virou
+`100% deterministico`. ⚠️ Mas o **rótulo em relatórios antigos** e a referência
+em `INVENTARIO-DE-ROTAS.md` ainda dizem `>=85%`.
+
+📊 §12.1: *"se o nome de um campo mente sobre o que ele guarda, conserte o
+campo — não só o texto"*. Aqui o campo já foi consertado; falta o rastro.
+
+**O que destrava:** regerar `INVENTARIO-DE-ROTAS.md` com a régua nova.
+**O que custa esquecer:** alguém comparar uma nota de hoje com uma de ontem
+como se fossem a mesma escala. ⚠️ Elas **não são** — o denominador mudou três
+vezes nesta SPEC.
+
+---
+
+## P-089-D · 📊 A P-089-04 estava errada por 30× — e isso muda o que dá para medir
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **boa notícia**
+
+A SPEC registra: *"medir uma rota custa 4m14; as 73 custariam ~5h"*, e a §E
+manda *"medir uma amostra e dizer qual"*.
+
+📊 **Medido: as 73 custam 9m59.** O 4m14 é custo **fixo** —
+`VM.verificar(TESTE_DA_REGUA)` roda **uma vez**, antes de tudo, e é ele que
+domina. Medir 1 rota e medir 73 custam quase o mesmo.
+
+✅ **Consequência prática:** não há motivo para medir amostra. Esta execução
+mediu as 73, quatro vezes.
+
+**O que destrava:** nada — já está medido. Fica registrado para a próxima
+pessoa não orçar 5 horas.
+**O que custa esquecer:** planejar uma SPEC inteira em torno de um custo que
+não existe.
+
+---
+
+## P-089-E · `travamentos_por_rota` lê 2.000 linhas sem paginar
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+⚠️ O leitor do eixo F usa `.limit(2000)` em três consultas. 📊 O PostgREST
+devolve no máximo **1.000** por chamada — então o teto real é 1.000, e ele é
+**silencioso**.
+
+📊 Hoje não dói: são 4 runs, 2 etapas e 0 eventos. 🔴 Depois do piloto pode
+doer, e a régua passaria a medir uma fatia dizendo que mediu tudo — que é
+exatamente o defeito que a SPEC-090 P-090-03 registra e que o BLOCO D dela
+conserta com `_paginar`.
+
+**O que destrava:** reusar o `_paginar` de `o_dia_de_ontem.py` (§5 — a função
+existe). **O que custa esquecer:** uma rota que travou 1.500 vezes contar como
+1.000, e o eixo F dar nota melhor do que a verdade.
