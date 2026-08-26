@@ -41,6 +41,7 @@ git status --short                       # limpo
 1º  SPEC-087  ~5h   a tela que o corredor não conhece
 2º  SPEC-090  ~4h   o atendimento de ontem vira conserto de hoje
 3º  SPEC-086  ~3h   o atendimento termina e o produto sabe
+4º  SPEC-089  ~6h   a régua não sobe quando deixa de medir
 ```
 
 🔴 **A 087 vem primeiro porque 📊 35,6% das telas que a seguradora manda hoje o
@@ -53,6 +54,15 @@ observarem no primeiro dia se perde.**
 
 ⚠️ **A 086 melhora muito e não bloqueia nada.** Se o Founder mandar ligar o
 atendimento antes dela, ligue — e execute a 086 com o piloto rodando.
+
+🔴 **A 089 vem por último, e por um motivo:** ela mede rotas, e o BLOCO C dela
+lê o travamento que o piloto vai produzir. **Rodá-la antes é calibrar uma régua
+sobre um banco vazio** — 📊 hoje há 2 `needs_human` no banco inteiro.
+
+⛔ **E ela EXIGE árvore exclusiva:** a régua muta `corridor_playbooks.py` para
+medir. É a P-261, e ela foi violada ontem por quem escreveu isto.
+⚠️ No Windows, `PYTHONIOENCODING=utf-8` ou a CLI quebra (`medir_rota.py:488`).
+📊 E medir UMA rota custa 4m14 — as 73 não cabem num laço ingênuo.
 
 ---
 

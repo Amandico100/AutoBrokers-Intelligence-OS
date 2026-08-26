@@ -1,71 +1,102 @@
-# ⚠️ Propostas — não são canon
+# ⚠️ Propostas — todas passaram pelo protocolo
 
-Estes documentos foram escritos por outro modelo e **não estão validados**.
-`docs/canon/specs/` significa *aprovada*; esta pasta significa *candidata*.
+**26/08/2026.** As seis foram avaliadas com o `PROTOCOLO-AUTOBROKERS-AAA` em
+MODO INVESTIGAÇÃO, contra o **código e o banco** — não por leitura.
 
-**Revisado em 25/08/2026** por três lentes independentes (nenhuma sabia da
-outra), contra o código e o banco.
-
----
-
-## 🔴 A colisão de número — conserte antes de executar qualquer uma
-
-**O número 086 já está ocupado**, e há teste vivo defendendo isso:
-
-```
-docs/canon/specs/SPEC-085-…md:390-392
-  "não existe arquivo SPEC-086* em docs/canon/specs/. O conserto vive no
-   CÓDIGO … Não procure a SPEC-086 — leia o código."
-
-backend/tests/test_o_humano_e_chamado_de_verdade.py:228
-  assert "human_handoff" in corpo, "o import da SPEC-086 sumiu"
-```
-
-📊 Também em `dispatch_router.py:1439` e `handoff_watchdog.py:241`.
-
-> **"SPEC-086" hoje quer dizer o conserto do handoff humano.** A proposta toma
-> o mesmo número para *continuidade de atendimento* — `GLOSSARIO.md` e
-> `CLAUDE.md` §2.3: **um termo, uma definição.**
-
-💭 **Sugestão:** as propostas passam a **094+**, e o piloto fica com a
-**SPEC-093**, já escrita em `docs/canon/specs/`.
+> 🔴 **Quatro viraram SPEC de verdade, em `docs/canon/specs/`. Duas ficaram, com
+> gatilho escrito.**
 
 ---
 
-## As notas, e o que fazer com cada uma
+## ✅ AS QUATRO QUE VIRARAM SPEC
 
-| proposta | nota | o que fazer |
-|---|:---:|---|
-| **086** continuidade / posse | **62** · **68** | ⏸️ **depois do piloto.** Arquitetura de posse boa; **nada nela destrava o piloto** |
-| **087** route self-healing | **62** | ⏸️ 🔴 **não bloqueia.** 📊 `playbook_overlays` = 0 linhas, namespace do escritor ≠ do leitor |
-| **088** central de agentes | — | não toca atendimento |
-| **090** fábrica de inteligência | — | melhora, não bloqueia |
-| **091** protocol factory | — | não toca atendimento |
+| proposta | nota | virou | 💭 |
+|---|:---:|---|:---:|
+| **087** route self-healing | 58 | **`SPEC-087 · A tela que o corredor não conhece`** | ~5h |
+| **086** continuidade / posse | 62 · 68 | **`SPEC-086 · O atendimento termina e o produto sabe`** | ~3h |
+| **089** a régua AAA | 68 | **`SPEC-089 · A régua não sobe quando deixa de medir`** | ~6h |
+| **090** fábrica de inteligência | 58 | **`SPEC-090 · O atendimento de ontem vira conserto de hoje`** | ~4h |
 
-### 🔴 O que as três lentes acharam em comum
+### 🔴 O que cada medição achou, e mudou a SPEC inteira
 
 ```
-zero marcas 📊/💭 em 2.707 linhas da 086      CLAUDE.md §12.1
-work_effects declarada "autoridade"          📊 0 linhas, 0 chamadores, sem DDL no repo
-"assumir atendimento" (owner_user_id)        📊 0 de 2.738 — nunca rodou
-o robô teve 4 conversas de WhatsApp          📊 21.901 de 23.028 msgs são espelho HUMANO
-Blocos F e G exigem Work Run                 📊 conversa de WhatsApp não cria um
+087   📊 35,6% das telas reais que a seguradora manda, o corredor NÃO CONHECE
+      (269 de 755, e 66 delas são MENU). E o detector de hoje vê 6% disso.
+      🔴 O Bloco A da proposta desarma uma arma DESCARREGADA: `simulate()`
+         levanta KeyError em 10 de 10 mapas, por uma chave errada.
+
+086   📊 ZERO conversas marcadas como resolvidas, em 671. O produto não sabe
+      distinguir "acabou" de "o cliente foi embora". E 5 `work_runs` presos
+      em `queued`, o mais velho há 28 dias.
+      🔴 Mais da metade da proposta era trava de posse, que o Founder cortou.
+
+089   📊 A régua SOBE de nota quando deixa de medir: 100,00% sem espelho contra
+      96,23% com. E 40 dos 102 pontos vêm de itens que NUNCA reprovam.
+
+090   📊 As três fontes de dado NÃO SE JUNTAM: 152.300 transcripts com
+      `session_id` que casam com ZERO conversas. E não existe porta para a
+      anotação da Regina e da Saionara entrar no produto.
 ```
 
-⚠️ **Nenhuma delas é ruim.** Elas descrevem um sistema mais maduro do que o
-medido — e o piloto é o que vai produzir o dado que falta para calibrá-las.
+⚠️ **E as quatro tinham o mesmo defeito de forma:** 📊 **zero marcas 📊/💭** em
+2.707 · 2.844 · 2.250 · e as linhas da 090. `CLAUDE.md` §12.1 — número sem marca,
+em documento novo, é defeito de revisão.
 
 ---
 
-## O que o piloto precisa está na `SPEC-093`
+## ⏸️ AS DUAS QUE FICARAM — com gatilho, não com "depois"
 
-`docs/canon/specs/SPEC-093-o-piloto-o-atendimento-real-com-duas-pessoas-olhando.md`
+### **088** · A Central de Agentes vira uma organização operacional — **nota 50**
+
+📊 3.718 linhas · zero marcas · grupos, papéis, contratos de delegação,
+especialistas, juízes e execução governada.
+
+🔴 **Ela responde uma pergunta de arquitetura que o Founder não fez.** A queixa
+dele, registrada no `RASCUNHO-SPECS-FUTURAS.md:195`, foi:
+
+> *"Está muito confuso para mim."*
+
+⚠️ **Isso é navegação, não ontologia.** 📊 Existem **8 agentes** (4 de
+atendimento + 4 core) e 12 tabelas de auxiliar/rotina. **Agrupar 8 coisas em
+telas não precisa de contratos de delegação nem de juízes.**
+
+**Volta quando:** o número de agentes ou auxiliares passar de ~20, **ou** o
+Founder disser que a confusão continua depois de um agrupamento simples.
+
+💭 **O que resolveria a queixa dele hoje:** a mesma coisa que a SPEC-093 fez com
+os corredores — agrupar por propósito, com um resumo por grupo. **~2h**, e não
+precisa de SPEC.
+
+### **091** · Protocol & Process Factory — **nota 45**
+
+📊 2.815 linhas · zero marcas · *"todo processo importante vira um protocolo
+executável, versionado, portátil e ensinável a qualquer LLM"*.
+
+🔴 **A ideia está certa e a hora está errada.** 📊 Existe **um** protocolo neste
+projeto — o `PROTOCOLO-AUTOBROKERS-AAA.md` — e ele foi construído por **medição
+ao longo de dias**, com o placar de mecanismos, os erros registrados e as regras
+que custaram um dia cada.
+
+> ⛔ **Uma fábrica de protocolos antes do segundo protocolo existir é construir a
+> fábrica antes do produto.**
+
+⚠️ **E há um risco concreto:** o valor do protocolo atual está no que ele
+**recusa** — o juiz retomado, o painel sobre documento, a lista que envelhece.
+Uma fábrica que gera protocolos a partir de template **gera os que não recusam
+nada**.
+
+**Volta quando:** existirem **três** protocolos escritos à mão e o terceiro doer.
+🔴 **A dor é o requisito, e ela ainda não veio.**
+
+---
+
+## 📋 A ORDEM DE EXECUÇÃO
 
 ```
-E  🧑 a decisão do finalize        registro, não código
-A  o papel `attendant`             só o botão, não a configuração
-B  a allowlist                     ⚠️ e o alerta do Sentinela, que depende dela
-C  🔴 o travamento vira evidência   e o clique da Regina deixa de virar "o robô"
-D  a saudação do religamento       corte de 24h, pelo caminho que já tem limitador
-F  a prova
+087  →  090  →  086  →  089
 ```
+
+`docs/canon/PROMPT-DE-EXECUCAO-087-090-086.md` — pronto para colar.
+
+🔴 **E antes de tudo:** `docs/canon/O-QUE-FALTA-PARA-LIGAR-O-ATENDIMENTO.md`,
+que é a folha do que só o Founder pode fazer.
