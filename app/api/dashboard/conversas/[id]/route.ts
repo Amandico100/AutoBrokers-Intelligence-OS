@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
+import { ehAnotacao } from '@/lib/atendimento/a-nota-da-atendente';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,8 +160,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
+    // 🔴 SPEC-090 BLOCO C — A ANOTAÇÃO NÃO ASSUME A CONVERSA.
+    //
+    // ⚠️ O auto-claim logo abaixo **pausa a IA** e marca o dono. Sem esta
+    // linha, escrever `#nota o robô perguntou a placa duas vezes` no painel
+    // pararia o atendimento — que é exatamente o *"anotar viraria assumir"*
+    // que o BLOCO C existe para impedir.
+    //
+    // 📊 E era o pior lugar possível para o defeito: o painel é o ÚNICO
+    // caminho em que o produto consegue garantir que a nota **não sai** para
+    // o segurado — no WhatsApp, `fromMe` é o eco de uma mensagem que já foi
+    // entregue (`evolution_inbound.py:847`). É no painel que a Regina e a
+    // Saionara devem escrever, e era ali que anotar assumia.
+    //
+    // ⚠️ A regra do prefixo mora no backend
+    // (`a_nota_da_atendente.py`); a cópia daqui existe porque este proxy
+    // escreve DUAS vezes antes de chamá-lo. As duas são comparadas por
+    // `scripts/spec090-a-regra-do-prefixo-e-uma-so.test.mjs`.
+    const ehNota = ehAnotacao(text);
+
     // Auto-claim: enviar como humano pausa a IA e marca o dono.
-    const { error: claimErr } = await supabase
+    const { error: claimErr } = ehNota ? { error: null } : await supabase
       .from('conversations')
       .update({
         status: 'HUMAN_REQUESTED',
@@ -197,7 +217,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         // O ideal seria comparar o id do WhatsApp, mas `send-message` devolve
         // `{"status":"sent"}`: `whatsapp_service.send_message` retorna booleano,
         // e fazer o id subir por aquela cadeia mexeria em caminho quente.
-        payload: { origem: 'dashboard', wa_message_id: null },
+        // 🔴 SPEC-090: `nota_interna` diz que esta linha NÃO foi para o
+        //    segurado. Sem a marca, uma nota vira, no histórico, uma fala da
+        //    corretora ao cliente — e é desse histórico que o produto aprende.
+        payload: { origem: 'dashboard', nota_interna: ehNota, wa_message_id: null },
       })
       .select()
       .single();
@@ -217,14 +240,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           headers: { 'Content-Type': 'application/json', 'X-Admin-API-Key': key },
           body: JSON.stringify({ session_id: conversation.session_id, phone: conversation.user_phone, message: text }),
         });
-        delivered = res.ok;
+        // 🔴 UMA NOTA NUNCA FOI "ENTREGUE". O backend responde
+        //    `{"status":"anotada","enviada":false}` e não chama
+        //    `send_message` em caminho nenhum.
+        //
+        // ⚠️ Se a tela disser "entregue", a atendente vai achar que o
+        //    cliente leu a anotação — e o susto dela custa mais que o defeito.
+        delivered = res.ok && !ehNota;
         if (!res.ok) console.error('[CONVERSAS] whatsapp delivery failed:', res.status);
       } catch (e) {
         if (!(e instanceof BackendUrlError)) console.error('[CONVERSAS] whatsapp delivery error');
       }
     }
 
-    return NextResponse.json({ ok: true, message: newMessage, delivered });
+    // ⚠️ `anotada` é o que permite à tela mostrar "anotação registrada"
+    //    em vez de um balão de mensagem enviada.
+    return NextResponse.json({ ok: true, message: newMessage, delivered,
+                              anotada: ehNota });
   }
 
   return NextResponse.json({ error: 'Ação inválida' }, { status: 400 });
