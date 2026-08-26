@@ -422,6 +422,71 @@ def _progresso_da_fase(fase: str, status: str) -> int:
     return max(5, min(95, _motor().ordem_da_fase(fase) * 15))
 
 
+#: Um UUID de verdade, não "sim" nem "wa-5548…". 📊 O simulador de acionamento
+#: usa `company_id="sim"`, e a SPEC-087 já pagou por confiar na forma do texto.
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+                   r"[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+async def _conversa_provada_da_sessao(db, company_id: str,
+                                      session: Dict[str, Any]) -> Optional[str]:
+    """De qual conversa este acionamento nasceu — **ou `None`**. SPEC-090 A.
+
+    ✅ O dado já está na mão: `dispatch_mirror.py:55-60` grava
+    `session["mirror_conversation_id"]`. A SPEC acertou ao dizer *"escrito por
+    quem CRIA o run — o dispatch já tem a conversa na mão"*.
+
+    ⚠️ **E ele falta legitimamente:** é vazio com `DISPATCH_MIRROR=0` e quando a
+    conversa não pôde ser criada. Isso não é erro — é ausência, e a ausência se
+    escreve NULO.
+
+    ---------------------------------------------------------------------------
+    🔴 POR QUE ESTA FUNÇÃO CONFERE A CORRETORA, SE A FK JÁ CONFERE
+
+    A migration deste bloco pôs uma FK **composta**
+    `(conversation_id, company_id) → conversations (id, company_id)`: o banco
+    RECUSA um run da Resulta apontando para conversa da AutoFleet. 📊 Provado no
+    VERIFY V3, com linha de controle — cross-tenant recusado `t`, mesma
+    corretora aceita `t`.
+
+    ⛔ **Mas deixar a FK ser quem recusa custaria o acionamento inteiro.** O
+    `INSERT` é um só: se ele falha por causa desta coluna, o run não nasce, o
+    segurado fica esperando, e o produto perde a corrida por causa de um campo
+    de relatório.
+
+    A ordem certa é a inversa: **o código prova antes de gravar, e na dúvida
+    grava NULO.** A FK fica sendo a segunda linha de defesa — a que pega o dia
+    em que alguém refatorar esta função e esquecer o `.eq("company_id")`.
+
+    ⚠️ E o SELECT que falha também devolve `None`. Perder a ligação de um run
+    legítimo é recuperável — o backfill a reconstrói. Gravar a ligação errada
+    produz relatório confiante e falso, que é o que o BLOCO A existe para
+    impedir.
+    """
+    bruto = str(session.get("mirror_conversation_id") or "").strip()
+    if not bruto or not _UUID.match(bruto):
+        return None
+    if not _UUID.match(str(company_id or "")):
+        return None
+    try:
+        achado = await (db.client.table("conversations").select("id")
+                        .eq("id", bruto).eq("company_id", str(company_id))
+                        .limit(1).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ACIONAMENTO] conversa não pôde ser provada (%s) — o run "
+                       "nasce com conversation_id NULO", type(erro).__name__)
+        return None
+    if not (achado.data or []):
+        # 🔴 NÃO É SÓ "não achou". A conversa existe em ALGUMA corretora e não
+        # nesta, ou não existe. Os dois casos terminam igual — NULO — mas o
+        # primeiro é cross-tenant tentado, e ele merece linha de log.
+        logger.warning("[ACIONAMENTO] conversa %s… não pertence à corretora %s… — "
+                       "run gravado com conversation_id NULO",
+                       bruto[:8], str(company_id)[:8])
+        return None
+    return bruto
+
+
 async def _garantir_work_run(db, company_id: str, insurer_digits: str,
                              session: Dict[str, Any]) -> Optional[str]:
     """O Work Run desta sessão — reaproveitado, nunca duplicado."""
@@ -471,6 +536,14 @@ async def _garantir_work_run(db, company_id: str, insurer_digits: str,
         "progress_percent": _progresso_da_fase(fase, status),
         "queued_at": agora,
         "started_at": agora,
+        # 🔴 SPEC-090 BLOCO A — de qual conversa este acionamento nasceu.
+        #
+        # 📊 Sem esta linha, reconstruir *"o cliente escreveu X, o robô abriu o
+        # chamado, travou na tela Y"* era impossível: `work_runs` não tinha
+        # NENHUMA coluna de conversa (medido em 26/08 — 50 colunas, nenhuma).
+        #
+        # ⛔ `None` é resposta, não falha. Ver `_conversa_provada_da_sessao`.
+        "conversation_id": await _conversa_provada_da_sessao(db, company_id, session),
     }
     await db.client.table("work_runs").insert(linha).execute()
     session["work_run_id"] = run_id
