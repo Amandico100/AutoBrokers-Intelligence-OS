@@ -34,7 +34,10 @@ def _run_sync(coro: Coroutine[Any, Any, str]) -> str:
 
 class OperationsSummaryInput(BaseModel):
     periodo: Optional[str] = Field(
-        default="hoje", description="Período do resumo: 'hoje' (últimas 24h) ou 'semana' (7 dias)")
+        default="hoje",
+        description=("Período do resumo: 'hoje' (últimas 24h), 'ontem' (o dia "
+                     "de calendário anterior — use SEMPRE que perguntarem 'o "
+                     "que aconteceu ontem') ou 'semana' (7 dias)."))
 
 
 class OperationsSummaryTool(BaseTool):
@@ -42,7 +45,9 @@ class OperationsSummaryTool(BaseTool):
     description: str = (
         "Resumo REAL da operação de atendimento da corretora: acionamentos em andamento agora "
         "(seguradora, etapa, protocolo), movimento do período (iniciados, protocolos, handoffs) "
-        "e qualidade auditada. Use SEMPRE que o corretor perguntar como estão os atendimentos, "
+        "e qualidade auditada. Com periodo='ontem' traz também O QUE TRAVOU (rota, tela, quem "
+        "destravou, quanto tempo, quantos seguem sem destravar) e AS ANOTAÇÕES DA EQUIPE. "
+        "Use SEMPRE que o corretor perguntar como estão os atendimentos, "
         "acionamentos ou a operação. Os dados vêm prontos do sistema — apresente com clareza e "
         "NUNCA invente números."
     )

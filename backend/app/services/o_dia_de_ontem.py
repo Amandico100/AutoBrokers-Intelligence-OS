@@ -397,3 +397,178 @@ def resumo_dos_travamentos(trajetoria: Sequence[Dict[str, Any]]) -> Dict[str, An
         "quem_destravou": quem,
         "rotas": as_rotas_que_mais_travam(trajetoria)[:3],
     }
+
+# =============================================================================
+# BLOCO D · a pergunta de terça-feira
+# =============================================================================
+
+#: 📊 O PostgREST devolve no máximo 1.000 linhas por chamada, com ou sem
+#: `.limit()`. ⚠️ Um `.limit(5000)` **não** aumenta isso — ele só faz a chamada
+#: parecer que pediu mais.
+_TETO_DO_POSTGREST = 1000
+
+#: Quantas páginas este módulo aceita percorrer antes de DECLARAR corte.
+#:
+#: 🔴 **O teto existe, e é por isso que ele é declarado.** A P-090-03 registra o
+#: caso oposto: `conversation_auditor.py` tem `limit(200)` e uma trava de 1×/dia,
+#: e nada no resultado diz que houve corte. ⛔ Um relatório que trunca em
+#: silêncio conta uma história menor **e parece completo** — que é pior que
+#: contar história nenhuma.
+_PAGINAS_MAXIMAS = 20
+
+
+async def _paginar(consulta_de, *, teto_paginas: int = _PAGINAS_MAXIMAS):
+    """Todas as páginas, e **`True` quando não coube**.
+
+    `consulta_de(inicio, fim)` monta a consulta daquela faixa. Devolve
+    `(linhas, truncou)` — e `truncou` é o que impede o zero silencioso.
+    """
+    linhas: List[Dict[str, Any]] = []
+    for pagina in range(teto_paginas):
+        inicio = pagina * _TETO_DO_POSTGREST
+        try:
+            achado = await consulta_de(inicio,
+                                       inicio + _TETO_DO_POSTGREST - 1).execute()
+        except Exception as erro:  # noqa: BLE001
+            # ⚠️ Falha no meio da paginação é CORTE, não fim. Devolver o que
+            #    veio sem dizer nada seria o mesmo defeito do teto silencioso.
+            logger.warning("[DIA DE ONTEM] página %d falhou (%s) — resultado "
+                           "marcado como truncado", pagina, type(erro).__name__)
+            return linhas, True
+        lote = achado.data or []
+        linhas.extend(lote)
+        if len(lote) < _TETO_DO_POSTGREST:
+            return linhas, False
+    return linhas, True
+
+
+def faixa_do_dia(dia: str) -> Tuple[str, str]:
+    """`2026-08-25` → o par ISO que cobre o dia inteiro **em UTC**.
+
+    ⚠️ **UTC, e é uma escolha declarada, não um descuido.** O banco grava
+    `timestamptz` e o piloto é no Brasil (UTC−3): *"ontem"* em Florianópolis
+    termina às 03h00 UTC de hoje. 📊 Registrado em P-090-06. Enquanto o
+    relatório for lido por quem sabe disso, UTC é honesto; escolher um fuso aqui
+    sem o Founder decidir seria inventar a resposta.
+    """
+    d = str(dia or "").strip()[:10]
+    return f"{d}T00:00:00+00:00", f"{d}T23:59:59.999999+00:00"
+
+
+async def o_que_aconteceu_ontem(db, company_id: str, dia: str) -> Dict[str, Any]:
+    """*"O que aconteceu ontem, o que falhou, e o que eu conserto hoje?"*
+
+    🔴 **Uma resposta, com número — e o número diz quando é parcial.**
+
+    ⛔ **Nunca levanta.** Um relatório que estoura no meio não é lido; um que
+    diz *"esta parte não coube"* é. Cada pedaço que falha vira zero **com o
+    corte declarado em `truncado`**, nunca zero silencioso.
+
+    ⚠️ **E o filtro por corretora está em TODAS as consultas** (§7). O backend
+    usa service role e atravessa a RLS inteira: um SELECT sem `.eq("company_id")`
+    devolveria o dia de todas as corretoras juntas — com a RLS ligada e "verde".
+    """
+    de, ate = faixa_do_dia(dia)
+    empresa = str(company_id or "")
+    resposta: Dict[str, Any] = {
+        "dia": str(dia or "")[:10], "company_id": empresa,
+        "atendimentos": 0, "travamentos": 0, "ainda_travados": 0,
+        "segundos_mediano": None, "tempos_considerados": 0,
+        "fontes_do_tempo": {}, "quem_destravou": {}, "telas": [],
+        "trajetoria": [], "notas": [], "notas_por_origem": {},
+        # 🔴 O QUE NÃO COUBE. Lista vazia = o relatório está inteiro.
+        "truncado": [],
+    }
+    if not empresa:
+        resposta["truncado"].append("sem company_id — nada foi consultado")
+        return resposta
+
+    # ---- ① os atendimentos do dia ------------------------------------------
+    try:
+        achado = await (db.client.table("conversations")
+                        .select("id", count="exact")
+                        .eq("company_id", empresa)          # 🔴 §7
+                        .gte("last_message_at", de).lte("last_message_at", ate)
+                        .limit(1).execute())
+        # 🔴 `count="exact"` é o que torna o gate ③ verdadeiro: quem conta é o
+        #    banco, então o total NUNCA é o tamanho da página.
+        resposta["atendimentos"] = int(achado.count or 0)
+    except Exception as erro:  # noqa: BLE001
+        resposta["truncado"].append(f"atendimentos: {type(erro).__name__}")
+
+    # ---- ② os travamentos ---------------------------------------------------
+    eventos, cortou = await _paginar(
+        lambda i, f: (db.client.table("work_events")
+                      .select("id, company_id, work_run_id, event_type, "
+                              "payload_redacted, created_at")
+                      .eq("company_id", empresa)            # 🔴 §7
+                      .in_("event_type", list(EVENTOS_DO_TRAVAMENTO))
+                      .gte("created_at", de).lte("created_at", ate)
+                      .order("id").range(i, f)))
+    if cortou:
+        resposta["truncado"].append(
+            f"travamentos: mais de {_PAGINAS_MAXIMAS * _TETO_DO_POSTGREST} eventos")
+
+    conversa_por_run = await _conversa_por_run(db, empresa, eventos)
+    trajetoria = trajetoria_dos_travamentos(eventos, agora_iso=ate,
+                                            conversa_por_run=conversa_por_run)
+    resumo = resumo_dos_travamentos(trajetoria)
+    resposta.update({
+        "travamentos": resumo["travamentos"],
+        "ainda_travados": resumo["ainda_travados"],
+        "segundos_mediano": resumo["segundos_mediano"],
+        "tempos_considerados": resumo["tempos_considerados"],
+        "fontes_do_tempo": resumo["fontes_do_tempo"],
+        "quem_destravou": resumo["quem_destravou"],
+        "telas": resumo["rotas"],
+        "trajetoria": trajetoria,
+    })
+
+    # ---- ③ 🔴 as notas da Regina e da Saionara ------------------------------
+    notas, cortou_notas = await _paginar(
+        lambda i, f: (db.client.table("notas_da_atendente")
+                      .select("id, texto, origem, rota, tela, conversation_id, "
+                              "created_at")
+                      .eq("company_id", empresa)            # 🔴 §7
+                      .gte("created_at", de).lte("created_at", ate)
+                      .order("created_at").range(i, f)))
+    if cortou_notas:
+        resposta["truncado"].append("notas: mais de uma página cheia")
+    resposta["notas"] = notas
+
+    # ⚠️ Separado por origem porque as duas coisas NÃO são a mesma:
+    #    `painel` nunca saiu; `whatsapp` já tinha sido entregue.
+    por_origem: Dict[str, int] = {}
+    for n in notas:
+        o = str(n.get("origem") or "?")
+        por_origem[o] = por_origem.get(o, 0) + 1
+    resposta["notas_por_origem"] = por_origem
+    return resposta
+
+
+async def _conversa_por_run(db, company_id: str,
+                            eventos: Sequence[Dict[str, Any]]) -> Dict[str, str]:
+    """`{work_run_id: conversation_id}` — o que o BLOCO A gravou.
+
+    ⛔ Devolve o que conseguiu em qualquer falha: a trajetória sai sem a
+    conversa, que é **menos informação, não informação errada**.
+    """
+    runs = sorted({str(e.get("work_run_id") or "") for e in eventos
+                   if e.get("work_run_id")})
+    if not runs or not company_id:
+        return {}
+    mapa: Dict[str, str] = {}
+    for i in range(0, len(runs), 200):
+        try:
+            achado = await (db.client.table("work_runs")
+                            .select("id, conversation_id")
+                            .eq("company_id", str(company_id))   # 🔴 §7
+                            .in_("id", runs[i:i + 200]).execute())
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[DIA DE ONTEM] conversas dos runs não lidas (%s)",
+                           type(erro).__name__)
+            return mapa
+        for linha in (achado.data or []):
+            if linha.get("conversation_id"):
+                mapa[str(linha["id"])] = str(linha["conversation_id"])
+    return mapa

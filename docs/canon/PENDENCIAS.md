@@ -9303,3 +9303,139 @@ documento colado), medir de novo e considerar `asyncio.to_thread`.
 
 **O que custa esquecer:** um worker congelado por uma tela, e o sintoma
 aparecendo em qualquer lugar menos aqui.
+
+---
+
+# SPEC-090 · o atendimento de ontem vira conserto de hoje
+
+## 🧑 P-090-A · ONDE a Regina e a Saionara escrevem a nota — decisão do Founder
+
+**Aberta em:** 26/08/2026 · **Dono:** 🧑 **Founder** · **🔴 antes do piloto**
+
+📊 **A SPEC pede o impossível num dos dois caminhos, e a medição é curta:**
+
+```
+evolution_go_events.py:47   force_from_me = ev in ("sendmessage", "send.message")
+evolution_inbound.py:847    if from_me: return {**out, "skip": True,
+                                                "skip_reason": "from_me"}
+```
+
+⛔ **`fromMe` é o ECO de uma mensagem que o WhatsApp JÁ ENTREGOU.** Quando o
+webhook chega, o segurado já leu. O gate ② da SPEC — *"🔴 ZERO chance de o
+`#nota` chegar ao segurado"* — **não tem como ser cumprido** se ela escrever
+`#nota` na conversa do segurado. A SPEC trata isso como o risco *"se o prefixo
+escapar uma vez"*; medido, **é o comportamento padrão desse caminho.**
+
+✅ **O que foi entregue cobre os dois, e diz a verdade sobre cada um:**
+
+| onde ela escreve | o que acontece | `origem` |
+|---|---|---|
+| **chat do painel** | ⛔ o produto INTERCEPTA antes de enviar. Nunca sai. | `painel` |
+| WhatsApp dela | capturada, ⛔ não pausa a IA — mas já foi entregue | `whatsapp` |
+
+E o resumo de terça-feira avisa: *"⚠️ N destas foram escritas na própria conversa
+do WhatsApp — o produto só as viu DEPOIS de o WhatsApp entregar."*
+
+**O que destrava:** 🧑 **dizer às duas, na segunda de manhã, onde anotar.** A
+recomendação medida é **o chat do painel** — é o único lugar onde o produto pode
+garantir que a nota não sai. Se elas anotarem no WhatsApp mesmo assim, nada
+quebra; o segurado é que lê o bastidor.
+
+**O que custa esquecer:** um segurado lendo *"#nota o robô perguntou a placa
+duas vezes"* no meio do próprio atendimento.
+
+---
+
+## 🧑 P-090-B · A nota do WhatsApp precisa saber quem é da equipe
+
+**Aberta em:** 26/08/2026 · **Dono:** 🧑 Founder · **desejável, não bloqueia**
+
+📊 Medido em 26/08: `integrations.alert_target` existe nas três integrações
+conectadas e tem a chave **`internal_numbers` VAZIA** nas três.
+
+💭 Com ela preenchida, o produto poderia recusar tratar como nota uma mensagem
+vinda de um número que não é da equipe — hoje qualquer `fromMe` com o prefixo
+vira nota, e `fromMe` é sempre a corretora, então o risco é baixo.
+
+**O que destrava:** 🧑 preencher `internal_numbers` com os telefones da Regina e
+da Saionara. **O que custa esquecer:** pouco hoje; vira relevante quando a
+corretora tiver mais gente com acesso ao mesmo WhatsApp.
+
+---
+
+## P-090-C · `operational_view` tem o mesmo teto silencioso da P-090-03
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+📊 `operational_view.py` lê `agent_activities` e `conversation_scorecards` com
+`.limit(200)` e **nada no texto diz que houve corte** — exatamente o defeito que
+a P-090-03 registra em `conversation_auditor.py`.
+
+✅ A seção NOVA (travamentos e notas) declara o próprio corte em `truncado`. ⚠️
+As duas seções antigas, não.
+
+**O que destrava:** paginar as duas com o mesmo `_paginar` do BLOCO D, ou pelo
+menos comparar `len(dados)` com o limite e escrever a linha de aviso.
+**O que custa esquecer:** num dia de 250 atividades, o resumo conta 200 e parece
+completo.
+
+---
+
+## P-090-D · `attendance_sessions` e `observed_sessions` têm as MESMAS colunas
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **cheiro de §5**
+
+📊 Medido em 26/08 — as duas têm exatamente
+`company_id · counterparty · created_at · id · insurer_key · last_event_at ·
+observer_number · ramo · servico · started_at · status · summary`:
+
+```
+attendance_sessions ... 12.586 linhas   (só a Resulta na amostra)
+observed_sessions .....    579 linhas   (Resulta e AutoFleet)
+```
+
+⚠️ **Não é defeito conhecido — é uma pergunta sem resposta.** Duas tabelas com a
+mesma forma e populações diferentes ou são duas coisas com nome ruim, ou são a
+mesma coisa duplicada (§5). 🔴 E a SPEC-090 testou o `session_id` dos transcripts
+contra `observed_sessions` e concluiu *"não casa com nada"* — quando ele casa
+`attendance_sessions` em **95 de 95 (100%)**. **A confusão entre as duas já
+custou a premissa central de uma SPEC.**
+
+**O que destrava:** descobrir quem escreve em cada uma e decidir se consolida.
+**O que custa esquecer:** a próxima SPEC repete a mesma conclusão errada.
+
+---
+
+## P-090-E · O dia do relatório é UTC, e o piloto é UTC−3
+
+**Aberta em:** 26/08/2026 · **Dono:** 🧑 Founder decide · 💭 impacto pequeno
+
+⚠️ `periodo='ontem'` usa o dia de calendário **em UTC**. O piloto é em
+Florianópolis (UTC−3): *"ontem"* para a Regina termina às **03h00 UTC de hoje**,
+então três horas do fim do dia dela caem no "hoje" do relatório.
+
+✅ **A escolha está declarada no código e no rótulo** — o resumo diz
+`período: ontem (2026-08-25, UTC)`. ⛔ Escolher um fuso sem o Founder decidir
+seria trocar um erro conhecido por um escondido.
+
+**O que destrava:** 🧑 dizer se o dia do relatório é UTC ou `America/Sao_Paulo`.
+**O que custa esquecer:** um atendimento das 22h de segunda aparecer no relatório
+de quarta.
+
+---
+
+## P-090-F · A fila `notas_da_atendente` não tem tela
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+✅ As notas entram, ficam mascaradas, ligam-se à conversa e saem no resumo de
+terça-feira pelo chat. ⛔ **Não há tela** — quem quiser reler as notas de uma
+semana precisa da query.
+
+⚠️ Isto é escolha da SPEC (*"sem tela nova"*), não esquecimento. Registrado
+porque a SPEC-058 pode querer a fila junto com a `tela_cega` (P-264), que está
+na mesma situação.
+
+**O que destrava:** uma aba na tela `app/dashboard/atendimentos/fila`, que já
+existe. **O que custa esquecer:** as duas filas viram tabelas que só o Claude
+Code lê.

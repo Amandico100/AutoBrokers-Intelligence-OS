@@ -58,11 +58,55 @@ def _fmt_when(iso: Any) -> str:
         return ""
 
 
+#: 🔴 SPEC-090 BLOCO D — `ontem` vira um período DE VERDADE.
+#:
+#: 📊 Medido em 26/08: `periodo="ontem"` caía no `else` e devolvia **"últimas
+#: 24h"** — que às 10h de terça cobre metade de segunda e metade de terça.
+#: ⛔ O Founder perguntava *"o que aconteceu ontem?"* e recebia outra resposta,
+#: **apresentada como se fosse a que ele pediu**. É o relatório confiante e
+#: falso que a SPEC-090 inteira existe para impedir.
+_ONTEM = ("ontem", "yesterday", "d-1")
+_SEMANA = ("semana", "7d", "7")
+
+
+def _janela(periodo: str):
+    """`(since, until, rotulo, dia)` — e `dia` só existe quando é UM dia.
+
+    ⚠️ `until` importa: sem ele, *"ontem"* incluiria hoje de manhã.
+    """
+    p = str(periodo or "").strip().lower()
+    agora = datetime.now(timezone.utc)
+    if p in _SEMANA:
+        return (agora - timedelta(days=7)).isoformat(), agora.isoformat(), \
+            "últimos 7 dias", ""
+    if p in _ONTEM:
+        # ⚠️ Dia de CALENDÁRIO em UTC, e a escolha está declarada em P-090-06:
+        #    o piloto é no Brasil (UTC−3), então "ontem" em Florianópolis
+        #    termina às 03h00 UTC de hoje. Inventar um fuso aqui sem o Founder
+        #    decidir seria trocar um erro conhecido por um escondido.
+        d = (agora - timedelta(days=1)).strftime("%Y-%m-%d")
+        return f"{d}T00:00:00+00:00", f"{d}T23:59:59.999999+00:00", \
+            f"ontem ({d}, UTC)", d
+    return (agora - timedelta(days=1)).isoformat(), agora.isoformat(), \
+        "últimas 24h", ""
+
+
 async def operations_summary(company_id: str, periodo: str = "hoje") -> str:
-    """Digest da operação da corretora. periodo: 'hoje' (24h) ou 'semana' (7d)."""
-    days = 7 if str(periodo or "").strip().lower() in ("semana", "7d", "7") else 1
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    lines: List[str] = [f"OPERAÇÃO DE ATENDIMENTO — período: {'últimos 7 dias' if days == 7 else 'últimas 24h'}"]
+    """Digest da operação da corretora.
+
+    `periodo`: `'hoje'` (24h) · `'ontem'` (o dia de calendário anterior, UTC) ·
+    `'semana'` (7d).
+
+    🔴 **SPEC-090 BLOCO D — é aqui que a pergunta de terça-feira encosta no
+    produto**, e ela entrou nesta função em vez de numa ferramenta nova:
+    `resumo_atendimentos` já está no Core, já se descreve como *"use SEMPRE que
+    o corretor perguntar como estão os atendimentos"*, e 📊 o Tool Gateway tem
+    teto de 12 ferramentas por execução (SPEC-053 §13.1) — o Core já carrega
+    perto disso. ⛔ Uma segunda ferramenta com pergunta parecida degradaria a
+    escolha do modelo em TODA conversa e seria o motor paralelo da §5.
+    """
+    since, until, rotulo, dia = _janela(periodo)
+    lines: List[str] = [f"OPERAÇÃO DE ATENDIMENTO — período: {rotulo}"]
 
     # 1) Acionamentos ATIVOS agora (Redis — tempo real)
     try:
@@ -99,6 +143,11 @@ async def operations_summary(company_id: str, periodo: str = "hoje") -> str:
                     .select("category, title, created_at")
                     .eq("company_id", company_id)
                     .gte("created_at", since)
+                    # 🔴 SPEC-090: `lte` — sem ele, "ontem" inclui HOJE.
+                    #    📊 O `since` sozinho é uma janela ABERTA para a frente:
+                    #    às 10h de terça, "ontem" traria as atividades da manhã
+                    #    de terça junto, e o número sairia maior que o dia.
+                    .lte("created_at", until)
                     .order("created_at", desc=True).limit(200).execute().data or [])
 
         acts = await asyncio.to_thread(_acts)
@@ -127,7 +176,9 @@ async def operations_summary(company_id: str, periodo: str = "hoje") -> str:
         def _scores() -> list:
             return (db.client.table("conversation_scorecards")
                     .select("score, created_at").eq("company_id", company_id)
-                    .gte("created_at", since).limit(200).execute().data or [])
+                    # 🔴 `lte` pelo mesmo motivo do bloco acima.
+                    .gte("created_at", since).lte("created_at", until)
+                    .limit(200).execute().data or [])
 
         scores = await asyncio.to_thread(_scores)
         if scores:
@@ -137,8 +188,87 @@ async def operations_summary(company_id: str, periodo: str = "hoje") -> str:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[VISAO OPERACIONAL] scorecards falhou: {type(e).__name__}")
 
+    # 4) 🔴 SPEC-090 — O QUE TRAVOU, QUEM DESTRAVOU, E O QUE A REGINA ANOTOU
+    #
+    # ⚠️ Só para janela de UM DIA. A leitura do BLOCO D é por dia de calendário,
+    # e espremer sete dias nela devolveria o número de um só — pior que não
+    # devolver nada, porque pareceria completo.
+    if dia:
+        lines.extend(await _o_que_travou_no_dia(company_id, dia))
+
     lines.append("\n(Fonte: dados reais do sistema. Apresente com clareza; não invente números.)")
     return "\n".join(lines)
+
+
+def _minutos(segundos: Optional[int]) -> str:
+    if segundos is None:
+        return "sem tempo apurado"
+    if segundos < 90:
+        return f"{segundos}s"
+    return f"{segundos // 60} min"
+
+
+async def _o_que_travou_no_dia(company_id: str, dia: str) -> List[str]:
+    """As linhas do BLOCO D. ⛔ Falha sozinha, sem derrubar o resto do digest.
+
+    ⚠️ **Cliente ASSÍNCRONO.** O resto desta função usa `get_supabase_client()`
+    (síncrono) dentro de `asyncio.to_thread`. `o_que_aconteceu_ontem` faz
+    `await …execute()`, então precisa do outro. ⛔ Misturar os dois produz
+    *"coroutine never awaited"* — um SELECT que silenciosamente nunca acontece,
+    e uma seção que sai vazia parecendo um dia tranquilo.
+    """
+    try:
+        from app.core.database import create_async_supabase_client
+        from app.services.o_dia_de_ontem import o_que_aconteceu_ontem
+
+        db = await create_async_supabase_client()
+        r = await o_que_aconteceu_ontem(db, company_id, dia)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[VISAO OPERACIONAL] travamentos falhou: {type(e).__name__}")
+        # 🔴 DIZ QUE NÃO OLHOU. ⛔ Sumir com a seção seria o zero silencioso.
+        return ["\nTRAVAMENTOS: não foi possível consultar agora "
+                "(a resposta está incompleta)."]
+
+    linhas: List[str] = []
+    if not r["travamentos"]:
+        linhas.append("\nTRAVAMENTOS: nenhum acionamento travou neste dia.")
+    else:
+        linhas.append(
+            f"\nTRAVAMENTOS: {r['travamentos']} no dia · "
+            f"{r['ainda_travados']} SEGUEM SEM DESTRAVAR · "
+            f"tempo mediano {_minutos(r['segundos_mediano'])} "
+            f"({r['tempos_considerados']} medidos)")
+        if r["quem_destravou"]:
+            quem = " · ".join(f"{k}: {v}" for k, v in
+                              sorted(r["quem_destravou"].items(), key=lambda x: -x[1]))
+            linhas.append(f"QUEM DESTRAVOU: {quem}")
+        for t in r["telas"]:
+            marca = " 🔴" if t["sem_destravar"] else ""
+            linhas.append(f"- {t['rota'] or '?'} · {t['tela'] or 'tela não identificada'}: "
+                          f"{t['travou']}× ({t['sem_destravar']} sem destravar){marca}")
+
+    # 🔴 AS NOTAS DA REGINA E DA SAIONARA
+    if r["notas"]:
+        linhas.append(f"\nANOTAÇÕES DA EQUIPE ({len(r['notas'])}):")
+        for n in r["notas"][:_MAX_LIST]:
+            onde = f" [{n['rota']} · {n['tela']}]" if n.get("rota") else ""
+            linhas.append(f"- {str(n.get('texto') or '')[:220]}{onde}")
+        # ⚠️ `whatsapp` significa que a mensagem JÁ tinha sido entregue quando o
+        #    produto soube — o eco do `fromMe`. O Founder precisa saber disso.
+        vazadas = int(r["notas_por_origem"].get("whatsapp", 0))
+        if vazadas:
+            linhas.append(
+                f"⚠️ {vazadas} destas foram escritas na própria conversa do "
+                "WhatsApp — o produto só as viu DEPOIS de o WhatsApp entregar. "
+                "Para anotar sem que o cliente leia, use o chat do painel.")
+    elif r["travamentos"]:
+        linhas.append("\nANOTAÇÕES DA EQUIPE: nenhuma neste dia.")
+
+    # 🔴 O CORTE, DECLARADO. Ver P-090-03: um relatório que trunca em silêncio
+    #    conta uma história menor e parece completo.
+    if r["truncado"]:
+        linhas.append("⚠️ RESPOSTA INCOMPLETA: " + " · ".join(r["truncado"]))
+    return linhas
 
 
 # ------------------------------------------------------------------ #

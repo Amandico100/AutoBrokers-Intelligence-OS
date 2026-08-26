@@ -49,6 +49,7 @@ class _Table:
         self.store, self.name = store, name
         self._eq = []
         self._gte = []
+        self._lte = []
         self._in = []
         self._order = None
         self._desc = True
@@ -57,6 +58,12 @@ class _Table:
     def select(self, *_a, **_k): return self
     def eq(self, col, val): self._eq.append((col, val)); return self
     def gte(self, col, val): self._gte.append((col, val)); return self
+
+    # SPEC-090 BLOCO D: `operations_summary` passou a FECHAR a janela dos dois
+    # lados. Sem `lte` aqui, a cadeia levantava AttributeError, o `except` do
+    # servico engolia, e DUAS secoes deste guarda sumiam da saida --
+    # "movimento do periodo" e "qualidade". O fato mudou, o stub muda com ele.
+    def lte(self, col, val): self._lte.append((col, val)); return self
     def in_(self, col, vals): self._in.append((col, list(vals))); return self
 
     def order(self, col, desc=True):
@@ -71,6 +78,8 @@ class _Table:
             rows = [r for r in rows if str(r.get(col)) == str(val)]
         for col, val in self._gte:
             rows = [r for r in rows if str(r.get(col) or "") >= str(val)]
+        for col, val in self._lte:
+            rows = [r for r in rows if str(r.get(col) or "") <= str(val)]
         for col, vals in self._in:
             rows = [r for r in rows if r.get(col) in vals]
         if self._order:
@@ -255,6 +264,50 @@ def run():
 
     out_empty = asyncio.run(view.operations_summary("c3", "hoje"))
     check("resumo vazio: mensagem honesta", "nenhum" in out_empty.lower(), out_empty[:200])
+
+    # ---------- SPEC-090 BLOCO D: `ontem` e' um periodo DE VERDADE ----------
+    #
+    # 🔴 A LICAO MIGRA, em vez de o stub so' tolerar o metodo novo (§9.3).
+    #
+    # 📊 Medido em 26/08: `periodo="ontem"` caia no `else` e devolvia "ultimas
+    # 24h" -- que as 10h de terca cobre metade de segunda e metade de terca. O
+    # Founder perguntava "o que aconteceu ontem?" e recebia OUTRA resposta,
+    # apresentada como se fosse a que ele pediu.
+    from datetime import timedelta
+    _hoje = datetime.now(timezone.utc)
+    _ontem_iso = (_hoje - timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0).isoformat()
+    store["agent_activities"].append(
+        {"company_id": "c1", "category": "acionamentos",
+         "title": "Acionamento iniciado — Zurich (ONTEM)", "created_at": _ontem_iso})
+
+    out_ontem = asyncio.run(view.operations_summary("c1", "ontem"))
+    check("ontem: o rotulo diz ONTEM, com a data e o fuso",
+          "ontem (" in out_ontem and "UTC)" in out_ontem, out_ontem[:200])
+    check("ontem: pega o que aconteceu ONTEM",
+          "Zurich" in out_ontem, out_ontem[:400])
+
+    # ⛔ E A JANELA FECHA DOS DOIS LADOS. Sem o `lte`, as atividades de HOJE
+    #    entrariam no relatorio de ontem e o numero sairia maior que o dia.
+    check("ontem: NAO inclui o que aconteceu HOJE",
+          "Allianz" not in out_ontem.split("MOVIMENTO")[-1], out_ontem)
+
+    # 🔴 LINHA DE CONTROLE -- e ela ja' corrigiu uma afirmacao MINHA.
+    #
+    # ⚠️ Escrevi primeiro que `hoje` NAO pegaria a atividade de ontem ao
+    # meio-dia. Falso: "hoje" e' janela DESLIZANTE de 24h, entao as 07h52 ela
+    # alcanca legitimamente as 12h de ontem. O guarda apontou, e quem estava
+    # errado era a assercao, nao o codigo.
+    #
+    # O que a linha de controle PRECISA provar e' que as duas janelas sao
+    # diferentes -- e o lado que distingue e' o AGORA: `hoje` alcanca o que
+    # acabou de acontecer; `ontem`, nao.
+    out_hoje = asyncio.run(view.operations_summary("c1", "hoje"))
+    check("CONTROLE: `hoje` e' janela deslizante e alcanca o AGORA",
+          "últimas 24h" in out_hoje and "Allianz" in out_hoje, out_hoje[:400])
+    check("CONTROLE: os dois rotulos sao DIFERENTES",
+          out_hoje.splitlines()[0] != out_ontem.splitlines()[0],
+          out_hoje.splitlines()[0] + " || " + out_ontem.splitlines()[0])
 
     # ---------- atlas_rotas ----------
     mapa = {
