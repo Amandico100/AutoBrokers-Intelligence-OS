@@ -4,6 +4,20 @@ import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 import { ehAnotacao } from '@/lib/atendimento/a-nota-da-atendente';
 
+// 🔴 O prefixo que separa uma ANOTAÇÃO de uma fala ao cliente, no `content`.
+//
+// ⛔ NÃO EXPORTAR. Arquivo de rota do Next.js só aceita os exports que o
+// framework conhece (GET, POST, dynamic, …). 📊 Exportar isto derruba o `tsc`
+// com `TS2344: Property 'PREFIXO_DA_NOTA' is incompatible with index
+// signature` — e o `next build` junto. É a mesma família do defeito que
+// deixou o produto 1h40 no chão em 02/08 (`CLAUDE.md` §9.1): o arquivo parece
+// certo, e o build explode.
+//
+// ⚠️ Constante e não literal solto mesmo assim: o guarda lê o FONTE e casa
+// contra esta linha. Dois literais iguais em lugares diferentes divergem em
+// silêncio no dia em que alguém mexe num só.
+const PREFIXO_DA_NOTA = '\u{1F4DD} [nota interna] ';
+
 export const dynamic = 'force-dynamic';
 
 /**
@@ -237,7 +251,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .insert({
         conversation_id: id,
         role: 'assistant',
-        content: text,
+        // 🔴 A MARCA VAI NO `content`, E NÃO SÓ NO `payload`.
+        //
+        // 📊 Achado em 26/08/2026 por auditoria externa: `nota_interna` no
+        // `payload` tinha **ZERO leitores** no repositório inteiro — e os
+        // quatro consumidores de `messages` selecionam `role, content` e
+        // **nunca `payload`**:
+        //
+        //     conversation_auditor · garimpo_v3 · memory_fabric · broker_insights
+        //
+        // ⚠️ Nem a thread deste mesmo arquivo lê: o `select` acima pede
+        // `id, role, content, type, image_url, audio_url, sender_user_id,
+        // created_at`. **Nem a atendente distinguia a própria nota de uma
+        // fala enviada ao cliente.**
+        //
+        // 🔴 O comentário abaixo já dizia a intenção — *"sem a marca, uma
+        // nota vira uma fala da corretora ao cliente"* — e a marca estava no
+        // lugar que ninguém lê. É `CLAUDE.md` §9.3: a frase não tinha código
+        // atrás dela.
+        //
+        // O prefixo resolve os dois de uma vez, sem migration e sem tocar em
+        // quatro consumidores: quem lê `content` vê que é nota.
+        // ⚠️ `payload.nota_interna` FICA — é a versão legível por máquina,
+        // para quem acrescentar filtro depois (P-265).
+        content: ehNota ? PREFIXO_DA_NOTA + text : text,
         type: 'text',
         sender_user_id: ctx.userId,
         // `origem: 'dashboard'` é o que impede a resposta de aparecer DUAS vezes.

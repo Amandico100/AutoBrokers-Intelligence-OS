@@ -530,6 +530,22 @@ __all__ = [
 DESTRAVE_HUMANO = ("humano",)
 
 
+def _corte_de_dias(dias: int) -> str:
+    """O ISO-8601 de `dias` atrás, em UTC. ⛔ Nunca levanta.
+
+    ⚠️ `dias <= 0` vira janela de **um** dia, não janela vazia nem infinita:
+    quem passa zero quase sempre quer "hoje", e devolver o histórico inteiro
+    por causa de um zero é exatamente o defeito que esta função conserta.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        n = max(1, int(dias))
+    except (TypeError, ValueError):
+        n = 30
+    return (datetime.now(timezone.utc) - timedelta(days=n)).isoformat()
+
+
 def travamentos_por_rota(dias: int = 30) -> Optional[Dict[Tuple[str, str], Dict[str, int]]]:
     """`{(playbook_ref, subservico): {travou, humano, robo}}` — ou **`None`**.
 
@@ -541,11 +557,32 @@ def travamentos_por_rota(dias: int = 30) -> Optional[Dict[Tuple[str, str], Dict[
     """
     if not tem_banco():
         return None
+    # 🔴 O `dias` ERA DECLARADO E NUNCA USADO — e o defeito era silencioso.
+    #
+    # 📊 Achado em 26/08/2026 por auditoria externa: o parâmetro estava na
+    # assinatura, documentado, e **não aparecia uma única vez no corpo**.
+    # Nenhuma das três consultas tinha filtro de data.
+    #
+    # ⚠️ **A consequência não aparece hoje, e é essa a gravidade.** Os dois
+    # `needs_human` do banco são de 18/08 — dentro de qualquer janela. Mas a
+    # janela real era **o histórico inteiro**, então:
+    #
+    #   🔴 uma rota que travasse na PRIMEIRA SEMANA do piloto nunca mais
+    #      recuperaria os 6 pontos do eixo F, por melhor que passasse a se
+    #      comportar. O eixo era monotônico e só piorava.
+    #
+    # E isso torna impossível a própria recomendação de reler o eixo F depois
+    # da primeira semana: não havia o que reler, porque nada saía da janela.
+    #
+    # É a `CLAUDE.md` §12.1 aplicada à régua: **o nome do parâmetro mentia
+    # sobre o que ele guardava** — e o conserto certo é o campo, não o texto.
+    corte = _corte_de_dias(dias)
     try:
         db = supabase()
         runs = (db.table("work_runs")
-                .select("id, company_id, input_payload, unblock_state")
+                .select("id, company_id, input_payload, unblock_state, created_at")
                 .eq("workflow_key", "acionamento.seguradora")
+                .gte("created_at", corte)
                 .limit(2000).execute().data or [])
     except Exception:  # noqa: BLE001
         # ⛔ Falhar a leitura é `None`, nunca `{}`. Zero MEDIDO e zero NÃO
