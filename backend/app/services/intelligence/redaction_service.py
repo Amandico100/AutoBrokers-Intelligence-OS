@@ -60,7 +60,26 @@ def redigir(texto: str, limite: int = LIMITE_PADRAO) -> str:
 
 #: As marcas que `redigir` deixa no lugar da PII — lidas de `PADRÕES_PII` para
 #: que a lista **não possa divergir** da que produz as marcas.
-MARCAS = tuple(sorted({m for _, m in PADROES_PII}))
+#: 🔴 AS DUAS FAMÍLIAS DE MARCA, e ignorar uma delas mata o casamento.
+#:
+#: ⚠️ `redigir` deixa `[CPF]`; `templatize` deixa `{CPF}`. A primeira versão de
+#: `ancora_permissiva` só conhecia a de colchetes — e como a cascata roda
+#: `templatize` PRIMEIRO, o que sobrava era `{CPF}`, que virava **texto fixo
+#: escapado**:
+#:
+#:     Documento\ \{CPF\}\ confere\?      ← não casa tela nenhuma
+#:
+#: 🔴 O overlay entraria em `playbook_overlays` morto, e o corredor continuaria
+#: travando na mesma tela. Foi o painel que pegou.
+_MARCAS_DE_CHAVES = (
+    "{CPF}", "{CNPJ}", "{PLACA}", "{TELEFONE}", "{EMAIL}", "{NOME}",
+    "{ENDERECO}", "{CEP}", "{NUMERO}", "{NUM}", "{COMPLEMENTO}", "{DATA}",
+    "{PROTOCOLO}", "{VALOR}", "{VALOR_RS}", "{CARTAO}", "{CHASSI}",
+    "{VALIDADE}", "{SEGREDO}", "{REFERENCIA}", "{DESCRICAO}", "{CAMINHO}",
+    "{LINHA_DIGITAVEL}", "{PIX_COPIA_E_COLA}", "{PIX_FIM}", "{CORRETORA}", "{X}",
+)
+
+MARCAS = tuple(sorted({m for _, m in PADROES_PII} | set(_MARCAS_DE_CHAVES)))
 
 #: 🔴 O CURINGA QUE DEVOLVE O CASAMENTO. Ver `ancora_permissiva`.
 #:
@@ -75,9 +94,91 @@ _CURINGA = r".{0,40}"
 #: meia URA, e o overlay dela responde por telas que ninguém examinou.
 _MINIMO_FIXO = 12
 
+#: Quantos curingas uma âncora pode ter. ⚠️ Não é estética: cada curinga a mais
+#: multiplica o backtracking, e uma tela com quatro campos de PII não tem
+#: identidade suficiente para virar âncora de qualquer forma.
+_MAX_CURINGAS = 3
+
 _MARCA_NO_TEXTO = re.compile(r"(" + "|".join(
-    re.escape(m) for m in sorted({m for _, m in PADROES_PII}, key=len, reverse=True)
+    re.escape(m) for m in sorted(MARCAS, key=len, reverse=True)
 ) + r")")
+
+
+def mascara_de_tela(texto: str) -> str:
+    """A máscara para TEXTO DE TELA DE URA — `templatize` e depois `redigir`.
+
+    ## 🔴 POR QUE DOIS, E POR QUE NESTA ORDEM
+
+    📊 Medido em 26/08/2026 com entradas sintéticas, oito telas::
+
+        entrada                                    redigir    templatize
+        endereço com número e complemento           PASSOU     MUDOU
+        data de nascimento                         PASSOU     MUDOU
+        placa Mercosul em minúscula                PASSOU     MUDOU
+        CPF com espaços no lugar dos pontos        PASSOU     MUDOU
+        CEP sem o rótulo "CEP"                     PASSOU     MUDOU
+        chassi                                     PASSOU     MUDOU
+        CPF pontuado                               MUDOU      MUDOU
+        ---------------------------------------------------------------
+        só `templatize`: 6   ·   só `redigir`: 0
+
+    🔴 `templatize` é o mascarador que esta casa já usa para tela de URA — 38
+    regras, 27 marcadores, e foi o que a SPEC-063 usou nos nós do Atlas.
+    `redigir` fica **depois**, como segunda rede: ele não pega nada que o outro
+    não pegue, mas a cascata custa uma chamada e fecha o dia em que um dos dois
+    ganhar um padrão que o outro não tem.
+
+    ## ⚠️ O QUE OS DOIS NÃO PEGAM, e está medido
+
+    📊 **Nome próprio em saudação solta** — `"Ola JOAO CARLOS, ..."` — passa
+    pelos dois. `templatize` pega nome **com rótulo** (`"Segurado: X"` →
+    `"Segurado: {NOME}"`), e a regra dele **nunca atravessa quebra de linha**
+    de propósito: 📊 quando atravessava, apagava opção de menu
+    (`"Botão 2: Falar com atendente"` → `"{NOME} 3: Encerrar"`) em quatro mapas
+    — P-164. **Preservar o menu vale mais que pegar o vocativo**, e para esta
+    fila especialmente: 📊 27 das 378 telas cegas são menu.
+
+    ⛔ Registrado em `PENDENCIAS.md`. Não está escondido atrás de um campo que
+    se chama `texto_mascarado`.
+
+    ## ⛔ E NÃO É UM TERCEIRO MASCARADOR
+
+    `CLAUDE.md` §5: isto **compe** dois que existem, na ordem medida. Nenhuma
+    regra de PII nova nasce aqui.
+    """
+    base = str(texto or "")
+    if not base:
+        return base
+    try:
+        from app.services.atlas.templater import templatize
+
+        base = templatize(base)
+    except Exception:  # noqa: BLE001
+        # ⚠️ Degrada para a segunda rede, que é pior e existe. ⛔ Nunca devolve
+        # o texto cru por não ter conseguido carregar o melhor mascarador.
+        pass
+    return redigir(base)
+
+
+def _cortar_sem_partir_marca(texto: str, limite: int) -> str:
+    """Corta em `limite`, mas nunca no meio de um `[MARCA]`.
+
+    🔴 Um `[` sem `]` no fim vira texto fixo escapado e mata o casamento da
+    âncora inteira, em silêncio.
+    """
+    if len(texto) <= limite:
+        return texto
+    cortado = texto[:limite]
+    # 🔴 AS DUAS FAMÍLIAS DE ABERTURA. `redigir` deixa `[CPF]`; `templatize`
+    # deixa `{CPF}`. ⚠️ A primeira versão só olhava `[`, e o guarda novo pegou:
+    # a âncora saía com `\{C` pendurado e não casava a própria tela.
+    for abrir, fechar in (("[", "]"), ("{", "}")):
+        abre = cortado.rfind(abrir)
+        if abre != -1 and cortado.find(fechar, abre) == -1:
+            # ⚠️ Sobrou um marcador aberto. Corta ANTES dele — uma âncora mais
+            # curta e correta vale mais que uma mais longa e morta.
+            cortado = cortado[:abre]
+    return cortado.rstrip()
 
 
 def ancora_permissiva(texto: str, limite: int = 60) -> str:
@@ -101,7 +202,18 @@ def ancora_permissiva(texto: str, limite: int = 60) -> str:
     ⛔ E o que SAI daqui não contém PII: os pedaços fixos são o texto da
     seguradora; o dado da pessoa virou curinga.
     """
-    mascarado = redigir(str(texto or "").strip(), limite=limite)[:limite]
+    # 🔴 A CASCATA, e não só `redigir`. 📊 Medido: nome com rótulo, endereço,
+    # data, chassi, CEP solto e placa em minúscula passam por `redigir` e são
+    # pegos por `templatize` — e o que sai daqui vai para `playbook_overlays`,
+    # tabela GLOBAL cujo cache é compartilhado por todas as corretoras.
+    # 🔴 MASCARA PRIMEIRO, CORTA DEPOIS — E O CORTE RESPEITA A MARCA.
+    #
+    # ⚠️ Cortar em 60 no meio de `[CEP]` deixa `\[CE` pendurado: o fragmento não
+    # é reconhecido como marca, vira parte FIXA e é escapado. A âncora resultante
+    # **nunca casa o texto cru** — e ela vai para `playbook_overlays` viva,
+    # parecendo funcionar. Antes desta SPEC, `re.escape(cru[:60])` casava.
+    mascarado = _cortar_sem_partir_marca(mascara_de_tela(str(texto or "").strip()),
+                                         limite)
     if not mascarado:
         return ""
     partes = [p for p in _MARCA_NO_TEXTO.split(mascarado) if p]
@@ -130,6 +242,21 @@ def ancora_permissiva(texto: str, limite: int = 60) -> str:
     fixos = sum(len(p) for p in partes if p not in MARCAS)
     if fixos < _MINIMO_FIXO:
         # O que sobrou não identifica tela nenhuma.
+        return ""
+
+    # 🔴 E O NÚMERO DE CURINGAS TEM TETO — backtracking catastrófico.
+    #
+    # ⚠️ `fixo.{0,40}fixo.{0,40}…` é exponencial quando os pedaços fixos são
+    # curtos. 📊 Medido: uma âncora com 6 curingas e 14 caracteres fixos (que
+    # PASSA no `_MINIMO_FIXO`) contra um alvo de 1.200 chars que não casa **não
+    # terminou em 120 s**.
+    #
+    # 🔴 E `match_ura_step` roda `re.search` SÍNCRONO dentro do laço de eventos,
+    # para toda mensagem que chega, com `playbook_overlays` carregada em cache
+    # **global**. Uma âncora patológica congela o acionamento de todas as
+    # corretoras naquele playbook.
+    quantos_curingas = sum(1 for p in partes if p in MARCAS)
+    if quantos_curingas > _MAX_CURINGAS:
         return ""
     return "".join(_CURINGA if p in MARCAS else re.escape(p) for p in partes)
 

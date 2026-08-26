@@ -58,12 +58,29 @@ def e_menu(texto: str) -> bool:
     return len(set(_OPCAO_NUMERADA.findall(str(texto or "")))) >= 2
 
 
-def hash_da_tela(texto: str) -> str:
-    """PURO. A chave da dedupe — md5 do texto **normalizado**.
+def hash_da_tela(texto_mascarado: str) -> str:
+    """PURO. A chave da dedupe — md5 do texto **já MASCARADO** e normalizado.
 
-    🔴 NORMALIZADO, e não cru. O mesmo menu com um espaço a mais, ou com o nome
-    do segurado trocado, é a MESMA tela — e uma chave sobre o texto cru faria a
-    fila crescer para sempre sem nunca deduplicar nada.
+    ## 🔴 MASCARADO, E ISSO CONSERTA DOIS DEFEITOS DE UMA VEZ
+
+    A primeira versão hasheava o texto **cru**. 📊 Medido, com entradas
+    sintéticas::
+
+        A = "Ola MARIA, confirme o CPF 111.222.333-44"
+        B = "Ola JOAO, confirme o CPF 555.666.777-88"   (a MESMA tela)
+
+        hash do CRU ........ A=b3c595aa16e4  B=e9f0f6b4f8ba   🔴 DIFERENTES
+
+    ⚠️ **Isso matava a razão de a fila existir.** O hash mudava a cada segurado,
+    então a mesma tela **nunca deduplicava**: uma linha por PESSOA — exatamente
+    o *"vira ruído em um dia"* que este módulo diz estar evitando.
+
+    ⛔ E o segundo defeito: o digest do texto cru gravado **na mesma linha** do
+    texto mascarado torna a máscara reversível — quem lê tem o gabarito (`[CPF]`
+    exatamente onde o número estava) e o digest. Força bruta sobre ~10⁹
+    candidatos de CPF é questão de minutos.
+
+    🔴 NORMALIZADO também. O mesmo menu com um espaço a mais é a MESMA tela.
 
     ⚠️ Usa o `_norm` do próprio casador (`corridor_playbooks`), e não uma
     normalização paralela: se as duas divergirem, a dedupe passa a agrupar
@@ -72,11 +89,13 @@ def hash_da_tela(texto: str) -> str:
     try:
         from app.services.corridor_playbooks import _norm
 
-        base = _norm(str(texto or ""))
+        base = _norm(str(texto_mascarado or ""))
     except Exception:  # noqa: BLE001
         # ⚠️ Degradação honesta: sem o casador, normaliza o mínimo. A dedupe
-        # fica pior, nunca ausente.
-        base = str(texto or "").lower()
+        # fica pior, nunca ausente. ⛔ E o que se perde é real: `_norm` tira
+        # ACENTO (NFKD) e o marcador de NEGRITO do WhatsApp, e `.lower()` não
+        # faz nem um nem outro — `"Opção"` e `"Opcao"` viram duas linhas de fila.
+        base = str(texto_mascarado or "").lower()
 
     # 🔴 E O ESPAÇO EM BRANCO COLAPSA — uma divergência DELIBERADA do casador.
     #
@@ -102,16 +121,28 @@ def linha_da_fila(*, company_id: str, insurer_key: str, ramo: str,
     Separada do IO de propósito: dá para percorrer as famílias de tela sem
     banco, sem Redis e sem rede.
     """
-    from app.services.intelligence.redaction_service import redigir
+    from app.services.intelligence.redaction_service import mascara_de_tela
 
+    # ⛔ MASCARADO NA ORIGEM — BLOCO C, com a cascata `templatize` → `redigir`.
+    #
+    # 📊 `redigir` sozinho deixava passar endereço, data de nascimento, chassi,
+    # CEP solto, placa em minúscula e CPF com espaços — 6 de 8 telas sintéticas
+    # medidas. E o texto desta fila **não passa por templater nenhum antes**:
+    # vem direto da mensagem da seguradora, inclusive da FASE HUMANA, onde quem
+    # digita é um analista de carne e osso.
+    mascarado = mascara_de_tela(str(texto or ""))[:_TETO_DO_TEXTO]
     return {
         "company_id": str(company_id),
         "insurer_key": str(insurer_key or "").lower().strip(),
         "ramo": str(ramo or "todos").lower().strip() or "todos",
         "playbook_ref": str(playbook_ref or "") or None,
-        # ⛔ MASCARADO NA ORIGEM — BLOCO C.
-        "texto_mascarado": redigir(str(texto or ""))[:_TETO_DO_TEXTO],
-        "hash_normalizado": hash_da_tela(texto),
+        "texto_mascarado": mascarado,
+        # 🔴 O HASH SAI DO MASCARADO. Ver `hash_da_tela`: sobre o texto cru ele
+        # matava a dedupe **e** tornava a máscara reversível.
+        "hash_normalizado": hash_da_tela(mascarado),
+        # ⚠️ MAS O MENU É DETECTADO NO TEXTO CRU. `templatize` preserva opção de
+        # menu de propósito, mas um marcador no meio da linha poderia esconder a
+        # numeração — e 📊 27 das 378 telas cegas são menu: são as que mais doem.
         "e_menu": e_menu(texto),
     }
 
@@ -141,9 +172,14 @@ async def registrar_tela_cega(*, company_id: str, insurer_key: str,
     if not company_id or not str(texto or "").strip():
         return False
 
-    linha = linha_da_fila(company_id=company_id, insurer_key=insurer_key,
-                          ramo=ramo, playbook_ref=playbook_ref, texto=texto)
+    # ⚠️ DENTRO DO `try`. `linha_da_fila` importa o mascarador, e um import que
+    # falha levantaria **antes** do bloco protegido — numa corrotina lançada por
+    # `create_task`, cuja exceção ninguém recupera. O `logger.error` prometido na
+    # docstring nunca dispararia, e a fila pararia de receber em silêncio: o
+    # desfecho exato que o BLOCO A existe para impedir.
     try:
+        linha = linha_da_fila(company_id=company_id, insurer_key=insurer_key,
+                              ramo=ramo, playbook_ref=playbook_ref, texto=texto)
         from app.core.database import create_async_supabase_client
 
         db = await create_async_supabase_client()
@@ -183,9 +219,12 @@ async def registrar_tela_cega(*, company_id: str, insurer_key: str,
             raise
         return True
     except Exception as e:  # noqa: BLE001
+        # ⚠️ `insurer_key`/`ramo` dos ARGUMENTOS, não de `linha`: se `linha_da_fila`
+        # for quem falhou, `linha` não existe e o log morreria com `NameError`
+        # dentro do próprio tratador.
         logger.error("[TELA CEGA] a tela de %s/%s NÃO entrou na fila (%s) — "
                      "ninguém vai saber que o corredor não a conhece",
-                     linha["insurer_key"], linha["ramo"], type(e).__name__)
+                     str(insurer_key or "?"), str(ramo or "?"), type(e).__name__)
         return False
 
 

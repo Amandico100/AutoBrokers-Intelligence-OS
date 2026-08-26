@@ -9114,3 +9114,135 @@ quem só escreve documento.
 
 **O que custa esquecer:** um vermelho atribuído à SPEC errada manda a próxima
 pessoa procurar o defeito no lugar certo pelo motivo errado.
+
+---
+
+## P-262 · 🔴 Uma linha de `route_drift` tem a `signature` CORROMPIDA — foi meu backfill
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-087 BLOCO C**
+
+📊 Medido em produção: `route_drift` id `2ab5352e…` tem
+`detail.signature` com **58 caracteres** e uma marca de máscara dentro. As
+outras 15 têm 64.
+
+🔴 **A causa fui eu.** O backfill do BLOCO C passou o `detail` inteiro pelo
+mascarador, e o padrão de telefone — `(?:\+?55\s*)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}`
+— **não tem `\b` em nenhuma ponta**, então casa qualquer corrida de 10–11
+dígitos dentro de um hexadecimal.
+
+📊 Duas revisões independentes mediram o mesmo: **~17,9% de 50.000 sha256
+seriam destruídos**.
+
+⚠️ **E `signature` é a chave de dedupe do drift.** Mutilada,
+`_same_unresolved_drift` nunca mais casa: a linha duplica e o Founder recebe o
+mesmo alerta por WhatsApp a cada varredura.
+
+✅ **Consertado para o futuro:** `_mascarar_fundo` agora ignora as chaves que não
+são texto (`signature`, `hash`, `digest`, `fingerprint`, `id`, `message_id`,
+`checksum`), e o guarda passou a usar um sha256 **que casa o padrão de
+telefone** — antes ele usava `"abc123"`, um valor que nenhum padrão alcança, e
+por isso a asserção era tautologia (§9.3).
+
+⛔ **O valor original está perdido** — não existe desmascarar.
+
+**O que destrava:** nada precisa ser feito com urgência. Aquele drift vai
+duplicar **uma vez**, e a linha nova nascerá com `signature` correta; a partir
+daí deduplica. Se o Founder receber um alerta repetido de deriva, é esta linha.
+
+**O que custa esquecer:** a próxima pessoa que investigar um alerta duplicado
+vai procurar o defeito no Sentinela, e ele está no passado.
+
+---
+
+## P-263 · `ALFAIATE_AUTO_APPLY` não está documentada em lugar nenhum
+
+**Aberta em:** 26/08/2026 · **Dono:** 🧑 Founder · **SPEC-087 BLOCO B**
+
+O BLOCO B religou o Alfaiate e o deixou **descarregado**: `apply_auto_overlays`
+só escreve com `ALFAIATE_AUTO_APPLY` ligada, e o padrão é desligado.
+
+⚠️ 📊 Mas o nome da variável só existe em dois arquivos — `playbook_tailor.py` e
+o teste dele. Não está no `.env`, nem em documento, nem aqui.
+
+```
+valores que LIGAM ....  1 · true · yes · on · sim   (lista fechada)
+qualquer outro .......  DESLIGADO, inclusive ausente e "false"
+onde setar ...........  serviço `smith-api` no EasyPanel
+```
+
+🔴 **Antes de ligar, meça:** o BLOCO B entrega a capacidade de MEDIR. Rode uma
+varredura e olhe `route_drift.simulator_passed` e
+`detail.vereditos_por_corredor` — se ainda houver NULL, o Alfaiate não está
+medindo, e ligar a escrita seria armar o que não se sabe apontar.
+
+**O que destrava:** a decisão do Founder, depois de ler o número.
+
+**O que custa esquecer:** o Alfaiate volta a ser um caminho morto — o defeito
+que a SPEC-087 mediu e consertou.
+
+---
+
+## P-264 · A fila `tela_cega` não tem leitor
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-087 BLOCO A**
+
+A tabela é chamada de *"fila de trabalho, não tabela de log"* na migration e no
+módulo — mas 📊 `grep -rn "tela_cega"` fora do escritor e dos testes devolve
+**zero**: sem rota de API, sem tela, sem consulta.
+
+⚠️ E o `status` aceita três valores (`aberta`, `virou_passo`, `ignorada`); só o
+primeiro tem escritor.
+
+📊 **Volume estimado, medido:** `observed_events` (`direction='in'`) nos últimos
+45 dias tem 16.275 eventos e 4.894 tuplas distintas `(corretora, seguradora,
+hash)` — o teto absoluto se 100% das telas fossem cegas. À taxa medida de
+22,3%, **~1.100 linhas por 45 dias**, ~9k/ano. **Não há problema de volume.**
+
+**O que destrava:** a tela da fila, ordenada por `visto_quantas_vezes desc` e
+filtrada por `e_menu` — 📊 27 das 378 cegas são menu, e são as que mais doem.
+
+**O que custa esquecer:** duas semanas de piloto enchem a fila e ninguém vê uma
+linha. É o mesmo formato da P-251.
+
+---
+
+## P-265 · O contador da fila é read-modify-write
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-087 BLOCO A**
+
+`registrar_tela_cega` lê `visto_quantas_vezes`, soma 1 e grava. ⚠️ Duas réplicas
+que leem 5 gravam 6 as duas — o UNIQUE guarda a LINHA, **nada guarda o
+CONTADOR**. E é o contador que a SPEC diz ordenar a fila.
+
+**O que destrava:** um `rpc` de incremento atômico no Postgres, ou uma coluna
+`bigserial` de eventos com `count(*)` na leitura.
+
+**O que custa esquecer:** a prioridade da fila fica subestimada exatamente nas
+telas mais frequentes — que são as que mais importam.
+
+---
+
+## P-266 · Nome próprio em saudação solta passa pelos dois mascaradores
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-087 BLOCO C**
+
+📊 Medido com entradas sintéticas: `"Ola JOAO CARLOS DA SILVEIRA, sua
+solicitacao foi registrada"` passa **intacto** por `templatize` e por `redigir`.
+
+✅ `templatize` pega nome **com rótulo** (`"Segurado: X"` → `"Segurado: {NOME}"`),
+e a regra dele **nunca atravessa quebra de linha** — de propósito. 📊 Quando
+atravessava, apagava opção de menu (`"Botão 2: Falar com atendente"` →
+`"{NOME} 3: Encerrar"`) em quatro mapas: é a P-164.
+
+> ⚠️ **Preservar o menu vale mais que pegar o vocativo** — e para esta fila
+> especialmente: 📊 27 das 378 telas cegas são menu.
+
+⛔ **Não está escondido:** está aqui, e está na docstring de `mascara_de_tela`.
+
+**O que destrava:** uma regra de vocativo ancorada em saudação
+(`^(Olá|Bom dia|Prezad[oa])\s+[A-ZÀ-Ú][\w]+`) — estreita o suficiente para não
+alcançar rótulo de opção. Precisa de contraprova contra o corpus de menus antes
+de entrar.
+
+**O que custa esquecer:** o campo se chama `texto_mascarado`, e quem confia no
+nome vai tratar a linha como não-sensível.

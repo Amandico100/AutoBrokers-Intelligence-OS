@@ -234,7 +234,10 @@ def test_GATE_1_tela_sem_passo_vira_UMA_linha_com_texto_mascarado():
     assert "123.456.789-00" not in linha["texto_mascarado"], (
         "o CPF entrou CRU na fila — escrever cru e mascarar depois é criar o "
         "vazamento e tapá-lo")
-    assert "[CPF]" in linha["texto_mascarado"]
+    # ⚠️ A marca é de CHAVE. A cascata roda `templatize` primeiro, e é ele
+    # que pega endereço, data de nascimento, chassi e CEP solto — 📊 6 de 8
+    # telas sintéticas medidas, contra 1 de `redigir` sozinho.
+    assert "{CPF}" in linha["texto_mascarado"]
 
 
 # ===========================================================================
@@ -502,3 +505,164 @@ def test_o_corpus_de_telas_reais_EXISTE_e_e_a_fonte_da_medicao():
     seguradoras = {a.name.split("-")[0] for a in arquivos}
     assert len(seguradoras) >= 10, (
         f"o corpus cobre {len(seguradoras)} seguradoras; a medição precisa de 10")
+
+# =========================================================================
+# 🔴 A DEDUPE, DE VERDADE — os dois achados do painel
+# =========================================================================
+
+def test_GATE_2d_a_normalizacao_do_CASADOR_e_que_agrupa():
+    """🔴 O teste da normalização passava por ACIDENTE.
+
+    ⚠️ Espaço e caixa são absorvidos por `" ".join(base.split())` e
+    `.lower()`, que vivem **fora** do `try` do `_norm`. 📊 Medido pelo painel:
+    apagar `from ... import _norm` **não derrubava nada**.
+
+    O que **só** `_norm` resolve é acento (NFKD) e o marcador de negrito do
+    WhatsApp — e é por isso que este caso existe.
+    """
+    b = Banco()
+    _registrar(b, "Opção de serviço: 1 - Guincho\n2 - Chaveiro")
+    _registrar(b, "Opcao de servico: 1 - Guincho\n2 - Chaveiro")      # sem acento
+    _registrar(b, "*Opção* de serviço: 1 - Guincho\n2 - Chaveiro")   # negrito do WhatsApp
+    assert len(_fila(b)) == 1, (
+        f"acento e negrito viraram {len(_fila(b))} linhas — a normalização do "
+        "casador não está sendo usada, e a fila fragmenta por formatação")
+    assert _fila(b)[0]["visto_quantas_vezes"] == 3
+
+
+def test_GATE_2e_a_MESMA_tela_de_segurados_diferentes_DEDUPLICA():
+    """🔴 **O achado que matava a razão de a fila existir.**
+
+    O hash saía do texto CRU: mudava a cada segurado, então a mesma tela
+    **nunca deduplicava** — uma linha por PESSOA, que é literalmente o *"vira
+    ruído em um dia"* que o módulo diz estar evitando.
+
+    ⛔ E o digest do cru ao lado do texto mascarado tornava a máscara
+    **reversível**: quem lê tem o gabarito (`{CPF}` onde o número estava) e o
+    hash. Força bruta sobre ~10⁹ candidatos.
+    """
+    b = Banco()
+    _registrar(b, "Confirma o CPF 111.222.333-44 do titular?")
+    _registrar(b, "Confirma o CPF 555.666.777-88 do titular?")
+    _registrar(b, "Confirma o CPF 999.888.777-66 do titular?")
+    assert len(_fila(b)) == 1, (
+        f"a MESMA tela com três segurados virou {len(_fila(b))} linhas — o "
+        "hash saiu do texto cru e a dedupe morreu")
+    assert _fila(b)[0]["visto_quantas_vezes"] == 3
+
+
+def test_o_HASH_sai_do_texto_MASCARADO():
+    """§9.3 — a prova direta, sem passar pelo IO."""
+    with _com_o_pacote_app():
+        a = TC.linha_da_fila(company_id=EMPRESA_A, insurer_key="yelum",
+                             ramo="auto", playbook_ref=None,
+                             texto="CPF 111.222.333-44 ok?")
+        b = TC.linha_da_fila(company_id=EMPRESA_A, insurer_key="yelum",
+                             ramo="auto", playbook_ref=None,
+                             texto="CPF 555.666.777-88 ok?")
+        c = TC.linha_da_fila(company_id=EMPRESA_A, insurer_key="yelum",
+                             ramo="auto", playbook_ref=None,
+                             texto="Aguarde na linha, por favor")
+    assert a["hash_normalizado"] == b["hash_normalizado"], (
+        "o hash ainda distingue segurados — a dedupe está morta")
+    # 🔴 CONTROLE: telas DIFERENTES continuam com hashes diferentes.
+    assert a["hash_normalizado"] != c["hash_normalizado"], (
+        "o hash agrupou telas diferentes — a dedupe passou a agrupar demais")
+
+
+# =========================================================================
+# 🔴 O GANCHO — o único fio entre o motor e a feature inteira
+# =========================================================================
+
+def _chamar_gancho(session, texto="Escolha:\n1 - A\n2 - B"):
+    """Executa `_registrar_tela_cega_sem_derrubar` DE VERDADE, com dublê.
+
+    🔴 Os três guardas anteriores eram busca de substring no fonte. 📊 Medido
+    pelo painel: trocar `session.get("company_id")` por `session.get("companyId")`
+    matava a feature em silêncio e deixava os três VERDES.
+    """
+    import asyncio
+    import importlib.util as _uu
+
+    chamadas = []
+
+    async def _falso(**kw):
+        chamadas.append(kw)
+        return True
+
+    mod = types.ModuleType("app.services.tela_cega")
+    mod.registrar_tela_cega = _falso
+    antes = sys.modules.get("app.services.tela_cega")
+    sys.modules["app.services.tela_cega"] = mod
+    try:
+        with _com_o_pacote_app():
+            spec = _uu.spec_from_file_location("_motor_087", str(MOTOR_PY))
+            motor = _uu.module_from_spec(spec)
+            sys.modules["_motor_087"] = motor
+            try:
+                spec.loader.exec_module(motor)
+            except Exception:                      # noqa: BLE001
+                import pytest as _p
+                _p.skip("o motor não carrega neste ambiente")
+
+            async def _rodar():
+                motor._registrar_tela_cega_sem_derrubar(session, {}, texto)
+                await asyncio.sleep(0)             # deixa a task rodar
+
+            asyncio.run(_rodar())
+    finally:
+        if antes is None:
+            sys.modules.pop("app.services.tela_cega", None)
+        else:
+            sys.modules["app.services.tela_cega"] = antes
+    return chamadas
+
+
+def test_o_GANCHO_registra_de_verdade_na_fase_de_URA():
+    chamadas = _chamar_gancho({
+        "company_id": EMPRESA_A, "state": "ura",
+        "playbook_ref": "yelum-auto-whatsapp@v1"})
+    assert len(chamadas) == 1, (
+        "o gancho não chamou o registro — a feature inteira está desligada")
+    assert chamadas[0]["company_id"] == EMPRESA_A
+    assert chamadas[0]["insurer_key"] == "yelum"
+    assert chamadas[0]["ramo"] == "auto"
+
+
+def test_o_GANCHO_NAO_registra_prosa_de_ANALISTA_HUMANO():
+    """🔴 Depois que a URA acaba, quem digita é uma PESSOA — e nenhuma frase
+    dela casa passo, por construção.
+
+    📊 `observed_events` tem 4.315 textos distintos: conversa nunca se repete,
+    então `visto_quantas_vezes` ficaria 1 para sempre, a fila cresceria sem
+    teto, e o CONTADOR — que a SPEC diz ser o que ordena a prioridade —
+    deixaria de ordenar.
+
+    ⛔ A fila é de TELA DE URA. Prosa de gente não é tela.
+    """
+    for fase in ("human_phase", "monitoring", "needs_human", "captured"):
+        assert _chamar_gancho({"company_id": EMPRESA_A, "state": fase,
+                               "playbook_ref": "yelum-auto-whatsapp@v1"}) == [], (
+            f"prosa da fase `{fase}` entrou na fila de TELAS DE URA")
+
+
+def test_o_GANCHO_NAO_registra_com_company_id_do_SIMULADOR():
+    """🔴 `ura_simulator` monta a sessão com `company_id="sim"`, e o Alfaiate
+    o chama a cada drift cosmético.
+
+    ⚠️ Sem este guarda, cada tela do script viraria um SELECT com
+    `company_id='sim'` → erro 22P02 → um `logger.error` dizendo *"a tela NÃO
+    entrou na fila"* por tela. A operação leria isso no piloto como *"o BLOCO A
+    não funciona"*.
+    """
+    for falso in ("sim", "", "sim-123", "company", "SIM"):
+        assert _chamar_gancho({"company_id": falso, "state": "ura",
+                               "playbook_ref": "yelum-auto-whatsapp@v1"}) == [], (
+            f"`company_id={falso!r}` chegou ao banco")
+
+
+def test_CONTROLE_o_gancho_CONSEGUE_registrar():
+    """§9.3 — sem esta linha, um gancho que nunca registra passaria nos dois
+    testes de recusa acima."""
+    assert _chamar_gancho({"company_id": EMPRESA_B, "state": "ura",
+                           "playbook_ref": "porto-residencial-whatsapp@v1"})

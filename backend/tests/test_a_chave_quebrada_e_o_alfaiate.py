@@ -102,7 +102,12 @@ CP = _carregar("app/services/corridor_playbooks.py", "_cp_087b")
 # devolveria `""` para tudo, e um teste que espera `""` ficaria verde sem nunca
 # exercitar a resolução. É a mesma armadilha do `ModuleNotFoundError` engolido
 # que a SPEC-085 pagou.
-sys.modules["app.services.corridor_playbooks"] = CP
+#
+# 🔴 `setdefault`, NÃO atribuição: na bateria inteira outro teste pode já ter
+# carregado o módulo REAL com sucesso — e aí ele é melhor que a minha cópia.
+# Sobrescrever daria duas instâncias do registry na mesma sessão, e a segunda
+# apagaria qualquer estado que a primeira tivesse.
+sys.modules.setdefault("app.services.corridor_playbooks", CP)
 
 with _com_o_pacote_app():
     SENT = _carregar("app/services/atlas/route_sentinel.py", "_sent_087b")
@@ -117,7 +122,21 @@ def test_o_ARNES_esta_de_pe_antes_de_qualquer_assercao():
     """
     assert len(CP._PLAYBOOKS) >= 14, (
         f"o registry carregou {len(CP._PLAYBOOKS)} playbooks — esperava 14+")
-    assert sys.modules.get("app.services.corridor_playbooks") is CP
+
+    # ⚠️ O QUE IMPORTA NÃO É A IDENTIDADE DO OBJETO.
+    #
+    # 📊 Medido: na bateria inteira, outro teste carrega o módulo REAL antes
+    # deste, e `sys.modules[...] is CP` fica falso — mas o registry está lá e
+    # funciona. A primeira versão desta linha reprovava por isso, e reprovar
+    # quando ninguém errou ensina a ignorar o guarda.
+    no_caminho = sys.modules.get("app.services.corridor_playbooks")
+    assert no_caminho is not None, (
+        "o registry não está no caminho de import — `_ref_do_registry` "
+        "devolveria `\"\"` para tudo e este arquivo inteiro passaria por "
+        "ignorância")
+    assert len(getattr(no_caminho, "_PLAYBOOKS", {})) >= 14, (
+        "o que está no caminho de import não é um registry completo")
+
     # e a resolução REALMENTE alcança o registry
     assert SENT._ref_do_registry("allianz", "auto"), (
         "o resolvedor não enxerga o registry — todo teste de chave deste arquivo "
@@ -160,8 +179,15 @@ def test_a_chave_sai_do_REGISTRY_e_nao_de_uma_convencao_montada():
     fonte = SENTINEL_PY.read_text(encoding="utf-8")
     assert 'playbook_ref = f"{insurer_key}:{ramo}"' not in fonte, (
         "a chave montada à mão voltou")
-    assert "playbook_ref = _ref_do_registry(insurer_key, ramo)" in fonte
-    corpo = fonte[fonte.index("def _ref_do_registry("):]
+    # ✅ A LIÇÃO MIGROU. A chave deixou de ser UMA e passou a ser a LISTA das
+    # refs da seguradora — 📊 100% dos mapas `active` têm `ramo='todos'`, que é o
+    # mapa MESCLADO, e medir o corredor de auto contra tela residencial grava um
+    # `simulator_passed=false` que PARECE medição.
+    assert "refs = _refs_do_registry(insurer_key, ramo)" in fonte
+    # ⚠️ JANELA FECHADA pelo fim da função, e não pelo fim do arquivo: o import
+    # podia migrar para qualquer função posterior e o guarda continuaria verde.
+    i = fonte.index("def _ref_do_registry(")
+    corpo = fonte[i:fonte.index(chr(10) + "def ", i + 10)]
     assert "from app.services.corridor_playbooks import _PLAYBOOKS" in corpo, (
         "o resolvedor parou de ler o registry — passou a adivinhar o nome")
 
@@ -205,8 +231,8 @@ def test_o_SENTINELA_nao_roda_o_alfaiate_sem_ref():
     """E a ausência sai no log — um Alfaiate que não roda em silêncio é o
     defeito que este bloco existe para matar."""
     fonte = SENTINEL_PY.read_text(encoding="utf-8")
-    i = fonte.index("playbook_ref = _ref_do_registry(insurer_key, ramo)")
-    trecho = fonte[i:i + 600]
+    i = fonte.index("refs = _refs_do_registry(insurer_key, ramo)")
+    trecho = fonte[i:i + 900]
     assert "if not playbook_ref:" in trecho
     assert "logger.warning" in trecho
     assert "raise LookupError" in trecho, (
@@ -372,3 +398,39 @@ def test_GATE_5_o_alfaiate_nao_tem_como_atravessar_corretoras():
     assert "company_id" not in corpo[i:i + 2000], (
         "o resolvedor de chave ganhou `company_id` — o Atlas é UM SÓ, e uma "
         "chave por corretora criaria dez mapas onde há um")
+
+
+def test_ramo_TODOS_mede_TODOS_os_corredores_da_seguradora():
+    """🔴 **O achado do red team, e ele derrubava a entrega do BLOCO B.**
+
+    📊 100% dos mapas `active` de `ura_maps` têm `ramo='todos'` — e `todos` não é
+    ramo: é o mapa **MESCLADO** da seguradora inteira. Escolher UM ref para ele
+    faz o Simulador medir o corredor de AUTO contra um script que contém telas
+    RESIDENCIAIS, e gravar um `simulator_passed=false` que **parece medição**.
+
+    ⚠️ Seria o mesmo sintoma que o BLOCO B existe para consertar — os três zeros
+    —, só que por outra causa. Atinge as quatro seguradoras com dois ramos:
+    allianz, porto, yelum e hdi.
+    """
+    for seg in ("allianz", "porto", "yelum", "hdi"):
+        refs = SENT._refs_do_registry(seg, "todos")
+        assert len(refs) >= 2, (
+            f"{seg} tem dois ramos e a medição usaria {len(refs)} corredor(es) — "
+            "o número diria respeito ao corredor errado")
+        assert all(CP.get_playbook(r) is not None for r in refs)
+
+    # ⚠️ E com ramo DECLARADO, é um só — não se mede o que não foi perguntado.
+    assert SENT._refs_do_registry("allianz", "residencial") == [
+        "allianz-residencial-whatsapp@v1"]
+    # 🔴 CONTROLE: seguradora de um ramo só continua com um.
+    assert SENT._refs_do_registry("zurich", "todos") == ["zurich-auto-whatsapp@v1"]
+    assert SENT._refs_do_registry("nao_existe", "todos") == []
+
+
+def test_o_veredito_de_CADA_corredor_vai_para_o_detail():
+    """📊 A medição que o BLOCO B existe para produzir precisa dizer de QUEM ela
+    fala — senão `simulator_passed` é um booleano sem sujeito."""
+    fonte = SENTINEL_PY.read_text(encoding="utf-8")
+    assert '"vereditos_por_corredor"' in fonte
+    assert "for ref in refs:" in fonte, (
+        "voltou a medir um corredor só para o mapa mesclado")

@@ -80,8 +80,32 @@ def run():
     report = tailor.render_patch_report("porto-auto-whatsapp@v1", classes)
     check("alfaiate: relatorio legivel com as 3 classes",
           "AUTO-APLICADO" in report and "APROVA" in report and "NUNCA" in report)
-    anchor = tailor.anchor_from_text("vale lembrar: mantenha (seus) dados")
-    check("alfaiate: ancora escapada (regex segura)", "\\(seus\\)" in anchor, anchor)
+    # ---- A LICAO MIGROU -- SPEC-087 BLOCO C, 26/08/2026.
+    #
+    # A ancora deixou de ser `re.escape(texto[:60])` e passou a ser MASCARADA
+    # antes de virar regex: o texto ia CRU para `playbook_overlays`, tabela
+    # GLOBAL sem `company_id`, lida por todas as corretoras.
+    #
+    # Consequencia para este guarda: `anchor_from_text` agora pode devolver ""
+    # -- quando a identidade da tela ERA a PII, ou quando o mascarador nao
+    # carrega (este arquivo roda como SCRIPT, sem o pacote `app` completo).
+    #
+    # A PERGUNTA QUE ELE PROTEGE CONTINUA A MESMA: a ancora e' regex SEGURA?
+    # Entao ele a faz nas DUAS saidas possiveis:
+    #   ancora existe -> parentese ESCAPADO, e ela casa o proprio texto
+    #   ancora vazia  -> fail-closed, e ninguem escreve overlay
+    _tela_alf = "vale lembrar: mantenha (seus) dados"
+    anchor = tailor.anchor_from_text(_tela_alf)
+    if anchor:
+        import re as _re_alf
+        check("alfaiate: ancora escapada (regex segura) e casa a tela",
+              "\\(seus\\)" in anchor
+              and _re_alf.search(anchor, _tela_alf) is not None,
+              anchor)
+    else:
+        check("alfaiate: sem mascarador, ancora VAZIA (fail-closed)",
+              anchor == "",
+              "melhor overlay nenhum que overlay com texto cru numa tabela global")
 
     # ---------- OVERLAYS em runtime ----------
     base_steps = len((pb.get_playbook("porto-auto-whatsapp@v1") or {}).get("ura_steps") or [])

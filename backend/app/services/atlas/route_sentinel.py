@@ -198,6 +198,7 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
             logger.warning(f"[SENTINELA ROTAS] dedupe falhou: {type(e).__name__}")
 
     # COSMÉTICO → Alfaiate v2 com GATE do Simulador
+    gate = None
     if severity == "cosmetic":
         try:
             # 🔴 SPEC-087 BLOCO B — A CHAVE. Isto era `f"{insurer_key}:{ramo}"`.
@@ -221,15 +222,32 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
             #     playbook_overlays 0 linhas        nunca alcançado
             #
             # > **Não sobra automação demais — falta a que existe funcionar.**
-            playbook_ref = _ref_do_registry(insurer_key, ramo)
+            # 🔴 POR REF, e não uma escolhida. 📊 100% dos mapas `active` têm
+            # `ramo='todos'` — o mapa MESCLADO da seguradora. Medir o corredor
+            # de auto contra um script que tem tela residencial grava um
+            # `simulator_passed=false` que PARECE medição e não é.
+            refs = _refs_do_registry(insurer_key, ramo)
+            playbook_ref = refs[0] if refs else ""
             if not playbook_ref:
                 logger.warning(
                     "[SENTINELA ROTAS] %s/%s nao tem playbook no registry — o "
                     "Alfaiate nao roda para esta rota", insurer_key, ramo)
                 raise LookupError("sem playbook no registry")
-            gate = await _alfaiate_with_gate(playbook_ref, active.get("map") or {}, observed_map)
-            simulator_passed = gate.get("passed")
-            auto_applied = gate.get("applied", False)
+            # ⚠️ Roda para CADA corredor da seguradora e guarda o melhor
+            # veredito: `passed=True` quer dizer *"algum corredor desta
+            # seguradora responde este script inteiro"*, que é a pergunta certa
+            # para um mapa mesclado.
+            vereditos = {}
+            for ref in refs:
+                g = await _alfaiate_with_gate(ref, active.get("map") or {}, observed_map)
+                vereditos[ref] = g.get("passed")
+                if g.get("applied"):
+                    auto_applied = True
+                if g.get("passed") is True:
+                    simulator_passed = True
+                elif simulator_passed is None and g.get("passed") is False:
+                    simulator_passed = False
+            gate = {"passed": simulator_passed, "vereditos": vereditos}
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[SENTINELA ROTAS] alfaiate falhou: {type(e).__name__}")
 
@@ -248,6 +266,10 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
             "removed": (diff.get("removed") or [])[:20],
             "changed": (diff.get("changed_options") or [])[:20],
             "signature": signature,
+            # 📊 Qual corredor da seguradora respondeu — a medição que o BLOCO B
+            # existe para produzir. ⚠️ `ramo='todos'` é o mapa mesclado, então
+            # sem isto o número não diz de QUEM ele fala.
+            "vereditos_por_corredor": (gate or {}).get("vereditos") or {},
         }),
         "auto_applied": auto_applied, "simulator_passed": simulator_passed,
         "needs_founder": needs_founder,
@@ -331,6 +353,38 @@ def _ref_do_registry(insurer_key: str, ramo: str) -> str:
             if ref.startswith(f"{seg}-{preferido}-"):
                 return ref
     return sorted(do_seguro)[0]
+
+
+def _refs_do_registry(insurer_key: str, ramo: str) -> list:
+    """**Todas** as refs desta seguradora e ramo — e por que são várias.
+
+    🔴 📊 100% dos mapas `active` de `ura_maps` têm `ramo='todos'`, e `todos`
+    não é ramo: é o mapa **MESCLADO** da seguradora inteira. Escolher um ref
+    para ele faz o Simulador medir o corredor de AUTO contra um script que
+    contém telas RESIDENCIAIS — e gravar um `simulator_passed=false` que
+    **parece medição** e não é.
+
+    ⚠️ Isso derrubaria a entrega do BLOCO B pelo mesmo sintoma que ele existe
+    para consertar, só que por outra causa.
+
+    Então para `todos` a medição é **por ref**, e `passed` só é `True` se algum
+    corredor da seguradora responde o script inteiro. Atinge as quatro
+    seguradoras com dois ramos: allianz, porto, yelum e hdi.
+    """
+    seg = str(insurer_key or "").lower().strip()
+    if not seg:
+        return []
+    try:
+        from app.services.corridor_playbooks import _PLAYBOOKS
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[SENTINELA ROTAS] registry indisponível (%s)",
+                     type(erro).__name__)
+        return []
+    ramo_l = str(ramo or "").lower().strip()
+    if ramo_l and ramo_l != "todos":
+        um = _ref_do_registry(seg, ramo_l)
+        return [um] if um else []
+    return sorted(r for r in _PLAYBOOKS if r.startswith(f"{seg}-"))
 
 
 async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
@@ -463,25 +517,48 @@ def _mascarar_texto(valor):
     if not isinstance(valor, str) or not valor:
         return valor
     try:
-        from app.services.intelligence.redaction_service import redigir
+        from app.services.intelligence.redaction_service import mascara_de_tela
 
-        return redigir(valor)
+        return mascara_de_tela(valor)
     except Exception:  # noqa: BLE001
         return "[TEXTO NAO MASCARAVEL]"
 
 
-def _mascarar_fundo(valor):
+#: 🔴 CHAVES QUE NÃO SÃO TEXTO E NÃO PODEM SER MASCARADAS.
+#:
+#: 📊 Medido em 26/08/2026, por duas revisões independentes: `redigir` sobre
+#: 50.000 sha256 hexadecimais **destrói 17,9% deles** — o padrão de telefone
+#: (`(?:\+?55\s*)?\(?\d{2}\)?[\s.\-]?\d{4,5}[\s.\-]?\d{4}`) não tem `\b` em
+#: nenhuma ponta e casa qualquer corrida de 10–11 dígitos dentro do hex.
+#:
+#: ⚠️ **E o dano não é cosmético: `signature` é a CHAVE DE DEDUPE do drift.**
+#: Mutilada, `_same_unresolved_drift` nunca mais casa — a linha duplica e o
+#: Founder recebe o MESMO alerta por WhatsApp a cada varredura.
+#:
+#: 🔴 📊 E uma linha de produção JÁ ESTÁ assim: `2ab5352e…` com 58 caracteres
+#: em vez de 64. Foi o backfill desta SPEC que a corrompeu. Ver `PENDENCIAS.md`.
+_CHAVES_QUE_NAO_SAO_TEXTO = ("signature", "hash", "digest", "fingerprint",
+                             "id", "message_id", "checksum")
+
+
+def _mascarar_fundo(valor, chave: str = ""):
     """A mesma máscara, recursiva — `detail` é um `jsonb` com listas dentro.
 
     ⚠️ Mascarar só o topo deixaria `detail.added[0]` cru, que é exatamente onde
     o texto da tela mora.
+
+    ⛔ **E digest NÃO É texto.** Ver `_CHAVES_QUE_NAO_SAO_TEXTO`: passar um
+    sha256 pelo mascarador de PII o destrói em 17,9% dos casos, e o campo que
+    ele destrói é a chave de dedupe.
     """
+    if str(chave).lower() in _CHAVES_QUE_NAO_SAO_TEXTO:
+        return valor
     if isinstance(valor, str):
         return _mascarar_texto(valor)
     if isinstance(valor, list):
-        return [_mascarar_fundo(v) for v in valor]
+        return [_mascarar_fundo(v, chave) for v in valor]
     if isinstance(valor, dict):
-        return {k: _mascarar_fundo(v) for k, v in valor.items()}
+        return {k: _mascarar_fundo(v, str(k)) for k, v in valor.items()}
     return valor
 
 

@@ -63,9 +63,9 @@ def _mascarar(texto: str) -> str:
     não escrevem em tabela global.
     """
     try:
-        from app.services.intelligence.redaction_service import redigir
+        from app.services.intelligence.redaction_service import mascara_de_tela
 
-        return redigir(str(texto or ""))
+        return mascara_de_tela(str(texto or ""))
     except Exception:  # noqa: BLE001
         # 🔴 FALHA FECHADA. Não conseguir mascarar **nunca** vira permissão
         # para gravar cru numa tabela que todas as corretoras leem.
@@ -90,9 +90,25 @@ def anchor_from_text(text: str) -> str:
     inteligência — e `ancora_permissiva` é o inverso dele, que devolve o
     casamento que a máscara tiraria.
     """
-    from app.services.intelligence.redaction_service import ancora_permissiva
+    # ⛔ NUNCA LEVANTA. 🔴 Antes desta SPEC esta função era `re.escape` puro e
+    # não tinha como falhar; ao ganhar um import ela ganhou uma forma de morrer
+    # — e 📊 quebrou `test_spec034_onda4`, um guarda que roda como SCRIPT, sem o
+    # pacote `app` completo (`ModuleNotFoundError: app.services.intelligence`).
+    #
+    # ⚠️ Em produção o import funciona; o risco é o inverso do óbvio — uma
+    # exceção aqui subiria por `apply_auto_overlays` e derrubaria o Alfaiate
+    # inteiro por causa de uma âncora.
+    #
+    # ⛔ E a degradação é FECHADA: sem mascarador não se devolve o texto cru —
+    # devolve-se âncora nenhuma, e quem chama pula (`if not anchor: continue`).
+    try:
+        from app.services.intelligence.redaction_service import ancora_permissiva
 
-    return ancora_permissiva(text)
+        return ancora_permissiva(text)
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[ALFAIATE] âncora não pôde ser mascarada (%s) — este overlay "
+                     "NÃO será criado", type(erro).__name__)
+        return ""
 
 
 def render_patch_report(playbook_ref: str, classes: Dict[str, List[Dict[str, Any]]]) -> str:

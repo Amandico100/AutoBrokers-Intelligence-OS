@@ -2794,6 +2794,11 @@ def _norm_text(text: str) -> str:
     return _norm_corredor(text)
 
 
+#: ⛔ `company_id` precisa ser UUID — ver `_registrar_tela_cega_sem_derrubar`.
+_UUID_DE_VERDADE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
 def _registrar_tela_cega_sem_derrubar(session, playbook, insurer_message) -> None:
     """Enfileira a tela que nenhum passo casou. ⛔ NUNCA levanta.
 
@@ -2808,7 +2813,23 @@ def _registrar_tela_cega_sem_derrubar(session, playbook, insurer_message) -> Non
         from app.services.tela_cega import registrar_tela_cega
 
         company_id = str(session.get("company_id") or "")
-        if not company_id:
+        # 🔴 SÓ UUID DE VERDADE. 📊 `ura_simulator` monta a sessão com
+        # `company_id="sim"`, e o Alfaiate o chama a cada drift cosmético: cada
+        # tela do script viraria um SELECT com `company_id='sim'` → erro 22P02
+        # → um `logger.error` dizendo *"a tela NÃO entrou na fila"* por tela.
+        # A operação leria isso no piloto como "o BLOCO A não funciona".
+        if not _UUID_DE_VERDADE.match(company_id):
+            return
+
+        # 🔴 E SÓ NA FASE DE URA. ⚠️ Depois que a URA acaba, quem digita do outro
+        # lado é um **analista humano** — e nenhuma frase dele casa passo, por
+        # construção. 📊 `observed_events` tem 4.315 textos distintos: conversa
+        # nunca se repete, então `visto_quantas_vezes` ficaria 1 para sempre, a
+        # fila cresceria sem teto e o CONTADOR — que a SPEC diz ser o que ordena
+        # a prioridade — deixaria de ordenar.
+        #
+        # ⛔ A fila é de TELA DE URA. Prosa de gente não é tela.
+        if str(session.get("state") or "") != "ura":
             return
         ref = str(session.get("playbook_ref") or "")
         # `allianz-residencial-whatsapp@v1` -> ('allianz', 'residencial')
