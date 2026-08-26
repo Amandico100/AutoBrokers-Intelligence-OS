@@ -518,6 +518,18 @@ async def _evento(db, company_id: str, run_id: str, tipo: str, mensagem: str, *,
 #: ao robô por `retomado_pelo_robo`.
 DESTRAVADORES = ("humano", "cerebro", "sentinela", "vigia", "robo")
 
+#: 🔴 QUEM, DENTRE ELES, NÃO É O ROBÔ.
+#:
+#: ⚠️ Cérebro, Sentinela e Vigia **são** o robô para efeito da COLUNA — quem
+#: os distingue é o EVENTO, que é exatamente a granularidade que
+#: `unblock_state` não tem (é o C.2 inteiro).
+#:
+#: 🔴 Tratar os três como "não-robô" deixava a coluna em `travado` **para
+#: sempre** depois de um destrave automático: o caso aparecia na Fila como
+#: travado tendo sido retomado, e o travamento seguinte era engolido pela
+#: idempotência. O painel achou isso.
+DESTRAVADORES_HUMANOS = ("humano",)
+
 #: `work_events.actor_type` tem CHECK no banco e só aceita estes seis:
 #: `system | worker | user | agent | admin | provider`. ⚠️ `human` **não está na
 #: lista** — escrever esse valor é um evento que nunca acontece.
@@ -657,7 +669,12 @@ def decidir_travamento(fase: str, fase_anterior: str, *,
         # ⚠️ `robo` explícito continua valendo como robô: a URA voltando a falar
         # sozinha **é** retomada pelo robô, e apagar isso trocaria uma mentira
         # por outra.
-        if destravado_por and destravado_por != "robo":
+        #
+        # 🔴 E `cerebro`/`sentinela`/`vigia` TAMBÉM são o robô aqui. A
+        # granularidade de qual deles trabalhou mora no EVENTO (C.2/C.3) — a
+        # coluna só sabe *robô* ou *pessoa*, e forçá-la a saber mais deixava
+        # `travado` gravado para sempre depois de um destrave automático.
+        if destravado_por in DESTRAVADORES_HUMANOS:
             return None
         return "retomado_pelo_robo"
     return None
@@ -687,6 +704,29 @@ async def _gravar_eventos_de_travamento(db, company_id: str, run_id: str,
 
     eventos = eventos_do_travamento(fase, fase_anterior, session,
                                     segundos_travado=segundos)
+
+    # 🔴 A VARREDURA NÃO CONTA O MESMO TRAVAMENTO DE NOVO.
+    #
+    # ⚠️ `reconciliar_acionamentos_orfaos` roda **de 5 em 5 minutos** e chama
+    # com `fase_anterior=""` fixo; a `entrada` que ela passa é o `input_payload`
+    # lido do banco, **nunca regravado** — então `travado_desde` não persiste e
+    # nada na sessão cortava o laço. Um `needs_human` sem `error_code` emitiria
+    # `travamento.aberto` **para sempre**. 📊 Hoje há 0 runs em voo desse
+    # workflow: não sangra ainda, passa a sangrar no primeiro.
+    #
+    # 🔴 **E O FILTRO É SÓ DA VARREDURA — `fase_anterior == ""`.** A primeira
+    # versão filtrava toda abertura cuja coluna estivesse em `travado`, e o juiz
+    # de confirmação mostrou que isso **engole travamento de verdade**: se a
+    # escrita best-effort de `assumido_por_humano` falhar, a coluna fica
+    # `travado` para sempre (nada mais a tira — ver `_estado_do_travamento`) e
+    # todo travamento seguinte daquele run some da contagem.
+    #
+    # Uma transição REAL de fase (`ura → needs_human`) é sempre um travamento
+    # novo, e conta. Só a varredura, que não sabe de onde veio, precisa perguntar
+    # ao banco.
+    if not fase_anterior and any(e["tipo"] == "travamento.aberto" for e in eventos):
+        if await _estado_do_travamento(db, run_id) == "travado":
+            eventos = [e for e in eventos if e["tipo"] != "travamento.aberto"]
     for ev in eventos:
         try:
             await _evento(db, company_id, run_id, ev["tipo"], ev["mensagem"],
@@ -699,12 +739,68 @@ async def _gravar_eventos_de_travamento(db, company_id: str, run_id: str,
 
     if fase == "needs_human" and fase_anterior != "needs_human":
         session["travado_desde"] = agora.isoformat()
+        # 🔴 A MARCA É LIMPA NA ABERTURA TAMBÉM — e o painel pegou isto.
+        #
+        # ⚠️ Limpar só no destrave deixava uma marca posta **fora** de qualquer
+        # travamento sobreviver e ser consumida pelo travamento seguinte: um
+        # `fromMe` chegando na fase `ura` marcava `humano`, e horas depois a URA
+        # voltando a falar sozinha era contada como trabalho de pessoa — e
+        # `decidir_travamento` ainda suprimia o `retomado_pelo_robo` que era a
+        # verdade.
+        #
+        # Um travamento começa **sem dono**. Quem destravar recebe o crédito.
+        session["destravado_por"] = None
+        session["canal_do_destrave"] = None
     if fase_anterior == "needs_human" and fase and fase != "needs_human":
-        # O crédito vale para ESTE destravamento. Um travamento seguinte começa
-        # sem dono — senão o humano de hoje levaria o crédito de amanhã.
+        # O crédito vale para ESTE destravamento. O seguinte começa sem dono —
+        # senão o humano de hoje levaria o crédito de amanhã.
         session["destravado_por"] = None
         session["canal_do_destrave"] = None
         session["travado_desde"] = None
+
+
+async def _estado_do_travamento(db, run_id: str) -> Optional[str]:
+    """O que o BANCO diz sobre este travamento agora. `None` = nada, ou não deu.
+
+    ⚠️ Best-effort de propósito, e a direção do erro importa: não conseguir ler
+    devolve `None`, que faz o evento sair **como se fosse novo**. Entre contar
+    um travamento duas vezes e não contar nenhum, contar demais é o erro
+    recuperável — o outro apaga a única evidência que o piloto vai produzir.
+
+    ## ⛔ E ELA NÃO SERVE PARA ATRIBUIR CRÉDITO. FOI TENTADO.
+
+    🔴 `assumido_por_humano` é **grudento**: a escrita de `travado` filtra por
+    `IS NULL`, a de `retomado_pelo_robo` por `== 'travado'` e a de `resolvido`
+    por `IN ('travado','retomado_pelo_robo')`. **Nenhuma escrita posterior o
+    tira.**
+
+    Uma versão desta função creditava o humano sempre que a coluna dizia
+    `assumido_por_humano` e a sessão estava sem marca — para resolver o destrave
+    pelo painel, que grava no banco e não toca no Redis. ⚠️ O juiz de confirmação
+    mostrou o preço: **todo destrave posterior daquele run virava trabalho de
+    pessoa**, inclusive os que o robô fez. É a mesma mentira do eco da própria
+    voz, com o gatilho invertido.
+
+    > 🔴 O crédito mora na SESSÃO, que é por travamento. A coluna é por RUN, e
+    > um valor por run não sabe atribuir N travamentos — é o C.2 inteiro.
+
+    📊 E o que se perde é pouco: o destrave pelo painel sai com `por: robo`, mas
+    o `travamento.assumido` que a própria rota grava (com `canal: dashboard`)
+    continua na linha do tempo. 📊 A rota do painel não tem **nenhum consumidor
+    de UI** (P-251) — hoje esse caminho não é alcançável. Registrado em
+    `PENDENCIAS.md`.
+    """
+    if not run_id:
+        return None
+    try:
+        r = await (db.client.table("work_runs").select("unblock_state")
+                   .eq("id", run_id).limit(1).execute())
+        linhas = getattr(r, "data", None) or []
+        return str(linhas[0].get("unblock_state") or "") or None if linhas else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[TRAVAMENTO] estado durável do run %s ilegível (%s)",
+                       run_id, type(e).__name__)
+        return None
 
 
 async def registrar_ato_do_agente(company_id: str, session: Dict[str, Any], *,
@@ -1892,7 +1988,8 @@ ASSUMIDO_POR_HUMANO = "assumido_por_humano"
 
 
 async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
-                               *, canal: str = "whatsapp") -> bool:
+                               *, canal: str = "whatsapp",
+                               foi_humano: bool = True) -> bool:
     """Uma pessoa da corretora falou com a seguradora — e agora o produto SABE.
 
     Registra no transcript a mensagem MANUAL (humano clicou/digitou direto na
@@ -1934,10 +2031,33 @@ async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
     session = await load_active_dispatch(company_id, insurer_phone)
     if not session or not str(text or "").strip():
         return False
+
+    # 🔴 `foi_humano=False` É O ECO DA NOSSA PRÓPRIA VOZ, E ELE NÃO ASSUME NADA.
+    #
+    # ⚠️ **O painel pegou esta inversão antes de ela sair.** `webhook.py` chama
+    # esta função para TODO `fromMe` — e a resposta que o próprio Cérebro mandou
+    # à seguradora volta como `fromMe`. Com as escritas duráveis do BLOCO C.1,
+    # isso gravaria `assumido_por_humano` e um evento de ator `user` **para uma
+    # mensagem que nenhuma pessoa escreveu**.
+    #
+    # 🔴 Seria o BLOCO C ao contrário: em vez de o humano deixar de ser
+    # creditado ao robô, o robô passaria a ser creditado ao humano — e a
+    # métrica que esta SPEC existe para produzir (*"quanto trabalho humano o
+    # produto ainda custa"*) nasceria inteira errada.
+    #
+    # Quem sabe a resposta é `e_a_nossa_propria_voz`, que já existe desde 06/08 e
+    # já é consultada no webhook. Aqui ela só passa a ser **usada**.
+    via = "humano" if foi_humano else "robo"
     session.setdefault("transcript", []).append(
-        {"direction": "out", "text": str(text)[:2000], "manual": True,
-         "at": _agora().isoformat(), "via": "humano"}
+        {"direction": "out", "text": str(text)[:2000], "manual": bool(foi_humano),
+         "at": _agora().isoformat(), "via": via}
     )
+    if not foi_humano:
+        # O espelho continua completo — era o que a função já fazia bem. O que
+        # não acontece é a assunção: ninguém assumiu coisa nenhuma.
+        await save_active_dispatch(company_id, insurer_phone, session)
+        return True
+
     # (1) A MARCA. Ela viaja na sessão até o próximo checkpoint, e é o que impede
     #     `retomado_pelo_robo` de mentir sobre quem trabalhou.
     session["destravado_por"] = "humano"

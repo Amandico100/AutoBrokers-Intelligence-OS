@@ -1269,6 +1269,22 @@ async def _handle_evolution_like_inbound(
             # 1) a mensagem dela aparece no chat do dashboard
             # 2) o agente para NAQUELA conversa — e só nela; nas outras ele
             #    segue trabalhando (decisão do Founder, 06/08/2026)
+            # 🔴 `_fomos_nos` NASCE AQUI, FORA DO `try` — o juiz de confirmação
+            # mostrou por quê.
+            #
+            # ⚠️ Ele só era atribuído DENTRO do bloco abaixo. Se aquele bloco
+            # estourasse antes da atribuição (um import que falha, o Espelho
+            # fora do ar), a chamada a `note_manual_outbound` mais adiante
+            # levantaria `NameError`, cairia no próprio `except` — e a
+            # intervenção humana deixaria de ser registrada POR INTEIRO, com um
+            # `warning` genérico. Antes do BLOCO C a chamada não dependia de
+            # variável nenhuma; foi o conserto que criou a dependência.
+            #
+            # 🔴 `False` é a inicialização certa, e não é arbitrária: sem prova
+            # de que a voz é nossa, o registro segue o caminho de sempre — o de
+            # atribuir a mensagem a uma pessoa. Um eco perdido é recuperável; o
+            # trabalho da atendente sumindo do registro, não.
+            _fomos_nos = False
             try:
                 from app.services.atlas.espelho_chat import (
                     espelhar_no_chat, pausar_por_intervencao_humana,
@@ -1319,8 +1335,19 @@ async def _handle_evolution_like_inbound(
             try:
                 from app.services.dispatch_router import note_manual_outbound
 
+                # 🔴 `foi_humano` — SPEC-093 BLOCO C, conserto do painel.
+                #
+                # ⚠️ Esta chamada está FORA do `if _fomos_nos` acima, e ficou assim
+                # de propósito: o espelho tem de registrar os dois casos. Mas
+                # com as escritas duráveis do C.1, deixar de dizer QUEM falou
+                # gravaria `assumido_por_humano` para a resposta que o próprio
+                # Cérebro acabou de mandar.
+                #
+                # `_fomos_nos` já estava calculado vinte linhas acima. Só
+                # faltava usá-lo aqui.
                 await note_manual_outbound(
-                    str(integration.get("company_id") or ""), str(normalized["phone"]), str(normalized["text"])
+                    str(integration.get("company_id") or ""), str(normalized["phone"]), str(normalized["text"]),
+                    foi_humano=not _fomos_nos,
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK EVOLUTION] manual outbound note failed: {type(e).__name__}")

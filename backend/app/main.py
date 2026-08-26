@@ -727,12 +727,23 @@ def _sinais_do_codigo() -> dict:
 
         sinais["allowlist_ativa"] = bool(allowlist_ativa())
         sinais["allowlist_tamanho"] = int(allowlist_tamanho())
+        # ⚠️ POR PROCESSO. Com mais de um worker, este número é o do worker que
+        # atendeu esta requisição — `allowlist_descartes: 0` **não** significa
+        # "nada foi barrado". Ele serve para responder *"está barrando?"*, não
+        # *"quantos exatamente?"*.
         sinais["allowlist_descartes"] = int(descartes_da_allowlist())
     except Exception:  # noqa: BLE001
         sinais["acionamento_env_aberta"] = None
         sinais["freio_de_emergencia_armado"] = None
         sinais["finalize_modo"] = None
+        # ⚠️ AS TRÊS, NÃO UMA. O painel pegou: repor só `allowlist_ativa` deixava
+        # as outras duas **sumirem do payload** no caminho de erro — e chave
+        # ausente é indistinguível de backend velho. Quem lesse `?.` concluiria
+        # "zero descartes", que é o mesmo silêncio que o BLOCO B existe para
+        # eliminar, agora só quando algo já deu errado.
         sinais["allowlist_ativa"] = None
+        sinais["allowlist_tamanho"] = None
+        sinais["allowlist_descartes"] = None
         sinais["finalize_abre_de_verdade"] = None
 
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em

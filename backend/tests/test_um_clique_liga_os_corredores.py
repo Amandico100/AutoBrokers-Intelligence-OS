@@ -116,8 +116,14 @@ def test_ligar_o_atendimento_LIGA_os_corredores():
         "o gatilho perdeu a condição de religamento — apertar `ligar` num "
         "agente já ligado passaria a disparar uma rodada do nada")
     # 🔴 E falhar em ligar corredor não pode desfazer o toggle.
-    i = rota.index("ativarTodosOsCorredores(")
-    trecho = rota[max(0, i - 900):i + 500]
+    #
+    # ⚠️ JANELA POR MARCA, NÃO POR CONTAGEM DE CARACTERES. A primeira versão
+    # usava `rota[i-900 : i+500]` e quebrou no mesmo dia, quando o comentário
+    # que explica o conserto do painel cresceu — 📊 exatamente o defeito que
+    # `test_orquestracao_pareamento` acabou de pagar. Guarda que quebra quando
+    # ninguém errou ensina a ignorar guarda.
+    ini = rota.index("let corredores")
+    trecho = rota[ini:rota.index("if (decisao.acao === 'toggle')", ini)]
     assert "try {" in trecho and "catch" in trecho, (
         "a ativação dos corredores deixou de ser best-effort — uma falha ali "
         "passaria a desfazer um toggle que já aconteceu")
@@ -166,6 +172,24 @@ def test_a_ancora_vai_em_LOTE_e_a_singular_NAO_e_uma_segunda_copia():
         "  const mapa = await ensureCorridorAnchors(supabase, companyId, [corridor]);",
         "  return mapa.get(corridor.corridor_id) ?? null;",
     ])
+    # 🔴 IGUAL, NÃO "CONTÉM". A versão anterior passava sob mutação por
+    # INSERÇÃO — um `return null;` ANTES das duas linhas as deixa intactas:
+    #
+    #     ): Promise<string | null> {
+    #   +   return null; // MUTACAO
+    #       const mapa = await ensureCorridorAnchors(...);
+    #
+    # ⚠️ É a mesma família da qual o comentário acima dizia ter aprendido.
+    corpo_util = chr(10).join(
+        l for l in corpo.splitlines()
+        if l.strip() and not l.strip().startswith(("//", "*", "/*"))
+        and not l.strip().startswith("async function ensureCorridorAnchor(")
+        and l.strip() not in ("supabase: SupabaseClient,", "companyId: string,",
+                              "corridor: CorridorFromCode,",
+                              "): Promise<string | null> {"))
+    assert corpo_util == esperado, (
+        "o corpo da âncora singular tem MAIS do que as duas linhas:" + chr(10)
+        + corpo_util + chr(10) + "--- esperado ---" + chr(10) + esperado)
     assert esperado in corpo, (
         "a âncora singular mudou de forma. Ela tem de ser exatamente estas "
         "duas linhas:" + chr(10) + esperado + chr(10) +

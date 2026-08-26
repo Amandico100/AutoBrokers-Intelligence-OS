@@ -288,8 +288,17 @@ def test_a_decisao_PURA_e_a_condicao_a_mais():
     assert ROUTER.decidir_travamento("ura", "needs_human") == "retomado_pelo_robo"
     assert ROUTER.decidir_travamento("ura", "needs_human",
                                      destravado_por="humano") is None
-    assert ROUTER.decidir_travamento("ura", "needs_human",
-                                     destravado_por="cerebro") is None
+    # 🔴 CÉREBRO E SENTINELA SÃO O ROBÔ PARA A COLUNA.
+    #
+    # ⚠️ A primeira versão fazia os dois suprimirem `retomado_pelo_robo`, e a
+    # coluna ficava `travado` PARA SEMPRE depois de um destrave automático: o
+    # caso aparecia na Fila como travado tendo sido retomado. Quem distingue
+    # qual robô trabalhou é o EVENTO — é o C.2 inteiro.
+    for automatico in ("cerebro", "sentinela", "vigia"):
+        assert ROUTER.decidir_travamento(
+            "ura", "needs_human", destravado_por=automatico) == "retomado_pelo_robo", (
+            f"`{automatico}` suprimiu a retomada pelo robô — a coluna fica "
+            "`travado` para sempre")
     # `robo` explícito continua sendo robô — não é marca de gente.
     assert ROUTER.decidir_travamento("ura", "needs_human",
                                      destravado_por="robo") == "retomado_pelo_robo"
@@ -316,8 +325,7 @@ def test_GATE_5_travou_duas_vezes_no_mesmo_run_DOIS_eventos():
     b = _banco()
     s = _sessao()
     _rodar(_marcar(b, s, "needs_human", "ura"))          # travou
-    s["destravado_por"] = "humano"
-    _rodar(_marcar(b, s, "ura", "needs_human"))          # destravou
+    _rodar(_marcar(b, s, "ura", "needs_human"))          # a URA voltou sozinha
     s["reason"] = "missing_slots:confirmar_endereco"
     _rodar(_marcar(b, s, "needs_human", "ura"))          # travou de novo
 
@@ -329,8 +337,190 @@ def test_GATE_5_travou_duas_vezes_no_mesmo_run_DOIS_eventos():
     assert telas == ["problema_eletrico_opcao", "confirmar_endereco"], (
         f"os dois travamentos não distinguem a tela: {telas}")
 
-    # 🔴 A COLUNA, sozinha, contaria UM. Esta asserção prova o furo.
+    # 🔴 A COLUNA, sozinha, contaria UM. Esta asserção prova o furo: ela
+    # ficou em `retomado_pelo_robo` — UM valor — enquanto os eventos contam DOIS
+    # travamentos, com telas diferentes.
+    assert b.dados["work_runs"][0]["unblock_state"] == "retomado_pelo_robo"
+
+
+def test_GATE_5b_o_humano_no_meio_NAO_engole_o_segundo_travamento():
+    """A mesma conta, com uma pessoa destravando pelo caminho REAL.
+
+    ⚠️ O painel achou o inverso deste caso: um filtro de idempotência que
+    olhasse só *"já há evento?"* engoliria o segundo travamento. Ele olha o
+    estado durável — e depois da assunção humana o estado deixa de ser
+    `travado`, então o travamento seguinte conta.
+    """
+    b = _banco()
+    s = _sessao()
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    s = _o_humano_clica(b, s)                            # caminho REAL
+    _rodar(_marcar(b, s, "ura", "needs_human"))
+    s["reason"] = "missing_slots:confirmar_endereco"
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+
+    assert len(_eventos(b, "travamento.aberto")) == 2
+    quem = [e["payload_redacted"]["por"]
+            for e in _eventos(b, "travamento.destravado")]
+    assert quem == ["humano"], quem
+
+
+def test_GATE_5c_a_varredura_de_5_em_5_min_NAO_conta_de_novo():
+    """🔴 O achado mais silencioso do painel.
+
+    `reconciliar_acionamentos_orfaos` roda a cada 5 minutos e chama
+    `_marcar_travamento(..., fase_anterior="")`. Sem a leitura do estado
+    durável, um `needs_human` emitiria `travamento.aberto` **em toda passada,
+    para sempre** — e `entrada` é lido do banco e nunca regravado, então nada
+    na sessão cortava o laço.
+    """
+    b = _banco()
+    s = _sessao()
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    assert len(_eventos(b, "travamento.aberto")) == 1
+    for _ in range(5):                                   # cinco varreduras
+        _rodar(_marcar(b, dict(_sessao()), "needs_human", ""))
+    assert len(_eventos(b, "travamento.aberto")) == 1, (
+        f"a varredura contou de novo: {len(_eventos(b, 'travamento.aberto'))} "
+        "eventos para UM travamento")
+
+
+def test_CONTROLE_o_filtro_de_idempotencia_NAO_engole_travamento_de_verdade():
+    """§9.3 — prove que o filtro sabe deixar passar.
+
+    🔴 Sem esta linha, um filtro que suprimisse TODO `aberto` passaria no
+    teste acima e apagaria a contagem inteira do piloto.
+    """
+    b = _banco()
+    s = _sessao()
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    _rodar(_marcar(b, s, "ura", "needs_human"))
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    assert len(_eventos(b, "travamento.aberto")) == 2
+
+
+def test_o_destrave_pelo_PAINEL_e_um_BURACO_CONHECIDO_e_delimitado():
+    """⚠️ **O botão *assumir* grava no BANCO e não toca na sessão do Redis.**
+
+    🔴 ESTE TESTE JÁ AFIRMOU O CONTRÁRIO, E A AFIRMAÇÃO ESTAVA CERTA POR
+    POUCO TEMPO.
+
+    O painel achou o buraco (o `destravado` saindo `por: robo` logo depois de um
+    `assumido` humano), e o conserto foi ler `work_runs.unblock_state` e creditar
+    o humano. ⚠️ **O juiz de confirmação mostrou o preço desse conserto:**
+
+    📊 `assumido_por_humano` é **grudento** — a escrita de `travado` filtra por
+    `IS NULL`, a de `retomado_pelo_robo` por `== 'travado'`. Nenhuma escrita
+    posterior o tira. Então creditar a partir da coluna fazia **todo destrave
+    seguinte daquele run** virar trabalho de pessoa, inclusive os do robô — a
+    mesma mentira do eco da própria voz, com o gatilho invertido.
+
+    > 🔴 O crédito mora na SESSÃO, que é por travamento. A coluna é por RUN, e
+    > um valor por run não sabe atribuir N travamentos.
+
+    ## O que fica, e por que é aceitável
+
+    ⛔ O `travamento.destravado` do caminho do painel sai `por: robo`. ✅ Mas o
+    `travamento.assumido` que a **própria rota** grava, com `canal: dashboard`,
+    continua na linha do tempo — a pergunta *"uma pessoa assumiu?"* tem resposta.
+
+    📊 E o caminho **não é alcançável hoje**: a rota `acionamentos-travados` tem
+    zero consumidores em `*.tsx` (P-251). Registrado em `PENDENCIAS.md`.
+    """
+    b = _banco()
+    s = _sessao()
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    # a atendente clica no PAINEL: o banco muda, a sessão não
+    b.dados["work_runs"][0]["unblock_state"] = "assumido_por_humano"
+    _rodar(_marcar(b, s, "ura", "needs_human"))
+
+    ev = _eventos(b, "travamento.destravado")[0]
+    assert ev["payload_redacted"]["por"] == "robo", (
+        "o crédito voltou a sair da COLUNA — e a coluna é grudenta: todo "
+        "destrave seguinte deste run passa a ser creditado a uma pessoa")
+    # ✅ e a coluna NÃO foi pisada: quem assumiu continua com o nome dele
+    assert b.dados["work_runs"][0]["unblock_state"] == "assumido_por_humano"
+
+
+def test_o_credito_do_HUMANO_nao_sobrevive_ao_destrave_seguinte():
+    """🔴 **O cenário exato que o juiz de confirmação escreveu.**
+
+    ⚠️ A oscilação `ura ↔ needs_human` *"acontece toda hora"* — está na
+    docstring de `registrar_checkpoint`. Então o segundo destrave do mesmo run
+    é comum, não excepcional:
+
+    ```
+    trava #1 → a atendente responde pelo WhatsApp → destrava #1  (humano)
+    trava #2 → a URA volta a falar sozinha        → destrava #2  (robô)
+    ```
+
+    🔴 Se o crédito viesse da coluna, o segundo também sairia `humano` — e a
+    conta que o BLOCO C existe para produzir (*"quanto trabalho humano o produto
+    ainda custa"*) sairia inflada para sempre.
+    """
+    b = _banco()
+    s = _sessao()
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    s = _o_humano_clica(b, s)                     # caminho REAL: grava a coluna
+    assert b.dados["work_runs"][0]["unblock_state"] == "assumido_por_humano"
+    _rodar(_marcar(b, s, "ura", "needs_human"))   # destrava #1
+
+    s["reason"] = "missing_slots:confirmar_endereco"
+    _rodar(_marcar(b, s, "needs_human", "ura"))   # trava #2
+    _rodar(_marcar(b, s, "ura", "needs_human"))   # destrava #2 — a URA, sozinha
+
+    quem = [e["payload_redacted"]["por"]
+            for e in _eventos(b, "travamento.destravado")]
+    assert quem == ["humano", "robo"], (
+        f"o crédito do humano atravessou o travamento seguinte: {quem}")
+    assert len(_eventos(b, "travamento.aberto")) == 2
+
+
+def test_a_marca_NAO_e_perdida_numa_COPIA_da_sessao():
+    """🔴 `session = dict(session)` rebindava o nome local.
+
+    ⚠️ As escritas do rodapé (`travado_desde`, e a limpeza da marca) caíam na
+    **cópia**, e quem salva a sessão é o chamador — que tem a original. Depois de
+    uma assunção humana, `travado_desde` nunca mais persistia e
+    `segundos_travado` sumia de todos os destraves seguintes daquele run.
+    """
+    b = _banco()
+    s = _sessao()
+    b.dados["work_runs"][0]["unblock_state"] = "assumido_por_humano"
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    assert s.get("travado_desde"), (
+        "o relógio do travamento foi escrito numa cópia e se perdeu")
+    _rodar(_marcar(b, s, "ura", "needs_human"))
+    carga = _eventos(b, "travamento.destravado")[0]["payload_redacted"]
+    assert "segundos_travado" in carga
+
+
+def test_a_varredura_NAO_engole_travamento_de_verdade():
+    """🔴 O outro achado do juiz: o filtro de idempotência era largo demais.
+
+    ⚠️ A primeira versão filtrava **toda** abertura cuja coluna estivesse em
+    `travado`. Se a escrita best-effort de `assumido_por_humano` falhar, a coluna
+    fica `travado` **para sempre** — e a partir daí todo travamento daquele run
+    sumia da contagem.
+
+    Agora o filtro é só da varredura (`fase_anterior == ""`), que é onde ele
+    nasceu. Uma transição REAL de fase é sempre um travamento novo.
+    """
+    b = _banco()
+    s = _sessao()
+    _rodar(_marcar(b, s, "needs_human", "ura"))
     assert b.dados["work_runs"][0]["unblock_state"] == "travado"
+
+    # a assunção humana FALHOU no banco (best-effort): a coluna fica `travado`
+    s["destravado_por"] = "humano"
+    _rodar(_marcar(b, s, "ura", "needs_human"))
+    assert b.dados["work_runs"][0]["unblock_state"] == "travado"
+
+    # e o travamento SEGUINTE, que é real, continua contando
+    s["reason"] = "missing_slots:confirmar_endereco"
+    _rodar(_marcar(b, s, "needs_human", "ura"))
+    assert len(_eventos(b, "travamento.aberto")) == 2, (
+        "o filtro de idempotência engoliu um travamento de verdade")
 
 
 def test_o_credito_nao_atravessa_o_travamento_seguinte():
@@ -419,6 +609,24 @@ def test_GATE_8_ninguem_escreve_um_actor_type_que_o_CHECK_recusa():
     🔴 O painel escrevia `actor_type: 'human'` — INSERT recusado pelo Postgres,
     dentro de um `catch` que só imprime no console. 📊 O banco concorda: **0
     linhas** com ator humano em 27.985 eventos.
+
+    ## ⚠️ O QUE ESTE GUARDA NÃO PODE FAZER, E É HONESTO DIZER
+
+    Ele **não compara com o banco**. 📊 O CHECK `ck_work_events_actor` não tem
+    DDL em nenhuma das 68 migrations do repositório (é uma das 9 versões
+    aplicadas sem arquivo — `MIGRATIONS-AUTHORITY.md` §4), e um teste que abrisse
+    conexão não rodaria no `gate.yml`.
+
+    O que ele guarda é o LADO DO CÓDIGO: a lista que o produto usa, medida
+    contra o banco em 25/08/2026 e escrita aqui como referência inspecionável —
+
+    ```sql
+    -- SELECT pg_get_constraintdef(oid) FROM pg_constraint
+    --  WHERE conname = 'ck_work_events_actor';
+    CHECK (actor_type = ANY (ARRAY['system','worker','user','agent','admin','provider']))
+    ```
+
+    🔴 Trazer esse CHECK para uma migration versionada está em `PENDENCIAS.md`.
     """
     assert ROUTER.ATORES_VALIDOS == (
         "system", "worker", "user", "agent", "admin", "provider")
@@ -592,3 +800,111 @@ def test_nenhum_evento_carrega_telefone_CPF_ou_nome():
         assert segredo not in despejo, (
             f"`{segredo[:4]}...` vazou para `work_events` — §13.3 é presença, "
             "nunca conteúdo")
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O ECO DA PRÓPRIA VOZ — o blocker que DUAS lentes cegas acharam
+# ---------------------------------------------------------------------------
+
+def test_o_ECO_DO_ROBO_nao_assume_o_caso():
+    """🔴 **O BLOCO C, ao contrário.**
+
+    📊 `webhook.py` chama `note_manual_outbound` para TODO `fromMe` — e a
+    resposta que o próprio Cérebro mandou à seguradora **volta como `fromMe`**.
+    Com as escritas duráveis do C.1, isso gravaria `assumido_por_humano` e um
+    evento de ator `user` para uma mensagem que nenhuma pessoa escreveu.
+
+    ⚠️ Uma URA de 15 turnos produziria ~15 linhas duráveis dizendo que um humano
+    trabalhou onde só o robô falou — e a métrica que esta SPEC existe para
+    produzir nasceria inteira errada.
+
+    O guarda `e_a_nossa_propria_voz` existe desde 06/08 e já era consultado no
+    webhook. Só faltava ser **usado** nesta chamada.
+    """
+    b = _banco(estado="travado")
+    s = _sessao()
+
+    async def _carregar(company_id, insurer_phone):
+        return s
+
+    async def _salvar(company_id, insurer_phone, sessao):
+        pass
+
+    async def _db_falso():
+        return b
+
+    originais = (ROUTER.load_active_dispatch, ROUTER.save_active_dispatch, ROUTER._db)
+    ROUTER.load_active_dispatch, ROUTER.save_active_dispatch = _carregar, _salvar
+    ROUTER._db = _db_falso
+    try:
+        with _com_o_pacote_app():
+            ok = _rodar(ROUTER.note_manual_outbound(
+                "c-resulta", "5511999999999",
+                "Confirmo, pode abrir o chamado.", foi_humano=False))
+    finally:
+        (ROUTER.load_active_dispatch, ROUTER.save_active_dispatch,
+         ROUTER._db) = originais
+
+    assert ok is True, "o espelho tem de continuar registrando o eco"
+    assert s["transcript"][-1]["via"] == "robo"
+    assert s["transcript"][-1]["manual"] is False
+    assert s.get("destravado_por") is None, (
+        "o eco da própria voz marcou a sessão como trabalho humano")
+    assert b.dados["work_runs"][0]["unblock_state"] == "travado", (
+        "o eco do robô gravou `assumido_por_humano` — o BLOCO C ao contrário")
+    assert _eventos(b, "travamento.assumido") == [], (
+        "o eco do robô virou uma linha do tempo dizendo que uma pessoa assumiu")
+
+
+def test_CONTROLE_a_MESMA_chamada_com_foi_humano_True_ASSUME():
+    """§9.3 — prove que as duas conseguem ser diferentes.
+
+    🔴 Sem esta linha, um `note_manual_outbound` que nunca assumisse nada
+    passaria no teste acima e o BLOCO C inteiro estaria desligado.
+    """
+    b = _banco(estado="travado")
+    s = _o_humano_clica(b, _sessao())
+    assert s["transcript"][-1]["via"] == "humano"
+    assert s["transcript"][-1]["manual"] is True
+    assert s.get("destravado_por") == "humano"
+    assert b.dados["work_runs"][0]["unblock_state"] == "assumido_por_humano"
+    assert len(_eventos(b, "travamento.assumido")) == 1
+
+
+def test_o_WEBHOOK_passa_quem_falou():
+    """Estrutural: sem esta linha o conserto acima guarda um parâmetro que
+    ninguém preenche.
+
+    📊 É o único chamador de `note_manual_outbound` no produto.
+    """
+    webhook = (RAIZ / "app" / "api" / "webhook.py").read_text(encoding="utf-8")
+    i = webhook.index("await note_manual_outbound(")
+    chamada = webhook[i:webhook.index(")", webhook.index("foi_humano", i))]
+    assert "foi_humano=not _fomos_nos" in chamada, (
+        "o webhook parou de dizer QUEM falou — o eco do próprio robô volta a "
+        "ser gravado como trabalho de uma pessoa")
+    # e `_fomos_nos` continua sendo calculado pelo guarda de verdade
+    assert "e_a_nossa_propria_voz(" in webhook
+
+
+def test_a_marca_NAO_sobrevive_a_um_travamento_novo():
+    """🔴 O segundo blocker da mesma lente.
+
+    ⚠️ Limpar a marca só no destrave deixava uma marca posta **fora** de
+    qualquer travamento ser consumida pelo travamento seguinte: um `fromMe` na
+    fase `ura` marcava `humano`, e horas depois a URA voltando a falar sozinha
+    era contada como trabalho de pessoa — e `decidir_travamento` ainda suprimia
+    o `retomado_pelo_robo` que era a verdade.
+    """
+    b = _banco()
+    s = _sessao(destravado_por="humano", canal_do_destrave="whatsapp")
+    _rodar(_marcar(b, s, "needs_human", "ura"))          # abre um travamento
+    assert s.get("destravado_por") is None, (
+        "a marca sobreviveu à abertura de um travamento novo")
+
+    _rodar(_marcar(b, s, "ura", "needs_human"))          # a URA volta sozinha
+    ev = _eventos(b, "travamento.destravado")[0]
+    assert ev["payload_redacted"]["por"] == "robo"
+    assert b.dados["work_runs"][0]["unblock_state"] == "retomado_pelo_robo", (
+        "a marca velha suprimiu o `retomado_pelo_robo` de um destrave que foi "
+        "mesmo do robô")

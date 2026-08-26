@@ -154,7 +154,18 @@ def teste_so_o_botao_liga_e_e_por_corretora():
     print("\n[5] Só o botão liga — e vale para UMA corretora")
     store = _sem_comentario_ts(_ler_repo("lib", "admin", "tenant-agent-store.ts"))
     i = store.find("setTenantAgentActive")
-    corpo = store[i: i + 900] if i != -1 else ""
+    # A FUNCAO INTEIRA, nao os primeiros 900 caracteres dela.
+    #
+    # 📊 A janela fixa de 900 quebrou em 25/08/2026: o BLOCO D da SPEC-093
+    # acrescentou `desligado_em` a esta funcao, e o `.eq('id', ...)` foi parar
+    # no caractere 1634. O FATO nao mudou -- o update continua casando id E
+    # empresa. A JANELA e' que ficou pequena.
+    #
+    # ⚠️ Guarda que quebra quando ninguem errou ensina a ignorar guarda. A
+    # licao migra: continua sendo a funcao INTEIRA que tem de casar os dois
+    # filtros, so' que agora medida pelo `}` dela.
+    fim = store.find(chr(10) + "}", i)
+    corpo = store[i: fim if fim != -1 else i + 2500] if i != -1 else ""
     checar("toggle_only_attendance" in corpo,
            "o toggle recusa qualquer papel que não seja atendimento",
            "o Observador não tem liga-desliga, e o core também não")

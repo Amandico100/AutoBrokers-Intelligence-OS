@@ -130,10 +130,62 @@ TETO_SEGUNDOS = 120
 # a mutação cai na janela de quem estiver rodando na hora. Por isso este
 # arquivo NÃO acusa um guarda: ele restaura o arquivo, registra a janela, e
 # reprova a SESSÃO no fim (`test_nenhuma_janela_ficou_suja`). Ver logo abaixo.
-ARQUIVOS_COMPARTILHADOS = (
-    RAIZ / "app" / "services" / "corridor_playbooks.py",
-    RAIZ / "scripts" / "replay.py",
-)
+def _alvos_declarados_pelos_guardas() -> tuple:
+    """Todo arquivo que algum guarda declara mutar — **lido do `MUTACOES` deles**.
+
+    🔴 ESTA LISTA JÁ FOI ESCRITA À MÃO, E O BURACO CUSTOU TRÊS VEZES.
+
+    📊 Ela era uma tupla de dois nomes (`corridor_playbooks.py` e `replay.py`).
+    `scripts/rubrica.py` — que a entrada **C17** de `test_a_regua_nao_tem_furo`
+    muta — nunca esteve nela. Resultado, medido em 22/08, 25/08 e **26/08**: a
+    mutação ficou na árvore, `test_a_arvore_ficou_limpa_no_fim` não a restaurou
+    (ela não estava na lista) e duas vezes chegou a entrar num commit.
+
+    ⚠️ **Toda lista de alvos escrita à mão tem um buraco, e o buraco é sempre a
+    pasta em que o defeito está.** Aqui ela passa a sair da única fonte que não
+    pode divergir: a declaração `MUTACOES` de cada guarda.
+
+    🔴 E os dois originais ficam como PISO, mesmo que nenhum `MUTACOES` os
+    nomeie: eles são mutados por guardas que não usam a lista declarativa, e
+    tirá-los trocaria um buraco por outro.
+    """
+    import ast
+
+    piso = [
+        RAIZ / "app" / "services" / "corridor_playbooks.py",
+        RAIZ / "scripts" / "replay.py",
+    ]
+    achados = list(piso)
+    for arquivo in sorted((RAIZ / "tests").glob("test_*.py")):
+        try:
+            fonte = arquivo.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "MUTACOES" not in fonte:
+            continue
+        try:
+            arvore = ast.parse(fonte)
+        except SyntaxError:
+            continue
+        for no in arvore.body:
+            if not isinstance(no, ast.Assign):
+                continue
+            nomes = [a.id for a in no.targets if isinstance(a, ast.Name)]
+            if "MUTACOES" not in nomes or not isinstance(no.value, ast.List):
+                continue
+            for item in no.value.elts:
+                # cada entrada é `(caminho_relativo, de, para, rótulo)`
+                if not isinstance(item, ast.Tuple) or not item.elts:
+                    continue
+                primeiro = item.elts[0]
+                if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str):
+                    alvo = RAIZ / Path(primeiro.value)
+                    if alvo not in achados:
+                        achados.append(alvo)
+    return tuple(achados)
+
+
+ARQUIVOS_COMPARTILHADOS = _alvos_declarados_pelos_guardas()
 
 
 def _impressao_dos_compartilhados() -> dict:
@@ -425,7 +477,23 @@ def test_a_exclusao_bate_com_a_descoberta():
 MARCAS_DE_MUTACAO = (
     "DESLIGADO PELA MUTACAO",
     "DESLIGADA_PELA_MUTACAO",
-    "_DESLIGADO",
+    # 🔴 `_DESLIGADO` COMO SUFIXO DE CHAVE, não como identificador solto.
+    #
+    # 📊 A marca nasceu da mutação `"schedule_agendado"` → `"schedule_agendado_DESLIGADO"`
+    # (SPEC-085, 24/08). O padrão `_DESLIGADO` sozinho, porém, casa código
+    # legítimo: `insurer_dispatch_service.py:261` tem
+    # `_DESLIGADO = ("0", "false", "no", "off", "nao", "não")`, que é uma
+    # constante do produto e não uma mutação.
+    #
+    # ⚠️ Medido em 26/08, quando a lista de arquivos vigiados deixou de ser
+    # escrita à mão e passou a cobrir esse arquivo: **falso positivo imediato**.
+    # Um guarda que acusa código legítimo ensina a ignorar o guarda — que é o
+    # oposto do que ele existe para fazer.
+    #
+    # As duas formas abaixo são as do arnês (chave de dicionário) e nenhuma
+    # delas casa uma atribuição.
+    '_DESLIGADO"',
+    "_DESLIGADO'",
     "# MUTACAO",
 )
 
@@ -911,3 +979,93 @@ def test_a_allowlist_da_marca_nao_virou_gaveta():
             f"a allowlist cita `{nome}`, que não existe. Nome errado numa "
             f"allowlist é uma porta aberta com cara de porta fechada."
         )
+
+
+# ---------------------------------------------------------------------------
+# 🔴 A LISTA DE ALVOS NÃO PODE VOLTAR A SER ESCRITA À MÃO — P-246
+# ---------------------------------------------------------------------------
+
+def test_a_lista_de_alvos_e_DERIVADA_e_cobre_quem_e_mutado():
+    """📊 Três ocorrências, e a mesma causa: uma tupla de dois nomes.
+
+    `scripts/rubrica.py` é mutado pela entrada **C17** de
+    `test_a_regua_nao_tem_furo` e nunca esteve em `ARQUIVOS_COMPARTILHADOS` —
+    então `test_a_arvore_ficou_limpa_no_fim` **não o restaurava**. Ele ficou na
+    árvore em 22/08, 25/08 e 26/08, e duas vezes entrou num commit.
+
+    ⚠️ Toda lista de alvos escrita à mão tem um buraco, e o buraco é sempre a
+    pasta em que o defeito está.
+    """
+    nomes = {c.name for c in ARQUIVOS_COMPARTILHADOS}
+    assert "rubrica.py" in nomes, (
+        "`rubrica.py` saiu da lista de arquivos vigiados — a mutação C17 volta "
+        "a ficar na árvore sem ninguém restaurar")
+    # o piso continua
+    assert {"corridor_playbooks.py", "replay.py"} <= nomes
+
+    # 🔴 E A LISTA É DERIVADA: todo alvo declarado em qualquer `MUTACOES` está
+    # nela. Sem esta asserção, alguém "simplifica" de volta para uma tupla
+    # literal e o buraco volta calado.
+    declarados = set()
+    for arquivo in sorted((RAIZ / "tests").glob("test_*.py")):
+        fonte = arquivo.read_text(encoding="utf-8")
+        if "MUTACOES = [" not in fonte:
+            continue
+        import ast as _ast
+        for no in _ast.parse(fonte).body:
+            if not isinstance(no, _ast.Assign):
+                continue
+            if not any(isinstance(a, _ast.Name) and a.id == "MUTACOES"
+                       for a in no.targets):
+                continue
+            if not isinstance(no.value, _ast.List):
+                continue
+            for item in no.value.elts:
+                if isinstance(item, _ast.Tuple) and item.elts:
+                    p0 = item.elts[0]
+                    if isinstance(p0, _ast.Constant) and isinstance(p0.value, str):
+                        declarados.add(Path(p0.value).name)
+    assert declarados, (
+        "nenhum `MUTACOES` foi encontrado — a derivação está lendo o vazio, e "
+        "passaria por vacuidade")
+    faltando = declarados - nomes
+    assert not faltando, (
+        f"guardas declaram mutar {sorted(faltando)} e a lista vigiada não os "
+        "cobre — é exatamente o buraco da P-246")
+
+
+def test_CONTROLE_o_harness_CONSEGUE_restaurar_rubrica():
+    """§9.3 — prove que a cobertura nova não é decorativa.
+
+    ⚠️ Muta `rubrica.py` de verdade, chama o restaurador do harness, e confere
+    byte a byte. Sem esta linha, `rubrica.py` estaria na lista sem que ninguém
+    tivesse provado que a restauração o alcança.
+    """
+    alvo = RAIZ / "scripts" / "rubrica.py"
+    assert alvo in ARQUIVOS_COMPARTILHADOS
+
+    _guardar_retrato_da_sessao()
+    original = _RETRATO_DA_SESSAO.get(alvo)
+    assert original, "o retrato da sessão não guardou `rubrica.py`"
+
+    # 🔴 O `finally` RESTAURA DO RETRATO, NUNCA DO "COMO ESTAVA AGORA".
+    #
+    # ⚠️ Guardar `alvo.read_bytes()` no começo e devolvê-lo no fim parece o mais
+    # seguro e é o oposto: se a árvore JÁ estivesse suja quando este teste
+    # rodasse, esse valor seria a versão SUJA — e o `finally` **preservaria o
+    # vazamento de outra pessoa**, com este teste verde. Um restaurador que
+    # restaura a sujeira é pior que restaurador nenhum, porque parece cuidado.
+    #
+    # O retrato da sessão é a única referência que não pode estar contaminada:
+    # foi tirado antes de qualquer guarda rodar.
+    try:
+        alvo.write_bytes(original + b"\n# MUTACAO DE CONTROLE\n")
+        assert alvo.read_bytes() != original, "a mutação de controle não pegou"
+        # o restaurador do harness — o mesmo que roda no fim da sessão
+        for caminho, bytes_originais in _RETRATO_DA_SESSAO.items():
+            if caminho.read_bytes() != bytes_originais:
+                caminho.write_bytes(bytes_originais)
+        assert alvo.read_bytes() == original, (
+            "o harness NÃO restaurou `rubrica.py` — a cobertura é decorativa")
+    finally:
+        alvo.write_bytes(original)

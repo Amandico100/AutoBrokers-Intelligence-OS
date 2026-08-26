@@ -8605,6 +8605,139 @@ o próximo vermelho de verdade morre junto com ele.
 
 ---
 
+### 📊 TERCEIRA OCORRÊNCIA — 26/08/2026, SPEC-093
+
+`git status` da SPEC-093 mostrou `backend/scripts/rubrica.py` **modificado**, com
+a marca literal:
+
+```diff
+-    melhor = max(candidatos, key=lambda c: (c[1] >= 3, c[2], c[1]), default=None)
++    melhor = max(candidatos, key=lambda c: (c[1], c[2]), default=None)  # MUTACAO
+```
+
+⚠️ **E o meu próprio grep de verificação não a pegou:** eu varri
+`backend/app lib app scripts` — e `scripts` resolveu para o `scripts/` da RAIZ,
+não para `backend/scripts/`. Quem a encontrou foi o `git status`.
+
+🔴 **Duas lições, e as duas são de método:**
+
+1. **Quem vigia a árvore é o `git status`, não um `grep` com lista de pastas.**
+   Toda lista de alvos escrita à mão tem um buraco, e o buraco é sempre a pasta
+   em que o defeito está.
+### ✅ E ESTA OCORRÊNCIA FECHOU A CAUSA — 26/08/2026
+
+📊 **O diagnóstico, com linha de controle:**
+
+```
+rodando `test_a_regua_nao_tem_furo.py` SOZINHO ...  52 verdes, ÁRVORE LIMPA
+                                                    (ele restaura quando TERMINA)
+o guarda leva sozinho .........................  14 s
+TETO_SEGUNDOS do harness ......................  120 s
+```
+
+🔴 **Então o vazamento exige INTERRUPÇÃO** — e o harness a produz de propósito:
+no estouro do teto ele chama `_matar_a_arvore`, que mata junto o processo que ia
+restaurar no `finally`. *"Contenção e restauração são objetivos opostos: quem
+morre não limpa"* — está escrito no próprio arquivo.
+
+⚠️ **A limpeza já morava no lugar certo** (`test_a_arvore_ficou_limpa_no_fim`,
+que restaura a partir de `_RETRATO_DA_SESSAO`). O que faltava era o alvo:
+
+```
+ARQUIVOS_COMPARTILHADOS era uma tupla de DOIS nomes, escrita à mão
+  · app/services/corridor_playbooks.py
+  · scripts/replay.py
+e `scripts/rubrica.py` — que a entrada C17 muta — nunca esteve nela.
+```
+
+✅ **Consertado:** a lista deixou de ser escrita à mão e passou a ser **derivada
+dos próprios `MUTACOES` dos guardas**, lidos por `ast`. 📊 De **2 para 6** alvos,
+e `rubrica.py` entrou. Dois guardas novos impedem a volta: um exige que todo
+arquivo declarado em qualquer `MUTACOES` esteja coberto, o outro **muta
+`rubrica.py` de verdade** e prova que o restaurador o alcança.
+
+⚠️ **E o conserto criou um falso positivo, que também foi consertado.** Com a
+lista mais larga, `insurer_dispatch_service.py` entrou no escopo — e a marca
+`_DESLIGADO`, solta, casava a constante legítima
+`_DESLIGADO = ("0","false","no","off","nao","não")`. A marca foi estreitada para
+as formas do arnês (`_DESLIGADO"` e `_DESLIGADO'`, sufixo de chave). 📊 Provado
+que ela **ainda pega** as três formas reais — `# MUTACAO`,
+`DESLIGADO PELA MUTACAO` e `"schedule_agendado_DESLIGADO"`, que é o vazamento
+original da SPEC-085 — e que o código legítimo passa.
+
+> 🔴 **Um guarda que acusa código legítimo ensina a ignorar o guarda.**
+
+### 📊 E O CULPADO FOI ESTREITADO — mas não nomeado
+
+```
+guardas que o harness roda ...........................  273
+dos quais TOCAM `scripts/rubrica.py` .................    2
+  · test_a_regua_nao_tem_furo.py ..... 14 s sozinho, árvore LIMPA
+  · test_nenhuma_mutacao_foi_commitada.py ..  2 s, árvore LIMPA
+TETO_SEGUNDOS do harness .............................  120 s
+```
+
+🔴 **Os dois restauram corretamente quando TERMINAM.** O vazamento só reproduz
+na bateria inteira — o que confirma o mecanismo (interrupção mata o `finally`) e
+**refuta** "um dos dois está simplesmente quebrado".
+
+⚠️ **E o vermelho cai em quem estiver rodando na hora.** Na bateria de 26/08 quem
+apareceu vermelho foi `test_o_passo_compartilhado_ainda_e_conferido` — que 📊
+passa sozinho em 6 s com a árvore limpa. Ele era **vítima**, não culpado. É a
+P-231 literal, e é por isso que o nome no vermelho não serve de acusação.
+
+### 📊 E A EVIDÊNCIA QUE ESTREITA MAIS — duas baterias, 26/08
+
+```
+bateria 3 ....  718 coletados · 2 falhas  (o restaurador + uma VÍTIMA)
+bateria 4 ....  672 passed   · 1 falha    (só o restaurador)
+```
+
+🔴 **`_JANELAS_SUJAS` NÃO acusou nenhum guarda.** O harness compara os arquivos
+vigiados **antes e depois de cada subprocesso** e registra a janela suja com o
+nome de quem a sujou (`_devolver_o_que_foi_sujado`). Em nenhuma das duas
+rodadas ele registrou alguma — **e mesmo assim a sessão terminou suja.**
+
+> ⚠️ Isso **elimina** a hipótese mais óbvia: a sujeira não é de um guarda-
+> subprocesso que terminou. Ele seria pego na janela dele.
+
+📊 E não é de um teste coletado pelo pytest: dos que mexem em `rubrica.py`, o
+único é o próprio harness.
+
+**A hipótese que sobra, e o repositório já a documenta:** um **neto órfão** —
+processo que sobrevive ao pai morto e escreve DEPOIS, fora de qualquer janela.
+É o defeito que `_matar_a_arvore` e `test_o_timeout_nao_deixa_neto_vivo`
+existem para fechar, e o comentário do harness diz exatamente isso: *"o pai
+morre, o neto continua mutando o corredor, e o vermelho cai em quem estiver
+rodando na hora"*.
+
+**O que CONTINUA aberto:** (1) **qual** processo sobrevive — a janela por
+subprocesso não o alcança, então o instrumento tem de ser outro (um `watcher`
+de mtime durante a sessão, ou o `finally` da restauração escrevendo o PID);
+(2) o `pre-commit` hook. O harness restaura no fim da sessão de pytest; ele não
+cobre alguém que commite no meio.
+
+---
+
+2. 🔴 **O guarda por marca PASSOU na mesma bateria que terminou suja.**
+   📊 `test_nenhuma_mutacao_ficou_na_arvore` roda `git ls-files "*.py"` e varre
+   todos por marca — não depende de lista de alvos, e é bom. Mas ele roda **na
+   posição em que o pytest o coleta**, e a bateria de 862s que deixou a árvore
+   suja o reportou VERDE.
+
+   > ⚠️ **Um guarda que roda no meio não certifica o fim.** Ele responde *"a
+   > árvore estava limpa quando eu rodei"*, e a pergunta é *"a árvore está limpa
+   > agora"*.
+
+   Restaurada por cópia; `MUTACAO: 0` conferido depois.
+
+**O que destrava, então, são DUAS coisas:** o `pre-commit` hook já registrado
+acima, **e** mover a checagem de árvore-limpa para um `pytest_sessionfinish` no
+`conftest.py` — o único ponto que roda depois de todo o resto. Como teste, ela
+nunca vai poder afirmar o que promete.
+
+---
+
 ## P-247 · 🔴 Um guarda que olha o `HEAD` não protege o commit que está nascendo
 
 **Aberta em:** 25/08/2026 · **Dono:** 🤖 execução
@@ -8658,3 +8791,272 @@ o Web.
 **O que custa esquecer:** uma pergunta de operação que hoje só se responde
 abrindo o painel do EasyPanel e lendo variável na mão — exatamente o que o
 bloco de sinais foi criado para eliminar.
+
+---
+
+## P-249 · `work_effects` existe no banco, sem DDL no repositório e sem escritor
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO D**
+
+📊 Medido: a tabela existe em produção, **não tem DDL em nenhuma das 68
+migrations do repositório** (foi aplicada direto no Supabase — a família das 9
+versões órfãs do `MIGRATIONS-AUTHORITY.md` §4), tem **0 linhas** e **nenhum
+chamador de produção**.
+
+⚠️ O BLOCO D precisava de uma chave de idempotência que não pode falhar, e
+`work_effects` era a candidata óbvia. **Usá-la seria escolher uma tabela sem
+escritor para a primeira coisa que não pode falhar.** Foi criada
+`saudacoes_enviadas`, mínima, com o DDL no repositório.
+
+**O que destrava:** decidir se `work_effects` ganha DDL versionado e um dono, ou
+se é apagada. Enquanto ninguém decide, ela é schema que ninguém sabe explicar.
+
+**O que custa esquecer:** a próxima pessoa que precisar de um registro de efeito
+vai encontrá-la, achar que é o lugar certo, e construir em cima de uma tabela
+que nenhuma migration descreve.
+
+---
+
+## P-250 · 🔴 `dispatch_watchdog.py` envia sem consultar `dispatch_live_enabled`
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO F**
+
+📊 `dispatch_watchdog.py:379` (o Sentinela) chama `wa.send_message(...)` direto.
+Todos os outros pontos de saída passam por um portão; este não.
+
+⚠️ Hoje não morde porque os quatro agentes estão desligados e
+`INSURER_DISPATCH_LIVE` não está no ambiente (P-168). **Não é trava: é sorte** —
+o mesmo critério que `webhook.py:578` usa para julgar a si mesmo.
+
+**O que destrava:** o Sentinela consultar `dispatch_live_enabled(company_id)`
+antes de enviar, como os outros.
+
+**O que custa esquecer:** no dia em que o piloto ligar, o Sentinela é o único
+caminho que fala com a seguradora sem perguntar se pode.
+
+---
+
+## P-251 · 🔴 A rota que credita o humano não tem nenhum consumidor de UI
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO C**
+
+📊 `app/api/dashboard/acionamentos-travados/route.ts` é a **única** rota que
+grava `assumido_por_humano` pelo painel — e **0 matches** em `*.tsx`: nenhuma
+tela a chama.
+
+✅ O BLOCO C consertou o que dava para consertar sem tela: o `actor_type: 'human'`
+que o CHECK do banco recusava, e o canal no payload. E abriu o **outro** caminho,
+que não precisa de tela nenhuma: a atendente respondendo pelo WhatsApp dela
+(`note_manual_outbound`) agora grava a coluna e a linha do tempo.
+
+**O que destrava:** a Fila de travados ganhar tela, ou a rota ser removida.
+
+**O que custa esquecer:** duas metades de um recurso, uma sem consumidor e outra
+sem produtor, envelhecendo em direções diferentes.
+
+---
+
+## P-252 · `whatsapp/service.py` tem um `send_message` paralelo com zero importadores
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO F**
+
+📊 `backend/app/services/whatsapp/service.py:129-176` define um `send_message`
+que **ninguém importa**. É motor paralelo morto — `CLAUDE.md` §5.
+
+**O que destrava:** apagar, depois de conferir que nenhum caminho dinâmico o
+alcança.
+
+**O que custa esquecer:** a próxima pessoa que procurar "como se manda mensagem"
+acha dois, e escolhe o errado 50% das vezes.
+
+---
+
+## P-253 · `conversations.resolvido_em` e `resolucao_motivo` não têm escritor
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO F**
+
+📊 As duas colunas existem e têm **0 linhas preenchidas**. Uma conversa nunca é
+marcada como resolvida — o que significa que "quantos atendimentos foram
+resolvidos hoje" não tem resposta.
+
+**O que destrava:** decidir quem escreve (o agente ao encerrar? a atendente pelo
+painel?) e ligar.
+
+**O que custa esquecer:** o piloto vai gerar duas semanas de atendimento e a
+pergunta mais óbvia sobre ele continua sem fonte.
+
+---
+
+## P-254 · A corrida do epoch: o eco `fromMe` chega DEPOIS do envio dela
+
+**Aberta em:** 25/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO C**
+
+⚠️ Quando a atendente responde pelo WhatsApp dela, o webhook recebe o eco
+`fromMe` **depois** que a mensagem já saiu. Entre o envio e o eco, o robô pode
+ter falado por cima.
+
+✅ O BLOCO C fecha a metade do REGISTRO: quando o eco chega, a coluna e a linha
+do tempo passam a dizer que foi uma pessoa. ⛔ **Não fecha a metade da POSSE** —
+isso é a arquitetura de epoch/fencing, que é a SPEC-086 e vem calibrada pelo
+piloto, por decisão registrada.
+
+**O que destrava:** a SPEC-086.
+
+**O que custa esquecer:** duas vozes na mesma conversa com a seguradora, e o
+segurado do outro lado.
+
+---
+
+## P-255 · O CHECK de `work_events.actor_type` não tem DDL no repositório
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO C**
+
+📊 `ck_work_events_actor` existe no banco e aceita exatamente
+`system | worker | user | agent | admin | provider`. 📊 `grep -rn "actor_type"
+backend/supabase/migrations/` → **vazio**: é uma das 9 versões aplicadas sem
+arquivo (`MIGRATIONS-AUTHORITY.md` §4).
+
+⚠️ Consequência medida pelo painel: o gate `test_GATE_8` compara a constante
+Python com a cópia dela mesma — **não há como comparar os dois lados**. Se o
+CHECK real mudar, o teste continua verde e o INSERT continua recusado.
+
+✅ O que dava para fazer foi feito: a lista medida e a data estão escritas no
+guarda como referência inspecionável, com a query que a produziu.
+
+**O que destrava:** trazer o CHECK para uma migration versionada (aditiva,
+`ALTER TABLE ... DROP CONSTRAINT IF EXISTS` + `ADD CONSTRAINT ... NOT VALID` +
+`VALIDATE`), ou um teste de contrato que rode contra uma branch Supabase.
+
+**O que custa esquecer:** foi exatamente esta classe de defeito que fez o painel
+escrever `actor_type: 'human'` — um valor que o banco recusa — e ninguém
+descobrir por semanas.
+
+---
+
+## P-256 · A rota da saudação recebe `company_id` do chamador
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO D**
+
+`GET /api/saudacao-religamento/previa?company_id=` e o `POST` de envio resolvem
+a corretora pelo **parâmetro**, com a chave interna única da plataforma como
+única fronteira. É o padrão da casa (`dispatch_monitor.py` faz igual), mas a
+resposta desta rota carrega **identidade mascarada de segurados**.
+
+⚠️ Hoje o único chamador é `previaDaSaudacao` no Next, que passa
+`auth.ctx.companyId` — vindo da sessão. **A fronteira está de pé pelo chamador,
+não pela rota.**
+
+**O que destrava:** quando a tela de confirmação for construída, o envio tem de
+resolver a corretora por sessão (`requireCompanyMember`), nunca por parâmetro.
+
+**O que custa esquecer:** um segundo chamador, escrito por outra pessoa, passando
+um `company_id` que veio do cliente.
+
+---
+
+## P-257 · 🔴 `git checkout --` apagou trabalho não commitado, de novo
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+📊 Aconteceu nesta SPEC, em 26/08: uma bateria de mutação deixou o arquivo sujo,
+e `git checkout -- <arquivo>` foi usado para "limpar" — **apagando três
+consertos de painel não commitados** do mesmo arquivo. Recuperado da cópia de
+segurança que a própria bateria tinha feito.
+
+⚠️ É a mesma família da P-231 e a segunda vez que a lição aparece: **restaurar
+mutação por `git checkout` é seguro só quando o arquivo não tem trabalho novo —
+e é justamente durante um conserto que ele tem.**
+
+**O que destrava:** um hábito, não um teste: toda bateria de mutação copia o
+arquivo ANTES e restaura POR CÓPIA. O script `mut_*.py` desta SPEC faz isso e
+confere o sha256 dos dois lados.
+
+**O que custa esquecer:** trabalho de uma hora, sem aviso, com a suíte verde.
+
+---
+
+## P-258 · O envio da saudação continua sem tela de confirmação
+
+**Aberta em:** 26/08/2026 · **Dono:** 🧑 Founder + 🤖 execução · **SPEC-093 BLOCO D.5**
+
+✅ O caminho está pronto e **desligado**: ao religar o atendimento, a rota do
+botão devolve `saudacao: {total, conversas, primeiro_religamento}` — a prévia,
+sem mandar nada. `POST /api/saudacao-religamento/enviar` só envia com
+`confirmado: true` no corpo.
+
+⛔ **O que falta é a tela** que mostra essa prévia e tem o botão de confirmar.
+Enquanto ela não existir, nenhuma saudação sai — que é o desfecho seguro.
+
+📊 O porquê do cuidado: o robô teve **4 conversas de WhatsApp em toda a história
+do produto**. A primeira vez que isto rodar será a maior coisa que ele já mandou
+sozinho.
+
+**O que destrava:** a tela, e a decisão do Founder de apertar o botão.
+
+**O que custa esquecer:** um recurso inteiro pronto que ninguém sabe que existe —
+e gente esperando. 📊 Medido em 26/08/2026, com esta query:
+
+```sql
+with ult as (
+  select conversation_id,
+         max(created_at) filter (where role='user')      ultimo_user,
+         max(created_at) filter (where role='assistant')  ultimo_assist
+    from messages group by 1)
+select count(*) filter (where u.ultimo_user >= now() - interval '24 hours'
+                          and (u.ultimo_assist is null or u.ultimo_assist < u.ultimo_user)
+                          and c.claimed_by is null and c.claimed_by_name is null
+                          and coalesce(upper(c.status),'') <> 'HUMAN_REQUESTED') elegiveis,
+       count(*) filter (where u.ultimo_user < now() - interval '24 hours'
+                          and (u.ultimo_assist is null or u.ultimo_assist < u.ultimo_user)) velhas
+  from conversations c join ult u on u.conversation_id = c.id;
+```
+
+```
+elegíveis (≤24h, sem dono, sem handoff, sem resposta) ....  25
+sem resposta há MAIS de 24h ..............................  214
+```
+
+⚠️ As 214 **não recebem saudação** — é a decisão do BLOCO D.2, e o motivo está
+escrito no código: acima de 24h a janela da Meta já exige template, e a saudação
+vira exumação. Elas continuam na tela de Conversas, que é onde a corretora já
+olha.
+
+---
+
+## P-259 · O destrave pelo PAINEL sai creditado ao robô — e é uma escolha
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-093 BLOCO C**
+
+O botão *assumir* de `acionamentos-travados` grava `assumido_por_humano` no
+**banco** e não toca na sessão do Redis. Como o crédito do
+`travamento.destravado` vem da sessão, esse destrave sai `por: robo`.
+
+🔴 **Foi consertado e o conserto foi DESFEITO, por medição.** A versão que lia
+`work_runs.unblock_state` para creditar o humano criava um defeito maior:
+
+📊 `assumido_por_humano` é **grudento** — a escrita de `travado` filtra por
+`IS NULL`, a de `retomado_pelo_robo` por `== 'travado'`, a de `resolvido` por
+`IN ('travado','retomado_pelo_robo')`. **Nenhuma escrita posterior o tira.**
+Creditar a partir dele fazia **todo destrave seguinte daquele run** virar
+trabalho de pessoa — e a oscilação `ura ↔ needs_human` *"acontece toda hora"*
+(está na docstring de `registrar_checkpoint`). A conta que o BLOCO C existe
+para produzir sairia inflada para sempre.
+
+> 🔴 O crédito mora na SESSÃO, que é por travamento. A coluna é por RUN, e um
+> valor por run não sabe atribuir N travamentos.
+
+✅ **O que continua funcionando:** o `travamento.assumido` que a própria rota
+grava, com `canal: dashboard`, fica na linha do tempo. A pergunta *"uma pessoa
+assumiu este caso?"* tem resposta; a pergunta *"quem destravou?"* responde
+`robo` nesse caminho.
+
+📊 **E o caminho não é alcançável hoje:** `acionamentos-travados` tem **zero
+consumidores** em `*.tsx` (P-251).
+
+**O que destrava:** ou a rota do painel escreve a marca na sessão do Redis junto
+com a coluna (é uma chamada, no mesmo handler), ou a Fila ganha tela e o
+caminho passa a existir — e aí vale escrever a marca.
+
+**O que custa esquecer:** o número de trabalho humano fica **subestimado** no
+canal `dashboard`. É o erro na direção segura — melhor que o inverso, que foi
+medido e recusado.

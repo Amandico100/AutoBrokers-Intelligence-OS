@@ -41,6 +41,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent.parent
 TESTE_MJS = RAIZ / "scripts" / "admin-auth-policy.test.mjs"
+MJS_DA_ROTA = RAIZ / "scripts" / "spec093-a-rota-do-botao.test.mjs"
 POLITICA = RAIZ / "lib" / "admin" / "admin-auth-policy.ts"
 ROTA = RAIZ / "app" / "api" / "dashboard" / "agents" / "[agentKey]" / "route.ts"
 
@@ -146,3 +147,30 @@ def test_o_papel_novo_NAO_herda_escrita_de_configuracao():
     assert "attendant" not in linha, (
         "`attendant` entrou em TENANT_WRITE_ROLES — o papel passou a abrir a "
         "configuração inteira, que é exatamente o que ele existe para evitar")
+
+
+# ---------------------------------------------------------------------------
+# 🔴 A ROTA, EXECUTADA — o buraco que o painel achou
+# ---------------------------------------------------------------------------
+
+@_sem_node
+def test_a_ROTA_do_botao_e_executada_de_verdade():
+    """🔴 **A política pura não é a rota.**
+
+    A SPEC moveu a autorização de `requireCompanyMember({ write: true })` para
+    um `if` dentro da rota, e nenhum teste executava a rota — os guardas só
+    conferiam que a string da chamada existia. 📊 Medido pelo painel: a mutação
+
+        -  if (!decisao.permitido) {
+        +  if (false && !decisao.permitido) {
+
+    deixava os 47 gates da política verdes **e** os guardas deste arquivo
+    verdes — e qualquer `member` da corretora passava a escrever prompt e
+    variáveis do agente.
+
+    ⚠️ Com este executor, a mesma mutação derruba 6 asserções.
+    """
+    r = _rodar_mjs(MJS_DA_ROTA)
+    assert r.returncode == 0, (
+        (r.stdout or "")[-2500:] + chr(10) + (r.stderr or "")[-800:])
+    assert "0 falharam" in (r.stdout or ""), (r.stdout or "")[-800:]

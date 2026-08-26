@@ -18,7 +18,8 @@ Por isso:
   `send_to_client_guarded(temperatura=FRIA)` e **o problema das "cinquenta às
   8h" se resolve por roteamento, não por código novo** (`CLAUDE.md` §5);
 - ⛔ **não envia sem confirmação explícita no primeiro religar** de cada
-  corretora. Uma tela é o guarda mais barato que existe;
+  corretora. Uma tela é o guarda mais barato que existe — e a prévia que ela
+  mostra **carrega identidade mascarada**, de propósito (ver `previa`);
 - ⛔ **não toca em conversa com mais de 24h.** 📊 Acima disso a janela da Meta já
   exige template — a regra de produto e a regra do canal dão a mesma resposta. E
   📊 **181 das 234 têm mais de 7 dias**: ali a saudação é exumação, não
@@ -35,6 +36,7 @@ Chavear no evento de toggle mandaria duas saudações para a mesma pessoa.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -92,9 +94,15 @@ def decidir_saudacao(conversa: Dict[str, Any], *,
         # elegível para "demora".
         horas = 0.0
     if horas > IDADE_LIMITE_H:
-        # 🔴 NÃO ENVIA. Vai para a fila humana — e o motivo é escrito, porque
-        # "não enviou" sem motivo é indistinguível de "esqueceu".
-        return {"envia": False, "motivo": "velha_demais_vai_para_fila_humana",
+        # 🔴 NÃO ENVIA — e o motivo é escrito, porque "não enviou" sem motivo é
+        # indistinguível de "esqueceu".
+        #
+        # ⚠️ **"Fila humana" aqui é a que JÁ EXISTE, não uma nova.** A conversa
+        # continua sem resposta e continua na tela de Conversas, que é onde a
+        # corretora já olha. Este bloco não cria fila, não notifica e não muda
+        # status — ele **se recusa a falar**, e diz por quê. Criar uma segunda
+        # fila ao lado da que existe é a proibição estrutural do §5.
+        return {"envia": False, "motivo": "velha_demais_nao_saudamos",
                 "faixa": "velha", "horas": round(horas, 1)}
     if horas > IDADE_DIRETA_H:
         return {"envia": True, "motivo": "demora_nomeada", "faixa": "demorada",
@@ -162,30 +170,11 @@ async def _db():
     return await create_async_supabase_client()
 
 
-async def marcar_desligamento(company_id: str, *, desligado: bool) -> bool:
-    """D.1 — *"desde quando estávamos fora"*.
-
-    📊 `agents.updated_at` **não serve**: `tenant-agent-store.ts` o reescreve em
-    `patch`, em `reset` e no próprio toggle. Um ajuste de prompt no meio do
-    desligamento apagaria a resposta — e a idade é o que decide entre saudar e
-    mandar para a fila humana.
-
-    ⚠️ Escrita **só** na transição; ligar **limpa**.
-    """
-    try:
-        db = await _db()
-        agora = datetime.now(timezone.utc).isoformat()
-        await (db.client.table("agents")
-               .update({"desligado_em": agora if desligado else None})
-               .eq("company_id", str(company_id))
-               .eq("agent_role", "attendance").execute())
-        return True
-    except Exception as e:  # noqa: BLE001
-        logger.error("[SAUDACAO] `desligado_em` de %s NÃO gravado (%s) — a idade "
-                     "do desligamento vai ficar indisponível", company_id,
-                     type(e).__name__)
-        return False
-
+#: ⛔ `marcar_desligamento` FOI REMOVIDA — SPEC-093, conserto do painel.
+#:
+#: 📊 Ela não tinha nenhum chamador: quem escreve `agents.desligado_em` é
+#: `lib/admin/tenant-agent-store.ts`, no próprio toggle, onde a transição
+#: acontece. Duas cópias do mesmo escritor, uma delas morta — `CLAUDE.md` §5.
 
 async def conversas_elegiveis(company_id: str, *,
                               agora: Optional[datetime] = None,
@@ -196,6 +185,13 @@ async def conversas_elegiveis(company_id: str, *,
     mascarado, e é o único campo que uma tela deve mostrar (`CLAUDE.md` §13.3).
     """
     agora = agora or datetime.now(timezone.utc)
+    # ⚠️ DUAS VEZES O LIMITE, e o dobro tem razão de ser: conversas entre 24h e
+    # 48h **precisam ser lidas** para aparecerem na prévia como recusadas. Sem a
+    # folga, "velha demais" nunca apareceria em `por_motivo` e a tela diria que
+    # não havia ninguém em vez de dizer que havia e não dá para falar.
+    #
+    # 📊 E as 181 conversas com mais de 7 dias ficam de fora por construção:
+    # nem são lidas. Ali a saudação seria exumação.
     corte = (agora - timedelta(hours=IDADE_LIMITE_H * 2)).isoformat()
     db = await _db()
 
@@ -208,10 +204,34 @@ async def conversas_elegiveis(company_id: str, *,
                  .limit(int(limite)).execute())
     linhas = getattr(conversas, "data", None) or []
 
-    ja = await _ja_saudadas(db, company_id)
+    ids = [str(c.get("id") or "") for c in linhas if c.get("id")]
+
+    # 🔴 A ANTI-DUPLICATA É CONSULTADA **POR CONVERSA**, NÃO EM BLOCO.
+    #
+    # 📊 A primeira versão lia `saudacoes_enviadas` inteira com
+    # `.limit(5000)` — e o PostgREST **entrega no máximo 1000**. Uma corretora
+    # com mais de mil saudações no histórico receberia uma lista truncada, e
+    # tudo o que ficou de fora **seria saudado de novo**.
+    #
+    # ⚠️ O guarda `test_ninguem_pede_mais_de_mil_linhas_de_novo` pegou isso na
+    # bateria inteira, 40 minutos depois de eu escrever. Truncamento silencioso
+    # é a família de defeito mais cara deste projeto: parece que funcionou.
+    #
+    # Aqui a consulta é **limitada pelo que está em jogo** — no máximo `limite`
+    # conversas, e nunca o histórico inteiro.
+    ja = await _ja_saudadas(db, company_id, ids)
+
+    # 🔴 UMA QUERY DE MENSAGENS PARA TODAS AS CONVERSAS — NÃO UMA POR CONVERSA.
+    #
+    # 📊 O painel mediu: uma corretora tem **86 conversas** na janela de 48h.
+    # A primeira versão fazia 1 SELECT de `conversations` + 86 SELECTs de
+    # `messages`, **aguardados um a um** = 87 idas ao PostgREST. E a tela que
+    # decide se uma mensagem real sai para um segurado real ficava pendurada.
+    ultimas = await _ultimas_inbound(db, ids)
+
     elegiveis: List[Dict[str, Any]] = []
     for c in linhas:
-        ultima = await _ultima_inbound_sem_resposta(db, str(c.get("id") or ""))
+        ultima = ultimas.get(str(c.get("id") or ""))
         if not ultima:
             continue
         candidata = dict(c)
@@ -227,13 +247,35 @@ async def conversas_elegiveis(company_id: str, *,
     return elegiveis
 
 
-async def _ja_saudadas(db, company_id: str) -> set:
+#: O teto do PostgREST. 📊 Pedir mais devolve mil, em silêncio.
+_TETO_DO_POSTGREST = 1000
+
+
+async def _ja_saudadas(db, company_id: str, conversation_ids: List[str]) -> set:
+    """Quais (conversa, mensagem) desta corretora já foram saudadas.
+
+    ⚠️ **Só as conversas em jogo.** Ler a tabela inteira parece mais simples e
+    é pior: 📊 o PostgREST entrega no máximo 1000 linhas, e uma lista truncada
+    aqui vira **saudação repetida** — o único dano desta função que não tem
+    desfazer.
+
+    🔴 E vai em lotes: uma corretora pode ter mais de mil conversas na janela.
+    """
+    alvos = [i for i in dict.fromkeys(conversation_ids) if i]
+    if not alvos:
+        return set()
     try:
-        r = await (db.client.table("saudacoes_enviadas")
-             .select("conversation_id, inbound_message_id")
-             .eq("company_id", str(company_id)).limit(5000).execute())
-        return {(str(l.get("conversation_id")), str(l.get("inbound_message_id")))
-                for l in (getattr(r, "data", None) or [])}
+        vistos = set()
+        for i in range(0, len(alvos), _TETO_DO_POSTGREST):
+            lote = alvos[i:i + _TETO_DO_POSTGREST]
+            r = await (db.client.table("saudacoes_enviadas")
+                       .select("conversation_id, inbound_message_id")
+                       .eq("company_id", str(company_id))
+                       .in_("conversation_id", lote)
+                       .limit(_TETO_DO_POSTGREST).execute())
+            vistos |= {(str(l.get("conversation_id")), str(l.get("inbound_message_id")))
+                       for l in (getattr(r, "data", None) or [])}
+        return vistos
     except Exception as e:  # noqa: BLE001
         # 🔴 FALHA FECHADA. Não conseguir ler o que já foi enviado nunca pode
         # virar permissão para enviar de novo — e um `set()` vazio aqui é
@@ -243,21 +285,94 @@ async def _ja_saudadas(db, company_id: str) -> set:
         raise
 
 
-async def _ultima_inbound_sem_resposta(db, conversation_id: str) -> Optional[Dict[str, Any]]:
-    """A última mensagem do cliente e se veio `assistant` DEPOIS dela.
+#: Quantas mensagens recentes bastam para decidir. ⚠️ Uma conversa em que o
+#: cliente escreveu 30 vezes seguidas sem resposta ainda decide certo: se
+#: nenhuma das últimas N é `assistant`, ela não foi respondida.
+_MENSAGENS_POR_CONVERSA = 20
+
+#: Quantas conversas são consultadas ao mesmo tempo.
+#:
+#: ⚠️ É latência, não corretude: 92 conversas viram ~9 idas em vez de 92. Subir
+#: muito troca a lentidão por pressão no PostgREST, que é compartilhado com o
+#: atendimento acontecendo ao mesmo tempo.
+_CONSULTAS_EM_PARALELO = 10
+
+
+async def _ultimas_inbound(db, conversation_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Por conversa: a última mensagem do cliente, e se veio `assistant` depois.
 
     📊 As linhas do Espelho chegam como `role='assistant'` — resposta humana
-    pelo celular **já conta como respondida**.
+    pelo celular **já conta como respondida**. Não é acidente feliz: é a razão
+    de a checagem ser por PAPEL e não por autor.
+
+    ## 🔴 UMA QUERY POR CONVERSA — E O TETO GLOBAL JÁ FOI TENTADO
+
+    A primeira versão fazia 87 idas **sequenciais**; a segunda tentou uma query
+    só, com `.in_(conversas).order(created_at desc).limit(N × 20)`.
+
+    ⚠️ **A segunda era pior.** 📊 Medido em 26/08/2026, em produção:
+
+    ```
+    conversas ativas nas 48h ................    92
+    mensagens nas 48h ....................... 2.119
+    a MAIOR conversa, só nas 48h ............   267
+    a maior conversa no histórico ........... 1.145
+    teto do PostgREST ....................... 1.000
+    ```
+
+    O teto é **global e ordenado por data**: uma conversa tagarela come o
+    orçamento inteiro e as outras voltam com **zero linhas** — que este código lê
+    como *"sem mensagem do cliente"*. A pessoa simplesmente **não é saudada**, em
+    silêncio. 📊 Uma única conversa do banco tem 1.145 mensagens: sozinha, ela
+    estoura o teto.
+
+    > 🔴 O N+1 era lento e **certo**. O meu era rápido e **errado**.
+
+    A resposta é **concorrência**, não teto global: `.limit()` por conversa (que
+    é divisível), N consultas em paralelo. 92 conversas viram ~9 idas de
+    latência, e nenhuma pode faminar outra.
+
+    ⚠️ `.order("created_at", desc=True)` **importa** e está testado: o algoritmo
+    percorre do mais novo para o mais velho, e invertê-lo faria a chave de
+    idempotência apontar para a mensagem mais ANTIGA, a faixa de idade sair
+    errada e `respondida` sair ao contrário.
     """
-    if not conversation_id:
-        return None
+    alvos = [i for i in dict.fromkeys(conversation_ids) if i]
+    if not alvos:
+        return {}
+
+    fora: Dict[str, Dict[str, Any]] = {}
+    for i in range(0, len(alvos), _CONSULTAS_EM_PARALELO):
+        lote = alvos[i:i + _CONSULTAS_EM_PARALELO]
+        respostas = await asyncio.gather(
+            *[_uma_conversa(db, cid) for cid in lote], return_exceptions=True)
+        for cid, r in zip(lote, respostas):
+            if isinstance(r, BaseException):
+                # ⚠️ FALHA FECHADA POR CONVERSA: não conseguir ler as mensagens
+                # desta conversa a tira da rodada. Saudação a menos é
+                # recuperável; saudação para quem já foi respondido, não.
+                logger.warning("[SAUDACAO] mensagens de uma conversa ilegíveis "
+                               "(%s) — ela fica fora desta rodada",
+                               type(r).__name__)
+                continue
+            if r:
+                fora[cid] = r
+    return fora
+
+
+async def _uma_conversa(db, conversation_id: str) -> Optional[Dict[str, Any]]:
+    """A última mensagem do cliente nesta conversa, e se veio `assistant` depois.
+
+    ⚠️ `.limit()` POR CONVERSA, e é exatamente por isso que é uma query por
+    conversa: um teto global não é divisível entre elas.
+    """
     r = await (db.client.table("messages")
-         .select("id, role, created_at")
-         .eq("conversation_id", conversation_id)
-         .order("created_at", desc=True).limit(20).execute())
-    linhas = getattr(r, "data", None) or []
+               .select("id, role, created_at")
+               .eq("conversation_id", conversation_id)
+               .order("created_at", desc=True)
+               .limit(_MENSAGENS_POR_CONVERSA).execute())
     respondida = False
-    for m in linhas:  # do mais novo para o mais velho
+    for m in (getattr(r, "data", None) or []):  # do mais novo para o mais velho
         papel = str(m.get("role") or "").lower()
         if papel == "user":
             return {"id": m.get("id"), "created_at": m.get("created_at"),
@@ -272,13 +387,34 @@ async def _ultima_inbound_sem_resposta(db, conversation_id: str) -> Optional[Dic
 # ---------------------------------------------------------------------------
 
 async def previa(company_id: str, *,
-                 agora: Optional[datetime] = None) -> Dict[str, Any]:
+                 agora: Optional[datetime] = None,
+                 linhas: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """D.5 — a contagem e a lista, **antes** de qualquer mensagem sair.
 
-    ⛔ `resumo` é o único campo para tela e vai mascarado: nome só o primeiro,
-    telefone só os quatro últimos (`CLAUDE.md` §13.3).
+    ## ⚠️ ESTA RESPOSTA CARREGA IDENTIDADE, E É DE PROPÓSITO
+
+    🔴 O campo `quem` traz **primeiro nome + os quatro últimos dígitos** do
+    telefone. Isso é identidade mascarada, não contagem — e a SPEC pede
+    exatamente isso: *"mostra a CONTAGEM **e a lista**"*. 📊 O robô teve 4
+    conversas de WhatsApp em toda a história do produto; quem confirma o maior
+    envio que ele já fez precisa **ver para quem**.
+
+    ⛔ **Então trate a resposta como dado do segurado:** ela não vai para log,
+    não vai para `work_events`, não vai para RAG e não sai da sessão de quem
+    pediu. §13.3 (*"presença, nunca conteúdo"*) governa log e `/health` — não a
+    tela que a pessoa autorizada está olhando para decidir.
+
+    ⚠️ O painel pegou três docstrings deste bloco afirmando que a prévia era só
+    contagem. **O texto estava errado, não o campo** — e texto que mente sobre o
+    que um campo guarda reinfecta todo leitor seguinte (`CLAUDE.md` §12.1).
     """
-    linhas = await conversas_elegiveis(company_id, agora=agora)
+    # ⚠️ `linhas` recebido = a varredura JÁ FOI FEITA pelo chamador.
+    #
+    # 📊 O painel mediu: `enviar_saudacoes(confirmado=False)` — que é o caso
+    # normal do primeiro religamento — varria tudo, e depois chamava esta
+    # função, que varria tudo de novo. ~174 idas ao banco numa resposta HTTP.
+    if linhas is None:
+        linhas = await conversas_elegiveis(company_id, agora=agora)
     envia = [c for c in linhas if c["veredito"].get("envia")]
     recusa = [c for c in linhas if not c["veredito"].get("envia")]
     return {
@@ -306,6 +442,11 @@ async def _primeiro_religamento(company_id: str) -> bool:
 
 
 def _para_tela(c: Dict[str, Any]) -> Dict[str, Any]:
+    """A linha que a tela mostra. ⚠️ **Identidade mascarada** — ver `previa`.
+
+    Primeiro nome e os quatro últimos dígitos: o mínimo para uma pessoa
+    reconhecer de quem se trata, e não mais que isso.
+    """
     telefone = str(c.get("user_phone") or "")
     nome = str(c.get("user_name") or "").strip()
     return {
@@ -350,7 +491,7 @@ async def enviar_saudacoes(company_id: str, *, confirmado: bool = False,
 
     if not confirmado and await _primeiro_religamento(company_id):
         return {"ok": False, "enviadas": 0, "motivo": "confirmacao_necessaria",
-                "previa": await previa(company_id, agora=agora)}
+                "previa": await previa(company_id, agora=agora, linhas=linhas)}
 
     from app.services.platform_outbound import FRIA, send_to_client_guarded
 
@@ -360,8 +501,14 @@ async def enviar_saudacoes(company_id: str, *, confirmado: bool = False,
     for c in envia:
         chave = chave_da_saudacao(company_id, str(c.get("id") or ""),
                                   str(c.get("inbound_message_id") or ""))
-        if not await _reservar(db, chave):
-            resultado["ja_saudadas"] += 1
+        reserva = await _reservar(db, chave)
+        if reserva != "reservada":
+            # ⚠️ DUPLICATA E ERRO NÃO SÃO A MESMA COISA, e contá-los juntos fazia
+            # o número mentir sobre o motivo: `saudacoes_enviadas` indisponível
+            # devolvia `{"ok": true, "enviadas": 0, "ja_saudadas": N}` — e quem
+            # lesse concluiria *"todas já tinham sido saudadas"* quando a
+            # verdade era *"nenhuma saudação foi possível"*.
+            resultado["ja_saudadas" if reserva == "duplicada" else "erros"] += 1
             continue
         try:
             r = await send_to_client_guarded(
@@ -384,20 +531,26 @@ async def enviar_saudacoes(company_id: str, *, confirmado: bool = False,
     return resultado
 
 
-async def _reservar(db, chave: Dict[str, str]) -> bool:
-    """Reserva a chave. `False` = alguém já saudou esta mensagem.
+async def _reservar(db, chave: Dict[str, str]) -> str:
+    """Reserva a chave. Devolve `reservada` | `duplicada` | `falhou`.
 
-    🔴 O UNIQUE do banco é o guarda de verdade: a checagem em Python é o caminho
-    rápido, e este INSERT é o que sobrevive a duas réplicas do drenador rodando
-    juntas.
+    🔴 O UNIQUE do banco é o guarda de verdade: a checagem em Python é o
+    caminho rápido, e este INSERT é o que sobrevive a **duas réplicas do
+    drenador rodando juntas** — o caso em que o cache em memória de cada uma
+    diz que ninguém saudou.
+
+    ⚠️ **Três respostas, não duas.** Devolver `False` para duplicata e para erro
+    fazia o resultado dizer *"todas já tinham sido saudadas"* quando a verdade
+    era *"a tabela está fora do ar"*. A direção é segura nas duas (não envia),
+    mas o número mentia sobre o motivo.
     """
     try:
         await db.client.table("saudacoes_enviadas").insert(dict(chave)).execute()
-        return True
+        return "reservada"
     except Exception as e:  # noqa: BLE001
         texto = str(e).lower()
         if "duplicate" in texto or "23505" in texto or "unique" in texto:
-            return False
+            return "duplicada"
         logger.error("[SAUDACAO] reserva falhou (%s) — esta conversa NÃO será "
                      "saudada nesta rodada", type(e).__name__)
-        return False
+        return "falhou"

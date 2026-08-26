@@ -314,8 +314,13 @@ export async function ativarTodosOsCorredores(
   supabase: SupabaseClient,
   companyId: string,
   userId: string,
-): Promise<{ ok: boolean; error?: string; ativados: number; respeitados: number; ja_ativos: number }> {
-  const vazio = { ativados: 0, respeitados: 0, ja_ativos: 0 };
+): Promise<{
+  ok: boolean; error?: string;
+  ativados: number; respeitados: number; ja_ativos: number;
+  /** 🔴 Corredores que ficaram SEM âncora — nenhuma ativação foi criada para eles. */
+  sem_ancora: number;
+}> {
+  const vazio = { ativados: 0, respeitados: 0, ja_ativos: 0, sem_ancora: 0 };
   if (!UUID.test(companyId)) return { ok: false as const, error: 'company_invalida', ...vazio };
 
   // Sem catálogo não se grava nada — uma ativação às cegas criaria âncora para
@@ -371,8 +376,33 @@ export async function ativarTodosOsCorredores(
     const { error } = await supabase
       .from('tenant_corridors')
       .upsert(novas, { onConflict: 'company_id,corridor_template_id' });
-    if (error) return { ok: false as const, error: 'persist_failed', ativados: 0, respeitados, ja_ativos: jaAtivos };
+    if (error) {
+      return {
+        ok: false as const, error: 'persist_failed',
+        ativados: 0, respeitados, ja_ativos: jaAtivos, sem_ancora: lote.semAncora.length,
+      };
+    }
   }
 
-  return { ok: true as const, ativados: novas.length, respeitados, ja_ativos: jaAtivos };
+  // 🔴 "LIGOU TUDO" QUE LIGOU NADA TEM DE APARECER.
+  //
+  // ⚠️ O painel achou: quando o INSERT das âncoras falha inteiro, todos os
+  // corredores caem em `semAncora`, `novas` fica vazio, o upsert é pulado — e a
+  // função devolvia `{ok: true, ativados: 0}` com 200 na resposta. A corretora
+  // ligava o atendimento, nenhum corredor era ativado, e **nem uma linha de log
+  // dizia isso**.
+  //
+  // 🔴 `ok` continua `true`: nada quebrou, e falhar aqui não pode desfazer o
+  // toggle. Mas o número sai, e o log GRITA quando ele é o total.
+  if (lote.semAncora.length > 0) {
+    console.error(
+      `[CORRIDORS] ${lote.semAncora.length} de ${corridors.length} corredores ficaram `
+      + `SEM âncora para a corretora ${companyId} — eles NÃO foram ativados: `
+      + lote.semAncora.join(', '));
+  }
+
+  return {
+    ok: true as const, ativados: novas.length, respeitados, ja_ativos: jaAtivos,
+    sem_ancora: lote.semAncora.length,
+  };
 }

@@ -55,29 +55,73 @@ export function canToggleAttendanceAgent(p: { role: string | null; isOwner: bool
  * 3. **o papel pode alternar.**
  *
  * ⛔ Quem já escrevia configuração continua podendo tudo o que podia — inclusive
- * corpo misto e agente central. Nada do comportamento antigo muda.
+ * corpo misto e agente central.
+ *
+ * ⚠️ **E o corpo misto faz as DUAS coisas.** 📊 O painel pegou a primeira versão
+ * mandando `{is_active, variables}` só para o ramo `config`: as variáveis eram
+ * aplicadas e **o desligamento sumia com 200 OK**. Antes desta SPEC o toggle
+ * vencia; agora os dois acontecem, e é `tambemAlterna` que diz isso à rota.
  */
 export function decidirPatchDeAgente(p: {
   role: string | null;
   isOwner: boolean;
   agentRole: string | null;
   camposDoCorpo: string[];
-}): { permitido: boolean; acao: 'toggle' | 'config'; motivo: string } {
+}): {
+  permitido: boolean;
+  acao: 'toggle' | 'config';
+  motivo: string;
+  /** 🔴 Este `PATCH` também alterna `is_active`? */
+  tambemAlterna: boolean;
+  /** 🔴 Quem chamou pode escrever CONFIGURAÇÃO da corretora? */
+  escreveConfiguracao: boolean;
+} {
+  const pedeToggle = p.camposDoCorpo.includes('is_active');
   const soPedeToggle = p.camposDoCorpo.length > 0
     && p.camposDoCorpo.every((k) => k === 'is_active');
   const escreve = canWriteTenantConfig({ role: p.role, isOwner: p.isOwner });
 
   if (soPedeToggle) {
     if (p.agentRole === 'attendance' && canToggleAttendanceAgent({ role: p.role, isOwner: p.isOwner })) {
-      return { permitido: true, acao: 'toggle', motivo: 'toggle_de_atendimento' };
+      return {
+        permitido: true, acao: 'toggle', motivo: 'toggle_de_atendimento',
+        tambemAlterna: true, escreveConfiguracao: escreve,
+      };
     }
-    if (escreve) return { permitido: true, acao: 'toggle', motivo: 'escreve_configuracao' };
-    return { permitido: false, acao: 'toggle', motivo: 'admin_required' };
+    if (escreve) {
+      return {
+        permitido: true, acao: 'toggle', motivo: 'escreve_configuracao',
+        tambemAlterna: true, escreveConfiguracao: true,
+      };
+    }
+    return {
+      permitido: false, acao: 'toggle', motivo: 'admin_required',
+      tambemAlterna: false, escreveConfiguracao: false,
+    };
   }
 
+  // 🔴 CORPO MISTO: O TOGGLE NÃO PODE SER ENGOLIDO EM SILÊNCIO.
+  //
+  // ⚠️ O painel achou a inversão: antes deste bloco, `typeof body.is_active
+  // === 'boolean'` era testado PRIMEIRO, então `{is_active:false, variables:{}}`
+  // DESLIGAVA o agente (e descartava as variáveis). A primeira versão desta
+  // função mandava o mesmo corpo para o ramo `config` — as variáveis eram
+  // aplicadas e **o desligamento sumia, com 200 OK**.
+  //
+  // 🔴 Quem clicou "desligar" leria sucesso e o robô continuaria respondendo
+  // segurado. É a família *"silêncio que parece sucesso"* que esta SPEC inteira
+  // existe para matar — reintroduzida por um conserto de autorização.
+  //
+  // Agora o corpo misto faz as DUAS coisas, que é o que o chamador pediu.
   return escreve
-    ? { permitido: true, acao: 'config', motivo: 'escreve_configuracao' }
-    : { permitido: false, acao: 'config', motivo: 'admin_required' };
+    ? {
+        permitido: true, acao: 'config', motivo: 'escreve_configuracao',
+        tambemAlterna: pedeToggle, escreveConfiguracao: true,
+      }
+    : {
+        permitido: false, acao: 'config', motivo: 'admin_required',
+        tambemAlterna: false, escreveConfiguracao: false,
+      };
 }
 
 /** master_admin de plataforma = role master_admin SEM company travada. */

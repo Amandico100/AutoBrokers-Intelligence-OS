@@ -107,6 +107,42 @@ assert('⑤ CONTROLE: admin_company com corpo MISTO continua passando',
 // e o dono, que nao tem papel nenhum
 assert('owner sem papel alterna', decidir({ role: null, isOwner: true }, 'attendance', ['is_active']).permitido === true);
 
+// ===========================================================================
+// 🔴 OS DOIS ACHADOS DO PAINEL — e sao de PRODUTO, nao de estilo
+// ===========================================================================
+
+// (i) O `attendant` NAO PODE ESCREVER CONFIGURACAO — nem de tabela.
+//
+// ⚠️ O toggle dispara `ativarTodosOsCorredores`, que escreve
+// `corridor_templates` e `tenant_corridors`. A rota dedicada a essa escrita
+// exige `write: true`. Sem `escreveConfiguracao`, o papel criado para NAO abrir
+// a configuracao instalaria 14 corredores em nome da corretora.
+assert('🔴 attendant alterna mas NAO escreve configuracao',
+  decidir(ATT, 'attendance', ['is_active']).escreveConfiguracao === false);
+assert('🔴 CONTROLE: admin_company alterna E escreve configuracao',
+  decidir(ADM, 'attendance', ['is_active']).escreveConfiguracao === true);
+assert('🔴 CONTROLE: o dono tambem escreve configuracao',
+  decidir({ role: null, isOwner: true }, 'attendance', ['is_active']).escreveConfiguracao === true);
+
+// (ii) CORPO MISTO NAO ENGOLE O TOGGLE EM SILENCIO.
+//
+// ⚠️ Antes desta SPEC, `{is_active:false, variables:{}}` DESLIGAVA o agente (e
+// descartava as variaveis). A primeira versao mandava tudo para o ramo `config`
+// -- as variaveis eram aplicadas e o desligamento sumia com 200 OK. Quem clicou
+// "desligar" lia sucesso e o robo continuava respondendo segurado.
+const misto = decidir(ADM, 'attendance', ['is_active', 'variables']);
+assert('🔴 corpo MISTO: a acao e config', misto.acao === 'config');
+assert('🔴 corpo MISTO: mas o toggle TAMBEM acontece', misto.tambemAlterna === true);
+assert('corpo so de config NAO alterna',
+  decidir(ADM, 'attendance', ['variables']).tambemAlterna === false);
+assert('corpo VAZIO nao alterna',
+  decidir(ADM, 'attendance', []).tambemAlterna === false);
+assert('CONTROLE: corpo so de toggle alterna',
+  decidir(ADM, 'attendance', ['is_active']).tambemAlterna === true);
+// e quem nao pode nao alterna nem misturado
+assert('attendant com corpo MISTO nao alterna nada',
+  decidir(ATT, 'attendance', ['is_active', 'variables']).tambemAlterna === false);
+
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
 process.exit(0);

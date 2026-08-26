@@ -6,6 +6,7 @@ import { requireCompanyMember, assertSameOrigin } from '@/lib/admin/admin-auth';
 import { decidirPatchDeAgente } from '@/lib/admin/admin-auth-policy';
 import { getTenantAgentConfig, patchTenantAgentConfig, roleForKey, setTenantAgentActive } from '@/lib/admin/tenant-agent-store';
 import { ativarTodosOsCorredores } from '@/lib/admin/tenant-corridor-store';
+import { previaDaSaudacao } from '@/lib/admin/saudacao-religamento';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
 
   // 🔴 SPEC-093 BLOCO A — a decisão mora em `decidirPatchDeAgente`, que é PURA
   // e é o que o gate testa. Aqui só se traduz o veredito em HTTP.
+  let alternado: Awaited<ReturnType<typeof setTenantAgentActive>> | null = null;
+  let alternadoCorredores: unknown = null;
+  let alternadoSaudacao: unknown = null;
   const decisao = decidirPatchDeAgente({
     role: auth.ctx.role,
     isOwner: auth.ctx.isOwner,
@@ -49,9 +53,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
 
   // SPEC-045: botão LIGAR/DESLIGAR (só attendance). Mutação isolada — não
   // mistura com variáveis/overrides.
-  if (decisao.acao === 'toggle') {
+  if (decisao.tambemAlterna) {
+    // 🔴 BOOLEANO DE VERDADE, NÃO `Boolean(...)`.
+    //
+    // ⚠️ O painel achou: `Boolean("false") === true`. Um `PATCH
+    // {"is_active":"false"}` — que é o que um formulário manda — LIGARIA o
+    // agente de atendimento, e o robô voltaria a falar com segurados quando o
+    // pedido dizia para calar. O guarda `typeof === 'boolean'` existia antes
+    // desta SPEC e foi desfeito por ela.
+    if (typeof body.is_active !== 'boolean') {
+      return NextResponse.json(
+        { ok: false, error: 'is_active_precisa_ser_booleano' }, { status: 400 });
+    }
     const toggled = await setTenantAgentActive(
-      auth.supabase, auth.ctx.companyId, role, Boolean(body.is_active));
+      auth.supabase, auth.ctx.companyId, role, body.is_active);
     if (!toggled.ok) return NextResponse.json(toggled, { status: 400 });
 
     // 🔴 SPEC-093 BLOCO G — LIGAR O ATENDIMENTO LIGA OS CORREDORES JUNTO.
@@ -67,19 +82,65 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
     // 🔴 Best-effort, e é deliberado: falhar em ligar corredor **não pode**
     // desfazer o toggle que já aconteceu. Mas sai no log, porque um "ligou tudo"
     // que ligou nada é a família de silêncio que esta SPEC existe para matar.
+    //
+    // 🔴 E SÓ QUEM PODE ESCREVER CONFIGURAÇÃO LIGA OS CORREDORES.
+    //
+    // ⚠️ **Este bloco desfazia o BLOCO A.** `ativarTodosOsCorredores` escreve
+    // `corridor_templates` e `tenant_corridors` — e a rota dedicada a essa
+    // escrita (`POST /api/dashboard/corridors/[templateId]`) exige
+    // `requireCompanyMember({ write: true })`. Sem esta condição, o papel
+    // `attendant`, criado justamente para **não** abrir a configuração,
+    // instalaria 14 corredores em nome da corretora, com o id dele em
+    // `installed_by`.
+    //
+    // 🔴 Nenhuma autoridade é inventada aqui: quem liga os corredores é quem já
+    // podia ligá-los à mão. O clique da atendente liga o atendimento — e só.
     let corredores: Awaited<ReturnType<typeof ativarTodosOsCorredores>> | null = null;
-    if ((toggled as { religou?: boolean }).religou) {
+    if ((toggled as { religou?: boolean }).religou && decisao.escreveConfiguracao) {
       try {
         corredores = await ativarTodosOsCorredores(
           auth.supabase, auth.ctx.companyId, auth.ctx.userId ?? '');
         if (!corredores.ok) {
           console.error('[AGENTS] corredores NAO ativados:', corredores.error);
+        } else if (corredores.sem_ancora > 0) {
+          // ⚠️ `ok: true` com âncoras faltando é o "ligou tudo que ligou nada".
+          console.error(
+            `[AGENTS] religamento ligou ${corredores.ativados} corredor(es), mas `
+            + `${corredores.sem_ancora} ficaram sem âncora`);
         }
       } catch (e) {
         console.error('[AGENTS] corredores NAO ativados:', e);
       }
     }
-    return NextResponse.json({ ...toggled, corredores }, { status: 200 });
+    // 🔴 SPEC-093 BLOCO D.5 — A PRÉVIA VOLTA NO RELIGAMENTO. ⛔ NADA É ENVIADO.
+    //
+    // 📊 O painel achou que o BLOCO D inteiro não tinha gatilho: o serviço, a
+    // migration e as duas rotas existiam, e **nenhum caminho do produto os
+    // alcançava**. Um recurso pronto que ninguém chama é um recurso que não
+    // existe.
+    //
+    // ⛔ E ela é PRÉVIA, não envio: 📊 o robô teve 4 conversas de WhatsApp em
+    // toda a história do produto, e a decisão do Founder é que o primeiro
+    // religamento de cada corretora **espera confirmação explícita**. Esta
+    // resposta é o que a tela mostra para pedir essa confirmação.
+    //
+    // Best-effort pelo mesmo motivo dos corredores: falhar em montar a prévia
+    // não desfaz um toggle que já aconteceu.
+    let saudacao: unknown = null;
+    if ((toggled as { religou?: boolean }).religou) {
+      try {
+        saudacao = await previaDaSaudacao(auth.ctx.companyId);
+      } catch (e) {
+        console.error('[AGENTS] prévia da saudação indisponível:', e);
+      }
+    }
+    if (decisao.acao === 'toggle') {
+      return NextResponse.json({ ...toggled, corredores, saudacao }, { status: 200 });
+    }
+    alternadoCorredores = corredores;
+    alternadoSaudacao = saudacao;
+    // Corpo misto: o toggle já aconteceu; a configuração segue abaixo.
+    alternado = toggled;
   }
 
   const input = {
@@ -87,5 +148,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
     overrides: body.overrides && typeof body.overrides === 'object' ? body.overrides : undefined,
   };
   const out = await patchTenantAgentConfig(auth.supabase, auth.ctx.companyId, role, input);
-  return NextResponse.json(out, { status: out.ok ? 200 : 400 });
+  // 🔴 O CORPO MISTO DEVOLVE AS DUAS METADES.
+  //
+  // ⚠️ O painel achou o toggle sendo engolido em silêncio com 200 OK. Agora ele
+  // acontece — e a resposta **diz que aconteceu**, senão quem clicou continua
+  // sem saber.
+  //
+  // ⚠️ E ISSO VALE TAMBÉM QUANDO A CONFIGURAÇÃO FALHA. O juiz pegou a janela
+  // que o próprio conserto abriu: no corpo misto, um erro em
+  // `patchTenantAgentConfig` devolvia 400 com o toggle **já aplicado** — quem
+  // clicou lê erro e o agente mudou de estado assim mesmo. É o inverso do
+  // silêncio que este conserto matou, e a resposta é a mesma: **dizer o que
+  // aconteceu**. Repetir o PATCH é seguro: `setTenantAgentActive` grava valor
+  // absoluto, não incremento.
+  const corpo = alternado
+    ? { ...out, alternado, corredores: alternadoCorredores, saudacao: alternadoSaudacao }
+    : out;
+  return NextResponse.json(corpo, { status: out.ok ? 200 : 400 });
 }

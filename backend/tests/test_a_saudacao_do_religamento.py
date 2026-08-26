@@ -86,6 +86,8 @@ class _Q:
     def __init__(self, b, t):
         self.b, self.t, self.op, self.linhas, self.campos = b, t, None, None, None
         self.filtros = []
+        self.ordem = None
+        self.teto = None
 
     def select(self, *a, **k):
         self.op = "select"
@@ -107,10 +109,23 @@ class _Q:
         self.filtros.append(("gte", c, v))
         return self
 
-    def order(self, *a, **k):
+    def in_(self, c, vals):
+        self.filtros.append(("in", c, [str(x) for x in vals]))
+        return self
+
+    def order(self, coluna=None, *a, **k):
+        # 🔴 O DUBLÊ OBEDECE. ⚠️ Ele descartava `desc` e depois ordenava
+        # `messages` sempre do mais novo para o mais velho — então trocar
+        # `desc=True` por `desc=False` no serviço (o que faz a chave de
+        # idempotência apontar para a mensagem MAIS ANTIGA, a faixa de idade sair
+        # errada e `respondida` sair ao contrário) não derrubava teste nenhum.
+        # Dublê permissivo é a forma mais barata de teste falso.
+        self.ordem = (str(coluna or ""), bool(k.get("desc", False)))
         return self
 
     def limit(self, n):
+        # E `.limit()` era no-op: `.limit(20)` → `.limit(1)` também era invisível.
+        self.teto = int(n)
         return self
 
     def _casa(self, l):
@@ -119,6 +134,11 @@ class _Q:
                 return False
             if tipo == "gte" and str(l.get(c) or "") < str(v):
                 return False
+            if tipo == "in":
+                # 🔴 `IN` NÃO CASA NULO — no Postgres e aqui. Um dublê
+                # permissivo é a forma mais barata de teste falso.
+                if l.get(c) is None or str(l.get(c)) not in v:
+                    return False
         return True
 
     async def execute(self):
@@ -140,10 +160,13 @@ class _Q:
         if self.op == "update":
             for l in alvo:
                 l.update(self.campos)
-        # `messages` sai do mais novo para o mais velho (o serviço pede desc)
-        if self.t == "messages":
-            alvo = sorted(alvo, key=lambda l: str(l.get("created_at") or ""),
-                          reverse=True)
+        # 🔴 A ORDEM QUE FOI PEDIDA, não a que dá certo.
+        if self.ordem:
+            coluna, desc = self.ordem
+            alvo = sorted(alvo, key=lambda l: str(l.get(coluna) or ""),
+                          reverse=desc)
+        if self.teto is not None:
+            alvo = alvo[:self.teto]
         return _R([dict(l) for l in alvo])
 
 
@@ -425,11 +448,19 @@ def test_CONTROLE_a_mesma_conversa_SEM_a_proibicao_seria_saudada():
 # ⑥ 🔴 A LINHA DE CONTROLE OBRIGATÓRIA — agente ligado o tempo todo
 # ===========================================================================
 
-def test_GATE_6_CONTROLE_agente_ligado_o_tempo_todo_ZERO_saudacoes():
+def test_GATE_6_CONTROLE_clique_sem_transicao_nao_e_religamento():
     """🔴 **Obrigatório.** Sem ele, um bug que saúde sempre passa como sucesso.
 
     Um clique de `ligar` num agente que **já estava ligado** não é religamento:
     não muda coluna nenhuma, não limpa `desligado_em`, e não dispara rodada.
+
+    ⚠️ **O nome mudou porque o antigo prometia mais do que este arquivo entrega.**
+    A cadeia *"agente ligado o tempo todo → ZERO saudações"* atravessa o toggle
+    (TypeScript) e a rota; quem a executa ponta a ponta é
+    `scripts/spec093-a-rota-do-botao.test.mjs`, com a rota REAL — *"G: DESLIGAR
+    não liga corredor nenhum"* e *"a prévia da saudação também não sai ao
+    desligar"*. Aqui se guarda a **disciplina de escrita de `desligado_em`**, que
+    é o que este arquivo alcança.
     """
     assert "export function decidirTransicaoDoToggle" in TRANSICAO_TS.read_text(
         encoding="utf-8")
@@ -505,11 +536,21 @@ def _rodar_mjs(caminho: Path):
 # ⑦ 40 conversas elegíveis → o governador segura, não dispara 40
 # ===========================================================================
 
-def test_GATE_7_quarenta_elegiveis_o_governador_SEGURA():
+def test_GATE_7_quarenta_elegiveis_nenhuma_se_perde_e_todas_vao_FRIAS():
     """🔴 O limitador já existe. Não construa outro (`CLAUDE.md` §5).
 
     📊 `platform_outbound`: teto 12/h e 20/dia, espaçamento sorteado 241–479 s,
     janela 08:00–20:00, domingo bloqueado, parada de emergência por corretora.
+
+    ## ⚠️ O QUE ESTE TESTE GUARDA, E O QUE NÃO
+
+    ⛔ Ele **não testa o governador** — quem decide o 12/28 aqui é o dublê.
+    Testar teto, janela e domingo é trabalho de `platform_outbound`, e ele já os
+    tem.
+
+    ✅ O que ele guarda é o que é **desta** camada, e importa: as 40 passam pelo
+    caminho FRIO, **nenhuma se perde** entre os baldes, e a saudção não inventa
+    um segundo limitador ao lado do que existe.
     """
     b = _montar([{"id": f"conv-{i}", "ultima": _ha(2)} for i in range(40)])
     # o governador aceita 12 e enfileira o resto — é o que ele faz de verdade
@@ -694,3 +735,359 @@ def test_o_router_esta_REGISTRADO():
     main = (RAIZ / "app" / "main.py").read_text(encoding="utf-8")
     assert "from app.api.saudacao_religamento import router" in main
     assert "app.include_router(saudacao_religamento_router" in main
+
+
+def _so_o_codigo(fonte: str) -> str:
+    """O fonte sem comentários e sem docstrings.
+
+    🔴 Guarda que lê comentário não guarda código. 📊 Já custou uma rodada nesta
+    SPEC e uma na SPEC-092: `fonte.index("[FORMULÁRIO NATIVO respondido")` casou
+    dentro do comentário que explicava o próprio conserto.
+    """
+    import ast
+
+    arvore = ast.parse(fonte)
+    for no in ast.walk(arvore):
+        if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+                           ast.Module)):
+            corpo = getattr(no, "body", [])
+            if (corpo and isinstance(corpo[0], ast.Expr)
+                    and isinstance(corpo[0].value, ast.Constant)
+                    and isinstance(corpo[0].value.value, str)):
+                corpo[0].value.value = ""
+    return ast.unparse(arvore)
+
+
+# ===========================================================================
+# 🔴 O TRUNCAMENTO SILENCIOSO — pego pela bateria INTEIRA, 40 min depois
+# ===========================================================================
+
+def test_a_anti_duplicata_NAO_le_a_tabela_inteira():
+    """📊 A primeira versão pedia `.limit(5000)`, e o PostgREST entrega **1000**.
+
+    Uma corretora com mais de mil saudações no histórico receberia uma lista
+    truncada — e **tudo o que ficasse de fora seria saudado de novo**. O único
+    dano desta função que não tem desfazer.
+
+    ⚠️ Achado por `test_ninguem_pede_mais_de_mil_linhas_de_novo` na bateria
+    inteira. Truncamento silencioso é a família mais cara: parece que funcionou.
+    """
+    # 🔴 SEM O COMENTÁRIO. 📊 A primeira versão deste guarda ficou VERMELHA
+    # lendo `.limit(5000)` dentro do comentário que explica o conserto —
+    # o mesmo defeito que a SPEC-092 já tinha pago uma vez.
+    fonte = _so_o_codigo(SERVICO_PY.read_text(encoding="utf-8"))
+    assert ".limit(5000)" not in fonte, (
+        "voltou um pedido acima do teto do PostgREST — ele devolve 1000 e não "
+        "avisa")
+    # ⚠️ `ast.unparse` normaliza aspas — a asserção usa a forma normalizada.
+    assert "in_('conversation_id', lote)" in fonte, (
+        "a anti-duplicata voltou a ler a tabela inteira em vez das conversas "
+        "em jogo")
+    assert "_TETO_DO_POSTGREST = 1000" in fonte
+
+
+def test_a_anti_duplicata_so_pergunta_pelas_conversas_em_jogo():
+    """A consulta é limitada pelo que está na rodada, não pelo histórico."""
+    b = _montar([{"id": f"conv-{i}", "ultima": _ha(2)} for i in range(3)])
+    # ⚠️ Uma saudação ANTIGA, de conversa que não está nesta rodada. Ela não
+    # pode nem ser lida — e muito menos atrapalhar.
+    b.dados["saudacoes_enviadas"].append({
+        "company_id": "c-resulta", "conversation_id": "conv-antiga",
+        "inbound_message_id": "msg-antiga"})
+    correio = Correio()
+    with _com_banco(b, correio):
+        r = _rodar(S.enviar_saudacoes("c-resulta", confirmado=True, agora=AGORA))
+    assert r["enviadas"] == 3, (
+        f"o histórico de outra conversa atrapalhou esta rodada: {r}")
+
+
+def test_CONTROLE_a_anti_duplicata_AINDA_barra_a_conversa_certa():
+    """§9.3 — prove que ela ainda barra. Sem isto, o teste acima passaria com
+    uma anti-duplicata que não barra nada."""
+    b = _montar([{"id": "conv-1", "ultima": _ha(2), "msg_id": "msg-abc"}])
+    b.dados["saudacoes_enviadas"].append({
+        "company_id": "c-resulta", "conversation_id": "conv-1",
+        "inbound_message_id": "msg-abc"})
+    correio = Correio()
+    with _com_banco(b, correio):
+        r = _rodar(S.enviar_saudacoes("c-resulta", confirmado=True, agora=AGORA))
+    assert correio.enviadas == [], "saudou de novo quem já tinha sido saudado"
+    assert r["ja_saudadas"] == 0 and r["enviadas"] == 0, r
+
+
+# ===========================================================================
+# 🔴 O QUE O DUBLÊ PERMISSIVO ESCONDIA — achados do painel
+# ===========================================================================
+
+def test_a_ordem_das_mensagens_IMPORTA_e_e_do_mais_novo_para_o_mais_velho():
+    """🔴 O dublê descartava `desc` e ordenava sozinho — então inverter a ordem
+    no serviço não derrubava teste nenhum.
+
+    ⚠️ Invertida, a chave de idempotência apontaria para a mensagem **mais
+    antiga**, a faixa de idade sairia errada e `respondida` sairia ao contrário.
+    """
+    b = _montar([{"id": "conv-1", "ultima": _ha(20), "msg_id": "msg-velha"}])
+    # o cliente escreveu DE NOVO, mais perto de agora
+    b.dados["messages"].append({"id": "msg-nova", "conversation_id": "conv-1",
+                                "role": "user", "created_at": _ha(2)})
+    with _com_banco(b):
+        linhas = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+
+    assert len(linhas) == 1
+    assert linhas[0]["inbound_message_id"] == "msg-nova", (
+        "a chave de idempotência apontou para a mensagem mais ANTIGA — "
+        f"veio {linhas[0]['inbound_message_id']!r}")
+    assert linhas[0]["veredito"]["faixa"] == "recente", (
+        "a faixa de idade foi calculada sobre a mensagem errada")
+
+
+def test_a_ordem_decide_se_a_conversa_JA_FOI_respondida():
+    """A mesma inversão faz `respondida` sair ao contrário."""
+    b = _montar([{"id": "conv-1", "ultima": _ha(5)}])
+    b.dados["messages"].append({"id": "a-1", "conversation_id": "conv-1",
+                                "role": "assistant", "created_at": _ha(4)})
+    with _com_banco(b):
+        linhas = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+    assert linhas[0]["ja_respondida"] is True, (
+        "o `assistant` posterior não foi visto — a ordem está invertida")
+
+    # 🔴 CONTROLE: `assistant` ANTERIOR não conta como resposta.
+    b2 = _montar([{"id": "conv-2", "ultima": _ha(4)}])
+    b2.dados["messages"].append({"id": "a-2", "conversation_id": "conv-2",
+                                 "role": "assistant", "created_at": _ha(5)})
+    with _com_banco(b2):
+        linhas2 = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+    assert linhas2[0]["ja_respondida"] is False, (
+        "uma resposta ANTERIOR à mensagem do cliente contou como resposta")
+
+
+def test_a_leitura_de_mensagens_e_UMA_query_e_nao_uma_por_conversa():
+    """📊 O painel mediu 86 conversas numa corretora: a versão por conversa
+    eram 87 idas sequenciais ao PostgREST, numa tela que decide se mensagem
+    real sai para segurado real."""
+    b = _montar([{"id": f"conv-{i}", "ultima": _ha(2)} for i in range(30)])
+    idas = {"messages": 0}
+    original = Banco.table
+
+    def contando(self, n):
+        if n == "messages":
+            idas["messages"] += 1
+        return original(self, n)
+
+    Banco.table = contando
+    try:
+        with _com_banco(b):
+            linhas = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+    finally:
+        Banco.table = original
+
+    assert len(linhas) == 30
+    # 🔴 SÃO 30 QUERIES, E ISSO ESTÁ CERTO — o que não pode voltar é o TETO
+    # GLOBAL. Ver `test_uma_conversa_tagarela_NAO_fama_as_outras`: uma query só
+    # com `.limit(N × 20)` ordena globalmente, e uma conversa de 1.145 mensagens
+    # sozinha estoura o teto de 1.000 do PostgREST — as outras 85 voltam vazias
+    # e ninguém é saudado, em silêncio.
+    #
+    # ⚠️ O que se guarda aqui é a CONCORRÊNCIA: 30 conversas não podem virar 30
+    # idas sequenciais de latência.
+    assert idas["messages"] == 30
+    fonte = SERVICO_PY.read_text(encoding="utf-8")
+    assert "asyncio.gather(" in fonte, (
+        "as consultas de mensagens voltaram a ser sequenciais — 92 conversas "
+        "viram 92 idas de latência numa tela que a pessoa está olhando")
+    assert "_CONSULTAS_EM_PARALELO" in fonte
+
+
+def test_a_previa_dentro_do_envio_NAO_varre_o_banco_de_novo():
+    """📊 `enviar_saudacoes(confirmado=False)` é o caso normal do primeiro
+    religamento — e varria tudo duas vezes."""
+    b = _montar([{"id": f"conv-{i}", "ultima": _ha(2)} for i in range(5)])
+    idas = {"conversations": 0}
+    original = Banco.table
+
+    def contando(self, n):
+        if n == "conversations":
+            idas["conversations"] += 1
+        return original(self, n)
+
+    Banco.table = contando
+    correio = Correio()
+    try:
+        with _com_banco(b, correio):
+            r = _rodar(S.enviar_saudacoes("c-resulta", confirmado=False, agora=AGORA))
+    finally:
+        Banco.table = original
+
+    assert r["motivo"] == "confirmacao_necessaria"
+    assert r["previa"]["total"] == 5
+    assert idas["conversations"] == 1, (
+        f"a varredura rodou {idas['conversations']} vezes na mesma chamada")
+    assert correio.enviadas == []
+
+
+# ===========================================================================
+# 🔴 O UNIQUE DO BANCO — o guarda de última instância, agora exercitado
+# ===========================================================================
+
+def test_o_UNIQUE_do_banco_barra_duas_replicas_do_drenador():
+    """🔴 O ramo de duplicata de `_reservar` tinha cobertura ZERO.
+
+    📊 O cache em memória (`_ja_saudadas`) barrava antes, e o próprio teste
+    assertava isso — então trocar `return "duplicada"` por `return "reservada"`
+    passava despercebido em toda a suíte.
+
+    ⚠️ E esse ramo é o **último guarda** contra duas réplicas do drenador
+    mandarem a MESMA saudação para o mesmo segurado: cada réplica tem o próprio
+    cache, e os dois dizem que ninguém saudou.
+    """
+    b = _montar([{"id": "conv-1", "ultima": _ha(2), "msg_id": "msg-abc"}])
+    # a OUTRA réplica já reservou — mas este processo não sabe
+    b.dados["saudacoes_enviadas"].append({
+        "company_id": "c-resulta", "conversation_id": "conv-1",
+        "inbound_message_id": "msg-abc"})
+
+    async def _cache_cego(db, company_id, ids):
+        return set()          # o cache desta réplica está vazio
+
+    correio = Correio()
+    original = S._ja_saudadas
+    S._ja_saudadas = _cache_cego
+    try:
+        with _com_banco(b, correio):
+            r = _rodar(S.enviar_saudacoes("c-resulta", confirmado=True, agora=AGORA))
+    finally:
+        S._ja_saudadas = original
+
+    assert correio.enviadas == [], (
+        "as duas réplicas mandaram a mesma saudação para o mesmo segurado")
+    assert r["ja_saudadas"] == 1, r
+    assert r["erros"] == 0, (
+        "a duplicata foi contada como erro — os dois números dizem coisas "
+        "diferentes e não podem ser somados no mesmo balde")
+
+
+def test_erro_de_reserva_NAO_e_contado_como_ja_saudada():
+    """⚠️ `saudacoes_enviadas` fora do ar devolvia `ja_saudadas: N`.
+
+    Quem lesse concluiria *"todas já tinham sido saudadas"*; a verdade era
+    *"nenhuma saudação foi possível"*. A direção é segura nas duas — mas o
+    número mentia sobre o motivo.
+    """
+    b = _montar([{"id": "conv-1", "ultima": _ha(2)}])
+
+    class SemTabela(Banco):
+        def table(self, n):
+            q = Banco.table(self, n)
+            if n == "saudacoes_enviadas":
+                async def _explode():
+                    raise RuntimeError("PostgREST 503")
+                q.execute = lambda: _explode()
+            return q
+
+    quebrado = SemTabela()
+    quebrado.dados = b.dados
+
+    async def _cache_vazio(db, company_id, ids):
+        return set()
+
+    correio = Correio()
+    original = S._ja_saudadas
+    S._ja_saudadas = _cache_vazio
+    try:
+        with _com_banco(quebrado, correio):
+            r = _rodar(S.enviar_saudacoes("c-resulta", confirmado=True, agora=AGORA))
+    finally:
+        S._ja_saudadas = original
+
+    assert correio.enviadas == [], "mandou sem conseguir reservar"
+    assert r["erros"] == 1 and r["ja_saudadas"] == 0, r
+
+
+
+def test_uma_conversa_tagarela_NAO_fama_as_outras():
+    """🔴 O DEFEITO QUE O MEU PRÓPRIO CONSERTO DO N+1 INTRODUZIU.
+
+    📊 Medido em produção, 26/08/2026:
+
+    ```
+    conversas ativas nas 48h ................    92
+    mensagens nas 48h ....................... 2.119
+    a maior conversa, só nas 48h ............   267
+    a maior conversa no histórico ........... 1.145
+    teto do PostgREST ....................... 1.000
+    ```
+
+    Uma query com `.in_(conversas).order(created_at desc).limit(N × 20)` ordena
+    **globalmente**: a conversa de 1.145 mensagens come o orçamento inteiro e as
+    outras voltam com zero linhas — lidas como *"sem mensagem do cliente"*. A
+    pessoa **não é saudada, em silêncio**.
+
+    > O N+1 era lento e **certo**. O teto global era rápido e **errado**.
+    """
+    b = _montar([{"id": f"conv-{i}", "ultima": _ha(2)} for i in range(5)])
+    # `conv-0` é tagarela: 400 mensagens, TODAS mais recentes que as das outras.
+    # ⚠️ O cliente falou primeiro (1h atrás) e o robô respondeu 400 vezes depois
+    # — então ela é corretamente RECUSADA por `ja_respondida`, e as outras
+    # quatro continuam elegíveis. É a fome que se testa aqui, não o veredito.
+    for k in range(400):                      # o entulho, mais antigo
+        b.dados["messages"].append({
+            "id": f"tag-{k}", "conversation_id": "conv-0", "role": "assistant",
+            "created_at": _ha(3 + k * 0.01)})
+    b.dados["messages"].append({"id": "tag-user", "conversation_id": "conv-0",
+                                "role": "user", "created_at": _ha(1)})
+    for k in range(5):                        # e o robo respondeu depois
+        b.dados["messages"].append({
+            "id": f"tag-r{k}", "conversation_id": "conv-0", "role": "assistant",
+            "created_at": _ha(0.9 - k * 0.05)})
+
+    with _com_banco(b):
+        linhas = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+
+    achadas = {l["id"] for l in linhas}
+    assert {f"conv-{i}" for i in range(1, 5)} <= achadas, (
+        f"a conversa tagarela faminou as outras — sobraram {sorted(achadas)}")
+    # e a tagarela é corretamente recusada: há `assistant` depois do `user`
+    tagarela = next(l for l in linhas if l["id"] == "conv-0")
+    assert tagarela["ja_respondida"] is True
+
+
+def test_CONTROLE_o_teto_por_conversa_AINDA_corta():
+    """§9.3 — prove que `.limit(20)` por conversa não virou ilimitado.
+
+    ⚠️ Uma conversa com 30 `assistant` seguidos e um `user` antes deles: as 20
+    mais recentes são todas `assistant`, e o `user` fica fora da janela. A
+    conversa **não entra** — que é o desfecho certo, e prova que o teto corta.
+    """
+    b = _montar([{"id": "conv-1", "ultima": _ha(2)}])
+    for k in range(30):
+        b.dados["messages"].append({
+            "id": f"a-{k}", "conversation_id": "conv-1", "role": "assistant",
+            "created_at": _ha(1 - k * 0.001)})
+    with _com_banco(b):
+        linhas = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+    assert linhas == [], (
+        "o teto por conversa parou de cortar — `.limit(20)` virou ilimitado")
+
+
+def test_uma_conversa_ilegivel_NAO_derruba_a_rodada():
+    """Falha fechada POR CONVERSA: uma que não dá para ler fica de fora, e as
+    outras seguem. ⚠️ `return_exceptions=True` é o que faz isso — sem ele, uma
+    conversa quebrada cancelaria a rodada inteira."""
+    b = _montar([{"id": f"conv-{i}", "ultima": _ha(2)} for i in range(3)])
+
+    original = S._uma_conversa
+
+    async def _quebra_uma(db, cid):
+        if cid == "conv-1":
+            raise RuntimeError("PostgREST 503")
+        return await original(db, cid)
+
+    S._uma_conversa = _quebra_uma
+    try:
+        with _com_banco(b):
+            linhas = _rodar(S.conversas_elegiveis("c-resulta", agora=AGORA))
+    finally:
+        S._uma_conversa = original
+
+    achadas = {l["id"] for l in linhas}
+    assert achadas == {"conv-0", "conv-2"}, achadas
