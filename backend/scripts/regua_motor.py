@@ -490,3 +490,121 @@ __all__ = [
     "detect_native_flow", "native_flow", "montar_resposta_de_flow",
     "flow_components", "slots_com_padrao_do_motor",
 ]
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔴 SPEC-089 BLOCO C — O TRAVAMENTO, POR ROTA
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 📊 A régua não sabia dizer se a rota travou, se uma mão humana terminou, nem
+# se o robô destravou sozinho: **zero ocorrências** de `needs_human`,
+# `work_steps` ou clique humano nos quatro arquivos dela.
+#
+# ⚠️ E não é omissão que um item novo no corpus conserta: o corpus
+# (`tests/corpus/telas_reais/*.jsonl`) **não tem `direction`** — só tem tela de
+# seguradora. O turno do agente, o do atendente e o do segurado não estão lá.
+#
+# 🔴 Então este eixo lê o **BANCO**, não o corpus.
+#
+# ---------------------------------------------------------------------------
+# ⚠️ E DUAS FONTES QUE A SPEC NOMEIA NÃO EXISTEM
+# ---------------------------------------------------------------------------
+#
+# 📊 Medido em 26/08/2026:
+#
+#     work_events `travamento.assumido` .......... 🔴 NÃO EXISTE. Nenhum evento
+#                                                  `travamento.*` foi gravado
+#     work_runs `unblock_state='retomado_pelo_robo'`  🔴 ZERO linhas
+#     work_runs `unblock_state='travado'` ........ 1
+#     work_steps `step_key='needs_human'` ........ 2   ✅ a SPEC acertou
+#
+# ✅ O que a SPEC-093 realmente grava é `travamento.destravado` com
+# `payload_redacted->>'por'` ∈ (humano · cerebro · sentinela · vigia · robo) —
+# e está vazio porque **o piloto não rodou**. Este eixo lê as duas fontes
+# reais e nasce inerte, ganhando poder na segunda-feira.
+
+
+#: 📊 Quem destravou conta como HUMANO. ⚠️ Cérebro, Sentinela e Vigia são o
+#: ROBÔ para esta contagem — é a mesma decisão da SPEC-093
+#: (`DESTRAVADORES_HUMANOS`), e ela existe porque o que se quer medir é
+#: *"precisou de gente?"*, não *"qual subsistema agiu?"*.
+DESTRAVE_HUMANO = ("humano",)
+
+
+def travamentos_por_rota(dias: int = 30) -> Optional[Dict[Tuple[str, str], Dict[str, int]]]:
+    """`{(playbook_ref, subservico): {travou, humano, robo}}` — ou **`None`**.
+
+    🔴 **`None` significa "NÃO CONSEGUI MEDIR", e é diferente de `{}`.**
+
+    ⚠️ `{}` quer dizer *"olhei o banco e nenhuma rota travou"* — que é a notícia
+    BOA. `None` quer dizer *"não olhei"* — e o BLOCO A desta mesma SPEC diz o
+    que fazer com isso: **vale zero, dentro do denominador.**
+    """
+    if not tem_banco():
+        return None
+    try:
+        db = supabase()
+        runs = (db.table("work_runs")
+                .select("id, company_id, input_payload, unblock_state")
+                .eq("workflow_key", "acionamento.seguradora")
+                .limit(2000).execute().data or [])
+    except Exception:  # noqa: BLE001
+        # ⛔ Falhar a leitura é `None`, nunca `{}`. Zero MEDIDO e zero NÃO
+        #    MEDIDO não são a mesma coisa (CLAUDE.md §12.1).
+        return None
+
+    # ⚠️ A EXCLUSÃO NOMEADA DA AMANDUS vale aqui também: ela é a corretora de
+    #    TESTE, e um travamento fabricado não pode reprovar rota de produção.
+    runs = [r for r in runs
+            if str(r.get("company_id") or "") != _AMANDUS_COMPANY_ID]
+    por_run = {str(r["id"]): r for r in runs}
+    if not por_run:
+        return {}
+
+    fora: Dict[Tuple[str, str], Dict[str, int]] = {}
+
+    def _chave(r) -> Optional[Tuple[str, str]]:
+        ip = r.get("input_payload") or {}
+        if not isinstance(ip, dict):
+            return None
+        ref = str(ip.get("playbook_ref") or "").strip()
+        sub = str(ip.get("subservice") or "").strip()
+        return (ref, sub) if ref and sub else None
+
+    try:
+        etapas = (db.table("work_steps").select("work_run_id, step_key")
+                  .eq("step_key", "needs_human").limit(2000).execute().data or [])
+        eventos = (db.table("work_events")
+                   .select("work_run_id, payload_redacted")
+                   .eq("event_type", "travamento.destravado")
+                   .limit(2000).execute().data or [])
+    except Exception:  # noqa: BLE001
+        return None
+
+    for e in etapas:
+        r = por_run.get(str(e.get("work_run_id") or ""))
+        k = _chave(r) if r else None
+        if k:
+            fora.setdefault(k, {"travou": 0, "humano": 0, "robo": 0})["travou"] += 1
+
+    for e in eventos:
+        r = por_run.get(str(e.get("work_run_id") or ""))
+        k = _chave(r) if r else None
+        if not k:
+            continue
+        d = fora.setdefault(k, {"travou": 0, "humano": 0, "robo": 0})
+        carga = e.get("payload_redacted") or {}
+        por = str(carga.get("por") or "robo") if isinstance(carga, dict) else "robo"
+        d["humano" if por in DESTRAVE_HUMANO else "robo"] += 1
+
+    # 🔴 E a segunda fonte do destrave humano: `assumido_por_humano` é STICKY e
+    #    dura mesmo sem evento (SPEC-093 C.1, e o defeito P-259 nasceu de
+    #    confiar SÓ nela — aqui ela SOMA, não substitui).
+    for r in runs:
+        if str(r.get("unblock_state") or "") != "assumido_por_humano":
+            continue
+        k = _chave(r)
+        if k:
+            d = fora.setdefault(k, {"travou": 0, "humano": 0, "robo": 0})
+            if not d["humano"]:
+                d["humano"] += 1
+    return fora

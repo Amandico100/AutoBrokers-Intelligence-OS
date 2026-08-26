@@ -176,17 +176,27 @@ def test_a_regua_pontua_e_nao_bate_no_portao():
     #      102  ->  106   BLOCO A: `SEM_ESPELHO` parou de sair do denominador
     #      106  ->   70   BLOCO B: 36 pontos viraram PORTAO — eles guardam,
     #                     nao pontuam, e 43 de 43 rotas os ganhavam iguais
-    assert n.denominador == 70, (
-        f"o denominador e' {n.denominador} e nao 70. Se foi de proposito, "
+    #       70  ->   76   BLOCO C: o eixo F (travamento) entrou com 6 pontos de
+    #                     placar (`a rota anda sozinha`) + 4 de PORTAO
+    assert n.denominador == 76, (
+        f"o denominador e' {n.denominador} e nao 76. Se foi de proposito, "
         "troque o numero AQUI e escreva a causa ao lado — foi assim que este "
-        "teste saiu da quarentena da SPEC-089, e foi assim DUAS vezes")
+        "teste saiu da quarentena da SPEC-089, e foi assim TRES vezes")
 
     # 🔴 E O PLACAR + OS PORTOES SOMAM O TOTAL. Sem esta linha, um conserto
     #    que APAGASSE um portao (em vez de move-lo) passaria despercebido.
     portoes = sum(i.maximo for i in n.portoes)
-    assert n.denominador + portoes + sum(n.fora.values()) == 106, (
+    assert n.denominador + portoes + sum(n.fora.values()) == 116, (
         f"placar({n.denominador}) + portoes({portoes}) + "
-        f"fora({sum(n.fora.values())}) nao fecha 106 — um item SUMIU")
+        f"fora({sum(n.fora.values())}) nao fecha 116 — um item SUMIU")
+
+    # 🔴 E O EIXO F VALE ZERO AQUI, porque `_nota()` NAO passa `travamentos`.
+    #    ⚠️ Nao e' "a rota trava": e' "ninguem mediu" — e a diferenca esta' na
+    #    evidencia, que e' o que o BLOCO A desta SPEC existe para preservar.
+    anda = [i for i in n.itens if i.nome == "a rota anda sozinha"]
+    assert len(anda) == 1 and anda[0].conta and anda[0].pontos == 0
+    assert "SEM_BANCO" in anda[0].evidencia, (
+        f"o eixo F nao diz que NAO MEDIU: {anda[0].evidencia[:80]}")
 
 
 def test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas():

@@ -121,6 +121,8 @@ ITENS_DE_PORTAO = frozenset({
     "teste nomeia a rota, chama o motor, toca >=3 telas",
     "a mutacao fica vermelha (EXECUTADA)",
     ">=1 linha de CONTROLE",
+    # 🔴 SPEC-089 BLOCO C — depender de gente nao se compensa com pontos.
+    "a rota nao depende de gente para terminar",
 })
 
 
@@ -1181,9 +1183,94 @@ def eixo_e(rota, r: RP.Replay, *, mutacoes_ok: Optional[Tuple[int, int]] = None)
 # ═════════════════════════════════════════════════════════════════════════════
 # A NOTA
 # ═════════════════════════════════════════════════════════════════════════════
+
+# ═════════════════════════════════════════════════════════════════════════════
+# EIXO F — 🔴 O TRAVAMENTO (10)   ·   SPEC-089 BLOCO C
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# > *"Uma rota que só anda com gente NÃO É AAA, por mais bonito que seja o
+# > replay dela."*
+#
+# ⚠️ **Este eixo nasce inerte e ganha poder na segunda-feira.** 📊 Hoje há **2**
+# `needs_human` no banco inteiro e **zero** eventos `travamento.*` — o piloto
+# não rodou.
+#
+# ⛔ **E INERTE NÃO PODE VIRAR N/A.** É o BLOCO A desta mesma SPEC, e a SPEC
+# avisa explicitamente que o executor tem de conferir que não repetiu o defeito
+# que acabou de consertar. Então:
+#
+#     travamentos is None  ->  🔴 NÃO MEDI  ->  ZERO, dentro do denominador
+#     travamentos == {}    ->  ✅ MEDI, e esta rota não travou  ->  CHEIO
+#     rota ausente do mapa ->  ✅ MEDI, e esta rota não travou  ->  CHEIO
+#
+# 🔴 A diferença entre a primeira e as outras duas é a diferença entre *"não
+# consegui olhar"* e *"olhei e está tudo bem"* — e só a segunda é um fato.
+
+#: O portão que a SPEC pede: *"rota que só andou com humano NÃO é AAA"*.
+#:
+#: ⚠️ Ele é PORTÃO e não pontos, pela mesma razão do BLOCO B: depender de gente
+#: não se compensa com um replay bonito. E ele nasce FECHADO — sem travamento
+#: registrado, não há prova de dependência, e presunção de culpa não é medição.
+PORTAO_ANDA_SOZINHA = "a rota nao depende de gente para terminar"
+
+
+def eixo_f(rota, *, travamentos=None) -> List[Item]:
+    """O travamento desta rota, lido do BANCO. Ver o cabeçalho acima."""
+    chave = (str(getattr(rota, "ref", "") or ""), str(rota.servico))
+    itens: List[Item] = []
+
+    if travamentos is None:
+        # 🔴 NÃO MEDIDO. Zero, DENTRO do denominador — a lição do BLOCO A.
+        itens.append(Item("F", "a rota anda sozinha", 0, 6,
+                          "SEM_BANCO: nao consegui ler o travamento desta rota. "
+                          "Zero NAO MEDIDO vale zero, nao vale nada (SPEC-089 A). "
+                          "Rode de dentro de `backend/`, onde mora o `.env`."))
+        # ⚠️ E o portão fica FECHADO: sem medição não há prova de dependência,
+        #    e reprovar por falta de dado seria inventar o defeito.
+        itens.append(Item("F", PORTAO_ANDA_SOZINHA, 4, 4,
+                          "SEM_BANCO: sem prova de dependencia — o portao nao "
+                          "acusa o que nao mediu"))
+        return itens
+
+    d = (travamentos or {}).get(chave) or {"travou": 0, "humano": 0, "robo": 0}
+    travou, humano, robo = d["travou"], d["humano"], d["robo"]
+    destraves = humano + robo
+
+    # ── 6 · a rota anda sozinha ───────────────────────────────────────────
+    #
+    # ⚠️ Zero travamento é a nota CHEIA, e é a resposta certa: a rota fez o
+    #    trabalho sem parar. 📊 Hoje isso vale para 43 de 43 — o eixo nasce
+    #    dando 6 a todos, e começa a separar quando o piloto rodar.
+    if travou == 0:
+        itens.append(Item("F", "a rota anda sozinha", 6, 6,
+                          "0 travamentos registrados nos acionamentos desta rota"))
+    else:
+        # quanto MENOS travou proporcionalmente aos destraves do robô, melhor
+        sozinha = robo / destraves if destraves else 0.0
+        pts = 6 if sozinha >= 0.99 else 4 if sozinha >= 0.5 else 0
+        itens.append(Item("F", "a rota anda sozinha", pts, 6,
+                          f"{travou} travamento(s); {robo} destravado(s) pelo robo "
+                          f"e {humano} por GENTE"))
+
+    # ── 4 · 🔴 PORTÃO: a rota não depende de gente ────────────────────────
+    so_com_gente = bool(destraves) and humano == destraves
+    itens.append(Item("F", PORTAO_ANDA_SOZINHA, 0 if so_com_gente else 4, 4,
+                      f"{humano} de {destraves} destrave(s) foram por GENTE"
+                      if destraves else
+                      "nenhum destrave registrado — nada a acusar"))
+    return itens
+
+
 def medir(rota, *, sessoes_no_acervo: Optional[int] = None,
           tem_espelho: bool = False,
-          mutacoes_ok: Optional[Tuple[int, int]] = None) -> Nota:
+          mutacoes_ok: Optional[Tuple[int, int]] = None,
+          travamentos=None) -> Nota:
+    """A nota da rota.
+
+    ⚠️ `travamentos=None` é **NÃO MEDI**, e não *"não travou"* — SPEC-089
+    BLOCO C. Quem chama passa `M.travamentos_por_rota()`, que devolve `None`
+    quando o banco não responde e `{}` quando responde e nada travou.
+    """
     r = RP.replay(rota, sessoes_no_acervo=sessoes_no_acervo)
 
     # 🔴 SEM_CORPUS e NAO_RESPONDE são estados OPOSTOS, com ações OPOSTAS.
@@ -1226,5 +1313,6 @@ def medir(rota, *, sessoes_no_acervo: Optional[int] = None,
 
     itens = (eixo_a(rota, r) + b + eixo_c(rota, r)
              + eixo_d(rota, r, tem_espelho=tem_espelho)
-             + eixo_e(rota, r, mutacoes_ok=mutacoes_ok))
+             + eixo_e(rota, r, mutacoes_ok=mutacoes_ok)
+             + eixo_f(rota, travamentos=travamentos))
     return Nota(rota, itens, None, r)

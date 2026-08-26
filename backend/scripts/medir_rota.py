@@ -483,10 +483,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     mut = VM.verificar(TESTE_DA_REGUA)
     mut_ok = (sum(1 for r in mut if r.ok), len(mut))
 
+    # 🔴 SPEC-089 BLOCO C — o travamento e' lido UMA vez, para todas as rotas.
+    #
+    # ⚠️ `None` quer dizer NAO MEDI (banco fora do ar), e o eixo F trata isso
+    #    como ZERO dentro do denominador — a licao do BLOCO A. `{}` quer
+    #    dizer 'olhei e nenhuma rota travou', que e' a noticia BOA.
+    travamentos = M.travamentos_por_rota()
+
     if a.todas:
         notas = [RB.medir(r, sessoes_no_acervo=acervo.get(r.seguradora),
-                              tem_espelho=a.com_espelho,
-                          mutacoes_ok=mut_ok) for r in M.rotas()]
+                          tem_espelho=a.com_espelho,
+                          mutacoes_ok=mut_ok,
+                          travamentos=travamentos) for r in M.rotas()]
         if a.formato == "markdown":
             print(markdown(notas, demanda, acervo))
         else:
@@ -498,7 +506,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"rota inexistente: {a.seguradora} x {a.ramo} x {a.servico}")
         return 2
     n = RB.medir(rota, sessoes_no_acervo=acervo.get(rota.seguradora),
-                 tem_espelho=a.com_espelho, mutacoes_ok=mut_ok)
+                 tem_espelho=a.com_espelho, mutacoes_ok=mut_ok,
+                 travamentos=travamentos)
     print(imprimir_nota(n))
     return 0
 
