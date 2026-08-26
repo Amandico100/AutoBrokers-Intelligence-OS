@@ -1285,6 +1285,19 @@ async def _handle_evolution_like_inbound(
             # atribuir a mensagem a uma pessoa. Um eco perdido é recuperável; o
             # trabalho da atendente sumindo do registro, não.
             _fomos_nos = False
+            # 🔴 `_e_nota` NASCE AQUI, FORA DO `try`, PELO MESMO MOTIVO.
+            #
+            # ⚠️ Eu escrevi a primeira versão com ele DENTRO do bloco abaixo — e
+            # é literalmente o defeito que o juiz da SPEC-093 achou em
+            # `_fomos_nos`, três linhas acima, com o comentário explicando por
+            # quê. Se o Espelho cair antes da atribuição, o `elif _e_nota` mais
+            # adiante levanta `NameError`.
+            #
+            # 🔴 `False` é a inicialização certa e não é arbitrária: sem prova de
+            # que é anotação, a mensagem segue o caminho de sempre — PAUSA a IA.
+            # Uma nota que pausou por engano é um clique para religar; um robô
+            # falando por cima da atendente é duas vozes na mesma conversa.
+            _e_nota = False
             try:
                 from app.services.atlas.espelho_chat import (
                     espelhar_no_chat, pausar_por_intervencao_humana,
@@ -1323,15 +1336,70 @@ async def _handle_evolution_like_inbound(
                     message_id=str(normalized.get("message_id") or ""),
                     quando_iso=datetime.now(timezone.utc).isoformat())
 
+                # =============================================================
+                # 🔴 SPEC-090 BLOCO C — A NOTA NÃO PAUSA A IA
+                # =============================================================
+                #
+                # 📊 Desde 14/08, QUALQUER `fromMe` humano pausa a IA, e a regra
+                # está certa: antes dela a atendente respondia por áudio e o
+                # agente falava por cima — *"duas vozes na mesma conversa"*.
+                #
+                # ⛔ **Mas ela transformaria toda anotação em intervenção.** A
+                # Regina escreve *"#nota o robô perguntou a placa duas vezes"* e
+                # o robô PARA DE ATENDER. Anotar viraria assumir, que é
+                # exatamente o que o Founder mandou não fazer.
+                #
+                # ⚠️ A exceção é ESTREITA de propósito: o prefixo tem de abrir a
+                # mensagem. *"o robô errou #nota"* não é nota — é intervenção, e
+                # pausa. Uma exceção larga vira o buraco que 14/08 fechou.
+                #
+                # ⚠️ **E aqui a nota chega com `origem='whatsapp'`, que é a
+                # verdade:** este webhook é o ECO de uma mensagem que o WhatsApp
+                # JÁ ENTREGOU. O produto não interceptou nada — ele soube depois.
+                # A coluna existe para o relatório não dizer *"nenhuma vazou"*
+                # sobre um dia em que sete foram lidas pelo segurado.
+                if not _fomos_nos and _texto:
+                    _e_nota = _e_uma_anotacao(_texto)
+                    if _e_nota:
+                        await _capturar_anotacao_do_whatsapp(
+                            company_id=_empresa,
+                            phone=str(normalized["phone"]), mensagem=_texto)
+
                 if _fomos_nos:
                     logger.info("[ESPELHO] eco da própria voz — a IA continua "
                                 "trabalhando nesta conversa")
+                elif _e_nota:
+                    # 🔴 O gate ③ inteiro é esta linha: NÃO pausa.
+                    logger.info("[NOTA] anotação da atendente — a IA CONTINUA "
+                                "atendendo nesta conversa")
                 else:
                     await pausar_por_intervencao_humana(
                         company_id=_empresa, counterparty=str(normalized["phone"]))
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[ESPELHO] intervenção humana não registrada: {type(e).__name__}")
 
+            # 🔴 A NOTA NÃO ASSUME O ATENDIMENTO — e este é o segundo lugar
+            #    onde "anotar viraria assumir", que a SPEC só viu no primeiro.
+            #
+            # 📊 `note_manual_outbound(foi_humano=True)` faz TRÊS escrituras
+            # duráveis (SPEC-093 BLOCO C.1): a marca na sessão,
+            # `work_runs.unblock_state = 'assumido_por_humano'` e um
+            # `work_events` de ator `user`.
+            #
+            # ⛔ **E ela dispara no cenário exato do piloto:** a Regina está
+            # olhando a conversa com a SEGURADORA — é onde a URA trava e onde
+            # ela destrava. Anotar ali marcaria o acionamento como assumido por
+            # humano, que é o oposto do que o Founder pediu.
+            #
+            # ⚠️ E `foi_humano=False` seria pior ainda: creditaria ao ROBÔ uma
+            # mensagem que uma pessoa escreveu — o BLOCO C.1 ao contrário.
+            #
+            # ✅ Pular não perde nada: `espelhar_no_chat` acima já registrou a
+            # mensagem nos dois casos, e a autoria da nota fica em
+            # `notas_da_atendente`, com telefone e origem.
+            if _e_nota:
+                logger.info("[NOTA] anotação NÃO conta como assunção humana — "
+                            "o acionamento segue como estava")
             try:
                 from app.services.dispatch_router import note_manual_outbound
 
@@ -1345,10 +1413,16 @@ async def _handle_evolution_like_inbound(
                 #
                 # `_fomos_nos` já estava calculado vinte linhas acima. Só
                 # faltava usá-lo aqui.
-                await note_manual_outbound(
-                    str(integration.get("company_id") or ""), str(normalized["phone"]), str(normalized["text"]),
-                    foi_humano=not _fomos_nos,
-                )
+                #
+                # 🔴 SPEC-090 BLOCO C — `_e_nota` corta a chamada INTEIRA.
+                #    Ver o comentário logo acima do `try`: nem `True` nem
+                #    `False` em `foi_humano` seriam a resposta certa para uma
+                #    anotação. A resposta certa é **não marcar nada**.
+                if not _e_nota:
+                    await note_manual_outbound(
+                        str(integration.get("company_id") or ""), str(normalized["phone"]), str(normalized["text"]),
+                        foi_humano=not _fomos_nos,
+                    )
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK EVOLUTION] manual outbound note failed: {type(e).__name__}")
             # SPEC-045 — MODO OBSERVAÇÃO: a resposta da ATENDENTE HUMANA pelo
@@ -1472,6 +1546,116 @@ async def _handle_evolution_like_inbound(
     return await _buffer_or_dispatch_text(payload_dict, normalized["phone"])
 
 
+def _e_uma_anotacao(mensagem: str) -> bool:
+    """`#nota …` no começo? — SPEC-090 BLOCO C.
+
+    ⚠️ **A decisão mora em `a_nota_da_atendente`, não aqui.** Uma segunda cópia
+    da regra do prefixo divergiria da primeira, e a que ficasse para trás seria
+    justamente a que deixa a nota virar mensagem para o segurado (§5).
+
+    ⛔ **Import que falha devolve `False`, e a direção é a segura:** a mensagem
+    segue o caminho de hoje — sai, e a atendente vê que saiu. O contrário
+    (engolir por acidente) seria uma mensagem que a atendente acha que mandou e
+    o segurado nunca recebeu.
+    """
+    try:
+        from app.services.a_nota_da_atendente import e_nota
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[NOTA] regra do prefixo indisponível (%s) — a mensagem "
+                     "segue o caminho normal", type(erro).__name__)
+        return False
+    return bool(e_nota(mensagem))
+
+
+async def _consumir_anotacao_do_painel(*, company_id: str, phone: str,
+                                       mensagem: str) -> Dict[str, Any]:
+    """Grava a anotação e **devolve sem enviar nada**.
+
+    🔴 O gate ② da SPEC vive nesta função: nenhum caminho daqui chama
+    `send_message`. ⛔ E ela nunca levanta — um erro ao gravar não pode virar um
+    500 que faça a atendente reenviar a mesma nota, agora achando que falhou.
+    """
+    from app.core.database import create_async_supabase_client
+    from app.services.a_nota_da_atendente import (
+        ORIGEM_PAINEL, gravar_nota, travamento_mais_recente,
+    )
+
+    gravou, motivo = False, "erro"
+    try:
+        db = await create_async_supabase_client()
+        conversa = await _conversa_do_telefone(db, company_id, phone)
+        contexto = await travamento_mais_recente(db, company_id, conversa)
+        gravou, motivo = await gravar_nota(
+            db, company_id=company_id, texto_bruto=mensagem,
+            origem=ORIGEM_PAINEL, conversation_id=conversa,
+            work_run_id=contexto.get("work_run_id") or None,
+            rota=contexto.get("rota", ""), tela=contexto.get("tela", ""))
+    except Exception as erro:  # noqa: BLE001
+        motivo = type(erro).__name__
+        logger.warning("[NOTA] painel: não gravada (%s)", motivo)
+
+    # ⚠️ `status` diz `anotada`, nunca `sent`. O painel precisa poder mostrar à
+    #    atendente que aquilo virou anotação e **não foi para o segurado** — se
+    #    a tela disser "enviado", ela vai achar que o cliente leu.
+    return {"status": "anotada", "gravada": gravou, "motivo": motivo,
+            "enviada": False}
+
+
+async def _capturar_anotacao_do_whatsapp(*, company_id: str, phone: str,
+                                         mensagem: str) -> None:
+    """A anotação escrita no WhatsApp da atendente — SPEC-090 BLOCO C.
+
+    ⚠️ **Aqui o produto NÃO interceptou nada.** Este caminho é o eco de uma
+    mensagem que o WhatsApp já entregou (`evolution_inbound.py:847`). Por isso
+    a linha nasce com `origem='whatsapp'`: ela diz a verdade sobre si mesma.
+
+    ⛔ **Nunca levanta.** Uma anotação que não gravou é uma anotação perdida;
+    uma exceção aqui derrubaria o tratamento do `fromMe` inteiro, e junto dele
+    o espelho e a pausa por intervenção humana.
+    """
+    from app.core.database import create_async_supabase_client
+    from app.services.a_nota_da_atendente import (
+        ORIGEM_WHATSAPP, gravar_nota, travamento_mais_recente,
+    )
+
+    try:
+        db = await create_async_supabase_client()
+        conversa = await _conversa_do_telefone(db, company_id, phone)
+        contexto = await travamento_mais_recente(db, company_id, conversa)
+        await gravar_nota(
+            db, company_id=company_id, texto_bruto=mensagem,
+            origem=ORIGEM_WHATSAPP, conversation_id=conversa,
+            work_run_id=contexto.get("work_run_id") or None,
+            # ⛔ O telefone É gravado (é da equipe, não do segurado) e NUNCA
+            #    é impresso — nem aqui, nem no log de erro de `gravar_nota`.
+            autor_telefone=str(phone or ""),
+            rota=contexto.get("rota", ""), tela=contexto.get("tela", ""))
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[NOTA] whatsapp: não capturada (%s)", type(erro).__name__)
+
+
+async def _conversa_do_telefone(db, company_id: str, phone: str) -> Optional[str]:
+    """A conversa daquele telefone naquela corretora, ou `None`.
+
+    ⚠️ **`None` quando há mais de uma**, pela mesma regra do BLOCO A: 📊 medido
+    em 26/08, 2 pares (corretora, telefone) têm mais de uma conversa e o pior
+    caso tem 57. Uma nota pendurada na conversa errada é pior que uma nota solta
+    — a solta ainda aparece na leitura do dia.
+    """
+    digitos = "".join(c for c in str(phone or "") if c.isdigit())
+    if not digitos or not company_id:
+        return None
+    try:
+        achado = await (db.client.table("conversations").select("id")
+                        .eq("company_id", str(company_id))   # 🔴 §7
+                        .eq("user_phone", digitos).limit(5).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[NOTA] conversa não resolvida (%s)", type(erro).__name__)
+        return None
+    linhas = achado.data or []
+    return str(linhas[0]["id"]) if len(linhas) == 1 else None
+
+
 @router.post("/api/webhook/send-message")
 async def admin_send_message(
     payload: AdminSendMessagePayload,
@@ -1490,6 +1674,26 @@ async def admin_send_message(
 
         if not integration:
             raise HTTPException(status_code=404, detail="Integration not found")
+
+        # =====================================================================
+        # 🔴 SPEC-090 BLOCO C — A ANOTAÇÃO, E É AQUI QUE O GATE ② É DE VERDADE
+        # =====================================================================
+        #
+        # 📊 Este é o único caminho em que **o produto é o remetente**: ele
+        # chama `whatsapp_service.send_message` logo abaixo. Interceptar aqui
+        # é interceptação real — a mensagem provadamente não sai, e o teste
+        # consegue contar `platform_sends`.
+        #
+        # ⚠️ O caminho do WhatsApp direto NÃO tem essa propriedade: `fromMe` é
+        # o eco de uma mensagem que o WhatsApp já entregou. Lá a nota é
+        # capturada com `origem='whatsapp'`, dizendo a verdade.
+        #
+        # ⛔ **O `return` vem ANTES do envio, e não é um detalhe de ordem.**
+        # Gravar depois de enviar seria enviar.
+        if payload.message and _e_uma_anotacao(payload.message):
+            return await _consumir_anotacao_do_painel(
+                company_id=company_id, phone=str(payload.phone),
+                mensagem=str(payload.message))
 
         success = False
         if payload.message:
