@@ -9653,3 +9653,72 @@ conserta com `_paginar`.
 **O que destrava:** reusar o `_paginar` de `o_dia_de_ontem.py` (§5 — a função
 existe). **O que custa esquecer:** uma rota que travou 1.500 vezes contar como
 1.000, e o eixo F dar nota melhor do que a verdade.
+
+
+---
+
+## P-269 · O crash do Node sob carga da bateria — intermitente e não atribuível
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+📊 Na bateria completa de 26/08 (árvore exclusiva, `3 failed · 921 passed ·
+22m30`), um dos três vermelhos foi:
+
+```
+test_a_atendente_aperta_o_botao_e_so_o_botao::test_a_politica_de_autorizacao_passa
+
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76
+returncode 3221226505  =  0xC0000409
+```
+
+🔴 **Não é a política: é o processo do Node morrendo.** É uma asserção interna
+do `libuv`, no Windows, e o código de saída é crash de processo — não asserção
+reprovada.
+
+📊 **3 de 3 passam quando rodado sozinho.** Só cai sob a carga da bateria
+completa.
+
+⚠️ **E ele é da mesma FAMÍLIA da P-246, com causa diferente:** um gate que fica
+vermelho às vezes, por motivo que não é defeito de produto. **Dois desses e o
+vermelho vira ruído de fundo** — e o próximo vermelho de verdade morre junto.
+
+**O que destrava:** medir se é contenção de processo (a bateria roda os guardas
+em paralelo desde 25/08) ou se é o `MODULE_TYPELESS_PACKAGE_JSON` do
+`admin-auth-policy.ts` sendo reparseado como ES module a cada chamada.
+💭 A segunda hipótese tem conserto barato: `"type": "module"` no `package.json`.
+
+**O que custa esquecer:** com a P-246 aberta, a bateria já tem **dois** motivos
+de vermelho que ninguém precisa consertar. **Vermelho que não exige ação ensina
+a não olhar.**
+
+---
+
+## P-270 · Os quatro consumidores de `messages` ainda não filtram a anotação
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+✅ **Metade está feita:** a nota agora carrega a marca no `content`
+(`📝 [nota interna] …`), então quem lê `content` **vê** que é nota, e a atendente
+distingue a própria anotação de uma fala enviada.
+
+🔴 **A outra metade não:** os quatro continuam ingerindo a linha.
+
+```
+conversation_auditor.py:90   → conversation_scorecards
+garimpo_v3.py:78             → sinais e pedidos
+memory_fabric.py:217         → memória da empresa
+broker_insights.py:186       → insights comerciais
+```
+
+📊 `payload.nota_interna` existe e continua com **zero leitores**.
+
+⚠️ **Por que ficou assim:** marcar o `content` foi **um arquivo** e resolve o
+dano principal — a nota deixa de passar por fala ao cliente. Filtrar nos quatro
+é quatro arquivos, e **qualquer consumidor futuro esquece de novo**.
+
+**O que destrava:** um único ponto de leitura de `messages` que os quatro
+passem a usar, com o filtro dentro. ⛔ Filtrar nos quatro é o conserto que
+envelhece.
+
+**O que custa esquecer:** as notas entram no aprendizado como texto marcado —
+melhor que antes, e ainda assim ruído numa fonte que deveria ser só conversa.
