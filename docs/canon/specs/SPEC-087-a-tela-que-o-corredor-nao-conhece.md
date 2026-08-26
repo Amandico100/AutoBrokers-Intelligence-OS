@@ -28,6 +28,36 @@ teto**:
 
 > **Uma em cada três telas que a seguradora manda, o corredor não conhece.**
 
+## ⚠️ Duas ressalvas honestas sobre esse número
+
+**1. Ele cobre SEIS seguradoras, e existem dez com tráfego.** 📊 Cruzando o
+acervo dos mesmos 45 dias:
+
+```
+                ocorrências   telas distintas (md5 do texto cru)
+ allianz            9.102          2.443
+ porto              3.509          1.379
+ yelum              3.184          1.113
+ 🔴 hdi             2.102            795   ← NÃO entrou na medição
+ azul                 623            220   ← NÃO entrou
+ zurich               505            281
+ tokio                379            109
+ bradesco             306            141   ← NÃO entrou
+ mapfre               182            119
+ alfa                 169             63   ← NÃO entrou
+```
+
+🔴 **A hdi é a quarta em volume e ficou fora.** As 269 cegas são, portanto,
+**piso duas vezes**: pelo casamento generoso e pela cobertura parcial.
+
+**2. Os dois números não são comparáveis, e o executor precisa saber por quê.**
+As 755 telas vêm do casador real com o texto **normalizado**; as 6.663 acima
+vêm de `md5` do texto **cru** — onde o mesmo menu com um nome diferente conta
+duas vezes. ⛔ **Não divida um pelo outro.**
+
+> **O BLOCO 0 do executor começa refazendo a medição nas DEZ seguradoras.**
+> É a primeira coisa a fazer, e ela pode mudar o tamanho da fila.
+
 ⚠️ **E a tokio tem drift registrado em 25/08 — ontem.** Cem por cento cega, com a
 URA mexendo agora.
 
