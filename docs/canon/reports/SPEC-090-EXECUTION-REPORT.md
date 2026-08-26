@@ -4,7 +4,7 @@
 **SPEC:** `docs/canon/specs/SPEC-090-o-atendimento-de-ontem-vira-conserto-de-hoje.md` (v1)
 **Branch:** `feat/spec090-o-atendimento-de-ontem-vira-conserto-de-hoje`
 **Executor:** Opus 5 (1M) · 26/08/2026
-**Commit inicial:** `04ded4c` · **Commit final:** `<preenchido no commit deste relatório>`
+**Commit inicial:** `04ded4c` · **Commit final:** `871298e` + este relatório
 **Estado final:** CONCLUÍDA COM RESSALVAS
 
 ---

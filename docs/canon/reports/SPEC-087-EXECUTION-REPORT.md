@@ -4,7 +4,7 @@
 **SPEC:** `docs/canon/specs/SPEC-087-a-tela-que-o-corredor-nao-conhece.md` (v1)
 **Branch:** `feat/spec087-a-tela-que-o-corredor-nao-conhece`
 **Executor:** Opus 5 (1M) · 26/08/2026
-**Commit inicial:** `56b1b02` · **Commit final:** `<preenchido no commit do relatório>`
+**Commit inicial:** `56b1b02` · **Commit final:** `04ded4c` + este relatório
 **Estado final:** CONCLUÍDA COM RESSALVAS
 
 ---
