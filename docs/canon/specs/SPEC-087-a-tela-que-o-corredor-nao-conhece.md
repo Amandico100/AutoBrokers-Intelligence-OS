@@ -267,6 +267,21 @@ propósito, porque o Atlas é um só. ✅ **A chave global é correta.**
 O mascarador que já existe passa a rodar **antes** de qualquer escrita em tabela
 global — `route_drift`, `playbook_overlays` e a `tela_cega` do BLOCO A.
 
+⛔ **NÃO construa um terceiro.** 📊 Já existem dois, e o BLOCO 0 escolhe qual:
+
+```
+backend/app/services/intelligence/redaction_service.py
+backend/app/services/pii_da_sessao.py
+```
+
+🔴 **O critério de escolha é o gate ②, não a elegância:** o que sobrar depois de
+mascarar **ainda tem de casar com a tela real**. Um mascarador que troca o menu
+inteiro por `{{texto}}` é perfeito em privacidade e inútil como âncora.
+
+⚠️ **E se nenhum dos dois servir**, o BLOCO 0 diz **por que**, com o teste que
+mostra a âncora deixando de casar — `CLAUDE.md` §5 proíbe criar em paralelo, e
+"não serviu" precisa de prova, não de opinião.
+
 ## O gate
 
 ```
