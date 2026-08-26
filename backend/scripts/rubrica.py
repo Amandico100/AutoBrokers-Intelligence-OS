@@ -79,6 +79,51 @@ ROTA_INDISTINGUIVEL = "ROTA_INDISTINGUIVEL"
 SEM_ESPELHO = "SEM_ESPELHO"
 
 
+#: 🔴 SPEC-089 BLOCO B — OS ITENS QUE VIRARAM PORTAO, E POR QUE.
+#:
+#: 📊 MEDIDO EM 26/08/2026, item a item, nas 43 rotas com corpus:
+#:
+#:     NOVE itens nunca reprovaram nenhuma rota .... 44 de 106 pontos
+#:     = 41,5% de cada nota era PRESENCA, nao qualidade
+#:
+#: ⚠️ A SPEC listava OITO (40 pontos). O nono é `transcrita no bloco do
+#: subservico` (+4), que ela nao cita.
+#:
+#: 🔴 E oito deles tem a MESMA forma: eles conferem que uma MA PRATICA ESTA
+#: AUSENTE — nenhuma constante decide pelo cliente, nenhuma ancora exige `*`,
+#: o teste chama o motor. **Ausencia de defeito e PORTAO, nao PLACAR.**
+#:
+#: ⛔ Dar ponto por nao ter defeito e dar ponto por nada, e 43 de 43 rotas
+#: ganhavam esses pontos identicos. Como PORTAO, eles continuam guardando —
+#: e uma rota que abrir qualquer um deles **nao chega a AAA**.
+#:
+#: 📊 O EFEITO, medido com espelho:
+#:
+#:     antes   AAA 20 · quase 13 · parcial 9 · esqueleto 1   amplitude 46,2
+#:     depois  AAA 12 · quase 18 · parcial 4 · esqueleto 8 · toco 1
+#:                                                          amplitude 79,0
+#:
+#: 🔴 E o gate ③ da SPEC fecha: as NOVE rotas que tiravam 106/106 continuam
+#: AAA em 62/62 — alfa/auto/guincho, allianz/auto/guincho,
+#: allianz/residencial/encanador, azul/auto/guincho, hdi/auto/guincho,
+#: porto/auto/guincho, yelum/auto/guincho, yelum/auto/socorro_mecanico e
+#: yelum/residencial/encanador. **Separar nao e rebaixar todo mundo.**
+#:
+#: ⚠️ `>=85% deterministico` NAO esta aqui: o corte dele subiu para 100% e
+#: ele passou a reprovar uma rota NOMEAVEL (hdi/residencial/eletricista,
+#: 95,6%). Um item que separa fica no placar.
+ITENS_DE_PORTAO = frozenset({
+    "transcrita no bloco do subservico",
+    "notes com contagem que RECONTA",
+    "toda tecla _opcao tem origem (3 fontes)",
+    "nenhuma constante decide pelo cliente",
+    "nenhuma ancora exige `*` literal",
+    "teste nomeia a rota, chama o motor, toca >=3 telas",
+    "a mutacao fica vermelha (EXECUTADA)",
+    ">=1 linha de CONTROLE",
+})
+
+
 class Item(NamedTuple):
     eixo: str
     nome: str
@@ -88,8 +133,19 @@ class Item(NamedTuple):
     excluido: Optional[str] = None    # motivo, quando sai do denominador
 
     @property
+    def portao(self) -> bool:
+        """🔴 SPEC-089 B — este item GUARDA, nao PONTUA. Ver `ITENS_DE_PORTAO`."""
+        return self.nome in ITENS_DE_PORTAO
+
+    @property
+    def fechado(self) -> bool:
+        """O portao esta fechado? (item cheio = nenhuma ma pratica presente)"""
+        return self.pontos >= self.maximo
+
+    @property
     def conta(self) -> bool:
-        return self.excluido is None
+        """Entra no PLACAR? ⛔ Portao nao entra: ele guarda, nao pontua."""
+        return self.excluido is None and not self.portao
 
 
 class Nota(NamedTuple):
@@ -108,9 +164,24 @@ class Nota(NamedTuple):
 
     @property
     def fora(self) -> Dict[str, int]:
+        """O que SAIU do denominador, por MOTIVO de exclusao.
+
+        🔴 SPEC-089 BLOCO B — **portao nao entra aqui**, e o guarda pegou.
+
+        ⚠️ Este laco era `if not i.conta`, e `conta` passou a devolver `False`
+        tambem para os portoes. Resultado: `fora` virou
+        `{None: 36, "SEM_FABRICA": 7}` — uma chave `None` que nao e motivo de
+        nada, somando 36 pontos a uma tabela que quem le interpreta como
+        *"itens que nao se aplicam a esta rota"*.
+
+        ⛔ **Sair do denominador e ser portao sao coisas diferentes:**
+
+            fora     .... o item NAO SE APLICA a rota (SEM_FABRICA, ...)
+            portao   .... o item se aplica, GUARDA, e nao pontua
+        """
         d: Dict[str, int] = {}
         for i in self.itens:
-            if not i.conta:
+            if i.excluido is not None:
                 d[i.excluido] = d.get(i.excluido, 0) + i.maximo
         return d
 
@@ -129,6 +200,20 @@ class Nota(NamedTuple):
         return {k: (v[0], v[1]) for k, v in d.items()}
 
     @property
+    def portoes(self) -> List[Item]:
+        """Os itens que GUARDAM — SPEC-089 BLOCO B.
+
+        ⚠️ Um portao EXCLUIDO (`SEM_FABRICA`) nao guarda nada: a rota nao tem
+        onde ter a ma pratica. Ele sai dos dois lados.
+        """
+        return [i for i in self.itens if i.portao and i.excluido is None]
+
+    @property
+    def portoes_abertos(self) -> List[Item]:
+        """🔴 Os que a rota NAO fechou. Cada um bloqueia o AAA."""
+        return [i for i in self.portoes if not i.fechado]
+
+    @property
     def patamar(self) -> str:
         """🔴 O patamar CARREGA o denominador: `AAA(90)`, `quase(100)`.
 
@@ -142,7 +227,22 @@ class Nota(NamedTuple):
         p = 100 * self.fracao
         nome = ("AAA" if p >= 95 else "quase" if p >= 80 else "parcial" if p >= 55
                 else "esqueleto" if p >= 25 else "toco")
-        return f"{nome}({self.denominador})"
+        # =================================================================
+        # 🔴 SPEC-089 BLOCO B — PORTAO ABERTO NAO CHEGA A AAA
+        # =================================================================
+        #
+        # ⚠️ Um portao guarda a AUSENCIA de uma ma pratica: uma constante
+        # decidindo pelo cliente, uma ancora que exige `*`, um teste que nao
+        # chama o motor. **Nenhuma dessas coisas se compensa com pontos.**
+        #
+        # ⛔ Antes elas valiam 44 pontos que 43 de 43 rotas ganhavam — o item
+        # nao separava nada e ainda inflava a nota. Agora ele nao pontua e
+        # BLOQUEIA: a rota fica em `quase`, com o portao nomeado ao lado.
+        abertos = self.portoes_abertos
+        if abertos and nome == "AAA":
+            nome = "quase"
+        marca = f"!{len(abertos)}" if abertos else ""
+        return f"{nome}({self.denominador}){marca}"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -485,10 +585,35 @@ def eixo_b(rota, r: RP.Replay) -> List[Item]:
     itens.append(Item("B", "zero orfas funcionais", pts, 20,
                       f"{n} orfa(s) funcional(is). {r.amostra}. primeira: {exemplo}"))
 
-    # ── 8 · ≥85% determinístico ────────────────────────────────────────────
+    # ── 8 · 100% determinístico ────────────────────────────────────────────
+    #
+    # ═════════════════════════════════════════════════════════════════════
+    # 🔴 SPEC-089 BLOCO B — O CORTE ERA 85% E O PIOR ALUNO TEM 95,6%
+    # ═════════════════════════════════════════════════════════════════════
+    #
+    # 📊 MEDIDO EM 26/08/2026, as 43 rotas com corpus:
+    #
+    #     minimo ....... 95,6%   (hdi/residencial/eletricista)
+    #     mediana ...... 100,0%
+    #     em 100,0% .... 42 de 43
+    #
+    #     corte  85%  ->  reprova  0 de 43     🔴 8 pontos de graca
+    #     corte  96%  ->  reprova  1 de 43
+    #     corte 100%  ->  reprova  1 de 43
+    #
+    # ⚠️ O item nao separava porque o corte estava **10,6 pontos abaixo do
+    # pior aluno** — nao porque a propriedade seja irrelevante.
+    #
+    # 🔴 E o corte novo e 100%, nao 96%: **deterministico e' deterministico.**
+    # 95,6% quer dizer que 4,4% das telas nao foram decididas pelo motor — e
+    # sao justamente essas que o segurado ve quando o corredor erra.
+    #
+    # ⚠️ E a escada continua: 4 pontos em >=85% reconhece o meio do caminho.
+    # ⛔ Zerar tudo abaixo de 100% seria trocar um item que nao reprova por
+    # um que reprova igual, e nenhum dos dois separa.
     d = r.determinismo
-    pd = 0 if d is None else (8 if d >= 0.85 else 4 if d >= 0.70 else 0)
-    itens.append(Item("B", ">=85% deterministico", pd, 8,
+    pd = 0 if d is None else (8 if d >= 0.9999 else 4 if d >= 0.85 else 0)
+    itens.append(Item("B", "100% deterministico", pd, 8,
                       "sem denominador" if d is None else
                       f"{100*d:.0f}% ({r.respondidas} de {r.pedem_algo} telas que pedem algo)"))
 

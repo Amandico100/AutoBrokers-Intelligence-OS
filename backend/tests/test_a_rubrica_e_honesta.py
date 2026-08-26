@@ -170,12 +170,23 @@ def test_a_regua_pontua_e_nao_bate_no_portao():
     # 🔴 E O NUMERO DE HOJE, COM DATA E CAUSA (§12.1). Ele nao e' um alvo:
     #    e' um marco. Se mudar, quem mudar escreve por que — como esta aqui.
     #
-    #    📊 26/08/2026: 106 = 102 + os 4 pontos dos apelidos, que o BLOCO A
-    #    trouxe de volta para dentro do denominador.
-    assert n.denominador == 106, (
-        f"o denominador e' {n.denominador} e nao 106. Se foi de proposito, "
+    #    📊 26/08/2026, e o numero mudou DUAS vezes nesta SPEC — as duas com
+    #    causa escrita, que e' o que este teste passou a exigir:
+    #
+    #      102  ->  106   BLOCO A: `SEM_ESPELHO` parou de sair do denominador
+    #      106  ->   70   BLOCO B: 36 pontos viraram PORTAO — eles guardam,
+    #                     nao pontuam, e 43 de 43 rotas os ganhavam iguais
+    assert n.denominador == 70, (
+        f"o denominador e' {n.denominador} e nao 70. Se foi de proposito, "
         "troque o numero AQUI e escreva a causa ao lado — foi assim que este "
-        "teste saiu da quarentena da SPEC-089")
+        "teste saiu da quarentena da SPEC-089, e foi assim DUAS vezes")
+
+    # 🔴 E O PLACAR + OS PORTOES SOMAM O TOTAL. Sem esta linha, um conserto
+    #    que APAGASSE um portao (em vez de move-lo) passaria despercebido.
+    portoes = sum(i.maximo for i in n.portoes)
+    assert n.denominador + portoes + sum(n.fora.values()) == 106, (
+        f"placar({n.denominador}) + portoes({portoes}) + "
+        f"fora({sum(n.fora.values())}) nao fecha 106 — um item SUMIU")
 
 
 def test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas():
@@ -399,7 +410,32 @@ def test_o_eixo_E_cai_para_o_SEGUNDO_melhor_arquivo_nao_para_zero():
     derrubava a rota inteira mesmo havendo outro, bom, cobrindo-a.
     """
     n = _nota()
-    assert n.por_eixo()["E"][0] == 15, "o eixo E deixou de fechar"
+
+    # =====================================================================
+    # 🔴 SPEC-089 BLOCO B — O EIXO E DEIXOU DE PONTUAR E PASSOU A GUARDAR
+    # =====================================================================
+    #
+    # A assercao era `por_eixo()["E"][0] == 15`. 📊 Os TRES itens do eixo E
+    # davam 15 pontos identicos em 43 de 43 rotas — 14,7% de cada nota sem
+    # separar nada. Eles viraram PORTAO: continuam guardando, param de inflar.
+    #
+    # ⚠️ `por_eixo()` so' devolve eixos com item de PLACAR, entao 'E' nao
+    # aparece mais nele — e a licao migra para o que ela sempre quis dizer:
+    # **o eixo E nao cai para zero por causa de um arquivo ruim.**
+    assert "E" not in n.por_eixo(), (
+        "o eixo E voltou a PONTUAR — 15 pontos identicos em 43 rotas nao "
+        "separam rota boa de rota ruim (SPEC-089 BLOCO B)")
+
+    portoes_e = [i for i in n.portoes if i.eixo == "E"]
+    assert len(portoes_e) == 3, (
+        f"o eixo E tem {len(portoes_e)} portoes e nao 3 — algum item SUMIU "
+        "em vez de virar portao")
+    # 🔴 E OS TRES ESTAO FECHADOS: e' a metade que o teste sempre protegeu —
+    #    um arquivo desqualificado NAO derruba a rota, porque ha' outro bom.
+    abertos = [i.nome for i in portoes_e if not i.fechado]
+    assert not abertos, (
+        f"portao do eixo E aberto: {abertos} — a regra por-arquivo (§3.6) "
+        "deixou de valer, ou o arquivo bom sumiu")
     # o arquivo que a SPEC nomeia como o exemplar do defeito hoje QUALIFICA
     caminho = os.path.join(RAIZ, "tests", "test_a_maquina_de_lavar_vai_ate_o_fim.py")
     assert DET.qualifica(caminho), \
@@ -553,6 +589,13 @@ def test_item_excluido_sai_do_denominador_e_aparece_explicito():
     fabricada = n._replace(itens=list(n.itens) + [
         RB.Item("D", "item que NAO SE APLICA", 0, 7, "-",
                 excluido=RB.SEM_FABRICA)])
+    # 🔴 SO' O EXCLUIDO ENTRA EM `fora`. 📊 O guarda pegou um defeito meu: com
+    #    `if not i.conta`, os PORTOES entravam como `{None: 36}` — uma chave
+    #    que nao e' motivo de nada, numa tabela que quem le' interpreta como
+    #    'itens que nao se aplicam a esta rota'.
+    assert None not in fabricada.fora, (
+        f"`fora` tem chave None: {fabricada.fora} — portao virou motivo de "
+        "exclusao, e ele nao e'")
     assert fabricada.fora == {RB.SEM_FABRICA: 7}
     assert fabricada.denominador == n.denominador, (
         "um item que NAO SE APLICA entrou no denominador — a rota passa a ser "

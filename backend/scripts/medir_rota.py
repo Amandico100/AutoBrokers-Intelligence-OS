@@ -197,6 +197,18 @@ def conferir_ancoras_de_desfecho() -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 def imprimir_nota(n: RB.Nota, *, detalhado: bool = True) -> str:
     L = [f"{n.rota}", "─" * 68]
+    # 🔴 SPEC-089 BLOCO B — os PORTOES aparecem, e primeiro.
+    #
+    # ⚠️ Sem esta lista, uma rota que perdeu o AAA por um portao aberto
+    # apareceria como "quase" sem dizer por que — e o `!1` do patamar seria
+    # um simbolo que ninguem sabe ler.
+    _abertos = [] if n.estado else n.portoes_abertos
+    if _abertos:
+        L.append(f"\U0001f6d1 {len(_abertos)} PORTAO(OES) ABERTO(S) — a rota NAO chega a AAA:")
+        for i in _abertos:
+            L.append(f"   {i.eixo} {i.nome}")
+            L.append(f"       {i.evidencia[:150]}")
+        L.append("─" * 68)
     if n.estado == "SEM_CORPUS":
         L.append("🔵 SEM_CORPUS — zero telas de URA para esta (seguradora, ramo).")
         L.append("   🔴 NAO e o mesmo que NAO_RESPONDE: este e trabalho de COLETA,")
@@ -253,6 +265,8 @@ def tabela(notas: List[RB.Nota], demanda: Dict[str, int]) -> str:
     L = [f"{'SEGURADORA':10s} {'RAMO':12s} {'SERVICO':18s} {'PRONT':>7s} "
          f"{'A':>3s} {'B':>3s} {'C':>3s} {'D':>3s} {'E':>3s}  {'PATAMAR':16s} "
          f"{'FAMILIA':18s} {'DEMANDA':>7s}"]
+    # 🔴 SPEC-089 BLOCO B: o `!N` no patamar diz quantos portoes abriram.
+    L.append("#  patamar com `!N` = N portao(oes) aberto(s); a rota nao chega a AAA")
     for n in notas:
         e = n.por_eixo()
         g = lambda k: (f"{e[k][0]}" if k in e else "—")   # noqa: E731
