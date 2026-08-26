@@ -55,18 +55,38 @@ from app.services.intelligence.redaction_service import (  # noqa: E402
 )
 
 
-def _mascarar_fundo(valor):
+#: 🔴 AS CHAVES QUE NÃO SÃO TEXTO — e este script é quem já causou o dano.
+#:
+#: 📊 Medido: `redigir` sobre 50.000 sha256 destrói **18,0%** deles — o padrão de
+#: telefone não tem `\b` e come qualquer corrida de 10–11 dígitos dentro do hex.
+#: A linha `2ab5352e…` de `route_drift` está com 58 caracteres em vez de 64 por
+#: causa desta função, na primeira passada (P-262).
+#:
+#: ⚠️ O escritor (`route_sentinel._mascarar_fundo`) ganhou a exclusão no conserto
+#: do painel. **Este script não ganhou** — e a docstring dele dizia "é a mesma
+#: função do escritor, pelo mesmo motivo". Deixou de ser, e o cabeçalho promete
+#: idempotência: rodar de novo mutilaria as signatures futuras em silêncio.
+_CHAVES_QUE_NAO_SAO_TEXTO = ("signature", "hash", "digest", "fingerprint",
+                             "id", "message_id", "checksum")
+
+
+def _mascarar_fundo(valor, chave: str = ""):
     """Recursivo — `detail` é um `jsonb` com listas de telas dentro.
 
     ⚠️ Mascarar só o topo deixaria `detail.added[0]` cru, que é exatamente onde
-    o texto da tela mora. É a mesma função do escritor, pelo mesmo motivo.
+    o texto da tela mora.
+
+    ⛔ **E digest NÃO É texto.** É a mesma função do escritor — e agora é mesmo:
+    ver `_CHAVES_QUE_NAO_SAO_TEXTO`.
     """
+    if str(chave).lower() in _CHAVES_QUE_NAO_SAO_TEXTO:
+        return valor
     if isinstance(valor, str):
         return redigir(valor)
     if isinstance(valor, list):
-        return [_mascarar_fundo(v) for v in valor]
+        return [_mascarar_fundo(v, chave) for v in valor]
     if isinstance(valor, dict):
-        return {k: _mascarar_fundo(v) for k, v in valor.items()}
+        return {k: _mascarar_fundo(v, str(k)) for k, v in valor.items()}
     return valor
 
 

@@ -546,11 +546,16 @@ def test_ancora_com_curingas_DEMAIS_e_recusada():
               "dd x@y.com.br ee CEP 01234-567 ff ABC1D23 gg")
     with _com_o_pacote_app():
         ancora = RS.ancora_permissiva(muitos, limite=200)
-    if ancora:
-        quantos = ancora.count(RS._CURINGA)
-        assert quantos <= RS._MAX_CURINGAS, (
-            f"a âncora saiu com {quantos} curingas (teto {RS._MAX_CURINGAS}) — "
-            "cada um multiplica o backtracking")
+    # 🔴 A ÂNCORA PATOLÓGICA É RECUSADA. E o número é LITERAL, não a constante.
+    #
+    # ⚠️ A primeira versão fazia `quantos <= RS._MAX_CURINGAS` — os dois lados se
+    # mexem juntos. O juiz mediu: `_MAX_CURINGAS = 3` → `99` deixava a âncora
+    # patológica de seis curingas nascer, e o teste **reportava PASSA**. Pior: em
+    # base a âncora é `""`, então o corpo do `if` nem executava — no-op no verde
+    # e cego no vermelho.
+    assert ancora == "", (
+        "a âncora de SEIS campos de PII foi criada — ela é exatamente a forma "
+        f"exponencial que o teto existe para barrar.{chr(10)}  âncora: {ancora[:140]}")
 
 
 def test_CONTROLE_uma_ancora_com_POUCOS_curingas_passa():
@@ -558,7 +563,9 @@ def test_CONTROLE_uma_ancora_com_POUCOS_curingas_passa():
     with _com_o_pacote_app():
         ancora = RS.ancora_permissiva("Confirme o telefone (11) 91234-5678 agora")
     assert ancora, "o teto de curingas passou a recusar âncora legítima"
-    assert ancora.count(RS._CURINGA) <= RS._MAX_CURINGAS
+    # ⚠️ NÚMERO LITERAL, pelo mesmo motivo do teste acima.
+    assert ancora.count(".{0,40}") <= 3, (
+        f"a âncora legítima saiu com {ancora.count('.{0,40}')} curingas")
 
 
 def test_anchor_from_text_NUNCA_levanta():

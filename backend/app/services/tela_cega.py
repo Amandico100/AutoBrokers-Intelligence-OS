@@ -66,10 +66,17 @@ def hash_da_tela(texto_mascarado: str) -> str:
     A primeira versão hasheava o texto **cru**. 📊 Medido, com entradas
     sintéticas::
 
-        A = "Ola MARIA, confirme o CPF 111.222.333-44"
-        B = "Ola JOAO, confirme o CPF 555.666.777-88"   (a MESMA tela)
+        A = "Confirma o CPF 111.222.333-44 do titular?"
+        B = "Confirma o CPF 555.666.777-88 do titular?"   (a MESMA tela)
 
-        hash do CRU ........ A=b3c595aa16e4  B=e9f0f6b4f8ba   🔴 DIFERENTES
+        hash do CRU ........ A=f22937cf…  B=7e0f1aa3…   🔴 DIFERENTES
+        hash do MASCARADO .. A=… B=… — IGUAIS, e a fila conta 2 em vez de duas linhas
+
+    ⚠️ **E o que ele NÃO agrupa, medido:** telas cuja única variação é um
+    **vocativo solto** — `"Ola MARIA, ..."` contra `"Ola JOAO, ..."` — continuam
+    sendo duas linhas. Nenhum dos dois mascaradores pega nome sem rótulo, e a
+    razão está em `mascara_de_tela`: pegar o vocativo custaria apagar opção de
+    menu (P-164), e 📊 27 das 378 telas cegas são menu. Registrado em P-266.
 
     ⚠️ **Isso matava a razão de a fila existir.** O hash mudava a cada segurado,
     então a mesma tela **nunca deduplicava**: uma linha por PESSOA — exatamente
@@ -130,7 +137,18 @@ def linha_da_fila(*, company_id: str, insurer_key: str, ramo: str,
     # medidas. E o texto desta fila **não passa por templater nenhum antes**:
     # vem direto da mensagem da seguradora, inclusive da FASE HUMANA, onde quem
     # digita é um analista de carne e osso.
-    mascarado = mascara_de_tela(str(texto or ""))[:_TETO_DO_TEXTO]
+    # ⚠️ CORTA ANTES DE MASCARAR. 📊 O juiz mediu: `templatize` é super-linear —
+    # 6,8 s para 400 quebras de linha, 21,7 s para 600, 17,4 s para 50.000 chars.
+    # E isto roda no laço de eventos, via `create_task`, para toda tela que não
+    # casa passo.
+    #
+    # ⛔ Não custa privacidade: o que é cortado não é gravado. 📊 E não custa
+    # conteúdo: o corpus real tem mediana de 122 caracteres e máximo de 1.359 —
+    # a folga de 1.200 já cobre quase tudo.
+    #
+    # ⚠️ A margem existe porque a máscara pode ENCURTAR (`123.456.789-00` vira
+    # `{CPF}`), nunca alongar de forma relevante.
+    mascarado = mascara_de_tela(str(texto or "")[:_TETO_DO_TEXTO * 2])[:_TETO_DO_TEXTO]
     return {
         "company_id": str(company_id),
         "insurer_key": str(insurer_key or "").lower().strip(),

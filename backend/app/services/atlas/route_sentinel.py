@@ -237,9 +237,26 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
             # veredito: `passed=True` quer dizer *"algum corredor desta
             # seguradora responde este script inteiro"*, que é a pergunta certa
             # para um mapa mesclado.
+            # 🔴 MEDIR POR REF, MAS **ESCREVER SÓ COM UMA**.
+            #
+            # ⚠️ O juiz de confirmação achou: `_alfaiate_with_gate` não só mede —
+            # ele chama `apply_auto_overlays` no fim. Rodar o laço transformava o
+            # laço de MEDIÇÃO em laço de ESCRITA: um drift no mapa MESCLADO
+            # (📊 100% deles) gravaria os MESMOS overlays `noop` nos DOIS
+            # corredores da seguradora — allianz, hdi, porto e yelum.
+            #
+            # ⛔ E overlay `noop` faz o corredor **IGNORAR a tela em silêncio**.
+            # Uma tela de auto entrando como noop no corredor residencial é o
+            # cruzamento de corredores que `_refs_do_registry` existe para
+            # evitar — invertido: sai da medição e entra na escrita.
+            #
+            # A regra: mede-se todos; escreve-se só quando **não há ambiguidade
+            # de ramo**. Mapa mesclado mede e não aplica.
+            pode_escrever = len(refs) == 1
             vereditos = {}
             for ref in refs:
-                g = await _alfaiate_with_gate(ref, active.get("map") or {}, observed_map)
+                g = await _alfaiate_with_gate(ref, active.get("map") or {},
+                                              observed_map, aplicar=pode_escrever)
                 vereditos[ref] = g.get("passed")
                 if g.get("applied"):
                     auto_applied = True
@@ -388,7 +405,8 @@ def _refs_do_registry(insurer_key: str, ramo: str) -> list:
 
 
 async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
-                              new_map: Dict[str, Any]) -> Dict[str, Any]:
+                              new_map: Dict[str, Any],
+                              aplicar: bool = True) -> Dict[str, Any]:
     """Alfaiate v2: só AUTO-APLICA se o Simulador aprovar o playbook novo contra
     o mapa novo. SPEC-050 (auditoria): o GATE roda ANTES da escrita — antes o
     overlay já estava no banco quando o Simulador rodava, o que anulava o gate."""
@@ -412,8 +430,13 @@ async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
 
     # 2) Escrita SÓ com o gate verde (fail-closed: sem simulador = sem escrita).
     applied_count = 0
-    if passed is True:
+    if passed is True and aplicar:
         applied_count = await apply_auto_overlays(playbook_ref, result.get("classes") or {})
+    elif passed is True and not aplicar:
+        # ⚠️ Mede e não aplica — o mapa é mesclado e não dá para saber a qual
+        # corredor a tela pertence. O número vale; a escrita, não.
+        logger.info("[ALFAIATE v2] %s passou no gate mas NÃO aplica: o mapa é de "
+                    "ramo mesclado e a tela pode ser de outro corredor", playbook_ref)
     applied = applied_count > 0
     try:
         from app.core.heartbeat import beat

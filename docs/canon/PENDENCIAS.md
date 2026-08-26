@@ -9246,3 +9246,60 @@ de entrar.
 
 **O que custa esquecer:** o campo se chama `texto_mascarado`, e quem confia no
 nome vai tratar a linha como não-sensível.
+
+---
+
+## P-267 · 🔴 A âncora do Alfaiate casa o texto CRU, e a produção casa o NORMALIZADO
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **achado do juiz da SPEC-087**
+
+📊 **Medido pelo juiz de confirmação, com LINHA DE CONTROLE** — as 1.421 telas
+reais do corpus, contra a implementação de ANTES e a de agora:
+
+```
+CONTROLE [antes: re.escape(cru[:60])]   vazia=0    CASA=128   NÃO CASA=1.293
+HEAD     [depois: mascarada]            vazia=28   CASA=120   NÃO CASA=1.273
+```
+
+⚠️ **A SPEC-087 não causou isto e praticamente não mexeu no número.** A causa é
+anterior: `match_ura_step` casa a âncora contra `_norm(mensagem)` — que tira
+**acento** e o marcador de **negrito** do WhatsApp —, e a âncora é construída a
+partir do texto **cru**, que tem os dois.
+
+🔴 **Mas ele esvazia o propósito do BLOCO B:** quando o Founder puxar o gatilho
+do `ALFAIATE_AUTO_APPLY`, **~90% do que o Alfaiate escrever nasce inerte**.
+
+⚠️ E toda asserção de âncora da SPEC-087 mede contra o texto CRU — que **não é o
+alvo que a produção usa**. Os guardas estão certos sobre o que afirmam; o que
+falta é um que afirme o alvo real.
+
+**O que destrava:** construir a âncora a partir de `_norm(texto)` em vez do cru,
+com um guarda que case contra `_norm(mensagem)` — o mesmo alvo do casador. ⚠️ E
+com contraprova no corpus: 📊 se o número não subir muito acima de 128, a causa
+é outra e vale medir antes de mexer.
+
+**O que custa esquecer:** ligar o auto-apply e concluir, do silêncio, que o
+Alfaiate não funciona — quando o que não funciona é o casamento da âncora.
+
+---
+
+## P-268 · A máscara da fila roda no texto inteiro antes de cortar
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-087 BLOCO A**
+
+✅ Consertado o essencial: `linha_da_fila` passou a cortar em `2 × 1.200` **antes**
+de mascarar, então o pior caso ficou limitado.
+
+📊 O juiz mediu por que isso importa: `templatize` é **super-linear** — 6,8 s
+para 400 quebras de linha, 21,7 s para 600, 17,4 s para 50.000 caracteres. E o
+gancho roda no laço de eventos, via `create_task`, para toda tela que não casa
+passo.
+
+📊 **E mediu que não dói hoje:** o corpus real tem mediana de 122 caracteres, p95
+de 399 e máximo de 1.359 — e `linha_da_fila` custa **2,64 ms por tela**.
+
+**O que destrava:** se algum dia a fila passar a receber texto longo (replay,
+documento colado), medir de novo e considerar `asyncio.to_thread`.
+
+**O que custa esquecer:** um worker congelado por uma tela, e o sintoma
+aparecendo em qualquer lugar menos aqui.
