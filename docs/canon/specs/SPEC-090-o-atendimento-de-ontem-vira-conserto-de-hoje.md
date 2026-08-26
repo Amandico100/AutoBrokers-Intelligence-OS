@@ -278,9 +278,17 @@ ontem:  N atendimentos · N travaram · as 3 telas que mais travaram
 ## 4. O que fica pendente
 
 ```
-P-090-01  🔴 12 de 16 tabelas medidas têm RLS ligada e ZERO policies —
-          inclusive `attendance_transcripts`, `observed_events` e a
-          `saudacoes_enviadas` criada ontem. `CLAUDE.md` §7.
+P-090-01  📊 10 de 17 tabelas medidas têm RLS ligada e ZERO policies:
+          attendance_transcripts · company_members · company_memories ·
+          conversation_scorecards · knowledge_candidates · knowledge_cards ·
+          observed_events · playbook_overlays · saudacoes_enviadas · ura_maps
+          ⚠️ E o enquadramento importa: RLS ligada sem policy é `deny all`,
+          não "desprotegido". Ela FECHA tudo para quem não é service role.
+          🔴 O risco é o inverso, e é o que o `CLAUDE.md` §7 descreve: o
+          backend usa service role e ATRAVESSA a RLS inteira. A única
+          proteção real é o `.eq('company_id')` no código — e um SELECT que
+          esqueça o filtro vaza tudo, com a RLS ligada e "verde".
+          💭 O trabalho é auditar os filtros, não criar policies.
 P-090-02  `knowledge_cards` parado desde 16/08 (10 dias). 18.715 linhas e
           nenhuma nova. Ninguém percebeu.
 P-090-03  `conversation_auditor.py` tem `limit(200)` + trava de 1×/dia:
