@@ -2720,6 +2720,20 @@ def handle_insurer_message(
     # encerra em 12. Se a pergunta for por um DADO que já está no caso, ela é
     # respondida agora, sem rede nenhuma. Se não for, nada muda: segue para a
     # fase humana e para o Cérebro, como sempre foi.
+    # 🔴 SPEC-087 BLOCO A — A TELA CEGA VIRA FILA, E É AQUI QUE ELA PASSA.
+    #
+    # 📊 Medido em 26/08/2026 com o casamento mais generoso possível: **378 de
+    # 1.696 telas distintas (22,3%) não casam passo nenhum**, e 27 delas são
+    # MENU — a URA pergunta e o corredor não sabe responder.
+    #
+    # ⚠️ Este ponto já existia e já degradava para `needs_human`. O que muda é
+    # que ele passa a **também registrar** — sem isso, duas semanas de piloto
+    # produzem zero linhas sobre ONDE o corredor quebrou.
+    #
+    # ⛔ Best-effort e sem `await` bloqueante no caminho crítico: o segurado
+    # está esperando. Falhar em registrar nunca pode derrubar o acionamento.
+    _registrar_tela_cega_sem_derrubar(session, playbook, insurer_message)
+
     da_ficha = responder_da_ficha(playbook, insurer_message, session.get("slots") or {})
     if da_ficha.get("ok"):
         passo = f"ficha:{da_ficha['campo']}"
@@ -2778,6 +2792,38 @@ def _norm_text(text: str) -> str:
     caia nos dois lugares, hoje e no próximo conserto.
     """
     return _norm_corredor(text)
+
+
+def _registrar_tela_cega_sem_derrubar(session, playbook, insurer_message) -> None:
+    """Enfileira a tela que nenhum passo casou. ⛔ NUNCA levanta.
+
+    🔴 SPEC-087 BLOCO A. O motor é síncrono neste ponto e o registro é async —
+    então ele vai para uma tarefa solta. ⚠️ E o `try` cobre até o agendamento:
+    sem laço de eventos (teste, script), a tela não é registrada e o
+    acionamento segue, que é o desfecho certo.
+    """
+    try:
+        import asyncio
+
+        from app.services.tela_cega import registrar_tela_cega
+
+        company_id = str(session.get("company_id") or "")
+        if not company_id:
+            return
+        ref = str(session.get("playbook_ref") or "")
+        # `allianz-residencial-whatsapp@v1` -> ('allianz', 'residencial')
+        pedacos = ref.split("-")
+        insurer = pedacos[0] if pedacos else ""
+        ramo = pedacos[1] if len(pedacos) > 1 else "todos"
+        if not insurer:
+            insurer = str(playbook.get("insurer_key") or "") if isinstance(playbook, dict) else ""
+        if not insurer:
+            return
+        asyncio.create_task(registrar_tela_cega(
+            company_id=company_id, insurer_key=insurer, ramo=ramo,
+            playbook_ref=ref or None, texto=str(insurer_message or "")))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[TELA CEGA] nao enfileirada (%s)", type(e).__name__)
 
 
 def _would_loop(session: Dict[str, Any], reply: str, step: Optional[str] = None) -> bool:
