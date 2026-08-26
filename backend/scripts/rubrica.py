@@ -49,9 +49,34 @@ PASTA_DE_TESTES = os.path.join(RAIZ, "tests")
 # ── os estados que SAEM do denominador (§3.9) ────────────────────────────────
 # 🔴 *"Item excluído NÃO é renormalizado. A nota é sempre sobre o denominador
 #    real, e o excluído aparece explícito."*
+#
+# ⚠️ **E SÓ SAI QUEM NÃO SE APLICA.** SPEC-089 BLOCO A:
+#
+#     NÃO SE APLICA à rota ....... sai do denominador       ✅ legítimo
+#     não medi porque não quis ... 🔴 FICA, valendo ZERO
+#     não CONSEGUI medir ......... 🔴 FICA, valendo ZERO
+#
+# 📊 MEDIDO EM 26/08/2026, as 73 rotas, os dois modos:
+#
+#     sem `--com-espelho` .... 30 AAA · mediana 97,8% · 17 rotas em 100,0%
+#     com `--com-espelho` .... 20 AAA · mediana 94,3% ·  9 rotas em 100,0%
+#
+#     🔴 27 de 43 rotas tiram nota MAIOR quando o item não é medido.
+#     🔴 DEZ rotas eram AAA só por isso.
+#
+# ⛔ **A régua já conhecia esta regra e a aplicava num lugar só.** O item da
+# mutação (eixo E) diz, quando não consegue ler o `MUTACOES` do repo:
+# *"zero medido nao e zero nao medido"* — e vale **0 DENTRO do denominador**.
+# `SEM_ESPELHO` fazia o contrário, no caminho PADRÃO da ferramenta.
 SEM_FABRICA = "SEM_FABRICA"
-SEM_ESPELHO = "SEM_ESPELHO"
 ROTA_INDISTINGUIVEL = "ROTA_INDISTINGUIVEL"
+
+#: 🔴 SPEC-089 BLOCO A — NÃO É MAIS MOTIVO DE EXCLUSÃO.
+#:
+#: ⚠️ O nome sobrevive como **rótulo da evidência**: quem lê a nota precisa
+#: saber que os 4 pontos caíram por falta de medição, não por a rota ser ruim.
+#: ⛔ Mas ele não vai mais para o campo `excluido`.
+SEM_ESPELHO = "SEM_ESPELHO"
 
 
 class Item(NamedTuple):
@@ -752,10 +777,28 @@ def eixo_d(rota, r: RP.Replay, *, tem_espelho: bool = False) -> List[Item]:
     apelidos = [k for k, v in (M.CP._SUBSERVICE_ALIASES or {}).items()
                 if v == rota.servico]
     if not tem_espelho:
+        # ══════════════════════════════════════════════════════════════════
+        # 🔴 SPEC-089 BLOCO A — ZERO, E DENTRO DO DENOMINADOR
+        # ══════════════════════════════════════════════════════════════════
+        #
+        # 📊 Este `excluido=SEM_ESPELHO` era o caminho PADRÃO da ferramenta:
+        # `--todas` sem a flag. E ele fazia a nota SUBIR por medir menos —
+        # 📊 27 de 43 rotas, e DEZ delas viravam AAA só por isso.
+        #
+        #     allianz/auto/bateria   sem: 102/102 = 100,00% AAA(102)
+        #                            com: 102/106 =  96,23% AAA(106)
+        #
+        # ⛔ **`AAA(102)` deixa de existir.** Duas notas com o mesmo número e
+        # denominadores diferentes são duas coisas diferentes, e hoje elas se
+        # pareciam. A única AAA possível passa a ser a que mediu.
+        #
+        # ⚠️ E a evidência DIZ o motivo — quem lê precisa distinguir "a rota é
+        # ruim" de "ninguém mediu esta parte".
         itens.append(Item("D", "apelidos do jeito que o cliente fala",
-                          0, 4, f"{len(apelidos)} apelidos declarados; "
-                          f"sem acesso ao Espelho para conferir o uso real",
-                          excluido=SEM_ESPELHO))
+                          0, 4, f"{SEM_ESPELHO}: {len(apelidos)} apelidos "
+                          f"declarados e NENHUM conferido — rode com "
+                          f"`--com-espelho`. Zero NAO MEDIDO vale zero, "
+                          f"nao vale nada (SPEC-089 A)"))
     else:
         # ==================================================================
         # 🔴 C6 — E AQUI O ITEM PASSOU A CONFERIR, EM VEZ DE CONTAR

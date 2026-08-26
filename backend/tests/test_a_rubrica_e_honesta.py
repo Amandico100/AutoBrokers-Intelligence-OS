@@ -40,7 +40,29 @@ def _rota():
 
 
 def _nota(**kw):
-    return RB.medir(_rota(), mutacoes_ok=(3, 3), **kw)
+    """A nota da rota-exemplo, com a tupla de mutacao REAL do repositorio.
+
+    🔴 SPEC-089 BLOCO D — E ERA ESTA LINHA, sozinha, a causa do eixo E = 9.
+
+    📊 O teste passava `mutacoes_ok=(3, 3)` a mao. O repositorio declara **12**
+    mutacoes em `test_a_regua_nao_tem_furo.py`, e `rubrica.py:1004` zera o item
+    de 6 pontos quando os dois numeros divergem — dizendo, corretamente,
+    *"numero sem fonte (§12.1)"*.
+
+    ⚠️ **A regua estava certa e o teste estava errado.** O item nunca foi
+    quebrado: ele reprovava um numero inventado, que era o proprio teste que
+    inventava. A SPEC lista SEIS hipoteses para essa causa; 📊 a causa e' uma
+    linha.
+
+    🔴 Agora a tupla vem de `_mutacoes_declaradas_no_repo()` — a mesma fonte
+    que a regua confere. Duas listas que precisam concordar divergem (§5); com
+    UMA fonte, nao ha' o que divergir.
+    """
+    n = RB._mutacoes_declaradas_no_repo()
+    assert n, (
+        "nao consegui LER o `MUTACOES` do repo — zero medido nao e zero nao "
+        "medido, e sem esse numero o eixo E deste teste nao significa nada")
+    return RB.medir(_rota(), mutacoes_ok=(n, n), **kw)
 
 
 def _pontos(nota, nome_do_item: str) -> int:
@@ -80,12 +102,31 @@ def _pontos(nota, nome_do_item: str) -> int:
 # ⚠️ `strict=True` corta dos dois lados: uma delas que volte a passar QUEBRA a
 # suíte, obrigando a tirá-la daqui. Quarentena que não esvazia vira aterro
 # (`PROTOCOLO-AUTOBROKERS-AAA` §1).
+# 🔴 SPEC-089 BLOCO D — A QUARENTENA ESVAZIOU, E NENHUMA SAIU TROCANDO O
+#    NUMERO ESPERADO POR OUTRO. Cada uma saiu pela CAUSA:
+#
+#   :72  `denominador == 96`   -> 📊 102 nunca foi a NOTA, e' o DENOMINADOR.
+#                                 O enunciado do P-226 estava errado. Agora
+#                                 crava a PROPRIEDADE (soma dos maximos) e o
+#                                 numero de hoje com a causa ao lado.
+#   :133 `orfas_funcionais`    -> 🔴 exigia que o produto continuasse
+#                                 IMPERFEITO. Virou o inverso: se existir,
+#                                 e' NOMEADA — e hoje sao zero.
+#   :199 `not guardado_sub`    -> 📊 o subservico GANHOU regra propria. A
+#                                 precondicao venceu e nunca foi necessaria.
+#   :253 `eixo E == 15`        -> 📊 UMA linha: o teste passava (3,3) e o
+#                                 repo declara 12. A regua estava CERTA.
+#   :371 `item excluido`       -> o BLOCO A desta SPEC o quebrou, e ele
+#                                 estava certo em quebrar. A licao migrou.
+#
+# ⚠️ A marca fica declarada e VAZIA de proposito: quem precisar por um teste
+# em quarentena de novo usa esta, e o `strict=True` obriga a esvaziar.
+# **Quarentena que nao esvazia vira aterro** (`PROTOCOLO-AUTOBROKERS-AAA` §1).
 QUARENTENA_SPEC089 = pytest.mark.xfail(
     strict=True,
-    reason="P-226 · a régua devolve 102/100 e parou de achar órfã — BLOCKER da SPEC-089",
+    reason="vazia — as cinco sairam pela causa na SPEC-089 BLOCO D",
 )
 
-@QUARENTENA_SPEC089
 def test_a_regua_pontua_e_nao_bate_no_portao():
     """📊 Medido em 21/08/2026: **64/96**.
 
@@ -102,11 +143,41 @@ def test_a_regua_pontua_e_nao_bate_no_portao():
     n = _nota()
     assert n.estado is None, f"a regua caiu em {n.estado}"
     assert n.pontos >= 55, f"a regua caiu para {n.pontos}/{n.denominador}"
-    assert n.denominador == 96, ("o denominador mudou; a nota passou a medir "
-                                 "outra coisa e a comparacao historica quebrou")
+
+    # =====================================================================
+    # 🔴 SPEC-089 BLOCO D — O ENUNCIADO ESTAVA ERRADO, NAO A REGUA
+    # =====================================================================
+    #
+    # A assercao era `n.denominador == 96` com a frase *"a nota passou a medir
+    # outra coisa"*. 📊 E o diagnostico do P-226 dizia *"a regua devolve
+    # 102/100"* — 🔴 **102 nunca foi a NOTA. E' o DENOMINADOR**, e um
+    # denominador maior que 100 nao e' defeito: e' a soma dos maximos dos itens
+    # que esta rota disputa.
+    #
+    # ⚠️ E o denominador MUDOU DE VERDADE nesta SPEC, no BLOCO A: `SEM_ESPELHO`
+    # deixou de sair, e a rota passou a disputar 4 pontos a mais.
+    #
+    # ⛔ Entao a assercao para de cravar um NUMERO e passa a cravar a
+    # PROPRIEDADE que ela sempre quis proteger: **o denominador e' a soma dos
+    # maximos que contam, e a nota nunca e' reescalada para 100.**
+    soma = sum(i.maximo for i in n.itens if i.conta)
+    assert n.denominador == soma, (
+        f"o denominador ({n.denominador}) nao e a soma dos maximos que contam "
+        f"({soma}) — a nota passou a medir outra coisa")
+    assert n.denominador != 100 or soma == 100, (
+        "o denominador virou 100 redondo — desconfie de reescala")
+
+    # 🔴 E O NUMERO DE HOJE, COM DATA E CAUSA (§12.1). Ele nao e' um alvo:
+    #    e' um marco. Se mudar, quem mudar escreve por que — como esta aqui.
+    #
+    #    📊 26/08/2026: 106 = 102 + os 4 pontos dos apelidos, que o BLOCO A
+    #    trouxe de volta para dentro do denominador.
+    assert n.denominador == 106, (
+        f"o denominador e' {n.denominador} e nao 106. Se foi de proposito, "
+        "troque o numero AQUI e escreva a causa ao lado — foi assim que este "
+        "teste saiu da quarentena da SPEC-089")
 
 
-@QUARENTENA_SPEC089
 def test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas():
     """📊 A SPEC-083 §4.2 nomeia UMA órfã funcional — e ela **deixou de ser órfã**.
 
@@ -162,12 +233,39 @@ def test_a_orfa_que_a_spec_nomeia_foi_MAPEADA_e_o_replay_ainda_acha_orfas():
         "a tela da SPEC nao e respondida pelo passo que o BLOCO 3 escreveu -- "
         f"casou: {(passo or {}).get('step')}")
 
-    # ---- metade 2: o replay CONTINUA achando orfas ----------------------
-    # ⚠️ Sem esta linha, mapear TUDO faria a metade 1 passar por vacuidade.
-    assert r.orfas_funcionais, (
-        "o replay nao acha NENHUMA orfa funcional. Ou o corredor ficou perfeito "
-        "-- e ai esta assercao precisa ser reescrita com a prova disso -- ou a "
-        "MEDIDA AFROUXOU e ninguem viu.")
+    # ---- metade 2: a MEDIDA nao afrouxou --------------------------------
+    #
+    # =====================================================================
+    # 🔴 SPEC-089 BLOCO D — ERA UM TESTE QUE SO' PASSAVA ENQUANTO HOUVESSE
+    #    DEFEITO, e essa e' a forma mais perigosa das cinco
+    # =====================================================================
+    #
+    # A assercao era `assert r.orfas_funcionais` — *"o replay CONTINUA achando
+    # orfas"*. Ela existia por um bom motivo (sem ela, mapear TUDO faria a
+    # metade 1 passar por vacuidade), e mesmo assim estava errada:
+    #
+    # ⛔ **Ela exigia que o produto continuasse imperfeito para ficar verde.**
+    # 📊 As orfas funcionais desta rota sao ZERO hoje — o corredor melhorou, e
+    # o guarda transformou a melhora em vermelho.
+    #
+    # 🔴 A licao MIGRA, e o inverso e' o que ela sempre quis dizer:
+    #
+    #     antes:  "ainda EXISTE orfa"      -> exige defeito
+    #     agora:  "se existir, e' NOMEADA"  -> exige VISIBILIDADE
+    #
+    # ⚠️ E a vacuidade da metade 1 continua fechada, por outro caminho: o
+    # `assert passo` acima nomeia a tela E o passo. Um mapeamento que engolisse
+    # tudo casaria a tela com o passo ERRADO, e aquela assercao morde.
+    for orfa in r.orfas_funcionais:
+        assert " ".join(str(orfa.texto).split())[:40], (
+            "o replay achou uma orfa funcional SEM TEXTO — ela nao da' para "
+            "nomear, e uma orfa que ninguem consegue nomear e' invisivel")
+    # 🔴 E O NUMERO DE HOJE, com data (§12.1): zero. Se subir, alguem
+    #    afrouxou a medida OU o corredor piorou — e as duas pedem investigacao.
+    assert len(r.orfas_funcionais) == 0, (
+        f"o replay achou {len(r.orfas_funcionais)} orfa(s) funcional(is) onde "
+        f"em 26/08/2026 havia ZERO. Ou a MEDIDA AFROUXOU, ou o corredor "
+        f"piorou: {[' '.join(str(o.texto).split())[:60] for o in r.orfas_funcionais[:3]]}")
 
 
 def test_o_determinismo_da_regua_nao_cai():
@@ -188,7 +286,6 @@ def test_o_determinismo_da_regua_nao_cai():
 #    coisa"*: mexer numa peça move **aquele** item, e o total cai **exatamente**
 #    o que aquele item vale.
 # ═════════════════════════════════════════════════════════════════════════════
-@QUARENTENA_SPEC089
 def test_a_regra_do_SUBSERVICO_move_D_e_a_do_corredor_NAO():
     """🔴 O C4 mudou o DONO deste item, e a mutação mudou de lugar com ele.
 
@@ -231,8 +328,25 @@ def test_a_regra_do_SUBSERVICO_move_D_e_a_do_corredor_NAO():
 
     guardado_sub = copy.deepcopy(sub.get("regras_para_o_cliente"))
     guardado_pb = copy.deepcopy(pb.get("regras_para_o_cliente"))
-    assert not guardado_sub, (
-        "o subservico ja tem regra propria -- a mutacao precisa mudar de lugar")
+
+    # =====================================================================
+    # 🔴 SPEC-089 BLOCO D — A PRECONDICAO VENCEU, E O TESTE MELHORA SEM ELA
+    # =====================================================================
+    #
+    # A linha era `assert not guardado_sub` — *"o subservico ja tem regra
+    # propria, a mutacao precisa mudar de lugar"*. 📊 E o subservico GANHOU
+    # regra propria: a rota melhorou, e a precondicao virou falsa.
+    #
+    # ⚠️ **Mas a precondicao nunca foi necessaria.** O corpo do teste ja'
+    # remove a regra do subservico (`sub.pop`) e restaura no `finally` — ele
+    # funciona tendo ou nao tendo regra propria antes. A linha so' escolhia
+    # uma rota-exemplo, e o exemplo mudou de estado.
+    #
+    # 🔴 O que ela protegia de verdade — *"a mutacao esta' no lugar certo"* —
+    # passa a ser afirmado direto: as duas gavetas EXISTEM para serem mutadas.
+    assert isinstance(sub, dict) and isinstance(pb, dict), (
+        "o subservico ou o corredor nao sao dicionarios — a mutacao nao tem "
+        "onde mexer, e o teste passaria sem testar nada")
 
     try:
         # ── o C4: com regra SÓ no corredor, a rota NÃO pontua ────────────
@@ -278,7 +392,6 @@ def test_remover_o_freio_faz_C_cair_EXATAMENTE_8():
         (antes.por_eixo()["C"], depois.por_eixo()["C"])
 
 
-@QUARENTENA_SPEC089
 def test_o_eixo_E_cai_para_o_SEGUNDO_melhor_arquivo_nao_para_zero():
     """🔴 A regra por-arquivo (§3.6): a nota da rota é a do **MELHOR** arquivo.
 
@@ -395,7 +508,6 @@ def test_o_portao_do_eixo_B_zera_A_C_D_E():
 # ═════════════════════════════════════════════════════════════════════════════
 # 4 · O ITEM EXCLUÍDO NÃO É RENORMALIZADO (§3.9)
 # ═════════════════════════════════════════════════════════════════════════════
-@QUARENTENA_SPEC089
 def test_item_excluido_sai_do_denominador_e_aparece_explicito():
     """🔴 *"A nota é sempre sobre o denominador real, e o excluído aparece."*
 
@@ -404,8 +516,48 @@ def test_item_excluido_sai_do_denominador_e_aparece_explicito():
     significar coisas diferentes na mesma tabela.
     """
     n = _nota()
-    assert n.fora, "nenhum item excluido -- o SEM_ESPELHO deixou de existir?"
-    assert n.denominador == 100 - sum(n.fora.values())
+
+    # =====================================================================
+    # 🔴 SPEC-089 BLOCO A QUEBROU ESTE TESTE — E ELE ESTA CERTO EM QUEBRAR
+    # =====================================================================
+    #
+    # A assercao era `assert n.fora` com a frase *"o SEM_ESPELHO deixou de
+    # existir?"*. 📊 Ele deixou de EXCLUIR, de proposito: nao conseguir medir
+    # vale ZERO, nao vale nada.
+    #
+    # ⚠️ §9.3 — *"quando um fato muda, o teste muda com ele, e a licao MIGRA
+    # em vez de morrer"*. A licao aqui e' a regra de exclusao, e ela agora tem
+    # dois lados:
+    #
+    #     SEM_FABRICA / ROTA_INDISTINGUIVEL  -> NAO SE APLICA -> sai   ✅
+    #     SEM_ESPELHO                        -> nao foi medido -> FICA 🔴
+    #
+    # 🔴 O lado que FICA e' o que esta SPEC acrescentou, e e' o que impede a
+    # nota de subir quando o instrumento nao mede.
+    assert RB.SEM_ESPELHO not in n.fora, (
+        "o `SEM_ESPELHO` voltou a SAIR do denominador — a nota volta a subir "
+        "por medir menos, que e' o defeito inteiro da SPEC-089 BLOCO A")
+
+    # 🔴 E o item CONTINUA existindo, valendo zero e dizendo por que.
+    apelidos = [i for i in n.itens if i.nome.startswith("apelidos")]
+    assert len(apelidos) == 1 and apelidos[0].conta, (
+        "o item dos apelidos sumiu ou voltou a ser excluido")
+    assert apelidos[0].pontos == 0 and RB.SEM_ESPELHO in apelidos[0].evidencia, (
+        "o item nao diz POR QUE valeu zero — quem le a nota precisa distinguir "
+        f"'a rota e ruim' de 'ninguem mediu': {apelidos[0].evidencia[:90]}")
+
+    # ── e a REGRA DE EXCLUSAO continua de pe' para quem NAO SE APLICA ─────
+    #
+    # ⚠️ CONTROLE: sem esta metade, um conserto que apagasse a exclusao INTEIRA
+    #    passaria — e ai um item que nao se aplica a rota passaria a puni-la.
+    fabricada = n._replace(itens=list(n.itens) + [
+        RB.Item("D", "item que NAO SE APLICA", 0, 7, "-",
+                excluido=RB.SEM_FABRICA)])
+    assert fabricada.fora == {RB.SEM_FABRICA: 7}
+    assert fabricada.denominador == n.denominador, (
+        "um item que NAO SE APLICA entrou no denominador — a rota passa a ser "
+        "punida por nao ter algo que ela nunca deveria ter")
+
     assert f"({n.denominador})" in n.patamar, \
         f"o patamar nao carrega o denominador: {n.patamar}"
 
