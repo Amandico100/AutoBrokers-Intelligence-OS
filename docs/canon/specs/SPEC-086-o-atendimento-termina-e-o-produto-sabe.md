@@ -276,6 +276,44 @@ tem de ficar **vermelho**. Se continuar verde, o guarda não guarda nada.
 
 ---
 
+# BLOCO C.1 · 🔴 O conserto de agosto FUNCIONOU? Ninguém mediu.
+
+## Por que este bloco existe
+
+📊 O `RASCUNHO-SPECS-FUTURAS.md:183-187` do canon registra que **metade da 086 já
+foi feita**:
+
+> *"O grupo recebia alerta de conversa que ninguém esperava. Conserto aplicado
+> (marcador compartilhado no Redis, teto de lembretes, 'só avisa quem espera') —
+> **falta medir se funcionou e fechar as bordas.**"*
+
+⚠️ **Um conserto sem medição é uma hipótese com data de aplicação.** E este é o
+alarme que a corretora vai receber na semana que vem: se ele avisar demais, ela
+desliga; se avisar de menos, ninguém vai.
+
+## O que medir — e são três perguntas com resposta numérica
+
+```
+📊 quantos alertas saíram desde o conserto? por corretora?
+📊 quantos eram de conversa que REALMENTE esperava alguém?
+🔴 o teto de lembretes já foi atingido alguma vez?
+   (se nunca, ou ele é frouxo demais, ou não há volume — e as duas
+    conclusões são diferentes)
+```
+
+⚠️ **Se o dado não existir, esta é a resposta**: o conserto não é observável, e
+tornar observável é o trabalho do bloco. ⛔ **Não invente que funcionou.**
+
+## O gate
+
+```
+① as três perguntas têm resposta numérica, ou está escrito por que não têm
+② 🔴 se o alerta for medido como ruidoso, o bloco AJUSTA o teto — com o número
+③ o marcador de Redis sobrevive a reinício, ou está escrito que não sobrevive
+```
+
+---
+
 # BLOCO D · A pergunta da sexta-feira tem resposta
 
 ## O problema
