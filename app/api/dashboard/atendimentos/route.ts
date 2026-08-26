@@ -157,7 +157,25 @@ export async function GET(_req: NextRequest) {
       .select('id, current_step_key, error_code, error_message, created_at, input_payload')
       .eq('company_id', ctx.companyId)
       .eq('runtime_kind', 'acionamento')
-      .eq('unblock_state', 'travado')
+      // 🔴 `assumido_por_humano` CONTINUA NA FILA — e a igualdade exata que
+      // estava aqui apagava o caso no instante em que a atendente clicava.
+      //
+      // 📊 26/08/2026: o BLOCO C da SPEC-093 passou a gravar
+      // `assumido_por_humano` quando alguém destrava pelo WhatsApp. Com
+      // `.eq('travado')`, bastava a atendente mandar "só um minuto" para o
+      // caso sumir da única Fila que existe — assim que o Redis expirasse
+      // (TTL de 6h). E não voltava nunca: `_fechar_travamento`
+      // (`dispatch_router.py:1126`) filtra `['travado','retomado_pelo_robo']`
+      // de propósito, para não pisar neste estado. Terminal e invisível.
+      //
+      // ⚠️ É a MESMA classe de defeito que `e527705` consertou em 25/08 —
+      // "o desfecho parava de apagar da Fila quem ainda espera gente" — 
+      // reintroduzida por outra porta, um dia depois.
+      //
+      // 🔴 E o motivo de produto é o desenho do Founder: a atendente
+      // DESTRAVA, ela não assume. O caso continua sendo do robô, continua
+      // em voo, e continua precisando de olho.
+      .in('unblock_state', ['travado', 'assumido_por_humano'])
       .order('created_at', { ascending: false })
       .limit(30);
     for (const run of (travados || []) as any[]) {
