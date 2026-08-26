@@ -200,7 +200,33 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
     # COSMÉTICO → Alfaiate v2 com GATE do Simulador
     if severity == "cosmetic":
         try:
-            playbook_ref = f"{insurer_key}:{ramo}"
+            # 🔴 SPEC-087 BLOCO B — A CHAVE. Isto era `f"{insurer_key}:{ramo}"`.
+            #
+            # 📊 Medido em 26/08/2026, com linha de controle — mesmo registry, só
+            # a chave muda::
+            #
+            #     CHAVE DO SENTINELA   get_playbook    CONTROLE: ref real
+            #     allianz:todos        None            allianz-residencial-whatsapp@v1  dict
+            #     tokio:todos          None            tokio-auto-whatsapp@v1           dict
+            #     ...                  10 de 10 None   ...                              10 de 10 dict
+            #
+            # 🔴 E 📊 **100% das linhas de `route_drift` têm `ramo='todos'`** —
+            # então a chave montada era sempre `<seguradora>:todos`, que nunca
+            # existiu no registry.
+            #
+            # ⚠️ UMA CAUSA EXPLICA OS TRÊS ZEROS DE UMA VEZ:
+            #
+            #     simulator_passed  NULL em 16/16   o simulador nunca rodou
+            #     auto_applied      false em 16/16  passed=None é fail-closed
+            #     playbook_overlays 0 linhas        nunca alcançado
+            #
+            # > **Não sobra automação demais — falta a que existe funcionar.**
+            playbook_ref = _ref_do_registry(insurer_key, ramo)
+            if not playbook_ref:
+                logger.warning(
+                    "[SENTINELA ROTAS] %s/%s nao tem playbook no registry — o "
+                    "Alfaiate nao roda para esta rota", insurer_key, ramo)
+                raise LookupError("sem playbook no registry")
             gate = await _alfaiate_with_gate(playbook_ref, active.get("map") or {}, observed_map)
             simulator_passed = gate.get("passed")
             auto_applied = gate.get("applied", False)
@@ -253,6 +279,58 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
         pass
     logger.info(f"[SENTINELA ROTAS] {insurer_key}/{ramo}: {severity} — {summary}")
     return row if inserted else None
+
+
+def _ref_do_registry(insurer_key: str, ramo: str) -> str:
+    """A `playbook_ref` REAL desta seguradora e ramo. `""` quando não há.
+
+    🔴 SPEC-087 BLOCO B. O Sentinela montava `f"{insurer_key}:{ramo}"` à mão —
+    uma chave que **nunca existiu** no registry.
+
+    ⚠️ **Resolve pelo mesmo caminho que `get_playbook` usa**, e não por uma
+    convenção de nome montada aqui: `CLAUDE.md` §5. Duas formas de nomear a mesma
+    coisa divergem, e foi divergindo que o Alfaiate morreu.
+
+    ## A ordem, e por que ela é conservadora
+
+    1. `<seguradora>-<ramo>-whatsapp@vN` — quando o ramo é conhecido;
+    2. ⚠️ 📊 **100% do `route_drift` tem `ramo='todos'`**, que não é um ramo: é a
+       ausência dele. Nesse caso vale o primeiro playbook da seguradora — e
+       `auto` antes de `residencial`, porque é o de maior tráfego medido.
+    3. Nada casou → `""`, e quem chama **não roda o Alfaiate**. Inventar uma ref
+       faria o simulador medir outro corredor.
+    """
+    seg = str(insurer_key or "").lower().strip()
+    if not seg:
+        return ""
+    try:
+        from app.services.corridor_playbooks import _PLAYBOOKS
+    except Exception as erro:  # noqa: BLE001
+        # 🔴 FALHA FECHADA, MAS NÃO MUDA. Sem o registry não há ref, e sem ref o
+        # Alfaiate não roda — que é o desfecho seguro. ⚠️ Mas devolver `""` em
+        # silêncio faz o Alfaiate morrer de novo pelo MESMO tipo de motivo que
+        # este bloco existe para consertar: um caminho que não roda e ninguém vê.
+        logger.error("[SENTINELA ROTAS] registry de corredores indisponível (%s) "
+                     "— o Alfaiate NÃO vai rodar para nenhuma rota",
+                     type(erro).__name__)
+        return ""
+
+    ramo_l = str(ramo or "").lower().strip()
+    if ramo_l and ramo_l != "todos":
+        for ref in _PLAYBOOKS:
+            if ref.startswith(f"{seg}-{ramo_l}-"):
+                return ref
+        # Ramo declarado que não tem playbook — não se troca por outro ramo.
+        return ""
+
+    do_seguro = [r for r in _PLAYBOOKS if r.startswith(f"{seg}-")]
+    if not do_seguro:
+        return ""
+    for preferido in ("auto", "residencial"):
+        for ref in do_seguro:
+            if ref.startswith(f"{seg}-{preferido}-"):
+                return ref
+    return sorted(do_seguro)[0]
 
 
 async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],

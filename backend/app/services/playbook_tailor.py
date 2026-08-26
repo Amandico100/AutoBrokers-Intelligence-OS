@@ -106,11 +106,47 @@ def render_patch_report(playbook_ref: str, classes: Dict[str, List[Dict[str, Any
     return "\n".join(lines)
 
 
+#: ⛔ O AUTO-APPLY NASCE DESLIGADO — SPEC-087 BLOCO B.
+#:
+#: 🔴 Com a chave consertada, `apply_auto_overlays` volta a **poder escrever
+#: no corredor** — e o piloto começa na semana que vem.
+#:
+#: ⚠️ O bloco entrega a capacidade de **MEDIR** (o simulador roda, o resultado
+#: é gravado), não a de **APLICAR**. `simulator_passed` deixa de ser NULL e passa
+#: a dizer sim ou não; aí sim dá para discutir auto-apply, com dado.
+#:
+#: > **A arma foi consertada, descarregada, e o gatilho fica com o Founder.**
+_ENV_AUTO_APPLY = "ALFAIATE_AUTO_APPLY"
+
+#: Os únicos valores que ligam. ⚠️ Lista fechada, e não `bool(valor)`: 📊
+#: `bool("false")` é `True`, e foi exatamente assim que a SPEC-093 quase ligou um
+#: agente de atendimento com um `PATCH {"is_active": "false"}`.
+_LIGADO = ("1", "true", "yes", "on", "sim")
+
+
+def auto_apply_ligado() -> bool:
+    """O gatilho do Founder. ⛔ Padrão DESLIGADO, e ausente = desligado."""
+    import os
+
+    return str(os.getenv(_ENV_AUTO_APPLY, "") or "").strip().lower() in _LIGADO
+
+
 async def apply_auto_overlays(playbook_ref: str, classes: Dict[str, List[Dict[str, Any]]],
                               validate: bool = True) -> int:
     """Grava overlays noop para a classe AUTO (validando que o playbook atual
     continua íntegro no Simulador seria redundante aqui: noop não altera
-    respostas — a validação é estrutural: só telas SEM opções entram)."""
+    respostas — a validação é estrutural: só telas SEM opções entram).
+
+    ⛔ **E ela não escreve nada com `ALFAIATE_AUTO_APPLY` desligado**, que é o
+    padrão. Ver `auto_apply_ligado`.
+    """
+    if not auto_apply_ligado():
+        # ⚠️ `info`, não `warning`: isto é o estado NORMAL e esperado. Um log de
+        # alerta a cada drift ensinaria todo mundo a ignorar o log.
+        logger.info("[ALFAIATE] auto-apply DESLIGADO (%s) — %d overlay(s) da "
+                    "classe AUTO ficaram sem gravar, de propósito",
+                    _ENV_AUTO_APPLY, len(classes.get("auto") or []))
+        return 0
     applied = 0
     try:
         from app.core.database import get_supabase_client
