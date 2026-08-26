@@ -198,6 +198,29 @@ o produto reconhece o prefixo e grava como OBSERVAÇÃO HUMANA
 🔴 **E a nota NÃO vai para o segurado.** ⛔ O prefixo é consumido: a mensagem é
 capturada, gravada e **não reenviada**.
 
+## 🔴 E ela também NÃO pode pausar o robô — este é o ponto que quase passou
+
+📊 [webhook.py:1250-1261](../../backend/app/api/webhook.py#L1250-L1261): desde 14/08,
+**QUALQUER `fromMe` humano pausa a IA.** E o comentário explica por quê — antes
+disso a atendente respondia por áudio, não pausava, e o agente falava por cima:
+*"duas vozes na mesma conversa"*. **A regra está certa.**
+
+> ⛔ **Mas ela transformaria toda anotação em intervenção.** A Regina escreve
+> *"#nota o robô perguntou a placa duas vezes"* — e o robô **para de atender**.
+> **Anotar viraria assumir**, que é exatamente o que o Founder mandou não fazer.
+
+**A nota é a ÚNICA exceção à regra, e ela é estreita de propósito:**
+
+```
+`fromMe` com o prefixo  →  captura · grava a nota · ⛔ NÃO pausa · NÃO reenvia
+`fromMe` sem o prefixo  →  o caminho de hoje, intocado: PAUSA a IA
+```
+
+⚠️ **E a estreiteza é o guarda:** o prefixo tem de estar no **começo** da
+mensagem, sem espaço antes. ⛔ *"o robô errou #nota"* **não** é nota — é
+intervenção, e pausa. Uma exceção larga vira o buraco que a regra de 14/08
+fechou.
+
 ⚠️ **Se o prefixo escapar uma vez, o cliente lê `#nota o robô errou`.** Por isso
 o gate ② é o mais duro da SPEC.
 
@@ -207,9 +230,11 @@ o gate ② é o mais duro da SPEC.
 ① ela escreve `#nota ...` → vira observação ligada à conversa
 ② 🔴 ZERO chance de o `#nota` chegar ao segurado
    ⚠️ e o teste conta `platform_sends` — não confia em leitura de código
-③ mensagem normal dela (sem prefixo) → continua sendo mensagem, intocada
-④ o Claude Code consegue ler todas as notas de um dia numa query
-⑤ dois tenants
+③ 🔴 `#nota` NÃO pausa a IA — o atendimento segue        ← o mais fácil de errar
+④ mensagem normal dela (sem prefixo) → PAUSA a IA, como hoje   (linha de controle)
+⑤ `"o robô errou #nota"` (prefixo no meio) → é intervenção, PAUSA
+⑥ o Claude Code consegue ler todas as notas de um dia numa query
+⑦ dois tenants
 ```
 
 🔴 **A mutação obrigatória:** desligue o consumo do prefixo e ② tem de ficar
