@@ -11,7 +11,24 @@ import { hashPassword } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-const ALLOWED_ROLES = new Set(['admin_company', 'member']);
+// 🔴 `attendant` ENTRA AQUI, senão a permissão da SPEC-093 não tem como ser
+// concedida a ninguém.
+//
+// 📊 Achado em 26/08/2026: o BLOCO A da SPEC-093 criou o papel na política de
+// autorização (`admin-auth-policy.ts`) — o papel que liga o agente de
+// atendimento **e mais nada**. Mas esta lista tinha só dois valores, e a linha
+// abaixo faz `attendant` virar `member` **em silêncio**:
+//
+//     const role = ALLOWED_ROLES.has(...) ? ... : 'member';
+//
+// ⚠️ Sem esta linha, a Regina e a Saionara **não tinham como receber o papel**:
+// nem pela tela (que não o oferece) nem pela API (que o descartava). A única
+// alternativa era `admin_company`, que abre a configuração inteira — prompt do
+// agente, integrações, tudo. **Exatamente o que o BLOCO A existe para evitar.**
+//
+// 🔴 É a §9.3 numa forma nova: não é um guarda que falha, é uma permissão que
+// ninguém consegue dar. A capacidade existia e era inalcançável.
+const ALLOWED_ROLES = new Set(['admin_company', 'member', 'attendant']);
 
 const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
 

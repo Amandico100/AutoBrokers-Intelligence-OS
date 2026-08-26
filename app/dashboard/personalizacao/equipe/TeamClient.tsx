@@ -201,8 +201,15 @@ export function TeamClient() {
                       disabled={Boolean(selected?.is_owner)}
                       className={inputCls}
                     >
-                      <option value="member">Atendente / Membro</option>
-                      <option value="admin_company">Administrador</option>
+                      {/* 🔴 Os rótulos dizem O QUE A PESSOA PODE FAZER.
+                          📊 Antes, `member` chamava-se "Atendente / Membro" — e
+                          é exatamente o papel que recebe 403 ao tentar ligar o
+                          agente de atendimento. Quem escolhesse "Atendente"
+                          para a atendente acertava o nome e errava a permissão,
+                          e só descobriria no primeiro dia de piloto. */}
+                      <option value="member">Membro — só consulta</option>
+                      <option value="attendant">Atendente — liga e desliga o agente</option>
+                      <option value="admin_company">Administrador — configura tudo</option>
                     </select>
                   </label>
                 </div>
