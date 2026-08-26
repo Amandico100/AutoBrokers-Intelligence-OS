@@ -209,10 +209,20 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
 
     row = {
         "insurer_key": insurer_key, "ramo": ramo, "severity": severity,
-        "summary": summary, "detail": {"added": (diff.get("added") or [])[:20],
-                                       "removed": (diff.get("removed") or [])[:20],
-                                       "changed": (diff.get("changed_options") or [])[:20],
-                                       "signature": signature},
+        # ⛔ SPEC-087 BLOCO C — `route_drift` É GLOBAL, SEM `company_id`.
+        #
+        # 📊 Medido em 26/08/2026: 16 de 16 linhas sem máscara nenhuma, e uma com
+        # nome próprio provável. `summary` e `detail` carregam TEXTO DE TELA —
+        # tráfego de uma corretora numa tabela que todas leem.
+        #
+        # ⚠️ A chave global está certa (o Atlas é um só). Era a carga que vazava.
+        "summary": _mascarar_texto(summary),
+        "detail": _mascarar_fundo({
+            "added": (diff.get("added") or [])[:20],
+            "removed": (diff.get("removed") or [])[:20],
+            "changed": (diff.get("changed_options") or [])[:20],
+            "signature": signature,
+        }),
         "auto_applied": auto_applied, "simulator_passed": simulator_passed,
         "needs_founder": needs_founder,
         "status": "applied" if auto_applied else ("escalated" if needs_founder else "open"),
@@ -229,7 +239,11 @@ async def check_insurer(insurer_key: str, ramo: str, observed_map: Dict[str, Any
             )
 
     if needs_founder and inserted:
-        await _alert_founder(insurer_key, ramo, summary, diff)
+        # ⚠️ O alerta vai por WhatsApp e carrega o mesmo texto de tela. Ele não
+        # é tabela global, mas atravessa canal — e mascarar dos dois lados custa
+        # uma chamada.
+        await _alert_founder(insurer_key, ramo, _mascarar_texto(summary),
+                             _mascarar_fundo(diff))
 
     try:
         from app.core.heartbeat import beat
@@ -360,6 +374,37 @@ def _canal_de_plataforma(svc: Any) -> Optional[Dict[str, Any]]:
 #: O destino do alerta de deriva de rota. 🔴 Variável PRÓPRIA, e o motivo
 #: é medido.
 _ENV_DESTINO_DO_ALERTA = "ATLAS_ALERTA_DESTINO"
+
+
+def _mascarar_texto(valor):
+    """A máscara do pipeline, para um valor solto. ⛔ FALHA FECHADA.
+
+    🔴 SPEC-087 BLOCO C: não conseguir mascarar **nunca** vira permissão para
+    gravar cru numa tabela global.
+    """
+    if not isinstance(valor, str) or not valor:
+        return valor
+    try:
+        from app.services.intelligence.redaction_service import redigir
+
+        return redigir(valor)
+    except Exception:  # noqa: BLE001
+        return "[TEXTO NAO MASCARAVEL]"
+
+
+def _mascarar_fundo(valor):
+    """A mesma máscara, recursiva — `detail` é um `jsonb` com listas dentro.
+
+    ⚠️ Mascarar só o topo deixaria `detail.added[0]` cru, que é exatamente onde
+    o texto da tela mora.
+    """
+    if isinstance(valor, str):
+        return _mascarar_texto(valor)
+    if isinstance(valor, list):
+        return [_mascarar_fundo(v) for v in valor]
+    if isinstance(valor, dict):
+        return {k: _mascarar_fundo(v) for k, v in valor.items()}
+    return valor
 
 
 def _founder_alert_number() -> str:

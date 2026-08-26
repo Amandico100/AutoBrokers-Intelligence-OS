@@ -55,11 +55,44 @@ def classify_diff(diff: Dict[str, Any], new_map: Dict[str, Any]) -> Dict[str, Li
     return out
 
 
+def _mascarar(texto: str) -> str:
+    """A máscara do pipeline de inteligência, aplicada a texto de tela.
+
+    ⚠️ Import local de propósito: `redaction_service` não importa nada do
+    projeto (só `re`), e este módulo não precisa carregá-lo para as funções que
+    não escrevem em tabela global.
+    """
+    try:
+        from app.services.intelligence.redaction_service import redigir
+
+        return redigir(str(texto or ""))
+    except Exception:  # noqa: BLE001
+        # 🔴 FALHA FECHADA. Não conseguir mascarar **nunca** vira permissão
+        # para gravar cru numa tabela que todas as corretoras leem.
+        return "[TEXTO NAO MASCARAVEL]"
+
+
 def anchor_from_text(text: str) -> str:
-    """Gera uma âncora regex segura a partir do texto normalizado da tela
-    (trecho inicial estável, escapado)."""
-    snippet = str(text or "").strip()[:60]
-    return re.escape(snippet) if snippet else ""
+    """Âncora regex a partir da tela — **mascarada antes de virar âncora**.
+
+    🔴 SPEC-087 BLOCO C. Isto fazia `re.escape(texto[:60])` sobre o texto CRU
+    da tela, e o resultado ia para `playbook_overlays`, que é uma tabela
+    **GLOBAL, sem `company_id`** — de propósito, porque o Atlas é um só.
+
+    > ⚠️ **A chave global está certa. Era a CARGA que vazava:** tráfego de UMA
+    > corretora entrando numa tabela lida por TODAS.
+
+    📊 É o mesmo furo que a SPEC-063 fechou nos mapas do Atlas (115 nós com nome
+    de segurado), num escritor que ela não cobriu.
+
+    ⛔ **Não existe mascarador novo aqui** (`CLAUDE.md` §5): quem mascara é
+    `redaction_service`, que já era a autoridade única do pipeline de
+    inteligência — e `ancora_permissiva` é o inverso dele, que devolve o
+    casamento que a máscara tiraria.
+    """
+    from app.services.intelligence.redaction_service import ancora_permissiva
+
+    return ancora_permissiva(text)
 
 
 def render_patch_report(playbook_ref: str, classes: Dict[str, List[Dict[str, Any]]]) -> str:
@@ -97,7 +130,11 @@ async def apply_auto_overlays(playbook_ref: str, classes: Dict[str, List[Dict[st
             await asyncio.to_thread(
                 lambda a=anchor, t=item["tela"]: db.client.table("playbook_overlays").insert({
                     "playbook_ref": playbook_ref, "kind": "noop", "anchor": a,
-                    "note": f"Alfaiate: aviso novo da URA — \"{t[:120]}\"",
+                    # ⛔ SPEC-087 BLOCO C — a NOTA também é carga, e ela ia crua.
+                    # 📊 `note` gravava `texto[:120]` sem máscara nenhuma numa
+                    # tabela global. A âncora acima foi consertada; deixar a
+                    # nota crua ao lado seria trancar a porta e abrir a janela.
+                    "note": f"Alfaiate: aviso novo da URA — \"{_mascarar(t)[:120]}\"",
                 }).execute()
             )
             applied += 1
