@@ -1103,6 +1103,22 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
                           severidade="warning" if fase == "needs_human" else "info",
                           payload={"fase": fase, "motivo": str(session.get("reason") or "")})
             session["_checkpoint_fase"] = fase
+
+        # 🔴 SPEC-086 BLOCO A — O ATENDIMENTO TERMINA, E O PRODUTO SABE.
+        #
+        # 📊 Medido em 26/08: `conversations.resolvido_em` tem **0 linhas em
+        # 671**. O produto nunca marcou um atendimento como resolvido — então
+        # *"acabou bem"* e *"o cliente desistiu e foi embora"* são, para o
+        # banco, o MESMO estado.
+        #
+        # ⚠️ E só DUAS fases terminam atendimento: `resolvido` (o serviço foi
+        # prestado) e `encaminhado` (o entregável está em mãos — P-46).
+        # ⛔ `needs_human` NÃO entra: o acionamento parou, mas tem gente
+        # esperando. ⛔ `test_aborted` NÃO entra: é simulação.
+        #
+        # ⛔ **Best-effort, e por fora do `return`:** a marca de fim vale menos
+        # que o checkpoint. Se ela falhar, o acionamento continua espelhado.
+        await _marcar_fim_do_atendimento(db, company_id, session, fase)
         return run_id
     except Exception as e:  # noqa: BLE001
         # ERRO, não warning: falhar aqui devolve o produto ao defeito que esta
@@ -1110,6 +1126,38 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         logger.error("[ACIONAMENTO DURAVEL] checkpoint da fase '%s' NAO gravado (%s) — "
                      "esta sessao esta sem espelho durável", fase, type(e).__name__)
         return None
+
+
+async def _marcar_fim_do_atendimento(db, company_id: str,
+                                     session: Dict[str, Any], fase: str) -> None:
+    """A conversa desta sessão terminou? — SPEC-086 BLOCO A.
+
+    ⛔ **Nunca levanta.** Chamada de dentro do `try` de `registrar_checkpoint`,
+    mas com `try` próprio: uma falha aqui não pode virar *"checkpoint da fase
+    NÃO gravado"* no log, que é um alarme de outra gravidade.
+
+    ⚠️ **A âncora é a CONVERSA, e ela pode faltar.** `mirror_conversation_id` é
+    vazio com `DISPATCH_MIRROR=0`. Sem ela, não há o que marcar — e isso é
+    ausência, não erro.
+    """
+    try:
+        from app.services.o_fim_do_atendimento import (
+            marcar_fim, motivo_do_estado_do_dispatch,
+        )
+
+        motivo = motivo_do_estado_do_dispatch(fase)
+        if not motivo:
+            return
+        conversa = str(session.get("mirror_conversation_id") or "").strip()
+        if not conversa or not _UUID.match(conversa):
+            logger.info("[FIM] fase '%s' terminou o acionamento, mas esta sessão "
+                        "não tem conversa espelhada — nada a marcar", fase)
+            return
+        await marcar_fim(db, company_id=str(company_id), motivo=motivo,
+                         conversation_id=conversa)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[FIM] a conversa não foi marcada como encerrada (%s) — "
+                       "o acionamento seguiu normalmente", type(erro).__name__)
 
 
 async def _encerrar_work_run(company_id: str, session: Dict[str, Any], *,

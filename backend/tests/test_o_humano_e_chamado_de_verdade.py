@@ -225,7 +225,14 @@ def test_as_duas_cadeias_REUSAM_o_marcador_da_SPEC_086():
     for peca in ("reivindicar_o_aviso", "contar_lembrete", "devolver_a_vez",
                  "MAX_LEMBRETES_POR_CONVERSA", "HORAS_ENTRE_AVISOS_PADRAO"):
         assert peca in corpo, f"a regra deixou de reusar `{peca}`"
-    assert "human_handoff" in corpo, "o import da SPEC-086 sumiu"
+    # 🔴 SPEC-086 §"Sobre o número": o rótulo 086 MUDOU DE DONO.
+    #
+    # 📊 Este texto dizia "o import da SPEC-086", falando do conserto do
+    # handoff humano. A SPEC-086 agora é "o atendimento termina e o produto
+    # sabe" — outra coisa. ⚠️ O conserto deste teste NÃO mudou; o nome dele
+    # é que estava prestes a apontar para a SPEC errada.
+    assert "human_handoff" in corpo, (
+        "o import do conserto do handoff (SPEC-085) sumiu")
 
 
 def test_CONTROLE_sem_id_de_conversa_NUNCA_reserva_com_None():

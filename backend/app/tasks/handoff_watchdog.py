@@ -33,6 +33,7 @@ agendador.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
@@ -319,6 +320,17 @@ async def varrer_handoffs_parados() -> None:
                 "[HandoffWatchdog] conversa passou do teto de %s lembretes e o "
                 "grupo NÃO será avisado de novo — ela segue na Fila, esperando "
                 "alguém. empresa=%s", _MAX_LEMBRETES, company_id)
+            # 🔴 SPEC-086 BLOCO C.1 — O TETO DEIXA DE SER INVISÍVEL.
+            #
+            # A SPEC pergunta: *"o teto já foi atingido alguma vez? (se nunca,
+            # ou ele é frouxo demais, ou não há volume — e as duas conclusões
+            # são diferentes)"*. ⛔ Sem esta linha, a resposta continuaria
+            # sendo um `logger.warning` que ninguém consegue contar.
+            await _anotar_no_diario(
+                db, company_id, EVENTO_HANDOFF_NO_TETO,
+                "Uma conversa passou do teto de lembretes: o grupo não será avisado de novo, e ela segue na Fila.",
+                {"teto": _MAX_LEMBRETES, "lembretes": _n,
+                 "parada_ms": int(parada_ms), "tem_dono": bool(_dono)})
             continue
         _ultimo = _n == _MAX_LEMBRETES
 
@@ -340,6 +352,13 @@ async def varrer_handoffs_parados() -> None:
             if aviso.get("avisado"):
                 logger.info("[HandoffWatchdog] re-alerta enviado | empresa=%s | espera=%s",
                             company_id, espera)
+                # 🔴 SPEC-086 BLOCO C.1 — *"quantos alertas saíram?"* passa
+                #    a ter resposta, e por corretora.
+                await _anotar_no_diario(
+                    db, company_id, EVENTO_HANDOFF_REALERTADO,
+                    "O vigia lembrou a corretora de uma conversa parada.",
+                    {"lembretes": _n, "ultimo": bool(_ultimo),
+                     "parada_ms": int(parada_ms), "tem_dono": bool(_dono)})
             else:
                 # Ninguém foi avisado, de novo. Isto é o incidente — e agora ele
                 # tem uma linha de log com o motivo, em vez de nenhuma.
@@ -355,3 +374,219 @@ async def varrer_handoffs_parados() -> None:
             logger.error("[HandoffWatchdog] falha ao re-alertar (%s) | empresa=%s",
                          type(exc).__name__, company_id)
             await _devolver_a_vez(conversa_id)
+
+# =============================================================================
+# 🔴 SPEC-086 BLOCO C — A ESPERA VENCIDA ACORDA ALGUÉM
+# =============================================================================
+#
+# 📊 A razão, medida em 26/08/2026:
+#
+#     work_runs presos em `queued` ....  5   o mais velho há 29 DIAS
+#     a conversa deste módulo .........  ~730 horas (o cabeçalho, linha 3)
+#
+# ⚠️ E os cinco presos **não são atendimento**: são `intelligence.detect_signals`.
+# Isso não os torna menos reais — ninguém foi avisado em 29 dias — mas a prova
+# de que o ATENDIMENTO apodrece é a conversa de 730 horas, não eles.
+#
+# ⛔ ESTE VARREDOR NÃO MANDA MENSAGEM PARA SEGURADO. NENHUMA. NUNCA.
+#
+# 🔴 Um watchdog que fala com o cliente é um robô que acorda às 3h da manhã. O
+# caminho de acordar o segurado já existe, já tem governador
+# (`platform_outbound.py`: 12/h · 20 novos/dia · janela · domingo bloqueado) e é
+# o BLOCO D da SPEC-093, com corte de 24h e prévia. **Este bloco avisa a
+# CORRETORA, e para aí.**
+#
+# ⚠️ E o destino é o MESMO `_avisar_suporte` do varredor de handoff, de
+# propósito: ele já recusa destino compartilhado entre corretoras (§7). Um
+# escalonamento novo aqui seria motor paralelo (§5).
+
+_MAX_WAITS_POR_PASSADA = 50
+
+#: O tipo de evento das esperas vencidas. ⚠️ **Tem de ser contável**: a pergunta
+#: *"quantas esperas venceram ontem?"* é um `count(*)` sobre este valor.
+EVENTO_ESPERA_VENCIDA = "espera.vencida"
+
+#: 🔴 SPEC-086 BLOCO C.1 — O ALERTA DO VIGIA PASSA A SER CONTÁVEL.
+#:
+#: A SPEC pergunta três coisas sobre o conserto de 21/08, e 📊 medido em
+#: 26/08 **nenhuma tem resposta**:
+#:
+#:     quantos alertas saíram desde o conserto? ..... NÃO DÁ PARA SABER
+#:     quantos eram de quem realmente esperava? ..... NÃO DÁ PARA SABER
+#:     o teto de lembretes já foi atingido? ......... NÃO DÁ PARA SABER
+#:
+#: 📊 E a causa está medida: `_avisar_suporte` **não grava em lugar nenhum
+#: contável**. `platform_sends` tem 5 linhas na base inteira, todas de outra
+#: coisa (`billing`, `acionamento_protocolo`), a mais recente de **19/08** —
+#: dois dias ANTES do conserto. E o contador de lembretes vive só no Redis.
+#:
+#: ⚠️ A SPEC prevê exatamente isto: *"se o dado não existir, esta é a
+#: resposta: o conserto não é observável, e torná-lo observável é o trabalho
+#: do bloco. ⛔ Não invente que funcionou."*
+#:
+#: ⛔ E o rastro vai para `work_events`, que JÁ existe e já é contado — não
+#: para uma tabela nova (§5).
+EVENTO_HANDOFF_REALERTADO = "handoff.realertado"
+EVENTO_HANDOFF_NO_TETO = "handoff.teto_de_lembretes"
+
+#: Como o alerta descreve o que se esperava. ⛔ Sem nome de pessoa.
+_ROTULO_DO_KIND = {
+    "esperando_cliente": "o segurado",
+    "esperando_seguradora": "a seguradora",
+    "esperando_humano": "alguém da corretora",
+}
+
+
+async def _anotar_no_diario(db, company_id: str, tipo: str, mensagem: str,
+                            carga: Dict[str, Any]) -> None:
+    """Uma linha contável em `work_events`. ⛔ **Nunca levanta.**
+
+    🔴 SPEC-086 BLOCO C.1. Sem isto, *"quantos alertas saíram?"* não tem
+    resposta — e a pergunta é a diferença entre um alarme calibrado e um
+    alarme que a corretora desliga na segunda semana.
+
+    ⚠️ `work_run_id` fica NULO: o alerta de handoff é de uma CONVERSA, e
+    📊 há 4 `work_runs` de acionamento contra 671 conversas. Forçar um run
+    aqui seria inventar origem.
+
+    ⛔ E a carga **nunca** leva nome, telefone ou texto de mensagem: quem
+    guarda conteúdo é o Espelho, e `payload_redacted` tem esse nome por um
+    motivo.
+    """
+    try:
+        await asyncio.to_thread(
+            lambda: db.table("work_events").insert({
+                "company_id": str(company_id),          # 🔴 §7
+                "event_type": tipo,
+                "actor_type": "system",
+                "severity": "warning",
+                "message_human": mensagem[:400],
+                "payload_redacted": carga,
+            }).execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HandoffWatchdog] diário não escrito (%s) — o alerta saiu, mas ele não vai aparecer na contagem", type(exc).__name__)
+
+
+async def varrer_esperas_vencidas() -> Dict[str, int]:
+    """`work_waits` vencidos → evento + alerta à CORRETORA + `expirou` no fim.
+
+    ⛔ **Nunca levanta.** Roda no APScheduler do buffer, ao lado do varredor de
+    handoff. Uma exceção aqui não derruba o agendador — mas derrubar o job em
+    silêncio é exatamente como a espera volta a apodrecer.
+    """
+    resumo = {"vencidas": 0, "avisadas": 0, "expiradas": 0, "erros": 0}
+    try:
+        from app.core.database import create_async_supabase_client
+        from app.services.o_fim_do_atendimento import (
+            AVISOS_ATE_EXPIRAR, EXPIROU, VENCIDO, deve_expirar_a_conversa,
+            marcar_fim,
+        )
+
+        db = await create_async_supabase_client()
+        agora_iso = datetime.now(timezone.utc).isoformat()
+
+        # ⚠️ A varredura é GLOBAL de propósito — como a de handoff. O que
+        #    protege não é o filtro DESTA leitura: é que TODA ação abaixo carrega
+        #    o `company_id` **da própria linha** (§7).
+        achado = await (db.client.table("work_waits")
+                        .select("id, company_id, conversation_id, work_run_id, "
+                                "kind, scope, vence_em, avisos")
+                        .eq("status", "ativo")
+                        .lte("vence_em", agora_iso)
+                        .order("vence_em")
+                        .limit(_MAX_WAITS_POR_PASSADA).execute())
+        vencidas = achado.data or []
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[EsperaWatchdog] não consegui ler as esperas (%s)",
+                     type(exc).__name__)
+        resumo["erros"] += 1
+        return resumo
+
+    if not vencidas:
+        return resumo
+    resumo["vencidas"] = len(vencidas)
+
+    # ⚠️ 📊 O teto de 50 por passada é DECLARADO, não silencioso — a lição da
+    #    P-090-03. Se ele encher, esta linha é o único aviso que existe.
+    if len(vencidas) >= _MAX_WAITS_POR_PASSADA:
+        logger.warning("[EsperaWatchdog] a passada ENCHEU (%d esperas vencidas) — "
+                       "há mais que não foram olhadas nesta rodada",
+                       _MAX_WAITS_POR_PASSADA)
+
+    for wait in vencidas:
+        empresa = str(wait.get("company_id") or "")
+        conversa_id = str(wait.get("conversation_id") or "")
+        if not empresa or not conversa_id:
+            continue
+        avisos = int(wait.get("avisos") or 0) + 1
+
+        # ---- ① o evento CONTÁVEL --------------------------------------------
+        try:
+            await db.client.table("work_events").insert({
+                "company_id": empresa,                       # 🔴 §7
+                "work_run_id": wait.get("work_run_id") or None,
+                "event_type": EVENTO_ESPERA_VENCIDA,
+                "actor_type": "system",
+                "severity": "warning",
+                "message_human": ("Uma espera do atendimento venceu e ninguém "
+                                  "agiu. A corretora foi avisada."),
+                # ⛔ Sem dado de pessoa: quem guarda o conteúdo é o Espelho, e
+                #    `payload_redacted` tem esse nome por um motivo.
+                "payload_redacted": {"kind": str(wait.get("kind") or ""),
+                                     "scope": str(wait.get("scope") or ""),
+                                     "avisos": avisos,
+                                     "vence_em": str(wait.get("vence_em") or "")},
+            }).execute()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[EsperaWatchdog] evento não gravado (%s)", type(exc).__name__)
+            resumo["erros"] += 1
+
+        # ---- ② o alerta À CORRETORA — ⛔ NUNCA ao segurado -------------------
+        try:
+            conversa = await (db.client.table("conversations")
+                              .select("id, company_id, session_id, user_name, "
+                                      "user_phone, human_handoff_reason")
+                              .eq("company_id", empresa)     # 🔴 §7
+                              .eq("id", conversa_id).limit(1).execute())
+            linhas = conversa.data or []
+            if linhas:
+                from app.agents.tools.human_handoff import HumanHandoffTool
+
+                rotulo = _ROTULO_DO_KIND.get(str(wait.get("kind") or ""), "alguém")
+                texto = (f"⏳ ESPERA VENCIDA — esperava {rotulo} e o prazo passou. "
+                         f"(aviso {avisos} de {AVISOS_ATE_EXPIRAR})")
+                aviso = await HumanHandoffTool(db)._avisar_suporte(
+                    empresa, linhas[0], texto)
+                if aviso.get("avisado"):
+                    resumo["avisadas"] += 1
+                else:
+                    logger.error("[EsperaWatchdog] ❌ espera vencida e o suporte "
+                                 "NÃO foi avisado | empresa=%s | motivo=%s",
+                                 empresa, aviso.get("motivo"))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[EsperaWatchdog] falha ao avisar (%s) | empresa=%s",
+                         type(exc).__name__, empresa)
+            resumo["erros"] += 1
+
+        # ---- ③ o contador, e o FIM depois de N ------------------------------
+        try:
+            campos = {"avisos": avisos, "updated_at": agora_iso}
+            if deve_expirar_a_conversa({"avisos": avisos}):
+                campos["status"] = VENCIDO
+            await (db.client.table("work_waits").update(campos)
+                   .eq("company_id", empresa)                # 🔴 §7
+                   .eq("id", str(wait["id"])).execute())
+            if campos.get("status") == VENCIDO:
+                marcou, _ = await marcar_fim(db, company_id=empresa, motivo=EXPIROU,
+                                             conversation_id=conversa_id,
+                                             quando_iso=agora_iso)
+                if marcou:
+                    resumo["expiradas"] += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[EsperaWatchdog] contador não atualizado (%s)",
+                           type(exc).__name__)
+            resumo["erros"] += 1
+
+    logger.info("[EsperaWatchdog] vencidas=%(vencidas)d avisadas=%(avisadas)d "
+                "expiradas=%(expiradas)d erros=%(erros)d", resumo)
+    return resumo

@@ -141,12 +141,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (action === 'close') {
+    // 🔴 SPEC-086 BLOCO A — ENCERRAR PASSA A DEIXAR MARCA.
+    //
+    // 📊 Medido em 26/08: `conversations.resolvido_em` tinha **0 linhas em
+    // 671**. Este botão gravava `status='closed'` e mais nada — então
+    // *"a atendente encerrou"* e *"o cliente desistiu e foi embora"* eram, para
+    // o banco, o mesmo estado, e a pergunta da sexta-feira não tinha resposta.
+    //
+    // ⚠️ `fechado_por_humano` é um dos CINCO valores do
+    // `ck_conversations_resolucao_motivo`. Gravar fora da lista é um UPDATE que
+    // o Postgres RECUSA — e o `error` abaixo já trata.
+    //
+    // 🔴 `resolvido_em` e `resolucao_motivo` andam JUNTOS (há CHECK): uma
+    // conversa que acabou "por um motivo, em momento nenhum" sumiria de toda
+    // consulta por período.
+    //
+    // ⛔ `.is('resolvido_em', null)` — quem já terminou não termina de novo, e o
+    // primeiro motivo é o que vale. Sem isto, fechar na tela um atendimento que
+    // o robô já concluiu apagaria o desfecho REAL.
+    const agora = new Date().toISOString();
     const { error } = await supabase
+      .from('conversations')
+      .update({
+        status: 'closed', claimed_by: null, claimed_by_name: null, claimed_at: null,
+        resolvido_em: agora, resolucao_motivo: 'fechado_por_humano',
+      })
+      .eq('id', id)
+      .eq('company_id', ctx.companyId)
+      .is('resolvido_em', null);
+    if (error) return NextResponse.json({ error: 'Erro ao encerrar' }, { status: 500 });
+
+    // ⚠️ Se a conversa JÁ estava resolvida, o update acima não casou nada — e o
+    // `status` também não mudou. Este segundo update fecha só o status, sem
+    // tocar no motivo que já existe.
+    const { error: erroStatus } = await supabase
       .from('conversations')
       .update({ status: 'closed', claimed_by: null, claimed_by_name: null, claimed_at: null })
       .eq('id', id)
-      .eq('company_id', ctx.companyId);
-    if (error) return NextResponse.json({ error: 'Erro ao encerrar' }, { status: 500 });
+      .eq('company_id', ctx.companyId)
+      .not('resolvido_em', 'is', null);
+    if (erroStatus) return NextResponse.json({ error: 'Erro ao encerrar' }, { status: 500 });
+
     return NextResponse.json({ ok: true });
   }
 

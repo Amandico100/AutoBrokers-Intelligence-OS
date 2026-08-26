@@ -489,6 +489,31 @@ def start_buffer_scheduler():
             next_run_time=_dt.now(_tz.utc) + _td(seconds=120),
         )
 
+        # 🔴 SPEC-086 BLOCO C — a espera vencida acorda alguém.
+        #
+        # ⚠️ **Mesmo módulo, mesmo agendador, mesmo `_avisar_suporte`.** A SPEC
+        # manda estender o vigia que já existe, e não criar outro: um
+        # escalonamento novo seria motor paralelo (§5), e um scheduler novo
+        # seria a fila que a §5 também proíbe.
+        #
+        # ⚠️ O intervalo é o MESMO do handoff de propósito — quem ajustar um
+        # ajusta os dois, e duas cadências diferentes para o mesmo grupo de
+        # WhatsApp é como se ensina uma equipe a ignorar alarme.
+        #
+        # ⚠️ E o `next_run_time` sai 30 s DEPOIS do outro: as duas varreduras
+        # avisam o mesmo destino, e sobrepô-las mandaria duas mensagens no mesmo
+        # segundo — que a corretora lê como defeito, não como dois assuntos.
+        from app.tasks.handoff_watchdog import varrer_esperas_vencidas
+
+        scheduler.add_job(
+            varrer_esperas_vencidas,
+            "interval",
+            minutes=_env_int("HANDOFF_WATCHDOG_INTERVAL_MINUTES", 10),
+            id="espera_watchdog_check",
+            max_instances=1,
+            next_run_time=_dt.now(_tz.utc) + _td(seconds=150),
+        )
+
         scheduler.start()
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:

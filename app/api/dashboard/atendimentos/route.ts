@@ -272,5 +272,79 @@ export async function GET(_req: NextRequest) {
   const counts = zeroCountsByStage();
   for (const i of items) counts[i.stage] += 1;
 
-  return NextResponse.json({ items, counts });
+  // ===========================================================================
+  // 🔴 SPEC-086 BLOCO D — A PERGUNTA DA SEXTA-FEIRA
+  // ===========================================================================
+  //
+  // > *"Dos atendimentos desta semana, quantos terminaram, quantos ainda
+  // > esperam alguém, e quantos morreram esperando?"*
+  //
+  // ⚠️ **Sem tela nova** — a Fila já existe e já lê `unblock_state`. Ela ganha
+  // três contadores, e eles são TRÊS de propósito:
+  //
+  // 🔴 `morreram_esperando` sai de FORA de `terminaram`. Tecnicamente `expirou`
+  // também é um fim; contá-lo junto faria a sexta-feira dizer *"12 terminaram"*
+  // num dia em que sete morreram esperando — e é justamente essa diferença que
+  // a SPEC-086 inteira existe para criar.
+  //
+  // ⛔ **Falha sozinho.** Se estas duas consultas caírem, a Fila continua
+  // funcionando sem os contadores — uma tela que não abre é pior que uma tela
+  // sem número.
+  const semana = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  let semanaResumo: Record<string, unknown> = {
+    terminaram: 0, ainda_esperam: 0, morreram_esperando: 0,
+    por_motivo: {}, por_kind: {}, indisponivel: true,
+  };
+  try {
+    const [{ data: resolvidas }, { data: esperas }] = await Promise.all([
+      supabase
+        .from('conversations')
+        .select('resolucao_motivo')
+        .eq('company_id', ctx.companyId)          // 🔴 §7
+        .gte('resolvido_em', semana)
+        .limit(2000),
+      supabase
+        .from('work_waits')
+        .select('kind, status')
+        .eq('company_id', ctx.companyId)          // 🔴 §7
+        .eq('status', 'ativo')
+        .limit(2000),
+    ]);
+
+    // ⚠️ Os motivos vivem no CHECK do banco; esta lista é a MESMA, e o guarda
+    //    `test_o_atendimento_termina_e_o_produto_sabe` compara as duas.
+    const SUCESSO = new Set([
+      'acionamento_concluido', 'encaminhado',
+      'resolvido_pelo_segurado', 'fechado_por_humano',
+    ]);
+    const porMotivo: Record<string, number> = {};
+    let terminaram = 0;
+    let morreram = 0;
+    for (const c of resolvidas || []) {
+      const m = String((c as { resolucao_motivo?: string }).resolucao_motivo || '');
+      if (!m) continue;
+      porMotivo[m] = (porMotivo[m] || 0) + 1;
+      if (m === 'expirou') morreram += 1;
+      else if (SUCESSO.has(m)) terminaram += 1;
+    }
+    const porKind: Record<string, number> = {};
+    for (const w of esperas || []) {
+      const k = String((w as { kind?: string }).kind || '?');
+      porKind[k] = (porKind[k] || 0) + 1;
+    }
+    semanaResumo = {
+      terminaram,
+      ainda_esperam: (esperas || []).length,
+      morreram_esperando: morreram,
+      por_motivo: porMotivo,
+      por_kind: porKind,
+      indisponivel: false,
+    };
+  } catch {
+    // ⛔ `indisponivel: true` é o zero DECLARADO. Sumir com os campos faria a
+    //    tela mostrar "0 terminaram" num dia em que ninguém conseguiu olhar.
+    console.error('[ATENDIMENTOS] contadores da semana indisponíveis');
+  }
+
+  return NextResponse.json({ items, counts, semana: semanaResumo });
 }
