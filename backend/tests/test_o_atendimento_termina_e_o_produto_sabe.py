@@ -837,3 +837,90 @@ def test_o_painel_DECLARA_quando_os_contadores_nao_carregaram():
     assert "indisponivel: true" in rota
     assert "indisponivel: false" in rota
     assert "semana: semanaResumo" in rota
+
+
+# ===========================================================================
+# 🔴 A ESPERA PRECISA NASCER — senão os BLOCOS B e C sao enfeite
+# ===========================================================================
+
+def test_needs_human_ABRE_uma_espera_com_prazo():
+    """🔴 Sem um escritor, `work_waits` fica VAZIA: o vigia varre nada e a
+    sexta-feira responde `ainda_esperam: 0` para sempre.
+
+    📊 E `needs_human` é o sinal MEDIDO que já existe — a fase em que o
+    acionamento parou e **tem gente esperando uma pessoa da corretora**.
+    """
+    fonte = _so_o_codigo_py(ROTEADOR_PY.read_text(encoding="utf-8"))
+    assert "_abrir_espera_do_travamento" in fonte
+    assert "await _abrir_espera_do_travamento(db, company_id, session, fase)" in fonte, (
+        "a espera existe mas ninguém a abre — `work_waits` fica vazia para sempre")
+
+    corpo = fonte.split("async def _abrir_espera_do_travamento", 1)[1]
+    corpo = corpo.split(chr(10) + "async def ", 1)[0].split(chr(10) + "def ", 1)[0]
+    assert 'fase == "needs_human"' in corpo
+    assert "ESPERANDO_HUMANO" in corpo
+    assert "vence_em_iso=vence" in corpo, "abriu espera SEM prazo — nunca vence"
+
+
+def test_SAIR_de_needs_human_SATISFAZ_a_espera():
+    """⚠️ Sem isto, o vigia cobraria uma conversa que voltou a andar sozinha —
+    e alarme falso é como se ensina uma equipe a ignorar alarme."""
+    fonte = _so_o_codigo_py(ROTEADOR_PY.read_text(encoding="utf-8"))
+    corpo = fonte.split("async def _abrir_espera_do_travamento", 1)[1]
+    corpo = corpo.split(chr(10) + "async def ", 1)[0].split(chr(10) + "def ", 1)[0]
+    assert "satisfazer_espera(" in corpo, (
+        "sair de `needs_human` não fecha a espera — o vigia cobra para sempre")
+    # 🔴 e o `else` cobre TODAS as outras fases, não só uma lista
+    assert "else:" in corpo
+
+    # 🔴 E A CHAMADA TEM DE SER ALCANÇÁVEL.
+    #
+    # 📊 A bateria pegou este guarda VERDE: a mutação punha um `return` na
+    # linha de cima e a string continuava lá. **Presença não é alcance** — é
+    # a mesma doença que já apareceu no `if False:` do BLOCO C.1.
+    ramo = corpo.split("else:", 1)[1]
+    antes = ramo.split("satisfazer_espera(", 1)[0]
+    assert not re.search(r"^\s*return\s*$", antes, re.M), (
+        f"há um `return` antes de `satisfazer_espera` — ela nunca roda:"
+        f"{chr(10)}{antes[-200:]}")
+
+
+def test_o_prazo_da_espera_e_a_MESMA_variavel_do_vigia():
+    """§5 — dois números para *"quanto tempo é espera demais"* divergiriam, e o
+    grupo receberia dois alarmes com cadências diferentes."""
+    # 🔴 SÓ O CÓDIGO — SÉTIMA vez nesta execução que a prosa engana. 📊 A
+    #    mutação trocava o `os.getenv(...)` e o guarda continuava verde,
+    #    porque o nome da variável aparece no comentário logo acima.
+    fonte = _so_o_codigo_py(ROTEADOR_PY.read_text(encoding="utf-8"))
+    vigia = _so_o_codigo_py(VIGIA_PY.read_text(encoding="utf-8"))
+    assert 'os.getenv("HANDOFF_ALERTA_MINUTOS")' in fonte, (
+        "o acionamento deixou de ler a variável do vigia — as duas cadências divergiram")
+    assert "HANDOFF_ALERTA_MINUTOS" in vigia, (
+        "o vigia deixou de usar a variável — as duas cadências divergiram")
+    # e o padrão é o mesmo dos dois lados
+    assert "_ESPERA_DO_TRAVAMENTO_MIN = 30" in fonte
+    assert "_ESPERA_ALERTA_MIN_PADRAO = 30" in vigia, (
+        "o padrão do vigia mudou e o do acionamento não")
+
+
+def test_a_espera_do_travamento_tem_ESCOPO_FIXO():
+    """⚠️ Um wait ATIVO por escopo. Se o escopo variasse por fase, um
+    acionamento que oscila `ura → needs_human → ura → needs_human` abriria uma
+    espera por vez — e o grupo receberia um alarme por oscilação."""
+    fonte = _so_o_codigo_py(ROTEADOR_PY.read_text(encoding="utf-8"))
+    assert '_ESCOPO_DO_TRAVAMENTO = "acionamento"' in fonte
+    corpo = fonte.split("async def _abrir_espera_do_travamento", 1)[1]
+    corpo = corpo.split(chr(10) + "async def ", 1)[0].split(chr(10) + "def ", 1)[0]
+    assert "scope=_ESCOPO_DO_TRAVAMENTO" in corpo
+    assert corpo.count("scope=") == 2, (
+        "abrir e satisfazer precisam do MESMO escopo, senão a espera nunca fecha")
+
+
+def test_abrir_espera_NUNCA_derruba_o_checkpoint():
+    """⛔ O checkpoint vale mais: sem ele o acionamento volta a morar só no
+    Redis, que é o defeito que a SPEC-055 existe para matar."""
+    corpo = ROTEADOR_PY.read_text(encoding="utf-8").split(
+        "async def _abrir_espera_do_travamento", 1)[1].split(chr(10) + "def ", 1)[0]
+    assert "except Exception" in corpo
+    codigo = _so_o_codigo_py(corpo)
+    assert "raise" not in codigo

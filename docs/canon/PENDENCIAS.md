@@ -9439,3 +9439,116 @@ na mesma situação.
 **O que destrava:** uma aba na tela `app/dashboard/atendimentos/fila`, que já
 existe. **O que custa esquecer:** as duas filas viram tabelas que só o Claude
 Code lê.
+
+---
+
+# SPEC-086 · o atendimento termina e o produto sabe
+
+## 🔴 P-086-A · `resolvido_pelo_segurado` está no CHECK e **não tem escritor**
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+O motivo é um dos cinco valores aceitos, e nenhum caminho do produto o grava
+hoje. Quatro dos cinco têm escritor:
+
+```
+acionamento_concluido    ✅ o dispatch, ao chegar em `resolvido`
+encaminhado              ✅ o dispatch, ao chegar em `encaminhado`
+fechado_por_humano       ✅ o botão de encerrar do painel
+expirou                  ✅ o vigia, depois de 3 avisos ignorados
+resolvido_pelo_segurado  🔴 NINGUÉM
+```
+
+⚠️ **E foi decisão, não esquecimento.** O sinal seria o segurado dizer *"já
+resolvi"* — e a única forma de detectar isso hoje é o modelo interpretar texto
+livre. ⛔ Um LLM decidindo sozinho que o atendimento acabou fecharia conversas
+vivas, e o §12.1 vale aqui: um motivo inventado é pior que motivo nenhum.
+
+**O que destrava:** uma ferramenta que o próprio agente chame — como
+`request_human_agent` já é — em vez de inferência sobre texto. 💭 O piloto vai
+mostrar com que frequência isso acontece de verdade.
+
+**O que custa esquecer:** pouco. Estas conversas hoje ficam NULAS, que é a
+verdade; o risco seria o contrário.
+
+---
+
+## 🔴 P-086-B · `abrir_espera` existe e **ninguém chama**
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **🔴 antes do piloto**
+
+✅ A tabela existe, o repositório existe, o vigia varre, o contador expira, e os
+guardas cobrem tudo. ⛔ **Nenhum caminho do produto abre uma espera.**
+
+⚠️ **Isto é o BLOCO B honesto:** a SPEC pede *"a espera vira objeto"*, e o
+objeto existe. Quem decide **quando** começar a esperar é o atendimento, e essa
+decisão precisa dos tempos que ninguém mediu ainda — que é literalmente o que a
+§6 da SPEC diz sobre os *perfis de follow-up*: *"depende de tempos que ninguém
+mediu; volta quando o piloto medir os tempos"*.
+
+📊 E a consequência é visível: `work_waits` = **0 linhas**, então o vigia varre
+uma tabela vazia e o contador da sexta-feira mostra `ainda_esperam: 0`.
+
+**O que destrava:** decidir três prazos — quanto o produto espera o segurado, a
+seguradora e a corretora antes de considerar que a espera venceu. 💭 O piloto
+dá os três números na primeira semana.
+
+**O que custa esquecer:** a metade mais cara da SPEC-086 fica de enfeite.
+
+---
+
+## P-086-C · O contador de lembretes vive só no Redis
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · gate ③ do BLOCO C.1
+
+⚠️ `reivindicar_o_aviso` e `contar_lembrete` guardam estado no Redis com TTL.
+**Ele não sobrevive a um Redis vazio** — reinício sem persistência, troca de
+instância, `FLUSHALL`.
+
+📊 A consequência é limitada e mensurável: o contador zera, e o grupo recebe
+**um ciclo extra de lembretes** por conversa que ainda estava aberta.
+
+✅ **E o BLOCO C.1 tornou isso detectável:** `handoff.teto_de_lembretes` agora é
+evento contável em `work_events`. Um Redis que zerou aparece como o teto sendo
+atingido duas vezes para a mesma conversa.
+
+**O que destrava:** ou confirmar que o Redis desta instalação tem persistência,
+ou mover o contador para `work_events` (que é durável e já guarda o evento).
+**O que custa esquecer:** ruído no grupo depois de um deploy — o defeito que o
+conserto de 21/08 existe para evitar.
+
+---
+
+## P-086-D · Os 5 `work_runs` presos continuam presos
+
+**Aberta em:** 26/08/2026 · **Dono:** 🧑 operação
+
+📊 Medido em 26/08: **5** runs em `queued`, o mais velho há **29 dias**, todos
+`intelligence.detect_signals`.
+
+⚠️ **Esta SPEC os torna VISÍVEIS, não os desatola** — é o que a própria SPEC diz
+em P-086-02. ⛔ E desatolar é decisão de operação: um run de 29 dias que volta a
+rodar processa um dia que já passou.
+
+⚠️ **E eles não são atendimento.** A SPEC os usa como prova de que o atendimento
+apodrece; medido, são jobs de background. O buraco é real — ninguém foi avisado
+em 29 dias — mas é outro buraco.
+
+**O que destrava:** 🧑 decidir entre cancelar os cinco ou deixá-los rodar.
+**O que custa esquecer:** a fila de inteligência tem cinco trabalhos que nunca
+vão acontecer, e ninguém sabe.
+
+---
+
+## P-086-E · `work_effects` continua sem DDL no repositório e sem escritor
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **herdada (P-086-01)**
+
+📊 Medido: a tabela **existe no banco** e tem **0 linhas**. ⚠️ E ela tem **RLS
+ligada com ZERO policies** — o precedente que a SPEC cita para exigir o teste de
+dois tenants em `work_waits`.
+
+**O que destrava:** achar o manifesto que a criou, ou escrever o DDL faltante
+(`MIGRATIONS-AUTHORITY.md` — 9 versões aplicadas sem arquivo).
+**O que custa esquecer:** o `ROLLBACK` de qualquer SPEC futura que a toque não
+tem como ser escrito.

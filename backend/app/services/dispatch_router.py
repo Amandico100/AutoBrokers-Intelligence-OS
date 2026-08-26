@@ -1119,6 +1119,23 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         # ⛔ **Best-effort, e por fora do `return`:** a marca de fim vale menos
         # que o checkpoint. Se ela falhar, o acionamento continua espelhado.
         await _marcar_fim_do_atendimento(db, company_id, session, fase)
+
+        # 🔴 SPEC-086 BLOCO B — E A ESPERA PASSA A NASCER.
+        #
+        # ⚠️ Sem um escritor, `work_waits` fica VAZIA: o vigia varre nada e a
+        # sexta-feira responde `ainda_esperam: 0` para sempre. Os BLOCOS B e C
+        # viram enfeite.
+        #
+        # 📊 E `needs_human` é o sinal MEDIDO que já existe: é a fase em que o
+        # acionamento parou e **tem gente esperando uma pessoa da corretora**.
+        # A SPEC-093 já grava `travamento.aberto` aqui; esta linha dá à mesma
+        # transição um objeto com PRAZO, que é o que torna a espera varrível.
+        #
+        # ⚠️ O prazo sai de `HANDOFF_ALERTA_MINUTOS` — **a mesma variável do
+        # vigia de handoff**, de propósito. Dois números para "quanto tempo é
+        # espera demais" divergiriam, e o grupo receberia dois alarmes com
+        # cadências diferentes sobre a mesma conversa (§5).
+        await _abrir_espera_do_travamento(db, company_id, session, fase)
         return run_id
     except Exception as e:  # noqa: BLE001
         # ERRO, não warning: falhar aqui devolve o produto ao defeito que esta
@@ -1126,6 +1143,74 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         logger.error("[ACIONAMENTO DURAVEL] checkpoint da fase '%s' NAO gravado (%s) — "
                      "esta sessao esta sem espelho durável", fase, type(e).__name__)
         return None
+
+
+#: 📊 O mesmo padrão do vigia de handoff (`handoff_watchdog.py:41`). ⚠️ Não é
+#: coincidência: é a MESMA pergunta — *"quanto tempo de espera já constrange?"*
+_ESPERA_DO_TRAVAMENTO_MIN = 30
+
+#: O escopo da espera aberta por travamento. ⚠️ Fixo de propósito: um wait
+#: ATIVO por escopo, e um acionamento travado é UMA espera, não uma por fase.
+_ESCOPO_DO_TRAVAMENTO = "acionamento"
+
+
+async def _abrir_espera_do_travamento(db, company_id: str,
+                                      session: Dict[str, Any], fase: str) -> None:
+    """`needs_human` abre uma espera com PRAZO — SPEC-086 BLOCO B.
+
+    ⛔ **Nunca levanta**, e o `UNIQUE` violado não é erro: significa que este
+    acionamento **já estava esperando**, que é exatamente o que o índice
+    parcial existe para garantir.
+
+    ⚠️ **E sair de `needs_human` SATISFAZ a espera.** Sem isso, o vigia
+    cobraria uma conversa que voltou a andar sozinha — e alarme falso é como
+    se ensina uma equipe a ignorar alarme.
+    """
+    try:
+        from datetime import timedelta
+
+        from app.services.o_fim_do_atendimento import (
+            ESPERANDO_HUMANO, abrir_espera, satisfazer_espera,
+        )
+
+        conversa = str(session.get("mirror_conversation_id") or "").strip()
+        if not conversa or not _UUID.match(conversa):
+            return
+
+        if fase == "needs_human":
+            minutos = _env_int_espera()
+            vence = (_agora() + timedelta(minutes=minutos)).isoformat()
+            await abrir_espera(db, company_id=str(company_id),
+                               conversation_id=conversa,
+                               kind=ESPERANDO_HUMANO,
+                               scope=_ESCOPO_DO_TRAVAMENTO,
+                               vence_em_iso=vence,
+                               work_run_id=str(session.get("work_run_id") or ""))
+        else:
+            # ⚠️ Qualquer OUTRA fase satisfaz: o acionamento voltou a andar.
+            #    🔴 `satisfazer_espera` filtra por `status='ativo'`, então chamar
+            #    quando não há espera é um no-op barato — e barato o bastante
+            #    para não valer um estado novo na sessão só para evitá-lo.
+            await satisfazer_espera(db, company_id=str(company_id),
+                                    conversation_id=conversa,
+                                    scope=_ESCOPO_DO_TRAVAMENTO,
+                                    por="robo")
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ESPERA] não registrada para a fase '%s' (%s) — o "
+                       "acionamento seguiu normalmente", fase, type(erro).__name__)
+
+
+def _env_int_espera() -> int:
+    """O MESMO número do vigia de handoff. ⚠️ Dois números para "quanto tempo
+    é espera demais" divergiriam, e o grupo receberia dois alarmes."""
+    import os
+
+    try:
+        n = int(str(os.getenv("HANDOFF_ALERTA_MINUTOS") or "").strip()
+                or _ESPERA_DO_TRAVAMENTO_MIN)
+    except Exception:  # noqa: BLE001
+        return _ESPERA_DO_TRAVAMENTO_MIN
+    return max(1, n)
 
 
 async def _marcar_fim_do_atendimento(db, company_id: str,
