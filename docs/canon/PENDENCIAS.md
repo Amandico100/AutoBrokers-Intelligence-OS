@@ -9060,3 +9060,57 @@ caminho passa a existir — e aí vale escrever a marca.
 **O que custa esquecer:** o número de trabalho humano fica **subestimado** no
 canal `dashboard`. É o erro na direção segura — melhor que o inverso, que foi
 medido e recusado.
+
+
+---
+
+## P-260 · 🔴 O G.3 da SPEC-093 não foi entregue, e o gate dele não sabe falhar
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+O BLOCO G.3 pedia: **corredor desligado vira handoff**.
+
+📊 **Não foi feito.** Nenhum arquivo de `backend/app/services/` lê
+`tenant_corridors` — **o motor não sabe que um corredor está pausado.**
+
+🔴 **E o gate ⑤ é tautológico.** `test_um_clique_liga_os_corredores.py:233-242`
+assere que as strings `"needs_human"` e `"human_phase"` existem no fonte
+**pré-existente**:
+
+> **Passa hoje, e passaria com o pause inteiramente ignorado.**
+
+⚠️ É o "sucesso silencioso" que a SPEC existe para matar — `CLAUDE.md` §9.3.
+
+**O que destrava:** o dispatch consultar `tenant_corridors` antes de abrir o
+corredor, e o gate provar isso **desligando um corredor e exigindo handoff**.
+
+**O que custa esquecer:** a corretora desliga um corredor no dashboard, acha que
+desligou, e o robô continua atendendo por ele. 🔴 **A tela mente** — e no piloto
+ela é a única forma de a corretora recusar um serviço.
+
+---
+
+## P-261 · ⚠️ Duas sessões na mesma árvore contaminam a medição — e desta vez fui eu
+
+**Aberta em:** 26/08/2026 · **Dono:** 🤖 execução
+
+📊 Durante a auditoria da SPEC-093 a branch passou de **8 para 18 commits**: eu
+escrevia SPECs na mesma árvore enquanto o auditor rodava a bateria.
+
+```
+o executor mediu   1 vermelho
+o auditor mediu    3 vermelhos
+```
+
+🔴 **Nenhuma das duas medidas teve árvore exclusiva.** É a lição
+`duas-suites-na-mesma-arvore-mentem`, violada por quem a escreveu.
+
+⚠️ Os três vermelhos **passam sozinhos** (`6 passed`, `2 passed`) e o terceiro é
+a P-246 literal — mas a atribuição não é confiável.
+
+**O que destrava:** quem for medir a bateria toma a árvore ou mede em worktree
+próprio. É a mesma trava do `PROTOCOLO-AUTOBROKERS-AAA` §10, aplicada também a
+quem só escreve documento.
+
+**O que custa esquecer:** um vermelho atribuído à SPEC errada manda a próxima
+pessoa procurar o defeito no lugar certo pelo motivo errado.
