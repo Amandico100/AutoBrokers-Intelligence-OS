@@ -151,7 +151,16 @@ def bloco_5_toda_secao_citada_existe():
     existem = set()
     for m in re.finditer(r"^#{2,3}\s+.*?(\d+(?:\.\d+)?)[\.\s]", p, re.M):
         existem.add(m.group(1))
-    citadas = set(re.findall(r"§(\d+(?:\.\d+)?)", p))
+    # 🔴 Só as § DESTE documento. Uma citação precedida de `CLAUDE.md` aponta
+    # para OUTRO arquivo e é legítima — `CLAUDE.md` §9.1, §9.3, §12.1 existem
+    # lá, não aqui.
+    #
+    # ⚠️ Este refinamento nasceu do próprio guarda: minutos depois de existir,
+    # ele acusou `§12.1` como órfã. A citação estava certa (é do `CLAUDE.md`);
+    # quem estava cego era ele. Um guarda que acusa inocente ensina a ignorá-lo
+    # — e aí ele para de guardar o culpado também.
+    sem_outras = re.sub(r"`?CLAUDE\.md`?[^\n]{0,40}?§\d+(?:\.\d+)?", "", p)
+    citadas = set(re.findall(r"§(\d+(?:\.\d+)?)", sem_outras))
     orfas = sorted(citadas - existem)
     certo(not orfas,
           "nenhuma § orfa no protocolo",

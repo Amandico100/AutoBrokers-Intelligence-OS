@@ -488,27 +488,68 @@ execução citavam referência.
 > **O projeto tinha referências melhores que quase qualquer repositório, e o
 > protocolo não apontava para nenhuma. Não faltava construir: faltava NOMEAR.**
 
+> ⚠️ **Este protocolo NÃO é de atendimento.** Ele governa **qualquer** entrega:
+> uma aba nova no dashboard, uma feature, uma SPEC, um refactor, um incidente.
+> A tabela abaixo tem duas metades por isso.
+
+### A · TRABALHO GERAL — vale para qualquer entrega
+
+| dimensão | 🔴 a referência, por caminho | como o juiz compara |
+|---|---|---|
+| **UI / design** | `docs/canon/DS-001-design-brief.md` **§5** | 📊 1.555 linhas, e a §5 compara com **ChatGPT · Claude · Claude Routines · Connectors** — é a referência EXTERNA deste projeto, e ela existe |
+| **multi-tenant** | `CLAUDE.md` §7 + teste com **dois tenants reais** | o filtro no código, não a RLS |
+| **migration** | `docs/canon/MIGRATIONS-AUTHORITY.md` | APPLY · VERIFY · ROLLBACK escritos ANTES de rodar |
+| **um guarda serve?** | `CLAUDE.md` §9.3 + a **linha de controle** | prove que ele CONSEGUE ficar vermelho |
+| **o build sobe?** | `CLAUDE.md` §9.1 | `next start` + **uma requisição a `/api/…`** — arquivo estático responde 200 com o roteador morto |
+| **o número é medido?** | `CLAUDE.md` §12.1 | 📊 medido tem consulta e data · 💭 ilustrativo nunca é citável |
+
+⛔ **E o que NÃO temos para trabalho geral — declarado, não fingido:**
+
+```
+🔴 TELA DE REFERÊNCIA    nenhuma tela do dashboard é designada como padrão.
+                         O DS-001 diz como PENSAR; nenhuma diz "está bom assim".
+🔴 GUARDA DE UI          nenhum. Os testes com "tela" no nome são todos de URA.
+   API                   não existe arquivo OpenAPI no repositório
+   SLO                   não existe alvo de latência
+   OWASP                 citado, nunca aplicado a um julgamento
+```
+
+⚠️ **Nessas cinco, a regra do §7 vale ao pé da letra:** sem referência
+inspecionável, a dimensão é **"não avaliada"** — nunca "aprovada". 🔴 **E a
+primeira delas é barata:** designar uma tela como padrão custa uma linha, e
+transforma *"ficou bonito?"* em *"chega perto daquela?"*.
+
+### B · TRABALHO DE ATENDIMENTO — quando a entrega toca corredor ou segurado
+
 | dimensão | 🔴 a referência, por caminho | como o juiz compara |
 |---|---|---|
 | **corredor / rota** | `backend/scripts/medir_rota.py --com-espelho` | roda e compara **número contra número** |
 | **a rota de referência** | 📊 `allianz/auto/guincho` = **76/76 AAA(76)** | a rota nova chega perto? |
-| **atendimento ponta a ponta** | `backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py` | 📊 a sessão real `b2bf40e7`, mapeada turno a turno |
+| **atendimento ponta a ponta** | `backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py` | 📊 a sessão real `b2bf40e7`, turno a turno |
 | **conversas-ouro** | `backend/tests/test_golden_do_eletricista.py` | 📊 **10 casos** lidos do banco de produção |
 | **telas reais de URA** | `backend/tests/corpus/telas_reais/` | 📊 **16 arquivos · 4.279 linhas · 10 seguradoras** |
-| **UI** | `docs/canon/DS-001-design-brief.md` | o brief, não o gosto de quem julga |
-| **multi-tenant** | `CLAUDE.md` §7 + o teste com **dois tenants reais** | o filtro no código, não a RLS |
-| **migration** | `docs/canon/MIGRATIONS-AUTHORITY.md` | APPLY · VERIFY · ROLLBACK escritos ANTES |
 
-⛔ **O que NÃO temos, e o protocolo não finge que tem:**
+### 🔴 C · COMO USAR UMA REFERÊNCIA DE FORA — repositório, produto, concorrente
+
+**É permitido, e o projeto já faz.** A regra 3 subordina, não proíbe:
 
 ```
-API      não existe arquivo OpenAPI no repositório
-SLO      não existe alvo de latência
-OWASP    citado, nunca aplicado a um julgamento
+existe referência INTERNA?   →  ela vence, e a externa vira complemento
+não existe?                  →  a externa É a referência, e vai no relatório
 ```
 
-🔴 **Nessas três dimensões a regra do §7 vale ao pé da letra:** sem referência
-inspecionável, elas são **"não avaliadas"** — nunca "aprovadas".
+⛔ **Mas ela precisa passar nas mesmas duas exigências:**
+
+```
+1. INSPECIONÁVEL   o juiz consegue ABRIR o repositório, a tela, o produto.
+                   "o padrão do mercado" não é referência — é adjetivo.
+2. UM PONTO        "como o Linear faz o estado vazio de uma lista",
+                   nunca "faça no nível do Linear".
+```
+
+📊 **Exemplo que já existe neste projeto:** o `DS-001` §5.1 não diz *"seja bom
+como o ChatGPT"*. Ele nomeia **para que** cada referência serve, item a item.
+**É essa a diferença entre referência e elogio.**
 
 ## 🔴 7.2 · O caso que prova por que isto importa
 
