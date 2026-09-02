@@ -9,7 +9,7 @@ import hmac
 import logging
 import os
 from datetime import date, datetime, timezone  # Importado datetime e timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import httpx
