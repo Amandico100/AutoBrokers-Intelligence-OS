@@ -9,6 +9,52 @@
 
 Você passou pelo aquecimento. **Agora executa.**
 
+---
+
+## 0 · 🔴 O PROTOCOLO É LEI — e ele é o PRIMEIRO item do pacote
+
+**Antes de qualquer coisa, leia:**
+
+```
+docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md
+   🔴 §0 · §0.2 · §0.3 · §1 · §2 · §3 · §5      é a v10, e é LEI
+   ⚠️ a §1 (a DIETA) manda carregar ESTAS seções, não o documento inteiro
+CLAUDE.md                                    §9.1 · §9.2 · §9.3 · §11 · §12.1
+docs/canon/INDICE-DE-SPECS.md                a fila e a ordem
+```
+
+📊 **Por que ele é lei, e não recomendação:** ele rodou em **2 de 6** SPECs
+recentes. A causa não foi desobediência — **os prompts das outras quatro não o
+carregavam.** E o custo:
+
+```
+COM o protocolo    47 achados · 22 defeitos de PRODUTO   →  23,5 por SPEC
+SEM                19 achados ·  0 defeitos de produto   →   6,3 por SPEC
+```
+
+⚠️ **E a diferença é de CLASSE, não de volume.** Sem ele, os achados eram
+*"guardas que não guardavam"*. Com ele: **vazamento entre corretoras**, resposta
+em dobro ao segurado, `RecursionError` derrubando o webhook.
+
+> 🔴 **E este próprio prompt esteve sem ele até 02/09/2026.** 📊 4 de 10 pacotes
+> de execução não carregavam o protocolo, e este era um dos quatro — **é o
+> assunto da SPEC-091 que você vai executar.**
+
+### 🔴 A §0.3 é nova, e nasceu destas duas SPECs
+
+```
+duas medições certas NÃO fazem uma causa certa
+
+a afirmação é "A acontece PORQUE B"?
+   medi A?  ✓    medi B?  ✓    🔴 medi que B CHEGA em A?  ← ninguém dá este passo
+```
+
+📊 **Três formas do mesmo erro, todas cometidas nestas SPECs:** código morto
+(a linha existe e um `return` acima impede que rode) · meia regra (é `A E B` e
+só `A` foi contado) · fonte de ontem (o número é certo, mas quem escreve mudou).
+
+---
+
 ## 1 · A LEVA — nesta ordem, uma de cada vez
 
 ```
@@ -22,6 +68,15 @@ inteira.**
 
 ⛔ **Não pule para a seguinte antes de fechar a anterior** — relatório escrito,
 bateria rodada, commit feito.
+
+🔴 **E saiba o que você está recebendo:** 📊 estas duas SPECs passaram por
+**três juízes independentes e três rodadas de conserto** em 02/09. Cada rodada
+achou defeitos na anterior. **A última tirou os números medidos da prosa e os
+trocou por comandos** — onde você ler *"conte você"*, é de propósito: aquele
+contador já envelheceu três vezes.
+
+> ⚠️ **O BLOCO 0 é o quarto juiz, e ele é seu.** Remeça tudo antes de codar.
+> Se o seu número for diferente, **o SEU vence.**
 
 ⚠️ **E se uma delas vier com o veredito *"continua adiada"*:** isso é entrega
 completa, não desistência. **Escreva o relatório dizendo por quê, com a medição
@@ -124,6 +179,15 @@ achou.
    ⚠️ arquivo estático responde 200 com o roteador morto.
 
 🔴 o relatório traz QUANTAS VEZES a bateria rodou. A query está no template.
+
+🔴 **depois de consertar QUALQUER número, caminho ou faixa: `grep` do valor
+   ANTIGO no arquivo inteiro.** Qualquer sobrevivente é defeito.
+   📊 Em 02/09 isso achou **três** cópias vencidas em UM comando, segundos
+   depois de um juiz completo ter passado. ⚠️ **O conserto acerta o que o JUIZ
+   lê — tabela, gate, referência — e deixa a cópia velha no que o EXECUTOR lê.**
+
+🔴 **e se um contador já envelheceu duas vezes, tire-o da prosa e escreva o
+   COMANDO que o produz.** Mata a classe, em vez de remendar a instância.
 ```
 
 ---
