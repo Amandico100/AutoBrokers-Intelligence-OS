@@ -108,13 +108,19 @@ def bloco_2_o_portao_existe_em_tres_lugares():
     # 🔴 So DENTRO do bloco do card. Procurar no documento inteiro faz o
     #    titulo da secao aprovar a linha que falta -- foi o que aconteceu na
     #    primeira versao deste bloco, e a linha de controle pegou.
+    # 🔴 A cerca do CARD, nao a primeira cerca depois do titulo. Um bloco
+    #    cercado inserido entre o titulo e o card sequestrava as tres assercoes
+    #    abaixo -- provado por mutacao em 02/09: engodo com as 12 palavras passa
+    #    e o card real fica sem seis linhas, tudo verde.
     card = ""
     i = p.find("## 0.2")
-    if i >= 0:
-        j = p.find("```", i)
-        k = p.find("```", j + 3) if j >= 0 else -1
-        if k > j:
-            card = p[j:k]
+    fim = p.find("## 0.3", i) if i >= 0 else -1
+    if i >= 0 and fim > i:
+        trecho = p[i:fim]
+        # a ULTIMA cerca aberta antes da 0.3 e a do card
+        partes = trecho.split("```")
+        if len(partes) >= 3:
+            card = partes[-2]
 
     certo(len(card) > 200, "achei o bloco do EXECUTION CARD (%d chars)" % len(card),
           "sem ele tudo abaixo passa por vacuidade")

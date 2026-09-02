@@ -208,9 +208,11 @@ SUPERFÍCIE ........ 3   🔴 subiu de 2 para 3 na revisão de 02/09, e a razão
                         conclí que sabia apontar tudo. ⚠️ **Não sabia.**
                         📊 `work_runs` · 7 dias: **SEIS `workflow_key`,
                         640 execuções**, e 🔴 **CINCO** não têm card nem
-                        `beat()`. ⚠️ O `garimpo` tem os dois
-                        (`heartbeat.py:44` e `broker_insights.py:343`)
-                        — e por isso ele é o D1, não um dos invisíveis:
+                        `beat()`. ⚠️ O `garimpo` tem card
+                        (`heartbeat.py:44`) e um `beat()` **só no papel**
+                        (`broker_insights.py:343`, inalcançável pelo
+                        `return 0` da `:311`) — por isso ele é o D1.
+                        🔴 **Os CINCO invisíveis são os outros da lista:**
                           detect_signals 504 (hoje 21:03) · outcomes 84
                           garimpo 21 · daily_briefing 21 · cluster 7 · weekly 3
                         🔴 O §3 é explícito: *"consigo apontar TODOS os
@@ -320,31 +322,53 @@ cadencia_esperada   de quanto em quanto tempo ele DEVIA produzir
 | `followup` | `platform_sends` | 19/08 19:41 |
 | `garimpo` | 🔴 **as DUAS, com `greatest()`** — `intelligence_signals`·`source_type='garimpo'` **e** `broker_insights`·`source IN ('garimpo_v3','garimpo','garimpo_llm')` | 26/08 00:04 e 00:05 |
 | `detector` | 🔴 `intelligence_signals` · `source_type='detector'` — **não existe card para ele** | ⚠️ **02/09 04:04 — VIVO HOJE** |
-
-🔴 **Por que o `garimpo` usa `greatest()` das duas, e não uma:** 📊 o fluxo
-canônico escreve **as duas com a mesma caneta** — `workflows.py:291` chama
-`GarimpoV3`, que grava `intelligence_signals` na `:106` e **projeta** em
-`broker_insights` na `:174` pela `_projetar_legado` (`:164`), **incondicional**
-(📊 `grep -c cutover garimpo_v3.py` → **0**). Os dois últimos registros
-distam 📊 **69 segundos**. ⚠️ E o caminho de rollback grava OUTRO rótulo —
-`source='garimpo'`/`'garimpo_llm'` (`broker_insights.py:98,:232`), 📊 com
-**zero linhas em toda a história da tabela**.
-
-> 🔴 **Uma fonte só cega o card no dia em que a flag virar.** Com o cutover
-> desligado, o legado escreve `broker_insights` e **para** de escrever
-> `intelligence_signals`. O `greatest()` sobrevive nas duas direções.
-
-⚠️ **Esta linha já esteve errada duas vezes, e as duas por não abrir a
-`_projetar_legado`:** a conversão cravou `source='garimpo_v3'` — uma versão atrás
-do escritor — e o primeiro conserto inverteu para `intelligence_signals` citando
-a `garimpo_v3.py:216`, que é um `.select()` de painel dentro da
-`voz_do_periodo()`. **Uma LEITURA apresentada como escritor.**
 | `auditor` | `conversation_scorecards` | 26/08 00:19 |
 | `alfaiate` | `playbook_overlays` | ⛔ **0 linhas, nunca** |
 | `cartografo` | `ura_maps` | 26/08 14:07 |
 | `sugestoes` | `broker_insights` · `source='sugestoes_ia'` | ⛔ **0 de 270** |
 | `espelho` · `vigia_sentinela` · `cerebro` | 🔎 **o executor mede e declara** | — |
 | `conselho` | ⛔ **sem saída durável conhecida** | — |
+
+🔴 **Por que o `garimpo` usa `greatest()` das duas, e não uma:** 📊 o fluxo
+canônico escreve **as duas com a mesma caneta** — `workflows.py:291` chama
+`GarimpoV3`, que grava `intelligence_signals` na `:106` e **projeta** em
+`broker_insights` na `:174` pela `_projetar_legado` (`:164`).
+
+⚠️ 🔴 **E a projeção NÃO é incondicional** — esta linha já afirmou que era,
+e estava errada. `garimpo_v3.py:106-108`:
+
+```python
+if self.sinais.registrar(rascunho):      # 🔴 devolve None em dois casos
+    criados += 1
+    self._projetar_legado(...)           # e ela engole tudo: except: pass
+```
+
+> 🔴 **O executor tem de conferir isto antes de escrever a fonte.** Um sinal
+> recusado pelo dedupe grava em UMA tabela e não na outra. Os dois últimos registros
+distam 📊 **69 segundos**. ⚠️ E o caminho de rollback grava OUTRO rótulo —
+`source='garimpo'`/`'garimpo_llm'` (`broker_insights.py:98,:232`), 📊 com
+**zero linhas em toda a história da tabela**.
+
+🔴 **E qual COLUNA a fonte lê decide tudo:** `signal_service.py:144-167` — no
+acerto de dedupe, `_reforcar()` move **`last_seen_at`**, nunca `created_at`. 📊 Hoje
+`max(created_at)` = 00:04:25 e `max(last_seen_at)` = 00:05:34. **Um garimpo que roda
+e só reconfirma sinais conhecidos não move o `created_at`** — e o card congela
+num agente saudável, que é a SPEC-089 outra vez.
+
+> 🔴 **A fonte lê `greatest(last_seen_at, created_at)`**, e o BLOCO 0 prova a
+> diferença com as duas colunas lado a lado antes de escrever qualquer código.
+
+> 🔴 **Uma fonte só cega o card no dia em que a flag virar.** Com o cutover
+> desligado, o legado escreve `broker_insights` e **para** de escrever
+> `intelligence_signals`. O `greatest()` sobrevive nas duas direções.
+
+⚠️ **Esta linha já esteve errada duas vezes, e as duas por não abrir a
+`_projetar_legado`:** a conversão cravou `broker_insights`·`source='garimpo_v3'`
+— ⚠️ **e o RÓTULO estava certo** (`garimpo_v3.py:181` grava essa string literal);
+errou só em declarar UMA tabela. E o primeiro conserto inverteu para
+`intelligence_signals` citando
+a `garimpo_v3.py:216`, que é um `.select()` de painel dentro da
+`voz_do_periodo()`. **Uma LEITURA apresentada como escritor.**
 
 🔴 **A regra que fecha a porta, e é a §7 do protocolo aplicada à própria Central:**
 
@@ -571,14 +595,17 @@ o defeito em silêncio, e é exatamente o que aconteceu de `garimpo` para `garim
      `prompt_optimizer:199`→alfaiate · `regression_sentinel:160`→auditor
    🔴 **O `alfaiate` recebe de TRÊS módulos e não pulsa da casa dele.**
    ⚠️ 📊 `backend/app/services/playbook_tailor.py` linha 1 diz `ALFAIATE v1
-   (SPEC-034 Onda 4)` — existe desde 26/08, e 📊 `grep -c 'beat('` dá **0**.
+   (SPEC-034 Onda 4)` — 📊 nasceu em **13/07/2026** (`13899d4`), e 📊 `grep -c 'beat('`
+   dá **0**.
    **A casa existe e não pulsa.** O conserto é mover o pulso para lá, não
    escolher qual dos três invasores fica
    ⚠️ Consertar só o `:181` deixa as outras sete de pé — e era exatamente
    esse o erro que este gate existia para impedir
 ⑥-b 🔴 **TODO `workflow_key` visto em `work_runs` nos últimos 7 dias tem
    agente correspondente em `AGENT_TASKS`** — ou está numa lista de
-   `SEM CARD, POR DECISÃO` escrita nesta SPEC.
+   `SEM CARD, POR DECISÃO`. 🔴 **Ela não existe hoje — o BLOCO D a CRIA**, com
+   uma linha por `workflow_key` e o motivo escrito. ⚠️ Lista vazia reprova:
+   sem motivo escrito, o agente entra em `AGENT_TASKS`.
    📊 Hoje **CINCO reprovam** (o `garimpo` passa), inclusive o
    `detect_signals` (504 execuções,
    59 sinais, o único que produziu alguma coisa hoje).
@@ -628,7 +655,9 @@ contra uma organização operacional que **não muda nada hoje** e custa semanas
 
 | dimensão | referência | como comparar |
 |---|---|---|
-| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 📊 **205 linhas** · 17 asserções · **e a mutação escrita no commit `9dddb7f`**. O guarda do BLOCO D chega perto? |
+| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 🔴 **conte você:** `wc -l` e a última linha da saída do guarda. ⚠️ **NÃO há
+número aqui de propósito** — três rodadas de conserto envelheceram este contador
+três vezes. A mutação está escrita no commit `9dddb7f`. O guarda do BLOCO D chega perto? |
 | **a tela não mente** | `backend/tests/test_a_casa_diz_a_verdade.py` | 📊 236 linhas — o precedente deste projeto de guardar contra documentação e menu que contradizem o código |
 | **UI / design** | `docs/canon/DS-001-design-brief.md` **§5** | o agrupamento do BLOCO C |
 | **o número é medido?** | `CLAUDE.md` §12.1 | 📊 tem consulta e data · 💭 nunca é citável |

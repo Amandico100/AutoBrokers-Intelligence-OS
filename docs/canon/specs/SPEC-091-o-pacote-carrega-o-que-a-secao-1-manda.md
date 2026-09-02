@@ -97,7 +97,7 @@ SEM PAINEL    19 achados ·  0 defeitos de produto        3,7× menos
 ### 🔴 A v10 consertou a REGRA. E o guarda de hoje confere o DOCUMENTO, não o PACOTE
 
 📊 Em 02/09 às 10:12, o commit `9dddb7f` criou
-`backend/tests/test_o_protocolo_tem_policia.py` — 📊 **205 linhas**, 17 asserções. **É um
+`backend/tests/test_o_protocolo_tem_policia.py` — 🔴 **conte você** — `wc -l` e a saída do guarda. **É um
 bom guarda.** Mas os alvos dele, nas linhas 51–53, são três:
 
 ```python
@@ -207,10 +207,15 @@ texto, foi falta de portão. É o que o commit `9dddb7f` escreveu sobre si mesmo
    ⚠️ sem ela, um guarda que reprova tudo passaria em ②
 ④ o guarda encontra pacote por PADRÃO DE NOME, nunca por lista fixa
    🔴 um `PROMPT-DE-EXECUCAO-097.md` criado amanhã já nasce coberto
-⑤ as 17 asserções que já existem continuam verdes
+⑤ 🔴 **TODAS** as asserções que já existem continuam verdes, e a contagem
+   **SOBE** com o bloco novo. ⚠️ **Nenhum número aqui de propósito:** este gate
+   já disse `17` depois de o guarda ter 20, e um gate com número vencido é
+   impossível de fechar. 🔴 A regra é **zero falhas e nenhuma asserção a menos**
 ⑥ `.md` e `.TXT` — 📊 os dois formatos existem no repositório hoje
-   ⚠️ **e a comparação é SEM CAIXA:** 📊 `PROMPT-DE-AQUECIMENTO-SPEC-085.MD`
-   tem extensão maiúscula, e um `glob('*.md')` acha 7 no Windows e 6 no Linux
+   ⚠️ **e a comparação é SEM CAIXA:** 📊 `PROMPT-DE-AQUECIMENTO-BLOCO-0.TXT`
+   está versionado com extensão MAIÚSCULA. ⚠️ **A evidência do `.MD` foi retirada
+   em 02/09:** 📊 `git ls-files` mostra o `SPEC-085` como `.md` minúsculo — a
+   maiúscula existia só no disco desta árvore, e não se reproduz num clone
 ⑦ 🔴 **nenhum pacote manda "leia o protocolo INTEIRO".**
    📊 O protocolo tem **965 linhas** (02/09, depois da §0.3), e a §1 manda carregar §0, §1, §2, §3 e §5.
    📊 Hoje **DOIS** dizem: `AQUECIMENTO-DO-EXECUTOR.md:57` e
@@ -277,7 +282,7 @@ dor que a medição de hoje encontrou.
 
 | dimensão | referência | como comparar |
 |---|---|---|
-| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 📊 **205 linhas** · 17 asserções · a mutação escrita no commit `9dddb7f`. 🔴 **O bloco `[7]` entra NELE** — ⚠️ `bloco_1` a `bloco_5` já existem e o `bloco_6_CONTROLE` **fica por último** — o juiz abre o arquivo e vê se o novo bloco tem a mesma dureza dos quatro |
+| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 🔴 **conte você** (`wc -l` + a saída do guarda) · a mutação escrita no commit `9dddb7f`. 🔴 **O bloco `[7]` entra NELE** — ⚠️ `bloco_1` a `bloco_5` já existem e o `bloco_6_CONTROLE` **fica por último** — o juiz abre o arquivo e vê se o novo bloco tem a mesma dureza dos quatro |
 | **linha de controle** | `CLAUDE.md` §9.3 | prove que o guarda **CONSEGUE** ficar vermelho |
 | **o número é medido?** | `CLAUDE.md` §12.1 | 📊 tem consulta e data · 💭 nunca é citável |
 
