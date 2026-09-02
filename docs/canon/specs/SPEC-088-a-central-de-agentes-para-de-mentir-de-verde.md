@@ -46,7 +46,27 @@ SELECT count(*), max(created_at) FROM broker_insights;
 ```
 
 > 🔴 **9 execuções `completed` em 3 dias. Zero linhas produzidas em 7 dias.**
-> E o card da Central fica **VERDE**, porque o critério dele é o pulso.
+
+**E o que o card mostra nesse tempo — 📊 lido nos dois arquivos, não suposto:**
+
+```
+backend/app/tasks/buffer_processor.py:148   scheduler: seconds=3600 → PULSA DE HORA EM HORA
+                                            ⚠️ o comentário ao lado diz "1x/dia":
+                                               é a MINERAÇÃO que é diária, travada
+                                               por marcador no Redis. O pulso, não.
+app/admin/central-agentes/page.tsx health()  < 900s 🟢 SAUDÁVEL · < 7200s 🟡 ATENÇÃO
+```
+
+> 🔴 **Com pulso de hora em hora: 🟢 SAUDÁVEL nos primeiros 15 minutos de CADA
+> HORA, 🟡 ATENÇÃO nos outros 45. E nenhuma das duas cores tem relação com o fato
+> de ele não produzir uma linha há 7 dias.**
+>
+> ⚠️ **O verde é falso porque não produziu. O amarelo é falso porque nada está
+> errado com o laço.** As duas cores estão erradas, por motivos opostos — e é isso
+> que um instrumento que mede o gesto errado faz.
+
+🔴 **A frase que resume o defeito inteiro:** o `beat()` mede o **tique do
+agendador**, e o card é lido como se medisse **o trabalho**.
 
 ### 1.2 · As quatro causas, cada uma com arquivo e linha
 
@@ -334,10 +354,18 @@ para a verdade — que é o defeito da §1.5 sendo reconstruído.
 derivam de **um** número: `last_run`. `< 900s` → SAUDÁVEL · `< 7200s` → ATENÇÃO ·
 resto → PARADO · `null` → AGUARDANDO.
 
-⚠️ **E o limiar é o mesmo para os 14.** O Garimpo roda 1×/dia
-(`buffer_processor.py:149` `id="garimpo_check"`); o Conselho roda raramente. **15
-minutos** condena os dois a ficarem vermelhos por desenho — então ninguém confia
-no vermelho, e é assim que um instrumento morre.
+⚠️ **E o limiar é o mesmo para os 14, o que produz duas mentiras de uma vez:**
+
+```
+📊 Garimpo   pulsa 1×/hora (`buffer_processor.py:148`, seconds=3600)
+             → 🟢 15 min de cada hora · 🟡 os outros 45
+             ⛔ e mineração ZERO há 7 dias nas duas cores
+📊 Conselho  roda raramente, por env    →  🔴 PARADO quase sempre, por DESENHO
+```
+
+> 🔴 **Um limiar único condena o agente lento a viver vermelho e promove o
+> agente frequente a verde.** Quando o vermelho é normal, ninguém olha para ele —
+> e é assim que um instrumento morre sem que ninguém desligue.
 
 ## O conserto
 
@@ -371,6 +399,9 @@ estava errado.
 
 ```
 ① o Garimpo de hoje (laço `completed`, saída de 7 dias atrás) → 🟡, NUNCA 🟢
+   🔴 e o teste roda com `last_run` de 1 MINUTO ATRÁS — a janela exata em que
+   o código de hoje pinta 🟢. ⛔ Testar com pulso velho não prova nada:
+   ali o código antigo já daria 🟡 sozinho, pelo motivo errado
 ② agente `is_active=false` → ⚪ DESLIGADO, com a data
 ③ agente sem fonte → ⚫ NÃO MEDIDO
 ④ 🔴 agente morto há 30 dias → 🔴 PARADO.  ⛔ o `_TTL` de 7 dias NÃO pode
