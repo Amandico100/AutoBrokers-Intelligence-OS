@@ -99,9 +99,10 @@ motivo é diferente de esquecida.**
 
 | ordem | vira | de qual proposta |
 |:---:|---|---|
-| 3º | **SPEC-094** | `8 - SPEC-094-executive-intelligence-360` |
-| 4º | **SPEC-095** | `9 - SPEC-095-artifact-delivery-hub` |
-| 5º | **SPEC-096** | `10 - SPEC-096-chat-runtime-…` |
+| 3º | **SPEC-093-B** | `7 - SPEC-093-claims-learning-shadow` |
+| 4º | **SPEC-094** | `8 - SPEC-094-executive-intelligence-360` |
+| 5º | **SPEC-095** | `9 - SPEC-095-artifact-delivery-hub` |
+| 6º | **SPEC-096** | `10 - SPEC-096-chat-runtime-…` |
 
 ✅ **Estas mantêm o próprio número** — 094, 095 e 096 estão livres.
 
@@ -110,29 +111,37 @@ motivo é diferente de esquecida.**
 `097` até `114`, na ordem em que forem chegando. ✅ **Todas mantêm o número da
 proposta**, porque a partir da 094 não há mais colisão.
 
-## 🔴 A ÚNICA ÓRFÃ — e ela vai para o fim
+## 🔴 A ÚNICA COLISÃO — e ela fica no lugar dela
 
-| proposta | problema | vira |
+| proposta | problema | 🔴 vira |
 |---|---|---|
-| `7 - SPEC-093-claims-learning-shadow` | 🔴 **093 já existe e foi executada** | **SPEC-115** |
+| `7 - SPEC-093-claims-learning-shadow` | **093 já existe e foi executada** | **SPEC-093-B** |
 
-**Por que o fim, e não um número no meio:** ela é *shadow mode* — observa
-sinistro sem agir. 📊 **Ela melhora com mais dado**, e hoje há **4 acionamentos**
-na história do produto. **Colocá-la por último é a ordem tecnicamente certa, não
-só a numericamente conveniente.**
+🧑 **Decisão do Founder, 30/08:** *"se ela está no início da sequência, não quero
+colocar para o final."*
+
+✅ **E o projeto já tem o precedente:** `SPEC-084`, `084.1` e `084.2` — três SPECs
+no mesmo número, executadas em ordem. **A letra é o desempate deste projeto, e
+ela já funcionou três vezes.**
+
+**A ordem de execução dela** fica onde o número manda: depois da `093` (feita) e
+antes da `094`. ⚠️ Ou seja, **na LEVA 2, como primeira.**
 
 ---
 
 # 🔴 A REGRA DA NUMERAÇÃO — para nunca mais colidir
 
 ```
-o número da proposta está LIVRE   →  mantém
-o número está OCUPADO             →  vai para o FIM da fila, e o de-para
-                                      é registrado nesta folha
+o número da proposta está LIVRE   →  mantém           094 · 095 · 096 · 097+
+o número está OCUPADO             →  ganha LETRA       093 → 093-B
+                                      e fica na posição do número
 ```
 
-⛔ **Nenhuma SPEC muda de número depois de convertida.** Se a proposta tinha
-outro número, o de-para fica **aqui**, para sempre.
+⛔ **Nenhuma SPEC muda de número depois de convertida.** O de-para fica **aqui**,
+para sempre.
+
+⚠️ **E a letra não é "menos importante".** 📊 A `084.1` foi a SPEC que levou 19
+corredores a AAA — a mais transformadora do bloco inteiro.
 
 ---
 
