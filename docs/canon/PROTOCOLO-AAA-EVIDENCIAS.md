@@ -314,3 +314,230 @@ dito com cara de medição. 🔴 **Commit não é rodada.** O custo por rodada e
 medido; o número de rodadas era chute. É a §12.1 contra o próprio autor.
 
 ---
+
+
+---
+
+# 📊 O DIÁRIO DA v9 → v10 — o que saiu do documento normativo
+
+> ⚠️ **Isto é HISTÓRICO, não regra.** Saiu do `PROTOCOLO-AUTOBROKERS-AAA.md` em
+> 30/08/2026, quando a auditoria mediu que **37% do protocolo era diário de
+> bordo datado** — e um protocolo que ninguém consegue ler inteiro é um
+> protocolo que ninguém segue.
+>
+> 🔴 **As regras que estas medições produziram continuam no protocolo.** O que
+> saiu foi a narrativa de como elas foram descobertas.
+
+## ⚠️ O QUE A v9 CONSERTA — e o diagnóstico de todo mundo estava errado
+
+O Founder disse: *"tarefas de 20 minutos agora levam 5 a 8 horas"*. Quatro lentes
+foram medir. **A resposta contraria o que eu, ele e o consultor externo supúnhamos.**
+
+📊 **Mediana do intervalo entre commits, cinco janelas de `git log`:**
+
+```
+16–17/08  sem juiz, sem protocolo   58 commits   20,5 min   ← a memória do Founder
+24–25/08  COM o protocolo           20 commits   21,7 min
+```
+
+> 🔴 **O tempo por commit não mudou. E a execução ficou DUAS VEZES mais rápida:**
+> 📊 **13,8 linhas/min** contra **7,1** na semana anterior.
+
+**O que mudou foi a fila antes do primeiro passo:**
+
+```
+fração do relógio que NÃO produz código de produto
+   16–17/08  CONTROLE ......  7,6%
+   22–23/08  ..............   1,0%
+   24–25/08  PROTOCOLO ..... 35,7%
+
+📊 tempo até a primeira linha de código da SPEC-085:  9h25
+```
+
+**E o laço de juiz — que todos apontavam — custou 59 minutos.** 📊 As três voltas
+da SPEC-085: 13 min cada. Sete voltas da SPEC-084: 52 min. **O juiz é barato.**
+
+### 🔴 As duas causas reais, medidas
+
+**① O PEDÁGIO DE ENTRADA.** 📊 A leitura obrigatória do `CLAUDE.md` §2 soma
+**864.896 bytes**, e **cresceu 31% em quatro dias** (596 KB em 21/08). Destes,
+**465 KB são o `PENDENCIAS.md`** — 233 entradas, 5,6% fechadas.
+📊 **O prompt de delegação tem 9 KB. O que ele manda ler tem 865 KB. Razão 92×.**
+
+**② O LAÇO FOI INVERTIDO — e passou a comprar documento em vez de produto.**
+
+```
+📊 23/08  os juízes rodaram DEPOIS do código
+          → compraram 1.008 LINHAS DE CONSERTO DE PRODUTO
+📊 24/08  as três voltas rodaram ANTES, sobre um documento
+          → compraram 610 linhas de DOCUMENTO e ZERO de código
+📊 razão docs/código:  0,24  →  0,74
+```
+
+> ## 🔴 O protocolo não deixou a execução lenta. Ele criou uma fila de 9h25 antes dela, e mudou o alvo do juiz de CÓDIGO para DOCUMENTO.
+
+**A v9 ataca as duas — e começa por si mesma.** 📊 A v8 tinha 58 KB e virou o
+segundo maior arquivo do bootstrap. O histórico, as medições e a prova de cada
+regra foram para [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md) —
+**leitura uma vez, nunca a cada sessão.**
+
+---
+
+---
+
+### 📊 25/08 — a bateria aberta ao meio, e a ordem deixou de ser teoria
+
+```
+os 296 guardas-script     7m14      45% do relógio
+o resto do pytest         ~9m       55%
+                          ─────
+                          16m10     550 passed · 45 xfailed
+```
+
+🔴 **E dos 296, só 87 são perigosos.** O critério é mecânico — o guarda lança
+processo (`subprocess`, `Popen`, `Thread`), escreve arquivo, toca a rede, ou
+importa o compartilhado (`corridor_playbooks`, `replay`):
+
+```
+209  leitores puros    →  podem rodar EM PARALELO
+ 87  perigosos         →  ficam SERIAIS
+```
+
+💭 A 4 processos: `7m14 → ~3m30`. **~48 minutos por SPEC**, sem cortar um teste.
+
+## 📊 26/08 — o passo 2º está MEDIDO, e ele desmente quem o escreveu
+
+**Pela primeira vez no projeto, o número de rodadas da bateria numa SPEC não é
+chute.** O diário do `conftest.py` contou a SPEC-093 inteira:
+
+```
+rodadas de pytest no total ......  115
+   bateria INTEIRA ..............    9
+   parciais (um teste, um arquivo) 106
+
+relógio esperando a suíte .......  2h00
+   só as inteiras ...............  1h49
+   cada uma .....................  12,0 · 12,3 · 12,4 · 13,4 · 13,5 · 14,4 · 14,5 · 17,1
+```
+
+E a conta que importa:
+
+```
+SPEC-093, do primeiro ao último commit ...  4,0 horas
+   das quais a bateria ...................  2,0 horas   =  50%
+```
+
+### 🔴 O que isto derruba
+
+⚠️ **Eu escrevi *"13 commits × 16m44 = 3h37"* com cara de medição.** O medido é
+**2h00** — o chute estava **80% alto**. 📊 E a causa é a que a §12.1 descreve:
+**commit não é rodada.** Foram 11 commits e **9** rodadas inteiras, e as 106
+parciais custaram só ~10 minutos no total.
+
+> **A aritmética sobre uma unidade medida não herda a marca 📊 da unidade.**
+
+### ✅ E o que confirma
+
+📊 A paralelização entregou: as nove inteiras deram média **13m18**, contra
+**16m10** antes. Sem ela, as mesmas nove teriam custado **2h26** — a economia
+real foi de **~26 minutos nesta SPEC**.
+
+### 🔴 E o passo 3º agora é decidível — o que ele não era
+
+**Nove rodadas inteiras para seis blocos.** A alavanca que sobra não é rodar mais
+rápido: é **rodar menos vezes**.
+
+```
+hoje       9 inteiras × 13m18  =  2h00
+o alvo     4–5 inteiras        =  ~1h      →  a SPEC cai de 4h para ~3h
+```
+
+⚠️ **E o pré-requisito continua o mesmo:** 📊 273 dos arquivos de teste são
+scripts, **não existe mapa teste→módulo**, e sem ele *"rodar só o que prova a
+leaf"* é chute. **O mapa é o trabalho, não o corte.**
+
+⛔ **O que NÃO fazer:** cortar rodada por regra de tempo ("uma a cada duas
+horas"). 📊 As 106 parciais são baratas e são o que o executor usa para trabalhar
+— cortá-las economiza 10 minutos e cega o ciclo curto.
+
+---
+
+## ✅ 25/08 — o passo 1º está FEITO
+
+📊 **O mutador nunca foi um guarda desobediente: era o harness matando errado.**
+`subprocess.run(timeout=)` mata com `TerminateProcess`, que no Windows derruba
+**um processo, não a árvore** — e os netos seguiam mutando o corredor por
+minutos, na janela de quem estivesse rodando.
+
+```
+🔴 o estouro mata a ÁRVORE      taskkill /F /T · killpg
+🔴 a trava é do KERNEL          msvcrt.locking / flock sobre 1 byte
+   ⛔ nunca O_EXCL, nunca unlink: o lock é do HANDLE, e o SO o solta
+      quando o dono morre. Sem idade, sem PID, sem ninguém "destravando".
+🔴 a espera da trava < o teto de quem espera     900s → 90s, contra TETO=120
+```
+
+> ⛔ **A regra que custou um dia:** `xfail` num guarda que **LANÇA PROCESSO**
+> esconde o efeito colateral junto com a falha. Quarentena é para asserção
+> vencida — **nunca para quem tem filho.**
+
+📊 Provado por `test_o_timeout_nao_deixa_neto_vivo.py`. O que dá direito à
+conclusão é a **linha de controle**: matando só o pai o neto **sobrevive**;
+matando a árvore, **morre**.
+
+**E o passo 2º está instrumentado:** `backend/tests/conftest.py` escreve uma
+linha por rodada. Na próxima SPEC o "9–14 rodadas" vira 📊, e só então o 3º é
+decidível. ⚠️ *"13 commits × 16m44 = 3h37"* foi dito com cara de medição —
+🔴 **commit não é rodada**, e a §12.1 vale contra quem a escreveu.
+
+📎 O diagnóstico inteiro, com os tempos e a ordem dos índices, está em
+[`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
+
+---
+
+## ⛔ Mas o passo 1º deixou de ser precaução e virou defeito medido
+
+📊 **Hoje, numa rodada real, o mesmo guarda deu os dois resultados:**
+
+```
+no lote:   test_o_comparador_ve_resposta_errada    FALHOU
+sozinho:   o mesmo guarda                          PASSOU (16,21s)
+```
+
+🔴 **É o processo solto do `test_todos_os_guardas_script_rodam.py`, vivo.** Alguém
+lança uma medição, não a espera, e a mutação de `corridor_playbooks.py` cai na
+janela de quem estiver rodando na hora.
+
+> ⛔ **Paralelizar antes da trava não alarga a janela — alarga QUEM CAI NELA.**
+> O mutador continua serial; o que muda é o número de vítimas por janela. Com
+> 209 em paralelo, um vermelho aleatório vira rotina — **e vermelho que vira
+> rotina é vermelho que ninguém lê** (`CLAUDE.md` §9.3).
+
+⚠️ **E a suíte segue crescendo:** 322 em 24/08 · 463 em 25/08 · **595** depois da
+SPEC-092. **+85% em dois dias.** A conta piora sozinha.
+
+⛔ **MAS A ORDEM DO CONSERTO NÃO É ÓBVIA, e invertê-la troca um problema de tempo
+por um de PERDA DE DADO:**
+
+```
+1º  A TRAVA DA BATERIA (§10, acima).  📊 É a bateria rodando na árvore
+    compartilhada que apagou dois consertos. Afinar QUANDO ela roda sem mudar
+    ONDE ela roda troca lentidão por trabalho perdido.
+    🔴 **E em 25/08 isto deixou de ser risco e virou medição:** um guarda
+    vermelho no lote e verde sozinho, no mesmo dia. A trava é conserto de
+    defeito ATIVO — não é preparação para o paralelismo, é pré-requisito dele.
+
+2º  MEDIR QUANTAS VEZES ela roda de fato numa SPEC. 💭 9–14 é estimativa,
+    não medição — e este documento não aceita de mais ninguém o que aceitaria
+    de si (§11).
+
+3º  SÓ ENTÃO os gates por nível: leaf prova a leaf, branch prova a integração,
+    root roda tudo.
+    ⚠️ 📊 Hoje **273 dos 279 arquivos de teste são scripts**, não pytest —
+    **não existe mapa teste→módulo**, e sem ele "rodar só o que prova a leaf"
+    é chute. O mapa é pré-requisito, não detalhe.
+
+⛔ E antes de tudo: 📊 `grep -rn "rotas-montam" .github/` → **vazio**. O gate que
+   o `CLAUDE.md` §9.1 existe para impor não roda. **Afinar bateria antes de
+   fechar esse buraco é afinar o lado errado.**
+```

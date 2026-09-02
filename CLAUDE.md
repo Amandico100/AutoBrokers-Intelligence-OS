@@ -36,6 +36,26 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
 4. a SPEC da etapa atual
 ```
 
+### ⛔ E o protocolo é LEI — não é leitura recomendada
+
+```
+🔴 NENHUMA execução de SPEC começa sem o EXECUTION CARD do protocolo §0.2.
+🔴 NENHUM relatório de SPEC fecha sem ele. Relatório sem card = SPEC aberta.
+🔴 TODO pacote entregue a um subagente carrega o protocolo §0,§1,§2,§3,§5.
+```
+
+📊 **Por que isto virou regra em 30/08/2026:** uma auditoria mediu que o painel de
+juízes rodou em **2 de 6** SPECs — e a causa não foi desobediência. Os prompts das
+outras quatro **não carregavam o protocolo**, porque a §1 dele listava seis itens
+do pacote e **esquecia de si mesma**.
+
+```
+COM PAINEL    47 achados · 22 defeitos de PRODUTO
+SEM PAINEL    19 achados ·  0 defeitos de produto     3,7× menos
+```
+
+⚠️ **O painel custa ~4% do relógio. A bateria de testes custa 50%.**
+
 ### O ÍNDICE — consulta quando a tarefa pedir, nunca "por via das dúvidas"
 
 | quando | abra |

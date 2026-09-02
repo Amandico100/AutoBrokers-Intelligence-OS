@@ -4,6 +4,40 @@
 > **Uso:** copiar para `docs/canon/reports/SPEC-0NN-EXECUTION-REPORT.md` ao iniciar a SPEC e preencher ao longo da execução
 ---
 
+
+## 0.0 🔴 O EXECUTION CARD — obrigatório, e é a primeira coisa do relatório
+
+> ⛔ **Relatório sem este bloco = SPEC não fechada.** É o `PROTOCOLO-AAA` §0.2.
+> 📊 A conta do §3 foi executada **0 de 6 vezes** nas SPECs anteriores — porque
+> era regra sem portão. **Este é o portão.**
+
+```
+OUTCOME ..............
+RISCO ................  0–8   alcance + reversibilidade + frequência   (§3)
+SUPERFÍCIE ...........  0–3                                            (§3)
+PISO APLICADO ........  qual, e por quê                                (§3.2)
+UNIDADES .............
+COESÃO ...............  quais ficaram JUNTAS, e por quê                (§3.4)
+PARALELISMO REAL .....  quantos escritores simultâneos — ou "nenhum"
+TIME .................  os papéis que a conta pediu                    (§4)
+REFERÊNCIA ...........  o artefato que o juiz ABRIU                    (§7.1)
+GATES ................
+FAIXA DE RELÓGIO .....  a declarada  ·  a real  ·  e "por que continuou" se estourou
+```
+
+### 🔴 E as três perguntas que fecham o card
+
+```
+① o PAINEL rodou?           quantas lentes · o que acharam   (§5)
+② a AUDITORIA EXTERNA?      obrigatória em RISCO 6+ e no que o segurado alcança (§6.1)
+③ o que ficou de PENDÊNCIA por VALOR MARGINAL, e não por falta de tempo?  (§9.1)
+```
+
+⚠️ **"Não rodei o painel" é resposta aceitável** — se a conta do §3 disse que ele
+não era necessário, e **a conta está escrita acima**. ⛔ O que não é aceitável é
+o campo em branco.
+
+---
 # Template de relatório final de execução de SPEC
 
 ## Instruções de uso
@@ -50,15 +84,15 @@ Qualquer item não marcado exige explicação nominal na §10.
 
 ## 0.1 O PROTOCOLO AAA — as duas contas, a referência e o laço
 
-> 🔴 Obrigatória. `PROTOCOLO-AUTOBROKERS-AAA.md` §2 diz *"o orquestrador escreve
+> 🔴 Obrigatória. `PROTOCOLO-AUTOBROKERS-AAA.md` §3 diz *"o orquestrador escreve
 > as duas contas no relatório"*, e §5 diz que referência que não está escrita não existe
 > para o juiz. **Este é o lugar.** Uma linha por unidade de trabalho.
 
 | unidade | ALC | REV | FREQ | **RISCO** | **SUP** | piso? | time montado |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| <bloco/rota/peça> | | | | | | §2.4 | |
+| <bloco/rota/peça> | | | | | | §3.2 | |
 
-⚠️ Modo **IDEIA** ou **INCIDENTE**: escreva `—` nas contas e diga qual modo (§2.5/§7).
+⚠️ Modo **IDEIA** ou **INCIDENTE**: escreva `—` nas contas e diga qual modo (§8).
 
 **Referência por dimensão** (§5) — e marque se o Founder confirmou:
 

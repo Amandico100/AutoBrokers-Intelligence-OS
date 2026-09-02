@@ -4,62 +4,7 @@
 > Não diz **o que** construir — isso é a SPEC. Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> **v9 · 25/08/2026** · vale para toda SPEC, execução, ideia, incidente e agente.
-
----
-
-## ⚠️ O QUE A v9 CONSERTA — e o diagnóstico de todo mundo estava errado
-
-O Founder disse: *"tarefas de 20 minutos agora levam 5 a 8 horas"*. Quatro lentes
-foram medir. **A resposta contraria o que eu, ele e o consultor externo supúnhamos.**
-
-📊 **Mediana do intervalo entre commits, cinco janelas de `git log`:**
-
-```
-16–17/08  sem juiz, sem protocolo   58 commits   20,5 min   ← a memória do Founder
-24–25/08  COM o protocolo           20 commits   21,7 min
-```
-
-> 🔴 **O tempo por commit não mudou. E a execução ficou DUAS VEZES mais rápida:**
-> 📊 **13,8 linhas/min** contra **7,1** na semana anterior.
-
-**O que mudou foi a fila antes do primeiro passo:**
-
-```
-fração do relógio que NÃO produz código de produto
-   16–17/08  CONTROLE ......  7,6%
-   22–23/08  ..............   1,0%
-   24–25/08  PROTOCOLO ..... 35,7%
-
-📊 tempo até a primeira linha de código da SPEC-085:  9h25
-```
-
-**E o laço de juiz — que todos apontavam — custou 59 minutos.** 📊 As três voltas
-da SPEC-085: 13 min cada. Sete voltas da SPEC-084: 52 min. **O juiz é barato.**
-
-### 🔴 As duas causas reais, medidas
-
-**① O PEDÁGIO DE ENTRADA.** 📊 A leitura obrigatória do `CLAUDE.md` §2 soma
-**864.896 bytes**, e **cresceu 31% em quatro dias** (596 KB em 21/08). Destes,
-**465 KB são o `PENDENCIAS.md`** — 233 entradas, 5,6% fechadas.
-📊 **O prompt de delegação tem 9 KB. O que ele manda ler tem 865 KB. Razão 92×.**
-
-**② O LAÇO FOI INVERTIDO — e passou a comprar documento em vez de produto.**
-
-```
-📊 23/08  os juízes rodaram DEPOIS do código
-          → compraram 1.008 LINHAS DE CONSERTO DE PRODUTO
-📊 24/08  as três voltas rodaram ANTES, sobre um documento
-          → compraram 610 linhas de DOCUMENTO e ZERO de código
-📊 razão docs/código:  0,24  →  0,74
-```
-
-> ## 🔴 O protocolo não deixou a execução lenta. Ele criou uma fila de 9h25 antes dela, e mudou o alvo do juiz de CÓDIGO para DOCUMENTO.
-
-**A v9 ataca as duas — e começa por si mesma.** 📊 A v8 tinha 58 KB e virou o
-segundo maior arquivo do bootstrap. O histórico, as medições e a prova de cada
-regra foram para [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md) —
-**leitura uma vez, nunca a cada sessão.**
+> **v10 · 30/08/2026** · vale para toda SPEC, execução, ideia, incidente e agente.
 
 ---
 
@@ -70,18 +15,102 @@ regra foram para [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md) �
 
 ---
 
+## 0.1 ⛔ ESTE PROTOCOLO É LEI, E ELE SE CARREGA SOZINHO
+
+> ### 🔴 Nenhuma execução começa sem que este documento esteja no pacote.
+
+⚠️ **A v10 nasce de uma auditoria que mediu por que a v9 não rodava** — e a causa
+não era desobediência. Era **omissão de uma linha**:
+
+```
+📊 092 e 093    o prompt mandava LER o protocolo   →  o painel RODOU     2 de 2
+📊 087·090·086·089   o prompt NÃO mandava          →  não rodou          0 de 4
+```
+
+🔴 **A §1 listava seis itens que o pacote precisa carregar — e esquecia de si
+mesma.** Um prompt que obedecia a §1 com perfeição entregava um pacote **sem o
+protocolo dentro**.
+
+### O que isso custou, medido
+
+```
+COM PAINEL    47 achados · 22 defeitos de PRODUTO   →  23,5 por SPEC
+SEM PAINEL    19 achados ·  0 defeitos de produto   →   6,3 por SPEC
+                                                        3,7× menos
+```
+
+⚠️ **E a diferença não é de volume, é de CLASSE.** Sem painel, 17 dos 19 achados
+eram *"guardas que não guardavam"* — defeito de teste. Com painel: vazamento
+entre corretoras, resposta em dobro ao segurado, `RecursionError` derrubando o
+webhook. **Defeito de produto.**
+
+```
+o painel custa    ~4% do relógio
+a bateria custa    50% do relógio
+```
+
+### ⛔ As três linhas que tornam isto executável
+
+```
+1. TODO pacote de execução carrega este protocolo — §0, §1, §2, §3, §5.
+   🔴 Sem ele, o agente NÃO COMEÇA. Ele pede.
+
+2. TODO relatório de execução abre com o EXECUTION CARD (§0.2).
+   🔴 Relatório sem card = SPEC não fechada.
+
+3. Quem escreve o prompt de execução é responsável pelo item 1.
+   ⚠️ Falhar aqui não é falha do executor. É de quem montou o pacote.
+```
+
+---
+
+## 0.2 🔴 O EXECUTION CARD — dez linhas, antes de escrever código
+
+**Toda execução começa cuspindo isto, e o Founder lê em vinte segundos:**
+
+```
+OUTCOME ..............  o que muda para quem usa
+RISCO ................  0–8   (alcance + reversibilidade + frequência, §3)
+SUPERFÍCIE ...........  0–3   (§3)
+PISO APLICADO ........  qual, e por quê (§3.2)
+UNIDADES .............  quantas, e quais
+COESÃO ...............  quais ficam JUNTAS e por quê (§3.4)
+PARALELISMO REAL .....  quantos escritores ao mesmo tempo — ou "nenhum"
+TIME .................  os papéis que a conta pediu (§4)
+REFERÊNCIA ...........  o artefato que o juiz vai ABRIR (§7)
+GATES ................  o que precisa ficar verde
+FAIXA DE RELÓGIO .....  ex.: 1–2h  ·  🔴 faixa, nunca promessa
+```
+
+🔴 **Por que ele existe:** 📊 a conta do §3 foi executada **ZERO de seis vezes**
+nas últimas SPECs — inclusive nas duas que rodaram o painel. Um passo
+obrigatório com 100% de descumprimento **e sem gate** não é regra: é decoração.
+
+⚠️ **E o card é o gate.** Em dez linhas o Founder vê, antes de começar, se o
+agente vai abrir nove builders para mudar uma string — ou zero juízes para mexer
+em `company_id`.
+
+---
+
 ## 1. 🔴 A DIETA — a primeira regra, porque é o maior custo medido
 
 ```
 🔴 O AGENTE RECEBE UM PACOTE, NUNCA O CANON.
 
-   o contrato da unidade
+   🔴 ESTE PROTOCOLO — §0, §1, §2, §3, §5 — SEMPRE, e é o primeiro item
+   + o contrato da unidade
    + as interfaces que ela toca
    + as regras invioláveis PERTINENTES, por número
    + os arquivos, por caminho
+   + a REFERÊNCIA que o juiz vai abrir (§7)
    + os gates
    + as pendências POR NÚMERO — 🔴 nunca o `PENDENCIAS.md` inteiro
 ```
+
+> ⛔ **A primeira linha é nova na v10, e ela é a razão da v10 existir.**
+> 📊 A lista antiga tinha seis itens e **esquecia de si mesma**: um pacote
+> montado com perfeição saía **sem o protocolo dentro** — e foi exatamente o que
+> aconteceu em 4 das 6 últimas SPECs. Ver §0.1.
 
 ⚠️ **A prática já fazia isso e a regra não.** Os prompts de execução deste projeto
 já estreitam a leitura a seis itens e a cinco IDs. **Agora é regra, e o
@@ -212,6 +241,39 @@ RISCO 6 no mínimo, independente da conta:
 CONSULTA PONTUAL  "onde está X?" · "o que faz Y?"        → dispensado
 VARREDURA         "isto funcionou?" · "serve para nós?"  → MODO INVESTIGAÇÃO
 ```
+
+### 🔴 3.4 A COESÃO — o que decide se dá para paralelizar ESCRITA
+
+⚠️ **Arquivos diferentes NÃO significam trabalhos independentes.** Dois agentes
+podem tocar arquivos separados que compartilham a mesma interface, o mesmo tipo,
+o mesmo contrato — e aí o que se ganha em paralelo se perde em reconciliação.
+
+```
+🔴 ALTO ACOPLAMENTO   →  MESMO escritor, em sequência
+   BAIXO ACOPLAMENTO  →  candidato a paralelo
+   ARQUIVO-HUB        →  UM dono por vez, sempre
+```
+
+**Como medir, em três perguntas — e sem construir ferramenta:**
+
+```
+1. as unidades tocam a MESMA interface, tipo ou contrato?     → juntas
+2. alguma delas REDEFINE algo que a outra consome?            → juntas
+3. o `OWNS` de cada uma é realmente disjunto?                 → se não, juntas
+```
+
+⛔ **Se mapear isso custar mais que fazer a tarefa, não mapeie.** Tarefa pequena
+continua pequena — é a §12.
+
+📊 **Por que a regra existe:** na SPEC-085 os commits de fase tocavam
+repetidamente o mesmo `dispatch_router.py`. **Paralelizar escrita ali teria sido
+pior**, e a medição daquela SPEC virou proibição universal. 🔴 **A v10 desfaz a
+generalização sem desfazer a lição:** aquele caso continua serial; um caso com
+partições realmente disjuntas, não.
+
+> **PARALELIZE O QUE TEM POUCA CONVERSA. MANTENHA JUNTO O QUE TEM MUITA.**
+
+---
 
 ---
 
@@ -366,6 +428,46 @@ prescrição: ele tenta reproduzir e mostra o resultado.
 
 ---
 
+## 🔴 6.1 A AUDITORIA EXTERNA — quem olha de fora vê o que o laço não vê
+
+📊 **Medido duas vezes, e nas duas o laço interno tinha rodado:**
+
+```
+SPEC-093   o painel rodou, achou 22 defeitos
+           🔴 e uma auditoria EXTERNA achou depois uma REGRESSÃO que ele não viu:
+              o clique da atendente apagava o caso da única fila que existe
+
+SPEC-089   a SPEC foi escrita com cuidado
+           🔴 e a auditoria externa derrubou QUATRO afirmações dela,
+              inclusive um orçamento de "5 horas" que eram 9m59
+```
+
+**A diferença não é competência. É posição.** O painel julga **durante**, com o
+contexto do trabalho. A auditoria externa julga **depois**, sobre o resultado, e
+sem saber o que foi difícil.
+
+### Quando ela é obrigatória
+
+```
+🔴 RISCO 6+  ou  qualquer coisa que o segurado alcança
+🔴 toda SPEC que mexe em company_id, migration, envio ou Core
+```
+
+### Como ela funciona
+
+```
+✅ contexto NOVO, que não viu a execução
+✅ recebe: a SPEC · o código pronto · a referência (§7)
+⛔ NÃO recebe: o relatório do executor, nem por que algo foi difícil
+🔴 e a missão é: "ache um defeito real que o executor não achou"
+```
+
+⚠️ **Ela NÃO substitui o painel** — 📊 o painel achou 58 defeitos nas seis SPECs;
+a auditoria externa achou 3. **Ela pega uma classe diferente:** o que o próprio
+conserto criou, e o que todo mundo por dentro passou a achar normal.
+
+---
+
 ## 7. A REFERÊNCIA — o que substitui "faça excelente"
 
 ```
@@ -373,9 +475,59 @@ prescrição: ele tenta reproduzir e mostra o resultado.
 2. UM PONTO ESPECÍFICO, nunca o produto inteiro
 3. A INTERNA VENCE A EXTERNA — 🔴 mas a MEDIANA do que passou no gate,
    nunca o outlier: copiar o topo produz alvo que ninguém alcança
-4. UMA POR DIMENSÃO   segurança → OWASP · API → o contrato · UI → a tela
-                      agente → as conversas-ouro · performance → o SLO
+4. UMA POR DIMENSÃO — e cada uma tem NOME e CAMINHO na tabela abaixo
 ```
+
+## 🔴 7.1 · AS REFERÊNCIAS DO AUTOBROKERS — abra, rode, compare
+
+⚠️ **Esta tabela é a v10 inteira em uma peça.** 📊 A auditoria de 30/08 mediu que
+a §7 nomeava **zero artefatos abríveis**: *"as conversas-ouro"* tinha **uma
+ocorrência no repositório — esta própria linha**. E `0 de 9` relatórios de
+execução citavam referência.
+
+> **O projeto tinha referências melhores que quase qualquer repositório, e o
+> protocolo não apontava para nenhuma. Não faltava construir: faltava NOMEAR.**
+
+| dimensão | 🔴 a referência, por caminho | como o juiz compara |
+|---|---|---|
+| **corredor / rota** | `backend/scripts/medir_rota.py --com-espelho` | roda e compara **número contra número** |
+| **a rota de referência** | 📊 `allianz/auto/guincho` = **76/76 AAA(76)** | a rota nova chega perto? |
+| **atendimento ponta a ponta** | `backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py` | 📊 a sessão real `b2bf40e7`, mapeada turno a turno |
+| **conversas-ouro** | `backend/tests/test_golden_do_eletricista.py` | 📊 **10 casos** lidos do banco de produção |
+| **telas reais de URA** | `backend/tests/corpus/telas_reais/` | 📊 **16 arquivos · 4.279 linhas · 10 seguradoras** |
+| **UI** | `docs/canon/DS-001-design-brief.md` | o brief, não o gosto de quem julga |
+| **multi-tenant** | `CLAUDE.md` §7 + o teste com **dois tenants reais** | o filtro no código, não a RLS |
+| **migration** | `docs/canon/MIGRATIONS-AUTHORITY.md` | APPLY · VERIFY · ROLLBACK escritos ANTES |
+
+⛔ **O que NÃO temos, e o protocolo não finge que tem:**
+
+```
+API      não existe arquivo OpenAPI no repositório
+SLO      não existe alvo de latência
+OWASP    citado, nunca aplicado a um julgamento
+```
+
+🔴 **Nessas três dimensões a regra do §7 vale ao pé da letra:** sem referência
+inspecionável, elas são **"não avaliadas"** — nunca "aprovadas".
+
+## 🔴 7.2 · O caso que prova por que isto importa
+
+📊 18/08/2026, no teste do eletricista:
+
+```
+12:23:43  ←  "O que aconteceu? 1-Casa sem energia 2-Curto circuito"
+              <<< 2 MINUTOS E 22 SEGUNDOS DE SILÊNCIO >>>
+12:26:05      o Founder clicou "1" do próprio celular
+```
+
+A causa, no docstring do arquivo: *"criei o passo `o_que_aconteceu` exigindo um
+slot que NADA no produto preenchia. Passo que exige slot que ninguém preenche
+não responde e não avisa — fica calado."*
+
+> 🔴 **Uma conversa-ouro reexecutada teria parado naquele turno.**
+> E a prova é que **o conserto foi construir a referência**: mapear a sessão real
+> turno a turno. **Pagamos o defeito e só então fabricamos o instrumento que o
+> teria pego.**
 
 ```
 🤖 O AGENTE PROPÕE, junto com a conta, ANTES de montar time
@@ -491,6 +643,86 @@ qualquer outra coisa                          →  PENDÊNCIA
 ⚠️ **O critério não é "é importante?" — quase tudo é. É "cabe agora sem me tirar
 do bloco?"**
 
+### 🔴 9.1 O VALOR MARGINAL — quando o resto não muda o produto
+
+**Depois de cada rodada, classifique o que sobrou:**
+
+```
+🔴 MATERIAL — continua
+   segurança · isolamento entre corretoras · integridade de dado
+   efeito colateral errado · Core · critério de aceite não provado
+   regressão · falha real de serviço · evidência que falta para dizer PASS
+
+⛔ NÃO MATERIAL AGORA — vira PENDÊNCIA e a execução AVANÇA
+   estilo · micro-refactor · nome melhor · abstração mais bonita
+   documentação que ninguém precisa para executar
+   dívida sem efeito hoje · preferência de quem julga
+```
+
+> **A execução não ganha crédito por quantidade de lapidação.**
+
+🧑 **É a preferência do Founder, escrita como regra:**
+
+```
+2h → 93/100 sem defeito material
+   é MELHOR que
+24h → 95/100 comprado com polimento
+
+MAS
+
+6h → 99/100 fechando risco real no Core
+   é MELHOR que
+2h → 85/100 deixando fragilidade estrutural
+```
+
+### 🔴 9.2 A FAIXA DE RELÓGIO, e o PORTÃO DO "POR QUE CONTINUAR"
+
+O EXECUTION CARD (§0.2) declara uma **faixa**, nunca uma promessa: `1–2h`, `3–5h`.
+
+⚠️ **Estourar a faixa não para nada automaticamente.** O que ela obriga é
+responder, por escrito:
+
+```
+🔴 POR QUE CONTINUAR?
+   o que ainda falta ·  que risco isso fecha
+   que gate isso fecha ·  que evidência falta
+```
+
+**Resposta boa, e a execução segue:**
+> *"Estamos em 4h15 porque achamos vazamento entre corretoras reproduzível.
+> Falta corrigir a query e repetir com dois tenants. É blocker."*
+
+**Resposta ruim, e vira pendência:**
+> *"Tudo passa, mas estou refatorando as interfaces para ficarem mais elegantes."*
+
+### 🔴 9.3 ATIVIDADE NÃO É PROGRESSO — o travamento sem avanço
+
+📊 A SPEC-084.1 custou **31,9 horas** e produziu **151 linhas de produto por
+hora** — contra 765 e 1.028 das SPECs recentes. **O agente estava ocupado o tempo
+todo.**
+
+**Os sinais, e bastam dois:**
+
+```
+o MESMO blocker em duas rodadas, sem evidência nova
+a mesma hipótese repetida com outras palavras
+nenhum gate mudou de estado
+patch sendo feito e desfeito
+a discussão cresce e o artefato não muda
+```
+
+**Quando acontecer:**
+
+```
+1. PARE o laço — não tente de novo
+2. registre: o que está PROVADO · o que já se tentou · por que falhou
+3. abra CONTEXTO FRESCO
+4. troque a ESTRATÉGIA, não só o executor
+```
+
+⛔ **Travamento NUNCA transforma FAIL em PASS.** Ele troca o caminho, nunca o
+veredito.
+
 ### 📋 A CAIXA DO FOUNDER
 
 Uma seção do relatório que o executor **vai acrescentando**. ⛔ **Nunca se para
@@ -571,163 +803,6 @@ fatia isolada de desperdício medida — e o laço de juízes inteiro custou 59 
 
 ⚠️ **A suíte cresce a cada SPEC:** 322 testes em 24/08, **463** em 25/08. E o teto de
 `TETO_SEGUNDOS = 120` × 272 scripts dá **9h de cauda no pior caso**.
-
-### 📊 25/08 — a bateria aberta ao meio, e a ordem deixou de ser teoria
-
-```
-os 296 guardas-script     7m14      45% do relógio
-o resto do pytest         ~9m       55%
-                          ─────
-                          16m10     550 passed · 45 xfailed
-```
-
-🔴 **E dos 296, só 87 são perigosos.** O critério é mecânico — o guarda lança
-processo (`subprocess`, `Popen`, `Thread`), escreve arquivo, toca a rede, ou
-importa o compartilhado (`corridor_playbooks`, `replay`):
-
-```
-209  leitores puros    →  podem rodar EM PARALELO
- 87  perigosos         →  ficam SERIAIS
-```
-
-💭 A 4 processos: `7m14 → ~3m30`. **~48 minutos por SPEC**, sem cortar um teste.
-
-## 📊 26/08 — o passo 2º está MEDIDO, e ele desmente quem o escreveu
-
-**Pela primeira vez no projeto, o número de rodadas da bateria numa SPEC não é
-chute.** O diário do `conftest.py` contou a SPEC-093 inteira:
-
-```
-rodadas de pytest no total ......  115
-   bateria INTEIRA ..............    9
-   parciais (um teste, um arquivo) 106
-
-relógio esperando a suíte .......  2h00
-   só as inteiras ...............  1h49
-   cada uma .....................  12,0 · 12,3 · 12,4 · 13,4 · 13,5 · 14,4 · 14,5 · 17,1
-```
-
-E a conta que importa:
-
-```
-SPEC-093, do primeiro ao último commit ...  4,0 horas
-   das quais a bateria ...................  2,0 horas   =  50%
-```
-
-### 🔴 O que isto derruba
-
-⚠️ **Eu escrevi *"13 commits × 16m44 = 3h37"* com cara de medição.** O medido é
-**2h00** — o chute estava **80% alto**. 📊 E a causa é a que a §12.1 descreve:
-**commit não é rodada.** Foram 11 commits e **9** rodadas inteiras, e as 106
-parciais custaram só ~10 minutos no total.
-
-> **A aritmética sobre uma unidade medida não herda a marca 📊 da unidade.**
-
-### ✅ E o que confirma
-
-📊 A paralelização entregou: as nove inteiras deram média **13m18**, contra
-**16m10** antes. Sem ela, as mesmas nove teriam custado **2h26** — a economia
-real foi de **~26 minutos nesta SPEC**.
-
-### 🔴 E o passo 3º agora é decidível — o que ele não era
-
-**Nove rodadas inteiras para seis blocos.** A alavanca que sobra não é rodar mais
-rápido: é **rodar menos vezes**.
-
-```
-hoje       9 inteiras × 13m18  =  2h00
-o alvo     4–5 inteiras        =  ~1h      →  a SPEC cai de 4h para ~3h
-```
-
-⚠️ **E o pré-requisito continua o mesmo:** 📊 273 dos arquivos de teste são
-scripts, **não existe mapa teste→módulo**, e sem ele *"rodar só o que prova a
-leaf"* é chute. **O mapa é o trabalho, não o corte.**
-
-⛔ **O que NÃO fazer:** cortar rodada por regra de tempo ("uma a cada duas
-horas"). 📊 As 106 parciais são baratas e são o que o executor usa para trabalhar
-— cortá-las economiza 10 minutos e cega o ciclo curto.
-
----
-
-## ✅ 25/08 — o passo 1º está FEITO
-
-📊 **O mutador nunca foi um guarda desobediente: era o harness matando errado.**
-`subprocess.run(timeout=)` mata com `TerminateProcess`, que no Windows derruba
-**um processo, não a árvore** — e os netos seguiam mutando o corredor por
-minutos, na janela de quem estivesse rodando.
-
-```
-🔴 o estouro mata a ÁRVORE      taskkill /F /T · killpg
-🔴 a trava é do KERNEL          msvcrt.locking / flock sobre 1 byte
-   ⛔ nunca O_EXCL, nunca unlink: o lock é do HANDLE, e o SO o solta
-      quando o dono morre. Sem idade, sem PID, sem ninguém "destravando".
-🔴 a espera da trava < o teto de quem espera     900s → 90s, contra TETO=120
-```
-
-> ⛔ **A regra que custou um dia:** `xfail` num guarda que **LANÇA PROCESSO**
-> esconde o efeito colateral junto com a falha. Quarentena é para asserção
-> vencida — **nunca para quem tem filho.**
-
-📊 Provado por `test_o_timeout_nao_deixa_neto_vivo.py`. O que dá direito à
-conclusão é a **linha de controle**: matando só o pai o neto **sobrevive**;
-matando a árvore, **morre**.
-
-**E o passo 2º está instrumentado:** `backend/tests/conftest.py` escreve uma
-linha por rodada. Na próxima SPEC o "9–14 rodadas" vira 📊, e só então o 3º é
-decidível. ⚠️ *"13 commits × 16m44 = 3h37"* foi dito com cara de medição —
-🔴 **commit não é rodada**, e a §12.1 vale contra quem a escreveu.
-
-📎 O diagnóstico inteiro, com os tempos e a ordem dos índices, está em
-[`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
-
----
-
-## ⛔ Mas o passo 1º deixou de ser precaução e virou defeito medido
-
-📊 **Hoje, numa rodada real, o mesmo guarda deu os dois resultados:**
-
-```
-no lote:   test_o_comparador_ve_resposta_errada    FALHOU
-sozinho:   o mesmo guarda                          PASSOU (16,21s)
-```
-
-🔴 **É o processo solto do `test_todos_os_guardas_script_rodam.py`, vivo.** Alguém
-lança uma medição, não a espera, e a mutação de `corridor_playbooks.py` cai na
-janela de quem estiver rodando na hora.
-
-> ⛔ **Paralelizar antes da trava não alarga a janela — alarga QUEM CAI NELA.**
-> O mutador continua serial; o que muda é o número de vítimas por janela. Com
-> 209 em paralelo, um vermelho aleatório vira rotina — **e vermelho que vira
-> rotina é vermelho que ninguém lê** (`CLAUDE.md` §9.3).
-
-⚠️ **E a suíte segue crescendo:** 322 em 24/08 · 463 em 25/08 · **595** depois da
-SPEC-092. **+85% em dois dias.** A conta piora sozinha.
-
-⛔ **MAS A ORDEM DO CONSERTO NÃO É ÓBVIA, e invertê-la troca um problema de tempo
-por um de PERDA DE DADO:**
-
-```
-1º  A TRAVA DA BATERIA (§10, acima).  📊 É a bateria rodando na árvore
-    compartilhada que apagou dois consertos. Afinar QUANDO ela roda sem mudar
-    ONDE ela roda troca lentidão por trabalho perdido.
-    🔴 **E em 25/08 isto deixou de ser risco e virou medição:** um guarda
-    vermelho no lote e verde sozinho, no mesmo dia. A trava é conserto de
-    defeito ATIVO — não é preparação para o paralelismo, é pré-requisito dele.
-
-2º  MEDIR QUANTAS VEZES ela roda de fato numa SPEC. 💭 9–14 é estimativa,
-    não medição — e este documento não aceita de mais ninguém o que aceitaria
-    de si (§11).
-
-3º  SÓ ENTÃO os gates por nível: leaf prova a leaf, branch prova a integração,
-    root roda tudo.
-    ⚠️ 📊 Hoje **273 dos 279 arquivos de teste são scripts**, não pytest —
-    **não existe mapa teste→módulo**, e sem ele "rodar só o que prova a leaf"
-    é chute. O mapa é pré-requisito, não detalhe.
-
-⛔ E antes de tudo: 📊 `grep -rn "rotas-montam" .github/` → **vazio**. O gate que
-   o `CLAUDE.md` §9.1 existe para impor não roda. **Afinar bateria antes de
-   fechar esse buraco é afinar o lado errado.**
-```
 
 ### Onde a velocidade NÃO está
 
