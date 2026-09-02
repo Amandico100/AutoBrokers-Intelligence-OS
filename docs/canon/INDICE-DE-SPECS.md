@@ -79,21 +79,38 @@ que nunca foi usado. **Não invente SPEC para preencher.**
 
 # 🔴 A FILA DE VERDADE — o que falta, em ordem
 
-## LEVA 1 — fechar a sequência
+## ✅ LEVA 1 — CONVERTIDA em 02/09/2026. A sequência `081 → 093` está inteira.
 
-| ordem | vira | de qual proposta | 💭 |
-|:---:|---|---|:---:|
-| 1º | **SPEC-088** | `4 - SPEC-088-central-de-agentes-…` | conversão ~1h |
-| 2º | **SPEC-091** | `6 - SPEC-091-protocol-process-factory` | conversão ~1h |
+| ordem | SPEC pronta, por caminho | 💭 execução |
+|:---:|---|:---:|
+| 1º | [`SPEC-088 · A Central de Agentes para de mentir de verde`](specs/SPEC-088-a-central-de-agentes-para-de-mentir-de-verde.md) | ~3–5h |
+| 2º | [`SPEC-091 · O pacote carrega o que a §1 manda`](specs/SPEC-091-o-pacote-carrega-o-que-a-secao-1-manda.md) | ~1–2h |
 
-🔴 **Estas duas vêm primeiro porque são os ÚNICOS buracos na sequência.**
-Depois delas, `081` a `093` fica inteira, sem falha.
+🔴 **As duas entraram na fila adiadas com gatilho (nota 50 e 45), e a conversão
+REMEDIU os dois gatilhos.** Nenhum disparou — e as duas SPECs dizem isso com
+número, em vez de repetirem a proposta:
 
-⚠️ **E as duas foram auditadas e adiadas com gatilho** (nota **50** e **45**).
-**Isso não as tira da fila** — significa que a conversão precisa **primeiro
-reconferir se o gatilho já disparou**, e o resultado honesto pode ser
-*"continua adiada, e aqui está a medição de hoje"*. 🔴 **Adiada com data e
-motivo é diferente de esquecida.**
+```
+📊 088  o gatilho era "agentes ou auxiliares > ~20".  Hoje: 8 agentes
+        (2 por corretora × 4) e 9 auxiliares instalados.  NÃO disparou.
+        🔴 Mas a medição achou OUTRA coisa, e ela muda o produto:
+        a Central dá VERDE quando o LAÇO roda, não quando o TRABALHO acontece.
+        📊 `intelligence.garimpo`: 9 execuções `completed` em 3 dias,
+           e `broker_insights` sem uma linha nova há 7 dias. Card verde.
+        📊 E morto há 8 dias vira ⚪ AGUARDANDO, mais brando que 🔴 PARADO
+           às 2h — o estado MELHORA conforme a morte envelhece.
+
+📊 091  o gatilho era "TRÊS protocolos escritos à mão".  Hoje: UM.
+        NÃO disparou, e a Factory inteira (2.815 linhas) fica adiada.
+        🔴 Mas 4 de 10 pacotes de execução não carregam o protocolo — e o
+        guarda criado em 02/09 (`9dddb7f`) confere o DOCUMENTO, não o PACOTE.
+        Sobrou 1 bloco de ~1–2h, e a conta do §3 dele deu RISCO 1.
+```
+
+> ⚠️ **Adiada com data e número é diferente de esquecida.** O que saiu de cada
+> proposta está na seção `O QUE SAIU` da SPEC correspondente, **com o gatilho
+> medível que a faz voltar** (`CLAUDE.md` §11 — recorte registrado, nunca
+> silencioso).
 
 ## LEVA 2 — as que já têm número livre
 
@@ -163,11 +180,24 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 
 # 📌 A PRÓXIMA COISA A FAZER
 
+> ✅ **A LEVA 1 está convertida** (02/09/2026). As duas SPECs estão em
+> `docs/canon/specs/` e podem ir para o executor como estão.
+
 ```
-🔴 CONVERTER a SPEC-088 e a SPEC-091      chat CONVERSOR · ~2h
-   depois EXECUTAR as duas                chat EXECUTOR
-   depois converter 094, 095, 096         e assim por diante
+1º  EXECUTAR a SPEC-088 e a SPEC-091      chat EXECUTOR · 💭 ~4–7h as duas
+    🔴 088 primeiro: ela é a que muda o produto. A 091 é 1 bloco.
+
+2º  CONVERTER a LEVA 2                    chat CONVERSOR
+    093-B  →  094  →  095  →  096
+    ⚠️ e a regra de cima vale: converta 2 a 4, execute essas 2 a 4, repita.
+       🔴 Converter as quatro hoje e executá-las em três semanas produz
+       medição vencida — que é o defeito das propostas atuais.
 ```
+
+⚠️ **A ordem entre 088 e 091 importa por um motivo medido:** a SPEC-091 acrescenta
+um bloco ao `test_o_protocolo_tem_policia.py`, e a SPEC-088 usa **esse mesmo
+arquivo** como referência §7.1 do guarda dela. Executar a 088 antes dá ao executor
+a referência **como ela está hoje**, sem alvo em movimento.
 
 ⚠️ **E antes de tudo isso:** o piloto com a Regina e a Saionara está esperando
 elas voltarem do treinamento. **Ele não depende de SPEC nenhuma desta fila.**
