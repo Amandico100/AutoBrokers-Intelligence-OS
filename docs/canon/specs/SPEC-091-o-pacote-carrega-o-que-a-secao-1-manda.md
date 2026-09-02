@@ -174,8 +174,26 @@ alvo:   docs/canon/PROMPT-DE-EXECUCAO-*   e   docs/canon/PROMPT-DE-AQUECIMENTO-*
 regra:  todo pacote cita `PROTOCOLO-AUTOBROKERS-AAA` E o EXECUTION CARD
 ```
 
-**E os 4 pacotes medidos hoje são consertados** — a linha do protocolo entra
-neles. ⚠️ 🔴 **Consertar sem o guarda seria inútil:** o defeito não foi falta de
+🔴 **E a regra tem DUAS metades. A conversão contou uma. As duas, medidas
+em 02/09 com `grep -c` nos 10 arquivos:**
+
+```
+PROTOCOLO ......  4 de 10 não citam
+EXECUTION CARD .  9 de 10 não citam    🔴 nunca foi contado
+```
+
+⚠️ **E as duas metades são quase anticorrelacionadas:** o único arquivo que
+carrega o EXECUTION CARD (`PROMPT-DE-EXECUCAO-DA-LEVA.md`, 3×) **é um dos quatro
+que não carrega o protocolo.**
+
+> 🔴 **Por isso o conserto é de 10 arquivos, não de 4.** Consertar só os 4 e
+> ligar o guarda deixaria **nove reprovando** — e o executor cairia numa de duas:
+> estourar a faixa editando o que ninguém planejou, ou **derrubar em silêncio a
+> cláusula do card**, que é o defeito que esta SPEC existe para consertar.
+
+**E os 10 pacotes são consertados** — a linha do protocolo entra nos 4, a do
+EXECUTION CARD nos 9. ⚠️ **A faixa sobe de 1–2h para 2–3h por causa disto**, e
+a §9.2 manda declarar a mudança em vez de estourar em silêncio. ⚠️ 🔴 **Consertar sem o guarda seria inútil:** o defeito não foi falta de
 texto, foi falta de portão. É o que o commit `9dddb7f` escreveu sobre si mesmo:
 *"escrever pela quarta vez não faria diferença"*.
 
@@ -191,6 +209,15 @@ texto, foi falta de portão. É o que o commit `9dddb7f` escreveu sobre si mesmo
    🔴 um `PROMPT-DE-EXECUCAO-097.md` criado amanhã já nasce coberto
 ⑤ as 17 asserções que já existem continuam verdes
 ⑥ `.md` e `.TXT` — 📊 os dois formatos existem no repositório hoje
+   ⚠️ **e a comparação é SEM CAIXA:** 📊 `PROMPT-DE-AQUECIMENTO-SPEC-085.MD`
+   tem extensão maiúscula, e um `glob('*.md')` acha 7 no Windows e 6 no Linux
+⑦ 🔴 **nenhum pacote manda "leia o protocolo INTEIRO".**
+   📊 O protocolo tem **919 linhas**, e a §1 manda carregar §0, §1, §2, §3 e §5.
+   📊 Hoje **3 dos 6 pacotes conformes dizem "INTEIRO"** — e um guarda que
+   só faz `grep` da string **carimbaria os três como aprovados**, cimentando a
+   leitura mais pesada exatamente na seção que É a dieta.
+   ⚠️ **O gate que só conta a presença da string piora a dieta enquanto
+   conserta o portao.** Este é o gate que impede isso
 ```
 
 🔴 **A mutação obrigatória, e são duas — a segunda é a que quase todo mundo
@@ -198,9 +225,20 @@ esquece:**
 
 ```
 1. tire a linha do protocolo de UM pacote  →  ② tem de ficar VERMELHO
-2. 🔴 renomeie um pacote para um nome fora do padrão  →  ele tem de
-   continuar sendo achado, ou o gate ④ REPROVA
+2. 🔴 **crie** `PROMPT-DE-EXECUCAO-097.md` — um nome que NÃO existe hoje,
+   DENTRO do padrão  →  o guarda tem de achá-lo sem ninguém listá-lo
    ⛔ um guarda que só acha o que já conhece guarda o passado
+3. 🔴 **LINHA DE CONTROLE DO ALCANCE:** `PROMPT-COBRADOR.TXT` — que está
+   FORA do padrão  →  o guarda **NÃO** pode reclamar dele
+   📊 Existem **10 arquivos `PROMPT*` fora de `PROMPT-DE-*`**, e **9 têm zero
+   citações**. Um guarda alargado demais **nasce vermelho em 9 arquivos que
+   nem são pacotes de execução** — e guarda que acusa inocente ensina a
+   ignorá-lo
+
+⚠️ **A mutação 2 dizia o contrário disto até 02/09** (*"renomeie para um nome
+FORA do padrão → tem de continuar achando"*) — e **contradizia o próprio gate
+④**, que exige casamento por padrão. Um casador por padrão não pode, por
+construção, achar o que está fora dele.
 ```
 
 ⛔ Restaurar **por cópia**, nunca `git checkout` (protocolo §10 · P-231).
@@ -235,7 +273,7 @@ dor que a medição de hoje encontrou.
 
 | dimensão | referência | como comparar |
 |---|---|---|
-| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 📊 196 linhas · 17 asserções · a mutação escrita no commit `9dddb7f`. 🔴 **O bloco `[5]` entra NELE** — o juiz abre o arquivo e vê se o novo bloco tem a mesma dureza dos quatro |
+| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 📊 **205 linhas** · 17 asserções · a mutação escrita no commit `9dddb7f`. 🔴 **O bloco `[7]` entra NELE** — ⚠️ `bloco_1` a `bloco_5` já existem e o `bloco_6_CONTROLE` **fica por último** — o juiz abre o arquivo e vê se o novo bloco tem a mesma dureza dos quatro |
 | **linha de controle** | `CLAUDE.md` §9.3 | prove que o guarda **CONSEGUE** ficar vermelho |
 | **o número é medido?** | `CLAUDE.md` §12.1 | 📊 tem consulta e data · 💭 nunca é citável |
 

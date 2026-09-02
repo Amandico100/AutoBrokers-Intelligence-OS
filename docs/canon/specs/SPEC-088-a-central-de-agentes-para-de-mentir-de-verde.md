@@ -72,7 +72,8 @@ agendador**, e o card é lido como se medisse **o trabalho**.
 
 | # | onde | o que faz | por que é grave |
 |---|---|---|---|
-| **D1** | `backend/app/services/broker_insights.py:337` `finally:` → `:343` `await beat("garimpo", mined)` | o pulso está num **`finally`**, com `mined = 0` da linha `:315` | 🔴 **o caminho de EXCEÇÃO também pinta o card de verde.** Quebrou → pulsou |
+| **D1** | `backend/app/services/broker_insights.py:307-311` `if cutover_ligado(): return 0` — **antes** do `finally:` da `:342` | 🔴 o `beat("garimpo")` da `:343` é **inalcançável em produção** | 📊 `INTELLIGENCE_CUTOVER` tem padrão `"1"` (`legacy_adapter.py:36`) e 📊 `grep beat( services/intelligence/` → **zero**. O motor canônico não pulsa nada |
+| **D1-b** | o mesmo `finally:` da `:342`, quando o cutover está DESLIGADO | o pulso sai com `mined = 0` no caminho de exceção | 🔴 quebrou → pulsou. ⚠️ **É o defeito do rollback, não o de hoje** — e os dois têm de cair juntos |
 | **D2** | `backend/app/services/conversation_auditor.py:181` `await beat("alfaiate")` | o **Auditor** dá o pulso do **Alfaiate**, sem contagem | o card de um agente fica verde pelo trabalho de outro |
 | **D3** | `backend/app/services/atlas/attendance_capture.py:378` `await _beat(0)  # pulso sem acao: mostra o agente vivo na Central` | pulso com zero ações, **de propósito** | está escrito no código que o verde é decorativo |
 | **D4** | `backend/app/core/heartbeat.py:18` `_TTL = 7 * 86400` + `app/admin/central-agentes/page.tsx` `health()` | morto há **2h** → `PARADO` 🔴 · morto há **8 dias** → a chave expira, `last_run: null` → `AGUARDANDO` ⚪ | 🔴 **o estado MELHORA conforme a morte envelhece.** É a SPEC-089 outra vez: a régua sobe quando deixa de medir |
@@ -202,12 +203,17 @@ REVERSIBILIDADE ... 0   🔴 e é DESENHO, não sorte: zero migration (§5).
 FREQUÊNCIA ........ 2   `beat()` é chamado em TODO atendimento
                    ──
 RISCO ............. 4
-SUPERFÍCIE ........ 2   uma peça nova (a leitura de produção) + 📊 27 chamadas
-                        a `beat()` em 18 arquivos — medido em 02/09 com
-                        `grep -rn "await beat(\|await _beat(" backend/app`
-                        🔴 é 2 e não 3 porque eu SEI LISTAR todas as 27.
-                        ⚠️ Os BLOCOS A e B tocam SEIS delas; as outras 21
-                        continuam como estão, e o gate ⑤ do BLOCO D confere isso
+SUPERFÍCIE ........ 3   🔴 subiu de 2 para 3 na revisão de 02/09, e a razão é
+                        medida: eu listáva as 📊 27 chamadas a `beat()` e
+                        conclí que sabia apontar tudo. ⚠️ **Não sabia.**
+                        📊 `work_runs` · 7 dias: **SEIS `workflow_key`,
+                        640 execuções**, e NENHUM tem `beat()` ou card:
+                          detect_signals 504 (hoje 21:03) · outcomes 84
+                          garimpo 21 · daily_briefing 21 · cluster 7 · weekly 3
+                        🔴 O §3 é explícito: *"consigo apontar TODOS os
+                        lugares? Não → SUPERFÍCIE 3."* Eu não conseguia.
+                        ⚠️ RISCO 4 × SUP 3 acrescenta **investigador** e
+                        **desenhista da prova** ao time (§3.1)
 PISO .............. nenhum, por EFEITO (§3.2), e cada linha conferida:
                         não envia · sem migration · não toca auth nem
                         `company_id` · não escreve noutra corretora
@@ -306,7 +312,8 @@ cadencia_esperada   de quanto em quanto tempo ele DEVIA produzir
 | `sentinela_rotas` | `route_drift` | 26/08 14:07 |
 | `espelho_atendimento` | `attendance_transcripts` | 26/08 16:40 |
 | `followup` | `platform_sends` | 19/08 19:41 |
-| `garimpo` | `broker_insights` · `source='garimpo_v3'` | 26/08 00:05 |
+| `garimpo` | 🔴 `intelligence_signals` · `source_type='garimpo'` (`garimpo_v3.py:216`) | 26/08 00:04 |
+| `detector` | 🔴 `intelligence_signals` · `source_type='detector'` — **não existe card para ele** | ⚠️ **02/09 04:04 — VIVO HOJE** |
 | `auditor` | `conversation_scorecards` | 26/08 00:19 |
 | `alfaiate` | `playbook_overlays` | ⛔ **0 linhas, nunca** |
 | `cartografo` | `ura_maps` | 26/08 14:07 |
@@ -402,7 +409,16 @@ estava errado.
    🔴 e o teste roda com `last_run` de 1 MINUTO ATRÁS — a janela exata em que
    o código de hoje pinta 🟢. ⛔ Testar com pulso velho não prova nada:
    ali o código antigo já daria 🟡 sozinho, pelo motivo errado
-② agente `is_active=false` → ⚪ DESLIGADO, com a data
+② agente `is_active=false` → ⚪ DESLIGADO. 🔴 **E a data é opcional por
+   medição, não por preguica:** 📊 `SELECT count(desligado_em) FROM agents` →
+   **0 de 8**. A coluna existe e está inteiramente NULL, e esta SPEC proíbe
+   migration e backfill. **Sem data → o card escreve `sem registro`**, nunca
+   uma data inferida do último transcript
+②-b 🔴 **E `is_active` é POR CORRETORA:** 📊 a `core` tem 3 `true` e 1 `false`.
+   O card da Central é UM, de plataforma. **A regra é `all()`: DESLIGADO só
+   quando TODAS as corretoras desligaram** — uma ligada já espera trabalho.
+   ⚠️ E não existe chave ligando os 8 `agents.slug` aos 14 de `AGENT_TASKS`:
+   **agente sem correspondência mostra `NÃO MEDIDO`, nunca `DESLIGADO`**
 ③ agente sem fonte → ⚫ NÃO MEDIDO
 ④ 🔴 agente morto há 30 dias → 🔴 PARADO.  ⛔ o `_TTL` de 7 dias NÃO pode
    transformar morte antiga em ⚪ — é a §1.2 D4, e é o coração desta SPEC
@@ -513,7 +529,21 @@ o defeito em silêncio, e é exatamente o que aconteceu de `garimpo` para `garim
    ⚠️ é uma regra sobre as 📊 27 chamadas, não sobre a do Garimpo:
    consertar só o caso conhecido deixa os outros 26 livres para repetir
 ⑥ 🔴 nenhum agente dá o pulso de outro — o `beat("x")` está no laço do `x`
-   📊 hoje há UMA violação (`conversation_auditor.py:181`). Depois: zero
+   📊 **NÃO é uma violação. São OITO**, medidas em 02/09:
+     `agent_memory:212`→espelho · `history_ingest:204`→espelho_atendimento
+     `history_ingest:212`→observador · `route_sentinel:444`→alfaiate
+     `attendance_distiller:1344`→espelho_atendimento · `auditor:181`→alfaiate
+     `prompt_optimizer:199`→alfaiate · `regression_sentinel:160`→auditor
+   🔴 **O `alfaiate` recebe de TRÊS módulos e não tem módulo próprio.**
+   ⚠️ Consertar só o `:181` deixa as outras sete de pé — e era exatamente
+   esse o erro que este gate existia para impedir
+⑥-b 🔴 **TODO `workflow_key` visto em `work_runs` nos últimos 7 dias tem
+   agente correspondente em `AGENT_TASKS`** — ou está numa lista de
+   `SEM CARD, POR DECISÃO` escrita nesta SPEC.
+   📊 Hoje **SEIS reprovam**, inclusive o `detect_signals` (504 execuções,
+   59 sinais, o único que produziu alguma coisa hoje).
+   ⚠️ **Este é o único gate que teria pegado o motor invisível** — e é a
+   §1.5 desta SPEC aplicada à lista que sobrou
 ⑦ 🔴 DOIS TENANTS: nenhuma rota de corretora serve `agents-status` nem o número
    agregado. `require_master_admin` provado, não presumido
 ⑧ `next start` + 1 requisição a `/api/admin/spec034/agents-status`

@@ -79,6 +79,8 @@ PARALELISMO REAL .....  quantos escritores ao mesmo tempo — ou "nenhum"
 TIME .................  os papéis que a conta pediu (§4)
 REFERÊNCIA ...........  o artefato que o juiz vai ABRIR (§7)
 GATES ................  o que precisa ficar verde
+🔴 O ELO ..............  a afirmação-título liga A a B? Então MEDIU O ELO,
+                        não só as pontas (§0.3)
 FAIXA DE RELÓGIO .....  ex.: 1–2h  ·  🔴 faixa, nunca promessa
 ```
 
@@ -89,6 +91,50 @@ obrigatório com 100% de descumprimento **e sem gate** não é regra: é decora�
 ⚠️ **E o card é o gate.** Em dez linhas o Founder vê, antes de começar, se o
 agente vai abrir nove builders para mudar uma string — ou zero juízes para mexer
 em `company_id`.
+
+---
+
+## 0.3 🔴 O ELO — duas medições certas não fazem uma causa certa
+
+📊 **Acrescentado em 02/09/2026, depois que DUAS SPECs convertidas sob a v10
+caíram no mesmo buraco — e nenhuma delas errou um número.**
+
+```
+SPEC-088   📊 "9 execuções completed"     ✓ exato
+           📊 "zero produção há 7 dias"    ✓ exato
+           🔴 ligadas por um `beat()` que NÃO DISPARA há meses
+
+SPEC-091   📊 "4 de 10 não carregam o protocolo"   ✓ exato
+           🔴 e a regra tinha DUAS metades. A segunda: 9 de 10
+```
+
+> 🔴 **As duas mediram as PONTAS. Nenhuma mediu o ELO.**
+
+⚠️ **E isto é um defeito de nível novo, não uma recaída.** O defeito antigo era
+*"o número está errado"* — 📊 a SPEC-087 afirmava `escalated = 4` quando eram
+14+2. **Só se chega em "a causalidade não foi conferida" depois de parar de
+errar o número.** É subir de patamar, e o patamar novo tem buraco próprio.
+
+### A pergunta, e ela cabe em uma linha
+
+```
+minha afirmação-título é da forma "A acontece PORQUE B"?
+   → eu medi A?      ✓ quase sempre sim
+   → eu medi B?      ✓ quase sempre sim
+   🔴 eu medi que B CHEGA em A?      ← este é o passo que ninguém dá
+```
+
+**Três formas do mesmo erro, todas vistas neste projeto:**
+
+| forma | como aparece | como se pega |
+|---|---|---|
+| **código morto** | a linha culpada existe, e um `return` acima dela impede que rode | rode o caminho, ou leia da linha 1 da função até ela |
+| **meia regra** | a regra é `A E B`, e só `A` foi contado | conte cada cláusula separada, sempre |
+| **fonte de ontem** | o número é certo, mas quem escreve mudou de tabela | pergunte *"quem É o escritor HOJE"*, não *"quem era"* |
+
+🔴 **E o corolário, que é o mais caro:** um conserto sobre um elo não conferido
+**fica verde com o produto idêntico.** 📊 Na SPEC-088, o D1 consertaria um
+`beat()` inalcançável: gate verde, card mentindo igual, e a SPEC fechada.
 
 ---
 
