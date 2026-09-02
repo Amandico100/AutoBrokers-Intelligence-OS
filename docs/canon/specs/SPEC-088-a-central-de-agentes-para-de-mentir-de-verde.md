@@ -72,8 +72,8 @@ agendador**, e o card é lido como se medisse **o trabalho**.
 
 | # | onde | o que faz | por que é grave |
 |---|---|---|---|
-| **D1** | `backend/app/services/broker_insights.py:307-311` `if cutover_ligado(): return 0` — **antes** do `finally:` da `:342` | 🔴 o `beat("garimpo")` da `:343` é **inalcançável em produção** | 📊 `INTELLIGENCE_CUTOVER` tem padrão `"1"` (`legacy_adapter.py:36`) e 📊 `grep beat( services/intelligence/` → **zero**. O motor canônico não pulsa nada |
-| **D1-b** | o mesmo `finally:` da `:342`, quando o cutover está DESLIGADO | o pulso sai com `mined = 0` no caminho de exceção | 🔴 quebrou → pulsou. ⚠️ **É o defeito do rollback, não o de hoje** — e os dois têm de cair juntos |
+| **D1** | `backend/app/services/broker_insights.py:307-311` `if cutover_ligado(): return 0` — **antes** do `finally:` da `:337` | 🔴 o `beat("garimpo")` da `:343` é **inalcançável em produção** | 📊 `INTELLIGENCE_CUTOVER` tem padrão `"1"` (`legacy_adapter.py:36`) e 📊 `grep beat( services/intelligence/` → **zero**. O motor canônico não pulsa nada |
+| **D1-b** | o mesmo `finally:` da `:337`, quando o cutover está DESLIGADO | o pulso sai com `mined = 0` no caminho de exceção | 🔴 quebrou → pulsou. ⚠️ **É o defeito do rollback, não o de hoje** — e os dois têm de cair juntos |
 | **D2** | `backend/app/services/conversation_auditor.py:181` `await beat("alfaiate")` | o **Auditor** dá o pulso do **Alfaiate**, sem contagem | o card de um agente fica verde pelo trabalho de outro |
 | **D3** | `backend/app/services/atlas/attendance_capture.py:378` `await _beat(0)  # pulso sem acao: mostra o agente vivo na Central` | pulso com zero ações, **de propósito** | está escrito no código que o verde é decorativo |
 | **D4** | `backend/app/core/heartbeat.py:18` `_TTL = 7 * 86400` + `app/admin/central-agentes/page.tsx` `health()` | morto há **2h** → `PARADO` 🔴 · morto há **8 dias** → a chave expira, `last_run: null` → `AGUARDANDO` ⚪ | 🔴 **o estado MELHORA conforme a morte envelhece.** É a SPEC-089 outra vez: a régua sobe quando deixa de medir |
@@ -207,7 +207,10 @@ SUPERFÍCIE ........ 3   🔴 subiu de 2 para 3 na revisão de 02/09, e a razão
                         medida: eu listáva as 📊 27 chamadas a `beat()` e
                         conclí que sabia apontar tudo. ⚠️ **Não sabia.**
                         📊 `work_runs` · 7 dias: **SEIS `workflow_key`,
-                        640 execuções**, e NENHUM tem `beat()` ou card:
+                        640 execuções**, e 🔴 **CINCO** não têm card nem
+                        `beat()`. ⚠️ O `garimpo` tem os dois
+                        (`heartbeat.py:44` e `broker_insights.py:343`)
+                        — e por isso ele é o D1, não um dos invisíveis:
                           detect_signals 504 (hoje 21:03) · outcomes 84
                           garimpo 21 · daily_briefing 21 · cluster 7 · weekly 3
                         🔴 O §3 é explícito: *"consigo apontar TODOS os
@@ -217,9 +220,12 @@ SUPERFÍCIE ........ 3   🔴 subiu de 2 para 3 na revisão de 02/09, e a razão
 PISO .............. nenhum, por EFEITO (§3.2), e cada linha conferida:
                         não envia · sem migration · não toca auth nem
                         `company_id` · não escreve noutra corretora
-TIME .............. builder · juiz · verificador   (§3.1, RISCO 2–5 × SUP 1–2)
+TIME .............. builder · juiz · verificador · 🔴 **investigador** ·
+                    🔴 **desenhista da prova**   (§3.1, RISCO 4 × SUP 3)
+                    ⚠️ os dois últimos entraram com a SUPERFÍCIE 3
 PARALELISMO REAL .. nenhum. A e B tocam `heartbeat.py` e os mesmos call sites
-FAIXA DE RELÓGIO .. 3–5h    🔴 faixa, nunca promessa (§9.2)
+FAIXA DE RELÓGIO .. 🔴 **4–7h**   faixa, nunca promessa (§9.2)
+                    ⚠️ subiu de 3–5h com a SUPERFÍCIE e os dois papéis novos
 ```
 
 🔴 **A auditoria externa (§6.1) NÃO é obrigatória aqui** — RISCO 4, e nada sai do
@@ -312,8 +318,27 @@ cadencia_esperada   de quanto em quanto tempo ele DEVIA produzir
 | `sentinela_rotas` | `route_drift` | 26/08 14:07 |
 | `espelho_atendimento` | `attendance_transcripts` | 26/08 16:40 |
 | `followup` | `platform_sends` | 19/08 19:41 |
-| `garimpo` | 🔴 `intelligence_signals` · `source_type='garimpo'` (`garimpo_v3.py:216`) | 26/08 00:04 |
+| `garimpo` | 🔴 **as DUAS, com `greatest()`** — `intelligence_signals`·`source_type='garimpo'` **e** `broker_insights`·`source IN ('garimpo_v3','garimpo','garimpo_llm')` | 26/08 00:04 e 00:05 |
 | `detector` | 🔴 `intelligence_signals` · `source_type='detector'` — **não existe card para ele** | ⚠️ **02/09 04:04 — VIVO HOJE** |
+
+🔴 **Por que o `garimpo` usa `greatest()` das duas, e não uma:** 📊 o fluxo
+canônico escreve **as duas com a mesma caneta** — `workflows.py:291` chama
+`GarimpoV3`, que grava `intelligence_signals` na `:106` e **projeta** em
+`broker_insights` na `:174` pela `_projetar_legado` (`:164`), **incondicional**
+(📊 `grep -c cutover garimpo_v3.py` → **0**). Os dois últimos registros
+distam 📊 **69 segundos**. ⚠️ E o caminho de rollback grava OUTRO rótulo —
+`source='garimpo'`/`'garimpo_llm'` (`broker_insights.py:98,:232`), 📊 com
+**zero linhas em toda a história da tabela**.
+
+> 🔴 **Uma fonte só cega o card no dia em que a flag virar.** Com o cutover
+> desligado, o legado escreve `broker_insights` e **para** de escrever
+> `intelligence_signals`. O `greatest()` sobrevive nas duas direções.
+
+⚠️ **Esta linha já esteve errada duas vezes, e as duas por não abrir a
+`_projetar_legado`:** a conversão cravou `source='garimpo_v3'` — uma versão atrás
+do escritor — e o primeiro conserto inverteu para `intelligence_signals` citando
+a `garimpo_v3.py:216`, que é um `.select()` de painel dentro da
+`voz_do_periodo()`. **Uma LEITURA apresentada como escritor.**
 | `auditor` | `conversation_scorecards` | 26/08 00:19 |
 | `alfaiate` | `playbook_overlays` | ⛔ **0 linhas, nunca** |
 | `cartografo` | `ura_maps` | 26/08 14:07 |
@@ -394,8 +419,18 @@ paga do lado de quem alerta.
 ```
 D1  `broker_insights.py:337`   o pulso SAI do `finally`
     🔴 caminho de exceção não pinta card. Falhou → o card conta a falha
-D2  `conversation_auditor.py:181`  `beat("alfaiate")` sai do laço do Auditor
+    ⚠️ **E isto sozinho não muda NADA em produção**, porque o `return 0` da
+    `:311` já torna a linha inalcançável. 🔴 **O pulso do Garimpo tem de
+    nascer no fluxo canônico** (`garimpo_v3.py` / `workflows.py:291`), senão
+    o gate fica verde com o card mentindo igual (§0.3 do protocolo)
+D2  🔴 **AS OITO chamadas cruzadas do gate ⑥, não só a `:181`:**
+    `agent_memory:212` · `history_ingest:204` · `history_ingest:212`
+    `route_sentinel:444` · `attendance_distiller:1344` · `auditor:181`
+    `prompt_optimizer:199` · `regression_sentinel:160`
     🔴 cada agente dá o próprio pulso, ou não dá nenhum
+    ⚠️ **Consertar só a `:181` REPROVA no gate ⑥** — e era esse o erro que
+    o gate existe para impedir. 🔴 As três do `alfaiate` vão para
+    `playbook_tailor.py`, que é a casa dele
 ```
 
 ⚠️ **D3 (`attendance_capture.py:378`, `_beat(0)`) NÃO é removido.** Com a regra
@@ -534,13 +569,18 @@ o defeito em silêncio, e é exatamente o que aconteceu de `garimpo` para `garim
      `history_ingest:212`→observador · `route_sentinel:444`→alfaiate
      `attendance_distiller:1344`→espelho_atendimento · `auditor:181`→alfaiate
      `prompt_optimizer:199`→alfaiate · `regression_sentinel:160`→auditor
-   🔴 **O `alfaiate` recebe de TRÊS módulos e não tem módulo próprio.**
+   🔴 **O `alfaiate` recebe de TRÊS módulos e não pulsa da casa dele.**
+   ⚠️ 📊 `backend/app/services/playbook_tailor.py` linha 1 diz `ALFAIATE v1
+   (SPEC-034 Onda 4)` — existe desde 26/08, e 📊 `grep -c 'beat('` dá **0**.
+   **A casa existe e não pulsa.** O conserto é mover o pulso para lá, não
+   escolher qual dos três invasores fica
    ⚠️ Consertar só o `:181` deixa as outras sete de pé — e era exatamente
    esse o erro que este gate existia para impedir
 ⑥-b 🔴 **TODO `workflow_key` visto em `work_runs` nos últimos 7 dias tem
    agente correspondente em `AGENT_TASKS`** — ou está numa lista de
    `SEM CARD, POR DECISÃO` escrita nesta SPEC.
-   📊 Hoje **SEIS reprovam**, inclusive o `detect_signals` (504 execuções,
+   📊 Hoje **CINCO reprovam** (o `garimpo` passa), inclusive o
+   `detect_signals` (504 execuções,
    59 sinais, o único que produziu alguma coisa hoje).
    ⚠️ **Este é o único gate que teria pegado o motor invisível** — e é a
    §1.5 desta SPEC aplicada à lista que sobrou
@@ -579,7 +619,7 @@ corretoras.** ⚠️ **Uma corretora vê DOIS agentes.** `agent_delegations` = *
 > auxiliares instalados. O gatilho NÃO disparou.**
 
 🔴 **E é por isso que a SPEC mudou de assunto:** medindo a navegação, o defeito
-que apareceu foi o instrumento mentindo — que **muda o produto** e custa 3–5h,
+que apareceu foi o instrumento mentindo — que **muda o produto** e custa 🔴 **4–7h**,
 contra uma organização operacional que **não muda nada hoje** e custa semanas.
 
 ---
@@ -588,7 +628,7 @@ contra uma organização operacional que **não muda nada hoje** e custa semanas
 
 | dimensão | referência | como comparar |
 |---|---|---|
-| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 📊 196 linhas · 17 asserções · **e a mutação escrita no commit `9dddb7f`**. O guarda do BLOCO D chega perto? |
+| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 📊 **205 linhas** · 17 asserções · **e a mutação escrita no commit `9dddb7f`**. O guarda do BLOCO D chega perto? |
 | **a tela não mente** | `backend/tests/test_a_casa_diz_a_verdade.py` | 📊 236 linhas — o precedente deste projeto de guardar contra documentação e menu que contradizem o código |
 | **UI / design** | `docs/canon/DS-001-design-brief.md` **§5** | o agrupamento do BLOCO C |
 | **o número é medido?** | `CLAUDE.md` §12.1 | 📊 tem consulta e data · 💭 nunca é citável |
@@ -649,5 +689,5 @@ literal) entrega uma tela mais bonita mentindo o mesmo verde.
 ⚠️ **A escrita é de UM SÓ** (protocolo §8): A e B tocam `heartbeat.py` e os call
 sites; **paralelizar aqui é o caso medido da SPEC-085.**
 
-💭 **~3–5h.** O BLOCO A domina — declarar e conferir 14 fontes de produção, três
+💭 **~4–7h** (subiu de 3–5h com a SUPERFÍCIE 3 e os dois papéis novos). O BLOCO A domina — declarar e conferir 14 fontes de produção, três
 delas por medição do executor.

@@ -97,7 +97,7 @@ SEM PAINEL    19 achados ·  0 defeitos de produto        3,7× menos
 ### 🔴 A v10 consertou a REGRA. E o guarda de hoje confere o DOCUMENTO, não o PACOTE
 
 📊 Em 02/09 às 10:12, o commit `9dddb7f` criou
-`backend/tests/test_o_protocolo_tem_policia.py` — 196 linhas, 17 asserções. **É um
+`backend/tests/test_o_protocolo_tem_policia.py` — 📊 **205 linhas**, 17 asserções. **É um
 bom guarda.** Mas os alvos dele, nas linhas 51–53, são três:
 
 ```python
@@ -164,7 +164,7 @@ TIME .............. builder + juiz          (§3.1, RISCO 0–1 × SUPERFÍCIE 1
 
 ## O conserto
 
-⛔ **Não é um arquivo novo de teste.** 🔴 **É um bloco `[5]` dentro do
+⛔ **Não é um arquivo novo de teste.** 🔴 **É um bloco `[7]` dentro do
 `test_o_protocolo_tem_policia.py` que já existe** — porque um segundo guarda do
 protocolo, num segundo arquivo, é a lista dupla que a SPEC-088 §1.5 mediu
 envelhecendo em silêncio.
@@ -212,8 +212,11 @@ texto, foi falta de portão. É o que o commit `9dddb7f` escreveu sobre si mesmo
    ⚠️ **e a comparação é SEM CAIXA:** 📊 `PROMPT-DE-AQUECIMENTO-SPEC-085.MD`
    tem extensão maiúscula, e um `glob('*.md')` acha 7 no Windows e 6 no Linux
 ⑦ 🔴 **nenhum pacote manda "leia o protocolo INTEIRO".**
-   📊 O protocolo tem **919 linhas**, e a §1 manda carregar §0, §1, §2, §3 e §5.
-   📊 Hoje **3 dos 6 pacotes conformes dizem "INTEIRO"** — e um guarda que
+   📊 O protocolo tem **965 linhas** (02/09, depois da §0.3), e a §1 manda carregar §0, §1, §2, §3 e §5.
+   📊 Hoje **DOIS** dizem: `AQUECIMENTO-DO-EXECUTOR.md:57` e
+   `AQUECIMENTO-SPEC-092.md:32`. ⚠️ **A busca tem de ancorar no caminho do
+   protocolo** — um `grep -i inteiro` solto casa com *"cole isto inteiro num
+   chat novo"* e reprova dois pacotes inocentes — e um guarda que
    só faz `grep` da string **carimbaria os três como aprovados**, cimentando a
    leitura mais pesada exatamente na seção que É a dieta.
    ⚠️ **O gate que só conta a presença da string piora a dieta enquanto
@@ -243,7 +246,8 @@ construção, achar o que está fora dele.
 
 ⛔ Restaurar **por cópia**, nunca `git checkout` (protocolo §10 · P-231).
 
-💭 **~1–2h.** ⚠️ **E se passar de 2h, pare e leia a §9.2:** *"por que
+💭 **~2–3h** (subiu de 1–2h quando a segunda metade da regra foi contada).
+⚠️ **E se passar de 3h, pare e leia a §9.2:** *"por que
 continuar?"*. 🔴 Esta SPEC não vale uma terceira hora — o que ela fecha vale
 uma, e o §9.1 diz que a execução não ganha crédito por lapidação.
 

@@ -100,6 +100,38 @@ def bloco_2_o_portao_existe_em_tres_lugares():
           "o template do relatorio pede o card",
           "sem ele, ninguem percebe que a conta nao foi feita")
 
+    # 🔴 E o card tem LINHAS. Conferir so a string "EXECUTION CARD" deixa
+    #    passar um card sem metade dos campos -- foi assim que a linha do ELO
+    #    nasceu em 02/09 e ficou em ZERO de dois pacotes no mesmo commit.
+    p = ler(PROTO)
+
+    # 🔴 So DENTRO do bloco do card. Procurar no documento inteiro faz o
+    #    titulo da secao aprovar a linha que falta -- foi o que aconteceu na
+    #    primeira versao deste bloco, e a linha de controle pegou.
+    card = ""
+    i = p.find("## 0.2")
+    if i >= 0:
+        j = p.find("```", i)
+        k = p.find("```", j + 3) if j >= 0 else -1
+        if k > j:
+            card = p[j:k]
+
+    certo(len(card) > 200, "achei o bloco do EXECUTION CARD (%d chars)" % len(card),
+          "sem ele tudo abaixo passa por vacuidade")
+
+    faltando = [c for c in ("OUTCOME", "RISCO", "SUPERF", "PISO", "UNIDADES",
+                            "COES", "PARALELISMO", "TIME", "REFER", "GATES",
+                            "O ELO", "FAIXA")
+                if c not in card]
+    certo(not faltando,
+          "o card tem TODAS as linhas obrigatorias -- DENTRO do bloco",
+          "faltam: " + " · ".join(faltando))
+
+    certo("O ELO" in card and "§0.3" in p,
+          "a linha do ELO esta no CARD e a secao 0.3 existe",
+          "🔴 linha de card sem secao e decoracao -- a §0.2 diz que passo "
+          "obrigatorio sem gate nao e regra")
+
 
 def bloco_3_a_referencia_tem_caminho():
     print("\n[3] A REFERENCIA APONTA PARA ARQUIVO QUE EXISTE")
