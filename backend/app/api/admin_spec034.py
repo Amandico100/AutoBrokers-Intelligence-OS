@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections import Counter
 from typing import Any, Dict, List
 
@@ -23,12 +24,36 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/spec034", tags=["Admin SPEC-034"])
 
+# 🔴 SPEC-088 §2: nem a rota nova nem as vizinhas imprimem CPF, telefone, apólice ou
+# placa. `_redigir` mata sequências de 10 a 14 dígitos (telefone com DDI, CPF) e o CPF
+# formatado. É grosso de propósito: um número de protocolo perdido custa menos que um
+# CPF num payload de admin.
+_DIGITOS = re.compile(r"\d{10,14}")
+_CPF_FORMATADO = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+
+
+def _redigir(texto: str) -> str:
+    return _DIGITOS.sub("[redigido]", _CPF_FORMATADO.sub("[redigido]", texto))
+
+
+def _mascarar_telefone(numero: str) -> str:
+    """Só os 4 últimos dígitos, precedidos de reticências."""
+    limpo = re.sub(r"\D", "", str(numero or ""))
+    return f"…{limpo[-4:]}" if len(limpo) >= 4 else ("…" if limpo else "")
+
 
 @router.get("/agents-status")
 async def agents_status(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
-    from app.core.heartbeat import read_all
+    """A Central de Agentes — o contrato da §4 da SPEC-088.
 
-    return {"agents": await read_all()}
+    🔴 A chave `agents` do JSON antigo NÃO existe mais: a resposta é `grupos` com o
+    estado de 5 cores calculado de pulso **e** produção, mais o painel de trabalho lido
+    de `work_runs`/`artifacts`/`approval_requests`. Contagens, estados, ids e timestamps
+    — nenhum texto de conversa atravessa.
+    """
+    from app.core.central_de_agentes import carregar_estado
+
+    return await carregar_estado()
 
 
 @router.get("/sessions")
@@ -53,7 +78,8 @@ async def active_sessions(_: Any = Depends(require_master_admin)) -> Dict[str, A
             transcript = (s.get("transcript") or [])[-40:]
             sessions.append({
                 "company_id": parts[2] if len(parts) >= 4 else "",
-                "insurer_phone": parts[3] if len(parts) >= 4 else "",
+                # 🔴 SPEC-088 BLOCO C: o número inteiro da seguradora saía daqui em claro.
+                "insurer_phone": _mascarar_telefone(parts[3]) if len(parts) >= 4 else "",
                 "insurer_label": insurer_label_from_ref(s.get("playbook_ref")),
                 "case_id": s.get("case_id"), "state": s.get("state"),
                 "subservice": s.get("subservice"), "created_at": s.get("created_at"),
@@ -64,7 +90,8 @@ async def active_sessions(_: Any = Depends(require_master_admin)) -> Dict[str, A
                      # "atendente" (nunca um nome próprio: Even é só o nome que a
                      # Resulta deu — cada corretora batiza o seu).
                      "via": t.get("via") or ("seguradora" if t.get("direction") == "in" else "atendente"),
-                     "text": str(t.get("text") or "")[:300]}
+                     # 🔴 o transcript da URA carrega CPF e telefone digitados pelo segurado
+                     "text": _redigir(str(t.get("text") or "")[:300])}
                     for t in transcript
                 ],
             })
@@ -76,18 +103,32 @@ async def active_sessions(_: Any = Depends(require_master_admin)) -> Dict[str, A
 
 @router.get("/insights")
 async def insights(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
-    """Ranking do Garimpo + histórico da IA de Sugestões (30 dias)."""
+    """Ranking do Garimpo + histórico da IA de Sugestões (30 dias).
+
+    🔴 SPEC-088 BLOCO C: os dois filtros (`"garimpo"` e `"sugestoes_ia"`) estavam escritos
+    aqui, e 📊 o banco só tem `garimpo_v3` — o ranking devolvia lista vazia com 270 linhas
+    no banco. Agora eles saem da MESMA `fonte_de_producao` que o registro do BLOCO A
+    declara. Não é trocar a string: é matar a classe.
+    """
     out: Dict[str, Any] = {"ranking": [], "sugestoes": [], "companies": {}}
     try:
+        from app.core.central_de_agentes import filtro_de_fonte, linha_casa_filtro
         from app.core.database import get_supabase_client
 
+        f_garimpo = filtro_de_fonte("garimpo", "broker_insights")
+        f_sugestoes = filtro_de_fonte("sugestoes", "broker_insights")
+        # Filtro ausente é lista vazia, nunca "tudo": um registro incompleto não pode
+        # virar um ranking que mistura as duas fontes.
+        if not f_garimpo or not f_sugestoes:
+            logger.warning("[ADMIN34] insights: fonte_de_producao de broker_insights ausente")
         db = get_supabase_client()
         rows = await asyncio.to_thread(
             lambda: db.client.table("broker_insights")
             .select("company_id, kind, summary, source, status, created_at")
             .order("created_at", desc=True).limit(1000).execute()
         )
-        garimpo = [r for r in rows.data or [] if r.get("source") == "garimpo"]
+        garimpo = ([r for r in rows.data or [] if linha_casa_filtro(r, f_garimpo)]
+                   if f_garimpo else [])
         counts = Counter((r["kind"], r["summary"][:80]) for r in garimpo)
         out["ranking"] = [
             {"kind": k, "summary": s, "count": c}
@@ -96,7 +137,7 @@ async def insights(_: Any = Depends(require_master_admin)) -> Dict[str, Any]:
         out["sugestoes"] = [
             {"company_id": r.get("company_id"), "summary": r.get("summary"),
              "status": r.get("status"), "created_at": r.get("created_at")}
-            for r in (rows.data or []) if r.get("source") == "sugestoes_ia"
+            for r in (rows.data or []) if f_sugestoes and linha_casa_filtro(r, f_sugestoes)
         ][:20]
         comp = await asyncio.to_thread(
             lambda: db.client.table("companies").select("id, company_name").execute()
