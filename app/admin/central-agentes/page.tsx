@@ -175,6 +175,8 @@ const NOME_DO_QUE_FALTA: Record<string, string> = {
   custo: 'custo por trabalhador',
   aprovacoes: 'aprovações pendentes',
   artifacts: 'entregas',
+  trabalho: 'execuções dos últimos 30 dias (leitura truncada)',
+  leitura: 'a leitura do banco (indisponível nesta medição)',
 };
 
 function nomeDoQueFalta(chave: string): string {

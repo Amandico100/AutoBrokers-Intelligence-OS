@@ -29,8 +29,9 @@ pacotes em [`pacotes/`](pacotes/).
    um bloco de guarda sobre os PACOTES — é o bloco [9] do
    `backend/tests/test_o_protocolo_tem_policia.py`. A Protocol Factory da proposta
    continua adiada com o mesmo gatilho (três protocolos escritos à mão).
-🔴 SPEC-088  será REFEITA pelo orquestrador com o research-pack dentro (§7.3).
-   A v1 de 02/09 fica como insumo: as medições dela foram conferidas.
+✅ SPEC-088  REFEITA (v2, 7 referências externas reabertas) e EXECUTADA em 02–03/09/2026 sob a v11.
+   Relatório: reports/SPEC-088-EXECUTION-REPORT.md. A 088-B (runtime de delegação) fica
+   adiada com gatilho medido: agent_delegations = 0.
 ```
 
 ## ⛔ O PROCESSO ANTERIOR, em três caixas (histórico, até 02/09/2026)
@@ -81,6 +82,7 @@ entre elas**. Um chat por SPEC joga fora esse ganho.
 | **090** | O atendimento de ontem vira conserto de hoje | 26/08 |
 | **092** | O formulário dentro do WhatsApp | 25/08 |
 | **093** | O atendimento real liga e funciona | 25/08 |
+| **088** | A Central de Agentes diz a verdade (v2, protocolo v11) | 03/09 |
 
 ## ⬜ OS BURACOS — e nenhum precisa de ação
 
@@ -108,8 +110,8 @@ que nunca foi usado. **Não invente SPEC para preencher.**
 
 | ordem | SPEC pronta, por caminho | 💭 execução |
 |:---:|---|:---:|
-| 1º | [`SPEC-088 · A Central de Agentes para de mentir de verde`](specs/SPEC-088-a-central-de-agentes-para-de-mentir-de-verde.md) | ~3–5h |
-| 2º | [`SPEC-091 · O pacote carrega o que a §1 manda`](specs/SPEC-091-o-pacote-carrega-o-que-a-secao-1-manda.md) | ~1–2h |
+| ✅ | [`SPEC-088 · A Central de Agentes diz a verdade`](specs/SPEC-088-a-central-de-agentes-para-de-mentir-de-verde.md) — EXECUTADA 03/09 · 📊 relógio 22:40→02:00 | feita |
+| ✅ | [`SPEC-091`](specs/SPEC-091-o-pacote-carrega-o-que-a-secao-1-manda.md) — ABSORVIDA pela v11 do protocolo em 03/09 | feita |
 
 🔴 **As duas entraram na fila adiadas com gatilho (nota 50 e 45), e a conversão
 REMEDIU os dois gatilhos.** Nenhum disparou — e as duas SPECs dizem isso com
@@ -205,24 +207,13 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 
 # 📌 A PRÓXIMA COISA A FAZER
 
-> ✅ **A LEVA 1 está convertida** (02/09/2026). As duas SPECs estão em
-> `docs/canon/specs/` e podem ir para o executor como estão.
+> ✅ **LEVA 1 fechada em 03/09/2026:** 088 executada (relatório em `reports/`), 091 absorvida pela v11.
 
 ```
-1º  EXECUTAR a SPEC-088 e a SPEC-091      chat EXECUTOR · 💭 ~4–7h as duas
-    🔴 088 primeiro: ela é a que muda o produto. A 091 é 1 bloco.
-
-2º  CONVERTER a LEVA 2                    chat CONVERSOR
-    093-B  →  094  →  095  →  096
-    ⚠️ e a regra de cima vale: converta 2 a 4, execute essas 2 a 4, repita.
-       🔴 Converter as quatro hoje e executá-las em três semanas produz
-       medição vencida — que é o defeito das propostas atuais.
+1º  CONVERTER + EXECUTAR a SPEC-093-B   (7 - SPEC-093-claims-learning-shadow)   um orquestrador, protocolo v11
+2º  SPEC-094  →  3º SPEC-095  →  4º SPEC-096
+    ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta.
 ```
 
-⚠️ **A ordem entre 088 e 091 importa por um motivo medido:** a SPEC-091 acrescenta
-um bloco ao `test_o_protocolo_tem_policia.py`, e a SPEC-088 usa **esse mesmo
-arquivo** como referência §7.1 do guarda dela. Executar a 088 antes dá ao executor
-a referência **como ela está hoje**, sem alvo em movimento.
-
-⚠️ **E antes de tudo isso:** o piloto com a Regina e a Saionara está esperando
-elas voltarem do treinamento. **Ele não depende de SPEC nenhuma desta fila.**
+⚠️ **Antes de ligar o atendimento (terça, 08/09):** nada desta fila bloqueia o piloto. O que só o
+Founder pode fazer está em `O-QUE-FALTA-PARA-LIGAR-O-ATENDIMENTO.md`.

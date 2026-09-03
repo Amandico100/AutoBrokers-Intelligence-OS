@@ -9785,3 +9785,33 @@ restaurou). É a P-246/P-231 outra vez: **o harness de mutação roda na árvore
 
 📊 `backend/app/core/auth.py:54`. Pré-existente; agora é a barreira de uma rota que agrega as 4 corretoras.
 **Destrava:** `hmac.compare_digest`. 💭 10 min. **Dono:** 🤖.
+
+## P-088-TECELAO · O Tecelão sai 🟢 com produção de 8 dias porque a cadência declarada é semanal
+
+📊 03/09, A/B do juiz de confirmação: com a nova ordem de decisão o Tecelão foi 🔴→🟢 — última produção
+26/08, sem pulso registrado, cadência 7d × k=2 = 14d. O canal está morto desde 26/08 e o Observador, na
+mesma tubulação, sai 🔴. O `weaver` não tem agendador próprio (`grep weaver backend/app/tasks` → 0): é
+dirigido por observação, então `cadencia_pulso_s` criaria alarme falso. **Destrava:** medir o intervalo
+real de `ura_maps source='observed'` com o canal de pé e declarar a cadência de produção por medição
+(hoje é 💭 da SPEC). **Dono:** 🤖.
+
+## P-088-VIGIA · O Vigia pulsa incondicional com o atendimento desligado
+
+📊 `dispatch_watchdog.py:622` `beat("vigia_sentinela", actions)` no fim da varredura, a cada 20s, mesmo com
+os 4 agentes de atendimento inativos. Hoje o card sai ⚪ pelo `desligado_quando`; se o registro tirar essa
+declaração, ele sai 🟢 sem ter o que vigiar — a mesma classe do C2, um degrau adiante. E o guarda B7d prova o
+🔴 da Sentinela com `desligado_quando=None`, que não é a configuração embarcada (CLAUDE.md §9.4).
+**Destrava:** o pulso do Vigia só quando há atendimento ativo, e o guarda rodando a linha real do registro.
+**Dono:** 🤖. 💭 30 min.
+
+## P-088-REDIGIR · O `redaction_service` canônico come protocolo de 11 dígitos
+
+📊 `'Seu protocolo e 000123456789'` → `'Seu protocolo e [TELEFONE]9'`. Não é regressão da 088 (o mascarador
+antigo matava toda sequência de 10–14 dígitos), é dívida do serviço canônico usado por todo o produto.
+**Destrava:** o padrão de telefone exige DDD válido ou separador. **Dono:** 🤖.
+
+## P-088-FLAGS · Uma segunda lista de valores verdadeiros de env sobrou
+
+📊 `feature_flags.env_ligada()` aceita `("1","true","yes","on","sim")`; `app/agents/nodes.py:112` tem lista própria
+sem `"sim"`, num `except ImportError` que quase nunca dispara. **Destrava:** `nodes.py` importa `env_ligada`.
+**Dono:** 🤖. 💭 10 min.

@@ -4,7 +4,7 @@ POLICY_INTELLIGENCE_V2 — SPEC-016. OFF (default) = comportamento do baseline
 e7c5044; ON = contexto anafórico v2 + Policy Facts + política de assistência +
 compositor humano. Flag única de rollback da Onda 1.
 
-🔴 SPEC-088 (rodada de conserto): `env_ligada()` passou a ser o ÚNICO leitor de
+🔴 SPEC-088 (rodada de conserto): `env_ligada()` passou a ser o leitor CANÔNICO de
 "esta variável liga alguma coisa?" desta casa. O registro de agentes declara
 `desligado_quando={"env_falso": "ALFAIATE_AUTO_APPLY"}` e precisa da MESMA
 resposta que o módulo do Alfaiate dá — duas listas de valores verdadeiros

@@ -3776,3 +3776,16 @@ parcial desta SPEC, achado por medição.
   de CAIR e a suíte tem de ficar como estava — medida num `git worktree` em
   `HEAD`, **com uma linha de controle que prove que o worktree executa**. Sem
   ela, um `cd` que falha faz tudo parecer "já vermelho antes".
+
+---
+
+## 03/09/2026 · SPEC-088 · PROTOCOLO-AUTOBROKERS-AAA.md §10 — VALIOSA
+
+- **Problema:** durante o painel da SPEC-088, uma lente que provava o guarda por mutação editou
+  `heartbeat.py` enquanto outro builder escrevia nele, e a bateria completa rodou enquanto juízes
+  mutavam — 📊 5 dos 6 vermelhos da rodada passaram isolados (contaminação), e `replay.py`/`rubrica.py`
+  vazaram mutados para a árvore.
+- **Mudança (2 linhas na §10 PAINEL):** juiz que muta faz cópia e restaura; o orquestrador não roda a
+  suíte inteira enquanto um juiz muta.
+- **Autorização:** o Founder deu autoridade total sobre o protocolo em 02/09 ("nada nele é intocável").
+- **Registro:** `PROTOCOLO-AAA-EVIDENCIAS.md` (diário v10→v11) e `PENDENCIAS.md` P-088-MUT.

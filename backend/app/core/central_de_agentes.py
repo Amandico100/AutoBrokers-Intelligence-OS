@@ -298,7 +298,13 @@ def classificar(agente: Agente, pulso_iso: Any, producao_iso: Any, agora: dateti
     prod_ok = (limiar_prod is not None and idade_prod is not None
                and idade_prod <= limiar_prod)
 
-    rotulos = " ∪ ".join(f.rotulo for f in (agente.fonte_de_producao or ()))
+    # 🔴 O motivo é frase de produto (DS-001 §6.7): usa o rótulo HUMANO da fonte quando o
+    # registro o declara; o técnico (`tabela.coluna (…)`) fica só em `producao.fonte`.
+    # 📊 03/09: o juiz de confirmação leu "produziu em a produção dele (tecidos da
+    # observação)" na tela — o filtro do frontend trocava o nome técnico e deixava o
+    # parêntese órfão. A fonte da frase tem de nascer humana, não ser traduzida depois.
+    rotulos = (getattr(agente, "fonte_rotulo", None)
+               or " e ".join(f.rotulo for f in (agente.fonte_de_producao or ())))
     cad = cadencia_humana(agente.cadencia_esperada_s)
     execs = ctx.get("execucoes_7d")
     prefixo = (f"{int(execs)} execuções completas em 7 dias; " if execs else "")
@@ -307,21 +313,21 @@ def classificar(agente: Agente, pulso_iso: Any, producao_iso: Any, agora: dateti
     if tem_fonte and prod_ok:
         if pulso_ok:
             return "SAUDAVEL", (f"{prefixo}pulsou há {idade_humana(idade_pulso)}; "
-                                f"produziu em {rotulos} há {idade_humana(idade_prod)}; "
+                                f"produziu {rotulos} há {idade_humana(idade_prod)}; "
                                 f"cadência esperada {cad}")
         # 🔴 Produziu, mas o pulso está velho ou ausente. Continua VERDE — o trabalho
         # chegou ao fim — e o motivo carrega o aviso em vez de esconder.
         aviso = (f"o pulso do laço está velho ({idade_humana(idade_pulso)})"
                  if idade_pulso is not None
                  else "o pulso do laço não está registrado")
-        return "SAUDAVEL", (f"{prefixo}produziu em {rotulos} há {idade_humana(idade_prod)}; "
+        return "SAUDAVEL", (f"{prefixo}produziu {rotulos} há {idade_humana(idade_prod)}; "
                             f"cadência esperada {cad}; {aviso}")
 
     # ---- 2. O LAÇO ESTÁ VIVO ---------------------------------------------- #
     if pulso_ok:
         if tem_fonte and agente.cadencia_esperada_s:
             quanto = (f"última produção em {data_curta(producao)} ({idade_humana(idade_prod)})"
-                      if producao else f"nunca produziu em {rotulos}")
+                      if producao else f"nunca produziu {rotulos}")
             return "PULSA_SEM_PRODUZIR", (
                 f"{prefixo}pulsou há {idade_humana(idade_pulso)}; {quanto}; "
                 f"cadência esperada {cad}, limiar {idade_humana(limiar_prod)}")
@@ -352,7 +358,7 @@ def classificar(agente: Agente, pulso_iso: Any, producao_iso: Any, agora: dateti
     sem_pulso = (f"sem pulso há {idade_humana(idade_pulso)}"
                  if idade_pulso is not None else "sem pulso registrado (chave ausente ou expirada)")
     quanto = (f"última produção em {data_curta(producao)} ({idade_humana(idade_prod)})"
-              if producao else f"nunca produziu em {rotulos}")
+              if producao else f"nunca produziu {rotulos}")
     limiar_txt = (f"cadência esperada {cad}, limiar {idade_humana(limiar_prod)}"
                   if limiar_prod is not None
                   else f"cadência de laço {cadencia_humana(getattr(agente, 'cadencia_pulso_s', None))}, "
