@@ -4,7 +4,7 @@
 > Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> **v11 · 03/09/2026** · vale para toda SPEC, conversão, execução, ideia,
+> **v11.1 · 03/09/2026** · vale para toda SPEC, conversão, execução, ideia,
 > incidente e agente. Só regras. O porquê de cada uma, com as medições, está em
 > [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
@@ -214,7 +214,8 @@ regressão. 🔴 Mexeu em `app/`, `middleware.ts`, `next.config.js` ou env:
 ② o builder entrega
 ③ o VERIFICADOR MECÂNICO roda  →  FAIL volta direto, não vai a juiz
 ④ O PAINEL: N lentes DE UMA VEZ, cegas entre si, contexto limpo, sobre o DIFF,
-   o teste rodando e o banco
+   o teste rodando e o banco. 🔴 Outcome é NÚMERO ou DATASET? uma lente o
+   RECONSTRÓI sobre o acervo real (SELECT) e pergunta se ele diz a verdade
 ⑤ o ORQUESTRADOR funde e aplica o TESTE DO PRODUTO a CADA achado
 ⑥ conserta TUDO junto
 ⑦ UM JUIZ NOVO confirma — porque CONSERTO CRIA DEFEITO
@@ -249,6 +250,7 @@ o orquestrador corrige a SPEC com o que voltou, e libera. UMA rodada.
       SIM → para e registra   ·   NÃO → entrega o que passou e AVANÇA
 ≥60% dos achados da rodada N são os da N−1?  →  confira A ÁRVORE antes de culpar a lente
 ⛔ NUNCA: afrouxar a régua · alterar teste para passar · declarar pronto por cansaço
+🔴 lista de casos fixados carrega PARES: mesma superfície, veredito oposto
 ```
 
 ---
@@ -410,7 +412,8 @@ BATERIA     a suíte INTEIRA roda no gate de cada bloco e no fim: 2 a 4 vezes po
             🔴 o relatório traz a contagem (diário do conftest)
 MUTAÇÃO     roda em WORKTREE PRÓPRIO ou com lock exclusivo · restaura por CÓPIA,
             nunca `git checkout` · xfail nunca num guarda que lança processo
-COMMIT      arquivo por arquivo. ⛔ nunca `git add -A`
+COMMIT      arquivo por arquivo · cada conserto salvo COMPLETO antes do seguinte
+            (uma interrupção não pode deixar módulo quebrado). ⛔ nunca `git add -A`
 ENTREGA     `git push origin HEAD:main` com a saída colada no relatório. Depois o
             Founder clica Implantar. Commit local não é entrega.
 ```

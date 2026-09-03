@@ -600,3 +600,37 @@ por um de PERDA DE DADO:**
 - A §13 de "consenso de fora × calibração deste projeto".
 
 Todas as regras que essas histórias produziram continuam no protocolo, sem a história.
+
+
+---
+
+## DIÁRIO DA v11 → v11.1 · 03/09/2026 · decidido pelo orquestrador depois da SPEC-093-B
+
+📊 **O que as duas primeiras execuções sob a v11 mediram** (relatórios 088 e 093-B em `reports/`):
+
+```
+                              088 (PADRÃO)         093-B (CRÍTICO)
+faixa declarada / realizada   6–9h / 3h35          8–13h / 7h15
+painel                        3 lentes             4 lentes + red team
+blockers únicos do painel     5                    7
+conserto criou defeito?       não                  SIM (recall −9,5%, pego pelo juiz de confirmação)
+auditoria externa             —                    2 BLOCKERS que NENHUMA das 5 frentes viu
+```
+
+**Emenda A — a LENTE DO DADO.** Na 093-B, 4 lentes + red team + juiz de confirmação olharam o CÓDIGO e
+o GUARDA e aprovaram. A auditora externa reconstruiu o DATASET que o produto ia gerar sobre 1.851 sessões
+reais e achou que a "variante" era um histograma de mensagens (`RRRR 217 · RR 200 …`) e que 40,8% dos
+documentos de sinistro nunca viravam evento. Nenhum dos dois é visível no diff: só no dado. A lente entra
+no painel quando o outcome é número ou dataset — custa uma lente, e pega antes da rodada de conserto.
+
+**Emenda B — PARES MÍNIMOS.** O guarda do detector fixava 17 frases e ficou verde com um defeito que
+vetava ~9,5% das sessões: nenhuma frase era "sinistro genuíno COM palavra de venda ao lado". Uma lista de
+casos sem o par adversarial (mesma superfície, veredito oposto) prova só o lado fácil. CLAUDE.md §9.5.
+
+**Emenda C — conserto salvo completo.** Um `429` matou dois builders no meio de um refactor de
+`claims_shadow.py` e a árvore ficou com `AttributeError` em toda importação. Custou a restauração por HEAD
+e uma rodada. A regra é a mesma do commit atômico, escrita onde o builder lê.
+
+**O que NÃO mudou, e por quê:** o teto de 3 rodadas; o painel máximo de 5 (a lente do dado substitui uma
+lente de leitura, não soma); o juiz de confirmação (pegou o único defeito de conserto).
+📊 Tamanho do protocolo: 21.546 → 21.867 bytes (teto 22.528).
