@@ -1,256 +1,284 @@
-# SPEC-088 · A CENTRAL DE AGENTES PARA DE MENTIR DE VERDE
+# SPEC-088 · A CENTRAL DE AGENTES DIZ A VERDADE — e mostra o trabalho de cada trabalhador
 
-> **O que ela entrega:** a Central deixa de responder *"o laço rodou?"* e passa a
-> responder *"o trabalho aconteceu?"* — agrupada por propósito, com uma cor por
-> agente que **consegue ficar amarela e vermelha**, e com "desligado de propósito"
-> e "quebrado em silêncio" em cores **diferentes**.
+> **O que ela entrega:** a Central deixa de responder *"o laço pulsou?"* e passa a
+> responder *"o trabalho aconteceu?"* e *"quanto trabalho, com que resultado?"*. Cada
+> trabalhador digital tem uma cor que sai de **duas** medições (pulso **e** produção na
+> cadência dele), um grupo por propósito, e um painel com execuções, falhas, entregas,
+> travamentos e aprovações lidos das tabelas reais. O motor de inteligência, hoje
+> invisível, aparece.
 >
-> **v1** · 02/09/2026 · commit base `862dd1c` · repo `AutoBrokers-FIX`
-> Proposta de origem: `specs-propostas/4 - SPEC-088-central-de-agentes-organizacao-operacional.md`
-
----
-
-## 🔴 A razão desta SPEC existir — e ela não é a da proposta
-
-O Founder escreveu uma linha, em `RASCUNHO-SPECS-FUTURAS.md:195`:
-
-> *"**A CENTRAL DE AGENTES EM GRUPOS.** 'Está muito confuso para mim.' Agrupar
-> por propósito, cada grupo com sua página, fluxo e explicação."*
-
-A proposta respondeu com **3.718 linhas** de organização operacional: grupos,
-papéis, contratos de delegação, admission gate, especialistas, juízes e execução
-governada. 📊 **Zero marcas 📊/💭 em todas elas** (`CLAUDE.md` §12.1).
-
-⚠️ **A queixa é de NAVEGAÇÃO. A proposta responde com ONTOLOGIA.** E enquanto
-media-se a navegação, apareceu um defeito maior, que ninguém tinha visto — e que
-é a razão real desta SPEC existir.
-
----
-
-## 1. 📊 O QUE A MEDIÇÃO DE HOJE ACHOU
-
-### 1.1 · 🔴 A Central dá VERDE quando o laço roda, não quando o trabalho acontece
-
-📊 **Medido em 02/09/2026, produção `dcajcvlzcjbmyapmklil`, duas consultas:**
-
-```sql
--- o laço do Garimpo, nos últimos 3 dias
-SELECT workflow_key, status, count(*), max(created_at)
-  FROM work_runs WHERE created_at > now() - interval '3 days'
-   AND workflow_key = 'intelligence.garimpo' GROUP BY 1,2;
--- → intelligence.garimpo | completed | 9 | 2026-09-02 00:00:12
-
--- o que o Garimpo produziu
-SELECT count(*), max(created_at) FROM broker_insights;
--- → 270 | 2026-08-26 00:05:34
-```
-
-> 🔴 **9 execuções `completed` em 3 dias. Zero linhas produzidas em 7 dias.**
-
-**E o que o card mostra nesse tempo — 📊 lido nos dois arquivos, não suposto:**
-
-```
-backend/app/tasks/buffer_processor.py:148   scheduler: seconds=3600 → PULSA DE HORA EM HORA
-                                            ⚠️ o comentário ao lado diz "1x/dia":
-                                               é a MINERAÇÃO que é diária, travada
-                                               por marcador no Redis. O pulso, não.
-app/admin/central-agentes/page.tsx health()  < 900s 🟢 SAUDÁVEL · < 7200s 🟡 ATENÇÃO
-```
-
-> 🔴 **Com pulso de hora em hora: 🟢 SAUDÁVEL nos primeiros 15 minutos de CADA
-> HORA, 🟡 ATENÇÃO nos outros 45. E nenhuma das duas cores tem relação com o fato
-> de ele não produzir uma linha há 7 dias.**
->
-> ⚠️ **O verde é falso porque não produziu. O amarelo é falso porque nada está
-> errado com o laço.** As duas cores estão erradas, por motivos opostos — e é isso
-> que um instrumento que mede o gesto errado faz.
-
-🔴 **A frase que resume o defeito inteiro:** o `beat()` mede o **tique do
-agendador**, e o card é lido como se medisse **o trabalho**.
-
-### 1.2 · As quatro causas, cada uma com arquivo e linha
-
-| # | onde | o que faz | por que é grave |
-|---|---|---|---|
-| **D1** | `backend/app/services/broker_insights.py:307-311` `if cutover_ligado(): return 0` — **antes** do `finally:` da `:337` | 🔴 o `beat("garimpo")` da `:343` é **inalcançável em produção** | 📊 `INTELLIGENCE_CUTOVER` tem padrão `"1"` (`legacy_adapter.py:36`) e 📊 `grep beat( services/intelligence/` → **zero**. O motor canônico não pulsa nada |
-| **D1-b** | o mesmo `finally:` da `:337`, quando o cutover está DESLIGADO | o pulso sai com `mined = 0` no caminho de exceção | 🔴 quebrou → pulsou. ⚠️ **É o defeito do rollback, não o de hoje** — e os dois têm de cair juntos |
-| **D2** | `backend/app/services/conversation_auditor.py:181` `await beat("alfaiate")` | o **Auditor** dá o pulso do **Alfaiate**, sem contagem | o card de um agente fica verde pelo trabalho de outro |
-| **D3** | `backend/app/services/atlas/attendance_capture.py:378` `await _beat(0)  # pulso sem acao: mostra o agente vivo na Central` | pulso com zero ações, **de propósito** | está escrito no código que o verde é decorativo |
-| **D4** | `backend/app/core/heartbeat.py:18` `_TTL = 7 * 86400` + `app/admin/central-agentes/page.tsx` `health()` | morto há **2h** → `PARADO` 🔴 · morto há **8 dias** → a chave expira, `last_run: null` → `AGUARDANDO` ⚪ | 🔴 **o estado MELHORA conforme a morte envelhece.** É a SPEC-089 outra vez: a régua sobe quando deixa de medir |
-
-### 1.3 · 📊 E a prova de que isso já custou — está escrita no repositório
-
-`SPEC-090`, pendência **P-090-02**:
-
-> *"`knowledge_cards` parado desde 16/08 (10 dias). 18.715 linhas e nenhuma nova.
-> **Ninguém percebeu.**"*
-
-📊 Reconferido hoje, 02/09: `max(created_at)` de `knowledge_cards` = **16/08/2026
-16:46**. São **17 dias**.
-
-> 🔴 **A Central existe exatamente para alguém perceber. Ela não percebeu, e o
-> instrumento continuou verde.** Isso não é cosmético: é um instrumento que mente.
-
-### 1.4 · 📊 O silêncio de 7 dias, tabela por tabela
-
-**Consulta:** `SELECT count(*), max(created_at) FROM <tabela>;` · 02/09/2026
-
-```
-🟢 VIVO HOJE          work_runs ............. 3.463 · 02/09 18:04
-                      work_events .......... 35.293 · 02/09 18:04
-
-🔴 MUDO HÁ 7 DIAS     attendance_transcripts  156.913 · 26/08 16:40
-                      conversations ............. 677 · 26/08 16:27
-                      observed_events ......... 28.220 · 26/08 13:52
-                      observed_sessions .......... 580 · 26/08 13:52
-                      ura_maps ................... 324 · 26/08 14:07
-                      route_drift ................. 17 · 26/08 14:07
-                      broker_insights ............ 270 · 26/08 00:05
-                      conversation_scorecards .... 686 · 26/08 00:19
-
-🔴 MUDO HÁ 17 DIAS    knowledge_cards ......... 18.715 · 16/08 16:46
-🔴 MUDO HÁ 14 DIAS    platform_sends ................ 5 · 19/08 19:41
-⛔ NUNCA ESCREVEU     playbook_overlays ............. 0 · —
-```
-
-⚠️ **E aqui está a honestidade que muda o desenho:** 📊 os 4 agentes de
-atendimento estão `is_active = false` (`SELECT name, is_active FROM agents WHERE
-agent_role='attendance'` → 4 de 4 `false`). **Boa parte deste silêncio é
-DELIBERADA** — o piloto não começou.
-
-> 🔴 **E é exatamente esse o defeito.** A Central **não consegue distinguir
-> "desligado de propósito" de "quebrado em silêncio"**. Os dois aparecem iguais.
-> Quando o piloto ligar, o Founder vai olhar 14 cards e não vai saber qual dos
-> dois está vendo.
-
-### 1.5 · 📊 O menor dos defeitos, e o que ele PROVA
-
-```python
-# app/admin/central-agentes/page.tsx  ·  const COLORS = {...}   →  9 chaves
-# backend/app/core/heartbeat.py       ·  AGENT_TASKS            → 14 agentes
-# SEM COR: conselho · espelho_atendimento · observador · sentinela_rotas · tecelao
-```
-
-📊 **5 dos 14 caem na cor padrão.** ⚠️ Sozinho é cosmético. 🔴 **O que ele prova
-não é:** uma segunda lista de agentes, no frontend, **envelheceu em silêncio**
-enquanto a primeira crescia. Qualquer coisa nova que esta SPEC criar — grupo,
-cor, fonte de produção — **repete esse defeito se morar numa segunda lista.**
-
-### 1.6 · 📊 O console do Garimpo mostra vazio, e há 270 linhas
-
-```python
-backend/app/api/admin_spec034.py:90
-    garimpo = [r for r in rows.data or [] if r.get("source") == "garimpo"]
-backend/app/api/admin_spec034.py:99
-    for r in (rows.data or []) if r.get("source") == "sugestoes_ia"
-```
-
-📊 `SELECT source, count(*) FROM broker_insights GROUP BY 1;` → **`garimpo_v3` ·
-270**, e mais nada.
-
-> 🔴 **`"garimpo"` casa com 0 de 270. `"sugestoes_ia"` casa com 0 de 270.** A tela
-> `/admin/insights` mostra ranking vazio, e o operador conclui *"não há nada"*.
-
-⚠️ É o mesmo defeito da §1.1 com outra roupa: **a tela responde com confiança
-sobre um filtro que não casa.** É um `grep` de conserto, e entra nesta SPEC porque
-é o mesmo console e a mesma classe.
+> **v2 · 03/09/2026 · protocolo v11** · commit base `5e8792c` · repo `AutoBrokers-FIX`
+> Proposta: `specs-propostas/4 - SPEC-088-central-de-agentes-organizacao-operacional.md`
+> Research-pack: `specs-propostas/4 - SPEC-088-…-RESEARCH-PACK.md` · reaberto em 03/09/2026
+> Insumo: a v1 desta SPEC (02/09), cujas medições foram reconferidas hoje e mantidas onde bateram.
 
 ---
 
 ## 0. O TESTE DO PRODUTO
 
-> **A Sentinela — que destrava o segurado parado na URA — morre numa
-> quinta-feira. Na sexta o Founder abre a Central e o card dela está
-> AMARELO com "pulsa há 6h, não destrava nada há 2 dias", e não cinza
-> "AGUARDANDO".**
+> **A Sentinela morre numa quinta. Na sexta o Founder abre a Central e vê o card dela
+> AMARELO com "pulsa há 6h, não destrava nada há 2 dias", dentro do grupo ATENDE
+> AGORA, com a linha "2 de 3 saudáveis", e ao lado o Detector de sinais, que rodou
+> 504 vezes na semana e hoje não aparece em lugar nenhum.**
 
-⛔ **Qualquer bloco que não sirva a esse parágrafo sai desta SPEC.**
+⛔ Qualquer bloco que não sirva a esse parágrafo sai desta SPEC.
 
-⚠️ **E a cadeia até o segurado tem dois passos — está declarado, não escondido.**
-A Central é `require_master_admin`: o segurado nunca a vê. O que ela vigia são os
-agentes que **falam com ele** — `followup`, `vigia_sentinela`, `cerebro`. 🔴 **Um
-instrumento cego sobre a cadeia de atendimento é o motivo de ninguém ter percebido
-17 dias de `knowledge_cards` parado.**
+A Central é `require_master_admin` (📊 `backend/app/api/admin_spec034.py:28`): o
+segurado nunca a vê. O que ela vigia é quem fala com ele. Um instrumento cego sobre a
+cadeia de atendimento é o motivo de ninguém ter percebido 📊 **18 dias** de
+`knowledge_cards` parado (`max(created_at)` = 16/08/2026 16:46, consulta em 03/09).
+
+---
+
+## 1. 📊 O QUE A MEDIÇÃO DE HOJE ACHOU — 03/09/2026, produção `dcajcvlzcjbmyapmklil`
+
+### 1.1 · A Central lê UMA fonte, e é a errada
+
+```
+backend/app/core/heartbeat.py:78-98   read_all() lê SÓ Redis (spec034:heartbeat:{task}, TTL 7 dias :18)
+app/admin/central-agentes/page.tsx:36-42   health(): <900s 🟢 · <7200s 🟡 · senão 🔴 · null ⚪
+backend/app/api/admin_spec034.py:27-31     a rota: 4 linhas, devolve read_all()
+```
+📊 `grep -rn "work_runs\|artifacts\|approval_requests\|usage_events" backend/app/api/admin_spec034.py` → **0**.
+A Central não lê `work_runs`, `agents`, `tenant_auxiliaries`, `routines`, `artifacts`,
+`approval_requests`. Nenhuma.
+
+### 1.2 · O motor canônico é invisível
+
+📊 `SELECT workflow_key, count(*) FROM work_runs WHERE created_at > now()-interval '7 days' GROUP BY 1`:
+
+```
+intelligence.detect_signals ............ 504     intelligence.garimpo ........ 21
+intelligence.measure_outcomes ..........  84     intelligence.cluster_demand .  7
+intelligence.daily_briefing ............  21     intelligence.weekly_executive_briefing  3
+                                                                    total  640
+```
+📊 `grep -rn "beat(" backend/app/services/intelligence/ | wc -l` → **0**. 📊 Dos 14 ids de
+`AGENT_TASKS` (`heartbeat.py:22-50`), **2** têm `workflow_key` correspondente (`garimpo`,
+`auditor` parcial via `investigate_quality`) e **2** têm task dedicada em `app/tasks/`
+(`vigia_sentinela`, `followup`). **Os outros 10 vivem só no Redis.**
+
+### 1.3 · O pulso mede o laço, e o laço pode rodar sem produzir
+
+📊 `intelligence.garimpo`: 21 execuções `completed` em 7 dias. `broker_insights`:
+`max(created_at)` = **26/08/2026 00:05**, 270 linhas, todas `source='garimpo_v3'`.
+`intelligence_signals` com `source_type='garimpo'`: 32 linhas, última 26/08 00:04.
+**Oito dias de laço rodando e zero produção.** O card de hoje alterna 🟢/🟡 pela idade do
+pulso e nunca fica vermelho por isso.
+
+### 1.4 · O pulso que existe está morto em três lugares, não em um
+
+O `cutover_ligado()` (`backend/app/services/intelligence/legacy_adapter.py:34-36`,
+default `"1"` = ligado; 📊 o ambiente de produção não define `INTELLIGENCE_CUTOVER`)
+retorna antes do `beat()` em **três** funções:
+
+| pulso | o `return` que o impede | o `beat()` inalcançável |
+|---|---|---|
+| `garimpo` | `broker_insights.py:310-311` | `broker_insights.py:343` (dentro de um `finally` de OUTRO `try`, `:337`) |
+| `sugestoes` | `proactive_suggestions.py:223-224` | `proactive_suggestions.py:232` — **e não há outro pulso para ele** |
+| `auditor` | `regression_sentinel.py:123-124` | `regression_sentinel.py:160` (o `conversation_auditor.py:180` ainda pulsa, 1×/dia) |
+
+⚠️ A v1 desta SPEC listava só o do Garimpo. Os dois outros foram medidos em 03/09 com
+`grep -rn "cutover_ligado" backend/app/services/*.py` e leitura da linha 1 de cada função.
+
+### 1.5 · Oito pulsos cruzados, e a casa do Alfaiate não pulsa
+
+📊 `grep -rn "await beat(\|await _beat(" backend/app --include=*.py | wc -l` → **27 chamadas em 18 arquivos**.
+Oito delas dão o pulso de OUTRO agente: `agent_memory.py:212`→espelho ·
+`atlas/history_ingest.py:204`→espelho_atendimento · `atlas/history_ingest.py:212`→observador ·
+`atlas/route_sentinel.py:444`→alfaiate · `attendance_distiller.py:1344`→espelho_atendimento ·
+`conversation_auditor.py:181`→alfaiate · `prompt_optimizer.py:199`→alfaiate ·
+`regression_sentinel.py:160`→auditor. 📊 `grep -c "beat(" backend/app/services/playbook_tailor.py` → **0**.
+
+### 1.6 · A lista dupla envelheceu, e o vermelho do lento é por desenho
+
+📊 `page.tsx:16-20` `COLORS` tem **9** ids; `heartbeat.py` tem **14**. Sem cor: `observador`,
+`tecelao`, `sentinela_rotas`, `espelho_atendimento`, `conselho`. E o limiar único de
+900s condena quem roda 1×/dia (`conversation_auditor.py:143-144`, marcador diário) a
+viver 🔴 e promove quem pulsa de hora em hora a 🟢.
+
+### 1.7 · O que EXISTE para a visão por trabalhador — e o que não existe
+
+```
+📊 work_runs 30d ............ 2.679 · 100% com workflow_key, correlation_id, thread_id, cost_actual_brl
+   requester_agent_id ....... 0 de 2.679     skill_release_id ... 0 de 2.679
+   cost_actual_brl > 0 ...... 0 de 3.494 (toda a história)         ← o custo existe como coluna e vale zero
+   falhas 30d ............... 0 em todos os 8 workflow_key         duração média 2,8s–9,9s (acionamento: 47h)
+📊 artifacts 30d ............ 118 · 85 com work_run_id (72%)  — os órfãos vêm de 6 chamadores que não passam o id
+📊 approval_requests pending  0 · work_waits .... 0 linhas · unblock_state='travado' .... 1
+📊 usage_events 30d ......... 400 · 0 com work_run_id · correlation_id NÃO casa com work_runs (0 de 394)
+   source: chat 199 · memory 193 · tool 6 · vision 2   ← é o custo do CHAT; os workflows não geram usage
+📊 auxiliary_events ......... 0 (P-18: escritor existe em factory.py:460-471, ZERO chamadores)
+📊 bridge.routine.execute ... 7 runs (a ponte já rodou) · bridge.auxiliary.execute ... 0
+📊 índices em work_run_id ... usage_events ✓ · artifacts ✓ · approval_requests ✓
+```
+
+### 1.8 · O que mudou desde a v1 — e muda a narrativa
+
+📊 `attendance_transcripts` e `conversations` voltaram a crescer em **03/09 01:39**, depois
+que a API subiu (7 dias no chão, `4c8a718`). Parte do "silêncio de 7 dias" da v1 era a API
+morta, não os agentes. ⚠️ **A Central não distinguiu uma coisa da outra. É o defeito.**
 
 ---
 
 ## 2. ⛔ AS TRAVAS
 
 ```
-⛔ NENHUMA mensagem sai para segurado. NENHUM agente é ligado.
-⛔ NENHUM `is_active` muda. Os 4 de atendimento continuam `false`.
-⛔ NENHUMA entrada em portal de seguradora.
-⛔ Banco: SELECT livre. 🔴 ZERO migration nesta SPEC — ver §5.
+⛔ NENHUMA mensagem sai para segurado. NENHUM agente é ligado. NENHUM `is_active` muda.
+⛔ NENHUMA entrada em portal. API InfoCap intocada.
+⛔ Banco: SELECT livre. 🔴 ZERO migration nesta SPEC (§6). Sem tabela nova, sem coluna nova.
 ⛔ A Central continua `require_master_admin`. NADA daqui aparece para corretora.
-⛔ NUNCA imprimir CPF, telefone, apólice, placa ou nome de pessoa.
-⛔ NÃO mexer em variável de ambiente.
-⛔ NUNCA `git add -A` (P-247).
+⛔ NUNCA imprimir CPF, telefone, apólice, placa ou nome de pessoa — nem na rota nova:
+   ela devolve contagens, estados, ids e timestamps. Nunca texto de conversa.
+⛔ NÃO mexer em variável de ambiente. NUNCA `git add -A`.
 ```
 
 ---
 
-## 2.1 🔴 A CONTA DO §3 — a conversão fez, e o executor CONFERE
-
-⚠️ **Isto não substitui o EXECUTION CARD do executor** (protocolo §0.2). É a conta
-da conversão, escrita para ele **discordar com número** se medir diferente.
+## 2.1 O EXECUTION CARD da conversão — o executor confere e discorda com número
 
 ```
-ALCANCE ........... 2   a Central é `require_master_admin`: o segurado NUNCA a vê.
-                        🔴 Mas o que ela vigia alcança o segurado, e a cadeia
-                        tem DOIS passos — por isso 2, e não 3. Ver §0.
-REVERSIBILIDADE ... 0   🔴 e é DESENHO, não sorte: zero migration (§5).
-                        Revert + as chaves do Redis expiram = não sobra nada.
-FREQUÊNCIA ........ 2   `beat()` é chamado em TODO atendimento
-                   ──
-RISCO ............. 4
-SUPERFÍCIE ........ 3   🔴 subiu de 2 para 3 na revisão de 02/09, e a razão é
-                        medida: eu listáva as 📊 27 chamadas a `beat()` e
-                        conclí que sabia apontar tudo. ⚠️ **Não sabia.**
-                        📊 `work_runs` · 7 dias: **SEIS `workflow_key`,
-                        640 execuções**, e 🔴 **CINCO** não têm card nem
-                        `beat()`. ⚠️ O `garimpo` tem card
-                        (`heartbeat.py:44`) e um `beat()` **só no papel**
-                        (`broker_insights.py:343`, inalcançável pelo
-                        `return 0` da `:311`) — por isso ele é o D1.
-                        🔴 **Os CINCO invisíveis são os outros da lista:**
-                          detect_signals 504 (hoje 21:03) · outcomes 84
-                          garimpo 21 · daily_briefing 21 · cluster 7 · weekly 3
-                        🔴 O §3 é explícito: *"consigo apontar TODOS os
-                        lugares? Não → SUPERFÍCIE 3."* Eu não conseguia.
-                        ⚠️ RISCO 4 × SUP 3 acrescenta **investigador** e
-                        **desenhista da prova** ao time (§3.1)
-PISO .............. nenhum, por EFEITO (§3.2), e cada linha conferida:
-                        não envia · sem migration · não toca auth nem
-                        `company_id` · não escreve noutra corretora
-TIME .............. builder · juiz · verificador · 🔴 **investigador** ·
-                    🔴 **desenhista da prova**   (§3.1, RISCO 4 × SUP 3)
-                    ⚠️ os dois últimos entraram com a SUPERFÍCIE 3
-PARALELISMO REAL .. nenhum. A e B tocam `heartbeat.py` e os mesmos call sites
-FAIXA DE RELÓGIO .. 🔴 **4–7h**   faixa, nunca promessa (§9.2)
-                    ⚠️ subiu de 3–5h com a SUPERFÍCIE e os dois papéis novos
+OUTCOME ..............  a Central diz a verdade por trabalhador e mostra o trabalho dele
+RISCO ................  4   ALCANCE 2 (tela admin; o que ela vigia alcança o segurado, cadeia de 2 passos)
+                            REVERSIBILIDADE 0 (zero migration; revert + chaves Redis expiram = nada sobra)
+                            FREQUÊNCIA 2 (beat() em todo atendimento; a rota é consultada a cada 20s)
+SUPERFÍCIE ...........  2   vários comportamentos e uma peça nova (o leitor de produção). 🔴 Era 3 na v1;
+                            desce porque o território FOI mapeado em 03/09: 27 call sites, 14 ids,
+                            20 workflow_keys, 8 tabelas, com file:line (§1). Se o executor achar
+                            call site fora da lista, volta a 3 e o nível sobe
+PISO APLICADO ........  nenhum, por efeito: não envia · sem migration · não toca auth nem company_id
+                            (a rota é de plataforma e agrega) · não escreve noutra corretora
+NÍVEL ................  PADRÃO   (RISCO 2–5, SUPERFÍCIE 2)
+UNIDADES .............  5   BLOCO A+B (backend: registro + estados) · BLOCO C (rota e leitor de trabalho) ·
+                            BLOCO D (frontend) · BLOCO E (pulsos: os 3 mortos e os 8 cruzados) · BLOCO F (guarda)
+COESÃO ...............  A+B+C juntas (mesmo módulo e mesma interface JSON) · D separada, contra o CONTRATO da §5 ·
+                            E separada (só call sites de beat) · F separada (só testes). Arquivo-hub: heartbeat.py = um dono
+PARALELISMO REAL .....  3 escritores: {A+B+C} · {D} · {E}. F começa junto, pelo contrato. Integração serial
+TIME .................  investigador ✅ (03/09) · pesquisador ✅ (03/09) · 3 builders · verificador ·
+                            painel de 3 lentes · juiz de confirmação
+REFERÊNCIA ...........  interna: `backend/tests/test_o_protocolo_tem_policia.py` (forma do guarda) ·
+                            `backend/tests/test_a_casa_diz_a_verdade.py` (tela contra código) · DS-001 §5
+                            externa: §7.3 — Prometheus last_success · Dagster freshness/no_policy · Temporal worker-health
+GATES ................  por bloco, abaixo. Todos com mutação
+O ELO ................  "o card mente PORQUE mede o laço e não a produção": medido — 21 runs completed
+                            × broker_insights parado em 26/08 × health() só lê last_run (§1.1, §1.3)
+FAIXA DE RELÓGIO .....  🔴 5–8h de execução, com os três builders em paralelo
 ```
-
-🔴 **A auditoria externa (§6.1) NÃO é obrigatória aqui** — RISCO 4, e nada sai do
-prédio. ⚠️ **Recomendada mesmo assim**, por um motivo medido: os arquivos editados
-(`dispatch_router`, `dispatch_followup`, `dispatch_watchdog`) são a cadeia do
-atendimento, e o §6.1 mede que quem olha de fora pega **o que o próprio conserto
-criou**.
 
 ---
 
-# BLOCO 0 · 🔴 REMEDIR, antes de escrever a primeira linha
+## 3. 🌐 O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS — §7.3, reaberto em 03/09/2026
 
-⚠️ **Os números desta SPEC são de 02/09/2026. Eles vão ter dias quando você
-executar.** O `INDICE-DE-SPECS.md` registra por que isto é regra: 📊 a proposta da
-087 afirmava `structural escalated = 4`; no dia da conversão o medido era **14 + 2**.
+As 13 referências do research-pack (§55) foram reabertas: 📊 **13 de 13 vivas**, nenhuma
+404. Duas mudaram (`code.claude.com/docs/en/sub-agents` ganhou campos; `agent-teams`
+reescreveu a API). ⚠️ **E o achado incômodo:** as 13 falam de *orquestrar* agentes;
+nenhuma responde *"como sei que este trabalhador está produzindo?"*. O pack é de
+runtime; esta SPEC é de saúde. As referências ① a ④ abaixo foram buscadas por isso.
 
-**Rode e cole a saída no relatório:**
+### ① `last_success` separado de `last_run` — o defeito tem nome e cura publicada
+```
+URL ................. https://www.robustperception.io/monitoring-batch-jobs-in-python/  (03/09/2026)
+o que ela faz ....... duas séries por job: uma marca a rodada; `last_success` é escrita SÓ no
+                      ramo de sucesso, e o alerta é `time() - last_success > 3,5 × intervalo`
+MODELAMOS ........... BLOCO A: `fonte_de_producao` É o last_success do agente; `beat()` é o last_run.
+                      BLOCO B: o limiar é k × `cadencia_esperada` DELE, não 900s para todos
+REJEITAMOS .......... Pushgateway como peça: segundo lugar para a verdade (CLAUDE.md §5). A produção
+                      sai da tabela que o agente JÁ escreve
+COMO O JUIZ INSPECIONA abre a página · compara o `else:` do exemplo com o `finally` de
+                      `broker_insights.py:337`: o artigo grava sucesso NO ramo de sucesso; nosso pulso
+                      nasce no `finally`. Confere que o limiar da tabela do BLOCO A é por agente
+```
+### ② Airflow removeu o alerta que só disparava quando a coisa rodava
+```
+URL ................. https://airflow.apache.org/docs/apache-airflow/stable/howto/sla-to-deadlines.html  (03/09/2026)
+o que ela faz ....... "If the Dag run never finishes, the SLA is never checked." O `sla_miss_callback`
+                      saiu no Airflow 3.0; o substituto ancora o prazo na CADÊNCIA, não no último evento
+MODELAMOS ........... BLOCO B, estado 🔴 PARADO: ancorado na cadência esperada. Quem nunca produziu
+                      (📊 `playbook_overlays` = 0 linhas) alerta — hoje não há evento para comparar
+REJEITAMOS .......... o scheduler de 5s: 14 consultas × 12/min contra produção. Cache de 60s
+COMO O JUIZ INSPECIONA abre "How they differ" · aplica à mutação 2 do BLOCO B (chave de heartbeat
+                      expirada): se der ⚪ em vez de 🔴, é o bug que o Airflow removeu, vivo aqui
+```
+### ③ Dagster: cadência POR ativo, e "sem política" é um estado explícito
+```
+URL ................. https://docs.dagster.io/guides/observe/asset-freshness-policies
+                      https://docs.dagster.io/examples/best-practices/asset-health-monitoring  (03/09/2026)
+o que ela faz ....... cada ativo declara a própria freshness policy, medida sobre "a successful
+                      materialization"; saúde agrega materialização · checks · frescor em
+                      HEALTHY/WARNING/UNHEALTHY/DEGRADED; ativo sem política = `"no_policy"`, explícito
+MODELAMOS ........... BLOCO A: `cadencia_esperada` por agente; `fonte_de_producao = None` → ⚫ NÃO MEDIDO
+                      (o `no_policy` deles). BLOCO B: 🟡 PULSA SEM PRODUZIR é o par (rodou OK, frescor
+                      falhou) que um enum de 3 estados não expressa
+REJEITAMOS .......... duas faixas de warning por agente (dobra a configuração e nada disso é medido
+                      hoje) · auto-materialize (é runtime; a Central não religa ninguém)
+COMO O JUIZ INSPECIONA abre a 2ª URL, procura `no_policy` · confere `None` EXPLÍCITO nas linhas sem
+                      fonte de `AGENT_TASKS` e que a mutação do BLOCO A pinta ⚫, nunca 🟢
+```
+### ④ Temporal: worker que faz poll NÃO é worker saudável — e o sintoma da nossa Central, num produto maduro
+```
+URL ................. https://docs.temporal.io/cloud/worker-health
+                      https://community.temporal.io/t/schedule-stopped-working-but-showing-in-running-status/19759  (03/09/2026)
+o que ela faz ....... saúde de worker = Schedule-To-Start latency, poll success, slots — nunca "está
+                      conectado". A thread (10/08/2026): "all schedules showing running status but
+                      that schedule is not running"
+MODELAMOS ........... BLOCO B: 🟢 exige DUAS medições. BLOCO C: a visão por trabalhador traz a latência
+                      `started_at - created_at` (📊 hoje 13s–100s por workflow) — fila parada com worker vivo
+REJEITAMOS .......... task slots e sticky cache (métricas de um runtime que não é o Smith) · Grafana/OTLP
+                      como destino (Control Plane paralelo)
+COMO O JUIZ INSPECIONA abre a thread e a doc · confere que nenhum dos 4 sinais deles é "último pulso" ·
+                      confere que a rota nova devolve `fila_media_s`
+```
+### ⑤ Claude Code agent teams: linha escondida ≠ agente parado
+```
+URL ................. https://code.claude.com/docs/en/agent-teams  (03/09/2026 — a API mudou desde 25/08)
+o que ela faz ....... estado POR membro (working · idle · failed); "a teammate row that disappeared
+                      after sitting idle has been hidden, not stopped"; acima de 3 ociosos, colapsa
+MODELAMOS ........... BLOCO B: ausência de sinal NUNCA é o estado benigno — dúvida pinta 🔴, não ⚪.
+                      BLOCO D: 4 grupos com resumo, nunca 14+ cards soltos
+REJEITAMOS .......... mailbox e mensagens entre pares: peer teams adiados para a 088-B (pack §56)
+COMO O JUIZ INSPECIONA abre "Teammates not appearing" · confere o gate ② do BLOCO B: `is_active=false`
+                      em TODAS as corretoras → ⚪; qualquer dúvida → 🔴
+```
+### ⑥ Datadog Software Catalog: grupo e dono são METADADO da entidade, a UI só lê
+```
+URL ................. https://docs.datadoghq.com/internal_developer_portal/catalog/entity_model/  (03/09/2026)
+o que ela faz ....... `kind`, `owner` e agrupamento vivem no schema versionado da entidade; sem dono
+                      declarado aparece "sem dono", nunca adotado por default
+MODELAMOS ........... BLOCO A: `grupo` e `cor` saem de `page.tsx` e vivem em `AGENT_TASKS`, a ÚNICA lista
+                      (mata a §1.6). Gate: o frontend não tem lista de agente nenhuma
+REJEITAMOS .......... `kind` técnico fixo: nossos grupos são por propósito para a corretora · o catálogo
+                      como produto (Control Plane paralelo)
+COMO O JUIZ INSPECIONA `grep -rn "observador\|garimpo\|alfaiate" app/admin/central-agentes/` → tem de dar 0
+```
+### ⑦ Anthropic multi-agent research: tracing de estrutura, nunca de conteúdo
+```
+URL ................. https://www.anthropic.com/engineering/multi-agent-research-system  (03/09/2026)
+o que ela faz ....... "we monitor agent decision patterns and interaction structures — all without
+                      monitoring the contents of individual conversations"
+MODELAMOS ........... BLOCO C: a rota devolve contagens, estados, ids e timestamps de work_runs,
+                      artifacts, approval_requests — nunca payload. É a trava de PII sem coluna nova
+REJEITAMOS .......... rainbow deploy, checkpoint/resume, LLM-as-judge: runtime e Quality Health, fora
+COMO O JUIZ INSPECIONA roda a rota contra um tenant real e confere no JSON que nenhum campo textual de
+                      conversa atravessa
+```
+
+**O que o estado da arte faz que nós não fazemos, por valor** (nota do pesquisador):
+separar last_success de last_run **98** · limiar por unidade **95** · "sem política" explícito
+**92** · matar alerta que só dispara quando rodou **88** · ausência ≠ benigno **85** · grupo como
+metadado **80** · saúde multidimensional **74** · tracing sem conteúdo **70** · latência fila→início **55**.
+
+---
+
+# BLOCO 0 · REMEDIR, antes da primeira linha
+
+Os números desta SPEC são de 03/09/2026. Rode e cole no relatório:
 
 ```sql
--- ① o laço roda e a saída não cresce?  (o defeito da §1.1)
-SELECT workflow_key, status, count(*), max(created_at)
-  FROM work_runs WHERE created_at > now() - interval '3 days' GROUP BY 1,2;
+-- ① o laço roda e a saída não cresce?
+SELECT workflow_key, status, count(*), max(created_at) FROM work_runs
+ WHERE created_at > now()-interval '7 days' GROUP BY 1,2 ORDER BY 3 DESC;
 SELECT 'broker_insights' t, count(*), max(created_at) FROM broker_insights
+UNION ALL SELECT 'intelligence_signals', count(*), max(greatest(last_seen_at, created_at)) FROM intelligence_signals
 UNION ALL SELECT 'conversation_scorecards', count(*), max(created_at) FROM conversation_scorecards
 UNION ALL SELECT 'observed_events', count(*), max(created_at) FROM observed_events
 UNION ALL SELECT 'ura_maps', count(*), max(created_at) FROM ura_maps
@@ -258,465 +286,353 @@ UNION ALL SELECT 'route_drift', count(*), max(created_at) FROM route_drift
 UNION ALL SELECT 'attendance_transcripts', count(*), max(created_at) FROM attendance_transcripts
 UNION ALL SELECT 'playbook_overlays', count(*), max(created_at) FROM playbook_overlays
 UNION ALL SELECT 'platform_sends', count(*), max(created_at) FROM platform_sends
-UNION ALL SELECT 'knowledge_cards', count(*), max(created_at) FROM knowledge_cards;
-
--- ② o silêncio é deliberado?
-SELECT name, agent_role, is_active FROM agents ORDER BY agent_role;
-
--- ③ o filtro do console casa?   🔴 espere `garimpo_v3`, não `garimpo`
+UNION ALL SELECT 'knowledge_cards', count(*), max(created_at) FROM knowledge_cards
+UNION ALL SELECT 'artifacts', count(*), max(created_at) FROM artifacts;
+-- ② o silêncio é deliberado?      ③ o filtro do console casa?
+SELECT name, agent_role, is_active, desligado_em FROM agents ORDER BY agent_role;
 SELECT source, count(*) FROM broker_insights GROUP BY 1;
+-- ④ o eixo do trabalho
+SELECT workflow_key, count(*), count(*) FILTER (WHERE status='failed'),
+       round(avg(extract(epoch from finished_at-started_at))::numeric,1) dur_s,
+       round(avg(extract(epoch from started_at-created_at))::numeric,1) fila_s
+  FROM work_runs WHERE created_at > now()-interval '30 days' GROUP BY 1 ORDER BY 2 DESC;
 ```
-
 ```bash
-# ④ a lista dupla ainda diverge?
-python - <<'PY'
-import re
-c=open('app/admin/central-agentes/page.tsx',encoding='utf-8').read()
-cor=set(re.findall(r'(\w+):',re.search(r'const COLORS[^{]*\{(.*?)\};',c,re.S).group(1)))
-t=re.findall(r'\("([a-z_]+)", "',open('backend/app/core/heartbeat.py',encoding='utf-8').read())
-print(len(cor),'cores ·',len(t),'agentes · sem cor:',sorted(set(t)-cor))
-PY
+# ⑤ a lista dupla ainda diverge?   ⑥ os três pulsos mortos e os oito cruzados ainda estão lá?
+grep -c '^    ("' backend/app/core/heartbeat.py                       # espere 14
+grep -rn "cutover_ligado" backend/app/services/*.py | grep -v "def "  # espere 3 arquivos
+grep -rn "await beat(\|await _beat(" backend/app --include=*.py | wc -l   # espere 27
 ```
 
-## O gate do BLOCO 0
-
-```
-① as 4 causas D1–D4 continuam no código, com o arquivo:linha desta SPEC
-   🔴 se alguma já foi consertada, o bloco correspondente SAI — e o relatório diz
-② ao menos UM agente com laço `completed` recente e saída parada — o caso da §1.1
-   ⚠️ se não houver nenhum hoje, a SPEC continua: o defeito é estrutural,
-   não depende de estar acontecendo no minuto da execução
-③ 🔴 `AGENT_TASKS` tem 14 entradas. Se tiver outro número, a tabela do BLOCO A
-   é REFEITA por medição, não copiada daqui
-```
+**Gate do BLOCO 0:** ① as três causas (§1.4, §1.5, §1.6) continuam no código com o
+`arquivo:linha` desta SPEC — se alguma já foi consertada, o item correspondente SAI e o
+relatório diz · ② `AGENT_TASKS` tem 14 entradas; se tiver outro número, a tabela do BLOCO A
+é REFEITA por medição · ③ o número de `workflow_key` em 7 dias é o que o BLOCO C tem de cobrir.
 
 ---
 
-# BLOCO A · 🔴 Cada agente declara o que PRODUZ — e num lugar só
-
-## O problema
-
-📊 O pulso mede o **laço**. Nada no produto mede a **saída**. E `beat()` aceita
-`actions: int = 0` (`heartbeat.py:54`), então o valor honesto e o valor decorativo
-são indistinguíveis no destino.
+# BLOCO A · 🔴 Cada trabalhador declara o que PRODUZ, num lugar só
 
 ## O conserto
 
-🔴 **`AGENT_TASKS` passa a ser a ÚNICA lista.** Cada entrada ganha três campos:
+`AGENT_TASKS` (`backend/app/core/heartbeat.py`) deixa de ser lista de tuplas e passa a ser
+o **registro único** dos trabalhadores digitais. Cada entrada ganha:
 
 ```
-grupo               a que propósito ele serve      (BLOCO C)
-cor                 🔴 sai do frontend e vem para cá   (mata a §1.5)
-fonte_de_producao   a consulta que responde "ele produziu?" — ou None
-cadencia_esperada   de quanto em quanto tempo ele DEVIA produzir
+id · nome · descricao
+grupo               observa | atende_agora | mantem_rota | aprende_avisa          (BLOCO D)
+cor                 🔴 sai do frontend e vem para cá                               (mata a §1.6)
+eixo                {"workflow_keys": [...]}  ou  {"redis": true}  — de onde vem o PULSO e o TRABALHO
+fonte_de_producao   (tabela, coluna_de_tempo, filtro SQL opcional)  ou  None EXPLÍCITO
+cadencia_esperada_s de quanto em quanto tempo ele DEVIA produzir; None se não se sabe
 ```
 
-📊 **As fontes que a conversão já mediu — confira, não copie:**
+🔴 **E o registro cresce:** todo `workflow_key` visto em `work_runs` nos últimos 7 dias
+que não tenha trabalhador entra — ou entra na lista `SEM_CARD_POR_DECISAO` com o motivo
+escrito. 📊 Hoje faltam **cinco**: `detect_signals`, `measure_outcomes`, `daily_briefing`,
+`weekly_executive_briefing`, `cluster_demand`. O executor cria os cards (💭 nomes de
+produto: *Detector de sinais*, *Medidor de resultados*, *Briefing* — os dois briefings num
+card, *Agrupador de demanda*) e liga `garimpo` a `intelligence.garimpo` e `auditor` a
+`intelligence.investigate_quality`.
 
-| agente | fonte de produção | 📊 último em 02/09 |
-|---|---|---|
-| `observador` | `observed_events` | 26/08 13:52 |
-| `tecelao` | `ura_maps` | 26/08 14:07 |
-| `sentinela_rotas` | `route_drift` | 26/08 14:07 |
-| `espelho_atendimento` | `attendance_transcripts` | 26/08 16:40 |
-| `followup` | `platform_sends` | 19/08 19:41 |
-| `garimpo` | 🔴 **as DUAS, com `greatest()`** — `intelligence_signals`·`source_type='garimpo'` **e** `broker_insights`·`source IN ('garimpo_v3','garimpo','garimpo_llm')` | 26/08 00:04 e 00:05 |
-| `detector` | 🔴 `intelligence_signals` · `source_type='detector'` — **não existe card para ele** | ⚠️ **02/09 04:04 — VIVO HOJE** |
-| `auditor` | `conversation_scorecards` | 26/08 00:19 |
-| `alfaiate` | `playbook_overlays` | ⛔ **0 linhas, nunca** |
-| `cartografo` | `ura_maps` | 26/08 14:07 |
-| `sugestoes` | `broker_insights` · `source='sugestoes_ia'` | ⛔ **0 de 270** |
-| `espelho` · `vigia_sentinela` · `cerebro` | 🔎 **o executor mede e declara** | — |
-| `conselho` | ⛔ **sem saída durável conhecida** | — |
+📊 **As fontes que a conversão mediu — o executor CONFERE, não copia:**
 
-🔴 **Por que o `garimpo` usa `greatest()` das duas, e não uma:** 📊 o fluxo
-canônico escreve **as duas com a mesma caneta** — `workflows.py:291` chama
-`GarimpoV3`, que grava `intelligence_signals` na `:106` e **projeta** em
-`broker_insights` na `:174` pela `_projetar_legado` (`:164`).
+| id | fonte_de_producao | 📊 último em 03/09 | cadência 💭 |
+|---|---|---|---|
+| `observador` | `observed_events.created_at` | 26/08 13:52 | diária |
+| `tecelao` · `cartografo` | `ura_maps.created_at` | 26/08 14:07 | semanal |
+| `sentinela_rotas` | `route_drift.created_at` | 26/08 14:07 | diária |
+| `espelho_atendimento` | `attendance_transcripts.created_at` | **03/09 01:39** | horária, quando há atendimento |
+| `followup` | `platform_sends.created_at` | 19/08 19:41 | diária, quando há caso aberto |
+| `garimpo` | `greatest` de `intelligence_signals` (`source_type='garimpo'`, `last_seen_at`) e `broker_insights` (`source LIKE 'garimpo%'`) | 26/08 00:05 | diária |
+| `detector` (novo) | `intelligence_signals` · `source_type='detector'` · `greatest(last_seen_at, created_at)` | 02/09 04:04 | horária |
+| `auditor` | `conversation_scorecards.created_at` | **03/09 00:04** | diária |
+| `alfaiate` | `playbook_overlays.created_at` | ⛔ 0 linhas, nunca | — |
+| `sugestoes` | `broker_insights` · `source='sugestoes_ia'` | ⛔ 0 de 270 | — |
+| `briefing`, `medidor`, `agrupador` (novos) | `work_runs` do próprio `workflow_key`, `status='completed'` **e** `artifacts.work_run_id` quando houver | 03/09 | diária / horária / diária |
+| `espelho` · `vigia_sentinela` · `cerebro` · `conselho` | 🔎 o executor mede e declara; se não achar tabela → `None` | — | — |
 
-⚠️ 🔴 **E a projeção NÃO é incondicional** — esta linha já afirmou que era,
-e estava errada. `garimpo_v3.py:106-108`:
+🔴 **Por que o `garimpo` usa `greatest()` das duas colunas e das duas tabelas:** o fluxo
+canônico grava `intelligence_signals` e projeta em `broker_insights` (`garimpo_v3.py:106-108`,
+`_projetar_legado :164`), a projeção é condicional ao dedupe, e no acerto de dedupe
+`signal_service.py:144-167` move `last_seen_at`, não `created_at`. Um garimpo que só
+reconfirma sinais não move `created_at` — e o card congelaria num agente saudável.
 
-```python
-if self.sinais.registrar(rascunho):      # 🔴 devolve None em dois casos
-    criados += 1
-    self._projetar_legado(...)           # e ela engole tudo: except: pass
-```
+🔴 **A regra que fecha a porta:** agente sem `fonte_de_producao` mostra ⚫ NÃO MEDIDO.
+**Nunca** 🟢. É a §7 do protocolo aplicada à própria Central, e o `no_policy` do Dagster.
 
-> 🔴 **O executor tem de conferir isto antes de escrever a fonte.** Um sinal
-> recusado pelo dedupe grava em UMA tabela e não na outra. Os dois últimos registros
-distam 📊 **69 segundos**. ⚠️ E o caminho de rollback grava OUTRO rótulo —
-`source='garimpo'`/`'garimpo_llm'` (`broker_insights.py:98,:232`), 📊 com
-**zero linhas em toda a história da tabela**.
-
-🔴 **E qual COLUNA a fonte lê decide tudo:** `signal_service.py:144-167` — no
-acerto de dedupe, `_reforcar()` move **`last_seen_at`**, nunca `created_at`. 📊 Hoje
-`max(created_at)` = 00:04:25 e `max(last_seen_at)` = 00:05:34. **Um garimpo que roda
-e só reconfirma sinais conhecidos não move o `created_at`** — e o card congela
-num agente saudável, que é a SPEC-089 outra vez.
-
-> 🔴 **A fonte lê `greatest(last_seen_at, created_at)`**, e o BLOCO 0 prova a
-> diferença com as duas colunas lado a lado antes de escrever qualquer código.
-
-> 🔴 **Uma fonte só cega o card no dia em que a flag virar.** Com o cutover
-> desligado, o legado escreve `broker_insights` e **para** de escrever
-> `intelligence_signals`. O `greatest()` sobrevive nas duas direções.
-
-⚠️ **Esta linha já esteve errada duas vezes, e as duas por não abrir a
-`_projetar_legado`:** a conversão cravou `broker_insights`·`source='garimpo_v3'`
-— ⚠️ **e o RÓTULO estava certo** (`garimpo_v3.py:181` grava essa string literal);
-errou só em declarar UMA tabela. E o primeiro conserto inverteu para
-`intelligence_signals` citando
-a `garimpo_v3.py:216`, que é um `.select()` de painel dentro da
-`voz_do_periodo()`. **Uma LEITURA apresentada como escritor.**
-
-🔴 **A regra que fecha a porta, e é a §7 do protocolo aplicada à própria Central:**
-
-> **Agente sem `fonte_de_producao` declarada mostra `NÃO MEDIDO`. NUNCA
-> `SAUDÁVEL`.** *"Sem referência inspecionável, a dimensão vira 'não avaliada',
-> nunca 'aprovada'."*
-
-⚠️ **Custo:** a leitura roda no backend com cache de 60s em Redis. ⛔ **Não é uma
-consulta por card a cada 20s** — a tela recarrega a cada 20s hoje, e 14 consultas
-× 3/min contra produção é um autogol.
-
-⛔ **E não é uma tabela nova.** `max(created_at)` da tabela que o agente já
-escreve **é** o histórico. Uma tabela de "saúde de agente" seria um segundo lugar
-para a verdade — que é o defeito da §1.5 sendo reconstruído.
+⛔ **Não é uma tabela nova.** `max(coluna)` da tabela que o agente já escreve **é** o
+histórico. Uma tabela `agent_health` seria um segundo lugar para a verdade.
 
 ## O gate
-
 ```
-① os 14 agentes têm grupo, cor e fonte (ou `None` explícito) — 🔴 nenhum implícito
-② `/api/admin/spec034/agents-status` devolve, por agente:
-   pulso · última produção · cadência esperada
-③ 🔴 o frontend NÃO tem lista de agente nenhuma — nem cor, nem nome, nem grupo
-④ a leitura inteira responde em UMA chamada, com cache de 60s
-⑤ dois tenants: um SELECT sem filtro de empresa não vaza para a resposta
-   ⚠️ a Central é de plataforma e agrega tudo — o gate é que o número
-   agregado NUNCA é servido por rota de corretora (ver ⑥ do BLOCO D)
+① as 14 + as novas entradas têm grupo, cor, eixo, fonte (ou None explícito) e cadência (ou None) — nenhum implícito
+② 🔴 TODO workflow_key visto em work_runs nos últimos 7 dias tem trabalhador OU está em SEM_CARD_POR_DECISAO com motivo.
+   Lista vazia com workflow_key sem card REPROVA. 📊 Hoje reprovariam 5
+③ 🔴 o frontend NÃO tem lista de agente: nem cor, nem nome, nem grupo (`grep` no diretório da página → 0)
+④ toda fonte_de_producao aponta para tabela e coluna que EXISTEM (o teste consulta information_schema)
 ```
-
-🔴 **A mutação:** apague `fonte_de_producao` de um agente. O gate ① tem de ficar
-**vermelho**, e o card dele tem de virar `NÃO MEDIDO` — nunca verde.
+**Mutação:** apague a `fonte_de_producao` de um agente → ① fica vermelho e o card dele vira
+⚫. Acrescente um `workflow_key` inventado à lista de 7 dias (fixture) → ② fica vermelho.
 
 ---
 
 # BLOCO B · 🔴 Cinco estados, e o verde é o mais difícil de conseguir
 
-## O problema
-
-📊 `health()` em `app/admin/central-agentes/page.tsx` tem 3 estados e todos
-derivam de **um** número: `last_run`. `< 900s` → SAUDÁVEL · `< 7200s` → ATENÇÃO ·
-resto → PARADO · `null` → AGUARDANDO.
-
-⚠️ **E o limiar é o mesmo para os 14, o que produz duas mentiras de uma vez:**
-
 ```
-📊 Garimpo   pulsa 1×/hora (`buffer_processor.py:148`, seconds=3600)
-             → 🟢 15 min de cada hora · 🟡 os outros 45
-             ⛔ e mineração ZERO há 7 dias nas duas cores
-📊 Conselho  roda raramente, por env    →  🔴 PARADO quase sempre, por DESENHO
+🟢 SAUDÁVEL            pulsou  E  produziu dentro de k × cadência DELE          (k = 2, calibrável por agente)
+🟡 PULSA SEM PRODUZIR   o laço roda (pulso ou run completed recente) e a produção passou do limiar  ← o Garimpo hoje
+⚪ DESLIGADO            agents.is_active = false em TODAS as corretoras, e diz desde quando (ou "sem registro")
+🔴 PARADO               devia pulsar na cadência dele e não pulsa — inclui chave de heartbeat EXPIRADA
+⚫ NÃO MEDIDO           sem fonte declarada, ou sem correspondência entre AGENT_TASKS e agents
 ```
 
-> 🔴 **Um limiar único condena o agente lento a viver vermelho e promove o
-> agente frequente a verde.** Quando o vermelho é normal, ninguém olha para ele —
-> e é assim que um instrumento morre sem que ninguém desligue.
+🔴 **O pulso tem duas origens, e a do motor vale mais:** para trabalhador com `eixo.workflow_keys`,
+o *last_run* é `max(work_runs.finished_at) WHERE status='completed'`, e falha é
+`status='failed'`. O Redis fica para os 10 que só vivem lá. **Nunca os dois competem:** o
+eixo declara qual.
+
+🔴 **DESLIGADO sai de um fato do banco.** 📊 `agents`: 4 `attendance` false, 3 `core` true,
+1 `core` false; `desligado_em` NULL em 8 de 8. Sem data → *"sem registro"*, nunca uma data
+inferida. `is_active` é por corretora e o card é de plataforma → regra `all()`. Não existe
+chave entre os 8 `agents.slug` e os ids de `AGENT_TASKS`: agente sem correspondência mostra
+⚫, nunca ⚪. **A dúvida paga do lado de quem alerta** (referência ⑤).
+
+⚠️ **D3 (`attendance_capture.py:378`, `_beat(0)`) NÃO é removido.** Com a regra nova ele é
+honesto: pulsou e não produziu → 🟡.
+
+## O gate
+```
+① o Garimpo de hoje (run completed há 1 MINUTO, produção de 26/08) → 🟡, NUNCA 🟢
+   🔴 o teste força last_run = agora: é a janela exata em que o código de hoje pinta 🟢
+② agente is_active=false em TODAS as corretoras → ⚪ com "sem registro"; uma corretora ligada → NÃO é ⚪
+③ agente sem fonte → ⚫
+④ 🔴 chave de heartbeat expirada (morte de 30 dias) → 🔴 PARADO. O _TTL de 7 dias não transforma morte antiga em ⚪
+⑤ agente que roda 1×/dia (auditor) com produção de 20h atrás → 🟢, não 🔴: o limiar é DELE
+⑥ 🔴 LINHA DE CONTROLE: pulsou E produziu na cadência → 🟢. Sem ela, um guarda que pinta tudo de amarelo passaria em ①–⑤
+```
+**Mutações (duas):** force `last_run = agora` com produção parada → ① tem de dar 🟡; force a
+chave a expirar → ④ tem de dar 🔴. Se der ⚪, o D4 da v1 continua vivo com teste verde.
+
+---
+
+# BLOCO C · A rota lê o TRABALHO — execuções, falhas, entregas, travamentos, aprovações
 
 ## O conserto
 
-```
-🟢 SAUDÁVEL          pulsou  E  produziu dentro da cadência DELE
-🟡 PULSA SEM PRODUZIR  o laço roda e a saída não cresce      ← o Garimpo, hoje
-⚪ DESLIGADO          declarado, e diz DESDE QUANDO          ← o atendimento, hoje
-🔴 PARADO            devia pulsar na cadência dele, e não pulsa
-⚫ NÃO MEDIDO        sem fonte declarada (BLOCO A)           ← o Conselho, hoje
-```
+`GET /api/admin/spec034/agents-status` (mesmo caminho, `require_master_admin`) passa a
+devolver o **contrato da §5**, calculado no backend com **cache de 60s em Redis** (📊 a
+tela recarrega a cada 20s; 20 consultas × 3/min contra produção seria autogol). O leitor
+mora num módulo novo ao lado do heartbeat (💭 `backend/app/core/central_de_agentes.py`),
+e **não** cria tabela.
 
-🔴 **`DESLIGADO` sai de um fato do banco, não de um palpite:** os agentes ligados
-à cadeia de atendimento leem `agents.is_active` da tabela. ⛔ **Se o motivo do
-silêncio não for verificável, o estado é `PARADO`** — e não `DESLIGADO`. A dúvida
-paga do lado de quem alerta.
-
-## E as duas travas que fazem o pulso valer alguma coisa
+Para cada trabalhador com `eixo.workflow_keys`, a partir de `work_runs` e das tabelas
+ligadas por `work_run_id` (📊 índices existem nas três):
 
 ```
-D1  `broker_insights.py:337`   o pulso SAI do `finally`
-    🔴 caminho de exceção não pinta card. Falhou → o card conta a falha
-    ⚠️ **E isto sozinho não muda NADA em produção**, porque o `return 0` da
-    `:311` já torna a linha inalcançável. 🔴 **O pulso do Garimpo tem de
-    nascer no fluxo canônico** (`garimpo_v3.py` / `workflows.py:291`), senão
-    o gate fica verde com o card mentindo igual (§0.3 do protocolo)
-D2  🔴 **AS OITO chamadas cruzadas do gate ⑥, não só a `:181`:**
-    `agent_memory:212` · `history_ingest:204` · `history_ingest:212`
-    `route_sentinel:444` · `attendance_distiller:1344` · `auditor:181`
-    `prompt_optimizer:199` · `regression_sentinel:160`
-    🔴 cada agente dá o próprio pulso, ou não dá nenhum
-    ⚠️ **Consertar só a `:181` REPROVA no gate ⑥** — e era esse o erro que
-    o gate existe para impedir. 🔴 As três do `alfaiate` vão para
-    `playbook_tailor.py`, que é a casa dele
+execucoes_24h · execucoes_7d · falhas_7d              work_runs por workflow_key e status
+duracao_media_s · fila_media_s                        finished_at-started_at · started_at-created_at
+artifacts_7d                                          artifacts.work_run_id → work_runs.workflow_key
+aprovacoes_pendentes                                  approval_requests.status='pending' → work_run_id
+travados                                              work_runs.unblock_state='travado'
+custo_brl_30d                                         sum(cost_actual_brl)  — 📊 hoje 0,00 em todos, e o card DIZ "0,00 (não instrumentado)"
 ```
+Para os 10 que vivem só no Redis: `trabalho = null` e a tela escreve *"sem eixo de
+trabalho"* — nunca zeros que pareçam medição.
 
-⚠️ **D3 (`attendance_capture.py:378`, `_beat(0)`) NÃO é removido.** Com a regra
-nova ele passa a ser **honesto**: pulsou, não produziu → 🟡. Era só o destino que
-estava errado.
+🔴 **Nada de conteúdo atravessa** (referência ⑦): a rota devolve contagens, estados, ids,
+timestamps. O guarda do BLOCO F confere.
+
+🔴 **O filtro do console `/admin/insights`** (`admin_spec034.py:90` `"garimpo"` e `:99`
+`"sugestoes_ia"`; 📊 o banco só tem `garimpo_v3`) sai do código e lê a mesma
+`fonte_de_producao` do BLOCO A. Não é trocar a string: é matar a classe.
 
 ## O gate
-
 ```
-① o Garimpo de hoje (laço `completed`, saída de 7 dias atrás) → 🟡, NUNCA 🟢
-   🔴 e o teste roda com `last_run` de 1 MINUTO ATRÁS — a janela exata em que
-   o código de hoje pinta 🟢. ⛔ Testar com pulso velho não prova nada:
-   ali o código antigo já daria 🟡 sozinho, pelo motivo errado
-② agente `is_active=false` → ⚪ DESLIGADO. 🔴 **E a data é opcional por
-   medição, não por preguica:** 📊 `SELECT count(desligado_em) FROM agents` →
-   **0 de 8**. A coluna existe e está inteiramente NULL, e esta SPEC proíbe
-   migration e backfill. **Sem data → o card escreve `sem registro`**, nunca
-   uma data inferida do último transcript
-②-b 🔴 **E `is_active` é POR CORRETORA:** 📊 a `core` tem 3 `true` e 1 `false`.
-   O card da Central é UM, de plataforma. **A regra é `all()`: DESLIGADO só
-   quando TODAS as corretoras desligaram** — uma ligada já espera trabalho.
-   ⚠️ E não existe chave ligando os 8 `agents.slug` aos 14 de `AGENT_TASKS`:
-   **agente sem correspondência mostra `NÃO MEDIDO`, nunca `DESLIGADO`**
-③ agente sem fonte → ⚫ NÃO MEDIDO
-④ 🔴 agente morto há 30 dias → 🔴 PARADO.  ⛔ o `_TTL` de 7 dias NÃO pode
-   transformar morte antiga em ⚪ — é a §1.2 D4, e é o coração desta SPEC
-⑤ 🔴 LINHA DE CONTROLE: um agente que pulsou E produziu na cadência dele → 🟢
-   ⚠️ sem esta linha, um guarda que pinta tudo de amarelo passaria em ①–④
+① a rota devolve o contrato da §5 em UMA chamada, com `gerado_em` e `cache_s`
+② para intelligence.detect_signals: execucoes_7d > 0 e falhas_7d = 0 (📊 hoje 504 e 0) — o motor invisível aparece
+③ 🔴 LINHA DE CONTROLE: banco sem run de um workflow_key → execucoes = 0 SEM erro, e o card diz 0
+④ o ranking de /admin/insights devolve > 0 com 270 linhas no banco; com banco vazio devolve 0 sem erro
+⑤ 🔴 DOIS TENANTS: nenhuma rota de corretora serve agents-status nem o agregado. require_master_admin provado no teste, não presumido
+⑥ nenhum campo do JSON contém texto de conversa: o teste lista as chaves e reprova qualquer uma fora do contrato
+⑦ next start + 1 requisição autenticada a /api/admin/spec034/agents-status responde 200 (CLAUDE.md §9.1)
 ```
-
-🔴 **A mutação obrigatória, e são duas:**
-
-```
-1. force `last_run = agora` e a produção parada  →  ① tem de ficar 🟡
-   ⛔ se ficar 🟢, o guarda não guarda: é o defeito original, intacto
-2. force a chave de heartbeat a EXPIRAR (morte de 30 dias)  →  ④ tem de dar 🔴
-   ⛔ se der ⚪ AGUARDANDO, o D4 continua vivo com teste verde em cima
-```
+**Mutação:** troque uma `fonte_de_producao` por `tabela_que_nao_existe` → gate ④ do BLOCO A
+e este ③ ficam vermelhos. Restaure por cópia.
 
 ---
 
-# BLOCO C · Os quatro grupos — a queixa do Founder, respondida
-
-## O conserto
-
-📊 Os 14 agentes respondem a **quatro** perguntas, e a descrição de cada um em
-`heartbeat.py` já diz qual:
+# BLOCO D · Os quatro grupos numa tela — a queixa do Founder, respondida
 
 ```
-👁️  OBSERVA E REGISTRA      o que aconteceu ficou gravado
-    observador · tecelao · espelho · espelho_atendimento
-
-🚑 ATENDE AGORA            alguém está esperando neste minuto
-    vigia_sentinela · cerebro · followup
-    🔴 é o único grupo que ALCANÇA O SEGURADO
-
-🧭 MANTÉM A ROTA CERTA     a seguradora mudou e nós acompanhamos
-    sentinela_rotas · alfaiate · cartografo
-
-🎓 APRENDE E AVISA         ontem virou conserto e recomendação
-    garimpo · auditor · sugestoes · conselho
+👁️ OBSERVA E REGISTRA      o que aconteceu ficou gravado          observador · tecelao · espelho · espelho_atendimento · cartografo
+🚑 ATENDE AGORA            alguém está esperando neste minuto      vigia_sentinela · cerebro · followup     🔴 o único grupo que alcança o segurado
+🧭 MANTÉM A ROTA CERTA     a seguradora mudou e nós acompanhamos   sentinela_rotas · alfaiate
+🎓 APRENDE E AVISA         ontem virou conserto e recomendação     garimpo · detector · auditor · sugestoes · conselho · briefing · medidor · agrupador
 ```
 
-**Cada grupo abre com UMA linha de resumo, e ela é a única coisa que o Founder
-precisa ler:** `3 de 3 saudáveis` · `1 pulsa sem produzir` · `4 desligados desde
-26/08`.
+Cada grupo abre com **uma linha de resumo** que o Founder lê em três segundos: `3 de 4
+saudáveis · 1 pulsa sem produzir` · `4 desligados · sem registro de quando`. Cada card
+mostra o estado, o motivo em uma frase, e um painel dobrável **TRABALHO** com os números
+do BLOCO C, ou *"sem eixo de trabalho"*. O bloco MEMÓRIA existente permanece.
 
-## ⚠️ O que eu NÃO fiz, e por quê — está aqui para o Founder derrubar se quiser
+⚠️ **Uma tela, não quatro páginas.** 📊 `lib/navigation.ts:MENU_NAO_CRESCE = 5`, guardado
+por `backend/tests/test_menu_nao_cresce.py`. Quatro páginas para ~20 cards adiciona
+navegação para consertar navegação. 🧑 **F-088-01:** se agrupado ainda parecer confuso, a
+próxima peça é uma página por grupo, e aí o menu muda por escrito. Não bloqueia.
 
-O pedido diz *"cada grupo com sua página"*. 📊 **Não fiz, e a razão é medida:**
-
-```
-lib/navigation.ts:MENU_NAO_CRESCE = 5, guardado por backend/tests/test_menu_nao_cresce.py
-lib/navigation.ts, histórico: 8 telas já MUDARAM DE CASA por excesso de navegação
-                              Briefing e Pesquisas entraram como pilar e saíram
-```
-
-> ⚠️ **Quatro páginas novas para 14 cards adiciona navegação para consertar
-> navegação.** Um grupo com 3 cards não sustenta uma página.
-
-✅ **O que entrega o mesmo:** os quatro grupos **numa tela só**, cada um com
-título, a frase do propósito e a linha de resumo. 📊 **É o que a SPEC-093 fez com
-os corredores**, e funcionou.
-
-🧑 **CAIXA DO FOUNDER · F-088-01** — se depois de ver agrupado ainda parecer
-confuso, a próxima peça é **uma página por grupo, e aí o menu muda por escrito**.
-⛔ **Não bloqueia.**
+**Referência de forma:** `docs/canon/DS-001-design-brief.md` §5; telas admin vizinhas
+`app/admin/trabalhos/page.tsx`, `app/admin/aprovacoes/page.tsx`. A página continua
+`'use client'` e sem componente compartilhado novo, a menos que o builder encontre um
+card reutilizável já existente.
 
 ## O gate
-
 ```
-① os 14 aparecem, em 4 grupos, e o grupo sai de `AGENT_TASKS` (BLOCO A)
-② 🔴 nenhum agente fica fora de grupo — inclusive um agente NOVO
-   ⚠️ é a §1.5: a lista que não sabe do agente novo é a que mente
-③ cada grupo tem a linha de resumo, e o número dela bate com os cards
-④ os 5 sem cor ganham cor — 🔴 vinda de `AGENT_TASKS`, não de mapa no frontend
-⑤ `test_menu_nao_cresce.py` continua verde: nenhum pilar novo
+① todos os trabalhadores aparecem, em 4 grupos, e o grupo vem do JSON (BLOCO A) — o frontend não sabe nomes
+② 🔴 um trabalhador NOVO no JSON aparece sem mudar o frontend (teste de render com fixture de 21 agentes)
+③ cada grupo tem a linha de resumo e o número dela bate com os cards
+④ o card mostra o motivo do estado e, quando há eixo, o painel TRABALHO com os 8 números; sem eixo, "sem eixo de trabalho"
+⑤ test_menu_nao_cresce.py continua verde
+⑥ npm run test:rotas-montam verde (mexeu em app/)
 ```
-
-🔴 **A mutação:** acrescente um 15º agente a `AGENT_TASKS` **sem grupo**. O gate ②
-tem de ficar **vermelho**. ⛔ Se ficar verde, a SPEC reconstruiu a §1.5.
+**Mutação:** fixture com um agente sem `grupo` → o render mostra o grupo `SEM GRUPO` em
+vermelho e o teste ② reprova. Se ficar verde, a SPEC reconstruiu a §1.6.
 
 ---
 
-# BLOCO D · O console para de mostrar vazio, e o guarda que segura tudo
+# BLOCO E · Os pulsos: três mortos e oito cruzados
 
-## O conserto — a parte de um `grep`
-
-📊 `admin_spec034.py:90` e `:99` filtram `"garimpo"` e `"sugestoes_ia"`; o banco
-só tem `garimpo_v3`.
-
-⛔ **Não é trocar a string.** 🔴 **O filtro sai do código e vira a mesma
-`fonte_de_producao` do BLOCO A** — senão a próxima versão (`garimpo_v4`) repete
-o defeito em silêncio, e é exatamente o que aconteceu de `garimpo` para `garimpo_v3`.
-
-## O guarda
-
-**Um arquivo, no formato do `backend/tests/test_o_protocolo_tem_policia.py`.**
-
+```
+E1  os 3 pulsos atrás de cutover_ligado()  (§1.4)
+    🔴 garimpo e auditor: o pulso passa a vir do EIXO (work_runs do workflow_key) — o beat() morto
+       é REMOVIDO, não consertado no lugar. Para sugestoes, que não tem workflow nem outro pulso:
+       o beat() sai do ramo morto e vai para o fluxo que roda de fato — ou o executor prova que
+       nada roda e o card fica ⚫ com motivo "sem fluxo ativo desde o cutover"
+E2  os 8 pulsos cruzados (§1.5): cada agente dá o próprio pulso, ou não dá nenhum.
+    As três do alfaiate vão para playbook_tailor.py, a casa dele (📊 0 beat hoje)
+E3  🔴 nenhum beat() dentro de finally: — em NENHUM dos 18 arquivos. Caminho de exceção não pinta card
+```
 ## O gate
-
 ```
-① 🔴 o ranking de `/admin/insights` devolve > 0 com 270 linhas no banco
-   ⚠️ e o teste conta LINHAS DO BANCO, não confia em leitura de código
-② 🔴 LINHA DE CONTROLE: banco realmente vazio → devolve 0 **sem erro**
-   ⚠️ sem ela, "devolve linhas" passaria com um filtro que aceita tudo
-③ toda `fonte_de_producao` de `AGENT_TASKS` aponta para tabela/coluna que EXISTE
-   🔴 um `source` inventado tem de reprovar o teste
-④ os 14 têm grupo e cor; o frontend não tem lista de agente
-⑤ 🔴 NENHUM `beat(` mora dentro de um `finally:` — em NENHUM dos 18 arquivos
-   ⚠️ é uma regra sobre as 📊 27 chamadas, não sobre a do Garimpo:
-   consertar só o caso conhecido deixa os outros 26 livres para repetir
-⑥ 🔴 nenhum agente dá o pulso de outro — o `beat("x")` está no laço do `x`
-   📊 **NÃO é uma violação. São OITO**, medidas em 02/09:
-     `agent_memory:212`→espelho · `history_ingest:204`→espelho_atendimento
-     `history_ingest:212`→observador · `route_sentinel:444`→alfaiate
-     `attendance_distiller:1344`→espelho_atendimento · `auditor:181`→alfaiate
-     `prompt_optimizer:199`→alfaiate · `regression_sentinel:160`→auditor
-   🔴 **O `alfaiate` recebe de TRÊS módulos e não pulsa da casa dele.**
-   ⚠️ 📊 `backend/app/services/playbook_tailor.py` linha 1 diz `ALFAIATE v1
-   (SPEC-034 Onda 4)` — 📊 nasceu em **13/07/2026** (`13899d4`), e 📊 `grep -c 'beat('`
-   dá **0**.
-   **A casa existe e não pulsa.** O conserto é mover o pulso para lá, não
-   escolher qual dos três invasores fica
-   ⚠️ Consertar só o `:181` deixa as outras sete de pé — e era exatamente
-   esse o erro que este gate existia para impedir
-⑥-b 🔴 **TODO `workflow_key` visto em `work_runs` nos últimos 7 dias tem
-   agente correspondente em `AGENT_TASKS`** — ou está numa lista de
-   `SEM CARD, POR DECISÃO`. 🔴 **Ela não existe hoje — o BLOCO D a CRIA**, com
-   uma linha por `workflow_key` e o motivo escrito. ⚠️ Lista vazia reprova:
-   sem motivo escrito, o agente entra em `AGENT_TASKS`.
-   📊 Hoje **CINCO reprovam** (o `garimpo` passa), inclusive o
-   `detect_signals` (504 execuções,
-   59 sinais, o único que produziu alguma coisa hoje).
-   ⚠️ **Este é o único gate que teria pegado o motor invisível** — e é a
-   §1.5 desta SPEC aplicada à lista que sobrou
-⑦ 🔴 DOIS TENANTS: nenhuma rota de corretora serve `agents-status` nem o número
-   agregado. `require_master_admin` provado, não presumido
-⑧ `next start` + 1 requisição a `/api/admin/spec034/agents-status`
-   (`CLAUDE.md` §9.1 — mexeu em `app/`)
+① grep -rn "cutover_ligado" nos 3 arquivos: nenhum beat() depois de um return dele
+② 🔴 nenhum beat("x") fora do módulo do x — teste que mapeia call site → agente e reprova cruzamento (📊 8 hoje)
+③ nenhum beat( dentro de finally: (📊 1 hoje)
+④ 🔴 LINHA DE CONTROLE: o pulso legítimo de dispatch_watchdog.py:622 continua e o card do vigia_sentinela pulsa no teste
 ```
-
-🔴 **A mutação do guarda:** troque uma `fonte_de_producao` por
-`tabela_que_nao_existe`. O gate ③ tem de ficar **vermelho**. ⛔ Restaurar **por
-cópia**, nunca `git checkout` (protocolo §10 · P-231).
+**Mutação:** reintroduza um `await beat("alfaiate")` em `conversation_auditor.py` → ② vermelho.
 
 ---
 
-## 3. 🔴 O QUE SAIU DA PROPOSTA — e o gatilho de cada peça
+# BLOCO F · O guarda — no formato do `test_o_protocolo_tem_policia.py`
 
-📊 A proposta tem **3.718 linhas**. Saiu quase tudo, e a razão é uma só:
-**ela dimensiona uma organização de agentes que este projeto não tem.**
+Um arquivo `backend/tests/test_a_central_diz_a_verdade.py`, com blocos e linha de controle,
+cobrindo os gates ②③④ do A, ①–⑥ do B, ③④⑥ do C, ②③ do E. Roda sem banco onde puder
+(fixtures) e com banco onde a SPEC exige (`information_schema`, dois tenants).
 
-📊 **A conta de hoje, 02/09:** `agents` = **8 linhas — 2 por corretora × 4
-corretoras.** ⚠️ **Uma corretora vê DOIS agentes.** `agent_delegations` = **0**.
-`routines` = **1**. `tenant_auxiliaries` = **9**.
+**Mutações obrigatórias do guarda, e são três:** apague uma `fonte_de_producao` → vermelho ·
+troque o limiar único de volta para 900s global → o gate ⑤ do B fica vermelho · force a
+chave expirada a virar ⚪ → o gate ④ do B fica vermelho. Restaurar por cópia.
 
-| peça da proposta | 📊 medido hoje | **volta quando** |
+---
+
+## 4. O CONTRATO DA ROTA — congelado para os builders trabalharem em paralelo
+
+```json
+{
+  "gerado_em": "2026-09-03T02:10:00Z", "cache_s": 60,
+  "grupos": [
+    {"id": "aprende_avisa", "titulo": "APRENDE E AVISA", "proposito": "ontem virou conserto e recomendação",
+     "resumo": "3 de 8 saudáveis · 1 pulsa sem produzir · 2 não medidos",
+     "agentes": [
+       {"id": "garimpo", "nome": "Garimpo", "descricao": "...", "cor": "#...", "grupo": "aprende_avisa",
+        "estado": "PULSA_SEM_PRODUZIR",
+        "motivo": "21 execuções completas em 7 dias; última produção em 26/08 (8 dias); cadência esperada 1 dia",
+        "pulso": {"ultimo": "2026-09-03T00:01:03Z", "origem": "work_runs"},
+        "producao": {"ultimo": "2026-08-26T00:05:34Z", "fonte": "broker_insights.created_at ∪ intelligence_signals.last_seen_at",
+                     "cadencia_esperada_s": 86400, "limiar_s": 172800},
+        "desligado": {"todas_desligadas": false, "desde": null},
+        "trabalho": {"eixo": ["intelligence.garimpo"], "execucoes_24h": 3, "execucoes_7d": 21, "falhas_7d": 0,
+                     "duracao_media_s": 9.9, "fila_media_s": 35.7, "artifacts_7d": 0,
+                     "aprovacoes_pendentes": 0, "travados": 0, "custo_brl_30d": 0.0, "custo_instrumentado": false},
+        "acoes_hoje": 0}
+     ]}
+  ],
+  "sem_card_por_decisao": [{"workflow_key": "bridge.routine.execute", "motivo": "ponte de rotina, contada no auxiliar"}]
+}
+```
+`estado` ∈ `SAUDAVEL | PULSA_SEM_PRODUZIR | DESLIGADO | PARADO | NAO_MEDIDO`.
+`trabalho` é `null` quando o eixo é só Redis. Nenhuma chave fora desta lista.
+
+---
+
+## 5. 🔴 O QUE SAIU DA PROPOSTA — e o gatilho de cada peça
+
+📊 A proposta tem 3.718 linhas; o research-pack, 1.180 e 13 referências. O que entra é a
+saúde e a visão por trabalhador. O runtime de delegação fica para a **SPEC-088-B**, e o
+gatilho é medido:
+
+| peça da proposta | 📊 medido em 03/09 | volta quando |
 |---|---|---|
-| contratos de delegação entre agentes | `agent_delegations` = **0 linhas** | existir a primeira delegação real |
-| Admission Gate ("precisa de mais de um agente?") | 1 corretora = 2 agentes | houver caso com 3+ agentes disputando o mesmo pedido |
-| grupos paralelos de 2–5 workers · Lead/Orchestrator | nenhum grupo existe | 🔴 depois do Admission Gate, nunca antes |
-| papéis, especialistas e juízes dentro do produto | o painel de juízes é do **protocolo**, não do produto | ⛔ **e o protocolo v10 §5.1 proíbe:** juiz julga código, não documento |
-| Quality Gate por resultado de agente | `conversation_scorecards` já dá nota | consolidar isto seria peça nova com nome de consolidação |
-| ontologia "Auxiliar não é subagente" | ✅ **já é canon** — `ONTOLOGIA-DO-TRABALHO.md` | ⛔ nunca: reescrever canon que já existe é motor paralelo (`CLAUDE.md` §5) |
+| contratos de delegação, DelegationEnvelope, ResultEnvelope | `agent_delegations` = **0 linhas** | existir a primeira delegação real |
+| Admission Gate, Parallel Group, Lead/Orchestrator, depth, fanout | 8 agentes = 2 por corretora | houver 3+ agentes disputando o mesmo pedido |
+| Agent Role Spec e releases | o Skill Registry (20 skills) já versiona procedimento | um papel precisar de versão própria |
+| juízes e AAA profile dentro do produto | o painel é do PROTOCOLO | ⛔ v11 §5.1: juiz julga código, não documento |
+| peer teams, mailbox, task DAG | pack §56: NÃO na V1 | eval provar ganho |
+| custo por trabalhador via `usage_events` | 400 eventos, **0** com `work_run_id`; `cost_actual_brl` = 0 em 3.494 runs | 🔴 **P-088-CUSTO**: o callback passa `work_run_id` e o worker grava `cost_actual_brl`. Bloco de ~1–2h, fora desta SPEC porque exige decidir onde vive o contexto de run no chat |
+| Quality Health / eval de saída | `conversation_scorecards` já dá nota | 088-B |
 
-> ⚠️ **Nada foi julgado ruim. Foi julgado cedo.** O gatilho da auditoria de 26/08
-> era *"quando agentes ou auxiliares passarem de ~20"*. 📊 **Hoje: 8 agentes e 9
-> auxiliares instalados. O gatilho NÃO disparou.**
-
-🔴 **E é por isso que a SPEC mudou de assunto:** medindo a navegação, o defeito
-que apareceu foi o instrumento mentindo — que **muda o produto** e custa 🔴 **4–7h**,
-contra uma organização operacional que **não muda nada hoje** e custa semanas.
+Nada foi julgado ruim. Foi julgado cedo, e cada linha tem gatilho.
 
 ---
 
-## 4. A REFERÊNCIA — §7.1, por caminho, e o juiz ABRE
+## 6. ⛔ POR QUE ZERO MIGRATION — decisão, não esquecimento
 
-| dimensão | referência | como comparar |
-|---|---|---|
-| **um guarda serve?** | `backend/tests/test_o_protocolo_tem_policia.py` | 🔴 **conte você:** `wc -l` e a última linha da saída do guarda. ⚠️ **NÃO há
-número aqui de propósito** — três rodadas de conserto envelheceram este contador
-três vezes. A mutação está escrita no commit `9dddb7f`. O guarda do BLOCO D chega perto? |
-| **a tela não mente** | `backend/tests/test_a_casa_diz_a_verdade.py` | 📊 236 linhas — o precedente deste projeto de guardar contra documentação e menu que contradizem o código |
-| **UI / design** | `docs/canon/DS-001-design-brief.md` **§5** | o agrupamento do BLOCO C |
-| **o número é medido?** | `CLAUDE.md` §12.1 | 📊 tem consulta e data · 💭 nunca é citável |
-
-⚠️ **`CLAUDE.md` §9.3 vale aqui ao pé da letra:** os gates desta SPEC comparam o
-comportamento do **motor** (a rota, o `health()` real) sobre dado **real do
-banco** — nunca um regex sobre a declaração.
+A produção sai de `max(coluna)` das tabelas que os agentes já escrevem; o trabalho sai de
+`work_runs` e das três tabelas já indexadas por `work_run_id`; o estado é calculado na
+leitura com cache de 60s. REVERSIBILIDADE 0: desfeito o commit, as chaves do Redis
+expiram e não sobra estrutura. Uma tabela `agent_health` teria posto a SPEC em CRÍTICO e
+criado um segundo lugar para a verdade.
 
 ---
 
-## 5. ⛔ POR QUE ZERO MIGRATION — e é decisão, não esquecimento
+## 7. O que fica pendente
 
 ```
-a produção sai de `max(created_at)` da tabela que o agente JÁ escreve
-o estado é CALCULADO na leitura, com cache de 60s em Redis
+P-088-01  knowledge_cards parado desde 16/08 — 📊 18 dias, 18.715 linhas. Esta SPEC faz o silêncio APARECER; não religa o destilador.
+P-088-02  playbook_overlays = 0 desde sempre. Depois desta SPEC o Alfaiate fica 🔴/⚫ o tempo todo — é a informação certa.
+P-088-03  platform_sends = 5, última 19/08. Se é a fonte do Follow-up, ele está mudo há 15 dias. Confirmar a fonte (BLOCO A).
+P-088-04  P-70 continua: o Follow-up pergunta ao segurado e ninguém lê a resposta.
+P-088-05  O 6º pilar Memórias é exceção temporária de 18/08 (lib/navigation.ts). 🧑 do Founder.
+P-088-06  📊 122 de 175 tabelas com RLS e zero policies (P-090-01). Não é desta SPEC; ela não cria tabela.
+P-088-CUSTO  📊 usage_events 30d: 400 linhas, 0 com work_run_id; correlation_id não casa (0 de 394);
+          work_runs.cost_actual_brl = 0 em 100%. Custo por trabalhador não existe hoje. Conserto: cost_callback.py:252-274
+          passa work_run_id/work_step_id do contexto de run; o worker grava cost_actual_brl. ~1–2h, próxima leva.
+P-088-ARTIFACTS  📊 33 de 118 artifacts (30d) sem work_run_id — 6 chamadores de ArtifactService não passam o id
+          (relatorios_comerciais.py:178, report_tool.py:263, billing_collection.py:1439, research/adapters.py:348,
+          research/radar.py:389, api/artifacts.py:64,70). Entregas órfãs não aparecem no card. ~1h.
+P-088-AUX  auxiliary_events: escritor em factory.py:460-471, ZERO chamadores (P-18 confirmada). Os auxiliares
+          instalados (9) não têm eixo de trabalho até WORK_RUNS_ROUTINE_BRIDGE ligar (📊 7 runs históricos).
 ```
 
-🔴 **Consequência da conta do §3:** REVERSIBILIDADE = **0**. Desfeito o commit,
-as chaves do Redis expiram e **não sobra estrutura nem dado**. ⛔ Uma tabela
-`agent_health` teria posto a SPEC no piso de RISCO 6 (§3.2) e criado um segundo
-lugar para a verdade.
-
----
-
-## 6. O que fica pendente
+## 8. 🧑 A CAIXA DO FOUNDER
 
 ```
-P-088-01  🔴 `knowledge_cards` parado desde 16/08 — 📊 17 dias, 18.715 linhas,
-          zero novas. Herdada da P-090-02 e RECONFERIDA hoje. Esta SPEC faz o
-          silêncio APARECER; ⛔ não religa o destilador.
-P-088-02  📊 `playbook_overlays` = 0 linhas desde sempre. O Alfaiate nunca
-          escreveu nada. Depois desta SPEC o card dele fica 🟡 o tempo todo —
-          🔴 e isso é a informação certa, não um defeito da Central.
-P-088-03  📊 `platform_sends` = 5 linhas, última em 19/08. Se é a fonte do
-          Follow-up, ele está mudo há 14 dias. 🔎 confirmar a fonte (BLOCO A).
-P-088-04  🔴 P-70 continua aberta: o Follow-up PERGUNTA ao segurado e ninguém lê
-          a resposta (`heartbeat.py`, comentário de 03/08). O card fica 🟡
-          honesto; ⛔ o ciclo continua sem fechar.
-P-088-05  ⚠️ O 6º pilar `Memórias` é EXCEÇÃO TEMPORÁRIA de 18/08 com "quando
-          tirar" escrito em `lib/navigation.ts` — 📊 **15 dias sem a decisão**.
-          🧑 é do Founder: vira pilar por escrito, ou volta para dentro de um.
-P-088-06  📊 10 de 17 tabelas com RLS ligada e ZERO policies (P-090-01). Não é
-          desta SPEC; ela não cria tabela.
+F-088-01  Uma tela com 4 grupos, não 4 páginas. Se ainda parecer confuso, a próxima peça é uma página por grupo
+          e o menu muda por escrito. Não bloqueia.
+F-088-02  A SPEC-088-B (runtime de delegação: admission gate, envelopes, grupos paralelos) fica adiada com gatilho
+          medido: agent_delegations = 0. Quando houver o primeiro caso real de 3+ agentes no mesmo pedido, ela volta.
+F-088-03  Custo por trabalhador é pendência (P-088-CUSTO), não bloco: exige decidir onde vive o contexto de run
+          no chat. A tela dirá "0,00 (não instrumentado)" em vez de fingir zero.
 ```
 
----
-
-## 7. A ordem de execução
+## 9. A ordem de execução
 
 ```
-0  →  A  →  B  →  C  →  D
+BLOCO 0  →  {A+B+C}  ‖  {D contra o contrato da §4}  ‖  {E}  →  F (gates)  →  verificador  →  painel de 3 lentes  →  conserto  →  juiz de confirmação
 ```
+🔴 A e B e C são de UM builder (mesmo módulo, mesma interface). D e E correm em paralelo
+porque o contrato está congelado e os arquivos são disjuntos. A integração é serial e a
+suíte inteira roda no fim de cada bloco integrado e no fim.
 
-🔴 **A ordem não é negociável:** B classifica o que A declara, C mostra o que B
-classificou, D guarda os três. ⛔ **Começar por C** (o agrupamento, que é o pedido
-literal) entrega uma tela mais bonita mentindo o mesmo verde.
-
-⚠️ **A escrita é de UM SÓ** (protocolo §8): A e B tocam `heartbeat.py` e os call
-sites; **paralelizar aqui é o caso medido da SPEC-085.**
-
-💭 **~4–7h** (subiu de 3–5h com a SUPERFÍCIE 3 e os dois papéis novos). O BLOCO A domina — declarar e conferir 14 fontes de produção, três
-delas por medição do executor.
+💭 **5–8h.** O BLOCO A+B+C domina: declarar e conferir ~20 fontes e eixos, quatro delas por
+medição do executor.
