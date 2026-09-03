@@ -169,8 +169,16 @@ _RE_OCORRENCIA = re.compile(
     r"|sofri"
     r"|tive um acidente"
     r"|fui assaltad\w*"
+    r"|foi (?:roubad|furtad|batid|abalroad|arrombad)\w*"
+    r"|aconteceu um acidente"
+    r"|bateram no meu"
     r")\b|pegou fogo"
 )
+
+#: 🔴 O VERBO DE ABERTURA — "abrir/acionar/comunicar/registrar/dar entrada" + sinistro.
+#: 📊 Juiz de confirmação, 03/09: "abri um sinistro e queria saber o preço da franquia" era
+#: vetado pela tranca de venda. Quem já abriu, ou quer abrir, não está cotando.
+_RE_ABERTURA = re.compile(r"\b(abr[iu]\w*|acion\w+|comunic\w+|registr\w+|dar entrada|aviso de)\b")
 
 #: 🔴 A PALAVRA DE VENDA — a tranca que vale sobre TODAS as outras regras.
 #:
@@ -256,13 +264,23 @@ def detectar_sinistro(texto: Any,
         return True, CONFIANCA_ALTA, MOTIVO_FICHA
 
     alvo = normalizar(texto)
-    if not alvo.strip() or _RE_VENDA.search(alvo):
+    if not alvo.strip():
         return False, None, None
 
-    if _RE_SINISTRO.search(alvo):
-        return True, CONFIANCA_MEDIA, MOTIVO_REGEX
+    # 🔴 A ORDEM decide o recall. Juiz de confirmação (03/09/2026): com a tranca de
+    # venda ANTES de tudo, "bati o carro, minha apólice tem cobertura?" não abria —
+    # 📊 488 de 3.786 mensagens com `sinistro` carregam palavra de venda na mesma
+    # frase (~9,5% das sessões). Um VERBO DE OCORRÊNCIA em 1ª pessoa é evidência
+    # mais forte do que a palavra "cobertura" ao lado: ele vence a tranca.
     if _RE_OCORRENCIA.search(alvo) or _bati_com_alvo(alvo):
         return True, CONFIANCA_MEDIA, MOTIVO_OCORRENCIA
+
+    if _RE_SINISTRO.search(alvo):
+        # "quero fazer uma cotação de sinistro" é venda; "abri um sinistro e queria
+        # saber o preço da franquia" é sinistro. O que separa é o verbo de ABERTURA.
+        if _RE_VENDA.search(alvo) and not _RE_ABERTURA.search(alvo):
+            return False, None, None
+        return True, CONFIANCA_MEDIA, MOTIVO_REGEX
     return False, None, None
 
 

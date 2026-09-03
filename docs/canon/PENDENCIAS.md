@@ -9900,3 +9900,13 @@ por conversa; medir a latência real do PostgREST no contêiner. **Dono:** 🤖.
 ## P-093B-ESPELHO · O espelho que alimenta a sombra ficou parado de 27/08 a 01/09
 📊 `attendance_transcripts` por dia: 26/08 473 · 27/08–01/09 **0** · 02/09 3 · 03/09 1. Coincide com a API no chão
 (`4c8a718`) e com o atendimento desligado. Sem inbound não há sombra. **Dono:** 🤖 medir depois do piloto.
+
+## P-093B-FICHA-TTL · A memória de ausência da ficha não expira na escala de hoje
+📊 `TETO_DA_MEMORIA=5000` FIFO por cliente e 683 conversas no banco: um worker que leu `ficha=None` continua vendo
+`None` até reiniciar. Consequência: `confianca` MEDIA em vez de ALTA quando o grafo (ligado) gravar a ficha depois —
+a sombra abre igual. **Destrava:** TTL, ou invalidação no ponto que grava a ficha (`nodes.py:860`). **Dono:** 🤖. 💭 20 min.
+
+## P-093B-NOTA-GATE · O gate da nota do painel é de texto-fonte, não de motor
+`scripts/claims-shadow-eventos-do-painel.test.mjs` bloco [9] prova que `route.ts` CHAMA o registrador (grep), não que a
+chamada grava em runtime. Se `route.ts` deixar de chamar, a nota do painel some do ledger em silêncio (o Python não a emite
+mais pelo painel, de propósito). **Destrava:** teste de rota com cliente falso. **Dono:** 🤖. 💭 30 min.

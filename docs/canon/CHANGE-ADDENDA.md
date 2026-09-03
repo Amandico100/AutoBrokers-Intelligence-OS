@@ -3805,3 +3805,8 @@ parcial desta SPEC, achado por medição.
 - **Autorização:** protocolo §9, regra dos 30 minutos, dentro do BLOCO A; registrado aqui porque o texto da SPEC
   dizia "regex estrito" e o executor foi além do texto (CLAUDE.md §11).
 - **Registro:** SPEC-093-B BLOCO A (texto atualizado no relatório), guarda `test_o_sinistro_deixa_rastro.py` [14b].
+- **Custo medido da mudança (juiz de confirmação, 03/09):** 📊 falsos positivos 10/14 → 0/14; verdadeiros perdidos
+  5/25 (voz passiva "meu carro foi roubado"; `acidente` solto) = 0,23% das sessões do acervo; e a tranca de venda
+  vetava sinistro real com "cobertura"/"preço" na mesma frase: 📊 488 de 3.786 mensagens, ~9,5% das sessões.
+  Os dois últimos foram consertados na mini-rodada pós-confirmação (verbo de ocorrência vence a tranca; voz passiva
+  entra no grupo de ocorrência) e fixados no guarda [14b].

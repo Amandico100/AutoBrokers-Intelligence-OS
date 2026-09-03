@@ -2441,6 +2441,15 @@ FRASES_QUE_ABREM = (
     "arrombaram o carro",
     "tive um acidente hoje",
     "houve um abalroamento",
+    # 📊 juiz de confirmação 03/09: a tranca de venda vetava sinistro REAL (~9,5% das sessões)
+    "bati o carro, minha apolice tem cobertura?",
+    "colidi com outro carro, tenho cobertura para terceiros?",
+    "tive um acidente ontem, preciso saber se tenho cobertura",
+    "abri um sinistro e queria saber o preco da franquia",
+    # voz passiva: a frase canonica de FNOL
+    "meu carro foi roubado",
+    "meu veiculo foi furtado no estacionamento",
+    "aconteceu um acidente com meu carro",
 )
 FRASES_QUE_NAO_ABREM = (
     "que roubo esse preco do seguro",              # reclamacao de PRECO
