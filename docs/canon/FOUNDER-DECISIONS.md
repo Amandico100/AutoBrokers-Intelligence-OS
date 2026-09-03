@@ -1591,3 +1591,30 @@ isso direito.
 ```
 
 ⛔ **A execução não tocou em variável nenhuma**, e o BLOCO F confere isso.
+
+
+---
+
+# 🔴 F-094-07 · 03/09/2026 · A conexão InfoCap da AMANDUS é a conta da RESULTA — P1 cross-tenant, decisão do Founder
+
+**O que foi medido (censo da SPEC-094, `docs/canon/providers/infocap/INFOCAP-CORPAPI-CENSUS-v2.md`):**
+📊 as conexões `connected` de Amandus e Resulta em `tenant_connections` descriptografam para a **mesma conta CorpAPI**
+(mesmo `user_sha`, mesmo `pass_sha`, mesmo perfil `codigo 75`) e devolvem a **mesma carteira ao centavo** —
+1.680 apólices tipo A em 2025, R$ 1.863.830,79 de `val_c`. Os ciphertexts são diferentes (IV aleatório do Fernet), então
+a tabela não denuncia; só a descriptografia.
+
+**Por que é P1 (CLAUDE.md §7 e §10 (4)):** qualquer leitura feita "pela Amandus" pelo caminho da conexão mostraria a
+carteira da Resulta com o nome da Amandus — em tela, Artifact, briefing ou chat. Hoje ninguém lê por esse caminho
+(a 081 resolve por nome e não há `CORP_INFOCAP_AMANDUS_*` em lugar nenhum), por isso o defeito está adormecido.
+A SPEC-094 liga o caminho da conexão — e por isso parou aqui.
+
+**A pergunta, em uma linha:**
+```
+Amandus e Resulta são a MESMA corretora legal/operacional na InfoCap?
+  (A) SIM  → a SPEC trata as duas como UM tenant de dados; o gate de conta compartilhada aceita o par declarado
+  (B) NÃO  → a conexão da Amandus está ERRADA: arquivar e cadastrar a conta certa (ação física sua)
+```
+
+**O que a execução faz até a decisão:** o adapter da 094 grava `account_fingerprint` na provenance e **recusa** a segunda
+corretora que resolva para uma conta já usada por outra ("conexão compartilhada — F-094-07"); o canário da Amandus
+**não roda**; nenhum Artifact é publicado para ela. Pendência P-094-CONTA-COMPARTILHADA (🧑).

@@ -1,0 +1,166 @@
+{
+  "provider_key": "infocap",
+  "measured_at": "2026-09-03T00:00:00-03:00",
+  "janela": "2025 fechado (01/01/2025 a 31/12/2025)",
+  "como_reproduzir": {
+    "documentos_bi": "GET /documentos_bi?datini=01/01/2025&datfim=31/12/2025&data=INIVIG&tipo_doc=A",
+    "renovacoes": "GET /renovacoes?dt_ini=01/01/2025&dt_fim=31/12/2025&qtd_pag=5000&pag=1&ordem=nosnum&orientacao=asc&texto=&cancelado=F&resgates=F",
+    "script": "scratchpad/censo/p7_final.py (credencial lida de tenant_connections)"
+  },
+  "sem_nome_de_pessoa": "as contagens de produtor sao DISTINCT, nunca a lista",
+  "corretoras": {
+    "resulta": {
+      "connection_status": "connected",
+      "health": "healthy",
+      "chamadas_desta_medicao": 3,
+      "documentos_bi_2025_tipo_A": {
+        "classe": "200",
+        "latencia_s": 3.58,
+        "n_documentos_tipo_A": 1680,
+        "soma_pretot": 11910456.05,
+        "soma_val_c": 1863830.79,
+        "soma_base_c": 11278819.26,
+        "n_val_c_nulo_ou_vazio": 0,
+        "n_val_c_zero": 93,
+        "traz_prod_docs": 0,
+        "inivig_dentro_da_janela": 1680,
+        "fimvig_dentro_da_janela": 106,
+        "n_renovacao_nosnum_ren_preenchido": 963,
+        "seguradoras_distintas": 36,
+        "ramos_distintos": 33
+      },
+      "renovacoes_2025": {
+        "classe": "200",
+        "latencia_s": 15.27,
+        "n_registros": 3536,
+        "n_tipdoc_A": 3536,
+        "soma_pretot": 19989756.11,
+        "n_val_c_nulo_ou_vazio": 3536,
+        "distinct_produtores_ordem1": 97,
+        "pct_com_produtor_ordem1": 97.1,
+        "soma_val_r_ordem1": 440064.21,
+        "fimvig_dentro_da_janela": 3536,
+        "inivig_dentro_da_janela": 100,
+        "media_prod_docs_por_apolice": 2.0,
+        "quant_produtores_bate_com_len_prod_docs": 1204,
+        "dias_a_vencer_negativos": 2594
+      },
+      "intersecao_por_nosnum": {
+        "n": 100,
+        "pct_do_documentos_bi": 6.0,
+        "pct_das_renovacoes": 2.8
+      },
+      "f094_02_val_r_sobre_val_c": {
+        "hipotese": "val_r == val_c(documentos_bi) * per_r / 100",
+        "linhas_prod_docs_conferidas": 198,
+        "bateram_ate_R$0,02": 198,
+        "falharam": 0,
+        "pares_zerados_ignorados": 2,
+        "pct_bate": 100.0,
+        "maior_desvio_R$": 0.01
+      }
+    },
+    "amandus": {
+      "connection_status": "connected",
+      "health": "unknown",
+      "chamadas_desta_medicao": 3,
+      "documentos_bi_2025_tipo_A": {
+        "classe": "200",
+        "latencia_s": 3.31,
+        "n_documentos_tipo_A": 1680,
+        "soma_pretot": 11910456.05,
+        "soma_val_c": 1863830.79,
+        "soma_base_c": 11278819.26,
+        "n_val_c_nulo_ou_vazio": 0,
+        "n_val_c_zero": 93,
+        "traz_prod_docs": 0,
+        "inivig_dentro_da_janela": 1680,
+        "fimvig_dentro_da_janela": 106,
+        "n_renovacao_nosnum_ren_preenchido": 963,
+        "seguradoras_distintas": 36,
+        "ramos_distintos": 33
+      },
+      "renovacoes_2025": {
+        "classe": "200",
+        "latencia_s": 8.87,
+        "n_registros": 3536,
+        "n_tipdoc_A": 3536,
+        "soma_pretot": 19989756.11,
+        "n_val_c_nulo_ou_vazio": 3536,
+        "distinct_produtores_ordem1": 97,
+        "pct_com_produtor_ordem1": 97.1,
+        "soma_val_r_ordem1": 440064.21,
+        "fimvig_dentro_da_janela": 3536,
+        "inivig_dentro_da_janela": 100,
+        "media_prod_docs_por_apolice": 2.0,
+        "quant_produtores_bate_com_len_prod_docs": 1204,
+        "dias_a_vencer_negativos": 2594
+      },
+      "intersecao_por_nosnum": {
+        "n": 100,
+        "pct_do_documentos_bi": 6.0,
+        "pct_das_renovacoes": 2.8
+      },
+      "f094_02_val_r_sobre_val_c": {
+        "hipotese": "val_r == val_c(documentos_bi) * per_r / 100",
+        "linhas_prod_docs_conferidas": 198,
+        "bateram_ate_R$0,02": 198,
+        "falharam": 0,
+        "pares_zerados_ignorados": 2,
+        "pct_bate": 100.0,
+        "maior_desvio_R$": 0.01
+      }
+    },
+    "autofleet": {
+      "connection_status": "connected",
+      "health": "healthy",
+      "chamadas_desta_medicao": 3,
+      "documentos_bi_2025_tipo_A": {
+        "classe": "200",
+        "latencia_s": 4.22,
+        "n_documentos_tipo_A": 3117,
+        "soma_pretot": 13199057.52,
+        "soma_val_c": 2099510.43,
+        "soma_base_c": 12273965.65,
+        "n_val_c_nulo_ou_vazio": 0,
+        "n_val_c_zero": 24,
+        "traz_prod_docs": 0,
+        "inivig_dentro_da_janela": 3117,
+        "fimvig_dentro_da_janela": 36,
+        "n_renovacao_nosnum_ren_preenchido": 1999,
+        "seguradoras_distintas": 22,
+        "ramos_distintos": 12
+      },
+      "renovacoes_2025": {
+        "classe": "200",
+        "latencia_s": 6.98,
+        "n_registros": 2654,
+        "n_tipdoc_A": 2654,
+        "soma_pretot": 12043651.94,
+        "n_val_c_nulo_ou_vazio": 2654,
+        "distinct_produtores_ordem1": 64,
+        "pct_com_produtor_ordem1": 99.1,
+        "soma_val_r_ordem1": 415336.94,
+        "fimvig_dentro_da_janela": 2654,
+        "inivig_dentro_da_janela": 0,
+        "media_prod_docs_por_apolice": 2.0,
+        "quant_produtores_bate_com_len_prod_docs": 1021,
+        "dias_a_vencer_negativos": 733
+      },
+      "intersecao_por_nosnum": {
+        "n": 0,
+        "pct_do_documentos_bi": 0.0,
+        "pct_das_renovacoes": 0.0
+      },
+      "f094_02_val_r_sobre_val_c": {
+        "hipotese": "val_r == val_c(documentos_bi) * per_r / 100",
+        "linhas_prod_docs_conferidas": 0,
+        "bateram_ate_R$0,02": 0,
+        "falharam": 0,
+        "pares_zerados_ignorados": 0,
+        "pct_bate": null,
+        "maior_desvio_R$": 0.0
+      }
+    }
+  }
+}

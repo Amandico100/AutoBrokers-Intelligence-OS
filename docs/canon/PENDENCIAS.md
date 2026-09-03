@@ -9910,3 +9910,30 @@ a sombra abre igual. **Destrava:** TTL, ou invalidação no ponto que grava a fi
 `scripts/claims-shadow-eventos-do-painel.test.mjs` bloco [9] prova que `route.ts` CHAMA o registrador (grep), não que a
 chamada grava em runtime. Se `route.ts` deixar de chamar, a nota do painel some do ledger em silêncio (o Python não a emite
 mais pelo painel, de propósito). **Destrava:** teste de rota com cliente falso. **Dono:** 🤖. 💭 30 min.
+
+
+---
+
+# SPEC-094 · O Pulso 360 não pertence à InfoCap — 03/09/2026 (abertas durante a conversão e o censo)
+
+## P-094-CONTA-COMPARTILHADA · 🔴 P1 · Amandus e Resulta descriptografam para a MESMA conta CorpAPI
+📊 Censo 03/09 (`docs/canon/providers/infocap/INFOCAP-CORPAPI-CENSUS-v2.md`): mesmo `user_sha`, mesmo `pass_sha`, mesmo
+perfil, 1.680 apólices e R$ 1.863.830,79 nas duas. Os ciphertexts diferem (IV do Fernet) — só a descriptografia denuncia.
+**Custo de esquecer:** qualquer leitura "da Amandus" mostra a carteira da Resulta. **Destrava:** decisão F-094-07. **Dono:** 🧑.
+
+## P-094-SINISTROS · `/sinistros` (plural) existe, tem 5.729 registros e nenhum leitor
+📊 200 em 26,3 s; campos `numsin/situacao/datoco/datavi/datenc/valind/franquia/nosnum`. O MAPA testava o singular (403).
+O `ClaimSignalFact` da 094 ficou como contrato por tempo; o gatilho está atingido. Casa com a 093-B (sombra de sinistro
+poderia ganhar `ramo`/`seguradora` daqui). **Dono:** 🤖. 💭 2h.
+
+## P-094-PRODUCAO-500 · `/producao` devolve 500 em 3 conjuntos de parâmetros — e o conector de atendimento a chama
+📊 `infocap_connector.py` usa `/producao` (2 ocorrências). Medir se o conector trata o 500 como vazio. **Dono:** 🤖.
+
+## P-094-RAG-MAPA · O MAPA antigo (18 rotas "negadas", 2.355 atendimentos) está no RAG global dos agentes
+📊 Censo §8 item 10. O CENSUS supera o MAPA no repo; o conhecimento ingerido continua errado até reingestão. **Dono:** 🤖.
+
+## P-094-COBERTURA-POR-CORRETORA · a receita de cobertura de produtor da 081 não vale para a AutoFleet
+📊 BI∩renov 2025: Resulta 100 · AutoFleet **0**. A 094 remede por corretora (BLOCO D). **Dono:** 🤖.
+
+## P-094-GIT-PII · nome completo de um produtor real no histórico do git (`test_a_fonte_comercial…py:283-294`, desde a 081)
+O BLOCO H tira do HEAD; o histórico não se reescreve sem decisão. **Dono:** 🧑.

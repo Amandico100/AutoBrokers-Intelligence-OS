@@ -1,0 +1,3775 @@
+{
+  "provider_key": "infocap",
+  "measured_at": "2026-09-03",
+  "connection_scope": [
+    "resulta"
+  ],
+  "legenda": {
+    "pct_nulo": "% de nulos/vazios na amostra analisada da PROPRIA chamada",
+    "exemplo_redigido": "digitos -> #, letras -> x; numero de dinheiro/percentual/contagem fica cru",
+    "confianca": "alta = provado por medicao aritmetica ou por dois filtros; media = inferido do nome + tipo + coerencia; baixa/💭 = hipotese",
+    "pii": "true = o campo carrega dado de pessoa identificavel; NUNCA vai a chat/log/RAG"
+  },
+  "rotas": {
+    "/seguradoras": {
+      "classe": "200",
+      "envelope": "{header, seguradoras} -> lista em 'seguradoras'",
+      "chave_raiz": "seguradoras",
+      "amostra_n_registros": 61,
+      "medido_com": "/seguradoras",
+      "campos": [
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx xxxxxxxxxx x x",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "abreviatura",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx",
+          "pii": false,
+          "significado": "sigla usada em documentos_bi.seguradora e renovacoes.seguradora",
+          "confianca": "alta",
+          "chave_de_relacao": "PK de decodificacao"
+        }
+      ]
+    },
+    "/ramos": {
+      "classe": "200",
+      "envelope": "{header, ramos} -> lista em 'ramos'",
+      "chave_raiz": "ramos",
+      "amostra_n_registros": 50,
+      "medido_com": "/ramos",
+      "campos": [
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "abreviatura",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": "sigla usada em documentos_bi.ramo",
+          "confianca": "alta",
+          "chave_de_relacao": "PK de decodificacao"
+        }
+      ]
+    },
+    "/lista_clientes": {
+      "classe": "200",
+      "envelope": "{header, clientes} -> lista em 'clientes'",
+      "chave_raiz": "clientes",
+      "amostra_n_registros": 19,
+      "medido_com": "/lista_clientes?texto=",
+      "campos": [
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xxxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ddd",
+          "tipo_observado": "int",
+          "pct_nulo": 36.8,
+          "exemplo_redigido": "<num>",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numero",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 36.8,
+          "exemplo_redigido": "########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/cliente_ligacoes": {
+      "classe": "200",
+      "envelope": "aninhado: 'documentos.documentos'",
+      "chave_raiz": "documentos.documentos",
+      "amostra_n_registros": 1,
+      "medido_com": "/cliente_ligacoes?codigo=",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<num>",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipdoc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente_codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<num>",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xxxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sin_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cancelado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "historico_imagem",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 16,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renovacao_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 3,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "dat_inc",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum_ren",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/cliente": {
+      "classe": "200",
+      "envelope": "{header, cliente} -> lista em 'cliente'",
+      "chave_raiz": "cliente",
+      "amostra_n_registros": 1,
+      "medido_com": "/cliente?codigo=",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xxxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ativo",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cpf_cnpj",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "###########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datanas",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pessoa",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sexo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "email",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx######@xxxxx.xxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "telefone",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "(##) ########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cidade",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "estado",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "vigente",
+          "tipo_observado": "bool",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": true,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "observacoes",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "profissao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_profissao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "estado_civil",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx(x)",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_estado_civil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "escolaridade",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_escolaridade",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "dt_venchab",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "enderecos",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 1> chaves=bairro,cep,cidade,codfil,codigo,complemento,estado,logradouro …[truncado]",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "emails",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 1> chaves=codcli,codcon,codemp,codfil,codigo,email,padrao",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "telefones",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 1> chaves=codcli,codcon,codemp,codfil,codigo,ddd,numero,padrao,ramal,ti …[truncado]",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "contatos",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 0>",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/cliente_cpf": {
+      "classe": "200",
+      "envelope": "{header, cliente} -> lista em 'cliente'",
+      "chave_raiz": "cliente",
+      "amostra_n_registros": 1,
+      "medido_com": "/cliente_cpf?cpf_cnpj=",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xxxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ativo",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cpf_cnpj",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "###########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datanas",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pessoa",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sexo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "email",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx######@xxxxx.xxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "telefone",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "(##) ########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cidade",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "estado",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "vigente",
+          "tipo_observado": "bool",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": true,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "observacoes",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "profissao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_profissao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "estado_civil",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx(x)",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_estado_civil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "escolaridade",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_escolaridade",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "enderecos",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 1> chaves=bairro,cep,cidade,codfil,codigo,complemento,estado,logradouro …[truncado]",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "emails",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 1> chaves=codcli,codcon,codemp,codfil,codigo,email,padrao",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "telefones",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 1> chaves=codcli,codcon,codemp,codfil,codigo,ddd,numero,padrao,ramal,ti …[truncado]",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "contatos",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 0>",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/documento": {
+      "classe": "200",
+      "envelope": "{header, documento, historico, acompanhamento} -> lista em 'documento'",
+      "chave_raiz": "documento",
+      "amostra_n_registros": 1,
+      "medido_com": "/documento?nosnum=",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<num>",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipdoc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numren",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "########",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcia",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codram",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcli",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datpro",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datemi",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "forma_pag",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx xx xxxxxxx",
+          "pii": false,
+          "significado": "forma de pagamento do premio",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numpar",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 10,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "preliq",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1544.1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "preadi",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "predes",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "precus",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "preiof",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 113.94,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pretot",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1658.04,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prepri",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 165.71,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "vencim",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": "vencimento da primeira parcela",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cuspri",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "diafix",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "usuinc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "usualt",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datinc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/#### ##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "modificado",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/#### ##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sinistro",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codfil_ren",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum_ren",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codfil_end",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum_end",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numprop",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#########",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "motivo_endosso",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "campo_base_c",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 2,
+          "pii": false,
+          "significado": "qual campo do premio serve de base (1 = preliq, observado)",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "base_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1544.1,
+          "pii": false,
+          "significado": "base de calculo da comissao da corretora",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "per_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 15.0,
+          "pii": false,
+          "significado": "percentual de comissao da corretora sobre base_c",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 231.62,
+          "pii": false,
+          "significado": "comissao da corretora em R$ = base_c * per_c/100 (conferido nas 3 amostras)",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "forma_recebimento_c",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 3,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_ca",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "comissao de agenciamento; veio 0.0 nas amostras",
+          "confianca": "baixa",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "campo_base_cp",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "base_cp",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "base da comissao de producao; veio 0.0 nas amostras",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "per_cp",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "percentual da comissao de producao; veio 0.0 nas amostras",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_cp",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "valor da comissao de producao (repasse agregado); veio 0.0 nas amostras",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "forma_recebimento_cp",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "recusado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcanal",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "observacoes_txt",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tabela_itens",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_abrev",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "telram",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora_abrev",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxx xxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "filial",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx ",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_acompanhamento",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 4,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_acompanhamento_txt",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxx x xxx xxxxxxxx xx xxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_sinistro",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_sinistro_txt",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxx xxxxxxxx",
+          "pii": false,
+          "significado": "situacao de sinistro por extenso",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cancelado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_renovacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 3,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_renovacao_txt",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxx\r xxxxxxx xxx xxxxxxxx\r xxxxxxxx: ##/##/#### x ##/##/####\r ",
+          "pii": false,
+          "significado": "situacao de renovacao por extenso",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renovado_codfil",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renovado_nosnum",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipdoc_txt",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x - xxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "motivo_endosso_txt",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ad_receb_data",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ad_entr_data",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xxxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ad_receb_doc_fisico",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ad_receb_doc_digital",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ad_entr_forma",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "bot_a_dthora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/#### ##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cod_forma_pag",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codopo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "dtfim_negociacao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codmulti",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "importado_pelo_incorp",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "canal_vendas_descricao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "parcelas",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 10> chaves=cod_forma_pagamento,datquit,datvenc,forma_pagamento,parc,tip …[truncado]",
+          "pii": false,
+          "significado": "lista de parcelas do PREMIO: datvenc/vlvenc (a vencer) e datquit/vlquit (quitada) + vlbasecom/vlbasecomquit (base de comissao por parcela). E a unica evidencia medida de comissao RECEBIDA — e so por documento, nunca em lote",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prod_docs",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 3> chaves=agente,automat,base_r,base_rc,base_rp,campo_base_r,campo_base …[truncado]",
+          "pii": false,
+          "significado": "lista COMPLETA de produtores (28 chaves) com base_r/per_r/val_r/taxa_repasse/forma_repasse_r/datrep_prot. 📊 Nas 3 amostras medidas TODOS os campos monetarios vieram 0.0/None — a rota expoe o formato, nao o valor",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/itens": {
+      "classe": "200",
+      "envelope": "{header, itens} -> lista em 'itens'",
+      "chave_raiz": "itens",
+      "amostra_n_registros": 1,
+      "medido_com": "/itens?nosnum=",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<num>",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "item",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cancelado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "telram",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "veiculo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxx xxx ### xxxxxx xxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "placa",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx#x##",
+          "pii": true,
+          "significado": "placa do veiculo — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "chassi",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#x#xx####xx######",
+          "pii": true,
+          "significado": "chassi — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "anofab",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 2024,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "anomod",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 2024,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "franquia",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cobertura",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx, xxxxxxxx x xxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "passageiros",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 2,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "bonus",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "valmer",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": "valor de mercado do item",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "observacoes",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxx xxxxxxxxx xxxxxxxxxx: xxxxxxx, xxxxxxxx x xxxxx/xxxxx                  …[truncado]",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cor",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "categoria",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pervalmer",
+          "tipo_observado": "str:decimal",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "###,##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "zerokm",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "bonusclas",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "combustivel",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx/xxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fipe",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#######",
+          "pii": false,
+          "significado": "codigo FIPE do modelo",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renavam",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ci",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##############",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "valmer_fipe_contr",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "usualt_valmer",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "garantias",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 4> chaves=agrucom,franquia,garantia,impseg,percom,premio,ramo,segurador …[truncado]",
+          "pii": false,
+          "significado": "lista de coberturas contratadas do item",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/documentos": {
+      "classe": "200",
+      "envelope": "{header, documentos} -> lista em 'documentos'",
+      "chave_raiz": "documentos",
+      "amostra_n_registros": 1,
+      "medido_com": "/documentos?texto=<numapo do BI>",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "######",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipdoc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente_codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxx xxxxxxxxxxx xxxxxxxx xx xxxxxx xx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "############",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sin_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cancelado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "historico_imagem",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renovacao_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datemi",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numprop",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "############",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/documentos_bi": {
+      "classe": "200",
+      "envelope": "{header, documentos} -> lista em 'documentos'",
+      "chave_raiz": "documentos",
+      "amostra_n_registros": 1680,
+      "medido_com": "/documentos_bi 2025 INIVIG tipo_doc=A",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": "codigo da filial da corretora; compoe a chave do documento",
+          "confianca": "alta",
+          "chave_de_relacao": "parte da PK do documento"
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "######",
+          "pii": true,
+          "significado": "identificador interno do documento na InfoCap; a chave de juncao entre TODAS as rotas de documento",
+          "confianca": "alta",
+          "chave_de_relacao": "PK do documento (par com codfil)"
+        },
+        {
+          "campo": "codcli",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": "codigo do cliente",
+          "confianca": "alta",
+          "chave_de_relacao": "FK para /cliente?codigo= e /cliente_ligacoes?codigo="
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxx xxxxxxxxxxx xxxxxxxx xx xxxxxx xx",
+          "pii": true,
+          "significado": "nome do segurado — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": true,
+          "significado": "sigla da seguradora EMISSORA; decodifica por /seguradoras.abreviatura",
+          "confianca": "alta",
+          "chave_de_relacao": "FK para /seguradoras.abreviatura"
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx",
+          "pii": false,
+          "significado": "sigla do ramo; decodifica por /ramos.abreviatura",
+          "confianca": "alta",
+          "chave_de_relacao": "FK para /ramos.abreviatura"
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "inicio de vigencia. E a BASE TEMPORAL quando data=INIVIG: 1680/1680 registros da janela 2025 tem inivig em 2025",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numpar",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": "quantidade de parcelas do premio",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "preliq",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 778.2,
+          "pii": false,
+          "significado": "premio LIQUIDO",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pretot",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 778.2,
+          "pii": false,
+          "significado": "premio TOTAL do documento (liquido + IOF + custos)",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "base_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 778.2,
+          "pii": false,
+          "significado": "base de calculo da comissao da CORRETORA",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 155.64,
+          "pii": false,
+          "significado": "comissao da CORRETORA em R$, APROPRIADA na emissao (nao e comissao RECEBIDA). Provado: val_c = base_c * per_c/100 em /documento",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_cp",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "comissao de PRODUCAO (o bloco de repasse agregado do documento); veio 0.0 em toda a amostra de 2025",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "############",
+          "pii": true,
+          "significado": "numero da apolice na seguradora",
+          "confianca": "alta",
+          "chave_de_relacao": "chave de /documentos?texto="
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "numero do endosso (0 = documento original)",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum_ren",
+          "tipo_observado": "int",
+          "pct_nulo": 45.2,
+          "exemplo_redigido": "#####",
+          "pii": true,
+          "significado": "nosnum da apolice ANTERIOR; preenchido = este documento e renovacao daquele. Lista encadeada dentro do proprio endpoint",
+          "confianca": "alta",
+          "chave_de_relacao": "FK para /documentos_bi.nosnum"
+        },
+        {
+          "campo": "datpro",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data da proposta",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "fim de vigencia. NAO e a base temporal do filtro: so 106/1680 caem na janela",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datalt",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data da ultima alteracao; um dos valores aceitos em `data=`",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_sinistro",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "situacao de sinistro do documento",
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/renovacoes": {
+      "classe": "200",
+      "envelope": "{header, renovacoes} -> lista em 'renovacoes'",
+      "chave_raiz": "renovacoes",
+      "amostra_n_registros": 3536,
+      "medido_com": "/renovacoes 2025",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": true,
+          "significado": "mesmo identificador de /documentos_bi",
+          "confianca": "alta",
+          "chave_de_relacao": "PK do documento"
+        },
+        {
+          "campo": "tipdoc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": "tipo de documento; A = apolice. Nesta rota veio A em 3536/3536",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcli",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datemi",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "fim de vigencia. E a BASE TEMPORAL do filtro dt_ini/dt_fim: 3536/3536 em 2025 e 3258/3258 em 2024 caem na janela; inivig cai em so 100 e 118",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum_ren",
+          "tipo_observado": "int",
+          "pct_nulo": 42.2,
+          "exemplo_redigido": "#####",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cancelado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": "T = documento cancelado; nao entra em numero nenhum",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx xxxxxxxxxx xxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome_busca",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx xxxxxxxxxx xxxx",
+          "pii": true,
+          "significado": "nome do segurado normalizado para busca — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pessoa",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cic",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.8,
+          "exemplo_redigido": "##############",
+          "pii": false,
+          "significado": "CPF/CNPJ do segurado — PII",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fone",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 12.8,
+          "exemplo_redigido": "##########",
+          "pii": true,
+          "significado": "telefone do segurado — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "email",
+          "tipo_observado": "str",
+          "pct_nulo": 5.8,
+          "exemplo_redigido": "xxxxxxxxxx@xxxxxx.xxx.xx",
+          "pii": true,
+          "significado": "e-mail do segurado — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "############",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "pretot",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 45265.5,
+          "pii": false,
+          "significado": "premio total",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "historico_imagem",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "historico_hint",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxx\r xxxxxxx xxx xxxxxxxx\r xxxxxxxx: ##/##/#### x ##/##/####\r ",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renovacao_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "situacao do processo de renovacao",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sin_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "situacao de sinistro",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "situacao_txt",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxx xxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "dias_a_vencer",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": -445,
+          "pii": false,
+          "significado": "dias ate fimvig; pode ser NEGATIVO (a API devolve vencidas dentro da janela)",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "produtor",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx xxxxxxxxx xxxxxx - xxxxxxxx",
+          "pii": true,
+          "significado": "nome do produtor no nivel do documento — PII de pessoa com remuneracao",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "quant_produtores",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 3,
+          "pii": true,
+          "significado": "contador de produtores — MENTE: bate com len(prod_docs) em so 1204/3536 registros. A LISTA e a verdade",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codopo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "situacao_multi",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "-#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "oportunidade",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "inicio de vigencia; NAO e a base do filtro",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_tipo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_multi",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prod_docs",
+          "tipo_observado": "list",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "<list de 2> chaves=agente,automat,cod_age,cod_pro,ordem,per_r,produtor,val_r",
+          "pii": false,
+          "significado": "lista REDUZIDA de produtores do documento (8 chaves). Nao confundir com /documento.prod_docs, que tem 28",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/cotacoes": {
+      "classe": "200",
+      "envelope": "{header, cotacoes} -> lista em 'cotacoes'",
+      "chave_raiz": "cotacoes",
+      "amostra_n_registros": 7,
+      "medido_com": "/cotacoes codfil=1",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcli",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx xxxxxx xxxxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "status",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": "estagio da cotacao no funil",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prioridade",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "prioridade atribuida",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo_neg",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_multi",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_premio",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "premio estimado da cotacao",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "comissao estimada da cotacao",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "doc_codfil",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "doc_nosnum",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": "documento gerado, quando a cotacao converteu",
+          "confianca": "media",
+          "chave_de_relacao": "FK para /documentos_bi.nosnum"
+        },
+        {
+          "campo": "produto_fimvig",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_qtde_atrasadas",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_hora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_descricao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_data",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data do proximo atendimento agendado",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codmulti",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##xxxx#x-#xxx-###x-#xx#-#x#xx##xx##x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "descricao_item",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "situacao_multi",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##xxxx#x-#xxx-###x-#xx#-#x#xx##xx##x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "oportunidade",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codram",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_multi",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_tipo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "multi_corp_mais",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/atendimentos": {
+      "classe": "200",
+      "envelope": "{header, tarefas} -> lista em 'tarefas'",
+      "chave_raiz": "tarefas",
+      "amostra_n_registros": 15,
+      "medido_com": "/atendimentos codfil=1",
+      "campos": [
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo_atendimento",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": "categoria do atendimento/tarefa",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcli",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome_cli",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxx x xx xxxxx xxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codopo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": "documento ligado ao atendimento",
+          "confianca": "media",
+          "chave_de_relacao": "FK para /documentos_bi.nosnum"
+        },
+        {
+          "campo": "codsin",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": "sinistro ligado ao atendimento, quando houver",
+          "confianca": "media",
+          "chave_de_relacao": "FK para /sinistros.codigo"
+        },
+        {
+          "campo": "item",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "data",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "hora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "descricao",
+          "tipo_observado": "str",
+          "pct_nulo": 13.3,
+          "exemplo_redigido": "xxxxxx xxxx xxxxxxx - xxxxx  ",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "satisfeito",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "usuinc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datinc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/#### ##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ativo",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "realizado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": "se a tarefa foi cumprida",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sistema",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "usuario_responsavel",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codigo_usuario_responsavel",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "titulo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/sinistros": {
+      "classe": "200",
+      "envelope": "{header, sinistros} -> lista em 'sinistros'",
+      "chave_raiz": "sinistros",
+      "amostra_n_registros": 5729,
+      "medido_com": "/sinistros (plural, fora do MAPA)",
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": true,
+          "significado": "documento a que o sinistro pertence",
+          "confianca": "alta",
+          "chave_de_relacao": "FK para /documentos_bi.nosnum"
+        },
+        {
+          "campo": "tipo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cia",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "############",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "item",
+          "tipo_observado": "int",
+          "pct_nulo": 3.2,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "valavi",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "valor avisado",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "valind",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "valor da indenizacao",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "segurado",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx xxxxx xxxxxxxxxx xxxxxxxx",
+          "pii": true,
+          "significado": "nome do segurado — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numsin",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.8,
+          "exemplo_redigido": "####-####/######x##",
+          "pii": false,
+          "significado": "numero do sinistro na seguradora",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datavi",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 1.8,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data do aviso",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datoco",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data de ocorrencia",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datenc",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 11.8,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data de encerramento",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "situacao",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxxx",
+          "pii": false,
+          "significado": "situacao do sinistro — o campo que sustenta claims.status",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "placa",
+          "tipo_observado": "str",
+          "pct_nulo": 34.8,
+          "exemplo_redigido": "xxx####",
+          "pii": true,
+          "significado": "placa do veiculo — PII",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "franquia",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "franquia do sinistro",
+          "confianca": "alta",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "responsavel",
+          "tipo_observado": "str",
+          "pct_nulo": 62.2,
+          "exemplo_redigido": "xxxxxxx",
+          "pii": true,
+          "significado": "responsavel interno pelo caso — PII",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "oficina",
+          "tipo_observado": "str",
+          "pct_nulo": 83.2,
+          "exemplo_redigido": "xxxx xxxxx. xx xxxxxxxx",
+          "pii": false,
+          "significado": "oficina/prestador",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo_atendimento",
+          "tipo_observado": "int",
+          "pct_nulo": 99.8,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "descricao",
+          "tipo_observado": "str",
+          "pct_nulo": 97.5,
+          "exemplo_redigido": "xxxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "observacoes",
+          "tipo_observado": "str",
+          "pct_nulo": 27.5,
+          "exemplo_redigido": "xxx xxxxxx..x xxxxxx..\r\n\r\nx xxxxx xx xxxxxxxx xxxx x xxxxxxxxxx xx xxx xxxxx xx  …[truncado]",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "proxima_agenda",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "agendamento",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datvis",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 45.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datlib",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 50.2,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data de liberacao",
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "valdes",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": "valor do desconto/descontado",
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    }
+  },
+  "objetos_aninhados": {
+    "/renovacoes::prod_docs[]": {
+      "descricao": "lista REDUZIDA de produtores. 8 chaves. Media MEDIDA de 2,0 itens por apolice.",
+      "campos": [
+        {
+          "campo": "ordem",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": "posicao do produtor no rateio. ordem=1 e o produtor DIRETO. 🔴 NAO e o de maior percentual: numa amostra medida ordem=1 tinha per_r 4% e ordem=2 tinha 15%",
+          "confianca": "alta"
+        },
+        {
+          "campo": "cod_pro",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "###",
+          "pii": true,
+          "significado": "codigo do produtor",
+          "confianca": "alta",
+          "chave_de_relacao": "PK do produtor (nao ha rota de cadastro: /vendedores nao existe)"
+        },
+        {
+          "campo": "produtor",
+          "tipo_observado": "str",
+          "pct_nulo": 2.9,
+          "exemplo_redigido": "xxxxx xxxxxxx",
+          "pii": true,
+          "significado": "NOME do produtor. 🔴 Pessoa identificada com remuneracao ao lado — nunca a chat, log, teste ou fixture",
+          "confianca": "alta"
+        },
+        {
+          "campo": "cod_age",
+          "tipo_observado": "int",
+          "pct_nulo": null,
+          "exemplo_redigido": "###",
+          "pii": true,
+          "significado": "codigo do agente/agenciador",
+          "confianca": "media"
+        },
+        {
+          "campo": "agente",
+          "tipo_observado": "str",
+          "pct_nulo": null,
+          "exemplo_redigido": "xxxxx",
+          "pii": true,
+          "significado": "nome do agente",
+          "confianca": "media"
+        },
+        {
+          "campo": "per_r",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 4.0,
+          "pii": false,
+          "significado": "🔴 PROVADO (F-094-02): percentual do REPASSE ao produtor aplicado sobre val_c — a comissao da CORRETORA — e NAO sobre o premio. 198/198 linhas conferidas",
+          "confianca": "alta"
+        },
+        {
+          "campo": "val_r",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 315.61,
+          "pii": false,
+          "significado": "🔴 PROVADO (F-094-02): val_r = val_c * per_r / 100, em reais. E o repasse APROPRIADO ao produtor. 198/198 conferidas, maior desvio R$ 0,01. 🔴 A base (val_c) NAO existe nesta rota — o join com /documentos_bi por nosnum e obrigatorio para auditar o numero",
+          "confianca": "alta"
+        },
+        {
+          "campo": "automat",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": null,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": "se o rateio foi lancado automaticamente pela regra do cadastro",
+          "confianca": "media"
+        }
+      ]
+    },
+    "/documento::prod_docs[]": {
+      "descricao": "lista COMPLETA de produtores. 28 chaves — 20 a mais que a de /renovacoes. 📊 Nas 3 amostras medidas, TODOS os campos monetarios (base_r, per_r, val_r, val_ra, val_rc, val_rp, taxa_repasse, perpart, datrep_prot, forma_repasse_*) vieram 0.0 ou None, enquanto o MESMO nosnum em /renovacoes trazia per_r e val_r com valor. 🔴 Esta rota expoe o FORMATO do repasse, nao o valor dele.",
+      "campos": [
+        {
+          "campo": "base_r",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "base de calculo do repasse. Veio 0.0 nas 3 amostras",
+          "confianca": "alta"
+        },
+        {
+          "campo": "per_r",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "percentual do repasse. Veio 0.0 nas 3 amostras — o mesmo nosnum tinha 4,0 em /renovacoes",
+          "confianca": "alta"
+        },
+        {
+          "campo": "val_r",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": "valor do repasse. Veio 0.0 nas 3 amostras",
+          "confianca": "alta"
+        },
+        {
+          "campo": "val_ra / val_rc / val_rp",
+          "tipo_observado": "null",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": "variantes do repasse (agenciamento / corretagem / producao?). Sempre None nas amostras — 💭 significado NAO provado",
+          "confianca": "baixa"
+        },
+        {
+          "campo": "datrep_prot",
+          "tipo_observado": "null",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": "data do protocolo de repasse — seria a evidencia de repasse PAGO. Sempre None nas amostras",
+          "confianca": "media"
+        },
+        {
+          "campo": "forma_repasse_r / _rc / _rp",
+          "tipo_observado": "null",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": "forma de repasse. Sempre None nas amostras",
+          "confianca": "media"
+        },
+        {
+          "campo": "taxa_repasse",
+          "tipo_observado": "null",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": "taxa aplicada ao repasse. Sempre None nas amostras",
+          "confianca": "baixa"
+        },
+        {
+          "campo": "cod_com_ind",
+          "tipo_observado": "null",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": "💭 codigo de comissao indireta — nao provado. 🔴 O campo `indireto` que a SPEC-081 original exigia NAO EXISTE em nenhuma das duas listas",
+          "confianca": "baixa"
+        }
+      ]
+    },
+    "/documento::parcelas[]": {
+      "descricao": "parcelas do PREMIO. 10 chaves. Amostra medida com 10 parcelas. E a unica evidencia MEDIDA de comissao recebida — e so por documento.",
+      "campos": [
+        {
+          "campo": "parc",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": "numero da parcela",
+          "confianca": "alta"
+        },
+        {
+          "campo": "datvenc",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "vencimento da parcela",
+          "confianca": "alta"
+        },
+        {
+          "campo": "vlvenc",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 165.8,
+          "pii": false,
+          "significado": "valor a vencer",
+          "confianca": "alta"
+        },
+        {
+          "campo": "datquit",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": null,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": "data da quitacao — preenchida = parcela PAGA. E o que separa apropriado de recebido",
+          "confianca": "alta"
+        },
+        {
+          "campo": "vlquit",
+          "tipo_observado": "float",
+          "pct_nulo": null,
+          "exemplo_redigido": 165.8,
+          "pii": false,
+          "significado": "valor quitado",
+          "confianca": "alta"
+        },
+        {
+          "campo": "vlbasecom",
+          "tipo_observado": "float",
+          "pct_nulo": null,
+          "exemplo_redigido": 154.41,
+          "pii": false,
+          "significado": "base de comissao da parcela",
+          "confianca": "alta"
+        },
+        {
+          "campo": "vlbasecomquit",
+          "tipo_observado": "float",
+          "pct_nulo": null,
+          "exemplo_redigido": 154.41,
+          "pii": false,
+          "significado": "base de comissao ja quitada — o caminho de financial.commission_received",
+          "confianca": "alta"
+        },
+        {
+          "campo": "forma_pagamento / cod_forma_pagamento / tipo",
+          "tipo_observado": "str",
+          "pct_nulo": null,
+          "exemplo_redigido": "xxxxxx",
+          "pii": false,
+          "significado": "forma e tipo de pagamento da parcela",
+          "confianca": "media"
+        }
+      ]
+    }
+  }
+}

@@ -12,6 +12,7 @@
 > Research-pack: `specs-propostas/8 - SPEC-094-executive-intelligence-360-RESEARCH-PACK.md` · reaberto em 03/09/2026
 > Número: **094** — livre (INDICE-DE-SPECS). Evolução direta da **SPEC-081**; NÃO é um Report Engine novo.
 > **v2 = v1 + aquecimento do executor (03/09, 16 perguntas medidas, nota 74 → emendas 1–15 aplicadas).**
+> **v2.1 = v2 + o CENSO executado (BLOCO 0, 03/09 09:43→10:02, 86 chamadas GET, 3 conexões) — §1.11.**
 
 ---
 
@@ -21,8 +22,9 @@
 > lê: "1.680 apólices, R$ 1,86 mi de comissão apropriada [commission.broker_accrued@1 · vigência iniciada
 > em 2025 · cobertura de produtor 80,6%]. Comissão RECEBIDA: indisponível na InfoCap". Clica no link e o
 > Artifact mostra os MESMOS números, com a mesma cobertura, e a seção "Fontes e confiança" diz de onde
-> veio cada um. Na terça, o Founder roda a mesma pergunta na Amandus e na AutoFleet — pela CONEXÃO delas
-> em `tenant_connections`, não pelo nome da empresa — e funciona. Na quarta, um teste troca a InfoCap por
+> veio cada um. Na terça, o Founder roda a mesma pergunta na AutoFleet — pela CONEXÃO dela em
+> `tenant_connections`, não pelo nome da empresa — e funciona; na Amandus o sistema RECUSA, porque a conexão dela é a
+> conta da Resulta (F-094-07), e a recusa é a resposta certa. Na quarta, um teste troca a InfoCap por
 > um provider de referência que devolve fatos canônicos direto: TODA a métrica dá o mesmo resultado, sem
 > importar um módulo InfoCap.**
 
@@ -114,6 +116,31 @@ identificada com remuneração, no git. **BLOCKER de higiene, unidade própria (
 `work_run_id`, `tool_name` ou `artifact_id`. 💭 ≈ **US$ 0,008 por Raio-X**. 📊 Latência no comentário de
 `fonte_infocap.py:167-168` e `:538`: **Raio-X anual frio ~53 s (6 chamadas) · Radar 90 dias ~8 s (1 chamada)**,
 medidos em 18/08/2026 — o BLOCO 0 remede (a v1 desta SPEC dizia que o 8 s não tinha fonte; tinha).
+
+### 1.11 · 📊 O QUE O CENSO MEDIU — BLOCO 0 executado em 03/09 (`docs/canon/providers/infocap/`)
+📊 **As 18 rotas "403 = pedir liberação" NÃO EXISTEM**: todas devolvem 403 com assinatura SigV4 do API Gateway; e `/login`
+das TRÊS corretoras devolve **17 flags de permissão, todas `T`**. Não há liberação a pedir; `financial.cashflow` é
+UNAVAILABLE **medido**. 📊 Existem e o MAPA não sabia: **`/sinistros`** (plural: 200, **5.729 registros** na Resulta,
+26,3 s, `numsin/situacao/datoco/datavi/datenc/valind/franquia/nosnum`) e `/usuario` (400 = existe). `/producao` → 500 ×3.
+`/atendimentos` devolve a lista na chave **`tarefas`**; "2.355 atendimentos" do MAPA **não reproduzido** (15).
+📊 **Golden controls 2025:** Resulta 1.680 apólices tipo A · `val_c` **R$ 1.863.830,79** · `pretot` R$ 11.910.456,05 ·
+3.536 renovações · 97 produtores · 97,1% com produtor ordem=1 · BI∩renov 100 — **a 081 reproduz exatamente**.
+AutoFleet 3.117 · R$ 2.099.510,43 · 2.654 · 64 · 99,1% · **BI∩renov 0** → a receita de cobertura de produtor da 081
+**não é constante do provider**: remedir por corretora.
+📊 **Base temporal:** `/documentos_bi` filtra `inivig` (1.680/1.680; `fimvig` só 106); `/renovacoes` filtra `fimvig`
+(3.536/3.536); `data=` aceita exatamente `INIVIG · DATINC · DATALT · DATPROP` (a lista sai num 400). Não há base de
+apropriação de comissão: `COMMISSION_ACCRUAL_DATE` não existe na InfoCap.
+📊 **F-094-02 RESOLVIDA — `val_r = val_c × per_r / 100`, PROVADO em 198/198 linhas de `prod_docs` (desvio máx. R$ 0,01).**
+`val_r` é repasse APROPRIADO (não pago). 🔴 **`ordem==1` não é o maior repasse** (amostra: ordem 1 = 4%, ordem 2 = 15%):
+somar só ordem 1 subestima — o repasse soma TODOS os `prod_docs`. `quant_produtores == len(prod_docs)` só em 34,1%.
+`val_ra/val_rc/val_rp/taxa_repasse/cod_com_ind` vieram None/0 → 💭 não provados.
+📊 **Latências:** `/renovacoes` 90 d **2,28 s** (a 081 dizia 8 s) · `/documentos_bi` 1 ano 3,3–7,5 s · `/renovacoes` 1 ano 7–15 s.
+📊 **Capacidades:** SUPPORTED 9 · PARTIAL 6 · UNKNOWN 3 · UNAVAILABLE 1.
+🔴 **P1 CROSS-TENANT (CLAUDE.md §10 (4)) — Amandus e Resulta descriptografam para a MESMA conta CorpAPI:** mesmo
+`user_sha`, mesmo `pass_sha`, mesmo perfil, carteira **idêntica ao centavo**. Os ciphertexts diferem (IV do Fernet), a
+tabela não denuncia. **Um canário na Amandus mostraria a carteira da Resulta com o nome da Amandus.** Registrado em
+`FOUNDER-DECISIONS.md` e na caixa (F-094-07); o canário da Amandus **não roda** até a decisão; o resolver do BLOCO B ganha
+um gate contra conta compartilhada.
 
 ### 1.10 · Linha de base de regressão (rodada hoje com `SEM_REDE=1`)
 ```
@@ -316,8 +343,10 @@ Money                  amount: Decimal · currency='BRL'   ·   UNAVAILABLE = se
 Provenance             connection_id · correlation_id · fetched_at · fingerprint   ← infraestrutura fica AQUI, não no fato
 ```
 `policy_ref = sha256(company_id + provider_key + source_ref)[:16]` — **por corretora**, estável entre
-conexões do mesmo tenant, e é o ÚNICO identificador que `calculos`/`metricas` conhecem. `ClaimSignal`,
-`Interaction`, `Cashflow`, `PolicyMovement` ficam como contrato documentado até o censo mostrar dado (§6).
+conexões do mesmo tenant, e é o ÚNICO identificador que `calculos`/`metricas` conhecem. `ClaimSignalFact` tem dado
+(📊 `/sinistros`, 5.729 registros) — **fica fora da v1 por tempo**, contrato documentado, pendência P-094-SINISTROS
+com gatilho JÁ atingido. `Interaction` (`/atendimentos`, chave `tarefas`), `Cashflow` (UNAVAILABLE medido) e
+`PolicyMovement` ficam como contrato (§6).
 **Gate A:** a fixture CBIM importa e roda sem `fonte_infocap` em `sys.modules`; mutação "UNAVAILABLE → None" vermelha.
 
 # BLOCO B · O PORT e o ADAPTER — a única peça que fala InfoCap, sobre o resolver que JÁ EXISTE
@@ -335,6 +364,10 @@ grafo — o executor mede). Filtro **`status='connected'`** (a Resulta tem 3 arq
 inválida). Legado por NOME só atrás de `feature_flags.env_ligada("COMERCIAL_RESOLVER_LEGADO")`, com log e
 pendência. **Escritor novo e declarado:** `UPDATE tenant_connections SET last_used_at = now() WHERE id = …`
 depois de uma leitura bem-sucedida (uma coluna, uma linha, com `company_id` no filtro).
+**Gate contra conta compartilhada (P1 do censo):** o adapter calcula `account_fingerprint = sha256(login)[:12]` da
+credencial descriptografada e o grava na `Provenance`; se duas corretoras ATIVAS resolvem para o mesmo fingerprint, a
+leitura da segunda **recusa** com aviso "conexão compartilhada com outra corretora — decisão F-094-07" e o Artifact NÃO
+é publicado. Teste com fixture de duas conexões iguais → vermelho sem o gate.
 **Gate B:** `grep -rn "nosnum\|val_c\|inivig\|fimvig\|codfil" backend/app/comercial/ backend/app/agents/tools/` → 0 (M1
 estático); 📊 `last_used_at` da conexão da Resulta deixa de ser NULL após um Raio-X; cache com chave por
 `company_id + connection_id` (M11 vermelha); a conexão `archived` NUNCA é escolhida (teste com fixture das 4 linhas).
@@ -359,10 +392,12 @@ envelope diz isso; `COMMISSION_ACCRUAL_DATE` só nasce se o censo achar rota que
 · `mix.branch@1` · `producer.performance@1` · `producer.momentum@1` (30/60/90 via `comparar`) · `renewal.exposure@1`
 · `projection.run_rate@1` (premissa no envelope) · `data.coverage@1` (a métrica agregada de cobertura de
 produtor — distinta do campo `coverage` que TODO envelope carrega para a sua própria métrica).
-**Condicionais ao censo:** `repasse.producer_accrued@1` e `contribution.after_repasse@1` (DERIVED, ref ③) — só se
-o censo **provar** o significado de `val_r/per_r` (hoje: 📊 só plausibilidade de razão em `test:283-294`, sem
-semântica); senão nascem `UNAVAILABLE` por capability e o Artifact diz isso (F-094-02). `commission.broker_received`
-idem (`/comissao` é 403 hoje).
+**Provadas pelo censo (§1.11), portanto DENTRO da v1:** `repasse.producer_accrued@1` = Σ `val_r` de **todos** os
+`prod_docs` (nunca só `ordem==1`), `time_basis=POLICY_VALID_TO` (vem de `/renovacoes`) — e por isso
+`contribution.after_repasse@1` (DERIVED, ref ③) só é calculável sobre a **interseção** das populações INIVIG × FIMVIG,
+com `coverage` = fração da comissão do período que tem repasse conhecido, escrito no envelope. **`commission.broker_received`,
+estorno e imposto: UNKNOWN** (rota não existe; o Artifact escreve "não exposto pela InfoCap"). Cobertura de produtor é
+remedida **por corretora** (AutoFleet: BI∩renov = 0).
 **Gate D:** M1 vermelha por grep; M5 (endosso como apólice) vermelha; M6 (comparar `MetricResult` de `time_basis`
 diferentes) → o registry recusa; **paridade com a 081** (golden controls do censo; 📊 `SPEC-081:113-114` e
 `fonte_infocap.py:41-42`): `policy_count` 2025 = 1.680 · `new/renewal` 717/963 · `broker_accrued` ≈ R$ 1.863.831 ·
@@ -414,9 +449,10 @@ idempotente, expand-only, APPLY/VERIFY/ROLLBACK escritos antes; e o teste passa 
 **Provider de referência** (`backend/app/providers/reference_analytics_provider.py`, test-only): devolve CBIM de
 fixture; o guarda roda TODO o registry com ele e compara com a mesma fixture traduzida pelo adapter InfoCap
 (paridade semântica). `sys.modules` sem `fonte_infocap` durante o teste (M12).
-**Canário:** um "como estamos?" em **Amandus → Resulta → AutoFleet**, pela conexão de cada uma; 📊 latência fria e
-quente, `pack_id` igual no chat e no Artifact, cobertura visível, 0 número em prosa, e a **verificação viva**
-da ref ⑥ (uma pergunta real, resposta colada no relatório). Corretora sem conexão utilizável: o relatório diz qual.
+**Canário:** um "como estamos?" em **Resulta → AutoFleet**, pela conexão de cada uma; 📊 latência fria e quente,
+`pack_id` igual no chat e no Artifact, cobertura visível, 0 número em prosa, e a **verificação viva** da ref ⑥ (uma
+pergunta real, resposta colada no relatório). **Amandus NÃO roda** (P1 do censo, F-094-07): o gate de conta
+compartilhada tem de recusá-la — e essa recusa É o teste do canário dela.
 **Gate G:** 📊 `SELECT count(*) FROM artifacts WHERE template='executive.pulse360'` ≥ 1 por corretora; E2E-1..5 verdes;
 `test_template_de_artefato_existe` verde; **suíte inteira**; `git push origin HEAD:main` com a saída colada.
 
@@ -475,7 +511,10 @@ outra tabela é indispensável, **para e registra** — CLAUDE.md §10 (6).
 P-094-LEGADO resolver por nome atrás de flag · P-094-SNAPSHOT histórico · P-094-ROLES ACL medida · P-094-CUSTO
 colunas de custo · P-094-MAPA-PRODUTOR curadoria por corretora · P-094-QUIVER/SEGFY acesso · P-094-CENSO-RERUN
 protocolo de re-censo · P-094-GIT-PII nome de produtor no histórico do git (🧑) · P-094-SECRET-REF o nome
-`encrypted_secret_ref` mente (é ciphertext) — renomear é migration, outra SPEC.
+`encrypted_secret_ref` mente (é ciphertext) — renomear é migration, outra SPEC · **P-094-CONTA-COMPARTILHADA** (🧑, P1)
+Amandus e Resulta na mesma conta CorpAPI · **P-094-SINISTROS** `/sinistros` tem 5.729 registros e nenhum leitor (gatilho
+do ClaimSignalFact atingido) · **P-094-PRODUCAO-500** `/producao` devolve 500 e o conector de atendimento a usa ·
+**P-094-RAG-MAPA** o MAPA errado foi ingerido no RAG global (censo §8 item 10): superar lá também.
 
 ## 9. 🧑 A CAIXA DO FOUNDER
 ```
@@ -487,6 +526,10 @@ F-094-03  A tool nova aparece para as TRÊS corretoras no mesmo deploy (graph.py
 F-094-04  Deploy: `git push origin HEAD:main` + Implantar no smith-api + aplicar a migration de seed. Sem smith-web.
 F-094-05  Nome de produtor real está no HISTÓRICO do git (test:283-294, desde a 081). Reescrever histórico é decisão sua.
 F-094-06  Rotação das chaves coladas no chat de 03/09 (inclui CORP_INFOCAP_* da Resulta e AutoFleet) continua devida.
+F-094-07  🔴 P1: a conexão InfoCap da AMANDUS descriptografa para a MESMA conta da RESULTA (mesmo login, mesma carteira ao centavo).
+          Se a Amandus é a mesma corretora legal, diga — e a SPEC trata as duas como um tenant de dados. Se não é, a conexão da
+          Amandus está ERRADA e qualquer tela dela mostraria a carteira da Resulta. Até você decidir: o resolver recusa a
+          segunda corretora da mesma conta e o canário da Amandus não roda. (FOUNDER-DECISIONS, 03/09)
 ```
 
 ## 10. A ordem de execução
