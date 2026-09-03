@@ -1618,3 +1618,31 @@ Amandus e Resulta são a MESMA corretora legal/operacional na InfoCap?
 **O que a execução faz até a decisão:** o adapter da 094 grava `account_fingerprint` na provenance e **recusa** a segunda
 corretora que resolva para uma conta já usada por outra ("conexão compartilhada — F-094-07"); o canário da Amandus
 **não roda**; nenhum Artifact é publicado para ela. Pendência P-094-CONTA-COMPARTILHADA (🧑).
+
+
+---
+
+# F-094-08 · 03/09/2026 · O fornecedor da API é a mesma casa dos dois maiores concorrentes de gestão
+
+📊 `curl -sSI https://www.infocap.com.br/` → **301 → https://www.agger.com.br**; a Agger publica o produto **ONE**, "nascida da união entre
+Quiver e Agger" (pesquisa `docs/canon/pesquisa/RELATORIOS-QUE-VALEM-DINHEIRO.md`). A CorpAPI de que o AutoBrokers depende pertence ao
+grupo que vende Quiver. 📊 Nenhum dos 7 sistemas de gestão do mercado (Quiver, Segfy, Agger, TEx, Moshe, SGCOR, BIBlue) publica
+developer portal — a camada de API deste mercado está na SEGURADORA (portais, Opin), não no sistema de gestão.
+**O que isso muda:** a SPEC-094 já isola a InfoCap num adapter (a fórmula nunca conhece provider). A decisão estratégica — quanto
+investir em Opin/portais das seguradoras como fonte primária em vez da CorpAPI — é sua. **Dono:** 🧑.
+
+# F-094-09 · 03/09/2026 · Um agente pode ESCREVER no InfoCap — por cinco portas, nenhuma medida
+
+📊 Coleção Postman oficial (export sem autenticação, 51 requests, 22 de escrita): `POST/PUT/DELETE /endereco /email /telefone` ·
+`POST /cliente` (sem PUT: não existe "corrigir") · `POST /negocio` (funil, 38 chaves) · 🔴 `POST/PATCH/DELETE /prod_docs` (muda quanto a
+corretora paga a quem) · 🔴 fluxo InCorp (PDF → `/incorp` → `/incorp_contexto` → `/incorp_documento` grava a apólice).
+🔴 NÃO dá para abrir atendimento nem tarefa (só leitura). Riscos: sem idempotência (retry duplica cliente); 0 de 19 escritas tem resposta
+documentada; e a conta compartilhada (F-094-07) faria uma escrita "da Amandus" cair na Resulta.
+**A pergunta:** libera escrita para agentes, em que portas, com Approval (SPEC-055) obrigatório? Recomendação da execução: só a porta 1
+(contato) e a 2 (cliente novo), atrás de Approval, DEPOIS de medir uma escrita real em ambiente de teste da InfoCap — nunca na Resulta
+primeiro. **Dono:** 🧑.
+
+# F-094-10 · 03/09/2026 · Prazo externo: 01/10/2026 a mensagem de serviço do WhatsApp deixa de ser grátis
+
+📊 Tarifas Meta (conferidas por consistência de câmbio): Marketing R$ 0,3217 × Utility R$ 0,0350 por mensagem — template mal
+categorizado custa 9,2×. 28 dias. Cabe a quem cuida da cobrança e do atendimento classificar os templates antes. **Dono:** 🧑/🤖.

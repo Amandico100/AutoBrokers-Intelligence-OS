@@ -9926,8 +9926,10 @@ perfil, 1.680 apólices e R$ 1.863.830,79 nas duas. Os ciphertexts diferem (IV d
 O `ClaimSignalFact` da 094 ficou como contrato por tempo; o gatilho está atingido. Casa com a 093-B (sombra de sinistro
 poderia ganhar `ramo`/`seguradora` daqui). **Dono:** 🤖. 💭 2h.
 
-## P-094-PRODUCAO-500 · `/producao` devolve 500 em 3 conjuntos de parâmetros — e o conector de atendimento a chama
-📊 `infocap_connector.py` usa `/producao` (2 ocorrências). Medir se o conector trata o 500 como vazio. **Dono:** 🤖.
+## P-094-PRODUCAO-500 · `/producao` devolve 500 porque é chamada com o parâmetro ERRADO
+📊 A doc oficial exige `dt_ini`/`dt_fim`; o censo usou `datini`/`datfim` e `infocap_connector.py:3115` e `:3126` mandam só `texto`. Uma
+linha conserta uma rota do código de produção do ATENDIMENTO — fora da 094 por trava (não regredir atendimento antes do piloto).
+**Destrava:** trocar o parâmetro e medir UMA chamada. **Dono:** 🤖. 💭 15 min.
 
 ## P-094-RAG-MAPA · O MAPA antigo (18 rotas "negadas", 2.355 atendimentos) está no RAG global dos agentes
 📊 Censo §8 item 10. O CENSUS supera o MAPA no repo; o conhecimento ingerido continua errado até reingestão. **Dono:** 🤖.
