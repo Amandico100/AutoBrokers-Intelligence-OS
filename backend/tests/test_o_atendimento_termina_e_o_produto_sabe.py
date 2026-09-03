@@ -528,9 +528,39 @@ def test_SEM_corretora_o_repositorio_devolve_VAZIO_e_nao_TUDO():
                                      kind=FIM.ESPERANDO_CLIENTE,
                                      vence_em_iso="2026-08-26T12:00:00+00:00"))
     assert asyncio.run(FIM.esperas_da_corretora(banco, "")) == []
-    assert banco.chamadas[-1][1] == "work_waits", "o teste está lendo errado"
-    # ⛔ a última chamada é a do insert, não um select sem filtro
-    assert banco.chamadas[-1][0] == "insert"
+
+    # ⚠️ 03/09/2026 · SPEC-093-B — **O FATO MUDOU, E A LIÇÃO MIGRA COM ELE**
+    # (CLAUDE.md §9.3: teste que guarda verdade vencida é pior que teste nenhum).
+    #
+    # Este teste afirmava que a ÚLTIMA chamada ao banco era o `insert` em
+    # `work_waits`. 📊 Medido em 03/09/2026 com `backend/` no `sys.path` (é o que
+    # acontece quando um guarda da 093-B roda antes, no mesmo processo do pytest), a
+    # sequência de UMA `abrir_espera` passou a ser:
+    #
+    #     ('select', 'work_runs')   ← procura a sombra do sinistro para pendurar a espera
+    #     ('insert', 'work_waits')  ← o que este teste sempre quis afirmar
+    #
+    # e, quando a conversa TEM sombra (que é a configuração de produção do piloto),
+    # ainda entra um `('insert', 'work_events')` depois — o gesto virando rastro. Ou
+    # seja: a posição do insert virou um acidente do ambiente e da existência de
+    # sombra, não uma propriedade do repositório.
+    #
+    # ⚠️ E o pior: `abrir_espera` importa `app.services.claims_shadow` dentro de um
+    # `try/except`, e esse import só resolve quando `backend/` está no `sys.path`.
+    # O teste, então, media coisas diferentes conforme a ORDEM da bateria. Uma suíte
+    # cujo resultado depende da ordem não mede nada.
+    #
+    # 🔴 A lição é a mesma, escrita sobre o que ela sempre quis dizer:
+    ops = [(c[0], c[1]) for c in banco.chamadas]
+    assert ("insert", "work_waits") in ops, f"a espera nem chegou a ser gravada: {ops}"
+    assert ("insert", "work_runs") not in ops, "abrir_espera NÃO cria Work Run"
+    assert ("insert", "messages") not in ops, "abrir_espera NÃO fala com o segurado"
+    # ⛔ E o coração do gate: a leitura SEM corretora não chegou ao banco. Um
+    # repositório que esquece o filtro e devolve tudo é o vazamento que a RLS não
+    # impede — e ele apareceria aqui como um `select` em `work_waits` depois do insert.
+    depois_do_insert = ops[len(ops) - 1 - ops[::-1].index(("insert", "work_waits")) + 1:]
+    assert ("select", "work_waits") not in depois_do_insert, (
+        f"esperas_da_corretora('') consultou o banco: {depois_do_insert}")
 
 
 def test_a_migration_tem_FK_COMPOSTA_e_RLS():

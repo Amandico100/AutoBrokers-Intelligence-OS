@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
 """O sinistro deixa rastro — o guarda da SPEC-093-B (BLOCO E + o GATE ZERO do 0-bis).
 
-🔴 **ESTE ARQUIVO NASCE VERMELHO, E É PARA NASCER.** Ele foi escrito ANTES do código
-(protocolo §4: quem faz a prova não faz a resposta). O gate ⓪ — o ELO da SPEC — mede
-que uma mensagem de sinistro atravessa o webhook **no modo observação** e abre a
-sombra. Hoje nenhuma sombra abre, então ⓪ REPROVA, `main()` devolve **1** e o `def
-test_` do pytest FALHA. Isso não se afrouxa: `CLAUDE.md` §9.3 — um guarda que fica
-verde por conveniência é um carimbo.
+🔴 **ESTE ARQUIVO NASCEU VERMELHO, E ERA PARA NASCER.** Ele foi escrito ANTES do
+código (protocolo §4: quem faz a prova não faz a resposta). O gate ⓪ — o ELO da SPEC —
+mede que uma mensagem de sinistro atravessa o webhook **no modo observação** e abre a
+sombra; enquanto nenhuma sombra abria, ⓪ REPROVAVA, `main()` devolvia **1** e o `def
+test_` do pytest FALHAVA. Isso nunca foi afrouxado: `CLAUDE.md` §9.3 — um guarda que
+fica verde por conveniência é um carimbo.
 
-⚠️ A saída separa **VERMELHO ESPERADO (até o BLOCO A/B/C)** de **VERMELHO DE VERDADE**.
-O exit code é 1 nos dois casos. Quando um "vermelho esperado" ficar verde, o guarda
-IMPRIME a instrução de trocar `vermelho_ate(...)` por `certo(...)` — é assim que ele
-não passa a guardar verdade vencida.
+📊 **03/09/2026, depois da rodada de conserto do painel** (`23cb27b`): 220 asserções
+verdes, 0 vermelhas, 0 puladas. O que era `vermelho_ate('BLOCO A'…)` virou
+`certo_bloco(…)` — a mesma linha, uma palavra de diferença — porque um `vermelho_ate`
+que ficou verde e continuou lá é verdade vencida guardada.
+
+⚠️ A saída separa **VERMELHO ESPERADO** de **VERMELHO DE VERDADE**. O exit code é 1
+nos dois casos. Quando um "vermelho esperado" fica verde, o guarda IMPRIME a instrução
+de trocar `vermelho_ate(...)` por `certo_bloco(...)` — é assim que ele não passa a
+guardar verdade vencida.
 
 O ELO que esta SPEC prova, e por que ele precisava de gate próprio
 ------------------------------------------------------------------
@@ -47,6 +52,32 @@ Os blocos, e o que cada um mata
                            e ZERO campo textual no JSON
 ```
 
+Os blocos que a RODADA DE CONSERTO acrescentou (painel de 03/09/2026)
+----------------------------------------------------------------------
+📊 O painel (4 lentes + red team, contexto limpo, sobre o diff) achou 7 blockers, e
+**quatro deles existiam porque o guarda não os pegava**. Um guarda que não consegue
+ficar vermelho com o defeito que ele existe para pegar é um carimbo (§9.3):
+
+```
+[12] TENANT PELO MOTOR      o [4] media contra o BANCO, e o banco tem ZERO sombra dos
+                            dois lados: "0 = 0" e o que um filtro QUEBRADO tambem da.
+                            Aqui a mutacao M3 (cliente cego a `company_id`) fica
+                            VERMELHA -- antes ela passava cega
+[13] DIGEST PONTA A PONTA   `digerir()` nao tinha UM teste. 3 sombras -> 1 variante ->
+                            2 sinais; dedupe na 2a rodada; `truncado` no sinal; e a
+                            mutacao M2 (sem ordenacao) colapsando duas variantes em uma
+[14] O QUE ELA NAO PODE     a sombra chegando ao briefing (C7) · o detector abrindo em
+                            frase de venda (C1) · `tem_numero` de UM digito (C2) ·
+                            valor sem enum no Python (C4) · contador de seguradora
+                            contando espera de humano (C6) · evento sem escritor no
+                            vocabulario (C5)
+[15] SEM TEXTO NOS 4        o [7] varre `claims_shadow.py`; quem MONTA o payload sao os
+                            quatro escritores, e cada um tem o texto do segurado numa
+                            variavel ao lado
+[16] DEVOLVE O AMBIENTE     o guarda desfaz as cascas e os shims -- uma suite cujo
+                            resultado depende da ORDEM nao mede nada
+```
+
 📊 A LINHA DE BASE DA REGRESSÃO, medida em 03/09/2026 nesta árvore, ANTES do código
 da 093-B (`git rev-parse HEAD` → `3be076d` no instante da medição; a branch
 `feat/spec093b-o-sinistro-deixa-rastro` avançou depois com o BLOCO 0-bis ② de outro
@@ -76,6 +107,13 @@ M3  tire o filtro de company_id da leitura da sombra       → [4] VERMELHO
 M4  mova o gancho para DEPOIS do `return` do modo observação → [0] VERMELHO nos dois
     caminhos (estrutural e dinâmico)
 ```
+
+⚠️ **M2 e M3 deixaram de depender de alguém lembrar de editar e restaurar o arquivo.**
+Elas rodam DENTRO da bateria, em memória: a M3 pelo `BancoFalsoSemTenant` (um cliente
+cujo `.eq("company_id", …)` não filtra) no bloco [12], e a M2 trocando
+`claims_shadow_digest.trajetorias_de` por uma versão sem ordenação no bloco [13]. Cada
+uma tem a sua linha de CONTROLE afirmando que, **sem** a peça, o resultado é OUTRO —
+que é o que dá direito à conclusão (CLAUDE.md §9.2).
 """
 from __future__ import annotations
 
@@ -136,6 +174,16 @@ def _cascas_de_pacote():
 
     ⛔ A casca tem o `__path__` REAL: nenhum código nosso é falsificado — só o
     `__init__` do pacote deixa de rodar.
+
+    ⛔ **E ela DESFAZ o que fez** (`_restaurar_sys_modules`, chamado no `finally` de
+    `main()`). 📊 Medido em 03/09/2026 pela lente 3 do painel: sem a restauração, este
+    guarda deixava `app`, as seis cascas e todo submódulo carregado por elas dentro do
+    `sys.modules` do processo — e o pytest roda os arquivos no MESMO processo. O
+    resultado foi um guarda da SPEC-086 (`test_SEM_corretora_o_repositorio_devolve_
+    VAZIO_e_nao_TUDO`) que passa sozinho e falha quando roda DEPOIS deste, porque
+    `o_fim_do_atendimento` passou a conseguir importar `app.services.claims_shadow` e
+    ganhou um SELECT a mais. **Uma suíte cujo resultado depende da ORDEM não mede
+    nada** (CLAUDE.md §9.3).
     """
     for sub in ("api", "services", "agents", "tasks", "factories", "core"):
         nome = "app." + sub
@@ -144,10 +192,67 @@ def _cascas_de_pacote():
             continue          # já é casca
         casca = types.ModuleType(nome)
         casca.__path__ = [os.path.join(APP, sub)]
+        _guardar_modulo(nome)
         sys.modules[nome] = casca
 
 
+#: O que o guarda encontrou em `sys.modules` ANTES de mexer: `nome -> módulo` para o
+#: que existia, `nome -> _AUSENTE` para o que não existia. ⚠️ Só a PRIMEIRA gravação
+#: por nome vale — a segunda guardaria a casca como se fosse o original.
+_AUSENTE = object()
+_MODULOS_ORIGINAIS: dict = {}
+#: Fotografia de `sys.modules` no momento do primeiro toque. O que aparecer depois e
+#: cair sob um prefixo nosso é entulho DESTE guarda, e sai junto.
+_MODULOS_NO_INICIO: set = set()
+
+
+def _guardar_modulo(nome):
+    if nome not in _MODULOS_ORIGINAIS:
+        _MODULOS_ORIGINAIS[nome] = sys.modules.get(nome, _AUSENTE)
+
+
+def _fotografar_sys_modules():
+    global _MODULOS_NO_INICIO
+    if not _MODULOS_NO_INICIO:
+        _MODULOS_NO_INICIO = set(sys.modules)
+
+
+def _RAIZES_DE_SHIM():
+    """Os pacotes-raiz das bibliotecas de terceiro que o guarda falsificou."""
+    return {n.split(".")[0] for n in _SHIMS}
+
+
+def _restaurar_sys_modules():
+    """Devolve `sys.modules` ao estado em que este guarda o encontrou.
+
+    Três limpezas, e cada uma pega o que as outras não pegam:
+      · os módulos que o guarda SUBSTITUIU (as cascas e os falsos) voltam ao original;
+      · os SHIMS de biblioteca de terceiro saem;
+      · todo `app.*` que entrou DEPOIS da fotografia sai — senão um submódulo real
+        carregado sob uma casca continuaria em cache com o `__init__` do pacote
+        nunca executado, que é a mesma mentira em outro lugar.
+    """
+    # ⚠️ `_guardar_modulo` NÃO serve para estes: ele lê `sys.modules` AGORA, e agora
+    # o que está lá é o entulho — guardá-lo seria "restaurar" o módulo para ele
+    # mesmo. O que entrou depois da fotografia sai, e ponto.
+    for nome in sorted(sys.modules):
+        if nome in _MODULOS_NO_INICIO or nome in _MODULOS_ORIGINAIS:
+            continue
+        raiz = nome.split(".")[0]
+        if nome == "app" or nome.startswith("app.") or raiz in _RAIZES_DE_SHIM():
+            _MODULOS_ORIGINAIS[nome] = _AUSENTE
+    for nome, anterior in list(_MODULOS_ORIGINAIS.items()):
+        if anterior is _AUSENTE:
+            sys.modules.pop(nome, None)
+        else:
+            sys.modules[nome] = anterior
+    _MODULOS_ORIGINAIS.clear()
+    del _SHIMS[:]
+
+
+_fotografar_sys_modules()
 try:
+    _guardar_modulo("app")
     import app  # noqa: F401
     _cascas_de_pacote()
 except Exception:  # noqa: BLE001
@@ -161,22 +266,50 @@ except Exception:  # noqa: BLE001
 # ---------------------------------------------------------------------------
 detectar_sinistro = abrir_sombra = registrar_evento = None
 variantes_de = contadores_de = None
+sombra_da_conversa = registrar_gesto = None
+tem_numero = None
+digerir = trajetorias_de = summary_de_contadores = None
+FindingEngine = None
 espera_vencida = PRAZOS = None
 criar_registro_sem_fila = None
 agente_por_id = workflow_keys_sem_card = None
 contem_pii = None
 
 _FALTA_SOMBRA = _FALTA_PRAZOS = _FALTA_RUNS = _FALTA_HB = _FALTA_PII = ""
+_FALTA_DIGEST = _FALTA_FINDING = _FALTA_TEM_NUMERO = ""
 try:
     from app.services.claims_shadow import (  # type: ignore  # noqa: F401
         abrir_sombra,
         contadores_de,
         detectar_sinistro,
         registrar_evento,
+        registrar_gesto,
+        sombra_da_conversa,
         variantes_de,
     )
 except Exception as _e:  # noqa: BLE001
     _FALTA_SOMBRA = "app.services.claims_shadow: %s: %s" % (type(_e).__name__, _e)
+# 🔴 CONSERTO C2 — o nome não existe hoje. Import SEPARADO de propósito: se ele
+# entrasse no `from … import` de cima, a ausência de UMA função derrubaria os
+# blocos [0]–[11] inteiros, e o guarda pularia pelo motivo errado.
+try:
+    from app.services.claims_shadow import tem_numero  # type: ignore  # noqa: F401,F811
+except Exception as _e:  # noqa: BLE001
+    _FALTA_TEM_NUMERO = "app.services.claims_shadow.tem_numero: %s: %s" % (
+        type(_e).__name__, _e)
+try:
+    from app.services.claims_shadow_digest import (  # type: ignore  # noqa: F401,F811
+        digerir,
+        summary_de_contadores,
+        trajetorias_de,
+    )
+except Exception as _e:  # noqa: BLE001
+    _FALTA_DIGEST = "app.services.claims_shadow_digest: %s: %s" % (type(_e).__name__, _e)
+try:
+    from app.services.intelligence.finding_engine import FindingEngine  # type: ignore  # noqa: F401,F811
+except Exception as _e:  # noqa: BLE001
+    _FALTA_FINDING = "app.services.intelligence.finding_engine: %s: %s" % (
+        type(_e).__name__, _e)
 try:
     from app.services.prazos_regulatorios import PRAZOS, espera_vencida  # type: ignore  # noqa: F401,F811
 except Exception as _e:  # noqa: BLE001
@@ -363,8 +496,25 @@ class _Tabela:
     def insert(self, linha, **k):
         self._op = "insert"
         self._linha = linha
+        gravadas = []
         for x in (linha if isinstance(linha, list) else [linha]):
+            x = dict(x)
+            # 🔴 O FALSO VIVO (`vivo=True`): a linha inserida passa a EXISTIR para o
+            # SELECT seguinte, e ganha `id` como a tabela real ganharia.
+            # ⚠️ Só no modo vivo, e o padrão continua sendo o antigo: os blocos
+            # [0]–[11] foram escritos contra um falso que só REGISTRA o INSERT, e
+            # mudar isso para todos seria mudar o que eles medem sem dizer.
+            if self._banco.vivo:
+                if not x.get("id"):
+                    self._banco.proximo_id += 1
+                    x["id"] = "fake-%s-%d" % (self._nome, self._banco.proximo_id)
+                self._banco.linhas.setdefault(self._nome, []).append(x)
             self._banco.inseridos.append((self._nome, dict(x)))
+            gravadas.append(x)
+        if isinstance(linha, list):
+            self._linha = gravadas
+        elif gravadas:
+            self._linha = gravadas[0]
         return self
 
     def upsert(self, linha, **k):
@@ -397,6 +547,16 @@ class _Tabela:
         return _corrente
 
     def execute(self):
+        if self._op == "select":
+            # 🔴 A FALHA FORÇADA de leitura (`falhar_no_select`). Ela existe para um
+            # gate só: `ler_paginado` devolve `truncou=True` tanto no teto quanto na
+            # página que FALHOU ("meia leitura não é leitura", `leitura_completa.py`).
+            # Forçar uma página CHEIA exigiria 1.000 linhas de fixture; forçar a
+            # falha exercita o MESMO caminho de `truncou` com três.
+            restam = self._banco.falhar_no_select.get(self._nome, 0)
+            if restam:
+                self._banco.falhar_no_select[self._nome] = restam - 1
+                raise RuntimeError("falha de leitura forcada em %s" % self._nome)
         if self._op != "select":
             linhas = self._linha if isinstance(self._linha, list) else [self._linha]
             return _Resposta([x for x in linhas if x])
@@ -406,16 +566,25 @@ class _Tabela:
 
 
 class BancoFalso:
-    def __init__(self, linhas=None):
+    def __init__(self, linhas=None, vivo=False, falhar_no_select=None):
         self.linhas = {k: list(v) for k, v in (linhas or {}).items()}
         self.inseridos = []
         self.updates = []
+        #: `vivo=True`: o INSERT vira linha visível ao SELECT e ganha `id`.
+        self.vivo = bool(vivo)
+        self.proximo_id = 0
+        #: `{tabela: n}` — as próximas `n` leituras dessa tabela LEVANTAM.
+        self.falhar_no_select = dict(falhar_no_select or {})
 
     def table(self, nome):
         return _Tabela(self, nome)
 
     def de(self, tabela):
         return [x for n, x in self.inseridos if n == tabela]
+
+    def linhas_de(self, tabela):
+        """O que o SELECT enxergaria — no modo vivo, inclui o que foi inserido."""
+        return list(self.linhas.get(tabela, []))
 
 
 class ClienteFalso:
@@ -425,12 +594,36 @@ class ClienteFalso:
         self.client = banco
 
 
+class _TabelaCegaAoTenant(_Tabela):
+    """🔴 A MUTAÇÃO M3, aplicada em MEMÓRIA: `.eq("company_id", …)` não filtra nada.
+
+    ⚠️ Por que aqui e não editando `claims_shadow.py`: a mutação da SPEC manda tirar
+    o filtro de tenant da leitura da sombra, e o §9.3 exige que o guarda fique
+    VERMELHO com ela. Fazer isso pelo CLIENTE tem duas vantagens medidas: roda dentro
+    da própria bateria (não depende de alguém lembrar de editar e restaurar o arquivo)
+    e ataca exatamente o ponto em que o filtro protege — a consulta. O que o guarda
+    afirma é que, sem o filtro, o resultado MUDA; se não mudar, o filtro não estava
+    protegendo coisa nenhuma e o gate [12] era um carimbo.
+    """
+
+    def eq(self, coluna, valor):
+        if str(coluna) == "company_id":
+            return self
+        return _Tabela.eq(self, coluna, valor)
+
+
+class BancoFalsoSemTenant(BancoFalso):
+    def table(self, nome):
+        return _TabelaCegaAoTenant(self, nome)
+
+
 # ---------------------------------------------------------------------------
 # AS FIXTURES — 💭 textos INVENTADOS. Nenhum veio do acervo de um segurado.
 # ---------------------------------------------------------------------------
 EMPRESA_A = "aaaaaaaa-0000-4000-8000-000000000001"
 EMPRESA_B = "bbbbbbbb-0000-4000-8000-000000000002"
 CONVERSA_A = "cccccccc-0000-4000-8000-00000000000a"
+CONVERSA_B = "cccccccc-0000-4000-8000-00000000000b"
 CONVERSA_SEM_SOMBRA = "dddddddd-0000-4000-8000-00000000000d"
 RUN_SOMBRA_A = "eeeeeeee-0000-4000-8000-00000000000e"
 
@@ -756,8 +949,13 @@ def bloco_0_gate_zero():
     certo("capture_channel_message" in trilha,
           "o fluxo chegou ao MODO OBSERVACAO (capturou sem responder)",
           "trilha: %s" % trilha)
+    # ⚠️ O rótulo cita a linha MEDIDA (`fim`), nunca um número escrito à mão. 📊 O
+    # `:782` que estava aqui já nasceu vencido: o aquecimento mediu 782, o desenhista
+    # 783, e o `return` anda a cada edição do webhook. Um guarda que anuncia a linha
+    # errada ensina a desconfiar do guarda.
     certo("PASSOU_DO_RETURN" not in trilha,
-          "o fluxo PAROU no `return` de :782 -- o grafo NAO foi chamado",
+          "o fluxo PAROU no `return` do modo observacao (webhook.py:%s) -- o grafo "
+          "NAO foi chamado" % (fim if fim else "?"),
           "a sentinela do billing foi tocada: o fluxo seguiu para a IA. trilha: %s" % trilha)
     certo(envios == [],
           "NENHUMA mensagem saiu para o segurado",
@@ -793,10 +991,18 @@ def bloco_0_gate_zero():
 # ===========================================================================
 # [1] VOCABULARIO -- um arquivo, lido pelos dois lados
 # ===========================================================================
+#: 🔴 DEZ eventos, e não os onze da §5 da SPEC — CONSERTO C5.
+#: 📊 A lente 1 do painel mediu em 03/09/2026: `claims.seguradora_respondeu` não tem
+#: ESCRITOR em lugar nenhum (a linha da §5 aponta para "`attendance_capture`/
+#: `dispatch_router` quando há sombra", e nenhum dos dois chama a sombra). Um evento
+#: declarado e nunca escrito é uma promessa: o digest o procura, o admin o lista como
+#: chave possível, e o leitor conclui que a seguradora nunca respondeu — quando o que
+#: aconteceu foi ninguém ter gravado. **Vocabulário é contrato, não desejo**
+#: (P-093B-SEGURADORA guarda o que o traria de volta).
 EVENTOS_ESPERADOS = {
     "claims.sombra_aberta", "claims.handoff_pedido", "claims.humano_assumiu",
     "claims.humano_devolveu", "claims.humano_respondeu", "claims.nota_registrada",
-    "claims.documento_recebido", "claims.seguradora_respondeu",
+    "claims.documento_recebido",
     "claims.espera_aberta", "claims.espera_satisfeita", "claims.encerrado",
 }
 # 📊 O CHECK real de `work_events.actor_type`, lido do banco em 03/09/2026 e
@@ -804,8 +1010,13 @@ EVENTOS_ESPERADOS = {
 # ⛔ `human` NAO esta na lista: escrever esse valor e um INSERT que o Postgres
 # recusa -- e `_evento` engole a recusa. Um evento que nunca acontece.
 ATORES_DO_CHECK = {"system", "worker", "user", "agent", "admin", "provider"}
-ENUMS_ESPERADOS = {"confianca", "motivo", "origem", "canal", "tipo_documento",
-                   "kind", "desfecho"}
+#: 🔴 OITO enums — CONSERTO C5. `motivo_enum` entra porque ele é o payload inteiro de
+#: `claims.handoff_pedido` e HOJE não tem enum declarado: 📊 `human_handoff.py:674`
+#: grava `"sinistro"` ou `"outro"`, e sem a lista no vocabulário o validador de valor
+#: do CONSERTO C4 não tem contra o que validar — a chave cairia na regra de "slug
+#: qualquer", que é a porta por onde texto entra.
+ENUMS_ESPERADOS = {"confianca", "motivo", "motivo_enum", "origem", "canal",
+                   "tipo_documento", "kind", "desfecho"}
 
 
 def bloco_1_vocabulario():
@@ -822,18 +1033,21 @@ def bloco_1_vocabulario():
         return
     certo(True, "o vocabulario e JSON valido")
     eventos = v.get("eventos") or {}
-    certo(set(eventos) == EVENTOS_ESPERADOS,
-          "os 11 eventos da §5 estao la, nem a mais nem a menos",
-          "faltam %s · sobram %s" % (sorted(EVENTOS_ESPERADOS - set(eventos)),
-                                     sorted(set(eventos) - EVENTOS_ESPERADOS)))
+    certo_bloco(set(eventos) == EVENTOS_ESPERADOS,
+                "os %d eventos COM ESCRITOR estao la, nem a mais nem a menos"
+                % len(EVENTOS_ESPERADOS), "CONSERTO C5",
+                "faltam %s · sobram %s -- evento sem escritor promete rastro que "
+                "ninguem grava" % (sorted(EVENTOS_ESPERADOS - set(eventos)),
+                                   sorted(set(eventos) - EVENTOS_ESPERADOS)))
     fora = sorted({e: d.get("ator") for e, d in eventos.items()
                    if d.get("ator") not in ATORES_DO_CHECK}.items())
     certo(not fora,
           "TODO `ator` do vocabulario esta no CHECK de work_events",
           "fora do CHECK: %s -- `human` nao existe e o INSERT some sem erro" % fora)
-    certo(set(v.get("enums") or {}) == ENUMS_ESPERADOS,
-          "os 7 enums da §5 estao la",
-          "veio %s" % sorted(v.get("enums") or {}))
+    certo_bloco(set(v.get("enums") or {}) == ENUMS_ESPERADOS,
+                "os %d enums estao la (com `motivo_enum`)" % len(ENUMS_ESPERADOS),
+                "CONSERTO C5",
+                "veio %s" % sorted(v.get("enums") or {}))
     sem_payload = [e for e, d in eventos.items() if not isinstance(d.get("payload"), list)]
     certo(not sem_payload,
           "todo evento declara a lista de chaves de payload",
@@ -1779,11 +1993,980 @@ def bloco_11_resumo_admin():
         "um varredor que acusa tudo obrigaria a rota a devolver so numeros")
 
 
+# ===========================================================================
+# [12] DOIS TENANTS PELO MOTOR -- A④ B④ C⑥ pelo CODIGO, e a mutacao M3 VERMELHA
+# ===========================================================================
+#
+# 🔴 POR QUE ESTE BLOCO EXISTE, E POR QUE O [4] NAO BASTAVA.
+#
+# 📊 Medido pelo painel em 03/09/2026 (lentes 1 e 4, achado B7): o bloco [4] mede o
+# isolamento CONTRA O BANCO, e hoje o banco tem ZERO sombra dos dois lados. "0 = 0" e
+# o resultado que um filtro QUEBRADO tambem produz -- e foi exatamente isso que
+# aconteceu: a mutacao M3 obrigatoria da SPEC (tirar `.eq("company_id", …)` da leitura
+# da sombra) passou CEGA. Um gate que nao consegue ficar vermelho com o defeito que
+# ele existe para pegar e um carimbo (CLAUDE.md §9.3).
+#
+# Este bloco roda o MOTOR (`abrir_sombra`, `sombra_da_conversa`, `registrar_evento`,
+# `digerir`, `montar_resumo_claims_shadow`) sobre um banco falso com DUAS corretoras,
+# e a mutacao e aplicada em memoria, no cliente. CLAUDE.md §9.4: o que se afirma e o
+# comportamento do MOTOR sobre o dado REAL, nunca o do regex sobre a declaracao.
+
+
+def _rodar(valor):
+    """Executa a corotina e devolve o resultado. Sincrono passa direto."""
+    import asyncio
+
+    if hasattr(valor, "__await__"):
+        return asyncio.run(_espera(valor))
+    return valor
+
+
+def _duas_sombras_num_banco(classe=None, vivo=True):
+    """Abre a sombra da corretora A (conversa A) e a da B (conversa B), pelo MOTOR.
+
+    Devolve `(banco, cli, run_a, run_b, erro)`. ⚠️ `abrir_sombra` e o unico caminho
+    usado: montar as linhas a mao provaria a fixture, nao o codigo.
+    """
+    banco = (classe or BancoFalso)({}, vivo=vivo)
+    cli = ClienteFalso(banco)
+    try:
+        run_a = _rodar(abrir_sombra(cli, company_id=EMPRESA_A,
+                                    conversation_id=CONVERSA_A))
+        run_b = _rodar(abrir_sombra(cli, company_id=EMPRESA_B,
+                                    conversation_id=CONVERSA_B))
+    except Exception as e:  # noqa: BLE001
+        return banco, cli, None, None, "abrir_sombra levantou %s: %s" % (
+            type(e).__name__, e)
+    return banco, cli, run_a, run_b, ""
+
+
+def _releitura(banco, classe=None):
+    """Um cliente NOVO sobre as MESMAS linhas de `work_runs`.
+
+    🔴 Por que releitura e nao o mesmo cliente: `claims_shadow._MEMORIA` lembra, POR
+    CLIENTE, qual conversa ja tem sombra, e responde sem consultar. Perguntar ao
+    cliente que acabou de abrir a sombra mediria o dicionario, nao o SELECT -- e o
+    filtro de §7 mora no SELECT.
+    """
+    novo = (classe or BancoFalso)({"work_runs": banco.linhas_de("work_runs")},
+                                  vivo=True)
+    return novo, ClienteFalso(novo)
+
+
+def bloco_12_dois_tenants_pelo_motor():
+    _p("\n[12] DOIS TENANTS PELO MOTOR -- a consulta EXECUTA, e a mutacao M3 fica vermelha")
+    if abrir_sombra is None or sombra_da_conversa is None or registrar_evento is None:
+        pular("[12] DOIS TENANTS PELO MOTOR",
+              _FALTA_SOMBRA or "abrir_sombra/sombra_da_conversa nao importam")
+        return
+
+    banco, _cli, run_a, run_b, erro = _duas_sombras_num_banco()
+    if erro:
+        pular("[12] DOIS TENANTS PELO MOTOR", erro)
+        return
+    certo(bool(run_a) and bool(run_b) and run_a != run_b,
+          "A④ duas corretoras, duas sombras DISTINTAS",
+          "run_a=%r run_b=%r" % (run_a, run_b))
+    linhas = banco.linhas_de("work_runs")
+    donos = {str(l.get("id")): str(l.get("company_id")) for l in linhas}
+    certo(donos.get(str(run_a)) == EMPRESA_A and donos.get(str(run_b)) == EMPRESA_B,
+          "A④ cada sombra nasce com o company_id da SUA corretora (§7)",
+          "donos=%r" % (sorted(donos.values()),))
+
+    # ---- a LEITURA cruzada: o motor, num cliente que nunca viu estas conversas ----
+    banco2, cli2 = _releitura(banco)
+    achou_propria = _rodar(sombra_da_conversa(cli2, EMPRESA_A, CONVERSA_A))
+    # 🔴 CONTROLE PRIMEIRO (CLAUDE.md §9.2): a consulta EXECUTA e ACHA. Sem esta
+    # linha, o `None` da consulta cruzada abaixo poderia ser "o SELECT nao funciona".
+    certo(str(achou_propria or "") == str(run_a),
+          "CONTROLE: sombra_da_conversa(A, conversa da A) ACHA a sombra",
+          "veio %r -- se a consulta propria nao acha, o None da cruzada nao prova nada"
+          % (achou_propria,))
+    cruzada = _rodar(sombra_da_conversa(cli2, EMPRESA_B, CONVERSA_A))
+    certo(cruzada is None,
+          "§7 sombra_da_conversa(B, conversa da A) devolve None",
+          "veio %r -- o backend roda com service role: sem o filtro de company_id no "
+          "CODIGO, a corretora B le a sombra da A" % (cruzada,))
+
+    # ---- a ESCRITA cruzada: sem sombra DA CORRETORA, nao grava --------------------
+    antes = len(banco2.de("work_events"))
+    _rodar(registrar_evento(cli2, company_id=EMPRESA_B, conversation_id=CONVERSA_A,
+                            event_type="claims.humano_assumiu",
+                            payload={"origem": "dashboard"}))
+    certo(len(banco2.de("work_events")) == antes,
+          "B④ registrar_evento(B, conversa da A) NAO grava nada",
+          "gravou %d evento(s) -- um gesto da B pendurado na sombra da A e trabalho de "
+          "uma corretora contado na outra" % (len(banco2.de("work_events")) - antes))
+    _rodar(registrar_evento(cli2, company_id=EMPRESA_A, conversation_id=CONVERSA_A,
+                            event_type="claims.humano_assumiu",
+                            payload={"origem": "dashboard"}))
+    # 🔴 CONTROLE do escritor: ele CONSEGUE gravar quando a corretora e a dona.
+    certo(len(banco2.de("work_events")) == antes + 1,
+          "CONTROLE: registrar_evento(A, conversa da A) GRAVA",
+          "um escritor que nunca grava faria o gate acima passar por vacuidade")
+    _rodar(registrar_evento(cli2, company_id=EMPRESA_B, conversation_id=CONVERSA_B,
+                            event_type="claims.humano_assumiu",
+                            payload={"origem": "dashboard"}))
+
+    # ---- o DIGEST nao agrega entre corretoras -------------------------------------
+    if digerir is None:
+        pular("[12] C⑥ digerir por corretora", _FALTA_DIGEST)
+    else:
+        r_b = digerir(cli2, EMPRESA_B)
+        r_a = digerir(cli2, EMPRESA_A)
+        certo(int(r_b.get("sombras") or 0) == 1 and int(r_a.get("sombras") or 0) == 1,
+              "C⑥ digerir(B) conta 1 sombra e digerir(A) conta 1 -- nunca as duas",
+              "B=%r A=%r" % (r_b.get("sombras"), r_a.get("sombras")))
+        certo(int((r_b.get("contadores") or {}).get("total") or 0) == 1,
+              "C⑥ o denominador do digest da B e o das sombras DA B",
+              "total=%r -- um denominador que soma as duas corretoras torna toda "
+              "fracao do relatorio errada" % ((r_b.get("contadores") or {}).get("total"),))
+
+    # ---- o RESUMO ADMIN separa por corretora --------------------------------------
+    if montar_resumo_claims_shadow is None:
+        pular("[12] D① resumo por corretora", _FALTA_ADMIN)
+    else:
+        resumo = None
+        try:
+            resumo = montar_resumo_claims_shadow(banco2)
+        except Exception as e:  # noqa: BLE001
+            certo(False, "D① montar_resumo_claims_shadow com duas corretoras NAO levanta",
+                  "%s: %s" % (type(e).__name__, e))
+        if resumo is not None:
+            por_empresa = {str(c.get("company_id")): c
+                           for c in (resumo.get("corretoras") or [])}
+            certo(set(por_empresa) == {EMPRESA_A, EMPRESA_B},
+                  "D① o resumo lista as DUAS corretoras, cada uma na sua linha",
+                  "veio %s" % sorted(por_empresa))
+            certo(all(int(c.get("sombras_abertas") or 0) == 1
+                      for c in por_empresa.values()),
+                  "D① cada corretora conta 1 sombra -- nenhuma carrega a da outra",
+                  "%r" % {k: v.get("sombras_abertas") for k, v in por_empresa.items()})
+
+    # ---- 🔴 A MUTACAO M3: o guarda CONSEGUE ficar vermelho? -----------------------
+    banco_m, _cli_m, run_ma, _run_mb, erro = _duas_sombras_num_banco(BancoFalsoSemTenant)
+    if erro:
+        pular("[12] MUTACAO M3", erro)
+        return
+    _banco_m2, cli_m2 = _releitura(banco_m, BancoFalsoSemTenant)
+    cruzada_m = _rodar(sombra_da_conversa(cli_m2, EMPRESA_B, CONVERSA_A))
+    certo(str(cruzada_m or "") == str(run_ma),
+          "MUTACAO M3: SEM o filtro de company_id, a B ENXERGA a sombra da A",
+          "veio %r -- se a mutacao tambem devolve None, o gate acima nao esta medindo "
+          "o filtro, e a M3 obrigatoria da SPEC continua passando cega (foi o achado "
+          "B7 do painel de 03/09/2026)" % (cruzada_m,))
+
+
+# ===========================================================================
+# [13] O DIGEST PONTA A PONTA -- gate E⑧ (CONSERTO B7 e C3)
+# ===========================================================================
+#
+# 🔴 📊 O painel mediu: `digerir()` nao tinha UM teste. O fio inteiro -- sombra →
+# gesto → trajetoria ordenada → variante → sinal -- so existia no relatorio do
+# builder. E o `truncado`, que e a metade que faltava do conserto da paginacao, era
+# calculado e jogado fora antes do sinal: o numero saia menor que a verdade com cara
+# de verdade (achado B5).
+_PASSOS_DA_SOMBRA = (
+    ("claims.humano_assumiu", {"origem": "dashboard"}),
+    ("claims.documento_recebido", {"tipo_documento": "cnh"}),
+    ("claims.espera_aberta", {"kind": "esperando_seguradora"}),
+    ("claims.encerrado", {"desfecho": "pago"}),
+)
+
+
+def _tres_sombras_com_gestos(**kw):
+    """Tres conversas da MESMA corretora, cada uma com a MESMA sequencia de gestos.
+
+    ⚠️ A sequencia e igual de proposito: tres trajetorias iguais sao UMA variante com
+    N=3, que e exatamente o limiar da §C①. Duas seriam anedota e nao sairiam.
+    """
+    banco = BancoFalso({}, vivo=True, **kw)
+    cli = ClienteFalso(banco)
+    for i in range(3):
+        conversa = "e2e-conversa-%d" % i
+        _rodar(abrir_sombra(cli, company_id=EMPRESA_A, conversation_id=conversa))
+        for evento, payload in _PASSOS_DA_SOMBRA:
+            _rodar(registrar_evento(cli, company_id=EMPRESA_A,
+                                    conversation_id=conversa,
+                                    event_type=evento, payload=payload))
+    return banco, cli
+
+
+def _trajetorias_sem_ordem(eventos):
+    """🔴 A MUTACAO M2 no lugar em que a ORDEM NASCE: `trajetorias_de` sem ordenar.
+
+    ⚠️ Ela NAO reimplementa o motor para depois testar a copia (§9.4). Ela existe
+    para uma pergunta so: *se a ordem nao fosse aplicada, o resultado seria outro?*
+    Se for o mesmo, a ordenacao nao estava fazendo nada e o gate C② e vacuo.
+    """
+    por_run = {}
+    ficha = {}
+    for ev in (eventos or ()):
+        if not isinstance(ev, dict):
+            continue
+        run = str(ev.get("work_run_id") or "")
+        if not run or not str(ev.get("event_type") or "").startswith("claims."):
+            continue
+        ficha.setdefault(run, str(ev.get("company_id") or ""))
+        por_run.setdefault(run, []).append(str(ev.get("event_type")))
+    return [{"work_run_id": run, "company_id": ficha.get(run) or "",
+             "ramo": "desconhecido", "seguradora_slug": "desconhecida",
+             "eventos": tipos, "desfechos": [], "esperas": []}
+            for run, tipos in sorted(por_run.items())]
+
+
+def _banco_de_duas_ordens():
+    """Duas sombras com os MESMOS tres passos e ordens cronologicas INVERTIDAS.
+
+    🔴 O `created_at` inverte; a ordem de CHEGADA das linhas nao. E de proposito: e
+    assim que se separa "o motor ordenou pelo relogio" de "o motor devolveu na ordem
+    em que o PostgREST entregou". Sem a inversao, a mutacao daria o mesmo resultado e
+    a linha de controle nao teria direito a conclusao (CLAUDE.md §9.2).
+    """
+    ida = ["claims.sombra_aberta", "claims.humano_assumiu", "claims.documento_recebido"]
+    linhas = []
+    for run, relogios in (("run-ida", ["10:00", "11:00", "12:00"]),
+                          ("run-volta", ["10:00", "12:00", "11:00"])):
+        for i, (tipo, hora) in enumerate(zip(ida, relogios)):
+            linhas.append({"id": "%s-%d" % (run, i), "work_run_id": run,
+                           "company_id": EMPRESA_A, "event_type": tipo,
+                           "created_at": "2026-09-01T%s:00+00:00" % hora,
+                           "payload_redacted": {}})
+    banco = BancoFalso({
+        "work_runs": [{"id": "run-ida", "company_id": EMPRESA_A,
+                       "workflow_key": WORKFLOW, "status": "running",
+                       "created_at": "2026-09-01T10:00:00+00:00"},
+                      {"id": "run-volta", "company_id": EMPRESA_A,
+                       "workflow_key": WORKFLOW, "status": "running",
+                       "created_at": "2026-09-01T10:00:00+00:00"}],
+        "work_events": linhas,
+    }, vivo=True)
+    return banco, ClienteFalso(banco)
+
+
+_RE_COM_DENOMINADOR = re.compile(r"\d+/\d+")
+
+
+def bloco_13_digest_ponta_a_ponta():
+    _p("\n[13] O DIGEST PONTA A PONTA -- 3 sombras -> 1 variante -> 2 sinais (gate E⑧)")
+    if digerir is None or abrir_sombra is None:
+        pular("[13] DIGEST PONTA A PONTA", _FALTA_DIGEST or _FALTA_SOMBRA)
+        return
+
+    banco, cli = _tres_sombras_com_gestos()
+    certo(len(banco.linhas_de("work_runs")) == 3
+          and len(banco.linhas_de("work_events")) == 3 * (1 + len(_PASSOS_DA_SOMBRA)),
+          "a fixture montou 3 sombras e %d eventos PELO MOTOR"
+          % (3 * (1 + len(_PASSOS_DA_SOMBRA))),
+          "runs=%d eventos=%d" % (len(banco.linhas_de("work_runs")),
+                                  len(banco.linhas_de("work_events"))))
+
+    r = None
+    try:
+        r = digerir(cli, EMPRESA_A)
+    except Exception as e:  # noqa: BLE001
+        certo(False, "E⑧ digerir() nao levanta", "%s: %s" % (type(e).__name__, e))
+    if r is None:
+        return
+    certo(int(r.get("sombras") or 0) == 3 and int(r.get("variantes") or 0) == 1,
+          "E⑧ 3 sombras iguais -> 1 variante (limiar N>=3 da §C①)",
+          "sombras=%r variantes=%r" % (r.get("sombras"), r.get("variantes")))
+
+    sinais = banco.linhas_de("intelligence_signals")
+    por_tipo = {}
+    for s in sinais:
+        por_tipo.setdefault(str(s.get("signal_type")), []).append(s)
+    certo(set(por_tipo) == {"process_variant", "claims_shadow_resumo"}
+          and len(sinais) == 2,
+          "E⑧ o digest escreve UM `process_variant` e UM `claims_shadow_resumo`",
+          "gravou %d sinal(is): %s" % (len(sinais), sorted(por_tipo)))
+
+    variante = (por_tipo.get("process_variant") or [{}])[0]
+    assinatura = (variante.get("metadata") or {}).get("assinatura") or []
+    esperados = ["claims.sombra_aberta"] + [e for e, _p_ in _PASSOS_DA_SOMBRA]
+    certo(list(assinatura) == esperados,
+          "E⑧ o sinal carrega a assinatura dos %d passos, NA ORDEM" % len(esperados),
+          "veio %r" % (assinatura,))
+    certo(int((variante.get("metadata") or {}).get("n") or 0) == 3
+          and int((variante.get("metadata") or {}).get("denominador") or 0) == 3,
+          "§12.1 a variante sai com `n` E com `denominador`",
+          "metadata=%r" % ({k: v for k, v in (variante.get("metadata") or {}).items()
+                            if k in ("n", "denominador")},))
+
+    resumo = (por_tipo.get("claims_shadow_resumo") or [{}])[0]
+    texto = str(resumo.get("summary_redacted") or "")
+    certo(bool(_RE_COM_DENOMINADOR.search(texto)),
+          "§12.1 os contadores saem COM denominador no summary (`n/total`)",
+          "summary=%r -- numero sem denominador nao e citavel (ref. ⑤ Sprout.ai)"
+          % texto[:120])
+    # 🔴 CONTROLE do casador de denominador: ele CONSEGUE reprovar.
+    certo(not _RE_COM_DENOMINADOR.search("37 sinistros com documento faltante"),
+          "CONTROLE: o casador de denominador RECUSA o numero sozinho")
+
+    # ---- DEDUPE: a segunda rodada nao duplica ------------------------------------
+    r2 = digerir(cli, EMPRESA_A)
+    certo(len(banco.linhas_de("intelligence_signals")) == 2,
+          "C③ a MESMA rodada de novo nao cria linha nova (dedupe vivo)",
+          "agora sao %d linhas; a segunda rodada devolveu %r sinal(is) -- um dedupe "
+          "morto duplica o briefing a cada dia"
+          % (len(banco.linhas_de("intelligence_signals")), r2.get("sinais")))
+
+    # ---- 🔴 CONSERTO C3: a leitura truncada CHEGA ao sinal ------------------------
+    banco_t, cli_t = _tres_sombras_com_gestos(falhar_no_select={"work_events": 1})
+    r_t = digerir(cli_t, EMPRESA_A)
+    certo(bool(r_t.get("truncado")),
+          "a fixture de truncamento FUNCIONA: digerir() devolve `truncado` nao-vazio",
+          "veio %r -- sem isto o gate abaixo mediria uma leitura completa"
+          % (r_t.get("truncado"),))
+    sinais_t = [s for s in banco_t.linhas_de("intelligence_signals")
+                if str(s.get("signal_type")) == "claims_shadow_resumo"]
+    meta_t = (sinais_t[0].get("metadata") if sinais_t else {}) or {}
+    certo_bloco(bool(meta_t.get("truncado")),
+                "C3 o sinal carrega `truncado` no metadata quando a leitura foi parcial",
+                "CONSERTO C3",
+                "metadata=%r -- `truncado` era calculado e jogado fora antes do sinal: "
+                "um numero MENOR que a verdade, com cara de verdade (achado B5 do "
+                "painel)" % (sorted(meta_t),))
+    texto_t = str((sinais_t[0].get("summary_redacted") if sinais_t else "") or "")
+    certo_bloco("truncad" in texto_t.lower(),
+                "C3 o summary do sinal DIZ que a leitura foi truncada",
+                "CONSERTO C3",
+                "summary=%r -- quem le o sinal precisa poder dizer 'este numero esta "
+                "incompleto' (mesma regra do `nao_instrumentado` da SPEC-088 §4)"
+                % texto_t[:140])
+
+    # ---- 🔴 A MUTACAO M2: sem ordenacao, duas trajetorias viram UMA ---------------
+    mod = sys.modules.get("app.services.claims_shadow_digest")
+    if mod is None or trajetorias_de is None:
+        pular("[13] MUTACAO M2", "o modulo do digest nao esta em sys.modules")
+        return
+    _b1, cli1 = _banco_de_duas_ordens()
+    r_ok = digerir(cli1, EMPRESA_A, limiar=1)
+    _b2, cli2 = _banco_de_duas_ordens()
+    original = mod.trajetorias_de
+    try:
+        mod.trajetorias_de = _trajetorias_sem_ordem
+        r_mut = digerir(cli2, EMPRESA_A, limiar=1)
+    finally:
+        mod.trajetorias_de = original
+    certo(int(r_ok.get("variantes") or 0) == 2,
+          "C② X e a PERMUTACAO de X sao DUAS variantes (a ordem faz o processo)",
+          "vieram %r -- 'o humano assumiu e entao o documento chegou' e o contrario "
+          "sao dois processos" % (r_ok.get("variantes"),))
+    certo(int(r_mut.get("variantes") or 0) == 1,
+          "MUTACAO M2: SEM a ordenacao de `trajetorias_de`, as duas colapsam em UMA",
+          "vieram %r -- se a mutacao der 2 tambem, a ordenacao nao esta fazendo nada "
+          "e o gate C② e vacuo" % (r_mut.get("variantes"),))
+
+
+# ===========================================================================
+# [14] O QUE A SOMBRA NAO PODE FAZER -- os seis limites que o painel achou abertos
+# ===========================================================================
+#
+# 🔴 Os seis sub-blocos abaixo nasceram do painel de 03/09/2026 (4 lentes + red team).
+# Cada um mata um defeito de PRODUTO -- nenhum deles trava nada, e todos chegam ao
+# relatorio que a corretora le (CLAUDE.md §9.5: o passo que responde errado e
+# silencioso).
+
+
+def _sinal_de_fixture(sid, tipo, source_type, empresa=EMPRESA_A):
+    return {"id": sid, "company_id": empresa, "signal_type": tipo,
+            "domain": "sinistro", "subject_type": "claims_shadow", "subject_id": None,
+            "source_type": source_type, "source_ref": "fixture",
+            "rule_key": "fixture.%s" % tipo, "rule_version": "1",
+            "summary_redacted": "3 sinistro(s) seguiram 5 passo(s)",
+            "status": "validated", "severity": "info", "confidence": 0.6,
+            "priority_score": 50.0, "trust_tier": 3, "occurrence_count": 1,
+            "dedupe_key": "fixture:%s" % sid, "valid_until": "2099-01-01T00:00:00+00:00",
+            "metadata": {}}
+
+
+def _evidencia_de_fixture(sid, empresa=EMPRESA_A):
+    return {"id": "ev-%s" % sid, "company_id": empresa, "signal_id": sid,
+            "evidence_type": "analysis", "source_system": "claims_shadow",
+            "source_ref": "work_runs:claims.shadow", "trust_tier": 3,
+            "summary_redacted": "3 sinistro(s) seguiram 5 passo(s)",
+            "value_snapshot": {"n": 3}, "observed_at": "2026-09-02T00:00:00+00:00"}
+
+
+def _findings_de(sinais):
+    """Roda o `FindingEngine` REAL sobre os sinais dados. Devolve (criados, banco)."""
+    banco = BancoFalso({
+        "intelligence_signals": list(sinais),
+        "intelligence_signal_evidence": [_evidencia_de_fixture(s["id"]) for s in sinais],
+    }, vivo=True)
+    return FindingEngine(ClienteFalso(banco)).consolidar(EMPRESA_A), banco
+
+
+def bloco_14a_a_sombra_nao_chega_ao_briefing():
+    _p("\n[14a] A SOMBRA NAO CHEGA AO BRIEFING -- C0 prometeu SILENCIO")
+    if FindingEngine is None:
+        pular("[14a] FindingEngine", _FALTA_FINDING)
+        return
+    # 🔴 CONTROLE PRIMEIRO: o motor CONSEGUE produzir Finding com este banco falso.
+    # 📊 Sem ele, o zero do claims_shadow poderia ser "o FindingEngine nunca produz
+    # nada aqui" -- e o gate estaria medindo a fixture (CLAUDE.md §9.2).
+    controle, _b = _findings_de([_sinal_de_fixture("sig-controle", "connector_failure",
+                                                   "connector")])
+    certo(len(controle) >= 1,
+          "CONTROLE: o FindingEngine PRODUZ Finding a partir de um sinal comum",
+          "produziu %d -- um motor que nao produz nada faria o gate abaixo passar por "
+          "vacuidade" % len(controle))
+
+    da_sombra, banco = _findings_de([_sinal_de_fixture("sig-sombra", "process_variant",
+                                                       "claims_shadow")])
+    certo_bloco(not da_sombra and not banco.de("intelligence_findings"),
+                "B1 um sinal `source_type='claims_shadow'` NAO vira Finding",
+                "CONSERTO C7",
+                "produziu %d finding(s) e gravou %d linha(s). 📊 O painel mediu 2.097 "
+                "execucoes de `detect_signals` em 30 dias e 131 briefings enviados: a "
+                "sombra CHEGARIA ao relatorio da corretora, quando a 093-B e C0 e "
+                "prometeu observar em silencio."
+                % (len(da_sombra), len(banco.de("intelligence_findings"))))
+
+
+# --- (b) o DETECTOR: as 17 frases que o red team fixou ----------------------
+#
+# 💭 As frases sao INVENTADAS (⛔ nenhuma veio do acervo de um segurado), mas o
+# PROBLEMA e medido: 📊 03/09/2026, red team: 12 de 14 frases NAO-sinistro abriam
+# sombra, 16,4% das conversas do acervo abririam, e 15% delas com palavra de VENDA.
+# Um detector assim nao "erra um pouco": ele envenena o dataset que a SPEC existe
+# para criar, e o faz em silencio.
+FRASES_QUE_ABREM = (
+    "bati o carro, e agora?",
+    "roubaram meu carro",
+    "capotei na estrada",
+    "levaram meu carro ontem",
+    "pegou fogo o motor",
+    "arrombaram o carro",
+    "tive um acidente hoje",
+    "houve um abalroamento",
+)
+FRASES_QUE_NAO_ABREM = (
+    "que roubo esse preco do seguro",              # reclamacao de PRECO
+    "quero contratar seguro contra roubo e furto",  # VENDA
+    "quanto custa a cobertura de colisao?",         # VENDA
+    "meu pai teve um acidente vascular cerebral",   # saude, e nao veiculo
+    "por acidente mandei a foto errada",            # `acidente` como adverbio
+    "a batida do motor esta estranha",              # `batida` como barulho
+    "bati na porta do carro dele pra chamar",       # `bati` sem ocorrencia
+    "quero falar com o terceiro andar",             # §1.5, o caso original
+    "quero fazer uma cotacao de sinistro",          # a palavra existe; o pedido e VENDA
+)
+
+
+def bloco_14b_o_detector_separa():
+    _p("\n[14b] O DETECTOR -- 8 frases que TEM de abrir e 9 que NAO podem")
+    if detectar_sinistro is None:
+        pular("[14b] DETECTOR", _FALTA_SOMBRA)
+        return
+    erraram_abrindo = []
+    erraram_calando = []
+    for frase in FRASES_QUE_ABREM:
+        abriu, _c, erro = _detectar(frase)
+        if erro:
+            pular("[14b] %r" % frase[:32], erro)
+            return
+        if abriu is not True:
+            erraram_calando.append(frase)
+    for frase in FRASES_QUE_NAO_ABREM:
+        abriu, _c, erro = _detectar(frase)
+        if erro:
+            pular("[14b] %r" % frase[:32], erro)
+            return
+        if abriu is not False:
+            erraram_abrindo.append(frase)
+    certo_bloco(not erraram_calando,
+                "B2 as %d frases de OCORRENCIA abrem sombra" % len(FRASES_QUE_ABREM),
+                "CONSERTO C1",
+                "ficaram caladas: %s -- um sinistro que nao vira sombra e um caso que "
+                "some do dataset" % [f[:34] for f in erraram_calando])
+    certo_bloco(not erraram_abrindo,
+                "B2 as %d frases de VENDA/CONVERSA nao abrem sombra"
+                % len(FRASES_QUE_NAO_ABREM), "CONSERTO C1",
+                "abriram: %s -- 📊 red team 03/09/2026: 1 em cada 6 conversas viraria "
+                "sombra, 15%% delas de venda" % [f[:34] for f in erraram_abrindo])
+    # 🔴 CONTROLE: o proprio conjunto de frases distingue alguma coisa?
+    respostas = [_detectar(f)[0] for f in FRASES_QUE_ABREM + FRASES_QUE_NAO_ABREM]
+    certo(len(set(respostas)) > 1,
+          "CONTROLE: o detector NAO devolve o mesmo para as 17 frases",
+          "devolveu %r para todas" % respostas[0])
+
+
+# --- (c) a VALIDACAO DE VALOR: enum ou slug, nunca frase --------------------
+def _evento_gravado(banco, tipo):
+    linhas = [l for l in banco.de("work_events") if l.get("event_type") == tipo]
+    return linhas[0] if linhas else None
+
+
+def bloco_14c_validacao_de_valor():
+    _p("\n[14c] VALIDACAO DE VALOR -- o contrato 'zero texto' tambem vale no Python")
+    if registrar_evento is None:
+        pular("[14c] VALIDACAO DE VALOR", _FALTA_SOMBRA)
+        return
+
+    # (1) fora do enum, mas com FORMA de slug -> a chave cai, o evento fica, warning.
+    banco = _banco_com_sombra()
+    _registrar(banco, "claims.humano_assumiu", {"origem": "carlos-da-silva"})
+    linha = _evento_gravado(banco, "claims.humano_assumiu")
+    certo_bloco(linha is not None
+                and "origem" not in (linha.get("payload_redacted") or {}),
+                "B6 valor FORA do enum e descartado (a chave nao entra)",
+                "CONSERTO C4",
+                "gravou %r -- hoje o Python valida so o TAMANHO do valor; o Next ja "
+                "valida o enum, e um contrato que vale num stack so nao e contrato"
+                % ((linha or {}).get("payload_redacted"),))
+    certo_bloco(linha is not None and str(linha.get("severity")) == "warning",
+                "B6 o evento com valor descartado grava severity='warning'",
+                "CONSERTO C4",
+                "veio %r -- perder o detalhe em silencio esconde que houve descarte"
+                % ((linha or {}).get("severity"),))
+
+    # (2) valor com FORMA DE FRASE.
+    #
+    # ⚠️ 🔴 AQUI HÁ UMA DIVERGÊNCIA DE LEITURA, e ela fica ESCRITA em vez de resolvida
+    # por quem escreve a prova. O pacote do conserto diz que este caso é "recusado"; o
+    # código entregue descarta a CHAVE, sobe o evento para `warning` e grava a linha.
+    # As duas leituras defendem o mesmo bem (nenhum texto no payload) e discordam só
+    # sobre a linha existir. ⚠️ A que o código adotou tem um argumento a favor que o
+    # guarda não pode ignorar: `claims.espera_aberta` ACONTECEU, e apagar o evento
+    # apagaria um passo real da variante — a sombra perderia o gesto para punir o
+    # escritor. Quem decide é o integrador (registrado no relatório).
+    #
+    # 🔴 O que este bloco afirma é o que as DUAS leituras exigem, e é o que interessa
+    # ao produto: a frase não entra no payload, nem inteira nem pela metade, e a perda
+    # é DECLARADA. Um gate escrito sobre a parte em disputa ficaria vermelho para
+    # sempre por causa de uma decisão de projeto, não de um defeito (CLAUDE.md §9.3).
+    banco = _banco_com_sombra()
+    _registrar(banco, "claims.espera_aberta",
+               {"kind": "esperando o laudo do Dr Souza"})
+    linha = _evento_gravado(banco, "claims.espera_aberta")
+    gravado = (linha or {}).get("payload_redacted") or {}
+    certo("kind" not in gravado
+          and "souza" not in json.dumps(gravado, ensure_ascii=False).lower(),
+          "B6 valor com FORMA DE FRASE nao entra no payload (nem truncado)",
+          "gravou %r -- 'esperando o laudo do Dr Souza' tem 28 chars e passaria pelo "
+          "limite de 64: e texto de conversa, com NOME de pessoa, entrando pela porta "
+          "do enum" % (gravado,))
+    certo(linha is None or str(linha.get("severity")) == "warning",
+          "B6 quando a frase e descartada, o evento DECLARA a perda (warning)",
+          "veio severity=%r com payload %r -- descartar em silencio esconde que ha um "
+          "escritor mandando texto onde o vocabulario pede enum"
+          % ((linha or {}).get("severity"), gravado))
+
+    # 🔴 CONTROLE: o valor CERTO continua entrando. Um validador que recusa tudo e um
+    # carimbo ao contrario, e apagaria o rastro inteiro sem ninguem notar.
+    banco = _banco_com_sombra()
+    _registrar(banco, "claims.encerrado", {"desfecho": "pago"})
+    linha = _evento_gravado(banco, "claims.encerrado")
+    certo(linha is not None and (linha.get("payload_redacted") or {}) == {"desfecho": "pago"},
+          "CONTROLE: o valor DO enum e gravado normalmente",
+          "veio %r" % ((linha or {}).get("payload_redacted"),))
+
+    # (3) chave intrusa -> descartada (e o evento fica).
+    banco = _banco_com_sombra()
+    _registrar(banco, "claims.encerrado",
+               {"desfecho": "pago", "nome_do_segurado": "fulano"})
+    linha = _evento_gravado(banco, "claims.encerrado")
+    certo(linha is not None
+          and "nome_do_segurado" not in (linha.get("payload_redacted") or {}),
+          "B② chave fora do vocabulario e DESCARTADA",
+          "veio %r" % ((linha or {}).get("payload_redacted"),))
+
+    # (4) o ATOR sai do vocabulario, nunca de quem chama.
+    banco = _banco_com_sombra()
+    try:
+        _rodar(registrar_evento(ClienteFalso(banco), company_id=EMPRESA_A,
+                                conversation_id=CONVERSA_A,
+                                event_type="claims.humano_assumiu",
+                                payload={"origem": "dashboard"},
+                                actor_type="admin"))
+    except Exception as e:  # noqa: BLE001
+        pular("[14c] ator do vocabulario", "registrar_evento levantou %s" % type(e).__name__)
+        return
+    linha = _evento_gravado(banco, "claims.humano_assumiu")
+    certo_bloco(linha is not None and str(linha.get("actor_type")) == "user",
+                "B6 `actor_type='admin'` num evento de ator `user` grava `user`",
+                "CONSERTO C4",
+                "gravou %r -- o ator e o do VOCABULARIO. Deixar quem chama escolher "
+                "faz o mesmo gesto aparecer com dois atores diferentes, e o digest "
+                "conta dois processos onde ha um" % ((linha or {}).get("actor_type"),))
+
+
+# --- (d) `tem_numero`: seis digitos, nos DOIS stacks ------------------------
+#: ⚠️ O alvo é o CORPO da função do Next, e não o arquivo inteiro: `\d{6,}` podia
+#: aparecer noutro lugar e este gate ficaria verde sem provar nada sobre ela.
+#: ⚠️ O fecho é `\n}` na coluna zero, e não o primeiro `}`: 📊 o corpo contém
+#: `/\d{6,}/`, e um casador que parasse na primeira chave leria `return /\d{6,` —
+#: perdendo justamente o pedaço que ele existe para conferir.
+_RE_TS_TEM_NUMERO = re.compile(
+    r"function\s+anotacaoTemNumero[^\n]*\n(?P<corpo>.{0,600}?)\n\}", re.S)
+CLAIMS_SHADOW_TS = os.path.join(REPO, "lib", "atendimento", "claims-shadow.ts")
+NOTA_PY = os.path.join(APP, "services", "a_nota_da_atendente.py")
+
+
+def bloco_14d_tem_numero():
+    _p("\n[14d] `tem_numero` -- 6+ digitos, e o MESMO criterio nos dois stacks")
+    # O lado Next ja esta certo: e ele que define a verdade que o Python tem de copiar.
+    if os.path.exists(CLAIMS_SHADOW_TS):
+        m = _RE_TS_TEM_NUMERO.search(ler(CLAIMS_SHADOW_TS))
+        corpo = m.group("corpo") if m else ""
+        certo(bool(m) and r"\d{6,}" in corpo,
+              "o lado Next exige 6+ digitos dentro de `anotacaoTemNumero`",
+              "corpo=%r -- sem o lado certo nao ha contra o que comparar o outro"
+              % corpo.strip()[:80])
+        # 🔴 CONTROLE: o casador CONSEGUE reprovar o criterio antigo (UM digito).
+        certo(r"\d{6,}" not in "  return /\\d/.test(String(texto ?? ''));",
+              "CONTROLE: o casador RECUSA o corpo que exige um digito so")
+    else:
+        pular("[14d] lado Next", "lib/atendimento/claims-shadow.ts nao existe")
+
+    if tem_numero is not None:
+        certo_bloco(tem_numero("liguei 2x") is False
+                    and tem_numero("protocolo 123456") is True
+                    and tem_numero("12345") is False
+                    and tem_numero("") is False,
+                    "B4 `tem_numero` do Python: 6+ digitos (o MOTOR, nao o regex)",
+                    "CONSERTO C2",
+                    "'liguei 2x'->%r 'protocolo 123456'->%r '12345'->%r"
+                    % (tem_numero("liguei 2x"), tem_numero("protocolo 123456"),
+                        tem_numero("12345")))
+    elif os.path.exists(NOTA_PY):
+        # ⚠️ Enquanto a funcao nao existe, o guarda mede a FORMA no unico escritor
+        # que hoje calcula o booleano -- e diz, na razao, que este e o plano B.
+        fonte = ler(NOTA_PY)
+        certo_bloco(r"\d{6,}" in fonte and re.search(r'search\(r"\\d"', fonte) is None,
+                    "B4 o escritor da nota exige 6+ digitos",
+                    "CONSERTO C2",
+                    "📊 `a_nota_da_atendente.py` casa `\\d` (UM digito): 'liguei 2x' "
+                    "grava `tem_numero=True` e o Next grava `False` para a MESMA nota "
+                    "-- dois eventos contraditorios inventam um passo na variante "
+                    "(achado B4 do red team). ⚠️ Este gate mede TEXTO porque "
+                    "`claims_shadow.tem_numero` ainda nao existe: %s" % _FALTA_TEM_NUMERO)
+    else:
+        pular("[14d] tem_numero", _FALTA_TEM_NUMERO or "nem a funcao nem o escritor")
+
+
+# --- (e) o CONTADOR de espera: por `kind`, e `None` quando nao ha escritor ---
+def _trajetoria_com_espera(run, kind):
+    return {"work_run_id": run, "company_id": EMPRESA_A, "ramo": "auto",
+            "seguradora_slug": "porto",
+            "eventos": ["claims.sombra_aberta", "claims.espera_aberta"],
+            "desfechos": [],
+            "esperas": [{"work_run_id": run, "kind": kind, "aberta_em": None,
+                         "satisfeita_em": None, "data_contrato": None}]}
+
+
+def bloco_14e_contador_de_espera():
+    _p("\n[14e] O CONTADOR DE ESPERA -- por `kind`, e `None` no que ninguem instrumentou")
+    if contadores_de is None:
+        pular("[14e] CONTADOR", _FALTA_SOMBRA)
+        return
+
+    so_humano = [_trajetoria_com_espera("h%d" % i, "esperando_humano") for i in range(3)]
+    c = contadores_de(so_humano)
+    certo_bloco(c.get("espera_de_seguradora_sem_retorno") is None,
+                "B3 so esperas de HUMANO -> `espera_de_seguradora_sem_retorno` e None",
+                "CONSERTO C6",
+                "veio %r -- o contador contava `claims.espera_aberta` de QUALQUER "
+                "kind. 📊 No piloto, 100%% das esperas sao de humano: o relatorio diria "
+                "'3 com espera de seguradora sem retorno' e nenhuma era da seguradora"
+                % (c.get("espera_de_seguradora_sem_retorno"),))
+    nao = [str(x) for x in (c.get("nao_instrumentado") or ())]
+    certo_bloco("espera_seguradora" in nao and "prazos" in nao,
+                "B3 o que nao tem escritor sai em `nao_instrumentado`",
+                "CONSERTO C6",
+                "veio %r -- zero por falta de escritor e zero medido sao coisas "
+                "diferentes, e so uma delas e citavel (SPEC-088 §4)" % (nao,))
+
+    com_seguradora = so_humano + [_trajetoria_com_espera("s1", "esperando_seguradora")]
+    c2 = contadores_de(com_seguradora)
+    certo_bloco(c2.get("espera_de_seguradora_sem_retorno") == 1,
+                "B3 UMA espera de seguradora aberta -> conta 1 (nao 4)",
+                "CONSERTO C6",
+                "veio %r com %d trajetorias, 3 delas de espera HUMANA"
+                % (c2.get("espera_de_seguradora_sem_retorno"), len(com_seguradora)))
+    nao2 = [str(x) for x in (c2.get("nao_instrumentado") or ())]
+    certo_bloco("espera_seguradora" not in nao2,
+                "B3 com escritor de verdade, `espera_seguradora` SAI de nao_instrumentado",
+                "CONSERTO C6",
+                "veio %r -- um rotulo de 'nao medido' que nunca sai e ruido" % (nao2,))
+    # 🔴 CONTROLE: o denominador continua vindo junto, sempre (§12.1).
+    certo(c.get("total") == 3 and c2.get("total") == 4,
+          "§12.1 os dois contadores saem com `total`",
+          "%r e %r" % (c.get("total"), c2.get("total")))
+
+    if summary_de_contadores is None:
+        pular("[14e] o summary", _FALTA_DIGEST)
+        return
+    texto = str(summary_de_contadores(c))
+    certo_bloco("com espera de seguradora sem retorno" not in texto
+                or "instrumentad" in texto.lower(),
+                "B3 o summary NAO imprime numero de seguradora sem escritor",
+                "CONSERTO C6",
+                "summary=%r -- ou o contador sai do texto, ou ele vem com a marca de "
+                "nao instrumentado; o que nao pode e um numero com rotulo errado"
+                % texto[:160])
+
+
+# --- (f) o VOCABULARIO v2 ---------------------------------------------------
+def bloco_14f_vocabulario_v2():
+    _p("\n[14f] VOCABULARIO v2 -- evento sem escritor sai, e `motivo_enum` ganha enum")
+    if not os.path.exists(VOCAB):
+        pular("[14f] VOCABULARIO v2", "lib/atendimento/claims-shadow-vocab.json ausente")
+        return
+    v = json.loads(ler(VOCAB))
+    eventos = v.get("eventos") or {}
+    enums = v.get("enums") or {}
+    certo_bloco("claims.seguradora_respondeu" not in eventos,
+                "P `claims.seguradora_respondeu` saiu do vocabulario",
+                "CONSERTO C5",
+                "📊 ele nao tem escritor em lugar nenhum do repo. Um evento declarado "
+                "e nunca gravado faz o leitor concluir 'a seguradora nunca respondeu' "
+                "quando o que houve foi ninguem ter gravado (P-093B-SEGURADORA)")
+    certo_bloco(bool(enums.get("motivo_enum")),
+                "P `motivo_enum` tem enum declarado",
+                "CONSERTO C5",
+                "sem enum, o validador de valor do C4 nao tem contra o que validar e "
+                "a chave cai na regra de 'slug qualquer'")
+    if enums.get("motivo_enum"):
+        certo("sinistro" in list(enums["motivo_enum"]),
+              "o enum de `motivo_enum` cobre o que `human_handoff.py` grava hoje",
+              "veio %r -- 📊 :674 grava 'sinistro' ou 'outro'" % (enums["motivo_enum"],))
+    certo_bloco(int(v.get("versao") or 0) == 2,
+                "P o vocabulario declara `versao: 2`",
+                "CONSERTO C5",
+                "veio %r -- vocabulario que muda de conteudo e nao muda de versao faz "
+                "os dois stacks discordarem sem ninguem saber qual esta velho"
+                % (v.get("versao"),))
+    # 🔴 CONTROLE: o arquivo continua sendo o MESMO nos dois stacks.
+    if os.path.exists(CLAIMS_SHADOW_TS):
+        certo("claims-shadow-vocab.json" in ler(CLAIMS_SHADOW_TS)
+              or "vocab" in ler(CLAIMS_SHADOW_TS),
+              "CONTROLE: o lado Next continua lendo o vocabulario, e nao uma copia")
+
+
+# ===========================================================================
+# [15] SEM TEXTO EM TODOS OS ESCRITORES -- §2, referencia ⑦, em CADA porta
+# ===========================================================================
+#
+# 🔴 O bloco [7] varre `claims_shadow.py`. Mas quem monta o `payload` NAO e ele: sao
+# os quatro escritores do BLOCO B, e cada um deles tem, a mao, o texto do segurado
+# numa variavel ao lado. 📊 O painel achou um caso vivo dessa familia (a nota gravando
+# dois eventos contraditorios). Este bloco fecha a porta pela FORMA, em todos.
+ESCRITORES_DA_SOMBRA = (
+    os.path.join(APP, "api", "webhook.py"),
+    os.path.join(APP, "services", "o_fim_do_atendimento.py"),
+    os.path.join(APP, "services", "a_nota_da_atendente.py"),
+    os.path.join(APP, "agents", "tools", "human_handoff.py"),
+)
+#: As palavras que denunciam texto de conversa. ⚠️ `motivo_enum` NAO esta aqui de
+#: proposito (ele e enum); `motivo` cru esta, porque em `human_handoff` ele e a frase
+#: livre que o modelo escreveu.
+_PALAVRAS_DE_TEXTO = ("content", "text", "body", "texto", "nome", "reason",
+                      "mensagem", "message", "caption", "transcript")
+#: As UNICAS funcoes que podem receber texto e devolver algo que NAO e texto. Lista
+#: curta de proposito: cada nome aqui e uma porta, e `str(` jamais entra.
+_REDUTORES = ("bool(", "tem_numero(", "anotacao_tem_numero(", "tipo_de_documento(",
+              "len(")
+_RE_ESCRITOR = re.compile(r"\bregistrar_(?:gesto|evento)\s*\(")
+
+
+def _bloco_equilibrado(texto, inicio, abre, fecha):
+    """O trecho de `texto` a partir de `inicio` ate o `fecha` que equilibra `abre`."""
+    profundidade = 0
+    for i in range(inicio, len(texto)):
+        if texto[i] == abre:
+            profundidade += 1
+        elif texto[i] == fecha:
+            profundidade -= 1
+            if profundidade == 0:
+                return texto[inicio:i + 1]
+    return texto[inicio:]
+
+
+def _payloads_dos_escritores(fonte):
+    """Os dicionarios literais passados como `payload=` a um escritor da sombra.
+
+    Devolve `[(linha, texto_do_dict)]`. ⚠️ `payload=<variavel>` e ignorado aqui de
+    proposito: quem monta a variavel e `claims_shadow.py`, e o bloco [7] ja o varre.
+    """
+    fora = []
+    for m in _RE_ESCRITOR.finditer(fonte):
+        chamada = _bloco_equilibrado(fonte, m.end() - 1, "(", ")")
+        p = chamada.find("payload=")
+        if p < 0:
+            continue
+        resto = chamada[p + len("payload="):].lstrip()
+        if not resto.startswith("{"):
+            continue
+        inicio_dict = chamada.index("{", p)
+        fora.append((fonte[:m.start()].count("\n") + 1,
+                    _bloco_equilibrado(chamada, inicio_dict, "{", "}")))
+    return fora
+
+
+def _pares_do_dict(texto):
+    """`[(chave, valor)]` do dicionario literal, sem topo aninhado."""
+    corpo = texto.strip()[1:-1]
+    pares, atual, prof, dentro = [], "", 0, None
+    for ch in corpo:
+        if dentro:
+            atual += ch
+            if ch == dentro:
+                dentro = None
+            continue
+        if ch in "\"'":
+            dentro = ch
+        elif ch in "([{":
+            prof += 1
+        elif ch in ")]}":
+            prof -= 1
+        if ch == "," and prof == 0:
+            pares.append(atual)
+            atual = ""
+            continue
+        atual += ch
+    if atual.strip():
+        pares.append(atual)
+    fora = []
+    for bruto in pares:
+        prof, dentro, corte = 0, None, -1
+        for i, ch in enumerate(bruto):
+            if dentro:
+                if ch == dentro:
+                    dentro = None
+                continue
+            if ch in "\"'":
+                dentro = ch
+            elif ch in "([{":
+                prof += 1
+            elif ch in ")]}":
+                prof -= 1
+            elif ch == ":" and prof == 0:
+                corte = i
+                break
+        if corte >= 0:
+            fora.append((bruto[:corte].strip(), bruto[corte + 1:].strip()))
+    return fora
+
+
+def _texto_no_payload(fonte):
+    """As ofensas de FORMA: palavra de texto na CHAVE, ou no VALOR sem redutor."""
+    fora = []
+    for linha, dicionario in _payloads_dos_escritores(fonte):
+        for chave, valor in _pares_do_dict(dicionario):
+            nu = chave.strip().strip("\"'")
+            if any(p == nu or p in nu.split("_") for p in _PALAVRAS_DE_TEXTO):
+                fora.append("linha %d: chave %r" % (linha, nu[:40]))
+                continue
+            v = " ".join(valor.split())
+            if not any(p in v for p in _PALAVRAS_DE_TEXTO):
+                continue
+            if any(v.startswith(r) for r in _REDUTORES):
+                continue
+            fora.append("linha %d: valor de %r -> %r" % (linha, nu[:24], v[:60]))
+    return fora
+
+
+def bloco_15_sem_texto_nos_escritores():
+    _p("\n[15] SEM TEXTO NOS ESCRITORES -- os quatro pontos de chamada do BLOCO B")
+    for caminho in ESCRITORES_DA_SOMBRA:
+        nome = os.path.basename(caminho)
+        if not os.path.exists(caminho):
+            pular("[15] %s" % nome, "arquivo nao existe")
+            continue
+        fonte = ler(caminho)
+        payloads = _payloads_dos_escritores(fonte)
+        if not payloads:
+            pular("[15] %s" % nome,
+                  "nenhum `registrar_gesto/registrar_evento(… payload={…})` -- o BLOCO "
+                  "B ainda nao chegou neste arquivo")
+            continue
+        ofensas = _texto_no_payload(fonte)
+        certo(not ofensas,
+              "§2 %s: nenhum payload carrega texto do segurado (%d escritor(es))"
+              % (nome, len(payloads)),
+              " · ".join(ofensas[:4]) + "  -- o payload guarda enum, contagem, tipo e "
+              "timestamp; texto do segurado mora no Espelho")
+
+    # 🔴 OS CONTROLES, sobre codigo SINTETICO (§9.3: exigir o defeito de volta no
+    # arquivo real seria guardar verdade vencida).
+    ruim_chave = ('await registrar_gesto(\n'
+                  '    db, company_id=x, event_type="claims.nota_registrada",\n'
+                  '    payload={"origem": "dashboard", "texto": nota},\n'
+                  ')\n')
+    ruim_valor = ('await registrar_evento(\n'
+                  '    db, event_type="claims.nota_registrada",\n'
+                  '    payload={"tem_numero": campos.get("texto")},\n'
+                  ')\n')
+    bom_redutor = ('await registrar_gesto(\n'
+                   '    db, event_type="claims.nota_registrada",\n'
+                   '    payload={"origem": "whatsapp",\n'
+                   '             "tem_numero": bool(re.search(r"\\d{6,}", texto))},\n'
+                   ')\n')
+    bom_enum = ('await registrar_gesto(\n'
+                '    db, event_type="claims.documento_recebido",\n'
+                '    payload={"tipo_documento": tipo_de_documento(message_text)},\n'
+                ')\n')
+    certo(len(_texto_no_payload(ruim_chave)) == 1,
+          "CONTROLE: uma CHAVE `texto` no payload e ACUSADA",
+          "veio %r" % (_texto_no_payload(ruim_chave),))
+    certo(len(_texto_no_payload(ruim_valor)) == 1,
+          "CONTROLE: um VALOR que copia `texto` sem redutor e ACUSADO",
+          "veio %r" % (_texto_no_payload(ruim_valor),))
+    certo(_texto_no_payload(bom_redutor) == [],
+          "CONTROLE: `bool(re.search(...))` sobre o texto PASSA (o que entra e o bool)",
+          "veio %r -- um gate que reprova o redutor obriga a escrever pior"
+          % (_texto_no_payload(bom_redutor),))
+    certo(_texto_no_payload(bom_enum) == [],
+          "CONTROLE: `tipo_de_documento(message_text)` PASSA (o que entra e o enum)",
+          "veio %r" % (_texto_no_payload(bom_enum),))
+    certo(len(_payloads_dos_escritores(ruim_chave)) == 1
+          and _payloads_dos_escritores('registrar_gesto(db, payload=entrada)') == [],
+          "CONTROLE: o extrator acha o dicionario literal e ignora `payload=variavel`")
+
+
 # ---------------------------------------------------------------------------
-def main() -> int:
-    _p("=" * 78)
-    _p("  O SINISTRO DEIXA RASTRO -- SPEC-093-B  (BLOCO E + GATE ZERO do 0-bis)")
-    _p("=" * 78)
+# ===========================================================================
+# [16] O GUARDA DEVOLVE O AMBIENTE -- e isso tambem e medido, nao prometido
+# ===========================================================================
+#
+# 🔴 Um conserto sem guarda e uma esperanca. Este bloco roda DEPOIS da restauracao,
+# no `finally` da `main()`, e afirma que nada do que este arquivo instalou continua
+# de pe. ⚠️ Ele NAO cobra as bibliotecas de terceiro que foram importadas DE VERDADE
+# (pydantic, langchain, …): essas nao sao falsificacao nossa, e desimporta-las
+# quebraria quem vier depois -- o que se desfaz e o que se fingiu.
+def bloco_16_o_guarda_devolve_o_ambiente():
+    _p("\n[16] O GUARDA DEVOLVE O AMBIENTE -- sys.modules como ele o encontrou")
+    sobraram = sorted(n for n in sys.modules
+                      if (n == "app" or n.startswith("app."))
+                      and n not in _MODULOS_NO_INICIO)
+    certo(not sobraram,
+          "nenhum modulo `app.*` deste guarda sobrou em sys.modules",
+          "sobraram %d: %s -- o pytest roda os arquivos no MESMO processo, e um `app` "
+          "importavel muda o que OUTROS testes medem (foi assim que um guarda da "
+          "SPEC-086 passou sozinho e falhou em bateria)"
+          % (len(sobraram), sobraram[:6]))
+    certo(not _SHIMS,
+          "nenhum shim de biblioteca de terceiro sobrou instalado",
+          "sobraram %s -- um shim esquecido faz o proximo teste rodar contra um objeto "
+          "permissivo achando que e a biblioteca" % (_SHIMS,))
+    # 🔴 CONTROLE: a verificacao CONSEGUE acusar. Um nome sintetico e plantado,
+    # medido e removido -- se ela nao o achar, ela nao acharia nada.
+    plantado = "app.modulo_que_nunca_existiu_093b"
+    sys.modules[plantado] = types.ModuleType(plantado)
+    try:
+        achou = [n for n in sys.modules
+                 if (n == "app" or n.startswith("app.")) and n not in _MODULOS_NO_INICIO]
+    finally:
+        sys.modules.pop(plantado, None)
+    certo(achou == [plantado],
+          "CONTROLE: a verificacao ACHA um `app.*` plantado de proposito",
+          "veio %r" % (achou,))
+
+
+def _rodar_os_blocos():
     bloco_0_gate_zero()
     bloco_1_vocabulario()
     bloco_2_deteccao()
@@ -1796,6 +2979,30 @@ def main() -> int:
     bloco_9_regressao()
     bloco_10_controle_geral()
     bloco_11_resumo_admin()
+    bloco_12_dois_tenants_pelo_motor()
+    bloco_13_digest_ponta_a_ponta()
+    bloco_14a_a_sombra_nao_chega_ao_briefing()
+    bloco_14b_o_detector_separa()
+    bloco_14c_validacao_de_valor()
+    bloco_14d_tem_numero()
+    bloco_14e_contador_de_espera()
+    bloco_14f_vocabulario_v2()
+    bloco_15_sem_texto_nos_escritores()
+
+
+def main() -> int:
+    _p("=" * 78)
+    _p("  O SINISTRO DEIXA RASTRO -- SPEC-093-B  (BLOCO E + GATE ZERO do 0-bis)")
+    _p("=" * 78)
+    try:
+        _rodar_os_blocos()
+    finally:
+        # 🔴 O guarda DEVOLVE o `sys.modules` como o encontrou. Sem isto ele deixa
+        # `app`, as seis cascas e os shims de terceiro instalados para todo teste que
+        # rodar DEPOIS no mesmo processo do pytest — e um guarda da SPEC-086 passava
+        # sozinho e falhava em bateria por causa disso (lente 3 do painel, 03/09/2026).
+        _restaurar_sys_modules()
+        bloco_16_o_guarda_devolve_o_ambiente()
 
     de_verdade = FAIL - len(ESPERADOS)
     _p("\n" + "=" * 78)
