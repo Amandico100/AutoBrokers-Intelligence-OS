@@ -1415,6 +1415,116 @@ def _quem_fala_infocap(raizes):
     return achados
 
 
+class _FonteSemRede:
+    """A fonte do adapter, sem HTTP. ⛔ Este guarda roda com `SEM_REDE=1`.
+
+    Devolve LISTA VAZIA de propósito: o que o driver abaixo exercita e o que as
+    assercoes medem e o CAMINHO (resolver -> credencial -> gate de conta ->
+    leitura -> traducao -> `last_used_at`), nao a aritmetica -- essa tem os
+    golden controls do bloco [6] e a paridade do [10].
+    """
+
+    def __init__(self, *a, **k):   # noqa: ANN001, ARG002
+        pass
+
+    def producao_crua(self, inicio, fim):     # noqa: ANN001, ARG002
+        return []
+
+    def renovacoes_cruas(self, inicio, fim):  # noqa: ANN001, ARG002
+        return []
+
+
+def exercitar_o_adapter(classe, fake):
+    """UMA leitura de verdade do adapter contra o Supabase de fixture.
+
+    🔴 O DRIVER AGUARDA. 📊 03/09/2026: as quatro assercoes seguintes ficaram
+    vermelhas com o adapter correto, porque o driver chamava
+    `provider.policies(...)` de forma SINCRONA -- e todo metodo do
+    `BrokerageAnalyticsProvider` e `async` (o `Protocol` do BLOCO B diz por
+    que: a tool roda no grafo, que e assincrono, e resolver a conexao e uma
+    consulta ao Supabase). Uma corotina que ninguem aguarda nao executa NADA:
+    o diario do fake ficava vazio pelo defeito do GUARDA, e a leitura era
+    "o adapter nao escreve `last_used_at`". Guarda que mede a si mesmo e pior
+    que guarda nenhum, porque ele acusa outra peca.
+
+    ⛔ Duas coisas sao falsas aqui, e SO duas, as duas por trava desta SPEC:
+
+    ```
+    a DECIFRAGEM da credencial   o guarda nao tem chave, e nao pode ter (§2)
+    a CHAMADA HTTP               `SEM_REDE=1`, e o bloco [11] prova que fechou
+    ```
+
+    Resolver de conexao, escolha entre as 4 conexoes da Resulta, gate de conta
+    compartilhada, traducao para CBIM, `Provenance` e o UPDATE de
+    `last_used_at` sao os de PRODUCAO. Falsificar mais que isto faria o bloco
+    provar que a fixture casa com a fixture (CLAUDE.md §9.4).
+
+    ⚠️ 📊 E UMA JANELA DE UM PASSO, medida: no Windows, criar um event loop
+    chama `socket.socketpair()`, que faz um `connect` em `127.0.0.1` para o
+    self-pipe do proprio loop. Com o bloqueio de rede ligado, `asyncio.run`
+    morre ANTES de executar qualquer linha do adapter -- e o sintoma era
+    exatamente o mesmo de "o adapter nao escreve `last_used_at`". Entao o
+    bloqueio sai para a CRIACAO do loop e volta antes de rodar a corotina: o
+    par de sockets e local ao processo, nao e host nenhum, e o bloco [11]
+    continua provando que a rede esta fechada.
+    """
+    import asyncio
+
+    class _AdapterComCredencialDeFixture(classe):
+        def _credencial(self, conn):     # noqa: ANN001
+            # O `login_de_fixture` e opaco e NAO e o de ninguem: ele existe
+            # para o `account_fingerprint` ter o que medir.
+            return (str(conn.get("login_de_fixture") or "conta-alfa"),
+                    "senha-de-fixture",
+                    (conn.get("connection_config") or {}).get(
+                        "base_url", "https://exemplo.invalido"),
+                    "0")
+
+    nome_do_modulo = "app.comercial.fonte_infocap"
+    anterior = sys.modules.get(nome_do_modulo, _AUSENTE)
+    casca = types.ModuleType(nome_do_modulo)
+    casca.FonteInfocap = _FonteSemRede
+    casca.FalhaDaInfocap = RuntimeError
+    sys.modules[nome_do_modulo] = casca
+    _devolver_a_rede()
+    try:
+        laco = asyncio.new_event_loop()
+    finally:
+        _bloquear_a_rede()
+    try:
+        provider = _AdapterComCredencialDeFixture(company_id=EMPRESA_A,
+                                                  supabase=fake)
+        for metodo, kw in (
+                ("capabilities", {"company_id": EMPRESA_A}),
+                ("fatos", {"company_id": EMPRESA_A, "inicio": date(2025, 1, 1),
+                           "fim": date(2025, 12, 31), "db": fake}),
+                ("policies", {"company_id": EMPRESA_A, "inicio": date(2025, 1, 1),
+                              "fim": date(2025, 12, 31), "db": fake,
+                              "time_basis": "POLICY_VALID_FROM"}),
+                ("commissions", {"company_id": EMPRESA_A, "inicio": date(2025, 1, 1),
+                                 "fim": date(2025, 12, 31), "db": fake}),
+                ("renewals", {"company_id": EMPRESA_A, "inicio": date(2025, 1, 1),
+                              "fim": date(2025, 12, 31), "db": fake})):
+            f = getattr(provider, metodo, None)
+            if not callable(f):
+                continue
+            try:
+                saida = f(**kw)
+                if hasattr(saida, "__await__"):
+                    laco.run_until_complete(saida)
+            except Exception:  # noqa: BLE001
+                # Um metodo que recusa e resultado legitimo (o gate de conta
+                # compartilhada recusa de proposito). O que o bloco mede vem
+                # do DIARIO, e nao do valor de retorno.
+                pass
+    finally:
+        laco.close()
+        if anterior is _AUSENTE:
+            sys.modules.pop(nome_do_modulo, None)
+        else:
+            sys.modules[nome_do_modulo] = anterior
+
+
 def bloco_4_port_adapter():
     _p("\n[4] PORT/ADAPTER (BLOCO B) -- a unica peca que fala InfoCap")
 
@@ -1622,21 +1732,7 @@ def bloco_4_port_adapter():
         return
     fake = SupabaseFalso()
     try:
-        provider = classe(company_id=EMPRESA_A, supabase=fake)
-        for metodo in ("capabilities", "policies", "commissions", "renewals"):
-            f = getattr(provider, metodo, None)
-            if not callable(f):
-                continue
-            try:
-                f(period={"start": "2025-01-01", "end": "2025-12-31"},
-                  time_basis="POLICY_VALID_FROM")
-            except TypeError:
-                try:
-                    f()
-                except Exception:  # noqa: BLE001
-                    pass
-            except Exception:  # noqa: BLE001
-                pass
+        exercitar_o_adapter(classe, fake)
     except Exception as exc:  # noqa: BLE001
         vermelho_ate(False, "[4] o adapter roda com o Supabase de fixture", "BLOCO B",
                      "%s: %s" % (type(exc).__name__, exc))
