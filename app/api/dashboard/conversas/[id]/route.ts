@@ -3,6 +3,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 import { ehAnotacao } from '@/lib/atendimento/a-nota-da-atendente';
+import { anotacaoTemNumero, criarRegistradorDaSombra } from '@/lib/atendimento/claims-shadow';
+import VOCABULARIO_DA_SOMBRA from '@/lib/atendimento/claims-shadow-vocab.json';
+
+// 🔴 SPEC-093-B BLOCO B — O GESTO DA ATENDENTE VIRA EVENTO.
+//
+// 📊 Medido em 03/09/2026: `work_events` tinha ZERO eventos com ator humano em
+// 27.985 registros, e `tools_config.human_handoff.enabled` está false ou ausente
+// nos 8 agentes. O handoff do robô não é a fonte do rastro humano — **estes
+// botões são**. Assumir · Devolver · Encerrar · anotar · responder, todos aqui.
+//
+// ⛔ A sombra é MELHOR-ESFORÇO e vem DEPOIS: ela nunca desfaz nem impede o gesto,
+// e sem `work_runs` com `workflow_key='claims.shadow'` para a conversa ela não
+// grava nada (não há sombra retroativa nesta SPEC).
+//
+// ⚠️ O vocabulário é importado do MESMO arquivo que o Python lê por caminho — o
+// gate ⑤ compara o sha256 dos dois lados. O precedente do import de JSON no Next
+// é `lib/admin/provision-tenant.ts:57`.
+const registrarEventoDaSombra = criarRegistradorDaSombra(VOCABULARIO_DA_SOMBRA);
 
 // 🔴 O prefixo que separa uma ANOTAÇÃO de uma fala ao cliente, no `content`.
 //
@@ -116,6 +134,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { status: 409 },
       );
     }
+    // 🔴 O GESTO PRINCIPAL do BLOCO B. Depois do update, nunca antes.
+    //
+    // ⚠️ E só quando ele MUDA alguma coisa. O `.or(claimed_by.is.null,
+    // claimed_by.eq.<eu>)` acima faz o re-claim do MESMO dono voltar `updated`
+    // — abrir a conversa duas vezes escreveria `claims.humano_assumiu` duas
+    // vezes, e a **variante** do digest (referência ②) é a SEQUÊNCIA ordenada
+    // de eventos: um duplo-clique inventaria um processo que não existe.
+    if (conversation.claimed_by !== ctx.userId) {
+      await registrarEventoDaSombra(supabase, {
+        companyId: ctx.companyId,
+        conversationId: id,
+        eventType: 'claims.humano_assumiu',
+        payload: { origem: 'dashboard' },
+      });
+    }
     return NextResponse.json({ ok: true, conversation: updated });
   }
 
@@ -151,6 +184,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq('id', id)
       .eq('company_id', ctx.companyId);
     if (error) return NextResponse.json({ error: 'Erro ao devolver ao atendente IA' }, { status: 500 });
+    // ⚠️ Devolver o que ninguém tinha assumido não é um gesto — é um `no-op` que
+    // sujaria a variante com um passo que não aconteceu.
+    if (conversation.claimed_by) {
+      await registrarEventoDaSombra(supabase, {
+        companyId: ctx.companyId,
+        conversationId: id,
+        eventType: 'claims.humano_devolveu',
+        payload: { origem: 'dashboard' },
+      });
+    }
     return NextResponse.json({ ok: true, volta_para_a_fila: handoffAberto });
   }
 
@@ -196,6 +239,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .not('resolvido_em', 'is', null);
     if (erroStatus) return NextResponse.json({ error: 'Erro ao encerrar' }, { status: 500 });
 
+    // 🔴 `desfecho: 'desconhecido'` — e é a verdade, não um placeholder.
+    // ⚠️ O botão **Encerrar** não pergunta nada à atendente. Gravar
+    // `aberto_na_seguradora` ou `pago` aqui seria inventar o desfecho, e é
+    // exatamente o dado que a SPEC existe para NÃO fabricar (§12.1 do CLAUDE.md:
+    // número ilustrativo não vira fato). Quando a tela perguntar, o enum já existe.
+    //
+    // ⛔ E só encerra quem ainda não tinha encerrado — a mesma regra do
+    // `.is('resolvido_em', null)` acima, agora na linha do tempo: o primeiro
+    // fim é o que vale, e dois `claims.encerrado` seriam duas variantes.
+    if (!conversation.resolvido_em) {
+      await registrarEventoDaSombra(supabase, {
+        companyId: ctx.companyId,
+        conversationId: id,
+        eventType: 'claims.encerrado',
+        payload: { desfecho: 'desconhecido' },
+      });
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -324,6 +384,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!(e instanceof BackendUrlError)) console.error('[CONVERSAS] whatsapp delivery error');
       }
     }
+
+    // 🔴 SPEC-093-B BLOCO B — a nota e a resposta são gestos DIFERENTES.
+    //
+    // ⛔ ZERO TEXTO: de uma anotação sai só `tem_numero` (a FORMA de um
+    // protocolo, `\d{6,}`); de uma resposta sai só o canal. O que a atendente
+    // escreveu fica no Espelho, que é onde texto de conversa mora.
+    //
+    // ⚠️ Depois da entrega, de propósito: a linha do tempo não pode atrasar a
+    // mensagem que vai para o segurado.
+    await registrarEventoDaSombra(
+      supabase,
+      ehNota
+        ? {
+            companyId: ctx.companyId,
+            conversationId: id,
+            eventType: 'claims.nota_registrada',
+            payload: { origem: 'dashboard', tem_numero: anotacaoTemNumero(text) },
+          }
+        : {
+            companyId: ctx.companyId,
+            conversationId: id,
+            eventType: 'claims.humano_respondeu',
+            payload: { canal: 'dashboard' },
+          },
+    );
 
     // ⚠️ `anotada` é o que permite à tela mostrar "anotação registrada"
     //    em vez de um balão de mensagem enviada.

@@ -12,6 +12,8 @@
     "test:infocap-output-guard": "python backend/tests/test_infocap_policy_output_guard.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
     "test:central-agentes": "node scripts/central-de-agentes-mostra-o-trabalho.test.mjs",
+    "test:claims-shadow-vocab": "node scripts/claims-shadow-vocab.test.mjs",
+    "test:claims-shadow-painel": "node scripts/claims-shadow-eventos-do-painel.test.mjs",
     "test:auxiliares-instalacao": "node scripts/auxiliares-instalacao-bate-com-o-banco.test.mjs",
     "test:spec078-seguranca": "python backend/tests/test_spec078_bloco_a_seguranca.py",
     "test:ontologia": "python backend/tests/test_ontologia_e_unica.py",
