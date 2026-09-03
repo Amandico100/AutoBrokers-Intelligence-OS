@@ -48,7 +48,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import io
 import json
 import logging
 import os
@@ -92,6 +91,8 @@ _CENSO = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))))),
     "docs", "canon", "providers", "infocap")
+#: ⚠️ Quem LÊ o censo é `app/comercial/manifesto.py` (BLOCO C). Este caminho
+#: fica aqui só como referência de onde o arquivo mora — o adapter não abre JSON.
 _MANIFESTO_JSON = os.path.join(_CENSO, "infocap-capability-manifest.json")
 
 
@@ -601,10 +602,26 @@ class InfocapAnalyticsProvider:
         UNAVAILABLE 1. O BLOCO C põe um tipo em volta disto (drift, cobertura,
         `source_refs`); aqui devolve-se o mapa cru, que é o que o port promete.
         """
-        with io.open(_MANIFESTO_JSON, encoding="utf-8") as f:
-            bruto = json.load(f)
-        return {nome: str((corpo or {}).get("state") or "UNKNOWN")
-                for nome, corpo in (bruto.get("capabilities") or {}).items()}
+        from app.comercial.manifesto import carregar_manifesto
+
+        return carregar_manifesto(PROVIDER_KEY).estados()
+
+    async def manifesto(self, *, company_id: str = "",
+                        lote: Any = None, **kw: Any) -> Any:
+        """O manifesto do censo, JÁ com o drift desta leitura marcado.
+
+        🔴 É aqui que o BLOCO C encosta no BLOCO B: o adapter é quem tem os
+        fingerprints medidos (`FactSet.fingerprints`), e o manifesto é quem
+        sabe qual capacidade depende de qual rota. Nenhum dos dois consegue
+        detectar drift sozinho.
+        """
+        from app.comercial.manifesto import carregar_manifesto
+
+        manifesto = carregar_manifesto(PROVIDER_KEY)
+        if lote is not None and getattr(lote, "fingerprints", None):
+            avisos = manifesto.conferir_drift(lote.fingerprints)
+            lote.warnings.extend(avisos)
+        return manifesto
 
 
 register_brokerage_analytics_provider(InfocapAnalyticsProvider())
