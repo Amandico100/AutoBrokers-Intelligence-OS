@@ -4,7 +4,7 @@
 > Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar e
 > autorizar a entrega**, e **quando parar**.
 >
-> **v11.1 · 03/09/2026** · vale para toda SPEC, conversão, execução, ideia,
+> **v11.2 · 03/09/2026** · vale para toda SPEC, conversão, execução, ideia,
 > incidente e agente. Só regras. O porquê de cada uma, com as medições, está em
 > [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
@@ -144,8 +144,8 @@ passada de enquadramento; a SUPERFÍCIE 3 do lote não se herda pelas unidades.
 | nível | quando | o ritual |
 |---|---|---|
 | **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | builder faz · verificador mecânico · UM juiz fresco só se SUPERFÍCIE 1 |
-| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | investigador se SUP ≥ 2 · builder · verificador · **painel de 3 lentes** · juiz de confirmação |
-| **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | + desenhista da prova antes do código · **painel de 4–5 lentes** · **red team** · integrador se 3+ unidades · **auditoria externa** (§6.1) |
+| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | investigador se SUP ≥ 2 · builder · verificador · **painel de 2 lentes** (verdade+regressão · produto+DADO) · confirmação MECÂNICA (guardas + mutações rerodadas) |
+| **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | + desenhista da prova antes do código · **painel de 3 lentes** · **red team** · integrador se 3+ unidades · **UM juiz fresco que confirma o conserto E audita o dado** (§6.1) |
 
 ```
 ⚠️ se o rótulo e a soma discordarem, a soma vence
@@ -273,11 +273,12 @@ FORMA: VEREDITO · BLOCKERS (com o teste do produto) · PENDÊNCIAS · EVIDÊNCI
    executor reproduz antes de aplicar e devolve com o número se não bater
 ```
 
-### 6.1 A AUDITORIA EXTERNA — só no nível CRÍTICO
+### 6.1 CONFIRMAÇÃO + AUDITORIA — um agente, depois do conserto, só no CRÍTICO
 ```
-contexto NOVO, que não viu a execução · recebe a SPEC, o código pronto e a referência
+contexto NOVO, que não viu a execução · recebe §0 da SPEC, o diff do conserto, o código pronto, a referência
 ⛔ não recebe o relatório do executor nem "por que foi difícil"
-missão: "ache um defeito real que o executor não achou". Uma passada.
+missão dupla: "o conserto criou defeito?" E "reconstrua o OUTCOME sobre o dado real e ache o que
+ninguém achou". Uma passada. 📊 eram dois agentes (≈450 mil tokens) lendo o mesmo diff
 ```
 
 ---
@@ -398,12 +399,15 @@ o que custa esquecer · bloqueia? (quase sempre NÃO). Nunca se para para entreg
 ## 10. 🔴 A MECÂNICA — mesmo trabalho, metade do relógio
 
 ```
-MODELO      🎯 orquestrador = Fable 5.1.  Todo subagente = Opus 5 (builder, juiz,
-            pesquisador, aquecimento, red team, auditor). Effort alto para juiz.
-            ⛔ não trocar model nem effort no meio da sessão (zera o cache)
-PAINEL      UM ÚNICO agent type, variando só o PROMPT · roda no diretório principal,
-            sem worktree · em PARALELO, de uma vez (agentes simultâneos ou a
-            ferramenta de workflow) · `subagentPromptCacheTtl: "1h"`
+MODELO      🎯 orquestrador = Fable 5.1. JULGA e CONSTRÓI = Opus 5 (builder, juiz, pesquisador,
+            aquecimento, red team). MECÂNICO = Sonnet 5 (verificador, rerodar guardas e
+            mutações, preencher relatório, grep de PII). ⛔ não trocar no meio da sessão
+ORÇAMENTO   linha do card: PADRÃO ≤ 1,5 M tokens de subagentes · CRÍTICO ≤ 2,5 M. 📊 03/09: uma
+            CRÍTICO gastou ≈3 M e a janela de 5h acabou 2×. Estourou → menos LENTES, nunca menos MUTAÇÃO
+JUIZ RECEBE §0 + o BLOCO julgado + o diff + os comandos. Nunca a SPEC inteira nem o censo
+CONVERSÃO   investigador interno e pesquisador externo = UM agente
+PAINEL      UM ÚNICO agent type, variando só o PROMPT · roda no diretório principal, sem
+            worktree · em PARALELO, de uma vez · `subagentPromptCacheTtl: "1h"`
             ⚠️ juiz que MUTA arquivo para provar guarda faz cópia e restaura; e o
             orquestrador NÃO roda a suíte inteira enquanto um juiz muta
 FORK        só para auxiliares do executor. ⛔ nunca para juiz
