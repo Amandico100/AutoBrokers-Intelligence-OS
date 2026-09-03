@@ -19,21 +19,32 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends
 
 from app.core.auth import require_master_admin
+# 🔴 O MASCARADOR CANÔNICO DA CASA. Ver o comentário abaixo de `router`.
+from app.services.intelligence.redaction_service import redigir as _redigir
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/spec034", tags=["Admin SPEC-034"])
 
-# 🔴 SPEC-088 §2: nem a rota nova nem as vizinhas imprimem CPF, telefone, apólice ou
-# placa. `_redigir` mata sequências de 10 a 14 dígitos (telefone com DDI, CPF) e o CPF
-# formatado. É grosso de propósito: um número de protocolo perdido custa menos que um
-# CPF num payload de admin.
-_DIGITOS = re.compile(r"\d{10,14}")
-_CPF_FORMATADO = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
-
-
-def _redigir(texto: str) -> str:
-    return _DIGITOS.sub("[redigido]", _CPF_FORMATADO.sub("[redigido]", texto))
+# 🔴 SPEC-088 §2 — E O MASCARADOR É O DA CASA, não um segundo escrito aqui.
+#
+# ⛔ Aqui existiam `_DIGITOS = \d{10,14}` e `_CPF_FORMATADO`, com um comentário afirmando
+# que era "grosso de propósito". 📊 Medido em 03/09/2026 sobre 11 formatos reais de PII,
+# ele pegava **0**: `(11) 98765-4321` (o formato que a URA devolve), `11 98765-4321`,
+# `+55 11 98765-4321`, placa `ABC1D23`, placa antiga `ABC-1234`, CNPJ, e-mail e apólice
+# passavam TODOS em claro — num transcript de URA que carrega exatamente isso.
+#
+# ⚠️ E o comentário era a parte mais cara: ele afirmava uma cobertura que o código não
+# tinha, e quem lia parava de procurar. Um mascarador paralelo pior que o canônico é o
+# caso literal da proibição do CLAUDE.md §5 — a lista que fica para trás é justamente a
+# que deixa passar o CPF (`redaction_service`, docstring).
+#
+# `redigir` (importado no topo) é o único da casa: 10 padrões, testado, sem dependência
+# de projeto — e 📊 pega os 11 formatos, sem tocar em `Protocolo 52955490` nem em
+# `há 3 dias` (o controle do bloco [11] do guarda).
+#
+# ⚠️ `_mascarar_telefone` FICA: ele não redige, ele mostra os 4 últimos dígitos de um
+# número que o operador precisa reconhecer (a seguradora, nunca o segurado).
 
 
 def _mascarar_telefone(numero: str) -> str:
@@ -90,7 +101,8 @@ async def active_sessions(_: Any = Depends(require_master_admin)) -> Dict[str, A
                      # "atendente" (nunca um nome próprio: Even é só o nome que a
                      # Resulta deu — cada corretora batiza o seu).
                      "via": t.get("via") or ("seguradora" if t.get("direction") == "in" else "atendente"),
-                     # 🔴 o transcript da URA carrega CPF e telefone digitados pelo segurado
+                     # 🔴 o transcript da URA carrega CPF, telefone e placa digitados
+                     # pelo segurado — e o mascarador é o canônico, nunca um daqui.
                      "text": _redigir(str(t.get("text") or "")[:300])}
                     for t in transcript
                 ],

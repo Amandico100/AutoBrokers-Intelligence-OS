@@ -259,9 +259,20 @@ def run():
     check("sem ativo: Lapidador nao inventa do zero",
           r_no.get("reason") == "sem_playbook_ativo", r_no)
 
-    # 6) heartbeat do alfaiate pulsou na lapidacao
+    # 6) 🔴 O LAPIDADOR NAO ACENDE O CARD DO ALFAIATE -- SPEC-088 BLOCO E.
+    #
+    # Ate 03/09/2026 esta assercao exigia o CONTRARIO ("heartbeat alfaiate pulsou").
+    # Era verdade, e era o defeito: `prompt_optimizer.py` pulsava por um agente que nao
+    # e ele e que nao tinha gravado overlay nenhum. 📊 O Alfaiate era pulsado por TRES
+    # modulos que nao sao a casa dele (`route_sentinel`, `conversation_auditor` e este),
+    # e nenhum dos tres escreve em `playbook_overlays`. O pulso dele nasce em
+    # `playbook_tailor.apply_auto_overlays`, DEPOIS do INSERT, e so la.
+    #
+    # ⚠️ A licao migra em vez de morrer (CLAUDE.md §9.3): o que se testa continua sendo
+    # a fronteira entre os dois agentes, agora do lado certo.
     hb = redis.kv.get("spec034:heartbeat:alfaiate")
-    check("heartbeat alfaiate pulsou", hb is not None and "last_run" in str(hb))
+    check("o Lapidador NAO acende o card do alfaiate (o pulso e de quem grava overlay)",
+          hb is None, hb)
 
     # 7) fiacao
     sched_src = (ROOT / "app/tasks/buffer_processor.py").read_text(encoding="utf-8")

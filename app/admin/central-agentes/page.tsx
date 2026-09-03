@@ -29,13 +29,24 @@ import { useEffect, useState } from 'react';
 // O contrato da rota — SPEC-088 §4, congelado. Nenhuma chave fora desta lista.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Pulso = { ultimo: string | null; origem: string | null };
+// `origem_rotulo`, `fonte_rotulo` e `cadencia_humana` são o texto JÁ em português
+// que o backend manda (SPEC-088 §4, rodada de conserto). São opcionais de
+// propósito: enquanto não vierem, a tela usa um rótulo genérico — NUNCA o nome
+// técnico (DS-001 §6.7: "Redis" não é palavra de corretor).
+type Pulso = {
+  ultimo: string | null;
+  origem: string | null;
+  origem_rotulo?: string | null;
+  cadencia_humana?: string | null;
+};
 
 type Producao = {
   ultimo: string | null;
   fonte: string | null;
   cadencia_esperada_s: number | null;
   limiar_s: number | null;
+  fonte_rotulo?: string | null;
+  cadencia_humana?: string | null;
 };
 
 type Desligamento = {
@@ -117,6 +128,70 @@ function ehProblema(e: string): boolean {
   return e === 'PARADO' || e === 'PULSA_SEM_PRODUZIR' || e === 'NAO_MEDIDO' || !ESTADOS[e];
 }
 
+// 🔴 Um trabalhador que EXECUTOU não pode ter o painel do trabalho recolhido —
+// nem quando o estado é ⚪ DESLIGADO. Foi assim que `execucoes_24h: 1` num card
+// desligado ficou escondido: `ehProblema()` não inclui DESLIGADO, e a
+// contradição — desligado que roda — é exatamente o que o Founder precisa ver.
+function trabalhouRecentemente(t: Trabalho | null): boolean {
+  if (!t) return false;
+  return (t.execucoes_24h || 0) > 0 || (t.execucoes_7d || 0) > 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Português de gente — DS-001 §6.7.
+//
+// O Founder não lê `attendance_transcripts.created_at`, não lê "via redis" e
+// não lê "1 dia(s)". O backend manda os rótulos humanos; ENQUANTO algum texto
+// vier cru (motivo, descrição, propósito), este filtro traduz na exibição.
+// Ele é rede de segurança, não desculpa: o rótulo certo nasce no backend.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NOME_TECNICO = /\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\b/g;
+const NOME_DE_INFRA = /\b(redis|work_runs|work_run|workflow_key|workflow_keys|None|null)\b/gi;
+const ESTADO_DE_MOTOR = /\((completed|failed|running|queued|pending|success|error)\)/gi;
+const PLURAL_DE_FORMULARIO = /\(([a-zç]{1,3})\)/gi;
+
+// Uma versão não-global (`.test()` com /g guarda estado entre chamadas) para
+// PERGUNTAR se um rótulo é técnico, em vez de reescrevê-lo.
+const TEM_NOME_TECNICO = /\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\b|\b(redis|work_runs?|workflow_keys?|None|null)\b/i;
+
+function semJargao(t: string | null | undefined): string {
+  if (!t) return '';
+  return String(t)
+    .replace(/\s*∪\s*/g, ' e ')
+    .replace(NOME_TECNICO, 'a produção dele')
+    .replace(NOME_DE_INFRA, 'o laço dele')
+    .replace(ESTADO_DE_MOTOR, '')
+    .replace(PLURAL_DE_FORMULARIO, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([·,.;])/g, '$1')
+    .trim();
+}
+
+// O que a tela ainda não mede vem em chave ASCII (`custo`, `aprovacoes`). Chave
+// não é frase: aqui ela vira o nome que o Founder usa. Chave desconhecida
+// aparece como ela é — sem inventar tradução — e limpa de jargão.
+const NOME_DO_QUE_FALTA: Record<string, string> = {
+  custo: 'custo por trabalhador',
+  aprovacoes: 'aprovações pendentes',
+  artifacts: 'entregas',
+};
+
+function nomeDoQueFalta(chave: string): string {
+  return NOME_DO_QUE_FALTA[chave] || semJargao(chave) || chave;
+}
+
+// 🔴 O campo cru (`producao.fonte`, `pulso.origem`) ora traz nome de tabela, ora
+// já traz frase de gente — e vai trazer frase de gente sempre que o backend
+// mandar `fonte_rotulo`. A tela não aposta: ela PERGUNTA. Texto com cara de
+// nome técnico é substituído pelo rótulo genérico; texto que já é português
+// passa inteiro, porque jogá-lo fora seria perder informação boa por medo.
+function rotuloHumano(bruto: string | null | undefined, generico: string): string {
+  const t = String(bruto || '').trim();
+  if (!t) return '';
+  return TEM_NOME_TECNICO.test(t) ? generico : semJargao(t);
+}
+
 const S = {
   page: { background: '#06080C', minHeight: '100vh', padding: '26px 30px', color: '#E7EBF1', fontFamily: 'Geist, system-ui, sans-serif' } as React.CSSProperties,
   card: { background: '#0B0F15', border: '1px solid #161D28', borderRadius: 14, padding: '16px 18px' } as React.CSSProperties,
@@ -126,22 +201,36 @@ const S = {
 
 const CINZA_SEM_MEDIDA = '#5A6577';
 
-function ago(iso: string | null): string {
+// 🔴 O "agora" dos cards é o `gerado_em` do JSON, não o relógio do navegador.
+// A frase do `motivo` foi escrita no servidor; se o "há N dias" ao lado dela
+// contasse a partir do relógio local, as duas discordariam — e uma máquina com
+// a hora adiantada chegava a mostrar tempo NEGATIVO. `Math.max(0, …)` fecha a
+// segunda porta. O relógio do navegador continua valendo para UMA coisa: dizer
+// quão velha está a página que o Founder tem na frente.
+function ago(iso: string | null, agora: number): string {
   if (!iso) return '—';
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
-  const s = Math.max(0, (Date.now() - t) / 1000);
+  const s = Math.max(0, (agora - t) / 1000);
   if (s < 90) return `há ${Math.round(s)}s`;
   if (s < 5400) return `há ${Math.round(s / 60)} min`;
   if (s < 172800) return `há ${Math.round(s / 3600)} h`;
   return `há ${Math.round(s / 86400)} dias`;
 }
 
-function cadencia(s: number | null): string {
-  if (s == null) return 'sem cadência declarada';
-  if (s >= 86400) return `espera 1× a cada ${Math.round(s / 86400)} dia(s)`;
-  if (s >= 3600) return `espera 1× a cada ${Math.round(s / 3600)} h`;
-  return `espera 1× a cada ${Math.round(s / 60)} min`;
+/** Segundos → português. Sem `(s)`, sem `min`, sem `h`: "1 dia", "7 dias", "6 horas". */
+function duracaoHumana(s: number | null | undefined): string | null {
+  if (s == null || !Number.isFinite(s) || s <= 0) return null;
+  if (s >= 86400) { const n = Math.round(s / 86400); return `${n} ${n === 1 ? 'dia' : 'dias'}`; }
+  if (s >= 3600) { const n = Math.round(s / 3600); return `${n} ${n === 1 ? 'hora' : 'horas'}`; }
+  const n = Math.max(1, Math.round(s / 60));
+  return `${n} ${n === 1 ? 'minuto' : 'minutos'}`;
+}
+
+/** O ritmo esperado, preferindo a frase que o backend já escreveu em português. */
+function ritmo(humana: string | null | undefined, segundos: number | null | undefined): string | null {
+  const doBackend = semJargao(humana);
+  return doBackend || duracaoHumana(segundos);
 }
 
 /** Número que pode não existir. Null NUNCA vira zero — vira o texto honesto. */
@@ -194,8 +283,8 @@ function montarGrupos(status: Status | null): GrupoNaTela[] {
     grupos.push({
       id: SEM_GRUPO,
       titulo: 'SEM GRUPO',
-      proposito: 'o JSON entregou estes trabalhadores sem um grupo que exista — a tela não adota ninguém por conta própria',
-      resumo: `${orfaos.length} trabalhador(es) sem grupo declarado`,
+      proposito: 'a medição entregou estes trabalhadores sem um grupo que exista — a tela não adota ninguém por conta própria',
+      resumo: `${orfaos.length} ${orfaos.length === 1 ? 'trabalhador' : 'trabalhadores'} sem grupo declarado`,
       agentes: ordenar(orfaos),
       sintetico: true,
     });
@@ -208,6 +297,22 @@ function ordenar(agentes: Agente[]): Agente[] {
     const d = estadoDe(a.estado).ordem - estadoDe(b.estado).ordem;
     return d !== 0 ? d : (a.nome || a.id).localeCompare(b.nome || b.id);
   });
+}
+
+// O olho vai ao problema antes de ler o resumo. Um grupo com ≥1 PARADO, ≥1
+// PULSA SEM PRODUZIR ou ≥1 estado fora do contrato ganha, no título, a marca do
+// PIOR estado que ele contém — ponto colorido E texto, porque cor sozinha não
+// informa (DS-001 §13).
+const ESTADOS_QUE_DOEM = ['__desconhecido__', 'PARADO', 'PULSA_SEM_PRODUZIR'];
+
+function piorEstadoDoGrupo(g: GrupoNaTela): { chave: string; rotulo: string; cor: string } | null {
+  const doem = g.agentes
+    .map((a) => (ESTADOS[a.estado]
+      ? { chave: a.estado, rotulo: ESTADOS[a.estado].rotulo, cor: ESTADOS[a.estado].cor, ordem: ESTADOS[a.estado].ordem }
+      : { chave: '__desconhecido__', rotulo: DESCONHECIDO.rotulo, cor: DESCONHECIDO.cor, ordem: DESCONHECIDO.ordem }))
+    .filter((x) => ESTADOS_QUE_DOEM.includes(x.chave))
+    .sort((a, b) => a.ordem - b.ordem);
+  return doem.length > 0 ? { chave: doem[0].chave, rotulo: doem[0].rotulo, cor: doem[0].cor } : null;
 }
 
 function contarPorEstado(grupos: GrupoNaTela[]): { chave: string; rotulo: string; cor: string; n: number }[] {
@@ -228,9 +333,10 @@ function contarPorEstado(grupos: GrupoNaTela[]): { chave: string; rotulo: string
 // O card de um trabalhador.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CardAgente({ agente, grupoDoCard, memoria, memAberta, aoAbrirMemoria, trabAberto, aoAbrirTrabalho }: {
+function CardAgente({ agente, grupoDoCard, agora, memoria, memAberta, aoAbrirMemoria, trabAberto, aoAbrirTrabalho }: {
   agente: Agente;
   grupoDoCard: string;
+  agora: number;
   memoria: BlocoDeMemoria[];
   memAberta: boolean;
   aoAbrirMemoria: () => void;
@@ -241,6 +347,21 @@ function CardAgente({ agente, grupoDoCard, memoria, memAberta, aoAbrirMemoria, t
   const corDoAgente = agente.cor || '#7FB7E8';
   const t = agente.trabalho;
   const divergente = !!agente.grupo && grupoDoCard !== SEM_GRUPO && agente.grupo !== grupoDoCard;
+
+  const prod = agente.producao;
+  const pul = agente.pulso;
+  // Rótulo humano do backend quando ele vier; rótulo genérico quando não vier.
+  // Em NENHUM dos dois caminhos o nome da tabela chega à tela.
+  const ondeMedeProducao = semJargao(prod?.fonte_rotulo) || rotuloHumano(prod?.fonte, 'a produção dele');
+  const ondeMedePulso = semJargao(pul?.origem_rotulo) || rotuloHumano(pul?.origem, 'o laço dele');
+  const ritmoProducao = prod ? ritmo(prod.cadencia_humana, prod.cadencia_esperada_s) : null;
+  const ritmoPulso = pul ? ritmo(pul.cadencia_humana, null) : null;
+
+  // 🔴 Desligado que executa é contradição, e contradição não fica dobrada.
+  const execucoes24h = t && t.execucoes_24h != null ? t.execucoes_24h : 0;
+  const contradicao = agente.estado === 'DESLIGADO' && execucoes24h > 0
+    ? `executou ${execucoes24h} ${execucoes24h === 1 ? 'vez' : 'vezes'} nas últimas 24h`
+    : null;
 
   return (
     <div style={{ ...S.card, display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -254,13 +375,19 @@ function CardAgente({ agente, grupoDoCard, memoria, memAberta, aoAbrirMemoria, t
       </div>
 
       {agente.descricao ? (
-        <div style={{ fontSize: 12.5, color: '#8A93A3', lineHeight: 1.5 }}>{agente.descricao}</div>
+        <div style={{ fontSize: 12.5, color: '#8A93A3', lineHeight: 1.5 }}>{semJargao(agente.descricao)}</div>
       ) : null}
 
       {/* O motivo do estado, em uma frase. É o que responde "por que esta cor?". */}
       <div style={{ fontSize: 12, color: est.cor, lineHeight: 1.5, background: '#080B10', border: `1px solid ${est.cor}33`, borderRadius: 8, padding: '8px 10px' }}>
-        {agente.motivo || 'o backend não explicou este estado'}
+        {semJargao(agente.motivo) || 'não veio explicação para este estado'}
       </div>
+
+      {contradicao ? (
+        <div data-contradicao="1" style={{ fontSize: 12, color: '#E2A94F', lineHeight: 1.5, background: '#080B10', border: '1px solid #E2A94F44', borderRadius: 8, padding: '8px 10px' }}>
+          está dado como desligado e mesmo assim {contradicao}
+        </div>
+      ) : null}
 
       {divergente ? (
         <div style={{ ...S.mono, fontSize: 10, color: '#E06B6B' }}>
@@ -270,18 +397,19 @@ function CardAgente({ agente, grupoDoCard, memoria, memAberta, aoAbrirMemoria, t
 
       <div style={{ ...S.mono, fontSize: 10.5, color: '#5A6577', display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px solid #131A23', paddingTop: 8 }}>
         <span>
-          pulso <span style={{ color: agente.pulso?.ultimo ? '#A9B2C0' : CINZA_SEM_MEDIDA }}>{agente.pulso?.ultimo ? ago(agente.pulso.ultimo) : 'sem pulso registrado'}</span>
-          {agente.pulso?.origem ? <span> · via {agente.pulso.origem}</span> : null}
+          deu sinal de vida <span style={{ color: pul?.ultimo ? '#A9B2C0' : CINZA_SEM_MEDIDA }}>{pul?.ultimo ? ago(pul.ultimo, agora) : 'nunca'}</span>
+          {ondeMedePulso ? <span> · medido por {ondeMedePulso}</span> : null}
+          {ritmoPulso ? <span> · esperado a cada {ritmoPulso}</span> : null}
         </span>
         <span>
-          produção <span style={{ color: agente.producao?.ultimo ? '#A9B2C0' : CINZA_SEM_MEDIDA }}>{agente.producao?.ultimo ? ago(agente.producao.ultimo) : 'sem produção registrada'}</span>
-          {agente.producao ? <span> · {cadencia(agente.producao.cadencia_esperada_s)}</span> : null}
+          entregou trabalho <span style={{ color: prod?.ultimo ? '#A9B2C0' : CINZA_SEM_MEDIDA }}>{prod?.ultimo ? ago(prod.ultimo, agora) : 'nunca'}</span>
+          {ritmoProducao ? <span> · esperado a cada {ritmoProducao}</span> : prod ? <span> · sem ritmo declarado</span> : null}
         </span>
-        {agente.producao?.fonte ? <span style={{ color: '#4A4F5A' }}>fonte: {agente.producao.fonte}</span> : null}
+        {ondeMedeProducao ? <span style={{ color: '#4A4F5A' }}>medido por {ondeMedeProducao}</span> : null}
         {agente.desligado?.declara ? (
           <span>
             desligado{agente.desligado.todas_desligadas ? ' em todas as corretoras' : ''}
-            {agente.desligado.desde ? ` · desde ${ago(agente.desligado.desde)}` : ' · sem registro de quando'}
+            {agente.desligado.desde ? ` · desde ${ago(agente.desligado.desde, agora)}` : ' · sem registro de quando'}
           </span>
         ) : null}
       </div>
@@ -370,10 +498,17 @@ function Central({ status, memorias, carregando, erro }: {
 }) {
   const [memAberta, setMemAberta] = useState<string | null>(null);
   const [trabalhoTocado, setTrabalhoTocado] = useState<Record<string, boolean>>({});
+  const [decisaoAberta, setDecisaoAberta] = useState(false);
 
   const grupos = montarGrupos(status);
   const linhas = contarPorEstado(grupos);
   const total = linhas.reduce((a, b) => a + b.n, 0);
+
+  // O "agora" dos cards: o instante da MEDIÇÃO. Sem `gerado_em`, o relógio local
+  // é o que sobra — e aí o card admite isso mostrando idade a partir dele.
+  const medidoEm = status?.gerado_em ? new Date(status.gerado_em).getTime() : NaN;
+  const agora = Number.isFinite(medidoEm) ? medidoEm : Date.now();
+  const foraPorDecisao = (status && status.sem_card_por_decisao) || [];
 
   return (
     <div style={S.page}>
@@ -393,7 +528,14 @@ function Central({ status, memorias, carregando, erro }: {
           </span>
         ))}
         <span style={{ flex: 1 }} />
-        {status?.gerado_em ? <span>medido {ago(status.gerado_em)}{status.cache_s ? ` · cache ${status.cache_s}s` : ''}</span> : null}
+        {/* Esta é a ÚNICA idade que se conta pelo relógio do navegador: ela responde
+            "quão velha está a página na minha frente?", e não "quando o agente produziu". */}
+        {status?.gerado_em ? (
+          <span>
+            medido {ago(status.gerado_em, Date.now())}
+            {duracaoHumana(status.cache_s) ? ` · remedido a cada ${duracaoHumana(status.cache_s)}` : ''}
+          </span>
+        ) : null}
         {carregando ? <span>carregando…</span> : null}
       </div>
 
@@ -403,22 +545,32 @@ function Central({ status, memorias, carregando, erro }: {
 
       {!erro && !carregando && grupos.length === 0 ? (
         <div style={{ ...S.card, marginTop: 14, borderColor: '#E06B6B55', color: '#E06B6B', fontSize: 12.5 }}>
-          A rota não devolveu grupos. Isto é um defeito da medição, não uma casa vazia.
+          A medição não devolveu nenhum grupo. Isto é um defeito da medição, não uma casa vazia.
         </div>
       ) : null}
 
-      {grupos.map((g) => (
+      {grupos.map((g) => {
+        const pior = piorEstadoDoGrupo(g);
+        return (
         <div key={g.id} style={{ marginTop: 22 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ ...S.mono, fontSize: 12, letterSpacing: '0.1em', color: g.sintetico ? '#E06B6B' : '#A9B2C0' }}>{g.titulo}</span>
-            {g.proposito ? <span style={{ fontSize: 12, color: '#5A6577' }}>{g.proposito}</span> : null}
+            {pior ? (
+              <span data-pior-estado={pior.chave} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, ...S.mono, fontSize: 9.5, letterSpacing: '0.08em', color: pior.cor }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: pior.cor }} />
+                {pior.rotulo} AQUI DENTRO
+              </span>
+            ) : null}
+            {g.proposito ? <span style={{ fontSize: 12, color: '#5A6577' }}>{semJargao(g.proposito)}</span> : null}
           </div>
           <div style={{ ...S.mono, fontSize: 11, color: g.sintetico ? '#E06B6B' : '#7C8798', marginTop: 5 }}>
-            {g.resumo || 'sem resumo'} <span style={{ color: '#4A4F5A' }}>· {g.agentes.length} cards nesta tela</span>
+            {semJargao(g.resumo) || 'sem resumo'} <span style={{ color: '#4A4F5A' }}>· {g.agentes.length} cards nesta tela</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, marginTop: 11 }}>
             {g.agentes.map((a) => {
-              const padraoAberto = ehProblema(a.estado);
+              // Abre por padrão quando dói OU quando houve execução — o trabalho de
+              // um ⚪ que roda não pode ficar atrás de um triângulo fechado.
+              const padraoAberto = ehProblema(a.estado) || trabalhouRecentemente(a.trabalho);
               const chave = `${g.id}:${a.id}`;
               const aberto = trabalhoTocado[chave] === undefined ? padraoAberto : trabalhoTocado[chave];
               return (
@@ -426,6 +578,7 @@ function Central({ status, memorias, carregando, erro }: {
                   key={chave}
                   agente={a}
                   grupoDoCard={g.id}
+                  agora={agora}
                   memoria={memorias[a.id]?.blocks || []}
                   memAberta={memAberta === chave}
                   aoAbrirMemoria={() => setMemAberta(memAberta === chave ? null : chave)}
@@ -436,17 +589,38 @@ function Central({ status, memorias, carregando, erro }: {
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
 
-      {/* O rodapé do que a tela NÃO mede. Sem ele, um zero silencioso vira fato. */}
-      <div style={{ marginTop: 26, borderTop: '1px solid #131A23', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 5, ...S.mono, fontSize: 10, color: '#4A4F5A' }}>
+      {/* O rodapé do que a tela NÃO mede. Sem ele, um zero silencioso vira fato.
+          Mas 14 itens em prosa corrida NINGUÉM lê: o que saiu por decisão fica
+          DOBRADO com a contagem à vista, e aberto vira uma linha por item. */}
+      <div style={{ marginTop: 26, borderTop: '1px solid #131A23', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 7, ...S.mono, fontSize: 10, color: '#4A4F5A' }}>
         {status && status.nao_instrumentado && status.nao_instrumentado.length > 0 ? (
-          <span>esta tela ainda não mede: {status.nao_instrumentado.join(' · ')}</span>
+          <span>esta tela ainda não mede: {status.nao_instrumentado.map(nomeDoQueFalta).join(' · ')}</span>
         ) : null}
-        {status && status.sem_card_por_decisao && status.sem_card_por_decisao.length > 0 ? (
-          <span>
-            fora da tela por decisão: {status.sem_card_por_decisao.map((d) => `${d.workflow_key} (${d.motivo})`).join(' · ')}
-          </span>
+        {foraPorDecisao.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => setDecisaoAberta(!decisaoAberta)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setDecisaoAberta(!decisaoAberta); }}
+              style={{ cursor: 'pointer', color: '#5A6577', letterSpacing: '0.06em' }}
+            >
+              {decisaoAberta ? '▾' : '▸'} fora da tela por decisão ({foraPorDecisao.length})
+            </span>
+            {decisaoAberta ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 12 }}>
+                {foraPorDecisao.map((d) => (
+                  <span key={d.workflow_key}>
+                    <span style={{ color: '#7C8798' }}>{d.workflow_key}</span>
+                    <span> — {semJargao(d.motivo)}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

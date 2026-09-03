@@ -134,17 +134,17 @@ def render_patch_report(playbook_ref: str, classes: Dict[str, List[Dict[str, Any
 #: > **A arma foi consertada, descarregada, e o gatilho fica com o Founder.**
 _ENV_AUTO_APPLY = "ALFAIATE_AUTO_APPLY"
 
-#: Os únicos valores que ligam. ⚠️ Lista fechada, e não `bool(valor)`: 📊
-#: `bool("false")` é `True`, e foi exatamente assim que a SPEC-093 quase ligou um
-#: agente de atendimento com um `PATCH {"is_active": "false"}`.
-_LIGADO = ("1", "true", "yes", "on", "sim")
-
-
+#: 🔴 A lista fechada de valores que ligam MUDOU DE CASA na rodada de conserto da
+#: SPEC-088: ela é `app.core.feature_flags._TRUTHY`, e mora lá porque o REGISTRO de
+#: agentes (`heartbeat.AGENT_TASKS`) declara `desligado_quando={"env_falso":
+#: "ALFAIATE_AUTO_APPLY"}` e tem de dar exatamente esta resposta. ⚠️ Duas listas
+#: divergiriam, e a que ficasse para trás pintaria o card ⚪ com o Alfaiate ligado
+#: — ou 🟢 com ele desligado (CLAUDE.md §5).
 def auto_apply_ligado() -> bool:
     """O gatilho do Founder. ⛔ Padrão DESLIGADO, e ausente = desligado."""
-    import os
+    from app.core.feature_flags import env_ligada
 
-    return str(os.getenv(_ENV_AUTO_APPLY, "") or "").strip().lower() in _LIGADO
+    return env_ligada(_ENV_AUTO_APPLY)
 
 
 async def apply_auto_overlays(playbook_ref: str, classes: Dict[str, List[Dict[str, Any]]],

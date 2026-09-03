@@ -400,8 +400,10 @@ MODELO      🎯 orquestrador = Fable 5.1.  Todo subagente = Opus 5 (builder, ju
             pesquisador, aquecimento, red team, auditor). Effort alto para juiz.
             ⛔ não trocar model nem effort no meio da sessão (zera o cache)
 PAINEL      UM ÚNICO agent type, variando só o PROMPT · roda no diretório principal,
-            sem worktree · em PARALELO, de uma vez, pela ferramenta de workflow
-            quando houver 3+ lentes · `subagentPromptCacheTtl: "1h"`
+            sem worktree · em PARALELO, de uma vez (agentes simultâneos ou a
+            ferramenta de workflow) · `subagentPromptCacheTtl: "1h"`
+            ⚠️ juiz que MUTA arquivo para provar guarda faz cópia e restaura; e o
+            orquestrador NÃO roda a suíte inteira enquanto um juiz muta
 FORK        só para auxiliares do executor. ⛔ nunca para juiz
 BATERIA     a suíte INTEIRA roda no gate de cada bloco e no fim: 2 a 4 vezes por
             SPEC, nunca a cada commit. Parciais (um arquivo, um teste) à vontade.

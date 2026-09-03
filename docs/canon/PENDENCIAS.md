@@ -9722,3 +9722,66 @@ envelhece.
 
 **O que custa esquecer:** as notas entram no aprendizado como texto marcado —
 melhor que antes, e ainda assim ruído numa fonte que deveria ser só conversa.
+
+---
+
+# SPEC-088 · A Central de Agentes diz a verdade — 03/09/2026
+
+## P-088-CUSTO · Custo por trabalhador não existe: `usage_events` não liga a run
+
+📊 03/09: `usage_events` 30d = 400 linhas, **0** com `work_run_id`; `correlation_id` não casa com
+`work_runs` (0 de 394); `work_runs.cost_actual_brl` = 0 em 100% de 3.494 runs. O custo de LLM que
+existe vem do CHAT (`source` chat 199 · memory 193 · tool 6 · vision 2); os workflows não geram uso.
+A Central mostra `custo: não instrumentado` em vez de fingir zero.
+**Destrava:** `backend/app/core/callbacks/cost_callback.py:252-274` passa `work_run_id`/`work_step_id`
+do contexto de run; o worker grava `cost_actual_brl`. 💭 1–2h. **Dono:** 🤖.
+**Custa se esquecer:** o Founder nunca saberá quanto cada trabalhador digital custa.
+
+## P-088-APROVACOES · `approval_requests` sem `work_run_id` no 2º escritor
+
+📊 8 linhas, 0 com `work_run_id`, 0 pending. `work/approvals.py:98` passa o id; `billing_collection.py:789-800`
+não. O join por trabalhador dá zero estrutural; a Central mostra `aprovações: não instrumentado`.
+**Destrava:** o 2º escritor passa `work_run_id`. 💭 30 min. **Dono:** 🤖.
+
+## P-088-ARTIFACTS · 33 de 118 entregas (30d) sem `work_run_id`
+
+📊 Seis chamadores de `ArtifactService` não passam o id: `relatorios_comerciais.py:178`, `report_tool.py:263`,
+`billing_collection.py:1439`, `research/adapters.py:348`, `research/radar.py:389`, `api/artifacts.py:64,70`.
+Entregas órfãs não aparecem no card do trabalhador. **Destrava:** passar o id nos seis. 💭 1h. **Dono:** 🤖.
+
+## P-088-E3 · Destilador, Lapidador e Relatório de Sábado rodam e não têm card
+
+O BLOCO E removeu os pulsos cruzados que esses três davam em nome de outros agentes. Ficaram invisíveis
+na Central — troca honesta (antes eram visíveis mentindo), mas é buraco de cobertura.
+**Destrava:** três entradas em `AGENT_TASKS` com fonte própria (`attendance_distiller` → ?,
+`prompt_optimizer` → drafts, `weekly_report` → artifacts do sábado) e um `beat()` em cada casa. 💭 1h. **Dono:** 🤖.
+
+## P-088-E4 · `conversation_auditor.py:180` pulsa depois do `except` da própria função
+
+Não é `finally`, então o gate E3 não pega — mas é a mesma doença: se a varredura estourar, `audited`
+fica parcial e o card acende igual. **Destrava:** mover o pulso para o ramo de sucesso. 💭 15 min. **Dono:** 🤖.
+
+## P-088-KEYS · `test.wf` (1 run) é lixo em `work_runs`
+
+📊 Existe em `work_runs` sem `@registrar_workflow` no repo. Está em `SEM_CARD_POR_DECISAO`. Apagar é
+escrita fora de migration. **Dono:** 🧑 decide; 🤖 executa com o comando escrito.
+
+## P-088-CADENCIA · As cadências dos agentes de pulso Redis são declaradas, não medidas
+
+As de `work_runs` (detector, medidor, garimpo, briefing, agrupador) foram medidas por `lag(created_at)`.
+As dos 13 de pulso Redis vieram do agendador e da SPEC. Com o piloto ligado, medir e recalibrar.
+**Destrava:** 14 dias de piloto + a mesma consulta. **Dono:** 🤖.
+
+## P-088-MUT · Mutação vazou para `replay.py` durante uma rodada parcial de pytest
+
+📊 03/09 ~00:20: `backend/scripts/replay.py` apareceu com `flow = None  # DESLIGADO PELA MUTACAO`
+enquanto um builder rodava `pytest -k "... sentinel ..."` na árvore compartilhada. Restaurado do HEAD.
+Na bateria completa da mesma noite, `rubrica.py` vazou também (o guarda `test_a_arvore_ficou_limpa_no_fim` pegou e
+restaurou). É a P-246/P-231 outra vez: **o harness de mutação roda na árvore em que outros escrevem.**
+**Destrava:** a bateria de mutação em worktree próprio, ou lock exclusivo da árvore que os builders respeitem
+(protocolo v11 §10). **Dono:** 🤖. **Custa se esquecer:** um builder commita a mutação sem saber.
+
+## P-088-AUTH · `require_master_admin` compara a chave com `!=`, não em tempo constante
+
+📊 `backend/app/core/auth.py:54`. Pré-existente; agora é a barreira de uma rota que agrega as 4 corretoras.
+**Destrava:** `hmac.compare_digest`. 💭 10 min. **Dono:** 🤖.

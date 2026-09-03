@@ -4,12 +4,21 @@ O `heartbeat.py` responde *"o laço pulsou?"*. Este módulo responde as duas per
 faltavam: *"o trabalho aconteceu?"* e *"quanto trabalho, com que resultado?"*.
 
 ```
-🟢 SAUDAVEL             pulsou E produziu dentro de k × cadência DELE
+🟢 SAUDAVEL             PRODUZIU dentro de k × cadência DELE (o pulso velho vira aviso
+                        no motivo, não muda a cor: produzir é o fim, pulsar é o meio)
 🟡 PULSA_SEM_PRODUZIR   o laço roda e a produção passou do limiar        ← o Garimpo hoje
-⚪ DESLIGADO            declarado em `desligado_quando` E o fato vale no banco
-🔴 PARADO               devia pulsar na cadência dele e não pulsa — inclui chave EXPIRADA
+⚪ DESLIGADO            mudo dos DOIS lados **e** `desligado_quando` verdadeiro — seja o
+                        fato do banco (`agents_attendance_all_inactive`) ou a chave de
+                        ambiente (`env_falso`, o gatilho do Founder no Alfaiate)
+🔴 PARADO               devia pulsar na cadência DELE e não pulsa — inclui chave EXPIRADA
 ⚫ NAO_MEDIDO           sem fonte declarada, ou sem cadência declarada
 ```
+
+🔴 **A ORDEM DE DECISÃO É `produção → pulso → declaração`, nesta ordem.** O contrário —
+que era o código até 03/09/2026 — deixava o ⚪ vencer a evidência de trabalho: 📊 o
+Follow-up roda a cada 60 s e pulsa incondicionalmente, e saía ⚪ DESLIGADO porque um
+agente de ATENDIMENTO estava inativo. ⚪ é "não olhe para mim", e é a cor mais cara
+para pintar em quem está trabalhando.
 
 ⛔ **Zero migration, zero tabela nova.** A produção sai de `max(coluna)` das tabelas que os
 agentes já escrevem; o trabalho sai de `work_runs` e das três tabelas já indexadas por
@@ -47,10 +56,28 @@ _JANELA_30D = 30 * 86400
 _JANELA_7D = 7 * 86400
 _JANELA_24H = 86400
 
-# Teto de páginas de `work_runs` (1.000 linhas por página). 📊 2.679 linhas em 30 dias
-# em 03/09/2026 — três páginas hoje, seis de folga.
-_PAGINAS_WORK_RUNS = 6
+# 🔴 O TETO DO SERVIDOR É 1.000 LINHAS, E ELE NÃO AVISA.
+#
+# ⚠️ `.limit(2000)` não devolve 2.000: o PostgREST manda 1.000 e cala
+# (`backend/tests/test_ninguem_pede_mais_de_mil_linhas_de_novo.py`). Era o que estava
+# escrito em `artifacts` e `approval_requests` — e o efeito ali não é "faltam linhas":
+# é `aprov_confiavel` decidido sobre um recorte, e `artifacts_7d` menor do que a verdade
+# num painel cujo propósito inteiro é não mentir.
 _PAGINA = 1000
+# 📊 03/09/2026: work_runs 2.679 linhas em 30 dias · artifacts 118 · approval_requests 8.
+# Os tetos têm folga de 2× a 6× sobre o medido, e quando estouram o campo entra em
+# `nao_instrumentado` em vez de sair menor em silêncio.
+_PAGINAS_WORK_RUNS = 6
+_PAGINAS_ARTIFACTS = 4
+_PAGINAS_APROVACOES = 2
+
+#: 🔴 O PISO DO LIMIAR DE PULSO, e ele existe por causa do cache desta mesma rota.
+#:
+#: ⚠️ 📊 O Vigia pulsa a cada 20 s (`buffer_processor.py:113`); 20 × k=2 = 40 s. A
+#: resposta fica 60 s no Redis (`CACHE_S`), então um card calculado no fim da janela
+#: leria um pulso de até 60 s e o chamaria de morto. **Um limiar menor que o cache mede
+#: o cache, não o agente.** 2 × 60 s é o piso.
+_PISO_LIMIAR_PULSO_S = 2 * CACHE_S
 
 
 # --------------------------------------------------------------------------- #
@@ -97,6 +124,11 @@ def idade_humana(segundos: float) -> str:
 def cadencia_humana(segundos: Optional[int]) -> str:
     if not segundos:
         return "não declarada"
+    # ⚠️ Abaixo de um minuto o arredondamento MENTE: `cadencia_humana(20)` dizia
+    # "1 minuto" para o laço do Vigia, que roda a cada 20 s — e é justamente o agente
+    # cujo relógio o operador precisa reconhecer para saber se 40 s de silêncio é muito.
+    if segundos < 60:
+        return f"{int(segundos)} segundos"
     if segundos % 86400 == 0:
         n = segundos // 86400
         return "1 dia" if n == 1 else f"{n} dias"
@@ -144,10 +176,72 @@ def filtro_de_fonte(agent_id: str, tabela: str) -> Optional[Dict[str, Any]]:
 
 
 def limiar_s(agente: Agente) -> Optional[int]:
-    """k × cadência DELE. `None` quando não há cadência declarada — e aí não se inventa uma."""
+    """k × cadência de PRODUÇÃO dele. `None` sem cadência — e aí não se inventa uma."""
     if not agente.cadencia_esperada_s:
         return None
     return int(agente.cadencia_esperada_s) * int(agente.k or 2)
+
+
+def limiar_pulso_s(agente: Agente) -> Optional[int]:
+    """k × cadência do LAÇO dele, com o piso do cache. `None` = o pulso não expira.
+
+    🔴 Este é o conserto C3 da rodada de painel. Antes só existia o limiar de PRODUÇÃO,
+    e quem não tinha cadência de produção não tinha limiar nenhum: o card ficava ⚫ NÃO
+    MEDIDO mesmo com o laço morto há uma semana. 📊 Era o caso do Vigia/Sentinela — o
+    agente que atende quem está esperando neste minuto **não conseguia ficar vermelho**.
+
+    ⚠️ A ordem de fallback importa: `cadencia_pulso_s` primeiro (é o relógio do laço),
+    `cadencia_esperada_s` depois (quando pulso e produção são a mesma coisa, como nos
+    agentes cujo pulso É o eixo de `work_runs`). Sem nenhuma das duas, `None` — e um
+    pulso que não expira nunca vira 🔴 por engano.
+    """
+    cadencia = getattr(agente, "cadencia_pulso_s", None) or agente.cadencia_esperada_s
+    if not cadencia:
+        return None
+    return max(_PISO_LIMIAR_PULSO_S, int(cadencia) * int(agente.k or 2))
+
+
+def _env_ligada(chave: str) -> bool:
+    """⛔ NÃO é um leitor novo: delega ao único da casa (`core.feature_flags`)."""
+    try:
+        from app.core.feature_flags import env_ligada
+
+        return env_ligada(str(chave))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def condicao_desligado(agente: Agente, desligado_flag: Optional[bool],
+                       contexto: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
+    """`(o fato de desligamento vale?, a razão em prosa)` — puro, sem I/O de banco.
+
+    Duas formas declaráveis, e nenhuma delas é uma frase solta no motivo:
+
+      `{"agents_attendance_all_inactive": True}`  o fato vem do banco (`agents`)
+      `{"env_falso": "ALFAIATE_AUTO_APPLY"}`      o fato vem da chave de ambiente
+
+    🔴 A segunda é o conserto C7: 📊 `playbook_tailor.py:145` corta o Alfaiate antes do
+    pulso quando `ALFAIATE_AUTO_APPLY` está ausente — e ela não está em config nenhuma.
+    O card dizia 🔴 PARADO, e o operador procurava defeito onde havia decisão do Founder.
+    """
+    ctx = contexto or {}
+    declarado = agente.desligado_quando or {}
+    if not declarado:
+        return False, ""
+    chave = declarado.get("env_falso")
+    if chave:
+        if _env_ligada(str(chave)):
+            return False, ""
+        return True, "desligado pela chave %s" % chave
+    if declarado.get("agents_attendance_all_inactive"):
+        if not desligado_flag:
+            return False, ""
+        inativas, total = ctx.get("attendance_inativas"), ctx.get("attendance_total")
+        if inativas is not None and total:
+            return True, ("atendimento inativo em %d de %d corretoras"
+                          % (int(inativas), int(total)))
+        return True, "atendimento inativo em todas as corretoras"
+    return False, ""
 
 
 # --------------------------------------------------------------------------- #
@@ -156,60 +250,114 @@ def limiar_s(agente: Agente) -> Optional[int]:
 def classificar(agente: Agente, pulso_iso: Any, producao_iso: Any, agora: datetime,
                 desligado_flag: Optional[bool], contexto: Optional[Dict[str, Any]] = None
                 ) -> Tuple[str, str]:
-    """Devolve `(estado, motivo)`. Sem I/O — o guarda a roda com fixture.
+    """Devolve `(estado, motivo)`. Sem I/O de banco — o guarda a roda com fixture.
 
-    A ordem importa e é a dos gates da SPEC-088 BLOCO B:
-      1. ⚪ DESLIGADO só para quem DECLARA `desligado_quando` e cujo fato vale no banco.
-         Quem não declara **nunca** fica ⚪ — a dúvida paga do lado de quem alerta (ref. ⑤).
-      2. ⚫ NAO_MEDIDO quando falta fonte ou falta cadência. Nunca 🟢 (o `no_policy` do Dagster).
-      3. as duas medições, contra k × cadência DELE — nunca contra um limiar global de 900s.
+    🔴 A ORDEM MUDOU NA RODADA DE CONSERTO, E A ORDEM ERA O DEFEITO.
+
+    Antes, o ⚪ DESLIGADO era o primeiro portão: bastava `desligado_quando` valer para o
+    card ficar cinza — **mesmo com o laço pulsando e produzindo neste minuto**. 📊 O
+    Follow-up roda a cada 60 s (`buffer_processor.py:103`) e pulsa incondicionalmente ao
+    fim da varredura (`dispatch_followup.py:371`), independente de qualquer agente de
+    atendimento estar ativo. Chamar isso de "desligado" é a mesma classe de mentira que
+    esta SPEC existe para matar, só que com a cor trocada -- e ⚪ é "não olhe para mim",
+    a cor mais cara para pintar em quem está trabalhando.
+
+    ⛔ **Evidência de trabalho vence declaração de desligamento.** A nova ordem:
+
+    ```
+    1. produziu dentro de k × cadência DELE          → 🟢 SAUDAVEL
+                                                       (e se o pulso estiver velho, o
+                                                        motivo DIZ isso — produzir é o fim,
+                                                        pulsar é só o meio)
+    2. senão, pulsou dentro do limiar de PULSO       → 🟡 PULSA_SEM_PRODUZIR (com fonte
+                                                          E cadência declaradas)
+                                                       ⚫ NAO_MEDIDO (sem uma das duas)
+    3. senão — mudo dos dois lados:
+         `desligado_quando` declarado e verdadeiro   → ⚪ DESLIGADO
+         sem fonte e sem cadência de pulso           → ⚫ NAO_MEDIDO
+         senão                                       → 🔴 PARADO
+    ```
+
+    ⚠️ O ⚪ continua existindo, e continua sendo o certo para quem está **mudo dos dois
+    lados** com um motivo declarado — 📊 o Cérebro v2, que só decide quando a seguradora
+    responde. O que morreu foi o ⚪ vencer o pulso.
     """
     ctx = contexto or {}
+    desligado, razao_desligado = condicao_desligado(agente, desligado_flag, ctx)
 
-    if agente.desligado_quando and desligado_flag:
-        inativas, total = ctx.get("attendance_inativas"), ctx.get("attendance_total")
-        desde = ctx.get("desligado_desde")
-        quando = f"desde {data_curta(parse_iso(desde))}" if desde else "sem registro de quando"
-        if inativas is not None and total:
-            return "DESLIGADO", (f"atendimento inativo em {int(inativas)} de {int(total)} "
-                                 f"corretoras; {quando}")
-        return "DESLIGADO", f"atendimento inativo em todas as corretoras; {quando}"
+    tem_fonte = bool(agente.fonte_de_producao)
+    limiar_prod = limiar_s(agente)
+    limiar_pulso = limiar_pulso_s(agente)
 
-    if not agente.fonte_de_producao:
-        return "NAO_MEDIDO", "sem tabela própria de produção — nenhum card verde sai daqui"
-    if not agente.cadencia_esperada_s:
-        rotulos = " ∪ ".join(f.rotulo for f in agente.fonte_de_producao)
-        return "NAO_MEDIDO", f"fonte declarada ({rotulos}) e cadência esperada não declarada"
-
-    limiar = int(limiar_s(agente) or 0)
     pulso = parse_iso(pulso_iso)
     producao = parse_iso(producao_iso)
     idade_pulso = (agora - pulso).total_seconds() if pulso else None
     idade_prod = (agora - producao).total_seconds() if producao else None
-    pulso_ok = idade_pulso is not None and idade_pulso <= limiar
-    prod_ok = idade_prod is not None and idade_prod <= limiar
+    pulso_ok = (limiar_pulso is not None and idade_pulso is not None
+                and idade_pulso <= limiar_pulso)
+    prod_ok = (limiar_prod is not None and idade_prod is not None
+               and idade_prod <= limiar_prod)
 
+    rotulos = " ∪ ".join(f.rotulo for f in (agente.fonte_de_producao or ()))
     cad = cadencia_humana(agente.cadencia_esperada_s)
-    rotulos = " ∪ ".join(f.rotulo for f in agente.fonte_de_producao)
     execs = ctx.get("execucoes_7d")
     prefixo = (f"{int(execs)} execuções completas em 7 dias; " if execs else "")
 
-    if pulso_ok and prod_ok:
-        return "SAUDAVEL", (f"{prefixo}pulsou há {idade_humana(idade_pulso)}; "
-                            f"produziu em {rotulos} há {idade_humana(idade_prod)}; "
-                            f"cadência esperada {cad}")
-    if pulso_ok and not prod_ok:
-        quanto = (f"última produção em {data_curta(producao)} ({idade_humana(idade_prod)})"
-                  if producao else f"nunca produziu em {rotulos}")
-        return "PULSA_SEM_PRODUZIR", (f"{prefixo}pulsou há {idade_humana(idade_pulso)}; "
-                                      f"{quanto}; cadência esperada {cad}, "
-                                      f"limiar {idade_humana(limiar)}")
+    # ---- 1. A PRODUÇÃO É A VERDADE ---------------------------------------- #
+    if tem_fonte and prod_ok:
+        if pulso_ok:
+            return "SAUDAVEL", (f"{prefixo}pulsou há {idade_humana(idade_pulso)}; "
+                                f"produziu em {rotulos} há {idade_humana(idade_prod)}; "
+                                f"cadência esperada {cad}")
+        # 🔴 Produziu, mas o pulso está velho ou ausente. Continua VERDE — o trabalho
+        # chegou ao fim — e o motivo carrega o aviso em vez de esconder.
+        aviso = (f"o pulso do laço está velho ({idade_humana(idade_pulso)})"
+                 if idade_pulso is not None
+                 else "o pulso do laço não está registrado")
+        return "SAUDAVEL", (f"{prefixo}produziu em {rotulos} há {idade_humana(idade_prod)}; "
+                            f"cadência esperada {cad}; {aviso}")
+
+    # ---- 2. O LAÇO ESTÁ VIVO ---------------------------------------------- #
+    if pulso_ok:
+        if tem_fonte and agente.cadencia_esperada_s:
+            quanto = (f"última produção em {data_curta(producao)} ({idade_humana(idade_prod)})"
+                      if producao else f"nunca produziu em {rotulos}")
+            return "PULSA_SEM_PRODUZIR", (
+                f"{prefixo}pulsou há {idade_humana(idade_pulso)}; {quanto}; "
+                f"cadência esperada {cad}, limiar {idade_humana(limiar_prod)}")
+        falta = ("sem tabela própria de produção" if not tem_fonte
+                 else f"fonte declarada ({rotulos}) e cadência esperada não declarada")
+        return "NAO_MEDIDO", (f"pulsa há {idade_humana(idade_pulso)}; "
+                              f"produção não medida — {falta}")
+
+    # ---- 3. MUDO DOS DOIS LADOS ------------------------------------------- #
+    if desligado:
+        desde = ctx.get("desligado_desde")
+        quando = f"desde {data_curta(parse_iso(desde))}" if desde else "sem registro de quando"
+        return "DESLIGADO", f"{razao_desligado}; {quando}"
+
+    if not tem_fonte and limiar_pulso is None:
+        return "NAO_MEDIDO", ("sem tabela própria de produção e sem cadência de laço — "
+                              "nenhum card verde sai daqui")
+    if not tem_fonte:
+        sem_pulso = (f"sem pulso há {idade_humana(idade_pulso)}" if idade_pulso is not None
+                     else "sem pulso registrado (chave ausente ou expirada)")
+        return "PARADO", (f"{sem_pulso}; sem tabela própria de produção; "
+                          f"o laço devia pulsar a cada "
+                          f"{cadencia_humana(getattr(agente, 'cadencia_pulso_s', None) or agente.cadencia_esperada_s)}, "
+                          f"limiar {idade_humana(limiar_pulso)}")
+    if not agente.cadencia_esperada_s and limiar_pulso is None:
+        return "NAO_MEDIDO", (f"fonte declarada ({rotulos}) e cadência esperada não declarada")
+
     sem_pulso = (f"sem pulso há {idade_humana(idade_pulso)}"
                  if idade_pulso is not None else "sem pulso registrado (chave ausente ou expirada)")
     quanto = (f"última produção em {data_curta(producao)} ({idade_humana(idade_prod)})"
               if producao else f"nunca produziu em {rotulos}")
-    return "PARADO", (f"{sem_pulso}; {quanto}; cadência esperada {cad}, "
-                      f"limiar {idade_humana(limiar)}")
+    limiar_txt = (f"cadência esperada {cad}, limiar {idade_humana(limiar_prod)}"
+                  if limiar_prod is not None
+                  else f"cadência de laço {cadencia_humana(getattr(agente, 'cadencia_pulso_s', None))}, "
+                       f"limiar {idade_humana(limiar_pulso)}")
+    return "PARADO", f"{sem_pulso}; {quanto}; {limiar_txt}"
 
 
 _PLURAL = {
@@ -276,13 +424,55 @@ def _max_coluna(cli, tabela: str, coluna: str, filtro: Optional[Dict[str, Any]])
     return parse_iso(linhas[0].get(coluna)) if linhas else None
 
 
+def _paginar(consulta, paginas: int) -> Tuple[List[Dict[str, Any]], bool]:
+    """Lê `paginas` × 1.000 linhas. Devolve `(linhas, estourou_o_teto)`.
+
+    🔴 `estourou` é a metade que faltava. Um teto que corta em silêncio produz o mesmo
+    defeito que o `.limit(2000)` produzia: um número menor que a verdade, com cara de
+    verdade. Quando a última página volta CHEIA, quem chama põe o campo em
+    `nao_instrumentado` — a mesma regra do custo e das aprovações (§4).
+    """
+    linhas: List[Dict[str, Any]] = []
+    for pagina in range(max(1, int(paginas))):
+        inicio = pagina * _PAGINA
+        lote = _seguro(lambda i=inicio: consulta(i, i + _PAGINA - 1), [])
+        linhas.extend(lote)
+        if len(lote) < _PAGINA:
+            return linhas, False
+    return linhas, True
+
+
+def _vazio(agora: datetime, leitura_indisponivel: bool = False) -> Dict[str, Any]:
+    return {"agora": agora, "attendance": [], "runs": [], "artefatos": [], "aprovacoes": [],
+            "producoes": {}, "custo_instrumentado": False, "truncado": (),
+            "leitura_indisponivel": leitura_indisponivel}
+
+
 def _ler_tudo_sincrono() -> Dict[str, Any]:
     """Todas as consultas de uma vez, numa thread só. Só SELECT — nada aqui escreve."""
-    from app.core.database import get_supabase_client
-
-    cli = get_supabase_client().client
     agora = datetime.now(timezone.utc)
+
+    # 🔴 O CLIENTE TAMBÉM PODE FALHAR, e ele estava FORA da rede de segurança.
+    #
+    # ⚠️ `get_supabase_client()` valida settings e abre conexão: sem `SUPABASE_URL`, com
+    # chave vencida ou com o Postgres fora do ar, ele LEVANTA — e a exceção subia pela
+    # thread até a rota, que devolvia 500. **A Central de Agentes é a tela que se abre
+    # justamente quando alguma coisa está errada**; ser a primeira a cair é o pior
+    # comportamento possível. Agora a falha vira cards 🔴 PARADO / ⚫ NÃO MEDIDO com
+    # "leitura indisponível" escrito no motivo.
+    def _cliente():
+        from app.core.database import get_supabase_client
+
+        return get_supabase_client().client
+
+    cli = _seguro(_cliente, None)
+    if cli is None:
+        logger.warning("[CENTRAL-088] cliente Supabase indisponível — a tela sai cinza, "
+                       "com o motivo escrito, e nunca 500")
+        return _vazio(agora, leitura_indisponivel=True)
+
     d30 = (agora - timedelta(seconds=_JANELA_30D)).isoformat()
+    truncado: List[str] = []
 
     # ---- agents: o fato do ⚪ DESLIGADO ------------------------------------ #
     attendance = _seguro(lambda: cli.table("agents")
@@ -290,18 +480,15 @@ def _ler_tudo_sincrono() -> Dict[str, Any]:
                          .eq("agent_role", "attendance").execute().data or [], [])
 
     # ---- work_runs 30d: o eixo do TRABALHO, paginado ---------------------- #
-    runs: List[Dict[str, Any]] = []
-    for pagina in range(_PAGINAS_WORK_RUNS):
-        inicio = pagina * _PAGINA
-        lote = _seguro(lambda i=inicio: cli.table("work_runs")
-                       .select("id, workflow_key, status, created_at, started_at, "
-                               "finished_at, unblock_state")
-                       .gte("created_at", d30)
-                       .order("created_at", desc=True)
-                       .range(i, i + _PAGINA - 1).execute().data or [], [])
-        runs.extend(lote)
-        if len(lote) < _PAGINA:
-            break
+    runs, estourou = _paginar(
+        lambda a, b: cli.table("work_runs")
+        .select("id, workflow_key, status, created_at, started_at, "
+                "finished_at, unblock_state")
+        .gte("created_at", d30).order("created_at", desc=True)
+        .range(a, b).execute().data or [],
+        _PAGINAS_WORK_RUNS)
+    if estourou:
+        truncado.append("trabalho")
 
     # ---- custo: existe UM run com custo > 0 em toda a tabela? ------------- #
     # 📊 03/09/2026: zero em 3.494 runs → `custo_brl_30d` é null e "custo" entra
@@ -311,12 +498,24 @@ def _ler_tudo_sincrono() -> Dict[str, Any]:
                      .limit(1).execute().data or []), False)
 
     # ---- artifacts 30d: a entrega, ligada por work_run_id ----------------- #
-    artefatos = _seguro(lambda: cli.table("artifacts").select("work_run_id, created_at")
-                        .gte("created_at", d30).limit(2000).execute().data or [], [])
+    # 🔴 Era `.limit(2000)`, e 2.000 nunca chegariam: o servidor manda 1.000 e cala.
+    artefatos, estourou = _paginar(
+        lambda a, b: cli.table("artifacts").select("work_run_id, created_at")
+        .gte("created_at", d30).order("created_at", desc=True)
+        .range(a, b).execute().data or [],
+        _PAGINAS_ARTIFACTS)
+    if estourou:
+        truncado.append("artifacts")
 
     # ---- approval_requests: e a honestidade do join ----------------------- #
-    aprovacoes = _seguro(lambda: cli.table("approval_requests")
-                         .select("status, work_run_id").limit(2000).execute().data or [], [])
+    # ⚠️ Aqui o recorte era pior que faltar linha: `aprov_confiavel` é um `all()` sobre
+    # a tabela INTEIRA. Decidido sobre 1.000 de N, ele responde outra pergunta.
+    aprovacoes, estourou = _paginar(
+        lambda a, b: cli.table("approval_requests").select("status, work_run_id")
+        .order("created_at", desc=True).range(a, b).execute().data or [],
+        _PAGINAS_APROVACOES)
+    if estourou:
+        truncado.append("aprovacoes")
 
     # ---- as fontes de produção, uma consulta por (tabela, coluna, filtro) -- #
     producoes: Dict[str, Optional[datetime]] = {}
@@ -334,7 +533,8 @@ def _ler_tudo_sincrono() -> Dict[str, Any]:
 
     return {"agora": agora, "attendance": attendance, "runs": runs, "artefatos": artefatos,
             "aprovacoes": aprovacoes, "producoes": producoes,
-            "custo_instrumentado": custo_instrumentado}
+            "custo_instrumentado": custo_instrumentado,
+            "truncado": tuple(truncado), "leitura_indisponivel": False}
 
 
 def _chave_fonte(tabela: Optional[str], coluna: str, filtro: Optional[Dict[str, Any]]) -> str:
@@ -412,8 +612,12 @@ def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[st
     # 🔴 aprovações: o join só é honesto se TODA linha existente tiver work_run_id.
     # 📊 03/09/2026: 8 linhas, 0 com work_run_id (2º escritor `billing_collection.py:789`
     # não passa o id) → o join dá zero estrutural. Zero de join que não casa é `null`.
+    truncado = tuple(bruto.get("truncado") or ())
     linhas_aprov = bruto["aprovacoes"]
-    aprov_confiavel = bool(linhas_aprov) and all(a.get("work_run_id") for a in linhas_aprov)
+    # ⚠️ Um `all()` sobre um recorte não é um `all()`: se a leitura estourou o teto, o
+    # join não é confiável POR CONSTRUÇÃO, e não por causa do que se leu.
+    aprov_confiavel = (bool(linhas_aprov) and "aprovacoes" not in truncado
+                       and all(a.get("work_run_id") for a in linhas_aprov))
     pendentes: Dict[str, int] = {}
     if aprov_confiavel:
         for a in linhas_aprov:
@@ -436,6 +640,15 @@ def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[st
         nao_instrumentado.append("custo")
     if not aprov_confiavel:
         nao_instrumentado.append("aprovacoes")
+    # 🔴 O teto que estourou é uma medição que não foi feita, e ela sai NOMEADA — a mesma
+    # regra do custo. Um número menor que a verdade com cara de verdade é o defeito desta SPEC.
+    for campo in truncado:
+        if campo not in nao_instrumentado:
+            nao_instrumentado.append(campo)
+    leitura_indisponivel = bool(bruto.get("leitura_indisponivel"))
+    if leitura_indisponivel and "leitura" not in nao_instrumentado:
+        nao_instrumentado.append("leitura")
+    artifacts_truncado = "artifacts" in truncado
 
     por_grupo: Dict[str, List[Dict[str, Any]]] = {g[0]: [] for g in GRUPOS}
 
@@ -486,7 +699,8 @@ def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[st
                 # SPEC), não de 7: com 7 dias um agente que roda 4× por mês não teria média.
                 "duracao_media_s": _media(duracoes),
                 "fila_media_s": _media(filas),
-                "artifacts_7d": sum(int(art_7d.get(k, 0)) for k in chaves),
+                "artifacts_7d": (None if artifacts_truncado
+                                 else sum(int(art_7d.get(k, 0)) for k in chaves)),
                 "aprovacoes_pendentes": (sum(int(pendentes.get(k, 0)) for k in chaves)
                                          if aprov_confiavel else None),
                 "travados": sum(int(s.get("travados") or 0) for s in somas),
@@ -501,15 +715,30 @@ def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[st
         }
         estado, motivo = classificar(agente, _iso(pulso), _iso(producao), agora,
                                      todas_desligadas, contexto)
+        if leitura_indisponivel:
+            # ⛔ Nunca 500, e nunca um cinza mudo: o motivo DIZ que o número não existe.
+            motivo = (motivo + " ⚠️ leitura indisponível: o banco não respondeu nesta "
+                               "rodada e nenhum número desta tela foi medido")
+
+        cad_pulso = getattr(agente, "cadencia_pulso_s", None) or agente.cadencia_esperada_s
 
         por_grupo.setdefault(agente.grupo, []).append({
             "id": agente.id, "nome": agente.nome, "descricao": agente.descricao,
             "cor": agente.cor, "grupo": agente.grupo,
             "estado": estado, "motivo": motivo,
-            "pulso": {"ultimo": _iso(pulso), "origem": origem},
+            # 🔴 `origem` e `fonte` são NOME DE TABELA — bons para auditar, ilegíveis na
+            # tela. Os `_rotulo` são o que o corretor lê, e por isso ⛔ não carregam
+            # tabela, coluna nem `_`: quem opera a corretora não sabe o que é
+            # `attendance_transcripts`, e não deveria precisar saber.
+            "pulso": {"ultimo": _iso(pulso), "origem": origem,
+                      "origem_rotulo": ("as execuções" if origem == "work_runs"
+                                        else "o próprio laço"),
+                      "cadencia_humana": cadencia_humana(cad_pulso)},
             "producao": {"ultimo": _iso(producao),
                          "fonte": " ∪ ".join(rotulos) if rotulos else None,
+                         "fonte_rotulo": getattr(agente, "fonte_rotulo", None),
                          "cadencia_esperada_s": agente.cadencia_esperada_s,
+                         "cadencia_humana": cadencia_humana(agente.cadencia_esperada_s),
                          "limiar_s": limiar_s(agente)},
             "desligado": {"declara": bool(agente.desligado_quando),
                           "todas_desligadas": (todas_desligadas if agente.desligado_quando else None),

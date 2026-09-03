@@ -21,8 +21,26 @@ Os blocos e o que cada um mata
 [4] ESTADOS       B①–⑥    os cinco estados, com relógio fixo e limiar POR AGENTE
 [5] MOTIVO        C⑥      a prosa do card não carrega CPF nem telefone
 [6] CONTRATO      C①③     só as chaves da §4; join vazio é null + nao_instrumentado
-[7] PULSOS        E②③     ninguém pulsa pelo vizinho; nenhum beat() em finally
+[7] PULSOS        E②③     ninguém pulsa pelo vizinho; nenhum beat() em finally; e
+                          TODO agente de pulso Redis pulsa NA CASA DELE (C8)
 [8] CONTROLE GERAL        este guarda consegue ficar vermelho?
+[9] DOIS TENANTS  C⑤     a barreira está nos DOIS lugares
+[10] EXCLUSIVIDADE A⑤    duas entradas do registro não compartilham a MESMA fonte (C1)
+[11] /SESSIONS    C⑥     o mascarador da rota é o CANÔNICO, e ele pega os 11 formatos (C5)
+[12] FORMA        E① C④  o pulso vem depois do cutover; o filtro do registro casa o banco
+```
+
+🔴 **A RODADA DE CONSERTO (03/09/2026) acrescentou [10], [11] e [12], e mais seis casos
+ao [4].** Cada um nasceu de um achado do painel de 3 lentes, e cada um tem linha de
+CONTROLE que o faz ficar VERMELHO com o defeito reintroduzido:
+
+```
+[10]  📊 tecelão e cartógrafo declaravam `ura_maps` INTEIRA. `source`: observed 321
+      (26/08) · cartographer* 3 (14/07). O cartógrafo saía 🟢 com o mapa do vizinho.
+[11]  📊 o `_redigir` local pegava 3 de 11 formatos de PII: `(11) 98765-4321`, placa,
+      CNPJ e e-mail passavam EM CLARO num transcript de URA.
+[4]   📊 o ⚪ DESLIGADO vinha ANTES do pulso: o Follow-up, que roda a cada 60 s e pulsa
+      incondicionalmente, saia DESLIGADO porque um agente de ATENDIMENTO estava inativo.
 ```
 
 ⚠️ **Escrito contra o CONTRATO da §4, não contra a implementação** (protocolo §4: quem
@@ -119,13 +137,17 @@ _carregar_env()
 # ---------------------------------------------------------------------------
 _FALTA = ""
 classificar = workflow_keys_sem_card = montar_resposta = limiar_s = None
+limiar_pulso_s = filtro_de_fonte = linha_casa_filtro = None
 Agente = Fonte = None
 AGENT_TASKS: list = []
 try:
     from app.core.central_de_agentes import (  # type: ignore  # noqa: F401
         _montar as montar_resposta,
         classificar,
+        filtro_de_fonte,
+        limiar_pulso_s,
         limiar_s,
+        linha_casa_filtro,
         workflow_keys_sem_card,
     )
 except Exception as _e:  # noqa: BLE001
@@ -157,6 +179,21 @@ CHAVES_AGENTE = {"id", "nome", "descricao", "cor", "grupo", "estado", "motivo",
 CHAVES_TRABALHO = {"eixo", "execucoes_24h", "execucoes_7d", "falhas_7d", "duracao_media_s",
                    "fila_media_s", "artifacts_7d", "aprovacoes_pendentes", "travados",
                    "custo_brl_30d"}
+
+# 🔴 AS CHAVES QUE A RODADA DE CONSERTO ACRESCENTOU (C10), e a razao de cada uma.
+#
+# `origem` e `fonte` sao NOME DE TABELA: bons para auditar, ilegiveis na tela. Os
+# `_rotulo` sao o que o corretor le -- e por isso o gate abaixo PROIBE tabela, coluna
+# e sublinhado dentro deles. Quem opera a corretora nao sabe o que e
+# `attendance_transcripts`, e nao deveria precisar saber.
+CHAVES_PULSO = {"ultimo", "origem", "origem_rotulo", "cadencia_humana"}
+CHAVES_PRODUCAO = {"ultimo", "fonte", "fonte_rotulo", "cadencia_esperada_s",
+                   "cadencia_humana", "limiar_s"}
+CHAVES_DESLIGADO = {"declara", "todas_desligadas", "desde"}
+
+# 🔴 A ORDEM DOS GRUPOS E A DA URGENCIA PARA O SEGURADO, nao a historica.
+# `atende_agora` primeiro: e o unico grupo em que alguem esta esperando neste minuto.
+ORDEM_DOS_GRUPOS = ["atende_agora", "observa", "mantem_rota", "aprende_avisa"]
 
 # 📊 Os 14 ids de `heartbeat.py:20-51` e o ARQUIVO que é a casa de cada um.
 # Fonte: SPEC-088 §1.5 e §8, reconferido em 03/09/2026 por
@@ -375,9 +412,42 @@ def _agente(**campos):
     base = dict(id="fixture", nome="Fixture", descricao="-", grupo="aprende_avisa",
                 cor="#43C08C", eixo={"pulso": "redis", "workflow_keys": ()},
                 fonte_de_producao=(_fonte(),), cadencia_esperada_s=86400,
-                desligado_quando=None, k=2)
+                desligado_quando=None, k=2, cadencia_pulso_s=None,
+                fonte_rotulo="o que ele entrega, em portugues")
     base.update(campos)
+    # A fixture so passa os campos que o registro REALMENTE tem: assim o guarda sabe
+    # DIZER que um campo da rodada de conserto falta, em vez de morrer no TypeError.
+    conhecidos = set(getattr(Agente, "_fields", ()) or ())
+    if conhecidos:
+        base = dict((k, v) for k, v in base.items() if k in conhecidos)
     return Agente(**base)
+
+
+class _EnvTemporaria:
+    """`with _EnvTemporaria("X", "1"):` -- e o valor de antes volta, sempre.
+
+    Mutacao de AMBIENTE, nao de arquivo: nada e escrito em disco e nao ha o que
+    restaurar por copia. `valor=None` REMOVE a chave.
+    """
+
+    def __init__(self, nome, valor):
+        self.nome, self.valor, self.antes, self.tinha = nome, valor, None, False
+
+    def __enter__(self):
+        self.tinha = self.nome in os.environ
+        self.antes = os.environ.get(self.nome)
+        if self.valor is None:
+            os.environ.pop(self.nome, None)
+        else:
+            os.environ[self.nome] = self.valor
+        return self
+
+    def __exit__(self, *_):
+        if self.tinha:
+            os.environ[self.nome] = self.antes
+        else:
+            os.environ.pop(self.nome, None)
+        return False
 
 
 def _registra(estado):
@@ -659,9 +729,122 @@ def bloco_4_estados():
           "B6 CONTROLE: pulsou E produziu na cadencia -> SAUDAVEL",
           "veio %r -- o verde TEM de ser alcancavel, ou o guarda so sabe reprovar" % e)
 
+    # (7) [C2] A EVIDENCIA DE TRABALHO VENCE A DECLARACAO DE DESLIGAMENTO.
+    #
+    # 📊 O defeito: `classificar()` checava `desligado_quando` ANTES de olhar pulso e
+    # producao. O Follow-up roda a cada 60 s (`buffer_processor.py:103`) e pulsa
+    # incondicionalmente no fim da varredura (`dispatch_followup.py:371`) -- e ficava
+    # DESLIGADO porque um agente de ATENDIMENTO estava inativo. "Desligado" e a cor mais
+    # cara para pintar num agente que esta trabalhando: ela manda parar de olhar.
+    vivo = _agente(id="followup", cadencia_esperada_s=86400, cadencia_pulso_s=60,
+                   desligado_quando={"agents_attendance_all_inactive": True})
+    e, motivo = _classificar(vivo, pulso_em=ha(30), producao_em=ha(3600),
+                             todas_desligadas=True)
+    _registra(e)
+    certo(e == "SAUDAVEL",
+          "B7a pulsando E produzindo, com desligado_quando VERDADEIRO -> SAUDAVEL",
+          "veio %r (%s)" % (e, motivo))
+    certo(e != "DESLIGADO",
+          "B7a NUNCA DESLIGADO com trabalho fresco -- a evidencia vence a declaracao",
+          "era o card do Follow-up hoje: um laco de 60 s pintado de desligado")
+
+    # (8) producao FRESCA e pulso VELHO -> continua verde, e o motivo DIZ do pulso.
+    # Produzir e o fim; pulsar e o meio. Um agente que entregou o trabalho nao fica
+    # vermelho porque o contador do laco atrasou -- mas quem le tem de saber disso.
+    e, motivo = _classificar(_agente(id="detector", cadencia_esperada_s=86400,
+                                     cadencia_pulso_s=3600),
+                             pulso_em=ha(10 * 3600), producao_em=ha(3600))
+    _registra(e)
+    certo(e == "SAUDAVEL", "B7b producao fresca + pulso velho -> SAUDAVEL",
+          "veio %r (%s)" % (e, motivo))
+    certo("pulso" in (motivo or "").lower(),
+          "B7b e o motivo CITA o pulso velho -- verde silencioso e verde que mente",
+          "motivo veio %r" % motivo)
+
+    # (9) mudo dos DOIS lados, com desligado_quando verdadeiro -> DESLIGADO continua valendo.
+    mudo = _agente(id="vigia_sentinela", cadencia_esperada_s=None, cadencia_pulso_s=20,
+                   fonte_de_producao=(_fonte("work_events"),),
+                   desligado_quando={"agents_attendance_all_inactive": True})
+    e, motivo = _classificar(mudo, pulso_em=ha(3600), producao_em=None,
+                             todas_desligadas=True)
+    _registra(e)
+    certo(e == "DESLIGADO",
+          "B7c sem pulso recente e sem producao, desligado verdadeiro -> DESLIGADO",
+          "veio %r (%s)" % (e, motivo))
+
+    # (10) [C3] A SENTINELA PRECISA CONSEGUIR FICAR VERMELHA.
+    #
+    # Sem `cadencia_pulso_s` ela era NAO_MEDIDO para sempre: sem fonte e sem cadencia de
+    # producao, nada expirava. O laco podia estar morto ha uma semana e a tela dizia
+    # "nao medido" sobre o agente que atende quem esta esperando NESTE minuto.
+    sem_fonte = dict(id="vigia_sentinela", fonte_de_producao=None,
+                     cadencia_esperada_s=None, desligado_quando=None)
+    e, motivo = _classificar(_agente(cadencia_pulso_s=20, **sem_fonte),
+                             pulso_em=ha(3600), producao_em=None)
+    _registra(e)
+    certo(e == "PARADO",
+          "B7d laco de 20s calado ha 1h -> PARADO (nao mais o cinza eterno)",
+          "veio %r (%s)" % (e, motivo))
+    e2, _ = _classificar(_agente(cadencia_pulso_s=20, **sem_fonte),
+                         pulso_em=ha(30), producao_em=None)
+    certo(e2 == "NAO_MEDIDO",
+          "B7d CONTROLE: com o laco VIVO ele volta a NAO_MEDIDO (a producao e que nao e medida)",
+          "veio %r -- se desse PARADO, o gate pintaria de vermelho quem esta trabalhando" % e2)
+    e3, _ = _classificar(_agente(cadencia_pulso_s=None, **sem_fonte),
+                         pulso_em=ha(3600), producao_em=None)
+    certo(e3 == "NAO_MEDIDO",
+          "B7d CONTROLE: SEM cadencia de laco a morte volta a ser cinza",
+          "veio %r -- e e por isso que declarar `cadencia_pulso_s` e obrigatorio "
+          "para quem tem laco de relogio" % e3)
+
     fora = sorted({x for x in _ESTADOS_VISTOS if x not in ESTADOS})
     certo(not fora, "todo estado devolvido esta no enum de 5 do contrato §4",
           "fora do enum: %s" % ", ".join(str(x) for x in fora))
+
+
+# ===========================================================================
+# [4b] DESLIGADO POR CHAVE DE AMBIENTE -- conserto C7
+# ===========================================================================
+def bloco_4b_desligado_por_chave():
+    print("\n[4b] DESLIGADO POR CHAVE -- 'parado' e 'desligado pelo Founder' sao cores diferentes")
+    if classificar is None or Agente is None:
+        pular("[4b] inteiro", "classificar()/Agente ainda nao existem (%s)" % _FALTA)
+        return
+
+    ag = _agente(id="alfaiate", cadencia_esperada_s=86400,
+                 desligado_quando={"env_falso": "ALFAIATE_AUTO_APPLY"})
+    with _EnvTemporaria("ALFAIATE_AUTO_APPLY", None):
+        e, motivo = _classificar(ag, pulso_em=None, producao_em=None)
+        _registra(e)
+        certo(e == "DESLIGADO",
+              "C7 env ausente -> DESLIGADO (nao PARADO)",
+              "veio %r (%s) -- `playbook_tailor.py:145` corta ANTES do beat, e a chave "
+              "nao esta em config nenhuma do repositorio" % (e, motivo))
+        certo("ALFAIATE_AUTO_APPLY" in (motivo or ""),
+              "C7 o motivo NOMEIA a chave que desliga",
+              "motivo veio %r -- sem o nome, o operador nao tem o que ligar" % motivo)
+    with _EnvTemporaria("ALFAIATE_AUTO_APPLY", "false"):
+        e, _ = _classificar(ag, pulso_em=None, producao_em=None)
+        certo(e == "DESLIGADO",
+              "C7 env 'false' -> DESLIGADO (lista fechada de valores, nunca bool())",
+              "veio %r -- bool('false') e True, e foi assim que a SPEC-093 quase "
+              "ligou um agente de atendimento" % e)
+    with _EnvTemporaria("ALFAIATE_AUTO_APPLY", "1"):
+        e, motivo = _classificar(ag, pulso_em=None, producao_em=None)
+        certo(e != "DESLIGADO",
+              "C7 CONTROLE: env ligada -> NAO e DESLIGADO",
+              "veio %r -- se ficasse cinza com a chave ligada, o card mentiria ao contrario" % e)
+        certo(e == "PARADO",
+              "C7 CONTROLE: ligado e mudo -> PARADO (o vermelho volta a ser possivel)",
+              "veio %r (%s)" % (e, motivo))
+
+    # E o REGISTRO declara isso, nao so o motor: um gate que so prova a funcao pura
+    # passaria com o alfaiate ainda declarando `desligado_quando=None`.
+    if _registro_pronto():
+        alf = [a for a in AGENT_TASKS if a.id == "alfaiate"]
+        certo(bool(alf) and (alf[0].desligado_quando or {}).get("env_falso") == "ALFAIATE_AUTO_APPLY",
+              "C7 o REGISTRO declara env_falso ALFAIATE_AUTO_APPLY no alfaiate",
+              "veio %r" % (alf[0].desligado_quando if alf else None))
 
 
 # ===========================================================================
@@ -756,6 +939,11 @@ def bloco_6_contrato():
     if not isinstance(r, dict):
         return
     certo(isinstance(r.get("grupos"), list) and r["grupos"], "C1 devolve grupos")
+    ordem = [g.get("id") for g in (r.get("grupos") or []) if g.get("id") in ORDEM_DOS_GRUPOS]
+    certo(ordem == ORDEM_DOS_GRUPOS,
+          "C10 os grupos saem na ordem da URGENCIA (atende_agora primeiro)",
+          "veio %r -- um painel que abre pelo que aprendeu ontem enterra o que esta "
+          "doendo agora" % (ordem,))
     for g in r.get("grupos") or []:
         certo(set(g) == CHAVES_GRUPO, "C1 grupo %r tem so as chaves da §4" % g.get("id"),
               "sobrando %s / faltando %s" % (sorted(set(g) - CHAVES_GRUPO),
@@ -764,6 +952,26 @@ def bloco_6_contrato():
             certo(set(a) == CHAVES_AGENTE, "C1 agente %r tem so as chaves da §4" % a.get("id"),
                   "sobrando %s / faltando %s" % (sorted(set(a) - CHAVES_AGENTE),
                                                  sorted(CHAVES_AGENTE - set(a))))
+            for nome, esperadas in (("pulso", CHAVES_PULSO),
+                                    ("producao", CHAVES_PRODUCAO),
+                                    ("desligado", CHAVES_DESLIGADO)):
+                bloco = a.get(nome)
+                certo(isinstance(bloco, dict) and set(bloco) == esperadas,
+                      "C1 %s de %r tem so as chaves da §4 (+ as de C10)" % (nome, a.get("id")),
+                      "sobrando %s / faltando %s"
+                      % (sorted(set(bloco or {}) - esperadas),
+                         sorted(esperadas - set(bloco or {}))))
+            # 🔴 C10: o rotulo humano nao pode ser o nome tecnico com outra roupa.
+            rot = ((a.get("producao") or {}).get("fonte_rotulo") or "")
+            certo(not rot or ("_" not in rot and "." not in rot),
+                  "C10 fonte_rotulo de %r e prosa, sem tabela nem coluna" % a.get("id"),
+                  "veio %r -- `attendance_transcripts.created_at` nao e um rotulo, "
+                  "e uma chave primaria com legenda" % rot)
+            porigem = ((a.get("pulso") or {}).get("origem_rotulo") or "")
+            certo(porigem in ("o proprio laco", "o próprio laço", "as execucoes",
+                              "as execuções"),
+                  "C10 pulso.origem_rotulo de %r e um dos dois rotulos" % a.get("id"),
+                  "veio %r" % porigem)
             t = a.get("trabalho")
             if isinstance(t, dict):
                 certo(set(t) == CHAVES_TRABALHO, "C1 trabalho de %r tem so as chaves da §4"
@@ -863,6 +1071,31 @@ def _beats_em_finally():
     return fora
 
 
+def _quem_nao_pulsa_em_casa(registro, fontes_por_dono):
+    """Os agentes de pulso Redis SEM `beat("<id>")` (nem `_beat(`) no modulo dono.
+
+    Puro: recebe o registro e um `{caminho_do_modulo: fonte}` -- e por isso a linha de
+    CONTROLE pode mutar o TEXTO em memoria em vez de mexer no arquivo.
+    """
+    faltando = []
+    for agente in registro:
+        if str((agente.eixo or {}).get("pulso") or "redis") != "redis":
+            continue
+        dono = DONOS_DO_PULSO.get(agente.id)
+        if not dono:
+            # 🔴 pulso Redis declarado e nenhuma casa no mapa: e o mesmo defeito, e o
+            # gate acusa em vez de pular em silencio.
+            faltando.append("%s (sem modulo dono declarado)" % agente.id)
+            continue
+        fonte = fontes_por_dono.get(dono) or ""
+        literal = re.search(r'beat\(\s*["\']%s["\']' % re.escape(agente.id), fonte)
+        via_ajudante = ("async def _beat(" in fonte
+                        and re.search(r'beat\(\s*["\']%s["\']' % re.escape(agente.id), fonte))
+        if not (literal or via_ajudante):
+            faltando.append("%s (esperado em %s)" % (agente.id, dono))
+    return faltando
+
+
 def bloco_7_pulsos():
     print("\n[7] OS PULSOS -- cada agente da o proprio pulso, e nunca dentro de finally")
     chamadas = list(_chamadas_de_beat())
@@ -913,6 +1146,40 @@ def bloco_7_pulsos():
     certo(any("broker_insights.py" in c for c, _n, _a in chamadas)
           or not em_finally,
           "CONTROLE: o detector de finally aponta para uma linha que EXISTE")
+
+    # 🔴 C8 -- COBERTURA. E② diz "ninguem pulsa pelo VIZINHO"; ele nao dizia
+    # "e todo mundo pulsa em CASA". Um agente de pulso Redis cujo modulo perdeu o
+    # `beat()` fica calado para sempre, e nenhum gate ficava vermelho por isso: E②
+    # so olha as chamadas que EXISTEM.
+    #
+    # ⚠️ A excecao do §9.4 vale aqui (o alvo e a FORMA da declaracao: onde a chamada
+    # esta escrita), e o `_beat(` cobre os modulos que definem o proprio ajudante --
+    # `observer_intake.py:171` e `attendance_capture.py:97`.
+    if not _registro_pronto():
+        pular("[7] cobertura C8", "o registro do BLOCO A ainda nao existe")
+    else:
+        fontes_dos_donos = {}
+        for agente_id, dono in DONOS_DO_PULSO.items():
+            if dono and dono not in fontes_dos_donos:
+                caminho = os.path.join(RAIZ, dono.replace("/", os.sep))
+                fontes_dos_donos[dono] = ler(caminho) if os.path.exists(caminho) else ""
+        sem_pulso = _quem_nao_pulsa_em_casa(AGENT_TASKS, fontes_dos_donos)
+        certo(not sem_pulso,
+              "C8 todo agente de pulso Redis tem beat() no modulo dono dele",
+              "%d sem pulso em casa: %s -- um agente que nao pulsa fica calado para "
+              "sempre, e o E2 nao ve o que nao existe"
+              % (len(sem_pulso), ", ".join(sem_pulso)))
+
+        # 🔴 CONTROLE por MUTACAO EM MEMORIA: apago o beat do cartografo do TEXTO lido
+        # (nunca do arquivo) e o gate TEM de acender. Sem isto, o zero acima seria
+        # vacuidade -- um casador quebrado tambem devolve lista vazia.
+        mutado = dict(fontes_dos_donos)
+        alvo = DONOS_DO_PULSO.get("cartografo")
+        mutado[alvo] = (mutado.get(alvo) or "").replace('beat("cartografo"', 'beat("outro_qualquer"')
+        acusados = _quem_nao_pulsa_em_casa(AGENT_TASKS, mutado)
+        certo(any("cartografo" in x for x in acusados),
+              "C8 CONTROLE: apagando o beat do cartografo (em memoria) o gate ACENDE",
+              "veio %r -- se ficasse vazio, o gate nao consegue reprovar" % (acusados,))
 
 
 # ===========================================================================
@@ -977,6 +1244,347 @@ def bloco_9_dois_tenants():
           "CONTROLE: rota sem require_master_admin REPROVA")
 
 
+
+# ===========================================================================
+# [10] EXCLUSIVIDADE DA FONTE -- conserto C1
+# ===========================================================================
+def _fontes_compartilhadas(registro):
+    """As `(tabela, coluna)` que dois agentes reivindicam SEM se separarem de verdade.
+
+    Duas formas de compartilhar, e a segunda foi a que escapou na primeira versao
+    deste gate:
+
+      (a) FILTRO IDENTICO -- os dois leem exatamente a mesma linha;
+      (b) UM SEM FILTRO ao lado de outro -- a fonte sem filtro ENGOLE a do vizinho.
+          📊 `ura_maps` inteira contem `source='observed'`: o cartografo herdaria o
+          mapa do tecelao mesmo com o tecelao ja filtrado. Meio conserto nao conserta.
+
+    Puro: recebe o registro, e por isso a linha de CONTROLE passa fixtures em vez de
+    estragar o registro de verdade.
+    """
+    por_coluna = {}
+    for agente in registro:
+        for f in (agente.fonte_de_producao or ()):
+            if getattr(f, "tipo", None) != "tabela":
+                continue
+            for coluna in (f.colunas or ()):
+                por_coluna.setdefault((f.tabela, coluna), []).append(
+                    (agente.id, json.dumps(f.filtro, sort_keys=True, default=str),
+                     bool(f.filtro)))
+    problemas = []
+    for (tabela, coluna), reivindicacoes in sorted(por_coluna.items(), key=lambda x: str(x[0])):
+        ids = sorted({a for a, _f, _t in reivindicacoes})
+        if len(ids) < 2:
+            continue
+        por_filtro = {}
+        for agente_id, chave, _tem in reivindicacoes:
+            por_filtro.setdefault(chave, set()).add(agente_id)
+        for chave, quem in sorted(por_filtro.items()):
+            if len(quem) > 1:
+                problemas.append(("%s.%s com o MESMO filtro %s" % (tabela, coluna, chave),
+                                  sorted(quem)))
+        sem_filtro = sorted({a for a, _f, tem in reivindicacoes if not tem})
+        if sem_filtro:
+            problemas.append(("%s.%s: %s le a tabela INTEIRA ao lado de %s"
+                              % (tabela, coluna, ", ".join(sem_filtro),
+                                 ", ".join(i for i in ids if i not in sem_filtro)), ids))
+    vistos, unicos = set(), []
+    for rotulo, quem in problemas:
+        if rotulo not in vistos:
+            vistos.add(rotulo)
+            unicos.append((rotulo, quem))
+    return unicos
+
+
+def bloco_10_exclusividade():
+    print("\n[10] EXCLUSIVIDADE -- duas entradas nao podem reivindicar a MESMA producao")
+    if not _registro_pronto():
+        pular("[10] inteiro", "o registro do BLOCO A ainda nao existe (%s)" % _FALTA)
+        return
+
+    # 🔴 O DEFEITO QUE ESTE BLOCO EXISTE PARA PEGAR, medido em 03/09/2026:
+    #     SELECT source, count(*), max(created_at) FROM ura_maps GROUP BY 1
+    #       observed              321   26/08/2026 14:07
+    #       cartographer_stopped    2   14/07/2026
+    #       cartographer            1   14/07/2026
+    # Tecelao e Cartografo declaravam `ura_maps.created_at` SEM filtro. O Cartografo,
+    # parado ha 51 dias, herdava a producao do vizinho e saia verde. ⚠️ Uma fonte
+    # compartilhada nao "aproxima": ela transfere o credito do trabalho de um para o
+    # cartao do outro, que e a classe de mentira desta SPEC inteira.
+    compartilhadas = _fontes_compartilhadas(AGENT_TASKS)
+    certo(not compartilhadas,
+          "C1 nenhuma (tabela, coluna, filtro) e reivindicada por dois agentes",
+          "; ".join("%s -> %s" % (k, ", ".join(v)) for k, v in compartilhadas))
+
+    # E o mesmo para o EIXO: dois cards contando as MESMAS execucoes contam duas vezes.
+    eixos = {}
+    for agente in AGENT_TASKS:
+        for chave in ((agente.eixo or {}).get("workflow_keys") or ()):
+            eixos.setdefault(chave, []).append(agente.id)
+    repetidos = sorted(k for k, v in eixos.items() if len(v) > 1)
+    certo(not repetidos, "C1 nenhum workflow_key e reivindicado por dois agentes",
+          "repetidos: %s" % ", ".join("%s -> %s" % (k, eixos[k]) for k in repetidos))
+
+    # 🔴 CONTROLE: duas fixtures com a MESMA fonte TEM de aparecer. Sem esta linha, um
+    # casador quebrado devolveria [] e o gate viraria carimbo.
+    gemeos = [_agente(id="gemeo_a"), _agente(id="gemeo_b")]
+    achado = _fontes_compartilhadas(gemeos)
+    certo(bool(achado) and achado[0][1] == ["gemeo_a", "gemeo_b"],
+          "C1 CONTROLE: duas fixtures com a mesma fonte APARECEM na saida",
+          "veio %r -- o casador nao consegue ficar vermelho" % (achado,))
+
+    # 🔴 E O CONTROLE AO CONTRARIO: a MESMA tabela com filtros DIFERENTES e legitima
+    # (e o arranjo do vigia e do cerebro sobre `work_events`). Um gate que reprovasse
+    # isso obrigaria a inventar tabela nova -- que e o motor paralelo do §5.
+    def _com_filtro(agent_id, valor):
+        return _agente(id=agent_id,
+                       fonte_de_producao=(Fonte(tipo="tabela", rotulo="x",
+                                                tabela="work_events",
+                                                colunas=("created_at",),
+                                                filtro={"coluna": "event_type",
+                                                        "op": "eq", "valor": valor}),))
+    distintos = _fontes_compartilhadas([_com_filtro("a", "agente.sentinela"),
+                                        _com_filtro("b", "agente.cerebro")])
+    certo(not distintos,
+          "C1 CONTROLE: a mesma tabela com FILTROS diferentes nao e compartilhamento",
+          "veio %r" % (distintos,))
+
+    # 🔴 CONTROLE DO MEIO CONSERTO: um filtrado + um SEM filtro na mesma coluna. Foi
+    # este caso que a primeira versao do gate deixou passar -- e e o pior dos dois,
+    # porque parece consertado.
+    sem = _agente(id="engole", fonte_de_producao=(Fonte(tipo="tabela", rotulo="x",
+                                                        tabela="work_events",
+                                                        colunas=("created_at",),
+                                                        filtro=None),))
+    meio = _fontes_compartilhadas([_com_filtro("a", "agente.sentinela"), sem])
+    certo(bool(meio),
+          "C1 CONTROLE: um SEM filtro ao lado de um filtrado tambem e compartilhamento",
+          "veio %r -- a tabela inteira contem a linha filtrada, e o card do vizinho "
+          "herda a producao dela" % (meio,))
+
+
+# ===========================================================================
+# [11] O MASCARADOR DA ROTA /SESSIONS -- conserto C5
+# ===========================================================================
+# 📊 As 11 formas em que PII chega num transcript de URA, e as 2 que NAO sao PII.
+# O transcript e digitado pelo segurado no teclado do telefone: o formato e o que ele
+# quiser, nao o que a regex do backend esperava.
+PII_QUE_TEM_DE_SUMIR = (
+    "(11) 98765-4321",          # o formato que a URA devolve
+    "11 98765-4321",
+    "11987654321",
+    "+55 11 98765-4321",
+    "044.555.666-77",           # CPF pontuado
+    "04455566677",              # CPF cru
+    "placa ABC1D23",            # Mercosul
+    "ABC-1234",                 # placa antiga
+    "12.345.678/0001-99",       # CNPJ
+    "joao.silva@exemplo.com",
+    "apolice 123456789",
+)
+# 🔴 E O CONTROLE AO CONTRARIO: um mascarador que apaga TUDO tambem passaria no teste
+# acima. Estes dois sao trabalho legitimo do painel e TEM de sobreviver inteiros.
+NAO_E_PII = ("Protocolo 52955490", "ha 3 dias")
+
+
+def _redator_da_rota():
+    """O mascarador que a rota `/sessions` usa, carregado sem subir o pacote `app`.
+
+    ⚠️ `app/services/__init__.py` arrasta o pipeline de ingestao (fastembed). Carregar
+    um modelo de embedding para conferir uma regex de CPF seria caro e frageis; a forma
+    abaixo e a mesma de `test_a_mascara_vem_antes_da_tabela_global.py`.
+    """
+    import importlib.util as _u
+    import types
+
+    nomes = ("app", "app.services", "app.services.intelligence")
+    injetados = [n for n in nomes if n not in sys.modules]
+    for nome in injetados:
+        mod = types.ModuleType(nome)
+        mod.__path__ = [os.path.join(RAIZ, *nome.split("."))]
+        sys.modules[nome] = mod
+    try:
+        caminho = os.path.join(APP, "services", "intelligence", "redaction_service.py")
+        spec = _u.spec_from_file_location("_rs_088", caminho)
+        mod = _u.module_from_spec(spec)
+        sys.modules["_rs_088"] = mod
+        spec.loader.exec_module(mod)
+        return mod.redigir
+    finally:
+        for nome in injetados:
+            sys.modules.pop(nome, None)
+
+
+def _quem_passa_em_claro(redator, entradas):
+    return [e for e in entradas if redator(e) == e]
+
+
+def bloco_11_mascarador():
+    print("\n[11] /SESSIONS -- o mascarador e o CANONICO, e ele pega os 11 formatos")
+    rota_bruta = ler(os.path.join(APP, "api", "admin_spec034.py"))
+    # SEM COMENTARIO: o arquivo GUARDA a memoria do defeito nos comentarios (e deve),
+    # entao o gate mede CODIGO. Um gate que reprovasse a lembranca do erro ensinaria
+    # a apagar a lembranca.
+    rota = sem_comentario_py(rota_bruta)
+
+    # (a) a FORMA: a rota importa o mascarador da casa e nao define um proprio.
+    # ⚠️ Excecao legitima do §9.4 -- o alvo aqui e onde a declaracao esta escrita.
+    certo("redaction_service import redigir" in rota,
+          "C5 a rota importa `redigir` de redaction_service (o unico da casa)",
+          "⛔ um segundo mascarador ao lado do canonico e o §5 do CLAUDE.md")
+    certo("_DIGITOS" not in rota and "_CPF_FORMATADO" not in rota,
+          "C5 os padroes locais `_DIGITOS`/`_CPF_FORMATADO` sairam do arquivo",
+          "📊 eles pegavam 3 de 11 formatos, com um comentario afirmando o contrario")
+    certo("_redigir(str(t.get(\"text\")" in rota,
+          "C5 o transcript da timeline passa pelo mascarador antes de sair",
+          "e a linha que leva o texto da URA para um payload de admin")
+    certo("_mascarar_telefone" in rota,
+          "C5 e o mascarador do telefone da SEGURADORA continua la (4 ultimos digitos)")
+    # 🔴 E o nome nao pode ser REAMARRADO depois do import: `_redigir = lambda ...`
+    # logo abaixo devolveria o mascarador paralelo com a mesma cara de conserto.
+    certo(not re.search(r"^\s*_redigir\s*=", rota, re.M),
+          "C5 `_redigir` nao e reatribuido no arquivo (so o import manda)",
+          "achei uma atribuicao a `_redigir` -- importar o canonico e sobrescrever "
+          "e o mesmo defeito com uma linha a mais")
+
+    # (b) O MOTOR sobre TEXTO REAL (§9.4): rode o mascarador, nao leia a regex.
+    try:
+        redigir = _redator_da_rota()
+    except Exception as e:  # noqa: BLE001
+        pular("[11] o motor", "nao consegui carregar redaction_service: %s: %s"
+              % (type(e).__name__, e))
+        return
+    passaram = _quem_passa_em_claro(redigir, PII_QUE_TEM_DE_SUMIR)
+    certo(not passaram,
+          "C5 os %d formatos de PII somem do transcript" % len(PII_QUE_TEM_DE_SUMIR),
+          "%d passaram EM CLARO: %s" % (len(passaram), " | ".join(passaram)))
+    for legitimo in NAO_E_PII:
+        certo(redigir(legitimo) == legitimo,
+              "C5 CONTROLE: %r sobrevive inteiro" % legitimo,
+              "veio %r -- um mascarador que apaga tudo esconde o trabalho junto com "
+              "o dado, e o painel deixa de servir" % redigir(legitimo))
+
+    # (c) 🔴 CONTROLE DA BATERIA: o mascarador ANTIGO tem de REPROVAR nela. Sem isto,
+    # "ninguem passou" poderia ser uma bateria que nao pega nada.
+    _digitos, _cpf = re.compile(r"\d{10,14}"), re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
+    antigo = lambda t: _digitos.sub("[r]", _cpf.sub("[r]", t))  # noqa: E731
+    furos = _quem_passa_em_claro(antigo, PII_QUE_TEM_DE_SUMIR)
+    certo(len(furos) >= 7,
+          "C5 CONTROLE: o mascarador ANTIGO deixa passar %d dos %d formatos"
+          % (len(furos), len(PII_QUE_TEM_DE_SUMIR)),
+          "veio %r -- se a bateria nao reprovasse o defeito, ela nao seria bateria"
+          % (furos,))
+
+
+# ===========================================================================
+# [12] FORMA -- gate E① (pulso depois do cutover) e gate C④ (o filtro casa o banco)
+# ===========================================================================
+def _beats_antes_do_cutover(fonte):
+    """`await beat(` escrito ANTES do `if cutover_ligado():` do mesmo arquivo.
+
+    🔴 E ESTE E O DEFEITO, e ele tem numero: ate o BLOCO E, `proactive_suggestions`
+    pulsava na ENTRADA da task -- a cada 30 min, em qualquer dia, sem enviar nada. 📊 O
+    card ficava verde 336 vezes por semana para um agente que trabalha uma.
+
+    ⚠️ O gate mede a ORDEM, nao a existencia: com o `if cutover_ligado(): return ...`
+    ANTES, o pulso e inalcancavel no fluxo desligado -- que e o comportamento correto
+    (`proactive_suggestions.py:223` corta, `:243` pulsa). Um pulso ACIMA da guarda
+    voltaria a pintar verde um agente que o cutover desligou.
+    """
+    linhas = fonte.split("\n")
+    corte = None
+    for i, linha in enumerate(linhas):
+        if linha.lstrip().startswith("#"):
+            continue
+        if re.search(r"if\s+(?:not\s+)?cutover_ligado\(\)", linha):
+            corte = i
+            break
+    if corte is None:
+        return []
+    fora = []
+    for i, linha in enumerate(linhas[:corte]):
+        if linha.lstrip().startswith("#"):
+            continue
+        if re.search(r"await\s+(?:\w+\.)?_?beat\(", linha):
+            fora.append(i + 1)
+    return fora
+
+
+def _beats_dentro_do_cutover(fonte):
+    """`await beat(` DENTRO do bloco `if cutover_ligado():` -- pulso no ramo desligado."""
+    linhas = fonte.split("\n")
+    fora = []
+    for i, linha in enumerate(linhas):
+        m = re.search(r"if\s+(?:not\s+)?cutover_ligado\(\)", linha)
+        if not m or linha.lstrip().startswith("#"):
+            continue
+        ind = len(linha) - len(linha.lstrip())
+        for j in range(i + 1, len(linhas)):
+            seguinte = linhas[j]
+            if not seguinte.strip() or seguinte.lstrip().startswith("#"):
+                continue
+            if (len(seguinte) - len(seguinte.lstrip())) <= ind:
+                break
+            if re.search(r"await\s+(?:\w+\.)?_?beat\(", seguinte):
+                fora.append(j + 1)
+    return fora
+
+
+def bloco_12_forma():
+    print("\n[12] FORMA -- o pulso vem DEPOIS do cutover, e o filtro do registro casa o banco")
+    arquivos = []
+    for caminho in arquivos_py(APP):
+        fonte = ler(caminho)
+        if "cutover_ligado" in fonte and "def cutover_ligado" not in fonte:
+            arquivos.append((rel(caminho), fonte))
+    certo(len(arquivos) >= 4,
+          "E1 achei %d arquivo(s) que consultam cutover_ligado()" % len(arquivos),
+          "📊 4 em 03/09/2026: broker_insights, proactive_suggestions, "
+          "regression_sentinel, weekly_report")
+    for caminho, fonte in arquivos:
+        antes = _beats_antes_do_cutover(fonte)
+        certo(not antes, "E1 %s: nenhum beat( ACIMA da guarda de cutover" % caminho,
+              "linhas %s -- um pulso antes da guarda pinta verde um agente que o "
+              "cutover desligou" % antes)
+        dentro = _beats_dentro_do_cutover(fonte)
+        certo(not dentro, "E1 %s: nenhum beat( DENTRO do ramo desligado" % caminho,
+              "linhas %s" % dentro)
+
+    # 🔴 CONTROLE sobre TEXTO SINTETICO, nunca sobre o codigo vivo (§9.3: exigir o
+    # defeito de volta no arquivo real seria guardar verdade vencida).
+    ruim = ('async def t():\n    await beat("sugestoes", 0)\n'
+            '    if cutover_ligado():\n        return 0\n    return 1\n')
+    certo(_beats_antes_do_cutover(ruim) == [2],
+          "E1 CONTROLE: o casador ACHA um beat escrito acima da guarda",
+          "veio %r" % (_beats_antes_do_cutover(ruim),))
+    pior = ('async def t():\n    if cutover_ligado():\n        await beat("sugestoes", 0)\n'
+            '        return 0\n    return 1\n')
+    certo(_beats_dentro_do_cutover(pior) == [3],
+          "E1 CONTROLE: o casador ACHA um beat DENTRO do ramo desligado",
+          "veio %r" % (_beats_dentro_do_cutover(pior),))
+    bom = ('async def t():\n    if cutover_ligado():\n        return 0\n'
+           '    await beat("sugestoes", 1)\n    return 1\n')
+    certo(not _beats_antes_do_cutover(bom) and not _beats_dentro_do_cutover(bom),
+          "E1 CONTROLE: a forma CORRETA passa (guarda em cima, pulso embaixo)",
+          "um gate que reprova tudo e um carimbo ao contrario")
+
+    # ---- C④: o filtro que o registro declara casa a linha que o banco tem -------
+    if filtro_de_fonte is None or linha_casa_filtro is None:
+        pular("[12] C4", "filtro_de_fonte/linha_casa_filtro ainda nao existem")
+        return
+    f = filtro_de_fonte("garimpo", "broker_insights")
+    certo(f is not None,
+          "C4 o registro declara um filtro para garimpo x broker_insights",
+          "sem ele o console /admin/insights volta a ter a string no codigo")
+    certo(linha_casa_filtro({"source": "garimpo_v3"}, f) is True,
+          "C4 o filtro do registro CASA a linha que o banco tem (`garimpo_v3`)",
+          "📊 o banco so tem `garimpo_v3`; a string escrita no console era `garimpo`, "
+          "e o ranking voltava vazio com 270 linhas la dentro")
+    certo(linha_casa_filtro({"source": "outra"}, f) is False,
+          "C4 CONTROLE: uma fonte alheia NAO casa",
+          "um filtro que aceita tudo mistura as duas fontes no mesmo ranking")
+
+
 # ---------------------------------------------------------------------------
 def main() -> int:
     print("=" * 74)
@@ -986,11 +1594,15 @@ def main() -> int:
     bloco_2_cobertura()
     bloco_3_frontend_sem_lista()
     bloco_4_estados()
+    bloco_4b_desligado_por_chave()
     bloco_5_motivo_sem_pii()
     bloco_6_contrato()
     bloco_7_pulsos()
     bloco_8_CONTROLE()
     bloco_9_dois_tenants()
+    bloco_10_exclusividade()
+    bloco_11_mascarador()
+    bloco_12_forma()
     print("\n" + "=" * 74)
     print("  %d ok, %d falhas, %d xfail (esperados ate o BLOCO E), %d pulados"
           % (OK, FAIL, XFAIL, len(PULADOS)))
