@@ -154,12 +154,11 @@ async def check_regression() -> int:
                                    f"({f['samples']} conversas 24h)")
             except Exception:  # noqa: BLE001
                 pass
-        try:
-            from app.core.heartbeat import beat
-
-            await beat("auditor", len(findings))
-        except Exception:  # noqa: BLE001
-            pass
+        # 🔴 SPEC-088 BLOCO E: aqui havia `beat("auditor", len(findings))`. Era pulso
+        # CRUZADO (a casa do Auditor é `conversation_auditor.py`, que pulsa em :180) e
+        # MORTO (o `return regressao_delegada()` do `cutover_ligado()` acima nunca deixa
+        # chegar aqui desde o cutover). Um card verde pintado por um módulo que não é o
+        # dono é exatamente a mentira que a SPEC-088 §1.5 fecha.
         if findings:
             logger.warning(f"[REGRESSAO] {len(findings)} corretora(s) com queda de qualidade")
         return len(findings)

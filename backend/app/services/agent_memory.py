@@ -206,12 +206,11 @@ async def rebuild_agent_memories() -> int:
             written += 1
     except Exception:  # noqa: BLE001
         pass
-    try:
-        from app.core.heartbeat import beat
-
-        await beat("espelho", 0)  # a reescrita é silenciosa; pulso é dos donos dos dados
-    except Exception:  # noqa: BLE001
-        pass
+    # 🔴 SPEC-088 BLOCO E: aqui havia `beat("espelho", 0)`. A própria linha admitia que
+    # "o pulso é dos donos dos dados" — e batia mesmo assim. Reescrever a memória dos
+    # agentes NÃO é o Espelho ter espelhado uma conversa: o pulso do Espelho é o de
+    # `dispatch_mirror.py:90`, depois do INSERT em `messages`. Este módulo não tem card
+    # na Central e não pulsa por ninguém (SPEC-088 §1.5).
     logger.info(f"[MEMORIA AGENTES] {written} bloco(s) reescritos")
     return written
 

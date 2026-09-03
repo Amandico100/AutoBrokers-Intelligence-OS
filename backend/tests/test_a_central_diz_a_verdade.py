@@ -824,14 +824,17 @@ def _chamadas_de_beat():
     sobre texto real. Exigir `await ` antes exclui as mencões em docstring
     (📊 `dispatch_router.py:884` e `:2466` citam `beat("cerebro")` em prosa).
     """
-    padrao = re.compile(r"await\s+(?:\w+\.)?beat\(\s*[\"'](\w+)[\"']")
     for caminho in arquivos_py(APP):
         for n, linha in enumerate(ler(caminho).split("\n"), 1):
             if linha.lstrip().startswith("#"):
                 continue
-            m = padrao.search(linha)
+            m = PADRAO_BEAT.search(linha)
             if m:
                 yield rel(caminho), n, m.group(1)
+
+
+# o casador de `await beat("x")`, exposto para a LINHA DE CONTROLE sobre texto sintético
+PADRAO_BEAT = re.compile(r"await\s+(?:\w+\.)?beat\(\s*[\"'](\w+)[\"']")
 
 
 def _beats_em_finally():
@@ -863,9 +866,12 @@ def _beats_em_finally():
 def bloco_7_pulsos():
     print("\n[7] OS PULSOS -- cada agente da o proprio pulso, e nunca dentro de finally")
     chamadas = list(_chamadas_de_beat())
-    certo(len(chamadas) >= 20,
+    # 📊 depois do BLOCO E (03/09/2026): 14 chamadas com id literal + 5 via helper
+    # `_beat()` = 19 em 13 arquivos (`grep -rn "await beat(\|await _beat(" backend/app`).
+    # Antes: 27 em 18. O casador so ve as literais; o piso e 12 para pegar remocao em massa.
+    certo(len(chamadas) >= 12,
           "achei %d chamadas `await beat(\"id\")` em backend/app" % len(chamadas),
-          "📊 27 chamadas em 18 arquivos, medidas em 03/09/2026 (SPEC-088 §1.5)")
+          "📊 14 literais + 5 via _beat = 19 em 13 arquivos, medidas em 03/09/2026 depois do BLOCO E")
 
     desconhecidos = sorted({a for _c, _n, a in chamadas if a not in DONOS_DO_PULSO})
     certo(not desconhecidos,
@@ -882,25 +888,26 @@ def bloco_7_pulsos():
         elif dono and c != dono:
             cruzados.append("%s:%d pulsa %s (a casa dele e %s)" % (c, n, agente, dono))
 
-    # 🔴 xfail ESTRITO: hoje REPROVA. Verde -> XPASS -> falha, com a instrucao de remover.
-    certo_xfail(not cruzados,
-                "E2 nenhum beat(\"x\") fora do modulo dono de x",
-                xfail_ate="BLOCO E",
-                detalhe="%d cruzamento(s):\n        %s"
-                        % (len(cruzados), "\n        ".join(cruzados)))
+    # BLOCO E rodou em 03/09/2026: era xfail estrito, virou gate.
+    certo(not cruzados,
+          "E2 nenhum beat(\"x\") fora do modulo dono de x",
+          "%d cruzamento(s):\n        %s" % (len(cruzados), "\n        ".join(cruzados)))
 
     em_finally = _beats_em_finally()
-    certo_xfail(not em_finally,
-                "E3 nenhum beat( dentro de finally: -- caminho de excecao nao pinta card",
-                xfail_ate="BLOCO E",
-                detalhe="%d: %s  (referencia (1): o Prometheus grava sucesso NO ramo de "
-                        "sucesso, nunca no finally)" % (len(em_finally), ", ".join(em_finally)))
+    certo(not em_finally,
+          "E3 nenhum beat( dentro de finally: -- caminho de excecao nao pinta card",
+          "%d: %s  (referencia (1): o Prometheus grava sucesso NO ramo de "
+          "sucesso, nunca no finally)" % (len(em_finally), ", ".join(em_finally)))
 
-    # 🔴 CONTROLE (E④): o casador ACHA o cruzamento historico e o pulso legitimo.
-    certo(any("conversation_auditor.py" in c and a == "alfaiate" for c, _n, a in chamadas),
-          "CONTROLE: o casador acha `beat(\"alfaiate\")` em conversation_auditor.py hoje",
-          "sem isto, o zero do gate E2 seria vacuidade -- e a mutacao do BLOCO E "
-          "(reintroduzir esta linha) nao teria como ficar vermelha")
+    # 🔴 CONTROLE (E④) sobre TEXTO SINTÉTICO, nunca sobre o código vivo: até 03/09 este
+    # controle exigia que `beat("alfaiate")` existisse em conversation_auditor.py — ou
+    # seja, exigia o DEFEITO de volta (CLAUDE.md §9.3). O casador é provado aqui:
+    m = PADRAO_BEAT.search('    await beat("alfaiate")  # reintroduzido')
+    certo(bool(m) and m.group(1) == "alfaiate",
+          "CONTROLE: o casador acha um `await beat(\"alfaiate\")` fabricado",
+          "sem isto, o zero do gate E2 seria vacuidade")
+    certo(PADRAO_BEAT.search('    beat("alfaiate")  # sem await: docstring/prosa') is None,
+          "CONTROLE: o casador NAO acha `beat(\"x\")` sem `await` (as mencoes em prosa ficam de fora)")
     certo(any("dispatch_watchdog.py" in c and a == "vigia_sentinela" for c, _n, a in chamadas),
           "CONTROLE E4: o pulso legitimo de dispatch_watchdog.py continua la")
     certo(any("broker_insights.py" in c for c, _n, _a in chamadas)
@@ -941,6 +948,35 @@ def bloco_8_CONTROLE():
           "CONTROLE: a sonda REPROVA uma tabela inexistente (404 / PGRST205)")
 
 
+def _rota_exige_master_admin(texto_rota, nome_rota):
+    """A rota `nome_rota` tem `Depends(require_master_admin)` na assinatura da função
+    imediatamente abaixo do decorador. Puro: recebe o TEXTO, para a linha de controle."""
+    m = re.search(r'@router\.get\("/%s"\)\s*\n\s*async def \w+\(([^)]*)\)' % re.escape(nome_rota), texto_rota)
+    return bool(m) and "require_master_admin" in m.group(1)
+
+
+def bloco_9_dois_tenants():
+    """Gate C⑤ da SPEC-088: a barreira de corretora fica em DOIS lugares e os dois
+    são conferidos -- a dependência no backend e o proxy Next (401 sem sessão, 403
+    sessão de corretora). Um só não é prova."""
+    print("\n[9] DOIS TENANTS -- a barreira esta onde a SPEC diz que esta")
+    rota = ler(os.path.join(APP, "api", "admin_spec034.py"))
+    certo(_rota_exige_master_admin(rota, "agents-status"),
+          "/agents-status exige require_master_admin na assinatura")
+    certo(_rota_exige_master_admin(rota, "sessions"),
+          "/sessions exige require_master_admin na assinatura")
+    proxy = os.path.join(REPO, "lib", "admin-proxy.ts")
+    certo(os.path.exists(proxy), "lib/admin-proxy.ts existe")
+    if os.path.exists(proxy):
+        p = ler(proxy)
+        certo("status: 401" in p and "status: 403" in p,
+              "o proxy Next devolve 401 (sem sessao) e 403 (sessao de corretora)")
+    # 🔴 CONTROLE: uma rota falsa sem a dependência TEM de reprovar
+    falsa = '@router.get("/agents-status")\nasync def agents_status() -> dict:\n    return {}\n'
+    certo(not _rota_exige_master_admin(falsa, "agents-status"),
+          "CONTROLE: rota sem require_master_admin REPROVA")
+
+
 # ---------------------------------------------------------------------------
 def main() -> int:
     print("=" * 74)
@@ -954,6 +990,7 @@ def main() -> int:
     bloco_6_contrato()
     bloco_7_pulsos()
     bloco_8_CONTROLE()
+    bloco_9_dois_tenants()
     print("\n" + "=" * 74)
     print("  %d ok, %d falhas, %d xfail (esperados ate o BLOCO E), %d pulados"
           % (OK, FAIL, XFAIL, len(PULADOS)))

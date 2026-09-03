@@ -198,20 +198,13 @@ async def ingest_history_sync(integration: dict, body: dict) -> Dict[str, Any]:
                 events_table="attendance_transcripts", sessions_table="attendance_sessions",
                 integration_id=str(integration.get("id") or ""),
                 ja_ao_vivo=vivos_espelho)
-        try:
-            from app.core.heartbeat import beat
 
-            await beat("espelho_atendimento", client_stored)
-        except Exception:  # noqa: BLE001
-            pass
-
-    # pulso do Observador (histórico também é observação)
-    try:
-        from app.core.heartbeat import beat
-
-        await beat("observador", stored)
-    except Exception:  # noqa: BLE001
-        pass
+    # 🔴 SPEC-088 BLOCO E: aqui havia DOIS pulsos cruzados — `beat("espelho_atendimento",
+    # client_stored)` e `beat("observador", stored)`. Nenhum dos dois é deste módulo: o
+    # Espelho de Atendimento pulsa em `atlas/attendance_capture.py` e o Observador em
+    # `atlas/observer_intake.py`, cada um depois do trabalho que ele mesmo faz. A ingestão
+    # de histórico é um backfill sob demanda, não a cadência de nenhum dos dois — e um
+    # backfill pintava os dois cards de verde por até 24h (§1.5).
     logger.info(
         f"[ATLAS HISTORY] {len(convs)} conversas, {len(insurer_convs)} de seguradora "
         f"({stored} eventos), {len(client_convs)} de segurado ({client_stored} eventos)")

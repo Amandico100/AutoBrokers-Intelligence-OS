@@ -193,12 +193,12 @@ async def optimize_playbook(ramo: str, servico: str,
     if not pid:
         return {"ok": False, "reason": "draft_nao_salvo"}
 
-    try:
-        from app.core.heartbeat import beat
-
-        await beat("alfaiate", 1)
-    except Exception:  # noqa: BLE001
-        pass
+    # 🔴 SPEC-088 BLOCO E: aqui havia `beat("alfaiate", 1)`. Este módulo é o Lapidador —
+    # ele grava um DRAFT de playbook (`_save_playbook_draft_sync` acima), não um overlay.
+    # Acender o card do Alfaiate por um draft do Lapidador é dizer que a URA foi ajustada
+    # quando nada foi ajustado. O pulso do Alfaiate mora em
+    # `playbook_tailor.apply_auto_overlays` (SPEC-088 §1.5).
+    # ⚠️ O Lapidador não tem card próprio no registro — pendência anotada no BLOCO E.
     try:
         from app.services.activity_log import log_activity
 

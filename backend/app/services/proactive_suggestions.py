@@ -226,12 +226,21 @@ async def check_suggestions() -> int:
         pass
 
     now = datetime.now(timezone.utc)
+    if now.weekday() != 0 or not (12 <= now.hour < 21):
+        return 0
+    sent = await run_weekly_suggestions()
+    # 🔴 SPEC-088 BLOCO E: o pulso nasce DEPOIS do trabalho, no ramo de sucesso, e com a
+    # contagem. Antes ele era dado logo na entrada da task — a cada 30 min, em qualquer
+    # dia da semana, sem enviar nada — e o card da Central ficava verde 336 vezes por
+    # semana para um agente que trabalha uma. Ver a referência ① do §7.3 (Prometheus:
+    # `last_success` só no ramo de sucesso). ⚠️ Com `INTELLIGENCE_CUTOVER` ligado (padrão)
+    # o `return sugestoes_desativadas()` acima corta antes daqui, e não há pulso nenhum —
+    # que é o correto: sem fluxo ativo desde o cutover, o card sai ⚫ NÃO MEDIDO
+    # (`cadencia_esperada_s=None` no registro), nunca 🟢.
     try:
         from app.core.heartbeat import beat
 
-        await beat("sugestoes")
+        await beat("sugestoes", sent)
     except Exception:  # noqa: BLE001
         pass
-    if now.weekday() != 0 or not (12 <= now.hour < 21):
-        return 0
-    return await run_weekly_suggestions()
+    return sent

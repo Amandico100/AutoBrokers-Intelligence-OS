@@ -1336,14 +1336,15 @@ async def distill_once(force: bool = False, *, atrasado: bool = False) -> Dict[s
     except Exception as e:  # noqa: BLE001 — publicar nunca derruba a destilação
         logger.error("[DESTILADOR] curadoria/publicação falhou: %s", type(e).__name__)
 
-    # Pulso na Central de Agentes: é o que mostra o Destilador VIVO. Sem ele, a
-    # tela diz "sem sinal" e ninguém distingue "parado" de "sem trabalho".
-    try:
-        from app.core.heartbeat import beat
-
-        await beat("espelho_atendimento", stats["sessions"])
-    except Exception:  # noqa: BLE001
-        pass
+    # 🔴 SPEC-088 BLOCO E: aqui havia `beat("espelho_atendimento", stats["sessions"])`.
+    # O comentário antigo dizia, com todas as letras, que o pulso era para "mostrar o
+    # Destilador VIVO" — só que o card que ele acendia era o do **Espelho de Atendimento**,
+    # outro trabalhador, cuja casa é `atlas/attendance_capture.py`. Uma rodada do
+    # Destilador pintava de verde um Espelho que podia estar parado há dias (§1.5).
+    # ⚠️ O Destilador NÃO TEM card próprio no registro (`heartbeat.py AGENT_TASKS`) — fica
+    # sem pulso de propósito, e isso está anotado como pendência do BLOCO E. Inventar um
+    # `beat("destilador")` aqui criaria um id que a Central não conhece, e o gate do
+    # bloco [7] ("todo id pulsado está no registro") reprovaria — corretamente.
 
     logger.info("[DESTILADOR] rodada: %s", stats)
     return stats

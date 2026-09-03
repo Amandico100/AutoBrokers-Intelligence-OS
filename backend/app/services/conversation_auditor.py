@@ -178,7 +178,10 @@ async def check_auditor() -> int:
         from app.core.heartbeat import beat
 
         await beat("auditor", audited)
-        await beat("alfaiate")
+        # 🔴 SPEC-088 BLOCO E: aqui havia um `beat("alfaiate")` — sem contagem, sem
+        # trabalho e sem ser a casa dele. Uma varredura do Auditor acendia o card do
+        # Alfaiate, que não tinha rodado nada. O pulso do Alfaiate nasce em
+        # `playbook_tailor.apply_auto_overlays`, depois do INSERT em `playbook_overlays`.
     except Exception:  # noqa: BLE001
         pass
     return audited

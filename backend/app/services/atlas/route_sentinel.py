@@ -438,12 +438,12 @@ async def _alfaiate_with_gate(playbook_ref: str, old_map: Dict[str, Any],
         logger.info("[ALFAIATE v2] %s passou no gate mas NÃO aplica: o mapa é de "
                     "ramo mesclado e a tela pode ser de outro corredor", playbook_ref)
     applied = applied_count > 0
-    try:
-        from app.core.heartbeat import beat
-
-        await beat("alfaiate", 1 if applied else 0)
-    except Exception:  # noqa: BLE001
-        pass
+    # 🔴 SPEC-088 BLOCO E: aqui havia `beat("alfaiate", 1 if applied else 0)`. Pulso
+    # CRUZADO: este módulo é a Sentinela de Rotas (que pulsa em :316 e :671, por ela
+    # mesma). Pior, ele pulsava o Alfaiate de VERDE com `applied=False` — inclusive
+    # quando o gate do Simulador REPROVOU e nada foi escrito. O pulso do Alfaiate agora
+    # sai de `playbook_tailor.apply_auto_overlays`, chamado na linha acima, depois do
+    # INSERT em `playbook_overlays` (SPEC-088 §1.5).
     return {"passed": passed, "applied": applied, "report": result.get("report")}
 
 

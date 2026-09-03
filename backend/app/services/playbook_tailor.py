@@ -190,6 +190,24 @@ async def apply_auto_overlays(playbook_ref: str, classes: Dict[str, List[Dict[st
                 }).execute()
             )
             applied += 1
+        # 🔴 SPEC-088 BLOCO E: O PULSO DO ALFAIATE MORA AQUI, e só aqui.
+        # Ele estava em TRÊS módulos que não são a casa dele — `atlas/route_sentinel.py`,
+        # `conversation_auditor.py` e `prompt_optimizer.py` — e nenhum dos três grava
+        # overlay nenhum. Este é o único ponto do código em que o Alfaiate termina o
+        # trabalho DELE: o laço de INSERT em `playbook_overlays` fechou sem exceção.
+        #
+        # ⚠️ DENTRO do `try`, nunca depois do `except` e nunca num `finally`: o caminho de
+        # exceção não pinta card (referência ① do §7.3 — o Prometheus escreve
+        # `last_success` só no ramo de sucesso).
+        # ⚠️ E não há pulso no `return 0` do `auto_apply_ligado()` desligado (o padrão):
+        # com o gatilho do Founder fechado o Alfaiate não trabalha, e um card verde ali
+        # seria a mentira que esta SPEC fecha. `actions` = overlays REALMENTE gravados.
+        try:
+            from app.core.heartbeat import beat
+
+            await beat("alfaiate", applied)
+        except Exception:  # noqa: BLE001
+            pass
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[ALFAIATE] apply_auto_overlays falhou: {type(e).__name__}")
     return applied

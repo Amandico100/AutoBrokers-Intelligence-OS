@@ -334,12 +334,9 @@ async def check_garimpo() -> int:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[GARIMPO] check falhou: {type(e).__name__}")
         return 0
-    finally:
-        try:
-            from app.core.heartbeat import beat
-
-            # SPEC-050: pulso COM contagem — antes batia sem número e a Central
-            # mostrava o Garimpo com "0 ações" mesmo minerando.
-            await beat("garimpo", mined)
-        except Exception:  # noqa: BLE001
-            pass
+    # 🔴 SPEC-088 BLOCO E: aqui havia `beat("garimpo", mined)` dentro de um bloco `finally`.
+    # Ele era um pulso MORTO e MENTIROSO ao mesmo tempo: morto porque o `return 0` do
+    # `cutover_ligado()` acima nunca deixa a função chegar até aqui desde o cutover, e
+    # mentiroso porque `finally` pinta o card mesmo no caminho de exceção. O Garimpo tem
+    # `eixo.pulso == "work_runs"` no registro (`heartbeat.py`): o "rodou" dele sai de
+    # `work_runs` do workflow_key `intelligence.garimpo`, não de Redis.
