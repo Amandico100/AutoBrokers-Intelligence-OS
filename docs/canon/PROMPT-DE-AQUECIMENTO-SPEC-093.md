@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # SPEC-093 — para o chat que já executou a 085 e a 092
 
 > **Cole isto no MESMO chat que executou as SPECs 085 e 092.** Ele já conhece o

@@ -541,3 +541,62 @@ por um de PERDA DE DADO:**
    o `CLAUDE.md` §9.1 existe para impor não roda. **Afinar bateria antes de
    fechar esse buraco é afinar o lado errado.**
 ```
+
+---
+
+# 📊 O DIÁRIO DA v10 → v11 — 03/09/2026
+
+> ⚠️ HISTÓRICO, não regra. O que saiu do protocolo e por quê, medido.
+
+## O que a auditoria de entrada mediu (Fable 5.1, 02–03/09/2026)
+
+```
+📊 composição da v10   965 linhas · 40,6 KB · núcleo §0–§5 = 16,2 KB
+   320 linhas dentro de cerca (regra) · 221 de prosa · 41 de prosa contando história
+   comando: awk sobre cercas/tabelas/prosa + grep -cE '📊|mediu|custou|nasceu'
+📊 conferibilidade    o guarda tinha 20 asserções, TODAS sobre o texto do protocolo.
+   0 de 9 relatórios com EXECUTION CARD · 0 com FAIXA DE RELÓGIO · 0 com auditoria externa
+   (card e faixa entraram em 02/09, DEPOIS de todas as execuções — não é desobediência)
+📊 pesquisa           133 URLs distintas em 10 research-packs (12.116 linhas) ·
+   ZERO em qualquer SPEC convertida · ZERO em qualquer relatório
+   comando: comm -12 entre os conjuntos de URL de cada par RP × SPEC
+📊 o relógio real     nenhuma SPEC teve janela perto de 24h.
+   085 = 10,6h (9h25 antes do primeiro código) · 086+087+089+090 = 11,9h as quatro,
+   intercaladas na noite de 26/08 · 092 = 6,3h (6min45 antes do primeiro código) ·
+   093 execução = 0,6h · 088/091 (02/09) = 4,1h e 4,5h SÓ de reescrita de documento
+   comando: git log --all --format='%h|%ad|%s' --date=iso, filtrado por SPEC no subject
+📊 a bateria          709 rodadas de pytest em 26/08 (18 inteiras) para quatro SPECs;
+   suíte inteira = 13–16 min. Fonte: backend/.diario-da-bateria.jsonl (780 linhas)
+📊 os 12 defeitos     de 02/09: 11 eram "afirmei por leitura o que um comando decide"
+```
+
+## As conclusões que mudaram o documento
+
+1. **O protocolo não estava lento; foi violado na direção que ele proíbe.** As três
+   rodadas de três juízes sobre as SPECs 088 e 091 em 02/09 eram painel sobre
+   documento, que a §5.1 veda desde a v9. Não se acrescentou regra: encurtou-se o
+   texto para que a regra existente fosse lida.
+2. **A conferibilidade estava no objeto errado.** O guarda passa a olhar relatórios,
+   SPECs e pacotes (blocos 7–9 do `test_o_protocolo_tem_policia.py`).
+3. **A pesquisa não tinha porta de entrada.** Nasce a §7.3 e o papel PESQUISADOR.
+4. **Onze de doze defeitos tinham o mesmo mecanismo.** Nasce a §0.4, A REGRA DO COMANDO.
+5. **A grade 3×3 com nove rituais nunca foi executada (0 de 6).** Vira três níveis
+   (LEVE · PADRÃO · CRÍTICO) derivados das mesmas duas contas.
+6. **A bateria é o maior sumidouro.** A §10 passa a dizer QUANDO a suíte inteira roda.
+7. **A política de modelo virou regra** por decisão do Founder em 02/09: Fable
+   orquestra, Opus executa e julga.
+8. **Nasce o MODO LOTE LOCAL** (§8), por pedido do Founder: trabalho de volume que
+   custaria API roda num chat dedicado do Claude Code, com o código do produto.
+
+## O que saiu do texto normativo e mora aqui
+
+- §0.1 antiga inteira (a história "2 de 6 rodaram o painel", 47 × 19 achados, 4% × 50%).
+- A narrativa da §1 (865 KB, +31% em quatro dias, PENDENCIAS = 54%).
+- A história da §3.4 (SPEC-085 e o `dispatch_router.py`).
+- As histórias da §5.1 (1.008 vs 610 linhas), §5.2 (4h13 da 083, cinco erros na 085),
+  §5.3 (+11 e +25 do juiz retomado), §6.1 (093 e 089), §7.2 (2min22 do eletricista).
+- As três medições da suíte na §10 (19m01 · 16m26 · 14m46) e a conta dos 95 min da 085.
+- A §11 longa de telemetria: ficou em cinco linhas que o guarda confere.
+- A §13 de "consenso de fora × calibração deste projeto".
+
+Todas as regras que essas histórias produziram continuam no protocolo, sem a história.

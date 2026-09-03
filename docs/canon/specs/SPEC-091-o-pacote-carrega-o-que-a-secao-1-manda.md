@@ -1,5 +1,10 @@
 # SPEC-091 · O PACOTE CARREGA O QUE A §1 MANDA — e alguém confere
 
+> ✅ **ABSORVIDA pela v11 do protocolo em 03/09/2026.** O bloco único desta SPEC
+> virou o bloco `[9]` de `backend/tests/test_o_protocolo_tem_policia.py`, que
+> confere os pacotes vivos em `docs/canon/pacotes/` e marca os anteriores como
+> históricos. ⛔ **Não executar.** O texto abaixo fica como registro da medição.
+
 > **O que ela entrega:** nenhum pacote de execução chega ao executor sem o
 > protocolo dentro — e existe um teste que fica **vermelho** quando isso acontece.
 > 📊 Hoje, **4 de 10** pacotes escritos à mão não o carregam.

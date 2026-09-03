@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # PROMPT DE AQUECIMENTO — antes da SPEC-085
 
 > **Cole isto inteiro num chat NOVO.** Não é a execução. É o que vem antes dela.

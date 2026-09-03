@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # PROMPT DO CHAT CONVERSOR — proposta vira SPEC executável
 
 > **Cole isto num chat NOVO, aberto em `AutoBrokers-FIX`.**

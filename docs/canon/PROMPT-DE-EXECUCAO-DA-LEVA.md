@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # PROMPT DE EXECUÇÃO — a leva, uma SPEC de cada vez
 
 > **Cole no MESMO chat que respondeu o aquecimento**, depois de eu corrigir as

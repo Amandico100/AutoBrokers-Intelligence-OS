@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # PROMPT DE EXECUÇÃO — SPEC-085
 
 > **Cole isto inteiro num chat novo.** Ele é o briefing de quem vai executar.

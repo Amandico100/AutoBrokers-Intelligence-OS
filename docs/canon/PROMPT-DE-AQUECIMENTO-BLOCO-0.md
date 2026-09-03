@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # PROMPT DE AQUECIMENTO — o chat que vai executar as SPECs 083 e 084
 
 > **Como usar:** copie tudo entre as linhas `━━━` e cole como **primeira mensagem**

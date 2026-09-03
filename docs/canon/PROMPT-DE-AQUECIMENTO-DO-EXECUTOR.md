@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # AQUECIMENTO DO EXECUTOR — cole num chat NOVO, antes de qualquer SPEC
 
 > **Chat novo, aberto em `AutoBrokers-FIX`. Ele não conhece nada.**

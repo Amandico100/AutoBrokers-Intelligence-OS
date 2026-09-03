@@ -1,3 +1,4 @@
+<!-- HISTÓRICO: anterior à v11 do protocolo (03/09/2026). Não é pacote vivo; os pacotes vivos estão em docs/canon/pacotes/. -->
 # PROMPT DE EXECUÇÃO — 087 → 090 → 086
 
 > **Cole no MESMO chat que executou a 085, a 092 e a 093.** Ele não precisa de

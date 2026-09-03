@@ -41,7 +41,8 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
 ```
 🔴 NENHUMA execução de SPEC começa sem o EXECUTION CARD do protocolo §0.2.
 🔴 NENHUM relatório de SPEC fecha sem ele. Relatório sem card = SPEC aberta.
-🔴 TODO pacote entregue a um subagente carrega o protocolo §0,§1,§2,§3,§5.
+🔴 TODO pacote entregue a um subagente carrega o protocolo §0–§3, §5 e §7.3
+   (v11, 03/09/2026). Os pacotes-modelo estão em `docs/canon/pacotes/`.
 ```
 
 📊 **Por que isto virou regra em 30/08/2026:** uma auditoria mediu que o painel de

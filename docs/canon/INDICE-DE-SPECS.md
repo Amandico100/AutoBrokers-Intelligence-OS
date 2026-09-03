@@ -8,7 +8,32 @@
 
 ---
 
-## ⛔ O PROCESSO, em três caixas
+## 🔴 03/09/2026 — o processo mudou: UM orquestrador, e a independência mora nos subagentes
+
+```
+🎯 Fable 5.1 orquestra: converte E executa, uma SPEC por vez, na ordem deste índice
+🌐 PESQUISADOR (Opus)   reabre o research-pack → §7.3 da SPEC        (conversão)
+🔨 AQUECIMENTO (Opus)   refuta a SPEC contra código e banco           (conversão)
+🔧 BUILDER (Opus)       escreve, um por unidade                       (execução)
+⚖️ PAINEL (Opus)        3–5 lentes cegas, sobre o CÓDIGO             (execução)
+```
+
+📊 Por quê: 133 URLs de pesquisa em 10 research-packs, **zero** em qualquer SPEC
+convertida. E "ninguém audita a própria escrita" continua valendo — só que quem
+audita agora é um subagente de contexto limpo, não um segundo chat.
+Protocolo **v11**: [`PROTOCOLO-AUTOBROKERS-AAA.md`](PROTOCOLO-AUTOBROKERS-AAA.md) ·
+pacotes em [`pacotes/`](pacotes/).
+
+```
+✅ SPEC-091  ABSORVIDA pela v11 do protocolo em 03/09/2026. O que sobrava dela era
+   um bloco de guarda sobre os PACOTES — é o bloco [9] do
+   `backend/tests/test_o_protocolo_tem_policia.py`. A Protocol Factory da proposta
+   continua adiada com o mesmo gatilho (três protocolos escritos à mão).
+🔴 SPEC-088  será REFEITA pelo orquestrador com o research-pack dentro (§7.3).
+   A v1 de 02/09 fica como insumo: as medições dela foram conferidas.
+```
+
+## ⛔ O PROCESSO ANTERIOR, em três caixas (histórico, até 02/09/2026)
 
 ```
 ①  A PROPOSTA                    você + GPT
