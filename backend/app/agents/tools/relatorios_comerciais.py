@@ -105,6 +105,139 @@ _TEMPLATE_RADAR = "renewals.radar"
 
 
 # --------------------------------------------------------------------------
+# 🔴 SPEC-094 · BLOCO 0-bis — o número sai da PROSA e vira BLOCO CITÁVEL
+# --------------------------------------------------------------------------
+# 📊 O que estas duas tools devolviam ao modelo (:378-385 e a gêmea :636-643)
+# era uma frase: `"... {cob.apolices_total} apólices, {_reais(...)} de comissão,
+# liderado por {topo.nome} ..."`. Três defeitos numa linha só:
+#
+#   número SOLTO         sem metric_id, sem base temporal, sem cobertura — o
+#                        modelo parafraseia e ninguém consegue conferir depois
+#   NOME DE PRODUTOR     dado de pessoa identificada, no texto do chat
+#   ausente = zero       "R$ 0,00" e "a fonte não expõe" viravam a mesma frase
+#
+# Agora o número vai UMA vez, dentro de `<<PACK … PACK>>`, e o MESMO objeto
+# (mesmo `pack_id`, mesmas `metrics`) entra no `payload` do Artifact. O nome do
+# produtor continua na peça — que é conteúdo do tenant — e nunca no chat.
+#
+# ⚠️ Fora do bloco não pode sobrar número de negócio. É o que o guarda mede.
+
+_COMO_FALAR = (
+    "Comente para o corretor usando SÓ os números do bloco PACK acima, citando "
+    "`metric_id@version` ao lado de cada número que você disser. `UNAVAILABLE` "
+    "quer dizer INDISPONÍVEL na fonte — diga isso com essas letras, nunca zero. "
+    "Não invente número que não esteja no bloco, e não cite nome de produtor: "
+    "ele está no relatório, que é o lugar dele."
+)
+
+
+def _fracao(pct: Optional[float]) -> Optional[float]:
+    """`80,6%` vira `0.806`. `None` continua `None` — não medido não é zero."""
+    return None if pct is None else round(float(pct) / 100.0, 4)
+
+
+def _pacote_do_raio_x(*, company_id: str, p, ant, cob, ranking, nr, agora: str,
+                      tem_anterior: bool):
+    """O Evidence Pack do Raio-X, a partir do que já foi calculado.
+
+    🔴 Nenhuma conta nova sobre a fonte: `cob`, `ranking` e `nr` chegam prontos
+    de `calculos.py`. Aqui só se declara o que cada número É — unidade, base
+    temporal, cobertura e de quem ele veio.
+    """
+    from app.comercial import evidence_pack as ep
+
+    periodo = ep.periodo_iso(p.inicio, p.fim)
+    cob_produtor = _fracao(cob.pct_apolices)
+    cob_comissao = _fracao(cob.pct_comissao)
+
+    metricas = [
+        # A produção é contada pela data em que a vigência COMEÇA.
+        ep.metrica("production.policy_count", cob.apolices_total, "count",
+                   period=periodo, time_basis="POLICY_VALID_FROM", coverage=1.0),
+        ep.metrica("commission.broker_accrued", cob.comissao_total, "BRL",
+                   period=periodo, time_basis="POLICY_VALID_FROM", coverage=1.0),
+        # A própria cobertura é uma métrica: ela é o que impede o relatório de
+        # somar parte da carteira e se apresentar como o todo.
+        ep.metrica("data.coverage", round(cob.pct_apolices, 1), "pct",
+                   period=periodo, time_basis="POLICY_VALID_FROM",
+                   coverage=cob_produtor,
+                   source_refs=("policies_with_producer/policies_total",)),
+    ]
+
+    topo = ranking[0] if ranking else None
+    if topo is not None:
+        # 🔴 O nome NÃO entra. Entra a referência opaca — e ela é por tenant.
+        metricas.append(ep.metrica(
+            "producer.performance", round(topo.comissao, 2), "BRL",
+            period=periodo, time_basis="POLICY_VALID_FROM",
+            coverage=cob_comissao,
+            source_refs=(f"producer_ref:{ep.ref_de_produtor(company_id, topo.nome)}",
+                         "rank:1"),
+        ))
+
+    total_nr = nr["novo"][0] + nr["renovacao"][0]
+    if total_nr:
+        metricas.append(ep.metrica(
+            "production.new_vs_renewal",
+            round(100.0 * nr["renovacao"][0] / total_nr, 1), "pct",
+            period=periodo, time_basis="POLICY_VALID_FROM", coverage=1.0,
+            source_refs=("share_of_RENEWAL_in_policy_count",)))
+
+    avisos: List[str] = []
+    if p.e_padrao:
+        avisos.append("periodo padrao: o corretor nao especificou")
+    if not tem_anterior:
+        avisos.append("comparacao com o periodo anterior INDISPONIVEL: a fonte "
+                      "nao respondeu a janela anterior")
+
+    return ep.EvidencePack(
+        company_id=company_id,
+        period=periodo,
+        compare_period=ep.periodo_iso(ant.inicio, ant.fim) if tem_anterior else None,
+        metrics=metricas,
+        coverage={"apolices": cob.apolices_total,
+                  "com_produtor": cob.apolices_com_produtor,
+                  "pct_apolices": round(cob.pct_apolices, 1),
+                  "pct_comissao": round(cob.pct_comissao, 1),
+                  "produtores": len(ranking)},
+        provenance={"provider_key": "infocap", "spec": "094",
+                    "tool": "raio_x_comercial", "template": _TEMPLATE_RAIO_X,
+                    "consultado_em": agora, "periodo_rotulo": p.rotulo},
+        warnings=avisos,
+    )
+
+
+def _pacote_do_radar(*, company_id: str, p, venc, por_vend, total: float,
+                     agora: str):
+    """O Evidence Pack do Radar. A base temporal aqui é a data de FIM."""
+    from app.comercial import evidence_pack as ep
+
+    periodo = ep.periodo_iso(p.inicio, p.fim)
+    metricas = [
+        # 🔴 `POLICY_VALID_TO`, e não `FROM`: o radar olha o que TERMINA na
+        # janela. A mesma apólice aparece na produção por outra data.
+        ep.metrica("renewal.exposure", len(venc), "count",
+                   period=periodo, time_basis="POLICY_VALID_TO", coverage=1.0),
+        ep.metrica("renewal.premium_at_risk", round(total, 2), "BRL",
+                   period=periodo, time_basis="POLICY_VALID_TO", coverage=1.0),
+    ]
+    avisos: List[str] = []
+    if p.e_padrao:
+        avisos.append("periodo padrao: o corretor nao especificou")
+
+    return ep.EvidencePack(
+        company_id=company_id,
+        period=periodo,
+        metrics=metricas,
+        coverage={"apolices": len(venc), "produtores": len(por_vend)},
+        provenance={"provider_key": "infocap", "spec": "094",
+                    "tool": "radar_de_renovacoes", "template": _TEMPLATE_RADAR,
+                    "consultado_em": agora, "periodo_rotulo": p.rotulo},
+        warnings=avisos,
+    )
+
+
+# --------------------------------------------------------------------------
 # Entrada — uma coisa só: o período, em português
 # --------------------------------------------------------------------------
 class PeriodoIn(BaseModel):
@@ -330,12 +463,18 @@ class RaioXComercialTool(BaseTool):
         mapa = fonte.mapa_de_produtores(anos_de_vencimento_para(p.inicio, p.fim))
 
         ant = p.anterior()
+        anterior_respondeu = True
         try:
             apolices_ant = fonte.producao(ant.inicio, ant.fim)
         except FalhaDaInfocap:
             # Comparação é enfeite; o relatório do período pedido não pode
             # morrer porque o ano anterior não respondeu.
+            #
+            # 🔴 Mas o pack DECLARA que não respondeu. `comparar()` devolve
+            # `delta_pct = 0.0` nesse caso — e um zero que quer dizer "não
+            # medi" é exatamente o defeito que a SPEC-094 existe para tirar.
             apolices_ant = []
+            anterior_respondeu = False
 
         ranking = calc.ranking_por_produtor(apolices, mapa)
         cob = calc.cobertura(apolices, mapa)
@@ -346,7 +485,15 @@ class RaioXComercialTool(BaseTool):
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
 
         blocos = self._compor(p, ranking, cob, comp, serie, nr, por_ramo, agora)
+        # 🔴 UM pacote, DUAS saídas. O bloco que o modelo lê e o
+        # `payload.evidence_pack` do Artifact são o MESMO objeto serializado —
+        # mesmo `pack_id`, mesmas `metrics`. Sem segunda consulta, sem recálculo.
+        pacote = _pacote_do_raio_x(
+            company_id=str(self.company_id or ""), p=p, ant=ant, cob=cob,
+            ranking=ranking, nr=nr, agora=agora,
+            tem_anterior=bool(apolices_ant) and anterior_respondeu)
         payload = {
+            "evidence_pack": pacote.serializar(),
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim), "rotulo": p.rotulo},
             "cobertura": {"apolices": cob.apolices_total,
                           "com_produtor": cob.apolices_com_produtor,
@@ -374,14 +521,11 @@ class RaioXComercialTool(BaseTool):
             return _erro_legivel(RuntimeError("o artifact não foi criado"))
 
         aviso = " (período padrão — o corretor não especificou)" if p.e_padrao else ""
-        topo = ranking[0] if ranking else None
         return (
             f"RELATORIO_PRONTO · Raio-X Comercial de **{p.rotulo}**{aviso}.\n\n"
             f"[Abrir o relatório]({_link(ident)})\n\n"
-            f"Resumo para você comentar: {cob.apolices_total} apólices, "
-            f"{_reais(cob.comissao_total)} de comissão"
-            + (f", liderado por {topo.nome} com {_reais(topo.comissao)}" if topo else "")
-            + f". Cobertura de produtor: {cob.pct_apolices:.1f}%."
+            + pacote.bloco_para_o_modelo()
+            + "\n\n" + _COMO_FALAR
         )
 
     # ------------------------------------------------------------------ #
@@ -614,7 +758,11 @@ class RadarDeRenovacoesTool(BaseTool):
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
 
         blocos = self._compor(p, venc, por_vend, faixas, por_ramo, total, agora)
+        pacote = _pacote_do_radar(
+            company_id=str(self.company_id or ""), p=p, venc=venc,
+            por_vend=por_vend, total=total, agora=agora)
         payload = {
+            "evidence_pack": pacote.serializar(),
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim), "rotulo": p.rotulo},
             "total_em_risco": round(total, 2), "apolices": len(venc),
             "por_vendedor": [{"nome": n, "apolices": a, "premio": round(pr, 2),
@@ -636,8 +784,8 @@ class RadarDeRenovacoesTool(BaseTool):
         return (
             f"RELATORIO_PRONTO · Radar de Renovações de **{p.rotulo}**{aviso}.\n\n"
             f"[Abrir o relatório]({_link(ident)})\n\n"
-            f"Resumo para você comentar: {len(venc)} apólices vencendo, "
-            f"{_reais(total)} em prêmio, distribuídos entre {len(por_vend)} vendedores."
+            + pacote.bloco_para_o_modelo()
+            + "\n\n" + _COMO_FALAR
         )
 
     def _compor(self, p, venc, por_vend, faixas, por_ramo, total, agora) -> List[Dict]:
