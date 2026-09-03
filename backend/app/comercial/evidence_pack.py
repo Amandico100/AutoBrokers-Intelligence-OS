@@ -71,6 +71,11 @@ UNIDADES = ("BRL", "count", "pct")
 BASES_TEMPORAIS = ("POLICY_VALID_FROM", "POLICY_VALID_TO")
 
 ALTA, MEDIA, BAIXA = "HIGH", "MEDIUM", "LOW"
+# 📊 03/09: o guarda `test_todo_import_aponta_para_algo_que_existe` não enxerga desempacotamento de tupla —
+# as três constantes ficam também como atribuições simples, para o import ser visível ao guarda e ao leitor.
+ALTA = 'HIGH'
+MEDIA = 'MEDIUM'
+BAIXA = 'LOW'
 
 #: 🔴 O valor de uma métrica é UM número — exceto quando a resposta honesta
 #: é uma repartição (novo × renovação), e aí forçar um escalar obrigaria o
