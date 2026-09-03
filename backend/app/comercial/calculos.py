@@ -140,10 +140,10 @@ def ranking_por_produtor(apolices: Sequence, mapa: Dict[str, object],
     acc: Dict[str, List[float]] = {}
     visto: set = set()
     for a in apolices:
-        if a.nosnum in visto:
+        if a.policy_ref in visto:
             continue
-        visto.add(a.nosnum)
-        p = mapa.get(a.nosnum)
+        visto.add(a.policy_ref)
+        p = mapa.get(a.policy_ref)
         if p is None:
             continue
         nome = str(getattr(p, "nome", "") or "").strip()
@@ -165,12 +165,12 @@ def cobertura(apolices: Sequence, mapa: Dict[str, object]) -> Cobertura:
     ct = ca = 0.0
     visto: set = set()
     for a in apolices:
-        if a.nosnum in visto:
+        if a.policy_ref in visto:
             continue
-        visto.add(a.nosnum)
+        visto.add(a.policy_ref)
         total += 1
         ct += a.comissao
-        if a.nosnum in mapa:
+        if a.policy_ref in mapa:
             com += 1
             ca += a.comissao
     return Cobertura(total, com, ct, ca)
@@ -210,8 +210,9 @@ def por_dimensao(apolices: Sequence, campo: str, teto: int = 0,
 def novo_versus_renovacao(apolices: Sequence) -> Dict[str, Tuple[int, float]]:
     """Quanto do período é negócio novo e quanto é carteira que se manteve.
 
-    📊 A chave é `nosnum_ren`: vazio = novo, preenchido = aponta a apólice
-    anterior. 2025 mediu 717 novo / 963 renovação.
+    📊 Quem decide é `PolicyFact.kind` (`NEW`/`RENEWAL`), traçado na fronteira
+    a partir do ponteiro para a apólice anterior. 2025 mediu 717 novo / 963
+    renovação. ⚠️ A camada pura NÃO sabe qual campo do provider dizia isso.
     """
     novo = [0, 0.0]
     renov = [0, 0.0]
@@ -227,7 +228,7 @@ def serie_mensal(apolices: Sequence) -> List[Tuple[str, int, float]]:
     """Comissão mês a mês, em ordem cronológica. `(AAAA-MM, apólices, R$)`."""
     acc: Dict[str, List[float]] = {}
     for a in apolices:
-        m = _mes_de(a.inivig)
+        m = _mes_de(a.valid_from)
         if not m:
             continue
         linha = acc.setdefault(m, [0.0, 0.0])

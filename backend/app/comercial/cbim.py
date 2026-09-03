@@ -4,14 +4,15 @@
 SPEC-094 · BLOCO A. Peça **pura**: `dataclasses`, `datetime`, `decimal`,
 `hashlib`, `typing` — e `evidence_pack`, que também é puro. Não importa
 `fonte_infocap`, não importa `app.providers`, não importa Supabase, não sabe
-o que é `nosnum`.
+o que é identificador de apólice de sistema de gestão nenhum.
 
 ## Por que ele existe
 
-📊 SPEC-094 §1.3: `calculos.py` — a camada que a 081 declara "pura" — usa
-`nosnum` 7 vezes e `inivig` 1 vez. São nomes de campo da InfoCap dentro do
-motor de cálculo. Enquanto for assim, trocar de provider é reescrever a
-matemática, e a matemática é a única coisa que não deveria mudar.
+📊 SPEC-094 §1.3: `calculos.py` — a camada que a 081 declara "pura" — usava
+o identificador do provider 6 vezes e o nome do campo de vigência 1 vez, como
+nomes de atributo. Eram nomes de campo de UM sistema de gestão dentro do motor
+de cálculo. Enquanto fosse assim, trocar de provider seria reescrever a
+matemática — e a matemática é a única coisa que não deveria mudar.
 
 O CBIM é o vocabulário que fica quando se tira a InfoCap da frente:
 
@@ -25,10 +26,10 @@ RenewalFact             o que vence, e quando
 ## As três regras que este módulo existe para impor
 
 **1. `UNAVAILABLE` nunca é `0`.** Um prêmio que a fonte não expõe é
-indisponível. Zero é uma afirmação sobre o negócio — 📊 e a InfoCap devolve
-`val_c: None` em 3.536/3.536 linhas de `/renovacoes`
-(`infocap-golden-controls.json`). Somar isso como zero produziria "a corretora
-não ganhou nada nas renovações", que é falso e soa verdadeiro.
+indisponível. Zero é uma afirmação sobre o negócio — 📊 e o censo do BLOCO 0
+mediu a rota de vencimentos devolvendo comissão nula em **3.536 de 3.536**
+linhas de 2025 (`infocap-golden-controls.json`). Somar isso como zero produziria
+"a corretora não ganhou nada nas renovações", que é falso e soa verdadeiro.
 
 **2. Dinheiro é `Decimal`, nunca `float`.** 📊 O controle-ouro de 2025 é
 R$ 1.863.830,79 sobre 1.680 parcelas. Soma de `float` acumula resíduo binário
@@ -229,7 +230,7 @@ def policy_ref(company_id: str, provider_key: str, source_ref: str) -> str:
     Três propriedades, e cada uma paga uma dívida medida:
 
     ```
-    OPACA      o motor de métrica nunca lê `nosnum`; a 081 lia (§1.3)
+    OPACA      o motor de métrica nunca lê identificador de provider; a 081 lia
     POR TENANT o `company_id` no meio impede que duas corretoras com o mesmo
                número de apólice se cruzem — 🔴 e 📊 a Amandus e a Resulta
                apontam para a MESMA conta CorpAPI (F-094-07): sem o
@@ -298,10 +299,11 @@ class PolicyFact:
 
     `valid_from` e `valid_to` não são detalhe de cadastro: são as DUAS bases
     temporais que existem nesta fonte, e a métrica declara qual usa.
-    📊 O censo mediu: `/documentos_bi` filtra `inivig` (1.680/1.680 dentro da
-    janela; só 106 têm `fimvig` dentro dela) e `/renovacoes` filtra `fimvig`
-    (3.536/3.536). São duas populações quase disjuntas — 📊 interseção de 2,8%
-    — e somar as duas como se fossem a mesma é a mutação M6.
+    📊 O censo mediu, na fonte piloto: a rota de produção filtra por INÍCIO de
+    vigência (1.680/1.680 dentro da janela; só 106 terminam dentro dela) e a de
+    vencimentos filtra por FIM de vigência (3.536/3.536). São duas populações
+    quase disjuntas — 📊 interseção de 2,8% — e somar as duas como se fossem a
+    mesma é a mutação M6.
     """
 
     policy_ref: str
@@ -416,6 +418,11 @@ class FactSet:
     renewals: List[RenewalFact] = field(default_factory=list)
     provenance: Optional[Provenance] = None
     warnings: List[str] = field(default_factory=list)
+    #: `rota -> sha256 das chaves ordenadas`, na forma EXATA do censo
+    #: (`infocap-schema-fingerprints.json`). 🔴 E o `__combinado__` que a
+    #: `Provenance` carrega. E o que permite ao BLOCO C perguntar "o schema
+    #: mudou?" a CADA leitura, em vez de esperar um monitor agendado.
+    fingerprints: Dict[str, str] = field(default_factory=dict)
 
     def comissao_por_apolice(self) -> Dict[str, CommissionFact]:
         return {c.policy_ref: c for c in self.commissions}

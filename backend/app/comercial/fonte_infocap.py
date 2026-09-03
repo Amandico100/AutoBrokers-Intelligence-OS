@@ -127,6 +127,33 @@ class Apolice:
     base_comissao: float   # base_c
     e_renovacao: bool      # nosnum_ren preenchido
 
+    # -------------------------------------------------- os nomes do CBIM
+    #
+    # 🔴 SPEC-094 §1.3: `calculos.py` — a camada declarada "pura" — lia
+    # `a.nosnum` 6 vezes e `a.inivig` 1 vez. Eram nomes de campo da InfoCap
+    # DENTRO do motor de cálculo, e enquanto fosse assim trocar de provider
+    # significaria reescrever a matemática.
+    #
+    # As propriedades abaixo dão a esta dataclasse o vocabulário do CBIM, para
+    # que `calculos` fale UMA língua e sirva às duas pontas: a 081 continua
+    # passando `Apolice`, e o registry passa `PolicyFact`.
+    #
+    # ⚠️ `policy_ref` é OPACO para quem o lê. Aqui ele vale o identificador do
+    # provider; no CBIM vale `sha256(company_id+provider+source_ref)[:16]`. A
+    # regra que mantém os dois honestos é uma só: **a MESMA função gera as duas
+    # pontas do join**. Ninguém parseia; ninguém compara entre fontes.
+    @property
+    def policy_ref(self) -> str:
+        return self.nosnum
+
+    @property
+    def valid_from(self) -> str:
+        return self.inivig
+
+    @property
+    def valid_to(self) -> str:
+        return self.fimvig
+
 
 @dataclass(frozen=True)
 class ProdutorDaApolice:
@@ -137,6 +164,11 @@ class ProdutorDaApolice:
     nome: str        # 🔴 o campo é `produtor`, NUNCA `nome_produtor`
     repasse: float   # val_r
     percentual: float  # per_r
+
+    @property
+    def policy_ref(self) -> str:
+        """O mesmo apelido do CBIM — ver o comentário em `Apolice`."""
+        return self.nosnum
 
 
 @dataclass(frozen=True)
@@ -156,6 +188,15 @@ class Vencimento:
     email: str
     tipdoc: str
     tem_sinistro: bool
+
+    @property
+    def policy_ref(self) -> str:
+        """O mesmo apelido do CBIM — ver o comentário em `Apolice`."""
+        return self.nosnum
+
+    @property
+    def valid_to(self) -> str:
+        return self.fimvig
 
 
 # --------------------------------------------------------------------------
@@ -365,6 +406,54 @@ class FonteInfocap:
                 return v
         return []
 
+    # --------------------------------------------------- as linhas SEM TOQUE
+    #
+    # 🔴 SPEC-094 BLOCO B. Os dois leitores abaixo devolvem a linha da API
+    # **como ela veio**, sem `_num`, sem `str()`, sem default. Eles existem
+    # porque o adapter do CBIM precisa de duas coisas que as versões tipadas
+    # não conseguem dar:
+    #
+    # ```
+    # 1  o VALOR ILEGÍVEL como ilegível.  📊 `_num(None)` devolve 0.0 (§1.5), e
+    #    o CBIM precisa saber a diferença entre "R$ 0,00" e "a fonte não expõe"
+    # 2  TODOS os `prod_docs`, não só `ordem == 1`.  📊 O censo mediu, na mesma
+    #    apólice, ordem 1 = 4% e ordem 2 = 15%: somar só a ordem 1 SUBESTIMA o
+    #    repasse. `mapa_de_produtores` abaixo continua pegando só a ordem 1,
+    #    porque é o que o ranking da 081 precisa — e as duas coisas são
+    #    diferentes de propósito.
+    # ```
+    #
+    # ⚠️ Não são um segundo cliente: são os MESMOS `_get`, `_linhas` e
+    # `_fatiar_por_ano`, com a mesma chave de cache e o mesmo retry. Os três
+    # métodos tipados abaixo passaram a chamá-los, para que só exista UM lugar
+    # que sabe o nome da rota e dos parâmetros (CLAUDE.md §5).
+    def producao_crua(self, inicio: date, fim: date) -> List[Dict[str, Any]]:
+        """As linhas de `/documentos_bi` no período. Nenhuma interpretação."""
+        saida: List[Dict[str, Any]] = []
+        for ini, f in _fatiar_por_ano(inicio, fim):
+            bruto = self._get("/documentos_bi", {
+                "datini": ini.strftime("%d/%m/%Y"),
+                "datfim": f.strftime("%d/%m/%Y"),
+                "data": "INIVIG",
+                "tipo_doc": "A",
+            })
+            saida.extend(self._linhas(bruto, "documentos"))
+        return saida
+
+    def renovacoes_cruas(self, inicio: date, fim: date) -> List[Dict[str, Any]]:
+        """As linhas de `/renovacoes` no período. Nenhuma interpretação."""
+        saida: List[Dict[str, Any]] = []
+        for ini, f in _fatiar_por_ano(inicio, fim):
+            bruto = self._get("/renovacoes", {
+                "dt_ini": ini.strftime("%d/%m/%Y"),
+                "dt_fim": f.strftime("%d/%m/%Y"),
+                "qtd_pag": 5000, "pag": 1, "ordem": "nosnum",
+                "orientacao": "asc", "texto": "",
+                "cancelado": "F", "resgates": "F",
+            })
+            saida.extend(self._linhas(bruto, "renovacoes"))
+        return saida
+
     # ------------------------------------------------------------- produção
     def producao(self, inicio: date, fim: date) -> List[Apolice]:
         """As APÓLICES emitidas no período, com prêmio e comissão.
@@ -378,30 +467,23 @@ class FonteInfocap:
         400 e devolve a lista dos valores válidos.
         """
         saida: List[Apolice] = []
-        for ini, f in _fatiar_por_ano(inicio, fim):
-            bruto = self._get("/documentos_bi", {
-                "datini": ini.strftime("%d/%m/%Y"),
-                "datfim": f.strftime("%d/%m/%Y"),
-                "data": "INIVIG",
-                "tipo_doc": "A",
-            })
-            for x in self._linhas(bruto, "documentos"):
-                saida.append(Apolice(
-                    nosnum=str(x.get("nosnum") or ""),
-                    cliente=str(x.get("cliente") or ""),
-                    codcli=str(x.get("codcli") or ""),
-                    seguradora=str(x.get("seguradora") or "").strip(),
-                    ramo=str(x.get("ramo") or "").strip(),
-                    inivig=str(x.get("inivig") or ""),
-                    fimvig=str(x.get("fimvig") or ""),
-                    premio=_num(x.get("pretot")),
-                    comissao=_num(x.get("val_c")),
-                    base_comissao=_num(x.get("base_c")),
-                    # 🔴 `nosnum_ren` aponta a apólice ANTERIOR. Preenchido =
-                    # renovação; vazio = negócio novo. É uma lista encadeada
-                    # dentro do próprio endpoint.
-                    e_renovacao=bool(str(x.get("nosnum_ren") or "").strip()),
-                ))
+        for x in self.producao_crua(inicio, fim):
+            saida.append(Apolice(
+                nosnum=str(x.get("nosnum") or ""),
+                cliente=str(x.get("cliente") or ""),
+                codcli=str(x.get("codcli") or ""),
+                seguradora=str(x.get("seguradora") or "").strip(),
+                ramo=str(x.get("ramo") or "").strip(),
+                inivig=str(x.get("inivig") or ""),
+                fimvig=str(x.get("fimvig") or ""),
+                premio=_num(x.get("pretot")),
+                comissao=_num(x.get("val_c")),
+                base_comissao=_num(x.get("base_c")),
+                # 🔴 `nosnum_ren` aponta a apólice ANTERIOR. Preenchido =
+                # renovação; vazio = negócio novo. É uma lista encadeada
+                # dentro do próprio endpoint.
+                e_renovacao=bool(str(x.get("nosnum_ren") or "").strip()),
+            ))
         logger.info("[COMERCIAL] produção %s→%s: %d apólices",
                     inicio, fim, len(saida))
         return saida
@@ -425,13 +507,7 @@ class FonteInfocap:
         """
         mapa: Dict[str, ProdutorDaApolice] = {}
         for ano in sorted({int(a) for a in anos}):
-            bruto = self._get("/renovacoes", {
-                "dt_ini": f"01/01/{ano}", "dt_fim": f"31/12/{ano}",
-                "qtd_pag": 5000, "pag": 1, "ordem": "nosnum",
-                "orientacao": "asc", "texto": "",
-                "cancelado": "F", "resgates": "F",
-            })
-            for x in self._linhas(bruto, "renovacoes"):
+            for x in self.renovacoes_cruas(date(ano, 1, 1), date(ano, 12, 31)):
                 nos = str(x.get("nosnum") or "")
                 if not nos:
                     continue
@@ -470,39 +546,31 @@ class FonteInfocap:
         vencidas dentro da janela; quem chama decide se as quer.
         """
         saida: List[Vencimento] = []
-        for ini, f in _fatiar_por_ano(inicio, fim):
-            bruto = self._get("/renovacoes", {
-                "dt_ini": ini.strftime("%d/%m/%Y"),
-                "dt_fim": f.strftime("%d/%m/%Y"),
-                "qtd_pag": 5000, "pag": 1, "ordem": "nosnum",
-                "orientacao": "asc", "texto": "",
-                "cancelado": "F", "resgates": "F",
-            })
-            for x in self._linhas(bruto, "renovacoes"):
-                if str(x.get("tipdoc") or "").strip().upper() != "A":
-                    continue
-                if str(x.get("cancelado") or "").strip().upper() in ("T", "S", "TRUE", "1"):
-                    continue
-                direto = next(
-                    (p for p in (x.get("prod_docs") or [])
-                     if isinstance(p, dict) and str(p.get("ordem")) == "1"),
-                    None)
-                saida.append(Vencimento(
-                    nosnum=str(x.get("nosnum") or ""),
-                    cliente=str(x.get("cliente") or ""),
-                    codcli=str(x.get("codcli") or ""),
-                    seguradora=str(x.get("seguradora") or "").strip(),
-                    ramo=str(x.get("ramo") or "").strip(),
-                    fimvig=str(x.get("fimvig") or ""),
-                    dias_a_vencer=int(_num(x.get("dias_a_vencer"))),
-                    premio=_num(x.get("pretot")),
-                    produtor=str((direto or {}).get("produtor")
-                                 or x.get("produtor") or "").strip(),
-                    telefone=str(x.get("fone") or "").strip(),
-                    email=str(x.get("email") or "").strip(),
-                    tipdoc=str(x.get("tipdoc") or ""),
-                    tem_sinistro=bool(str(x.get("sin_situacao") or "").strip()),
-                ))
+        for x in self.renovacoes_cruas(inicio, fim):
+            if str(x.get("tipdoc") or "").strip().upper() != "A":
+                continue
+            if str(x.get("cancelado") or "").strip().upper() in ("T", "S", "TRUE", "1"):
+                continue
+            direto = next(
+                (p for p in (x.get("prod_docs") or [])
+                 if isinstance(p, dict) and str(p.get("ordem")) == "1"),
+                None)
+            saida.append(Vencimento(
+                nosnum=str(x.get("nosnum") or ""),
+                cliente=str(x.get("cliente") or ""),
+                codcli=str(x.get("codcli") or ""),
+                seguradora=str(x.get("seguradora") or "").strip(),
+                ramo=str(x.get("ramo") or "").strip(),
+                fimvig=str(x.get("fimvig") or ""),
+                dias_a_vencer=int(_num(x.get("dias_a_vencer"))),
+                premio=_num(x.get("pretot")),
+                produtor=str((direto or {}).get("produtor")
+                             or x.get("produtor") or "").strip(),
+                telefone=str(x.get("fone") or "").strip(),
+                email=str(x.get("email") or "").strip(),
+                tipdoc=str(x.get("tipdoc") or ""),
+                tem_sinistro=bool(str(x.get("sin_situacao") or "").strip()),
+            ))
         logger.info("[COMERCIAL] carteira a vencer %s→%s: %d apólices",
                     inicio, fim, len(saida))
         return saida

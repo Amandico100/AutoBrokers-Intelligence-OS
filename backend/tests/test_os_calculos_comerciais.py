@@ -49,12 +49,12 @@ HOJE = date(2026, 8, 18)  # relogio fixo: teste com data de hoje muda de humor
 
 @dataclass(frozen=True)
 class Ap:
-    nosnum: str
+    policy_ref: str
     premio: float
     comissao: float
     seguradora: str = "Allianz"
     ramo: str = "AUTO"
-    inivig: str = "2025-03-14"
+    valid_from: str = "2025-03-14"
     e_renovacao: bool = False
 
 
@@ -66,7 +66,7 @@ class Pr:
 
 @dataclass(frozen=True)
 class Ve:
-    nosnum: str
+    policy_ref: str
     premio: float
     dias_a_vencer: int
     produtor: str
@@ -169,7 +169,7 @@ for _v in _venc:
 
 @dataclass(frozen=True)
 class VeComRamo:
-    nosnum: str
+    policy_ref: str
     premio: float
     dias_a_vencer: int
     produtor: str
@@ -195,9 +195,9 @@ mistura = [Ap("1", 1, 100), Ap("2", 1, 200, e_renovacao=True),
 nr = C.novo_versus_renovacao(mistura)
 check("separa novo de renovacao", nr["novo"] == (1, 100.0) and nr["renovacao"] == (2, 500.0), nr)
 
-serie = C.serie_mensal([Ap("1", 1, 100, inivig="2025-01-10"),
-                        Ap("2", 1, 200, inivig="2025-02-05"),
-                        Ap("3", 1, 300, inivig="05/03/2025")])
+serie = C.serie_mensal([Ap("1", 1, 100, valid_from="2025-01-10"),
+                        Ap("2", 1, 200, valid_from="2025-02-05"),
+                        Ap("3", 1, 300, valid_from="05/03/2025")])
 check("a serie tem tres meses", len(serie) == 3, serie)
 check("aceita data ISO e data brasileira na mesma serie",
       serie[2][0] == "2025-03", serie)
