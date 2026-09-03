@@ -41,9 +41,9 @@ conduta do atendente nem do robô. A referência ④ (ARISE) começa em L1; nós
 enum de intenção. Linha 1726: `servico = servico or "sinistro"` — **sinistro só ganha se nenhuma
 palavra de assistência apareceu antes** ("bati o carro, preciso de guincho" sai `auto/guincho`).
 O prompt corrige em prosa (`prompts.py:131`). Chamadores: `graph.py:792` e `weaver.py:855`.
-🔴 **E o ELO, medido no aquecimento de 03/09:** `webhook.py:753-782` — com `attendance_agent_active()`
+🔴 **E o ELO, medido no aquecimento de 03/09:** `webhook.py:753-783` — com `attendance_agent_active()`
 falso (📊 4 de 4 agentes `attendance` inativos), o webhook grava a mensagem, espelha e **`return`** na
-linha 782, antes de `langchain_service.process_message` (`:826`). **O grafo não roda em produção, logo
+linha 783, antes de `langchain_service.process_message` (`:826`). **O grafo não roda em produção, logo
 `infer_ramo_servico` não é chamado e a ficha (`nodes.py:860`) nunca é gravada.** Não é que os
 chamadores não persistem: eles não são chamados. 📊 `attendance_sessions.servico` NULL em **12.616 de 12.616**;
 `observed_sessions.servico` NULL em **580 de 580**. A ficha (`conversations.ficha_atendimento`) tem
@@ -128,7 +128,7 @@ RISCO ................  6   ALCANCE 2 (a corretora vê na Central e no resumo ad
                             REVERSIBILIDADE 2 (linhas em work_runs/work_events/intelligence_signals sobram ao desfazer)
                             FREQUÊNCIA 2 (todo atendimento é avaliado; todo sinistro grava)
 SUPERFÍCIE ...........  3   🔴 subiu de 2 no aquecimento: o mapa da §4 tinha 3 ponteiros errados e não continha o
-                            caminho REAL do piloto (webhook.py:759-782, modo observação). Agora contém — mas quem
+                            caminho REAL do piloto (webhook.py:759-783, modo observação). Agora contém — mas quem
                             errou o mapa uma vez não ganha o 2 de volta por ter corrigido
 PISO APLICADO ........  nenhum por efeito (não envia · sem migration · não toca auth nem company_id de escrita).
                             ⚠️ MAS grava dado derivado de conversa de sinistro — dado sensível por natureza (ref. ⑦)
@@ -149,7 +149,7 @@ REFERÊNCIA ...........  interna: backend/tests/test_a_central_diz_a_verdade.py 
 GATES ................  por bloco (§4). Todos com mutação. Dois tenants em A, B, C, D
 O ELO ................  "o trabalho humano vira dataset": (i) detecta → (ii) o humano age → (iii) vira variante.
                             📊 O aquecimento provou que (i) estava QUEBRADO como escrito (o gancho ficava depois do
-                            `return` de webhook.py:782) e que (ii) não tem handoff do robô (0 de 8). Agora: (i) mora em
+                            `return` de webhook.py:783) e que (ii) não tem handoff do robô (0 de 8). Agora: (i) mora em
                             :709 com GATE ZERO; (ii) é o botão Assumir do painel; (iii) tem o teste de ponta a ponta (E ⑧)
 FAIXA DE RELÓGIO .....  🔴 8–13h (subiu de 6–10h: helper de run sem fila, gancho no modo observação e linha de base)
 ```
@@ -299,11 +299,11 @@ ator.
 
 ```
 ① GATE ZERO escrito primeiro (desenhista): fixture do webhook com attendance_agent_active=False percorre até o
-   `return` de :782; hoje NENHUMA sombra abre (o teste nasce vermelho); depois do BLOCO A, abre
+   `return` de :783; hoje NENHUMA sombra abre (o teste nasce vermelho); depois do BLOCO A, abre
 ② o helper `criar_registro_sem_fila` extraído do INSERT direto de dispatch_router.py:545-548 (com o thread_id
    derivado e SEM outbox), o dispatch_router passando a usá-lo, e os testes do acionamento verdes antes e depois
    (📊 `pytest -k "acionamento or dispatch_router" -q` como linha de base)
-③ a linha de base da regressão (§10) escrita no relatório: 112 ok · 1 vermelho pré-existente
+③ a linha de base da regressão (§10) escrita no relatório: máquina de lavar 112 ok · golden 1 caso explodido / 14 asserções (pré-existente)
 ```
 ⛔ Nenhum builder de A, B ou C começa antes de ①②③ estarem no relatório.
 
@@ -317,8 +317,8 @@ Um módulo novo `backend/app/services/claims_shadow.py` (💭 nome) com uma fun�
 `abrir_sombra(company_id, conversation_id, ...) -> work_run_id`:
 
 ```
-detecção      🔴 O GANCHO MORA NO MODO OBSERVAÇÃO: `webhook.py:709`, logo depois do INSERT em `messages`
-              e ANTES do `if is_human_mode` e do `return` de `:782`. É o único ponto que TODA mensagem
+detecção      🔴 O GANCHO MORA NO MODO OBSERVAÇÃO: `webhook.py:710` (logo depois do `.insert(user_message_data)` de :707-709, dentro do mesmo `try`)
+              e ANTES do `if is_human_mode` e do `return` de `:783`. É o único ponto que TODA mensagem
               de segurado atravessa hoje (📊 4 de 4 agentes attendance inativos → o grafo não roda).
               (b) regex estrito \m(sinistro|colis[ãa]o|batida|roub(o|aram)|furt(o|aram)|acidente)\M
                   no texto do SEGURADO (nunca da URA)                                  → confianca MEDIA
@@ -354,7 +354,7 @@ atendimento e muda o que o segurado recebe — está em F-093B-01 para o Founder
 ## O gate
 ```
 ⓪ 🔴 GATE ZERO (o ELO): teste com `attendance_agent_active` forçado a False percorre o webhook até o `return`
-   de :782 e a sombra ABRE mesmo assim. Sem este gate, todos os outros provam um caminho que não roda
+   de :783 e a sombra ABRE mesmo assim. Sem este gate, todos os outros provam um caminho que não roda
 ① fixture "bati o carro e preciso de guincho" → abre sombra (regex, MEDIA) sem tocar em ramo/servico do atendimento
 ② fixture "quero falar com o terceiro andar" → NÃO abre
 ③ duas mensagens da mesma conversa → UMA sombra (idempotency_key)
@@ -365,7 +365,7 @@ atendimento e muda o que o segurado recebe — está em F-093B-01 para o Founder
 ⑧ com o agente LIGADO (fixture), a mesma mensagem abre UMA sombra, não duas (idempotência entre os dois caminhos)
 ```
 **Mutação:** troque o regex para casar `terceiro` → ② vermelho. Remova o try/except → ⑤ vermelho.
-Mova o gancho para depois do `return` de :782 → ⓪ vermelho.
+Mova o gancho para depois do `return` de :783 → ⓪ vermelho.
 
 ---
 
@@ -565,7 +565,7 @@ P-093B-CORPUS    o gold corpus (4 perguntas da ref. ③) só existe com 20+ traj
 P-093B-TERCEIRO  2.187 sessões históricas com palavras de sinistro NÃO viram sombra (sem retroativo nesta SPEC). Decidir se
                  vale um backfill C0 sobre attendance_transcripts com o mesmo detector — 🧑 é dado antigo de segurado.
 P-093B-TELA      a Regina/Saionara não veem a sombra; a nota `#nota` continua sem tela que a exiba (0 leitores).
-P-093B-GOLD      📊 test_golden_do_eletricista.py: gold_007 vermelho (KeyError 'live') ANTES desta SPEC; e o pytest só coleta o
+P-093B-GOLD      📊 test_golden_do_eletricista.py em 03/09, ANTES desta SPEC: 1 caso explodiu (gold_007, KeyError 'live') · 14 asserções vermelhas; e o pytest só coleta o
                  teste de existência dos 10 casos — os 10 rodam por main(). Guarda que carimba (CLAUDE.md §9.4). Não é desta SPEC.
 P-093B-MAQUINA   📊 test_a_maquina_de_lavar_vai_ate_o_fim.py crasha a coleta do pytest (`sys.exit` no módulo, :665); como script,
                  112 ok. Fora da suíte por acidente.
@@ -596,7 +596,8 @@ juiz de confirmação → auditoria externa
 🔴 A regressão do atendimento é a lente que mais importa: **a sombra não pode mudar um turno.** 📊 LINHA DE BASE
 medida em 03/09 ANTES de qualquer código: `python backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py` →
 **112 ok** (⚠️ sob pytest ele CRASHA a coleta: `sys.exit` no nível do módulo, `:665` — rode como script);
-`python backend/tests/test_golden_do_eletricista.py` → **1 vermelho hoje** (`gold_007: KeyError 'live'`), e o
+`python backend/tests/test_golden_do_eletricista.py` → **1 caso EXPLODIU (`gold_007: KeyError 'live'`) e 14 asserções
+vermelhas hoje** — a linha de base tem os DOIS números, porque só o par distingue "quebrou um caso" de "quebrou uma asserção"; e o
 pytest coleta só `teste_os_dez_estao_aqui`, que afirma que os 10 casos EXISTEM (CLAUDE.md §9.4: carimbo).
 A lente roda os dois COMO SCRIPT antes e depois; o vermelho do gold_007 é pré-existente (P-093B-GOLD) e
 não pode ser creditado à sombra — nem escondido por ela.
