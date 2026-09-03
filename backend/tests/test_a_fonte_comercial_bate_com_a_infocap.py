@@ -22,11 +22,17 @@ errada. CLAUDE.md §9.2: medir vence deduzir.
     com produtor ........... 1.354         (80,6%)
     produtores distintos ... 82
 
-     1 RAFAEL L SILVEIRA-EXECUTIVO       250  266.926
-     2 MARCOS TONIOLO - INDICADOR          7  261.565
-     3 RAFAEL LACAU SILVEIRA - FECHADOR  139  233.551
-     4 LUIZ GUILHERME ARAUJO - FECHADOR  101  191.493
-     5 LUIZ GUILHERME - EXECUTIVO         99   85.729
+    O ranking, por POSICAO (apolices, comissao) — 🔴 SPEC-094 BLOCO H: a
+    identidade do produtor NAO entra em teste. Nome de pessoa com remuneracao
+    ao lado, versionado no git, e dado de pessoa identificada. A afirmacao de
+    negocio que este arquivo guarda nunca foi "quem e o #1": foi a FORMA da
+    curva — o #2 fatura quase o mesmo que o #1 com 7 apolices contra 250.
+
+     #1  250  266.926
+     #2    7  261.565      <- a manchete: ticket ~35x o do #1
+     #3  139  233.551
+     #4  101  191.493
+     #5   99   85.729
 """
 from __future__ import annotations
 
@@ -259,45 +265,63 @@ ranking = sorted(r.items(), key=lambda kv: -kv[1][1])
 
 check("ha ~82 produtores distintos (+-10)", abs(len(r) - 82) <= 10, len(r))
 
-ESPERADO = [
-    ("RAFAEL L SILVEIRA-EXECUTIVO", 250, 266_926),
-    ("MARCOS TONIOLO - INDICADOR", 7, 261_565),
-    ("RAFAEL LACAU SILVEIRA - FECHADOR", 139, 233_551),
-    ("LUIZ GUILHERME ARAUJO - FECHADOR", 101, 191_493),
-    ("LUIZ GUILHERME - EXECUTIVO", 99, 85_729),
-]
-for i, (nome, apol, com) in enumerate(ESPERADO):
+# 🔴 SPEC-094 · BLOCO H — A IDENTIDADE SAI, A POSICAO FICA.
+#
+# 📊 Ate 03/09/2026 este bloco carregava os NOMES COMPLETOS de cinco produtores
+# reais da Resulta, com apolices, comissao e percentual de repasse ao lado, e o
+# `check` IMPRIMIA o nome do produtor mais caro sempre que rodava. Dado de
+# pessoa identificada com remuneracao, versionado, e num arquivo que qualquer
+# agente le inteiro.
+#
+# 🔴 O conserto nao afrouxa nada: a afirmacao de negocio nunca foi "quem e o
+# #1" — foi a FORMA da curva. Ela continua sendo conferida, por POSICAO.
+# ⚠️ O historico do git NAO se reescreve (CLAUDE.md §13.5): os nomes seguem nos
+# commits antigos, e tira-los de la e decisao do Founder (PENDENCIAS).
+ESPERADO = [(250, 266_926), (7, 261_565), (139, 233_551),
+            (101, 191_493), (99, 85_729)]
+for i, (apol, com) in enumerate(ESPERADO):
     if i >= len(ranking):
         check(f"posicao {i+1} existe", False, f"o ranking tem so {len(ranking)}")
         continue
-    achado, (n, c, _rep) = ranking[i]
-    check(f"#{i+1} e {nome[:34]}", achado == nome, f"veio {achado}")
+    _chave, (n, c, _rep) = ranking[i]
     check(f"#{i+1} tem {apol} apolices (+-3)", abs(n - apol) <= 3, n)
     check(f"#{i+1} soma R$ {com:,} (+-R$ 3.000)", abs(c - com) <= 3000, f"{c:,.0f}")
 
-# 🔴 O NUMERO QUE VALE A APRESENTACAO: o repasse varia de 0,7% a 25%.
-repasses = [(nome, 100 * rep / com) for nome, (n, com, rep) in r.items()
+# CONTROLE: sem os nomes, quem sustenta a afirmacao "#N" e a ORDEM. Entao a
+# ordem tem de ser conferida — e este check consegue ficar vermelho: basta o
+# `sorted(...)` perder a chave e as posicoes viram sequencia de dicionario.
+comissoes = [v[1] for _chave, v in ranking[:5]]
+check("CONTROLE: a comissao CAI de posicao em posicao (o ranking esta ordenado)",
+      all(a >= b for a, b in zip(comissoes, comissoes[1:])),
+      f"{[f'{c:,.0f}' for c in comissoes]}")
+
+# 🔴 O NUMERO QUE VALE A APRESENTACAO: o repasse varia de 0,7% a 38%.
+#
+# `ordem` troca o nome pela POSICAO no ranking. E o que permite dizer "o
+# produtor de maior repasse" sem dizer QUEM ele e.
+ordem = {chave: i + 1 for i, (chave, _v) in enumerate(ranking)}
+repasses = [(ordem[nome], rep / com) for nome, (n, com, rep) in r.items()
             if com > 20_000]
 menor = min(repasses, key=lambda x: x[1])
 maior = max(repasses, key=lambda x: x[1])
-check("o MENOR repasse entre os grandes e ~0,7% (+-1 p.p.)",
-      menor[1] <= 2.0, f"{menor[0]} {menor[1]:.1f}%")
+check("o produtor de MENOR repasse tem razao val_r/val_c ate 0,02",
+      menor[1] <= 0.02, f"#{menor[0]} razao {menor[1]:.3f}")
 # 🔴 38%, nao 25% — e foi ESTE TESTE que me corrigiu, em 18/08.
 #
 # Eu tinha calibrado em 25% olhando o top-8 por comissao absoluta. 📊 O maior
-# repasse real e de JEAN FRANCISCO SIQUEIRA - PRIME, com 38,0% — ele nao
-# aparecia naquela lista porque nao esta entre os oito maiores em VALOR, so
-# entre os que passam do corte de R$ 20 mil.
+# repasse real e de um produtor que NAO aparece naquela lista: ele nao esta
+# entre os oito maiores em VALOR, so entre os que passam do corte de R$ 20 mil
+# — e paga 38,0% da comissao em repasse.
 #
 # Amplitude medida: 0,7% a 38,0%. A manchete ficou mais forte do que a que eu
 # tinha prometido ao Founder: um canal devolve mais de um TERCO da comissao.
-check("o MAIOR repasse entre os grandes e ~38% (+-4 p.p.)",
-      abs(maior[1] - 38.0) <= 4.0, f"{maior[0]} {maior[1]:.1f}%")
+check("o produtor de MAIOR repasse tem razao val_r/val_c entre 0,34 e 0,42",
+      0.34 <= maior[1] <= 0.42, f"#{maior[0]} razao {maior[1]:.3f}")
 check("CONTROLE: a amplitude e grande — 30 p.p. ou mais separam os extremos",
-      (maior[1] - menor[1]) >= 30.0,
-      f"{menor[1]:.1f}% a {maior[1]:.1f}% — se for estreita, nao ha materia")
-check("CONTROLE: os dois extremos sao produtores DIFERENTES",
-      menor[0] != maior[0])
+      (maior[1] - menor[1]) >= 0.30,
+      f"{100*menor[1]:.1f}% a {100*maior[1]:.1f}% — se for estreita, nao ha materia")
+check("CONTROLE: os dois extremos sao POSICOES diferentes do ranking",
+      menor[0] != maior[0], f"#{menor[0]} e #{maior[0]}")
 
 # 🔴 O ticket do #2 e 35x o do #1 — a manchete.
 t1 = ranking[0][1][1] / max(1, ranking[0][1][0])
