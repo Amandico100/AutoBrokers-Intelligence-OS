@@ -203,7 +203,12 @@ BLOCO F   ✓ 486 asserções em 12 blocos · 11 mutações vermelhas
 painel    3 lentes → 5 blockers → 1 rodada de conserto → juiz de confirmação PASS COM PENDÊNCIAS
 suíte     2 rodadas inteiras: 921/6 e 922/5 — o único vermelho nosso (.limit 2000) consertado; os demais passam isolados
 ```
-**GATE DA SPEC: VERDE.** Entrega: `git push origin HEAD:main`, saída abaixo.
+**GATE DA SPEC: VERDE.** Entrega: `git push origin HEAD:main` em 03/09 02:30:
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   5e8792c..249f3b3  HEAD -> main
+```
+🧑 Falta o clique em **Implantar** no smith-api e no smith-web (rota e tela mudaram juntas).
 
 ## 8. O que ficou pendente (§11.1)
 
