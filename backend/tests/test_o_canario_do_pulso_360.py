@@ -709,6 +709,100 @@ def renderizar(slug, blocos):
           "pack_id" in inteiro, "sem ela a peca e bonita e indefensavel")
 
 
+def os_tres_findings_que_viram_sinal():
+    """🔴 Os TRÊS, com os limiares cruzados de propósito — e o par de cada um.
+
+    ⚠️ O canário das duas corretoras cruza um limiar só: a carteira sintética
+    é uniforme entre 36 seguradoras, então a concentração fica em ~2,8% e não
+    aciona nada. Um teste que só exercitasse o caminho feliz da fixture
+    provaria que a fixture é plana, e não que os achados funcionam.
+
+    Aqui os três limiares são cruzados um a um, e cada um tem o seu PAR: a
+    mesma superfície com o limiar NÃO cruzado, que tem de NÃO produzir achado.
+    """
+    from app.comercial import evidence_pack as ep
+    from app.services.intelligence.schemas import SignalDraft
+
+    _p("\n--- OS TRES FINDINGS QUE VIRAM SINAL ---")
+    empresa = EMPRESAS["resulta"]
+    periodo = ep.periodo_iso("2025-01-01", "2025-12-31")
+    anterior = ep.periodo_iso("2024-01-01", "2024-12-31")
+    ref_a = ep.ref_de_produtor(empresa, "Produtor 001")
+    ref_b = ep.ref_de_produtor(empresa, "Produtor 002")
+
+    def _mix(pct):
+        return ep.metrica("mix.insurer", pct, "pct", period=periodo,
+                          time_basis="POLICY_VALID_FROM", coverage=1.0,
+                          breakdown=[{"rotulo": "SEG01", "share_pct": pct}])
+
+    def _perf(atual):
+        return ep.metrica("producer.performance", 2, "count", period=periodo,
+                          time_basis="POLICY_VALID_FROM", coverage=0.9,
+                          breakdown=[{"producer_ref": ref_a, "comissao": atual},
+                                     {"producer_ref": ref_b, "comissao": 5000.0}])
+
+    antes = [ep.metrica("producer.performance", 2, "count", period=anterior,
+                        time_basis="POLICY_VALID_FROM", coverage=0.9,
+                        breakdown=[{"producer_ref": ref_a, "comissao": 5000.0},
+                                   {"producer_ref": ref_b, "comissao": 5000.0}])]
+    exposicao = ep.metrica("renewal.exposure", 3536, "count", period=periodo,
+                           time_basis="POLICY_VALID_TO", coverage=1.0,
+                           breakdown=[{"faixa": "vencidas", "apolices": 2594,
+                                       "premio": 1.0}])
+
+    acima = ep.achar_findings([_mix(62.3), exposicao, _perf(400.0)], antes)
+    kinds = [f["kind"] for f in acima]
+    for esperado in ("concentration", "renewal_exposure", "producer_drop"):
+        check("com o limiar CRUZADO, `%s` aparece" % esperado, esperado in kinds,
+              kinds)
+
+    # 🔴 O PAR: mesma superfície, limiares NÃO cruzados.
+    abaixo = ep.achar_findings(
+        [_mix(ep.LIMIAR_CONCENTRACAO_PCT - 0.1),
+         ep.metrica("renewal.exposure", 0, "count", period=periodo,
+                    time_basis="POLICY_VALID_TO", coverage=1.0),
+         _perf(5000.0)], antes)
+    kinds_abaixo = [f["kind"] for f in abaixo]
+    for nao_esperado in ("concentration", "renewal_exposure", "producer_drop"):
+        check("PAR: com o limiar NAO cruzado, `%s` NAO aparece" % nao_esperado,
+              nao_esperado not in kinds_abaixo, kinds_abaixo)
+
+    pacote = ep.EvidencePack(company_id=empresa, period=periodo,
+                             compare_period=anterior,
+                             metrics=[_mix(62.3), exposicao, _perf(400.0)],
+                             findings=acima)
+    rascunhos = ep.sinais_do_pack(pacote)
+    check("os TRES viram rascunho de sinal", len(rascunhos) == 3,
+          [r["metadata"]["finding_kind"] for r in rascunhos])
+    for bruto in rascunhos:
+        d = SignalDraft(**bruto)
+        ok, motivo = d.valido()
+        check("`SignalDraft.valido()` REAL aceita `%s`"
+              % bruto["metadata"]["finding_kind"], ok, motivo)
+        check("  e ele sai `commercial_opportunity` / `comercial` / <=medium",
+              d.signal_type == "commercial_opportunity" and d.domain == "comercial"
+              and d.severity == "medium",
+              "%s / %s / %s" % (d.signal_type, d.domain, d.severity))
+        check("  e carrega `metric_refs` e `pack_id` no metadata",
+              bool(d.metadata.get("metric_refs")) and
+              d.metadata.get("pack_id") == pacote.pack_id)
+
+    # 🔴 CONTROLE: cobertura baixa fica no pack e NAO vira sinal.
+    com_cobertura_baixa = ep.achar_findings(
+        [ep.metrica("data.coverage", 5.9, "pct", period=periodo,
+                    time_basis="POLICY_VALID_FROM", coverage=0.059)], [])
+    check("cobertura baixa vira FINDING", any(
+        f["kind"] == "low_coverage" for f in com_cobertura_baixa))
+    pack_cob = ep.EvidencePack(company_id=empresa, period=periodo,
+                               findings=com_cobertura_baixa)
+    check("mas NAO vira sinal (o tipo que a descreveria tem gate proprio)",
+          not ep.sinais_do_pack(pack_cob))
+    # 🔴 E o CONTROLE do controle: sem evidencia no pack, nada sai — o que
+    # prova que o vazio acima nao e vazio por acidente.
+    check("CONTROLE: o mesmo `sinais_do_pack` PRODUZ quando ha metrica",
+          len(ep.sinais_do_pack(pacote)) == 3)
+
+
 def impressao_bate_com_o_censo():
     """🔴 A impressão CALCULADA tem de bater com a impressão MEDIDA.
 
@@ -755,6 +849,7 @@ def principal():
         _p("=" * 74)
 
         impressao_bate_com_o_censo()
+        os_tres_findings_que_viram_sinal()
 
         packs = {}
         for slug in ("resulta", "autofleet"):
