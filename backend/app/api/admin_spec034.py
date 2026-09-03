@@ -437,6 +437,12 @@ CLAIMS_SHADOW_JANELA_DIAS = 30
 CLAIMS_SHADOW_TOP_VARIANTES = 5
 #: Quantos `work_run_id` cabem num `in_()` sem estourar a URL do PostgREST.
 _CLAIMS_SHADOW_LOTE = 100
+#: 🔴 O TETO **TOTAL** de linhas lidas, somado ACROSS lotes — por tabela.
+#: 📊 `ler_paginado` protege CADA lote; o laço de 100 sombras não tinha teto nenhum
+#: sobre o total, e uma corretora grande puxaria centenas de milhares de linhas para
+#: a memória do processo da rota. O mesmo teto do digest (`TETO_DE_EVENTOS`), pela
+#: mesma razão: a parada tem de ser VISÍVEL (`nao_instrumentado`), nunca silenciosa.
+_CLAIMS_SHADOW_TETO = 50000
 
 #: 🔴 O CONTRATO, FECHADO E EM CÓDIGO — não em prosa. O guarda importa estas tuplas e
 #: reprova qualquer chave a mais ou a menos. Um contrato escrito só no docstring é um
@@ -527,6 +533,17 @@ def _claims_shadow_ler(cli: Any, desde: str) -> Dict[str, Any]:
     eventos: List[Dict[str, Any]] = []
     esperas: List[Dict[str, Any]] = []
     for i in range(0, len(ids), _CLAIMS_SHADOW_LOTE):
+        # 🔴 O teto total, conferido ANTES do próximo lote. Quando ele para, o nome
+        # da leitura entra em `nao_instrumentado` — é assim que o número diz de si
+        # mesmo que está incompleto, em vez de parecer completo.
+        if len(eventos) >= _CLAIMS_SHADOW_TETO or len(esperas) >= _CLAIMS_SHADOW_TETO:
+            logger.warning("[ADMIN34] claims-shadow: leitura parada no teto de %d "
+                           "linhas (%d sombras nao lidas)",
+                           _CLAIMS_SHADOW_TETO, len(ids) - i)
+            for nome in ("eventos", "esperas"):
+                if nome not in fora:
+                    fora.append(nome)
+            break
         lote = ids[i:i + _CLAIMS_SHADOW_LOTE]
         linhas, cortou = ler_paginado(
             lambda alvo=lote: (cli.table("work_events")
@@ -667,6 +684,21 @@ def montar_resumo_claims_shadow(cli: Any, *, agora: Any = None) -> Dict[str, Any
         variantes = variantes_de(trajs, limiar=1)[:CLAIMS_SHADOW_TOP_VARIANTES]
         encerradas = sum(1 for t in trajs if "claims.encerrado" in t["eventos"])
 
+        contadores = dict(contadores_de(trajs))
+        prazos = dict(esperas_vencidas(trajs, agora=fim))
+        # 🔴 O QUE NÃO FOI MEDIDO SOBE PARA A RAIZ DA RESPOSTA.
+        #
+        # 📊 `esperando_seguradora` tem ZERO escritores (P-093B-SEGURADORA). Sem esta
+        # linha, `espera_de_seguradora_sem_retorno` e o prazo saíam `None` dentro da
+        # corretora e a raiz continuava dizendo que tudo foi instrumentado — o
+        # operador leria a lacuna como "nenhum caso travou na seguradora".
+        #
+        # ⛔ E o nome entra como SLUG, nunca como frase: o gate D④ varre o JSON
+        # inteiro atrás de qualquer `str` que não seja uuid, ISO, slug, enum ou hash.
+        for nome in (contadores.get("nao_instrumentado") or ()):
+            if str(nome) not in nao_instrumentado:
+                nao_instrumentado.append(str(nome))
+
         corretoras.append({
             "company_id": empresa,
             "sombras_abertas": len(dados["runs"]),
@@ -679,8 +711,8 @@ def montar_resumo_claims_shadow(cli: Any, *, agora: Any = None) -> Dict[str, Any
                                "seguradora_slug": v["seguradora_slug"],
                                "n": v["n"], "passos": list(v["eventos"])}
                               for v in variantes],
-            "contadores": dict(contadores_de(trajs)),
-            "prazos": dict(esperas_vencidas(trajs, agora=fim)),
+            "contadores": contadores,
+            "prazos": prazos,
             "sinais_30d": dados["sinais"],
         })
 

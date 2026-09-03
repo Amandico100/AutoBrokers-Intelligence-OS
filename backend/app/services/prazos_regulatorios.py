@@ -116,6 +116,17 @@ def como_data(valor: _Data) -> Optional[_dt.date]:
         return valor.date()
     if isinstance(valor, _dt.date):
         return valor
+    # 🔴 NÚMERO NÃO É DATA — e é a recusa que fecha a porta mais perigosa deste módulo.
+    #
+    # 📊 Um epoch (`1767571200`) e um `20270105` viram `str` e chegam ao
+    # `date.fromisoformat(texto[:10])`. O epoch falha e devolve `None` (por sorte, não
+    # por regra); o `20270105` é aceito por `fromisoformat` desde o Python 3.11, que é
+    # o formato básico da ISO-8601 — e o worker roda em 3.14. Um `int` de outro
+    # formato entraria como uma data que ninguém escreveu, e a resposta seria
+    # "vencida"/"não vencida" sobre um regime inventado. ⛔ `bool` cai aqui junto,
+    # que é onde ele tem de cair.
+    if isinstance(valor, (bool, int, float)):
+        return None
     texto = str(valor).strip()
     if not texto:
         return None

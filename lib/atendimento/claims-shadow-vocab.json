@@ -1,5 +1,5 @@
 {
-  "versao": 1,
+  "versao": 2,
   "spec": "SPEC-093-B",
   "por_que_aqui": "lib/ e nao backend/: o Next NAO importa nada de backend/. O precedente e lib/admin/portao-do-prompt.contract.json, importado pelo Next via @/ (resolveJsonModule) e lido pelo Python por caminho a partir da raiz do repo. Um vocabulario em dois arquivos e dois vocabularios.",
   "atores_do_check": ["system", "worker", "user", "agent", "admin", "provider"],
@@ -32,10 +32,6 @@
       "ator": "provider",
       "payload": ["tipo_documento"]
     },
-    "claims.seguradora_respondeu": {
-      "ator": "provider",
-      "payload": ["canal"]
-    },
     "claims.espera_aberta": {
       "ator": "system",
       "payload": ["kind"]
@@ -51,7 +47,8 @@
   },
   "enums": {
     "confianca": ["alta", "media"],
-    "motivo": ["servico_sinistro", "regex_segurado"],
+    "motivo": ["servico_sinistro", "regex_segurado", "regex_ocorrencia"],
+    "motivo_enum": ["sinistro", "outro"],
     "origem": ["dashboard", "whatsapp"],
     "canal": ["whatsapp", "dashboard", "ura"],
     "tipo_documento": ["boletim_ocorrencia", "cnh", "crlv", "foto_dano", "orcamento", "laudo", "outro", "desconhecido"],
@@ -60,6 +57,15 @@
   },
   "inteiros": ["dias"],
   "limite_de_valor_em_chars": 64,
+  "forma_de_slug": "^[a-z0-9][a-z0-9_.-]*$",
+  "severidades": ["debug", "info", "warning", "error", "critical"],
+  "descricoes": {
+    "tem_numero": "a anotacao traz um NUMERO DE PROTOCOLO -- a regra e /[0-9]{6,}/ nos DOIS stacks (anotacaoTemNumero em lib/atendimento/claims-shadow.ts, tem_numero em backend/app/services/claims_shadow.py). NAO e 'traz algum digito': 'ligo as 9h' e false. O Python usava \\d, o Next \\d{6,}: duas colunas com um nome so.",
+    "motivo": "qual REGRA do detector casou, nunca a frase. servico_sinistro=a ficha do atendimento declarou o servico; regex_segurado=a palavra 'sinistro' no texto do segurado; regex_ocorrencia=um VERBO de ocorrencia (roubaram, capotei, bati+veiculo).",
+    "motivo_enum": "por que o robo pediu handoff. Enum fechado na v2: sem enum, a chave aceitava qualquer slug e o digest agrupava texto livre.",
+    "forma_de_slug": "todo valor string SEM enum tem de casar isto e caber em limite_de_valor_em_chars. E a mesma FORMA_DE_SLUG do TS: slug nao tem espaco, acento nem pontuacao de frase, e e isso que separa identificador de frase.",
+    "removidos_na_v2": "claims.seguradora_respondeu saiu do vocabulario: ZERO escritores nos dois stacks em 03/09/2026. Um evento prometido e nunca escrito faz o leitor procurar um dado que nao existe (P-093B-SEGURADORA)."
+  },
   "workflow_key": "claims.shadow",
   "outcome_type": "claims.shadow",
   "runtime_kind": "sombra",

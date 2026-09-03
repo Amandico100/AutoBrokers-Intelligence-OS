@@ -42,6 +42,7 @@ import os
 import re
 import unicodedata
 import weakref
+from collections import OrderedDict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,9 @@ TEMPLATES = {
     "claims.humano_respondeu": "Uma atendente respondeu ao segurado.",
     "claims.nota_registrada": "Uma anotação da atendente foi registrada.",
     "claims.documento_recebido": "O segurado enviou um arquivo.",
-    "claims.seguradora_respondeu": "A seguradora respondeu.",
+    # ⛔ `claims.seguradora_respondeu` SAIU na v2 do vocabulário. 📊 03/09/2026: zero
+    # escritores nos dois stacks. Um template para um evento que ninguém grava é uma
+    # promessa que o leitor do digest passa a procurar (P-093B-SEGURADORA).
     "claims.espera_aberta": "Uma espera foi aberta.",
     "claims.espera_satisfeita": "A espera foi satisfeita.",
     "claims.encerrado": "O atendimento de sinistro foi encerrado.",
@@ -131,45 +134,92 @@ def normalizar(texto: Any) -> str:
     return sem_acento.lower()
 
 
-#: 🔴 O regex ESTRITO da SPEC (§ BLOCO A), traduzido do dialeto do Postgres
-#: (`\m…\M`) para o do Python (`\b…\b`) e para o texto JÁ NORMALIZADO.
-#: ⛔ `terceiro` NÃO entra: 📊 §1.5 mediu que ele casa fora de contexto
-#: ("o terceiro andar"), e o teto de 4.827 linhas veio dele e de `acidente`.
-_RE_SINISTRO = re.compile(
+#: 🔴 A PALAVRA QUE ABRE SOZINHA — e ela é UMA SÓ.
+#:
+#: 📊 O red team desta rodada mediu o detector anterior: de 14 frases NÃO-sinistro,
+#: **12 abriam sombra**; sobre o acervo, **16,4% de TODAS as conversas** abririam, e
+#: **15% das aberturas tinham palavra de VENDA na mesma mensagem**. A causa era a
+#: lista de SUBSTANTIVOS (`roubo`, `furto`, `colisao`, `batida`, `acidente`): eles
+#: nomeiam o RISCO tanto quanto o EVENTO — e é do risco que se fala ao VENDER seguro.
+#:
+#: ⚠️ Escrito para o texto JÁ NORMALIZADO (CLAUDE.md §9.4, dialeto): depois do
+#: `unicodedata` não existe `ã` no alvo, e `\m…\M` do Postgres é `\b…\b` aqui.
+_RE_SINISTRO = re.compile(r"\b(sinistro|sinistros)\b")
+
+#: 🔴 O VERBO DE OCORRÊNCIA — o que separa "aconteceu comigo" de "quero cobertura
+#: para isso". ⛔ Substantivo de dano NÃO abre sozinho; quem abre é o verbo.
+#:
+#: 📊 Cada exclusão tem a frase do red team que a motivou:
+#:   "meu pai teve um acidente vascular cerebral" → por isso `tive um acidente`,
+#:                                                  e NUNCA `teve` nem `acidente` solto
+#:   "por acidente mandei a foto errada"          → `acidente` solto não abre
+#:   "a batida do motor esta estranha"            → `batida` solta não abre
+#:   "que roubo esse preco do seguro"             → `roubo` solto não abre
+#:   "quanto custa a cobertura de colisao?"       → `colisao` solta não abre
+#:
+#: ⚠️ `pegou fogo` fica FORA do grupo com `\b(…)\b` de propósito: o `\b` final cairia
+#: no meio da expressão de duas palavras. Ele é alternativa própria.
+_RE_OCORRENCIA = re.compile(
     r"\b("
-    r"sinistro|sinistros"
-    r"|colisao|colidi|colidiu"
-    r"|batida"
-    r"|roubo|roubaram|roubado|roubada"
-    r"|furto|furtaram|furtado|furtada"
-    r"|acidente"
-    r")\b"
+    r"colidi|colidiu|colidimos|colidiram"
+    r"|roubaram|furtaram|levaram"
+    r"|capotei|capotou|capotamos"
+    r"|arrombaram"
+    r"|abalroa\w*"
+    r"|sofri"
+    r"|tive um acidente"
+    r"|fui assaltad\w*"
+    r")\b|pegou fogo"
 )
 
-#: 🔴 A REGRA DE PAR — e por que ela existe, com o número que a obrigou.
+#: 🔴 A PALAVRA DE VENDA — a tranca que vale sobre TODAS as outras regras.
 #:
-#: 📊 A SPEC escreve o regex estrito acima E, no gate A①, manda a fixture
-#: "bati o carro e preciso de guincho" ABRIR sombra. Os dois não podem estar certos:
-#: nenhuma alternativa do regex estrito aparece nessa frase. O guarda
-#: (`test_o_sinistro_deixa_rastro.py`, bloco [2]) é a prova escrita antes do código,
-#: então ele é o contrato — e a frase precisa abrir.
+#: 📊 "quero fazer uma cotação de sinistro" contém a palavra mais forte do detector
+#: E é uma venda. Sem esta tranca, o corretor que orça abre sombra de sinistro.
 #:
-#: ⚠️ `bati` sozinho NÃO entra na lista de cima de propósito ("bati um papo", "bati a
-#: meta"). O que abre é o PAR: a batida com um veículo ou um obstáculo por perto.
-_RE_BATIDA_COM_ALVO = re.compile(
-    r"\bbat(?:i|eu|emos|eram|endo)\b[^.!?\n]{0,40}?"
-    r"\b(carro|moto|veiculo|caminhao|carreta|onibus|van|traseira|poste|muro|portao|"
-    r"guard-rail|guardrail|arvore|bicicleta)\b"
+#: ⚠️ `[çc]` e `[ãa]` casam o texto normalizado E o cru — o MESMO padrão serve aos
+#: dois dialetos, que é o que a §9.4 manda provar antes de confiar num padrão.
+_RE_VENDA = re.compile(
+    r"cota[çc][ãa]o|cotar|or[çc]amento|contratar|pre[çc]o|quanto custa"
+    r"|cobertura|proposta|simula[çc][ãa]o"
 )
-_RE_ALVO_COM_BATIDA = re.compile(
-    r"\b(carro|moto|veiculo|caminhao|carreta|onibus|van|bicicleta)\b[^.!?\n]{0,40}?"
-    r"\bbat(?:i|eu|emos|eram|endo)\b"
-)
+
+#: 🔴 A REGRA DE PAR de `bati` — e por que ela é MAIS ESTRITA que as outras.
+#:
+#: 📊 `bat*` é o verbo mais ambíguo do atendimento ("bati um papo", "bati a meta").
+#: A frase do red team que fechou a porta foi *"bati na porta do carro dele pra
+#: chamar"*: ela tem o verbo E o alvo veicular, e não é sinistro nenhum — por isso
+#: `porta` e `chamar` EXCLUEM.
+#:
+#: ⚠️ A fixture `FRASE_SINISTRO` do guarda ("bati o carro e preciso de guincho")
+#: abre por AQUI — é o par, e nunca a lista de substantivos, que a faz abrir.
+_RE_BATIDA = re.compile(r"\bbat(?:i|eu|emos|eram|endo)\b")
+_RE_ALVO_VEICULAR = re.compile(r"\b(carro|moto|veiculo|caminhao|van)\b")
+_RE_PORTA = re.compile(r"\b(porta|chamar)\b")
 
 CONFIANCA_ALTA = "alta"
 CONFIANCA_MEDIA = "media"
 MOTIVO_FICHA = "servico_sinistro"
 MOTIVO_REGEX = "regex_segurado"
+MOTIVO_OCORRENCIA = "regex_ocorrencia"
+
+
+def tem_palavra_de_venda(texto: Any) -> bool:
+    """A mensagem fala em COMPRAR seguro? ⛔ Vence qualquer outra regra do detector.
+
+    Pública e pura de propósito: é a metade do detector que o red team mediu, e um
+    guarda precisa poder chamá-la sozinha.
+    """
+    return bool(_RE_VENDA.search(normalizar(texto)))
+
+
+def _bati_com_alvo(alvo: str) -> bool:
+    """`bat*` + alvo veicular, e sem `porta`/`chamar` na mesma mensagem."""
+    if not _RE_BATIDA.search(alvo):
+        return False
+    if _RE_PORTA.search(alvo):
+        return False
+    return bool(_RE_ALVO_VEICULAR.search(alvo))
 
 
 def detectar_sinistro(texto: Any,
@@ -180,8 +230,17 @@ def detectar_sinistro(texto: Any,
     🔴 O motivo nunca é a frase. É o enum do vocabulário, e é ele que entra no
     `input_payload` da sombra (SPEC-093-B §2, BLOCO A ⑥).
 
-    (a) `ficha_atendimento` já existente com `servico == 'sinistro'` → **ALTA**
-    (b) o regex estrito sobre o texto normalizado do SEGURADO → **MÉDIA**
+    As três regras, nesta ordem:
+
+    (a) `ficha_atendimento` com `servico == 'sinistro'`  → ALTA  · `servico_sinistro`
+    (b) a palavra `sinistro` no texto do segurado        → MÉDIA · `regex_segurado`
+    (c) um VERBO DE OCORRÊNCIA no texto do segurado      → MÉDIA · `regex_ocorrencia`
+
+    ⛔ E a tranca sobre (b) e (c): **palavra de VENDA na mesma mensagem fecha a
+    porta**. 📊 15% das aberturas medidas pelo red team tinham uma.
+
+    ⚠️ A ficha (a) NÃO passa pela tranca de venda: ela é a declaração do próprio
+    atendimento de que o serviço é sinistro, e vale mais que a redação da mensagem.
 
     ⛔ `infer_ramo_servico` NÃO é chamado: rodar o classificador do atendimento fora
     do atendimento mudaria a conduta, e esta SPEC é C0 (observa).
@@ -193,16 +252,43 @@ def detectar_sinistro(texto: Any,
             bruto = (ficha.get("ficha_atendimento") or {}).get("servico")
         servico = normalizar(bruto).strip()
 
-    alvo = normalizar(texto)
-    casou_regex = bool(_RE_SINISTRO.search(alvo)
-                       or _RE_BATIDA_COM_ALVO.search(alvo)
-                       or _RE_ALVO_COM_BATIDA.search(alvo))
-
     if servico == "sinistro":
         return True, CONFIANCA_ALTA, MOTIVO_FICHA
-    if casou_regex:
+
+    alvo = normalizar(texto)
+    if not alvo.strip() or _RE_VENDA.search(alvo):
+        return False, None, None
+
+    if _RE_SINISTRO.search(alvo):
         return True, CONFIANCA_MEDIA, MOTIVO_REGEX
+    if _RE_OCORRENCIA.search(alvo) or _bati_com_alvo(alvo):
+        return True, CONFIANCA_MEDIA, MOTIVO_OCORRENCIA
     return False, None, None
+
+
+#: 🔴 A FORMA DE UM PROTOCOLO — seis dígitos ou mais, e o Python diz o MESMO que o Next.
+#:
+#: 📊 O red team achou dois `tem_numero` com significados diferentes gravados na mesma
+#: coluna: o Next usa `/\d{6,}/` (`lib/atendimento/claims-shadow.ts`,
+#: `anotacaoTemNumero`) e o Python usava `\d` — QUALQUER dígito. "vou ligar às 9h"
+#: virava `tem_numero=true` no lado Python e `false` no lado Next, e o digest somava
+#: os dois como se fossem o mesmo fato.
+#:
+#: ⛔ Um booleano com dois significados é pior que um booleano ausente: ele responde,
+#: e responde a pergunta errada (CLAUDE.md §12.1).
+_RE_NUMERO_DE_PROTOCOLO = re.compile(r"\d{6,}")
+
+
+def tem_numero(texto: Any) -> bool:
+    """A anotação traz um NÚMERO DE PROTOCOLO? ⛔ Não "traz algum dígito".
+
+    🔴 Pura, pública e com a mesma regra do `anotacaoTemNumero` do Next. Um dos dois
+    lados escrevendo `\\d` e o outro `\\d{6,}` é duas colunas com um nome só.
+
+    ⚠️ O booleano é tudo o que entra no ledger. O número em si fica no Espelho, que é
+    onde texto de conversa mora — `payload_redacted` tem esse nome por um motivo.
+    """
+    return bool(_RE_NUMERO_DE_PROTOCOLO.search(str(texto or "")))
 
 
 # ---------------------------------------------------------------------------
@@ -272,19 +358,54 @@ async def _executar(fabrica) -> Any:
 #: clientes são dois bancos, e uma memória global faria a segunda conexão herdar a
 #: verdade da primeira. `WeakKeyDictionary` para que fechar o cliente esvazie a
 #: memória sozinho.
-_MEMORIA: "weakref.WeakKeyDictionary[Any, Dict[Tuple[str, str], str]]" = (
-    weakref.WeakKeyDictionary())
+#:
+#: 🔴 E ELA LEMBRA A AUSÊNCIA — foi o buraco que o red team mediu.
+#:
+#: 📊 A memória só guardava sombra ENCONTRADA. O caso comum é o contrário: a conversa
+#: que **não** é de sinistro nunca entrava na memória, então cada mensagem dela
+#: repetia o mesmo SELECT em `work_runs` — no caminho quente do webhook, uma consulta
+#: por mensagem para receber sempre a mesma resposta vazia. `None` guardado significa
+#: *"perguntei, não existe"*; chave ausente significa *"nunca perguntei"*, e as duas
+#: coisas precisavam ser distinguíveis.
+#:
+#: 🔴 E LEMBRAR SEM TETO É VAZAR. Um processo de webhook vive dias e vê dezenas de
+#: milhares de conversas; um `dict` que só cresce é `weakref` nenhum resolve, porque
+#: quem segura a memória é o CLIENTE, que também vive para sempre. `OrderedDict` com
+#: teto, descartando o mais VELHO (FIFO): a conversa de ontem não é a que vai chegar
+#: no próximo webhook.
+TETO_DA_MEMORIA = 5000
+
+_MEMORIA: "weakref.WeakKeyDictionary[Any, Any]" = weakref.WeakKeyDictionary()
+_MEMORIA_DA_FICHA: "weakref.WeakKeyDictionary[Any, Any]" = weakref.WeakKeyDictionary()
 
 
-def _memoria_do_cliente(cli: Any) -> Optional[Dict[Tuple[str, str], str]]:
+def _memoria(qual: Any, cli: Any) -> Optional[Any]:
+    """A tabelinha deste cliente, ou `None` quando o cliente não aceita `weakref`."""
     try:
-        lembrada = _MEMORIA.get(cli)
+        lembrada = qual.get(cli)
         if lembrada is None:
-            lembrada = {}
-            _MEMORIA[cli] = lembrada
+            lembrada = OrderedDict()
+            qual[cli] = lembrada
         return lembrada
     except TypeError:      # cliente sem weakref: segue sem memória, só com o banco
         return None
+
+
+def _memoria_do_cliente(cli: Any) -> Optional[Any]:
+    return _memoria(_MEMORIA, cli)
+
+
+def _lembrar(lembrada: Optional[Any], chave: Any, valor: Any) -> None:
+    """Guarda com teto FIFO. ⛔ Nunca levanta: memória é otimização, não contrato."""
+    if lembrada is None:
+        return
+    try:
+        lembrada.pop(chave, None)
+        lembrada[chave] = valor
+        while len(lembrada) > TETO_DA_MEMORIA:
+            lembrada.popitem(last=False)      # o mais VELHO sai primeiro
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def sombra_da_conversa(db: Any, company_id: Any,
@@ -293,18 +414,24 @@ async def sombra_da_conversa(db: Any, company_id: Any,
 
     ⛔ Sem `company_id` no filtro, o SELECT devolveria a sombra da outra corretora —
     o backend roda com service role e a RLS não segura nada (CLAUDE.md §7).
+
+    ⚠️ A resposta NEGATIVA também é lembrada (ver `_MEMORIA`): a conversa que não é
+    de sinistro é a maioria, e era ela que pagava um SELECT por mensagem.
     """
     empresa = str(company_id or "").strip()
     conversa = str(conversation_id or "").strip()
     if not empresa or not conversa:
         return None
 
-    cli = _cliente(db)
-    lembrada = _memoria_do_cliente(cli)
-    if lembrada is not None and (empresa, conversa) in lembrada:
-        return lembrada[(empresa, conversa)]
-
+    # 🔴 `_cliente` DENTRO do try: `getattr(db, "client")` é um atributo qualquer, e
+    # num cliente que abre conexão preguiçosa ele LEVANTA. Fora do try, a sombra
+    # derrubaria o atendimento pela única linha que ela jurou nunca derrubar.
     try:
+        cli = _cliente(db)
+        lembrada = _memoria_do_cliente(cli)
+        if lembrada is not None and (empresa, conversa) in lembrada:
+            return lembrada[(empresa, conversa)]
+
         resposta = await _executar(
             lambda: cli.table("work_runs").select("id")
             .eq("company_id", empresa)                 # 🔴 §7
@@ -316,14 +443,55 @@ async def sombra_da_conversa(db: Any, company_id: Any,
         return None
 
     linhas = getattr(resposta, "data", None) or []
-    if not linhas:
+    run_id = str((linhas[0] or {}).get("id") or "") if linhas else ""
+    # ⚠️ `None` guardado é "perguntei e não existe" — e é o que poupa o SELECT
+    # repetido. ⛔ Falha de consulta NÃO é lembrada: ela sai pelo `except` acima,
+    # antes daqui, porque lembrar um erro como se fosse resposta é a pior das duas.
+    _lembrar(_memoria_do_cliente(cli), (empresa, conversa), run_id or None)
+    return run_id or None
+
+
+async def ficha_da_conversa(db: Any, company_id: Any,
+                            conversation_id: Any) -> Optional[Dict[str, Any]]:
+    """A `ficha_atendimento` da conversa, ou `None`. ⛔ UMA consulta indexada, e a
+    ausência fica lembrada.
+
+    🔴 Mora aqui, e não no `webhook.py`, por dois motivos. O primeiro é §5: a leitura
+    é do detector, e detector é isto. O segundo é medido — 📊 §1.2 da SPEC: a ficha
+    tem conteúdo em **1 de 679** conversas, porque o grafo não roda em produção. Ou
+    seja: 678 de 679 mensagens pagavam um SELECT para receber `None`, e pagavam de
+    novo na mensagem seguinte. A ausência lembrada é o conserto.
+
+    ⚠️ Lembrar a ausência tem um custo aceito e escrito: se o grafo voltar a gravar
+    ficha no meio de uma conversa, este processo continuará vendo a ausência até o
+    teto FIFO descartar a entrada. Aceitável porque a sombra abre UMA vez por
+    conversa, e a confiança é decidida na abertura.
+    """
+    empresa = str(company_id or "").strip()
+    conversa = str(conversation_id or "").strip()
+    if not empresa or not conversa:
         return None
-    run_id = str((linhas[0] or {}).get("id") or "")
-    if not run_id:
+    try:
+        cli = _cliente(db)
+        lembrada = _memoria(_MEMORIA_DA_FICHA, cli)
+        if lembrada is not None and (empresa, conversa) in lembrada:
+            return lembrada[(empresa, conversa)]
+
+        resposta = await _executar(
+            lambda: cli.table("conversations").select("ficha_atendimento")
+            .eq("company_id", empresa)                 # 🔴 §7
+            .eq("id", conversa)
+            .limit(1).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.debug("[SOMBRA] ficha não lida (%s)", type(erro).__name__)
         return None
-    if lembrada is not None:
-        lembrada[(empresa, conversa)] = run_id
-    return run_id
+
+    linhas = getattr(resposta, "data", None) or []
+    ficha = (linhas[0] or {}).get("ficha_atendimento") if linhas else None
+    if not isinstance(ficha, dict):
+        ficha = None
+    _lembrar(_memoria(_MEMORIA_DA_FICHA, cli), (empresa, conversa), ficha)
+    return ficha
 
 
 async def abrir_sombra(db: Any, *, company_id: Any, conversation_id: Any,
@@ -346,9 +514,19 @@ async def abrir_sombra(db: Any, *, company_id: Any, conversation_id: Any,
     if not empresa or not conversa:
         return None
 
-    cli = _cliente(db)
-    lembrada = _memoria_do_cliente(cli)
-    if lembrada is not None and (empresa, conversa) in lembrada:
+    # ⛔ **Só a lembrança POSITIVA vale como atalho aqui.** Desde que `_MEMORIA`
+    # guarda também a AUSÊNCIA, um `None` lembrado significa *"não havia sombra"* — e
+    # ler isso como resposta faria `abrir_sombra` DESISTIR de abrir exatamente na
+    # conversa em que o detector acabou de dizer que é sinistro. O `sombra_da_conversa`
+    # que roda dentro de `criar_registro_sem_fila`/idempotência continua sendo a
+    # autoridade sobre "já existe".
+    try:
+        cli = _cliente(db)
+        lembrada = _memoria_do_cliente(cli)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[SOMBRA] cliente indisponível (%s)", type(erro).__name__)
+        return None
+    if lembrada is not None and lembrada.get((empresa, conversa)):
         return lembrada[(empresa, conversa)]
 
     entrada = {
@@ -383,8 +561,7 @@ async def abrir_sombra(db: Any, *, company_id: Any, conversation_id: Any,
     run_id = str((registro or {}).get("id") or "")
     if not run_id:
         return None
-    if lembrada is not None:
-        lembrada[(empresa, conversa)] = run_id
+    _lembrar(lembrada, (empresa, conversa), run_id)
 
     if not (registro or {}).get("reused"):
         await registrar_evento(db, company_id=empresa, conversation_id=conversa,
@@ -398,27 +575,93 @@ async def abrir_sombra(db: Any, *, company_id: Any, conversation_id: Any,
 # ---------------------------------------------------------------------------
 # BLOCO B — O LEDGER
 # ---------------------------------------------------------------------------
-def _valor_limpo(chave: str, valor: Any, limite: int) -> Optional[Any]:
-    """Um valor pronto para o `payload_redacted`, ou `None` para descartar a chave.
+#: 🔴 A FORMA DE SLUG — a MESMA do TS (`claims-shadow.ts`, `FORMA_DE_SLUG`), e agora
+#: declarada no vocabulário (`forma_de_slug`), que é o único arquivo que os dois leem.
+#:
+#: 📊 O red team achou o buraco: o TS validava enum, inteiro, booleano e slug; o
+#: Python só media o TAMANHO. `"o cliente bateu o carro"` tem 23 chars e passava pelo
+#: lado Python — o mesmo payload que o lado Next recusa. Duas regras para uma coluna.
+_FORMA_DE_SLUG_PADRAO = r"[a-z0-9][a-z0-9_.-]*"
+
+#: 📊 O CHECK de `work_events.severity`. Um valor fora dele é um INSERT recusado que
+#: some sem erro — o mesmo defeito de `actor_type='human'`, na coluna do lado.
+SEVERIDADES = ("debug", "info", "warning", "error", "critical")
+
+#: Quando um valor é descartado, POR QUÊ. Só `enum` sobe a severidade do evento: um
+#: valor fora do enum é um escritor errado, e isso precisa aparecer.
+RECUSA_ENUM = "enum"
+RECUSA_FORMA = "forma"
+
+
+def _forma_de_slug() -> "re.Pattern[str]":
+    bruto = str(vocabulario().get("forma_de_slug") or "").strip()
+    # ⚠️ O vocabulário escreve a forma ANCORADA (`^…$`, como o TS); aqui ela é usada
+    # com `fullmatch`, então as âncoras saem — deixá-las duplicaria a âncora e o
+    # padrão passaria a recusar tudo, em silêncio.
+    if bruto.startswith("^") and bruto.endswith("$"):
+        bruto = bruto[1:-1]
+    try:
+        return re.compile(bruto or _FORMA_DE_SLUG_PADRAO)
+    except re.error:
+        return re.compile(_FORMA_DE_SLUG_PADRAO)
+
+
+def _valor_limpo(chave: str, valor: Any,
+                 limite: int) -> Tuple[Optional[Any], str]:
+    """`(valor_pronto, recusa)` para o `payload_redacted`. `recusa=""` quando passou.
+
+    As três regras, na ordem, e cada uma pega o que as outras não pegam:
+
+    (a) 🔴 **chave com ENUM no vocabulário** → o valor tem de estar no enum. Fora
+        dele, a chave é DESCARTADA e o evento sobe para `severity='warning'`:
+        um enum inventado não é um detalhe perdido, é um escritor errado.
+    (b) chave sem enum → `bool` e `int` passam; `str` só se casar a FORMA DE SLUG e
+        couber no limite.
+    (c) o resto é descartado.
 
     ⚠️ Valor longo é texto disfarçado de enum. Ele é DESCARTADO, não truncado:
     truncar guardaria metade da frase do segurado, que é exatamente o que a §2 proíbe.
     """
     if valor is None:
-        return None
+        return None, RECUSA_FORMA
+
+    enumerado = (vocabulario().get("enums") or {}).get(chave)
+    if enumerado:
+        # ⛔ `str(valor)` e não `isinstance(valor, str)`: um enum que chega como
+        # número ainda pode estar certo, e recusá-lo pelo TIPO esconderia o acerto.
+        texto = valor if isinstance(valor, str) else str(valor)
+        return (texto, "") if texto in tuple(enumerado) else (None, RECUSA_ENUM)
+
     if chave in tuple(vocabulario().get("inteiros") or ("dias",)):
+        # ⛔ `bool` é subclasse de `int` em Python: sem esta linha, `True` viraria `1`
+        # num campo declarado inteiro, e o digest somaria booleanos.
+        if isinstance(valor, bool):
+            return None, RECUSA_FORMA
         try:
-            return int(valor)
+            # 🔴 CLAMP EM ZERO. `dias` é uma DURAÇÃO, e duração negativa não existe.
+            # 📊 `o_fim_do_atendimento._dias_entre` calcula `satisfeito_em - created_at`
+            # com dois relógios que podem discordar: um `-1` gravado aqui viraria uma
+            # média negativa no digest, e "a seguradora respondeu antes de ser
+            # perguntada" é um número que ninguém sabe ler.
+            return max(0, int(valor)), ""
         except Exception:  # noqa: BLE001
-            return None
+            return None, RECUSA_FORMA
+
     if isinstance(valor, bool):
-        return valor
-    if isinstance(valor, (int, float)):
-        return valor
-    limpo = str(valor)
-    if not limpo or len(limpo) > limite:
-        return None
-    return limpo
+        return valor, ""
+    if isinstance(valor, int):
+        return valor, ""
+
+    if not isinstance(valor, str):
+        # ⛔ `float`, `list`, `dict` não têm forma declarada. Antes o `float` passava
+        # por ser `(int, float)`, e um `dict` virava `str(dict)` — texto livre com
+        # chaves, exatamente o que a §2 proíbe.
+        return None, RECUSA_FORMA
+    if not valor or len(valor) > limite:
+        return None, RECUSA_FORMA
+    if not _forma_de_slug().fullmatch(valor):
+        return None, RECUSA_FORMA
+    return valor, ""
 
 
 async def registrar_evento(db: Any, *, company_id: Any, conversation_id: Any = None,
@@ -434,9 +677,14 @@ async def registrar_evento(db: Any, *, company_id: Any, conversation_id: Any = N
     🔴 **Sem sombra na conversa, não escreve.** Nada de sombra retroativa nesta SPEC
     (BLOCO B ③): o gesto de uma conversa que nunca foi de sinistro não vira rastro.
 
-    🔴 O `actor_type` sai do VOCABULÁRIO, não de quem chama: 📊 o CHECK do banco
-    recusa qualquer outro valor e `_evento` engole a recusa (`dispatch_router.py:578`)
-    — um ator errado vira um evento que nunca aconteceu, sem erro nenhum.
+    🔴 O `actor_type` sai do VOCABULÁRIO, **SEMPRE**, e nunca de quem chama: 📊 o
+    CHECK do banco recusa qualquer outro valor e `_evento` engole a recusa
+    (`dispatch_router.py:578`) — um ator errado vira um evento que nunca aconteceu,
+    sem erro nenhum. ⚠️ Antes o parâmetro `actor_type` VENCIA o vocabulário quando
+    estivesse no CHECK: um chamador podia gravar `claims.humano_assumiu` com
+    `actor_type='system'`, e a linha do tempo passava a dizer que a máquina assumiu
+    o caso. O parâmetro continua na assinatura (compatibilidade) e é IGNORADO — com
+    log, porque um `except` mudo é uma flag que mente com outro nome.
     """
     decl = _declaracao(event_type)
     if not decl:
@@ -448,11 +696,14 @@ async def registrar_evento(db: Any, *, company_id: Any, conversation_id: Any = N
     if not empresa:
         return False
 
-    ator = str(actor_type or decl.get("ator") or "system")
+    ator = str(decl.get("ator") or "")
     if ator not in ATORES_DO_CHECK:
-        ator = str(decl.get("ator") or "system")
-    if ator not in ATORES_DO_CHECK:
-        ator = "system"
+        logger.warning("[SOMBRA] ator %r de '%s' fora do CHECK — nada gravado",
+                       ator, str(event_type)[:60])
+        return False
+    if actor_type and str(actor_type) != ator:
+        logger.info("[SOMBRA] actor_type=%r ignorado: '%s' é do ator %r pelo vocabulário",
+                    str(actor_type)[:20], str(event_type)[:60], ator)
 
     run_id = str(work_run_id or "").strip()
     if not run_id:
@@ -464,7 +715,13 @@ async def registrar_evento(db: Any, *, company_id: Any, conversation_id: Any = N
     bruto = {k: v for k, v in (payload or {}).items()
              if k in declaradas and v is not None}
 
+    # 🔴 `severity` também é CHECK do banco. Um valor fora dele é o mesmo INSERT
+    # recusado em silêncio do `actor_type` — e o chamador acha que gravou.
     gravidade = str(severity or "info")
+    if gravidade not in SEVERIDADES:
+        logger.warning("[SOMBRA] severity %r fora de %s — usando 'info'",
+                       gravidade[:20], SEVERIDADES)
+        gravidade = "info"
     # 🔴 O REDATOR CANÔNICO ANTES DA COERÇÃO, e a ordem importa.
     # 📊 `contem_pii` recebe `str` (`redaction_service.py:264`); passar dict é
     # `TypeError`. E rodá-lo DEPOIS de coagir `tem_numero` para bool esconderia um
@@ -485,12 +742,22 @@ async def registrar_evento(db: Any, *, company_id: Any, conversation_id: Any = N
     else:
         limite = _limite_de_valor()
         redigido = {}
+        fora_do_enum = []
         for chave in declaradas:
             if chave not in bruto:
                 continue
-            valor = _valor_limpo(chave, bruto[chave], limite)
-            if valor is not None:
+            valor, recusa = _valor_limpo(chave, bruto[chave], limite)
+            if recusa == RECUSA_ENUM:
+                fora_do_enum.append(chave)
+            elif valor is not None:
                 redigido[chave] = valor
+        if fora_do_enum:
+            # ⚠️ A chave some do payload E o evento sobe para `warning`. Descartar em
+            # silêncio deixaria o digest agrupando por uma chave ausente sem que
+            # ninguém soubesse que um escritor está mandando enum inventado.
+            gravidade = "warning"
+            logger.warning("[SOMBRA] '%s': %s fora do enum — chave(s) descartada(s)",
+                           event_type, sorted(fora_do_enum))
 
     linha = {
         "company_id": empresa,                      # 🔴 §7
@@ -501,8 +768,11 @@ async def registrar_evento(db: Any, *, company_id: Any, conversation_id: Any = N
         "message_human": TEMPLATES.get(str(event_type), OUTCOME_TITLE),
         "payload_redacted": redigido,
     }
-    cli = _cliente(db)
     try:
+        # 🔴 `_cliente` DENTRO do try, como nas outras duas funções de I/O: um
+        # `db.client` que levanta derrubaria o atendimento pela linha que menos
+        # importa dele (BLOCO A ⑤).
+        cli = _cliente(db)
         await _executar(lambda: cli.table("work_events").insert(linha).execute())
     except Exception as erro:  # noqa: BLE001
         logger.warning("[SOMBRA] evento '%s' não registrado (%s)",
@@ -595,28 +865,66 @@ def variantes_de(trajetorias: Iterable[Dict[str, Any]],
     return fora
 
 
+#: O `kind` de espera que a CNSP 496/2026 rege — e o único que o contador de
+#: seguradora tem o direito de contar.
+KIND_SEGURADORA = "esperando_seguradora"
+
+#: 🔴 O que entra em `nao_instrumentado` quando não há NENHUMA espera de seguradora
+#: no corpus. ⚠️ Estes são NOMES DE MEDIÇÃO, não de contador: o mesmo par apaga o
+#: número da espera e o do prazo, porque o prazo se calcula a partir da espera.
+NAO_INSTRUMENTADO_SEGURADORA = ("espera_seguradora", "prazos")
+
+
 #: Os cinco motivos pelos quais pilotos de claims travam (referência ⑤ Sprout.ai),
 #: virados em contador. ⚠️ Cada um só é citável ao lado de `total` — número sem
 #: denominador não é fato (CLAUDE.md §12.1).
 def contadores_de(trajetorias: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    """Os cinco contadores da referência ⑤, com o denominador junto."""
+    """Os cinco contadores da referência ⑤, com o denominador junto.
+
+    🔴 **O CONTADOR DE SEGURADORA NÃO CONTA ESPERA DE CLIENTE.**
+
+    📊 O red team mediu o defeito: o contador se chamava
+    `espera_de_seguradora_sem_retorno` e olhava só para os `event_type`
+    (`claims.espera_aberta` sem `claims.espera_satisfeita`). Mas o `kind` da espera
+    mora no PAYLOAD, e os três kinds existentes são `esperando_cliente`,
+    `esperando_seguradora` e `esperando_humano`. Uma conversa esperando o SEGURADO
+    mandar a foto era contada como seguradora que não respondeu — e é esse o número
+    que o Founder leria como "a seguradora está travando meus casos".
+
+    🔴 **E ZERO MEDIDO NÃO É ZERO.** 📊 Em 03/09/2026, `esperando_seguradora` tem
+    ZERO escritores no código vivo (P-093B-SEGURADORA). Sem nenhuma espera desse
+    kind no corpus, o contador sai `None` e `nao_instrumentado` diz o porquê — em
+    vez de um `0/N` que se lê como "nenhum caso travou na seguradora" quando a
+    verdade é "ninguém mediu" (SPEC-088 §4).
+    """
     lista = [t for t in (trajetorias or ()) if isinstance(t, dict)]
     total = len(lista)
-    contas = {
+    contas: Dict[str, Any] = {
         "total": total,
         "sem_documento": 0,
         "espera_de_seguradora_sem_retorno": 0,
         "com_nota_da_atendente": 0,
         "com_retomada_do_humano": 0,
         "encerrados_sem_desfecho": 0,
+        "nao_instrumentado": [],
     }
+    viu_espera_de_seguradora = False
     for trajetoria in lista:
         eventos = [str(e) for e in (trajetoria.get("eventos") or ())]
         desfechos = trajetoria.get("desfechos") or ()
         if "claims.documento_recebido" not in eventos:
             contas["sem_documento"] += 1
-        if ("claims.espera_aberta" in eventos
-                and "claims.espera_satisfeita" not in eventos):
+        # ⛔ A espera com `kind`, e nunca o `event_type` sozinho.
+        pendente = False
+        for espera in (trajetoria.get("esperas") or ()):
+            if not isinstance(espera, dict):
+                continue
+            if str(espera.get("kind") or "") != KIND_SEGURADORA:
+                continue
+            viu_espera_de_seguradora = True
+            if not espera.get("satisfeita_em") and not espera.get("satisfeito_em"):
+                pendente = True
+        if pendente:
             contas["espera_de_seguradora_sem_retorno"] += 1
         if "claims.nota_registrada" in eventos:
             contas["com_nota_da_atendente"] += 1
@@ -629,4 +937,11 @@ def contadores_de(trajetorias: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         conhecidos = {str(d) for d in desfechos} - {"desconhecido", ""}
         if "claims.encerrado" in eventos and not conhecidos:
             contas["encerrados_sem_desfecho"] += 1
+
+    if not viu_espera_de_seguradora:
+        # 🔴 `None`, e NUNCA `0`: o zero seria um número medido onde não houve
+        # medição — e é exatamente o que o §12.1 chama de defeito de revisão.
+        contas["espera_de_seguradora_sem_retorno"] = None
+        contas["prazo_regulatorio"] = None
+        contas["nao_instrumentado"] = list(NAO_INSTRUMENTADO_SEGURADORA)
     return contas

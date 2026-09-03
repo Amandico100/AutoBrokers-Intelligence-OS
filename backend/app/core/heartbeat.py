@@ -535,8 +535,15 @@ AGENT_TASKS: List[Agente] = [
         # 14 dias de histórico, remeça pelo `lag(finished_at)` como os vizinhos.
         cadencia_esperada_s=86400, desligado_quando=None, k=2,
         cadencia_pulso_s=86400,
-        # ⚠️ Sem sinistro no corpus ele sai 🟡 PULSA SEM PRODUZIR — e é a verdade:
-        # o laço roda, e não há o que agrupar. ⛔ Não inventar produção para pintar 🟢.
+        # ⚠️ 🔴 O CARD NASCE 🔴 PARADO, E NÃO 🟡 — o comentário anterior estava errado
+        # sobre o próprio estado inicial, que é o pior lugar para um comentário errar.
+        # 📊 03/09/2026: ZERO run de `intelligence.claims_shadow_digest` em toda a
+        # história. 🟡 PULSA SEM PRODUZIR pressupõe PULSO, e pulso é o EIXO — que aqui
+        # não tem uma linha sequer. Enquanto o primeiro tick não rodar, o card é 🔴
+        # PARADO, que é a verdade e é o que o operador precisa ver.
+        # ⛔ Depois do primeiro tick E sem sinistro no corpus, aí sim ele fica 🟡
+        # PULSA SEM PRODUZIR: o laço roda e não há o que agrupar. Não inventar
+        # produção para pintar 🟢.
         fonte_rotulo="os padrões de sinistro que ele encontrou",
     ),
 ]

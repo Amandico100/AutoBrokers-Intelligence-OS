@@ -53,31 +53,55 @@ let v = null;
 try { v = JSON.parse(bruto); certo('o vocabulario e JSON valido', true); }
 catch (e) { certo('o vocabulario e JSON valido', false, String(e)); process.exit(1); }
 
-// ⚠️ Os 11 eventos e os 6 atores estao escritos AQUI, no lado Next, de proposito:
+// ⚠️ Os eventos e os 6 atores estao escritos AQUI, no lado Next, de proposito:
 // um teste que lesse a lista do proprio arquivo que ele valida nao guarda nada.
 // Sao a §5 da SPEC transcrita, e o CHECK real de work_events.
+//
+// 🔴 v2 — `claims.seguradora_respondeu` SAIU, e a lista passou de 11 para 10.
+// 📊 Medido em 03/09/2026: ZERO escritores do evento nos dois stacks (`grep`
+// devolvia so o template do Python e as duas transcricoes de teste). Um evento
+// prometido e nunca escrito manda o leitor do digest procurar um dado que nao
+// existe -- e a espera `esperando_seguradora` que o alimentaria tambem nao tem
+// escritor (P-093B-SEGURADORA). ⛔ A lista muda porque o FATO mudou; manter a
+// afirmacao vencida so ensinaria a ignorar teste (CLAUDE.md §9.3).
 const EVENTOS = [
   'claims.sombra_aberta', 'claims.handoff_pedido', 'claims.humano_assumiu',
   'claims.humano_devolveu', 'claims.humano_respondeu', 'claims.nota_registrada',
-  'claims.documento_recebido', 'claims.seguradora_respondeu',
+  'claims.documento_recebido',
   'claims.espera_aberta', 'claims.espera_satisfeita', 'claims.encerrado',
 ];
 // 📊 CHECK de work_events.actor_type, lido do banco em 03/09/2026.
 // `human` NAO esta na lista: o Postgres recusa o INSERT, e o escritor engole a recusa.
 const ATORES = ['system', 'worker', 'user', 'agent', 'admin', 'provider'];
-const ENUMS = ['confianca', 'motivo', 'origem', 'canal', 'tipo_documento', 'kind', 'desfecho'];
+// 🔴 v2 — `motivo_enum` ganhou enum. Antes ele era a UNICA chave de payload sem
+// enum e sem ser inteiro: aceitava qualquer slug de ate 64 chars, e o digest
+// agrupava por um valor que ninguem fechava.
+const ENUMS = ['confianca', 'motivo', 'motivo_enum', 'origem', 'canal',
+  'tipo_documento', 'kind', 'desfecho'];
 
 const eventos = Object.keys(v.eventos || {}).sort();
-certo('os 11 eventos da §5 estao la, nem a mais nem a menos',
+certo('os 10 eventos da §5 (v2, sem seguradora_respondeu) estao la, nem a mais nem a menos',
   JSON.stringify(eventos) === JSON.stringify([...EVENTOS].sort()),
   `veio ${JSON.stringify(eventos)}`);
+certo('o vocabulario esta na versao 2', Number(v.versao) === 2, `veio ${v.versao}`);
+certo('`claims.seguradora_respondeu` NAO esta mais no vocabulario',
+  !Object.prototype.hasOwnProperty.call(v.eventos || {}, 'claims.seguradora_respondeu'),
+  'zero escritores medidos em 03/09/2026 -- P-093B-SEGURADORA');
+// 🔴 O que o red team achou: `tem_numero` significava coisas diferentes nos dois
+// stacks. A regra agora esta ESCRITA no vocabulario, que e o unico lugar que os
+// dois leem.
+certo('o vocabulario descreve `tem_numero` (a regra que os dois stacks compartilham)',
+  typeof v.descricoes?.tem_numero === 'string' && v.descricoes.tem_numero.includes('6,'),
+  `veio ${JSON.stringify(v.descricoes?.tem_numero)}`);
+certo('a FORMA DE SLUG esta declarada no vocabulario (o Python e o TS usam a mesma)',
+  v.forma_de_slug === '^[a-z0-9][a-z0-9_.-]*$', `veio ${JSON.stringify(v.forma_de_slug)}`);
 
 const foraDoCheck = Object.entries(v.eventos || {})
   .filter(([, d]) => !ATORES.includes(d.ator)).map(([e, d]) => `${e}:${d.ator}`);
 certo('TODO ator esta no CHECK de work_events', foraDoCheck.length === 0,
   `fora do CHECK: ${foraDoCheck.join(', ')}`);
 
-certo('os 7 enums da §5 estao la',
+certo('os 8 enums da §5 (v2, com motivo_enum) estao la',
   JSON.stringify(Object.keys(v.enums || {}).sort()) === JSON.stringify([...ENUMS].sort()),
   `veio ${JSON.stringify(Object.keys(v.enums || {}).sort())}`);
 

@@ -731,27 +731,21 @@ async def process_whatsapp_message_background(
         # atendimento de um segurado por causa dele, não.
         try:
             from app.services.claims_shadow import (
-                abrir_sombra, detectar_sinistro, registrar_gesto, tipo_de_documento,
+                abrir_sombra, detectar_sinistro, ficha_da_conversa, registrar_gesto,
+                tipo_de_documento,
             )
 
             # A ficha da conversa é o caminho (a) — confiança ALTA. 📊 Ela tem
             # conteúdo em 1 de 679 conversas hoje (o grafo não roda, então
             # `nodes.py:860` nunca a grava), mas quando existir ela é a verdade
-            # melhor que o regex, e é lida aqui em UMA consulta indexada por id.
-            _ficha = None
-            try:
-                _achado_ficha = await asyncio.to_thread(
-                    lambda: supabase.client.table("conversations")
-                    .select("ficha_atendimento")
-                    .eq("company_id", company_id)          # 🔴 CLAUDE.md §7
-                    .eq("id", conversation_id)
-                    .limit(1).execute()
-                )
-                _linhas_ficha = getattr(_achado_ficha, "data", None) or []
-                if _linhas_ficha:
-                    _ficha = (_linhas_ficha[0] or {}).get("ficha_atendimento")
-            except Exception as _e_ficha:  # noqa: BLE001
-                logger.debug("[SOMBRA] ficha não lida (%s)", type(_e_ficha).__name__)
+            # melhor que o regex, e é lida em UMA consulta indexada por id.
+            #
+            # 🔴 A consulta mudou de LUGAR, não de conteúdo: ela mora agora em
+            # `claims_shadow.ficha_da_conversa`, que LEMBRA a ausência. 📊 678 de 679
+            # conversas pagavam este SELECT em TODA mensagem para receber `None` —
+            # no caminho quente do webhook, que é o caminho de toda mensagem de todo
+            # segurado. O filtro de `company_id` (§7) foi junto e continua lá.
+            _ficha = await ficha_da_conversa(supabase, company_id, conversation_id)
 
             _abre, _confianca, _motivo = detectar_sinistro(message_text, _ficha)
             if _abre:

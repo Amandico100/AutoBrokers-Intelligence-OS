@@ -104,11 +104,22 @@ def _evento_da_sombra(event_type: Any) -> bool:
 # A PONTE: `work_events` → trajetória. É aqui que a ORDEM nasce (referência ②)
 # ---------------------------------------------------------------------------
 def _ordem(evento: dict, i: int) -> tuple:
-    """Chave de ordenação: `created_at` primeiro, posição de entrada como desempate.
+    """Chave de ordenação: `created_at` como TEXTO, e a posição de entrada no desempate.
 
     🔴 O desempate importa: dois eventos gravados no mesmo instante existem (o humano
     assume e a espera abre na mesma transação), e sem desempate estável a assinatura
     mudaria entre duas execuções — o que duplicaria o sinal a cada rodada.
+
+    ⚠️ **E é preciso dizer o que `i` É, porque o docstring anterior mentia por
+    omissão.** `i` é a posição da linha na lista que chegou, e ela só é ESTÁVEL
+    porque `ler_paginado` ordena por `id` (bigint sequencial). Se um dia a leitura
+    passar a ordenar por outra coluna, este desempate volta a ser a ordem de chegada
+    de uma consulta — instável entre execuções, e o sinal duplica de novo. O
+    `id` está no `select` de `_ler_eventos` por causa desta linha.
+
+    ⚠️ A comparação de `created_at` é LEXICOGRÁFICA, não temporal: funciona porque o
+    PostgREST devolve ISO-8601 com zona fixa. Uma mistura de `+00:00` e `Z` ordenaria
+    errado — e é por isso que nada aqui reformata o timestamp.
     """
     return (_texto(evento.get("created_at") or evento.get("occurred_at")), i)
 
@@ -183,8 +194,10 @@ def trajetorias_de(eventos: Optional[Iterable]) -> list[dict]:
 def esperas_vencidas(trajetorias: Iterable[dict], *, agora: Any = None) -> dict:
     """Quantas sombras têm espera de SEGURADORA vencida — e quantas não têm regime.
 
-    Devolve ``{"vencidas": n, "regime_nao_determinado": n, "total": n}``: três números,
-    porque dois obrigariam a mentir.
+    Devolve ``{"vencidas", "regime_nao_determinado", "total", "nao_instrumentado"}``:
+    três números porque dois obrigariam a mentir, e a bandeira porque um número que
+    não existe precisa dizer que não existe. ⛔ Sem NENHUMA espera `esperando_seguradora`
+    no corpus, os dois primeiros saem `None` e a bandeira sai `True`.
 
     ⚠️ 📊 **Hoje o resultado é `regime_nao_determinado` para toda espera**, e está
     certo assim: a sombra não guarda apólice, então não há `data_contrato`, e a
@@ -198,11 +211,15 @@ def esperas_vencidas(trajetorias: Iterable[dict], *, agora: Any = None) -> dict:
     lista = [t for t in (trajetorias or ()) if isinstance(t, dict)]
     vencidas = 0
     indeterminadas = 0
+    viu_espera = False
     for t in lista:
         marcada = False
         indefinida = False
         for e in (t.get("esperas") or ()):
-            if _texto(e.get("kind")) != "esperando_seguradora" or e.get("satisfeita_em"):
+            if _texto(e.get("kind")) != "esperando_seguradora":
+                continue
+            viu_espera = True
+            if e.get("satisfeita_em"):
                 continue
             r = espera_vencida("esperando_seguradora", e.get("aberta_em"), agora,
                                e.get("data_contrato"))
@@ -212,8 +229,15 @@ def esperas_vencidas(trajetorias: Iterable[dict], *, agora: Any = None) -> dict:
                 indefinida = True
         vencidas += 1 if marcada else 0
         indeterminadas += 1 if (indefinida and not marcada) else 0
+    if not viu_espera:
+        # 🔴 SEM ESPERA DE SEGURADORA NO CORPUS, O NÚMERO É `None`, NÃO `0`.
+        # 📊 03/09/2026: `esperando_seguradora` tem ZERO escritores no código vivo
+        # (P-093B-SEGURADORA). Um `0/N` aqui se lê como "nenhum prazo estourou"; a
+        # verdade é "ninguém mediu", e as duas levam a decisões opostas.
+        return {"vencidas": None, "regime_nao_determinado": None,
+                "total": len(lista), "nao_instrumentado": True}
     return {"vencidas": vencidas, "regime_nao_determinado": indeterminadas,
-            "total": len(lista)}
+            "total": len(lista), "nao_instrumentado": False}
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +249,7 @@ _ROTULO_DO_CONTADOR = {
     "com_nota_da_atendente": "com nota da atendente",
     "com_retomada_do_humano": "com retomada do humano",
     "encerrados_sem_desfecho": "encerrados sem desfecho conhecido",
+    "prazo_regulatorio": "prazo regulatório",
 }
 
 
@@ -245,26 +270,54 @@ def summary_de_variante(variante: dict) -> str:
         len(passos), " → ".join(mostrados))
 
 
+#: 🔴 O que se escreve no lugar de um número que NÃO FOI MEDIDO.
+#: ⚠️ "0/N" e "não instrumentado" são frases opostas: a primeira diz que se olhou e
+#: não havia nada; a segunda, que ninguém olhou (SPEC-088 §4).
+NAO_INSTRUMENTADO = "não instrumentado"
+
+
 def summary_de_contadores(contadores: dict, *, janela_dias: int = JANELA_DIAS,
-                          prazos: Optional[dict] = None) -> str:
+                          prazos: Optional[dict] = None,
+                          truncado: Optional[list] = None) -> str:
     """Cada número com o seu denominador, sem exceção (referência ⑤).
 
     ⚠️ Percorre as chaves na ordem em que `contadores_de` as devolveu: o rótulo é
     cosmético, o dono do contrato é quem conta.
+
+    🔴 Três coisas que este texto NÃO tem o direito de esconder:
+      · um contador `None` vira "não instrumentado", nunca "0/N";
+      · o prazo regulatório idem;
+      · uma leitura TRUNCADA aparece por escrito — um número incompleto que não se
+        declara incompleto é o defeito que a SPEC-088 §4 batizou.
     """
     total = int(contadores.get("total") or 0)
+    # ⚠️ `prazo_regulatorio` sai da lista quando `prazos` veio: os dois falam do
+    # MESMO número, e escrevê-lo duas vezes no mesmo resumo é ruído — quem manda é
+    # o argumento, que traz o cálculo, e não a bandeira que o contador carrega.
+    pulados = {"total", "nao_instrumentado"}
+    if prazos:
+        pulados.add("prazo_regulatorio")
     partes = []
     for chave, valor in contadores.items():
-        if chave == "total" or not isinstance(valor, int):
+        if chave in pulados:
             continue
         rotulo = _ROTULO_DO_CONTADOR.get(chave, chave.replace("_", " "))
-        partes.append("%d/%d %s" % (valor, total, rotulo))
+        if valor is None:
+            partes.append("%s: %s" % (rotulo, NAO_INSTRUMENTADO))
+        elif isinstance(valor, int) and not isinstance(valor, bool):
+            partes.append("%d/%d %s" % (valor, total, rotulo))
     texto = "%d sombra(s) de sinistro em %d dia(s): %s" % (
         total, int(janela_dias), " · ".join(partes))
     if prazos:
-        texto += (" · prazo regulatório: %d/%d vencida(s), %d/%d sem regime "
-                  "determinado" % (int(prazos.get("vencidas") or 0), total,
-                                   int(prazos.get("regime_nao_determinado") or 0), total))
+        if prazos.get("vencidas") is None:
+            texto += " · prazo regulatório: %s" % NAO_INSTRUMENTADO
+        else:
+            texto += (" · prazo regulatório: %d/%d vencida(s), %d/%d sem regime "
+                      "determinado"
+                      % (int(prazos.get("vencidas") or 0), total,
+                         int(prazos.get("regime_nao_determinado") or 0), total))
+    if truncado:
+        texto += " · leitura truncada: %s" % ", ".join(str(x) for x in truncado)
     return texto
 
 
@@ -314,6 +367,20 @@ def _ler_sombras(cliente: Any, company_id: str, desde: str) -> tuple[list[dict],
     return [x for x in (linhas or []) if x.get("id")], bool(truncou)
 
 
+#: 🔴 O TETO **TOTAL** DA LEITURA DE EVENTOS, somado ACROSS lotes.
+#:
+#: 📊 O red team achou o buraco: `ler_paginado` protege CADA lote, e o laço fazia um
+#: lote a cada 100 sombras — então não havia teto nenhum sobre o total. Uma corretora
+#: com 5.000 sombras conversadas puxaria centenas de milhares de linhas para a
+#: memória do worker numa lista Python, e o sintoma seria o worker morto por OOM, que
+#: não se parece com "a leitura foi grande demais".
+#:
+#: ⚠️ 50.000 é um teto DECLARADO (💭), não medido: 📊 em 03/09/2026 há ZERO sombras no
+#: acervo. Ele existe para que a parada seja VISÍVEL (`truncado`) em vez de silenciosa
+#: — que é a diferença entre este teto e o `.limit(20000)` que ele substituiu.
+TETO_DE_EVENTOS = 50000
+
+
 def _ler_eventos(cliente: Any, company_id: str,
                  run_ids: list[str]) -> tuple[list[dict], bool]:
     """Os eventos das sombras da corretora. ⛔ Filtro de `company_id` SEMPRE.
@@ -340,6 +407,14 @@ def _ler_eventos(cliente: Any, company_id: str,
     saida: list[dict] = []
     truncou = False
     for i in range(0, len(run_ids), 100):
+        # 🔴 O TETO TOTAL, conferido ANTES do próximo lote: parar depois de já ter
+        # puxado o excedente para a memória não protege de nada.
+        if len(saida) >= TETO_DE_EVENTOS:
+            logger.warning("[SOMBRA] leitura de eventos parada no teto de %d linhas "
+                           "(%d sombras restantes) — o resultado sai TRUNCADO",
+                           TETO_DE_EVENTOS, len(run_ids) - i)
+            truncou = True
+            break
         lote = run_ids[i:i + 100]
         linhas, cortou = ler_paginado(
             lambda alvo=lote: (
@@ -362,19 +437,29 @@ def _evidencia_de(ref: str, resumo: str, valores: dict) -> dict:
 
 
 def _escrever_sinais(db: Any, company_id: str, variantes: list[dict],
-                     contadores: dict, prazos: dict, janela: tuple[str, str]) -> int:
+                     contadores: dict, prazos: dict, janela: tuple[str, str],
+                     truncado: Optional[list] = None) -> int:
     """Grava pela porta única do `signal_service`. Devolve quantos sinais entraram.
 
     🔴 `subject_id=None`, `work_run_id=None`, `conversation_id=None`: o sinal é
     AGREGADO. Prendê-lo a uma conversa transformaria uma estatística de processo em
     um apontamento sobre um segurado — e é justamente o que a minimização proíbe
     (referência ⑦).
+
+    🔴 **`truncado` ATRAVESSA ATÉ AQUI, e é o conserto que faltava.**
+
+    📊 O red team mediu: `digerir()` calculava `truncado` e o devolvia no dicionário
+    de retorno — e o dicionário morria no `executar()`, que só imprimia contagens. O
+    SINAL, que é o que fica gravado e o que a corretora lê semanas depois, nascia sem
+    a marca. Um número incompleto que não se declara incompleto é o defeito da
+    SPEC-088 §4: ele não trava nada, e é lido como verdade completa.
     """
     from .intelligence.schemas import TIER_ANALISE, SignalDraft
     from .intelligence.signal_service import SignalService
 
     servico = SignalService(db)
     total = int(contadores.get("total") or 0)
+    cortes = [str(x) for x in (truncado or ())]
     gravados = 0
 
     for v in variantes:
@@ -396,12 +481,16 @@ def _escrever_sinais(db: Any, company_id: str, variantes: list[dict],
             metadata={"assinatura": list(v.get("eventos") or ()), "n": v.get("n"),
                       "ramo": v.get("ramo"),
                       "seguradora_slug": v.get("seguradora_slug"),
-                      "denominador": total})
+                      "denominador": total,
+                      # 🔴 A marca vai no METADATA dos DOIS sinais: quem lê a variante
+                      # sozinha, sem o resumo, também precisa saber que o `n` dela
+                      # pode estar menor que a verdade.
+                      "truncado": list(cortes)})
         if servico.registrar(rascunho):
             gravados += 1
 
     if total > 0:
-        resumo = summary_de_contadores(contadores, prazos=prazos)
+        resumo = summary_de_contadores(contadores, prazos=prazos, truncado=cortes)
         rascunho = SignalDraft(
             company_id=company_id, signal_type=SIGNAL_RESUMO,
             subject_type="claims_shadow", subject_id=None,
@@ -414,7 +503,8 @@ def _escrever_sinais(db: Any, company_id: str, variantes: list[dict],
             evidencias=[_evidencia_de("work_events:claims.*", resumo,
                                       {**contadores, "prazo_regulatorio": prazos})],
             metadata={"contadores": dict(contadores), "prazo_regulatorio": dict(prazos),
-                      "denominador": total, "janela_dias": JANELA_DIAS})
+                      "denominador": total, "janela_dias": JANELA_DIAS,
+                      "truncado": list(cortes)})
         if servico.registrar(rascunho):
             gravados += 1
     return gravados
@@ -440,10 +530,12 @@ def digerir(db: Any, company_id: str, *, agora: Optional[datetime] = None,
     if cortou:
         truncado.append("sombras")
     if not sombras:
+        # ⚠️ Sem sombra nenhuma, o prazo também não foi medido — e `0` diria que foi.
         return {"sombras": 0, "variantes": 0, "sinais": 0,
-                "contadores": {"total": 0}, "prazos": {"vencidas": 0,
-                                                       "regime_nao_determinado": 0,
-                                                       "total": 0},
+                "contadores": {"total": 0}, "prazos": {"vencidas": None,
+                                                       "regime_nao_determinado": None,
+                                                       "total": 0,
+                                                       "nao_instrumentado": True},
                 "truncado": truncado}
 
     eventos, cortou = _ler_eventos(cliente, company_id, [str(s["id"]) for s in sombras])
@@ -467,7 +559,8 @@ def digerir(db: Any, company_id: str, *, agora: Optional[datetime] = None,
     variantes = variantes_de(trajs, limiar=limiar)
     contadores = contadores_de(trajs)
     prazos = esperas_vencidas(trajs, agora=fim)
-    sinais = _escrever_sinais(db, company_id, variantes, contadores, prazos, janela)
+    sinais = _escrever_sinais(db, company_id, variantes, contadores, prazos, janela,
+                              truncado=truncado)
     return {"sombras": len(sombras), "variantes": len(variantes), "sinais": sinais,
             "contadores": contadores, "prazos": prazos, "truncado": truncado}
 
@@ -491,7 +584,10 @@ async def executar(ctx: dict) -> str:
                              step_type="analysis", fn=_digerir) or {}
     if not r.get("sombras"):
         return "Nenhuma sombra de sinistro na janela de %d dias." % JANELA_DIAS
+    # 🔴 `truncado` também no texto do passo: é este texto que a Central mostra, e
+    # foi por ele não carregar a marca que o corte ficava invisível para o operador.
     return ("%d sombra(s) lidas, %d variante(s) com N>=%d, %d sinal(is). %s"
             % (r.get("sombras", 0), r.get("variantes", 0), limiar, r.get("sinais", 0),
                summary_de_contadores(r.get("contadores") or {"total": 0},
-                                     prazos=r.get("prazos"))))
+                                     prazos=r.get("prazos"),
+                                     truncado=r.get("truncado"))))

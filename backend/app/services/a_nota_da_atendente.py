@@ -222,23 +222,45 @@ async def gravar_nota(db, **campos: Any) -> Tuple[bool, str]:
     # ⛔ `tem_numero` sai do texto CRU (`campos`), não da linha: o mascarador já
     # trocou os dígitos por marca, e perguntar ao texto mascarado devolveria
     # sempre `False` — um campo que mente por construção.
-    try:
-        from app.services.claims_shadow import registrar_gesto
+    #
+    # =====================================================================
+    # 🔴 E SÓ PELO WHATSAPP. A NOTA DO PAINEL JÁ TEM ESCRITOR — É O NEXT.
+    # =====================================================================
+    #
+    # 📊 Achado pelo red team desta rodada: a nota escrita no PAINEL percorre
+    # DOIS caminhos que gravam o MESMO evento.
+    #
+    #   1. `app/api/dashboard/conversas/[id]/route.ts:396` chama
+    #      `registrarEventoDaSombra(… 'claims.nota_registrada' …)`;
+    #   2. o mesmo `route.ts` chama `POST /api/admin/send-message`, que cai em
+    #      `webhook._consumir_anotacao_do_painel` → `gravar_nota` → aqui.
+    #
+    # Resultado: DUAS linhas em `work_events` para UMA anotação. A trajetória
+    # ganha um passo que ninguém deu, a assinatura da variante muda, e o
+    # contador "com nota da atendente" continua certo por acaso (ele testa
+    # presença, não contagem) enquanto a VARIANTE — o produto do BLOCO C —
+    # descreve um processo que não existe. ⛔ Um evento duplicado não trava
+    # nada: ele mente em silêncio (CLAUDE.md §9.5).
+    #
+    # ⚠️ O lado que fica é o do Next, e não este, por uma razão medida: só o
+    # `route.ts` sabe que a origem é o painel de verdade. Aqui a origem chega
+    # como parâmetro — e um parâmetro errado voltaria a duplicar.
+    if linha.get("origem") == ORIGEM_WHATSAPP:
+        try:
+            from app.services.claims_shadow import registrar_gesto, tem_numero
 
-        await registrar_gesto(
-            db, company_id=linha["company_id"],
-            conversation_id=linha.get("conversation_id"),
-            event_type="claims.nota_registrada",
-            # ⚠️ `painel` aqui é `dashboard` no vocabulário da sombra. Gravar o
-            # nome local produziria um enum que o digest não sabe agrupar — e o
-            # erro só apareceria no relatório, semanas depois.
-            payload={"origem": ("dashboard" if linha.get("origem") == ORIGEM_PAINEL
-                                else ORIGEM_WHATSAPP),
-                     "tem_numero": bool(re.search(r"\d", str(campos.get("texto") or "")))},
-        )
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[SOMBRA] nota não registrada na sombra (%s)",
-                       type(erro).__name__)
+            await registrar_gesto(
+                db, company_id=linha["company_id"],
+                conversation_id=linha.get("conversation_id"),
+                event_type="claims.nota_registrada",
+                # 🔴 `tem_numero` é a MESMA regra dos dois lados (`\d{6,}`), e
+                # mora em `claims_shadow` para que só exista uma.
+                payload={"origem": ORIGEM_WHATSAPP,
+                         "tem_numero": tem_numero(campos.get("texto"))},
+            )
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[SOMBRA] nota não registrada na sombra (%s)",
+                           type(erro).__name__)
     return True, "gravada"
 
 

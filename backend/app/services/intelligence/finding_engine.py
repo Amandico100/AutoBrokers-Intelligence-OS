@@ -291,17 +291,46 @@ def _maior_severidade(sinais: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 
+#: 🔴 OS SINAIS QUE SÃO DE OBSERVAÇÃO INTERNA E **NUNCA** VIRAM FINDING.
+#:
+#: 📊 Achado pelo painel desta rodada como BLOCKER DE PRODUTO: a sombra de sinistros
+#: (SPEC-093-B) grava em `intelligence_signals` com `source_type='claims_shadow'`,
+#: e `consolidar()` lia TODO sinal vivo da corretora. O caminho completo era
+#: `claims_shadow_digest._escrever_sinais` → `SignalService.ativos` → aqui →
+#: `intelligence_findings` → `briefing_service` → **o briefing diário do corretor**.
+#:
+#: ⛔ A SPEC-093-B §2 é explícita: a sombra **OBSERVA**. Ela existe para virar dataset
+#: de processo, não para falar com a corretora. Um Finding dizendo *"5 sinistros ×
+#: porto seguiram 7 passos"* é o produto contando ao cliente o que ele está sendo
+#: medido — sem que nenhuma SPEC tenha decidido que essa conversa deve acontecer.
+#:
+#: ⚠️ O filtro mora AQUI, no ponto único de leitura do consolidador, e não em
+#: `SignalService.ativos`: `ativos` também serve a telas de diagnóstico
+#: (`api/intelligence.py`) que TÊM de continuar enxergando o sinal da sombra. Tirar a
+#: linha do lugar errado esconderia o dado de quem precisa dele.
+SOURCE_TYPES_INTERNOS: tuple[str, ...] = ("claims_shadow",)
+
+
 class FindingEngine:
     def __init__(self, supabase_client: Any):
         self.db = getattr(supabase_client, "client", supabase_client)
         self.evidencias = EvidenceService(supabase_client)
 
     def consolidar(self, company_id: str, *, limite_sinais: int = 200) -> list[dict]:
-        """Agrupa sinais vivos por assunto e grava/atualiza os Findings."""
+        """Agrupa sinais vivos por assunto e grava/atualiza os Findings.
+
+        ⛔ Sinal de `source_type` interno (`SOURCE_TYPES_INTERNOS`) NÃO entra: ver a
+        constante acima e a SPEC-093-B §2 — a sombra observa, não conversa.
+        """
         from .dedupe_service import agrupar_por_assunto
         from .signal_service import SignalService
 
         sinais = SignalService(self.db).ativos(company_id, limite=limite_sinais)
+        # 🔴 O corte é por `source_type`, e não por `signal_type`: `process_variant`
+        # é um tipo genérico que outro detector pode passar a usar amanhã, e o corte
+        # por tipo passaria a esconder o sinal errado. Quem escreveu é a autoridade.
+        sinais = [s for s in (sinais or [])
+                  if str((s or {}).get("source_type") or "") not in SOURCE_TYPES_INTERNOS]
         if not sinais:
             return []
 
