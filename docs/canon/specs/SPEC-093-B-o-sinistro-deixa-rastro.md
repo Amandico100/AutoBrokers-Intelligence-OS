@@ -283,7 +283,7 @@ SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='work_events'
 SELECT tablename, policyname, cmd FROM pg_policies WHERE tablename IN ('work_runs','work_events','work_waits');
 ```
 ```bash
-grep -n "servico = servico or" backend/app/services/atlas/templater.py       # espere :1725
+grep -n "servico = servico or" backend/app/services/atlas/templater.py       # espere :1726
 grep -rn "notas_da_atendente" app components | wc -l                          # espere 0
 grep -n "def registrar_ato_do_agente\|agente=\"" backend/app/services/dispatch_router.py | head   # como se escreve work_event hoje
 ```
