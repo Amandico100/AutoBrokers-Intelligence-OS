@@ -9998,6 +9998,28 @@ comparação com o período anterior, tudo isso **duas vezes**.
 teto de 2 anos com recusa escrita. **Destrava:** medir se `/renovacoes` aceita janela plurianual sem 502, ou guardar
 o lote em Redis por corretora. **Dono:** 🤖. 💭 4h.
 
+## P-094-ARTIFACT-DUPLICADO · toda pergunta não-cacheada publica um Artifact NOVO
+📊 Medido pelo juiz em 03/09/2026 e confirmado nas duas provas vivas desta rodada: a mesma pergunta
+(*"como estamos?"*, Resulta, período padrão) publicou **duas** peças, com `pack_id` `d2111dfd…` e `00a7dbda…` e
+números idênticos ao centavo (972 apólices · R$ 1.472.165,72 de comissão apropriada).
+🔴 **O conserto mínimo sugerido pelo painel não existe:** *"reusar o artifact do mesmo `pack_id`"* não tem alvo —
+`EvidencePack.pack_id` é um `uuid4()` novo a cada montagem (`evidence_pack.py`, `field(default_factory=…)`), então
+um `SELECT` por `pack_id` nunca encontra nada. A chave real de deduplicação é **(company_id, período, janela de
+frescor)**, e escolher essa janela é decisão de PRODUTO: reusar a peça de 20 minutos atrás economiza uma leitura de
+~85 s e 10 GET, e entrega ao dono números que não são os de agora. O cache de pacote da tool já responde ao
+follow-up dentro de 15 min; o que falta é o que acontece **depois** dele.
+**Custo de esquecer:** a lista de entregas do corretor enche de peças idênticas, e a que ele abrir pode não ser a
+mais recente. **Destrava:** o Founder decide se uma repergunta fora da janela de frescor REUSA a peça (e diz a
+idade) ou publica uma nova. **Dono:** 🧑 decide · 🤖 implementa. 💭 3h.
+
+## P-094-SEED-NAO-APLICADO · `report_templates` tem ZERO linhas em produção
+📊 Medido em 03/09/2026: a migration de seed dos templates de relatório **não foi aplicada** no banco de produção.
+⛔ **Deliberadamente NÃO aplicada nesta rodada** (§2 das travas: nenhuma escrita fora de `artifacts*` e
+`tenant_connections.last_used_at`). O Pulso 360 publica hoje porque o `ArtifactService` compõe os blocos no payload;
+o que falta é a linha de catálogo. **Custo de esquecer:** quem for listar os templates disponíveis vê um catálogo
+vazio, e a próxima SPEC que dependa dele nasce achando que o template não existe. **Destrava:** F-094-04 — o Founder
+autoriza o APPLY, com VERIFY e ROLLBACK escritos antes. **Dono:** 🧑.
+
 ## P-094-SEED-023 · `financial.billing_collection` é seed de outra SPEC e ficou fora desta rodada
 Apontado pelo painel e **deliberadamente não tocado**: mexer no seed de outra SPEC nesta rodada seria escopo por
 conta própria (CLAUDE.md §11). Registrado para não virar dívida silenciosa. **Dono:** 🤖.
