@@ -51,9 +51,12 @@ conteúdo em **1 de 679** conversas.
 **0 linhas** · `work_runs.unblock_state='assumido_por_humano'` → **0** · `work_events` com ator
 humano → **0 em 35.705**. Caminho: `human_handoff.py:611` → `dispatch_router.py:1138` →
 `o_fim_do_atendimento.py:251 abrir_espera(ESPERANDO_HUMANO)` → `handoff_watchdog.py:471`.
-⚠️ `human_handoff.py:19-20`: a tool só é anexada com `tools_config.human_handoff.enabled` — **por
-medir nas 3 corretoras** (BLOCO 0). Os zeros são compatíveis com "nunca precisou" e com "nunca
-esteve ligada".
+📊 `human_handoff.py:19-20`: a tool só é anexada com `tools_config.human_handoff.enabled`. **Medido em
+03/09: `enabled=false` em 1 dos 8 agentes e AUSENTE nos outros 7.** A tool nunca esteve ligada em
+lugar nenhum — os zeros do handoff são "nunca esteve ligada", não "nunca precisou". 🔴 O sinal
+humano REAL hoje é o botão **Assumir** do painel (`ConversasClient.tsx:432` → `claimed_by`), não o
+handoff do robô. O BLOCO B trata `claims.handoff_pedido` como evento OPCIONAL e `claims.humano_assumiu`
+como o gesto principal. F-093B-05.
 
 ### 1.4 · A anotação da atendente tem porta e zero uso
 📊 `notas_da_atendente` → **0 linhas** (escritor único `a_nota_da_atendente.py:207`, gatilho
@@ -62,8 +65,9 @@ esteve ligada".
 
 ### 1.5 · O volume existe, e é o limite superior
 📊 regex `sinistro|colis[ãa]o|batida|roubo|furto|acidente|terceiro` em `attendance_transcripts.text`
-→ **4.827 linhas · 2.187 sessões · 2 corretoras**, de 156.917. Só a palavra `sinistro`: 393 linhas em
-08/2026. Distribuição mensal estável em **~130–270 sessões/mês** (07/2025→08/2026). ⚠️ `terceiro` e
+→ **4.827 linhas · 2.187 sessões · 2 corretoras**, de 156.917. Só a palavra exata `sinistro`
+(`\msinistro\M`): **222 sessões em 08/2026**, 195 em 07, 161 em 05 — entre 94 e 222 sessões/mês nos
+últimos 12 meses. Distribuição mensal estável em **~130–270 sessões/mês** (07/2025→08/2026). ⚠️ `terceiro` e
 `acidente` casam fora de contexto: é teto, não contagem. 📊 `work_runs` de sinistro: **0**.
 
 ### 1.6 · O trilho de aprendizagem existe e está quase vazio
@@ -297,7 +301,10 @@ detecção      (a) infer_ramo_servico(...) devolve servico == 'sinistro'       
                   no texto do SEGURADO (nunca da URA)                                  → confianca MEDIA
               ⛔ 'terceiro' sozinho NÃO abre (§1.5: casa fora de contexto)
 abertura      WorkRunService.criar(workflow_key='claims.shadow', outcome_type='claims.shadow',
-              source_type='conversation', source_id=conversation_id, conversation_id=…,
+              source_type='chat', source_id=conversation_id, conversation_id=…,
+              📊 o CHECK de work_runs.source_type é {chat, routine, auxiliary, portal, api, admin, system,
+              retry, child_run} — 'conversation' NÃO existe; 'chat' é o canal do segurado. thread_id é
+              CHECK derivado ('work:'+company_id+':'+id): o RPC o gera, não se passa
               idempotency_key=f'claims.shadow:{conversation_id}', risk_level='low',
               input_payload={'confianca':…, 'motivo':…, 'ramo':…, 'seguradora_slug':…})
               — UMA sombra por conversa (idempotente); reabrir não duplica
@@ -517,6 +524,9 @@ F-093B-02  Sem tela nesta SPEC: a Central mostra o trabalhador e o admin tem o J
 F-093B-03  Nível CRÍTICO por RISCO 6 (dado de sinistro, todo atendimento, linhas que sobram). Red team e auditoria externa
            entram. Custo 💭 +1,5h. Se preferir PADRÃO, diga — mas é aqui que eu não rebaixaria.
 F-093B-04  Backfill das 2.187 sessões históricas: dado antigo de segurado virando corpus. Não faço sem sua palavra.
+F-093B-05  📊 `tools_config.human_handoff.enabled` está false ou ausente nos 8 agentes: o robô NUNCA pede handoff. No piloto,
+           quem "entrega ao humano" é a atendente clicando Assumir. Ligar a tool muda a conduta do robô — decisão sua, para
+           depois da primeira semana.
 ```
 
 ## 10. A ordem de execução
