@@ -3712,6 +3712,118 @@ def bloco_14_a_segunda_rodada():
               "colapsador que resume sempre apagaria o acervo",
               "veio %r" % (um_so,))
 
+    # ------------------------------------------------------------------ ⑤
+    # P2 · O FAIL-CLOSED tinha guarda sobre o DATACLASS, e nao sobre a TOOL.
+    #
+    # 📊 O juiz mediu em 03/09/2026: `_manifesto` engolindo a excecao e
+    # devolvendo `None` deixava o guarda VERDE — porque nada exercitava
+    # `_manifesto`. E `registry._avaliar(None, d)` responde "nada bloqueia":
+    # as 16 metricas sairiam com confianca HIGH sobre uma fonte cuja capacidade
+    # ninguem conseguiu ler, sem uma linha de aviso no pack (CLAUDE.md §9.4).
+    if pack14 is not None and tool14 is not None and reg14 is not None:
+        import asyncio as _asyncio
+
+        class _ProviderQueLevanta:
+            async def manifesto(self, **kw):   # noqa: ANN001, ARG002
+                raise RuntimeError("o censo nao abriu")
+
+        class _ProviderSemPorta:
+            """🔴 Quem NAO EXPOE a porta e o caso legitimo de 'nao perguntei'."""
+
+        _devolver_a_rede()
+        try:
+            laco14 = _asyncio.new_event_loop()
+        finally:
+            _bloquear_a_rede()
+        try:
+            fatos14 = fixture_golden(cbim14) if cbim14 is not None else Fatos()
+            fechado = laco14.run_until_complete(
+                tool14.ExecutiveIntelligenceTool._manifesto(
+                    _ProviderQueLevanta(), EMPRESA_A, fatos14))
+            aberto = laco14.run_until_complete(
+                tool14.ExecutiveIntelligenceTool._manifesto(
+                    _ProviderSemPorta(), EMPRESA_A, fatos14))
+        finally:
+            laco14.close()
+
+        certo(fechado is not None and bool(getattr(fechado, "ilegivel", "")),
+              "[14] ⑤ PAR-A: `_manifesto` com provider que LEVANTA devolve um "
+              "manifesto ILEGIVEL — nunca `None`",
+              "veio %r" % (fechado,))
+        bloqueadas = []
+        if fechado is not None and cbim14 is not None:
+            for mid in ("production.policy_count", "commission.broker_accrued",
+                        "renewal.exposure"):
+                try:
+                    bloqueadas.append(reg14.calcular(mid, fatos14, PERIODO_2025,
+                                                     manifest=fechado))
+                except Exception:  # noqa: BLE001
+                    pass
+        certo(bool(bloqueadas) and all(m.indisponivel for m in bloqueadas),
+              "[14] ⑤ PAR-A': e TODAS as metricas dependentes ficam "
+              "UNAVAILABLE com o censo ilegivel",
+              "veio %r" % ([(m.metric_id, m.value) for m in bloqueadas],))
+        avisos14 = list(getattr(fechado, "avisos_de_integridade", []) or [])
+        certo(bool(avisos14),
+              "[14] ⑤ PAR-A'': e o pack carrega o AVISO DE INTEGRIDADE — um "
+              "relatorio todo INDISPONIVEL parece defeito da fonte do cliente "
+              "quando o defeito e da NOSSA medicao (M2)",
+              "veio %r" % (avisos14,))
+        if tool14 is not None and pack14 is not None:
+            class _P2:
+                inicio, fim = date(2025, 1, 1), date(2025, 12, 31)
+                rotulo, e_padrao = "2025", False
+
+            peca_p2 = tool14.ExecutiveIntelligenceTool(company_id=EMPRESA_A,
+                                                       supabase=object())
+            pacote_p2 = peca_p2._empacotar(pack14, EMPRESA_A, _P2(), None,
+                                           list(bloqueadas), [], [], Fatos(),
+                                           "03/09/2026", fechado)
+            certo(any(a in pacote_p2.warnings for a in avisos14),
+                  "[14] ⑤ PAR-A''': e o aviso chega ao PACK que o modelo le",
+                  "warnings=%r" % (pacote_p2.warnings[:4],))
+        certo(aberto is None,
+              "[14] ⑤ PAR-B (controle): provider que NAO EXPOE `manifesto` "
+              "continua devolvendo `None` — nao ter a porta e diferente de a "
+              "porta ter quebrado",
+              "veio %r — se isto virar fail-closed, todo provider sem censo "
+              "fica sem nenhuma metrica" % (aberto,))
+
+    # ------------------------------------------------------------------ ⑥
+    # P3 · `dimension="a"` casava `Allianz` por SUBSTRING. 📊 Texto livre do
+    # LLM: um recorte que casa por acidente troca a carteira inteira pelo
+    # detalhe de uma seguradora sem ninguem pedir — e em silencio (§9.5).
+    if pack14 is not None and tool14 is not None:
+        com_detalhe14 = pack14.EvidencePack(
+            company_id=EMPRESA_A,
+            period=pack14.periodo_iso("2025-01-01", "2025-12-31"),
+            metrics=[pack14.metrica(
+                "mix.insurer", 62.3, "pct",
+                period=pack14.periodo_iso("2025-01-01", "2025-12-31"),
+                time_basis="POLICY_VALID_FROM", coverage=1.0,
+                breakdown=[{"rotulo": "Allianz", "comissao": 1.0},
+                           {"rotulo": "Seguradora B", "comissao": 2.0}])])
+
+        def _recorte(texto):
+            _r, fora = tool14.ExecutiveIntelligenceTool._recortar(
+                com_detalhe14, texto)
+            return fora
+
+        certo(bool(_recorte("a")),
+              "[14] ⑥ PAR-A: `dimension='a'` NAO casa `Allianz` — uma letra "
+              "nao e um recorte", "casou e filtrou o detalhe em silencio")
+        certo(not _recorte("allianz") and not _recorte("allian"),
+              "[14] ⑥ PAR-B: e o nome inteiro e o prefixo de 3+ continuam "
+              "casando (recusar tudo nao e recortar nada)",
+              "allianz=%r allian=%r" % (_recorte("allianz"),
+                                        _recorte("allian")))
+        certo(not _recorte("segurad"),
+              "[14] ⑥ PAR-C: e o prefixo de uma PALAVRA do rotulo casa",
+              "segurad=%r" % (_recorte("segurad"),))
+        certo(bool(_recorte("egur")),
+              "[14] ⑥ CONTROLE: e o pedaco do MEIO de uma palavra NAO casa",
+              "`egur` casou `Seguradora B` — voltou a substring crua")
+
     for chave in ("_094_14_adapter", "_094_14_cbim", "_094_14_reg",
                   "_094_14_man", "_094_14_pack", "_094_14_tool"):
         sys.modules.pop(chave, None)

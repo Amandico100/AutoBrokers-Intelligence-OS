@@ -475,6 +475,37 @@ COMO_FALAR = (
 )
 
 
+#: 🔴 Menos que isto num prefixo é ruído, e não uma abreviação. Uma letra
+#: sozinha casa quase tudo; três já é uma palavra começada ("all", "seg").
+MINIMO_DO_PREFIXO = 3
+
+
+def _casa_o_rotulo(alvo: str, chave: str) -> bool:
+    """O recorte pedido é ESTE rótulo? Palavra inteira, ou prefixo de palavra.
+
+    🔴 📊 Achado pelo juiz em 03/09/2026: `dimension="a"` casava **Allianz**,
+    porque a pergunta era `alvo in chave` — substring crua. `dimension` é texto
+    livre que o LLM preenche a partir da frase do dono, e um recorte que casa
+    por acidente troca a carteira inteira pelo detalhe de uma seguradora sem
+    ninguém pedir. O caminho da recusa está certo e é barulhento; o do
+    casamento errado é silencioso (CLAUDE.md §9.5).
+
+    ⚠️ O prefixo continua valendo, com piso: quem digita *"allian"* quer a
+    Allianz, e exigir o nome exato faria o recorte legítimo falhar. O que sai é
+    o casamento por UMA letra, e o casamento no MEIO da palavra.
+    """
+    if not alvo or not chave:
+        return False
+    if alvo == chave:
+        return True
+    palavras = chave.split()
+    if alvo in palavras:
+        return True
+    if len(alvo) < MINIMO_DO_PREFIXO:
+        return False
+    return chave.startswith(alvo) or any(p.startswith(alvo) for p in palavras)
+
+
 class ExecutiveIntelligenceTool(BaseTool):
     """O Pulso 360 da corretora, num pedido só."""
 
@@ -670,7 +701,7 @@ class ExecutiveIntelligenceTool(BaseTool):
         alvo = normalizar_rotulo(dimension)
         permitidos = ExecutiveIntelligenceTool.rotulos_do_pacote(pacote)
         casados = [bonito for chave, bonito in permitidos.items()
-                   if alvo and alvo in chave]
+                   if _casa_o_rotulo(alvo, chave)]
         if not casados:
             amostra = ", ".join(sorted(permitidos.values())[:8])
             return pacote, (
