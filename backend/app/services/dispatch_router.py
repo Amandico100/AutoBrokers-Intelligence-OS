@@ -28,12 +28,10 @@ O Redis continua sendo o cache quente; o que ele não é mais é a única cópia
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
 import unicodedata
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional
 
@@ -364,6 +362,12 @@ async def clear_active_dispatch(company_id: str, insurer_phone: str) -> None:
 # E não há conflito com o varredor de órfãos da SPEC-055: `recuperar_orfaos()`
 # filtra `lease_expires_at < agora`, e um run sem lease tem esse campo NULO —
 # PostgREST não devolve NULL num `.lt()`. O Smith Worker nunca toca nestes runs.
+#
+# 🔴 SPEC-093-B BLOCO 0-bis — O INSERT NÃO MORA MAIS AQUI.
+# A sombra do sinistro precisa do MESMO caminho (mesmo motivo: ninguém no worker
+# a executa), e CLAUDE.md §5 proíbe a segunda cópia. Quem grava agora é
+# `app.services.work.runs.criar_registro_sem_fila` — este arquivo virou um
+# chamador entre outros. A razão acima continua valendo e está repetida lá.
 
 WORKFLOW_ACIONAMENTO = "acionamento.seguradora"
 RUNTIME_ACIONAMENTO = "acionamento"
@@ -489,21 +493,34 @@ async def _conversa_provada_da_sessao(db, company_id: str,
 
 async def _garantir_work_run(db, company_id: str, insurer_digits: str,
                              session: Dict[str, Any]) -> Optional[str]:
-    """O Work Run desta sessão — reaproveitado, nunca duplicado."""
+    """O Work Run desta sessão — reaproveitado, nunca duplicado.
+
+    🔴 **Quem grava é `criar_registro_sem_fila`, não este arquivo.** O INSERT
+    direto morava aqui e era o único do produto que sabia escrever
+    `conversation_id` num run. A SPEC-093-B precisa exatamente do mesmo INSERT
+    para a sombra do sinistro, e CLAUDE.md §5 proíbe a segunda cópia — então ele
+    foi EXTRAÍDO para `app.services.work.runs`, com a razão de não passar pelo
+    RPC (o outbox) escrita lá. As colunas e os valores são os mesmos: o que
+    mudou de lugar foi a mão que escreve.
+
+    ⚠️ **A ÚNICA diferença de comportamento, dita em voz alta:** a prova da
+    conversa passou a acontecer ANTES da checagem de idempotência, porque quem
+    checa agora é o helper. Custo: um `SELECT` a mais em `conversations` no
+    caminho raro em que a sessão perdeu o `work_run_id` mas o run já existe.
+    Nenhuma ESCRITA mudou — nem coluna, nem valor, nem ordem.
+    """
+    # ⚠️ Import tardio pela MESMA razão do `_motor()` acima: este módulo é
+    # carregado por guardas que montam um `app.services` de mentira com
+    # `__path__ = []`, e um import de topo os obrigaria a conhecer cada
+    # submódulo novo — quebrando quem não tem nada a ver com o assunto.
+    from app.services.work.runs import criar_registro_sem_fila
+
     if session.get("work_run_id"):
         return str(session["work_run_id"])
 
     idem = _chave_idempotente(insurer_digits, session)
-    achado = await (db.client.table("work_runs").select("id")
-                    .eq("company_id", company_id).eq("idempotency_key", idem)
-                    .limit(1).execute())
-    if achado.data:
-        session["work_run_id"] = str(achado.data[0]["id"])
-        return session["work_run_id"]
-
     fase = str(session.get("state") or "preparing")
     status = _motor().status_duravel_da_fase(fase)
-    run_id = str(uuid.uuid4())
     entrada = {
         "company_id": str(company_id),
         "case_id": str(session.get("case_id") or ""),
@@ -511,9 +528,7 @@ async def _garantir_work_run(db, company_id: str, insurer_digits: str,
         "playbook_ref": str(session.get("playbook_ref") or ""),
         "subservice": str(session.get("subservice") or ""),
     }
-    agora = _agora().isoformat()
     linha = {
-        "id": run_id,
         "company_id": str(company_id),
         "source_type": "chat",
         "source_id": str(session.get("case_id") or "")[:180] or None,
@@ -526,16 +541,10 @@ async def _garantir_work_run(db, company_id: str, insurer_digits: str,
         "risk_level": "high",
         "runtime_kind": RUNTIME_ACIONAMENTO,
         "workflow_key": WORKFLOW_ACIONAMENTO,
-        "workflow_version": "1.0.0",
-        "thread_id": f"work:{company_id}:{run_id}",
-        "input_payload": entrada,
-        "input_fingerprint": hashlib.sha256(
-            json.dumps(entrada, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
         "idempotency_key": idem,
+        "input_payload": entrada,
         "current_step_key": fase,
         "progress_percent": _progresso_da_fase(fase, status),
-        "queued_at": agora,
-        "started_at": agora,
         # 🔴 SPEC-090 BLOCO A — de qual conversa este acionamento nasceu.
         #
         # 📊 Sem esta linha, reconstruir *"o cliente escreveu X, o robô abriu o
@@ -545,8 +554,14 @@ async def _garantir_work_run(db, company_id: str, insurer_digits: str,
         # ⛔ `None` é resposta, não falha. Ver `_conversa_provada_da_sessao`.
         "conversation_id": await _conversa_provada_da_sessao(db, company_id, session),
     }
-    await db.client.table("work_runs").insert(linha).execute()
+    registro = await criar_registro_sem_fila(db, **linha)
+    run_id = str(registro["id"])
     session["work_run_id"] = run_id
+    # ⚠️ Run reaproveitado não nasce de novo: sem `run.created` na linha do
+    # tempo, sem linha de log de criação. Era assim antes da extração.
+    if registro.get("reused"):
+        return run_id
+
     await _evento(db, company_id, run_id, "run.created",
                   "Acionamento aberto na seguradora — a partir daqui cada fase "
                   "fica gravada, mesmo se o cache cair.",

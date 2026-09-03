@@ -19,6 +19,9 @@ Três garantias que este módulo entrega e que hoje não existem:
 
 from __future__ import annotations
 
+import hashlib
+import inspect
+import json
 import logging
 import socket
 import uuid
@@ -336,3 +339,147 @@ class WorkRunService:
 
 def linha_company(linha: dict) -> str:
     return linha.get("company_id") or ""
+
+
+# ---------------------------------------------------------------------------
+# O REGISTRO SEM FILA — SPEC-093-B BLOCO 0-bis ②
+# ---------------------------------------------------------------------------
+#
+# POR QUE EXISTE UM SEGUNDO CAMINHO DE CRIAÇÃO, SE `criar()` JÁ CRIA
+# ------------------------------------------------------------------
+# `criar()` chama o RPC `work_run_create`, e o RPC grava, na MESMA transação,
+# uma linha em `work_queue_outbox`. O OutboxDispatcher publica no Redis Stream,
+# o Smith Worker consome e procura o handler do `workflow_key` — não acha, e
+# marca o run como `failed`.
+#
+# Isso é o comportamento certo para trabalho que o worker executa. É o
+# comportamento ERRADO para trabalho que o worker NÃO executa:
+#
+#   `acionamento.seguradora`  quem executa é o inbound do WhatsApp, mensagem
+#                             por mensagem, ao longo de horas
+#   `claims.shadow`           ninguém executa: é observação, e ela só termina
+#                             quando a conversa termina
+#
+# Nos dois casos o run está VIVO enquanto o worker o marcaria `failed` — um
+# espelho durável que mente, que é pior do que não existir.
+#
+# Por isso este caminho grava direto na tabela: mesma tabela, mesmo enum de
+# status, mesma linha do tempo em `work_events`, mesmos checkpoints em
+# `work_steps`. O que ele não tem é FILA — de propósito.
+#
+# ⚠️ E não há conflito com o varredor de órfãos da SPEC-055: `recuperar_orfaos()`
+# filtra `lease_expires_at < agora`, e um run sem lease tem esse campo NULO —
+# PostgREST não devolve NULL num `.lt()`. O Smith Worker nunca toca nestes runs.
+#
+# 🔴 ESTE HELPER É A ÚNICA CÓPIA. Ele nasceu extraído de
+# `dispatch_router.py:515-548`, que era o único lugar do produto que sabia
+# gravar `conversation_id` num run (📊 os 4 runs com conversa eram dele). O
+# BLOCO A da SPEC-093-B precisava do mesmo INSERT e CLAUDE.md §5 proíbe a
+# segunda cópia: consolidar, não duplicar.
+
+
+async def _talvez_await(resultado: Any) -> Any:
+    """O mesmo código serve cliente async e cliente síncrono.
+
+    `runs.py` é um módulo síncrono e o `dispatch_router` usa o cliente async.
+    Em vez de duas versões do mesmo INSERT — que é exatamente o que este helper
+    existe para impedir — o resultado é aguardado só quando é aguardável.
+    """
+    if inspect.isawaitable(resultado):
+        return await resultado
+    return resultado
+
+
+async def criar_registro_sem_fila(
+    db: Any,
+    *,
+    company_id: str,
+    workflow_key: str,
+    outcome_type: str,
+    outcome_title: str,
+    source_type: str,
+    source_id: Optional[str],
+    conversation_id: Optional[str],
+    runtime_kind: str,
+    status: str,
+    risk_level: str,
+    idempotency_key: str,
+    input_payload: dict,
+    correlation_id: Optional[str] = None,
+    workflow_version: str = "1.0.0",
+    current_step_key: Optional[str] = None,
+    progress_percent: Optional[int] = None,
+) -> dict:
+    """Grava um `work_run` **sem enfileirar no outbox**. Devolve a linha.
+
+    Devolve sempre um dicionário com pelo menos `id` e `reused`:
+
+    ``{"id": "...", "reused": False, ...a linha gravada}``   nasceu agora
+    ``{"id": "...", "reused": True}``                        já existia
+
+    🔴 **Idempotência é do par `(company_id, idempotency_key)`, nunca da chave
+    sozinha:** a mesma chave em duas corretoras são dois trabalhos, e um SELECT
+    sem `company_id` devolveria o run da outra casa (CLAUDE.md §7 — o backend
+    roda com service role, então o filtro no código é a proteção real).
+
+    ⚠️ `thread_id` **não é parâmetro**: há CHECK no banco
+    (`ck_work_runs_thread_format`) exigindo `'work:' || company_id || ':' || id`.
+    Quem monta é este helper, para que nenhum chamador possa errá-lo.
+
+    ⚠️ `source_type` também tem CHECK (`ck_work_runs_source`) e só aceita
+    `chat | routine | auxiliary | portal | api | admin | system | retry |
+    child_run`. Não há valor "sombra" nem "acionamento" ali — o que distingue o
+    caminho é `runtime_kind`, que é livre.
+
+    ⛔ `correlation_id` e `progress_percent` são NOT NULL **com default** no
+    banco. Mandá-los como `None` é um INSERT recusado, não uma coluna nula — por
+    isso a chave só entra na linha quando tem valor.
+
+    ⚠️ Este helper **não** engole exceção de INSERT: quem chama decide se a
+    falha derruba o trabalho ou só o espelho.
+    """
+    cli = getattr(db, "client", db)
+    empresa = str(company_id)
+
+    achado = await _talvez_await(
+        cli.table("work_runs").select("id")
+        .eq("company_id", empresa).eq("idempotency_key", idempotency_key)
+        .limit(1).execute()
+    )
+    existente = (getattr(achado, "data", None) or [])
+    if existente:
+        return {"id": str(existente[0]["id"]), "reused": True}
+
+    run_id = str(uuid.uuid4())
+    entrada = input_payload or {}
+    agora = _iso(_agora())
+    linha: dict = {
+        "id": run_id,
+        "company_id": empresa,
+        "source_type": source_type,
+        "source_id": source_id,
+        "outcome_type": outcome_type,
+        "outcome_title": outcome_title,
+        "status": status,
+        "risk_level": risk_level,
+        "runtime_kind": runtime_kind,
+        "workflow_key": workflow_key,
+        "workflow_version": workflow_version,
+        "thread_id": f"work:{empresa}:{run_id}",
+        "input_payload": entrada,
+        "input_fingerprint": hashlib.sha256(
+            json.dumps(entrada, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
+        "idempotency_key": idempotency_key,
+        "queued_at": agora,
+        "started_at": agora,
+        "conversation_id": conversation_id,
+    }
+    if current_step_key is not None:
+        linha["current_step_key"] = current_step_key
+    if progress_percent is not None:
+        linha["progress_percent"] = progress_percent
+    if correlation_id is not None:
+        linha["correlation_id"] = correlation_id
+
+    await _talvez_await(cli.table("work_runs").insert(linha).execute())
+    return {**linha, "reused": False}

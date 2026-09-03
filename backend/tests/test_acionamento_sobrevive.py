@@ -286,7 +286,7 @@ def _carregar():
         spec.loader.exec_module(mod)
         return mod
 
-    for nome in ("app", "app.core", "app.services", "app.tasks"):
+    for nome in ("app", "app.core", "app.services", "app.tasks", "app.services.work"):
         m = sys.modules.setdefault(nome, types.ModuleType(nome))
         m.__path__ = []
 
@@ -322,6 +322,11 @@ def _carregar():
     atividades.log_activity = _log_activity
     sys.modules["app.services.activity_log"] = atividades
 
+    # SPEC-093-B BLOCO 0-bis: o INSERT do work_run saiu daqui para o helper
+    # compartilhado `criar_registro_sem_fila`. O pacote de mentira acima tem
+    # `__path__ = []`, entao o submodulo precisa ser registrado a mao — como ja
+    # acontece com o motor e com o corredor.
+    _load("app.services.work.runs", "app/services/work/runs.py")
     _load("app.services.corridor_playbooks", "app/services/corridor_playbooks.py")
     disp = _load("app.services.insurer_dispatch_service", "app/services/insurer_dispatch_service.py")
     rot = _load("app.services.dispatch_router", "app/services/dispatch_router.py")
