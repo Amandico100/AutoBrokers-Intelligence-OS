@@ -994,6 +994,162 @@ def impressao_bate_com_o_censo():
 
 
 # ===========================================================================
+class ClienteCruSincrono:
+    """⛔ O que `graph.py:563` passa DE VERDADE — o `Client` cru do supabase-py.
+
+    🔴 As duas diferenças que o `SupabaseFalso` acima esconde, e que juntas
+    produziram `RELATORIO_FALHOU · Motivo interno: AttributeError` na primeira
+    execução real pelo chat:
+
+    ```
+    NÃO tem `.client`     e `_resolve_infocap_connection` faz `db.client.table(...)`
+    NÃO é aguardável      e `await` sobre um `.execute()` síncrono é TypeError
+    ```
+
+    Este fake não é um Supabase útil: ele existe para FALHAR do jeito exato que
+    o cliente real falha, se alguém o entregar ao resolver. É a diferença entre
+    medir a PEÇA e medir o ELO (CLAUDE.md §9.4).
+    """
+
+    def __init__(self):
+        self.pediu = []
+
+    def table(self, nome):
+        self.pediu.append(nome)
+        return self
+
+    def select(self, *a, **k):   # noqa: ANN001, ARG002
+        return self
+
+    def eq(self, *a, **k):       # noqa: ANN001, ARG002
+        return self
+
+    def limit(self, *a, **k):    # noqa: ANN001, ARG002
+        return self
+
+    def execute(self):
+        class _R:
+            data = []
+        return _R()
+
+
+def a_tool_montada_como_no_grafo():
+    """🔴 O ELO DO BLOCO F: a tool montada pelo caminho do GRAFO, e chamada.
+
+    📊 Achado pelo juiz em 03/09/2026, executando a pergunta *"como estamos?"*
+    na Resulta de verdade: `RELATORIO_FALHOU · Motivo interno: AttributeError`.
+    Os 107 verdes deste arquivo e os 259 do irmão não viam nada, porque os dois
+    montavam a tool com um fake que expõe `.client` e responde a `await`. O
+    grafo passa o `Client` CRU.
+
+    A montagem aqui é a de `graph.py:563` — a MESMA função, com o MESMO tipo de
+    objeto — e a linha de CONTROLE mostra o guarda ficando VERMELHO quando a
+    normalização não acontece.
+    """
+    _p("\n--- O ELO: a tool montada como o GRAFO monta ---")
+    from app.agents.tools import executive_intelligence as tool_mod
+    from app.agents.tools import relatorios_comerciais as rel
+    from app.providers import infocap_analytics_provider as adapter
+    from app.core import database as dbmod
+    import app.comercial.fonte_infocap as fmod
+
+    cru = ClienteCruSincrono()
+    ferramentas = tool_mod.ferramenta_do_pulso_360(
+        company_id=EMPRESAS["resulta"], supabase=cru)
+    check("o grafo consegue montar a tool com o cliente CRU",
+          len(ferramentas) == 1
+          and ferramentas[0].name == "executive_intelligence",
+          ferramentas)
+    if not ferramentas:
+        return
+    check("e o que ficou guardado na tool é o objeto CRU (é ele que publica o "
+          "Artifact, pelo `ArtifactService` SINCRONO)",
+          ferramentas[0].supabase is cru,
+          type(ferramentas[0].supabase).__name__)
+
+    fonte_real = fmod.FonteInfocap
+    credencial_real = adapter.InfocapAnalyticsProvider._credencial
+    publicar_real = rel._publicar
+    fabrica_real = dbmod.create_async_supabase_client
+
+    def _credencial(self, conn):   # noqa: ANN001
+        return (str(conn.get("login_de_fixture") or ""), "senha-de-fixture",
+                (conn.get("connection_config") or {}).get("base_url", ""), "0")
+
+    capturas = []
+
+    def _publicar(supabase, company_id, **kw):   # noqa: ANN001, ARG001
+        capturas.append(dict(kw, company_id=company_id))
+        return "artifact-de-fixture-elo"
+
+    def _rodar(fabrica):
+        """UMA execução da tool montada como no grafo, com a fábrica dada."""
+        dbmod.create_async_supabase_client = fabrica
+        adapter.esquecer_contas()
+        tool_mod.esquecer_pacotes()
+        laco = _laco()
+        try:
+            return laco.run_until_complete(
+                ferramentas[0]._arun(period="2025")), ""
+        except Exception as exc:  # noqa: BLE001
+            return "", "%s: %s" % (type(exc).__name__, exc)
+        finally:
+            laco.close()
+
+    fmod.FonteInfocap = _classe_de_fonte_falsa(fonte_real)
+    adapter.InfocapAnalyticsProvider._credencial = _credencial
+    rel._publicar = _publicar
+    try:
+        # --- PAR-A: com o conserto, a leitura COMPLETA -------------------
+        async def _boa():
+            return SupabaseFalso()
+
+        texto, erro = _rodar(_boa)
+        check("PAR-A: a tool do GRAFO, com o cliente cru, produz o relatorio",
+              "RELATORIO_PRONTO" in (texto or ""),
+              "🔴 este e o defeito que o juiz mediu em producao: "
+              + ((texto or erro)[:260]))
+        check("PAR-A: e nao ha `AttributeError`/`TypeError` na resposta",
+              "AttributeError" not in (texto or "")
+              and "TypeError" not in (texto or ""),
+              (texto or erro)[:260])
+        check("PAR-A: o Artifact foi publicado com o cliente CRU (o "
+              "`ArtifactService` e sincrono)",
+              any(c["company_id"] == EMPRESAS["resulta"] for c in capturas),
+              [c.get("company_id") for c in capturas])
+
+        # --- CONTROLE: sem a normalizacao, o MESMO caminho FALHA ---------
+        #
+        # 🔴 A fabrica devolve o proprio cliente cru — que e exatamente o que
+        # acontecia antes do conserto: o objeto do grafo chegava inteiro ao
+        # `_resolve_infocap_connection`. Sem esta linha, um guarda que
+        # aprovasse qualquer coisa ficaria verde acima.
+        async def _crua():
+            return cru
+
+        del capturas[:]
+        texto2, erro2 = _rodar(_crua)
+        check("CONTROLE: entregando o cliente CRU ao resolver, a MESMA "
+              "chamada FALHA — o guarda consegue ficar vermelho",
+              "RELATORIO_FALHOU" in (texto2 or "") or bool(erro2),
+              "veio %r — se isto passa, o guarda nao esta medindo o elo"
+              % ((texto2 or erro2)[:200],))
+        check("CONTROLE: e a falha e a MESMA do relato de producao "
+              "(`AttributeError`/`TypeError`)",
+              "AttributeError" in (texto2 or "") or "TypeError" in (texto2 or "")
+              or "AttributeError" in erro2 or "TypeError" in erro2,
+              (texto2 or erro2)[:200])
+        check("CONTROLE: e nada foi publicado quando a leitura falhou",
+              not capturas, [c.get("company_id") for c in capturas])
+    finally:
+        dbmod.create_async_supabase_client = fabrica_real
+        fmod.FonteInfocap = fonte_real
+        adapter.InfocapAnalyticsProvider._credencial = credencial_real
+        rel._publicar = publicar_real
+        adapter.esquecer_contas()
+        tool_mod.esquecer_pacotes()
+
+
 def principal():
     _fechar_a_rede()
     try:
@@ -1004,6 +1160,7 @@ def principal():
         _p("=" * 74)
 
         impressao_bate_com_o_censo()
+        a_tool_montada_como_no_grafo()
         os_tres_findings_que_viram_sinal()
 
         packs = {}

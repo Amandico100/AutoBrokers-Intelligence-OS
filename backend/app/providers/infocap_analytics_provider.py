@@ -111,6 +111,20 @@ _MANIFESTO_JSON = os.path.join(_CENSO, "infocap-capability-manifest.json")
 _CONTAS_EM_USO: Dict[str, str] = {}
 
 
+def _e_cliente_sincrono(obj: Any) -> bool:
+    """É o `Client` SÍNCRONO do supabase-py? 🔴 Um `await` sobre ele levanta."""
+    try:
+        from supabase import Client as _ClienteSincrono
+    except Exception:  # noqa: BLE001
+        return False
+    return isinstance(obj, _ClienteSincrono)
+
+
+def _tem_table(obj: Any) -> bool:
+    """O objeto é um CLIENTE CRU — `.table(...)` nele mesmo, sem `.client`?"""
+    return callable(getattr(obj, "table", None))
+
+
 def _agora_utc() -> str:
     """O instante, em UTC e COM fuso escrito. 🔴 Nunca `datetime.now()` cru.
 
@@ -531,6 +545,49 @@ class InfocapAnalyticsProvider:
                 f"(status: {decisao.get('status')})")
         return conn
 
+    @staticmethod
+    async def _banco_do_resolver(db: Any) -> Any:
+        """O objeto que o resolver de conexão sabe usar. 🔴 O ELO do BLOCO F.
+
+        📊 Medido pelo juiz em 03/09/2026, na primeira execução REAL pelo chat:
+        `RELATORIO_FALHOU · Motivo interno: AttributeError`. As duas metades
+        estavam certas e o encaixe não:
+
+        ```
+        graph.py:563          passa `real_supabase_client` — o `Client` CRU, SINCRONO
+        ferramenta_do_pulso_360   desembrulha de novo (`getattr(supabase, "client", …)`)
+        _resolve_infocap_connection  faz `await db.client.table(...)`
+        ```
+
+        O `Client` cru não tem `.client`, e o `.execute()` dele não é
+        aguardável. O guarda anterior não via porque o fake dele expõe
+        `.client` e responde a `await` — ele media a PEÇA, e não o ELO
+        (CLAUDE.md §9.4).
+
+        🔴 A decisão é ter DOIS objetos, e não um: `self.supabase` continua
+        cru porque o `ArtifactService` é SÍNCRONO e é ele quem publica a peça;
+        quem fala com o resolver é um `AsyncSupabaseClient`. Forçar um só
+        obrigaria a reescrever um dos dois lados — e o outro lado é o caminho
+        pelo qual a Cobrança publica hoje.
+
+        ⚠️ A fábrica é a que a casa já usa (`portal_tool.py:342`,
+        `infocap_tool.py:144`): `create_async_supabase_client()`, mesma URL e
+        mesma chave de serviço, sem ler `.env` de novo. Objeto que já fala o
+        dialeto assíncrono passa INTACTO — inclusive o fake de um guarda.
+        """
+        if db is None:
+            return None
+        interno = getattr(db, "client", None)
+        if interno is not None and not _e_cliente_sincrono(interno):
+            return db
+        if interno is not None or _tem_table(db):
+            from app.core.database import create_async_supabase_client
+
+            logger.debug("[094] cliente sincrono recebido: abrindo o "
+                         "AsyncSupabaseClient que o resolver exige")
+            return await create_async_supabase_client()
+        return db
+
     def _credencial(self, conn: Dict[str, Any]) -> Tuple[str, str, str, str]:
         """`(login, senha, base_url, aplicacao)` — em memória, nunca em log.
 
@@ -609,6 +666,10 @@ class InfocapAnalyticsProvider:
             registrar_conta(impressao, company_id)
             return fonte, "", impressao, db
 
+        # 🔴 UMA normalização, aqui, e o objeto normalizado segue para o
+        # `_marcar_uso` junto com a conexão. Normalizar duas vezes abriria dois
+        # clientes; normalizar depois deixaria o UPDATE com o objeto errado.
+        db = await self._banco_do_resolver(db)
         conn = await self._resolver(company_id=company_id, db=db,
                                     connection_id=connection_id, slug=slug)
         conexao_id = str(conn.get("id") or "")
