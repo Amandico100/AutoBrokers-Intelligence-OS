@@ -167,7 +167,7 @@ diff = subprocess.run(
     cwd=os.path.dirname(RAIZ), capture_output=True, text=True).stdout
 congelados = ["services/artifacts/blocks.py", "services/artifacts/charts.py",
               "services/artifacts/styles.py", "services/artifacts/render.py",
-              "services/artifacts/service.py", "services/artifacts/templates.py",
+              "services/artifacts/service.py",
               "services/billing_collection.py", "services/dispatch_router.py",
               "tasks/dispatch_watchdog.py", "services/corridor_playbooks.py",
               "api/webhook.py"]
@@ -176,6 +176,39 @@ check("NENHUM arquivo da Cobranca ou do Atendimento foi tocado",
       not tocados, tocados)
 check("CONTROLE: o diff nao esta vazio (o teste sabe ler o git)",
       len(diff.strip()) > 0, "se vazio, a assercao acima nao prova nada")
+
+# 🔴 `services/artifacts/templates.py` SAIU da lista acima em 03/09/2026, e a
+# licao MIGROU em vez de morrer (CLAUDE.md §9.3).
+#
+# O congelamento nasceu na SPEC-081 com um proposito: as tools de relatorio
+# nao podem mexer nas pecas da Cobranca. A SPEC-094 §4 acrescenta um template
+# NOVO ao catalogo (`executive.pulse360`) — o arquivo muda de proposito, e
+# manter a afirmacao vencida so ensinaria a ignorar este teste.
+#
+# O que continua guardado e o que importava: o catalogo so CRESCE. Se alguem
+# apagar, renomear ou reescrever a chave de um template que ja existia, esta
+# assercao fica vermelha — e as pecas da Cobranca dependem exatamente disso
+# (`artifacts.template_key` e FK para `report_templates`).
+_TEMPLATES = _re.findall(r'key="([a-z_]+\.[a-z_0-9]+)"',
+                         _fonte_templates := open(
+                             os.path.join(RAIZ, "app", "services", "artifacts",
+                                          "templates.py"),
+                             encoding="utf-8").read())
+_ANTES_DA_094 = {
+    "executive.panorama", "financial.commissions", "commercial.pipeline",
+    "research.market_brief", "portfolio.client_dossier", "renewals.radar",
+    "claims.performance", "briefing.daily", "briefing.daily_operational",
+    "briefing.weekly_executive", "briefing.critical_alert_detail",
+    "briefing.opportunity_dossier", "briefing.demand_radar_admin",
+    "research.evidence_pack", "research.competitor_matrix",
+    "research.site_audit", "research.regulatory_radar",
+    "research.company_list", "research.change_report",
+    "financial.billing_collection"}
+_sumiram = sorted(_ANTES_DA_094 - set(_TEMPLATES))
+check("os 20 templates ANTERIORES a 094 continuam todos no catalogo",
+      not _sumiram, _sumiram)
+check("CONTROLE: o detector leu o catalogo de verdade",
+      len(_TEMPLATES) >= 21, f"{len(_TEMPLATES)} chaves lidas")
 
 # ==========================================================================
 print("\n[4] O que protege o segurado e a verdade")

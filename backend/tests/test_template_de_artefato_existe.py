@@ -87,10 +87,32 @@ def teste_o_catalogo_e_indexado_por_chave():
     checar(len(chaves) == len(set(chaves)), "não há chave duplicada")
 
 
+#: 🔴 As migrations de SEED, em ordem. **Plural desde 03/09/2026.**
+#:
+#: Este teste lia UM arquivo, e a afirmação que ele guardava era "todo template
+#: novo está na seed da 057". Essa verdade venceu quando a SPEC-094 acrescentou
+#: o `executive.pulse360` ao catálogo: editar a seed da 057 para caber o novo é
+#: proibido (CLAUDE.md §8 — migration aplicada não se altera; corrige-se com
+#: migration nova), então o template novo mora numa migration nova, e o teste
+#: ficaria vermelho por ARQUITETURA, não por defeito.
+#:
+#: ⚠️ Manter a leitura de um arquivo só ensinaria a ignorar este teste — que é
+#: exatamente o que CLAUDE.md §9.3 proíbe: quando o fato muda, o teste muda com
+#: ele, e a lição MIGRA em vez de morrer. A lição aqui é *"todo template do
+#: catálogo tem linha semeada em ALGUMA migration versionada"*, e ela continua
+#: sendo testada — agora sobre o conjunto das seeds. A próxima SPEC que criar
+#: um template acrescenta o arquivo dela A ESTA LISTA.
+SEEDS_DE_TEMPLATE = (
+    "20260730_01_spec057_seed_templates.sql",
+    "20260903_01_spec094_seed_template_pulse360.sql",
+)
+
+
 def teste_a_migration_cobre_o_que_o_banco_nao_tinha():
-    print("\n[2] A migration semeia exatamente o que faltava")
-    sql = _fonte("supabase", "migrations",
-                 "20260730_01_spec057_seed_templates.sql")
+    print("\n[2] As migrations de seed cobrem o que o banco não tinha")
+    fontes = {nome: _fonte("supabase", "migrations", nome)
+              for nome in SEEDS_DE_TEMPLATE}
+    sql = "\n".join(fontes.values())
 
     # Os oito que já estavam no banco antes de 30/07.
     ja_existiam = {
@@ -100,11 +122,27 @@ def teste_a_migration_cobre_o_que_o_banco_nao_tinha():
     faltavam = {t.key for t in T.CATALOGO} - ja_existiam
 
     for chave in sorted(faltavam):
-        checar(f"'{chave}'" in sql, f"a migration semeia `{chave}`")
-    checar("on conflict" in sql.lower(),
-           "é idempotente — não quebra se rodar duas vezes")
+        onde = [n for n, texto in fontes.items() if f"'{chave}'" in texto]
+        checar(bool(onde), f"alguma migration semeia `{chave}`",
+               f"nenhuma das {len(fontes)} seeds cita a chave")
+        # 🔴 E semeia UMA vez só. Duas seeds com a mesma chave passariam pelo
+        # `ON CONFLICT`, mas seriam duas descrições do mesmo template em dois
+        # arquivos — e a segunda a rodar não teria efeito nenhum, o que é a
+        # forma mais silenciosa de um texto errado sobreviver.
+        checar(len(onde) <= 1, f"`{chave}` é semeada em UM arquivo só", onde)
+
+    for nome, texto in fontes.items():
+        checar("on conflict" in texto.lower(),
+               f"`{nome}` é idempotente — não quebra se rodar duas vezes")
     checar(not any(f"('{k}'," in sql for k in ja_existiam),
-           "não reescreve os que já existiam")
+           "nenhuma seed reescreve os que já existiam")
+
+    # CONTROLE: o detector consegue reprovar. Uma chave que NÃO está em seed
+    # nenhuma tem de ser vista como ausente — senão o laço acima passaria por
+    # vacuidade e este teste voltaria a ser carimbo.
+    checar(not any("'template.que.nao.existe'" in texto
+                   for texto in fontes.values()),
+           "CONTROLE: uma chave inventada NÃO é encontrada nas seeds")
 
 
 def teste_o_servico_garante_antes_de_inserir():

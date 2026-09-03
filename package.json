@@ -59,6 +59,7 @@
     "test:calculos-comerciais": "python backend/tests/test_os_calculos_comerciais.py",
     "test:ferramentas-comerciais": "python backend/tests/test_as_ferramentas_de_relatorio_comercial.py",
     "test:pulso-360": "python backend/tests/test_o_pulso_360_nao_pertence_a_infocap.py",
+    "test:canario-360": "python backend/tests/test_o_canario_do_pulso_360.py",
     "test:maquina-de-lavar": "python backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py"
   },
   "dependencies": {

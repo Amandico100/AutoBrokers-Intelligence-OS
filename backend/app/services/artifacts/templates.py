@@ -782,6 +782,90 @@ COBRANCA = Template(
 )
 
 
+# ==========================================================================
+# 21. Pulso 360 — SPEC-094 · BLOCO G
+# ==========================================================================
+#
+# 🔴 Por que ele não é o `executive.panorama` com outro nome: o panorama abre
+# pelo veredito e sustenta com números. Este abre pelo veredito, sustenta com
+# números **e é obrigado a fechar dizendo de onde veio cada um**. A oitava
+# seção não é enfeite — é a que impede a peça de ser bonita e indefensável.
+#
+# 📊 O que a §1.5 desta SPEC mediu: dado que a fonte não expõe virava `0.0` no
+# meio de uma frase, e "R$ 0,00 de comissão" ficava indistinguível de "a fonte
+# não expõe comissão". Por isso a quarta seção tem DUAS formas escritas, e a
+# ausência é uma delas: ou a economia depois do repasse aparece com número, ou
+# a peça diz INDISPONÍVEL com todas as letras. Nunca zero.
+
+PULSO_360 = Template(
+    key="executive.pulse360",
+    name="Pulso 360",
+    description=(
+        "O período inteiro da corretora, com a métrica e a cobertura ao lado "
+        "de cada número."),
+    category="executive", narrative_shape="verdict_led", audience="internal",
+    visual_style="obsidian", page_format="web",
+    composition=[
+        # 1 · veredito primeiro. Quem lê decide em quinze segundos.
+        {"block": "cover", "props": {"eyebrow": "Pulso 360"}},
+        {"block": "verdict", "props": {}},
+        # 2 · atual contra anterior, na MESMA base temporal.
+        {"block": "kpis", "props": {"title": "Este período contra o anterior"}},
+        # 3 · pessoas e canais.
+        {"block": "table", "props": {"eyebrow": "Pessoas e canais",
+                                     "title": "Quem apropriou comissão"}},
+        # 4 · economia depois do repasse, OU a ausência dela, escrita.
+        {"block": "callout", "props": {"title": "O que sobra depois do repasse"}},
+        # 5 · mix e concentração.
+        {"block": "donut", "props": {"title": "Comissão por seguradora"}},
+        # 6 · exposição de renovação, por urgência.
+        {"block": "chart", "props": {"eyebrow": "Exposição",
+                                     "title": "O que vence, por urgência"}},
+        # 7 · projeção, com a premissa escrita ao lado.
+        {"block": "callout", "props": {"title": "Onde o período fecha"}},
+        # 8 · fontes e confiança: pacote, provedor, base, cobertura, ausências.
+        {"block": "sources", "props": {"eyebrow": "Fontes e confiança"}},
+        {"block": "footer", "props": {}},
+    ],
+    data_contract={
+        "evidence_pack": _campo(
+            "object", "o pacote de evidência inteiro: pack_id, período, "
+                      "métricas com base temporal e cobertura, achados e "
+                      "procedência. É o MESMO objeto que o chat leu"),
+        "periodo": _campo("object", "início, fim e o rótulo do período"),
+        "comparacao": _campo("array", "a variação de cada métrica contra o "
+                                      "período anterior, ou a recusa escrita"),
+        "findings": _campo("array", "os achados determinísticos, com o limiar "
+                                    "que cada um cruzou", False),
+        "papel_dos_produtores": _campo(
+            "string", "a frase usada quando o papel não está mapeado", False),
+    },
+    instruction_md=(
+        "🔴 CADA NÚMERO DESTA PEÇA APONTA PARA A MÉTRICA QUE O PRODUZIU. A "
+        "última seção existe para isso: `pack_id`, provedor, base temporal, "
+        "cobertura por métrica e a lista do que a fonte não expõe. Uma peça "
+        "executiva sem essa seção é uma peça com a qual ninguém consegue "
+        "discordar — e com a qual ninguém consegue decidir.\n\n"
+        "⛔ AUSÊNCIA NUNCA VIRA ZERO. O que a fonte não entrega sai como "
+        "INDISPONÍVEL, com essas letras. 'R$ 0,00 de comissão' é uma "
+        "afirmação sobre o negócio; 'a fonte não expõe' é uma afirmação sobre "
+        "a fonte, e o dono precisa saber qual das duas está lendo.\n\n"
+        "⛔ COMISSÃO APROPRIADA NÃO É DINHEIRO EM CAIXA. Ela é o que a "
+        "corretora ganhou na emissão. A fonte piloto não expõe o outro número, "
+        "e trocar um pelo outro é dizer ao dono que ele tem em conta um "
+        "dinheiro que ainda não entrou.\n\n"
+        "⛔ O PAPEL DE UM PRODUTOR SÓ APARECE SE ALGUÉM O MAPEOU. Sem mapa, a "
+        "coluna diz 'papel não mapeado'. O rótulo que o sistema de gestão "
+        "devolve descreve função comercial, não vínculo — e afirmar vínculo "
+        "por conta própria, num documento que circula, é inventar uma relação "
+        "trabalhista.\n\n"
+        "A comparação só vale entre a MESMA base temporal. Produção conta pelo "
+        "início da vigência; exposição de renovação conta pelo fim. 📊 A "
+        "interseção medida entre as duas populações é de 2,8% — comparar as "
+        "duas produz uma queda que nunca houve."),
+)
+
+
 CATALOGO: tuple[Template, ...] = (
     PANORAMA, COMISSOES, FUNIL, PESQUISA,
     DOSSIE_CLIENTE, RENOVACOES, SINISTROS, BRIEFING,
@@ -789,7 +873,7 @@ CATALOGO: tuple[Template, ...] = (
     DOSSIE_OPORTUNIDADE, RADAR_DE_DEMANDA,
     EVIDENCE_PACK, MATRIZ_CONCORRENTES, AUDITORIA_SITE,
     RADAR_REGULATORIO, PLANILHA_EMPRESAS, RELATORIO_DE_MUDANCA,
-    COBRANCA,
+    COBRANCA, PULSO_360,
 )
 
 POR_CHAVE: dict[str, Template] = {t.key: t for t in CATALOGO}
@@ -830,6 +914,10 @@ def escolher(categoria: str = "", texto: str = "") -> Template:
         "claims.performance": ("sinistr", "regulaç de sinistro", "aviso de sinistro"),
         "briefing.daily": ("briefing", "resumo do dia", "hoje", "desde ontem"),
         "executive.panorama": ("panorama", "executiv", "visão geral", "resultado"),
+        # SPEC-094: frases inteiras, e não palavras soltas. "resultado" e
+        # "executivo" continuam sendo do panorama — roubá-las daqui mudaria o
+        # destino de pedidos que já funcionam, por uma peça nova.
+        "executive.pulse360": ("pulso 360", "como estamos", "pulso da corretora"),
     }
     melhor, pontos = PANORAMA, 0
     for chave, termos in pistas.items():
