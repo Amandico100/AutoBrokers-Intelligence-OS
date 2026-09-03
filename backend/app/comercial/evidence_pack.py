@@ -327,6 +327,83 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
 ABERTURA = "<<PACK"
 FECHAMENTO = "PACK>>"
 
+#: 🔴 O que faz de dois avisos o MESMO aviso: a referência da linha sai, o
+#: resto fica. Sem isto, 222 avisos idênticos ocupam o bloco citável um a um.
+_REFERENCIA_NO_AVISO = re.compile(
+    r"\((ap[óo]lice|documento|ref|linha)\s+[^)]*\)", re.IGNORECASE)
+
+
+def colapsar_avisos(avisos: Sequence[str]) -> List[str]:
+    """Avisos iguais viram UM, com a contagem. A ordem de aparição é mantida.
+
+    🔴 📊 Achado pelo juiz em 03/09/2026, no bloco citável da peça viva: **222**
+    linhas de *"valor ilegível em repasse (apólice XXXXXXXX…): INDISPONÍVEL, não
+    zero"*, uma por apólice. Cada uma é verdadeira e nenhuma delas informa mais
+    que a primeira — e juntas empurram para fora do contexto do modelo o pedaço
+    do bloco que responde à pergunta do dono.
+
+    ⚠️ O que se colapsa é a REFERÊNCIA da linha, e só ela: o campo, o motivo e
+    o `correlation_id` continuam escritos. Um aviso que fale de outro campo
+    **não** se junta a este, e a contagem vai na frase, porque *"em 222
+    apólices"* é um fato sobre o tamanho do problema — ele muda a decisão de
+    quem lê, e some se a gente só disser "houve valor ilegível".
+    """
+    ordem: List[str] = []
+    grupos: Dict[str, Dict[str, Any]] = {}
+    for aviso in avisos:
+        texto = str(aviso or "")
+        if not texto.strip():
+            continue
+        assinatura = _REFERENCIA_NO_AVISO.sub("(…)", texto)
+        if assinatura not in grupos:
+            grupos[assinatura] = {"texto": texto, "n": 0}
+            ordem.append(assinatura)
+        grupos[assinatura]["n"] += 1
+    saida: List[str] = []
+    for assinatura in ordem:
+        g = grupos[assinatura]
+        if g["n"] == 1:
+            saida.append(g["texto"])
+        else:
+            saida.append("%s — em %d ocorrências (avisos idênticos "
+                         "colapsados)" % (assinatura, g["n"]))
+    return saida
+
+
+#: 🔴 As chaves de UMA comparação, na ordem em que quem lê precisa delas.
+CAMPOS_DA_COMPARACAO = ("metric_id", "unit", "atual", "anterior", "delta",
+                        "delta_pct", "time_basis", "confidence")
+
+
+def _comparacao_citavel(c: Dict[str, Any]) -> Dict[str, Any]:
+    """UMA comparação, pronta para o bloco que o modelo cita.
+
+    🔴 📊 Achado pelo juiz em 03/09/2026, na narrativa viva: o dono perguntou
+    *"como estamos?"*, o pack trazia `compare_period` e o aviso *"comparacoes
+    calculadas: 11"* — e a resposta saiu com **35 números e ZERO menção a
+    crescimento ou queda**. Não foi o modelo que se esqueceu: as comparações
+    eram calculadas, viajavam no `payload` do Artifact e **não entravam no
+    `serializar()`** do pack. E `COMO_FALAR` proíbe citar o que não está no
+    bloco — corretamente. O modelo obedeceu a uma regra sobre um bloco a que
+    faltava a metade que responde à pergunta.
+
+    ⚠️ O motivo da recusa vem JUNTO, num campo só (`motivo`), e não como lista
+    solta: uma comparação recusada por janela desigual precisa dizer POR QUE o
+    `delta_pct` é `UNAVAILABLE`, senão o modelo lê a ausência como zero — que é
+    a mutação M2 entrando pela porta da comparação.
+    """
+    saida: Dict[str, Any] = {}
+    for chave in CAMPOS_DA_COMPARACAO:
+        if chave in c:
+            saida[chave] = _limpar(c[chave])
+    saida.setdefault("metric_id", str(c.get("metric_id") or ""))
+    for chave in ("atual", "anterior", "delta", "delta_pct"):
+        if saida.get(chave) is None:
+            saida[chave] = UNAVAILABLE
+    avisos = [str(a) for a in (c.get("warnings") or []) if str(a).strip()]
+    saida["motivo"] = "; ".join(colapsar_avisos(avisos))
+    return saida
+
 
 @dataclass
 class EvidencePack:
@@ -341,6 +418,8 @@ class EvidencePack:
     period: Dict[str, str]
     compare_period: Optional[Dict[str, str]] = None
     metrics: List[MetricResult] = field(default_factory=list)
+    #: 🔴 As comparações com o período anterior, DENTRO do bloco citável.
+    comparacoes: List[Dict[str, Any]] = field(default_factory=list)
     findings: List[Dict[str, Any]] = field(default_factory=list)
     coverage: Dict[str, Any] = field(default_factory=dict)
     freshness: str = ""
@@ -361,6 +440,7 @@ class EvidencePack:
             "period": dict(self.period),
             "compare_period": dict(self.compare_period) if self.compare_period else None,
             "metrics": [m.serializar() for m in self.metrics],
+            "comparacoes": [_comparacao_citavel(c) for c in self.comparacoes],
             "findings": [_limpar(dict(f)) for f in self.findings],
             "coverage": _limpar(dict(self.coverage)),
             "freshness": self.freshness,

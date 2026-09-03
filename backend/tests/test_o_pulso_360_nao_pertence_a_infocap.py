@@ -3606,8 +3606,114 @@ def bloco_14_a_segunda_rodada():
               % (censo14.capacidade("portfolio.renewals").rota_primaria,
                  censo14.capacidade("portfolio.policies").rota_primaria))
 
+    # ------------------------------------------------------------------ ③
+    # B2 · "COMO ESTAMOS?" SAIA SEM COMPARACAO NO BLOCO CITAVEL.
+    #
+    # 📊 O juiz mediu na narrativa viva: 35 numeros e ZERO mencao a crescimento
+    # ou queda. O pack trazia `compare_period` e o aviso "comparacoes
+    # calculadas: 11" — e `serializar()` nao trazia as comparacoes. `COMO_FALAR`
+    # proibe citar o que nao esta no bloco, corretamente; o modelo obedeceu a
+    # uma regra sobre um bloco a que faltava a metade que responde a pergunta.
+    #
+    # 🔴 O guarda chama o MOTOR (`_empacotar` da tool), e nao monta o pacote na
+    # mao: quem tinha de escrever as comparacoes no pacote era ela.
+    pack14, erro_p14 = carregar("_094_14_pack", PACK_PY)
+    tool14, erro_t14 = carregar("_094_14_tool", TOOL360)
+    if pack14 is None or tool14 is None or reg14 is None:
+        certo(False, "[14] ③ as pecas da comparacao carregam",
+              erro_p14 or erro_t14 or "registry nao carregou")
+    else:
+        class _P:
+            def __init__(self, ini, fim, rotulo):
+                self.inicio, self.fim = ini, fim
+                self.rotulo, self.e_padrao = rotulo, False
+
+        agora14 = _P(date(2025, 1, 1), date(2025, 12, 31), "2025")
+        antes14 = _P(date(2024, 1, 1), date(2024, 12, 31), "2024")
+
+        def _mm(valor, ini, fim):
+            return pack14.metrica("production.policy_count", valor, "count",
+                                  period=pack14.periodo_iso(ini, fim),
+                                  time_basis="POLICY_VALID_FROM", coverage=1.0)
+
+        m_atual = _mm(1680, "2025-01-01", "2025-12-31")
+        m_antes = _mm(1500, "2024-01-01", "2024-12-31")
+        comparacao = reg14.comparar(m_atual, m_antes)
+        recusada = reg14.comparar(m_atual, _mm(419, "2024-01-01", "2024-03-31"))
+
+        peca14 = tool14.ExecutiveIntelligenceTool(company_id=EMPRESA_A,
+                                                  supabase=object())
+        com = peca14._empacotar(pack14, EMPRESA_A, agora14, antes14,
+                                [m_atual], [m_antes],
+                                [comparacao, recusada], Fatos(), "03/09/2026")
+        sem = peca14._empacotar(pack14, EMPRESA_A, agora14, None,
+                                [m_atual], [], [], Fatos(), "03/09/2026")
+        bloco_com = json.loads(com.bloco_para_o_modelo()
+                               .split("<<PACK", 1)[1].split("PACK>>", 1)[0])
+        bloco_sem = json.loads(sem.bloco_para_o_modelo()
+                               .split("<<PACK", 1)[1].split("PACK>>", 1)[0])
+        linhas = bloco_com.get("comparacoes") or []
+        primeira = linhas[0] if linhas else {}
+        certo(len(linhas) == 2
+              and primeira.get("metric_id") == "production.policy_count"
+              and primeira.get("delta") == 180.0
+              and primeira.get("delta_pct") == 12.0,
+              "[14] ③ PAR-A: com `compare`, o bloco CITAVEL traz as "
+              "`comparacoes`, com duas casas",
+              "veio %r" % (linhas[:1],))
+        recusada_no_bloco = next(
+            (x for x in linhas if x.get("delta_pct") == "UNAVAILABLE"), None)
+        certo(recusada_no_bloco is not None
+              and "dura" in str(recusada_no_bloco.get("motivo") or ""),
+              "[14] ③ PAR-A': e a comparacao RECUSADA viaja com o MOTIVO — "
+              "`UNAVAILABLE` sem motivo o modelo le como estabilidade",
+              "veio %r" % (recusada_no_bloco,))
+        certo(bloco_sem.get("comparacoes") == [],
+              "[14] ③ PAR-B: e SEM `compare` o bloco nao inventa comparacao "
+              "nenhuma",
+              "veio %r" % (bloco_sem.get("comparacoes"),))
+        frase = tool14.resumo_deterministico(com)
+        certo("subiram" in frase or "caíram" in frase,
+              "[14] ③ o resumo DETERMINISTICO diz a direcao do periodo",
+              "veio %r" % (frase[:200],))
+        certo(not re.search(r"\d+(?:[.,]\d+)?\s*%", frase)
+              and "180" not in frase and "1680" not in frase,
+              "[14] ③ CONTROLE: e a frase NAO carrega o tamanho da variacao "
+              "(o numero mora no bloco, com o `metric_id` ao lado — §1.8)",
+              "veio %r" % (frase[:200],))
+        frase_sem = tool14.resumo_deterministico(sem)
+        certo("subiram" not in frase_sem and "caíram" not in frase_sem,
+              "[14] ③ CONTROLE: sem comparacao, a frase nao afirma direcao "
+              "nenhuma", "veio %r" % (frase_sem[:200],))
+
+    # ------------------------------------------------------------------ ④
+    # P5 · 222 AVISOS IGUAIS, UM A UM, DENTRO DO BLOCO CITAVEL.
+    #
+    # 📊 O juiz contou na peca viva: 222 linhas de "valor ilegivel em repasse
+    # (apolice XXXXXXXX...)". Cada uma verdadeira; nenhuma informa mais que a
+    # primeira; juntas empurram para fora do contexto o pedaco do bloco que
+    # responde a pergunta do dono.
+    if pack14 is not None:
+        muitos = ["[abc123] valor ilegível em repasse (apólice %08d…): "
+                  "INDISPONÍVEL, não zero" % i for i in range(222)]
+        outro = ["[abc123] valor ilegível em prêmio (apólice 00000001…): "
+                 "INDISPONÍVEL, não zero"]
+        colapsado = pack14.colapsar_avisos(muitos + outro)
+        certo(len(colapsado) == 2 and "222" in colapsado[0],
+              "[14] ④ PAR-A: 222 avisos IGUAIS viram UM, com a contagem",
+              "veio %d linhas: %r" % (len(colapsado), colapsado[:2]))
+        certo(any("prêmio" in x for x in colapsado),
+              "[14] ④ PAR-B: e o aviso de OUTRO campo NAO e engolido pelo "
+              "colapso (o que se junta e a referencia da linha, nao o motivo)",
+              "veio %r" % (colapsado,))
+        um_so = pack14.colapsar_avisos([muitos[0], outro[0]])
+        certo(um_so == [muitos[0], outro[0]],
+              "[14] ④ CONTROLE: dois avisos diferentes passam INTACTOS — um "
+              "colapsador que resume sempre apagaria o acervo",
+              "veio %r" % (um_so,))
+
     for chave in ("_094_14_adapter", "_094_14_cbim", "_094_14_reg",
-                  "_094_14_man"):
+                  "_094_14_man", "_094_14_pack", "_094_14_tool"):
         sys.modules.pop(chave, None)
 
 

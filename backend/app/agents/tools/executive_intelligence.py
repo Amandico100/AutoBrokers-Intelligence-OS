@@ -376,6 +376,47 @@ RESUMO_DETERMINISTICO = (
 )
 
 
+def direcao_do_periodo(pacote: Any) -> str:
+    """Quantas métricas subiram, quantas caíram — **sem número solto**.
+
+    🔴 A frase diz a DIREÇÃO e manda buscar o tamanho no bloco. 📊 Foi assim
+    que a §1.8 descreveu o defeito de origem: o número virava prosa antes de
+    chegar ao modelo, e o modelo parafraseava o que ninguém conferia depois.
+    Dizer *"3 métricas subiram"* é contagem de métricas, e não valor de
+    negócio — o `delta_pct` de cada uma está em `comparacoes`, citável com o
+    `metric_id` ao lado.
+    """
+    comparacoes = list(getattr(pacote, "comparacoes", ()) or ())
+    if not comparacoes:
+        return ""
+    subiram = quedas = estaveis = recusadas = 0
+    for c in comparacoes:
+        delta = c.get("delta")
+        if not isinstance(delta, (int, float)) or isinstance(delta, bool):
+            recusadas += 1
+        elif delta > 0:
+            subiram += 1
+        elif delta < 0:
+            quedas += 1
+        else:
+            estaveis += 1
+    partes = []
+    for quantas, palavra in ((subiram, "subiram"), (quedas, "caíram"),
+                             (estaveis, "ficaram estáveis")):
+        if quantas:
+            partes.append("%d %s" % (quantas, palavra))
+    if recusadas:
+        partes.append("%d sem variação a afirmar (o motivo está em cada uma)"
+                      % recusadas)
+    if not partes:
+        return ""
+    return ("Frente ao período anterior, das métricas comparáveis " +
+            ", ".join(partes) +
+            " — o tamanho de cada variação está em `comparacoes`, no bloco "
+            "PACK, com o `metric_id` ao lado. Diga a direção ao dono; não "
+            "invente o tamanho.")
+
+
 def resumo_deterministico(pacote: Any, reusado: bool = False) -> str:
     """O resumo, com a HORA da leitura na frente do modelo.
 
@@ -390,7 +431,8 @@ def resumo_deterministico(pacote: Any, reusado: bool = False) -> str:
               "consulta — diga a hora ao dono se ele perguntar se está "
               "atualizado." % quando) if reusado else (
         "Carteira lida em %s." % quando)
-    return RESUMO_DETERMINISTICO + " " + origem
+    direcao = direcao_do_periodo(pacote)
+    return " ".join(x for x in (RESUMO_DETERMINISTICO, direcao, origem) if x)
 
 #: 🔴 De QUE a cobertura é fração, métrica por métrica, na língua do dono.
 #:
@@ -425,7 +467,11 @@ COMO_FALAR = (
     "zero. Comissão apropriada é o que foi ganho na emissão, e não o que "
     "entrou em caixa: não troque uma coisa pela outra. Não invente número que "
     "não esteja no bloco, e não cite nome de produtor: ele está no relatório, "
-    "que é o lugar dele."
+    "que é o lugar dele. "
+    "Se `comparacoes` trouxer linhas, DIGA se cresceu ou caiu e cite o "
+    "`delta_pct` de lá — `UNAVAILABLE` num delta quer dizer que a comparação "
+    "foi RECUSADA, e o `motivo` ao lado explica por quê: repasse o motivo, "
+    "nunca leia a recusa como estabilidade."
 )
 
 
@@ -821,6 +867,10 @@ class ExecutiveIntelligenceTool(BaseTool):
         # defeito da fonte do cliente quando o defeito é da nossa medição — e
         # essa troca é a mutação M2 na forma mais cara.
         avisos.extend(getattr(manifesto_, "avisos_de_integridade", []) or [])
+        # 🔴 Avisos idênticos viram UM, com a contagem. 📊 O juiz mediu 222
+        # linhas de "repasse ilegível", uma por apólice, dentro do bloco que o
+        # modelo lê — o tamanho do problema informa, a repetição não.
+        avisos = ep.colapsar_avisos(avisos)
 
         pacote = ep.EvidencePack(
             company_id=company_id,
@@ -832,6 +882,10 @@ class ExecutiveIntelligenceTool(BaseTool):
             freshness=agora,
             provenance=proveniencia,
             warnings=avisos,
+            # 🔴 As comparações vão DENTRO do pack, e não só no payload do
+            # Artifact. 📊 Sem esta linha o dono pergunta "como estamos?" e
+            # recebe 35 números sem uma palavra sobre crescimento ou queda.
+            comparacoes=list(comparacoes),
         )
         pacote.findings = ep.achar_findings(metricas, anteriores)
         pacote.warnings.append(
