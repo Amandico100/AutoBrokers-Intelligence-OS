@@ -54,9 +54,16 @@ intelligence.daily_briefing ............  21     intelligence.weekly_executive_b
                                                                     total  640
 ```
 📊 `grep -rn "beat(" backend/app/services/intelligence/ | wc -l` → **0**. 📊 Dos 14 ids de
-`AGENT_TASKS` (`heartbeat.py:22-50`), **2** têm `workflow_key` correspondente (`garimpo`,
-`auditor` parcial via `investigate_quality`) e **2** têm task dedicada em `app/tasks/`
-(`vigia_sentinela`, `followup`). **Os outros 10 vivem só no Redis.**
+`AGENT_TASKS` (`heartbeat.py:22-50`), **1** tem `workflow_key` com execuções (`garimpo`) e
+**2** têm task dedicada em `app/tasks/` (`vigia_sentinela`, `followup`). **Os outros 11 vivem
+só no Redis.** ⚠️ `intelligence.investigate_quality` existe no código (`workflows.py:397`) e
+📊 tem **0 runs em toda a história** — o aquecimento de 03/09 derrubou a v2 desta SPEC, que
+o dava como eixo do Auditor.
+
+📊 `grep -rn "@registrar_workflow" backend/app --include=*.py | wc -l` → **19** (9 em
+`intelligence/`, 5 em `research/`, 5 em `work/`). E o inverso: 📊 `work_runs` tem **duas**
+chaves sem handler registrado no repo — `acionamento.seguradora` (4 runs, última 19/08) e
+`test.wf` (1).
 
 ### 1.3 · O pulso mede o laço, e o laço pode rodar sem produzir
 
@@ -144,25 +151,29 @@ RISCO ................  4   ALCANCE 2 (tela admin; o que ela vigia alcança o se
                             FREQUÊNCIA 2 (beat() em todo atendimento; a rota é consultada a cada 20s)
 SUPERFÍCIE ...........  2   vários comportamentos e uma peça nova (o leitor de produção). 🔴 Era 3 na v1;
                             desce porque o território FOI mapeado em 03/09: 27 call sites, 14 ids,
-                            20 workflow_keys, 8 tabelas, com file:line (§1). Se o executor achar
-                            call site fora da lista, volta a 3 e o nível sobe
+                            19 workflow_keys registrados + 2 sem handler, 8 tabelas, com file:line (§1).
+                            ⚠️ O aquecimento pediu 3 (achou eixo vazio, 2º escritor de approval_requests
+                            e as 2 chaves sem handler). Os três achados ENTRARAM na SPEC (§1.2, BLOCO A,
+                            P-088-APROVACOES): o que estava fora do mapa agora está dentro. F-088-04
 PISO APLICADO ........  nenhum, por efeito: não envia · sem migration · não toca auth nem company_id
                             (a rota é de plataforma e agrega) · não escreve noutra corretora
 NÍVEL ................  PADRÃO   (RISCO 2–5, SUPERFÍCIE 2)
 UNIDADES .............  5   BLOCO A+B (backend: registro + estados) · BLOCO C (rota e leitor de trabalho) ·
                             BLOCO D (frontend) · BLOCO E (pulsos: os 3 mortos e os 8 cruzados) · BLOCO F (guarda)
-COESÃO ...............  A+B+C juntas (mesmo módulo e mesma interface JSON) · D separada, contra o CONTRATO da §5 ·
-                            E separada (só call sites de beat) · F separada (só testes). Arquivo-hub: heartbeat.py = um dono
-PARALELISMO REAL .....  3 escritores: {A+B+C} · {D} · {E}. F começa junto, pelo contrato. Integração serial
-TIME .................  investigador ✅ (03/09) · pesquisador ✅ (03/09) · 3 builders · verificador ·
-                            painel de 3 lentes · juiz de confirmação
+COESÃO ...............  A+B+C juntas (mesmo módulo e mesma interface JSON) · D separada, contra o CONTRATO da §4 ·
+                            🔴 E depende de A por DADO, não por arquivo: E1 remove pulsos confiando no eixo que A
+                            declara. E entra DEPOIS de A+B+C integrado · F separada (só testes). heartbeat.py = um dono
+PARALELISMO REAL .....  2 escritores: {A+B+C} ‖ {D}. Depois E. F começa junto, pelo contrato. Integração serial
+TIME .................  investigador ✅ (03/09) · pesquisador ✅ (03/09) · aquecimento ✅ (03/09, nota 72 → emendas
+                            aplicadas) · 2 builders em paralelo + 1 serial · verificador · painel de 3 lentes ·
+                            juiz de confirmação
 REFERÊNCIA ...........  interna: `backend/tests/test_o_protocolo_tem_policia.py` (forma do guarda) ·
                             `backend/tests/test_a_casa_diz_a_verdade.py` (tela contra código) · DS-001 §5
                             externa: §7.3 — Prometheus last_success · Dagster freshness/no_policy · Temporal worker-health
 GATES ................  por bloco, abaixo. Todos com mutação
 O ELO ................  "o card mente PORQUE mede o laço e não a produção": medido — 21 runs completed
                             × broker_insights parado em 26/08 × health() só lê last_run (§1.1, §1.3)
-FAIXA DE RELÓGIO .....  🔴 5–8h de execução, com os três builders em paralelo
+FAIXA DE RELÓGIO .....  🔴 6–9h de execução (subiu de 5–8h: E ficou serial e as emendas do aquecimento entraram)
 ```
 
 ---
@@ -322,18 +333,31 @@ o **registro único** dos trabalhadores digitais. Cada entrada ganha:
 id · nome · descricao
 grupo               observa | atende_agora | mantem_rota | aprende_avisa          (BLOCO D)
 cor                 🔴 sai do frontend e vem para cá                               (mata a §1.6)
-eixo                {"workflow_keys": [...]}  ou  {"redis": true}  — de onde vem o PULSO e o TRABALHO
+eixo                {"pulso": "redis" | "work_runs", "workflow_keys": [...]}
+                    pulso = de onde vem o "rodou"; workflow_keys = de onde vem o TRABALHO (BLOCO C).
+                    🔴 Os dois são independentes: o auditor pulsa por Redis e tem trabalho vazio
 fonte_de_producao   (tabela, coluna_de_tempo, filtro SQL opcional)  ou  None EXPLÍCITO
 cadencia_esperada_s de quanto em quanto tempo ele DEVIA produzir; None se não se sabe
+k                   multiplicador do limiar (default 2): limiar_s = k × cadencia_esperada_s
+desligado_quando    None, ou {"agents_attendance_all_inactive": true} — só para quem trabalha
+                    para o atendimento (vigia_sentinela, cerebro, followup). Ver BLOCO B
 ```
 
-🔴 **E o registro cresce:** todo `workflow_key` visto em `work_runs` nos últimos 7 dias
+🔴 **O critério da fonte, para o executor não opinar:** a tabela em que o MÓDULO do agente
+faz `INSERT` e que nenhum outro agente escreve. Se houver mais de uma, a de maior
+frequência de escrita. Se nenhuma, `None` — e o card diz ⚫ com motivo *"sem tabela própria"*.
+
+🔴 **E o registro cresce:** todo `workflow_key` visto em `work_runs` nos últimos **30 dias**
 que não tenha trabalhador entra — ou entra na lista `SEM_CARD_POR_DECISAO` com o motivo
-escrito. 📊 Hoje faltam **cinco**: `detect_signals`, `measure_outcomes`, `daily_briefing`,
-`weekly_executive_briefing`, `cluster_demand`. O executor cria os cards (💭 nomes de
-produto: *Detector de sinais*, *Medidor de resultados*, *Briefing* — os dois briefings num
-card, *Agrupador de demanda*) e liga `garimpo` a `intelligence.garimpo` e `auditor` a
-`intelligence.investigate_quality`.
+escrito. 📊 Hoje faltam **cinco** com handler: `detect_signals`, `measure_outcomes`,
+`daily_briefing`, `weekly_executive_briefing`, `cluster_demand`; e **duas sem handler**:
+`acionamento.seguradora` (o acionamento real, 4 runs) e `test.wf` (lixo de teste). O
+executor cria os cards (💭 nomes: *Detector de sinais*, *Medidor de resultados*, *Briefing*
+— os dois briefings num card, *Agrupador de demanda*), liga `garimpo` a
+`intelligence.garimpo`, liga `acionamento.seguradora` ao trabalho do `cerebro` (é o
+acionamento que ele conduz; pulso continua Redis) e põe `test.wf` em
+`SEM_CARD_POR_DECISAO`. ⛔ **`auditor` NÃO liga a `investigate_quality`** (0 runs): pulso
+Redis de `conversation_auditor.py:180`, produção `conversation_scorecards`, trabalho vazio.
 
 📊 **As fontes que a conversão mediu — o executor CONFERE, não copia:**
 
@@ -346,11 +370,12 @@ card, *Agrupador de demanda*) e liga `garimpo` a `intelligence.garimpo` e `audit
 | `followup` | `platform_sends.created_at` | 19/08 19:41 | diária, quando há caso aberto |
 | `garimpo` | `greatest` de `intelligence_signals` (`source_type='garimpo'`, `last_seen_at`) e `broker_insights` (`source LIKE 'garimpo%'`) | 26/08 00:05 | diária |
 | `detector` (novo) | `intelligence_signals` · `source_type='detector'` · `greatest(last_seen_at, created_at)` | 02/09 04:04 | horária |
-| `auditor` | `conversation_scorecards.created_at` | **03/09 00:04** | diária |
+| `auditor` | `conversation_scorecards.created_at` · pulso Redis (`conversation_auditor.py:180`) · trabalho vazio | **03/09 00:04** | diária |
+| `cerebro` | trabalho: `work_runs` de `acionamento.seguradora` · produção: 🔎 executor mede (critério acima) | 19/08 | quando há atendimento |
 | `alfaiate` | `playbook_overlays.created_at` | ⛔ 0 linhas, nunca | — |
 | `sugestoes` | `broker_insights` · `source='sugestoes_ia'` | ⛔ 0 de 270 | — |
 | `briefing`, `medidor`, `agrupador` (novos) | `work_runs` do próprio `workflow_key`, `status='completed'` **e** `artifacts.work_run_id` quando houver | 03/09 | diária / horária / diária |
-| `espelho` · `vigia_sentinela` · `cerebro` · `conselho` | 🔎 o executor mede e declara; se não achar tabela → `None` | — | — |
+| `espelho` · `vigia_sentinela` · `conselho` | 🔎 o executor mede pelo critério acima e declara; se não achar tabela → `None` | — | — |
 
 🔴 **Por que o `garimpo` usa `greatest()` das duas colunas e das duas tabelas:** o fluxo
 canônico grava `intelligence_signals` e projeta em `broker_insights` (`garimpo_v3.py:106-108`,
@@ -367,8 +392,8 @@ histórico. Uma tabela `agent_health` seria um segundo lugar para a verdade.
 ## O gate
 ```
 ① as 14 + as novas entradas têm grupo, cor, eixo, fonte (ou None explícito) e cadência (ou None) — nenhum implícito
-② 🔴 TODO workflow_key visto em work_runs nos últimos 7 dias tem trabalhador OU está em SEM_CARD_POR_DECISAO com motivo.
-   Lista vazia com workflow_key sem card REPROVA. 📊 Hoje reprovariam 5
+② 🔴 TODO workflow_key visto em work_runs nos últimos 30 dias tem trabalhador OU está em SEM_CARD_POR_DECISAO com motivo.
+   Lista vazia com workflow_key sem card REPROVA. 📊 Hoje reprovariam 7 (5 com handler, 2 sem)
 ③ 🔴 o frontend NÃO tem lista de agente: nem cor, nem nome, nem grupo (`grep` no diretório da página → 0)
 ④ toda fonte_de_producao aponta para tabela e coluna que EXISTEM (o teste consulta information_schema)
 ```
@@ -387,16 +412,22 @@ histórico. Uma tabela `agent_health` seria um segundo lugar para a verdade.
 ⚫ NÃO MEDIDO           sem fonte declarada, ou sem correspondência entre AGENT_TASKS e agents
 ```
 
-🔴 **O pulso tem duas origens, e a do motor vale mais:** para trabalhador com `eixo.workflow_keys`,
-o *last_run* é `max(work_runs.finished_at) WHERE status='completed'`, e falha é
-`status='failed'`. O Redis fica para os 10 que só vivem lá. **Nunca os dois competem:** o
-eixo declara qual.
+🔴 **O pulso tem duas origens, e `eixo.pulso` declara qual:** `"work_runs"` → *last_run* é
+`max(work_runs.finished_at) WHERE status='completed'` nos `workflow_keys` do trabalhador, e
+falha é `status='failed'`; `"redis"` → o `beat()`. **Nunca os dois competem.** `acoes_hoje`:
+com pulso Redis vem de `actions_today`; com pulso `work_runs` é `execucoes_24h`.
 
-🔴 **DESLIGADO sai de um fato do banco.** 📊 `agents`: 4 `attendance` false, 3 `core` true,
-1 `core` false; `desligado_em` NULL em 8 de 8. Sem data → *"sem registro"*, nunca uma data
-inferida. `is_active` é por corretora e o card é de plataforma → regra `all()`. Não existe
-chave entre os 8 `agents.slug` e os ids de `AGENT_TASKS`: agente sem correspondência mostra
-⚫, nunca ⚪. **A dúvida paga do lado de quem alerta** (referência ⑤).
+🔴 **DESLIGADO é declarado, e sai de um fato do banco.** 📊 `agents.slug` (8 linhas) não casa
+com id nenhum de `AGENT_TASKS`, e `agents.is_active` é o interruptor do **chatbot da
+corretora** (`insurer_dispatch_tool.py:12`, `webhook.py` gate `attendance_agent_active`), não
+do trabalhador de plataforma. Por isso ⚪ não vem de casar slug: vem de `desligado_quando`
+no registro (BLOCO A), e só os três que trabalham PARA o atendimento o declaram:
+`{"agents_attendance_all_inactive": true}` → ⚪ quando 📊 `agents WHERE agent_role='attendance'`
+tem `is_active=false` em **todas** as linhas (hoje 4 de 4). Data: `max(desligado_em)`
+(📊 NULL em 8 de 8; escritor único em `lib/admin/tenant-agent-store.ts:115`) → *"sem
+registro"*, nunca inferida. Quem não declara `desligado_quando` **nunca** fica ⚪. **A dúvida
+paga do lado de quem alerta** (referência ⑤). O cache é **uma chave de plataforma**: a
+resposta não tem dado por corretora, só o agregado `all()`; não há recência a vazar.
 
 ⚠️ **D3 (`attendance_capture.py:378`, `_beat(0)`) NÃO é removido.** Com a regra nova ele é
 honesto: pulsou e não produziu → 🟡.
@@ -405,10 +436,12 @@ honesto: pulsou e não produziu → 🟡.
 ```
 ① o Garimpo de hoje (run completed há 1 MINUTO, produção de 26/08) → 🟡, NUNCA 🟢
    🔴 o teste força last_run = agora: é a janela exata em que o código de hoje pinta 🟢
-② agente is_active=false em TODAS as corretoras → ⚪ com "sem registro"; uma corretora ligada → NÃO é ⚪
-③ agente sem fonte → ⚫
+② 🔴 CONTRA O BANCO, não só fixture: hoje os 3 com `desligado_quando` (vigia_sentinela, cerebro, followup) → ⚪
+   "sem registro" (📊 4 de 4 attendance inativos); os outros 11+ → nunca ⚪. Fixture com uma corretora ligada → NÃO é ⚪
+③ agente sem fonte → ⚫. Agente cujo id não tem `desligado_quando` e está mudo → 🔴, nunca ⚪
 ④ 🔴 chave de heartbeat expirada (morte de 30 dias) → 🔴 PARADO. O _TTL de 7 dias não transforma morte antiga em ⚪
-⑤ agente que roda 1×/dia (auditor) com produção de 20h atrás → 🟢, não 🔴: o limiar é DELE
+⑤ 🔴 CONTRA O BANCO: o auditor (pulso Redis 1×/dia, scorecards de hoje) → 🟢, não 🔴: o limiar é DELE.
+   ⚠️ o aquecimento provou que com eixo `investigate_quality` este gate reprovaria em produção e passaria em fixture
 ⑥ 🔴 LINHA DE CONTROLE: pulsou E produziu na cadência → 🟢. Sem ela, um guarda que pinta tudo de amarelo passaria em ①–⑤
 ```
 **Mutações (duas):** force `last_run = agora` com produção parada → ① tem de dar 🟡; force a
@@ -433,15 +466,22 @@ ligadas por `work_run_id` (📊 índices existem nas três):
 execucoes_24h · execucoes_7d · falhas_7d              work_runs por workflow_key e status
 duracao_media_s · fila_media_s                        finished_at-started_at · started_at-created_at
 artifacts_7d                                          artifacts.work_run_id → work_runs.workflow_key
-aprovacoes_pendentes                                  approval_requests.status='pending' → work_run_id
+aprovacoes_pendentes                                  approval_requests.status='pending' → work_run_id → workflow_key
+                                                      📊 0 de 8 approval_requests têm work_run_id (2º escritor: billing_collection.py:789
+                                                      não passa o id) → hoje o join dá ZERO estrutural. Regra: se a tabela tiver linhas
+                                                      pending SEM work_run_id, o campo é null e "aprovacoes" entra em nao_instrumentado
 travados                                              work_runs.unblock_state='travado'
-custo_brl_30d                                         sum(cost_actual_brl)  — 📊 hoje 0,00 em todos, e o card DIZ "0,00 (não instrumentado)"
+custo_brl_30d                                         sum(cost_actual_brl)  — 📊 0,00 em 3.494 runs → null e "custo" em nao_instrumentado
 ```
-Para os 10 que vivem só no Redis: `trabalho = null` e a tela escreve *"sem eixo de
-trabalho"* — nunca zeros que pareçam medição.
+Para os que vivem só no Redis: `trabalho = null` e a tela escreve *"sem eixo de trabalho"*.
+🔴 **Regra geral: zero que vem de join que não casa é `null` + `nao_instrumentado`, nunca 0.**
 
 🔴 **Nada de conteúdo atravessa** (referência ⑦): a rota devolve contagens, estados, ids,
-timestamps. O guarda do BLOCO F confere.
+timestamps. `motivo` é prosa gerada por template fixo do backend, sem interpolação de campo
+de conversa — o guarda testa os templates, não só as chaves. E a rota **vizinha** no mesmo
+router, `GET /sessions` (`admin_spec034.py:56` `insurer_phone`, `:67` `text` de 40 turnos),
+passa a mascarar telefone (só os 4 últimos dígitos) e a redigir CPF e telefone dentro de
+`text` por regex — ≤30 min, mesmo arquivo, mesma classe de defeito (protocolo §9).
 
 🔴 **O filtro do console `/admin/insights`** (`admin_spec034.py:90` `"garimpo"` e `:99`
 `"sugestoes_ia"`; 📊 o banco só tem `garimpo_v3`) sai do código e lê a mesma
@@ -453,9 +493,14 @@ timestamps. O guarda do BLOCO F confere.
 ② para intelligence.detect_signals: execucoes_7d > 0 e falhas_7d = 0 (📊 hoje 504 e 0) — o motor invisível aparece
 ③ 🔴 LINHA DE CONTROLE: banco sem run de um workflow_key → execucoes = 0 SEM erro, e o card diz 0
 ④ o ranking de /admin/insights devolve > 0 com 270 linhas no banco; com banco vazio devolve 0 sem erro
-⑤ 🔴 DOIS TENANTS: nenhuma rota de corretora serve agents-status nem o agregado. require_master_admin provado no teste, não presumido
-⑥ nenhum campo do JSON contém texto de conversa: o teste lista as chaves e reprova qualquer uma fora do contrato
+⑤ 🔴 DOIS TENANTS, provado onde a barreira ESTÁ: o proxy Next (`lib/admin-proxy.ts:111` sem sessão → 401;
+   `:118` sessão de corretora → 403) e a dependência `require_master_admin` no backend. Teste do proxy com
+   sessão de corretora → 403; teste do backend confere a dependência na rota. Um só não é prova
+⑥ nenhum campo do JSON contém texto de conversa: o teste lista as CHAVES e reprova fora do contrato, E testa os
+   templates de `motivo` contra regex de CPF/telefone. `/sessions` mascarado: telefone só 4 dígitos, `text` redigido
 ⑦ next start + 1 requisição autenticada a /api/admin/spec034/agents-status responde 200 (CLAUDE.md §9.1)
+⑧ 🔴 a chave `agents` do JSON antigo não existe mais; o frontend antigo mostraria tela vazia SEM erro
+   (`page.tsx:56` `|| []`). D e C entram no MESMO push: nunca a rota nova com a tela velha
 ```
 **Mutação:** troque uma `fonte_de_producao` por `tabela_que_nao_existe` → gate ④ do BLOCO A
 e este ③ ficam vermelhos. Restaure por cópia.
@@ -504,10 +549,15 @@ vermelho e o teste ② reprova. Se ficar verde, a SPEC reconstruiu a §1.6.
 
 ```
 E1  os 3 pulsos atrás de cutover_ligado()  (§1.4)
-    🔴 garimpo e auditor: o pulso passa a vir do EIXO (work_runs do workflow_key) — o beat() morto
-       é REMOVIDO, não consertado no lugar. Para sugestoes, que não tem workflow nem outro pulso:
-       o beat() sai do ramo morto e vai para o fluxo que roda de fato — ou o executor prova que
-       nada roda e o card fica ⚫ com motivo "sem fluxo ativo desde o cutover"
+    🔴 garimpo: o pulso passa a vir do EIXO (work_runs de intelligence.garimpo) — o beat() morto
+       de broker_insights.py:343 é REMOVIDO, não consertado no lugar.
+    🔴 auditor: o beat() morto de regression_sentinel.py:160 é removido; o de conversation_auditor.py:180
+       (vivo, 1×/dia) fica e é o pulso dele.
+    🔴 sugestoes: a prova de que "nada roda" é mecânica — `grep -rn "proactive_suggestions\|gerar_sugestoes"
+       backend/app/tasks backend/app/main.py` sem agendador vivo E `work_runs` sem workflow_key de sugestões.
+       Se as duas derem vazio: beat() removido e o card fica ⚫ "sem fluxo ativo desde o cutover".
+       Se houver agendador vivo: o beat() vai para dentro dele, depois do trabalho, fora de finally.
+    ⛔ E1 só começa depois de A+B+C integrado e verde: apagar um pulso antes de o eixo existir cala o card
 E2  os 8 pulsos cruzados (§1.5): cada agente dá o próprio pulso, ou não dá nenhum.
     As três do alfaiate vão para playbook_tailor.py, a casa dele (📊 0 beat hoje)
 E3  🔴 nenhum beat() dentro de finally: — em NENHUM dos 18 arquivos. Caminho de exceção não pinta card
@@ -550,18 +600,22 @@ chave expirada a virar ⚪ → o gate ④ do B fica vermelho. Restaurar por cóp
         "pulso": {"ultimo": "2026-09-03T00:01:03Z", "origem": "work_runs"},
         "producao": {"ultimo": "2026-08-26T00:05:34Z", "fonte": "broker_insights.created_at ∪ intelligence_signals.last_seen_at",
                      "cadencia_esperada_s": 86400, "limiar_s": 172800},
-        "desligado": {"todas_desligadas": false, "desde": null},
+        "desligado": {"declara": false, "todas_desligadas": null, "desde": null},
         "trabalho": {"eixo": ["intelligence.garimpo"], "execucoes_24h": 3, "execucoes_7d": 21, "falhas_7d": 0,
                      "duracao_media_s": 9.9, "fila_media_s": 35.7, "artifacts_7d": 0,
-                     "aprovacoes_pendentes": 0, "travados": 0, "custo_brl_30d": 0.0, "custo_instrumentado": false},
-        "acoes_hoje": 0}
+                     "aprovacoes_pendentes": null, "travados": 0, "custo_brl_30d": null},
+        "acoes_hoje": 3}
      ]}
   ],
-  "sem_card_por_decisao": [{"workflow_key": "bridge.routine.execute", "motivo": "ponte de rotina, contada no auxiliar"}]
+  "nao_instrumentado": ["custo", "aprovacoes"],
+  "sem_card_por_decisao": [{"workflow_key": "test.wf", "motivo": "lixo de teste, 1 run"},
+                           {"workflow_key": "bridge.routine.execute", "motivo": "ponte de rotina, contada no auxiliar"}]
 }
 ```
 `estado` ∈ `SAUDAVEL | PULSA_SEM_PRODUZIR | DESLIGADO | PARADO | NAO_MEDIDO`.
-`trabalho` é `null` quando o eixo é só Redis. Nenhuma chave fora desta lista.
+`trabalho` é `null` quando não há `workflow_keys`. `desligado.declara` é `true` só para quem
+tem `desligado_quando`. Campos de `trabalho` cujo join não casa são `null`, e o nome entra
+em `nao_instrumentado`. Nenhuma chave fora desta lista.
 
 ---
 
@@ -612,6 +666,12 @@ P-088-ARTIFACTS  📊 33 de 118 artifacts (30d) sem work_run_id — 6 chamadores
           research/radar.py:389, api/artifacts.py:64,70). Entregas órfãs não aparecem no card. ~1h.
 P-088-AUX  auxiliary_events: escritor em factory.py:460-471, ZERO chamadores (P-18 confirmada). Os auxiliares
           instalados (9) não têm eixo de trabalho até WORK_RUNS_ROUTINE_BRIDGE ligar (📊 7 runs históricos).
+P-088-APROVACOES  📊 approval_requests: 8 linhas, 0 com work_run_id. O 2º escritor (billing_collection.py:789-800)
+          não passa o id; o 1º (work/approvals.py:98) passa. Até o conserto, `aprovacoes_pendentes` é null.
+          Conserto: ~30 min, próxima leva.
+P-088-KEYS  📊 `acionamento.seguradora` (4 runs) e `test.wf` (1) existem em work_runs sem @registrar_workflow no repo.
+          A primeira é o acionamento real e entra no trabalho do cerebro; a segunda é lixo — apagar exige decisão
+          (escrita no banco fora de migration). 🧑
 ```
 
 ## 8. 🧑 A CAIXA DO FOUNDER
@@ -622,17 +682,23 @@ F-088-01  Uma tela com 4 grupos, não 4 páginas. Se ainda parecer confuso, a pr
 F-088-02  A SPEC-088-B (runtime de delegação: admission gate, envelopes, grupos paralelos) fica adiada com gatilho
           medido: agent_delegations = 0. Quando houver o primeiro caso real de 3+ agentes no mesmo pedido, ela volta.
 F-088-03  Custo por trabalhador é pendência (P-088-CUSTO), não bloco: exige decidir onde vive o contexto de run
-          no chat. A tela dirá "0,00 (não instrumentado)" em vez de fingir zero.
+          no chat. A tela dirá "não instrumentado" em vez de fingir zero.
+F-088-04  🔴 REBAIXAMENTO ESCRITO (protocolo §6): o aquecimento pediu SUPERFÍCIE 3 → nível CRÍTICO (red team +
+          auditoria externa). Mantive 2 → PADRÃO porque os três achados que justificavam o 3 ENTRARAM na SPEC
+          antes da primeira linha de código, e a tela é admin, read-only, zero migration. Custo evitado 💭 ~1,5h.
+          Se o painel achar um quarto território não mapeado, o nível sobe e a auditoria externa roda.
 ```
 
 ## 9. A ordem de execução
 
 ```
-BLOCO 0  →  {A+B+C}  ‖  {D contra o contrato da §4}  ‖  {E}  →  F (gates)  →  verificador  →  painel de 3 lentes  →  conserto  →  juiz de confirmação
+BLOCO 0  →  {A+B+C}  ‖  {D contra o contrato da §4}  →  integração  →  E  →  F (gates)  →  verificador  →  painel de 3 lentes  →  conserto  →  juiz de confirmação
 ```
-🔴 A e B e C são de UM builder (mesmo módulo, mesma interface). D e E correm em paralelo
-porque o contrato está congelado e os arquivos são disjuntos. A integração é serial e a
-suíte inteira roda no fim de cada bloco integrado e no fim.
+🔴 A e B e C são de UM builder (mesmo módulo, mesma interface). D corre em paralelo porque
+o contrato está congelado e os arquivos são disjuntos. **E é serial, depois de A+B+C verde:**
+E1 remove pulsos confiando no eixo que A declara — apagar antes cala o card com dois blocos
+verdes. F nasce junto, pelo contrato, e fecha no fim. A suíte inteira roda no fim de cada
+integração e no fim.
 
-💭 **5–8h.** O BLOCO A+B+C domina: declarar e conferir ~20 fontes e eixos, quatro delas por
+💭 **6–9h.** O BLOCO A+B+C domina: declarar e conferir ~20 fontes e eixos, três delas por
 medição do executor.
