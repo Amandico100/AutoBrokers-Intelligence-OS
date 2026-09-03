@@ -60,8 +60,16 @@ class Ap:
 
 @dataclass(frozen=True)
 class Pr:
+    # 🔴 SPEC-094: `calculos` agrupa por `rotulo` — o rótulo do grupo — e
+    # não por "nome". No caminho da 081 o rótulo é o nome do produtor; no
+    # caminho do registry é a referência opaca. A camada pura não sabe a
+    # diferença, e é isso que a mantém pura.
     nome: str
     repasse: float = 0.0
+
+    @property
+    def rotulo(self) -> str:
+        return self.nome
 
 
 @dataclass(frozen=True)

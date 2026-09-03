@@ -170,6 +170,16 @@ class ProdutorDaApolice:
         """O mesmo apelido do CBIM — ver o comentário em `Apolice`."""
         return self.nosnum
 
+    @property
+    def rotulo(self) -> str:
+        """O rótulo com que este produtor entra no ranking.
+
+        ⚠️ Aqui ele é o NOME, porque este é o caminho da 081 e o Artifact do
+        tenant é quem consome. No caminho do registry o rótulo é a referência
+        opaca — `calculos` não precisa (nem deve) saber a diferença.
+        """
+        return self.nome
+
 
 @dataclass(frozen=True)
 class Vencimento:

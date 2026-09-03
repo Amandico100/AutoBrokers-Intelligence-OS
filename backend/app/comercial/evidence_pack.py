@@ -138,6 +138,14 @@ class MetricResult:
     provider_key: str = "infocap"
     source_refs: Tuple[str, ...] = ()
     warnings: Tuple[str, ...] = ()
+    #: 🔴 SPEC-094 BLOCO D. O DETALHE de uma métrica que não cabe num
+    #: escalar — o ranking por produtor, as fatias de seguradora, as faixas de
+    #: urgência. `value` continua sendo UM número (o que o modelo cita); isto é o
+    #: que o Artifact desenha.
+    #:
+    #: ⛔ Nunca carrega nome de pessoa: produtor entra como `producer_ref`. O
+    #: rótulo mora no Artifact do tenant, que é onde ele pode estar.
+    breakdown: Tuple[Dict[str, Any], ...] = ()
 
     @property
     def indisponivel(self) -> bool:
@@ -156,6 +164,7 @@ class MetricResult:
             "provider_key": self.provider_key,
             "source_refs": list(self.source_refs),
             "warnings": list(self.warnings),
+            "breakdown": [dict(b) for b in self.breakdown],
         }
 
 
@@ -164,7 +173,8 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
             coverage: Optional[float] = None, version: int = 1,
             provider_key: str = "infocap",
             source_refs: Sequence[str] = (),
-            warnings: Sequence[str] = ()) -> MetricResult:
+            warnings: Sequence[str] = (),
+            breakdown: Sequence[Dict[str, Any]] = ()) -> MetricResult:
     """Monta um `MetricResult` já com a confiança derivada da cobertura.
 
     Levanta `ValueError` em unidade ou base temporal fora do contrato — um
@@ -183,6 +193,7 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
         coverage=coverage, confidence=confianca(coverage),
         provider_key=provider_key,
         source_refs=tuple(source_refs), warnings=tuple(warnings),
+        breakdown=tuple(dict(b) for b in breakdown),
     )
 
 

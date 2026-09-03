@@ -202,23 +202,31 @@ class ProviderCapabilityManifest:
         return avisos
 
     # ------------------------------------------------------------ bloqueio
-    def bloqueio(self, requeridas: Sequence[str]) -> Tuple[bool, List[str]]:
+    def bloqueio(self, requeridas: Sequence[str],
+                 aceitos: Sequence[str] = (SUPPORTED, PARTIAL)) -> Tuple[bool, List[str]]:
         """`(bloqueada?, motivos)` para uma métrica que exige estas capacidades.
 
         🔴 O motivo é devolvido junto com o veredito de propósito. Sem ele o
         Artifact escreveria "indisponível" para os dois casos — e afirmar que a
         fonte não expõe algo que apenas não foi sondado é afirmar sobre o
         sistema do cliente o que só se sabe sobre a própria diligência (M2).
+
+        ⚠️ `aceitos` existe porque nem toda métrica se contenta com o mesmo
+        estado. 📊 A comissão RECEBIDA é `PARTIAL`: o dado existe, mas só no
+        detalhe de UMA apólice por chamada — ler a carteira inteira custaria uma
+        requisição por apólice. Para um número de carteira isso é indisponível
+        na prática, e a métrica declara `aceitos=(SUPPORTED,)`.
         """
         motivos: List[str] = []
+        bloqueada = False
         for nome in requeridas or ():
             cap = self.capacidade(nome)
-            if cap.entrega_dado:
+            if cap.state in aceitos:
                 if cap.state == PARTIAL:
                     motivos.append(f"{nome}: {cap.frase()}")
                 continue
+            bloqueada = True
             motivos.append(f"{nome}: {cap.frase()}")
-        bloqueada = any(not self.capacidade(n).entrega_dado for n in (requeridas or ()))
         return bloqueada, motivos
 
     def exige_cobertura(self, requeridas: Sequence[str]) -> bool:

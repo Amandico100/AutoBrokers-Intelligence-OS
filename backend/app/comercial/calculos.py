@@ -37,11 +37,30 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 # --------------------------------------------------------------------------
 @dataclass(frozen=True)
 class LinhaDoRanking:
+    """Uma linha do ranking. 🔴 `nome` é o RÓTULO DO GRUPO, não "o nome".
+
+    Quem monta o mapa decide o que ele significa, e há dois caminhos:
+
+    ```
+    081       o mapa vem da fonte com o nome do produtor  → `nome` é um nome
+    registry  o mapa vem do CBIM com a referência opaca   → `nome` é uma ref
+    ```
+
+    Por isso `calculos` lê `rotulo` na ENTRADA e nunca "nome": a camada pura não
+    tem como saber se aquilo é dado de pessoa, e não deveria ter. Quem lê a
+    saída pelo caminho do registry usa `.rotulo` — e o pack nunca recebe nome.
+    """
+
     nome: str
     apolices: int
     premio: float
     comissao: float
     repasse: float
+
+    @property
+    def rotulo(self) -> str:
+        """O rótulo do grupo, com o nome honesto. Ver o docstring da classe."""
+        return self.nome
 
     @property
     def ticket(self) -> float:
@@ -146,7 +165,7 @@ def ranking_por_produtor(apolices: Sequence, mapa: Dict[str, object],
         p = mapa.get(a.policy_ref)
         if p is None:
             continue
-        nome = str(getattr(p, "nome", "") or "").strip()
+        nome = str(getattr(p, "rotulo", "") or "").strip()
         if not nome:
             continue
         linha = acc.setdefault(nome, [0.0, 0.0, 0.0, 0.0])
