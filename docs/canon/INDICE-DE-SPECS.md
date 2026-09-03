@@ -84,6 +84,7 @@ entre elas**. Um chat por SPEC joga fora esse ganho.
 | **093** | O atendimento real liga e funciona | 25/08 |
 | **088** | A Central de Agentes diz a verdade (v2, protocolo v11) | 03/09 |
 | **093-B** | O sinistro deixa rastro (protocolo v11 · nível CRÍTICO · zero migration) | 03/09 |
+| **094** | O Pulso 360 não pertence à InfoCap (v11.1→v11.2 · CRÍTICO · censo + CBIM + registry + canário vivo) | 03/09 |
 
 ## ⬜ OS BURACOS — e nenhum precisa de ação
 
@@ -214,9 +215,9 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 > convertida no mesmo dia** — `specs/SPEC-094-o-pulso-360-nao-pertence-a-infocap.md` — e está em execução.
 
 ```
-1º  EXECUTAR a SPEC-094   (convertida em 03/09; censo da InfoCap no BLOCO 0)   um orquestrador, protocolo v11.1
-2º  SPEC-094.1 · A fábrica de relatórios (convertida em 03/09 a partir do pedido do Founder + 3 pesquisas; executa depois da 094)
-3º  SPEC-095  →  4º SPEC-096  →  5º SPEC-097 (research pack chegou em 03/09; proposta ainda não)  →  depois, o que chegar
+✅  SPEC-094 executada em 03/09 (nota 84). ⏸️ PROTOCOLO PAUSADO até a decisão do Founder sobre o ritmo (DECISAO-DO-RITMO-03-09-2026.md)
+1º  SPEC-094.1 · A fábrica de relatórios (convertida; executa depois da decisão)
+2º  SPEC-095  →  3º SPEC-096  →  4º SPEC-097 (proposta + research pack na pasta)  →  5º SPEC-098 (idem)  →  depois, o MASTERPLAN
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta.
 ```
 

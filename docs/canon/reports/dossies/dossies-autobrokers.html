@@ -1,0 +1,522 @@
+<title>Dossiês AutoBrokers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#EEF1F4; --surface:#FFFFFF; --sunk:#E3E8EE; --rail:#F7F9FB;
+  --ink:#101820; --ink-2:#2E3A47; --muted:#5B6876; --faint:#8E9AA8;
+  --line:#D5DCE4; --line-2:#BCC6D2;
+  --accent:#1F4FD8; --accent-ink:#FFFFFF; --accent-soft:#E4EBFB;
+  --ok:#1D7A4C; --warn:#9A6400; --crit:#B2361F; --info:#3B5F8F;
+  --ok-soft:#E1F3E8; --warn-soft:#FBEFD4; --crit-soft:#FBE3DC; --info-soft:#E4ECF6;
+  --shadow:0 1px 2px rgba(16,24,32,.06), 0 12px 32px -18px rgba(16,24,32,.25);
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ground:#0C1117; --surface:#141B24; --sunk:#0F151C; --rail:#10161E;
+  --ink:#E8EDF3; --ink-2:#C3CCD7; --muted:#8E9AA8; --faint:#66727F;
+  --line:#243040; --line-2:#31404F;
+  --accent:#7AA0FF; --accent-ink:#0C1117; --accent-soft:#1B2A4A;
+  --ok:#5CCB8D; --warn:#E3B04B; --crit:#F08A72; --info:#8FB0DE;
+  --ok-soft:#153323; --warn-soft:#3A2D10; --crit-soft:#3E1C15; --info-soft:#1B2A3E;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 32px -18px rgba(0,0,0,.7);
+}}
+:root[data-theme="dark"]{
+  --ground:#0C1117; --surface:#141B24; --sunk:#0F151C; --rail:#10161E;
+  --ink:#E8EDF3; --ink-2:#C3CCD7; --muted:#8E9AA8; --faint:#66727F;
+  --line:#243040; --line-2:#31404F;
+  --accent:#7AA0FF; --accent-ink:#0C1117; --accent-soft:#1B2A4A;
+  --ok:#5CCB8D; --warn:#E3B04B; --crit:#F08A72; --info:#8FB0DE;
+  --ok-soft:#153323; --warn-soft:#3A2D10; --crit-soft:#3E1C15; --info-soft:#1B2A3E;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 12px 32px -18px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.55 "Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent)}
+h1,h2,h3{font-family:"Archivo","Public Sans",system-ui,sans-serif;text-wrap:balance;margin:0}
+h1{font-size:26px;font-weight:800;letter-spacing:-.01em}
+h2{font-size:20px;font-weight:700;margin-top:34px}
+h3{font-size:16px;font-weight:700;margin-top:22px}
+.mono,code,td.n,.n{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+code{font-size:.9em;background:var(--sunk);padding:1px 5px;border-radius:4px}
+.eyebrow{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.app{display:grid;grid-template-columns:272px 1fr;min-height:100vh}
+.rail{background:var(--rail);border-right:1px solid var(--line);padding:22px 16px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:baseline;gap:8px;padding:0 6px 16px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.brand b{font-family:"Archivo";font-weight:800;font-size:17px}
+.brand span{color:var(--muted);font-size:12px}
+.nav a{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-weight:500;font-size:14px}
+.nav a:hover{background:var(--sunk)}
+.nav a.on{background:var(--accent-soft);color:var(--ink)}
+.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav .grp{margin:14px 6px 6px}
+.nav small{display:block;color:var(--faint);font-size:11.5px;font-weight:400;margin-top:1px}
+.chip{font-family:"JetBrains Mono";font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chip.crit{background:var(--crit-soft);color:var(--crit);border-color:transparent}
+.chip.info{background:var(--info-soft);color:var(--info);border-color:transparent}
+.chip.acc{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+main{padding:34px 44px 80px;max-width:1040px}
+section.page{display:none}
+section.page.on{display:block}
+.head{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.head p.lede{color:var(--ink-2);max-width:68ch;margin:10px 0 0;font-size:16px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px;color:var(--muted);font-size:13px}
+.meta b{color:var(--ink-2);font-weight:600}
+.gauge{min-width:190px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.gauge .big{font-family:"Archivo";font-weight:800;font-size:40px;line-height:1;letter-spacing:-.02em}
+.gauge .big small{font-size:16px;color:var(--muted);font-weight:500}
+.bar{height:6px;background:var(--sunk);border-radius:3px;margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.gauge .sub{margin-top:8px;color:var(--muted);font-size:12.5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.card h3{margin-top:0}
+.card.flat{background:transparent;border-style:dashed}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:16px}
+.ba > div{padding:16px 18px}
+.ba .antes{background:var(--sunk)}
+.ba .depois{background:var(--surface)}
+.ba .eyebrow{margin-bottom:8px}
+.ba ul{margin:0;padding-left:18px}
+.ba li{margin:4px 0}
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.tw{overflow-x:auto;margin-top:12px}
+.tw table{margin-top:0}
+th{text-align:left;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--sunk)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.n{text-align:right;white-space:nowrap}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.kpi .v{font-family:"Archivo";font-weight:800;font-size:24px;letter-spacing:-.01em}
+.kpi .l{color:var(--muted);font-size:12.5px;margin-top:2px}
+ul.tight{margin:8px 0 0;padding-left:18px}
+ul.tight li{margin:5px 0}
+.pend li{margin:7px 0}
+.pend b{font-family:"JetBrains Mono";font-weight:600;font-size:13px}
+.dono{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--sunk);color:var(--muted);margin-left:6px}
+.callout{border-left:3px solid var(--accent);background:var(--surface);padding:12px 16px;border-radius:0 var(--r) var(--r) 0;margin-top:16px}
+.callout.crit{border-color:var(--crit)}
+.callout.warn{border-color:var(--warn)}
+.callout.ok{border-color:var(--ok)}
+.timeline{list-style:none;margin:16px 0 0;padding:0;border-left:2px solid var(--line-2);margin-left:6px}
+.timeline li{position:relative;padding:0 0 16px 22px}
+.timeline li::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--accent)}
+.timeline li.hold::before{border-color:var(--warn);background:var(--warn-soft)}
+.timeline .t{font-family:"JetBrains Mono";font-size:12px;color:var(--muted)}
+.refs li{margin:6px 0}
+.refs .mono{font-size:12.5px;color:var(--muted)}
+.foot{margin-top:40px;color:var(--faint);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin-top:10px}
+.spark{display:inline-block;vertical-align:middle;margin-left:6px}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .nav{display:flex;flex-wrap:wrap;gap:4px}
+  .nav .grp{width:100%}
+  main{padding:22px 18px 60px}
+  .head,.grid2,.ba,.grid3{grid-template-columns:1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+}
+@media (prefers-reduced-motion: no-preference){ .bar i{transition:width .5s ease} }
+</style>
+
+<div class="app">
+<nav class="rail" aria-label="SPECs">
+  <div class="brand"><b>Dossiês</b><span>AutoBrokers · leva 088→096</span></div>
+  <div class="nav" id="nav">
+    <a href="#home" data-p="home">Visão geral<small>placar, linha do tempo, sua caixa</small><span class="chip acc">03/09</span></a>
+    <div class="grp eyebrow">Feitas</div>
+    <a href="#s088" data-p="s088">088 · A Central diz a verdade<small>PADRÃO · 3h35</small><span class="chip ok">90</span></a>
+    <a href="#s093b" data-p="s093b">093-B · O sinistro deixa rastro<small>CRÍTICO · 7h15</small><span class="chip ok">88</span></a>
+    <a href="#s091" data-p="s091">091 · Protocol factory<small>absorvida pela v11</small><span class="chip">—</span></a>
+    <div class="grp eyebrow">Feita hoje</div>
+    <a href="#s094" data-p="s094">094 · O Pulso 360<small>CRÍTICO · ≈9h em 3 janelas</small><span class="chip ok">84</span></a>
+    <div class="grp eyebrow">Método</div>
+    <a href="#proto" data-p="proto">Protocolo AAA v11.2<small>de 72 para o que é hoje</small><span class="chip info">v11.2</span></a>
+    <div class="grp eyebrow">Fila</div>
+    <a href="#fila" data-p="fila">Decisão do ritmo · fila<small>3 sugestões com nota · 094.1, 095…098</small><span class="chip crit">decidir</span></a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ============================ HOME ============================ -->
+<section class="page" id="p-home">
+  <div class="head">
+    <div>
+      <div class="eyebrow">AutoBrokers Intelligence OS · dossiês de execução</div>
+      <h1>O que foi feito, o que está no ar, o que só você decide</h1>
+      <p class="lede">Uma página por SPEC. Cada dossiê diz como era antes, o que ficou, os números medidos, a nota que o orquestrador deu e por quê, o que ficou pendente e com quem. Atualizado a cada SPEC fechada.</p>
+      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>8019322</b></span><span>orquestrador <b>Fable 5.1</b> · subagentes <b>Opus 5</b></span><span>atualizado <b>03/09/2026 ~21:00</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">Leva 088→096</div><div class="big">3<small> de 6 no ar</small></div><div class="bar"><i style="width:50%"></i></div><div class="sub">088, 093-B e 094 na main · 091 absorvida · 094.1 convertida · 095–098 na fila · <b>protocolo pausado até a sua decisão</b></div></div>
+  </div>
+
+  <h2>Placar</h2>
+  <div class="tw"><table>
+    <tr><th>SPEC</th><th>o que entrega</th><th>nível</th><th>faixa → realizado</th><th>nota</th><th>estado</th></tr>
+    <tr><td><a href="#s088">088</a></td><td>A Central de Agentes para de mentir de verde: 18 trabalhadores com fonte de produção e 5 estados honestos</td><td>PADRÃO</td><td class="n">6–9h → 3h35</td><td class="n">90</td><td><span class="chip ok">no ar 03/09 02:28</span></td></tr>
+    <tr><td><a href="#s091">091</a></td><td>Protocol/Process Factory</td><td>—</td><td class="n">—</td><td class="n">—</td><td><span class="chip">absorvida pela v11</span></td></tr>
+    <tr><td><a href="#s093b">093-B</a></td><td>Todo atendimento de sinistro vira um rastro de eventos sem texto; variantes de processo; zero migration</td><td>CRÍTICO</td><td class="n">8–13h → 7h15</td><td class="n">88</td><td><span class="chip ok">no ar 03/09 09:55</span></td></tr>
+    <tr><td><a href="#s094">094</a></td><td>O número executivo nasce de um modelo canônico com ponteiro; censo da InfoCap; adapter; registry de métricas</td><td>CRÍTICO</td><td class="n">14–18h → ≈9h em 3 janelas</td><td class="n">84</td><td><span class="chip ok">no ar 03/09 ~21:00</span></td></tr>
+    <tr><td><a href="#proto">Protocolo</a></td><td>v10 → v11 → v11.1 → v11.2 no mesmo dia, cada passo medido</td><td>—</td><td class="n">≈3h no total</td><td class="n">72 → ~88</td><td><span class="chip crit">pausado · decidir ritmo</span></td></tr>
+  </table></div>
+  <div class="legend"><span>📊 medido, com fonte</span><span>💭 estimativa ou exemplo</span><span>🧑 decisão sua</span><span>🤖 execução</span></div>
+
+  <h2>Linha do tempo · 02/09 22:40 → 03/09 11:00</h2>
+  <ul class="timeline">
+    <li><span class="t">02/09 22:40</span> · Auditoria do protocolo v10 (nota 72). Reescrita para v11: um orquestrador, dieta de pacote, EXECUTION CARD, painel julga código, referência externa obrigatória, guarda com polícia (42 asserções).</li>
+    <li><span class="t">03/09 00:06 → 02:28</span> · SPEC-088 convertida e executada. Painel de 3 lentes achou 5 blockers; consertados e provados por mutação. Push.</li>
+    <li><span class="t">03/09 02:40 → 09:55</span> · SPEC-093-B: pesquisa, aquecimento, 4 builders, painel de 4 lentes + red team (7 blockers), conserto, juiz de confirmação (achou 1 defeito criado pelo conserto), auditoria externa (achou 2 blockers no dado), conserto, suíte, push.</li>
+    <li class="hold"><span class="t">03/09 ~06:30</span> · Janela de 5h esgotada no meio do conserto. Módulo ficou quebrado; restaurado do HEAD ao retomar.</li>
+    <li><span class="t">03/09 09:55 → 10:40</span> · Protocolo v11.1 (lente do dado, pares mínimos, conserto salvo completo). SPEC-094 convertida (investigador + 6 referências + aquecimento com 16 perguntas: nota 74, 15 emendas). Censo da InfoCap executado: 86 chamadas, 3 conexões. P1 encontrado.</li>
+    <li class="hold"><span class="t">03/09 ~10:40</span> · Janela esgotada de novo; 3 agentes mortos no meio. Ao retomar: protocolo v11.2 (economia de tokens), relançamento.</li>
+    <li><span class="t">03/09 11:00 → 16:30</span> · 094: guarda (284 asserções), blocos A→G, pesquisa CorpAPI oficial (51 requests, 22 de escrita), SUSEP/ANS/Opin medidos, mapa de como nasce um relatório hoje. SPEC-094.1 convertida.</li><li class="hold"><span class="t">03/09 ~17:00</span> · Terceira janela esgotada, com o painel a meio.</li><li><span class="t">03/09 18:10 → 21:00</span> · Painel v11.2 (2 lentes + red team: 12 blockers) → conserto → juiz fresco com canário VIVO (FAIL 62: a tool não rodava no grafo) → 2ª rodada → suíte → push. <b>Protocolo pausado para a decisão do ritmo.</b></li>
+  </ul>
+
+  <h2>🧑 Sua caixa · o que só você decide ou executa</h2>
+  <div class="grid2">
+    <div class="card"><h3>Ações físicas</h3><ul class="tight">
+      <li><b>Implantar</b> smith-api e smith-web: 088 e 093-B estão na main. A sombra de sinistro só grava depois do deploy, com os agentes desligados.</li>
+      <li><b>Rotacionar as chaves</b> coladas no chat de 03/09: Supabase service role, OpenAI, Anthropic, Twilio, CORP_INFOCAP_* (Resulta e AutoFleet).</li>
+    </ul></div>
+    <div class="card"><h3>Decisões registradas em FOUNDER-DECISIONS</h3><ul class="tight">
+      <li><b>F-094-07 · P1</b> · A conexão InfoCap da <b>Amandus</b> descriptografa para a <b>mesma conta da Resulta</b> (mesma carteira ao centavo). É a mesma corretora legal? Se não, a conexão está errada. Até decidir, o sistema recusa a segunda e o canário da Amandus não roda.</li>
+      <li><b>F-093B-04</b> · Backfill de 2.187 sessões históricas com sinistro (dado antigo virando corpus).</li>
+      <li><b>F-093B-05</b> · Ligar a tool de handoff nos agentes (muda a conduta do robô).</li>
+      <li><b>F-094-05</b> · Nome de um produtor real está no histórico do git desde a 081. Reescrever histórico é decisão sua.</li>
+    </ul></div>
+  </div>
+
+  <h2>O método em uma frase por SPEC</h2>
+  <div class="grid3">
+    <div class="card flat"><div class="eyebrow">antes de codar</div><p>Investigador remede a proposta contra o código e o banco. Um executor em aquecimento lê a SPEC e responde 10–16 perguntas medindo — algumas com resposta óbvia e errada. A SPEC muda com o que volta.</p></div>
+    <div class="card flat"><div class="eyebrow">enquanto coda</div><p>Um desenhista escreve o guarda antes do builder. Cada gate tem mutação: o teste precisa ficar vermelho quando o defeito é reintroduzido. Builders paralelos só onde a escrita não se cruza.</p></div>
+    <div class="card flat"><div class="eyebrow">depois</div><p>Painel de juízes cegos entre si sobre o diff e o dado real. Conserto único. Um juiz fresco confirma e audita. Suíte inteira com a árvore parada. Push com a saída colada no relatório.</p></div>
+  </div>
+  <div class="foot">Fontes: <code>docs/canon/reports/SPEC-088-EXECUTION-REPORT.md</code> · <code>SPEC-093-B-EXECUTION-REPORT.md</code> · <code>RELATORIO-CONSOLIDADO-DA-LEVA-088-096.md</code> · <code>PROTOCOLO-AAA-EVIDENCIAS.md</code>. Números com 📊 têm o comando ou a consulta no relatório da SPEC.</div>
+</section>
+
+<!-- ============================ 088 ============================ -->
+<section class="page" id="p-s088">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-088 · v2 · PADRÃO · executada em 03/09/2026</div>
+      <h1>A Central de Agentes para de mentir de verde</h1>
+      <p class="lede">A Central mostrava 🟢 para trabalhadores que pulsavam sem produzir nada. Agora cada um dos 18 declara a fonte da própria produção, e a tela diz cinco coisas diferentes em vez de uma: saudável, pulsa sem produzir, desligado, parado, não medido.</p>
+      <div class="meta"><span>branch <b>feat/spec088…</b></span><span>commit inicial <b>6e7c869</b></span><span>faixa <b>6–9h</b> · realizado <b>3h35</b></span><span>relatório <b>reports/SPEC-088-EXECUTION-REPORT.md</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">nota do orquestrador</div><div class="big">90<small>/100</small></div><div class="bar"><i style="width:90%"></i></div><div class="sub">perde por 3 cards que só se provam com Redis vivo e pela cadência do Tecelão ainda estimada</div></div>
+  </div>
+
+  <div class="ba">
+    <div class="antes"><div class="eyebrow">Como era</div><ul>
+      <li>O estado vinha só do <code>heartbeat</code>: um trabalhador que batia o pulso aparecia verde mesmo sem produzir nada há dias.</li>
+      <li>Não havia noção de "desligado por decisão" — flag desligada parecia falha.</li>
+      <li>A lista era plana, sem grupos, sem cadência esperada, sem fonte de produção.</li>
+      <li>Serviços chamavam <code>beat()</code> em lugares que não eram o trabalho de verdade.</li>
+    </ul></div>
+    <div class="depois"><div class="eyebrow">Como ficou</div><ul>
+      <li>Registro <code>AGENT_TASKS</code> com 18 trabalhadores: grupo, eixo (pulso + chaves de workflow), fonte de produção, cadência esperada, quando conta como desligado.</li>
+      <li>Classificador <code>central_de_agentes.py</code>: produção → pulso → desligado, em cinco estados honestos.</li>
+      <li>Cache Redis 60 s, rota admin, Central redesenhada por grupos com o motivo escrito ("produziu X há Y").</li>
+      <li>10 serviços com <code>beat()</code> movido para onde o trabalho acontece.</li>
+    </ul></div>
+  </div>
+
+  <h2>Números medidos</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v">18</div><div class="l">trabalhadores com fonte de produção declarada</div></div>
+    <div class="kpi"><div class="v">509</div><div class="l">asserções do guarda <code>test_a_central_diz_a_verdade.py</code></div></div>
+    <div class="kpi"><div class="v">5</div><div class="l">blockers do painel, todos fechados e provados por mutação</div></div>
+    <div class="kpi"><div class="v">3h35</div><div class="l">do primeiro despacho ao relatório, abaixo da faixa de 6–9h</div></div>
+  </div>
+
+  <h2>O laço</h2>
+  <div class="tw"><table>
+    <tr><th>etapa</th><th>o que achou</th></tr>
+    <tr><td>Aquecimento</td><td>Pediu nível CRÍTICO; o orquestrador manteve PADRÃO e escreveu o rebaixamento (F-088-04).</td></tr>
+    <tr><td>Painel · 3 lentes</td><td>verdade 1 blocker + 7 pendências · adversarial 3 + 7 · produto 3 + 8. Únicos: 5 blockers; 2 achados por 2 lentes.</td></tr>
+    <tr><td>O que o painel não viu</td><td>Um <code>.limit(2000)</code> pego pela suíte completa; um vazamento de mutação em <code>replay.py</code> pego pelo orquestrador no <code>git status</code>; um descarte de grupo desconhecido pego pelo builder do frontend.</td></tr>
+    <tr><td>Bateria</td><td>17 rodadas; 1 inteira antes do painel (921 passed · 6 failed, 1 nosso), 1 depois (922 · 5, nenhum atribuível).</td></tr>
+  </table></div>
+
+  <h2>Pendências deixadas</h2>
+  <ul class="pend">
+    <li><b>P-088-MUT</b><span class="dono">🤖</span> O harness de guardas-script deixa mutação na árvore quando um guarda estoura o tempo. Reapareceu na 093-B.</li>
+    <li><b>P-088-*</b><span class="dono">🤖</span> Três cards ⚪ (não medido) só se provam com Redis vivo; cadência do Tecelão ainda 💭.</li>
+  </ul>
+
+  <h2>Para onde vai</h2>
+  <p>A Central é a tela onde cada SPEC seguinte planta o seu trabalhador. A 093-B já colocou "Sombra de sinistros" lá sem tocar em código da Central — o teste de que o registro funciona.</p>
+  <h3>Referências usadas (7)</h3>
+  <ul class="refs"><li>Padrões de health check com <em>liveness</em> ≠ <em>readiness</em> ≠ <em>produção</em> (Kubernetes, SRE Workbook) — <span class="mono">modelamos os três estados; rejeitamos probe sintética</span></li><li>Heartbeat monitors (Healthchecks.io, Cronitor) — <span class="mono">modelamos cadência esperada por trabalhador</span></li></ul>
+</section>
+
+<!-- ============================ 093-B ============================ -->
+<section class="page" id="p-s093b">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-093-B · v1 sob v11 · CRÍTICO · executada em 03/09/2026</div>
+      <h1>O sinistro deixa rastro</h1>
+      <p class="lede">Todo atendimento que fala de sinistro passa a existir como um Work Run de sombra, com um log de eventos por ator, sem um byte de texto livre e sem uma mensagem a mais para o segurado. Um digest diário agrupa os rastros em variantes de processo. Nenhuma tabela nova.</p>
+      <div class="meta"><span>branch <b>feat/spec093b…</b></span><span>commits <b>b70225f → 0ae5462</b></span><span>faixa <b>8–13h</b> · realizado <b>7h15</b></span><span>relatório <b>reports/SPEC-093-B-EXECUTION-REPORT.md</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">nota do orquestrador</div><div class="big">88<small>/100</small></div><div class="bar"><i style="width:88%"></i></div><div class="sub">10 blockers fechados e provados por mutação; perde por ramo/seguradora ainda desconhecidos em toda variante e pelo eco possível de um evento</div></div>
+  </div>
+
+  <div class="ba">
+    <div class="antes"><div class="eyebrow">Como era</div><ul>
+      <li>Não existia objeto "caso": a tela de casos era uma view sobre conversas.</li>
+      <li>A classificação de sinistro era recalculada a cada turno e descartada; o grafo nem rodava em produção (4 de 4 agentes de atendimento inativos, <code>return</code> antes dele).</li>
+      <li>Handoff, nota da atendente e esperas existiam no código e tinham zero uso: <code>work_waits</code> vazia, 0 eventos com ator humano em 35.705.</li>
+      <li>2.187 sessões históricas falavam de sinistro e nenhuma virou dado.</li>
+    </ul></div>
+    <div class="depois"><div class="eyebrow">Como ficou</div><ul>
+      <li>Gancho no webhook, antes do <code>return</code> do modo observação: detecta sinistro por regex em pares (24 frases fixadas, 0/14 falsos positivos) e abre UMA sombra por conversa, sem fila, idempotente.</li>
+      <li>10 tipos de evento num vocabulário único lido por Python e Next (sha256 igual nos dois): assumir, devolver, encerrar, nota, resposta, documento (inclusive PDF), espera aberta/satisfeita, handoff.</li>
+      <li>Digest diário: variantes por sequência de <em>atividades</em> (repetição colapsada, contagem no metadata), 5 contadores com denominador, "não instrumentado" onde não há escritor.</li>
+      <li>Sinais no trilho de inteligência <em>excluídos do briefing</em> da corretora (C0 observa, não fala). Trabalhador na Central; admin read-only.</li>
+    </ul></div>
+  </div>
+
+  <h2>Números medidos</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v">249</div><div class="l">asserções do guarda (era 145 → 163 → 220 → 249 ao longo do laço)</div></div>
+    <div class="kpi"><div class="v">0</div><div class="l">migrations, tabelas ou colunas novas: Work OS existente</div></div>
+    <div class="kpi"><div class="v">934</div><div class="l">passed na suíte final (2 falhas do harness, passam isolados)</div></div>
+    <div class="kpi"><div class="v">byte a byte</div><div class="l">acionamento igual à main: zero regressão no atendimento</div></div>
+  </div>
+
+  <h2>O laço · o que cada frente pegou</h2>
+  <div class="tw"><table>
+    <tr><th>frente</th><th>veredito</th><th>o que só ela viu</th></tr>
+    <tr><td>Painel · verdade e ELO</td><td class="n">79</td><td>Contador de seguradora contava espera de humano; digest sem gate; mutação de tenant passava cega.</td></tr>
+    <tr><td>Painel · PII e tenant</td><td class="n">84</td><td>Python validava só tamanho do valor; ramo/seguradora viajavam sem redação.</td></tr>
+    <tr><td>Painel · regressão</td><td class="n">84</td><td>Acionamento idêntico à main; +1 round-trip por mensagem; um guarda da 086 vermelho por ordem.</td></tr>
+    <tr><td>Painel · produto e guarda</td><td class="n">79 FAIL</td><td>A sombra chegava ao briefing da corretora (2.097 runs, 131 briefings) — C0 prometia silêncio.</td></tr>
+    <tr><td>Red team · 10 ataques</td><td class="n">5 quebrados</td><td>Detector abria 12 de 14 frases não-sinistro (16,4% do acervo); nota gravava 2 eventos contraditórios; <code>truncado</code> morria antes do sinal.</td></tr>
+    <tr><td>Juiz de confirmação</td><td class="n">PASS 87</td><td><b>O conserto criou um defeito:</b> a tranca de venda vetava sinistro real ("bati o carro, tenho cobertura?") em ~9,5% das sessões. Consertado.</td></tr>
+    <tr><td>Auditoria externa</td><td class="n">71 FAIL</td><td><b>Dois blockers que ninguém viu no código, só no dado:</b> 40,8% dos arquivos de sinistro (PDF) não viravam evento; a "variante" era um histograma de mensagens da atendente (RRRR 217 · RR 200). Consertados.</td></tr>
+  </table></div>
+  <div class="callout ok"><b>A lição que virou regra (v11.1):</b> quem julga o código aprova um dataset errado. A única frente que reconstruiu o resultado sobre 1.851 sessões reais achou os dois maiores defeitos. Agora o painel tem uma lente do dado sempre que o resultado é número ou dataset.</div>
+
+  <h2>Pendências deixadas · 24, as materiais</h2>
+  <ul class="pend">
+    <li><b>P-093B-RAMO</b><span class="dono">🤖 💭 1h</span> <code>ramo</code> e <code>seguradora</code> nunca preenchidos: toda variante nasce "desconhecido × desconhecida". A 094 achou <code>/sinistros</code> na InfoCap com 5.729 registros — é dali que virá.</li>
+    <li><b>P-093B-ECO</b><span class="dono">🤖 💭 30 min</span> <code>humano_respondeu</code> pode duplicar (painel + eco do WhatsApp) quando a detecção da própria voz falha.</li>
+    <li><b>P-093B-BUFFER</b><span class="dono">🤖</span> O nome do arquivo pode se perder se um texto chegar na mesma janela de 8 s do debounce; a marca no texto cobre a maior parte.</li>
+    <li><b>P-093B-TELA</b><span class="dono">🤖 💭 2h</span> A atendente não vê a sombra; a nota <code>#nota</code> não tem tela que a exiba.</li>
+    <li><b>P-093B-LGPD</b><span class="dono">🧑</span> Base legal com jurista antes de qualquer uso cross-tenant do corpus.</li>
+    <li><b>P-093B-TERCEIRO</b><span class="dono">🧑</span> 2.187 sessões históricas sem backfill (F-093B-04).</li>
+    <li><b>P-093B-HARNESS</b><span class="dono">🤖</span> Guardas-script que se atropelam e deixam mutação na árvore; a suíte só é confiável com a árvore parada.</li>
+  </ul>
+
+  <h2>Para onde vai</h2>
+  <p>No piloto (≈ 08/09), a sombra grava desde o deploy com os agentes desligados. Em 14 dias: sombras abertas × sessões com "sinistro" mede o detector; 20+ trajetórias reais dão o primeiro corpus de variantes. A 094 traz <code>ramo</code> e <code>seguradora</code> pela InfoCap.</p>
+  <h3>Referências usadas (7)</h3>
+  <ul class="refs">
+    <li>OCEL 2.0 — evento × objetos qualificados <span class="mono">modelamos o payload de qualificadores; rejeitamos biblioteca de process mining</span></li>
+    <li>Celonis — variante = sequência ordenada de atividades <span class="mono">modelamos a assinatura (a auditoria provou que faltava colapsar repetição)</span></li>
+    <li>LangChain agentevals — trajetória como tool call <span class="mono">modelamos a comparabilidade futura</span></li>
+    <li>Shift ARISE · Sprout.ai · CNSP 496/2026 · GDPR Art. 89(1)</li>
+  </ul>
+</section>
+
+<!-- ============================ 091 ============================ -->
+<section class="page" id="p-s091">
+  <div class="head"><div>
+    <div class="eyebrow">SPEC-091 · proposta · absorvida em 03/09/2026</div>
+    <h1>Protocol / Process Factory</h1>
+    <p class="lede">A proposta pedia uma fábrica de protocolo e processo. A auditoria da v10 mostrou que o problema não era falta de fábrica: era um protocolo grande demais para ser lido (40,6 KB, 13 documentos de bootstrap, 864 KB por agente) e que não se carregava sozinho nos pacotes — o painel rodou em 2 de 6 SPECs por isso.</p>
+  </div></div>
+  <div class="ba">
+    <div class="antes"><div class="eyebrow">O que a proposta queria</div><ul><li>Uma "factory" que gerasse protocolo e processo por SPEC.</li><li>Métricas de processo separadas.</li></ul></div>
+    <div class="depois"><div class="eyebrow">O que a v11 fez no lugar</div><ul><li>Um protocolo de 22 KB com teto, dieta de pacote, e um guarda que reprova relatório sem card, SPEC sem estado da arte e pacote sem protocolo.</li><li>Pacotes-modelo por papel em <code>docs/canon/pacotes/</code>.</li><li>Telemetria de 5 linhas em todo relatório: é a métrica de processo que a 091 queria, sem fábrica.</li></ul></div>
+  </div>
+  <div class="callout">Registrado no INDICE-DE-SPECS em 03/09: 091 <b>ABSORVIDA</b>. Nada da proposta ficou sem dono; o que sobrou de valioso (métricas de processo) vive na §11 do protocolo e no diário de evidências.</div>
+</section>
+
+<!-- ============================ 094 ============================ -->
+<section class="page" id="p-s094">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-094 · v2.1 · CRÍTICO · executada em 03/09/2026 (3 janelas)</div>
+      <h1>O Pulso 360 não pertence à InfoCap</h1>
+      <p class="lede">O dono pergunta "como estamos?" e recebe um veredito cujo cada número aponta para a métrica que o produziu, calculada uma vez sobre fatos canônicos da corretagem. A InfoCap vira um adapter; Quiver e Segfy entram pela mesma porta sem tocar na matemática. Dado que a fonte não expõe sai INDISPONÍVEL, nunca zero.</p>
+      <div class="meta"><span>commits <b>b036b18 → 8019322</b> (32)</span><span>faixa <b>14–18h</b> · realizado <b>≈9h em 3 janelas</b></span><span>tokens <b>≈3,0 M</b> (orçamento 2,5 M)</span><span>relatório <b>reports/SPEC-094-EXECUTION-REPORT.md</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">nota do orquestrador</div><div class="big">84<small>/100</small></div><div class="bar"><i style="width:84%"></i></div><div class="sub">16 métricas ao centavo por três caminhos, 16 blockers fechados por mutação, zero linha no atendimento; perde por ter chegado ao juiz fresco com a tool que não rodava no grafo e por estourar o orçamento de tokens</div></div>
+  </div>
+
+  <div class="ba">
+    <div class="antes"><div class="eyebrow">Como era (medido em 03/09)</div><ul>
+      <li>A 081 entrega duas tools de chat sem tela. 📊 Resulta: 28 relatórios, todos de 18/08. Amandus e AutoFleet: zero. Ninguém usou em 16 dias.</li>
+      <li>Não existe carteira no banco: a 081 lê a InfoCap a cada pergunta (~53 s).</li>
+      <li>A "camada pura" usa a chave crua da InfoCap (<code>nosnum</code>) 7 vezes; o provider resolve pelo <em>nome da corretora</em>; dado ausente vira 0,0.</li>
+      <li>O número chega ao modelo como prosa: "1.680 apólices, R$ 1.863.831 de comissão, liderado por {nome}". Sem referência, sem base temporal, e com nome de pessoa.</li>
+      <li>O canon tinha duas verdades sobre o 403 da CorpAPI; 18 rotas marcadas "pedir liberação".</li>
+    </ul></div>
+    <div class="depois"><div class="eyebrow">Como ficou</div><ul>
+      <li><b>Censo medido da CorpAPI</b> (feito): 86 chamadas GET pelas conexões das 3 corretoras; manifesto, dicionário de campos, golden controls e fingerprints em JSON que o código lê.</li>
+      <li><b>ELO</b> (feito): as duas tools devolvem um pacote de evidência citável (<code>&lt;&lt;PACK…PACK&gt;&gt;</code>) e o Artifact lê o mesmo pacote. Zero número em prosa, zero nome no chat.</li>
+      <li>CBIM → port <code>BrokerageAnalyticsProvider</code> + adapter InfoCap sobre o resolver de conexão existente → manifesto de capacidade fail-closed (ausente ≠ zero, drift por fingerprint) → registry com <b>16 métricas versionadas</b> e base temporal obrigatória → Evidence Pack pelas leis do Fabric → tool <code>executive_intelligence</code> (query plan, comparação atual × anterior no bloco, follow-up por pack) → Artifact <code>executive.pulse360</code> + migration de seed → provider de referência prova que a matemática não muda de provider.</li><li><b>Canário vivo (03/09, 16 GET):</b> Resulta 972 apólices · R$ 1.472.165,72 · cobertura de produtor 87% · AutoFleet 2.300 · R$ 1.746.002,17 · Amandus <b>recusada em 1,1 s</b> (conta compartilhada) · 2 Artifacts publicados · <code>last_used_at</code> deixou de ser NULL.</li>
+    </ul></div>
+  </div>
+
+  <h2>O que o censo descobriu · 03/09, 86 chamadas, zero PII gravado</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v">18 → 0</div><div class="l">rotas "negadas por permissão" que na verdade <b>não existem</b> (403 SigV4); as 17 flags do perfil estão todas ligadas</div></div>
+    <div class="kpi"><div class="v">5.729</div><div class="l">registros em <code>/sinistros</code> (plural), rota que o mapa antigo nunca viu</div></div>
+    <div class="kpi"><div class="v">198/198</div><div class="l">linhas provam <code>val_r = val_c × per_r / 100</code>: o repasse por produtor é calculável</div></div>
+    <div class="kpi"><div class="v">2,28 s</div><div class="l">Radar de 90 dias hoje (a 081 dizia 8 s); Raio-X anual continua ≈ 45–60 s</div></div>
+  </div>
+  <div class="tw"><table>
+    <tr><th>golden controls 2025</th><th>Resulta</th><th>Amandus</th><th>AutoFleet</th></tr>
+    <tr><td>apólices tipo A</td><td class="n">1.680</td><td class="n">1.680 ⚠️</td><td class="n">3.117</td></tr>
+    <tr><td>comissão apropriada (val_c)</td><td class="n">R$ 1.863.830,79</td><td class="n">idem ⚠️</td><td class="n">R$ 2.099.510,43</td></tr>
+    <tr><td>renovações (fim de vigência)</td><td class="n">3.536</td><td class="n">3.536</td><td class="n">2.654</td></tr>
+    <tr><td>produtores distintos</td><td class="n">97</td><td class="n">97</td><td class="n">64</td></tr>
+    <tr><td>interseção produção ∩ renovação</td><td class="n">100</td><td class="n">100</td><td class="n"><b>0</b></td></tr>
+  </table></div>
+  <div class="callout crit"><b>🔴 P1 · F-094-07 · sua decisão.</b> Amandus e Resulta descriptografam para a <b>mesma conta CorpAPI</b> (mesmo login, mesma carteira ao centavo). Os ciphertexts diferem, então a tabela não denuncia. Qualquer leitura "da Amandus" pelo caminho da conexão mostraria a carteira da Resulta com o nome da Amandus. Até você decidir, o adapter recusa a segunda corretora da mesma conta e o canário da Amandus não roda. Se a Amandus é a corretora fictícia de testes, a resposta provável é (B): arquivar a conexão.</div>
+  <div class="callout warn"><b>AutoFleet: interseção zero.</b> A receita de cobertura de produtor da 081 não vale para ela — a 094 remede por corretora. É o primeiro sinal concreto de que "funciona na Resulta" não é "funciona".</div>
+
+  <h2>O que mudou na SPEC por medição · não pela proposta</h2>
+  <div class="tw"><table>
+    <tr><th>origem</th><th>o que a proposta dizia</th><th>o que a medição mostrou</th><th>decisão</th></tr>
+    <tr><td>Aquecimento</td><td>"Radar ~8 s" sem fonte</td><td>Estava em <code>fonte_infocap.py:168</code>; eu é que errei na v1</td><td>SPEC corrigida (§1.9)</td></tr>
+    <tr><td>Aquecimento</td><td>Resolver novo por conexão</td><td>Já existe em <code>infocap_connector.py:725-757</code>; escrever outro é motor paralelo</td><td>Reusar</td></tr>
+    <tr><td>Aquecimento</td><td>Findings com <code>domain='comercial'</code></td><td><code>domain</code> é derivado do tipo; evidência é obrigatória; só <code>commercial_opportunity</code> mapeia</td><td>BLOCO E reescrito pelas leis do Fabric</td></tr>
+    <tr><td>Aquecimento</td><td>Zero migration</td><td>O guarda de templates exige seed SQL; editar a seed da 057 é proibido</td><td>UMA migration de seed, sem estrutura</td></tr>
+    <tr><td>Aquecimento</td><td>—</td><td>Nome de produtor real num teste versionado desde a 081</td><td>BLOCO H (feito) + F-094-05</td></tr>
+    <tr><td>Censo</td><td>"Contribuição pós-repasse se o censo provar"</td><td>Provado: 198/198 linhas, desvio máximo R$ 0,01; e <code>ordem==1</code> não é o maior repasse</td><td>Entra na v1; soma todos os produtores</td></tr>
+    <tr><td>Censo</td><td>18 rotas a liberar</td><td>Não existem; <code>/sinistros</code> e <code>/usuario</code> existem</td><td>Mapa antigo SUPERADO; P-094-SINISTROS</td></tr>
+    <tr><td>Founder</td><td>Quiver/Segfy no futuro</td><td>—</td><td>Fórmula nunca conhece provider (mutação M1); provider de referência prova</td></tr>
+  </table></div>
+
+  <h2>O laço · o que cada frente pegou (v11.2)</h2>
+  <div class="tw"><table>
+    <tr><th>frente</th><th>veredito</th><th>o que só ela viu</th></tr>
+    <tr><td>Lente verdade + ELO + regressão + tenant</td><td class="n">82</td><td>Produto bom; blockers no guarda: 20 asserções verdes ainda marcadas "vermelho esperado" (uma regressão real saía como zero) e gate M1 inalcançável.</td></tr>
+    <tr><td>Lente do DADO (6 GET vivos)</td><td class="n">76</td><td>Os 4 números recalculados à mão batem ao centavo. O Artifact escrevia "sobraram R$ 98 mil" sem a cobertura de 6% ao lado; o canário provava cobertura sobre uma fixture que ignorava as datas.</td></tr>
+    <tr><td>Red team (16 ataques)</td><td class="n">7 quebras</td><td>Janelas desiguais comparadas ("+301%"); rota vazia virando 0 com confiança alta; NaN da fonte virando "R$ nan"; follow-up ignorando o período; injeção pelo <code>dimension</code> dentro do bloco citável; censo corrompido liberando tudo; tabela de produtores como hashes.</td></tr>
+    <tr><td>Juiz fresco + canário vivo</td><td class="n">FAIL 62</td><td><b>A tool não rodava no grafo</b> (cliente Supabase síncrono × resolver assíncrono): 366 asserções verdes com fakes que respondiam a <code>await</code>. Comparações fora do bloco citável. Espelho da rota vazia criado pelo conserto. Hora local em coluna UTC.</td></tr>
+    <tr><td>2ª rodada</td><td class="n">verde</td><td>Os 4 fechados com par e mutação, prova viva pelo caminho do grafo (81 s, 972 · R$ 1.472.165,72 · 12 comparações). Guarda 284 · canário 115 · 38 · 26 · 81.</td></tr>
+  </table></div>
+  <div class="callout ok"><b>A lição desta SPEC:</b> um fake que responde a tudo prova nada. O juiz fresco só achou o defeito maior porque rodou o produto de verdade, com a conexão real. Está na proposta de ritmo: o canário vivo não sai de nenhuma marcha.</div>
+
+  <h2>Pesquisas que nasceram do seu pedido de 03/09 · já viraram a SPEC-094.1</h2>
+  <ul class="tight">
+    <li><b>CorpAPI inteira pela documentação oficial</b> (Postman): todas as rotas, inclusive as de <b>escrita</b> (POST/PUT/DELETE de cliente, endereço, e-mail…). Responde se um agente pode preencher dados no InfoCap e com que governança.</li>
+    <li><b>Relatórios que valem dinheiro</b>: lista obrigatória (tradicional) e lista extraordinária (cruzamentos com SUSEP, FIPE, roubo por município, BACEN…), cada um com o mecanismo do dinheiro, a fonte real e a nota de viabilidade com o que existe hoje.</li>
+    <li><b>Como nasce um relatório/skill/auxiliar hoje</b>: o mapa do que existe (Skill Registry, Tool Gateway, Auxiliary Factory, templates, Fabric) e o caminho mais curto — base do protocolo "como criar um relatório novo" que você pediu.</li>
+  </ul>
+  <div class="callout"><b>SPEC-094.1 — A fábrica de relatórios</b> está convertida (<code>specs/SPEC-094.1-a-fabrica-de-relatorios.md</code>): o chat propõe a métrica que não existe e um humano promove (Work Run + Approval, sem tool de "promover"); cinco relatórios obrigatórios que a InfoCap já expõe (sinistros, funil, cancelamentos, cross-sell, pendência de emissão); o primeiro cruzamento externo (SUSEP SES × carteira); o protocolo escrito <code>COMO-NASCE-UM-RELATORIO.md</code> com guarda. Achados que a sustentam: a CorpAPI oficial tem 51 requests e <b>22 de escrita</b> (5 portas para um agente preencher o InfoCap, nenhuma medida — F-094-09); InfoCap → Agger/Quiver são a mesma casa (F-094-08); os dois relatórios de maior nota (comissão recebida, inadimplência) não vêm da API, vêm do portal da seguradora (094.2).</div>
+
+  <h2>Pendências já registradas</h2>
+  <ul class="pend">
+    <li><b>P-094-CONTA-COMPARTILHADA</b><span class="dono">🧑 P1</span> Amandus = Resulta na CorpAPI.</li>
+    <li><b>P-094-SINISTROS</b><span class="dono">🤖 💭 2h</span> <code>/sinistros</code> tem 5.729 registros e nenhum leitor; dá <code>ramo</code>/<code>seguradora</code> à 093-B.</li>
+    <li><b>P-094-PRODUCAO-500</b><span class="dono">🤖</span> <code>/producao</code> devolve 500 e o conector de atendimento a usa.</li>
+    <li><b>P-094-RAG-MAPA</b><span class="dono">🤖</span> O mapa errado da CorpAPI está no RAG global dos agentes.</li>
+    <li><b>P-094-GIT-PII</b><span class="dono">🧑</span> Nome de produtor no histórico do git.</li>
+  </ul>
+  <h3>Referências (6, reabertas em 03/09)</h3>
+  <ul class="refs"><li>Anti-Corruption Layer (Microsoft, AWS) — <span class="mono">o adapter é a única peça que fala InfoCap; permanente, não transitório</span></li><li>dbt Semantic Models + MetricFlow time spine — <span class="mono">métrica declara base temporal obrigatória; não densificar zeros</span></li><li>Cube (cubes × views) — <span class="mono">o Evidence Pack é a fachada única de chat e Artifact</span></li><li>Claude Citations — <span class="mono">o número chega como bloco citável, não como prosa</span></li></ul>
+</section>
+
+<!-- ============================ PROTOCOLO ============================ -->
+<section class="page" id="p-proto">
+  <div class="head">
+    <div>
+      <div class="eyebrow">PROTOCOLO AUTOBROKERS AAA · v11.2 · 03/09/2026</div>
+      <h1>Como se monta a equipe, quem julga, quando o laço para</h1>
+      <p class="lede">De uma lista de leitura de 864 KB por agente para um documento de 22 KB com teto, que se carrega sozinho em todo pacote e tem um guarda que reprova quem não o segue. Três versões num dia, cada uma com o defeito medido que a causou.</p>
+      <div class="meta"><span>arquivo <b>docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md</b></span><span>tamanho <b>22.498 B</b> (teto 22.528)</span><span>guarda <b>test_o_protocolo_tem_policia.py · 42 ok</b></span><span>diário <b>PROTOCOLO-AAA-EVIDENCIAS.md</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">nota (auditoria própria)</div><div class="big">~90<small>/100</small></div><div class="bar"><i style="width:90%"></i></div><div class="sub">v10 auditada em 72. A v11.2 foi medida na 094: o julgamento segurou (16 blockers reais), o orçamento não. Pausado para a decisão do ritmo.</div></div>
+  </div>
+
+  <h2>As quatro versões do dia</h2>
+  <div class="tw"><table>
+    <tr><th>versão</th><th>o defeito medido que a causou</th><th>o que mudou</th></tr>
+    <tr><td><b>v10 → v11</b><br><span class="mono">02/09 22:40</span></td><td>40,6 KB; 13 docs de bootstrap (864 KB, ≈220 mil tokens por agente, +31% em 4 dias). O painel rodou em 2 de 6 SPECs porque o pacote não carregava o protocolo. Nota 72.</td><td>Um orquestrador (Fable) e subagentes Opus. Dieta: pacote, nunca o canon. EXECUTION CARD obrigatório. O painel julga CÓDIGO; quem julga a SPEC é o aquecimento. Referência externa em formato (URL · faz · modelamos · rejeitamos · juiz). Teto de 3 rodadas. Guarda com polícia.</td></tr>
+    <tr><td><b>v11 → v11.1</b><br><span class="mono">03/09 09:55</span></td><td>Na 093-B, 4 lentes + red team + juiz de confirmação aprovaram; a auditoria externa achou 2 blockers reconstruindo o dado sobre 1.851 sessões reais. O guarda do detector ficou verde com 17 frases e um defeito de 9,5%. Um 429 deixou módulo quebrado no meio de um refactor.</td><td>Lente do DADO no painel quando o outcome é número/dataset. Listas de casos carregam PARES (mesma superfície, veredito oposto). Cada conserto salvo completo.</td></tr>
+    <tr><td><b>v11.1 → v11.2</b><br><span class="mono">03/09 10:50</span></td><td>A janela de 5h acabou duas vezes no meio de uma SPEC. Uma CRÍTICO gasta ≈3 M tokens de subagentes (investigador 154k · aquecimento 153k · censo 203k · auditoria 245k · builder 264k · painel ≈900k).</td><td>Sonnet para papéis mecânicos. Confirmação + auditoria num agente fresco. Painéis 3→2 (PADRÃO) e 4→3 (CRÍTICO). Dieta do juiz (§0 + bloco + diff). Investigador e pesquisador fundidos. Linha ORÇAMENTO no card. Estourou → menos lentes, nunca menos mutação.</td></tr>
+  </table></div>
+
+  <h2>Desempenho medido</h2>
+  <div class="tw"><table>
+    <tr><th></th><th>088 (PADRÃO)</th><th>093-B (CRÍTICO)</th><th>094 (CRÍTICO, v11.2)</th></tr>
+    <tr><td>faixa → realizado</td><td class="n">6–9h → 3h35</td><td class="n">8–13h → 7h15</td><td class="n">14–18h → ≈9h em 3 janelas</td></tr>
+    <tr><td>blockers do painel</td><td class="n">5</td><td class="n">7</td><td class="n">12 + 4 (juiz fresco)</td></tr>
+    <tr><td>conserto criou defeito?</td><td>não</td><td>sim (pego)</td><td>sim (pego pelo juiz fresco)</td></tr>
+    <tr><td>defeitos que só o dado mostrou</td><td class="n">0</td><td class="n">2</td><td class="n">2 + 1 (tool não rodava no grafo: só o canário vivo viu)</td></tr>
+    <tr><td>tokens de subagentes</td><td class="n">💭 ~1,5 M</td><td class="n">📊 ≈3 M</td><td class="n">📊 ≈3,0 M (orçamento 2,5 M)</td></tr>
+    <tr><td>nota</td><td class="n">90</td><td class="n">88</td><td class="n">84</td></tr>
+  </table></div>
+
+  <h2>O que está bom e o que ainda falta</h2>
+  <div class="grid2">
+    <div class="card"><h3>Provado</h3><ul class="tight"><li>O aquecimento é o melhor custo-benefício: 153 mil tokens → 15 emendas e um 📊 falso meu derrubado.</li><li>Mutação por cópia pega defeito reintroduzido — ficou vermelha 20+ vezes na leva.</li><li>O gate zero (vermelho em HEAD antes do código) impede "verde porque o teste mudou".</li><li>A lente do dado paga por si: os dois maiores defeitos da 093-B.</li></ul></div>
+    <div class="card"><h3>A medir na 094 e na 095</h3><ul class="tight"><li>Se a v11.2 entrega −35 a −45% de tokens com perda irrisória (uma lente a menos no CRÍTICO).</li><li>Se a confirmação mecânica (Sonnet reroda guardas e mutações) substitui o juiz de confirmação no PADRÃO.</li><li>Se o push da main precisa de guarda: um push da branch levou 3 commits sem gate final (CHANGE-ADDENDA 03/09).</li><li>O harness de guardas-script que deixa mutação na árvore (P-088-MUT) ainda não foi consertado — a suíte só é confiável parada.</li></ul></div>
+  </div>
+  <div class="callout warn"><b>Onde eu erro:</b> dois números meus estavam errados e foram pegos por agentes (o "8 s" que existia; "3 conexões" que eram 6). A regra do comando vale para o orquestrador também — e o guarda não me pega. É o próximo mecanismo a criar: o aquecimento sempre recebe duas afirmações minhas para refutar, e agora elas são reais, não plantadas.</div>
+</section>
+
+<!-- ============================ FILA ============================ -->
+<section class="page" id="p-fila">
+  <div class="head"><div>
+    <div class="eyebrow">A fila · o que vem e em que ordem</div>
+    <h1>A decisão do ritmo, e depois</h1>
+    <p class="lede">O protocolo está pausado até você escolher. Três janelas de 5h morreram em 24 horas; uma SPEC CRÍTICO custa ≈3 M tokens de subagentes e o chat contínuo de 24h do orquestrador é o maior consumidor que ninguém media. Documento completo: <code>docs/canon/DECISAO-DO-RITMO-03-09-2026.md</code>.</p>
+  </div></div>
+  <div class="tw"><table>
+    <tr><th>opção</th><th>o que muda</th><th>qualidade</th><th>tempo por janela</th><th>nota</th></tr>
+    <tr><td><b>A</b> · Sessão nova por SPEC, protocolo intacto</td><td>um chat por SPEC com handoff de uma página; v11.2 igual</td><td>igual</td><td>1 CRÍTICO por janela sem morrer (hoje: nenhuma)</td><td class="n">78</td></tr>
+    <tr><td><b>B</b> · Três marchas + sessão nova <span class="chip acc">recomendada</span></td><td>LEVE (eu executo, Sonnet reroda guardas, sem painel) · PADRÃO (1 builder + red team + confirmação mecânica) · CRÍTICO (v11.2); orçamento no card decide se a SPEC cabe na janela</td><td>CRÍTICO igual; PADRÃO perde ~1 blocker; mutação e aquecimento em todas</td><td>2 SPECs por janela quando uma é LEVE/PADRÃO</td><td class="n">88</td></tr>
+    <tr><td><b>C</b> · Opus 5 orquestra, Fable converte e revisa</td><td>troca o maestro em sessão nova</td><td>perda pequena-a-média (o orquestrador pegou o que os agentes não pegaram)</td><td>igual; −20 a −30% de tokens</td><td class="n">72</td></tr>
+    <tr><td>Continuar como está</td><td>—</td><td>a maior da história do projeto</td><td>1 CRÍTICO a cada 2 janelas, 3 interrupções por dia</td><td class="n">45</td></tr>
+  </table></div>
+  <h2>A fila, na ordem</h2>
+  <div class="head" style="border:0;padding:0"><div>
+  </div></div>
+  <div class="tw"><table>
+    <tr><th>ordem</th><th>SPEC</th><th>de onde vem</th><th>o que decide o escopo</th></tr>
+    <tr><td class="n">✓</td><td><b>094</b> · O Pulso 360</td><td>proposta 8 + censo</td><td>Feita (nota 84). Falta você aplicar a migration de seed e decidir F-094-07.</td></tr>
+    <tr><td class="n">1</td><td><b>094.1</b> · A fábrica de relatórios</td><td>seu pedido de 03/09 + 3 pesquisas</td><td>Convertida. CRÍTICO (fonte externa + Approval); o bloco "listar entregas" sai antes como LEVE. Executa depois da sua decisão.</td></tr>
+    <tr><td class="n">2</td><td><b>095</b> · Artifact &amp; Delivery Hub</td><td>proposta 9</td><td>A tela "Entregas": tudo que o AutoBrokers entregou num lugar confiável — inclusive os Pulsos 360 da 094.</td></tr>
+    <tr><td class="n">3</td><td><b>096</b> · Chat runtime e interaction shell</td><td>proposta 10</td><td>Performance e forma da conversa; medida contra o chat real depois da 094/094.1 terem dado ao chat o que dizer.</td></tr>
+    <tr><td class="n">4</td><td><b>097</b> · A operação tem uma casa</td><td>proposta + research pack na pasta</td><td>Operations Workspace (fila, casos, conversas, timeline). PADRÃO/CRÍTICO medido na conversão.</td></tr><tr><td class="n">5</td><td><b>098</b> · Cada coisa sabe de quem é</td><td>proposta + research pack na pasta</td><td>Identidade, escopo e Company Soul. CRÍTICO (cross-tenant é o piso).</td></tr><tr><td class="n">6+</td><td>099 → 114</td><td>MASTERPLAN</td><td>Convertidas 2 a 4 por vez, avaliação de bloco em bloco como agora.</td></tr>
+  </table></div>
+  <div class="callout crit"><b>Medido na 094:</b> o orçamento de 2,5 M estourou (≈3,0 M) e duas janelas morreram. A v11.2 sozinha não resolve; a recomendação é B.</div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var pages = ["home","s088","s093b","s091","s094","proto","fila"];
+  function show(){
+    var h = (location.hash || "#home").slice(1);
+    if (pages.indexOf(h) < 0) h = "home";
+    pages.forEach(function(p){
+      var el = document.getElementById("p-"+p); if (el) el.classList.toggle("on", p===h);
+    });
+    var links = document.querySelectorAll("#nav a");
+    for (var i=0;i<links.length;i++){ links[i].classList.toggle("on", links[i].getAttribute("data-p")===h); }
+    try { localStorage.setItem("dossies.page", h); } catch(e){}
+    var main = document.querySelector("main"); if (main && window.innerWidth < 900) main.scrollIntoView({block:"start"});
+  }
+  if (!location.hash){ try { var s = localStorage.getItem("dossies.page"); if (s && pages.indexOf(s)>=0) location.hash = "#"+s; } catch(e){} }
+  window.addEventListener("hashchange", show);
+  show();
+})();
+</script>
