@@ -329,8 +329,16 @@ FECHAMENTO = "PACK>>"
 
 #: 🔴 O que faz de dois avisos o MESMO aviso: a referência da linha sai, o
 #: resto fica. Sem isto, 222 avisos idênticos ocupam o bloco citável um a um.
+#:
+#: ⚠️ As DUAS formas do acervo, medidas em 03/09/2026 na peça viva — a com
+#: parênteses (`valor ilegível em X (apólice abcd1234…)`) e a SEM
+#: (`repasse ilegível na apólice abcd1234…`). A primeira rodada deste conserto
+#: só cobria a com parênteses, e a peça viva continuou com 222 linhas: a
+#: mensagem que o produto escreve DE VERDADE era a outra. 🔴 O padrão vem do
+#: acervo, e não da citação de um relatório (CLAUDE.md §9.4).
 _REFERENCIA_NO_AVISO = re.compile(
-    r"\((ap[óo]lice|documento|ref|linha)\s+[^)]*\)", re.IGNORECASE)
+    r"\(?\b(ap[óo]lice|documento|ref|linha)\b\s+[^\s):]+\)?",
+    re.IGNORECASE)
 
 
 def colapsar_avisos(avisos: Sequence[str]) -> List[str]:
@@ -354,7 +362,8 @@ def colapsar_avisos(avisos: Sequence[str]) -> List[str]:
         texto = str(aviso or "")
         if not texto.strip():
             continue
-        assinatura = _REFERENCIA_NO_AVISO.sub("(…)", texto)
+        assinatura = _REFERENCIA_NO_AVISO.sub(lambda m: "%s …" % m.group(1),
+                                              texto)
         if assinatura not in grupos:
             grupos[assinatura] = {"texto": texto, "n": 0}
             ordem.append(assinatura)

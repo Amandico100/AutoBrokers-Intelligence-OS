@@ -3694,7 +3694,13 @@ def bloco_14_a_segunda_rodada():
     # primeira; juntas empurram para fora do contexto o pedaco do bloco que
     # responde a pergunta do dono.
     if pack14 is not None:
-        muitos = ["[abc123] valor ilegível em repasse (apólice %08d…): "
+        # 🔴 As frases vem do ACERVO, e nao da imaginacao: sao as DUAS que o
+        # `infocap_analytics_provider` escreve — a SEM parenteses ("repasse
+        # ilegivel na apolice ...") e a COM ("valor ilegivel em X (apolice
+        # ...)").
+        # 📊 A primeira versao deste colapso so cobria a COM parenteses, e a
+        # peca viva continuou com 222 linhas: o produto escrevia a outra.
+        muitos = ["[abc123] repasse ilegível na apólice %08d…: "
                   "INDISPONÍVEL, não zero" % i for i in range(222)]
         outro = ["[abc123] valor ilegível em prêmio (apólice 00000001…): "
                  "INDISPONÍVEL, não zero"]
