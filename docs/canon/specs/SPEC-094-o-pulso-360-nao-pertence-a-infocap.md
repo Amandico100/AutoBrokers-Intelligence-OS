@@ -127,6 +127,11 @@ UNAVAILABLE **medido**. 📊 Existem e o MAPA não sabia: **`/sinistros`** (plur
 3.536 renovações · 97 produtores · 97,1% com produtor ordem=1 · BI∩renov 100 — **a 081 reproduz exatamente**.
 AutoFleet 3.117 · R$ 2.099.510,43 · 2.654 · 64 · 99,1% · **BI∩renov 0** → a receita de cobertura de produtor da 081
 **não é constante do provider**: remedir por corretora.
+🔴 **E `BI∩renov` é um ARTEFATO DE JANELA, não a cobertura do produto** (acrescentado em 03/09/2026, pela lente do
+dado). Os dois números acima — 100 na Resulta, 0 na AutoFleet — medem `2025 × 2025`, e apólice anual que **começa**
+em 2025 **termina** em 2026: as duas rotas filtram pontas opostas da vigência. 📊 O produto pede `2024–2027`
+(`anos_de_vencimento_para`), e nessa janela a cobertura medida é de **80,6%**. Citar `BI∩renov` como "a cobertura da
+AutoFleet" é afirmar sobre a carteira o que só se sabe sobre o recorte.
 📊 **Base temporal:** `/documentos_bi` filtra `inivig` (1.680/1.680; `fimvig` só 106); `/renovacoes` filtra `fimvig`
 (3.536/3.536); `data=` aceita exatamente `INIVIG · DATINC · DATALT · DATPROP` (a lista sai num 400). Não há base de
 apropriação de comissão: `COMMISSION_ACCRUAL_DATE` não existe na InfoCap.
@@ -397,7 +402,8 @@ produtor — distinta do campo `coverage` que TODO envelope carrega para a sua p
 `contribution.after_repasse@1` (DERIVED, ref ③) só é calculável sobre a **interseção** das populações INIVIG × FIMVIG,
 com `coverage` = fração da comissão do período que tem repasse conhecido, escrito no envelope. **`commission.broker_received`,
 estorno e imposto: UNKNOWN** (rota não existe; o Artifact escreve "não exposto pela InfoCap"). Cobertura de produtor é
-remedida **por corretora** (AutoFleet: BI∩renov = 0).
+remedida **por corretora** (AutoFleet: BI∩renov = 0 — ⚠️ artefato de `2025 × 2025`; o produto varre `2024–2027` e
+mede 📊 **80,6%**. Ver §1.11).
 **Gate D:** M1 vermelha por grep; M5 (endosso como apólice) vermelha; M6 (comparar `MetricResult` de `time_basis`
 diferentes) → o registry recusa; **paridade com a 081** (golden controls do censo; 📊 `SPEC-081:113-114` e
 `fonte_infocap.py:41-42`): `policy_count` 2025 = 1.680 · `new/renewal` 717/963 · `broker_accrued` ≈ R$ 1.863.831 ·

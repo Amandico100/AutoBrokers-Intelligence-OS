@@ -238,13 +238,58 @@ def linhas_de_producao(slug):
     return saida
 
 
-def linhas_de_renovacao(slug):
-    """As linhas CRUAS de `/renovacoes`, com os totais do censo.
+#: 🔴 A PARIDADE QUE O BLOCO D EXIGE, e o numero e medido.
+#:
+#: 📊 `fonte_infocap.anos_de_vencimento_para` varre de N-1 a N+2 porque isso
+#: deu **80,6%** de cobertura de produtor em 2025 na API viva -- contra 2,8% se
+#: se pedisse um ano so. E o motivo e geometrico, nao estatistico: apolice anual
+#: que COMECA em 2025 TERMINA em 2026, e `/renovacoes` filtra por `fimvig`. A
+#: intersecao de 2025x2025 e um ARTEFATO da janela, e nao uma propriedade da
+#: carteira.
+PARIDADE_DE_COBERTURA = 0.806
+#: 📊 Dois pontos percentuais: e o que o arredondamento das fatias sinteticas
+#: move. Uma tolerancia maior deixaria de distinguir 80,6% de 78%.
+TOLERANCIA_DE_PARIDADE = 0.02
+
+
+def cobertura_esperada(slug):
+    """Quantas apolices da PRODUCAO tem produtor conhecido, e a fracao disso.
+
+    🔴 Isto e o que a fixture PRECISA reproduzir para o canario medir a §1.11
+    desta SPEC. A versao anterior devolvia as MESMAS 3.536 linhas para as quatro
+    fatias de ano, e o guarda cravava **5,95%** -- um numero que o produto nunca
+    produz, sobre uma populacao que ele nunca busca (CLAUDE.md §9.4: o que se
+    afirma e o comportamento do MOTOR sobre o texto REAL).
+    """
+    n = controles(slug)["documentos_bi_2025_tipo_A"]["n_documentos_tipo_A"]
+    return int(round(PARIDADE_DE_COBERTURA * n)), n
+
+
+def linhas_de_renovacao(slug, ano=2025):
+    """As linhas CRUAS de `/renovacoes` **daquele ANO de vencimento**.
 
     📊 `val_c` vem NULO em 3.536 de 3.536 linhas da Resulta — e é por isso que
     a comissão do radar não pode ser somada como zero. O repasse mora em
     `prod_docs`, e a soma é de TODOS eles, não só da `ordem == 1`.
+
+    🔴 **E A FATIA DE ANO IMPORTA.** A rota filtra por `fimvig`, e o adapter a
+    chama QUATRO vezes para uma pergunta de um ano (2024, 2025, 2026, 2027).
+    Devolver o mesmo lote nas quatro e uma fonte que nao existe: ela ignoraria o
+    filtro que e a razao de ser da rota. Aqui:
+
+    ```
+    2025  os 3.536 registros do censo (fimvig em 2025) -- e a intersecao MEDIDA
+          com a producao de 2025, que e o artefato de 2,8%
+    2026  as apolices que COMECARAM em 2025 e vencem em 2026 -- 80,6% delas,
+          que e a paridade que o BLOCO D exige
+    2024
+    2027  vazias: nada do acervo sintetico vence nesses anos
+    ```
     """
+    if ano == 2026:
+        return _linhas_de_renovacao_de_2026(slug)
+    if ano != 2025:
+        return []
     c = controles(slug)["renovacoes_2025"]
     n = c["n_registros"]
     premios = _centavos(int(round(c["soma_pretot"] * 100)), n)
@@ -285,6 +330,55 @@ def linhas_de_renovacao(slug):
 # ===========================================================================
 # O HTTP FALSO — no lugar EXATO onde a fonte faz o GET
 # ===========================================================================
+def _ano_do_parametro(params):
+    """O ano da fatia pedida, lido de `dt_fim` (ou `dt_ini`). `dd/mm/aaaa`."""
+    for chave in ("dt_fim", "dt_ini", "datfim", "datini"):
+        bruto = str((params or {}).get(chave) or "").strip()
+        if len(bruto) >= 10 and bruto[-4:].isdigit():
+            return int(bruto[-4:])
+    return 2025
+
+
+def _linhas_de_renovacao_de_2026(slug):
+    """O que COMECOU em 2025 e VENCE em 2026 — a fatia que da a paridade.
+
+    🔴 O `nosnum` e o MESMO de `linhas_de_producao`, e e por isso que a
+    intersecao existe: as duas rotas falam da mesma apolice, em dois anos
+    diferentes, porque uma filtra o inicio e a outra o fim da vigencia.
+
+    📊 80,6% delas, e nao 100%: a cobertura medida na API viva nao e total.
+    Apolice plurianual, apolice cancelada e apolice sem produtor no cadastro
+    ficam de fora — e e essa fracao que o produto declara ao dono.
+    """
+    c = controles(slug)["documentos_bi_2025_tipo_A"]
+    r = controles(slug)["renovacoes_2025"]
+    com_produtor, n = cobertura_esperada(slug)
+    premios = _centavos(int(round(c["soma_pretot"] * 100)), n)
+    repasses = _centavos(int(round(r["soma_val_r_ordem1"] * 100)), max(com_produtor, 1))
+    produtores = r["distinct_produtores_ordem1"]
+    saida = []
+    for i in range(com_produtor):
+        rotulo = "Produtor %03d" % (i % produtores)
+        saida.append(_linha_completa("/renovacoes", {
+            # ⚠️ O MESMO `nosnum` da producao: e o join.
+            "nosnum": "%s-DOC-%06d" % (slug, i),
+            "tipdoc": "A",
+            "cancelado": "F",
+            "seguradora": "SEG%02d" % (i % 8),
+            "ramo": "RAMO%02d" % (i % 6),
+            "fimvig": date(2026, 1 + (i % 12), 1).strftime("%d/%m/%Y"),
+            "pretot": "%.2f" % (premios[i] / 100.0),
+            "dias_a_vencer": 200 + (i % 165),
+            "quant_produtores": 1,
+            "produtor": rotulo,
+            "prod_docs": [
+                {"produtor": rotulo, "ordem": 1, "agente": "EXECUTIVO",
+                 "per_r": "10", "val_r": "%.2f" % (repasses[i] / 100.0)},
+            ],
+        }))
+    return saida
+
+
 def _classe_de_fonte_falsa(base):
     """Uma `FonteInfocap` de verdade, com `_autenticar` e `_get` falsos.
 
@@ -315,7 +409,12 @@ def _classe_de_fonte_falsa(base):
             if rota == "/documentos_bi":
                 return {"documentos": linhas_de_producao(slug)}
             if rota == "/renovacoes":
-                return {"renovacoes": linhas_de_renovacao(slug)}
+                # 🔴 A FONTE RESPEITA O FILTRO. `dt_ini`/`dt_fim` chegam em
+                # `dd/mm/aaaa` e o adapter fatia por ANO CIVIL, entao o ano do
+                # `dt_fim` identifica a fatia. Uma fixture que ignora o filtro
+                # nao e a fonte: e um dicionario com o nome dela.
+                return {"renovacoes": linhas_de_renovacao(
+                    slug, _ano_do_parametro(params))}
             return {}
 
     return FonteFalsa
@@ -526,15 +625,27 @@ def canario_de(slug):
     esperado_comissao = c["documentos_bi_2025_tipo_A"]["soma_val_c"]
     esperado_premio = c["documentos_bi_2025_tipo_A"]["soma_pretot"]
     esperado_renov = c["renovacoes_2025"]["n_registros"]
-    # 🔴 NÃO é `distinct_produtores_ordem1`. 📊 Aquele número (97 na Resulta) é
-    # a contagem na população de RENOVAÇÕES; `producer.performance` conta na
-    # população de PRODUÇÃO, e as duas só se encontram na INTERSEÇÃO medida —
-    # 100 apólices na Resulta, ZERO na AutoFleet. Usar 97 aqui seria comparar
-    # um número certo com a população errada, que é a mutação M6 vestida de
-    # expectativa de teste.
+    # 🔴 A EXPECTATIVA MUDOU EM 03/09/2026, E A MUDANCA E O CONSERTO.
+    #
+    # 📊 Ela era `min(intersecao_2025x2025, produtores)` — ZERO na AutoFleet,
+    # 97 na Resulta com cobertura de 5,95%. Aquele numero saia de uma fixture
+    # que devolvia as MESMAS 3.536 linhas para as QUATRO fatias de ano que o
+    # adapter pede (2024-2027): a fonte falsa ignorava `dt_ini/dt_fim`, e o
+    # canario media a cobertura sobre uma populacao que o produto **nunca
+    # busca**. Na API viva o mesmo caminho entrega **80,6%** (censo do BLOCO 0,
+    # que e a razao de `anos_de_vencimento_para` varrer de N-1 a N+2).
+    #
+    # E a intersecao de 2025x2025 continua sendo o que sempre foi: um ARTEFATO
+    # da janela — apolice anual que comeca num ano termina no seguinte. Ela e
+    # medida, e nao e a cobertura do produto.
+    #
+    # CLAUDE.md §9.4: o que se afirma e o comportamento do MOTOR sobre o dado
+    # REAL. A fixture agora respeita a fatia de ano, e a expectativa e a
+    # paridade que o BLOCO D exige.
     intersecao = c["intersecao_por_nosnum"]["n"]
-    esperado_produtores = min(intersecao,
-                              c["renovacoes_2025"]["distinct_produtores_ordem1"])
+    com_produtor, n_producao = cobertura_esperada(slug)
+    esperado_produtores = min(
+        com_produtor, c["renovacoes_2025"]["distinct_produtores_ordem1"])
 
     check("%s: production.policy_count = %d" % (slug, esperado_apolices),
           valor(pack, "production.policy_count") == esperado_apolices,
@@ -548,19 +659,63 @@ def canario_de(slug):
     check("%s: renewal.exposure = %d" % (slug, esperado_renov),
           valor(pack, "renewal.exposure") == esperado_renov,
           valor(pack, "renewal.exposure"))
-    check("%s: producer.performance = %d (intersecao medida: %d apolices)"
-          % (slug, esperado_produtores, intersecao),
+    check("%s: producer.performance = %d produtores distintos sobre as %d "
+          "apolices com produtor conhecido" % (slug, esperado_produtores,
+                                               com_produtor),
           valor(pack, "producer.performance") == esperado_produtores,
           valor(pack, "producer.performance"))
-    # 🔴 §1.11: a cobertura de produtor NÃO é constante do provider.
+
+    # 🔴 §1.11 + BLOCO D: a PARIDADE de 80,6%, medida na API viva.
     cob = next((m["coverage"] for m in pack["metrics"]
                 if m["metric_id"] == "producer.performance"), None)
-    esperada = round(intersecao / esperado_apolices, 4)
-    check("%s: e a COBERTURA dela e a da intersecao (%.2f%%), nao 100%%"
-          % (slug, 100.0 * esperada),
-          cob is not None and abs(cob - esperada) <= 0.0002,
-          "veio %r, esperado %r — cobertura omitida faz uma soma parcial "
-          "passar por total (M15)" % (cob, esperada))
+    check("%s: e a COBERTURA de produtor bate a PARIDADE de %.1f%% (+- %.0f p.p.)"
+          % (slug, 100.0 * PARIDADE_DE_COBERTURA, 100.0 * TOLERANCIA_DE_PARIDADE),
+          cob is not None
+          and abs(cob - PARIDADE_DE_COBERTURA) <= TOLERANCIA_DE_PARIDADE,
+          "veio %r, esperado %r +- %r — 📊 o produto entrega 80,6%% varrendo "
+          "2024-2027; um guarda que crava 5,95%% esta medindo a janela de "
+          "2025x2025, que o produto nao usa"
+          % (cob, PARIDADE_DE_COBERTURA, TOLERANCIA_DE_PARIDADE))
+    # 🔴 CONTROLE: e a paridade e MUITO maior que a intersecao de 2025x2025.
+    # Sem esta linha, uma fixture que voltasse a ignorar a fatia de ano deixaria
+    # a assercao acima passar por coincidencia de tolerancia.
+    artefato = intersecao / esperado_apolices
+    check("%s: CONTROLE: a paridade (%.1f%%) e MUITO maior que o artefato de "
+          "2025x2025 (%.1f%%)" % (slug, 100.0 * (cob or 0), 100.0 * artefato),
+          (cob or 0) > artefato + 0.5,
+          "cobertura=%r artefato=%r — se as duas coincidem, a fonte falsa "
+          "voltou a ignorar `dt_ini/dt_fim`" % (cob, artefato))
+
+    # 🔴 E OS VALORES DE DINHEIRO DAS DUAS METRICAS QUE NINGUEM AFIRMAVA.
+    #
+    # 📊 `repasse.producer_accrued` e `contribution.after_repasse` sao as duas
+    # metricas que o cartao "O que sobra depois do repasse" imprime — e o
+    # canario nao tinha UMA assercao de valor sobre elas. Uma metrica que so e
+    # conferida por "existe no pack" nao esta conferida.
+    repasse = valor(pack, "repasse.producer_accrued")
+    esperado_repasse = c["renovacoes_2025"]["soma_val_r_ordem1"]
+    check("%s: repasse.producer_accrued = R$ %.2f (o que VENCE em 2025)"
+          % (slug, esperado_repasse),
+          isinstance(repasse, (int, float))
+          and abs(float(repasse) - esperado_repasse) <= 0.05,
+          "veio %r — a base e POLICY_VALID_TO, e a fatia de 2025 do censo"
+          % (repasse,))
+    contrib = valor(pack, "contribution.after_repasse")
+    # A contribuicao e a comissao das apolices na INTERSECAO menos o repasse
+    # delas. A fatia de 2026 e a que casa com a producao de 2025.
+    check("%s: contribution.after_repasse e um numero POSITIVO e MENOR que a "
+          "comissao do periodo" % slug,
+          isinstance(contrib, (int, float)) and 0 < float(contrib) < esperado_comissao,
+          "veio %r (comissao do periodo: %r) — se ela for maior que a comissao, "
+          "o repasse entrou com sinal trocado" % (contrib, esperado_comissao))
+    cob_contrib = next((m["coverage"] for m in pack["metrics"]
+                        if m["metric_id"] == "contribution.after_repasse"), None)
+    check("%s: e a cobertura DELA tambem bate a paridade (%.1f%%)"
+          % (slug, 100.0 * PARIDADE_DE_COBERTURA),
+          cob_contrib is not None
+          and abs(cob_contrib - PARIDADE_DE_COBERTURA) <= TOLERANCIA_DE_PARIDADE,
+          "veio %r — ela e a fracao da comissao do periodo que tem repasse "
+          "conhecido" % (cob_contrib,))
 
     # 🔴 A CAMADA QUE ESTA SPEC EXISTE PARA IMPOR
     check("%s: commission.broker_received e UNAVAILABLE (nunca zero)" % slug,

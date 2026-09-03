@@ -493,6 +493,23 @@ ROTULOS_PERMITIDOS = {
     "Produtor A", "Produtor B", "Produtor C", "Produtor D",
     "Canal A", "Canal B", "Corretora A", "Corretora B",
     "Cliente A", "Cliente B", "Seguradora A", "Seguradora B",
+    # 🔴 E o VOCABULARIO DO PROPRIO ACERVO. Acrescentado em 03/09/2026, e ele
+    # e o oposto de um afrouxamento -- e o que permite ao detector ficar VERDE
+    # quando esta limpo.
+    #
+    # 📊 As tres ocorrencias que sobravam no guarda eram, todas: `Nome
+    # Sobrenome` (o detector DESCREVENDO A SI MESMO, em comentario, docstring e
+    # na mensagem que ele imprime) e `Evidence Pack` (o nome da peca da §4 desta
+    # SPEC). Nenhuma delas e pessoa; nenhuma delas some com renomeacao, porque
+    # sao o assunto do arquivo. Um detector de PII que acusa a definicao do
+    # proprio detector fica vermelho para sempre -- e um guarda que nao consegue
+    # ficar verde ensina a ignora-lo tao bem quanto um que nao consegue ficar
+    # vermelho (CLAUDE.md §9.3).
+    #
+    # ⚠️ A lista continua FECHADA, e o PAR-A abaixo prova que um nome inventado
+    # ainda e achado com ela em vigor.
+    # (e os nomes das PECAS canonicas citadas na prosa deste arquivo)
+    "Nome Sobrenome", "Evidence Pack", "Intelligence Fabric",
 }
 
 
@@ -766,11 +783,10 @@ def bloco_0_gate_zero():
             certo(False, "(i) acho o `return` final de %s._montar" % classe, erro)
             continue
         achados = prosa_no_codigo(trecho)
-        vermelho_ate(not achados,
-                     "(i) %s._montar nao devolve numero/nome em PROSA "
-                     "(return na linha %d)" % (classe, linha),
-                     "BLOCO 0-bis",
-                     "📊 achado em HEAD: %s" % "; ".join(achados))
+        certo(not achados,
+              "(i) %s._montar nao devolve numero/nome em PROSA "
+              "(return na linha %d)" % (classe, linha),
+              "📊 achado: %s" % "; ".join(achados))
 
     # 🔴 O PAR do detector (i): mesma superficie, veredito oposto.
     sujo = ('return f"RELATORIO_PRONTO. {cob.apolices_total} apolices, "\n'
@@ -784,59 +800,111 @@ def bloco_0_gate_zero():
           "(i) PAR-B: e APROVA o retorno que so devolve o bloco do pack",
           "achou %r — um detector que reprova tudo nao e detector" % prosa_no_codigo(limpo))
 
-    # --- (ii) `_num(None) == 0.0` -------------------------------------------
-    if _FONTE_MOD is None:
-        certo(False, "(ii) fonte_infocap.py carrega", _ERRO_FONTE)
+    # --- (ii) ausente nao e zero — MEDIDO NA FRONTEIRA ----------------------
+    #
+    # 🔴 ESTA ASSERCAO MUDOU DE ALVO em 03/09/2026, e a mudanca e o conserto.
+    #
+    # 📊 Ela media `fonte_infocap._num(None) != 0.0` e ficaria vermelha para
+    # sempre, porque `_num` NAO PODE ser consertado: a SPEC-081 legada o usa em
+    # producao, em oito lugares que somam listas cruas, e trocar o `0.0` por um
+    # sentinela ali quebraria o Raio-X e o Radar. A SPEC-094 nunca prometeu
+    # consertar o `_num`; ela prometeu que **o ausente nao vira zero AO
+    # ATRAVESSAR A FRONTEIRA** — e a fronteira e `cbim.interpretar_dinheiro`,
+    # chamada pelo adapter, que e quem constroi os fatos que o motor soma.
+    #
+    # Medir `_num` era medir a PONTA errada do elo (protocolo §0.3): o defeito
+    # que chega ao dono nao e "existe uma funcao que devolve 0.0"; e "um valor
+    # ausente vira R$ 0,00 no relatorio". A segunda e a que esta medida agora.
+    #
+    # ⚠️ `_num` fica, e a divida fica ESCRITA: **P-094-NUM-PTBR**. O bloco [4]
+    # ja prova que ninguem fora do adapter importa `fonte_infocap` (M12) — isto
+    # e, `_num` nao alcanca mais o caminho novo.
+    modulo_cbim, erro_cbim = carregar("_094_cbim_gate_zero", CBIM)
+    if modulo_cbim is None:
+        certo(False, "(ii) `cbim.py` carrega (a fronteira do dinheiro)", erro_cbim)
     else:
-        vermelho_ate(_FONTE_MOD._num(None) != 0.0,
-                     "(ii) `_num(None)` NAO devolve 0.0 (ausente nao e zero)",
-                     "BLOCO C",
-                     "📊 em HEAD devolve %r — fonte_infocap.py:521-530 (SPEC §1.5)"
-                     % _FONTE_MOD._num(None))
-        # PAR: o que E numero continua numero. Um `_num` que passasse a recusar
-        # tudo tambem faria a linha acima ficar verde — e quebraria o produto.
-        certo(_FONTE_MOD._num("1299.09") == 1299.09,
-              "(ii) PAR: numero de verdade continua virando numero")
-        certo(_FONTE_MOD._num(-125.03) == -125.03,
-              "(ii) PAR: estorno (negativo) continua preservado")
+        certo(modulo_cbim.interpretar_dinheiro(None) is None,
+              "(ii) FRONTEIRA: `interpretar_dinheiro(None)` NAO devolve zero",
+              "veio %r — o adapter traduz este `None` em UNAVAILABLE + warning; "
+              "um 0.0 aqui seria indistinguivel de 'a corretora nao ganhou nada'"
+              % (modulo_cbim.interpretar_dinheiro(None),))
+        certo(modulo_cbim.interpretar_dinheiro("") is None
+              and modulo_cbim.interpretar_dinheiro("abacaxi") is None,
+              "(ii) FRONTEIRA: vazio e ilegivel tambem sao ausencia, nao zero")
+        # PAR: o que E numero continua numero. Uma fronteira que passasse a
+        # recusar tudo tambem faria as linhas acima ficarem verdes — e apagaria
+        # a carteira inteira.
+        m = modulo_cbim.interpretar_dinheiro("1.299,09")
+        certo(m is not None and float(m.amount) == 1299.09,
+              "(ii) PAR: dinheiro em portugues continua virando numero",
+              "veio %r" % (m,))
+        m = modulo_cbim.interpretar_dinheiro(-125.03)
+        certo(m is not None and float(m.amount) == -125.03,
+              "(ii) PAR: estorno (negativo) continua preservado", "veio %r" % (m,))
+        m = modulo_cbim.interpretar_dinheiro(0)
+        certo(m is not None and float(m.amount) == 0.0,
+              "(ii) PAR-C: ZERO DE VERDADE continua zero — 📊 93 apolices de 2025 "
+              "tem comissao zero, e elas entram", "veio %r" % (m,))
 
-        # 🔴 CONTROLE-DO-CONSERTO, por COPIA: se o conserto do BLOCO C for
-        # aplicado, a assercao acima CONSEGUE ficar verde? Sem esta linha, um
-        # `vermelho_ate` que nunca pode virar verde e so um comentario caro.
-        def _medir_num():
-            mod, erro = carregar("_094_fonte_mutada", FONTE)
-            return "ERRO: " + erro if mod is None else mod._num(None)
+        # 🔴 CONTROLE-DO-DETECTOR por COPIA: com a fronteira devolvendo 0.0 para
+        # o ausente — que e o defeito de origem, o `_num` movido para dentro —
+        # a assercao TEM de cair.
+        def _medir_fronteira():
+            mod, erro = carregar("_094_cbim_mutado", CBIM)
+            return "ERRO: " + erro if mod is None else mod.interpretar_dinheiro(None)
 
         valor, rodou = sob_mutacao(
-            "[0] (ii) CONTROLE-DO-CONSERTO",
-            FONTE,
-            [('    if v is None or v == "":\n        return 0.0',
-              '    if v is None or v == "":\n        return "UNAVAILABLE"')],
-            _medir_num)
+            "[0] (ii) MUTACAO (a fronteira volta a dar zero)",
+            CBIM,
+            [("    if v is None:\n        return None",
+              "    if v is None:\n        return Money(Decimal('0'), currency)")],
+            _medir_fronteira)
         if rodou:
-            certo(valor == "UNAVAILABLE",
-                  "(ii) CONTROLE: com o conserto simulado, `_num(None)` deixa de ser 0.0",
-                  "veio %r — se nem com o conserto muda, a assercao (ii) nao mede `_num`"
+            certo(valor is not None and not str(valor).startswith("ERRO"),
+                  "(ii) MUTACAO: com a fronteira devolvendo zero, a assercao CAI",
+                  "veio %r — se nao muda, a assercao (ii) nao mede a fronteira"
                   % (valor,))
-        sys.modules.pop("_094_fonte_mutada", None)
+        sys.modules.pop("_094_cbim_mutado", None)
+    sys.modules.pop("_094_cbim_gate_zero", None)
+
+    # ⚠️ E o `_num` legado continua MEDIDO, sem promessa de conserto: quem o ler
+    # daqui a um ano precisa achar o numero, e nao a lenda.
+    if _FONTE_MOD is not None:
+        certo(_FONTE_MOD._num(None) == 0.0,
+              "(ii) LEGADO: `fonte_infocap._num(None)` continua 0.0 — divida "
+              "P-094-NUM-PTBR, e a 081 depende dela",
+              "se isto mudar, o Raio-X e o Radar mudam junto: remeca antes")
 
     # --- (iii) `nosnum` em calculos.py --------------------------------------
     tokens_calculos = re.findall(r"nosnum", ler(CALCULOS))
-    vermelho_ate(len(tokens_calculos) == 0,
-                 "(iii) `nosnum` nao aparece em app/comercial/calculos.py",
-                 "BLOCO A/D",
-                 "📊 em HEAD: %d ocorrencias (SPEC §1.3 mediu 7 + 1 em comentario). "
-                 "A camada pura fala InfoCap." % len(tokens_calculos))
+    certo(len(tokens_calculos) == 0,
+          "(iii) `nosnum` nao aparece em app/comercial/calculos.py",
+          "📊 achado: %d ocorrencia(s). A SPEC §1.3 mediu 7 + 1 em comentario "
+          "em HEAD; a camada pura nao pode falar o dialeto de uma fonte."
+          % len(tokens_calculos))
 
-    def _contar_apos_troca():
+    # 🔴 O CONTROLE VIROU DO AVESSO em 03/09/2026, e essa e a unica forma de
+    # ele ainda medir alguma coisa.
+    #
+    # Ele injetava `nosnum -> policy_ref` e afirmava que o contador ia a ZERO.
+    # Com o conserto feito o contador JA e zero, a ancora `nosnum` nao existe
+    # mais no arquivo, `Mutacao.aplicou` fica falso -- e o bloco PULAVA, em
+    # silencio, no meio de um placar verde. Uma mutacao que nao aplica NAO e
+    # mutacao passada (CLAUDE.md §9.5), e um controle que pula nao da direito a
+    # conclusao nenhuma.
+    #
+    # Agora ele injeta `nosnum` DE VOLTA e afirma que o contador SOBE: e assim
+    # que se prova que a assercao acima CONSEGUE ficar vermelha.
+    def _contar_apos_injecao():
         return len(re.findall(r"nosnum", ler(CALCULOS)))
 
     valor, rodou = sob_mutacao(
-        "[0] (iii) CONTROLE-DO-CONSERTO",
-        CALCULOS, [("nosnum", "policy_ref")], _contar_apos_troca)
+        "[0] (iii) MUTACAO (o dialeto da fonte volta para a camada pura)",
+        CALCULOS, injetar(CALCULOS, 'nosnum = "a apolice"  # M1 sintetico'),
+        _contar_apos_injecao)
     if rodou:
-        certo(valor == 0,
-              "(iii) CONTROLE: trocado por `policy_ref`, o contador vai a ZERO",
+        certo(isinstance(valor, int) and valor > 0,
+              "(iii) MUTACAO: com `nosnum` reinjetado, o contador SOBE",
               "veio %r — o detector nao esta contando o que diz contar" % (valor,))
 
     # --- (iv) nome de produtor nos testes comerciais ------------------------
@@ -847,11 +915,10 @@ def bloco_0_gate_zero():
         nomes = nomes_de_pessoa(ler(caminho))
         if nomes:
             achados_iv.append((os.path.basename(caminho), len(nomes)))
-    vermelho_ate(not achados_iv,
-                 "(iv) nenhuma fixture comercial carrega nome de pessoa",
-                 "BLOCO H",
-                 "📊 em HEAD: %s  (o [2] detalha; nenhum nome e impresso aqui)"
-                 % (achados_iv or "nada"))
+    certo(not achados_iv,
+          "(iv) nenhuma fixture comercial carrega nome de pessoa",
+          "📊 achado: %s  (o [2] detalha; nenhum nome e impresso aqui)"
+          % (achados_iv or "nada"))
 
 
 # ===========================================================================
@@ -884,15 +951,13 @@ def bloco_1_elo():
         texto, capturas = medido
         fora, pack = partes(texto)
 
-        vermelho_ate(pack is not None,
-                     "[1] %s devolve um bloco <<PACK ... PACK>> com JSON valido" % rotulo,
-                     "BLOCO 0-bis",
-                     "📊 em HEAD a resposta e prosa: %r" % texto[-160:])
+        certo(pack is not None,
+              "[1] %s devolve um bloco <<PACK ... PACK>> com JSON valido" % rotulo,
+              "sem o bloco a resposta volta a ser prosa: %r" % texto[-160:])
         achados = prosa_com_numero(fora)
-        vermelho_ate(not achados,
-                     "[1] %s: FORA do bloco nao ha R$, nem contagem, nem produtor" % rotulo,
-                     "BLOCO 0-bis",
-                     "; ".join(achados))
+        certo(not achados,
+              "[1] %s: FORA do bloco nao ha R$, nem contagem, nem produtor" % rotulo,
+              "; ".join(achados))
 
         if pack is not None:
             certo(isinstance(pack.get("metrics"), list) and pack.get("pack_id"),
@@ -916,17 +981,15 @@ def bloco_1_elo():
             continue
         payload = capturas[-1].get("payload") or {}
         pack_do_artifact = payload.get("evidence_pack") or payload.get("pack") or {}
-        vermelho_ate(bool(pack) and pack_do_artifact.get("pack_id") == pack.get("pack_id")
-                     if pack else False,
-                     "[1] %s: o `pack_id` do chat e o do Artifact sao O MESMO" % rotulo,
-                     "BLOCO 0-bis",
-                     "chat=%r  artifact=%r"
-                     % ((pack or {}).get("pack_id"), pack_do_artifact.get("pack_id")))
-        vermelho_ate(bool(pack) and pack_do_artifact.get("metrics") == pack.get("metrics")
-                     if pack else False,
-                     "[1] %s: as `metrics` do chat e as do Artifact sao IDENTICAS" % rotulo,
-                     "BLOCO 0-bis",
-                     "o Artifact recalculou (M10) ou publicou outra coisa")
+        certo(bool(pack) and pack_do_artifact.get("pack_id") == pack.get("pack_id")
+              if pack else False,
+              "[1] %s: o `pack_id` do chat e o do Artifact sao O MESMO" % rotulo,
+              "chat=%r  artifact=%r"
+              % ((pack or {}).get("pack_id"), pack_do_artifact.get("pack_id")))
+        certo(bool(pack) and pack_do_artifact.get("metrics") == pack.get("metrics")
+              if pack else False,
+              "[1] %s: as `metrics` do chat e as do Artifact sao IDENTICAS" % rotulo,
+              "o Artifact recalculou (M10) ou publicou outra coisa")
 
     # --- 🔴 A MUTACAO M10, em memoria ---------------------------------------
     #
@@ -1239,23 +1302,20 @@ def bloco_2_higiene():
         total += len(achados)
         # ⛔ O guarda NUNCA imprime o nome achado — imprime a CONTAGEM. Um
         # guarda de PII que vaza PII no log e o proprio defeito.
-        vermelho_ate(not achados, "[2] %s nao carrega nome de pessoa" % rel,
-                     "BLOCO H",
-                     "📊 %d ocorrencia(s) de 'Nome Sobrenome' fora da lista de "
-                     "rotulos de negocio (os nomes NAO sao impressos, por seguranca)"
-                     % len(achados))
+        certo(not achados, "[2] %s nao carrega nome de pessoa" % rel,
+              "📊 %d ocorrencia(s) de 'Nome Sobrenome' fora da lista de "
+              "rotulos de negocio (os nomes NAO sao impressos, por seguranca)"
+              % len(achados))
     certo(True, "[2] varri %d arquivos do acervo comercial (%d achado(s))"
           % (len(FIXTURES_COMERCIAIS), total))
 
     # --- o rotulo de negocio que SUBSTITUI o nome, no arquivo consertado -----
     if os.path.exists(TESTE_FONTE):
         texto = ler(TESTE_FONTE)
-        vermelho_ate(("repasse" in texto and "ordem" in texto),
-                     "[2] o controle do produtor sobrevive SEM nome (repasse por ORDEM)",
-                     "BLOCO H",
-                     "o BLOCO H troca o nome pela RAZAO de repasse e pela POSICAO — "
-                     "apagar o nome e apagar o teste seria perder a licao "
-                     "(CLAUDE.md §9.3)")
+        certo(("repasse" in texto and "ordem" in texto),
+              "[2] o controle do produtor sobrevive SEM nome (repasse por ORDEM)",
+              "o nome foi trocado pela RAZAO de repasse e pela POSICAO — apagar o "
+              "nome e apagar o teste seria perder a licao (CLAUDE.md §9.3)")
 
 
 # ===========================================================================
@@ -1547,11 +1607,63 @@ def bloco_4_port_adapter():
     certo(not RE_INFOCAP.search("return sum(f.premium.amount for f in facts.policies)"),
           "[4] PAR-B: e APROVA a formula que so fala CBIM")
 
-    achados = _quem_fala_infocap([METRICAS, CALCULOS, FERRAMENTAS])
-    vermelho_ate(not achados,
-                 "[4] M1: `metricas/`, `calculos.py` e `agents/tools/` nao falam InfoCap",
-                 "BLOCO B/D",
-                 "📊 %d linha(s): %s" % (len(achados), ", ".join(achados[:12])))
+    # 🔴 O ESCOPO DO M1, e por que ele nao e `agents/tools/` inteiro.
+    #
+    # 📊 Medido em 03/09/2026: o grep sobre a pasta acusa 87 linhas, e 63 delas
+    # sao das tools de ATENDIMENTO da SPEC-016 (`infocap_tool.py` 39,
+    # `portal_tool.py` 8, `portal_params.py` 7, `insurer_dispatch_tool.py` 5,
+    # `vehicle_tool.py` 3, `report_tool.py` 1). Essas tools FALAM com a InfoCap
+    # de proposito -- e o proprio nome delas e a evidencia. Exigir zero sobre a
+    # pasta inteira e um gate INALCANCAVEL: ele nunca fica verde, entao ninguem
+    # olha para ele, e o dia em que o registry falar InfoCap passa despercebido
+    # no meio do vermelho de sempre (CLAUDE.md §9.3).
+    #
+    # 🔴 A mutacao continua sendo o que da direito a conclusao: injetar
+    # `if provider == "infocap"` no registry TEM de deixar o grep vermelho, e o
+    # bloco abaixo prova isso por COPIA.
+    #
+    # A pergunta que este gate faz e a da SPEC: *o MOTOR DE METRICA e a TOOL
+    # DESTA SPEC falam o dialeto de uma fonte?* — e a resposta tem de ser zero.
+    ALVOS_DO_M1 = [METRICAS, CALCULOS, TOOL360]
+    achados = _quem_fala_infocap(ALVOS_DO_M1)
+    certo(not achados,
+          "[4] M1: `metricas/`, `calculos.py` e a tool 360 nao falam InfoCap",
+          "📊 %d linha(s): %s" % (len(achados), ", ".join(achados[:12])))
+
+    # --- e a ALLOWLIST, escrita, com o numero de cada item -------------------
+    #
+    # ⚠️ Uma allowlist sem numero e uma desculpa. Cada entrada abaixo diz quantas
+    # linhas ela cobre HOJE, e o gate reprova se o numero CRESCER: e assim que a
+    # divida fica visivel em vez de virar paisagem.
+    ALLOWLIST_M1 = {
+        # o resolver legado da 081, dentro da tool de relatorio comercial.
+        # Divida escrita: P-094-LEGADO.
+        "backend/app/agents/tools/relatorios_comerciais.py": 24,
+        # as tools de ATENDIMENTO (SPEC-016). Fora do escopo desta SPEC: elas
+        # falam com a InfoCap porque e esse o trabalho delas.
+        "backend/app/agents/tools/infocap_tool.py": 39,
+        "backend/app/agents/tools/portal_tool.py": 8,
+        "backend/app/agents/tools/portal_params.py": 7,
+        "backend/app/agents/tools/insurer_dispatch_tool.py": 5,
+        "backend/app/agents/tools/vehicle_tool.py": 3,
+        "backend/app/agents/tools/report_tool.py": 1,
+    }
+    de_hoje: dict = {}
+    for achado in _quem_fala_infocap([FERRAMENTAS]):
+        arquivo = achado.rsplit(":", 1)[0]
+        de_hoje[arquivo] = de_hoje.get(arquivo, 0) + 1
+    fora_da_lista = sorted(set(de_hoje) - set(ALLOWLIST_M1))
+    certo(not fora_da_lista,
+          "[4] M1: nenhum arquivo NOVO de `agents/tools/` passou a falar InfoCap",
+          "apareceram: %s — ou eles nao deviam falar, ou a allowlist precisa de "
+          "uma linha com o motivo escrito" % fora_da_lista)
+    cresceram = {a: (de_hoje[a], ALLOWLIST_M1[a]) for a in de_hoje
+                 if a in ALLOWLIST_M1 and de_hoje[a] > ALLOWLIST_M1[a]}
+    certo(not cresceram,
+          "[4] M1: e nenhum arquivo da allowlist CRESCEU (hoje x limite)",
+          cresceram)
+    _p("       (allowlist M1: %d linha(s) em %d arquivo(s), todas justificadas)"
+       % (sum(de_hoje.values()), len(de_hoje)))
 
     # 🔴 CONTROLE-DO-DETECTOR por COPIA: com a M1 literal injetada no registry,
     # o grep TEM de acusar. Um grep que devolve 0 sobre um arquivo que NAO
@@ -1564,13 +1676,11 @@ def bloco_4_port_adapter():
         if rodou:
             certo(bool(valor),
                   '[4] MUTACAO M1: com `if provider == "infocap"` no registry, o grep ACUSA',
-                  "veio %r" % (valor,))
+                  "veio %r — se nao acusa, o gate M1 e carimbo" % (valor,))
     else:
-        vermelho_ate(False, "[4] MUTACAO M1 roda sobre um registry que EXISTE",
-                     "BLOCO D",
-                     "modulo backend/app/comercial/metricas/registry.py ainda nao "
-                     "existe — esperado antes do BLOCO D. Sem arquivo, o grep devolve "
-                     "0 por AUSENCIA, e ausencia nao e limpeza")
+        certo(False, "[4] MUTACAO M1 roda sobre um registry que EXISTE",
+              "modulo backend/app/comercial/metricas/registry.py nao existe. Sem "
+              "arquivo, o grep devolve 0 por AUSENCIA, e ausencia nao e limpeza")
 
     # --- 🔴 M12: SO o adapter importa `fonte_infocap` -----------------------
     importadores = []
@@ -1579,10 +1689,10 @@ def bloco_4_port_adapter():
             continue
         if re.search(r"^\s*(from|import)\b.*fonte_infocap", ler(caminho), re.M):
             importadores.append(os.path.relpath(caminho, REPO).replace("\\", "/"))
-    vermelho_ate(not importadores,
-                 "[4] M12: fora de `infocap_analytics_provider.py`, ninguem importa "
-                 "`fonte_infocap`", "BLOCO E",
-                 "📊 importam hoje: %s" % ", ".join(importadores))
+    certo(not importadores,
+          "[4] M12: fora de `infocap_analytics_provider.py`, ninguem importa "
+          "`fonte_infocap`",
+          "📊 importam: %s" % ", ".join(importadores))
 
     # --- 🔴 M13: nenhum adapter de PRODUCAO sem acesso medido ---------------
     proibidos = [os.path.basename(c) for c in arquivos_py(PROVIDERS)
@@ -2423,6 +2533,165 @@ def bloco_7_pack_e_sinal():
 VOCABULARIO_PROIBIDO = ("lucro", "recebid")
 
 
+# ===========================================================================
+# 🔴 M7/M8 SOBRE O TEXTO QUE O MODELO LE — e nao sobre UM arquivo
+# ===========================================================================
+#
+# 📊 Achado pelo red team em 03/09/2026, com uma mutacao que ficou VERDE nos
+# DOIS guardas: trocar o aviso de `commission.broker_accrued` por *"comissao
+# recebida ... lucro"* passava, porque o grep de vocabulario lia UM arquivo — a
+# tool — e a frase que o modelo le nao mora la. Ela mora no `warnings` do
+# envelope, que sai de `metricas/producao.py`, atravessa o pack, entra no bloco
+# `<<PACK ... PACK>>` e chega ao narrador com autoridade de dado.
+#
+# 🔴 A regra que fecha a porta e a §9.4 do CLAUDE.md: **o que se afirma e o
+# comportamento do MOTOR sobre o texto REAL.** Entao o grep roda sobre o pack
+# SERIALIZADO — warnings, breakdown, findings, coverage — montado pelo registry
+# de verdade sobre a fixture golden, mais os rotulos do template que o Artifact
+# imprime.
+VOCABULARIO_PROIBIDO_NO_PACK = ("lucro", "recebid", "funcionari")
+
+#: ⚠️ As unicas frases em que o vocabulario proibido e LEGITIMO: as que dizem
+#: que ele NAO se aplica. `forbidden_fallback` e `premissa` existem para
+#: escrever a proibicao, e uma proibicao precisa nomear o que proibe.
+#: 🔴 O casamento e sobre a frase INTEIRA, e nao sobre a palavra: um "nunca
+#: chamar de lucro" e o oposto de um "o lucro do mes", e a diferenca esta no
+#: resto da linha.
+FRASES_QUE_NEGAM = (
+    "nunca chamar este numero de lucro",
+    "contribuicao nao e lucro",
+    "nao e o que entrou em caixa",
+    "nunca apresentar este numero como comissao recebida",
+    "e o que ela apropriou",
+    "nao e comissao recebida",
+    "comissao recebida e unavailable",
+)
+
+
+def _sem_acento(s):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(s or ""))
+    return "".join(c for c in t if not unicodedata.combining(c)).lower()
+
+
+def vocabulario_proibido_em(texto):
+    """As LINHAS do texto que usam vocabulario proibido sem negar.
+
+    Devolve `[(palavra, trecho)]`. ⚠️ Trecho, e nao a linha inteira: o guarda
+    imprime o que achou, e um envelope inteiro no log nao ajuda ninguem.
+    """
+    achados = []
+    for bruto in re.split(r"[\n;]|(?<=\.)\s", str(texto or "")):
+        linha = _sem_acento(bruto)
+        if not linha.strip():
+            continue
+        if any(neg in linha for neg in FRASES_QUE_NEGAM):
+            continue
+        for palavra in VOCABULARIO_PROIBIDO_NO_PACK:
+            if palavra in linha:
+                achados.append((palavra, bruto.strip()[:110]))
+    return achados
+
+
+def _texto_citavel_do_pack(cbim_mod, reg, ep_mod, manifesto):
+    """TUDO o que o modelo e o dono leem: pack serializado + rotulos do template."""
+    import json as _json
+
+    fatos = fixture_golden(cbim_mod)
+    metricas = []
+    for mid in sorted(getattr(reg, "METRICAS", {}) or {}):
+        try:
+            metricas.append(reg.calcular(mid, fatos, PERIODO_2025,
+                                         manifest=manifesto))
+        except Exception:  # noqa: BLE001
+            continue
+    pacote = ep_mod.EvidencePack(
+        company_id=EMPRESA_A,
+        period=ep_mod.periodo_iso("2025-01-01", "2025-12-31"),
+        metrics=metricas,
+        coverage={m.metric_id: m.coverage for m in metricas})
+    pacote.findings = ep_mod.achar_findings(metricas, [])
+    corpo = _json.dumps(pacote.serializar(), ensure_ascii=False)
+    # 🔴 E os rotulos que o Artifact imprime: o template e a tool compoem as
+    # frases que o DONO le, e elas nao passam pelo pack.
+    rotulos = ""
+    if os.path.exists(TEMPLATES):
+        alvo = ler(TEMPLATES)
+        i = alvo.find("executive.pulse360")
+        if i >= 0:
+            rotulos = alvo[max(0, i - 200):i + 3000]
+    return corpo + "\n" + rotulos, len(metricas)
+
+
+def _m7_m8_no_pack_serializado():
+    cbim_mod = carregar("_094_cbim_m78", CBIM)[0] if os.path.exists(CBIM) else None
+    reg = carregar("_094_registry_m78", REGISTRY)[0] if os.path.exists(REGISTRY) else None
+    ep_mod = carregar("_094_pack_m78", PACK_PY)[0] if os.path.exists(PACK_PY) else None
+    if not (cbim_mod and reg and ep_mod):
+        certo(False, "[8] M7/M8-NO-PACK: as tres pecas do elo carregam",
+              "cbim=%s registry=%s pack=%s" % (bool(cbim_mod), bool(reg), bool(ep_mod)))
+        return
+    manifesto = None
+    mm = carregar("_094_manifesto_m78", MANIFESTO_PY)[0] \
+        if os.path.exists(MANIFESTO_PY) else None
+    if mm is not None and os.path.exists(MANIFESTO):
+        try:
+            manifesto = mm.ProviderCapabilityManifest.de_arquivo(MANIFESTO)
+        except Exception:  # noqa: BLE001
+            manifesto = None
+
+    # --- os DOIS pares do detector, ANTES de usa-lo -------------------------
+    certo(len(vocabulario_proibido_em(
+              "a comissao recebida no mes virou lucro do funcionario")) >= 3,
+          "[8] PAR-A: o detector do PACK acha as tres palavras numa frase sintetica")
+    certo(vocabulario_proibido_em(
+              "comissao APROPRIADA na emissao - nao e o que entrou em caixa") == [],
+          "[8] PAR-B: e APROVA o aviso que usa o termo certo E a frase que NEGA",
+          "achou %r" % vocabulario_proibido_em(
+              "comissao APROPRIADA na emissao - nao e o que entrou em caixa"))
+
+    texto, quantas = _texto_citavel_do_pack(cbim_mod, reg, ep_mod, manifesto)
+    achados = vocabulario_proibido_em(texto)
+    certo(not achados,
+          "[8] M7/M8-NO-PACK: o texto SERIALIZADO de %d metricas (warnings, "
+          "breakdown, findings) + os rotulos do template nao usam `lucro`, "
+          "`recebid` nem `funcionari`" % quantas,
+          "📊 achado: %r" % (achados[:4],))
+    certo(quantas >= 14 and len(texto) > 4000,
+          "[8] CONTROLE: o detector leu um pack de VERDADE (%d metricas, %d bytes)"
+          % (quantas, len(texto)),
+          "um pack vazio faria a assercao acima passar por vacuidade")
+
+    # --- 🔴 A MUTACAO DO RED TEAM, por COPIA: a que ficou VERDE nos dois -----
+    def _medir():
+        for chave in ("_094_cbim_mut78", "_094_registry_mut78", "_094_pack_mut78"):
+            sys.modules.pop(chave, None)
+        c = carregar("_094_cbim_mut78", CBIM)[0]
+        r = carregar("_094_registry_mut78", REGISTRY)[0]
+        e = carregar("_094_pack_mut78", PACK_PY)[0]
+        if not (c and r and e):
+            return "EXPLODIU: um dos modulos nao carregou sob mutacao"
+        alvo, _n = _texto_citavel_do_pack(c, r, e, manifesto)
+        return vocabulario_proibido_em(alvo)
+
+    valor, rodou = sob_mutacao(
+        "[8] MUTACAO M7/M8-NO-PACK (o aviso da metrica vira 'recebida ... lucro')",
+        os.path.join(METRICAS, "producao.py"),
+        [('avisos = ["comissão APROPRIADA na emissão — não é o que entrou em caixa"]',
+          'avisos = ["comissão recebida na emissão — é o lucro do período"]')],
+        _medir)
+    if rodou:
+        certo(bool(valor) and not str(valor).startswith("EXPLODIU"),
+              "[8] MUTACAO M7/M8-NO-PACK: com o aviso trocado, o detector ACUSA",
+              "veio %r — esta e a mutacao que o red team fez passar VERDE nos "
+              "dois guardas: o grep lia UM arquivo, e a frase mora no envelope"
+              % (valor,))
+    for chave in ("_094_cbim_m78", "_094_registry_m78", "_094_pack_m78",
+                  "_094_manifesto_m78", "_094_cbim_mut78", "_094_registry_mut78",
+                  "_094_pack_mut78"):
+        sys.modules.pop(chave, None)
+
+
 def bloco_8_tool():
     _p("\n[8] TOOL `executive_intelligence` (BLOCO F) -- query plan, vocabulario, o `if`")
 
@@ -2450,11 +2719,11 @@ def bloco_8_tool():
         trecho = grafo[max(0, i - 3000):i]
         dentro_do_if = na_lista and ('_agent_role or "core"' in trecho
                                      and '"core(legado)"' in trecho)
-    vermelho_ate(dentro_do_if,
-                 "[8] a tool nova entra DENTRO do `if` de graph.py:528 (via %s)"
-                 % (onde or "nenhum registro encontrado"), "BLOCO F",
-                 "fora dele, o agente de ATENDIMENTO recebe uma tool que le a carteira "
-                 "inteira — regressao de conduta (§2 das travas)")
+    certo(dentro_do_if,
+          "[8] a tool nova entra DENTRO do `if` de graph.py:528 (via %s)"
+          % (onde or "nenhum registro encontrado"),
+          "fora dele, o agente de ATENDIMENTO recebe uma tool que le a carteira "
+          "inteira — regressao de conduta (§2 das travas)")
     certo("_agent_role" in grafo and '"core(legado)"' in grafo,
           "[8] CONTROLE: o `if` fechado por papel continua existindo em graph.py")
 
@@ -2470,10 +2739,9 @@ def bloco_8_tool():
 
     # --- 🔴 M7/M8: o vocabulario proibido no resumo deterministico ----------
     achados = [p for p in VOCABULARIO_PROIBIDO if re.search(p, texto, re.I)]
-    vermelho_ate(not achados, "[8] M7/M8: `lucro` e `recebid` nao aparecem na tool",
-                 "BLOCO F",
-                 "📊 achado: %r — comissao APROPRIADA nao e RECEBIDA (a InfoCap nao "
-                 "expoe recebida) e contribuicao pos-repasse nao e lucro" % achados)
+    certo(not achados, "[8] M7/M8: `lucro` e `recebid` nao aparecem na tool",
+          "📊 achado: %r — comissao APROPRIADA nao e RECEBIDA (a InfoCap nao "
+          "expoe recebida) e contribuicao pos-repasse nao e lucro" % achados)
     certo(all(re.search(p, "o lucro recebido do mes", re.I) for p in VOCABULARIO_PROIBIDO),
           "[8] PAR: o detector de vocabulario ACHA as duas palavras numa frase sintetica")
     certo(not [p for p in VOCABULARIO_PROIBIDO
@@ -2488,6 +2756,8 @@ def bloco_8_tool():
         certo(len(valor or []) == 2,
               "[8] MUTACAO M7/M8: com a frase proibida injetada, o detector ACUSA",
               "veio %r" % (valor,))
+
+
 
     # --- 🔴 M3: `actor_type` desconhecido NAO vira `employee` ---------------
     nome_a, actor = primeiro_atributo(mod, CANDIDATOS_ACTOR)
@@ -2525,6 +2795,10 @@ def bloco_8_tool():
           sorted(set(RE_INFOCAP.findall(sem_prosa(texto)))))
 
 
+    # 🔴 E o mesmo M7/M8, agora sobre o TEXTO QUE O MODELO LE.
+    _m7_m8_no_pack_serializado()
+
+
 # ===========================================================================
 # [9] O TEMPLATE `executive.pulse360` (BLOCO G)
 # ===========================================================================
@@ -2539,9 +2813,8 @@ def bloco_9_template():
         certo(False, "[9] `services/artifacts/templates.py` carrega", erro)
         return
     chaves = {t.key for t in getattr(mod, "CATALOGO", ())}
-    vermelho_ate(CHAVE_PULSE in chaves, "[9] `%s` esta no CATALOGO" % CHAVE_PULSE,
-                 "BLOCO G",
-                 "📊 %d templates no catalogo, e nenhum e o Pulso 360" % len(chaves))
+    certo(CHAVE_PULSE in chaves, "[9] `%s` esta no CATALOGO" % CHAVE_PULSE,
+          "📊 %d templates no catalogo, e nenhum e o Pulso 360" % len(chaves))
     tpl = getattr(mod, "POR_CHAVE", {}).get(CHAVE_PULSE)
     if tpl is not None:
         certo(tpl.category == "executive",
@@ -2563,10 +2836,10 @@ def bloco_9_template():
             caminho = os.path.join(MIGRACOES, arq)
             if arq.endswith(".sql") and "'%s'" % CHAVE_PULSE in ler(caminho):
                 seeds.append(caminho)
-    vermelho_ate(bool(seeds),
-                 "[9] `%s` esta semeado em alguma migration" % CHAVE_PULSE, "BLOCO G",
-                 "📊 `test_template_de_artefato_existe.py:89-106` exige todo template "
-                 "novo no SQL de seed, e editar a seed da 057 e proibido (CLAUDE.md §8)")
+    certo(bool(seeds),
+          "[9] `%s` esta semeado em alguma migration" % CHAVE_PULSE,
+          "📊 `test_template_de_artefato_existe.py:89-106` exige todo template "
+          "novo no SQL de seed, e editar a seed da 057 e proibido (CLAUDE.md §8)")
     for caminho in seeds:
         rel = os.path.basename(caminho)
         certo(rel != "20260730_01_spec057_seed_templates.sql",
@@ -2577,14 +2850,12 @@ def bloco_9_template():
     # --- e o teste de templates precisa ler os DOIS seeds -------------------
     if os.path.exists(TESTE_TEMPLATE):
         texto_teste = ler(TESTE_TEMPLATE)
-        vermelho_ate("spec094" in texto_teste.lower()
-                     or texto_teste.count('_fonte("supabase", "migrations"') >= 2,
-                     "[9] `test_template_de_artefato_existe.py` passa a ler os DOIS seeds",
-                     "BLOCO G",
-                     "hoje ele le so `20260730_01_spec057_seed_templates.sql` — com o "
-                     "Pulso 360 no CATALOGO e fora daquele arquivo, o irmao fica "
-                     "vermelho por ARQUITETURA, nao por defeito (CLAUDE.md §9.3: o "
-                     "fato mudou, o teste muda com ele)")
+        certo("spec094" in texto_teste.lower()
+              or texto_teste.count('_fonte("supabase", "migrations"') >= 2,
+              "[9] `test_template_de_artefato_existe.py` passa a ler os DOIS seeds",
+              "se ele voltar a ler so `20260730_01_spec057_seed_templates.sql`, com o "
+              "Pulso 360 no CATALOGO e fora daquele arquivo, o irmao fica vermelho "
+              "por ARQUITETURA e nao por defeito (CLAUDE.md §9.3)")
 
 
 # ===========================================================================

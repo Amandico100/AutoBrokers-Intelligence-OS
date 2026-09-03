@@ -143,7 +143,9 @@ check("cobertura de lista vazia nao divide por zero",
 print("\n[3] As dimensoes, e a seguradora suja")
 # ==========================================================================
 #
-# 📊 A base tem Allianz / allianz / ALLIANZ / Allianz Seguros contando
+# 📊 A base tem a mesma seguradora escrita em minuscula, em maiuscula, com a
+# inicial maiuscula e com o sufixo da razao social ao lado -- quatro grafias,
+# quatro fatias -- contando
 # separado. Rosca com a mesma seguradora em quatro fatias e defeito.
 
 sujo = [Ap("1", 1, 100, seguradora="Allianz"), Ap("2", 1, 200, seguradora="allianz"),
