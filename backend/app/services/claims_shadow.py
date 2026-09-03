@@ -36,10 +36,12 @@ import asyncio
 import hashlib
 import inspect
 import io
+import itertools
 import json
 import logging
 import os
 import re
+import time
 import unicodedata
 import weakref
 from collections import OrderedDict
@@ -325,22 +327,90 @@ _DE_ATTENDANCE_MEDIA = {
 }
 
 
-def tipo_de_documento(pista: Any) -> str:
-    """O enum `tipo_documento` a partir da legenda/descrição — nunca do arquivo.
+#: 🔴 O NOME DO ARQUIVO É PISTA, E ERA A QUE FALTAVA.
+#:
+#: 📊 A auditoria externa mediu em produção (03/09/2026): **97,4% das imagens** de
+#: sessões que falam de sinistro caíam em `general_attachment`, porque
+#: `_detect_document_type` procura frases de DOCUMENTO ("condições gerais", "aviso de
+#: sinistro") numa LEGENDA de WhatsApp — que quase sempre está vazia ou diz "olha aí".
+#: Traduzido pela tabela acima, tudo virava `desconhecido`, e três valores do enum
+#: (`crlv`, `foto_dano`, `laudo`) não tinham NENHUM caminho até eles.
+#:
+#: ⚠️ A ordem importa e é do mais específico para o mais genérico: `laudo` antes de
+#: `boletim`, porque `_detect_document_type` manda "laudo" para `claim_report` e
+#: chamaria de boletim de ocorrência um laudo de perícia — dois papéis diferentes na
+#: vida do segurado.
+#:
+#: ⚠️ Escritos para o texto JÁ NORMALIZADO (`normalizar`): sem acento, minúsculo
+#: (CLAUDE.md §9.4 — padrão medido num dialeto e aplicado noutro é outro padrão).
+_PISTAS_DO_TIPO: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
+    ("crlv", re.compile(r"\bcrlv\b|certificado de registro|licenciamento"
+                        r"|documento do (?:veiculo|carro)")),
+    ("laudo", re.compile(r"\blaudo|pericia|\bvistoria")),
+    ("boletim_ocorrencia", re.compile(r"\bb\.?o\b|boletim|ocorrencia"
+                                      r"|registro policial")),
+    ("cnh", re.compile(r"\bcnh\b|habilitacao|carteira de motorista"
+                       r"|\brg\b|identidade")),
+    ("orcamento", re.compile(r"orcamento|nota fiscal|\bnfe?\b|recibo|comprovante"
+                             r"|fatura|boleto")),
+    ("foto_dano", re.compile(r"foto.{0,12}(?:dano|batida|amassad|avaria|estrago)"
+                             r"|(?:dano|avaria|amassad).{0,12}foto")),
+    ("outro", re.compile(r"\bapolice\b|condicoes gerais")),
+)
 
-    ⛔ Devolve sempre um valor do enum. Sem pista utilizável, `desconhecido`.
+
+_RE_SEPARADOR = re.compile(r"[^a-z0-9]+")
+
+
+def _achatar(pista: Any) -> str:
+    """Normaliza e troca todo separador por espaço.
+
+    🔴 Sem esta linha o `\\b` mente sobre nome de arquivo: em `bo_2026.pdf` o `_` é
+    caractere de PALAVRA para o `re`, então `\\bbo\\b` **não casa** — e o boletim de
+    ocorrência mais comum do acervo passaria batido, em silêncio (CLAUDE.md §9.4).
     """
-    bruto = str(pista or "").strip()
-    if not bruto:
+    return _RE_SEPARADOR.sub(" ", normalizar(pista)).strip()
+
+
+def tipo_de_documento(*pistas: Any) -> str:
+    """O enum `tipo_documento` a partir do NOME DO ARQUIVO e da legenda/descrição.
+
+    ⛔ Devolve sempre um valor do enum, e o texto das pistas **nunca** sai daqui: o
+    que atravessa para o payload é o enum (§2). Sem pista utilizável, `desconhecido`.
+
+    ⚠️ Variádica de propósito: o ramo `document` do webhook tem DUAS pistas (o nome do
+    arquivo e o texto extraído) e o ramo de imagem tem UMA. Uma segunda função para o
+    segundo chamador seriam duas regras para uma coluna (§5).
+
+    🔴 **As pistas são lidas EM ORDEM, uma por vez, e não concatenadas.** O chamador
+    passa a mais confiável primeiro (o nome do arquivo). Concatenar deixaria uma
+    palavra solta no meio de um PDF de 40 KB — *"vistoria"* numa apólice, por exemplo —
+    vencer o nome que o segurado deu ao arquivo.
+    """
+    limpas = [str(p).strip() for p in pistas if str(p or "").strip()]
+    if not limpas:
         return "desconhecido"
+    for pista in limpas:
+        alvo = _achatar(pista)
+        for valor, padrao in _PISTAS_DO_TIPO:
+            if padrao.search(alvo):
+                return valor
+    # ⚠️ O classificador do atendimento continua sendo o segundo leitor, e não o
+    # primeiro: ele foi escrito para o TEXTO EXTRAÍDO de um PDF, não para um nome de
+    # arquivo (CLAUDE.md §5 — consolidar, não duplicar; nada aqui o reimplementa).
     try:
         from app.api.attendance_media import _detect_document_type
     except Exception:  # noqa: BLE001
         return "desconhecido"
-    try:
-        return _DE_ATTENDANCE_MEDIA.get(_detect_document_type(bruto), "desconhecido")
-    except Exception:  # noqa: BLE001
-        return "desconhecido"
+    for pista in limpas:
+        try:
+            traduzido = _DE_ATTENDANCE_MEDIA.get(_detect_document_type(pista),
+                                                 "desconhecido")
+        except Exception:  # noqa: BLE001
+            continue
+        if traduzido != "desconhecido":
+            return traduzido
+    return "desconhecido"
 
 
 # ===========================================================================
@@ -391,7 +461,42 @@ async def _executar(fabrica) -> Any:
 #: quem segura a memória é o CLIENTE, que também vive para sempre. `OrderedDict` com
 #: teto, descartando o mais VELHO (FIFO): a conversa de ontem não é a que vai chegar
 #: no próximo webhook.
+#:
+#: 🔴 E A AUSÊNCIA LEMBRADA TEM PRAZO — foi o que a auditoria externa mediu (A-03).
+#:
+#: 📊 03/09/2026: a memória guardava `None` **para sempre**. Com UM worker isso é
+#: seguro: quem descobre que a conversa não tem sombra é o mesmo processo que a
+#: abriria. Com DUAS réplicas — que é o próximo passo do EasyPanel — a réplica que
+#: perguntou primeiro guarda *"esta conversa não tem sombra"* até reiniciar: a outra
+#: réplica abre a sombra, e a primeira **descarta em silêncio TODO gesto seguinte**
+#: daquela conversa. Sem erro, sem log, e o caso some do dataset.
+#:
+#: ⚠️ O prazo é curto para a SOMBRA (60 s) e mais folgado para a FICHA (300 s), e a
+#: diferença é a janela do estrago: a sombra nasce no meio da conversa e cada gesto
+#: perdido é uma linha que nunca existirá; a ficha só muda o grau de confiança da
+#: ABERTURA, que é decidida uma vez.
+#:
+#: ⛔ O POSITIVO **não** expira: ele é o que poupa o SELECT repetido, e um run que já
+#: existe não deixa de existir.
 TETO_DA_MEMORIA = 5000
+TTL_DA_AUSENCIA_DA_SOMBRA = 60.0     # segundos
+TTL_DA_AUSENCIA_DA_FICHA = 300.0     # segundos
+
+
+def _relogio() -> float:
+    """O relógio da memória. 🔴 `monotonic` e não `time()`: ajuste de NTP para trás
+    faria a ausência valer por mais tempo do que o prazo diz.
+
+    ⚠️ Função, e não chamada direta, para que o guarda possa adiantá-lo sem dormir
+    60 segundos — um teste de prazo que espera de verdade é um teste que ninguém roda.
+    """
+    return time.monotonic()
+
+
+#: O que `_lembrado` devolve quando a chave nunca foi vista. ⚠️ Não pode ser `None`:
+#: `None` é uma resposta LEMBRADA ("perguntei, não existe"), e confundir as duas é o
+#: defeito que a memória de ausência existe para evitar.
+_NUNCA_PERGUNTEI = object()
 
 _MEMORIA: "weakref.WeakKeyDictionary[Any, Any]" = weakref.WeakKeyDictionary()
 _MEMORIA_DA_FICHA: "weakref.WeakKeyDictionary[Any, Any]" = weakref.WeakKeyDictionary()
@@ -413,17 +518,45 @@ def _memoria_do_cliente(cli: Any) -> Optional[Any]:
     return _memoria(_MEMORIA, cli)
 
 
-def _lembrar(lembrada: Optional[Any], chave: Any, valor: Any) -> None:
-    """Guarda com teto FIFO. ⛔ Nunca levanta: memória é otimização, não contrato."""
+def _lembrar(lembrada: Optional[Any], chave: Any, valor: Any,
+             ttl: Optional[float] = None) -> None:
+    """Guarda com teto FIFO e prazo opcional.
+
+    `ttl=None` é *"não expira"* — o que vale para toda resposta POSITIVA. Um `ttl` em
+    segundos é o que se usa para a AUSÊNCIA (A-03).
+
+    ⛔ Nunca levanta: memória é otimização, não contrato.
+    """
     if lembrada is None:
         return
     try:
+        expira = None if ttl is None else _relogio() + float(ttl)
         lembrada.pop(chave, None)
-        lembrada[chave] = valor
+        lembrada[chave] = (valor, expira)
         while len(lembrada) > TETO_DA_MEMORIA:
             lembrada.popitem(last=False)      # o mais VELHO sai primeiro
     except Exception:  # noqa: BLE001
         pass
+
+
+def _lembrado(lembrada: Optional[Any], chave: Any) -> Any:
+    """O valor lembrado, ou `_NUNCA_PERGUNTEI`. A entrada VENCIDA é descartada aqui.
+
+    ⛔ Nunca levanta: uma memória que estoura vira "não perguntei", e o SELECT roda.
+    """
+    if lembrada is None:
+        return _NUNCA_PERGUNTEI
+    try:
+        guardado = lembrada.get(chave, _NUNCA_PERGUNTEI)
+        if guardado is _NUNCA_PERGUNTEI:
+            return _NUNCA_PERGUNTEI
+        valor, expira = guardado
+        if expira is not None and _relogio() >= expira:
+            lembrada.pop(chave, None)
+            return _NUNCA_PERGUNTEI
+        return valor
+    except Exception:  # noqa: BLE001
+        return _NUNCA_PERGUNTEI
 
 
 async def sombra_da_conversa(db: Any, company_id: Any,
@@ -447,8 +580,9 @@ async def sombra_da_conversa(db: Any, company_id: Any,
     try:
         cli = _cliente(db)
         lembrada = _memoria_do_cliente(cli)
-        if lembrada is not None and (empresa, conversa) in lembrada:
-            return lembrada[(empresa, conversa)]
+        guardado = _lembrado(lembrada, (empresa, conversa))
+        if guardado is not _NUNCA_PERGUNTEI:
+            return guardado
 
         resposta = await _executar(
             lambda: cli.table("work_runs").select("id")
@@ -465,7 +599,10 @@ async def sombra_da_conversa(db: Any, company_id: Any,
     # ⚠️ `None` guardado é "perguntei e não existe" — e é o que poupa o SELECT
     # repetido. ⛔ Falha de consulta NÃO é lembrada: ela sai pelo `except` acima,
     # antes daqui, porque lembrar um erro como se fosse resposta é a pior das duas.
-    _lembrar(_memoria_do_cliente(cli), (empresa, conversa), run_id or None)
+    # 🔴 O PRAZO SÓ VALE PARA A AUSÊNCIA (A-03). O positivo não expira: um run que
+    # existe não deixa de existir, e é ele que poupa o SELECT repetido.
+    _lembrar(_memoria_do_cliente(cli), (empresa, conversa), run_id or None,
+             ttl=None if run_id else TTL_DA_AUSENCIA_DA_SOMBRA)
     return run_id or None
 
 
@@ -492,8 +629,9 @@ async def ficha_da_conversa(db: Any, company_id: Any,
     try:
         cli = _cliente(db)
         lembrada = _memoria(_MEMORIA_DA_FICHA, cli)
-        if lembrada is not None and (empresa, conversa) in lembrada:
-            return lembrada[(empresa, conversa)]
+        guardado = _lembrado(lembrada, (empresa, conversa))
+        if guardado is not _NUNCA_PERGUNTEI:
+            return guardado
 
         resposta = await _executar(
             lambda: cli.table("conversations").select("ficha_atendimento")
@@ -508,7 +646,8 @@ async def ficha_da_conversa(db: Any, company_id: Any,
     ficha = (linhas[0] or {}).get("ficha_atendimento") if linhas else None
     if not isinstance(ficha, dict):
         ficha = None
-    _lembrar(_memoria(_MEMORIA_DA_FICHA, cli), (empresa, conversa), ficha)
+    _lembrar(_memoria(_MEMORIA_DA_FICHA, cli), (empresa, conversa), ficha,
+             ttl=None if ficha else TTL_DA_AUSENCIA_DA_FICHA)
     return ficha
 
 
@@ -544,8 +683,9 @@ async def abrir_sombra(db: Any, *, company_id: Any, conversation_id: Any,
     except Exception as erro:  # noqa: BLE001
         logger.warning("[SOMBRA] cliente indisponível (%s)", type(erro).__name__)
         return None
-    if lembrada is not None and lembrada.get((empresa, conversa)):
-        return lembrada[(empresa, conversa)]
+    guardado = _lembrado(lembrada, (empresa, conversa))
+    if guardado is not _NUNCA_PERGUNTEI and guardado:
+        return guardado
 
     entrada = {
         "confianca": str(confianca or CONFIANCA_MEDIA),
@@ -826,8 +966,45 @@ async def registrar_gesto(db: Any, *, company_id: Any, conversation_id: Any,
 # módulo num único `from … import`, e são puras — não tocam banco, não têm nada do
 # runtime de workflow. O BLOCO C as importa daqui em vez de reescrevê-las
 # (CLAUDE.md §5: consolidar, não duplicar).
+def sequencia_de_atividades(eventos: Iterable[str]) -> List[str]:
+    """A sequência de ATIVIDADES: repetições CONSECUTIVAS colapsadas em uma.
+
+    🔴 **Isto foi o BLOCKER 2 da auditoria externa de 03/09/2026.** A assinatura era
+    o sha256 da sequência COM repetições, e `claims.humano_respondeu` é gravado uma
+    vez por MENSAGEM. 📊 Reconstruída sobre 1.851 sessões reais do acervo, a lista das
+    oito maiores "variantes" saía assim:
+
+        RRRR 217 · RR 200 · RRRRRR 120 · R 117 · RRR 90 · RRRRR 78 · RRRRRRR 46 …
+
+    Isso não é um mapa de processo: é o **histograma de quantas mensagens a atendente
+    digitou**, com cara de descoberta. A referência ② (Celonis) define variante sobre
+    ATIVIDADES — a mesma atividade repetida em seguida é a mesma atividade durando
+    mais, e a contagem é um ATRIBUTO dela (ver `contagem_por_atividade`), não um passo novo.
+
+    ⛔ `groupby` **sem `key=sorted`, e sem ordenar nada**: só vizinhos colapsam. Voltar
+    a um passo anterior (`respondeu → documento → respondeu`) é RETRABALHO, e
+    retrabalho é justamente o que um mapa de processo existe para mostrar.
+    """
+    return [chave for chave, _ in itertools.groupby(
+        str(e) for e in (eventos or ()))]
+
+
+def contagem_por_atividade(eventos: Iterable[str]) -> Dict[str, int]:
+    """Quantas vezes cada `event_type` aparece na trajetória.
+
+    ⚠️ É a contagem TOTAL, e não a maior corrida: a pergunta que o número responde é
+    *"quantas mensagens a atendente mandou neste caso"*, e ela não se importa se
+    houve um documento no meio.
+    """
+    contas: Dict[str, int] = {}
+    for evento in (eventos or ()):
+        chave = str(evento)
+        contas[chave] = contas.get(chave, 0) + 1
+    return contas
+
+
 def assinatura_da_variante(eventos: Iterable[str]) -> str:
-    """A assinatura ORDENADA de uma trajetória (referência ② Celonis).
+    """A assinatura ORDENADA de uma trajetória, sobre ATIVIDADES (referência ②).
 
     🔴 `sha256` e não `hash()`: o `hash()` de `str` é salgado por processo, então a
     mesma trajetória daria chaves diferentes a cada reinício — e o dedupe do sinal
@@ -836,8 +1013,10 @@ def assinatura_da_variante(eventos: Iterable[str]) -> str:
     ⛔ **A ordem faz a variante.** Ordenar a sequência aqui apagaria a diferença
     entre "o humano assumiu e então o documento chegou" e o contrário, que são dois
     processos diferentes.
+
+    🔴 **E a REPETIÇÃO CONSECUTIVA não faz** — ver `sequencia_de_atividades`.
     """
-    corrente = "|".join(str(e) for e in (eventos or ()))
+    corrente = "|".join(sequencia_de_atividades(eventos))
     return hashlib.sha256(corrente.encode("utf-8")).hexdigest()[:32]
 
 
@@ -866,21 +1045,55 @@ def variantes_de(trajetorias: Iterable[Dict[str, Any]],
                 "company_id": empresa,
                 "ramo": ramo,
                 "seguradora_slug": seguradora,
-                "eventos": eventos,
+                # 🔴 A sequência de ATIVIDADES, e não a de mensagens: é ela que o
+                # sinal publica e que a corretora lê. Guardar `eventos` cru aqui
+                # devolveria "humano respondeu → humano respondeu → …" ao texto.
+                "eventos": sequencia_de_atividades(eventos),
                 "n": 0,
                 "work_run_ids": [],
                 "dedupe_key": "claims_shadow:%s:%s:%s:%s" % (
                     empresa, ramo, seguradora, assinatura),
             }
         grupo["n"] += 1
+        # ⚠️ A CONTAGEM não se perde: ela desce para atributo da variante. Colapsar
+        # sem levá-la embora jogaria fora a única coisa útil que o número antigo
+        # tinha — quantas idas e vindas o caso custou.
+        _somar_repeticoes(grupo, contagem_por_atividade(eventos))
         run_id = str(trajetoria.get("work_run_id") or "")
         if run_id:
             grupo["work_run_ids"].append(run_id)
 
     minimo = int(limiar or 1)
     fora = [g for g in grupos.values() if g["n"] >= minimo]
+    for grupo in fora:
+        grupo["repeticoes"] = _fechar_repeticoes(grupo)
     fora.sort(key=lambda g: (-g["n"], g["assinatura"]))
     return fora
+
+
+def _somar_repeticoes(grupo: Dict[str, Any], contas: Dict[str, int]) -> None:
+    """Acumula `{tipo: (soma, máximo)}` no grupo. ⛔ Só número entra."""
+    acumulado = grupo.setdefault("_repeticoes", {})
+    for tipo, quantas in contas.items():
+        soma, maximo = acumulado.get(tipo, (0, 0))
+        acumulado[tipo] = (soma + int(quantas), max(maximo, int(quantas)))
+
+
+def _fechar_repeticoes(grupo: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+    """`{tipo: {"media": x, "maximo": n}}` — o que o digest leva para o metadata.
+
+    ⚠️ Só o que REPETE em alguma trajetória sai (`maximo > 1`): uma atividade que
+    aconteceu uma vez em todas não tem repetição para contar, e listá-la encheria o
+    metadata de `1.0` sem informação.
+
+    ⚠️ A média divide pelo `n` da VARIANTE — todas as trajetórias do grupo, inclusive
+    as que fizeram o passo uma vez só. É a pergunta certa: *"em média, quantas
+    mensagens este caminho custa"*.
+    """
+    acumulado = grupo.pop("_repeticoes", {}) or {}
+    n = max(1, int(grupo.get("n") or 1))
+    return {tipo: {"media": round(float(soma) / float(n), 2), "maximo": int(maximo)}
+            for tipo, (soma, maximo) in acumulado.items() if maximo > 1}
 
 
 #: O `kind` de espera que a CNSP 496/2026 rege — e o único que o contador de

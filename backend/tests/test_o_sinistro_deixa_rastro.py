@@ -297,6 +297,25 @@ try:
 except Exception as _e:  # noqa: BLE001
     _FALTA_TEM_NUMERO = "app.services.claims_shadow.tem_numero: %s: %s" % (
         type(_e).__name__, _e)
+# 🔴 RODADA DE CONSERTO PÓS-AUDITORIA (BLOCKER 1 e 2). Imports SEPARADOS pelo mesmo
+# motivo do `tem_numero` acima: a ausência de UM nome não pode derrubar os blocos que
+# não dependem dele — o guarda pularia pelo motivo errado.
+tipo_de_documento = None
+try:
+    from app.services.claims_shadow import tipo_de_documento  # type: ignore  # noqa: F401,F811
+except Exception as _e:  # noqa: BLE001
+    _FALTA_TIPO_DOC = "app.services.claims_shadow.tipo_de_documento: %s: %s" % (
+        type(_e).__name__, _e)
+else:
+    _FALTA_TIPO_DOC = ""
+summary_de_variante = None
+try:
+    from app.services.claims_shadow_digest import summary_de_variante  # type: ignore  # noqa: F401,F811
+except Exception as _e:  # noqa: BLE001
+    _FALTA_SUMMARY = "app.services.claims_shadow_digest.summary_de_variante: %s: %s" % (
+        type(_e).__name__, _e)
+else:
+    _FALTA_SUMMARY = ""
 try:
     from app.services.claims_shadow_digest import (  # type: ignore  # noqa: F401,F811
         digerir,
@@ -486,6 +505,8 @@ class _Tabela:
         self._banco = banco
         self._nome = nome
         self._filtros = []
+        #: `[(coluna, [valores])]` dos `not.in.(…)` desta consulta.
+        self._negados = []
         self._op = "select"
         self._linha = None
 
@@ -534,6 +555,18 @@ class _Tabela:
         self._filtros.append((coluna, valor))
         return self
 
+    @property
+    def not_(self):
+        """A negação do PostgREST (`.not_.in_(…)`), FIEL — e registrada.
+
+        🔴 Sem ela, `q.not_.in_(…)` caía no `__getattr__` genérico: `not_` virava uma
+        FUNÇÃO, `.in_` dela levantava `AttributeError`, e `SignalService.ativos`
+        engoliria a exceção devolvendo lista vazia. O gate [14a] passaria por
+        VACUIDADE — zero Finding porque zero sinal chegou, e não porque o filtro
+        funciona (CLAUDE.md §9.2).
+        """
+        return _Negacao(self)
+
     def __getattr__(self, nome):
         """Toda a cauda do PostgREST (`order`, `limit`, `in_`, `gte`, `single`, …)
         continua a corrente sem filtrar. O falso é FIEL no que o gate mede — a linha
@@ -545,6 +578,13 @@ class _Tabela:
         def _corrente(*a, **k):
             return self
         return _corrente
+
+    def _fora(self, linha):
+        """A linha cai num `not.in.(…)` desta consulta?"""
+        for coluna, valores in self._negados:
+            if str(linha.get(coluna)) in {str(v) for v in valores}:
+                return True
+        return False
 
     def execute(self):
         if self._op == "select":
@@ -562,7 +602,31 @@ class _Tabela:
             return _Resposta([x for x in linhas if x])
         base = self._banco.linhas.get(self._nome, [])
         return _Resposta([r for r in base
-                          if all(str(r.get(c)) == str(v) for c, v in self._filtros)])
+                          if all(str(r.get(c)) == str(v) for c, v in self._filtros)
+                          and not self._fora(r)])
+
+
+class _Negacao:
+    """O que `.not_` devolve: o próximo filtro é NEGADO, e a corrente continua."""
+
+    def __init__(self, tabela):
+        self._t = tabela
+
+    def in_(self, coluna, valores):
+        lista = list(valores or ())
+        self._t._negados.append((str(coluna), lista))
+        # 📊 O registro no BANCO é o que permite ao gate [14a] afirmar que o corte
+        # viajou na CONSULTA, e não só no Python depois dela.
+        self._t._banco.negados.append((self._t._nome, str(coluna), lista))
+        return self._t
+
+    def __getattr__(self, nome):
+        if nome.startswith("__"):
+            raise AttributeError(nome)
+
+        def _corrente(*a, **k):
+            return self._t
+        return _corrente
 
 
 class BancoFalso:
@@ -570,6 +634,10 @@ class BancoFalso:
         self.linhas = {k: list(v) for k, v in (linhas or {}).items()}
         self.inseridos = []
         self.updates = []
+        #: `[(tabela, coluna, [valores])]` — os `not.in.(…)` que as consultas
+        #: carregaram. 🔴 É por ele que o gate [14a] mede que o corte foi para o
+        #: BANCO, e não ficou só no `if` do Python depois da leitura.
+        self.negados = []
         #: `vivo=True`: o INSERT vira linha visível ao SELECT e ganha `id`.
         self.vivo = bool(vivo)
         self.proximo_id = 0
@@ -727,8 +795,13 @@ def _importar_webhook():
     return None, "desisti depois de 60 shims: %s" % ", ".join(_SHIMS)
 
 
-def _rodar_webhook_em_observacao(texto):
+def _rodar_webhook_em_observacao(texto, imagem=None, banco=None, extras=None):
     """Roda `process_whatsapp_message_background` DE VERDADE, em modo observação.
+
+    `imagem` liga o ramo de IMAGEM (`{"imageUrl": …, "caption": …}`) com o download e
+    a visão FALSIFICADOS — 📊 sem isso o gate [17] mediria a rede, não o webhook.
+    `extras` entra no `payload_dict` cru (é assim que o ramo `document` do Evolution
+    passa o nome do arquivo).
 
     ⛔ Nada sai: `whatsapp_service.send_message` é falso e as chamadas dele são
     CONTADAS (o gate exige zero). ⛔ Nada é gravado no Supabase real: `webhook.supabase`
@@ -755,7 +828,8 @@ def _rodar_webhook_em_observacao(texto):
 
     trilha: list = []
     envios: list = []
-    banco = BancoFalso({"conversations": [{"session_id": "x", "status": "open"}]})
+    if banco is None:
+        banco = BancoFalso({"conversations": [{"session_id": "x", "status": "open"}]})
 
     async def _agente_desligado(*a, **k):
         trilha.append("attendance_agent_active->False")
@@ -805,6 +879,8 @@ def _rodar_webhook_em_observacao(texto):
         "sli": sli.registrar,
         "billing": sys.modules.get("app.services.billing_service"),
         "router": sys.modules.get("app.services.dispatch_router"),
+        "visao": sys.modules.get("app.services.vision_service"),
+        "imagem": getattr(w, "process_image_for_vision", None),
         "allow": os.environ.get("ATTENDANT_INBOUND_ALLOWLIST"),
         "carto": os.environ.get("CARTOGRAPHER_MODE"),
     }
@@ -825,17 +901,35 @@ def _rodar_webhook_em_observacao(texto):
         mod_router.try_route_insurer_inbound = _nao_roteia
         sys.modules["app.services.dispatch_router"] = mod_router
 
+        # ⛔ Nada sai para a rede: nem o download da imagem, nem a visão.
+        async def _subiu(url, *a, **k):
+            trilha.append("process_image_for_vision")
+            return "https://fixture.invalido/imagem.jpg"
+
+        async def _descreveu(*a, **k):
+            trilha.append("describe_image")
+            return None
+
+        w.process_image_for_vision = _subiu
+        mod_visao = types.ModuleType("app.services.vision_service")
+        mod_visao.describe_image = _descreveu
+        mod_visao.extract_document_text = _descreveu
+        sys.modules["app.services.vision_service"] = mod_visao
+
         os.environ["ATTENDANT_INBOUND_ALLOWLIST"] = ""
         os.environ["CARTOGRAPHER_MODE"] = "0"
 
-        asyncio.run(w.process_whatsapp_message_background({
+        entrada = {
             "connectedPhone": "5500000000000",
             "phone": "5500000000001",
             "isGroup": False, "fromMe": False,
-            "text": {"message": texto},
+            "text": {"message": texto} if texto else None,
+            "image": dict(imagem) if imagem else None,
             "messageId": "FIXTURE-093B-1",
             "senderName": "Fixture",
-        }))
+        }
+        entrada.update(dict(extras or {}))
+        asyncio.run(w.process_whatsapp_message_background(entrada))
     except Exception as e:  # noqa: BLE001
         trilha.append("EXCECAO_SUBIU:%s" % type(e).__name__)
     finally:
@@ -846,8 +940,11 @@ def _rodar_webhook_em_observacao(texto):
         ac.attendance_agent_active = guardado["ativo"]
         ac.capture_channel_message = guardado["captura"]
         sli.registrar = guardado["sli"]
+        if guardado["imagem"] is not None:
+            w.process_image_for_vision = guardado["imagem"]
         for chave, nome in (("billing", "app.services.billing_service"),
-                            ("router", "app.services.dispatch_router")):
+                            ("router", "app.services.dispatch_router"),
+                            ("visao", "app.services.vision_service")):
             if guardado[chave] is not None:
                 sys.modules[nome] = guardado[chave]
             else:
@@ -2424,6 +2521,29 @@ def bloco_14a_a_sombra_nao_chega_ao_briefing():
                 "prometeu observar em silencio."
                 % (len(da_sombra), len(banco.de("intelligence_findings"))))
 
+    # 🔴 A-01: O CORTE VIAJA NA CONSULTA, E NAO SO NO `if` DEPOIS DELA.
+    #
+    # 📊 A auditoria mediu: `SignalService.ativos(limite=200)` le e ORDENA no banco, e
+    # o corte por `source_type` rodava em Python DEPOIS. Os sinais da sombra -- que
+    # nao podem virar Finding -- consumiam o orcamento de 200 linhas do briefing:
+    # numa corretora com muitas sombras, o sinal que DEVIA virar Finding ficava fora
+    # da janela e o briefing emagrecia em silencio.
+    negados = [x for x in banco.negados if x[0] == "intelligence_signals"]
+    certo(any(coluna == "source_type" and "claims_shadow" in {str(v) for v in valores}
+              for _t, coluna, valores in negados),
+          "A-01 o corte de `source_type` viaja NA CONSULTA (`not.in.(claims_shadow)`)",
+          "a consulta levou %r -- com o corte so no Python, a sombra consome o "
+          "orcamento de 200 linhas e empurra para fora o sinal que DEVIA virar Finding"
+          % (negados,))
+    # 🔴 CONTROLE: o cliente falso CONSEGUE registrar um `not.in.(…)` e CONSEGUE nao
+    # registrar nenhum -- senao a assercao acima passaria por acidente de fixture.
+    _b = BancoFalso({"x": [{"source_type": "claims_shadow"}, {"source_type": "outro"}]})
+    _sem = _b.table("x").select("*").execute().data
+    _com = _b.table("x").select("*").not_.in_("source_type", ["claims_shadow"]).execute().data
+    certo(len(_sem) == 2 and len(_com) == 1 and len(_b.negados) == 1,
+          "CONTROLE: o cliente falso FILTRA de verdade no `not.in.(…)` (2 -> 1)",
+          "sem=%d com=%d negados=%r" % (len(_sem), len(_com), _b.negados))
+
 
 # --- (b) o DETECTOR: as 17 frases que o red team fixou ----------------------
 #
@@ -2975,6 +3095,367 @@ def bloco_16_o_guarda_devolve_o_ambiente():
           "veio %r" % (achou,))
 
 
+# ===========================================================================
+# [5b] A VARIANTE E DE ATIVIDADES, E NAO DE MENSAGENS -- BLOCKER 2 da auditoria
+# ===========================================================================
+#
+# 📊 A auditoria externa de 03/09/2026 reconstruiu a assinatura sobre 1.851 sessoes
+# reais do acervo e mediu as oito maiores "variantes":
+#     RRRR 217 · RR 200 · RRRRRR 120 · R 117 · RRR 90 · RRRRR 78 · RRRRRRR 46 …
+# (`R` = `claims.humano_respondeu`). Isso nao e um mapa de processo: e o HISTOGRAMA
+# de quantas mensagens a atendente digitou, com cara de descoberta. `claims.humano_
+# respondeu` e gravado UMA VEZ POR MENSAGEM, e a assinatura somava as repeticoes.
+#
+# 🔴 A referencia ② (Celonis) define variante sobre ATIVIDADES. Repeticao CONSECUTIVA
+# da mesma atividade e a MESMA atividade acontecendo por mais tempo -- a contagem e
+# um atributo dela, nao um passo novo do processo.
+#
+# ⛔ O que NAO pode mudar junto: a ORDEM continua fazendo a variante (gate C②), e uma
+# repeticao NAO-consecutiva continua sendo outro processo (voltar a um passo e
+# retrabalho, e retrabalho e exatamente o que o mapa existe para mostrar).
+REPETIDA_2 = ["claims.sombra_aberta", "claims.humano_assumiu",
+              "claims.humano_respondeu", "claims.humano_respondeu",
+              "claims.encerrado"]
+REPETIDA_4 = (["claims.sombra_aberta", "claims.humano_assumiu"]
+              + ["claims.humano_respondeu"] * 4 + ["claims.encerrado"])
+#: 🔴 A volta a um passo anterior -- `respondeu` DEPOIS de `assumiu` e de novo depois
+#: do documento. As duas ocorrencias NAO sao vizinhas, entao nada colapsa.
+COM_RETRABALHO = ["claims.sombra_aberta", "claims.humano_respondeu",
+                  "claims.documento_recebido", "claims.humano_respondeu",
+                  "claims.encerrado"]
+SEM_RETRABALHO = ["claims.sombra_aberta", "claims.humano_respondeu",
+                  "claims.documento_recebido", "claims.encerrado"]
+
+
+def _trajetorias_com(sequencias, prefixo="t"):
+    """Uma trajetoria por sequencia dada, todas da mesma corretora/ramo/seguradora."""
+    return [{"work_run_id": "%s%d" % (prefixo, i), "company_id": EMPRESA_A,
+             "ramo": "auto", "seguradora_slug": "porto", "eventos": list(seq)}
+            for i, seq in enumerate(sequencias)]
+
+
+def _assinatura_com_repeticoes(eventos):
+    """🔴 A MUTACAO M5: a assinatura COMO ERA -- sha256 da sequencia COM repeticoes.
+
+    ⚠️ Ela nao reimplementa o motor para testar a copia (§9.4). Ela existe para uma
+    pergunta so: *se o colapso nao fosse aplicado, o resultado seria outro?* Se for o
+    mesmo, o colapso nao esta fazendo nada e o gate acima e vacuo.
+    """
+    return hashlib.sha256("|".join(str(e) for e in (eventos or ())).encode("utf-8")
+                          ).hexdigest()[:32]
+
+
+def bloco_5b_variante_de_atividades():
+    _p("\n[5b] A VARIANTE E DE ATIVIDADES -- 2x e 4x 'humano respondeu' sao UMA")
+    if variantes_de is None:
+        pular("[5b] VARIANTE DE ATIVIDADES", _FALTA_SOMBRA or "variantes_de nao existe")
+        return
+
+    mistura = _trajetorias_com([REPETIDA_2] * 3 + [REPETIDA_4] * 3, "rep")
+    vistas = _assinaturas(variantes_de(mistura, limiar=3))
+    certo(len(vistas) == 1 and list(vistas.values()) == [6],
+          "BLOCKER 2: 'respondeu x2' e 'respondeu x4' caem na MESMA variante (N=6)",
+          "vieram %d variante(s) %r -- 📊 auditoria 03/09/2026 sobre 1.851 sessoes: as "
+          "8 maiores variantes eram RRRR/RR/RRRRRR/R, um histograma de MENSAGENS com "
+          "cara de mapa de processo (ref. ② Celonis: variante e de ATIVIDADES)"
+          % (len(vistas), sorted(vistas.values())))
+
+    # 🔴 CONTROLE ①: a ORDEM continua fazendo a variante (gate C②, que nao pode cair
+    # junto). Sem esta linha, "colapsar tudo" tambem passaria neste bloco.
+    ordem = _assinaturas(variantes_de(
+        _trajetorias_com([X] * 3 + [X_PERMUTADA] * 3, "ord"), limiar=3))
+    certo(len(ordem) == 2,
+          "CONTROLE: a PERMUTACAO continua sendo outra variante (a ordem e o processo)",
+          "vieram %d -- o colapso de repeticao nao pode virar um `sorted()` disfarcado"
+          % len(ordem))
+
+    # 🔴 CONTROLE ②: repeticao NAO-consecutiva e RETRABALHO, e retrabalho e outro
+    # processo. `groupby` so junta vizinhos -- este controle e o que prova isso.
+    retrabalho = _assinaturas(variantes_de(
+        _trajetorias_com([COM_RETRABALHO] * 3 + [SEM_RETRABALHO] * 3, "ret"), limiar=3))
+    certo(len(retrabalho) == 2,
+          "CONTROLE: voltar a um passo (repeticao NAO-vizinha) continua sendo OUTRA "
+          "variante",
+          "vieram %d -- se der 1, o colapso apagou o RETRABALHO, que e justamente o que "
+          "um mapa de processo existe para mostrar" % len(retrabalho))
+
+    # --- a contagem nao se perde: ela vira ATRIBUTO da variante ---------------
+    variantes = variantes_de(mistura, limiar=3)
+    v = variantes[0] if variantes else {}
+    passos = [str(e) for e in (v.get("eventos") or ())]
+    certo(passos == REPETIDA_2[:2] + ["claims.humano_respondeu", "claims.encerrado"],
+          "a variante guarda a sequencia de ATIVIDADES (4 passos, sem repeticao)",
+          "veio %r" % (passos,))
+    repeticoes = v.get("repeticoes") or {}
+    certo(isinstance(repeticoes, dict)
+          and int((repeticoes.get("claims.humano_respondeu") or {}).get("maximo") or 0) == 4,
+          "a CONTAGEM nao se perde: ela vira `repeticoes` (maximo=4) na variante",
+          "veio %r -- colapsar sem levar a contagem para o metadata jogaria fora a "
+          "unica coisa util que o numero antigo tinha" % (repeticoes,))
+    certo(all(isinstance(x, (int, float)) and not isinstance(x, bool)
+              for d in repeticoes.values() for x in (d or {}).values()),
+          "§2 `repeticoes` so tem NUMERO (nenhum texto entra no metadata do sinal)",
+          "veio %r" % (repeticoes,))
+
+    # --- o TEXTO do sinal para de repetir a mesma frase -----------------------
+    if summary_de_variante is None:
+        pular("[5b] summary", _FALTA_SUMMARY)
+    else:
+        texto = str(summary_de_variante(v))
+        pedacos = [x.strip() for x in texto.split(":", 1)[-1].split("→")]
+        vizinhos = [pedacos[i] for i in range(1, len(pedacos))
+                    if pedacos[i] and pedacos[i] == pedacos[i - 1]]
+        certo(not vizinhos,
+              "o summary do sinal NAO repete 'humano respondeu -> humano respondeu'",
+              "repetiu %r em %r -- e este texto que a corretora le"
+              % (vizinhos, texto[:120]))
+
+    # --- 🔴 A MUTACAO M5, em memoria: sem o colapso, viram DUAS variantes ------
+    mod = sys.modules.get("app.services.claims_shadow")
+    if mod is None or not hasattr(mod, "assinatura_da_variante"):
+        pular("[5b] MUTACAO M5", "claims_shadow nao esta em sys.modules")
+        return
+    original = mod.assinatura_da_variante
+    try:
+        mod.assinatura_da_variante = _assinatura_com_repeticoes
+        mutada = _assinaturas(variantes_de(mistura, limiar=3))
+    finally:
+        mod.assinatura_da_variante = original
+    certo(len(mutada) == 2,
+          "MUTACAO M5: SEM o colapso, 'respondeu x2' e 'x4' viram DUAS variantes",
+          "vieram %d -- se a mutacao der 1 tambem, o colapso nao esta fazendo nada e o "
+          "gate acima e um carimbo (§9.3)" % len(mutada))
+
+
+# ===========================================================================
+# [14g] A AUSENCIA MEMORIZADA EXPIRA -- A-03 da auditoria
+# ===========================================================================
+#
+# 📊 A auditoria mediu: `_MEMORIA` lembra a AUSENCIA (sombra `None`) sem prazo. Com um
+# worker so, e seguro. Com DUAS replicas o processo que perguntou primeiro guarda
+# "esta conversa nao tem sombra" PARA SEMPRE: a outra replica abre a sombra, e a
+# primeira descarta em silencio TODO gesto seguinte daquela conversa. Nao ha erro,
+# nao ha log, e o caso some do dataset que a SPEC existe para criar.
+def bloco_14g_a_ausencia_expira():
+    _p("\n[14g] A AUSENCIA MEMORIZADA EXPIRA -- A-03 (a sombra que nasce em OUTRA replica)")
+    mod = sys.modules.get("app.services.claims_shadow")
+    if sombra_da_conversa is None or mod is None:
+        pular("[14g] AUSENCIA", _FALTA_SOMBRA or "claims_shadow nao esta em sys.modules")
+        return
+    conversa = "conversa-que-vira-sinistro-depois"
+    banco = BancoFalso({}, vivo=True)
+    cli = ClienteFalso(banco)
+
+    certo(_rodar(sombra_da_conversa(cli, EMPRESA_A, conversa)) is None,
+          "a conversa comeca SEM sombra (e a ausencia fica memorizada)")
+
+    # A OUTRA replica abre a sombra -- para ESTE processo, a linha simplesmente
+    # aparece no banco sem que ele tenha feito nada.
+    banco.linhas.setdefault("work_runs", []).append(
+        {"id": RUN_SOMBRA_A, "company_id": EMPRESA_A, "conversation_id": conversa,
+         "workflow_key": WORKFLOW, "status": "running"})
+
+    # 🔴 CONTROLE: a ausencia REALMENTE esta memorizada -- sem o relogio andar, a
+    # linha nova continua invisivel. Sem esta linha, o gate abaixo poderia estar
+    # passando porque memoria nenhuma existe (§9.2).
+    certo(_rodar(sombra_da_conversa(cli, EMPRESA_A, conversa)) is None,
+          "CONTROLE: dentro do prazo, a ausencia memorizada continua valendo "
+          "(o SELECT nao se repete)")
+
+    relogio = getattr(mod, "_relogio", None)
+    if relogio is None:
+        certo(False,
+              "A-03 passado o prazo, a sombra aberta por OUTRA replica e ENCONTRADA",
+              "`claims_shadow._relogio` nao existe: a memoria de ausencia nao tem prazo "
+              "nenhum, e com 2 replicas ela descarta todo gesto da conversa")
+    else:
+        try:
+            mod._relogio = lambda: relogio() + 3600.0
+            depois = _rodar(sombra_da_conversa(cli, EMPRESA_A, conversa))
+        finally:
+            mod._relogio = relogio
+        certo(str(depois or "") == RUN_SOMBRA_A,
+              "A-03 passado o prazo, a sombra aberta por OUTRA replica e ENCONTRADA",
+              "veio %r -- sem prazo, este processo descartaria em silencio todo gesto "
+              "desta conversa ate reiniciar" % (depois,))
+        # 🔴 CONTROLE: o POSITIVO continua memorizado (a otimizacao nao morreu junto).
+        banco.linhas["work_runs"] = []
+        certo(str(_rodar(sombra_da_conversa(cli, EMPRESA_A, conversa)) or "")
+              == RUN_SOMBRA_A,
+              "CONTROLE: a resposta POSITIVA continua memorizada (nao expira)",
+              "o positivo tambem expirou -- ai a memoria deixou de poupar o SELECT que "
+              "ela existe para poupar")
+
+    # A FICHA tem o mesmo buraco, com prazo proprio: ela pode nascer no meio da
+    # conversa no dia em que o grafo voltar a rodar.
+    ficha_da_conversa = getattr(mod, "ficha_da_conversa", None)
+    if ficha_da_conversa is None or relogio is None:
+        pular("[14g] FICHA", "ficha_da_conversa/_relogio nao disponiveis")
+        return
+    conversa_f = "conversa-cuja-ficha-nasce-depois"
+    banco_f = BancoFalso({"conversations": [{"id": conversa_f, "company_id": EMPRESA_A,
+                                             "ficha_atendimento": None}]}, vivo=True)
+    cli_f = ClienteFalso(banco_f)
+    certo(_rodar(ficha_da_conversa(cli_f, EMPRESA_A, conversa_f)) is None,
+          "a ficha comeca ausente (e a ausencia fica memorizada)")
+    banco_f.linhas["conversations"][0]["ficha_atendimento"] = {"servico": "sinistro"}
+    certo(_rodar(ficha_da_conversa(cli_f, EMPRESA_A, conversa_f)) is None,
+          "CONTROLE: dentro do prazo, a ficha ausente continua ausente")
+    try:
+        mod._relogio = lambda: relogio() + 3600.0
+        ficha = _rodar(ficha_da_conversa(cli_f, EMPRESA_A, conversa_f))
+    finally:
+        mod._relogio = relogio
+    certo(isinstance(ficha, dict) and ficha.get("servico") == "sinistro",
+          "A-03 passado o prazo, a ficha gravada DEPOIS e lida",
+          "veio %r" % (ficha,))
+
+
+# ===========================================================================
+# [17] O DOCUMENTO DO SINISTRO DEIXA RASTRO -- BLOCKER 1 da auditoria
+# ===========================================================================
+#
+# 📊 A auditoria externa mediu em producao (03/09/2026), nas sessoes que falam de
+# sinistro: 1.060 imagens e 730 documentos inbound. O unico escritor de
+# `claims.documento_recebido` estava atras de `if final_image_url:` -- e o ramo
+# `document` do Evolution (o PDF do boletim de ocorrencia) NUNCA preenche
+# `image_payload`: ele vira TEXTO. 40,8% dos arquivos de um sinistro nao viravam
+# evento nenhum.
+#
+# 🔴 E o defeito e SILENCIOSO na direcao pior (§9.5): `contadores_de` publica
+# `sem_documento` como inteiro COM denominador. O Founder leria "31/40 sinistros sem
+# documento" e concluiria que a operacao nao pede papel -- quando o papel chegou e
+# ninguem o gravou.
+#
+# 💭 O texto da fixture e INVENTADO, mas a FORMA dele nao: e a que o ramo `document`
+# monta em `webhook.py` (a marca + o conteudo extraido).
+TEXTO_DO_DOCUMENTO = (
+    "[Cliente enviou o documento: boletim-de-ocorrencia.pdf]\n\n"
+    "[CONTEUDO DO DOCUMENTO boletim-de-ocorrencia.pdf]\n"
+    "bati o carro na avenida e preciso de guincho\n"
+    "[FIM DO DOCUMENTO]")
+IMAGEM_DO_SINISTRO = {"imageUrl": "https://fixture.invalido/dano.jpg",
+                      "caption": "bati o carro, segue a foto do dano"}
+
+
+def _documentos_recebidos(banco):
+    return [l for l in (banco.de("work_events") if banco else ())
+            if str(l.get("event_type")) == "claims.documento_recebido"]
+
+
+def _enum_do_vocabulario(chave):
+    try:
+        return tuple((json.loads(ler(VOCAB)).get("enums") or {}).get(chave) or ())
+    except Exception:  # noqa: BLE001
+        return ()
+
+
+def bloco_17_o_documento_deixa_rastro():
+    _p("\n[17] O DOCUMENTO DEIXA RASTRO -- o PDF do BO tambem vira evento")
+    banco, trilha, envios, razao = _rodar_webhook_em_observacao(TEXTO_DO_DOCUMENTO)
+    if banco is None:
+        pular("[17] DOCUMENTO", razao)
+        return
+    certo(envios == [] and "PASSOU_DO_RETURN" not in trilha,
+          "o webhook seguiu em SILENCIO com o documento (nada saiu, o grafo nao rodou)",
+          "envios=%d trilha=%s" % (len(envios), trilha))
+    sombras = [l for l in banco.de("work_runs") if l.get("workflow_key") == WORKFLOW]
+    certo(len(sombras) == 1,
+          "a sombra abriu na conversa do documento (a fixture mede o que quer medir)",
+          "abriu %d" % len(sombras))
+
+    docs = _documentos_recebidos(banco)
+    enum = _enum_do_vocabulario("tipo_documento")
+    certo(len(docs) == 1,
+          "BLOCKER 1: o ramo `document` grava EXATAMENTE 1 `claims.documento_recebido`",
+          "gravou %d. 📊 auditoria 03/09/2026: 730 documentos inbound em sessoes de "
+          "sinistro contra 1.060 imagens -- 40,8%% dos arquivos de um sinistro nao "
+          "viravam evento, e `sem_documento` os contava como papel que nunca chegou"
+          % len(docs))
+    if docs:
+        tipo = (docs[0].get("payload_redacted") or {}).get("tipo_documento")
+        certo(bool(enum) and tipo in enum,
+              "o payload do documento so tem o ENUM `tipo_documento` (veio %r)" % (tipo,),
+              "o vocabulario declara %r -- valor fora do enum e DESCARTADO por "
+              "`_valor_limpo` e o evento sobe para warning" % (enum,))
+        certo(set(docs[0].get("payload_redacted") or {}) <= {"tipo_documento"},
+              "§2 nada alem do enum entrou no payload",
+              "veio %r" % sorted(docs[0].get("payload_redacted") or {}))
+
+    # 🔴 CONTROLE ①: a IMAGEM, que ja funcionava, continua gravando 1 -- e so 1.
+    banco_i, _t, envios_i, _r = _rodar_webhook_em_observacao(
+        "bati o carro, segue a foto do dano", imagem=IMAGEM_DO_SINISTRO)
+    if banco_i is not None:
+        certo(len(_documentos_recebidos(banco_i)) == 1 and envios_i == [],
+              "CONTROLE: a IMAGEM continua gravando 1 evento (o conserto nao dobrou)",
+              "gravou %d evento(s), %d envio(s)"
+              % (len(_documentos_recebidos(banco_i)), len(envios_i)))
+
+    # 🔴 CONTROLE ②: mensagem de sinistro SEM arquivo nenhum nao inventa documento.
+    banco_s, _t2, _e2, _r2 = _rodar_webhook_em_observacao(FRASE_SINISTRO)
+    if banco_s is not None:
+        certo(not _documentos_recebidos(banco_s),
+              "CONTROLE: 'bati o carro e preciso de guincho' (sem arquivo) NAO grava "
+              "documento",
+              "gravou %d -- um escritor que dispara sempre encheria o contador de "
+              "documentos com conversa" % len(_documentos_recebidos(banco_s)))
+
+    # 🔴 A MUTACAO M6, em memoria: sem o reconhecedor do documento, VERMELHO.
+    w, _razao = _importar_webhook()
+    if w is None or not hasattr(w, "nome_do_documento"):
+        pular("[17] MUTACAO M6", "webhook.nome_do_documento ainda nao existe")
+    else:
+        original = w.nome_do_documento
+        try:
+            w.nome_do_documento = lambda *a, **k: None
+            banco_m, _t3, _e3, _r3 = _rodar_webhook_em_observacao(TEXTO_DO_DOCUMENTO)
+        finally:
+            w.nome_do_documento = original
+        certo(banco_m is not None and not _documentos_recebidos(banco_m),
+              "MUTACAO M6: sem `nome_do_documento`, o PDF volta a NAO deixar rastro",
+              "gravou %d -- se a mutacao gravar do mesmo jeito, o reconhecedor nao e "
+              "quem faz o evento e o gate acima e um carimbo (§9.3)"
+              % len(_documentos_recebidos(banco_m)))
+
+    # --- o CLASSIFICADOR: o nome do arquivo tambem e pista --------------------
+    if tipo_de_documento is None:
+        pular("[17] CLASSIFICADOR", _FALTA_TIPO_DOC)
+        return
+    # 💭 Nomes de arquivo INVENTADOS -- nenhum veio do acervo de um segurado.
+    casos = (
+        ("boletim-de-ocorrencia.pdf", "boletim_ocorrencia"),
+        ("BO_2026.pdf", "boletim_ocorrencia"),
+        ("crlv-2026.pdf", "crlv"),
+        ("laudo-da-vistoria.pdf", "laudo"),
+        ("cnh-frente.jpg", "cnh"),
+        ("orcamento-da-oficina.pdf", "orcamento"),
+        ("nota-fiscal-do-guincho.pdf", "orcamento"),
+        ("apolice-auto.pdf", "outro"),
+    )
+    erraram = [(n, e, tipo_de_documento(n)) for n, e in casos
+               if tipo_de_documento(n) != e]
+    certo(not erraram,
+          "o classificador le o NOME DO ARQUIVO e cobre %d valores do enum"
+          % len({e for _n, e in casos}),
+          "erraram %r -- 📊 auditoria 03/09/2026: 97,4%% das imagens caiam em "
+          "`general_attachment` porque `_detect_document_type` nao casava nada na "
+          "legenda, e todas viravam `desconhecido`" % (erraram[:4],))
+    fora = ([tipo_de_documento(n) for n, _e in casos]
+            + [tipo_de_documento("arquivo.bin"), tipo_de_documento("")])
+    certo(bool(enum) and all(v in enum for v in fora),
+          "TODA saida do classificador esta no enum do vocabulario",
+          "saiu %r fora de %r" % ([v for v in fora if v not in enum], enum))
+    certo(tipo_de_documento("arquivo-sem-pista.bin") == "desconhecido"
+          and tipo_de_documento("") == "desconhecido",
+          "CONTROLE: sem pista, o valor continua o generico (`desconhecido`)",
+          "veio %r e %r" % (tipo_de_documento("arquivo-sem-pista.bin"),
+                            tipo_de_documento("")))
+    certo(len({tipo_de_documento(n) for n, _e in casos}) > 1,
+          "CONTROLE: o classificador NAO devolve o mesmo valor para todos os nomes",
+          "devolveu %r para os %d nomes"
+          % (tipo_de_documento(casos[0][0]), len(casos)))
+
+
 def _rodar_os_blocos():
     bloco_0_gate_zero()
     bloco_1_vocabulario()
@@ -2996,7 +3477,10 @@ def _rodar_os_blocos():
     bloco_14d_tem_numero()
     bloco_14e_contador_de_espera()
     bloco_14f_vocabulario_v2()
+    bloco_14g_a_ausencia_expira()
     bloco_15_sem_texto_nos_escritores()
+    bloco_5b_variante_de_atividades()
+    bloco_17_o_documento_deixa_rastro()
 
 
 def main() -> int:

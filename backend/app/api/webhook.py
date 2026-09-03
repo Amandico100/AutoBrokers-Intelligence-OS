@@ -8,6 +8,7 @@ import time as _tempo
 import hmac
 import logging
 import os
+import re
 from datetime import date, datetime, timezone  # Importado datetime e timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -98,6 +99,65 @@ class StatusUpdatePayload(BaseModel):
 # ==============================================================================
 # HELPER FUNCTIONS
 # ==============================================================================
+
+#: 🔴 SPEC-093-B — AS DUAS MARCAS QUE O RAMO `document` ESCREVE NO TEXTO.
+#:
+#: Elas moram aqui, e não soltas nas f-strings do ramo, porque `nome_do_documento`
+#: precisa RECONHECÊ-LAS. Uma segunda cópia da frase no reconhecedor divergiria da
+#: primeira na primeira vez que alguém editasse a mensagem — e quem ficaria para trás
+#: é justamente o lado que faz o documento virar evento (CLAUDE.md §5).
+MARCA_DO_DOCUMENTO = "[Cliente enviou o documento: %s]"
+CABECALHO_DO_DOCUMENTO = "[CONTEÚDO DO DOCUMENTO %s]"
+
+
+def _padrao_da_marca(molde: str) -> "re.Pattern[str]":
+    """O molde vira padrão: tudo escapado, e o `%s` vira o grupo do nome."""
+    antes, depois = molde.split("%s", 1)
+    return re.compile(re.escape(antes) + r"([^\]\n]{1,160})" + re.escape(depois))
+
+
+_MARCAS_DO_DOCUMENTO = tuple(_padrao_da_marca(m) for m in
+                             (MARCA_DO_DOCUMENTO, CABECALHO_DO_DOCUMENTO))
+
+
+def nome_do_documento(texto: Any, payload_dict: Optional[dict] = None) -> Optional[str]:
+    """O nome do arquivo que o segurado mandou, ou `None` se não veio arquivo.
+
+    🔴 **Este é o BLOCKER 1 da auditoria externa de 03/09/2026.** O único escritor de
+    `claims.documento_recebido` estava atrás de `if final_image_url:` — só IMAGEM. O
+    ramo `document` do Evolution (o PDF do boletim de ocorrência) nunca preenche
+    `image_payload`: ele entra como TEXTO. 📊 Medido em produção, nas sessões que falam
+    de sinistro: **1.060 imagens e 730 documentos** inbound — 40,8% dos arquivos de um
+    sinistro não viravam evento nenhum, e `contadores_de` publicava esses casos como
+    `sem_documento`, um número que o Founder leria como "a operação não pede papel".
+
+    Duas fontes, nesta ordem, porque cada uma pega o que a outra não pega:
+
+      · `payload_dict["document"]["fileName"]` — o campo, sempre certo quando existe.
+        ⚠️ Ele pode se PERDER no buffer de debounce: se uma mensagem de texto chegar
+        na mesma janela de 8 s, o payload dela vence (`message_buffer_service`
+        sobrescreve tudo menos `interactive`). É por isso que existe a segunda fonte.
+      · a MARCA no texto — sobrevive ao buffer porque as mensagens são CONCATENADAS.
+        ⚠️ E ela some quando o segurado manda legenda junto E a extração falha; é por
+        isso que existe a primeira.
+
+    ⛔ O nome NUNCA é gravado: quem o lê é `tipo_de_documento`, e o que atravessa para
+    o `payload_redacted` é o enum (SPEC-093-B §2).
+    """
+    doc = (payload_dict or {}).get("document")
+    if isinstance(doc, dict):
+        nome = str(doc.get("fileName") or "").strip()
+        if nome:
+            return nome
+    alvo = str(texto or "")
+    for padrao in _MARCAS_DO_DOCUMENTO:
+        achado = padrao.search(alvo)
+        if achado:
+            nome = achado.group(1).strip()
+            if nome:
+                return nome
+    return None
+
 
 async def get_or_create_conversation(
     supabase_client,
@@ -740,11 +800,22 @@ async def process_whatsapp_message_background(
             # `nodes.py:860` nunca a grava), mas quando existir ela é a verdade
             # melhor que o regex, e é lida em UMA consulta indexada por id.
             #
-            # 🔴 A consulta mudou de LUGAR, não de conteúdo: ela mora agora em
-            # `claims_shadow.ficha_da_conversa`, que LEMBRA a ausência. 📊 678 de 679
-            # conversas pagavam este SELECT em TODA mensagem para receber `None` —
-            # no caminho quente do webhook, que é o caminho de toda mensagem de todo
-            # segurado. O filtro de `company_id` (§7) foi junto e continua lá.
+            # 🔴 ESTE SELECT É NOVO, E O CUSTO DELE TAMBÉM É — a marca anterior
+            # dizia o contrário e foi corrigida na auditoria de 03/09/2026 (A-02).
+            #
+            # 📊 O texto que estava aqui afirmava que "678 de 679 conversas PAGAVAM
+            # este SELECT" e que a consulta só tinha "mudado de lugar". Não havia
+            # lugar de onde mudar: `git log --diff-filter=A` mostra que
+            # `claims_shadow.py` nasceu nesta branch, e na `main` não existe leitura
+            # nenhuma de `ficha_atendimento` no webhook. Um custo NOVO descrito como
+            # custo antigo é um número que se cita como economia (§12.1).
+            #
+            # A verdade medida: a SPEC acrescenta **+1 SELECT na PRIMEIRA mensagem de
+            # cada conversa**; da segunda em diante a resposta vem da memória de
+            # processo (`_MEMORIA_DA_FICHA`), inclusive quando é `None` — e 📊 ela é
+            # `None` em 678 de 679 conversas hoje, porque o grafo não roda e
+            # `nodes.py:860` nunca grava a ficha. O filtro de `company_id` (§7) é do
+            # próprio módulo e continua lá.
             _ficha = await ficha_da_conversa(supabase, company_id, conversation_id)
 
             _abre, _confianca, _motivo = detectar_sinistro(message_text, _ficha)
@@ -756,20 +827,35 @@ async def process_whatsapp_message_background(
                 )
 
             # O arquivo do segurado vira EVENTO, nunca conteúdo: o que fica
-            # gravado é o enum do tipo, e ele sai da legenda pelo classificador
-            # que já existe (`attendance_media._detect_document_type`).
+            # gravado é o enum do tipo, e ele sai do NOME DO ARQUIVO e da legenda
+            # pelo classificador da sombra (que consulta o
+            # `attendance_media._detect_document_type` como segundo leitor).
             # 🔴 `registrar_gesto` não escreve quando a conversa não tem sombra.
             #
-            # ⚠️ Só IMAGEM, e não áudio: uma mensagem de voz não é documento, e o
+            # 🔴 IMAGEM **E** DOCUMENTO — foi o BLOCKER 1 da auditoria externa.
+            # 📊 03/09/2026, nas sessões de sinistro em produção: 1.060 imagens e
+            # 730 documentos inbound. Com o `if` só na imagem, 40,8% dos arquivos
+            # de um sinistro não viravam evento — e esses casos saíam do digest
+            # como `sem_documento`, que se lê como "o papel nunca chegou".
+            #
+            # ⚠️ Áudio continua FORA: uma mensagem de voz não é documento, e o
             # enum `tipo_documento` não tem valor para ela. Gravá-la como
             # `documento_recebido: desconhecido` encheria o contador "sinistros
             # com documento" com áudios — um número que mentiria por construção.
-            if final_image_url:
+            #
+            # ⛔ UM `registrar_gesto` só, e não um por ramo: um payload de imagem
+            # não pode carregar `document`, então as duas condições nunca são
+            # verdadeiras juntas — mas um segundo escritor aqui seria a porta
+            # aberta para o dia em que passassem a ser (evento duplicado no
+            # ledger é uma variante inventada no digest).
+            _nome_do_arquivo = nome_do_documento(message_text, payload_dict)
+            if final_image_url or _nome_do_arquivo:
                 await registrar_gesto(
                     supabase, company_id=str(company_id),
                     conversation_id=str(conversation_id),
                     event_type="claims.documento_recebido",
-                    payload={"tipo_documento": tipo_de_documento(message_text)},
+                    payload={"tipo_documento": tipo_de_documento(
+                        _nome_do_arquivo, message_text)},
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("[SOMBRA] rastro do sinistro não registrado (%s)",
@@ -1564,6 +1650,7 @@ async def _handle_evolution_like_inbound(
     text_message = normalized["text"]
     image_payload = None
     audio_payload = None
+    documento_payload = None
     if media:
         blob_mime = None
         # Caminho preferido: webhookBase64=true entrega a mídia no próprio evento.
@@ -1604,11 +1691,17 @@ async def _handle_evolution_like_inbound(
                     from app.services.vision_service import extract_document_text
 
                     doc_text = await extract_document_text(url, fname)
-                base_txt = media.get("caption") or f"[Cliente enviou o documento: {fname}]"
+                base_txt = media.get("caption") or MARCA_DO_DOCUMENTO % fname
                 if doc_text:
-                    text_message = f"{base_txt}\n\n[CONTEÚDO DO DOCUMENTO {fname}]\n{doc_text}\n[FIM DO DOCUMENTO]"
+                    text_message = f"{base_txt}\n\n{CABECALHO_DO_DOCUMENTO % fname}\n{doc_text}\n[FIM DO DOCUMENTO]"
                 else:
                     text_message = f"{base_txt}\n(não foi possível ler o conteúdo do documento — peça para reenviar ou colar o texto)"
+                # 🔴 SPEC-093-B — O NOME DO ARQUIVO VIAJA COMO CAMPO, e não só dentro
+                # do texto. Aqui ele é certo; no texto ele SOME quando o segurado manda
+                # legenda junto (`base_txt` vira a legenda) e a extração falha.
+                # ⚠️ Só o NOME, nunca a URL nem o conteúdo: quem lê isto é
+                # `tipo_de_documento`, e o que sobrevive dela é um enum (§2).
+                documento_payload = {"fileName": fname}
             elif media["kind"] == "audio":
                 url = await _upload_media_bytes(company_for_media, blob, mime or "audio/ogg", ".ogg", bucket="chat-docs")
                 if url:
@@ -1626,6 +1719,10 @@ async def _handle_evolution_like_inbound(
         "text": {"message": text_message} if text_message else None,
         "image": image_payload,
         "audio": audio_payload,
+        # 🔴 SPEC-093-B — o nome do arquivo do ramo `document`. O modelo pydantic o
+        # IGNORA (ele não declara o campo); quem o lê é `nome_do_documento`, direto
+        # no `payload_dict`, do mesmo jeito que `_integration_id` já viajava.
+        "document": documento_payload,
         "messageId": normalized["message_id"],
         "senderName": normalized["sender_name"],
         "momment": normalized.get("timestamp"),

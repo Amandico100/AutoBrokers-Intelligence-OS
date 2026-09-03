@@ -482,6 +482,11 @@ def _escrever_sinais(db: Any, company_id: str, variantes: list[dict],
                       "ramo": v.get("ramo"),
                       "seguradora_slug": v.get("seguradora_slug"),
                       "denominador": total,
+                      # 🔴 A CONTAGEM QUE SAIU DA ASSINATURA (BLOCKER 2 da auditoria).
+                      # A `assinatura` agora é de ATIVIDADES; quantas mensagens a
+                      # atendente digitou vira ATRIBUTO da variante, aqui.
+                      # ⛔ Só número: `{tipo: {"media": x, "maximo": n}}`.
+                      "repeticoes": dict(v.get("repeticoes") or {}),
                       # 🔴 A marca vai no METADATA dos DOIS sinais: quem lê a variante
                       # sozinha, sem o resumo, também precisa saber que o `n` dela
                       # pode estar menor que a verdade.
