@@ -256,3 +256,275 @@ class EvidencePack:
         """
         corpo = json.dumps(self.serializar(), ensure_ascii=False)
         return f"{ABERTURA}\n{corpo}\n{FECHAMENTO}"
+
+
+# ==========================================================================
+# 🔴 SPEC-094 · BLOCO E — os FINDINGS determinísticos, e o que vira SINAL
+# ==========================================================================
+#
+# Um número sozinho não é um achado. `mix.insurer = 62,3%` é um número; *"a
+# comissão do período está concentrada acima do limiar numa única seguradora"*
+# é um achado — tem limiar declarado, tem as métricas que o sustentam e tem
+# uma frase que um humano lê. O pack carrega os dois, e o Artifact desenha os
+# dois.
+#
+# 🔴 E o achado é DETERMINÍSTICO: sai de comparação com limiar escrito, nunca
+# de um modelo. O mesmo pack produz os mesmos findings, sempre. Um "insight"
+# gerado por LLM sobre os mesmos números mudaria de rodada para rodada, e o
+# dono da corretora leria duas verdades diferentes sobre a mesma semana.
+#
+# ⚠️ Os limiares abaixo são 💭 ILUSTRATIVOS — escolhidos, não medidos. Eles
+# viajam DENTRO do finding (campo `limiar_pct`), para que quem lê consiga
+# discordar do corte sem abrir o código. Quando houver medição de qual corte
+# separa "normal" de "digno de ação", ela substitui estes valores e o número
+# vira 📊.
+
+QUEDA_DE_PRODUTOR = "producer_drop"
+CONCENTRACAO = "concentration"
+EXPOSICAO_DE_RENOVACAO = "renewal_exposure"
+COBERTURA_BAIXA = "low_coverage"
+
+#: 💭 acima disto, uma seguradora só responde por fatia grande demais da
+#: comissão do período para o dono não saber.
+LIMIAR_CONCENTRACAO_PCT = 40.0
+#: 💭 queda de comissão de um produtor contra o mesmo período anterior.
+LIMIAR_QUEDA_PCT = -20.0
+#: 💭 abaixo disto a comissão do produtor é pequena demais para a variação
+#: percentual dizer alguma coisa: 100% de queda sobre R$ 50 é ruído.
+PISO_DE_COMISSAO_PARA_QUEDA = 500.0
+#: 💭 abaixo disto o relatório soma parte da carteira e precisa dizer isso.
+LIMIAR_DE_COBERTURA = 0.8
+#: Quantos produtores em queda entram no pack. 💭 Três cabem numa frase.
+TETO_DE_QUEDAS = 3
+
+#: 🔴 Os três que cabem num `signal_type` EXISTENTE com semântica honesta.
+#: `commercial_opportunity` (domínio `comercial`) é o único dos 26 tipos do
+#: Intelligence Fabric que descreve o que estes achados são: trabalho
+#: comercial que alguém pode fazer esta semana.
+#:
+#: ⛔ E `COBERTURA_BAIXA` **não** está aqui. Ele é um fato sobre a FONTE, não
+#: sobre o negócio, e o tipo que o descreveria tem gate próprio no Fabric
+#: (SPEC-059 §12.4). Emitir um sinal daquele tipo por conta desta SPEC seria
+#: atravessar um portão que outra SPEC construiu. Fica no pack e no Artifact,
+#: que é onde ele serve: ao lado do número que ele qualifica.
+FINDINGS_QUE_VIRAM_SINAL = (EXPOSICAO_DE_RENOVACAO, CONCENTRACAO,
+                            QUEDA_DE_PRODUTOR)
+
+#: O tipo de sinal, o `source_type` e o teto de severidade — os três fixos.
+TIPO_DE_SINAL = "commercial_opportunity"
+SOURCE_TYPE = "executive_360"
+#: 🔴 `medium`, e nunca `critical`. Alerta crítico exige Tier 0/1/2 no Fabric,
+#: e o que sustenta estes achados é agregado de leitura de API — não é
+#: evidência de primeira mão sobre um caso. Severidade que o dado não sustenta
+#: é a forma mais rápida de ensinar alguém a ignorar alerta.
+SEVERIDADE_MAXIMA = "medium"
+
+
+def ref_da_metrica(m: MetricResult) -> str:
+    """`metric_id@versão` — a citação de UM número (SPEC-094 ref ⑥)."""
+    return f"{m.metric_id}@{m.version}"
+
+
+def _numero(m: Optional[MetricResult]) -> Optional[float]:
+    """O valor da métrica como número, ou `None`. `UNAVAILABLE` é `None`."""
+    if m is None or m.indisponivel:
+        return None
+    if isinstance(m.value, bool) or not isinstance(m.value, (int, float)):
+        return None
+    return float(m.value)
+
+
+def finding(kind: str, *, summary: str, metric_refs: Sequence[str] = (),
+            subject_type: str = "portfolio", subject_id: str = "",
+            severity: str = "low", **detalhe: Any) -> Dict[str, Any]:
+    """Um achado, na forma que o pack, o Artifact e o sinal leem.
+
+    ⛔ `summary` e `subject_id` nunca carregam nome de pessoa. Produtor entra
+    como `producer_ref` — a referência opaca, estável e por tenant.
+    """
+    achado: Dict[str, Any] = {
+        "kind": kind,
+        "summary": summary,
+        "metric_refs": list(metric_refs),
+        "subject_type": subject_type,
+        "subject_id": subject_id,
+        "severity": severity,
+        "vira_sinal": kind in FINDINGS_QUE_VIRAM_SINAL,
+    }
+    achado.update(detalhe)
+    return achado
+
+
+def achar_findings(metrics: Sequence[MetricResult],
+                   anteriores: Sequence[MetricResult] = ()
+                   ) -> List[Dict[str, Any]]:
+    """Os achados determinísticos deste pack. Ordem estável, sem LLM.
+
+    ```
+    concentração            mix.insurer acima do limiar
+    exposição de renovação  renewal.exposure > 0 na janela
+    queda de produtor       producer.performance do período × do anterior
+    cobertura baixa         qualquer métrica que cubra menos que o limiar
+    ```
+
+    🔴 A queda de produtor compara **referência opaca com referência opaca**,
+    entre os dois períodos, e só quando os DOIS lados existem. Um produtor que
+    não aparece no período anterior não "caiu": ele não estava lá, e chamar
+    isso de queda inventaria um problema que ninguém tem.
+    """
+    por_id = {m.metric_id: m for m in metrics}
+    antes = {m.metric_id: m for m in anteriores}
+    achados: List[Dict[str, Any]] = []
+
+    # --- concentração -----------------------------------------------------
+    mix = por_id.get("mix.insurer")
+    pct = _numero(mix)
+    if mix is not None and pct is not None and pct >= LIMIAR_CONCENTRACAO_PCT:
+        topo = dict(mix.breakdown[0]) if mix.breakdown else {}
+        achados.append(finding(
+            CONCENTRACAO, subject_type="insurer",
+            subject_id=str(topo.get("rotulo") or ""),
+            summary=("a maior seguradora responde por uma fatia da comissão do "
+                     "período acima do limiar declarado"),
+            metric_refs=[ref_da_metrica(mix)], severity=SEVERIDADE_MAXIMA,
+            valor_pct=round(pct, 1), limiar_pct=LIMIAR_CONCENTRACAO_PCT,
+            unidade="pct"))
+
+    # --- exposição de renovação -------------------------------------------
+    exp = por_id.get("renewal.exposure")
+    quantas = _numero(exp)
+    if exp is not None and quantas is not None and quantas > 0:
+        vencidas = next((dict(f) for f in exp.breakdown
+                         if "vencid" in str(f.get("faixa", "")).lower()), {})
+        achados.append(finding(
+            EXPOSICAO_DE_RENOVACAO, subject_type="portfolio",
+            subject_id="renewal_window",
+            summary=("há carteira vencendo na janela; o detalhe por faixa de "
+                     "urgência está no envelope da métrica"),
+            metric_refs=[ref_da_metrica(exp)], severity=SEVERIDADE_MAXIMA,
+            apolices=int(quantas),
+            ja_vencidas=int(vencidas.get("apolices") or 0), unidade="count"))
+
+    # --- queda de produtor ------------------------------------------------
+    agora_p = por_id.get("producer.performance")
+    antes_p = antes.get("producer.performance")
+    if agora_p is not None and antes_p is not None:
+        de_antes = {str(l.get("producer_ref") or ""): l for l in antes_p.breakdown}
+        quedas = []
+        for linha in agora_p.breakdown:
+            referencia = str(linha.get("producer_ref") or "")
+            anterior = de_antes.get(referencia)
+            if not referencia or anterior is None:
+                continue
+            base = float(anterior.get("comissao") or 0.0)
+            if base < PISO_DE_COMISSAO_PARA_QUEDA:
+                continue
+            atual = float(linha.get("comissao") or 0.0)
+            delta = 100.0 * (atual - base) / base
+            if delta <= LIMIAR_QUEDA_PCT:
+                quedas.append((delta, referencia))
+        for delta, referencia in sorted(quedas)[:TETO_DE_QUEDAS]:
+            achados.append(finding(
+                QUEDA_DE_PRODUTOR, subject_type="producer",
+                subject_id=referencia,
+                summary=("um produtor apropriou menos comissão que no período "
+                         "anterior, abaixo do limiar declarado"),
+                metric_refs=[ref_da_metrica(agora_p), ref_da_metrica(antes_p)],
+                severity=SEVERIDADE_MAXIMA, producer_ref=referencia,
+                delta_pct=round(delta, 1), limiar_pct=LIMIAR_QUEDA_PCT,
+                unidade="pct"))
+
+    # --- cobertura baixa: fica no pack, e NÃO vira sinal ------------------
+    baixas = [m for m in metrics
+              if m.coverage is not None and m.coverage < LIMIAR_DE_COBERTURA]
+    if baixas:
+        achados.append(finding(
+            COBERTURA_BAIXA, subject_type="portfolio", subject_id="coverage",
+            summary=("uma ou mais métricas do período cobrem menos que o "
+                     "limiar: o relatório soma parte da carteira e diz isso"),
+            metric_refs=[ref_da_metrica(m) for m in baixas], severity="low",
+            limiar=LIMIAR_DE_COBERTURA,
+            metricas=[{"metric_id": m.metric_id, "coverage": m.coverage}
+                      for m in baixas]))
+    return achados
+
+
+# --------------------------------------------------------------------------
+# Do finding ao SINAL — pelas leis do Fabric, sem tocar nelas
+# --------------------------------------------------------------------------
+def evidencia_da_metrica(m: MetricResult) -> Dict[str, Any]:
+    """O envelope da métrica virando evidência. ⛔ Sem nome, sem documento.
+
+    🔴 `value_snapshot` leva o número, a unidade, o período, a base temporal e
+    a cobertura — exatamente o que permite conferir a afirmação depois. O que
+    ele **não** leva é o `breakdown`: ranking e fatias são detalhe do Artifact,
+    e evidência não é cópia do dado bruto (SPEC-059 §10.2).
+    """
+    return {
+        "evidence_type": "metric",
+        "source_system": SOURCE_TYPE,
+        "source_ref": ref_da_metrica(m),
+        "summary_redacted": (
+            f"{m.metric_id} = {m.value} {m.unit} "
+            f"(base {m.time_basis}, confianca {m.confidence})"),
+        "value_snapshot": {
+            "value": m.value, "unit": m.unit, "period": dict(m.period),
+            "time_basis": m.time_basis, "coverage": m.coverage,
+            "confidence": m.confidence, "provider_key": m.provider_key,
+        },
+    }
+
+
+def sinais_do_pack(pack: "EvidencePack") -> List[Dict[str, Any]]:
+    """Os rascunhos de sinal deste pack, prontos para o `SignalService`.
+
+    Devolve **dicionários**, e não `SignalDraft`, de propósito: este módulo é
+    puro e não importa `app.services.intelligence` (CLAUDE.md §5 — a fronteira
+    é de mão dupla). Quem grava monta o `SignalDraft` com estes campos e chama
+    `registrar()`, que é onde `valido()` roda de verdade.
+
+    🔴 Todo rascunho sai COM evidência. Um sinal sem evidência é recusado pelo
+    Fabric (lei central 1 da SPEC-059) — e ser recusado em silêncio, na hora
+    de gravar, seria pior que não emitir: ninguém veria o achado e ninguém
+    veria a recusa.
+    """
+    por_ref = {ref_da_metrica(m): m for m in pack.metrics}
+    inicio = str(pack.period.get("start") or "")
+    fim = str(pack.period.get("end") or "")
+    rascunhos: List[Dict[str, Any]] = []
+
+    for achado in pack.findings:
+        kind = str(achado.get("kind") or "")
+        if kind not in FINDINGS_QUE_VIRAM_SINAL:
+            continue
+        refs = [r for r in achado.get("metric_refs", []) if r in por_ref]
+        evidencias = [evidencia_da_metrica(por_ref[r]) for r in refs]
+        if not evidencias:
+            # Achado sem métrica no pack não vira sinal. Preferimos o achado
+            # visível no Artifact a um sinal que o Fabric recusaria na porta.
+            continue
+        coberturas = [por_ref[r].coverage for r in refs
+                      if por_ref[r].coverage is not None]
+        confianca_do_sinal = round(min(coberturas), 2) if coberturas else 0.7
+        alvo = str(achado.get("subject_id") or "")
+        rascunhos.append({
+            "company_id": pack.company_id,
+            "signal_type": TIPO_DE_SINAL,
+            "subject_type": str(achado.get("subject_type") or "portfolio"),
+            "subject_id": alvo or None,
+            "summary_redacted": str(achado.get("summary") or ""),
+            # 🔴 O dedupe carrega o PERÍODO. Sem ele, a exposição de renovação
+            # de dois trimestres diferentes reforçaria um sinal só, e o dono
+            # veria um alerta velho com data nova.
+            "dedupe_key": f"094:{kind}:{inicio}:{fim}:{alvo}",
+            "source_type": SOURCE_TYPE,
+            "source_ref": pack.pack_id,
+            "severity": SEVERIDADE_MAXIMA,
+            "confidence": max(0.0, min(1.0, confianca_do_sinal)),
+            "window_start": inicio or None,
+            "window_end": fim or None,
+            "metadata": {"metric_refs": refs, "pack_id": pack.pack_id,
+                         "finding_kind": kind, "spec": "094"},
+            "evidencias": evidencias,
+        })
+    return rascunhos
