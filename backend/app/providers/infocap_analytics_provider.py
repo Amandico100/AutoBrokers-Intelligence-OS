@@ -53,7 +53,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.comercial.cbim import (
@@ -109,6 +109,20 @@ _MANIFESTO_JSON = os.path.join(_CENSO, "infocap-capability-manifest.json")
 # mesmo `smith-api` — e para a segunda. O que ele não pega (dois contêineres)
 # está na pendência P-094-CONTA-COMPARTILHADA, que é do Founder e é P1.
 _CONTAS_EM_USO: Dict[str, str] = {}
+
+
+def _agora_utc() -> str:
+    """O instante, em UTC e COM fuso escrito. 🔴 Nunca `datetime.now()` cru.
+
+    📊 Achado pelo juiz em 03/09/2026, na peça viva: o mesmo relatório gravou
+    `artifacts.created_at = 23:03:58Z` e `tenant_connections.last_used_at =
+    20:05:07Z` — três horas NO PASSADO para um uso que acabara de acontecer.
+    A coluna é `timestamptz`; `datetime.now()` devolve a hora LOCAL do
+    contêiner **sem fuso**, e o Postgres lê o que chega sem fuso como se já
+    fosse UTC. O relógio da telemetria passa a discordar do relógio da entrega,
+    e quem for depurar "esta conexão foi usada?" lê a hora errada.
+    """
+    return datetime.now(timezone.utc).isoformat()
 
 
 def impressao_da_conta(login: str) -> str:
@@ -566,7 +580,7 @@ class InfocapAnalyticsProvider:
         """
         try:
             await (db.client.table("tenant_connections")
-                   .update({"last_used_at": datetime.now().isoformat()})
+                   .update({"last_used_at": _agora_utc()})
                    .eq("id", connection_id)
                    .eq("company_id", company_id)
                    .execute())
@@ -664,7 +678,7 @@ class InfocapAnalyticsProvider:
         lote.provenance = Provenance(
             connection_id=conexao_id,
             correlation_id=correlacao,
-            fetched_at=datetime.now(),
+            fetched_at=datetime.now(timezone.utc),
             fingerprint=lote.fingerprints.get("__combinado__", ""),
             account_fingerprint=impressao,
         )

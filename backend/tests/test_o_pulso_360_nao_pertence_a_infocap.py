@@ -93,6 +93,8 @@ import socket
 import sys
 import types
 from datetime import date
+from datetime import datetime as datetime_
+from datetime import timezone as timezone_
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -3419,6 +3421,115 @@ def bloco_13_a_rodada_de_conserto():
         sys.modules.pop(chave, None)
 
 
+# ===========================================================================
+# [14] A SEGUNDA RODADA DE CONSERTO — os BLOCKERS do juiz FRESCO
+# ===========================================================================
+#
+# 🔴 A primeira rodada deixou o produto verde em 259 assercoes e MESMO ASSIM o
+# juiz fresco de 03/09/2026 achou quatro coisas que nenhuma delas via. O padrao
+# dos quatro e o mesmo, e e o da CLAUDE.md §9.4: **o guarda media a PECA, e nao
+# o ELO**. O fake do bloco [4] expoe `.client` e responde a `await`; o grafo
+# passa um cliente CRU e SINCRONO. As duas metades estavam certas; o encaixe,
+# nao.
+#
+# Cada item aqui e um PAR (protocolo §5), com a linha de CONTROLE ao lado.
+
+def _com_fuso(valor):
+    """O carimbo de tempo diz o FUSO? `Z` ou `+hh:mm` no fim, nunca nada."""
+    t = str(valor or "").strip()
+    return t.endswith("Z") or bool(re.search(r"[+-]\d{2}:?\d{2}$", t))
+
+
+class _ClienteCruSincrono:
+    """⛔ O que `graph.py:563` passa de verdade: o `Client` CRU do supabase-py.
+
+    🔴 As duas diferencas que o `SupabaseFalso` do bloco [4] escondia, e que
+    juntas produziram `RELATORIO_FALHOU · AttributeError` no primeiro uso real:
+
+    ```
+    NAO tem `.client`      `_resolve_infocap_connection` faz `db.client.table(...)`
+    NAO e aguardavel       `await ....execute()` sobre resposta sincrona = TypeError
+    ```
+
+    Este fake nao e um Supabase util: ele existe para FALHAR do jeito exato que
+    o cliente real falha se alguem o entregar ao resolver.
+    """
+
+    def __init__(self):
+        self.chamadas = []
+
+    def table(self, nome):
+        self.chamadas.append(nome)
+        return self
+
+    def select(self, *a, **k):   # noqa: ANN001, ARG002
+        return self
+
+    def eq(self, *a, **k):       # noqa: ANN001, ARG002
+        return self
+
+    def limit(self, *a, **k):    # noqa: ANN001, ARG002
+        return self
+
+    def execute(self):
+        # ⛔ SINCRONO de proposito: `await` sobre isto levanta TypeError.
+        class _R:
+            data = []
+        return _R()
+
+
+def bloco_14_a_segunda_rodada():
+    _p("\n[14] A SEGUNDA RODADA DE CONSERTO -- os BLOCKERS do juiz fresco")
+
+    # ------------------------------------------------------------------ ①
+    # B4 · `last_used_at` gravava a hora LOCAL numa coluna `timestamptz`.
+    # 📊 Medido na peca viva: `artifacts.created_at = 23:03:58Z` x
+    # `last_used_at = 20:05:07Z` — tres horas NO PASSADO para um uso que
+    # acabara de acontecer. `datetime.now()` nao carrega fuso, e o Postgres le
+    # o que chega sem fuso como se ja fosse UTC.
+    ad, erro_ad = carregar("_094_14_adapter", ADAPTER)
+    classe = getattr(ad, "InfocapAnalyticsProvider", None) if ad else None
+    if classe is None:
+        certo(False, "[14] ① o adapter carrega", erro_ad or "sem a classe")
+    else:
+        fake = SupabaseFalso()
+        try:
+            ad.esquecer_contas()
+        except Exception:  # noqa: BLE001
+            pass
+        exercitar_o_adapter(classe, fake)
+        gravado = None
+        for u in fake.updates("tenant_connections"):
+            if u["campos"] and "last_used_at" in u["campos"]:
+                gravado = u["campos"]["last_used_at"]
+        perto = False
+        if gravado is not None and _com_fuso(gravado):
+            try:
+                lido = datetime_.fromisoformat(str(gravado).replace("Z", "+00:00"))
+                perto = abs((datetime_.now(timezone_.utc)
+                             - lido).total_seconds()) < 300
+            except Exception:  # noqa: BLE001
+                perto = False
+        certo(gravado is not None and _com_fuso(gravado) and perto,
+              "[14] ① PAR-A: `last_used_at` grava UTC COM fuso escrito, e a "
+              "hora bate com agora",
+              "gravado=%r · dentro de 5min=%r" % (gravado, perto))
+        # 🔴 A linha de CONTROLE: a MESMA pergunta sobre o valor ANTIGO tem de
+        # ficar VERMELHA. Sem ela, um `_com_fuso` que dissesse `True` sempre
+        # daria verde acima e nao guardaria nada (CLAUDE.md §9.3).
+        certo(not _com_fuso(datetime_.now().isoformat()),
+              "[14] ① PAR-B (controle): o valor ANTIGO — `datetime.now()` cru, "
+              "sem fuso — e REPROVADO pela mesma pergunta",
+              "o checador aprovou um carimbo sem fuso: ele nao guarda nada")
+        try:
+            ad.esquecer_contas()
+        except Exception:  # noqa: BLE001
+            pass
+
+    for chave in ("_094_14_adapter",):
+        sys.modules.pop(chave, None)
+
+
 BLOCOS = (
     ("[0] GATE ZERO", bloco_0_gate_zero),
     ("[1] ELO 0-bis", bloco_1_elo),
@@ -3432,6 +3543,7 @@ BLOCOS = (
     ("[9] TEMPLATE", bloco_9_template),
     ("[10] REFERENCIA", bloco_10_referencia),
     ("[13] RODADA DE CONSERTO", bloco_13_a_rodada_de_conserto),
+    ("[14] SEGUNDA RODADA", bloco_14_a_segunda_rodada),
     ("[11] CONTROLE GERAL", bloco_11_controle_geral),
 )
 
