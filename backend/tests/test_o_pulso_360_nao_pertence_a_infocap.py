@@ -163,8 +163,13 @@ def _proibir(self, *a, **k):   # noqa: ANN001
         "(nem qualquer outro host). Destino pedido: %r" % (a[0] if a else None,))
 
 
-socket.socket.connect = _proibir      # type: ignore[assignment]
-socket.socket.connect_ex = _proibir   # type: ignore[assignment]
+def _bloquear_a_rede():
+    """So DENTRO da execucao do guarda. 📊 03/09: no nivel do modulo, o pytest instalava o
+    bloqueio na COLETA e 99 testes de outros arquivos (que falam com o Supabase) ficaram
+    vermelhos ate este guarda rodar e devolver a rede. Guarda que muda o processo inteiro
+    muda-o quando roda, e devolve no `finally` -- nunca ao ser importado."""
+    socket.socket.connect = _proibir      # type: ignore[assignment]
+    socket.socket.connect_ex = _proibir   # type: ignore[assignment]
 
 
 def _devolver_a_rede():
@@ -2679,6 +2684,7 @@ def main() -> int:
     _p("=" * 78)
     _p("  O PULSO 360 NAO PERTENCE A INFOCAP -- SPEC-094  (gate zero + 0-bis..G)")
     _p("=" * 78)
+    _bloquear_a_rede()
     try:
         _rodar_os_blocos()
     finally:
