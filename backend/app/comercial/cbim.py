@@ -210,14 +210,21 @@ def somar_dinheiro(valores: Iterable[Any],
     apresentada como total é a forma mais cara de mentir com número certo
     (SPEC-081, `Cobertura`).
     """
+    from decimal import Decimal as _D
+
     total = Money.zero(currency)
     conhecidos = 0
     itens = 0
     for v in valores:
         itens += 1
-        if isinstance(v, Money):
-            total = total + v
-            conhecidos += 1
+        # 🔴 Por FORMA, e não por `isinstance` — ver `metricas/registry._float`:
+        # o mesmo módulo carregado duas vezes dá duas classes `Money`, e
+        # `isinstance` viraria dinheiro legítimo em INDISPONÍVEL, em silêncio.
+        quantia = getattr(v, "amount", None)
+        if quantia is None:
+            continue
+        total = Money(total.amount + _D(str(quantia)), currency)
+        conhecidos += 1
     return total, conhecidos, itens
 
 

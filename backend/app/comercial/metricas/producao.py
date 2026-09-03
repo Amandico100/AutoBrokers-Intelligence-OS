@@ -10,8 +10,26 @@ from typing import Any, Dict, List
 
 from app.comercial import calculos as calc
 from app.comercial.manifesto import SUPPORTED
-from app.comercial.metricas.registry import (POLICY_VALID_FROM, Contexto,
-                                             MetricDefinition, Saida, registrar)
+from app.comercial.evidence_pack import BASES_TEMPORAIS
+
+POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
+
+#: 🔴 As definições são DADO, e o registry as instala. Não é cerimônia: um
+#: `import` do registry aqui criaria uma segunda cópia dele quando alguém
+#: carregasse `registry.py` por CAMINHO (que é como um guarda isolado o carrega),
+#: e aí haveria duas listas de métricas — uma cheia e uma vazia. `calcular()`
+#: diria "métrica desconhecida" sobre uma métrica que existe, e o defeito seria
+#: invisível. Aqui não há import: o registry se injeta.
+_DEFINICOES: List[Dict[str, Any]] = []
+
+Contexto = Any
+Saida = Any
+
+
+def instalar(reg) -> None:
+    """Registra as definições deste arquivo NO registry que chamou."""
+    for kw in _DEFINICOES:
+        reg.registrar(reg.MetricDefinition(**kw))
 
 
 # --------------------------------------------------------------------------
@@ -32,7 +50,7 @@ def _contagem(ctx: Contexto) -> Saida:
     return float(len(validas)), 1.0, [], avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="production.policy_count", version=1,
     label="Apólices emitidas", grain="policy", unit="count",
     time_basis=POLICY_VALID_FROM,
@@ -60,7 +78,7 @@ def _premio(ctx: Contexto) -> Saida:
     return (total if conhecidas else None), cobertura, [], avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="production.premium_written", version=1,
     label="Prêmio emitido", grain="policy", unit="BRL",
     time_basis=POLICY_VALID_FROM,
@@ -96,7 +114,7 @@ def _comissao_apropriada(ctx: Contexto) -> Saida:
     return (total if conhecidas else None), cobertura, [], avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="commission.broker_accrued", version=1,
     label="Comissão apropriada da corretora", grain="policy", unit="BRL",
     time_basis=POLICY_VALID_FROM,
@@ -128,12 +146,19 @@ def _novo_versus_renovacao(ctx: Contexto) -> Saida:
         {"segmento": "renovacao", "apolices": renov[0], "comissao": renov[1]},
     ]
     cobertura = len(validas) / len([a for a in ctx.apolices if not a.e_endosso])
-    return (100.0 * novo[0] / total if total else None), cobertura, breakdown, []
+    # 🔴 O valor é a REPARTIÇÃO, e não uma das metades. "70% é novo" e "30% é
+    # renovação" são a mesma frase, e escolher uma delas como o número da métrica
+    # obrigaria o modelo a inferir a outra — que é exatamente o que o pacote de
+    # evidência existe para não precisar.
+    valor = {"NEW": novo[0], "RENEWAL": renov[0],
+             "NEW_comissao": novo[1], "RENEWAL_comissao": renov[1],
+             "total": total}
+    return valor, cobertura, breakdown, []
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="production.new_vs_renewal", version=1,
-    label="Negócio novo sobre o total", grain="policy", unit="pct",
+    label="Negócio novo × renovação", grain="policy", unit="count",
     time_basis=POLICY_VALID_FROM,
     required_capabilities=("portfolio.production", "portfolio.renewals"),
     formula=_novo_versus_renovacao,
@@ -174,7 +199,7 @@ for _mid, _label, _cap, _aceitos, _porque in (
      "financial.commission_tax", (SUPPORTED,),
      "não verificado nesta rodada do censo — não concluir que não existe"),
 ):
-    registrar(MetricDefinition(
+    _DEFINICOES.append(dict(
         metric_id=_mid, version=1, label=_label, grain="policy", unit="BRL",
         time_basis=POLICY_VALID_FROM,
         required_capabilities=(_cap,),

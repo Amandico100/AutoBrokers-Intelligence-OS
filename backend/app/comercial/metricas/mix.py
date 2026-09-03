@@ -19,8 +19,26 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from app.comercial import calculos as calc
-from app.comercial.metricas.registry import (POLICY_VALID_FROM, Contexto,
-                                             MetricDefinition, Saida, registrar)
+from app.comercial.evidence_pack import BASES_TEMPORAIS
+
+POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
+
+#: 🔴 As definições são DADO, e o registry as instala. Não é cerimônia: um
+#: `import` do registry aqui criaria uma segunda cópia dele quando alguém
+#: carregasse `registry.py` por CAMINHO (que é como um guarda isolado o carrega),
+#: e aí haveria duas listas de métricas — uma cheia e uma vazia. `calcular()`
+#: diria "métrica desconhecida" sobre uma métrica que existe, e o defeito seria
+#: invisível. Aqui não há import: o registry se injeta.
+_DEFINICOES: List[Dict[str, Any]] = []
+
+Contexto = Any
+Saida = Any
+
+
+def instalar(reg) -> None:
+    """Registra as definições deste arquivo NO registry que chamou."""
+    for kw in _DEFINICOES:
+        reg.registrar(reg.MetricDefinition(**kw))
 
 #: Quantas fatias vão ao pacote. 💭 Doze cabem num gráfico e numa frase; o
 #: resto entra como "demais" na soma, nunca some.
@@ -63,7 +81,7 @@ def _mix_ramo(ctx: Contexto) -> Saida:
     return _mix(ctx, "ramo")
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="mix.insurer", version=1,
     label="Concentração na maior seguradora", grain="insurer", unit="pct",
     time_basis=POLICY_VALID_FROM,
@@ -75,7 +93,7 @@ registrar(MetricDefinition(
                        "conhecidas; ela vira '(não informado)' e aparece",
 ))
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="mix.branch", version=1,
     label="Concentração no maior ramo", grain="branch", unit="pct",
     time_basis=POLICY_VALID_FROM,

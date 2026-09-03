@@ -69,7 +69,10 @@ BASES_TEMPORAIS = ("POLICY_VALID_FROM", "POLICY_VALID_TO")
 
 ALTA, MEDIA, BAIXA = "HIGH", "MEDIUM", "LOW"
 
-Valor = Union[float, int, str]
+#: 🔴 O valor de uma métrica é UM número — exceto quando a resposta honesta
+#: é uma repartição (novo × renovação), e aí forçar um escalar obrigaria o
+#: modelo a escolher qual metade citar. `str` cobre o sentinela `UNAVAILABLE`.
+Valor = Union[float, int, str, Dict[str, Any]]
 
 
 # --------------------------------------------------------------------------

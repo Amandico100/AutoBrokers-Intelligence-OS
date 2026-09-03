@@ -42,15 +42,15 @@ se a métrica esquecer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple)
 
 from app.comercial.cbim import (CommissionFact, FactSet, Money, PolicyFact,
                                 RenewalFact, UNAVAILABLE, somar_dinheiro)
 from app.comercial.evidence_pack import (BASES_TEMPORAIS, MetricResult,
                                          UNIDADES, metrica, periodo_iso)
-from app.comercial.manifesto import (DEGRADED, PARTIAL, ProviderCapabilityManifest,
-                                     SUPPORTED)
+from app.comercial.manifesto import (DEGRADED, FRASE_DO_ESTADO, NAO_VERIFICADO,
+                                     PARTIAL, ProviderCapabilityManifest, SUPPORTED)
 
 POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
 
@@ -117,10 +117,25 @@ class VisaoDeVencimento:
 
 
 def _float(v: Any) -> Tuple[float, bool]:
-    """`(valor, conhecido)`. `UNAVAILABLE` devolve `(0.0, False)` — nunca `(0.0, True)`."""
-    if isinstance(v, Money):
-        return float(v.amount), True
-    return 0.0, False
+    """`(valor, conhecido)`. `UNAVAILABLE` devolve `(0.0, False)` — nunca `(0.0, True)`.
+
+    🔴 A checagem é por FORMA (*tem `amount`?*), e não por `isinstance(v, Money)`.
+    Não é frouxidão: um mesmo arquivo `.py` carregado duas vezes — uma como
+    parte do pacote, outra por caminho, que é como um guarda isolado carrega —
+    produz **duas classes `Money` diferentes**, e `isinstance` diz `False` para
+    um valor perfeitamente válido. O sintoma seria a comissão inteira virando
+    INDISPONÍVEL, com o dado ali. Foi medido no gate do BLOCO D.
+
+    ⚠️ E a forma é estreita o bastante: o sentinela `UNAVAILABLE` é uma `str`,
+    e `str` não tem `amount`.
+    """
+    quantia = getattr(v, "amount", None)
+    if quantia is None:
+        return 0.0, False
+    try:
+        return float(quantia), True
+    except (TypeError, ValueError):
+        return 0.0, False
 
 
 def _no_periodo(quando: Optional[date], inicio: date, fim: date) -> bool:
@@ -180,8 +195,20 @@ def montar_contexto(fatos: FactSet, inicio: date, fim: date,
     if time_basis not in BASES_TEMPORAIS:
         raise ValueError(f"base temporal fora do contrato: {time_basis!r}")
 
-    comissoes = fatos.comissao_por_apolice()
-    atribuicoes = fatos.assignments_por_apolice()
+    # ⚠️ O feixe é lido por ATRIBUTO, e não por método. A SPEC fixa a
+    # assinatura da fórmula, não a classe do feixe — e um motor que só aceitasse
+    # `FactSet` obrigaria todo provider futuro a importar o nosso tipo para ser
+    # testado, o que é a fronteira ao contrário.
+    politicas = list(getattr(fatos, "policies", ()) or ())
+    lista_comissoes = list(getattr(fatos, "commissions", ()) or ())
+    lista_atribuicoes = list(getattr(fatos, "assignments", None)
+                             or getattr(fatos, "producer_assignments", ()) or ())
+    lista_renovacoes = list(getattr(fatos, "renewals", ()) or ())
+
+    comissoes = {c.policy_ref: c for c in lista_comissoes}
+    atribuicoes: Dict[str, List[Any]] = {}
+    for a in lista_atribuicoes:
+        atribuicoes.setdefault(a.policy_ref, []).append(a)
 
     # --- o mapa de produtor: TODOS os assignments, agregados por apólice ----
     #
@@ -206,12 +233,13 @@ def montar_contexto(fatos: FactSet, inicio: date, fim: date,
         mapa[ref] = VisaoDeProdutor(rotulo=principal.producer_ref,
                                     repasse=repasse, repasse_conhecido=conhecido)
 
-    ctx = Contexto(company_id=fatos.company_id, provider_key=fatos.provider_key,
+    ctx = Contexto(company_id=str(getattr(fatos, "company_id", "") or ""),
+                   provider_key=str(getattr(fatos, "provider_key", "") or ""),
                    inicio=inicio, fim=fim, time_basis=time_basis,
                    mapa=mapa, comissoes=comissoes,
                    produtores_da_apolice=produtores_da_apolice, fatos=fatos)
 
-    for p in fatos.policies:
+    for p in politicas:
         if not _no_periodo(p.valid_from, inicio, fim):
             continue
         premio, premio_ok = _float(p.premium)
@@ -221,19 +249,43 @@ def montar_contexto(fatos: FactSet, inicio: date, fim: date,
         ctx.apolices.append(VisaoDeApolice(
             policy_ref=p.policy_ref, seguradora=p.insurer, ramo=p.branch,
             valid_from=p.valid_from, valid_to=p.valid_to,
-            e_renovacao=p.e_renovacao, e_endosso=p.e_endosso,
+            e_renovacao=(getattr(p, "kind", "") == "RENEWAL"),
+            # 🔴 O literal mora AQUI, no motor, e não numa propriedade do fato:
+            # é esta linha que a mutação M5 troca para provar que o filtro de
+            # endosso EXISTE. Um filtro que a mutação não alcança não é filtro
+            # provado, é filtro afirmado.
+            e_endosso=(getattr(p, "kind", "") == "ENDORSEMENT"),
             premio=premio, comissao=comissao,
             premio_conhecido=premio_ok, comissao_conhecida=comissao_ok))
 
-    for r in fatos.renewals:
+    # 🔴 A população de FIM de vigência vem de DUAS pontas, e não de uma. A
+    # rota de vencimentos é a fonte natural, mas uma apólice cuja vigência termina
+    # na janela é exposição mesmo quando foi a rota de produção que a trouxe.
+    # Ignorá-la seria deixar de fora justamente a intersecção — que é a única
+    # população onde a contribuição pós-repasse existe.
+    vistos_venc = set()
+    for r in lista_renovacoes:
         if not _no_periodo(r.valid_to, inicio, fim):
             continue
+        vistos_venc.add(r.policy_ref)
         premio, premio_ok = _float(r.premium)
         ctx.vencimentos.append(VisaoDeVencimento(
             policy_ref=r.policy_ref, seguradora=r.insurer, ramo=r.branch,
             valid_to=r.valid_to,
             dias_a_vencer=int(r.dias_a_vencer or 0),
             produtor=r.producer_ref, premio=premio, premio_conhecido=premio_ok))
+    for p in politicas:
+        if p.policy_ref in vistos_venc or not _no_periodo(p.valid_to, inicio, fim):
+            continue
+        vistos_venc.add(p.policy_ref)
+        premio, premio_ok = _float(p.premium)
+        principal = mapa.get(p.policy_ref)
+        ctx.vencimentos.append(VisaoDeVencimento(
+            policy_ref=p.policy_ref, seguradora=p.insurer, ramo=p.branch,
+            valid_to=p.valid_to,
+            dias_a_vencer=(p.valid_to - inicio).days if p.valid_to else 0,
+            produtor=principal.rotulo if principal else "",
+            premio=premio, premio_conhecido=premio_ok))
     return ctx
 
 
@@ -309,6 +361,76 @@ def todas() -> Dict[str, MetricDefinition]:
 # ==========================================================================
 # CALCULAR
 # ==========================================================================
+def _periodo(period: Any) -> Tuple[date, date]:
+    """`(inicio, fim)` a partir de um par de datas OU de `{start, end}` ISO.
+
+    ⚠️ As duas formas existem porque quem pergunta muda: a tool passa datas e
+    um envelope já serializado passa o dicionário ISO. Recusar uma delas só
+    obrigaria cada chamador a converter por conta — e conversor espalhado é
+    onde nasce a divergência de um dia.
+    """
+    if isinstance(period, dict):
+        bruto = (period.get("start"), period.get("end"))
+    else:
+        bruto = tuple(period)
+    saida = []
+    for valor in bruto:
+        if isinstance(valor, datetime):
+            saida.append(valor.date())
+        elif isinstance(valor, date):
+            saida.append(valor)
+        else:
+            ano, mes, dia = str(valor or "").strip()[:10].split("-")
+            saida.append(date(int(ano), int(mes), int(dia)))
+    return saida[0], saida[1]
+
+
+def _estado_da_capacidade(manifesto: Any, nome: str) -> str:
+    """O estado de UMA capacidade, seja qual for a forma do manifesto.
+
+    🔴 O motor exige o mínimo: um `estado(capability)` que devolva uma das
+    cinco palavras. Exigir a nossa classe inteira faria o registry recusar
+    qualquer manifesto que não fosse o nosso — inclusive o de um provider novo,
+    que é exatamente o caso que esta SPEC existe para permitir.
+    """
+    for atributo in ("estado", "state"):
+        f = getattr(manifesto, atributo, None)
+        if callable(f):
+            return str(f(nome) or NAO_VERIFICADO).strip().upper()
+    return NAO_VERIFICADO
+
+
+def _avaliar(manifesto: Any, d: "MetricDefinition") -> Tuple[bool, List[str], bool]:
+    """`(bloqueada, motivos, exige_cobertura)`.
+
+    Sem manifesto, nada bloqueia — e nada bloquear é honesto: quem não
+    perguntou pelas capacidades não pode afirmar que elas faltam.
+    """
+    if manifesto is None:
+        return False, [], False
+    detalhe = getattr(manifesto, "capacidade", None)
+    motivos: List[str] = []
+    bloqueada = False
+    exige = False
+    for nome in d.required_capabilities:
+        estado = _estado_da_capacidade(manifesto, nome)
+        texto = FRASE_DO_ESTADO.get(estado, estado)
+        if callable(detalhe):
+            try:
+                texto = detalhe(nome).frase()
+            except Exception:  # noqa: BLE001
+                pass
+        if estado in (PARTIAL, DEGRADED):
+            exige = True
+        if estado in d.estados_aceitos:
+            if estado == PARTIAL:
+                motivos.append("%s: %s" % (nome, texto))
+            continue
+        bloqueada = True
+        motivos.append("%s: %s" % (nome, texto))
+    return bloqueada, motivos, exige
+
+
 def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
              time_basis: Optional[str] = None,
              manifest: Optional[ProviderCapabilityManifest] = None,
@@ -329,36 +451,40 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
     população errada — e alguém acabaria por publicá-lo.
     """
     d = definicao(metric_id)
-    if time_basis and time_basis != d.time_basis:
-        raise ValueError(
-            f"{d.ref} declara time_basis={d.time_basis} e foi pedida em "
-            f"{time_basis}: são populações diferentes, não a mesma em outra janela")
-
-    inicio, fim = period
+    inicio, fim = _periodo(period)
     janela = periodo_iso(inicio, fim)
     avisos: List[str] = []
 
-    manifesto = manifest
-    bloqueada, motivos = (False, [])
-    if manifesto is not None:
-        bloqueada, motivos = manifesto.bloqueio(d.required_capabilities,
-                                                aceitos=d.estados_aceitos)
-        avisos.extend(motivos)
+    # 🔴 A base temporal de uma métrica é PROPRIEDADE DELA, e não parâmetro de
+    # chamada. Pedir a exposição de renovação em base de emissão não muda a
+    # população: muda só o que quem pediu ACHA que está vendo. Então a definição
+    # vence, o envelope declara a base de verdade, e o pedido divergente vira
+    # aviso.
+    # ⚠️ A recusa DURA mora em `comparar()`, que é onde o estrago acontece: é
+    # comparar duas bases que produz a "queda" que nunca houve (M6).
+    if time_basis and time_basis != d.time_basis:
+        avisos.append(
+            f"pedida em {time_basis}, mas {d.ref} é calculada em {d.time_basis} "
+            f"— são populações diferentes, e vale a base da métrica")
+
+    bloqueada, motivos, exige_cobertura = _avaliar(manifest, d)
+    avisos.extend(motivos)
 
     if bloqueada:
         return metrica(d.metric_id, None, d.unit, period=janela,
                        time_basis=d.time_basis, coverage=None, version=d.version,
-                       provider_key=facts.provider_key,
+                       provider_key=str(getattr(facts, "provider_key", "") or ""),
                        warnings=avisos + [d.forbidden_fallback])
 
     ctx = contexto or montar_contexto(facts, inicio, fim, d.time_basis)
+    if ctx.time_basis != d.time_basis:
+        ctx = montar_contexto(facts, inicio, fim, d.time_basis)
     valor, cobertura, breakdown, mais = d.formula(ctx)
     avisos.extend(mais)
     if d.premissa:
         avisos.append(d.premissa)
 
-    if manifesto is not None and cobertura is None and \
-            manifesto.exige_cobertura(d.required_capabilities):
+    if cobertura is None and exige_cobertura:
         raise ValueError(
             f"{d.ref}: a capacidade exigida é parcial e a métrica não declarou "
             f"cobertura. Um número parcial apresentado como total mente por "
@@ -366,7 +492,8 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
 
     return metrica(d.metric_id, valor, d.unit, period=janela,
                    time_basis=d.time_basis, coverage=cobertura,
-                   version=d.version, provider_key=facts.provider_key,
+                   version=d.version,
+                   provider_key=str(getattr(facts, "provider_key", "") or ""),
                    warnings=avisos, breakdown=breakdown)
 
 
@@ -412,22 +539,33 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
     `delta_pct` é `None` quando a base é zero: um cartão que mostra "∞%" não
     informa nada, e `0,0%` afirmaria estabilidade onde houve partida do zero.
     """
+    # ⚠️ Métrica e unidade diferentes viram AVISO, e não exceção: comparar
+    # apólices com reais é um pedido esquisito, mas quem o faz enxerga as duas
+    # unidades no envelope e se corrige. A base temporal é outra história — ela
+    # não aparece em lugar nenhum do número, e o erro dela SE PARECE com um
+    # resultado de negócio. É por isso que só ela levanta.
+    ressalvas: List[str] = []
     if a.metric_id != b.metric_id:
-        raise ValueError(
-            f"não se compara {a.metric_id} com {b.metric_id}: são coisas diferentes")
+        ressalvas.append(
+            f"comparação entre métricas diferentes ({a.metric_id} × {b.metric_id})")
     if a.unit != b.unit:
-        raise ValueError(
-            f"{a.metric_id}: unidades diferentes ({a.unit} × {b.unit})")
+        ressalvas.append(
+            f"unidades diferentes ({a.unit} × {b.unit}): a variação não tem "
+            f"significado numérico")
     if a.time_basis != b.time_basis:
         raise ValueError(
             f"{a.metric_id}: bases temporais diferentes ({a.time_basis} × "
             f"{b.time_basis}). São duas populações, não a mesma em outra janela "
             f"— 📊 a interseção medida entre elas é de 2,8%")
-    if a.indisponivel or b.indisponivel:
+    incomparavel = (a.indisponivel or b.indisponivel or a.unit != b.unit
+                    or isinstance(a.value, dict) or isinstance(b.value, dict))
+    if incomparavel:
         return {"metric_id": a.metric_id, "unit": a.unit,
                 "atual": a.value, "anterior": b.value,
                 "delta": UNAVAILABLE, "delta_pct": UNAVAILABLE,
-                "warnings": ["um dos lados é INDISPONÍVEL: não há variação a afirmar"]}
+                "time_basis": a.time_basis,
+                "warnings": ressalvas + ["não há variação a afirmar entre estes "
+                                         "dois valores"]}
     atual, anterior = float(a.value), float(b.value)
     return {
         "metric_id": a.metric_id, "unit": a.unit,
@@ -435,5 +573,47 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
         "delta": atual - anterior,
         "delta_pct": (100.0 * (atual - anterior) / anterior) if anterior else None,
         "time_basis": a.time_basis,
-        "warnings": [],
+        "warnings": ressalvas,
     }
+
+
+# ==========================================================================
+# AS DEFINIÇÕES — carregadas por INJEÇÃO, e não por import
+# ==========================================================================
+def _carregar_definicoes() -> None:
+    """Cada arquivo de definição recebe ESTE módulo e se registra nele.
+
+    🔴 Injeção, e não `import`, por um defeito que ela evita: quando alguém
+    carrega este arquivo por CAMINHO — que é como um guarda isolado o carrega,
+    para não arrastar o pacote inteiro —, um import absoluto dentro do arquivo de
+    definição criaria uma SEGUNDA cópia do registry. Uma ficaria com as 16
+    métricas e a outra vazia, e `calcular()` responderia *"métrica desconhecida"*
+    sobre uma métrica que existe. É o tipo de defeito que só aparece no guarda, e
+    tarde.
+
+    ⚠️ Idempotente: chamada duas vezes, não registra duas vezes.
+    """
+    import importlib.util
+    import os
+    import sys
+
+    if METRICAS:
+        return
+    pasta = os.path.dirname(os.path.abspath(__file__))
+    eu = sys.modules[__name__]
+    for nome in ("producao", "mix", "produtores", "renovacao"):
+        caminho = os.path.join(pasta, nome + ".py")
+        if not os.path.exists(caminho):
+            continue
+        chave = "_094_definicoes_%s_%x" % (nome, id(eu))
+        spec = importlib.util.spec_from_file_location(chave, caminho)
+        modulo = importlib.util.module_from_spec(spec)
+        sys.modules[chave] = modulo
+        try:
+            spec.loader.exec_module(modulo)   # type: ignore[union-attr]
+            modulo.instalar(eu)
+        finally:
+            sys.modules.pop(chave, None)
+
+
+_carregar_definicoes()

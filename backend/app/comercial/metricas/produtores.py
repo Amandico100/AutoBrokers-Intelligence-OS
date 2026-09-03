@@ -25,10 +25,44 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from app.comercial import calculos as calc
-from app.comercial.cbim import Money, UNAVAILABLE
-from app.comercial.metricas.registry import (POLICY_VALID_FROM, POLICY_VALID_TO,
-                                             Contexto, MetricDefinition, Saida,
-                                             registrar)
+
+
+def _quantia(v):
+    """O valor de um `Money`, ou `None`. 🔴 Por FORMA, nunca por `isinstance`.
+
+    A razão está em `registry._float`: o mesmo módulo carregado duas vezes dá
+    duas classes, e `isinstance` transformaria dinheiro legítimo em
+    INDISPONÍVEL sem uma linha de erro.
+    """
+    quantia = getattr(v, "amount", None)
+    if quantia is None:
+        return None
+    try:
+        return float(quantia)
+    except (TypeError, ValueError):
+        return None
+
+
+from app.comercial.evidence_pack import BASES_TEMPORAIS
+
+POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
+
+#: 🔴 As definições são DADO, e o registry as instala. Não é cerimônia: um
+#: `import` do registry aqui criaria uma segunda cópia dele quando alguém
+#: carregasse `registry.py` por CAMINHO (que é como um guarda isolado o carrega),
+#: e aí haveria duas listas de métricas — uma cheia e uma vazia. `calcular()`
+#: diria "métrica desconhecida" sobre uma métrica que existe, e o defeito seria
+#: invisível. Aqui não há import: o registry se injeta.
+_DEFINICOES: List[Dict[str, Any]] = []
+
+Contexto = Any
+Saida = Any
+
+
+def instalar(reg) -> None:
+    """Registra as definições deste arquivo NO registry que chamou."""
+    for kw in _DEFINICOES:
+        reg.registrar(reg.MetricDefinition(**kw))
 
 #: 💭 Vinte linhas de ranking cabem numa página e numa conversa.
 TETO = 20
@@ -78,7 +112,7 @@ def _performance(ctx: Contexto) -> Saida:
     return float(len(linhas)), cobertura, breakdown, avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="producer.performance", version=1,
     label="Produtores com produção atribuída", grain="producer", unit="count",
     time_basis=POLICY_VALID_FROM,
@@ -118,7 +152,7 @@ def _cobertura_de_produtor(ctx: Contexto) -> Saida:
     return cob.pct_apolices, (cob.pct_apolices / 100.0), breakdown, []
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="data.coverage", version=1,
     label="Apólices com produtor identificado", grain="policy", unit="pct",
     time_basis=POLICY_VALID_FROM,
@@ -175,7 +209,7 @@ def _momentum(ctx: Contexto) -> Saida:
     return destaque, cobertura, breakdown, avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="producer.momentum", version=1,
     label="Variação da comissão em 30 dias", grain="period", unit="pct",
     time_basis=POLICY_VALID_FROM,
@@ -209,8 +243,9 @@ def _repasse(ctx: Contexto) -> Saida:
     valores = [ctx.comissoes[r].producer_repasse for r in refs if r in ctx.comissoes]
     total, conhecidos, itens = 0.0, 0, len(refs)
     for v in valores:
-        if isinstance(v, Money):
-            total += float(v.amount)
+        quantia = _quantia(v)
+        if quantia is not None:
+            total += quantia
             conhecidos += 1
     cobertura = (conhecidos / itens) if itens else None
     avisos = ["repasse APROPRIADO (soma de TODOS os produtores da apólice), "
@@ -221,7 +256,7 @@ def _repasse(ctx: Contexto) -> Saida:
     return (total if conhecidos else None), cobertura, [], avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="repasse.producer_accrued", version=1,
     label="Repasse apropriado aos produtores", grain="policy", unit="BRL",
     time_basis=POLICY_VALID_TO,
@@ -263,10 +298,11 @@ def _contribuicao(ctx: Contexto) -> Saida:
     na_intersecao = 0
     for a in validas:
         c = ctx.comissoes.get(a.policy_ref)
-        if c is None or not isinstance(c.producer_repasse, Money):
+        quantia = _quantia(getattr(c, "producer_repasse", None)) if c else None
+        if quantia is None:
             continue
         apropriado += a.comissao
-        repassado += float(c.producer_repasse.amount)
+        repassado += quantia
         na_intersecao += 1
 
     if not na_intersecao:
@@ -289,7 +325,7 @@ def _contribuicao(ctx: Contexto) -> Saida:
     return apropriado - repassado, cobertura, breakdown, avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="contribution.after_repasse", version=1,
     label="Contribuição depois do repasse", grain="policy", unit="BRL",
     time_basis=POLICY_VALID_FROM,

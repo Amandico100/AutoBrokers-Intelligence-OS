@@ -22,8 +22,7 @@ from app.comercial.metricas.registry import (  # noqa: F401
     todas,
 )
 
-# 🔴 A ordem importa só para o leitor: produção → dinheiro → gente → futuro.
-from app.comercial.metricas import producao  # noqa: F401,E402
-from app.comercial.metricas import mix  # noqa: F401,E402
-from app.comercial.metricas import produtores  # noqa: F401,E402
-from app.comercial.metricas import renovacao  # noqa: F401,E402
+# ⚠️ As definições NÃO são importadas aqui: `registry.py` as carrega por
+# INJEÇÃO ao ser importado (ver `_carregar_definicoes`). Import duplo aqui
+# registraria duas vezes — e, pior, criaria uma segunda cópia do registry para
+# quem carrega `registry.py` por caminho.

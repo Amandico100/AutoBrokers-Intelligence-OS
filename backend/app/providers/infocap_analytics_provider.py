@@ -242,6 +242,130 @@ def _cancelada(linha: Dict[str, Any]) -> bool:
     return str(linha.get("cancelado") or "").strip().upper() in ("T", "S", "TRUE", "1")
 
 
+
+# ==========================================================================
+# A ESCOLHA DA CONEXÃO — o resolver que JÁ EXISTE, exposto por um nome só
+# ==========================================================================
+def escolher_conexao(candidatos: List[Dict[str, Any]], *,
+                     company_id: str = "",
+                     connection_id: Optional[str] = None,
+                     base_url_padrao: str = "") -> Optional[Dict[str, Any]]:
+    """A conexão utilizável entre as candidatas — ou `None`.
+
+    🔴 **Não decide nada.** Ela delega a `_resolve_infocap_connection_candidates`
+    (`infocap_connector.py:668-720`), que é a regra que o conector de atendimento
+    já usa em produção. Escrever um segundo critério de escolha seria motor
+    paralelo (CLAUDE.md §5) — e um motor paralelo de *escolha de credencial* é a
+    pior variedade: os dois funcionariam, escolheriam conexões diferentes, e a
+    diferença apareceria como "a carteira mudou".
+
+    📊 O que a regra existente já faz, e que esta SPEC precisa:
+    filtra `company_id` · exclui `archived`/`inactive`/`revoked` · exclui health
+    `invalid_credentials` · exige credencial e base_url · e **recusa** quando
+    sobra mais de uma elegível, em vez de pegar a primeira.
+
+    ⚠️ Devolve `None` — e não a primeira arquivada — quando nada serve. Uma
+    corretora sem conexão viva precisa ouvir isso, não receber dado velho.
+    """
+    from app.api.infocap_connector import _resolve_infocap_connection_candidates
+
+    if not base_url_padrao:
+        try:
+            from app.core.config import settings
+            base_url_padrao = getattr(settings, "INFOCAP_BASE_URL", "") or ""
+        except Exception:  # noqa: BLE001
+            base_url_padrao = ""
+    decisao = _resolve_infocap_connection_candidates(
+        list(candidatos or []),
+        company_id=company_id,
+        requested_connection_id=connection_id,
+        provider_default_base_url=base_url_padrao)
+    return decisao.get("selected_connection")
+
+
+# ==========================================================================
+# A TRADUÇÃO a partir das dataclasses da 081
+# ==========================================================================
+def traduzir(apolices: Any = (), mapa: Any = None, vencimentos: Any = (),
+             *, company_id: str = "", correlation_id: str = "") -> FactSet:
+    """`Apolice` / `ProdutorDaApolice` / `Vencimento` → CBIM.
+
+    🔴 É a MESMA fronteira de `_traduzir`, uma porta adiante. `_traduzir` recebe
+    a linha crua da API; esta recebe as dataclasses que a 081 já montou — e é
+    por ela que os wrappers do Raio-X e do Radar (BLOCO F) passam a alimentar o
+    registry sem refazer a leitura.
+
+    ⚠️ E ela herda uma dívida, escrita aqui para não ser esquecida: as
+    dataclasses da 081 guardam dinheiro em `float`, já passado por `_num`, que
+    📊 devolve `0.0` para ausente. Quem entra por esta porta **não consegue**
+    distinguir "R$ 0,00" de "a fonte não expôs" — a distinção só existe na
+    porta de baixo. Por isso o caminho de produção do Pulso 360 usa `fatos()`,
+    e esta função serve a paridade e aos wrappers.
+    """
+    lote = FactSet(company_id=company_id, provider_key=PROVIDER_KEY)
+    correlacao = correlation_id or uuid.uuid4().hex[:16]
+    acumulado: Dict[str, Dict[str, Any]] = {}
+    por_origem: Dict[str, str] = {}
+
+    for a in (apolices or ()):
+        origem = str(getattr(a, "policy_ref", "") or "")
+        if not origem:
+            continue
+        ref = policy_ref(company_id, PROVIDER_KEY, origem)
+        por_origem[origem] = ref
+        lote.policies.append(PolicyFact(
+            policy_ref=ref, source_ref=origem,
+            insurer=str(getattr(a, "seguradora", "") or "").strip(),
+            branch=str(getattr(a, "ramo", "") or "").strip(),
+            valid_from=_data(getattr(a, "valid_from", None)),
+            valid_to=_data(getattr(a, "valid_to", None)),
+            premium=interpretar_dinheiro(getattr(a, "premio", None)) or UNAVAILABLE,
+            kind=RENEWAL if getattr(a, "e_renovacao", False) else NEW,
+            status="vigente", provider_key=PROVIDER_KEY))
+        acumulado.setdefault(ref, {})["accrued"] = (
+            interpretar_dinheiro(getattr(a, "comissao", None)) or UNAVAILABLE)
+
+    for origem, p in (mapa or {}).items():
+        ref = por_origem.get(str(origem)) or policy_ref(
+            company_id, PROVIDER_KEY, str(origem))
+        rotulo = str(getattr(p, "rotulo", None) or getattr(p, "nome", "") or "").strip()
+        if not rotulo:
+            continue
+        lote.assignments.append(ProducerAssignmentFact(
+            policy_ref=ref, producer_ref=producer_ref(company_id, rotulo),
+            producer_label=rotulo, role_source="",
+            share=float(getattr(p, "percentual", 0.0) or 0.0), order=1))
+        repasse = interpretar_dinheiro(getattr(p, "repasse", None))
+        if repasse is not None:
+            acumulado.setdefault(ref, {})["repasse"] = repasse
+
+    for v in (vencimentos or ()):
+        origem = str(getattr(v, "policy_ref", "") or "")
+        if not origem:
+            continue
+        ref = por_origem.get(origem) or policy_ref(company_id, PROVIDER_KEY, origem)
+        rotulo = str(getattr(v, "produtor", "") or "").strip()
+        lote.renewals.append(RenewalFact(
+            policy_ref=ref, valid_to=_data(getattr(v, "valid_to", None)),
+            producer_ref=producer_ref(company_id, rotulo) if rotulo else "",
+            status_source=str(getattr(v, "tipdoc", "") or ""),
+            dias_a_vencer=int(getattr(v, "dias_a_vencer", 0) or 0),
+            premium=interpretar_dinheiro(getattr(v, "premio", None)) or UNAVAILABLE,
+            insurer=str(getattr(v, "seguradora", "") or "").strip(),
+            branch=str(getattr(v, "ramo", "") or "").strip()))
+
+    for ref, partes in acumulado.items():
+        lote.commissions.append(CommissionFact(
+            policy_ref=ref,
+            broker_commission_accrued=partes.get("accrued", UNAVAILABLE),
+            producer_repasse=partes.get("repasse", UNAVAILABLE),
+            received=UNAVAILABLE, provider_key=PROVIDER_KEY))
+    lote.warnings.append(
+        "[%s] traduzido a partir das dataclasses da 081: dinheiro ausente já "
+        "chegou aqui como 0.0 e não é distinguível de zero" % correlacao)
+    return lote
+
+
 # ==========================================================================
 # O adapter
 # ==========================================================================
@@ -249,6 +373,20 @@ class InfocapAnalyticsProvider:
     """Implementa `BrokerageAnalyticsProvider` sobre a CorpAPI da InfoCap."""
 
     provider_key = PROVIDER_KEY
+
+    def __init__(self, company_id: str = "", supabase: Any = None,
+                 db: Any = None, connection_id: Optional[str] = None) -> None:
+        """O provider pode nascer **ligado a uma corretora**, ou solto.
+
+        ⚠️ Os dois modos existem porque há dois chamadores: o registry global,
+        que resolve o provider por chave e passa `company_id` em cada chamada, e
+        um caller que já sabe de quem está falando. `supabase` e `db` são o
+        mesmo argumento com os dois nomes que esta casa usa — recusar um deles
+        só produziria um `TypeError` a mais para alguém depurar.
+        """
+        self.company_id = str(company_id or "")
+        self.db = supabase if supabase is not None else db
+        self.connection_id = connection_id
 
     # ------------------------------------------------------------ conexão
     async def _resolver(self, *, company_id: str, db: Any = None,
@@ -278,7 +416,7 @@ class InfocapAnalyticsProvider:
 
         decisao = await _resolve_infocap_connection(
             db, company_id=company_id, requested_connection_id=connection_id or None)
-        conn = decisao.get("selected_connection")
+        conn = decisao.get("selected_connection")   # mesma regra de `escolher_conexao`
         if not conn:
             raise FalhaDoProvider(
                 "a corretora não tem uma conexão InfoCap utilizável "
@@ -400,6 +538,9 @@ class InfocapAnalyticsProvider:
         `fonte` injetável existe para o teste com fixture. Em produção é `None`
         e a fonte nasce da conexão.
         """
+        company_id = company_id or getattr(self, "company_id", "")
+        db = db if db is not None else getattr(self, "db", None)
+        connection_id = connection_id or getattr(self, "connection_id", None)
         correlacao = correlation_id or uuid.uuid4().hex[:16]
         conexao_id = ""
         impressao = ""

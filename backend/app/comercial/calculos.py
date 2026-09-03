@@ -6,7 +6,7 @@ rede, nada de banco, nada de relógio — o único `date.today()` do módulo mor
 em `entender_periodo`, e é injetável.
 
 Isso não é preferência de estilo. É o que permite testar a regra de negócio
-sem depender da InfoCap estar de pé, e é o que garante que o relatório mostre
+sem depender de a fonte estar de pé, e é o que garante que o relatório mostre
 o mesmo número duas vezes seguidas.
 
 ## As três armadilhas que estas funções existem para evitar
@@ -476,7 +476,7 @@ def _ano_no_texto(t: str) -> Optional[int]:
 def _mes_de(iso_ou_br: str) -> str:
     """`AAAA-MM` a partir do que a API devolver.
 
-    📊 A InfoCap devolve data como `2025-03-14` em alguns campos e
+    📊 A fonte devolve data como `2025-03-14` em alguns campos e
     `14/03/2025` em outros. Aceitar as duas aqui evita um `if` em cada
     chamador — e é onde o defeito apareceria primeiro, calado, como um mês
     faltando no gráfico.

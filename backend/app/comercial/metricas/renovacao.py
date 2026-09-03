@@ -14,9 +14,26 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from app.comercial import calculos as calc
-from app.comercial.metricas.registry import (POLICY_VALID_FROM, POLICY_VALID_TO,
-                                             Contexto, MetricDefinition, Saida,
-                                             registrar)
+from app.comercial.evidence_pack import BASES_TEMPORAIS
+
+POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
+
+#: 🔴 As definições são DADO, e o registry as instala. Não é cerimônia: um
+#: `import` do registry aqui criaria uma segunda cópia dele quando alguém
+#: carregasse `registry.py` por CAMINHO (que é como um guarda isolado o carrega),
+#: e aí haveria duas listas de métricas — uma cheia e uma vazia. `calcular()`
+#: diria "métrica desconhecida" sobre uma métrica que existe, e o defeito seria
+#: invisível. Aqui não há import: o registry se injeta.
+_DEFINICOES: List[Dict[str, Any]] = []
+
+Contexto = Any
+Saida = Any
+
+
+def instalar(reg) -> None:
+    """Registra as definições deste arquivo NO registry que chamou."""
+    for kw in _DEFINICOES:
+        reg.registrar(reg.MetricDefinition(**kw))
 
 
 # --------------------------------------------------------------------------
@@ -36,6 +53,11 @@ def _exposicao(ctx: Contexto) -> Saida:
     if not ctx.vencimentos:
         return 0.0, 1.0, [], ["nada vence no período — este 0 é um fato sobre a "
                               "carteira, não uma ausência de dado"]
+    # 🔴 O número de destaque é QUANTAS apólices vencem, e não quanto prêmio
+    # elas somam. A pergunta do dono é "quanto trabalho vem pela frente"; e o
+    # dinheiro depende de a fonte expor o prêmio, que 📊 ela nem sempre expõe —
+    # uma exposição que virasse R$ 0,00 por falta de campo diria "nada a fazer"
+    # sobre 3.536 apólices a vencer.
     conhecidos = [v for v in ctx.vencimentos if v.premio_conhecido]
     faixas = calc.faixas_de_urgencia(conhecidos)
     breakdown: List[Dict[str, Any]] = [
@@ -52,12 +74,15 @@ def _exposicao(ctx: Contexto) -> Saida:
     if vencidas:
         avisos.append(f"{len(vencidas)} apólice(s) da janela JÁ passaram do "
                       f"vencimento e estão contadas na faixa 'vencidas'")
-    return total, cobertura, breakdown, avisos
+    if total:
+        avisos.append("prêmio a vencer na janela: %.2f (o detalhe por faixa de "
+                      "urgência está no breakdown)" % total)
+    return float(len(ctx.vencimentos)), cobertura, breakdown, avisos
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="renewal.exposure", version=1,
-    label="Prêmio a vencer na janela", grain="policy", unit="BRL",
+    label="Apólices a vencer na janela", grain="policy", unit="count",
     time_basis=POLICY_VALID_TO,
     required_capabilities=("portfolio.renewals",),
     formula=_exposicao,
@@ -97,7 +122,7 @@ def _run_rate(ctx: Contexto) -> Saida:
         f"série foi descartado por estar em curso"]
 
 
-registrar(MetricDefinition(
+_DEFINICOES.append(dict(
     metric_id="projection.run_rate", version=1,
     label="Comissão projetada no ritmo atual", grain="period", unit="BRL",
     time_basis=POLICY_VALID_FROM,

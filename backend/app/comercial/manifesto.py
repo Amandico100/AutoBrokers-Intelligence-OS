@@ -70,6 +70,13 @@ NAO_VERIFICADO = "UNKNOWN"
 DEGRADED = "DEGRADED"
 ESTADOS = (SUPPORTED, PARTIAL, INDISPONIVEL, NAO_VERIFICADO, DEGRADED)
 
+#: 🔴 Os ÚNICOS dois estados em que existe número. UMA lista, num lugar só:
+#: `entrega_dado` e o default de `bloqueio()` leem a MESMA tupla, e por isso a
+#: mutação M2 — "UNAVAILABLE passa a entregar dado" — tem exatamente um alvo. Duas
+#: listas divergiriam, e a que ficasse para trás deixaria passar o zero de
+#: consolação por um caminho que ninguém estaria olhando.
+ESTADOS_QUE_ENTREGAM = (SUPPORTED, PARTIAL)
+
 #: 🔴 O que cada estado quer dizer, em uma frase, no idioma do Artifact. É esta
 #: tabela que impede o produto de dizer "indisponível" sobre algo que só não foi
 #: verificado.
@@ -102,7 +109,7 @@ class Capacidade:
     @property
     def entrega_dado(self) -> bool:
         """`SUPPORTED` ou `PARTIAL`. Só estes dois deixam a métrica calcular."""
-        return self.state in (SUPPORTED, PARTIAL)
+        return self.state in ESTADOS_QUE_ENTREGAM
 
     @property
     def foi_medida(self) -> bool:
@@ -146,6 +153,25 @@ class ProviderCapabilityManifest:
     rotas_medidas: int = 0
     #: `capability → motivo`. Preenchido por `conferir_drift`.
     degradadas: Dict[str, str] = field(default_factory=dict)
+
+    # ------------------------------------------------------------- carga
+    @classmethod
+    def de_arquivo(cls, caminho: str,
+                   fingerprints: Optional[str] = None) -> "ProviderCapabilityManifest":
+        """O manifesto a partir do JSON do censo, pelo CAMINHO do arquivo.
+
+        ⚠️ O arquivo de fingerprints é procurado ao lado, pelo mesmo prefixo de
+        provider. Quem tem o manifesto tem o censo inteiro: pedir os dois
+        caminhos convidaria alguém a passar só um, e um manifesto sem
+        fingerprint não consegue detectar drift — ficaria silenciosamente
+        cego (M14).
+        """
+        base = os.path.dirname(caminho)
+        nome = os.path.basename(caminho)
+        provider = nome.split("-capability-manifest")[0] or "infocap"
+        fp = fingerprints or os.path.join(
+            base, "%s-schema-fingerprints.json" % provider)
+        return manifesto_de_dicionarios(provider, _ler_json(caminho), _ler_json(fp))
 
     # ------------------------------------------------------------ consulta
     def capacidade(self, nome: str) -> Capacidade:
@@ -201,9 +227,16 @@ class ProviderCapabilityManifest:
                     self.degradadas[nome] = motivo
         return avisos
 
+    #: ⚠️ O mesmo método, com o nome que o guarda procura. Um alias, e não uma
+    #: segunda implementação: duas funções de drift divergiriam no primeiro
+    #: `startswith("__")` que uma ganhasse e a outra não.
+    def avaliar_drift(self, fingerprints_medidos: Dict[str, str]) -> List[str]:
+        return self.conferir_drift(fingerprints_medidos)
+
     # ------------------------------------------------------------ bloqueio
     def bloqueio(self, requeridas: Sequence[str],
-                 aceitos: Sequence[str] = (SUPPORTED, PARTIAL)) -> Tuple[bool, List[str]]:
+                 aceitos: Sequence[str] = ESTADOS_QUE_ENTREGAM
+                 ) -> Tuple[bool, List[str]]:
         """`(bloqueada?, motivos)` para uma métrica que exige estas capacidades.
 
         🔴 O motivo é devolvido junto com o veredito de propósito. Sem ele o
