@@ -287,38 +287,71 @@ def _confianca_por_n(n: int, total: int) -> float:
     return round(0.5 + 0.4 * fracao, 3)
 
 
-def _ler_sombras(cliente: Any, company_id: str, desde: str) -> list[dict]:
-    r = (cliente.table("work_runs")
-         .select("id, company_id, conversation_id, created_at, status")
-         .eq("company_id", company_id)
-         .eq("workflow_key", WORKFLOW_DA_SOMBRA)
-         .gte("created_at", desde)
-         .order("created_at", desc=True).limit(2000).execute())
-    return [x for x in (r.data or []) if x.get("id")]
+def _ler_sombras(cliente: Any, company_id: str, desde: str) -> tuple[list[dict], bool]:
+    """As sombras da corretora na janela. Devolve `(linhas, truncou)`.
+
+    🔴 Era `.limit(2000)`, e 2.000 NUNCA chegariam: o PostgREST devolve no máximo
+    1.000 linhas por resposta e ignora o pedido maior — sem erro, sem log, sem
+    sintoma (`app/leitura_completa.py`). O digest é uma CONTAGEM com denominador:
+    receber 1.000 de N faria `contadores_de` responder outra pergunta, com cara de
+    resposta certa. É o defeito de 06/08/2026 (P-122) reencenado.
+
+    ⚠️ A ordenação por `created_at desc` também saiu, e não por descuido: paginar
+    por uma coluna que EMPATA perde e repete linhas (📊 `curadoria_cartas.py`: 12
+    perdidas e 12 repetidas em 11.640). `ler_paginado` ordena por `id`, que nunca
+    empata — e a ordem das sombras não importa aqui, porque quem ordena a trajetória
+    é `_ordem()`, pelo relógio do evento.
+    """
+    from app.leitura_completa import ler_paginado
+
+    linhas, truncou = ler_paginado(
+        lambda: (cliente.table("work_runs")
+                 .select("id, company_id, conversation_id, created_at, status")
+                 .eq("company_id", company_id)
+                 .eq("workflow_key", WORKFLOW_DA_SOMBRA)
+                 .gte("created_at", desde)),
+        chave_unica="id", rotulo="claims.shadow/work_runs")
+    return [x for x in (linhas or []) if x.get("id")], bool(truncou)
 
 
-def _ler_eventos(cliente: Any, company_id: str, run_ids: list[str]) -> list[dict]:
+def _ler_eventos(cliente: Any, company_id: str,
+                 run_ids: list[str]) -> tuple[list[dict], bool]:
     """Os eventos das sombras da corretora. ⛔ Filtro de `company_id` SEMPRE.
 
     🔴 Filtrar só por `work_run_id` "funcionaria" — os ids vieram da corretora certa.
     Mas o backend usa service role: a segunda barreira é o filtro do código, e uma
     consulta sem ele passa a depender de o passo anterior nunca ter errado
     (CLAUDE.md §7).
+
+    🔴 O `.limit(20000)` que estava aqui era o mesmo engano em escala pior: um lote
+    de 100 sombras conversadas passa de mil eventos com facilidade, e o que chegava
+    era o primeiro milheiro — a assinatura da variante saía TRUNCADA, ou seja, uma
+    variante que ninguém percorreu. Devolve `(linhas, truncou)`; `truncou` também é
+    `True` quando uma página falhou, porque meia leitura não é leitura.
+
+    ⚠️ `id` entrou no `select` de propósito: é por ele que a paginação ordena, e é
+    ele (bigint sequencial) que dá o desempate ESTÁVEL de `_ordem()` quando dois
+    eventos têm o mesmo `created_at`. Antes o desempate era a ordem de chegada de uma
+    consulta ordenada por uma coluna que empata — instável entre duas execuções, que
+    é exatamente o que duplicaria o sinal a cada rodada.
     """
+    from app.leitura_completa import ler_paginado
+
     saida: list[dict] = []
+    truncou = False
     for i in range(0, len(run_ids), 100):
-        try:
-            r = (cliente.table("work_events")
-                 .select("work_run_id, event_type, payload_redacted, created_at, company_id")
-                 .eq("company_id", company_id)
-                 .in_("work_run_id", run_ids[i:i + 100])
-                 .order("created_at", desc=False).limit(20000).execute())
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[ClaimsShadow] leitura de eventos falhou: %s",
-                           type(exc).__name__)
-            continue
-        saida.extend(r.data or [])
-    return saida
+        lote = run_ids[i:i + 100]
+        linhas, cortou = ler_paginado(
+            lambda alvo=lote: (
+                cliente.table("work_events")
+                .select("id, work_run_id, event_type, payload_redacted, "
+                        "created_at, company_id")
+                .eq("company_id", company_id)
+                .in_("work_run_id", alvo)),
+            chave_unica="id", rotulo="claims.shadow/work_events")
+        saida.extend(linhas or [])
+        truncou = truncou or bool(cortou)
+    return saida, truncou
 
 
 def _evidencia_de(ref: str, resumo: str, valores: dict) -> dict:
@@ -398,14 +431,24 @@ def digerir(db: Any, company_id: str, *, agora: Optional[datetime] = None,
     inicio = fim - timedelta(days=JANELA_DIAS)
     janela = (inicio.isoformat(), fim.isoformat())
 
-    sombras = _ler_sombras(cliente, company_id, inicio.isoformat())
+    # 🔴 `truncado` é a metade que faltava do conserto da paginação: um teto que corta
+    # em silêncio produz o mesmo número menor-que-a-verdade que o `.limit()` produzia.
+    # Quem lê o resultado precisa poder dizer "este número está incompleto" —
+    # é a mesma regra do `nao_instrumentado` da Central (SPEC-088 §4).
+    truncado: list[str] = []
+    sombras, cortou = _ler_sombras(cliente, company_id, inicio.isoformat())
+    if cortou:
+        truncado.append("sombras")
     if not sombras:
         return {"sombras": 0, "variantes": 0, "sinais": 0,
                 "contadores": {"total": 0}, "prazos": {"vencidas": 0,
                                                        "regime_nao_determinado": 0,
-                                                       "total": 0}}
+                                                       "total": 0},
+                "truncado": truncado}
 
-    eventos = _ler_eventos(cliente, company_id, [str(s["id"]) for s in sombras])
+    eventos, cortou = _ler_eventos(cliente, company_id, [str(s["id"]) for s in sombras])
+    if cortou:
+        truncado.append("eventos")
     for ev in eventos:
         ev.setdefault("company_id", company_id)
 
@@ -426,7 +469,7 @@ def digerir(db: Any, company_id: str, *, agora: Optional[datetime] = None,
     prazos = esperas_vencidas(trajs, agora=fim)
     sinais = _escrever_sinais(db, company_id, variantes, contadores, prazos, janela)
     return {"sombras": len(sombras), "variantes": len(variantes), "sinais": sinais,
-            "contadores": contadores, "prazos": prazos}
+            "contadores": contadores, "prazos": prazos, "truncado": truncado}
 
 
 async def executar(ctx: dict) -> str:

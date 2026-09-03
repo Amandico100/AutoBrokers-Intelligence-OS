@@ -43,6 +43,8 @@ Os blocos, e o que cada um mata
  [8] AGENT_TASKS    C⑦      o trabalhador `sombra_sinistros` existe e o workflow tem card
  [9] REGRESSÃO      §10     a linha de base do atendimento, medida HOJE, como SCRIPT
 [10] CONTROLE GERAL         este guarda consegue ficar vermelho?
+[11] RESUMO ADMIN   D①②③④  o contrato fechado, os zeros sem erro, o master admin,
+                           e ZERO campo textual no JSON
 ```
 
 📊 A LINHA DE BASE DA REGRESSÃO, medida em 03/09/2026 nesta árvore, ANTES do código
@@ -193,6 +195,24 @@ try:
 except Exception as _e:  # noqa: BLE001
     _FALTA_PII = "app.services.intelligence.redaction_service: %s: %s" % (
         type(_e).__name__, _e)
+
+# BLOCO D — o resumo admin. ⚠️ O guarda importa o CORPO da rota (`montar_resumo_...`),
+# não o `async def` decorado: um gate que só sabe bater no HTTP precisa do servidor de
+# pé, e um gate que não roda não guarda (CLAUDE.md §9.3). O `require_master_admin` é
+# conferido no TEXTO do arquivo, como faz o bloco [9] do guarda da SPEC-088.
+montar_resumo_claims_shadow = None
+CHAVES_CS = CHAVES_CS_CORRETORA = CHAVES_CS_VARIANTE = CHAVES_CS_TOTAIS = ()
+_FALTA_ADMIN = ""
+try:
+    from app.api.admin_spec034 import (  # type: ignore  # noqa: F401,F811
+        CLAIMS_SHADOW_CHAVES as CHAVES_CS,
+        CLAIMS_SHADOW_CHAVES_CORRETORA as CHAVES_CS_CORRETORA,
+        CLAIMS_SHADOW_CHAVES_TOTAIS as CHAVES_CS_TOTAIS,
+        CLAIMS_SHADOW_CHAVES_VARIANTE as CHAVES_CS_VARIANTE,
+        montar_resumo_claims_shadow,
+    )
+except Exception as _e:  # noqa: BLE001
+    _FALTA_ADMIN = "app.api.admin_spec034 (BLOCO D): %s: %s" % (type(_e).__name__, _e)
 
 
 # ---------------------------------------------------------------------------
@@ -1580,6 +1600,185 @@ def bloco_10_controle_geral():
         pular("[10] contem_pii", _FALTA_PII)
 
 
+
+
+# ===========================================================================
+# [11] RESUMO ADMIN -- D①②③④: o contrato fechado, os zeros, o master admin, zero texto
+# ===========================================================================
+#
+# 🔴 O QUE ESTE BLOCO MATA. A rota do BLOCO D é a única peça da 093-B que um humano
+# lê como número. Um campo textual que escape aqui não trava nada e não aparece em
+# log: ele simplesmente vira PII na tela do admin — o defeito silencioso do §9.5.
+# Por isso o gate ⓸ não pergunta "o autor lembrou de redigir?", e sim "existe ALGUM
+# `str` no JSON que não seja uuid, timestamp, slug, enum ou hash?".
+#
+# ⚠️ E o contrato é conferido contra as tuplas que a PRÓPRIA rota exporta, não contra
+# uma lista copiada para cá. Duas listas divergem em silêncio; uma só não tem como.
+_RE_VALOR_SEM_TEXTO = re.compile(r"^[A-Za-z0-9_.:+\-]*$")
+
+
+def _valores_textuais(no, caminho="raiz"):
+    """Todo `str` do JSON que NÃO é uuid, timestamp ISO, slug, enum ou hash.
+
+    Puro de propósito: recebe a estrutura, devolve a lista de ofensores. É o que
+    permite a linha de CONTROLE provar que ele CONSEGUE achar texto (§9.3).
+    """
+    fora = []
+    if isinstance(no, dict):
+        for k, v in no.items():
+            if isinstance(k, str) and not _RE_VALOR_SEM_TEXTO.match(k):
+                fora.append("%s.<chave %r>" % (caminho, k[:40]))
+            fora.extend(_valores_textuais(v, "%s.%s" % (caminho, k)))
+    elif isinstance(no, (list, tuple)):
+        for i, v in enumerate(no):
+            fora.extend(_valores_textuais(v, "%s[%d]" % (caminho, i)))
+    elif isinstance(no, str) and not _RE_VALOR_SEM_TEXTO.match(no):
+        fora.append("%s = %r" % (caminho, no[:40]))
+    return fora
+
+
+def _fora_do_contrato(d, esperadas):
+    """As chaves que faltam e as que sobram. Contrato FECHADO: sobrar é reprovar."""
+    if not isinstance(d, dict):
+        return ["nao e um dict: %s" % type(d).__name__]
+    return (["falta '%s'" % k for k in esperadas if k not in d]
+            + ["intrusa '%s'" % k for k in d if k not in esperadas])
+
+
+def _rota_exige_master_admin(texto_rota, nome_rota):
+    """A rota tem `Depends(require_master_admin)` na assinatura logo abaixo do
+    decorador. Mesmo helper do bloco [9] do guarda da SPEC-088 — puro, para a linha
+    de controle poder provar que ele reprova."""
+    m = re.search(r'@router\.get\("/%s"\)\s*\n\s*async def \w+\(([^)]*)\)'
+                  % re.escape(nome_rota), texto_rota)
+    return bool(m) and "require_master_admin" in m.group(1)
+
+
+def _banco_do_resumo():
+    """Uma sombra da EMPRESA_A com dois gestos — e UM evento da EMPRESA_B pendurado
+    no mesmo run. 🔴 O evento intruso é fixture de propósito: ele não deveria existir,
+    e se a rota o contar, o número da A carrega trabalho da B (CLAUDE.md §7)."""
+    return BancoFalso({
+        "work_runs": [{"id": RUN_SOMBRA_A, "company_id": EMPRESA_A,
+                       "workflow_key": WORKFLOW, "status": "running",
+                       "created_at": "2026-09-01T10:00:00+00:00"}],
+        "work_events": [
+            {"id": 1, "work_run_id": RUN_SOMBRA_A, "company_id": EMPRESA_A,
+             "event_type": "claims.sombra_aberta", "created_at": "2026-09-01T10:00:00+00:00",
+             "payload_redacted": {"ramo": "auto", "seguradora_slug": "porto"}},
+            {"id": 2, "work_run_id": RUN_SOMBRA_A, "company_id": EMPRESA_A,
+             "event_type": "claims.espera_aberta", "created_at": "2026-09-01T11:00:00+00:00",
+             "payload_redacted": {"kind": "esperando_seguradora"}},
+            {"id": 3, "work_run_id": RUN_SOMBRA_A, "company_id": EMPRESA_B,
+             "event_type": "claims.encerrado", "created_at": "2026-09-01T12:00:00+00:00",
+             "payload_redacted": {"desfecho": "pago"}},
+        ],
+        "work_waits": [{"id": "w1", "company_id": EMPRESA_A, "work_run_id": RUN_SOMBRA_A,
+                        "kind": "esperando_seguradora", "status": "ativo",
+                        "created_at": "2026-09-01T11:00:00+00:00", "satisfeito_em": None}],
+        "intelligence_signals": [{"id": "s1", "company_id": EMPRESA_A,
+                                  "signal_type": "process_variant",
+                                  "source_type": "claims_shadow",
+                                  "created_at": "2026-09-02T00:00:00+00:00"}],
+    })
+
+
+def bloco_11_resumo_admin():
+    _p("\n[11] RESUMO ADMIN -- o contrato fechado, os zeros, o master admin, zero texto")
+
+    caminho = os.path.join(APP, "api", "admin_spec034.py")
+    rota_txt = ler(caminho) if os.path.exists(caminho) else ""
+    certo(_rota_exige_master_admin(rota_txt, "claims-shadow"),
+          "D② /claims-shadow exige require_master_admin na assinatura",
+          "sem a dependencia, a visao de PLATAFORMA (sem filtro de company_id) fica "
+          "aberta -- e ela mostra TODAS as corretoras de uma vez")
+    certo(not _rota_exige_master_admin(
+        '@router.get("/claims-shadow")\nasync def claims_shadow() -> dict:\n    return {}\n',
+        "claims-shadow"),
+        "CONTROLE: a MESMA rota sem a dependencia REPROVA",
+        "senao o gate acima passaria por nao saber olhar")
+    certo("spec093b:claims-shadow:v1" in rota_txt and "CLAIMS_SHADOW_CACHE_S = 60" in rota_txt,
+          "D② a chave de cache e 60s estao no codigo (`spec093b:claims-shadow:v1`)")
+
+    if montar_resumo_claims_shadow is None:
+        pular("[11] RESUMO ADMIN", _FALTA_ADMIN or "montar_resumo_claims_shadow nao existe")
+        return
+
+    # ---- D③ banco VAZIO: zeros, contrato inteiro, e NENHUM erro ---------------
+    vazio, erro = None, ""
+    try:
+        vazio = montar_resumo_claims_shadow(BancoFalso({}))
+    except Exception as e:  # noqa: BLE001
+        erro = "%s: %s" % (type(e).__name__, e)
+    certo(erro == "", "D③ com banco vazio a rota NAO levanta", erro)
+    if vazio is not None:
+        certo(not _fora_do_contrato(vazio, CHAVES_CS),
+              "D① banco vazio devolve o contrato INTEIRO",
+              " · ".join(_fora_do_contrato(vazio, CHAVES_CS)))
+        certo(vazio.get("corretoras") == []
+              and not _fora_do_contrato(vazio.get("totais"), CHAVES_CS_TOTAIS)
+              and all(v == 0 for v in (vazio.get("totais") or {}).values()),
+              "D③ banco vazio devolve ZEROS (nao null, nao ausente)",
+              repr(vazio.get("totais"))[:120])
+
+    # ---- D① e D④ com dados: contrato fechado, e nenhum campo textual ---------
+    cheio, erro = None, ""
+    try:
+        cheio = montar_resumo_claims_shadow(_banco_do_resumo())
+    except Exception as e:  # noqa: BLE001
+        erro = "%s: %s" % (type(e).__name__, e)
+    certo(erro == "", "D③ com uma sombra a rota NAO levanta", erro)
+    if cheio is None:
+        return
+
+    certo(not _fora_do_contrato(cheio, CHAVES_CS),
+          "D① a raiz tem exatamente as chaves de CLAIMS_SHADOW_CHAVES",
+          " · ".join(_fora_do_contrato(cheio, CHAVES_CS)))
+
+    corretoras = cheio.get("corretoras") or []
+    certo(len(corretoras) == 1, "a sombra da EMPRESA_A aparece (1 corretora)",
+          "vieram %d" % len(corretoras))
+    if corretoras:
+        c = corretoras[0]
+        certo(not _fora_do_contrato(c, CHAVES_CS_CORRETORA),
+              "D① a corretora tem exatamente as chaves de CHAVES_CORRETORA",
+              " · ".join(_fora_do_contrato(c, CHAVES_CS_CORRETORA)))
+        variantes = c.get("top_variantes") or []
+        certo(bool(variantes) and not _fora_do_contrato(variantes[0], CHAVES_CS_VARIANTE),
+              "D① a variante tem exatamente as chaves de CHAVES_VARIANTE",
+              " · ".join(_fora_do_contrato(variantes[0], CHAVES_CS_VARIANTE))
+              if variantes else "nenhuma variante")
+        certo(all("work_run_ids" not in v and "work_run_id" not in v for v in variantes),
+              "D④ a variante NAO carrega `work_run_ids`",
+              "id de execucao amarra a estatistica a um caso -- o oposto do agregado")
+        # 🔴 §7: o evento da EMPRESA_B pendurado na sombra da A NAO entra na conta da A.
+        certo("claims.encerrado" not in (c.get("eventos_por_tipo") or {}),
+              "§7 o evento de OUTRA corretora nao entra no numero desta",
+              "eventos_por_tipo = %r" % (c.get("eventos_por_tipo"),))
+        certo((c.get("contadores") or {}).get("total") == 1
+              and (c.get("prazos") or {}).get("total") == 1,
+              "§12.1 contadores e prazos saem COM denominador (`total`)")
+
+    ofensores = _valores_textuais(cheio)
+    certo(not ofensores, "D④ NENHUM campo textual no JSON (so uuid, ISO, slug, enum, hash)",
+          " · ".join(ofensores[:4]))
+
+    # ---- CONTROLE: os dois conferidores CONSEGUEM reprovar -------------------
+    intrusa = dict(cheio)
+    intrusa["resumo_do_atendimento"] = "o segurado bateu o carro na esquina"
+    certo(bool(_fora_do_contrato(intrusa, CHAVES_CS)),
+          "CONTROLE: uma chave INTRUSA no JSON reprova o contrato",
+          "um contrato que aceita chave a mais nao e fechado")
+    certo(bool(_valores_textuais(intrusa)),
+          "CONTROLE: o varredor de texto ACHA a frase de conversa que plantei")
+    certo(not _valores_textuais(
+        {"company_id": EMPRESA_A, "gerado_em": "2026-09-03T11:00:00+00:00",
+         "passos": ["claims.sombra_aberta"], "assinatura": "a1b2c3", "n": 3,
+         "ramo": "auto-frota", "media_dias": 2.0}),
+        "CONTROLE: o varredor NAO acusa uuid, ISO, slug com hifen nem enum",
+        "um varredor que acusa tudo obrigaria a rota a devolver so numeros")
+
+
 # ---------------------------------------------------------------------------
 def main() -> int:
     _p("=" * 78)
@@ -1596,6 +1795,7 @@ def main() -> int:
     bloco_8_agent_tasks()
     bloco_9_regressao()
     bloco_10_controle_geral()
+    bloco_11_resumo_admin()
 
     de_verdade = FAIL - len(ESPERADOS)
     _p("\n" + "=" * 78)
