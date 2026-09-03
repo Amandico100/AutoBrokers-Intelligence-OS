@@ -38,10 +38,14 @@ conduta do atendente nem do robô. A referência ④ (ARISE) começa em L1; nós
 
 ### 1.2 · A classificação de sinistro é recalculada a cada turno e descartada
 📊 `backend/app/services/atlas/templater.py:1670 infer_ramo_servico` é o único classificador; não há
-enum de intenção. Linha 1725: `servico = servico or "sinistro"` — **sinistro só ganha se nenhuma
+enum de intenção. Linha 1726: `servico = servico or "sinistro"` — **sinistro só ganha se nenhuma
 palavra de assistência apareceu antes** ("bati o carro, preciso de guincho" sai `auto/guincho`).
-O prompt corrige em prosa (`prompts.py:131`). Chamadores `graph.py:792` e `weaver.py:855` **não
-persistem** o resultado: 📊 `attendance_sessions.servico` NULL em **12.616 de 12.616**;
+O prompt corrige em prosa (`prompts.py:131`). Chamadores: `graph.py:792` e `weaver.py:855`.
+🔴 **E o ELO, medido no aquecimento de 03/09:** `webhook.py:753-782` — com `attendance_agent_active()`
+falso (📊 4 de 4 agentes `attendance` inativos), o webhook grava a mensagem, espelha e **`return`** na
+linha 782, antes de `langchain_service.process_message` (`:826`). **O grafo não roda em produção, logo
+`infer_ramo_servico` não é chamado e a ficha (`nodes.py:860`) nunca é gravada.** Não é que os
+chamadores não persistem: eles não são chamados. 📊 `attendance_sessions.servico` NULL em **12.616 de 12.616**;
 `observed_sessions.servico` NULL em **580 de 580**. A ficha (`conversations.ficha_atendimento`) tem
 conteúdo em **1 de 679** conversas.
 
@@ -50,7 +54,7 @@ conteúdo em **1 de 679** conversas.
 (nenhum com "sinistro") · `claimed_by IS NOT NULL` → **1** · `resolvido_em` → **0** · `work_waits` →
 **0 linhas** · `work_runs.unblock_state='assumido_por_humano'` → **0** · `work_events` com ator
 humano → **0 em 35.705**. Caminho: `human_handoff.py:611` → `dispatch_router.py:1138` →
-`o_fim_do_atendimento.py:251 abrir_espera(ESPERANDO_HUMANO)` → `handoff_watchdog.py:471`.
+`o_fim_do_atendimento.py:250 abrir_espera(ESPERANDO_HUMANO)` → `handoff_watchdog.py:471`.
 📊 `human_handoff.py:19-20`: a tool só é anexada com `tools_config.human_handoff.enabled`. **Medido em
 03/09: `enabled=false` em 1 dos 8 agentes e AUSENTE nos outros 7.** A tool nunca esteve ligada em
 lugar nenhum — os zeros do handoff são "nunca esteve ligada", não "nunca precisou". 🔴 O sinal
@@ -60,7 +64,7 @@ como o gesto principal. F-093B-05.
 
 ### 1.4 · A anotação da atendente tem porta e zero uso
 📊 `notas_da_atendente` → **0 linhas** (escritor único `a_nota_da_atendente.py:207`, gatilho
-`webhook.py:1550`, prefixo `^#nota`). `messages WHERE payload ? 'nota_interna'` → **0**. 📊 `grep -rn
+`webhook.py:1550`, prefixo `^#nota`). `messages WHERE payload ? 'nota_interna'` → **0** (o painel grava a nota em `messages`, `route.ts:249-296`, NÃO em `notas_da_atendente`: são duas sedes). 📊 `grep -rn
 "notas_da_atendente" app components` → **0**: nenhuma tela lê a nota depois de gravada.
 
 ### 1.5 · O volume existe, e é o limite superior
@@ -83,11 +87,11 @@ acervo pronto). `documents` (11 linhas, RAG) **não tem** `conversation_id`. `_d
 existe em `backend/app/api/attendance_media.py:242`.
 
 ### 1.8 · O redator não cobre saúde, e 12 tabelas de aprendizagem têm RLS sem policy
-📊 `redaction_service.py` (290 linhas): CPF · CNPJ · apólice · sinistro nº · placa · e-mail · telefone ·
+📊 `backend/app/services/intelligence/redaction_service.py` (290 linhas; há um segundo, `backend/portal_worker/redaction.py`, que NÃO é o canônico): CPF · CNPJ · apólice · sinistro nº · placa · e-mail · telefone ·
 cartão · CEP · documento. `grep -Ei "cid|laudo|m[eé]dic|sa[uú]de|prontu"` → **0**. 📊 `pg_policies`
 para `intelligence_signals`, `knowledge_candidates`, `notas_da_atendente`, `work_waits`,
 `attendance_transcripts`, `observed_*`, … → **0 policies** (RLS ligado nega tudo a `authenticated`; o
-backend usa service role). `work_runs` e `work_events` **têm** policies (2 cada).
+backend usa service role). `work_runs` e `work_events` **têm** policies (2 cada); `work_waits` **não tem nenhuma**.
 
 ### 1.9 · O Work OS já é um log de eventos por objeto
 📊 `work_runs` (53 colunas): `company_id, conversation_id, workflow_key, outcome_type, status,
@@ -123,17 +127,19 @@ OUTCOME ..............  cada sinistro atendido deixa um rastro estruturado no Wo
 RISCO ................  6   ALCANCE 2 (a corretora vê na Central e no resumo admin; o segurado nunca)
                             REVERSIBILIDADE 2 (linhas em work_runs/work_events/intelligence_signals sobram ao desfazer)
                             FREQUÊNCIA 2 (todo atendimento é avaliado; todo sinistro grava)
-SUPERFÍCIE ...........  2   dois escritores (Python e Next) sobre o mesmo vocabulário; uma peça nova (o digest);
-                            lugares mapeados em §1 e §4 com file:line
+SUPERFÍCIE ...........  3   🔴 subiu de 2 no aquecimento: o mapa da §4 tinha 3 ponteiros errados e não continha o
+                            caminho REAL do piloto (webhook.py:759-782, modo observação). Agora contém — mas quem
+                            errou o mapa uma vez não ganha o 2 de volta por ter corrigido
 PISO APLICADO ........  nenhum por efeito (não envia · sem migration · não toca auth nem company_id de escrita).
                             ⚠️ MAS grava dado derivado de conversa de sinistro — dado sensível por natureza (ref. ⑦)
-NÍVEL ................  CRÍTICO   (RISCO 6+): desenhista da prova ANTES do código · painel de 4 lentes · red team ·
-                            auditoria externa · integrador
-UNIDADES .............  6   BLOCO 0 · A (detector + abertura da sombra, Python) · B (o ledger: eventos humanos, Python +
-                            Next) · C (digest de variantes + prazos + AGENT_TASKS) · D (resumo admin, read-only) · E (guarda)
+NÍVEL ................  CRÍTICO   (RISCO 6 e SUPERFÍCIE 3): desenhista da prova ANTES do código · painel de 4 lentes ·
+                            red team · auditoria externa · integrador
+UNIDADES .............  7   BLOCO 0 · 0-bis (o ELO: gate zero + helper de run sem fila + linha de base da regressão) ·
+                            A (detector no modo observação) · B (o ledger, Python + Next) · C (digest + prazos + AGENT_TASKS) ·
+                            D (resumo admin) · E (guarda)
 COESÃO ...............  A+B(Python) juntas (mesmo módulo, mesmo vocabulário) · B(Next) separada, contra o VOCABULÁRIO
                             congelado em §5 · C separada (só lê o que A/B escrevem; fixture) · D separada · E junto
-PARALELISMO REAL .....  3 escritores: {A+B py} ‖ {B next} ‖ {C}. D depois de C. E nasce junto. Integração serial
+PARALELISMO REAL .....  3 escritores {A+B py} ‖ {B next} ‖ {C} — SÓ depois do 0-bis. D depois de C. E nasce junto
 TIME .................  investigador ✅ · pesquisador ✅ · aquecimento (antes do código) · desenhista · 3 builders ·
                             verificador · painel de 4 lentes · red team · juiz de confirmação · auditoria externa
 REFERÊNCIA ...........  interna: backend/tests/test_a_central_diz_a_verdade.py (forma do guarda, 12 blocos com controle) ·
@@ -141,10 +147,11 @@ REFERÊNCIA ...........  interna: backend/tests/test_a_central_diz_a_verdade.py 
                             backend/app/services/intelligence/signal_service.py (como se escreve sinal com dedupe)
                             externa (§3): OCEL 2.0 · Celonis variantes · agentevals · ARISE · Sprout.ai · SUSEP 496/2026 · GDPR Art. 89
 GATES ................  por bloco (§4). Todos com mutação. Dois tenants em A, B, C, D
-O ELO ................  a afirmação-título é "o trabalho humano vira dataset". O elo é: (i) o sinistro É detectado (A abre
-                            a sombra) → (ii) o humano AGE e o gesto vira evento (B) → (iii) os eventos VIRAM variante (C).
-                            Cada seta tem gate próprio com fixture de ponta a ponta (E gate ⑧)
-FAIXA DE RELÓGIO .....  🔴 6–10h
+O ELO ................  "o trabalho humano vira dataset": (i) detecta → (ii) o humano age → (iii) vira variante.
+                            📊 O aquecimento provou que (i) estava QUEBRADO como escrito (o gancho ficava depois do
+                            `return` de webhook.py:782) e que (ii) não tem handoff do robô (0 de 8). Agora: (i) mora em
+                            :709 com GATE ZERO; (ii) é o botão Assumir do painel; (iii) tem o teste de ponta a ponta (E ⑧)
+FAIXA DE RELÓGIO .....  🔴 8–13h (subiu de 6–10h: helper de run sem fila, gancho no modo observação e linha de base)
 ```
 
 ---
@@ -288,6 +295,20 @@ ator.
 
 ---
 
+# BLOCO 0-bis · O ELO — três coisas antes de qualquer builder paralelo
+
+```
+① GATE ZERO escrito primeiro (desenhista): fixture do webhook com attendance_agent_active=False percorre até o
+   `return` de :782; hoje NENHUMA sombra abre (o teste nasce vermelho); depois do BLOCO A, abre
+② o helper `criar_registro_sem_fila` extraído do INSERT direto de dispatch_router.py:545-548 (com o thread_id
+   derivado e SEM outbox), o dispatch_router passando a usá-lo, e os testes do acionamento verdes antes e depois
+   (📊 `pytest -k "acionamento or dispatch_router" -q` como linha de base)
+③ a linha de base da regressão (§10) escrita no relatório: 112 ok · 1 vermelho pré-existente
+```
+⛔ Nenhum builder de A, B ou C começa antes de ①②③ estarem no relatório.
+
+---
+
 # BLOCO A · O sinistro é detectado e a sombra abre — sem desviar um turno
 
 ## O conserto
@@ -296,22 +317,35 @@ Um módulo novo `backend/app/services/claims_shadow.py` (💭 nome) com uma fun�
 `abrir_sombra(company_id, conversation_id, ...) -> work_run_id`:
 
 ```
-detecção      (a) infer_ramo_servico(...) devolve servico == 'sinistro'                → confianca ALTA
+detecção      🔴 O GANCHO MORA NO MODO OBSERVAÇÃO: `webhook.py:709`, logo depois do INSERT em `messages`
+              e ANTES do `if is_human_mode` e do `return` de `:782`. É o único ponto que TODA mensagem
+              de segurado atravessa hoje (📊 4 de 4 agentes attendance inativos → o grafo não roda).
               (b) regex estrito \m(sinistro|colis[ãa]o|batida|roub(o|aram)|furt(o|aram)|acidente)\M
                   no texto do SEGURADO (nunca da URA)                                  → confianca MEDIA
+              (a) se, e só se, `ficha_atendimento` já existir na conversa com servico == 'sinistro'
+                  (acontece só com o agente LIGADO)                                     → confianca ALTA
               ⛔ 'terceiro' sozinho NÃO abre (§1.5: casa fora de contexto)
-abertura      WorkRunService.criar(workflow_key='claims.shadow', outcome_type='claims.shadow',
-              source_type='chat', source_id=conversation_id, conversation_id=…,
-              📊 o CHECK de work_runs.source_type é {chat, routine, auxiliary, portal, api, admin, system,
-              retry, child_run} — 'conversation' NÃO existe; 'chat' é o canal do segurado. thread_id é
-              CHECK derivado ('work:'+company_id+':'+id): o RPC o gera, não se passa
+              ⛔ `infer_ramo_servico` NÃO é chamado pela sombra: chamá-lo no webhook seria rodar o
+                 classificador do atendimento fora do atendimento
+abertura      🔴 NÃO por `WorkRunService.criar` nem pelo RPC `work_run_create`: 📊 nenhum dos dois aceita
+              `conversation_id` (16 parâmetros no RPC, zero conversa), e o RPC enfileira no outbox — o
+              Smith worker pegaria um run sem handler e o marcaria `failed`. É o motivo pelo qual o
+              acionamento grava por INSERT direto (`dispatch_router.py:350-368, :545-548`), o ÚNICO
+              caminho que hoje sabe gravar `conversation_id` (📊 os 4 runs com conversa são dele).
+              🔴 O executor EXTRAI esse INSERT para um helper compartilhado em `backend/app/services/work/runs.py`
+              (💭 `criar_registro_sem_fila(...)`) e o `dispatch_router` passa a usá-lo — consolidar, não
+              duplicar (CLAUDE.md §5). A sombra: workflow_key='claims.shadow', outcome_type='claims.shadow',
+              source_type='chat' (📊 CHECK: chat|routine|auxiliary|portal|api|admin|system|retry|child_run),
+              source_id=conversation_id, conversation_id, runtime_kind='sombra', status='running' até o
+              encerramento, risk_level='low', idempotency_key=f'claims.shadow:{conversation_id}'.
+              thread_id é CHECK derivado ('work:'+company_id+':'+id) — o helper o monta como o router faz
               idempotency_key=f'claims.shadow:{conversation_id}', risk_level='low',
               input_payload={'confianca':…, 'motivo':…, 'ramo':…, 'seguradora_slug':…})
               — UMA sombra por conversa (idempotente); reabrir não duplica
-gancho        no ponto do webhook onde a mensagem do segurado já está normalizada e a ficha existe
-              (o executor localiza: perto de onde infer_ramo_servico é chamado ou onde a ficha grava,
-              attendance_ficha.py:328). 🔴 Em try/except que ENGOLE erro e loga: a sombra NUNCA
-              derruba o atendimento
+gancho        `webhook.py:709`, dentro de `try/except Exception` que loga e segue (o modelo é o do
+              cartógrafo em `webhook.py:373-375`). A sombra NUNCA derruba o atendimento.
+              `seguradora_slug` e `ramo` só entram se já conhecidos na conversa/ficha; senão `null`, e o
+              digest agrupa em 'desconhecida' (o campo pode ser preenchido por evento posterior)
 ```
 ⛔ **`infer_ramo_servico` não muda.** O defeito da §1.2 ("guincho vence sinistro") é conduta do
 atendimento e muda o que o segurado recebe — está em F-093B-01 para o Founder, não aqui.
@@ -319,43 +353,53 @@ atendimento e muda o que o segurado recebe — está em F-093B-01 para o Founder
 
 ## O gate
 ```
+⓪ 🔴 GATE ZERO (o ELO): teste com `attendance_agent_active` forçado a False percorre o webhook até o `return`
+   de :782 e a sombra ABRE mesmo assim. Sem este gate, todos os outros provam um caminho que não roda
 ① fixture "bati o carro e preciso de guincho" → abre sombra (regex, MEDIA) sem tocar em ramo/servico do atendimento
 ② fixture "quero falar com o terceiro andar" → NÃO abre
 ③ duas mensagens da mesma conversa → UMA sombra (idempotency_key)
 ④ 🔴 DOIS TENANTS: a sombra da corretora A não aparece no SELECT filtrado da B
 ⑤ 🔴 LINHA DE CONTROLE: exceção forçada dentro de abrir_sombra → o webhook segue e loga; nenhuma exceção sobe
 ⑥ input_payload não contém nenhum campo de texto do segurado (o guarda lista as chaves)
+⑦ o run da sombra NÃO entra no outbox (`work_queue_outbox` sem linha para ele) e o worker não o toca
+⑧ com o agente LIGADO (fixture), a mesma mensagem abre UMA sombra, não duas (idempotência entre os dois caminhos)
 ```
 **Mutação:** troque o regex para casar `terceiro` → ② vermelho. Remova o try/except → ⑤ vermelho.
+Mova o gancho para depois do `return` de :782 → ⓪ vermelho.
 
 ---
 
 # BLOCO B · O ledger: cada gesto vira evento, no vocabulário único
 
 ## O vocabulário — congelado em §5, lido por Python e por Next do MESMO arquivo
-`backend/app/services/claims_shadow_vocab.json` (💭 caminho; o Next o importa por caminho relativo ou
-uma cópia gerada com teste de igualdade — o executor escolhe e o guarda ⑤ prova que os dois lados
-leem o mesmo conteúdo).
+🔴 `lib/atendimento/claims-shadow-vocab.json` — no `lib/`, não em `backend/`. 📊 O Next não importa nada
+de `backend/` (20 ocorrências, todas em string/comentário); o precedente é o inverso:
+`lib/admin/portao-do-prompt.contract.json` importado pelo Next via `@/` (`provision-tenant.ts:57`,
+`resolveJsonModule` no tsconfig) e lido pelo Python por caminho a partir da raiz
+(`test_o_portao_vale_no_backend.py:72`). O guarda ⑤ compara o sha256 dos dois lados.
 
 ## Os escritores (todos com `actor_type` do CHECK existente; `payload_redacted` só enums)
 | gesto | onde já acontece | evento | ator |
 |---|---|---|---|
-| robô entrega ao humano | `human_handoff.py:611` | `claims.handoff_pedido` {motivo_enum} | `agent` |
-| atendente assume / devolve / encerra | `app/api/dashboard/conversas/[id]/route.ts` (claimed_by, status) | `claims.humano_assumiu` · `claims.humano_devolveu` · `claims.encerrado` {desfecho_enum: desconhecido por padrão} | `user` |
+| robô entrega ao humano (⚠️ OPCIONAL: 📊 a tool está desligada nos 8 agentes e o grafo não roda) | `human_handoff.py:611` | `claims.handoff_pedido` {motivo_enum} | `agent` |
+| 🔴 atendente assume / devolve / encerra — O GESTO PRINCIPAL | `app/api/dashboard/conversas/[id]/route.ts` (`getSupabaseAdmin()` em :56/:82; `ctx.companyId` é o filtro §7) | `claims.humano_assumiu` · `claims.humano_devolveu` · `claims.encerrado` {desfecho_enum: desconhecido por padrão} | `user` |
 | atendente envia mensagem ao segurado | `webhook.py:1386` (sinal humano) e a rota do painel | `claims.humano_respondeu` {canal} — **sem o texto** | `user` |
 | atendente anota `#nota` | `a_nota_da_atendente.py:207` e `route.ts:295` | `claims.nota_registrada` {tem_numero: bool} — **sem o texto** | `user` |
 | segurado manda documento/foto | `webhook.py:222` (mídia) · `attendance_media.py:242 _detect_document_type` | `claims.documento_recebido` {tipo_documento_enum} | `provider` |
-| espera aberta/satisfeita | `o_fim_do_atendimento.py:251` e watchdog | `claims.espera_aberta`/`_satisfeita` {kind} — e a `work_waits` ganha o `work_run_id` da sombra | `system` |
+| espera aberta/satisfeita | `o_fim_do_atendimento.py:250` (já aceita `work_run_id` opcional) e watchdog | `claims.espera_aberta`/`_satisfeita` {kind} — e a `work_waits` ganha o `work_run_id` da sombra | `system` |
 | mensagem da seguradora (URA) chega ao caso | `attendance_capture`/`dispatch_router` quando há sombra | `claims.seguradora_respondeu` {canal} | `provider` |
 🔴 Todo escritor: `SELECT id FROM work_runs WHERE conversation_id=? AND workflow_key='claims.shadow' AND company_id=?`
 (índice existe) → se não há sombra, **não escreve** (nada de sombra retroativa nesta SPEC).
-🔴 `work_events.message_human` vem de template por evento; `payload_redacted` passa por `contem_pii()`
-do `redaction_service` antes do INSERT — se acusar, o evento grava com `payload_redacted={}` e um
+🔴 `work_events.message_human` vem de template por evento; `payload_redacted` passa por
+`contem_pii(json.dumps(payload, ensure_ascii=False))` do `redaction_service` antes do INSERT
+(📊 `contem_pii` recebe `str`, `:264-267`; passar dict é `TypeError` engolido pelo `except`) — se acusar, o evento grava com `payload_redacted={}` e um
 `severity='warning'` (a sombra prefere perder detalhe a vazar).
 
 ## O gate
 ```
-① cada linha da tabela acima tem um teste de fixture que produz o evento com o event_type do vocabulário
+① cada linha da tabela acima tem um teste de fixture que produz o evento com o event_type do vocabulário —
+   🔴 LIDO DO BANCO (ou do cliente falso), nunca do retorno da função: `_evento()` engole exceção
+   (`dispatch_router.py:578-581`), e um INSERT recusado pelo CHECK some sem erro
 ② 🔴 payload_redacted de cada evento: só chaves do vocabulário; nenhum valor com mais de 64 chars; contem_pii() falso
 ③ conversa SEM sombra → o gesto NÃO escreve evento (controle)
 ④ 🔴 DOIS TENANTS em work_events: evento da A não aparece filtrado pela B
@@ -369,8 +413,12 @@ do `redaction_service` antes do INSERT — se acusar, o evento grava com `payloa
 # BLOCO C · O digest: variantes, contadores, prazos — e o trabalhador aparece na Central
 
 ## O conserto
-Workflow `intelligence.claims_shadow_digest` (registrado com `@registrar_workflow` em
-`backend/app/services/intelligence/workflows.py`, agendado 1×/dia no `tick.py` como os outros):
+Workflow `intelligence.claims_shadow_digest` — registrado com `@registrar_workflow` (o decorador mora em
+`backend/app/services/work/workflows.py:32-38`; assinatura `async def f(ctx: dict) -> str`, passos por
+`executar_passo`), definido em `backend/app/services/intelligence/workflows.py`, agendado no `tick.py`
+**pelo modelo do `garimpo`/`cluster_demand`** (`tick.py:123-126, :139-144`, `INTERVALO_*_HORAS = 24`,
+`_janela(agora, 24)`, idempotência `intel:tenant:{key}:{company}:{janela}`) — ⛔ NÃO pelo modelo do
+`daily_briefing`, que exige perfil e `deve_publicar_briefing`:
 1. por `company_id`, lê sombras e eventos dos últimos 90 dias;
 2. **variante** = sequência ordenada de `event_type` (referência ②); agrupa por `(ramo, seguradora_slug, variante)`;
 3. escreve `intelligence_signals` via `signal_service` com `source_type='claims_shadow'`, `domain='sinistro'`,
@@ -392,7 +440,9 @@ sombra a um caminho nunca exercido é dois desconhecidos de uma vez — P-093B-C
 ```
 ① fixture com 5 sombras: 3 com a sequência X e 2 com Y → 1 sinal process_variant (N=3), Y não escreve
 ② 🔴 CONTROLE (referência ②): X e a permutação de X caem em variantes DIFERENTES
-③ dedupe: rodar o digest duas vezes não duplica sinal (dedupe_key)
+③ dedupe: rodar o digest duas vezes não duplica sinal VIVO (índice único parcial + `_reforcar` move
+   `last_seen_at`). ⚠️ Sinal resolvido/expirado NÃO é reencontrado (`_vivo_por_dedupe` filtra `ESTADOS_VIVOS`):
+   um novo nasce, e é legítimo — o teste cobre os dois casos
 ④ os 5 contadores têm denominador no summary_redacted
 ⑤ prazos: `grep -n "\b30\b\|\b120\b" prazos_regulatorios.py` só em linhas com vigencia_de; contrato 2026 vs 2027 → caminhos diferentes;
    sem data de contrato → 'regime_nao_determinado'
@@ -432,7 +482,7 @@ sombra da A visível pela B → vermelho.
 ## 4. Os arquivos, por caminho (o mapa da SUPERFÍCIE 2)
 
 ```
-NOVOS     backend/app/services/claims_shadow.py · backend/app/services/claims_shadow_vocab.json ·
+NOVOS     backend/app/services/claims_shadow.py · lib/atendimento/claims-shadow-vocab.json (o Next importa via @/, o Python lê por caminho) ·
           backend/app/services/prazos_regulatorios.py · backend/tests/test_o_sinistro_deixa_rastro.py
 TOCADOS   backend/app/api/webhook.py (gancho da detecção + evento de documento + evento humano_respondeu)
           backend/app/agents/tools/human_handoff.py (:611 evento handoff_pedido)
@@ -492,7 +542,9 @@ Nada foi julgado ruim. Foi julgado C1+, e a 093-B é C0.
 ## 7. ⛔ POR QUE ZERO MIGRATION
 A sombra é um `workflow_key` em `work_runs`; o ledger é `work_events` (CHECK de `actor_type` já tem
 `user`, `agent`, `provider`, `system`); as esperas são `work_waits`; os sinais são `intelligence_signals`.
-As quatro tabelas existem, têm `company_id` e índices. **Criar tabela seria motor paralelo** (CLAUDE.md §5).
+As quatro tabelas existem, têm `company_id` e índices. 📊 `work_runs` e `work_events` têm policies de RLS;
+`work_waits` e `intelligence_signals` **não têm nenhuma** — o isolamento delas é o filtro no código, e o
+guarda testa com dois tenants exatamente por isso. **Criar tabela seria motor paralelo** (CLAUDE.md §5).
 ⚠️ REVERSIBILIDADE 2 mesmo assim: desfazer o código deixa as linhas — o ROLLBACK escrito é
 `DELETE FROM work_events WHERE work_run_id IN (SELECT id FROM work_runs WHERE workflow_key='claims.shadow')`,
 depois `DELETE FROM work_runs WHERE workflow_key='claims.shadow'`, depois os sinais `source_type='claims_shadow'` —
@@ -503,7 +555,7 @@ só por decisão do Founder, nunca automático.
 P-093B-LGPD      🔴 a base legal brasileira não foi lida hoje (planalto.gov.br ECONNRESET; ANPD sem guia final). A SPEC cita a
                  FORMA (GDPR Art. 89) e minimiza por construção. 🧑 Antes de qualquer uso cross-tenant ou global, a leitura
                  da LGPD art. 5º, 7º, 11 e 12 com jurista.
-P-093B-CLASSIF   📊 templater.py:1725 `servico or "sinistro"`: assistência vence sinistro. Muda conduta → F-093B-01.
+P-093B-CLASSIF   📊 templater.py:1726 `servico or "sinistro"`: assistência vence sinistro. Muda conduta → F-093B-01.
 P-093B-CANDIDATO knowledge_candidates = 0 em produção; o adapter nunca escreveu. A sombra escreve só sinais até o adapter ser exercido.
 P-093B-SAUDE     redaction_service sem padrão de saúde (CID, laudo). A sombra não guarda texto, então não vaza; o serviço
                  canônico continua incompleto para quem guarda. ~30 min.
@@ -513,11 +565,17 @@ P-093B-CORPUS    o gold corpus (4 perguntas da ref. ③) só existe com 20+ traj
 P-093B-TERCEIRO  2.187 sessões históricas com palavras de sinistro NÃO viram sombra (sem retroativo nesta SPEC). Decidir se
                  vale um backfill C0 sobre attendance_transcripts com o mesmo detector — 🧑 é dado antigo de segurado.
 P-093B-TELA      a Regina/Saionara não veem a sombra; a nota `#nota` continua sem tela que a exiba (0 leitores).
+P-093B-GOLD      📊 test_golden_do_eletricista.py: gold_007 vermelho (KeyError 'live') ANTES desta SPEC; e o pytest só coleta o
+                 teste de existência dos 10 casos — os 10 rodam por main(). Guarda que carimba (CLAUDE.md §9.4). Não é desta SPEC.
+P-093B-MAQUINA   📊 test_a_maquina_de_lavar_vai_ate_o_fim.py crasha a coleta do pytest (`sys.exit` no módulo, :665); como script,
+                 112 ok. Fora da suíte por acidente.
+P-093B-NOTA-2SEDES  a nota da atendente tem duas sedes (notas_da_atendente pelo WhatsApp; messages.payload.nota_interna pelo painel)
+                 e zero leitores. A sombra emite o evento nos dois pontos; consolidar a sede é outra SPEC.
 ```
 
 ## 9. 🧑 A CAIXA DO FOUNDER
 ```
-F-093B-01  "bati o carro, preciso de guincho" é classificado como GUINCHO, não sinistro (templater.py:1725). Consertar muda a
+F-093B-01  "bati o carro, preciso de guincho" é classificado como GUINCHO, não sinistro (templater.py:1726). Consertar muda a
            conduta do robô ANTES do piloto. Recomendo consertar DEPOIS da primeira semana, com os casos reais na mão.
 F-093B-02  Sem tela nesta SPEC: a Central mostra o trabalhador e o admin tem o JSON. Se quiser ver os casos da sombra numa
            tela de corretora, é a próxima peça (~2h).
@@ -535,7 +593,12 @@ BLOCO 0 → desenhista escreve E (fixtures e gates) → {A+B py} ‖ {B next} �
 painel de 4 lentes (verdade · adversarial/PII/tenant · regressão do atendimento · produto+guarda) → red team → conserto →
 juiz de confirmação → auditoria externa
 ```
-🔴 A regressão do atendimento é a lente que mais importa: **a sombra não pode mudar um turno.** A lente roda
-`test_a_maquina_de_lavar_vai_ate_o_fim.py` e `test_golden_do_eletricista.py` (referências internas §7.1) antes e depois.
+🔴 A regressão do atendimento é a lente que mais importa: **a sombra não pode mudar um turno.** 📊 LINHA DE BASE
+medida em 03/09 ANTES de qualquer código: `python backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py` →
+**112 ok** (⚠️ sob pytest ele CRASHA a coleta: `sys.exit` no nível do módulo, `:665` — rode como script);
+`python backend/tests/test_golden_do_eletricista.py` → **1 vermelho hoje** (`gold_007: KeyError 'live'`), e o
+pytest coleta só `teste_os_dez_estao_aqui`, que afirma que os 10 casos EXISTEM (CLAUDE.md §9.4: carimbo).
+A lente roda os dois COMO SCRIPT antes e depois; o vermelho do gold_007 é pré-existente (P-093B-GOLD) e
+não pode ser creditado à sombra — nem escondido por ela.
 
-💭 **6–10h.**
+💭 **8–13h.**
