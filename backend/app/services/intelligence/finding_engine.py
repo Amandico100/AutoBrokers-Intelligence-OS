@@ -325,7 +325,16 @@ class FindingEngine:
         from .dedupe_service import agrupar_por_assunto
         from .signal_service import SignalService
 
-        sinais = SignalService(self.db).ativos(company_id, limite=limite_sinais)
+        # 🔴 O corte VIAJA NA CONSULTA (A-01 da auditoria externa, 03/09/2026). A
+        # leitura ORDENA e corta em `limite_sinais` no banco: com o filtro só aqui
+        # embaixo, os sinais internos consumiam o orçamento de 200 linhas e empurravam
+        # para fora da janela o sinal que DEVIA virar Finding — o briefing emagrecia
+        # sem que nada aparecesse errado.
+        sinais = SignalService(self.db).ativos(
+            company_id, limite=limite_sinais,
+            excluir_source_types=SOURCE_TYPES_INTERNOS)
+        # ⚠️ E o `if` fica, como CINTO: um cliente que não suporte `not.in.(…)`, ou uma
+        # exceção engolida na consulta, não pode virar sombra no briefing.
         # 🔴 O corte é por `source_type`, e não por `signal_type`: `process_variant`
         # é um tipo genérico que outro detector pode passar a usar amanhã, e o corte
         # por tipo passaria a esconder o sinal errado. Quem escreveu é a autoridade.

@@ -9,7 +9,7 @@ lembrar (ou esquecer) de fazer isso.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from . import priority_service as prio
 from .dedupe_service import mesclar_preservando_linhagem, validade_de
@@ -179,11 +179,31 @@ class SignalService:
     # ------------------------------------------------------------------
 
     def ativos(self, company_id: str, *, tipos: Optional[list[str]] = None,
-               limite: int = 200) -> list[dict]:
+               limite: int = 200,
+               excluir_source_types: Optional[Sequence[str]] = None) -> list[dict]:
+        """Os sinais vivos da corretora, do mais prioritário para o menos.
+
+        🔴 `excluir_source_types` corta **na consulta**, e a diferença não é estética.
+
+        📊 A auditoria externa mediu (03/09/2026): quem chama com um corte por
+        `source_type` — hoje só o `FindingEngine`, para manter a sombra de sinistros
+        fora do briefing — o aplicava em Python DEPOIS da leitura. Como a consulta lê
+        e ORDENA `limite` linhas no banco, os sinais internos consumiam o orçamento de
+        200 linhas: numa corretora com muitas sombras, o sinal que DEVIA virar Finding
+        ficava fora da janela e o briefing emagrecia sem que nada aparecesse errado.
+
+        ⚠️ `not.in.(…)` é seguro aqui porque `intelligence_signals.source_type` é
+        `not null` (migration `20260726_01_spec059`, linha 33). Numa coluna anulável
+        ele derrubaria também as linhas NULAS — `NOT (NULL IN (…))` é NULL, e NULL não
+        passa — que é o mesmo engano medido em `dispatch_router.py:1434`.
+        """
+        fora = tuple(str(x) for x in (excluir_source_types or ()) if str(x or ""))
         try:
             q = (self.db.table("intelligence_signals")
                  .select("*").eq("company_id", company_id)
                  .in_("status", list(ESTADOS_VIVOS)))
+            if fora:
+                q = q.not_.in_("source_type", list(fora))
             if tipos:
                 q = q.in_("signal_type", tipos)
             r = q.order("priority_score", desc=True).limit(limite).execute()
