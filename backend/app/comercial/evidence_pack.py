@@ -47,6 +47,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import re
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -85,22 +88,55 @@ def periodo_iso(inicio: Any, fim: Any) -> Dict[str, str]:
     return {"start": _iso(inicio), "end": _iso(fim)}
 
 
+#: 🔴 O prefixo da referência de produtor. Uma letra, e ela não é enfeite.
+#:
+#: 📊 Achado pela lente do dado, 03/09/2026: `sha256(...)[:16]` é hexadecimal, e
+#: um em cada ~10^3 hashes sai só com dígitos. Uma referência de 16 dígitos
+#: contém `\d{11}` — e TODO detector de PII deste repositório (o canário, o
+#: guarda do Artifact) acusa "documento de 11 dígitos" na peça inteira, por
+#: causa de um hash. A letra torna isso impossível por construção, e continua
+#: opaca, estável e por tenant.
+PREFIXO_DO_PRODUTOR = "p"
+
+
+def normalizar_rotulo(s: str) -> str:
+    """Minúsculas, sem acento, espaço colapsado. Para COMPARAR, nunca para exibir.
+
+    🔴 Uma única implementação, e ela mora aqui, no módulo puro do fundo da
+    pilha: `calculos._normalizar` delega para esta função (CLAUDE.md §5). Duas
+    normalizações divergiriam no primeiro `.strip()` que uma ganhasse e a outra
+    não — e o ranking do chat deixaria de casar com o do Artifact sem ninguém
+    ver.
+    """
+    t = unicodedata.normalize("NFKD", str(s or ""))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", t).strip().lower()
+
+
 def ref_de_produtor(company_id: str, nome: str) -> str:
-    """A referência OPACA de um produtor — `sha256(company_id + nome)[:16]`.
+    """A referência OPACA de um produtor — `p + sha256(company_id + rótulo)[:15]`.
 
-    🔴 É o que entra no pack no lugar do nome. Duas propriedades importam:
+    🔴 É o que entra no pack no lugar do nome. Três propriedades importam:
 
     ```
-    estável   o mesmo produtor da mesma corretora dá sempre a mesma referência
+    estável    o mesmo produtor da mesma corretora dá sempre a mesma referência
     por TENANT o `company_id` no meio impede cruzar produtores entre corretoras
+    NORMALIZADA `Ana Souza`, `ANA  SOUZA` e `ana souza` são o MESMO produtor
     ```
+
+    🔴 A normalização não é capricho. 📊 `por_dimensao` já normaliza o rótulo da
+    seguradora desde a 081, porque a base traz `Allianz`, `allianz` e `ALLIANZ`
+    contando separado — 56 valores crus que viram ~30. O rótulo do produtor vem
+    da MESMA base, digitado à mão, e sem normalizar o mesmo vendedor aparece
+    duas vezes no ranking, cada metade da comissão dele numa linha.
 
     O nome continua existindo no Artifact, que é conteúdo do tenant e não sai
     do prédio. O que não pode é o nome viajar no texto do chat, no log, no
     teste ou no relatório de execução (SPEC-094 §2).
     """
-    semente = f"{company_id or ''}|{(nome or '').strip()}"
-    return hashlib.sha256(semente.encode("utf-8")).hexdigest()[:16]
+    semente = f"{company_id or ''}|{normalizar_rotulo(nome)}"
+    return PREFIXO_DO_PRODUTOR + hashlib.sha256(
+        semente.encode("utf-8")).hexdigest()[:15]
 
 
 def confianca(cobertura: Optional[float]) -> str:
@@ -116,6 +152,21 @@ def confianca(cobertura: Optional[float]) -> str:
     if cobertura >= 0.5:
         return MEDIA
     return BAIXA
+
+
+#: A ordem das confianças, da pior para a melhor. 🔴 Serve a UMA regra:
+#: `rebaixar_confianca` nunca SOBE. Um teto pedido por quem calculou não pode
+#: ser desfeito pela cobertura — que só sabe quantas linhas entraram na conta.
+ORDEM_DA_CONFIANCA = (BAIXA, MEDIA, ALTA)
+
+
+def rebaixar_confianca(atual: str, teto: Optional[str]) -> str:
+    """A PIOR das duas. `None` deixa como está."""
+    if not teto or teto not in ORDEM_DA_CONFIANCA:
+        return atual
+    if atual not in ORDEM_DA_CONFIANCA:
+        return teto
+    return min((atual, teto), key=ORDEM_DA_CONFIANCA.index)
 
 
 def valor_ou_indisponivel(v: Optional[Union[float, int]]) -> Valor:
@@ -149,9 +200,23 @@ CASAS_DA_COBERTURA = 4
 
 
 def _arredondar(valor: Any, casas: int = CASAS_DO_NUMERO) -> Any:
-    """Corta o resíduo binário de `float`. Tudo o mais passa intacto."""
+    """Corta o resíduo binário de `float`. **Não-finito vira `UNAVAILABLE`.**
+
+    🔴 `NaN` e `Infinity` NÃO são números, e o pior deles é o `NaN`: ele
+    atravessa toda soma sem levantar, contamina o total e chega ao dono como
+    manchete. 📊 Achado pelo red team, 03/09/2026: a fonte devolvendo a string
+    `"NaN"` produzia a manchete **"R$ nan"** e 46 ocorrências de `NaN` dentro do
+    bloco que o modelo lê — e `json.dumps` do Python escreve `NaN` no JSON de
+    boa vontade, que nem sequer é JSON válido.
+
+    A recusa acontece em DOIS lugares de propósito: `cbim.interpretar_dinheiro`
+    não deixa o valor virar `Money` na fronteira, e esta função não deixa um
+    não-finito nascido de uma DIVISÃO (0/0, x/0) chegar ao pack.
+    """
     if isinstance(valor, bool) or not isinstance(valor, float):
         return valor
+    if not math.isfinite(valor):
+        return UNAVAILABLE
     return round(valor, casas)
 
 
@@ -215,12 +280,20 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
             provider_key: str = "infocap",
             source_refs: Sequence[str] = (),
             warnings: Sequence[str] = (),
-            breakdown: Sequence[Dict[str, Any]] = ()) -> MetricResult:
+            breakdown: Sequence[Dict[str, Any]] = (),
+            confianca_maxima: Optional[str] = None) -> MetricResult:
     """Monta um `MetricResult` já com a confiança derivada da cobertura.
 
     Levanta `ValueError` em unidade ou base temporal fora do contrato — um
     número com unidade inventada é pior que número nenhum, porque o modelo
     narra a unidade errada com a mesma segurança.
+
+    🔴 `confianca_maxima` é um TETO, e existe porque cobertura não é a única
+    coisa que estraga um número. 📊 Achado pela lente do dado, 03/09/2026: uma
+    contribuição pós-repasse NEGATIVA (repasse maior que a comissão — estorno,
+    provavelmente) tem cobertura de 100% e sairia `HIGH`. A cobertura mede
+    quantas linhas entraram na conta; ela não sabe que a conta deu um resultado
+    que o negócio não explica.
     """
     if unit not in UNIDADES:
         raise ValueError(f"unidade fora do contrato: {unit!r} (use {UNIDADES})")
@@ -231,7 +304,8 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
         metric_id=metric_id, version=version,
         value=valor_ou_indisponivel(valor), unit=unit,
         period=dict(period), time_basis=time_basis,
-        coverage=coverage, confidence=confianca(coverage),
+        coverage=coverage,
+        confidence=rebaixar_confianca(confianca(coverage), confianca_maxima),
         provider_key=provider_key,
         source_refs=tuple(source_refs), warnings=tuple(warnings),
         breakdown=tuple(dict(b) for b in breakdown),
@@ -292,7 +366,14 @@ class EvidencePack:
         guarda perguntar *"há `R$ 1.234` FORA do bloco?"* — a pergunta que
         pega a prosa voltando.
         """
-        corpo = json.dumps(self.serializar(), ensure_ascii=False)
+        # 🔴 `allow_nan=False`. 📊 O default do Python escreve `NaN` e
+        # `Infinity` no JSON — que **não são JSON válido** (RFC 8259) e que
+        # nenhum parser de outra linguagem lê. Um bloco citável que não é
+        # parseável é um bloco que o próximo leitor terá de adivinhar.
+        # `_limpar` já trocou o não-finito por `UNAVAILABLE` antes daqui; esta
+        # linha é o cinto que LEVANTA se algum caminho novo escapar, em vez de
+        # publicar o `NaN` com cara de dinheiro.
+        corpo = json.dumps(self.serializar(), ensure_ascii=False, allow_nan=False)
         return f"{ABERTURA}\n{corpo}\n{FECHAMENTO}"
 
 

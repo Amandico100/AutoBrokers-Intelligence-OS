@@ -248,8 +248,9 @@ def _repasse(ctx: Contexto) -> Saida:
             total += quantia
             conhecidos += 1
     cobertura = (conhecidos / itens) if itens else None
-    avisos = ["repasse APROPRIADO (soma de TODOS os produtores da apólice), "
-              "não repasse pago"]
+    avisos = [f"repasse APROPRIADO (soma de TODOS os produtores da apólice), "
+              f"não repasse pago — sobre a população de {POLICY_VALID_TO}, isto "
+              f"é, o que VENCE no período (não o que foi emitido nele)"]
     if itens - conhecidos:
         avisos.append(f"{itens - conhecidos} apólice(s) do período sem repasse "
                       f"legível ficaram fora da soma — INDISPONÍVEL, não zero")
@@ -318,11 +319,43 @@ def _contribuicao(ctx: Contexto) -> Saida:
         "comissao_na_intersecao": apropriado,
         "repasse_na_intersecao": repassado,
         "comissao_do_periodo": comissao_do_periodo,
+        # 🔴 As DUAS bases, no breakdown, com nome. O envelope carrega UMA
+        # (`POLICY_VALID_FROM`, a da comissão) porque um envelope só tem uma —
+        # e é justamente por isso que a segunda tem de estar escrita em algum
+        # lugar que vá ao Artifact.
+        "base_da_comissao": POLICY_VALID_FROM,
+        "base_do_repasse": POLICY_VALID_TO,
     }]
+    # 🔴 O aviso NOMEIA as duas bases. 📊 Achado pela lente do dado, 03/09/2026:
+    # o envelope declarava `POLICY_VALID_FROM` e nada dizia que o repasse
+    # subtraído vem de `POLICY_VALID_TO`. Quem lesse o envelope concluiria que
+    # os dois lados são da mesma população — que é exatamente o erro que a
+    # interseção existe para não cometer, agora cometido pelo LEITOR em vez de
+    # pelo cálculo.
     avisos = [
-        f"calculada sobre a INTERSEÇÃO das duas populações: {na_intersecao} de "
-        f"{len(validas)} apólices do período têm comissão e repasse conhecidos"]
-    return apropriado - repassado, cobertura, breakdown, avisos
+        f"as duas pontas vêm de bases temporais DIFERENTES: a comissão de "
+        f"{POLICY_VALID_FROM} (o que COMEÇA no período) e o repasse de "
+        f"{POLICY_VALID_TO} (o que VENCE no período). O número sai só sobre a "
+        f"INTERSEÇÃO das duas: {na_intersecao} de {len(validas)} apólices do "
+        f"período têm os dois lados conhecidos"]
+    contribuicao = apropriado - repassado
+    teto = None
+    if contribuicao < 0:
+        # 🔴 Contribuição NEGATIVA existe e não é impossível — mas ela não é um
+        # resultado que o produto possa apresentar com confiança alta.
+        # 📊 Achado pela lente do dado, 03/09/2026: com um `val_r` negativo
+        # maior que a comissão, o número saía `HIGH` (a cobertura era 100%) e o
+        # cartão dizia que a corretora tinha PERDIDO dinheiro no período. A
+        # cobertura mede quantas linhas entraram na conta; ela não sabe que o
+        # resultado da conta não se explica pelo negócio.
+        from app.comercial.evidence_pack import BAIXA
+
+        teto = BAIXA
+        avisos.append(
+            "repasse maior que a comissão no período (estorno?): a contribuição "
+            "saiu NEGATIVA. O número está somado como a fonte o entregou e não "
+            "foi corrigido — confira o estorno antes de decidir por ele")
+    return contribuicao, cobertura, breakdown, avisos, teto
 
 
 _DEFINICOES.append(dict(

@@ -73,6 +73,7 @@ from app.comercial.cbim import (
     policy_ref,
     producer_ref,
 )
+from app.comercial.manifesto import SEM_AMOSTRA
 from app.core.feature_flags import env_ligada
 from app.providers.brokerage_analytics_provider import (
     FalhaDoProvider,
@@ -127,11 +128,30 @@ def registrar_conta(account_fingerprint: str, company_id: str) -> None:
         return
     dono = _CONTAS_EM_USO.get(fp)
     if dono and dono != empresa:
+        # 🔴 O LOG NOMEIA AS DUAS CORRETORAS E O FINGERPRINT TRUNCADO.
+        #
+        # 📊 Achado pela lente do dado, 03/09/2026: a regra em vigor é *"o
+        # primeiro que chega ganha"*. Se a Amandus lê primeiro, a Resulta é
+        # recusada até o processo reiniciar — e a recusa dizia apenas "conexão
+        # compartilhada com outra corretora", sem dizer QUAL. Quem atende o
+        # chamado não tinha como saber onde mexer, e o suporte pediria os logs
+        # de dois tenants para descobrir o que o gate já sabia.
+        #
+        # ⛔ `company_id` é identificador de tenant, e não dado de pessoa. O
+        # LOGIN nunca aparece: só a impressão dele, truncada.
+        logger.error(
+            "[094] conta compartilhada RECUSADA: fingerprint %s… ja em uso por "
+            "company_id=%s; pedido por company_id=%s (F-094-07)",
+            fp[:8], dono, empresa)
         raise RecusaDeContaCompartilhada(
             "conexão compartilhada com outra corretora — decisão F-094-07. "
-            "Duas corretoras ativas apontam para a MESMA conta do provider, e "
-            "a leitura da segunda mostraria a carteira da primeira. A leitura "
-            "foi recusada e nenhum Artifact é publicado.")
+            "Duas corretoras ativas apontam para a MESMA conta do provider "
+            f"(impressão {fp[:8]}…), e esta conta já está sendo lida pela "
+            f"corretora {dono}. A leitura da corretora {empresa} mostraria a "
+            "carteira da primeira, então foi recusada e nenhum Artifact é "
+            "publicado. ⚠️ Quem chegou primeiro ganha a conta até o processo "
+            "reiniciar: a resolução definitiva é a decisão F-094-07 "
+            "(P-094-CONTA-COMPARTILHADA).")
     _CONTAS_EM_USO[fp] = empresa
 
 
@@ -232,12 +252,39 @@ def impressao_da_rota(linhas: List[Dict[str, Any]]) -> str:
     ⚠️ Quem mudar este separador tem de remedir o censo inteiro. O guarda que
     fecha a porta está em `test_o_canario_do_pulso_360.py`: a impressão de uma
     linha com as chaves do censo TEM de bater com o `sha256` do arquivo.
+
+    🔴 **E A AMOSTRA É A UNIÃO, NÃO A PRIMEIRA LINHA.**
+
+    📊 Achado pela lente do dado, 03/09/2026. A versão anterior lia as chaves da
+    PRIMEIRA linha e parava. Uma API que só manda o campo quando ele tem valor —
+    e esta manda: `prod_docs` some quando a apólice não tem produtor — produz
+    linhas com conjuntos de chaves diferentes na mesma resposta. Então a
+    impressão passava a depender de QUAL apólice veio primeiro, que depende da
+    ordenação, que depende do parâmetro `ordem`. Duas leituras honestas do mesmo
+    período davam impressões diferentes, e o drift acusaria mudança de schema
+    onde houve mudança de ordenação.
+
+    A união das chaves de todas as linhas é estável para o mesmo conjunto de
+    campos, seja qual for a ordem — e continua acusando o campo que apareceu ou
+    sumiu, que é o que o drift existe para ver.
+
+    ⚠️ Com linhas homogêneas — que é o caso das duas rotas do censo — a união é
+    igual à primeira linha, e a impressão medida continua sendo a mesma.
+
+    🔴 Lista VAZIA devolve `SEM_AMOSTRA`, e não `""`. Uma rota sem linhas não
+    tem schema a comparar; omiti-la do mapa a tornaria indistinguível de uma
+    rota que ninguém leu, e é dessa confusão que nasce o zero de consolação.
     """
+    chaves: set = set()
+    houve_linha = False
     for linha in linhas:
         if isinstance(linha, dict) and linha:
-            chaves = SEPARADOR_DA_IMPRESSAO.join(sorted(linha.keys()))
-            return hashlib.sha256(chaves.encode("utf-8")).hexdigest()
-    return ""
+            houve_linha = True
+            chaves.update(linha.keys())
+    if not houve_linha:
+        return SEM_AMOSTRA
+    junta = SEPARADOR_DA_IMPRESSAO.join(sorted(chaves))
+    return hashlib.sha256(junta.encode("utf-8")).hexdigest()
 
 
 def _tipo_do_documento(linha: Dict[str, Any]) -> str:
@@ -605,7 +652,15 @@ class InfocapAnalyticsProvider:
         if incluir_renovacoes:
             renovacoes = await asyncio.to_thread(fonte.renovacoes_cruas, v_ini, v_fim)
 
-        lote = self._traduzir(company_id, producao, renovacoes, correlacao)
+        # 🔴 A rota que NÃO foi lida não entra no mapa de impressões, e a rota
+        # lida entra mesmo vazia. As duas coisas são diferentes: "não perguntei"
+        # não pode virar "perguntei e não veio nada", que é o que autoriza o
+        # registry a bloquear a métrica dependente.
+        rotas_lidas = tuple(
+            r for r, ligada in (("/documentos_bi", incluir_producao),
+                                ("/renovacoes", incluir_renovacoes)) if ligada)
+        lote = self._traduzir(company_id, producao, renovacoes, correlacao,
+                              rotas_lidas=rotas_lidas)
         lote.provenance = Provenance(
             connection_id=conexao_id,
             correlation_id=correlacao,
@@ -620,7 +675,9 @@ class InfocapAnalyticsProvider:
     # ------------------------------------------------------------ tradução
     def _traduzir(self, company_id: str, producao: List[Dict[str, Any]],
                   renovacoes: List[Dict[str, Any]],
-                  correlacao: str) -> FactSet:
+                  correlacao: str,
+                  rotas_lidas: Tuple[str, ...] = ("/documentos_bi",
+                                                  "/renovacoes")) -> FactSet:
         """Linha crua → fato canônico. É AQUI que a InfoCap deixa de existir."""
         lote = FactSet(company_id=company_id, provider_key=PROVIDER_KEY)
         acumulado: Dict[str, Dict[str, Any]] = {}
@@ -665,6 +722,7 @@ class InfocapAnalyticsProvider:
 
         # --- renovações: a base POLICY_VALID_TO -----------------------------
         vistos_venc: set = set()
+        vistas_atribuicoes: set = set()
         for x in renovacoes:
             origem = str(x.get("nosnum") or "").strip()
             if not origem:
@@ -691,6 +749,30 @@ class InfocapAnalyticsProvider:
                 if ordem == 1 and not direto_ref:
                     direto_ref = pref
                 share = interpretar_dinheiro(p.get("per_r"))
+                participacao = float(share.amount) if share is not None else None
+                if participacao is not None and not (0.0 <= participacao <= 100.0):
+                    # ⚠️ Participação fora de 0–100 não é participação. Ela NÃO
+                    # é corrigida nem descartada — o repasse é o `val_r`, e não
+                    # um produto do percentual — mas quem lê precisa saber que o
+                    # cadastro tem uma linha impossível.
+                    lote.warnings.append(
+                        f"[{correlacao}] participação fora de 0–100% na apólice "
+                        f"{ref[:8]}… ({participacao:g}%): o repasse foi somado "
+                        f"pelo valor, não pelo percentual, mas o cadastro tem "
+                        f"uma linha que não fecha")
+                # 🔴 DEDUPE. 📊 Achado pela lente do dado, 03/09/2026: a janela de
+                # vencimento é de QUATRO anos civis (`anos_de_vencimento_para`), e
+                # a mesma apólice a vencer aparece na fatia de cada ano em que a
+                # API a devolve. As apólices já eram deduplicadas (`vistos_venc`);
+                # os ASSIGNMENTS não eram, e o mesmo produtor da mesma apólice
+                # entrava 4×. `montar_contexto` os usa para decidir quem é o
+                # produtor principal e quantos produtores a apólice tem — e
+                # "quatro produtores" numa apólice de um produtor é uma afirmação
+                # errada sobre a corretora.
+                assinatura = (ref, pref, ordem)
+                if assinatura in vistas_atribuicoes:
+                    continue
+                vistas_atribuicoes.add(assinatura)
                 lote.assignments.append(ProducerAssignmentFact(
                     policy_ref=ref,
                     producer_ref=pref,
@@ -699,7 +781,7 @@ class InfocapAnalyticsProvider:
                     # decide `actor_type`: quem decide é o mapa versionado por
                     # corretora (BLOCO F).
                     role_source=str(p.get("agente") or "").strip(),
-                    share=float(share.amount) if share is not None else None,
+                    share=participacao,
                     order=ordem,
                 ))
                 valor = interpretar_dinheiro(p.get("val_r"))
@@ -752,9 +834,12 @@ class InfocapAnalyticsProvider:
 
         fp_prod = impressao_da_rota(producao)
         fp_renov = impressao_da_rota(renovacoes)
-        lote.fingerprints = {k: v for k, v in
-                             (("/documentos_bi", fp_prod), ("/renovacoes", fp_renov))
-                             if v}
+        # 🔴 As duas rotas LIDAS entram sempre, mesmo vazias — marcadas
+        # `SEM_AMOSTRA`. É essa entrada que permite ao registry responder
+        # "fonte sem linhas no período" em vez de "0,0 com confiança HIGH".
+        medidas = {"/documentos_bi": fp_prod, "/renovacoes": fp_renov}
+        lote.fingerprints = {r: medidas[r] for r in rotas_lidas
+                             if medidas.get(r)}
         lote.fingerprints["__combinado__"] = hashlib.sha256(
             f"{fp_prod}|{fp_renov}".encode("utf-8")).hexdigest()[:16]
         return lote

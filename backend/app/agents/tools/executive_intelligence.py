@@ -230,20 +230,46 @@ _CACHE_DE_PACOTES: Dict[str, Dict[str, Any]] = {}
 #: passa disso é histórico, e histórico se lê no Artifact.
 TETO_DE_PACOTES = 12
 
+#: 🔴 Quinze minutos, e o relógio não é decoração.
+#:
+#: 📊 Achado pelo red team em 03/09/2026: o pacote ficava em memória até o teto
+#: de doze o empurrar para fora. Uma conversa retomada duas horas depois com o
+#: mesmo `pack_id` recebia os números de duas horas atrás — apresentados como
+#: os de agora, com o `freshness` verdadeiro escondido dentro do JSON e a frase
+#: determinística sem nenhuma menção à hora. 💭 Quinze minutos é o que dura uma
+#: conversa; o que passa disso se relê, e reler custa uma leitura de carteira.
+TTL_DO_PACOTE_S = 15 * 60
+
 
 def chave_do_pack(company_id: str, pack_id: str) -> str:
     return "%s|%s" % (str(company_id or ""), str(pack_id or ""))
 
 
 def guardar_pack(company_id: str, pacote: Any, link: str) -> None:
+    from time import monotonic
+
     if len(_CACHE_DE_PACOTES) >= TETO_DE_PACOTES:
         _CACHE_DE_PACOTES.pop(next(iter(_CACHE_DE_PACOTES)), None)
     _CACHE_DE_PACOTES[chave_do_pack(company_id, pacote.pack_id)] = {
-        "pacote": pacote, "link": link}
+        "pacote": pacote, "link": link, "guardado_em": monotonic()}
 
 
 def buscar_pack(company_id: str, pack_id: str) -> Optional[Dict[str, Any]]:
-    return _CACHE_DE_PACOTES.get(chave_do_pack(company_id, pack_id))
+    """O pacote guardado, ou `None` — inclusive quando ele **venceu**.
+
+    ⚠️ `monotonic()`, e não `time()`: o relógio de parede pode andar para trás
+    (NTP, fuso), e um TTL que anda para trás nunca vence.
+    """
+    from time import monotonic
+
+    chave = chave_do_pack(company_id, pack_id)
+    guardado = _CACHE_DE_PACOTES.get(chave)
+    if guardado is None:
+        return None
+    if monotonic() - float(guardado.get("guardado_em") or 0.0) > TTL_DO_PACOTE_S:
+        _CACHE_DE_PACOTES.pop(chave, None)
+        return None
+    return guardado
 
 
 def esquecer_pacotes() -> None:
@@ -261,6 +287,57 @@ def _um_ano_atras(quando: date) -> date:
         return quando.replace(year=quando.year - 1, day=28)
 
 
+class RecusaDePeriodo(ValueError):
+    """A janela pedida não é uma janela. 🔴 `Recusa…` de propósito.
+
+    `_erro_legivel` classifica pelo PREFIXO do nome da classe, e uma recusa
+    conhecida chega ao modelo com o MOTIVO escrito — em vez de virar o nome
+    genérico de uma exceção que ninguém consegue explicar ao dono.
+    """
+
+
+#: 🔴 O teto da janela. 💭 Dois anos, e o motivo é de custo medido, não de gosto:
+#: 📊 uma leitura de UM ano custa 3,9 s em `/documentos_bi` e 11,4 s em
+#: `/renovacoes` (censo de 03/09/2026), e a janela de vencimento é sempre quatro
+#: anos civis mais larga que a de produção. Uma pergunta de dez anos pagaria
+#: mais de dez leituras e provavelmente morreria no meio — e o dono veria
+#: "RELATORIO_FALHOU" sem entender que ele pediu demais.
+TETO_DA_JANELA_DIAS = 366 * 2
+
+
+def _conferir_periodo(p: Any, comofalado: str) -> Any:
+    """A janela é uma janela? Senão, **recusa** — e nunca conserta em silêncio.
+
+    📊 Achado pelo red team em 03/09/2026: `period` é texto livre que o modelo
+    preenche a partir da frase do dono. Duas formas passavam:
+
+    ```
+    invertida   fim < início: o motor devolvia população VAZIA, e a resposta
+                era "não há movimento registrado" — que é uma afirmação sobre a
+                CARTEIRA, feita por causa de uma data trocada
+    absurda     "de 2010 a 2030": vinte anos de leitura, quatro rotas por ano
+    ```
+
+    🔴 Inverter a janela em silêncio seria pior que as duas: quem pediu
+    *"de dezembro a janeiro"* provavelmente quer o virar do ano, e adivinhar
+    qual dos dois ele quis dizer é escolher pelo dono.
+    """
+    inicio, fim = p.inicio, p.fim
+    if fim < inicio:
+        raise RecusaDePeriodo(
+            "o período pedido termina antes de começar (%s a %s, lido de %r). "
+            "Não dá para adivinhar qual das duas datas está trocada, e inverter "
+            "por conta própria seria decidir pelo dono: peça o período de novo, "
+            "com as duas datas." % (inicio, fim, comofalado[:60]))
+    if (fim - inicio).days + 1 > TETO_DA_JANELA_DIAS:
+        raise RecusaDePeriodo(
+            "o período pedido tem %d dias (%s a %s) e o teto desta peça é de "
+            "%d. Uma janela desse tamanho custa mais de uma dezena de leituras "
+            "da carteira e costuma não completar. Peça em pedaços de até dois "
+            "anos." % ((fim - inicio).days + 1, inicio, fim, TETO_DA_JANELA_DIAS))
+    return p
+
+
 def periodo_e_comparacao(calc: Any, texto: str, texto_da_comparacao: str = ""):
     """`(período, comparação ou None)`.
 
@@ -270,12 +347,13 @@ def periodo_e_comparacao(calc: Any, texto: str, texto_da_comparacao: str = ""):
     mede a estação, não o negócio. `Periodo.anterior()` da 081 devolve a janela
     imediatamente anterior, que serve ao Raio-X e não serve aqui.
     """
-    p = calc.entender_periodo(texto or "")
+    p = _conferir_periodo(calc.entender_periodo(texto or ""), texto or "")
     pedido = (texto_da_comparacao or "").strip().lower()
     if pedido in ("nenhum", "nenhuma", "nao", "não", "sem"):
         return p, None
     if pedido:
-        return p, calc.entender_periodo(texto_da_comparacao)
+        return p, _conferir_periodo(
+            calc.entender_periodo(texto_da_comparacao), texto_da_comparacao)
     inicio = _um_ano_atras(p.inicio)
     fim = _um_ano_atras(p.fim)
     return p, calc.Periodo(inicio, fim, "%s (mesmo período)" % inicio.year)
@@ -296,6 +374,49 @@ RESUMO_DETERMINISTICO = (
     "número e o que a fonte não expõe estão no bloco PACK acima e no "
     "relatório, cada um com a métrica que o produziu ao lado."
 )
+
+
+def resumo_deterministico(pacote: Any, reusado: bool = False) -> str:
+    """O resumo, com a HORA da leitura na frente do modelo.
+
+    🔴 `freshness` existia dentro do JSON e nunca aparecia na frase. 📊 Achado
+    pelo red team em 03/09/2026: num follow-up, o dono lia números de uma
+    leitura antiga sem nada dizer que eram antigos — e a peça só dizia "mesmo
+    pacote", que soa como uma garantia de consistência e não como um aviso de
+    idade.
+    """
+    quando = str(getattr(pacote, "freshness", "") or "").strip()
+    origem = ("Estes números são os da leitura de %s, reaproveitada sem nova "
+              "consulta — diga a hora ao dono se ele perguntar se está "
+              "atualizado." % quando) if reusado else (
+        "Carteira lida em %s." % quando)
+    return RESUMO_DETERMINISTICO + " " + origem
+
+#: 🔴 De QUE a cobertura é fração, métrica por métrica, na língua do dono.
+#:
+#: ⚠️ "6,0%" sozinho não informa: 6% de quê? A `coverage_rule` do registry diz
+#: isso para quem lê código; estas frases dizem para quem lê o relatório. As
+#: duas descrevem a MESMA fração — quem mudar uma tem de mudar a outra, e é por
+#: isso que o `metric_id` está escrito nos dois lugares.
+DO_QUE_E_A_COBERTURA = {
+    "producer.performance": "da comissão do período (o resto não tem produtor "
+                            "identificado na fonte)",
+    "data.coverage": "das apólices do período",
+    "repasse.producer_accrued": "das apólices que VENCEM na janela — não das "
+                                "emitidas nela",
+    "contribution.after_repasse": "da comissão do período que tem repasse "
+                                  "conhecido; a conta só existe sobre a "
+                                  "INTERSEÇÃO das duas populações",
+    "production.premium_written": "das apólices do período cujo prêmio a fonte "
+                                  "expôs",
+    "commission.broker_accrued": "das apólices do período com comissão legível",
+    "mix.insurer": "das apólices do período com comissão legível",
+    "mix.branch": "das apólices do período com comissão legível",
+    "renewal.exposure": "dos vencimentos da janela com prêmio legível",
+    "projection.run_rate": "das apólices do período com comissão legível",
+    "producer.momentum": "das apólices do período com comissão legível",
+    "production.new_vs_renewal": "das apólices do período com comissão legível",
+}
 
 COMO_FALAR = (
     "Comente para o dono usando SÓ os números do bloco PACK acima, citando "
@@ -349,7 +470,7 @@ class ExecutiveIntelligenceTool(BaseTool):
                     pack_id: str = "", **_: Any) -> str:
         try:
             if pack_id:
-                seguindo = self._seguir(pack_id, dimension)
+                seguindo = self._seguir(pack_id, dimension, period, compare)
                 if seguindo is not None:
                     return seguindo
             return await self._montar(period, compare, views or [], dimension)
@@ -381,59 +502,156 @@ class ExecutiveIntelligenceTool(BaseTool):
         )
 
     # ------------------------------------------------------------------ #
-    def _seguir(self, pack_id: str, dimension: str) -> Optional[str]:
+    def _seguir(self, pack_id: str, dimension: str,
+                period: str = "", compare: str = "") -> Optional[str]:
         """A pergunta de acompanhamento, sobre o pacote que JÁ existe.
 
-        🔴 Sem refetch, e portanto sem números novos. `pack_id` desconhecido
-        devolve `None` — e aí o caminho normal roda e consulta. Fingir que o
-        cache tinha seria responder com um pacote de outra pergunta.
+        🔴 Sem refetch, e portanto sem números novos. `pack_id` desconhecido —
+        ou VENCIDO — devolve `None`, e aí o caminho normal roda e consulta.
+        Fingir que o cache tinha seria responder com um pacote de outra pergunta.
+
+        🔴 **E um período diferente do pacote também devolve `None`.**
+
+        📊 Achado pelo red team em 03/09/2026: `pack_id` + `period="2019"`
+        devolvia o pacote de 2025, inteiro, **sem dizer nada**. O modelo repassa
+        o `pack_id` em toda pergunta seguinte da conversa (é o que a descrição da
+        tool manda fazer), então basta o dono dizer *"e em 2019?"* para receber
+        os números do ano errado com a segurança de quem citou `metric_id`. O
+        recorte por `dimension` é filtro sobre o MESMO pacote e continua sem
+        consulta; trocar de PERÍODO é outra pergunta, e outra pergunta se
+        calcula.
         """
         guardado = buscar_pack(str(self.company_id or ""), pack_id)
         if guardado is None:
             return None
         pacote = guardado["pacote"]
-        recorte = self._recortar(pacote, dimension)
+        if self._periodo_diverge(pacote, period, compare):
+            logger.info("[094] follow-up com periodo diferente do pacote: "
+                        "recalculando em vez de reusar")
+            return None
+        recorte, fora_do_bloco = self._recortar(pacote, dimension)
         aviso = ""
-        if dimension:
+        if dimension and not fora_do_bloco:
             aviso = (" · recorte pedido: `%s` (filtrado sobre o MESMO pacote, "
                      "sem nova consulta)" % dimension)
         return (
             f"{CARIMBO_PRONTO} · Pulso 360 (mesmo pacote `{pacote.pack_id}`)"
             f"{aviso}.\n\n"
             f"[Abrir o relatório]({guardado['link']})\n\n"
+            + (fora_do_bloco + "\n\n" if fora_do_bloco else "")
             + recorte.bloco_para_o_modelo()
-            + "\n\n" + RESUMO_DETERMINISTICO
+            + "\n\n" + resumo_deterministico(pacote, reusado=True)
             + "\n\n" + COMO_FALAR
         )
 
     # ------------------------------------------------------------------ #
+    def _periodo_diverge(self, pacote: Any, period: str, compare: str) -> bool:
+        """O `period`/`compare` pedidos batem com os do pacote guardado?
+
+        ⚠️ A comparação é feita sobre as DATAS resolvidas, e não sobre o texto:
+        *"2025"*, *"este ano"* e *"de 01/01/2025 a 31/12/2025"* são a mesma
+        janela ditas de três jeitos, e recalcular por diferença de redação
+        pagaria uma leitura de carteira por sinônimo.
+        """
+        if not (period or "").strip() and not (compare or "").strip():
+            return False
+        try:
+            p, anterior = periodo_e_comparacao(self._calculos(), period, compare)
+        except Exception:  # noqa: BLE001
+            # Período ilegível ou recusado não é motivo para servir o pacote
+            # velho: manda para o caminho normal, que levanta com o motivo certo.
+            return True
+        from app.comercial import evidence_pack as ep
+
+        if (period or "").strip() and ep.periodo_iso(p.inicio, p.fim) != dict(
+                pacote.period or {}):
+            return True
+        if not (compare or "").strip():
+            return False
+        pedido = (ep.periodo_iso(anterior.inicio, anterior.fim)
+                  if anterior is not None else None)
+        guardado = dict(pacote.compare_period) if pacote.compare_period else None
+        return pedido != guardado
+
+    # ------------------------------------------------------------------ #
     @staticmethod
-    def _recortar(pacote: Any, dimension: str) -> Any:
-        """O MESMO pacote, com o `breakdown` filtrado pela dimensão pedida.
+    def rotulos_do_pacote(pacote: Any) -> Dict[str, str]:
+        """A LISTA FECHADA de recortes válidos: `{normalizado: como aparece}`.
+
+        🔴 Ela sai do `breakdown` que o registry já calculou — as seguradoras,
+        os ramos e as faixas de urgência DESTE pacote. Não é uma lista escrita à
+        mão em lugar nenhum: é o conjunto de coisas sobre as quais existe
+        detalhe para mostrar.
+        """
+        from app.comercial.evidence_pack import normalizar_rotulo
+
+        saida: Dict[str, str] = {}
+        for m in getattr(pacote, "metrics", ()) or ():
+            for b in (m.breakdown or ()):
+                cru = str(b.get("rotulo") or b.get("faixa") or "").strip()
+                if cru:
+                    saida.setdefault(normalizar_rotulo(cru), cru)
+        return saida
+
+    @staticmethod
+    def _recortar(pacote: Any, dimension: str) -> Tuple[Any, str]:
+        """`(pacote, aviso FORA do bloco)`. O detalhe filtrado pela dimensão.
 
         ⚠️ O `pack_id` não muda, e o valor de cada métrica também não. O que
         o recorte faz é mostrar a linha pedida do detalhe — dizer que o total
         da carteira virou o total de uma seguradora seria inventar um número
         que ninguém calculou.
+
+        🔴 **`dimension` só aceita rótulo que EXISTE no breakdown**, e o que não
+        está na lista é recusado com o aviso FORA do bloco citável.
+
+        📊 Achado pelo red team em 03/09/2026. `dimension` é texto livre que o
+        LLM preenche a partir da frase do dono, e ele entrava **verbatim** em
+        `pack.warnings` — isto é, DENTRO do bloco `<<PACK … PACK>>`, que é a
+        única parte da resposta que o narrador foi instruído a tratar como
+        verdade citável. Qualquer instrução escrita ali chegava ao modelo com a
+        autoridade do dado. A lista fechada fecha a porta pela raiz: o que entra
+        no bloco é rótulo que o registry calculou, e nada mais.
+
+        🔴 E a recusa vai FORA do bloco, de propósito: é uma frase sobre o
+        PEDIDO, não sobre a carteira. Dentro do pack ela seria um "dado" que o
+        modelo citaria com `metric_id` ao lado.
         """
         if not dimension:
-            return pacote
-        alvo = str(dimension).strip().lower()
+            return pacote, ""
+        from app.comercial.evidence_pack import normalizar_rotulo
+
+        alvo = normalizar_rotulo(dimension)
+        permitidos = ExecutiveIntelligenceTool.rotulos_do_pacote(pacote)
+        casados = [bonito for chave, bonito in permitidos.items()
+                   if alvo and alvo in chave]
+        if not casados:
+            amostra = ", ".join(sorted(permitidos.values())[:8])
+            return pacote, (
+                "⚠️ O recorte pedido não existe neste relatório, então NADA foi "
+                "filtrado e os números abaixo são os da carteira inteira. Diga "
+                "isso ao dono e ofereça um destes recortes, que são os que a "
+                "peça tem: " + (amostra or "nenhum — este pacote não traz "
+                                "detalhe por seguradora, ramo ou faixa"))
         import copy
 
+        alvos = {normalizar_rotulo(x) for x in casados}
         recortado = copy.deepcopy(pacote)
         for i, m in enumerate(recortado.metrics):
             if not m.breakdown:
                 continue
             linhas = [b for b in m.breakdown
-                      if alvo in str(b.get("rotulo") or b.get("faixa") or "").lower()]
+                      if normalizar_rotulo(
+                          str(b.get("rotulo") or b.get("faixa") or "")) in alvos]
             if linhas:
                 recortado.metrics[i] = type(m)(
                     **dict(m.__dict__, breakdown=tuple(linhas)))
+        # ✅ O que entra no bloco é o rótulo que o REGISTRY calculou, e nunca a
+        # string do modelo — mesmo quando as duas casam.
         recortado.warnings = list(recortado.warnings) + [
-            "recorte `%s` aplicado sobre o detalhe; os totais continuam sendo "
-            "os da carteira inteira" % alvo]
-        return recortado
+            "recorte %s aplicado sobre o detalhe; os totais continuam sendo "
+            "os da carteira inteira" % (", ".join(sorted(casados)))]
+        return recortado, ""
 
     # ------------------------------------------------------------------ #
     async def _montar(self, period: str, compare: str, views: List[str],
@@ -494,19 +712,21 @@ class ExecutiveIntelligenceTool(BaseTool):
 
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
         pacote = self._empacotar(ep, company_id, p, anterior, metricas,
-                                 anteriores, comparacoes, fatos, agora)
+                                 anteriores, comparacoes, fatos, agora,
+                                 manifesto_)
         link = self._publicar_a_peca(pacote, p, anterior, metricas,
-                                     comparacoes, agora)
+                                     comparacoes, agora, fatos)
         guardar_pack(company_id, pacote, link)
         self._registrar_sinais(ep, pacote)
 
-        recorte = self._recortar(pacote, dimension)
+        recorte, fora_do_bloco = self._recortar(pacote, dimension)
         aviso = " (período padrão — o dono não especificou)" if p.e_padrao else ""
         return (
             f"{CARIMBO_PRONTO} · Pulso 360 de **{p.rotulo}**{aviso}.\n\n"
             f"[Abrir o relatório]({link})\n\n"
+            + (fora_do_bloco + "\n\n" if fora_do_bloco else "")
             + recorte.bloco_para_o_modelo()
-            + "\n\n" + RESUMO_DETERMINISTICO
+            + "\n\n" + resumo_deterministico(pacote)
             + "\n\n" + COMO_FALAR
         )
 
@@ -540,21 +760,44 @@ class ExecutiveIntelligenceTool(BaseTool):
 
     @staticmethod
     async def _manifesto(provider: Any, company_id: str, fatos: Any) -> Any:
-        """O manifesto do provider, já com o drift desta leitura marcado."""
+        """O manifesto do provider, já com o drift desta leitura marcado.
+
+        🔴 **FAIL-CLOSED.** Se o manifesto não carrega, esta função devolve um
+        manifesto que bloqueia TUDO — e não `None`.
+
+        📊 Achado pelo red team em 03/09/2026: `except` → `return None`, e
+        `registry._avaliar(None, d)` devolve *"nada bloqueia"*. A frase que
+        justificava isso ("quem não perguntou pelas capacidades não pode afirmar
+        que elas faltam") vale para quem NÃO PERGUNTOU. Aqui perguntou-se, a
+        pergunta falhou, e a resposta era liberar as 16 métricas com confiança
+        HIGH sobre uma fonte cuja capacidade ninguém conseguiu ler — sem uma
+        linha de aviso no pack nem no relatório.
+
+        ⚠️ Provider que **não expõe** `manifesto` continua devolvendo `None`:
+        esse é o caso legítimo de "não perguntei". A diferença entre não ter a
+        porta e a porta ter quebrado é a diferença inteira.
+        """
         f = getattr(provider, "manifesto", None)
         if not callable(f):
             return None
         try:
             return await f(company_id=company_id, lote=fatos)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("[094] manifesto nao carregado (%s)", type(exc).__name__)
-            return None
+            logger.error("[094] manifesto NAO carregado (%s) — fail-closed: "
+                         "todas as metricas ficam INDISPONIVEL",
+                         type(exc).__name__)
+            from app.comercial.manifesto import (CENSO_ILEGIVEL,
+                                                 ProviderCapabilityManifest)
+
+            return ProviderCapabilityManifest(
+                provider_key=str(getattr(fatos, "provider_key", "") or ""),
+                ilegivel="%s (%s)" % (CENSO_ILEGIVEL, type(exc).__name__))
 
     # ------------------------------------------------------------------ #
     def _empacotar(self, ep: Any, company_id: str, p: Any, anterior: Any,
                    metricas: List[Any], anteriores: List[Any],
                    comparacoes: List[Dict[str, Any]], fatos: Any,
-                   agora: str) -> Any:
+                   agora: str, manifesto_: Any = None) -> Any:
         """UM pacote — o que o chat lê e o que o Artifact publica."""
         proveniencia = {"spec": "094", "tool": self.name,
                         "template": TEMPLATE_PULSE, "consultado_em": agora,
@@ -573,6 +816,11 @@ class ExecutiveIntelligenceTool(BaseTool):
         indisponiveis = [m.metric_id for m in metricas if m.indisponivel]
         if indisponiveis:
             avisos.append("INDISPONIVEL na fonte: " + ", ".join(indisponiveis))
+        # 🔴 A integridade do CENSO vai escrita no topo do pack, e não só no
+        # envelope de cada métrica. Um relatório inteiro de INDISPONÍVEL parece
+        # defeito da fonte do cliente quando o defeito é da nossa medição — e
+        # essa troca é a mutação M2 na forma mais cara.
+        avisos.extend(getattr(manifesto_, "avisos_de_integridade", []) or [])
 
         pacote = ep.EvidencePack(
             company_id=company_id,
@@ -613,12 +861,66 @@ class ExecutiveIntelligenceTool(BaseTool):
             logger.warning("[094] sinais nao gravados (%s)", type(exc).__name__)
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def rotulos_de_produtor(fatos: Any) -> Dict[str, str]:
+        """`{producer_ref: nome}` — 🔴 **e isto NUNCA entra no pack.**
+
+        📊 Achado pelo red team em 03/09/2026: a tabela "Quem apropriou comissão
+        no período" do relatório mostrava uma coluna de **hashes truncados**.
+        Ela é a peça que o dono da corretora abre para saber quem vendeu o quê —
+        e ninguém reconhece um vendedor por `p7baf5d5aadb1`.
+
+        🔴 A regra da §2 desta SPEC nunca foi "o nome não existe": foi *"o nome
+        não viaja no que vai ao MODELO"*. O Artifact é conteúdo do tenant, dentro
+        do tenant, e é o lugar onde o nome pode estar. O pack — que o chat lê e
+        que o narrador cita — continua carregando só a referência opaca, e o
+        guarda tem o PAR dos dois lados: o nome no relatório, e nunca no bloco.
+
+        ⚠️ O rótulo do produtor de ORDEM 1, que é a resposta da pergunta "quem
+        vendeu". 📊 Uma apólice tem em média 2,0 produtores (censo), e o ranking
+        agrupa pelo principal.
+        """
+        rotulos: Dict[str, str] = {}
+        for a in (getattr(fatos, "assignments", None) or ()):
+            ref = str(getattr(a, "producer_ref", "") or "")
+            nome = str(getattr(a, "producer_label", "") or "").strip()
+            if not ref or not nome:
+                continue
+            ordem = getattr(a, "order", None)
+            if ref not in rotulos or ordem == 1:
+                rotulos[ref] = nome
+        return rotulos
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def frase_da_cobertura(m: Any) -> str:
+        """A cobertura DESTE número, em uma frase, ou vazio quando é 100%.
+
+        🔴 Ela vai DENTRO do cartão. 📊 Achado pela lente do dado, 03/09/2026: a
+        cobertura morava só na oitava seção, "Fontes e confiança" — seis seções
+        abaixo do número que ela qualifica. O cartão "Quem apropriou comissão no
+        período" cobria **6,0%** da comissão, e quem lesse a tabela não tinha
+        como saber; o cartão "O que sobra depois do repasse" punha lado a lado
+        dois valores de POPULAÇÕES diferentes sem uma linha de ressalva.
+
+        Uma ressalva a seis seções do número não é ressalva: é nota de rodapé de
+        um relatório que ninguém rola até o fim.
+        """
+        if m is None or m.coverage is None or m.coverage >= 1.0:
+            return ""
+        pct = ("%.1f%%" % (100.0 * m.coverage)).replace(".", ",")
+        return "sobre %s %s" % (pct, DO_QUE_E_A_COBERTURA.get(
+            m.metric_id, "da população que esta conta consegue usar"))
+
+    # ------------------------------------------------------------------ #
     def _publicar_a_peca(self, pacote: Any, p: Any, anterior: Any,
                          metricas: List[Any], comparacoes: List[Dict[str, Any]],
-                         agora: str) -> str:
+                         agora: str, fatos: Any = None) -> str:
         from app.agents.tools.relatorios_comerciais import _link, _publicar
 
-        blocos = self._compor(pacote, p, anterior, metricas, comparacoes, agora)
+        rotulos = self.rotulos_de_produtor(fatos)
+        blocos = self._compor(pacote, p, anterior, metricas, comparacoes, agora,
+                              rotulos)
         payload = {
             "evidence_pack": pacote.serializar(),
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim),
@@ -626,6 +928,10 @@ class ExecutiveIntelligenceTool(BaseTool):
             "comparacao": comparacoes,
             "findings": [dict(f) for f in pacote.findings],
             "papel_dos_produtores": FRASE_SEM_MAPA,
+            # 🔴 O nome do produtor mora AQUI, no payload do Artifact do tenant,
+            # e em lugar nenhum do `evidence_pack` acima. As duas chaves são
+            # vizinhas de propósito: quem editar esta linha vê a outra.
+            "rotulos_de_produtor": dict(rotulos),
         }
         ident = _publicar(
             self.supabase, str(self.company_id),
@@ -640,7 +946,8 @@ class ExecutiveIntelligenceTool(BaseTool):
 
     # ------------------------------------------------------------------ #
     def _compor(self, pacote: Any, p: Any, anterior: Any, metricas: List[Any],
-                comparacoes: List[Dict[str, Any]], agora: str) -> List[Dict]:
+                comparacoes: List[Dict[str, Any]], agora: str,
+                rotulos: Optional[Dict[str, str]] = None) -> List[Dict]:
         """As oito seções do `executive.pulse360`, na ordem do template.
 
         ⛔ Nenhum bloco novo: todos existem em `blocks.py` desde a SPEC-057.
@@ -649,6 +956,21 @@ class ExecutiveIntelligenceTool(BaseTool):
 
         por_id = {m.metric_id: m for m in metricas}
         comp = {c.get("metric_id"): c for c in comparacoes}
+        rotulos = rotulos or {}
+
+        def cobertura(mid: str) -> str:
+            return self.frase_da_cobertura(por_id.get(mid))
+
+        def lede(*mids: str) -> Dict[str, Any]:
+            """A ressalva de cobertura do cartão, pronta para virar `props`.
+
+            🔴 `lede` é renderizado por `blocks._cabecalho`, logo abaixo do
+            título e ACIMA dos números — dentro do cartão, e não seis seções
+            adiante. Cartão com cobertura cheia não ganha frase nenhuma: um
+            aviso que aparece sempre é um aviso que ninguém lê.
+            """
+            frases = [f for f in (cobertura(m) for m in mids) if f]
+            return {"lede": "Conta " + "; ".join(frases) + "."} if frases else {}
 
         def texto(mid: str) -> str:
             m = por_id.get(mid)
@@ -693,8 +1015,17 @@ class ExecutiveIntelligenceTool(BaseTool):
                 continue
             item = {"label": rotulo, "value": texto(mid)}
             item.update(variacao(mid))
+            rodape = []
             if anterior is not None and mid in comp:
-                item["since"] = "contra %s" % anterior.rotulo
+                rodape.append("contra %s" % anterior.rotulo)
+            # 🔴 A cobertura no RODAPÉ DO CARTÃO, colada no número. `blocks.kpis`
+            # imprime `since` mesmo sem delta — então a ressalva aparece tanto no
+            # cartão que tem comparação quanto no que não tem.
+            frase = cobertura(mid)
+            if frase:
+                rodape.append(frase)
+            if rodape:
+                item["since"] = " · ".join(rodape)
             itens.append(item)
         if itens:
             blocos.append({"block": "kpis", "props": {
@@ -703,7 +1034,7 @@ class ExecutiveIntelligenceTool(BaseTool):
         # 3 · pessoas e canais ---------------------------------------------
         pessoas = por_id.get("producer.performance")
         if pessoas is not None and pessoas.breakdown:
-            blocos.append({"block": "table", "props": {
+            props = {
                 "eyebrow": "Pessoas e canais",
                 "title": "Quem apropriou comissão no período",
                 "columns": [
@@ -713,22 +1044,43 @@ class ExecutiveIntelligenceTool(BaseTool):
                     {"key": "comissao", "label": "Comissão", "format": "currency"},
                     {"key": "ticket", "label": "Ticket", "format": "currency"},
                 ],
-                "rows": [{"produtor": str(b.get("producer_ref") or "")[:12],
+                # 🔴 O NOME, e não o hash. Esta é a ÚNICA seção da peça que o
+                # carrega, e ele vem de `rotulos_de_produtor` — que sai dos
+                # fatos, e nunca do pack. Um relatório de pessoas com uma coluna
+                # de hashes não é um relatório de pessoas.
+                "rows": [{"produtor": rotulos.get(
+                              str(b.get("producer_ref") or ""),
+                              "produtor não identificado na fonte"),
                           "papel": FRASE_SEM_MAPA,
                           "apolices": b.get("apolices"),
                           "comissao": round(float(b.get("comissao") or 0.0), 2),
                           "ticket": round(float(b.get("ticket") or 0.0), 2)}
-                         for b in pessoas.breakdown[:15]]}})
+                         for b in pessoas.breakdown[:15]]}
+            props.update(lede("producer.performance"))
+            blocos.append({"block": "table", "props": props})
 
         # 4 · economia pós-repasse, ou a ausência dela ----------------------
         contrib = por_id.get("contribution.after_repasse")
         if contrib is not None and not contrib.indisponivel:
-            blocos.append({"block": "kpis", "props": {
-                "title": "O que sobra depois do repasse", "items": [
+            # 🔴 Os dois números deste cartão são de POPULAÇÕES DIFERENTES —
+            # a contribuição é da base de emissão e o repasse é da de vencimento
+            # (📊 2,8% de interseção medida). Eles ficam lado a lado porque a
+            # pergunta é uma só; a ressalva fica junto porque, sem ela, o cartão
+            # convida a subtrair um do outro.
+            props = {
+                "title": "O que sobra depois do repasse",
+                "items": [
                     {"label": "Contribuição depois do repasse",
-                     "value": texto("contribution.after_repasse")},
+                     "value": texto("contribution.after_repasse"),
+                     "since": cobertura("contribution.after_repasse")
+                              or "sobre a interseção das duas populações"},
                     {"label": "Repasse apropriado",
-                     "value": texto("repasse.producer_accrued")}]}})
+                     "value": texto("repasse.producer_accrued"),
+                     "since": cobertura("repasse.producer_accrued")
+                              or "sobre as apólices que VENCEM na janela"}]}
+            props.update(lede("contribution.after_repasse",
+                              "repasse.producer_accrued"))
+            blocos.append({"block": "kpis", "props": props})
         else:
             blocos.append({"block": "callout", "props": {
                 "tone": "info", "title": "Economia depois do repasse",
@@ -741,6 +1093,7 @@ class ExecutiveIntelligenceTool(BaseTool):
         if mix is not None and mix.breakdown:
             blocos.append({"block": "donut", "props": {
                 "title": "Comissão por seguradora", "value_type": "currency_short",
+                **lede("mix.insurer"),
                 "slices": [{"rotulo": str(b.get("rotulo") or ""),
                             "valor": round(float(b.get("comissao") or 0.0), 2)}
                            for b in mix.breakdown]}})
@@ -750,6 +1103,7 @@ class ExecutiveIntelligenceTool(BaseTool):
         if exp is not None and exp.breakdown:
             blocos.append({"block": "chart", "props": {
                 "eyebrow": "Exposição", "title": "O que vence, por urgência",
+                **lede("renewal.exposure"),
                 "labels": [str(b.get("faixa") or "") for b in exp.breakdown],
                 "series": [{"name": "Prêmio",
                             "values": [round(float(b.get("premio") or 0.0), 2)

@@ -469,6 +469,15 @@ def procurar_definicao(nome, raizes=(APP,)):
 #: ⛔ NENHUM dado de pessoa. `Produtor Sentinela` e uma SENTINELA DE VAZAMENTO:
 #: se ela aparecer na string do chat, o guarda sabe que o rotulo do produtor
 #: escapou do Artifact. Nao e o nome de ninguem.
+#: 🔴 A linha EXATA de `evidence_pack.ref_de_produtor` que a mutacao M16 troca.
+#: Ela mora aqui, numa constante, porque duas copias dela (na mutacao e no
+#: controle de restauracao do bloco [11]) divergiriam no primeiro conserto que
+#: uma acompanhasse e a outra nao -- e a que ficasse para tras deixaria a
+#: mutacao de PII silenciosamente inaplicavel.
+ANCORA_DA_REF_DE_PRODUTOR = (
+    "return PREFIXO_DO_PRODUTOR + hashlib.sha256(\n"
+    '        semente.encode("utf-8")).hexdigest()[:15]')
+
 ROTULO_PRODUTOR = "Produtor Sentinela"
 ROTULO_PRODUTOR_2 = "Produtor Delta"
 EMPRESA_A = "aaaaaaaa-0000-0000-0000-00000000000a"
@@ -2388,8 +2397,12 @@ def bloco_7_pack_e_sinal():
 
     valor, rodou = sob_mutacao(
         "[7] MUTACAO M16 (a referencia opaca devolve o nome)", PACK_PY,
-        [('return hashlib.sha256(semente.encode("utf-8")).hexdigest()[:16]',
-          'return (nome or "").strip()')], _medir_ref)
+        # ⚠️ Ancora ATUALIZADA em 03/09/2026, junto com o conserto que fez
+        # `ref_de_produtor` normalizar o rotulo e prefixar a referencia com uma
+        # letra. A ancora anterior (`...hexdigest()[:16]`) deixou de existir, e
+        # `Mutacao.aplicou` passou a ser falso -- o bloco PULOU em vez de medir.
+        # Uma mutacao que nao aplica NAO e mutacao passada (CLAUDE.md §9.5).
+        [(ANCORA_DA_REF_DE_PRODUTOR, 'return (nome or "").strip()')], _medir_ref)
     if rodou:
         certo(bool(valor) and not str(valor).startswith("EXPLODIU"),
               "[7] MUTACAO M16: com a ref devolvendo o nome, o detector FICA VERMELHO",
@@ -2721,8 +2734,7 @@ def bloco_11_controle_geral():
           "[11] nenhuma mutacao deixou `.bak-094` para tras (restauracao no `finally`)",
           sujeira)
     certo("UNAVAILABLE" in ler(PACK_PY)
-          and 'return hashlib.sha256(semente.encode("utf-8")).hexdigest()[:16]'
-          in ler(PACK_PY),
+          and ANCORA_DA_REF_DE_PRODUTOR in ler(PACK_PY),
           "[11] `evidence_pack.py` voltou ao estado original depois das mutacoes")
     certo("return 0.0" in ler(FONTE),
           "[11] `fonte_infocap.py` voltou ao estado original depois da mutacao do [0]")

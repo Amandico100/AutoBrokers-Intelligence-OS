@@ -47,10 +47,12 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple)
 
 from app.comercial.cbim import (CommissionFact, FactSet, Money, PolicyFact,
                                 RenewalFact, UNAVAILABLE, somar_dinheiro)
-from app.comercial.evidence_pack import (BASES_TEMPORAIS, MetricResult,
-                                         UNIDADES, metrica, periodo_iso)
+from app.comercial.evidence_pack import (BAIXA, BASES_TEMPORAIS, MetricResult,
+                                         ORDEM_DA_CONFIANCA, UNIDADES, metrica,
+                                         periodo_iso)
 from app.comercial.manifesto import (DEGRADED, FRASE_DO_ESTADO, NAO_VERIFICADO,
-                                     PARTIAL, ProviderCapabilityManifest, SUPPORTED)
+                                     PARTIAL, ProviderCapabilityManifest,
+                                     SEM_AMOSTRA, SUPPORTED)
 
 POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
 
@@ -385,6 +387,55 @@ def _periodo(period: Any) -> Tuple[date, date]:
     return saida[0], saida[1]
 
 
+#: A frase que uma métrica devolve quando a rota de que ela depende veio VAZIA.
+#: 🔴 Ela diz **sobre o período**, e não sobre a fonte: a rota respondeu, e não
+#: tinha linha. As duas coisas são diferentes, e o Artifact escreve a diferença.
+ROTA_SEM_LINHAS = ("fonte sem linhas no período em %s: não há população para "
+                   "esta conta — INDISPONÍVEL, e não zero")
+
+
+def _rotas_do_lote(facts: Any) -> Tuple[set, set]:
+    """`(rotas lidas, rotas que vieram VAZIAS)` — do fingerprint deste lote.
+
+    🔴 Uma fonte só, e não um campo novo: `FactSet.fingerprints` já carrega uma
+    entrada por rota LIDA, e o adapter grava `SEM_AMOSTRA` na rota que devolveu
+    zero linhas. Um segundo campo divergiria do primeiro no dia em que alguém
+    esquecesse de preencher um dos dois.
+    """
+    marcas = getattr(facts, "fingerprints", None) or {}
+    lidas = {r for r in marcas if not str(r).startswith("__")}
+    vazias = {r for r in lidas if marcas.get(r) == SEM_AMOSTRA}
+    return lidas, vazias
+
+
+def _sem_populacao(manifesto: Any, nome: str, lidas: set, vazias: set) -> bool:
+    """Esta capacidade ficou sem NENHUMA rota com linha, nesta leitura?
+
+    🔴 O recorte é `source_routes ∩ rotas lidas`, e o recorte é o ponto inteiro.
+    📊 O censo lista, para `portfolio.policies`, cinco rotas — mas esta leitura
+    toca duas. Perguntar "alguma das cinco veio vazia?" bloquearia a métrica por
+    causa de uma rota que ninguém chamou; perguntar "as cinco vieram vazias?"
+    nunca bloquearia nada, porque três delas nem foram lidas. A pergunta certa
+    é sobre as rotas desta leitura.
+
+    📊 Achado pelo red team em 03/09/2026: com `/documentos_bi` devolvendo `[]` e
+    `/renovacoes` cheia, `production.policy_count` saía **0,0 com cobertura 1.0
+    e confiança HIGH** — "a corretora não emitiu nada", afirmado com a maior
+    confiança que o produto sabe dar, sobre uma rota que só não respondeu.
+    """
+    if not vazias:
+        return False
+    cap = getattr(manifesto, "capacidade", None)
+    if not callable(cap):
+        return False
+    try:
+        rotas = set(cap(nome).source_routes or ())
+    except Exception:  # noqa: BLE001
+        return False
+    efetivas = rotas & lidas
+    return bool(efetivas) and efetivas <= vazias
+
+
 def _estado_da_capacidade(manifesto: Any, nome: str) -> str:
     """O estado de UMA capacidade, seja qual for a forma do manifesto.
 
@@ -400,7 +451,9 @@ def _estado_da_capacidade(manifesto: Any, nome: str) -> str:
     return NAO_VERIFICADO
 
 
-def _avaliar(manifesto: Any, d: "MetricDefinition") -> Tuple[bool, List[str], bool]:
+def _avaliar(manifesto: Any, d: "MetricDefinition",
+             lidas: Optional[set] = None,
+             vazias: Optional[set] = None) -> Tuple[bool, List[str], bool]:
     """`(bloqueada, motivos, exige_cobertura)`.
 
     Sem manifesto, nada bloqueia — e nada bloquear é honesto: quem não
@@ -408,11 +461,18 @@ def _avaliar(manifesto: Any, d: "MetricDefinition") -> Tuple[bool, List[str], bo
     """
     if manifesto is None:
         return False, [], False
+    lidas = lidas if lidas is not None else set()
+    vazias = vazias if vazias is not None else set()
     detalhe = getattr(manifesto, "capacidade", None)
     motivos: List[str] = []
     bloqueada = False
     exige = False
     for nome in d.required_capabilities:
+        if _sem_populacao(manifesto, nome, lidas, vazias):
+            bloqueada = True
+            rotas = sorted(set(detalhe(nome).source_routes or ()) & vazias)
+            motivos.append("%s: %s" % (nome, ROTA_SEM_LINHAS % ", ".join(rotas)))
+            continue
         estado = _estado_da_capacidade(manifesto, nome)
         texto = FRASE_DO_ESTADO.get(estado, estado)
         if callable(detalhe):
@@ -467,7 +527,8 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
             f"pedida em {time_basis}, mas {d.ref} é calculada em {d.time_basis} "
             f"— são populações diferentes, e vale a base da métrica")
 
-    bloqueada, motivos, exige_cobertura = _avaliar(manifest, d)
+    lidas, vazias = _rotas_do_lote(facts)
+    bloqueada, motivos, exige_cobertura = _avaliar(manifest, d, lidas, vazias)
     avisos.extend(motivos)
 
     if bloqueada:
@@ -479,7 +540,13 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
     ctx = contexto or montar_contexto(facts, inicio, fim, d.time_basis)
     if ctx.time_basis != d.time_basis:
         ctx = montar_contexto(facts, inicio, fim, d.time_basis)
-    valor, cobertura, breakdown, mais = d.formula(ctx)
+    # ⚠️ A fórmula devolve QUATRO itens, e pode devolver um quinto: o TETO de
+    # confiança. Opcional de propósito — as 15 métricas que não precisam dele
+    # não pagam nada, e a que precisa não tem de inventar um canal (uma marca
+    # no texto do aviso, por exemplo, que o modelo leria e narraria).
+    saida_da_formula = d.formula(ctx)
+    valor, cobertura, breakdown, mais = saida_da_formula[:4]
+    teto_de_confianca = saida_da_formula[4] if len(saida_da_formula) > 4 else None
     avisos.extend(mais)
     if d.premissa:
         avisos.append(d.premissa)
@@ -494,7 +561,8 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
                    time_basis=d.time_basis, coverage=cobertura,
                    version=d.version,
                    provider_key=str(getattr(facts, "provider_key", "") or ""),
-                   warnings=avisos, breakdown=breakdown)
+                   warnings=avisos, breakdown=breakdown,
+                   confianca_maxima=teto_de_confianca)
 
 
 def calcular_varias(metric_ids: Sequence[str], facts: FactSet,
@@ -521,6 +589,36 @@ def calcular_varias(metric_ids: Sequence[str], facts: FactSet,
 # ==========================================================================
 # COMPARAR — e a recusa que é o coração da M6
 # ==========================================================================
+#: 💭 Quanto duas janelas podem diferir e ainda serem "a mesma janela". Cinco
+#: por cento cobre o que é ruído de calendário — fevereiro contra março, ano
+#: bissexto, mês de 30 contra mês de 31 — e não cobre trimestre contra ano.
+TOLERANCIA_DE_JANELA_PCT = 5.0
+
+
+def _dias_da_janela(m: MetricResult) -> Optional[int]:
+    """Quantos dias a janela deste resultado cobre. `None` se não der para ler."""
+    try:
+        inicio, fim = _periodo(m.period)
+    except Exception:  # noqa: BLE001
+        return None
+    return (fim - inicio).days + 1
+
+
+def _janelas_desiguais(a: MetricResult, b: MetricResult) -> Tuple[bool, int, int]:
+    """`(desiguais?, dias de a, dias de b)`.
+
+    ⚠️ Janela ilegível de um dos lados **não** vira "desigual": não se afirma
+    diferença contra uma medição que não existe. Ela sai como `(False, 0, 0)` e
+    a comparação segue — o que ela não faz é inventar um alarme.
+    """
+    dias_a, dias_b = _dias_da_janela(a), _dias_da_janela(b)
+    if not dias_a or not dias_b:
+        return False, dias_a or 0, dias_b or 0
+    maior = max(dias_a, dias_b)
+    diferenca = 100.0 * abs(dias_a - dias_b) / maior
+    return diferenca > TOLERANCIA_DE_JANELA_PCT, dias_a, dias_b
+
+
 def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
     """A variação entre dois resultados. **Recusa** o que não é comparável.
 
@@ -538,6 +636,19 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
 
     `delta_pct` é `None` quando a base é zero: um cartão que mostra "∞%" não
     informa nada, e `0,0%` afirmaria estabilidade onde houve partida do zero.
+
+    🔴 E a QUARTA recusa, acrescentada em 03/09/2026: **janelas de duração
+    diferente**. 📊 Achado pelo red team: `comparar(2025 inteiro, Q1 2024)`
+    devolvia `delta_pct = 300,82` com `warnings: []` — quatro vezes mais dias de
+    um lado, e o número saía limpo, com cara de crescimento de 300%. O `compare`
+    é texto livre que o modelo preenche (*"contra o primeiro trimestre"*), então
+    esta não é uma combinação exótica: é uma frase comum.
+
+    ⚠️ Ela não levanta como a base temporal. Comparar 12 meses com 3 é um pedido
+    ESQUISITO, e há quem queira mesmo — quem compara "o ano até hoje" com "o ano
+    passado inteiro" sabe o que está fazendo. O que não pode é sair sem a
+    ressalva. Então: `delta` e `delta_pct` viram `UNAVAILABLE`, a confiança cai
+    para `LOW`, e o motivo vai escrito com os dois números de dias.
     """
     # ⚠️ Métrica e unidade diferentes viram AVISO, e não exceção: comparar
     # apólices com reais é um pedido esquisito, mas quem o faz enxerga as duas
@@ -545,6 +656,14 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
     # não aparece em lugar nenhum do número, e o erro dela SE PARECE com um
     # resultado de negócio. É por isso que só ela levanta.
     ressalvas: List[str] = []
+    desiguais, dias_a, dias_b = _janelas_desiguais(a, b)
+    if desiguais:
+        ressalvas.append(
+            "janelas de duração diferente (%d dia(s) × %d dia(s), %.0f%% de "
+            "diferença): a variação entre elas mede o TAMANHO DA JANELA, e não o "
+            "negócio — não há delta a afirmar" % (
+                dias_a, dias_b,
+                100.0 * abs(dias_a - dias_b) / max(dias_a, dias_b, 1)))
     if a.metric_id != b.metric_id:
         ressalvas.append(
             f"comparação entre métricas diferentes ({a.metric_id} × {b.metric_id})")
@@ -557,13 +676,14 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
             f"{a.metric_id}: bases temporais diferentes ({a.time_basis} × "
             f"{b.time_basis}). São duas populações, não a mesma em outra janela "
             f"— 📊 a interseção medida entre elas é de 2,8%")
-    incomparavel = (a.indisponivel or b.indisponivel or a.unit != b.unit
+    incomparavel = (desiguais or a.indisponivel or b.indisponivel
+                    or a.unit != b.unit
                     or isinstance(a.value, dict) or isinstance(b.value, dict))
     if incomparavel:
         return {"metric_id": a.metric_id, "unit": a.unit,
                 "atual": a.value, "anterior": b.value,
                 "delta": UNAVAILABLE, "delta_pct": UNAVAILABLE,
-                "time_basis": a.time_basis,
+                "time_basis": a.time_basis, "confidence": BAIXA,
                 "warnings": ressalvas + ["não há variação a afirmar entre estes "
                                          "dois valores"]}
     atual, anterior = float(a.value), float(b.value)
@@ -573,6 +693,9 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
         "delta": atual - anterior,
         "delta_pct": (100.0 * (atual - anterior) / anterior) if anterior else None,
         "time_basis": a.time_basis,
+        "confidence": min((a.confidence, b.confidence),
+                          key=lambda c: ORDEM_DA_CONFIANCA.index(c)
+                          if c in ORDEM_DA_CONFIANCA else 0),
         "warnings": ressalvas,
     }
 

@@ -31,10 +31,15 @@ mediu a rota de vencimentos devolvendo comissão nula em **3.536 de 3.536**
 linhas de 2025 (`infocap-golden-controls.json`). Somar isso como zero produziria
 "a corretora não ganhou nada nas renovações", que é falso e soa verdadeiro.
 
-**2. Dinheiro é `Decimal`, nunca `float`.** 📊 O controle-ouro de 2025 é
-R$ 1.863.830,79 sobre 1.680 parcelas. Soma de `float` acumula resíduo binário
-e a paridade com a 081 passa a depender de tolerância; com `Decimal` ela é
-exata.
+**2. Dinheiro é `Decimal` NA FRONTEIRA e no `Money`.** 📊 O controle-ouro de
+2025 é R$ 1.863.830,79 sobre 1.680 parcelas. Soma de `float` acumula resíduo
+binário; com `Decimal` a leitura e o `Money` são exatos.
+
+⚠️ E o alcance disso é limitado, de propósito: as **fórmulas** de `metricas/`
+somam em `float`, porque a matemática que elas chamam é a de `calculos.py`, que
+a 081 usa em produção e que esta SPEC não reescreveu. 📊 O resíduo medido sobre
+o controle-ouro é menor que R$ 0,01, e a serialização arredonda em duas casas.
+Ver `somar_dinheiro` e a pendência **P-094-DECIMAL-NAS-FORMULAS**.
 
 **3. `policy_ref` é OPACO.** Ninguém o parseia — nem aqui, nem em
 `calculos.py`, nem em `metricas/`. Ele só serve como chave de join, e a regra
@@ -156,6 +161,29 @@ class Money:
 Dinheiro = Union[Money, str]   # Money | UNAVAILABLE
 
 
+def _finito(quantia: Decimal) -> bool:
+    """`NaN` e `Infinity` **não são dinheiro**, e o `Decimal` os aceita calado.
+
+    🔴 Esta é a linha que impede o pior dos dois de entrar. 📊 Achado pelo red
+    team em 03/09/2026: a fonte devolvendo a string `"NaN"` produzia
+    `Decimal("NaN")` sem levantar nada, e a partir dali:
+
+    ```
+    NaN entra na soma          e CONTAMINA o total inteiro, sem uma linha de erro
+    a manchete vira "R$ nan"   e parece defeito de sistema, não ausência de dado
+    46 `NaN` no bloco citável  e `json.dumps` os escreve como JSON inválido
+    ```
+
+    ⚠️ `Decimal.is_nan()` e `is_infinite()`, e não `math.isfinite(float(...))`:
+    converter para `float` para conferir é reintroduzir o `float` no caminho do
+    dinheiro, que é o que este módulo existe para evitar.
+
+    Quem recebe o `None` faz o que faria com qualquer ilegível: `UNAVAILABLE`
+    **mais um warning**. Ausência de dado, e nunca zero.
+    """
+    return not (quantia.is_nan() or quantia.is_infinite())
+
+
 def interpretar_dinheiro(v: Any, currency: str = MOEDA_PADRAO) -> Optional[Money]:
     """O valor cru vira `Money` — ou **`None`**, quando é ilegível.
 
@@ -174,16 +202,17 @@ def interpretar_dinheiro(v: Any, currency: str = MOEDA_PADRAO) -> Optional[Money
     if v is None:
         return None
     if isinstance(v, Money):
-        return v
+        return v if _finito(v.amount) else None
     if isinstance(v, Decimal):
-        return Money(v, currency)
+        return Money(v, currency) if _finito(v) else None
     if isinstance(v, bool):          # `True` não é dinheiro. `bool` é `int`.
         return None
     if isinstance(v, (int, float)):
         try:
-            return Money(Decimal(str(v)), currency)
+            quantia = Decimal(str(v))
         except (InvalidOperation, ValueError):
             return None
+        return Money(quantia, currency) if _finito(quantia) else None
     texto = str(v).strip()
     if not texto:
         return None
@@ -196,9 +225,12 @@ def interpretar_dinheiro(v: Any, currency: str = MOEDA_PADRAO) -> Optional[Money
     if "," in texto:
         texto = texto.replace(".", "").replace(",", ".")
     try:
-        return Money(Decimal(texto), currency)
+        quantia = Decimal(texto)
     except (InvalidOperation, ValueError):
         return None
+    # 🔴 `Decimal("NaN")` e `Decimal("Infinity")` CONSTROEM sem erro — é aqui
+    # que a recusa precisa acontecer, e não no `except`.
+    return Money(quantia, currency) if _finito(quantia) else None
 
 
 def somar_dinheiro(valores: Iterable[Any],
@@ -209,6 +241,30 @@ def somar_dinheiro(valores: Iterable[Any],
     permite dizer *"isto cobre 80,6% do período"* — e uma soma parcial
     apresentada como total é a forma mais cara de mentir com número certo
     (SPEC-081, `Cobertura`).
+
+    🔴 ONDE O `Decimal` VALE, E ONDE ELE NÃO VALE — e a regra 2 do topo deste
+    módulo dizia mais do que o produto entrega. Corrigido em 03/09/2026, pela
+    lente do dado (CLAUDE.md §12.1: nome que mente sobre o que guarda é causa,
+    não sintoma):
+
+    ```
+    Decimal   a fronteira (`interpretar_dinheiro`), o `Money` e ESTA soma
+    float     as fórmulas de `metricas/`, que somam a projeção `VisaoDeApolice`
+    ```
+
+    O motor de métrica projeta o `Money` em `float` (`registry._float`) e as
+    fórmulas somam ali — porque a matemática que elas chamam é a de
+    `calculos.py`, que a SPEC-081 usa em produção sobre `float` e que esta SPEC
+    **não** reescreveu (CLAUDE.md §5: consolidar, não duplicar ao lado).
+
+    ⚠️ O resíduo disso é medido e pequeno: 📊 sobre as 1.680 apólices do
+    controle-ouro de 2025 a soma em `float` difere da soma em `Decimal` em menos
+    de R$ 0,01, e a serialização arredonda em duas casas antes de o número
+    chegar ao modelo (`evidence_pack.CASAS_DO_NUMERO`). O que **não** se pode
+    dizer é que o motor inteiro soma em `Decimal` — não somava, e afirmar que
+    somava é o defeito que a §12.1 chama de número sem marca.
+
+    A dívida está escrita: **P-094-DECIMAL-NAS-FORMULAS**.
     """
     from decimal import Decimal as _D
 

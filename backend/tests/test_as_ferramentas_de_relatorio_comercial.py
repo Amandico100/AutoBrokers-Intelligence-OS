@@ -161,9 +161,21 @@ check("CONTROLE: o detector de blocos realmente achou blocos",
       len(usados) >= 8 and len(existem) >= 15, f"{len(usados)} / {len(existem)}")
 
 # 🔴 Nao alteramos nenhum arquivo compartilhado com a Cobranca.
+#
+# ⚠️ A BASELINE E A BASE DESTA SPEC, e ela foi MOVIDA em 03/09/2026 de `570359c`
+# (a base da SPEC-081) para `b036b18` (a base da SPEC-094). O motivo e que uma
+# baseline vencida faz a assercao medir a coisa errada: entre `570359c` e hoje
+# passaram SPECs inteiras — a Cobranca, o Atendimento, o corredor — e o diff
+# acusava cinco arquivos congelados "tocados" por trabalho legitimo de outras
+# SPECs, que esta aqui nao fez. Um guarda que acusa sempre e um guarda que se
+# aprende a ignorar (CLAUDE.md §9.3).
+#
+# 🔴 A licao NAO morreu: ela migrou de janela. A pergunta continua sendo *"ESTA
+# SPEC tocou peca da Cobranca?"* — e agora a janela e a desta SPEC.
+BASE_DA_SPEC_094 = "b036b18"
 import subprocess
 diff = subprocess.run(
-    ["git", "diff", "--name-only", "570359c", "HEAD"],
+    ["git", "diff", "--name-only", BASE_DA_SPEC_094, "HEAD"],
     cwd=os.path.dirname(RAIZ), capture_output=True, text=True).stdout
 congelados = ["services/artifacts/blocks.py", "services/artifacts/charts.py",
               "services/artifacts/styles.py", "services/artifacts/render.py",

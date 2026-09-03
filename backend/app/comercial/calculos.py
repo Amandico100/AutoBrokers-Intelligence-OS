@@ -461,10 +461,59 @@ def entender_periodo(texto: str, hoje: Optional[date] = None,
 # Miudezas
 # --------------------------------------------------------------------------
 def _normalizar(s: str) -> str:
-    """Minúsculas, sem acento, espaço colapsado. Para comparar, nunca para exibir."""
-    t = unicodedata.normalize("NFKD", str(s or ""))
-    t = "".join(c for c in t if not unicodedata.combining(c))
-    return re.sub(r"\s+", " ", t).strip().lower()
+    """Minúsculas, sem acento, espaço colapsado. Para comparar, nunca para exibir.
+
+    🔴 UMA implementação, e ela mora em `evidence_pack.normalizar_rotulo` — o
+    módulo puro do fundo da pilha. Isto aqui é um alias, e não uma segunda
+    cópia (CLAUDE.md §5).
+
+    📊 A razão é medida: `ref_de_produtor` passou a normalizar o rótulo do
+    produtor pelo mesmo caminho que `por_dimensao` normaliza o da seguradora
+    (`Allianz`/`allianz`/`ALLIANZ`: 56 valores crus que viram ~30). Duas
+    normalizações divergiriam no primeiro `.strip()` que uma ganhasse e a outra
+    não, e o ranking do chat deixaria de casar com o do Artifact — em silêncio,
+    porque os dois números continuariam parecendo certos.
+    """
+    return _a_normalizacao_canonica()(s)
+
+
+_NORMALIZADOR = None
+
+
+def _a_normalizacao_canonica():
+    """`evidence_pack.normalizar_rotulo`, pelo pacote OU pelo caminho.
+
+    ⚠️ Os dois caminhos apontam para o MESMO arquivo — não são duas
+    implementações (CLAUDE.md §5). O segundo existe porque este módulo é
+    carregado POR CAMINHO pelos guardas comerciais, que não montam o pacote
+    `app`: sem ele, `_normalizar` explodiria com `ModuleNotFoundError` dentro de
+    `por_dimensao`, e a 081 pararia de rodar isolada.
+    """
+    global _NORMALIZADOR
+    if _NORMALIZADOR is not None:
+        return _NORMALIZADOR
+    try:
+        from app.comercial.evidence_pack import normalizar_rotulo
+    except ImportError:
+        import importlib.util
+        import os as _os
+
+        caminho = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                "evidence_pack.py")
+        spec = importlib.util.spec_from_file_location(
+            "_094_evidence_pack_para_calculos", caminho)
+        modulo = importlib.util.module_from_spec(spec)
+        # 🔴 Instalado em `sys.modules` ANTES do `exec_module`. Sem isto o
+        # `@dataclass` de `MetricResult` explode: `dataclasses` procura o módulo
+        # do proprio decorado em `sys.modules` para resolver as anotacoes, e
+        # encontra `None`.
+        import sys as _sys
+
+        _sys.modules.setdefault(spec.name, modulo)
+        spec.loader.exec_module(modulo)   # type: ignore[union-attr]
+        normalizar_rotulo = modulo.normalizar_rotulo
+    _NORMALIZADOR = normalizar_rotulo
+    return _NORMALIZADOR
 
 
 def _ano_no_texto(t: str) -> Optional[int]:

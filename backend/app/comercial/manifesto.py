@@ -77,6 +77,13 @@ ESTADOS = (SUPPORTED, PARTIAL, INDISPONIVEL, NAO_VERIFICADO, DEGRADED)
 #: consolação por um caminho que ninguém estaria olhando.
 ESTADOS_QUE_ENTREGAM = (SUPPORTED, PARTIAL)
 
+#: 🔴 O que o adapter grava no lugar do `sha256` quando a rota devolveu ZERO
+#: linhas. Um `sha256` de nada seria mentira; OMITIR a rota seria pior, porque
+#: "não veio no mapa" é indistinguível de "a rota não foi lida". A rota aparece,
+#: marcada, e as duas peças que a leem sabem o que fazer: aqui, não é drift; no
+#: registry, a métrica dependente sai UNAVAILABLE.
+SEM_AMOSTRA = "SEM_AMOSTRA"
+
 #: 🔴 O que cada estado quer dizer, em uma frase, no idioma do Artifact. É esta
 #: tabela que impede o produto de dizer "indisponível" sobre algo que só não foi
 #: verificado.
@@ -87,6 +94,17 @@ FRASE_DO_ESTADO = {
     NAO_VERIFICADO: "não verificado nesta rodada — não é o mesmo que indisponível",
     DEGRADED: "o schema da rota mudou desde o censo: bloqueado até remedir",
 }
+
+#: 🔴 As duas frases do FAIL-CLOSED. Elas viajam como `evidence` da capacidade,
+#: e é por isso que chegam ao pack e ao Artifact: quem lê precisa saber que o
+#: número não saiu porque a MEDIÇÃO está ilegível, e não porque a fonte não
+#: expõe o dado. São afirmações diferentes sobre coisas diferentes.
+CENSO_ILEGIVEL = ("censo da fonte ilegível: a medição de capacidade não pôde ser "
+                  "lida, e sem ela nenhuma métrica pode afirmar que a fonte "
+                  "entrega o dado")
+SEM_FINGERPRINT = ("o censo não registrou o fingerprint de %s: não há como "
+                   "afirmar que o schema desta rota continua o medido, e uma "
+                   "métrica que depende dela fica bloqueada até remedir")
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
@@ -153,6 +171,17 @@ class ProviderCapabilityManifest:
     rotas_medidas: int = 0
     #: `capability → motivo`. Preenchido por `conferir_drift`.
     degradadas: Dict[str, str] = field(default_factory=dict)
+    #: 🔴 O motivo pelo qual este manifesto **não pode ser usado**. Vazio é o
+    #: caso normal. Preenchido, TUDO fica `DEGRADED` — e `DEGRADED` não está em
+    #: `ESTADOS_QUE_ENTREGAM`, então nenhuma métrica calcula.
+    #:
+    #: 📊 Achado pelo red team em 03/09/2026: o censo corrompido (um byte a mais
+    #: no JSON) fazia `carregar_manifesto` devolver `{}` e o chamador devolver
+    #: `None`, e `None` **não bloqueia nada** — as 16 métricas saíam com número,
+    #: com `HIGH`, sem uma linha de aviso. Um manifesto que não consegue afirmar
+    #: nada tem de bloquear tudo; a alternativa é liberar tudo, que é o que
+    #: acontecia.
+    ilegivel: str = ""
 
     # ------------------------------------------------------------- carga
     @classmethod
@@ -181,6 +210,8 @@ class ProviderCapabilityManifest:
         `UNAVAILABLE`. Perguntar por um nome que o censo não mediu é
         exatamente o caso de "não verificado".
         """
+        if self.ilegivel:
+            return Capacidade(nome=nome, state=DEGRADED, evidence=self.ilegivel)
         if nome in self.degradadas:
             base = self.capacidades.get(nome)
             return Capacidade(
@@ -196,9 +227,26 @@ class ProviderCapabilityManifest:
         return self.capacidade(nome).state
 
     def estados(self) -> Dict[str, str]:
+        if self.ilegivel:
+            return {n: DEGRADED for n in self.capacidades}
         saida = {n: c.state for n, c in self.capacidades.items()}
         saida.update({n: DEGRADED for n in self.degradadas})
         return saida
+
+    @property
+    def avisos_de_integridade(self) -> List[str]:
+        """O que o pack e o Artifact precisam ESCREVER sobre este manifesto.
+
+        🔴 Fail-closed silencioso é meio conserto. Bloquear a métrica e não
+        dizer por quê produz um relatório inteiro de INDISPONÍVEL que parece
+        defeito da fonte, quando o defeito é do nosso censo.
+        """
+        avisos: List[str] = []
+        if self.ilegivel:
+            avisos.append(self.ilegivel)
+        for motivo in sorted(set(self.degradadas.values())):
+            avisos.append(motivo)
+        return avisos
 
     # -------------------------------------------------------------- drift
     def conferir_drift(self, fingerprints_medidos: Dict[str, str]) -> List[str]:
@@ -215,12 +263,30 @@ class ProviderCapabilityManifest:
         for rota, medido in (fingerprints_medidos or {}).items():
             if rota.startswith("__") or not medido:
                 continue
-            esperado = self.fingerprints_do_censo.get(rota)
-            if not esperado or esperado == medido:
+            if medido == SEM_AMOSTRA:
+                # ⚠️ Rota que veio VAZIA não tem schema a comparar. Ela não é
+                # drift — é ausência de linhas, e quem trata isso é o registry
+                # (a métrica dependente sai UNAVAILABLE com "fonte sem linhas
+                # no período"). Chamar isto de drift seria acusar a fonte de ter
+                # mudado quando ela só não tinha o que devolver.
                 continue
-            motivo = (f"o schema de {rota} mudou desde o censo "
-                      f"({esperado[:8]}… → {medido[:8]}…): a métrica que depende "
-                      f"desta rota fica bloqueada até remedir")
+            esperado = self.fingerprints_do_censo.get(rota)
+            if esperado and esperado == medido:
+                continue
+            if not esperado:
+                # 🔴 FAIL-CLOSED. Isto era um `continue`, com a justificativa de
+                # que "não se pode afirmar mudança contra uma medição que não
+                # existe". A frase continua verdadeira — e a conclusão estava
+                # invertida. 📊 Red team, 03/09/2026: apagar o arquivo de
+                # fingerprints deixava o drift CEGO e as métricas passavam com
+                # `HIGH`. Não se pode afirmar que mudou; também não se pode
+                # afirmar que NÃO mudou, e é a segunda afirmação que o número
+                # publicado faz. Sem medição, a rota fica bloqueada e diz por quê.
+                motivo = SEM_FINGERPRINT % rota
+            else:
+                motivo = (f"o schema de {rota} mudou desde o censo "
+                          f"({esperado[:8]}… → {medido[:8]}…): a métrica que depende "
+                          f"desta rota fica bloqueada até remedir")
             avisos.append(motivo)
             for nome, cap in self.capacidades.items():
                 if rota in cap.source_routes:
@@ -270,11 +336,26 @@ class ProviderCapabilityManifest:
 # --------------------------------------------------------------------------
 # A carga
 # --------------------------------------------------------------------------
+class CensoIlegivel(RuntimeError):
+    """O arquivo do censo existe e **não** pôde ser lido.
+
+    🔴 Diferente de ausente. Censo ausente é "ninguém mediu" e responde
+    `UNKNOWN` a tudo, que já bloqueia. Censo ILEGÍVEL é "a medição existe e
+    está corrompida" — e o caminho antigo engolia a exceção e devolvia `{}`,
+    que o motor lia como manifesto vazio e o chamador transformava em `None`.
+    `None` libera tudo.
+    """
+
+
 def _ler_json(caminho: str) -> Dict[str, Any]:
     if not os.path.exists(caminho):
         return {}
-    with open(caminho, "r", encoding="utf-8") as f:
-        return json.load(f) or {}
+    try:
+        with open(caminho, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except (ValueError, OSError, UnicodeDecodeError) as exc:
+        raise CensoIlegivel("%s: %s" % (os.path.basename(caminho),
+                                        type(exc).__name__)) from exc
 
 
 def manifesto_de_dicionarios(provider_key: str, manifesto: Dict[str, Any],
@@ -329,10 +410,20 @@ def carregar_manifesto(provider_key: str = "infocap",
     chave = f"{provider_key}|{diretorio or ''}"
     if chave not in _CACHE:
         base = diretorio or os.path.join(DIRETORIO_DO_CENSO, provider_key)
-        _CACHE[chave] = (
-            _ler_json(os.path.join(base, f"{provider_key}-capability-manifest.json")),
-            _ler_json(os.path.join(base, f"{provider_key}-schema-fingerprints.json")),
-        )
+        try:
+            _CACHE[chave] = (
+                _ler_json(os.path.join(
+                    base, f"{provider_key}-capability-manifest.json")),
+                _ler_json(os.path.join(
+                    base, f"{provider_key}-schema-fingerprints.json")),
+            )
+        except CensoIlegivel as exc:
+            # 🔴 FAIL-CLOSED, e NÃO em cache: o arquivo pode ser consertado, e
+            # guardar a falha faria o processo continuar bloqueado depois do
+            # conserto, sem ninguém entender por quê.
+            return ProviderCapabilityManifest(
+                provider_key=provider_key,
+                ilegivel="%s (%s)" % (CENSO_ILEGIVEL, exc))
     manifesto, fingerprints = _CACHE[chave]
     return manifesto_de_dicionarios(provider_key, manifesto, fingerprints)
 
