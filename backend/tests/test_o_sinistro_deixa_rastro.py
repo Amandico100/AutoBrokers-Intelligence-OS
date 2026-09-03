@@ -246,6 +246,12 @@ def vermelho_ate(cond, rotulo, bloco, detalhe=""):
            + ("\n        %s" % detalhe if detalhe else ""))
 
 
+def certo_bloco(cond, rotulo, bloco, detalhe=""):
+    """O bloco `bloco` JA FOI ENTREGUE (03/09/2026): o que era `vermelho_ate` virou gate
+    de verdade. Mesma assinatura, para o diff ser de UMA palavra por linha."""
+    return certo(cond, rotulo, detalhe)
+
+
 def pular(rotulo, razao):
     PULADOS.append(rotulo)
     _p("  --    PULADO %s\n        %s" % (rotulo, razao))
@@ -683,13 +689,13 @@ def bloco_0_gate_zero():
     # ⚠️ O casador filtra comentário LINHA A LINHA e não usa `sem_comentario_py`:
     # aquela função reindexa o arquivo, e aqui a POSIÇÃO é o que está sendo medido.
     ganchos = _linhas_do_gancho(fonte)
-    vermelho_ate(bool(ganchos),
+    certo_bloco(bool(ganchos),
                  "webhook.py CHAMA a sombra em algum lugar",
                  "BLOCO A",
                  "📊 hoje: zero ocorrencias de claims_shadow/abrir_sombra/detectar_sinistro "
                  "em webhook.py. A SPEC-093-B BLOCO A ainda nao existe -- a sombra nao abriu.")
     if ganchos and fim:
-        vermelho_ate(min(ganchos) < fim,
+        certo_bloco(min(ganchos) < fim,
                      "o gancho da sombra esta ACIMA do `return` do modo observacao",
                      "BLOCO A",
                      "gancho na(s) linha(s) %s, `return` na %d. Um gancho abaixo dele "
@@ -737,17 +743,17 @@ def bloco_0_gate_zero():
           "NENHUMA mensagem saiu para o segurado",
           "envios: %d" % len(envios))
     sombras = [l for l in banco.de("work_runs") if l.get("workflow_key") == WORKFLOW]
-    vermelho_ate(len(sombras) == 1,
+    certo_bloco(len(sombras) == 1,
                  "UMA sombra (work_runs.workflow_key='claims.shadow') foi aberta",
                  "BLOCO A",
                  "📊 gravou %d linha(s) em work_runs; as tabelas tocadas foram %s. "
                  "BLOCO A ainda nao existe / a sombra nao abriu."
                  % (len(sombras), sorted({n for n, _ in banco.inseridos})))
     if sombras:
-        vermelho_ate(str(sombras[0].get("conversation_id") or "") == CONVERSA_A,
+        certo_bloco(str(sombras[0].get("conversation_id") or "") == CONVERSA_A,
                      "a sombra guarda o conversation_id (a chave de reidentificacao)",
                      "BLOCO A")
-        vermelho_ate(str(sombras[0].get("company_id") or "") == EMPRESA_A,
+        certo_bloco(str(sombras[0].get("company_id") or "") == EMPRESA_A,
                      "a sombra guarda o company_id (CLAUDE.md §7)",
                      "BLOCO A")
 
@@ -1405,26 +1411,26 @@ def bloco_8_agent_tasks():
         pular("[8] AGENT_TASKS", _FALTA_HB or "heartbeat/central ainda nao importam")
         return
     agente = agente_por_id("sombra_sinistros")
-    vermelho_ate(agente is not None,
+    certo_bloco(agente is not None,
                  "C⑦ AGENT_TASKS tem o trabalhador `sombra_sinistros`",
                  "BLOCO C",
                  "📊 hoje ele nao existe. Sem card, a Central nao mostra o trabalhador "
                  "novo -- e o BLOCO C entrega justamente isso sem tocar no frontend.")
     if agente is not None:
-        vermelho_ate(getattr(agente, "grupo", None) == "aprende_avisa",
+        certo_bloco(getattr(agente, "grupo", None) == "aprende_avisa",
                      "C⑦ ele esta no grupo `aprende_avisa`", "BLOCO C",
                      "veio %r" % getattr(agente, "grupo", None))
-        vermelho_ate(bool(getattr(agente, "fonte_de_producao", None)),
+        certo_bloco(bool(getattr(agente, "fonte_de_producao", None)),
                      "C⑦ ele declara `fonte_de_producao` (o que ele ENTREGA)", "BLOCO C",
                      "sem fonte ele pinta ⚫ NAO MEDIDO para sempre")
-        vermelho_ate(getattr(agente, "cadencia_esperada_s", None) == 86400,
+        certo_bloco(getattr(agente, "cadencia_esperada_s", None) == 86400,
                      "C⑦ a cadencia declarada e 86400s (digest diario)", "BLOCO C",
                      "veio %r" % getattr(agente, "cadencia_esperada_s", None))
         eixo = getattr(agente, "eixo", None) or {}
-        vermelho_ate(WORKFLOW_DIGEST in tuple(eixo.get("workflow_keys") or ()),
+        certo_bloco(WORKFLOW_DIGEST in tuple(eixo.get("workflow_keys") or ()),
                      "C⑦ o eixo dele aponta para `%s`" % WORKFLOW_DIGEST, "BLOCO C",
                      "veio %r" % (eixo.get("workflow_keys"),))
-    vermelho_ate(workflow_keys_sem_card([WORKFLOW_DIGEST]) == [],
+    certo_bloco(workflow_keys_sem_card([WORKFLOW_DIGEST]) == [],
                  "C⑦ `%s` tem card (o gate A② da SPEC-088 continua verde)" % WORKFLOW_DIGEST,
                  "BLOCO C",
                  "sem card, o guarda da 088 (test_a_central_diz_a_verdade) fica VERMELHO "
@@ -1556,7 +1562,7 @@ def bloco_10_controle_geral():
     # 🔴 `WorkRunService.criar` e o RPC `work_run_create` NAO servem: 📊 nenhum dos
     # dois aceita `conversation_id`, e o RPC enfileira no outbox -- o Smith worker
     # pegaria um run sem handler e o marcaria `failed`.
-    vermelho_ate(criar_registro_sem_fila is not None,
+    certo_bloco(criar_registro_sem_fila is not None,
                  "0-bis② `app.services.work.runs.criar_registro_sem_fila` existe",
                  "BLOCO 0-bis",
                  _FALTA_RUNS or "sem o helper, a sombra so nasce duplicando o INSERT "

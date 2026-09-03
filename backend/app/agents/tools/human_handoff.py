@@ -654,6 +654,32 @@ class HumanHandoffTool(BaseTool):
         # merece um alerta novo mesmo dentro da janela.
         horas = _env_int("HANDOFF_REALERTA_HORAS", HORAS_ENTRE_AVISOS_PADRAO)
         conversa_id = str(conversa.get("id") or session_id)
+
+        # 🔴 SPEC-093-B BLOCO B — o robô entregou o atendimento a uma pessoa.
+        #
+        # ⚠️ Evento OPCIONAL por medição, não por preguiça: 📊 03/09/2026,
+        # `tools_config.human_handoff.enabled` está false ou AUSENTE nos 8 agentes
+        # — esta tool nunca esteve ligada em lugar nenhum, e os zeros do handoff
+        # (§1.3) são "nunca esteve ligada", não "nunca precisou". Quando ela for
+        # ligada, o rastro já existe.
+        #
+        # ⛔ `motivo` é TEXTO LIVRE do modelo e NUNCA entra no payload: o que fica
+        # gravado é o enum de duas casas.
+        try:
+            # 🔴 O MESMO detector do BLOCO A, e não um regex novo aqui: dois
+            # classificadores para a mesma pergunta são dois classificadores para
+            # manter, e o segundo envelhece calado (CLAUDE.md §5).
+            from app.services.claims_shadow import detectar_sinistro, registrar_gesto
+
+            _motivo_enum = "sinistro" if detectar_sinistro(motivo)[0] else "outro"
+            await registrar_gesto(
+                self.supabase_client, company_id=str(company_id),
+                conversation_id=conversa_id,
+                event_type="claims.handoff_pedido",
+                payload={"motivo_enum": _motivo_enum},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SOMBRA] handoff não registrado (%s)", type(exc).__name__)
         avisado_ha_pouco = await reivindicar_o_aviso(conversa_id, horas)
 
         if avisado_ha_pouco and ja_estava_com_a_equipe:

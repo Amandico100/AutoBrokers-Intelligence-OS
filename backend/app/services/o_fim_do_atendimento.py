@@ -275,6 +275,23 @@ async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
         "status": ATIVO,
         "vence_em": str(vence_em_iso),
     }
+    # 🔴 SPEC-093-B BLOCO B — a espera de uma conversa COM SOMBRA nasce ligada a ela.
+    #
+    # ⚠️ A âncora continua sendo a conversa (o parágrafo acima não mudou). O que
+    # muda é que, quando existe sombra, a espera deixa de ser órfã no Work OS: sem
+    # o `work_run_id`, "3 dias esperando a seguradora" não pertence a caso nenhum e
+    # o digest não consegue contá-lo.
+    #
+    # ⛔ Só preenche o que veio VAZIO: um `work_run_id` explícito do chamador (o
+    # acionamento) vence sempre — a sombra não rouba a espera de outro dono.
+    if not work_run_id:
+        try:
+            from app.services.claims_shadow import sombra_da_conversa
+
+            work_run_id = await sombra_da_conversa(db, empresa, conversation_id) or ""
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[SOMBRA] sombra da espera não consultada (%s)",
+                           type(erro).__name__)
     if work_run_id:
         linha["work_run_id"] = str(work_run_id)
     try:
@@ -285,6 +302,15 @@ async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
             return False, "ja_existe_espera_ativa"
         logger.warning("[ESPERA] não aberta (%s) kind=%s", type(erro).__name__, kind)
         return False, type(erro).__name__
+
+    try:
+        from app.services.claims_shadow import registrar_gesto
+
+        await registrar_gesto(db, company_id=empresa, conversation_id=conversation_id,
+                              event_type="claims.espera_aberta",
+                              payload={"kind": str(kind)})
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[SOMBRA] espera aberta não registrada (%s)", type(erro).__name__)
     return True, "aberta"
 
 
@@ -314,7 +340,45 @@ async def satisfazer_espera(db, *, company_id: str, conversation_id: str,
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ESPERA] não satisfeita (%s)", type(erro).__name__)
         return 0
-    return len(achado.data or [])
+
+    fechadas = list(achado.data or [])
+    # 🔴 SPEC-093-B BLOCO B — quanto tempo a espera durou, em dias inteiros.
+    #
+    # ⛔ O `kind` e a data de abertura saem da LINHA FECHADA, nunca de um palpite
+    # do chamador: `satisfazer_espera` não recebe `kind`, e inventar um encheria o
+    # contador "espera de seguradora > prazo" com esperas de cliente.
+    for fechada in fechadas:
+        try:
+            from app.services.claims_shadow import registrar_gesto
+
+            await registrar_gesto(
+                db, company_id=empresa, conversation_id=conversation_id,
+                event_type="claims.espera_satisfeita",
+                payload={"kind": str((fechada or {}).get("kind") or ""),
+                         "dias": _dias_entre((fechada or {}).get("created_at"),
+                                             (fechada or {}).get("satisfeito_em"))},
+            )
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[SOMBRA] espera satisfeita não registrada (%s)",
+                           type(erro).__name__)
+    return len(fechadas)
+
+
+def _dias_entre(inicio: Any, fim: Any) -> int:
+    """Dias inteiros entre dois instantes ISO. `0` quando não dá para saber.
+
+    ⛔ **Zero é a resposta honesta para "não sei", e não um dia inventado.** O
+    contador que lê este campo compara com o prazo da CNSP 496/2026 — um dia
+    fabricado aqui viraria um "prazo estourado" que nunca existiu.
+    """
+    from datetime import datetime
+
+    try:
+        a = datetime.fromisoformat(str(inicio).replace("Z", "+00:00"))
+        b = datetime.fromisoformat(str(fim).replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return 0
+    return max(0, int((b - a).total_seconds() // 86400))
 
 
 async def esperas_da_corretora(db, company_id: str, *, status: str = ATIVO,

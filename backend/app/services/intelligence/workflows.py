@@ -311,6 +311,23 @@ async def agrupar_demanda(ctx: dict) -> str:
     return f"{r.get('clusters', 0)} necessidade(s) distinta(s) atualizadas."
 
 
+@registrar_workflow("intelligence.claims_shadow_digest")
+async def digerir_sombras_de_sinistro(ctx: dict) -> str:
+    """SPEC-093-B BLOCO C. Agrupa as sombras em variantes e escreve sinais.
+
+    ⚠️ Aqui é só a TOMADA: o corpo mora em `app.services.claims_shadow_digest`,
+    junto das funções puras (`variantes_de`, `contadores_de`) que ele usa. Um
+    workflow que carrega a regra dentro de si só é testável com Work Run montado —
+    e foi assim que a regra da variante deixaria de ter linha de controle.
+
+    ⛔ Observação pura: nenhuma mensagem sai, nenhum sinistro é decidido, e a
+    escrita é só `intelligence_signals`, pela porta única do `signal_service`.
+    """
+    from ..claims_shadow_digest import executar
+
+    return await executar(ctx)
+
+
 @registrar_workflow("intelligence.measure_outcomes")
 async def medir_resultados(ctx: dict) -> str:
     from .outcome_service import OutcomeService

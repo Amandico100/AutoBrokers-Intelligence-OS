@@ -34,6 +34,10 @@ INTERVALO_DETECCAO_HORAS = 1
 INTERVALO_GARIMPO_HORAS = 24
 INTERVALO_MEDICAO_HORAS = 6
 INTERVALO_CLUSTER_HORAS = 24
+# SPEC-093-B BLOCO C: o digest da sombra de sinistro. Diário, pelo modelo do
+# `garimpo` — ⛔ NÃO pelo do `daily_briefing`, que exige perfil e horário e faria
+# um trabalho de observação depender de configuração que a corretora nunca fez.
+INTERVALO_CLAIMS_SHADOW_HORAS = 24
 
 
 def _agora() -> datetime:
@@ -109,7 +113,8 @@ class IntelligenceTick:
             return {"pulado": "INTELLIGENCE_TICK desligado"}
         agora = agora or _agora()
         resultado = {"deteccao": 0, "briefings": 0, "garimpo": 0,
-                     "medicao": 0, "cluster": 0, "expirados": 0}
+                     "medicao": 0, "cluster": 0, "sombra_sinistros": 0,
+                     "expirados": 0}
 
         empresas = self._empresas()
         for empresa in empresas:
@@ -127,6 +132,10 @@ class IntelligenceTick:
                                  "Medir o resultado do que foi feito",
                                  self._janela(agora, INTERVALO_MEDICAO_HORAS)):
                     resultado["medicao"] += 1
+                if self._agendar(company_id, "intelligence.claims_shadow_digest",
+                                 "Agrupar as sombras de sinistro",
+                                 self._janela(agora, INTERVALO_CLAIMS_SHADOW_HORAS)):
+                    resultado["sombra_sinistros"] += 1
                 resultado["briefings"] += self._briefings(company_id, agora)
             except Exception as exc:  # noqa: BLE001
                 # Uma corretora com problema não pode travar o tick das outras.

@@ -515,6 +515,30 @@ AGENT_TASKS: List[Agente] = [
         cadencia_pulso_s=86400,
         fonte_rotulo="os agrupamentos de demanda concluídos",
     ),
+    Agente(
+        "sombra_sinistros", "Sombra de Sinistros",
+        "Observa em silêncio como os sinistros realmente andam — quem assumiu, que documento chegou, quanto tempo a seguradora demorou — e mostra os caminhos que se repetem.",
+        grupo="aprende_avisa", cor="#C48AB0",
+        eixo=_por_runs(("intelligence.claims_shadow_digest",)),
+        # 🔴 A fonte é o SINAL que ele escreve, não o run que ele roda: o eixo já
+        # cobre "rodou". `source_type='claims_shadow'` é a marca que só ele grava —
+        # `intelligence_signals` é escrita por todo detector, e sem o filtro este card
+        # ficaria verde com a produção de outro trabalhador (o buraco que a SPEC-088
+        # documenta no cabeçalho: `grep '.insert('` responde a pergunta errada).
+        fonte_de_producao=(_tab("intelligence_signals.created_at", "intelligence_signals",
+                                "created_at",
+                                filtro={"coluna": "source_type", "op": "eq",
+                                        "valor": "claims_shadow"}),),
+        # SPEC-093-B BLOCO C: o digest é diário (`tick.py` INTERVALO_CLAIMS_SHADOW_HORAS
+        # = 24). ⚠️ 💭 86400 é a cadência DECLARADA, não medida: 📊 em 03/09/2026 há
+        # ZERO run desta chave, porque a sombra ainda não abriu no piloto. Quando houver
+        # 14 dias de histórico, remeça pelo `lag(finished_at)` como os vizinhos.
+        cadencia_esperada_s=86400, desligado_quando=None, k=2,
+        cadencia_pulso_s=86400,
+        # ⚠️ Sem sinistro no corpus ele sai 🟡 PULSA SEM PRODUZIR — e é a verdade:
+        # o laço roda, e não há o que agrupar. ⛔ Não inventar produção para pintar 🟢.
+        fonte_rotulo="os padrões de sinistro que ele encontrou",
+    ),
 ]
 
 
@@ -532,6 +556,12 @@ AGENT_TASKS: List[Agente] = [
 # --------------------------------------------------------------------------- #
 SEM_CARD_POR_DECISAO: Tuple[Tuple[str, str], ...] = (
     ("test.wf", "lixo de teste, 1 run em toda a história (P-088-KEYS)"),
+    # SPEC-093-B: o run da SOMBRA é o OBJETO observado, não um trabalhador. Ele nasce
+    # sem fila e sem handler (`criar_registro_sem_fila`) para ser o guarda-chuva dos
+    # `work_events` de um sinistro. 🔴 Dar card a ele diria ao operador que existe um
+    # agente chamado "claims.shadow" que devia estar rodando — e não existe: quem roda
+    # é o `sombra_sinistros`, com a chave `intelligence.claims_shadow_digest`.
+    ("claims.shadow", "registro sem fila, é o objeto observado, não um trabalhador"),
     ("bridge.routine.execute", "ponte de rotina, contada no auxiliar"),
     ("bridge.auxiliary.execute", "ponte de auxiliar, contada no auxiliar"),
     ("bridge.portal.job", "portal worker, tela própria"),

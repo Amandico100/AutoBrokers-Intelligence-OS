@@ -711,6 +711,76 @@ async def process_whatsapp_message_background(
         except Exception as e:
             logger.error(f"[MESSAGES] Failed to save user msg: {e}")
 
+        # =====================================================================
+        # 🔴 SPEC-093-B BLOCO A — A SOMBRA DO SINISTRO NASCE AQUI, E SÓ AQUI
+        # =====================================================================
+        #
+        # 📊 Medido em 03/09/2026: `attendance_agent_active()` é falso em 4 de 4
+        # agentes `attendance`. Com ele falso, este fluxo grava a mensagem,
+        # espelha e **`return`** ~70 linhas abaixo, ANTES de
+        # `langchain_service.process_message`. **O grafo não roda em produção.**
+        #
+        # ⛔ Um gancho escrito depois daquele `return` — que é onde a primeira
+        # versão desta SPEC o colocava — provaria um caminho que NENHUMA
+        # mensagem percorre. Este ponto, logo depois do INSERT em `messages`, é
+        # o único que TODA mensagem de segurado atravessa hoje.
+        #
+        # ⛔ A sombra OBSERVA: não envia nada, não liga agente, não muda um
+        # turno. O `try/except` é largo de propósito (o modelo é o do cartógrafo,
+        # `webhook.py:373-375`): perder o rastro é ruim e recuperável; derrubar o
+        # atendimento de um segurado por causa dele, não.
+        try:
+            from app.services.claims_shadow import (
+                abrir_sombra, detectar_sinistro, registrar_gesto, tipo_de_documento,
+            )
+
+            # A ficha da conversa é o caminho (a) — confiança ALTA. 📊 Ela tem
+            # conteúdo em 1 de 679 conversas hoje (o grafo não roda, então
+            # `nodes.py:860` nunca a grava), mas quando existir ela é a verdade
+            # melhor que o regex, e é lida aqui em UMA consulta indexada por id.
+            _ficha = None
+            try:
+                _achado_ficha = await asyncio.to_thread(
+                    lambda: supabase.client.table("conversations")
+                    .select("ficha_atendimento")
+                    .eq("company_id", company_id)          # 🔴 CLAUDE.md §7
+                    .eq("id", conversation_id)
+                    .limit(1).execute()
+                )
+                _linhas_ficha = getattr(_achado_ficha, "data", None) or []
+                if _linhas_ficha:
+                    _ficha = (_linhas_ficha[0] or {}).get("ficha_atendimento")
+            except Exception as _e_ficha:  # noqa: BLE001
+                logger.debug("[SOMBRA] ficha não lida (%s)", type(_e_ficha).__name__)
+
+            _abre, _confianca, _motivo = detectar_sinistro(message_text, _ficha)
+            if _abre:
+                await abrir_sombra(
+                    supabase, company_id=str(company_id),
+                    conversation_id=str(conversation_id),
+                    confianca=_confianca, motivo=_motivo,
+                )
+
+            # O arquivo do segurado vira EVENTO, nunca conteúdo: o que fica
+            # gravado é o enum do tipo, e ele sai da legenda pelo classificador
+            # que já existe (`attendance_media._detect_document_type`).
+            # 🔴 `registrar_gesto` não escreve quando a conversa não tem sombra.
+            #
+            # ⚠️ Só IMAGEM, e não áudio: uma mensagem de voz não é documento, e o
+            # enum `tipo_documento` não tem valor para ela. Gravá-la como
+            # `documento_recebido: desconhecido` encheria o contador "sinistros
+            # com documento" com áudios — um número que mentiria por construção.
+            if final_image_url:
+                await registrar_gesto(
+                    supabase, company_id=str(company_id),
+                    conversation_id=str(conversation_id),
+                    event_type="claims.documento_recebido",
+                    payload={"tipo_documento": tipo_de_documento(message_text)},
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[SOMBRA] rastro do sinistro não registrado (%s)",
+                           type(e).__name__)
+
         # 6. Se for HUMANO, parar
         if is_human_mode:
             logger.info("[WEBHOOK] 🛑 Human Requested - Stopping pipeline.")
@@ -1298,6 +1368,11 @@ async def _handle_evolution_like_inbound(
             # Uma nota que pausou por engano é um clique para religar; um robô
             # falando por cima da atendente é duas vozes na mesma conversa.
             _e_nota = False
+            # 🔴 SPEC-093-B BLOCO B — NASCE AQUI, FORA DO `try`, PELO MESMO MOTIVO
+            # que `_fomos_nos` e `_e_nota` acima: se o Espelho cair antes da
+            # atribuição, o bloco da sombra logo abaixo levantaria `NameError` e
+            # levaria junto o registro da intervenção humana.
+            _conversa_espelhada = None
             try:
                 from app.services.atlas.espelho_chat import (
                     espelhar_no_chat, pausar_por_intervencao_humana,
@@ -1328,7 +1403,12 @@ async def _handle_evolution_like_inbound(
                 # O espelho continua acontecendo nos dois casos: a mensagem
                 # apareceu no WhatsApp e tem de aparecer no chat. Quem
                 # deduplica é o índice único, não este `if`.
-                await espelhar_no_chat(
+                # ⚠️ O retorno passou a ser GUARDADO (SPEC-093-B): `espelhar_no_chat`
+                # sempre devolveu o id da conversa (`espelho_chat.py:303`) e ele era
+                # descartado aqui. Guardá-lo não muda um byte do comportamento — é a
+                # única forma de a sombra saber DE QUAL conversa é esta resposta sem
+                # uma segunda consulta por telefone.
+                _conversa_espelhada = await espelhar_no_chat(
                     company_id=_empresa,
                     counterparty=str(normalized["phone"]),
                     texto=_texto,
@@ -1449,6 +1529,37 @@ async def _handle_evolution_like_inbound(
                     )
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK EVOLUTION] observation fromMe capture failed: {type(e).__name__}")
+            # 🔴 SPEC-093-B BLOCO B — a atendente respondeu pelo celular.
+            #
+            # 📊 §1.3: `work_events` com ator humano = 0 em 35.705. O trabalho da
+            # Regina não deixava rastro nenhum. Aqui ele deixa — e **sem o texto**:
+            # o que fica gravado é o canal, e mais nada.
+            #
+            # ⛔ Os dois `not` são a regra, não zelo: o eco da nossa própria voz
+            # (`_fomos_nos`) não é uma pessoa respondendo, e a anotação (`_e_nota`)
+            # tem evento próprio, gravado por `a_nota_da_atendente`.
+            #
+            # ⚠️ E ele mora no FIM do ramo, depois da captura, por uma razão
+            # medida: `test_quem_fala_primeiro_cala_o_outro` exige que
+            # `espelhar_no_chat` e `attendance_agent_active` caibam nos mesmos
+            # 3.000 caracteres de código do ramo `fromMe` — é assim que aquele
+            # guarda prova que o espelho vem ANTES do teste de agente ligado.
+            # 📊 Escrito logo depois do espelho, este bloco empurrava
+            # `attendance_agent_active` para FORA da janela e deixava o guarda
+            # vermelho. A sombra não pode custar a prova de outra SPEC.
+            if _conversa_espelhada and not _fomos_nos and not _e_nota:
+                try:
+                    from app.services.claims_shadow import registrar_gesto
+
+                    await registrar_gesto(
+                        supabase, company_id=str(integration.get("company_id") or ""),
+                        conversation_id=str(_conversa_espelhada),
+                        event_type="claims.humano_respondeu",
+                        payload={"canal": "whatsapp"},
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[SOMBRA] resposta humana não registrada (%s)",
+                                   type(e).__name__)
         return {"status": "ignored", "reason": normalized["skip_reason"]}
     if await _is_duplicate_namespaced(provider_label, normalized["message_id"]):
         return {"status": "ignored", "reason": "duplicate"}

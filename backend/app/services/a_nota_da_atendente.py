@@ -212,6 +212,33 @@ async def gravar_nota(db, **campos: Any) -> Tuple[bool, str]:
         return False, type(erro).__name__
     logger.info("[NOTA] anotação registrada origem=%s conversa=%s",
                 linha["origem"], str(linha.get("conversation_id") or "-")[:8])
+
+    # 🔴 SPEC-093-B BLOCO B — a anotação vira evento da sombra, SEM o texto.
+    #
+    # 📊 §1.4: `notas_da_atendente` tem 0 linhas e nenhuma tela a lê depois de
+    # gravada. O que a sombra guarda não é a nota — é que ela EXISTIU, por onde
+    # entrou e se trazia número. O conteúdo continua onde já estava.
+    #
+    # ⛔ `tem_numero` sai do texto CRU (`campos`), não da linha: o mascarador já
+    # trocou os dígitos por marca, e perguntar ao texto mascarado devolveria
+    # sempre `False` — um campo que mente por construção.
+    try:
+        from app.services.claims_shadow import registrar_gesto
+
+        await registrar_gesto(
+            db, company_id=linha["company_id"],
+            conversation_id=linha.get("conversation_id"),
+            event_type="claims.nota_registrada",
+            # ⚠️ `painel` aqui é `dashboard` no vocabulário da sombra. Gravar o
+            # nome local produziria um enum que o digest não sabe agrupar — e o
+            # erro só apareceria no relatório, semanas depois.
+            payload={"origem": ("dashboard" if linha.get("origem") == ORIGEM_PAINEL
+                                else ORIGEM_WHATSAPP),
+                     "tem_numero": bool(re.search(r"\d", str(campos.get("texto") or "")))},
+        )
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[SOMBRA] nota não registrada na sombra (%s)",
+                       type(erro).__name__)
     return True, "gravada"
 
 

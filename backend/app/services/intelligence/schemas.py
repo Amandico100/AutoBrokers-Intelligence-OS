@@ -74,6 +74,11 @@ TIPOS_DE_SINAL: tuple[str, ...] = (
     "compliance_risk",
     "security_risk",
     "research_update_future",
+    # SPEC-093-B BLOCO C — a sombra de sinistro. 🔴 A taxonomia e FECHADA
+    # (`SignalDraft.valido()` recusa o que nao esta aqui), entao um tipo novo
+    # nasce nesta lista ou o digest grava ZERO sinal em silencio.
+    "process_variant",        # uma sequencia ordenada de eventos, vista N vezes
+    "claims_shadow_resumo",   # os cinco contadores da corretora, com denominador
 )
 
 # Dominio de cada tipo. Serve para o corretor filtrar em linguagem de negocio
@@ -104,6 +109,8 @@ DOMINIO_POR_TIPO: dict[str, str] = {
     "compliance_risk": "conformidade",
     "security_risk": "seguranca",
     "research_update_future": "pesquisa",
+    "process_variant": "sinistro",
+    "claims_shadow_resumo": "sinistro",
 }
 
 # §12.4: score nao substitui regra de dominio. Estes tipos tem gate proprio e
