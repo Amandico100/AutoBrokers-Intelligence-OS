@@ -3810,3 +3810,17 @@ parcial desta SPEC, achado por medição.
   vetava sinistro real com "cobertura"/"preço" na mesma frase: 📊 488 de 3.786 mensagens, ~9,5% das sessões.
   Os dois últimos foram consertados na mini-rodada pós-confirmação (verbo de ocorrência vence a tranca; voz passiva
   entra no grupo de ocorrência) e fixados no guarda [14b].
+
+
+---
+
+## 03/09/2026 · ESSENCIAL · Um `git push origin HEAD:main` a partir da branch da 094 levou 3 commits SEM gate final para a `main`
+
+**Problema:** ao empurrar o protocolo v11.1 (`57f8511`), o `HEAD` já estava na branch `feat/spec094-…`, e o comando levou junto
+`6ecb50d` (BLOCO 0-bis), `8ad7083` (censo + SPEC v2.1) e `81859d4` (BLOCO H). **Evidência:** `git log origin/main --oneline -6`.
+Os três passam nos seus gates de bloco (31 e 26 verdes, `py_compile`), mas a regra do CLAUDE.md §13.8 é "sem gate FINAL da SPEC".
+**Consequência:** se o Founder clicar Implantar antes do gate da 094, o Raio-X e o Radar da Resulta passam a devolver o bloco
+`<<PACK…PACK>>` em vez da prosa com número — correto e testado, mas não auditado pelo painel.
+**Decisão do orquestrador:** não reverter (revert + re-revert custa mais do que o risco); registrar aqui e no relatório da 094;
+push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a branch carrega código não gateado.
+**Autorização:** orquestrador (nenhuma condição de parada: nada envia, nada cross-tenant).

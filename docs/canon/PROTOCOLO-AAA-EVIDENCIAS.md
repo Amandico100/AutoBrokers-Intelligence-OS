@@ -634,3 +634,27 @@ e uma rodada. A regra é a mesma do commit atômico, escrita onde o builder lê.
 **O que NÃO mudou, e por quê:** o teto de 3 rodadas; o painel máximo de 5 (a lente do dado substitui uma
 lente de leitura, não soma); o juiz de confirmação (pegou o único defeito de conserto).
 📊 Tamanho do protocolo: 21.546 → 21.867 bytes (teto 22.528).
+
+
+---
+
+## DIÁRIO DA v11.1 → v11.2 · 03/09/2026 · a economia de tokens, pedida pelo Founder
+
+📊 **O problema medido:** a janela de 5h do plano acabou DUAS vezes no meio de uma SPEC (093-B ~06:30 e 094 ~10:40), e cada
+vez custou ~3h parado e agentes mortos no meio de refactor. O harness devolve o gasto por agente: investigador 154 mil ·
+aquecimento 153 mil · censo 203 mil · auditoria externa 245 mil · builder de conserto 264 mil · 4 lentes + red team ≈ 900 mil.
+Uma SPEC CRÍTICO ≈ **3 milhões de tokens de subagentes**, sem contar o orquestrador.
+
+**Onde o julgamento NÃO estava:** a auditoria externa achou 2 blockers que 5 frentes não viram — pela LENTE (o dado), não por
+ser um agente a mais. O juiz de confirmação e a auditora liam o mesmo diff. Fundir os dois num agente fresco com missão dupla
+mantém as duas perguntas e tira ≈200 mil tokens. Lentes 4→3 no CRÍTICO e 3→2 no PADRÃO: na 088 e na 093-B, 2 dos blockers de
+cada painel foram achados por 2+ lentes — a sobreposição paga uma lente.
+
+**O que muda e o que se espera (💭 estimativa, a medir na 094 e na 095):** entre 35 e 45 por cento menos tokens por SPEC, com
+perda irrisória no PADRÃO (a confirmação mecânica reroda guardas e mutações, que é o que o juiz de confirmação fazia de útil) e
+perda pequena no CRÍTICO (uma lente a menos; a do DADO fica). O que NÃO se corta: mutação, gate zero, aquecimento (nota 74 →
+15 emendas na 094 com 153 mil tokens: o melhor custo-benefício da leva), desenhista antes do código.
+
+**Regra nova que decide sozinha:** estourou o orçamento → menos LENTES, nunca menos MUTAÇÃO. E a sessão de 5h começa pelo laço
+mais longo (o builder serial), para não morrer no meio dele.
+📊 Tamanho do protocolo: 21.867 → 22.498 bytes (teto 22.528).
