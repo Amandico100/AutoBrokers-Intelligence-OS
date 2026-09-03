@@ -215,7 +215,8 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 
 ```
 1º  EXECUTAR a SPEC-094   (convertida em 03/09; censo da InfoCap no BLOCO 0)   um orquestrador, protocolo v11.1
-2º  SPEC-095  →  3º SPEC-096  →  depois, o que chegar em specs-propostas/
+2º  SPEC-094.1 · A fábrica de relatórios (convertida em 03/09 a partir do pedido do Founder + 3 pesquisas; executa depois da 094)
+3º  SPEC-095  →  4º SPEC-096  →  5º SPEC-097 (research pack chegou em 03/09; proposta ainda não)  →  depois, o que chegar
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta.
 ```
 
