@@ -126,6 +126,44 @@ def valor_ou_indisponivel(v: Optional[Union[float, int]]) -> Valor:
 # --------------------------------------------------------------------------
 # O envelope de UM número
 # --------------------------------------------------------------------------
+#: 🔴 As casas decimais com que um número CHEGA AO MODELO.
+#:
+#: 📊 Achado pelo canário do BLOCO G, 03/09/2026: o bloco que o modelo lê
+#: carregava `56580.57999999994` e `3.0357144169723714416972369` — resíduo
+#: binário de `float`, e não precisão. Três estragos de uma vez:
+#:
+#: ```
+#: o modelo narra "R$ 56.580,57999999994"          e parece defeito de sistema
+#: o número perde a cara de dinheiro                 e ninguém confere de olho
+#: nasce um "documento de 11 dígitos" que NÃO existe e todo detector de PII
+#:                                                    acusa a peça inteira
+#: ```
+#:
+#: O arredondamento acontece **na serialização**, e não no cálculo: a
+#: comparação com os controles-ouro continua sendo feita sobre o valor cheio.
+#: É apresentação, e a `Decimal` do CBIM continua sendo quem soma.
+CASAS_DO_NUMERO = 2
+#: Cobertura é fração de 0 a 1: duas casas transformariam 0,806 em 0,81 e
+#: 5,95% em 6%. Quatro casas mantêm o décimo de ponto percentual.
+CASAS_DA_COBERTURA = 4
+
+
+def _arredondar(valor: Any, casas: int = CASAS_DO_NUMERO) -> Any:
+    """Corta o resíduo binário de `float`. Tudo o mais passa intacto."""
+    if isinstance(valor, bool) or not isinstance(valor, float):
+        return valor
+    return round(valor, casas)
+
+
+def _limpar(valor: Any) -> Any:
+    """`_arredondar`, recursivo em dicionário e lista."""
+    if isinstance(valor, dict):
+        return {k: _limpar(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [_limpar(v) for v in valor]
+    return _arredondar(valor)
+
+
 @dataclass(frozen=True)
 class MetricResult:
     """Um número, e tudo o que é preciso para conferir se ele diz a verdade."""
@@ -158,16 +196,16 @@ class MetricResult:
         return {
             "metric_id": self.metric_id,
             "version": self.version,
-            "value": self.value,
+            "value": _limpar(self.value),
             "unit": self.unit,
             "period": dict(self.period),
             "time_basis": self.time_basis,
-            "coverage": self.coverage,
+            "coverage": _arredondar(self.coverage, CASAS_DA_COBERTURA),
             "confidence": self.confidence,
             "provider_key": self.provider_key,
             "source_refs": list(self.source_refs),
             "warnings": list(self.warnings),
-            "breakdown": [dict(b) for b in self.breakdown],
+            "breakdown": [_limpar(dict(b)) for b in self.breakdown],
         }
 
 
@@ -240,8 +278,8 @@ class EvidencePack:
             "period": dict(self.period),
             "compare_period": dict(self.compare_period) if self.compare_period else None,
             "metrics": [m.serializar() for m in self.metrics],
-            "findings": [dict(f) for f in self.findings],
-            "coverage": dict(self.coverage),
+            "findings": [_limpar(dict(f)) for f in self.findings],
+            "coverage": _limpar(dict(self.coverage)),
             "freshness": self.freshness,
             "provenance": dict(self.provenance),
             "warnings": list(self.warnings),

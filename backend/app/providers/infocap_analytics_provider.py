@@ -202,6 +202,10 @@ def _data(v: Any) -> Optional[date]:
     return None
 
 
+#: 🔴 O SEPARADOR NÃO É DETALHE. Ver `impressao_da_rota`.
+SEPARADOR_DA_IMPRESSAO = "|"
+
+
 def impressao_da_rota(linhas: List[Dict[str, Any]]) -> str:
     """`sha256` das chaves ORDENADAS da primeira linha — o mesmo do censo.
 
@@ -209,10 +213,29 @@ def impressao_da_rota(linhas: List[Dict[str, Any]]) -> str:
     (`sha256_das_chaves_ordenadas`): 20 chaves em `/documentos_bi`, 33 em
     `/renovacoes`. Comparar com o censo é como o BLOCO C descobre DRIFT sem
     esperar um cron (a proposta pedia um monitor agendado; §6 o recusou).
+
+    🔴 **O SEPARADOR É `|`, E ISSO NÃO É ESTILO.**
+
+    📊 Achado pelo canário do BLOCO G, 03/09/2026. Esta função juntava as
+    chaves com `,`; o censo as juntou com `|`. As MESMAS 20 chaves davam
+    `57f3fa24…` aqui e `3437d553…` no arquivo — então **toda leitura viva era
+    lida como drift de schema**, o manifesto marcava `DEGRADED`, e as 14
+    métricas saíam INDISPONÍVEL. Com todos os gates verdes: nenhum teste
+    comparava a impressão CALCULADA com a impressão MEDIDA; comparavam-se
+    impressões calculadas entre si, que batiam perfeitamente.
+
+    É a §9.3 do CLAUDE.md na forma mais cara: *um padrão medido com uma
+    ferramenta e aplicado com outra é um padrão sobre outra coisa*. E o
+    sintoma não era erro — era um relatório inteiro dizendo INDISPONÍVEL, que
+    é a resposta que esta SPEC ensinou o produto a dar quando não sabe.
+
+    ⚠️ Quem mudar este separador tem de remedir o censo inteiro. O guarda que
+    fecha a porta está em `test_o_canario_do_pulso_360.py`: a impressão de uma
+    linha com as chaves do censo TEM de bater com o `sha256` do arquivo.
     """
     for linha in linhas:
         if isinstance(linha, dict) and linha:
-            chaves = ",".join(sorted(linha.keys()))
+            chaves = SEPARADOR_DA_IMPRESSAO.join(sorted(linha.keys()))
             return hashlib.sha256(chaves.encode("utf-8")).hexdigest()
     return ""
 
@@ -286,6 +309,30 @@ def escolher_conexao(candidatos: List[Dict[str, Any]], *,
 # ==========================================================================
 # A TRADUÇÃO a partir das dataclasses da 081
 # ==========================================================================
+def fonte_da_081():
+    """`(FonteInfocap, FalhaDaInfocap, anos_de_vencimento_para)` — POR ESTA porta.
+
+    🔴 SPEC-094 · mutação **M12**: *fora deste arquivo, ninguém importa
+    `fonte_infocap`*. As duas tools da 081 continuam precisando da leitura
+    daquela peça — 📊 o guarda [1] roda `_montar` de verdade e troca só a
+    fronteira externa, e um wrapper que deixasse de usá-la deixaria de ser
+    wrapper. O que muda é POR ONDE elas a pegam: por esta função, que mora no
+    único arquivo com o direito de falar o dialeto do provider.
+
+    Não é indireção decorativa. É a diferença entre *"o agente de relatório
+    conhece um sistema de gestão"* e *"o agente de relatório pede a leitura ao
+    adapter, e o adapter é quem conhece"*. A segunda troca de provider sem
+    reescrever a tool; a primeira, não.
+
+    ⚠️ Import tardio, como o de `_abrir`: `fonte_infocap` é carregado quando
+    alguém for LER, e não na montagem do grafo.
+    """
+    from app.comercial.fonte_infocap import (FalhaDaInfocap, FonteInfocap,
+                                             anos_de_vencimento_para)
+
+    return FonteInfocap, FalhaDaInfocap, anos_de_vencimento_para
+
+
 def traduzir(apolices: Any = (), mapa: Any = None, vencimentos: Any = (),
              *, company_id: str = "", correlation_id: str = "") -> FactSet:
     """`Apolice` / `ProdutorDaApolice` / `Vencimento` → CBIM.

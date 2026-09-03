@@ -64,12 +64,17 @@ logger = logging.getLogger(__name__)
 #
 # Consertar o `services/__init__.py` seria melhor ainda, e nao e para a
 # vespera de uma apresentacao: ele e importado por tudo.
+#
+# 🔴 SPEC-094 · M12: a leitura vem PELO ADAPTER, e não por import direto.
+# Este arquivo não pode conhecer a fonte; o adapter é o único que pode. A
+# tupla de quatro continua idêntica — é a forma que o guarda [1] da 094 troca
+# para rodar as duas tools com fixture, e mudá-la quebraria a medição.
 def _comercial():
     from app.comercial import calculos as calc
-    from app.comercial.fonte_infocap import (
-        FalhaDaInfocap, FonteInfocap, anos_de_vencimento_para,
-    )
-    return calc, FonteInfocap, FalhaDaInfocap, anos_de_vencimento_para
+    from app.providers.infocap_analytics_provider import fonte_da_081
+
+    FonteDeLeitura, FalhaDaLeitura, anos_de_vencimento_para = fonte_da_081()
+    return calc, FonteDeLeitura, FalhaDaLeitura, anos_de_vencimento_para
 
 # 🔴 A peça sai no tema do TEMPLATE, e o template da Cobrança é `aurora`.
 # Não passamos `visual_style` na renderização de propósito: 📊
@@ -286,7 +291,10 @@ def _slug_da_empresa(supabase, company_id: str) -> str:
     E falha ALTO. Corretora sem credencial e um fato que quem le o relatorio
     precisa saber; devolver vazio empurra o problema para longe da causa.
     """
-    from app.comercial.fonte_infocap import FalhaDaInfocap
+    # SPEC-094 M12: o tipo de falha tambem vem PELO ADAPTER.
+    from app.providers.infocap_analytics_provider import fonte_da_081
+
+    _fonte, FalhaDaInfocap, _anos = fonte_da_081()
 
     try:
         r = (supabase.table("companies").select("company_name")
