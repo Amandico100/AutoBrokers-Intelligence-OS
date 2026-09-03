@@ -146,7 +146,21 @@ class Capacidade:
         return self.state in (PARTIAL, DEGRADED)
 
     def frase(self) -> str:
+        """A frase que vai ao pack e ao Artifact. 🔴 A `evidence` VENCE a tabela.
+
+        📊 Achado em 03/09/2026, ao provar o fail-closed: com o censo ilegível
+        todas as capacidades viravam `DEGRADED`, e esta função lia a tabela e
+        respondia *"o schema da rota mudou desde o censo"* — que é uma
+        afirmação sobre a FONTE DO CLIENTE, feita quando o problema é a NOSSA
+        medição. É a mutação **M2** entrando por outra porta: trocar um fato
+        sobre nós por um fato sobre eles.
+
+        Os dois `DEGRADED` têm motivos diferentes (drift de schema × censo
+        ilegível × fingerprint ausente), e o motivo mora na `evidence`.
+        """
         base = FRASE_DO_ESTADO.get(self.state, self.state)
+        if self.state == DEGRADED and self.evidence:
+            base = self.evidence
         if self.coverage_pct is not None:
             return f"{base} (cobertura medida: {self.coverage_pct:.1f}%)"
         return base

@@ -88,14 +88,21 @@ def periodo_iso(inicio: Any, fim: Any) -> Dict[str, str]:
     return {"start": _iso(inicio), "end": _iso(fim)}
 
 
-#: 🔴 O prefixo da referência de produtor. Uma letra, e ela não é enfeite.
+#: 🔴 A LETRA-ÂNCORA da referência de produtor. Ela aparece DUAS vezes, nas
+#: posições 0 e 8, e isso não é enfeite nem estilo.
 #:
 #: 📊 Achado pela lente do dado, 03/09/2026: `sha256(...)[:16]` é hexadecimal, e
-#: um em cada ~10^3 hashes sai só com dígitos. Uma referência de 16 dígitos
-#: contém `\d{11}` — e TODO detector de PII deste repositório (o canário, o
-#: guarda do Artifact) acusa "documento de 11 dígitos" na peça inteira, por
-#: causa de um hash. A letra torna isso impossível por construção, e continua
-#: opaca, estável e por tenant.
+#: uma corrida de 11 dígitos ali dentro casa `\d{11}`. TODO detector de PII deste
+#: repositório (o canário, o guarda do Artifact) acusa então "documento de 11
+#: dígitos" na peça inteira — por causa de um hash.
+#:
+#: ⚠️ E um prefixo SÓ não resolve: ele impede a referência INTEIRA de ser
+#: numérica, e a corrida pode acontecer nos 15 caracteres seguintes. 📊 Medido:
+#: em 400 referências sintéticas, o prefixo sozinho ainda deixava passar.
+#:
+#: 🔴 Com a âncora nas posições 0 e 8, o maior bloco contíguo de dígitos possível
+#: é de **7** caracteres. Não é "improvável": é impossível por construção, que é
+#: a única forma de um guarda deste tipo não depender de sorte.
 PREFIXO_DO_PRODUTOR = "p"
 
 
@@ -114,7 +121,7 @@ def normalizar_rotulo(s: str) -> str:
 
 
 def ref_de_produtor(company_id: str, nome: str) -> str:
-    """A referência OPACA de um produtor — `p + sha256(company_id + rótulo)[:15]`.
+    """A referência OPACA de um produtor — `p` + 7 hex + `p` + 7 hex.
 
     🔴 É o que entra no pack no lugar do nome. Três propriedades importam:
 
@@ -122,6 +129,7 @@ def ref_de_produtor(company_id: str, nome: str) -> str:
     estável    o mesmo produtor da mesma corretora dá sempre a mesma referência
     por TENANT o `company_id` no meio impede cruzar produtores entre corretoras
     NORMALIZADA `Ana Souza`, `ANA  SOUZA` e `ana souza` são o MESMO produtor
+    ANCORADA   uma letra nas posições 0 e 8 — nenhum bloco de dígitos passa de 7
     ```
 
     🔴 A normalização não é capricho. 📊 `por_dimensao` já normaliza o rótulo da
@@ -135,8 +143,9 @@ def ref_de_produtor(company_id: str, nome: str) -> str:
     teste ou no relatório de execução (SPEC-094 §2).
     """
     semente = f"{company_id or ''}|{normalizar_rotulo(nome)}"
-    return PREFIXO_DO_PRODUTOR + hashlib.sha256(
-        semente.encode("utf-8")).hexdigest()[:15]
+    bruto = hashlib.sha256(semente.encode("utf-8")).hexdigest()
+    return (PREFIXO_DO_PRODUTOR + bruto[:7]
+            + PREFIXO_DO_PRODUTOR + bruto[7:14])
 
 
 def confianca(cobertura: Optional[float]) -> str:

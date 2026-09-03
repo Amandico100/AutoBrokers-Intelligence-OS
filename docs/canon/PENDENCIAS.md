@@ -9920,6 +9920,11 @@ mais pelo painel, de propósito). **Destrava:** teste de rota com cliente falso.
 📊 Censo 03/09 (`docs/canon/providers/infocap/INFOCAP-CORPAPI-CENSUS-v2.md`): mesmo `user_sha`, mesmo `pass_sha`, mesmo
 perfil, 1.680 apólices e R$ 1.863.830,79 nas duas. Os ciphertexts diferem (IV do Fernet) — só a descriptografia denuncia.
 **Custo de esquecer:** qualquer leitura "da Amandus" mostra a carteira da Resulta. **Destrava:** decisão F-094-07. **Dono:** 🧑.
+⚠️ **Conserto parcial em 03/09/2026 (rodada única):** a regra em vigor é *"o primeiro que chega ganha"* — se a Amandus
+ler primeiro, a **Resulta** é recusada até o processo reiniciar, e a recusa não dizia por quê. Agora o log estruturado
+e o texto da recusa nomeiam **as duas corretoras** e a impressão truncada da conta (`registrar_conta`, `PAR` no bloco
+[13] do guarda). 🔴 Isso torna o incidente diagnosticável; **não** resolve a ordem de chegada nem o caso de dois
+contêineres. A resolução definitiva continua sendo a decisão **F-094-07**.
 
 ## P-094-SINISTROS · `/sinistros` (plural) existe, tem 5.729 registros e nenhum leitor
 📊 200 em 26,3 s; campos `numsin/situacao/datoco/datavi/datenc/valind/franquia/nosnum`. O MAPA testava o singular (403).
@@ -9936,6 +9941,64 @@ linha conserta uma rota do código de produção do ATENDIMENTO — fora da 094 
 
 ## P-094-COBERTURA-POR-CORRETORA · a receita de cobertura de produtor da 081 não vale para a AutoFleet
 📊 BI∩renov 2025: Resulta 100 · AutoFleet **0**. A 094 remede por corretora (BLOCO D). **Dono:** 🤖.
+🔴 **Corrigido o número em 03/09/2026:** `BI∩renov` é um **artefato de janela**, não a cobertura do produto. Ele mede
+`2025 × 2025`, e apólice anual que **começa** em 2025 **termina** em 2026 — as duas rotas filtram pontas opostas da
+vigência. 📊 O produto pede `2024–2027` e mede **80,6%**. O canário afirmava 5,95% porque a fonte de fixture ignorava
+`dt_ini/dt_fim` e devolvia o mesmo lote nas quatro fatias de ano; agora ela respeita a fatia e o guarda afirma a
+paridade de 80,6% ± 2 p.p., com o CONTROLE de que ela é muito maior que o artefato.
 
 ## P-094-GIT-PII · nome completo de um produtor real no histórico do git (`test_a_fonte_comercial…py:283-294`, desde a 081)
 O BLOCO H tira do HEAD; o histórico não se reescreve sem decisão. **Dono:** 🧑.
+
+---
+
+### Abertas pela RODADA ÚNICA DE CONSERTO — 03/09/2026 (painel: red team · lente do dado · L1)
+
+## P-094-DECIMAL-NAS-FORMULAS · o CBIM soma em `Decimal`; as fórmulas de `metricas/` somam em `float`
+O docstring de `cbim.py` prometia *"dinheiro é `Decimal`, nunca `float`"* e o motor não cumpria: `registry._float`
+projeta o `Money` em `float` e as fórmulas somam ali, porque a matemática que elas chamam é a de `calculos.py`,
+que a **SPEC-081 usa em produção** sobre `float` e que a 094 não reescreveu (CLAUDE.md §5).
+📊 O resíduo medido sobre o controle-ouro de 2025 (1.680 apólices, R$ 1.863.830,79) é menor que R$ 0,01, e a
+serialização arredonda em duas casas antes de o número chegar ao modelo. O **texto** foi consertado em 03/09 —
+o docstring agora diz onde o `Decimal` vale e onde não vale (CLAUDE.md §12.1).
+**Custo de esquecer:** nenhum hoje; vira dívida se a carteira crescer uma ordem de grandeza ou se alguém
+comparar centavo a centavo com o extrato. **Destrava:** `VisaoDeApolice.premio/comissao` em `Decimal`, o que
+obriga a passar por `calculos.py` e portanto pela 081. **Dono:** 🤖. 💭 4h, e uma rodada de paridade da 081.
+
+## P-094-NUM-PTBR · `fonte_infocap._num(None)` continua devolvendo `0.0`, e a 081 depende disso
+📊 `fonte_infocap.py:592-608`. Ausente, vazio e ilegível viram `0.0` — o defeito da SPEC-094 §1.5. Ele **não foi
+consertado de propósito**: oito somas de listas cruas do Raio-X e do Radar (SPEC-081, em produção) dependem daquele
+zero, e trocá-lo por um sentinela quebraria as duas tools.
+🔴 O caminho NOVO não passa por ali: a fronteira do dinheiro é `cbim.interpretar_dinheiro`, que devolve `None` para
+ilegível, e o adapter o traduz em `UNAVAILABLE` **mais um warning com o `correlation_id`**. A mutação **M12** do
+guarda prova que ninguém fora do adapter importa `fonte_infocap`.
+⚠️ E o GATE ZERO (ii) do guarda **mudou de alvo** em 03/09: ele media `_num`, que não pode ser consertado, e ficaria
+vermelho para sempre; agora mede a FRONTEIRA, com quatro pares (português, negativo, zero de verdade, ilegível) e a
+mutação que devolve zero. O `_num` legado continua MEDIDO no guarda, sem promessa.
+**Custo de esquecer:** enquanto a 081 viver, um `0,00` da fonte é indistinguível de "não ganhou nada" **naquelas duas
+tools**. **Destrava:** aposentar o Raio-X e o Radar, ou migrá-los para o registry. **Dono:** 🤖.
+
+## P-094-LEGADO · `relatorios_comerciais.py` fala o dialeto da InfoCap em 24 linhas
+📊 Medido em 03/09/2026 pelo grep do M1. São o resolver legado da SPEC-081 dentro da tool de relatório comercial.
+Elas estão na **allowlist explícita** do gate M1, com o número escrito: o guarda reprova se um arquivo NOVO de
+`agents/tools/` passar a falar InfoCap, ou se um da lista CRESCER.
+⚠️ O escopo do M1 foi estreitado no mesmo dia, e por medição: o grep sobre a pasta inteira acusa **87** linhas, e
+**63** são das tools de ATENDIMENTO da SPEC-016 (`infocap_tool.py` 39, `portal_tool.py` 8, `portal_params.py` 7,
+`insurer_dispatch_tool.py` 5, `vehicle_tool.py` 3, `report_tool.py` 1) — que falam com a InfoCap porque é esse o
+trabalho delas. Um gate inalcançável nunca fica verde, e um gate que nunca fica verde ninguém olha (CLAUDE.md §9.3).
+**Custo de esquecer:** trocar de provider volta a significar mexer na tool de relatório. **Dono:** 🤖. 💭 2h.
+
+## P-094-CUSTO-API · uma pergunta do Pulso 360 custa 10 chamadas GET
+📊 Medido no censo de 03/09/2026: `/documentos_bi` de um ano = **3,9 s**; `/renovacoes` 2025 = **11,4 s**; `/renovacoes`
+2026 = **6,0 s**. Uma pergunta de um ano lê 1 fatia de produção + 4 fatias de vencimento (`anos_de_vencimento_para`
+varre N−1..N+2, e é isso que dá os 📊 80,6% de cobertura de produtor contra 2,8% de um ano só) — e, quando há
+comparação com o período anterior, tudo isso **duas vezes**.
+⚠️ Mitigado em parte: o cache de pacote da tool responde o follow-up sem reconsultar, agora com TTL de 15 min.
+**Custo de esquecer:** a primeira pergunta do dia pode passar de 40 s, e uma janela grande não completa — por isso o
+teto de 2 anos com recusa escrita. **Destrava:** medir se `/renovacoes` aceita janela plurianual sem 502, ou guardar
+o lote em Redis por corretora. **Dono:** 🤖. 💭 4h.
+
+## P-094-SEED-023 · `financial.billing_collection` é seed de outra SPEC e ficou fora desta rodada
+Apontado pelo painel e **deliberadamente não tocado**: mexer no seed de outra SPEC nesta rodada seria escopo por
+conta própria (CLAUDE.md §11). Registrado para não virar dívida silenciosa. **Dono:** 🤖.
+
