@@ -83,6 +83,7 @@ entre elas**. Um chat por SPEC joga fora esse ganho.
 | **092** | O formulário dentro do WhatsApp | 25/08 |
 | **093** | O atendimento real liga e funciona | 25/08 |
 | **088** | A Central de Agentes diz a verdade (v2, protocolo v11) | 03/09 |
+| **093-B** | O sinistro deixa rastro (protocolo v11 · nível CRÍTICO · zero migration) | 03/09 |
 
 ## ⬜ OS BURACOS — e nenhum precisa de ação
 
@@ -209,9 +210,12 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 
 > ✅ **LEVA 1 fechada em 03/09/2026:** 088 executada (relatório em `reports/`), 091 absorvida pela v11.
 
+> ✅ **093-B executada em 03/09/2026** (relatório em `reports/`, auditoria externa incluída). A **094 foi
+> convertida no mesmo dia** — `specs/SPEC-094-o-pulso-360-nao-pertence-a-infocap.md` — e está em execução.
+
 ```
-1º  CONVERTER + EXECUTAR a SPEC-093-B   (7 - SPEC-093-claims-learning-shadow)   um orquestrador, protocolo v11
-2º  SPEC-094  →  3º SPEC-095  →  4º SPEC-096
+1º  EXECUTAR a SPEC-094   (convertida em 03/09; censo da InfoCap no BLOCO 0)   um orquestrador, protocolo v11.1
+2º  SPEC-095  →  3º SPEC-096  →  depois, o que chegar em specs-propostas/
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta.
 ```
 
