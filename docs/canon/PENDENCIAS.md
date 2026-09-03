@@ -9815,3 +9815,88 @@ antigo matava toda sequência de 10–14 dígitos), é dívida do serviço canô
 📊 `feature_flags.env_ligada()` aceita `("1","true","yes","on","sim")`; `app/agents/nodes.py:112` tem lista própria
 sem `"sim"`, num `except ImportError` que quase nunca dispara. **Destrava:** `nodes.py` importa `env_ligada`.
 **Dono:** 🤖. 💭 10 min.
+
+
+---
+
+# SPEC-093-B · O sinistro deixa rastro — 03/09/2026
+
+## P-093B-LGPD · A base legal brasileira não foi lida
+🧑 planalto.gov.br devolveu ECONNRESET duas vezes em 03/09; a ANPD não tem guia final de anonimização (estudos
+de 2023, consulta encerrada em 02/2024). A SPEC cita a FORMA da salvaguarda (GDPR Art. 89(1)) e minimiza por
+construção (a sombra não guarda texto). **Destrava:** leitura da LGPD art. 5º, 7º, 11 e 12 com jurista antes de
+qualquer uso cross-tenant ou global do corpus. **Dono:** 🧑.
+
+## P-093B-CLASSIF · `infer_ramo_servico`: assistência vence sinistro
+📊 `templater.py:1726` `servico = servico or "sinistro"`: "bati o carro, preciso de guincho" sai `auto/guincho`.
+Muda a conduta do robô — decisão F-093B-01 (depois da primeira semana de piloto). **Dono:** 🧑 decide · 🤖 executa.
+
+## P-093B-SEGURADORA · `claims.seguradora_respondeu` sem escritor; espera de seguradora sem escritor
+📊 `grep -rn "abrir_espera("` → um chamador (`dispatch_router.py:1200`), sempre `ESPERANDO_HUMANO`; zero escritores
+de `esperando_seguradora`; `work_waits` vazia. O evento saiu do vocabulário (versão 2) e os contadores de espera de
+seguradora e prazo saem `não instrumentado`. **Destrava:** emitir o evento e a espera onde a URA responde
+(`attendance_capture`/`dispatch_router`) — caminho quente do atendimento, para depois do piloto. **Dono:** 🤖.
+
+## P-093B-RAMO · `ramo` e `seguradora_slug` nunca são preenchidos
+📊 `abrir_sombra` é chamada sem os dois (`webhook.py`), e nenhum evento posterior os grava: toda variante nasce
+`desconhecido × desconhecida` e o agrupamento degenera em (corretora, sequência). **Destrava:** ler a ficha/apólice no
+gancho quando existir, ou um evento que os preencha. **Dono:** 🤖. 💭 1h.
+
+## P-093B-CANDIDATO · `knowledge_candidates` nunca foi escrita em produção
+📊 0 linhas; o adapter existe. A sombra escreve só `intelligence_signals` até o adapter ser exercido. **Dono:** 🤖.
+
+## P-093B-SAUDE · `redaction_service` sem padrão de saúde (CID, laudo) nem nome/endereço por extenso
+📊 10 padrões, todos ancorados em dígito. A sombra não guarda texto, então não vaza por ela; o serviço canônico
+continua incompleto para quem guarda. **Dono:** 🤖. 💭 30 min.
+
+## P-093B-RLS · `work_waits` e `intelligence_signals` com RLS ligado e 0 policies
+Herda P-090-01. O isolamento é o filtro no código, testado por fixture com dois tenants (bloco [12] do guarda).
+**Dono:** 🤖.
+
+## P-093B-CORPUS · O gold corpus (4 perguntas da ref. agentevals) só existe com 20+ trajetórias reais
+Medir em 14 dias de piloto. **Dono:** 🤖.
+
+## P-093B-TERCEIRO · 2.187 sessões históricas com palavras de sinistro não viraram sombra
+Sem retroativo nesta SPEC. Backfill é dado antigo de segurado virando corpus — F-093B-04. **Dono:** 🧑.
+
+## P-093B-TELA · A atendente não vê a sombra; a nota `#nota` continua sem tela que a exiba
+📊 0 leitores de `notas_da_atendente` em `app/`. A Central mostra o trabalhador; o admin tem o JSON. **Destrava:**
+tela de casos da sombra (~2h) — F-093B-02. **Dono:** 🤖.
+
+## P-093B-GOLD · `test_golden_do_eletricista.py` vermelho antes da SPEC, e o pytest carimba
+📊 03/09: 1 caso explodiu (gold_007, KeyError 'live'), 14 asserções vermelhas; o pytest coleta só o teste de
+existência dos 10 casos (CLAUDE.md §9.4). Linha de base idêntica antes e depois da 093-B. **Dono:** 🤖.
+
+## P-093B-MAQUINA · `test_a_maquina_de_lavar_vai_ate_o_fim.py` crasha a coleta do pytest
+📊 `sys.exit` no nível do módulo (:665); como script, 112 ok. Fora da suíte por acidente. **Dono:** 🤖. 💭 10 min.
+
+## P-093B-NOTA-2SEDES · A nota da atendente tem duas sedes e zero leitores
+`notas_da_atendente` (WhatsApp) e `messages.payload.nota_interna` (painel). A sombra emite o evento uma vez por
+gesto (o painel pelo Next; o celular pelo Python). Consolidar a sede é outra SPEC. **Dono:** 🤖.
+
+## P-093B-REQS · Este ambiente não tem os requirements do backend
+📊 faltam `slowapi`, `redis`, `presidio`, `qdrant_client`, `fastembed`…: guardas que importam `app.api.webhook` só rodam
+por casca de pacote, e os ganchos da sombra em `o_fim_do_atendimento`/`a_nota_da_atendente`/`human_handoff` são no-op
+silencioso NESTA máquina (no contêiner rodam). **Destrava:** CI com `backend/requirements.txt`. **Dono:** 🧑/🤖.
+
+## P-093B-HARNESS · `test_todos_os_guardas_script_rodam.py` se atropela e deixa mutação na árvore
+📊 Vítimas diferentes a cada rodada (formulario, handoff, ontologia, regua), todas verdes isoladas; `replay.py`,
+`rubrica.py`, `higiene_do_corpus.py`, `corridor_playbooks.py` apareceram mutados em disco em 3 momentos. Diff vazio
+contra a `main` nos arquivos exercidos: pré-existente. Irmão de P-088-MUT. **Destrava:** serializar as mutações ou
+uma cópia por guarda. **Dono:** 🤖.
+
+## P-093B-JANELA · A janela de 3.000 chars de `test_quem_fala_primeiro_cala_o_outro` ficou com 174 de folga
+📊 `i_espelho=709 · i_gate=2826`. A próxima edição no ramo `fromMe` derruba o guarda por CRESCIMENTO, não por defeito.
+**Destrava:** ancorar o guarda no bloco, não em contagem de caracteres. **Dono:** 🤖.
+
+## P-093B-CUSTO-INBOUND · +1 round-trip por mensagem de segurado no modo observação
+📊 2 → 3 idas ao banco por mensagem não-sinistro (SELECT da ficha). A rodada de conserto memoriza a ausência de ficha
+por conversa; medir a latência real do PostgREST no contêiner. **Dono:** 🤖.
+
+## P-093B-TEMPLATES · `message_human` diverge entre Python e Next para o mesmo evento
+"Uma atendente assumiu o atendimento." × "a atendente assumiu o caso". Duas vozes na mesma linha do tempo.
+**Destrava:** os templates no vocabulário, lidos pelos dois. **Dono:** 🤖. 💭 30 min.
+
+## P-093B-ESPELHO · O espelho que alimenta a sombra ficou parado de 27/08 a 01/09
+📊 `attendance_transcripts` por dia: 26/08 473 · 27/08–01/09 **0** · 02/09 3 · 03/09 1. Coincide com a API no chão
+(`4c8a718`) e com o atendimento desligado. Sem inbound não há sombra. **Dono:** 🤖 medir depois do piloto.

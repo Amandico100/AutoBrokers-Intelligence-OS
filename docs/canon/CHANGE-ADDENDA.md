@@ -3789,3 +3789,19 @@ parcial desta SPEC, achado por medição.
   suíte inteira enquanto um juiz muta.
 - **Autorização:** o Founder deu autoridade total sobre o protocolo em 02/09 ("nada nele é intocável").
 - **Registro:** `PROTOCOLO-AAA-EVIDENCIAS.md` (diário v10→v11) e `PENDENCIAS.md` P-088-MUT.
+
+---
+
+## 03/09/2026 · SPEC-093-B · detector de sinistro além do "regex estrito" do BLOCO A — ESSENCIAL
+
+- **Problema:** o regex estrito da SPEC (`\m(sinistro|colis[ãa]o|batida|roub(o|aram)|furt(o|aram)|acidente)\M`) não
+  casava a própria fixture do gate A① ("bati o carro e preciso de guincho"); e o red team mediu que, como escrito,
+  📊 12 de 14 frases que não são sinistro abririam sombra e 16,4% das conversas do acervo (90 dias) viraria sombra,
+  15% delas com palavra de venda.
+- **Mudança:** o detector ganha (i) exclusão por palavra de VENDA (cotação, contratar, quanto custa, cobertura…),
+  (ii) verbo de OCORRÊNCIA obrigatório para as palavras que não são "sinistro" (bati, roubaram, capotei, levaram,
+  pegou fogo, arrombaram, abalroamento…), (iii) a regra de par "bati … carro" com exclusão de "porta/chamar".
+  O comportamento é dado por 17 frases fixadas no guarda (8 abrem, 9 não).
+- **Autorização:** protocolo §9, regra dos 30 minutos, dentro do BLOCO A; registrado aqui porque o texto da SPEC
+  dizia "regex estrito" e o executor foi além do texto (CLAUDE.md §11).
+- **Registro:** SPEC-093-B BLOCO A (texto atualizado no relatório), guarda `test_o_sinistro_deixa_rastro.py` [14b].
