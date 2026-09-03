@@ -3526,7 +3526,88 @@ def bloco_14_a_segunda_rodada():
         except Exception:  # noqa: BLE001
             pass
 
-    for chave in ("_094_14_adapter",):
+    # ------------------------------------------------------------------ ②
+    # B3 · O ESPELHO da rota vazia. 📊 O juiz mediu na peca viva: `/renovacoes`
+    # vazia com `/documentos_bi` cheia devolvia `renewal.exposure = 0,0 ·
+    # cobertura 1,0 · HIGH`, e a peca afirmava "este 0 e um fato sobre a
+    # carteira". A rodada anterior consertou UM lado do espelho (BI vazia
+    # bloqueia `policy_count`) e deixou o outro em pe, porque a regra era
+    # "TODAS as rotas lidas vieram vazias?" e `portfolio.renewals` lista duas.
+    #
+    # 🔴 O PAR aqui e nas DUAS DIRECOES, e e isso que prova que a rota primaria
+    # e o que decide: cada direcao tem de bloquear UMA metrica e deixar a OUTRA
+    # passar. Um gate que bloqueasse as duas em qualquer direcao passaria num
+    # par de um lado so.
+    cbim14, erro14 = carregar("_094_14_cbim", CBIM)
+    reg14, erro_r14 = carregar("_094_14_reg", REGISTRY)
+    man14, erro_m14 = carregar("_094_14_man", MANIFESTO_PY)
+    censo14 = None
+    if man14 is not None:
+        try:
+            censo14 = man14.ProviderCapabilityManifest.de_arquivo(MANIFESTO)
+        except Exception:  # noqa: BLE001
+            censo14 = None
+    if cbim14 is None or reg14 is None or censo14 is None:
+        certo(False, "[14] ② as pecas do espelho carregam",
+              erro14 or erro_r14 or erro_m14 or "censo nao carregou")
+    else:
+        def _leitura(bi, renov):
+            f = fixture_golden(cbim14)
+            f["fingerprints"] = {"/documentos_bi": bi, "/renovacoes": renov}
+            return f
+
+        VAZIA, CHEIA_A, CHEIA_B = man14.SEM_AMOSTRA, "a" * 8, "b" * 8
+
+        def _medir(bi, renov, mid):
+            return reg14.calcular(mid, _leitura(bi, renov), PERIODO_2025,
+                                  manifest=censo14)
+
+        # direcao 1 — a que a rodada anterior ja pegava
+        bi_vazia_pol = _medir(VAZIA, CHEIA_B, "production.policy_count")
+        bi_vazia_ren = _medir(VAZIA, CHEIA_B, "renewal.exposure")
+        # direcao 2 — o ESPELHO, que estava em pe
+        ren_vazia_pol = _medir(CHEIA_A, VAZIA, "production.policy_count")
+        ren_vazia_ren = _medir(CHEIA_A, VAZIA, "renewal.exposure")
+        # controle — as duas cheias
+        cheio_pol = _medir(CHEIA_A, CHEIA_B, "production.policy_count")
+        cheio_ren = _medir(CHEIA_A, CHEIA_B, "renewal.exposure")
+
+        certo(ren_vazia_ren.indisponivel
+              and any("sem linhas" in a for a in ren_vazia_ren.warnings),
+              "[14] ② PAR-A: `/renovacoes` VAZIA deixa `renewal.exposure` "
+              "UNAVAILABLE, com o motivo escrito",
+              "veio value=%r coverage=%r confidence=%r warnings=%r — o zero "
+              "de uma rota que nao respondeu NAO e um fato sobre a carteira"
+              % (ren_vazia_ren.value, ren_vazia_ren.coverage,
+                 ren_vazia_ren.confidence, list(ren_vazia_ren.warnings)[:2]))
+        certo(not ren_vazia_pol.indisponivel,
+              "[14] ② PAR-A': e na MESMA leitura `production.policy_count` "
+              "continua devolvendo numero (a rota primaria DELE respondeu)",
+              "veio %r — um gate que bloqueia a leitura inteira nao distingue "
+              "rota nenhuma" % (ren_vazia_pol.value,))
+        certo(bi_vazia_pol.indisponivel and not bi_vazia_ren.indisponivel,
+              "[14] ② PAR-B: o espelho — `/documentos_bi` vazia bloqueia "
+              "`policy_count` e DEIXA PASSAR `renewal.exposure`",
+              "policy_count=%r renewal.exposure=%r"
+              % (bi_vazia_pol.value, bi_vazia_ren.value))
+        certo(not cheio_pol.indisponivel and not cheio_ren.indisponivel
+              and _v(cheio_pol) == 1680.0,
+              "[14] ② CONTROLE: com as DUAS rotas cheias, as duas metricas "
+              "devolvem numero",
+              "policy_count=%r renewal.exposure=%r — um gate que bloqueia "
+              "sempre nao e gate" % (cheio_pol.value, cheio_ren.value))
+        certo(censo14.capacidade("portfolio.renewals").rota_primaria
+              == "/renovacoes"
+              and censo14.capacidade("portfolio.policies").rota_primaria
+              == "/documentos_bi",
+              "[14] ② a rota primaria esta DECLARADA no censo, e nao deduzida "
+              "da ordem do JSON",
+              "renewals=%r policies=%r"
+              % (censo14.capacidade("portfolio.renewals").rota_primaria,
+                 censo14.capacidade("portfolio.policies").rota_primaria))
+
+    for chave in ("_094_14_adapter", "_094_14_cbim", "_094_14_reg",
+                  "_094_14_man"):
         sys.modules.pop(chave, None)
 
 

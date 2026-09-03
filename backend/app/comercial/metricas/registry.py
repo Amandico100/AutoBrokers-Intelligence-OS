@@ -429,9 +429,25 @@ def _sem_populacao(manifesto: Any, nome: str, lidas: set, vazias: set) -> bool:
     if not callable(cap):
         return False
     try:
-        rotas = set(cap(nome).source_routes or ())
+        capacidade = cap(nome)
+        rotas = set(capacidade.source_routes or ())
+        primaria = str(getattr(capacidade, "rota_primaria", "") or "")
     except Exception:  # noqa: BLE001
         return False
+    # 🔴 A ROTA PRIMÁRIA decide sozinha, e é o conserto de 03/09/2026.
+    #
+    # 📊 O juiz mediu na peça viva: `/renovacoes` vazia com `/documentos_bi`
+    # cheia devolvia `renewal.exposure = 0,0 · cobertura 1,0 · HIGH`, e a peça
+    # afirmava *"este 0 é um fato sobre a carteira"*. A regra antiga
+    # (`efetivas <= vazias`) só bloqueia quando TODAS as rotas lidas vêm vazias
+    # — e `portfolio.renewals` lista duas, das quais só uma dá população.
+    #
+    # ⚠️ Uma rota secundária cheia não substitui a primária vazia: `/renovacoes`
+    # filtra `fimvig` (o que VENCE) e `/documentos_bi` filtra `inivig` (o que
+    # foi EMITIDO). Somar as duas populações para dizer "há dados" é trocar a
+    # pergunta pelo que sobrou dela.
+    if primaria and primaria in lidas:
+        return primaria in vazias
     efetivas = rotas & lidas
     return bool(efetivas) and efetivas <= vazias
 

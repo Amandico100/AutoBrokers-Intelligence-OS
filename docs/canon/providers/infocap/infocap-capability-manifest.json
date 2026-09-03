@@ -21,7 +21,8 @@
         "/documentos",
         "/cliente_ligacoes"
       ],
-      "evidence": "📊 /documentos_bi 2025 (data=INIVIG, tipo_doc=A) devolveu 1.680 apolices com nosnum, seguradora, ramo, inivig, fimvig em 100% dos registros; /documento devolve o detalhe de uma delas. Rotas classe 200."
+      "evidence": "📊 /documentos_bi 2025 (data=INIVIG, tipo_doc=A) devolveu 1.680 apolices com nosnum, seguradora, ramo, inivig, fimvig em 100% dos registros; /documento devolve o detalhe de uma delas. Rotas classe 200.",
+      "primary_route": "/documentos_bi"
     },
     "portfolio.production": {
       "state": "SUPPORTED",
@@ -29,7 +30,8 @@
       "source_routes": [
         "/documentos_bi"
       ],
-      "evidence": "📊 Base temporal MEDIDA com dois filtros: com data=INIVIG, 1.680/1.680 registros tem inivig na janela de 2025 e so 106 tem fimvig. `data` aceita exatamente ('INIVIG','DATINC','DATALT','DATPROP') — a API devolve essa lista num 400 quando recebe DATEMI."
+      "evidence": "📊 Base temporal MEDIDA com dois filtros: com data=INIVIG, 1.680/1.680 registros tem inivig na janela de 2025 e so 106 tem fimvig. `data` aceita exatamente ('INIVIG','DATINC','DATALT','DATPROP') — a API devolve essa lista num 400 quando recebe DATEMI.",
+      "primary_route": "/documentos_bi"
     },
     "portfolio.policy_status": {
       "state": "SUPPORTED",
@@ -39,7 +41,8 @@
         "/documento",
         "/cliente_ligacoes"
       ],
-      "evidence": "📊 `cancelado` (T/F), `renovacao_situacao`, `sin_situacao`, `situacao_txt` presentes em 3.536/3.536 registros de /renovacoes 2025; /documento tem ainda sit_acompanhamento_txt / sit_renovacao_txt / sit_sinistro_txt / recusado."
+      "evidence": "📊 `cancelado` (T/F), `renovacao_situacao`, `sin_situacao`, `situacao_txt` presentes em 3.536/3.536 registros de /renovacoes 2025; /documento tem ainda sit_acompanhamento_txt / sit_renovacao_txt / sit_sinistro_txt / recusado.",
+      "primary_route": "/renovacoes"
     },
     "portfolio.cancellations": {
       "state": "PARTIAL",
@@ -48,7 +51,8 @@
         "/renovacoes",
         "/documento"
       ],
-      "evidence": "📊 Existe o ESTADO (`cancelado` T/F) mas nao a DATA nem o MOTIVO do cancelamento em nenhuma das rotas medidas. A chamada de /renovacoes usada pela 081 ja filtra cancelado=F na requisicao, entao o cancelado nem chega. Contar cancelamento por periodo exige uma chamada com cancelado=T — nao medida nesta rodada."
+      "evidence": "📊 Existe o ESTADO (`cancelado` T/F) mas nao a DATA nem o MOTIVO do cancelamento em nenhuma das rotas medidas. A chamada de /renovacoes usada pela 081 ja filtra cancelado=F na requisicao, entao o cancelado nem chega. Contar cancelamento por periodo exige uma chamada com cancelado=T — nao medida nesta rodada.",
+      "primary_route": "/renovacoes"
     },
     "portfolio.renewals": {
       "state": "SUPPORTED",
@@ -57,7 +61,8 @@
         "/renovacoes",
         "/documentos_bi"
       ],
-      "evidence": "📊 /renovacoes filtra por fimvig (3.536/3.536 em 2025; 3.258/3.258 em 2024) e /documentos_bi traz nosnum_ren preenchido em 963/1.680 (57,3%) da producao de 2025 — a cadeia de renovacao existe dos dois lados."
+      "evidence": "📊 /renovacoes filtra por fimvig (3.536/3.536 em 2025; 3.258/3.258 em 2024) e /documentos_bi traz nosnum_ren preenchido em 963/1.680 (57,3%) da producao de 2025 — a cadeia de renovacao existe dos dois lados.",
+      "primary_route": "/renovacoes"
     },
     "commercial.producers": {
       "state": "PARTIAL",
@@ -65,7 +70,8 @@
       "source_routes": [
         "/renovacoes"
       ],
-      "evidence": "📊 Nao existe rota de CADASTRO de produtor: /vendedores e /vendedor sao 403-SigV4 (nao existem no Gateway). O produtor so aparece EMBUTIDO em prod_docs[] de /renovacoes: 97 produtores distintos (ordem=1) em 2025 na Resulta, 64 na AutoFleet. Nao ha status, filial nem data de admissao."
+      "evidence": "📊 Nao existe rota de CADASTRO de produtor: /vendedores e /vendedor sao 403-SigV4 (nao existem no Gateway). O produtor so aparece EMBUTIDO em prod_docs[] de /renovacoes: 97 produtores distintos (ordem=1) em 2025 na Resulta, 64 na AutoFleet. Nao ha status, filial nem data de admissao.",
+      "primary_route": "/renovacoes"
     },
     "commercial.producer_assignments": {
       "state": "SUPPORTED",
@@ -74,7 +80,8 @@
         "/renovacoes",
         "/documento"
       ],
-      "evidence": "📊 prod_docs[] traz cod_pro/produtor/ordem/per_r/val_r; 97,1% dos 3.536 registros de 2025 tem produtor com ordem=1 (99,1% na AutoFleet). Media de 2,0 produtores por apolice. 🔴 `quant_produtores` bate com len(prod_docs) em so 1.204/3.536 (34,1%) — a LISTA e a verdade."
+      "evidence": "📊 prod_docs[] traz cod_pro/produtor/ordem/per_r/val_r; 97,1% dos 3.536 registros de 2025 tem produtor com ordem=1 (99,1% na AutoFleet). Media de 2,0 produtores por apolice. 🔴 `quant_produtores` bate com len(prod_docs) em so 1.204/3.536 (34,1%) — a LISTA e a verdade.",
+      "primary_route": "/renovacoes"
     },
     "commercial.quotes": {
       "state": "PARTIAL",
@@ -82,7 +89,8 @@
       "source_routes": [
         "/cotacoes"
       ],
-      "evidence": "📊 /cotacoes classe 200, envelope {header, cotacoes}, 30 campos (status, prioridade, tipo_neg, val_premio, val_c, doc_nosnum, prox_aten_*). Mas 📊 devolveu 7 registros com codfil=1 e 7 com uma janela de 30 dias — a rota nao aceita janela e a base e minuscula. Serve para o funil ATUAL, nao para serie historica."
+      "evidence": "📊 /cotacoes classe 200, envelope {header, cotacoes}, 30 campos (status, prioridade, tipo_neg, val_premio, val_c, doc_nosnum, prox_aten_*). Mas 📊 devolveu 7 registros com codfil=1 e 7 com uma janela de 30 dias — a rota nao aceita janela e a base e minuscula. Serve para o funil ATUAL, nao para serie historica.",
+      "primary_route": "/cotacoes"
     },
     "financial.commission_accrued": {
       "state": "SUPPORTED",
@@ -91,7 +99,8 @@
         "/documentos_bi",
         "/documento"
       ],
-      "evidence": "📊 val_c presente e nao-nulo em 1680/1680 apolices de 2025 (R$ 1,863,830.79); 93 com valor zero. Em /documento, val_c = base_c*per_c/100 confere nas 3 amostras. E comissao APROPRIADA na emissao, nao recebida."
+      "evidence": "📊 val_c presente e nao-nulo em 1680/1680 apolices de 2025 (R$ 1,863,830.79); 93 com valor zero. Em /documento, val_c = base_c*per_c/100 confere nas 3 amostras. E comissao APROPRIADA na emissao, nao recebida.",
+      "primary_route": "/documentos_bi"
     },
     "financial.commission_received": {
       "state": "PARTIAL",
@@ -99,7 +108,8 @@
       "source_routes": [
         "/documento"
       ],
-      "evidence": "📊 A unica evidencia medida de RECEBIMENTO e o array `parcelas[]` de /documento: datquit, vlquit, vlbasecomquit ao lado de datvenc/vlvenc (10 chaves, amostra com 10 parcelas). Nao existe em lote: /parcelas, /comissao, /comissoes, /titulos, /contas_receber sao todos 403-SigV4. Ler a carteira inteira custaria UMA chamada por apolice."
+      "evidence": "📊 A unica evidencia medida de RECEBIMENTO e o array `parcelas[]` de /documento: datquit, vlquit, vlbasecomquit ao lado de datvenc/vlvenc (10 chaves, amostra com 10 parcelas). Nao existe em lote: /parcelas, /comissao, /comissoes, /titulos, /contas_receber sao todos 403-SigV4. Ler a carteira inteira custaria UMA chamada por apolice.",
+      "primary_route": "/documento"
     },
     "financial.commission_reversals": {
       "state": "UNKNOWN",
@@ -119,7 +129,8 @@
       "source_routes": [
         "/renovacoes"
       ],
-      "evidence": "📊 PROVADO em escala (F-094-02): val_r = val_c(/documentos_bi) * per_r/100 em 198/198 linhas de prod_docs dos 100 nosnum que 2025 tem em comum entre as duas rotas; maior desvio R$ 0,01. Soma val_r(ordem=1) 2025 Resulta R$ 440,064.21. 🔴 E APROPRIADO, nao pago."
+      "evidence": "📊 PROVADO em escala (F-094-02): val_r = val_c(/documentos_bi) * per_r/100 em 198/198 linhas de prod_docs dos 100 nosnum que 2025 tem em comum entre as duas rotas; maior desvio R$ 0,01. Soma val_r(ordem=1) 2025 Resulta R$ 440,064.21. 🔴 E APROPRIADO, nao pago.",
+      "primary_route": "/renovacoes"
     },
     "financial.producer_repasse_paid": {
       "state": "UNKNOWN",
@@ -127,7 +138,8 @@
       "source_routes": [
         "/documento"
       ],
-      "evidence": "📊 /documento.prod_docs[] declara datrep_prot, forma_repasse_r, taxa_repasse — e nas 3 amostras medidas TODOS vieram None/0.0, junto de base_r/per_r/val_r. A rota expoe o FORMATO, nao o valor. Nao da para dizer se e sempre vazio ou se estas 3 apolices e que nao tem repasse lancado."
+      "evidence": "📊 /documento.prod_docs[] declara datrep_prot, forma_repasse_r, taxa_repasse — e nas 3 amostras medidas TODOS vieram None/0.0, junto de base_r/per_r/val_r. A rota expoe o FORMATO, nao o valor. Nao da para dizer se e sempre vazio ou se estas 3 apolices e que nao tem repasse lancado.",
+      "primary_route": "/documento"
     },
     "financial.receivables": {
       "state": "PARTIAL",
@@ -135,7 +147,8 @@
       "source_routes": [
         "/documento"
       ],
-      "evidence": "📊 parcelas[] de /documento tem datvenc/vlvenc/datquit/vlquit — da para dizer o que esta em aberto de UMA apolice. Em lote nao existe: /contas_receber, /conta_receber, /titulos, /titulo, /financeiro, /financeiros, /faturamento e /faturamentos sao todos 403-SigV4."
+      "evidence": "📊 parcelas[] de /documento tem datvenc/vlvenc/datquit/vlquit — da para dizer o que esta em aberto de UMA apolice. Em lote nao existe: /contas_receber, /conta_receber, /titulos, /titulo, /financeiro, /financeiros, /faturamento e /faturamentos sao todos 403-SigV4.",
+      "primary_route": "/documento"
     },
     "financial.cashflow": {
       "state": "UNAVAILABLE",
@@ -149,7 +162,8 @@
       "source_routes": [
         "/sinistros"
       ],
-      "evidence": "🔴 📊 A DESCOBERTA DO CENSO: /sinistros (PLURAL) e classe 200 e devolveu 5.729 registros na Resulta em 26,3 s, com numsin, situacao, datoco, datavi, datenc, valind, valdes, valavi, franquia, oficina, nosnum. O MAPA antigo listava /sinistro (SINGULAR) entre os '403 = pedir liberacao'."
+      "evidence": "🔴 📊 A DESCOBERTA DO CENSO: /sinistros (PLURAL) e classe 200 e devolveu 5.729 registros na Resulta em 26,3 s, com numsin, situacao, datoco, datavi, datenc, valind, valdes, valavi, franquia, oficina, nosnum. O MAPA antigo listava /sinistro (SINGULAR) entre os '403 = pedir liberacao'.",
+      "primary_route": "/sinistros"
     },
     "crm.interactions": {
       "state": "PARTIAL",
@@ -157,7 +171,8 @@
       "source_routes": [
         "/atendimentos"
       ],
-      "evidence": "📊 /atendimentos classe 200, envelope {header, tarefas} (o nome da chave NAO e 'atendimentos'), 22 campos. Mas devolveu 15 registros com codfil=1 e 15 com janela de 30 dias. 🔴 O MAPA antigo afirma '2.355 registros na Resulta' — NAO reproduzido: nenhum conjunto de parametros medido passou de 15."
+      "evidence": "📊 /atendimentos classe 200, envelope {header, tarefas} (o nome da chave NAO e 'atendimentos'), 22 campos. Mas devolveu 15 registros com codfil=1 e 15 com janela de 30 dias. 🔴 O MAPA antigo afirma '2.355 registros na Resulta' — NAO reproduzido: nenhum conjunto de parametros medido passou de 15.",
+      "primary_route": "/atendimentos"
     },
     "contacts.customer": {
       "state": "SUPPORTED",
@@ -168,7 +183,8 @@
         "/lista_clientes",
         "/renovacoes"
       ],
-      "evidence": "📊 /cliente?codigo= (rota FORA do MAPA antigo, classe 200) e /cliente_cpf devolvem 24 campos com telefones[], emails[], enderecos[], contatos[], datanas, profissao. /renovacoes ja traz fone e email na propria linha. 🔴 TODO este bloco e PII."
+      "evidence": "📊 /cliente?codigo= (rota FORA do MAPA antigo, classe 200) e /cliente_cpf devolvem 24 campos com telefones[], emails[], enderecos[], contatos[], datanas, profissao. /renovacoes ja traz fone e email na propria linha. 🔴 TODO este bloco e PII.",
+      "primary_route": "/cliente"
     }
   },
   "estados": {
@@ -176,5 +192,6 @@
     "PARTIAL": "o dado existe mas nao no grao, na cobertura ou no lote que a metrica pede",
     "UNAVAILABLE": "medido: nao ha rota nem campo. Nunca inferido",
     "UNKNOWN": "nao medido nesta rodada. NUNCA tratar como UNAVAILABLE"
-  }
+  },
+  "primary_route_nota": "primary_route = a rota que da a POPULACAO da capacidade; as demais source_routes COMPLEMENTAM (produtor, comissao, status). Declarado em 03/09/2026 porque o detector de rota vazia perguntava \"todas as rotas vieram vazias?\": com /renovacoes vazia e /documentos_bi cheia, renewal.exposure saia 0,0 com cobertura 1,0 e confianca HIGH, e a peca afirmava que o zero era um fato sobre a carteira. /renovacoes filtra fimvig (o que VENCE) e /documentos_bi filtra inivig (o que foi EMITIDO): uma nao substitui a outra."
 }

@@ -123,6 +123,36 @@ class Capacidade:
     coverage_pct: Optional[float] = None
     source_routes: Tuple[str, ...] = ()
     evidence: str = ""
+    #: 🔴 A rota que dá a POPULAÇÃO desta capacidade. As outras COMPLEMENTAM.
+    primary_route: str = ""
+
+    @property
+    def rota_primaria(self) -> str:
+        """A rota sem a qual esta capacidade não tem população — declarada.
+
+        🔴 📊 Achado pelo juiz em 03/09/2026, na peça viva: com `/renovacoes`
+        devolvendo `[]` e `/documentos_bi` cheia, `renewal.exposure` saía
+        **0,0 · cobertura 1,0 · HIGH**, e o relatório dizia com todas as letras
+        *"este 0 é um fato sobre a carteira"*. Não era: era uma rota que não
+        respondeu.
+
+        A causa é que `portfolio.renewals` lista DUAS rotas
+        (`/renovacoes`, `/documentos_bi`) e o detector de rota vazia perguntava
+        *"TODAS as rotas lidas vieram vazias?"*. Uma rota secundária cheia
+        bastava para a resposta ser "não", e a métrica passava.
+
+        ⚠️ As duas rotas não são intercambiáveis: `/renovacoes` filtra `fimvig`
+        e é a ÚNICA que lista o que vence; `/documentos_bi` filtra `inivig` e
+        entra como complemento (produtor, comissão). Chamar as duas de "fonte"
+        e tratá-las como equivalentes é o que produziu o zero.
+
+        Sem declaração, a primeira rota do censo vale como primária — e o censo
+        as declara explicitamente, para que a ORDEM de um JSON nunca seja o que
+        decide se um zero é fato.
+        """
+        if self.primary_route:
+            return self.primary_route
+        return self.source_routes[0] if self.source_routes else ""
 
     @property
     def entrega_dado(self) -> bool:
@@ -232,6 +262,7 @@ class ProviderCapabilityManifest:
                 nome=nome, state=DEGRADED,
                 coverage_pct=base.coverage_pct if base else None,
                 source_routes=base.source_routes if base else (),
+                primary_route=base.primary_route if base else "",
                 evidence=self.degradadas[nome])
         return self.capacidades.get(
             nome, Capacidade(nome=nome, state=NAO_VERIFICADO,
@@ -390,6 +421,7 @@ def manifesto_de_dicionarios(provider_key: str, manifesto: Dict[str, Any],
             nome=nome, state=estado,
             coverage_pct=float(cobertura) if isinstance(cobertura, (int, float)) else None,
             source_routes=tuple(corpo.get("source_routes") or ()),
+            primary_route=str(corpo.get("primary_route") or ""),
             evidence=str(corpo.get("evidence") or ""))
     rotas = (fingerprints or {}).get("rotas") or {}
     fp = {rota: str((corpo or {}).get("sha256_das_chaves_ordenadas") or "")
