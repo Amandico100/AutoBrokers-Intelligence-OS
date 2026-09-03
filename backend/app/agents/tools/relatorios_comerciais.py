@@ -136,52 +136,57 @@ def _fracao(pct: Optional[float]) -> Optional[float]:
     return None if pct is None else round(float(pct) / 100.0, 4)
 
 
-def _pacote_do_raio_x(*, company_id: str, p, ant, cob, ranking, nr, agora: str,
-                      tem_anterior: bool):
-    """O Evidence Pack do Raio-X, a partir do que já foi calculado.
+# --------------------------------------------------------------------------
+# 🔴 SPEC-094 · BLOCO F — as duas tools viram WRAPPERS sobre o Metric Registry
+# --------------------------------------------------------------------------
+# A matemática não mudou de lugar duas vezes: ela continua em `calculos.py`, e
+# o registry é quem a CHAMA, com base temporal declarada, cobertura obrigatória
+# e o envelope que o pack publica. O que sai daqui é a construção de
+# `MetricResult` à mão — 📊 ela existia em duas cópias (Raio-X e Radar) e cada
+# cópia decidia por conta própria a unidade, a base e a cobertura de cada
+# número. Duas cópias de uma decisão é uma divergência com data marcada.
+#
+# ⚠️ A leitura NÃO é refeita: as apólices, o mapa e os vencimentos já estão em
+# memória, e a tradução para CBIM acontece sobre eles. É a porta que o BLOCO B
+# escreveu para exatamente isto (`traduzir`, e o docstring dela diz).
+_METRICAS_DO_RAIO_X = (
+    "production.policy_count", "production.premium_written",
+    "commission.broker_accrued", "production.new_vs_renewal",
+    "data.coverage", "producer.performance", "mix.insurer", "mix.branch",
+)
+_METRICAS_DO_RADAR = ("renewal.exposure",)
 
-    🔴 Nenhuma conta nova sobre a fonte: `cob`, `ranking` e `nr` chegam prontos
-    de `calculos.py`. Aqui só se declara o que cada número É — unidade, base
-    temporal, cobertura e de quem ele veio.
+
+def _pelo_registry(company_id: str, p, ids, *, apolices=(), mapa=None,
+                   vencimentos=()) -> List[Any]:
+    """Os envelopes deste período, pelo MESMO registry que o Pulso 360 usa.
+
+    🔴 Nenhuma chamada nova à fonte. E nenhuma fórmula aqui: quem calcula é o
+    registry, que é o único lugar onde a base temporal de cada métrica está
+    declarada. Se uma métrica não puder ser calculada sobre este lote, ela sai
+    INDISPONÍVEL com o motivo — nunca zero.
+    """
+    from app.comercial.metricas import registry
+    from app.providers.infocap_analytics_provider import traduzir
+
+    fatos = traduzir(apolices, mapa, vencimentos, company_id=company_id)
+    return registry.calcular_varias(list(ids), fatos, (p.inicio, p.fim))
+
+
+def _pacote_do_raio_x(*, company_id: str, p, ant, cob, ranking, nr, agora: str,
+                      tem_anterior: bool, apolices=(), mapa=None):
+    """O Evidence Pack do Raio-X — os envelopes vêm do Metric Registry.
+
+    🔴 Nenhuma conta nova sobre a fonte: as apólices e o mapa já estão em
+    memória, e a tradução para CBIM roda sobre eles. `cob`, `ranking` e `nr`
+    continuam existindo — eles são o que a PEÇA desenha; o que o modelo cita
+    são os envelopes, e envelope é assunto do registry.
     """
     from app.comercial import evidence_pack as ep
 
     periodo = ep.periodo_iso(p.inicio, p.fim)
-    cob_produtor = _fracao(cob.pct_apolices)
-    cob_comissao = _fracao(cob.pct_comissao)
-
-    metricas = [
-        # A produção é contada pela data em que a vigência COMEÇA.
-        ep.metrica("production.policy_count", cob.apolices_total, "count",
-                   period=periodo, time_basis="POLICY_VALID_FROM", coverage=1.0),
-        ep.metrica("commission.broker_accrued", cob.comissao_total, "BRL",
-                   period=periodo, time_basis="POLICY_VALID_FROM", coverage=1.0),
-        # A própria cobertura é uma métrica: ela é o que impede o relatório de
-        # somar parte da carteira e se apresentar como o todo.
-        ep.metrica("data.coverage", round(cob.pct_apolices, 1), "pct",
-                   period=periodo, time_basis="POLICY_VALID_FROM",
-                   coverage=cob_produtor,
-                   source_refs=("policies_with_producer/policies_total",)),
-    ]
-
-    topo = ranking[0] if ranking else None
-    if topo is not None:
-        # 🔴 O nome NÃO entra. Entra a referência opaca — e ela é por tenant.
-        metricas.append(ep.metrica(
-            "producer.performance", round(topo.comissao, 2), "BRL",
-            period=periodo, time_basis="POLICY_VALID_FROM",
-            coverage=cob_comissao,
-            source_refs=(f"producer_ref:{ep.ref_de_produtor(company_id, topo.nome)}",
-                         "rank:1"),
-        ))
-
-    total_nr = nr["novo"][0] + nr["renovacao"][0]
-    if total_nr:
-        metricas.append(ep.metrica(
-            "production.new_vs_renewal",
-            round(100.0 * nr["renovacao"][0] / total_nr, 1), "pct",
-            period=periodo, time_basis="POLICY_VALID_FROM", coverage=1.0,
-            source_refs=("share_of_RENEWAL_in_policy_count",)))
+    metricas = _pelo_registry(company_id, p, _METRICAS_DO_RAIO_X,
+                              apolices=apolices, mapa=mapa)
 
     avisos: List[str] = []
     if p.e_padrao:
@@ -209,18 +214,18 @@ def _pacote_do_raio_x(*, company_id: str, p, ant, cob, ranking, nr, agora: str,
 
 def _pacote_do_radar(*, company_id: str, p, venc, por_vend, total: float,
                      agora: str):
-    """O Evidence Pack do Radar. A base temporal aqui é a data de FIM."""
+    """O Evidence Pack do Radar. A base temporal aqui é a data de FIM.
+
+    🔴 `POLICY_VALID_TO`, e não `FROM`: o radar olha o que TERMINA na janela. A
+    MESMA apólice aparece na produção por outra data — 📊 a interseção medida
+    entre as duas populações é de 2,8%. Quem declara isso é o registry, na
+    definição da métrica, e não esta função.
+    """
     from app.comercial import evidence_pack as ep
 
     periodo = ep.periodo_iso(p.inicio, p.fim)
-    metricas = [
-        # 🔴 `POLICY_VALID_TO`, e não `FROM`: o radar olha o que TERMINA na
-        # janela. A mesma apólice aparece na produção por outra data.
-        ep.metrica("renewal.exposure", len(venc), "count",
-                   period=periodo, time_basis="POLICY_VALID_TO", coverage=1.0),
-        ep.metrica("renewal.premium_at_risk", round(total, 2), "BRL",
-                   period=periodo, time_basis="POLICY_VALID_TO", coverage=1.0),
-    ]
+    metricas = _pelo_registry(company_id, p, _METRICAS_DO_RADAR,
+                              vencimentos=venc)
     avisos: List[str] = []
     if p.e_padrao:
         avisos.append("periodo padrao: o corretor nao especificou")
@@ -491,7 +496,8 @@ class RaioXComercialTool(BaseTool):
         pacote = _pacote_do_raio_x(
             company_id=str(self.company_id or ""), p=p, ant=ant, cob=cob,
             ranking=ranking, nr=nr, agora=agora,
-            tem_anterior=bool(apolices_ant) and anterior_respondeu)
+            tem_anterior=bool(apolices_ant) and anterior_respondeu,
+            apolices=apolices, mapa=mapa)
         payload = {
             "evidence_pack": pacote.serializar(),
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim), "rotulo": p.rotulo},
@@ -887,7 +893,16 @@ class RadarDeRenovacoesTool(BaseTool):
 
 # --------------------------------------------------------------------------
 def ferramentas_comerciais(*, company_id: Optional[str], supabase: Any) -> List[BaseTool]:
-    """As duas tools, ou lista vazia. Nunca levanta na montagem do grafo."""
+    """As TRÊS tools, ou lista vazia. Nunca levanta na montagem do grafo.
+
+    🔴 SPEC-094 BLOCO F: a `executive_intelligence` entra AQUI, e não numa
+    chamada nova em `graph.py`. Esta função já é chamada de dentro do `if`
+    fechado por papel (📊 `graph.py:528`, `_agent_role in ("core","",
+    "core(legado)")`), e o agente de ATENDIMENTO nunca a recebe. Fora daquele
+    `if` — nas capabilities, no lookup — o atendimento passaria a ter uma tool
+    que lê a carteira inteira da corretora, com o segurado do outro lado da
+    conversa. É regressão de conduta, não funcionalidade nova.
+    """
     if not company_id or supabase is None:
         return []
     # 🔴 DESEMBRULHA POR CONTA PROPRIA — 18/08/2026.
@@ -902,7 +917,20 @@ def ferramentas_comerciais(*, company_id: Optional[str], supabase: Any) -> List[
     # Uma linha aqui faz a tool funcionar com qualquer um dos dois, e tira do
     # proximo chamador a obrigacao de saber disso.
     supabase = getattr(supabase, "client", supabase)
-    return [
+    tools: List[BaseTool] = [
         RaioXComercialTool(company_id=str(company_id), supabase=supabase),
         RadarDeRenovacoesTool(company_id=str(company_id), supabase=supabase),
     ]
+    # ⚠️ Import tardio e `try/except` pelo mesmo motivo das outras: tool nova
+    # que quebre ao carregar vira aviso no log, e não chat derrubado — as duas
+    # da 081 continuam de pé.
+    try:
+        from app.agents.tools.executive_intelligence import (
+            ferramenta_do_pulso_360)
+
+        tools.extend(ferramenta_do_pulso_360(company_id=str(company_id),
+                                             supabase=supabase))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[094] executive_intelligence nao anexada: %s",
+                       type(e).__name__)
+    return tools

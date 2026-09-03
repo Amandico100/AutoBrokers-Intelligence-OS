@@ -125,6 +125,31 @@ check("o registro esta DENTRO do bloco fechado por papel",
 check("e esta protegido por try/except (tool quebrada nao derruba o chat)",
       "relatórios comerciais não anexados" in FONTE_GRAPH)
 
+# 🔴 SPEC-094 BLOCO F — a MESMA trava vale para a `executive_intelligence`.
+#
+# Ela le a carteira INTEIRA da corretora: producao, comissao, produtores,
+# concentracao e exposicao de renovacao. Se ela escapar do `if` fechado por
+# papel, o agente de ATENDIMENTO — que fala com o SEGURADO — passa a ter uma
+# ferramenta que devolve o resultado financeiro da corretora. Nao e vazamento
+# de dado pessoal: e pior, e vazamento do negocio para fora do negocio.
+#
+# Ela entra pela LISTA de `ferramentas_comerciais`, e nao por uma chamada nova
+# em `graph.py`: assim ela herda o `if` que ja esta provado acima, em vez de
+# depender de alguem lembrar de repetir a condicao.
+check("a tool nova `executive_intelligence` existe",
+      os.path.exists(os.path.join(RAIZ, "app", "agents", "tools",
+                                  "executive_intelligence.py")))
+check("ela entra pela LISTA de `ferramentas_comerciais` (herda o `if`)",
+      "executive_intelligence" in FONTE[FONTE.rindex("def ferramentas_comerciais"):],
+      "fora da lista, ela precisaria de uma chamada nova em graph.py — e a "
+      "condicao de papel teria de ser repetida a mao")
+check("e NAO ha uma segunda chamada dela em graph.py",
+      "executive_intelligence" not in FONTE_GRAPH,
+      "uma chamada direta em graph.py e onde a condicao de papel se perde")
+check("CONTROLE: o detector acharia o nome no grafo se ele estivesse la",
+      "ferramentas_comerciais" in FONTE_GRAPH,
+      "se este controle falhar, a assercao acima passa por vacuidade")
+
 usados = set(ast.literal_eval(f'"{m}"') if False else m for m in [])
 import re as _re
 usados = set(_re.findall(r'"block":\s*"([a-z_]+)"', FONTE))
