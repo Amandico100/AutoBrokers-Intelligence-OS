@@ -22,7 +22,7 @@ engano não trava nada: ela responde, e responde para sempre.
 4  a decisão humana foi APPROVED?                rejected/pendente/ausente REPROVA
 5  o `metric_id` é o da proposta?                senão exige `--substitui <motivo>`
 6  work_events  metric.promovida  (actor_type='admin')
-7  o run vai para `succeeded`
+7  o run vai para `completed`   (📊 o rótulo do enum `work_run_status`)
 ```
 
 ⚠️ O passo 1 é o ponto do comando. Promover um `metric_id` que ninguém
@@ -36,7 +36,7 @@ próximo leitor do painel acreditaria. O run ficaria verde sobre o nada.
 ```
 o run RECUSADO era promovido    o comando lia `workflow_key` e nada mais. Uma
                                 proposta que um humano REJEITOU virava
-                                `succeeded`, com evento de promoção na linha do
+                                `completed`, com evento de promoção na linha do
                                 tempo — o painel passava a dizer que a métrica
                                 foi aprovada.
 a DECISÃO nunca era lida        `approval_requests` existia, com dono e prazo, e
@@ -50,7 +50,7 @@ o `metric_id` podia ser OUTRO   nada comparava o id promovido com o
 ```
 
 🔴 E promover DUAS VEZES parou de ser "ruído honesto": o run já está
-`succeeded`, o passo 3 reprova, e a segunda promoção não escreve nada. Dois
+`completed`, o passo 3 reprova, e a segunda promoção não escreve nada. Dois
 eventos de promoção para a mesma proposta é como uma linha do tempo deixa de
 ser lida.
 
@@ -77,7 +77,15 @@ EVENTO_PROMOVIDA = "metric.promovida"
 #: system|worker|user|agent|admin|provider.
 ATOR = "admin"
 #: O status final do vocabulário existente de `work_runs`.
-STATUS_FINAL = "succeeded"
+#:
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 (rodada 3). Era `"succeeded"` — uma
+#: palavra que **não existe** no enum. 📊 Lido de `pg_enum` sobre
+#: `work_run_status`: draft · queued · planning · running · waiting_approval ·
+#: waiting_input · paused · retry_scheduled · cancelling · cancelled · failed ·
+#: **completed** · expired. O `UPDATE` final estouraria `22P02`, DEPOIS de o
+#: evento `metric.promovida` já estar gravado: a linha do tempo diria que a
+#: métrica foi promovida e o run continuaria `waiting_approval` para sempre.
+STATUS_FINAL = "completed"
 
 #: 🔴 Os status TERMINAIS. Um run que chegou a qualquer um deles não pode ser
 #: promovido: a proposta acabou, de um jeito ou de outro, e reabri-la por um
@@ -86,12 +94,18 @@ STATUS_FINAL = "succeeded"
 #: ⚠️ `succeeded` está na lista, e é ela que torna a SEGUNDA promoção
 #: impossível — antes de 04/09/2026 o módulo declarava isso como "idempotente
 #: por natureza", que é outro nome para "escreve dois eventos".
+#: ⚠️ `succeeded` fica na lista mesmo não sendo um rótulo do enum: um banco
+#: antigo pode tê-lo em texto, e ler um run já fechado como "vivo" é o defeito
+#: que a lista existe para impedir.
 STATUS_TERMINAIS = ("cancelled", "failed", "completed", "expired", "succeeded")
 
 #: A decisão humana que autoriza a promoção. 📊 `WorkApprovalService.decidir`
 #: grava `decision` em `approved` / `approved_with_edit` / `rejected`, e
 #: `status` em `approved` / `rejected` / `expired`.
 DECISOES_QUE_APROVAM = ("approved", "approved_with_edit")
+#: 📊 A coluna `status` de `approval_requests`, no vocabulário que a SPEC-055
+#: grava: `pending` · `approved` · `rejected` · `expired` · `executed`.
+STATUS_QUE_APROVAM = ("approved", "executed")
 
 
 class Reprovado(RuntimeError):
@@ -174,11 +188,20 @@ def conferir_a_decisao(db: Any, company_id: str, run_id: str) -> Dict[str, Any]:
 
     ⚠️ Ausência de linha também REPROVA: "ninguém decidiu" não é "decidiu que
     sim". A promoção é o momento em que a decisão humana vira efeito.
+
+    🔴 E o conserto de 04/09/2026 (rodada 3): o `select` pedia **`decided_at`**,
+    que **não existe** em `approval_requests`. 📊 As colunas de data da decisão,
+    lidas de `information_schema.columns` e guardadas em
+    `tests/fixtures/schema_vivo.json`, são `approved_at`, `rejected_at` e
+    `resolved_at`. O PostgREST recusa o `select` inteiro com `42703`, e a
+    recusa caía no `except` abaixo — que traduzia tudo em *"não foi possível
+    ler a aprovação"*. O gate do HITL era, na prática, intransponível: nem uma
+    proposta APROVADA passava.
     """
     try:
         r = (db.table("approval_requests")
-             .select("id, company_id, work_run_id, status, decision, "
-                     "decided_at, subject_id")
+             .select("id, company_id, work_run_id, subject_type, subject_id, "
+                     "status, decision, approved_at, rejected_at, resolved_at")
              .eq("work_run_id", run_id).eq("company_id", company_id)
              .execute())
         linhas = getattr(r, "data", None) or []
@@ -190,9 +213,20 @@ def conferir_a_decisao(db: Any, company_id: str, run_id: str) -> Dict[str, Any]:
             "REPROVADO: o run %r não tem aprovação registrada. Uma proposta "
             "sem decisão humana não é uma proposta aprovada — ninguém a olhou."
             % run_id)
+    # 🔴 As DUAS colunas. 📊 `WorkApprovalService.decidir` grava `decision`
+    # (`approved` / `approved_with_edit` / `rejected`) **e** `status`
+    # (`approved` / `rejected` / `expired`), e a API admin pode gravar só uma
+    # delas. Ler apenas `decision` deixaria uma aprovação real fora — e uma
+    # promoção legítima seria reprovada com a frase de "ninguém decidiu".
+    #
+    # ⛔ O que NÃO se afrouxa é o outro lado: um `status` de aprovação sem
+    # `decision`, ou vice-versa, é aceito; uma REJEIÇÃO em qualquer das duas
+    # continua sendo rejeição, porque nada aqui a lê como aprovação.
     aprovadas = [x for x in linhas
                  if str(x.get("decision") or "").strip().lower()
-                 in DECISOES_QUE_APROVAM]
+                 in DECISOES_QUE_APROVAM
+                 or str(x.get("status") or "").strip().lower()
+                 in STATUS_QUE_APROVAM]
     if not aprovadas:
         decisoes = sorted({str(x.get("decision") or x.get("status") or "pendente")
                            for x in linhas})
@@ -236,7 +270,7 @@ def promover(db: Any, *, company_id: str, run_id: str,
     """Grava `metric.promovida` e fecha o run. Devolve o que foi escrito.
 
     🔴 **Não é idempotente, e é de propósito.** O passo 3 reprova um run que já
-    está `succeeded`: uma segunda promoção da mesma proposta não escreve nada.
+    está `completed`: uma segunda promoção da mesma proposta não escreve nada.
     Até 04/09/2026 este módulo chamava isso de "ruído honesto" — dois eventos
     de promoção na linha do tempo da mesma proposta é como um painel deixa de
     ser lido.
@@ -264,7 +298,13 @@ def promover(db: Any, *, company_id: str, run_id: str,
             "metric_id": str(metric_id), "ref": ref,
             "nome_sugerido": str(proposta.get("nome_sugerido") or ""),
             "approval_id": str(decisao.get("id") or ""),
-            "decision": str(decisao.get("decision") or ""),
+            "decision": str(decisao.get("decision")
+                            or decisao.get("status") or ""),
+            # ⚠️ QUANDO a decisão foi tomada, das colunas que existem de
+            # verdade. `None` nas três é legítimo em banco antigo, e sai vazio
+            # — nunca "agora", que dataria a decisão com a hora da promoção.
+            "decidida_em": str(decisao.get("approved_at")
+                               or decisao.get("resolved_at") or ""),
             # ⛔ O motivo da troca de nome é a ÚNICA frase livre deste payload,
             # e ela é escrita por gente no terminal — nunca por um modelo.
             "substitui": str(substitui or "")[:300],
