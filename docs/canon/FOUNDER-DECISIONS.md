@@ -1646,3 +1646,39 @@ primeiro. **Dono:** 🧑.
 
 📊 Tarifas Meta (conferidas por consistência de câmbio): Marketing R$ 0,3217 × Utility R$ 0,0350 por mensagem — template mal
 categorizado custa 9,2×. 28 dias. Cabe a quem cuida da cobrança e do atendimento classificar os templates antes. **Dono:** 🧑/🤖.
+
+---
+
+# F-095-01 · 04/09/2026 · A leitura do modelo por cima do Pulso 360 — a primeira frase de modelo num relatório do produto
+
+📊 A SPEC-095 deixou a narrativa dos relatórios **determinística por detector** (título com o número, por que importa, o que
+fazer): nenhum número, título ou ação sai de um modelo. O que o Founder pediu em 04/09 ("como o ChatGPT e o Claude entregam")
+inclui uma camada a mais: uma **leitura** em prosa por cima do pacote de evidência — o que os números, juntos, querem dizer.
+**O que está pronto:** o pack selado (`pack_id`, `origem`), a régua que recusa número inventado (094: todo número do chat tem
+ponteiro), e o bloco `prose` do renderizador. **O que falta é a sua autorização**, porque seria a primeira frase escrita por
+modelo dentro de uma peça que a corretora guarda e reencaminha. Recomendação da execução: entrar marcada como "leitura do
+AutoBrokers" (💭, nunca 📊), com um guarda que prova que **todo número da leitura existe no pack** e que a leitura some quando
+o pack não tem achado. **Dono:** 🧑. 💭 3h quando autorizada.
+
+# F-095-02 · 04/09/2026 · O briefing sai só no painel — WhatsApp e e-mail são decisão sua
+
+📊 `delivery_detail` dos últimos briefings das três corretoras: `canais: [{canal: "dashboard"}]`, `push: true`. Nenhum WhatsApp,
+nenhum e-mail, nenhuma mensagem sai (trava da leva). A repetição que o Founder sentiu era a LISTA (40 pares briefing×artifact,
+35 peças de teste), não o envio. Mandar o briefing por WhatsApp/e-mail é: (a) o piso CRÍTICO da §3.2 (qualquer coisa que envia);
+(b) o livro de entregas que saiu da proposta da 095 com gatilho ("o 1º envio real"); (c) o prazo de 01/10/2026 em que a
+mensagem de serviço do WhatsApp deixa de ser grátis (F-094-10). **A pergunta:** quer o briefing fora do painel, para quem, e em
+qual canal? **Dono:** 🧑.
+
+# F-095-03 · 04/09/2026 · Decisões tomadas pela execução, registradas (protocolo §9: nota 0–100, escolha, siga)
+
+- **A URL `/dashboard/entregas` fica; só o NOME vira "Relatórios"** — manter 85 × renomear 35 (4 redirects, links já entregues pelo
+  chat, 2 guardas, `test_menu_nao_cresce.py` fixa key e href).
+- **Os 35 relatórios de teste (34 Resulta + 1 AutoFleet) são ARQUIVADOS, não apagados** — reversível por UPDATE com o evento como
+  registro; visíveis em "ver arquivados". Se algum for pergunta sua, diga: a lista sai antes de aplicar.
+- **O placar conta só o que a corretora pediu e recebeu** (`source_type in ('chat','routine')`) — 📊 98,86% dos Work Runs são o
+  relógio da plataforma; contá-los mentiria por 87×.
+- **A narrativa é determinística, sem modelo** — 88 × leitura por modelo 70 (custo, latência, goldens e a regra "inferência marcada
+  como leitura"). A leitura por modelo é a F-095-01.
+- **O Fabric não muda** — promover a 1ª frase humana a manchete no briefing 80 × narrativa própria no `finding_engine` 60 × 3
+  `signal_type` novos 55 (P-095-NARRATIVA-DO-FABRIC).
+- **Identidade que casa peça ARQUIVADA cria peça nova**, não desarquiva — 85 × 45.
