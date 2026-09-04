@@ -216,11 +216,16 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 > convertida no mesmo dia** — `specs/SPEC-094-o-pulso-360-nao-pertence-a-infocap.md` — e está em execução.
 
 ```
-✅  SPEC-094 (03/09, nota 84) e SPEC-094.1 (04/09, nota 82) executadas. Ritmo: OPÇÃO B (três marchas + sessão nova por SPEC) decidida pelo Founder em 03/09.
-1º  SPEC-095 · Artifact & Delivery Hub — ABRIR EM SESSÃO NOVA com `docs/canon/PROMPT-DE-ABERTURA-DE-SESSAO-POR-SPEC.md`
-2º  SPEC-096  →  3º SPEC-097 (proposta + research pack na pasta)  →  4º SPEC-098 (idem)  →  depois, o MASTERPLAN
+✅  SPEC-094 (03/09, nota 84), SPEC-094.1 (04/09, nota 82) e SPEC-095 (04/09, nota 84) executadas. Ritmo: OPÇÃO B (três marchas +
+    sessão nova por SPEC) decidida pelo Founder em 03/09 — a 095 foi a PRIMEIRA em sessão nova (PADRÃO: desenhista ‖ 2 builders ‖ red team).
+    📊 A 095 foi convertida MEDINDO: a proposta valia 41/100 para a queixa real do Founder; a SPEC definitiva está em
+    `specs/SPEC-095-relatorios-que-o-corretor-entende.md` e o que saiu dela (shares, envio, PDF, busca, favoritos) tem gatilho na §5.
+1º  SPEC-096 · Chat Runtime Performance & Interaction Shell — ABRIR EM SESSÃO NOVA com `docs/canon/PROMPT-DE-ABERTURA-DE-SESSAO-POR-SPEC.md`
+    (a 095 deixou para ela o gancho `?pergunta=` do chat e o composer que remonta ao enviar a 1ª mensagem)
+2º  SPEC-097 (proposta + research pack na pasta)  →  3º SPEC-098 (idem)  →  depois, o MASTERPLAN
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
-    ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta.
+    ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta. Canário vivo SEMPRE por script,
+    com `AUTOBROKERS_CANARIO=1` (regra nos pacotes desde a 095).
 ```
 
 ⚠️ **Antes de ligar o atendimento (terça, 08/09):** nada desta fila bloqueia o piloto. O que só o
