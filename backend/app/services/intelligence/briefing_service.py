@@ -102,14 +102,26 @@ def _agora() -> datetime:
 ORIGEM_DO_RELOGIO = "system"
 
 
+#: O que CONTA como trabalho pedido — a MESMA regra do placar (INCLUSÃO,
+#: `CONTA_COMO_TRABALHO` em `app/api/dashboard/relatorios/placar/route.ts`).
+#: 📊 04/09/2026, red team: aqui `source_type` ausente contava como pedido e no
+#: placar como não-trabalho — duas políticas para a mesma pergunta. Hoje
+#: `source_type is null` = 0 linhas; a regra única existe para quando não for.
+ORIGENS_PEDIDAS = ("chat", "routine")
+
+
 def _do_relogio(w: dict) -> bool:
     """Este Work Run é o sistema se olhando, e não trabalho pedido?
 
-    ⚠️ `source_type` ausente conta como PEDIDO. Um registro sem origem
-    declarada é dúvida, e esconder o que a corretora talvez tenha pedido é pior
-    que mostrar uma volta do relógio: o erro que dói é o silêncio.
+    Regra de INCLUSÃO: só `chat` e `routine` são trabalho da corretora. O
+    `system` (📊 98,86% dos Work Runs) é o caso principal, nomeado em
+    `ORIGEM_DO_RELOGIO`; um `source_type` novo ou ausente fica FORA até alguém
+    o declarar pedido — a mesma decisão fechada do placar.
     """
-    return str(w.get("source_type") or "") == ORIGEM_DO_RELOGIO
+    origem = str(w.get("source_type") or "")
+    if origem == ORIGEM_DO_RELOGIO:
+        return True
+    return origem not in ORIGENS_PEDIDAS
 
 
 def _colapsar_runs(rows: list[dict]) -> list[dict]:
@@ -535,9 +547,12 @@ def _narrativa(briefing_type: str, acionaveis: list[ItemDeBriefing],
     if n:
         topo = acionaveis[0]
         manchete = topo.headline
-        if criticos:
-            # Os itens chegam ordenados por prioridade, e achado crítico carrega
-            # a prioridade mais alta — o topo é o crítico.
+        # "crítico:" só quando o TOPO é crítico. 📊 04/09/2026, red team:
+        # `criticos` conta todos os findings críticos, mas `acionaveis` já
+        # passou pelo corte de `max_itens` — o elo "há crítico ⇒ o topo é o
+        # crítico" não estava medido no código (hoje vale: 87 > 81). O limiar é
+        # o MESMO que `publicar()` usa para `critical_count`.
+        if criticos and float(topo.priority_score or 0) >= 85:
             manchete = "crítico: %s" % manchete
         partes = [(primeira_frase(topo.summary) or topo.why_now
                    or topo.headline).rstrip(".")]

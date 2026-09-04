@@ -306,6 +306,9 @@ export async function GET(req: NextRequest) {
       arquivados: true,
       itens: itensArquivados,
       contagem: { documento: itensArquivados.length },
+      // O mesmo campo que a lista normal devolve — o link "ver arquivados (N)"
+      // não pode virar "(0)" justamente na tela que os mostra.
+      arquivadosN: itensArquivados.length,
     });
   }
 
@@ -409,7 +412,9 @@ export async function GET(req: NextRequest) {
 
   const itens: Entrega[] = [];
 
+  const idsDeArtifactNaLista = new Set<string>();
   for (const a of artefatos.data ?? []) {
+    idsDeArtifactNaLista.add(a.id);
     itens.push(cardDeArtifact(a, publicacaoDoArtifact.get(a.id) ?? null, false));
   }
 
@@ -418,7 +423,14 @@ export async function GET(req: NextRequest) {
     // SEM artifact continua sendo card: 📊 6 das 46 da Resulta, e é o ramo que a
     // 078 F.2 consertou — apagá-lo tiraria da lista o único registro de que
     // aquele dia teve briefing.
-    if (b.artifact_id) continue;
+    //
+    // 🔴 📊 04/09/2026, red team: "dobrada no card dele" só vale quando o card
+    // dele EXISTE nesta resposta. Com `LIMITE_POR_FONTE = 120`, um `continue`
+    // incondicional apagava a publicação cujo artifact ficou fora da janela —
+    // medido com dublê de 130 + 130: dez dias de briefing invisíveis em toda
+    // lente. Hoje 79 < 120, e é exatamente o tipo de defeito que só morde
+    // depois. Fora da janela, a publicação vira card e leva ao documento dela.
+    if (b.artifact_id && idsDeArtifactNaLista.has(b.artifact_id)) continue;
 
     const slugDoBriefing =
       AUXILIAR_DO_BRIEFING[b.briefing_type as string] ?? AUXILIAR_PADRAO_DO_BRIEFING;
@@ -439,8 +451,11 @@ export async function GET(req: NextRequest) {
       // AutoFleet apontando para a descrição do trabalho em vez do trabalho.
       //
       // A tela de execução do Auxiliar dono vem do mapa único em
-      // lib/auxiliaries/catalog.ts — nunca concatenada aqui.
-      href: ondeAbrirAuxiliar(slugDoBriefing),
+      // lib/auxiliaries/catalog.ts — nunca concatenada aqui. Quando o
+      // documento existe (e só não está nesta resposta), o destino é ele.
+      href: b.artifact_id
+        ? `/dashboard/entregas/${b.artifact_id}`
+        : ondeAbrirAuxiliar(slugDoBriefing),
       origem: 'Checklist das 6h',
       tipoHumano: tipo.tipoHumano,
       icone: tipo.icone,

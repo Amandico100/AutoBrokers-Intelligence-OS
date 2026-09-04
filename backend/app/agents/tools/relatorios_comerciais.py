@@ -349,6 +349,15 @@ def _publicar(supabase, company_id: str, *, titulo: str, subtitulo: str,
     servico = ArtifactService(supabase)
     db = getattr(supabase, "client", supabase)
     chave = str((identidade or {}).get("id") or "").strip()
+    # 🔴 O canário nunca casa peça REAL. 📊 04/09/2026, red team (P8): com a
+    # variável exportada e uma identidade que já fosse peça do dono, o caminho
+    # cairia em `nova_versao` e RETITULARIA a peça real, sem tag. Hoje é
+    # impossível (0 peças de chat com `subject_ref.id`), e é exatamente a
+    # armadilha que a próxima SPEC pisaria. A identidade do canário ganha um
+    # prefixo: ele versiona só o que ele mesmo criou.
+    if chave and tags_do_canario():
+        chave = "canario:" + chave
+        identidade = dict(identidade or {}, id=chave)
     fontes = list(data_sources or [])
 
     if chave:
@@ -623,6 +632,11 @@ class RaioXComercialTool(BaseTool):
             apolices=apolices, mapa=mapa)
         payload = {
             "evidence_pack": pacote.serializar(),
+            # SPEC-095 BLOCO E — "Próximos passos" do detalhe lê
+            # `payload->findings` (e só esse caminho). 📊 04/09/2026, red team:
+            # só o Pulso gravava a chave; Raio-X e Radar deixavam os achados
+            # dentro de `evidence_pack`, e a seção nascia vazia para os dois.
+            "findings": [dict(f) for f in pacote.findings],
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim), "rotulo": p.rotulo},
             "cobertura": {"apolices": cob.apolices_total,
                           "com_produtor": cob.apolices_com_produtor,
@@ -896,6 +910,11 @@ class RadarDeRenovacoesTool(BaseTool):
             por_vend=por_vend, total=total, agora=agora)
         payload = {
             "evidence_pack": pacote.serializar(),
+            # SPEC-095 BLOCO E — "Próximos passos" do detalhe lê
+            # `payload->findings` (e só esse caminho). 📊 04/09/2026, red team:
+            # só o Pulso gravava a chave; Raio-X e Radar deixavam os achados
+            # dentro de `evidence_pack`, e a seção nascia vazia para os dois.
+            "findings": [dict(f) for f in pacote.findings],
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim), "rotulo": p.rotulo},
             "total_em_risco": round(total, 2), "apolices": len(venc),
             "por_vendedor": [{"nome": n, "apolices": a, "premio": round(pr, 2),

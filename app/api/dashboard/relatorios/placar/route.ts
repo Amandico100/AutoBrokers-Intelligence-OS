@@ -120,7 +120,12 @@ function criarContador(supabase: unknown, empresa: string): Contador {
       .eq('company_id', empresa);
     if (desde) q = q.gte(coluna, desde);
     if (extra) q = extra(q);
-    const { count } = (await q) as unknown as { count: number | null };
+    const { count, error } = (await q) as unknown as { count: number | null; error: unknown };
+    // 📊 04/09/2026, red team: `count ?? 0` engolia o erro — uma coluna que
+    // mudasse de nome viraria "0" no placar, e zero parece verdade. Erro é erro.
+    if (error) {
+      throw new Error(`placar: a contagem de ${tabela} falhou (${String((error as { message?: string })?.message ?? error)})`);
+    }
     return count ?? 0;
   };
 }

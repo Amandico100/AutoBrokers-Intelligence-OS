@@ -48,13 +48,21 @@ export default function ChatPage() {
   // Mantém a URL espelhando a sessão atual: refresh volta na MESMA conversa e
   // "Nova conversa" gera URL nova (histórico do navegador não empilha).
   //
-  // 🔴 E é aqui que a pergunta é CONSUMIDA — uma vez só. O composer é montado
-  // uma vez e renderizado em DUAS posições da árvore (o ternário de
-  // `messages.length === 0`): ao enviar a primeira mensagem o `InputArea`
-  // desmonta e remonta, e re-semearia a pergunta por cima do que o corretor
-  // estivesse escrevendo. Por isso o estado "já consumi" mora AQUI, acima da
-  // fronteira de remontagem, e a URL perde o `?pergunta=` junto — senão um
-  // refresh traria a pergunta de volta.
+  // A URL perde o `?pergunta=` aqui — senão um refresh traria a pergunta de
+  // volta. Mas o ESTADO não é zerado aqui.
+  //
+  // 🔴 📊 04/09/2026, red team, executando este componente de verdade: este
+  // efeito roda no PRIMEIRO commit, e o composer ainda não existe nesse
+  // momento — `if (isLoadingUser) return <Carregando/>` mais abaixo segura a
+  // árvore até `/api/auth/me` responder. Zerar o estado aqui apagava a pergunta
+  // ANTES de o `InputArea` montar, e o campo nascia vazio: "Perguntar ao
+  // AutoBrokers" abria um chat em branco. O guarda que só lia a FORMA da
+  // declaração (inicializador síncrono + zeramento presentes) aprovou.
+  //
+  // O estado "já consumi" continua morando AQUI, acima da fronteira de
+  // remontagem (o composer é renderizado em duas posições da árvore e remonta
+  // ao enviar a primeira mensagem) — mas ele é zerado no ATO de enviar
+  // (`handleSendMessage`), que é o único momento em que "consumir" tem sentido.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -65,7 +73,6 @@ export default function ChatPage() {
     }
     if (url.searchParams.has('pergunta')) {
       url.searchParams.delete('pergunta');
-      setTextoInicial('');
       mudou = true;
     }
     if (mudou) window.history.replaceState(null, '', url.toString());
@@ -303,6 +310,11 @@ export default function ChatPage() {
       toast.error('Erro: Company ID não identificado. Recarregue a página.');
       return;
     }
+
+    // SPEC-095 BLOCO E — a pergunta pré-preenchida foi CONSUMIDA: quem envia,
+    // envia. Zerar aqui (e só aqui) é o que impede a remontagem do composer de
+    // re-semear a pergunta por cima da conversa que começou.
+    setTextoInicial('');
 
     if (!agentsLoaded) {
       toast.error('Aguarde o carregamento dos agentes antes de enviar a mensagem.');

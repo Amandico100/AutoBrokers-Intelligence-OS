@@ -1300,6 +1300,9 @@ def _mascarar_documento(valor: Any) -> str:
 
 def compor_peca_da_cobranca(
     *,
+    # A hora em que a varredura dos portais começou — a data do DADO. Quem não
+    # a souber passa None, e a peça sai "gerada em", nunca "dados lidos em".
+    inicio_da_varredura: Optional[datetime] = None,
     routine: Dict[str, Any],
     cfg: Dict[str, Any],
     items: List[Dict[str, Any]],
@@ -1460,9 +1463,11 @@ def _gerar_artefato_da_cobranca(supabase, company_id: str, routine: Dict[str, An
         subject_ref={"kind": "routine", "id": str(routine.get("id") or ""),
                      "label": str(routine.get("name") or "Cobrança Feita"),
                      "produtor": "cobranca-feita"},
-        # A hora da varredura dos portais — a data do DADO, e não a da escrita
-        # (§1.9: `data_as_of` era `now()` em 136/136 versões).
-        data_as_of=datetime.now(timezone.utc),
+        # A hora em que a varredura dos portais COMEÇOU — a data do DADO, e não
+        # a da escrita (§1.9: `data_as_of` era `now()` em 136/136 versões; 📊
+        # 04/09/2026 o red team pegou esta linha gravando `now()` de novo).
+        # Sem ela, NULL — e a tela não afirma frescor.
+        data_as_of=inicio_da_varredura,
     )
     versao = (r.get("version") or {}).get("id")
     if versao:
@@ -1609,6 +1614,12 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     # Um portal pode ficar de fora por tres motivos, e os tres viram linha no
     # relatorio. O que nao pode e sumir: a corretora que ve "3 portais varridos"
     # sem saber que o quarto nao rodou acha que a carteira dela esta em dia.
+    # SPEC-095 B.2 — a data do DADO é a hora em que a leitura dos portais COMEÇA.
+    # 📊 04/09/2026, red team: a peça gravava `datetime.now()` no ato de
+    # publicar e a tela dizia "Dados lidos em" sobre o carimbo da escrita — o
+    # §1.9 reentrando pelo único publicador que a SPEC tratou como certo. Quem
+    # sabe a hora da varredura é esta função, e ela a passa adiante.
+    inicio_da_varredura = datetime.now(timezone.utc)
     sei_varrer = set(_portais_que_sei_varrer())
     for portal_key in selected_portal_keys(cfg):
         try:
@@ -1765,7 +1776,8 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
             compor_peca_da_cobranca(
                 routine=routine, cfg=cfg, items=items, boletos=boletos,
                 fila=fila, retidos=retidos, tarefas=tarefas,
-                blockers=blockers, test_sends=test_sends),
+                blockers=blockers, test_sends=test_sends,
+                inicio_da_varredura=inicio_da_varredura),
         )
         if artifact_id:
             logger.info("[COBRANCA] peca publicada no Artifact Hub: %s", artifact_id)

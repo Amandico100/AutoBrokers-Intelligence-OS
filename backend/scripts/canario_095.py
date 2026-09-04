@@ -62,7 +62,12 @@ except Exception:  # noqa: BLE001
 
 #: A corretora do canário. 💭 A Resulta é a que tem carteira de verdade na
 #: InfoCap; as outras duas entram no relatório como controle de isolamento.
-RESULTA = "b26b3e79-b551-4c17-bd85-c0d0e5eb1d2a"
+# 🔴 O id da Resulta é MEDIDO, não lembrado. 📊 04/09/2026: `select id from
+# companies` → `04b5cdbc-04cd-4ddf-8e4b-f43efb062fab` (79 artifacts, a corretora
+# que o Founder olha). O valor que estava aqui (`b26b3e79-…`) não existe em
+# lugar nenhum do repositório nem do banco — o canário rodaria numa corretora
+# inexistente e "provaria" um caminho que nunca tocou a Resulta.
+RESULTA = "04b5cdbc-04cd-4ddf-8e4b-f43efb062fab"
 
 
 #: Os dois pacotes cujo `__init__.py` arrasta o grafo inteiro do produto.
@@ -365,7 +370,7 @@ async def passo_ab_ao_vivo(db, periodo: str) -> list:
     art = (db.table("artifacts")
            .select("id").eq("company_id", RESULTA)
            .eq("template_key", "executive.pulse360")
-           .eq("subject_ref->>id", periodo).is_("archived_at", "null")
+           .eq("subject_ref->>id", "canario:" + periodo).is_("archived_at", "null")
            .limit(2).execute()).data or []
     if not art:
         raise RuntimeError("o canário não achou a peça que acabou de publicar")

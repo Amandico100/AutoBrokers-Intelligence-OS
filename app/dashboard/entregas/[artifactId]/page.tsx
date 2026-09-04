@@ -121,7 +121,12 @@ function lerFontes(bruto: unknown): Fonte[] {
     fontes.push({
       rotulo,
       detalhe: texto(f.detalhe) || texto(f.detail),
-      data: texto(f.data) || texto(f.as_of),
+      // 📊 04/09/2026, red team: TODOS os escritores desta SPEC gravam
+      // `as_of_label` (a chave que `blocks.sources` desenha), e esta linha lia
+      // só `data`/`as_of` — a coluna de data saía vazia para toda peça nova, e
+      // cheia só para as legadas. A frase do §0 ("com a hora em que a InfoCap
+      // foi lida") nunca acontecia.
+      data: texto(f.data) || texto(f.as_of) || texto(f.as_of_label),
     });
   }
   return fontes;

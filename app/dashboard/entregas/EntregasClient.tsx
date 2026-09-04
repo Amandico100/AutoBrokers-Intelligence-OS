@@ -41,6 +41,7 @@
 // etiqueta que aparece sempre é etiqueta que ninguém lê.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, FileText, MessageSquare, Cog, Search } from 'lucide-react';
 
@@ -249,10 +250,17 @@ export default function EntregasClient() {
   // inicializador rodaria no cliente com uma URL que o servidor não viu, e a
   // hidratação acusaria diferença nas classes dos botões. É o mesmo padrão que
   // já funciona em app/dashboard/auxiliares/rotinas/page.tsx.
+  // 📊 04/09/2026, red team (P2): "ver arquivados (N)" é um <Link> para a MESMA
+  // rota, e um efeito com deps `[carregar]` roda só na montagem — em navegação
+  // suave do App Router a lista não recarregava. `useSearchParams` muda de
+  // identidade quando a query muda, e o efeito acompanha. A página é
+  // `force-dynamic`, então não há prerender a exigir Suspense.
+  const params = useSearchParams();
+  const chaveDaQuery = params?.toString() ?? '';
   useEffect(() => {
     let arquivados = false;
     try {
-      const q = new URLSearchParams(window.location.search);
+      const q = new URLSearchParams(chaveDaQuery);
       const t = q.get('tipo');
       // Só valor que FILTRA alguma coisa entra. `?tipo=lixo` deixaria a lista
       // vazia e o corretor sem entender por quê; `?tipo=pesquisa` faria o
@@ -265,7 +273,7 @@ export default function EntregasClient() {
       /* sem query — abre em Relatórios, que é o padrão */
     }
     carregar(arquivados);
-  }, [carregar]);
+  }, [carregar, chaveDaQuery]);
 
   const filtrados = useMemo(() => {
     if (!itens) return [];
