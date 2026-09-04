@@ -59,6 +59,7 @@ reajuste — e ela seria falsa.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -73,6 +74,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "PROVIDER_KEY", "UNKNOWN", "PREFIXO", "CHAVE_DO_MANIFESTO",
     "ler_agregado", "ler_manifesto", "mapa_de_seguradoras",
+    "_conferir_a_ingestao",
     "mapa_de_siglas", "coenti_de",
     "FalhaDoCenso",
 ]
@@ -228,6 +230,8 @@ def coenti_de(nome: Any, *, mapa: Optional[Dict[str, Any]] = None,
 #: o nome curto. Aceitar os dois custa uma linha; recusar um deles faria o
 #: leitor depender de quem escreveu, e não do que está escrito.
 _ALIAS = {
+    "ilegiveis": ("ilegiveis",),
+    "linhas": ("linhas",),
     "coenti": ("coenti", "entidade"),
     "damesano": ("damesano", "competencia", "mes"),
     "coramo": ("coramo", "ramo"),
@@ -277,8 +281,61 @@ def _linhas_do_objeto(bruto: bytes) -> List[Dict[str, Any]]:
     return [dict(x) for x in leitor]
 
 
+def _conferir_a_ingestao(manifesto: Dict[str, Any], objeto: str,
+                         corpo: bytes) -> None:
+    """A ingestao terminou, e este e o arquivo que ela gravou? Senao, LEVANTA.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026. Duas perguntas, e as duas eram
+    silencio antes:
+
+    ```
+    a ingestao TERMINOU?    o manifesto so ganha `completo: true` no fim, depois
+                            de todos os anos gravados. Sem a marca, o que esta
+                            no armazenamento pode ser metade de um ano — e
+                            metade de um ano tem CSV valido e conta errada.
+    e o arquivo e ESTE?     o `sha256` de cada objeto viaja no manifesto. Um
+                            agregado antigo que sobrou de uma ingestao anterior
+                            le sem erro e publica o mercado de outro mes.
+    ```
+
+    ⛔ As duas falhas viram `FalhaDoCenso`, que a metrica traduz em
+    INDISPONIVEL — nunca em sinistralidade zero. E as duas sao afirmacoes sobre
+    NOS, e nunca sobre a seguradora.
+    """
+    if not manifesto:
+        raise FalhaDoCenso(
+            "nao ha manifesto de ingestao no armazenamento: a Rotina semanal "
+            "nao terminou (ou nunca rodou). INDISPONIVEL por ingestao "
+            "incompleta — e isto e uma afirmacao sobre NOS")
+    if not bool(manifesto.get("completo")):
+        raise FalhaDoCenso(
+            "o manifesto existe e NAO esta marcado como completo: a ultima "
+            "ingestao parou no meio. INDISPONIVEL por ingestao incompleta — "
+            "somar um ano gravado pela metade publicaria a sinistralidade do "
+            "mercado a partir de um pedaco dele")
+    esperados = {str(x.get("objeto") or ""): str(x.get("sha256") or "")
+                 for x in (manifesto.get("objetos") or [])
+                 if isinstance(x, dict)}
+    marca = esperados.get(objeto)
+    if not marca:
+        raise FalhaDoCenso(
+            "o objeto %r nao esta entre os que a ultima ingestao gravou "
+            "(%d ano(s)): INDISPONIVEL. Ler um agregado que sobrou de uma "
+            "ingestao anterior publica o mercado de outro mes"
+            % (objeto, len(esperados)))
+    real = hashlib.sha256(corpo).hexdigest()
+    if real != marca:
+        raise FalhaDoCenso(
+            "o agregado %r nao confere com o `sha256` do manifesto "
+            "(%s... != %s...): INDISPONIVEL. O arquivo mudou depois da "
+            "ingestao, ou a ingestao nao chegou ao fim"
+            % (objeto, real[:12], marca[:12]))
+
+
 def ler_agregado(ano: Any, minio: Any = None, *,
-                 competencia_final: str = "") -> MarketFactSet:
+                 competencia_final: str = "",
+                 manifesto: Optional[Dict[str, Any]] = None,
+                 conferir: bool = True) -> MarketFactSet:
     """O `MarketFactSet` de UM ano, lido do MinIO. ⛔ **Nunca da rede.**
 
     `minio` é injetável para que a prova rode sem infraestrutura; em produção
@@ -304,6 +361,10 @@ def ler_agregado(ano: Any, minio: Any = None, *,
             f"sobre a sinistralidade da seguradora") from exc
 
     bruto = corpo.read() if hasattr(corpo, "read") else bytes(corpo or b"")
+    if conferir:
+        _conferir_a_ingestao(
+            manifesto if manifesto is not None else ler_manifesto(minio),
+            objeto, bruto)
     tabela = mapa_de_seguradoras()
     feixe = MarketFactSet(
         provider_key=PROVIDER_KEY, fonte=objeto,
@@ -315,6 +376,15 @@ def ler_agregado(ano: Any, minio: Any = None, *,
               for chave, linha in tabela.items()},
         resolver=coenti_de)
     ilegiveis = 0
+    valores_ilegiveis = 0
+    # 🔴 SPEC-094.1, conserto de 04/09/2026 — a CELULA DUPLICADA vira AVISO.
+    # 📊 O defeito: o leitor somava tudo o que viesse. Duas linhas da mesma
+    # `(entidade, competencia, ramo)` — um agregado gravado duas vezes, uma
+    # ingestao repetida, um `append` em vez de `put` — dobravam o premio e o
+    # sinistro daquela celula em silencio. A sinistralidade continuava
+    # plausivel, porque as duas pontas dobravam juntas.
+    vistas: Dict[tuple, int] = {}
+    duplicadas = 0
     for linha in _linhas_do_objeto(bruto):
         coenti = str(_campo(linha, "coenti") or "").strip()
         damesano = str(_campo(linha, "damesano") or "").strip()
@@ -322,20 +392,43 @@ def ler_agregado(ano: Any, minio: Any = None, *,
         if not coenti or not damesano:
             ilegiveis += 1
             continue
+        chave = (coenti, damesano, coramo)
+        if chave in vistas:
+            duplicadas += 1
+            continue
+        vistas[chave] = 1
         sinistro = _float(_campo(linha, "sinistro_ocorrido"))
         marcado = str(_campo(linha, "estorno") or "").strip().upper() in ("T", "TRUE", "1")
+        try:
+            nao_lidos = int(str(_campo(linha, "ilegiveis") or 0) or 0)
+        except (TypeError, ValueError):
+            nao_lidos = 0
+        valores_ilegiveis += nao_lidos
         feixe.facts.append(MarketFact(
             coenti=coenti, damesano=damesano, coramo=coramo,
             premio_ganho=_float(_campo(linha, "premio_ganho")),
             sinistro_ocorrido=sinistro,
-            # 🔴 O negativo é estorno de provisão, e a marca sobrevive à
-            # travessia: quem grava pode não a ter escrito, mas o sinal do
-            # número não mente.
-            estorno=marcado or sinistro < 0))
+            # 🔴 O negativo e estorno de provisao, e a marca sobrevive a
+            # travessia: quem grava pode nao a ter escrito, mas o sinal do
+            # numero nao mente.
+            estorno=marcado or sinistro < 0,
+            ilegiveis=nao_lidos))
     if ilegiveis:
         feixe.warnings.append(
             f"{ilegiveis} celula(s) do agregado sem entidade ou competencia: "
             f"fora da conta, e declaradas — nunca somadas como zero")
+    if duplicadas:
+        feixe.warnings.append(
+            f"🔴 {duplicadas} celula(s) DUPLICADA(S) no agregado (mesma "
+            f"entidade, competencia e ramo): a repetida ficou FORA da conta. "
+            f"Somar as duas dobraria premio e sinistro juntos, e a "
+            f"sinistralidade continuaria plausivel — que e a forma silenciosa "
+            f"de errar")
+    if valores_ilegiveis:
+        feixe.warnings.append(
+            f"{valores_ilegiveis} valor(es) da base publica vieram ILEGIVEIS e "
+            f"ficaram FORA da soma: o premio ganho do mercado e um PISO, e a "
+            f"confianca do numero sai rebaixada — nunca contados como zero")
     if not feixe.facts:
         feixe.warnings.append(
             f"o agregado {objeto} respondeu e nao tem celula nenhuma: "

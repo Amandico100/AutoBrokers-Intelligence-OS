@@ -727,6 +727,11 @@ class MarketFact:
     premio_ganho: float = 0.0
     sinistro_ocorrido: float = 0.0
     estorno: bool = False
+    #: 🔴 SPEC-094.1, conserto de 04/09/2026. Quantos VALORES desta célula a
+    #: fonte publicou de forma ilegível. Eles ficaram FORA da soma — e a
+    #: contagem existe para a métrica poder rebaixar a confiança em vez de
+    #: apresentar um prêmio menor como se fosse o total.
+    ilegiveis: int = 0
 
     @property
     def grupo_de_ramo(self) -> str:

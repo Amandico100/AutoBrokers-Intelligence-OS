@@ -99,6 +99,28 @@ def _codigo(v: Any) -> str:
     return str(v or "").strip()
 
 
+def _numero_legivel(v: Any) -> Tuple[float, bool]:
+    """`(valor, foi_legivel)`. 🔴 SPEC-094.1, conserto de 04/09/2026.
+
+    📊 O defeito: `_numero` devolvia `0.0` para QUALQUER coisa que nao
+    convertesse — vazio, texto, campo truncado. A celula ilegivel entrava na
+    soma como zero e **baixava a sinistralidade do mercado** sem deixar rastro.
+    Um numero que nao se conseguiu ler nao e um numero pequeno.
+
+    ⚠️ O VAZIO continua sendo `0.0` LEGIVEL, e so ele: nesta base a celula
+    vazia significa "nao houve movimento nesta competencia", porque a linha so
+    existe se houve lancamento. O ilegivel e outra coisa — e agora sai contado.
+    """
+    s = str(v or "").strip()
+    if not s:
+        return 0.0, True
+    try:
+        return (float(s.replace(".", "").replace(",", ".")) if "," in s
+                else float(s)), True
+    except (TypeError, ValueError):
+        return 0.0, False
+
+
 def _numero(v: Any) -> float:
     """🔴 Decimal por VÍRGULA. 📊 `float("350407,58")` levanta `ValueError`.
 
@@ -127,6 +149,14 @@ class Linha:
     premio_ganho: float = 0.0
     sinistro_ocorrido: float = 0.0
     estorno: bool = False
+    #: 🔴 Quantos valores desta celula a fonte devolveu ILEGIVEIS. Eles NAO
+    #: entraram na soma — e a celula diz quantos foram, para que a metrica
+    #: consiga rebaixar a confianca em vez de publicar um numero menor.
+    ilegiveis: int = 0
+    #: Quantas LINHAS da base caíram nesta celula. 📊 Mais de uma e o normal
+    #: (a granularidade da fonte e mais fina); o que nao pode e o LEITOR do
+    #: agregado somar a mesma celula duas vezes — ver `ler_agregado`.
+    linhas: int = 0
 
     @property
     def ano(self) -> str:
@@ -212,18 +242,28 @@ def agregar(caminho_zip: str, *, anos: Optional[Iterable[Any]] = None,
                 continue
             chave = (_codigo(campos[idx["coenti"]]), damesano,
                      _codigo(campos[idx["coramo"]]))
-            premio = _numero(campos[idx["premio_ganho"]])
-            sinistro = _numero(campos[idx["sinistro_ocorrido"]])
+            premio, premio_ok = _numero_legivel(campos[idx["premio_ganho"]])
+            sinistro, sinistro_ok = _numero_legivel(
+                campos[idx["sinistro_ocorrido"]])
             balde = baldes.get(chave)
             if balde is None:
                 balde = Linha(coenti=chave[0], damesano=chave[1], coramo=chave[2])
                 baldes[chave] = balde
-            balde.premio_ganho += premio
-            balde.sinistro_ocorrido += sinistro
+            balde.linhas += 1
+            # 🔴 O ILEGIVEL fica FORA da soma e sai CONTADO. Somá-lo como zero
+            # baixaria o premio ganho do mercado com o dado que falta.
+            if premio_ok:
+                balde.premio_ganho += premio
+            else:
+                balde.ilegiveis += 1
+            if sinistro_ok:
+                balde.sinistro_ocorrido += sinistro
+            else:
+                balde.ilegiveis += 1
             # 🔴 O negativo é PRESERVADO e SINALIZADO. Truncar em zero inventa
             # um sinistro que não houve; esconder a marca faz o leitor achar que
             # a seguradora sinistrou pouco, quando ela ESTORNOU provisão.
-            if sinistro < 0:
+            if sinistro_ok and sinistro < 0:
                 balde.estorno = True
             if progresso is not None and lidas % _PASSO_DO_LOG == 0:
                 progresso(lidas, len(baldes))
@@ -240,8 +280,22 @@ def agregar(caminho_zip: str, *, anos: Optional[Iterable[Any]] = None,
     for ano in por_ano:
         por_ano[ano].sort(key=lambda x: (x.coenti, x.damesano, x.coramo))
 
+    if not competencia_final:
+        # 🔴 SPEC-094.1, conserto de 04/09/2026. 📊 O defeito: `Data_Final`
+        # ausente devolvia `competencia_final=""` e o agregado saia assim
+        # mesmo. Sem ela ninguem consegue dizer ate onde a base esta FECHADA —
+        # e quem le em setembro comparando com junho nao ve a defasagem. Uma
+        # ingestao sem a competencia final e uma ingestao que nao se pode usar.
+        raise FalhaDaBase(
+            "a competencia final (Data_Final) nao foi encontrada na base: sem "
+            "ela o agregado nao consegue declarar a defasagem, e um cruzamento "
+            "que esconde a defasagem responde certo sobre o mes errado")
+    ilegiveis = sum(x.ilegiveis for x in baldes.values())
     manifesto = {
         "fonte": URL_DA_BASE,
+        "celulas_com_valor_ilegivel": len(
+            [1 for x in baldes.values() if x.ilegiveis]),
+        "valores_ilegiveis": ilegiveis,
         "competencia_final": competencia_final,
         "linhas_lidas": lidas,
         "celulas": len(baldes),
@@ -264,7 +318,7 @@ class FalhaDaBase(RuntimeError):
 #: ingestor e `providers/susep_ses_provider.py` — e a razão de estarem escritas
 #: num lugar só é a de sempre: duas listas divergem no primeiro campo novo.
 COLUNAS = ("coenti", "damesano", "coramo", "premio_ganho", "sinistro_ocorrido",
-           "estorno")
+           "estorno", "ilegiveis", "linhas")
 
 
 def escrever_csv(linhas: List[Linha]) -> bytes:
@@ -281,7 +335,8 @@ def escrever_csv(linhas: List[Linha]) -> bytes:
         escritor.writerow([linha.coenti, linha.damesano, linha.coramo,
                            repr(round(linha.premio_ganho, 2)),
                            repr(round(linha.sinistro_ocorrido, 2)),
-                           "T" if linha.estorno else "F"])
+                           "T" if linha.estorno else "F",
+                           linha.ilegiveis, linha.linhas])
     return buffer.getvalue().encode("utf-8")
 
 
@@ -356,8 +411,14 @@ def ingerir(*, minio: Any, caminho_local: Optional[str] = None,
         objetos = []
         for ano, linhas in sorted(por_ano.items()):
             chave = chave_do_ano(ano)
-            minio.put_bytes(chave, escrever_csv(linhas), "text/csv")
-            objetos.append({"ano": ano, "objeto": chave, "celulas": len(linhas)})
+            corpo = escrever_csv(linhas)
+            minio.put_bytes(chave, corpo, "text/csv")
+            # 🔴 O `sha256` de CADA objeto entra no manifesto. E ele que permite
+            # ao leitor perguntar "este e o arquivo que a Rotina gravou?" — um
+            # agregado meio-escrito tem CSV valido e conta errada.
+            objetos.append({"ano": ano, "objeto": chave, "celulas": len(linhas),
+                            "sha256": hashlib.sha256(corpo).hexdigest(),
+                            "bytes": len(corpo)})
 
         manifesto = dict(manifesto, **{
             "sha256_do_zip": origem.get("sha256", ""),
@@ -365,6 +426,18 @@ def ingerir(*, minio: Any, caminho_local: Optional[str] = None,
             "last_modified": origem.get("last_modified", ""),
             "origem": origem.get("de", ""),
             "objetos": objetos,
+            # 🔴 SPEC-094.1, conserto de 04/09/2026 — a MARCA DE COMPLETUDE, e
+            # ela e escrita por ULTIMO, depois de todos os objetos.
+            #
+            # 📊 O defeito: o manifesto era gravado junto com os agregados e sem
+            # marca nenhuma. Uma ingestao que morresse no meio — contêiner
+            # reiniciado, disco cheio, lease perdido — deixava metade dos anos
+            # gravados e um manifesto dizendo que estava tudo la. O leitor
+            # somava um ano pela metade e publicava a sinistralidade do
+            # mercado a partir dele, sem um aviso.
+            "completo": True,
+            "concluido_em": datetime.now(timezone.utc).isoformat(
+                timespec="seconds"),
         })
         minio.put_bytes(
             CHAVE_DO_MANIFESTO,

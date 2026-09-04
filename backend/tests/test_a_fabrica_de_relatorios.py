@@ -103,6 +103,7 @@ Rodar:  `PYTHONIOENCODING=utf-8 python backend/tests/test_a_fabrica_de_relatorio
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import importlib
 import importlib.util
 import io
@@ -1364,6 +1365,7 @@ def bloco_3_susep():
           "achado: %r" % (sorted(set(re.findall(
               r"\b(requests|httpx|urlopen|aiohttp)\b", texto))),))
 
+    registry, _e = _registry()
     nome, ler_agregado = primeiro_atributo(mod, CANDIDATOS_SES_LER)
     if ler_agregado is None:
         certo(False, "[3] o conector expoe `ler_agregado(ano)`",
@@ -1386,12 +1388,35 @@ def bloco_3_susep():
     ]
 
     class _MinioFalso:
-        def __init__(self):
+        """🔴 Desde 04/09/2026 ele serve TAMBEM o manifesto da ingestao.
+
+        📊 O conserto do item 9: o leitor passou a exigir um manifesto marcado
+        como `completo` e a conferir o `sha256` do objeto contra ele. Um MinIO
+        de teste que so servisse o CSV provaria o caminho antigo — e o caminho
+        antigo era justamente o que lia um agregado gravado pela metade.
+        """
+
+        def __init__(self, completo=True, sha_certo=True, com_manifesto=True):
             self.pedidos = []
+            self.completo = completo
+            self.sha_certo = sha_certo
+            self.com_manifesto = com_manifesto
+            self.corpo = json.dumps(linhas, ensure_ascii=False).encode("utf-8")
 
         def download_file(self, object_name):
             self.pedidos.append(object_name)
-            return io.BytesIO(json.dumps(linhas, ensure_ascii=False).encode("utf-8"))
+            if str(object_name).endswith("manifest.json"):
+                if not self.com_manifesto:
+                    raise FileNotFoundError(object_name)
+                marca = hashlib.sha256(self.corpo).hexdigest()
+                return io.BytesIO(json.dumps({
+                    "completo": self.completo,
+                    "competencia_final": "202606",
+                    "objetos": [{"ano": "2026", "objeto": "susep/ses/2026.csv",
+                                 "sha256": (marca if self.sha_certo
+                                            else "0" * 64)}],
+                }, ensure_ascii=False).encode("utf-8"))
+            return io.BytesIO(self.corpo)
 
     minio = _MinioFalso()
     conjunto, erro = None, ""
@@ -1422,13 +1447,81 @@ def bloco_3_susep():
           "acusou nada)",
           "destinos tentados: %r" % (_TENTATIVAS_DE_REDE[:3],))
 
+    # --- item 9 (conserto de 04/09): a ingestao INCOMPLETA nao e lida ------
+    #
+    # 🔴 Tres perguntas que eram silencio. Uma ingestao que morre no meio deixa
+    # meio ano gravado, com CSV valido e conta errada — e o leitor somava.
+    for rotulo, falso, pista in (
+            ("SEM manifesto", _MinioFalso(com_manifesto=False),
+             "a Rotina nunca terminou (ou nunca rodou)"),
+            ("manifesto INCOMPLETO", _MinioFalso(completo=False),
+             "a ultima ingestao parou no meio"),
+            ("`sha256` DIFERENTE", _MinioFalso(sha_certo=False),
+             "o arquivo nao e o que a ingestao gravou")):
+        try:
+            ler_agregado(2026, minio=falso)
+            recusou, detalhe = False, "ele LEU e devolveu um feixe"
+        except Exception as exc:  # noqa: BLE001
+            recusou = type(exc).__name__ == "FalhaDoCenso"
+            detalhe = "%s: %s" % (type(exc).__name__, str(exc)[:160])
+        certo(recusou,
+              "[3] TRATAMENTO: %s -> INDISPONIVEL por ingestao incompleta"
+              % rotulo,
+              "%s  (%s)" % (detalhe, pista))
+    certo(bool(_MinioFalso().download_file("susep/ses/2026.csv")),
+          "[3] PAR (controle): o MinIO falso COMPLETO continua servindo o "
+          "agregado — senao os tres vermelhos acima seriam do dublê")
+
+    # --- item 9: celula DUPLICADA vira aviso, e nao soma cega -------------
+    class _MinioComDuplicata(_MinioFalso):
+        def __init__(self):
+            super().__init__()
+            self.corpo = json.dumps(linhas + [linhas[1]],
+                                    ensure_ascii=False).encode("utf-8")
+
+    dobrado = ler_agregado(2026, minio=_MinioComDuplicata())
+    certo(len(dobrado.facts) == len(conjunto.facts)
+          and any("DUPLICADA" in w for w in dobrado.warnings),
+          "[3] celula DUPLICADA fica FORA da conta e vira AVISO (%d celulas)"
+          % (len(dobrado.facts),),
+          "🔴 somar as duas dobraria premio e sinistro JUNTOS: a sinistralidade "
+          "continuaria plausivel, que e a forma silenciosa de errar")
+
+    # --- item 9: o ESTORNO rebaixa a confianca ----------------------------
+    class _MinioComEstorno(_MinioFalso):
+        def __init__(self):
+            super().__init__()
+            corpo = [dict(x) for x in linhas]
+            corpo[1]["sinistro"] = -600.0
+            self.corpo = json.dumps(corpo, ensure_ascii=False).encode("utf-8")
+
+    if registry is not None and "market.loss_ratio" in set(registry.todas()):
+        # ⚠️ A janela e UM mes de proposito: com o trimestre inteiro a
+        # cobertura cai para 1/3 e a confianca ja sai LOW por COBERTURA — e o
+        # controle deixaria de conseguir ficar diferente do tratamento. Um par
+        # cujas duas pontas nao CONSEGUEM divergir nao prova nada (§9.3).
+        com_estorno = ler_agregado(2026, minio=_MinioComEstorno())
+        r_est = registry.calcular(
+            "market.loss_ratio", fatos_de_fixture(_cbim()[0]),
+            (date(2026, 6, 1), date(2026, 6, 30)), mercado=com_estorno)
+        r_lim = registry.calcular(
+            "market.loss_ratio", fatos_de_fixture(_cbim()[0]),
+            (date(2026, 6, 1), date(2026, 6, 30)), mercado=conjunto)
+        certo(r_est.confidence == "LOW" and r_lim.confidence != "LOW",
+              "[3] o ESTORNO rebaixa a confianca para LOW (com=%r · sem=%r)"
+              % (r_est.confidence, r_lim.confidence),
+              "🔴 a cobertura nao ve o estorno: a competencia entra inteira, e "
+              "o numero fica certo e fragil")
+        certo(str(r_est.value) != "UNAVAILABLE" and float(r_est.value) < 0,
+              "[3] e o SINAL do estorno sobrevive (veio %r)" % (r_est.value,),
+              "truncar em zero inventa um sinistro que nao houve")
+
     # --- a celula recalculada A MAO (lente do DADO, §BLOCO B) --------------
     #
     # 📊 A conta: sinistralidade = sinistro / premio. Para (0001, 202606, 0531):
     # 600 / 1000 = 0,60. Se a metrica disser outra coisa, ela nao esta fazendo
     # a conta que o nome dela promete.
     esperado_a_mao = 600.0 / 1000.0
-    registry, _e = _registry()
     if registry is not None and "market.loss_ratio" in set(registry.todas()):
         try:
             r = registry.calcular(
@@ -2814,6 +2907,170 @@ def bloco_12_promocao_e_mapa():
 
 
 # ===========================================================================
+# [13] O DADO DE MERCADO NA ENTRADA -- conserto de 04/09 (itens 9 e 10)
+# ===========================================================================
+def bloco_13_ingestao():
+    _p("\n[13] INGESTAO (conserto 04/09) -- manifesto por ULTIMO · ilegivel · a chave semanal")
+
+    ing = exigir(os.path.join(APP, "services", "susep_ses_ingest.py"),
+                 "BLOCO B", "_0941_ingest_conserto")
+    if ing is None:
+        return
+
+    # -- o ILEGIVEL nao vira zero ------------------------------------------
+    certo(ing._numero_legivel("350407,58") == (350407.58, True)
+          and ing._numero_legivel("") == (0.0, True)
+          and ing._numero_legivel("nao e numero")[1] is False,
+          "[13] o valor ILEGIVEL e distinguido do VAZIO (que nesta base e "
+          "zero legitimo)",
+          "%r" % (ing._numero_legivel("nao e numero"),)
+          + "  🔴 antes de 04/09 os dois viravam 0.0, e o ilegivel BAIXAVA o "
+            "premio ganho do mercado sem deixar rastro")
+
+    # -- o ZIP sintetico: a ingestao inteira, sem rede ----------------------
+    #
+    # ⛔ Nada sai: o ZIP e montado em memoria com a FORMA medida da base (CRLF,
+    # latin-1, decimal por virgula, `Data_Final` no arquivo de diversos).
+    def _zip(com_data_final=True):
+        import zipfile
+
+        alvo = io.BytesIO()
+        with zipfile.ZipFile(alvo, "w") as zf:
+            if com_data_final:
+                zf.writestr("Ses_diversos.csv",
+                            "Data_Final;202606\r\n".encode("latin-1"))
+            corpo = ("damesano;coenti;coramo;premio_ganho;sinistro_ocorrido\r\n"
+                     "202606;05886;0531;1000,00;600,00\r\n"
+                     "202606;05886;0531;500,00;nao-e-numero\r\n"
+                     "202605;05886;0531;800,00;-53790,44\r\n")
+            zf.writestr("Ses_seguros.csv", corpo.encode("latin-1"))
+        return alvo.getvalue()
+
+    class _MinioDeProva:
+        """Guarda o que foi gravado, e em que ORDEM. ⛔ Nada sai daqui."""
+
+        def __init__(self, quebrar_em=None):
+            self.gravados = []
+            self.quebrar_em = quebrar_em
+
+        def put_bytes(self, chave, corpo, tipo):   # noqa: ARG002
+            if self.quebrar_em and self.quebrar_em in str(chave):
+                raise RuntimeError("o contêiner morreu no meio da ingestao")
+            self.gravados.append((str(chave), bytes(corpo)))
+
+    import tempfile
+
+    caminho = os.path.join(tempfile.gettempdir(), "_0941_ses_prova.zip")
+    io.open(caminho, "wb").write(_zip())
+    minio = _MinioDeProva()
+    manifesto = ing.ingerir(minio=minio, caminho_local=caminho)
+
+    certo(minio.gravados and minio.gravados[-1][0].endswith("manifest.json"),
+          "[13] o manifesto e gravado POR ULTIMO (ordem: %r)"
+          % ([k for k, _ in minio.gravados],),
+          "🔴 gravado junto com os agregados, ele afirma completude que ainda "
+          "nao existe — uma ingestao que morre no meio deixa meio ano gravado "
+          "e um manifesto dizendo que esta tudo la")
+    certo(manifesto.get("completo") is True,
+          "[13] e ele carrega a marca `completo`",
+          "sem a marca o leitor nao consegue distinguir uma ingestao que "
+          "terminou de uma que parou")
+    certo(all(x.get("sha256") for x in (manifesto.get("objetos") or [])),
+          "[13] cada objeto entra no manifesto com o `sha256` dele",
+          "e o que permite ao leitor perguntar 'este e o arquivo que a Rotina "
+          "gravou?'")
+    certo(manifesto.get("valores_ilegiveis") == 1,
+          "[13] o valor ILEGIVEL sai CONTADO no manifesto (veio %r)"
+          % (manifesto.get("valores_ilegiveis"),),
+          "um numero que nao se conseguiu ler nao e um numero pequeno")
+
+    # PAR: a ingestao que MORRE no meio nao deixa manifesto nenhum.
+    quebrado = _MinioDeProva(quebrar_em="2026.csv")
+    try:
+        ing.ingerir(minio=quebrado, caminho_local=caminho)
+        morreu = False
+    except Exception:  # noqa: BLE001
+        morreu = True
+    certo(morreu and not any(k.endswith("manifest.json")
+                             for k, _ in quebrado.gravados),
+          "[13] PAR: a ingestao que MORRE no meio NAO deixa manifesto",
+          "gravados: %r" % ([k for k, _ in quebrado.gravados],))
+
+    # -- `Data_Final` ausente -> RECUSA, e nunca uma lista vazia -----------
+    sem_data = os.path.join(tempfile.gettempdir(), "_0941_ses_sem_data.zip")
+    io.open(sem_data, "wb").write(_zip(com_data_final=False))
+    try:
+        ing.ingerir(minio=_MinioDeProva(), caminho_local=sem_data)
+        recusou, detalhe = False, "ela ingeriu sem a competencia final"
+    except Exception as exc:  # noqa: BLE001
+        recusou = type(exc).__name__ == "FalhaDaBase"
+        detalhe = "%s: %s" % (type(exc).__name__, str(exc)[:150])
+    certo(recusou,
+          "[13] `Data_Final` ausente -> a ingestao RECUSA (e nao devolve [])",
+          detalhe + "  🔴 sem a competencia final ninguem consegue dizer ate "
+                    "onde a base esta fechada, e quem le em setembro comparando "
+                    "com junho nao ve a defasagem")
+    for arquivo in (caminho, sem_data):
+        try:
+            os.unlink(arquivo)
+        except OSError:
+            pass
+
+    # -- item 10: a chave da Rotina de PLATAFORMA --------------------------
+    # ⚠️ Importado pelo PACOTE, e nao por caminho: `_agendar` usa import
+    # relativo, e um modulo carregado por arquivo nao tem pacote pai.
+    try:
+        tick = importlib.import_module("app.services.intelligence.tick")
+        certo(True, "[13] `services/intelligence/tick.py` importa")
+    except Exception as exc:  # noqa: BLE001
+        certo(False, "[13] `services/intelligence/tick.py` importa",
+              "%s: %s" % (type(exc).__name__, exc))
+        return
+    chaves = []
+
+    class _ServicoFalso:
+        def __init__(self, *a, **k):   # noqa: ANN002, ARG002
+            pass
+
+        def criar(self, **kw):   # noqa: ANN003
+            chaves.append(kw.get("idempotency_key"))
+            return {"run_id": "r", "reused": False}
+
+    motor = tick.IntelligenceTick.__new__(tick.IntelligenceTick)
+    motor._raw = object()
+    import app.services.work.runs as runs_mod
+
+    original = runs_mod.WorkRunService
+    runs_mod.WorkRunService = _ServicoFalso
+    try:
+        motor._agendar("empresa-a", "intelligence.susep_ses_ingest", "t",
+                       "2026-W36", escopo="plataforma")
+        motor._agendar("empresa-b", "intelligence.susep_ses_ingest", "t",
+                       "2026-W36", escopo="plataforma")
+        motor._agendar("empresa-a", "intelligence.detect_signals", "t",
+                       "2026-09-04")
+        motor._agendar("empresa-b", "intelligence.detect_signals", "t",
+                       "2026-09-04")
+    finally:
+        runs_mod.WorkRunService = original
+
+    certo(chaves[0] == chaves[1]
+          == "intel:plataforma:intelligence.susep_ses_ingest:2026-W36",
+          "[13] a chave da Rotina de PLATAFORMA nao leva corretora (%r)"
+          % (chaves[:2],),
+          "🔴 ela levava `empresas[0]` — a primeira linha de uma leitura SEM "
+          "`order by`. Uma corretora nova trocava o id da chave, a idempotencia "
+          "caia, e 571 MB de arquivo publico eram rebaixados de novo")
+    certo(chaves[2] != chaves[3],
+          "[13] PAR: a chave por TENANT continua levando a corretora (%r)"
+          % (chaves[2:],),
+          "senao duas corretoras compartilhariam o mesmo trabalho (CLAUDE.md §7)")
+    certo(tick.IntelligenceTick._janela(motor, datetime(2026, 9, 4), 168)
+          == datetime(2026, 9, 4).strftime("%G-W%V"),
+          "[13] e a janela de 168 h continua sendo SEMANAL")
+
+
+# ===========================================================================
 # [9] CONTROLE GERAL — este guarda CONSEGUE ficar vermelho?
 # ===========================================================================
 def bloco_9_controle():
@@ -2906,6 +3163,7 @@ BLOCOS = (
     ("[8] PROTOCOLO", bloco_8_protocolo),
     ("[11] A FIACAO", bloco_11_a_fiacao),
     ("[12] PROMOCAO E MAPA", bloco_12_promocao_e_mapa),
+    ("[13] INGESTAO", bloco_13_ingestao),
     ("[9] CONTROLE GERAL", bloco_9_controle),
 )
 

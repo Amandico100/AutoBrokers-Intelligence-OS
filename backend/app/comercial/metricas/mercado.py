@@ -102,12 +102,39 @@ def _competencias(inicio: date, fim: date) -> List[str]:
     return saida
 
 
-def _agregar(celulas: List[Any]) -> Tuple[float, float, bool]:
+#: 🔴 O TETO de confiança de um número que carrega estorno ou valor ilegível.
+#: `LOW`, escrito, e não uma frase no aviso: o teto viaja no envelope e o
+#: narrador o lê; um aviso é texto que ele pode não citar.
+CONFIANCA_BAIXA = "LOW"
+
+
+def _agregar(celulas: List[Any]) -> Tuple[Optional[float], float, bool, int]:
+    """`(prêmio ganho, sinistro ocorrido, houve estorno, valores ilegíveis)`.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026: o prêmio é `None` — e não `0.0` —
+    quando **não há célula nenhuma**. 📊 O defeito: um trimestre que a base
+    ainda não publicou saía do detalhamento com `premio_ganho: 0`, que é uma
+    afirmação (*"o mercado não ganhou prêmio neste trimestre"*) e não uma
+    ausência. Zero e "não publicado" desenham gráficos opostos.
+    """
+    if not celulas:
+        return None, 0.0, False, 0
     premio = sum(float(getattr(c, "premio_ganho", 0.0) or 0.0) for c in celulas)
     sinistro = sum(float(getattr(c, "sinistro_ocorrido", 0.0) or 0.0)
                    for c in celulas)
     estorno = any(bool(getattr(c, "estorno", False)) for c in celulas)
-    return premio, sinistro, estorno
+    ilegiveis = sum(int(getattr(c, "ilegiveis", 0) or 0) for c in celulas)
+    return premio, sinistro, estorno, ilegiveis
+
+
+def _teto(estorno: bool, ilegiveis: int) -> Optional[str]:
+    """O teto de confiança deste número, ou `None` quando não há motivo.
+
+    ⚠️ Cobertura não pega nenhum dos dois: ela conta quantas competências
+    entraram, e uma competência com estorno de provisão ou com valor ilegível
+    entra inteira. O número fica **certo e frágil** — e é isso que o teto diz.
+    """
+    return CONFIANCA_BAIXA if (estorno or ilegiveis) else None
 
 
 def _entidades_da_carteira(ctx: Contexto, feixe: Any) -> Tuple[set, int, set]:
@@ -185,16 +212,20 @@ def _sinistralidade_do_mercado(ctx: Contexto) -> Saida:
         baldes.setdefault(chave, []).append(c)
 
     linhas = []
+    houve_estorno = False
+    ilegiveis_no_total = 0
     for (coenti, grupo), itens in baldes.items():
-        premio, sinistro, estorno = _agregar(itens)
+        premio, sinistro, estorno, ilegiveis = _agregar(itens)
+        houve_estorno = houve_estorno or estorno
+        ilegiveis_no_total += ilegiveis
         linhas.append({
             "rotulo": f"{coenti}·{grupo}", "coenti": coenti,
             "grupo_de_ramo": grupo, "competencias": len({
                 str(getattr(c, "damesano", "")) for c in itens}),
             "premio_ganho": premio, "sinistro_ocorrido": sinistro,
             "sinistralidade": (sinistro / premio) if premio else None,
-            "estorno": estorno})
-    linhas.sort(key=lambda x: -x["premio_ganho"])
+            "estorno": estorno, "valores_ilegiveis": ilegiveis})
+    linhas.sort(key=lambda x: -(x["premio_ganho"] or 0.0))
     destaque = next((x for x in linhas if x["sinistralidade"] is not None), None)
     if destaque is None:
         return None, None, linhas, avisos + [
@@ -205,10 +236,20 @@ def _sinistralidade_do_mercado(ctx: Contexto) -> Saida:
             "há ESTORNO de provisão nas células desta entidade (sinistro "
             "ocorrido negativo): o valor foi preservado, e a sinistralidade do "
             "mês sai menor por um lançamento contábil, não por menos sinistro")
+    if ilegiveis_no_total:
+        avisos.append(
+            f"{ilegiveis_no_total} valor(es) da base pública vieram ILEGÍVEIS e "
+            f"ficaram fora da soma: o prêmio ganho é um PISO, e a "
+            f"sinistralidade sai com confiança rebaixada — nunca contados como "
+            f"zero")
     vistas = len({str(getattr(c, "damesano", "")) for c in celulas})
+    # 🔴 O TETO de confiança, e não só o aviso: estorno de provisão e valor
+    # ilegível deixam o número certo e frágil, e a cobertura não vê nem um nem
+    # outro.
     return (destaque["sinistralidade"], vistas / len(competencias), linhas,
             avisos + [f"destaque: a entidade de maior prêmio ganho no período "
-                      f"({destaque['rotulo']})"])
+                      f"({destaque['rotulo']})"],
+            _teto(houve_estorno, ilegiveis_no_total))
 
 
 _DEFINICOES.append(dict(
@@ -377,6 +418,8 @@ def _carteira_contra_mercado(ctx: Contexto) -> Saida:
     linhas = []
     sem_mapa: List[str] = []
     sem_mercado: List[str] = []
+    houve_estorno = False
+    ilegiveis_no_total = 0
     for rotulo, premio in premio_por_seguradora.items():
         coenti = feixe.coenti_de(rotulo)
         if coenti == DESCONHECIDA:
@@ -386,9 +429,11 @@ def _carteira_contra_mercado(ctx: Contexto) -> Saida:
         if not itens:
             sem_mercado.append(f"{rotulo}·{coenti}")
             continue
-        premio_mercado, sinistro_mercado, estorno = _agregar(itens)
+        premio_mercado, sinistro_mercado, estorno, ilegiveis = _agregar(itens)
         if not premio_mercado or not premio:
             continue
+        houve_estorno = houve_estorno or estorno
+        ilegiveis_no_total += ilegiveis
         minha = indenizacao_por_seguradora.get(rotulo, 0.0) / premio
         dele = sinistro_mercado / premio_mercado
         linhas.append({"rotulo": rotulo, "coenti": coenti,
@@ -421,7 +466,8 @@ def _carteira_contra_mercado(ctx: Contexto) -> Saida:
     return (destaque["diferenca"], cobertura, linhas,
             avisos + [f"destaque: {destaque['rotulo']}, a seguradora de maior "
                       f"prêmio na carteira — diferença em pontos de razão entre "
-                      f"a sinistralidade DA CARTEIRA e a DO MERCADO"])
+                      f"a sinistralidade DA CARTEIRA e a DO MERCADO"],
+            _teto(houve_estorno, ilegiveis_no_total))
 
 
 _DEFINICOES.append(dict(
@@ -478,6 +524,8 @@ def _tendencia(ctx: Contexto) -> Saida:
         return _sem_feixe()
     mapeados, _sem, _nomes = _entidades_da_carteira(ctx, feixe)
     linhas = []
+    houve_estorno = False
+    ilegiveis_no_total = 0
     for rotulo, competencias in _trimestres_ate(ctx.fim):
         celulas = _celulas_do_periodo(ctx, feixe, competencias)
         if mapeados:
@@ -485,12 +533,18 @@ def _tendencia(ctx: Contexto) -> Saida:
                        if str(getattr(c, "coenti", "") or "").strip() in mapeados]
             if recorte:
                 celulas = recorte
-        premio, sinistro, estorno = _agregar(celulas)
+        premio, sinistro, estorno, ilegiveis = _agregar(celulas)
+        houve_estorno = houve_estorno or estorno
+        ilegiveis_no_total += ilegiveis
+        # 🔴 Trimestre SEM célula sai com `premio_ganho: null` e
+        # `sinistro_ocorrido: null` — nunca `0`. Um zero desenha uma queda que
+        # não houve, que é exatamente a frase que o dono levaria à negociação.
         linhas.append({"rotulo": rotulo, "competencias_com_dado": len({
             str(getattr(c, "damesano", "")) for c in celulas}),
-            "premio_ganho": premio, "sinistro_ocorrido": sinistro,
+            "premio_ganho": premio,
+            "sinistro_ocorrido": (sinistro if celulas else None),
             "sinistralidade": (sinistro / premio) if premio else None,
-            "estorno": estorno})
+            "estorno": estorno, "valores_ilegiveis": ilegiveis})
     medidos = [x for x in linhas if x["sinistralidade"] is not None]
     if len(medidos) < 2:
         return None, None, linhas, _defasagem(feixe) + [
@@ -517,7 +571,8 @@ def _tendencia(ctx: Contexto) -> Saida:
                 f"variação de {delta:+.4f} em pontos de razão",
                 "⚠️ três trimestres mostram MOVIMENTO, e não causa: um estorno "
                 "de provisão num deles muda o desenho sem que nada tenha "
-                "acontecido com os sinistros"])
+                "acontecido com os sinistros"],
+            _teto(houve_estorno, ilegiveis_no_total))
 
 
 _DEFINICOES.append(dict(

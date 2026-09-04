@@ -148,14 +148,20 @@ class IntelligenceTick:
                 logger.warning("[Tick] corretora %s falhou: %s",
                                company_id[:8], type(exc).__name__)
 
+        # 🔴 A corretora ANCORA do trabalho de plataforma. Ela não é "a
+        # primeira que veio": a leitura de corretoras não tem `order by`, e
+        # `empresas[0]` mudava com a ordem do banco. O trabalho é o mesmo para
+        # todas — o que a linha precisa é de um `company_id` ESTÁVEL.
+        ancora = min((str(e["id"]) for e in empresas), default="")
+
         # Plataforma: agrupamento de demanda roda uma vez por dia, fora do
         # escopo de qualquer tenant — §19 é visão agregada, não de corretora.
         try:
-            if empresas and self._agendar(str(empresas[0]["id"]),
-                                          "intelligence.cluster_demand",
-                                          "Agrupar a demanda das corretoras",
-                                          self._janela(agora, INTERVALO_CLUSTER_HORAS),
-                                          escopo="plataforma"):
+            if ancora and self._agendar(
+                    ancora, "intelligence.cluster_demand",
+                    "Agrupar a demanda das corretoras",
+                    self._janela(agora, INTERVALO_CLUSTER_HORAS),
+                    escopo="plataforma"):
                 resultado["cluster"] += 1
         except Exception as exc:  # noqa: BLE001
             logger.warning("[Tick] cluster de demanda: %s", type(exc).__name__)
@@ -164,11 +170,11 @@ class IntelligenceTick:
         # do cluster — `escopo="plataforma"` e a janela SEMANAL. Quem baixa é o
         # WORKER, sob lease com heartbeat; o tick só cria o Work Run.
         try:
-            if empresas and self._agendar(str(empresas[0]["id"]),
-                                          "intelligence.susep_ses_ingest",
-                                          "Atualizar o censo do mercado",
-                                          self._janela(agora, INTERVALO_SES_HORAS),
-                                          escopo="plataforma"):
+            if ancora and self._agendar(
+                    ancora, "intelligence.susep_ses_ingest",
+                    "Atualizar o censo do mercado",
+                    self._janela(agora, INTERVALO_SES_HORAS),
+                    escopo="plataforma"):
                 resultado["censo_do_mercado"] += 1
         except Exception as exc:  # noqa: BLE001
             logger.warning("[Tick] censo do mercado: %s", type(exc).__name__)
@@ -227,7 +233,27 @@ class IntelligenceTick:
         """Cria o Work Run se ainda não existe para esta janela."""
         from ..work.runs import WorkRunService
 
-        chave = f"intel:{escopo}:{workflow_key}:{company_id}:{janela}"
+        # 🔴 SPEC-094.1, conserto de 04/09/2026 — a chave de PLATAFORMA nao
+        # leva corretora.
+        #
+        # 📊 O defeito: `intel:plataforma:susep_ses_ingest:{company_id}:{janela}`
+        # carregava `empresas[0]` — a PRIMEIRA linha que a leitura de corretoras
+        # devolveu, numa consulta **sem `order by`**. Uma corretora nova, uma
+        # marcada como tecnica, ou simplesmente outra ordem do Postgres trocava
+        # o `company_id` da chave: a idempotencia caia, e o trabalho de
+        # PLATAFORMA — que baixa 571 MB de arquivo publico uma vez por semana —
+        # era reagendado do zero. O sintoma nao e erro: e banda.
+        #
+        # ⚠️ O `company_id` continua na LINHA (a coluna e obrigatoria e a
+        # corretora ancora e escolhida de forma estavel); o que saiu foi da
+        # CHAVE, que e o que decide se o trabalho ja existe.
+        #
+        # ⚠️ E a chave do `cluster_demand` muda junto, porque ele usa o mesmo
+        # molde de plataforma: ele roda UMA vez a mais na janela da implantacao,
+        # e nunca mais.
+        chave = (f"intel:{escopo}:{workflow_key}:{janela}"
+                 if escopo == "plataforma"
+                 else f"intel:{escopo}:{workflow_key}:{company_id}:{janela}")
         try:
             r = WorkRunService(self._raw).criar(
                 company_id=company_id,
