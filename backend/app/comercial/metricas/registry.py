@@ -87,8 +87,11 @@ __all__ = [
 # protocolo (BLOCO E) bate.
 
 #: A população conhecida sobre a qual os `golden` desta rodada foram medidos.
-#: 🔴 É a fixture sintética da 094 (`test_o_pulso_360_nao_pertence_a_infocap.py`,
-#: `_apolices_de_fixture` + `_vencimentos_de_fixture` + `_mapa_de_fixture`):
+#: 🔴 É a fixture sintética da SPEC-094, montada pelo guarda dela em
+#: `backend/tests/` (`_apolices_de_fixture` + `_vencimentos_de_fixture` +
+#: `_mapa_de_fixture`). ⚠️ O nome do ARQUIVO do guarda não é escrito aqui:
+#: ele cita a fonte piloto, e a regra M1 vale para o arquivo inteiro,
+#: comentário incluído.
 #: **6 apólices de 2025** (3 NEW, 3 RENEWAL; prêmio 29.000,00; comissão
 #: 5.000,00), **4 vencimentos** e **4 atribuições de produtor** em 2 produtores
 #: opacos, lida na janela **01/01/2025 → 31/12/2026** e SEM manifesto.
@@ -214,8 +217,16 @@ class Contexto:
     #: `policy_ref -> [producer_ref]`, para cobertura de produtor.
     produtores_da_apolice: Dict[str, List[str]] = field(default_factory=dict)
     fatos: Optional[FactSet] = None
-    #: 🔴 O feixe de PLATAFORMA — a estatística pública do mercado (SPEC-094.1
-    #: BLOCO B: SUSEP SES por `coenti` × mês × ramo). Ele é **separado** do
+    #: 🔴 O feixe de PLATAFORMA — a estatística pública do mercado, por código
+    #: de companhia × mês × ramo (SPEC-094.1 BLOCO B).
+    #:
+    #: ⚠️ O nome da FONTE não é escrito aqui, e a omissão é a regra M1: nenhum
+    #: arquivo de `metricas/` pode nomear um sistema de gestão nem um órgão —
+    #: quem sabe de onde o feixe veio é o adapter. O guarda do protocolo
+    #: (`test_o_relatorio_nasce_pelo_protocolo.py` [e]) mede isto, e foi ele
+    #: que pegou a primeira versão desta linha.
+    #:
+    #: Ele é **separado** do
     #: `FactSet` de propósito: o `FactSet` é da corretora e tem `company_id`;
     #: este é de todas, e misturar os dois num feixe só seria a primeira porta
     #: para o dado de uma casa aparecer no relatório de outra (CLAUDE.md §7).
