@@ -380,7 +380,39 @@ _DEFINICOES.append(dict(
 # --------------------------------------------------------------------------
 # claims.loss_ratio_vs_market — a DERIVED, com as duas fontes declaradas
 # --------------------------------------------------------------------------
+def _par_da_carteira(rotulo, ramo, feixe) -> Tuple[str, str]:
+    """`(seguradora, grupo de ramo)` — as DUAS chaves da comparação."""
+    grupo = (feixe.cogrupo_de(ramo) if hasattr(feixe, "cogrupo_de")
+             else DESCONHECIDA)
+    return str(rotulo or "").strip(), grupo
+
+
 def _carteira_contra_mercado(ctx: Contexto) -> Saida:
+    """A sinistralidade da carteira contra a do mercado — por SEGURADORA **e
+    por GRUPO DE RAMO**.
+
+    🔴 SPEC-094.1, rodada 3 de conserto. 📊 O defeito medido ao vivo pelo juiz
+    fresco: esta fórmula agrupava o mercado **só por `coenti`**. Uma carteira de
+    automóvel era comparada com a Porto Seguro INTEIRA — vida, saúde,
+    patrimonial e auto somados na mesma conta.
+
+    ```
+    Porto Seguro 05886 · 202601–202606 · TODOS os ramos     0,507244
+    Porto Seguro 05886 · 202601–202606 · grupo 05 (auto)    0,580149
+                                                            -----------
+                                                            7,3 p.p.
+    ```
+
+    ⚠️ E o erro não trava: os dois números são plausíveis, e o menor é o que
+    saía. *"A sua seguradora sinistra menos que o mercado"* é uma frase que o
+    dono leva para uma negociação de reajuste — e ela mudava de lado por causa
+    do agrupamento (CLAUDE.md §9.5: o defeito silencioso é o caro).
+
+    ⛔ Ramo da carteira sem grupo no mapa fica FORA da comparação, com o motivo
+    escrito, e NUNCA entra como zero (M2). O grupo comparado viaja no envelope
+    de cada linha, porque um número de sinistralidade sem o ramo ao lado não é
+    conferível.
+    """
     feixe = getattr(ctx, "mercado", None)
     if feixe is None or not list(getattr(feixe, "facts", ()) or ()):
         return _sem_feixe()
@@ -392,81 +424,116 @@ def _carteira_contra_mercado(ctx: Contexto) -> Saida:
                  and ctx.inicio <= c.occurred_at <= ctx.fim
                  and getattr(c, "policy_ref", "") in carteira]
 
-    premio_por_seguradora: Dict[str, float] = {}
+    # 🔴 A chave passou a ser o PAR `(seguradora, grupo de ramo)`. Somar os
+    # ramos de uma seguradora numa única linha é exatamente o que a comparação
+    # do outro lado fazia — e é o que este conserto desfaz.
+    premio_do_par: Dict[Tuple[str, str], float] = {}
+    premio_total = 0.0
+    ramos_sem_mapa = set()
     for a in ctx.apolices:
         if not a.premio_conhecido or a.e_endosso:
             continue
-        rotulo = str(getattr(a, "seguradora", "") or "").strip()
-        if rotulo:
-            premio_por_seguradora[rotulo] = (
-                premio_por_seguradora.get(rotulo, 0.0) + a.premio)
-    indenizacao_por_seguradora: Dict[str, float] = {}
+        rotulo, cogrupo = _par_da_carteira(
+            getattr(a, "seguradora", ""), getattr(a, "ramo", ""), feixe)
+        if not rotulo:
+            continue
+        premio_total += a.premio
+        if cogrupo == DESCONHECIDA:
+            ramos_sem_mapa.add(str(getattr(a, "ramo", "") or "").strip())
+            continue
+        premio_do_par[(rotulo, cogrupo)] = (
+            premio_do_par.get((rotulo, cogrupo), 0.0) + a.premio)
+
+    indenizacao_do_par: Dict[Tuple[str, str], float] = {}
     for c in sinistros:
         quantia = getattr(getattr(c, "indemnity", None), "amount", None)
-        rotulo = str(getattr(c, "insurer", "") or "").strip()
-        if rotulo and quantia is not None:
-            indenizacao_por_seguradora[rotulo] = (
-                indenizacao_por_seguradora.get(rotulo, 0.0) + float(quantia))
+        rotulo, cogrupo = _par_da_carteira(
+            getattr(c, "insurer", ""), getattr(c, "branch", ""), feixe)
+        if not rotulo or quantia is None or cogrupo == DESCONHECIDA:
+            continue
+        indenizacao_do_par[(rotulo, cogrupo)] = (
+            indenizacao_do_par.get((rotulo, cogrupo), 0.0) + float(quantia))
 
     competencias = _competencias(ctx.inicio, ctx.fim)
     celulas = _celulas_do_periodo(ctx, feixe, competencias)
-    mercado_por_coenti: Dict[str, List[Any]] = {}
+    # 🔴 `grupo_de_ramo` são os DOIS PRIMEIROS dígitos de `coramo` — 📊 o censo
+    # mediu que `coramo[1:3]` devolvia ZERO ramos de auto, em silêncio.
+    mercado_do_par: Dict[Tuple[str, str], List[Any]] = {}
     for c in celulas:
-        mercado_por_coenti.setdefault(
-            str(getattr(c, "coenti", "") or "").strip(), []).append(c)
+        chave = (str(getattr(c, "coenti", "") or "").strip(),
+                 str(getattr(c, "grupo_de_ramo", "") or "").strip())
+        mercado_do_par.setdefault(chave, []).append(c)
 
     linhas = []
     sem_mapa: List[str] = []
     sem_mercado: List[str] = []
     houve_estorno = False
     ilegiveis_no_total = 0
-    for rotulo, premio in premio_por_seguradora.items():
+    for (rotulo, cogrupo), premio in premio_do_par.items():
         coenti = feixe.coenti_de(rotulo)
         if coenti == DESCONHECIDA:
             sem_mapa.append(rotulo)
             continue
-        itens = mercado_por_coenti.get(coenti) or []
+        itens = mercado_do_par.get((coenti, cogrupo)) or []
         if not itens:
-            sem_mercado.append(f"{rotulo}·{coenti}")
+            sem_mercado.append("%s.%s.grupo %s" % (rotulo, coenti, cogrupo))
             continue
         premio_mercado, sinistro_mercado, estorno, ilegiveis = _agregar(itens)
         if not premio_mercado or not premio:
             continue
         houve_estorno = houve_estorno or estorno
         ilegiveis_no_total += ilegiveis
-        minha = indenizacao_por_seguradora.get(rotulo, 0.0) / premio
+        minha = indenizacao_do_par.get((rotulo, cogrupo), 0.0) / premio
         dele = sinistro_mercado / premio_mercado
+        nome = (feixe.nome_do_grupo(cogrupo)
+                if hasattr(feixe, "nome_do_grupo") else "")
         linhas.append({"rotulo": rotulo, "coenti": coenti,
+                       # ⛔ O grupo comparado VAI NA LINHA. Um número de
+                       # sinistralidade sem o ramo ao lado não é conferível —
+                       # e foi a ausência dele que deixou a comparação errada
+                       # passar por certa.
+                       "cogrupo": cogrupo,
+                       "grupo": ("%s (%s)" % (cogrupo, nome)) if nome else cogrupo,
                        "premio_da_carteira": premio,
                        "sinistralidade_da_carteira": minha,
                        "sinistralidade_do_mercado": dele,
                        "diferenca": minha - dele, "estorno": estorno})
 
     avisos = list(_defasagem(feixe))
+    if ramos_sem_mapa:
+        avisos.append(
+            "%d ramo(s) da carteira sem grupo no mapa versionado de ramos "
+            "(%s): eles ficam FORA da comparacao, e NUNCA entram no grupo de "
+            "outro ramo (M2). ⚠️ Cair no grupo errado é pior que ficar de "
+            "fora — a conta fecha e o número é de outro mercado "
+            "(P-094.1-RAMO-COGRUPO)"
+            % (len(ramos_sem_mapa), ", ".join(sorted(ramos_sem_mapa))))
     if sem_mapa:
         avisos.append(
-            f"{len(sem_mapa)} seguradora(s) da carteira sem entidade no mapa: "
-            f"elas ficam FORA da comparação, e NUNCA entram como zero (M2) — "
-            f"'sinistra 0% acima do mercado' é uma frase de negociação de "
-            f"reajuste, e seria falsa (P-094.1-SIGLA-SEGURADORA)")
+            "%d seguradora(s) da carteira sem entidade no mapa: elas ficam "
+            "FORA da comparacao, e NUNCA entram como zero (M2) — 'sinistra 0%% "
+            "acima do mercado' é uma frase de negociação de reajuste, e seria "
+            "falsa (P-094.1-SIGLA-SEGURADORA)" % len(sem_mapa))
     if sem_mercado:
         avisos.append(
-            f"{len(sem_mercado)} seguradora(s) mapeada(s) sem célula na base "
-            f"pública nas competências do período: fora da comparação")
+            "%d par(es) seguradora x grupo de ramo sem célula na base pública "
+            "nas competências do período: fora da comparação" % len(sem_mercado))
     if not linhas:
         return None, 0.0, [], avisos + [
             "🔴 nenhuma seguradora da carteira pôde ser comparada com o "
-            "mercado: INDISPONÍVEL. As duas fontes existem e não se encontram — "
-            "e isto é uma afirmação sobre o MAPA, não sobre a corretora"]
+            "mercado NO GRUPO DE RAMO DELA: INDISPONÍVEL. As duas fontes "
+            "existem e não se encontram — e isto é uma afirmação sobre o MAPA, "
+            "não sobre a corretora"]
     linhas.sort(key=lambda x: -x["premio_da_carteira"])
     destaque = linhas[0]
-    cobertura = (sum(x["premio_da_carteira"] for x in linhas)
-                 / sum(premio_por_seguradora.values())
-                 if premio_por_seguradora else None)
+    cobertura = (sum(x["premio_da_carteira"] for x in linhas) / premio_total
+                 if premio_total else None)
     return (destaque["diferenca"], cobertura, linhas,
-            avisos + [f"destaque: {destaque['rotulo']}, a seguradora de maior "
-                      f"prêmio na carteira — diferença em pontos de razão entre "
-                      f"a sinistralidade DA CARTEIRA e a DO MERCADO"],
+            avisos + ["destaque: %s no grupo de ramo %s — a maior fatia de "
+                      "prêmio da carteira. A diferença é em pontos de razão "
+                      "entre a sinistralidade DA CARTEIRA e a DO MERCADO **no "
+                      "mesmo grupo de ramo**, e nunca contra a seguradora "
+                      "inteira" % (destaque["rotulo"], destaque["grupo"])],
             _teto(houve_estorno, ilegiveis_no_total))
 
 
@@ -485,11 +552,15 @@ _DEFINICOES.append(dict(
     coverage_rule="DERIVED de DUAS fontes: a carteira da corretora (sinistro e "
                   "prêmio lidos do sistema de gestão) e o mercado (a estatística "
                   "pública por entidade, mês e ramo). A cobertura é a fração do "
-                  "prêmio da carteira cuja seguradora casou com uma entidade do "
-                  "mercado",
-    forbidden_fallback="⛔ seguradora fora do mapa sai INDISPONÍVEL, NUNCA zero "
-                       "(M2): um '0% acima do mercado' inventado vira argumento "
-                       "numa negociação de reajuste",
+                  "prêmio da carteira cujo PAR seguradora x grupo-de-ramo casou "
+                  "com o mercado — 🔴 as DUAS chaves, e não só a seguradora: um "
+                  "ramo sem grupo no mapa fica de fora e é contado aqui",
+    forbidden_fallback="⛔ seguradora OU ramo fora do mapa sai INDISPONÍVEL, "
+                       "NUNCA zero (M2): um '0% acima do mercado' inventado "
+                       "vira argumento numa negociação de reajuste. ⛔ E ramo "
+                       "sem grupo NUNCA cai no grupo de outro ramo: 📊 comparar "
+                       "auto com a seguradora inteira erra por 7,3 p.p. e não "
+                       "trava",
     premissa="⚠️ as duas pontas não têm o mesmo regime: a carteira traz prêmio "
              "de emissão e indenização registrada; o mercado traz prêmio ganho "
              "e sinistro ocorrido. A diferença é indicativa, e a peça tem de "

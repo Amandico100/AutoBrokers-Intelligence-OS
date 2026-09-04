@@ -779,6 +779,19 @@ class MarketFactSet:
     #: conector porque o CRITÉRIO é uma medição, e critério medido não se
     #: reescreve em dois lugares.
     resolver: Optional[Any] = None
+    #: 🔴 SPEC-094.1, rodada 3. O mapa e o casador do RAMO — `ramo da carteira
+    #: -> grupo de ramo da SUSEP`. Eles viajam com o feixe pela mesma razão que
+    #: os de seguradora: a fórmula compara duas fontes e nunca importa o
+    #: conector de nenhuma delas (mutação M1).
+    mapa_de_ramo: Dict[str, str] = field(default_factory=dict)
+    resolver_de_ramo: Optional[Any] = None
+    #: `{cogrupo: nome}` — 📊 os 22 grupos de `ses_gruposramos.csv`. Ele existe
+    #: só para o envelope conseguir escrever *"grupo 05 (Automóvel)"* em vez de
+    #: *"grupo 05"*: um código sozinho não é conferível por quem lê.
+    nomes_de_grupo: Dict[str, str] = field(default_factory=dict)
+
+    def nome_do_grupo(self, cogrupo: Any) -> str:
+        return str(self.nomes_de_grupo.get(str(cogrupo or "").strip()) or "")
 
     def coenti_de(self, nome: Any) -> str:
         """A entidade desta seguradora — ou `"UNKNOWN"`. ⛔ Nunca um palpite.
@@ -796,6 +809,26 @@ class MarketFactSet:
                 return "UNKNOWN"
         chave = str(nome or "").strip().lower().replace(" ", "_")
         return str(self.mapa.get(chave) or "UNKNOWN")
+
+    def cogrupo_de(self, ramo: Any) -> str:
+        """O grupo de ramo da SUSEP deste ramo da carteira — ou `"UNKNOWN"`.
+
+        🔴 SPEC-094.1, rodada 3 de conserto. 📊 Sem ele, `claims.
+        loss_ratio_vs_market` comparava a carteira com a seguradora INTEIRA:
+        Porto Seguro (05886), 202601–202606, **0,507244** somando todos os
+        ramos contra **0,580149** só no grupo 05 (Automóvel) — 7,3 p.p. de
+        diferença, e a diferença tem o sinal que muda a conversa.
+
+        ⛔ `UNKNOWN` é STRING, e o ramo que a recebe fica FORA da comparação
+        com o motivo escrito. Nunca zero (M2).
+        """
+        if callable(self.resolver_de_ramo):
+            try:
+                return str(self.resolver_de_ramo(ramo) or "UNKNOWN")
+            except Exception:  # noqa: BLE001
+                return "UNKNOWN"
+        return str(self.mapa_de_ramo.get(
+            str(ramo or "").strip().upper()) or "UNKNOWN")
 
     def por_entidade(self, coenti: str) -> List[MarketFact]:
         alvo = str(coenti or "").strip()

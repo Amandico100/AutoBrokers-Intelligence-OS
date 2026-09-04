@@ -35,8 +35,14 @@ A carteira da corretora **não** traz o nome da seguradora: traz a **SIGLA**.
 📊 O dicionário de campos diz, sobre `/documentos_bi.seguradora`: *"sigla da
 seguradora EMISSORA; decodifica por `/seguradoras.abreviatura`"* — e o mapa
 versionado é indexado pelo **nome canônico** (`porto`, `allianz`), que é a chave
-de `portals`. 📊 Medido nesta peça: `coenti_de("Porto Seguro")` → `05886`, e
-`coenti_de("PORT")` → **UNKNOWN**.
+de `portals`. 📊 Medido nesta peça **em 03/09/2026, ANTES do conserto de igualdade**:
+`coenti_de("Porto Seguro")` → `05886`, e `coenti_de("PORT")` → **UNKNOWN**.
+⚠️ Hoje (04/09/2026) as duas pontas trocaram de lado **por desenho**:
+`coenti_de("PORT")` → `05886`, porque a sigla entrou no arquivo revisado; e
+`coenti_de("Porto Seguro")` → **UNKNOWN**, porque o casamento parcial foi
+removido e nenhuma entidade do censo se chama exatamente *"Porto Seguro"*. O
+número desta linha continua valendo como MEDIÇÃO DATADA do que motivou a seção
+abaixo — e nunca como descrição do comportamento de hoje.
 
 ✅ **O conserto:** o mapa versionado ganhou uma seção `siglas`, construída a
 partir das **61 entradas do censo `/seguradoras` da corretora piloto** — uma por
@@ -76,6 +82,8 @@ __all__ = [
     "ler_agregado", "ler_manifesto", "mapa_de_seguradoras",
     "_conferir_a_ingestao",
     "mapa_de_siglas", "coenti_de",
+    "mapa_de_ramos", "cogrupo_de", "nomes_dos_grupos",
+    "CAMINHO_DO_MAPA_DE_RAMOS",
     "FalhaDoCenso",
 ]
 
@@ -93,6 +101,12 @@ _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 CAMINHO_DO_MAPA = os.path.join(_RAIZ, "docs", "canon", "providers", "susep",
                                "seguradora-coenti.json")
+#: 🔴 SPEC-094.1, rodada 3. O SEGUNDO mapa versionado: `ramo da corretora ->
+#: grupo de ramo da SUSEP`. Ele é irmão do primeiro e existe pela mesma razão —
+#: 📊 comparar a Porto de TODOS os ramos (0,507244) com uma carteira de auto
+#: (0,580149) erra por 7,3 p.p. num número de negociação de reajuste.
+CAMINHO_DO_MAPA_DE_RAMOS = os.path.join(
+    _RAIZ, "docs", "canon", "providers", "susep", "ramo-cogrupo.json")
 
 
 class FalhaDoCenso(RuntimeError):
@@ -109,6 +123,7 @@ class FalhaDoCenso(RuntimeError):
 # --------------------------------------------------------------------------
 _MAPA_EM_MEMORIA: Optional[Dict[str, Any]] = None
 _SIGLAS_EM_MEMORIA: Optional[Dict[str, Any]] = None
+_RAMOS_EM_MEMORIA: Optional[Dict[str, Any]] = None
 
 
 def mapa_de_seguradoras(caminho: str = "") -> Dict[str, Any]:
@@ -164,6 +179,80 @@ def mapa_de_siglas(caminho: str = "") -> Dict[str, Any]:
                            type(exc).__name__)
             _SIGLAS_EM_MEMORIA = {}
     return _SIGLAS_EM_MEMORIA
+
+
+def mapa_de_ramos(caminho: str = "") -> Dict[str, Any]:
+    """`{ABREVIATURA: {cogrupo, grupo_ses, criterio, ...}}` — o mapa do RAMO.
+
+    🔴 SPEC-094.1, rodada 3 de conserto (**P-094.1-RAMO-COGRUPO**). 📊 O defeito
+    que ele fecha: `claims.loss_ratio_vs_market` agrupava o mercado **só por
+    `coenti`**, então uma carteira de automóvel era comparada com a
+    sinistralidade da seguradora inteira — vida, saúde, patrimonial e auto
+    somados. Medido em 04/09/2026 na base pública, Porto Seguro (05886),
+    202601–202606: **0,580149** no grupo 05 contra **0,507244** em todos os
+    ramos. **7,3 pontos percentuais** de diferença, num número que o dono leva
+    para uma negociação de reajuste.
+
+    ⛔ A chave é a **ABREVIATURA**, e não o nome nem o código: 📊 é o que a
+    carteira traz de verdade (`/documentos_bi.ramo` = `AUTO`, `RESI`, `COND` —
+    34 valores distintos em 3.272 linhas de 2025). A cobertura medida desse
+    lote é **90,43%**; os 8 rótulos que ficaram fora estão no arquivo, com o
+    motivo escrito, para a próxima revisão.
+
+    ⚠️ E ele é um ARQUIVO, nunca uma regra: derivar `AUTO -> 05` por string
+    funcionaria até a primeira corretora cuja instalação usa outra abreviatura
+    — e aí publicaria a sinistralidade de outro grupo de ramo, sem travar.
+    """
+    global _RAMOS_EM_MEMORIA
+    if caminho:
+        with io.open(caminho, encoding="utf-8") as f:
+            return dict(json.load(f).get("ramos") or {})
+    if _RAMOS_EM_MEMORIA is None:
+        try:
+            with io.open(CAMINHO_DO_MAPA_DE_RAMOS, encoding="utf-8") as f:
+                _RAMOS_EM_MEMORIA = dict(json.load(f).get("ramos") or {})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SES] mapa de ramos ausente (%s)",
+                           type(exc).__name__)
+            _RAMOS_EM_MEMORIA = {}
+    return _RAMOS_EM_MEMORIA
+
+
+def nomes_dos_grupos(caminho: str = "") -> Dict[str, str]:
+    """`{"05": "Automovel", ...}` — 📊 os 22 grupos de `ses_gruposramos.csv`."""
+    alvo = caminho or CAMINHO_DO_MAPA_DE_RAMOS
+    try:
+        with io.open(alvo, encoding="utf-8") as f:
+            return {str(k): str(v) for k, v in
+                    (json.load(f).get("grupos_ses") or {}).items()}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[SES] nomes de grupo ausentes (%s)", type(exc).__name__)
+        return {}
+
+
+def cogrupo_de(ramo: Any, *, mapa: Optional[Dict[str, Any]] = None) -> str:
+    """O grupo de ramo da SUSEP deste ramo da corretora — ou `"UNKNOWN"`.
+
+    ⛔ **Igualdade sobre a abreviatura, e nada mais.** Nenhum casamento parcial,
+    nenhum prefixo, nenhuma derivação: o defeito que o casamento por palavras
+    causou no mapa de seguradoras (`"PORTO SEGURO SAUDE"` recebendo o `coenti`
+    da Porto de AUTO) é exatamente o mesmo aqui, com o mesmo custo.
+
+    ⚠️ `UNKNOWN` é STRING. A métrica que a recebe deixa o ramo FORA da
+    comparação e escreve o motivo — nunca o conta como zero (M2).
+    """
+    tabela = mapa if mapa is not None else mapa_de_ramos()
+    alvo = _sem_acento(ramo).strip()
+    if not alvo or not tabela:
+        return UNKNOWN
+    linha = tabela.get(alvo)
+    if not isinstance(linha, dict):
+        # ⚠️ A carteira pode trazer a abreviatura com espaço interno colapsado
+        # ("RD E" -> "RD  E"). Colapsar é normalização, e não adivinhação.
+        linha = tabela.get(" ".join(alvo.split()))
+    if not isinstance(linha, dict):
+        return UNKNOWN
+    return str(linha.get("cogrupo") or UNKNOWN)
 
 
 def coenti_de(nome: Any, *, mapa: Optional[Dict[str, Any]] = None,
@@ -374,7 +463,13 @@ def ler_agregado(ano: Any, minio: Any = None, *,
         # acoplamento que a mutação M1 existe para pegar.
         mapa={chave: str(linha.get("coenti") or UNKNOWN)
               for chave, linha in tabela.items()},
-        resolver=coenti_de)
+        resolver=coenti_de,
+        # 🔴 O casador de RAMO viaja junto, pelo mesmo motivo que o de nome:
+        # `comercial/metricas/` nunca importa este arquivo (mutação M1).
+        resolver_de_ramo=cogrupo_de,
+        mapa_de_ramo={chave: str(linha.get("cogrupo") or UNKNOWN)
+                      for chave, linha in mapa_de_ramos().items()},
+        nomes_de_grupo=nomes_dos_grupos())
     ilegiveis = 0
     valores_ilegiveis = 0
     # 🔴 SPEC-094.1, conserto de 04/09/2026 — a CELULA DUPLICADA vira AVISO.

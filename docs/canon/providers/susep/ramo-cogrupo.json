@@ -1,0 +1,487 @@
+{
+ "_doc": "O mapa `ramo da corretora -> grupo de ramo da SUSEP`. SPEC-094.1, rodada 3 de conserto. Ele existe porque `claims.loss_ratio_vs_market` comparava a carteira de UM ramo com a seguradora INTEIRA: medido em 04/09/2026, a Porto (coenti 05886) em 202601-202606 sinistra 0,507244 somando TODOS os ramos e 0,580149 no grupo 05 (Automovel) - 7,3 p.p. de diferenca num numero que o dono leva para uma negociacao de reajuste. A CHAVE e a ABREVIATURA, que e o que a carteira REALMENTE traz (medido: /documentos_bi.ramo = AUTO, RESI, COND - 3 a 4 caracteres, 34 valores distintos em 3.272 linhas de 2025). Ramo sem cogrupo sai UNKNOWN, com o motivo escrito, e a metrica que o receber sai INDISPONIVEL - nunca zero (M2). E ele e um ARQUIVO revisado por gente, nunca uma regra: derivar AUTO -> 05 por string funcionaria ate a primeira corretora cuja instalacao usa outra abreviatura, e ai publicaria o mercado de outro ramo.",
+ "medido_em": "04/09/2026",
+ "fontes": {
+  "infocap": "GET /ramos da conexao da Resulta - 50 ramos, chave `abreviatura`",
+  "carteira": "GET /documentos_bi 01/01/2025..31/12/2025 - 3.272 linhas, 34 abreviaturas distintas",
+  "ses_grupos": "ses_gruposramos.csv do BaseCompleta.zip - 22 grupos",
+  "ses_ramos": "Ses_ramos.csv do BaseCompleta.zip - 7.126 bytes, coramo -> noramo",
+  "corte": "cogrupo = coramo[:2] (SES-CENSO.md 3.2: coramo[1:3] devolveu ZERO ramos de auto, em silencio)"
+ },
+ "grupos_ses": {
+  "01": "Patrimonial",
+  "02": "Riscos Especiais",
+  "03": "Responsabilidades",
+  "04": "Cascos",
+  "05": "Automovel",
+  "06": "Transportes",
+  "07": "Riscos Financeiros",
+  "08": "Credito",
+  "09": "Pessoas Coletivo",
+  "10": "Habitacional",
+  "11": "Rural",
+  "12": "Outros",
+  "13": "Pessoas Individual",
+  "14": "Maritimos",
+  "15": "Aeronauticos",
+  "16": "Microsseguros",
+  "17": "Petroleo",
+  "18": "Nucleares",
+  "19": "Saude",
+  "20": "Aceitacoes do Exterior",
+  "21": "Sucursal no Exterior",
+  "22": "Pessoas EFPC"
+ },
+ "ramos": {
+  "AERO": {
+   "cogrupo": "15",
+   "grupo_ses": "Aeronauticos",
+   "codigo_infocap": 42,
+   "nome_infocap": "AERONAUTICO",
+   "ramo_ses_que_justifica": "1535 - Aeronauticos (cascos)",
+   "criterio": "casco de aeronave; o grupo 15 e o unico que os agrega",
+   "decidido_em": "04/09/2026"
+  },
+  "AM": {
+   "cogrupo": "03",
+   "grupo_ses": "Responsabilidades",
+   "codigo_infocap": 49,
+   "nome_infocap": "AMBIENTAL",
+   "ramo_ses_que_justifica": "0313 - R. C. Riscos Ambientais",
+   "criterio": "o SES tem UM ramo de risco ambiental, e ele e de responsabilidade",
+   "decidido_em": "04/09/2026"
+  },
+  "APC": {
+   "cogrupo": "09",
+   "grupo_ses": "Pessoas Coletivo",
+   "codigo_infocap": 22,
+   "nome_infocap": "AP COLETIVO",
+   "ramo_ses_que_justifica": "0982 - Acidentes Pessoais",
+   "criterio": "coletivo esta escrito no proprio rotulo da corretora",
+   "decidido_em": "04/09/2026"
+  },
+  "APEV": {
+   "cogrupo": "09",
+   "grupo_ses": "Pessoas Coletivo",
+   "codigo_infocap": 12,
+   "nome_infocap": "AP EVENTOS",
+   "ramo_ses_que_justifica": "0982 - Acidentes Pessoais",
+   "criterio": "AP de evento e apolice coletiva por construcao",
+   "decidido_em": "04/09/2026"
+  },
+  "API": {
+   "cogrupo": "13",
+   "grupo_ses": "Pessoas Individual",
+   "codigo_infocap": 27,
+   "nome_infocap": "AP INDIVIDUAL",
+   "ramo_ses_que_justifica": "1381 - Acidentes Pessoais",
+   "criterio": "individual esta escrito no proprio rotulo",
+   "decidido_em": "04/09/2026"
+  },
+  "APVI": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 13,
+   "nome_infocap": "AP C ASSIS VIAGEM FU",
+   "ramo_ses_que_justifica": "0969/1369 - Viagem",
+   "criterio": "AP + assistencia viagem: o SES publica Viagem em DOIS grupos (09 coletivo e 13 individual) e a carteira nao diz qual",
+   "decidido_em": "04/09/2026"
+  },
+  "ASSI": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 21,
+   "nome_infocap": "ASSISTENCIA VIAGEM",
+   "ramo_ses_que_justifica": "0969/1369 - Viagem",
+   "criterio": "o mesmo empate de APVI: 09 e 13 publicam Viagem",
+   "decidido_em": "04/09/2026"
+  },
+  "AUTO": {
+   "cogrupo": "05",
+   "grupo_ses": "Automovel",
+   "codigo_infocap": 1,
+   "nome_infocap": "AUTOMOVEL",
+   "ramo_ses_que_justifica": "0531 - Automovel - Casco",
+   "criterio": "o par medido do juiz: Porto 05886, grupo 05",
+   "decidido_em": "04/09/2026"
+  },
+  "BRES": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 45,
+   "nome_infocap": "BILHETE RESIDENCIAL",
+   "ramo_ses_que_justifica": "0114 - Compreensivo Residencial",
+   "criterio": "bilhete e a forma de contratacao; o risco e residencial",
+   "decidido_em": "04/09/2026"
+  },
+  "BUY": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 33,
+   "nome_infocap": "BUY & SELL",
+   "ramo_ses_que_justifica": "",
+   "criterio": "nao ha ramo SES com este objeto",
+   "decidido_em": "04/09/2026"
+  },
+  "CAPI": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 17,
+   "nome_infocap": "TITULO CAPITALIZACAO",
+   "ramo_ses_que_justifica": "",
+   "criterio": "capitalizacao nao e seguro e nao tem grupo de ramo no SES",
+   "decidido_em": "04/09/2026"
+  },
+  "CART": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 47,
+   "nome_infocap": "CARTAO DE CREDITO",
+   "ramo_ses_que_justifica": "",
+   "criterio": "pode ser prestamista (09/13) ou credito interno (07/08): a fonte nao decide",
+   "decidido_em": "04/09/2026"
+  },
+  "CIBE": {
+   "cogrupo": "03",
+   "grupo_ses": "Responsabilidades",
+   "codigo_infocap": 54,
+   "nome_infocap": "RISCO CIBERNETICO",
+   "ramo_ses_que_justifica": "0327 - Compreensivo Riscos Ciberneticos",
+   "criterio": "o SES tem UM ramo cibernetico, e ele esta no grupo 03",
+   "decidido_em": "04/09/2026"
+  },
+  "COND": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 4,
+   "nome_infocap": "CONDOMINIO",
+   "ramo_ses_que_justifica": "0116 - Compreensivo Condominio",
+   "criterio": "igualdade de objeto com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "CONS": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 46,
+   "nome_infocap": "CONSORCIO",
+   "ramo_ses_que_justifica": "",
+   "criterio": "consorcio nao e seguro e nao tem ramo no SES",
+   "decidido_em": "04/09/2026"
+  },
+  "CTAZ": {
+   "cogrupo": "06",
+   "grupo_ses": "Transportes",
+   "codigo_infocap": 56,
+   "nome_infocap": "CARTA AZUL",
+   "ramo_ses_que_justifica": "0644 - R.C. Viag.Int. Pessoas - Carta Azul",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "CTVE": {
+   "cogrupo": "05",
+   "grupo_ses": "Automovel",
+   "codigo_infocap": 26,
+   "nome_infocap": "CARTA VERDE",
+   "ramo_ses_que_justifica": "0525 - Carta Verde",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "D&O": {
+   "cogrupo": "03",
+   "grupo_ses": "Responsabilidades",
+   "codigo_infocap": 53,
+   "nome_infocap": "D&O RC ADM E DIRETOR",
+   "ramo_ses_que_justifica": "0310 - R.C.Administradores e Diretores-D&O",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "DENT": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 48,
+   "nome_infocap": "DENTAL",
+   "ramo_ses_que_justifica": "",
+   "criterio": "odontologico e regulado pela ANS; o SES da SUSEP nao o publica",
+   "decidido_em": "04/09/2026"
+  },
+  "DPEM": {
+   "cogrupo": "14",
+   "grupo_ses": "Maritimos",
+   "codigo_infocap": 41,
+   "nome_infocap": "DPEM",
+   "ramo_ses_que_justifica": "1457 - DPEM",
+   "criterio": "igualdade de sigla com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "EMPR": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 3,
+   "nome_infocap": "EMPRESARIAL",
+   "ramo_ses_que_justifica": "0118 - Compreensivo Empresarial",
+   "criterio": "igualdade de objeto com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "ENGE": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 15,
+   "nome_infocap": "RISCOS ENGENHARIA",
+   "ramo_ses_que_justifica": "0167 - Riscos de Engenharia",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "EVE": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 30,
+   "nome_infocap": "MULTIRISCO EVENTOS",
+   "ramo_ses_que_justifica": "0171 - Riscos Diversos",
+   "criterio": "multirrisco patrimonial de evento; a RC de evento e outro ramo da propria corretora (EVEN)",
+   "decidido_em": "04/09/2026"
+  },
+  "EVEN": {
+   "cogrupo": "03",
+   "grupo_ses": "Responsabilidades",
+   "codigo_infocap": 11,
+   "nome_infocap": "RC EVENTOS",
+   "ramo_ses_que_justifica": "0351 - R. C. Geral",
+   "criterio": "responsabilidade civil de evento",
+   "decidido_em": "04/09/2026"
+  },
+  "FIAN": {
+   "cogrupo": "07",
+   "grupo_ses": "Riscos Financeiros",
+   "codigo_infocap": 9,
+   "nome_infocap": "FIANCA LOCATICIA",
+   "ramo_ses_que_justifica": "0746 - Fianca Locaticia",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "FINA": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 55,
+   "nome_infocap": "FINANCIAMENTO",
+   "ramo_ses_que_justifica": "",
+   "criterio": "credito interno (07/08) ou prestamista (09/13): a fonte nao decide",
+   "decidido_em": "04/09/2026"
+  },
+  "FROT": {
+   "cogrupo": "05",
+   "grupo_ses": "Automovel",
+   "codigo_infocap": 43,
+   "nome_infocap": "FROTA - AUTOMOVEL",
+   "ramo_ses_que_justifica": "0531 - Automovel - Casco",
+   "criterio": "frota e a forma de contratacao; o risco e automovel",
+   "decidido_em": "04/09/2026"
+  },
+  "FUNE": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 34,
+   "nome_infocap": "FUNERAL",
+   "ramo_ses_que_justifica": "0929/1329 - Funeral",
+   "criterio": "o SES publica Funeral em DOIS grupos (09 e 13) e a carteira nao diz qual",
+   "decidido_em": "04/09/2026"
+  },
+  "GOC": {
+   "cogrupo": "07",
+   "grupo_ses": "Riscos Financeiros",
+   "codigo_infocap": 32,
+   "nome_infocap": "GARANTIA OBRIG CONTR",
+   "ramo_ses_que_justifica": "0775/0776 - Garantia Segurado",
+   "criterio": "garantia de obrigacoes contratuais e o grupo 07 nos dois setores",
+   "decidido_em": "04/09/2026"
+  },
+  "HABI": {
+   "cogrupo": "10",
+   "grupo_ses": "Habitacional",
+   "codigo_infocap": 50,
+   "nome_infocap": "HABITACIONAL",
+   "ramo_ses_que_justifica": "1061/1065 - Seg. Habitacional",
+   "criterio": "o grupo 10 e exclusivamente habitacional",
+   "decidido_em": "04/09/2026"
+  },
+  "IMOB": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 10,
+   "nome_infocap": "#### NAO USAR IMOBIL",
+   "ramo_ses_que_justifica": "",
+   "criterio": "o proprio rotulo da corretora marca o ramo como desativado",
+   "decidido_em": "04/09/2026"
+  },
+  "MOB": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 44,
+   "nome_infocap": "IMOBILIARIA",
+   "ramo_ses_que_justifica": "",
+   "criterio": "rotulo de negocio da corretora, sem objeto de risco definido",
+   "decidido_em": "04/09/2026"
+  },
+  "NAUT": {
+   "cogrupo": "14",
+   "grupo_ses": "Maritimos",
+   "codigo_infocap": 37,
+   "nome_infocap": "NAUTICO",
+   "ramo_ses_que_justifica": "1433 - Maritimos (Cascos)",
+   "criterio": "casco de embarcacao",
+   "decidido_em": "04/09/2026"
+  },
+  "ONIB": {
+   "cogrupo": "06",
+   "grupo_ses": "Transportes",
+   "codigo_infocap": 29,
+   "nome_infocap": "RC TRANSP RODOVIARIO",
+   "ramo_ses_que_justifica": "0628 - RCTR-P Municipal/Intermunicipal",
+   "criterio": "RC do transportador rodoviario de passageiros",
+   "decidido_em": "04/09/2026"
+  },
+  "PREV": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 7,
+   "nome_infocap": "PREVIDENCIA",
+   "ramo_ses_que_justifica": "",
+   "criterio": "previdencia complementar aberta nao entra na estatistica de seguros do SES",
+   "decidido_em": "04/09/2026"
+  },
+  "RC": {
+   "cogrupo": "03",
+   "grupo_ses": "Responsabilidades",
+   "codigo_infocap": 8,
+   "nome_infocap": "RESPONS CIVIL  GERAL",
+   "ramo_ses_que_justifica": "0351 - R. C. Geral",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "RCPR": {
+   "cogrupo": "03",
+   "grupo_ses": "Responsabilidades",
+   "codigo_infocap": 52,
+   "nome_infocap": "RC PROFISSIONAL",
+   "ramo_ses_que_justifica": "0378 - R. C.  Profissional",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "RD E": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 39,
+   "nome_infocap": "RD EQUIPAMENTOS",
+   "ramo_ses_que_justifica": "0171 - Riscos Diversos",
+   "criterio": "riscos diversos de equipamento",
+   "decidido_em": "04/09/2026"
+  },
+  "RDEP": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 31,
+   "nome_infocap": "RD EQUIP PORTATEIS",
+   "ramo_ses_que_justifica": "0171 - Riscos Diversos",
+   "criterio": "riscos diversos de equipamento portatil",
+   "decidido_em": "04/09/2026"
+  },
+  "RDFE": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 25,
+   "nome_infocap": "RD FEIRAS",
+   "ramo_ses_que_justifica": "0171 - Riscos Diversos",
+   "criterio": "riscos diversos de feira",
+   "decidido_em": "04/09/2026"
+  },
+  "RDIV": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 40,
+   "nome_infocap": "RISCOS DIVERSOS",
+   "ramo_ses_que_justifica": "0171 - Riscos Diversos",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "RESI": {
+   "cogrupo": "01",
+   "grupo_ses": "Patrimonial",
+   "codigo_infocap": 2,
+   "nome_infocap": "RESIDENCIAL",
+   "ramo_ses_que_justifica": "0114 - Compreensivo Residencial",
+   "criterio": "igualdade de objeto com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "RURA": {
+   "cogrupo": "11",
+   "grupo_ses": "Rural",
+   "codigo_infocap": 51,
+   "nome_infocap": "RURAL MULTIRISCO",
+   "ramo_ses_que_justifica": "1111 - Seguro Agricola",
+   "criterio": "o grupo 11 e exclusivamente rural",
+   "decidido_em": "04/09/2026"
+  },
+  "SAUD": {
+   "cogrupo": "19",
+   "grupo_ses": "Saude",
+   "codigo_infocap": 19,
+   "nome_infocap": "SAUDE",
+   "ramo_ses_que_justifica": "1286/1287 - Saude Individual/Grupal",
+   "criterio": "o grupo 19 e exclusivamente saude",
+   "decidido_em": "04/09/2026"
+  },
+  "TR I": {
+   "cogrupo": "06",
+   "grupo_ses": "Transportes",
+   "codigo_infocap": 28,
+   "nome_infocap": "TRANSP INTERNACIONAL",
+   "ramo_ses_que_justifica": "0622 - Transporte Internacional",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "TR N": {
+   "cogrupo": "06",
+   "grupo_ses": "Transportes",
+   "codigo_infocap": 35,
+   "nome_infocap": "TRANSPORTE NACIONAL",
+   "ramo_ses_que_justifica": "0621 - Transporte Nacional",
+   "criterio": "igualdade de nome com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "VGRP": {
+   "cogrupo": "09",
+   "grupo_ses": "Pessoas Coletivo",
+   "codigo_infocap": 6,
+   "nome_infocap": "VIDA GRUPO",
+   "ramo_ses_que_justifica": "0993 - Vida em Grupo",
+   "criterio": "igualdade de objeto com o ramo SES",
+   "decidido_em": "04/09/2026"
+  },
+  "VGUN": {
+   "cogrupo": "09",
+   "grupo_ses": "Pessoas Coletivo",
+   "codigo_infocap": 20,
+   "nome_infocap": "VG - UNIMED",
+   "ramo_ses_que_justifica": "0993 - Vida em Grupo",
+   "criterio": "VG e vida em grupo; a operadora no rotulo nao muda o ramo",
+   "decidido_em": "04/09/2026"
+  },
+  "VIAG": {
+   "cogrupo": "UNKNOWN",
+   "grupo_ses": "",
+   "codigo_infocap": 14,
+   "nome_infocap": "VIAGEM",
+   "ramo_ses_que_justifica": "0969/1369 - Viagem",
+   "criterio": "o SES publica Viagem em DOIS grupos (09 e 13) e a carteira nao diz qual",
+   "decidido_em": "04/09/2026"
+  },
+  "VIND": {
+   "cogrupo": "13",
+   "grupo_ses": "Pessoas Individual",
+   "codigo_infocap": 5,
+   "nome_infocap": "VIDA INDIVIDUAL",
+   "ramo_ses_que_justifica": "1391 - Vida",
+   "criterio": "vida individual e o grupo 13",
+   "decidido_em": "04/09/2026"
+  }
+ }
+}
