@@ -42,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,32 @@ STATUS_DE_ESPERA = "waiting_approval"
 RISCO = "low"
 
 ACTION_TYPE = "metric.proposal"
-SUBJECT_TYPE = "metric_proposal"
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 (rodada 3). Era `"metric_proposal"`,
+#: com `subject_id` = o NOME da métrica.
+#:
+#: 📊 O defeito medido ao vivo pelo juiz fresco: `approval_requests.subject_id`
+#: é **`uuid`** (lido de `information_schema.columns`, e a fixture
+#: `tests/fixtures/schema_vivo.json` guarda essa leitura). Gravar
+#: `"proposta.x"` ali devolvia `22P02 invalid input syntax for type uuid` —
+#: então `propor()` NUNCA gravou uma aprovação, em nenhuma corretora, desde que
+#: foi escrita. O `work_run` já estava criado quando o `insert` estourava, e o
+#: que sobrava no banco era um run `waiting_approval` que ninguém jamais
+#: aprovaria: 📊 `c66c3bf7-539f-4c15-93d3-570aa6df88cb`, o único
+#: `metric.proposal` do banco.
+#:
+#: ✅ O sujeito da aprovação passa a ser o `work_run`, que é a única coisa desta
+#: história que TEM um uuid. O nome da métrica viaja em `request_payload` e
+#: `requested_preview`, que são `jsonb` e existem para isso.
+SUBJECT_TYPE = "work_run"
+
+#: O status para onde o run vai quando a aprovação (ou o evento) não puder ser
+#: escrita. ⛔ Um run `waiting_approval` sem `approval_request` é uma linha que
+#: espera para sempre uma decisão que ninguém consegue tomar.
+STATUS_DA_FALHA = "failed"
+#: 📊 Lido do enum `work_run_status` em 04/09/2026:
+#: draft·queued·planning·running·waiting_approval·waiting_input·paused·
+#: retry_scheduled·cancelling·cancelled·failed·completed·expired.
+CODIGO_DA_FALHA = "approval_not_written"
 EVENTO_CRIADA = "metric.proposta_criada"
 EVENTO_PROMOVIDA = "metric.promovida"
 
@@ -255,15 +281,46 @@ async def propor(db: Any, *, company_id: str, proposta: Any,
     from app.services.work.approvals import WorkApprovalService
 
     servico = WorkApprovalService(db)
-    linha = servico.solicitar(
+    try:
+        linha = _solicitar(servico, empresa, run_id, nome, aprovador, resumo,
+                           chave, solicitante)
+    except Exception as exc:  # noqa: BLE001
+        # 🔴 NADA ÓRFÃO. A ordem é `run -> approval -> evento` porque a
+        # `approval_request` tem `work_run_id` NOT NULL — mas se a segunda
+        # perna falha, a primeira não pode ficar de pé esperando uma decisão
+        # que não existe. O run vai para `failed`, com o motivo escrito.
+        _marcar_falha(db, empresa, run_id, exc)
+        raise
+
+    approval_id = str((linha or {}).get("id") or "")
+
+    _evento(db, empresa, run_id, EVENTO_CRIADA, resumo,
+            "Proposta de métrica registrada para revisão: %s" % nome)
+    logger.info("[094.1] proposta %s criada run=%s approval=%s",
+                nome, run_id, approval_id or "-")
+    return {"run_id": run_id, "approval_id": approval_id, "reused": False,
+            "proposta": resumo}
+
+
+def _solicitar(servico: Any, empresa: str, run_id: str, nome: str,
+               aprovador: str, resumo: Dict[str, Any], chave: str,
+               solicitante: Optional[str]) -> Dict[str, Any]:
+    """A chamada ao HITL da SPEC-055. ⚠️ Separada para que a falha dela seja
+    capturável sem envolver o `insert` do run na mesma cláusula."""
+    return servico.solicitar(
         company_id=empresa,
         work_run_id=run_id,
         work_step_id=None,
         action_type=ACTION_TYPE,
         subject_type=SUBJECT_TYPE,
-        subject_id=nome,
+        # 🔴 O uuid do RUN, e nunca o nome da métrica: a coluna é `uuid`.
+        subject_id=run_id,
         preview={
             "titulo": "Registrar a métrica %s?" % nome,
+            # 🔴 O nome vive AQUI — em `preview`/`requested_preview` e em
+            # `action_payload`/`request_payload`, que são `jsonb`. É por esta
+            # chave que a tela de revisão sabe qual métrica está em jogo.
+            "metrica_proposta": nome,
             "aprovador": aprovador,
             "o_que_e": ("uma métrica que o dono pediu e o registry não tem. "
                         "Aprovar NÃO calcula nada: quem registra a definição é "
@@ -276,14 +333,37 @@ async def propor(db: Any, *, company_id: str, proposta: Any,
         requested_by_user_id=str(solicitante) if solicitante else None,
         validade_horas=VALIDADE_HORAS,
     )
-    approval_id = str((linha or {}).get("id") or "")
 
-    _evento(db, empresa, run_id, EVENTO_CRIADA, resumo,
-            "Proposta de métrica registrada para revisão: %s" % nome)
-    logger.info("[094.1] proposta %s criada run=%s approval=%s",
-                nome, run_id, approval_id or "-")
-    return {"run_id": run_id, "approval_id": approval_id, "reused": False,
-            "proposta": resumo}
+
+def _marcar_falha(db: Any, company_id: str, run_id: str,
+                  exc: BaseException) -> bool:
+    """O run que não conseguiu aprovação vai para `failed`. Nunca levanta.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026 (rodada 3). 📊 O que este `UPDATE`
+    impede está medido no banco: **um** run `metric.proposal` existia, em
+    `waiting_approval`, **sem nenhuma `approval_request`** — porque o `insert`
+    da aprovação estourava depois de o run já estar gravado. Um run parado à
+    espera de uma decisão que ninguém consegue tomar é pior que run nenhum: ele
+    ocupa o painel da corretora afirmando que há trabalho em curso.
+
+    ⚠️ Ele engole a própria exceção de propósito: a que interessa a quem chamou
+    é a ORIGINAL, e trocá-la por *"não consegui marcar como falho"* esconderia
+    a causa. O filtro por `company_id` está no CÓDIGO (CLAUDE.md §7).
+    """
+    try:
+        cli = getattr(db, "client", db)
+        (cli.table("work_runs")
+         .update({"status": STATUS_DA_FALHA,
+                  "error_code": CODIGO_DA_FALHA,
+                  "error_message": ("a aprovação da proposta não pôde ser "
+                                    "registrada (%s)" % type(exc).__name__)[:300],
+                  "finished_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", run_id).eq("company_id", company_id).execute())
+        return True
+    except Exception as outra:  # noqa: BLE001
+        logger.warning("[094.1] run %s ficou orfao (%s)", run_id,
+                       type(outra).__name__)
+        return False
 
 
 #: 💭 Quantas propostas voltam numa leitura. Uma tela de revisão não lê mais
