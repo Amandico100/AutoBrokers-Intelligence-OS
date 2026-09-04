@@ -75,7 +75,13 @@ RESULTA = "04b5cdbc-04cd-4ddf-8e4b-f43efb062fab"
 #: `app/agents/__init__.py` → `graph` → `langgraph`. Nenhum dos dois é usado
 #: por este script, e nenhum dos dois existe em toda máquina onde um canário
 #: precisa rodar.
-PACOTES_DE_NAMESPACE = ("app.services", "app.agents", "app.agents.tools")
+# 📊 04/09/2026, ao vivo: `app.api.__init__` importa `.chat`, que faz
+# `from app.services import AudioService` — e com `app.services` em namespace
+# o nome não existe ("cannot import name 'AudioService'"). O caminho REAL do
+# Pulso só precisa de `app.api.infocap_connector` (httpx, fastapi, app.core):
+# o pacote `app.api` entra como namespace também, e o conector é importado pelo
+# nome completo, como em produção.
+PACOTES_DE_NAMESPACE = ("app.services", "app.agents", "app.agents.tools", "app.api")
 
 
 def sem_o_init_pesado() -> None:
