@@ -139,7 +139,11 @@ CANÁRIO VIVO ...... ✅ Resulta: 2 artifacts hoje; proposta run+approval+evento
 REGRESSÃO ......... ✅ git diff em api/dispatch/graph = 0 bytes · 094 continua 284 · linha de base dos 3 scripts npm preservada
 MIGRATION ......... ✅ ZERO (seções em código; `_garantir_template`)
 SUÍTE INTEIRA ..... 936 passed · 5 failed (03:22→03:37, 14m47, árvore parada, d8cd056) — os 5 passam isolados e são a classe do harness (P-093B-HARNESS: guardas-script se atropelam; crash libuv do node num subprocesso; política/ontologia flaky): 093-B 249 ok · ferramentas 67 · política 1 passed · ontologia 1 passed. A rodada anterior (09cbd6b) deu 934/7 com 2 regressões REAIS consertadas em d8cd056
-ENTREGA ........... {PUSH}
+ENTREGA ........... 04/09 ~03:45 — `git push origin HEAD:main`:
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   6b6be19..d5b7674  HEAD -> main
+```
 ```
 **Veredito do orquestrador: GATE VERDE — SPEC-094.1 CONCLUÍDA**, com as pendências acima (todas com dono) e a decisão F-094.1-02 sua.
 
