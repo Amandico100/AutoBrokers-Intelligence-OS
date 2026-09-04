@@ -301,5 +301,398 @@
       ],
       "nota": "🔴 CASA com UNIMED SEGURADORA S.A., que nao opera auto desde 200901 (pg total historico de R$ 2.224 no grupo 05). Para auto, trate como UNAVAILABLE; para outros grupos de ramo, o coenti vale."
     }
+  },
+  "siglas": {
+    "ACE": {
+      "nome_no_sistema_de_gestao": "ACE SEGURADORA S A",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "AGEM": {
+      "nome_no_sistema_de_gestao": "AGEMED PLANOS DE SAUDE",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "AIG": {
+      "nome_no_sistema_de_gestao": "AIG SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "AKAD": {
+      "nome_no_sistema_de_gestao": "AKAD",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ALBA": {
+      "nome_no_sistema_de_gestao": "ALIANÇA DA BAHIA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ALFA": {
+      "nome_no_sistema_de_gestao": "ALFA SEGURADORA",
+      "coenti": "06467",
+      "canonica": "alfa",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'alfa' (Noenti 'ALFA SEGURADORA S.A.') sao a mesma empresa"
+    },
+    "ALLI": {
+      "nome_no_sistema_de_gestao": "ALLIANZ SEGURADORA",
+      "coenti": "05177",
+      "canonica": "allianz",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'allianz' (Noenti 'ALLIANZ SEGUROS S.A.') sao a mesma empresa"
+    },
+    "AMIL": {
+      "nome_no_sistema_de_gestao": "AMIL",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ASSI": {
+      "nome_no_sistema_de_gestao": "ASSIST - CARD TEMPO ASSIST",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "AVLA": {
+      "nome_no_sistema_de_gestao": "AVLA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "AXA": {
+      "nome_no_sistema_de_gestao": "AXA SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "AZUL": {
+      "nome_no_sistema_de_gestao": "AZUL SEGUROS",
+      "coenti": "05355",
+      "canonica": "azul",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'azul' (Noenti 'AZUL COMPANHIA DE SEGUROS GERAIS') sao a mesma empresa"
+    },
+    "BERK": {
+      "nome_no_sistema_de_gestao": "BERKLEY INTERNATIONAL BRASIL",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "BRAD": {
+      "nome_no_sistema_de_gestao": "BRADESCO",
+      "coenti": "05312",
+      "canonica": "bradesco",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'bradesco' (Noenti 'BRADESCO AUTO/RE COMPANHIA DE SEGUROS') sao a mesma empresa"
+    },
+    "BRSA": {
+      "nome_no_sistema_de_gestao": "BRADESCO SAUDE",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "BRVE": {
+      "nome_no_sistema_de_gestao": "BRASIL VEICULOS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "CAPE": {
+      "nome_no_sistema_de_gestao": "CAPEMISA SEGURADORA DE VIDA E PREVI",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "CHUB": {
+      "nome_no_sistema_de_gestao": "CHUBB DO",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "DARW": {
+      "nome_no_sistema_de_gestao": "DARWIN SEGUROS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ESSO": {
+      "nome_no_sistema_de_gestao": "ESSOR SEGUROS S.A.",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "EXCE": {
+      "nome_no_sistema_de_gestao": "EXCLESIOR SEGUROS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "EZZE": {
+      "nome_no_sistema_de_gestao": "EZZE",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "FAIR": {
+      "nome_no_sistema_de_gestao": "FAIRFAX BRASIL",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "FATO": {
+      "nome_no_sistema_de_gestao": "FATOR SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "GENR": {
+      "nome_no_sistema_de_gestao": "GENERALI BRASIL SEGUROS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "GENT": {
+      "nome_no_sistema_de_gestao": "GENTE SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "HDI": {
+      "nome_no_sistema_de_gestao": "HDI SEGUROS S.A.",
+      "coenti": "06572",
+      "canonica": null,
+      "criterio": "nome normalizado COMPLETO igual ao Noenti do SES"
+    },
+    "ICAR": {
+      "nome_no_sistema_de_gestao": "ICARE TRAVEL VIAGENS E TURISMO LTDA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ICAT": {
+      "nome_no_sistema_de_gestao": "ICATU SEGUROS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "INDI": {
+      "nome_no_sistema_de_gestao": "INDIANA SEGUROS S/A",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ITAU": {
+      "nome_no_sistema_de_gestao": "ITAU SEGUROS S/A",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "JNS": {
+      "nome_no_sistema_de_gestao": "JNS SEGUROS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "JUNT": {
+      "nome_no_sistema_de_gestao": "JUNTO SEGURADORA S.A.",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "KOVR": {
+      "nome_no_sistema_de_gestao": "KOVR- INVEST SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "LIBE": {
+      "nome_no_sistema_de_gestao": "LIBERTY SEGUROS S/A",
+      "coenti": "05185",
+      "canonica": "yelum",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'yelum' (Noenti 'YELUM SEGUROS S.A.') sao a mesma empresa"
+    },
+    "MAG": {
+      "nome_no_sistema_de_gestao": "MAG - MONGERAL",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "MAP": {
+      "nome_no_sistema_de_gestao": "MAPFRE CAPITALIZACAO",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "MAPF": {
+      "nome_no_sistema_de_gestao": "MAPFRE SEGUROS",
+      "coenti": "06238",
+      "canonica": "mapfre",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'mapfre' (Noenti 'MAPFRE SEGUROS GERAIS S.A.') sao a mesma empresa"
+    },
+    "METL": {
+      "nome_no_sistema_de_gestao": "METLIFE",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "MINA": {
+      "nome_no_sistema_de_gestao": "MINAS-BRASIL",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "MITS": {
+      "nome_no_sistema_de_gestao": "MITSUI SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "NEWE": {
+      "nome_no_sistema_de_gestao": "NEWE",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "NOBR": {
+      "nome_no_sistema_de_gestao": "NOBRE SEGURADORA DO BRA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "PASI": {
+      "nome_no_sistema_de_gestao": "PASI SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "PORT": {
+      "nome_no_sistema_de_gestao": "PORTO SEGURO CIA DE SEG",
+      "coenti": "05886",
+      "canonica": "porto",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'porto' (Noenti 'PORTO SEGURO COMPANHIA DE SEGUROS GERAIS') sao a mesma empresa"
+    },
+    "POTT": {
+      "nome_no_sistema_de_gestao": "POTTENCIAL SEGURADORA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "PREV": {
+      "nome_no_sistema_de_gestao": "PREVIDENCIA DO SUL , CIA DE SEGS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "PRU": {
+      "nome_no_sistema_de_gestao": "PRUDENTIAL DO BRASIL SEGURO DE VIDA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "SAFR": {
+      "nome_no_sistema_de_gestao": "SAFRA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "SCAP": {
+      "nome_no_sistema_de_gestao": "SULACAP SUL AMERICA CAPITAL",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "SOMP": {
+      "nome_no_sistema_de_gestao": "SOMPO SEGUROS (YASUDAMARITIMA)",
+      "coenti": "05720",
+      "canonica": "sompo",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'sompo' (Noenti 'SOMPO SEGUROS S.A.') sao a mesma empresa"
+    },
+    "SUHA": {
+      "nome_no_sistema_de_gestao": "SUHAI",
+      "coenti": "04952",
+      "canonica": "suhai",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'suhai' (Noenti 'SUHAI SEGURADORA S.A.') sao a mesma empresa"
+    },
+    "SULA": {
+      "nome_no_sistema_de_gestao": "SUL AMÉRICA",
+      "coenti": "UNKNOWN",
+      "canonica": "sulamerica",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'sulamerica' (Noenti None) sao a mesma empresa"
+    },
+    "SURA": {
+      "nome_no_sistema_de_gestao": "SURA",
+      "coenti": "06751",
+      "canonica": "sura",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'sura' (Noenti 'SEGUROS SURA S.A.') sao a mesma empresa"
+    },
+    "TMAR": {
+      "nome_no_sistema_de_gestao": "TOKIO MARINE",
+      "coenti": "06190",
+      "canonica": "tokio_marine",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'tokio_marine' (Noenti 'TOKIO MARINE SEGURADORA S.A.') sao a mesma empresa"
+    },
+    "TRAV": {
+      "nome_no_sistema_de_gestao": "TRAVELERS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "UNIB": {
+      "nome_no_sistema_de_gestao": "UNIBANCO AIG S/A",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "UNIM": {
+      "nome_no_sistema_de_gestao": "UNIMED SEGURADORA S/A",
+      "coenti": "06947",
+      "canonica": "seguros_unimed",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'seguros_unimed' (Noenti 'UNIMED SEGURADORA S.A.') sao a mesma empresa"
+    },
+    "UNIV": {
+      "nome_no_sistema_de_gestao": "UNIVIDA",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "YASU": {
+      "nome_no_sistema_de_gestao": "YASUDA SEGUROS",
+      "coenti": "UNKNOWN",
+      "canonica": null,
+      "criterio": "nao casou por nome completo e nao ha decisao explicita: UNKNOWN, com o nome LISTADO para a proxima revisao"
+    },
+    "ZURI": {
+      "nome_no_sistema_de_gestao": "ZURICH MINAS BRASIL",
+      "coenti": "05495",
+      "canonica": "zurich",
+      "criterio": "decisao EXPLICITA, revisada por gente em 04/09/2026: o nome do censo /seguradoras e a entrada canonica 'zurich' (Noenti 'ZURICH MINAS BRASIL SEGUROS S.A.') sao a mesma empresa"
+    }
+  },
+  "_doc_siglas": "🔴 A carteira NAO traz o nome da seguradora: traz a SIGLA (`documentos_bi.seguradora` / `renovacoes.seguradora`, decodificada por `/seguradoras.abreviatura`). Este bloco e o elo que faltava — P-094.1-SIGLA-SEGURADORA. ⛔ Uma sigla so entra aqui por igualdade de nome COMPLETO com o Noenti do SES ou por decisao EXPLICITA revisada; casamento parcial esta PROIBIDO desde 04/09/2026, porque 'PORTO SEGURO SAUDE' casava com a Porto de AUTO e publicava o numero de outra empresa.",
+  "medido_em_siglas": "2026-09-04",
+  "placar_das_siglas": {
+    "siglas_no_censo": 61,
+    "com_coenti": 14,
+    "por_nome_completo": 1,
+    "por_decisao_explicita": 13,
+    "cobertura_de_premio_pct": 83.86,
+    "premio_medido": 21814941.56,
+    "siglas_da_carteira_sem_coenti": [
+      "MAP",
+      "AXA",
+      "MAG",
+      "JUNT",
+      "AIG",
+      "ESSO",
+      "ITAU",
+      "BERK",
+      "CHUB",
+      "FATO",
+      "JNS",
+      "MITS"
+    ],
+    "medido_com": "a carteira viva de 2025 da corretora piloto, 3.861 linhas, soma de `pretot` por sigla"
   }
 }

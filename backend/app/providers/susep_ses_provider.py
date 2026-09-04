@@ -29,7 +29,7 @@ uma regra de string. Por isso o mapa é um arquivo revisado por gente
 (`docs/canon/providers/susep/seguradora-coenti.json`), com os candidatos
 avaliados ao lado de cada escolha.
 
-## 🔴 O elo que ainda não fecha, medido em 03/09/2026 — P-094.1-SIGLA-SEGURADORA
+## 🔴 O elo que FECHOU em 04/09/2026 — P-094.1-SIGLA-SEGURADORA
 
 A carteira da corretora **não** traz o nome da seguradora: traz a **SIGLA**.
 📊 O dicionário de campos diz, sobre `/documentos_bi.seguradora`: *"sigla da
@@ -38,13 +38,17 @@ versionado é indexado pelo **nome canônico** (`porto`, `allianz`), que é a ch
 de `portals`. 📊 Medido nesta peça: `coenti_de("Porto Seguro")` → `05886`, e
 `coenti_de("PORT")` → **UNKNOWN**.
 
-⚠️ Consequência, escrita antes que alguém a descubra num relatório: enquanto
-`/seguradoras` não for lida, o cruzamento carteira × mercado devolve
-**UNAVAILABLE por mapa** na fonte piloto. Isso é o comportamento CERTO (M2) e um
-resultado VAZIO ao mesmo tempo — as duas coisas, juntas. O conserto é uma rota a
-mais no adapter (`/seguradoras`, sigla → nome), não uma tabela de palpites aqui:
-📊 inventar `PORT → porto` funcionaria até a primeira corretora cuja instalação
-usa outra sigla, e aí publicaria o número de outra empresa.
+✅ **O conserto:** o mapa versionado ganhou uma seção `siglas`, construída a
+partir das **61 entradas do censo `/seguradoras` da corretora piloto** — uma por
+igualdade de nome COMPLETO com o censo público, treze por decisão explícita
+revisada por gente, cada uma com o critério escrito ao lado. 📊 A cobertura de
+prêmio da carteira viva subiu de **12,35%** para **83,86%** (R$ 21.814.941,56 em
+3.861 linhas de 2025). O que não casou sai `UNKNOWN` **com o nome listado no
+arquivo**, para a próxima revisão.
+
+⚠️ E a seção é um ARQUIVO, não uma regra: 📊 inventar `PORT → porto` por
+derivação funcionaria até a primeira corretora cuja instalação usa outra sigla —
+e aí publicaria o número de outra empresa. Cada linha é uma decisão datada.
 
 🔴 **E o que não casa sai `UNKNOWN`, nunca omitido e nunca zero (M2).** 📊 Há
 **11 entidades "SUL AMERICA"** e nenhuma tem prêmio de auto no trimestre medido:
@@ -68,7 +72,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "PROVIDER_KEY", "UNKNOWN", "PREFIXO", "CHAVE_DO_MANIFESTO",
-    "ler_agregado", "ler_manifesto", "mapa_de_seguradoras", "coenti_de",
+    "ler_agregado", "ler_manifesto", "mapa_de_seguradoras",
+    "mapa_de_siglas", "coenti_de",
     "FalhaDoCenso",
 ]
 
@@ -101,6 +106,7 @@ class FalhaDoCenso(RuntimeError):
 # O mapa versionado
 # --------------------------------------------------------------------------
 _MAPA_EM_MEMORIA: Optional[Dict[str, Any]] = None
+_SIGLAS_EM_MEMORIA: Optional[Dict[str, Any]] = None
 
 
 def mapa_de_seguradoras(caminho: str = "") -> Dict[str, Any]:
@@ -129,56 +135,88 @@ def _sem_acento(texto: Any) -> str:
     return "".join(c for c in bruto if not unicodedata.combining(c)).upper()
 
 
-def _palavras(texto: Any) -> List[str]:
-    limpo = "".join(c if c.isalnum() else " " for c in _sem_acento(texto))
-    # ⚠️ As palavras que não distinguem NINGUÉM saem: 📊 "SEGUROS" casa 284
-    # entidades. Deixá-las na comparação faria qualquer nome casar com qualquer
-    # seguradora — que é como um mapa por nome nasce errado.
-    genericas = {"SEGUROS", "SEGURADORA", "SEGURO", "CIA", "COMPANHIA", "S",
-                 "A", "SA", "DE", "DA", "DO", "E", "GERAIS", "LTDA", "BRASIL"}
-    return [p for p in limpo.split() if p and p not in genericas]
+def mapa_de_siglas(caminho: str = "") -> Dict[str, Any]:
+    """`{SIGLA: {coenti, nome_no_sistema_de_gestao, criterio}}` — o elo que
+    faltava, e ele e um ARQUIVO REVISADO.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026 (**P-094.1-SIGLA-SEGURADORA**).
+    📊 A carteira nao traz o nome da seguradora: traz a SIGLA (`PORT`, `ALLI`,
+    `TMAR`, `LIBE`, `BRAD`…), e o mapa canonico era indexado pelo nome
+    (`porto`, `allianz`). Medido antes do conserto: **12,35%** do premio da
+    carteira casava com uma entidade; depois, **83,86%**.
+
+    ⛔ Uma sigla so entra no arquivo por igualdade de nome COMPLETO com o nome
+    da entidade no censo publico, ou por DECISAO EXPLICITA de gente, escrita ao
+    lado com o criterio. Nunca por derivacao de string em runtime.
+    """
+    global _SIGLAS_EM_MEMORIA
+    if caminho:
+        with io.open(caminho, encoding="utf-8") as f:
+            return dict(json.load(f).get("siglas") or {})
+    if _SIGLAS_EM_MEMORIA is None:
+        try:
+            with io.open(CAMINHO_DO_MAPA, encoding="utf-8") as f:
+                _SIGLAS_EM_MEMORIA = dict(json.load(f).get("siglas") or {})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SES] mapa de siglas ausente (%s)",
+                           type(exc).__name__)
+            _SIGLAS_EM_MEMORIA = {}
+    return _SIGLAS_EM_MEMORIA
 
 
-def coenti_de(nome: Any, *, mapa: Optional[Dict[str, Any]] = None) -> str:
-    """O `coenti` desta seguradora — ou `UNKNOWN`. ⛔ Nunca um palpite.
+def coenti_de(nome: Any, *, mapa: Optional[Dict[str, Any]] = None,
+              siglas: Optional[Dict[str, Any]] = None) -> str:
+    """O `coenti` desta seguradora — ou `UNKNOWN`. ⛔ **Nunca um palpite.**
 
-    A ordem das tentativas é do mais forte para o mais fraco, e ela para na
-    primeira que casar:
+    As tres tentativas, todas por IGUALDADE, e ela para na primeira que casar:
 
     ```
-    1  a CHAVE canônica do mapa           `porto` -> 05886
-    2  as palavras da chave               "Porto Seguro" -> porto
-    3  as palavras do nome no SES         "PORTO SEGURO COMPANHIA..." -> porto
+    1  a SIGLA, no mapa de siglas revisado     "PORT"        -> 05886
+    2  a CHAVE canonica do mapa                "porto"       -> 05886
+    3  o NOME COMPLETO normalizado             "PORTO SEGURO COMPANHIA DE
+                                                SEGUROS GERAIS" -> 05886
     ```
 
-    🔴 Um nome que case com DUAS entradas devolve `UNKNOWN`. Empate não é
-    escolha: 📊 é exatamente o caso da `sulamerica` (11 entidades), e resolver
-    empate pela ordem do dicionário é publicar o número de outra empresa.
+    🔴 **O casamento PARCIAL foi removido em 04/09/2026, e a remocao e a peca.**
+    📊 O defeito medido: a regra anterior comparava PALAVRAS. `"PORTO SEGURO
+    SAUDE"` compartilha `PORTO` e `SEGURO` com a entrada da Porto de AUTO, e
+    recebia o `coenti` **05886** — o da seguradora de automovel. A
+    sinistralidade publicada seria a de outra empresa, num numero que o dono
+    leva para uma negociacao de reajuste.
+
+    ⚠️ Um nome que nao casa por igualdade sai `UNKNOWN`, e `UNKNOWN` e uma
+    STRING: `None` some numa comparacao e vira "nao filtrou nada"; a palavra
+    atravessa o pacote e chega escrita ao leitor. A metrica que a recebe sai
+    INDISPONIVEL, e nunca zero (M2).
     """
     tabela = mapa if mapa is not None else mapa_de_seguradoras()
-    if not tabela:
-        return UNKNOWN
+    das_siglas = siglas if siglas is not None else mapa_de_siglas()
     alvo = _sem_acento(nome).strip()
     if not alvo:
         return UNKNOWN
 
+    # 1 — a SIGLA. Ela vem primeiro porque e o que a carteira REALMENTE traz.
+    linha = das_siglas.get(alvo)
+    if isinstance(linha, dict):
+        return str(linha.get("coenti") or UNKNOWN)
+
+    if not tabela:
+        return UNKNOWN
+
+    # 2 — a chave canonica, na forma em que ela e escrita no arquivo.
     chave_direta = alvo.lower().replace(" ", "_").replace("-", "_")
     if chave_direta in tabela:
         return str(tabela[chave_direta].get("coenti") or UNKNOWN)
 
-    tokens = set(_palavras(alvo))
-    if not tokens:
-        return UNKNOWN
-    candidatos = set()
-    for chave, linha in tabela.items():
-        if set(_palavras(chave.replace("_", " "))) & tokens:
-            candidatos.add(chave)
-            continue
-        if set(_palavras(linha.get("noenti_susep") or "")) & tokens:
-            candidatos.add(chave)
-    if len(candidatos) != 1:
-        return UNKNOWN
-    return str(tabela[candidatos.pop()].get("coenti") or UNKNOWN)
+    # 3 — o nome COMPLETO da entidade, sem acento e com espaco colapsado.
+    #     ⛔ Igualdade, e nada mais: um nome que casa com DUAS entradas nao e
+    #     um empate a desempatar, e sim uma pergunta sem resposta.
+    inteiro = " ".join(alvo.split())
+    casados = [chave for chave, linha in tabela.items()
+               if " ".join(_sem_acento(linha.get("noenti_susep")).split()) == inteiro]
+    if len(casados) == 1:
+        return str(tabela[casados[0]].get("coenti") or UNKNOWN)
+    return UNKNOWN
 
 
 # --------------------------------------------------------------------------

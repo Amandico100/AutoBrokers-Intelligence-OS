@@ -101,17 +101,66 @@ APROVADORES = ("founder", "company_owner")
 VALIDADE_HORAS = 24 * 7
 
 
-def _chave(company_id: str, nome_sugerido: str) -> str:
-    """A chave de idempotência da proposta.
+def _chave(company_id: str, resumo: Dict[str, Any]) -> str:
+    """A chave de idempotência da proposta — **o PEDIDO INTEIRO, e não o nome.**
 
-    🔴 Ela leva `company_id` DENTRO, além de o helper já casar pelo par
+    🔴 SPEC-094.1, conserto de 04/09/2026. 📊 O defeito: a chave era
+    `sha256(company_id + nome_sugerido)`. Dois pedidos DIFERENTES do dono que
+    caíssem no mesmo `nome_sugerido` — o que é comum, porque o nome é derivado
+    da pergunta e a derivação normaliza muito — recebiam
+    `reused=True`. A segunda proposta era engolida, e o chat devolvia ao dono os
+    **fatos e dimensões que ele acabou de pedir**, enquanto o registro guardava
+    os do primeiro pedido. O texto na tela e a linha no painel discordavam, e
+    nada travava.
+
+    ⚠️ Agora entram no hash o nome **e** o conteúdo: famílias de fato,
+    dimensões, base temporal e a pergunta já normalizada. Mesmo pedido, mesma
+    chave — mesmo pedido duas vezes na mesma semana continua sendo UMA decisão
+    para o dono tomar.
+
+    🔴 E `company_id` continua DENTRO, além de o helper já casar pelo par
     `(company_id, idempotency_key)`: a chave viaja também para
-    `approval_requests`, e lá o par não é garantido pelo índice. Duas
-    corretoras propondo a mesma métrica no mesmo dia são duas propostas.
+    `approval_requests`, e lá o par não é garantido pelo índice.
     """
+    corpo = json.dumps(
+        {"nome_sugerido": str(resumo.get("nome_sugerido") or ""),
+         "fatos": sorted(str(x) for x in (resumo.get("fatos") or ())),
+         "dimensoes": sorted(str(x) for x in (resumo.get("dimensoes") or ())),
+         "time_basis": str(resumo.get("time_basis") or ""),
+         "pergunta_exemplo": str(resumo.get("pergunta_exemplo") or "")},
+        ensure_ascii=False, sort_keys=True)
     marca = hashlib.sha256(
-        ("%s|%s" % (company_id, nome_sugerido)).encode("utf-8")).hexdigest()[:16]
+        ("%s|%s" % (company_id, corpo)).encode("utf-8")).hexdigest()[:16]
     return PREFIXO_DA_CHAVE + marca
+
+
+def _proposta_gravada(db: Any, company_id: str, run_id: str,
+                      cair_para: Dict[str, Any]) -> Dict[str, Any]:
+    """O `input_payload` que está NO REGISTRO — e nunca o que acabou de chegar.
+
+    🔴 Este é o outro lado do mesmo defeito: quando a proposta já existia, a
+    função devolvia o resumo do pedido NOVO. O chat então dizia ao dono
+    *"registrei sua proposta"* e listava dimensões que a linha do painel não
+    tem. Quem for revisar lê uma coisa; quem pediu lembra de outra.
+
+    ⚠️ Falha de leitura cai para o resumo do pedido, com o aviso no log: é
+    melhor devolver algo do que derrubar a conversa — mas o caminho normal é o
+    de cima.
+    """
+    try:
+        cli = getattr(db, "client", db)
+        r = (cli.table("work_runs").select("id, company_id, input_payload")
+             .eq("id", run_id).eq("company_id", company_id).limit(1).execute())
+        linhas = getattr(r, "data", None) or []
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[094.1] payload gravado nao lido (%s)",
+                       type(exc).__name__)
+        return dict(cair_para)
+    if not linhas:
+        return dict(cair_para)
+    payload = dict(linhas[0].get("input_payload") or {})
+    return {chave: payload.get(chave, cair_para.get(chave))
+            for chave in cair_para} or dict(cair_para)
 
 
 def resumo_da_proposta(proposta: Any) -> Dict[str, Any]:
@@ -173,7 +222,7 @@ async def propor(db: Any, *, company_id: str, proposta: Any,
 
     from app.services.work.runs import criar_registro_sem_fila
 
-    chave = _chave(empresa, nome)
+    chave = _chave(empresa, resumo)
     registro = await criar_registro_sem_fila(
         db,
         company_id=empresa,
@@ -198,8 +247,10 @@ async def propor(db: Any, *, company_id: str, proposta: Any,
     # deixa de ser lido.
     if (registro or {}).get("reused"):
         logger.info("[094.1] proposta ja existia para %s — nada duplicado", nome)
+        # 🔴 O que volta é o payload GRAVADO, e não o pedido novo: é ele que o
+        # revisor vai ler no painel, e o chat não pode descrever outra coisa.
         return {"run_id": run_id, "approval_id": "", "reused": True,
-                "proposta": resumo}
+                "proposta": _proposta_gravada(db, empresa, run_id, resumo)}
 
     from app.services.work.approvals import WorkApprovalService
 

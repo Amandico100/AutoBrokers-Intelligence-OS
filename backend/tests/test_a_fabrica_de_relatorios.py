@@ -2575,6 +2575,245 @@ def bloco_11_a_fiacao():
 
 
 # ===========================================================================
+# [12] A PROMOCAO E O MAPA -- conserto de 04/09 (itens 6, 7 e 8)
+# ===========================================================================
+class _BancoFalso:
+    """Um banco de mentira, com as tres tabelas que a promocao toca.
+
+    ⛔ Nada sai daqui: nenhuma conexao, nenhum segredo, nenhuma escrita real.
+    🔴 Ele guarda o que foi ESCRITO, porque a metade das assercoes deste bloco e
+    sobre o que NAO foi escrito quando o comando reprova.
+    """
+
+    def __init__(self, runs=(), approvals=()):
+        self.dados = {"work_runs": [dict(x) for x in runs],
+                      "approval_requests": [dict(x) for x in approvals],
+                      "work_events": []}
+        self.escritas = []
+
+    def table(self, nome):
+        return _TabelaFalsa(self, nome)
+
+
+class _TabelaFalsa:
+    def __init__(self, banco, nome):
+        self.banco = banco
+        self.nome = nome
+        self.filtros = []
+        self.operacao = ("select", None)
+
+    def select(self, *a, **k):   # noqa: ANN002, ARG002
+        self.operacao = ("select", None)
+        return self
+
+    def insert(self, linha):
+        self.operacao = ("insert", linha)
+        return self
+
+    def update(self, campos):
+        self.operacao = ("update", campos)
+        return self
+
+    def eq(self, campo, valor):
+        self.filtros.append((campo, valor))
+        return self
+
+    def limit(self, *a, **k):    # noqa: ANN002, ARG002
+        return self
+
+    def order(self, *a, **k):    # noqa: ANN002, ARG002
+        return self
+
+    def execute(self):
+        linhas = self.banco.dados.setdefault(self.nome, [])
+        casadas = [x for x in linhas
+                   if all(str(x.get(c)) == str(v) for c, v in self.filtros)]
+        tipo, carga = self.operacao
+        if tipo == "insert":
+            linhas.append(dict(carga))
+            self.banco.escritas.append((self.nome, "insert", dict(carga)))
+            return _Resposta([dict(carga)])
+        if tipo == "update":
+            for x in casadas:
+                x.update(carga)
+            self.banco.escritas.append((self.nome, "update", dict(carga)))
+            return _Resposta(casadas)
+        return _Resposta(casadas)
+
+
+class _Resposta:
+    def __init__(self, data):
+        self.data = data
+
+
+def bloco_12_promocao_e_mapa():
+    _p("\n[12] PROMOCAO E MAPA (conserto 04/09) -- o run recusado · o slug · a sigla")
+
+    prom = exigir(os.path.join(METRICAS, "promover.py"), "BLOCO D",
+                  "_0941_promover_conserto")
+    registry, _e = _registry()
+    if prom is None or registry is None:
+        return
+    valida = sorted(registry.todas())[0]
+
+    def _banco(status="waiting_approval", decisao="approved", nome=None,
+               com_approval=True):
+        runs = [{"id": "run-1", "company_id": EMPRESA_A,
+                 "workflow_key": "metric.proposal", "status": status,
+                 "input_payload": {"nome_sugerido": nome or valida}}]
+        aps = ([{"id": "ap-1", "company_id": EMPRESA_A, "work_run_id": "run-1",
+                 "status": ("approved" if decisao.startswith("approved")
+                            else "rejected"),
+                 "decision": decisao, "subject_id": nome or valida}]
+               if com_approval else [])
+        return _BancoFalso(runs, aps)
+
+    def _tentar(**kw):
+        banco = kw.pop("banco")
+        try:
+            saida = prom.promover(banco, company_id=EMPRESA_A, run_id="run-1",
+                                  metric_id=kw.pop("metric_id", valida), **kw)
+            return "OK", saida, banco
+        except prom.Reprovado as exc:
+            return "REPROVADO", str(exc), banco
+        except Exception as exc:  # noqa: BLE001
+            return "EXPLODIU", "%s: %s" % (type(exc).__name__, exc), banco
+
+    # -- o caminho FELIZ, que e a linha de controle -------------------------
+    estado, saida, banco = _tentar(banco=_banco())
+    certo(estado == "OK" and isinstance(saida, dict),
+          "[12] CONTROLE: run vivo + aprovacao APPROVED + id igual ao proposto "
+          "-> PROMOVE",
+          str(saida)[:300] + "  🔴 um comando que so reprova nao prova nada")
+    eventos = [x for x in banco.escritas
+               if x[0] == "work_events" and x[1] == "insert"]
+    certo(len(eventos) == 1
+          and eventos[0][2].get("event_type") == "metric.promovida",
+          "[12] CONTROLE: e ele grava UM `metric.promovida`",
+          str(banco.escritas)[:250])
+
+    # -- run RECUSADO ------------------------------------------------------
+    estado, motivo, banco = _tentar(banco=_banco(decisao="rejected"))
+    certo(estado == "REPROVADO" and not banco.escritas,
+          "[12] TRATAMENTO: aprovacao REJECTED -> reprova e NAO escreve nada",
+          "%s / %s / escritas=%r" % (estado, str(motivo)[:200], banco.escritas)
+          + "  🔴 antes de 04/09 o comando nao lia `approval_requests`: uma "
+            "proposta recusada virava `succeeded` com evento de promocao")
+
+    estado, motivo, banco = _tentar(banco=_banco(com_approval=False))
+    certo(estado == "REPROVADO" and not banco.escritas,
+          "[12] TRATAMENTO: SEM aprovacao registrada -> reprova",
+          "'ninguem decidiu' nao e 'decidiu que sim' — %s" % str(motivo)[:180])
+
+    # -- run em estado TERMINAL: a segunda promocao ------------------------
+    for terminal in ("cancelled", "failed", "completed", "succeeded"):
+        estado, motivo, banco = _tentar(banco=_banco(status=terminal))
+        certo(estado == "REPROVADO" and not banco.escritas,
+              "[12] TRATAMENTO: run em %r -> reprova (a 2a promocao nao passa)"
+              % terminal,
+              "%s / %s" % (estado, str(motivo)[:180]))
+
+    # -- o `metric_id` diferente do proposto -------------------------------
+    outro = sorted(registry.todas())[1]
+    estado, motivo, banco = _tentar(banco=_banco(nome=outro))
+    certo(estado == "REPROVADO" and not banco.escritas,
+          "[12] TRATAMENTO: `metric_id` != `nome_sugerido` e SEM `--substitui` "
+          "-> reprova",
+          "%s / %s" % (estado, str(motivo)[:180])
+          + "  ⛔ trocar o nome em silencio deixa o painel afirmando que foi "
+            "aprovado o que nao foi")
+    estado, saida, banco = _tentar(banco=_banco(nome=outro),
+                                   substitui="a revisao preferiu este nome")
+    certo(estado == "OK" and "revisao" in str(saida.get("substitui", "")),
+          "[12] PAR: com `--substitui <motivo>` a troca PASSA, e o motivo fica "
+          "gravado",
+          str(saida)[:250])
+    evento = [x[2] for x in banco.escritas if x[0] == "work_events"]
+    certo(evento and evento[0].get("payload_redacted", {}).get("substitui"),
+          "[12] e o motivo entra no `payload_redacted` do evento",
+          str(evento)[:250])
+
+    # -- normalizacao do `metric_id` ---------------------------------------
+    estado, saida, banco = _tentar(banco=_banco(),
+                                   metric_id="  %s  " % valida.upper())
+    certo(estado == "OK",
+          "[12] o `metric_id` e normalizado (espaco e maiuscula nao criam uma "
+          "metrica nova)",
+          str(saida)[:200])
+
+    # -- item 7: a colisao de slug -----------------------------------------
+    proposta_mod = exigir(PROPOSTA_SVC, "BLOCO D",
+                          "_0941_proposta_conserto")
+    if proposta_mod is not None:
+        base = {"nome_sugerido": "commission.avg", "fatos": ["commission"],
+                "dimensoes": ["producer"], "time_basis": "POLICY_VALID_FROM",
+                "pergunta_exemplo": "qual a comissao media por produtor"}
+        outra = dict(base, dimensoes=["branch"],
+                     pergunta_exemplo="qual a comissao media por ramo")
+        k1 = proposta_mod._chave(EMPRESA_A, base)
+        k2 = proposta_mod._chave(EMPRESA_A, outra)
+        k3 = proposta_mod._chave(EMPRESA_A, dict(base))
+        certo(k1 != k2,
+              "[12] dois PEDIDOS diferentes com o MESMO nome dao chaves "
+              "diferentes",
+              "🔴 a chave era `sha256(company + nome)`: a segunda proposta era "
+              "engolida e o chat devolvia dimensoes que o registro nao tem")
+        certo(k1 == k3,
+              "[12] PAR: o MESMO pedido duas vezes continua sendo UMA proposta",
+              "senao o dono teria duas decisoes para tomar sobre a mesma coisa")
+        certo(proposta_mod._chave("outra-empresa", base) != k1,
+              "[12] e duas corretoras com o mesmo pedido sao duas propostas "
+              "(CLAUDE.md §7)")
+        # E o que volta quando ela JA EXISTIA e o payload GRAVADO.
+        banco = _BancoFalso([{"id": "run-9", "company_id": EMPRESA_A,
+                              "workflow_key": "metric.proposal",
+                              "status": "waiting_approval",
+                              "input_payload": dict(base)}])
+        devolvido = proposta_mod._proposta_gravada(banco, EMPRESA_A, "run-9",
+                                                   outra)
+        certo(devolvido.get("dimensoes") == ["producer"],
+              "[12] proposta que JA EXISTIA devolve o payload GRAVADO, e nao o "
+              "pedido novo (veio %r)" % (devolvido.get("dimensoes"),),
+              "quem revisa le uma coisa e quem pediu lembra de outra")
+
+    # -- item 8: a sigla, e o casamento PARCIAL que saiu -------------------
+    ses = exigir(os.path.join(PROVIDERS, "susep_ses_provider.py"), "BLOCO B",
+                 "_0941_ses_conserto")
+    if ses is not None:
+        certo(ses.coenti_de("PORT") not in ("", ses.UNKNOWN),
+              "[12] a SIGLA da carteira casa com uma entidade (`PORT` -> %r)"
+              % (ses.coenti_de("PORT"),),
+              "🔴 a carteira NAO traz o nome: traz a sigla. 📊 antes do mapa de "
+              "siglas, 12,35%% do premio casava; depois, 83,86%%")
+        certo(ses.coenti_de("PORTO SEGURO SAUDE") == ses.UNKNOWN,
+              "[12] TRATAMENTO: o casamento PARCIAL saiu — 'PORTO SEGURO "
+              "SAUDE' nao herda a entidade da Porto de AUTO (veio %r)"
+              % (ses.coenti_de("PORTO SEGURO SAUDE"),),
+              "⛔ era assim que a sinistralidade de OUTRA empresa entrava num "
+              "argumento de negociacao de reajuste")
+        certo(ses.coenti_de("PORTO SEGURO COMPANHIA DE SEGUROS GERAIS")
+              == ses.coenti_de("porto"),
+              "[12] PAR: o nome COMPLETO da entidade continua casando")
+        certo(ses.coenti_de("SULA") == ses.UNKNOWN,
+              "[12] e a sigla cuja entidade nao foi decidida sai UNKNOWN, "
+              "nunca um palpite (veio %r)" % (ses.coenti_de("SULA"),),
+              "📊 ha 11 entidades com esse nome no censo publico e nenhuma tem "
+              "premio de auto no trimestre medido")
+        siglas = ses.mapa_de_siglas()
+        certo(len(siglas) >= 60 and all(
+                  str(v.get("criterio") or "").strip() for v in siglas.values()),
+              "[12] TODA sigla do arquivo diz o CRITERIO pelo qual casou (ou "
+              "nao) — %d siglas" % (len(siglas),),
+              "uma constante que escolhe entre alternativas precisa dizer por "
+              "que esta certa, escrito ao lado dela (CLAUDE.md §9.5)")
+        sem = [k for k, v in siglas.items()
+               if str(v.get("coenti")) == ses.UNKNOWN]
+        certo(bool(sem),
+              "[12] e o que NAO casou fica LISTADO no arquivo (%d), e nunca "
+              "omitido" % (len(sem),))
+
+
+# ===========================================================================
 # [9] CONTROLE GERAL — este guarda CONSEGUE ficar vermelho?
 # ===========================================================================
 def bloco_9_controle():
@@ -2666,6 +2905,7 @@ BLOCOS = (
     ("[7] VOCABULARIO", bloco_7_vocabulario),
     ("[8] PROTOCOLO", bloco_8_protocolo),
     ("[11] A FIACAO", bloco_11_a_fiacao),
+    ("[12] PROMOCAO E MAPA", bloco_12_promocao_e_mapa),
     ("[9] CONTROLE GERAL", bloco_9_controle),
 )
 
