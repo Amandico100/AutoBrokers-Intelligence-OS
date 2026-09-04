@@ -99,8 +99,31 @@ VISOES_PADRAO: Tuple[str, ...] = tuple(VISOES)
 COMPARAVEIS = ("producao", "pessoas", "mix", "projecao")
 
 
+#: 🔴 SPEC-094.1 · BLOCO D. Os carimbos das duas respostas que NÃO trazem
+#: número — e que por isso não podem se parecer com as que trazem.
+CARIMBO_CATALOGO = "METRICAS_REGISTRADAS"
+CARIMBO_SEM_METRICA = "METRICA_NAO_REGISTRADA"
+
+COMO_FALAR_DO_CATALOGO = (
+    "Isto é o CATÁLOGO do que existe — não há nenhum número aqui, e não houve "
+    "consulta à carteira. Responda em português, com as PERGUNTAS da lista, e "
+    "ofereça levantar as que interessarem ao dono. NUNCA cite um valor a partir "
+    "deste bloco, e nunca prometa uma métrica que não esteja nele."
+)
+
+COMO_FALAR_DA_PROPOSTA = (
+    "NENHUM número foi calculado — e é PROIBIDO dizer qualquer valor sobre o "
+    "que ele pediu, inclusive zero, aproximado ou 'mais ou menos'. Repasse a "
+    "recusa acima com todas as letras, diga a métrica que você propõe e, se "
+    "houver `parecida_com`, ofereça a que já existe ANTES de propor outra. "
+    "Pergunte se ele quer que você registre a proposta para revisão — e só "
+    "então chame a ferramenta de propor métrica. Você não registra nada por "
+    "conta, e não existe jeito de você promover uma métrica."
+)
+
+
 class PlanoDeConsulta(BaseModel):
-    """O que o modelo preenche. Quatro campos, e nenhum deles é uma fórmula."""
+    """O que o modelo preenche. Nenhum dos campos é uma fórmula."""
 
     period: str = Field(
         default="",
@@ -140,6 +163,14 @@ class PlanoDeConsulta(BaseModel):
             "resposta sai do pacote que já existe, sem consultar de novo — e "
             "os números continuam sendo os mesmos. Vazio na primeira "
             "pergunta."),
+    )
+    listar_metricas: bool = Field(
+        default=False,
+        description=(
+            "true = NÃO consulte nada; devolva só a LISTA do que o sistema "
+            "sabe medir, com a pergunta que cada métrica responde. Use antes "
+            "de dizer que algo não existe, e sempre que o dono perguntar 'o "
+            "que você consegue medir?'. Nenhum número sai deste modo."),
     )
 
 
@@ -475,6 +506,51 @@ COMO_FALAR = (
 )
 
 
+def bloco_citavel(pacote: Any, propostas: Optional[List[Any]] = None) -> str:
+    """O bloco `<<PACK>>` com o SELO de origem e as propostas ao lado.
+
+    🔴 SPEC-094.1 · BLOCO D, modelado no selo *Trusted* do Databricks Genie
+    (ref ③): o selo viaja COM a resposta. Cada métrica ganha
+    `origem: "registry"`, cada proposta ganha `origem: "proposta"`, e as duas
+    listas ficam SEPARADAS — `metrics` e `propostas`. Nunca na mesma lista:
+    uma proposta misturada às métricas seria lida pelo narrador com a mesma
+    autoridade que o número calculado, que é a coisa exata que esta SPEC
+    existe para impedir.
+
+    ⛔ **Proposta NUNCA tem `value`.** Ela nem tem onde guardar um: o tipo
+    `PropostaDeMetrica` não declara o campo (mutação M-PROPOSTA). Esta função
+    faz a segunda pergunta assim mesmo — cinto e suspensório — porque o custo é
+    uma linha e o defeito que ela pega chega ao dono como número inventado.
+
+    ⚠️ Ela mora AQUI, e não em `evidence_pack.py`, porque o pack é peça
+    compartilhada e esta é a apresentação de UMA tool. Se uma segunda tool
+    precisar do mesmo selo, o lugar dele passa a ser o pack — e aí a função se
+    MUDA, não se copia (CLAUDE.md §5).
+    """
+    import json as _json
+
+    from app.comercial.evidence_pack import ABERTURA, FECHAMENTO
+
+    corpo = pacote.serializar()
+    for item in corpo.get("metrics", ()):
+        # 🔴 O selo é escrito por quem SABE que o número veio do registry —
+        # aqui —, e não copiado de um campo do próprio item, que qualquer
+        # caminho novo poderia preencher com outra coisa.
+        item["origem"] = "registry"
+    saida: List[Dict[str, Any]] = []
+    for pr in (propostas or []):
+        linha = pr.serializar()
+        if "value" in linha or "valor" in linha:
+            raise RuntimeError(
+                "M-PROPOSTA: uma proposta de métrica chegou ao bloco citável "
+                "com valor. Proposta não tem número — se ela ganhou um campo "
+                "de valor, o tipo mudou e o defeito é lá, não aqui")
+        saida.append(linha)
+    corpo["propostas"] = saida
+    texto = _json.dumps(corpo, ensure_ascii=False, allow_nan=False)
+    return f"{ABERTURA}\n{texto}\n{FECHAMENTO}"
+
+
 #: 🔴 Menos que isto num prefixo é ruído, e não uma abreviação. Uma letra
 #: sozinha casa quase tudo; três já é uma palavra começada ("all", "seg").
 MINIMO_DO_PREFIXO = 3
@@ -544,8 +620,16 @@ class ExecutiveIntelligenceTool(BaseTool):
 
     async def _arun(self, period: str = "", compare: str = "",
                     views: Optional[List[str]] = None, dimension: str = "",
-                    pack_id: str = "", **_: Any) -> str:
+                    pack_id: str = "", listar_metricas: bool = False,
+                    **_: Any) -> str:
         try:
+            # 🔴 O catálogo vem ANTES de tudo, inclusive do `pack_id`: ele não
+            # consulta nada, não devolve número e não depende de haver
+            # carteira. Modelado no MCP do dbt Semantic Layer (ref ⑥) — o
+            # modelo descobre o que existe antes de propor, e é isso que evita
+            # a proposta duplicada.
+            if listar_metricas:
+                return self._catalogo()
             if pack_id:
                 seguindo = self._seguir(pack_id, dimension, period, compare)
                 if seguindo is not None:
@@ -577,6 +661,82 @@ class ExecutiveIntelligenceTool(BaseTool):
             "endereço. Diga a verdade: a leitura da carteira não completou "
             f"agora, e ofereça tentar de novo. Motivo interno: {motivo}"
         )
+
+    # ------------------------------------------------------------------ #
+    # 🔴 SPEC-094.1 · BLOCO D — o catálogo, a proposta, e a recusa
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _catalogo() -> str:
+        """O que o sistema sabe medir. Sem número, sem consulta, sem link.
+
+        Modelado no MCP do dbt Semantic Layer (ref ⑥): *"o modelo lista
+        métricas e dimensões e pede o cálculo por parâmetros; não escreve a
+        fórmula"*. O que sai é `metric_id@versão`, o rótulo e a **pergunta
+        verificada** — porque ninguém reconhece a própria pergunta em
+        `mix.branch`, e um catálogo irreconhecível é um catálogo que ganha três
+        "comissão do mês" (ref ②).
+
+        ⛔ Nenhum `value`, nenhuma `coverage`, nenhum `pack_id`. Este bloco não
+        é um pacote de evidência: é um índice.
+        """
+        from app.comercial.metricas import registry
+
+        itens = []
+        for mid, d in sorted(registry.todas().items()):
+            itens.append({"metric_id": mid, "ref": d.ref, "label": d.label,
+                          "pergunta_verificada": d.pergunta_verificada,
+                          "unit": d.unit, "time_basis": d.time_basis,
+                          "origem": "registry"})
+        corpo = json.dumps({"metricas": itens, "total": len(itens),
+                            "assuntos": sorted(VISOES)},
+                           ensure_ascii=False, allow_nan=False)
+        return (f"{CARIMBO_CATALOGO} · {len(itens)} métrica(s) registrada(s). "
+                "Nenhuma consulta foi feita e nenhum número foi calculado.\n\n"
+                f"<<CATALOGO\n{corpo}\nCATALOGO>>\n\n"
+                + COMO_FALAR_DO_CATALOGO)
+
+    @staticmethod
+    def _propostas(desconhecidas: List[str]) -> List[Any]:
+        """Uma `PropostaDeMetrica` por assunto que o registry não tem.
+
+        ⚠️ Falha aqui devolve lista VAZIA e não derruba o Pulso — mas o
+        chamador nunca cai no fallback de TODAS por causa disso: quem decide se
+        houve pedido desconhecido é `desconhecidas`, que é calculado antes e
+        não depende desta função.
+        """
+        if not desconhecidas:
+            return []
+        try:
+            from app.comercial.metricas import registry
+            from app.comercial.proposta import propor_a_partir_do_pedido
+
+            catalogo = registry.todas()
+            return [propor_a_partir_do_pedido(v, catalogo,
+                                              registry.POLICY_VALID_FROM)
+                    for v in desconhecidas]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[094.1] proposta nao montada (%s)",
+                           type(exc).__name__)
+            return []
+
+    @staticmethod
+    def _so_a_proposta(propostas: List[Any]) -> str:
+        """O dono pediu SÓ o que não existe. Não há Pulso, e não se inventa um.
+
+        🔴 Nem consulta, nem link, nem `pack_id`. Um relatório publicado aqui
+        seria uma peça sobre outra pergunta, com a marca da corretora e um
+        endereço que o dono guardaria.
+        """
+        corpo = json.dumps({"metrics": [], "propostas":
+                            [p.serializar() for p in propostas]},
+                           ensure_ascii=False, allow_nan=False)
+        from app.comercial.evidence_pack import ABERTURA, FECHAMENTO
+
+        return (f"{CARIMBO_SEM_METRICA} · NENHUM número foi calculado e NENHUM "
+                "relatório foi gerado.\n\n"
+                + "\n\n".join(p.frase() for p in propostas)
+                + f"\n\n{ABERTURA}\n{corpo}\n{FECHAMENTO}\n\n"
+                + COMO_FALAR_DA_PROPOSTA)
 
     # ------------------------------------------------------------------ #
     def _seguir(self, pack_id: str, dimension: str,
@@ -616,7 +776,9 @@ class ExecutiveIntelligenceTool(BaseTool):
             f"{aviso}.\n\n"
             f"[Abrir o relatório]({guardado['link']})\n\n"
             + (fora_do_bloco + "\n\n" if fora_do_bloco else "")
-            + recorte.bloco_para_o_modelo()
+            # O mesmo selo de origem do caminho normal: um pacote reusado não
+            # é um pacote de outra procedência.
+            + bloco_citavel(recorte)
             + "\n\n" + resumo_deterministico(pacote, reusado=True)
             + "\n\n" + COMO_FALAR
         )
@@ -743,9 +905,26 @@ class ExecutiveIntelligenceTool(BaseTool):
         company_id = str(self.company_id or "")
         p, anterior = periodo_e_comparacao(calc, period, compare)
 
-        escolhidas = [v for v in (views or VISOES_PADRAO) if v in VISOES]
-        if not escolhidas:
+        # 🔴 SPEC-094.1 · BLOCO D — GATE ZERO (ii). O que havia aqui era
+        # `escolhidas = [v for v in (views or PADRAO) if v in VISOES]` seguido
+        # de `if not escolhidas: escolhidas = TODAS`.
+        #
+        # 📊 O efeito medido: `views=["sinistros"]` — um assunto que o registry
+        # NÃO tem — era descartado em silêncio, caía no fallback de TODAS, e o
+        # dono recebia um Pulso 360 COMPLETO sobre outra pergunta, sem uma
+        # linha de aviso. Não é uma resposta faltando: é a resposta errada com
+        # a cara certa, que é o modo de falha silencioso do CLAUDE.md §9.5.
+        pedidas = [str(v).strip() for v in (views or []) if str(v).strip()]
+        desconhecidas = [v for v in pedidas if v not in VISOES]
+        escolhidas = [v for v in pedidas if v in VISOES]
+        if not pedidas:
             escolhidas = list(VISOES_PADRAO)
+        propostas = self._propostas(desconhecidas)
+        # 🔴 Pediu SÓ o que não existe: não há Pulso a montar, e não se monta
+        # um "parecido". A resposta é a recusa e a proposta — sem consulta,
+        # sem link, sem número.
+        if propostas and not escolhidas:
+            return self._so_a_proposta(propostas)
         ids: List[str] = []
         for v in escolhidas:
             for mid in VISOES[v]:
@@ -798,13 +977,20 @@ class ExecutiveIntelligenceTool(BaseTool):
 
         recorte, fora_do_bloco = self._recortar(pacote, dimension)
         aviso = " (período padrão — o dono não especificou)" if p.e_padrao else ""
+        # 🔴 A recusa da view desconhecida vai FORA do bloco, junto com o
+        # recorte recusado, e pelo mesmo motivo: é uma frase sobre o PEDIDO, e
+        # não sobre a carteira. Dentro do pack ela seria um "dado" que o modelo
+        # citaria com `metric_id` ao lado.
+        fora = [x for x in (fora_do_bloco,) if x]
+        fora.extend(pr.frase() for pr in propostas)
         return (
             f"{CARIMBO_PRONTO} · Pulso 360 de **{p.rotulo}**{aviso}.\n\n"
             f"[Abrir o relatório]({link})\n\n"
-            + (fora_do_bloco + "\n\n" if fora_do_bloco else "")
-            + recorte.bloco_para_o_modelo()
+            + ("\n\n".join(fora) + "\n\n" if fora else "")
+            + bloco_citavel(recorte, propostas)
             + "\n\n" + resumo_deterministico(pacote)
             + "\n\n" + COMO_FALAR
+            + ("\n\n" + COMO_FALAR_DA_PROPOSTA if propostas else "")
         )
 
     # ------------------------------------------------------------------ #
@@ -1038,6 +1224,24 @@ class ExecutiveIntelligenceTool(BaseTool):
         ⛔ Nenhum bloco novo: todos existem em `blocks.py` desde a SPEC-057.
         """
         from app.agents.tools.relatorios_comerciais import _fontes, _reais
+
+        # 🔴 SPEC-094.1 · M-PROPOSTA. `_compor` desenha o Artifact, e o
+        # Artifact é a peça que o dono guarda e reencaminha. Uma proposta que
+        # chegasse aqui viraria cartão com título de métrica — e um cartão sem
+        # número, numa peça em que todos os outros têm, lê-se como "zero".
+        #
+        # ⚠️ A pergunta é por AUSÊNCIA de `metric_id`, e não por `isinstance`:
+        # um mesmo arquivo carregado por caminho e por pacote produz duas
+        # classes diferentes, e `isinstance` diria `False` para a peça certa
+        # (é a mesma razão do `_float` do registry, medida no gate do BLOCO D
+        # da 094).
+        intrusas = [type(m).__name__ for m in metricas
+                    if not hasattr(m, "metric_id")]
+        if intrusas:
+            raise RuntimeError(
+                "M-PROPOSTA: %s chegou à composição do Artifact. O Artifact "
+                "desenha o que o REGISTRY calculou; proposta é texto de chat, "
+                "e não cartão." % ", ".join(sorted(set(intrusas))))
 
         por_id = {m.metric_id: m for m in metricas}
         comp = {c.get("metric_id"): c for c in comparacoes}

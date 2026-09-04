@@ -55,6 +55,24 @@ POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
 #: invisível. Aqui não há import: o registry se injeta.
 _DEFINICOES: List[Dict[str, Any]] = []
 
+#: 🔴 SPEC-094.1 · BLOCO D. A fixture e o sentinela vêm do registry por
+#: INJEÇÃO, como tudo neste arquivo: um `import` criaria a segunda cópia do
+#: registry que o comentário acima explica. Aqui eles são literais, e o guarda
+#: do protocolo confere que a `fixture` declarada é uma que existe.
+FIXTURE = "094:6-apolices-2025+4-vencimentos@2025-01-01..2026-12-31"
+INDISPONIVEL = "UNAVAILABLE"
+
+
+def golden(esperado):
+    """`{"fixture": ..., "esperado": ...}` — 📊 medido, não estimado.
+
+    Cada `esperado` foi lido de `registry.calcular()` rodando sobre a fixture
+    sintética da 094 em 03/09/2026, e não escrito de cabeça. O comando está no
+    relatório da SPEC-094.1.
+    """
+    return {"fixture": FIXTURE, "esperado": esperado}
+
+
 Contexto = Any
 Saida = Any
 
@@ -123,6 +141,8 @@ _DEFINICOES.append(dict(
                   "📊 remedida POR CORRETORA, nunca constante da fonte",
     forbidden_fallback="⛔ apólice sem produtor nunca é atribuída ao maior nem "
                        "rateada; ela some do ranking E aparece na cobertura",
+    pergunta_verificada="Quantos produtores têm produção atribuída no período?",
+    golden=golden(2.0),
 ))
 
 
@@ -161,6 +181,8 @@ _DEFINICOES.append(dict(
     coverage_rule="a própria métrica É a cobertura; o campo `coverage` repete o "
                   "valor para que o envelope continue autoexplicativo",
     forbidden_fallback="⛔ nunca arredondar para 100% porque 'quase tudo tem'",
+    pergunta_verificada="Que fatia das apólices do período tem produtor identificado na fonte?",
+    golden=golden(66.66666666666667),
 ))
 
 
@@ -218,6 +240,8 @@ _DEFINICOES.append(dict(
     coverage_rule="fração das apólices do período com comissão legível",
     forbidden_fallback="⛔ janela anterior vazia nunca vira '0%' nem '100%'; "
                        "vira `comparavel: false`",
+    pergunta_verificada="A comissão dos produtores subiu ou caiu nos últimos 30 dias?",
+    golden=golden(INDISPONIVEL),
 ))
 
 
@@ -267,6 +291,8 @@ _DEFINICOES.append(dict(
     forbidden_fallback="⛔ nunca somar só o produtor de ordem 1 (📊 o censo mediu "
                        "ordem 1 = 4% e ordem 2 = 15% na mesma apólice), e nunca "
                        "tratar repasse ausente como zero",
+    pergunta_verificada="Quanto a corretora deve de repasse aos produtores no que vence na janela?",
+    golden=golden(525.0),
 ))
 
 
@@ -372,4 +398,6 @@ _DEFINICOES.append(dict(
                        "nunca chamar este número de LUCRO — não há custo aqui",
     premissa="⚠️ contribuição não é lucro: não entram custo fixo, imposto nem "
              "estorno (📊 os dois últimos não foram verificados no censo)",
+    pergunta_verificada="Quanto sobra para a corretora depois de pagar o repasse dos produtores?",
+    golden=golden(4025.0),
 ))

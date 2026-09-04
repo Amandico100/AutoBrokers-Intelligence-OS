@@ -953,4 +953,15 @@ def ferramentas_comerciais(*, company_id: Optional[str], supabase: Any) -> List[
     except Exception as e:  # noqa: BLE001
         logger.warning("[094.1] listar_entregas nao anexada: %s",
                        type(e).__name__)
+    # 🔴 SPEC-094.1 BLOCO D — `propor_metrica`. Idem: ela abre um `work_runs`
+    # com Approval em nome da corretora. Propor e o teto do que o chat faz com
+    # uma metrica que nao existe — e quem propoe e o dono, nunca o segurado.
+    try:
+        from app.agents.tools.propor_metrica import ferramenta_de_proposta
+
+        tools.extend(ferramenta_de_proposta(company_id=str(company_id),
+                                            supabase=supabase))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[094.1] propor_metrica nao anexada: %s",
+                       type(e).__name__)
     return tools

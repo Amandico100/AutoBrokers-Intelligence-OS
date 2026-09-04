@@ -31,6 +31,24 @@ POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
 #: invisível. Aqui não há import: o registry se injeta.
 _DEFINICOES: List[Dict[str, Any]] = []
 
+#: 🔴 SPEC-094.1 · BLOCO D. A fixture e o sentinela vêm do registry por
+#: INJEÇÃO, como tudo neste arquivo: um `import` criaria a segunda cópia do
+#: registry que o comentário acima explica. Aqui eles são literais, e o guarda
+#: do protocolo confere que a `fixture` declarada é uma que existe.
+FIXTURE = "094:6-apolices-2025+4-vencimentos@2025-01-01..2026-12-31"
+INDISPONIVEL = "UNAVAILABLE"
+
+
+def golden(esperado):
+    """`{"fixture": ..., "esperado": ...}` — 📊 medido, não estimado.
+
+    Cada `esperado` foi lido de `registry.calcular()` rodando sobre a fixture
+    sintética da 094 em 03/09/2026, e não escrito de cabeça. O comando está no
+    relatório da SPEC-094.1.
+    """
+    return {"fixture": FIXTURE, "esperado": esperado}
+
+
 Contexto = Any
 Saida = Any
 
@@ -91,6 +109,8 @@ _DEFINICOES.append(dict(
                   "é sobre a comissão, não sobre a contagem",
     forbidden_fallback="⛔ apólice sem seguradora nunca é distribuída entre as "
                        "conhecidas; ela vira '(não informado)' e aparece",
+    pergunta_verificada="Que fatia da comissão do período está na maior seguradora?",
+    golden=golden(43.0),
 ))
 
 _DEFINICOES.append(dict(
@@ -101,4 +121,6 @@ _DEFINICOES.append(dict(
     formula=_mix_ramo,
     coverage_rule="fração das apólices do período com comissão legível",
     forbidden_fallback="⛔ ramo ausente vira '(não informado)', nunca é rateado",
+    pergunta_verificada="Que fatia da comissão do período está no maior ramo?",
+    golden=golden(61.0),
 ))

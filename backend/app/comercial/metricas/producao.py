@@ -22,6 +22,24 @@ POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
 #: invisível. Aqui não há import: o registry se injeta.
 _DEFINICOES: List[Dict[str, Any]] = []
 
+#: 🔴 SPEC-094.1 · BLOCO D. A fixture e o sentinela vêm do registry por
+#: INJEÇÃO, como tudo neste arquivo: um `import` criaria a segunda cópia do
+#: registry que o comentário acima explica. Aqui eles são literais, e o guarda
+#: do protocolo confere que a `fixture` declarada é uma que existe.
+FIXTURE = "094:6-apolices-2025+4-vencimentos@2025-01-01..2026-12-31"
+INDISPONIVEL = "UNAVAILABLE"
+
+
+def golden(esperado):
+    """`{"fixture": ..., "esperado": ...}` — 📊 medido, não estimado.
+
+    Cada `esperado` foi lido de `registry.calcular()` rodando sobre a fixture
+    sintética da 094 em 03/09/2026, e não escrito de cabeça. O comando está no
+    relatório da SPEC-094.1.
+    """
+    return {"fixture": FIXTURE, "esperado": esperado}
+
+
 Contexto = Any
 Saida = Any
 
@@ -60,6 +78,8 @@ _DEFINICOES.append(dict(
                   "no período; nada é excluído por falta de campo",
     forbidden_fallback="⛔ nunca contar endosso, proposta ou cancelamento como "
                        "apólice para 'fechar' o número",
+    pergunta_verificada="Quantas apólices a corretora emitiu no período?",
+    golden=golden(6.0),
 ))
 
 
@@ -86,6 +106,8 @@ _DEFINICOES.append(dict(
     formula=_premio,
     coverage_rule="fração das apólices do período cujo prêmio a fonte expôs",
     forbidden_fallback="⛔ prêmio ausente nunca entra como 0,00 na soma",
+    pergunta_verificada="Quanto de prêmio a corretora emitiu no período?",
+    golden=golden(29000.0),
 ))
 
 
@@ -123,6 +145,8 @@ _DEFINICOES.append(dict(
     coverage_rule="fração das apólices do período com comissão legível",
     forbidden_fallback="⛔ nunca apresentar este número como comissão RECEBIDA, "
                        "e nunca somar apólice sem comissão como zero",
+    pergunta_verificada="Quanto a corretora apropriou de comissão nas apólices emitidas no período?",
+    golden=golden(5000.0),
 ))
 
 
@@ -166,6 +190,11 @@ _DEFINICOES.append(dict(
                   "outras não entram em nenhum dos dois lados",
     forbidden_fallback="⛔ apólice sem classificação nunca é jogada em 'novo' "
                        "para os dois lados somarem 100%",
+    # ⚠️ O valor desta métrica é a REPARTIÇÃO (um dicionário). O golden
+    # guarda o `total`, que é o único escalar que a repartição tem — a
+    # régua compara o tamanho da população, e o breakdown fica no envelope.
+    pergunta_verificada="Quanto do período é negócio novo e quanto é renovação da carteira?",
+    golden=golden(6.0),
 ))
 
 
@@ -188,16 +217,19 @@ def _sem_numero(ctx: Contexto) -> Saida:  # noqa: ARG001
     return None, None, [], []
 
 
-for _mid, _label, _cap, _aceitos, _porque in (
+for _mid, _label, _cap, _aceitos, _porque, _pergunta in (
     ("commission.broker_received", "Comissão recebida",
      "financial.commission_received", (SUPPORTED,),
-     "só existe no detalhe de uma apólice por chamada — não há rota de lote"),
+     "só existe no detalhe de uma apólice por chamada — não há rota de lote",
+     "Quanto de comissão a corretora efetivamente RECEBEU no período?"),
     ("commission.reversals", "Estornos de comissão",
      "financial.commission_reversals", (SUPPORTED,),
-     "não verificado nesta rodada do censo — não concluir que não existe"),
+     "não verificado nesta rodada do censo — não concluir que não existe",
+     "Quanto de comissão foi estornado no período?"),
     ("commission.tax", "Impostos sobre a comissão",
      "financial.commission_tax", (SUPPORTED,),
-     "não verificado nesta rodada do censo — não concluir que não existe"),
+     "não verificado nesta rodada do censo — não concluir que não existe",
+     "Quanto de imposto incidiu sobre a comissão do período?"),
 ):
     _DEFINICOES.append(dict(
         metric_id=_mid, version=1, label=_label, grain="policy", unit="BRL",
@@ -208,4 +240,9 @@ for _mid, _label, _cap, _aceitos, _porque in (
         coverage_rule="não se aplica: não há número",
         forbidden_fallback=f"⛔ INDISPONÍVEL, nunca 0,00 nem 'igual à apropriada' "
                            f"({_porque})",
+        pergunta_verificada=_pergunta,
+        # 🔴 INDISPONÍVEL na fixture porque é INDISPONÍVEL na fonte: um golden
+        # de 0,00 aqui ensinaria a régua a aceitar o zero de consolação — que é
+        # exatamente o que estas três definições existem para recusar.
+        golden=golden(INDISPONIVEL),
     ))

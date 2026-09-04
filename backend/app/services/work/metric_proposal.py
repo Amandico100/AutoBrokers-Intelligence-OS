@@ -1,0 +1,253 @@
+# -*- coding: utf-8 -*-
+"""A proposta de métrica vira trabalho durável — SPEC-094.1 · BLOCO D.
+
+🔴 **ESTE MÓDULO É O PRIMEIRO CHAMADOR DE `WorkApprovalService.solicitar()` DO
+PRODUTO.**
+
+📊 Medido em 03/09/2026 (SPEC-094.1 §1.7): `solicitar()` existe desde a SPEC-055
+e tem **ZERO chamadores**. A SPEC-053 §11.1 é direta — *"prompt não é gate"* — e
+até hoje o gate era só a peça, sem ninguém do outro lado. Aqui ele passa a ter
+um caso de uso real, e o caso de uso é o mais barato possível de propósito: uma
+proposta de métrica **não executa nada**. Se este primeiro chamador estiver
+errado, o pior que acontece é uma linha em `approval_requests` que ninguém
+decide — e não uma mensagem que sai, um portal que age ou um dinheiro que se
+move. Estrear o HITL com o efeito mais caro seria estrear no lugar errado.
+
+## O desenho, e por que ele é assim
+
+```
+o chat propõe          `propor_metrica` (tool)  →  este módulo
+o registro nasce       work_runs, workflow_key='metric.proposal', SEM fila
+o humano decide        approval_requests → `decidir()` pela API admin da 055
+a promoção é FORA      `python -m app.comercial.metricas.promover ...`
+```
+
+⛔ **Não existe tool de promover, e a ausência é a peça.** Modelado no MCP do
+Cube (ref ①), que *"deliberately exposes no commit tool"*: remover a capacidade,
+não pedir contenção. Um modelo que pudesse promover promoveria — 📊 BIRD mede o
+melhor sistema em 82,28% contra 92,96% do humano, e pelo CLAUDE.md §9.5 a
+resposta errada é a silenciosa.
+
+## O run NÃO tem executor, e é por isso que não vai para a fila
+
+Como a `claims.shadow` da 093-B: é um **registro durável**, não um trabalho
+enfileirado. `criar_registro_sem_fila` grava na mesma tabela, com o mesmo enum
+de status e a mesma linha do tempo em `work_events` — o que ele não tem é
+outbox. 🔴 Se fosse pelo RPC `work_run_create`, o Smith Worker pegaria um run
+sem handler e o marcaria `failed`: um espelho durável que MENTE, pior do que
+não existir.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+WORKFLOW_KEY = "metric.proposal"
+OUTCOME_TYPE = "metric.proposal"
+OUTCOME_TITLE = "Proposta de métrica nova"
+#: O que distingue o caminho é ESTE campo, e não `source_type` — que tem CHECK
+#: (`ck_work_runs_source`) e só aceita chat|routine|auxiliary|portal|api|admin|
+#: system|retry|child_run. Não há "proposta" ali, e inventar um valor seria um
+#: INSERT recusado.
+RUNTIME_KIND = "proposta"
+SOURCE_TYPE = "chat"
+PREFIXO_DA_CHAVE = "metric.proposal:"
+
+#: 🔴 O status de ESPERA do vocabulário que já existe. 📊 Medido no código, e
+#: não presumido: `api/work_runs.py:314` conta
+#: `_contar("work_runs", status="waiting_approval")` e `workflows.py:458,548`
+#: transiciona para ele quando um passo pede humano. Inventar `proposta` como
+#: status faria o painel de Work Runs deixar de contar estas linhas — e uma
+#: proposta que não aparece no painel é uma proposta que ninguém decide.
+STATUS_DE_ESPERA = "waiting_approval"
+RISCO = "low"
+
+ACTION_TYPE = "metric.proposal"
+SUBJECT_TYPE = "metric_proposal"
+EVENTO_CRIADA = "metric.proposta_criada"
+EVENTO_PROMOVIDA = "metric.promovida"
+
+#: 🔴 Quem aprova, por padrão. **F-094.1-02 é uma decisão ABERTA do Founder**
+#: (SPEC-094.1 §6): você, ou o dono da corretora? O default desta SPEC é o
+#: Founder, e o parâmetro `aprovador` existe para que a decisão, quando vier,
+#: seja uma linha de configuração e não uma reescrita.
+#:
+#: ⚠️ É um PAPEL, e não o id de uma pessoa: nome de gente não entra em payload
+#: (CLAUDE.md §12 e SPEC-094 §2).
+APROVADOR_PADRAO = "founder"
+APROVADORES = ("founder", "company_owner")
+
+#: 💭 Quanto tempo a proposta fica de pé esperando decisão. Uma semana: métrica
+#: nova não é urgência, e expirar em 24h (o padrão do HITL, que foi pensado
+#: para efeito externo) faria toda proposta morrer antes de alguém olhar.
+VALIDADE_HORAS = 24 * 7
+
+
+def _chave(company_id: str, nome_sugerido: str) -> str:
+    """A chave de idempotência da proposta.
+
+    🔴 Ela leva `company_id` DENTRO, além de o helper já casar pelo par
+    `(company_id, idempotency_key)`: a chave viaja também para
+    `approval_requests`, e lá o par não é garantido pelo índice. Duas
+    corretoras propondo a mesma métrica no mesmo dia são duas propostas.
+    """
+    marca = hashlib.sha256(
+        ("%s|%s" % (company_id, nome_sugerido)).encode("utf-8")).hexdigest()[:16]
+    return PREFIXO_DA_CHAVE + marca
+
+
+def resumo_da_proposta(proposta: Any) -> Dict[str, Any]:
+    """O que a proposta leva para o registro: enums, ids e a pergunta ecoada.
+
+    ⛔ Nenhum texto livre do modelo entra cru. `pergunta_exemplo` já chega
+    normalizado e cortado por `PropostaDeMetrica` — sem pontuação, sem acento e
+    com teto de tamanho — pela mesma razão pela qual `dimension` passou a ser
+    lista fechada na 094: texto do LLM que entra num registro volta um dia com
+    a autoridade de dado.
+    """
+    def _lista(nome: str):
+        return [str(x) for x in (getattr(proposta, nome, ()) or ())]
+
+    return {
+        "nome_sugerido": str(getattr(proposta, "nome_sugerido", "") or ""),
+        "fatos": _lista("fatos"),
+        "dimensoes": _lista("dimensoes"),
+        "time_basis": str(getattr(proposta, "time_basis", "") or ""),
+        "parecida_com": _lista("parecida_com"),
+        "pergunta_exemplo": str(getattr(proposta, "pergunta_exemplo", "") or ""),
+    }
+
+
+async def propor(db: Any, *, company_id: str, proposta: Any,
+                 solicitante: Optional[str] = None,
+                 aprovador: str = APROVADOR_PADRAO,
+                 conversation_id: Optional[str] = None) -> Dict[str, Any]:
+    """Cria o `work_run`, a `approval_request` e o evento. Devolve os três ids.
+
+    ```
+    {"run_id": ..., "approval_id": ..., "reused": bool, "proposta": {...}}
+    ```
+
+    🔴 `company_id` é obrigatório e a ausência LEVANTA. O backend roda com
+    service role: uma proposta sem tenant nasceria órfã, e órfã num painel
+    multi-tenant é uma linha que a corretora errada abre (CLAUDE.md §7).
+
+    ⚠️ A ordem é `run → approval → evento`, e não é indiferente: a
+    `approval_request` tem `work_run_id` NOT NULL, e o evento é a linha do
+    tempo — que só faz sentido depois de o que ela narra existir.
+
+    ⛔ Este módulo **não** decide, não aprova e não promove. `decidir()` é da
+    SPEC-055, pela API admin (`POST /work-runs/approvals/{id}/decide`), e a
+    promoção é o CLI do BLOCO E.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        raise ValueError(
+            "proposta de métrica sem `company_id`: uma proposta órfã aparece "
+            "no painel da corretora errada")
+    if aprovador not in APROVADORES:
+        raise ValueError("aprovador fora do vocabulário: %r (F-094.1-02)"
+                         % aprovador)
+    resumo = resumo_da_proposta(proposta)
+    nome = resumo["nome_sugerido"]
+    if not nome:
+        raise ValueError("proposta sem `nome_sugerido`")
+
+    from app.services.work.runs import criar_registro_sem_fila
+
+    chave = _chave(empresa, nome)
+    registro = await criar_registro_sem_fila(
+        db,
+        company_id=empresa,
+        workflow_key=WORKFLOW_KEY,
+        outcome_type=OUTCOME_TYPE,
+        outcome_title=OUTCOME_TITLE,
+        source_type=SOURCE_TYPE,
+        source_id=str(solicitante) if solicitante else None,
+        conversation_id=str(conversation_id) if conversation_id else None,
+        runtime_kind=RUNTIME_KIND,
+        status=STATUS_DE_ESPERA,
+        risk_level=RISCO,
+        idempotency_key=chave,
+        input_payload=dict(resumo, aprovador=aprovador),
+    )
+    run_id = str((registro or {}).get("id") or "")
+    if not run_id:
+        raise RuntimeError("o work_run da proposta não foi criado")
+    # 🔴 Proposta repetida não abre a segunda aprovação. O dono que pede a
+    # mesma métrica duas vezes na mesma semana tem UMA decisão para tomar, e
+    # duas linhas pendentes sobre a mesma coisa é como um painel de aprovações
+    # deixa de ser lido.
+    if (registro or {}).get("reused"):
+        logger.info("[094.1] proposta ja existia para %s — nada duplicado", nome)
+        return {"run_id": run_id, "approval_id": "", "reused": True,
+                "proposta": resumo}
+
+    from app.services.work.approvals import WorkApprovalService
+
+    servico = WorkApprovalService(db)
+    linha = servico.solicitar(
+        company_id=empresa,
+        work_run_id=run_id,
+        work_step_id=None,
+        action_type=ACTION_TYPE,
+        subject_type=SUBJECT_TYPE,
+        subject_id=nome,
+        preview={
+            "titulo": "Registrar a métrica %s?" % nome,
+            "aprovador": aprovador,
+            "o_que_e": ("uma métrica que o dono pediu e o registry não tem. "
+                        "Aprovar NÃO calcula nada: quem registra a definição é "
+                        "gente, seguindo docs/canon/COMO-NASCE-UM-RELATORIO.md"),
+            **resumo,
+        },
+        action_payload={"workflow_key": WORKFLOW_KEY, **resumo},
+        risk_level=RISCO,
+        idempotency_key=chave,
+        requested_by_user_id=str(solicitante) if solicitante else None,
+        validade_horas=VALIDADE_HORAS,
+    )
+    approval_id = str((linha or {}).get("id") or "")
+
+    _evento(db, empresa, run_id, EVENTO_CRIADA, resumo,
+            "Proposta de métrica registrada para revisão: %s" % nome)
+    logger.info("[094.1] proposta %s criada run=%s approval=%s",
+                nome, run_id, approval_id or "-")
+    return {"run_id": run_id, "approval_id": approval_id, "reused": False,
+            "proposta": resumo}
+
+
+def _evento(db: Any, company_id: str, run_id: str, tipo: str,
+            payload: Dict[str, Any], mensagem: str,
+            actor_type: str = "agent") -> bool:
+    """Uma linha em `work_events`. Nunca levanta: o registro já existe.
+
+    🔴 `actor_type='agent'` — 📊 o CHECK `ck_work_events_actor` aceita
+    `system|worker|user|agent|admin|provider`, e quem propôs foi o agente. Pôr
+    `system` aqui faria a linha do tempo dizer que a máquina de infraestrutura
+    propôs a métrica, que é outra história.
+
+    ⛔ O payload leva SÓ enums e ids: `metric_id`, famílias de fato, base
+    temporal. Nada de nome de pessoa, e nada de frase do modelo.
+    """
+    linha = {
+        "company_id": company_id,
+        "work_run_id": run_id,
+        "event_type": tipo,
+        "actor_type": actor_type,
+        "severity": "info",
+        "message_human": mensagem[:300],
+        "payload_redacted": json.loads(json.dumps(payload, ensure_ascii=False)),
+    }
+    try:
+        cli = getattr(db, "client", db)
+        cli.table("work_events").insert(linha).execute()
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[094.1] evento '%s' nao registrado (%s)", tipo,
+                       type(exc).__name__)
+        return False

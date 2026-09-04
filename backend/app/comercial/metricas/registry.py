@@ -60,7 +60,51 @@ __all__ = [
     "MetricDefinition", "MetricResult", "METRICAS", "registrar", "definicao",
     "todas", "calcular", "comparar", "Contexto", "VisaoDeApolice",
     "VisaoDeProdutor", "VisaoDeVencimento", "POLICY_VALID_FROM", "POLICY_VALID_TO",
+    "FIXTURE_094", "GOLDEN_INDISPONIVEL",
 ]
+
+# ==========================================================================
+# 🔴 SPEC-094.1 · BLOCO D — a PERGUNTA VERIFICADA e o GOLDEN
+# ==========================================================================
+#
+# Modelado no [Verified Query Repository do Cortex Analyst][vqr]: perguntas
+# verificadas por gente melhoram a precisão do sistema (📊 +20 p.p. em teste
+# controlado da Snowflake) e, mais do que isso, dão à régua um jeito de
+# perguntar *"o que respondia certo e passou a falhar?"*.
+#
+# [vqr]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst/verified-query-repository
+#
+# Uma métrica sem os dois campos é uma métrica que ninguém consegue conferir:
+# `pergunta_verificada` diz **que pergunta do dono este número responde**, em
+# português, e `golden` diz **que número ele dá numa população conhecida**. Sem
+# a primeira, o modelo escolhe a métrica pelo nome do `metric_id` — que é
+# jargão. Sem o segundo, uma mudança de fórmula troca o número em silêncio, e o
+# silêncio é o modo de falha caro (CLAUDE.md §9.5).
+#
+# ⚠️ Os dois campos têm default de dataclass porque as definições são passadas
+# como `**kw` e há campos opcionais antes deles. **A obrigatoriedade é do
+# `__post_init__`**, e não da assinatura — é lá que a mutação do guarda do
+# protocolo (BLOCO E) bate.
+
+#: A população conhecida sobre a qual os `golden` desta rodada foram medidos.
+#: 🔴 É a fixture sintética da 094 (`test_o_pulso_360_nao_pertence_a_infocap.py`,
+#: `_apolices_de_fixture` + `_vencimentos_de_fixture` + `_mapa_de_fixture`):
+#: **6 apólices de 2025** (3 NEW, 3 RENEWAL; prêmio 29.000,00; comissão
+#: 5.000,00), **4 vencimentos** e **4 atribuições de produtor** em 2 produtores
+#: opacos, lida na janela **01/01/2025 → 31/12/2026** e SEM manifesto.
+#:
+#: ⚠️ A janela faz parte da fixture, e não é detalhe: `renewal.exposure` e
+#: `projection.run_rate` são funções dela. Um golden sem janela declarada seria
+#: um número que ninguém consegue reproduzir — que é o mesmo defeito que
+#: `time_basis` existe para impedir.
+#:
+#: ⛔ NENHUM dado de pessoa: as referências são opacas por construção.
+FIXTURE_094 = "094:6-apolices-2025+4-vencimentos@2025-01-01..2026-12-31"
+
+#: O `esperado` de uma métrica que, nesta fixture, **não tem número**. 🔴 Ele é
+#: o sentinela do CBIM, e não `0.0` nem `None`: um golden que afirmasse zero
+#: ensinaria a régua a aceitar o zero de consolação que a 094 inteira recusa.
+GOLDEN_INDISPONIVEL = UNAVAILABLE
 
 
 # ==========================================================================
@@ -170,6 +214,18 @@ class Contexto:
     #: `policy_ref -> [producer_ref]`, para cobertura de produtor.
     produtores_da_apolice: Dict[str, List[str]] = field(default_factory=dict)
     fatos: Optional[FactSet] = None
+    #: 🔴 O feixe de PLATAFORMA — a estatística pública do mercado (SPEC-094.1
+    #: BLOCO B: SUSEP SES por `coenti` × mês × ramo). Ele é **separado** do
+    #: `FactSet` de propósito: o `FactSet` é da corretora e tem `company_id`;
+    #: este é de todas, e misturar os dois num feixe só seria a primeira porta
+    #: para o dado de uma casa aparecer no relatório de outra (CLAUDE.md §7).
+    #:
+    #: ⚠️ A anotação é uma STRING: a classe nasce em `cbim.py`, e importá-la
+    #: aqui faria o registry — que é o motor — depender do vocabulário de fatos
+    #: antes de ele existir. `None` é o caso normal: nenhuma das 16 métricas de
+    #: hoje olha para o mercado, e uma fórmula que o exija tem de dizer isso
+    #: nas `required_capabilities` dela.
+    mercado: Optional["MarketFactSet"] = None  # noqa: F821
 
     @property
     def periodo(self) -> Dict[str, str]:
@@ -325,6 +381,15 @@ class MetricDefinition:
     #: A premissa que o número carrega — vai no envelope como warning. Projeção
     #: sem premissa escrita é adivinhação com cara de número (mutação M9).
     premissa: str = ""
+    #: 🔴 A PERGUNTA DO DONO que este número responde, em português. Ela é o
+    #: que o chat lista quando o modelo pergunta "o que existe?" antes de
+    #: propor uma métrica nova (ref ⑥) — e é ela que evita a proposta duplicada,
+    #: porque ninguém reconhece a própria pergunta num `metric_id`.
+    pergunta_verificada: str = ""
+    #: 🔴 O número esperado numa população conhecida:
+    #: `{"fixture": str, "esperado": float | "UNAVAILABLE"}`.
+    #: É a régua de regressão — "o que respondia certo e passou a falhar" (ref ④).
+    golden: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.time_basis not in BASES_TEMPORAIS:
@@ -332,6 +397,29 @@ class MetricDefinition:
                 f"{self.metric_id}: base temporal fora do contrato: {self.time_basis!r}")
         if self.unit not in UNIDADES:
             raise ValueError(f"{self.metric_id}: unidade fora do contrato: {self.unit!r}")
+        # 🔴 As duas exigências da 094.1. Elas levantam no REGISTRO, e não numa
+        # conferência agendada: uma definição incompleta nunca chega a existir,
+        # e por isso não há como esquecer de conferir depois.
+        if not str(self.pergunta_verificada or "").strip():
+            raise ValueError(
+                f"{self.metric_id}: sem `pergunta_verificada`. Escreva, em "
+                f"português, a pergunta do dono que este número responde — é "
+                f"ela que o chat lista antes de propor uma métrica nova, e é "
+                f"por ela que se descobre que a métrica já existe")
+        alvo = self.golden or {}
+        if not str(alvo.get("fixture") or "").strip() or "esperado" not in alvo:
+            raise ValueError(
+                f"{self.metric_id}: sem `golden` completo. Declare "
+                f"{{'fixture': ..., 'esperado': ...}} — sem o número esperado "
+                f"numa população conhecida, uma mudança de fórmula troca o "
+                f"resultado em SILÊNCIO, e silêncio é o modo de falha caro")
+        esperado = alvo.get("esperado")
+        if esperado != GOLDEN_INDISPONIVEL and not isinstance(
+                esperado, (int, float)):
+            raise ValueError(
+                f"{self.metric_id}: `golden['esperado']` é um número ou o "
+                f"sentinela {GOLDEN_INDISPONIVEL!r} — nunca `None` nem 0 de "
+                f"consolação (recebido: {esperado!r})")
 
     @property
     def ref(self) -> str:
@@ -510,7 +598,8 @@ def _avaliar(manifesto: Any, d: "MetricDefinition",
 def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
              time_basis: Optional[str] = None,
              manifest: Optional[ProviderCapabilityManifest] = None,
-             contexto: Optional[Contexto] = None) -> MetricResult:
+             contexto: Optional[Contexto] = None,
+             mercado: Optional["MarketFactSet"] = None) -> MetricResult:  # noqa: F821
     """Um `MetricResult`, com tudo o que é preciso para conferir se ele é verdade.
 
     A ordem não é arbitrária:
@@ -556,6 +645,12 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
     ctx = contexto or montar_contexto(facts, inicio, fim, d.time_basis)
     if ctx.time_basis != d.time_basis:
         ctx = montar_contexto(facts, inicio, fim, d.time_basis)
+    # 🔴 O feixe de mercado é REPASSADO, e nunca inventado: quando quem chamou
+    # não o passou, o que estava no contexto continua valendo (é assim que
+    # `calcular_varias` monta um contexto e o reusa em várias métricas). O que
+    # esta linha nunca faz é apagar um feixe existente com `None`.
+    if mercado is not None:
+        ctx.mercado = mercado
     # ⚠️ A fórmula devolve QUATRO itens, e pode devolver um quinto: o TETO de
     # confiança. Opcional de propósito — as 15 métricas que não precisam dele
     # não pagam nada, e a que precisa não tem de inventar um canal (uma marca
@@ -583,7 +678,8 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
 
 def calcular_varias(metric_ids: Sequence[str], facts: FactSet,
                     period: Tuple[date, date],
-                    manifest: Optional[ProviderCapabilityManifest] = None
+                    manifest: Optional[ProviderCapabilityManifest] = None,
+                    mercado: Optional["MarketFactSet"] = None  # noqa: F821
                     ) -> List[MetricResult]:
     """Várias métricas sobre UM lote — e um contexto por base temporal.
 
@@ -598,7 +694,8 @@ def calcular_varias(metric_ids: Sequence[str], facts: FactSet,
             contextos[d.time_basis] = montar_contexto(
                 facts, period[0], period[1], d.time_basis)
         saida.append(calcular(mid, facts, period, manifest=manifest,
-                              contexto=contextos[d.time_basis]))
+                              contexto=contextos[d.time_basis],
+                              mercado=mercado))
     return saida
 
 

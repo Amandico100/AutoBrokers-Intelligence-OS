@@ -153,7 +153,7 @@ check("CONTROLE: o detector acharia o nome no grafo se ele estivesse la",
 # 🔴 SPEC-094.1 BLOCOS C e D — a MESMA trava, pelas MESMAS razoes.
 #
 # `listar_entregas` devolve o catalogo de pecas publicadas da corretora
-# (titulos, links, `pack_id`); `propor_metrica` abre um Work Run com Approval
+# (titulos, links, `pack_id`); `propor_metrica` abre um `work_runs` com Approval
 # em nome dela. Nenhuma das duas pode chegar ao agente de ATENDIMENTO, que fala
 # com o SEGURADO. Elas entram pela LISTA de `ferramentas_comerciais` para
 # herdar o `if` de papel ja provado acima — e nao por chamada nova em graph.py,
@@ -163,7 +163,8 @@ import re as _re
 _LISTA_DE_TOOLS = FONTE[FONTE.rindex("def ferramentas_comerciais"):]
 #: 🔴 SPEC-094.1: as tools novas, cada uma com a fabrica que a anexa. O BLOCO D
 #: acrescenta a sua AQUI — e nao numa copia deste laco.
-TOOLS_DA_094_1 = (("listar_entregas", "ferramenta_de_entregas"),)
+TOOLS_DA_094_1 = (("listar_entregas", "ferramenta_de_entregas"),
+                  ("propor_metrica", "ferramenta_de_proposta"))
 for _nome, _fabrica in TOOLS_DA_094_1:
     _arq = os.path.join(RAIZ, "app", "agents", "tools", _nome + ".py")
     check(f"[094.1] a tool `{_nome}` existe", os.path.exists(_arq))
