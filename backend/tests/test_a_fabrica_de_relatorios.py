@@ -97,6 +97,7 @@ Rodar:  `PYTHONIOENCODING=utf-8 python backend/tests/test_a_fabrica_de_relatorio
 """
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import importlib.util
 import io
@@ -1308,7 +1309,31 @@ def bloco_3_susep():
     if registry is not None and "claims.loss_ratio_vs_market" in set(registry.todas()):
         cbim, _ = _cbim()
         try:
-            lote = fatos_de_fixture(cbim)     # `Seguradora Alfa` NAO esta no mapa
+            # 🔴 A carteira deste teste vive NA JANELA, e e sintetica de
+            # proposito. 📊 Medido em 04/09/2026: com a fixture da 094 (apolices
+            # de 2025) contra a janela de 2026-Q2, `ctx.apolices` sai VAZIA — a
+            # metrica dava UNAVAILABLE por nao ter O QUE comparar, e esta linha
+            # ficava VERDE mesmo com a mutacao M2 (UNKNOWN -> 0) injetada. Um
+            # guarda que nao consegue ficar vermelho nao guarda nada
+            # (CLAUDE.md §9.3).
+            def _carteira_de(nome, lote_base):
+                """Uma apolice + um sinistro, na janela, na seguradora `nome`."""
+                dinheiro = cbim.interpretar_dinheiro
+                lote_base.policies = [dataclasses.replace(
+                    lote_base.policies[0], policy_ref="m2-na-janela",
+                    insurer=nome, valid_from=date(2026, 5, 1),
+                    valid_to=date(2027, 4, 30))]
+                lote_base.claims = [cbim.ClaimFact(
+                    policy_ref="m2-na-janela", claim_ref="sin-m2",
+                    status="OPEN", occurred_at=date(2026, 5, 15),
+                    reported_at=date(2026, 5, 16), closed_at=None,
+                    indemnity=dinheiro("300.00"), deductible=dinheiro("0.00"),
+                    insurer=nome, branch="auto",
+                    provider_key=lote_base.provider_key)]
+                return lote_base
+
+            SEM_MAPA = "Seguradora Que Nao Existe No Mapa"
+            lote = _carteira_de(SEM_MAPA, fatos_de_fixture(cbim))
             r = registry.calcular("claims.loss_ratio_vs_market", lote,
                                   (date(2026, 4, 1), date(2026, 6, 30)),
                                   mercado=conjunto)
@@ -1317,6 +1342,22 @@ def bloco_3_susep():
                   "UNAVAILABLE, NUNCA 0",
                   "veio %r — 'a Alfa sinistra 0%% acima do mercado' e uma frase "
                   "que o dono usaria numa negociacao de reajuste" % (r.value,))
+            # PAR: a MESMA carteira, numa seguradora que o mapa conhece e que
+            # TEM celula no censo, devolve NUMERO. Sem esta linha, o
+            # UNAVAILABLE acima poderia vir de o caminho inteiro nao funcionar.
+            no_mapa = cbim.MarketFactSet(
+                provider_key=conjunto.provider_key, facts=list(conjunto.facts),
+                competencia_final=conjunto.competencia_final,
+                mapa={"seguradora_do_par": "0001"})
+            lote_par = _carteira_de("Seguradora do PAR", fatos_de_fixture(cbim))
+            r_par = registry.calcular("claims.loss_ratio_vs_market", lote_par,
+                                      (date(2026, 4, 1), date(2026, 6, 30)),
+                                      mercado=no_mapa)
+            certo(str(r_par.value) != "UNAVAILABLE",
+                  "[3] M2 PAR: a MESMA carteira numa seguradora MAPEADA "
+                  "devolve numero (%r)" % (r_par.value,),
+                  "o caminho inteiro esta mudo — o UNAVAILABLE acima nao prova "
+                  "nada sobre o mapa")
             d = registry.todas()["claims.loss_ratio_vs_market"]
             fontes = " ".join([str(getattr(d, "coverage_rule", "")),
                                str(getattr(d, "premissa", "")),
