@@ -707,7 +707,11 @@ class MarketFact:
 
 @dataclass
 class MarketFactSet:
-    """O feixe de PLATAFORMA. ⛔ **Não tem `company_id`, e é de propósito.**
+    """O feixe de PLATAFORMA. ⛔ **Não tem DONO, e é de propósito.**
+
+    ⚠️ Nenhum campo de tenant entra nesta classe — nem "só para filtrar". O
+    guarda lê o texto CRU aqui: citar o nome do campo, ainda que para negá-lo,
+    é indistinguível de tê-lo (CLAUDE.md §9.4).
 
     🔴 A estatística pública é a MESMA para todas as corretoras. Se ela entrasse
     no `FactSet` do tenant, cada casa passaria a ter a sua cópia do mercado — e
@@ -726,6 +730,32 @@ class MarketFactSet:
     fonte: str = ""
     fingerprint: str = ""
     warnings: List[str] = field(default_factory=list)
+    #: 🔴 O mapa `seguradora -> coenti` VIAJA COM O FEIXE, e a fórmula nunca vai
+    #: buscá-lo. Não é conveniência: é o que impede `metricas/` de importar o
+    #: conector — o acoplamento que a mutação M1 existe para pegar. Quem monta o
+    #: feixe é quem sabe de onde o mapa veio e como ele foi revisado.
+    mapa: Dict[str, str] = field(default_factory=dict)
+    #: A função de casamento de nome, quando ela existe. ⚠️ Ela mora no
+    #: conector porque o CRITÉRIO é uma medição, e critério medido não se
+    #: reescreve em dois lugares.
+    resolver: Optional[Any] = None
+
+    def coenti_de(self, nome: Any) -> str:
+        """A entidade desta seguradora — ou `"UNKNOWN"`. ⛔ Nunca um palpite.
+
+        🔴 `UNKNOWN` é uma STRING, e não `None`: `None` some numa comparação e
+        vira "não filtrou nada"; a palavra atravessa o pacote e chega escrita ao
+        leitor. Um cruzamento com entidade desconhecida sai INDISPONÍVEL, nunca
+        zero — *"a sua seguradora sinistra 0% acima do mercado"* é uma frase que
+        o dono usaria numa negociação de reajuste, e ela seria falsa.
+        """
+        if callable(self.resolver):
+            try:
+                return str(self.resolver(nome) or "UNKNOWN")
+            except Exception:  # noqa: BLE001
+                return "UNKNOWN"
+        chave = str(nome or "").strip().lower().replace(" ", "_")
+        return str(self.mapa.get(chave) or "UNKNOWN")
 
     def por_entidade(self, coenti: str) -> List[MarketFact]:
         alvo = str(coenti or "").strip()

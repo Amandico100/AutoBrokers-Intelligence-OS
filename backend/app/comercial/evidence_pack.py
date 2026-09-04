@@ -62,7 +62,20 @@ UNAVAILABLE = "UNAVAILABLE"
 
 #: As unidades que o contrato aceita. Unidade é o que impede o modelo de ler
 #: `0,806` como reais e `1.680` como porcentagem.
-UNIDADES = ("BRL", "count", "pct")
+UNIDADES = ("BRL", "count", "pct", "ratio")
+
+#: 🔴 SPEC-094.1 · BLOCO B: `ratio` entrou porque `pct` teria MENTIDO.
+#:
+#: 📊 Nesta casa `pct` é escala 0–100 — `mix.insurer` devolve `43.0` e o
+#: formatador escreve "43,0%" (`executive_intelligence.py:1270`). A
+#: sinistralidade do SES é uma FRAÇÃO: `sinistro_ocorrido ÷ premio_ganho`, e a
+#: célula medida do trimestre da Porto dá `0,5712`. Declará-la como `pct`
+#: faria a tela escrever **"0,6%"** onde o mercado tem **57%** — um número
+#: certo lido como outro, que é a forma silenciosa de errar (CLAUDE.md §9.5).
+#:
+#: ⚠️ Multiplicar por 100 na fórmula resolveria a tela e estragaria a conta: o
+#: golden do BLOCO B é `0,5712` porque é assim que a razão é conferida à mão
+#: contra o CSV. O nome da unidade é que estava faltando.
 
 #: A base temporal, obrigatória. 🔴 Uma apólice entra na produção pela data em
 #: que a vigência COMEÇA e no radar pela data em que ela TERMINA — o mesmo

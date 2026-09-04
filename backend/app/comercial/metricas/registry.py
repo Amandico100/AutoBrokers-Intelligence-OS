@@ -848,7 +848,12 @@ def _carregar_definicoes() -> None:
         return
     pasta = os.path.dirname(os.path.abspath(__file__))
     eu = sys.modules[__name__]
-    for nome in ("producao", "mix", "produtores", "renovacao"):
+    # 🔴 SPEC-094.1 · BLOCOS A e B: os quatro arquivos novos entram AQUI, e não
+    # por auto-descoberta da pasta. Um `glob` transformaria qualquer `.py`
+    # esquecido em definição registrada — e o registro do que o produto responde
+    # é lista explícita, revisada, ou não é registro.
+    for nome in ("producao", "mix", "produtores", "renovacao",
+                 "sinistros", "funil", "carteira", "mercado"):
         caminho = os.path.join(pasta, nome + ".py")
         if not os.path.exists(caminho):
             continue
@@ -864,3 +869,39 @@ def _carregar_definicoes() -> None:
 
 
 _carregar_definicoes()
+
+
+# ==========================================================================
+# O GOLDEN — a régua de regressão, e o carregador que a alimenta
+# ==========================================================================
+def fatos_do_golden(d: "MetricDefinition"):
+    """O `FactSet` da fixture que a definição declara em `golden["fixture"]`.
+
+    🔴 Ele existe para que o guarda consiga fazer a única pergunta que separa
+    uma métrica viva de uma métrica que já foi certa: **este número ainda é
+    este número?** (ref ④, o Verified Query Repository). Sem um carregador, o
+    campo `golden` seria uma anotação — e anotação não reprova nada.
+
+    ⚠️ A fixture é a população canônica da 094: 6 apólices de 2025, 4
+    vencimentos, e — desde a 094.1 — 5 sinistros, 3 cotações e 3 clientes. Ela
+    vem do **provider de referência**, que é CBIM puro: 📊 ele não importa fonte
+    nenhuma (é a outra ponta da M17), e por isso o motor lê dali sem aprender o
+    dialeto de sistema de gestão nenhum.
+
+    🔴 E o import é LOCAL, dentro da função. Um import no topo faria este
+    módulo — que é o motor — carregar um pacote de providers para responder
+    `calcular()`, e o primeiro efeito seria um ciclo de importação no dia em que
+    um provider quisesse ler uma definição.
+    """
+    from app.providers.reference_analytics_provider import fatos_de_fixture
+
+    fixture = str((getattr(d, "golden", None) or {}).get("fixture") or "").strip()
+    if not fixture:
+        raise ValueError(
+            f"{getattr(d, 'metric_id', '?')}: sem fixture declarada no golden")
+    if not fixture.startswith("094:"):
+        raise ValueError(
+            f"{getattr(d, 'metric_id', '?')}: fixture desconhecida {fixture!r}. "
+            f"Hoje existe uma so ({FIXTURE_094!r}); uma segunda tem de trazer o "
+            f"carregador dela junto, e nao ser adivinhada por caminho")
+    return fatos_de_fixture()

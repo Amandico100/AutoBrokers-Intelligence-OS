@@ -1023,7 +1023,7 @@ class InfocapAnalyticsProvider:
         """
         return fonte._linhas(fonte._get(rota, params), chave)
 
-    def _marcar(self, lote: FactSet, medidas: Dict[str, Any]) -> None:
+    def _marcar_fingerprints(self, lote: FactSet, medidas: Dict[str, Any]) -> None:
         """Grava as rotas LIDAS em `fingerprints` — vazias inclusive.
 
         🔴 `impressao_da_rota` devolve `SEM_AMOSTRA` para lista vazia, e e
@@ -1098,7 +1098,7 @@ class InfocapAnalyticsProvider:
                 "pagina": 1,
             }, "sinistros")
         self._traduzir_sinistros(lote, linhas, correlacao)
-        self._marcar(lote, {ROTA_SINISTROS: linhas})
+        self._marcar_fingerprints(lote, {ROTA_SINISTROS: linhas})
         return self._selar(lote, impressao)
 
     def _traduzir_sinistros(self, lote: FactSet, linhas: List[Dict[str, Any]],
@@ -1172,7 +1172,7 @@ class InfocapAnalyticsProvider:
                 self._linhas_da_rota, fonte, rota, dict(base), "negocios")
             medidas[rota] = linhas
             self._traduzir_funil(lote, linhas, ETAPA_DA_ROTA[rota], correlacao)
-        self._marcar(lote, medidas)
+        self._marcar_fingerprints(lote, medidas)
         if not lote.quotes:
             lote.warnings.append(
                 f"[{correlacao}] as tres rotas do funil responderam e o acervo "
@@ -1232,7 +1232,7 @@ class InfocapAnalyticsProvider:
                 "cancelado": "T", "resgates": "F",
             }, "renovacoes")
         self._traduzir_cancelamentos(lote, linhas, correlacao)
-        self._marcar(lote, {ROTA_RENOVACOES: linhas})
+        self._marcar_fingerprints(lote, {ROTA_RENOVACOES: linhas})
         return self._selar(lote, impressao)
 
     def _traduzir_cancelamentos(self, lote: FactSet,
@@ -1298,7 +1298,7 @@ class InfocapAnalyticsProvider:
                 "cancelado": "F", "resgates": "F",
             }, "renovacoes")
         self._traduzir_clientes(lote, linhas, correlacao)
-        self._marcar(lote, {ROTA_RENOVACOES: linhas})
+        self._marcar_fingerprints(lote, {ROTA_RENOVACOES: linhas})
         return self._selar(lote, impressao)
 
     def _traduzir_clientes(self, lote: FactSet, linhas: List[Dict[str, Any]],

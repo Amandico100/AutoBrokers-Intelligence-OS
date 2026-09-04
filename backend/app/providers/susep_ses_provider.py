@@ -266,8 +266,16 @@ def ler_agregado(ano: Any, minio: Any = None, *,
             f"sobre a sinistralidade da seguradora") from exc
 
     bruto = corpo.read() if hasattr(corpo, "read") else bytes(corpo or b"")
-    feixe = MarketFactSet(provider_key=PROVIDER_KEY, fonte=objeto,
-                          competencia_final=str(competencia_final or ""))
+    tabela = mapa_de_seguradoras()
+    feixe = MarketFactSet(
+        provider_key=PROVIDER_KEY, fonte=objeto,
+        competencia_final=str(competencia_final or ""),
+        # 🔴 O mapa e o casador VIAJAM com o feixe. É o que permite à fórmula
+        # cruzar carteira × mercado sem nunca importar este arquivo — o
+        # acoplamento que a mutação M1 existe para pegar.
+        mapa={chave: str(linha.get("coenti") or UNKNOWN)
+              for chave, linha in tabela.items()},
+        resolver=coenti_de)
     ilegiveis = 0
     for linha in _linhas_do_objeto(bruto):
         coenti = str(_campo(linha, "coenti") or "").strip()
