@@ -1,6 +1,6 @@
 {
   "provider_key": "infocap",
-  "measured_at": "2026-09-03",
+  "measured_at": "2026-09-03 (094.1 BLOCO 0)",
   "connection_scope": [
     "resulta"
   ],
@@ -1977,8 +1977,34 @@
       "classe": "200",
       "envelope": "{header, documentos} -> lista em 'documentos'",
       "chave_raiz": "documentos",
-      "amostra_n_registros": 1,
-      "medido_com": "/documentos?texto=<numapo do BI>",
+      "amostra_n_registros": 232,
+      "medido_com": "/documentos?periodo=datinc&datini&datfim&qtd_pag=1000&pag=1&ordem=nosnum&orientacao=asc&codfil=1 (30 dias)",
+      "latencia_s": 1.98,
+      "base_temporal_medida": {
+        "filtro": "periodo=datinc + datini/datfim",
+        "campo_que_a_janela_prende": "NENHUM DOS DEVOLVIDOS",
+        "medido": {
+          "inivig": {
+            "preenchidos": 232,
+            "min": "01/12/2025",
+            "max": "02/08/2027",
+            "dentro_da_janela": 154
+          },
+          "fimvig": {
+            "preenchidos": 232,
+            "min": "29/08/2026",
+            "max": "24/05/2035",
+            "dentro_da_janela": 4
+          },
+          "datemi": {
+            "preenchidos": 187,
+            "min": "12/12/2025",
+            "max": "02/08/2027",
+            "dentro_da_janela": 128
+          }
+        },
+        "nota": "🔴 A BASE DE APROPRIACAO existe como FILTRO e NAO vem no corpo: nenhum campo `datinc` e devolvido. inivig cai na janela em 154/232 e fimvig em 4/232 — nem um nem outro explica o recorte. Uma metrica que apropriar por datinc depende do FILTRO, e nao consegue auditar a data linha a linha."
+      },
       "campos": [
         {
           "campo": "codfil",
@@ -2024,7 +2050,7 @@
           "campo": "ramo",
           "tipo_observado": "str",
           "pct_nulo": 0.0,
-          "exemplo_redigido": "xxx",
+          "exemplo_redigido": "xxxx",
           "pii": false,
           "significado": null,
           "confianca": "media",
@@ -2044,7 +2070,7 @@
           "campo": "cliente",
           "tipo_observado": "str",
           "pct_nulo": 0.0,
-          "exemplo_redigido": "xxxxx xxxxxxxxxxx xxxxxxxx xx xxxxxx xx",
+          "exemplo_redigido": "xxxxxxx xxxxx xxxxxx",
           "pii": true,
           "significado": null,
           "confianca": "media",
@@ -2074,7 +2100,7 @@
           "campo": "numapo",
           "tipo_observado": "str:inteiro",
           "pct_nulo": 0.0,
-          "exemplo_redigido": "############",
+          "exemplo_redigido": "###############",
           "pii": true,
           "significado": null,
           "confianca": "media",
@@ -2123,7 +2149,7 @@
         {
           "campo": "renovacao_situacao",
           "tipo_observado": "int",
-          "pct_nulo": 0.0,
+          "pct_nulo": 28.9,
           "exemplo_redigido": "#",
           "pii": false,
           "significado": null,
@@ -2133,7 +2159,7 @@
         {
           "campo": "datemi",
           "tipo_observado": "str:data(dd/mm/yyyy)",
-          "pct_nulo": 0.0,
+          "pct_nulo": 19.4,
           "exemplo_redigido": "##/##/####",
           "pii": false,
           "significado": null,
@@ -2143,8 +2169,8 @@
         {
           "campo": "numprop",
           "tipo_observado": "str:inteiro",
-          "pct_nulo": 0.0,
-          "exemplo_redigido": "############",
+          "pct_nulo": 26.3,
+          "exemplo_redigido": "#########",
           "pii": false,
           "significado": null,
           "confianca": "media",
@@ -2359,7 +2385,14 @@
           "confianca": "media",
           "chave_de_relacao": null
         }
-      ]
+      ],
+      "remedido_em_094.1": {
+        "medido_com": "/documentos_bi?datini=01/01/2025&datfim=31/12/2025&data=INIVIG&tipo_doc=TODOS",
+        "amostra_n_registros": 3272,
+        "latencia_s": 6.93,
+        "mesmas_chaves_do_recorte_A": true,
+        "nota": "📊 tipo_doc=TODOS devolve 3.272 linhas em 2025 contra 1.680 do recorte `A` do golden control: +1.592 documentos (endosso/cancelamento/proposta) com as MESMAS 20 chaves. 🔴 O golden control de 1.680 continua valido — ele e o recorte A, e existe um universo 1,95x maior que nenhuma metrica conta hoje."
+      }
     },
     "/renovacoes": {
       "classe": "200",
@@ -3532,6 +3565,974 @@
           "exemplo_redigido": "#",
           "pii": false,
           "significado": "valor do desconto/descontado",
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ],
+      "remedido_em_094.1": {
+        "classe": "200",
+        "envelope": "{header, sinistros} -> lista em 'sinistros'",
+        "chave_raiz": "sinistros",
+        "amostra_n_registros": 42,
+        "medido_com": "/sinistros?data_inicial&data_final&tipo_data=oco&qtd_pag=1000&pagina=1 (90 dias)",
+        "latencia_s": 1.1,
+        "base_temporal_medida": {
+          "filtro": "data_inicial/data_final + tipo_data=oco",
+          "campo_que_a_janela_prende": "datoco",
+          "medido": {
+            "datavi": {
+              "preenchidos": 42,
+              "min": "08/06/2026",
+              "max": "03/09/2026",
+              "dentro_da_janela": 42
+            },
+            "datoco": {
+              "preenchidos": 42,
+              "min": "05/06/2026",
+              "max": "30/08/2026",
+              "dentro_da_janela": 42
+            },
+            "datenc": {
+              "preenchidos": 9,
+              "min": "08/06/2026",
+              "max": "25/08/2026",
+              "dentro_da_janela": 9
+            },
+            "datvis": {
+              "preenchidos": 0,
+              "min": null,
+              "max": null,
+              "dentro_da_janela": 0
+            },
+            "datlib": {
+              "preenchidos": 0,
+              "min": null,
+              "max": null,
+              "dentro_da_janela": 0
+            }
+          },
+          "nota": "📊 datoco 42/42 dentro da janela, com min exatamente no primeiro dia dela. `tipo_data=oco` e aceito e prende a data de OCORRENCIA. A rota pagina (qtd_pag/pagina) e responde em 1,10 s filtrada, contra 26,34 s sem filtro no censo v2."
+        },
+        "campos": [
+          {
+            "campo": "codfil",
+            "tipo_observado": "int",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": 1,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "nosnum",
+            "tipo_observado": "int",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "#####",
+            "pii": true,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "tipo",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxxxxxx",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "cia",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxx",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "ramo",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxx",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "codigo",
+            "tipo_observado": "int",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "#",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "numapo",
+            "tipo_observado": "str:inteiro",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "#######",
+            "pii": true,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "numend",
+            "tipo_observado": "str:inteiro",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "#",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "item",
+            "tipo_observado": "int",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": 4,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "valavi",
+            "tipo_observado": "float",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "#",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "valind",
+            "tipo_observado": "float",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "###",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "segurado",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxxxxx xxxxxxxx xx xxxxxxxx - xxxxxx ##",
+            "pii": true,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "numsin",
+            "tipo_observado": "str:inteiro",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "#######",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "datavi",
+            "tipo_observado": "str:data(dd/mm/yyyy)",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "##/##/####",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "datoco",
+            "tipo_observado": "str:data(dd/mm/yyyy)",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "##/##/####",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "datenc",
+            "tipo_observado": "str:data(dd/mm/yyyy)",
+            "pct_nulo": 78.6,
+            "exemplo_redigido": "##/##/####",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "situacao",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxxxxxxxx",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "placa",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": true,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "franquia",
+            "tipo_observado": "float",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": 800.0,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "responsavel",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxxxxxx",
+            "pii": true,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "oficina",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "tipo_atendimento",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "descricao",
+            "tipo_observado": "str",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "xxxxxx xx xxxxx - xxxxxxxxx xx xxxxx",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "observacoes",
+            "tipo_observado": "str",
+            "pct_nulo": 83.3,
+            "exemplo_redigido": "xxx xxxxxxx xx xxx x xx xxxx xxxx xx xxxx xxxxx xx xxx xxxxxxxxxxxx, xxxxxxxx xx xxxxxx, xxxxxxxxx x xxxxxx x xxxxxxx xxxxx xxxxxxxxxxxx xx xxxx. x xxxxxxxxxxxx xxx xxxx xx xxxxxx xxx xxxx xxxx xxxxxxxxxxx",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "proxima_agenda",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "agendamento",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "datvis",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "datlib",
+            "tipo_observado": "sempre_nulo",
+            "pct_nulo": 100.0,
+            "exemplo_redigido": null,
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          },
+          {
+            "campo": "valdes",
+            "tipo_observado": "int",
+            "pct_nulo": 0.0,
+            "exemplo_redigido": "####",
+            "pii": false,
+            "significado": null,
+            "confianca": "media",
+            "chave_de_relacao": null
+          }
+        ]
+      }
+    },
+    "/producao": {
+      "classe": "200",
+      "envelope": "{header, producao} -> lista em 'producao'",
+      "chave_raiz": "producao",
+      "amostra_n_registros": 15,
+      "medido_com": "/producao?texto=&dt_ini&dt_fim&ordem=inivig&orientacao=asc&so_renovados&so_emitidos (30 dias)",
+      "latencia_s": 0.81,
+      "base_temporal_medida": {
+        "filtro": "dt_ini/dt_fim",
+        "campo_que_a_janela_prende": "inivig",
+        "medido": {
+          "inivig": {
+            "preenchidos": 15,
+            "min": "04/08/2026",
+            "max": "05/08/2026",
+            "dentro_da_janela": 15
+          },
+          "fimvig": {
+            "preenchidos": 15,
+            "min": "19/08/2026",
+            "max": "05/08/2027",
+            "dentro_da_janela": 2
+          },
+          "datemi": {
+            "preenchidos": 15,
+            "min": "14/07/2026",
+            "max": "19/08/2026",
+            "dentro_da_janela": 11
+          },
+          "bot_a_dthora": {
+            "preenchidos": 6,
+            "min": "29/07/2026",
+            "max": "20/08/2026",
+            "dentro_da_janela": 3
+          }
+        },
+        "nota": "🔴 devolveu 15 linhas nas DUAS formas (so_renovados=t e =x) enquanto /documentos na MESMA janela devolveu 232. A doc nao expoe qtd_pag/pag para esta rota: 💭 pagina fixa de 15."
+      },
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "######",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipdoc",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "seguradora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente_codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxxxx xxxx xxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numapo",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "###############",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numend",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "numprop",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 53.3,
+          "exemplo_redigido": "#########",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "datemi",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nosnum_ren",
+          "tipo_observado": "int",
+          "pct_nulo": 73.3,
+          "exemplo_redigido": "#####",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "bot_a_dthora",
+          "tipo_observado": "str",
+          "pct_nulo": 60.0,
+          "exemplo_redigido": "##/##/#### ##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sin_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cancelado",
+          "tipo_observado": "str:booleano(T/F)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "x",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "historico_imagem",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "renovacao_situacao",
+          "tipo_observado": "int",
+          "pct_nulo": 53.3,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/negocios_andamento": {
+      "classe": "200",
+      "envelope": "{header, negocios} -> lista em 'negocios'",
+      "chave_raiz": "negocios",
+      "amostra_n_registros": 1,
+      "medido_com": "/negocios_andamento?dtini&dtfim&texto&qtd_pag&pag&ordem=codigo&orientacao=asc&status=&calculo= (2025)",
+      "latencia_s": 0.73,
+      "base_temporal_medida": {
+        "filtro": "dtini/dtfim",
+        "campo_que_a_janela_prende": "nao determinado (1 registro)",
+        "nota": "🔴 SEM os parametros `status` (e `calculo`) a rota devolve HTTP 500. COM eles, responde. 404 {'Nenhum negocio encontrado.'} = VAZIO, nao erro."
+      },
+      "campos": [
+        {
+          "campo": "codfil",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 1,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codcli",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "cliente",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxx",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "status",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prioridade",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "tipo_neg",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxxxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxx",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "sit_multi",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_premio",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "val_c",
+          "tipo_observado": "float",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0.0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "doc_codfil",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "doc_nosnum",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "produto_fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_qtde_atrasadas",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": 0,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_hora",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##:##:##",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_descricao",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "prox_aten_data",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codmulti",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "inivig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "fimvig",
+          "tipo_observado": "str:data(dd/mm/yyyy)",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "##/##/####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "descricao_item",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "situacao_multi",
+          "tipo_observado": "str:inteiro",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "-#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "oportunidade",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "####",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "codram",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_multi",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "ramo_tipo",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "multi_corp_mais",
+          "tipo_observado": "sempre_nulo",
+          "pct_nulo": 100.0,
+          "exemplo_redigido": null,
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ]
+    },
+    "/em_calculo": {
+      "classe": "404 (vazio) com os 8 params; 500 sem `status`",
+      "envelope": null,
+      "chave_raiz": null,
+      "amostra_n_registros": 0,
+      "medido_com": "/em_calculo?dtini&dtfim&texto&qtd_pag&pag&ordem&orientacao&status= (30 dias)",
+      "latencia_s": 0.84,
+      "base_temporal_medida": null,
+      "campos": [],
+      "nota": "a rota EXISTE. 404 {'Nenhum negocio encontrado.'} na janela de 30 dias."
+    },
+    "/negocios_finalizados": {
+      "classe": "404 (vazio) com os 8 params; 500 sem `status`",
+      "envelope": null,
+      "chave_raiz": null,
+      "amostra_n_registros": 0,
+      "medido_com": "/negocios_finalizados?texto&pag&ordem&orientacao&dtini&dtfim&qtd_pag&status= (30 dias)",
+      "latencia_s": 0.93,
+      "base_temporal_medida": null,
+      "campos": [],
+      "nota": "a rota EXISTE. 404 {'Nenhum negocio encontrado.'} na janela de 30 dias. `motivo_perda` so aparece no CORPO do POST /negocio da doc; nao houve registro para ver se ele volta no GET."
+    },
+    "/produtores": {
+      "classe": "200",
+      "envelope": "{header, produtores} -> lista em 'produtores'",
+      "chave_raiz": "produtores",
+      "amostra_n_registros": 119,
+      "medido_com": "/produtores?texto=&codage=<codigo devolvido por /agentes>",
+      "latencia_s": 0.78,
+      "base_temporal_medida": null,
+      "campos": [
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xx xxxxxxx ",
+          "pii": true,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        }
+      ],
+      "nota": "🔴 `codage` VAZIO devolve 500 em duas formas medidas. Com o codigo real de /agentes, 200 com 119 produtores (codigo + nome). 119 e a DIMENSAO; o censo v2 media 97 produtores COM apolice em 2025."
+    },
+    "/agentes": {
+      "classe": "200",
+      "envelope": "{header, agentes} -> lista em 'agentes'",
+      "chave_raiz": "agentes",
+      "amostra_n_registros": 1,
+      "medido_com": "/agentes?texto=",
+      "latencia_s": 0.65,
+      "base_temporal_medida": null,
+      "campos": [
+        {
+          "campo": "codigo",
+          "tipo_observado": "int",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "#",
+          "pii": false,
+          "significado": null,
+          "confianca": "media",
+          "chave_de_relacao": null
+        },
+        {
+          "campo": "nome",
+          "tipo_observado": "str",
+          "pct_nulo": 0.0,
+          "exemplo_redigido": "xxxxxxx xxxxxxxxx xx xxxxxxx ",
+          "pii": true,
+          "significado": null,
           "confianca": "media",
           "chave_de_relacao": null
         }

@@ -9,7 +9,7 @@
     "autofleet"
   ],
   "connection_scope_nota": "🔴 As conexoes 'connected' de amandus e resulta carregam a MESMA credencial CorpAPI (mesmo hash de usuario e de senha) e devolvem carteira identica. So resulta e autofleet sao dois acervos distintos. Ver o CENSUS, secao 'o achado que para o BLOCO G'.",
-  "rotas_medidas": 51,
+  "rotas_medidas": 55,
   "capabilities": {
     "portfolio.policies": {
       "state": "SUPPORTED",
@@ -30,7 +30,7 @@
       "source_routes": [
         "/documentos_bi"
       ],
-      "evidence": "📊 Base temporal MEDIDA com dois filtros: com data=INIVIG, 1.680/1.680 registros tem inivig na janela de 2025 e so 106 tem fimvig. `data` aceita exatamente ('INIVIG','DATINC','DATALT','DATPROP') — a API devolve essa lista num 400 quando recebe DATEMI.",
+      "evidence": "📊 Base temporal MEDIDA com dois filtros: com data=INIVIG, 1.680/1.680 registros tem inivig na janela de 2025 e so 106 tem fimvig. `data` aceita exatamente ('INIVIG','DATINC','DATALT','DATPROP') — a API devolve essa lista num 400 quando recebe DATEMI. · 🔴 📊 094.1 BLOCO 0: P-094-PRODUCAO-500 FECHADO — /producao com `dt_ini`/`dt_fim` (e nao `datini`/`datfim`) devolve HTTP 200 em 0,81 s. ⚠️ E devolve 15 linhas nas duas formas medidas (so_renovados=t e =x) na MESMA janela em que /documentos devolve 232: a doc nao expoe qtd_pag nem pag para esta rota. 💭 pagina fixa de 15 — nao serve para lote, serve como SONDA (que e exatamente o uso de infocap_connector.py:3115/:3126).",
       "primary_route": "/documentos_bi"
     },
     "portfolio.policy_status": {
@@ -45,13 +45,15 @@
       "primary_route": "/renovacoes"
     },
     "portfolio.cancellations": {
-      "state": "PARTIAL",
-      "coverage_pct": null,
+      "state": "SUPPORTED",
+      "coverage_pct": 100.0,
       "source_routes": [
         "/renovacoes",
-        "/documento"
+        "/documento",
+        "/documentos",
+        "/producao"
       ],
-      "evidence": "📊 Existe o ESTADO (`cancelado` T/F) mas nao a DATA nem o MOTIVO do cancelamento em nenhuma das rotas medidas. A chamada de /renovacoes usada pela 081 ja filtra cancelado=F na requisicao, entao o cancelado nem chega. Contar cancelamento por periodo exige uma chamada com cancelado=T — nao medida nesta rodada.",
+      "evidence": "🔴 📊 094.1 BLOCO 0 (03/09/2026): `cancelado=T` em /renovacoes NAO e o filtro 'so cancelados' — e o INTERRUPTOR 'inclua os cancelados'. 2025 com cancelado=T: 3.861 linhas = 3.536 (as mesmas de cancelado=F do golden control) + 325 canceladas. Taxa de cancelamento 2025 = 325/3.861 = 8,4%. Mesmo fingerprint de 33 chaves. ⛔ Quem ler `cancelado=T` como recorte publica a carteira INTEIRA como cancelada — e o numero responde, nao trava (CLAUDE.md 9.5). O recorte tem de ser feito pelo CAMPO `cancelado` de cada linha. | 📊 Existe o ESTADO (`cancelado` T/F) mas nao a DATA nem o MOTIVO do cancelamento em nenhuma das rotas medidas. A chamada de /renovacoes usada pela 081 ja filtra cancelado=F na requisicao, entao o cancelado nem chega. Contar cancelamento por periodo exige uma chamada com cancelado=T — nao medida nesta rodada.",
       "primary_route": "/renovacoes"
     },
     "portfolio.renewals": {
@@ -65,13 +67,15 @@
       "primary_route": "/renovacoes"
     },
     "commercial.producers": {
-      "state": "PARTIAL",
-      "coverage_pct": null,
+      "state": "SUPPORTED",
+      "coverage_pct": 100.0,
       "source_routes": [
+        "/produtores",
+        "/agentes",
         "/renovacoes"
       ],
-      "evidence": "📊 Nao existe rota de CADASTRO de produtor: /vendedores e /vendedor sao 403-SigV4 (nao existem no Gateway). O produtor so aparece EMBUTIDO em prod_docs[] de /renovacoes: 97 produtores distintos (ordem=1) em 2025 na Resulta, 64 na AutoFleet. Nao ha status, filial nem data de admissao.",
-      "primary_route": "/renovacoes"
+      "evidence": "📊 094.1 BLOCO 0: /produtores?codage=<codigo de /agentes> devolve 200 com 119 produtores (codigo + nome; `nome` e PII). 🔴 SEM `codage` real a rota devolve 500 — e /agentes (200, 1 agente na Resulta) e a rota que o entrega. A DIMENSAO produtor deixa de ser derivada de prod_docs. | 📊 Nao existe rota de CADASTRO de produtor: /vendedores e /vendedor sao 403-SigV4 (nao existem no Gateway). O produtor so aparece EMBUTIDO em prod_docs[] de /renovacoes: 97 produtores distintos (ordem=1) em 2025 na Resulta, 64 na AutoFleet. Nao ha status, filial nem data de admissao.",
+      "primary_route": "/produtores"
     },
     "commercial.producer_assignments": {
       "state": "SUPPORTED",
@@ -87,10 +91,14 @@
       "state": "PARTIAL",
       "coverage_pct": null,
       "source_routes": [
-        "/cotacoes"
+        "/cotacoes",
+        "/negocios_andamento",
+        "/em_calculo",
+        "/negocios_finalizados"
       ],
-      "evidence": "📊 /cotacoes classe 200, envelope {header, cotacoes}, 30 campos (status, prioridade, tipo_neg, val_premio, val_c, doc_nosnum, prox_aten_*). Mas 📊 devolveu 7 registros com codfil=1 e 7 com uma janela de 30 dias — a rota nao aceita janela e a base e minuscula. Serve para o funil ATUAL, nao para serie historica.",
-      "primary_route": "/cotacoes"
+      "evidence": "📊 094.1 BLOCO 0 (03/09/2026): o FUNIL EXISTE e responde. As tres rotas devolvem HTTP 500 quando falta o parametro `status`; com os parametros da doc completos, respondem. 404 {'Nenhum negocio encontrado.'} e VAZIO, nao erro. 🔴 O acervo, porem, esta praticamente vazio na Resulta: 30 dias -> 404 nas tres; 2025 inteiro -> 1 (UM) negocio em /negocios_andamento. Campos medidos (30 chaves): status, prioridade, tipo, tipo_neg, ramo, val_premio, val_c, oportunidade, codram, inivig, fimvig, produto_fimvig, prox_aten_*. 🔴 `motivo_perda` NAO aparece no GET medido — so no corpo do POST /negocio da doc. 📊 /cotacoes classe 200, envelope {header, cotacoes}, 30 campos (status, prioridade, tipo_neg, val_premio, val_c, doc_nosnum, prox_aten_*). Mas 📊 devolveu 7 registros com codfil=1 e 7 com uma janela de 30 dias — a rota nao aceita janela e a base e minuscula. Serve para o funil ATUAL, nao para serie historica.",
+      "primary_route": "/cotacoes",
+      "nota_094_1": "PARTIAL por COBERTURA, nao por rota: quotes.funnel@1 e quotes.lost_reasons@1 podem ser definidas, mas devolveriam UNAVAILABLE por acervo vazio — nunca zero."
     },
     "financial.commission_accrued": {
       "state": "SUPPORTED",
@@ -99,8 +107,14 @@
         "/documentos_bi",
         "/documento"
       ],
-      "evidence": "📊 val_c presente e nao-nulo em 1680/1680 apolices de 2025 (R$ 1,863,830.79); 93 com valor zero. Em /documento, val_c = base_c*per_c/100 confere nas 3 amostras. E comissao APROPRIADA na emissao, nao recebida.",
-      "primary_route": "/documentos_bi"
+      "evidence": "📊 val_c presente e nao-nulo em 1680/1680 apolices de 2025 (R$ 1,863,830.79); 93 com valor zero. Em /documento, val_c = base_c*per_c/100 confere nas 3 amostras. E comissao APROPRIADA na emissao, nao recebida. · 📊 094.1: /documentos_bi com tipo_doc=TODOS devolve 3.272 linhas em 2025 contra 1.680 do recorte A — mesmas 20 chaves, 6,93 s. A soma de val_c do golden control e do recorte A.",
+      "primary_route": "/documentos_bi",
+      "base_de_apropriacao": {
+        "medido_em": "2026-09-03 (094.1 BLOCO 0)",
+        "rota": "/documentos?periodo=datinc",
+        "estado": "PARTIAL",
+        "achado": "🔴 A janela por `datinc` FUNCIONA como filtro (232 documentos em 30 dias, 1,98 s) mas o campo `datinc` NAO vem no corpo: as 17 chaves sao as mesmas do censo v2 e nenhuma e data de inclusao. inivig cai na janela em 154/232, fimvig em 4/232 — nenhum dos dois explica o recorte, o que confirma que existe uma terceira data, invisivel. CONSEQUENCIA: uma metrica pode apropriar por datinc DELEGANDO ao filtro, mas nao pode auditar linha a linha nem recalcular sem repetir a chamada. E /documentos NAO traz val_c: a comissao continua vindo de /documentos_bi (inivig) ou /documento (1 a 1)."
+      }
     },
     "financial.commission_received": {
       "state": "PARTIAL",
@@ -162,8 +176,9 @@
       "source_routes": [
         "/sinistros"
       ],
-      "evidence": "🔴 📊 A DESCOBERTA DO CENSO: /sinistros (PLURAL) e classe 200 e devolveu 5.729 registros na Resulta em 26,3 s, com numsin, situacao, datoco, datavi, datenc, valind, valdes, valavi, franquia, oficina, nosnum. O MAPA antigo listava /sinistro (SINGULAR) entre os '403 = pedir liberacao'.",
-      "primary_route": "/sinistros"
+      "evidence": "🔴 📊 A DESCOBERTA DO CENSO: /sinistros (PLURAL) e classe 200 e devolveu 5.729 registros na Resulta em 26,3 s, com numsin, situacao, datoco, datavi, datenc, valind, valdes, valavi, franquia, oficina, nosnum. O MAPA antigo listava /sinistro (SINGULAR) entre os '403 = pedir liberacao'. · 📊 094.1 BLOCO 0 (03/09/2026): a rota aceita os 7 parametros da doc — data_inicial, data_final, tipo_data=oco, qtd_pag, pagina. 42 sinistros em 90 dias, 1,10 s (contra 26,34 s sem filtro), datoco 42/42 dentro da janela. Mesmo fingerprint de 29 chaves do censo v2. valind/valdes/valavi/franquia vem preenchidos; placa/oficina/tipo_atendimento/datvis/datlib vieram 100% nulos na amostra; `segurado` e `responsavel` sao PII e nao podem ir ao pack.",
+      "primary_route": "/sinistros",
+      "base_temporal": "tipo_data=oco prende datoco (medido). datavi e datenc vem no corpo."
     },
     "crm.interactions": {
       "state": "PARTIAL",
@@ -181,9 +196,12 @@
         "/cliente",
         "/cliente_cpf",
         "/lista_clientes",
-        "/renovacoes"
+        "/renovacoes",
+        "/documentos",
+        "/producao",
+        "/documentos_bi"
       ],
-      "evidence": "📊 /cliente?codigo= (rota FORA do MAPA antigo, classe 200) e /cliente_cpf devolvem 24 campos com telefones[], emails[], enderecos[], contatos[], datanas, profissao. /renovacoes ja traz fone e email na propria linha. 🔴 TODO este bloco e PII.",
+      "evidence": "📊 /cliente?codigo= (rota FORA do MAPA antigo, classe 200) e /cliente_cpf devolvem 24 campos com telefones[], emails[], enderecos[], contatos[], datanas, profissao. /renovacoes ja traz fone e email na propria linha. 🔴 TODO este bloco e PII. · 📊 094.1 BLOCO 0: /documentos (232 linhas em 30 dias) e /producao trazem `cliente_codigo` + `cliente` em LOTE, e /documentos_bi traz `codcli`. O grao cliente->apolice existe sem uma chamada por cliente. ⛔ `cliente` e nome de pessoa: no pack, so o hash de `cliente_codigo`.",
       "primary_route": "/cliente"
     }
   },
@@ -193,5 +211,27 @@
     "UNAVAILABLE": "medido: nao ha rota nem campo. Nunca inferido",
     "UNKNOWN": "nao medido nesta rodada. NUNCA tratar como UNAVAILABLE"
   },
-  "primary_route_nota": "primary_route = a rota que da a POPULACAO da capacidade; as demais source_routes COMPLEMENTAM (produtor, comissao, status). Declarado em 03/09/2026 porque o detector de rota vazia perguntava \"todas as rotas vieram vazias?\": com /renovacoes vazia e /documentos_bi cheia, renewal.exposure saia 0,0 com cobertura 1,0 e confianca HIGH, e a peca afirmava que o zero era um fato sobre a carteira. /renovacoes filtra fimvig (o que VENCE) e /documentos_bi filtra inivig (o que foi EMITIDO): uma nao substitui a outra."
+  "primary_route_nota": "primary_route = a rota que da a POPULACAO da capacidade; as demais source_routes COMPLEMENTAM (produtor, comissao, status). Declarado em 03/09/2026 porque o detector de rota vazia perguntava \"todas as rotas vieram vazias?\": com /renovacoes vazia e /documentos_bi cheia, renewal.exposure saia 0,0 com cobertura 1,0 e confianca HIGH, e a peca afirmava que o zero era um fato sobre a carteira. /renovacoes filtra fimvig (o que VENCE) e /documentos_bi filtra inivig (o que foi EMITIDO): uma nao substitui a outra.",
+  "remedido_em": "2026-09-03 (094.1 BLOCO 0)",
+  "remedicao_094_1": {
+    "data": "2026-09-03",
+    "escopo": "resulta",
+    "chamadas_get": 18,
+    "sondagens_post_corpo_vazio": 5,
+    "rotas_novas_medidas": [
+      "/negocios_andamento",
+      "/em_calculo",
+      "/negocios_finalizados",
+      "/produtores",
+      "/agentes"
+    ],
+    "rotas_reclassificadas": {
+      "/producao": "500 -> 200 (dt_ini/dt_fim)",
+      "/produtores": "500 -> 200 (codage real)",
+      "/negocios_andamento": "500 -> 200 (com status)",
+      "/em_calculo": "500 -> 404 vazio (com status)",
+      "/negocios_finalizados": "500 -> 404 vazio (com status)"
+    },
+    "escritas_reais": 0
+  }
 }

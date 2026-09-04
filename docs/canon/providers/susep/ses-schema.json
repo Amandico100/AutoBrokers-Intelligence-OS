@@ -1,0 +1,145 @@
+{
+  "_doc": "Schema medido dos arquivos do SUSEP SES usados pelo conector `susep_ses`.",
+  "medido_em": "2026-09-03",
+  "zip": {
+    "url": "https://www2.susep.gov.br/download/estatisticas/BaseCompleta.zip",
+    "bytes": 571756724,
+    "sha256": "7810ea3362f6166a345b923c25b3d8e7a30631d6fd7a3f9482b77129ec5c5a46",
+    "last_modified": "2026-08-31T03:47:22Z",
+    "arquivos": 40,
+    "sem_login": true
+  },
+  "convencoes": {
+    "separador": ";",
+    "encoding": "latin-1 (cp1252)",
+    "decimal": "virgula",
+    "quebra_de_linha": "CRLF",
+    "padding": "os campos de CODIGO das tabelas de dominio vem com espacos a direita (largura fixa). 🔴 Sempre .strip() antes de casar chave.",
+    "negativos": "sinistro_ocorrido pode ser NEGATIVO (estorno de provisao). Nao truncar em zero."
+  },
+  "arquivos": {
+    "Ses_seguros.csv": {
+      "papel": "O FATO. premio e sinistro por competencia x entidade x ramo",
+      "bytes": 136068656,
+      "linhas": 1801731,
+      "granularidade": "damesano x coenti x cogrupo x coramo",
+      "periodo": {
+        "min": "199501",
+        "max": "202606",
+        "n_meses": 378
+      },
+      "n_entidades": 275,
+      "n_ramos": 217,
+      "colunas": [
+        "damesano",
+        "coenti",
+        "cogrupo",
+        "coramo",
+        "premio_direto",
+        "premio_de_seguros",
+        "premio_retido",
+        "premio_ganho",
+        "sinistro_direto",
+        "sinistro_retido",
+        "desp_com",
+        "premio_emitido2",
+        "premio_emitido_cap",
+        "despesa_resseguros",
+        "sinistro_ocorrido",
+        "receita_resseguro",
+        "sinistros_ocorridos_cap",
+        "recuperacao_sinistros_ocorridos_cap",
+        "rvne",
+        "conveniodpvat",
+        "consorciosefundos"
+      ],
+      "tipos": {
+        "damesano": "str(6) AAAAMM — a COMPETENCIA. Nao e data, e mes contabil",
+        "coenti": "str(5) com padding a direita na tabela de codigos; SEM padding no fato",
+        "cogrupo": "str(5) grupo economico da entidade (Ses_cias.Cogrupo)",
+        "coramo": "str(4) ramo SUSEP. Os dois primeiros digitos sao o GRUPO de ramo"
+      },
+      "campos_de_premio": [
+        "premio_direto",
+        "premio_de_seguros",
+        "premio_retido",
+        "premio_ganho",
+        "premio_emitido2",
+        "premio_emitido_cap"
+      ],
+      "campos_de_sinistro": [
+        "sinistro_direto",
+        "sinistro_retido",
+        "sinistro_ocorrido",
+        "sinistros_ocorridos_cap",
+        "recuperacao_sinistros_ocorridos_cap"
+      ],
+      "sinistralidade": "sinistro_ocorrido / premio_ganho — as duas pontas do MESMO regime de competencia. 🔴 Nao misturar com premio_direto (emissao) nem com sinistro_direto (pago)."
+    },
+    "Ses_cias.csv": {
+      "papel": "dominio de ENTIDADE",
+      "linhas": 764,
+      "colunas": [
+        "Coenti",
+        "Noenti",
+        "Cogrupo",
+        "Nogrupo"
+      ]
+    },
+    "Ses_ramos.csv": {
+      "papel": "dominio de RAMO",
+      "linhas": 161,
+      "colunas": [
+        "coramo",
+        "noramo"
+      ]
+    },
+    "ses_gruposramos.csv": {
+      "papel": "dominio de GRUPO de ramo",
+      "linhas": 22,
+      "colunas": [
+        "GRAID",
+        "GRANOME",
+        "GRACODIGO"
+      ]
+    },
+    "Ses_diversos.csv": {
+      "papel": "a COMPETENCIA FINAL da base",
+      "conteudo": {
+        "Data_Final": "202606"
+      }
+    }
+  },
+  "grupo_05_automovel": {
+    "ramos": {
+      "0520": "0520 - Acidentes Pessoais Passageiros-APP",
+      "0523": "0523 - RC T.ROD.PAS INTEST OU INT(RUN OFF)",
+      "0524": "0524 - Garantia Est./ Exten. GarantiaAuto",
+      "0525": "0525 - Carta Verde",
+      "0526": "0526 - Seguro Popular de Auto Us (RUN OFF)",
+      "0527": "0527 - RC Veic Pass Acordos fora Mercosul",
+      "0531": "0531 - Automóvel - Casco",
+      "0542": "0542 - Assistência e Outras Cobert. - Auto",
+      "0544": "0544 - R.C.T.Viag InterPes Tran/ñ(RUN OFF)",
+      "0553": "0553 - R. C. Facultativa Veículos - RCFV",
+      "0583": "0583 - DPVAT Extinto",
+      "0588": "0588 - DPVAT",
+      "0589": "0589 - DPVAT( RUN OFF)"
+    },
+    "nota": "o grupo do ramo sao os DOIS PRIMEIROS digitos de coramo ('05' = Automovel). 0531 Casco e 0553 RCFV concentram o valor; 0542 e assistencia; 0588 DPVAT."
+  },
+  "market_fact_sugerido": {
+    "chave": [
+      "coenti",
+      "damesano",
+      "coramo"
+    ],
+    "medidas": [
+      "premio_ganho",
+      "sinistro_ocorrido",
+      "premio_direto"
+    ],
+    "derivada": "loss_ratio = sinistro_ocorrido / premio_ganho",
+    "recorte_do_conector": "🔴 filtrar Ses_seguros.csv por coenti no mapa seguradora-coenti e por competencia; 1,8 M de linhas nao entram em caminho quente."
+  }
+}

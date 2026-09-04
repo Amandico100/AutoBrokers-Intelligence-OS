@@ -1,6 +1,6 @@
 {
   "provider_key": "infocap",
-  "measured_at": "2026-09-03",
+  "measured_at": "2026-09-03 (094.1 BLOCO 0)",
   "connection_scope": [
     "resulta"
   ],
@@ -281,7 +281,13 @@
       ],
       "n_chaves": 17,
       "chave_raiz_do_envelope": "documentos",
-      "medido_com": "/documentos?texto=<numapo do BI>"
+      "medido_com": "/documentos?texto=<numapo do BI>",
+      "remedido_em_094.1": {
+        "medido_com": "/documentos?periodo=datinc&datini&datfim&qtd_pag&pag&ordem&orientacao&codfil",
+        "sha256_das_chaves_ordenadas": "da67a89ced0b5320255a12486588f9c6fa0676df9f416733c28546c77f2d0b7c",
+        "igual_ao_censo_v2": true,
+        "n_registros": 232
+      }
     },
     "/documentos_bi": {
       "sha256_das_chaves_ordenadas": "3437d5536b20986fc976809d65043ffe9f2cdbe746f66eb81d7d107e0391f9b8",
@@ -309,7 +315,13 @@
       ],
       "n_chaves": 20,
       "chave_raiz_do_envelope": "documentos",
-      "medido_com": "/documentos_bi 2025 INIVIG tipo_doc=A"
+      "medido_com": "/documentos_bi 2025 INIVIG tipo_doc=A",
+      "remedido_em_094.1": {
+        "medido_com": "/documentos_bi 2025 INIVIG tipo_doc=TODOS",
+        "sha256_das_chaves_ordenadas": "3437d5536b20986fc976809d65043ffe9f2cdbe746f66eb81d7d107e0391f9b8",
+        "igual_ao_censo_v2": true,
+        "n_registros": 3272
+      }
     },
     "/renovacoes": {
       "sha256_das_chaves_ordenadas": "1ac6b5106688a80eb43f042bfccafa6a9001abb701ff1f72aa159ba729d4edc9",
@@ -350,7 +362,13 @@
       ],
       "n_chaves": 33,
       "chave_raiz_do_envelope": "renovacoes",
-      "medido_com": "/renovacoes 2025"
+      "medido_com": "/renovacoes 2025",
+      "remedido_em_094.1": {
+        "medido_com": "/renovacoes 2025 cancelado=T (INCLUI cancelados)",
+        "sha256_das_chaves_ordenadas": "1ac6b5106688a80eb43f042bfccafa6a9001abb701ff1f72aa159ba729d4edc9",
+        "igual_ao_censo_v2": true,
+        "n_registros": 3861
+      }
     },
     "/cotacoes": {
       "sha256_das_chaves_ordenadas": "78e278b04f2096baf2803027f77019f5a3c6b05f1dc793d196fb8debc21688b0",
@@ -455,7 +473,13 @@
       ],
       "n_chaves": 29,
       "chave_raiz_do_envelope": "sinistros",
-      "medido_com": "/sinistros (plural, fora do MAPA)"
+      "medido_com": "/sinistros (plural, fora do MAPA)",
+      "remedido_em_094.1": {
+        "medido_com": "/sinistros?data_inicial&data_final&tipo_data=oco&qtd_pag&pagina (90 dias)",
+        "sha256_das_chaves_ordenadas": "15565f90f1eaff2d13fe6adb2d2c7532879ce24fea74b4b9387dfd1d3ae22d02",
+        "igual_ao_censo_v2": true,
+        "n_registros": 42
+      }
     },
     "/documento::prod_docs[]": {
       "sha256_das_chaves_ordenadas": "f66cd91177ed21240e37f07ae54c51a3c99be557889f9a511fdf47514b7995b7",
@@ -525,6 +549,91 @@
       "n_chaves": 8,
       "chave_raiz_do_envelope": "renovacoes[].prod_docs",
       "medido_com": "/renovacoes 2025"
+    },
+    "/producao": {
+      "sha256_das_chaves_ordenadas": "55701b22d3186ede9ee7fd8e7617939de05a1f40a2177b1eaa35cbff55b0f0cd",
+      "chaves_ordenadas": [
+        "bot_a_dthora",
+        "cancelado",
+        "cliente",
+        "cliente_codigo",
+        "codfil",
+        "datemi",
+        "fimvig",
+        "historico_imagem",
+        "inivig",
+        "nosnum",
+        "nosnum_ren",
+        "numapo",
+        "numend",
+        "numprop",
+        "ramo",
+        "renovacao_situacao",
+        "seguradora",
+        "sin_situacao",
+        "tipdoc"
+      ],
+      "n_chaves": 19,
+      "chave_raiz_do_envelope": "producao",
+      "medido_com": "/producao?dt_ini&dt_fim&ordem=inivig&orientacao=asc&so_renovados&so_emitidos (30 dias, 094.1)"
+    },
+    "/negocios_andamento": {
+      "sha256_das_chaves_ordenadas": "78e278b04f2096baf2803027f77019f5a3c6b05f1dc793d196fb8debc21688b0",
+      "chaves_ordenadas": [
+        "cliente",
+        "codcli",
+        "codfil",
+        "codigo",
+        "codmulti",
+        "codram",
+        "descricao_item",
+        "doc_codfil",
+        "doc_nosnum",
+        "fimvig",
+        "inivig",
+        "multi_corp_mais",
+        "oportunidade",
+        "prioridade",
+        "produto_fimvig",
+        "prox_aten_codigo",
+        "prox_aten_data",
+        "prox_aten_descricao",
+        "prox_aten_hora",
+        "prox_aten_qtde_atrasadas",
+        "ramo",
+        "ramo_multi",
+        "ramo_tipo",
+        "sit_multi",
+        "situacao_multi",
+        "status",
+        "tipo",
+        "tipo_neg",
+        "val_c",
+        "val_premio"
+      ],
+      "n_chaves": 30,
+      "chave_raiz_do_envelope": "negocios",
+      "medido_com": "/negocios_andamento?dtini&dtfim&texto&qtd_pag&pag&ordem&orientacao&status&calculo (2025, 094.1)"
+    },
+    "/produtores": {
+      "sha256_das_chaves_ordenadas": "800cfd4bf3f0981331a315df9dd19cf0c78daacbc24916f6918e166d0df26549",
+      "chaves_ordenadas": [
+        "codigo",
+        "nome"
+      ],
+      "n_chaves": 2,
+      "chave_raiz_do_envelope": "produtores",
+      "medido_com": "/produtores?texto=&codage=<codigo de /agentes> (094.1)"
+    },
+    "/agentes": {
+      "sha256_das_chaves_ordenadas": "800cfd4bf3f0981331a315df9dd19cf0c78daacbc24916f6918e166d0df26549",
+      "chaves_ordenadas": [
+        "codigo",
+        "nome"
+      ],
+      "n_chaves": 2,
+      "chave_raiz_do_envelope": "agentes",
+      "medido_com": "/agentes?texto= (094.1)"
     }
   }
 }

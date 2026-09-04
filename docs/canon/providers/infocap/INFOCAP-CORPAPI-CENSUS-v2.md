@@ -1,5 +1,12 @@
 # INFOCAP / CorpAPI — CENSO MEDIDO v2
 
+> 🔴 **SUPERADO/ATUALIZADO em 03/09/2026 pelo BLOCO 0 da SPEC-094.1 — a seção `v2.1`, no fim
+> deste arquivo, é a autoridade onde os dois divergirem.** Ela reclassifica cinco rotas
+> (`/producao`, `/produtores` e as três do funil: o 500 era parâmetro faltando), mede a base
+> de apropriação (`/documentos?periodo=datinc`), prova que **`cancelado=T` INCLUI os cancelados
+> em vez de filtrá-los**, e registra a sondagem segura das 5 portas de escrita.
+> A fonte externa está em [`../susep/SES-CENSO.md`](../susep/SES-CENSO.md).
+
 > **Este documento SUPERA `docs/canon/INFOCAP-CORPAPI-MAPA.md` (42 linhas, 14/07/2026).**
 > A linha exata que o MAPA deve receber no topo está na §9.
 >
@@ -383,3 +390,196 @@ não achados.
 **Nenhum destes arquivos contém CPF, nome de pessoa, apólice, placa, telefone, e-mail,
 endereço, token, senha ou login.** Toda amostra é redigida: dígitos → `#`, letras → `x`.
 Valores monetários, percentuais e contagens ficam crus — não identificam ninguém.
+
+---
+
+# v2.1 — BLOCO 0 da SPEC-094.1 · remedição de 03/09/2026 (noite)
+
+> 🔴 **SUPERADO/ATUALIZADO em 03/09/2026 pelo BLOCO 0 da SPEC-094.1.** As seções 1–11
+> acima continuam valendo, com **cinco reclassificações**: o que este documento chamou
+> de "500" ou "não medido" em `/producao`, `/produtores` e nas três rotas do funil era
+> **parâmetro faltando**, não rota quebrada.
+>
+> MÉTODO: **18 GET** pela conexão `connected` da **Resulta**, credencial lida pelo
+> caminho do produto · **5 POST de SONDAGEM com corpo vazio `{}`**, autorizados pelo
+> Founder, para ler a VALIDAÇÃO. ⛔ **Nenhuma escrita real. Nenhum registro criado,
+> alterado ou apagado. Nenhuma escrita no Supabase.** Nenhum dado de pessoa aqui.
+> 📊 Scripts: `scratchpad/bloco0_0941/{b0_gets,b0_variantes,b0_v2,b0_datas,b0_sonda_escrita}.py`
+
+## v2.1 §A — as chamadas que a SPEC-094.1 pediu
+
+| rota | os parâmetros que a fizeram funcionar | classe | latência | n | fingerprint |
+|---|---|---|---|---|---|
+| `/producao` | `dt_ini` `dt_fim` `texto` `ordem=inivig` `orientacao` `so_renovados` `so_emitidos` | **200** | 0,81 s | **15** | `55701b22…` (19 chaves) |
+| `/documentos` | `periodo=datinc` `datini` `datfim` `qtd_pag` `pag` `ordem` `orientacao` `codfil` | **200** | 1,98 s | **232** (30 d) | `da67a89c…` **= v2** |
+| `/sinistros` | `data_inicial` `data_final` `tipo_data=oco` `qtd_pag` `pagina` | **200** | **1,10 s** | **42** (90 d) | `15565f90…` **= v2** |
+| `/negocios_andamento` | os 9 da doc, **com `status`** | **200** | 0,73 s | **1** (2025) | `78e278b0…` (30 chaves) |
+| `/em_calculo` | os 8 da doc, **com `status`** | **404 = vazio** | 0,84 s | 0 (30 d) | — |
+| `/negocios_finalizados` | os 8 da doc, **com `status`** | **404 = vazio** | 0,93 s | 0 (30 d) | — |
+| `/produtores` | `texto=` + **`codage` real** (vindo de `/agentes`) | **200** | 0,78 s | **119** | `800cfd4b…` (2 chaves) |
+| `/agentes` | `texto=` | **200** | 0,65 s | **1** | `800cfd4b…` |
+| `/documentos_bi` | 2025 · `data=INIVIG` · **`tipo_doc=TODOS`** | **200** | 6,93 s | **3.272** | `3437d553…` **= v2** |
+| `/renovacoes` | 2025 · **`cancelado=T`** | **200** | 15,06 s | **3.861** | `1ac6b510…` **= v2** |
+
+📊 **Quatro fingerprints reproduzem o censo v2 com OUTRO conjunto de parâmetros.** É a
+linha de CONTROLE (CLAUDE.md §9.2): o schema não mudou — mudou a pergunta.
+
+### A1 · 🔴 P-094-PRODUCAO-500 FECHADO — e a rota não serve para lote
+
+`/producao` com `dt_ini`/`dt_fim` (e não `datini`/`datfim`) responde **200 em 0,81 s**.
+A inferência do `CORPAPI-CATALOGO-OFICIAL.md` §2.1 estava certa.
+
+⚠️ **E o segundo achado importa mais que o primeiro:** devolveu **15 linhas** nas duas
+formas medidas (`so_renovados=t` e `=x`), com `inivig` entre 04/08 e 05/08, na **mesma
+janela de 30 dias** em que `/documentos` devolveu **232**. A doc não expõe `qtd_pag` nem
+`pag` para esta rota. 💭 **INFERÊNCIA:** página fixa de 15. **FATO:** 15 registros, duas
+formas, mesma janela, contra 232 da rota irmã.
+
+🔴 **Consequência:** `/producao` volta a servir como **SONDA** — que é exatamente o uso
+de `infocap_connector.py:3115` e `:3126` — e **não** como fonte de população. Quem somar
+prêmio de `/producao` soma 15 apólices e chama de mês.
+
+### A2 · 🔴 `/documentos?periodo=datinc` é a base de apropriação — e ela não vem no corpo
+
+📊 232 documentos em 30 dias, 1,98 s. **E nenhuma das 17 chaves devolvidas é `datinc`.**
+
+```
+inivig dentro da janela   154/232   (66%)
+fimvig dentro da janela     4/232   ( 2%)
+datemi dentro da janela   128/187
+```
+
+🔴 **Nem `inivig`, nem `fimvig`, nem `datemi` explicam o recorte** — o que prova, por
+eliminação, que existe uma terceira data e que **ela é invisível**. Uma métrica pode
+apropriar por `datinc` **delegando ao filtro**, mas não pode auditar linha a linha nem
+recalcular sem repetir a chamada. E `/documentos` **não traz `val_c`**: a comissão
+continua vindo de `/documentos_bi` (que filtra `inivig`) ou de `/documento` (uma apólice
+por vez). **A base de apropriação existe como JANELA, não como CAMPO.**
+
+### A3 · `/sinistros` filtrada é 24× mais rápida, e `tipo_data=oco` prende `datoco`
+
+📊 42 sinistros em 90 dias em **1,10 s**, contra 26,34 s do acervo inteiro no v2.
+`datoco` **42/42** dentro da janela, com o mínimo exatamente no primeiro dia dela — o
+filtro é a data de **ocorrência**, provado. `datavi` 42/42; `datenc` 9/42 (só encerrados).
+`datvis`, `datlib`, `placa`, `oficina`, `tipo_atendimento`, `agendamento` e
+`proxima_agenda` vieram **100% nulos** na amostra. `valind`, `valdes`, `valavi` e
+`franquia` vêm preenchidos.
+⛔ `segurado` e `responsavel` são PII — não entram no pack nem no Artifact.
+
+### A4 · 🔴 O funil EXISTE, responde, e está VAZIO — o 500 era `status` faltando
+
+```
+sem `status`   ->  HTTP 500 {"message": "Internal Server Error."}   nas TRÊS rotas
+com `status`   ->  404 {"message": "Nenhum negócio encontrado."}    = VAZIO, não erro
+2025 inteiro   ->  /negocios_andamento devolve UM negócio
+```
+
+📊 30 chaves medidas: `codigo · codfil · codcli · cliente · status · prioridade · tipo ·
+tipo_neg · ramo · codram · ramo_multi · ramo_tipo · sit_multi · situacao_multi · codmulti ·
+multi_corp_mais · val_premio · val_c · oportunidade · inivig · fimvig · produto_fimvig ·
+descricao_item · doc_codfil · doc_nosnum · prox_aten_{codigo,data,hora,descricao,qtde_atrasadas}`.
+
+🔴 **`motivo_perda` NÃO aparece no GET medido.** Ele existe só no corpo do `POST /negocio`
+da doc. **`quotes.lost_reasons@1` não tem fonte provada de LEITURA.**
+
+⚠️ **Para a SPEC-094.1:** `commercial.quotes` fica **PARTIAL por COBERTURA, não por
+rota**. `quotes.funnel@1` pode ser definida; devolveria **UNAVAILABLE por acervo vazio —
+nunca zero** (M2). A corretora não usa o CRM da InfoCap.
+
+### A5 · `/produtores` exigia um `codage` real; `/agentes` é quem o entrega
+
+📊 `codage` vazio → **500** em duas formas medidas. Com o código do único agente de
+`/agentes` → **200 com 119 produtores** (`codigo` + `nome`; `nome` é PII).
+⚠️ 119 é a **dimensão**; o censo v2 mediu **97 produtores com apólice em 2025**. Os 22 de
+diferença são quem existe e não vendeu — legível só agora.
+
+### A6 · `tipo_doc=TODOS` mostra um universo 1,95× maior que o golden control
+
+📊 2025, `data=INIVIG`: **`tipo_doc=A` = 1.680** (golden control) · **`TODOS` = 3.272** —
+**+1.592 documentos** (endosso, cancelamento, proposta), com as **mesmas 20 chaves**.
+🔴 O golden control continua válido: ele **é** o recorte `A`. O que faltava era saber que
+existe um universo quase duas vezes maior que nenhuma métrica conta hoje.
+
+### A7 · 🔴🔴 `cancelado=T` NÃO é "só os cancelados" — é "inclua os cancelados"
+
+📊 `/renovacoes` 2025 com `cancelado=T`: **3.861 linhas** = **3.536 com `cancelado='F'`**
+(exatamente as do golden control) **+ 325 com `cancelado='T'`**.
+
+```
+taxa de cancelamento 2025 = 325 / 3.861 = 8,4%      📊 medido, Resulta
+```
+
+⛔ **É o CLAUDE.md §9.5 em estado puro:** quem ler `cancelado=T` como recorte publica
+**a carteira inteira como cancelada**, e o número **responde** — não trava.
+`portfolio.cancellation_rate@1` tem de filtrar pelo **CAMPO `cancelado` de cada linha**,
+nunca pelo parâmetro. Capacidade `portfolio.cancellations`: **PARTIAL → SUPPORTED**.
+
+## v2.1 §B — 🔴 SONDAGEM SEGURA das 5 portas de escrita (corpo vazio `{}`)
+
+⛔ **Uma requisição por rota. Corpo `{}`. Nenhum dado de pessoa, real ou fictício.
+As cinco RECUSARAM: nada foi criado.**
+
+| rota | HTTP | resposta da API | o que a validação revela |
+|---|---|---|---|
+| `POST /cliente` | **400** | `{"message": "O nome é obrigatório."}` | valida — e **um campo por vez** |
+| `POST /endereco` | **400** | `{"message": "Padrão é obrigatória."}` | 🔴 cobra `padrao` **antes** de `codcli` |
+| `POST /email` | **400** | `{"message": "Padrão é obrigatória."}` | mesma mensagem de `/endereco` |
+| `POST /negocio` | **500** | `{"message": "Internal Server Error."}` | 🔴 **não valida: estoura** |
+| `POST /prod_docs` | **400** | `{"message": "Valor de código inválido."}` | valida a chave composta |
+
+🔴 **Quatro das cinco validam. A quinta explode.** `POST /negocio` com corpo vazio devolve
+o **mesmo 500** que as rotas GET do funil davam sem `status` — 💭 é a assinatura de uma
+API que não trata entrada ausente. Uma rota que responde 500 a corpo inválido **não diz o
+que falta**, e por isso os obrigatórios de `/negocio` continuam **desconhecidos**.
+
+⚠️ **A validação é serial:** cada rodada revela **um** obrigatório. Descobrir a lista
+inteira exigiria dezenas de requisições **com dados plausíveis** — exatamente o que a
+trava proíbe. 📊 **O que se sabe hoje:** `/cliente` exige `nome`; `/endereco` e `/email`
+exigem `padrao`; `/prod_docs` exige código válido.
+
+### B1 · A resposta ao Founder: *"um agente pode cadastrar clientes em massa hoje?"*
+
+> **Tecnicamente SIM — a porta abre e reage. Operacionalmente NÃO. E a sondagem mostra
+> por quê melhor do que a documentação mostrava.**
+
+```
+✅ PROVADO   as 5 rotas existem, aceitam o token da corretora e três delas VALIDAM
+✅ PROVADO   não há como criar nada por acidente: corpo vazio é recusado nas 5
+❌ FALTA     a LISTA de obrigatórios — a API entrega um campo por rodada, e completá-la
+             custaria dezenas de escritas com dado plausível: proibido pela trava
+❌ FALTA     a RESPOSTA da escrita: nenhuma foi executada e a doc não traz exemplo.
+             🔴 Sem ler o `codigo` do cliente criado NÃO SE PENDURA endereço, e-mail nem
+             telefone nele — o cadastro em massa quebra no segundo passo
+❌ FALTA     IDEMPOTÊNCIA: nenhuma chave, nenhum header. O produto já tem retry com
+             backoff — um retry de rede vira o SEGUNDO cliente
+❌ FALTA     CONSERTO: `/cliente` tem POST e DELETE e não tem PUT. Errou, só apagando
+❌ FALTA     GOVERNO: nenhuma dessas rotas passa por Work Run, Approval ou Capability
+🔴 BLOQUEIO  F-094-07: Amandus e Resulta descriptografam para a MESMA conta CorpAPI.
+             Uma escrita "da Amandus" cairia no InfoCap da Resulta. Escrita cross-tenant
+             é CLAUDE.md §10 (4) — condição de PARADA, não risco a mitigar
+```
+
+**RECOMENDAÇÃO:** a escrita continua **fora** da SPEC-094.1 (§5). O que mudou é que
+deixou de ser hipótese: as cinco portas foram tocadas, recusaram corpo vazio, e o que
+falta é **nomeável** — ambiente que possa sujar, contrato de resposta, idempotência no
+adapter, Approval por Work Run, e a conta compartilhada resolvida. **Nesta ordem.**
+
+## v2.1 §C — o que ficou de fora desta rodada
+
+| não medido | por quê |
+|---|---|
+| paginação de `/sinistros` (`pagina=2`) | 42 registros couberam em uma página |
+| `tipo_data` ≠ `oco` em `/sinistros` | uma chamada por valor; `oco` provado, os demais ficam UNKNOWN |
+| `/producao` em janela maior | 💭 a página fixa de 15 tornaria o teste inconclusivo |
+| a lista completa de obrigatórios das 5 escritas | exigiria dezenas de POST com dado plausível — trava |
+| `POST /telefone` | o pacote autorizou 5 rotas; `/negocio` entrou no lugar dela |
+| `motivo_perda` no GET do funil | 📊 não está nas 30 chaves — e o acervo tem 1 negócio |
+| Amandus e AutoFleet | esta rodada foi só Resulta (F-094-07 continua aberto) |
+
+## v2.1 §D — a fonte externa
+
+📊 O SUSEP SES foi medido e documentado em
+[`../susep/SES-CENSO.md`](../susep/SES-CENSO.md): 571.756.724 bytes, `Last-Modified`
+31/08/2026, `sha256 7810ea33…`, competência final **202606**, 1.801.731 linhas de
+prêmio e sinistro por seguradora × mês × ramo. **14 das 15 seguradoras do repositório
+casam com um `coenti`; 12 têm auto ativo; `sulamerica` fica `UNKNOWN`.**

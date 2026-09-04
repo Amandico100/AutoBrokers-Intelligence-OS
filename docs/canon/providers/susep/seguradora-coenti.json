@@ -1,0 +1,305 @@
+{
+  "_doc": "Mapa NOME CANONICO da seguradora (chave `insurer_key` de `portals`) -> `coenti` do SUSEP SES. 🔴 O que nao casa sai UNKNOWN, NUNCA omitido e NUNCA zero.",
+  "fonte": "https://www2.susep.gov.br/download/estatisticas/BaseCompleta.zip -> Ses_cias.csv",
+  "medido_em": "2026-09-03",
+  "base_last_modified": "2026-08-31T03:47:22Z",
+  "competencia_final_da_base": "202606",
+  "criterio_de_casamento": "token do nome canonico dentro de Noenti (sem acento, maiusculo) + desempate por premio_ganho > 0 no grupo de ramo 05 (Automovel) nas competencias 202604-202606",
+  "placar": {
+    "seguradoras_no_repo": 15,
+    "casaram_com_coenti": 14,
+    "unknown": 1,
+    "com_auto_ativo_no_trimestre": 12,
+    "casam_mas_sem_auto_recente": [
+      "sompo",
+      "seguros_unimed"
+    ]
+  },
+  "seguradoras": {
+    "alfa": {
+      "coenti": "06467",
+      "noenti_susep": "ALFA SEGURADORA S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06467",
+          "noenti": "ALFA SEGURADORA S.A.",
+          "premio_ganho_3m": 78060878.55
+        },
+        {
+          "coenti": "02895",
+          "noenti": "ALFA PREVIDÊNCIA E VIDA S.A.",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": null
+    },
+    "allianz": {
+      "coenti": "05177",
+      "noenti_susep": "ALLIANZ SEGUROS S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05177",
+          "noenti": "ALLIANZ SEGUROS S.A.",
+          "premio_ganho_3m": 2217920185.29
+        }
+      ],
+      "nota": null
+    },
+    "azul": {
+      "coenti": "05355",
+      "noenti_susep": "AZUL COMPANHIA DE SEGUROS GERAIS",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05355",
+          "noenti": "AZUL COMPANHIA DE SEGUROS GERAIS",
+          "premio_ganho_3m": 33666148.35
+        }
+      ],
+      "nota": "📊 sinistralidade de 2,44% no trimestre — 24x abaixo do mercado. Nao trate como eficiencia: e sinal de carteira em transferencia/run-off. Numero para investigar, nao para publicar sozinho."
+    },
+    "bradesco": {
+      "coenti": "05312",
+      "noenti_susep": "BRADESCO AUTO/RE COMPANHIA DE SEGUROS",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05312",
+          "noenti": "BRADESCO AUTO/RE COMPANHIA DE SEGUROS",
+          "premio_ganho_3m": 1739534358.35
+        },
+        {
+          "coenti": "05444",
+          "noenti": "BRADESCO SEGUROS S.A",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": "duas entidades ativas com o nome; a de AUTO e 05312 (BRADESCO AUTO/RE). 05444 BRADESCO SEGUROS S.A nao tem auto desde 200801."
+    },
+    "hdi": {
+      "coenti": "06572",
+      "noenti_susep": "HDI SEGUROS S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06572",
+          "noenti": "HDI SEGUROS S.A.",
+          "premio_ganho_3m": 1117261233.03
+        },
+        {
+          "coenti": "01571",
+          "noenti": "HDI GLOBAL SEGUROS S.A",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": "01571 HDI GLOBAL e a de grandes riscos, sem auto no trimestre; a de auto e 06572."
+    },
+    "mapfre": {
+      "coenti": "06238",
+      "noenti_susep": "MAPFRE SEGUROS GERAIS S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06238",
+          "noenti": "MAPFRE SEGUROS GERAIS S.A.",
+          "premio_ganho_3m": 808084021.39
+        },
+        {
+          "coenti": "05665",
+          "noenti": "MAPFRE VIDA S.A.",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": null
+    },
+    "porto": {
+      "coenti": "05886",
+      "noenti_susep": "PORTO SEGURO COMPANHIA DE SEGUROS GERAIS",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05886",
+          "noenti": "PORTO SEGURO COMPANHIA DE SEGUROS GERAIS",
+          "premio_ganho_3m": 4007991668.65
+        },
+        {
+          "coenti": "06033",
+          "noenti": "PORTO SEGURO VIDA E PREVIDÊNCIA S/A.",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": null
+    },
+    "suhai": {
+      "coenti": "04952",
+      "noenti_susep": "SUHAI SEGURADORA S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "04952",
+          "noenti": "SUHAI SEGURADORA S.A.",
+          "premio_ganho_3m": 491219831.21
+        }
+      ],
+      "nota": null
+    },
+    "sura": {
+      "coenti": "06751",
+      "noenti_susep": "SEGUROS SURA S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06751",
+          "noenti": "SEGUROS SURA S.A.",
+          "premio_ganho_3m": 154790049.98
+        }
+      ],
+      "nota": null
+    },
+    "tokio_marine": {
+      "coenti": "06190",
+      "noenti_susep": "TOKIO MARINE SEGURADORA S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06190",
+          "noenti": "TOKIO MARINE SEGURADORA S.A.",
+          "premio_ganho_3m": 2251979702.22
+        },
+        {
+          "coenti": "05151",
+          "noenti": "TOKIO MARINE BRASIL SEGURADORA S.A.",
+          "premio_ganho_3m": 0
+        }
+      ],
+      "nota": null
+    },
+    "yelum": {
+      "coenti": "05185",
+      "noenti_susep": "YELUM SEGUROS S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05185",
+          "noenti": "YELUM SEGUROS S.A.",
+          "premio_ganho_3m": 1432026743.51
+        }
+      ],
+      "nota": null
+    },
+    "zurich": {
+      "coenti": "05495",
+      "noenti_susep": "ZURICH MINAS BRASIL SEGUROS S.A.",
+      "ultimo_mes_com_premio_auto": "202606",
+      "auto_ativo_em_202606": true,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05495",
+          "noenti": "ZURICH MINAS BRASIL SEGUROS S.A.",
+          "premio_ganho_3m": 402227552.21
+        },
+        {
+          "coenti": "05941",
+          "noenti": "ZURICH BRASIL COMPANHIA DE SEGUROS",
+          "premio_ganho_3m": 0.0
+        },
+        {
+          "coenti": "06564",
+          "noenti": "ZURICH SANTANDER BRASIL SEGUROS S.A.",
+          "premio_ganho_3m": 0.0
+        },
+        {
+          "coenti": "06157",
+          "noenti": "ZURICH BRASIL VIDA E PREVIDÊNCIA S.A.",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": "11 entidades com o nome; a de auto e 05495 (ZURICH MINAS BRASIL). 05941 parou em 201911; 06564 e 06157 sao vida/prev."
+    },
+    "sompo": {
+      "coenti": "05720",
+      "noenti_susep": "SOMPO SEGUROS S.A.",
+      "ultimo_mes_com_premio_auto": "202303",
+      "auto_ativo_em_202606": false,
+      "candidatos_avaliados": [
+        {
+          "coenti": "05720",
+          "noenti": "SOMPO SEGUROS S.A.",
+          "premio_ganho_3m": 0.0
+        }
+      ],
+      "nota": "🔴 A entidade CASA pelo nome, mas o ultimo mes com premio_ganho no grupo 05 (Automovel) e 202303. Auto desta seguradora e UNAVAILABLE nas competencias recentes — nunca zero."
+    },
+    "sulamerica": {
+      "coenti": "UNKNOWN",
+      "noenti_susep": null,
+      "ultimo_mes_com_premio_auto": null,
+      "auto_ativo_em_202606": false,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06556",
+          "noenti": "SUL AMERICA SEGUROS GERAIS S/A",
+          "premio_ganho_3m": 0
+        },
+        {
+          "coenti": "06220",
+          "noenti": "SUL AMÉRICA SEGUROS DE PESSOAS E PREVIDÊNCIA S.A.",
+          "premio_ganho_3m": 0.0
+        },
+        {
+          "coenti": "05240",
+          "noenti": "SUL AMERICA TERRESTRES,MARÍTIMOS E ACIDENTES CIA DE SEGUROS",
+          "premio_ganho_3m": 0
+        },
+        {
+          "coenti": "05037",
+          "noenti": "SUL AMERICA UNIBANCO SEGURADORA S/A",
+          "premio_ganho_3m": 0
+        },
+        {
+          "coenti": "05681",
+          "noenti": "SUL AMERICA BANDEIRANTE SEGUROS S/A",
+          "premio_ganho_3m": 0
+        }
+      ],
+      "nota": "🔴 UNKNOWN para AUTO. Ha 11 entidades 'SUL AMERICA' no Ses_cias; nenhuma das candidatas tem premio de auto no trimestre medido (a historica do ramo e 05240 SUL AMERICA TERRESTRES, MARITIMOS E ACIDENTES). Escolher uma pelo nome seria adivinhar: fica UNKNOWN ate uma decisao registrada."
+    },
+    "seguros_unimed": {
+      "coenti": "06947",
+      "noenti_susep": "UNIMED SEGURADORA S.A.",
+      "ultimo_mes_com_premio_auto": "200901",
+      "auto_ativo_em_202606": false,
+      "candidatos_avaliados": [
+        {
+          "coenti": "06947",
+          "noenti": "UNIMED SEGURADORA S.A.",
+          "premio_ganho_3m": 0.0
+        },
+        {
+          "coenti": "01970",
+          "noenti": "UNIMED SEGUROS PATRIMONIAIS S.A.",
+          "premio_ganho_3m": 0
+        },
+        {
+          "coenti": "14818",
+          "noenti": "UNIMED PREVIDÊNCIA PRIVADA S.A.",
+          "premio_ganho_3m": 0
+        }
+      ],
+      "nota": "🔴 CASA com UNIMED SEGURADORA S.A., que nao opera auto desde 200901 (pg total historico de R$ 2.224 no grupo 05). Para auto, trate como UNAVAILABLE; para outros grupos de ramo, o coenti vale."
+    }
+  }
+}
