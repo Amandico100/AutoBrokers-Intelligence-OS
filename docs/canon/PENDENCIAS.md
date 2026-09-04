@@ -10064,13 +10064,71 @@ corretora com o Pulso de mercado ligado recebe a sinistralidade errada, com conf
 `/seguradoras` por corretora e casar a sigla ao NOME antes de consultar o mapa — a rota já está medida no censo, o
 que falta é o leitor. **Dono:** 🤖. 💭 3h.
 
-## P-094.1-PROMOCAO-SEM-CLI-RODADO · o gate de aprovação foi consertado e nunca rodou contra o banco real
-📊 Em 04/09/2026 o comando de promoção passou a exigir run vivo + `approval_requests` com `decision` aprovada +
-`metric_id` igual ao `nome_sugerido` (ou `--substitui <motivo>`). As quatro recusas e o caminho feliz estão provados
-com banco FALSO (guarda [12]) — **nenhuma linha real de `approval_requests` foi lida**, porque nenhuma proposta foi
-criada em produção ainda. **Custo de esquecer:** a primeira promoção real encontra um formato de `decision` que o
-código não previu e reprova uma métrica legítima (ou, pior, o contrário). **Destrava:** criar uma proposta pelo
-chat, decidir pela API admin e rodar o CLI uma vez. **Dono:** 🤖 (depende de F-094.1-02). 💭 30 min.
+## P-094.1-PROMOCAO-SEM-DECISAO-REAL · o gate de aprovação já RECUSA contra o banco real; falta ver ele APROVAR
+🔴 **Atualizada em 04/09/2026 (rodada 3), e a atualização é a pendência:** o título antigo dizia *"nunca rodou
+contra o banco real"*, e isso deixou de ser verdade — mas só metade.
+
+📊 Medido ao vivo na Resulta: a proposta `proposta.teste_builder_0941` nasceu pelo chat
+(`work_run ba26117a…` + `approval_request e47a4a5c…` `pending`, `subject_id` = o uuid do run + 2 `work_events`), e
+`promover()` sobre ela devolveu a RECUSA legivél *"a decisão humana é pending, e não uma aprovação"* — com
+`work_events` antes=2 e depois=2 e o run intacto em `waiting_approval`. **Nada foi escrito.**
+
+⚠️ O que continua sem medição é o caminho FELIZ: nenhuma `approval_request` real chegou a `approved`, então o
+`UPDATE` final (`status='completed'`, corrigido nesta rodada porque `succeeded` **não existe** no enum
+`work_run_status`) e a gravação de `metric.promovida` nunca tocaram o banco de verdade.
+**Custo de esquecer:** a primeira promoção legítima estoura no `UPDATE`, DEPOIS de o evento de promoção já estar
+gravado — a linha do tempo diz "promovida" e o run fica esperando para sempre. **Destrava:** decidir a proposta
+`ba26117a…` pela API admin (`POST /work-runs/approvals/{id}/decide`) e rodar o CLI uma vez. **Dono:** 🤖 (depende
+de F-094.1-02). 💭 20 min.
+
+## P-094.1-RAMO-COGRUPO · 8 dos 50 ramos da corretora piloto não têm grupo de ramo na SUSEP
+📊 Medido em 04/09/2026, construindo `docs/canon/providers/susep/ramo-cogrupo.json` a partir do `GET /ramos` da
+Resulta (50 ramos) contra `Ses_ramos.csv` e `ses_gruposramos.csv` (22 grupos): **90,43%** das 3.272 linhas de 2025
+casaram. Ficaram `UNKNOWN`, com o critério escrito ao lado de cada um: **ASSI · CAPI · CONS · DENT · FINA · MOB ·
+PREV · VIAG** (313 linhas). Três famílias de motivo, e nenhuma delas é preguiça:
+
+```
+nao e seguro do SES     CAPI (capitalizacao) · CONS (consorcio) · PREV (previdencia aberta) · DENT (ANS)
+empate entre DOIS grupos  VIAG e ASSI (0969 no grupo 09 e 1369 no 13) — a carteira nao diz qual
+rotulo de negocio         MOB (imobiliaria) e FINA (financiamento) nao nomeiam objeto de risco
+```
+⚠️ E o mapa é o da corretora PILOTO: abreviatura é por INSTALAÇÃO, como já vale para
+**P-094.1-SIGLAS-POR-CORRETORA**. Outra corretora com outra abreviatura sai `UNKNOWN` inteira — o que é a resposta
+certa, e não um número errado. **Custo de esquecer:** ~9,6% do prêmio da carteira nunca entra na comparação com o
+mercado, e a segunda corretora entra com 0%. **Destrava:** decidir os dois empates (VIAG/ASSI) com gente, e medir
+`/ramos` de cada corretora nova. **Dono:** 🤖 + 🧑 (os empates). 💭 1h.
+
+## P-094.1-LATENCIA · "como estamos?" leva 162 s, e 89% disso são TRÊS leituras da fonte
+📊 Medido ao vivo em 04/09/2026 na Resulta, pelo relógio por fonte que esta rodada acrescentou
+(`executive_intelligence._anotar_o_relogio`, teto 60 s):
+
+```
+como estamos? (7 visoes)   156 s   carteira 54,7 · customers 51,4 · cancellations 37,7 · claims 4,3 · quotes 4,3 · issuance 1,8 · mercado 1,4 · calculo 0,2
+mercado + sinistros         65 s   carteira 52,7 · mercado 7,1 · claims 4,7 · calculo 0,3
+```
+🔴 O cálculo custa **0,2 s**: o custo inteiro é de I/O na fonte, e três rotas respondem por 144 dos 156 s. O
+aviso já sai escrito no envelope acima do teto — o que ainda não existe é leitura em PARALELO (as populações são
+independentes e são lidas em série) nem cache por janela. **Custo de esquecer:** dois minutos e meio é tempo de
+sobra para o dono trocar de tela, e aí o relatório chega para ninguém. **Destrava:** `asyncio.gather` sobre
+`_buscar_as_populacoes` (elas já são `async` e independentes) e medir de novo. **Dono:** 🤖. 💭 2h.
+
+## P-094.1-SES-SO-TEM-2026 · o agregado do mercado existe só para 2026, e perguntar 2025 devolve INDISPONÍVEL
+📊 Medido ao vivo em 04/09/2026: `"como estamos?"` sobre **2025** tentou `susep/ses/2025.csv` e recebeu
+`NoSuchKey` do MinIO real — o feixe do mercado não veio, e `market.loss_ratio@1` e
+`claims.loss_ratio_vs_market@1` saíram UNAVAILABLE com o motivo certo (*"a Rotina semanal ainda não rodou"* — uma
+afirmação sobre NÓS). Sobre **2026** as duas responderam com número. ⚠️ Isto **não é defeito**: é a Rotina que só
+ingeriu um ano. **Custo de esquecer:** toda pergunta histórica perde a comparação com o mercado, e ninguém sabe
+por quê sem ler o log. **Destrava:** rodar a ingestão para os anos anteriores (ver
+**P-094.1-SES-SEM-ROTINA-EM-PRODUCAO**). **Dono:** 🤖. 💭 1h.
+
+## P-094.1-FUNIL-SEM-FINGERPRINT · o funil sai INDISPONÍVEL por censo, e não por acervo
+📊 Medido ao vivo em 04/09/2026: `quotes.funnel@1` e `quotes.lost_reasons@1` saíram UNAVAILABLE com
+*"o censo não registrou o fingerprint de `/negocios_finalizados`"* — o bloqueio é do MANIFESTO, e não do dado.
+🔴 O que esta rodada consertou é outra coisa, e vale registrar a diferença: até hoje esse mesmo caminho
+**derrubava o Pulso inteiro** (`RELATORIO_FALHOU`, zero artifact). Agora as duas saem INDISPONÍVEL com o motivo e as
+outras 24 métricas continuam de pé. **Custo de esquecer:** a visao `funil` nunca responde, e o dono não sabe se é
+porque não há cotação ou porque ninguém mediu a rota. **Destrava:** rodar o censo de `/negocios_finalizados` e
+gravar o fingerprint em `infocap-schema-fingerprints.json`. **Dono:** 🤖. 💭 40 min.
 
 ## P-094.1-SINISTRO-X-CARTEIRA · a junção sinistro × carteira dá ZERO, e o produto parou de depender dela
 📊 Medido em 04/09/2026: os **40** documentos citados pelos sinistros do período não aparecem entre as **3.861**
