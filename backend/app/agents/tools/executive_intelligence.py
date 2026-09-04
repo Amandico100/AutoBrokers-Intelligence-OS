@@ -66,6 +66,18 @@ from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
+# 🔴 SPEC-094.1 · BLOCO D. O TIPO da proposta é importado no TOPO, e não dentro
+# da função que a monta. Ele é parte do contrato desta tool: quem lê o módulo
+# — pessoa ou guarda — tem de conseguir perguntar *"o que esta tool devolve
+# quando a métrica não existe?"* e achar a resposta sem executar nada. A
+# fórmula (`propor_a_partir_do_pedido`) continua sendo carregada tarde, junto
+# do registry, porque ela é caminho de execução e não contrato.
+#
+# ⚠️ `app.comercial.proposta` só importa da biblioteca padrão. Um import de
+# topo que arrastasse provider, Supabase ou registry pagaria no import do
+# grafo — e é por isso que o resto continua tarde.
+from app.comercial.proposta import PropostaDeMetrica
+
 logger = logging.getLogger(__name__)
 
 TEMPLATE_PULSE = "executive.pulse360"
@@ -541,7 +553,8 @@ COMO_FALAR = (
 )
 
 
-def bloco_citavel(pacote: Any, propostas: Optional[List[Any]] = None) -> str:
+def bloco_citavel(pacote: Any,
+                  propostas: Optional[List[PropostaDeMetrica]] = None) -> str:
     """O bloco `<<PACK>>` com o SELO de origem e as propostas ao lado.
 
     🔴 SPEC-094.1 · BLOCO D, modelado no selo *Trusted* do Databricks Genie
@@ -731,7 +744,7 @@ class ExecutiveIntelligenceTool(BaseTool):
                 + COMO_FALAR_DO_CATALOGO)
 
     @staticmethod
-    def _propostas(desconhecidas: List[str]) -> List[Any]:
+    def _propostas(desconhecidas: List[str]) -> List[PropostaDeMetrica]:
         """Uma `PropostaDeMetrica` por assunto que o registry não tem.
 
         ⚠️ Falha aqui devolve lista VAZIA e não derruba o Pulso — mas o
@@ -755,7 +768,7 @@ class ExecutiveIntelligenceTool(BaseTool):
             return []
 
     @staticmethod
-    def _so_a_proposta(propostas: List[Any]) -> str:
+    def _so_a_proposta(propostas: List[PropostaDeMetrica]) -> str:
         """O dono pediu SÓ o que não existe. Não há Pulso, e não se inventa um.
 
         🔴 Nem consulta, nem link, nem `pack_id`. Um relatório publicado aqui

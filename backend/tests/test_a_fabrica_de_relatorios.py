@@ -3,10 +3,15 @@
 
 🔴 **ESTE ARQUIVO NASCEU VERMELHO, E ERA PARA NASCER.** Protocolo AAA v11.2 §4
 (opcao B): quem faz a prova nao faz a resposta. O desenhista escreveu estes
-blocos com os modulos da §4 da SPEC ainda inexistentes — e a saida separa
-**VERMELHO ESPERADO** (a SPEC ainda deve aquele bloco) de **VERMELHO DE VERDADE**
-(defeito). O exit code e 1 nos dois casos: `CLAUDE.md` §9.3 — guarda que fica
-verde por conveniencia e carimbo.
+blocos com os modulos da §4 da SPEC ainda inexistentes — e a saida separava
+**VERMELHO ESPERADO** (a SPEC ainda devia aquele bloco) de **VERMELHO DE
+VERDADE** (defeito). O exit code era 1 nos dois casos: `CLAUDE.md` §9.3 —
+guarda que fica verde por conveniencia e carimbo.
+
+✅ **E ele FECHOU em 04/09/2026.** Os BLOCOS A-E chegaram, os 55 `vermelho_ate`
+viraram `certo(...)`, a lista de VERMELHO ESPERADO saiu VAZIA — e e isso, e nao
+o placar, que fecha o gate final do v11.2. 🔴 Daqui em diante **qualquer
+vermelho e regressao**: nao ha mais nada nesta SPEC que "ainda esteja por vir".
 
 O ELO que esta SPEC afirma, e que este guarda mede inteiro
 -----------------------------------------------------------
@@ -90,7 +95,7 @@ D4  Uma secao nova do `PULSO_360` declara as metricas que a sustentam em
     "secao orfa" nem "caixa vazia" — que e o defeito que a §BLOCO E cita.
 D5  As 12 metricas novas sao as 12 do contrato; `quotes.funnel` e
     `quotes.lost_reasons` sao CONDICIONAIS na SPEC (dependem do BLOCO 0), entao
-    entram como `vermelho_ate` proprio, separado das 10 obrigatorias.
+    entram numa assercao propria, separada das 10 obrigatorias.
 ```
 Rodar:  `PYTHONIOENCODING=utf-8 python backend/tests/test_a_fabrica_de_relatorios.py`
         (a partir de `backend/`: `python tests/test_a_fabrica_de_relatorios.py`)
@@ -169,6 +174,11 @@ METRICAS_NOVAS = (
 )
 #: As duas CONDICIONAIS (dependem do BLOCO 0 provar `/negocios_andamento`).
 METRICAS_CONDICIONAIS = ("quotes.funnel", "quotes.lost_reasons")
+
+#: 🔴 A pergunta que a SPEC-094.1 §3 ref ② manda o juiz fazer, ao pe da letra:
+#: *"propoe 'comissao apropriada por ramo' (ja existe como mix.branch) e
+#: confere que a proposta aponta a duplicata"*.
+PERGUNTA_DA_DUPLICATA = "comissao apropriada por ramo"
 
 #: Os 5 metodos novos do adapter (§4 da SPEC).
 METODOS_NOVOS = ("claims", "quotes", "cancellations", "customer_links",
@@ -417,6 +427,14 @@ def vermelho_ate(cond, rotulo, bloco, detalhe=""):
     verde com o conector SES inexistente. Quando ficar verde, o guarda imprime a
     instrucao de trocar por `certo(...)`: um `vermelho_ate` que virou verde e
     ficou e verdade vencida guardada (CLAUDE.md §9.3).
+
+    ⛔ **ZERO chamadores desde 04/09/2026, e e assim que tem de ser.** Os 55
+    que existiam viraram `certo(...)` na integracao, quando os BLOCOS A-E
+    passaram a existir: nenhuma linha desta SPEC e "esperada vermelha" mais, e
+    e por isso que a lista de VERMELHO ESPERADO sai VAZIA — o gate final do
+    v11.2, opcao B. A funcao fica de pe porque o mecanismo e do PROTOCOLO e nao
+    desta SPEC: a proxima que nascer com a prova antes do codigo escreve
+    `vermelho_ate` de novo, e o placar ja sabe contar.
     """
     global OK, FAIL
     if cond:
@@ -553,14 +571,14 @@ def exigir(caminho, bloco, nome_modulo=None):
     rodar, o bloco fica VERMELHO com a mensagem escrita — nao pula, nao passa."*
     """
     if not os.path.exists(caminho):
-        vermelho_ate(False, "modulo %s existe" % rel(caminho), bloco,
+        certo(False, "modulo %s existe" % rel(caminho),
                      "modulo %s ainda nao existe — esperado antes do %s"
                      % (rel(caminho), bloco))
         return None
     mod, erro = carregar(nome_modulo or ("_0941_" + os.path.basename(caminho)[:-3]),
                          caminho)
     if mod is None:
-        vermelho_ate(False, "modulo %s importa" % rel(caminho), bloco,
+        certo(False, "modulo %s importa" % rel(caminho),
                      "%s existe mas NAO importa: %s" % (rel(caminho), erro))
         return None
     certo(True, "modulo %s importa" % rel(caminho))
@@ -667,8 +685,18 @@ _MOD_TOOL360 = None
 _ERRO_TOOL360 = ""
 
 
-def mod_tool360():
+def mod_tool360(recarregar=False):
+    """O modulo da tool 360, em cache.
+
+    🔴 `recarregar=True` joga o cache fora e le o arquivo DE NOVO. Sem isso, a
+    mutacao no DISCO nao chega ao codigo que roda — e mutacao que nao e
+    exercida nao e mutacao passada (CLAUDE.md §9.5). E o chamador recarrega
+    outra vez DEPOIS de restaurar, senao o modulo mutado fica no cache e os
+    blocos seguintes medem o arquivo errado.
+    """
     global _MOD_TOOL360, _ERRO_TOOL360
+    if recarregar:
+        _MOD_TOOL360, _ERRO_TOOL360 = None, ""
     if _MOD_TOOL360 is None and not _ERRO_TOOL360:
         _MOD_TOOL360, _ERRO_TOOL360 = carregar(
             "app.agents.tools.executive_intelligence", TOOL360)
@@ -676,14 +704,14 @@ def mod_tool360():
 
 
 def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
-                 fatos=None):
+                 fatos=None, recarregar=False):
     """`_montar` DE VERDADE. Devolve `(texto, erro)`.
 
     🔴 Nada sai: o provider e uma fixture, a publicacao e um `link` falso, os
     sinais nao sao gravados e o manifesto e `None`. O que roda de verdade e o
     que a SPEC afirma: a ESCOLHA das visoes e o registry.
     """
-    mod, erro = mod_tool360()
+    mod, erro = mod_tool360(recarregar)
     if mod is None:
         return "", "executive_intelligence nao carregou: %s" % erro
     cbim, erro_c = _cbim()
@@ -723,6 +751,70 @@ def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
         return "", "%s: %s" % (type(exc).__name__, exc)
 
 
+def codigo_sem_prosa(caminho, nome_da_funcao):
+    """O CODIGO de uma funcao: sem comentario, sem docstring, sem literal.
+
+    🔴 A diferenca nao e cosmetica. Uma peca que se DEFENDE de alguma coisa
+    escreve o nome dela — no comentario que explica por que a defesa existe e
+    na mensagem de erro que ela levanta. Um detector que le o texto cru fica
+    VERMELHO justamente quando a defesa esta la, e VERDE quando alguem a
+    apaga: ele mede ao contrario. O que se mede aqui e o que EXECUTA.
+
+    Devolve `""` quando a funcao nao existe — e `""` reprova a assercao, que e
+    o certo: funcao sumida nao e funcao limpa.
+    """
+    import ast
+    import tokenize
+
+    try:
+        fonte = ler(caminho)
+        arvore = ast.parse(fonte)
+    except Exception:  # noqa: BLE001
+        return ""
+    alvo = None
+    for no in ast.walk(arvore):
+        if isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and no.name == nome_da_funcao:
+            alvo = no
+            break
+    if alvo is None:
+        return ""
+    inicio, fim = alvo.lineno, getattr(alvo, "end_lineno", alvo.lineno)
+    pedacos = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(fonte).readline):
+            if tok.type in (tokenize.COMMENT, tokenize.STRING):
+                continue
+            if inicio <= tok.start[0] <= fim and tok.string.strip():
+                pedacos.append(tok.string)
+    except Exception:  # noqa: BLE001
+        return ""
+    return " ".join(pedacos)
+
+
+def parecidas_no_pack(pack):
+    """Os `metric_id` que as propostas do pack apontam em `parecida_com`.
+
+    🔴 Le o CAMPO, e nunca o texto inteiro da resposta: `mix.branch` aparece
+    no corpo por dezenas de motivos, e um `in texto` ficaria verde por
+    qualquer um deles.
+    """
+    saida = []
+    for p in ((pack or {}).get("propostas") or []):
+        saida.extend(str(x) for x in ((p or {}).get("parecida_com") or ()))
+    return saida
+
+
+def selos_do_pack(pack, lista):
+    """Os valores de `origem` de cada item de `metrics` / `propostas`.
+
+    Devolve `[]` quando a lista nao existe, e `None` na posicao do item que
+    veio SEM selo — 🔴 a diferenca importa: uma lista vazia nao prova nada, e
+    um item sem selo e o defeito que a ref ③ existe para pegar.
+    """
+    return [(i or {}).get("origem") for i in ((pack or {}).get(lista) or [])]
+
+
 def partes(texto):
     """`(fora_do_bloco, dict_do_pack | None)`."""
     a, f = "<<PACK", "PACK>>"
@@ -749,9 +841,8 @@ def bloco_0_gate_zero():
         return sum(1 for c in arquivos_py(raiz) if rx.search(ler(c)))
 
     em_agents = _conta(r'table\("artifacts"\)', FERRAMENTAS)
-    vermelho_ate(em_agents > 0,
+    certo(em_agents > 0,
                  "[0] (i) alguma tool de agents/ le a tabela de entregas",
-                 "BLOCO C",
                  "📊 `grep 'table(\"artifacts\")' backend/app/agents/` -> %d. O "
                  "chat publicou 126 Artifacts em 3 corretoras e nao lista um."
                  % em_agents)
@@ -767,25 +858,22 @@ def bloco_0_gate_zero():
     # `views=["sinistros"]` e a string devolvida e a que o modelo receberia.
     texto, erro = rodar_montar(["sinistros"])
     if erro:
-        vermelho_ate(False, "[0] (ii) `_montar(views=['sinistros'])` roda",
-                     "BLOCO D", erro)
+        certo(False, "[0] (ii) `_montar(views=['sinistros'])` roda", erro)
     else:
         _fora, pack = partes(texto)
         ids = {str(m.get("metric_id")) for m in ((pack or {}).get("metrics") or [])}
         de_producao = {"production.policy_count", "production.premium_written"}
         caiu_no_fallback = bool(ids & de_producao)
-        vermelho_ate(
+        certo(
             not caiu_no_fallback,
             "[0] (ii) uma visao DESCONHECIDA nao devolve o Pulso 360 COMPLETO",
-            "BLOCO D",
             "📊 `executive_intelligence.py:746-748`: a visao desconhecida e "
             "DESCARTADA e o fallback e TODAS. A pergunta sobre SINISTROS "
             "recebeu %d metricas de producao/mix, sem aviso. Metricas vindas: %r"
             % (len(ids & de_producao), sorted(ids)[:8]))
-        vermelho_ate(
+        certo(
             "proposta" in texto.lower() or "não tenho essa métrica" in texto.lower(),
             "[0] (ii-bis) e a resposta DIZ que a metrica nao existe",
-            "BLOCO D",
             "o dono perguntou de sinistros e recebeu um panorama de producao "
             "com cara de resposta — o defeito silencioso do CLAUDE.md §9.5")
         # PAR: uma visao QUE EXISTE continua respondendo.
@@ -806,10 +894,9 @@ def bloco_0_gate_zero():
     texto_adapter = ler(ADAPTER) if os.path.exists(ADAPTER) else ""
     faltam = [m for m in METODOS_NOVOS
               if not re.search(r"def\s+%s\s*\(" % re.escape(m), texto_adapter)]
-    vermelho_ate(not faltam,
+    certo(not faltam,
                  "[0] (iii) o adapter tem os 5 leitores novos (claims, quotes, "
                  "cancellations, customer_links, issuance_status)",
-                 "BLOCO A",
                  "faltam %r — 📊 `/sinistros` tem 5.729 registros e nenhum "
                  "leitor" % (faltam,))
     certo(bool(re.search(r"def\s+policies\s*\(", texto_adapter)),
@@ -820,14 +907,14 @@ def bloco_0_gate_zero():
     # --- (iv) MetricDefinition sem `pergunta_verificada` --------------------
     registry, erro_r = _registry()
     if registry is None:
-        vermelho_ate(False, "[0] (iv) o registry carrega", "BLOCO A", erro_r)
+        certo(False, "[0] (iv) o registry carrega", erro_r)
     else:
         campos = set(getattr(registry.MetricDefinition, "__dataclass_fields__", {}))
         faltam_campos = [c for c in ("pergunta_verificada", "golden")
                          if c not in campos]
-        vermelho_ate(not faltam_campos,
+        certo(not faltam_campos,
                      "[0] (iv) `MetricDefinition` tem `pergunta_verificada` e "
-                     "`golden`", "BLOCO A",
+                     "`golden`",
                      "faltam %r — sem eles nao existe a regua de regressao da "
                      "ref ④ (Cortex Analyst: +20 p.p.)" % (faltam_campos,))
         certo("time_basis" in campos,
@@ -843,7 +930,7 @@ def bloco_1_registry():
 
     registry, erro = _registry()
     if registry is None:
-        vermelho_ate(False, "[1] o registry carrega", "BLOCO A", erro)
+        certo(False, "[1] o registry carrega", erro)
         return
 
     campos = set(getattr(registry.MetricDefinition, "__dataclass_fields__", {}))
@@ -851,9 +938,9 @@ def bloco_1_registry():
 
     # --- M-GOLDEN: registrar SEM golden REPROVA, e COM golden passa ---------
     if not tem_golden:
-        vermelho_ate(False,
+        certo(False,
                      "[1] M-GOLDEN: uma definicao SEM `golden` e RECUSADA no "
-                     "`__post_init__`", "BLOCO A",
+                     "`__post_init__`",
                      "os campos ainda nao existem: %r"
                      % (sorted({"pergunta_verificada", "golden"} - campos),))
     else:
@@ -896,15 +983,13 @@ def bloco_1_registry():
         registradas = set()
         certo(False, "[1] `todas()` responde", "%s: %s" % (type(exc).__name__, exc))
     faltam = [m for m in METRICAS_NOVAS if m not in registradas]
-    vermelho_ate(not faltam,
+    certo(not faltam,
                  "[1] as 10 metricas novas OBRIGATORIAS estao em `todas()`",
-                 "BLOCO A/B",
                  "faltam %r  ·  📊 hoje o registry tem %d metricas"
                  % (faltam, len(registradas)))
     faltam_cond = [m for m in METRICAS_CONDICIONAIS if m not in registradas]
-    vermelho_ate(not faltam_cond,
+    certo(not faltam_cond,
                  "[1] as 2 metricas CONDICIONAIS do funil estao em `todas()`",
-                 "BLOCO A (se o BLOCO 0 provar `/negocios_andamento`)",
                  "faltam %r — a §BLOCO A as marca como condicionais: se o BLOCO "
                  "0 medir 404/500, este vermelho vira decisao escrita, nao "
                  "defeito" % (faltam_cond,))
@@ -935,9 +1020,9 @@ def bloco_1_registry():
         # --- o golden BATE na fixture, e a fixture alterada NAO bate --------
         nome_loader, loader = primeiro_atributo(registry, CANDIDATOS_GOLDEN_LOADER)
         if loader is None:
-            vermelho_ate(False,
+            certo(False,
                          "[1] existe um carregador de fixture do golden no "
-                         "registry", "BLOCO E",
+                         "registry",
                          "nenhum de %r (D2: o guarda IMPRIME os candidatos em "
                          "vez de adivinhar um endereco)"
                          % (CANDIDATOS_GOLDEN_LOADER,))
@@ -1030,14 +1115,14 @@ def bloco_2_adapter():
 
     texto = ler(ADAPTER) if os.path.exists(ADAPTER) else ""
     if not texto:
-        vermelho_ate(False, "[2] o adapter existe", "BLOCO A", rel(ADAPTER))
+        certo(False, "[2] o adapter existe", rel(ADAPTER))
         return
 
     # --- os 5 metodos, e cada um marcando a rota que leu -------------------
     for metodo in METODOS_NOVOS:
         m = re.search(r"(async\s+)?def\s+%s\s*\(" % re.escape(metodo), texto)
         if m is None:
-            vermelho_ate(False, "[2] o adapter tem `%s()`" % metodo, "BLOCO A",
+            certo(False, "[2] o adapter tem `%s()`" % metodo,
                          "📊 a rota existe e ninguem le")
             continue
         corpo = texto[m.start():m.start() + 2600]
@@ -1053,7 +1138,7 @@ def bloco_2_adapter():
     registry, erro = _registry()
     cbim, erro_c = _cbim()
     if registry is None or cbim is None:
-        vermelho_ate(False, "[2] registry + cbim carregam", "BLOCO A",
+        certo(False, "[2] registry + cbim carregam",
                      erro or erro_c)
         return
     manifesto_mod = None
@@ -1075,9 +1160,9 @@ def bloco_2_adapter():
                 registradas = set(registry.todas())
                 alvo = next((m for m in METRICAS_NOVAS if m in registradas), "")
                 if not alvo:
-                    vermelho_ate(False,
+                    certo(False,
                                  "[2] rota primaria VAZIA -> a metrica sai "
-                                 "UNAVAILABLE, nunca 0", "BLOCO A",
+                                 "UNAVAILABLE, nunca 0",
                                  "nenhuma metrica nova existe ainda")
                 else:
                     d = registry.todas()[alvo]
@@ -1107,22 +1192,20 @@ def bloco_2_adapter():
                 pular("[2] rota vazia -> UNAVAILABLE",
                       "%s: %s" % (type(exc).__name__, exc))
     else:
-        vermelho_ate(False,
-                     "[2] rota primaria VAZIA -> a metrica sai UNAVAILABLE",
-                     "BLOCO A", "manifesto ou %s ausente" % rel(MANIFESTO_JSON))
+        certo(False,
+                     "[2] rota primaria VAZIA -> a metrica sai UNAVAILABLE", "manifesto ou %s ausente" % rel(MANIFESTO_JSON))
 
     # --- M16: `claim_ref` e `customer_ref` sao HASH, nunca PII -------------
     campos_novos = ("ClaimFact", "QuoteFact", "CustomerPortfolioFact")
     texto_cbim = ler(CBIM_PY)
     for classe in campos_novos:
-        vermelho_ate(("class %s" % classe) in texto_cbim,
-                     "[2] o CBIM tem `%s`" % classe, "BLOCO A",
+        certo(("class %s" % classe) in texto_cbim,
+                     "[2] o CBIM tem `%s`" % classe,
                      "os 4 fatos novos (ClaimFact, QuoteFact, "
                      "CustomerPortfolioFact, MarketFact) sao o vocabulario "
                      "que as metricas novas leem")
-    vermelho_ate("class MarketFactSet" in texto_cbim,
+    certo("class MarketFactSet" in texto_cbim,
                  "[2] o CBIM tem `MarketFactSet` (plataforma, SEM company_id)",
-                 "BLOCO B",
                  "🔴 o dado do SES e do MERCADO: se ele entrar no `FactSet` do "
                  "tenant, cada corretora passa a ter a sua copia da estatistica "
                  "publica — e a proxima pergunta e por que elas divergem")
@@ -1161,9 +1244,9 @@ def bloco_2_adapter():
         registradas = set(registry.todas())
         alvos = [m for m in METRICAS_NOVAS if m in registradas][:3]
         if not alvos:
-            vermelho_ate(False,
+            certo(False,
                          "[2] M17: paridade adapter x referencia para 3 "
-                         "metricas novas", "BLOCO A",
+                         "metricas novas",
                          "nenhuma metrica nova existe ainda")
         else:
             divergiram = []
@@ -1193,15 +1276,14 @@ def bloco_3_susep():
 
     mod = exigir(SUSEP, "BLOCO B", "_0941_susep")
     if mod is None:
-        vermelho_ate(False, "[3] `ler_agregado(ano)` devolve um `MarketFactSet`",
-                     "BLOCO B", "o conector ainda nao existe")
-        vermelho_ate(False, "[3] M2: seguradora sem `coenti` sai UNAVAILABLE, "
-                            "nunca 0", "BLOCO B", "o conector ainda nao existe")
-        vermelho_ate(False, "[3] `claims.loss_ratio_vs_market` e DERIVED e "
-                            "declara AS DUAS fontes", "BLOCO B",
+        certo(False, "[3] `ler_agregado(ano)` devolve um `MarketFactSet`", "o conector ainda nao existe")
+        certo(False, "[3] M2: seguradora sem `coenti` sai UNAVAILABLE, "
+                            "nunca 0", "o conector ainda nao existe")
+        certo(False, "[3] `claims.loss_ratio_vs_market` e DERIVED e "
+                            "declara AS DUAS fontes",
                      "o conector ainda nao existe")
-        vermelho_ate(False, "[3] `market.loss_ratio_trend` le 3 trimestres e "
-                            "diz sobe/desce/estavel", "BLOCO B",
+        certo(False, "[3] `market.loss_ratio_trend` le 3 trimestres e "
+                            "diz sobe/desce/estavel",
                      "o conector ainda nao existe")
         return
 
@@ -1220,7 +1302,7 @@ def bloco_3_susep():
 
     nome, ler_agregado = primeiro_atributo(mod, CANDIDATOS_SES_LER)
     if ler_agregado is None:
-        vermelho_ate(False, "[3] o conector expoe `ler_agregado(ano)`", "BLOCO B",
+        certo(False, "[3] o conector expoe `ler_agregado(ano)`",
                      "nenhum de %r (D2)" % (CANDIDATOS_SES_LER,))
         return
     certo(True, "[3] o leitor do agregado e `%s()`" % nome)
@@ -1264,9 +1346,9 @@ def bloco_3_susep():
             erro = "%s: %s" % (type(exc).__name__, exc)
             break
     if conjunto is None:
-        vermelho_ate(False,
+        certo(False,
                      "[3] `%s(2026)` le do MinIO FALSO e devolve um "
-                     "`MarketFactSet`" % nome, "BLOCO B", erro)
+                     "`MarketFactSet`" % nome, erro)
         return
     certo(bool(minio.pedidos),
           "[3] o conector leu do MinIO (objeto pedido: %r)" % (minio.pedidos[:2],),
@@ -1294,16 +1376,15 @@ def bloco_3_susep():
                   "(600/1000 = 0,60) bate com `market.loss_ratio`",
                   "veio %r, a mao da %r" % (r.value, esperado_a_mao))
         except TypeError as exc:
-            vermelho_ate(False,
+            certo(False,
                          "[3] `calcular(..., mercado=<MarketFactSet>)` aceita o "
-                         "conjunto de plataforma", "BLOCO B", str(exc))
+                         "conjunto de plataforma", str(exc))
         except Exception as exc:  # noqa: BLE001
             certo(False, "[3] a celula recalculada a mao bate",
                   "%s: %s" % (type(exc).__name__, exc))
     else:
-        vermelho_ate(False,
-                     "[3] a celula recalculada A MAO bate com `market.loss_ratio`",
-                     "BLOCO B", "a metrica ainda nao existe")
+        certo(False,
+                     "[3] a celula recalculada A MAO bate com `market.loss_ratio`", "a metrica ainda nao existe")
 
     # --- M2: seguradora sem `coenti` sai UNAVAILABLE, nunca 0 -------------
     if registry is not None and "claims.loss_ratio_vs_market" in set(registry.todas()):
@@ -1370,17 +1451,16 @@ def bloco_3_susep():
         except Exception as exc:  # noqa: BLE001
             certo(False, "[3] M2 roda", "%s: %s" % (type(exc).__name__, exc))
     else:
-        vermelho_ate(False, "[3] M2 + a DERIVED com as duas fontes declaradas",
-                     "BLOCO B", "`claims.loss_ratio_vs_market` ainda nao existe")
+        certo(False, "[3] M2 + a DERIVED com as duas fontes declaradas", "`claims.loss_ratio_vs_market` ainda nao existe")
 
     # --- a tendencia dos 3 trimestres -------------------------------------
     if registry is not None and "market.loss_ratio_trend" in set(registry.todas()):
         certo(True, "[3] `market.loss_ratio_trend` existe — o sinal ▲▼ e do "
                     "BLOCO B")
     else:
-        vermelho_ate(False,
+        certo(False,
                      "[3] `market.loss_ratio_trend` com 3 trimestres sinteticos "
-                     "sobe/desce/estavel", "BLOCO B", "a metrica ainda nao existe")
+                     "sobe/desce/estavel", "a metrica ainda nao existe")
 
 
 # ===========================================================================
@@ -1402,10 +1482,9 @@ def bloco_4_entregas():
         trecho = grafo[max(0, i - 3000):i]
         dentro_do_if = na_lista and ('_agent_role or "core"' in trecho
                                      and '"core(legado)"' in trecho)
-    vermelho_ate(dentro_do_if,
+    certo(dentro_do_if,
                  "[4] `listar_entregas` entra pela lista de "
                  "`relatorios_comerciais`, DENTRO do `if` de graph.py:528",
-                 "BLOCO C",
                  "fora dele o agente de ATENDIMENTO — que fala com o SEGURADO — "
                  "recebe a lista das entregas da corretora")
     certo('_agent_role or "core"' in grafo and '"core(legado)"' in grafo,
@@ -1417,7 +1496,7 @@ def bloco_4_entregas():
 
     nome, fabrica = primeiro_atributo(mod, CANDIDATOS_ENTREGAS)
     if fabrica is None:
-        vermelho_ate(False, "[4] o modulo expoe a tool", "BLOCO C",
+        certo(False, "[4] o modulo expoe a tool",
                      "nenhum de %r (D2)" % (CANDIDATOS_ENTREGAS,))
         return
 
@@ -1505,8 +1584,7 @@ def bloco_4_entregas():
 
     texto_a, erro_a = _rodar(EMPRESA_A)
     if erro_a:
-        vermelho_ate(False, "[4] a tool `%s` roda com um Supabase falso" % nome,
-                     "BLOCO C", erro_a)
+        certo(False, "[4] a tool `%s` roda com um Supabase falso" % nome, erro_a)
         return
     certo("Pulso 360 de agosto" in texto_a,
           "[4] a corretora A ve a entrega DELA", texto_a[:200])
@@ -1575,20 +1653,19 @@ def bloco_5_proposta():
     # --- a view desconhecida devolve PROPOSTA, e a proposta nao tem numero --
     mod, erro = mod_tool360()
     if mod is None:
-        vermelho_ate(False, "[5] a tool 360 carrega", "BLOCO D", erro)
+        certo(False, "[5] a tool 360 carrega", erro)
     else:
         tem_tipo = hasattr(mod, "PropostaDeMetrica")
-        vermelho_ate(tem_tipo,
+        certo(tem_tipo,
                      "[5] existe o TIPO `PropostaDeMetrica` (nunca um "
-                     "`MetricResult` com `value=None`)", "BLOCO D",
+                     "`MetricResult` com `value=None`)",
                      "🔴 ref ③ (Genie): a proposta tem OUTRA CARA, e nao a "
                      "mesma com o numero em branco — `value=None` seria narrado "
                      "como 'zero' na primeira frase")
         campos_plano = set(getattr(mod.PlanoDeConsulta, "model_fields", {})
                            or getattr(mod.PlanoDeConsulta, "__fields__", {}))
-        vermelho_ate("listar_metricas" in campos_plano,
+        certo("listar_metricas" in campos_plano,
                      "[5] o query plan ganha `listar_metricas` (ref ⑥ dbt/MCP)",
-                     "BLOCO D",
                      "sem descobrir o que existe ANTES, o modelo propoe "
                      "duplicata — que e o modo de falha real (ref ②)")
         if tem_tipo:
@@ -1606,57 +1683,179 @@ def bloco_5_proposta():
 
         texto, erro_m = rodar_montar(["comissao por produtor em frota"])
         if erro_m:
-            vermelho_ate(False,
+            certo(False,
                          "[5] a pergunta SEM metrica devolve PROPOSTA e ZERO "
-                         "numero", "BLOCO D", erro_m)
+                         "numero", erro_m)
         else:
             _fora, pack = partes(texto)
             ids = {str(m.get("metric_id"))
                    for m in ((pack or {}).get("metrics") or [])}
-            vermelho_ate("proposta" in texto.lower(),
-                         "[5] a pergunta SEM metrica devolve uma PROPOSTA",
-                         "BLOCO D", "veio: %r" % texto[:220])
-            vermelho_ate(not (ids & {"production.policy_count", "mix.insurer"}),
+            certo("proposta" in texto.lower(),
+                         "[5] a pergunta SEM metrica devolve uma PROPOSTA", "veio: %r" % texto[:220])
+            certo(not (ids & {"production.policy_count", "mix.insurer"}),
                          "[5] e ZERO numero de outra pergunta aparece na tela",
-                         "BLOCO D",
                          "o fallback de TODAS devolveu %r" % (sorted(ids)[:6],))
             # --- a duplicata apontada (ref ②) ------------------------------
             #
-            # ⚠️ NAO basta `"mix.branch" in texto`: hoje ele esta la porque o
-            # fallback de TODAS despejou o registry inteiro na resposta — a
+            # 🔴 A pergunta e a que a SPEC-094.1 §3 ref ② manda o juiz fazer:
+            # *"propoe 'comissao apropriada por ramo' (ja existe como
+            # mix.branch) e confere que a proposta aponta a duplicata"*. Ela
+            # roda SOZINHA, e nao aproveita a rodada de cima: "comissao por
+            # produtor em frota" e OUTRA pergunta — nao existe metrica de
+            # comissao por produtor recortada por ramo, e exigir que ela
+            # aponte `mix.branch` seria exigir uma duplicata FALSA. O rotulo
+            # desta linha sempre disse "comissao por ramo"; o que ela media
+            # era a outra frase.
+            #
+            # ⚠️ NAO basta `"mix.branch" in texto`: ele estaria la pelo
+            # fallback de TODAS despejando o registry inteiro na resposta — a
             # assercao ficaria VERDE pelo motivo errado, que e a definicao de
             # carimbo. O que se mede e `mix.branch` DENTRO de `parecida_com`.
+            texto_dup, erro_dup = rodar_montar([PERGUNTA_DA_DUPLICATA])
+            _f2, pack_dup = partes(texto_dup)
             perto = re.search(
-                r"parecida_com[^\n]{0,300}?mix\.branch", texto, re.S)
-            nas_propostas = "mix.branch" in json.dumps(
-                (pack or {}).get("propostas") or [], ensure_ascii=False)
-            vermelho_ate(bool(perto) or nas_propostas,
-                         "[5] a proposta de 'comissao por ramo' aponta a "
-                         "DUPLICATA `mix.branch` DENTRO de `parecida_com`",
-                         "BLOCO D",
+                r"parecida_com[^\n]{0,300}?mix\.branch", texto_dup, re.S)
+            apontadas = parecidas_no_pack(pack_dup)
+            certo(not erro_dup
+                         and ("mix.branch" in apontadas or bool(perto)),
+                         "[5] a proposta de 'comissao apropriada por ramo' "
+                         "aponta a DUPLICATA `mix.branch` DENTRO de "
+                         "`parecida_com`",
                          "🔴 tres 'comissao do mes' divergentes destroem mais "
-                         "confianca que uma metrica faltando (ref ②)")
+                         "confianca que uma metrica faltando (ref ②) — veio "
+                         "%r %s" % (apontadas, erro_dup))
+            # 🔴 O CONTROLE, e e ele que da direito a conclusao de cima
+            # (CLAUDE.md §9.2): `parecida_com` CONSEGUE ser diferente. Sem
+            # esta linha, um `parecida_com` que devolvesse o catalogo inteiro
+            # para QUALQUER pergunta passaria na assercao anterior.
+            certo("mix.branch" not in parecidas_no_pack(pack),
+                  "[5] CONTROLE: 'comissao por produtor em frota' NAO aponta "
+                  "`mix.branch` — o campo consegue ser diferente",
+                  "apontou %r para uma pergunta que nao e a mesma coisa"
+                  % (parecidas_no_pack(pack),))
 
     # --- `origem: registry|proposta` no pack, e `_compor` nao percorre ------
     pack_mod, erro_p = _pack()
     if pack_mod is None:
-        vermelho_ate(False, "[5] o evidence_pack carrega", "BLOCO D", erro_p)
+        certo(False, "[5] o evidence_pack carrega", erro_p)
     else:
-        texto_pack = ler(PACK_PY)
-        vermelho_ate("origem" in texto_pack,
+        # 🔴 O selo e medido na SAIDA, e nao com um grep por "origem" dentro
+        # de `evidence_pack.py`. A SPEC (ref ③) fixa o SELO — *"o bloco
+        # <<PACK>> ganha `origem: registry|proposta`"* —, nao o arquivo em que
+        # a funcao que o escreve mora; e um grep por uma palavra num arquivo
+        # ficaria verde com a palavra num comentario. O que o dono recebe e o
+        # bloco, entao e o bloco que responde.
+        #
+        # ⚠️ E sao DUAS rodadas, porque cada uma so prova metade: a de `mix`
+        # tem metrica e nenhuma proposta; a da pergunta desconhecida tem
+        # proposta e nenhuma metrica. Uma so deixaria o outro selo sem guarda.
+        texto_selo, erro_selo = rodar_montar(["mix"])
+        _f3, pack_selo = partes(texto_selo)
+        selos_registry = selos_do_pack(pack_selo, "metrics")
+        selos_proposta = selos_do_pack(pack, "propostas")
+        certo(bool(selos_registry) and set(selos_registry) == {"registry"}
+                     and bool(selos_proposta)
+                     and set(selos_proposta) == {"proposta"},
                      "[5] o bloco <<PACK>> carrega `origem: registry|proposta` "
-                     "por item (ref ③)", "BLOCO D",
+                     "por item (ref ③)",
                      "o Artifact escreve 'registrada' ou 'proposta em revisao' "
-                     "ao lado — e a proposta NUNCA tem numero")
+                     "ao lado — e a proposta NUNCA tem numero. Veio "
+                     "metrics=%r propostas=%r %s"
+                     % (selos_registry, selos_proposta, erro_selo))
+        # 🔴 A MUTACAO que fecha a porta: sem a linha que carimba, o guarda
+        # tem de ficar VERMELHO. Se ele passasse assim mesmo, o selo estaria
+        # sendo lido de outro lugar — e o carimbo seria o guarda, nao o pack.
+        def _selos_registry_agora():
+            t, _e = rodar_montar(["mix"], recarregar=True)
+            _fx, pk = partes(t)
+            return selos_do_pack(pk, "metrics")
+
+        valor_selo, rodou_selo = sob_mutacao(
+            "[5] MUTACAO M-SELO (a tool para de carimbar `origem: registry`)",
+            TOOL360,
+            [('        item["origem"] = "registry"\n',
+              '        item.pop("origem", None)\n')],
+            _selos_registry_agora)
+        if rodou_selo:
+            certo(set(valor_selo or [None]) != {"registry"},
+                  "[5] MUTACAO M-SELO: sem o carimbo, o detector ACUSA (%r)"
+                  % (valor_selo,),
+                  "ficou verde sob a mutacao — a assercao do selo e carimbo")
+            # 🔴 O arquivo ja voltou; o CACHE ainda nao. Sem esta linha, todo
+            # bloco seguinte mediria o modulo mutado.
+            mod, _erro_recarregado = mod_tool360(recarregar=True)
+
+        # --- o bloco citavel e JSON DE VERDADE (`allow_nan=False`) ---------
+        #
+        # 🔴 O default do `json.dumps` escreve `NaN` e `Infinity`, que nao sao
+        # JSON (RFC 8259) e que nenhum parser de outra linguagem le. O selo de
+        # origem so vale se o bloco em que ele viaja for parseavel.
+        class _PacoteComNaN:
+            @staticmethod
+            def serializar():
+                return {"metrics": [{"metric_id": "teste.nan",
+                                     "value": float("nan")}]}
+
+        class _PacoteFinito:
+            @staticmethod
+            def serializar():
+                return {"metrics": [{"metric_id": "teste.ok", "value": 1.0}]}
+
+        recusou_nan = False
+        try:
+            mod.bloco_citavel(_PacoteComNaN())
+        except ValueError:
+            recusou_nan = True
+        except Exception:  # noqa: BLE001
+            recusou_nan = False
+        certo(recusou_nan,
+              "[5] `bloco_citavel` RECUSA `NaN` — `allow_nan=False` (RFC 8259)",
+              "um bloco citavel com `NaN` e um bloco que o proximo leitor tera "
+              "de adivinhar — e ele chega com cara de dinheiro")
+        # 🔴 O PAR: com numero finito ele SAI, e sai selado. Sem esta linha,
+        # uma `bloco_citavel` que levantasse sempre passaria na de cima.
+        try:
+            saiu = mod.bloco_citavel(_PacoteFinito())
+        except Exception as exc:  # noqa: BLE001
+            saiu = "EXPLODIU: %s" % type(exc).__name__
+        certo('"origem": "registry"' in saiu and "teste.ok" in saiu,
+              "[5] PAR: com numero finito o bloco SAI, e sai selado",
+              "veio %r" % (saiu[:200],))
         if mod is not None:
-            m = re.search(r"def _compor\([\s\S]{0,9000}?\n    def ", ler(TOOL360))
-            corpo = m.group(0) if m else ""
-            vermelho_ate(bool(corpo) and "proposta" not in corpo.lower(),
+            # 🔴 O que se mede e o CODIGO de `_compor`, sem comentario e sem
+            # literal de texto. A pergunta e *"ele percorre propostas?"*, e um
+            # `in corpo.lower()` sobre o texto cru respondia outra:
+            # `_compor` levanta `RuntimeError("M-PROPOSTA: ... proposta e
+            # texto de chat, e nao cartao")` — a linha que PROVA que ele nao
+            # as desenha deixava a assercao vermelha. Guarda que fica
+            # vermelho com a defesa presente ensina a apagar a defesa.
+            corpo = codigo_sem_prosa(TOOL360, "_compor")
+            certo(bool(corpo) and "proposta" not in corpo.lower(),
                          "[5] `_compor` NAO percorre propostas (o Artifact nao "
-                         "desenha numero que nao existe)", "BLOCO D",
-                         "`_compor` cita 'proposta' — se ele iterar sobre elas, "
-                         "a primeira proposta vira uma caixa de KPI vazia no "
-                         "relatorio do dono")
+                         "desenha numero que nao existe)",
+                         "`_compor` cita 'proposta' no CODIGO — se ele iterar "
+                         "sobre elas, a primeira proposta vira uma caixa de "
+                         "KPI vazia no relatorio do dono: %r"
+                         % (corpo[:200] if corpo else corpo,))
+
+            # A MUTACAO: com a iteracao injetada DENTRO de `_compor`, o
+            # detector tem de acusar. ⚠️ Ancorada numa linha do proprio
+            # `_compor` — `injetar()` escolheria qualquer linha unica do
+            # arquivo, e uma injecao fora da funcao nao exercita nada.
+            ancora = "        por_id = {m.metric_id: m for m in metricas}\n"
+            pares_compor = ([(ancora, ancora + "        for _pr in (propostas "
+                                              "or []):\n            pass\n")]
+                            if ler(TOOL360).count(ancora) == 1 else [])
+            valor_c, rodou_c = sob_mutacao(
+                "[5] MUTACAO M-COMPOR (`_compor` passa a percorrer propostas)",
+                TOOL360, pares_compor,
+                lambda: codigo_sem_prosa(TOOL360, "_compor"))
+            if rodou_c:
+                certo("proposta" in str(valor_c).lower(),
+                      "[5] MUTACAO M-COMPOR: com a iteracao injetada, o "
+                      "detector ACUSA",
+                      "ficou verde sob a mutacao — o detector de `_compor` e "
+                      "carimbo: %r" % (str(valor_c)[:200],))
 
     # --- `propor_metrica`: Work Run + Approval, com `company_id` em tudo ----
     tool = exigir(TOOL_PROPOR, "BLOCO D", "_0941_propor")
@@ -1674,15 +1873,13 @@ def bloco_5_proposta():
                  "📊 `WorkApprovalService.solicitar()` tem ZERO chamadores: "
                  "este e o PRIMEIRO"),
                 ("metric.proposta_criada", "o `work_event` da §BLOCO D")):
-            vermelho_ate(exigencia.strip('"') in fonte_propor,
-                         "[5] a proposta usa `%s`" % exigencia.strip('"'),
-                         "BLOCO D", porque)
+            certo(exigencia.strip('"') in fonte_propor,
+                         "[5] a proposta usa `%s`" % exigencia.strip('"'), porque)
         faltam6 = [c for c in ("company_id", "work_run_id", "action_type",
                                "subject_type", "preview", "action_payload")
                    if c + "=" not in fonte_propor]
-        vermelho_ate(not faltam6,
-                     "[5] `solicitar()` e chamado com os 6 campos obrigatorios",
-                     "BLOCO D", "faltam %r" % (faltam6,))
+        certo(not faltam6,
+                     "[5] `solicitar()` e chamado com os 6 campos obrigatorios", "faltam %r" % (faltam6,))
     if tool is not None and svc is not None:
         certo(True, "[5] os dois modulos da proposta carregam")
 
@@ -1720,11 +1917,13 @@ def bloco_5_proposta():
         nome_l, listar = primeiro_atributo(
             svc, ("listar_propostas", "listar", "propostas_da_corretora"))
         if listar is None:
-            vermelho_ate(False,
-                         "[5] existe leitura de propostas por corretora", "BLOCO D",
+            certo(False,
+                         "[5] existe leitura de propostas por corretora",
                          "nenhum de ('listar_propostas','listar',"
                          "'propostas_da_corretora') (D2)")
         else:
+            certo(True, "[5] existe leitura de propostas por corretora (`%s()`)"
+                  % nome_l)
             certo("company_id" in getattr(listar, "__code__",
                                           types.SimpleNamespace(co_varnames=()))
                   .co_varnames,
@@ -1733,12 +1932,79 @@ def bloco_5_proposta():
                   "o backend roda com service role: RLS sem filtro no codigo "
                   "nao protege nada (CLAUDE.md §7)")
 
+            # 🔴 E a assinatura nao e a prova. O Gate D da SPEC diz *"dois
+            # tenants nao veem propostas um do outro"*, e isso se mede
+            # RODANDO: um Supabase falso com uma proposta de cada corretora,
+            # que so filtra quando o codigo PEDE o filtro.
+            propostas_falsas = [
+                {"id": "run-a", "company_id": EMPRESA_A,
+                 "status": "waiting_approval", "created_at": "2026-09-01T10:00:00Z",
+                 "input_payload": {"nome_sugerido": "proposta.comissao_frota",
+                                   "parecida_com": [], "pergunta_exemplo": "a"}},
+                {"id": "run-b", "company_id": EMPRESA_B,
+                 "status": "waiting_approval", "created_at": "2026-09-02T10:00:00Z",
+                 "input_payload": {"nome_sugerido": "proposta.DA_OUTRA",
+                                   "parecida_com": [], "pergunta_exemplo": "b"}},
+            ]
+
+            class _ConsultaP:
+                def __init__(self):
+                    self.empresa = None
+
+                def select(self, *a, **k):    # noqa: ANN002, ARG002
+                    return self
+
+                def eq(self, campo, valor):
+                    if campo == "company_id":
+                        self.empresa = valor
+                    return self
+
+                def order(self, *a, **k):     # noqa: ANN002, ARG002
+                    return self
+
+                def limit(self, *a, **k):     # noqa: ANN002, ARG002
+                    return self
+
+                def execute(self):
+                    dados = ([l for l in propostas_falsas
+                              if l["company_id"] == self.empresa]
+                             if self.empresa else list(propostas_falsas))
+                    return types.SimpleNamespace(
+                        data=[json.loads(json.dumps(d)) for d in dados])
+
+            class _DbP:
+                def table(self, nome):        # noqa: ARG002
+                    return _ConsultaP()
+
+            try:
+                lidas = listar(_DbP(), company_id=EMPRESA_A)
+                erro_l = ""
+            except Exception as exc:  # noqa: BLE001
+                lidas, erro_l = [], "%s: %s" % (type(exc).__name__, exc)
+            texto_lido = json.dumps(lidas, ensure_ascii=False, default=str)
+            certo(not erro_l and "comissao_frota" in texto_lido,
+                  "[5] a corretora A ve a proposta DELA",
+                  "%s %s" % (erro_l, texto_lido[:200]))
+            certo("DA_OUTRA" not in texto_lido,
+                  "[5] e NAO ve a proposta da outra corretora (CLAUDE.md §7)",
+                  "🔴 cross-tenant: %r" % texto_lido[:200])
+            # 🔴 O PAR: sem `company_id` a leitura RECUSA. Um default silencioso
+            # ali devolveria as duas — e devolveria em producao tambem.
+            recusou = False
+            try:
+                listar(_DbP(), company_id="")
+            except Exception:  # noqa: BLE001
+                recusou = True
+            certo(recusou, "[5] PAR: `%s(company_id='')` RECUSA" % nome_l,
+                  "leitura sem tenant que devolve linha e a proposta da "
+                  "corretora errada na tela de revisao")
+
     # --- `promover()`: CLI, e REPROVA id inexistente -----------------------
     promover_mod = exigir(PROMOVER_PY, "BLOCO D", "_0941_promover")
     if promover_mod is not None:
         nome_pr, promover = primeiro_atributo(promover_mod, ("promover", "main"))
         if promover is None:
-            vermelho_ate(False, "[5] `promover.py` expoe `promover()`", "BLOCO D",
+            certo(False, "[5] `promover.py` expoe `promover()`",
                          "nenhum de ('promover','main')")
         else:
             reprovou = False
@@ -1784,8 +2050,8 @@ def bloco_6_template():
                 .replace("ã", "a").replace("ç", "c").replace("í", "i"))
 
     for secao in SECOES_NOVAS:
-        vermelho_ate(secao in _normalizar(inteiro),
-                     "[6] o Pulso 360 tem a secao **%s**" % secao, "BLOCO A/B",
+        certo(secao in _normalizar(inteiro),
+                     "[6] o Pulso 360 tem a secao **%s**" % secao,
                      "a metrica que ninguem ve no relatorio e trabalho que o "
                      "dono nao recebe")
 
@@ -1800,9 +2066,9 @@ def bloco_6_template():
     declaram = [b for b in tpl.composition
                 if isinstance(b, dict)
                 and (b.get("props") or {}).get("metrics")]
-    vermelho_ate(bool(declaram),
+    certo(bool(declaram),
                  "[6] D4: as secoes declaram as metricas que as sustentam em "
-                 "`props['metrics']`", "BLOCO A",
+                 "`props['metrics']`",
                  "sem a declaracao nao ha como provar 'secao orfa' nem 'caixa "
                  "vazia' — 📊 32 asercoes ja deixaram passar 7 caixas vazias")
     if declaram and registradas:
@@ -1852,8 +2118,7 @@ def bloco_7_vocabulario():
 
     texto, erro = rodar_montar([])
     if erro:
-        vermelho_ate(False, "[7] o Pulso completo roda para medir o vocabulario",
-                     "BLOCO A", erro)
+        certo(False, "[7] o Pulso completo roda para medir o vocabulario", erro)
         return
     # 🔴 O alvo e o PACK SERIALIZADO, e nao a resposta inteira.
     #
@@ -1865,8 +2130,7 @@ def bloco_7_vocabulario():
     # numero sai para a frase do dono.
     _fora, pack = partes(texto)
     if pack is None:
-        vermelho_ate(False, "[7] a resposta traz um bloco <<PACK>> parseavel",
-                     "BLOCO A", texto[-200:])
+        certo(False, "[7] a resposta traz um bloco <<PACK>> parseavel", texto[-200:])
         return
     serializado = json.dumps(pack, ensure_ascii=False)
 
@@ -1915,8 +2179,7 @@ def bloco_8_protocolo():
     _p("\n[8] PROTOCOLO (BLOCO E) -- COMO-NASCE-UM-RELATORIO.md e o guarda do builder")
 
     existe = os.path.exists(PROTOCOLO_MD)
-    vermelho_ate(existe, "[8] `docs/canon/COMO-NASCE-UM-RELATORIO.md` existe",
-                 "BLOCO E",
+    certo(existe, "[8] `docs/canon/COMO-NASCE-UM-RELATORIO.md` existe",
                  "e o documento que o Founder pediu: qualquer chat abre e "
                  "executa em 15 minutos")
     if existe:
@@ -1935,9 +2198,9 @@ def bloco_8_protocolo():
               "mediu 1 resposta em 5 errada no melhor sistema (BIRD)")
 
     existe_guarda = os.path.exists(GUARDA_DO_PROTOCOLO)
-    vermelho_ate(existe_guarda,
+    certo(existe_guarda,
                  "[8] `tests/test_o_relatorio_nasce_pelo_protocolo.py` existe "
-                 "(e do BUILDER, nao deste desenhista)", "BLOCO E",
+                 "(e do BUILDER, nao deste desenhista)",
                  "quem escreve o protocolo escreve o guarda dele; este arquivo "
                  "so confere que ele existe e roda")
     if existe_guarda:
@@ -2122,12 +2385,13 @@ def main() -> int:
 
 
 def test_a_fabrica_de_relatorios():
-    """⚠️ FALHA DE PROPOSITO ate os BLOCOS A-F da SPEC-094.1 existirem.
+    """🔴 VERDE desde 04/09/2026 — e agora ele guarda, em vez de anunciar.
 
-    A prova nasce antes do codigo (protocolo §4, nivel CRITICO). Quem rodar a
-    suite hoje ve este teste vermelho com a lista de VERMELHO ESPERADO na saida
-    — e essa lista e exatamente o que o executor precisa saber. Marcar `xfail`
-    aqui esconderia o que a SPEC ainda deve.
+    A prova nasceu ANTES do codigo (protocolo §4, nivel CRITICO): por tres dias
+    este teste saiu vermelho com a lista de VERMELHO ESPERADO na saida, e essa
+    lista era o que o executor precisava saber. Os BLOCOS A-E chegaram, os 55
+    `vermelho_ate` viraram `certo`, e a lista saiu VAZIA — o gate final do
+    v11.2, opcao B. Daqui em diante qualquer vermelho e regressao, nao pendencia.
     """
     assert main() == 0
 

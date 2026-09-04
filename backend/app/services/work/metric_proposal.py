@@ -63,6 +63,20 @@ PREFIXO_DA_CHAVE = "metric.proposal:"
 #: transiciona para ele quando um passo pede humano. Inventar `proposta` como
 #: status faria o painel de Work Runs deixar de contar estas linhas — e uma
 #: proposta que não aparece no painel é uma proposta que ninguém decide.
+#:
+#: 📊 E medido TAMBÉM no banco, em 04/09/2026 (SPEC-094.1, integração), porque
+#: código não é schema: `work_runs.status` não tem CHECK — é o ENUM
+#: `work_run_status`, e `waiting_approval` é um dos 13 rótulos dele
+#: (`draft|queued|planning|running|waiting_approval|waiting_input|paused|
+#: retry_scheduled|cancelling|cancelled|failed|completed|expired`).
+#:
+#: ```sql
+#: select a.attname, format_type(a.atttypid, a.atttypmod),
+#:        (select string_agg(e.enumlabel,'|' order by e.enumsortorder)
+#:           from pg_enum e where e.enumtypid = a.atttypid)
+#:   from pg_attribute a join pg_class c on c.oid = a.attrelid
+#:  where c.relname = 'work_runs' and a.attname = 'status';
+#: ```
 STATUS_DE_ESPERA = "waiting_approval"
 RISCO = "low"
 
@@ -219,6 +233,66 @@ async def propor(db: Any, *, company_id: str, proposta: Any,
                 nome, run_id, approval_id or "-")
     return {"run_id": run_id, "approval_id": approval_id, "reused": False,
             "proposta": resumo}
+
+
+#: 💭 Quantas propostas voltam numa leitura. Uma tela de revisão não lê mais
+#: que isso de uma vez, e um teto escrito é o que impede a leitura de uma
+#: corretora grande de virar a tabela inteira em memória.
+TETO_DA_LISTA = 50
+
+
+def listar_propostas(db: Any, *, company_id: str,
+                     limite: int = TETO_DA_LISTA) -> list:
+    """As propostas de métrica DESTA corretora. Nunca as de outra.
+
+    🔴 O `company_id` é **obrigatório e keyword-only**, e o filtro está no
+    CÓDIGO. O backend roda com service role: RLS sem policy não protege nada
+    contra um filtro que ficou de fora (CLAUDE.md §7). Uma listagem sem tenant
+    aqui seria a proposta de uma corretora aparecendo na revisão de outra —
+    junto com a pergunta que a originou, que é dado de negócio.
+
+    ⚠️ A leitura é a única deste módulo, e ela devolve o `input_payload` (o
+    resumo da proposta: enums, ids e a pergunta já normalizada) — nunca uma
+    junção com `approval_requests`, que tem dono, decisão e prazo próprios e é
+    da SPEC-055.
+
+    ⛔ Não escreve, não decide e não promove. É leitura.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        raise ValueError(
+            "listagem de propostas sem `company_id`: uma leitura sem tenant "
+            "devolve a proposta da corretora errada (CLAUDE.md §7)")
+    try:
+        cli = getattr(db, "client", db)
+        r = (cli.table("work_runs")
+             .select("id, company_id, status, created_at, input_payload")
+             .eq("company_id", empresa)
+             .eq("workflow_key", WORKFLOW_KEY)
+             .order("created_at", desc=True)
+             .limit(int(limite)).execute())
+        linhas = getattr(r, "data", None) or []
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[094.1] propostas nao lidas (%s)", type(exc).__name__)
+        return []
+    saida = []
+    for linha in linhas:
+        # 🔴 O cinto: se a fonte devolver linha de outra corretora — filtro
+        # esquecido no cliente, view mal escrita, mock de teste —, ela NÃO sai
+        # daqui. Custa uma comparação e é a última porta antes da tela.
+        if str(linha.get("company_id") or "") != empresa:
+            continue
+        payload = dict(linha.get("input_payload") or {})
+        saida.append({
+            "run_id": str(linha.get("id") or ""),
+            "company_id": empresa,
+            "status": str(linha.get("status") or ""),
+            "created_at": str(linha.get("created_at") or ""),
+            "nome_sugerido": str(payload.get("nome_sugerido") or ""),
+            "parecida_com": [str(x) for x in (payload.get("parecida_com") or ())],
+            "pergunta_exemplo": str(payload.get("pergunta_exemplo") or ""),
+        })
+    return saida
 
 
 def _evento(db: Any, company_id: str, run_id: str, tipo: str,
