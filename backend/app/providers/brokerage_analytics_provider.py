@@ -18,6 +18,7 @@ Padrão-mãe: https://learn.microsoft.com/azure/architecture/patterns/anti-corru
 
 ```
 ✅ atravessa   PolicyFact · ProducerAssignmentFact · CommissionFact · RenewalFact
+               ClaimFact · QuoteFact · CustomerPortfolioFact       (SPEC-094.1)
                Money · UNAVAILABLE · Provenance · FactSet         (tudo do CBIM)
 ⛔ não atravessa   nosnum · val_c · inivig · fimvig · codfil · prod_docs
                    qualquer dict cru do provider
@@ -138,6 +139,54 @@ class BrokerageAnalyticsProvider(Protocol):
     async def renewals(self, *, company_id: str, inicio: date, fim: date,
                        **kw: Any) -> List[RenewalFact]:
         ...
+
+    # ================================================================
+    # SPEC-094.1 · BLOCO A — as cinco populacoes novas
+    # ================================================================
+    #
+    # 🔴 **Com corpo, e nao `...`.** Um Protocol cujos metodos novos fossem
+    # abstratos quebraria TODO provider que ja existe no dia em que esta linha
+    # entrasse — inclusive o de referencia, que e a outra ponta da M17. Com um
+    # corpo que devolve o lote VAZIO, a fonte que ainda nao le sinistro continua
+    # valida e responde a verdade: **nao tenho essa populacao**.
+    #
+    # ⚠️ E o lote vazio tem `fingerprints` vazio de proposito. Rota nao lida NAO
+    # entra no mapa: "nao perguntei" nunca pode virar "perguntei e nao veio
+    # nada", que e o que autorizaria o registry a afirmar 0,0 sobre o periodo.
+    #
+    # 🔴 Devolvem `FactSet`, e nao lista: cada uma le uma ROTA PROPRIA, com
+    # janela propria, e a lista crua jogaria fora a `Provenance` e as marcas de
+    # rota que separam UNAVAILABLE de zero.
+
+    async def claims(self, *, company_id: str, inicio: date, fim: date,
+                     **kw: Any) -> FactSet:
+        """Os sinistros do periodo. Base temporal: data de OCORRENCIA."""
+        return FactSet(company_id=company_id,
+                       provider_key=getattr(self, "provider_key", ""))
+
+    async def quotes(self, *, company_id: str, inicio: date, fim: date,
+                     **kw: Any) -> FactSet:
+        """O funil de cotacoes/negocios."""
+        return FactSet(company_id=company_id,
+                       provider_key=getattr(self, "provider_key", ""))
+
+    async def cancellations(self, *, company_id: str, inicio: date, fim: date,
+                            **kw: Any) -> FactSet:
+        """A carteira do periodo COM os cancelados dentro — nunca so eles."""
+        return FactSet(company_id=company_id,
+                       provider_key=getattr(self, "provider_key", ""))
+
+    async def customer_links(self, *, company_id: str, inicio: date, fim: date,
+                             **kw: Any) -> FactSet:
+        """O que cada cliente tem — `CustomerPortfolioFact`, com ref opaca."""
+        return FactSet(company_id=company_id,
+                       provider_key=getattr(self, "provider_key", ""))
+
+    async def issuance_status(self, *, company_id: str, inicio: date, fim: date,
+                              **kw: Any) -> FactSet:
+        """A pendencia de emissao, quando a fonte a entregar em lote."""
+        return FactSet(company_id=company_id,
+                       provider_key=getattr(self, "provider_key", ""))
 
 
 # --------------------------------------------------------------------------

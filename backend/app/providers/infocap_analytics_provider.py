@@ -57,21 +57,33 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.comercial.cbim import (
+    ACTIVE,
+    CANCELLED,
+    CLAIM_CLOSED,
+    CLAIM_OPEN,
+    CLAIM_UNKNOWN,
     ENDORSEMENT,
     NEW,
     RENEWAL,
     UNAVAILABLE,
     UNKNOWN,
+    ClaimFact,
     CommissionFact,
+    CustomerPortfolioFact,
     FactSet,
     Money,
     PolicyFact,
     ProducerAssignmentFact,
     Provenance,
+    QuoteFact,
     RenewalFact,
+    claim_ref,
+    customer_ref,
     interpretar_dinheiro,
     policy_ref,
     producer_ref,
+    quote_ref,
+    status_de_apolice,
 )
 from app.comercial.manifesto import SEM_AMOSTRA
 from app.core.feature_flags import env_ligada
@@ -334,6 +346,68 @@ def _tipo_do_documento(linha: Dict[str, Any]) -> str:
     if tipo == "A":
         return NEW
     return NEW if "nosnum_ren" in linha else UNKNOWN
+
+
+#: 🔴 SPEC-094.1 · BLOCO A. As CINCO rotas novas, medidas no censo v2.1
+#: (`INFOCAP-CORPAPI-CENSUS-v2.md` §v2.1 §A), com os parametros que as fizeram
+#: responder. Elas moram AQUI, num lugar so, pelo motivo de sempre: duas copias
+#: dos parametros divergem no primeiro dia em que uma delas ganha um campo.
+ROTA_SINISTROS = "/sinistros"
+ROTA_ANDAMENTO = "/negocios_andamento"
+ROTA_EM_CALCULO = "/em_calculo"
+ROTA_FINALIZADOS = "/negocios_finalizados"
+ROTA_RENOVACOES = "/renovacoes"
+ROTA_DOCUMENTO = "/documento"
+
+#: A etapa do funil, por rota. 📊 As TRES exigem `status` (sem ele, HTTP 500 nas
+#: tres); com ele, `/em_calculo` e `/negocios_finalizados` devolvem **404, que e
+#: VAZIO** e nao erro.
+ETAPA_DA_ROTA = {
+    ROTA_ANDAMENTO: "EM_ANDAMENTO",
+    ROTA_EM_CALCULO: "EM_CALCULO",
+    ROTA_FINALIZADOS: "FINALIZADO",
+}
+
+#: 🔴 Os campos de `/sinistros` que sao PII e **nao atravessam a fronteira**.
+#: 📊 Censo v2.1 §A3: `segurado` e `responsavel` sao nome de pessoa, `placa` e
+#: placa de veiculo e `numapo` e numero de apolice na seguradora. A lista existe
+#: escrita para que o proximo leitor veja o que foi DESCARTADO de proposito — e
+#: para que o guarda consiga conferir que ela nao encolheu.
+PII_DE_SINISTRO = ("segurado", "responsavel", "placa", "numapo", "cliente",
+                   "nome_busca", "cic", "fone", "email")
+
+
+def _situacao_do_sinistro(linha: Dict[str, Any]) -> str:
+    """`OPEN` · `CLOSED` · `UNKNOWN` — e `UNKNOWN` e resposta legitima.
+
+    🔴 A regra tem DUAS clausulas, e as duas sao medidas (protocolo §0.3, a
+    "meia regra"): 📊 `datenc` veio preenchido em **9/42** — so os encerrados —
+    e `situacao` e texto LIVRE da corretora. Entao:
+
+    ```
+    tem data de encerramento          -> CLOSED, sem depender do rotulo
+    o rotulo diz encerrado/liquidado  -> CLOSED
+    o rotulo diz aberto/em analise    -> OPEN
+    qualquer outra coisa              -> UNKNOWN  (nunca CLOSED por descarte)
+    ```
+
+    ⚠️ Traduzir um rotulo desconhecido para `CLOSED` fecharia o caso na
+    planilha e nao na vida do segurado — e a contagem de abertos cairia sozinha.
+    """
+    if _data(linha.get("datenc")) is not None:
+        return CLAIM_CLOSED
+    rotulo = str(linha.get("situacao") or "").strip().lower()
+    if not rotulo:
+        return CLAIM_UNKNOWN
+    for marca in ("encerr", "liquid", "finaliz", "pago", "indeferi", "negad",
+                  "cancel", "arquiv"):
+        if marca in rotulo:
+            return CLAIM_CLOSED
+    for marca in ("abert", "andamento", "analis", "avis", "regula", "pendent",
+                  "aguard", "vistori"):
+        if marca in rotulo:
+            return CLAIM_OPEN
+    return CLAIM_UNKNOWN
 
 
 def _cancelada(linha: Dict[str, Any]) -> bool:
@@ -789,7 +863,10 @@ class InfocapAnalyticsProvider:
                 valid_to=_data(x.get("fimvig")),
                 premium=_dinheiro(x.get("pretot"), "prêmio", ref),
                 kind=_tipo_do_documento(x),
-                status="cancelada" if _cancelada(x) else "vigente",
+                # 🔴 SPEC-094.1 A.1: o vocabulario do CBIM, e nao dois
+                # literais soltos em portugues. Quem escreve as duas pontas da
+                # comparacao tem de ser a MESMA funcao.
+                status=status_de_apolice(_cancelada(x)),
                 provider_key=PROVIDER_KEY,
             ))
             acumulado.setdefault(ref, {})["accrued"] = _dinheiro(
@@ -918,6 +995,377 @@ class InfocapAnalyticsProvider:
         lote.fingerprints["__combinado__"] = hashlib.sha256(
             f"{fp_prod}|{fp_renov}".encode("utf-8")).hexdigest()[:16]
         return lote
+
+    # ================================================================
+    # SPEC-094.1 · BLOCO A — as CINCO rotas que existiam e ninguem lia
+    # ================================================================
+    #
+    # 🔴 Cada uma devolve um **FactSet recorte**, e nao uma lista solta como
+    # `policies()` / `renewals()`. A diferenca nao e estetica: aqueles quatro sao
+    # recortes do MESMO lote de duas rotas, ja lido; estes cinco leem uma rota
+    # PROPRIA, com janela propria. Devolver a lista crua jogaria fora justamente
+    # o que o registry precisa para distinguir **"a rota veio vazia"** de **"a
+    # rota nao foi lida"** — que e a diferenca entre UNAVAILABLE e um zero com
+    # confianca alta (`registry._rotas_do_lote`).
+
+    @staticmethod
+    def _linhas_da_rota(fonte: Any, rota: str, params: Dict[str, Any],
+                        chave: str) -> List[Dict[str, Any]]:
+        """As linhas cruas de UMA rota. ⚠️ Sem interpretacao nenhuma.
+
+        🔴 Reusa `FonteInfocap._get` e `._linhas` de proposito (CLAUDE.md §5).
+        Elas carregam autenticacao, retry, a chave de cache com o rotulo do
+        tenant (cross-tenant por cache e o defeito mais silencioso que existe) e
+        a regra de que **404 e VAZIO, nao erro** — 📊 exatamente o que o censo
+        v2.1 §A4 mediu em `/em_calculo` e `/negocios_finalizados`. Um segundo
+        cliente HTTP aqui seria motor paralelo, e o primeiro sintoma seria uma
+        corretora lendo a carteira da outra.
+        """
+        return fonte._linhas(fonte._get(rota, params), chave)
+
+    def _marcar(self, lote: FactSet, medidas: Dict[str, Any]) -> None:
+        """Grava as rotas LIDAS em `fingerprints` — vazias inclusive.
+
+        🔴 `impressao_da_rota` devolve `SEM_AMOSTRA` para lista vazia, e e
+        essa entrada que autoriza o registry a responder *"fonte sem linhas no
+        periodo"* em vez de `0,0` com confianca HIGH. Rota que nao foi lida NAO
+        entra: "nao perguntei" nao pode virar "perguntei e nao veio nada".
+        """
+        for rota, linhas in medidas.items():
+            lote.fingerprints[rota] = impressao_da_rota(linhas)
+        lote.fingerprints["__combinado__"] = hashlib.sha256(
+            "|".join(f"{r}={lote.fingerprints[r]}"
+                     for r in sorted(medidas)).encode("utf-8")).hexdigest()[:16]
+
+    async def _lote_de_rota(self, *, company_id: str, db: Any,
+                            connection_id: Optional[str], slug: Optional[str],
+                            correlation_id: Optional[str],
+                            fonte: Any) -> Tuple[FactSet, Any, str, str, Any]:
+        """`(lote vazio, fonte, correlacao, impressao, db)` — o preambulo comum."""
+        company_id = company_id or getattr(self, "company_id", "")
+        db = db if db is not None else getattr(self, "db", None)
+        connection_id = connection_id or getattr(self, "connection_id", None)
+        correlacao = correlation_id or uuid.uuid4().hex[:16]
+        conexao_id = ""
+        impressao = ""
+        if fonte is None:
+            fonte, conexao_id, impressao, db = await self._abrir(
+                company_id=company_id, db=db, connection_id=connection_id,
+                slug=slug)
+        lote = FactSet(company_id=company_id, provider_key=PROVIDER_KEY)
+        lote.provenance = Provenance(
+            connection_id=conexao_id, correlation_id=correlacao,
+            fetched_at=datetime.now(timezone.utc), fingerprint="",
+            account_fingerprint=impressao)
+        return lote, fonte, correlacao, impressao, db
+
+    def _selar(self, lote: FactSet, impressao: str) -> FactSet:
+        if lote.provenance is not None:
+            lote.provenance = Provenance(
+                connection_id=lote.provenance.connection_id,
+                correlation_id=lote.provenance.correlation_id,
+                fetched_at=lote.provenance.fetched_at,
+                fingerprint=lote.fingerprints.get("__combinado__", ""),
+                account_fingerprint=impressao)
+        return lote
+
+    # ------------------------------------------------------------ sinistros
+    async def claims(self, *, company_id: str, inicio: date, fim: date,
+                     db: Any = None, connection_id: Optional[str] = None,
+                     slug: Optional[str] = None,
+                     correlation_id: Optional[str] = None,
+                     fonte: Any = None) -> FactSet:
+        """Os SINISTROS do periodo, pela data de OCORRENCIA. 📊 1,10 s / 90 dias.
+
+        🔴 `tipo_data=oco` prende `datoco`, e isso foi MEDIDO, nao lido na doc:
+        📊 42/42 sinistros dentro da janela, com o minimo exatamente no primeiro
+        dia dela (censo v2.1 §A3). A base temporal desta populacao e
+        `CLAIM_OCCURRED_DATE` — nem inicio nem fim de vigencia.
+
+        ⛔ `segurado`, `responsavel`, `placa` e `numapo` sao DESCARTADOS AQUI, na
+        fronteira. Nao ha filtro depois: o que nao entra nao vaza. `claim_ref` e
+        hash de `numsin` (M16).
+        """
+        lote, fonte, correlacao, impressao, db = await self._lote_de_rota(
+            company_id=company_id, db=db, connection_id=connection_id,
+            slug=slug, correlation_id=correlation_id, fonte=fonte)
+        linhas = await asyncio.to_thread(
+            self._linhas_da_rota, fonte, ROTA_SINISTROS, {
+                "data_inicial": inicio.strftime("%d/%m/%Y"),
+                "data_final": fim.strftime("%d/%m/%Y"),
+                "tipo_data": "oco",
+                "qtd_pag": 1000,
+                "pagina": 1,
+            }, "sinistros")
+        self._traduzir_sinistros(lote, linhas, correlacao)
+        self._marcar(lote, {ROTA_SINISTROS: linhas})
+        return self._selar(lote, impressao)
+
+    def _traduzir_sinistros(self, lote: FactSet, linhas: List[Dict[str, Any]],
+                            correlacao: str) -> None:
+        vistos: set = set()
+        for x in linhas:
+            origem = str(x.get("numsin") or "").strip()
+            documento = str(x.get("nosnum") or "").strip()
+            if not origem and not documento:
+                continue
+            ref = claim_ref(lote.company_id, PROVIDER_KEY,
+                            origem or f"doc:{documento}")
+            if ref in vistos:
+                continue
+            vistos.add(ref)
+            indenizacao = interpretar_dinheiro(x.get("valind"))
+            franquia = interpretar_dinheiro(x.get("franquia"))
+            if indenizacao is None and x.get("valind") is not None:
+                lote.warnings.append(
+                    f"[{correlacao}] indenizacao ilegivel no sinistro "
+                    f"{ref[:8]}...: INDISPONIVEL, nao zero")
+            lote.claims.append(ClaimFact(
+                policy_ref=(policy_ref(lote.company_id, PROVIDER_KEY, documento)
+                            if documento else ""),
+                claim_ref=ref,
+                status=_situacao_do_sinistro(x),
+                occurred_at=_data(x.get("datoco")),
+                reported_at=_data(x.get("datavi")),
+                closed_at=_data(x.get("datenc")),
+                indemnity=indenizacao if indenizacao is not None else UNAVAILABLE,
+                deductible=franquia if franquia is not None else UNAVAILABLE,
+                insurer=str(x.get("cia") or "").strip(),
+                branch=str(x.get("ramo") or "").strip(),
+                provider_key=PROVIDER_KEY))
+        orfaos = len([c for c in lote.claims if not c.policy_ref])
+        if orfaos:
+            lote.warnings.append(
+                f"[{correlacao}] {orfaos} sinistro(s) sem documento de origem: "
+                f"eles contam na populacao e NAO entram na juncao com a "
+                f"carteira — a cobertura da metrica diz quanto")
+
+    # ---------------------------------------------------------------- funil
+    async def quotes(self, *, company_id: str, inicio: date, fim: date,
+                     db: Any = None, connection_id: Optional[str] = None,
+                     slug: Optional[str] = None,
+                     correlation_id: Optional[str] = None,
+                     fonte: Any = None) -> FactSet:
+        """O FUNIL — as tres rotas, cada uma com a sua etapa.
+
+        🔴 As tres exigem `status`. 📊 Sem ele as tres devolvem **HTTP 500**;
+        com ele, `/em_calculo` e `/negocios_finalizados` devolvem **404 = VAZIO**
+        e `/negocios_andamento` devolveu **1** negocio em 2025 inteiro. O 500 era
+        parametro faltando, e nao rota quebrada (censo v2.1 §A4).
+
+        🔴 `motivo_perda` **nao vem no GET**: nao esta entre as 30 chaves
+        medidas. `QuoteFact.lost_reason` nasce UNAVAILABLE por CAPACIDADE, e a
+        metrica `quotes.lost_reasons@1` escreve o porque no envelope.
+        """
+        lote, fonte, correlacao, impressao, db = await self._lote_de_rota(
+            company_id=company_id, db=db, connection_id=connection_id,
+            slug=slug, correlation_id=correlation_id, fonte=fonte)
+        base = {"dtini": inicio.strftime("%d/%m/%Y"),
+                "dtfim": fim.strftime("%d/%m/%Y"),
+                "texto": "", "qtd_pag": 1000, "pag": 1,
+                "ordem": "codigo", "orientacao": "asc",
+                # 🔴 A chave vazia BASTA, e e ela que muda 500 em 200/404.
+                "status": ""}
+        medidas: Dict[str, Any] = {}
+        for rota in (ROTA_ANDAMENTO, ROTA_EM_CALCULO, ROTA_FINALIZADOS):
+            linhas = await asyncio.to_thread(
+                self._linhas_da_rota, fonte, rota, dict(base), "negocios")
+            medidas[rota] = linhas
+            self._traduzir_funil(lote, linhas, ETAPA_DA_ROTA[rota], correlacao)
+        self._marcar(lote, medidas)
+        if not lote.quotes:
+            lote.warnings.append(
+                f"[{correlacao}] as tres rotas do funil responderam e o acervo "
+                f"esta VAZIO no periodo: a corretora nao usa o CRM da fonte. "
+                f"INDISPONIVEL por acervo, e nunca 'zero cotacoes'")
+        return self._selar(lote, impressao)
+
+    def _traduzir_funil(self, lote: FactSet, linhas: List[Dict[str, Any]],
+                        etapa: str, correlacao: str) -> None:
+        for x in linhas:
+            origem = str(x.get("codigo") or "").strip()
+            if not origem:
+                continue
+            premio = interpretar_dinheiro(x.get("val_premio"))
+            lote.quotes.append(QuoteFact(
+                quote_ref=quote_ref(lote.company_id, PROVIDER_KEY,
+                                    f"{etapa}:{origem}"),
+                stage=etapa,
+                created_at=_data(x.get("inivig")),
+                closed_at=_data(x.get("produto_fimvig")),
+                expected_premium=premio if premio is not None else UNAVAILABLE,
+                branch=str(x.get("ramo") or "").strip(),
+                # ⛔ NAO existe leitura de motivo de perda. Escrever aqui um
+                # `""` faria "sem motivo" parecer "motivo vazio".
+                lost_reason=UNAVAILABLE,
+                provider_key=PROVIDER_KEY))
+
+    # -------------------------------------------------------- cancelamentos
+    async def cancellations(self, *, company_id: str, inicio: date, fim: date,
+                            db: Any = None,
+                            connection_id: Optional[str] = None,
+                            slug: Optional[str] = None,
+                            correlation_id: Optional[str] = None,
+                            fonte: Any = None) -> FactSet:
+        """A carteira do periodo COM os cancelados dentro. 🔴🔴 Leia isto antes.
+
+        📊 `cancelado=T` **NAO** e "so os cancelados": e "inclua os
+        cancelados". O censo v2.1 §A7 mediu, em 2025: **3.861 linhas = 3.536 com
+        `cancelado='F'` + 325 com `cancelado='T'`**, e as 3.536 sao exatamente as
+        do controle-ouro.
+
+        ⛔ Quem tratar o parametro como recorte publica **a carteira inteira
+        como cancelada** — e o numero RESPONDE, nao trava (CLAUDE.md §9.5). O
+        estado sai do CAMPO `cancelado` de CADA LINHA, por `status_de_apolice`, e
+        a taxa e `T ÷ (T+F)` sobre esta mesma populacao.
+        """
+        lote, fonte, correlacao, impressao, db = await self._lote_de_rota(
+            company_id=company_id, db=db, connection_id=connection_id,
+            slug=slug, correlation_id=correlation_id, fonte=fonte)
+        linhas = await asyncio.to_thread(
+            self._linhas_da_rota, fonte, ROTA_RENOVACOES, {
+                "dt_ini": inicio.strftime("%d/%m/%Y"),
+                "dt_fim": fim.strftime("%d/%m/%Y"),
+                "qtd_pag": 5000, "pag": 1, "ordem": "nosnum",
+                "orientacao": "asc", "texto": "",
+                # 🔴 T = INCLUA os cancelados. Ver a docstring.
+                "cancelado": "T", "resgates": "F",
+            }, "renovacoes")
+        self._traduzir_cancelamentos(lote, linhas, correlacao)
+        self._marcar(lote, {ROTA_RENOVACOES: linhas})
+        return self._selar(lote, impressao)
+
+    def _traduzir_cancelamentos(self, lote: FactSet,
+                                linhas: List[Dict[str, Any]],
+                                correlacao: str) -> None:
+        vistos: set = set()
+        for x in linhas:
+            origem = str(x.get("nosnum") or "").strip()
+            if not origem:
+                continue
+            ref = policy_ref(lote.company_id, PROVIDER_KEY, origem)
+            if ref in vistos:
+                continue
+            vistos.add(ref)
+            premio = interpretar_dinheiro(x.get("pretot"))
+            lote.policies.append(PolicyFact(
+                policy_ref=ref, source_ref=origem,
+                insurer=str(x.get("seguradora") or "").strip(),
+                branch=str(x.get("ramo") or "").strip(),
+                valid_from=_data(x.get("inivig")),
+                valid_to=_data(x.get("fimvig")),
+                premium=premio if premio is not None else UNAVAILABLE,
+                kind=_tipo_do_documento(x),
+                status=status_de_apolice(_cancelada(x)),
+                provider_key=PROVIDER_KEY))
+        cancelados = len([p for p in lote.policies if p.status == CANCELLED])
+        lote.warnings.append(
+            f"[{correlacao}] populacao com cancelados INCLUIDOS: "
+            f"{cancelados} cancelada(s) em {len(lote.policies)} — a taxa e sobre "
+            f"esta populacao, e o parametro `cancelado` da fonte INCLUI, nao "
+            f"filtra")
+
+    # ---------------------------------------------------- carteira x cliente
+    async def customer_links(self, *, company_id: str, inicio: date, fim: date,
+                             db: Any = None,
+                             connection_id: Optional[str] = None,
+                             slug: Optional[str] = None,
+                             correlation_id: Optional[str] = None,
+                             fonte: Any = None) -> FactSet:
+        """O que cada CLIENTE tem — a materia-prima do cross-sell.
+
+        🔴 A fonte e a rota em LOTE, e nao `/cliente_ligacoes`. 📊 O censo mediu
+        `/cliente_ligacoes?codigo=` — **uma chamada por cliente**; com ~2,4 mil
+        clientes seria uma varredura por pergunta. `/renovacoes` ja devolve
+        `codcli` + `ramo` + `nosnum` no mesmo lote em que a carteira vem, e e a
+        rota que o manifesto lista em `contacts.customer`. A ligacao por cliente
+        fica registrada em **P-094.1-CLIENTE-LIGACOES**, para quando a pergunta
+        for sobre UM cliente.
+
+        ⛔ `cliente`, `cic`, `fone` e `email` sao PII e ficam na fronteira:
+        `customer_ref` e hash de `codcli` (M16). Cross-sell nao precisa saber
+        quem e o cliente.
+        """
+        lote, fonte, correlacao, impressao, db = await self._lote_de_rota(
+            company_id=company_id, db=db, connection_id=connection_id,
+            slug=slug, correlation_id=correlation_id, fonte=fonte)
+        linhas = await asyncio.to_thread(
+            self._linhas_da_rota, fonte, ROTA_RENOVACOES, {
+                "dt_ini": inicio.strftime("%d/%m/%Y"),
+                "dt_fim": fim.strftime("%d/%m/%Y"),
+                "qtd_pag": 5000, "pag": 1, "ordem": "nosnum",
+                "orientacao": "asc", "texto": "",
+                "cancelado": "F", "resgates": "F",
+            }, "renovacoes")
+        self._traduzir_clientes(lote, linhas, correlacao)
+        self._marcar(lote, {ROTA_RENOVACOES: linhas})
+        return self._selar(lote, impressao)
+
+    def _traduzir_clientes(self, lote: FactSet, linhas: List[Dict[str, Any]],
+                           correlacao: str) -> None:
+        por_cliente: Dict[str, Dict[str, Any]] = {}
+        sem_cliente = 0
+        for x in linhas:
+            codigo = str(x.get("codcli") or "").strip()
+            origem = str(x.get("nosnum") or "").strip()
+            if not codigo:
+                sem_cliente += 1
+                continue
+            ref = customer_ref(lote.company_id, PROVIDER_KEY, codigo)
+            balde = por_cliente.setdefault(ref, {"apolices": [], "ramos": []})
+            if origem:
+                balde["apolices"].append(
+                    policy_ref(lote.company_id, PROVIDER_KEY, origem))
+            ramo = str(x.get("ramo") or "").strip()
+            if ramo:
+                balde["ramos"].append(ramo)
+        for ref, balde in por_cliente.items():
+            lote.customers.append(CustomerPortfolioFact(
+                customer_ref=ref,
+                policy_refs=tuple(dict.fromkeys(balde["apolices"])),
+                branches=tuple(dict.fromkeys(balde["ramos"])),
+                provider_key=PROVIDER_KEY))
+        if sem_cliente:
+            lote.warnings.append(
+                f"[{correlacao}] {sem_cliente} documento(s) sem codigo de "
+                f"cliente: eles nao entram no cross-sell e a cobertura diz "
+                f"quanto — nao sao clientes de um produto so")
+
+    # ------------------------------------------------- pendencia de emissao
+    async def issuance_status(self, *, company_id: str, inicio: date, fim: date,
+                              db: Any = None,
+                              connection_id: Optional[str] = None,
+                              slug: Optional[str] = None,
+                              correlation_id: Optional[str] = None,
+                              fonte: Any = None) -> FactSet:
+        """🔴 UNAVAILABLE **por CUSTO MEDIDO** — e o lote diz por que.
+
+        📊 `sit_acompanhamento_txt` existe em UMA rota so: `/documento?nosnum=`,
+        que e **uma chamada por apolice**. As 17 chaves de `/documentos` (a rota
+        em lote, `periodo=datinc`) NAO o trazem, e `/documentos_bi` tambem nao.
+        Com 1.680 apolices no ano do controle-ouro, a pendencia de emissao
+        custaria 1.680 requisicoes por pergunta.
+
+        ⛔ E por isso este metodo **nao chama nada**: ele devolve o lote com
+        `fingerprints` VAZIO. Marcar `/documento` como lida-e-vazia seria mentir
+        na direcao mais cara — "perguntei e nao veio nada" autoriza o registry a
+        afirmar sobre o periodo, e ninguem perguntou. Rota nao lida nao entra no
+        mapa.
+
+        Registrado em **P-094.1-ISSUANCE**: a rota existe, o campo existe, e o
+        que falta e um lote. Nao e "ainda nao olhamos".
+        """
+        lote, fonte, correlacao, impressao, db = await self._lote_de_rota(
+            company_id=company_id, db=db, connection_id=connection_id,
+            slug=slug, correlation_id=correlation_id, fonte=fonte)
+        lote.fingerprints = {}
+        lote.warnings.append(
+            f"[{correlacao}] pendencia de emissao INDISPONIVEL por custo: "
+            f"`sit_acompanhamento_txt` so existe em {ROTA_DOCUMENTO}, que e uma "
+            f"chamada POR APOLICE (P-094.1-ISSUANCE). A rota em lote nao traz o "
+            f"campo — e isto e uma afirmacao sobre a FONTE, nunca sobre a "
+            f"corretora ter zero pendencias")
+        return self._selar(lote, impressao)
 
     # -------------------------------------------------- os recortes do lote
     async def policies(self, *, company_id: str, inicio: date, fim: date,
