@@ -42,6 +42,7 @@ se a métrica esquecer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from datetime import date, datetime
 from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple)
 
@@ -56,6 +57,8 @@ from app.comercial.manifesto import (DEGRADED, FRASE_DO_ESTADO, NAO_VERIFICADO,
                                      SEM_AMOSTRA, SUPPORTED)
 
 POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "MetricDefinition", "MetricResult", "METRICAS", "registrar", "definicao",
@@ -753,10 +756,32 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
         avisos.append(d.premissa)
 
     if cobertura is None and exige_cobertura:
-        raise ValueError(
-            f"{d.ref}: a capacidade exigida é parcial e a métrica não declarou "
-            f"cobertura. Um número parcial apresentado como total mente por "
-            f"omissão (M15) — {d.coverage_rule}")
+        # 🔴 SPEC-094.1, conserto de 04/09/2026 (rodada 3). M15 continua
+        # levantando — mas SÓ quando há NÚMERO.
+        #
+        # 📊 O defeito medido pelo juiz fresco: `commercial.quotes` é PARTIAL no
+        # manifesto vivo, e as duas métricas do funil saem INDISPONÍVEL **de
+        # propósito**
+        # (acervo vazio; motivo de perda sem leitura). Elas não declaram
+        # cobertura porque não há população a cobrir — e o M15 as transformava
+        # em `ValueError`, que derrubava o Pulso 360 inteiro (`RELATORIO_FALHOU`
+        # em 104 s, zero artifact).
+        #
+        # ⚠️ A regra que M15 existe para impor é *"um número parcial apresentado
+        # como total mente por omissão"*. Sem número não há total afirmado, e
+        # não há mentira: o que sai é a frase que a fórmula escreveu. Com
+        # número e sem cobertura, o `raise` continua exatamente onde estava —
+        # é a linha que a mutação M15 troca.
+        if valor is not None:
+            raise ValueError(
+                f"{d.ref}: a capacidade exigida é parcial e a métrica não declarou "
+                f"cobertura. Um número parcial apresentado como total mente por "
+                f"omissão (M15) — {d.coverage_rule}")
+        avisos.append(
+            f"{d.ref}: capacidade PARCIAL e sem cobertura declarada — e sem "
+            f"número. O resultado sai INDISPONÍVEL pelo motivo escrito acima, "
+            f"e nunca zero. ⛔ Cobertura ausente COM número continua sendo "
+            f"recusa dura (M15) — {d.coverage_rule}")
 
     # 🔴 As fontes sao remontadas DEPOIS da formula: e so aqui que se sabe se o
     # feixe de mercado chegou de verdade (ele pode ter vindo pelo `contexto`).
@@ -772,6 +797,33 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
                    confianca_maxima=teto_de_confianca)
 
 
+#: 🔴 A confiança de um resultado que veio de uma métrica que LEVANTOU. `LOW`,
+#: escrito: um envelope sem número e sem cobertura já sairia baixo, mas o teto
+#: explícito impede que uma fórmula futura devolva teto alto pelo caminho de
+#: erro.
+CONFIANCA_DA_FALHA = BAIXA
+
+#: A frase que o leitor recebe no lugar do número. ⚠️ Ela diz o nome da
+#: métrica, o TIPO do erro e o texto dele — e nada mais: um `traceback` no
+#: bloco citável é texto que o modelo narra.
+FALHOU_ISOLADA = (
+    "%s: o cálculo desta métrica FALHOU nesta consulta (%s: %s). Ela sai "
+    "INDISPONÍVEL, e nunca zero. 🔴 Isto é uma afirmação sobre NÓS — o motor —, "
+    "e nunca sobre a carteira da corretora")
+
+
+def _isolar(d: "MetricDefinition", period: Tuple[date, date], facts: FactSet,
+            exc: BaseException) -> MetricResult:
+    """O `MetricResult` INDISPONÍVEL de uma métrica que levantou."""
+    return metrica(
+        d.metric_id, None, d.unit,
+        period=periodo_iso(period[0], period[1]),
+        time_basis=d.time_basis, coverage=None, version=d.version,
+        provider_key=str(getattr(facts, "provider_key", "") or ""),
+        warnings=[FALHOU_ISOLADA % (d.ref, type(exc).__name__, exc)],
+        confianca_maxima=CONFIANCA_DA_FALHA)
+
+
 def calcular_varias(metric_ids: Sequence[str], facts: FactSet,
                     period: Tuple[date, date],
                     manifest: Optional[ProviderCapabilityManifest] = None,
@@ -781,17 +833,44 @@ def calcular_varias(metric_ids: Sequence[str], facts: FactSet,
 
     🔴 As duas bases são montadas no máximo uma vez cada. Não é otimização:
     é o que garante que duas métricas da mesma base vejam **a mesma população**.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026 (rodada 3) — **UMA MÉTRICA QUE LEVANTA
+    NÃO DERRUBA AS OUTRAS.**
+
+    📊 O defeito medido ao vivo pelo juiz fresco: *"como estamos?"* devolvia
+    `RELATORIO_FALHOU` em 104 s e **zero** artifact. A cadeia era
+    `commercial.quotes` PARTIAL → as métricas do funil sem cobertura → `M15`
+    `ValueError` em `calcular` → esta função propagando → `_montar` morrendo —
+    e `funil` está em `VISOES_PADRAO`, então **toda** pergunta genérica morria
+    por causa de UMA visão.
+
+    ⚠️ Um relatório executivo é uma soma de perguntas independentes. A resposta
+    certa para "não consegui calcular o funil" é *o funil sai INDISPONÍVEL com o
+    motivo escrito*, e nunca *o dono não recebe a produção do ano*. A recusa
+    dura continua existindo — ela só deixou de ser fatal para as vizinhas.
+
+    ⛔ E ela não vira silêncio: o motivo do erro viaja no envelope da métrica
+    que falhou, com o nome dela, e o pack o carrega para o bloco citável.
     """
     contextos: Dict[str, Contexto] = {}
     saida: List[MetricResult] = []
     for mid in metric_ids:
+        # 🔴 `definicao` fica FORA do isolamento de propósito: um `metric_id`
+        # que não existe no registry é defeito de quem chamou, e não condição
+        # do dado. Engoli-lo faria uma visão com um nome errado sair
+        # "INDISPONÍVEL" para sempre, sem ninguém descobrir.
         d = definicao(mid)
-        if d.time_basis not in contextos:
-            contextos[d.time_basis] = montar_contexto(
-                facts, period[0], period[1], d.time_basis)
-        saida.append(calcular(mid, facts, period, manifest=manifest,
-                              contexto=contextos[d.time_basis],
-                              mercado=mercado))
+        try:
+            if d.time_basis not in contextos:
+                contextos[d.time_basis] = montar_contexto(
+                    facts, period[0], period[1], d.time_basis)
+            saida.append(calcular(mid, facts, period, manifest=manifest,
+                                  contexto=contextos[d.time_basis],
+                                  mercado=mercado))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[094.1] metrica %s isolada (%s)", d.ref,
+                           type(exc).__name__)
+            saida.append(_isolar(d, period, facts, exc))
     return saida
 
 

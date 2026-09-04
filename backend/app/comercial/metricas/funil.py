@@ -132,8 +132,30 @@ def _funil(ctx: Contexto) -> Saida:
             f"por etapa e ficam de fora de qualquer corte por data: a janela da "
             f"consulta já os recortou. 🔴 Descartá-los faria a etapa cujo "
             f"formato de linha não traz data SUMIR do funil, sem aviso")
+    # 🔴 SPEC-094.1, conserto de 04/09/2026 (rodada 3) — A COBERTURA PASSA A
+    # MEDIR O QUE O NÚMERO É.
+    #
+    # 📊 O defeito: `value` é uma CONTAGEM (`unit="count"`) e a cobertura
+    # declarada era a fração das cotações com PRÊMIO legível. As duas coisas não
+    # se falam: um funil com 100% das cotações lidas e nenhum prêmio exposto
+    # saía com `coverage = 0.0` e confiança rebaixada, como se metade das
+    # cotações tivesse sumido — e, no caminho oposto, `commercial.quotes` é
+    # PARTIAL na fonte, então a ausência de cobertura calculável virava recusa
+    # dura (M15) e derrubava o Pulso inteiro.
+    #
+    # ✅ A cobertura de uma CONTAGEM é a fração da população que a fonte
+    # datou: são essas as linhas que qualquer corte por data consegue
+    # reproduzir. A legibilidade do prêmio continua escrita — ela é sobre o
+    # DINHEIRO do detalhamento, e vai num aviso, que é onde ela informa.
+    com_data = len(cotacoes) - orfas
+    if premio_conhecido < len(cotacoes):
+        avisos.append(
+            f"o prêmio esperado é legível em {premio_conhecido} de "
+            f"{len(cotacoes)} cotação(ões): a COLUNA de dinheiro do "
+            f"detalhamento é parcial, e as contagens por etapa não são. ⛔ "
+            f"prêmio ilegível não entra como zero (M2)")
     return (float(len(cotacoes)),
-            premio_conhecido / len(cotacoes),
+            com_data / len(cotacoes),
             linhas, avisos)
 
 
@@ -143,8 +165,10 @@ _DEFINICOES.append(dict(
     time_basis=POLICY_VALID_FROM,
     required_capabilities=("commercial.quotes",),
     formula=_funil,
-    coverage_rule="fração das cotações do período com prêmio esperado legível — "
-                  "a CONTAGEM é integral; a cobertura é sobre o dinheiro",
+    coverage_rule="fração das cotações do período cuja DATA a fonte expôs — a "
+                  "cobertura mede a mesma coisa que o número (uma contagem), e "
+                  "não o dinheiro do detalhamento. 🔴 A legibilidade do prêmio "
+                  "esperado é outra pergunta, e sai escrita no envelope",
     forbidden_fallback="⛔ acervo vazio nunca vira 'zero cotações': a primeira "
                        "frase é sobre a fonte e a segunda é sobre o negócio. "
                        "⛔ E rota NÃO LIDA nunca vira 'acervo vazio': ninguém "
