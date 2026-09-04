@@ -10024,3 +10024,42 @@ autoriza o APPLY, com VERIFY e ROLLBACK escritos antes. **Dono:** 🧑.
 Apontado pelo painel e **deliberadamente não tocado**: mexer no seed de outra SPEC nesta rodada seria escopo por
 conta própria (CLAUDE.md §11). Registrado para não virar dívida silenciosa. **Dono:** 🤖.
 
+
+## P-094.1-SIGLA-SEGURADORA · o mapa `seguradora → coenti` tem 14 de 15, e `sulamerica` é UNKNOWN
+📊 Medido em 03/09/2026 (`docs/canon/providers/susep/seguradora-coenti.json`): 15 seguradoras no repositório,
+**14 casaram** com uma entidade do censo público e **1** (`sulamerica`) saiu `UNKNOWN`. Duas das que casaram
+(`sompo`, `seguros_unimed`) não têm prêmio de auto ativo no trimestre 202604–06.
+🔴 A consequência é **desenhada e correta**: uma seguradora sem entidade fica FORA do cruzamento carteira × mercado
+e a métrica sai INDISPONÍVEL, nunca zero — *"a sua seguradora sinistra 0% acima do mercado"* é uma frase que o dono
+levaria a uma negociação de reajuste, e ela seria falsa (mutação M2, guarda [3]).
+**Custo de esquecer:** a corretora que trabalhe com a SulAmérica não recebe a comparação com o mercado, e a peça
+diz que não recebe — mas ninguém revisa o mapa. **Destrava:** revisão humana do casamento por nome (o critério
+medido é token do nome canônico dentro de `Noenti` + desempate por prêmio de auto no trimestre). **Dono:** 🧑 revisa
+· 🤖 aplica. 💭 1h.
+
+## P-094.1-MOTIVO-DE-PERDA · `quotes.lost_reasons@1` nasce INDISPONÍVEL por CAPACIDADE
+📊 Censo v2.1 §A4: `motivo_perda` **não vem no GET** das três rotas do funil — não está entre as 30 chaves medidas.
+A métrica existe, está registrada, aparece na visão `funil` e na seção 10 do Pulso 360, e escreve no envelope que a
+fonte expõe a CONVERSÃO e não a CAUSA. ⚠️ Ela existe justamente para dizer isso: uma métrica ausente deixa o leitor
+supor que ninguém pensou nela.
+**Custo de esquecer:** o dono vê onde perde e nunca por quê — a pergunta mais cara do funil fica sem dono.
+**Destrava:** confirmar com o fornecedor se há rota (ou parâmetro) que devolva o motivo; se houver, é só a fórmula.
+**Dono:** 🧑 pergunta ao fornecedor · 🤖 implementa. 💭 2h depois da resposta.
+
+## P-094.1-EMISSAO-PENDENTE · `issuance.pending@1` idem: a fonte não expõe estado de emissão
+📊 Mesma origem: o censo não verificou capacidade de estado de emissão na fonte piloto — o que é diferente de
+"não existe". A métrica está registrada, entra na visão `pendencias` e na seção 11 da peça, e sai UNAVAILABLE com o
+motivo escrito ao lado do número que não veio. **Custo de esquecer:** "o que já vendi e ainda não virou apólice" é
+dinheiro parado que ninguém consegue contar. **Destrava:** medir a capacidade na fonte. **Dono:** 🤖. 💭 2h.
+
+## P-094.1-SES-SEM-ROTINA-EM-PRODUCAO · a ingestão do censo existe e nunca rodou no ambiente real
+📊 Medido em 04/09/2026 pela prova B.5 (`backend/scripts/prova_b5_ses_ponta_a_ponta.py`), com **MinIO FAKE em
+memória** — `MINIO_ENDPOINT` não está no ambiente desta máquina: 1.801.731 linhas lidas, 33.504 células agregadas
+(só 2026), 26,6 s de latência, 17,3 MB de pico (`tracemalloc`), 1.069.071 bytes gravados. O golden da Porto
+(05886 · grupo 05 · 202604–06 = **0,5712**) sai do registry e bate com a conta feita à mão sobre o CSV agregado.
+🔴 **Nada disso rodou contra o MinIO de produção**, e a Rotina semanal nunca foi disparada lá. Enquanto isso,
+`market.loss_ratio@1` responde INDISPONÍVEL para toda corretora — o que é uma afirmação sobre NÓS, e não sobre a
+sinistralidade de seguradora nenhuma (é o que o envelope diz, com essas letras).
+**Custo de esquecer:** a seção "mercado" do Pulso 360 fica permanentemente indisponível, e a única coisa que o
+produto faz e ninguém mais faz não chega ao dono. **Destrava:** rodar a Rotina uma vez no ambiente real e conferir
+o objeto `susep/ses/<ano>.csv` no bucket. **Dono:** 🤖 (precisa de `MINIO_ENDPOINT` no ambiente). 💭 30 min.
