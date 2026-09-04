@@ -705,7 +705,8 @@ def mod_tool360(recarregar=False):
 
 
 def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
-                 fatos=None, recarregar=False, mercado=None, espiao=None):
+                 fatos=None, recarregar=False, mercado=None, espiao=None,
+                 manifesto=None):
     """`_montar` DE VERDADE. Devolve `(texto, erro)`.
 
     🔴 Nada sai: o provider e uma fixture, a publicacao e um `link` falso, os
@@ -767,7 +768,12 @@ def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
 
         @staticmethod
         async def _manifesto(provider, company_id, fatos):   # noqa: ARG004
-            return None
+            # 🔴 04/09/2026 (rodada 3): `manifesto=` deixa o guarda rodar com o
+            # MANIFESTO VIVO. 📊 Foi por rodar sempre com `None` que ele nunca
+            # viu o defeito que derrubava o Pulso na producao: sem manifesto,
+            # `_avaliar` devolve `exige_cobertura=False` e a recusa dura do
+            # M15 nunca era exercida.
+            return manifesto
 
         def _publicar_a_peca(self, *a, **k):   # noqa: ANN002, ARG002
             return "https://app.local/artifacts/fixture"
@@ -1557,16 +1563,21 @@ def bloco_3_susep():
             def _carteira_de(nome, lote_base):
                 """Uma apolice + um sinistro, na janela, na seguradora `nome`."""
                 dinheiro = cbim.interpretar_dinheiro
+                # 🔴 04/09/2026 (rodada 3): o `branch` passou a IMPORTAR. A
+                # comparacao agrupa por `(seguradora, grupo de ramo)`, entao
+                # uma apolice sem ramo mapeado sai da conta ANTES de o mapa de
+                # seguradora ser consultado — e a assercao M2 abaixo ficaria
+                # verde pelo motivo errado.
                 lote_base.policies = [dataclasses.replace(
                     lote_base.policies[0], policy_ref="m2-na-janela",
-                    insurer=nome, valid_from=date(2026, 5, 1),
+                    insurer=nome, branch="AUTO", valid_from=date(2026, 5, 1),
                     valid_to=date(2027, 4, 30))]
                 lote_base.claims = [cbim.ClaimFact(
                     policy_ref="m2-na-janela", claim_ref="sin-m2",
                     status="OPEN", occurred_at=date(2026, 5, 15),
                     reported_at=date(2026, 5, 16), closed_at=None,
                     indemnity=dinheiro("300.00"), deductible=dinheiro("0.00"),
-                    insurer=nome, branch="auto",
+                    insurer=nome, branch="AUTO",
                     provider_key=lote_base.provider_key)]
                 return lote_base
 
@@ -1586,7 +1597,11 @@ def bloco_3_susep():
             no_mapa = cbim.MarketFactSet(
                 provider_key=conjunto.provider_key, facts=list(conjunto.facts),
                 competencia_final=conjunto.competencia_final,
-                mapa={"seguradora_do_par": "0001"})
+                mapa={"seguradora_do_par": "0001"},
+                # 🔴 As celulas da fixture sao `coramo="0531"`, e 0531[:2] = 05.
+                # Sem esta linha o par nao encontra o grupo de ramo e o PAR
+                # falha por ramo, e nao por seguradora.
+                mapa_de_ramo={"AUTO": "05"})
             lote_par = _carteira_de("Seguradora do PAR", fatos_de_fixture(cbim))
             r_par = registry.calcular("claims.loss_ratio_vs_market", lote_par,
                                       (date(2026, 4, 1), date(2026, 6, 30)),
@@ -3249,6 +3264,588 @@ def bloco_14_pack_e_vocabulario():
 # ===========================================================================
 # [9] CONTROLE GERAL — este guarda CONSEGUE ficar vermelho?
 # ===========================================================================
+# ==========================================================================
+# [15] A RODADA 3 -- os quatro defeitos que o juiz FRESCO mediu AO VIVO
+# ==========================================================================
+#
+# 🔴 Os quatro tinham a mesma forma: **codigo que existia, tinha teste e nunca
+# funcionou na vida**, porque o teste media outra coisa que nao o caminho real.
+#
+# ```
+# B1  "como estamos?" MORRIA          RELATORIO_FALHOU em 104 s, 0 artifact.
+#                                     O guarda rodava com `manifesto=None`, e
+#                                     sem manifesto a recusa dura do M15 nem
+#                                     existe.
+# B2  `propor_metrica` NUNCA gravou   22P02: `subject_id` e uuid e recebia o
+#                                     NOME. O fake do teste aceitava qualquer
+#                                     string.
+# B3  `promover` lia `decided_at`     42703: a coluna nao existe. Idem.
+# B4  a comparacao com o mercado      agrupava so por seguradora: auto contra
+#     era de OUTRO ramo               a empresa inteira, 7,3 p.p. de erro.
+# ```
+SCHEMA_VIVO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "fixtures", "schema_vivo.json")
+
+
+def _schema_vivo():
+    try:
+        with io.open(SCHEMA_VIVO, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:  # noqa: BLE001
+        return {"_erro": "%s: %s" % (type(exc).__name__, exc)}
+
+
+class _DbDoSchemaVivo:
+    """Um fake que RECUSA o que o Postgres recusaria — lendo a fixture.
+
+    🔴 Esta e a peca do item B2/B3. Um fake escrito a mao concorda com o codigo
+    por construcao: foi assim que `propor()` passou por todos os guardas e
+    nunca gravou uma linha em corretora nenhuma. Este aqui le
+    `tests/fixtures/schema_vivo.json` — uma MEDICAO de
+    `information_schema.columns` — e levanta:
+
+    ```
+    22P02   valor nao-uuid numa coluna `uuid`
+    42703   `select` de coluna que nao existe
+    22P02   status fora do enum `work_run_status`
+    ```
+    """
+
+    def __init__(self, schema, linhas_de_approval=()):
+        self.tabelas = dict((schema.get("tabelas") or {}))
+        self.enums = dict((schema.get("enums") or {}))
+        self.escritas = []
+        self.selects = []
+        self.linhas_de_approval = list(linhas_de_approval)
+        self.client = self
+
+    def table(self, nome):
+        return _TabelaDoSchemaVivo(self, nome)
+
+    # -- as regras do banco, e nada alem delas -------------------------
+    def conferir_escrita(self, tabela, linha):
+        colunas = self.tabelas.get(tabela) or {}
+        for chave, valor in (linha or {}).items():
+            if chave not in colunas:
+                raise RuntimeError(
+                    "42703 column %r of relation %r does not exist"
+                    % (chave, tabela))
+            tipo = colunas[chave]
+            if tipo == "uuid" and valor is not None and not _e_uuid(valor):
+                raise RuntimeError(
+                    "22P02 invalid input syntax for type uuid: %r" % (valor,))
+            if tipo == "USER-DEFINED" and valor is not None:
+                aceitos = self.enums.get("%s.%s" % (tabela, chave)) or []
+                if aceitos and str(valor) not in aceitos:
+                    raise RuntimeError(
+                        "22P02 invalid input value for enum: %r" % (valor,))
+
+    def conferir_select(self, tabela, colunas):
+        existentes = self.tabelas.get(tabela) or {}
+        for c in colunas:
+            nome = c.strip()
+            if nome and nome != "*" and nome not in existentes:
+                raise RuntimeError(
+                    "42703 column %s.%s does not exist" % (tabela, nome))
+
+
+def _e_uuid(valor):
+    import uuid as _u
+    try:
+        _u.UUID(str(valor))
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+class _TabelaDoSchemaVivo:
+    def __init__(self, db, nome):
+        self.db, self.nome = db, nome
+        self._dados = []
+
+    def insert(self, linha):
+        self.db.conferir_escrita(self.nome, linha)
+        self.db.escritas.append((self.nome, dict(linha)))
+        self._dados = [dict(linha, id=str(_novo_uuid()))]
+        return self
+
+    def update(self, linha):
+        self.db.conferir_escrita(self.nome, linha)
+        self.db.escritas.append((self.nome + ":update", dict(linha)))
+        self._dados = []
+        return self
+
+    def select(self, colunas="*", *a, **k):   # noqa: ANN002, ARG002
+        self.db.selects.append((self.nome, colunas))
+        self.db.conferir_select(self.nome, str(colunas).split(","))
+        if self.nome == "approval_requests":
+            self._dados = list(self.db.linhas_de_approval)
+        return self
+
+    def eq(self, *a, **k):     # noqa: ANN002, ARG002
+        return self
+
+    def order(self, *a, **k):  # noqa: ANN002, ARG002
+        return self
+
+    def limit(self, *a, **k):  # noqa: ANN002, ARG002
+        return self
+
+    def execute(self):
+        class _R:
+            pass
+        r = _R()
+        r.data = self._dados
+        return r
+
+
+def _novo_uuid():
+    import uuid as _u
+    return _u.uuid4()
+
+
+def bloco_15_rodada_3():
+    _p("\n[15] RODADA 3 -- B1 o Pulso nao morre · B2/B3 o SCHEMA VIVO · B4 o GRUPO DE RAMO")
+
+    # ------------------------------------------------------------------
+    # B1 -- uma metrica que LEVANTA nao derruba as outras
+    # ------------------------------------------------------------------
+    registry, erro = _registry()
+    cbim, _ec = _cbim()
+    if registry is None or cbim is None:
+        certo(False, "[15] o registry e o CBIM carregam", erro or "cbim")
+        return
+
+    manifesto_vivo, erro_m = None, ""
+    try:
+        from app.comercial.manifesto import carregar_manifesto
+        manifesto_vivo = carregar_manifesto("infocap")
+    except Exception as exc:  # noqa: BLE001
+        erro_m = "%s: %s" % (type(exc).__name__, exc)
+    certo(manifesto_vivo is not None,
+          "[15] B1 CONTROLE: o MANIFESTO VIVO carrega (`carregar_manifesto`)",
+          erro_m)
+    parcial = ""
+    if manifesto_vivo is not None:
+        try:
+            parcial = str(manifesto_vivo.capacidade("commercial.quotes").state)
+        except Exception as exc:  # noqa: BLE001
+            parcial = "erro: %s" % exc
+    certo(parcial == "PARTIAL",
+          "[15] B1 CONTROLE: a capacidade do funil e PARTIAL no manifesto VIVO "
+          "(%r) — e e ela que aciona a recusa dura do M15" % (parcial,),
+          "sem PARTIAL aqui, todo o resto deste bloco passa por vacuidade")
+
+    # PAR: uma metrica que LEVANTA sai INDISPONIVEL e as vizinhas sobrevivem.
+    lote = fatos_de_fixture(cbim)
+    alvo_que_levanta = "quotes.lost_reasons"
+    vizinhas = ["production.policy_count", "production.premium_written"]
+    saida, erro_c = None, ""
+    try:
+        saida = registry.calcular_varias(
+            [alvo_que_levanta] + vizinhas, lote,
+            (date(2025, 1, 1), date(2025, 12, 31)),
+            manifest=manifesto_vivo)
+    except Exception as exc:  # noqa: BLE001
+        erro_c = "%s: %s" % (type(exc).__name__, exc)
+    certo(saida is not None and len(saida) == 3,
+          "[15] B1: `calcular_varias` com uma metrica que LEVANTA devolve as "
+          "TRES — nenhuma some", erro_c
+          + "  🔴 era este `raise` que subia ate `_montar` e devolvia "
+            "RELATORIO_FALHOU em 104 s, com ZERO artifact")
+    if saida:
+        por_id = {m.metric_id: m for m in saida}
+        certo(str(por_id.get(alvo_que_levanta).value) == "UNAVAILABLE",
+              "[15] B1: a metrica que nao pode ser calculada sai INDISPONIVEL, "
+              "e nunca zero (M2)",
+              "veio %r" % (getattr(por_id.get(alvo_que_levanta), "value", None),))
+        com_numero = [m for m in saida
+                      if m.metric_id in vizinhas
+                      and str(m.value) != "UNAVAILABLE"]
+        certo(len(com_numero) == 2,
+              "[15] B1 PAR: as duas metricas VIZINHAS continuam com numero "
+              "(%d de 2)" % (len(com_numero),),
+              "se elas sumissem, a assercao acima passaria com o relatorio "
+              "vazio — que e o defeito, nao o conserto")
+        avisos = " ".join(por_id.get(alvo_que_levanta).warnings or ())
+        certo(bool(avisos.strip()),
+              "[15] B1: e o MOTIVO viaja escrito no envelope da metrica que "
+              "falhou (%d caracteres)" % (len(avisos),),
+              "INDISPONIVEL sem motivo e silencio com outro nome")
+
+    # E o caminho INTEIRO: `_montar` padrao, com o manifesto VIVO, entrega pack.
+    texto, erro_t = rodar_montar([], fatos=_fixture_completa(cbim),
+                                 manifesto=manifesto_vivo)
+    _fora, pack = partes(texto)
+    certo(pack is not None and not erro_t,
+          "[15] B1 O ELO: `_montar` com as visoes PADRAO e o manifesto VIVO "
+          "produz um pack (%d metricas)"
+          % (len(((pack or {}).get("metrics") or [])),),
+          erro_t or (texto or "")[-200:])
+    if pack is not None:
+        funil = [m for m in (pack.get("metrics") or [])
+                 if str(m.get("metric_id")) == "quotes.funnel"]
+        certo(bool(funil),
+              "[15] B1: e `quotes.funnel` esta NO pack — INDISPONIVEL ou com "
+              "numero, mas presente",
+              "a visao `funil` esta em VISOES_PADRAO: se ela some, a pergunta "
+              "generica deixou de responder por uma visao")
+
+    # MUTACAO: tirar o isolamento -> o Pulso volta a MORRER.
+    def _medir_montar():
+        # 🔴 `recarregar=True` recarrega a TOOL, e nao o registry — e a mutacao
+        # e no registry. Sem este `reload` a mutacao nao chega ao codigo que
+        # roda, e mutacao nao exercida NAO e mutacao passada (CLAUDE.md §9.5).
+        import importlib
+        importlib.reload(registry)
+        registry.METRICAS.clear()
+        registry._carregar_definicoes()
+        t, e = rodar_montar([], fatos=_fixture_completa(cbim),
+                            manifesto=manifesto_vivo, recarregar=True)
+        return "ERRO" if e else ("PACK" if partes(t)[1] is not None else "SEM")
+
+    # 🔴 SAO DUAS DEFESAS, e a mutacao tem de dizer QUAL faz o que. A primeira
+    # e o M15 so recusar quando ha NUMERO (sem numero nao ha total afirmado); a
+    # segunda e o isolamento por metrica. Mutar so uma delas deixaria a outra
+    # segurar o Pulso — e o guarda ficaria verde por engano, que foi como um
+    # guarda da SPEC-093-B passou duas vezes.
+    alvo = os.path.join(METRICAS, "registry.py")
+    M15_DURO = ("        if valor is not None:\n            raise ValueError(",
+                "        if True:\n            raise ValueError(")
+    SEM_ISOLAMENTO = (
+        "            saida.append(_isolar(d, period, facts, exc))",
+        "            raise exc")
+
+    valor, rodou = sob_mutacao(
+        "[15] MUTACAO B1a (M15 duro, isolamento DE PE)", alvo, [M15_DURO],
+        _medir_montar)
+    _restaurar_registry(registry)
+    if rodou:
+        certo(valor == "PACK",
+              "[15] MUTACAO B1a: com o M15 voltando a recusar SEM numero, o "
+              "isolamento SOZINHO ainda entrega o Pulso (veio %r)" % (valor,),
+              "e esta e a repartição de trabalho que a peça afirma: a recusa "
+              "dura continua existindo, e deixou de ser fatal para as vizinhas")
+
+    valor, rodou = sob_mutacao(
+        "[15] MUTACAO B1b (o defeito HISTORICO inteiro de volta)", alvo,
+        [M15_DURO, SEM_ISOLAMENTO], _medir_montar)
+    _restaurar_registry(registry)
+    if rodou:
+        certo(valor == "ERRO",
+              "[15] MUTACAO B1b: com as DUAS defesas fora, `_montar` com o "
+              "manifesto VIVO volta a FALHAR (veio %r)" % (valor,),
+              "🔴 este e o defeito exato que o juiz mediu ao vivo: "
+              "RELATORIO_FALHOU em 104 s, ZERO artifact. Um guarda que nao "
+              "consegue ficar vermelho com ele nao guarda nada")
+
+    # ------------------------------------------------------------------
+    # B2 / B3 -- o SCHEMA VIVO
+    # ------------------------------------------------------------------
+    schema = _schema_vivo()
+    tabelas = schema.get("tabelas") or {}
+    certo("_erro" not in schema and "approval_requests" in tabelas,
+          "[15] B2 CONTROLE: `tests/fixtures/schema_vivo.json` existe e traz as "
+          "tabelas (%s)" % (", ".join(sorted(tabelas)),),
+          str(schema.get("_erro") or ""))
+    certo((tabelas.get("approval_requests") or {}).get("subject_id") == "uuid",
+          "[15] B2 CONTROLE: `approval_requests.subject_id` e `uuid` no schema "
+          "MEDIDO — e por isso um nome de metrica ali devolve 22P02",
+          "%r" % ((tabelas.get("approval_requests") or {}).get("subject_id"),))
+    certo("decided_at" not in (tabelas.get("approval_requests") or {}),
+          "[15] B3 CONTROLE: `decided_at` NAO existe em `approval_requests` — "
+          "as colunas de decisao sao approved_at/rejected_at/resolved_at",
+          "se ela existisse, o `select` antigo estaria certo e o B3 nao seria "
+          "um defeito")
+
+    # propor() contra o fake que obedece ao schema MEDIDO
+    import asyncio
+    proposta_mod, erro_p = None, ""
+    try:
+        from app.services.work import metric_proposal as proposta_mod
+    except Exception as exc:  # noqa: BLE001
+        erro_p = "%s: %s" % (type(exc).__name__, exc)
+    certo(proposta_mod is not None,
+          "[15] B2: `services/work/metric_proposal.py` importa", erro_p)
+
+    class _PropostaSimples:
+        nome_sugerido = "proposta.guarda_do_schema_vivo"
+        fatos = ("policy",)
+        dimensoes = ("insurer",)
+        time_basis = "policy_valid_from"
+        parecida_com = ()
+        pergunta_exemplo = "quanto por seguradora"
+
+    if proposta_mod is not None:
+        db = _DbDoSchemaVivo(schema)
+        run_id = str(_novo_uuid())
+
+        async def _criar(_db=None, **kw):    # noqa: ANN003, ARG001
+            return {"id": run_id, "reused": False}
+
+        import app.services.work.runs as runs_mod
+        antigo = getattr(runs_mod, "criar_registro_sem_fila", None)
+        runs_mod.criar_registro_sem_fila = _criar
+        try:
+            saida_p, erro_pp = None, ""
+            try:
+                saida_p = asyncio.run(proposta_mod.propor(
+                    db, company_id=str(_novo_uuid()),
+                    proposta=_PropostaSimples()))
+            except Exception as exc:  # noqa: BLE001
+                erro_pp = "%s: %s" % (type(exc).__name__, exc)
+            certo(saida_p is not None,
+                  "[15] B2 O ELO: `propor()` grava contra um banco que obedece "
+                  "ao schema MEDIDO", erro_pp
+                  + "  📊 antes do conserto isto era `22P02 invalid input "
+                    "syntax for type uuid` — em TODA corretora, desde sempre")
+            aprovacoes = [linha for tabela, linha in db.escritas
+                          if tabela == "approval_requests"]
+            certo(len(aprovacoes) == 1,
+                  "[15] B2: e UMA `approval_request` foi de fato escrita (%d)"
+                  % (len(aprovacoes),),
+                  "sem a linha escrita, nao ha gate: o painel nao tem o que "
+                  "mostrar e o run espera para sempre")
+            if aprovacoes:
+                certo(str(aprovacoes[0].get("subject_id")) == run_id,
+                      "[15] B2: o `subject_id` e o UUID DO RUN, e nao o nome "
+                      "da metrica",
+                      "veio %r" % (aprovacoes[0].get("subject_id"),))
+                onde = json.dumps(
+                    {"preview": aprovacoes[0].get("requested_preview"),
+                     "payload": aprovacoes[0].get("request_payload")},
+                    ensure_ascii=False, default=str)
+                certo(_PropostaSimples.nome_sugerido in onde,
+                      "[15] B2 PAR: e o NOME da metrica continua legivel — em "
+                      "`requested_preview`/`request_payload`, que sao jsonb",
+                      "mover o nome para fora da coluna errada nao pode "
+                      "significar PERDER o nome")
+
+            # PAR: a aprovacao que NAO pode ser escrita nao deixa run orfao.
+            db2 = _DbDoSchemaVivo(schema)
+            original_solicitar = proposta_mod._solicitar
+
+            def _explode(*a, **k):   # noqa: ANN002, ARG001
+                raise RuntimeError("22P02 (simulado): a aprovacao nao pode ser escrita")
+
+            proposta_mod._solicitar = _explode
+            try:
+                try:
+                    asyncio.run(proposta_mod.propor(
+                        db2, company_id=str(_novo_uuid()),
+                        proposta=_PropostaSimples()))
+                    levantou = False
+                except Exception:  # noqa: BLE001
+                    levantou = True
+            finally:
+                proposta_mod._solicitar = original_solicitar
+            marcados = [linha for tabela, linha in db2.escritas
+                        if tabela == "work_runs:update"]
+            certo(levantou and len(marcados) == 1
+                  and str(marcados[0].get("status")) == "failed",
+                  "[15] B2 PAR: aprovacao que NAO pode ser escrita deixa o run "
+                  "em `failed`, e nunca `waiting_approval` orfao",
+                  "levantou=%r updates=%r  📊 o banco tinha UM run "
+                  "`metric.proposal`, em waiting_approval, sem nenhuma "
+                  "approval_request" % (levantou, marcados))
+        finally:
+            if antigo is not None:
+                runs_mod.criar_registro_sem_fila = antigo
+
+    # promover(): o SELECT nao pede coluna inexistente e o status final e do enum
+    promover_mod, erro_pr = None, ""
+    try:
+        from app.comercial.metricas import promover as promover_mod
+    except Exception as exc:  # noqa: BLE001
+        erro_pr = "%s: %s" % (type(exc).__name__, exc)
+    certo(promover_mod is not None,
+          "[15] B3: `comercial/metricas/promover.py` importa", erro_pr)
+    if promover_mod is not None:
+        enum = (schema.get("enums") or {}).get("work_runs.status") or []
+        certo(str(promover_mod.STATUS_FINAL) in enum,
+              "[15] B3: `STATUS_FINAL` (%r) e um rotulo do enum MEDIDO "
+              "`work_run_status`" % (promover_mod.STATUS_FINAL,),
+              "📊 o enum nao tem `succeeded`: o UPDATE final estouraria 22P02 "
+              "DEPOIS de o evento de promocao ja estar gravado")
+        db3 = _DbDoSchemaVivo(schema, linhas_de_approval=[])
+        erro_leitura = ""
+        try:
+            promover_mod.conferir_a_decisao(db3, str(_novo_uuid()),
+                                            str(_novo_uuid()))
+        except promover_mod.Reprovado as exc:
+            erro_leitura = str(exc)
+        except Exception as exc:  # noqa: BLE001
+            erro_leitura = "EXPLODIU %s: %s" % (type(exc).__name__, exc)
+        certo("nao foi possivel ler" not in _sem_acento_simples(erro_leitura),
+              "[15] B3 O ELO: o `select` de `approval_requests` passa pelo "
+              "schema MEDIDO — a recusa e por AUSENCIA DE DECISAO, e nao por "
+              "coluna inexistente",
+              "veio: %s" % erro_leitura[:200])
+        certo("aprovacao registrada" in _sem_acento_simples(erro_leitura),
+              "[15] B3 PAR: e sem decisao humana ela REPROVA, com a frase de "
+              "quem nao foi olhado",
+              "veio: %s" % erro_leitura[:200])
+
+        # MUTACAO: devolver `decided_at` ao select -> o schema vivo RECUSA.
+        def _medir_select():
+            import importlib
+            importlib.reload(promover_mod)
+            d = _DbDoSchemaVivo(schema, linhas_de_approval=[])
+            try:
+                promover_mod.conferir_a_decisao(d, str(_novo_uuid()),
+                                                str(_novo_uuid()))
+                return "PASSOU"
+            except promover_mod.Reprovado as exc:
+                return "42703" if "42703" in str(exc) or "possivel ler" in \
+                    _sem_acento_simples(str(exc)) else "REPROVOU"
+            except Exception as exc:  # noqa: BLE001
+                return "EXPLODIU %s" % type(exc).__name__
+
+        alvo_pr = os.path.join(METRICAS, "promover.py")
+        valor, rodou = sob_mutacao(
+            "[15] MUTACAO B3 (`decided_at` de volta no select)", alvo_pr,
+            [("\"status, decision, approved_at, rejected_at, resolved_at\"",
+              "\"status, decision, decided_at\"")],
+            _medir_select)
+        import importlib
+        importlib.reload(promover_mod)
+        if rodou:
+            certo(valor == "42703",
+                  "[15] MUTACAO B3: com `decided_at` no select, o schema VIVO "
+                  "recusa a leitura (veio %r)" % (valor,),
+                  "🔴 e era exatamente isso que acontecia em producao: o "
+                  "`except` traduzia o 42703 em 'nao foi possivel ler a "
+                  "aprovacao', e o gate ficava intransponivel")
+
+    # ------------------------------------------------------------------
+    # B4 -- o GRUPO DE RAMO. O PAR e a mao, com os dois numeros medidos.
+    # ------------------------------------------------------------------
+    #
+    # 📊 Medido em 04/09/2026 no agregado REAL (`susep/ses/2026.csv`, 642
+    # celulas da entidade 05886 em 202601-202606):
+    #
+    # ```
+    # TODOS os ramos   sinistro 5.713.701.351,88 / premio 11.264.199.772,28 = 0,507244
+    # grupo 05 (auto)  sinistro 4.585.393.142,50 / premio  7.903.825.636,18 = 0,580149
+    # ```
+    #
+    # 🔴 7,3 p.p., e o menor era o que saia. A fixture abaixo REPRODUZ os dois
+    # numeros com duas celulas, para que o guarda possa rodar sem rede.
+    ESPERADO_DO_GRUPO = 0.580149
+    ESPERADO_DE_TODOS = 0.507244
+    feixe = cbim.MarketFactSet(
+        provider_key=cbim.PROVIDER_DE_MERCADO, fonte="fixture-r3",
+        competencia_final="202606",
+        mapa={"porto": "05886"},
+        resolver=lambda nome: ("05886" if str(nome).strip().upper() == "PORT"
+                               else "UNKNOWN"),
+        mapa_de_ramo={"AUTO": "05", "VGRP": "09"},
+        resolver_de_ramo=lambda ramo: {"AUTO": "05", "VGRP": "09"}.get(
+            str(ramo or "").strip().upper(), "UNKNOWN"),
+        nomes_de_grupo={"05": "Automovel", "09": "Pessoas Coletivo"})
+    feixe.facts.append(cbim.MarketFact(
+        coenti="05886", damesano="202606", coramo="0531",
+        premio_ganho=7903825636.18, sinistro_ocorrido=4585393142.50))
+    feixe.facts.append(cbim.MarketFact(
+        coenti="05886", damesano="202606", coramo="0993",
+        premio_ganho=11264199772.28 - 7903825636.18,
+        sinistro_ocorrido=5713701351.88 - 4585393142.50))
+    todos = (sum(f.sinistro_ocorrido for f in feixe.facts)
+             / sum(f.premio_ganho for f in feixe.facts))
+    certo(abs(todos - ESPERADO_DE_TODOS) < 5e-6,
+          "[15] B4 CONTROLE: a fixture reproduz o numero ERRADO de todos os "
+          "ramos (%.6f)" % (todos,),
+          "sem ele o par nao consegue distinguir os dois resultados")
+
+    dinheiro = cbim.interpretar_dinheiro
+    lote_b4 = fatos_de_fixture(cbim)
+    lote_b4.policies = [dataclasses.replace(
+        lote_b4.policies[0], policy_ref="b4-auto", insurer="PORT",
+        branch="AUTO", valid_from=date(2026, 6, 1), valid_to=date(2027, 5, 31),
+        premium=dinheiro("1000.00"))]
+    lote_b4.claims = [cbim.ClaimFact(
+        policy_ref="b4-auto", claim_ref="sin-b4", status="OPEN",
+        occurred_at=date(2026, 6, 10), reported_at=date(2026, 6, 11),
+        closed_at=None, indemnity=dinheiro("500.00"),
+        deductible=dinheiro("0.00"), insurer="PORT", branch="AUTO",
+        provider_key=lote_b4.provider_key)]
+    r4, erro4 = None, ""
+    try:
+        r4 = registry.calcular("claims.loss_ratio_vs_market", lote_b4,
+                               (date(2026, 6, 1), date(2026, 6, 30)),
+                               mercado=feixe)
+    except Exception as exc:  # noqa: BLE001
+        erro4 = "%s: %s" % (type(exc).__name__, exc)
+    linhas4 = list(getattr(r4, "breakdown", ()) or ())
+    certo(len(linhas4) == 1,
+          "[15] B4 CONTROLE: a carteira de AUTO produz UMA linha de comparacao "
+          "(%d)" % (len(linhas4),), erro4)
+    if linhas4:
+        do_mercado = float(linhas4[0].get("sinistralidade_do_mercado") or 0.0)
+        certo(abs(do_mercado - ESPERADO_DO_GRUPO) < 5e-6,
+              "[15] B4 O ELO: a carteira de AUTO e comparada com o GRUPO 05 "
+              "(%.6f), e nao com a seguradora inteira" % (do_mercado,),
+              "📊 esperado %.6f (grupo 05) e NAO %.6f (todos os ramos)"
+              % (ESPERADO_DO_GRUPO, ESPERADO_DE_TODOS))
+        certo(abs(do_mercado - ESPERADO_DE_TODOS) > 0.05,
+              "[15] B4 PAR: e o numero de TODOS os ramos (%.6f) NAO e o que "
+              "sai — sao 7,3 p.p. de diferenca num numero de negociacao de "
+              "reajuste" % (ESPERADO_DE_TODOS,),
+              "veio %.6f" % (do_mercado,))
+        certo(str(linhas4[0].get("cogrupo") or "") == "05"
+              and "05" in str(linhas4[0].get("grupo") or ""),
+              "[15] B4: e o GRUPO comparado vai escrito na linha (%r)"
+              % (linhas4[0].get("grupo"),),
+              "um numero de sinistralidade sem o ramo ao lado nao e conferivel")
+
+    # MUTACAO: voltar a agrupar so por seguradora -> sai o numero ERRADO.
+    def _medir_b4():
+        registry.METRICAS.clear()
+        registry._carregar_definicoes()
+        try:
+            r = registry.calcular("claims.loss_ratio_vs_market", lote_b4,
+                                  (date(2026, 6, 1), date(2026, 6, 30)),
+                                  mercado=feixe)
+        except Exception as exc:  # noqa: BLE001
+            return "ERRO %s" % type(exc).__name__
+        ls = list(getattr(r, "breakdown", ()) or ())
+        if not ls:
+            return "SEM LINHA"
+        return "%.6f" % float(ls[0].get("sinistralidade_do_mercado") or 0.0)
+
+    alvo_b4 = os.path.join(METRICAS, "mercado.py")
+    valor, rodou = sob_mutacao(
+        "[15] MUTACAO B4 (agrupar so por seguradora)", alvo_b4,
+        [("        chave = (str(getattr(c, \"coenti\", \"\") or \"\").strip(),\n"
+          "                 str(getattr(c, \"grupo_de_ramo\", \"\") or \"\").strip())",
+          "        chave = (str(getattr(c, \"coenti\", \"\") or \"\").strip(), \"05\")")],
+        _medir_b4)
+    registry.METRICAS.clear()
+    registry._carregar_definicoes()
+    if rodou:
+        certo(valor == "%.6f" % ESPERADO_DE_TODOS,
+              "[15] MUTACAO B4: somando os ramos todos na mesma chave, sai "
+              "%s — o numero de OUTRO mercado (veio %r)"
+              % ("%.6f" % ESPERADO_DE_TODOS, valor),
+              "🔴 se a mutacao nao mudasse o numero, o agrupamento por grupo "
+              "de ramo nao seria o que produz a resposta certa")
+
+
+def _restaurar_registry(registry):
+    """Recarrega o registry do DISCO. ⚠️ `sob_mutacao` restaura o ARQUIVO; o
+    modulo ja importado continua com o codigo mutado ate este `reload`."""
+    import importlib
+    importlib.reload(registry)
+    registry.METRICAS.clear()
+    registry._carregar_definicoes()
+
+
+def _sem_acento_simples(texto):
+    import unicodedata
+    bruto = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in bruto if not unicodedata.combining(c)).lower()
+
+
 def bloco_9_controle():
     _p("\n[9] CONTROLE GERAL -- o placar sabe falhar · a rede fechou · nenhum `.bak`")
 
@@ -3341,6 +3938,7 @@ BLOCOS = (
     ("[12] PROMOCAO E MAPA", bloco_12_promocao_e_mapa),
     ("[13] INGESTAO", bloco_13_ingestao),
     ("[14] PACK E VOCABULARIO", bloco_14_pack_e_vocabulario),
+    ("[15] RODADA 3", bloco_15_rodada_3),
     ("[9] CONTROLE GERAL", bloco_9_controle),
 )
 

@@ -61,6 +61,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import date, datetime
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type
 
@@ -163,6 +164,18 @@ LEITOR_DA_POPULACAO: Dict[str, str] = {
 #: mais comum e a que menos tolera resposta parcial — um panorama que
 #: silenciasse a exposição de renovação seria um panorama que esconde trabalho.
 VISOES_PADRAO: Tuple[str, ...] = tuple(VISOES)
+
+#: 🔴 SPEC-094.1, rodada 3 — O RELÓGIO POR FONTE.
+#:
+#: 📊 O juiz fresco mediu *"como estamos?"* em **104 s** e não teve como dizer
+#: ONDE o tempo foi: o pack não carregava duração nenhuma. Um relatório que
+#: demora e não diz por que demorou não tem como ser consertado — a próxima
+#: pessoa mede tudo de novo, do zero.
+#:
+#: ⚠️ O teto é do PEDIDO INTEIRO, e não de uma leitura: 📊 o censo mediu de
+#: 0,84 s a 15 s por rota, e uma pergunta genérica lê cinco populações mais o
+#: mercado. Sessenta segundos é o ponto em que o dono já saiu da tela.
+TETO_DE_LATENCIA_S = 60.0
 
 #: As visões que só fazem sentido sobre o que TERMINA na janela. O registry
 #: recusa comparar bases temporais diferentes (M6); aqui a gente nem pede.
@@ -1062,24 +1075,33 @@ class ExecutiveIntelligenceTool(BaseTool):
                 if mid not in ids:
                     ids.append(mid)
 
+        # 🔴 O relógio começa aqui, e ele é POR FONTE. Ver `TETO_DE_LATENCIA_S`.
+        relogio: Dict[str, float] = {}
+        comeco = time.monotonic()
         provider = self._provider(resolve_brokerage_analytics_provider,
                                   cbim.PROVIDER_PILOTO)
+        marca = time.monotonic()
         fatos = await provider.fatos(company_id=company_id, inicio=p.inicio,
                                      fim=p.fim, db=self.supabase)
+        relogio["carteira"] = time.monotonic() - marca
         # 🔴 A FIAÇÃO. As cinco leituras novas e o conector de mercado passam a
         # ser CHAMADOS — pelas visões que o dono pediu, e só por elas.
         fatos = await self._buscar_as_populacoes(provider, company_id, p, fatos,
-                                                 escolhidas)
+                                                 escolhidas, relogio)
+        marca = time.monotonic()
         mercado = await self._feixe_do_mercado(p, escolhidas, fatos)
+        relogio["mercado"] = time.monotonic() - marca
         manifesto_ = await self._manifesto(provider, company_id, fatos)
         if not getattr(fatos, "policies", None) and not getattr(fatos, "renewals", None):
             return (f"{CARIMBO_VAZIO} · não há movimento registrado em "
                     f"{p.rotulo}. Diga isso ao dono e sugira outro período. "
                     "Não invente número.")
 
+        marca = time.monotonic()
         metricas = registry.calcular_varias(ids, fatos, (p.inicio, p.fim),
                                             manifest=manifesto_,
                                             mercado=mercado)
+        relogio["calculo"] = time.monotonic() - marca
         anteriores: List[Any] = []
         comparacoes: List[Dict[str, Any]] = []
         if anterior is not None:
@@ -1106,6 +1128,8 @@ class ExecutiveIntelligenceTool(BaseTool):
                     # 🔴 A recusa do M6 é resultado legítimo, e vai escrita.
                     comparacoes.append({"metric_id": m.metric_id,
                                         "warnings": [str(exc)]})
+
+        self._anotar_o_relogio(fatos, relogio, time.monotonic() - comeco)
 
         agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
         pacote = self._empacotar(ep, company_id, p, anterior, metricas,
@@ -1136,6 +1160,38 @@ class ExecutiveIntelligenceTool(BaseTool):
 
     # ------------------------------------------------------------------ #
     @staticmethod
+    def _anotar_o_relogio(fatos: Any, relogio: Dict[str, float],
+                          total: float) -> None:
+        """A duração POR FONTE vai para o envelope, e o estouro vira AVISO.
+
+        🔴 SPEC-094.1, rodada 3 (P-094.1-LATENCIA). 📊 O juiz mediu 104 s numa
+        pergunta genérica e o pack não trazia UM número de tempo — então não
+        havia como dizer se o custo era da carteira, das cinco populações, do
+        mercado ou do cálculo.
+
+        ⚠️ O aviso só aparece quando passa do teto. Uma linha de telemetria em
+        toda resposta empurraria para fora do contexto do modelo o pedaço que
+        responde à pergunta do dono — que é o mesmo defeito dos 222 avisos
+        idênticos que `colapsar_avisos` existe para conter.
+
+        ⛔ E o LOG sai sempre: ele é nosso, não do dono, e é ele que permite
+        comparar duas semanas sem esperar por uma queixa.
+        """
+        detalhe = " · ".join("%s %.1fs" % (nome, seg)
+                             for nome, seg in sorted(relogio.items(),
+                                                     key=lambda x: -x[1]))
+        logger.info("[094.1] pulso em %.1fs (%s)", total, detalhe)
+        if total <= TETO_DE_LATENCIA_S:
+            return
+        try:
+            fatos.warnings.append(
+                "esta consulta levou %.0f s (teto %.0f s) — %s. 🔴 Isto é uma "
+                "afirmação sobre NÓS, e não sobre a carteira: os números "
+                "acima continuam valendo" % (total, TETO_DE_LATENCIA_S, detalhe))
+        except Exception:  # noqa: BLE001
+            pass
+
+    @staticmethod
     def _populacoes_pedidas(escolhidas: List[str]) -> List[str]:
         """As populações que ESTAS visões exigem — na ordem, sem repetir."""
         saida: List[str] = []
@@ -1147,7 +1203,9 @@ class ExecutiveIntelligenceTool(BaseTool):
 
     async def _buscar_as_populacoes(self, provider: Any, company_id: str,
                                     p: Any, fatos: Any,
-                                    escolhidas: List[str]) -> Any:
+                                    escolhidas: List[str],
+                                    relogio: Optional[Dict[str, float]] = None
+                                    ) -> Any:
         """Lê as populações que as visões pedidas exigem e as FUNDE no lote.
 
         🔴 O critério é o PEDIDO, e não "leia tudo": cada população é uma rota
@@ -1172,6 +1230,7 @@ class ExecutiveIntelligenceTool(BaseTool):
                     "a fonte desta corretora nao expoe a leitura de %s: "
                     "INDISPONIVEL por capacidade, e nunca zero" % pop)
                 continue
+            marca = time.monotonic()
             try:
                 recorte = await metodo(company_id=company_id, inicio=p.inicio,
                                        fim=p.fim, db=self.supabase)
@@ -1182,6 +1241,11 @@ class ExecutiveIntelligenceTool(BaseTool):
                     "a leitura de %s falhou nesta consulta (%s): INDISPONIVEL "
                     "por erro de leitura, e nunca zero" % (pop, type(exc).__name__))
                 continue
+            finally:
+                # ⚠️ No `finally`: a leitura que FALHA também custou relógio, e
+                # esconder o tempo dela é esconder justamente a fonte lenta.
+                if relogio is not None:
+                    relogio[pop] = time.monotonic() - marca
             self._fundir(fatos, recorte)
         return fatos
 
