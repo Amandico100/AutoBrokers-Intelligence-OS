@@ -189,7 +189,13 @@ ROTAS ............. ✅ `npm run test:rotas-montam` 294 rotas · `next build` ex
                     401 · GET /dashboard/entregas → 307 para /login?redirect=%2Fdashboard%2Fentregas — o servidor RESPONDE numa rota que executa código
                     (CLAUDE.md §9.1), e a lente padrão da lista não mudou a URL
 SUÍTE INTEIRA ..... ✅ 935 passed · 6 failed · 39 xfailed (45m05, árvore parada, d2922e6). Os 6: 2 REAIS de guarda, migrados com o fato (059 [12]: resultado sem source_type deixou de ser da corretora; mutação-commitada: os textos D2/D5 existiam no produto de direito → marcadores únicos); 3 da classe do harness (P-093B-HARNESS: política, sinistro e ontologia passam isolados); 1 causado pelo orquestrador (docs editados durante a rodada → `test_a_arvore_ficou_limpa_no_fim`)
-ENTREGA ........... {ENTREGA}
+ENTREGA ........... ✅ 04/09 ~17:20 — preflight `HEAD..origin/main` = 0 · `origin/main..HEAD` = 17 · `git merge-base --is-ancestor origin/main HEAD` ok ·
+                    `git push origin HEAD:main`:
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   5c22590..5dc3ee3  HEAD -> main
+```
+                    depois: `origin/main..HEAD` = 0. O EasyPanel constrói a `main`: clique Implantar (smith-web e smith-api). ZERO migration
 ```
 **Veredito do orquestrador: GATE VERDE — SPEC-095 CONCLUÍDA**, com as pendências da §6 (todas com dono) e as decisões F-095-01/02 suas.
 
