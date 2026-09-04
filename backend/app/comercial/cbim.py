@@ -77,9 +77,15 @@ from app.comercial.evidence_pack import UNAVAILABLE, ref_de_produtor
 __all__ = [
     "UNAVAILABLE", "Money", "Provenance",
     "PolicyFact", "ProducerAssignmentFact", "CommissionFact", "RenewalFact",
-    "policy_ref", "producer_ref", "interpretar_dinheiro", "somar_dinheiro",
+    "ClaimFact", "QuoteFact", "CustomerPortfolioFact",
+    "MarketFact", "MarketFactSet",
+    "policy_ref", "producer_ref", "claim_ref", "customer_ref", "quote_ref",
+    "interpretar_dinheiro", "somar_dinheiro",
     "NEW", "RENEWAL", "ENDORSEMENT", "UNKNOWN", "KINDS",
-    "MOEDA_PADRAO", "PROVIDER_PILOTO",
+    "ACTIVE", "CANCELLED", "STATUS_DE_APOLICE", "status_de_apolice",
+    "CLAIM_OPEN", "CLAIM_CLOSED", "CLAIM_UNKNOWN", "CLAIM_STATUS",
+    "CLAIM_OCCURRED_DATE",
+    "MOEDA_PADRAO", "PROVIDER_PILOTO", "PROVIDER_DE_MERCADO",
 ]
 
 # --------------------------------------------------------------------------
@@ -103,6 +109,61 @@ RENEWAL = "RENEWAL"
 ENDORSEMENT = "ENDORSEMENT"
 UNKNOWN = "UNKNOWN"
 KINDS = (NEW, RENEWAL, ENDORSEMENT, UNKNOWN)
+
+#: 🔴 SPEC-094.1 · BLOCO A. O ESTADO da apólice, em vocabulário de negócio.
+#:
+#: 📊 O censo v2.1 mediu a armadilha que este par existe para fechar:
+#: `/renovacoes?cancelado=T` **NÃO** devolve só as canceladas — devolve
+#: **3.861 linhas = 3.536 com `cancelado='F'` + 325 com `cancelado='T'`**. O
+#: parâmetro INCLUI; quem o lê como recorte publica a carteira inteira como
+#: cancelada, e o número **responde** (CLAUDE.md §9.5: o passo que responde
+#: errado é o silencioso). O estado sai do CAMPO de cada linha, nunca do
+#: parâmetro da chamada.
+ACTIVE = "ACTIVE"
+CANCELLED = "CANCELLED"
+STATUS_DE_APOLICE = (ACTIVE, CANCELLED)
+
+
+def status_de_apolice(cancelada: bool) -> str:
+    """`CANCELLED` ou `ACTIVE` — a ÚNICA função que decide isto.
+
+    🔴 Uma função, e não dois literais espalhados, pelo mesmo motivo de
+    `policy_ref`: quem escreve as duas pontas de uma comparação tem de ser o
+    mesmo código, ou uma ponta ganha um `.upper()` que a outra não tem e a taxa
+    de cancelamento cai para zero em silêncio.
+    """
+    return CANCELLED if cancelada else ACTIVE
+
+
+#: O estado de um SINISTRO. `CLAIM_UNKNOWN` é resposta legítima: 📊 o censo
+#: mediu `situacao` como texto livre da corretora, e traduzir um rótulo que não
+#: se conhece para "encerrado" é afirmar que o caso acabou.
+CLAIM_OPEN = "OPEN"
+CLAIM_CLOSED = "CLOSED"
+CLAIM_UNKNOWN = "UNKNOWN"
+CLAIM_STATUS = (CLAIM_OPEN, CLAIM_CLOSED, CLAIM_UNKNOWN)
+
+#: 🔴 A base temporal do SINISTRO, escrita como nome — e a dívida que ela
+#: carrega, escrita junto.
+#:
+#: 📊 O censo v2.1 §A3 mediu: `/sinistros` com `tipo_data=oco` prende `datoco`
+#: (**42/42** dentro da janela, com o mínimo no primeiro dia dela). A população
+#: de sinistros é recortada pela **data de ocorrência** — que não é o início
+#: nem o fim de vigência de apólice nenhuma.
+#:
+#: ⚠️ E o `MetricDefinition.time_basis` **não** consegue declará-la hoje:
+#: `evidence_pack.BASES_TEMPORAIS` tem exatamente DUAS entradas e cinco
+#: módulos as desempacotam com `A, B = BASES_TEMPORAIS`. Acrescentar a terceira
+#: é uma mudança de contrato em seis arquivos, dois deles de outro escritor
+#: nesta mesma SPEC. Então as métricas de sinistro declaram a base que o
+#: contrato admite, **e escrevem esta no aviso** — e a dívida tem número:
+#: **P-094.1-BASE-DE-SINISTRO**. ⛔ O que não se pode é deixar o envelope
+#: afirmar, calado, que o recorte foi por vigência.
+CLAIM_OCCURRED_DATE = "CLAIM_OCCURRED_DATE"
+
+#: O provider da estatística pública de mercado (SPEC-094.1 · BLOCO B).
+#: 🔴 Ele é de PLATAFORMA e não tem `company_id` — ver `MarketFactSet`.
+PROVIDER_DE_MERCADO = "susep_ses"
 
 
 # --------------------------------------------------------------------------
@@ -320,6 +381,48 @@ def producer_ref(company_id: str, label: str) -> str:
     return ref_de_produtor(company_id, label)
 
 
+def _ref_opaca(dominio: str, company_id: str, provider_key: str,
+               source_ref: str) -> str:
+    """A MESMA construção de `policy_ref`, com o domínio no meio da semente.
+
+    🔴 O domínio existe para que um sinistro e uma apólice com o mesmo número
+    cru na mesma corretora **não** colidam. Sem ele, `claim_ref` e `policy_ref`
+    de um sistema que numera as duas coisas na mesma série dariam a MESMA
+    string — e um join silenciosamente certo casaria as duas metades erradas.
+    """
+    semente = "%s|%s|%s|%s" % (dominio, company_id or "", provider_key or "",
+                               str(source_ref or "").strip())
+    return hashlib.sha256(semente.encode("utf-8")).hexdigest()[:16]
+
+
+def claim_ref(company_id: str, provider_key: str, source_ref: str) -> str:
+    """A referência opaca de um SINISTRO. ⛔ Nunca o número da seguradora.
+
+    🔴 📊 O censo v2.1 §A3 mediu, em `/sinistros`: `segurado` e `responsavel`
+    são **nome de pessoa**, `placa` é placa de veículo e `numapo` é número de
+    apólice. Nenhum deles atravessa esta fronteira — e `numsin`, o número do
+    sinistro na seguradora, atravessa só como SEMENTE deste hash. O que o
+    motor de métrica vê é uma string de 16 hex, e é tudo o que ele precisa
+    para contar e para juntar.
+    """
+    return _ref_opaca("claim", company_id, provider_key, source_ref)
+
+
+def customer_ref(company_id: str, provider_key: str, source_ref: str) -> str:
+    """A referência opaca de um CLIENTE. ⛔ Nunca o nome, nunca o CPF.
+
+    📊 `/cliente_ligacoes` devolve `cliente` (nome, PII) e `cliente_codigo`. Só
+    o código vira semente; o nome fica na fronteira, como o `producer_label`
+    fica — a diferença é que o cross-sell não precisa nem do rótulo.
+    """
+    return _ref_opaca("customer", company_id, provider_key, source_ref)
+
+
+def quote_ref(company_id: str, provider_key: str, source_ref: str) -> str:
+    """A referência opaca de uma COTAÇÃO / negócio em andamento."""
+    return _ref_opaca("quote", company_id, provider_key, source_ref)
+
+
 # --------------------------------------------------------------------------
 # Procedência — a infraestrutura mora AQUI, não dentro do fato
 # --------------------------------------------------------------------------
@@ -461,6 +564,174 @@ class RenewalFact:
     branch: str = ""
 
 
+@dataclass(frozen=True)
+class ClaimFact:
+    """Um SINISTRO da carteira. 📊 5.729 registros na fonte piloto, zero leitores.
+
+    O contrato inteiro da SPEC-094.1 · BLOCO A, e cada campo com o número que o
+    justifica (censo v2.1 §A3, 42 sinistros em 90 dias, 1,10 s):
+
+    ```
+    occurred_at   `datoco`   📊 42/42 dentro da janela — é a base do filtro
+    reported_at   `datavi`   📊 42/42 preenchidos
+    closed_at     `datenc`   📊 9/42 — só os encerrados. `None` não é "hoje"
+    indemnity     `valind`   📊 preenchido; ilegível vira UNAVAILABLE, nunca 0
+    deductible    `franquia` 📊 preenchido
+    ```
+
+    🔴 `status` é `OPEN | CLOSED | UNKNOWN`, e `UNKNOWN` é resposta legítima: o
+    campo `situacao` da fonte é texto livre da corretora. Contar um rótulo
+    desconhecido como encerrado seria fechar um caso na planilha e não na vida.
+
+    ⛔ `segurado`, `responsavel` e `placa` **não existem aqui**. Eles são
+    descartados na fronteira, no adapter — não filtrados depois. O que não entra
+    não vaza.
+    """
+
+    policy_ref: str
+    claim_ref: str
+    status: str = CLAIM_UNKNOWN
+    occurred_at: Optional[date] = None
+    reported_at: Optional[date] = None
+    closed_at: Optional[date] = None
+    indemnity: Dinheiro = UNAVAILABLE
+    deductible: Dinheiro = UNAVAILABLE
+    insurer: str = ""
+    branch: str = ""
+    provider_key: str = PROVIDER_PILOTO
+
+    @property
+    def aberto(self) -> bool:
+        return self.status == CLAIM_OPEN
+
+
+@dataclass(frozen=True)
+class QuoteFact:
+    """Uma cotação / negócio em andamento — o funil.
+
+    🔴 `lost_reason` nasce `UNAVAILABLE` **por capacidade medida, e não por
+    preguiça**: 📊 o censo v2.1 §A4 listou as **30 chaves** que
+    `/negocios_andamento` devolve e `motivo_perda` **não está entre elas** — ele
+    existe só no CORPO do `POST /negocio` da documentação. Não há fonte de
+    LEITURA provada. Enquanto não houver, `quotes.lost_reasons@1` responde
+    INDISPONÍVEL com o motivo escrito, e nunca "nenhum motivo registrado".
+
+    ⚠️ E o acervo é o segundo achado: 📊 `/negocios_andamento` devolveu **1**
+    negócio em 2025 inteiro; `/em_calculo` e `/negocios_finalizados` devolveram
+    **404 = vazio**. A corretora piloto não usa o CRM da fonte. O funil sai
+    UNAVAILABLE por ACERVO VAZIO — que também não é zero.
+    """
+
+    quote_ref: str
+    stage: str = ""
+    created_at: Optional[date] = None
+    closed_at: Optional[date] = None
+    expected_premium: Dinheiro = UNAVAILABLE
+    branch: str = ""
+    lost_reason: str = UNAVAILABLE
+    provider_key: str = PROVIDER_PILOTO
+
+
+@dataclass(frozen=True)
+class CustomerPortfolioFact:
+    """O que UM cliente tem na corretora — a matéria-prima do cross-sell.
+
+    🔴 `customer_ref` é hash (M16). `policy_refs` e `branches` são o que a
+    pergunta *"quantos clientes só têm um produto?"* precisa, e nada além:
+    contar produtos por cliente não exige saber quem é o cliente.
+
+    ⚠️ `branches` é o conjunto de ramos DISTINTOS, e a distinção importa: um
+    cliente com três apólices do mesmo ramo tem **um** produto, não três. Somar
+    apólices em vez de ramos inflaria o cross-sell da corretora inteira.
+    """
+
+    customer_ref: str
+    policy_refs: Tuple[str, ...] = ()
+    branches: Tuple[str, ...] = ()
+    provider_key: str = PROVIDER_PILOTO
+
+    @property
+    def produtos(self) -> int:
+        return len({str(b or "").strip().upper() for b in self.branches
+                    if str(b or "").strip()})
+
+
+# --------------------------------------------------------------------------
+# O MERCADO — a estatística pública, que é de TODAS as corretoras
+# --------------------------------------------------------------------------
+@dataclass(frozen=True)
+class MarketFact:
+    """Uma célula da estatística oficial: entidade × competência × ramo.
+
+    📊 SUSEP SES, `Ses_seguros.csv`, 1.801.731 linhas, 199501→202606
+    (`docs/canon/providers/susep/SES-CENSO.md`). Três convenções medidas que
+    quebram quem copiar exemplo de internet, e que o ingestor trata:
+    **latin-1**, **decimal por vírgula** e **códigos com padding à direita** nas
+    tabelas de domínio.
+
+    ```
+    damesano   `AAAAMM` — é COMPETÊNCIA (mês contábil), não data
+    coenti     a entidade. 🔴 o mapa nome->coenti é VERSIONADO e revisado por
+               gente; nome não é chave (📊 o token "SEGUROS" deu 284 candidatos)
+    coramo     o ramo SUSEP. O GRUPO são os DOIS PRIMEIROS dígitos —
+               📊 `coramo[1:3]` devolveu ZERO ramos de auto, em silêncio
+    ```
+
+    🔴 `sinistro_ocorrido` PODE SER NEGATIVO (estorno de provisão) — 📊 Porto,
+    ramo 0520, 202605: −53.790,44. Truncar em zero inventa um sinistro que não
+    houve, então o negativo é preservado e `estorno` o sinaliza.
+
+    ⛔ E a sinistralidade é `sinistro_ocorrido / premio_ganho`: as duas pontas
+    do MESMO regime de competência. Misturar com `premio_direto` (emissão) ou
+    `sinistro_direto` (pago) devolve um número plausível e errado.
+    """
+
+    coenti: str
+    damesano: str
+    coramo: str
+    premio_ganho: float = 0.0
+    sinistro_ocorrido: float = 0.0
+    estorno: bool = False
+
+    @property
+    def grupo_de_ramo(self) -> str:
+        """📊 Os DOIS primeiros dígitos. `05` = Automóvel."""
+        return str(self.coramo or "").strip()[:2]
+
+    @property
+    def sinistralidade(self) -> Optional[float]:
+        if not self.premio_ganho:
+            return None
+        return self.sinistro_ocorrido / self.premio_ganho
+
+
+@dataclass
+class MarketFactSet:
+    """O feixe de PLATAFORMA. ⛔ **Não tem `company_id`, e é de propósito.**
+
+    🔴 A estatística pública é a MESMA para todas as corretoras. Se ela entrasse
+    no `FactSet` do tenant, cada casa passaria a ter a sua cópia do mercado — e
+    a pergunta seguinte seria por que elas divergem. Um dado sem dono é um dado
+    que ninguém consegue duplicar por engano (CLAUDE.md §7, pelo avesso).
+
+    ⚠️ `competencia_final` vai ao pacote porque a DEFASAGEM é da fonte e tem de
+    aparecer no ponteiro: 📊 a base fecha em **202606**, e quem lê em setembro
+    está comparando com junho. Um cruzamento que esconde a defasagem responde
+    certo sobre o mês errado.
+    """
+
+    provider_key: str = PROVIDER_DE_MERCADO
+    facts: List[MarketFact] = field(default_factory=list)
+    competencia_final: str = ""
+    fonte: str = ""
+    fingerprint: str = ""
+    warnings: List[str] = field(default_factory=list)
+
+    def por_entidade(self, coenti: str) -> List[MarketFact]:
+        alvo = str(coenti or "").strip()
+        return [f for f in self.facts if str(f.coenti or "").strip() == alvo]
+
+
 # --------------------------------------------------------------------------
 # O lote — o que o adapter devolve e o registry consome
 # --------------------------------------------------------------------------
@@ -479,6 +750,13 @@ class FactSet:
     assignments: List[ProducerAssignmentFact] = field(default_factory=list)
     commissions: List[CommissionFact] = field(default_factory=list)
     renewals: List[RenewalFact] = field(default_factory=list)
+    #: 🔴 SPEC-094.1 · BLOCO A. Três populações novas, cada uma com a sua
+    #: rota e a sua base temporal. Elas NÃO entram em `policies`: um sinistro
+    #: não é uma apólice, e uma cotação não é um documento emitido. Misturá-las
+    #: faria a contagem de apólices crescer sozinha.
+    claims: List[ClaimFact] = field(default_factory=list)
+    quotes: List[QuoteFact] = field(default_factory=list)
+    customers: List[CustomerPortfolioFact] = field(default_factory=list)
     provenance: Optional[Provenance] = None
     warnings: List[str] = field(default_factory=list)
     #: `rota -> sha256 das chaves ordenadas`, na forma EXATA do censo
@@ -494,4 +772,10 @@ class FactSet:
         saida: Dict[str, List[ProducerAssignmentFact]] = {}
         for a in self.assignments:
             saida.setdefault(a.policy_ref, []).append(a)
+        return saida
+
+    def sinistros_por_apolice(self) -> Dict[str, List[ClaimFact]]:
+        saida: Dict[str, List[ClaimFact]] = {}
+        for c in self.claims:
+            saida.setdefault(c.policy_ref, []).append(c)
         return saida
