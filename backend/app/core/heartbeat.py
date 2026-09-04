@@ -546,6 +546,29 @@ AGENT_TASKS: List[Agente] = [
         # produção para pintar 🟢.
         fonte_rotulo="os padrões de sinistro que ele encontrou",
     ),
+    Agente(
+        "censo_do_mercado", "Censo SUSEP",
+        "Traz a estatística oficial do mercado — prêmio e sinistro de cada seguradora, mês a mês — para que a corretora saiba se a sinistralidade dela está acima ou abaixo da do mercado.",
+        grupo="aprende_avisa", cor="#88C0D0",
+        eixo=_por_runs(("intelligence.susep_ses_ingest",)),
+        # 🔴 A FONTE É O WORK RUN, e não uma tabela: este trabalhador não
+        # escreve no banco. O que ele produz são BYTES no MinIO
+        # (`susep/ses/<ano>.csv` + `susep/ses/manifest.json`), e não existe
+        # `max(coluna)` de um objeto de bucket. O eixo por `work_runs` é a
+        # medição honesta do "rodou"; o manifesto é a prova do "produziu", e
+        # quem a lê é a tela do conector, não este registro.
+        fonte_de_producao=(Fonte(tipo="work_runs_do_eixo",
+                                 rotulo="work_runs.finished_at (completed)"),),
+        # ⚠️ 💭 604.800 s é a cadência DECLARADA, e não medida: 📊 em
+        # 03/09/2026 há ZERO run desta chave — a SPEC-094.1 é quem a cria.
+        # Quando houver 4 semanas de histórico, remeça pelo `lag(finished_at)`
+        # como os vizinhos fizeram. `tick.py` INTERVALO_SES_HORAS = 168.
+        cadencia_esperada_s=604800, desligado_quando=None, k=2,
+        cadencia_pulso_s=604800,
+        # 🔴 O card nasce 🔴 PARADO, e é a verdade: sem o primeiro tick não há
+        # run nenhum, e 🟡 PULSA SEM PRODUZIR pressuporia pulso.
+        fonte_rotulo="o censo do mercado atualizado",
+    ),
 ]
 
 

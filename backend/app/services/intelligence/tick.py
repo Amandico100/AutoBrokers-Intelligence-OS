@@ -38,6 +38,12 @@ INTERVALO_CLUSTER_HORAS = 24
 # `garimpo` — ⛔ NÃO pelo do `daily_briefing`, que exige perfil e horário e faria
 # um trabalho de observação depender de configuração que a corretora nunca fez.
 INTERVALO_CLAIMS_SHADOW_HORAS = 24
+# 🔴 SPEC-094.1 BLOCO B: o censo do mercado (SUSEP SES). SEMANAL, e de
+# PLATAFORMA — o molde e o do `cluster_demand`, e nao o por corretora: a
+# estatistica publica e UMA para todas, e com o molde por tenant seriam N
+# downloads do mesmo arquivo de 571 MB por semana. 📊 A fonte publica com
+# `Last-Modified` semanal (31/08/2026 na medicao do BLOCO 0).
+INTERVALO_SES_HORAS = 168
 
 
 def _agora() -> datetime:
@@ -114,7 +120,7 @@ class IntelligenceTick:
         agora = agora or _agora()
         resultado = {"deteccao": 0, "briefings": 0, "garimpo": 0,
                      "medicao": 0, "cluster": 0, "sombra_sinistros": 0,
-                     "expirados": 0}
+                     "censo_do_mercado": 0, "expirados": 0}
 
         empresas = self._empresas()
         for empresa in empresas:
@@ -154,6 +160,19 @@ class IntelligenceTick:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[Tick] cluster de demanda: %s", type(exc).__name__)
 
+        # SPEC-094.1 BLOCO B: o censo do mercado. 🔴 Mesmo molde de PLATAFORMA
+        # do cluster — `escopo="plataforma"` e a janela SEMANAL. Quem baixa é o
+        # WORKER, sob lease com heartbeat; o tick só cria o Work Run.
+        try:
+            if empresas and self._agendar(str(empresas[0]["id"]),
+                                          "intelligence.susep_ses_ingest",
+                                          "Atualizar o censo do mercado",
+                                          self._janela(agora, INTERVALO_SES_HORAS),
+                                          escopo="plataforma"):
+                resultado["censo_do_mercado"] += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Tick] censo do mercado: %s", type(exc).__name__)
+
         resultado["expirados"] = self._expirar()
         return resultado
 
@@ -175,7 +194,28 @@ class IntelligenceTick:
             return []
 
     def _janela(self, agora: datetime, horas: int) -> str:
-        """Rótulo estável do período. É o que torna o Work Run idempotente."""
+        """Rótulo estável do período. É o que torna o Work Run idempotente.
+
+        🔴 SPEC-094.1 BLOCO B: **a cadência semanal precisa de rótulo semanal.**
+        Até aqui, qualquer `horas >= 24` virava o rótulo do DIA — e um trabalho
+        de 168 h com rótulo diário ganharia uma chave de idempotência nova a
+        cada meia-noite. O efeito não seria "rodar mais": seria **baixar 571 MB
+        todo dia** achando que é semanal.
+
+        ⚠️ `%G-W%V` (ano ISO + semana ISO), e não `%Y-W%W`: na virada do ano as
+        duas discordam — 31/12 pode ser a semana 1 do ano seguinte, e com `%Y` o
+        rótulo saltaria para trás e reagendaria o mesmo trabalho.
+        `_briefings` continua com `%Y-W%W` porque é a chave que já está gravada
+        nos runs dele; trocá-la reagendaria o briefing de todo mundo uma vez.
+
+        ```
+        horas >= 168   2026-W36        a semana ISO
+        24..167        2026-09-03      o dia
+        < 24           2026-09-03T12   a fatia do dia
+        ```
+        """
+        if horas >= 168:
+            return agora.strftime("%G-W%V")
         if horas >= 24:
             return agora.strftime("%Y-%m-%d")
         marca = (agora.hour // max(1, horas)) * max(1, horas)
