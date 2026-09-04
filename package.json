@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:infocap-contract-capture": "python backend/tests/test_infocap_contract_capture.py",
     "test:infocap-output-guard": "python backend/tests/test_infocap_policy_output_guard.py",
+    "test:fabrica-de-relatorios": "python backend/tests/test_a_fabrica_de_relatorios.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
     "test:central-agentes": "node scripts/central-de-agentes-mostra-o-trabalho.test.mjs",
     "test:claims-shadow-vocab": "node scripts/claims-shadow-vocab.test.mjs",
