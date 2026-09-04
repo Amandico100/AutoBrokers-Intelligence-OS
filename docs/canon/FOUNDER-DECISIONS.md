@@ -1682,3 +1682,36 @@ qual canal? **Dono:** 🧑.
 - **O Fabric não muda** — promover a 1ª frase humana a manchete no briefing 80 × narrativa própria no `finding_engine` 60 × 3
   `signal_type` novos 55 (P-095-NARRATIVA-DO-FABRIC).
 - **Identidade que casa peça ARQUIVADA cria peça nova**, não desarquiva — 85 × 45.
+
+---
+
+# F-096-00 · 04/09/2026 · As decisões que o Founder DELEGOU ao abrir a 096 — executadas com nota, antes do código da SPEC
+
+O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0–100, e executa o que recomendou"*. Feito, nesta ordem:
+
+- **F-094-07 → EXECUTADA como (B)**: "excluir o acesso do Amandus e deixar só da Resulta". A conexão InfoCap da Amandus
+  (`604ec9f1…`, `status=connected`, 📊 nunca usada: `last_used_at` nulo) foi **arquivada** espelhando o escritor canônico
+  (`app/api/vault/connections/[connectionId]/route.ts:161-164`: `status='archived'`, `metadata.archived={at,by,reason}`,
+  `updated_at`) + a linha de auditoria que ele grava (`vault_audit_log`, `action='archive'`). 📊 VERIFY (SQL, 04/09 21:40 UTC):
+  Amandus `archived · archived.by=orquestrador:F-094-07` · Resulta `a89ec28b… connected · healthy` · 1 linha de auditoria.
+  ROLLBACK: `update tenant_connections set status='connected', metadata=metadata-'archived' where id='604ec9f1-…'`.
+  Consequência: `_is_inactive_connection` (`infocap_connector.py:655-659`) já ignora `archived` — a Amandus deixa de resolver
+  para a conta da Resulta; P-094-CONTA-COMPARTILHADA fecha. **Nota da opção: 90** (× manter 10: era P1 cross-tenant adormecido).
+- **F-094.1-02 / F-094.1-08 → RECUSADA a proposta pendente**: `approval_requests` `e47a4a5c…` (Resulta, `metric.proposal`,
+  `proposta.teste_builder_0941`, criada 04/09 05:55 pela execução da 094.1) foi **recusada pelo escritor existente**
+  `WorkApprovalService.decidir(decisao='rejected')` (`approvals.py:194`), com o motivo gravado e `usuario_id` de um
+  `admin_company` da Resulta. 📊 VERIFY: `status=rejected · decision=rejected · resolved_at 21:31 UTC`. Era métrica de TESTE,
+  não de negócio — aprovar contaminaria o registry da corretora. **Nota: 85** (× aprovar 5 × deixar pendente 40: fila de
+  aprovação com lixo de execução ensina a ignorar a fila).
+- **F-094.1-01 (Tool Gateway) → FICA DESLIGADO**, sem ação nesta leva. 📊 155 diffs em sombra, 0 idênticos (relatório da 094.1):
+  ligar sem paridade medida troca o comportamento de TODA tool do chat às cegas — e a 096 está prestes a instrumentar o stream
+  de tools (`stream_agent_eventos`), o que é exatamente a régua que faltava para medir a sombra por tool. **Nota: desligar 85 ×
+  ligar 15 × cutover parcial agora 35.** Volta na SPEC-109 (Engine) ou quando um relatório de sombra mostrar ≥ 95% de paridade.
+- **F-094.1-03 (094.2 · comissão recebida/inadimplência via portal) → FICA NA FILA depois da 098** (o que o INDICE já dizia).
+  📊 É o piso CRÍTICO (portal = credencial + envio), 💭 6–8h, e depende da 098 (cada coisa sabe de quem é) para não repetir a
+  conta compartilhada. **Nota: depois da 098 75 × antes da 097 40 × nunca 20.**
+- **F-095-01 (leitura do modelo no Pulso) → AUTORIZADA pelo Founder**; execução planejada como unidade LEVE separada
+  (`P-095-LEITURA-DO-MODELO`): entra marcada "leitura do AutoBrokers" (💭), com o guarda "todo número da leitura existe no pack"
+  e some quando o pack não tem achado. 💭 3h. Não entra na 096 (RISCO/SUPERFÍCIE diferentes; um escritor por arquivo).
+- **F-095-02 (briefing por WhatsApp/e-mail) → PENDÊNCIA documentada** em `PENDENCIAS.md` (`P-095-BRIEFING-POR-CANAL`), com o
+  que um chat futuro precisa saber para executar sem reabrir a pesquisa.

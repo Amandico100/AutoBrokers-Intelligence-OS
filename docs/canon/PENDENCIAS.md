@@ -10216,3 +10216,25 @@ o Founder ou uma corretora pedir arquivo; Playwright entra no worker, não na AP
 `{label, detail, …}` (`report_tool.py:271`) e `{kind, …}` (`radar.py:399`). A tela "De onde veio" lê as três; a SPEC-095 cita só a
 inglesa. **Custo de esquecer:** uma quarta forma nasce na próxima peça e a tela mostra "fonte sem nome". **Destrava:** convergir
 numa forma em `ArtifactService.criar` (normalizar na entrada) e um guarda que reprova chave fora do vocabulário. **Dono:** 🤖. 💭 1h.
+
+## P-095-BRIEFING-POR-CANAL · o briefing sai só no painel; WhatsApp e e-mail esperam o Founder (F-095-02)
+📊 `delivery_detail` dos briefings das 3 corretoras (04/09/2026): `canais: [{canal:"dashboard"}]`, `push: true`, nenhum envio externo.
+**O que existe pronto:** o briefing composto (`briefing_service.py`, manchete + itens com `why_now/next_step` desde a 095) · o Artifact
+com versões · o link autenticado do detalhe · o governador de envio do WhatsApp (P-14) · a chave SendGrid VAZIA (P-13).
+**O que um chat futuro faz, nesta ordem (piso CRÍTICO da §3.2 — qualquer coisa que ENVIA):** (1) o Founder responde: para QUEM
+(dono da corretora? cada membro?), em QUAL canal (WhatsApp/e-mail), a QUE HORA (📊 hoje 08:00 local) e o que vai no corpo (manchete +
+3 itens + link, nunca o relatório inteiro); (2) SPEC própria, PADRÃO/CRÍTICO, com Approval da 055 na 1ª execução por corretora;
+(3) template de WhatsApp categoria Utility ANTES de 01/10/2026 (F-094-10: Marketing custa 9,2×); (4) o livro de entregas que saiu
+da 095 (§5 linha 2) volta aqui — `delivery_status` real por canal; (5) canário: Amandus → Resulta, nunca Resulta primeiro.
+**Custo de esquecer:** a corretora só vê o briefing se abrir o painel. **Dono:** 🧑 decide · 🤖 executa. 💭 4–6h.
+
+## P-095-LEITURA-DO-MODELO · a leitura em prosa por cima do Pulso 360 (F-095-01, AUTORIZADA em 04/09/2026)
+**O que fazer (unidade LEVE, 💭 3h):** um bloco `prose` no Pulso (`executive_intelligence.py::_compor`, depois de "O que importa agora")
+escrito por modelo a partir do pack selado (`pack_id`), marcado "leitura do AutoBrokers" (💭) — nunca 📊; guarda: **todo número que
+aparecer na leitura existe no pack** (regex de números × `MetricResult` do pack; um número fora → a leitura é descartada e o bloco não
+entra); a leitura some quando o pack não tem achado; nada de nome de pessoa (o pack já é opaco). **Custo de esquecer:** o Founder
+autorizou e nada acontece. **Dono:** 🤖.
+
+## P-094-CONTA-COMPARTILHADA · ✅ FECHADA em 04/09/2026 pela F-094-07 (opção B)
+A conexão InfoCap da Amandus foi arquivada (escritor espelhado + auditoria; VERIFY em `FOUNDER-DECISIONS.md` F-096-00). Só a Resulta
+resolve para a conta CorpAPI. Se um dia a Amandus precisar de InfoCap, é cadastro NOVO com conta própria (ação física do Founder).
