@@ -6,7 +6,8 @@
 import EntregasClient from './EntregasClient';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Entregas · AutoBrokers' };
+// SPEC-095 A.1 — o titulo da aba acompanha o nome do pilar.
+export const metadata = { title: 'Relatórios · AutoBrokers' };
 
 export default function EntregasPage() {
   return <EntregasClient />;

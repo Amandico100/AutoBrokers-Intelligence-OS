@@ -27,15 +27,48 @@ export default function ChatPage() {
   });
   const [conversationId, setConversationId] = useState<string | null>(null);
 
+  // SPEC-095 BLOCO E — a pergunta que o relatório escreveu chega PRÉ-PREENCHIDA.
+  //
+  // 🔴 Inicializador SÍNCRONO, no molde do `sessionId` acima — nunca um efeito.
+  // O `InputArea` semeia o campo com `useState(initialText ?? '')`, e um
+  // `useState` só lê o valor na MONTAGEM: um efeito chegaria depois de o campo
+  // já ter nascido vazio, e a pergunta nunca apareceria.
+  //
+  // ⛔ E ele só PRÉ-PREENCHE. Nunca envia: 📊 um Pulso 360 custa 162 s de leitura
+  // da InfoCap e uma versão nova da peça — um efeito que "só manda a pergunta"
+  // gastaria isso a cada montagem, e a montagem acontece mais de uma vez.
+  const [textoInicial, setTextoInicial] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const daUrl = new URLSearchParams(window.location.search).get('pergunta');
+      if (daUrl && daUrl.trim()) return daUrl;
+    }
+    return '';
+  });
+
   // Mantém a URL espelhando a sessão atual: refresh volta na MESMA conversa e
   // "Nova conversa" gera URL nova (histórico do navegador não empilha).
+  //
+  // 🔴 E é aqui que a pergunta é CONSUMIDA — uma vez só. O composer é montado
+  // uma vez e renderizado em DUAS posições da árvore (o ternário de
+  // `messages.length === 0`): ao enviar a primeira mensagem o `InputArea`
+  // desmonta e remonta, e re-semearia a pergunta por cima do que o corretor
+  // estivesse escrevendo. Por isso o estado "já consumi" mora AQUI, acima da
+  // fronteira de remontagem, e a URL perde o `?pergunta=` junto — senão um
+  // refresh traria a pergunta de volta.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
+    let mudou = false;
     if (url.searchParams.get('session') !== sessionId) {
       url.searchParams.set('session', sessionId);
-      window.history.replaceState(null, '', url.toString());
+      mudou = true;
     }
+    if (url.searchParams.has('pergunta')) {
+      url.searchParams.delete('pergunta');
+      setTextoInicial('');
+      mudou = true;
+    }
+    if (mudou) window.history.replaceState(null, '', url.toString());
   }, [sessionId]);
 
   // States do Agente
@@ -606,6 +639,7 @@ export default function ChatPage() {
       selectedAgentId={selectedAgentId}
       onAgentChange={handleAgentChange}
       showAgentSelector={false}
+      initialText={textoInicial}
     />
   );
 

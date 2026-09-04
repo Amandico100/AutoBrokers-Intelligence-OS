@@ -148,7 +148,7 @@ export default async function ExecucaoDeRotinaPage({
           title={nomeDono ? `${nomeDono} rodou` : `${rotina?.name ?? 'Rotina'} rodou`}
           subtitle={rotina?.name ?? undefined}
           breadcrumb={[
-            { label: 'Entregas', href: '/dashboard/entregas' },
+            { label: 'Relatórios', href: '/dashboard/entregas' },
             { label: 'Execução' },
           ]}
         />
@@ -210,7 +210,7 @@ export default async function ExecucaoDeRotinaPage({
 
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <Link href="/dashboard/entregas" className="text-muted-foreground hover:text-foreground">
-            Voltar para Entregas
+            Voltar para Relatórios
           </Link>
           {hrefDono && nomeDono && (
             <Link href={hrefDono} className="text-primary hover:underline">

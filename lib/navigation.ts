@@ -47,7 +47,15 @@ export const PILLARS: NavItem[] = [
   // ou volta para dentro de um pilar existente com um caminho visivel ate ela.
   // Ficar aqui sem decisao e a pior das tres.
   { key: 'memorias', label: 'Memórias', href: '/dashboard/memorias', icon: 'conhecimento' },
-  { key: 'entregas', label: 'Entregas', href: '/dashboard/entregas', icon: 'success' },
+  // SPEC-095 A.1 — o LABEL muda; a key, o href e o ícone não (o
+  // test_menu_nao_cresce.py fixa os três e conta 6 pilares, e 4 redirects, o
+  // `_link()` do chat e 2 guardas apontam para a URL).
+  //
+  // 📊 04/09/2026: "Entregas" descrevia a TABELA de origem, não o que o dono da
+  // corretora vem buscar. 79 das 79 peças da Resulta são relatório; o que ele
+  // pede é "me mostra os relatórios", e a palavra do menu era a única que ele
+  // não usava.
+  { key: 'entregas', label: 'Relatórios', href: '/dashboard/entregas', icon: 'success' },
   { key: 'personalizacao', label: 'Personalização', short: 'Config', href: '/dashboard/personalizacao', icon: 'personalizacao' },
 ];
 

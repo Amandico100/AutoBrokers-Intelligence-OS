@@ -20,6 +20,15 @@ interface InputAreaProps {
   selectedAgentId?: string;
   onAgentChange?: (agentId: string) => void;
   showAgentSelector?: boolean;
+  /**
+   * SPEC-095 BLOCO E — o texto com que o campo NASCE.
+   *
+   * Semeado no inicializador do `useState`, nunca por efeito: um efeito rodaria
+   * depois de o corretor já poder ter digitado, e apagaria o que ele escreveu.
+   * Quem manda o texto (`/dashboard/chat?pergunta=…`) o consome de uma vez só,
+   * acima desta fronteira — aqui não há memória entre montagens.
+   */
+  initialText?: string;
 }
 
 export default function InputArea({
@@ -34,8 +43,9 @@ export default function InputArea({
   selectedAgentId = '',
   onAgentChange,
   showAgentSelector = true,
+  initialText,
 }: InputAreaProps) {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(initialText ?? '');
 
   const {
     pastedImage,

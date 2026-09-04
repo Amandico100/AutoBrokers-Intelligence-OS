@@ -36,6 +36,12 @@ import {
   MessageSquare,
   Building2,
   LayoutGrid,
+  Sunrise,
+  CalendarDays,
+  Activity,
+  ScanSearch,
+  Radar,
+  Archive,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -91,6 +97,15 @@ export const icons = {
   banco: Database,
   drive: HardDrive,
   cobranca: Receipt,
+
+  // Tipos de relatório (SPEC-095 A.2 — o mapa vive em lib/relatorios/tipos.ts,
+  // que referencia estas chaves; o ícone em si mora aqui, como todos os outros)
+  briefingDiario: Sunrise,
+  resumoSemanal: CalendarDays,
+  pulso: Activity,
+  raioX: ScanSearch,
+  radar: Radar,
+  arquivado: Archive,
 
   // Módulos
   fila: Inbox,

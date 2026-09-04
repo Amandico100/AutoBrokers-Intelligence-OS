@@ -39,9 +39,39 @@
 // rotinas` — a página que a SPEC-078 C.4 absorve. F.3 é PRÉ-REQUISITO de C.4
 // por isso: absorver aquela página sem trazer o histórico para cá apagaria a
 // única prova de que alguma coisa rodou.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-095 BLOCO A — a lista passa a DIZER o que cada coisa é.
+//
+// 📊 04/09/2026, a queixa do Founder sobre esta tela, medida:
+//
+//     40 pares duplicados   9,8% da lista e 32,0% da lente "Documentos": cada
+//                           briefing entrava DUAS vezes (`briefing:` e
+//                           `artifact:`), mesmo href, 3 s de diferença
+//     origem = a.kind cru   a linha dizia "report", em inglês, enquanto o
+//                           detalhe traduzia para "Relatório"
+//     79 peças, 16 títulos  79,7% dos títulos se repetiam
+//     35 peças de teste     100% dos relatórios "do chat" da Resulta eram
+//                           canário de execução de SPEC, e nada os distinguia
+//
+// Nenhum desses defeitos trava. Todos respondem 200 (CLAUDE.md §9.5).
+//
+// Três mudanças, e nenhuma tabela nova:
+//   A.4a  a publicação COM artifact é DOBRADA no card do artifact — o card que
+//         fica é o do artifact, porque é ele que carrega o achado no título
+//   A.4b  peça de teste (`tags @> {canario}`) não entra na biblioteca
+//   A.3   o card devolve tipo humano · produtor · período · versões · etiqueta,
+//         e o estado da entrega vira ETIQUETA em vez de comer o resumo
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCompanyMember } from '@/lib/admin/admin-auth';
 import { ondeAbrirAuxiliar } from '@/lib/auxiliaries/catalog';
+import type { IconName } from '@/lib/icons';
+import {
+  ehPecaDeTeste,
+  periodoDoRelatorio,
+  produtor,
+  tipoDoRelatorio,
+} from '@/lib/relatorios/tipos';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,9 +88,59 @@ interface Entrega {
   href: string | null;
   /** Rótulo curto de origem: "Cobrança Feita", "Checklist das 6h"… */
   origem: string | null;
+
+  // ── SPEC-095 A.3 · o que o card precisa dizer ────────────────────────────
+  /** "Pulso 360", "Briefing do dia", "Conversa"… nunca a `template_key`. */
+  tipoHumano?: string;
+  /**
+   * A chave do ícone no registro único (`lib/icons.ts`).
+   *
+   * Quem decide o ícone é o mesmo mapa que decide o tipo humano — mandá-lo daqui
+   * evita que a tela faça uma busca reversa por `tipoHumano` para reencontrar a
+   * linha do mapa que a rota já tinha em mãos.
+   */
+  icone?: IconName;
+  /** Quem produziu, em português. */
+  produtor?: string;
+  /**
+   * `declarado` = o publicador gravou `subject_ref.produtor`.
+   * `inferido`  = veio do mapa por origin + template_key (`legacy_inferred`).
+   * O card NÃO imprime a palavra; ela existe para o guarda e para a próxima
+   * SPEC saber quantas peças ainda dependem do palpite.
+   */
+  produtorOrigem?: 'declarado' | 'inferido';
+  /** O período de que a peça fala — não a hora em que foi escrita. */
+  periodo?: string;
+  /** Uma etiqueta, a mais forte. Ausente quando está tudo em ordem. */
+  etiqueta?: string;
+  /** `artifacts.current_version` — o card diz "N versões" quando > 1. */
+  versoes?: number;
+  /** A peça nasceu de um teste do produto. */
+  teste?: boolean;
 }
 
 const LIMITE_POR_FONTE = 120;
+
+/**
+ * As colunas de `artifacts` que sustentam o card (SPEC-095 A.3 / emenda E3).
+ *
+ * 📊 04/09/2026 a consulta trazia `id, title, subtitle, kind, status,
+ * created_at` — seis colunas. Os campos novos exigem CINCO a mais, e sem elas
+ * o filtro de canário filtraria por uma coluna que a consulta não trouxe:
+ *
+ *     template_key      → tipo humano e ícone
+ *     subject_ref       → produtor declarado e período
+ *     current_version   → "N versões"
+ *     tags              → peça de teste (e o filtro do A.4b)
+ *     origin            → o produtor inferido, quando o template não diz
+ *
+ * 🔴 Numa constante e numa linha só de propósito: as DUAS consultas de
+ * `artifacts` desta rota (a lista e a contagem de arquivados) projetam a mesma
+ * coisa, e o supabase-js lê esta string em tempo de tipo — concatenada, ele
+ * desiste e todo campo abaixo perde o tipo.
+ */
+const COLUNAS_DE_ARTIFACT =
+  'id, title, subtitle, kind, status, created_at, archived_at, template_key, subject_ref, current_version, tags, origin';
 
 /**
  * O Auxiliar dono de cada tipo de briefing.
@@ -98,29 +178,53 @@ const DESTINO_DA_ATIVIDADE: Record<string, string> = {
   auxiliares: '/dashboard/auxiliares',
 };
 
+/** A publicação de briefing, na forma mínima de que o card do artifact precisa. */
+interface PublicacaoDeBriefing {
+  id: string;
+  briefing_type: string | null;
+  delivery_status: string | null;
+  critical_count: number | null;
+  recommendation_count: number | null;
+}
+
 /**
- * O estado da entrega, em português — e só quando ele não é o esperado.
+ * A ETIQUETA da linha — uma só, a mais forte (SPEC-095 A.3).
  *
- * `sent` devolve null de propósito: dizer "entregue" numa lista de coisas
- * entregues é ruído. O que precisa aparecer é o que saiu do trilho.
+ * 📊 04/09/2026 o estado da entrega SUBSTITUÍA o resumo (`route.ts:257`): um
+ * briefing entregue pela metade perdia a única linha que dizia o que ele achou,
+ * e ganhava no lugar uma frase sobre canal. O estado vira etiqueta; o resumo
+ * fica. É a mesma lição do §3 ③ (Datadog): a evidência mora DENTRO do card.
  *
- * `pending` só existe se o executor não rodou (SPEC-064 Bloco E). Ele ficava
- * em 100% das publicações porque `delivery_policy.decidir()` não tinha
- * chamador nenhum. Se voltar a aparecer aqui, é sinal de regressão.
+ * 🔴 A ORDEM: um problema de ENTREGA vence "precisa de você". A SPEC lista os
+ * dois na ordem inversa, e o guarda [4] mede o contrário — com razão: uma peça
+ * que não chegou ao destino é um defeito do sistema, e uma recomendação é um
+ * pedido de atenção do conteúdo. Quem não recebeu o relatório não tem como
+ * agir sobre a recomendação dele.
+ *
+ * `sent` não devolve etiqueta nenhuma de propósito: etiqueta que aparece
+ * sempre é etiqueta que ninguém lê.
  */
-function estadoDaEntrega(status: string | null): string | null {
-  switch (status) {
+function etiquetaDaLinha(pub: PublicacaoDeBriefing | null): string | undefined {
+  if (!pub) return undefined;
+  if ((pub.critical_count ?? 0) > 0) return 'crítico';
+  switch (pub.delivery_status) {
     case 'partial':
-      return 'Entregue em parte — um dos canais falhou';
+      return 'entrega parcial';
     case 'failed':
-      return 'Não foi possível entregar em nenhum canal';
+      return 'não entregue';
     case 'skipped':
-      return 'A política adiou a entrega — abra para ver o motivo';
+      return 'entrega adiada';
+    // `pending` só existe se o executor não rodou (SPEC-064 Bloco E). Ele ficava
+    // em 100% das publicações porque `delivery_policy.decidir()` não tinha
+    // chamador nenhum. Se voltar a aparecer aqui, é sinal de regressão — e por
+    // isso ele continua visível, agora como etiqueta.
     case 'pending':
-      return 'Publicado — a entrega ainda não foi decidida';
+      return 'entrega não decidida';
     default:
-      return null;
+      break;
   }
+  if ((pub.recommendation_count ?? 0) > 0) return 'precisa de você';
+  return undefined;
 }
 
 /**
@@ -151,12 +255,59 @@ function detalheDaExecucao(
   return primeira.trim().slice(0, 140);
 }
 
-export async function GET(_req: NextRequest) {
+/**
+ * A query string do pedido, sem presumir a forma do `NextRequest`.
+ *
+ * 🔴 Os guardas chamam `GET(...)` com um objeto sintético, e os dois da
+ * SPEC-078 o chamam com `{}` — sem `nextUrl` e sem `url`. Ler direto
+ * `req.nextUrl.searchParams` transformaria "esta rota não lê query" em
+ * "esta rota explode no guarda", que é vermelho por endereço errado.
+ */
+function parametrosDe(req: NextRequest): URLSearchParams {
+  try {
+    const doNext = (req as unknown as { nextUrl?: { searchParams?: URLSearchParams } })?.nextUrl;
+    if (doNext?.searchParams) return doNext.searchParams;
+    const bruta = (req as unknown as { url?: string })?.url;
+    if (bruta) return new URL(bruta).searchParams;
+  } catch {
+    /* pedido sem URL — a lista abre no modo normal */
+  }
+  return new URLSearchParams();
+}
+
+export async function GET(req: NextRequest) {
   const auth = await requireCompanyMember({ write: false });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const { supabase, ctx } = auth;
   const empresa = ctx.companyId;
+
+  // SPEC-095 A.4c — `?arquivados=1` mostra o que a limpeza tirou da biblioteca.
+  //
+  // 📊 A limpeza do BLOCO B.4 arquiva 35 peças de teste da Resulta. Arquivar é
+  // reversível por UPDATE, mas só vale como decisão se o Founder puder OLHAR o
+  // que saiu. Um LINK discreto no fim da lista, nunca uma aba: a Notion removeu
+  // a dela (§3 ⑤) e 📊 arquivados = 0 no banco de hoje — uma aba permanente para
+  // uma lista quase sempre vazia é um item de menu que envelhece vazio.
+  //
+  // O modo ignora a lente: só peça arquivável entra (conversa e trabalho não se
+  // arquivam), e a peça de teste aparece aqui — é exatamente o que ele existe
+  // para mostrar.
+  if (parametrosDe(req).get('arquivados') === '1') {
+    const { data: arquivados } = await supabase.from('artifacts')
+      .select(COLUNAS_DE_ARTIFACT)
+      .eq('company_id', empresa)
+      .not('archived_at', 'is', null)
+      .order('archived_at', { ascending: false }).limit(LIMITE_POR_FONTE);
+
+    const itensArquivados = (arquivados ?? []).map((a) => cardDeArtifact(a, null, true));
+    return NextResponse.json({
+      ok: true,
+      arquivados: true,
+      itens: itensArquivados,
+      contagem: { documento: itensArquivados.length },
+    });
+  }
 
   const [
     artefatos,
@@ -167,17 +318,24 @@ export async function GET(_req: NextRequest) {
     auxiliares,
     rotinas,
     execucoesDeRotina,
+    quantosArquivados,
   ] = await Promise.all([
     supabase.from('artifacts')
-      .select('id, title, subtitle, kind, status, created_at')
+      .select(COLUNAS_DE_ARTIFACT)
       .eq('company_id', empresa).is('archived_at', null)
+      // SPEC-095 A.4b — a peça de teste não entra na biblioteca da corretora.
+      // 📊 100% dos relatórios "do chat" da Resulta são canário de execução de
+      // SPEC (14 Raio-X + 14 Radar em 18/08, 6 Pulsos em 03–04/09), e nada os
+      // distinguia de um relatório que o dono pediu. `tags` é `'{}'` em 136/136
+      // linhas de hoje — nunca NULL —, então o `not cs` não engole ninguém.
+      .not('tags', 'cs', '{canario}')
       .order('created_at', { ascending: false }).limit(LIMITE_POR_FONTE),
 
     supabase.from('briefing_publications')
-      // `artifact_id` entra aqui porque 📊 36 das 77 publicações JÁ TÊM o
-      // relatório renderizado. Para essas, o destino certo é o documento
-      // daquele dia — não a tela "de hoje", que mostra outro conteúdo.
-      .select('id, headline, summary_text, briefing_type, published_at, created_at, delivery_status, artifact_id')
+      // `artifact_id` entra aqui porque 📊 40 das 46 publicações da Resulta JÁ
+      // TÊM o relatório renderizado — e, desde o A.4a, é ele que vira o card.
+      // `critical_count`/`recommendation_count` entram para a ETIQUETA (A.3).
+      .select('id, headline, summary_text, briefing_type, published_at, created_at, delivery_status, critical_count, recommendation_count, artifact_id')
       .eq('company_id', empresa)
       .order('created_at', { ascending: false }).limit(LIMITE_POR_FONTE),
 
@@ -219,6 +377,14 @@ export async function GET(_req: NextRequest) {
       .select('id, routine_id, status, output_preview, error, started_at, finished_at')
       .eq('company_id', empresa)
       .order('started_at', { ascending: false }).limit(LIMITE_POR_FONTE),
+
+    // Quantas peças estão arquivadas — só o NÚMERO, para o link discreto do fim
+    // da lista. `head: true` não traz linha nenhuma: é uma contagem, não uma
+    // sétima fonte.
+    supabase.from('artifacts')
+      .select(COLUNAS_DE_ARTIFACT, { count: 'exact', head: true })
+      .eq('company_id', empresa)
+      .not('archived_at', 'is', null),
   ]);
 
   const nomeAux = new Map<string, { nome: string; slug: string }>();
@@ -226,35 +392,45 @@ export async function GET(_req: NextRequest) {
     nomeAux.set(a.id, { nome: a.name ?? a.slug, slug: a.slug });
   }
 
+  // SPEC-095 A.4a — a chave de colapso, escrita: `(artifact_id)`.
+  //
+  // 📊 40 pares duplicados na lista da Resulta. O briefing das 08:05 entrava
+  // como `briefing:` e o relatório dele como `artifact:`, com o MESMO href e 3
+  // segundos de diferença — as duas linhas ordenavam juntas, e o corretor via
+  // dois cards para uma coisa só.
+  //
+  // 🔴 O card que FICA é o do artifact, não o do briefing: é ele que carrega o
+  // título do achado (BLOCO D), as versões e a peça que abre. A publicação não
+  // some — ela é DOBRADA: entrega o produtor e a etiqueta ao card do artifact.
+  const publicacaoDoArtifact = new Map<string, PublicacaoDeBriefing>();
+  for (const b of briefings.data ?? []) {
+    if (b.artifact_id) publicacaoDoArtifact.set(b.artifact_id, b as PublicacaoDeBriefing);
+  }
+
   const itens: Entrega[] = [];
 
   for (const a of artefatos.data ?? []) {
-    itens.push({
-      id: `artifact:${a.id}`,
-      tipo: 'documento',
-      titulo: a.title || 'Documento sem título',
-      detalhe: a.subtitle ?? null,
-      quando: a.created_at,
-      // 📊 17/08/2026: aqui havia `href: null` com o comentário "ainda não há
-      // rota de tenant". A rota agora existe — `/dashboard/entregas/[artifactId]`,
-      // com filtro por company_id no repositório (CLAUDE.md §7).
-      href: `/dashboard/entregas/${a.id}`,
-      origem: a.kind ?? null,
-    });
+    itens.push(cardDeArtifact(a, publicacaoDoArtifact.get(a.id) ?? null, false));
   }
 
   for (const b of briefings.data ?? []) {
+    // A publicação COM artifact já está dobrada no card dele (A.4a). A publicação
+    // SEM artifact continua sendo card: 📊 6 das 46 da Resulta, e é o ramo que a
+    // 078 F.2 consertou — apagá-lo tiraria da lista o único registro de que
+    // aquele dia teve briefing.
+    if (b.artifact_id) continue;
+
     const slugDoBriefing =
       AUXILIAR_DO_BRIEFING[b.briefing_type as string] ?? AUXILIAR_PADRAO_DO_BRIEFING;
+    const tipo = tipoDoRelatorio(`briefing.${b.briefing_type ?? ''}`);
     itens.push({
       id: `briefing:${b.id}`,
       tipo: 'documento',
       titulo: b.headline || 'Checklist do dia',
-      // O estado da entrega aparece quando ele NÃO é o esperado. Um briefing
-      // que saiu em todos os canais não precisa dizer isso — mas um que ficou
-      // pela metade, ou que a política adiou, precisa. Esconder isso faria a
-      // lista parecer saudável enquanto um canal está quebrado.
-      detalhe: estadoDaEntrega(b.delivery_status) ?? b.summary_text ?? null,
+      // O RESUMO fica. O estado da entrega, quando não é o esperado, vira
+      // etiqueta — esconder o estado faria a lista parecer saudável enquanto um
+      // canal está quebrado, e substituir o resumo por ele apagaria o achado.
+      detalhe: b.summary_text ?? null,
       quando: b.published_at || b.created_at,
       // 📊 17/08/2026: o href era a string `/dashboard/auxiliares/checklist-6h`,
       // montada à mão. Esse endereço cai na rota `[slug]`, que renderiza o
@@ -262,14 +438,17 @@ export async function GET(_req: NextRequest) {
       // quinta-feira e recebia a propaganda do Auxiliar. Eram 26 briefings da
       // AutoFleet apontando para a descrição do trabalho em vez do trabalho.
       //
-      // Agora são dois destinos, nesta ordem:
-      //   1. o RELATÓRIO daquele dia, quando ele foi renderizado (36 de 77);
-      //   2. a tela de execução do Auxiliar dono, lida do mapa único em
-      //      lib/auxiliaries/catalog.ts — nunca concatenada aqui.
-      href: b.artifact_id
-        ? `/dashboard/entregas/${b.artifact_id}`
-        : ondeAbrirAuxiliar(slugDoBriefing),
+      // A tela de execução do Auxiliar dono vem do mapa único em
+      // lib/auxiliaries/catalog.ts — nunca concatenada aqui.
+      href: ondeAbrirAuxiliar(slugDoBriefing),
       origem: 'Checklist das 6h',
+      tipoHumano: tipo.tipoHumano,
+      icone: tipo.icone,
+      produtor: 'Checklist das 6h',
+      produtorOrigem: 'inferido',
+      periodo: periodoDoRelatorio(null, b.published_at || b.created_at),
+      etiqueta: etiquetaDaLinha(b as PublicacaoDeBriefing),
+      teste: false,
     });
   }
 
@@ -288,6 +467,9 @@ export async function GET(_req: NextRequest) {
       // produziu.
       href: ondeAbrirAuxiliar(aux?.slug),
       origem: aux?.nome ?? null,
+      tipoHumano: 'Execução de Auxiliar',
+      icone: 'auxiliares',
+      produtor: aux?.nome ?? 'Auxiliar',
     });
   }
 
@@ -317,20 +499,27 @@ export async function GET(_req: NextRequest) {
       quando: e.finished_at || e.started_at,
       href: `/dashboard/entregas/rotina/${e.id}`,
       origem: aux?.nome ?? rot?.nome ?? null,
+      tipoHumano: 'Execução de rotina',
+      icone: 'auxiliares',
+      produtor: aux?.nome ?? rot?.nome ?? 'Auxiliar',
     });
   }
 
   for (const c of conversas.data ?? []) {
+    const doChat = c.channel === 'web' || !c.channel;
     itens.push({
       id: `conversa:${c.id}`,
       tipo: 'conversa',
       titulo: c.title || 'Conversa com o AutoBrokers',
       detalhe: c.last_message_preview ?? null,
       quando: c.updated_at || c.created_at,
-      href: c.channel === 'web' || !c.channel
+      href: doChat
         ? `/dashboard/chat?session=${c.session_id ?? ''}`
         : '/dashboard/atendimentos/conversas',
-      origem: c.channel === 'web' || !c.channel ? 'Chat' : 'Atendimento',
+      origem: doChat ? 'Chat' : 'Atendimento',
+      tipoHumano: doChat ? 'Conversa' : 'Atendimento',
+      icone: doChat ? 'conversas' : 'atendimentos',
+      produtor: doChat ? 'AutoBrokers' : 'Atendimento',
     });
   }
 
@@ -345,6 +534,9 @@ export async function GET(_req: NextRequest) {
       // mesma aparência de linha clicável das outras.
       href: DESTINO_DA_ATIVIDADE[a.category ?? ''] ?? null,
       origem: a.category ?? null,
+      tipoHumano: 'Atividade do agente',
+      icone: 'historico',
+      produtor: a.category ?? 'AutoBrokers',
     });
   }
 
@@ -358,5 +550,68 @@ export async function GET(_req: NextRequest) {
       acc[i.tipo] = (acc[i.tipo] ?? 0) + 1;
       return acc;
     }, {}),
+    // O número do link discreto "ver arquivados (N)". Zero esconde o link.
+    arquivadosN: quantosArquivados.count ?? 0,
   });
+}
+
+/** A linha de `artifacts`, na forma que a rota já projetou. */
+interface LinhaDeArtifact {
+  id: string;
+  title: string | null;
+  subtitle: string | null;
+  kind: string | null;
+  created_at: string;
+  archived_at: string | null;
+  template_key: string | null;
+  subject_ref: unknown;
+  current_version: number | null;
+  tags: unknown;
+  origin: string | null;
+}
+
+/**
+ * O card de uma peça — a anatomia da SPEC-095 A.3.
+ *
+ * Uma função só, usada pela lista e pelo modo arquivados, porque as duas
+ * respondem a mesma pergunta ("o que é esta peça?") e responder em dois lugares
+ * é como as duas telas passaram a discordar (o motivo de `lib/relatorios/
+ * tipos.ts` existir).
+ */
+function cardDeArtifact(
+  a: LinhaDeArtifact,
+  pub: PublicacaoDeBriefing | null,
+  arquivado: boolean,
+): Entrega {
+  const tipo = tipoDoRelatorio(a.template_key);
+  const quem = produtor(a.origin, a.template_key, a.subject_ref);
+  return {
+    id: `artifact:${a.id}`,
+    tipo: 'documento',
+    // 🔴 O título é o que a peça ACHOU (BLOCO D), não o lote de onde ela saiu.
+    titulo: a.title || 'Documento sem título',
+    detalhe: a.subtitle ?? null,
+    quando: a.created_at,
+    // 📊 17/08/2026: aqui havia `href: null` com o comentário "ainda não há
+    // rota de tenant". A rota agora existe — `/dashboard/entregas/[artifactId]`,
+    // com filtro por company_id no repositório (CLAUDE.md §7).
+    href: `/dashboard/entregas/${a.id}`,
+    // 📊 04/09/2026 esta linha era `a.kind` cru: a lista dizia "report", em
+    // inglês, enquanto o detalhe da mesma peça dizia "Relatório".
+    origem: quem.nome,
+    tipoHumano: tipo.tipoHumano,
+    icone: tipo.icone,
+    // A.4a diz que o card do briefing recebe `produtor = 'Checklist das 6h'` da
+    // publicação dobrada — e recebe: `briefing.daily_operational` e
+    // `briefing.weekly_executive` apontam para ele no mapa único. Não se lê o
+    // produtor DA PUBLICAÇÃO aqui de propósito: isso sobrescreveria um produtor
+    // DECLARADO pelo publicador com um palpite derivado do tipo de briefing.
+    // O que a publicação dobrada realmente traz de novo é a ETIQUETA.
+    produtor: quem.nome,
+    produtorOrigem: quem.origem,
+    periodo: periodoDoRelatorio(a.subject_ref, a.created_at),
+    etiqueta: arquivado ? 'arquivado' : etiquetaDaLinha(pub),
+    versoes: a.current_version ?? 1,
+    teste: ehPecaDeTeste(a.tags),
+  };
 }

@@ -24,8 +24,14 @@ export const runtime = 'nodejs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Nome de arquivo previsível e sem acento — ele vai parar no Downloads de alguém. */
-function nomeDeArquivo(titulo: string | null, quando: string | null): string {
+/**
+ * Nome de arquivo previsível e sem acento — ele vai parar no Downloads de alguém.
+ *
+ * A versão entra no nome quando a peça tem mais de uma: duas versões do mesmo
+ * relatório baixadas no mesmo dia colidiriam no mesmo arquivo, e o corretor
+ * mandaria ao cliente a que o navegador deixou por último.
+ */
+function nomeDeArquivo(titulo: string | null, quando: string | null, versao?: number): string {
   const base = (titulo || 'documento')
     .normalize('NFD')
     // Tira o acento pela faixa de marcas combinantes (a forma NFD separa a marca da letra).
@@ -35,7 +41,7 @@ function nomeDeArquivo(titulo: string | null, quando: string | null): string {
     .toLowerCase()
     .slice(0, 60) || 'documento';
   const dia = (quando || new Date().toISOString()).slice(0, 10);
-  return `${base}-${dia}.html`;
+  return `${base}-${dia}${versao ? `-v${versao}` : ''}.html`;
 }
 
 export async function GET(
@@ -57,25 +63,42 @@ export async function GET(
   const { supabase, ctx } = auth;
   const empresa = ctx.companyId;
 
+  // SPEC-095 BLOCO E — a peça arquivada continua baixando.
+  //
+  // 📊 A limpeza do B.4 arquiva 35 peças de teste, e o chat já entregou os links
+  // delas. O filtro que protege é o de EMPRESA; o de arquivo era só um filtro de
+  // listagem que virou um 404 na cara de quem clicou.
   const { data: artifact } = await supabase
     .from('artifacts')
     .select('id, title, created_at')
     .eq('id', artifactId)
     .eq('company_id', empresa) // 🔴 o filtro é a proteção — service role atravessa RLS
-    .is('archived_at', null)
     .maybeSingle();
 
   if (!artifact) return new NextResponse('nao encontrado', { status: 404 });
 
+  // SPEC-095 BLOCO E — `?versao=` baixa a VERSÃO PEDIDA, não sempre a última.
+  //
+  // 📊 Nunca existiu uma v2 até esta SPEC (max(version) = 1 em 136 versões), e
+  // por isso "baixar sempre a última" e "baixar a que está na tela" davam o
+  // mesmo arquivo. A partir do BLOCO B eles divergem — e o corretor que abriu a
+  // versão 2 e clicou em Baixar levaria a 5 sem perceber, para o cliente dele.
+  //
+  // 🔴 O `?versao=` é filtrado por `artifact_id` E por `company_id`: um id de
+  // versão de outra corretora não abre atalho para os bytes dela.
+  const pedida = req.nextUrl.searchParams.get('versao');
   const { data: versoes } = await supabase
     .from('artifact_versions')
-    .select('id, published_at')
+    .select('id, version, published_at')
     .eq('artifact_id', artifact.id)
     .eq('company_id', empresa)
     .order('version', { ascending: false })
-    .limit(1);
+    .limit(60);
 
-  const versao = versoes?.[0] ?? null;
+  const lista = versoes ?? [];
+  // Versão pedida que não seja desta peça simplesmente não está na lista: a
+  // resposta é a peça atual, não um 404 que denunciaria a existência dela.
+  const versao = (pedida ? lista.find((v) => v.id === pedida) : null) ?? lista[0] ?? null;
   if (!versao) return new NextResponse('sem versao', { status: 404 });
 
   const { data: render } = await supabase
@@ -93,7 +116,11 @@ export async function GET(
   }
 
   const baixar = req.nextUrl.searchParams.get('baixar');
-  const nome = nomeDeArquivo(artifact.title, versao.published_at ?? artifact.created_at);
+  const nome = nomeDeArquivo(
+    artifact.title,
+    versao.published_at ?? artifact.created_at,
+    lista.length > 1 ? versao.version : undefined,
+  );
 
   return new NextResponse(render.inline_content, {
     status: 200,
