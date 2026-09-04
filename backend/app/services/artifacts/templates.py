@@ -821,6 +821,56 @@ PULSO_360 = Template(
         # 6 · exposição de renovação, por urgência.
         {"block": "chart", "props": {"eyebrow": "Exposição",
                                      "title": "O que vence, por urgência"}},
+        # ================================================================
+        # SPEC-094.1 · BLOCOS A e B — as cinco secoes novas
+        # ================================================================
+        #
+        # 🔴 **Em CODIGO, e ZERO migration** (§2 da SPEC): `_garantir_template`
+        # faz upsert no uso (`service.py:96`), entao a secao nova chega ao banco
+        # pelo primeiro Pulso publicado. Uma migration aqui seria um segundo
+        # caminho para a mesma verdade.
+        #
+        # 🔴 E cada secao declara em `props["metrics"]` as metricas que a
+        # sustentam. Nao e metadado decorativo: e o que permite provar as duas
+        # doencas que ninguem ve a olho nu — a **metrica orfa** (existe no
+        # registry e nao aparece em relatorio nenhum: trabalho que o dono nao
+        # recebe) e a **caixa vazia** (a secao existe e nao tem numero por
+        # tras). 📊 32 assercoes ja deixaram passar 7 caixas vazias.
+
+        # 7 · sinistros da carteira — 📊 5.729 registros na fonte, zero leitores.
+        {"block": "kpis", "props": {
+            "eyebrow": "Sinistros",
+            "title": "Sinistros da carteira no periodo",
+            "metrics": ["claims.open_count", "claims.indemnity_paid",
+                        "claims.by_insurer"]}},
+
+        # 8 · o mercado — o unico numero desta peca que nao vem da corretora.
+        {"block": "callout", "props": {
+            "eyebrow": "Mercado",
+            "title": "A sua sinistralidade contra a do mercado",
+            "metrics": ["claims.loss_ratio_portfolio", "market.loss_ratio",
+                        "claims.loss_ratio_vs_market",
+                        "market.loss_ratio_trend"]}},
+
+        # 9 · cross-sell: quantos clientes so tem um produto, e qual falta.
+        {"block": "table", "props": {
+            "eyebrow": "Carteira por cliente",
+            "title": "Quem so tem um produto",
+            "metrics": ["customer.single_product_share"]}},
+
+        # 10 · o funil. 📊 Na corretora piloto ele responde e esta VAZIO — e a
+        # secao escreve isso, em vez de mostrar uma caixa com zero.
+        {"block": "funnel", "props": {
+            "eyebrow": "Funil",
+            "title": "Cotacoes por etapa",
+            "metrics": ["quotes.funnel", "quotes.lost_reasons"]}},
+
+        # 11 · o que trava dinheiro: emissao pendente e cancelamento.
+        {"block": "table", "props": {
+            "eyebrow": "Pendencias",
+            "title": "Pendencias e cancelamentos",
+            "metrics": ["issuance.pending", "portfolio.cancellation_rate"]}},
+
         # 7 · projeção, com a premissa escrita ao lado.
         {"block": "callout", "props": {"title": "Onde o período fecha"}},
         # 8 · fontes e confiança: pacote, provedor, base, cobertura, ausências.
@@ -911,13 +961,39 @@ def escolher(categoria: str = "", texto: str = "") -> Template:
         "research.market_brief": ("pesquis", "dossiê de mercado", "estudo", "mercado de"),
         "portfolio.client_dossier": ("dossiê do", "segurado", "cliente ", "apólices do"),
         "renewals.radar": ("renovaç", "vencimento", "a vencer", "renewal"),
-        "claims.performance": ("sinistr", "regulaç de sinistro", "aviso de sinistro"),
+        # 🔴 SPEC-094.1 · BLOCO A. As pistas de "sinistr" SAIRAM daqui.
+        #
+        # 📊 `claims.performance` capturava a palavra e produziu **0 artifacts**;
+        # a pergunta "quantos sinistros abertos temos por seguradora?" tem
+        # destino melhor: a secao **Sinistros** do Pulso 360, que carrega o
+        # ponteiro da metrica e a cobertura ao lado do numero.
+        #
+        # ⚠️ A tupla fica VAZIA, e nao apagada: um template sem pista nenhuma e
+        # um template inalcancavel, e isso tem de ficar VISIVEL para quem decidir
+        # remove-lo. A decisao esta registrada em **P-094.1-CLAIMS-TEMPLATE** —
+        # apagar em silencio seria decidir sem registrar.
+        "claims.performance": (),
         "briefing.daily": ("briefing", "resumo do dia", "hoje", "desde ontem"),
         "executive.panorama": ("panorama", "executiv", "visão geral", "resultado"),
         # SPEC-094: frases inteiras, e não palavras soltas. "resultado" e
         # "executivo" continuam sendo do panorama — roubá-las daqui mudaria o
         # destino de pedidos que já funcionam, por uma peça nova.
-        "executive.pulse360": ("pulso 360", "como estamos", "pulso da corretora"),
+        "executive.pulse360": ("pulso 360", "como estamos", "pulso da corretora",
+                               # SPEC-094.1: as pistas herdadas de
+                               # `claims.performance` e as do cruzamento novo.
+                               "sinistr", "aviso de sinistro", "sinistralidade",
+                               # 🔴 E as FRASES, porque uma palavra solta perde
+                               # o desempate: 📊 "sinistros abertos por
+                               # SEGURADORA" contem "segurado", que e pista do
+                               # dossie de cliente — e com 3 pontos de cada lado
+                               # ganha quem estiver antes no dicionario. Duas
+                               # pistas casando na mesma frase e o que faz a
+                               # pergunta do dono chegar na peca certa.
+                               "sinistros abertos", "sinistros por seguradora",
+                               "sinistros da carteira", "contra o mercado",
+                               "cross-sell", "cross sell",
+                               "cancelament", "pendencia de emiss",
+                               "pendência de emiss"),
     }
     melhor, pontos = PANORAMA, 0
     for chave, termos in pistas.items():
