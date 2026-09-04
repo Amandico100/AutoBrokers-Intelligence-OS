@@ -713,6 +713,76 @@ def bloco_citavel(pacote: Any,
     return f"{ABERTURA}\n{texto}\n{FECHAMENTO}"
 
 
+# ==========================================================================
+# 🔴 SPEC-095 · BLOCO D.2 — o relatório abre pelo ACHADO
+# ==========================================================================
+#
+# 📊 §1.3, medido em 04/09/2026: o Pulso gravava `titulo="Pulso 360 · %s"` e
+# `subtitulo="O período inteiro, com a fonte de cada número"` **fixos**
+# (`executive_intelligence.py:1539-1540`) — e a biblioteca da Resulta tinha 79
+# peças com 16 títulos distintos, 79,7% repetidos. Um título que é o nome do
+# formulário não diz nada sobre o período que ele mede.
+#
+# A partir daqui a capa carrega o ACHADO de maior severidade, e o achado já
+# vem escrito para gente (`app.comercial.narrativa`, determinístico).
+
+#: A ordem em que a severidade importa. Fora da tabela = por último: uma
+#: severidade que ninguém declarou não pode ganhar da que alguém declarou.
+SEVERIDADE_NA_ORDEM = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def achados_ordenados(pacote: Any) -> List[Dict[str, Any]]:
+    """Os achados do pack, do mais severo ao menos. Ordem estável.
+
+    🔴 `sorted` é estável: dentro da mesma severidade a ordem continua sendo a
+    de `achar_findings` (concentração → exposição → queda), que é
+    determinística. Sem isso, dois relatórios do mesmo pack poderiam abrir com
+    títulos diferentes — e o dono leria duas manchetes para a mesma semana.
+    """
+    return sorted(
+        [dict(f) for f in (getattr(pacote, "findings", None) or [])],
+        key=lambda f: (SEVERIDADE_NA_ORDEM.get(str(f.get("severity") or ""), 9),
+                       0 if f.get("vira_sinal") else 1))
+
+
+#: O motivo da ausência, por métrica, quando a fonte não diz o dela.
+#: 🔴 As frases vêm dos `callout` individuais que o D.2 colapsou: 📊 §1.5, um
+#: Pulso sem funil, sem mercado e sem repasse imprimia **quatro caixas** dizendo
+#: que não há dado. Colapsar não é apagar — cada motivo continua escrito, numa
+#: linha só, e quem lê continua sabendo POR QUE o número não está lá.
+MOTIVO_DA_AUSENCIA = {
+    "contribution.after_repasse":
+        "a fonte conectada não expõe o repasse desta janela",
+    "repasse.producer_accrued":
+        "a fonte conectada não expõe o repasse desta janela",
+    "customer.single_product_share":
+        "a fonte não expõe o vínculo entre cliente e apólices desta janela",
+    "quotes.funnel":
+        "as rotas do funil responderam e o acervo está vazio no período",
+    "quotes.lost_reasons":
+        "o motivo de perda não é exposto pela fonte: a conversão aparece, a "
+        "causa não",
+    "market.loss_ratio":
+        "o censo público não cobre esta competência",
+    "claims.loss_ratio_vs_market":
+        "as seguradoras da carteira não casaram com o mapa de entidades do censo",
+}
+
+
+def frase_da_ausencia(m: Any) -> str:
+    """Uma frase por métrica indisponível — o motivo primeiro, a fonte depois.
+
+    ⛔ Nunca "0". `UNAVAILABLE` é ausência de dado, e escrever zero no lugar é
+    a mutação M2 da SPEC-094 na forma mais cara: uma afirmação sobre o negócio
+    que ninguém fez.
+    """
+    motivo = "; ".join(getattr(m, "warnings", None) or []) \
+        or MOTIVO_DA_AUSENCIA.get(str(getattr(m, "metric_id", "")), "")
+    return ("%s: %s." % (getattr(m, "metric_id", "?"), motivo) if motivo
+            else "%s: a fonte conectada não expõe este número no período."
+                 % getattr(m, "metric_id", "?"))
+
+
 #: 🔴 Menos que isto num prefixo é ruído, e não uma abreviação. Uma letra
 #: sozinha casa quase tudo; três já é uma palavra começada ("all", "seg").
 MINIMO_DO_PREFIXO = 3
@@ -1149,12 +1219,20 @@ class ExecutiveIntelligenceTool(BaseTool):
 
         self._anotar_o_relogio(fatos, relogio, time.monotonic() - comeco)
 
-        agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
+        # 🔴 UMA leitura de relógio, duas saídas: a string que a peça imprime
+        # ("dados lidos em 04/09/2026 às 02:54") e o instante que vai para
+        # `data_as_of`. 📊 §1.9: a coluna guardava a hora da ESCRITA, e em 30
+        # das 136 versões ela ficou no FUTURO do `created_at` — desvio entre os
+        # relógios de dois processos. O `astimezone()` prende o fuso local sem
+        # mexer no relógio de parede, que é o que a peça imprime.
+        agora_dt = datetime.now().astimezone()
+        agora = agora_dt.strftime("%d/%m/%Y às %H:%M")
         pacote = self._empacotar(ep, company_id, p, anterior, metricas,
                                  anteriores, comparacoes, fatos, agora,
                                  manifesto_)
         link = self._publicar_a_peca(pacote, p, anterior, metricas,
-                                     comparacoes, agora, fatos)
+                                     comparacoes, agora, fatos,
+                                     agora_dt=agora_dt)
         guardar_pack(company_id, pacote, link)
         self._registrar_sinais(ep, pacote)
 
@@ -1431,7 +1509,14 @@ class ExecutiveIntelligenceTool(BaseTool):
             # recebe 35 números sem uma palavra sobre crescimento ou queda.
             comparacoes=list(comparacoes),
         )
-        pacote.findings = ep.achar_findings(metricas, anteriores)
+        # 🔴 SPEC-095 · D.1: o RÓTULO do período desce até o achado, porque é
+        # aqui que ele é conhecido. O achado nasce com o título pronto — "Porto
+        # concentra 46,8% da comissão **de 2026**" — e quem desenha a peça LÊ
+        # esse campo em vez de renarrar. Duas narrações do mesmo achado, com
+        # parâmetros diferentes, dariam dois títulos: um no card da lista e
+        # outro na capa da peça.
+        pacote.findings = ep.achar_findings(metricas, anteriores,
+                                            periodo=p.rotulo)
         pacote.warnings.append(
             "comparacoes calculadas: %d" % len(
                 [c for c in comparacoes if not c.get("warnings")]))
@@ -1513,8 +1598,10 @@ class ExecutiveIntelligenceTool(BaseTool):
     # ------------------------------------------------------------------ #
     def _publicar_a_peca(self, pacote: Any, p: Any, anterior: Any,
                          metricas: List[Any], comparacoes: List[Dict[str, Any]],
-                         agora: str, fatos: Any = None) -> str:
-        from app.agents.tools.relatorios_comerciais import _link, _publicar
+                         agora: str, fatos: Any = None,
+                         agora_dt: Optional[datetime] = None) -> str:
+        from app.agents.tools.relatorios_comerciais import (
+            _link, _publicar, fontes_dos_blocos, identidade_do_periodo)
 
         rotulos = self.rotulos_de_produtor(fatos)
         blocos = self._compor(pacote, p, anterior, metricas, comparacoes, agora,
@@ -1534,16 +1621,52 @@ class ExecutiveIntelligenceTool(BaseTool):
             # vizinhas de propósito: quem editar esta linha vê a outra.
             "rotulos_de_produtor": dict(rotulos),
         }
+        # 🔴 SPEC-095 · B.1/D.2: título, subtítulo e resumo da PEÇA saem da
+        # capa que acabou de ser composta — não de três strings fixas ao lado.
+        # 📊 §1.3: `titulo="Pulso 360 · %s"` e `subtitulo="O período inteiro,
+        # com a fonte de cada número"` eram constantes, e a capa dizia uma
+        # coisa enquanto o card da lista dizia outra. Uma fonte só, e elas não
+        # têm como divergir.
+        capa = next((b.get("props") or {} for b in blocos
+                     if str(b.get("block") or "") == "cover"), {})
+        veredito = next((str((b.get("props") or {}).get("text") or "")
+                         for b in blocos
+                         if str(b.get("block") or "") == "verdict"), "")
         ident = _publicar(
             self.supabase, str(self.company_id),
-            titulo="Pulso 360 · %s" % p.rotulo,
-            subtitulo="O período inteiro, com a fonte de cada número",
-            resumo=("Panorama executivo de %s, com cobertura declarada por "
-                    "métrica." % p.rotulo),
-            template=TEMPLATE_PULSE, payload=payload, blocos=blocos)
+            titulo=str(capa.get("title") or ("Pulso 360 · %s" % p.rotulo)),
+            subtitulo=str(capa.get("subtitle") or ""),
+            resumo=veredito,
+            template=TEMPLATE_PULSE, payload=payload, blocos=blocos,
+            identidade=identidade_do_periodo(p.rotulo),
+            data_sources=fontes_dos_blocos(blocos),
+            # A hora em que a InfoCap foi LIDA — não a hora da escrita (§1.9).
+            data_as_of=agora_dt,
+            confidence_note=self.nota_de_confianca(metricas))
         if not ident:
             raise RuntimeError("o artifact não foi criado")
         return _link(ident)
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def nota_de_confianca(metricas: List[Any]) -> Optional[str]:
+        """`confidence_note` da versão: o que ela não mediu, em uma linha.
+
+        📊 §1.5: `confidence_note` estava vazia em **136/136** versões do
+        sistema, embora a coluna exista desde a 057. Ela é o que permite ao
+        detalhe dizer, sem abrir a peça, o quanto daquele período foi medido.
+        """
+        ausentes = [m for m in metricas if m.indisponivel]
+        coberturas = [m.coverage for m in metricas if m.coverage is not None]
+        if not ausentes and not coberturas:
+            return None
+        partes = []
+        if ausentes:
+            partes.append("%d métrica(s) indisponível(is)" % len(ausentes))
+        if coberturas:
+            partes.append(("cobertura mínima %.1f%%" % (100.0 * min(coberturas)))
+                          .replace(".", ","))
+        return "; ".join(partes)
 
     # ------------------------------------------------------------------ #
     def _compor(self, pacote: Any, p: Any, anterior: Any, metricas: List[Any],
@@ -1620,15 +1743,64 @@ class ExecutiveIntelligenceTool(BaseTool):
                     "direction": "up" if delta >= 0 else "down"}
 
         # 1 · veredito ------------------------------------------------------
+        from app.comercial.narrativa import campos, numero_curto
+
+        achados = achados_ordenados(pacote)
+        # 🔴 LÊ os quatro campos que `finding()` gravou — não os renarra. O
+        # playbook só roda se o achado chegar sem eles (um dict montado à mão,
+        # uma fixture, um pack antigo), e aí sai a MESMA frase, porque é a
+        # mesma função. O que não pode acontecer é a capa dizer uma coisa e o
+        # card da lista dizer outra sobre o mesmo achado.
+        humanos = [campos(f, p.rotulo) for f in achados]
+        principal = humanos[0] if humanos else None
         blocos: List[Dict[str, Any]] = [
             {"block": "cover", "props": {
                 "eyebrow": "Pulso 360",
-                "title": "O período inteiro · %s" % p.rotulo,
+                "title": (principal["titulo"] if principal else
+                          "%s de comissão em %s, nada fora do limiar"
+                          % (texto("commission.broker_accrued"), p.rotulo)),
+                # 🔴 O nome do relatório sai do título e vira SUBTÍTULO, junto
+                # com a hora da leitura. Quem abre a peça já sabe que ela é o
+                # Pulso; o que ele não sabe é o que ela achou.
+                "subtitle": "Pulso 360 · %s · dados lidos em %s" % (p.rotulo, agora),
                 "headline_value": texto("commission.broker_accrued"),
                 "headline_label": "comissão apropriada no período",
                 "period": p.rotulo}},
             {"block": "verdict", "props": {"text": self._veredito(pacote, p)}},
         ]
+
+        # ⭐ O QUE IMPORTA AGORA — o bloco `actions`, logo depois do veredito.
+        #
+        # ⚠️ Este bloco NÃO é uma "seção de número" e por isso não carrega o
+        # comentário numerado das outras: ele desenha os ACHADOS, e o número de
+        # cada um já veio dentro do achado (`impact`). O detector de seções do
+        # `test_o_relatorio_nasce_pelo_protocolo.py` (§[c]) pergunta se cada
+        # seção NUMERADA cita uma métrica, justamente para pegar caixa vazia —
+        # e a resposta certa aqui é que este bloco não é uma delas.
+        #
+        # 📊 §1.5: os blocos `actions` (`blocks.py:298`) e `callout` (`:284`)
+        # existem desde a SPEC-057 e **nenhum relatório usava `actions` para
+        # ação**. O Pulso tinha 13 seções e nenhuma dizia o que fazer.
+        acionaveis = [(f, h) for f, h in zip(achados, humanos) if f.get("vira_sinal")]
+        if acionaveis:
+            itens_de_acao = []
+            for f, h in acionaveis[:8]:
+                item = {"title": h["titulo"],
+                        "detail": "%s → %s" % (h["por_que_importa"], h["o_que_fazer"])}
+                impacto = numero_curto(f)
+                if impacto:
+                    item["impact"] = impacto
+                # 🔴 O NOME do produtor entra AQUI, e em lugar nenhum do pack.
+                # `rotulos_de_produtor` sai dos fatos do tenant; o achado só
+                # carrega a referência opaca (SPEC-094 §2 · M16).
+                dono = rotulos.get(str(f.get("producer_ref") or ""))
+                if dono:
+                    item["owner"] = dono
+                itens_de_acao.append(item)
+            blocos.append({"block": "actions", "props": {
+                "eyebrow": "Decisão",
+                "title": "O que importa agora",
+                "items": itens_de_acao}})
 
         # 2 · atual × anterior ---------------------------------------------
         itens = []
@@ -1708,12 +1880,11 @@ class ExecutiveIntelligenceTool(BaseTool):
             props.update(lede("contribution.after_repasse",
                               "repasse.producer_accrued"))
             blocos.append({"block": "kpis", "props": props})
-        else:
-            blocos.append({"block": "callout", "props": {
-                "tone": "info", "title": "Economia depois do repasse",
-                "text": ("Indisponível na fonte conectada: ela não expõe o "
-                         "repasse desta janela. Não é zero — é ausência de "
-                         "dado, e o número não foi estimado.")}})
+        # ⛔ Sem `else`. SPEC-095 · D.2: métrica INDISPONÍVEL não ganha caixa
+        # própria — ela desce para a linha "O que não deu para medir", com o
+        # motivo escrito. 📊 §1.5: um Pulso sem funil, sem mercado e sem
+        # repasse imprimia QUATRO caixas dizendo que não há dado, e o dono
+        # rolava três telas de ausência antes do primeiro número.
 
         # 5 · mix e concentração -------------------------------------------
         mix = por_id.get("mix.insurer")
@@ -1780,37 +1951,28 @@ class ExecutiveIntelligenceTool(BaseTool):
         mercado_m = por_id.get("market.loss_ratio")
         contra = por_id.get("claims.loss_ratio_vs_market")
         tendencia = por_id.get("market.loss_ratio_trend")
-        if minha is not None or mercado_m is not None:
-            partes = []
-            if minha is not None:
-                partes.append("A sua carteira: %s de sinistralidade"
-                              % texto("claims.loss_ratio_portfolio"))
-            if mercado_m is not None:
-                partes.append(
-                    "o mercado: %s" % texto("market.loss_ratio")
-                    if not mercado_m.indisponivel else
-                    "o mercado: INDISPONÍVEL — %s" % (
-                        "; ".join(mercado_m.warnings)
-                        or "o censo público não cobre esta competência"))
-            if contra is not None:
-                partes.append(
-                    "a diferença: %s" % texto("claims.loss_ratio_vs_market")
-                    if not contra.indisponivel else
-                    "a comparação fica INDISPONÍVEL: %s" % (
-                        "; ".join(contra.warnings)
-                        or "as seguradoras da carteira não casaram com o mapa "
-                           "de entidades do censo"))
-            if tendencia is not None and not tendencia.indisponivel:
-                partes.append("tendência do mercado: %s"
-                              % texto("market.loss_ratio_trend"))
-            props = {"tone": "info" if (minha is not None
-                                        and not minha.indisponivel) else "warning",
-                     "eyebrow": "Mercado",
-                     "title": "A sua sinistralidade contra a do mercado",
-                     "text": ". ".join(partes) + ". As duas pontas têm regimes "
-                             "de competência diferentes: é uma aproximação "
-                             "declarada, e não a mesma conta do censo público."}
-            blocos.append({"block": "callout", "props": props})
+        # 🔴 A seção só existe se alguma das duas pontas TEM número. Com as
+        # duas indisponíveis ela virava uma caixa que dizia duas vezes que não
+        # sabia — e as duas frases agora vivem na linha do que não deu para
+        # medir, uma vez cada.
+        partes = []
+        if minha is not None and not minha.indisponivel:
+            partes.append("A sua carteira: %s de sinistralidade"
+                          % texto("claims.loss_ratio_portfolio"))
+        if mercado_m is not None and not mercado_m.indisponivel:
+            partes.append("o mercado: %s" % texto("market.loss_ratio"))
+        if contra is not None and not contra.indisponivel:
+            partes.append("a diferença: %s" % texto("claims.loss_ratio_vs_market"))
+        if tendencia is not None and not tendencia.indisponivel:
+            partes.append("tendência do mercado: %s"
+                          % texto("market.loss_ratio_trend"))
+        if partes:
+            blocos.append({"block": "callout", "props": {
+                "tone": "info", "eyebrow": "Mercado",
+                "title": "A sua sinistralidade contra a do mercado",
+                "text": ". ".join(partes) + ". As duas pontas têm regimes "
+                        "de competência diferentes: é uma aproximação "
+                        "declarada, e não a mesma conta do censo público."}})
 
         # 9 · carteira por cliente — quem só tem um produto -----------------
         cross = por_id.get("customer.single_product_share")
@@ -1833,36 +1995,28 @@ class ExecutiveIntelligenceTool(BaseTool):
                          for b in cross.breakdown[:15]]}
             props.update(lede("customer.single_product_share"))
             blocos.append({"block": "table", "props": props})
-        elif cross is not None:
-            blocos.append({"block": "callout", "props": {
-                "tone": "info", "eyebrow": "Carteira por cliente",
-                "title": "Quem só tem um produto",
-                "text": ("INDISPONÍVEL na fonte conectada: ela não expõe o "
-                         "vínculo entre cliente e apólices desta janela. Não "
-                         "é 'todo mundo tem dois produtos' — é ausência de "
-                         "dado.")}})
+        # ⛔ Sem `elif` de ausência: sem vínculo cliente↔apólice a métrica desce
+        # para a linha do que não deu para medir. "Não é 'todo mundo tem dois
+        # produtos' — é ausência de dado", e a frase continua escrita, lá.
 
         # 10 · o funil ------------------------------------------------------
         funil_m = por_id.get("quotes.funnel")
         perdas = por_id.get("quotes.lost_reasons")
-        if funil_m is not None:
-            # ⚠️ `quotes.lost_reasons` é INDISPONÍVEL por CAPACIDADE — o
-            # motivo de perda não vem no GET da fonte. A frase mora aqui,
-            # dentro da seção do funil, e não seis blocos abaixo.
-            aviso = ""
-            if perdas is not None and perdas.indisponivel:
-                aviso = ("O motivo de perda não é exposto pela fonte: a "
-                         "conversão aparece, a CAUSA não. ")
+        if funil_m is not None and not funil_m.indisponivel:
             props = {"eyebrow": "Funil", "title": "Cotações por etapa",
                      "value_type": "number",
                      "stages": [{"rotulo": str(b.get("rotulo") or ""),
                                  "valor": b.get("cotacoes")}
                                 for b in (funil_m.breakdown or [])]}
-            frases = [f for f in (aviso, cobertura("quotes.funnel")) if f]
-            if funil_m.indisponivel:
-                frases.insert(0, "As rotas do funil responderam e o acervo "
-                                 "está VAZIO no período: INDISPONÍVEL por "
-                                 "acervo, e nunca 'zero cotações'. ")
+            frases = [f for f in (cobertura("quotes.funnel"),) if f]
+            # ⚠️ `quotes.lost_reasons` é INDISPONÍVEL por CAPACIDADE hoje — o
+            # motivo de perda não vem no GET da fonte, e por isso a frase dele
+            # está na linha do que não deu para medir. No dia em que a fonte
+            # expuser a causa, ela entra AQUI, ao lado da conversão que explica,
+            # e não seis blocos abaixo.
+            if perdas is not None and not perdas.indisponivel:
+                frases.append("Motivos de perda: %s."
+                              % texto("quotes.lost_reasons"))
             if frases:
                 props["lede"] = " ".join(frases).strip()
             blocos.append({"block": "funnel", "props": props})
@@ -1877,15 +2031,15 @@ class ExecutiveIntelligenceTool(BaseTool):
                 (cancel, "Taxa de cancelamento da carteira",
                  "cancelados DENTRO do denominador — tratá-los como recorte "
                  "inflaria a taxa")):
-            if m is None:
+            # Métrica sem número não vira linha: ela desce para a linha do que
+            # não deu para medir. Uma tabela com "INDISPONÍVEL" na coluna
+            # "Hoje" tem a mesma forma de uma com número, e lê-se como número.
+            if m is None or m.indisponivel:
                 continue
             linhas_trava.append({
                 "item": rotulo,
                 "valor": texto(m.metric_id),
-                "nota": (("INDISPONÍVEL na fonte: "
-                          + ("; ".join(m.warnings) or nota))
-                         if m.indisponivel
-                         else (cobertura(m.metric_id) or nota))})
+                "nota": cobertura(m.metric_id) or nota})
         if linhas_trava:
             blocos.append({"block": "table", "props": {
                 "eyebrow": "Pendências",
@@ -1897,13 +2051,33 @@ class ExecutiveIntelligenceTool(BaseTool):
 
         # 12 · projeção -----------------------------------------------------
         proj = por_id.get("projection.run_rate")
-        if proj is not None:
+        if proj is not None and not proj.indisponivel:
             blocos.append({"block": "callout", "props": {
-                "tone": "warning" if proj.indisponivel else "info",
+                "tone": "info",
                 "title": "Onde o período fecha, no ritmo atual",
                 "text": ("%s — premissa: o ritmo dos meses completos se "
                          "mantém. Comissão histórica NÃO é renovação "
                          "garantida." % texto("projection.run_rate"))}})
+
+        # ⭐ O QUE NÃO DEU PARA MEDIR — uma linha, e não uma caixa por ausência.
+        #
+        # ⚠️ Como o bloco de ação, este não é uma "seção de número": ele fala
+        # sobre as métricas das OUTRAS seções, exatamente como a de fontes e
+        # confiança. Por isso não carrega comentário numerado.
+        #
+        # 🔴 Aqui entra também o achado de COBERTURA BAIXA, que não vira sinal
+        # (é fato sobre a FONTE, não sobre o negócio) e não entra em "O que
+        # importa agora": o lugar dele é ao lado das ausências que ele explica.
+        ausentes = [m for m in metricas if m.indisponivel]
+        linhas_do_vazio = [frase_da_ausencia(m) for m in ausentes]
+        linhas_do_vazio += [h["titulo"] + ". " + h["por_que_importa"]
+                            for f, h in zip(achados, humanos)
+                            if not f.get("vira_sinal")]
+        if linhas_do_vazio:
+            blocos.append({"block": "prose", "props": {
+                "eyebrow": "Transparência",
+                "title": "O que não deu para medir neste período",
+                "text": "\n\n".join(linhas_do_vazio)}})
 
         # 13 · fontes e confiança ------------------------------------------
         blocos.append(self._fontes_e_confianca(pacote, metricas, agora))
@@ -1948,14 +2122,27 @@ class ExecutiveIntelligenceTool(BaseTool):
     # ------------------------------------------------------------------ #
     @staticmethod
     def _veredito(pacote: Any, p: Any) -> str:
-        """O veredito, DETERMINÍSTICO: sai dos achados, não de um modelo."""
-        if not pacote.findings:
+        """O veredito, DETERMINÍSTICO: sai dos achados, não de um modelo.
+
+        🔴 SPEC-095 · D.2: UMA frase — o `por_que_importa` do achado mais
+        severo. 📊 §1.5: até 04/09/2026 esta função concatenava os `summary` de
+        MÁQUINA de todos os achados ("há carteira vencendo na janela; o detalhe
+        por faixa de urgência está no envelope da métrica; um produtor apropriou
+        menos comissão que no período anterior, abaixo do limiar declarado") —
+        texto escrito para o modelo, colado no lugar onde o dono da corretora
+        lê o resumo da peça.
+
+        O resto dos achados não some: cada um vira um item de "O que importa
+        agora", com o número, o porquê e a ação.
+        """
+        achados = achados_ordenados(pacote)
+        if not achados:
             return ("O período %s não acionou nenhum limiar dos achados "
                     "determinísticos desta peça. Os números e a cobertura de "
                     "cada um estão nas seções abaixo." % p.rotulo)
-        frases = [str(f.get("summary") or "") for f in pacote.findings]
-        return ("O que este período pede atenção, na ordem em que os limiares "
-                "foram acionados: " + "; ".join(frases) + ".")
+        from app.comercial.narrativa import campos
+
+        return str(campos(achados[0], p.rotulo).get("por_que_importa") or "")
 
 
 # --------------------------------------------------------------------------

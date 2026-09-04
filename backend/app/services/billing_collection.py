@@ -1452,7 +1452,17 @@ def _gerar_artefato_da_cobranca(supabase, company_id: str, routine: Dict[str, An
         # inventar um Work Run só para preencher a coluna seria o segundo motor
         # que a SPEC-078 e o CLAUDE.md §5 proíbem.
         work_run_id=None,
-        subject_ref={"kind": "routine", "id": str(routine.get("id") or "")},
+        # 🔴 SPEC-095 · B.1: a identidade da peça de Cobrança já era o id da
+        # rotina — 📊 preenchida em 5/5 execuções, os únicos `subject_ref.id`
+        # não vazios de todo o banco (5/136). Ganhou só o `produtor`, que é o
+        # que a lista imprime como "de quem é" quando o mapa de tipos não
+        # conhece o template (📊 25,7% das peças abriam sem produtor).
+        subject_ref={"kind": "routine", "id": str(routine.get("id") or ""),
+                     "label": str(routine.get("name") or "Cobrança Feita"),
+                     "produtor": "cobranca-feita"},
+        # A hora da varredura dos portais — a data do DADO, e não a da escrita
+        # (§1.9: `data_as_of` era `now()` em 136/136 versões).
+        data_as_of=datetime.now(timezone.utc),
     )
     versao = (r.get("version") or {}).get("id")
     if versao:

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -27,6 +28,36 @@ logger = logging.getLogger(__name__)
 
 VALIDADE_PADRAO_DIAS = 30
 VALIDADE_MAXIMA_DIAS = 180
+
+#: 🔴 SPEC-095 · B.3. A variável que faz o canário de SPEC se declarar. Mora
+#: AQUI, ao lado do único publicador, porque quem publica é quem marca — e
+#: porque os dois caminhos que publicam (a tool do chat e a rotina do briefing)
+#: já importam este módulo. Duas cópias da regra seriam dois canários.
+#:
+#: 📊 §1.1, medido em 04/09/2026: `tags` preenchida em **0/136** peças e
+#: `requested_by` em **0/136**, enquanto 100% dos relatórios `origin='chat'` da
+#: Resulta são execução de SPEC. Sem a marca, separar teste de trabalho real
+#: dependia de cruzar o `created_at` com o `git log`.
+VARIAVEL_DO_CANARIO = "AUTOBROKERS_CANARIO"
+#: `"0"`, `"false"`, `"no"` e vazio são DESLIGADO; qualquer outra coisa liga.
+#: ⚠️ Um `AUTOBROKERS_CANARIO=0` que LIGASSE o canário seria pior que a
+#: variável não existir: marcaria como teste o relatório que o dono pediu.
+_CANARIO_DESLIGADO = {"", "0", "false", "no", "off", "nao", "não"}
+
+#: A tag que a peça de canário carrega. O script de limpeza (B.4) NUNCA toca
+#: numa peça que a tenha: o canário arquiva o que ele mesmo criou.
+TAG_DO_CANARIO = "canario"
+
+
+def e_canario() -> bool:
+    """A execução atual é canário de SPEC? Lê a variável — não a escreve."""
+    valor = str(os.getenv(VARIAVEL_DO_CANARIO) or "").strip().lower()
+    return valor not in _CANARIO_DESLIGADO
+
+
+def tags_do_canario() -> Optional[list[str]]:
+    """`["canario"]` quando a variável está ligada; `None` quando não."""
+    return [TAG_DO_CANARIO] if e_canario() else None
 
 
 def _agora() -> datetime:
@@ -64,8 +95,22 @@ class ArtifactService:
               kind: str = "report", origin: str = "chat",
               work_run_id: Optional[str] = None, requested_by: Optional[str] = None,
               data_sources: Optional[list[dict]] = None,
-              subject_ref: Optional[dict] = None) -> dict:
-        """Cria o artefato e a versão 1 em rascunho, com a marca já congelada."""
+              subject_ref: Optional[dict] = None,
+              tags: Optional[list[str]] = None,
+              data_as_of: Optional[datetime] = None,
+              confidence_note: Optional[str] = None,
+              evento_extra: Optional[dict] = None) -> dict:
+        """Cria o artefato e a versão 1 em rascunho, com a marca já congelada.
+
+        SPEC-095 · B.2/B.3 acrescentaram quatro parâmetros, todos opcionais:
+
+        ```
+        tags             ["canario"] quando a peça nasce de um teste do produto
+        data_as_of       a data do DADO — não a da escrita. Sem ela, NULL
+        confidence_note  o que esta versão não conseguiu medir
+        evento_extra     o que mais o `artifact.created` deve registrar
+        ```
+        """
         from ..brand.capture import BrandCaptureService
 
         self._garantir_template(template_key)
@@ -77,6 +122,11 @@ class ArtifactService:
             "work_run_id": work_run_id, "requested_by": requested_by,
             "origin": origin, "status": "generating", "current_version": 0,
             "subject_ref": subject_ref or {},
+            # 🔴 `tags` é a marca do CANÁRIO. 📊 SPEC-095 §1.1: 100% dos
+            # relatórios `origin='chat'` da Resulta são execução de SPEC, e
+            # `tags` estava preenchida em 0/136 peças — não havia como a lista
+            # da corretora separar o que é dela do que é teste nosso.
+            "tags": list(tags or []),
         }).execute()).data
         if not art:
             raise RuntimeError("artefato nao criado")
@@ -84,12 +134,18 @@ class ArtifactService:
 
         versao = self._nova_versao(
             company_id, artefato["id"], 1, payload, composition, marca,
-            data_sources or [], requested_by)
+            data_sources or [], requested_by,
+            data_as_of=data_as_of, confidence_note=confidence_note)
 
+        detalhe = {"template": template_key,
+                   "marca_padrao": marca.get("is_fallback")}
+        if tags:
+            detalhe["tags"] = list(tags)
+        if evento_extra:
+            detalhe.update(evento_extra)
         self._evento(company_id, artefato["id"], "artifact.created",
                      actor_kind="agent" if origin != "manual" else "user",
-                     actor_id=requested_by,
-                     detalhe={"template": template_key, "marca_padrao": marca.get("is_fallback")})
+                     actor_id=requested_by, detalhe=detalhe)
 
         return {"artifact": artefato, "version": versao, "brand": marca}
 
@@ -137,31 +193,138 @@ class ArtifactService:
 
     def nova_versao(self, *, company_id: str, artifact_id: str, payload: dict,
                     composition: list[dict], data_sources: Optional[list[dict]] = None,
-                    created_by: Optional[str] = None) -> dict:
-        """Nova versão de um artefato existente. A marca é recongelada agora."""
+                    created_by: Optional[str] = None,
+                    title: Optional[str] = None, subtitle: Optional[str] = None,
+                    summary: Optional[str] = None,
+                    data_as_of: Optional[datetime] = None,
+                    confidence_note: Optional[str] = None) -> dict:
+        """Nova versão de um artefato existente. A marca é recongelada agora.
+
+        🔴 SPEC-095 · B.1: a versão nova pode **retitular a peça**. A mesma
+        pergunta feita em outubro e em dezembro é a mesma PEÇA — mas o achado
+        mudou, e o título da peça é o achado. Sem isto, a v5 de "Pulso 360 ·
+        2026" continuaria anunciando na lista o achado da v1.
+
+        O renome vira o evento `artifact.retitled` com `{de, para, versao}`:
+        sem o título anterior gravado em algum lugar, o renome seria
+        irreversível — e a lista da corretora deixaria de ter como responder
+        "o que este card dizia antes?".
+        """
         from ..brand.capture import BrandCaptureService
 
-        atual = (self.db.table("artifacts").select("current_version")
+        atual = (self.db.table("artifacts").select("current_version, title")
                  .eq("id", artifact_id).eq("company_id", company_id)
                  .maybe_single().execute()).data or {}
         proxima = int(atual.get("current_version") or 0) + 1
+        # 🔴 O título ANTERIOR é copiado AGORA, antes de qualquer escrita.
+        # 📊 Achado pelo `--simular` do canário em 04/09/2026: lê-lo depois do
+        # `update` fazia o evento `artifact.retitled` não sair — `de` e `para`
+        # ficavam iguais. O dublê devolve a própria linha; um cliente real
+        # devolve uma cópia decodificada, e a diferença entre os dois é
+        # exatamente o tipo de coisa que só aparece em produção, meses depois,
+        # como "o renome não deixou rastro".
+        titulo_anterior = str(atual.get("title") or "")
         marca = BrandCaptureService(self.db).snapshot_para_artefato(company_id)
-        return self._nova_versao(company_id, artifact_id, proxima, payload,
-                                 composition, marca, data_sources or [], created_by)
+        versao = self._nova_versao(company_id, artifact_id, proxima, payload,
+                                   composition, marca, data_sources or [],
+                                   created_by, data_as_of=data_as_of,
+                                   confidence_note=confidence_note)
+
+        mudancas = {k: v for k, v in (("title", title), ("subtitle", subtitle),
+                                      ("summary", summary)) if v is not None}
+        if mudancas:
+            self.db.table("artifacts").update(mudancas) \
+                .eq("id", artifact_id).eq("company_id", company_id).execute()
+            para = str(mudancas.get("title") or titulo_anterior)
+            if para != titulo_anterior:
+                self._evento(company_id, artifact_id, "artifact.retitled",
+                             detalhe={"de": titulo_anterior, "para": para,
+                                      "versao": proxima})
+        return versao
 
     def _nova_versao(self, company_id: str, artifact_id: str, numero: int,
                      payload: dict, composition: list[dict], marca: dict,
-                     fontes: list[dict], created_by: Optional[str]) -> dict:
-        dados = (self.db.table("artifact_versions").insert({
+                     fontes: list[dict], created_by: Optional[str], *,
+                     data_as_of: Optional[datetime] = None,
+                     confidence_note: Optional[str] = None) -> dict:
+        """A linha da versão. 🔴 `data_as_of` só existe quando alguém a SABE.
+
+        📊 SPEC-095 §1.9, medido em 04/09/2026: esta linha gravava
+        `_agora().isoformat()` — o carimbo da ESCRITA — em 136/136 versões, e
+        **30 delas ficaram no futuro do próprio `created_at`** (desvio de
+        relógio por processo: o worker do tick grava a −0,1 s e o contêiner da
+        API a +50…+70 s; nos 5 Pulsos, +69,9 s). A tela imprimia
+        *"Dados de 4 de setembro de 2026, 02:55"* em cima disso
+        (`[artifactId]/page.tsx:217`): uma afirmação de frescor que o sistema
+        não tinha como sustentar, chegando à corretora.
+
+        ⛔ Sem data passada, a coluna fica **NULL** — e a tela deixa de afirmar.
+        NULL é "não sei"; um carimbo é uma afirmação. CLAUDE.md §12.1: quando o
+        nome do campo mente sobre o que ele guarda, conserta-se o CAMPO.
+        """
+        # 🔴 A chave vai SEMPRE, e o valor é `None` quando ninguém sabe a data.
+        # ⚠️ Omitir a chave pareceria equivalente e não é: sem ela, quem decide
+        # o valor da coluna passa a ser o DEFAULT do banco — e um `default
+        # now()` que alguém acrescentasse numa migration futura reintroduziria
+        # este defeito inteiro, calado, sem tocar numa linha de Python. Escrever
+        # `None` é o que faz a decisão morar AQUI.
+        linha = {
             "company_id": company_id, "artifact_id": artifact_id, "version": numero,
             "payload": payload, "composition": composition,
             "brand_snapshot": marca, "data_sources": fontes,
-            "data_as_of": _agora().isoformat(), "status": "draft",
-            "created_by": created_by,
-        }).execute()).data
+            "data_as_of": None, "confidence_note": None,
+            "status": "draft", "created_by": created_by,
+        }
+        if data_as_of is not None:
+            linha["data_as_of"] = (data_as_of.isoformat()
+                                   if hasattr(data_as_of, "isoformat")
+                                   else str(data_as_of))
+        if confidence_note:
+            linha["confidence_note"] = confidence_note
+        dados = (self.db.table("artifact_versions").insert(linha).execute()).data
         if not dados:
             raise RuntimeError("versao nao criada")
         return dados[0]
+
+    # ------------------------------------------------------------------
+    # Arquivar — reversível, com o motivo escrito
+    # ------------------------------------------------------------------
+
+    def arquivar(self, company_id: str, artifact_id: str,
+                 motivo: str, *, user_id: Optional[str] = None) -> bool:
+        """Tira a peça da biblioteca sem apagar nada. SPEC-095 · B.3.
+
+        🔴 `archived_at`, e nunca DELETE. 📊 §1.1: 35 peças da biblioteca da
+        Resulta e da AutoFleet são canários de execução de SPEC (081/094/094.1)
+        — elas não são lixo, são registro de que o produto rodou. Apagá-las
+        perderia o registro; escondê-las devolve a biblioteca ao dono.
+
+        ⚠️ O `status` é mantido de propósito: a peça continua publicada e o
+        link já entregue pelo chat continua abrindo (o BLOCO E do frontend
+        passa a mostrar o banner "Arquivado em"). Arquivar é sobre a LISTA,
+        não sobre o conteúdo.
+        """
+        r = (self.db.table("artifacts")
+             .update({"archived_at": _agora().isoformat()})
+             .eq("id", artifact_id).eq("company_id", company_id)
+             .is_("archived_at", "null").execute()).data
+        if not r:
+            return False
+        self._evento(company_id, artifact_id, "artifact.archived",
+                     actor_kind="user" if user_id else "system", actor_id=user_id,
+                     detalhe={"motivo": motivo})
+        return True
+
+    def desarquivar(self, company_id: str, artifact_id: str, *,
+                    user_id: Optional[str] = None) -> bool:
+        """Devolve a peça à biblioteca. O ROLLBACK do `arquivar`, por gesto."""
+        r = (self.db.table("artifacts").update({"archived_at": None})
+             .eq("id", artifact_id).eq("company_id", company_id).execute()).data
+        if not r:
+            return False
+        self._evento(company_id, artifact_id, "artifact.unarchived",
+                     actor_kind="user" if user_id else "system", actor_id=user_id)
+        return True
 
     # ------------------------------------------------------------------
     # Renderização e publicação

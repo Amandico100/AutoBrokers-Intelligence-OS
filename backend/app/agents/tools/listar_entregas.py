@@ -170,14 +170,28 @@ def _packs_das_versoes(db: Any, company_id: str,
     continua respondendo à pergunta do dono. O que ela não pode é sumir porque
     uma segunda consulta falhou.
 
-    ⛔ E ela seleciona `payload` porque não há outro lugar onde o `pack_id`
-    exista — mas o payload morre DENTRO desta função. Nada dele sobe.
+    🔴 E ela pede só o `pack_id`, e não o `payload` inteiro (SPEC-095 · B/E4).
+    📊 Medido em 04/09/2026: um `payload` de Pulso pesa **64.246 bytes**, dos
+    quais **5.890** são `rotulos_de_produtor` — nomes de produtor, atravessando
+    a rede para que a função lesse 32 caracteres de `pack_id` e jogasse o resto
+    fora. O PostgREST sabe descer no jsonb: `payload->evidence_pack->>pack_id`
+    volta com o nome do ÚLTIMO segmento (`pack_id`).
+
+    ⚠️ Nada muda para quem chama: o retorno continua `{artifact_id: pack_id}`.
+    O que muda é o que sai do banco — e o que sai do banco de dado de pessoa é
+    o menor conjunto que responde à pergunta (CLAUDE.md §7).
     """
     if not ids:
         return {}
+    # A COLUNA e o CAMINHO dentro dela, nomeados separadamente porque são
+    # coisas diferentes: a coluna é o que FICA no banco (📊 64.246 bytes por
+    # versão de Pulso) e o caminho é o que SAI dele (32 caracteres de hex).
+    # ⚠️ Esta é a única menção à coluna `payload` no arquivo inteiro, e é assim
+    # que tem de continuar: a ficha da entrega não a conhece (094.1).
+    coluna, caminho = "payload", "evidence_pack->>pack_id"
     try:
         r = (db.table("artifact_versions")
-             .select("artifact_id, payload, status")
+             .select("artifact_id, %s->%s, status" % (coluna, caminho))
              .eq("company_id", company_id).eq("status", "published")
              .in_("artifact_id", ids).execute())
         linhas = getattr(r, "data", None) or []
@@ -186,8 +200,7 @@ def _packs_das_versoes(db: Any, company_id: str,
         return {}
     saida: Dict[str, str] = {}
     for v in linhas:
-        pacote = ((v.get("payload") or {}).get("evidence_pack") or {})
-        ident = str(pacote.get("pack_id") or "").strip()
+        ident = str(v.get("pack_id") or "").strip()
         if ident:
             saida[str(v.get("artifact_id"))] = ident
     return saida

@@ -618,11 +618,18 @@ def _numero(m: Optional[MetricResult]) -> Optional[float]:
 
 def finding(kind: str, *, summary: str, metric_refs: Sequence[str] = (),
             subject_type: str = "portfolio", subject_id: str = "",
-            severity: str = "low", **detalhe: Any) -> Dict[str, Any]:
+            severity: str = "low", periodo: str = "",
+            **detalhe: Any) -> Dict[str, Any]:
     """Um achado, na forma que o pack, o Artifact e o sinal leem.
 
     ⛔ `summary` e `subject_id` nunca carregam nome de pessoa. Produtor entra
     como `producer_ref` — a referência opaca, estável e por tenant.
+
+    🔴 SPEC-095 · D.1: o achado sai daqui com **duas** vozes. `summary` continua
+    sendo a frase de MÁQUINA — sem número e sem sujeito, que é o que o modelo
+    deve receber (§1.4). `titulo`, `por_que_importa`, `o_que_fazer` e `pergunta`
+    são a voz de GENTE, e são o que o dono da corretora lê na peça. As duas
+    saem do MESMO limiar determinístico; nenhuma delas passa por um modelo.
     """
     achado: Dict[str, Any] = {
         "kind": kind,
@@ -634,12 +641,29 @@ def finding(kind: str, *, summary: str, metric_refs: Sequence[str] = (),
         "vira_sinal": kind in FINDINGS_QUE_VIRAM_SINAL,
     }
     achado.update(detalhe)
+    # 🔴 Depois do `update`, e nunca antes: o playbook lê os kwargs do próprio
+    # achado (`valor_pct`, `apolices`, `ja_vencidas`, `delta_pct`), e antes do
+    # `update` eles ainda não estão lá — o título sairia sem o número, que é
+    # justamente o que o guarda [D1] mede.
+    #
+    # ⚠️ Import LOCAL, e absoluto. Este arquivo é carregado por CAMINHO em dois
+    # guardas (`spec_from_file_location`, sem pacote): um import relativo
+    # quebraria ali, e um import no topo faria a promessa de pureza da
+    # docstring deste módulo deixar de ser verdade no ato de importar.
+    from app.comercial.narrativa import narrar
+
+    # ⚠️ `periodo` é o RÓTULO humano ("2026", "próximos 90 dias") e NÃO é
+    # gravado no achado: ele é ingrediente da frase, não fato sobre a carteira.
+    # O período em si já viaja no envelope de cada métrica (`period`), e uma
+    # string de apresentação dentro do pack seria exatamente o que a SPEC-094
+    # tirou de lá.
+    achado.update(narrar(achado, periodo))
     return achado
 
 
 def achar_findings(metrics: Sequence[MetricResult],
-                   anteriores: Sequence[MetricResult] = ()
-                   ) -> List[Dict[str, Any]]:
+                   anteriores: Sequence[MetricResult] = (),
+                   periodo: str = "") -> List[Dict[str, Any]]:
     """Os achados determinísticos deste pack. Ordem estável, sem LLM.
 
     ```
@@ -669,6 +693,7 @@ def achar_findings(metrics: Sequence[MetricResult],
             summary=("a maior seguradora responde por uma fatia da comissão do "
                      "período acima do limiar declarado"),
             metric_refs=[ref_da_metrica(mix)], severity=SEVERIDADE_MAXIMA,
+            periodo=periodo,
             valor_pct=round(pct, 1), limiar_pct=LIMIAR_CONCENTRACAO_PCT,
             unidade="pct"))
 
@@ -684,7 +709,7 @@ def achar_findings(metrics: Sequence[MetricResult],
             summary=("há carteira vencendo na janela; o detalhe por faixa de "
                      "urgência está no envelope da métrica"),
             metric_refs=[ref_da_metrica(exp)], severity=SEVERIDADE_MAXIMA,
-            apolices=int(quantas),
+            periodo=periodo, apolices=int(quantas),
             ja_vencidas=int(vencidas.get("apolices") or 0), unidade="count"))
 
     # --- queda de produtor ------------------------------------------------
@@ -712,7 +737,8 @@ def achar_findings(metrics: Sequence[MetricResult],
                 summary=("um produtor apropriou menos comissão que no período "
                          "anterior, abaixo do limiar declarado"),
                 metric_refs=[ref_da_metrica(agora_p), ref_da_metrica(antes_p)],
-                severity=SEVERIDADE_MAXIMA, producer_ref=referencia,
+                severity=SEVERIDADE_MAXIMA, periodo=periodo,
+                producer_ref=referencia,
                 delta_pct=round(delta, 1), limiar_pct=LIMIAR_QUEDA_PCT,
                 unidade="pct"))
 
@@ -725,7 +751,7 @@ def achar_findings(metrics: Sequence[MetricResult],
             summary=("uma ou mais métricas do período cobrem menos que o "
                      "limiar: o relatório soma parte da carteira e diz isso"),
             metric_refs=[ref_da_metrica(m) for m in baixas], severity="low",
-            limiar=LIMIAR_DE_COBERTURA,
+            periodo=periodo, limiar=LIMIAR_DE_COBERTURA,
             metricas=[{"metric_id": m.metric_id, "coverage": m.coverage}
                       for m in baixas]))
     return achados
@@ -789,12 +815,35 @@ def sinais_do_pack(pack: "EvidencePack") -> List[Dict[str, Any]]:
                       if por_ref[r].coverage is not None]
         confianca_do_sinal = round(min(coberturas), 2) if coberturas else 0.7
         alvo = str(achado.get("subject_id") or "")
+        # 🔴 SPEC-095 · D.1. O que o Fabric guarda como `summary_redacted` passa
+        # a ser a frase HUMANA — título, porquê e próxima ação.
+        #
+        # 📊 Por quê: `finding_engine.py:235` faz
+        # `resumo = str(principal.get("summary_redacted") or narrativa.titulo)`,
+        # e `commercial_opportunity` não tem entrada em `NARRATIVAS` (0 hits em
+        # 04/09/2026) — cai no `NARRATIVA_PADRAO` ("Ponto de atenção"). O
+        # `summary_redacted` é, portanto, a ÚNICA frase deste achado que chega
+        # ao briefing e à Central. Mandar para lá a frase de máquina era mandar
+        # "um produtor apropriou menos comissão que no período anterior, abaixo
+        # do limiar declarado" (📊 3/3 findings da Resulta, 2 com o resumo
+        # idêntico).
+        #
+        # ⛔ E ela continua REDIGIDA: o playbook nunca escreve nome de pessoa —
+        # `producer_drop` diz "um produtor", e só a SEGURADORA é nomeada.
+        titulo = str(achado.get("titulo") or "").strip().rstrip(".")
+        corpo = " ".join(p for p in (
+            str(achado.get("por_que_importa") or "").strip(),
+            str(achado.get("o_que_fazer") or "").strip()) if p)
+        # Sem título, o achado veio de fora de `finding()` (um dict cru, como
+        # os das fixtures dos guardas): a frase de máquina continua valendo.
+        frase = ("%s. %s" % (titulo, corpo)).strip()
         rascunhos.append({
             "company_id": pack.company_id,
             "signal_type": TIPO_DE_SINAL,
             "subject_type": str(achado.get("subject_type") or "portfolio"),
             "subject_id": alvo or None,
-            "summary_redacted": str(achado.get("summary") or ""),
+            "summary_redacted": (frase if titulo
+                                 else str(achado.get("summary") or "")),
             # 🔴 O dedupe carrega o PERÍODO. Sem ele, a exposição de renovação
             # de dois trimestres diferentes reforçaria um sinal só, e o dono
             # veria um alerta velho com data nova.
@@ -805,8 +854,17 @@ def sinais_do_pack(pack: "EvidencePack") -> List[Dict[str, Any]]:
             "confidence": max(0.0, min(1.0, confianca_do_sinal)),
             "window_start": inicio or None,
             "window_end": fim or None,
+            # 🔴 SPEC-095 · D.1: os campos humanos viajam SEPARADOS no
+            # `metadata`, além de concatenados no `summary_redacted`. Quem lê o
+            # sinal (o briefing, a Central) precisa do TÍTULO sem o resto para
+            # virar manchete, e da PERGUNTA inteira para abrir o chat — cortar
+            # a frase concatenada por ponto final devolveria o título errado no
+            # dia em que uma seguradora tiver ponto no nome.
             "metadata": {"metric_refs": refs, "pack_id": pack.pack_id,
-                         "finding_kind": kind, "spec": "094"},
+                         "finding_kind": kind, "spec": "094",
+                         "titulo": str(achado.get("titulo") or ""),
+                         "o_que_fazer": str(achado.get("o_que_fazer") or ""),
+                         "pergunta": str(achado.get("pergunta") or "")},
             "evidencias": evidencias,
         })
     return rascunhos

@@ -317,17 +317,93 @@ def _slug_da_empresa(supabase, company_id: str) -> str:
 
 def _publicar(supabase, company_id: str, *, titulo: str, subtitulo: str,
               resumo: str, template: str, payload: Dict[str, Any],
-              blocos: List[Dict[str, Any]]) -> Optional[str]:
-    """Cria, renderiza e publica. O MESMO caminho da Cobrança."""
-    from app.services.artifacts.service import ArtifactService
+              blocos: List[Dict[str, Any]],
+              identidade: Optional[Dict[str, Any]] = None,
+              data_sources: Optional[List[Dict[str, Any]]] = None,
+              data_as_of: Optional[datetime] = None,
+              confidence_note: Optional[str] = None) -> Optional[str]:
+    """Cria **ou versiona**, renderiza e publica. O MESMO caminho da Cobrança.
+
+    🔴 SPEC-095 · B.1 — a IDENTIDADE da peça é
+    `(company_id, template_key, subject_ref->>'id')`.
+
+    📊 Medido em 04/09/2026: `artifacts` da Resulta tem **79 peças e 16 títulos
+    distintos — 79,7% repetidos**. "Radar de Renovações · próximos 90 dias"
+    aparece 14 vezes, "Raio-X Comercial · 2025" 14, "Pulso 360 · 2026" 5. Cada
+    pergunta repetida criava uma PEÇA nova, e a biblioteca do dono virava a
+    lista das vezes que alguém perguntou — em vez da lista do que ele tem.
+    A partir daqui: mesma identidade → `nova_versao` + `publicar`, MESMO id.
+
+    ⚠️ O lookup só acontece quando `identidade["id"]` é NÃO-VAZIO. 📊
+    `subject_ref->>'id' = ''` casa 6 Pulsos, 14 Raio-X e 14 Radares legados só
+    na Resulta — versionar por cima deles fundiria peças de períodos
+    diferentes; e `= NULL` não casaria os 96 com `subject_ref = {}`.
+
+    ⛔ Identidade que casa uma peça ARQUIVADA **cria peça nova**, e não
+    desarquiva. Arquivar é gesto deliberado (B.4); ressuscitar em silêncio
+    desfaria a limpeza peça por peça, sem ninguém pedir. O que a peça nova
+    guarda é a memória do gesto: `identidade_arquivada` no `artifact.created`.
+    """
+    from app.services.artifacts.service import ArtifactService, tags_do_canario
 
     servico = ArtifactService(supabase)
+    db = getattr(supabase, "client", supabase)
+    chave = str((identidade or {}).get("id") or "").strip()
+    fontes = list(data_sources or [])
+
+    if chave:
+        vivas = (db.table("artifacts").select("id, title")
+                 .eq("company_id", company_id)
+                 .eq("template_key", template)
+                 .eq("subject_ref->>id", chave)
+                 .is_("archived_at", "null")
+                 .limit(2).execute()).data or []
+        if len(vivas) > 1:
+            # 🔴 Duas peças vivas com a MESMA identidade é defeito de dado, e
+            # escolher uma delas em silêncio esconderia o defeito enquanto
+            # espalha versões pelas duas. Levanta: `_erro_legivel` do chamador
+            # transforma isto numa frase que o modelo sabe dizer.
+            raise RuntimeError(
+                "identidade duplicada: %d peças vivas para (%s, %s) — "
+                "a biblioteca precisa de uma só" % (len(vivas), template, chave))
+        if vivas:
+            artifact_id = str(vivas[0].get("id"))
+            versao = (servico.nova_versao(
+                company_id=company_id, artifact_id=artifact_id,
+                payload=payload, composition=blocos, data_sources=fontes,
+                title=titulo, subtitle=subtitulo, summary=resumo,
+                data_as_of=data_as_of, confidence_note=confidence_note,
+            ) or {}).get("id")
+            if not versao:
+                return None
+            servico.renderizar(company_id=company_id, version_id=versao)
+            servico.publicar(company_id=company_id, version_id=versao)
+            return artifact_id
+
+    # --- não existe peça viva com esta identidade: nasce uma -------------
+    extra: Dict[str, Any] = {}
+    if chave:
+        # A mesma consulta SEM o filtro de arquivadas. Como a de cima não
+        # devolveu nada, o que vier aqui está arquivado — e é isso que o
+        # evento registra, com o id abreviado.
+        antigas = (db.table("artifacts").select("id, archived_at")
+                   .eq("company_id", company_id)
+                   .eq("template_key", template)
+                   .eq("subject_ref->>id", chave)
+                   .limit(1).execute()).data or []
+        if antigas and antigas[0].get("archived_at"):
+            extra["identidade_arquivada"] = str(antigas[0].get("id") or "")[:8]
+
     r = servico.criar(
         company_id=company_id, title=titulo, template_key=template,
         payload=payload, composition=blocos, subtitle=subtitulo,
         summary=resumo, kind="report", origin="chat",
         work_run_id=None,
-        subject_ref={"kind": "chat", "id": ""},
+        subject_ref=dict(identidade) if identidade else {"kind": "chat", "id": ""},
+        tags=tags_do_canario(),
+        data_sources=fontes, data_as_of=data_as_of,
+        confidence_note=confidence_note,
+        evento_extra=extra or None,
     )
     versao = (r.get("version") or {}).get("id")
     if not versao:
@@ -366,6 +442,37 @@ def _fontes(quando: str, extra: str = "") -> Dict[str, Any]:
         itens.append({"label": "Observação", "detail": extra,
                       "as_of_label": f"consultado em {quando}"})
     return {"block": "sources", "props": {"items": itens}}
+
+
+def fontes_dos_blocos(blocos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Os itens de procedência que a PEÇA desenha — para a coluna `data_sources`.
+
+    🔴 SPEC-095 · B.1. 📊 §1.5, medido em 04/09/2026:
+    `artifact_versions.data_sources = []` em **5/5** Pulsos. A procedência era
+    desenhada no bloco `sources` da composição e nunca chegava à coluna — logo,
+    a tela de detalhe não tinha de onde tirar "De onde veio".
+
+    ⚠️ A lista sai da COMPOSIÇÃO, e não de uma segunda montagem. Duas listas de
+    fontes para a mesma peça divergiriam no primeiro dia em que alguém
+    acrescentasse uma fonte a só um dos lados — e a que a corretora veria seria
+    a errada, porque a coluna é a que o detalhe lê.
+    """
+    itens: List[Dict[str, Any]] = []
+    for b in blocos or []:
+        if str(b.get("block") or "") == "sources":
+            itens.extend(list((b.get("props") or {}).get("items") or []))
+    return itens
+
+
+def identidade_do_periodo(rotulo: str, produtor: str = "autobrokers.chat") -> Dict[str, str]:
+    """A identidade de uma peça que responde por um PERÍODO. SPEC-095 · B.1.
+
+    O `id` é o rótulo do período porque é ele que faz duas perguntas serem a
+    mesma pergunta: "como estamos em 2026?" hoje e daqui a um mês pedem a
+    mesma peça, com o dado de hoje — que é uma VERSÃO, não uma peça nova.
+    """
+    rotulo = " ".join(str(rotulo or "").split())
+    return {"kind": "periodo", "id": rotulo, "label": rotulo, "produtor": produtor}
 
 
 def _encurtar(nome: str, teto: int = 18) -> str:
@@ -495,7 +602,15 @@ class RaioXComercialTool(BaseTool):
         serie = calc.serie_mensal(apolices)
         nr = calc.novo_versus_renovacao(apolices)
         por_ramo = calc.por_dimensao(apolices, "ramo", teto=8)
-        agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
+        # 🔴 UMA leitura de relógio, duas saídas: a string que a peça imprime e
+        # o instante que vai para `data_as_of`. Duas chamadas a `now()` dariam
+        # dois instantes, e a coluna diria uma hora que o texto não diz.
+        # `astimezone()` prende o fuso local sem mexer no relógio de parede:
+        # 📊 §1.9 mediu 30 versões com `data_as_of` no FUTURO do `created_at`
+        # por desvio entre processos — data ingênua num campo com fuso é como
+        # esse tipo de erro nasce.
+        agora_dt = datetime.now().astimezone()
+        agora = agora_dt.strftime("%d/%m/%Y às %H:%M")
 
         blocos = self._compor(p, ranking, cob, comp, serie, nr, por_ramo, agora)
         # 🔴 UM pacote, DUAS saídas. O bloco que o modelo lê e o
@@ -530,7 +645,9 @@ class RaioXComercialTool(BaseTool):
             subtitulo=f"Produção, comissão e produtividade por vendedor",
             resumo=(f"{cob.apolices_total} apólices, {_reais(cob.comissao_total)} de "
                     f"comissão, {len(ranking)} vendedores."),
-            template=_TEMPLATE_RAIO_X, payload=payload, blocos=blocos)
+            template=_TEMPLATE_RAIO_X, payload=payload, blocos=blocos,
+            identidade=identidade_do_periodo(p.rotulo),
+            data_sources=fontes_dos_blocos(blocos), data_as_of=agora_dt)
         if not ident:
             return _erro_legivel(RuntimeError("o artifact não foi criado"))
 
@@ -769,7 +886,9 @@ class RadarDeRenovacoesTool(BaseTool):
         faixas = calc.faixas_de_urgencia(venc)
         por_ramo = calc.por_dimensao(venc, "ramo", teto=8, campo_valor="premio")
         total = sum(v.premio for v in venc)
-        agora = datetime.now().strftime("%d/%m/%Y às %H:%M")
+        # Uma leitura de relógio, duas saídas — a mesma razão do Raio-X.
+        agora_dt = datetime.now().astimezone()
+        agora = agora_dt.strftime("%d/%m/%Y às %H:%M")
 
         blocos = self._compor(p, venc, por_vend, faixas, por_ramo, total, agora)
         pacote = _pacote_do_radar(
@@ -790,7 +909,9 @@ class RadarDeRenovacoesTool(BaseTool):
             subtitulo="O que vence, quanto vale e de quem é",
             resumo=f"{len(venc)} apólices, {_reais(total)} em risco, "
                    f"{len(por_vend)} vendedores.",
-            template=_TEMPLATE_RADAR, payload=payload, blocos=blocos)
+            template=_TEMPLATE_RADAR, payload=payload, blocos=blocos,
+            identidade=identidade_do_periodo(p.rotulo),
+            data_sources=fontes_dos_blocos(blocos), data_as_of=agora_dt)
         if not ident:
             return _erro_legivel(RuntimeError("o artifact não foi criado"))
 

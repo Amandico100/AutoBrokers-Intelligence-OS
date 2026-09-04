@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from ..work.workflows import executar_passo, registrar_workflow
 
@@ -132,9 +132,21 @@ async def _gerar_artefato(db: Any, company_id: str, tipo: str, spec: dict,
     """Cria a peca no Artifact Hub da SPEC-057. Nao cria formato novo."""
     from ..artifacts.service import ArtifactService
 
+    from ..artifacts.service import tags_do_canario
+
     template = ("briefing.weekly_executive" if tipo == "weekly_executive"
                 else "briefing.daily_operational")
     servico = ArtifactService(db)
+    # 🔴 SPEC-095 · B.1/B.2: a identidade do briefing é o DIA — o tick já
+    # publica um por dia, e `gerar` é idempotente por período. Sem
+    # `subject_ref`, as peças de dias diferentes eram indistinguíveis para a
+    # lista (📊 `subject_ref.id` não vazio em 5/136 peças em todo o banco).
+    #
+    # E `data_as_of` é o FIM DO PERÍODO que o briefing mede — a data do DADO.
+    # 📊 §1.9: até aqui a coluna guardava a hora da escrita em 136/136 versões.
+    periodo = spec.get("period") or {}
+    fim = _quando(periodo.get("end"))
+    dia = fim.strftime("%Y-%m-%d") if fim else str(periodo.get("end") or "")
     r = servico.criar(
         company_id=company_id,
         title=str(spec.get("headline") or "Briefing"),
@@ -142,7 +154,11 @@ async def _gerar_artefato(db: Any, company_id: str, tipo: str, spec: dict,
         composition=compor_pecas(spec),
         subtitle=_periodo_legivel(spec), summary=str(spec.get("executive_summary") or ""),
         kind="report", origin="routine", work_run_id=run_id,
-        data_sources=_fontes(spec))
+        data_sources=_fontes(spec),
+        subject_ref={"kind": "periodo", "id": dia,
+                     "label": fim.strftime("%d/%m") if fim else dia,
+                     "produtor": "checklist-6h"},
+        data_as_of=fim, tags=tags_do_canario())
     versao = (r.get("version") or {}).get("id")
     if versao:
         servico.renderizar(company_id=company_id, version_id=versao)
@@ -183,10 +199,15 @@ def compor_pecas(spec: dict) -> list[dict]:
                   "headline_value": str(len(acionaveis))},
     }]
 
-    indicadores = [
-        {"label": "Esperando você", "value": str(len(acionaveis))},
-        {"label": "Concluído no período", "value": str(len(resultados))},
-    ]
+    indicadores = [{"label": "Esperando você", "value": str(len(acionaveis))}]
+    # ⛔ "Concluído no período: 0" só aparecia porque a linha era incondicional.
+    # 📊 Depois do D.5 (o relógio da plataforma fora), o valor é 0 em 5 de 5
+    # dias medidos — um cartão fixo em zero, todo dia, é a mesma "enchição de
+    # linguiça" que o §0 tirou da manchete. Ele volta sozinho no dia em que a
+    # corretora tiver trabalho pedido e concluído.
+    if resultados:
+        indicadores.append({"label": "Concluído no período",
+                            "value": str(len(resultados))})
     criticos = [i for i in acionaveis if float(i.get("priority_score") or 0) >= 85]
     if criticos:
         indicadores.insert(0, {"label": "Crítico", "value": str(len(criticos))})
@@ -201,7 +222,8 @@ def compor_pecas(spec: dict) -> list[dict]:
         if chave in ("precisa_de_voce", "gargalos", "decisoes", "automacao"):
             blocos.append({"block": "actions", "props": {
                 "eyebrow": s.get("title"), "title": _titulo_da_secao(chave),
-                "items": [{"title": i.get("headline"), "detail": i.get("summary"),
+                "items": [{"title": i.get("headline"),
+                           "detail": _detalhe_do_item(i),
                            "owner": i.get("action_label")} for i in itens[:8]]}})
         elif chave in ("riscos", "qualidade", "custos"):
             for i in itens[:4]:
@@ -228,14 +250,42 @@ def compor_pecas(spec: dict) -> list[dict]:
                            "valor": float(i.get("priority_score") or 0)}
                           for i in itens[:6]]}})
 
-    if spec.get("methodology"):
-        blocos.append({"block": "prose", "props": {
-            "eyebrow": "Como este briefing foi montado",
-            "title": "Método", "text": spec["methodology"]}})
-
+    # 🔴 SPEC-095 · D.3: "Método" era uma SEÇÃO inteira com uma frase FIXA — a
+    # mesma em todo briefing, de toda corretora, todo dia. Uma seção que nunca
+    # muda ensina o leitor a pular seções (§16.1), e a peça terminava com duas
+    # caixas cerimoniais. As duas viram UMA linha de rodapé.
     blocos.append({"block": "sources", "props": {}})
-    blocos.append({"block": "footer", "props": {}})
+    blocos.append({"block": "footer", "props": {
+        "disclaimer": " ".join(p for p in (
+            str(spec.get("methodology") or "").strip(),
+            "Documento interno.") if p)}})
     return blocos
+
+
+def _detalhe_do_item(i: dict) -> str:
+    """O `detail` de um item de ação: o que é · por que AGORA · o próximo passo.
+
+    🔴 SPEC-095 · D.3, modelado do AWS Trusted Advisor (§3 ②): cada check abre
+    com o critério, a ação recomendada e os itens afetados — três campos
+    NOMEADOS, e não uma cor.
+
+    📊 O porquê e o próximo passo já existiam no banco: `why_now` preenchido em
+    **12/12** achados da Resulta e `next_step` em **11/12**. Eles morriam em
+    `ItemDeBriefing`, que não tinha campo para eles — e a tela recebia só o
+    `summary`. Esta função é o último metro do caminho.
+    """
+    resumo = " ".join(str(i.get("summary") or "").split())
+    porque = " ".join(str(i.get("why_now") or "").split())
+    passo = " ".join(str(i.get("next_step") or "").split())
+    partes = [resumo]
+    # ⚠️ Só acrescenta o porquê se ele não estiver JÁ no resumo: desde a D.1 o
+    # `summary_redacted` dos achados comerciais é "{título}. {porquê} {ação}",
+    # e repetir a mesma frase duas vezes no mesmo cartão é ruído.
+    if porque and porque not in resumo:
+        partes.append(porque)
+    if passo and passo not in resumo:
+        partes.append("→ %s" % passo)
+    return " ".join(p for p in partes if p)
 
 
 def _titulo_da_secao(chave: str) -> str:
@@ -252,28 +302,52 @@ def _titulo_da_secao(chave: str) -> str:
 
 
 def _fontes(spec: dict) -> list[dict]:
-    """Fontes declaradas na peca. §24.1 — todo numero diz de onde veio."""
+    """Fontes declaradas na peca. §24.1 — todo numero diz de onde veio.
+
+    🔴 SPEC-095 · B.1: as chaves são `label` / `detail` / `as_of_label` —
+    as que `blocks.sources` (`blocks.py:359-364`) e o detalhe da tela leem.
+    Antes eram `rotulo` / `detalhe` / `data`, e `sources` desenhava
+    `<li><b></b><span></span></li>`: **três bullets vazios** no fim de todo
+    briefing, com o dado presente na coluna e invisível na peça.
+
+    ⚠️ E são as MESMAS chaves que o Pulso grava (`_fontes` de
+    `relatorios_comerciais.py`). Uma forma só, porque a tela de detalhe é uma
+    só — dois formatos de procedência dariam duas telas, e uma delas vazia.
+    """
     periodo = _periodo_legivel(spec)
-    fontes = [{"rotulo": "Operação", "detalhe": "Work Runs, aprovações e conexões da corretora",
-               "data": periodo}]
+    fontes = [{"label": "Operação",
+               "detail": "Work Runs, aprovações e conexões da corretora",
+               "as_of_label": periodo}]
     tipos = spec.get("sources_summary") or []
     if any(t in ("attendance_quality",) for t in tipos):
-        fontes.append({"rotulo": "Qualidade", "detalhe": "auditoria de conversas",
-                       "data": periodo})
+        fontes.append({"label": "Qualidade", "detail": "auditoria de conversas",
+                       "as_of_label": periodo})
     if any(t in ("repeated_task", "capability_gap", "broker_desire") for t in tipos):
-        fontes.append({"rotulo": "Pedidos", "detalhe": "o que você pediu ao AutoBrokers",
-                       "data": periodo})
+        fontes.append({"label": "Pedidos",
+                       "detail": "o que você pediu ao AutoBrokers",
+                       "as_of_label": periodo})
     return fontes
+
+
+def _quando(valor: Any) -> Optional[datetime]:
+    """A data ISO do Spec como `datetime`, ou `None`. Nunca levanta.
+
+    ⛔ `None` é NULL na coluna `data_as_of` — e NULL é "não sei". A alternativa
+    (cair em `now()`) é o defeito da §1.9: uma afirmação de frescor que o
+    sistema não tem como sustentar.
+    """
+    try:
+        return datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _periodo_legivel(spec: dict) -> str:
     p = spec.get("period") or {}
-    try:
-        i = datetime.fromisoformat(str(p.get("start")).replace("Z", "+00:00"))
-        f = datetime.fromisoformat(str(p.get("end")).replace("Z", "+00:00"))
-        return f"{i.strftime('%d/%m')} a {f.strftime('%d/%m/%Y')}"
-    except Exception:  # noqa: BLE001
+    i, f = _quando(p.get("start")), _quando(p.get("end"))
+    if i is None or f is None:
         return ""
+    return f"{i.strftime('%d/%m')} a {f.strftime('%d/%m/%Y')}"
 
 
 # ---------------------------------------------------------------------------

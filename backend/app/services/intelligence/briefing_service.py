@@ -81,6 +81,133 @@ def _agora() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ---------------------------------------------------------------------------
+# 🔴 SPEC-095 · D.5 — o briefing conta o trabalho DA CORRETORA, não o relógio
+# ---------------------------------------------------------------------------
+#
+# 📊 Medido em 04/09/2026: `work_runs` da Resulta tem **1.228** linhas na vida,
+# **1.214 (98,86%) com `source_type='system'`** — `intelligence.detect_signals`
+# rodou 953 vezes para produzir 32 sinais. Pedidos pela corretora: `chat` 7 +
+# `routine` 7.
+#
+# 📊 E o efeito no que o dono lê: **40 de 41** itens de trabalho dos 5 últimos
+# briefings vinham de Work Run `system` — 70,2% de todos os 57 itens. No
+# briefing de 04/09, 6 dos 14 itens eram o MESMO ciclo do tick repetido
+# ("Procurar o que mudou na operação · 0 regra(s) executada(s)…" ×4 e "· 0%
+# concluído" ×2). A manchete do semanal de 31/08 anunciava "20 trabalho(s)
+# entregue(s)": eram 20 voltas do relógio.
+#
+# ⛔ A regra é uma CONSTANTE nomeada, e não um literal no meio de um `if`:
+# o guarda [D5] a reintroduz por mutação e tem de ficar vermelho.
+ORIGEM_DO_RELOGIO = "system"
+
+
+def _do_relogio(w: dict) -> bool:
+    """Este Work Run é o sistema se olhando, e não trabalho pedido?
+
+    ⚠️ `source_type` ausente conta como PEDIDO. Um registro sem origem
+    declarada é dúvida, e esconder o que a corretora talvez tenha pedido é pior
+    que mostrar uma volta do relógio: o erro que dói é o silêncio.
+    """
+    return str(w.get("source_type") or "") == ORIGEM_DO_RELOGIO
+
+
+def _colapsar_runs(rows: list[dict]) -> list[dict]:
+    """Work Runs iguais viram UM. Chave declarada: `(outcome_title, status)`.
+
+    📊 No briefing de 04/09 da Resulta, 6 dos 14 itens eram o MESMO Work Run
+    repetido — "Procurar o que mudou na operação · 0 regra(s) executada(s), 0
+    sinal(is) registrado(s)" ×4 e "· 0% concluído" ×2.
+
+    O contador vai no próprio dicionário (`_iguais`), e não numa estrutura ao
+    lado: quem lê a lista depois não tem como esquecer de olhar a outra.
+    """
+    vistos: dict = {}
+    saida: list[dict] = []
+    for w in rows:
+        k = (str(w.get("outcome_title") or ""), str(w.get("status") or ""))
+        if k in vistos:
+            vistos[k]["_iguais"] = int(vistos[k].get("_iguais") or 0) + 1
+            continue
+        copia = dict(w)
+        vistos[k] = copia
+        saida.append(copia)
+    return saida
+
+
+def _colapsar(itens: list["ItemDeBriefing"],
+              chave) -> list["ItemDeBriefing"]:
+    """Itens iguais viram UM, com "(+N iguais)" no fim da manchete.
+
+    🔴 A chave de colapso é DECLARADA por quem chama (SPEC-095 §3 ③, Datadog
+    Watchdog): itens por `(headline, summary)`, Work Runs por `(outcome_title,
+    status)`. Uma chave implícita — "parecem iguais" — não dá para conferir
+    depois, e a primeira duplicata que ela deixasse passar seria invisível.
+    """
+    vistos: dict = {}
+    saida: list[ItemDeBriefing] = []
+    for i in itens:
+        k = chave(i)
+        if k in vistos:
+            vistos[k].iguais += 1
+            continue
+        vistos[k] = i
+        saida.append(i)
+    for i in saida:
+        if i.iguais:
+            i.headline = "%s (+%d iguais)" % (i.headline, i.iguais)
+    return saida
+
+
+def primeira_frase(texto: str) -> str:
+    """A 1ª frase de um texto. Vazio devolve vazio.
+
+    ⚠️ Corta no primeiro `.`/`!`/`?` **seguido de espaço ou fim**. Sem a
+    exigência do espaço, "R$ 1.234,00 parados" viraria "R$ 1." — e o resumo do
+    briefing passaria a mentir sobre dinheiro.
+    """
+    t = " ".join(str(texto or "").split())
+    if not t:
+        return ""
+    for pos, ch in enumerate(t):
+        if ch in ".!?" and (pos + 1 >= len(t) or t[pos + 1] == " "):
+            return t[: pos + 1]
+    return t
+
+
+def resto_das_frases(texto: str) -> str:
+    """O que sobra depois da 1ª frase."""
+    t = " ".join(str(texto or "").split())
+    primeira = primeira_frase(t)
+    return t[len(primeira):].strip() if len(primeira) < len(t) else ""
+
+
+#: 🔴 As colunas que a tabela `briefing_items` REALMENTE tem, medidas em
+#: 04/09/2026 (`select * from briefing_items limit 1` → 18 colunas, sem
+#: `why_now`, sem `next_step`, sem `iguais`).
+#:
+#: ⛔ Por que esta lista existe: `publicar()` insere `{**item.como_dict(i)}` —
+#: TODA chave do dicionário vira coluna. E o insert mora dentro de um
+#: `try/except` que só escreve um `warning`: uma chave a mais faria a tabela
+#: **parar de receber linhas em silêncio**, e ninguém veria por semanas.
+#:
+#: A SPEC-095 tem ZERO migration por trava (§2), e os campos novos não precisam
+#: de coluna: eles chegam à tela pelo `payload` jsonb da publicação
+#: (`como_payload` → `sections[].items[]`), que é de onde o detalhe lê. A
+#: tabela é o índice relacional; o jsonb é o conteúdo.
+COLUNAS_DE_BRIEFING_ITEMS = (
+    "item_type", "section", "position", "headline", "summary",
+    "evidence_summary", "confidence", "action_label", "action_payload",
+    "priority_score", "finding_id", "recommendation_id", "work_run_id",
+    "artifact_id",
+)
+
+
+def so_as_colunas_da_tabela(item: dict) -> dict:
+    """O item do jsonb reduzido ao que `briefing_items` sabe guardar."""
+    return {k: v for k, v in item.items() if k in COLUNAS_DE_BRIEFING_ITEMS}
+
+
 @dataclass
 class ItemDeBriefing:
     item_type: str
@@ -96,6 +223,20 @@ class ItemDeBriefing:
     recommendation_id: Optional[str] = None
     work_run_id: Optional[str] = None
     artifact_id: Optional[str] = None
+    #: 🔴 SPEC-095 · D.3. O porquê e o próximo passo do achado.
+    #:
+    #: 📊 Medido em 04/09/2026 em `intelligence_findings` da Resulta: `why_now`
+    #: preenchido em **12/12** e `next_step` em **11/12**. Este dataclass não
+    #: tinha campo para nenhum dos dois, e `como_dict` — o jsonb que vira
+    #: `payload.sections[].items[]` e chega à tela — não os emitia. **O porquê
+    #: e o próximo passo morriam uma chamada antes da tela**, todo dia, em
+    #: todas as corretoras.
+    why_now: Optional[str] = None
+    next_step: Optional[str] = None
+    #: Quantos itens IDÊNTICOS este item representa (SPEC-095 · D.5). 0 = só
+    #: ele. 📊 35,1% dos itens dos 5 últimos briefings da Resulta eram cópia
+    #: exata de outro do MESMO briefing.
+    iguais: int = 0
 
     def como_dict(self, posicao: int) -> dict:
         return {
@@ -108,6 +249,8 @@ class ItemDeBriefing:
             "finding_id": self.finding_id,
             "recommendation_id": self.recommendation_id,
             "work_run_id": self.work_run_id, "artifact_id": self.artifact_id,
+            "why_now": self.why_now, "next_step": self.next_step,
+            "iguais": self.iguais,
         }
 
 
@@ -186,6 +329,13 @@ def compor(
         if r.get("finding_id"):
             rec_por_finding[str(r["finding_id"])] = r
 
+    # 🔴 SPEC-095 · D.5: o relógio da plataforma sai AQUI, dentro da função
+    # pura — e não na consulta. É `compor` que o guarda executa, e uma regra
+    # que morasse só no SELECT ficaria sem teste possível.
+    trabalhos_em_curso = _colapsar_runs(
+        [w for w in trabalhos_em_curso if not _do_relogio(w)])
+    resultados = _colapsar_runs([w for w in resultados if not _do_relogio(w)])
+
     itens: list[ItemDeBriefing] = []
     criticos = 0
 
@@ -198,10 +348,33 @@ def compor(
         if str(f.get("severity")) == "critical":
             criticos += 1
         rec = rec_por_finding.get(str(f.get("id")))
+
+        # 🔴 SPEC-095 · D.3. Quando o achado é do tipo PADRÃO do Fabric, o
+        # título dele é a string estática "Ponto de atenção" — 📊 3/3 findings
+        # da Resulta, 2 com o resumo idêntico. A causa está em
+        # `finding_engine.py:200`: `NARRATIVAS.get(tipo, NARRATIVA_PADRAO)`, e
+        # `commercial_opportunity` não tem entrada lá (0 hits, 04/09/2026).
+        #
+        # O conserto no Fabric é a P-095-NARRATIVA-DO-FABRIC (SPEC-059: 3
+        # `signal_type` + 3 Narrativas). Aqui o briefing contorna pela frente:
+        # o `summary_redacted` que a SPEC-095 · D.1 passou a gravar JÁ é
+        # "{título}. {porquê} {ação}" — então a 1ª frase é a manchete e o resto
+        # é o resumo. ⛔ Só para `observacao`: nos tipos que têm Narrativa
+        # própria, o título já é o título, e cortá-lo pioraria.
+        titulo = str(f.get("title") or "Ponto de atenção")
+        resumo = str(f.get("summary") or "")
+        if str(f.get("finding_type") or "") == "observacao":
+            cabeca = primeira_frase(resumo)
+            cauda = resto_das_frases(resumo)
+            if cabeca and cauda:
+                titulo, resumo = cabeca.rstrip("."), cauda
+
         itens.append(ItemDeBriefing(
             item_type="finding", section=secao,
-            headline=str(f.get("title") or "Ponto de atenção"),
-            summary=str(f.get("summary") or ""),
+            headline=titulo,
+            summary=resumo,
+            why_now=str(f.get("why_now") or "") or None,
+            next_step=str(f.get("next_step") or "") or None,
             evidence_summary=str(f.get("fact_statement") or "") or None,
             confidence=float(f.get("confidence") or 0) or None,
             action_label=(_rotulo_da_acao(rec) if rec else None),
@@ -234,7 +407,8 @@ def compor(
             section="trabalhos" if briefing_type == "weekly_executive" else "em_andamento",
             headline=str(w.get("outcome_title") or "Trabalho em andamento"),
             summary=f"{int(w.get('progress_percent') or 0)}% concluído.",
-            priority_score=10.0, work_run_id=str(w.get("id"))))
+            priority_score=10.0, work_run_id=str(w.get("id")),
+            iguais=int(w.get("_iguais") or 0)))
 
     for w in resultados[:5]:
         itens.append(ItemDeBriefing(
@@ -242,7 +416,8 @@ def compor(
             section="resultados" if briefing_type == "weekly_executive" else "concluido",
             headline=str(w.get("outcome_title") or "Trabalho concluído"),
             summary=str(w.get("result_summary") or "")[:200],
-            priority_score=5.0, work_run_id=str(w.get("id"))))
+            priority_score=5.0, work_run_id=str(w.get("id")),
+            iguais=int(w.get("_iguais") or 0)))
 
     for o in outcomes[:5]:
         itens.append(ItemDeBriefing(
@@ -266,9 +441,20 @@ def compor(
     acionaveis = [i for i in itens if i.item_type in ("finding", "recommendation")]
     outros = [i for i in itens if i.item_type not in ("finding", "recommendation")]
     acionaveis.sort(key=lambda i: -i.priority_score)
-    itens = acionaveis[:max_itens] + outros
 
-    headline, resumo = _narrativa(briefing_type, acionaveis, resultados, outcomes,
+    # 🔴 SPEC-095 · D.5 — o colapso, por chave DECLARADA (§3 ③).
+    # 📊 20 de 57 itens (35,1%) dos 5 últimos briefings da Resulta eram cópia
+    # exata de outro item do MESMO briefing.
+    acionaveis = _colapsar(acionaveis, lambda i: (i.headline, i.summary))
+    outros = _colapsar(outros, lambda i: (i.headline, i.summary))
+
+    # 🔴 O que a manchete promete é o que a PEÇA contém. 📊 §1.3: `:269`
+    # cortava em `max_itens` e `:314` contava a lista INTEIRA — a manchete
+    # anunciava pontos que o briefing não tinha.
+    ficaram = acionaveis[:max_itens]
+    itens = ficaram + outros
+
+    headline, resumo = _narrativa(briefing_type, ficaram, resultados, outcomes,
                                   criticos, faltando)
 
     return BriefingSpec(
@@ -306,36 +492,68 @@ def _rotulo_de_outcome(o: dict) -> str:
 def _narrativa(briefing_type: str, acionaveis: list[ItemDeBriefing],
                resultados: list[dict], outcomes: list[dict],
                criticos: int, faltando: list[str]) -> tuple[str, str]:
-    """Manchete e resumo em uma frase. §16.1 e §24.1.
+    """Manchete e resumo em uma frase. §16.1 e §24.1 · SPEC-095 · D.3.
 
     Sem itens acionaveis, a frase diz isso com todas as letras. Um briefing
     que sempre encontra algo urgente perde o significado do urgente.
+
+    🔴 A manchete é o ACHADO, e não a contagem dele. 📊 Medido em 04/09/2026
+    nas manchetes da Resulta de 26/08 a 04/09: "2 item(ns) esperando você hoje"
+    ×5 — cinco DIAS diferentes, a mesma string —, "1 item(ns)…" ×2, "Nada
+    precisa de você agora" ×2, "4 item(ns)…" ×1. Esta função só contava. O
+    achado principal ("Fila acumulada — 61 atendimentos parados há mais de
+    24h") era o item 1 do corpo e nunca chegava ao título.
+
+    🔴 E `acionaveis` é a lista que FICOU na peça. 📊 §1.3: `compor` cortava em
+    `max_itens` e passava a lista INTEIRA para cá — a manchete prometia pontos
+    que o briefing não continha.
+
+    ⛔ A frase "· M trabalho(s) pronto(s)" só existe com M > 0. 📊 Depois do
+    D.5 (o relógio da plataforma fora), M = 0 em **5 de 5** dias medidos: um
+    "0 trabalho(s) pronto(s)" fixo na manchete seria a mesma string todo dia,
+    que é o defeito que esta função existe para consertar.
     """
     n = len(acionaveis)
+    m = len(resultados)
+    prontos = ("%d trabalho(s) pronto(s)" % m) if m else ""
+
     if briefing_type == "weekly_executive":
-        if not n and not resultados:
+        if not n and not m:
             return ("Semana sem movimento registrado",
                     "Não houve trabalhos nem pontos de atenção registrados no período.")
-        return (f"{n} ponto(s) de decisão e {len(resultados)} trabalho(s) entregue(s)",
-                f"A semana fechou com {len(resultados)} trabalho(s) concluído(s)"
-                + (f" e {n} ponto(s) esperando decisão." if n else " e nada pendente de decisão."))
+        # O ramo semanal mantém a FORMA dele — contagem de decisões —, porque
+        # o resumo da semana é sobre volume. Só o M ganhou a mesma regra.
+        manchete = "%d ponto(s) de decisão" % n
+        if m:
+            manchete += " e %d trabalho(s) entregue(s)" % m
+        resumo = ("A semana fechou com %d trabalho(s) concluído(s)" % m if m
+                  else "A semana fechou sem trabalho pedido pela corretora")
+        resumo += (" e %d ponto(s) esperando decisão." % n if n
+                   else " e nada pendente de decisão.")
+        return (manchete, resumo)
 
-    if criticos:
-        return (f"{criticos} item(ns) crítico(s) hoje",
-                f"Há {criticos} item(ns) crítico(s) e {n - criticos} outro(s) ponto(s) "
-                f"esperando você.")
     if n:
-        return (f"{n} item(ns) esperando você hoje",
-                f"Nada crítico. {n} ponto(s) para olhar quando puder"
-                + (f"; {len(resultados)} trabalho(s) já ficaram prontos." if resultados
-                   else "."))
-    if resultados or outcomes:
-        return ("Nada precisa de você agora",
-                f"{len(resultados)} trabalho(s) concluído(s) e nenhum ponto pendente.")
+        topo = acionaveis[0]
+        manchete = topo.headline
+        if criticos:
+            # Os itens chegam ordenados por prioridade, e achado crítico carrega
+            # a prioridade mais alta — o topo é o crítico.
+            manchete = "crítico: %s" % manchete
+        partes = [(primeira_frase(topo.summary) or topo.why_now
+                   or topo.headline).rstrip(".")]
+        if n > 1:
+            partes.append("e mais %d ponto(s)" % (n - 1))
+        if prontos:
+            partes.append(prontos)
+        return (manchete, " · ".join(partes))
+
+    if m or outcomes:
+        return ("Nada precisa de você hoje" + (" · %s" % prontos if prontos else ""),
+                "%d trabalho(s) concluído(s) e nenhum ponto pendente." % m)
     if faltando:
         return ("Sem dados suficientes para um panorama",
                 "Ainda não há registro suficiente no período para afirmar qualquer coisa.")
-    return ("Nada pendente", "Nenhum ponto de atenção no período.")
+    return ("Nada precisa de você hoje", "Nenhum ponto de atenção no período.")
 
 
 # ---------------------------------------------------------------------------
@@ -492,7 +710,7 @@ class BriefingService:
                 self.db.table("briefing_items").insert([
                     {"company_id": spec.company_id,
                      "briefing_publication_id": pub_id,
-                     **item.como_dict(i)}
+                     **so_as_colunas_da_tabela(item.como_dict(i))}
                     for i, item in enumerate(spec.itens)]).execute()
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[Briefing] itens não gravados: %s", type(exc).__name__)
@@ -567,8 +785,11 @@ class BriefingService:
                    desde: Optional[datetime] = None) -> list[dict]:
         try:
             q = (self.db.table("work_runs")
+                 # 🔴 `source_type` entrou na SELEÇÃO para o filtro do D.5
+                 # poder morar DENTRO de `compor` — que é a função pura, a que
+                 # o guarda executa. Filtrar aqui deixaria a regra sem teste.
                  .select("id, outcome_title, status, progress_percent, "
-                         "result_summary, finished_at")
+                         "result_summary, finished_at, source_type")
                  .eq("company_id", company_id))
             if ativos:
                 q = q.in_("status", ["running", "queued", "planning", "waiting_approval"])
