@@ -10036,6 +10036,51 @@ levaria a uma negociação de reajuste, e ela seria falsa (mutação M2, guarda 
 diz que não recebe — mas ninguém revisa o mapa. **Destrava:** revisão humana do casamento por nome (o critério
 medido é token do nome canônico dentro de `Noenti` + desempate por prêmio de auto no trimestre). **Dono:** 🧑 revisa
 · 🤖 aplica. 💭 1h.
+✅ **Parcialmente fechada em 04/09/2026:** o elo que faltava não era o `sulamerica` — era que a carteira traz a
+**SIGLA** (`PORT`, `ALLI`, `TMAR`) e o mapa era indexado pelo nome. O arquivo ganhou a seção `siglas` e a cobertura
+de prêmio subiu de 12,35% para 83,86%. O que resta está em **P-094.1-SIGLAS-SEM-ENTIDADE** e
+**P-094.1-SIGLAS-POR-CORRETORA**. `sulamerica` continua `UNKNOWN`, e continua sendo a resposta certa.
+
+## P-094.1-SIGLAS-SEM-ENTIDADE · 47 das 61 siglas do sistema de gestão ainda saem `UNKNOWN`
+📊 Medido em 04/09/2026, na rodada única de conserto (`docs/canon/providers/susep/seguradora-coenti.json`,
+seção `siglas`): das **61** siglas do censo `/seguradoras` da corretora piloto, **14** casaram com uma entidade —
+**1** por igualdade de nome COMPLETO com o censo público (`HDI`) e **13** por decisão explícita revisada. As
+outras **47** ficam `UNKNOWN`, com o nome listado no arquivo.
+🔴 O efeito medido é bom e parcial: a cobertura de PRÊMIO da carteira viva subiu de **12,35%** para **83,86%**
+(R$ 21.814.941,56 em 3.861 linhas de 2025). O que falta são as seguradoras de cauda — `MAP` (capitalização, que é
+outra entidade de propósito), `AXA`, `MAG`, `JUNT`, `AIG`, `ESSO`, `ITAU`, `BERK`, `CHUB`, `FATO`, `JNS`, `MITS`.
+⛔ E o casamento por PALAVRAS foi REMOVIDO nesta rodada: `"PORTO SEGURO SAUDE"` herdava a entidade **05886**, que é
+a Porto de AUTO. Publicar a sinistralidade de outra empresa num argumento de reajuste é o defeito, não a cobertura
+baixa. **Custo de esquecer:** a comparação com o mercado fica indisponível para ~16% do prêmio da carteira piloto,
+e a peça diz que fica — mas ninguém revisa. **Destrava:** uma pessoa decide, sigla a sigla, contra o `Noenti` do
+censo público, e a decisão entra no arquivo com o critério escrito ao lado. **Dono:** 🧑 decide · 🤖 aplica. 💭 1h.
+
+## P-094.1-SIGLAS-POR-CORRETORA · o mapa de siglas é o da corretora PILOTO, e sigla é por instalação
+🔴 A seção `siglas` nasceu do censo `/seguradoras` de **uma** corretora. A abreviatura é escolhida no cadastro de
+cada instalação: `PORT` pode ser outra empresa na próxima casa. Hoje o mapa é único e versionado no repositório, e
+uma sigla que colidisse publicaria o número de outra seguradora — o mesmo defeito que o casamento parcial causava.
+⚠️ Enquanto só a piloto usa o cruzamento com o mercado, o risco é teórico. **Custo de esquecer:** a segunda
+corretora com o Pulso de mercado ligado recebe a sinistralidade errada, com confiança alta. **Destrava:** ler
+`/seguradoras` por corretora e casar a sigla ao NOME antes de consultar o mapa — a rota já está medida no censo, o
+que falta é o leitor. **Dono:** 🤖. 💭 3h.
+
+## P-094.1-PROMOCAO-SEM-CLI-RODADO · o gate de aprovação foi consertado e nunca rodou contra o banco real
+📊 Em 04/09/2026 o comando de promoção passou a exigir run vivo + `approval_requests` com `decision` aprovada +
+`metric_id` igual ao `nome_sugerido` (ou `--substitui <motivo>`). As quatro recusas e o caminho feliz estão provados
+com banco FALSO (guarda [12]) — **nenhuma linha real de `approval_requests` foi lida**, porque nenhuma proposta foi
+criada em produção ainda. **Custo de esquecer:** a primeira promoção real encontra um formato de `decision` que o
+código não previu e reprova uma métrica legítima (ou, pior, o contrário). **Destrava:** criar uma proposta pelo
+chat, decidir pela API admin e rodar o CLI uma vez. **Dono:** 🤖 (depende de F-094.1-02). 💭 30 min.
+
+## P-094.1-SINISTRO-X-CARTEIRA · a junção sinistro × carteira dá ZERO, e o produto parou de depender dela
+📊 Medido em 04/09/2026: os **40** documentos citados pelos sinistros do período não aparecem entre as **3.861**
+linhas de carteira de 2025 — as apólices sinistradas são de outros exercícios, o que é o normal de um sinistro. A
+regra antiga (*"conta só o que junta"*) fazia TODA métrica de sinistro sair INDISPONÍVEL na pergunta real. O
+conserto tirou a junção do denominador e a transformou numa linha informativa do detalhe.
+⚠️ O que continua em aberto é a pergunta que a junção respondia: *"deste sinistro, qual é a apólice, o produtor e a
+comissão?"*. Ela exige ler a carteira numa janela mais larga que a do período. **Custo de esquecer:** o dono vê
+quantos sinistros tem e não consegue amarrá-los a quem vendeu. **Destrava:** ler a carteira dos N anos anteriores
+para o join, ou ler a apólice do sinistro individualmente. **Dono:** 🤖. 💭 3h.
 
 ## P-094.1-MOTIVO-DE-PERDA · `quotes.lost_reasons@1` nasce INDISPONÍVEL por CAPACIDADE
 📊 Censo v2.1 §A4: `motivo_perda` **não vem no GET** das três rotas do funil — não está entre as 30 chaves medidas.
