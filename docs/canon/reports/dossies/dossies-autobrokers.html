@@ -136,6 +136,8 @@ ul.tight li{margin:5px 0}
     <a href="#s091" data-p="s091">091 · Protocol factory<small>absorvida pela v11</small><span class="chip">—</span></a>
     <div class="grp eyebrow">Feita hoje</div>
     <a href="#s094" data-p="s094">094 · O Pulso 360<small>CRÍTICO · ≈9h em 3 janelas</small><span class="chip ok">84</span></a>
+    <div class="grp eyebrow">Em execução · opção B</div>
+    <a href="#s0941" data-p="s0941">094.1 · A fábrica de relatórios<small>o que o chat faz, fará, e como se cria um cálculo</small><span class="chip warn">exec</span></a>
     <div class="grp eyebrow">Método</div>
     <a href="#proto" data-p="proto">Protocolo AAA v11.2<small>de 72 para o que é hoje</small><span class="chip info">v11.2</span></a>
     <div class="grp eyebrow">Fila</div>
@@ -431,6 +433,110 @@ ul.tight li{margin:5px 0}
   <ul class="refs"><li>Anti-Corruption Layer (Microsoft, AWS) — <span class="mono">o adapter é a única peça que fala InfoCap; permanente, não transitório</span></li><li>dbt Semantic Models + MetricFlow time spine — <span class="mono">métrica declara base temporal obrigatória; não densificar zeros</span></li><li>Cube (cubes × views) — <span class="mono">o Evidence Pack é a fachada única de chat e Artifact</span></li><li>Claude Citations — <span class="mono">o número chega como bloco citável, não como prosa</span></li></ul>
 </section>
 
+
+<!-- ============================ 094.1 ============================ -->
+<section class="page" id="p-s0941">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-094.1 · v1 · CRÍTICO · em execução desde 03/09/2026 ~21:30 · opção B (três marchas)</div>
+      <h1>A fábrica de relatórios</h1>
+      <p class="lede">Esta página responde às suas perguntas de 03/09 à noite e vai sendo atualizada durante a execução: o que o chat consegue entregar hoje, o que passa a entregar com a 094.1, a lista completa de cálculos (tradicionais e os que ninguém faz), o que é métrica, skill, auxiliar e rotina, se dá para escrever no InfoCap, e quanto já estamos prontos para a Quiver.</p>
+      <div class="meta"><span>SPEC <b>specs/SPEC-094.1-a-fabrica-de-relatorios.md</b></span><span>faixa <b>10–14h</b></span><span>laço sob B <b>desenhista · 2 frentes (dado + red team) · juiz fresco com canário vivo</b></span><span>estimativa 💭 <b>v11.2 daria 86–88 · B dá 84–86 · −25% de tempo</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">progresso · 7 unidades</div><div class="big">0<small> feitas</small></div><div class="bar"><i style="width:4%"></i></div><div class="sub">aquecimento e BLOCO 0 em curso (6 chamadas, SUSEP baixada, sondagem segura das portas de escrita)</div></div>
+  </div>
+
+  <h2>1 · O que o chat principal entrega HOJE (depois da 094, deploy feito)</h2>
+  <div class="ba">
+    <div class="antes"><div class="eyebrow">O que ele faz</div><ul>
+      <li><b>Raio-X comercial</b> e <b>Radar de renovações</b> (SPEC-081) — agora sobre o registry, com números com ponteiro.</li>
+      <li><b>Pulso 360</b> (SPEC-094): "como estamos?" → 16 métricas versionadas, comparadas ao mesmo período do ano anterior, com cobertura e base temporal ao lado de cada número, e um Artifact de 8 seções. Produção (apólices, prêmio, novo × renovação), comissão apropriada, repasse ao produtor, contribuição pós-repasse, mix por seguradora e ramo, ranking e momentum de produtor, exposição de renovação 30/60/90, projeção run-rate, cobertura dos dados.</li>
+      <li>Follow-up ("e só a Porto?") sobre o mesmo pacote, sem reconsultar. Dado ausente sai "indisponível", nunca zero.</li>
+    </ul></div>
+    <div class="depois"><div class="eyebrow">O que ele NÃO faz (medido)</div><ul>
+      <li>Nenhum cálculo fora das 16 métricas: não há sandbox, não há SQL gerado, não há "calcule isto pra mim" livre — e isso é decisão, não falta (estado da arte: 1 resposta em 5 errada quando o modelo calcula sozinho).</li>
+      <li>Não lembra o que entregou (126 Artifacts que ninguém lista), não lê planilha, não lê SUSEP, não vê sinistros, funil, parcelas ou comissão recebida.</li>
+      <li>Não escreve nada no InfoCap.</li>
+    </ul></div>
+  </div>
+
+  <h2>2 · O que passa a entregar com a 094.1</h2>
+  <ul class="tight">
+    <li><b>Cinco relatórios obrigatórios</b> que a InfoCap já expõe e ninguém lia: sinistros da carteira (5.729 registros na Resulta), funil de cotações e motivo de perda, cancelamentos, cross-sell por cliente (quem tem 1 produto e podia ter 3), pendência de emissão.</li>
+    <li><b>O primeiro cruzamento com dado externo:</b> sinistralidade do mercado (SUSEP, semanal, 545 MB) × a carteira, por seguradora e ramo — "a seguradora X subiu a sinistralidade de auto por três trimestres: negocie antes da carta de reajuste".</li>
+    <li><b>O chat lembra:</b> "o que você já me entregou este mês?" lista os Artifacts com link.</li>
+    <li><b>O chat propõe:</b> quando o corretor pede uma métrica que não existe, o chat descreve a proposta (fatos, dimensões, base temporal, parecida com…) e abre um Work Run com aprovação. Nunca inventa o número. Um humano promove em minutos seguindo o protocolo.</li>
+    <li><b>O protocolo escrito</b> <code>COMO-NASCE-UM-RELATORIO.md</code>: qualquer chat com o Claude Code transforma uma ideia sua em métrica registrada, com guarda, em 6 passos.</li>
+  </ul>
+
+  <h2>3 · Métrica, relatório, skill, auxiliar, rotina — o que é o quê</h2>
+  <div class="tw"><table>
+    <tr><th>peça</th><th>o que é no AutoBrokers</th><th>estado medido</th><th>quando usar</th></tr>
+    <tr><td><b>Métrica</b></td><td>uma definição no registry: id@versão, grão, base temporal, fórmula sobre fatos canônicos, cobertura, pergunta verificada, golden</td><td>16 hoje (094); cada nova = 1 arquivo + 1 teste, 💭 15–40 min</td><td><b>todo cálculo novo</b>. É a sua "skill" no sentido que você usa: uma habilidade que o chat exerce quando o corretor pede</td></tr>
+    <tr><td><b>Relatório / seção</b></td><td>uma ou mais métricas numa seção do Artifact (Pulso 360) e no bloco citável do chat</td><td>8 seções; ganha 4 na 094.1</td><td>quando o corretor precisa VER, não só perguntar</td></tr>
+    <tr><td><b>Skill (Skill Registry, SPEC-056)</b></td><td>procedimento versionado no banco</td><td>20 skills, 21 releases, <b>0 turnos governados</b>; Tool Gateway em sombra com 155 diffs e 0 idênticos</td><td>não usar como caixa para cálculos até a decisão F-094.1-01 (ligar ou desligar) — construir em cima seria motor paralelo</td></tr>
+    <tr><td><b>Auxiliar</b></td><td>trabalhador instalado na corretora que faz trabalho contínuo e aparece na Central</td><td>16 templates (6 prontos), 9 instalações, 4 runs</td><td>quando há trabalho recorrente com dono: ex. "ingestão semanal da SUSEP", "Pulso 360 toda segunda às 7h"</td></tr>
+    <tr><td><b>Rotina</b></td><td>o gatilho (agenda) de um auxiliar ou workflow</td><td>1 linha, desligada; o tick de inteligência agenda os digests</td><td>agendar o que já existe. Nunca criar "auxiliar novo" para um cálculo: cálculo é métrica</td></tr>
+    <tr><td><b>Conector</b></td><td>a porta de uma fonte (InfoCap, SUSEP, portal da seguradora, Quiver)</td><td>11 templates, 18 conexões; SUSEP nasce na 094.1 como conector público sem credencial</td><td>quando a ideia precisa de um dado que não temos</td></tr>
+  </table></div>
+  <div class="callout"><b>Sua ideia vira produto assim:</b> você descreve o relatório num chat → o chat classifica (métrica? seção? fonte? entrega?) → mede se a fonte e o fato existem → escreve a definição com pergunta verificada e golden → o guarda prova → a seção entra no Pulso → deploy. Se a ideia veio do próprio corretor no chat, ela já chegou como proposta com Work Run e só falta o passo 3.</div>
+
+  <h2>4 · A lista completa · tradicional (obrigatório) e extraordinário (o ouro)</h2>
+  <p class="eyebrow" style="margin-top:10px">Fontes desta lista: os catálogos públicos de Quiver PRO, Agger (manual de 208 páginas) e Segfy (49 artigos) cruzados — 11 relatórios aparecem nos três; SUSEP, ANS, Opin, BACEN, FIPE medidos em 03/09; o censo da CorpAPI. Notas: dinheiro × viabilidade com o que existe hoje.</p>
+  <div class="tw"><table>
+    <tr><th>#</th><th>relatório tradicional</th><th>a pergunta</th><th>estado</th><th>nota</th></tr>
+    <tr><td>A1</td><td>Produção (apólices, prêmio, novo × renovação)</td><td>quanto vendemos e de quê?</td><td><span class="chip ok">094</span></td><td class="n">—</td></tr>
+    <tr><td>A2</td><td>Comissão apropriada</td><td>quanto ganhamos no papel?</td><td><span class="chip ok">094</span></td><td class="n">—</td></tr>
+    <tr><td>A3</td><td><b>Comissão recebida × apropriada</b></td><td>a seguradora nos pagou o que devia?</td><td><span class="chip crit">não vem da API em lote → portal da seguradora (094.2)</span></td><td class="n">94</td></tr>
+    <tr><td>A4</td><td>Repasse ao produtor</td><td>quanto devemos a quem vendeu?</td><td><span class="chip ok">094</span></td><td class="n">—</td></tr>
+    <tr><td>A5</td><td>Contribuição pós-repasse</td><td>o que sobra depois do repasse?</td><td><span class="chip ok">094</span> (sobre a interseção; cobertura escrita ao lado)</td><td class="n">74</td></tr>
+    <tr><td>A6</td><td>Renovações a 30/60/90</td><td>o que vence e vamos perder?</td><td><span class="chip ok">094</span></td><td class="n">91</td></tr>
+    <tr><td>A7</td><td>Mix por seguradora e ramo, concentração</td><td>dependemos demais de quem?</td><td><span class="chip ok">094</span></td><td class="n">—</td></tr>
+    <tr><td>A8</td><td>Ranking e momentum de produtor</td><td>quem cresce, quem murcha?</td><td><span class="chip ok">094</span></td><td class="n">—</td></tr>
+    <tr><td>A9</td><td><b>Inadimplência / parcelas vencidas</b></td><td>quem não pagou e o que vou perder?</td><td><span class="chip crit">idem A3 → 094.2</span></td><td class="n">88</td></tr>
+    <tr><td>A10</td><td>Cancelamentos</td><td>quanto de carteira evaporou?</td><td><span class="chip warn">094.1</span></td><td class="n">70</td></tr>
+    <tr><td>A11</td><td>Ticket médio</td><td>vendemos maior ou menor?</td><td><span class="chip ok">094</span> (derivado)</td><td class="n">—</td></tr>
+    <tr><td>A12</td><td>Cross-sell por cliente</td><td>quem tem 1 produto e podia ter 3?</td><td><span class="chip warn">094.1</span></td><td class="n">82</td></tr>
+    <tr><td>A13</td><td>Aniversário de apólice e de cliente</td><td>quando ligar?</td><td><span class="chip">próxima leve</span></td><td class="n">—</td></tr>
+    <tr><td>A14</td><td>Pendência de emissão</td><td>o que vendemos e não saiu?</td><td><span class="chip warn">094.1</span></td><td class="n">78</td></tr>
+    <tr><td>A15</td><td>Sinistros da carteira</td><td>quem está sinistrando e quanto?</td><td><span class="chip warn">094.1</span></td><td class="n">84</td></tr>
+    <tr><td>A16</td><td>Funil de cotações e motivo de perda</td><td>quanto cotamos e quanto virou?</td><td><span class="chip warn">094.1</span> (se as 3 rotas responderem — medindo agora)</td><td class="n">86</td></tr>
+  </table></div>
+  <div class="tw"><table>
+    <tr><th>#</th><th>cruzamento extraordinário</th><th>dado da corretora × fonte externa</th><th>💰 mecanismo</th><th>estado</th><th>nota</th></tr>
+    <tr><td>B1</td><td><b>Sinistralidade do ramo × minha condição comercial</b></td><td>mix por ramo/seguradora × SUSEP SES (semanal)</td><td>negocia melhor: saber do reajuste antes da carta; 💭 1 p.p. evitado sobre R$ 11,9 mi = R$ 119 mil</td><td><span class="chip warn">094.1</span></td><td class="n">92</td></tr>
+    <tr><td>B2</td><td>Minha sinistralidade × a do mercado, mesmo ramo</td><td>/sinistros × SES</td><td>argumento de comissão: "minha carteira sinistra 11 p.p. abaixo do mercado"</td><td><span class="chip warn">094.1</span></td><td class="n">85</td></tr>
+    <tr><td>B7</td><td>Preço da apólice de saúde × valor médio POR MUNICÍPIO (ANS)</td><td>carteira saúde × ANS NTRP-054 por município e faixa etária</td><td>vende e retém: "seu plano está 22% acima do médio do seu município"; ninguém usa</td><td><span class="chip">próxima</span></td><td class="n">88</td></tr>
+    <tr><td>B12</td><td>Cross-sell pelo perfil da própria carteira</td><td>/cliente_ligacoes × mix típico</td><td>vende mais; maior retorno por hora do vendedor</td><td><span class="chip warn">094.1 (A12)</span></td><td class="n">83</td></tr>
+    <tr><td>B13</td><td>Renovação × sinistro aberto na mesma apólice</td><td>/renovacoes × /sinistros por apólice</td><td>retém: renovar sem falar do sinistro é como se perde cliente</td><td><span class="chip warn">094.1</span></td><td class="n">80</td></tr>
+    <tr><td>B15</td><td>Mapa Opin: quem já entrega dado por API</td><td>praça × Opin Directory (38 participantes, 10 das nossas 15 seguradoras)</td><td>posicionamento; corretora é elegível como participante</td><td><span class="chip">próxima</span></td><td class="n">78</td></tr>
+    <tr><td>B6</td><td>Reajuste de saúde × percentuais da ANS</td><td>carteira saúde × ANS 055</td><td>retém: chegar antes da carta ao PME</td><td><span class="chip">próxima</span></td><td class="n">76</td></tr>
+    <tr><td>B4</td><td>Praça × Painel de Corretores da SUSEP</td><td>municípios dos clientes × painel (dashboard, não baixável)</td><td>vende mais: tamanho do mercado local por corretagem</td><td><span class="chip">leitura humana</span></td><td class="n">72</td></tr>
+    <tr><td>B18</td><td>Cotação perdida × preço praticado depois</td><td>funil + motivo_perda × SES prêmio médio</td><td>vende mais: dado que a corretora já tem e joga fora</td><td><span class="chip">depois de A16</span></td><td class="n">70</td></tr>
+    <tr><td>B5</td><td>Custo do parcelamento × Selic/IPCA</td><td>forma de pagamento × BACEN SGS</td><td>economiza: quando o desconto à vista passa a valer</td><td><span class="chip">próxima leve</span></td><td class="n">68</td></tr>
+    <tr><td>B9</td><td>Valor segurado × FIPE do mês</td><td>/itens × FIPE</td><td>retém: IS defasada é sinistro mal pago</td><td><span class="chip">fonte sem SLA</span></td><td class="n">62</td></tr>
+    <tr><td>B3 · B8 · B10 · B11 · B14 · B16 · B17</td><td>concentração × ranking de mercado · frota Senatran · roubo SINESP · porte/CNAE · cobertura de atribuição · vigência de norma · IBGE</td><td colspan="2">fontes instáveis, pagas ou dashboard-only — no documento de pesquisa com o porquê</td><td><span class="chip">fila</span></td><td class="n">35–68</td></tr>
+  </table></div>
+  <div class="callout warn"><b>Os dois de maior valor (A3 comissão recebida e A9 inadimplência) não vêm da API da InfoCap em lote.</b> Os três concorrentes têm porque leem o banco por dentro. A saída está no repo: o portal da seguradora (17 portais ativos, o worker já baixa "boleto, apólice, comissão"). É a SPEC-094.2 e é a maior lacuna do produto.</div>
+  <div class="callout"><b>De onde vêm mais ideias (a próxima rodada de pesquisa, ainda não medida):</b> os catálogos de skills financeiras/comerciais da Anthropic e os repositórios abertos de análise financeira e atuarial (💭 a verificar: bibliotecas de KPIs de corretagem, modelos de churn e LTV de carteira, curvas de renovação por safra, precificação por sinistralidade). Regra: nada entra na lista sem a fonte medida e sem o mecanismo do dinheiro escrito.</div>
+
+  <h2>5 · Escrever no InfoCap: planilha de comissões, cadastro em massa</h2>
+  <p>📊 A documentação oficial (coleção Postman, 51 requests) tem <b>22 requisições de escrita</b> em cinco portas: contato (endereço, e-mail, telefone), cliente novo, funil (negócio), <b>repasse ao produtor</b> (<code>POST/PATCH/DELETE /prod_docs</code>, que muda quanto a corretora paga a quem) e apólice via InCorp (PDF → grava). Não dá para abrir atendimento nem tarefa (só leitura). Nenhuma escrita tem resposta documentada; não há idempotência (um retry duplica cliente); <code>/cliente</code> tem POST e DELETE mas não tem PUT.</p>
+  <p><b>Resposta curta:</b> tecnicamente possível, hoje não implementado e não medido. Nesta SPEC está rodando uma <b>sondagem segura</b> (corpo vazio nas portas de escrita da Resulta, para ler a validação sem criar nada) — o resultado entra aqui. Para "entregar uma planilha de comissões e o chat lançar no InfoCap" faltam: (1) a decisão sua F-094-09 (quais portas, com Approval obrigatório); (2) um ambiente de teste da InfoCap ou um protocolo de escrita-e-remoção provado; (3) idempotência nossa (chave por linha da planilha) porque a API não tem; (4) a leitura de planilha no chat (SPEC própria). Estimativa 💭: uma SPEC CRÍTICO de 8–12h para a porta de cadastro de cliente; repasse (<code>/prod_docs</code>) só depois, porque mexe em dinheiro de terceiros.</p>
+
+  <h2>6 · Quiver, Segfy, Agger: quanto já estamos prontos</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v">85</div><div class="l">a inteligência: registry, CBIM, Evidence Pack, tool e Artifact não conhecem provider (provado por mutação e pelo provider de referência)</div></div>
+    <div class="kpi"><div class="v">50</div><div class="l">o encanamento: falta o adapter Quiver, o censo Quiver (o protocolo do censo existe), a conexão por <code>provider_key</code> em tenant_connections e o resolver genérico</div></div>
+    <div class="kpi"><div class="v">70</div><div class="l">no total. Com API e credenciais na mão: 💭 2–4 dias para Quiver 100/100, sem tocar numa fórmula</div></div>
+    <div class="kpi"><div class="v">⚠️</div><div class="l">InfoCap redireciona para a Agger, dona do Quiver (F-094-08): a independência de provider deixou de ser elegância</div></div>
+  </div>
+
+  <h2>7 · Qualidade e tempo desta execução (opção B) — estimativa honesta</h2>
+  <p>💭 Se rodasse a v11.2 inteira: nota esperada 86–88, ≈3 M tokens, 7–9h. Sob B (CRÍTICO com 2 frentes — dado e red team — em vez de 3, e juiz fresco com canário vivo): nota esperada 84–86, ≈2 M tokens, 5–7h. A frente que sai é a de "verdade/regressão", que nas três SPECs achou defeitos de guarda, não de produto. O que não sai em nenhuma marcha: aquecimento, gate zero, mutação por cópia, canário vivo.</p>
+  <div class="foot">Fontes: <code>docs/canon/pesquisa/RELATORIOS-QUE-VALEM-DINHEIRO.md</code> · <code>CORPAPI-CATALOGO-OFICIAL.md</code> · <code>COMO-NASCE-UM-RELATORIO-HOJE.md</code> · <code>specs/SPEC-094.1-a-fabrica-de-relatorios.md</code>. Esta página é atualizada a cada bloco fechado.</div>
+</section>
+
 <!-- ============================ PROTOCOLO ============================ -->
 <section class="page" id="p-proto">
   <div class="head">
@@ -503,7 +609,7 @@ ul.tight li{margin:5px 0}
 
 <script>
 (function(){
-  var pages = ["home","s088","s093b","s091","s094","proto","fila"];
+  var pages = ["home","s088","s093b","s091","s094","s0941","proto","fila"];
   function show(){
     var h = (location.hash || "#home").slice(1);
     if (pages.indexOf(h) < 0) h = "home";
