@@ -11,7 +11,9 @@
 > (5) o detalhe mostra as versões, de onde veio cada dado com a data honesta (📊 hoje `data_as_of` é `now()` em
 > 136/136 versões e a tela afirma "Dados de…"), e o botão "Perguntar ao AutoBrokers" com a pergunta já escrita.
 >
-> **v1.1 · 04/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha PADRÃO** · nasce da proposta
+> **v1.2 · 04/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha PADRÃO** · v1.1 + aquecimento (Opus, contexto
+> limpo, 16 perguntas, 199 mil tokens: **nota 78 → 12 emendas E1–E12 aplicadas**; as duas afirmações falsas assinadas foram
+> refutadas por leitura e por mutação; 6 blocos de números da §1 reproduzidos sem erro) · nasce da proposta
 > `specs-propostas/9 - SPEC-095-artifact-delivery-hub-completion.md` (31/08; 📊 nota do investigador para ela, neste
 > escopo: **41/100** — rigorosa onde há zero linhas de produção, silenciosa onde há 136 erradas) + o research pack + o
 > pedido do Founder de 04/09 sobre a tela de Entregas + a medição de hoje (orquestrador + investigador/pesquisador,
@@ -26,10 +28,11 @@
 > dias, 1 ano, desde o início — quantos relatórios, conversas, execuções, pesquisas e trabalhos pedidos o AutoBrokers
 > fez por ele (💭 os números são os do banco dele, e o relógio da plataforma não conta). A lista não tem dois cards
 > iguais. O briefing de hoje é UM card: título "Fila acumulada", subtítulo "61 atendimentos parados há mais de 24h ·
-> e mais 3 pontos · 20 trabalhos prontos", tipo "Briefing do dia · Checklist das 6h · 04/09", etiqueta "precisa de
+> e mais 3 pontos" (📊 os "20 trabalhos prontos" que o briefing de 31/08 anunciava eram o relógio da plataforma — a
+> frase só volta quando houver trabalho pedido), tipo "Briefing do dia · Checklist das 6h · 04/09", etiqueta "precisa de
 > você". O Pulso 360 de 2026 é UM card: "Porto concentra 46,8% da comissão de 2026 · Pulso 360 · atualizado hoje
 > 02:54 · 5 versões". Nenhum relatório de teste aparece. Ele abre o Pulso: a capa diz o achado; a seção "O que importa
-> agora" tem três achados, cada um com o número, por que importa e o que fazer; as seções sem dado não existem — o que
+> agora" tem um achado ou mais (💭 três no exemplo; 📊 hoje o Pulso da Resulta produz um), cada um com o número, por que importa e o que fazer; as seções sem dado não existem — o que
 > não deu para medir é UMA linha; "De onde veio" lista as fontes com a hora em que a InfoCap foi lida. Ele clica
 > "Perguntar ao AutoBrokers" e o chat abre com "Sobre o Pulso 360 · 2026: " já escrito. Nenhum número nasceu de um
 > modelo: todos vieram do registry ou do banco.**
@@ -58,7 +61,8 @@ do dono. O Pulso sai por `origin="chat"` mesmo quando ninguém abriu o chat.**
 
 ### 1.3 · O título conta, não diz — e 79,7% dos títulos se repetem
 📊 Manchetes da Resulta, 26/08→04/09: "2 item(ns) esperando você hoje" ×5 (5 dias diferentes, a mesma string), "1
-item(ns)…" ×2, "Nada precisa de você agora" ×2, "4 item(ns)…" ×1. A manchete é `_narrativa()`
+item(ns)…" ×2, "Nada precisa de você agora" ×2, "4 item(ns)…" ×1 — e a 11ª, do semanal de 31/08: "2 ponto(s) de decisão e 20 trabalho(s) entregue(s)" (ramo
+`weekly_executive` de `_narrativa`, `:318-321`, que o D.3 preserva; 📊 os 20 eram `intelligence.detect_signals`). A manchete é `_narrativa()`
 (`briefing_service.py:322-330`): ela só conta. O achado principal ("Fila acumulada — 61 atendimentos parados há mais
 de 24h") é o item 1 do corpo e nunca chega ao título. 📊 `artifacts` da Resulta: **79 peças, 16 títulos distintos —
 79,7% repetidos** ("Radar de Renovações · próximos 90 dias" 14×, "Raio-X Comercial · 2025" 14×, "Pulso 360 · 2026"
@@ -99,7 +103,8 @@ desenha o bloco `sources` na composição e **não passa `data_sources=`** ao `c
 WhatsApp é a cor de um ícone de 16 px. `AUXILIAR_DO_TEMPLATE` (`[artifactId]/page.tsx:56-61`) conhece 3 chaves →
 📊 **35 de 136 peças (25,7%) abrem sem produtor**. `estadoDaEntrega()` (`route.ts:257`) **substitui** o resumo pelo
 estado quando a entrega não foi `sent`. O sidebar diz "Entregas" (`lib/navigation.ts:50`); a URL é alvo de 4 redirects
-(`test_menu_nao_cresce.py:60-68`), do `_link()` do chat (`relatorios_comerciais.py:340`) e de 2 guardas. 📊 Latência
+(`test_menu_nao_cresce.py:45-55`, `ROTAS_QUE_MUDARAM` — 📊 três mandam `?tipo=`; `app/dashboard/atividades/page.tsx:17`
+NÃO manda nenhum), do `_link()` do chat (`relatorios_comerciais.py:340`) e de 2 guardas. 📊 Latência
 das 2 consultas mais pesadas: **1,2 ms e 1,0 ms** — o problema é de conteúdo e de descoberta, não de tempo.
 
 ### 1.7 · O que já existe e serve — nada disto se reconstrói
@@ -125,7 +130,8 @@ recebem o diário **no mesmo minuto** (08:00–08:08 local; alvo 08:00 com 1 h d
 ### 1.9 · 🔴 `data_as_of` não é a data do dado: é `now()` — e a tela afirma que é (achado do investigador)
 📊 `service.py:155-160`: `"data_as_of": _agora().isoformat()` em `_nova_versao`; **nenhum caller passa data de corte**
 (a assinatura de `criar` nem tem o parâmetro). 📊 136/136 versões: `data_as_of` = carimbo da escrita; **30/136 no
-FUTURO do próprio `created_at`** (desvio de relógio app × Postgres, até +70,2 s; nos 5 Pulsos, exatamente −70 s).
+FUTURO do próprio `created_at`** (desvio de relógio POR PROCESSO: o worker do tick grava a −0,1 s, o contêiner da API a +50…+70 s; nos 5 Pulsos, +69,9 s —
+no futuro).
 `[artifactId]/page.tsx:217` imprime *"Dados de 4 de setembro de 2026, 02:55"*. **É blocker pelo teste do produto (§2):
 uma afirmação de frescor que o sistema não tem como sustentar chega à corretora.** A proposta (§107) daria gate verde:
 ela mede presença, o defeito é de valor. CLAUDE.md §12.1: conserta-se o campo, não o texto.
@@ -163,7 +169,7 @@ linhas; a queixa do Founder toca 136.
 ⛔ A URL /dashboard/entregas, a KEY `entregas` e os 6 pilares NÃO mudam (`test_menu_nao_cresce.py`). Muda o LABEL.
 ⛔ O chip "Pesquisas" fica (é o único caminho para a tela de pesquisas: `test_navegacao_sem_pagina_orfa.py:90`).
 ⛔ Os títulos das EXECUÇÕES ("Cobrança Feita rodou") não mudam (`entregas-mostra-o-historico.test.mjs:231`).
-⛔ O chat (SPEC-096) recebe UM gancho: ler `?pergunta=` e pré-preencher. Nunca enviar sozinho.
+⛔ O chat (SPEC-096) recebe UM gancho (3 linhas + 1 prop): ler `?pergunta=` num inicializador síncrono e pré-preencher. Nunca enviar sozinho, nunca por efeito.
 ⛔ NUNCA nome de pessoa em título, sinal, summary ou pack (SPEC-094 §2). Nome de SEGURADORA pode. Produtor: só via `rotulos_de_produtor`
    dentro do Artifact do tenant, nunca no sinal nem no pack.
 ⛔ NUNCA `git add -A`. Nenhuma variável de ambiente de produção. Nada em `.env`.
@@ -188,7 +194,8 @@ NÍVEL ................  PADRÃO sob a opção B: desenhista ANTES (há guardas 
                         confirmação MECÂNICA (Sonnet reroda guardas + mutações do conserto) · canário vivo pelo orquestrador
 UNIDADES .............  6 — BLOCO 0 · A (a lista e o nome) · B (identidade: versões, canário marcado, data honesta, limpeza) · C (o
                         placar) · D (a narrativa: título = achado · o que importa · o que fazer · o briefing sem o relógio) · E (o detalhe:
-                        versões, fontes, perguntar) · F (canário vivo + dossiê)
+                        versões, fontes, perguntar) · F (canário vivo + dossiê). 🔴 ORDEM: desenhista ‖ (A+C+E) ‖ (B+D) → integração → red team → conserto →
+                        confirmação mecânica → F, e dentro do F: B.4 só com E no ar, e ANTES de qualquer canário publicar (E11)
 COESÃO ...............  A+C+E = FRONTEND (route.ts, EntregasClient.tsx, [artifactId]/page.tsx, arquivo/route.ts, navigation.ts,
                         placar/route.ts, lib/relatorios/tipos.ts, chat: 2 linhas) — UM escritor · B+D = BACKEND (evidence_pack.py,
                         narrativa.py, executive_intelligence.py, relatorios_comerciais.py, workflows.py, briefing_service.py,
@@ -201,15 +208,18 @@ REFERÊNCIA ...........  interna: DS-001 §5 (calma, sidebar limpa, pouca compet
                         PARECE sem destino) · `blocks.py` cover/actions/callout · os 2 guardas da 078 · externa: §3 (6 reabertas em 04/09)
 GATES ................  GATE ZERO (7 vermelhos em HEAD provados pelo guarda ANTES do código) · guardas novos com PARES:
                         `scripts/relatorios-dizem-o-que-sao.test.mjs` e `backend/tests/test_o_relatorio_abre_pelo_achado.py` ·
-                        os 2 guardas da 078 MIGRADOS (a lição migra, CLAUDE.md §9.3) · `npm run test:rotas-montam` + `next start` + 1 GET
+                        os 2 guardas da 078 VERDES sem mudar (📊 provado por mutação no aquecimento) · a frase de trabalhos AUSENTE quando M = 0 (E2) · `textoInicial` zerado no 1º envio (E10) · `npm run test:rotas-montam` + `next start` + 1 GET
                         a `/api/dashboard/entregas` (mexe em app/) · dois tenants na lista e no placar · suíte inteira 1× no fim
 O ELO ................  "o corretor entende o card PORQUE o título é o achado": medir (a) `artifacts.title` = título do achado principal
                         depois do canário (SELECT); (b) a rota devolve esse `title` (guarda executa a rota REAL com dublê, como a 078);
                         (c) a tela imprime `titulo` (guarda lê o cliente). E "o porquê chega PORQUE `como_dict` o emite": SELECT no jsonb
-                        da publicação do canário → `why_now` e `next_step` presentes
-FAIXA DE RELÓGIO .....  4–6h do primeiro despacho ao push (desenhista 45 min · builders 1h30–2h em paralelo · red team 30 min ·
+                        da publicação do canário → `why_now` e `next_step` presentes. E o elo que o aquecimento MEDIU e que chega
+                        longe demais: "o briefing para de repetir PORQUE o `system` sai" — 📊 A = 35,1% duplicados, B = 40/41 itens
+                        são `system`, e o elo apaga 70,2% do briefing e zera "trabalhos prontos" em 5/5 dias: por isso a E2 muda
+                        a manchete antes de qualquer código
+FAIXA DE RELÓGIO .....  5–7h do primeiro despacho ao push (o aquecimento acrescentou 1h: 12 emendas e o canário como script) (desenhista 45 min · builders 1h30–2h em paralelo · red team 30 min ·
                         conserto 45 min · canário + limpeza + dossiê + relatório 1h)
-ORÇAMENTO ............  ≤ 1,3 M tokens de subagentes (opção B · PADRÃO); 📊 conversão já gastou 225k (investigador+pesquisador)
+ORÇAMENTO ............  ≤ 1,3 M tokens de subagentes (opção B · PADRÃO); 📊 conversão gastou 225k (investigador+pesquisador) + 199k (aquecimento) = 424k
 BATERIA ..............  suíte inteira 1× no gate final; parciais (2 scripts + 2 guardas python + canário 094) a cada bloco
 ```
 
@@ -296,7 +306,7 @@ antigo **58** (📊 latência 1,2 ms: é descoberta, não performance) · share/
 Remedir 1.1–1.11 pelos comandos (SQL e grep). Se o número for outro, o do executor vence e os dois vão para o relatório.
 Fixar a lista dos **relatórios de teste** para a limpeza do BLOCO B.3 com o SQL da 1.1 e as janelas do `git log`
 (18/08 05:00–11:00 · 03/09 15:00–21:00 · 03/09 21:00–04/09 04:00): 📊 esperado Resulta 34 · AutoFleet 1 · Amandus 0.
-Confirmar que `finding_engine.py:236` continua `resumo = str(principal.get("summary_redacted") or narrativa.titulo)`
+Confirmar que `finding_engine.py:235` continua `resumo = str(principal.get("summary_redacted") or narrativa.titulo)`
 e que `commercial_opportunity` continua sem entrada em `NARRATIVAS` — é o encaixe do D.1. Confirmar as colunas de data
 da 1.10 (`routine_runs` sem `created_at`).
 
@@ -318,8 +328,10 @@ fixa os três e conta 6 pilares). Títulos de página, breadcrumbs e "Voltar" em
 `EntregasClient.tsx:200-202`, `[artifactId]/page.tsx:170`, `rotina/[runId]/page.tsx:151`; o subtítulo do
 `DetailHeader` ("Tudo que o AutoBrokers fez por você — relatórios, conversas, trabalhos e pesquisas, num lugar só").
 Filtro "Documentos" → "Relatórios". **Lente padrão sem `?tipo=`: Relatórios** (decisão 0–100: abrir em Relatórios 80 ·
-em Tudo 55 — a queixa é a mistura). `?tipo=conversa|trabalho|tudo` continuam valendo (4 redirects, guarda [5] da 078).
-O chip "Pesquisas ↗" fica.
+em Tudo 55 — a queixa é a mistura). `?tipo=conversa|trabalho|tudo` continuam valendo. 📊 Dos 4 redirects (`test_menu_nao_cresce.py:45-55`), três
+mandam `?tipo=`; o quarto — `app/dashboard/atividades/page.tsx:17` → `/dashboard/entregas` — não manda nenhum e
+herdaria a lente `documento`, escondendo as atividades (`route.ts:339-340` dá a elas `tipo: 'trabalho'`) de quem salvou
+o link: passa a `redirect('/dashboard/entregas?tipo=tudo')`. O chip "Pesquisas ↗" fica.
 
 **A.2 · O mapa único de tipos** — `lib/relatorios/tipos.ts` (NOVO), lido pela lista E pelo detalhe (hoje o detalhe
 tem `AUXILIAR_DO_TEMPLATE` só para si, com 3 chaves — 📊 25,7% das peças abrem sem produtor):
@@ -334,7 +346,8 @@ financial.billing_collection     Cobrança               receipt            Cobr
 (default)                        Relatório              file-text          origem em português (chat → AutoBrokers · routine → Auxiliar · manual → você)
 ```
 O produtor vem de `subject_ref.produtor` quando o publicador gravou (BLOCO B); sem ele, do mapa por `origin` +
-`template_key` — **rotulado no código como `legacy_inferred`**, nunca como autoridade (proposta §51/§151).
+`template_key` — **rotulado no código como `legacy_inferred`**, nunca como autoridade (proposta §51/§151). A resposta da rota carrega `produtorOrigem: 'declarado' | 'inferido'` — o
+card não imprime a palavra; o Gate A [4] confere o campo.
 
 **A.3 · A anatomia do card** (contrato com o BLOCO D — a rota devolve os campos; o cliente só desenha):
 ```
@@ -349,6 +362,10 @@ ETIQUETA (uma, a mais forte):  "crítico" (critical_count > 0) · "precisa de vo
 Campos novos na resposta da rota: `tipoHumano`, `produtor`, `periodo`, `etiqueta`, `versoes`, `teste` (bool), sempre
 presentes para `artifact:`; os demais tipos (`conversa:`, `run:`, `rotina:`, `atividade:`) ganham `tipoHumano` e
 `produtor` pelo que já têm (Chat/Atendimento · nome do Auxiliar · categoria) e mantêm os títulos de hoje.
+📊 `route.ts:171-172` seleciona hoje `id, title, subtitle, kind, status, created_at`: os campos novos exigem **cinco
+colunas a mais** no mesmo SELECT — `template_key` (tipoHumano), `subject_ref` (produtor + periodo), `current_version`
+(versoes), `tags` (teste e o filtro do A.4b), `origin` (o fallback inferido). Sem elas o A.4(b) filtra por uma coluna
+que a consulta não trouxe.
 
 **A.4 · Nada duas vezes, nada de teste.** (a) `briefing_publications` com `artifact_id` **não vira card**: a
 publicação é dobrada no card do artifact (o card recebe `produtor = 'Checklist das 6h'`, `etiqueta` pelo
@@ -357,7 +374,8 @@ artifact continua como `briefing:` com o href da tela de execução (a lição d
 UMA publicação sem artifact para esse ramo continuar exercido). (b) `artifacts` com `tags @> {canario}` **não
 entram** (`.not('tags', 'cs', '{canario}')`), nem arquivados (já). (c) `?arquivados=1` lista SÓ os arquivados
 (inclusive os de teste), com etiqueta "arquivado" — acessível por um link discreto "ver arquivados (N)" no fim da
-lista, nunca por chip ou aba (§3 ⑤). É o que dá ao Founder o direito de desfazer a limpeza do B.3 olhando.
+lista, nunca por chip ou aba (§3 ⑤). É o que dá ao Founder o direito de desfazer a limpeza do B.4 olhando. O modo arquivados ignora a lente: lista só `artifact:` arquivados (conversas e
+trabalhos não se arquivam) e esconde os chips.
 
 **A.5 · O que não muda:** 8 consultas, `LIMITE_POR_FONTE`, busca no navegador, ordenação por data, linha-sem-destino da
 078 F.6b, empty states, os títulos das execuções, o chip Pesquisas. Busca no servidor e paginação: §5, com gatilho.
@@ -374,9 +392,10 @@ o mapa por leitura), com PARES:
 [6] toda consulta da rota com company_id (reusa guardaEscopoPorEmpresa)                                (PAR: uma sem → vermelho)
 [7] `?tipo=` continua aceitando conversa/trabalho/tudo; padrão 'documento'; o chip Pesquisas existe   (PAR: cliente sem URL → vermelho)
 ```
-E os dois guardas da 078 **migram**: `guardaTudoAbre` passa a exigir `briefing` só quando o dublê tem publicação sem
-artifact (ele tem); `guardaBriefingVaiParaTelaCerta` idem; o ramo `ehDocumento` (`:280`) muda com o fato. Nenhuma
-asserção morre: cada uma muda com o fato.
+E os dois guardas da 078 **continuam VERDES sem alteração** — 📊 o aquecimento provou por mutação (desligar o laço de
+briefings da rota → "fonte ausente: briefing" e "nenhum briefing na lista", VERMELHOS; restaurado → verde): o dublê
+deles tem 1 publicação COM e 1 SEM artifact, e a linha `briefing:` sobrevive ao A.4. A asserção nova ("a publicação COM
+artifact não vira card") mora no guarda NOVO, nunca num afrouxamento dos velhos.
 
 # BLOCO B · IDENTIDADE — uma peça, muitas versões; a data do dado é a do dado; o teste não suja a biblioteca (backend)
 
@@ -384,13 +403,18 @@ asserção morre: cada uma muda com o fato.
 (`relatorios_comerciais.py:318`) ganha `identidade: dict` (`{"kind": "periodo", "id": "2026", "label": "2026",
 "produtor": "autobrokers.chat"}`), `data_sources` (os MESMOS itens que `_fontes` desenha — hoje a coluna fica vazia,
 1.5) e `data_as_of` (a hora em que a fonte foi lida — `agora` do pack) e passa a: procurar `artifacts` com a mesma
-identidade (`.eq("company_id").eq("template_key").eq("subject_ref->>id", …).is_("archived_at","null")`, 1 linha) →
+identidade (`.eq("company_id").eq("template_key").eq("subject_ref->>id", …).is_("archived_at","null")`, `limit(2)` — 🔴 SÓ quando `identidade["id"]` é NÃO-VAZIO: 📊 `subject_ref->>'id' = ''`
+casa 6 Pulsos, 14 Raio-X e 14 Radares legados na Resulta, e `= NULL` não casa os 96 com `{}`; 2 linhas vivas = defeito,
+levanta) →
 **existe:** `nova_versao` + `renderizar` + `publicar` e atualiza `title/subtitle/summary` da peça (o achado muda a cada
 versão) → devolve o MESMO id; **não existe:** `criar` como hoje. `ArtifactService.nova_versao` aceita
-`title/subtitle/summary` opcionais e os grava em `artifacts` (evento `artifact.retitled` com a versão). As três tools
-que chamam `_publicar` (Pulso, Raio-X, Radar) passam identidade, fontes e data; a Cobrança (`billing_collection.py`) e
-o briefing (`workflows.py:129`) gravam `subject_ref` com `kind/id/label/produtor` (identidade = o dia; já é uma por dia
-pelo tick) e `data_as_of = period_end`.
+`title/subtitle/summary` opcionais e os grava em `artifacts` (evento `artifact.retitled` com `{de, para, versao}` — sem o título anterior o renome seria irreversível). As três tools
+que chamam `_publicar` (Pulso, Raio-X, Radar) passam identidade, fontes e data; a Cobrança (`billing_collection.py` — 📊 já grava `subject_ref.id` em 5/5, os "5/136" da §1.7; ganha `produtor` e
+`data_as_of`) e
+o briefing (`workflows.py:130`) gravam `subject_ref` com `kind/id/label/produtor` (identidade = o dia; já é uma por dia
+pelo tick) e `data_as_of = period_end`. Identidade que casa peça ARQUIVADA: **cria nova**, não desarquiva (nota 85 ×
+45): arquivar é gesto deliberado, e ressuscitar em silêncio desfaria a limpeza do B.4 peça por peça; o `artifact.created`
+anota `identidade_arquivada: id8`.
 
 **B.2 · A data do dado é a do dado (1.9).** `criar` e `_nova_versao` ganham `data_as_of: Optional[datetime] = None` e
 gravam **NULL** quando ninguém passa — nunca mais `_agora()`; `confidence_note: Optional[str]` idem. Quem sabe a data
@@ -401,13 +425,18 @@ portais. O detalhe (BLOCO E) só afirma frescor quando o valor existe, e com a f
 **B.3 · O canário se declara.** `_publicar` e `_gerar_artefato` leem `os.getenv("AUTOBROKERS_CANARIO")`; quando
 verdadeiro, `criar(..., tags=["canario"])` (`criar` ganha `tags: Optional[list[str]]`; `_nova_versao` não mexe em
 tags). `ArtifactService.arquivar(company_id, artifact_id, motivo)` (NOVO: `archived_at = now()`, `status` mantido,
-evento `artifact.archived` com `{motivo}`) e `desarquivar` (evento `artifact.unarchived`). O guarda da 094
-(`test_o_canario_do_pulso_360.py`) e o canário desta SPEC exportam a variável.
+evento `artifact.archived` com `{motivo}`) e `desarquivar` (evento `artifact.unarchived`). 📊 `test_o_canario_do_pulso_360.py` substitui `rel._publicar` por um capturador (`:573-580`, `:813-819`, `:1089-1118`,
+`:1263-1270`) e monta a tool com `SupabaseFalso()`: ele NUNCA executa o `_publicar` real — exportar a variável ali
+seria decorativo. Quem a exporta é `backend/scripts/canario_095.py` (NOVO; nota 88 × 55 da instrução em pacote): roda
+o caminho REAL, guarda os ids que criou, imprime os SELECTs do BLOCO F e arquiva ao fim.
 
 **B.4 · A limpeza — uma vez, reversível, à vista.** `backend/scripts/arquivar_relatorios_de_teste_095.py`:
 `--dry-run` (padrão) lista os candidatos da 1.1 (por corretora, template, dia; sem título, sem id inteiro) e
-`--aplicar` chama `arquivar(motivo="canário de execução de SPEC (081/094/094.1) — SPEC-095 B.4")`. VERIFY antes/depois:
-`select count(*) from artifacts where origin='chat' and requested_by is null and archived_at is null` (📊 esperado 35 → 0)
+`--aplicar` chama `arquivar(motivo="canário de execução de SPEC (081/094/094.1) — SPEC-095 B.4")` e NUNCA toca peça com
+`tags @> {canario}` (as do canário desta SPEC se arquivam sozinhas, F(f)). VERIFY antes/depois, com a data fixa para o
+número não envelhecer (📊 `_publicar` não grava `requested_by`, então `requested_by is null` casaria todo Pulso real
+para sempre): `select count(*) from artifacts where origin='chat' and requested_by is null and archived_at is null and
+created_at < '2026-09-04 07:00+00'` (📊 esperado 35 → 0)
 e `select count(*) from artifact_events where event_type='artifact.archived'` (0 → 35). ROLLBACK escrito no relatório:
 `update artifacts set archived_at = null where id in (select artifact_id from artifact_events where event_type='artifact.archived'
 and detail->>'motivo' like '%SPEC-095 B.4%')`. **Rodada pelo orquestrador no BLOCO F, com a saída colada.**
@@ -417,7 +446,9 @@ and detail->>'motivo' like '%SPEC-095 B.4%')`. **Rodada pelo orquestrador no BLO
 `data_sources` não vazio (PAR: identidades diferentes → 2 inserts); (b) `_nova_versao` sem data → `data_as_of` NULL;
 com data → a data passada (PAR: `now()` → vermelho); (c) sem `AUTOBROKERS_CANARIO` → `tags=[]`; com → `["canario"]`
 (PAR); (d) `arquivar` grava `archived_at` + evento, `listar` deixa de devolver, `desarquivar` volta (PAR); (e) o
-script em `--dry-run` não escreve (dublê conta escritas = 0) (PAR: `--aplicar` = N). Mutação por cópia: `_publicar`
+script em `--dry-run` não escreve (dublê conta escritas = 0) (PAR: `--aplicar` = N); (f) `listar_entregas._packs_das_versoes` (`listar_entregas.py:180`) seleciona
+`payload->evidence_pack->>pack_id`, nunca `payload` (PAR: `payload` inteiro → vermelho — 📊 64.246 bytes por versão,
+5.890 deles `rotulos_de_produtor`). Mutação por cópia: `_publicar`
 que sempre cria → [B.a] vermelho.
 
 # BLOCO C · O PLACAR — o trabalho feito, sem dizer "trabalhamos muito" e sem contar o relógio (frontend)
@@ -431,14 +462,19 @@ contagens relatórios   artifacts.created_at              sem canario, sem arqui
           pesquisas    research_requests.created_at
           sinais       intelligence_signals.created_at    (o que o produto percebeu, com evidência)
           atividades   agent_activities.created_at
-          trabalhos    work_runs.created_at  🔴 SÓ source_type in ('chat','routine') — a constante NAO_CONTA = ('system',)
-                       escrita no topo da rota, com o porquê (📊 1.214/1.228 são o tick). tool_invocations: fora
+          trabalhos    work_runs.created_at  🔴 SÓ source_type in CONTA_COMO_TRABALHO = ('chat','routine') — INCLUSÃO, nunca
+                       exclusão (📊 o domínio inteiro hoje: system 3.626 · chat 7 · routine 7; um source_type futuro entraria
+                       por omissão numa lista de exclusão). A constante mora no topo da rota, com o porquê (📊 1.214/1.228
+                       da Resulta são o tick). tool_invocations: fora
 ```
 Toda contagem: `select('id', { count: 'exact', head: true }).eq('company_id', empresa).gte(coluna, desde)` — 7 tabelas
 × 5 janelas em `Promise.all` (💭 < 300 ms; 📊 as consultas da lista custam ~1 ms). Resposta `{ ok, janelas: { hoje,
 "7d", "30d", "365d", tudo }, regra: "o relógio da plataforma não conta" }`. 📊 Resulta, vida (pré-limpeza): relatórios
 79 → 45 · conversas 266 · execuções 45 · pesquisas 1 · sinais 32 · atividades 175 · trabalhos pedidos 14 — 💭 ≈ 580,
-e é verdade.
+e é verdade. 📊 E os 14 são, eles próprios, execução de SPEC (`bridge.routine.execute` ×7 e `acionamento.seguradora` ×4
+de 17–19/08 = 081; `metric.proposal` ×2 de 04/09 = 094.1): o placar não marca canário em `work_runs`, e isso fica dito
+na §7. Amandus 0 · AutoFleet 0: o zero mostra "—" com a frase "ainda não houve trabalho pedido neste período", nunca
+uma linha vazia.
 
 UI `components/relatorios/Placar.tsx`: uma faixa discreta sob o cabeçalho de Relatórios — controle segmentado
 [Hoje · 7 dias · 30 dias · 1 ano · Desde o início], e uma linha de números com rótulo pequeno (relatórios ·
@@ -495,11 +531,15 @@ cover.title`, `subtitulo = cover.subtitle`, `resumo = verdict`, a identidade do 
 
 **D.3 · O briefing abre pelo achado — e o porquê chega.** `ItemDeBriefing` ganha `why_now` e `next_step`
 (preenchidos de `intelligence_findings` — 📊 12/12 e 11/12 — e, para os achados da 094, da 1ª/2ª frase do sumário
-humano); `como_dict` os emite; `compor_pecas` (`workflows.py:161`) os desenha no `detail` do `actions`. `compor`
+humano); `como_dict` os emite; `compor_pecas` (`workflows.py:160`) os desenha no `detail` do `actions`. `compor`
 (`briefing_service.py:203`): quando `finding_type == "observacao"` e o sumário tem mais de uma frase, `headline` = a
 1ª frase e `summary` = o resto. `_narrativa` (`:322`): com item acionável, **manchete = a headline do item de maior
-prioridade** e resumo = a 1ª frase do summary dele + "e mais N ponto(s) · M trabalho(s) pronto(s)"; crítico → o mesmo
-com "crítico:" na frente; sem item → "Nada precisa de você hoje · M trabalhos prontos". `compor_pecas`: "Método" e
+prioridade** e resumo = a 1ª frase do summary dele + "e mais N ponto(s)" — N = os que FICARAM na peça
+(`acionaveis[:max_itens]`; 📊 `:269` corta e `:314` conta a lista inteira: hoje a manchete promete pontos que a peça
+não contém) — e, SÓ quando M > 0, "· M trabalho(s) pronto(s)"; crítico → "crítico:" na frente; o ramo
+`weekly_executive` (`:318-321`) mantém a forma dele com a mesma regra do M; sem item → "Nada precisa de você hoje"
+(+ "· M trabalhos prontos" só se M > 0). 🔴 Depois do D.5, M = 0 em 📊 5 de 5 dias medidos — a frase some, e o §0 não
+promete mais "20 trabalhos prontos". `compor_pecas`: "Método" e
 "Origem dos dados" vazios viram UMA linha no rodapé; "O que ainda não dá para afirmar" só com conteúdo (já).
 `_gerar_artefato` grava `subject_ref` (`{"kind":"periodo","id": data, "label": "04/09", "produtor": "checklist-6h"}`)
 e `data_as_of = period_end`.
@@ -511,7 +551,13 @@ todos em `app/` e no BLOCO A).
 **D.5 · O briefing sem o relógio da plataforma.** `compor` recebe `trabalhos_em_curso` e `resultados` de `work_runs`;
 passa a **excluir `source_type == 'system'`** (o tick olhando a própria operação: 📊 6 dos 14 itens de 04/09 eram
 `detect_signals` repetido) e a **deduplicar** itens por `(headline, summary)` e Work Runs por `(outcome_title,
-status)` com "(+N iguais)". Chave declarada (§3 ③). 📊 Esperado: itens duplicados 35,1% → 0.
+status)` com "(+N iguais)". Chave declarada (§3 ③). 📊 Medido no aquecimento (join por `item->>'work_run_id'`, presente em 57/57 itens): **40 de
+41** itens `work_run`/`result` dos 5 últimos briefings vêm de Work Run `system` — 70,2% de todos os 57; depois do
+filtro sobram **0** itens `result` em 5/5 dias, e `outcomes` também é 0. O filtro vive DENTRO de `compor` (é o que o
+Gate [D5] testa), logo `source_type` entra no SELECT de `_trabalhos` (`briefing_service.py:566-581`, hoje `id,
+outcome_title, status, progress_percent, result_summary, finished_at`). A seção "o que ficou pronto" desaparece quando
+vazia (a regra das seções vazias). 📊 Esperado: itens duplicados 35,1% → 0; e o briefing encolhe de 11–14 para 3–6
+itens — os que são da corretora.
 
 **Gate D** — `backend/tests/test_o_relatorio_abre_pelo_achado.py`, com PARES e mutação por cópia:
 ```
@@ -522,6 +568,7 @@ status)` com "(+N iguais)". Chave declarada (§3 ③). 📊 Esperado: itens dupl
 [D3] _narrativa(4 acionáveis) → manchete == headline do 1º; (0 acionáveis, 20 resultados) → "Nada precisa de você hoje · 20 …";
      como_dict emite why_now/next_step quando o finding os tem                                                    PAR: como_dict sem um deles → vermelho
 [D5] compor com 4 work_runs `system` + 2 `chat` → só os 2 aparecem; 2 itens iguais → 1 item "(+1 iguais)"        PAR: `system` de volta → 6 → vermelho
+     compor com 0 work_runs não-system → a frase "trabalho(s) pronto(s)" AUSENTE da manchete                     PAR: "0 trabalho(s)" impresso → vermelho
 mutações por cópia: remover `titulo` do CONCENTRACAO → [D1] vermelho · `_compor` sem `actions` → [D2] vermelho · `_narrativa` contando → [D3] vermelho
 ```
 
@@ -537,30 +584,46 @@ botão **Baixar** passa a apontar para `/arquivo?versao={id}` — `arquivo/route
 (`:217`) só quando `data_as_of` existe, e com o rótulo do tipo: "dados lidos em" (Pulso/Raio-X/Radar/Cobrança) ·
 "período {label}" (briefing); as 136 versões antigas (carimbo de escrita) ganham "gerado em", nunca "dados de".
 **De onde veio:** seção com `data_sources` (`label · detail · as_of`) e `confidence_note` quando houver. **Próximos
-passos:** a página lê `payload->findings` da versão (só esse caminho do JSON) e desenha os `o_que_fazer` com um botão
+passos:** a página lê `payload->findings` da versão (só esse caminho do JSON; ⚠️ 📊 supabase-js 2.58 / postgrest-js 1.21 devolvem
+a coluna pelo ÚLTIMO segmento: a linha chega como `{ id, findings }`, não `{ payload: { findings } }` —
+`versao.payload?.findings` seria `undefined` e a seção ficaria vazia em silêncio; o guarda afirma a FORMA) e desenha os `o_que_fazer` com um botão
 cada → `/dashboard/chat?pergunta={pergunta}`; e o botão **Perguntar ao AutoBrokers** → `/dashboard/chat?pergunta=Sobre
-o relatório «{título}» ({id8}): `. No chat (SPEC-096 é dona do shell; aqui são duas linhas — 📊 hoje `page.tsx:23` lê
-só `session`, e `ChatShortcutCards` são dois `<Link>`): `page.tsx` lê `pergunta` uma vez quando não há mensagem e passa
-`initialText` ao `InputArea` (`components/InputArea/index.tsx:38` — `useState(initialText ?? '')`). **Nunca envia
-sozinho**: um Pulso custa 📊 162 s de InfoCap e uma versão nova.
+o relatório «{título}» ({id8}): `. No chat (SPEC-096 é dona do shell; aqui são 3 linhas + 1 prop — 📊 hoje `page.tsx:23`
+lê só `session`, e `ChatShortcutCards` são dois `<Link>`): 🔴 **inicializador síncrono, nunca efeito** —
+`useState(initialText ?? '')` lê a prop só na montagem, e um efeito chega tarde; `page.tsx` lê `?pergunta=` num
+inicializador preguiçoso no molde do `sessionId` (`:21-27`). 🔴 **E o composer é REMONTADO:** `page.tsx:596-609`
+monta `const composer` e o renderiza em duas posições da árvore (`:618` e `:645`, pelo ternário de `:614`); ao enviar a
+primeira mensagem o `InputArea` desmonta, remonta e re-semearia a pergunta. Por isso o estado "já consumi" mora em
+`page.tsx`, ACIMA da fronteira de remontagem: o efeito que já espelha a URL (`:31-38`) apaga `pergunta` e zera
+`textoInicial`. `InputArea` (`components/InputArea/index.tsx:38`) ganha `initialText` → `useState(initialText ?? '')`.
+**Nunca envia sozinho**: um Pulso custa 📊 162 s de InfoCap e uma versão nova.
 
 **Gate E** (no `relatorios-dizem-o-que-sao.test.mjs`, blocos [9]–[11], por leitura da fonte + o padrão da 078 [4]):
 toda leitura de `artifact_versions`/`artifact_renders` na página e na rota de arquivo com `company_id` (PAR); a rota
 de arquivo honra `?versao=` (PAR: sempre a última → vermelho); a página não imprime "Dados de" (PAR: a string volta →
-vermelho); o chat só pré-preenche, nunca chama `handleSendMessage` no efeito (grep no efeito: PAR); `payload` só é
+vermelho); o chat só pré-preenche: `page.tsx` não ganha efeito que chame `handleSendMessage`, e `textoInicial` é zerado
+no primeiro envio (PAR: sem o zeramento → vermelho); a página lê `.findings` da linha, nunca `.payload.findings` (E5;
+PAR: o caminho errado na fonte → vermelho); `payload` só é
 lido pelo caminho `payload->findings` (PAR: `select('payload')` → vermelho — o payload carrega o evidence pack inteiro
 e `rotulos_de_produtor`).
 
 # BLOCO F · CANÁRIO VIVO + a limpeza + o dossiê (orquestrador)
 
-Com `AUTOBROKERS_CANARIO=1`, na Resulta, pelo caminho do grafo (como o juiz da 094.1): (a) "como estamos?" → peça
-com `tags=['canario']`, título = achado, `subject_ref.id = "2026"`, `data_sources` não vazio, `data_as_of` = hora da
-leitura; (b) a mesma pergunta de novo → o MESMO `artifact_id`, `current_version = 2` (SELECT); (c) `python -c`
-chamando `gerar_briefing` do serviço para a Resulta sob a variável → publicação nova de hoje com artifact `canario`,
-manchete = headline do item 1, jsonb com `why_now`/`next_step`, zero item duplicado e zero Work Run `system` (SELECT em
-`briefing_publications.headline` e no `payload`); (d) a rota da lista pelo guarda (dublê) e **ao vivo**: `next start`
-+ `GET /api/dashboard/entregas` (401 sem sessão: a rota executa código) + `npm run test:rotas-montam`; (e) B.4:
-`--dry-run` → `--aplicar` → VERIFY antes/depois colado; (f) o canário arquiva o que criou (`arquivar`) — 📊 `select
+`backend/scripts/canario_095.py` (NOVO — o builder do motor o escreve, com um modo `--simular` sobre o dublê para
+provar a lógica sem rede; o orquestrador o roda ao vivo), que exporta `AUTOBROKERS_CANARIO=1` no próprio processo e
+roda na Resulta o caminho REAL (`_publicar` de verdade, banco de verdade), na ORDEM (E11): **B.4 primeiro**
+(`--dry-run` → `--aplicar` → VERIFY antes/depois colado — só depois de o BLOCO E estar no ar: 📊 hoje
+`[artifactId]/page.tsx:121-124` faz `notFound()` em arquivado, e 35 links já entregues pelo `_link()` do chat apontam
+para o DETALHE dessas peças); (a) "como estamos?" pelo caminho da tool → peça com `tags=['canario']`, título = achado,
+`subject_ref.id = "2026"`, `data_sources` não vazio, `data_as_of` = hora da leitura; (b) a mesma pergunta de novo → o
+MESMO `artifact_id`, `current_version = 2` (SELECT); (c) o briefing SEM gravar: `BriefingService.gerar` é idempotente
+por período (`publicar` → `_publicacao_existente`) — gerar "hoje" devolve `reaproveitado` e gerar "amanhã" bloquearia o
+tick real de 05/09; o script chama os leitores do serviço e `compor` + `compor_pecas` sobre os dados vivos da Resulta e
+imprime: manchete = headline do item 1, itens com `why_now`/`next_step`, itens duplicados = 0, Work Runs `system` = 0,
+e a frase de trabalhos ausente quando M = 0 — a primeira publicação REAL com a narrativa nova é a do tick de 05/09
+08:00, e o relatório diz isso; (d) a rota da lista pelo guarda (dublê) e **ao vivo**: `next start` +
+`GET /api/dashboard/entregas` (401 sem sessão: a rota executa código) + `npm run test:rotas-montam`; (e) os SELECTs de
+prova colados no relatório; (f) o script arquiva o que criou (`arquivar`, pelos ids que ele mesmo guardou) — 📊 `select
 count(*) from artifacts where tags @> '{canario}' and archived_at is null` → 0 ao fim.
 
 **Dossiê:** página nova em `docs/canon/reports/dossies/dossies-autobrokers.html` — "095 · Relatórios que o corretor
@@ -575,18 +638,18 @@ um, com que frequência aparece e por qual regra (tick, política de horário, s
 
 ```
 NOVOS       lib/relatorios/tipos.ts · app/api/dashboard/relatorios/placar/route.ts · components/relatorios/Placar.tsx ·
-            backend/app/comercial/narrativa.py · backend/scripts/arquivar_relatorios_de_teste_095.py ·
+            backend/app/comercial/narrativa.py · backend/scripts/arquivar_relatorios_de_teste_095.py · backend/scripts/canario_095.py ·
             scripts/relatorios-dizem-o-que-sao.test.mjs · backend/tests/test_o_relatorio_abre_pelo_achado.py ·
             docs/canon/reports/SPEC-095-EXECUTION-REPORT.md
 FRONTEND    app/api/dashboard/entregas/route.ts · app/dashboard/entregas/EntregasClient.tsx · app/dashboard/entregas/page.tsx ·
 (1 escritor) app/dashboard/entregas/[artifactId]/page.tsx · app/dashboard/entregas/[artifactId]/arquivo/route.ts ·
-            app/dashboard/entregas/rotina/[runId]/page.tsx (só o rótulo) · lib/navigation.ts (1 linha) ·
-            app/dashboard/chat/page.tsx (1 efeito) · components/InputArea/index.tsx (1 prop) · package.json (1 script)
+            app/dashboard/entregas/rotina/[runId]/page.tsx (só o rótulo) · app/dashboard/atividades/page.tsx (1 linha: `?tipo=tudo`) · lib/navigation.ts (1 linha) ·
+            app/dashboard/chat/page.tsx (3 linhas: inicializador + consumo no efeito da URL) · components/InputArea/index.tsx (1 prop)
 BACKEND     backend/app/comercial/evidence_pack.py · backend/app/agents/tools/executive_intelligence.py ·
 (1 escritor) backend/app/agents/tools/relatorios_comerciais.py · backend/app/services/artifacts/service.py ·
             backend/app/services/intelligence/workflows.py · backend/app/services/intelligence/briefing_service.py ·
-            backend/app/services/routines/billing_collection.py (só subject_ref/data_as_of) · backend/tests/test_o_canario_do_pulso_360.py (a variável)
-DESENHISTA  scripts/entregas-tudo-abre.test.mjs · scripts/entregas-mostra-o-historico.test.mjs (migração) + os 2 guardas novos
+            backend/app/services/routines/billing_collection.py (só produtor/data_as_of no subject_ref) · backend/app/agents/tools/listar_entregas.py (1 linha, `:180`)
+DESENHISTA  os 2 guardas novos + package.json (1 script). Os 2 guardas da 078 ficam como estão e continuam verdes (📊 provado por mutação)
 NÃO TOCAR   backend/app/services/intelligence/{schemas,finding_engine,signal_service}.py (o Fabric não muda: a 094 só o LÊ) ·
             backend/app/comercial/metricas/* (nenhuma métrica nova) · app/r/[token]/route.ts (link público: fora) ·
             backend/app/services/artifacts/{blocks,render,styles}.py (nenhum bloco novo) · services/skills/* (F-094.1-01) ·
@@ -632,6 +695,8 @@ NOVA  P-095-DATA-AS-OF-LEGADO  🤖 136 versões antigas com `data_as_of` = cari
 NOVA  P-095-SEARCH             🤖 busca no servidor por gatilho (§5)
 NOVA  P-095-PDF                🧑 renderizador de PDF por gatilho (§5)
 NOVA  P-095-TICK-OLHA-953-VEZES 🤖 `intelligence.detect_signals` rodou 953× para 32 sinais na Resulta (📊 1.10) — cadência do tick para a SPEC-097
+NOVA  P-095-TRABALHO-PRONTO    🤖 o briefing só conhece `work_runs` como "trabalho pronto"; execuções de rotina/auxiliar ("Cobrança Feita rodou") não
+                                entram — com o relógio fora, M = 0 em 5/5 dias. Destrava: `_trabalhos` ler `routine_runs`/`auxiliary_runs` (SPEC-097)
 ```
 
 ## 7. 🧑 A caixa do Founder (o executor acrescenta)
@@ -646,6 +711,11 @@ NOVA  P-095-TICK-OLHA-953-VEZES 🤖 `intelligence.detect_signals` rodou 953× p
 5  O briefing continua saindo só no painel (1.8), às 08:00, igual nas três corretoras. WhatsApp/e-mail do briefing é decisão sua e entra com o
    delivery ledger (§5). E o horário por corretora é do perfil de briefing — hoje ninguém o mudou.
 6  "Dados de 4 de setembro, 02:55" era a hora da escrita, não do dado, em 136/136 peças. Some; volta só quando quem publicou souber a data.
+7  Os "20 trabalhos prontos" da manchete de 31/08 eram o relógio da plataforma (📊 40 de 41 itens de trabalho dos 5 últimos briefings são
+   `intelligence.detect_signals`). Com o relógio fora, a frase SOME quando não há trabalho pedido — e a Resulta terá M = 0 até uma rotina
+   rodar. Se preferir ver "Cobrança Feita rodou" como trabalho pronto, é a P-095-TRABALHO-PRONTO (SPEC-097).
+8  O placar de "trabalhos pedidos" mostra 14 na Resulta e 0 nas outras duas — e os 14 são execução de SPEC (081 e 094.1). É verdade e é
+   pouco: o número cresce quando o chat e as rotinas forem usados de verdade. Os outros contadores (conversas, relatórios, sinais) já têm chão.
 ```
 
 ## 8. O gate final da SPEC
@@ -657,7 +727,8 @@ GUARDAS ........... relatorios-dizem-o-que-sao (≥ 11 blocos com PAR) · test_o
 RED TEAM .......... 1 lente, contexto limpo, sobre o diff: cross-tenant (lista, placar, ?versao=, payload->findings) · identidade que colide
                     (mesmo período, templates diferentes; mesmo template, corretoras diferentes) · nome de pessoa no título · canário sem variável ·
                     placar com `system` · `data_as_of` voltando a now() · efeito do chat que envia · briefing com Work Run `system`
-CANÁRIO VIVO ...... F(a)–(f) com SELECTs colados; limpeza aplicada com VERIFY antes/depois; nenhuma peça `canario` viva ao fim
+ORDEM ............. E no ar ANTES de B.4; B.4 ANTES do canário que publica (E11)
+CANÁRIO VIVO ...... `canario_095.py`: B.4 → (a)(b) → (c) sem gravar → (d) → (e) → (f); SELECTs colados; nenhuma peça `canario` viva ao fim
 ROTAS ............. test:rotas-montam + next start + 1 GET a /api/dashboard/entregas
 SUÍTE ............. inteira 1× com a árvore parada; contagem do conftest no relatório
 ENTREGA ........... git push origin <sha>:main com a saída colada; INDICE, dossiê (republicado), memória, prompt da 096 preenchido
