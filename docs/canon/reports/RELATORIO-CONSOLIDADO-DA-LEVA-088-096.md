@@ -2,7 +2,7 @@
 
 > **Para quem lê só isto:** o que cada SPEC entregou, o número medido, a nota, o tempo, o que ficou
 > pendente e o que o Founder precisa fazer. Os relatórios por SPEC continuam em `docs/canon/reports/`
-> e valem como fonte; este é o índice com veredito. **Em construção — atualizado a cada SPEC fechada.**
+> e valem como fonte; este é o índice com veredito. **Atualizado em 03/09/2026 ~21:10, ao pausar o protocolo para a decisão do ritmo.**
 >
 > Orquestrador: Fable 5.1 · subagentes: Opus 5 · início da leva: 02/09/2026 22:40 · árvore `AutoBrokers-FIX`
 
@@ -17,9 +17,11 @@
 | **091** Protocol/Process Factory | — | — | — | — | **ABSORVIDA** pela v11 (INDICE 03/09) | — |
 | **093-B** O sinistro deixa rastro | sombra `claims.shadow` no Work OS, 10 eventos sem texto, digest de variantes, Central, admin | CRÍTICO | 8–13h → 📊 **7h15** | **88** | ✅ push 03/09 09:5x | smith-api + smith-web |
 | **PROTOCOLO v11 → v11.1** | lente do DADO · pares mínimos · conserto salvo completo | — | 📊 20 min | — | ✅ push 03/09 | docs |
-| **094** O Pulso 360 não pertence à InfoCap | censo InfoCap, CBIM, port/adapter, registry, Evidence Pack, tool, Artifact, canário ×3 | CRÍTICO | 14–18h → {094_REALIZADO} | {094_NOTA} | em execução (convertida 03/09 ~09:40) | {094_DEPLOY} |
-| **095** Artifact & Delivery Hub | {095} | | | | fila | |
-| **096** Chat runtime / interaction shell | {096} | | | | fila | |
+| **094** O Pulso 360 não pertence à InfoCap | censo InfoCap, CBIM, port/adapter, registry, Evidence Pack, tool, Artifact, canário ×3 | CRÍTICO | 14–18h → ≈9h em 3 janelas | **84** | ✅ push 03/09 ~21:00 | smith-api + APLICAR a migration de seed |
+| **094.1** A fábrica de relatórios | convertida em 03/09 (propor métrica com Approval · 5 relatórios obrigatórios · SUSEP × carteira · protocolo COMO-NASCE-UM-RELATORIO) | CRÍTICO | 10–14h | — | **aguarda a decisão do ritmo** | — |
+| **095** Artifact & Delivery Hub | proposta 9 | | | | fila | |
+| **096** Chat runtime / interaction shell | proposta 10 | | | | fila | |
+| **097 · 098** | propostas + research packs chegaram em 03/09 | | | | fila | |
 
 📊 Todas as SPECs fechadas: `git rev-list --count origin/main..HEAD` = 0 no fim de cada uma; saída do `push` colada
 no relatório de cada uma.
@@ -78,23 +80,35 @@ corretora × sequência), ECO do `humano_respondeu`, BUFFER de 8 s que pode perd
 atendente, LGPD com jurista, backfill de 2.187 sessões (decisão do Founder). Relatório:
 `SPEC-093-B-EXECUTION-REPORT.md`.
 
-## 4. SPEC-094 — O Pulso 360 não pertence à InfoCap · {094_NOTA}
+## 4. SPEC-094 — O Pulso 360 não pertence à InfoCap · nota 84
 
 **Conversão (03/09, ~1h30):** investigador + 6 referências reabertas + aquecimento (nota 74, 16 perguntas
 medidas, 15 emendas aplicadas). Achados que mudaram a SPEC: não há carteira no banco (a 081 é 100%
 read-through); o Intelligence Fabric já tem Finding/Evidence/Briefing e tem leis (`domain` derivado,
 evidência obrigatória); o resolver por conexão já existe em `infocap_connector.py`; a credencial da InfoCap
 não existe nesta máquina fora de `tenant_connections`; um nome de produtor real está num teste versionado.
-{094_EXECUCAO}
+**Execução (03/09, ≈9h em 3 janelas, ≈3,0 M tokens):** censo da CorpAPI pelas 3 conexões (86 GET; 18 rotas "negadas" não existem; `/sinistros`
+existe com 5.729 registros; `val_r = val_c × per_r/100` provado; **P1: Amandus e Resulta são a mesma conta**); ELO (as tools da 081 devolvem
+bloco citável); CBIM · port · adapter sobre o resolver existente · manifesto fail-closed · registry com 16 métricas versionadas e base temporal ·
+Evidence Pack · tool `executive_intelligence` · template `executive.pulse360` + migration de seed · provider de referência. Painel v11.2 (2 lentes
++ red team: 12 blockers) → conserto → **juiz fresco com canário VIVO: FAIL 62 — a tool não rodava no grafo** (fakes que respondiam a `await`
+esconderam isso de 366 asserções) → 2ª rodada → guarda 284 ok · canário 115 · suíte 933/6 (os 6 passam isolados). 📊 Canário vivo: Resulta
+972 apólices · R$ 1.472.165,72 · cobertura 87%; AutoFleet 2.300 · R$ 1.746.002,17; Amandus recusada em 1,1 s; 2 Artifacts publicados.
+**Ficou:** aplicar a seed (🧑), F-094-07 (🧑), 10 GET/≈80 s por pergunta, um Artifact por pergunta não-cacheada, mapa de produtor vazio,
+`/producao` com parâmetro errado no conector de atendimento (P-094-PRODUCAO-500). Relatório: `SPEC-094-EXECUTION-REPORT.md`.
 
-## 5. {095_096}
+## 5. 094.1 convertida · 095, 096, 097, 098 na fila · protocolo PAUSADO
+
+Ver `DECISAO-DO-RITMO-03-09-2026.md`: três sugestões com nota (A 78 · **B 88** · C 72; continuar como está 45). Nenhuma SPEC nova começa antes da decisão.
 
 ---
 
 ## 6. 🧑 O QUE O FOUNDER PRECISA FAZER
 
 ```
-1. Implantar smith-api e smith-web (088 + 093-B estão na main; {094_IMPLANTAR})
+1. Implantar smith-api e smith-web (088 + 093-B + 094 estão na main) e APLICAR `backend/supabase/migrations/20260903_01_spec094_seed_template_pulse360.sql`
+6. Decidir F-094-07 (Amandus = Resulta na CorpAPI), F-094-08 (InfoCap → Agger/Quiver), F-094-09 (escrita no InfoCap), F-094-10 (WhatsApp 01/10)
+7. Escolher o RITMO (A · B · C) em DECISAO-DO-RITMO-03-09-2026.md
 2. Rotacionar as chaves coladas no chat de 03/09 (Supabase service role, OpenAI, Anthropic, Twilio, CORP_INFOCAP_*)
 3. Decidir: backfill das 2.187 sessões históricas com sinistro (F-093B-04) · handoff tool ligada (F-093B-05)
 4. Decidir: nome de produtor no HISTÓRICO do git (F-094-05)
