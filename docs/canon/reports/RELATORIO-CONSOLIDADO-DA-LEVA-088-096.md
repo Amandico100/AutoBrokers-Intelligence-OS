@@ -18,7 +18,7 @@
 | **093-B** O sinistro deixa rastro | sombra `claims.shadow` no Work OS, 10 eventos sem texto, digest de variantes, Central, admin | CRÍTICO | 8–13h → 📊 **7h15** | **88** | ✅ push 03/09 09:5x | smith-api + smith-web |
 | **PROTOCOLO v11 → v11.1** | lente do DADO · pares mínimos · conserto salvo completo | — | 📊 20 min | — | ✅ push 03/09 | docs |
 | **094** O Pulso 360 não pertence à InfoCap | censo InfoCap, CBIM, port/adapter, registry, Evidence Pack, tool, Artifact, canário ×3 | CRÍTICO | 14–18h → ≈9h em 3 janelas | **84** | ✅ push 03/09 ~21:00 | smith-api + APLICAR a migration de seed |
-| **094.1** A fábrica de relatórios | convertida em 03/09 (propor métrica com Approval · 5 relatórios obrigatórios · SUSEP × carteira · protocolo COMO-NASCE-UM-RELATORIO) | CRÍTICO | 10–14h | — | **aguarda a decisão do ritmo** | — |
+| **094.1** A fábrica de relatórios | 12 métricas novas (sinistros, funil, cancelamentos, cross-sell, pendências, SUSEP × carteira), o chat lista e propõe com Approval, protocolo COMO-NASCE-UM-RELATORIO com guarda | CRÍTICO · opção B | 12–16h → ≈8h30 em 2 janelas | **82** | ✅ push 04/09 ~03:45 | smith-api (zero migration) |
 | **095** Artifact & Delivery Hub | proposta 9 | | | | fila | |
 | **096** Chat runtime / interaction shell | proposta 10 | | | | fila | |
 | **097 · 098** | propostas + research packs chegaram em 03/09 | | | | fila | |
@@ -97,25 +97,41 @@ esconderam isso de 366 asserções) → 2ª rodada → guarda 284 ok · canário
 **Ficou:** aplicar a seed (🧑), F-094-07 (🧑), 10 GET/≈80 s por pergunta, um Artifact por pergunta não-cacheada, mapa de produtor vazio,
 `/producao` com parâmetro errado no conector de atendimento (P-094-PRODUCAO-500). Relatório: `SPEC-094-EXECUTION-REPORT.md`.
 
-## 5. 094.1 convertida · 095, 096, 097, 098 na fila · protocolo PAUSADO
+## 5. SPEC-094.1 — A fábrica de relatórios · nota 82 (primeira sob a OPÇÃO B)
 
-Ver `DECISAO-DO-RITMO-03-09-2026.md`: três sugestões com nota (A 78 · **B 88** · C 72; continuar como está 45). Nenhuma SPEC nova começa antes da decisão.
+**Entregou:** 12 métricas novas com pergunta verificada e golden (sinistros ×3, funil ×2, cancelamentos, cross-sell, pendências, mercado ×4); a InfoCap
+com 5 leitores novos e PII descartada na fronteira; o primeiro dado externo (SUSEP SES, 1,8 M linhas, ingestão por rotina de plataforma em 30 s,
+17 MB de pico) → `market.loss_ratio` por seguradora × grupo de ramo e `claims.loss_ratio_vs_market` com mapa de 61 siglas (84% do prêmio) e 42 ramos;
+`listar_entregas`; `PropostaDeMetrica` sem valor → Work Run + `approval_requests` (primeiro uso do HITL da 055) → `promover` com decisão; o protocolo
+`COMO-NASCE-UM-RELATORIO.md` com guarda de 47 asserções. Zero migration. 📊 Vivo (Resulta): 41 sinistros abertos · R$ 746.139,31 · 9,62% cancelados ·
+Porto grupo auto 0,5801 = CSV; "como estamos?" publica 26 métricas em 162 s; Amandus recusada.
+**O laço (B):** aquecimento (12 emendas) → BLOCO 0 (funil existe; `cancelado=T` INCLUI; sondagem segura de escrita: nada cria por acidente) → 3 builders
+em paralelo sem conflito → painel DADO + red team (8 blockers: a fiação por view não existia; `cancelado` daria 0%) → conserto → juiz fresco vivo FAIL 58
+(4 herdados: uma métrica PARTIAL derrubava o Pulso inteiro; `subject_id` texto em coluna uuid; `decided_at` inexistente; ramo ignorado) → 3ª rodada com
+prova viva → suíte 934/7 → 2 regressões reais em guardas de SPECs anteriores consertadas no produto → gate.
+**Ficou:** 162 s por pergunta (a InfoCap), SES só 2026 até a rotina rodar, junção sinistro×carteira vazia, caminho feliz da promoção espera a 1ª decisão
+do Founder (há uma proposta pendente de verdade), 8 ramos e 47 siglas UNKNOWN. Relatório: `SPEC-094.1-EXECUTION-REPORT.md`.
+
+## 6. Ritmo: OPÇÃO B decidida · 095, 096, 097, 098 na fila — a próxima em SESSÃO NOVA
+`DECISAO-DO-RITMO-03-09-2026.md` (A 78 · **B 88** · C 72; como estava 45). Primeira medição sob B (094.1): ≈2,8 M tokens, 8h30, nota 82, 1 janela morta.
+O corte que falta é a sessão nova por SPEC: `PROMPT-DE-ABERTURA-DE-SESSAO-POR-SPEC.md`.
 
 ---
 
-## 6. 🧑 O QUE O FOUNDER PRECISA FAZER
+## 7. 🧑 O QUE O FOUNDER PRECISA FAZER
 
 ```
 1. Implantar smith-api e smith-web (088 + 093-B + 094 estão na main) e APLICAR `backend/supabase/migrations/20260903_01_spec094_seed_template_pulse360.sql`
 6. Decidir F-094-07 (Amandus = Resulta na CorpAPI), F-094-08 (InfoCap → Agger/Quiver), F-094-09 (escrita no InfoCap), F-094-10 (WhatsApp 01/10)
-7. Escolher o RITMO (A · B · C) em DECISAO-DO-RITMO-03-09-2026.md
+7. Decidir a proposta pendente da Resulta (F-094.1-08), o Tool Gateway (F-094.1-01) e se a 094.2 (portal) entra antes da 095 (F-094.1-03)
+8. Abrir a 095 num CHAT NOVO com PROMPT-DE-ABERTURA-DE-SESSAO-POR-SPEC.md
 2. Rotacionar as chaves coladas no chat de 03/09 (Supabase service role, OpenAI, Anthropic, Twilio, CORP_INFOCAP_*)
 3. Decidir: backfill das 2.187 sessões históricas com sinistro (F-093B-04) · handoff tool ligada (F-093B-05)
 4. Decidir: nome de produtor no HISTÓRICO do git (F-094-05)
 5. Piloto (≈ 08/09): a sombra grava desde o deploy com os agentes desligados; em 14 dias medir sombras × sessões com `sinistro`
 ```
 
-## 7. Riscos remanescentes da leva
+## 8. Riscos remanescentes da leva
 - Harness de mutação: `test_todos_os_guardas_script_rodam.py` deixa arquivo mutado quando um guarda estoura o tempo
   (P-088-MUT / P-093B-HARNESS) — a suíte inteira só é confiável com árvore parada e o harness restaura.
 - Este ambiente não tem os requirements do backend (P-093B-REQS): ganchos que importam `app.api.webhook` só rodam por casca; no contêiner rodam.
