@@ -615,6 +615,29 @@ CHAVES_DA_PROPOSTA = frozenset({
 })
 
 
+def selar_metricas(corpo: Dict[str, Any]) -> Dict[str, Any]:
+    """Carimba `origem: "registry"` em cada métrica do pacote JÁ serializado.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026 — o selo mora AQUI, e não dentro do
+    laço de `bloco_citavel`, porque ele tem DOIS leitores: o bloco `<<PACK>>`
+    que o modelo cita e o `payload.evidence_pack` do Artifact que o dono abre.
+
+    📊 O defeito medido pelo canário (`test_o_canario_do_pulso_360`,
+    *"as `metrics` do chat e as do Artifact são IDÊNTICAS"*): o carimbo só era
+    escrito no caminho do chat. As duas listas saíam do MESMO `pacote`, com o
+    mesmo `pack_id` e os mesmos números — e diferiam numa chave. Um envelope
+    que se diz o mesmo em dois lugares e não é o mesmo é exatamente o que o
+    `pack_id` existe para negar.
+
+    ⚠️ O selo é escrito por quem SABE que o número veio do registry — esta
+    função —, e nunca copiado de um campo do próprio item, que qualquer caminho
+    novo poderia preencher com outra coisa.
+    """
+    for item in corpo.get("metrics", ()):
+        item["origem"] = "registry"
+    return corpo
+
+
 def bloco_citavel(pacote: Any,
                   propostas: Optional[List[PropostaDeMetrica]] = None) -> str:
     """O bloco `<<PACK>>` com o SELO de origem e as propostas ao lado.
@@ -648,12 +671,7 @@ def bloco_citavel(pacote: Any,
 
     from app.comercial.evidence_pack import ABERTURA, FECHAMENTO
 
-    corpo = pacote.serializar()
-    for item in corpo.get("metrics", ()):
-        # 🔴 O selo é escrito por quem SABE que o número veio do registry —
-        # aqui —, e não copiado de um campo do próprio item, que qualquer
-        # caminho novo poderia preencher com outra coisa.
-        item["origem"] = "registry"
+    corpo = selar_metricas(pacote.serializar())
     saida: List[Dict[str, Any]] = []
     for pr in (propostas or []):
         # 🔴 SPEC-094.1, conserto de 04/09/2026 — a recusa é por TIPO, e depois
@@ -1502,7 +1520,10 @@ class ExecutiveIntelligenceTool(BaseTool):
         blocos = self._compor(pacote, p, anterior, metricas, comparacoes, agora,
                               rotulos)
         payload = {
-            "evidence_pack": pacote.serializar(),
+            # 🔴 O MESMO envelope selado que vai ao chat (`selar_metricas`):
+            # mesmo `pack_id`, mesmas `metrics`, mesma chave `origem`. Serializar
+            # aqui sem o selo fazia as duas listas divergirem numa chave.
+            "evidence_pack": selar_metricas(pacote.serializar()),
             "periodo": {"inicio": str(p.inicio), "fim": str(p.fim),
                         "rotulo": p.rotulo},
             "comparacao": comparacoes,

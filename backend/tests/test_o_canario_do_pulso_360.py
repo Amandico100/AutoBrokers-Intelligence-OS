@@ -722,9 +722,26 @@ def canario_de(slug):
           valor(pack, "commission.broker_received") == "UNAVAILABLE",
           valor(pack, "commission.broker_received"))
     bases = {m["metric_id"]: m["time_basis"] for m in pack["metrics"]}
-    check("%s: toda metrica declara base temporal" % slug,
-          all(b in ("POLICY_VALID_FROM", "POLICY_VALID_TO") for b in bases.values()),
+    # 🔴 O vocabulario vem do PRODUTO, e nao de um literal copiado aqui
+    # (CLAUDE.md §9.3: quando o fato muda, o teste muda com ele). A SPEC-094.1
+    # acrescentou `COMPETENCIA` — o mes fechado do regulador, que nao e inicio
+    # nem fim de vigencia de apolice nenhuma. Repetir o par antigo neste
+    # arquivo reprovaria a base CERTA e ensinaria a ignorar o guarda.
+    from app.comercial.evidence_pack import BASES_ACEITAS
+
+    check("%s: toda metrica declara base temporal do vocabulario do produto "
+          "(%s)" % (slug, ", ".join(BASES_ACEITAS)),
+          all(b in BASES_ACEITAS for b in bases.values()),
           bases)
+    # 🔴 O PAR (CLAUDE.md §9.2): o vocabulario CONSEGUE reprovar. Sem esta
+    # linha, um `BASES_ACEITAS` que aceitasse qualquer coisa — ou um dia virasse
+    # a lista inteira das bases possiveis — passaria na assercao de cima sem
+    # guardar nada.
+    check("%s: CONTROLE: uma base FORA do vocabulario reprova" % slug,
+          "POLICY_QUALQUER_COISA" not in BASES_ACEITAS
+          and not all(b in BASES_ACEITAS
+                      for b in list(bases.values()) + ["POLICY_QUALQUER_COISA"]),
+          BASES_ACEITAS)
     check("%s: renewal.exposure conta pelo FIM da vigencia" % slug,
           bases.get("renewal.exposure") == "POLICY_VALID_TO", bases.get("renewal.exposure"))
     check("%s: production.policy_count conta pelo INICIO" % slug,

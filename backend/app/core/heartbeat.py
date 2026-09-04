@@ -592,6 +592,14 @@ SEM_CARD_POR_DECISAO: Tuple[Tuple[str, str], ...] = (
     # agente chamado "claims.shadow" que devia estar rodando — e não existe: quem roda
     # é o `sombra_sinistros`, com a chave `intelligence.claims_shadow_digest`.
     ("claims.shadow", "registro sem fila, é o objeto observado, não um trabalhador"),
+    # SPEC-094.1 BLOCO D: a PROPOSTA de métrica é um registro durável do que o dono
+    # perguntou e o registry ainda não sabe responder. 🔴 Ela espera um humano, não um
+    # worker: quem a fecha é o Approval, e é ele o card. Dar-lhe card de trabalhador
+    # diria ao operador que há um agente parado — quando o que há é uma decisão
+    # pendente, que é outra coisa e tem outro dono.
+    ("metric.proposal",
+     "proposta de métrica aguardando aprovação humana (SPEC-094.1 BLOCO D): não é "
+     "trabalhador, não pulsa; o Approval é o card"),
     ("bridge.routine.execute", "ponte de rotina, contada no auxiliar"),
     ("bridge.auxiliary.execute", "ponte de auxiliar, contada no auxiliar"),
     ("bridge.portal.job", "portal worker, tela própria"),
