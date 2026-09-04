@@ -13,7 +13,7 @@
 > 129 mensagens por conversa, máximo 1.326, 71 conversas acima de 80 — hoje tudo carrega de uma vez); (6) **o relatório
 > nasce dentro da conversa** como card clicável (`artifact.ready`), como os Artifacts do Claude.
 >
-> **v1.0 · 04/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha CRÍTICO** (piso da §3.2: autenticação, sessão e
+> **v1.1 · 04/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha CRÍTICO** · v1.0 + aquecimento (Opus, contexto limpo, 16 perguntas, 141 mil tokens: **nota 82 → 16 emendas E1–E16 aplicadas**; as duas afirmações falsas assinadas — p50 e `version` — foram refutadas por comando; 3 blocos de números da §1 reproduzidos) (piso da §3.2: autenticação, sessão e
 > o filtro `company_id`; migration com índice) · nasce da proposta `specs-propostas/10 - SPEC-096-chat-runtime-performance-
 > interaction-shell.md` (02/09, 4.096 linhas) + o research pack (92 seções) + a medição de hoje (orquestrador +
 > investigador/pesquisador) + a instrução do Founder de 04/09: **"sempre que tiver dúvida de como deve ser o chat, pense em
@@ -30,8 +30,8 @@
 > só acompanha porque ela está no fim — se ela tivesse rolado para cima para reler, a tela ficaria parada e um botão
 > "Voltar ao fim" apareceria. Ela clica "Parar" no meio: o que já veio fica, marcado "parada por você", e a pergunta não
 > some. Ela aperta Enter duas vezes por engano na pergunta seguinte: UMA pergunta, UMA resposta. O Wi-Fi cai no meio da
-> resposta: a tela diz "Reconectando…"; quando ela recarrega, a resposta INTEIRA está lá, porque o servidor terminou sem
-> ela. Ela pede "gera o Pulso 360": a resposta vem com um card "Pulso 360 · 2026 · Relatório executivo · Abrir ·
+> resposta: a tela diz "Reconectando…" e, 1,5 s depois, recarrega a conversa sozinha (o servidor terminou de gravar por A.4 — não há replay do
+> vivo nesta leva, §5); a resposta INTEIRA está lá. Ela pede "gera o Pulso 360": a resposta vem com um card "Pulso 360 · 2026 · Relatório executivo · Abrir ·
 > Perguntar sobre isso", e o card continua lá amanhã. Quando a corretora fica sem crédito, o que aparece não é uma
 > resposta do AutoBrokers: é um aviso com cara de aviso, e nada disso entra na memória da conversa. E a conversa do
 > ano passado, com 400 mensagens, abre em menos de um segundo com as 60 últimas e "carregar anteriores" no topo.
@@ -50,8 +50,8 @@
 📊 `app/dashboard/chat/page.tsx:364-378`: o POST para `/api/chat/stream` leva `companyId`, `userId` e `agentId` no corpo.
 `app/api/chat/stream/route.ts:10-40`: `const body = await req.json()` → `fetch(backend/chat/stream, {body: JSON.stringify(body)})`
 — **nenhuma leitura da sessão**. `middleware.ts:121-127`: `pathname.startsWith('/api/')` → `return response` antes de
-qualquer validação. `backend/app/api/chat.py:293-400`: `companyId` do corpo carrega `companies.*` (`:395`), decide a
-porteira de crédito (`:349`, `pode_consumir(companyId)`), monta o grafo por `company_id` + `agent_id` (`:466`) — **o
+qualquer validação. `backend/app/api/chat.py:293-400`: `companyId` do corpo carrega `companies.*` (`:393`), decide a
+porteira de crédito (`:357`, `pode_consumir(companyId)`), monta o grafo por `company_id` + `agent_id` (`:482`) — **o
 cérebro, a memória e o crédito são da corretora que o corpo disser**. O backend fica numa URL pública
 (`NEXT_PUBLIC_API_URL`, `lib/backend-url.ts:21`); `/chat/stream` não exige chave interna (`grep -n "X-Internal-Key" chat.py` →
 0) e as checagens de widget (domínio + limite) só rodam quando **não** há `userId` (`:432`, `if agent_data and not
@@ -69,8 +69,8 @@ inclusive `role: 'assistant'`) em qualquer conversa cujo UUID conheça. RLS est�
 
 ### 1.3 · Um turno, três escritores, e a pergunta pode não ser gravada
 📊 `page.tsx:361`: `saveMessage(convId, 'user', …)` — **sem `await`**, em paralelo com o stream (`:364`). O backend grava
-só a resposta (`chat.py:632-640`), **depois** do stream inteiro (`:596`, `full_response += token`), e só se `full_response.strip()`
-(`:603`). Se o stream levanta no meio: `yield {"error": str(e)}` (`:655-657`) e a persistência **não roda** — o corretor viu
+só a resposta (`chat.py:632-640`), **depois** do stream inteiro (`:608`, `full_response += token`), e só se `full_response.strip()`
+(`:614`). Se o stream levanta no meio: `yield {"error": str(e)}` (`:655-657`) e a persistência **não roda** — o corretor viu
 metade da resposta e o refresh mostra nada. 📊 `messages`: 12.502 `user` × 12.528 `assistant` — as duas contagens não batem, e
 a diferença é a soma das duas assimetrias (resposta sem pergunta e pergunta sem resposta). **A resposta é gravada com o
 `id` que o browser inventou** (`assistantMessageId`, `:636-637`); não há chave de idempotência da PERGUNTA: Enter duplo =
@@ -78,17 +78,17 @@ duas perguntas gravadas e dois streams (`animated-ai-chat.tsx:201-205` só testa
 depois do primeiro `setIsLoading`, que é assíncrono ao segundo evento).
 
 ### 1.4 · Tudo é `{"token"}` — e o que não é resposta vira resposta
-📊 `chat.py`: "Creditos insuficientes…" (`:355`), "⚠️ Nenhum agente configurado" (`:411`), "⚠️ Agente não encontrado"
-(`:430`), o bloqueio do guardrail (`block_reason`, `:553`), "Erro temporário de segurança" (`:576`) — **todos** saem como
-`{"token": …}`; `graph.py:1822`: a exceção vira o texto "[Erro interno no servidor…]" **dentro do stream de conteúdo**, e
+📊 `chat.py`: "Creditos insuficientes…" (`:362`), "⚠️ Nenhum agente configurado" (`:411`), "⚠️ Agente não encontrado"
+(`:437`), o bloqueio do guardrail (`block_reason`, `:553`), "Erro temporário de segurança" (`:576`) — **todos** saem como
+`{"token": …}`; `graph.py:1805`: a exceção vira o texto "[Erro interno no servidor…]" **dentro do stream de conteúdo**, e
 por isso é gravada como resposta e vira memória (`MemoryService`, `graph.py:1770-1810`, lê `final_state.messages`). 📊
-`{"error": str(e)}` (`:656`): a exceção crua vai ao browser. O único evento além do token é o heurístico
+`{"error": str(e)}` (`:668`): a exceção crua vai ao browser. O único evento além do token é o heurístico
 `{"type":"ucp_…` que o frontend procura **dentro do texto** com contador de chaves (`page.tsx:440-481`, 42 linhas). A
 SPEC-081 (P-227/P-228) já tinha visto que um evento de progresso "contaminaria `full_response`" e escolheu o
 contorno: o modelo ANUNCIA que vai consultar. **A causa é o contrato, não o modelo.**
 
 ### 1.5 · O que o runtime já emite e a tela não vê — e o que ele NÃO emite
-📊 `graph.py:1663-1717`: `astream_events(version="v2")`; só `on_chat_model_stream` do nó `agent` vira token e `on_chain_end` do
+📊 `graph.py:1663`: `astream_events(..., version="v1")`; só `on_chat_model_stream` do nó `agent` vira token e `on_chain_end` do
 `agent` é o fallback — **dois eventos, mais nada**. 🔴 `on_tool_start`/`on_tool_end` **NUNCA são emitidos**: o nó `tools` não é o
 `ToolNode` — `graph.py:651` é `partial(tool_node, tools=tools)` e `nodes.py:1089-1095` chama `tool._arun(...)`/`tool._run(...)`, os
 métodos privados que pulam o CallbackManager (📊 `grep -c "\.ainvoke(" nodes.py` → 1, o LLM). E eventos `custom` não passam em `v1`
@@ -100,7 +100,8 @@ a última mensagem do assistente está vazia: entre o primeiro token e o fim de 
 
 ### 1.6 · A conversa inteira carrega de uma vez, e cada token re-renderiza o Markdown inteiro
 📊 `app/api/conversations/route.ts:139-146`: `select('*').eq(conversation_id).order(created_at)` — sem limite.
-📊 banco: 723 conversas · 25.030 mensagens · p50 = 23, **p95 = 129, máx = 1.326** mensagens por conversa; 71 conversas
+📊 banco: 723 conversas · 25.030 mensagens · p50 = 11, **p95 = 129, máx = 1.326** mensagens por conversa (a mediana é baixa; o histórico longo é WhatsApp — 📊 663
+conversas WhatsApp × 15 web nos últimos 30 dias — e o BLOCO D existe para o p95/máx, não para a mediana); 71 conversas
 acima de 80; bytes por mensagem avg 60, p95 231 (a conversa de 1.326 é WhatsApp — 📊 663 conversas WhatsApp × 15 web nos
 últimos 30 dias: **o histórico longo é do atendimento, e ele reaproveita a mesma rota**). `page.tsx:485-492`: um
 `setMessages` por token (💭 ≈ 800 por resposta); `MessageBubble.tsx:112`: `<ReactMarkdown>` sem `memo` — o documento
@@ -197,7 +198,7 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
 - **o que ela faz:** 📊 modos `values updates messages custom checkpoints tasks debug`; `get_stream_writer` emite dado próprio. ⚠️ **mudou desde 02/09:** exige **LangGraph ≥ 1.1** e recomenda event streaming para app novo — 📊 nosso `requirements.txt` pina **`langgraph==1.0.3`**.
 - **MODELAMOS:** o `custom` writer como **único** canal de estágio de negócio.
 - **REJEITAMOS:** `debug` e `tasks` no caminho de produção — ruído caro e vazamento de arquitetura.
-- **COMO O JUIZ INSPECIONA:** abre o doc, confere a versão instalada, e confirma que o `version=` do `astream_events` **não é `"v1"`** (em v1 evento `custom` não aparece).
+- **COMO O JUIZ INSPECIONA:** abre o doc, confere a versão instalada, e confirma que o `version=` do `astream_events` é **`"v1"`** e que o estágio NÃO depende de `custom` (que em v1 não aparece) — ele sai das `tool_calls`/`tool_call_chunk`, medidos no BLOCO 0.4.
 
 **5 · Vercel AI SDK — `UIMessage.parts` + resumable streams**
 - `https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-tool-usage` · `https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-resume-streams` (ambos abertos em 04/09/2026, v7)
@@ -233,16 +234,24 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
   `companyId` do corpo · (ii) `/api/messages` não confere o dono · (iii) o backend honra `userId` sem chave interna · (iv) crédito
   insuficiente sai como `token` · (v) exceção crua no stream · (vi) pergunta gravada pelo browser sem `await` · (vii) sem
   `client_request_id` · (viii) conversa carrega sem limite · (ix) `on_tool_start` ignorado · (x) parcial descartado na falha.
-- **0.2** 📊 a prova do P0 por script, em modo canário: um POST ao backend com `userId` de um usuário da AutoFleet e `companyId` da
-  Resulta, `AUTOBROKERS_CANARIO=1`, pergunta "responda só OK" — se o stream responder com o agente da Resulta, o P0 é FATO
-  (hoje INFERÊNCIA). O mesmo script vira a linha de controle do canário final (E.2): depois da SPEC, o mesmo POST devolve 401.
+- **0.2** 📊 a prova do P0 por script, custo ZERO de modelo e nada gravado (E1): POST `{backend}/chat/stream {companyId:<Resulta>,
+  agentId:<uuid inexistente>, sessionId:<novo>, chatInput:"x"}` → 200 SSE "⚠️ Agente não encontrado" (`:437`) = a Resulta FOI
+  carregada (`:393` passou); CONTROLE: mesmo POST com `companyId:<uuid inexistente>` → 404 "Company not found". O par 200×404 é a
+  diferença que **só** o `companyId` do corpo produz, e o `agentId` inexistente aborta antes do grafo (o INSERT em `messages` é `:644`,
+  só com `full_response.strip()`): nenhum token de modelo, nenhuma linha gravada. Depois da SPEC, o mesmo POST (sem chave interna) devolve 401 — é a linha de controle do E.2.
 - **0.3** 📊 TTFT/TTFSE/T_COMPLETE de 3 perguntas (Q1 saudação · Q2 factual da carteira · Q3 pede o Pulso) medidos ANTES,
-  pelo mesmo script, para a régua "não piorou" do E.2.
+  pelo mesmo script (um POST de modelo por pergunta, aceitável), para a régua "não piorou" do E.2.
+- **0.4** 🔴 ANTES de escrever o BLOCO B: despejar TODO evento de `astream_events(version="v1")` num turno REAL com tool (Q3 pede o
+  Pulso), imprimindo `event`, `name`, `metadata.langgraph_node` e — quando `on_chat_model_stream` — `chunk.tool_call_chunks`. O `tool_start`
+  do B.2 depende de o `name` da tool aparecer num `tool_call_chunk`; isso é HIPÓTESE (E13) até esta medição. 📊 há dois provedores
+  (`langchain_service.py:277,284`) e um segundo `bind_tools` (`nodes.py:560`) fora do filtro de nó — se o `name` não vier no chunk, o
+  `tool_start` sai das `tool_calls` do `AIMessage` no `on_chain_end` do nó `agent` (medir qual das duas, e o builder usa a que existir).
 
 ### BLOCO S · Segurança — o piso (backend + BFF)
 - **S.1** `app/api/chat/stream/route.ts`: `resolveSessionCompany()` (`lib/auxiliaries/server.ts:31`) → `{userId, companyId}` (401 sem
   sessão; é o helper que valida a filiação — e é o que faz o seletor de empresa da 047 chegar ao chat); repassa `X-Accel-Buffering: no`
-  ao browser; corpo aceito:
+  ao browser; ⚠️ (E2) a fronteira widget×painel é a ROTA, não o cookie: `/api/chat/stream` é SÓ do painel (📊 1 chamador), o widget usa
+  `/api/chat` — o BFF não faz sniffing de domínio, só exige sessão; corpo aceito:
   `chatInput, sessionId, client_request_id, imageUrl, fileUrl, fileName, options, assistantMessageId`; `companyId/userId/agentId`
   do corpo são IGNORADOS (agent: o da conversa, ou o primeiro ativo da corretora — como o frontend faz hoje, mas no servidor);
   cabeçalho `X-Internal-Key` no fetch ao backend.
@@ -264,7 +273,7 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
 - **A.3** o backend grava a resposta com `payload.turn = {client_request_id, status, ttft_ms, total_ms, stages: [keys], artifacts:
   [refs], error_code}`; status ∈ complete | interrupted | failed; falha depois do 1º token grava o parcial (R9).
 - **A.4** a geração corre em `asyncio.create_task` alimentando uma fila; o gerador SSE lê a fila; desconexão do cliente não
-  cancela a task (R8). Registro em memória `TURNOS_ATIVOS[client_request_id] = task` para o Stop (C.3).
+  cancela a task (R8). Registro em memória `TURNOS_ATIVOS[client_request_id] = task` (referência forte, anti-GC) para o Stop (C.3); a persistência da task usa `except BaseException` (E4: `CancelledError` herda de `BaseException` e o `except Exception` de hoje não a pega).
 
 ### BLOCO B · O protocolo — o chat fala tipado
 - **B.1** `backend/app/api/chat_eventos.py` (puro): `Envelope(seq, type, turn, payload)`, o CATÁLOGO DE ESTÁGIOS (tool → {key,
@@ -278,11 +287,14 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
   `artifact.ready` (📊 nenhuma tool sabe a conversa e a consulta por company+origin colide — 79,7% dos títulos repetem e a
   identidade da 095 cria VERSÃO, não peça: `created_at` não muda. Então: um `ContextVar` `pecas_do_turno` em `chat_eventos.py`, setado
   pelo turno antes do grafo — `asyncio.create_task` copia o contexto e as tools rodam dentro dele — e `ArtifactService.publicar`
-  registra `{artifact_id, title, kind}` nele (3 linhas em `service.py`); o turno emite um `artifact.ready` por peça registrada) → `assistant.content.completed` →
+  registra **só o `artifact_id`** nele (📊 E5: `publicar` seleciona `id, artifact_id, version, status, brand_snapshot` em
+  `artifact_versions` — não conhece `title`/`kind`, que moram em `artifacts`, e tem `return` antecipado na republicação); o turno resolve
+  `title`/`kind` num SELECT em `artifacts` por esses ids ao fim, e emite um `artifact.ready` por peça) → `assistant.content.completed` →
   `turn.completed`; `heartbeat` a cada 15 s sem evento. Porteira, agente ausente, guardrail → `policy.blocked`/`notice`, SEM
   mensagem gravada (R5). Exceção → `error` (R7) + parcial gravado (R9).
-- **B.4** `POST /chat/stop` `{client_request_id}` (modo painel): cancela a task deste processo → grava `interrupted`; não achou → 404
-  (o browser já abortou localmente).
+- **B.4** `POST /chat/stop` `{client_request_id}` (modo painel): cancela a task deste processo → grava `interrupted` com `payload.turn.stopped_by`
+  (E11: 📊 hoje 1 processo/1 worker, `backend/Dockerfile:27` sem `--workers`; o campo torna o Stop-multiprocesso visível se surgir réplica —
+  P-096-STOP-MULTIPROCESSO); não achou → 404 (o browser já abortou localmente).
 
 ### BLOCO C · O shell — a tela do Claude, com a verdade do runtime
 - **C.1** `lib/chat/protocolo.ts`: tipos do envelope v1, `lerEventos(stream)` (parser SSE com `seq` e detecção de lacuna →
@@ -300,7 +312,7 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
 ### BLOCO D · O histórico abre rápido
 - **D.1** `/api/conversations?session_id=` devolve as últimas 60 (consulta `order desc limit 61` → inverte) + `has_more` + `cursor`.
 - **D.2** `/api/messages?conversation_id=&before=<created_at>|<id>&limit=60` (dono conferido, S.3).
-- **D.3** `page.tsx`: "Carregar anteriores" no topo; preserva `scrollHeight` antes/depois; Realtime inalterado.
+- **D.3** `page.tsx`: "Carregar anteriores" no topo; preserva `scrollHeight` antes/depois. 🔴 (E9) o `useEffect(scrollToBottom,[messages])` (`:147-149`) MORRE (ele puxa a tela a cada mensagem e brigaria com "carregar anteriores" e com R11; o scroll passa a ser condicional, C.2). (E10) o dedupe do Realtime passa a ser por `payload.client_request_id` (fallback `id`), nao por `content` (`:189-195`), senao duas perguntas iguais somem da tela.
 
 ### BLOCO E · Canário vivo e telemetria
 - **E.1** `backend/scripts/canario_096.py` (`AUTOBROKERS_CANARIO=1`, Resulta): cria conversa canário (título `canario:096`), 3 turnos
@@ -325,7 +337,7 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
 - **MUTAÇÕES** (por cópia): header `X-Accel-Buffering` removido do BFF → [S.1]; corpo volta a vencer a sessão → [S.1]; `eq(user_id)` removido → [S.3]; chave interna ignorada → [S.2];
   `policy.blocked` volta a `token` → [B.3]; `str(e)` de volta → [B.3]; `await` removido da gravação da pergunta → [A.2]; índice
   sem `WHERE` → [A.1]; limite removido → [D.1]; `on_tool_start` ignorado → [B.2]; parcial não gravado → [A.3];
-  `setTimeout` num estágio → [C.3]; `showAgentSelector={true}` → [C.2].
+  `setTimeout` num estágio → [C.3]; `showAgentSelector={true}` → [C.2]; limiar do autoscroll 120→∞ (sempre rola) → [16] (E14).
 
 ---
 
@@ -351,7 +363,8 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
 ## 6. PENDÊNCIAS QUE NASCEM AQUI (vão para `PENDENCIAS.md` ao fechar)
 P-096-SESSION-FAIL-OPEN (o `DELETE /session` fail-open, `chat.py:689`) · P-096-REPLAY-AO-VIVO (§5 linha 2) · P-096-STOP-MULTIPROCESSO
 (o Stop cancela só neste processo; com 2+ réplicas da API precisa de Redis) · P-096-MEMORIA-LE-ERRO (📊 a memória já guardou
-"[Erro interno…]" como resposta em conversas antigas; limpar é decisão) · P-096-VOZ-N8N (a voz ainda passa pelo n8n; SPEC-112) · P-096-MOTOR-DE-EVENTOS (§5 última linha) · P-096-ARTIFACT-SEM-CONVERSA (a peça
+"[Erro interno…]" como resposta em conversas antigas; limpar é decisão) · P-096-VOZ-N8N (a voz ainda passa pelo n8n; SPEC-112) · P-096-MOTOR-DE-EVENTOS (§5 última linha) · P-096-COMPANY-DATA-IGNORA-ATIVA (`/api/user/company-data:40` usa `users_v2.company_id` e ignora `activeCompanyId`; depois de S.1
+usar `resolveSessionCompany`, a tela do topo e o cérebro do chat podem discordar de empresa — alinhar) · P-096-ARTIFACT-SEM-CONVERSA (a peça
 nasce sem `conversation_id`; o registro por ContextVar liga o turno à peça, mas a tabela continua sem o elo — a 097/098 decidem a coluna).
 
 ## 7. A CAIXA DO FOUNDER
