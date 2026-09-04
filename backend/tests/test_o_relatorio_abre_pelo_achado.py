@@ -189,25 +189,41 @@ EMPRESA_B = "22222222-2222-2222-2222-222222222222"
 # Formato: (caminho relativo a `backend/`, de, para, rotulo)
 # ===========================================================================
 MUTACOES = [
+    # 📊 04/09/2026 (builder do motor): a âncora "def _publicar(" só injetava um
+    # COMENTÁRIO — o arquivo compilava igual e a mutação era no-op. A âncora
+    # certa é a linha que decide se a identidade é procurada: com `chave = ""`
+    # o lookup nunca acontece e toda pergunta cria peça nova (o defeito de hoje).
     ("app/agents/tools/relatorios_comerciais.py",
-     "def _publicar(", "def _publicar(  # MUTACAO: sempre cria\n", "B.a"),
+     'chave = str((identidade or {}).get("id") or "").strip()', 'chave = ""', "B.a"),
+    # ⚠️ Nenhuma substituição carrega comentário: um `# MUTACAO` no fim de uma
+    # linha que continua (dict literal) engole o resto da linha e vira
+    # SyntaxError — e aí o que se mede é o compilador, não o guarda.
     ("app/services/artifacts/service.py",
-     '"data_as_of": None', '"data_as_of": _agora().isoformat()  # MUTACAO', "B.b"),
+     '"data_as_of": None, "confidence_note": None,',
+     '"data_as_of": _agora().isoformat(), "confidence_note": None,', "B.b"),
     ("app/services/artifacts/service.py",
-     '"tags": list(tags or [])', '"tags": []  # MUTACAO', "B.c"),
+     '"tags": list(tags or [])', '"tags": []', "B.c"),
     ("app/services/intelligence/briefing_service.py",
      '"why_now": self.why_now', '"why_now_DESLIGADO": self.why_now', "D3"),
+    # A âncora "headline = " casava PRIMEIRO com `i.headline = "%s (+%d iguais)"`
+    # (a deduplicação), não com a manchete. A linha que decide a manchete é esta:
     ("app/services/intelligence/briefing_service.py",
-     "headline = ", "headline = 'N item(ns) esperando você hoje'  # MUTACAO\n        headline = ", "D3"),
+     "manchete = topo.headline", 'manchete = "%d item(ns) esperando você hoje" % n', "D3"),
     ("app/services/intelligence/briefing_service.py",
-     'w.get("source_type")', '"chat"  # MUTACAO', "D5"),
+     'w.get("source_type")', '"chat"', "D5"),
     ("app/agents/tools/executive_intelligence.py",
-     '"block": "actions"', '"block": "kpis"  # MUTACAO', "D2"),
+     '"block": "actions"', '"block": "kpis"', "D2"),
     ("app/comercial/narrativa.py",
      '"titulo"', '"titulo_DESLIGADO"', "D1"),
+    # 📊 O builder escreveu a projeção como `"artifact_id, %s->%s, status" %
+    # (coluna, caminho)` com `coluna = "payload"` — de propósito: o guarda da
+    # 094.1 (`test_as_ferramentas_de_relatorio_comercial.py:224-232`) exige
+    # exatamente UMA função com a constante "payload", que é como ele prova que
+    # "o payload morre dentro desta função". A mutação tira o caminho e volta a
+    # pedir a coluna inteira.
     ("app/agents/tools/listar_entregas.py",
-     'select("artifact_id, payload->evidence_pack->>pack_id, status")',
-     'select("artifact_id, payload, status")  # MUTACAO', "B.f"),
+     '"artifact_id, %s->%s, status" % (coluna, caminho)',
+     '"artifact_id, %s, status" % (coluna,)', "B.f"),
 ]
 
 # ===========================================================================
@@ -423,7 +439,7 @@ def modulo(nome, bloco):
     try:
         return importlib.import_module(nome)
     except Exception as exc:  # noqa: BLE001
-        devendo(False, "o modulo %s importa" % nome, bloco,
+        certo(False, "o modulo %s importa" % nome,
                 "%s: %s" % (type(exc).__name__, str(exc)[:200]))
         return None
 
@@ -436,7 +452,7 @@ def atributo(mod, nomes, bloco, onde):
         f = getattr(mod, n, None)
         if f is not None:
             return n, f
-    devendo(False, "%s existe em %s" % (" | ".join(nomes), onde), bloco,
+    certo(False, "%s existe em %s" % (" | ".join(nomes), onde),
             "nenhum destes nomes existe: %s" % ", ".join(nomes))
     return "", None
 
@@ -739,48 +755,43 @@ def bloco_0_gate_zero(ctx):
     # ---- (ii) `_publicar` cria uma peca nova a cada pergunta ---------------
     rc = ctx["relatorios_comerciais"]
     if rc is None or not hasattr(rc, "_publicar"):
-        devendo(False, "(ii) _publicar existe", "BLOCO B.1",
+        certo(False, "(ii) _publicar existe",
                 "app.agents.tools.relatorios_comerciais._publicar nao pode ser lido")
     else:
         assinatura = getattr(rc._publicar, "__code__", None)
         nomes = list(assinatura.co_varnames[: assinatura.co_argcount + assinatura.co_kwonlyargcount]) if assinatura else []
-        devendo("identidade" in nomes,
+        certo("identidade" in nomes,
                 "(ii) `_publicar` aceita `identidade=` -- a peca tem identidade, e a "
                 "pergunta repetida vira VERSAO",
-                "BLOCO B.1",
                 "parametros de hoje: %s. 📊 79 pecas / 16 titulos distintos: o "
                 "\"Pulso 360 · 2026\" existe 5 vezes, e nunca houve uma v2." % ", ".join(nomes))
-        devendo("data_sources" in nomes and "data_as_of" in nomes,
+        certo("data_sources" in nomes and "data_as_of" in nomes,
                 "(ii/vii) `_publicar` aceita `data_sources=` e `data_as_of=`",
-                "BLOCO B.1/B.2",
                 "📊 `artifact_versions.data_sources = []` em 5/5 Pulsos: `_publicar` "
                 "desenha o bloco `sources` na composicao e nao o passa ao `criar`.")
 
     # ---- (vii) `data_as_of` = now() ---------------------------------------
     svc = ctx["service"]
     if svc is None:
-        devendo(False, "(vii) ArtifactService pode ser lido", "BLOCO B.2")
+        certo(False, "(vii) ArtifactService pode ser lido")
     else:
         fonte_svc = ler(os.path.join(APP, "services", "artifacts", "service.py"))
         carimbo = re.search(r'"data_as_of":\s*_agora\(\)', fonte_svc)
-        devendo(carimbo is None,
+        certo(carimbo is None,
                 "(vii) `_nova_versao` NAO carimba `data_as_of` com a hora da escrita",
-                "BLOCO B.2",
                 "📊 136/136 versoes tem `data_as_of` = carimbo da escrita, e 30 delas "
                 "estao no FUTURO do proprio `created_at` (desvio de relogio por "
                 "processo). A tela imprime \"Dados de ...\" em cima disso.")
         criar = getattr(getattr(svc, "ArtifactService", None), "criar", None)
         cod = getattr(criar, "__code__", None)
         nomes = list(cod.co_varnames[: cod.co_argcount + cod.co_kwonlyargcount]) if cod else []
-        devendo("data_as_of" in nomes and "tags" in nomes and "confidence_note" in nomes,
+        certo("data_as_of" in nomes and "tags" in nomes and "confidence_note" in nomes,
                 "(v/vii) `criar` aceita `tags=`, `data_as_of=` e `confidence_note=`",
-                "BLOCO B.2/B.3",
                 "parametros de hoje: %s" % ", ".join(nomes))
 
     # ---- (v) o canario nao se declara --------------------------------------
-    devendo(existe("scripts/canario_095.py"),
+    certo(existe("scripts/canario_095.py"),
             "(v) `backend/scripts/canario_095.py` existe -- o canario roda o caminho REAL",
-            "BLOCO B.3",
             "📊 `test_o_canario_do_pulso_360.py` substitui `rel._publicar` por um "
             "capturador: ele NUNCA executa o `_publicar` real, e exportar a variavel "
             "ali seria decorativo. Quem a exporta e o script novo.")
@@ -788,13 +799,12 @@ def bloco_0_gate_zero(ctx):
     # ---- (iii) e (vi) o briefing -------------------------------------------
     bs = ctx["briefing_service"]
     if bs is None:
-        devendo(False, "(iii/vi) briefing_service pode ser lido", "BLOCO D.3")
+        certo(False, "(iii/vi) briefing_service pode ser lido")
     else:
         item = getattr(bs, "ItemDeBriefing", None)
         campos = set(getattr(item, "__dataclass_fields__", {}) or {}) if item else set()
-        devendo({"why_now", "next_step"} <= campos,
+        certo({"why_now", "next_step"} <= campos,
                 "(vi) `ItemDeBriefing` tem `why_now` e `next_step`",
-                "BLOCO D.3",
                 "📊 `intelligence_findings`: `why_now` preenchido em 12/12 e "
                 "`next_step` em 11/12. `ItemDeBriefing` nao tem campo para nenhum "
                 "dos dois -- o porque e o proximo passo morrem UMA FUNCAO antes da "
@@ -804,21 +814,19 @@ def bloco_0_gate_zero(ctx):
                      headline="Fila acumulada", summary="61 atendimentos parados",
                      why_now="a fila cresceu 40% em 24h",
                      next_step="comecar pelos parados ha mais de 48h").como_dict(1)
-            devendo(d.get("why_now") and d.get("next_step"),
+            certo(d.get("why_now") and d.get("next_step"),
                     "(vi) `como_dict` EMITE why_now e next_step",
-                    "BLOCO D.3",
                     "o campo existe na dataclass e nao sai no jsonb: chaves emitidas "
                     "= %s" % ", ".join(sorted(d)))
 
         narrativa = getattr(bs, "_narrativa", None)
         if narrativa is None:
-            devendo(False, "(iii) `_narrativa` existe", "BLOCO D.3")
+            certo(False, "(iii) `_narrativa` existe")
         else:
             acionaveis = ctx["acionaveis"](bs)
             manchete, _resumo = narrativa("daily_operational", acionaveis, [], [], 0, [])
-            devendo(manchete == acionaveis[0].headline,
+            certo(manchete == acionaveis[0].headline,
                     "(iii) a manchete E o achado principal, nao a CONTAGEM",
-                    "BLOCO D.3",
                     "manchete de hoje: %r · headline do item 1: %r. 📊 A mesma string "
                     "(\"2 item(ns) esperando voce hoje\") foi a manchete de 5 dias "
                     "diferentes." % (manchete, acionaveis[0].headline))
@@ -826,20 +834,18 @@ def bloco_0_gate_zero(ctx):
     # ---- (iv) o Pulso nao diz o que fazer ----------------------------------
     blocos, erro = ctx["compor_pulso"]()
     if erro:
-        devendo(False, "(iv) `_compor` do Pulso roda", "BLOCO D.2", erro)
+        certo(False, "(iv) `_compor` do Pulso roda", erro)
     else:
         tipos = [b.get("block") for b in blocos]
-        devendo("actions" in tipos,
+        certo("actions" in tipos,
                 "(iv) o Pulso tem a secao \"O que importa agora\" (bloco `actions`)",
-                "BLOCO D.2",
                 "📊 13 secoes, nenhuma diz o que fazer. O bloco `actions` existe em "
                 "`blocks.py:298` desde a SPEC-057 e nenhum relatorio o usa. Blocos "
                 "de hoje: %s" % ", ".join(tipos))
         capa = (blocos[0].get("props") or {}) if blocos else {}
         titulo = str(capa.get("title") or "")
-        devendo(not titulo.startswith("O período inteiro") and "Pulso 360 · " not in titulo,
+        certo(not titulo.startswith("O período inteiro") and "Pulso 360 · " not in titulo,
                 "(iv) a CAPA do Pulso e o achado, nao o rotulo do periodo",
-                "BLOCO D.2",
                 "capa de hoje: %r. 📊 `executive_intelligence.py:1539` grava "
                 "`titulo=\"Pulso 360 · %%s\"` e `subtitulo=\"O periodo inteiro, com a "
                 "fonte de cada numero\"` FIXOS." % titulo)
@@ -856,31 +862,28 @@ def bloco_B_identidade(ctx):
 
     # ---- B.a · duas perguntas iguais = UMA peca, DUAS versoes --------------
     if rc is None or not hasattr(rc, "_publicar"):
-        devendo(False, "[B.a] duas publicacoes com a mesma identidade => 1 peca, 2 versoes",
-                "BLOCO B.1", "`_publicar` nao pode ser lido")
+        certo(False, "[B.a] duas publicacoes com a mesma identidade => 1 peca, 2 versoes", "`_publicar` nao pode ser lido")
     else:
         identidade = {"kind": "periodo", "id": "2026", "label": "2026",
                       "produtor": "autobrokers.chat"}
         banco, erro = ctx["publicar_duas_vezes"](identidade, identidade)
         if erro:
-            devendo(False, "[B.a] duas publicacoes com a mesma identidade => 1 peca, 2 versoes",
-                    "BLOCO B.1", erro)
+            certo(False, "[B.a] duas publicacoes com a mesma identidade => 1 peca, 2 versoes", erro)
         else:
             pecas = banco.escritas_em("artifacts", "insert")
             versoes = banco.escritas_em("artifact_versions", "insert")
-            devendo(len(pecas) == 1 and len(versoes) == 2,
+            certo(len(pecas) == 1 and len(versoes) == 2,
                     "[B.a] duas perguntas iguais => 1 insert em `artifacts`, 2 em `artifact_versions`",
-                    "BLOCO B.1",
                     "hoje: %d peca(s) e %d versao(oes). 📊 E por isso que o \"Pulso 360 · "
                     "2026\" existe 5 vezes na Resulta e `max(version)` nunca passou de 1."
                     % (len(pecas), len(versoes)))
             atual = (banco.dados.get("artifacts") or [{}])[0]
-            devendo(int(atual.get("current_version") or 0) == 2,
-                    "[B.a] `current_version` chega a 2", "BLOCO B.1",
+            certo(int(atual.get("current_version") or 0) == 2,
+                    "[B.a] `current_version` chega a 2",
                     "current_version = %r" % atual.get("current_version"))
             fontes = [v for _t, _o, v in versoes if v.get("data_sources")]
-            devendo(len(fontes) == len(versoes) and all(f["data_sources"] for f in fontes),
-                    "[B.a] toda versao grava `data_sources` nao vazio", "BLOCO B.1",
+            certo(len(fontes) == len(versoes) and all(f["data_sources"] for f in fontes),
+                    "[B.a] toda versao grava `data_sources` nao vazio",
                     "📊 `artifact_versions.data_sources = []` em 5/5 Pulsos: a "
                     "composicao desenha o bloco `sources` e nao passa `data_sources=` "
                     "ao `criar`.")
@@ -910,7 +913,7 @@ def bloco_B_identidade(ctx):
 
     # ---- B.b · a data do dado e a do dado ---------------------------------
     if svc is None:
-        devendo(False, "[B.b] `data_as_of` NULL quando ninguem sabe a data", "BLOCO B.2")
+        certo(False, "[B.b] `data_as_of` NULL quando ninguem sabe a data")
     else:
         banco = BancoFalso({"artifacts": [], "brand_profiles": []})
         s = svc.ArtifactService(banco)
@@ -918,12 +921,12 @@ def bloco_B_identidade(ctx):
             s.criar(company_id=EMPRESA_A, title="t", template_key="executive.pulse360",
                     payload={}, composition=[], kind="report", origin="chat")
             sem = banco.escritas_em("artifact_versions", "insert")[-1][2]
-            devendo("data_as_of" not in sem or sem.get("data_as_of") is None,
-                    "[B.b] sem data passada => `data_as_of` NULL", "BLOCO B.2",
+            certo("data_as_of" not in sem or sem.get("data_as_of") is None,
+                    "[B.b] sem data passada => `data_as_of` NULL",
                     "gravou data_as_of = %r (e o carimbo da ESCRITA, nao a data do "
                     "dado)" % sem.get("data_as_of"))
         except TypeError as exc:
-            devendo(False, "[B.b] sem data passada => `data_as_of` NULL", "BLOCO B.2",
+            certo(False, "[B.b] sem data passada => `data_as_of` NULL",
                     "criar() ainda nao aceita a chamada: %s" % str(exc)[:200])
         except Exception as exc:  # noqa: BLE001
             certo(False, "[B.b] `criar` roda contra o BancoFalso",
@@ -939,14 +942,13 @@ def bloco_B_identidade(ctx):
                     data_as_of=corte)
             com = banco.escritas_em("artifact_versions", "insert")[-1][2]
             gravado = str(com.get("data_as_of") or "")
-            devendo(gravado.startswith("2026-09-04T02:54"),
-                    "[B.b] com data passada => a data PASSADA, e nao a de agora",
-                    "BLOCO B.2", "gravou %r" % gravado)
+            certo(gravado.startswith("2026-09-04T02:54"),
+                    "[B.b] com data passada => a data PASSADA, e nao a de agora", "gravou %r" % gravado)
             par(not gravado.startswith(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")),
                 "[B.b] a data gravada nao e a hora da escrita",
                 "a data passada foi ignorada e o carimbo voltou")
         except TypeError:
-            devendo(False, "[B.b] com data passada => a data PASSADA", "BLOCO B.2",
+            certo(False, "[B.b] com data passada => a data PASSADA",
                     "`criar` ainda nao tem o parametro `data_as_of`")
         except Exception as exc:  # noqa: BLE001
             certo(False, "[B.b] `criar` com data roda", "%s: %s" % (type(exc).__name__, str(exc)[:200]))
@@ -959,13 +961,11 @@ def bloco_B_identidade(ctx):
             banco, erro = ctx["publicar_uma_vez"]({"kind": "periodo", "id": "2026",
                                                    "label": "2026", "produtor": "autobrokers.chat"})
             if erro:
-                devendo(False, "[B.c] com AUTOBROKERS_CANARIO=1 a peca nasce com tags=['canario']",
-                        "BLOCO B.3", erro)
+                certo(False, "[B.c] com AUTOBROKERS_CANARIO=1 a peca nasce com tags=['canario']", erro)
             else:
                 peca = (banco.escritas_em("artifacts", "insert") or [(None, None, {})])[-1][2]
-                devendo("canario" in (peca.get("tags") or []),
+                certo("canario" in (peca.get("tags") or []),
                         "[B.c] com AUTOBROKERS_CANARIO=1 a peca nasce com tags=['canario']",
-                        "BLOCO B.3",
                         "tags = %r. 📊 100%% dos relatorios \"do chat\" da Resulta sao "
                         "canario de execucao de SPEC e NADA os distingue: `tags` "
                         "preenchida em 0/136." % (peca.get("tags"),))
@@ -993,7 +993,7 @@ def bloco_B_identidade(ctx):
         Servico = getattr(svc, "ArtifactService", None)
         tem = Servico is not None and hasattr(Servico, "arquivar") and hasattr(Servico, "desarquivar")
         if not tem:
-            devendo(False, "[B.d] `arquivar` / `desarquivar` existem", "BLOCO B.3",
+            certo(False, "[B.d] `arquivar` / `desarquivar` existem",
                     "📊 arquivados = 0 em 3 corretoras: a coluna `archived_at` existe e "
                     "nunca teve escritor. A limpeza do B.4 e `archived_at`, nunca DELETE.")
         else:
@@ -1007,14 +1007,13 @@ def bloco_B_identidade(ctx):
                 linha = banco.dados["artifacts"][0]
                 eventos = [e for e in banco.escritas_em("artifact_events", "insert")
                            if e[2].get("event_type") == "artifact.archived"]
-                devendo(linha.get("archived_at") and eventos,
+                certo(linha.get("archived_at") and eventos,
                         "[B.d] `arquivar` grava `archived_at` E o evento com o motivo",
-                        "BLOCO B.3",
                         "archived_at=%r · eventos=%d -- sem o evento o ROLLBACK do B.4 "
                         "nao tem por onde achar as 35 pecas"
                         % (linha.get("archived_at"), len(eventos)))
-                devendo(linha.get("status") == "ready",
-                        "[B.d] arquivar NAO mexe no `status` da peca", "BLOCO B.3",
+                certo(linha.get("status") == "ready",
+                        "[B.d] arquivar NAO mexe no `status` da peca",
                         "status virou %r" % linha.get("status"))
                 s.desarquivar(EMPRESA_A, "a1")
                 par(banco.dados["artifacts"][0].get("archived_at") is None,
@@ -1022,33 +1021,31 @@ def bloco_B_identidade(ctx):
                     "a peca continuou arquivada depois do desarquivar -- a limpeza "
                     "seria irreversivel na pratica")
             except TypeError as exc:
-                devendo(False, "[B.d] `arquivar` / `desarquivar` com a assinatura da SPEC",
-                        "BLOCO B.3", "assinatura recusou a chamada: %s" % str(exc)[:200])
+                certo(False, "[B.d] `arquivar` / `desarquivar` com a assinatura da SPEC", "assinatura recusou a chamada: %s" % str(exc)[:200])
             except Exception as exc:  # noqa: BLE001
                 certo(False, "[B.d] `arquivar` roda", "%s: %s" % (type(exc).__name__, str(exc)[:200]))
 
     # ---- B.e · o script da limpeza nao escreve em --dry-run ----------------
-    devendo(existe("scripts/arquivar_relatorios_de_teste_095.py"),
+    certo(existe("scripts/arquivar_relatorios_de_teste_095.py"),
             "[B.e] `backend/scripts/arquivar_relatorios_de_teste_095.py` existe",
-            "BLOCO B.4",
             "📊 esperado: Resulta 34 · AutoFleet 1 · Amandus 0 candidatos, listados "
             "por corretora/template/dia -- sem titulo e sem id inteiro.")
     if existe("scripts/arquivar_relatorios_de_teste_095.py"):
         fonte_script = ler(os.path.join(RAIZ, "scripts", "arquivar_relatorios_de_teste_095.py"))
-        devendo("--dry-run" in fonte_script or "dry_run" in fonte_script,
-                "[B.e] o script tem `--dry-run` (e ele e o PADRAO)", "BLOCO B.4")
-        devendo(not re.search(r"\.delete\(\)", fonte_script),
-                "[B.e] o script NUNCA apaga -- so `archived_at`", "BLOCO B.4",
+        certo("--dry-run" in fonte_script or "dry_run" in fonte_script,
+                "[B.e] o script tem `--dry-run` (e ele e o PADRAO)")
+        certo(not re.search(r"\.delete\(\)", fonte_script),
+                "[B.e] o script NUNCA apaga -- so `archived_at`",
                 "achei `.delete()` no script: a limpeza e reversivel por decisao da §2")
-        devendo("canario" in fonte_script,
-                "[B.e] o script pula peca com `tags @> {canario}`", "BLOCO B.4",
+        certo("canario" in fonte_script,
+                "[B.e] o script pula peca com `tags @> {canario}`",
                 "as pecas do canario desta SPEC se arquivam sozinhas (F(f)); arquiva-las "
                 "de novo aqui misturaria as duas contagens do VERIFY")
 
     # ---- B.f · o pack_id sem o payload cru (E4) ----------------------------
     le = ctx["listar_entregas"]
     if le is None or not hasattr(le, "_packs_das_versoes"):
-        devendo(False, "[B.f] `_packs_das_versoes` pode ser lido", "BLOCO B")
+        certo(False, "[B.f] `_packs_das_versoes` pode ser lido")
     else:
         banco = BancoFalso({"artifact_versions": [{
             "artifact_id": "a1", "company_id": EMPRESA_A, "status": "published",
@@ -1058,9 +1055,8 @@ def bloco_B_identidade(ctx):
         saida = le._packs_das_versoes(banco, EMPRESA_A, ["a1"])
         consulta = next((c for c in banco.consultas if c["tabela"] == "artifact_versions"), {})
         colunas = str(consulta.get("colunas") or "")
-        devendo("payload->evidence_pack->>pack_id" in colunas,
+        certo("payload->evidence_pack->>pack_id" in colunas,
                 "[B.f] a consulta pede `payload->evidence_pack->>pack_id`, nunca `payload`",
-                "BLOCO B",
                 "select de hoje: %r. 📊 64.246 bytes por versao, 5.890 deles em "
                 "`rotulos_de_produtor` -- e o nome do produtor nao pode sair do "
                 "Artifact do tenant (M16 da SPEC-094)." % colunas)
@@ -1100,7 +1096,7 @@ def bloco_D_narrativa(ctx):
 
     # ---- D1 · todo kind que vira sinal tem playbook ------------------------
     if nar is None:
-        devendo(False, "[D1] `app/comercial/narrativa.py` existe e importa", "BLOCO D.1",
+        certo(False, "[D1] `app/comercial/narrativa.py` existe e importa",
                 "📊 `evidence_pack.py:684` e `:712` escrevem o achado SEM numero e SEM "
                 "sujeito, DE PROPOSITO (o nome fica no Artifact) -- certo para o modelo, "
                 "inutil para o dono.")
@@ -1110,9 +1106,8 @@ def bloco_D_narrativa(ctx):
             _p("      tabela de playbooks: `%s` (%d entradas)"
                % (nome, len(tabela) if hasattr(tabela, "__len__") else -1))
             faltando = [k for k in ep.FINDINGS_QUE_VIRAM_SINAL if k not in tabela]
-            devendo(not faltando,
-                    "[D1] todo kind de FINDINGS_QUE_VIRAM_SINAL tem playbook",
-                    "BLOCO D.1", "sem playbook: %s" % ", ".join(faltando))
+            certo(not faltando,
+                    "[D1] todo kind de FINDINGS_QUE_VIRAM_SINAL tem playbook", "sem playbook: %s" % ", ".join(faltando))
             par(bool(ep.FINDINGS_QUE_VIRAM_SINAL),
                 "[D1] ha kind para conferir",
                 "FINDINGS_QUE_VIRAM_SINAL esta vazio -- o guarda passaria por vacuidade")
@@ -1129,9 +1124,8 @@ def bloco_D_narrativa(ctx):
 
     quatro = [a for a in achados
               if a.get("vira_sinal") and all(str(a.get(c) or "").strip() for c in CAMPOS_DO_ACHADO)]
-    devendo(len(quatro) == len([a for a in achados if a.get("vira_sinal")]),
+    certo(len(quatro) == len([a for a in achados if a.get("vira_sinal")]),
             "[D1] todo achado que vira sinal tem titulo · por_que_importa · o_que_fazer · pergunta",
-            "BLOCO D.1",
             "com os quatro campos: %d de %d. Campos do 1o achado: %s"
             % (len(quatro), len([a for a in achados if a.get("vira_sinal")]),
                ", ".join(sorted(achados[0])) if achados else "-"))
@@ -1152,9 +1146,8 @@ def bloco_D_narrativa(ctx):
         formas |= {str(int(abs(valor))) if isinstance(valor, (int, float)) else str(valor)}
         if not any(f and f in titulo for f in formas):
             sem_numero.append("%s: %r nao contem %r" % (a.get("kind"), titulo, valor))
-    devendo(not sem_numero and bool([a for a in achados if a.get("titulo")]),
+    certo(not sem_numero and bool([a for a in achados if a.get("titulo")]),
             "[D1] o titulo do achado contem o NUMERO dele",
-            "BLOCO D.1",
             "; ".join(sem_numero) or "nenhum achado tem `titulo` para conferir")
 
     # ⛔ ZERO nome de pessoa no pack e no sinal (M16 da SPEC-094).
@@ -1170,39 +1163,35 @@ def bloco_D_narrativa(ctx):
     # ---- D2 · o Pulso abre pelo achado -------------------------------------
     blocos, erro = ctx["compor_pulso"]()
     if erro:
-        devendo(False, "[D2] `_compor` do Pulso roda sobre o pack golden", "BLOCO D.2", erro)
+        certo(False, "[D2] `_compor` do Pulso roda sobre o pack golden", erro)
     else:
         tipos = [b.get("block") for b in blocos]
         acoes = [b for b in blocos if b.get("block") == "actions"]
-        devendo(len(acoes) == 1,
-                "[D2] existe UMA secao `actions` -- \"O que importa agora\"",
-                "BLOCO D.2", "blocos: %s" % ", ".join(tipos))
+        certo(len(acoes) == 1,
+                "[D2] existe UMA secao `actions` -- \"O que importa agora\"", "blocos: %s" % ", ".join(tipos))
         if acoes:
             itens = (acoes[0].get("props") or {}).get("items") or []
             viram_sinal = [a for a in achados if a.get("vira_sinal")]
-            devendo(len(itens) == len(viram_sinal),
-                    "[D2] um item de acao por achado que vira sinal (%d)" % len(viram_sinal),
-                    "BLOCO D.2", "a secao tem %d item(ns)" % len(itens))
+            certo(len(itens) == len(viram_sinal),
+                    "[D2] um item de acao por achado que vira sinal (%d)" % len(viram_sinal), "a secao tem %d item(ns)" % len(itens))
         capa = (blocos[0].get("props") or {}) if blocos else {}
         mais_severo = next((a for a in achados if a.get("vira_sinal")), {})
-        devendo(str(capa.get("title") or "") == str(mais_severo.get("titulo") or "<sem-titulo>"),
+        certo(str(capa.get("title") or "") == str(mais_severo.get("titulo") or "<sem-titulo>"),
                 "[D2] a CAPA e o titulo do achado mais severo",
-                "BLOCO D.2",
                 "capa=%r · achado=%r" % (capa.get("title"), mais_severo.get("titulo")))
 
         # As INDISPONIVEIS colapsam numa linha, em vez de uma caixa cada.
         callouts = [b for b in blocos if b.get("block") == "callout"]
         indisponiveis = [m for m in metricas if m.indisponivel]
-        devendo(len(callouts) == 0,
+        certo(len(callouts) == 0,
                 "[D2] metrica indisponivel NAO vira um `callout` cada (%d indisponiveis)"
                 % len(indisponiveis),
-                "BLOCO D.2",
                 "%d callout(s). 📊 As secoes 4, 8, 9, 10, 11 e 12 tem o ramo: um Pulso "
                 "sem funil, sem mercado e sem repasse imprime QUATRO caixas dizendo que "
                 "nao ha dado." % len(callouts))
         prosa = [b for b in blocos if b.get("block") == "prose"]
-        devendo(any("não deu para medir" in json.dumps(b, ensure_ascii=False) for b in prosa),
-                "[D2] o que nao deu para medir e UMA linha", "BLOCO D.2",
+        certo(any("não deu para medir" in json.dumps(b, ensure_ascii=False) for b in prosa),
+                "[D2] o que nao deu para medir e UMA linha",
                 "%d bloco(s) `prose`, nenhum com a linha unica" % len(prosa))
 
         # ⛔ M16 -- o pack serializado nao carrega nome nem o mapa de rotulos.
@@ -1226,21 +1215,18 @@ def bloco_D_narrativa(ctx):
     if bs is not None and hasattr(bs, "_narrativa"):
         acionaveis = ctx["acionaveis"](bs)
         manchete, resumo = bs._narrativa("daily_operational", acionaveis, [], [], 0, [])
-        devendo(manchete == acionaveis[0].headline,
-                "[D3] a manchete e a headline do item de maior prioridade",
-                "BLOCO D.3", "manchete=%r" % manchete)
+        certo(manchete == acionaveis[0].headline,
+                "[D3] a manchete e a headline do item de maior prioridade", "manchete=%r" % manchete)
         # N = os que FICARAM na peca (E2), nunca o tamanho da lista inteira.
-        devendo(("e mais %d" % (len(acionaveis) - 1)) in resumo or (len(acionaveis) == 1),
+        certo(("e mais %d" % (len(acionaveis) - 1)) in resumo or (len(acionaveis) == 1),
                 "[D3] o resumo diz \"e mais N ponto(s)\" com N = o que FICOU",
-                "BLOCO D.3",
                 "resumo=%r · acionaveis=%d. 📊 `:269` corta em `max_itens` e `:314` conta "
                 "a lista INTEIRA: hoje a manchete promete pontos que a peca nao contem."
                 % (resumo, len(acionaveis)))
         # 🔴 E2 -- com M = 0 a frase de trabalhos SOME. 📊 Depois do D.5, M = 0 em
         # 5 de 5 dias medidos: a promessa de "20 trabalhos prontos" era o relogio.
-        devendo("trabalho(s)" not in manchete and "trabalho(s) pronto" not in resumo,
-                "[D3] com ZERO trabalho pedido, a frase de trabalhos NAO aparece (E2)",
-                "BLOCO D.3", "manchete=%r · resumo=%r" % (manchete, resumo))
+        certo("trabalho(s)" not in manchete and "trabalho(s) pronto" not in resumo,
+                "[D3] com ZERO trabalho pedido, a frase de trabalhos NAO aparece (E2)", "manchete=%r · resumo=%r" % (manchete, resumo))
         par("trabalho" in bs._narrativa("daily_operational", acionaveis,
                                         [{"id": "w1", "outcome_title": "Cobranca"}],
                                         [], 0, [])[1],
@@ -1249,9 +1235,8 @@ def bloco_D_narrativa(ctx):
 
         # O ramo semanal mantem a forma dele, com a mesma regra do M.
         m_semanal, r_semanal = bs._narrativa("weekly_executive", acionaveis, [], [], 0, [])
-        devendo("0 trabalho(s)" not in m_semanal and "0 trabalho(s)" not in r_semanal,
-                "[D3] o ramo `weekly_executive` tambem esconde \"0 trabalho(s)\" (E2)",
-                "BLOCO D.3", "manchete=%r" % m_semanal)
+        certo("0 trabalho(s)" not in m_semanal and "0 trabalho(s)" not in r_semanal,
+                "[D3] o ramo `weekly_executive` tambem esconde \"0 trabalho(s)\" (E2)", "manchete=%r" % m_semanal)
 
     # ---- D5 · o briefing sem o relogio da plataforma -----------------------
     if bs is not None and hasattr(bs, "compor"):
@@ -1282,9 +1267,8 @@ def bloco_D_narrativa(ctx):
                 period_start=datetime(2026, 9, 4, tzinfo=timezone.utc),
                 period_end=datetime(2026, 9, 4, 8, tzinfo=timezone.utc))
             resultados = [i for i in spec.itens if i.item_type == "result"]
-            devendo(len(resultados) == 2,
+            certo(len(resultados) == 2,
                     "[D5] `compor` deixa passar so o que a corretora PEDIU (2 de 6)",
-                    "BLOCO D.5",
                     "%d item(ns) de resultado. 📊 6 dos 14 itens do briefing de 04/09 "
                     "eram o MESMO Work Run `intelligence.detect_signals` repetido."
                     % len(resultados))
@@ -1308,15 +1292,14 @@ def bloco_D_narrativa(ctx):
                 period_start=datetime(2026, 9, 4, tzinfo=timezone.utc),
                 period_end=datetime(2026, 9, 4, 8, tzinfo=timezone.utc))
             dois_iguais = [i for i in spec2.itens if i.item_type == "result"]
-            devendo(len(dois_iguais) == 1 and "+1" in (dois_iguais[0].headline
+            certo(len(dois_iguais) == 1 and "+1" in (dois_iguais[0].headline
                                                        + dois_iguais[0].summary),
                     "[D5] dois Work Runs iguais viram UM item com \"(+1 iguais)\"",
-                    "BLOCO D.5",
                     "%d item(ns): %s. 📊 35,1%% dos itens dentro do MESMO briefing sao "
                     "copia exata (20 de 57)."
                     % (len(dois_iguais), [i.headline for i in dois_iguais]))
         except TypeError as exc:
-            devendo(False, "[D5] `compor` aceita work_runs com `source_type`", "BLOCO D.5",
+            certo(False, "[D5] `compor` aceita work_runs com `source_type`",
                     "a chamada foi recusada: %s" % str(exc)[:200])
         except Exception as exc:  # noqa: BLE001
             certo(False, "[D5] `compor` roda", "%s: %s" % (type(exc).__name__, str(exc)[:250]))
@@ -1372,7 +1355,7 @@ def bloco_C_controle(ctx):
     # morta em `MUTACOES` e uma mutacao que nao aplica, e mutacao que nao aplica
     # NAO e mutacao passada (CLAUDE.md §9.5).
     fantasmas = [c for c, *_ in MUTACOES if not existe(c)]
-    devendo(not fantasmas, "todo arquivo declarado em MUTACOES existe", "BLOCO B/D",
+    certo(not fantasmas, "todo arquivo declarado em MUTACOES existe",
             "ainda nao existem: %s" % ", ".join(sorted(set(fantasmas))))
 
 
@@ -1397,8 +1380,16 @@ def rodar_mutacoes(ctx):
         try:
             io.open(alvo, "w", encoding="utf-8").write(original.replace(de, para, 1))
             antes = FAIL
-            ctx["remedir"](rotulo)
-            par(FAIL > antes, "mutacao %s em %s" % (rotulo, rel(alvo)),
+            try:
+                ctx["remedir"](rotulo)
+                ficou_vermelho = FAIL > antes
+            except RuntimeError as exc:
+                if "MUTACAO_QUEBROU_O_MODULO" not in str(exc):
+                    raise
+                _p("        o arquivo mutado NAO carrega (%s): o produto nem sobe -- VERMELHO"
+                   % str(exc)[:90])
+                ficou_vermelho = True
+            par(ficou_vermelho, "mutacao %s em %s" % (rotulo, rel(alvo)),
                 "a mutacao foi aplicada e NENHUMA assercao ficou vermelha -- o bloco "
                 "%s e carimbo" % rotulo)
         finally:
@@ -1416,7 +1407,7 @@ def montar_contexto():
     if existe("app/comercial/narrativa.py"):
         ctx["narrativa"] = modulo("app.comercial.narrativa", "BLOCO D.1")
     else:
-        devendo(False, "`backend/app/comercial/narrativa.py` existe", "BLOCO D.1",
+        certo(False, "`backend/app/comercial/narrativa.py` existe",
                 "o modulo PURO dos playbooks (titulo · por_que_importa · o_que_fazer · "
                 "pergunta) ainda nao foi escrito")
     ctx["briefing_service"] = modulo("app.services.intelligence.briefing_service", "BLOCO D.3")
@@ -1549,10 +1540,17 @@ def main():
                 if nome in sys.modules:
                     try:
                         importlib.reload(sys.modules[nome])
-                    except Exception:  # noqa: BLE001
-                        pass
+                    except Exception as exc:  # noqa: BLE001
+                        # 📊 04/09/2026 (builder do motor): engolir aqui deixava o
+                        # módulo ANTIGO vivo quando a mutação quebrava a sintaxe —
+                        # e o arnês concluía "nada ficou vermelho". Um produto que
+                        # nem carrega é o vermelho mais alto que existe: sobe.
+                        raise RuntimeError("MUTACAO_QUEBROU_O_MODULO %s: %s"
+                                           % (nome, type(exc).__name__)) from exc
             novo = montar_contexto()
-            _rodar(novo, so=rotulo)
+            # Todos os blocos, sempre: uma mutação de D3 fica vermelha no GATE ZERO
+            # (bloco [0]), e `so="D3"` só re-rodava o [D]. O custo é segundos.
+            _rodar(novo)
 
         ctx["remedir"] = remedir
         _rodar(ctx)
