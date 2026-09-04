@@ -941,4 +941,16 @@ def ferramentas_comerciais(*, company_id: Optional[str], supabase: Any) -> List[
     except Exception as e:  # noqa: BLE001
         logger.warning("[094] executive_intelligence nao anexada: %s",
                        type(e).__name__)
+    # 🔴 SPEC-094.1 BLOCO C — `listar_entregas` entra pela MESMA lista, e pelo
+    # mesmo motivo: ela lê as peças publicadas da corretora (títulos, links,
+    # `pack_id`). No agente de ATENDIMENTO, com o segurado do outro lado, isso
+    # é o catálogo interno da corretora exposto para fora dela.
+    try:
+        from app.agents.tools.listar_entregas import ferramenta_de_entregas
+
+        tools.extend(ferramenta_de_entregas(company_id=str(company_id),
+                                            supabase=supabase))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[094.1] listar_entregas nao anexada: %s",
+                       type(e).__name__)
     return tools

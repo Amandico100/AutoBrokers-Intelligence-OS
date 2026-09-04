@@ -150,6 +150,108 @@ check("CONTROLE: o detector acharia o nome no grafo se ele estivesse la",
       "ferramentas_comerciais" in FONTE_GRAPH,
       "se este controle falhar, a assercao acima passa por vacuidade")
 
+# 🔴 SPEC-094.1 BLOCOS C e D — a MESMA trava, pelas MESMAS razoes.
+#
+# `listar_entregas` devolve o catalogo de pecas publicadas da corretora
+# (titulos, links, `pack_id`); `propor_metrica` abre um Work Run com Approval
+# em nome dela. Nenhuma das duas pode chegar ao agente de ATENDIMENTO, que fala
+# com o SEGURADO. Elas entram pela LISTA de `ferramentas_comerciais` para
+# herdar o `if` de papel ja provado acima — e nao por chamada nova em graph.py,
+# que e onde a condicao se perde.
+import re as _re
+
+_LISTA_DE_TOOLS = FONTE[FONTE.rindex("def ferramentas_comerciais"):]
+#: 🔴 SPEC-094.1: as tools novas, cada uma com a fabrica que a anexa. O BLOCO D
+#: acrescenta a sua AQUI — e nao numa copia deste laco.
+TOOLS_DA_094_1 = (("listar_entregas", "ferramenta_de_entregas"),)
+for _nome, _fabrica in TOOLS_DA_094_1:
+    _arq = os.path.join(RAIZ, "app", "agents", "tools", _nome + ".py")
+    check(f"[094.1] a tool `{_nome}` existe", os.path.exists(_arq))
+    check(f"[094.1] `{_nome}` entra pela LISTA de `ferramentas_comerciais`",
+          _fabrica in _LISTA_DE_TOOLS,
+          "fora da lista ela precisaria de uma chamada nova em graph.py")
+    check(f"[094.1] e NAO ha uma segunda chamada de `{_nome}` em graph.py",
+          _nome not in FONTE_GRAPH,
+          "chamada direta em graph.py e onde a condicao de papel se perde")
+    if not os.path.exists(_arq):
+        continue
+    _fonte_tool = open(_arq, encoding="utf-8").read()
+    _arv = ast.parse(_fonte_tool)
+    _cls = next((n for n in ast.walk(_arv) if isinstance(n, ast.ClassDef)
+                 and n.name.endswith("Tool")), None)
+    check(f"[094.1] {_nome} declara uma classe de tool", _cls is not None)
+    if _cls is None:
+        continue
+    _corpo = ast.unparse(_cls)
+    check(f"[094.1] {_nome} declara `exige_async`",
+          any(isinstance(x, ast.AnnAssign)
+              and getattr(x.target, "id", "") == "exige_async" for x in _cls.body),
+          "sem isto o executor chama _run e a tool nunca roda")
+    check(f"[094.1] {_nome} tem `_arun` async", "async def _arun" in _corpo)
+    check(f"[094.1] {_nome}._run LEVANTA (nunca finge que funcionou)",
+          "raise RuntimeError" in _corpo)
+    check(f"[094.1] {_nome} roda o I/O em thread", "asyncio.to_thread" in _corpo)
+    # 🔴 `company_id` OBRIGATORIO. O backend roda com service role: RLS sem
+    # filtro no codigo nao protege nada (CLAUDE.md §7). A tool LEVANTA quando
+    # nao ha corretora — nao devolve lista vazia, que esconderia o defeito.
+    check(f"[094.1] {_nome} LEVANTA sem `company_id` (nao lista de todos)",
+          "RecusaSemTenant" in _corpo,
+          "sem tenant a consulta varreria todas as corretoras")
+
+# 🔴 A listagem NUNCA devolve payload cru: ele carrega o `evidence_pack` e,
+# no Pulso 360, `rotulos_de_produtor` — o unico lugar do produto onde o NOME de
+# uma pessoa mora de proposito (mutacao M16 da 094).
+_FONTE_ENTREGAS = open(os.path.join(RAIZ, "app", "agents", "tools",
+                                    "listar_entregas.py"), encoding="utf-8").read()
+_ARV_ENTREGAS = ast.parse(_FONTE_ENTREGAS)
+_FICHA = next((n for n in ast.walk(_ARV_ENTREGAS)
+               if isinstance(n, ast.FunctionDef) and n.name == "_ficha"), None)
+check("[094.1] existe UM montador de ficha (`_ficha`)", _FICHA is not None)
+if _FICHA is not None:
+    _campos = set(_re.findall(r"""['"]([a-z_]+)['"]\s*:""", ast.unparse(_FICHA)))
+    check("[094.1] a ficha NAO leva `payload`", "payload" not in _campos, sorted(_campos))
+    check("[094.1] a ficha leva titulo, data, pack_id, link e status",
+          {"titulo", "criado_em", "pack_id", "link", "status"} <= _campos,
+          sorted(_campos))
+    check("[094.1] CONTROLE: o detector de campos leu a ficha de verdade",
+          len(_campos) >= 6, f"{len(_campos)} campos lidos")
+
+# 🔴 O `payload` so pode ser TOCADO num lugar: a funcao que resolve o
+# `pack_id`. A pergunta e feita sobre a ARVORE, e nao por `grep` no arquivo
+# inteiro — um `grep` contaria a palavra na docstring que explica a regra e
+# ficaria vermelho por causa da propria explicacao.
+_QUEM_TOCA_PAYLOAD = sorted(
+    n.name for n in ast.walk(_ARV_ENTREGAS)
+    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    and any(isinstance(x, ast.Constant) and x.value == "payload"
+            for x in ast.walk(n)))
+check("[094.1] SO `_packs_das_versoes` toca `payload`",
+      _QUEM_TOCA_PAYLOAD == ["_packs_das_versoes"], _QUEM_TOCA_PAYLOAD)
+check("[094.1] CONTROLE: o detector acha quem toca payload",
+      len(_QUEM_TOCA_PAYLOAD) == 1, _QUEM_TOCA_PAYLOAD)
+_RESOLVE = next((n for n in ast.walk(_ARV_ENTREGAS)
+                 if isinstance(n, ast.FunctionDef)
+                 and n.name == "_packs_das_versoes"), None)
+check("[094.1] e ela devolve SO `{artifact_id: pack_id}`",
+      _RESOLVE is not None and "saida[str(v.get('artifact_id'))] = ident"
+      in ast.unparse(_RESOLVE),
+      "se ela devolvesse a linha, o payload subiria junto")
+check("[094.1] a listagem filtra por `company_id` nas DUAS consultas",
+      "listar(company_id" in _FONTE_ENTREGAS
+      and '.eq("company_id", company_id)' in _FONTE_ENTREGAS,
+      "service role: o filtro no codigo e a protecao real (CLAUDE.md §7)")
+check("[094.1] o link e o AUTENTICADO do dashboard (o mesmo `_link`)",
+      "from app.agents.tools.relatorios_comerciais import _link" in _FONTE_ENTREGAS,
+      "um segundo montador de link divergiria do primeiro (CLAUDE.md §5)")
+check("[094.1] lista vazia devolve carimbo, e nao numero inventado",
+      "ENTREGAS_VAZIO" in _FONTE_ENTREGAS
+      and "NÃO invente entrega nenhuma" in _FONTE_ENTREGAS)
+check("[094.1] CONTROLE: os tres carimbos de entrega sao distintos",
+      len({"ENTREGAS_LISTADAS", "ENTREGAS_VAZIO", "ENTREGAS_FALHOU"}) == 3
+      and all(c in _FONTE_ENTREGAS for c in ("ENTREGAS_LISTADAS",
+                                             "ENTREGAS_VAZIO",
+                                             "ENTREGAS_FALHOU")))
+
 usados = set(ast.literal_eval(f'"{m}"') if False else m for m in [])
 import re as _re
 usados = set(_re.findall(r'"block":\s*"([a-z_]+)"', FONTE))
