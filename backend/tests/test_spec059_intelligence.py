@@ -407,7 +407,15 @@ def teste_briefing_nao_inventa():
     cheio = b.compor(
         company_id=EMPRESA_A, briefing_type="daily_operational",
         findings=findings, recomendacoes=[], trabalhos_em_curso=[],
-        resultados=[{"id": "w1", "outcome_title": "Relatório entregue"}],
+        # SPEC-095 D.5 (04/09/2026): o briefing só conta como "trabalho pronto"
+        # o Work Run que a corretora PEDIU (`source_type` em chat/routine — a
+        # mesma regra de inclusão do placar). 📊 40 de 41 itens de trabalho dos
+        # 5 últimos briefings da Resulta eram `intelligence.detect_signals`, o
+        # relógio da plataforma, listado como "o que ficou pronto". Um resultado
+        # sem origem declarada deixou de ser da corretora; a fixture migra com o
+        # fato — a garantia continua a mesma: resultado não compete pelo teto.
+        resultados=[{"id": "w1", "outcome_title": "Relatório entregue",
+                     "source_type": "chat"}],
         outcomes=[], faltando=[], period_start=inicio, period_end=fim,
         max_itens=7)
     acionaveis = [i for i in cheio.itens if i.item_type == "finding"]

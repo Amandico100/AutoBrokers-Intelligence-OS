@@ -209,10 +209,15 @@ MUTACOES = [
     # (a deduplicação), não com a manchete. A linha que decide a manchete é esta:
     ("app/services/intelligence/briefing_service.py",
      "manchete = topo.headline", 'manchete = "%d item(ns) esperando você hoje" % n', "D3"),
+    # ⚠️ O texto DEPOIS da mutação tem de ser um marcador que não ocorre no
+    # produto: `test_nenhuma_mutacao_foi_commitada.py` procura cada `para` no
+    # objeto COMMITADO, e `"chat"` / `"block": "kpis"` existem ali de direito
+    # (📊 04/09: o guarda acusou os dois como "mutação sobrevivente").
+    # `source_type_MUTADO` → `.get` devolve None → tudo vira relógio → [D5] vermelho.
     ("app/services/intelligence/briefing_service.py",
-     'w.get("source_type")', '"chat"', "D5"),
+     'w.get("source_type")', 'w.get("source_type_MUTADO")', "D5"),
     ("app/agents/tools/executive_intelligence.py",
-     '"block": "actions"', '"block": "kpis"', "D2"),
+     '"block": "actions"', '"block": "actions_MUTADO"', "D2"),
     ("app/comercial/narrativa.py",
      '"titulo"', '"titulo_DESLIGADO"', "D1"),
     # 📊 O builder escreveu a projeção como `"artifact_id, %s->%s, status" %
