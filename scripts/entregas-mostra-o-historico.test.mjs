@@ -70,6 +70,24 @@ const catalogo = carregarTS('lib/auxiliaries/catalog.ts', (id) =>
   id === '@supabase/supabase-js' ? {} : undefined,
 );
 
+// SPEC-095 — o mesmo resolvedor do guarda irmão (entregas-tudo-abre): a rota
+// importa `@/lib/relatorios/tipos`, e `@/lib/**` que existe no repositório é
+// transpilado de verdade. Import de endereço inexistente continua vermelho.
+function resolverLib(id) {
+  if (!id.startsWith('@/lib/')) return undefined;
+  const base = id.slice(2);
+  for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+    if (fs.existsSync(path.join(RAIZ, base + ext))) {
+      return carregarTS(base + ext, (x) => {
+        if (x === '@supabase/supabase-js') return {};
+        if (x === 'lucide-react') return new Proxy({}, { get: () => () => null });
+        return resolverLib(x);
+      });
+    }
+  }
+  return undefined;
+}
+
 function dubleSupabase(linhasPorTabela, registro) {
   return {
     from(tabela) {
@@ -183,7 +201,7 @@ async function rodarRota(linhas = LINHAS) {
       };
     }
     if (id === '@/lib/auxiliaries/catalog') return catalogo;
-    return undefined;
+    return resolverLib(id);
   });
 
   const resposta = await rota.GET({});

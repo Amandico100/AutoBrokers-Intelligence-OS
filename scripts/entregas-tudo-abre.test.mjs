@@ -70,6 +70,29 @@ const catalogo = carregarTS('lib/auxiliaries/catalog.ts', (id) =>
   id === '@supabase/supabase-js' ? {} : undefined,
 );
 
+// SPEC-095 — a rota passou a importar `@/lib/relatorios/tipos` (o mapa ÚNICO de
+// tipos, lido pela lista e pelo detalhe). O carregador era FECHADO de propósito:
+// import não previsto = vermelho por endereço errado, e continua sendo. O que
+// muda é que `@/lib/**` que EXISTE no repositório é transpilado DE VERDADE, como
+// o catálogo já era — nunca inventado. 📊 04/09/2026: os dois guardas da 078
+// estouravam antes da primeira asserção só por causa desse import.
+function resolverLib(id) {
+  if (!id.startsWith('@/lib/')) return undefined;
+  const base = id.slice(2);
+  for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+    if (fs.existsSync(path.join(RAIZ, base + ext))) {
+      return carregarTS(base + ext, (x) => {
+        if (x === '@supabase/supabase-js') return {};
+        // Ícones são componentes React: o guarda não desenha nada, só precisa
+        // que o módulo carregue.
+        if (x === 'lucide-react') return new Proxy({}, { get: () => () => null });
+        return resolverLib(x);
+      });
+    }
+  }
+  return undefined;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Dublê de Supabase: encadeamento igual ao do cliente real, linhas fixas.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,7 +253,7 @@ async function rodarRota(linhas = LINHAS) {
       };
     }
     if (id === '@/lib/auxiliaries/catalog') return catalogo;
-    return undefined;
+    return resolverLib(id);
   });
 
   const resposta = await rota.GET({});
