@@ -3071,6 +3071,182 @@ def bloco_13_ingestao():
 
 
 # ===========================================================================
+# [14] O BLOCO CITAVEL E O VOCABULARIO COMPLETO -- conserto de 04/09 (12 e 13)
+# ===========================================================================
+def _fixture_completa(cbim, mercado_tambem=True):
+    """A carteira de REFERENCIA — com as cinco populacoes cheias.
+
+    🔴 Ela existe porque a fixture curta (duas apolices) faz TODAS as metricas
+    novas cairem no ramo do INDISPONIVEL: o vocabulario proibido nunca era
+    medido sobre o texto que as formulas escrevem quando elas TEM numero. Um
+    detector que so le o caminho vazio nao le o produto.
+    """
+    from app.providers.reference_analytics_provider import fatos_de_fixture
+
+    lote = fatos_de_fixture(EMPRESA_A)
+    return lote
+
+
+def bloco_14_pack_e_vocabulario():
+    _p("\n[14] PACK E VOCABULARIO (conserto 04/09) -- o TIPO da proposta · as 5 visoes cheias")
+
+    mod, erro = mod_tool360()
+    cbim, erro_c = _cbim()
+    pack_mod, erro_p = _pack()
+    if mod is None or cbim is None or pack_mod is None:
+        certo(False, "[14] tool360 + cbim + pack carregam",
+              erro or erro_c or erro_p)
+        return
+
+    from app.comercial.proposta import PropostaDeMetrica
+
+    class _PacoteFalso:
+        @staticmethod
+        def serializar():
+            return {"metrics": [], "warnings": []}
+
+    proposta = PropostaDeMetrica(
+        nome_sugerido="proposta.comissao_media",
+        fatos=("commission",), dimensoes=("producer",),
+        time_basis="POLICY_VALID_FROM",
+        pergunta_exemplo="qual a comissao media por produtor")
+
+    # -- CONTROLE: a proposta de verdade PASSA ------------------------------
+    try:
+        texto = mod.bloco_citavel(_PacoteFalso(), [proposta])
+        passou, detalhe = ("proposta.comissao_media" in texto), texto[:150]
+    except Exception as exc:  # noqa: BLE001
+        passou, detalhe = False, "%s: %s" % (type(exc).__name__, exc)
+    certo(passou,
+          "[14] CONTROLE: uma `PropostaDeMetrica` de verdade entra no bloco "
+          "citavel", detalhe)
+
+    # -- TRATAMENTO 1: o TIPO errado ---------------------------------------
+    #
+    # 🔴 O caso que a regra antiga deixava passar inteiro: um `MetricResult` na
+    # lista de propostas. Ele tem `value`, mas a chave dele no dicionario
+    # serializado NAO se chama `valor` — e a pergunta era por dois nomes.
+    resultado = pack_mod.metrica(
+        "x.y", 42.0, "count", period={"start": "2025-01-01", "end": "2025-12-31"},
+        time_basis="POLICY_VALID_FROM")
+    try:
+        mod.bloco_citavel(_PacoteFalso(), [resultado])
+        recusou, detalhe = False, "ele ENTROU no bloco citavel, com value=42"
+    except RuntimeError as exc:
+        recusou, detalhe = "M-PROPOSTA" in str(exc), str(exc)[:160]
+    except Exception as exc:  # noqa: BLE001
+        recusou, detalhe = False, "%s: %s" % (type(exc).__name__, exc)
+    certo(recusou,
+          "[14] M-PROPOSTA (tipo): um `MetricResult` na lista de propostas e "
+          "RECUSADO", detalhe
+          + "  🔴 a regra antiga perguntava por dois NOMES de campo; este "
+            "objeto passava com o numero dentro")
+
+    # -- TRATAMENTO 2: uma chave numerica que nao se chama `value` ----------
+    class _PropostaComNumero(PropostaDeMetrica):
+        def serializar(self):
+            return dict(PropostaDeMetrica.serializar(self), montante=1234.5)
+
+    torta = _PropostaComNumero(nome_sugerido="proposta.x")
+    try:
+        mod.bloco_citavel(_PacoteFalso(), [torta])
+        recusou, detalhe = False, "a chave `montante` entrou no bloco"
+    except RuntimeError as exc:
+        recusou, detalhe = "M-PROPOSTA" in str(exc), str(exc)[:160]
+    except Exception as exc:  # noqa: BLE001
+        recusou, detalhe = False, "%s: %s" % (type(exc).__name__, exc)
+    certo(recusou,
+          "[14] M-PROPOSTA (forma): uma chave NUMERICA que nao se chama "
+          "`value` tambem e recusada", detalhe
+          + "  ⛔ `montante`, `total`, `quantia`: a lista de dois nomes nao "
+            "pegava nenhum deles")
+
+    # -- as 5 visoes CHEIAS + uma proposta, sobre o vocabulario ------------
+    feixe = cbim.MarketFactSet(
+        provider_key=cbim.PROVIDER_DE_MERCADO, fonte="fixture",
+        competencia_final="202506",
+        mapa={"port": "05886"},
+        resolver=lambda nome: ("05886" if str(nome).strip().upper() == "PORT"
+                               else "UNKNOWN"))
+    for mes in ("202503", "202506", "202509", "202512"):
+        feixe.facts.append(cbim.MarketFact(
+            coenti="05886", damesano=mes, coramo="0531",
+            premio_ganho=1000.0, sinistro_ocorrido=571.2))
+
+    lote = _fixture_completa(cbim)
+    texto, erro = rodar_montar(
+        ["sinistros", "funil", "carteira", "pendencias", "mercado",
+         "a comissao media por produtor de frota"],
+        fatos=lote, mercado=feixe)
+    if erro:
+        certo(False, "[14] o Pulso das 5 visoes NOVAS roda com dado dentro",
+              erro)
+        return
+    _fora, pack = partes(texto)
+    if pack is None:
+        certo(False, "[14] a resposta traz um <<PACK>> parseavel", texto[-200:])
+        return
+    serializado = json.dumps(pack, ensure_ascii=False)
+
+    certo(len(pack.get("metrics") or []) >= 10
+          and len(pack.get("propostas") or []) >= 1,
+          "[14] CONTROLE: o pack tem as metricas NOVAS e uma PROPOSTA (%d + %d)"
+          % (len(pack.get("metrics") or []), len(pack.get("propostas") or [])),
+          "sem as duas coisas dentro, a assercao seguinte passa por vacuidade")
+    com_numero = [m for m in (pack.get("metrics") or [])
+                  if str(m.get("value")) != "UNAVAILABLE"]
+    certo(len(com_numero) >= 4,
+          "[14] CONTROLE: pelo menos 4 metricas NOVAS trazem NUMERO (%d) — os "
+          "ramos alcancaveis das formulas estao sendo lidos" % (len(com_numero),),
+          "com tudo INDISPONIVEL o detector leria so o caminho vazio: %r"
+          % ([m.get("metric_id") for m in (pack.get("metrics") or [])][:8],))
+
+    achados = vocabulario_proibido_em(serializado)
+    certo(not achados,
+          "[14] o vocabulario proibido NAO aparece no pack das 5 visoes novas "
+          "+ proposta (%d bytes)" % (len(serializado),),
+          "📊 achado: %r" % (achados[:4],))
+    # A MUTACAO que o pacote nomeia, sobre a metrica de cross-sell.
+    alvo = os.path.join(METRICAS, "carteira.py")
+    registry, _er = _registry()
+
+    def _recarregar_definicoes():
+        """🔴 As definicoes sao carregadas UMA vez por processo.
+
+        ⚠️ Sem isto a mutacao no DISCO nao chega ao codigo que roda: o registry
+        guarda as metricas num dicionario de modulo e `_carregar_definicoes`
+        volta cedo quando ele ja esta cheio. Uma mutacao que nao e exercida NAO
+        e mutacao passada (CLAUDE.md §9.5).
+        """
+        registry.METRICAS.clear()
+        registry._carregar_definicoes()
+
+    def _medir():
+        _recarregar_definicoes()
+        t, e = rodar_montar(["carteira"], fatos=lote, recarregar=True)
+        if e:
+            return "ERRO: %s" % e
+        _f, p2 = partes(t)
+        return vocabulario_proibido_em(json.dumps(p2 or {}, ensure_ascii=False))
+
+    valor, rodou = sob_mutacao(
+        "[14] M-VOCAB em `customer.single_product_share`", alvo,
+        [("produto é RAMO DISTINTO, e não apólice",
+          "o lucro recebido pelo funcionario")],
+        _medir)
+    # ⚠️ E o arquivo restaurado tem de voltar ao registry: senao os blocos
+    # seguintes mediriam as definicoes MUTADAS.
+    _recarregar_definicoes()
+    mod_tool360(recarregar=True)
+    if rodou:
+        certo(bool(valor) and not str(valor).startswith("ERRO"),
+              "[14] M-VOCAB: com 'o lucro recebido pelo funcionario' dentro de "
+              "`customer.single_product_share`, o detector ACUSA",
+              "veio %r — a frase injetada tem de chegar ao PACK e ser vista"
+              % (valor,))
+
+
+# ===========================================================================
 # [9] CONTROLE GERAL — este guarda CONSEGUE ficar vermelho?
 # ===========================================================================
 def bloco_9_controle():
@@ -3164,6 +3340,7 @@ BLOCOS = (
     ("[11] A FIACAO", bloco_11_a_fiacao),
     ("[12] PROMOCAO E MAPA", bloco_12_promocao_e_mapa),
     ("[13] INGESTAO", bloco_13_ingestao),
+    ("[14] PACK E VOCABULARIO", bloco_14_pack_e_vocabulario),
     ("[9] CONTROLE GERAL", bloco_9_controle),
 )
 

@@ -593,6 +593,15 @@ COMO_FALAR = (
 )
 
 
+#: 🔴 As chaves que uma proposta serializada PODE ter. Lista FECHADA, e ela é o
+#: que faz o guarda ser por FORMA e não por dois nomes de campo: qualquer chave
+#: nova numa proposta é recusada até alguém a declarar aqui, de propósito.
+CHAVES_DA_PROPOSTA = frozenset({
+    "origem", "nome_sugerido", "fatos", "dimensoes", "time_basis",
+    "parecida_com", "pergunta_exemplo", "nao_reconhecido", "estado",
+})
+
+
 def bloco_citavel(pacote: Any,
                   propostas: Optional[List[PropostaDeMetrica]] = None) -> str:
     """O bloco `<<PACK>>` com o SELO de origem e as propostas ao lado.
@@ -607,8 +616,15 @@ def bloco_citavel(pacote: Any,
 
     ⛔ **Proposta NUNCA tem `value`.** Ela nem tem onde guardar um: o tipo
     `PropostaDeMetrica` não declara o campo (mutação M-PROPOSTA). Esta função
-    faz a segunda pergunta assim mesmo — cinto e suspensório — porque o custo é
-    uma linha e o defeito que ela pega chega ao dono como número inventado.
+    pergunta assim mesmo — cinto e suspensório — porque o custo é uma linha e o
+    defeito que ela pega chega ao dono como número inventado.
+
+    🔴 E desde 04/09/2026 são TRÊS perguntas, não uma: o **tipo**, as **chaves
+    declaradas** e a **ausência de qualquer numérico**. 📊 A pergunta anterior
+    era `"value" in linha or "valor" in linha` — dois nomes de campo. Um
+    `MetricResult` passado por engano nesta lista atravessava inteiro, com
+    `value`, `coverage` e `confidence`, e o narrador o leria como número
+    calculado.
 
     ⚠️ Ela mora AQUI, e não em `evidence_pack.py`, porque o pack é peça
     compartilhada e esta é a apresentação de UMA tool. Se uma segunda tool
@@ -627,12 +643,39 @@ def bloco_citavel(pacote: Any,
         item["origem"] = "registry"
     saida: List[Dict[str, Any]] = []
     for pr in (propostas or []):
-        linha = pr.serializar()
-        if "value" in linha or "valor" in linha:
+        # 🔴 SPEC-094.1, conserto de 04/09/2026 — a recusa é por TIPO, e depois
+        # por FORMA.
+        #
+        # 📊 O defeito: a única pergunta era `"value" in linha or "valor" in
+        # linha`. Ela pegava exatamente dois nomes de campo. Um `MetricResult`
+        # passado por engano nesta lista — ou uma proposta que ganhasse
+        # `montante`, `total`, `quantia`, `resultado` — atravessava, e o
+        # narrador leria o número com a autoridade de uma métrica calculada.
+        # Era a coisa exata que esta SPEC existe para impedir, guardada por uma
+        # lista de dois nomes.
+        if not isinstance(pr, PropostaDeMetrica):
             raise RuntimeError(
-                "M-PROPOSTA: uma proposta de métrica chegou ao bloco citável "
-                "com valor. Proposta não tem número — se ela ganhou um campo "
-                "de valor, o tipo mudou e o defeito é lá, não aqui")
+                "M-PROPOSTA: o que chegou à lista de propostas é um %s, e não "
+                "uma proposta. Só o TIPO `PropostaDeMetrica` entra aqui — ele "
+                "não tem onde guardar um número, e é essa ausência que impede "
+                "um valor de sair como se fosse calculado"
+                % type(pr).__name__)
+        linha = pr.serializar()
+        estranhas = sorted(set(linha) - CHAVES_DA_PROPOSTA)
+        if estranhas:
+            raise RuntimeError(
+                "M-PROPOSTA: a proposta chegou ao bloco citável com chave(s) "
+                "que o contrato não declara: %r. Uma proposta é uma DESCRIÇÃO, "
+                "e um campo novo nela é por onde um número entra"
+                % (estranhas,))
+        numericas = sorted(
+            k for k, v in linha.items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool))
+        if numericas:
+            raise RuntimeError(
+                "M-PROPOSTA: a proposta traz valor NUMÉRICO em %r. Proposta "
+                "não tem número — nem zero, nem aproximado. Se o tipo ganhou "
+                "onde guardar um, o defeito é lá, não aqui" % (numericas,))
         saida.append(linha)
     corpo["propostas"] = saida
     texto = _json.dumps(corpo, ensure_ascii=False, allow_nan=False)
