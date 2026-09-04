@@ -10166,3 +10166,47 @@ sinistralidade de seguradora nenhuma (é o que o envelope diz, com essas letras)
 **Custo de esquecer:** a seção "mercado" do Pulso 360 fica permanentemente indisponível, e a única coisa que o
 produto faz e ninguém mais faz não chega ao dono. **Destrava:** rodar a Rotina uma vez no ambiente real e conferir
 o objeto `susep/ses/<ano>.csv` no bucket. **Dono:** 🤖 (precisa de `MINIO_ENDPOINT` no ambiente). 💭 30 min.
+
+---
+
+# SPEC-095 · Relatórios que o corretor entende — o que ficou (04/09/2026)
+
+## P-095-NARRATIVA-DO-FABRIC · `commercial_opportunity` não tem Narrativa própria no Fabric
+📊 Medido em 04/09/2026: o sinal da 094 sai com `signal_type = "commercial_opportunity"` para os três detectores
+(`evidence_pack.py:596`); `finding_engine.py:200` escolhe a narrativa por tipo e cai em `NARRATIVA_PADRAO` — o finding
+nasce "Ponto de atenção / observacao" (`intelligence_findings` da Resulta, 4 dias: **3/3**). A 095 contorna no briefing
+(a 1ª frase do sumário humano vira manchete quando o tipo é `observacao`); a Central e o admin continuam vendo "Ponto de
+atenção". **Custo de esquecer:** o achado mais valioso do produto (concentração, renovação vencendo, produtor em queda)
+aparece com título genérico fora do briefing. **Destrava:** 3 `signal_type` + 3 `Narrativa` no Fabric (SPEC-059, taxonomia
+de `schemas.py`). **Dono:** 🤖. 💭 1h30.
+
+## P-095-DATA-AS-OF-LEGADO · 136 versões antigas carregam `data_as_of` = carimbo de escrita
+📊 Medido em 04/09/2026: `service.py:159` gravava `_agora()`; 136/136 versões, 30 delas no FUTURO do próprio `created_at`
+(desvio por processo: worker −0,1 s, API +50…+70 s). A 095 corrige o escritor (NULL quando ninguém sabe a data) e a tela
+chama as antigas de "gerado em", nunca "dados de". As versões publicadas são imutáveis: o valor velho fica. **Custo de
+esquecer:** nenhum — desde que a tela continue distinguindo. **Destrava:** nada; registro para quem ler o banco cru.
+**Dono:** 🤖.
+
+## P-095-TRABALHO-PRONTO · o briefing só conhece `work_runs` como "trabalho pronto"
+📊 Medido em 04/09/2026 (aquecimento): dos 41 itens de trabalho dos 5 últimos briefings da Resulta, **40** vinham de Work
+Runs `system` (`intelligence.detect_signals` etc.). Com o relógio da plataforma fora (D.5 da 095), sobram 0 em 5/5 dias, e
+a frase "M trabalho(s) pronto(s)" some. Execuções de rotina/auxiliar ("Cobrança Feita rodou") não entram como pronto.
+**Custo de esquecer:** o briefing não conta o trabalho que os Auxiliares fizeram. **Destrava:** `_trabalhos`
+(`briefing_service.py:566`) ler `routine_runs`/`auxiliary_runs` além de `work_runs` chat/routine. **Dono:** 🤖 (SPEC-097).
+💭 1h.
+
+## P-095-TICK-OLHA-953-VEZES · `intelligence.detect_signals` rodou 953× para produzir 32 sinais
+📊 Medido em 04/09/2026: `work_runs` da Resulta = 1.228, `source_type='system'` = 1.214 (98,86%); `detect_signals` 953,
+`measure_outcomes` 160, `garimpo` 41. As três corretoras têm ~1.210 cada — o número é do relógio. **Custo de esquecer:**
+custo de banco e de fila por nada; qualquer contador ingênuo de "trabalho" mente por 87×. **Destrava:** cadência do tick
+por corretora com dado novo, não por relógio (SPEC-097). **Dono:** 🤖. 💭 2h.
+
+## P-095-SEARCH · busca no servidor e paginação por cursor, por gatilho
+📊 Medido em 04/09/2026: 400 linhas no máximo por lista, 130 peças por corretora, 1,2 ms por consulta. A busca continua no
+navegador sobre título/detalhe/origem. **Custo de esquecer:** uma peça antiga fora das 120 mais recentes por fonte não é
+encontrável. **Destrava:** > 1.000 linhas por corretora ou uma busca que não achou (medida). **Dono:** 🤖. 💭 3h.
+
+## P-095-PDF · não há renderizador de PDF no contêiner
+📊 `grep -in "playwright\|chromium\|weasyprint" backend/requirements*.txt backend/Dockerfile*` → 0. "Abrir em nova aba" +
+imprimir já gera PDF pelo CSS de impressão da peça. **Custo de esquecer:** o botão "Baixar" entrega `.html`. **Destrava:**
+o Founder ou uma corretora pedir arquivo; Playwright entra no worker, não na API. **Dono:** 🧑 decide · 🤖 implementa. 💭 4h.

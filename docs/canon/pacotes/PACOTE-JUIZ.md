@@ -21,6 +21,9 @@ a REFERÊNCIA                                interna {caminho} · externa {URL}
 ⛔ NENHUMA mensagem sai. NENHUM agente é ligado. NENHUM portal. Banco: só SELECT.
 ⛔ NUNCA imprimir CPF, telefone, apólice, placa, nome de pessoa, senha ou token.
 ⛔ SOMENTE LEITURA. Rode testes e consultas; não edite arquivo.
+⛔ Canário VIVO (o que publica no banco real) só com `AUTOBROKERS_CANARIO=1` exportado no processo — a peça nasce
+   marcada e fora da biblioteca da corretora — e arquive ao fim o que ele criou (SPEC-095 B.3: 📊 34/34 relatórios do chat
+   da Resulta eram canário sem marca).
 ```
 
 ## Como julgar

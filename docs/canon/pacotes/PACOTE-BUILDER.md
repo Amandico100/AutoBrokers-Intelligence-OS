@@ -19,6 +19,9 @@ docs/canon/MIGRATIONS-AUTHORITY.md          🔴 só se a unidade tiver SQL
 ⛔ NUNCA imprimir CPF, telefone, apólice, placa, nome de pessoa, senha ou token.
 ⛔ NUNCA `git add -A`. NÃO tocar em variável de ambiente. NÃO commitar: o orquestrador commita.
 ⛔ Motor paralelo é proibido (CLAUDE.md §5). Consolide e migre; não crie ao lado.
+⛔ Canário VIVO (o que publica no banco real) só com `AUTOBROKERS_CANARIO=1` exportado no processo — a peça nasce
+   marcada e fora da biblioteca da corretora — e arquive ao fim o que ele criou (SPEC-095 B.3: 📊 34/34 relatórios do chat
+   da Resulta eram canário sem marca).
 ```
 
 ## O EXECUTION CARD desta unidade (preenchido pelo orquestrador)
