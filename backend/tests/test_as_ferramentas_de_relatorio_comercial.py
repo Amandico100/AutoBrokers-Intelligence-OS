@@ -287,16 +287,39 @@ check("CONTROLE: o detector de blocos realmente achou blocos",
 # importam nem chamam a Cobranca, o Atendimento, o corredor ou o webhook, e
 # NAO escrevem em `artifact_renders` (o publisher e o ArtifactService). O que
 # a 081 tinha medo era de a tool mexer nessas pecas; e isso que se mede.
-PROIBIDOS_NA_TOOL = ("billing_collection", "dispatch_router", "dispatch_watchdog",
-                     "corridor_playbooks", "api.webhook", "api import webhook",
-                     'table("artifact_renders")', "table('artifact_renders')")
-tocados = [p for p in PROIBIDOS_NA_TOOL if p in FONTE]
+import re as _re
+MODULOS_PROIBIDOS_NA_TOOL = ("billing_collection", "dispatch_router", "dispatch_watchdog",
+                             "corridor_playbooks", "webhook")
+
+
+def _toca_modulo_proibido(fonte):
+    """IMPORT ou CHAMADA de um modulo proibido — nunca a palavra num comentario.
+
+    ⚠️ A tool CITA a Cobranca como precedente em docstring ("a Cobranca ja faz
+    certo, `billing_collection.py:1350`"); citar nao e chamar. O que se mede e
+    `from/import ...billing_collection`, `billing_collection.algo(` e a escrita
+    direta em `artifact_renders`.
+    """
+    achados = []
+    for m in MODULOS_PROIBIDOS_NA_TOOL:
+        if _re.search(r"^\s*(from|import)\s+[\w.]*\b%s\b" % m, fonte, _re.M):
+            achados.append("import %s" % m)
+        elif _re.search(r"\b%s\.\w+\(" % m, fonte):
+            achados.append("chamada %s.*(" % m)
+    if _re.search(r"""table\(\s*['"]artifact_renders['"]\s*\)""", fonte):
+        achados.append("escrita em artifact_renders")
+    return achados
+
+
+tocados = _toca_modulo_proibido(FONTE)
 check("as tools da 081 NAO importam/chamam Cobranca, Atendimento, corredor, "
       "webhook, nem escrevem em artifact_renders", not tocados, tocados)
 check("CONTROLE: uma tool que importasse a Cobranca seria ACUSADA",
-      any(p in (FONTE + "\nfrom app.services.billing_collection import x\n")
-          for p in PROIBIDOS_NA_TOOL),
+      bool(_toca_modulo_proibido(FONTE + "\nfrom app.services.billing_collection import x\n")),
       "o detector nao ve `billing_collection` numa fonte que o importa")
+check("CONTROLE: citar a Cobranca num comentario NAO e acusado",
+      not _toca_modulo_proibido("# ver billing_collection.py:1350\n"),
+      "o detector confunde citacao com chamada")
 
 # 🔴 `services/artifacts/templates.py` SAIU da lista acima em 03/09/2026, e a
 # licao MIGROU em vez de morrer (CLAUDE.md §9.3).
