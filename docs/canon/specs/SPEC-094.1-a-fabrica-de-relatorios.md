@@ -9,7 +9,7 @@
 > **primeiro cruzamento com dado externo** que só o AutoBrokers faz: sinistralidade do mercado (SUSEP
 > SES) × a carteira da corretora, por ramo e seguradora — o exemplo que o Founder deu.
 >
-> **v1 · 03/09/2026 · protocolo v11.2** · nasce da SPEC-094 executada + pedido do Founder de 03/09 +
+> **v2 · 03/09/2026 · protocolo v11.2 + opção B (três marchas)** · v1 + aquecimento (nota 84, 12 emendas E1–E12 aplicadas) · nasce da SPEC-094 executada + pedido do Founder de 03/09 +
 > 3 pesquisas: `docs/canon/pesquisa/{RELATORIOS-QUE-VALEM-DINHEIRO, CORPAPI-CATALOGO-OFICIAL, COMO-NASCE-UM-RELATORIO-HOJE}.md`
 > Número: **094.1** — é a continuação direta da 094 (precedente 084 · 084.1 · 084.2). Executa DEPOIS da 094 fechar.
 > ⛔ Não substitui as propostas 095/096: elas continuam na fila com o próprio número.
@@ -91,7 +91,7 @@ Nota da pesquisa: (b) propor → humano promove **92** · (c) só registradas 74
 ### 1.7 · O que já está pronto para esta SPEC usar (da 094, medido no gate dela)
 Registry de métricas com `time_basis` · CBIM · adapter InfoCap sobre `_resolve_infocap_connection` ·
 manifesto de capacidade · Evidence Pack único chat+Artifact · tool `executive_intelligence` com query
-plan · template `executive.pulse360` · Work OS com `work_runs` + `approvals` (SPEC-055, HITL) ·
+plan · template `executive.pulse360` · Work OS com `work_runs` + `approval_requests` (SPEC-055, HITL — 📊 `WorkApprovalService.solicitar()` existe e tem ZERO chamadores: o BLOCO D escreve o PRIMEIRO) ·
 `ArtifactService` · `SignalService`/`EvidenceService`. **Esta SPEC não cria motor: cria definições,
 um workflow de proposta, uma tool de leitura e um conector público.**
 
@@ -109,7 +109,8 @@ um workflow de proposta, uma tool de leitura e um conector público.**
    devolve o texto da proposta e o id. Não existe tool de "promover" para o modelo (Cube: remover a capacidade).
 ⛔ Sem sandbox, sem exec, sem SQL gerado. Um cálculo novo é uma DEFINIÇÃO no registry, escrita por gente, com guarda.
 ⛔ ZERO migration de estrutura. Escritas: work_runs/work_events/approvals (escritores existentes), artifacts,
-   intelligence_signals. Uma migration de SEED só se o template mudar (como na 094).
+   intelligence_signals. As 4 seções novas do `PULSO_360` entram em CÓDIGO (`_garantir_template` faz upsert no uso — 📊 `service.py:96`):
+   **ZERO migration nesta SPEC, decidido.**
 ⛔ Nenhum motor paralelo: nem segundo catálogo de templates, nem segundo caminho de publicação, nem segundo registro
    de tool, nem segundo motor de regra, nem segunda camada de cálculo, nem "fábrica" ao lado de services/skills/.
 ⛔ NUNCA nome de pessoa, CPF, apólice, placa em log, teste, fixture, censo, relatório. Nunca `git add -A`.
@@ -122,7 +123,7 @@ um workflow de proposta, uma tool de leitura e um conector público.**
 SPEC .................  094.1 · A fábrica de relatórios
 RISCO ................  6  — número executivo lido pelo dono (herdado da 094) + primeira fonte EXTERNA no dado + workflow com
                             Approval; nada envia; nada escreve na InfoCap
-SUPERFÍCIE ...........  3  — comercial/metricas (definições) · providers (adapter: 5 rotas novas; conector SES) · agents/tools
+SUPERFÍCIE ...........  3  — comercial/metricas (definições + registry.py + cbim.py: 4 fatos novos) · providers (adapter: 5 rotas novas; conector SES) · agents/tools
                             (1 tool de leitura + proposta) · services/work (workflow) · artifacts (template) · docs/canon (protocolo)
 NÍVEL ................  CRÍTICO sob v11.2 — desenhista antes · painel de 3 lentes (verdade/ELO · DADO · regressão+tenant) · red team ·
                             um juiz fresco confirma + audita · integrador
@@ -133,9 +134,9 @@ PARALELISMO REAL .....  3 escritores (A→B ‖ C+D ‖ E)
 O ELO ................  pergunta "sinistros por seguradora × mercado" → adapter lê /sinistros + SES do MinIO → duas métricas do
                         registry → mesmo Evidence Pack no chat e no Artifact → E a pergunta sem métrica devolve PROPOSTA (Work Run
                         com Approval) e ZERO número → um chat com o protocolo promove em minutos e o guarda prova
-GATE ZERO ............  (i) grep 'table("artifacts")' em agents/ → 0 (VERMELHO) · (ii) pergunta sem métrica hoje devolve prosa/erro,
-                        não proposta (VERMELHO) · (iii) /sinistros sem leitor (VERMELHO) · (iv) SES não existe no MinIO (VERMELHO)
-FAIXA DE RELÓGIO .....  10–14h do primeiro despacho ao push
+GATE ZERO ............  (i) grep 'table("artifacts")' em agents/ → 0 (VERMELHO) · (ii) pergunta sem métrica hoje devolve um Pulso 360 COMPLETO sobre outra pergunta, sem aviso
+                        (📊 `executive_intelligence.py:746-748`: view desconhecida é descartada e o fallback é TODAS) (VERMELHO) · (iii) /sinistros sem leitor (VERMELHO) · (iv) SES não existe no MinIO (VERMELHO)
+FAIXA DE RELÓGIO .....  12–16h do primeiro despacho ao push (aquecimento: A tem 4 fatos CBIM novos + Protocol; D escreve o 1º caller de HITL; C é o mais barato)
 ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes (v11.2)
 BATERIA ..............  suíte inteira no gate do B e no fim (2×); scripts comerciais + guarda da 094 + guarda novo a cada bloco
 ```
@@ -151,8 +152,8 @@ O QUE FAZ ........... o modelo consulta o modelo semântico e rascunha; "deliber
 MODELAMOS ........... BLOCO D: a tool `propor_metrica` cria Work Run + Approval; NÃO existe tool `promover`. Remover a capacidade,
                       não pedir contenção
 REJEITAMOS .......... Cube como runtime; rascunho de SQL pelo modelo
-COMO O JUIZ INSPECIONA grep de tools registradas para `core`: nenhuma escreve em comercial/metricas/ nem em templates.py;
-                      mutação: acrescentar uma tool que grava definição → o guarda fica vermelho
+COMO O JUIZ INSPECIONA `grep -rn --include=*.py -E "open\(.*metricas|write_text|Path\(.*metricas" backend/app/agents/` → 0 (ESCRITA,
+                      não leitura: `registry.calcular` em tools é legítimo; excluir __pycache__); mutação: tool que grava definição → vermelho
 ```
 ### ② Euno — propor → revisar duplicata → promover
 ```
@@ -199,7 +200,8 @@ O QUE FAZ ........... o modelo lista métricas e dimensões e pede o cálculo po
 MODELAMOS ........... a tool `executive_intelligence` (094) ganha `listar_metricas` no query plan: o modelo descobre o que existe
                       ANTES de propor; é o que evita a proposta duplicada
 REJEITAMOS .......... instalar dbt
-COMO O JUIZ INSPECIONA pergunta ao chat "que métricas você tem?" e confere que a lista bate com registry.listar()
+COMO O JUIZ INSPECIONA `python -c "from app.agents.tools.executive_intelligence import VISOES; from app.comercial.metricas import registry;
+                      print(set(m for v in VISOES.values() for m in v) - set(registry.todas()))"` → `set()` (📊 hoje bate: 16 = 16)
 ```
 
 ---
@@ -224,19 +226,27 @@ Métricas novas no registry (uma definição por arquivo, com pergunta verificad
 `claims.open_count@1` · `claims.indemnity_paid@1` · `claims.by_insurer@1` · `quotes.funnel@1` (condicional) ·
 `quotes.lost_reasons@1` (condicional) · `portfolio.cancellation_rate@1` · `customer.single_product_share@1`
 (cross-sell: clientes com 1 produto ÷ total, com os ramos ausentes mais comuns) · `issuance.pending@1`.
-O Pulso 360 ganha as seções **Sinistros**, **Funil** (se houver), **Carteira por cliente**, **Pendências**.
+O Pulso 360 ganha as seções **Sinistros**, **Funil** (se houver), **Carteira por cliente**, **Pendências**. 📊 Colisão: o template
+`claims.performance` (`templates.py:294`, 0 artifacts) captura a palavra "sinistro" no roteador léxico (`escolher():914`) — as pistas
+saem dele (a seção do Pulso é o destino; o template fica registrado em P-094.1-CLAIMS-TEMPLATE para decisão de remoção).
 **Gate A:** cada métrica com golden sintético + pergunta verificada; M1 (provider na fórmula) vermelho;
 `customer_ref` é hash — nenhum CPF no pack (M16); paridade adapter × provider de referência (M17).
 
 # BLOCO B · O primeiro cruzamento externo — SUSEP SES × a carteira
 
-Conector público `backend/app/providers/susep_ses_provider.py` (mesmo port de dados analíticos, `provider_key='susep_ses'`,
-sem credencial): uma Rotina existente (`tick.py`, cadência semanal) baixa `BaseCompleta.zip` para o MinIO, extrai
-`Ses_cias.csv` + códigos, grava `MarketFact` particionado por ano em CSV no MinIO. Mapa versionado
+Conector público `backend/app/providers/susep_ses_provider.py` (`provider_key='susep_ses'`, sem credencial). **Quem baixa é o WORKER**
+(`smith_worker`, sob lease com heartbeat), não o tick: o tick só agenda, com o molde de PLATAFORMA `intelligence.cluster_demand`
+(`tick.py:148`, `escopo="plataforma"`) — nunca o molde por corretora (seriam N downloads). Cadência semanal exige rótulo de janela
+`%G-W%V` em `tick._janela` (hoje qualquer horas≥24 vira diário). O worker faz download em STREAM para disco temporário, abre só o
+membro `Ses_cias.csv` do ZIP (sem carregar 545 MB em memória), agrega para (coenti × damesano × ramo: prêmio, sinistro) — 💭 poucos MB —
+e grava SÓ o agregado no MinIO via `MinioService.put_bytes` (`services/minio_service.py:130`, bucket único). 📊 A cobertura do dado é
+**202606** (a página oficial), não 07/2026; `Last-Modified 31/08` é do arquivo. O mapa `seguradora→coenti` nasce da "Lista de empresas
+processadas" (CSV avulso da SUSEP), sem os 545 MB. **BLOCO 0 mede o TTL do lease e a memória do contêiner antes de despachar o B.** Mapa versionado
 `docs/canon/providers/susep/seguradora-coenti.json` (nome canônico da seguradora da InfoCap → `coenti` do SES; o que
-não mapeia sai `UNKNOWN`, nunca omitido). Métricas: `market.loss_ratio@1` (por coenti × ramo × mês, do SES) ·
-`claims.loss_ratio_portfolio@1` (indenizações pagas ÷ prêmio, da carteira; `coverage` = fração da carteira com
-sinistro instrumentado) · `claims.loss_ratio_vs_market@1` (DERIVED, mesma seguradora e ramo, mesmo período; UNAVAILABLE
+não mapeia sai `UNKNOWN`, nunca omitido). As métricas de mercado leem um `MarketFactSet` de plataforma passado ao registry como `contexto.mercado` (a fórmula DERIVED
+combina o `FactSet` do tenant com o `MarketFactSet`; `calcular` ganha esse parâmetro opcional). Métricas: `market.loss_ratio@1`
+(por coenti × ramo × mês, do SES) · `claims.loss_ratio_portfolio@1` (indenizações pagas ÷ prêmio, da carteira; `coverage` = fração do
+PRÊMIO do período nas seguradoras mapeadas para `coenti`) · `claims.loss_ratio_vs_market@1` (DERIVED, mesma seguradora e ramo, mesmo período; UNAVAILABLE
 onde o mapa não casa) · `market.loss_ratio_trend@1` (3 trimestres, sinal ▲▼). Seção **Mercado** no Pulso 360:
 *"a seguradora X subiu a sinistralidade de Y por 3 trimestres — negocie antes da carta de reajuste"*, com o ponteiro.
 **Gate B:** lente do DADO recalcula uma célula do CSV à mão; mutação "ler o ZIP no caminho quente" vermelha (o adapter
@@ -244,8 +254,9 @@ só lê o MinIO); mapa sem uma seguradora → UNAVAILABLE, não zero (M2); **su�
 
 # BLOCO C · O chat lembra o que entregou — `listar_entregas`
 
-Tool de leitura sobre `artifacts` (filtro `company_id` obrigatório): lista, filtra por período/template, devolve
-título, data, link, `pack_id`, métricas do pack. Entra na lista de tools `core` dentro do `if` de `graph.py:528`.
+Tool fina sobre `ArtifactService.listar(company_id, limite)` (📊 `service.py:355`, já filtra tenant e arquivados): lista, filtra por
+período/template, devolve título, data, `pack_id` e o LINK AUTENTICADO do dashboard (o link público via `compartilhar()` continua fora —
+📊 `artifact_shares` = 0: nunca funcionou; registrado em P-094.1-LINK-PUBLICO). É o bloco mais barato da SPEC (💭 0,5–1h). Entra na lista de tools `core` dentro do `if` de `graph.py:528`.
 **Gate C:** duas corretoras → só as próprias (mutação sem `company_id` vermelha); a resposta não traz payload cru.
 
 # BLOCO D · A proposta — Work Run `metric.proposal` com Approval, e nenhuma tool de promover
@@ -253,11 +264,13 @@ título, data, link, `pack_id`, métricas do pack. Entra na lista de tools `core
 `executive_intelligence` ganha no query plan `listar_metricas` (ref ⑥) e, quando `views` pede algo que não existe,
 devolve **proposta**: `{nome_sugerido, fatos, dimensoes, time_basis, parecida_com:[...], pergunta_exemplo}` — sem
 `value`. Tool `propor_metrica` cria `work_runs` (`workflow_key='metric.proposal'`, `source_type='chat'`, `risk_level`
-baixo) via `criar_registro_sem_fila` da 093-B + `approvals` (SPEC-055) para o dono da corretora **ou** o Founder
-(configurável por corretora, default Founder no piloto); `work_events` `metric.proposta_criada`. Estados:
-`proposta → aprovada → promovida (commit do humano com o metric_id) | recusada`. A promoção é **fora do produto**:
-o humano segue o protocolo do BLOCO E; o guarda [D] confere que, para toda proposta `promovida`, o `metric_id`
-existe em `registry.listar()`. No pack, `origem: registry|proposta` (ref ③); o Artifact escreve "proposta em
+baixo) via `criar_registro_sem_fila` da 093-B + `approval_requests` (SPEC-055) para o dono da corretora **ou** o Founder
+(configurável por corretora, default Founder no piloto); `work_events` `metric.proposta_criada`. O run NÃO tem executor (como `claims.shadow`): é registro durável, `status` de espera do vocabulário existente de `work_runs`
+(o builder mede o CHECK). Estados: `proposta → aprovada (decidir() da SPEC-055, pela API admin existente) → promovida | recusada`.
+A promoção é **fora do produto**: o humano segue o protocolo do BLOCO E, commita a definição e roda
+`python -m app.comercial.metricas.promover <run_id> <metric_id>` — um CLI que grava `work_events` `metric.promovida` e exige que o
+`metric_id` exista em `registry.todas()` (o guarda [D] prova que promover um id inexistente REPROVA). A proposta é um TIPO próprio
+(`PropostaDeMetrica`), nunca um `MetricResult` com `value=None` — `_compor` não a percorre (guarda M-PROPOSTA). No pack, `origem: registry|proposta` (ref ③); o Artifact escreve "proposta em
 revisão", sem número.
 **Gate D:** M-PROPOSTA (devolver `value` numa proposta) vermelho; duplicata apontada (ref ②); não existe tool que
 escreva em `metricas/` (grep + mutação); Approval criado com `company_id`; dois tenants não veem propostas um do outro.
@@ -299,8 +312,10 @@ NOVOS     backend/app/comercial/metricas/{claims_*,quotes_*,portfolio_cancellati
           backend/app/agents/tools/{listar_entregas,propor_metrica}.py · backend/app/services/work/metric_proposal.py ·
           docs/canon/COMO-NASCE-UM-RELATORIO.md · docs/canon/providers/susep/{seguradora-coenti.json,SES-CENSO.md} ·
           backend/tests/{test_a_fabrica_de_relatorios,test_o_relatorio_nasce_pelo_protocolo}.py
-ALTERADOS backend/app/providers/infocap_analytics_provider.py (5 métodos) · backend/app/comercial/cbim.py (ClaimFact, QuoteFact,
-          CustomerPortfolioFact, MarketFact) · backend/app/agents/tools/executive_intelligence.py (listar_metricas, proposta) ·
+ALTERADOS backend/app/comercial/metricas/registry.py (MetricDefinition ganha `pergunta_verificada` e `golden`; `__post_init__` exige) ·
+          backend/app/services/intelligence/tick.py (rótulo de janela SEMANAL `%G-W%V` — hoje `_janela` colapsa horas≥24 em diário) ·
+          backend/app/providers/infocap_analytics_provider.py (5 métodos) · backend/app/comercial/cbim.py (ClaimFact, QuoteFact, CustomerPortfolioFact; `MarketFact` em `MarketFactSet` SEPARADO, de plataforma, não
+          por tenant) · backend/app/providers/brokerage_analytics_provider.py (Protocol ganha os métodos novos com default vazio) · backend/app/agents/tools/executive_intelligence.py (listar_metricas, proposta) ·
           backend/app/agents/graph.py (2 linhas no if de :528) · services/artifacts/templates.py (seções) · core/heartbeat.py
           (trabalhador "Censo SUSEP") · docs/canon/providers/infocap/*.json (BLOCO 0) · PENDENCIAS · INDICE · reports/
 NÃO TOCAR services/skills/* (20 skills em sombra: decisão F-094.1-01) · services/intelligence/schemas.py · infocap_connector.py
