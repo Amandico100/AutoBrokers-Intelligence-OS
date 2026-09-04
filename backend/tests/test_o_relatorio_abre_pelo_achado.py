@@ -1509,11 +1509,69 @@ def montar_contexto():
 
 
 # ===========================================================================
+def bloco_B2_data_honesta(ctx):
+    """[B2] A data do dado é a do dado — pelos ESCRITORES, não pela tela.
+
+    📊 04/09/2026, red team: `billing_collection.py` voltou a gravar
+    `datetime.now()` como `data_as_of` com o comentário "a hora da varredura" —
+    e não era; a página, vendo `subject_ref.produtor` declarado, imprimia
+    "Dados lidos em" sobre o carimbo da escrita. E TODOS os escritores de
+    `data_sources` gravam `as_of_label`, que a página não lia. Aqui os dois
+    lados: quem escreve a data sabe a data, e a chave que se escreve é a que se
+    lê (o guarda da tela, [15], executa `lerFontes` sobre as três formas).
+    """
+    _p("\n[B2] A DATA DO DADO -- quem grava sabe a data; a chave gravada e a chave lida")
+    cob = ler(os.path.join(RAIZ, "app", "services", "billing_collection.py"))
+    certo("data_as_of=inicio_da_varredura" in cob,
+          "[B2] a Cobranca passa a hora da VARREDURA como data_as_of",
+          "compor_peca_da_cobranca nao recebe/passa `inicio_da_varredura`")
+    certo("data_as_of=datetime.now(" not in cob,
+          "[B2] a Cobranca nao grava now() como data do dado",
+          "`data_as_of=datetime.now(` voltou (o defeito do red team de 04/09)")
+    i_inicio = cob.find("inicio_da_varredura = datetime.now(timezone.utc)")
+    i_laco = cob.find("for portal_key in selected_portal_keys(cfg):")
+    certo(0 < i_inicio < i_laco,
+          "[B2] a hora da varredura e carimbada ANTES do laco dos portais",
+          "carimbo em %d, laco em %d" % (i_inicio, i_laco))
+    # PAR: a fonte com o now() de volta -- o detector acusa.
+    par("data_as_of=datetime.now(" in cob.replace("data_as_of=inicio_da_varredura",
+                                                     "data_as_of=datetime.now(timezone.utc)"),
+        "[B2] PAR: now() de volta na Cobranca e ACUSADO",
+        "o detector nao ve `data_as_of=datetime.now(`")
+    # Os escritores de fontes, EXECUTADOS: todo item traz `as_of_label` cheio.
+    rc = ctx.get("relatorios_comerciais")
+    try:
+        bloco = rc._fontes("04/09/2026 10:00")
+        itens = (bloco.get("props") or {}).get("items") or []
+        certo(bool(itens) and all(str(i.get("as_of_label") or "").strip() for i in itens),
+              "[B2] relatorios_comerciais._fontes grava `as_of_label` em todo item",
+              "itens=%r" % [sorted(i.keys()) for i in itens])
+    except Exception as exc:  # noqa: BLE001
+        certo(False, "[B2] relatorios_comerciais._fontes executa", "%s: %s" % (type(exc).__name__, exc))
+    try:
+        wf = modulo("app.services.intelligence.workflows", "BLOCO D.3")
+        # `_fontes(spec)` do briefing devolve a LISTA de fontes (vai direto em
+        # `data_sources=`), e não um bloco com `props`.
+        itens = wf._fontes({"period": {"start": "2026-09-03", "end": "2026-09-04"},
+                            "sources_summary": ["operational_backlog"]}) or []
+        certo(bool(itens) and all(str(i.get("as_of_label") or "").strip() for i in itens),
+              "[B2] workflows._fontes (briefing) grava `as_of_label` em todo item",
+              "itens=%r" % [sorted(i.keys()) for i in itens])
+        certo(not any("rotulo" in i or "data" in i for i in itens),
+              "[B2] o briefing deixou a forma antiga (rotulo/detalhe/data) -- uma forma so",
+              "itens=%r" % [sorted(i.keys()) for i in itens])
+    except Exception as exc:  # noqa: BLE001
+        certo(False, "[B2] workflows._fontes executa", "%s: %s" % (type(exc).__name__, exc))
+    par(not all(str(i.get("as_of_label") or "").strip() for i in [{"label": "x"}]),
+        "[B2] PAR: item sem `as_of_label` e ACUSADO", "o detector aceitou item sem data")
+
+
 def _rodar(ctx, so=None):
     if so in (None, "0"):
         bloco_0_gate_zero(ctx)
     if so in (None, "B.a", "B.b", "B.c", "B.f"):
         bloco_B_identidade(ctx)
+        bloco_B2_data_honesta(ctx)
     if so in (None, "D1", "D2", "D3", "D5"):
         bloco_D_narrativa(ctx)
 

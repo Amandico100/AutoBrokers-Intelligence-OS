@@ -389,7 +389,12 @@ function guardaEscopoNaFonte(fonte, nome) {
 function guardaFiltroDaUrl(clienteFonte, redirects) {
   const problemas = [];
 
-  if (!/window\.location\.search/.test(clienteFonte) || !/get\('tipo'\)/.test(clienteFonte)) {
+  // SPEC-095 (P2 do red team): a tela passou a ler a URL por `useSearchParams`,
+  // que acompanha a navegação suave do App Router — `window.location.search`
+  // num efeito de montagem não recarregava ao clicar "ver arquivados". A lição
+  // deste guarda ("a tela LÊ `?tipo=` da URL") não muda; muda o jeito de ler.
+  const leAUrl = /window\.location\.search/.test(clienteFonte) || /useSearchParams\(\)/.test(clienteFonte);
+  if (!leAUrl || !/get\('tipo'\)/.test(clienteFonte)) {
     problemas.push('EntregasClient nao le `?tipo=` da URL');
   }
 

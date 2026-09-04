@@ -944,7 +944,11 @@ function guardaNadaDaVizinha(corpo) {
 function guardaLenteEFiltros(clienteFonte, redirects) {
   const problemas = [];
 
-  if (!/window\.location\.search/.test(clienteFonte) || !/get\('tipo'\)/.test(clienteFonte)) {
+  // P2 do red team: a tela lê a URL por `useSearchParams` (acompanha a navegação
+  // suave; `window.location.search` num efeito de montagem não recarregava ao
+  // clicar "ver arquivados"). Ler a URL continua obrigatório; o jeito mudou.
+  const leAUrl = /window\.location\.search/.test(clienteFonte) || /useSearchParams\(\)/.test(clienteFonte);
+  if (!leAUrl || !/get\('tipo'\)/.test(clienteFonte)) {
     problemas.push('EntregasClient não lê `?tipo=` da URL');
   }
   const lista = /const FILTROS_DA_URL[^=]*=\s*\[([^\]]*)\]/.exec(clienteFonte);
@@ -1160,14 +1164,29 @@ function guardaOChatSoPrePreenche(chatFonte, inputFonte) {
       problemas.push('há um useEffect que chama handleSendMessage — o chat NUNCA envia sozinho');
     }
   }
-  // O zeramento mora no efeito que já espelha a URL.
+  // 🔴 O zeramento NÃO mora no efeito que espelha a URL. 📊 04/09/2026, o red
+  // team EXECUTOU este componente: o efeito roda no primeiro commit, ANTES de
+  // o composer existir (`if (isLoadingUser) return <Carregando/>` segura a
+  // árvore até `/api/auth/me`), e zerar ali apagava a pergunta antes de o
+  // InputArea montar — o campo nascia vazio. Esta asserção, na versão
+  // anterior, exigia exatamente o defeito. A lição migra: o consumo acontece
+  // no ATO de enviar (`handleSendMessage`), acima da fronteira de remontagem.
   const efeitoDaUrl = /useEffect\(\(\) => \{[\s\S]*?searchParams[\s\S]*?\}, \[[^\]]*\]\);/.exec(chatFonte);
   if (!efeitoDaUrl) {
     problemas.push('não achei o efeito que espelha a URL em app/dashboard/chat/page.tsx');
-  } else if (!/setTextoInicial\(\s*''\s*\)|setTextoInicial\(null\)/.test(efeitoDaUrl[0])) {
+  } else if (/setTextoInicial\(\s*''\s*\)|setTextoInicial\(null\)/.test(efeitoDaUrl[0])) {
     problemas.push(
-      '`textoInicial` não é zerado dentro do efeito que espelha a URL — no primeiro envio o ' +
-        'composer remonta e a pergunta volta sozinha para o campo',
+      '`textoInicial` é zerado dentro do efeito que espelha a URL — ele roda antes de o composer ' +
+        'montar (isLoadingUser) e a pergunta nunca chega ao campo (red team, 04/09)',
+    );
+  }
+  const enviar = /const handleSendMessage = async \([\s\S]*?\n  \};/.exec(chatFonte);
+  if (!enviar) {
+    problemas.push('não achei handleSendMessage em app/dashboard/chat/page.tsx');
+  } else if (!/setTextoInicial\(\s*''\s*\)/.test(enviar[0])) {
+    problemas.push(
+      '`textoInicial` não é zerado em handleSendMessage — ao enviar, o composer remonta e a ' +
+        'pergunta volta sozinha para o campo',
     );
   }
   if (!/initialText/.test(chatFonte)) {
@@ -1636,6 +1655,355 @@ controle(guardaPayloadPeloCaminho('// pagina que nao le payload nenhum'), 'pagin
 if (CARREGADOS_POR_CAMINHO.length > 0) {
   console.log(`\n      modulos do produto carregados pelo resolvedor: ${[...new Set(CARREGADOS_POR_CAMINHO)].join(', ')}`);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [13]–[15] A TELA EXECUTADA — o que o red team pegou por baixo dos guardas de
+// FORMA (04/09/2026): "Perguntar ao AutoBrokers" abria o chat vazio, a coluna
+// de data de "De onde veio" saía vazia para toda peça nova, e a frase de
+// frescor podia afirmar "dados lidos em" sobre um carimbo de escrita. Os três
+// passaram com os guardas verdes porque o Gate E era regex sobre a fonte. Um
+// guarda que não executa a tela não guarda a tela (CLAUDE.md §9.4). Estes três
+// executam: o COMPONENTE real do chat, a PÁGINA real de detalhe e a função
+// real `lerFontes` — sobre dublês, sem rede.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function carregarTSX(rel, resolver, React, extraJs = '') {
+  const fonteTsx = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+  return carregarTSXDeTexto(fonteTsx, rel, resolver, React, extraJs);
+}
+function carregarTSXDeTexto(fonteTsx, rel, resolver, React, extraJs = '') {
+  let js = ts.transpileModule(fonteTsx, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+      jsx: ts.JsxEmit.React,
+    },
+    fileName: rel,
+  }).outputText;
+  js += extraJs;
+  const mod = { exports: {} };
+  const req = (id) => {
+    const r = resolver(id);
+    if (r === undefined) throw new Error(`import nao previsto no teste: ${id}`);
+    return r;
+  };
+  // eslint-disable-next-line no-new-func
+  new Function('require', 'module', 'exports', 'React', js)(req, mod, mod.exports, React);
+  return mod.exports;
+}
+
+/**
+ * [13] O chat, executado. Um React falso com o CONTRATO real do React 18:
+ * render → commit → flush dos efeitos (na ordem de declaração); `useState(init)`
+ * só lê o inicializador na MONTAGEM; um fetch (rede) só resolve DEPOIS do
+ * flush síncrono. `useUserId` segue o contrato do arquivo real
+ * (hooks/useUserId.ts: `isLoading` nasce true e vira false quando o fetch
+ * resolve). Devolve o `initialText` da PRIMEIRA montagem do InputArea — é o
+ * único que importa: `useState(initialText ?? '')` lê a prop só ali.
+ */
+async function executarChat(fonteDoChat) {
+  const globaisAntes = {
+    window: globalThis.window, document: globalThis.document,
+    fetch: globalThis.fetch, crypto: Object.getOwnPropertyDescriptor(globalThis, 'crypto'),
+  };
+  let slots = [];
+  let cursor = 0;
+  let efeitosDesteRender = [];
+  let sujo = false;
+  const filaDeRede = [];
+  function useState(inicial) {
+    const i = cursor++;
+    if (!(i in slots)) slots[i] = { v: typeof inicial === 'function' ? inicial() : inicial };
+    const s = slots[i];
+    return [s.v, (nv) => {
+      const p = typeof nv === 'function' ? nv(s.v) : nv;
+      if (!Object.is(p, s.v)) { s.v = p; sujo = true; }
+    }];
+  }
+  function useRef(v) { const i = cursor++; if (!(i in slots)) slots[i] = { v: { current: v } }; return slots[i].v; }
+  function useCallback(fn) { cursor++; return fn; }
+  function useMemo(fn) { cursor++; return fn(); }
+  function useEffect(fn, deps) {
+    const i = cursor++;
+    const antes = slots[i];
+    const mudou = !antes || !deps || !antes.deps || deps.length !== antes.deps.length
+      || deps.some((d, k) => !Object.is(d, antes.deps[k]));
+    slots[i] = { deps };
+    if (mudou) efeitosDesteRender.push({ i, fn });
+  }
+  const elementos = [];
+  function createElement(tipo, props, ...filhos) {
+    const el = { tipo, props: props || {}, filhos };
+    elementos.push(el);
+    return el;
+  }
+  const React = { useState, useEffect, useLayoutEffect: useEffect, useRef, useCallback, useMemo, createElement, Fragment: 'FRAGMENT' };
+
+  const PERGUNTA = 'Sobre o relatorio «Seguradora Sentinela concentra 46,8% da comissao» (aaaaaaaa): ';
+  let urlAtual = 'https://app.autobrokers.ai/dashboard/chat?pergunta=' + encodeURIComponent(PERGUNTA);
+  globalThis.window = {
+    get location() { const u = new URL(urlAtual); return { href: urlAtual, search: u.search, pathname: u.pathname }; },
+    history: { replaceState: (_a, _b, nova) => { urlAtual = nova; } },
+    addEventListener() {}, removeEventListener() {},
+  };
+  globalThis.document = { addEventListener() {}, removeEventListener() {}, querySelector: () => null };
+  Object.defineProperty(globalThis, 'crypto', { value: { randomUUID: () => '00000000-0000-4000-8000-000000000000' }, configurable: true });
+  globalThis.fetch = () => new Promise((res) => filaDeRede.push(() => res({ ok: true, json: async () => ({}) })));
+
+  const InputAreaStub = function InputArea() { return null; };
+  const inerte = () => null;
+  function useUserIdFake() {
+    const [carregando, setCarregando] = useState(true);
+    const [uid, setUid] = useState(null);
+    useEffect(() => { globalThis.fetch('/api/auth/me').then(() => { setUid('u1'); setCarregando(false); }); }, []);
+    return { userId: uid, userAvatar: null, userName: null, isLoading: carregando };
+  }
+  try {
+    const pagina = carregarTSXDeTexto(fonteDoChat, 'app/dashboard/chat/page.tsx', (id) => {
+      if (id === 'react') return React;
+      if (id === '@/components/InputArea') return { __esModule: true, default: InputAreaStub };
+      if (id === '@/hooks/useUserId') return { useUserId: useUserIdFake };
+      if (id === '@/lib/supabase') return { supabase: { channel: () => ({ on: () => ({ subscribe: () => ({}) }) }), removeChannel() {} } };
+      if (id === '@/lib/n8nClient') return { sendTextToN8N: async () => ({}), sendVoiceToN8N: async () => ({}) };
+      if (id === 'sonner') return { toast: { success() {}, error() {} } };
+      if (id === '@/lib/types') return {};
+      return { __esModule: true, default: inerte, ChatWelcome: inerte, ChatShortcutCards: inerte, MessageBubble: inerte, TypingIndicator: inerte };
+    }, React);
+    const Componente = pagina.default;
+    const linhaDoTempo = [];
+    function passo(rotulo) {
+      cursor = 0; efeitosDesteRender = []; sujo = false; elementos.length = 0;
+      Componente();
+      const input = elementos.find((e) => e.tipo === InputAreaStub);
+      linhaDoTempo.push({ fase: rotulo, montado: Boolean(input), initialText: input ? String(input.props.initialText ?? '') : null });
+      for (const e of efeitosDesteRender.slice()) e.fn();
+    }
+    passo('render 1 (isLoadingUser = true)');
+    let n = 0;
+    while (sujo && n++ < 5) passo(`re-render sincrono ${n}`);
+    while (filaDeRede.length) filaDeRede.shift()();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    passo('render apos /api/auth/me');
+    n = 0;
+    while (sujo && n++ < 5) passo(`render extra ${n}`);
+    const primeira = linhaDoTempo.find((l) => l.montado);
+    return { pergunta: PERGUNTA, primeiraMontagem: primeira ? primeira.fase : null, initialText: primeira ? primeira.initialText : null };
+  } finally {
+    globalThis.window = globaisAntes.window;
+    globalThis.document = globaisAntes.document;
+    globalThis.fetch = globaisAntes.fetch;
+    if (globaisAntes.crypto) Object.defineProperty(globalThis, 'crypto', globaisAntes.crypto);
+  }
+}
+
+function guardaAPerguntaChegaAoCampo(resultado) {
+  const problemas = [];
+  if (!resultado || !resultado.primeiraMontagem) {
+    problemas.push('o InputArea nunca montou — o componente não chegou a renderizar o composer');
+    return problemas;
+  }
+  if (resultado.initialText !== resultado.pergunta) {
+    problemas.push(
+      `na PRIMEIRA montagem do InputArea (${resultado.primeiraMontagem}) initialText = ` +
+        `${JSON.stringify(resultado.initialText)} — a pergunta do relatório NÃO chega ao campo`,
+    );
+  }
+  return problemas;
+}
+
+/**
+ * [14] O detalhe, executado. A página real (server component) sobre um dublê
+ * com DUAS corretoras. Devolve o TEXTO que a árvore carrega (título, subtítulo,
+ * rótulos e filhos), sem desenhar nada.
+ */
+function textoDeArvore(no) {
+  if (no == null || no === false) return '';
+  if (Array.isArray(no)) return no.map(textoDeArvore).join('');
+  if (typeof no === 'object') {
+    const dentro = [].concat(no.filhos || [], (no.props && no.props.children) || []);
+    return [
+      typeof no.props?.title === 'string' ? `${no.props.title} ` : '',
+      typeof no.props?.subtitle === 'string' ? `${no.props.subtitle} ` : '',
+      typeof no.props?.label === 'string' ? `${no.props.label} ` : '',
+      textoDeArvore(dentro),
+    ].join('');
+  }
+  return String(no);
+}
+function valorJson(l, c) {
+  if (!/->/.test(c)) return l[c];
+  let v = l;
+  for (const p of c.split(/->>|->/).map((s) => s.replace(/^'|'$/g, ''))) {
+    if (v == null) return undefined;
+    v = v[p];
+  }
+  return v;
+}
+function dubleDoDetalhe(linhasPorTabela) {
+  return {
+    from(tabela) {
+      const st = { preds: [], ordem: null, limite: null, projecao: null };
+      const q = {
+        select(c) { st.projecao = c; return q; },
+        eq(c, v) { st.preds.push((l) => String(valorJson(l, c) ?? '') === String(v)); return q; },
+        is(c, v) { st.preds.push((l) => (v === null ? l[c] == null : l[c] === v)); return q; },
+        order(c, o) { st.ordem = [c, o && o.ascending]; return q; },
+        limit(n) { st.limite = n; return q; },
+        resolve() {
+          let linhas = (linhasPorTabela[tabela] || []).filter((l) => st.preds.every((p) => p(l)));
+          if (st.ordem) {
+            const [c, asc] = st.ordem;
+            linhas = linhas.slice().sort((a, b) => (Number(valorJson(a, c)) - Number(valorJson(b, c))) * (asc ? 1 : -1));
+          }
+          if (st.limite != null) linhas = linhas.slice(0, st.limite);
+          // o PostgREST devolve `payload->findings` como a chave `findings` (E5)
+          if (st.projecao && /payload->findings/.test(st.projecao)) {
+            linhas = linhas.map((l) => ({ id: l.id, findings: (l.payload || {}).findings }));
+          }
+          return linhas;
+        },
+        maybeSingle() { const l = q.resolve(); return Promise.resolve({ data: l[0] ?? null, error: null }); },
+        then(ok) { ok({ data: q.resolve(), error: null }); },
+      };
+      return q;
+    },
+  };
+}
+async function executarDetalhe({ dataAsOf, produtorDeclarado, versaoPedida }) {
+  const A = 'empresa-A';
+  const B = 'empresa-B';
+  const ESCRITA = '2026-08-18T13:38:07.349Z';
+  const ART = 'aaaaaaaa-1111-4111-8111-111111111111';
+  const linhas = {
+    artifacts: [{
+      id: ART, company_id: A, kind: 'report', title: 'Cobranca de boletos atrasados', subtitle: 'sub', summary: 'res',
+      template_key: 'financial.billing_collection', origin: 'routine', status: 'ready', current_version: 1,
+      subject_ref: produtorDeclarado
+        ? { kind: 'routine', id: 'rot-1', label: 'Cobranca', produtor: 'cobranca-feita' }
+        : { kind: 'routine', id: 'rot-1', label: 'Cobranca' },
+      tags: [], created_at: ESCRITA, updated_at: ESCRITA, archived_at: null,
+    }],
+    artifact_versions: [
+      { id: 'v-da-A', company_id: A, artifact_id: ART, version: 1, status: 'published', published_at: ESCRITA, created_at: ESCRITA,
+        data_as_of: dataAsOf, confidence_note: null,
+        data_sources: [{ label: 'Portais', detail: 'varredura', as_of_label: 'lida em 18/08/2026 10:30' }],
+        payload: { findings: [] } },
+      { id: 'v-DA-VIZINHA', company_id: B, artifact_id: 'bbbbbbbb-2222-4222-8222-222222222222', version: 9, status: 'published',
+        published_at: ESCRITA, created_at: ESCRITA, data_as_of: ESCRITA, confidence_note: 'NOTA SECRETA DA VIZINHA', data_sources: [],
+        payload: { findings: [{ o_que_fazer: 'ACHADO SECRETO DA VIZINHA', titulo: 'x' }] } },
+    ],
+    artifact_renders: [
+      { artifact_version_id: 'v-da-A', company_id: A, format: 'html', status: 'ready', inline_content: '<html>peca da A</html>', byte_size: 10, created_at: ESCRITA },
+      { artifact_version_id: 'v-DA-VIZINHA', company_id: B, format: 'html', status: 'ready', inline_content: '<html>PECA DA VIZINHA</html>', byte_size: 10, created_at: ESCRITA },
+    ],
+  };
+  const React = { createElement(tipo, props, ...filhos) { return { tipo, props: props || {}, filhos }; }, Fragment: 'FRAGMENT' };
+  const pagina = carregarTSX('app/dashboard/entregas/[artifactId]/page.tsx', (id) => {
+    if (id === 'react') return React;
+    if (id === 'next/link') return { __esModule: true, default: 'Link' };
+    if (id === 'next/navigation') return { notFound: () => { throw new Error('NOT_FOUND'); } };
+    if (id === '@/lib/admin/admin-auth') return { requireCompanyMember: async () => ({ ok: true, supabase: dubleDoDetalhe(linhas), ctx: { companyId: A } }) };
+    if (id === '@/lib/auxiliaries/catalog') return { ondeAbrirAuxiliar: () => null };
+    if (id === '@/components/patterns/DetailHeader') return { DetailHeader: 'DetailHeader' };
+    if (id === '@/components/patterns/StatusPill') return { StatusPill: 'StatusPill' };
+    if (id === '@/lib/icons') return { icons: new Proxy({}, { get: () => 'Icone' }) };
+    if (id === '@/lib/relatorios/tipos') return carregarTS('lib/relatorios/tipos.ts', (x) => (x === '@/lib/icons' ? {} : undefined));
+    return undefined;
+  }, React);
+  const arvore = await pagina.default({
+    params: Promise.resolve({ artifactId: ART }),
+    searchParams: Promise.resolve(versaoPedida ? { versao: versaoPedida } : {}),
+  });
+  return textoDeArvore(arvore);
+}
+function guardaFrescorHonesto({ semData, semDataLegado, comData }) {
+  const problemas = [];
+  // Peça NOVA sem data do dado: a página não afirma frescor nenhum — nem
+  // "Dados lidos em", nem "Dados de". (Dizer nada é honesto; afirmar não é.)
+  if (/Dados lidos em|Dados de /.test(semData)) {
+    problemas.push('sem `data_as_of` a página AFIRMA frescor ("Dados lidos em"/"Dados de") sobre uma peça nova');
+  }
+  // Peça LEGADA (sem `subject_ref.produtor`, as 136 de antes): o carimbo de
+  // escrita existe e é o que ele é — "Gerado em", nunca "Dados de".
+  if (/Dados lidos em|Dados de /.test(semDataLegado)) {
+    problemas.push('peça legada: a página chama o carimbo de escrita de "Dados de"/"Dados lidos em"');
+  }
+  if (!/Gerado em/i.test(semDataLegado)) problemas.push('peça legada: a página não diz "Gerado em" — a data da escrita sumiu');
+  // Peça nova COM a data do dado, de um publicador que a conhece: a forma forte.
+  if (!/Dados lidos em/.test(comData)) {
+    problemas.push('com `data_as_of` de um publicador que declara produtor, a página não diz "Dados lidos em"');
+  }
+  return problemas;
+}
+function guardaVersaoDaVizinhaNaoVaza({ comVersaoDaVizinha }) {
+  const problemas = [];
+  if (/VIZINHA/.test(comVersaoDaVizinha)) problemas.push('`?versao=` com o id de uma versão de OUTRA corretora trouxe conteúdo dela');
+  if (!/Cobranca de boletos/.test(comVersaoDaVizinha)) problemas.push('a página não mostrou nem a própria peça — o dublê não percorreu nada');
+  return problemas;
+}
+
+/** [15] `lerFontes` REAL sobre as três formas que existem no banco e no código. */
+function lerFontesReal() {
+  const React = { createElement: () => null, Fragment: 'F' };
+  const mod = carregarTSX('app/dashboard/entregas/[artifactId]/page.tsx', () => ({
+    __esModule: true, default: () => null, notFound: () => {}, requireCompanyMember: async () => ({ ok: false }),
+    ondeAbrirAuxiliar: () => null, DetailHeader: () => null, StatusPill: () => null, icons: {},
+    ehPecaDeTeste: () => false, periodoDoRelatorio: () => '', produtor: () => ({}), tipoDoRelatorio: () => ({}), tipoHumanoPorKind: () => '',
+  }), React, '\nmodule.exports.__lerFontes = lerFontes;\n');
+  return mod.__lerFontes;
+}
+function guardaFontesComData(lerFontes) {
+  const problemas = [];
+  const formas = {
+    'escritores desta SPEC (label · detail · as_of_label)': [{ label: 'InfoCap', detail: 'carteira', as_of_label: 'consultado em 04/09 10:00' }],
+    'legado dos briefings (rotulo · detalhe · data)': [{ rotulo: 'Operação', detalhe: 'Work Runs', data: '03/09 a 04/09/2026' }],
+    'forma inglesa antiga (label · detail · as_of)': [{ label: 'Radar', detail: 'x', as_of: '2026-09-01' }],
+  };
+  for (const [quem, itens] of Object.entries(formas)) {
+    const lidas = lerFontes(itens);
+    if (lidas.length !== 1) { problemas.push(`${quem}: lerFontes devolveu ${lidas.length} fonte(s), esperado 1`); continue; }
+    if (!lidas[0].data) problemas.push(`${quem}: a coluna de data saiu VAZIA — "De onde veio" não mostra a hora`);
+  }
+  return problemas;
+}
+
+console.log('\n[13] O CHAT EXECUTADO — a pergunta do relatório chega ao campo?');
+const CHAT_FONTE = fonte('app/dashboard/chat/page.tsx');
+const chatReal = await executarChat(CHAT_FONTE);
+console.log(`      primeira montagem do InputArea: ${chatReal.primeiraMontagem} · initialText = ${JSON.stringify(chatReal.initialText)}`);
+checar(guardaAPerguntaChegaAoCampo(chatReal), 'a pergunta pre-preenchida chega ao campo na primeira montagem do composer');
+
+console.log('\n[14] O DETALHE EXECUTADO — a frase de frescor é honesta, e a vizinha não vaza');
+const semData = await executarDetalhe({ dataAsOf: null, produtorDeclarado: true, versaoPedida: null });
+const semDataLegado = await executarDetalhe({ dataAsOf: '2026-08-18T13:38:07.349Z', produtorDeclarado: false, versaoPedida: null });
+const comData = await executarDetalhe({ dataAsOf: '2026-08-18T13:30:00.000Z', produtorDeclarado: true, versaoPedida: null });
+const comVersaoDaVizinha = await executarDetalhe({ dataAsOf: null, produtorDeclarado: true, versaoPedida: 'v-DA-VIZINHA' });
+checar(guardaFrescorHonesto({ semData, semDataLegado, comData }), 'peca nova sem data nao afirma nada; legada diz "gerado em"; com data, "dados lidos em"');
+checar(guardaVersaoDaVizinhaNaoVaza({ comVersaoDaVizinha }), '?versao= de outra corretora nao traz nada dela');
+
+console.log('\n[15] lerFontes REAL — as tres formas de data_sources viram uma coluna de data preenchida');
+checar(guardaFontesComData(lerFontesReal()), 'De onde veio mostra a hora nas tres formas (as_of_label · data · as_of)');
+
+console.log('\n[16] LINHAS DE CONTROLE dos blocos executados');
+// PAR do [13]: o defeito de 04/09 de volta — zerar no efeito da URL.
+const chatComOZeramentoNoEfeito = CHAT_FONTE.replace(
+  /url\.searchParams\.delete\('pergunta'\);(\r?\n)(\s*)mudou = true;/,
+  "url.searchParams.delete('pergunta');$1$2setTextoInicial('');$1$2mudou = true;",
+);
+if (chatComOZeramentoNoEfeito === CHAT_FONTE) {
+  controle([], 'nao consegui reintroduzir o zeramento no efeito (a ancora mudou)');
+} else {
+  controle(guardaAPerguntaChegaAoCampo(await executarChat(chatComOZeramentoNoEfeito)), 'zeramento de volta no efeito da URL (o defeito de 04/09)');
+}
+controle(guardaAPerguntaChegaAoCampo({ pergunta: 'x', primeiraMontagem: 'render 1', initialText: '' }), 'campo nascendo vazio');
+controle(guardaAPerguntaChegaAoCampo(null), 'composer que nunca monta');
+controle(guardaFrescorHonesto({ semData: 'Dados lidos em 18 de agosto', semDataLegado: 'Gerado em 18 de agosto', comData: 'Dados lidos em 18 de agosto' }), 'pagina afirmando "Dados lidos em" sem data do dado');
+controle(guardaFrescorHonesto({ semData: '', semDataLegado: 'Dados de 18 de agosto', comData: 'Dados lidos em 18 de agosto' }), 'peca legada chamada de "Dados de" (o defeito da §1.9)');
+controle(guardaFrescorHonesto({ semData: '', semDataLegado: 'Gerado em 18 de agosto', comData: 'Gerado em 18 de agosto' }), 'pagina que nunca diz "Dados lidos em" mesmo com a data');
+controle(guardaVersaoDaVizinhaNaoVaza({ comVersaoDaVizinha: 'Cobranca de boletos ... NOTA SECRETA DA VIZINHA' }), 'versao da vizinha vazando');
+controle(guardaVersaoDaVizinhaNaoVaza({ comVersaoDaVizinha: '' }), 'pagina vazia (o duble nao percorreu nada)');
+controle(guardaFontesComData((itens) => itens.map(() => ({ rotulo: 'x', detalhe: '', data: '' }))), 'lerFontes que devolve a data vazia');
 
 console.log(`\n${'='.repeat(78)}`);
 console.log(

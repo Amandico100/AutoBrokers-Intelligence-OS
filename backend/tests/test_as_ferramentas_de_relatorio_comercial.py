@@ -275,22 +275,28 @@ check("CONTROLE: o detector de blocos realmente achou blocos",
 #
 # 🔴 A licao NAO morreu: ela migrou de janela. A pergunta continua sendo *"ESTA
 # SPEC tocou peca da Cobranca?"* — e agora a janela e a desta SPEC.
-BASE_DA_SPEC_094 = "b036b18"
-import subprocess
-diff = subprocess.run(
-    ["git", "diff", "--name-only", BASE_DA_SPEC_094, "HEAD"],
-    cwd=os.path.dirname(RAIZ), capture_output=True, text=True).stdout
-congelados = ["services/artifacts/blocks.py", "services/artifacts/charts.py",
-              "services/artifacts/styles.py", "services/artifacts/render.py",
-              "services/artifacts/service.py",
-              "services/billing_collection.py", "services/dispatch_router.py",
-              "tasks/dispatch_watchdog.py", "services/corridor_playbooks.py",
-              "api/webhook.py"]
-tocados = [c for c in congelados if c in diff]
-check("NENHUM arquivo da Cobranca ou do Atendimento foi tocado",
-      not tocados, tocados)
-check("CONTROLE: o diff nao esta vazio (o teste sabe ler o git)",
-      len(diff.strip()) > 0, "se vazio, a assercao acima nao prova nada")
+#
+# 🔴 E em 04/09/2026 a baseline acusou DE NOVO — a SPEC-095 tocou
+# `services/artifacts/service.py` (data_as_of honesto, tags de canario,
+# arquivar) e `services/billing_collection.py` (a data do dado, subject_ref) de
+# proposito, e a janela "desta SPEC" virou "da SPEC seguinte". A pergunta
+# "ESTA SPEC tocou peca da Cobranca?" nao tem resposta estavel por diff: toda
+# SPEC posterior responde "sim" por motivo legitimo, e o guarda vira o que ele
+# proprio dizia ser o pior — um que acusa sempre. A licao migra de novo, e
+# desta vez para a FORMA, que nao envelhece: as tools de relatorio da 081 NAO
+# importam nem chamam a Cobranca, o Atendimento, o corredor ou o webhook, e
+# NAO escrevem em `artifact_renders` (o publisher e o ArtifactService). O que
+# a 081 tinha medo era de a tool mexer nessas pecas; e isso que se mede.
+PROIBIDOS_NA_TOOL = ("billing_collection", "dispatch_router", "dispatch_watchdog",
+                     "corridor_playbooks", "api.webhook", "api import webhook",
+                     'table("artifact_renders")', "table('artifact_renders')")
+tocados = [p for p in PROIBIDOS_NA_TOOL if p in FONTE]
+check("as tools da 081 NAO importam/chamam Cobranca, Atendimento, corredor, "
+      "webhook, nem escrevem em artifact_renders", not tocados, tocados)
+check("CONTROLE: uma tool que importasse a Cobranca seria ACUSADA",
+      any(p in (FONTE + "\nfrom app.services.billing_collection import x\n")
+          for p in PROIBIDOS_NA_TOOL),
+      "o detector nao ve `billing_collection` numa fonte que o importa")
 
 # 🔴 `services/artifacts/templates.py` SAIU da lista acima em 03/09/2026, e a
 # licao MIGROU em vez de morrer (CLAUDE.md §9.3).
