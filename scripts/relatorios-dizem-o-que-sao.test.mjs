@@ -90,7 +90,11 @@
 //      `origin`) do `.select(...)` de `artifacts`
 //      → [4] VERMELHO (a coluna que sustenta o campo não foi trazida)
 //   3. app/api/dashboard/entregas/route.ts
-//      voltar a empurrar um card `briefing:` para publicação COM artifact
+//      voltar a empurrar um card `briefing:` para publicação COM artifact, COM o
+//      href do artifact (as DUAS metades do estado de 04/09: só tirar o
+//      `continue` deixa o card apontando para a tela do Auxiliar, e o guarda
+//      casa por `artifact:{id}` OU por href — 📊 o builder da tela mediu que a
+//      metade sozinha fica VERDE)
 //      → [1] VERMELHO (dois cards para o mesmo artifact)
 //   4. app/api/dashboard/relatorios/placar/route.ts
 //      trocar `CONTA_COMO_TRABALHO = ['chat','routine']` por `['chat','routine','system']`
@@ -1037,10 +1041,17 @@ function guardaPlacarNaoContaORelogio(placar) {
         'corretora e 3 de outra. 1.003 = o `system` voltou; 6 = o filtro de empresa caiu.',
     );
   }
-  if (tudo.relatorios !== 2) {
+  // 📊 O esperado sai da FIXTURE, não de um número decorado: o builder da tela
+  // mediu que o dublê tem 4 peças vivas e não-canário da EMPRESA (o "2" que
+  // estava aqui descrevia uma fixture antiga). Um esperado que se calcula não
+  // envelhece quando alguém acrescenta uma linha ao dublê.
+  const esperadoRelatorios = (LINHAS.artifacts || []).filter(
+    (a) => a.company_id === EMPRESA && !a.archived_at && !(a.tags || []).includes('canario'),
+  ).length;
+  if (tudo.relatorios !== esperadoRelatorios) {
     problemas.push(
-      `relatórios = ${JSON.stringify(tudo.relatorios)}, esperado 2 — o placar não conta ` +
-        'canário nem arquivado (o dublê tem 2 vivos, 1 de canário e 1 arquivado)',
+      `relatórios = ${JSON.stringify(tudo.relatorios)}, esperado ${esperadoRelatorios} — o placar ` +
+        'não conta canário nem arquivado (só as peças vivas e não-canário da EMPRESA)',
     );
   }
   return problemas;
@@ -1335,11 +1346,9 @@ for (const i of itens.filter((x) => /^(artifact|briefing):/.test(String(x.id))))
 }
 
 console.log('\n[1] GATE ZERO (i) — a publicacao COM artifact vira UM card, nao dois');
-devendo(
+checar(
   guardaNadaDuasVezes(itens, LINHAS.briefing_publications),
-  'o briefing de hoje aparece UMA vez, no card do artifact',
-  'BLOCO A.4a',
-);
+  'o briefing de hoje aparece UMA vez, no card do artifact');
 
 console.log('\n[2] A publicacao SEM artifact continua sendo card `briefing:`  (078 F.2 migra)');
 checar(
@@ -1348,25 +1357,21 @@ checar(
 );
 
 console.log('\n[3] Nada de teste, nada de arquivado — e `?arquivados=1` mostra o que foi limpo');
-devendo(guardaNadaDeTeste(itens), 'peca de canario e peca arquivada fora da biblioteca', 'BLOCO A.4b');
+checar(guardaNadaDeTeste(itens), 'peca de canario e peca arquivada fora da biblioteca');
 const arquivados = await rodarRota('arquivados=1');
-devendo(
+checar(
   guardaModoArquivados(arquivados.itens),
-  '`?arquivados=1` lista SO os arquivados, com etiqueta',
-  'BLOCO A.4c',
-);
+  '`?arquivados=1` lista SO os arquivados, com etiqueta');
 
 console.log('\n[4] O card diz o que e, de quem e, de quando e — e quantas versoes tem');
-devendo(guardaOCardDizOQueE(itens), 'tipoHumano · produtor · periodo · versoes · teste · etiqueta', 'BLOCO A.2/A.3');
-devendo(
+checar(guardaOCardDizOQueE(itens), 'tipoHumano · produtor · periodo · versoes · teste · etiqueta');
+checar(
   guardaSelectDeArtifacts(registro),
-  'o SELECT de artifacts traz as 5 colunas que sustentam o card',
-  'BLOCO A.3 (E3)',
-);
+  'o SELECT de artifacts traz as 5 colunas que sustentam o card');
 
 console.log('\n[5] O menu diz "Relatorios" — e a URL, a key e os 6 pilares nao mudam');
 const NAV = fonte('lib/navigation.ts');
-devendo(guardaOMenuDizRelatorios(NAV), 'lib/navigation.ts: label Relatorios, key entregas, 6 pilares', 'BLOCO A.1');
+checar(guardaOMenuDizRelatorios(NAV), 'lib/navigation.ts: label Relatorios, key entregas, 6 pilares');
 
 console.log('\n[6] Multi-tenant: toda consulta com company_id, e nada da corretora vizinha');
 console.log(`      ${registro.length} consultas: ${registro.map((r) => r.tabela).join(', ')}`);
@@ -1378,12 +1383,10 @@ console.log('\n[7] A lente: `?tipo=` continua valendo e o padrao passa a ser Rel
 const CLIENTE = fonte('app/dashboard/entregas/EntregasClient.tsx');
 const REDIRECTS = redirectsComTipo();
 for (const r of REDIRECTS) console.log(`      ${r.arquivo} → ?tipo=${r.tipo}`);
-devendo(guardaLenteEFiltros(CLIENTE, REDIRECTS), 'a tela le ?tipo=, aceita os 4, e abre em Relatorios', 'BLOCO A.1');
-devendo(
+checar(guardaLenteEFiltros(CLIENTE, REDIRECTS), 'a tela le ?tipo=, aceita os 4, e abre em Relatorios');
+checar(
   guardaAtividadesMandaTudo(fonte('app/dashboard/atividades/page.tsx')),
-  'o 4o redirect manda ?tipo=tudo (E1)',
-  'BLOCO A.1 (E1)',
-);
+  'o 4o redirect manda ?tipo=tudo (E1)');
 
 console.log('\n[8] O placar conta o que a corretora PEDIU — nunca o relogio da plataforma');
 // 📊 04/09/2026: `work_runs.source_type` no domínio inteiro = system 3.629 ·
@@ -1412,34 +1415,28 @@ const LINHAS_DO_PLACAR = {
 const placar = await rodarPlacar(LINHAS_DO_PLACAR);
 console.log(`      ${ROTA_DO_PLACAR}: ${placar ? 'existe' : 'AINDA NAO EXISTE'}`);
 if (placar) console.log(`      ${placar.registro.length} consultas de contagem`);
-devendo(guardaPlacarNaoContaORelogio(placar), '5 janelas × 7 contagens, e trabalhos pedidos = 3', 'BLOCO C');
-devendo(guardaTodaContagemTemEmpresaEJanela(placar), 'toda contagem com company_id, count exact e janela', 'BLOCO C');
-devendo(
+checar(guardaPlacarNaoContaORelogio(placar), '5 janelas × 7 contagens, e trabalhos pedidos = 3');
+checar(guardaTodaContagemTemEmpresaEJanela(placar), 'toda contagem com company_id, count exact e janela');
+checar(
   guardaConstanteDeInclusao(existe(ROTA_DO_PLACAR) ? fonte(ROTA_DO_PLACAR) : ''),
-  "CONTA_COMO_TRABALHO = ['chat','routine'] — inclusao, nunca exclusao (E9)",
-  'BLOCO C',
-);
-devendo(
+  "CONTA_COMO_TRABALHO = ['chat','routine'] — inclusao, nunca exclusao (E9)");
+checar(
   guardaPlacarNaoCalculaNaTela(existe('components/relatorios/Placar.tsx') ? fonte('components/relatorios/Placar.tsx') : null),
-  'Placar.tsx le a rota e nao calcula nada',
-  'BLOCO C',
-);
+  'Placar.tsx le a rota e nao calcula nada');
 
 console.log('\n[9] O chat PRE-PREENCHE a pergunta — e nunca envia sozinho  (E10)');
-devendo(
+checar(
   guardaOChatSoPrePreenche(fonte('app/dashboard/chat/page.tsx'), fonte('components/InputArea/index.tsx')),
-  'inicializador sincrono, zeramento no efeito da URL, prop initialText, zero envio automatico',
-  'BLOCO E',
-);
+  'inicializador sincrono, zeramento no efeito da URL, prop initialText, zero envio automatico');
 
 console.log('\n[10] O detalhe: `?versao=` honrado, e a data do dado e a do dado');
 const PAGINA = fonte('app/dashboard/entregas/[artifactId]/page.tsx');
 const ARQUIVO = fonte('app/dashboard/entregas/[artifactId]/arquivo/route.ts');
-devendo(guardaVersaoNoArquivo(ARQUIVO), 'arquivo/route.ts baixa a VERSAO pedida, com company_id', 'BLOCO E');
-devendo(guardaSemAfirmacaoDeFrescor(PAGINA), 'a pagina nao afirma "Dados de" sem ter a data do dado', 'BLOCO E');
+checar(guardaVersaoNoArquivo(ARQUIVO), 'arquivo/route.ts baixa a VERSAO pedida, com company_id');
+checar(guardaSemAfirmacaoDeFrescor(PAGINA), 'a pagina nao afirma "Dados de" sem ter a data do dado');
 
 console.log('\n[11] O payload so pelo caminho `payload->findings` — e lido pelo ultimo segmento');
-devendo(guardaPayloadPeloCaminho(PAGINA), "select('id, payload->findings') e leitura por `.findings`", 'BLOCO E (E5)');
+checar(guardaPayloadPeloCaminho(PAGINA), "select('id, payload->findings') e leitura por `.findings`");
 
 console.log('\n[12] LINHAS DE CONTROLE — cada guarda acima consegue ficar VERMELHO');
 
