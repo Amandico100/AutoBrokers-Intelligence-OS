@@ -10210,3 +10210,9 @@ encontrável. **Destrava:** > 1.000 linhas por corretora ou uma busca que não a
 📊 `grep -in "playwright\|chromium\|weasyprint" backend/requirements*.txt backend/Dockerfile*` → 0. "Abrir em nova aba" +
 imprimir já gera PDF pelo CSS de impressão da peça. **Custo de esquecer:** o botão "Baixar" entrega `.html`. **Destrava:**
 o Founder ou uma corretora pedir arquivo; Playwright entra no worker, não na API. **Dono:** 🧑 decide · 🤖 implementa. 💭 4h.
+
+## P-095-DATA-SOURCES-TRES-FORMAS · `data_sources` tem três formas no backend
+📊 Medido em 04/09/2026 pelo builder da tela: `{rotulo, detalhe, data}` (`workflows.py:257-264`, 96/136 versões — os briefings),
+`{label, detail, …}` (`report_tool.py:271`) e `{kind, …}` (`radar.py:399`). A tela "De onde veio" lê as três; a SPEC-095 cita só a
+inglesa. **Custo de esquecer:** uma quarta forma nasce na próxima peça e a tela mostra "fonte sem nome". **Destrava:** convergir
+numa forma em `ArtifactService.criar` (normalizar na entrada) e um guarda que reprova chave fora do vocabulário. **Dono:** 🤖. 💭 1h.

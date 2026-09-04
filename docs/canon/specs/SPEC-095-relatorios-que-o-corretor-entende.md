@@ -355,9 +355,11 @@ card não imprime a palavra; o Gate A [4] confere o campo.
                   SUBTÍTULO = tipo humano · produtor · período (subject_ref.label ou a data)
                   DETALHE = artifacts.subtitle (1 linha, humana; BLOCO D) — NUNCA substituído pelo estado da entrega
                   RODAPÉ = "hoje 08:05" · quando current_version > 1: "atualizado hoje 02:54 · 5 versões"
-ETIQUETA (uma, a mais forte):  "crítico" (critical_count > 0) · "precisa de você" (recommendation_count > 0 ou item acionável) ·
-                                "entrega parcial" / "não entregue" (delivery_status partial/failed — o estado vira etiqueta, o resumo fica) ·
-                                nenhuma quando tudo certo (etiqueta que aparece sempre é etiqueta que ninguém lê)
+ETIQUETA (uma, a mais forte):  "crítico" (critical_count > 0) · "entrega parcial" / "não entregue" (delivery_status partial/failed — o
+                                estado vira etiqueta, o resumo fica; vem ANTES de "precisa de você" porque quem não recebeu o relatório não
+                                tem como agir sobre a recomendação dele — decisão do builder, confirmada) · "precisa de você"
+                                (recommendation_count > 0 ou item acionável) · nenhuma quando tudo certo (etiqueta que aparece sempre é
+                                etiqueta que ninguém lê)
 ```
 Campos novos na resposta da rota: `tipoHumano`, `produtor`, `periodo`, `etiqueta`, `versoes`, `teste` (bool), sempre
 presentes para `artifact:`; os demais tipos (`conversa:`, `run:`, `rotina:`, `atividade:`) ganham `tipoHumano` e
