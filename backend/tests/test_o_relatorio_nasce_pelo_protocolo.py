@@ -264,8 +264,12 @@ SECOES_ESTRUTURAIS = {
 }
 
 SECOES = []
+# 🔴 `\d+`, e não `\d`: a peça passou de 8 para 13 seções na 094.1, e um
+# detector de UM dígito pararia de enxergar as seções 10–13 — em silêncio, e
+# justamente as novas. Um leitor que não acha a seção não a acusa de vazia
+# (CLAUDE.md §9.3: quando o fato muda, o teste muda com ele).
 for _n, _titulo, _texto in zip(*[iter(
-        re.split(r"\n        # (\d) · ([^\n-]+)", CORPO_DO_COMPOR)[1:])] * 3):
+        re.split(r"\n        # (\d+) · ([^\n-]+)", CORPO_DO_COMPOR)[1:])] * 3):
     SECOES.append((_n, _titulo.strip(), _texto))
 check("o detector achou as seções de `_compor`", len(SECOES) >= 8,
       "%d seções" % len(SECOES))

@@ -87,6 +87,24 @@ VISOES: Dict[str, Tuple[str, ...]] = {
     "renovacao": ("renewal.exposure",),
     "projecao": ("projection.run_rate", "producer.momentum"),
     "caixa": ("commission.broker_received",),
+    # ====================================================================
+    # SPEC-094.1 · BLOCOS A e B — os cinco assuntos novos
+    # ====================================================================
+    # 🔴 Assunto que não está aqui é assunto que o modelo NÃO CONSEGUE PEDIR:
+    # `_plano` só aceita chave de `VISOES`, e o resto vira pedido desconhecido.
+    # Uma métrica registrada e fora de visão é trabalho que existe no motor e
+    # nunca chega ao dono — a "órfã do chat" que o guarda do protocolo mede.
+    "sinistros": ("claims.open_count", "claims.indemnity_paid",
+                  "claims.by_insurer", "claims.loss_ratio_portfolio"),
+    # ⚠️ O mercado é o único assunto cujos números NÃO vêm da corretora. Ele é
+    # uma visão própria de propósito: quem pergunta "como estamos?" recebe a
+    # comparação junto, e quem pergunta só do mercado não paga a carteira
+    # inteira para tê-la.
+    "mercado": ("market.loss_ratio", "market.loss_ratio_trend",
+                "claims.loss_ratio_vs_market", "claims.loss_ratio_portfolio"),
+    "carteira": ("customer.single_product_share",),
+    "funil": ("quotes.funnel", "quotes.lost_reasons"),
+    "pendencias": ("issuance.pending", "portfolio.cancellation_rate"),
 }
 
 #: "Como estamos?" sem mais nada: TODAS as visões. 🔴 A pergunta genérica é a
@@ -145,9 +163,11 @@ class PlanoDeConsulta(BaseModel):
         default_factory=list,
         description=(
             "Os assuntos que ele quer, entre: producao, pessoas, mix, "
-            "renovacao, projecao, caixa. Vazio = todos, que é o certo para "
-            "'como estamos?'. Peça só o assunto citado quando ele for "
-            "específico ('quanto vence?' -> ['renovacao'])."),
+            "renovacao, projecao, caixa, sinistros, mercado, carteira, funil, "
+            "pendencias. Vazio = todos, que é o certo para 'como estamos?'. "
+            "Peça só o assunto citado quando ele for específico ('quanto "
+            "vence?' -> ['renovacao']; 'quantos sinistros abertos?' -> "
+            "['sinistros']; 'como estou contra o mercado?' -> ['mercado'])."),
     )
     dimension: str = Field(
         default="",
@@ -489,6 +509,21 @@ DO_QUE_E_A_COBERTURA = {
     "projection.run_rate": "das apólices do período com comissão legível",
     "producer.momentum": "das apólices do período com comissão legível",
     "production.new_vs_renewal": "das apólices do período com comissão legível",
+    # --- SPEC-094.1 · BLOCOS A e B ------------------------------------------
+    "claims.open_count": "dos sinistros do período cuja situação a fonte "
+                         "expôs — o resto não é 'fechado', é desconhecido",
+    "claims.indemnity_paid": "dos sinistros encerrados no período com "
+                             "indenização legível",
+    "claims.by_insurer": "dos sinistros do período com seguradora informada",
+    "claims.loss_ratio_portfolio": "do PRÊMIO do período que está em "
+                                   "seguradoras casadas com o mapa de "
+                                   "entidades — é o que consegue ser "
+                                   "comparado com o mercado",
+    "portfolio.cancellation_rate": "das apólices do período, cancelamentos "
+                                   "INCLUÍDOS na base (é o denominador certo)",
+    "customer.single_product_share": "dos clientes do período com ramo "
+                                     "legível em pelo menos uma apólice",
+    "quotes.funnel": "das cotações do período que a fonte devolveu com etapa",
 }
 
 COMO_FALAR = (
@@ -1269,6 +1304,14 @@ class ExecutiveIntelligenceTool(BaseTool):
                 return _reais(float(m.value))
             if m.unit == "pct":
                 return "%.1f%%" % float(m.value)
+            # 🔴 `ratio` é FRAÇÃO (0,5712), e `pct` é escala 0–100 (43,0). Sem
+            # este ramo a sinistralidade caía no `int()` lá embaixo e o cartão
+            # escreveria **0** onde o mercado tem **57%** — número certo lido
+            # como outro, que é a forma silenciosa de errar (CLAUDE.md §9.5).
+            # ⚠️ Multiplicar por 100 aqui é decisão de TELA: o valor no pack
+            # continua fração, que é como o golden 0,5712 é conferido à mão.
+            if m.unit == "ratio":
+                return "%.1f%%" % (100.0 * float(m.value))
             if isinstance(m.value, dict):
                 return json.dumps(m.value, ensure_ascii=False)
             return "%d" % int(float(m.value))
@@ -1399,7 +1442,165 @@ class ExecutiveIntelligenceTool(BaseTool):
                                        for b in exp.breakdown]}],
                 "value_type": "currency_short"}})
 
-        # 7 · projeção ------------------------------------------------------
+        # ==================================================================
+        # SPEC-094.1 · BLOCOS A e B — as cinco seções novas, na MESMA ordem
+        # de `templates.py:PULSO_360` e com as MESMAS métricas que a
+        # composição declara em `props["metrics"]`.
+        #
+        # ⛔ Nenhum bloco novo: `kpis`, `callout`, `table` e `funnel` existem
+        # em `blocks.py` desde a SPEC-057.
+        # 🔴 Toda seção aqui desenha o que o registry CALCULOU. Métrica
+        # INDISPONÍVEL vira frase escrita — nunca um cartão com zero ao lado
+        # de cartões com número (mutação M2).
+        # ==================================================================
+
+        # 7 · sinistros da carteira ----------------------------------------
+        rotulos_de_sinistro = (("claims.open_count", "Sinistros abertos"),
+                               ("claims.indemnity_paid", "Indenização paga"),
+                               ("claims.by_insurer", "Na maior seguradora"))
+        itens_sin = []
+        for mid, rotulo in rotulos_de_sinistro:
+            if mid not in por_id:
+                continue
+            item = {"label": rotulo, "value": texto(mid)}
+            frase = cobertura(mid)
+            if frase:
+                item["since"] = frase
+            itens_sin.append(item)
+        if itens_sin:
+            props = {"eyebrow": "Sinistros",
+                     "title": "Sinistros da carteira no período",
+                     "items": itens_sin}
+            props.update(lede(*[m for m, _ in rotulos_de_sinistro]))
+            blocos.append({"block": "kpis", "props": props})
+
+        # 8 · a carteira contra o MERCADO ----------------------------------
+        #
+        # 🔴 Esta é a única seção da peça cujo número não vem da corretora, e
+        # por isso ela nomeia as DUAS fontes. Um comparativo com o mapa de
+        # entidades sem casamento sai INDISPONÍVEL com o motivo escrito:
+        # "0% acima do mercado" é uma frase que o dono levaria para uma
+        # negociação de reajuste, e ela seria falsa.
+        minha = por_id.get("claims.loss_ratio_portfolio")
+        mercado_m = por_id.get("market.loss_ratio")
+        contra = por_id.get("claims.loss_ratio_vs_market")
+        tendencia = por_id.get("market.loss_ratio_trend")
+        if minha is not None or mercado_m is not None:
+            partes = []
+            if minha is not None:
+                partes.append("A sua carteira: %s de sinistralidade"
+                              % texto("claims.loss_ratio_portfolio"))
+            if mercado_m is not None:
+                partes.append(
+                    "o mercado: %s" % texto("market.loss_ratio")
+                    if not mercado_m.indisponivel else
+                    "o mercado: INDISPONÍVEL — %s" % (
+                        "; ".join(mercado_m.warnings)
+                        or "o censo público não cobre esta competência"))
+            if contra is not None:
+                partes.append(
+                    "a diferença: %s" % texto("claims.loss_ratio_vs_market")
+                    if not contra.indisponivel else
+                    "a comparação fica INDISPONÍVEL: %s" % (
+                        "; ".join(contra.warnings)
+                        or "as seguradoras da carteira não casaram com o mapa "
+                           "de entidades do censo"))
+            if tendencia is not None and not tendencia.indisponivel:
+                partes.append("tendência do mercado: %s"
+                              % texto("market.loss_ratio_trend"))
+            props = {"tone": "info" if (minha is not None
+                                        and not minha.indisponivel) else "warning",
+                     "eyebrow": "Mercado",
+                     "title": "A sua sinistralidade contra a do mercado",
+                     "text": ". ".join(partes) + ". As duas pontas têm regimes "
+                             "de competência diferentes: é uma aproximação "
+                             "declarada, e não a mesma conta do censo público."}
+            blocos.append({"block": "callout", "props": props})
+
+        # 9 · carteira por cliente — quem só tem um produto -----------------
+        cross = por_id.get("customer.single_product_share")
+        if cross is not None and cross.breakdown:
+            props = {
+                "eyebrow": "Carteira por cliente",
+                "title": "Quem só tem um produto (%s da base)"
+                         % texto("customer.single_product_share"),
+                "columns": [
+                    {"key": "ramo", "label": "Ramo que falta"},
+                    {"key": "clientes", "label": "Clientes sem ele",
+                     "format": "number"},
+                    {"key": "share", "label": "Fatia da base", "align": "right"},
+                ],
+                # ⛔ `rotulo` aqui é RAMO, nunca nome de cliente: o fato traz
+                # `customer_ref` opaco e a peça não tem como reidentificar.
+                "rows": [{"ramo": str(b.get("rotulo") or ""),
+                          "clientes": b.get("clientes_sem_ele"),
+                          "share": "%.1f%%" % float(b.get("share_pct") or 0.0)}
+                         for b in cross.breakdown[:15]]}
+            props.update(lede("customer.single_product_share"))
+            blocos.append({"block": "table", "props": props})
+        elif cross is not None:
+            blocos.append({"block": "callout", "props": {
+                "tone": "info", "eyebrow": "Carteira por cliente",
+                "title": "Quem só tem um produto",
+                "text": ("INDISPONÍVEL na fonte conectada: ela não expõe o "
+                         "vínculo entre cliente e apólices desta janela. Não "
+                         "é 'todo mundo tem dois produtos' — é ausência de "
+                         "dado.")}})
+
+        # 10 · o funil ------------------------------------------------------
+        funil_m = por_id.get("quotes.funnel")
+        perdas = por_id.get("quotes.lost_reasons")
+        if funil_m is not None:
+            # ⚠️ `quotes.lost_reasons` é INDISPONÍVEL por CAPACIDADE — o
+            # motivo de perda não vem no GET da fonte. A frase mora aqui,
+            # dentro da seção do funil, e não seis blocos abaixo.
+            aviso = ""
+            if perdas is not None and perdas.indisponivel:
+                aviso = ("O motivo de perda não é exposto pela fonte: a "
+                         "conversão aparece, a CAUSA não. ")
+            props = {"eyebrow": "Funil", "title": "Cotações por etapa",
+                     "value_type": "number",
+                     "stages": [{"rotulo": str(b.get("rotulo") or ""),
+                                 "valor": b.get("cotacoes")}
+                                for b in (funil_m.breakdown or [])]}
+            frases = [f for f in (aviso, cobertura("quotes.funnel")) if f]
+            if funil_m.indisponivel:
+                frases.insert(0, "As rotas do funil responderam e o acervo "
+                                 "está VAZIO no período: INDISPONÍVEL por "
+                                 "acervo, e nunca 'zero cotações'. ")
+            if frases:
+                props["lede"] = " ".join(frases).strip()
+            blocos.append({"block": "funnel", "props": props})
+
+        # 11 · o que trava dinheiro ----------------------------------------
+        emissao = por_id.get("issuance.pending")
+        cancel = por_id.get("portfolio.cancellation_rate")
+        linhas_trava = []
+        for m, rotulo, nota in (
+                (emissao, "Apólices com emissão pendente",
+                 "o que já foi vendido e ainda não virou apólice"),
+                (cancel, "Taxa de cancelamento da carteira",
+                 "cancelados DENTRO do denominador — tratá-los como recorte "
+                 "inflaria a taxa")):
+            if m is None:
+                continue
+            linhas_trava.append({
+                "item": rotulo,
+                "valor": texto(m.metric_id),
+                "nota": (("INDISPONÍVEL na fonte: "
+                          + ("; ".join(m.warnings) or nota))
+                         if m.indisponivel
+                         else (cobertura(m.metric_id) or nota))})
+        if linhas_trava:
+            blocos.append({"block": "table", "props": {
+                "eyebrow": "Pendências",
+                "title": "Pendências e cancelamentos",
+                "columns": [{"key": "item", "label": "O que trava"},
+                            {"key": "valor", "label": "Hoje", "align": "right"},
+                            {"key": "nota", "label": "Sobre o quê"}],
+                "rows": linhas_trava}})
+
+        # 12 · projeção -----------------------------------------------------
         proj = por_id.get("projection.run_rate")
         if proj is not None:
             blocos.append({"block": "callout", "props": {
@@ -1409,7 +1610,7 @@ class ExecutiveIntelligenceTool(BaseTool):
                          "mantém. Comissão histórica NÃO é renovação "
                          "garantida." % texto("projection.run_rate"))}})
 
-        # 8 · fontes e confiança -------------------------------------------
+        # 13 · fontes e confiança ------------------------------------------
         blocos.append(self._fontes_e_confianca(pacote, metricas, agora))
         blocos.append(_fontes(agora, "Endossos e documentos que não são "
                                      "apólice ficam fora da contagem."))
