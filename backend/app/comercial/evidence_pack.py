@@ -83,6 +83,21 @@ UNIDADES = ("BRL", "count", "pct", "ratio")
 #: número que não se consegue reproduzir.
 BASES_TEMPORAIS = ("POLICY_VALID_FROM", "POLICY_VALID_TO")
 
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 — a TERCEIRA base, e por que ela não
+#: entra na tupla acima.
+#:
+#: 📊 As métricas de mercado são recortadas por **competência contábil**
+#: (`damesano`, o mês fechado que o regulador publica) — não pelo início nem
+#: pelo fim de vigência de apólice nenhuma. Declará-las em `POLICY_VALID_FROM`
+#: fazia o envelope AFIRMAR, calado, um recorte por vigência que nunca houve.
+#:
+#: ⚠️ `BASES_TEMPORAIS` continua sendo um PAR porque cinco módulos a
+#: desempacotam com `A, B = BASES_TEMPORAIS`; crescer a tupla quebraria os
+#: cinco. Quem valida é `BASES_ACEITAS`, que é a lista inteira. O par continua
+#: sendo o vocabulário da CARTEIRA; a competência é o do MERCADO.
+COMPETENCIA = "COMPETENCIA"
+BASES_ACEITAS = BASES_TEMPORAIS + (COMPETENCIA,)
+
 ALTA, MEDIA, BAIXA = "HIGH", "MEDIUM", "LOW"
 # 📊 03/09: o guarda `test_todo_import_aponta_para_algo_que_existe` não enxerga desempacotamento de tupla —
 # as três constantes ficam também como atribuições simples, para o import ser visível ao guarda e ao leitor.
@@ -225,6 +240,24 @@ CASAS_DO_NUMERO = 2
 #: 5,95% em 6%. Quatro casas mantêm o décimo de ponto percentual.
 CASAS_DA_COBERTURA = 4
 
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 — as casas são por UNIDADE.
+#:
+#: 📊 O defeito: `ratio` é uma FRAÇÃO, e duas casas a destroem. A célula medida
+#: do SES dá `0,5712`; arredondada em duas ela vira `0,57`, e a diferença
+#: carteira × mercado — que sai em pontos de razão e costuma valer alguns
+#: milésimos — vira **0,0** na tela. Um número que existe, é pequeno e some no
+#: arredondamento é a forma mais barata de publicar "não há diferença nenhuma"
+#: sem nunca ter medido isso.
+#:
+#: ⚠️ Dinheiro e contagem continuam em duas casas: centavo é a menor unidade
+#: que existe, e apólice e meia não existe.
+CASAS_POR_UNIDADE = {"ratio": 4}
+
+
+def casas_da_unidade(unit: Any) -> int:
+    """Quantas casas a serialização usa para esta unidade."""
+    return CASAS_POR_UNIDADE.get(str(unit or ""), CASAS_DO_NUMERO)
+
 
 def _arredondar(valor: Any, casas: int = CASAS_DO_NUMERO) -> Any:
     """Corta o resíduo binário de `float`. **Não-finito vira `UNAVAILABLE`.**
@@ -247,13 +280,13 @@ def _arredondar(valor: Any, casas: int = CASAS_DO_NUMERO) -> Any:
     return round(valor, casas)
 
 
-def _limpar(valor: Any) -> Any:
+def _limpar(valor: Any, casas: int = CASAS_DO_NUMERO) -> Any:
     """`_arredondar`, recursivo em dicionário e lista."""
     if isinstance(valor, dict):
-        return {k: _limpar(v) for k, v in valor.items()}
+        return {k: _limpar(v, casas) for k, v in valor.items()}
     if isinstance(valor, (list, tuple)):
-        return [_limpar(v) for v in valor]
-    return _arredondar(valor)
+        return [_limpar(v, casas) for v in valor]
+    return _arredondar(valor, casas)
 
 
 @dataclass(frozen=True)
@@ -269,7 +302,17 @@ class MetricResult:
     coverage: Optional[float] = None
     confidence: str = MEDIA
     provider_key: str = "infocap"
-    source_refs: Tuple[str, ...] = ()
+    #: 🔴 SPEC-094.1, conserto de 04/09/2026 — de `str` para DICIONÁRIO.
+    #:
+    #: 📊 O defeito: uma métrica DERIVED de duas fontes (a carteira da corretora
+    #: e a estatística pública do mercado) saía com `source_refs` VAZIO, um só
+    #: `provider_key` e um só `period`. O envelope afirmava uma fonte para um
+    #: número que veio de duas — e quem conferisse o número contra aquela fonte
+    #: acharia a metade que fecha e concluiria que estava certo.
+    #:
+    #: Cada entrada é `{"provider", "time_basis", "period"}`. `str` continua
+    #: aceito para não quebrar quem já escrevia uma referência simples.
+    source_refs: Tuple[Any, ...] = ()
     warnings: Tuple[str, ...] = ()
     #: 🔴 SPEC-094 BLOCO D. O DETALHE de uma métrica que não cabe num
     #: escalar — o ranking por produtor, as fatias de seguradora, as faixas de
@@ -285,19 +328,23 @@ class MetricResult:
         return self.value == UNAVAILABLE
 
     def serializar(self) -> Dict[str, Any]:
+        # 🔴 As casas saem da UNIDADE, e não de uma constante única: uma razão
+        # em duas casas some (ver `CASAS_POR_UNIDADE`).
+        casas = casas_da_unidade(self.unit)
         return {
             "metric_id": self.metric_id,
             "version": self.version,
-            "value": _limpar(self.value),
+            "value": _limpar(self.value, casas),
             "unit": self.unit,
             "period": dict(self.period),
             "time_basis": self.time_basis,
             "coverage": _arredondar(self.coverage, CASAS_DA_COBERTURA),
             "confidence": self.confidence,
             "provider_key": self.provider_key,
-            "source_refs": list(self.source_refs),
+            "source_refs": [dict(r) if isinstance(r, dict) else r
+                            for r in self.source_refs],
             "warnings": list(self.warnings),
-            "breakdown": [_limpar(dict(b)) for b in self.breakdown],
+            "breakdown": [_limpar(dict(b), casas) for b in self.breakdown],
         }
 
 
@@ -324,9 +371,9 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
     """
     if unit not in UNIDADES:
         raise ValueError(f"unidade fora do contrato: {unit!r} (use {UNIDADES})")
-    if time_basis not in BASES_TEMPORAIS:
+    if time_basis not in BASES_ACEITAS:
         raise ValueError(
-            f"base temporal fora do contrato: {time_basis!r} (use {BASES_TEMPORAIS})")
+            f"base temporal fora do contrato: {time_basis!r} (use {BASES_ACEITAS})")
     return MetricResult(
         metric_id=metric_id, version=version,
         value=valor_ou_indisponivel(valor), unit=unit,

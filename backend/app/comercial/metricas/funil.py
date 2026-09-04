@@ -53,21 +53,58 @@ def instalar(reg) -> None:
         reg.registrar(reg.MetricDefinition(**kw))
 
 
+#: O nome CANÔNICO da população do funil — vocabulário do modelo de fatos, e
+#: nunca o nome de uma rota (M1).
+POPULACAO_DO_FUNIL = "quotes"
+
+
+def _foi_lida(ctx: Contexto) -> bool:
+    """A população do funil foi PERGUNTADA nesta consulta?
+
+    🔴 Sem esta pergunta, uma lista vazia porque ninguém consultou é
+    indistinguível de uma lista vazia porque não há cotação — e a frase que o
+    dono lê ("o acervo está vazio") vira uma afirmação sobre a corretora que
+    ninguém mediu.
+    """
+    return POPULACAO_DO_FUNIL in (
+        getattr(getattr(ctx, "fatos", None), "populacoes_lidas", None) or set())
+
+
 def _cotacoes(ctx: Contexto) -> List[Any]:
-    fatos = getattr(ctx, "fatos", None)
+    """As cotações do período — **e as sem data entram**.
+
+    🔴 SPEC-094.1, conserto de 04/09/2026. 📊 O defeito: a rota da etapa
+    FINALIZADO não expõe a chave de data que as outras expõem, então todo
+    negócio fechado nascia sem `created_at` e este filtro o descartava. A etapa
+    que responde *"quantos eu fechei"* sumia do funil inteiro, em silêncio.
+
+    ⚠️ Incluir o sem-data é correto porque **a janela da consulta já recortou a
+    população**: a rota foi chamada com o período. O que não se pode é deixar o
+    silêncio decidir — e por isso a fórmula conta quantos são e escreve.
+    """
     saida = []
-    for q in list(getattr(fatos, "quotes", ()) or ()):
+    for q in list(getattr(getattr(ctx, "fatos", None), "quotes", ()) or ()):
         quando = getattr(q, "created_at", None)
-        if quando is not None and ctx.inicio <= quando <= ctx.fim:
+        if quando is None or ctx.inicio <= quando <= ctx.fim:
             saida.append(q)
     return saida
 
 
+def _sem_data(cotacoes: List[Any]) -> int:
+    return len([q for q in cotacoes if getattr(q, "created_at", None) is None])
+
+
 def _funil(ctx: Contexto) -> Saida:
+    if not _foi_lida(ctx):
+        return None, None, [], [
+            "a população do funil NÃO FOI LIDA nesta consulta: INDISPONÍVEL "
+            "por rota não lida. 🔴 'Não perguntei' e 'perguntei e não veio "
+            "nada' são afirmações diferentes, e só a segunda pode virar 'o "
+            "acervo está vazio'"]
     cotacoes = _cotacoes(ctx)
     if not cotacoes:
         return None, None, [], [
-            "as rotas do funil responderam e o acervo está VAZIO no período: "
+            "as rotas do funil RESPONDERAM e o acervo está VAZIO no período: "
             "INDISPONÍVEL por acervo. 🔴 Isto NÃO é 'zero cotações' — é 'a "
             "corretora não registra cotação nesta fonte'"]
     por_etapa: Dict[str, Dict[str, Any]] = {}
@@ -88,6 +125,13 @@ def _funil(ctx: Contexto) -> Saida:
                     key=lambda x: (ordem.get(x["rotulo"], 99), x["rotulo"]))
     avisos = ["⛔ o motivo de perda NÃO acompanha estas contagens: a rota de "
               "leitura não o expõe (ver `quotes.lost_reasons@1`)"]
+    orfas = _sem_data(cotacoes)
+    if orfas:
+        avisos.append(
+            f"{orfas} negócio(s) sem data legível na fonte entram nas contagens "
+            f"por etapa e ficam de fora de qualquer corte por data: a janela da "
+            f"consulta já os recortou. 🔴 Descartá-los faria a etapa cujo "
+            f"formato de linha não traz data SUMIR do funil, sem aviso")
     return (float(len(cotacoes)),
             premio_conhecido / len(cotacoes),
             linhas, avisos)
@@ -102,7 +146,9 @@ _DEFINICOES.append(dict(
     coverage_rule="fração das cotações do período com prêmio esperado legível — "
                   "a CONTAGEM é integral; a cobertura é sobre o dinheiro",
     forbidden_fallback="⛔ acervo vazio nunca vira 'zero cotações': a primeira "
-                       "frase é sobre a fonte e a segunda é sobre o negócio",
+                       "frase é sobre a fonte e a segunda é sobre o negócio. "
+                       "⛔ E rota NÃO LIDA nunca vira 'acervo vazio': ninguém "
+                       "perguntou",
     pergunta_verificada="Quantas cotações estão em cada etapa do funil?",
     golden=golden(3.0),
 ))

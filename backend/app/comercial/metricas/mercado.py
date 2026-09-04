@@ -39,9 +39,23 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.comercial.evidence_pack import BASES_TEMPORAIS
+from app.comercial.evidence_pack import BASES_TEMPORAIS, COMPETENCIA
 
 POLICY_VALID_FROM, POLICY_VALID_TO = BASES_TEMPORAIS
+
+#: 🔴 SPEC-094.1, conserto de 04/09/2026. O aviso PERMANENTE destas metricas —
+#: no mesmo desenho do aviso de base dos sinistros, e pelo mesmo motivo: o
+#: leitor nao pode ter de lembrar.
+#:
+#: 📊 A base do mercado e recortada por COMPETENCIA CONTABIL (o mes fechado que
+#: o orgao publica), e nao pela vigencia de apolice nenhuma. Ate 04/09/2026 o
+#: envelope declarava `POLICY_VALID_FROM` — afirmava, calado, um recorte por
+#: vigencia que nunca houve.
+AVISO_DA_COMPETENCIA = (
+    "estes numeros sao recortados por COMPETENCIA CONTABIL (mes fechado), e "
+    "nao pela vigencia das apolices da carteira: o `time_basis` do envelope "
+    "declara COMPETENCIA, e comparar com um periodo de vigencia compara duas "
+    "populacoes diferentes")
 
 _DEFINICOES: List[Dict[str, Any]] = []
 
@@ -201,7 +215,8 @@ _DEFINICOES.append(dict(
     metric_id="market.loss_ratio", version=1,
     label="Sinistralidade do mercado, por seguradora e ramo", grain="insurer",
     unit="ratio",
-    time_basis=POLICY_VALID_FROM,
+    time_basis=COMPETENCIA,
+    usa_mercado=True,
     required_capabilities=(),
     formula=_sinistralidade_do_mercado,
     coverage_rule="fração das competências do período que existem na base "
@@ -213,7 +228,7 @@ _DEFINICOES.append(dict(
                        "existe",
     premissa="🔴 sinistro OCORRIDO ÷ prêmio GANHO — as duas pontas do mesmo "
              "regime de competência. Prêmio de emissão e sinistro pago dariam "
-             "um número plausível e errado",
+             "um número plausível e errado. " + AVISO_DA_COMPETENCIA,
     pergunta_verificada="Qual é a sinistralidade do mercado nas seguradoras com "
                         "que eu trabalho?",
     golden=golden(INDISPONIVEL),
@@ -414,6 +429,11 @@ _DEFINICOES.append(dict(
     label="A sinistralidade da carteira contra a do mercado, por seguradora",
     grain="insurer", unit="ratio",
     time_basis=POLICY_VALID_FROM,
+    # 🔴 A DERIVED le as DUAS fontes, e o envelope passa a dizer isso: dois
+    # `source_refs`, com provider e base temporal proprios, e um `provider_key`
+    # composto. Declarar uma fonte so para um numero de duas e o defeito que
+    # deixa o conferidor achar a metade que fecha.
+    usa_carteira=True, usa_mercado=True,
     required_capabilities=("claims.status", "portfolio.policies"),
     formula=_carteira_contra_mercado,
     coverage_rule="DERIVED de DUAS fontes: a carteira da corretora (sinistro e "
@@ -427,7 +447,7 @@ _DEFINICOES.append(dict(
     premissa="⚠️ as duas pontas não têm o mesmo regime: a carteira traz prêmio "
              "de emissão e indenização registrada; o mercado traz prêmio ganho "
              "e sinistro ocorrido. A diferença é indicativa, e a peça tem de "
-             "dizer isso ao lado do número",
+             "dizer isso ao lado do número. " + AVISO_DA_COMPETENCIA,
     pergunta_verificada="A minha seguradora está sinistrando mais que o mercado?",
     golden=golden(INDISPONIVEL),
 ))
@@ -504,7 +524,8 @@ _DEFINICOES.append(dict(
     metric_id="market.loss_ratio_trend", version=1,
     label="Tendência da sinistralidade do mercado em 3 trimestres",
     grain="quarter", unit="ratio",
-    time_basis=POLICY_VALID_FROM,
+    time_basis=COMPETENCIA,
+    usa_mercado=True,
     required_capabilities=(),
     formula=_tendencia,
     coverage_rule="fração dos 3 trimestres que têm prêmio ganho na base "
@@ -514,7 +535,7 @@ _DEFINICOES.append(dict(
                        "exatamente a frase que o dono levaria para a negociação",
     premissa="💭 o sinal ▲▼= usa um limiar de 0,01 em pontos de razão: abaixo "
              "disso é oscilação de competência, e chamar de tendência seria "
-             "prometer movimento onde há ruído",
+             "prometer movimento onde há ruído. " + AVISO_DA_COMPETENCIA,
     pergunta_verificada="A sinistralidade do mercado está subindo ou caindo nos "
                         "últimos três trimestres?",
     golden=golden(INDISPONIVEL),

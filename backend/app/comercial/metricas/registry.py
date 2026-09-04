@@ -47,7 +47,8 @@ from typing import (Any, Callable, Dict, List, Optional, Sequence, Tuple)
 
 from app.comercial.cbim import (CommissionFact, FactSet, Money, PolicyFact,
                                 RenewalFact, UNAVAILABLE, somar_dinheiro)
-from app.comercial.evidence_pack import (BAIXA, BASES_TEMPORAIS, MetricResult,
+from app.comercial.evidence_pack import (BAIXA, BASES_ACEITAS, BASES_TEMPORAIS,
+                                         COMPETENCIA, MetricResult,
                                          ORDEM_DA_CONFIANCA, UNIDADES, metrica,
                                          periodo_iso)
 from app.comercial.manifesto import (DEGRADED, FRASE_DO_ESTADO, NAO_VERIFICADO,
@@ -261,7 +262,11 @@ def montar_contexto(fatos: FactSet, inicio: date, fim: date,
     universo de junção. 📊 Recortá-los pelo mesmo período deixaria 97% da
     produção sem produtor conhecido (a interseção medida é de 2,8%).
     """
-    if time_basis not in BASES_TEMPORAIS:
+    # 🔴 `BASES_ACEITAS` e nao `BASES_TEMPORAIS`: a competencia contabil e uma
+    # base legitima (SPEC-094.1, conserto de 04/09/2026), e o par continua sendo
+    # so o vocabulario da CARTEIRA. A projecao das apolices e a mesma — o que
+    # muda e o que o envelope DECLARA.
+    if time_basis not in BASES_ACEITAS:
         raise ValueError(f"base temporal fora do contrato: {time_basis!r}")
 
     # ⚠️ O feixe é lido por ATRIBUTO, e não por método. A SPEC fixa a
@@ -401,9 +406,22 @@ class MetricDefinition:
     #: `{"fixture": str, "esperado": float | "UNAVAILABLE"}`.
     #: É a régua de regressão — "o que respondia certo e passou a falhar" (ref ④).
     golden: Dict[str, Any] = field(default_factory=dict)
+    #: 🔴 SPEC-094.1, conserto de 04/09/2026 — QUAIS FONTES esta métrica lê.
+    #:
+    #: 📊 O defeito que estes dois campos consertam: a métrica DERIVED que
+    #: compara a carteira com o mercado saía com `source_refs=[]`, um único
+    #: `provider_key` e um único `period`. O envelope declarava UMA fonte para
+    #: um número que veio de DUAS — e quem fosse conferir contra aquela fonte
+    #: acharia a metade que fecha e concluiria que o número estava certo.
+    #:
+    #: ⚠️ São BOOLEANOS, e não nomes: nenhum arquivo de `metricas/` pode nomear
+    #: um sistema de gestão nem um órgão (M1). Quem sabe o NOME de cada fonte é
+    #: o feixe que chega, e é dele que `calcular` copia o `provider_key`.
+    usa_carteira: bool = True
+    usa_mercado: bool = False
 
     def __post_init__(self) -> None:
-        if self.time_basis not in BASES_TEMPORAIS:
+        if self.time_basis not in BASES_ACEITAS:
             raise ValueError(
                 f"{self.metric_id}: base temporal fora do contrato: {self.time_basis!r}")
         if self.unit not in UNIDADES:
@@ -606,6 +624,60 @@ def _avaliar(manifesto: Any, d: "MetricDefinition",
     return bloqueada, motivos, exige
 
 
+# ==========================================================================
+# AS FONTES DE UM NUMERO — SPEC-094.1, conserto de 04/09/2026
+# ==========================================================================
+def _competencia(d: date) -> str:
+    """`AAAAMM` — o mes contabil desta data."""
+    return "%04d%02d" % (d.year, d.month)
+
+
+def janela_de_competencia(feixe: Any, inicio: date, fim: date) -> Dict[str, str]:
+    """`{start, end}` em competencia — a do FEIXE dentro do periodo, quando ela
+    existe, e a do periodo quando o feixe nao tem celula nenhuma la dentro.
+
+    🔴 A diferenca importa: dizer que o mercado foi lido de janeiro a dezembro
+    quando a base publica so fechou ate junho e afirmar sobre seis meses que
+    ninguem leu. O `source_ref` tem de dizer o que FOI lido.
+    """
+    piso, teto = _competencia(inicio), _competencia(fim)
+    vistas = sorted(
+        c for c in (str(getattr(x, "damesano", "") or "").strip()
+                    for x in list(getattr(feixe, "facts", ()) or ()))
+        if c and piso <= c <= teto)
+    if not vistas:
+        return {"start": piso, "end": teto}
+    return {"start": vistas[0], "end": vistas[-1]}
+
+
+def fontes_do_numero(d: "MetricDefinition", facts: Any, feixe: Any,
+                     janela: Dict[str, str], inicio: date,
+                     fim: date) -> Tuple[List[Dict[str, str]], str]:
+    """`(source_refs, provider_key)` — UMA entrada por fonte que o numero leu.
+
+    ⚠️ O feixe de mercado so entra quando ele CHEGOU. Uma metrica que declara
+    ler o mercado e roda sem ele devolve INDISPONIVEL pela propria formula; o
+    envelope nao pode declarar uma fonte que nao foi consultada — "nao
+    perguntei" nao e "perguntei e veio vazio".
+    """
+    refs: List[Dict[str, str]] = []
+    provedores: List[str] = []
+    if d.usa_carteira:
+        chave = str(getattr(facts, "provider_key", "") or "")
+        refs.append({"provider": chave, "time_basis": d.time_basis
+                     if d.time_basis in BASES_TEMPORAIS else BASES_TEMPORAIS[0],
+                     "period": dict(janela)})
+        if chave:
+            provedores.append(chave)
+    if d.usa_mercado and feixe is not None:
+        chave = str(getattr(feixe, "provider_key", "") or "")
+        refs.append({"provider": chave, "time_basis": COMPETENCIA,
+                     "period": janela_de_competencia(feixe, inicio, fim)})
+        if chave:
+            provedores.append(chave)
+    return refs, "+".join(dict.fromkeys(provedores))
+
+
 def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
              time_basis: Optional[str] = None,
              manifest: Optional[ProviderCapabilityManifest] = None,
@@ -647,10 +719,17 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
     bloqueada, motivos, exige_cobertura = _avaliar(manifest, d, lidas, vazias)
     avisos.extend(motivos)
 
+    feixe_do_mercado = mercado if mercado is not None else getattr(
+        contexto, "mercado", None)
+    fontes, provedor = fontes_do_numero(d, facts, feixe_do_mercado, janela,
+                                        inicio, fim)
+
     if bloqueada:
         return metrica(d.metric_id, None, d.unit, period=janela,
                        time_basis=d.time_basis, coverage=None, version=d.version,
-                       provider_key=str(getattr(facts, "provider_key", "") or ""),
+                       provider_key=provedor or str(
+                           getattr(facts, "provider_key", "") or ""),
+                       source_refs=fontes,
                        warnings=avisos + [d.forbidden_fallback])
 
     ctx = contexto or montar_contexto(facts, inicio, fim, d.time_basis)
@@ -679,10 +758,16 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
             f"cobertura. Um número parcial apresentado como total mente por "
             f"omissão (M15) — {d.coverage_rule}")
 
+    # 🔴 As fontes sao remontadas DEPOIS da formula: e so aqui que se sabe se o
+    # feixe de mercado chegou de verdade (ele pode ter vindo pelo `contexto`).
+    fontes, provedor = fontes_do_numero(d, facts, getattr(ctx, "mercado", None),
+                                        janela, inicio, fim)
     return metrica(d.metric_id, valor, d.unit, period=janela,
                    time_basis=d.time_basis, coverage=cobertura,
                    version=d.version,
-                   provider_key=str(getattr(facts, "provider_key", "") or ""),
+                   provider_key=provedor or str(
+                       getattr(facts, "provider_key", "") or ""),
+                   source_refs=fontes,
                    warnings=avisos, breakdown=breakdown,
                    confianca_maxima=teto_de_confianca)
 

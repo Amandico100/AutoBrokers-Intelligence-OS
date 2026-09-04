@@ -21,6 +21,27 @@ apólice, que o adapter escreveu com a única função que decide isso
 daqui de dentro — e é por isso que a mutação do guarda tem de atacar a
 fronteira, e não a fórmula.
 
+## 🔴 E a POPULAÇÃO é própria — o conserto de 04/09/2026
+
+📊 O defeito medido: esta fórmula lia a lista de apólices do lote, que na
+pergunta real é a **produção** — lida com o parâmetro do cancelado em `"F"`,
+isto é, sem uma única apólice cancelada dentro. A taxa publicada era **0,0%**,
+com confiança alta, sobre uma carteira em que **325 de 3.861** documentos
+estavam cancelados: **8,42%**. O número respondia; nada travava.
+
+```
+população do CANCELAMENTO   lista própria, base POLICY_VALID_TO   ✅
+lista da produção           base POLICY_VALID_FROM, sem cancelado ⛔
+```
+
+⚠️ E a base temporal mudou junto: a rota que traz as canceladas filtra pelo
+**FIM** da vigência. 📊 Medido: 3.861 linhas, `fimvig` no ano em 3.861 delas e
+`inivig` no ano em **103**. Recortar por início de vigência jogava fora 97% da
+população — outra forma de a taxa desabar sem ninguém ver.
+
+🔴 População não lida sai `UNAVAILABLE` com a frase *"rota não lida"*, e nunca
+`0`: "não perguntei" e "perguntei e não veio nada" são afirmações diferentes.
+
 ## E o cross-sell conta RAMO, não apólice
 
 🔴 Um cliente com três apólices do mesmo ramo tem **um** produto. Contar
@@ -43,6 +64,17 @@ INDISPONIVEL = "UNAVAILABLE"
 #: 💭 Quantas linhas de ramo ausente vão ao pacote. Cinco cabem numa frase de
 #: recomendação; o resto seria lista para ninguém ler.
 TETO_DE_RAMOS = 5
+
+#: O nome CANÔNICO da população do cancelamento — o vocabulário do modelo de
+#: fatos, e nunca o nome de uma rota (M1).
+POPULACAO_DO_CANCELAMENTO = "cancellations"
+
+#: Os dois estados que a fórmula sabe ler. 🔴 Um `status` fora desta dupla é
+#: ILEGÍVEL, e não "ativa": contar o desconhecido como ativa baixaria a taxa de
+#: cancelamento com o dado que falta, que é a direção confortável de errar.
+ATIVA = "ACTIVE"
+CANCELADA = "CANCELLED"
+ESTADOS_LEGIVEIS = (ATIVA, CANCELADA)
 
 Contexto = Any
 Saida = Any
@@ -68,30 +100,72 @@ def _apolices_do_feixe(ctx: Contexto) -> List[Any]:
     return saida
 
 
+def _populacao_foi_lida(ctx: Contexto, nome: str) -> bool:
+    """Esta população foi PERGUNTADA nesta leitura?
+
+    🔴 A pergunta não é "a lista está vazia": lista vazia é o mesmo objeto para
+    "ninguém perguntou" e para "perguntei e não veio nada" — e as duas
+    respostas do produto são opostas. Quem marca é o adapter, no vocabulário do
+    modelo de fatos.
+    """
+    return nome in (getattr(getattr(ctx, "fatos", None),
+                            "populacoes_lidas", None) or set())
+
+
+def _canceladas_do_feixe(ctx: Contexto) -> List[Any]:
+    """A população do CANCELAMENTO, recortada pelo FIM da vigência.
+
+    ⚠️ Ela é uma lista PRÓPRIA do lote, e não a das apólices da produção: as
+    duas têm base temporal diferente e uma delas nunca traz cancelada nenhuma.
+    """
+    fatos = getattr(ctx, "fatos", None)
+    saida = []
+    for p in list(getattr(fatos, "cancellations", ()) or ()):
+        quando = getattr(p, "valid_to", None)
+        if quando is not None and ctx.inicio <= quando <= ctx.fim:
+            saida.append(p)
+    return saida
+
+
 # --------------------------------------------------------------------------
 # portfolio.cancellation_rate
 # --------------------------------------------------------------------------
 def _cancelamento(ctx: Contexto) -> Saida:
-    apolices = _apolices_do_feixe(ctx)
+    # 🔴 A PRIMEIRA pergunta é se alguém leu a população — e não se ela está
+    # vazia. Sem esta linha, "não perguntei" viraria "0% de cancelamento".
+    if not _populacao_foi_lida(ctx, POPULACAO_DO_CANCELAMENTO):
+        return None, None, [], [
+            "a população de cancelamento NÃO FOI LIDA nesta consulta: "
+            "INDISPONÍVEL por rota não lida. 🔴 Isto é uma afirmação sobre a "
+            "LEITURA — '0% de cancelamento' seria a melhor notícia possível "
+            "sobre a carteira, e ninguém a mediu"]
+    apolices = _canceladas_do_feixe(ctx)
     if not apolices:
         return None, None, [], [
-            "nenhuma apólice com início de vigência no período: INDISPONÍVEL, "
-            "e não 0% de cancelamento"]
-    canceladas = [p for p in apolices if getattr(p, "status", "") == "CANCELLED"]
+            "a população de cancelamento foi lida e não tem nenhuma apólice "
+            "vencendo no período: INDISPONÍVEL, e não 0% de cancelamento"]
+    canceladas = [p for p in apolices if getattr(p, "status", "") == CANCELADA]
     conhecidas = [p for p in apolices
-                  if str(getattr(p, "status", "") or "").strip()]
+                  if str(getattr(p, "status", "") or "").strip() in ESTADOS_LEGIVEIS]
     if not conhecidas:
+        # ⚠️ Ramo ALCANÇÁVEL: a comparação é com o VOCABULÁRIO, e não com
+        # "campo preenchido". Uma fonte que escreva qualquer outra palavra no
+        # estado cai aqui — e é isso que o PAR do guarda exerce. Antes de
+        # 04/09/2026 o teste era `if str(status).strip()`, que nenhuma leitura
+        # conseguia reprovar: um guarda sem como ficar vermelho não guarda nada
+        # (CLAUDE.md §9.3).
         return None, 0.0, [], [
             "nenhuma apólice do período tem estado legível: INDISPONÍVEL. 🔴 "
             "'0% de cancelamento' seria a melhor notícia possível, afirmada "
-            "sobre um campo em branco"]
+            "sobre um campo que a fonte escreveu numa palavra que não é nem "
+            "ativa nem cancelada"]
     por_seguradora: Dict[str, Dict[str, Any]] = {}
     for p in apolices:
         rotulo = str(getattr(p, "insurer", "") or "").strip() or "(não informado)"
         balde = por_seguradora.setdefault(
             rotulo, {"rotulo": rotulo, "apolices": 0, "canceladas": 0})
         balde["apolices"] += 1
-        if getattr(p, "status", "") == "CANCELLED":
+        if getattr(p, "status", "") == CANCELADA:
             balde["canceladas"] += 1
     for balde in por_seguradora.values():
         balde["taxa_pct"] = (100.0 * balde["canceladas"] / balde["apolices"]
@@ -109,16 +183,22 @@ def _cancelamento(ctx: Contexto) -> Saida:
 _DEFINICOES.append(dict(
     metric_id="portfolio.cancellation_rate", version=1,
     label="Taxa de cancelamento da carteira", grain="company", unit="pct",
-    time_basis=POLICY_VALID_FROM,
+    # 🔴 O FIM da vigência, e não o início: é assim que a rota da população
+    # recorta. 📊 Medido em 3.861 linhas de 2025: `fimvig` no ano em 3.861 e
+    # `inivig` no ano em 103 — recortar por início jogava fora 97% delas.
+    time_basis=POLICY_VALID_TO,
     required_capabilities=("portfolio.cancellations",),
     formula=_cancelamento,
     coverage_rule="fração das apólices do período cujo estado (ativa ou "
                   "cancelada) veio legível da fonte",
     forbidden_fallback="⛔ estado em branco NUNCA conta como ativa: isso baixaria "
                        "a taxa de cancelamento com o dado que falta, que é a "
-                       "direção mais confortável de errar",
+                       "direção mais confortável de errar. ⛔ E população não "
+                       "lida NUNCA vira 0%: 'nenhum cancelamento' é a melhor "
+                       "notícia possível sobre a carteira",
     premissa="🔴 a taxa é `canceladas ÷ (canceladas + ativas)` sobre a MESMA "
-             "população. A fonte devolve as duas juntas quando se pede para "
+             "população, que é a POPULAÇÃO DO CANCELAMENTO e nunca a da "
+             "produção. A fonte devolve as duas juntas quando se pede para "
              "incluir as canceladas — e quem ler esse pedido como um recorte "
              "publica a carteira inteira como cancelada",
     pergunta_verificada="Que porcentagem da carteira do período foi cancelada, "
@@ -131,6 +211,10 @@ _DEFINICOES.append(dict(
 # customer.single_product_share
 # --------------------------------------------------------------------------
 def _um_produto_so(ctx: Contexto) -> Saida:
+    if not _populacao_foi_lida(ctx, "customers"):
+        return None, None, [], [
+            "a ligação cliente↔apólice NÃO FOI LIDA nesta consulta: "
+            "INDISPONÍVEL por rota não lida — e não '0% de monoproduto'"]
     fatos = getattr(ctx, "fatos", None)
     clientes = list(getattr(fatos, "customers", ()) or ())
     if not clientes:

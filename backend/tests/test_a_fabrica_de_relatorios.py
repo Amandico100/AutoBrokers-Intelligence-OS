@@ -704,7 +704,7 @@ def mod_tool360(recarregar=False):
 
 
 def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
-                 fatos=None, recarregar=False):
+                 fatos=None, recarregar=False, mercado=None, espiao=None):
     """`_montar` DE VERDADE. Devolve `(texto, erro)`.
 
     🔴 Nada sai: o provider e uma fixture, a publicacao e um `link` falso, os
@@ -720,10 +720,44 @@ def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
     lote = fatos if fatos is not None else fatos_de_fixture(cbim)
 
     class _ProviderDeFixture:
+        """O provider da fixture — e, desde 04/09/2026, um ESPIAO.
+
+        🔴 Ele registra QUAL leitura foi chamada. E a unica forma de provar a
+        fiacao: um teste que so olha o texto da resposta nao consegue distinguir
+        "a rota foi lida e veio vazia" de "ninguem chamou a rota" — que e
+        exatamente o defeito que o conserto do item 1 fecha.
+        """
+
         provider_key = "fixture"
 
         async def fatos(self, **kw):    # noqa: ANN003, ARG002
+            if espiao is not None:
+                espiao.append("fatos")
             return lote
+
+        async def claims(self, **kw):   # noqa: ANN003, ARG002
+            return self._marcar("claims")
+
+        async def quotes(self, **kw):   # noqa: ANN003, ARG002
+            return self._marcar("quotes")
+
+        async def cancellations(self, **kw):   # noqa: ANN003, ARG002
+            return self._marcar("cancellations")
+
+        async def customer_links(self, **kw):   # noqa: ANN003, ARG002
+            return self._marcar("customers")
+
+        async def issuance_status(self, **kw):   # noqa: ANN003, ARG002
+            return self._marcar("issuance")
+
+        @staticmethod
+        def _marcar(nome):
+            if espiao is not None:
+                espiao.append(nome)
+            recorte = cbim.FactSet(company_id=EMPRESA_A, provider_key="fixture")
+            recorte.populacoes_lidas.add(nome)
+            recorte.fingerprints[nome] = "sha-%s" % nome
+            return recorte
 
     class _ToolDeProva(mod.ExecutiveIntelligenceTool):
         @staticmethod
@@ -739,6 +773,21 @@ def rodar_montar(views, periodo="2025", comparacao="nenhum", dimension="",
 
         def _registrar_sinais(self, ep, pacote):   # noqa: ARG002
             return None
+
+        async def _feixe_do_mercado(self, p, escolhidas, fatos):  # noqa: ARG002
+            """⛔ O conector real le o armazenamento de objetos, que e REDE.
+
+            🔴 A substituicao e so do TRANSPORTE: a decisao de PEDIR o feixe
+            continua sendo a do produto, e e ela que o espiao registra.
+            """
+            if "mercado" not in mod.FONTES_DA_VISAO.get("mercado", ()) :
+                return None
+            pedidas = self._populacoes_pedidas(list(escolhidas))
+            if mod.POPULACAO_DO_MERCADO not in pedidas:
+                return None
+            if espiao is not None:
+                espiao.append("mercado")
+            return mercado
 
     try:
         import asyncio
@@ -1059,8 +1108,16 @@ def bloco_1_registry():
                 try:
                     d = registry.todas()[alvo]
                     fatos = loader(d)
-                    if getattr(fatos, "policies", None):
-                        fatos.policies = list(fatos.policies)[:-1] or []
+                    # 🔴 A fixture e alterada em TODAS as populacoes, e nao so
+                    # nas apolices. 📊 04/09/2026: `claims.open_count` deixou de
+                    # depender da juncao com a carteira, entao tirar uma apolice
+                    # nao mudava mais o numero — e o CONTROLE ficava vermelho
+                    # por medir a populacao errada, nao por regressao nenhuma.
+                    for pop in ("policies", "claims", "quotes", "customers",
+                                "cancellations", "renewals"):
+                        lista = list(getattr(fatos, pop, None) or ())
+                        if lista:
+                            setattr(fatos, pop, lista[:-1])
                     r2 = registry.calcular(alvo, fatos,
                                            (date(2025, 1, 1), date(2025, 12, 31)))
                     esperado = (d.golden or {}).get("esperado")
@@ -1125,7 +1182,14 @@ def bloco_2_adapter():
             certo(False, "[2] o adapter tem `%s()`" % metodo,
                          "📊 a rota existe e ninguem le")
             continue
-        corpo = texto[m.start():m.start() + 2600]
+        # 🔴 O corpo do metodo INTEIRO, pela indentacao — e nao uma janela de
+        # N caracteres. 📊 04/09/2026: a paginacao de `/sinistros` empurrou
+        # `_marcar_fingerprints` para depois do caractere 2600 e este bloco
+        # ficou VERMELHO por causa do TAMANHO do metodo, e nao da regra. Um
+        # detector que depende do comprimento do codigo mede a coisa errada.
+        resto = texto[m.start():]
+        fim = re.search("[\n]    (?:@|async def |def )", resto[1:])
+        corpo = resto[:fim.start() + 1] if fim else resto
         certo("fingerprints" in corpo,
               "[2] `%s()` marca a rota lida em `fingerprints` (= `rotas_lidas`)"
               % metodo,
@@ -2226,6 +2290,291 @@ def _sem_acento(s):
 
 
 # ===========================================================================
+# [11] A FIACAO -- o conserto de 04/09/2026 (grupo 1: o dono lia errado)
+# ===========================================================================
+#
+# 🔴 Este bloco existe porque os blocos [1]-[8] ficaram VERDES sobre um produto
+# em que cinco leituras novas e um conector externo NUNCA ERAM CHAMADOS. Cada
+# peca tinha teste; o ELO entre elas nao tinha. E o modo de falha era o do
+# CLAUDE.md §9.5: nada travava, e o dono lia um numero errado com a cara certa.
+def bloco_11_a_fiacao():
+    _p("\n[11] A FIACAO (conserto 04/09) -- quem CHAMA as 5 leituras e o mercado")
+
+    mod, erro = mod_tool360()
+    cbim, erro_c = _cbim()
+    registry, erro_r = _registry()
+    if mod is None or cbim is None or registry is None:
+        certo(False, "[11] tool360 + cbim + registry carregam",
+              erro or erro_c or erro_r)
+        return
+
+    # -- 1. o ESPIAO: cada visao chama exatamente as fontes dela -------------
+    esperado_por_visao = {
+        "sinistros": {"claims"},
+        "funil": {"quotes"},
+        "carteira": {"customers"},
+        "pendencias": {"cancellations", "issuance"},
+        "mercado": {"claims", "mercado"},
+        # ⚠️ A linha de CONTROLE: uma visao da carteira NAO pode acordar
+        # nenhuma das leituras novas. Sem ela, um `_montar` que lesse tudo
+        # sempre passaria em todas as linhas acima.
+        "producao": set(),
+        "renovacao": set(),
+    }
+    erros = []
+    for visao, esperadas in esperado_por_visao.items():
+        espiao = []
+        texto, err = rodar_montar([visao], espiao=espiao)
+        if err:
+            erros.append("%s: %s" % (visao, err))
+            continue
+        chamadas = set(espiao) - {"fatos"}
+        if chamadas != esperadas:
+            erros.append("%s: chamou %r, esperado %r"
+                         % (visao, sorted(chamadas), sorted(esperadas)))
+    certo(not erros,
+          "[11] cada visao chama EXATAMENTE as leituras dela (com o PAR: visao "
+          "da carteira nao chama nenhuma)",
+          " · ".join(erros[:4])
+          + "  🔴 📊 04/09: o grep de chamadores das 5 leituras e do agregado "
+            "de mercado dava ZERO fora dos providers")
+
+    # -- 2. `mercado=` chega ao registry ------------------------------------
+    feixe = cbim.MarketFactSet(
+        provider_key=cbim.PROVIDER_DE_MERCADO, fonte="fixture",
+        competencia_final="202606",
+        mapa={"seguradora alfa": "99999"},
+        resolver=lambda nome: ("99999" if "alfa" in str(nome).lower()
+                               else "UNKNOWN"))
+    feixe.facts.append(cbim.MarketFact(
+        coenti="99999", damesano="202503", coramo="0531",
+        premio_ganho=1000.0, sinistro_ocorrido=571.2))
+    texto, err = rodar_montar(["mercado"], mercado=feixe)
+    certo(not err and "market.loss_ratio" in texto,
+          "[11] com o feixe de mercado o Pulso traz a metrica de mercado",
+          err or texto[:200])
+    # PAR: SEM o feixe, a MESMA pergunta nao inventa numero de mercado.
+    texto_sem, err_sem = rodar_montar(["mercado"], mercado=None)
+    certo(not err_sem and "UNAVAILABLE" in texto_sem,
+          "[11] PAR: sem o feixe, a metrica de mercado sai UNAVAILABLE",
+          err_sem or texto_sem[:200])
+
+    # -- 3. a taxa de cancelamento: 8,42 no controle, UNAVAILABLE no trato ---
+    #
+    # 📊 As linhas sao REAIS-SINTETICAS: a forma medida da rota (campo
+    # `cancelado` por linha, `fimvig` no periodo e `inivig` fora dele), com os
+    # numeros do censo — 325 canceladas em 3.861.
+    def _populacao(com_campo=True, com_inivig=False, marcadas=325, total=3861):
+        lote = cbim.FactSet(company_id=EMPRESA_A, provider_key="fixture")
+        lote.populacoes_lidas.add("cancellations")
+        lote.fingerprints["cancellations"] = "sha"
+        for i in range(total):
+            cancelada = i < marcadas
+            lote.cancellations.append(cbim.PolicyFact(
+                policy_ref="pol-%d" % i, source_ref=str(i),
+                insurer="Seguradora Alfa", branch="auto",
+                valid_from=(date(2025, 6, 1) if com_inivig else date(2024, 6, 1)),
+                valid_to=date(2025, 6, 1),
+                premium=cbim.interpretar_dinheiro("1000.00"),
+                kind="NEW",
+                status=(cbim.status_de_apolice(cancelada) if com_campo
+                        else "situacao-que-a-fonte-escreveu")))
+        return lote
+
+    def _taxa(lote):
+        r = registry.calcular("portfolio.cancellation_rate", lote,
+                              (date(2025, 1, 1), date(2025, 12, 31)))
+        return r.value
+
+    valor = _taxa(_populacao())
+    certo(isinstance(valor, float) and abs(valor - 8.42) < 0.01,
+          "[11] CONTROLE: a taxa de cancelamento da 8,42%% na populacao medida "
+          "(veio %r)" % (valor,),
+          "📊 325 canceladas em 3.861 = 8,42%. Antes de 04/09 esta metrica lia "
+          "a lista da PRODUCAO — que vem sem cancelada nenhuma — e publicava "
+          "0,0% com confianca alta")
+    sem_campo = _taxa(_populacao(com_campo=False))
+    certo(str(sem_campo) == "UNAVAILABLE",
+          "[11] TRATAMENTO: sem o CAMPO de estado legivel a taxa sai "
+          "UNAVAILABLE (veio %r)" % (sem_campo,),
+          "🔴 este ramo era INALCANCAVEL ate 04/09: a comparacao era com "
+          "'campo preenchido', e a fonte sempre preenche algo")
+    nao_lida = cbim.FactSet(company_id=EMPRESA_A, provider_key="fixture")
+    certo(str(_taxa(nao_lida)) == "UNAVAILABLE",
+          "[11] TRATAMENTO: populacao NAO LIDA sai UNAVAILABLE, e nunca 0%")
+    # E o PAR do recorte temporal: `inivig` no periodo nao muda nada, porque a
+    # base desta metrica e o FIM da vigencia.
+    com_inivig = _taxa(_populacao(com_inivig=True))
+    certo(isinstance(com_inivig, float) and abs(com_inivig - 8.42) < 0.01,
+          "[11] PAR: a taxa nao depende do INICIO de vigencia (base = fim)",
+          "veio %r — 📊 medido: `fimvig` no ano em 3.861 linhas e `inivig` em "
+          "103; recortar por inicio jogava 97%% da populacao fora" % (com_inivig,))
+
+    # -- 4. o funil nao perde a etapa cuja rota nao tem a chave de data ------
+    adapter, err_a = carregar("_0941_adapter_fiacao", ADAPTER)
+    if adapter is None:
+        certo(False, "[11] o adapter carrega", err_a)
+    else:
+        lote = cbim.FactSet(company_id=EMPRESA_A, provider_key="fixture")
+        prov = adapter.InfocapAnalyticsProvider()
+        # 📊 As chaves REAIS: `/negocios_andamento` traz `inivig`;
+        # `/negocios_finalizados` NAO — e era por isso que a etapa que responde
+        # "quantos eu fechei" sumia do funil inteiro.
+        prov._traduzir_funil(lote, [
+            {"codigo": "1", "val_premio": "1000,00", "ramo": "AUTO",
+             "inivig": "10/03/2025"}], "EM_ANDAMENTO", "corr")
+        prov._traduzir_funil(lote, [
+            {"codigo": "9", "val_premio": "2000,00", "ramo": "AUTO",
+             "codcli": "1", "status": "F"},
+            {"codigo": "10", "val_premio": "3000,00", "ramo": "RESI",
+             "codcli": "2", "status": "F"}], "FINALIZADO", "corr")
+        lote.populacoes_lidas.add("quotes")
+        lote.fingerprints["quotes"] = "sha"
+        r = registry.calcular("quotes.funnel", lote,
+                              (date(2025, 1, 1), date(2025, 12, 31)))
+        etapas = {x["rotulo"]: x["cotacoes"] for x in r.breakdown}
+        certo(etapas == {"EM_ANDAMENTO": 1, "FINALIZADO": 2},
+              "[11] o funil conta a etapa cuja rota NAO tem chave de data "
+              "(veio %r)" % (etapas,),
+              "🔴 antes de 04/09 a etapa FINALIZADO sumia inteira: sem `inivig` "
+              "o negocio nascia sem data e o recorte por data o descartava")
+        certo(any("sem data" in w for w in r.warnings),
+              "[11] e ele DIZ quantos negocios vieram sem data",
+              "um negocio contado sem aviso e um total que ninguem consegue "
+              "conferir")
+
+    # -- 5. a situacao do sinistro: acento, negado, duplicata ---------------
+    if adapter is not None:
+        casos = {
+            "Em Análise": "OPEN",
+            "EM ANALISE": "OPEN",
+            "Negado": "CLOSED_DENIED",
+            "Indeferido": "CLOSED_DENIED",
+            "Liquidado": "CLOSED_PAID",
+            "Pago": "CLOSED_PAID",
+            "Aguardando vistoria": "OPEN",
+            "": "UNKNOWN",
+            "coisa que ninguem escreveu": "UNKNOWN",
+        }
+        erradas = []
+        for rotulo, esperado in casos.items():
+            veio = adapter._situacao_do_sinistro({"situacao": rotulo})
+            if veio != esperado:
+                erradas.append("%r -> %s (esperado %s)" % (rotulo, veio, esperado))
+        certo(not erradas,
+              "[11] a situacao do sinistro le ACENTO e separa NEGADO de PAGO",
+              " · ".join(erradas)
+              + "  🔴 'Em Análise' caia em UNKNOWN porque a marca sem acento era "
+                "comparada com o texto CRU (CLAUDE.md §9.4)")
+        # A indenizacao de um NEGADO nunca entra na soma do que foi pago.
+        lote = cbim.FactSet(company_id=EMPRESA_A, provider_key="fixture")
+        prov = adapter.InfocapAnalyticsProvider()
+        prov._traduzir_sinistros(lote, [
+            {"numsin": "A", "nosnum": "1", "situacao": "Liquidado",
+             "valind": "1000,00", "datoco": "10/03/2025", "datenc": "20/03/2025"},
+            {"numsin": "B", "nosnum": "2", "situacao": "Negado",
+             "valind": "9000,00", "datoco": "11/03/2025", "datenc": "21/03/2025"},
+            {"numsin": "C", "nosnum": "3", "situacao": "Em Análise",
+             "valind": "500,00", "datoco": "12/03/2025"},
+            # A DUPLICATA: a linha SEM data vem primeiro, de proposito.
+            {"numsin": "D", "nosnum": "4", "situacao": "Em Análise",
+             "valind": "700,00"},
+            {"numsin": "D", "nosnum": "4", "situacao": "Em Análise",
+             "valind": "700,00", "datoco": "13/03/2025"},
+            {"numsin": "E", "nosnum": "5", "situacao": "coisa nova",
+             "valind": "1,00", "datoco": "14/03/2025"},
+        ], "corr")
+        lote.populacoes_lidas.add("claims")
+        lote.fingerprints["claims"] = "sha"
+        janela = (date(2025, 1, 1), date(2025, 12, 31))
+        pago = registry.calcular("claims.indemnity_paid", lote, janela)
+        certo(pago.value == 1000.0,
+              "[11] a indenizacao soma SO o encerrado com PAGAMENTO (veio %r)"
+              % (pago.value,),
+              "🔴 antes de 04/09 `negado` e `indeferido` iam para o mesmo estado "
+              "que `liquidado`: a soma incluia R$ 9.000 que ninguem pagou")
+        certo(any("NEGADO" in w for w in pago.warnings),
+              "[11] e o negado sai ESCRITO no envelope, e nao apenas omitido")
+        d = [c for c in lote.claims if c.occurred_at is None]
+        certo(not d and len(lote.claims) == 5,
+              "[11] o dedupe fica com a linha que TEM data de ocorrencia "
+              "(%d sinistro(s), %d sem data)" % (len(lote.claims), len(d)),
+              "🔴 a duplicata sem data chegava primeiro e o sinistro sumia de "
+              "TODAS as metricas, que recortam pela data de ocorrencia")
+        certo(any("nao reconhecida" in w for w in lote.warnings),
+              "[11] a situacao NAO RECONHECIDA vira aviso com os rotulos",
+              "um caso que o software nao classifica nao pode sumir do total")
+        # 🔴 O join com a carteira NAO e o denominador (📊 a intersecao medida
+        # entre sinistros e carteira do ano e ZERO).
+        abertos = registry.calcular("claims.open_count", lote, janela)
+        # 📊 Dois abertos: "Em Análise" (C) e a duplicata deduplicada (D). O
+        # liquidado, o negado e o nao-reconhecido nao sao abertos.
+        certo(abertos.value == 2.0,
+              "[11] os abertos contam a POPULACAO DA FONTE, sem depender da "
+              "juncao com a carteira (veio %r)" % (abertos.value,),
+              "📊 40 documentos de sinistro x 3.861 linhas de carteira = 0 "
+              "interseccao: a regra antiga devolvia UNAVAILABLE para uma "
+              "pergunta que tem resposta")
+        linha = [x for x in abertos.breakdown
+                 if x.get("rotulo") == "na carteira lida"]
+        certo(len(linha) == 1 and linha[0]["sinistros"] == 0,
+              "[11] e a juncao vira uma linha INFORMATIVA do detalhe",
+              "ela responde 'quantos consigo amarrar', e nunca filtra o total")
+
+    # -- 6. a DERIVED declara as DUAS fontes --------------------------------
+    lote = cbim.FactSet(company_id=EMPRESA_A, provider_key="infocap")
+    lote.populacoes_lidas.update({"policies", "claims"})
+    lote.fingerprints.update({"policies": "sha", "claims": "sha"})
+    r = registry.calcular("claims.loss_ratio_vs_market", lote,
+                          (date(2025, 1, 1), date(2025, 12, 31)),
+                          mercado=feixe)
+    provedores = [str(x.get("provider")) for x in r.source_refs
+                  if isinstance(x, dict)]
+    certo(len(r.source_refs) == 2 and len(set(provedores)) == 2,
+          "[11] a DERIVED declara DUAS `source_refs`, com providers distintos "
+          "(%r)" % (provedores,),
+          "🔴 ela saia com `source_refs=[]`, um provider e um periodo: quem "
+          "fosse conferir achava a metade que fecha")
+    certo("+" in r.provider_key,
+          "[11] e o `provider_key` dela e composto (veio %r)" % (r.provider_key,))
+    bases = {str(x.get("time_basis")) for x in r.source_refs
+             if isinstance(x, dict)}
+    certo("COMPETENCIA" in bases,
+          "[11] a fonte de mercado declara a base COMPETENCIA (veio %r)"
+          % (sorted(bases),))
+    tb = registry.todas()["market.loss_ratio"].time_basis
+    certo(tb == "COMPETENCIA",
+          "[11] e as metricas de mercado declaram COMPETENCIA no envelope "
+          "(veio %r)" % (tb,),
+          "declara-las em base de vigencia afirmava, calado, um recorte que "
+          "nunca houve")
+    # PAR: uma metrica que NAO le o mercado continua com UMA fonte so.
+    r2 = registry.calcular("production.policy_count", lote,
+                           (date(2025, 1, 1), date(2025, 12, 31)), mercado=feixe)
+    certo(len(r2.source_refs) == 1,
+          "[11] PAR: a metrica que NAO le o mercado declara UMA fonte so "
+          "(%d)" % (len(r2.source_refs),))
+
+    # -- 7. `ratio` sai com 4 casas na serializacao -------------------------
+    pack, err_p = _pack()
+    if pack is not None:
+        fino = pack.metrica("x.y", 0.57123456, "ratio",
+                            period={"start": "2025-01-01", "end": "2025-12-31"},
+                            time_basis="COMPETENCIA")
+        grosso = pack.metrica("x.z", 1234.5678, "BRL",
+                              period={"start": "2025-01-01", "end": "2025-12-31"},
+                              time_basis="POLICY_VALID_FROM")
+        certo(fino.serializar()["value"] == 0.5712,
+              "[11] `ratio` sai com 4 casas (veio %r)"
+              % (fino.serializar()["value"],),
+              "🔴 em 2 casas a diferenca carteira x mercado — que vale "
+              "milesimos — some e vira 0,0 na tela")
+        certo(grosso.serializar()["value"] == 1234.57,
+              "[11] PAR: dinheiro continua em 2 casas (veio %r)"
+              % (grosso.serializar()["value"],))
+
+
+# ===========================================================================
 # [9] CONTROLE GERAL — este guarda CONSEGUE ficar vermelho?
 # ===========================================================================
 def bloco_9_controle():
@@ -2316,6 +2665,7 @@ BLOCOS = (
     ("[6] TEMPLATE", bloco_6_template),
     ("[7] VOCABULARIO", bloco_7_vocabulario),
     ("[8] PROTOCOLO", bloco_8_protocolo),
+    ("[11] A FIACAO", bloco_11_a_fiacao),
     ("[9] CONTROLE GERAL", bloco_9_controle),
 )
 

@@ -70,7 +70,7 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from app.comercial.evidence_pack import UNAVAILABLE, ref_de_produtor
 
@@ -83,7 +83,10 @@ __all__ = [
     "interpretar_dinheiro", "somar_dinheiro",
     "NEW", "RENEWAL", "ENDORSEMENT", "UNKNOWN", "KINDS",
     "ACTIVE", "CANCELLED", "STATUS_DE_APOLICE", "status_de_apolice",
-    "CLAIM_OPEN", "CLAIM_CLOSED", "CLAIM_UNKNOWN", "CLAIM_STATUS",
+    "POP_POLICIES", "POP_CLAIMS", "POP_QUOTES", "POP_CANCELLATIONS",
+    "POP_CUSTOMERS", "POP_ISSUANCE", "POPULACOES",
+    "CLAIM_OPEN", "CLAIM_CLOSED", "CLAIM_CLOSED_PAID", "CLAIM_CLOSED_DENIED",
+    "CLAIM_UNKNOWN", "CLAIM_STATUS", "CLAIM_ENCERRADOS",
     "CLAIM_OCCURRED_DATE",
     "MOEDA_PADRAO", "PROVIDER_PILOTO", "PROVIDER_DE_MERCADO",
 ]
@@ -123,6 +126,20 @@ ACTIVE = "ACTIVE"
 CANCELLED = "CANCELLED"
 STATUS_DE_APOLICE = (ACTIVE, CANCELLED)
 
+#: 🔴 SPEC-094.1, conserto de 04/09/2026. Os NOMES das populacoes que um lote
+#: pode carregar — o vocabulario de `FactSet.populacoes_lidas`.
+#:
+#: ⚠️ Sao nomes do CBIM, e nao rotas: e por isso que uma formula pode perguntar
+#: "esta populacao foi lida?" sem aprender o dialeto de fonte nenhuma (M1).
+POP_POLICIES = "policies"
+POP_CLAIMS = "claims"
+POP_QUOTES = "quotes"
+POP_CANCELLATIONS = "cancellations"
+POP_CUSTOMERS = "customers"
+POP_ISSUANCE = "issuance"
+POPULACOES = (POP_POLICIES, POP_CLAIMS, POP_QUOTES, POP_CANCELLATIONS,
+              POP_CUSTOMERS, POP_ISSUANCE)
+
 
 def status_de_apolice(cancelada: bool) -> str:
     """`CANCELLED` ou `ACTIVE` — a ÚNICA função que decide isto.
@@ -138,10 +155,28 @@ def status_de_apolice(cancelada: bool) -> str:
 #: O estado de um SINISTRO. `CLAIM_UNKNOWN` é resposta legítima: 📊 o censo
 #: mediu `situacao` como texto livre da corretora, e traduzir um rótulo que não
 #: se conhece para "encerrado" é afirmar que o caso acabou.
+#:
+#: 🔴 **SPEC-094.1, conserto de 04/09/2026 — encerrado NÃO é uma coisa só.**
+#: 📊 A régua anterior tinha três estados e mandava `negado` e `indeferido`
+#: para `CLOSED` junto com `liquidado` e `pago`. A consequência não travava:
+#: `claims.indemnity_paid` somava a indenização de um sinistro **NEGADO** — um
+#: número que o dono levaria para a seguradora, sobre dinheiro que ninguém
+#: pagou (CLAUDE.md §9.5). Encerrar e PAGAR são fatos diferentes, e agora têm
+#: rótulos diferentes.
 CLAIM_OPEN = "OPEN"
+CLAIM_CLOSED_PAID = "CLOSED_PAID"
+CLAIM_CLOSED_DENIED = "CLOSED_DENIED"
+#: ⚠️ Mantido como o rótulo genérico de "encerrado sem saber se pagou" — é o
+#: que sai quando só a DATA de encerramento veio, sem rótulo que diga o
+#: desfecho. Ele nunca soma indenização.
 CLAIM_CLOSED = "CLOSED"
 CLAIM_UNKNOWN = "UNKNOWN"
-CLAIM_STATUS = (CLAIM_OPEN, CLAIM_CLOSED, CLAIM_UNKNOWN)
+CLAIM_STATUS = (CLAIM_OPEN, CLAIM_CLOSED_PAID, CLAIM_CLOSED_DENIED,
+                CLAIM_CLOSED, CLAIM_UNKNOWN)
+#: Os três desfechos que fecham o caso. 🔴 Uma tupla, e não três comparações
+#: espalhadas: quem contar "encerrados" em dois lugares diverge no dia em que
+#: um quarto desfecho nascer.
+CLAIM_ENCERRADOS = (CLAIM_CLOSED_PAID, CLAIM_CLOSED_DENIED, CLAIM_CLOSED)
 
 #: 🔴 A base temporal do SINISTRO, escrita como nome — e a dívida que ela
 #: carrega, escrita junto.
@@ -787,6 +822,34 @@ class FactSet:
     claims: List[ClaimFact] = field(default_factory=list)
     quotes: List[QuoteFact] = field(default_factory=list)
     customers: List[CustomerPortfolioFact] = field(default_factory=list)
+    #: 🔴 SPEC-094.1, conserto de 04/09/2026 — a POPULAÇÃO DO CANCELAMENTO, e
+    #: ela é uma lista PRÓPRIA de propósito.
+    #:
+    #: 📊 O defeito que ela conserta: a taxa de cancelamento lia `policies`, que
+    #: é o lote da produção — lido com o parâmetro `cancelado="F"`, isto é, SEM
+    #: nenhuma apólice cancelada dentro. A taxa publicada era **0,0%**, com
+    #: confiança alta, sobre uma carteira em que 325 de 3.861 documentos estavam
+    #: cancelados (**8,42%**). O número respondia; não travava.
+    #:
+    #: ⚠️ E ela não pode ser fundida em `policies`: as duas populações têm BASE
+    #: TEMPORAL diferente — a produção entra por `POLICY_VALID_FROM` e esta por
+    #: `POLICY_VALID_TO` (a rota filtra pelo FIM de vigência). Somá-las faria a
+    #: contagem de apólices do período crescer sozinha, e por cima misturaria
+    #: dois recortes de tempo na mesma conta.
+    cancellations: List[PolicyFact] = field(default_factory=list)
+    #: 🔴 SPEC-094.1, conserto de 04/09/2026 — QUAIS POPULACOES FORAM LIDAS.
+    #:
+    #: 📊 O defeito que ela conserta: uma lista vazia nao consegue dizer se a
+    #: fonte foi perguntada. "Nao perguntei" e "perguntei e veio vazio" sao a
+    #: diferenca entre INDISPONIVEL e um zero com confianca alta — e sem esta
+    #: marca o funil escrevia *"o acervo esta vazio no periodo"* sobre uma rota
+    #: que ninguem tinha chamado.
+    #:
+    #: ⚠️ Os nomes sao os do CBIM (`claims`, `quotes`, `cancellations`,
+    #: `customers`, `issuance`), e nunca os da fonte: quem preenche e o adapter,
+    #: quem le e a formula, e nenhum dos dois pode aprender o dialeto do outro
+    #: (M1). `fingerprints` continua guardando a ROTA, que e outra pergunta.
+    populacoes_lidas: Set[str] = field(default_factory=set)
     provenance: Optional[Provenance] = None
     warnings: List[str] = field(default_factory=list)
     #: `rota -> sha256 das chaves ordenadas`, na forma EXATA do censo

@@ -202,7 +202,11 @@ _VENCIMENTOS_DE_FIXTURE = (
 _SINISTROS_DE_FIXTURE = (
     ("SIN01", "S0001", "PORT", "AUTO", "OPEN",
      date(2025, 4, 10), date(2025, 4, 11), None, "1200.0", "500.0"),
-    ("SIN02", "S0002", "PORT", "AUTO", "CLOSED",
+    # 🔴 SPEC-094.1, conserto de 04/09/2026: `CLOSED_PAID`, e nao `CLOSED`.
+    # Encerrado e PAGO deixaram de ser o mesmo estado — so o pago soma
+    # indenizacao, porque somar o NEGADO era publicar dinheiro que ninguem
+    # depositou.
+    ("SIN02", "S0002", "PORT", "AUTO", "CLOSED_PAID",
      date(2025, 5, 2), date(2025, 5, 3), date(2025, 7, 1), "3000.0", "500.0"),
     ("SIN03", "S0004", "ALLI", "VIND", "OPEN",
      date(2025, 8, 15), date(2025, 8, 16), None, None, None),
@@ -232,6 +236,27 @@ _CLIENTES_DE_FIXTURE = (
     ("CLI01", ("S0001", "S0002")),      # AUTO, AUTO      -> 1 produto
     ("CLI02", ("S0003", "S0005")),      # RESI, RESI      -> 1 produto
     ("CLI03", ("S0004", "S0006")),      # VIND, AUTO      -> 2 produtos
+)
+
+
+#: 🔴 SPEC-094.1, conserto de 04/09/2026. A POPULACAO DO CANCELAMENTO — uma
+#: lista propria, recortada pelo FIM da vigencia.
+#:
+#: 📊 Ela existe porque a taxa de cancelamento lia a lista da PRODUCAO, que na
+#: pergunta real vem sem uma unica apolice cancelada dentro: a taxa publicada
+#: era 0,0% sobre uma carteira com 8,42% de cancelamento.
+#:
+#: ⚠️ Os `fimvig` sao de 2025 de proposito: e essa a base temporal desta
+#: populacao, e a janela do golden e o ano de 2025. Uma apolice desta lista
+#: NAO e uma apolice da producao — ela vence no periodo, e nao comeca nele.
+#: (ref, seguradora, ramo, fim da vigencia, premio, cancelada)
+_CANCELAMENTOS_DE_FIXTURE = (
+    ("R0001", "PORT", "AUTO", date(2025, 2, 10), "4000.0", False),
+    ("R0002", "PORT", "AUTO", date(2025, 4, 5), "6000.0", False),
+    ("R0003", "ALLI", "RESI", date(2025, 6, 20), "2000.0", False),
+    ("R0004", "ALLI", "VIND", date(2025, 8, 11), "9000.0", False),
+    ("R0005", "PORT", "RESI", date(2025, 10, 1), "1000.0", True),
+    ("R0006", "TOKI", "AUTO", date(2025, 12, 2), "7000.0", False),
 )
 
 
@@ -280,8 +305,10 @@ def fatos_de_fixture(company_id: str = _EMPRESA_DE_FIXTURE) -> FactSet:
             provider_key=PROVIDER_KEY))
     # ---------------------------------------------------------- SPEC-094.1
     from app.comercial.cbim import (ClaimFact, CustomerPortfolioFact,
+                                    POP_CANCELLATIONS, POP_CLAIMS,
+                                    POP_CUSTOMERS, POP_POLICIES, POP_QUOTES,
                                     QuoteFact, claim_ref, customer_ref,
-                                    quote_ref)
+                                    quote_ref, status_de_apolice)
 
     ramo_da_apolice = {a[0]: a[2] for a in _APOLICES_DE_FIXTURE}
 
@@ -308,6 +335,22 @@ def fatos_de_fixture(company_id: str = _EMPRESA_DE_FIXTURE) -> FactSet:
                               for a in apolices),
             branches=tuple(dict.fromkeys(ramo_da_apolice[a] for a in apolices)),
             provider_key=PROVIDER_KEY))
+
+    # ------------------------------------------------- a populacao do cancelamento
+    for ref, seg, ramo, fim, premio, cancelada in _CANCELAMENTOS_DE_FIXTURE:
+        lote.cancellations.append(PolicyFact(
+            policy_ref=policy_ref(company_id, PROVIDER_KEY, ref),
+            source_ref=ref, insurer=seg, branch=ramo,
+            valid_from=None, valid_to=fim, premium=Money(Decimal(premio)),
+            kind=NEW,
+            # 🔴 A MESMA funcao decide o estado nas duas pontas (CBIM).
+            status=status_de_apolice(cancelada), provider_key=PROVIDER_KEY))
+
+    # 🔴 As populacoes LIDAS, no vocabulario do CBIM. Sem esta linha as
+    # formulas nao conseguem distinguir "ninguem perguntou" de "perguntei e nao
+    # veio nada" — e a fixture passaria a exercitar o caminho errado.
+    lote.populacoes_lidas.update({
+        POP_POLICIES, POP_CLAIMS, POP_QUOTES, POP_CANCELLATIONS, POP_CUSTOMERS})
 
     lote.provenance = Provenance(connection_id="", correlation_id="fixture",
                                  fetched_at=datetime(2026, 9, 3))

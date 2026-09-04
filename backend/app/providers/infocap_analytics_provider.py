@@ -52,6 +52,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -60,6 +61,14 @@ from app.comercial.cbim import (
     ACTIVE,
     CANCELLED,
     CLAIM_CLOSED,
+    CLAIM_CLOSED_DENIED,
+    CLAIM_CLOSED_PAID,
+    POP_CANCELLATIONS,
+    POP_CLAIMS,
+    POP_CUSTOMERS,
+    POP_POLICIES,
+    POP_QUOTES,
+    STATUS_DE_APOLICE,
     CLAIM_OPEN,
     CLAIM_UNKNOWN,
     ENDORSEMENT,
@@ -359,6 +368,18 @@ ROTA_FINALIZADOS = "/negocios_finalizados"
 ROTA_RENOVACOES = "/renovacoes"
 ROTA_DOCUMENTO = "/documento"
 
+#: 🔴 SPEC-094.1, conserto de 04/09/2026. O teto da paginacao, escrito.
+#: 📊 `/sinistros` tem 5.729 registros medidos; 20 paginas de 1.000 cobrem a
+#: base inteira com folga. O laco PARA na primeira pagina curta — o teto so
+#: existe para que uma rota que devolva sempre cheia nao gire para sempre, e
+#: quando ele e alcancado o lote sai com aviso de TRUNCAMENTO.
+LINHAS_POR_PAGINA = 1000
+TETO_DE_PAGINAS = 20
+
+#: 💭 Quantos rotulos distintos de situacao cabem num aviso. Cinco informam o
+#: tamanho do problema; a lista inteira seria despejo dentro do pack.
+TETO_DE_ROTULOS = 5
+
 #: A etapa do funil, por rota. 📊 As TRES exigem `status` (sem ele, HTTP 500 nas
 #: tres); com ele, `/em_calculo` e `/negocios_finalizados` devolvem **404, que e
 #: VAZIO** e nao erro.
@@ -367,6 +388,22 @@ ETAPA_DA_ROTA = {
     ROTA_EM_CALCULO: "EM_CALCULO",
     ROTA_FINALIZADOS: "FINALIZADO",
 }
+
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 — a data de UM negocio sai da chave que
+#: a rota TEM, e nao de uma chave unica escolhida por uma das tres.
+#:
+#: 📊 O defeito: `created_at` vinha so de `inivig`. Essa chave existe em
+#: `/negocios_andamento` (30 chaves medidas) e **nao existe** em
+#: `/negocios_finalizados` (22 chaves, sem ela) — entao TODO negocio finalizado
+#: nascia sem data, e a formula do funil, que recorta pela data, o descartava.
+#: A etapa FINALIZADO — a que responde "quantos eu fechei" — desaparecia do
+#: funil inteiro, sem um aviso.
+#:
+#: ⚠️ A ordem e do mais especifico para o mais generico, e ela PARA na primeira
+#: chave presente com data legivel.
+CHAVES_DE_DATA_DO_NEGOCIO = ("inivig", "datemi", "data", "datinc", "dat_neg",
+                             "data_negocio", "dtemissao", "prox_aten_data",
+                             "produto_fimvig", "fimvig")
 
 #: 🔴 Os campos de `/sinistros` que sao PII e **nao atravessam a fronteira**.
 #: 📊 Censo v2.1 §A3: `segurado` e `responsavel` sao nome de pessoa, `placa` e
@@ -377,36 +414,67 @@ PII_DE_SINISTRO = ("segurado", "responsavel", "placa", "numapo", "cliente",
                    "nome_busca", "cic", "fone", "email")
 
 
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 — as marcas do desfecho, SEM ACENTO.
+#:
+#: 📊 O defeito medido: a regra comparava marcas sem acento (`analis`) contra o
+#: rotulo CRU da fonte. `"Em Análise"` tem acento no `a` de `Análise`, entao
+#: `"analis" in "em análise"` e **falso** — e o sinistro caia em UNKNOWN, sumia
+#: da contagem de abertos e nao gerava aviso nenhum. Era o CLAUDE.md §9.4 na
+#: forma classica: o padrao medido num texto e aplicado a outro.
+#:
+#: ⚠️ E `negado`/`indeferido` iam para CLOSED junto com `pago`: a indenizacao de
+#: um sinistro NEGADO entrava na soma do que a seguradora pagou.
+MARCAS_NEGADO = ("negad", "indeferi", "recusad", "improced", "nao indeniz")
+MARCAS_PAGO = ("pago", "paga", "liquid", "indeniz")
+MARCAS_ENCERRADO = ("encerr", "finaliz", "cancel", "arquiv", "conclu")
+MARCAS_ABERTO = ("abert", "andamento", "analis", "avis", "regula", "pendent",
+                 "aguard", "vistori", "tramit", "sinistr")
+
+
+def _sem_acento(texto: Any) -> str:
+    """Minusculas e sem acento. 🔴 A normalizacao acontece ANTES das marcas."""
+    bruto = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in bruto if not unicodedata.combining(c)).strip().lower()
+
+
 def _situacao_do_sinistro(linha: Dict[str, Any]) -> str:
-    """`OPEN` · `CLOSED` · `UNKNOWN` — e `UNKNOWN` e resposta legitima.
+    """`OPEN` · `CLOSED_PAID` · `CLOSED_DENIED` · `CLOSED` · `UNKNOWN`.
 
-    🔴 A regra tem DUAS clausulas, e as duas sao medidas (protocolo §0.3, a
-    "meia regra"): 📊 `datenc` veio preenchido em **9/42** — so os encerrados —
-    e `situacao` e texto LIVRE da corretora. Entao:
+    A ordem das clausulas nao e arbitraria, e cada uma existe por um defeito:
 
     ```
-    tem data de encerramento          -> CLOSED, sem depender do rotulo
-    o rotulo diz encerrado/liquidado  -> CLOSED
-    o rotulo diz aberto/em analise    -> OPEN
-    qualquer outra coisa              -> UNKNOWN  (nunca CLOSED por descarte)
+    o rotulo diz NEGADO/INDEFERIDO   -> CLOSED_DENIED, e ele vence a data
+    o rotulo diz PAGO/LIQUIDADO      -> CLOSED_PAID
+    o rotulo diz ABERTO/EM ANALISE   -> OPEN
+    tem data de encerramento         -> CLOSED  (encerrou; nao se sabe o desfecho)
+    o rotulo diz ENCERRADO/ARQUIVADO -> CLOSED
+    qualquer outra coisa             -> UNKNOWN (nunca CLOSED por descarte)
     ```
 
-    ⚠️ Traduzir um rotulo desconhecido para `CLOSED` fecharia o caso na
-    planilha e nao na vida do segurado — e a contagem de abertos cairia sozinha.
+    🔴 `CLOSED` generico NAO soma indenizacao: "encerrado" nao e "pago", e a
+    diferenca e dinheiro que o dono levaria para uma conversa com a seguradora.
+
+    ⚠️ O rotulo de NEGADO vence a data de encerramento porque ele e a
+    informacao mais especifica: um caso negado tambem tem data de encerramento,
+    e deixar a data decidir apagaria o desfecho.
     """
+    rotulo = _sem_acento(linha.get("situacao"))
+    if rotulo:
+        for marca in MARCAS_NEGADO:
+            if marca in rotulo:
+                return CLAIM_CLOSED_DENIED
+        for marca in MARCAS_PAGO:
+            if marca in rotulo:
+                return CLAIM_CLOSED_PAID
+        for marca in MARCAS_ABERTO:
+            if marca in rotulo:
+                return CLAIM_OPEN
     if _data(linha.get("datenc")) is not None:
         return CLAIM_CLOSED
-    rotulo = str(linha.get("situacao") or "").strip().lower()
-    if not rotulo:
-        return CLAIM_UNKNOWN
-    for marca in ("encerr", "liquid", "finaliz", "pago", "indeferi", "negad",
-                  "cancel", "arquiv"):
-        if marca in rotulo:
-            return CLAIM_CLOSED
-    for marca in ("abert", "andamento", "analis", "avis", "regula", "pendent",
-                  "aguard", "vistori"):
-        if marca in rotulo:
-            return CLAIM_OPEN
+    if rotulo:
+        for marca in MARCAS_ENCERRADO:
+            if marca in rotulo:
+                return CLAIM_CLOSED
     return CLAIM_UNKNOWN
 
 
@@ -829,6 +897,10 @@ class InfocapAnalyticsProvider:
                                                   "/renovacoes")) -> FactSet:
         """Linha crua → fato canônico. É AQUI que a InfoCap deixa de existir."""
         lote = FactSet(company_id=company_id, provider_key=PROVIDER_KEY)
+        # 🔴 A populacao da CARTEIRA foi lida — e so ela. `cancellations`,
+        # `claims`, `quotes` e `customers` sao rotas PROPRIAS, e quem as le e
+        # quem as marca (SPEC-094.1, conserto de 04/09/2026).
+        lote.populacoes_lidas.add(POP_POLICIES)
         acumulado: Dict[str, Dict[str, Any]] = {}
 
         def _dinheiro(valor: Any, campo: str, ref: str) -> Any:
@@ -1089,21 +1161,51 @@ class InfocapAnalyticsProvider:
         lote, fonte, correlacao, impressao, db = await self._lote_de_rota(
             company_id=company_id, db=db, connection_id=connection_id,
             slug=slug, correlation_id=correlation_id, fonte=fonte)
-        linhas = await asyncio.to_thread(
-            self._linhas_da_rota, fonte, ROTA_SINISTROS, {
-                "data_inicial": inicio.strftime("%d/%m/%Y"),
-                "data_final": fim.strftime("%d/%m/%Y"),
-                "tipo_data": "oco",
-                "qtd_pag": 1000,
-                "pagina": 1,
-            }, "sinistros")
+        # 🔴 SPEC-094.1, conserto de 04/09/2026 — PAGINACAO.
+        #
+        # 📊 A leitura anterior pedia `pagina=1` e parava. O censo mediu 42
+        # sinistros em 90 dias e concluiu que "coube numa pagina" — mas a rota
+        # tem **5.729 registros**, e uma pergunta sobre o ano inteiro passa do
+        # teto sem avisar ninguem. Uma populacao truncada em silencio nao trava:
+        # ela devolve um numero MENOR, com confianca alta (CLAUDE.md §9.5).
+        linhas: List[Dict[str, Any]] = []
+        truncou = False
+        for pagina in range(1, TETO_DE_PAGINAS + 1):
+            pedaco = await asyncio.to_thread(
+                self._linhas_da_rota, fonte, ROTA_SINISTROS, {
+                    "data_inicial": inicio.strftime("%d/%m/%Y"),
+                    "data_final": fim.strftime("%d/%m/%Y"),
+                    "tipo_data": "oco",
+                    "qtd_pag": LINHAS_POR_PAGINA,
+                    "pagina": pagina,
+                }, "sinistros")
+            linhas.extend(pedaco)
+            if len(pedaco) < LINHAS_POR_PAGINA:
+                break
+        else:
+            truncou = True
+        if truncou:
+            lote.warnings.append(
+                f"[{correlacao}] a leitura de sinistros parou no teto de "
+                f"{TETO_DE_PAGINAS} pagina(s) ({len(linhas)} linha(s)): a "
+                f"populacao pode estar TRUNCADA, e um total truncado e menor "
+                f"que o verdadeiro — nunca apresentar como o numero do periodo")
         self._traduzir_sinistros(lote, linhas, correlacao)
+        lote.populacoes_lidas.add(POP_CLAIMS)
         self._marcar_fingerprints(lote, {ROTA_SINISTROS: linhas})
         return self._selar(lote, impressao)
 
     def _traduzir_sinistros(self, lote: FactSet, linhas: List[Dict[str, Any]],
                             correlacao: str) -> None:
-        vistos: set = set()
+        # 🔴 SPEC-094.1, conserto de 04/09/2026 — o dedupe PREFERE a linha que
+        # tem data de ocorrencia.
+        #
+        # 📊 O defeito: `if ref in vistos: continue` ficava com a PRIMEIRA linha
+        # de cada sinistro, na ordem em que a rota devolveu. Quando a duplicata
+        # sem `datoco` vinha primeiro, o sinistro nascia com `occurred_at=None` e
+        # **sumia de todas as metricas** — que recortam a populacao pela data de
+        # ocorrencia. O caso existe, ninguem o conta, e nada trava.
+        vistos: Dict[str, int] = {}
         for x in linhas:
             origem = str(x.get("numsin") or "").strip()
             documento = str(x.get("nosnum") or "").strip()
@@ -1112,8 +1214,19 @@ class InfocapAnalyticsProvider:
             ref = claim_ref(lote.company_id, PROVIDER_KEY,
                             origem or f"doc:{documento}")
             if ref in vistos:
-                continue
-            vistos.add(ref)
+                anterior = lote.claims[vistos[ref]]
+                if (getattr(anterior, "occurred_at", None) is not None
+                        or _data(x.get("datoco")) is None):
+                    continue
+                # ⚠️ A guardada nao tem data e esta TEM: a nova vence. A posicao
+                # e reaproveitada para o dedupe continuar sendo por REFERENCIA,
+                # e nao por ordem de chegada.
+                fora = vistos.pop(ref)
+                lote.claims.pop(fora)
+                for chave, pos in list(vistos.items()):
+                    if pos > fora:
+                        vistos[chave] = pos - 1
+            vistos[ref] = len(lote.claims)
             indenizacao = interpretar_dinheiro(x.get("valind"))
             franquia = interpretar_dinheiro(x.get("franquia"))
             if indenizacao is None and x.get("valind") is not None:
@@ -1139,6 +1252,28 @@ class InfocapAnalyticsProvider:
                 f"[{correlacao}] {orfaos} sinistro(s) sem documento de origem: "
                 f"eles contam na populacao e NAO entram na juncao com a "
                 f"carteira — a cobertura da metrica diz quanto")
+        # 🔴 SPEC-094.1, conserto de 04/09/2026 — o UNKNOWN passa a FALAR.
+        #
+        # 📊 Antes ele sumia: o sinistro nao era aberto, nao era encerrado, nao
+        # entrava em contagem nenhuma e nao gerava uma linha de aviso. Um caso
+        # que existe e que o software nao consegue classificar tem de aparecer —
+        # senao o total do dono encolhe sem explicacao.
+        #
+        # ⛔ E o aviso leva os ROTULOS DISTINTOS, nunca a linha: `situacao` e
+        # texto livre da corretora, e o teto existe para que um campo mal
+        # preenchido nao vire despejo dentro do pack.
+        desconhecidos = [c for c in lote.claims
+                         if getattr(c, "status", "") == CLAIM_UNKNOWN]
+        if desconhecidos:
+            rotulos = sorted({str(x.get("situacao") or "").strip()
+                              for x in linhas
+                              if str(x.get("situacao") or "").strip()})
+            amostra = ", ".join(rotulos[:TETO_DE_ROTULOS]) or "(campo vazio)"
+            lote.warnings.append(
+                f"[{correlacao}] {len(desconhecidos)} sinistro(s) com situacao "
+                f"nao reconhecida: eles NAO entram em aberto nem em encerrado, e "
+                f"o total do periodo os inclui na populacao. {len(rotulos)} "
+                f"valor(es) distinto(s) na fonte: {amostra}")
 
     # ---------------------------------------------------------------- funil
     async def quotes(self, *, company_id: str, inicio: date, fim: date,
@@ -1172,26 +1307,47 @@ class InfocapAnalyticsProvider:
                 self._linhas_da_rota, fonte, rota, dict(base), "negocios")
             medidas[rota] = linhas
             self._traduzir_funil(lote, linhas, ETAPA_DA_ROTA[rota], correlacao)
+        lote.populacoes_lidas.add(POP_QUOTES)
         self._marcar_fingerprints(lote, medidas)
         if not lote.quotes:
             lote.warnings.append(
-                f"[{correlacao}] as tres rotas do funil responderam e o acervo "
+                f"[{correlacao}] as tres rotas do funil RESPONDERAM e o acervo "
                 f"esta VAZIO no periodo: a corretora nao usa o CRM da fonte. "
                 f"INDISPONIVEL por acervo, e nunca 'zero cotacoes'")
         return self._selar(lote, impressao)
 
+    @staticmethod
+    def _data_do_negocio(linha: Dict[str, Any]) -> Optional[date]:
+        """A data deste negocio, pela primeira chave que a rota TEM.
+
+        ⚠️ Ela nao inventa data: quando nenhuma das chaves existe, devolve
+        `None` — e o negocio entra assim mesmo, com aviso. Um negocio sem data
+        que some da contagem e pior que um negocio sem data contado: o primeiro
+        muda o total em silencio.
+        """
+        for chave in CHAVES_DE_DATA_DO_NEGOCIO:
+            if chave in linha:
+                quando = _data(linha.get(chave))
+                if quando is not None:
+                    return quando
+        return None
+
     def _traduzir_funil(self, lote: FactSet, linhas: List[Dict[str, Any]],
                         etapa: str, correlacao: str) -> None:
+        sem_data = 0
         for x in linhas:
             origem = str(x.get("codigo") or "").strip()
             if not origem:
                 continue
             premio = interpretar_dinheiro(x.get("val_premio"))
+            quando = self._data_do_negocio(x)
+            if quando is None:
+                sem_data += 1
             lote.quotes.append(QuoteFact(
                 quote_ref=quote_ref(lote.company_id, PROVIDER_KEY,
                                     f"{etapa}:{origem}"),
                 stage=etapa,
-                created_at=_data(x.get("inivig")),
+                created_at=quando,
                 closed_at=_data(x.get("produto_fimvig")),
                 expected_premium=premio if premio is not None else UNAVAILABLE,
                 branch=str(x.get("ramo") or "").strip(),
@@ -1199,6 +1355,14 @@ class InfocapAnalyticsProvider:
                 # `""` faria "sem motivo" parecer "motivo vazio".
                 lost_reason=UNAVAILABLE,
                 provider_key=PROVIDER_KEY))
+        if sem_data:
+            # 🔴 O aviso e por ETAPA, porque e assim que o defeito aparece:
+            # uma rota inteira sem a chave de data derruba uma etapa do funil.
+            lote.warnings.append(
+                f"[{correlacao}] {sem_data} negocio(s) da etapa {etapa} sem "
+                f"nenhuma data legivel entre as chaves que a rota expoe: eles "
+                f"CONTAM na etapa (a janela da consulta ja os recortou) e nao "
+                f"entram em nenhum corte por data")
 
     # -------------------------------------------------------- cancelamentos
     async def cancellations(self, *, company_id: str, inicio: date, fim: date,
@@ -1232,6 +1396,7 @@ class InfocapAnalyticsProvider:
                 "cancelado": "T", "resgates": "F",
             }, "renovacoes")
         self._traduzir_cancelamentos(lote, linhas, correlacao)
+        lote.populacoes_lidas.add(POP_CANCELLATIONS)
         self._marcar_fingerprints(lote, {ROTA_RENOVACOES: linhas})
         return self._selar(lote, impressao)
 
@@ -1248,7 +1413,18 @@ class InfocapAnalyticsProvider:
                 continue
             vistos.add(ref)
             premio = interpretar_dinheiro(x.get("pretot"))
-            lote.policies.append(PolicyFact(
+            # 🔴 SPEC-094.1, conserto de 04/09/2026 — esta populacao vai para
+            # `cancellations`, e NAO para `policies`.
+            #
+            # 📊 O defeito: a taxa de cancelamento lia `policies`, que na
+            # pergunta real e o lote da PRODUCAO — lido com o parametro do
+            # cancelado em "F", isto e, sem uma unica apolice cancelada dentro.
+            # A taxa publicada era 0,0% com confianca alta, sobre uma carteira
+            # com 325 canceladas em 3.861 (8,42%). O numero respondia.
+            #
+            # ⚠️ E a base temporal desta rota e o FIM da vigencia. Fundi-la em
+            # `policies` misturaria dois recortes de tempo na mesma lista.
+            lote.cancellations.append(PolicyFact(
                 policy_ref=ref, source_ref=origem,
                 insurer=str(x.get("seguradora") or "").strip(),
                 branch=str(x.get("ramo") or "").strip(),
@@ -1258,12 +1434,14 @@ class InfocapAnalyticsProvider:
                 kind=_tipo_do_documento(x),
                 status=status_de_apolice(_cancelada(x)),
                 provider_key=PROVIDER_KEY))
-        cancelados = len([p for p in lote.policies if p.status == CANCELLED])
+        cancelados = len([p for p in lote.cancellations if p.status == CANCELLED])
+        sem_estado = len([p for p in lote.cancellations
+                          if p.status not in STATUS_DE_APOLICE])
         lote.warnings.append(
             f"[{correlacao}] populacao com cancelados INCLUIDOS: "
-            f"{cancelados} cancelada(s) em {len(lote.policies)} — a taxa e sobre "
-            f"esta populacao, e o parametro `cancelado` da fonte INCLUI, nao "
-            f"filtra")
+            f"{cancelados} cancelada(s) em {len(lote.cancellations)} — a taxa e "
+            f"sobre esta populacao, e o parametro `cancelado` da fonte INCLUI, "
+            f"nao filtra ({sem_estado} sem estado legivel)")
 
     # ---------------------------------------------------- carteira x cliente
     async def customer_links(self, *, company_id: str, inicio: date, fim: date,
@@ -1298,6 +1476,7 @@ class InfocapAnalyticsProvider:
                 "cancelado": "F", "resgates": "F",
             }, "renovacoes")
         self._traduzir_clientes(lote, linhas, correlacao)
+        lote.populacoes_lidas.add(POP_CUSTOMERS)
         self._marcar_fingerprints(lote, {ROTA_RENOVACOES: linhas})
         return self._selar(lote, impressao)
 
@@ -1359,6 +1538,8 @@ class InfocapAnalyticsProvider:
             company_id=company_id, db=db, connection_id=connection_id,
             slug=slug, correlation_id=correlation_id, fonte=fonte)
         lote.fingerprints = {}
+        # ⛔ E `populacoes_lidas` fica VAZIA: ninguem perguntou. Marcar aqui
+        # autorizaria a formula a afirmar sobre o periodo.
         lote.warnings.append(
             f"[{correlacao}] pendencia de emissao INDISPONIVEL por custo: "
             f"`sit_acompanhamento_txt` so existe em {ROTA_DOCUMENTO}, que e uma "

@@ -57,6 +57,7 @@ onde ele pode estar: como procedência, nunca como veredito.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -118,6 +119,45 @@ VISOES: Dict[str, Tuple[str, ...]] = {
     "funil": ("quotes.funnel", "quotes.lost_reasons"),
     "pendencias": ("issuance.pending", "portfolio.cancellation_rate"),
 }
+
+#: 🔴 SPEC-094.1, conserto de 04/09/2026 — **A FIAÇÃO**, e ela é a raiz do resto.
+#:
+#: 📊 O defeito medido: `grep -rn "\.claims(\|\.quotes(\|\.cancellations(\|
+#: \.customer_links(\|\.issuance_status(\|ler_agregado("` sobre `backend/app`
+#: devolvia **ZERO chamadores fora dos próprios providers**, e `calcular_varias`
+#: era chamada **sem `mercado=`**. Cinco leituras novas e um conector externo
+#: existiam, com teste, e **nenhuma linha do produto os chamava**.
+#:
+#: O resultado não travava: o dono pedia "sinistros" e recebia um Pulso montado
+#: sobre a carteira da produção — com as métricas de sinistro saindo
+#: INDISPONÍVEL e o texto do funil dizendo *"o acervo está vazio"* sobre rotas
+#: que ninguém tinha chamado (CLAUDE.md §9.5).
+#:
+#: ⚠️ Os nomes são os das POPULAÇÕES do modelo de fatos, e não os de rota: quem
+#: sabe qual rota serve cada população é o adapter.
+POPULACAO_DO_MERCADO = "mercado"
+FONTES_DA_VISAO: Dict[str, Tuple[str, ...]] = {
+    "sinistros": ("claims",),
+    # ⚠️ A visão de mercado carrega `claims.loss_ratio_portfolio`, que é da
+    # CARTEIRA: sem os sinistros ela não tem numerador.
+    "mercado": ("claims", POPULACAO_DO_MERCADO),
+    "funil": ("quotes",),
+    "carteira": ("customers",),
+    "pendencias": ("cancellations", "issuance"),
+}
+
+#: `população -> o método do port que a lê`. 🔴 Um mapa, e não seis `if`: a
+#: visão nova que precisar de uma população nova acrescenta UMA linha aqui, e
+#: quem esquecer de acrescentar recebe silêncio — que é por que o guarda mede a
+#: chamada, e não este dicionário.
+LEITOR_DA_POPULACAO: Dict[str, str] = {
+    "claims": "claims",
+    "quotes": "quotes",
+    "cancellations": "cancellations",
+    "customers": "customer_links",
+    "issuance": "issuance_status",
+}
+
 
 #: "Como estamos?" sem mais nada: TODAS as visões. 🔴 A pergunta genérica é a
 #: mais comum e a que menos tolera resposta parcial — um panorama que
@@ -983,6 +1023,11 @@ class ExecutiveIntelligenceTool(BaseTool):
                                   cbim.PROVIDER_PILOTO)
         fatos = await provider.fatos(company_id=company_id, inicio=p.inicio,
                                      fim=p.fim, db=self.supabase)
+        # 🔴 A FIAÇÃO. As cinco leituras novas e o conector de mercado passam a
+        # ser CHAMADOS — pelas visões que o dono pediu, e só por elas.
+        fatos = await self._buscar_as_populacoes(provider, company_id, p, fatos,
+                                                 escolhidas)
+        mercado = await self._feixe_do_mercado(p, escolhidas, fatos)
         manifesto_ = await self._manifesto(provider, company_id, fatos)
         if not getattr(fatos, "policies", None) and not getattr(fatos, "renewals", None):
             return (f"{CARIMBO_VAZIO} · não há movimento registrado em "
@@ -990,7 +1035,8 @@ class ExecutiveIntelligenceTool(BaseTool):
                     "Não invente número.")
 
         metricas = registry.calcular_varias(ids, fatos, (p.inicio, p.fim),
-                                            manifest=manifesto_)
+                                            manifest=manifesto_,
+                                            mercado=mercado)
         anteriores: List[Any] = []
         comparacoes: List[Dict[str, Any]] = []
         if anterior is not None:
@@ -999,6 +1045,10 @@ class ExecutiveIntelligenceTool(BaseTool):
             fatos_antes = await provider.fatos(
                 company_id=company_id, inicio=anterior.inicio,
                 fim=anterior.fim, db=self.supabase)
+            # ⚠️ O período anterior lê SÓ a carteira: `COMPARAVEIS` tem as
+            # quatro visões da produção, e nenhuma delas depende das populações
+            # novas. Reler sinistros e funil aqui dobraria o custo da pergunta
+            # para comparar o que ninguém compara.
             anteriores = registry.calcular_varias(
                 ids_comparaveis, fatos_antes, (anterior.inicio, anterior.fim),
                 manifest=manifesto_)
@@ -1040,6 +1090,110 @@ class ExecutiveIntelligenceTool(BaseTool):
             + "\n\n" + COMO_FALAR
             + ("\n\n" + COMO_FALAR_DA_PROPOSTA if propostas else "")
         )
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _populacoes_pedidas(escolhidas: List[str]) -> List[str]:
+        """As populações que ESTAS visões exigem — na ordem, sem repetir."""
+        saida: List[str] = []
+        for v in escolhidas:
+            for pop in FONTES_DA_VISAO.get(v, ()):
+                if pop not in saida:
+                    saida.append(pop)
+        return saida
+
+    async def _buscar_as_populacoes(self, provider: Any, company_id: str,
+                                    p: Any, fatos: Any,
+                                    escolhidas: List[str]) -> Any:
+        """Lê as populações que as visões pedidas exigem e as FUNDE no lote.
+
+        🔴 O critério é o PEDIDO, e não "leia tudo": cada população é uma rota
+        própria, com custo próprio (📊 de 0,84 s a 15 s por leitura no censo).
+        Quem pergunta "quanto vence?" não paga a leitura dos sinistros.
+
+        ⛔ E população que não foi pedida **não entra em `populacoes_lidas`**:
+        é essa marca que separa *"não perguntei"* de *"perguntei e não veio
+        nada"*, e é ela que impede o funil de dizer "o acervo está vazio" sobre
+        uma rota que ninguém chamou.
+
+        ⚠️ Falha de UMA população não derruba o relatório: ela vira aviso, e a
+        métrica dependente sai INDISPONÍVEL pelo caminho normal. Um erro de
+        leitura de sinistro não pode apagar a produção do ano.
+        """
+        for pop in self._populacoes_pedidas(escolhidas):
+            if pop == POPULACAO_DO_MERCADO:
+                continue
+            metodo = getattr(provider, LEITOR_DA_POPULACAO.get(pop, ""), None)
+            if not callable(metodo):
+                fatos.warnings.append(
+                    "a fonte desta corretora nao expoe a leitura de %s: "
+                    "INDISPONIVEL por capacidade, e nunca zero" % pop)
+                continue
+            try:
+                recorte = await metodo(company_id=company_id, inicio=p.inicio,
+                                       fim=p.fim, db=self.supabase)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[094.1] populacao %s nao lida (%s)", pop,
+                               type(exc).__name__)
+                fatos.warnings.append(
+                    "a leitura de %s falhou nesta consulta (%s): INDISPONIVEL "
+                    "por erro de leitura, e nunca zero" % (pop, type(exc).__name__))
+                continue
+            self._fundir(fatos, recorte)
+        return fatos
+
+    @staticmethod
+    def _fundir(fatos: Any, recorte: Any) -> None:
+        """Funde um recorte no lote principal. ⚠️ Cada lista no lugar dela.
+
+        🔴 `cancellations` NÃO entra em `policies`: as duas populações têm base
+        temporal diferente, e fundi-las faria a contagem de apólices do período
+        crescer sozinha.
+        """
+        if recorte is None:
+            return
+        for nome in ("claims", "quotes", "customers", "cancellations"):
+            lista = list(getattr(recorte, nome, None) or ())
+            if lista:
+                getattr(fatos, nome).extend(lista)
+        fatos.warnings.extend(list(getattr(recorte, "warnings", None) or ()))
+        fatos.fingerprints.update(dict(getattr(recorte, "fingerprints", None) or {}))
+        fatos.populacoes_lidas.update(
+            set(getattr(recorte, "populacoes_lidas", None) or set()))
+
+    async def _feixe_do_mercado(self, p: Any, escolhidas: List[str],
+                                fatos: Any) -> Any:
+        """O feixe de PLATAFORMA do período, ou `None`. ⛔ Nunca vai à rede.
+
+        🔴 O conector é carregado por NOME composto a partir da constante do
+        CBIM, exatamente como o provider da carteira: esta tool não escreve o
+        nome de fonte nenhuma (M1). Ele lê o agregado que a Rotina semanal já
+        gravou — o arquivo público de meio giga nunca entra no caminho quente.
+        """
+        if POPULACAO_DO_MERCADO not in self._populacoes_pedidas(escolhidas):
+            return None
+        import importlib
+
+        from app.comercial import cbim
+
+        try:
+            modulo = importlib.import_module(
+                "app.providers.%s_provider" % cbim.PROVIDER_DE_MERCADO)
+            manifesto = modulo.ler_manifesto()
+            feixe = await asyncio.to_thread(
+                modulo.ler_agregado, p.fim.year, None,
+                competencia_final=str(manifesto.get("competencia_final") or ""))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[094.1] censo do mercado nao lido (%s)",
+                           type(exc).__name__)
+            fatos.warnings.append(
+                "o censo do mercado nao pode ser lido nesta rodada (%s): as "
+                "metricas de mercado saem INDISPONIVEL. Isto e uma afirmacao "
+                "sobre NOS, e nunca sobre a sinistralidade de seguradora "
+                "nenhuma" % type(exc).__name__)
+            return None
+        fatos.warnings.extend(list(getattr(feixe, "warnings", None) or ()))
+        return feixe
 
     # ------------------------------------------------------------------ #
     @staticmethod
