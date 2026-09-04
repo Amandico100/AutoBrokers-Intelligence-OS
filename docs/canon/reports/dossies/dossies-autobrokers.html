@@ -156,7 +156,7 @@ ul.tight li{margin:5px 0}
       <div class="eyebrow">AutoBrokers Intelligence OS · dossiês de execução</div>
       <h1>O que foi feito, o que está no ar, o que só você decide</h1>
       <p class="lede">Uma página por SPEC. Cada dossiê diz como era antes, o que ficou, os números medidos, a nota que o orquestrador deu e por quê, o que ficou pendente e com quem. Atualizado a cada SPEC fechada.</p>
-      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>d5b7674</b></span><span>orquestrador <b>Fable 5.1</b> · subagentes <b>Opus 5</b></span><span>atualizado <b>04/09/2026 ~03:30</b></span></div>
+      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>e0c8838</b></span><span>orquestrador <b>Fable 5.1</b> · subagentes <b>Opus 5</b></span><span>atualizado <b>04/09/2026 ~17:25</b></span></div>
     </div>
     <div class="gauge"><div class="eyebrow">Leva 088→096</div><div class="big">5<small> no ar</small></div><div class="bar"><i style="width:71%"></i></div><div class="sub">088, 093-B, 094, 094.1 e 095 na main · 091 absorvida · 095–098 na fila · <b>opção B decidida: próxima SPEC em sessão nova</b></div></div>
   </div>
@@ -189,7 +189,7 @@ ul.tight li{margin:5px 0}
   <h2>🧑 Sua caixa · o que só você decide ou executa</h2>
   <div class="grid2">
     <div class="card"><h3>Ações físicas</h3><ul class="tight">
-      <li><b>Implantar</b> smith-api e smith-web: 088 e 093-B estão na main. A sombra de sinistro só grava depois do deploy, com os agentes desligados.</li>
+      <li><b>Implantar</b> smith-api e smith-web: 088, 093-B, 094, 094.1 e <b>095</b> estão na main (<code>e0c8838</code>). Zero migration na 095.</li>
       <li><b>Rotacionar as chaves</b> coladas no chat de 03/09: Supabase service role, OpenAI, Anthropic, Twilio, CORP_INFOCAP_* (Resulta e AutoFleet).</li>
     </ul></div>
     <div class="card"><h3>Decisões registradas em FOUNDER-DECISIONS</h3><ul class="tight">
@@ -197,6 +197,9 @@ ul.tight li{margin:5px 0}
       <li><b>F-093B-04</b> · Backfill de 2.187 sessões históricas com sinistro (dado antigo virando corpus).</li>
       <li><b>F-093B-05</b> · Ligar a tool de handoff nos agentes (muda a conduta do robô).</li>
       <li><b>F-094-05</b> · Nome de um produtor real está no histórico do git desde a 081. Reescrever histórico é decisão sua.</li>
+      <li><b>F-095-01</b> · A <b>leitura do modelo</b> por cima do Pulso 360 (a camada "como o ChatGPT/Claude entregam"): pronta para entrar marcada como leitura, com guarda de que todo número existe no pack. Primeira frase de modelo numa peça do produto — precisa da sua autorização.</li>
+      <li><b>F-095-02</b> · O briefing sai <b>só no painel</b>. WhatsApp/e-mail é o piso CRÍTICO (envia) e o WhatsApp de serviço deixa de ser grátis em 01/10.</li>
+      <li><b>Implantar a 095</b> (smith-web e smith-api, zero migration): até o deploy, os 35 links de teste arquivados dão 404 na tela antiga de detalhe — nenhum link real foi afetado.</li>
     </ul></div>
   </div>
 
@@ -703,8 +706,8 @@ ul.tight li{margin:5px 0}
     <tr><th>ordem</th><th>SPEC</th><th>de onde vem</th><th>o que decide o escopo</th></tr>
     <tr><td class="n">✓</td><td><b>094</b> · O Pulso 360</td><td>proposta 8 + censo</td><td>Feita (nota 84). Falta você aplicar a migration de seed e decidir F-094-07.</td></tr>
     <tr><td class="n">✓</td><td><b>094.1</b> · A fábrica de relatórios</td><td>seu pedido de 03/09 + 3 pesquisas</td><td>Feita (nota 82). Falta você decidir a proposta pendente (F-094.1-08) e o Tool Gateway (F-094.1-01).</td></tr>
-    <tr><td class="n">1</td><td><b>095</b> · Artifact &amp; Delivery Hub — <b>abrir em sessão nova</b></td><td>proposta 9</td><td>A tela "Entregas": tudo que o AutoBrokers entregou num lugar confiável — inclusive os Pulsos 360 da 094.</td></tr>
-    <tr><td class="n">2</td><td><b>096</b> · Chat runtime e interaction shell</td><td>proposta 10</td><td>Performance e forma da conversa; medida contra o chat real depois da 094/094.1 terem dado ao chat o que dizer.</td></tr>
+    <tr><td class="n">✓</td><td><b>095</b> · Relatórios que o corretor entende</td><td>proposta 9 (valia 41/100 para a queixa real) + seu pedido de 04/09</td><td>Feita (nota 84), em sessão nova, marcha PADRÃO. Falta você clicar Implantar e decidir F-095-01 (leitura do modelo no Pulso) e F-095-02 (briefing fora do painel).</td></tr>
+    <tr><td class="n">1</td><td><b>096</b> · Chat runtime e interaction shell — <b>abrir em sessão nova</b></td><td>proposta 10</td><td>Performance e forma da conversa. A 095 deixou o gancho "Perguntar ao AutoBrokers" (o composer remonta ao enviar a 1ª mensagem) para ela herdar.</td></tr>
     <tr><td class="n">3</td><td><b>097</b> · A operação tem uma casa</td><td>proposta + research pack na pasta</td><td>Operations Workspace (fila, casos, conversas, timeline). PADRÃO/CRÍTICO medido na conversão.</td></tr><tr><td class="n">4</td><td><b>098</b> · Cada coisa sabe de quem é</td><td>proposta + research pack na pasta</td><td>Identidade, escopo e Company Soul. CRÍTICO (cross-tenant é o piso).</td></tr><tr><td class="n">6+</td><td>099 → 114</td><td>MASTERPLAN</td><td>Convertidas 2 a 4 por vez, avaliação de bloco em bloco como agora.</td></tr>
   </table></div>
   <div class="callout ok"><b>Decidido (03/09): opção B.</b> Primeira SPEC sob B (094.1): ≈2,8 M tokens, 8h30, nota 82, uma janela morta. O que falta aplicar é a sessão nova por SPEC — a 095 começa num chat leve com o prompt de abertura.</div>
