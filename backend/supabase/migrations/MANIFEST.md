@@ -154,6 +154,7 @@ coluna existente foi alterada, nenhuma linha foi tocada.
 | `spec070_02_o_indice_sabe_de_que_versao_veio` | `20260808_02_spec070_…` | `qdrant_doc_id` e `qdrant_collection` + backfill das 29 linhas | ✅ 5/5 |
 | `spec070_03_a_carta_sabe_de_que_contrato_saiu` | `20260808_03_spec070_…` | 3 colunas de procedência em `knowledge_cards` + 3 FKs validadas + 2 índices parciais | ✅ 4/4 |
 | `spec070_04_o_pdf_e_o_texto_tem_endereco` | `20260808_04_spec070_…` | 4 colunas de arquivo + índice das versões sem original guardado | ✅ aplicada |
+| `spec097_episodio_tem_conversa` | `20260905_01_spec097_episodio_tem_conversa.sql` | SPEC-097 U3.1: `attendance_sessions.conversation_id` (FK composta com `company_id`, ON DELETE SET NULL), `resolvido_em`, `resolucao_motivo` (mesmo CHECK da conversa) + 2 índices · 📊 aplicada em 05/09/2026, V1/V1.b/V2/V3 ok | ✅ 4/4 |
 
 ### 📊 O controle, medido depois de todas
 

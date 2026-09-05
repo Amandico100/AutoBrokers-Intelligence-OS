@@ -132,7 +132,10 @@
    "ramo": "text",
    "servico": "text",
    "summary": "jsonb",
-   "created_at": "timestamp with time zone"
+   "created_at": "timestamp with time zone",
+   "conversation_id": "uuid",
+   "resolvido_em": "timestamp with time zone",
+   "resolucao_motivo": "text"
   },
   "company_members": {
    "id": "uuid",
@@ -198,6 +201,6 @@
    "updated_at": "timestamp with time zone"
   }
  },
- "_doc_097": "SPEC-097 (05/09/2026): conversations, attendance_sessions, work_waits, messages e company_members lidos de information_schema.columns — porque o read model `lib/atendimento/casos.ts` leu TRES colunas que nao existiam (work_waits.due_at/attendance_session_id, attendance_sessions.protocolo, approval_requests.title) e o guarda ficou verde com um dublê que as inventava. ⚠️ attendance_sessions esta ANTES da migration 20260905_01 (sem conversation_id/resolvido_em/resolucao_motivo): quem aplicar a migration atualiza esta fixture no mesmo commit.",
+ "_doc_097": "SPEC-097 (05/09/2026): conversations, attendance_sessions, work_waits, messages e company_members lidos de information_schema.columns — porque o read model `lib/atendimento/casos.ts` leu TRES colunas que nao existiam (work_waits.due_at/attendance_session_id, attendance_sessions.protocolo, approval_requests.title) e o guarda ficou verde com um dublê que as inventava. attendance_sessions DEPOIS da migration 20260905_01 (aplicada em 05/09/2026: conversation_id, resolvido_em, resolucao_motivo).",
  "medido_em_097": "05/09/2026"
 }
