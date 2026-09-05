@@ -106,63 +106,250 @@
 //   cursor `(ultimo_evento_em, id)` e busca NO BANCO.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// 🔴 MUTAÇÕES — por CÓPIA, e por que elas NÃO rodam sozinhas aqui
+// 🔴 MUTAÇÕES — e agora elas RODAM: `node scripts/a-operacao-tem-uma-casa.test.mjs --mutar [ID]`
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// ⛔ Este guarda NÃO escreve em arquivo de produto. Ele nasce enquanto os
-// builders escrevem `app/`, `lib/` e `components/` no mesmo diretório: mutar em
-// disco e restaurar por cópia apagaria a edição de quem estivesse salvando
-// naquele segundo. Toda linha de CONTROLE aqui é SINTÉTICA e mora em memória —
-// mesma superfície, veredito oposto (protocolo §5).
+// ⚠️ ESTA LISTA ERA PROSA. `provaDasMutacoes` conferia três coisas — id único,
+// caminho existente e `length === 14` — e mais nada. Foi assim que CINCO
+// mutações declaradas nasceram VERDES sem ninguém notar (lente de verdade,
+// A-8): U3, U4, U7, M13 e M16 não deixavam nada vermelho, e as três primeiras
+// são exatamente as regras que a §1 da SPEC mede como o defeito a consertar.
+// Um guarda cujo painel de mutação não roda é um carimbo (CLAUDE.md §9.3).
 //
-// A lista abaixo é para o BUILDER e para a confirmação mecânica, com a árvore
-// parada. Uma mutação que não deixa nada vermelho não é mutação: é edição.
-// Marcador único por mutação (`_MUTADO_U…`), e a âncora no CÓDIGO que persiste —
-// nunca em docstring ou comentário.
+// Cada entrada agora é EXECUTÁVEL:
+//
+//   ancora      a string EXATA que existe no código do PRODUTO. ⛔ NUNCA em
+//               comentário: um comentário mutado não muda comportamento nenhum,
+//               e a mutação ficaria verde por construção.
+//   substituto  o defeito de volta, escrito por extenso.
+//   vermelho    os NOMES de asserção que TÊM de ficar vermelhos. Se a mutação
+//               passar, o runner sai `rc=1` e diz qual regra não guarda nada.
+//
+// ⛔ A mutação é por CÓPIA e o restauro mora num `finally`: o arquivo volta
+// byte a byte, e o runner CONFERE isso (hash antes/depois + `git status`
+// idêntico). Rode com a árvore parada — enquanto alguém edita `app/` ou `lib/`,
+// o restauro apagaria a edição daquele segundo.
 //
 export const MUTACOES = [
   { id: 'U1', arquivo: 'lib/atendimento/casos.ts',
     o_que: "reintroduzir o ramo `else stage = 'concluido'` do silêncio (48h)",
-    reprova: '[2] (640 conversas velhas voltam a ser "encerradas" sem `resolvido_em`)' },
+    reprova: '[2] (640 conversas velhas voltam a ser "encerradas" sem `resolvido_em`)',
+    ancora: "  else if (fresca) stage = 'em_conversa';\n  else stage = 'parado';",
+    substituto: "  else if (fresca) stage = 'em_conversa';\n  else stage = 'concluido';",
+    vermelho: ['[2] as 640 em silêncio viram'] },
+
   { id: 'U2', arquivo: 'app/api/dashboard/conversas/[id]/route.ts',
     o_que: "o claim volta a gravar `status: 'HUMAN_REQUESTED'` junto de `claimed_by`",
-    reprova: '[4] (o dono e o status voltam a ser a mesma coisa — ACHADO-1b)' },
+    reprova: '[4] (o dono e o status voltam a ser a mesma coisa — ACHADO-1b)',
+    ancora: '      .update({\n'
+      + '        claimed_by: ctx.userId,\n'
+      + '        claimed_by_name: myName,\n'
+      + '        claimed_at: new Date().toISOString(),\n'
+      + '      })',
+    substituto: '      .update({\n'
+      + '        claimed_by: ctx.userId,\n'
+      + '        claimed_by_name: myName,\n'
+      + '        claimed_at: new Date().toISOString(),\n'
+      + "        status: 'HUMAN_REQUESTED',\n"
+      + '      })',
+    vermelho: ['[4] o claim grava `claimed_by/claimed_by_name/claimed_at` e NÃO `status`'] },
+
+  // 🔴 A-3 — esta mutação ficava VERDE porque o MUNDO não tinha o defeito: nenhuma
+  //    conversa da fixture tinha `claimed_by` E `status:'HUMAN_REQUESTED'` ao mesmo
+  //    tempo, que é a combinação que o claim de `7f3f3eb` produzia (§1.2). Agora
+  //    `cv-alfa-0066` existe, e o leitor não tem mais onde se esconder.
   { id: 'U3', arquivo: 'lib/atendimento/casos.ts',
     o_que: 'a cascata volta a testar `status` ANTES de `claimed_by`',
-    reprova: '[4] (a coluna "com a equipe" volta a ser inalcançável)' },
+    reprova: '[4] (a coluna "com a equipe" volta a ser inalcançável)',
+    ancora: '  let stage: Stage;\n'
+      + "  if (resolvido_em) stage = 'concluido';\n"
+      + "  else if (dono) stage = 'com_equipe';\n"
+      + "  else if (pediuPessoa) stage = 'precisa_de_voce';",
+    substituto: '  let stage: Stage;\n'
+      + "  if (resolvido_em) stage = 'concluido';\n"
+      + "  else if (String(conversa?.status || '') === 'HUMAN_REQUESTED') stage = 'precisa_de_voce';\n"
+      + "  else if (dono) stage = 'com_equipe';",
+    vermelho: ['[4] a conversa que PEDIU UMA PESSOA e JÁ TEM DONO sai'] },
+
+  { id: 'U3B', arquivo: 'lib/atendimento/casos.ts',
+    o_que: 'o `pediuPessoa` volta a ignorar o dono (o status decide sozinho)',
+    reprova: '[4] (a próxima ação manda ASSUMIR uma conversa que já tem dono — R2/R7)',
+    ancora: "  const pediuPessoa = !dono && String(conversa?.status || '') === 'HUMAN_REQUESTED';",
+    substituto: "  const pediuPessoa = String(conversa?.status || '') === 'HUMAN_REQUESTED';",
+    vermelho: ['[4] a conversa que JÁ TEM DONO não recebe "assuma a conversa"'] },
+
+  // 🔴 A-4 — verde até aqui porque `[7]` só observava a projeção de CASOS, e o
+  //    `.limit(120)` medido em §1.5 é o da FILA. O ramo não observado era o do
+  //    defeito.
   { id: 'U4', arquivo: 'lib/atendimento/casos.ts',
-    o_que: 'voltar `.limit(120)` fixo na leitura de conversas',
-    reprova: '[7] (73% do acervo da AutoFleet some de novo)' },
+    o_que: 'voltar `.limit(120)` fixo na leitura de conversas da FILA',
+    reprova: '[7] (73% do acervo da AutoFleet some de novo)',
+    ancora: '      return q\n'
+      + "        .order('last_message_at', { ascending: false })\n"
+      + "        .order('id', { ascending: false })\n"
+      + '        .range(de, ate);',
+    substituto: '      return q\n'
+      + "        .order('last_message_at', { ascending: false })\n"
+      + "        .order('id', { ascending: false })\n"
+      + '        .limit(120);',
+    vermelho: ['[7] a FILA lê TODAS as conversas em lotes de 1.000'] },
+
   { id: 'U5', arquivo: 'lib/atendimento/casos.ts',
     o_que: 'ignorar `opcoes.busca` na consulta (a busca volta a ser do cliente)',
-    reprova: '[7] (um protocolo de 60 dias devolve "nada encontrado")' },
+    reprova: '[7] (um protocolo de 60 dias devolve "nada encontrado")',
+    ancora: '  const busca = termoSeguro(opcoes.busca);',
+    substituto: "  const busca = '';",
+    vermelho: ['[7] sem `.limit(120)`; cursor'] },
+
+  // ⚠️ A-6 — `indisponivel.esperas` tem DOIS escritores (a projeção e a semana).
+  //    Mutar um só ficava verde. A mutação certa é a que faz o MAPA INTEIRO
+  //    parar de aceitar escrita: é o `indisponivel: false` fixo do §1.3, e ele
+  //    não se reproduz mexendo em uma linha só.
   { id: 'U6', arquivo: 'lib/atendimento/casos.ts',
     o_que: 'fixar `indisponivel: false` em vez de marcar a fonte que falhou',
-    reprova: '[8] (zero silencioso: a tela mostra 0 num dia em que ninguém olhou)' },
+    reprova: '[8] (zero silencioso: a tela mostra 0 num dia em que ninguém olhou)',
+    ancora: '  const indisponivel: Record<Fonte, boolean> = {\n'
+      + '    conversas: false,\n'
+      + '    sessoes: false,\n'
+      + '    esperas: false,\n'
+      + '    trabalhos: false,\n'
+      + '    aprovacoes: false,\n'
+      + '  };',
+    substituto: '  const indisponivel: Record<Fonte, boolean> = new Proxy(\n'
+      + '    { conversas: false, sessoes: false, esperas: false, trabalhos: false, aprovacoes: false },\n'
+      + '    { set: () => true },\n'
+      + '  ) as Record<Fonte, boolean>;',
+    vermelho: ['[8] derrubando `work_waits` no dublê'] },
+
   { id: 'U7', arquivo: 'app/api/dashboard/atendimentos/ficha/[id]/route.ts',
     o_que: 'um tipo de evento da timeline volta a nascer com `at: null`',
-    reprova: '[10] (a timeline volta a ter evento sem hora — R8)' },
+    reprova: '[10] (a timeline volta a ter evento sem hora — R8)',
+    ancora: '      at: conversation.claimed_at,',
+    substituto: '      at: null,',
+    vermelho: ['[10] no mundo em que TODA fonte tem hora'] },
+
+  // 🔴 A-1 — a mutação que provou que `[10]` era inatingível: o produto
+  //    DESCARTAVA o evento sem hora antes de o guarda olhar, e por isso zerar um
+  //    `at` não deixava nada vermelho. Aqui o descarte volta, e o guarda vê.
+  { id: 'U7B', arquivo: 'app/api/dashboard/atendimentos/ficha/[id]/route.ts',
+    o_que: 'o `põe()` volta a DESCARTAR em silêncio o evento sem hora',
+    reprova: '[10] (o passo que aconteceu evapora da ficha, e a saída fica impecável)',
+    ancora: '  const põe = (e: TimelineEvent | null) => {\n'
+      + '    if (!e) return;\n'
+      + '    timeline.push(e.at ? e : { ...e, at: null, sem_hora: true });\n'
+      + '  };',
+    substituto: '  const põe = (e: TimelineEvent | null) => {\n'
+      + '    if (e && e.at) timeline.push(e);\n'
+      + '  };',
+    vermelho: ['[10] a Ficha NÃO esconde o evento sem hora'] },
+
   { id: 'U8', arquivo: 'app/api/dashboard/atendimentos/route.ts',
     o_que: 'a rota volta a montar a lista com consulta própria em vez de chamar `projetarCasos`',
-    reprova: '[1] (duas funções de leitura: Fila e Casos divergem — G4 regride)' },
+    reprova: '[1] (duas funções de leitura: Fila e Casos divergem — G4 regride)',
+    ancora: '  const projecao = await projetarCasos(ctx, estagio ? { estagio } : {}, '
+      + "{ group_by: 'stage' });",
+    substituto: "  const { getSupabaseAdmin: __sb } = require('@/lib/vault/server');\n"
+      + '  await __sb()\n'
+      + "    .from('conversations')\n"
+      + "    .select('id, status, user_phone, last_message_at')\n"
+      + "    .eq('company_id', ctx.companyId)\n"
+      + "    .eq('channel', 'whatsapp')\n"
+      + '    .limit(120);\n'
+      + '  const projecao = await projetarCasos(ctx, estagio ? { estagio } : {}, '
+      + "{ group_by: 'stage' });",
+    vermelho: ['[1] a rota da Fila não tem consulta própria'] },
+
   { id: 'U11', arquivo: 'lib/atendimento/casos.ts',
     o_que: "remover o `.eq('company_id', …)` de UMA das fontes da projeção",
-    reprova: '[11] (vazamento entre corretoras — CLAUDE.md §7)' },
+    reprova: '[11] (vazamento entre corretoras — CLAUDE.md §7)',
+    ancora: "      .eq('company_id', companyId) // 🔴 R9/§7\n"
+      + "      .eq('status', 'ativo')\n"
+      + '      .limit(TETO_DE_CONTEXTO),',
+    substituto: "      .eq('status', 'ativo')\n"
+      + '      .limit(TETO_DE_CONTEXTO),',
+    vermelho: ['[11] a sessão de Beta só vê Beta'] },
+
   { id: 'U12', arquivo: 'app/api/dashboard/atendimentos/ficha/[id]/route.ts',
-    o_que: "acrescentar `work_events` como fonte da timeline",
-    reprova: '[10] (telemetria de motor vira evento do atendimento — §18/R8)' },
+    o_que: 'acrescentar `work_events` como fonte da timeline',
+    reprova: '[10] (telemetria de motor vira evento do atendimento — §18/R8)',
+    ancora: "  const firstMsg = msgs.find((m) => m.role === 'user');",
+    substituto: '  const { data: __telemetria } = await supabase\n'
+      + "    .from('work_events')\n"
+      + "    .select('id, event_type, created_at')\n"
+      + "    .eq('company_id', ctx.companyId)\n"
+      + '    .limit(50);\n'
+      + '  for (const ev of (__telemetria || []) as Record<string, string>[]) {\n'
+      + '    põe({\n'
+      + '      at: ev.created_at,\n'
+      + "      label: String(ev.event_type || 'run.leased'),\n"
+      + '      detail: null,\n'
+      + '      done: true,\n'
+      + "      fonte: 'work_events' as never,\n"
+      + '      fonte_id: String(ev.id),\n'
+      + '    });\n'
+      + '  }\n'
+      + "  const firstMsg = msgs.find((m) => m.role === 'user');",
+    vermelho: ['[10] a ficha NÃO consulta `work_events`'] },
+
+  // 🔴 A-5 — `[13]` guardava uma LISTA FECHADA de palavras técnicas, não a regra
+  //    R11. `precisa_de_voce` e `com_equipe` são snake_case SEM ponto e fora da
+  //    lista: passavam verdes direto para o card do corretor.
   { id: 'M13', arquivo: 'lib/atendimento/casos.ts',
-    o_que: "o rótulo do estágio vira a chave crua (`estagio_label = estagio`)",
-    reprova: "[13] (o corretor vê 'precisa_de_voce' em vez de \"pediu uma pessoa\" — R11)" },
+    o_que: 'o texto do card vira a chave crua do estágio (`detalhe = stage`)',
+    reprova: "[13] (o corretor vê 'precisa_de_voce' em vez de \"pediu uma pessoa\" — R11)",
+    ancora: '    detalhe: situacao,',
+    substituto: '    detalhe: stage,',
+    vermelho: ['[13] `detalhe`/`titulo`'] },
+
   { id: 'M14', arquivo: 'lib/atendimento/casos.ts',
-    o_que: "no cabeçalho, trocar `vence_em` por `due_at` numa consulta a `work_waits` (a coluna NÃO existe no banco)",
-    reprova: '[14] (42703 — column work_waits.due_at does not exist; schema_vivo.json)' },
+    o_que: 'trocar `vence_em` por `due_at` na consulta a `work_waits` (a coluna NÃO existe no banco)',
+    reprova: '[14] (42703 — column work_waits.due_at does not exist; schema_vivo.json)',
+    ancora: '      .select(\n'
+      + "        'id, company_id, conversation_id, work_run_id, kind, scope, status, vence_em, created_at',\n"
+      + '      )',
+    substituto: '      .select(\n'
+      + "        'id, company_id, conversation_id, work_run_id, kind, scope, status, due_at, created_at',\n"
+      + '      )',
+    vermelho: ['[14] `projetarCasos`/rotas de atendimento só pedem colunas'] },
+
   { id: 'M15', arquivo: 'app/api/dashboard/conversas/[id]/route.ts',
-    o_que: 'tirar o 409 do `claim` numa conversa com `resolvido_em` (o claim volta a gravar dono por cima do desfecho)',
-    reprova: '[15] (o autor do atendimento encerrado é sobrescrito por quem clicou depois)' },
+    o_que: 'tirar o 409 do `claim` numa conversa com `resolvido_em`',
+    reprova: '[15] (o autor do atendimento encerrado é sobrescrito por quem clicou depois)',
+    // ⚠️ o `claim` e o `release` têm o MESMO bloco de 409, palavra por palavra.
+    //    A âncora desce até a linha de código que só existe no `claim` (o
+    //    UPDATE atômico) — senão ela casaria nos dois e a mutação seria outra.
+    ancora: '    if (conversation.resolvido_em) {\n'
+      + '      return NextResponse.json(\n'
+      + "        { error: 'Este atendimento já terminou. Para voltar a ele, é preciso reabri-lo.' },\n"
+      + '        { status: 409 },\n'
+      + '      );\n'
+      + '    }\n'
+      + '\n'
+      + '    // Atômico: só assume se ninguém (ou eu mesmo) for o dono.\n'
+      + '    const { data: updated, error } = await supabase',
+    substituto: '    if (false && conversation.resolvido_em) {\n'
+      + '      return NextResponse.json(\n'
+      + "        { error: 'Este atendimento já terminou. Para voltar a ele, é preciso reabri-lo.' },\n"
+      + '        { status: 409 },\n'
+      + '      );\n'
+      + '    }\n'
+      + '\n'
+      + '    // Atômico: só assume se ninguém (ou eu mesmo) for o dono.\n'
+      + '    const { data: updated, error } = await supabase',
+    vermelho: ['[15] assumir um atendimento ENCERRADO devolve 409'] },
+
+  // 🔴 A-7 — `[15b]` media a ESCRITA do desfecho. A LEITURA ficava livre: o
+  //    episódio herdava o `resolvido_em` da conversa e os 5,8 episódios daquele
+  //    telefone apareciam encerrados de uma vez.
   { id: 'M16', arquivo: 'lib/atendimento/casos.ts',
-    o_que: 'o episódio volta a herdar `resolvido_em` DA CONVERSA em Casos (`conversa?.resolvido_em || sessao?.resolvido_em`)',
-    reprova: '[15] (encerrar UM atendimento marca os 5,8 episódios daquele telefone)' },
+    o_que: 'o episódio volta a herdar `resolvido_em` DA CONVERSA em Casos',
+    reprova: '[15] (encerrar UM atendimento marca os 5,8 episódios daquele telefone)',
+    ancora: '  const resolvido_em = daSessao\n'
+      + '    ? sessao?.resolvido_em || null\n'
+      + '    : conversa?.resolvido_em || sessao?.resolvido_em || null;',
+    substituto: '  const resolvido_em = conversa?.resolvido_em || sessao?.resolvido_em || null;',
+    vermelho: ['[15] em CASOS, só o episódio com `resolvido_em` PRÓPRIO'] },
+
   // U9 (`mirror_conversation_id` obrigatório → [B1]) e U10 (backfill sem o 1:1
   // → [B4]) são do guarda irmão em python, e estão declaradas lá.
 ];
@@ -181,7 +368,10 @@ export const MUTACOES = [
 //         node scripts/a-operacao-tem-uma-casa.test.mjs
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -208,6 +398,18 @@ const N_FRESCAS = 60;
 const N_VELHAS = N_CONVERSAS_ALFA - N_FRESCAS;   // 640
 const N_RESOLVIDAS = 3;
 const N_ASSUMIDAS = 2;
+/**
+ * 🔴 A-3 — A CONVERSA DO DEFEITO HISTÓRICO, e ela faltava.
+ *
+ * 📊 §1.2: o único escritor de `claimed_by` gravava `status:'HUMAN_REQUESTED'`
+ * JUNTO, e a cascata testava o status antes do dono — "com a equipe" era
+ * inalcançável. A fixture tinha `assumida` (dono, status `open`) e `pediuPessoa`
+ * (status `HUMAN_REQUESTED`, sem dono) em índices DISJUNTOS: o mundo defeituoso
+ * — as duas coisas na MESMA linha — não existia. Sem ele, o leitor podia voltar
+ * a testar o status primeiro e a suíte ficava verde (mutação U3).
+ */
+const I_ASSUMIDA_E_PEDIU = N_FRESCAS + N_RESOLVIDAS + N_ASSUMIDAS + 1;
+const CONVERSA_DO_DEFEITO = `cv-alfa-${String(I_ASSUMIDA_E_PEDIU).padStart(4, '0')}`;
 /** 📊 §1.4 — 4.000 episódios (5,8 por telefone), 90% com elo, 10% órfãos. */
 const N_SESSOES_ALFA = 4000;
 const PROTOCOLO_ANTIGO = 'PROT-8821-ABRIL';   // o protocolo de 60 dias do §0
@@ -226,21 +428,24 @@ function mundoAlfa() {
     const resolvida = i >= N_FRESCAS && i < N_FRESCAS + N_RESOLVIDAS;
     const assumida = i >= N_FRESCAS + N_RESOLVIDAS && i < N_FRESCAS + N_RESOLVIDAS + N_ASSUMIDAS;
     const pediuPessoa = i === N_FRESCAS + N_RESOLVIDAS + N_ASSUMIDAS;   // exatamente 1
+    // 🔴 A-3 — dono E `HUMAN_REQUESTED` na MESMA linha (o que o claim de
+    //    `7f3f3eb` gravava). Ela TEM de sair em 'com_equipe': o dono vence.
+    const assumidaEPediu = i === I_ASSUMIDA_E_PEDIU;
     conversations.push({
       id: `cv-alfa-${String(i).padStart(4, '0')}`,
       company_id: CO_ALFA,
       channel: 'whatsapp',
       // 📊 §1.1: `closed` NÃO existe no acervo (0/728). O status nunca foi o desfecho.
-      status: pediuPessoa ? 'HUMAN_REQUESTED' : 'open',
+      status: pediuPessoa || assumidaEPediu ? 'HUMAN_REQUESTED' : 'open',
       user_phone: telefone(i),
       user_name: `Segurado Alfa ${i}`,
       last_message_preview: 'mensagem de exemplo',
       last_message_at: iso(AGORA - (fresca ? (i + 1) * H : (3 + i) * D)),
       created_at: iso(AGORA - (30 + i) * D),
       session_id: `ss-alfa-${i}`,
-      claimed_by: assumida ? U_ALFA : null,
-      claimed_by_name: assumida ? 'Ana da Equipe' : null,
-      claimed_at: assumida ? iso(AGORA - 6 * H) : null,
+      claimed_by: assumida || assumidaEPediu ? U_ALFA : null,
+      claimed_by_name: assumida || assumidaEPediu ? 'Ana da Equipe' : null,
+      claimed_at: assumida || assumidaEPediu ? iso(AGORA - 6 * H) : null,
       // 🔴 R1 — o ÚNICO desfecho. 3 conversas, todas dentro da semana.
       resolvido_em: resolvida ? iso(AGORA - 2 * D) : null,
       resolucao_motivo: resolvida ? 'acionamento_concluido' : null,
@@ -373,6 +578,109 @@ function fixtures() {
     approval_requests: junta('approval_requests'),
     messages: junta('messages'),
     // ⛔ existe de propósito, VAZIA: nenhuma projeção pode lê-la (R8/§18).
+    work_events: [],
+  };
+}
+
+/**
+ * 🔴 A-1 — O MUNDO EM QUE UMA FONTE NÃO TEM HORA.
+ *
+ * A fixture grande tem relógio em tudo, e por isso `[10]` nunca conseguia
+ * distinguir "a timeline tem hora" de "a timeline ESCONDE o que não tem hora":
+ * zerar o `at` de uma fonte deixava a suíte VERDE, porque o evento simplesmente
+ * sumia da Ficha (`if (e && e.at) timeline.push(e)`).
+ *
+ * Aqui a conversa não tem `created_at` NEM mensagem — o "o segurado pediu
+ * ajuda" e o "segurado identificado" nascem sem hora POR FALTA DE FONTE, não
+ * por mutação. E ela TEM `claimed_at`: assim a linha do tempo mistura os dois
+ * casos, e dá para exigir que o que tem hora venha ANTES.
+ *
+ * 📊 É um mundo real: `conversations.created_at` é anulável e o acervo tem
+ * conversas sem uma única mensagem persistida.
+ */
+const CONVERSA_SEM_HORA = 'cv-sh-0001';
+function mundoSemHora() {
+  return {
+    companies: [{ id: CO_ALFA, name: 'Corretora Alfa' }],
+    users_v2: [{ id: U_ALFA, company_id: CO_ALFA, name: 'Ana da Equipe', email: 'ana@alfa.local' }],
+    conversations: [
+      {
+        id: CONVERSA_SEM_HORA,
+        company_id: CO_ALFA,
+        channel: 'whatsapp',
+        status: 'open',
+        user_phone: telefone(77),
+        user_name: 'Segurado Sem Relogio',
+        last_message_preview: 'x',
+        last_message_at: iso(AGORA - 2 * H),
+        // ⛔ SEM `created_at`: a abertura e a identificação não têm de onde tirar hora.
+        created_at: null,
+        session_id: 'ss-sh-1',
+        claimed_by: U_ALFA,
+        claimed_by_name: 'Ana da Equipe',
+        claimed_at: iso(AGORA - 1 * H),   // 🔴 ESTE tem hora — e tem de vir ANTES
+        resolvido_em: null,
+        resolucao_motivo: null,
+        unblock_state: null,
+      },
+    ],
+    attendance_sessions: [],
+    work_waits: [],
+    work_runs: [],
+    approval_requests: [],
+    messages: [],
+    work_events: [],
+  };
+}
+
+/**
+ * 🔴 A-7 — O MUNDO DO DERRAMAMENTO DO DESFECHO (a LEITURA, não a escrita).
+ *
+ * `[15b]` provava que "Encerrar" grava no episódio corrente. Ninguém media a
+ * PROJEÇÃO: devolver `conversa?.resolvido_em || sessao?.resolvido_em` em Casos
+ * marcava os 5,8 episódios médios daquele telefone como encerrados de uma vez
+ * (📊 §1.4) — e a suíte ficava verde.
+ *
+ * Duas sessões da MESMA conversa, e a conversa TEM desfecho. Só a sessão com
+ * `resolvido_em` PRÓPRIO pode sair 'concluido'.
+ */
+function mundoDoDerramamento() {
+  const base = {
+    company_id: CO_ALFA,
+    counterparty: telefone(88),
+    observer_number: '5511900009999',
+    summary: { distilled: { servico: 'guincho' } },
+    ramo: 'auto',
+    servico: 'guincho',
+  };
+  return {
+    companies: [{ id: CO_ALFA, name: 'Corretora Alfa' }],
+    users_v2: [],
+    conversations: [
+      {
+        id: 'cv-d-0001', company_id: CO_ALFA, channel: 'whatsapp', status: 'open',
+        user_phone: telefone(88), user_name: 'Segurado Derramamento',
+        last_message_preview: 'x', last_message_at: iso(AGORA - 3 * H),
+        created_at: iso(AGORA - 20 * D), session_id: 'ss-d-1',
+        claimed_by: null, claimed_by_name: null, claimed_at: null,
+        // 🔴 a CONVERSA terminou — e é SÓ ela e o episódio corrente que terminaram.
+        resolvido_em: iso(AGORA - 2 * H), resolucao_motivo: 'acionamento_concluido',
+        unblock_state: null,
+      },
+    ],
+    attendance_sessions: [
+      { ...base, id: 'as-d-fechado', conversation_id: 'cv-d-0001', status: 'closed',
+        started_at: iso(AGORA - 4 * H), last_event_at: iso(AGORA - 2 * H),
+        resolvido_em: iso(AGORA - 2 * H), resolucao_motivo: 'acionamento_concluido' },
+      // ⛔ o episódio ANTIGO do mesmo telefone: sem desfecho PRÓPRIO
+      { ...base, id: 'as-d-aberto', conversation_id: 'cv-d-0001', status: 'closed',
+        started_at: iso(AGORA - 4 * D), last_event_at: iso(AGORA - 3 * D),
+        resolvido_em: null, resolucao_motivo: null },
+    ],
+    work_waits: [],
+    work_runs: [],
+    approval_requests: [],
+    messages: [],
     work_events: [],
   };
 }
@@ -881,6 +1189,61 @@ function analisarDonoAntesDeStatus({ observacao }) {
   return p;
 }
 
+/**
+ * 🔴 [4] A-3 — O DONO VENCE O STATUS, na linha em que os DOIS existem.
+ *
+ * `analisarDonoAntesDeStatus` media "toda conversa com dono está em
+ * `com_equipe`" — verdade, e insuficiente: nenhuma conversa da fixture tinha
+ * `claimed_by` E `status:'HUMAN_REQUESTED'` ao mesmo tempo, que é EXATAMENTE o
+ * que o claim de `7f3f3eb` gravava (§1.2). A cascata podia voltar a testar o
+ * status primeiro e nada ficava vermelho.
+ */
+function analisarDonoVenceStatus({ observacao }) {
+  if (observacao?.erro) return [`a projeção não executou: ${observacao.erro}`];
+  const items = itensDe(observacao);
+  const alvo = items.find((i) => i.conversa_id === CONVERSA_DO_DEFEITO);
+  if (!alvo) {
+    return [`a conversa do defeito histórico (${CONVERSA_DO_DEFEITO}: dono E \`HUMAN_REQUESTED\`) não voltou da projeção — o mundo defeituoso sumiu e a régua não mede nada`];
+  }
+  const p = [];
+  if (!alvo.dono || !alvo.dono.id) {
+    p.push(`${CONVERSA_DO_DEFEITO} tem \`claimed_by\` no dublê e voltou SEM \`dono\` — a projeção perdeu a dimensão`);
+  }
+  if (alvo.stage !== 'com_equipe') {
+    p.push(`${CONVERSA_DO_DEFEITO} tem dono E \`status:'HUMAN_REQUESTED'\` e saiu como '${alvo.stage}' — a cascata testou o STATUS antes do DONO, e "com a equipe" volta a ser inalcançável (§1.2/R2)`);
+  }
+  return p;
+}
+
+/**
+ * 🔴 [4] R2/R7 — QUEM JÁ TEM DONO NÃO RECEBE "ASSUMA A CONVERSA".
+ *
+ * O estágio pode estar certo e a PRÓXIMA AÇÃO errada: basta o `pediuPessoa`
+ * deixar de olhar o dono. Ninguém trava; o card só manda a atendente assumir um
+ * atendimento que já é dela. É o §9.5 — o passo responde, e responde errado.
+ */
+function analisarNaoMandeAssumirComDono({ observacao }) {
+  if (observacao?.erro) return [`a projeção não executou: ${observacao.erro}`];
+  const items = itensDe(observacao);
+  const p = [];
+  const comDono = items.filter((i) => i.dono && i.dono.id);
+  if (!comDono.length) return ['nenhum item com dono — nada foi medido'];
+  const mandando = comDono.filter((i) => {
+    const pa = i.agora?.proxima_acao || i.proxima_acao;
+    return pa && (pa.regra === 'pessoa' || /assum[ai]\b/i.test(String(pa.texto || '')));
+  });
+  if (mandando.length) {
+    p.push(`${mandando.length} conversa(s) COM dono receberam "assuma a conversa" como próxima ação (${mandando.slice(0, 3).map((i) => i.key).join(', ')}) — o card manda a atendente assumir o que já é dela (R2/R7)`);
+  }
+  // ⛔ o PAR: sem isto a régua ficaria verde num mundo em que NINGUÉM recebe a
+  //    regra `pessoa` — verde por ausência não é verde por acerto.
+  const semDonoEPediu = items.filter((i) => !i.dono && (i.agora?.proxima_acao?.regra === 'pessoa'));
+  if (!semDonoEPediu.length) {
+    p.push('nenhuma conversa SEM dono recebeu a próxima ação `pessoa` — a régua não teria como distinguir nada (R7 precedência)');
+  }
+  return p;
+}
+
 // [5] R3 — o read model de CASOS é por EPISÓDIO.
 function analisarEpisodio({ casos, mundo }) {
   if (casos?.erro) return [`a projeção de Casos não executou: ${casos.erro}`];
@@ -975,6 +1338,42 @@ function analisarPaginacao({ pagina1, pagina2, busca }) {
   return p;
 }
 
+/**
+ * 🔴 [7] A-4 — E A FILA TAMBÉM É MEDIDA.
+ *
+ * `analisarPaginacao` observa `projetarCasos({opcoes:{}})` — a projeção de
+ * CASOS. O `.limit(120)` de §1.5 (📊 120 de 448 conversas da AutoFleet, 73%
+ * invisível) é o da FILA, e o ramo da Fila é justamente o que ninguém observava:
+ * pôr `.limit(120)` nele deixava a suíte VERDE (mutação U4).
+ *
+ * E11: a Fila lê TODAS as conversas ativas em LOTES de 1.000 — `.range(de, de+999)`,
+ * nunca um `.limit()` pequeno, e nunca um teto que a tela não tem como saber.
+ */
+function analisarLeituraDaFila({ fila }) {
+  if (fila?.erro) return [`a projeção da Fila não executou: ${fila.erro}`];
+  const p = [];
+  const consultas = (fila.registro || []).filter((c) => c.op === 'select' && c.tabela === 'conversations');
+  if (!consultas.length) return ['a Fila não consultou `conversations` — nada foi medido'];
+
+  const fixo120 = consultas.filter((c) => c.limite === 120);
+  if (fixo120.length) {
+    p.push(`${fixo120.length} consulta(s) de \`conversations\` da FILA com \`.limit(120)\` fixo — 📊 §1.5: 120 de 448 conversas, 73% invisível (e é o ramo que [7] não observava)`);
+  }
+  const teto = consultas.filter((c) => c.limite != null && c.limite < 1000);
+  if (teto.length) {
+    p.push(`a FILA lê \`conversations\` com teto ${[...new Set(teto.map((c) => c.limite))].join('/')} < 1.000 — E11 manda ler TODAS em lotes de 1.000`);
+  }
+  const emLotes = consultas.filter((c) => Array.isArray(c.range) && c.range[1] - c.range[0] + 1 >= 1000);
+  if (!emLotes.length) {
+    p.push('nenhuma consulta de `conversations` da FILA pediu uma FAIXA de 1.000 (`.range(de, de + 999)`) — sem lote não existe "todas": existe a primeira página e um teto silencioso');
+  }
+  const itens = itensDe(fila);
+  if (itens.length <= 120) {
+    p.push(`a Fila devolveu ${itens.length} itens sobre ${N_CONVERSAS_ALFA} conversas de Alfa — o teto de §1.5 voltou por algum caminho`);
+  }
+  return p;
+}
+
 // [7b] a busca do cliente de Casos morreu (FORMA da declaração — §9.4).
 function analisarBuscaNoCliente({ codigo }) {
   if (codigo == null) return [`${CAMINHO_CASOS_CLIENTE} não existe`];
@@ -1056,17 +1455,81 @@ function analisarAgora({ observacao }) {
   return p;
 }
 
-// [10] R8 — a timeline: `at` em todo item, `fonte` e `fonte_id`, sem `work_events`.
+// ─────────────────────────────────────────────────────────────────────────────
+// [10] R8 — A TIMELINE. 🔴 E A RÉGUA MUDOU, porque a antiga era inatingível.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// A régua anterior era "nenhum item com `at: null`", medida DEPOIS do `põe()`
+// da Ficha — que descartava em silêncio todo evento sem hora. Zerar o `at` de
+// TRÊS fontes diferentes deixava a suíte VERDE (lente de verdade, A-1): o
+// evento sumia, e "a timeline tem hora" e "a timeline esconde o que não tem
+// hora" eram a mesma cor. É o carimbo do CLAUDE.md §9.3, e o §9.5 inteiro: a
+// rota responde 200 e responde ERRADO, em silêncio.
+//
+// A régua agora tem três perguntas, e cada uma pega o que as outras não pegam:
+//
+//   (a) o nº de eventos da timeline == o nº de FATOS das fontes  → nada sumiu
+//   (b) todo evento tem `fonte` e `fonte_id`                     → dá para voltar
+//   (c) os que têm hora vêm ANTES dos que não têm                → e o sem hora
+//                                                                  se DECLARA
+//
 const FONTES_DA_TIMELINE = new Set(['conversa', 'corredor', 'trabalho', 'espera', 'aprovacao', 'aprovação', 'peca', 'peça']);
-function analisarTimeline({ ficha }) {
+
+/**
+ * 🔴 (a) — OS FATOS QUE O MUNDO PRODUZ para esta conversa, contados AQUI, no
+ * guarda, a partir das linhas do dublê. É a contagem que a Ficha tem de
+ * devolver. Contar a partir da SAÍDA dela seria perguntar ao réu.
+ */
+function fatosDaTimeline(mundo, conversaId) {
+  const c = (mundo?.conversations || []).find((x) => String(x.id) === String(conversaId));
+  if (!c) return [];
+  const espelho = String(c.session_id || '').startsWith('dispatch:');
+  const fatos = ['abertura (1ª mensagem ou criação da conversa)'];
+  if (c.user_name && !espelho) fatos.push('segurado identificado');
+  for (const r of mundo.work_runs || []) {
+    if (String(r.conversation_id) !== String(conversaId)) continue;
+    if (r.status !== 'failed' && !r.unblock_state) continue;   // o mesmo recorte da rota
+    fatos.push(`trabalho parado ${r.id}`);
+  }
+  for (const w of mundo.work_waits || []) {
+    if (String(w.conversation_id) === String(conversaId)) fatos.push(`espera ${w.id}`);
+  }
+  if (c.claimed_by && c.claimed_at) fatos.push('alguém da equipe assumiu');
+  if (c.resolvido_em) fatos.push('atendimento encerrado');
+  return fatos;
+}
+
+function analisarTimeline({ ficha, mundo, conversaId }) {
   if (ficha?.erro) return [`a ficha não executou: ${ficha.erro}`];
   const p = [];
   const timeline = ficha.corpo?.ficha?.timeline ?? ficha.corpo?.timeline ?? ficha.corpo?.linha_do_tempo ?? [];
   if (!Array.isArray(timeline) || !timeline.length) return ['a ficha não devolveu timeline — nada foi medido'];
-  const semAt = timeline.filter((e) => e.at == null);
-  if (semAt.length) {
-    p.push(`${semAt.length} de ${timeline.length} eventos com \`at: null\` (📊 E16: 6 de 9 hoje) — ${semAt.slice(0, 4).map((e) => JSON.stringify(e.label)).join(', ')} (R8)`);
+
+  // (a) NADA É DESCARTADO
+  const fatos = fatosDaTimeline(mundo ?? ficha.mundo, conversaId);
+  if (fatos.length && timeline.length !== fatos.length) {
+    const faltam = fatos.length - timeline.length;
+    p.push(
+      `a Ficha devolveu ${timeline.length} evento(s) para ${fatos.length} fato(s) das fontes `
+      + `(${fatos.join(' · ')}) — ${faltam > 0 ? `${faltam} sumiram` : `${-faltam} apareceram do nada`}, `
+      + 'e nenhuma linha diz por quê (R8/A-1: descartar em silêncio é pior que mostrar sem hora)',
+    );
   }
+
+  // (c) os que têm hora vêm ANTES dos que não têm, e o sem hora se DECLARA
+  const primeiroSemHora = timeline.findIndex((e) => e.at == null);
+  if (primeiroSemHora !== -1) {
+    const comHoraDepois = timeline.slice(primeiroSemHora + 1).filter((e) => e.at != null);
+    if (comHoraDepois.length) {
+      p.push(`${comHoraDepois.length} evento(s) COM hora vêm DEPOIS de um evento sem hora — o sem hora vai para o FIM, senão a página faz parecer que ele veio primeiro (R8)`);
+    }
+  }
+  const semHoraMudo = timeline.filter((e) => e.at == null && e.sem_hora !== true);
+  if (semHoraMudo.length) {
+    p.push(`${semHoraMudo.length} evento(s) com \`at: null\` e SEM \`sem_hora: true\` — a tela não tem como escrever "sem hora registrada", e um travessão parece defeito de carga`);
+  }
+
+  // (b) a AUTORIDADE de cada item
   const semFonte = timeline.filter((e) => !e.fonte && !e.source_authority);
   if (semFonte.length) p.push(`${semFonte.length} evento(s) sem \`fonte\` — R8 exige a autoridade de onde o item veio`);
   const semId = timeline.filter((e) => !e.fonte_id && !e.source_id);
@@ -1074,6 +1537,60 @@ function analisarTimeline({ ficha }) {
   const fontesRuins = [...new Set(timeline.map((e) => String(e.fonte || e.source_authority || '')).filter(Boolean))]
     .filter((f) => !FONTES_DA_TIMELINE.has(f));
   if (fontesRuins.length) p.push(`fonte fora da lista: ${fontesRuins.join(', ')} — R8 fixa ${[...FONTES_DA_TIMELINE].slice(0, 6).join(', ')}`);
+  return p;
+}
+
+/**
+ * 🔴 [10] R8 — no mundo em que TODA fonte tem hora no banco, nenhum evento pode
+ * chegar sem hora. É a régua ORIGINAL do E16 (📊 6 de 9 tipos com `at: null`),
+ * agora dita num mundo onde a hora EXISTE: se um evento vier sem ela, foi o
+ * código que a perdeu, não a fonte que não tinha.
+ */
+function analisarTodosComHora({ ficha }) {
+  if (ficha?.erro) return [`a ficha não executou: ${ficha.erro}`];
+  const timeline = ficha.corpo?.ficha?.timeline ?? ficha.corpo?.timeline ?? [];
+  if (!Array.isArray(timeline) || !timeline.length) return ['a ficha não devolveu timeline — nada foi medido'];
+  const semAt = timeline.filter((e) => e.at == null);
+  return semAt.length
+    ? [`${semAt.length} de ${timeline.length} eventos com \`at: null\` — e neste mundo TODAS as fontes têm hora no banco: ${semAt.slice(0, 4).map((e) => JSON.stringify(e.label)).join(', ')} (📊 E16, R8)`]
+    : [];
+}
+
+/**
+ * 🔴 [10] A-1 — E O QUE NÃO TEM HORA NÃO SOME.
+ *
+ * O outro lado da mesma moeda, e o que faltava: no mundo em que a fonte NÃO tem
+ * hora, o evento continua na linha do tempo, marcado, no fim. A régua de cima
+ * (`analisarTodosComHora`) e esta TÊM de poder discordar — senão as duas
+ * medem a mesma coisa e a Ficha pode voltar a apagar a prova.
+ */
+function analisarNaoEscondeSemHora({ ficha, mundo, conversaId }) {
+  if (ficha?.erro) return [`a ficha não executou: ${ficha.erro}`];
+  const p = [];
+  const timeline = ficha.corpo?.ficha?.timeline ?? ficha.corpo?.timeline ?? [];
+  if (!Array.isArray(timeline)) return ['a ficha não devolveu timeline'];
+  const fatos = fatosDaTimeline(mundo, conversaId);
+  if (timeline.length !== fatos.length) {
+    p.push(
+      `a conversa sem \`created_at\` e sem mensagem produz ${fatos.length} fato(s) `
+      + `(${fatos.join(' · ')}) e a Ficha devolveu ${timeline.length} — o evento SEM HORA foi `
+      + 'DESCARTADO em silêncio (`if (e && e.at) timeline.push(e)`), e a saída ficou impecável mentindo por omissão (A-1)',
+    );
+  }
+  const semHora = timeline.filter((e) => e.at == null);
+  if (!semHora.length) {
+    p.push('nenhum evento chegou com `at: null` num mundo em que a fonte não tem hora nenhuma — ele não "ganhou hora", ele SUMIU (R8 pede hora, não sumiço)');
+    return p;
+  }
+  const mudos = semHora.filter((e) => e.sem_hora !== true);
+  if (mudos.length) p.push(`${mudos.length} evento(s) sem hora chegaram MUDOS (sem \`sem_hora: true\`) — a tela precisa da marca para escrever "sem hora registrada"`);
+  const ultimo = timeline[timeline.length - 1];
+  if (ultimo && ultimo.at != null) p.push('o evento sem hora não ficou no FIM da linha do tempo');
+  const comHora = timeline.filter((e) => e.at != null);
+  if (!comHora.length) p.push('nenhum evento COM hora neste mundo — a régua da ordem (c) não teria como falhar, e um guarda que não pode falhar não guarda nada');
+  else if (timeline.indexOf(comHora[0]) > timeline.indexOf(semHora[0])) {
+    p.push('o evento COM hora ficou depois do sem hora');
+  }
   return p;
 }
 
@@ -1152,7 +1669,52 @@ const RE_CHAVE_METRICA = /\b[a-z_]+\.[a-z_]+@\d+\b/;
 const RE_IDENTIFICADOR_PONTO = /\b[a-z]+_[a-z_]+\.[a-z_]+\b/;
 const RE_VOCAB_TECNICO = /\b(tool|node|lease|redis|qdrant|run_id|work_run|unblock_state|HUMAN_REQUESTED|claimed_by|resolvido_em|session_id|conversation_id|uuid|null|undefined|NaN)\b/;
 
-/** Só os TEXTOS que a tela mostra ao corretor — nunca as CHAVES do JSON. */
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 A-5 — [13] GUARDAVA A LISTA, NÃO A REGRA. Agora guarda a REGRA.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `RE_IDENTIFICADOR_PONTO` exige um PONTO e `RE_VOCAB_TECNICO` é uma LISTA
+// FECHADA. `detalhe: stage` entregava `precisa_de_voce`, `com_equipe`,
+// `em_conversa` ao corretor e passava VERDE: snake_case sem ponto e fora da
+// lista (mutação M13 — a mutação que este guarda dizia existir PARA ele).
+//
+// A regra R11 não é "não diga estas 15 palavras". É: **nenhum texto que o
+// corretor lê é linguagem de máquina**. Três formas, e cada uma pega o que as
+// outras não pegam:
+//
+//   1. QUALQUER token snake_case (`precisa_de_voce`, `auto_socorro`, `due_at`)
+//   2. `@\d` — o sufixo de versão/janela das chaves de métrica (`producao@30`)
+//   3. IDENTIDADE com um valor de vocabulário do sistema: `ATTENDANCE_STAGES`,
+//      `resolucao_motivo`, razões de atenção, regras de precedência, kinds de
+//      espera. Pega o que NÃO tem sublinhado — `concluido`, `parado`,
+//      `esperando`, `expirou` — e que nenhuma regex de forma acusaria.
+const RE_SNAKE_CASE = /\b[a-z]+_[a-z_]+\b/;
+const RE_ARROBA_NUMERO = /@\d/;
+
+/** O vocabulário de MÁQUINA do atendimento. Um texto IDÊNTICO a um destes é a
+ *  chave crua vazando para a tela — foi assim que `estagio`/`stage` virou card. */
+const VOCABULARIO_DE_MAQUINA = new Set([
+  // `ATTENDANCE_STAGES` vem do arquivo canônico, EXECUTADO, nunca redigitado
+  ...(() => {
+    try { return carregarTS(CAMINHO_ESTAGIOS, () => undefined).ATTENDANCE_STAGES || []; }
+    catch { return []; }
+  })(),
+  // os motivos do CHECK de `resolucao_motivo`
+  'acionamento_concluido', 'encaminhado', 'resolvido_pelo_segurado', 'fechado_por_humano', 'expirou',
+  // as razões de atenção e as regras da precedência
+  ...RAZOES_OBSERVAVEIS, ...PRECEDENCIA,
+  // os kinds de `work_waits`
+  'esperando_cliente', 'esperando_seguradora', 'esperando_humano',
+].map((s) => String(s).toLowerCase()));
+
+/**
+ * Só os TEXTOS que a tela mostra ao corretor — nunca as CHAVES do JSON.
+ *
+ * ⚠️ `agora.atencao` (as 4 razões) e `esperando.kind` são CONTRATO de código, e
+ * quem os guarda é [9] (contra `RAZOES_OBSERVAVEIS`) e [6] (contra o CHECK do
+ * banco). Tratá-los como texto aqui faria [13] acusar o contrato e passar a
+ * medir outra coisa. O que ENTRA é qualquer campo de TEXTO ao lado deles.
+ */
 function textosDoItem(i) {
   const t = [];
   const add = (v) => { if (typeof v === 'string' && v.trim()) t.push(v); };
@@ -1160,11 +1722,19 @@ function textosDoItem(i) {
   add(i.detalhe);
   add(i.titulo);
   add(i.estagio_label);
+  add(i.pedido);            // R12 — a segunda linha do card no celular
   if (i.proxima_acao) add(i.proxima_acao.texto);
   const listaAtencao = i.atencao || i.agora?.atencao || [];
   for (const a of listaAtencao) {
-    if (typeof a === 'string') add(a);
-    else if (a && typeof a === 'object') { add(a.texto); add(a.label); add(a.rotulo); }
+    if (a && typeof a === 'object') { add(a.texto); add(a.label); add(a.rotulo); }
+  }
+  // `esperando`: o `kind` é contrato ([6]); qualquer OUTRO texto é do corretor
+  const espera = i.esperando || i.agora?.esperando;
+  if (espera && typeof espera === 'object') {
+    for (const [chave, valor] of Object.entries(espera)) {
+      if (['kind', 'desde', 'vence_em', 'fonte_id', 'wait_id', 'estado'].includes(chave)) continue;
+      if (typeof valor === 'string') add(valor);
+    }
   }
   if (i.agora && typeof i.agora === 'object') {
     add(i.agora.situacao);
@@ -1174,11 +1744,12 @@ function textosDoItem(i) {
   return t;
 }
 
-/** Os textos da timeline da Ficha (`label`/`texto`/`descricao` — nunca `fonte`/`fonte_id`). */
+/** Os textos da timeline da Ficha (`label`/`detail`/`texto`/`descricao` — nunca
+ *  `fonte`/`fonte_id`, que são a AUTORIDADE e existem para o código). */
 function textosDaTimeline(timeline) {
   const t = [];
   const add = (v) => { if (typeof v === 'string' && v.trim()) t.push(v); };
-  for (const e of (timeline || [])) { add(e.label); add(e.texto); add(e.descricao); }
+  for (const e of (timeline || [])) { add(e.label); add(e.detail); add(e.texto); add(e.descricao); }
   return t;
 }
 
@@ -1200,6 +1771,13 @@ function analisarLinguagemHumana({ fila, casos, ficha }) {
     if (RE_IDENTIFICADOR_PONTO.test(texto)) motivos.push('identificador snake_case.com.ponto');
     const vocab = texto.match(RE_VOCAB_TECNICO);
     if (vocab) motivos.push(`vocabulário técnico ("${vocab[0]}")`);
+    // 🔴 A-5 — a REGRA, não a lista
+    const snake = texto.match(RE_SNAKE_CASE);
+    if (snake) motivos.push(`token snake_case ("${snake[0]}") — é nome de chave, não é frase`);
+    if (RE_ARROBA_NUMERO.test(texto)) motivos.push('chave de métrica com janela (`@n`)');
+    if (VOCABULARIO_DE_MAQUINA.has(texto.trim().toLowerCase())) {
+      motivos.push(`o texto É a chave crua do sistema ("${texto.trim()}") — estágio, motivo de desfecho, razão de atenção ou kind de espera indo direto para o card`);
+    }
     if (motivos.length) achados.set(texto, motivos);
   }
   for (const [texto, motivos] of achados) {
@@ -1251,6 +1829,129 @@ if (process.argv.includes('--fila-json')) {
     },
   }));
   process.exit(0);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🔴 `--mutar [ID]` — O PAINEL DE MUTAÇÃO, E ELE RODA
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Para cada mutação: copia o arquivo do produto para um `.bak` FORA da árvore,
+// aplica a troca (falha ALTO se a âncora não existir — âncora morta é defeito,
+// não é "pulei essa"), roda ESTE guarda num subprocesso limpo, restaura por
+// cópia num `finally` e confere que o arquivo voltou byte a byte (hash) e que o
+// `git status --short` é o MESMO de antes.
+//
+// Uma mutação que não deixa nada vermelho não é mutação: é edição — e o runner
+// sai `rc=1` dizendo qual regra não guarda nada (protocolo §10, CLAUDE.md §9.3).
+//
+// ⛔ Rodar com a árvore parada. Enquanto alguém edita `app/` ou `lib/`, o
+// restauro apagaria a edição daquele segundo.
+if (process.argv.includes('--mutar')) {
+  const pedido = process.argv[process.argv.indexOf('--mutar') + 1];
+  const alvo = pedido && !pedido.startsWith('--') ? String(pedido).toUpperCase() : null;
+  const lista = alvo ? MUTACOES.filter((m) => m.id.toUpperCase() === alvo) : MUTACOES;
+  if (alvo && !lista.length) {
+    console.error(`⛔ não existe mutação "${alvo}". Ids: ${MUTACOES.map((m) => m.id).join(', ')}`);
+    process.exit(1);
+  }
+
+  const digest = (texto) => crypto.createHash('sha256').update(texto).digest('hex');
+  const gitStatus = () => {
+    const r = spawnSync('git', ['status', '--short'], { cwd: RAIZ, encoding: 'utf8' });
+    return String(r.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean).sort().join('\n');
+  };
+
+  const abrigo = fs.mkdtempSync(path.join(os.tmpdir(), 'mutar-097-'));
+  const statusAntes = gitStatus();
+  // ⛔ a rede de segurança: se o processo morrer no meio (Ctrl-C, exceção), o
+  //    arquivo mutado volta mesmo assim. Restaurar por CÓPIA, nunca por `git`:
+  //    o trabalho não commitado de quem está editando não pode ser perdido.
+  let emAberto = null;
+  const restaurar = () => {
+    if (!emAberto) return;
+    try { fs.copyFileSync(emAberto.bak, emAberto.caminho); } catch { /* último recurso */ }
+    emAberto = null;
+  };
+  process.on('exit', restaurar);
+  for (const sinal of ['SIGINT', 'SIGTERM']) {
+    process.on(sinal, () => { restaurar(); process.exit(130); });
+  }
+
+  console.log('='.repeat(78));
+  console.log(`  🔴 PAINEL DE MUTAÇÃO — ${lista.length} mutação(ões) · SPEC-097`);
+  console.log(`     backups em ${abrigo} · restauro por CÓPIA, sempre`);
+  console.log('='.repeat(78));
+
+  const placar = [];
+  for (const m of lista) {
+    const caminho = path.join(RAIZ, m.arquivo);
+    const original = fs.readFileSync(caminho, 'utf8');
+    const hashAntes = digest(original);
+    const bak = path.join(abrigo, `${m.id}.bak`);
+    fs.writeFileSync(bak, original);
+    const veredito = { id: m.id, arquivo: m.arquivo, faltando: [], vermelhos: 0, erro: null };
+    try {
+      const ocorrencias = original.split(m.ancora).length - 1;
+      if (ocorrencias !== 1) {
+        // 🔴 FALHA ALTO. Uma âncora morta significa que o produto mudou e a
+        //    mutação ficou para trás — o conserto é a âncora, nunca o placar.
+        throw new Error(`ÂNCORA MORTA: aparece ${ocorrencias}× em ${m.arquivo} (tem de ser 1)`);
+      }
+      emAberto = { caminho, bak };
+      fs.writeFileSync(caminho, original.replace(m.ancora, () => m.substituto));
+      const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+        cwd: RAIZ, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+      });
+      const saida = String(r.stdout || '') + String(r.stderr || '');
+      const vermelhos = saida.split('\n')
+        .filter((l) => /^\s{2}X\s/.test(l))
+        .map((l) => l.replace(/^\s*X\s+/, '').trim());
+      veredito.vermelhos = vermelhos.length;
+      veredito.rc = r.status;
+      veredito.faltando = (m.vermelho || []).filter((esperado) => !vermelhos.some((v) => v.includes(esperado)));
+      veredito.acusaram = (m.vermelho || []).filter((esperado) => vermelhos.some((v) => v.includes(esperado)));
+      if (r.status === 0) veredito.faltando.push('(a suíte inteira ficou VERDE com a mutação aplicada)');
+    } catch (e) {
+      veredito.erro = String(e.message);
+    } finally {
+      fs.copyFileSync(bak, caminho);
+      emAberto = null;
+    }
+    const hashDepois = digest(fs.readFileSync(caminho, 'utf8'));
+    if (hashDepois !== hashAntes) veredito.naoRestaurou = true;
+
+    const ok = !veredito.erro && !veredito.faltando.length && !veredito.naoRestaurou;
+    console.log(`\n${ok ? '  🔴 VERMELHA' : '  🟢 VERDE   '}  ${m.id}  ${m.arquivo}`);
+    console.log(`               ${m.o_que}`);
+    if (veredito.erro) console.log(`               ⛔ ${veredito.erro}`);
+    else {
+      console.log(`               ${veredito.vermelhos} asserção(ões) vermelha(s) na corrida mutada (rc=${veredito.rc})`);
+      for (const nome of veredito.acusaram || []) console.log(`               ✔ acusou: ${nome}`);
+      for (const nome of veredito.faltando) console.log(`               ✘ NÃO acusou: ${nome}`);
+    }
+    if (veredito.naoRestaurou) console.log('               ⛔ O ARQUIVO NÃO VOLTOU AO ORIGINAL — confira antes de seguir');
+    placar.push(veredito);
+  }
+
+  const statusDepois = gitStatus();
+  const vermelhas = placar.filter((v) => !v.erro && !v.faltando.length && !v.naoRestaurou);
+  const verdes = placar.filter((v) => !vermelhas.includes(v));
+
+  console.log(`\n${'='.repeat(78)}`);
+  console.log(`  PLACAR — ${placar.length} mutação(ões) · ${vermelhas.length} VERMELHA(S) POR NOME · ${verdes.length} VERDE(S)`);
+  if (verdes.length) {
+    console.log('\n  🟢 AS VERDES (uma mutação que não deixa nada vermelho é edição, não mutação):');
+    for (const v of verdes) console.log(`     - ${v.id}: ${v.erro || v.faltando.join(' | ')}`);
+  }
+  if (statusDepois !== statusAntes) {
+    console.log('\n  ⛔ A ÁRVORE MUDOU durante o painel:');
+    console.log(`     antes: ${JSON.stringify(statusAntes)}`);
+    console.log(`     depois: ${JSON.stringify(statusDepois)}`);
+  } else {
+    console.log(`\n  ✔ árvore idêntica antes e depois (\`git status --short\`, ${statusAntes ? statusAntes.split('\n').length : 0} linha(s))`);
+  }
+  console.log('='.repeat(78));
+  process.exit(verdes.length || statusDepois !== statusAntes ? 1 : 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1311,6 +2012,20 @@ controle(analisarClaim({ claim: { updates: [{ payload: { status: 'HUMAN_REQUESTE
 controle(analisarDonoAntesDeStatus({
   observacao: { saida: { items: [{ key: 'a', stage: 'precisa_de_voce', dono: { id: U_ALFA, nome: 'Ana' } }] } },
 }), '[4] cascata-controle que testa status ANTES do dono (com_equipe inalcançável)');
+// 🔴 A-3 — a linha em que o defeito histórico mora: dono E `HUMAN_REQUESTED`
+checar(analisarDonoVenceStatus({ observacao: obsFila }),
+  `[4] a conversa que PEDIU UMA PESSOA e JÁ TEM DONO sai em 'com_equipe' — o dono vence o status (${CONVERSA_DO_DEFEITO}, §1.2/R2)`);
+controle(analisarDonoVenceStatus({
+  observacao: { saida: { items: [{ key: 'a', conversa_id: CONVERSA_DO_DEFEITO, stage: 'precisa_de_voce', dono: { id: U_ALFA, nome: 'Ana' } }] } },
+}), '[4] projeção-controle em que a conversa com dono E `HUMAN_REQUESTED` volta a "precisa de você"');
+checar(analisarNaoMandeAssumirComDono({ observacao: obsFila }),
+  '[4] a conversa que JÁ TEM DONO não recebe "assuma a conversa" como próxima ação (R2/R7)');
+controle(analisarNaoMandeAssumirComDono({
+  observacao: { saida: { items: [
+    { key: 'a', dono: { id: U_ALFA, nome: 'Ana' }, agora: { proxima_acao: { regra: 'pessoa', texto: 'Assuma a conversa — o cliente pediu para falar com uma pessoa.' } } },
+    { key: 'b', dono: null, agora: { proxima_acao: { regra: 'pessoa', texto: 'Assuma a conversa.' } } },
+  ] } },
+}), '[4] payload-controle que manda ASSUMIR uma conversa que já tem dono');
 
 console.log('\n[5] R3 — O CASO É O EPISÓDIO');
 checar(analisarEpisodio({ casos: obsCasos, mundo: mundoDoTeste }),
@@ -1346,6 +2061,12 @@ controle(analisarPaginacao({
 }), '[7] projeção-controle com `.limit(120)` fixo, sem cursor e com a busca no cliente');
 controle(analisarBuscaNoCliente({ codigo: 'const vis = items.filter((i) => !q || i.titulo.includes(q));' }),
   '[7] cliente-controle que ainda filtra a busca em memória');
+// 🔴 A-4 — e a FILA, que era o ramo NÃO observado (e é o do defeito de §1.5)
+checar(analisarLeituraDaFila({ fila: obsFila }),
+  '[7] a FILA lê TODAS as conversas em lotes de 1.000 (`.range(de, de+999)`), sem `.limit(120)` e sem teto silencioso (E11/§1.5)');
+controle(analisarLeituraDaFila({
+  fila: { registro: [{ op: 'select', tabela: 'conversations', limite: 120, range: null, predicados: [], ordens: [], or: [], ilike: [], textSearch: [] }], saida: { items: [1, 2, 3] } },
+}), '[7] fila-controle com `.limit(120)` no ramo do Quadro (o ramo que ninguém observava)');
 
 console.log('\n[8] R5 — `indisponivel` POR FONTE, NUNCA ZERO SILENCIOSO');
 const obsFalha = await observarProjecao({ opcoes: { group_by: 'stage' }, falhar: new Set(['work_waits']) });
@@ -1366,12 +2087,33 @@ controle(analisarAgora({
   observacao: { saida: { items: [{ key: 'a', agora: { situacao: 'x', dono: null, atencao: ['parado'], proxima_acao: { texto: 'x', fonte: 'espera' } } }] } },
 }), '[9] agora-controle sem as 6 dimensões (faltam `esperando` e `ha_quanto_tempo`)');
 
-console.log('\n[10] R8 — A TIMELINE TEM HORA, FONTE E `fonte_id`; NADA DE `work_events`');
-checar(analisarTimeline({ ficha: obsFicha }), '[10] nenhum item de timeline com `at` nulo; cada um com `fonte` ∈ {conversa, corredor, trabalho, espera, aprovação, peça} e `fonte_id`');
+console.log('\n[10] R8 — A TIMELINE NÃO PERDE EVENTO, TEM FONTE, E O SEM HORA VAI PARA O FIM');
+// 🔴 A-1 — a Ficha da conversa ASSUMIDA (todas as fontes com hora)
+checar(analisarTimeline({ ficha: obsFicha, mundo: mundoDoTeste, conversaId: CONVERSA_DA_FICHA }),
+  '[10] a timeline traz UM evento por FATO das fontes (nada é descartado), cada um com `fonte` ∈ {conversa, corredor, trabalho, espera, aprovação, peça} e `fonte_id`, e o que não tem hora vai para o fim, marcado');
+checar(analisarTodosComHora({ ficha: obsFicha }),
+  '[10] no mundo em que TODA fonte tem hora no banco, nenhum evento da Ficha chega sem hora (📊 E16: 6 de 9 tipos, R8)');
+// 🔴 A-1 — e o mundo em que a fonte NÃO tem hora: o evento continua lá
+const obsFichaSemHora = await observarRota(CAMINHO_FICHA, { params: { id: CONVERSA_SEM_HORA }, linhas: mundoSemHora() });
+checar(analisarNaoEscondeSemHora({ ficha: obsFichaSemHora, mundo: mundoSemHora(), conversaId: CONVERSA_SEM_HORA }),
+  '[10] a Ficha NÃO esconde o evento sem hora: ele aparece marcado (`sem_hora`), no FIM da lista, e o que tem hora vem antes (A-1)');
 checar(analisarSemWorkEvents({ ficha: obsFicha }), '[10] a ficha NÃO consulta `work_events` (telemetria de motor — §18)');
 controle(analisarTimeline({
-  ficha: { corpo: { timeline: [{ at: null, label: 'Cliente identificado', fonte: 'conversa', fonte_id: 'x' }] } },
-}), '[10] timeline-controle com um tipo em `at: null`');
+  ficha: { corpo: { timeline: [
+    { at: null, label: 'Cliente identificado', fonte: 'conversa', fonte_id: 'x' },
+    { at: '2026-09-05T12:00:00Z', label: 'Encerrado', fonte: 'conversa', fonte_id: 'y' },
+  ] } },
+  mundo: { conversations: [{ id: 'c1', user_name: 'x', claimed_by: 'u', claimed_at: 'h', resolvido_em: 'r' }] },
+  conversaId: 'c1',
+}), '[10] timeline-controle com 2 eventos para 4 fatos, um `at: null` MUDO e o com hora depois dele');
+controle(analisarTodosComHora({
+  ficha: { corpo: { timeline: [{ at: null, label: 'Cliente identificado', sem_hora: true, fonte: 'conversa', fonte_id: 'x' }] } },
+}), '[10] timeline-controle com um tipo em `at: null` num mundo que tinha a hora');
+controle(analisarNaoEscondeSemHora({
+  ficha: { corpo: { timeline: [{ at: '2026-09-05T12:00:00Z', label: 'Ana assumiu', fonte: 'conversa', fonte_id: 'x' }] } },
+  mundo: mundoSemHora(),
+  conversaId: CONVERSA_SEM_HORA,
+}), '[10] ficha-controle que DESCARTOU os dois eventos sem hora (a saída fica impecável e mente por omissão)');
 controle(analisarSemWorkEvents({
   ficha: { registro: [{ tabela: 'work_events', op: 'select' }], corpo: { timeline: [{ at: 'x', label: 'run.leased', fonte: 'work_events', fonte_id: 'y' }] } },
 }), '[10] ficha-controle que lê `work_events` como fonte da timeline');
@@ -1419,7 +2161,7 @@ console.log('\n[14] SCHEMA VIVO — nenhuma consulta pediu coluna que não exist
 checar(analisarSchemaVivo({ registros: [
   obsFila.registro, obsCasos.registro, obsRotaFila.registro, obsClaim.registro, obsFicha.registro,
   obsPag1.registro, obsPag2.registro, obsBusca.registro, obsFalha.registro,
-  obsBeta.registro, obsCruzada.registro,
+  obsBeta.registro, obsCruzada.registro, obsFichaSemHora.registro,
 ] }), '[14] `projetarCasos`/rotas de atendimento só pedem colunas do schema_vivo.json (+ migration 20260905_01)');
 
 // PAR — a mesma régua, sobre uma consulta com o defeito de propósito e sobre
@@ -1586,6 +2328,41 @@ controle(analisarEncerraOEpisodio({
   obs: { updates: [{ payload: { resolvido_em: 'x' } }], updatesDeSessao: [],
     mundo: { attendance_sessions: [{ id: 'as-b-antigo' }, { id: 'as-b-corrente' }] } },
 }), '[15] encerramento-controle que grava só na conversa (os 5,8 episódios do telefone num balde)');
+
+// ── [15b′] 🔴 A-7 — E A LEITURA. `[15b]` mede a ESCRITA do desfecho; o
+//    derramamento acontecia na PROJEÇÃO, e ninguém olhava. Duas sessões da
+//    MESMA conversa, a conversa COM `resolvido_em`: só a sessão que tem
+//    desfecho PRÓPRIO pode sair 'concluido'.
+const casosDoDerramamento = await observarProjecao({ opcoes: {}, linhas: mundoDoDerramamento() });
+
+function analisarDesfechoNaoDerrama({ obs }) {
+  if (obs?.erro) return [`a projeção de Casos não executou: ${obs.erro}`];
+  const items = itensDe(obs);
+  const fechado = items.find((i) => i.session_id === 'as-d-fechado');
+  const aberto = items.find((i) => i.session_id === 'as-d-aberto');
+  if (!fechado || !aberto) {
+    return [`Casos devolveu ${items.length} item(ns) e não trouxe os DOIS episódios da mesma conversa (as-d-fechado, as-d-aberto) — nada foi medido`];
+  }
+  const p = [];
+  if (fechado.stage !== 'concluido') {
+    p.push(`o episódio COM \`resolvido_em\` próprio saiu como '${fechado.stage}' — R1 é bicondicional`);
+  }
+  if (aberto.stage === 'concluido') {
+    p.push('o episódio SEM `resolvido_em` próprio saiu \'concluido\': ele herdou o desfecho DA CONVERSA, e encerrar UM atendimento marca os 5,8 episódios daquele telefone (📊 §1.4, P1-5)');
+  }
+  if (aberto.resolvido_em) {
+    p.push(`o episódio sem desfecho próprio voltou com \`resolvido_em: ${aberto.resolvido_em}\` — o derramamento chegou ao payload`);
+  }
+  return p;
+}
+checar(analisarDesfechoNaoDerrama({ obs: casosDoDerramamento }),
+  '[15] em CASOS, só o episódio com `resolvido_em` PRÓPRIO é "concluido" — o desfecho da conversa não derrama nos outros episódios (P1-5/A-7)');
+controle(analisarDesfechoNaoDerrama({
+  obs: { saida: { items: [
+    { key: 'epi:as-d-fechado', session_id: 'as-d-fechado', stage: 'concluido', resolvido_em: 'x' },
+    { key: 'epi:as-d-aberto', session_id: 'as-d-aberto', stage: 'concluido', resolvido_em: 'x' },
+  ] } },
+}), '[15] projeção-controle em que o episódio sem desfecho herda o `resolvido_em` da conversa');
 
 // ── [15c] P1-2 — `has_more` é do RESULTADO UNIDO
 const paginaCurta = await observarProjecao({ opcoes: { limite: 5 } });
@@ -1810,21 +2587,54 @@ const provaDoRegistroDeBusca = await (async () => {
 })();
 checar(provaDoRegistroDeBusca, '[CTL] o dublê registra `ilike`/`or`/`order`×2/`limit` (senão [7] aprova busca no cliente)');
 
-const provaDasMutacoes = (() => {
+/**
+ * 🔴 A-8 — O ARNÊS DAS MUTAÇÕES, E ELE AGORA PROVA ALGUMA COISA.
+ *
+ * A régua antiga conferia id único, caminho existente e `length === 14`. As
+ * entradas eram PROSA: sem texto-âncora e sem o nome que deve ficar vermelho.
+ * Foi assim que CINCO mutações declaradas nasceram verdes sem ninguém notar.
+ *
+ * Agora cada entrada tem de ter uma âncora VIVA (exatamente 1 ocorrência no
+ * arquivo do produto), um substituto diferente dela, e ao menos um nome de
+ * asserção esperado. ⛔ E a âncora não pode ser só comentário: mutar comentário
+ * não muda comportamento nenhum, e a mutação ficaria verde por construção.
+ */
+function analisarMutacoes(lista, esperadas) {
   const p = [];
   const vistos = new Set();
-  for (const m of MUTACOES) {
+  for (const m of lista) {
     if (vistos.has(m.id)) p.push(`marcador de mutação repetido: ${m.id}`);
     vistos.add(m.id);
-    // 🔴 o caminho pode ainda não existir (o builder não escreveu) — mas não pode ser fantasma
-    if (!existe(m.arquivo) && !m.arquivo.startsWith('lib/atendimento/casos')) {
+    if (!existe(m.arquivo)) {
       p.push(`a mutação ${m.id} aponta para um caminho que não existe: ${m.arquivo}`);
+      continue;
     }
+    if (!m.ancora || !m.substituto) {
+      p.push(`a mutação ${m.id} não tem \`ancora\`/\`substituto\` — ela é PROSA, e prosa não roda (A-8)`);
+      continue;
+    }
+    const ocorrencias = fonte(m.arquivo).split(m.ancora).length - 1;
+    if (ocorrencias !== 1) {
+      p.push(`a âncora de ${m.id} aparece ${ocorrencias}× em ${m.arquivo} — tem de aparecer EXATAMENTE 1 (zero = âncora morta, o produto mudou e a mutação ficou para trás; duas = a mutação é outra coisa)`);
+    }
+    if (m.ancora === m.substituto) p.push(`a mutação ${m.id} troca a âncora por ela mesma — é edição, não mutação`);
+    if (!Array.isArray(m.vermelho) || !m.vermelho.length) {
+      p.push(`a mutação ${m.id} não declara NENHUM nome de asserção que tem de ficar vermelho — sem isso ela passa em silêncio (A-8)`);
+    }
+    const soComentario = m.ancora.split('\n').every((l) => !l.trim() || l.trim().startsWith('//') || l.trim().startsWith('*'));
+    if (soComentario) p.push(`a âncora de ${m.id} é só comentário — mutá-la não muda comportamento nenhum`);
   }
-  if (MUTACOES.length !== 14) p.push(`MUTACOES tem ${MUTACOES.length} entradas; 14 são deste guarda (as outras 2 são do guarda python)`);
+  if (esperadas != null && lista.length !== esperadas) {
+    p.push(`MUTACOES tem ${lista.length} entradas; ${esperadas} são deste guarda (as outras 2, U9/U10, são do guarda python)`);
+  }
   return p;
-})();
-checar(provaDasMutacoes, '[CTL] as 14 mutações deste guarda têm marcador único e caminho real');
+}
+checar(analisarMutacoes(MUTACOES, 16),
+  '[CTL] as 16 mutações deste guarda têm âncora VIVA e ÚNICA no código do produto, substituto e nome-vermelho declarado');
+controle(analisarMutacoes([
+  { id: 'CTL1', arquivo: CAMINHO_PROJECAO, ancora: '// esta linha nao existe em lugar nenhum do produto', substituto: 'x', vermelho: ['[0]'] },
+  { id: 'CTL2', arquivo: CAMINHO_PROJECAO, o_que: 'prosa pura', reprova: 'nada' },
+], null), '[CTL] mutações-controle: uma com âncora MORTA (e só comentário) e uma que é só prosa');
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${'='.repeat(78)}`);

@@ -54,12 +54,16 @@ import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 interface TimelineEvent {
-  at: string;
+  /** 🔴 SPEC-097 · A-1 — pode ser `null`: o evento SEM hora não some da ficha,
+   *  ele chega marcado (`sem_hora`) e a linha abaixo escreve
+   *  "sem hora registrada". Sumir em silêncio era o defeito. */
+  at: string | null;
   label: string;
   detail: string | null;
   done: boolean;
   fonte: string;
   fonte_id: string;
+  sem_hora?: boolean;
 }
 interface Anexo {
   id: string;
@@ -626,7 +630,7 @@ export default function FichaClient({ conversaId }: { conversaId: string }) {
                         conta história, só enfileira frases. A fonte fica em
                         português: é ela que diz a quem voltar para conferir. */}
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          {fmtWhen(ev.at) || 'sem hora registrada'}
+                          {ev.sem_hora || !ev.at ? 'sem hora registrada' : fmtWhen(ev.at)}
                           {FONTE_EM_PORTUGUES[ev.fonte] && (
                             <span className="text-faint"> · {FONTE_EM_PORTUGUES[ev.fonte]}</span>
                           )}

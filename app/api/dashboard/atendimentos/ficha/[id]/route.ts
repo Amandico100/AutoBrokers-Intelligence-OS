@@ -36,21 +36,32 @@ export const dynamic = 'force-dynamic';
  * sem hora nenhuma — e "o que aconteceu, e quando" é a pergunta que a ficha
  * existe para responder.
  *
- * ⛔ Um evento sem hora REAL não entra. Preferimos não mostrar o passo a
- * carimbar nele um horário inventado: o estado ATUAL do acionamento (protocolo
- * garantido, prestador a caminho) vive no bloco AGORA, que é onde ele é
- * verdade — não na linha do tempo, que é uma lista de coisas que aconteceram.
+ * ⛔ E UM EVENTO SEM HORA NÃO SOME — ele aparece DIZENDO que não tem hora.
+ *
+ * 🔴 Esta é a correção de 05/09/2026 (lente de verdade, A-1). O primeiro
+ * conserto do E16 fez `põe()` DESCARTAR todo evento sem `at` — e descartar em
+ * silêncio é o defeito do CLAUDE.md §9.5: a ficha respondia 200, a linha do
+ * tempo vinha "toda com hora", e o passo que aconteceu de verdade tinha
+ * evaporado. "A timeline tem hora" e "a timeline esconde o que não tem hora"
+ * eram a mesma cor, e nenhum guarda conseguia ficar vermelho.
+ *
+ * Agora: o evento entra com `at: null` e `sem_hora: true`, vai para o FIM da
+ * ordem (um evento sem hora encabeçando a página faria parecer que ele veio
+ * primeiro) e a tela escreve "sem hora registrada". Continuamos sem carimbar
+ * horário inventado — mas a ausência é DECLARADA, não apagada.
  *
  * `fonte` é a AUTORIDADE de onde o item veio e `fonte_id` a linha dela: sem o
  * id, ninguém consegue voltar à origem para conferir.
  */
 interface TimelineEvent {
-  at: string;
+  at: string | null;
   label: string;
   detail: string | null;
   done: boolean;
   fonte: 'conversa' | 'corredor' | 'trabalho' | 'espera' | 'aprovacao';
   fonte_id: string;
+  /** 🔴 a ausência DECLARADA: o evento existe, a hora dele é que não. */
+  sem_hora?: boolean;
 }
 
 interface Anexo {
@@ -261,8 +272,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // A LINHA DO TEMPO — só o que aconteceu, e só com a hora em que aconteceu.
   // ───────────────────────────────────────────────────────────────────────────
   const timeline: TimelineEvent[] = [];
+  // 🔴 A-1 — NADA É DESCARTADO AQUI. O que não tem hora entra marcado.
+  //    `if (e && e.at) timeline.push(e)` fazia o evento sumir sem deixar
+  //    rastro: a saída ficava impecável e mentia por omissão.
   const põe = (e: TimelineEvent | null) => {
-    if (e && e.at) timeline.push(e);
+    if (!e) return;
+    timeline.push(e.at ? e : { ...e, at: null, sem_hora: true });
   };
 
   const firstMsg = msgs.find((m) => m.role === 'user');
@@ -382,8 +397,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   //    e `2026-09-05 12:00:00+00` são o MESMO instante e três strings
   //    distintas, e o `localeCompare` colocava a do meio três horas antes. Uma
   //    linha do tempo fora de ordem conta outra história.
-  //    ⚠️ Data ilegível vai para o FIM, nunca para 1970: um evento sem hora
-  //    encabeçando a página faria parecer que ele veio primeiro.
+  //    ⚠️ Data ilegível — e `at: null` — vão para o FIM, nunca para 1970: um
+  //    evento sem hora encabeçando a página faria parecer que ele veio
+  //    primeiro. É por isso que a ausência é `+Infinity` e não `0`.
   const instante = (v: unknown): number => {
     const t = Date.parse(String(v ?? ''));
     return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
