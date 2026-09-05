@@ -10,6 +10,44 @@ export const dynamic = 'force-dynamic';
 const PAGINA = 60;
 
 /**
+ * O cursor do histórico é `<created_at>|<id>` (R10). O `id` é o desempate: sem
+ * ele, duas mensagens do mesmo instante decidem no acaso quem fica de fora.
+ * Um cursor sem `|` continua valendo (só o relógio) — cursores antigos que
+ * ainda estejam na mão de uma aba aberta não podem quebrar.
+ */
+function lerCursor(before: string | null): { antesDe: string | null; antesDoId: string | null } {
+  if (!before) return { antesDe: null, antesDoId: null };
+  const corte = before.indexOf('|');
+  if (corte === -1) return { antesDe: before, antesDoId: null };
+  return {
+    antesDe: before.slice(0, corte),
+    antesDoId: before.slice(corte + 1) || null,
+  };
+}
+
+/** Um `id` do banco é uuid. Qualquer outra coisa é entrada de terceiro. */
+const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * 🔴 R14 — o cursor vem da URL, e URL é entrada de terceiro.
+ *
+ * 📊 `?before=amanha` ia cru para o `.lt('created_at', …)`, o Postgres
+ * recusava a comparação e a rota devolvia **500**. Um 500 num parâmetro
+ * malformado é o produto dizendo "eu quebrei" quando quem errou foi o pedido —
+ * e, pior, é ruído que esconde as quebras de verdade no log.
+ */
+function cursorValido(antesDe: string | null, antesDoId: string | null): boolean {
+  if (antesDe !== null && !Number.isFinite(Date.parse(antesDe))) return false;
+  if (antesDoId !== null && !UUID.test(antesDoId)) return false;
+  return true;
+}
+
+/** O cursor que a tela devolve no "carregar anteriores" seguinte. */
+function montarCursor(mensagem: { created_at: string; id: string }): string {
+  return `${mensagem.created_at}|${mensagem.id}`;
+}
+
+/**
  * SPEC-096 · S.3 — QUEM É O DONO DESTA CONVERSA
  *
  * 🔴 📊 Medido em 04/09/2026 (`messages/route.ts:16-21`): esta rota testava a
@@ -180,24 +218,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
     }
 
-    // Uma a mais que a página: é assim que se sabe se há "carregar anteriores"
-    // sem uma segunda consulta de contagem.
-    let consulta = supabaseAdmin
-      .from('messages')
-      .select(
-        `
+    // 🔴 F4/R10 — o cursor é o PAR (created_at, id), não só o relógio.
+    //
+    // Duas mensagens gravadas no mesmo instante (a pergunta e o eco, um
+    // disparo de rotina) empatam em `created_at`. Um cursor só de relógio
+    // resolve o empate na sorte: ou repete uma mensagem na página seguinte,
+    // ou pula uma — e some para sempre, porque ninguém volta a olhar.
+    const { antesDe, antesDoId } = lerCursor(before);
+    if (!cursorValido(antesDe, antesDoId)) {
+      return NextResponse.json(
+        { error: 'before inválido', message: 'O cursor deve ser <created_at ISO>|<id>.' },
+        { status: 400 },
+      );
+    }
+
+    const projecao = `
                 *,
                 sender:sender_user_id (
                     first_name,
                     last_name,
                     avatar_url
                 )
-            `,
-      )
+            `;
+
+    // Uma a mais que a página: é assim que se sabe se há "carregar anteriores"
+    // sem uma segunda consulta de contagem.
+    let consulta = supabaseAdmin
+      .from('messages')
+      .select(projecao)
       .eq('conversation_id', conversationId);
 
-    if (before) {
-      consulta = consulta.lt('created_at', before);
+    if (antesDe) {
+      consulta = consulta.lt('created_at', antesDe);
     }
 
     const { data, error } = await consulta
@@ -209,7 +261,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao buscar mensagens' }, { status: 500 });
     }
 
-    const descendentes = (data as any[]) || [];
+    // O desempate mora numa consulta própria, sobre o MESMO instante do
+    // cursor. ⛔ Não é `.or(...)`: o PostgREST aceitaria, mas a metade
+    // interessante do filtro ficaria escondida dentro de uma string que
+    // ninguém consegue inspecionar — e o guarda deixaria de ver o cursor.
+    // Duas condições legíveis valem mais que uma string esperta.
+    let empatados: any[] = [];
+    if (antesDe && antesDoId) {
+      const { data: doMesmoInstante } = await supabaseAdmin
+        .from('messages')
+        .select(projecao)
+        .eq('conversation_id', conversationId)
+        .eq('created_at', antesDe)
+        .lt('id', antesDoId)
+        .order('id', { ascending: false })
+        .limit(limite + 1);
+      empatados = (doMesmoInstante as any[]) || [];
+    }
+
+    // Os empatados são do instante do cursor — mais NOVOS que tudo o que a
+    // consulta principal trouxe (ela é estritamente `<`), então vêm antes na
+    // ordem decrescente.
+    const descendentes = [...empatados, ...((data as any[]) || [])];
     const temMais = descendentes.length > limite;
     const pagina = temMais ? descendentes.slice(0, limite) : descendentes;
     const mensagens = [...pagina].reverse();
@@ -217,7 +290,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       messages: mensagens,
       has_more: temMais,
-      cursor: mensagens.length > 0 ? mensagens[0].created_at : null,
+      cursor: mensagens.length > 0 ? montarCursor(mensagens[0]) : null,
     });
   } catch (error: any) {
     console.error('[MESSAGES API] Error:', error);

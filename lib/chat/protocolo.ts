@@ -157,14 +157,28 @@ export async function* lerEventos(
           occurred_at: bruto.occurred_at,
         };
 
-        if (
-          ultimoSeq !== null &&
-          Number.isFinite(evento.seq) &&
-          evento.seq > ultimoSeq + 1
-        ) {
+        // 🔴 R13 — `seq` que não é número CEGA a detecção de lacuna: com
+        // `ultimoSeq` preso em null, nenhum salto seguinte é visto. Um evento
+        // sem número de ordem já é, ele próprio, um buraco: sai marcado.
+        if (!Number.isFinite(evento.seq)) {
+          console.warn('[chat] evento sem seq numérico — tratado como lacuna');
+          evento.transport = 'gap';
+          yield evento;
+          continue;
+        }
+
+        // 🔴 R12 — repetição não é continuação. Três deltas com `seq: 1`
+        // pintariam o mesmo pedaço três vezes e a resposta sairia gaguejando
+        // ("olaolaola"). O que já passou, passou.
+        if (ultimoSeq !== null && evento.seq <= ultimoSeq) {
+          console.warn(`[chat] evento repetido/atrasado descartado (seq ${evento.seq} <= ${ultimoSeq})`);
+          continue;
+        }
+
+        if (ultimoSeq !== null && evento.seq > ultimoSeq + 1) {
           evento.transport = 'gap';
         }
-        if (Number.isFinite(evento.seq)) ultimoSeq = evento.seq;
+        ultimoSeq = evento.seq;
 
         yield evento;
       }
@@ -250,10 +264,17 @@ export function reduzirTurno(turno: Turno, ev: Envelope): Turno {
         },
       };
 
+    // 🔴 R4 — `notice` é o que o runtime diz quando NÃO houve resposta e
+    // também não houve erro: um humano assumiu a conversa, a corretora está
+    // sem agente ativo, o agente pedido não existe. 📊 Três caminhos que
+    // ficavam MUDOS: o turno terminava em 'complete' com a bolha vazia, e o
+    // corretor concluía que o produto tinha travado.
+    //
+    // ⛔ O aviso não decide o status: quem decide é o `turn.completed`, que
+    // carrega o veredito do servidor. Aqui só se registra o que dizer.
     case 'notice':
       return {
         ...base,
-        status: 'failed',
         stage: null,
         aviso: {
           kind: 'notice',
@@ -276,13 +297,23 @@ export function reduzirTurno(turno: Turno, ev: Envelope): Turno {
         },
       };
 
-    case 'turn.completed':
+    // O veredito do turno vem do SERVIDOR (R9: `payload.turn.status` é o que
+    // ficou gravado). 'interrupted' na tela chama-se 'stopped' — é a mesma
+    // coisa dita para gente.
+    case 'turn.completed': {
+      const doServidor = texto(ev.payload.status);
+      let status: StatusDoTurno;
+      if (doServidor === 'failed') status = 'failed';
+      else if (doServidor === 'interrupted') status = 'stopped';
+      else if (base.status === 'failed' || base.status === 'stopped') status = base.status;
+      else status = 'complete';
       return {
         ...base,
-        status: base.status === 'failed' || base.status === 'stopped' ? base.status : 'complete',
+        status,
         stage: null,
         transport: base.transport === 'gap' ? 'gap' : 'ok',
       };
+    }
 
     case 'heartbeat':
       return base;

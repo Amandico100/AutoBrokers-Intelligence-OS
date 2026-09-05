@@ -144,6 +144,15 @@ export default function ChatPage() {
   const [longeDoFim, setLongeDoFim] = useState(false);
 
   // O que o turno em curso precisa lembrar entre um evento e outro.
+  /**
+   * 🔴 R3 — a trava do envio é uma REF, não um estado.
+   *
+   * 📊 Dois Enters rápidos produziam 1 pergunta gravada e 2 chamadas ao
+   * backend, com identificadores diferentes: `disabled` é estado de React, e
+   * estado de React chega no próximo render — o segundo Enter acontece antes
+   * disso. Uma ref muda no MESMO instante em que é lida.
+   */
+  const enviandoRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const envioRef = useRef<EnvioDoTurno | null>(null);
   const turnoRef = useRef<Turno>(TURNO_PARADO);
@@ -514,6 +523,22 @@ export default function ChatPage() {
         signal: controlador.signal,
       });
 
+      // 🔴 R5 — 404 aqui quer dizer "essa conversa não é sua".
+      //
+      // 📊 Abrir `?session=` de uma conversa alheia deixava o chat quebrado
+      // PARA SEMPRE: o `session_id` é único no banco inteiro, o servidor não
+      // achava a conversa (não é do corretor), tentava criar, batia no índice
+      // — e todo envio seguinte repetia o mesmo erro, inclusive depois de
+      // recarregar, porque a sessão continuava na URL. Aqui a tela sai do
+      // beco: começa uma conversa nova e diz por quê.
+      if (response.status === 404) {
+        setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+        setTurno(TURNO_PARADO);
+        handleNewConversation();
+        toast.error('Essa conversa não é sua; começamos outra.');
+        return;
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
@@ -527,11 +552,16 @@ export default function ChatPage() {
         setTurno(turnoAtual);
 
         if (evento.type === 'assistant.content.delta') {
-          const pedaco = evento.payload.text ?? evento.payload.delta ?? '';
+          const pedaco = evento.payload.content ?? evento.payload.text ?? evento.payload.delta ?? '';
           textoDoAssistenteRef.current += typeof pedaco === 'string' ? pedaco : '';
           agendarPintura(assistantMsgId);
         } else if (evento.type === 'assistant.content.completed') {
-          const inteiro = evento.payload.text;
+          // 🔴 R6 — o campo do contrato é `content`. Lendo `text` vinha
+          // `undefined`, e o evento que existe justamente para entregar a
+          // resposta INTEIRA não fazia nada: um buraco no meio do caminho
+          // (`transport: 'gap'`) ficava na tela para sempre. Este evento
+          // SUBSTITUI o acumulado — é ele que conserta a lacuna.
+          const inteiro = evento.payload.content ?? evento.payload.text;
           if (typeof inteiro === 'string' && inteiro.length > 0) {
             textoDoAssistenteRef.current = inteiro;
           }
@@ -603,67 +633,78 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async (message: string, imageUrl?: string, fileUrl?: string, fileName?: string) => {
-    if (!userId) return;
+    // 🔴 R3 — PRIMEIRA linha, antes de qualquer `await`: quem chegou primeiro
+    // envia, quem chegou junto não envia nada. O §0 promete "Enter duas vezes:
+    // UMA pergunta, UMA resposta", e é aqui que essa promessa é cumprida.
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
+    try {
+      if (!userId) return;
 
-    // SPEC-095 BLOCO E — a pergunta pré-preenchida foi CONSUMIDA: quem envia,
-    // envia. Zerar aqui (e só aqui) é o que impede a remontagem do composer de
-    // re-semear a pergunta por cima da conversa que começou.
-    setTextoInicial('');
+      // SPEC-095 BLOCO E — a pergunta pré-preenchida foi CONSUMIDA: quem envia,
+      // envia. Zerar aqui (e só aqui) é o que impede a remontagem do composer de
+      // re-semear a pergunta por cima da conversa que começou.
+      setTextoInicial('');
 
-    if (!agentsLoaded) {
-      toast.error('Aguarde o carregamento dos agentes antes de enviar a mensagem.');
-      return;
+      if (!agentsLoaded) {
+        toast.error('Aguarde o carregamento dos agentes antes de enviar a mensagem.');
+        return;
+      }
+
+      if (!selectedAgentId || agents.length === 0) {
+        toast.error('Nenhum agente ativo encontrado. Peça ao Admin para preparar o sandbox da empresa.');
+        return;
+      }
+
+      // 🔴 R3 — um identificador por ENVIO. É ele que faz a repetição continuar
+      // sendo a MESMA pergunta, e o que dá ao Realtime como deduplicar sem
+      // comparar texto.
+      const clientRequestId = crypto.randomUUID();
+      const assistantMsgId = crypto.randomUUID();
+      const convId = conversationId || '';
+
+      const tempUserMessage: Message = {
+        id: crypto.randomUUID(),
+        conversation_id: convId,
+        role: 'user',
+        content: message,
+        type: 'text',
+        image_url: imageUrl,
+        created_at: new Date().toISOString(),
+        payload: { client_request_id: clientRequestId },
+      };
+
+      const tempAssistantMessage: Message = {
+        id: assistantMsgId,
+        conversation_id: convId,
+        role: 'assistant',
+        content: '',
+        type: 'text',
+        created_at: new Date().toISOString(),
+        payload: { client_request_id: clientRequestId },
+      };
+
+      // ⛔ A pergunta NÃO é mais gravada aqui. 📊 §1.3: o browser gravava sem
+      // `await`, em paralelo com a resposta — e podia não gravar. Quem grava é o
+      // servidor, antes de responder (A.2).
+      setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage]);
+
+      const envio: EnvioDoTurno = {
+        message,
+        imageUrl,
+        fileUrl,
+        fileName,
+        clientRequestId,
+        assistantMsgId,
+      };
+      envioRef.current = envio;
+
+      await executarTurno(envio);
+    } finally {
+      // A trava vale pelo TURNO inteiro — solta quando ele termina, falha ou
+      // é parado, e também nos caminhos que nem chegam a enviar.
+      enviandoRef.current = false;
     }
-
-    if (!selectedAgentId || agents.length === 0) {
-      toast.error('Nenhum agente ativo encontrado. Peça ao Admin para preparar o sandbox da empresa.');
-      return;
-    }
-
-    // 🔴 R3 — um identificador por ENVIO. É ele que faz a repetição continuar
-    // sendo a MESMA pergunta, e o que dá ao Realtime como deduplicar sem
-    // comparar texto.
-    const clientRequestId = crypto.randomUUID();
-    const assistantMsgId = crypto.randomUUID();
-    const convId = conversationId || '';
-
-    const tempUserMessage: Message = {
-      id: crypto.randomUUID(),
-      conversation_id: convId,
-      role: 'user',
-      content: message,
-      type: 'text',
-      image_url: imageUrl,
-      created_at: new Date().toISOString(),
-      payload: { client_request_id: clientRequestId },
-    };
-
-    const tempAssistantMessage: Message = {
-      id: assistantMsgId,
-      conversation_id: convId,
-      role: 'assistant',
-      content: '',
-      type: 'text',
-      created_at: new Date().toISOString(),
-      payload: { client_request_id: clientRequestId },
-    };
-
-    // ⛔ A pergunta NÃO é mais gravada aqui. 📊 §1.3: o browser gravava sem
-    // `await`, em paralelo com a resposta — e podia não gravar. Quem grava é o
-    // servidor, antes de responder (A.2).
-    setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage]);
-
-    const envio: EnvioDoTurno = {
-      message,
-      imageUrl,
-      fileUrl,
-      fileName,
-      clientRequestId,
-      assistantMsgId,
-    };
-    envioRef.current = envio;
-
-    await executarTurno(envio);
   };
 
   /**
@@ -674,10 +715,15 @@ export default function ChatPage() {
   const tentarDeNovo = useCallback(() => {
     const envio = envioRef.current;
     if (!envio) return;
+    // A mesma trava do envio: dois cliques em "Tentar de novo" são um.
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setMessages((prev) =>
       prev.map((m) => (m.id === envio.assistantMsgId ? { ...m, content: '' } : m)),
     );
-    executarTurno(envio);
+    void executarTurno(envio).finally(() => {
+      enviandoRef.current = false;
+    });
   }, [sessionId, webSearchEnabled]);
 
   /**
@@ -805,7 +851,15 @@ export default function ChatPage() {
   }
 
   const turnoCorrendo = turno.status === 'submitting' || turno.status === 'streaming';
-  const podeTentarDeNovo = turno.status === 'failed' || turno.status === 'stopped';
+  /**
+   * 🔴 R4 — "Tentar de novo" é para o que PODE dar certo na segunda vez: um
+   * erro de percurso, ou uma resposta que o corretor parou no meio. Um
+   * `notice` ("um humano assumiu esta conversa", "nenhum agente ativo") e uma
+   * recusa de política não mudam de resposta por insistência — oferecer o
+   * botão ali seria empurrar o corretor contra a mesma parede.
+   */
+  const podeTentarDeNovo =
+    turno.status === 'stopped' || (turno.status === 'failed' && turno.aviso?.kind === 'error');
   const ultima = messages.length > 0 ? messages[messages.length - 1] : null;
 
   const composer = (

@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getIronSession } from 'iron-session';
-import { createClient } from '@supabase/supabase-js';
-import { sessionOptions, SessionData } from '@/lib/iron-session';
+import { getSupabaseAdmin, resolveSessionCompany } from '@/lib/auxiliaries/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 
 // Força a rota a ser dinâmica para suportar streaming
@@ -31,14 +28,21 @@ export async function POST(req: NextRequest) {
     // ─────────────────────────────────────────────────────────────────────
     // 1. IDENTIDADE — da sessão, nunca do corpo (R1)
     // ─────────────────────────────────────────────────────────────────────
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-
-    if (!session?.userId) {
-      // ⛔ Sem sessão nem se chama o backend: o crédito é de alguém.
+    // 🔴 F1 — o MESMO helper que o resto do produto usa (`resolveSessionCompany`,
+    // `lib/auxiliaries/server.ts:31`). Ele honra a empresa ATIVA do seletor
+    // multi-empresa (SPEC-047), validando o vínculo em `company_members` a cada
+    // requisição, e só cai em `users_v2.company_id` quando não há escolha.
+    //
+    // Ler `users_v2.company_id` cru aqui e `session.companyId` no Stop fazia as
+    // duas rotas responderem corretoras DIFERENTES para o mesmo corretor — e a
+    // chave do Stop no backend é `companyId:client_request_id` (`chat.py:471`):
+    // divergiu, o Stop procura numa gaveta que não é a dele e devolve 404.
+    const identidade = await resolveSessionCompany();
+    if (!identidade) {
+      // ⛔ Sem sessão (ou sem empresa) nem se chama o backend: o crédito é de alguém.
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
-    const userId = session.userId;
+    const { userId, companyId } = identidade;
 
     const body = await req.json();
     const {
@@ -65,23 +69,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } },
-    );
-
-    // A corretora sai do MESMO caminho de /api/user/company-data.
-    const { data: userData } = await supabaseAdmin
-      .from('users_v2')
-      .select('company_id')
-      .eq('id', userId)
-      .maybeSingle();
-
-    const companyId = userData?.company_id;
-    if (!companyId) {
-      return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
-    }
+    const supabaseAdmin = getSupabaseAdmin();
 
     // ─────────────────────────────────────────────────────────────────────
     // 3. A CONVERSA — por (session_id, user_id); o agente é DELA
@@ -98,9 +86,9 @@ export async function POST(req: NextRequest) {
       conversa = (data as any) || null;
     }
 
-    if (!conversa) {
-      // O agente NUNCA vem do corpo: é o primeiro agente ativo da corretora
-      // da sessão (a mesma consulta de /api/agents).
+    // O agente NUNCA vem do corpo: é o primeiro agente ativo da corretora da
+    // sessão (a mesma consulta de /api/agents).
+    const primeiroAgenteAtivo = async (): Promise<string | null> => {
       const { data: agente } = await supabaseAdmin
         .from('agents')
         .select('id')
@@ -108,24 +96,62 @@ export async function POST(req: NextRequest) {
         .eq('is_active', true)
         .limit(1)
         .maybeSingle();
+      return (agente as any)?.id ?? null;
+    };
+
+    if (!conversa) {
+      const agenteId = await primeiroAgenteAtivo();
 
       const { data: nova, error: erroConversa } = await supabaseAdmin
         .from('conversations')
         .insert({
           user_id: userId,
           company_id: companyId,
-          agent_id: (agente as any)?.id || null,
+          agent_id: agenteId,
           session_id: sessionId || null,
           title: typeof chatInput === 'string' ? chatInput.slice(0, 50) : 'Nova Conversa',
-          status: 'active',
+          // 📊 F3 — 668 conversas 'open' contra 59 'active': quem escreve a
+          // maioria é o backend, e ele escreve 'open'. Duas palavras para o
+          // mesmo estado transformam qualquer filtro por status numa meia
+          // verdade, então a tela passa a falar a palavra do banco.
+          status: 'open',
         })
         .select('id, agent_id')
         .single();
 
       if (erroConversa || !nova) {
+        // 🔴 F3 — `conversations.session_id` é UNIQUE GLOBAL. Se o session_id
+        // já existe em OUTRA corretora, o insert bate no índice e um 500 aqui
+        // seria um oráculo de existência: quem chutasse session_ids saberia
+        // quais existem pela diferença entre 500 e 200. A resposta é a mesma
+        // de "essa conversa não é sua": 404.
+        if ((erroConversa as any)?.code === '23505') {
+          return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
+        }
+        console.error('[CHAT STREAM] Erro ao criar conversa:', erroConversa);
         return NextResponse.json({ error: 'Erro ao criar conversa' }, { status: 500 });
       }
       conversa = nova as any;
+    }
+
+    // 🔴 R4 — uma conversa com `agent_id` nulo fica nula PARA SEMPRE.
+    //
+    // 📊 Quem foi criado num momento em que a corretora ainda não tinha agente
+    // ativo (ou por um caminho que não preenchia o campo) nunca mais recebia
+    // um: o BFF mandava `agentId: null`, o backend não tinha a quem perguntar,
+    // e a conversa respondia vazio para sempre. Resolve-se AGORA — e grava-se,
+    // para o turno seguinte não repetir a consulta.
+    if (!conversa!.agent_id) {
+      const agenteId = await primeiroAgenteAtivo();
+      if (agenteId) {
+        conversa!.agent_id = agenteId;
+        await supabaseAdmin
+          .from('conversations')
+          .update({ agent_id: agenteId })
+          .eq('id', conversa!.id);
+      }
+      // Sem nenhum agente ativo na corretora, não se inventa um: o backend
+      // responde com um `notice` que a tela sabe mostrar (R4).
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -165,6 +191,12 @@ export async function POST(req: NextRequest) {
           .from('messages')
           .select('id')
           .eq('conversation_id', conversa!.id)
+          // 🔴 F2 — o índice único é (conversation_id, role, client_request_id):
+          // a PERGUNTA e a RESPOSTA do mesmo turno carregam o mesmo
+          // `client_request_id`. Sem o `role`, este SELECT casaria as duas,
+          // `maybeSingle()` erraria por linha duplicada e o `user_message_id`
+          // sairia null — a resposta nasceria órfã da pergunta.
+          .eq('role', 'user')
           .eq('payload->>client_request_id', clientRequestId)
           .maybeSingle();
         userMessageId = (existente as any)?.id ?? null;

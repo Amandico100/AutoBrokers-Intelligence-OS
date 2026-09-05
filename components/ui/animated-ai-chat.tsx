@@ -208,14 +208,18 @@ export function AnimatedAIChat({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (value.trim() && !disabled) {
+      // 🔴 R3 — o Enter respeita `isTyping` (o turno em curso), não só
+      // `disabled`. 📊 Dois Enters rápidos produziam DOIS turnos: o estado do
+      // React chega tarde demais para segurar o segundo, e o botão já estava
+      // desligado nesse caso — só o Enter não estava.
+      if (value.trim() && !disabled && !isTyping && !streaming) {
         onSend();
       }
     }
   };
 
   const handleSendMessage = () => {
-    if (value.trim() && !disabled) {
+    if (value.trim() && !disabled && !isTyping && !streaming) {
       onSend();
     }
   };

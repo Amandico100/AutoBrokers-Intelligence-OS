@@ -14,7 +14,10 @@ import type { AvisoDoTurnoDados } from '@/lib/chat/protocolo';
  * conteúdo, então não vira conteúdo.
  *
  * E "Tentar de novo" só aparece onde tentar de novo faz sentido: erro e parada.
- * Repetir um pedido que a política recusou é convidar a mesma recusa.
+ * Repetir um pedido que a política recusou é convidar a mesma recusa — e
+ * repetir um `notice` ("um humano assumiu esta conversa") é insistir com quem
+ * já respondeu. 🔴 Quem decide isso é a TELA, que conhece o status do turno:
+ * este componente mostra o botão exatamente quando recebe `onRetry`.
  */
 export function AvisoDoTurno({
   aviso,
@@ -30,7 +33,7 @@ export function AvisoDoTurno({
         ? 'border-amber-500/40 bg-amber-500/10 text-foreground'
         : 'border-border bg-surface text-muted-foreground';
 
-  const podeTentarDeNovo = Boolean(onRetry) && aviso.kind !== 'policy';
+  const podeTentarDeNovo = Boolean(onRetry);
 
   return (
     <div role="status" className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm ${tom}`}>

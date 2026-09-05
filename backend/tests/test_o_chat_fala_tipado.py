@@ -220,17 +220,12 @@ def _cascas():
         casca.__package__ = nome
         _guardar(nome)
         sys.modules[nome] = casca
-    for nome, caminho in (
-        ("app.agents.tools", os.path.join(APP, "agents", "tools")),
-    ):
-        atual = sys.modules.get(nome)
-        if atual is not None and getattr(atual, "__file__", None) is None:
-            continue
-        casca = types.ModuleType(nome)
-        casca.__path__ = [caminho]
-        casca.__package__ = nome
-        _guardar(nome)
-        sys.modules[nome] = casca
+    # 📊 05/09/2026: `app.agents.tools` NAO vira casca. `graph.py:30` faz
+    # `from .tools import HumanHandoffTool, ...` -- precisa do __init__ real do
+    # pacote de tools. Com a casca, o grafo nunca importava e os blocos B3-B13
+    # ficavam vermelhos por "ainda nao existe" -- que era falso. O que o
+    # __init__ das tools puxa (qdrant, langchain-*) e dependencia do produto:
+    # onde falta, o bloco diz AMBIENTE, nao inventa defeito.
 
 
 def _restaurar_sys_modules():
@@ -360,6 +355,10 @@ def razao_ausencia(mod_opcional, mensagem_produto):
             pacote = m.group(1).split(".")[0] if m else erro
             return ("AMBIENTE: falta %s -- o bloco nao pode ser medido nesta maquina "
                     "(%s)" % (pacote, erro))
+        # 📊 05/09: qualquer OUTRA falha de import tambem e mostrada -- um guarda
+        # que esconde a causa ensina a chutar ("ainda nao existe" com o codigo
+        # escrito foi exatamente isso).
+        return "IMPORT FALHOU: %s -- (a razao de produto seria: %s)" % (erro, mensagem_produto)
     return mensagem_produto
 
 

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { getIronSession } from 'iron-session';
-import { sessionOptions, SessionData } from '@/lib/iron-session';
+import { getSupabaseAdmin, resolveSessionCompany } from '@/lib/auxiliaries/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 
 export const dynamic = 'force-dynamic';
@@ -16,10 +14,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-
-    if (!session?.userId) {
+    // 🔴 F1 — a MESMA identidade do turno, pelo MESMO helper.
+    //
+    // A chave do Stop no backend é `companyId:client_request_id`
+    // (`chat.py:471`). Se esta rota dissesse uma corretora e o `/chat/stream`
+    // dissesse outra — e diriam, porque `session.companyId` é a empresa
+    // primária e `resolveSessionCompany` honra a ATIVA do seletor — o Stop
+    // procuraria numa chave que ninguém escreveu: 404 sempre, e o corretor
+    // apertaria "Parar" sem parar nada. `companyId` nulo, pior: 422.
+    const identidade = await resolveSessionCompany();
+    if (!identidade) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
@@ -31,6 +35,44 @@ export async function POST(req: NextRequest) {
         { error: 'CLIENT_REQUEST_ID_OBRIGATORIO', message: 'Diga qual envio parar.' },
         { status: 400 },
       );
+    }
+
+    // 🔴 R15 — parar é um ato sobre O TURNO DE ALGUÉM.
+    //
+    // Sem conferir o dono, quem tivesse (ou adivinhasse) um
+    // `client_request_id` derrubaria a resposta que OUTRO corretor está lendo,
+    // de outra corretora inclusive. E não haveria rastro: um Stop bem-sucedido
+    // é indistinguível de um usuário que desistiu.
+    //
+    // O caminho é o mesmo do resto do produto (S.3): a mensagem leva ao id da
+    // conversa, e a conversa diz de quem é. Não achou = 404, a mesma resposta
+    // de "esse turno não existe" — quem não é dono não descobre que existe.
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const { data: mensagensDoTurno } = await supabaseAdmin
+      .from('messages')
+      .select('conversation_id')
+      .eq('payload->>client_request_id', clientRequestId)
+      .limit(10);
+
+    const conversas = Array.from(
+      new Set(((mensagensDoTurno as any[]) || []).map((m) => m.conversation_id).filter(Boolean)),
+    );
+
+    let ehDono = false;
+    if (conversas.length > 0) {
+      const { data: minha } = await supabaseAdmin
+        .from('conversations')
+        .select('id')
+        .in('id', conversas)
+        .eq('user_id', identidade.userId)
+        .limit(1)
+        .maybeSingle();
+      ehDono = Boolean((minha as any)?.id);
+    }
+
+    if (!ehDono) {
+      return NextResponse.json({ error: 'Turno não encontrado' }, { status: 404 });
     }
 
     let backendUrl: string;
@@ -54,8 +96,8 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         client_request_id: clientRequestId,
-        userId: session.userId,
-        companyId: session.companyId ?? null,
+        userId: identidade.userId,
+        companyId: identidade.companyId,
       }),
     });
 

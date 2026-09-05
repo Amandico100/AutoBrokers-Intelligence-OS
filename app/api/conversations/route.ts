@@ -179,7 +179,10 @@ export async function GET(request: NextRequest) {
         messages: emOrdem,
         has_more: temMais,
         // O cursor é a mais ANTIGA já entregue: é dela que parte o `before=`.
-        cursor: emOrdem.length > 0 ? emOrdem[0].created_at : null,
+        // 🔴 F4/R10 — vai o PAR (created_at, id): duas mensagens do mesmo
+        // instante empatam, e um cursor só de relógio decide o empate na
+        // sorte — some ou repete uma mensagem, sem ninguém perceber.
+        cursor: emOrdem.length > 0 ? `${emOrdem[0].created_at}|${emOrdem[0].id}` : null,
       });
     }
 
