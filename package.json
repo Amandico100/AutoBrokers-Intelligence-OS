@@ -17,6 +17,7 @@
     "test:casa": "node scripts/a-operacao-tem-uma-casa.test.mjs",
     "test:atendimento-termina": "python backend/tests/test_o_atendimento_sabe_como_terminou.py",
     "test:chat-tipado": "python backend/tests/test_o_chat_fala_tipado.py",
+    "test:chat-como-corretor": "python backend/tests/test_o_chat_fala_como_corretor.py",
     "test:relatorio-abre-pelo-achado": "python backend/tests/test_o_relatorio_abre_pelo_achado.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
     "test:central-agentes": "node scripts/central-de-agentes-mostra-o-trabalho.test.mjs",

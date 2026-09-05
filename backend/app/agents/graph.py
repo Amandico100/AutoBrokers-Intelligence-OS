@@ -1092,6 +1092,33 @@ async def _build_initial_state(
     except Exception as e:  # noqa: BLE001 — nunca pode quebrar o chat
         logger.warning("[Assistencia] bloco nao anexado: %s", type(e).__name__)
 
+    # === COMO FALAR DE NÚMERO (SPEC-097 U7, 05/09/2026) ===
+    #
+    # 🔴 O DEFEITO, medido pelo Founder no produto vivo: as respostas do chat
+    # traziam `production.new_vs_renewal@1`, `portfolio.cancellation_rate`,
+    # `data.coverage@1`, `commission.broker_accrued@1` — chaves de banco na
+    # conversa com a corretora.
+    #
+    # ⚠️ A causa principal foi consertada na FONTE (as ferramentas de relatório
+    # devolvem o NOME da métrica e mandam nunca citar a chave). Esta regra é a
+    # rede: ela vale para toda ferramenta, inclusive as que ainda não passaram
+    # por essa revisão, e para o handoff — porque o texto que a atendente
+    # recebe também é lido por gente.
+    #
+    # ⛔ É CURTA de propósito. 📊 Os sete agentes do produto têm prompt entre
+    # 636 e 7.914 caracteres; uma regra de meia página aqui competiria com as
+    # instruções do dono do agente em vez de somar a elas.
+    _FALE_COMO_CORRETOR = (
+        "COMO FALAR DE NÚMERO E DE DADO:\n"
+        "- Nunca cite chaves, variáveis, nomes de campo, versões (`@1`) nem "
+        "identificadores internos (`pack_id`) na resposta — nem no chat, nem "
+        "num resumo para uma pessoa assumir a conversa.\n"
+        "- Diga o NOME da coisa em português, como um corretor explicaria a "
+        "outro. Os endereços internos ficam no relatório, que é onde se "
+        "confere."
+    )
+    base_instructions = base_instructions + "\n\n" + _FALE_COMO_CORRETOR
+
     # === HTTP TOOLS ===
     allowed_http_tools = []
     if agent_id and supabase_client:

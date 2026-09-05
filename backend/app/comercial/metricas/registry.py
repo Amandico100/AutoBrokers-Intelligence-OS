@@ -729,6 +729,8 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
 
     if bloqueada:
         return metrica(d.metric_id, None, d.unit, period=janela,
+                       # 🔴 SPEC-097 U7 — o rótulo humano viaja com o número.
+                       label=d.label,
                        time_basis=d.time_basis, coverage=None, version=d.version,
                        provider_key=provedor or str(
                            getattr(facts, "provider_key", "") or ""),
@@ -788,6 +790,9 @@ def calcular(metric_id: str, facts: FactSet, period: Tuple[date, date],
     fontes, provedor = fontes_do_numero(d, facts, getattr(ctx, "mercado", None),
                                         janela, inicio, fim)
     return metrica(d.metric_id, valor, d.unit, period=janela,
+                   # 🔴 SPEC-097 U7 — o rótulo humano viaja com o número, para
+                   #    que o chat tenha o que DIZER sem citar a chave.
+                   label=d.label,
                    time_basis=d.time_basis, coverage=cobertura,
                    version=d.version,
                    provider_key=provedor or str(
@@ -806,6 +811,10 @@ CONFIANCA_DA_FALHA = BAIXA
 #: A frase que o leitor recebe no lugar do número. ⚠️ Ela diz o nome da
 #: métrica, o TIPO do erro e o texto dele — e nada mais: um `traceback` no
 #: bloco citável é texto que o modelo narra.
+#:
+#: 🔴 SPEC-097 U7: o nome é o `label` em português, e não `metric_id@versão`.
+#: 📊 05/09/2026 o Founder leu no chat *"data.coverage@1"* — e a chave chegava
+#: ali por caminhos como este, em que a frase de aviso já vinha pronta.
 FALHOU_ISOLADA = (
     "%s: o cálculo desta métrica FALHOU nesta consulta (%s: %s). Ela sai "
     "INDISPONÍVEL, e nunca zero. 🔴 Isto é uma afirmação sobre NÓS — o motor —, "
@@ -816,11 +825,15 @@ def _isolar(d: "MetricDefinition", period: Tuple[date, date], facts: FactSet,
             exc: BaseException) -> MetricResult:
     """O `MetricResult` INDISPONÍVEL de uma métrica que levantou."""
     return metrica(
-        d.metric_id, None, d.unit,
+        d.metric_id, None, d.unit, label=d.label,
         period=periodo_iso(period[0], period[1]),
         time_basis=d.time_basis, coverage=None, version=d.version,
         provider_key=str(getattr(facts, "provider_key", "") or ""),
-        warnings=[FALHOU_ISOLADA % (d.ref, type(exc).__name__, exc)],
+        # 🔴 SPEC-097 U7: o aviso é TEXTO que o modelo repassa ao dono, então
+        #    ele diz o NOME da métrica — `d.ref` (`metric_id@versão`) é
+        #    ponteiro, e ponteiro é assunto do Artifact.
+        warnings=[FALHOU_ISOLADA % (d.label or d.metric_id,
+                                    type(exc).__name__, exc)],
         confianca_maxima=CONFIANCA_DA_FALHA)
 
 

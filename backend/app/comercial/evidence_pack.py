@@ -299,6 +299,20 @@ class MetricResult:
     unit: str
     period: Dict[str, str]
     time_basis: str
+    #: 🔴 SPEC-097 U7 — O NOME QUE UM CORRETOR RECONHECE.
+    #:
+    #: 📊 05/09/2026, o Founder mostrando respostas do chat:
+    #: *"production.new_vs_renewal@1"*, *"portfolio.cancellation_rate"*,
+    #: *"data.coverage@1"*, *"commission.broker_accrued@1"* — chaves de banco
+    #: dentro da frase que a corretora lê. O modelo não as inventou: ele as
+    #: recebia no bloco citável e era INSTRUÍDO a citá-las ao lado de cada
+    #: número.
+    #:
+    #: ⚠️ A chave continua no envelope — ela é o PONTEIRO do Artifact, e a régua
+    #: da 094 (*"todo número tem ponteiro"*) é do ARTIFACT, não do texto do
+    #: chat. O que muda é que agora existe, no mesmo objeto, o nome em
+    #: português: o modelo passa a ter o que dizer em vez da chave.
+    label: str = ""
     coverage: Optional[float] = None
     confidence: str = MEDIA
     provider_key: str = "infocap"
@@ -334,6 +348,9 @@ class MetricResult:
         return {
             "metric_id": self.metric_id,
             "version": self.version,
+            # 🔴 SPEC-097 U7: o nome humano viaja ao LADO da chave. O modelo lê
+            # os dois e só pode DIZER este.
+            "label": self.label,
             "value": _limpar(self.value, casas),
             "unit": self.unit,
             "period": dict(self.period),
@@ -355,7 +372,8 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
             source_refs: Sequence[str] = (),
             warnings: Sequence[str] = (),
             breakdown: Sequence[Dict[str, Any]] = (),
-            confianca_maxima: Optional[str] = None) -> MetricResult:
+            confianca_maxima: Optional[str] = None,
+            label: str = "") -> MetricResult:
     """Monta um `MetricResult` já com a confiança derivada da cobertura.
 
     Levanta `ValueError` em unidade ou base temporal fora do contrato — um
@@ -375,7 +393,7 @@ def metrica(metric_id: str, valor: Optional[Union[float, int]], unit: str, *,
         raise ValueError(
             f"base temporal fora do contrato: {time_basis!r} (use {BASES_ACEITAS})")
     return MetricResult(
-        metric_id=metric_id, version=version,
+        metric_id=metric_id, version=version, label=str(label or ""),
         value=valor_ou_indisponivel(valor), unit=unit,
         period=dict(period), time_basis=time_basis,
         coverage=coverage,
@@ -603,8 +621,28 @@ SEVERIDADE_MAXIMA = "medium"
 
 
 def ref_da_metrica(m: MetricResult) -> str:
-    """`metric_id@versão` — a citação de UM número (SPEC-094 ref ⑥)."""
+    """`metric_id@versão` — o PONTEIRO de UM número (SPEC-094 ref ⑥).
+
+    ⛔ SPEC-097 U7: isto é o ENDEREÇO do número, e o lugar dele é o Artifact, o
+    evidence pack e o sinal. **Nunca a frase do chat** — ali usa-se
+    `nome_da_metrica`.
+    """
     return f"{m.metric_id}@{m.version}"
+
+
+def nome_da_metrica(m: Any) -> str:
+    """O nome que se DIZ — em português, como um corretor falaria.
+
+    🔴 SPEC-097 U7. Devolve o `label` quando existe; senão, a chave virada em
+    PALAVRAS (`commission.broker_accrued` → *"commission broker accrued"*) —
+    feio, e ainda assim texto em vez de endereço. ⚠️ O `@versão` some nos dois
+    casos: versão é assunto de quem confere, não de quem lê.
+    """
+    rotulo = str(getattr(m, "label", "") or "").strip()
+    if rotulo:
+        return rotulo
+    chave = str(getattr(m, "metric_id", "") or "")
+    return chave.replace(".", " ").replace("_", " ").strip()
 
 
 def _numero(m: Optional[MetricResult]) -> Optional[float]:

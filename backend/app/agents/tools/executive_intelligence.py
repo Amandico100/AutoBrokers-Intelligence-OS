@@ -191,7 +191,9 @@ COMO_FALAR_DO_CATALOGO = (
     "Isto é o CATÁLOGO do que existe — não há nenhum número aqui, e não houve "
     "consulta à carteira. Responda em português, com as PERGUNTAS da lista, e "
     "ofereça levantar as que interessarem ao dono. NUNCA cite um valor a partir "
-    "deste bloco, e nunca prometa uma métrica que não esteja nele."
+    "deste bloco, e nunca prometa uma métrica que não esteja nele. "
+    "🔴 Fale pelos NOMES da lista e pelas perguntas dela: nunca escreva chave, "
+    "versão nem nome de campo (SPEC-097 U7)."
 )
 
 COMO_FALAR_DA_PROPOSTA = (
@@ -488,7 +490,7 @@ CARIMBO_VAZIO = "RELATORIO_VAZIO"
 RESUMO_DETERMINISTICO = (
     "O veredito, a comparação com o período anterior, a cobertura de cada "
     "número e o que a fonte não expõe estão no bloco PACK acima e no "
-    "relatório, cada um com a métrica que o produziu ao lado."
+    "relatório, cada um com o NOME da métrica que o produziu ao lado."
 )
 
 
@@ -528,9 +530,9 @@ def direcao_do_periodo(pacote: Any) -> str:
         return ""
     return ("Frente ao período anterior, das métricas comparáveis " +
             ", ".join(partes) +
-            " — o tamanho de cada variação está em `comparacoes`, no bloco "
-            "PACK, com o `metric_id` ao lado. Diga a direção ao dono; não "
-            "invente o tamanho.")
+            " — o tamanho de cada variação está no bloco PACK, ao lado do NOME "
+            "de cada métrica. Diga a direção ao dono e diga o tamanho pelo "
+            "nome dela; não invente o tamanho e não cite a chave (U7).")
 
 
 def resumo_deterministico(pacote: Any, reusado: bool = False) -> str:
@@ -591,18 +593,24 @@ DO_QUE_E_A_COBERTURA = {
     "quotes.funnel": "das cotações do período que a fonte devolveu com etapa",
 }
 
+# 🔴 SPEC-097 U7 — O PONTEIRO SAIU DA FRASE. A gêmea desta constante está em
+# `relatorios_comerciais.py`, com a medição do Founder escrita por inteiro.
 COMO_FALAR = (
-    "Comente para o dono usando SÓ os números do bloco PACK acima, citando "
-    "`metric_id@version` ao lado de cada número que você disser. `UNAVAILABLE` "
-    "quer dizer INDISPONÍVEL na fonte — diga isso com essas letras, e nunca "
-    "zero. Comissão apropriada é o que foi ganho na emissão, e não o que "
-    "entrou em caixa: não troque uma coisa pela outra. Não invente número que "
-    "não esteja no bloco, e não cite nome de produtor: ele está no relatório, "
-    "que é o lugar dele. "
-    "Se `comparacoes` trouxer linhas, DIGA se cresceu ou caiu e cite o "
-    "`delta_pct` de lá — `UNAVAILABLE` num delta quer dizer que a comparação "
-    "foi RECUSADA, e o `motivo` ao lado explica por quê: repasse o motivo, "
-    "nunca leia a recusa como estabilidade."
+    "Comente para o dono em português corrente, usando SÓ os números do bloco "
+    "PACK acima. 🔴 Ao citar um número, diga o NOME da métrica — o campo "
+    "`label` de cada uma. ⛔ NUNCA escreva a chave (`metric_id`), a versão "
+    "(`@1`), o `pack_id` nem nome de campo nenhum deste bloco: eles são o "
+    "endereço interno do número e já viajam no relatório, que é onde se "
+    "confere. Fale como um corretor explicaria a outro. "
+    "`UNAVAILABLE` quer dizer INDISPONÍVEL na fonte — diga isso com essas "
+    "palavras, e nunca zero. Comissão apropriada é o que foi ganho na emissão, "
+    "e não o que entrou em caixa: não troque uma coisa pela outra. Não invente "
+    "número que não esteja no bloco, e não cite nome de produtor: ele está no "
+    "relatório, que é o lugar dele. "
+    "Se houver comparação com o período anterior, DIGA se cresceu ou caiu e de "
+    "quanto foi. Uma variação INDISPONÍVEL quer dizer que a comparação foi "
+    "RECUSADA: repasse o motivo que vem ao lado dela, e nunca leia a recusa "
+    "como estabilidade."
 )
 
 
@@ -835,7 +843,8 @@ class ExecutiveIntelligenceTool(BaseTool):
         "período, mande string vazia — NUNCA pergunte de volta. "
         "Em pergunta de acompanhamento da MESMA conversa, repasse o `pack_id` "
         "do bloco PACK anterior: a resposta sai do mesmo pacote, sem "
-        "reconsultar."
+        "reconsultar. ⛔ Ele é um parâmetro desta ferramenta, e nunca uma "
+        "palavra da sua resposta ao dono (SPEC-097 U7)."
     )
     args_schema: Type[BaseModel] = PlanoDeConsulta
 
@@ -913,9 +922,17 @@ class ExecutiveIntelligenceTool(BaseTool):
         """
         from app.comercial.metricas import registry
 
+        # 🔴 SPEC-097 U7 — O CATÁLOGO QUE VAI AO MODELO NÃO TEM CHAVE.
+        #
+        # 📊 Este bloco entregava `metric_id` e `ref` (`mix.branch@1`), e o
+        # modelo os repetia ao dono da corretora. ⚠️ Ele não precisa deles para
+        # trabalhar: o que se pede é ASSUNTO (`views` — a lista `assuntos`
+        # abaixo) e o recorte é por RÓTULO. Nenhum parâmetro desta ferramenta
+        # aceita `metric_id`. Chave que o modelo não usa e não pode dizer é
+        # chave que não tem por que estar aqui.
         itens = []
-        for mid, d in sorted(registry.todas().items()):
-            itens.append({"metric_id": mid, "ref": d.ref, "label": d.label,
+        for _mid, d in sorted(registry.todas().items()):
+            itens.append({"label": d.label,
                           "pergunta_verificada": d.pergunta_verificada,
                           "unit": d.unit, "time_basis": d.time_basis,
                           "origem": "registry"})

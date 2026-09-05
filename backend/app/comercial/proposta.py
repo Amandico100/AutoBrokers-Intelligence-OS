@@ -199,6 +199,14 @@ class PropostaDeMetrica:
     #: para que o humano que promover a métrica saiba o que ainda falta
     #: decidir — e não para que alguém o transforme em fato canônico.
     nao_reconhecido: Tuple[str, ...] = ()
+    #: 🔴 SPEC-097 U7 — os NOMES das métricas parecidas, em português.
+    #:
+    #: `parecida_com` guarda `metric_id`, e ele continua lá: é o ponteiro que o
+    #: humano usa para achar a definição na hora de promover. 📊 Mas ele também
+    #: entrava na FRASE que o modelo repassa ao dono — foi assim que
+    #: *"portfolio.cancellation_rate"* apareceu numa conversa. Os rótulos são o
+    #: que se DIZ; a chave é o que se confere.
+    parecida_com_rotulos: Tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not str(self.nome_sugerido or "").startswith(PREFIXO_DA_PROPOSTA):
@@ -228,15 +236,36 @@ class PropostaDeMetrica:
         }
 
     def frase(self) -> str:
-        """A recusa, em uma frase, para o modelo repassar. FORA do bloco."""
+        """A recusa, em uma frase, para o modelo repassar. FORA do bloco.
+
+        🔴 SPEC-097 U7 — ELA FALA COMO GENTE. 📊 Esta frase dizia
+        *"Proponho `proposta.taxa_de_cancelamento`"* e listava os parecidos por
+        `metric_id` (*"portfolio.cancellation_rate"*). Duas chaves de banco numa
+        recusa que o dono da corretora lê. O `nome_sugerido` continua inteiro em
+        `serializar()`, que é o que vai ao humano que promove a métrica — e é lá
+        que ele serve.
+        """
         duplicata = ""
-        if self.parecida_com:
+        parecidas_ditas = self.parecida_com_rotulos or ()
+        if parecidas_ditas:
             duplicata = (" Já existe algo parecido: %s — confira antes de "
-                         "registrar outra." % ", ".join(self.parecida_com))
-        return ("⚠️ %s. Proponho `%s`%s. Nenhum número foi calculado, e nenhum "
-                "será até um humano registrar a definição.%s" % (
-                    FRASE_DA_RECUSA, self.nome_sugerido,
-                    (" sobre %s" % ", ".join(self.fatos)) if self.fatos else "",
+                         "registrar outra." % ", ".join(parecidas_ditas))
+        elif self.parecida_com:
+            # ⚠️ Sem rótulo, diz-se que EXISTE parecida — nunca a chave dela.
+            duplicata = (" Já existe %d métrica(s) parecida(s) registrada(s); "
+                         "confira antes de registrar outra."
+                         % len(self.parecida_com))
+        # ⚠️ O assunto é dito com as PALAVRAS DO DONO (`pergunta_exemplo`, que
+        #    é o eco higienizado do pedido dele) — e não com `fatos`, que são
+        #    nomes de classe do motor (`PolicyFact`). O dono não reconhece o
+        #    próprio pedido num nome de classe, e essa é a mesma razão pela qual
+        #    `pergunta_verificada` existe no registry.
+        assunto = str(self.pergunta_exemplo or "").strip()
+        return ("⚠️ %s. Proponho registrar uma métrica nova%s. Nenhum número "
+                "foi calculado, e nenhum será até um humano registrar a "
+                "definição.%s" % (
+                    FRASE_DA_RECUSA,
+                    (' para responder "%s"' % assunto) if assunto else "",
                     duplicata))
 
 
@@ -269,9 +298,14 @@ def propor_a_partir_do_pedido(pedido: str, metricas: Dict[str, Any],
     dimensoes = _casar(saco, DIMENSOES_CONHECIDAS)
     reconhecidas = {p for _, sin in FATOS_CONHECIDOS for p in sin}
     reconhecidas |= {p for _, sin in DIMENSOES_CONHECIDAS for p in sin}
+    # 🔴 SPEC-097 U7 — o rótulo de cada parecida, para a frase falar português.
+    rotulos = tuple(
+        str(getattr((metricas or {}).get(mid), "label", "") or "").strip()
+        for mid in proximas)
     return PropostaDeMetrica(
         nome_sugerido=PREFIXO_DA_PROPOSTA + _slug(pedido),
         fatos=fatos, dimensoes=dimensoes, time_basis=base,
         parecida_com=tuple(proximas),
+        parecida_com_rotulos=tuple(r for r in rotulos if r),
         pergunta_exemplo=" ".join(normalizar(pedido).split())[:TETO_DA_PERGUNTA],
         nao_reconhecido=tuple(p for p in saco if p not in reconhecidas))

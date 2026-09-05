@@ -370,9 +370,27 @@ def teste_o_agente_respeita_a_pausa():
     print("\n[4] E o agente OBEDECE a pausa")
     # O gate já existia antes deste trabalho. Este guarda impede que ele suma
     # numa refatoração — sem ele, a pausa viraria um campo que ninguém lê.
+    #
+    # 🔴 MIGRADO EM 05/09/2026 (SPEC-097 U2.3/E6) — A VERDADE CERTA PELO MOTIVO NOVO.
+    #
+    # Este guarda exigia a string `HUMAN_REQUESTED` no código dos dois arquivos.
+    # 📊 A pausa passou a ter DUAS razões, não uma: `status == 'HUMAN_REQUESTED'`
+    # (o segurado pediu uma pessoa) OU `claimed_by is not None` (a atendente
+    # assumiu pela tela, e a conversa segue `open`). A segunda era o defeito: o
+    # robô respondia POR CIMA de quem já estava conduzindo a conversa.
+    #
+    # As duas razões viraram UM helper — `pausar_ia(conversa)`, em
+    # `app/services/o_fim_do_atendimento.py` (CLAUDE.md §5: nada em paralelo).
+    # ⛔ Continuar exigindo a string faria este guarda ficar VERDE com um portão
+    # que só conhece metade da regra — e ensinaria a próxima refatoração a
+    # devolver a comparação na unha. Então o que se exige agora é a CHAMADA.
+    #
+    # ⚠️ CLAUDE.md §9.3: quando o fato muda, o teste muda com ele, e a lição
+    # migra em vez de morrer — o que se guarda continua sendo *"o agente lê o
+    # estado da conversa antes de falar"*.
     for arquivo in ("backend/app/api/chat.py", "backend/app/api/webhook.py"):
-        checar("HUMAN_REQUESTED" in _comandos(arquivo),
-               f"{os.path.basename(arquivo)} consulta o estado antes de o agente falar")
+        checar("pausar_ia(" in _comandos(arquivo),
+               f"{os.path.basename(arquivo)} PERGUNTA a `pausar_ia(...)` antes de o agente falar")
 
 
 def teste_a_resposta_do_dashboard_nao_volta_em_dobro():

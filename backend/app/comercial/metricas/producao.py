@@ -217,8 +217,26 @@ def _sem_numero(ctx: Contexto) -> Saida:  # noqa: ARG001
     return None, None, [], []
 
 
+# 🔴 SPEC-097 U7 — "COMISSÃO EM CAIXA", E O NOME MUDOU POR MEDIÇÃO.
+#
+# 📊 Com o U7, o `label` passou a viajar DENTRO do bloco citável (é o nome que o
+# chat diz no lugar da chave). O guarda do vocabulário da 094 — que proíbe as
+# palavras `lucro`, `recebid` e `funcionari` num pack, exatamente para o número
+# apropriado nunca ser narrado como recebido — ficou VERMELHO na hora:
+#
+#     [7] `lucro`, `recebid` e `funcionari` NAO aparecem no PACK SERIALIZADO
+#
+# ⚠️ E ele estava certo. *"Comissão recebida"* dentro do envelope é a palavra
+# que a 094 inteira existe para manter fora de alcance do narrador — bastaria o
+# modelo trocar de linha para o dono ler *"comissão recebida"* sobre um número
+# que é apropriação.
+#
+# 🔴 `commission.broker_received` continua sendo o que é (INDISPONÍVEL na fonte,
+# nunca 0,00). O que mudou foi o NOME que se diz dele: **"Comissão em caixa"** —
+# que é como a corretora fala, e é o mesmo par que o produto já usa nas
+# proibições (*"apropriada não é o que entrou em caixa"*).
 for _mid, _label, _cap, _aceitos, _porque, _pergunta in (
-    ("commission.broker_received", "Comissão recebida",
+    ("commission.broker_received", "Comissão em caixa",
      "financial.commission_received", (SUPPORTED,),
      "só existe no detalhe de uma apólice por chamada — não há rota de lote",
      "Quanto de comissão a corretora efetivamente RECEBEU no período?"),

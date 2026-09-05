@@ -127,10 +127,25 @@ _TEMPLATE_RADAR = "renewals.radar"
 #
 # ⚠️ Fora do bloco não pode sobrar número de negócio. É o que o guarda mede.
 
+# 🔴 SPEC-097 U7 — E O PONTEIRO SAIU DA FRASE.
+#
+# 📊 05/09/2026, o Founder lendo respostas do próprio produto:
+# *"production.new_vs_renewal@1"*, *"portfolio.cancellation_rate"*,
+# *"data.coverage@1"*, *"commission.broker_accrued@1"*. Chave de banco na frente
+# do corretor. ⚠️ E o modelo não errou sozinho: esta constante MANDAVA citar
+# `metric_id@version` ao lado de cada número.
+#
+# 🔴 A régua da 094 — *"todo número tem ponteiro"* — é do ARTIFACT. O ponteiro
+# continua inteiro no `payload.evidence_pack` e no bloco citável, que é onde
+# alguém confere. O que ele nunca foi é vocabulário de conversa.
 _COMO_FALAR = (
-    "Comente para o corretor usando SÓ os números do bloco PACK acima, citando "
-    "`metric_id@version` ao lado de cada número que você disser. `UNAVAILABLE` "
-    "quer dizer INDISPONÍVEL na fonte — diga isso com essas letras, nunca zero. "
+    "Comente para o corretor em português corrente, usando SÓ os números do "
+    "bloco PACK acima. 🔴 Ao citar um número, diga o NOME da métrica — o campo "
+    "`label` de cada uma. ⛔ NUNCA escreva a chave (`metric_id`), a versão "
+    "(`@1`), o `pack_id` nem nome de campo nenhum deste bloco: eles são o "
+    "endereço interno do número, e já viajam no relatório, que é onde se "
+    "confere. Fale como um corretor explicaria a outro. `UNAVAILABLE` quer "
+    "dizer INDISPONÍVEL na fonte — diga isso com essas palavras, e nunca zero. "
     "Não invente número que não esteja no bloco, e não cite nome de produtor: "
     "ele está no relatório, que é o lugar dele."
 )
