@@ -740,7 +740,7 @@ ul.tight li{margin:5px 0}
       <p class="lede">A proposta pedia um "workspace de operações": Fila com Lista e Quadro, Casos, Case Workspace, timeline, documentos. A medição de 05/09 mostrou que o problema não é de leitura — é de <b>escrita</b>: a Fila diz que 584 de 668 atendimentos foram encerrados e o banco diz que ninguém encerrou nenhum; a espera tem tabela pronta e zero linhas na vida; assumir um atendimento pelo botão o deixa em "pediu uma pessoa"; e o "caso" não é a conversa (1 telefone = 1 conversa perpétua de até 29 dias), é o episódio dentro dela. Esta página acompanha a execução.</p>
       <div class="meta"><span>SPEC <b>specs/SPEC-097-a-operacao-tem-uma-casa.md</b></span><span>faixa <b>6–8h</b></span><span>laço sob B <b>investigador+pesquisador · aquecimento · desenhista · builders · red team · 2 lentes · juiz fresco · canário vivo</b></span><span>orçamento <b>≤ 2,5 M tokens</b></span><span>base <b>origin/main = 7f3f3eb</b></span></div>
     </div>
-    <div class="gauge"><div class="eyebrow">estado</div><div class="big">em<small> execução</small></div><div class="bar"><i style="width:15%"></i></div><div class="sub">proposta medida (nota 62: SPEC de leitura para um problema de escrita) · SPEC v1.0 escrita · aquecimento rodando</div></div>
+    <div class="gauge"><div class="eyebrow">estado</div><div class="big">em<small> execução</small></div><div class="bar"><i style="width:40%"></i></div><div class="sub">proposta medida (62) · SPEC v1.1 · aquecimento 74 (18 emendas: a espera saiu até ter escritor; a IA passa a pausar quando alguém assume; o desfecho mora no episódio) · gate zero vermelho (29) · 2 builders em paralelo</div></div>
   </div>
 
   <h2>1 · O que a medição achou (05/09, banco + código)</h2>
@@ -762,8 +762,17 @@ ul.tight li{margin:5px 0}
     <li><b>4 views de espera + gate de espera</b> — sobre tabela com 0 linhas. <b>Tabela de casos nova</b> — o episódio já existe.</li>
   </ul>
 
-  <h2>3 · Sua caixa</h2>
-  <div class="callout"><b>Nada bloqueante.</b> As duas decisões que a proposta mandava para você (a espera: escritor ou sai; o episódio como identidade do caso) foram pontuadas e decididas na SPEC (§4 U3/U4). Depois: ligar o espelho do WhatsApp nas corretoras (com ele o corredor sabe a conversa sem junção por telefone).</div>
+  <h2>3 · O que você pediu em 05/09 — e o que virou regra</h2>
+  <ul class="tight">
+    <li><b>Linguagem humana em tudo</b> (chat, Fila, Casos, Quadro, handoff): nunca <code>production.new_vs_renewal@1</code>, variáveis ou nomes de campo. Virou a regra R11 e a unidade U7 desta SPEC: as ferramentas passam a devolver o NOME humano da métrica ao modelo (o ponteiro fica no relatório), há guarda com regex sobre o texto que as tools devolvem e sobre a tela, e o canário faz uma pergunta de métrica ao vivo. Teste: "o Claude escreveria isso?".</li>
+    <li><b>Kanban e Caso no celular primeiro</b>, modelados no Kanban do Hermes Agent, Trello e Linear (regra R12; o ResultVision só como arqueologia — o research pack já a fez). Sem arrastar cards nesta leva (drag = comando, e não há comando por coluna ainda).</li>
+    <li><b>Segurados</b> vira busca-atalho para os casos da pessoa, dentro de Casos — não é CRM (80 × página própria 35).</li>
+    <li><b>Pós-acionamento</b> (o que o cliente pergunta depois que a Regina/Saionara explicam o acionamento → cartas de RAG, instruções do agente de Follow-up, handoff que diz "é pós-acionamento, a dúvida é X"): vira a <b>SPEC-097.1</b>, logo depois desta, no mesmo chat (85 × dentro da 097 40 — a 097 já é escrita no ciclo de vida + tela; misturar leitura de conversas reais dobra o risco). Lê só as conversas REAIS da Resulta (DDD 48), para análise; nada da Amandus/DDD 47 entra como parâmetro.</li>
+    <li><b>DDD 47 = simulação</b>: registrado; explica parte dos 584 "encerrados", não a regra — a tela continua não deduzindo desfecho de silêncio.</li>
+  </ul>
+
+  <h2>4 · Sua caixa</h2>
+  <div class="callout"><b>Nada bloqueante.</b> As duas decisões que a proposta mandava para você (a espera: escritor ou sai; o episódio como identidade do caso) foram pontuadas e decididas na SPEC (§4 U3/U4). Depois: ligar o espelho do WhatsApp nas corretoras (com ele o corredor sabe a conversa sem junção por telefone) e o grupo de suporte humano da AutoFleet.</div>
 </section>
 
 <section class="page" id="p-proto">
