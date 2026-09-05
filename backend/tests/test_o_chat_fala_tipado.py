@@ -291,8 +291,16 @@ def certo(cond, rotulo, detalhe=""):
     return bool(cond)
 
 
+# 🔴 INTEGRADO (04/09/2026, depois dos builders): o que era "devendo" passou a ser exigido.
+#    Uma assercao que falhe e VERMELHO DE VERDADE. Bloco que nao pode ser medido por falta
+#    de dependencia nesta maquina continua sendo FALHA aqui -- o gate roda onde o grafo importa.
+INTEGRADO = True
+
+
 def devendo(cond, rotulo, bloco, detalhe=""):
     global OK, FAIL
+    if INTEGRADO:
+        return certo(cond, rotulo, detalhe)
     if cond:
         OK += 1
         _p("  [ok] %s" % rotulo)

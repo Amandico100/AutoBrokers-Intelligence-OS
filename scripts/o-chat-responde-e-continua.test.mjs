@@ -364,7 +364,12 @@ function checar(problemas, nome) {
   if (problemas.length === 0) { console.log(`  OK  ${nome}`); }
   else { falhas.push(nome); console.log(`  X   ${nome}`); for (const p of problemas) console.log(`        ${p}`); }
 }
+// 🔴 INTEGRADO (04/09/2026, depois dos builders): o que era "devendo" passou a ser exigido.
+//    A partir daqui, uma asserção que falhe é VERMELHO DE VERDADE, não "esperado até o bloco X".
+//    (A forma antiga fica, para o gate zero de uma SPEC futura reaproveitar: INTEGRADO = false.)
+const INTEGRADO = true;
 function devendo(problemas, nome, bloco) {
+  if (INTEGRADO) return checar(problemas, nome);
   if (problemas.length === 0) { console.log(`  OK  ${nome}`); jaPodemVirar.push(`${nome}   [era devendo('${bloco}')]`); }
   else { esperados.push(`${nome}   (esperado ate ${bloco})`); console.log(`  VERMELHO-ESPERADO  ${nome}   (ate ${bloco})`); for (const p of problemas) console.log(`        ${p}`); }
 }
