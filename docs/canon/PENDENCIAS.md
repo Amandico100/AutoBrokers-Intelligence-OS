@@ -10322,3 +10322,18 @@ saiu por orçamento (E18). **Dono:** 🤖. 💭 1h30.
 
 ## P-097-DRAG · arrastar cards não existe e não entra até haver comando de negócio por coluna
 Proposta §16: drag = comando, nunca estado. Não há drag hoje; construir para governar é o risco. **Volta** quando uma corretora pedir. **Dono:** 🧑 decide.
+
+## P-097-REABRIR-ATENDIMENTO · encerrado é encerrado: claim/release/send devolvem 409 e não existe o gesto de REABRIR
+Red team P1-1 (05/09): assumir, devolver ou escrever numa conversa com `resolvido_em` sobrescrevia/apagava o autor e reabria o status. Os três caminhos agora devolvem 409 "o atendimento já terminou" — e nenhum caminho reabre. **Destrava:** decidir quem pode reabrir e o que acontece com o desfecho anterior (novo episódio? mesmo?). **Dono:** 🧑 decide · 🤖 implementa. **Custo de esquecer:** a atendente que precisa voltar a um caso encerrado fica sem porta.
+
+## P-097-PROTOCOLO-SEM-CASA · o protocolo do acionamento só vive no Redis do corredor vivo
+📊 05/09: `column_name ilike '%protocol%'` no schema `public` → ZERO colunas; `summary->'distilled'` de 9.196 sessões não tem a chave. A Fila mostra o protocolo só enquanto o acionamento vivo o entrega; Casos não busca por protocolo. **Destrava:** o corredor gravar o protocolo no episódio (coluna na `attendance_sessions` ou no `summary`) — candidato à 097.1/098. **Dono:** 🤖. **Custo de esquecer:** "cadê o protocolo de 60 dias atrás?" continua sem resposta.
+
+## P-097-RECONFERE-TENANT · a projeção confia nos filtros e não reconfere `company_id` nas linhas lidas
+Red team P3-5: os 11 `.eq('company_id')` existem, mas uma fonte suja (ou uma mutação que tira um `.eq`) entra inteira no payload de outra corretora — não há rede embaixo. **Destrava:** `projetarCasos` descartar (e contar) linha cuja `company_id` ≠ a da sessão. **Dono:** 🤖. **Custo:** §7 fica com uma camada só.
+
+## P-097-TELEFONE-BR-DUPLICADO · a regra do 9º dígito ainda tem duas cópias
+A 097 criou `backend/app/telefone_br.py` (`so_digitos`, `variantes_br`) e migrou o Atlas e o backfill para ele; `whatsapp/channel_security.py::_variants` e `platform_outbound.py::_phone_variants` continuam copiando a regra. **Destrava:** os dois importarem de `telefone_br`. **Dono:** 🤖. **Custo:** um par (com 9/sem 9) tratado diferente por canal.
+
+## P-097-DOIS-RELOGIOS · `ordem_em` lê `last_message_at`/`created_at` sem guarda de coerência
+Lente de verdade (P3 L2): a mutação "semana lê `last_message_at` e a Fila lê `last_event_at`" fica verde — não há asserção que prove que os dois relógios da lista e da semana são o MESMO. **Destrava:** asserção de coerência no guarda `test:casa`. **Dono:** 🤖.

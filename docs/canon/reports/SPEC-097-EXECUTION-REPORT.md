@@ -116,11 +116,43 @@ mutações do mjs (11 declaradas)          {A PREENCHER: rodadas por cópia pela
 - **Consertos:** tela/BFF (builder da tela, em curso: colunas reais; concluído ⇔ sessão; Encerrar grava no episódio corrente; cursor só da sessão; `semana` pela mesma
   regra; órfão parado pelo relógio único; tetos declaram `has_more`) · backend (builder novo: o corredor passa o episódio a `marcar_fim`; `ValueError` no motivo
   inválido; `pausar_ia` em `saudacao_do_religamento.py`; passo novo no canário).
-{A PREENCHER: red team · lente verdade · juiz}
+**Red team** (Opus, 218k, 14 min, arneses `ataque-097-{a,b,c}.mjs` sobre o produto REAL transpilado + módulos python importados): **1 P0 · 3 P1 · 11 P2 · 8 P3**.
+- 🔴 **P0-1 — a IA calava PARA SEMPRE naquele segurado.** `close` mantém o dono (R2, deliberado) e `pausar_ia` não olhava `resolvido_em`; o webhook reusa a
+  mesma linha por telefone → toda conversa assumida-e-encerrada (o caminho feliz da Fila nova) deixava o segurado sem robô. Nenhum guarda media o depois
+  do fim. **Decisão (nota 92):** a pausa é do atendimento VIVO — `pausar_ia` devolve `False` com desfecho escrito; os 3 selects que a alimentam
+  (`webhook.py:631`, `chat.py:152/606`) passaram a trazer `resolvido_em` (sem isso o conserto não chegava à produção); a saudação do religamento recusa
+  `atendimento_ja_encerrado`. Guarda `[B6d]` "a IA volta a falar depois que o atendimento termina" (3 controles), mutação U12 vermelha.
+- **P1:** claim/release/send em conversa encerrada sobrescreviam/apagavam o autor e reabriam o status → 409 (P-097-REABRIR-ATENDIMENTO) · `has_more` só olhava
+  `attendance_sessions` (o `.limit(120)` de §1.5 de volta com outro número) → do resultado unido · cursor paginava por um relógio e ordenava por outro → um campo só.
+- **P2 (11):** Ficha de encerrada há > 7 dias voltava a "em conversa" · `semana.terminaram` × itens `concluido` no mesmo payload · motivo fora do CHECK sumia da conta ·
+  `resolvido_em` no futuro aceito · cursor cru no `or()` do PostgREST (injeção de filtro dentro do tenant) · tetos de 2.000 com `indisponivel:false` · busca `_` casa tudo /
+  `%` some · `error_message` cru ao corretor (R11) · canário com DELETE sem `company_id` · FK do elo sem par `(company_id, conversation_id)` → FK composta ·
+  comparações ao modelo sem `label` (o caminho por onde `production.new_vs_renewal@1` chegou ao Founder) → `label` em toda comparação. **Todos consertados** (`8861143`, `8865192`).
+- não quebrou: teto 1.001 em lotes; migration idempotente; backfill recusa `--vivo` sem migration; tenant nas 11 leituras; `pausar_ia` nos 3 portões.
+
+**Lente de verdade/regressão** (Opus, 171k, worktree `../AutoBrokers-FIX-mut` em `8865192`): **REPROVOU com ressalva — 19/26 mutações vermelhas, 7 verdes.**
+`[10]` era inatingível (a Ficha DESCARTAVA o evento sem hora: a §1 dizia "6 de 9 eventos com `at: null`" e o conserto os fez sumir em silêncio); U3 verde
+porque a fixture não tinha o mundo defeituoso (`claimed_by` + `HUMAN_REQUESTED` na mesma linha); `[13]` guardava uma lista, não a regra (`detalhe: stage`
+cru passava); `[7]` só observava Casos; M16 (derramamento do desfecho) só medido na escrita; `MUTACOES` do mjs era prosa; o `--mutar` do python saía `rc=1`
+na árvore limpa ([C1] avaliado com U10 aplicada); `test_o_espelho_vira_conversa` VERMELHO (NameError `variantes_br`, efeito do P3-4). **Consertos** (`a455bf4`,
+`45ffde0`): evento sem hora fica na timeline com `sem_hora` e "sem hora registrada"; fixture com dono+status; `[13]` vira regra (snake_case, `@N`, estágios/motivos
+crus); `[7]` mede a Fila; `[15]` mede a leitura; `MUTACOES` com `{ancora, substituto, vermelho[]}` + runner `--mutar` por cópia (**16/16 vermelhas por nome**, árvore
+idêntica); python: mutação em subprocesso, forma na fonte limpa (**3/3**), `--mutar <ID>`; espelho chama a regra real (20 passed). 📊 86 asserções mjs (40 de controle).
+
+**Juiz fresco:** {A PREENCHER}
 ## 8. Canário vivo
 {A PREENCHER}
 ## 9. O que ficou fora · pendências · a caixa do Founder
-{A PREENCHER}
+**Fora (com gatilho):** U4 espera com escritor (P-097-ESPERA-COM-ESCRITOR → a 097.1 escreve no pós-acionamento) · U6.3 drag (P-097-DRAG) · reabrir atendimento
+(P-097-REABRIR-ATENDIMENTO, decisão) · protocolo durável (P-097-PROTOCOLO-SEM-CASA) · reconferência de tenant na projeção (P-097-RECONFERE-TENANT) · `telefone_br`
+nas 2 cópias restantes (P-097-TELEFONE-BR-DUPLICADO) · coerência dos dois relógios (P-097-DOIS-RELOGIOS) · + as 7 abertas pelo desenhista (ESPERA, TIMELINE-CURSOR,
+SESSOES-ORFAS, DOCUMENTOS-DO-ATENDIMENTO, APPROVAL-SEM-CONVERSA, POLLING-10S, DRAG). Total: **12 P-097-***.
+**A caixa do Founder (097):**
+1. Clicar **Implantar** (a `main` leva a 097 junto com a 096). Depois do deploy: abrir Atendimentos → Fila (Quadro/Lista), Casos, Ficha — no celular e no desktop — e
+   dizer o que não está em português de corretora (R11) ou o que não cabe na primeira tela (R12).
+2. **Reabrir atendimento** (P-097-REABRIR-ATENDIMENTO): quem pode, e o que acontece com o desfecho anterior.
+3. Quando o WhatsApp for religado, o fluxo inteiro vale: a IA responde de novo depois do fim (P0-1 consertado), a atendente que assume cala a IA, e "Encerrar" grava
+   o desfecho no episódio corrente — nada disso exige ação sua além do deploy.
 ## 10. Declarações
 - Nenhum motor paralelo: sem tabela de casos, sem event store, sem escritor novo de ciclo de vida além dos que existem (marcar_fim/claim) — só estendidos.
 - Nenhuma mensagem saiu; nenhum agente ligado; InfoCap só leitura; nenhum segredo/PII impresso.
