@@ -149,7 +149,7 @@ async def chat_endpoint(
         # ==============================================================================
         conv_check = (
             await db.client.table("conversations")
-            .select("id, status, unread_count, company_id") # Pega tudo que precisa
+            .select("id, status, unread_count, company_id, claimed_by") # Pega tudo que precisa
             .eq("session_id", str(chat_request.sessionId))
             .limit(1)
             .execute()
@@ -159,9 +159,11 @@ async def chat_endpoint(
         current_unread = 0
         existing_company_id = None
         conv_status = "open"
+        linha_da_conversa: dict = {}
 
         if conv_check and conv_check.data and len(conv_check.data) > 0:
             data = conv_check.data[0]
+            linha_da_conversa = data
             conversation_id = data.get("id")
             conv_status = data.get("status")
             current_unread = data.get("unread_count") or 0
@@ -170,8 +172,18 @@ async def chat_endpoint(
         # ==============================================================================
         # HUMAN HANDOFF CHECK
         # ==============================================================================
-        if conv_status == "HUMAN_REQUESTED":
-            logger.info("[CHAT] 🚫 Modo HUMANO - Agente pausado")
+        # 🔴 SPEC-097 U2.3/E6 — pausa por STATUS **ou por DONO**: a conversa que
+        # a atendente assumiu (`claimed_by`) segue `open`, e a IA respondia por
+        # cima dela. `pausar_ia` é o helper único das duas razões.
+        from app.services.o_fim_do_atendimento import HUMAN_REQUESTED, pausar_ia
+
+        if pausar_ia(linha_da_conversa):
+            # ⚠️ A RAZÃO vai no log: "pausada" por pedido do segurado e
+            # "pausada" porque alguém assumiu são operações diferentes, e sem a
+            # razão escrita não dá para saber qual delas segurou a resposta.
+            razao = (HUMAN_REQUESTED if str(conv_status or "").upper() == HUMAN_REQUESTED
+                     else "claimed_by")
+            logger.info("[CHAT] 🚫 Modo HUMANO (%s) - Agente pausado", razao)
 
             if user_message and conversation_id:
                 # Salvar mensagem do usuário
@@ -591,7 +603,7 @@ async def chat_stream(
     # valendo.
     conv_check = (
         await db.client.table("conversations")
-        .select("id, status, unread_count, company_id")
+        .select("id, status, unread_count, company_id, claimed_by")
         .eq("session_id", str(chat_request.sessionId))
         .limit(1)
         .execute()
@@ -617,8 +629,13 @@ async def chat_stream(
         conversation_id = conv_check.data[0].get("id")
         current_unread = conv_check.data[0].get("unread_count") or 0
 
-        if conv_status == "HUMAN_REQUESTED":
-            logger.info("[STREAM] 🚫 Conversa em modo HUMANO - não streamar")
+        # 🔴 SPEC-097 U2.3/E6 — o mesmo portão do `/chat`: status OU dono.
+        from app.services.o_fim_do_atendimento import HUMAN_REQUESTED, pausar_ia
+
+        if pausar_ia(conv_check.data[0]):
+            razao = (HUMAN_REQUESTED if str(conv_status or "").upper() == HUMAN_REQUESTED
+                     else "claimed_by")
+            logger.info("[STREAM] 🚫 Conversa em modo HUMANO (%s) - não streamar", razao)
 
             async def human_mode_response():
                 yield "data: [HUMAN_MODE]\n\n"

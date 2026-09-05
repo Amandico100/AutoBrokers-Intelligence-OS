@@ -120,10 +120,50 @@ def e_motivo_valido(motivo: Any) -> bool:
 # O escritor — e ele é IDEMPOTENTE por construção
 # =============================================================================
 
+async def _episodio_e_sua_conversa(db, empresa: str, episodio: str):
+    """A linha do episódio e a conversa ligada a ele — a junção R3 da SPEC-097.
+
+    🔴 **Devolve `(None, "")` quando o episódio não é DESTA corretora.** O
+    `attendance_session_id` chega da tela, e um UUID não é autorização (§7): o
+    filtro por `company_id` é o que impede marcar o desfecho de um episódio de
+    outra corretora.
+
+    ⚠️ `("", …)` no segundo item é a resposta certa para 📊 42,2% dos episódios
+    (E7): eles nunca terão conversa, e isso não é erro — é a vida.
+    """
+    try:
+        achado = await (db.client.table("attendance_sessions")
+                        .select("id, conversation_id")
+                        .eq("company_id", empresa)          # 🔴 §7
+                        .eq("id", str(episodio))
+                        .limit(1).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[FIM] episódio não lido (%s)", type(erro).__name__)
+        return None, ""
+    linhas = achado.data or []
+    if not linhas:
+        return None, ""
+    return linhas[0], str(linhas[0].get("conversation_id") or "")
+
+
 async def marcar_fim(db, *, company_id: str, motivo: str,
                      conversation_id: str = "", session_id: str = "",
+                     attendance_session_id: str = "",
                      quando_iso: str = "") -> Tuple[bool, str]:
-    """Marca a conversa como terminada. Devolve `(marcou, porque)`.
+    """Marca o atendimento como terminado. Devolve `(marcou, porque)`.
+
+    🔴 **SPEC-097 U1.2 — o desfecho mora no EPISÓDIO.** 📊 Medido em 05/09/2026:
+    `attendance_sessions` tem 12.755 linhas e 5,8 sessões por contato, enquanto
+    `conversations` tem 728 — *o caso da operação é o episódio*, e só 57,8%
+    deles casam 1:1 com uma conversa (E7). Marcar o fim **só** na conversa
+    deixaria 42,2% dos atendimentos sem desfecho para sempre.
+
+    Então: com `attendance_session_id`, grava no episódio **e espelha na
+    conversa quando houver junção** (`attendance_sessions.conversation_id`);
+    sem junção, o episódio recebe o desfecho sozinho.
+
+    ⛔ **`claimed_by` não é tocado.** Encerrar não é desatribuir: quem atendeu
+    continua sendo a dona do atendimento depois de ele terminar.
 
     ⛔ **Nunca levanta.** Uma falha aqui custa a marca de fim; deixar a exceção
     subir custaria a resposta ao segurado, que vale mais.
@@ -148,31 +188,92 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
         logger.error("[FIM] motivo %r não está na lista fechada %s — nada foi "
                      "gravado", motivo, MOTIVOS)
         return False, "motivo_invalido"
+    episodio = str(attendance_session_id or "").strip()
     if not (conversation_id or session_id):
-        return False, "sem_conversa"
+        if not episodio:
+            return False, "sem_conversa"
 
     quando = quando_iso or datetime.now(timezone.utc).isoformat()
-    try:
-        consulta = (db.client.table("conversations")
-                    .update({"resolvido_em": quando, "resolucao_motivo": motivo})
-                    .eq("company_id", empresa)          # 🔴 §7
-                    .is_("resolvido_em", "null"))       # ⛔ idempotência
-        consulta = (consulta.eq("id", str(conversation_id)) if conversation_id
-                    else consulta.eq("session_id", str(session_id)))
-        achado = await consulta.execute()
-    except Exception as erro:  # noqa: BLE001
-        # ⛔ NUNCA imprime telefone nem `session_id` (ele CONTÉM o telefone).
-        logger.warning("[FIM] não marcado (%s) motivo=%s", type(erro).__name__, motivo)
-        return False, type(erro).__name__
+    conversa = str(conversation_id or "").strip()
+    marcou_episodio = False
 
-    linhas = achado.data or []
-    if not linhas:
+    # ---- ① o EPISÓDIO, quando o chamador o conhece (SPEC-097 R3/E8) --------
+    if episodio:
+        linha, ligada = await _episodio_e_sua_conversa(db, empresa, episodio)
+        if linha is None:
+            return False, "episodio_de_outra_corretora_ou_inexistente"
+        if not conversa:
+            conversa = ligada
+        try:
+            achado = await (db.client.table("attendance_sessions")
+                            .update({"resolvido_em": quando,
+                                     "resolucao_motivo": motivo})
+                            .eq("company_id", empresa)          # 🔴 §7
+                            .eq("id", episodio)
+                            .is_("resolvido_em", "null")        # ⛔ idempotência
+                            .execute())
+            marcou_episodio = bool(achado.data)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[FIM] episódio não marcado (%s) motivo=%s",
+                           type(erro).__name__, motivo)
+            return False, type(erro).__name__
+
+    # ---- ② a CONVERSA, quando existe (o espelho, não a âncora) -------------
+    marcou_conversa = False
+    if conversa or session_id:
+        try:
+            consulta = (db.client.table("conversations")
+                        .update({"resolvido_em": quando, "resolucao_motivo": motivo})
+                        .eq("company_id", empresa)          # 🔴 §7
+                        .is_("resolvido_em", "null"))       # ⛔ idempotência
+            consulta = (consulta.eq("id", conversa) if conversa
+                        else consulta.eq("session_id", str(session_id)))
+            achado = await consulta.execute()
+            marcou_conversa = bool(achado.data)
+        except Exception as erro:  # noqa: BLE001
+            # ⛔ NUNCA imprime telefone nem `session_id` (ele CONTÉM o telefone).
+            logger.warning("[FIM] não marcado (%s) motivo=%s", type(erro).__name__, motivo)
+            if not marcou_episodio:
+                return False, type(erro).__name__
+
+    if not (marcou_episodio or marcou_conversa):
         # ⚠️ Não é erro: é *"já estava resolvida"* ou *"não é desta corretora"*.
         #    Os dois terminam igual — nada muda — e o chamador não precisa
         #    distinguir para seguir trabalhando.
         return False, "ja_resolvida_ou_de_outra_corretora"
-    logger.info("[FIM] atendimento encerrado motivo=%s", motivo)
+    logger.info("[FIM] atendimento encerrado motivo=%s episodio=%s conversa=%s",
+                motivo, bool(marcou_episodio), bool(marcou_conversa))
     return True, motivo
+
+
+# =============================================================================
+# 🔴 SPEC-097 U2.3/E6 — A IA CALA QUANDO ALGUÉM ASSUME
+# =============================================================================
+
+#: O status que o produto grava quando o segurado pede uma pessoa.
+HUMAN_REQUESTED = "HUMAN_REQUESTED"
+
+
+def pausar_ia(conversa: Any) -> bool:
+    """A IA tem de ficar calada nesta conversa? — **PURA**, e é UMA só.
+
+    🔴 **Duas razões, não uma.** 📊 Medido em 05/09/2026: `webhook.py:628` e
+    `chat.py:173,620` perguntavam **apenas** `status == 'HUMAN_REQUESTED'`. Uma
+    conversa que a atendente ASSUMIU pela tela (`claimed_by` preenchido) segue
+    com status `open` — e o robô respondia por cima dela, na frente do cliente.
+
+    ⚠️ Este helper é **um só** de propósito (§5). Três cópias da mesma pergunta
+    em dois arquivos é como uma delas fica para trás na próxima regra.
+    """
+    linha = conversa or {}
+    try:
+        status = str(linha.get("status") or "").strip()
+        dono = linha.get("claimed_by")
+    except AttributeError:                       # não é dicionário: não pausa
+        return False
+    if status.upper() == HUMAN_REQUESTED:
+        return True
+    return bool(str(dono or "").strip())
 
 
 # =============================================================================

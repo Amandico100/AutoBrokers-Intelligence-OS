@@ -546,6 +546,42 @@ def _correlate_open_session(observer_number: str, company_id: str = ""):
         return None
 
 
+def _conversa_unica_do_telefone(supabase, sessions_table: str, empresa: Any,
+                                telefone: Any) -> Optional[str]:
+    """A conversa daquela corretora com aquele telefone — **só quando é UMA**.
+
+    🔴 SPEC-097 U3.3/E12: o episódio nasce sabendo de qual conversa ele é. 📊
+    Medido em 05/09/2026, 57,8% das 12.755 sessões casam 1:1 por telefone; as
+    outras 42,2% continuam sem elo, **e é isso que tem de acontecer** — gravar
+    um elo ambíguo é pior que não gravar: a timeline do segurado passaria a
+    mostrar o atendimento de outra pessoa.
+
+    ⚠️ A normalização é a MESMA que o produto já usa para achar conversa por
+    telefone (`webhook.py::_conversa_do_telefone`): só os dígitos. Um segundo
+    jeito de normalizar seria um segundo conjunto de elos, divergente do
+    primeiro.
+
+    ⛔ Só vale para `attendance_sessions`: `observed_sessions` (o acervo do
+    Atlas com seguradoras) não tem — nem deve ter — conversa de segurado.
+    """
+    if sessions_table != "attendance_sessions":
+        return None
+    empresa_id = str(empresa or "").strip()
+    digitos = "".join(c for c in str(telefone or "") if c.isdigit())
+    if not empresa_id or not digitos:
+        return None
+    try:
+        achado = (supabase.client.table("conversations").select("id")
+                  .eq("company_id", empresa_id)          # 🔴 §7
+                  .eq("user_phone", digitos).limit(5).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ATLAS] elo conversa↔episódio não resolvido (%s)",
+                       type(erro).__name__)
+        return None
+    linhas = achado.data or []
+    return str(linhas[0]["id"]) if len(linhas) == 1 else None
+
+
 def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_events",
                       sessions_table: str = "observed_sessions") -> None:
     """Grava evento + sessão por janela de 2h. Parametrizado por tabela (SPEC-040):
@@ -603,11 +639,19 @@ def _store_event_sync(record: Dict[str, Any], events_table: str = "observed_even
                 supabase.client.table(sessions_table).update(
                     {"status": "closed"}).eq("id", last["id"]).execute()
         if session_id is None:
-            created = supabase.client.table(sessions_table).insert({
+            nova: Dict[str, Any] = {
                 "company_id": record["company_id"], "observer_number": obs,
                 "counterparty": cp, "insurer_key": record.get("insurer_key"),
                 "started_at": now_iso, "last_event_at": now_iso, "status": "open",
-            }).execute()
+            }
+            # 🔴 SPEC-097 U3.3 — o episódio nasce com o elo quando a junção por
+            #    telefone é ÚNICA; nos outros casos nasce sem, e continua sendo
+            #    um caso legítimo da operação (E7).
+            elo = _conversa_unica_do_telefone(supabase, sessions_table,
+                                              record.get("company_id"), cp)
+            if elo:
+                nova["conversation_id"] = elo
+            created = supabase.client.table(sessions_table).insert(nova).execute()
             session_id = created.data[0]["id"] if created.data else None
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[ATLAS] sessão falhou (evento segue sem sessão): {type(e).__name__}")

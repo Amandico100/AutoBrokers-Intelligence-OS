@@ -614,20 +614,33 @@ async def process_whatsapp_message_background(
         #
         # O filtro ganhou `company_id` (CLAUDE.md §7): o `session_id` já embute
         # o tenant, mas filtro de tenant no código é obrigação, não redundância.
+        #
+        # 🔴 SPEC-097 U2.3/E6 — E O DONO TAMBÉM CALA A IA.
+        #
+        # 📊 Medido em 05/09/2026: aqui se perguntava SÓ `status ==
+        # 'HUMAN_REQUESTED'`. A conversa que a atendente assumiu pela tela
+        # (`claimed_by` preenchido) continua com status `open` — e o robô
+        # respondia POR CIMA dela. `pausar_ia` é o helper único que responde as
+        # duas razões, e por isso o `select` passou a trazer `claimed_by`.
         is_human_mode = False
         try:
+            from app.services.o_fim_do_atendimento import pausar_ia
+
             check_status = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("status")
+                .select("status, claimed_by")
                 .eq("company_id", company_id)
                 .eq("session_id", session_id)
                 .limit(1)
                 .execute()
             )
             if check_status.data and len(check_status.data) > 0:
-                if check_status.data[0].get("status") == "HUMAN_REQUESTED":
+                if pausar_ia(check_status.data[0]):
                     is_human_mode = True
-                    logger.info("[WEBHOOK] 👤 Modo Humano detectado. Pulando IA.")
+                    logger.info("[WEBHOOK] 👤 Modo Humano detectado (status=%s dono=%s). "
+                                "Pulando IA.",
+                                check_status.data[0].get("status"),
+                                bool(check_status.data[0].get("claimed_by")))
         except Exception as e:
             is_human_mode = True
             logger.error(

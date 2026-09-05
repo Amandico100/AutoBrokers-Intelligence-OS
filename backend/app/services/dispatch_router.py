@@ -1248,13 +1248,25 @@ async def _marcar_fim_do_atendimento(db, company_id: str,
         motivo = motivo_do_estado_do_dispatch(fase)
         if not motivo:
             return
+        # 🔴 SPEC-097 U1.2 — o ESPELHO deixou de ser a única âncora.
+        #
+        # 📊 Medido em 05/09/2026: com `DISPATCH_MIRROR=0` esta função saía sem
+        # marcar nada, e o atendimento terminava sem que o produto soubesse. O
+        # desfecho mora no EPISÓDIO (`attendance_sessions`), então quando a
+        # sessão de acionamento conhece o episódio ele basta — a conversa é
+        # espelhada por `marcar_fim` quando a junção R3 existir.
         conversa = str(session.get("mirror_conversation_id") or "").strip()
-        if not conversa or not _UUID.match(conversa):
+        if not _UUID.match(conversa or ""):
+            conversa = ""
+        episodio = str(session.get("attendance_session_id") or "").strip()
+        if not _UUID.match(episodio or ""):
+            episodio = ""
+        if not conversa and not episodio:
             logger.info("[FIM] fase '%s' terminou o acionamento, mas esta sessão "
-                        "não tem conversa espelhada — nada a marcar", fase)
+                        "não tem conversa espelhada nem episódio — nada a marcar", fase)
             return
         await marcar_fim(db, company_id=str(company_id), motivo=motivo,
-                         conversation_id=conversa)
+                         conversation_id=conversa, attendance_session_id=episodio)
     except Exception as erro:  # noqa: BLE001
         logger.warning("[FIM] a conversa não foi marcada como encerrada (%s) — "
                        "o acionamento seguiu normalmente", type(erro).__name__)
