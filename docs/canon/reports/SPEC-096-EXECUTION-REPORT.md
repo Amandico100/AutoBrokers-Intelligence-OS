@@ -156,7 +156,30 @@ VERIFY/LIMPEZA: 0/0 — ⚠️ mas 4 respostas ficaram noutra conversa: o orques
                                    Apagadas pelo orquestrador (📊 SQL: 0 mensagens com client_request_id, 0 órfãs). Lição para o script: VERIFY e
                                    LIMPEZA por client_request_id em qualquer conversa da company, não só na conversa que ele criou.
 ```
-{A PREENCHER: rodada 2 depois dos consertos}
+**Rodada 2 (05/09 ~06:20, depois dos consertos `4162155`) — 📊 saída colada de `canario-096-vivo-2.txt`:**
+```
+conversa canário criada: 2d80073f (sessao 8e6256ef…)
+⚠️  AMBIENTE INCOMPLETO: Redis (localhost:6379) e Qdrant (localhost:6333) nao respondem nesta maquina.
+Q1 status HTTP: 200
+Q1 ORDEM: turn.accepted → heartbeat → assistant.content.delta → assistant.content.delta → assistant.content.completed → turn.completed → [DONE]
+Q1 turn.completed.persisted = True
+Q1 TTFSE=150.30s  TTFT=150.30s  T_COMPLETE=150.30s
+Q1 régua: INFORMATIVA — este ambiente nao tem Redis nem Qdrant; o tempo medido aqui nao reprova nada.
+Q2 status HTTP: 200 (mesmo client_request_id E mesmo assistantMessageId)
+Q2 turn.completed.persisted = True
+Q3 abandonado no 5º evento; esperando a task terminar…
+CONTROLE (a): companyId inexistente + agentId da Resulta → status=200 · OK — o turno rodou na corretora DO AGENTE (o corpo foi ignorado)
+CONTROLE (b): userId estranho sem chave → status=200 · OK — modo widget (nenhum envelope tipado; userId descartado)
+VERIFY — respostas do canario (por client_request_id, em qualquer conversa): 4
+VERIFY Q2 — respostas com o MESMO client_request_id: 1 (attempt=2) — UMA linha, com a resposta da 2a tentativa (A.1 + upsert)
+VERIFY Q3 — o turno abandonado: gravado, status=complete (A.4: a task nao morreu com a conexao)
+LIMPEZA — por client_request_id restantes=0 · mensagens da conversa=0 · conversas da sessao=0
+log: [STREAM] resposta gravada em 2d80073f (complete, tentativa 1) · (complete, tentativa 2) · …
+```
+O que a rodada 2 PROVA: o protocolo tipado no ar (ordem certa, heartbeat antes do 1º delta); a idempotência (2 POSTs, 1 pergunta, 1 resposta
+com `attempt=2`); a persistência que sobrevive ao disconnect (Q3); o corpo não escolhe a corretora em porta nenhuma (controles a/b); e o script
+limpa o que criou (0/0/0). O que ela NÃO prova: o tempo — 📊 150 s aqui são retentativas de Redis/Qdrant locais; a régua (TTFT ≤ 1,47 s,
+`[DONE]` bem antes de 8,7 s) é medida depois do Implantar, por curl no smith-api, como o BLOCO 0.3 fez. **Isso vai para a caixa do Founder.**
 
 ## 9. O que ficou fora e por quê · pendências
 {A PREENCHER — P-096-*}
