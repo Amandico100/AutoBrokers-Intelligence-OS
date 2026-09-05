@@ -10238,3 +10238,55 @@ autorizou e nada acontece. **Dono:** 🤖.
 ## P-094-CONTA-COMPARTILHADA · ✅ FECHADA em 04/09/2026 pela F-094-07 (opção B)
 A conexão InfoCap da Amandus foi arquivada (escritor espelhado + auditoria; VERIFY em `FOUNDER-DECISIONS.md` F-096-00). Só a Resulta
 resolve para a conta CorpAPI. Se um dia a Amandus precisar de InfoCap, é cadastro NOVO com conta própria (ação física do Founder).
+
+## P-096-WIDGET-SEM-DOMINIO · 🧑 0 de 3 agentes ativos têm `allowedDomains` — o widget é público por omissão
+📊 05/09/2026 (red team + lente do DADO): `select count(*) filter (where widget_config->'allowedDomains' <> '[]') from agents where is_active` → 0 de 3;
+`widget_security.py:18-19`: `if not allowed_domains: return True`. A 096 conteve o estrago (em modo widget a corretora é DERIVADA do agente,
+o corpo não escolhe mais), mas a porta continua aberta: qualquer site que conheça o `agentId` conversa como aquele widget e gasta o crédito da
+corretora do agente. **O que fazer:** configurar `allowedDomains` por agente com widget (ação sua, na tela do agente) e, depois, trocar o
+`return True` por recusa (fail-closed) numa SPEC LEVE com canário. **Custo de esquecer:** crédito gasto por terceiros. **Dono:** 🧑 configura · 🤖 fecha.
+
+## P-096-CHAVE-INTERNA-NO-NEXT · 🧑 sem `BACKEND_INTERNAL_API_KEY`/`ADMIN_API_KEY` no contêiner do Next, o painel cai no legado EM SILÊNCIO
+📊 o BFF manda `X-Internal-Key` e o backend decide o modo por ela; sem a chave no smith-web, todo turno vira modo widget (`{"token"}`), a tela
+descarta 100% dos eventos com `console.warn` e o corretor vê "Reconectando…" + recarga. 📊 o `.env` local do backend não tem a chave; o `.env.local`
+do Next tem `ADMIN_API_KEY`. **O que fazer:** confirmar no EasyPanel que smith-web E smith-api têm a MESMA chave; o canário E.2 prova ao vivo.
+**Custo de esquecer:** deploy verde, chat mudo. **Dono:** 🧑.
+
+## P-096-STOP-MULTIPROCESSO · o "Parar" só acha o turno no MESMO processo
+`TURNOS_ATIVOS` é memória de processo (📊 `backend/Dockerfile:27` sem `--workers`: 1 processo hoje). Com réplicas, o POST /chat/stop cai noutro
+worker → 404 e o turno segue até o fim (o parcial fica na tela; a resposta inteira é gravada). `payload.turn.stopped_by` deixa o sintoma visível.
+**Destrava:** registro em Redis (transporte, nunca verdade) quando houver 2+ réplicas. **Dono:** 🤖. 💭 2h.
+
+## P-096-REPLAY-AO-VIVO · reconectar não retoma o parcial AO VIVO — recarrega a conversa gravada
+Saiu da proposta com gatilho (SPEC §5): gravar até o fim (A.4) resolve o refresh; o replay por Redis (`after_sequence`) é para ver o texto
+escorrendo de novo depois de reconectar. **Volta quando** uma corretora reclamar de resposta longa (> 30 s) — medido. **Dono:** 🤖. 💭 4h.
+
+## P-096-MOTOR-DE-EVENTOS · o estágio sai das `tool_calls`; `on_tool_start` e `custom` não existem neste grafo
+📊 `nodes.py:1089` chama `tool._arun` direto (pula o CallbackManager); `astream_events(version="v1")` não entrega `custom`; `langgraph==1.0.3`
+pinado (o event streaming v3 exige ≥ 1.1). **Volta quando** uma tool precisar emitir progresso PRÓPRIO ("3 fontes encontradas"). **Dono:** 🤖.
+
+## P-096-ARTIFACT-SEM-CONVERSA · a peça nasce sem `conversation_id`
+O `artifact.ready` liga o turno à peça por ContextVar (`pecas_do_turno`), mas `artifacts` continua sem o elo durável; `subject_ref` é identidade.
+A 097 (casos) / 098 (de quem é) decidem a coluna. **Dono:** 🤖.
+
+## P-096-COMPANY-DATA-IGNORA-ATIVA · `/api/user/company-data` ignora `activeCompanyId`
+📊 `route.ts:40` usa `users_v2.company_id`; o chat (096) passou a usar `resolveSessionCompany` (valida a filiação; honra o seletor da 047) — a
+tela do topo e o cérebro do chat podem discordar de empresa. **Destrava:** a rota usar o mesmo helper. **Dono:** 🤖. 💭 30 min.
+
+## P-096-LEGADO-ERRO-COMO-TEXTO · o wrapper legado ainda injeta "[Erro interno…]" como conteúdo no widget
+📊 `graph.py` (wrapper `stream_agent`): em `kind=="error"` devolve o texto — é o contrato legado do widget (§5). No painel, o erro é tipado.
+**Destrava:** o widget consumir o protocolo v1 (subset). **Dono:** 🤖.
+
+## P-096-SESSION-FAIL-OPEN · `DELETE /session` (`chat.py`) continua fail-open se a checagem de dono falhar
+Não tocado pela 096 (só o `str(e)` ao cliente virou erro seguro). **Destrava:** dono derivado + mutação, junto com a 098. **Dono:** 🤖.
+
+## P-096-MEMORIA-LE-ERRO · a memória guardou "[Erro interno…]" como resposta em conversas antigas
+📊 até a 096, o texto de erro entrava no stream de conteúdo e virava memória/resumo. As linhas antigas continuam lá. **Decisão sua:** limpar
+(`update messages set …` nas mensagens `assistant` cujo content é só o texto de erro) ou deixar. **Dono:** 🧑 decide · 🤖 executa.
+
+## P-096-WORK-RUNS-CHAVE-SO-ENV · `work_runs.py:26` valida a chave só por `os.getenv`
+pydantic-settings não exporta o `.env` para o `os.environ`; onde a chave só existe no arquivo, a checagem falha. O chat (096) olha `settings` E
+`os.getenv`. **Destrava:** o mesmo helper (`_chaves_internas`) nas rotas de work/artifacts/authority. **Dono:** 🤖. 💭 30 min.
+
+## P-096-VOZ-N8N · a voz do painel ainda passa pelo n8n
+A 096 só fez a rota derivar a corretora da sessão (S.4). O runtime de voz é da SPEC-112. **Dono:** 🤖 (112).
