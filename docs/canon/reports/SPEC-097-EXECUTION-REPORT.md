@@ -60,12 +60,31 @@ nota 0–100 do orquestrador: {A PREENCHER}
 ```
 5850c43 SPEC v1.0 · ad71e57 dossiê · 806282a aquecimento/emendas (v1.1) · {A PREENCHER}
 ```
-## 4. Gate zero
-{A PREENCHER}
+## 4. Gate zero (📊 cópia limpa `../AutoBrokers-FIX-gate0` em 7f3f3eb, desenhista Opus 276k)
+```
+node scripts/a-operacao-tem-uma-casa.test.mjs      → 16 falhas ([1]×2 [2] [3] [4]×2 [5] [6] [7]×2 [8] [9] [10] [11] [12]×2)
+python tests/test_o_atendimento_sabe_como_terminou.py → 13 falhas (B1b/c/d, B2c, B3, B4, B4e/f, B5a, B6a, B6c×2, B8) · 25 ok
+os 9 itens do BLOCO 0.1 cobertos: (i)[2] (ii)[4] (iii)[5][B3][B4][B5a] (iv)[B6a][B6c] (v)[7] (vi)[7] (vii)[10] (viii)[1] (ix)[3]
+já verdes na cópia limpa (revisados): [10b] a Ficha não lê work_events · [B1a] marcar_fim grava SEM espelho (📊 E2 provada por execução) · [B1e] · [B2a/b] · [B7a/b]
+2 guardas antigos MIGRADOS para execução (verdes em HEAD): test_o_clique_da_atendente_nao_apaga_da_fila.py (chama o mjs --fila-json; a regra nova nasce em [2])
+· test_o_atendimento_termina_e_o_produto_sabe.py (52 ok; os 3 leitores de caminho fixo → _fonte_dos_contadores; sem mirror obrigatório; motivo = um dos 5 do CHECK)
+```
 ## 5. Migration
-{A PREENCHER}
-## 6. Guardas e mutações
-{A PREENCHER}
+`backend/supabase/migrations/20260905_01_spec097_episodio_tem_conversa.sql` — `attendance_sessions` ganha `conversation_id` (FK `ON DELETE SET NULL` — a conversa é o
+espelho, o episódio é o fato), `resolvido_em`, `resolucao_motivo` (o MESMO CHECK da conversa, SPEC-086) e o índice `(company_id, conversation_id)`; APPLY/VERIFY/ROLLBACK
+no arquivo; `COMMENT ON COLUMN` diz que o `status` fechado por 6 h do Atlas NÃO é desfecho (E9). Backfill `backend/scripts/backfill_097_episodio_tem_conversa.py`
+(`--dry-run` padrão; normalização = a de `webhook.py::_conversa_do_telefone`): 📊 lidos 12.755 episódios · 728 conversas · **elos 1:1 a gravar 7.367 (57,8%)** ·
+ambíguos 5 (não gravados) · órfãos 5.383. {A PREENCHER: APPLY · VERIFY · advisors antes/depois · backfill --vivo}
+## 6. Guardas e mutações (📊 05/09, depois dos builders)
+```
+npm run test:casa                        [1]–[13] · 0 falhas · VERDE (tela+BFF `daa619b`; [13] linguagem humana com PAR)
+test_o_atendimento_sabe_como_terminou    42 ok · 0 falhas · --mutar 2/2 por NOME novo (U9 portão do espelho → [B1a-d]; U10 backfill ambíguo → [B4a/b/d][C1])
+test_o_chat_fala_como_corretor (U7)      38 ok · 0 falhas — "o número sai com NOME; o ponteiro fica no relatório"
+test_quem_fala_primeiro_cala_o_outro     migrado (exige pausar_ia) · TUDO VERDE
+atendimento-estados.test.mjs             66/66 (parado no vocabulário) · test_a_chave_de_juncao 25 · test_conversa_que_acabou 4 · test_handoff_chega 7
+npx tsc --noEmit EXIT=0 · npm run test:rotas-montam VERDE
+mutações do mjs (11 declaradas)          {A PREENCHER: rodadas por cópia pela lente de verdade}
+```
 ## 7. O painel e o juiz
 {A PREENCHER}
 ## 8. Canário vivo
