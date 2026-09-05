@@ -10290,3 +10290,8 @@ pydantic-settings não exporta o `.env` para o `os.environ`; onde a chave só ex
 
 ## P-096-VOZ-N8N · a voz do painel ainda passa pelo n8n
 A 096 só fez a rota derivar a corretora da sessão (S.4). O runtime de voz é da SPEC-112. **Dono:** 🤖 (112).
+
+## P-096-GUARDA-MEMORIAS-VERMELHO · `test_memorias_nao_vaza_inteligencia.py` está vermelho e a 096 não o tocou
+📊 05/09/2026 (lente de verdade da 096): 4 problemas; o guarda mede só `app/dashboard/personalizacao/memorias/page.tsx`, arquivo INTOCADO por
+`e1494ab..HEAD` — vermelho PRÉ-EXISTENTE, não regressão. A árvore não tem baseline verde para ele. **Destrava:** rodar o guarda em `e1494ab`,
+achar o commit que o quebrou (`git bisect`) e decidir: migrar o guarda (verdade vencida) ou consertar a tela. **Dono:** 🤖. 💭 45 min.
