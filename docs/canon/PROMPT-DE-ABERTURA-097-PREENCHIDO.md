@@ -4,7 +4,7 @@ Leia, nesta ordem e só isto: `CLAUDE.md` · o protocolo inteiro (22 KB) · `doc
 Não leia PENDENCIAS/INDICE inteiros — por número, quando citados.
 
 ## Estado (o que o chat anterior deixou)
-- `main` em `{SHA_MAIN}` · última SPEC fechada: `096 · O chat responde, mostra o trabalho e continua (nota 86; juiz fresco 88)` — relatório em
+- `main` em `347bfb4` · última SPEC fechada: `096 · O chat responde, mostra o trabalho e continua (nota 86; juiz fresco 88)` — relatório em
   `docs/canon/reports/SPEC-096-EXECUTION-REPORT.md` · dossiês do Founder (dashboard):
   https://claude.ai/code/artifact/afe1510d-f31c-4d13-9441-aa920ad2b868 — republicar com `url` a cada bloco fechado (fonte em
   `docs/canon/reports/dossies/dossies-autobrokers.html`; a página nova nasce como `<section class="page" id="p-s0NN">` + link no nav + linha na
