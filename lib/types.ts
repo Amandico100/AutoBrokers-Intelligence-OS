@@ -30,6 +30,32 @@ export interface Message {
     last_name: string | null;
     avatar_url: string | null;
   } | null;
+  /**
+   * SPEC-096 — o que o TURNO sabe sobre esta mensagem, gravado junto com ela.
+   *
+   * `client_request_id` é o que faz uma retentativa continuar sendo a MESMA
+   * pergunta (R3) e o que dá ao Realtime um jeito de deduplicar sem comparar
+   * texto (E10 — duas perguntas iguais são duas perguntas).
+   *
+   * `turn.artifacts` é o que faz o cartão da peça sobreviver ao reload: sem
+   * ele, a entrega só existiria enquanto o stream estivesse aberto.
+   */
+  payload?: {
+    client_request_id?: string;
+    turn?: {
+      submitted_at?: string;
+      status?: 'interrupted' | 'failed' | 'complete';
+      code?: string;
+      stopped_by?: string;
+      artifacts?: {
+        artifact_id: string;
+        title: string;
+        kind_human: string;
+        href: string;
+      }[];
+    };
+    [chave: string]: unknown;
+  } | null;
 }
 
 export interface N8NTextRequest {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatedAIChat } from '../ui/animated-ai-chat';
 import { ImagePreview } from './ImagePreview';
 import { AudioPreview } from './AudioPreview';
@@ -29,6 +29,12 @@ interface InputAreaProps {
    * acima desta fronteira — aqui não há memória entre montagens.
    */
   initialText?: string;
+  /**
+   * SPEC-096 C.3 — o estado do turno, para o composer saber quando o botão de
+   * Enviar precisa virar "Parar". O composer é o MESMO; só ganha um modo.
+   */
+  turnStatus?: 'idle' | 'submitting' | 'streaming' | 'stopped' | 'complete' | 'failed';
+  onStop?: () => void;
 }
 
 export default function InputArea({
@@ -44,8 +50,28 @@ export default function InputArea({
   onAgentChange,
   showAgentSelector = true,
   initialText,
+  turnStatus = 'idle',
+  onStop,
 }: InputAreaProps) {
+  // ⛔ O composer trava só enquanto o turno CORRE. Depois de terminado,
+  // interrompido ou falho, o campo volta na hora — a pergunta seguinte não
+  // espera a limpeza da anterior.
+  const turnoCorrendo = turnStatus === 'submitting' || turnStatus === 'streaming';
   const [message, setMessage] = useState(initialText ?? '');
+
+  /**
+   * Esc para a resposta. O ouvinte é da JANELA, não do campo: enquanto o turno
+   * corre o campo está bloqueado, e um campo bloqueado não recebe tecla — a
+   * versão presa ao textarea seria um atalho que nunca dispara.
+   */
+  useEffect(() => {
+    if (!turnoCorrendo || !onStop) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onStop();
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [turnoCorrendo, onStop]);
 
   const {
     pastedImage,
@@ -144,6 +170,8 @@ export default function InputArea({
           isTyping={disabled || uploadingImage}
           placeholder={placeholder}
           disabled={disabled || isProcessing || uploadingImage}
+          streaming={turnoCorrendo}
+          onStop={onStop}
           showWebSearch={showWebSearch}
           allowWebSearch={allowWebSearch}
           onToggleWebSearch={onToggleWebSearch}

@@ -6,6 +6,9 @@ import { sessionOptions, SessionData } from '@/lib/iron-session';
 
 export const dynamic = 'force-dynamic';
 
+/** Quantas mensagens a conversa abre mostrando (SPEC-096 R10/D.1). */
+const PAGINA_DE_MENSAGENS = 60;
+
 /**
  * POST /api/conversations
  *
@@ -121,12 +124,21 @@ export async function GET(request: NextRequest) {
     // FETCH CONVERSATIONS
     // =============================================
     if (sessionId) {
-      // Fetch specific conversation by session_id with messages
+      // 🔴 SPEC-096 D.1 — a conversa abre com as ÚLTIMAS 60, não inteira.
+      //
+      // 📊 Medido em 04/09/2026 (`conversations/route.ts:139-146`): esta
+      // consulta trazia TODAS as mensagens da conversa, sem limite. A mediana
+      // é pequena, mas o p95 é 129 e a maior tem 1.326 — e é justamente o
+      // corretor que mais usa o produto que paga o pior tempo de abertura.
+      //
+      // A conversa é UMA (`session_id` + `user_id`): `limit(1)` diz isso à
+      // consulta em vez de deixar o banco varrer.
       const { data: conversation, error } = await supabaseAdmin
         .from('conversations')
         .select('id, agent_id, session_id, status, title, created_at, updated_at')
         .eq('session_id', sessionId)
         .eq('user_id', userId)
+        .limit(1)
         .maybeSingle();
 
       if (error) {
@@ -135,23 +147,39 @@ export async function GET(request: NextRequest) {
       }
 
       if (!conversation) {
-        return NextResponse.json({ conversation: null, messages: [] });
+        return NextResponse.json({
+          conversation: null,
+          messages: [],
+          has_more: false,
+          cursor: null,
+        });
       }
 
-      // Fetch messages for this conversation
+      // `order desc limit 61` → uma a mais que a página: é assim que se sabe
+      // se existe "carregar anteriores" sem uma segunda consulta de contagem.
       const { data: messages, error: messagesError } = await supabaseAdmin
         .from('messages')
         .select('*')
         .eq('conversation_id', conversation.id)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(PAGINA_DE_MENSAGENS + 1);
 
       if (messagesError) {
         console.error('[CONVERSATIONS API] Error fetching messages:', messagesError);
       }
 
+      const descendentes = (messages as any[]) || [];
+      const temMais = descendentes.length > PAGINA_DE_MENSAGENS;
+      const pagina = temMais ? descendentes.slice(0, PAGINA_DE_MENSAGENS) : descendentes;
+      // A tela lê do mais antigo para o mais novo.
+      const emOrdem = [...pagina].reverse();
+
       return NextResponse.json({
         conversation,
-        messages: messages || [],
+        messages: emOrdem,
+        has_more: temMais,
+        // O cursor é a mais ANTIGA já entregue: é dela que parte o `before=`.
+        cursor: emOrdem.length > 0 ? emOrdem[0].created_at : null,
       });
     }
 

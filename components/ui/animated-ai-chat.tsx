@@ -135,6 +135,12 @@ interface AnimatedAIChatProps {
   onAgentChange?: (agentId: string) => void; // Callback de mudança
   isLoadingAgents?: boolean; // Se está carregando agentes
   showAgentSelector?: boolean; // Mostra o seletor de agente (oculto na experiência tenant)
+  /**
+   * SPEC-096 C.3 — enquanto a resposta corre, o botão de Enviar VIRA "Parar".
+   * O mesmo botão, no mesmo lugar: quem quer interromper não procura onde.
+   */
+  streaming?: boolean;
+  onStop?: () => void;
 }
 
 export function AnimatedAIChat({
@@ -157,6 +163,8 @@ export function AnimatedAIChat({
   onAgentChange,
   isLoadingAgents = false,
   showAgentSelector = true,
+  streaming = false,
+  onStop,
 }: AnimatedAIChatProps) {
   const [inputFocused, setInputFocused] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -365,27 +373,45 @@ export function AnimatedAIChat({
             </div>
           )}
 
-          <motion.button
-            type="button"
-            onClick={handleSendMessage}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={isTyping || !value.trim() || disabled || isRecording}
-            className={cn(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-              'flex items-center gap-2',
-              value.trim() && !disabled && !isRecording
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'bg-accent text-muted-foreground',
-            )}
-          >
-            {isTyping ? (
-              <LoaderIcon className="w-4 h-4 animate-[spin_2s_linear_infinite]" />
-            ) : (
-              <SendIcon className="w-4 h-4" />
-            )}
-            <span className="hidden sm:inline">Enviar</span>
-          </motion.button>
+          {streaming && onStop ? (
+            <motion.button
+              type="button"
+              onClick={onStop}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              aria-label="Parar a resposta"
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-2',
+                'bg-primary text-primary-foreground shadow-sm',
+              )}
+            >
+              <span aria-hidden="true" className="block h-3 w-3 rounded-[2px] bg-current" />
+              <span className="hidden sm:inline">Parar</span>
+            </motion.button>
+          ) : (
+            <motion.button
+              type="button"
+              onClick={handleSendMessage}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={isTyping || !value.trim() || disabled || isRecording}
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-2',
+                value.trim() && !disabled && !isRecording
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'bg-accent text-muted-foreground',
+              )}
+            >
+              {isTyping ? (
+                <LoaderIcon className="w-4 h-4 animate-[spin_2s_linear_infinite]" />
+              ) : (
+                <SendIcon className="w-4 h-4" />
+              )}
+              <span className="hidden sm:inline">Enviar</span>
+            </motion.button>
+          )}
         </div>
       </motion.div>
 

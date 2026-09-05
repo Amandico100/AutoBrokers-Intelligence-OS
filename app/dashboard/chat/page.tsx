@@ -3,19 +3,66 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChatWelcome } from '@/components/chat/ChatWelcome';
 import { ChatShortcutCards } from '@/components/chat/ChatShortcutCards';
+import { LinhaDeAtividade } from '@/components/chat/LinhaDeAtividade';
+import { AvisoDoTurno } from '@/components/chat/AvisoDoTurno';
+import { VoltarAoFim } from '@/components/chat/VoltarAoFim';
 import InputArea from '@/components/InputArea';
 import { MessageBubble } from '@/components/MessageBubble';
 import { TypingIndicator } from '@/components/TypingIndicator';
+import { lerEventos, reduzirTurno } from '@/lib/chat/protocolo';
+import type { Turno } from '@/lib/chat/protocolo';
 import { sendTextToN8N, sendVoiceToN8N } from '@/lib/n8nClient';
 import { supabase } from '@/lib/supabase'; // KEPT: Only for Realtime subscriptions
 import { Message } from '@/lib/types';
 import { useUserId } from '@/hooks/useUserId';
 import { toast } from 'sonner';
 
+/** A distância do fim, em pixels, dentro da qual a tela ainda acompanha (C.2). */
+const PERTO_DO_FIM = 120;
+
+/** Quantas mensagens cada "carregar anteriores" traz (R10). */
+const PAGINA = 60;
+
+/**
+ * O turno em repouso. Escrito aqui, inteiro, em vez de importado: é o estado
+ * inicial de um `useState` e ele precisa existir na primeira linha do primeiro
+ * render, sem depender de nada.
+ */
+const TURNO_PARADO: Turno = {
+  status: 'idle',
+  clientRequestId: null,
+  assistantMessageId: null,
+  userMessageId: null,
+  stage: null,
+  transport: 'ok',
+  aviso: null,
+  artifacts: [],
+};
+
+interface EnvioDoTurno {
+  message: string;
+  imageUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
+  clientRequestId: string;
+  assistantMsgId: string;
+}
+
 export default function ChatPage() {
   const { userId, userAvatar, userName, isLoading: isLoadingUser } = useUserId();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+
+  /**
+   * SPEC-096 C.1 — o TURNO substitui o `isLoading`.
+   *
+   * 📊 §1.4: um booleano só sabia dizer "está carregando". Ele não sabia se o
+   * trabalho tinha sido recusado pela política, se tinha sido parado pelo
+   * corretor, se tinha falhado depois do primeiro pedaço de texto, nem se a
+   * resposta tinha chegado inteira — e por não saber, a tela mostrava a mesma
+   * bolinha para todos esses casos.
+   */
+  const [turno, setTurno] = useState<Turno>(TURNO_PARADO);
+
   // Sessão vem da URL (?session=) quando existe — é o que permite abrir uma
   // conversa do Histórico e sobreviver a refresh. Sem URL = conversa nova.
   const [sessionId, setSessionId] = useState(() => {
@@ -81,12 +128,31 @@ export default function ChatPage() {
   // States do Agente
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
-  const [agentsLoaded, setAgentsLoaded] = useState(false); // 🔥 NOVO: Flag para saber quando agents carregou
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
 
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [isWebSearchAllowed, setIsWebSearchAllowed] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
+
+  // Histórico paginado (D.1/D.3)
+  const [temAnteriores, setTemAnteriores] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const rolagemRef = useRef<HTMLDivElement>(null);
+  const [longeDoFim, setLongeDoFim] = useState(false);
+
+  // O que o turno em curso precisa lembrar entre um evento e outro.
+  const abortRef = useRef<AbortController | null>(null);
+  const envioRef = useRef<EnvioDoTurno | null>(null);
+  const turnoRef = useRef<Turno>(TURNO_PARADO);
+  const textoDoAssistenteRef = useRef('');
+  const pinturaAgendadaRef = useRef(false);
+
+  useEffect(() => {
+    turnoRef.current = turno;
+  }, [turno]);
 
   // 1. Busca Company e Permissões
   useEffect(() => {
@@ -136,16 +202,26 @@ export default function ChatPage() {
     fetchAgents();
   }, [companyId]);
 
-  // 🔥 CORREÇÃO PRINCIPAL: Load Conversation SÓ quando agents estiver pronto
   useEffect(() => {
     if (userId && agentsLoaded) {
       loadConversation();
     }
-  }, [userId, sessionId, agentsLoaded]); // 🔥 Depende de agentsLoaded
+  }, [userId, sessionId, agentsLoaded]);
 
-  // Auto-scroll
+  /**
+   * 🔴 SPEC-096 C.2 (E9) — o autoscroll INCONDICIONAL morreu.
+   *
+   * 📊 O efeito de `:147-149` rolava para o fim a cada mudança da lista de
+   * mensagens, sem perguntar onde o corretor estava. Quem voltava para reler uma resposta anterior era arrancado
+   * de lá no pedaço seguinte de texto — e ele brigaria de frente com o
+   * "carregar anteriores", que insere mensagens ACIMA da posição atual.
+   *
+   * Agora a tela só acompanha quem já estava acompanhando (≤120 px do fim).
+   */
   useEffect(() => {
-    scrollToBottom();
+    if (estaPertoDoFim()) {
+      scrollToBottom();
+    }
   }, [messages]);
 
   // 🔔 REALTIME: Receber mensagens instantaneamente (Human Handoff)
@@ -165,7 +241,7 @@ export default function ChatPage() {
         async (payload) => {
           const newMessage = payload.new as Message;
 
-          // 🔥 FIX: Se mensagem tem sender_user_id (human handoff), enriquecer com dados do sender
+          // 🔥 Mensagem humana (handoff): enriquece com os dados de quem enviou
           if (newMessage.sender_user_id && !newMessage.sender) {
             try {
               const res = await fetch(`/api/users/${newMessage.sender_user_id}`);
@@ -184,14 +260,15 @@ export default function ChatPage() {
             }
           }
 
-          // Evita duplicar mensagem que já existe no state (por ID ou por conteúdo para user messages)
+          // 🔴 E10 — o dedupe é pelo ID DO ENVIO, nunca pelo conteúdo.
+          // 📊 Comparar `content` fazia a SEGUNDA pergunta igual sumir da
+          // tela: quem repete "e o Pulso?" via a repetição ser engolida.
           setMessages((prev) => {
-            const exists = prev.some(
-              (m) =>
-                m.id === newMessage.id ||
-                (m.role === 'user' &&
-                  newMessage.role === 'user' &&
-                  m.content === newMessage.content),
+            const idDoEnvio = newMessage.payload?.client_request_id;
+            const exists = prev.some((m) =>
+              idDoEnvio
+                ? m.payload?.client_request_id === idDoEnvio && m.role === newMessage.role
+                : m.id === newMessage.id,
             );
             if (exists) return prev;
             return [...prev, newMessage];
@@ -209,7 +286,23 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // === 🔥 LÓGICA DE CARREGAMENTO CORRIGIDA ===
+  /** A tela só acompanha quem já estava no fim — e o fim tem 120 px de folga. */
+  const estaPertoDoFim = () => {
+    const el = rolagemRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= PERTO_DO_FIM;
+  };
+
+  const aoRolar = () => {
+    setLongeDoFim(!estaPertoDoFim());
+  };
+
+  const voltarAoFim = () => {
+    setLongeDoFim(false);
+    scrollToBottom();
+  };
+
+  // === CARREGAMENTO DA CONVERSA (D.1) ===
   const loadConversation = useCallback(async () => {
     if (!userId) return;
 
@@ -230,34 +323,74 @@ export default function ChatPage() {
         if (data.messages) {
           setMessages(data.messages);
         }
+        setTemAnteriores(Boolean(data.has_more));
+        setCursor(data.cursor || null);
       } else {
         setConversationId(null);
         setMessages([]);
+        setTemAnteriores(false);
+        setCursor(null);
       }
     } catch (error) {
       console.error('[CHAT] Erro ao carregar conversa:', error);
     }
-  }, [userId, sessionId, selectedAgentId]);
+  }, [userId, sessionId]);
 
-  const ensureConversation = async () => {
-    if (conversationId) return conversationId;
-    if (!userId || !companyId) throw new Error('Init failed');
+  /**
+   * D.3 — "Carregar anteriores" pagina por CURSOR e **preserva a posição**.
+   *
+   * Sem guardar a altura antes e recolocá-la depois, inserir 60 mensagens no
+   * topo joga o corretor para outro trecho da conversa — e ele perde o lugar
+   * que estava lendo, que é justamente o motivo de ter subido.
+   */
+  const carregarAnteriores = async () => {
+    if (!conversationId || !cursor || carregandoAnteriores) return;
+    setCarregandoAnteriores(true);
+    const el = rolagemRef.current;
+    const alturaAntes = el ? el.scrollHeight : 0;
 
-    const response = await fetch('/api/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: sessionId,
-        agent_id: selectedAgentId,
-        title: 'Nova Conversa',
-      }),
-    });
+    try {
+      const resposta = await fetch(
+        `/api/messages?conversation_id=${conversationId}&before=${encodeURIComponent(cursor)}&limit=${PAGINA}`,
+      );
+      if (!resposta.ok) return;
+      const dados = await resposta.json();
+      const anteriores: Message[] = dados.messages || [];
+      if (anteriores.length > 0) {
+        setMessages((prev) => [...anteriores, ...prev]);
+      }
+      setTemAnteriores(Boolean(dados.has_more));
+      setCursor(dados.cursor || null);
 
-    if (!response.ok) throw new Error('Falha ao criar conversa');
+      if (el && typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          el.scrollTop = el.scrollHeight - alturaAntes;
+        });
+      }
+    } catch (error) {
+      console.error('[CHAT] Erro ao carregar anteriores:', error);
+    } finally {
+      setCarregandoAnteriores(false);
+    }
+  };
 
-    const data = await response.json();
-    setConversationId(data.conversation.id);
-    return data.conversation.id;
+  /**
+   * Só o ID. Quem escreve a conversa agora é o BFF do turno, e a tela precisa
+   * do id para assinar o tempo real e para paginar o histórico.
+   */
+  const sincronizarIdDaConversa = async () => {
+    try {
+      const resposta = await fetch(`/api/conversations?session_id=${sessionId}`);
+      if (!resposta.ok) return;
+      const dados = await resposta.json();
+      if (dados.conversation?.id) {
+        setConversationId(dados.conversation.id);
+        setTemAnteriores(Boolean(dados.has_more));
+        setCursor(dados.cursor || null);
+      }
+    } catch (error) {
+      console.error('[CHAT] Erro ao sincronizar a conversa:', error);
+    }
   };
 
   const saveMessage = async (
@@ -287,29 +420,190 @@ export default function ChatPage() {
     return data.message;
   };
 
+  const ensureConversation = async () => {
+    if (conversationId) return conversationId;
+    if (!userId || !companyId) throw new Error('Init failed');
+
+    const response = await fetch('/api/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        agent_id: selectedAgentId,
+        title: 'Nova Conversa',
+      }),
+    });
+
+    if (!response.ok) throw new Error('Falha ao criar conversa');
+
+    const data = await response.json();
+    setConversationId(data.conversation.id);
+    return data.conversation.id;
+  };
+
   // === 🚀 LÓGICA DE TROCA DE AGENTE ===
   const handleAgentChange = (newAgentId: string) => {
     if (newAgentId === selectedAgentId) return;
 
     const agentName = agents.find((a) => a.id === newAgentId)?.name;
-
-    // 1. Atualiza ID
     setSelectedAgentId(newAgentId);
-
-    // 2. RESETA O CHAT (Nova Sessão)
     handleNewConversation();
-
-    // 3. Feedback visual
     toast.success(`Chat iniciado com ${agentName}`);
+  };
+
+  /**
+   * R11 — os pedaços de resposta são COALESCIDOS por quadro.
+   *
+   * 📊 §1.6: um `setMessages` por pedaço de texto significa um render por
+   * pedaço. O acumulado mora numa ref (não provoca render) e a tela é pintada
+   * no máximo uma vez por quadro.
+   */
+  const pintarResposta = (assistantMsgId: string) => {
+    pinturaAgendadaRef.current = false;
+    const conteudo = textoDoAssistenteRef.current;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === assistantMsgId ? { ...m, content: conteudo } : m)),
+    );
+  };
+
+  const agendarPintura = (assistantMsgId: string) => {
+    if (pinturaAgendadaRef.current) return;
+    pinturaAgendadaRef.current = true;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => pintarResposta(assistantMsgId));
+    } else {
+      pintarResposta(assistantMsgId);
+    }
+  };
+
+  /**
+   * O turno, do envio ao fim. É esta função que o "Tentar de novo" reexecuta —
+   * com o MESMO `client_request_id`, porque tentar de novo é a mesma pergunta
+   * pedindo outra resposta, não uma pergunta nova (R3).
+   */
+  const executarTurno = async (envio: EnvioDoTurno) => {
+    const { message, imageUrl, fileUrl, fileName, clientRequestId, assistantMsgId } = envio;
+
+    textoDoAssistenteRef.current = '';
+    let turnoAtual: Turno = {
+      ...TURNO_PARADO,
+      status: 'submitting',
+      clientRequestId,
+      assistantMessageId: assistantMsgId,
+    };
+    setTurno(turnoAtual);
+
+    const controlador = new AbortController();
+    abortRef.current = controlador;
+    let terminouLimpo = false;
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatInput: message,
+          sessionId: sessionId,
+          client_request_id: clientRequestId,
+          imageUrl: imageUrl,
+          fileUrl: fileUrl,
+          fileName: fileName,
+          options: { web_search: webSearchEnabled },
+          assistantMessageId: assistantMsgId,
+        }),
+        signal: controlador.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message || errorData.error || `Falha ao falar com o AutoBrokers (${response.status})`,
+        );
+      }
+      if (!response.body) throw new Error('O AutoBrokers não começou a responder.');
+
+      for await (const evento of lerEventos(response.body)) {
+        turnoAtual = reduzirTurno(turnoAtual, evento);
+        setTurno(turnoAtual);
+
+        if (evento.type === 'assistant.content.delta') {
+          const pedaco = evento.payload.text ?? evento.payload.delta ?? '';
+          textoDoAssistenteRef.current += typeof pedaco === 'string' ? pedaco : '';
+          agendarPintura(assistantMsgId);
+        } else if (evento.type === 'assistant.content.completed') {
+          const inteiro = evento.payload.text;
+          if (typeof inteiro === 'string' && inteiro.length > 0) {
+            textoDoAssistenteRef.current = inteiro;
+          }
+          agendarPintura(assistantMsgId);
+        } else if (evento.type === 'turn.completed') {
+          terminouLimpo = true;
+        }
+      }
+
+      // O conteúdo final e as peças produzidas ficam NA mensagem: é o que faz
+      // o cartão da entrega sobreviver a um refresh (o servidor grava o mesmo).
+      const conteudoFinal = textoDoAssistenteRef.current;
+      const pecas = turnoAtual.artifacts;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId
+            ? {
+                ...m,
+                content: conteudoFinal,
+                payload: {
+                  ...(m.payload || {}),
+                  client_request_id: clientRequestId,
+                  turn: { ...(m.payload?.turn || {}), artifacts: pecas },
+                },
+              }
+            : m,
+        ),
+      );
+
+      // A conversa passou a nascer no SERVIDOR (A.2). Quando ela nasce, esta
+      // tela ainda não sabe o id dela — e sem o id não há assinatura de tempo
+      // real (o atendimento humano não chegaria sozinho) nem "carregar
+      // anteriores". Então pergunta-se o id, e SÓ o id: reler as mensagens
+      // aqui trocaria a resposta recém-pintada por outra cópia dela.
+      if (!conversationId) {
+        await sincronizarIdDaConversa();
+      }
+
+      if (!terminouLimpo && turnoAtual.status !== 'failed') {
+        // A ligação caiu antes do fim. A geração NÃO foi cancelada — ela corre
+        // no servidor e termina de gravar. Então não se reenvia a pergunta:
+        // espera-se um instante e relê a conversa já gravada (R8).
+        setTurno((t) => ({ ...t, transport: 'reconnecting' }));
+        setTimeout(() => {
+          loadConversation();
+          setTurno((t) => ({ ...t, status: 'complete', transport: 'ok' }));
+        }, 1500);
+      }
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        // Parar foi um ato do corretor: o que já chegou fica, e isso não é erro.
+        return;
+      }
+      console.error('[CHAT] Erro no turno:', error);
+      setTurno({
+        ...turnoAtual,
+        status: 'failed',
+        stage: null,
+        aviso: {
+          kind: 'error',
+          code: 'transport',
+          message_human:
+            error instanceof Error ? error.message : 'Algo falhou no meio do caminho.',
+        },
+      });
+    } finally {
+      abortRef.current = null;
+    }
   };
 
   const handleSendMessage = async (message: string, imageUrl?: string, fileUrl?: string, fileName?: string) => {
     if (!userId) return;
-
-    if (!companyId) {
-      toast.error('Erro: Company ID não identificado. Recarregue a página.');
-      return;
-    }
 
     // SPEC-095 BLOCO E — a pergunta pré-preenchida foi CONSUMIDA: quem envia,
     // envia. Zerar aqui (e só aqui) é o que impede a remontagem do composer de
@@ -326,224 +620,101 @@ export default function ChatPage() {
       return;
     }
 
-    setIsLoading(true);
+    // 🔴 R3 — um identificador por ENVIO. É ele que faz a repetição continuar
+    // sendo a MESMA pergunta, e o que dá ao Realtime como deduplicar sem
+    // comparar texto.
+    const clientRequestId = crypto.randomUUID();
+    const assistantMsgId = crypto.randomUUID();
+    const convId = conversationId || '';
 
+    const tempUserMessage: Message = {
+      id: crypto.randomUUID(),
+      conversation_id: convId,
+      role: 'user',
+      content: message,
+      type: 'text',
+      image_url: imageUrl,
+      created_at: new Date().toISOString(),
+      payload: { client_request_id: clientRequestId },
+    };
+
+    const tempAssistantMessage: Message = {
+      id: assistantMsgId,
+      conversation_id: convId,
+      role: 'assistant',
+      content: '',
+      type: 'text',
+      created_at: new Date().toISOString(),
+      payload: { client_request_id: clientRequestId },
+    };
+
+    // ⛔ A pergunta NÃO é mais gravada aqui. 📊 §1.3: o browser gravava sem
+    // `await`, em paralelo com a resposta — e podia não gravar. Quem grava é o
+    // servidor, antes de responder (A.2).
+    setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage]);
+
+    const envio: EnvioDoTurno = {
+      message,
+      imageUrl,
+      fileUrl,
+      fileName,
+      clientRequestId,
+      assistantMsgId,
+    };
+    envioRef.current = envio;
+
+    await executarTurno(envio);
+  };
+
+  /**
+   * "Tentar de novo" — mesma pergunta, nova tentativa. O identificador do envio
+   * é REUSADO: gerar um novo transformaria o retry numa segunda pergunta, e o
+   * corretor veria a dele duplicada na conversa (R3).
+   */
+  const tentarDeNovo = useCallback(() => {
+    const envio = envioRef.current;
+    if (!envio) return;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === envio.assistantMsgId ? { ...m, content: '' } : m)),
+    );
+    executarTurno(envio);
+  }, [sessionId, webSearchEnabled]);
+
+  /**
+   * Parar. O pedido vai ao servidor (é lá que a geração corre) e a leitura
+   * local é abortada. O parcial permanece na tela e no banco (R8/R9).
+   */
+  const pararTurno = useCallback(async () => {
+    const idDoEnvio = turnoRef.current.clientRequestId;
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    setTurno((t) => ({
+      ...t,
+      status: 'stopped',
+      stage: null,
+      aviso: {
+        kind: 'notice',
+        code: 'stopped_by_user',
+        message_human: 'Resposta parada por você. O que já veio ficou salvo.',
+      },
+    }));
+    if (!idDoEnvio) return;
     try {
-      // 1. Garante a conversa e salva msg do usuário
-      const convId = await ensureConversation();
-
-      // Mensagem do usuário (Optimistic)
-      const tempUserMessage: Message = {
-        id: crypto.randomUUID(),
-        conversation_id: convId,
-        role: 'user',
-        content: message,
-        type: 'text',
-        image_url: imageUrl,
-        created_at: new Date().toISOString(),
-      };
-
-      // Mensagem do Assistente (VAZIA INICIAL) - GUARDAMOS ESSE ID
-      const assistantMsgId = crypto.randomUUID();
-      const tempAssistantMessage: Message = {
-        id: assistantMsgId,
-        conversation_id: convId,
-        role: 'assistant',
-        content: '', // Começa vazio
-        type: 'text',
-        created_at: new Date().toISOString(),
-      };
-
-      // Atualiza estado com as duas mensagens
-      setMessages((prev) => [...prev, tempUserMessage, tempAssistantMessage]);
-
-      // Salva user msg no banco (background)
-      saveMessage(convId, 'user', message, 'text', undefined, imageUrl);
-
-      // 2. Dispara Request
-      const response = await fetch('/api/chat/stream', {
+      await fetch('/api/chat/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatInput: message,
-          sessionId: sessionId,
-          imageUrl: imageUrl,
-          fileUrl: fileUrl,
-          fileName: fileName,
-          agentId: selectedAgentId || undefined,
-          companyId: companyId,
-          userId: userId,
-          options: { web_search: webSearchEnabled },
-          assistantMessageId: assistantMsgId, // Sync ID with backend to prevent duplicates
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.message ||
-          errorData.error ||
-          `Falha no backend de IA (${response.status})`,
-        );
-      }
-
-      if (!response.body) {
-        console.error('❌ [FRONT] Response sem body!');
-        throw new Error('No response body');
-      }
-
-      // 3. Leitura do Stream
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let accumulatedResponse = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        const chunk = decoder.decode(value, { stream: true });
-
-        buffer += chunk;
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || ''; // Guarda o resto incompleto
-
-        for (const part of parts) {
-          const line = part.trim();
-          if (!line.startsWith('data: ')) continue;
-
-          const dataStr = line.replace('data: ', '').trim();
-
-          if (dataStr === '[DONE]') {
-            break;
-          }
-
-          try {
-            const data = JSON.parse(dataStr);
-            if (data.error) {
-              accumulatedResponse = `Erro no agente: ${data.error}`;
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id === assistantMsgId) {
-                    return { ...msg, content: accumulatedResponse };
-                  }
-                  return msg;
-                }),
-              );
-              continue;
-            }
-            if (data.token) {
-              accumulatedResponse += data.token;
-
-              // Check if we're in the middle of streaming UCP JSON
-              // If so, don't update the UI until the JSON is complete
-              const ucpJsonStart = accumulatedResponse.match(/\{"type"\s*:\s*"ucp_/);
-              let shouldUpdateUI = true;
-
-              if (ucpJsonStart && ucpJsonStart.index !== undefined) {
-                // Count brackets from the UCP JSON start to see if it's complete
-                let brackets = 0;
-                let inString = false;
-                let escapeNext = false;
-                let jsonComplete = false;
-
-                for (let i = ucpJsonStart.index; i < accumulatedResponse.length; i++) {
-                  const char = accumulatedResponse[i];
-                  if (escapeNext) { escapeNext = false; continue; }
-                  if (char === '\\') { escapeNext = true; continue; }
-                  if (char === '"' && !escapeNext) { inString = !inString; continue; }
-                  if (!inString) {
-                    if (char === '{') brackets++;
-                    else if (char === '}') {
-                      brackets--;
-                      if (brackets === 0) { jsonComplete = true; break; }
-                    }
-                  }
-                }
-
-                // JSON is still incomplete - show only the text before it
-                if (!jsonComplete) {
-                  shouldUpdateUI = true;
-                  // Update with only the text before the JSON
-                  const visibleContent = accumulatedResponse.substring(0, ucpJsonStart.index).trim();
-                  setMessages((prev) =>
-                    prev.map((msg) => {
-                      if (msg.id === assistantMsgId) {
-                        return { ...msg, content: visibleContent };
-                      }
-                      return msg;
-                    }),
-                  );
-                  shouldUpdateUI = false;
-                }
-              }
-
-              if (shouldUpdateUI) {
-                // Normal update (no UCP JSON being streamed, or UCP JSON is complete)
-                setMessages((prev) =>
-                  prev.map((msg) => {
-                    if (msg.id === assistantMsgId) {
-                      return { ...msg, content: accumulatedResponse };
-                    }
-                    return msg;
-                  }),
-                );
-              }
-            }
-          } catch (e) {
-            console.warn('⚠️ [FRONT] Erro parse JSON:', e);
-          }
-        }
-      }
-
-      if (!accumulatedResponse.trim()) {
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.id === assistantMsgId) {
-              return {
-                ...msg,
-                content:
-                  'Nao recebi resposta do agente. Verifique se a empresa tem creditos, se existe um agente ativo e se a chave/modelo de LLM estao configurados.',
-              };
-            }
-            return msg;
-          }),
-        );
-      }
-
-      // Atualiza título da conversa no final
-      fetch(`/api/conversations/${convId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          updated_at: new Date().toISOString(),
-          title: messages.length === 0 ? message.slice(0, 50) : undefined,
-        }),
+        body: JSON.stringify({ client_request_id: idDoEnvio }),
       });
     } catch (error) {
-      console.error('❌ [FRONT] Erro Geral:', error);
-      // Remove a mensagem vazia se deu erro fatal antes de começar
-      setMessages((prev) => prev.filter((m) => m.role !== 'assistant' || m.content !== ''));
-
-      const errorMsg: Message = {
-        id: crypto.randomUUID(),
-        conversation_id: conversationId || '',
-        role: 'assistant',
-        content: `Erro: ${error instanceof Error ? error.message : 'Desconhecido'}`,
-        type: 'text',
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setIsLoading(false);
+      console.error('[CHAT] Erro ao parar:', error);
     }
-  };
+  }, []);
 
   const handleSendVoice = async (audioBase64: string, audioBlob: Blob) => {
     if (!userId) return;
-    setIsLoading(true);
+    setTurno((t) => ({ ...t, status: 'submitting' }));
 
     try {
       let audioUrl: string | null = null;
@@ -556,8 +727,6 @@ export default function ChatPage() {
 
       const convId = await ensureConversation();
 
-      // 🔥 OPTIMISTIC UPDATE: Adiciona mensagem do usuário imediatamente ao state
-      // Isso garante que a primeira mensagem apareça mesmo antes do Realtime se inscrever
       const tempUserMessage: Message = {
         id: crypto.randomUUID(),
         conversation_id: convId,
@@ -569,7 +738,7 @@ export default function ChatPage() {
       };
       setMessages((prev) => [...prev, tempUserMessage]);
 
-      // Salva mensagem do usuário no banco (Realtime vai ignorar duplicata pelo conteúdo check)
+      // A voz continua no contrato de hoje (R12): ela grava a própria pergunta.
       await saveMessage(convId, 'user', '[Mensagem de voz]', 'voice', audioUrl || undefined);
 
       const response = await sendVoiceToN8N(
@@ -580,8 +749,6 @@ export default function ChatPage() {
         userId,
       );
 
-      // 🔥 FIX: Adiciona resposta do backend ao state imediatamente
-      // Não depende mais 100% do Realtime
       if (response && response.output) {
         const assistantMessage: Message = {
           id: crypto.randomUUID(),
@@ -592,7 +759,6 @@ export default function ChatPage() {
           created_at: new Date().toISOString(),
         };
 
-        // Adiciona ao state, evitando duplicatas por conteúdo
         setMessages((prev) => {
           const exists = prev.some((m) => m.role === 'assistant' && m.content === response.output);
           if (exists) return prev;
@@ -602,25 +768,25 @@ export default function ChatPage() {
     } catch (error) {
       console.error('[AUDIO] Erro:', error);
     } finally {
-      setIsLoading(false);
+      setTurno((t) => ({ ...t, status: 'complete' }));
     }
   };
 
-  // 🔥 CORREÇÃO: Nova conversa mantém o agente selecionado, só reseta session
   const handleNewConversation = useCallback(() => {
     const newSessionId = crypto.randomUUID();
     setSessionId(newSessionId);
     setConversationId(null);
     setMessages([]);
-    // 🔥 NÃO reseta selectedAgentId aqui - mantém o agente escolhido
-  }, [selectedAgentId]);
+    setTurno(TURNO_PARADO);
+    setTemAnteriores(false);
+    setCursor(null);
+  }, []);
 
-  // 🔥 CORREÇÃO: Ao selecionar conversa do sidebar, reseta states e deixa loadConversation sincronizar
   const handleSelectConversation = useCallback((newSessionId: string) => {
     setSessionId(newSessionId);
     setConversationId(null);
     setMessages([]);
-    // 🔥 NÃO toca no selectedAgentId aqui - o loadConversation vai sincronizar
+    setTurno(TURNO_PARADO);
   }, []);
 
   // Reset determinístico de conversa via evento global (sidebar/topbar "Nova conversa")
@@ -638,11 +804,15 @@ export default function ChatPage() {
     );
   }
 
+  const turnoCorrendo = turno.status === 'submitting' || turno.status === 'streaming';
+  const podeTentarDeNovo = turno.status === 'failed' || turno.status === 'stopped';
+  const ultima = messages.length > 0 ? messages[messages.length - 1] : null;
+
   const composer = (
     <InputArea
       onSendMessage={handleSendMessage}
       onSendVoice={handleSendVoice}
-      disabled={isLoading}
+      disabled={turnoCorrendo}
       showWebSearch={isWebSearchAllowed}
       allowWebSearch={webSearchEnabled}
       onToggleWebSearch={() => setWebSearchEnabled(!webSearchEnabled)}
@@ -652,6 +822,8 @@ export default function ChatPage() {
       onAgentChange={handleAgentChange}
       showAgentSelector={false}
       initialText={textoInicial}
+      turnStatus={turno.status}
+      onStop={pararTurno}
     />
   );
 
@@ -669,23 +841,62 @@ export default function ChatPage() {
       ) : (
         /* Conversa ativa */
         <>
-          <div className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
-            <div className="mx-auto w-full max-w-3xl pb-4">
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  userAvatar={userAvatar || undefined}
-                  userName={userName || undefined}
-                  onSendMessage={(text) => handleSendMessage(text)}
-                />
-              ))}
-              {isLoading &&
-                (messages.length === 0 ||
-                  messages[messages.length - 1].role !== 'assistant' ||
-                  !messages[messages.length - 1].content) && <TypingIndicator />}
-              <div ref={messagesEndRef} className="h-4" />
+          <div className="relative flex-1 overflow-hidden">
+            <div
+              ref={rolagemRef}
+              onScroll={aoRolar}
+              className="h-full overflow-y-auto px-4 py-6 scroll-smooth"
+            >
+              <div className="mx-auto w-full max-w-3xl pb-4">
+                {temAnteriores && (
+                  <div className="mb-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={carregarAnteriores}
+                      disabled={carregandoAnteriores}
+                      className="rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 disabled:opacity-60"
+                    >
+                      {carregandoAnteriores ? 'Carregando…' : 'Carregar anteriores'}
+                    </button>
+                  </div>
+                )}
+
+                {messages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    userAvatar={userAvatar || undefined}
+                    userName={userName || undefined}
+                    onSendMessage={(text) => handleSendMessage(text)}
+                  />
+                ))}
+
+                {/* UMA linha de atividade, abaixo da última mensagem. Ela nasce
+                    do evento e some no primeiro pedaço de resposta (R6). */}
+                {turno.stage && <LinhaDeAtividade label={turno.stage.label} />}
+
+                {turnoCorrendo && !turno.stage && (!ultima || ultima.role !== 'assistant' || !ultima.content) && (
+                  <TypingIndicator />
+                )}
+
+                {turno.transport === 'reconnecting' && (
+                  <div className="px-1 py-2 text-sm text-muted-foreground">Reconectando…</div>
+                )}
+
+                {turno.aviso && (
+                  <AvisoDoTurno
+                    aviso={turno.aviso}
+                    onRetry={podeTentarDeNovo ? tentarDeNovo : undefined}
+                  />
+                )}
+
+                <div ref={messagesEndRef} className="h-4" />
+              </div>
             </div>
+
+            {/* A copy mora AQUI, na tela que a mostra: quem lê a conversa lê
+                "Voltar ao fim" e não um nome de componente. */}
+            {longeDoFim && <VoltarAoFim onClick={voltarAoFim} rotulo="Voltar ao fim" />}
           </div>
 
           <div className="shrink-0 bg-gradient-to-t from-background via-background to-transparent pt-3">

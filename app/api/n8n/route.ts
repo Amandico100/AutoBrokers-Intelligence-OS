@@ -26,14 +26,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     // console.log('[N8N API] Body recebido (chaves):', Object.keys(body));
 
-    // DEFINIÇÃO ROBUSTA DA COMPANY ID
-    // Prioridade: 1. Body (Frontend explícito) -> 2. Session (Cookie)
-    const targetCompanyId = body.companyId || session.companyId;
-
-    if (!targetCompanyId) {
-      console.error('[N8N API] CRÍTICO: Company ID não identificado (nem body, nem session)');
-      return NextResponse.json({ error: 'Identificação da empresa ausente.' }, { status: 400 });
+    // 🔴 SPEC-096 S.4/R12 — A CORRETORA VEM DA SESSÃO, E SÓ DELA.
+    //
+    // 📊 Medido em 04/09/2026 (`n8n/route.ts:31`): era
+    // `body.companyId || session.companyId` — o CORPO vencia. A voz do
+    // corretor saía pelo webhook da corretora que o browser escolhesse, e a
+    // resposta era 200. Sem sessão, o corpo até supria a empresa inteira: um
+    // POST sem cookie nenhum falava por qualquer corretora.
+    //
+    // Agora o corpo não tem voz sobre identidade, e sem sessão é 401 — nunca
+    // 400, porque o problema não é o pedido, é quem pede.
+    if (!session?.userId || !session?.companyId) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
+
+    const targetCompanyId = session.companyId;
 
     console.log('[N8N API] Usando Company ID:', targetCompanyId);
 
@@ -71,8 +78,8 @@ export async function POST(request: NextRequest) {
     // Payload final para o Backend/N8N
     const enrichedBody = {
       ...body,
-      companyId: targetCompanyId, // Garante que o backend receba
-      userId: body.userId || session.userId, // Garante user ID
+      companyId: targetCompanyId, // da SESSÃO — sobrescreve o que veio no corpo
+      userId: session.userId, // idem: o corpo não escolhe por quem se fala
     };
 
     const apiResponse = await fetch(targetUrl, {

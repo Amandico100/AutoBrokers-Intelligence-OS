@@ -1,4 +1,7 @@
+import { memo } from 'react';
 import { Message } from '@/lib/types';
+import { CardDeRelatorio } from './chat/CardDeRelatorio';
+import type { RefDeArtifact } from '@/lib/chat/protocolo';
 import VoiceMessage from './VoiceMessage';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -12,7 +15,16 @@ interface MessageBubbleProps {
   onSendMessage?: (message: string) => void;
 }
 
-export function MessageBubble({
+/**
+ * SPEC-096 · C.4 / R11 — MEMOIZADO, porque cada token é um render.
+ *
+ * 🔴 📊 §1.6: sem `React.memo`, cada delta do stream re-renderizava o Markdown
+ * de TODAS as bolhas da conversa. Numa conversa de 129 mensagens (o p95) isso
+ * é o parser de Markdown rodando 129 vezes por token — a tela engasga
+ * exatamente quando a resposta está chegando, que é o momento em que o
+ * corretor está olhando.
+ */
+function MessageBubbleBase({
   message,
   userAvatar,
   userName,
@@ -37,6 +49,13 @@ export function MessageBubble({
   const rawContent = humanMatch ? message.content.replace(/^\[👤\s+.+?\]\n?/, '') : message.content;
 
   let displayContent = rawContent;
+
+  // SPEC-096 C.3 — as peças que ESTE turno produziu viajam no `payload.turn`,
+  // então o cartão sobrevive ao reload: ele não depende de o stream ainda
+  // estar aberto.
+  const pecas: RefDeArtifact[] = Array.isArray(message.payload?.turn?.artifacts)
+    ? (message.payload!.turn!.artifacts as RefDeArtifact[])
+    : [];
 
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
@@ -113,7 +132,28 @@ export function MessageBubble({
               </div>
             </div>
           )}
+
+        {!isUser &&
+          pecas.map((peca) => <CardDeRelatorio key={peca.artifact_id} artifact={peca} />)}
       </div>
     </div>
   );
 }
+
+/**
+ * A comparação é explícita: id, conteúdo (o que muda a cada token) e as peças
+ * do turno. Sem ela o `memo` compararia `onSendMessage`, que nasce novo a cada
+ * render do pai, e não memoizaria nada — um guarda que não pode falhar
+ * (CLAUDE.md §9.3), mas em forma de otimização.
+ */
+export const MessageBubble = memo(MessageBubbleBase, (antes, depois) => {
+  return (
+    antes.message.id === depois.message.id &&
+    antes.message.content === depois.message.content &&
+    antes.message.image_url === depois.message.image_url &&
+    antes.message.audio_url === depois.message.audio_url &&
+    antes.message.payload?.turn?.artifacts === depois.message.payload?.turn?.artifacts &&
+    antes.userAvatar === depois.userAvatar &&
+    antes.userName === depois.userName
+  );
+});

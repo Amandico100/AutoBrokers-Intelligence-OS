@@ -1,52 +1,122 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { getIronSession } from 'iron-session';
 import { createClient } from '@supabase/supabase-js';
+import { sessionOptions, adminSessionOptions, SessionData, AdminSessionData } from '@/lib/iron-session';
+
+export const dynamic = 'force-dynamic';
+
+/** Quantas mensagens uma página traz (R10/D.2). */
+const PAGINA = 60;
+
+/**
+ * SPEC-096 · S.3 — QUEM É O DONO DESTA CONVERSA
+ *
+ * 🔴 📊 Medido em 04/09/2026 (`messages/route.ts:16-21`): esta rota testava a
+ * PRESENÇA do cookie — `if (!userCookie && !adminCookie) 401` — e depois lia
+ * `messages` por `conversation_id` cru. Qualquer pessoa logada, de qualquer
+ * corretora, lia a conversa de qualquer outra passando o id. É IDOR
+ * autenticado: responde 200, não trava nada, e nunca aparece num log de erro.
+ *
+ * Agora: a conversa é resolvida ANTES, com `user_id = sessão`. Conversa que não
+ * é sua responde **404**, nunca 403 — um 403 confirmaria que o id existe.
+ */
+type Identidade =
+  | { tipo: 'usuario'; userId: string }
+  | { tipo: 'admin'; adminId: string; companyId?: string | null; role?: string }
+  | { tipo: 'negado' };
+
+async function identificar(): Promise<Identidade> {
+  const cookieStore = await cookies();
+
+  const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
+  if (session?.userId) return { tipo: 'usuario', userId: session.userId };
+
+  // 🔴 A presença do cookie de admin NÃO é autenticação: o cookie é assinado,
+  // e só a sessão DECIFRADA prova quem é. Cookie presente + sessão inválida
+  // (expirada, adulterada, de outro segredo) = 401.
+  const adminSession = await getIronSession<AdminSessionData>(cookieStore, adminSessionOptions);
+  if (adminSession?.adminId) {
+    return {
+      tipo: 'admin',
+      adminId: adminSession.adminId,
+      companyId: adminSession.companyId ?? null,
+      role: adminSession.role,
+    };
+  }
+
+  return { tipo: 'negado' };
+}
+
+function clienteAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } },
+  );
+}
+
+/**
+ * Resolve a conversa CONFERINDO O DONO. Devolve `null` quando ela não existe
+ * ou não é de quem pediu — os dois casos são o mesmo 404 para o cliente.
+ */
+async function conversaDoDono(
+  supabaseAdmin: ReturnType<typeof clienteAdmin>,
+  conversationId: string,
+  quem: Identidade,
+) {
+  let consulta = supabaseAdmin
+    .from('conversations')
+    .select('id, user_id, company_id')
+    .eq('id', conversationId);
+
+  if (quem.tipo === 'usuario') {
+    consulta = consulta.eq('user_id', quem.userId);
+  } else if (quem.tipo === 'admin' && quem.role !== 'master_admin' && quem.companyId) {
+    // O admin de uma corretora não atravessa para outra (CLAUDE.md §7).
+    consulta = consulta.eq('company_id', quem.companyId);
+  }
+
+  const { data } = await consulta.maybeSingle();
+  return (data as any) || null;
+}
 
 /**
  * POST /api/messages
  *
- * Creates a new message in a conversation.
- * Requires: smith_user_session OR smith_admin_session cookie
+ * Só a PERGUNTA do próprio dono. A resposta do assistente é gravada pelo
+ * servidor no turno (SPEC-096 A.2) — o browser não fala pelo agente (R5).
  */
 export async function POST(request: NextRequest) {
   try {
-    // =============================================
-    // AUTHENTICATION CHECK (USER OR ADMIN)
-    // =============================================
-    const cookieStore = await cookies();
-    const userCookie = cookieStore.get('smith_user_session');
-    const adminCookie = cookieStore.get('smith_admin_session');
-
-    if (!userCookie && !adminCookie) {
+    const quem = await identificar();
+    if (quem.tipo === 'negado') {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // =============================================
-    // SERVICE ROLE CLIENT
-    // =============================================
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } },
-    );
-
-    // =============================================
-    // VALIDATE INPUT
-    // =============================================
     const body = await request.json();
-    const { conversation_id, role, content, type, audio_url, image_url, metadata } = body;
+    const { conversation_id, role, content, type, audio_url, image_url, metadata, payload } = body || {};
 
     if (!conversation_id) {
       return NextResponse.json({ error: 'conversation_id é obrigatório' }, { status: 400 });
     }
-
     if (!role || !content) {
       return NextResponse.json({ error: 'role e content são obrigatórios' }, { status: 400 });
     }
+    // 🔴 R5: só `user`. Quem responde é o backend, dentro do turno.
+    if (role !== 'user') {
+      return NextResponse.json(
+        { error: 'Apenas a mensagem do usuário pode ser enviada por aqui.' },
+        { status: 400 },
+      );
+    }
 
-    // =============================================
-    // CREATE MESSAGE
-    // =============================================
+    const supabaseAdmin = clienteAdmin();
+    const conversa = await conversaDoDono(supabaseAdmin, conversation_id, quem);
+    if (!conversa) {
+      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
+    }
+
     const { data, error } = await supabaseAdmin
       .from('messages')
       .insert({
@@ -56,6 +126,7 @@ export async function POST(request: NextRequest) {
         type: type || 'text',
         audio_url: audio_url || metadata?.audio_url || null,
         image_url: image_url || metadata?.image_url || null,
+        payload: payload || null,
       })
       .select()
       .single();
@@ -65,7 +136,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao criar mensagem' }, { status: 500 });
     }
 
-    // Update conversation updated_at
     await supabaseAdmin
       .from('conversations')
       .update({ updated_at: new Date().toISOString() })
@@ -79,50 +149,40 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/messages?conversation_id=xxx
+ * GET /api/messages?conversation_id=…&before=<created_at>&limit=60
  *
- * Gets all messages for a conversation.
- * Requires: smith_user_session OR smith_admin_session cookie
+ * D.2 — "carregar anteriores" pagina por CURSOR (`lt(created_at, before)`),
+ * nunca por OFFSET. 📊 §1.6: a conversa maior tem 1.326 mensagens; um OFFSET
+ * relê tudo o que já passou a cada página.
  */
 export async function GET(request: NextRequest) {
   try {
-    // =============================================
-    // AUTHENTICATION CHECK
-    // =============================================
-    const cookieStore = await cookies();
-    const userCookie = cookieStore.get('smith_user_session');
-    const adminCookie = cookieStore.get('smith_admin_session');
-
-    if (!userCookie && !adminCookie) {
+    const quem = await identificar();
+    if (quem.tipo === 'negado') {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // =============================================
-    // SERVICE ROLE CLIENT
-    // =============================================
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } },
-    );
-
-    // =============================================
-    // GET CONVERSATION ID FROM QUERY
-    // =============================================
     const { searchParams } = new URL(request.url);
     const conversationId = searchParams.get('conversation_id');
+    const before = searchParams.get('before');
+    const limiteBruto = parseInt(searchParams.get('limit') || String(PAGINA), 10);
+    const limite = Number.isFinite(limiteBruto)
+      ? Math.min(Math.max(limiteBruto, 1), PAGINA)
+      : PAGINA;
 
     if (!conversationId) {
       return NextResponse.json({ error: 'conversation_id é obrigatório' }, { status: 400 });
     }
 
-    // =============================================
-    // FETCH MESSAGES WITH SENDER INFO
-    // Usa left join para trazer dados do admin que enviou (sender_user_id)
-    // =============================================
-    // console.log('[MESSAGES API] Fetching messages for conversation:', conversationId);
+    const supabaseAdmin = clienteAdmin();
+    const conversa = await conversaDoDono(supabaseAdmin, conversationId, quem);
+    if (!conversa) {
+      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
+    }
 
-    const { data, error } = await supabaseAdmin
+    // Uma a mais que a página: é assim que se sabe se há "carregar anteriores"
+    // sem uma segunda consulta de contagem.
+    let consulta = supabaseAdmin
       .from('messages')
       .select(
         `
@@ -134,17 +194,31 @@ export async function GET(request: NextRequest) {
                 )
             `,
       )
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true });
+      .eq('conversation_id', conversationId);
 
-    console.log('[MESSAGES API] Result:', { count: data?.length, error: error?.message });
+    if (before) {
+      consulta = consulta.lt('created_at', before);
+    }
+
+    const { data, error } = await consulta
+      .order('created_at', { ascending: false })
+      .limit(limite + 1);
 
     if (error) {
       console.error('[MESSAGES API] Error fetching messages:', error);
       return NextResponse.json({ error: 'Erro ao buscar mensagens' }, { status: 500 });
     }
 
-    return NextResponse.json({ messages: data || [] });
+    const descendentes = (data as any[]) || [];
+    const temMais = descendentes.length > limite;
+    const pagina = temMais ? descendentes.slice(0, limite) : descendentes;
+    const mensagens = [...pagina].reverse();
+
+    return NextResponse.json({
+      messages: mensagens,
+      has_more: temMais,
+      cursor: mensagens.length > 0 ? mensagens[0].created_at : null,
+    });
   } catch (error: any) {
     console.error('[MESSAGES API] Error:', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
