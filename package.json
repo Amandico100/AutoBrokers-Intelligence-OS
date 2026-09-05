@@ -13,6 +13,8 @@
     "test:fabrica-de-relatorios": "python backend/tests/test_a_fabrica_de_relatorios.py",
     "test:relatorio-pelo-protocolo": "python backend/tests/test_o_relatorio_nasce_pelo_protocolo.py",
     "test:relatorios": "node scripts/relatorios-dizem-o-que-sao.test.mjs",
+    "test:chat-shell": "node scripts/o-chat-responde-e-continua.test.mjs",
+    "test:chat-tipado": "python backend/tests/test_o_chat_fala_tipado.py",
     "test:relatorio-abre-pelo-achado": "python backend/tests/test_o_relatorio_abre_pelo_achado.py",
     "test:rotas-montam": "node scripts/rotas-montam.test.mjs",
     "test:central-agentes": "node scripts/central-de-agentes-mostra-o-trabalho.test.mjs",
