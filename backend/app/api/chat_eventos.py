@@ -127,10 +127,12 @@ CODIGOS = {
     "no_agent",
     "agent_not_found",
     "human_mode",
+    "turn_in_progress",  # 2 POSTs do mesmo turno em voo (05/09, juiz)
     "unknown",
 }
 
 MENSAGENS_HUMANAS = {
+    "turn_in_progress": "Essa pergunta já está sendo respondida. Aguarde a resposta terminar.",
     "model": "Não consegui gerar a resposta agora. Tente de novo em instantes.",
     "tool": "Uma das consultas falhou no meio do caminho. Pode pedir de novo?",
     "retrieval": "Não consegui abrir os documentos da corretora agora. Tente de novo em instantes.",

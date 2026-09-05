@@ -252,8 +252,13 @@ export async function GET(request: NextRequest) {
       consulta = consulta.lt('created_at', antesDe);
     }
 
+    // 📊 05/09 (juiz fresco): sem o desempate por `id` na ORDENAÇÃO, duas mensagens
+    // no mesmo instante saíam em ordem indefinida entre páginas e uma delas sumia
+    // ("a3, a1" — a2 nunca). O cursor (created_at, id) só funciona se a página
+    // for ordenada pelas DUAS chaves.
     const { data, error } = await consulta
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(limite + 1);
 
     if (error) {

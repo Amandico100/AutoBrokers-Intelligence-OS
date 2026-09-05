@@ -162,6 +162,7 @@ export async function GET(request: NextRequest) {
         .select('*')
         .eq('conversation_id', conversation.id)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false }) // 📊 05/09: o cursor é (created_at, id); a página tem de ser ordenada pelas duas
         .limit(PAGINA_DE_MENSAGENS + 1);
 
       if (messagesError) {

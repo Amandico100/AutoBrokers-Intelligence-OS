@@ -119,8 +119,13 @@ async def chat_endpoint(
             chat_request.userId = None
             dona = await _empresa_do_widget(db, agent_id=chat_request.agentId,
                                             company_do_corpo=chat_request.companyId)
-            if dona:
-                chat_request.companyId = uuid.UUID(str(dona))
+            if not dona:
+                # 📊 05/09 (juiz): sem agente resolvível, o `companyId` do corpo
+                # sobrevivia até `pode_consumir` e `companies.select` — o par 200×404
+                # da §1.1 continuava vivo para agentId inexistente. Widget sem agente
+                # não tem corretora: 404 antes de tocar qualquer tabela da company.
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not found")
+            chat_request.companyId = uuid.UUID(str(dona))
 
         logger.info(f"[CHAT] Request: company={chat_request.companyId}, session={chat_request.sessionId}")
 
@@ -531,8 +536,11 @@ async def chat_stream(
         # crédito e antes de carregar a `companies` (ver `_empresa_do_widget`).
         dona = await _empresa_do_widget(db, agent_id=chat_request.agentId,
                                         company_do_corpo=chat_request.companyId)
-        if dona:
-            chat_request.companyId = uuid.UUID(str(dona))
+        if not dona:
+            # 📊 05/09 (juiz): mesma regra do /chat — sem agente resolvível não há
+            # corretora; o corpo não pode sobreviver até a porteira.
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent not found")
+        chat_request.companyId = uuid.UUID(str(dona))
 
     client_request_id = (chat_request.clientRequestId or "").strip()
     if modo == "painel" and not client_request_id:
@@ -557,6 +565,23 @@ async def chat_stream(
         modo, str(chat_request.companyId)[:8], str(chat_request.sessionId)[:8],
         (client_request_id or "-")[:8],
     )
+
+    # 📊 05/09 (juiz fresco, resíduo): dois POSTs do MESMO turno em voo (segunda aba,
+    # retentativa do proxy, Enter que escapou da trava da tela) viravam DUAS tasks,
+    # duas chamadas ao modelo e dois créditos — e o handle da primeira se perdia
+    # (o Stop só alcançava a segunda). Um turno em andamento não ganha segunda
+    # geração: é aviso tipado, sem gravar nada (R5). A retentativa legítima é a
+    # do turno que JÁ TERMINOU (falhou/parou) — essa continua entrando.
+    if modo == "painel" and client_request_id:
+        em_voo = TURNOS_ATIVOS.get(chave_do_turno)
+        if em_voo is not None and not em_voo.done():
+            logger.info("[STREAM] turno %s ja em andamento — sem 2a geracao",
+                        client_request_id[:8])
+            return _resposta_de_politica(
+                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="turn_in_progress",
+                texto=MENSAGENS_HUMANAS["turn_in_progress"],
+                legado={"token": MENSAGENS_HUMANAS["turn_in_progress"]},
+            )
 
     # Check HUMAN_REQUESTED status
     # 🔴 A conversa e lida pela SESSAO, mas ela TEM DONO. Sem esta

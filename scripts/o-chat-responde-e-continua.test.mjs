@@ -464,6 +464,16 @@ function hooksReactDublados() {
       chamadas.__pareceSessionId = true;
       chamadas.__valorInicial = valor;
     }
+    // 🔴 P1-3 — o `turno` (TURNO_PARADO) nasce com `aviso`+`clientRequestId`;
+    // é a forma que só ELE tem. `setTurno(turnoAtual)` no laço principal
+    // passa o objeto DIRETO (não uma função) — cada push aqui é o valor
+    // REAL e sequencial, ao contrário de `setMessages((prev) => ...)`, cujo
+    // `prev` fica sempre preso ao valor inicial neste harness (sem
+    // reconciliação de verdade).
+    if (valor && typeof valor === 'object' && !Array.isArray(valor)
+      && 'aviso' in valor && 'clientRequestId' in valor) {
+      chamadas.__pareceTurno = true;
+    }
     const setValor = (v) => chamadas.push(typeof v === 'function' ? v(valor) : v);
     return [valor, setValor];
   }
@@ -487,6 +497,10 @@ function hooksReactDublados() {
     refDoTextoAcumulado() {
       const achado = refsComInicial.find((r) => r.inicial === '');
       return achado ? achado.ref : null;
+    },
+    /** o `useState` cujo valor inicial era o TURNO_PARADO (tem aviso+clientRequestId). */
+    chamadasDoTurno() {
+      return chamadasPorIndice.find((c) => c && c.__pareceTurno) || [];
     },
   };
 }
@@ -928,7 +942,7 @@ const postOutroDono = await messagesPOST({ sessao: { userId: U_BETA, companyId: 
 devendo(analisarPOST(postAssistant, postOutroDono), 'POST recusa role=assistant (400) e conversa de outro (404)', 'S.3');
 
 // ── [7] D.1 · /api/conversations: limite 60 + cursor + has_more ───────────────
-function analisarConversas(res) {
+function analisarConversas(res, hasMoreEsperado) {
   const problemas = [];
   const corpo = res.resposta?.body || {};
   const lista = corpo.conversations || corpo.conversas || [];
@@ -937,6 +951,12 @@ function analisarConversas(res) {
   if (c.limite == null) problemas.push('a consulta de mensagens da conversa não tem LIMITE — a conversa de 1.326 mensagens carrega toda (R10)');
   else if (c.limite > 61) problemas.push(`a consulta traz limite=${c.limite} — deveria pedir 60 (61 para saber o has_more) (D.1)`);
   if (typeof corpo.has_more !== 'boolean') problemas.push('a resposta não traz `has_more` — a tela não sabe se há "carregar anteriores"');
+  // 🔴 P2-6 — has_more só era testado por PRESENÇA da chave; um `has_more:
+  // false` fixo (E03) passava. Compara o VALOR contra o que o total de
+  // mensagens exige (>60 → true; ≤60 → false).
+  else if (typeof hasMoreEsperado === 'boolean' && corpo.has_more !== hasMoreEsperado) {
+    problemas.push(`has_more veio ${corpo.has_more}, esperado ${hasMoreEsperado} para este total de mensagens — um valor FIXO (sempre false) passaria pelo teste antigo`);
+  }
   if (!corpo.cursor) problemas.push('a resposta não traz `cursor` (created_at, id da mais antiga devolvida) (D.1)');
   // 🔴 atualizado — o cursor precisa ser o PAR `<created_at>|<id>` (R10/F4):
   // só o relógio empata quando duas mensagens nascem no mesmo instante.
@@ -948,8 +968,14 @@ const convComSessao = await rodarRota('app/api/conversations/route.ts', 'GET',
   pedidoGET(`https://teste.local/api/conversations?session_id=${SS_ALFA}`),
   { sessao: { userId: U_ALFA, companyId: CO_ALFA }, linhas: fixtures(131) });
 const cMsgs = convComSessao.registroSupabase.find((q) => q.tabela === 'messages');
-console.log(`      consulta de messages da conversa: limite=${cMsgs ? cMsgs.limite : '(não consultou)'}`);
-devendo(analisarConversas(convComSessao), 'a conversa abre com 60 + has_more + cursor', 'D.1');
+console.log(`      consulta de messages da conversa: limite=${cMsgs ? cMsgs.limite : '(não consultou)'} · has_more=${convComSessao.resposta?.body?.has_more}`);
+devendo(analisarConversas(convComSessao, true), 'com 131 mensagens (>60), a conversa abre com 60 + has_more:true + cursor', 'D.1');
+// a mesma rota, com POUCAS mensagens (30 ≤ 60): has_more tem de vir FALSE.
+const convPoucasMsgs = await rodarRota('app/api/conversations/route.ts', 'GET',
+  pedidoGET(`https://teste.local/api/conversations?session_id=${SS_ALFA}`),
+  { sessao: { userId: U_ALFA, companyId: CO_ALFA }, linhas: fixtures(30) });
+console.log(`      com 30 mensagens: has_more=${convPoucasMsgs.resposta?.body?.has_more}`);
+devendo(analisarConversas(convPoucasMsgs, false), 'com 30 mensagens (≤60), has_more:false', 'D.1');
 
 // ── [8] S.4 · /api/n8n: a sessão vence ────────────────────────────────────────
 function analisarN8N(res) {
@@ -1085,6 +1111,37 @@ function rodarSequenciaNoReducer(reduzir, crid, amid, tiposEPayloads) {
   for (const [type, payload] of tiposEPayloads) t = reduzir(t, eventoDeTeste(type, payload));
   return t;
 }
+
+/**
+ * 🔴 P1-3 — [12] era vácuo: só olhava `t1.content/texto/text` no 1º NÍVEL, e o
+ * `Turno` (interface real, lib/chat/protocolo.ts:64) não tem — nem terá —
+ * nenhum desses campos ali. A mutação real (`lente-mutar.mjs` modo
+ * `policy-content`) escreve o texto do aviso em `t.assistant.content`
+ * (ANINHADO, um campo que a interface também não declara) — por isso o
+ * check antigo nunca acusava. Esta busca é recursiva e ignora só a chave
+ * `aviso` (o único lugar OK para esse texto existir — R5): qualquer outra
+ * aparição do MESMO texto, em qualquer profundidade, é o aviso vazando
+ * para memória/conteúdo do assistente.
+ */
+function acharTextoForaDoAviso(objeto, textoAlvo, caminho = 'turno') {
+  if (objeto == null) return null;
+  if (typeof objeto === 'string') return objeto === textoAlvo ? caminho : null;
+  if (Array.isArray(objeto)) {
+    for (let i = 0; i < objeto.length; i++) {
+      const achado = acharTextoForaDoAviso(objeto[i], textoAlvo, `${caminho}[${i}]`);
+      if (achado) return achado;
+    }
+    return null;
+  }
+  if (typeof objeto === 'object') {
+    for (const chave of Object.keys(objeto)) {
+      if (chave === 'aviso') continue; // o aviso É o lugar certo para o texto (R5)
+      const achado = acharTextoForaDoAviso(objeto[chave], textoAlvo, `${caminho}.${chave}`);
+      if (achado) return achado;
+    }
+  }
+  return null;
+}
 async function analisarTurno() {
   const problemas = [];
   const mod = carregarProtocolo();
@@ -1101,10 +1158,12 @@ async function analisarTurno() {
   ]);
   if (t1.status !== 'failed') problemas.push(`turn.accepted→policy.blocked(billing)→turn.completed deveria terminar status 'failed', terminou '${t1.status}'`);
   if (!t1.aviso || t1.aviso.kind !== 'policy') problemas.push(`o aviso do turno não é kind:'policy' (veio ${JSON.stringify(t1.aviso)})`);
-  for (const chave of ['content', 'texto', 'text']) {
-    if (Object.prototype.hasOwnProperty.call(t1, chave) && t1[chave]) {
-      problemas.push(`o Turno tem um campo '${chave}' preenchido — o aviso de policy virou conteúdo do assistente (R5)`);
-    }
+  // 🔴 P1-3 — busca RECURSIVA (não só content/texto/text no 1º nível): a
+  // mutação real esconde o texto em `assistant.content`, um campo que a
+  // interface Turno também não declara.
+  const vazamentoNoReducer = acharTextoForaDoAviso(t1, 'Sem crédito para continuar.');
+  if (vazamentoNoReducer) {
+    problemas.push(`o texto do aviso ("Sem crédito para continuar.") apareceu em '${vazamentoNoReducer}' — fora de "aviso", virou conteúdo/memória do assistente (R5)`);
   }
 
   // sequência B: turn.accepted → 3 deltas → assistant.content.completed → turn.completed
@@ -1128,6 +1187,42 @@ async function analisarTurno() {
 }
 console.log('\n[12] C.1 — o Turno percorre submitting→streaming→complete; policy.blocked não vira content');
 devendo(await analisarTurno(), 'o Turno tem os estados e policy.blocked não cria mensagem do assistente', 'C.1');
+
+// 🔴 P1-3 — o reducer sozinho não prova a TELA: executa app/dashboard/chat/
+// page.tsx de verdade (o mesmo harness de [17]/[21]) com uma resposta SSE
+// turn.accepted → policy.blocked{billing} → turn.completed, e afirma que (a)
+// o texto acumulado do assistente (a mesma ref que vira `messages[].content`
+// — page.tsx:576) fica vazio, e (b) o `turno` final da PÁGINA tem o aviso em
+// `aviso`, kind:'policy'.
+const EVENTOS_POLICY_12 = [
+  { protocol: 'autobrokers.interaction.v1', seq: 1, type: 'turn.accepted', turn: {}, payload: { user_message_id: 'um-p12', assistant_message_id: 'am-p12' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 2, type: 'policy.blocked', turn: {}, payload: { code: 'billing', message_human: 'Sem crédito para continuar.' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 3, type: 'turn.completed', turn: {}, payload: { status: 'failed' } },
+];
+{
+  const montagem12 = montarChatPage({
+    respostasFetch: (url) => (/\/api\/chat\/stream$/.test(url) ? respostaSSE(EVENTOS_POLICY_12) : null),
+  });
+  const problemas = [];
+  if (!montagem12.handleSendMessage) {
+    problemas.push('não achei o composer (InputArea) na árvore de page.tsx');
+  } else {
+    await montagem12.handleSendMessage('pergunta que vai ser bloqueada pela política');
+    montagem12.restaurarFetch();
+    const refTexto12 = montagem12.hooks.refDoTextoAcumulado();
+    if (!refTexto12) {
+      problemas.push('não achei textoDoAssistenteRef (a ref inicializada com "")');
+    } else if (refTexto12.current) {
+      problemas.push(`depois de policy.blocked, o texto acumulado do assistente (o que vira messages[].content) NÃO ficou vazio: "${refTexto12.current}" — o aviso vazou para o conteúdo (R5)`);
+    }
+    const chamadasTurno12 = montagem12.hooks.chamadasDoTurno();
+    const turnoFinal12 = chamadasTurno12[chamadasTurno12.length - 1];
+    if (!turnoFinal12 || !turnoFinal12.aviso || turnoFinal12.aviso.kind !== 'policy') {
+      problemas.push(`o turno final da PÁGINA não tem aviso kind:'policy' (veio ${JSON.stringify(turnoFinal12 && turnoFinal12.aviso)})`);
+    }
+  }
+  checar(problemas, 'pela PÁGINA: policy.blocked não produz content no assistente; o aviso fica em turno.aviso');
+}
 
 // ── [13]-[16] os componentes do shell ─────────────────────────────────────────
 function analisarComponente(rel, nome) {
@@ -1162,6 +1257,18 @@ function analisarSemRelogioNoEstagio() {
         if (/stage|estagio|estágio|atividade|LinhaDeAtividade/i.test(m[0])) {
           problemas.push(`${d}/${f}: um set${m[1]} perto de estágio — o estágio nasce de evento, nunca de relógio (R6)`);
         }
+      }
+    }
+  }
+  // 🔴 P2-7 — o estágio TAMBÉM pode nascer direto em `page.tsx` (E05: um
+  // setTimeout criando estágio ali passava batido, porque a varredura só
+  // olhava `components/chat` e `lib/chat` — nunca a página que os usa).
+  const arquivoDaPagina = 'app/dashboard/chat/page.tsx';
+  if (existe(arquivoDaPagina)) {
+    const s = fonte(arquivoDaPagina);
+    for (const m of s.matchAll(/set(Timeout|Interval)\s*\([\s\S]{0,120}/g)) {
+      if (/stage|estagio|estágio|atividade|LinhaDeAtividade|setEstagio/i.test(m[0])) {
+        problemas.push(`${arquivoDaPagina}: um set${m[1]} perto de estágio — o estágio nasce de evento, nunca de relógio (R6)`);
       }
     }
   }
@@ -1478,6 +1585,25 @@ const msgComDesempate = await rodarRota('app/api/messages/route.ts', 'GET',
   { sessao: { userId: U_ALFA, companyId: CO_ALFA }, cookiesLoja: lojaComCookies(['smith_user_session']) });
 checar(analisarDesempate(msgComDesempate), 'before=<ts>|<uuid> → segunda consulta a messages com eq(created_at)+lt(id)');
 
+// ── [25] R12 · seq REPETIDO é DESCARTADO (não vira gap, não vira duplicata) ───
+console.log('\n[25] R12 — lerEventos: seq repetido (1,1,1) é DESCARTADO → só 1 evento');
+async function analisarSeqRepetido() {
+  const problemas = [];
+  const mod = carregarProtocolo();
+  if (!mod) { problemas.push('`lib/chat/protocolo.ts` ainda não existe (C.1)'); return problemas; }
+  if (mod.__erro) { problemas.push(`lib/chat/protocolo.ts não carrega: ${mod.__erro}`); return problemas; }
+  if (typeof mod.lerEventos !== 'function') { problemas.push('protocolo.ts não exporta `lerEventos`'); return problemas; }
+  try {
+    const eventos = [1, 1, 1].map((s) => ({ protocol: 'autobrokers.interaction.v1', seq: s, type: 'assistant.content.delta', turn: {}, payload: { text: String(s) } }));
+    const lidos = await coletar(mod.lerEventos(streamDe(eventos)));
+    if (lidos.length !== 1) {
+      problemas.push(`seq 1,1,1 produziu ${lidos.length} evento(s) — esperado 1 (a repetição é DESCARTADA em silêncio, não vira gap nem duplicata)`);
+    }
+  } catch (e) { problemas.push(`lerEventos estourou: ${e.message}`); }
+  return problemas;
+}
+devendo(await analisarSeqRepetido(), 'seq repetido (1,1,1) produz só 1 evento (não gap, não duplicata)', 'C.1');
+
 // ═════════════════════════════════════════════════════════════════════════════
 // LINHAS DE CONTROLE — cada guarda acima consegue ficar VERMELHO (PAR sintético)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1555,11 +1681,19 @@ controle(analisarRetry("<AvisoDoTurno onRetry={() => { const id = crypto.randomU
 function detectorDeAusencia(rel) { return existe(rel) ? [] : [`${rel} ausente`]; }
 controle(detectorDeAusencia('lib/chat/protocolo.ts.INEXISTENTE'), '[11]/[12] o detector acusa um módulo ausente');
 
-// [12] PAR: um reducer-CONTROLE que grava o aviso de policy como content do assistente.
+// [12] PAR: um reducer-CONTROLE que grava o aviso de policy como content do
+// assistente -- na MESMA forma ANINHADA que a mutação real usa
+// (`lente-mutar.mjs` modo `policy-content`: `assistant: {...base.assistant,
+// content: ...}`), para provar que o detector RECURSIVO (não só o 1º nível)
+// de fato acusa.
 controle((() => {
   const reducerRuim = (turno, ev) => {
     if (ev.type === 'policy.blocked') {
-      return { ...turno, status: 'failed', content: ev.payload.message_human, aviso: { kind: 'policy', code: ev.payload.code, message_human: ev.payload.message_human } };
+      return {
+        ...turno, status: 'failed',
+        assistant: { content: ev.payload.message_human },
+        aviso: { kind: 'policy', code: ev.payload.code, message_human: ev.payload.message_human },
+      };
     }
     if (ev.type === 'turn.completed') return { ...turno, status: turno.status === 'failed' ? turno.status : 'complete' };
     return turno;
@@ -1569,8 +1703,8 @@ controle((() => {
     ['policy.blocked', { code: 'billing', message_human: 'sem credito' }],
     ['turn.completed', {}],
   ]);
-  return Object.prototype.hasOwnProperty.call(t1, 'content') && t1.content ? ['o reducer-controle grava o aviso como content do assistente'] : [];
-})(), '[12] reducer-controle que grava o aviso como content (deve ser reprovado)');
+  return acharTextoForaDoAviso(t1, 'sem credito') ? ['o reducer-controle grava o aviso como content do assistente (aninhado, fora de "aviso")'] : [];
+})(), '[12] reducer-controle que grava o aviso como content, aninhado (deve ser reprovado)');
 
 // [14] PAR: um trecho sintético com setTimeout ligado a estágio é reconhecido.
 function detectaRelogioNoEstagio(s) {
@@ -1655,6 +1789,23 @@ controle(analisarStopDeOutroDono({ resposta: { status: 200 }, chamadasFetch: [{ 
 
 // [24] PAR: rota-controle sem o desempate — só 1 consulta a messages.
 controle(analisarDesempate({ registroSupabase: [{ tabela: 'messages', op: 'select', predicados: [{ op: 'lt', coluna: 'created_at', valor: TS_DESEMPATE }] }] }), '[24] rota-controle sem o desempate (só 1 consulta a messages)');
+
+// [25] PAR: parser-controle que ignora seq (repetição vira "evento novo" — 3 em vez de 1).
+controle((() => {
+  const linhas = [1, 1, 1].map((s) => `data: ${JSON.stringify({ protocol: 'autobrokers.interaction.v1', seq: s, type: 'assistant.content.delta', turn: {}, payload: { text: String(s) } })}\n\n`).join('') + 'data: [DONE]\n\n';
+  // um "parser" ingênuo: um evento por linha, sem checar seq nenhum.
+  const eventos = linhas.split('\n\n').filter((l) => l.startsWith('data: ') && !l.includes('[DONE]'));
+  return eventos.length !== 1 ? [`parser-controle sem checar seq devolveu ${eventos.length} eventos para 1,1,1 (deveria colapsar em 1)`] : [];
+})(), '[25] parser-controle que ignora seq (repetição vira eventos novos)');
+
+// [7] PAR: has_more FIXO em false (E03) — o detector por VALOR acusa mesmo com >60 mensagens.
+controle(analisarConversas({
+  resposta: { body: { conversations: [], has_more: false, cursor: `${TS_DESEMPATE}|${UUID_DESEMPATE}` } },
+  registroSupabase: [
+    { tabela: 'conversations', op: 'select', predicados: [{ op: 'eq', coluna: 'session_id', valor: SS_ALFA }] },
+    { tabela: 'messages', op: 'select', predicados: [], limite: 60 },
+  ],
+}, true), '[7] has_more:false fixo quando deveria ser true (>60 mensagens)');
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${'='.repeat(78)}`);
