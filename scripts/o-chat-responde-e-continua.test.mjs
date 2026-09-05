@@ -67,6 +67,14 @@
 //  [14]  R6    nenhum setTimeout/setInterval cria estágio
 //  [15]  R11   MessageBubble memoizado
 //  [16]  C.2   autoscroll só perto do fim + "Voltar ao fim"
+//  [17]  R3    dois envios simultâneos (sem await entre eles) → 1 fetch, 1 client_request_id
+//  [18]  R4a   notice→turn.completed{status:'failed'}: aviso kind:'notice'; sem "Tentar de novo"
+//  [19]  R4b   conversa com agent_id nulo: resolve (SELECT agents), grava (UPDATE), e usa no fetch
+//  [20]  R5    sessionId de outro dono (23505) → 404 sem fetch; page.tsx troca de conversa e avisa
+//  [21]  R6    assistant.content.completed SUBSTITUI o acumulado (não concatena)
+//  [22]  R14   /api/messages before malformado → 400 sem consultar messages
+//  [23]  R15   /api/chat/stop de outro dono → 404 sem fetch; do dono → fetch com X-Internal-Key
+//  [24]  [5b]  cursor com desempate: segunda consulta a messages com eq(created_at)+lt(id)
 //  [CTL] cada guarda acima consegue ficar VERMELHO (PAR sintético, em memória)
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,6 +135,30 @@ export const MUTACOES = [
   { arquivo: 'app/dashboard/chat/page.tsx',
     o_que: 'o limiar do autoscroll 120→∞ (sempre rola) — E14, a 14ª mutação',
     reprova: '[16] (a tela puxa o usuário que rolou para cima)' },
+  { arquivo: 'app/dashboard/chat/page.tsx',
+    o_que: 'remover `if (enviandoRef.current) return;` (a trava por ref) do início de handleSendMessage',
+    reprova: '[17] (dois Enters viram 2 fetches e 2 client_request_id)' },
+  { arquivo: 'lib/chat/protocolo.ts',
+    o_que: "o case 'turn.completed' ignorar `payload.status` e sempre fechar em 'complete'",
+    reprova: '[18] (um notice que falhou vira "complete" — some sem explicação)' },
+  { arquivo: 'app/api/chat/stream/route.ts',
+    o_que: 'remover o bloco que resolve `conversa.agent_id` nulo (o `if (!conversa!.agent_id)`)',
+    reprova: '[19] (a conversa sem agente fica muda PARA SEMPRE)' },
+  { arquivo: 'app/api/chat/stream/route.ts',
+    o_que: 'trocar o 404 do 23505 na criação de `conversations` por 500',
+    reprova: '[20] (abrir a sessão de outro dono devolve erro genérico, não "comece outra")' },
+  { arquivo: 'app/dashboard/chat/page.tsx',
+    o_que: 'ignorar `assistant.content.completed` (não sobrescrever `textoDoAssistenteRef.current`)',
+    reprova: '[21] (a resposta final fica "abc" em vez de "texto final" — a lacuna nunca fecha)' },
+  { arquivo: 'app/api/messages/route.ts',
+    o_que: 'remover `cursorValido` (aceitar qualquer `before` cru no `.lt(created_at, …)`)',
+    reprova: '[22] (um `before` malformado vira 500 — CLAUDE.md §9.2 R14)' },
+  { arquivo: 'app/api/chat/stop/route.ts',
+    o_que: 'remover a checagem `ehDono` (parar por client_request_id sem conferir a conversa)',
+    reprova: '[23] (qualquer corretor para o turno de qualquer outro)' },
+  { arquivo: 'app/api/messages/route.ts',
+    o_que: 'remover o bloco `if (antesDe && antesDoId)` (a segunda consulta do desempate)',
+    reprova: '[24] (duas mensagens no mesmo instante somem ou repetem, ao acaso)' },
 ];
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,6 +194,9 @@ const AG_BETA = 'ag-beta-0000-4000-8000-000000000002';
 const CV_ALFA = 'cv-alfa-0000-4000-8000-000000000001';
 const CV_BETA = 'cv-beta-0000-4000-8000-000000000002';
 const SS_ALFA = 'ss-alfa';
+// [7]/[24] — um cursor <created_at>|<id> bem formado, usado nos dois guardas.
+const TS_DESEMPATE = '2026-09-02T00:00:00.000Z';
+const UUID_DESEMPATE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 function historicoDeAlfa(n) {
   const linhas = [];
@@ -213,15 +248,22 @@ function fixtures(qtdMensagens = 130) {
 function existe(rel) { return fs.existsSync(path.join(RAIZ, rel)); }
 function fonte(rel) { return fs.readFileSync(path.join(RAIZ, rel), 'utf8'); }
 
-function carregarTS(caminhoRelativo, resolverImport) {
-  const js = ts.transpileModule(fonte(caminhoRelativo), {
+function carregarTS(caminhoRelativo, resolverImport, opcoes = {}) {
+  const saida = ts.transpileModule(fonte(caminhoRelativo), {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2020,
       esModuleInterop: true,
+      jsx: opcoes.jsx ?? ts.JsxEmit.None,
     },
     fileName: caminhoRelativo,
   }).outputText;
+  // 🔴 [17]/[20]/[21] — com JSX (page.tsx, componentes), o modo clássico emite
+  // `React.createElement(...)`, mas o arquivo real só importa os HOOKS
+  // nomeados de 'react' (nunca o `React` default). Uma linha injetada aponta
+  // `React` para o MESMO dublê que resolve os hooks — sem isso o transpile
+  // fica sintaticamente correto e estoura em runtime por `React is not defined`.
+  const js = opcoes.jsx ? `const React = require('react');\n${saida}` : saida;
   const mod = { exports: {} };
   const req = (id) => {
     const r = resolverImport(id);
@@ -350,6 +392,214 @@ function dubleSupabaseComConflito23505(linhasPorTabela, registro) {
       }
       return cad;
     },
+  };
+}
+
+/**
+ * Dublê de Supabase com CONFLITO 23505 no PRIMEIRO insert em `conversations` —
+ * usado só pelo [20] (R5). Simula o `session_id` já existir em OUTRA
+ * corretora: a busca por (session_id, user_id) não acha nada (não é do
+ * dono), a rota tenta CRIAR uma conversa com esse mesmo session_id, e o
+ * índice único global recusa.
+ */
+function dubleSupabaseComConflito23505EmConversas(linhasPorTabela, registro) {
+  const base = dubleSupabase(linhasPorTabela, registro);
+  let jaConflitou = false;
+  return {
+    from(nome) {
+      const antes = registro.length;
+      const cad = base.from(nome);
+      const consultaAtual = registro[antes];
+      if (nome === 'conversations') {
+        const singleOriginal = cad.single;
+        cad.single = (...a) => {
+          if (!jaConflitou && consultaAtual.payload != null) {
+            jaConflitou = true;
+            return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
+          }
+          return singleOriginal(...a);
+        };
+      }
+      return cad;
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// O harness de [17]/[20]/[21] — EXECUTA `app/dashboard/chat/page.tsx` de
+// verdade, com `react` dublado (sem DOM, sem re-render — uma ÚNICA passada,
+// que é a única que estes três guardas precisam).
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 🔴 `useState` aqui não simula um laço de eventos do React — não é disso que
+// [17] precisa. A trava do R3 é uma REF (`enviandoRef`), e uma ref muda no
+// MESMO instante em que é lida: como a árvore inteira nasce de UMA chamada a
+// `ChatPage()`, as duas chamadas a `handleSendMessage` fecham sobre o MESMO
+// objeto de ref, exatamente como no componente real.
+//
+// ⛔ Três `useState` (agents/selectedAgentId/agentsLoaded — page.tsx:129-131)
+// nascem populados por um `useEffect` que aqui NUNCA roda. O harness precisa
+// SEMEAR esses três pela posição em que são declarados; é o único ponto
+// frágil a fonte de verdade é o comentário ao lado de cada índice abaixo.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function hooksReactDublados() {
+  let idxAtual = 0;
+  const chamadasPorIndice = [];
+  const refsComInicial = [];
+  // page.tsx:129-131 — `agents`, `selectedAgentId`, `agentsLoaded`, nesta ORDEM.
+  const seedUseState = {
+    5: [{ id: AG_ALFA, name: 'Agente Alfa' }],
+    6: AG_ALFA,
+    7: true,
+  };
+  function useState(inicial) {
+    const idx = idxAtual++;
+    const valor = Object.prototype.hasOwnProperty.call(seedUseState, idx)
+      ? seedUseState[idx]
+      : typeof inicial === 'function' ? inicial() : inicial;
+    const chamadas = [];
+    chamadasPorIndice[idx] = chamadas;
+    if (typeof valor === 'string' && UUID_RE.test(valor)) {
+      chamadas.__pareceSessionId = true;
+      chamadas.__valorInicial = valor;
+    }
+    const setValor = (v) => chamadas.push(typeof v === 'function' ? v(valor) : v);
+    return [valor, setValor];
+  }
+  function useRef(inicial) {
+    const ref = { current: inicial };
+    refsComInicial.push({ ref, inicial });
+    return ref;
+  }
+  function useCallback(fn) { return fn; }
+  function useEffect() { /* os efeitos não rodam neste harness — só a 1ª passada importa aqui */ }
+  function createElement(tipo, props, ...filhos) {
+    return { tipo, props: props || {}, filhos };
+  }
+  return {
+    useState, useRef, useCallback, useEffect, createElement,
+    /** o `useState` cujo valor inicial parecia um uuid — só `sessionId` nasce assim (R3/R5). */
+    chamadasDoSessionId() {
+      return chamadasPorIndice.find((c) => c && c.__pareceSessionId) || [];
+    },
+    /** a `useRef` cujo valor inicial era `''` — só `textoDoAssistenteRef` nasce assim (R6). */
+    refDoTextoAcumulado() {
+      const achado = refsComInicial.find((r) => r.inicial === '');
+      return achado ? achado.ref : null;
+    },
+  };
+}
+
+/** Busca em profundidade por um nó que satisfaça `prever` na árvore do createElement dublê. */
+function encontrarNoArvore(no, prever) {
+  if (no == null || typeof no !== 'object') return null;
+  if (Array.isArray(no)) {
+    for (const item of no) { const achado = encontrarNoArvore(item, prever); if (achado) return achado; }
+    return null;
+  }
+  if (prever(no)) return no;
+  if (no.filhos) { const achado = encontrarNoArvore(no.filhos, prever); if (achado) return achado; }
+  if (no.props && no.props.children) { const achado = encontrarNoArvore(no.props.children, prever); if (achado) return achado; }
+  return null;
+}
+
+/** Busca em profundidade por um TEXTO literal na árvore (para [18] — "Tentar de novo"). */
+function contemTexto(no, alvo) {
+  if (no == null) return false;
+  if (typeof no === 'string') return no.includes(alvo);
+  if (Array.isArray(no)) return no.some((x) => contemTexto(x, alvo));
+  if (typeof no === 'object') {
+    if (contemTexto(no.filhos, alvo)) return true;
+    if (no.props && contemTexto(no.props.children, alvo)) return true;
+  }
+  return false;
+}
+
+/** Executa um componente puro (função) de verdade, sobre o dublê de `react`. */
+function executarComponente(caminhoRelativo, nomeExportado, props) {
+  const resolver = (id) => {
+    if (id === 'react') return hooksReactDublados();
+    return {}; // imports type-only (ou não usados como valor) resolvem para algo inócuo
+  };
+  const mod = carregarTS(caminhoRelativo, resolver, { jsx: ts.JsxEmit.React });
+  const Componente = mod[nomeExportado] || mod.default;
+  if (typeof Componente !== 'function') throw new Error(`${caminhoRelativo} não exporta ${nomeExportado} como função`);
+  return Componente(props);
+}
+
+/** `silenciando` (acima) é async; montar o componente é síncrono. */
+function silenciandoSincrono(fn) {
+  const orig = { log: console.log, error: console.error, warn: console.warn, info: console.info };
+  console.log = console.error = console.warn = console.info = () => {};
+  try { return fn(); }
+  finally { Object.assign(console, orig); }
+}
+
+/**
+ * Monta `ChatPage` de VERDADE (o mesmo `app/dashboard/chat/page.tsx` do
+ * produto), chama a função UMA vez, e devolve `handleSendMessage` — extraído
+ * do `onSendMessage` que o composer (`<InputArea>`) recebe, exatamente a
+ * mesma função que um clique real chamaria.
+ */
+function montarChatPage({ respostasFetch } = {}) {
+  const hooks = hooksReactDublados();
+  const toastLog = [];
+  const marcador = (nome) => ({ __marcadorDeComponente: nome });
+  const resolver = (id) => {
+    if (id === 'react') return hooks;
+    if (id === '@/components/chat/ChatWelcome') return { ChatWelcome: marcador('ChatWelcome') };
+    if (id === '@/components/chat/ChatShortcutCards') return { ChatShortcutCards: marcador('ChatShortcutCards') };
+    if (id === '@/components/chat/LinhaDeAtividade') return { LinhaDeAtividade: marcador('LinhaDeAtividade') };
+    if (id === '@/components/chat/AvisoDoTurno') return { AvisoDoTurno: marcador('AvisoDoTurno') };
+    if (id === '@/components/chat/VoltarAoFim') return { VoltarAoFim: marcador('VoltarAoFim') };
+    if (id === '@/components/InputArea') return marcador('InputArea'); // default import
+    if (id === '@/components/MessageBubble') return { MessageBubble: marcador('MessageBubble') };
+    if (id === '@/components/TypingIndicator') return { TypingIndicator: marcador('TypingIndicator') };
+    if (id === '@/lib/chat/protocolo') return carregarTS('lib/chat/protocolo.ts', () => undefined);
+    if (id === '@/lib/n8nClient') return { sendTextToN8N: async () => ({}), sendVoiceToN8N: async () => ({}) };
+    if (id === '@/lib/supabase') {
+      return { supabase: { channel: () => ({ on: () => ({ subscribe: () => ({}) }) }), removeChannel: () => {} } };
+    }
+    if (id === '@/lib/types') return { Message: {} };
+    if (id === '@/hooks/useUserId') {
+      return { useUserId: () => ({ userId: U_ALFA, userAvatar: null, userName: null, isLoading: false }) };
+    }
+    if (id === 'sonner') {
+      return {
+        toast: {
+          error: (msg) => toastLog.push({ tipo: 'error', msg }),
+          success: (msg) => toastLog.push({ tipo: 'success', msg }),
+        },
+      };
+    }
+    return {};
+  };
+
+  const chamadasFetch = [];
+  const fetchOriginal = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    let body = null;
+    try { body = opts.body ? JSON.parse(opts.body) : null; } catch { body = opts.body; }
+    chamadasFetch.push({ url: String(url), headers: opts.headers || {}, body });
+    if (typeof respostasFetch === 'function') {
+      const r = respostasFetch(String(url), body, chamadasFetch.length);
+      if (r) return r;
+    }
+    return respostaSSE([{ protocol: 'autobrokers.interaction.v1', seq: 1, type: 'turn.completed', turn: {}, payload: {} }]);
+  };
+
+  const mod = carregarTS('app/dashboard/chat/page.tsx', resolver, { jsx: ts.JsxEmit.React });
+  const ChatPage = mod.default || mod;
+  const arvore = silenciandoSincrono(() => ChatPage());
+  const noInputArea = encontrarNoArvore(arvore, (n) => n.props && typeof n.props.onSendMessage === 'function');
+
+  return {
+    handleSendMessage: noInputArea ? noInputArea.props.onSendMessage : null,
+    hooks,
+    chamadasFetch,
+    toastLog,
+    restaurarFetch: () => { globalThis.fetch = fetchOriginal; },
   };
 }
 
@@ -688,6 +938,9 @@ function analisarConversas(res) {
   else if (c.limite > 61) problemas.push(`a consulta traz limite=${c.limite} — deveria pedir 60 (61 para saber o has_more) (D.1)`);
   if (typeof corpo.has_more !== 'boolean') problemas.push('a resposta não traz `has_more` — a tela não sabe se há "carregar anteriores"');
   if (!corpo.cursor) problemas.push('a resposta não traz `cursor` (created_at, id da mais antiga devolvida) (D.1)');
+  // 🔴 atualizado — o cursor precisa ser o PAR `<created_at>|<id>` (R10/F4):
+  // só o relógio empata quando duas mensagens nascem no mesmo instante.
+  else if (!/^[^|]+\|[^|]+$/.test(corpo.cursor)) problemas.push(`o cursor '${corpo.cursor}' não está no formato <created_at>|<id>`);
   return problemas;
 }
 console.log('\n[7] D.1 — /api/conversations?session_id= devolve as últimas 60 + has_more + cursor');
@@ -982,6 +1235,249 @@ function analisarLimiarAutoscroll(chatFonte) {
 }
 devendo([...analisarAutoscroll(CHAT_FONTE), ...analisarLimiarAutoscroll(CHAT_FONTE)], 'o scroll é condicional (≤120px) e há "Voltar ao fim"', 'C.2');
 
+// ── [17] R3 · dois envios simultâneos em page.tsx: 1 fetch, 1 client_request_id
+console.log('\n[17] R3 — dois envios simultâneos (sem await entre eles): 1 fetch a /api/chat/stream, 1 client_request_id');
+function analisarEnviosSimultaneos(chamadasFetch) {
+  const problemas = [];
+  const paraStream = chamadasFetch.filter((c) => /\/api\/chat\/stream$/.test(c.url));
+  if (paraStream.length !== 1) {
+    problemas.push(`dois envios sem await entre eles produziram ${paraStream.length} fetch(es) a /api/chat/stream — deveria ser exatamente 1 (R3, a trava por ref)`);
+  }
+  const crids = new Set(paraStream.map((c) => c.body && c.body.client_request_id).filter(Boolean));
+  if (paraStream.length > 0 && crids.size !== 1) {
+    problemas.push(`os fetch(es) levaram ${crids.size} client_request_id(s) diferentes — deveria ser 1`);
+  }
+  return problemas;
+}
+{
+  const montagem17 = montarChatPage();
+  if (!montagem17.handleSendMessage) {
+    checar(['não achei o composer (InputArea) na árvore de page.tsx — onSendMessage não foi localizado'], 'dois envios simultâneos → 1 fetch, 1 client_request_id');
+  } else {
+    const p1 = montagem17.handleSendMessage('primeira pergunta');
+    const p2 = montagem17.handleSendMessage('segunda pergunta, junto'); // 🔴 sem await entre elas — é o "Enter duas vezes"
+    await Promise.all([p1, p2]);
+    montagem17.restaurarFetch();
+    console.log(`      fetches a /api/chat/stream: ${montagem17.chamadasFetch.filter((c) => /\/api\/chat\/stream$/.test(c.url)).length}`);
+    checar(analisarEnviosSimultaneos(montagem17.chamadasFetch), 'dois envios simultâneos → 1 fetch, 1 client_request_id');
+  }
+}
+
+// ── [18] R4a · notice → turn.completed{status:'failed'}: aviso, nunca content
+console.log('\n[18] R4a — notice depois de turn.accepted vira aviso kind:"notice", status "failed"; AvisoDoTurno não mostra "Tentar de novo"');
+{
+  const protocoloModulo18 = carregarProtocolo();
+  if (!protocoloModulo18 || protocoloModulo18.__erro) {
+    checar([protocoloModulo18 ? protocoloModulo18.__erro : 'lib/chat/protocolo.ts ausente'], 'notice → status failed; AvisoDoTurno sem "Tentar de novo"');
+  } else {
+    const reduzir18 = protocoloModulo18.reduzirTurno || protocoloModulo18.reduzir;
+    const problemas = [];
+    if (typeof reduzir18 !== 'function') {
+      problemas.push('protocolo.ts não exporta o reducer (reduzirTurno/reduzir)');
+    } else {
+      const turnoNotice = rodarSequenciaNoReducer(reduzir18, 'crid-notice', 'am-notice', [
+        ['turn.accepted', { user_message_id: 'um-notice', assistant_message_id: 'am-notice' }],
+        ['notice', { code: 'no_agent', message_human: 'Nenhum agente ativo para esta conversa.' }],
+        ['turn.completed', { status: 'failed' }],
+      ]);
+      if (!turnoNotice.aviso || turnoNotice.aviso.kind !== 'notice') {
+        problemas.push(`o aviso não é kind:'notice' (veio ${JSON.stringify(turnoNotice.aviso)})`);
+      }
+      if (turnoNotice.status !== 'failed') {
+        problemas.push(`turn.accepted→notice→turn.completed{status:'failed'} terminou status '${turnoNotice.status}' — deveria ser 'failed'`);
+      }
+      // 🔴 o COMPONENTE de verdade, executado: sem onRetry (a TELA só o passa
+      // quando status é 'stopped' ou 'failed'+kind:'error' — nunca 'notice'),
+      // o botão não pode existir na árvore.
+      if (existe('components/chat/AvisoDoTurno.tsx')) {
+        const arvoreAviso = executarComponente('components/chat/AvisoDoTurno.tsx', 'AvisoDoTurno', {
+          aviso: turnoNotice.aviso || { kind: 'notice', code: 'x', message_human: 'x' },
+          onRetry: undefined,
+        });
+        if (contemTexto(arvoreAviso, 'Tentar de novo')) {
+          problemas.push('AvisoDoTurno renderizado com kind:"notice" (sem onRetry) mostra "Tentar de novo"');
+        }
+      } else {
+        problemas.push('components/chat/AvisoDoTurno.tsx ainda não existe (C.3)');
+      }
+    }
+    checar(problemas, 'notice → status failed; AvisoDoTurno sem "Tentar de novo"');
+  }
+}
+
+// ── [19] R4b · conversa com agent_id NULO: resolve, grava, e o fetch leva o agente
+console.log('\n[19] R4b — conversa com agent_id nulo: SELECT em agents + UPDATE em conversations; o fetch ao backend leva esse agentId');
+function fixturesComAgentIdNulo() {
+  const base = fixtures();
+  base.conversations = base.conversations.map((c) => (c.id === CV_ALFA ? { ...c, agent_id: null } : c));
+  return base;
+}
+function analisarResolveAgentIdNulo(res) {
+  const problemas = [];
+  if (res.erro) return [`a rota estourou: ${res.erro.message}`];
+  const selectAgents = (res.registroSupabase || []).find((q) => q.tabela === 'agents' && q.op === 'select' &&
+    q.predicados.some((p) => p.coluna === 'company_id' && String(p.valor) === CO_ALFA) &&
+    q.predicados.some((p) => p.coluna === 'is_active' && String(p.valor) === 'true'));
+  if (!selectAgents) problemas.push('nenhum SELECT em `agents` filtrando por company_id (da sessão) + is_active=true — o agent_id nulo não foi resolvido (R4)');
+  const updateConversas = (res.registroSupabase || []).find((q) => q.tabela === 'conversations' && q.op === 'update' && q.payload && q.payload.agent_id);
+  if (!updateConversas) problemas.push('nenhum UPDATE em `conversations` gravando o agent_id resolvido — a conversa ficaria nula PARA SEMPRE (R4)');
+  const fetchAoBackend = (res.chamadasFetch || []).find((c) => /\/chat\/stream$/.test(c.url));
+  if (!fetchAoBackend) { problemas.push('o BFF não chamou o backend'); return problemas; }
+  if (!fetchAoBackend.body || fetchAoBackend.body.agentId !== AG_ALFA) {
+    problemas.push(`o fetch ao backend levou agentId=${JSON.stringify(fetchAoBackend.body && fetchAoBackend.body.agentId)} — deveria ser o agente ativo resolvido (${AG_ALFA.slice(0, 7)})`);
+  }
+  return problemas;
+}
+const streamAgentIdNulo = await rodarStream({
+  sessao: { userId: U_ALFA, companyId: CO_ALFA },
+  corpo: { chatInput: 'x', sessionId: SS_ALFA, client_request_id: 'crid-agentnull' },
+  linhas: fixturesComAgentIdNulo(),
+});
+console.log(`      agentId no fetch: ${JSON.stringify((streamAgentIdNulo.chamadasFetch[0] || {}).body?.agentId)}`);
+checar(analisarResolveAgentIdNulo(streamAgentIdNulo), 'conversa com agent_id nulo: SELECT em agents + UPDATE em conversations + fetch leva o agentId resolvido');
+
+// ── [20] R5 · sessionId de conversa de OUTRO dono (23505 na criação) → 404, sem fetch
+console.log('\n[20] R5 — sessionId de outro dono (23505 ao criar a conversa) → 404, sem fetch ao backend; page.tsx troca de conversa e avisa');
+function analisarConflitoDeSessao(res) {
+  const problemas = [];
+  if (res.erro) return [`a rota estourou: ${res.erro.message}`];
+  if (res.resposta?.status !== 404) problemas.push(`sessionId de outro dono (23505 na criação) devolveu ${res.resposta?.status} — deveria ser 404 (R5)`);
+  if ((res.chamadasFetch || []).some((c) => /\/chat\/stream$/.test(c.url))) problemas.push('mesmo com 404 a rota chamou o backend — não devia');
+  return problemas;
+}
+const streamSessaoDeOutroDono = await rodarStream({
+  sessao: { userId: U_BETA, companyId: CO_BETA },
+  corpo: { chatInput: 'x', sessionId: SS_ALFA, client_request_id: 'crid-invade' },
+  linhas: fixtures(),
+  criarSupabase: dubleSupabaseComConflito23505EmConversas,
+});
+checar(analisarConflitoDeSessao(streamSessaoDeOutroDono), 'sessionId de outro dono (23505) → 404 sem fetch ao backend');
+
+function analisarTrocaDeConversaNo404(montagem) {
+  const problemas = [];
+  const avisou = montagem.toastLog.some((t) => t.tipo === 'error' && /não é sua/.test(t.msg || ''));
+  if (!avisou) problemas.push('page.tsx não avisou "Essa conversa não é sua; começamos outra." ao receber 404 do stream');
+  const chamadasSessionId = montagem.hooks.chamadasDoSessionId();
+  if (!chamadasSessionId || chamadasSessionId.length === 0) {
+    problemas.push('setSessionId não foi chamado de novo — handleNewConversation não trocou a sessão (R5)');
+  } else if (chamadasSessionId[chamadasSessionId.length - 1] === chamadasSessionId.__valorInicial) {
+    problemas.push('o novo sessionId é IGUAL ao anterior — não é uma conversa nova');
+  }
+  return problemas;
+}
+{
+  const montagem20 = montarChatPage({
+    respostasFetch: (url) => (/\/api\/chat\/stream$/.test(url) ? { ok: false, status: 404, json: async () => ({ error: 'Conversa não encontrada' }) } : null),
+  });
+  if (!montagem20.handleSendMessage) {
+    checar(['não achei o composer (InputArea) na árvore de page.tsx'], 'page.tsx troca de conversa e avisa ao receber 404 do stream');
+  } else {
+    await montagem20.handleSendMessage('pergunta numa conversa que não é minha');
+    montagem20.restaurarFetch();
+    checar(analisarTrocaDeConversaNo404(montagem20), 'page.tsx troca de conversa e avisa ao receber 404 do stream');
+  }
+}
+
+// ── [21] R6 · assistant.content.completed SUBSTITUI o acumulado, não concatena
+console.log('\n[21] R6 — 3 deltas (a,b,c) + assistant.content.completed{content:"texto final"} → o texto final SUBSTITUI (não "abc")');
+const EVENTOS_DELTA_21 = [
+  { protocol: 'autobrokers.interaction.v1', seq: 1, type: 'turn.accepted', turn: {}, payload: { user_message_id: 'um-21', assistant_message_id: 'am-21' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 2, type: 'assistant.content.delta', turn: {}, payload: { text: 'a' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 3, type: 'assistant.content.delta', turn: {}, payload: { text: 'b' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 4, type: 'assistant.content.delta', turn: {}, payload: { text: 'c' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 5, type: 'assistant.content.completed', turn: {}, payload: { content: 'texto final' } },
+  { protocol: 'autobrokers.interaction.v1', seq: 6, type: 'turn.completed', turn: {}, payload: { status: 'complete' } },
+];
+function analisarSubstituicaoDoTexto(montagem) {
+  const problemas = [];
+  const refTexto = montagem.hooks.refDoTextoAcumulado();
+  if (!refTexto) { problemas.push('não achei textoDoAssistenteRef (a ref inicializada com "")'); return problemas; }
+  if (refTexto.current !== 'texto final') {
+    problemas.push(`o texto final ficou '${refTexto.current}' — deveria ser 'texto final' (o completed SUBSTITUI, não concatena — R6)`);
+  }
+  return problemas;
+}
+{
+  const montagem21 = montarChatPage({
+    respostasFetch: (url) => (/\/api\/chat\/stream$/.test(url) ? respostaSSE(EVENTOS_DELTA_21) : null),
+  });
+  if (!montagem21.handleSendMessage) {
+    checar(['não achei o composer (InputArea) na árvore de page.tsx'], 'assistant.content.completed substitui o acumulado (não concatena)');
+  } else {
+    await montagem21.handleSendMessage('pergunta qualquer');
+    montagem21.restaurarFetch();
+    checar(analisarSubstituicaoDoTexto(montagem21), 'assistant.content.completed substitui o acumulado (não concatena)');
+  }
+}
+
+// ── [22] R14 · before malformado → 400 sem consultar messages
+console.log('\n[22] R14 — /api/messages GET com before=nao-e-data|nao-e-uuid → 400 sem consultar messages');
+function analisarBeforeInvalido(res) {
+  const problemas = [];
+  if (res.resposta?.status !== 400) problemas.push(`before malformado devolveu ${res.resposta?.status} — deveria ser 400 (R14)`);
+  if ((res.registroSupabase || []).some((q) => q.tabela === 'messages')) problemas.push('a rota consultou `messages` mesmo com o cursor inválido — deveria validar ANTES');
+  return problemas;
+}
+const msgBeforeInvalido = await rodarRota('app/api/messages/route.ts', 'GET',
+  pedidoGET(`https://teste.local/api/messages?conversation_id=${CV_ALFA}&before=${encodeURIComponent('nao-e-data|nao-e-uuid')}`),
+  { sessao: { userId: U_ALFA, companyId: CO_ALFA }, cookiesLoja: lojaComCookies(['smith_user_session']) });
+checar(analisarBeforeInvalido(msgBeforeInvalido), 'before=nao-e-data|nao-e-uuid → 400 sem consultar messages');
+
+// ── [23] R15 · /api/chat/stop com client_request_id de OUTRO dono → 404 sem fetch
+console.log('\n[23] R15 — /api/chat/stop com client_request_id de OUTRO dono → 404 sem fetch; do dono → fetch com X-Internal-Key');
+function fixturesComTurnoDeBeta() {
+  const base = fixtures();
+  base.messages = [...base.messages, {
+    id: 'm-beta-stop', conversation_id: CV_BETA, user_id: U_BETA, company_id: CO_BETA,
+    role: 'user', content: 'oi', created_at: '2026-09-03T00:00:00Z',
+    payload: { client_request_id: 'crid-beta-stop' },
+  }];
+  return base;
+}
+function analisarStopDeOutroDono(res) {
+  const problemas = [];
+  if (res.resposta?.status !== 404) problemas.push(`stop de um turno de outro dono devolveu ${res.resposta?.status} — deveria ser 404 (R15)`);
+  if ((res.chamadasFetch || []).some((c) => /\/chat\/stop$/.test(c.url))) problemas.push('mesmo sem ser o dono, a rota chamou o backend /chat/stop');
+  return problemas;
+}
+function analisarStopDoDono(res) {
+  const problemas = [];
+  const chamada = (res.chamadasFetch || []).find((c) => /\/chat\/stop$/.test(c.url));
+  if (!chamada) { problemas.push('o dono chamou /api/chat/stop e a rota não repassou ao backend'); return problemas; }
+  const temChave = Object.keys(chamada.headers || {}).some((k) => /x-internal-key/i.test(k));
+  if (!temChave) problemas.push('o fetch ao backend /chat/stop não leva X-Internal-Key');
+  return problemas;
+}
+const linhasComTurnoBeta23 = fixturesComTurnoDeBeta();
+const stopDeOutroDono = await rodarRota('app/api/chat/stop/route.ts', 'POST',
+  pedidoPOST('https://teste.local/api/chat/stop', { client_request_id: 'crid-beta-stop' }),
+  { sessao: { userId: U_ALFA, companyId: CO_ALFA }, linhas: linhasComTurnoBeta23 });
+const stopDoDono = await rodarRota('app/api/chat/stop/route.ts', 'POST',
+  pedidoPOST('https://teste.local/api/chat/stop', { client_request_id: 'crid-beta-stop' }),
+  { sessao: { userId: U_BETA, companyId: CO_BETA }, linhas: linhasComTurnoBeta23 });
+console.log(`      outro dono: status ${stopDeOutroDono.resposta?.status} · dono: status ${stopDoDono.resposta?.status}, fetch=${stopDoDono.chamadasFetch.length}`);
+checar([...analisarStopDeOutroDono(stopDeOutroDono), ...analisarStopDoDono(stopDoDono)], '/api/chat/stop: outro dono → 404 sem fetch; dono → fetch com X-Internal-Key');
+
+// ── [24] [5b] · cursor com desempate: SEGUNDA consulta eq(created_at)+lt(id)
+console.log('\n[24] [5b] — /api/messages GET com before=<ts>|<uuid>: uma SEGUNDA consulta a messages com eq(created_at)+lt(id)');
+function analisarDesempate(res) {
+  const problemas = [];
+  const consultasMessages = (res.registroSupabase || []).filter((q) => q.tabela === 'messages' && q.op === 'select');
+  if (consultasMessages.length < 2) {
+    problemas.push(`só ${consultasMessages.length} consulta(s) a messages — falta a SEGUNDA, do desempate (F4/R10)`);
+    return problemas;
+  }
+  const desempate = consultasMessages.find((q) =>
+    q.predicados.some((p) => p.op === 'eq' && /created_at/.test(String(p.coluna)) && String(p.valor) === TS_DESEMPATE) &&
+    q.predicados.some((p) => p.op === 'lt' && /^id$/.test(String(p.coluna)) && String(p.valor) === UUID_DESEMPATE));
+  if (!desempate) problemas.push('nenhuma consulta a messages usa eq(created_at, ts) + lt(id, uuid) — o desempate não está lá (uma SEGUNDA consulta, não `.or`)');
+  return problemas;
+}
+const msgComDesempate = await rodarRota('app/api/messages/route.ts', 'GET',
+  pedidoGET(`https://teste.local/api/messages?conversation_id=${CV_ALFA}&before=${encodeURIComponent(`${TS_DESEMPATE}|${UUID_DESEMPATE}`)}`),
+  { sessao: { userId: U_ALFA, companyId: CO_ALFA }, cookiesLoja: lojaComCookies(['smith_user_session']) });
+checar(analisarDesempate(msgComDesempate), 'before=<ts>|<uuid> → segunda consulta a messages com eq(created_at)+lt(id)');
+
 // ═════════════════════════════════════════════════════════════════════════════
 // LINHAS DE CONTROLE — cada guarda acima consegue ficar VERMELHO (PAR sintético)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1024,6 +1520,24 @@ controle(analisarPOST({ resposta: { status: 201 } }, { resposta: { status: 201 }
 
 // [7] PAR: resposta sem cursor/has_more, consulta sem limite.
 controle(analisarConversas({ resposta: { body: { conversations: [] } }, registroSupabase: [{ tabela: 'conversations', op: 'select', predicados: [{ op: 'eq', coluna: 'session_id', valor: SS_ALFA }] }, { tabela: 'messages', op: 'select', predicados: [], limite: null }] }), '[7] conversa sem limite/has_more/cursor (o de hoje)');
+// [7] PAR: cursor presente mas SEM o separador `<created_at>|<id>` (formato antigo, só relógio).
+controle(analisarConversas({
+  resposta: { body: { conversations: [], has_more: false, cursor: 'sem-separador-nenhum' } },
+  registroSupabase: [
+    { tabela: 'conversations', op: 'select', predicados: [{ op: 'eq', coluna: 'session_id', valor: SS_ALFA }] },
+    { tabela: 'messages', op: 'select', predicados: [], limite: 60 },
+  ],
+}), '[7] cursor sem o separador <created_at>|<id> (formato errado)');
+{
+  const cursorCorreto = analisarConversas({
+    resposta: { body: { conversations: [], has_more: false, cursor: `${TS_DESEMPATE}|${UUID_DESEMPATE}` } },
+    registroSupabase: [
+      { tabela: 'conversations', op: 'select', predicados: [{ op: 'eq', coluna: 'session_id', valor: SS_ALFA }] },
+      { tabela: 'messages', op: 'select', predicados: [], limite: 60 },
+    ],
+  });
+  controle(cursorCorreto.length === 0 ? ['(o detector aprovou o cursor bem formado, como deve)'] : cursorCorreto, '[7] o detector APROVA um cursor bem formado <created_at>|<id>');
+}
 
 // [8] PAR: consulta a companies pela empresa do corpo (Beta).
 controle(analisarN8N({ registroSupabase: [{ tabela: 'companies', predicados: [{ op: 'eq', coluna: 'id', valor: CO_BETA }] }] }), '[8] n8n consultando companies pela empresa do CORPO');
@@ -1082,6 +1596,65 @@ controle(analisarLimiarAutoscroll(CHAT_FONTE.replace('const PERTO_DO_FIM = 120;'
   const limiarCorreto = analisarLimiarAutoscroll(CHAT_FONTE);
   controle(limiarCorreto.length === 0 ? ['(o detector aprovou o limiar real, como deve)'] : limiarCorreto, '[16] o detector APROVA o limiar real (veredito oposto do PAR acima)');
 }
+
+// [17] PAR: sem a trava por ref, dois envios sem await produziriam 2 fetches.
+controle(analisarEnviosSimultaneos([
+  { url: 'http://x/api/chat/stream', body: { client_request_id: 'a' } },
+  { url: 'http://x/api/chat/stream', body: { client_request_id: 'b' } },
+]), '[17] page-controle sem a trava por ref (2 fetches, 2 client_request_id)');
+
+// [18] PAR: reducer-controle que IGNORA o status vindo do servidor e sempre fecha em 'complete'.
+controle((() => {
+  const reducerRuim = (turno, ev) => {
+    if (ev.type === 'turn.accepted') return { ...turno, status: 'streaming' };
+    if (ev.type === 'notice') return { ...turno, aviso: { kind: 'notice', code: ev.payload.code, message_human: ev.payload.message_human } };
+    if (ev.type === 'turn.completed') return { ...turno, status: 'complete' }; // 🔴 ignora payload.status — o bug
+    return turno;
+  };
+  const t = rodarSequenciaNoReducer(reducerRuim, 'crid-notice-ctl', 'am-notice-ctl', [
+    ['turn.accepted', {}],
+    ['notice', { code: 'no_agent', message_human: 'x' }],
+    ['turn.completed', { status: 'failed' }],
+  ]);
+  return t.status !== 'failed' ? [`reducer-controle terminou '${t.status}' para um turn.completed{status:'failed'} depois de notice — devia ser 'failed'`] : [];
+})(), '[18] reducer-controle que devolve status "complete" para notice (deve ser reprovado)');
+// [18] PAR: o MESMO AvisoDoTurno.tsx real, executado com onRetry indevidamente
+// presente para um aviso 'notice' — simula a TELA errando a decisão (R4) e
+// prova que o detector de texto está de fato olhando o componente executado,
+// não um resultado fixo.
+if (existe('components/chat/AvisoDoTurno.tsx')) {
+  const arvoreComRetryIndevido = executarComponente('components/chat/AvisoDoTurno.tsx', 'AvisoDoTurno', {
+    aviso: { kind: 'notice', code: 'no_agent', message_human: 'x' },
+    onRetry: () => {},
+  });
+  controle(contemTexto(arvoreComRetryIndevido, 'Tentar de novo')
+    ? ['AvisoDoTurno mostra "Tentar de novo" quando onRetry é passado para um notice (a TELA não devia ter passado)']
+    : [], '[18] AvisoDoTurno-controle com onRetry indevido para notice (mostra o botão)');
+}
+
+// [19] PAR: rota-controle que manda agentId null (nunca resolveu o agente).
+controle(analisarResolveAgentIdNulo({
+  registroSupabase: [],
+  chamadasFetch: [{ url: 'http://backend.local/chat/stream', body: { agentId: null } }],
+}), '[19] rota-controle que manda agentId null (sem SELECT/UPDATE em agents/conversations)');
+
+// [20] PAR: rota-controle que devolve 500 (em vez de 404) no 23505 de conversations.
+controle(analisarConflitoDeSessao({ resposta: { status: 500 }, chamadasFetch: [] }), '[20] rota-controle devolvendo 500 no 23505 de conversas (devia ser 404)');
+// [20] PAR: page-controle que recebe 404 e NÃO troca de conversa nem avisa.
+controle(analisarTrocaDeConversaNo404({ toastLog: [], hooks: { chamadasDoSessionId: () => [] } }), '[20] page-controle que ignora o 404 (não avisa, não troca de sessão)');
+
+// [21] PAR: page-controle que ignora assistant.content.completed e fica com "abc".
+controle(analisarSubstituicaoDoTexto({ hooks: { refDoTextoAcumulado: () => ({ current: 'abc' }) } }), '[21] page-controle que ignora o completed e fica em "abc" (concatenou, não substituiu)');
+
+// [22] PAR: rota-controle sem validação de before (500 ou 200, e consultou messages).
+controle(analisarBeforeInvalido({ resposta: { status: 500 }, registroSupabase: [{ tabela: 'messages', op: 'select' }] }), '[22] rota-controle sem validação de before (500 e consultou messages)');
+controle(analisarBeforeInvalido({ resposta: { status: 200 }, registroSupabase: [{ tabela: 'messages', op: 'select' }] }), '[22] rota-controle sem validação de before (200 e consultou messages)');
+
+// [23] PAR: rota-controle sem a checagem de dono — chamou o backend mesmo assim.
+controle(analisarStopDeOutroDono({ resposta: { status: 200 }, chamadasFetch: [{ url: 'http://backend.local/chat/stop' }] }), '[23] rota-controle sem a checagem de dono (chamou o backend /chat/stop)');
+
+// [24] PAR: rota-controle sem o desempate — só 1 consulta a messages.
+controle(analisarDesempate({ registroSupabase: [{ tabela: 'messages', op: 'select', predicados: [{ op: 'lt', coluna: 'created_at', valor: TS_DESEMPATE }] }] }), '[24] rota-controle sem o desempate (só 1 consulta a messages)');
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${'='.repeat(78)}`);
