@@ -97,6 +97,9 @@ test_o_chat_fala_como_corretor (U7)      38 ok · 0 falhas — "o número sai co
 test_quem_fala_primeiro_cala_o_outro     migrado (exige pausar_ia) · TUDO VERDE
 atendimento-estados.test.mjs             66/66 (parado no vocabulário) · test_a_chave_de_juncao 25 · test_conversa_que_acabou 4 · test_handoff_chega 7
 npx tsc --noEmit EXIT=0 · npm run test:rotas-montam VERDE
+next build (📊 05/09 ~16:40, ae546f7)     exit 0 · 301 rotas · Middleware 94,7 kB
+next start -p 3977 + requisições          Ready in 39,6s · GET /api/dashboard/atendimentos → 401 (o portão de sessão EXECUTOU) · /api/dashboard/atendimentos/casos → 401
+                                          · /dashboard/atendimentos/fila → 307 (login) · /login → 200 · servidor parado por PID (§9.1: a rota que executa código responde)
 mutações do mjs (11 declaradas)          {A PREENCHER: rodadas por cópia pela lente de verdade}
 ```
 ## 7. O painel e o juiz
