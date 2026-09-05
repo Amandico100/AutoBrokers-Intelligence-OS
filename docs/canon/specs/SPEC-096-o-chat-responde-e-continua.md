@@ -129,7 +129,15 @@ o gancho `?pergunta=` da 095 (`:40-46`, `:317`). Guardas vivos que tocam o chat:
 `test_corretora_configura_e_o_chat_executa.py` (o chat executa Auxiliar pelo MESMO motor); os de atendimento que leem
 `messages` pelo espelho.
 
-### 1.8 · O que a proposta valia para este escopo
+### 1.8 · 📊 A linha de base do BLOCO 0.3 — e os 7,5 s que ninguém via
+📊 04/09/2026 22:40, `curl -X POST {smith-api implantado}/chat/stream` (legado), Resulta, agente ativo, Q1 "Responda apenas: OK":
+**TTFB = TTFT = 1,13 s · `[DONE]` = 8,71 s · 3 eventos, 58 bytes.** O último token chega em ~1,2 s e o stream fica ABERTO mais
+**~7,5 s** até o `[DONE]` — é o trabalho pós-stream de `stream_agent` (o gatilho de summarization da memória, `graph.py:1770-1810`, e a
+persistência) segurando o fechamento; na tela, é o composer travado com a resposta já inteira. **Régua do E.2:** TTFT ≤ 1,3 × 1,13 s e
+`turn.completed` logo depois da persistência — a memória roda depois, sem segurar o `[DONE]`. (A conversa e a mensagem que este POST criou
+foram apagadas em seguida — 📊 `delete … returning`: 1 mensagem, 1 conversa.)
+
+### 1.9 · O que a proposta valia para este escopo
 📊 A proposta (02/09, 4.096 linhas, 29 seções) acerta o diagnóstico (§3 blockers, §13-§17 do pack: `full_response`) e
 propõe **três tabelas novas** (`chat_turns`, `chat_turn_refs`, replay em Redis), quatro rotas novas, três classes de
 interação, um catálogo de 21 tipos de evento e 18 Golden Conversations. Nota do orquestrador para ela neste escopo:
