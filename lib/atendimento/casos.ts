@@ -63,23 +63,41 @@ export type Fonte = 'conversas' | 'sessoes' | 'esperas' | 'trabalhos' | 'aprovac
 
 /** 🔴 R6 — as ÚNICAS razões de atenção. Todas OBSERVÁVEIS, nenhuma inventada.
  *  `sla_at_risk` nunca teve escritor; `aprovacao_pendente` saiu por E17. */
-export const RAZOES_DE_ATENCAO = ['pediu_pessoa', 'trabalho_falhou', 'parado', 'espera_vencida'] as const;
+export const RAZOES_DE_ATENCAO = [
+  'pediu_pessoa',
+  'trabalho_falhou',
+  'parado',
+  'espera_vencida',
+] as const;
 export type RazaoDeAtencao = (typeof RAZOES_DE_ATENCAO)[number];
 
 /** 🔴 R7 — a precedência, em ordem. A última é a AUSÊNCIA COM NOME. */
 export const PRECEDENCIA_DA_PROXIMA_ACAO = [
-  'pessoa', 'aprovacao', 'passo_do_trabalho', 'espera_com_prazo', 'sem_proxima_acao_declarada',
+  'pessoa',
+  'aprovacao',
+  'passo_do_trabalho',
+  'espera_com_prazo',
+  'sem_proxima_acao_declarada',
 ] as const;
 export type RegraDaProximaAcao = (typeof PRECEDENCIA_DA_PROXIMA_ACAO)[number];
 
-export interface Dono { id: string; nome: string }
+export interface Dono {
+  id: string;
+  nome: string;
+}
 
 /** R4 — a espera SEMPRE traz o id da linha de `work_waits` que a produziu.
  *  Espera sem linha é espera DEDUZIDA, e é o que a SPEC proíbe. */
 export interface Espera {
   kind: string;
   desde: string | null;
-  due_at: string | null;
+  /** 🔴 O NOME É O DA COLUNA REAL. 📊 05/09/2026, `information_schema.columns`:
+   *  `work_waits` tem `vence_em` e **não tem** `due_at` — a projeção pedia as
+   *  duas, o PostgREST devolvia 42703 e o `try/catch` engolia o erro, de modo
+   *  que `indisponivel.esperas` era `true` em 100% das requisições e NENHUMA
+   *  espera chegava à tela. Um campo com o nome errado mente para todo leitor
+   *  seguinte (CLAUDE.md §12.1): aqui ele tem o nome do banco. */
+  vence_em: string | null;
   vencida: boolean;
   fonte_id: string;
 }
@@ -110,9 +128,24 @@ export interface Caso {
   session_id: string | null;
   telefone: string | null;
   cliente: string | null;
+  /** R12 — O QUE FOI PEDIDO, em uma palavra: "Guincho", "Bateria", "Sinistro".
+   *  É a segunda linha do card no celular: sem ela, dez cards parecem iguais. */
+  pedido: string | null;
   protocolo: string | null;
-  /** R1/E5 — UM relógio. `parado_ha`, a ordenação e a semana leem ESTE campo. */
+  /** R1/E5 — UM relógio de EXIBIÇÃO: o mais recente entre a conversa e o
+   *  episódio. É ele que a tela mostra como "último movimento". */
   ultimo_evento_em: string | null;
+  /**
+   * 🔴 [P1-3] O RELÓGIO DA ORDEM — e ele é o do BANCO, não o derivado.
+   *
+   * A página é pedida ao banco por `attendance_sessions.last_event_at` (ou, no
+   * caso implícito, por `conversations.last_message_at`) e ordenada, aqui, pelo
+   * MESMO campo. Ordenar pelo `ultimo_evento_em` (que é o MAIOR dos dois)
+   * misturava duas réguas: um episódio antigo numa conversa recente subia na
+   * lista sem ter subido na consulta, e caía fora da janela do cursor da página
+   * seguinte — sumindo entre a 1 e a 2, em silêncio.
+   */
+  ordem_em: string | null;
   parado_desde?: string | null;
   parado_ha?: string | null;
   resolvido_em: string | null;
@@ -145,6 +178,10 @@ export interface ResumoDaSemana {
 
 export interface Projecao {
   items: Caso[];
+  /** ⛔ [P2-7] o termo tinha só curinga (`%%%`, `___`) e não sobrou letra
+   *  nenhuma depois da limpeza. A lista volta VAZIA e a tela DIZ por quê — o
+   *  acervo inteiro seria a pior resposta, porque tem cara de resultado. */
+  busca_invalida?: boolean;
   /** só com `group_by:'stage'` — o Quadro é uma LENTE da mesma função. */
   counts?: Record<Stage, number>;
   semana: ResumoDaSemana;
@@ -168,7 +205,10 @@ export interface OpcoesDeCasos {
   limite?: number;
 }
 
-export interface ContextoDaSessao { companyId: string; userId?: string }
+export interface ContextoDaSessao {
+  companyId: string;
+  userId?: string;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constantes
@@ -180,19 +220,52 @@ const LOTE = 1000;
 /** trava de segurança: 50 lotes = 50.000 linhas. Não é teto de produto, é
  *  cinto — um laço sem fim numa rota derruba a tela inteira. */
 const MAX_LOTES = 50;
+/**
+ * 🔴 O TETO DAS FONTES DE CONTEXTO — esperas, trabalhos, aprovações.
+ *
+ * ⚠️ E ele é DECLARADO. Um teto silencioso é o mesmo defeito do `.limit(120)`
+ * de §1.5: a tela mostra menos do que existe e não tem como saber disso. Toda
+ * leitura que voltar CHEIA marca a sua fonte como `indisponivel` — a tela diz
+ * "o que está aqui pode estar incompleto" em vez de mentir por omissão.
+ */
+const TETO_DE_CONTEXTO = 2000;
 /** R1 — o silêncio que vira PARADO. Era o mesmo número que virava "concluido". */
 const PARADO_APOS_MS = 48 * 3600e3;
 const SEMANA_MS = 7 * 24 * 3600e3;
+/** a janela do episódio órfão no QUADRO (ver `janelaDoOrfaoISO`). */
+const JANELA_DO_ORFAO_MS = 30 * 24 * 3600e3;
 
 /** ⚠️ Os `kind` que o CHECK de `work_waits` aceita. "documento" NEM É kind. */
 const KINDS_DE_ESPERA = new Set(['esperando_cliente', 'esperando_seguradora', 'esperando_humano']);
 
-
 const SERVICO_LABEL: Record<string, string> = {
-  guincho: 'Guincho', bateria: 'Bateria', pneu: 'Pneu', chaveiro: 'Chaveiro',
-  eletricista: 'Eletricista', encanador: 'Hidráulica', eletrodomesticos: 'Eletrodomésticos',
-  vidros: 'Vidros', sinistro: 'Sinistro', consulta: 'Consulta',
+  guincho: 'Guincho',
+  bateria: 'Bateria',
+  pneu: 'Pneu',
+  chaveiro: 'Chaveiro',
+  eletricista: 'Eletricista',
+  encanador: 'Hidráulica',
+  eletrodomesticos: 'Eletrodomésticos',
+  vidros: 'Vidros',
+  sinistro: 'Sinistro',
+  consulta: 'Consulta',
 };
+
+/**
+ * 🔴 R11 — o que o segurado PEDIU, dito como uma pessoa diria. O mapa acima
+ * cobre os serviços conhecidos; o que vier de fora dele não pode chegar à tela
+ * como `auto_socorro`, então o sublinhado vira espaço e a primeira letra sobe.
+ * Um rótulo de máquina no card é exatamente o defeito que o guarda [13] vigia.
+ */
+function rotuloDoPedido(bruto: unknown): string | null {
+  const chave = String(bruto ?? '').trim();
+  if (!chave) return null;
+  const conhecido = SERVICO_LABEL[chave.toLowerCase()];
+  if (conhecido) return conhecido;
+  const humano = chave.replace(/[_-]+/g, ' ').trim();
+  if (!humano) return null;
+  return humano.charAt(0).toUpperCase() + humano.slice(1);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilidades
@@ -229,6 +302,13 @@ export function humanizarDuracao(desdeMs: number, ateMs: number): string {
  *
  * Aceita a forma crua `<iso>|<id>` e a base64 dela (é o que a URL carrega).
  */
+const RE_ISO = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})?$/;
+const RE_UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+/** ⚠️ o banco usa UUID; o dublê do guarda usa id legível (`as-alfa-0100`). Os
+ *  dois passam. O que NÃO passa é qualquer coisa com a sintaxe do `or()` do
+ *  PostgREST dentro — ponto, vírgula, parêntese, aspas. */
+const RE_ID_SEGURO = /^[A-Za-z0-9_-]{1,64}$/;
+
 export function lerCursor(cursor: string | null | undefined): { at: string; id: string } | null {
   const bruto = String(cursor || '').trim();
   if (!bruto) return null;
@@ -245,6 +325,13 @@ export function lerCursor(cursor: string | null | undefined): { at: string; id: 
   const at = texto.slice(0, corte);
   const id = texto.slice(corte + 1);
   if (!at || !id) return null;
+  // 🔴 O CURSOR ENTRA CRU NUM `or(...)` DO POSTGREST, onde `,` `(` `)` `.` são
+  //    SINTAXE. Um cursor forjado reescrevia o predicado da consulta a partir
+  //    da URL — quem controla a query string controlava o filtro. Aqui ele tem
+  //    de ter a FORMA de um instante e a de um id; o que não tem é DESCARTADO,
+  //    e a lista volta para a primeira página em vez de virar outra consulta.
+  if (!RE_ISO.test(at)) return null;
+  if (!RE_UUID.test(id) && !RE_ID_SEGURO.test(id)) return null;
   return { at, id };
 }
 
@@ -258,13 +345,26 @@ export function escreverCursor(at: string | null, id: string): string {
  * Nada de aspas, nada de `%` do usuário: o curinga é NOSSO.
  */
 function termoSeguro(busca: string | undefined): string {
-  return String(busca || '').replace(/[,()*%\\'"]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (
+    String(busca || '')
+      // ⛔ `%` E `_` são os DOIS curingas do LIKE. Só o `%` era limpo, então uma
+      //    busca por `____` casava qualquer coisa de quatro letras e devolvia o
+      //    acervo inteiro com cara de resultado.
+      .replace(/[,()*%_\\'"]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 /** Um resultado de fonte: dados OU a marca de que ELA falhou (R5). */
-interface Leitura { linhas: Linha[]; ok: boolean }
+interface Leitura {
+  linhas: Linha[];
+  ok: boolean;
+}
 
-async function ler(consulta: PromiseLike<{ data: Linha[] | null; error: unknown }>): Promise<Leitura> {
+async function ler(
+  consulta: PromiseLike<{ data: Linha[] | null; error: unknown }>,
+): Promise<Leitura> {
   try {
     const { data, error } = await consulta;
     if (error) return { linhas: [], ok: false };
@@ -291,12 +391,27 @@ async function lerEmLotes(
 }
 
 const COLUNAS_CONVERSA =
-  'id, company_id, status, channel, user_phone, user_name, last_message_preview, last_message_at, '
-  + 'created_at, session_id, claimed_by, claimed_by_name, claimed_at, resolvido_em, resolucao_motivo';
+  'id, company_id, status, channel, user_phone, user_name, last_message_preview, last_message_at, ' +
+  'created_at, session_id, claimed_by, claimed_by_name, claimed_at, resolvido_em, resolucao_motivo';
 
+// 🔴 AS COLUNAS REAIS de `attendance_sessions` (📊 05/09/2026,
+//    `information_schema.columns`): id · company_id · observer_number ·
+//    counterparty · insurer_key · started_at · last_event_at · status · ramo ·
+//    servico · summary · created_at — mais as TRÊS que a migration da 097
+//    acrescenta (`conversation_id`, `resolvido_em`, `resolucao_motivo`).
+//
+// ⛔ NÃO EXISTE `protocolo`. Nem aqui, nem em lugar nenhum: 📊 uma varredura de
+//    `information_schema.columns` por `column_name ilike '%protocol%'` no
+//    schema `public` inteiro devolveu **ZERO colunas**, e `summary->'distilled'`
+//    (9.196 sessões) não tem a chave em **nenhuma** delas. Pedir a coluna fazia
+//    o PostgREST devolver 42703 na consulta INTEIRA — e, como toda leitura de
+//    episódio passa por aqui, a tela de Casos devolvia ZERO episódios sempre.
+//    O protocolo hoje só vive no estado quente do acionamento (o backend o
+//    entrega na Ficha). Sem fonte durável, o campo é `null` e a tela diz "sem
+//    protocolo" — uma coluna inventada é pior que uma ausência declarada.
 const COLUNAS_SESSAO =
-  'id, company_id, conversation_id, counterparty, status, started_at, last_event_at, '
-  + 'resolvido_em, resolucao_motivo, summary, protocolo, ramo, servico';
+  'id, company_id, conversation_id, counterparty, status, started_at, last_event_at, ' +
+  'resolvido_em, resolucao_motivo, summary, ramo, servico';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A projeção
@@ -320,15 +435,32 @@ export async function projetarCasos(
   const companyId = ctx.companyId;
   const agoraMs = Date.now();
   const janelaDaSemanaISO = new Date(agoraMs - SEMANA_MS).toISOString();
+  // 📊 A janela do episódio ÓRFÃO na Fila. Ele não tem conversa, então não há
+  //    "conversa ativa" que o traga; sem janela nenhuma, os 1.314 órfãos com
+  //    mais de 30 dias entrariam todos no quadro como `parado`. Trinta dias é
+  //    o mês que o dono da corretora reconhece — e o que sair dela continua
+  //    inteiro em Casos, que é a lista sem janela.
+  const janelaDoOrfaoISO = new Date(agoraMs - JANELA_DO_ORFAO_MS).toISOString();
 
   const indisponivel: Record<Fonte, boolean> = {
-    conversas: false, sessoes: false, esperas: false, trabalhos: false, aprovacoes: false,
+    conversas: false,
+    sessoes: false,
+    esperas: false,
+    trabalhos: false,
+    aprovacoes: false,
   };
 
   const quadro = opcoes.group_by === 'stage';
+  // ⛔ [P2-7] UM TERMO QUE SOBRA VAZIO NÃO É "SEM BUSCA".
+  //    `%%%` e `___` são só curingas; depois da limpeza não sobra letra
+  //    nenhuma. Tratar isso como "não buscou" devolvia o ACERVO INTEIRO para
+  //    quem pediu uma coisa específica — a pior resposta possível, porque tem
+  //    cara de resultado. Quem buscou e não deu nada recebe NADA, declarado.
+  const pediuBusca = String(opcoes.busca || '').trim().length > 0;
   const limite = Math.max(1, Number(opcoes.limite) || LOTE);
   const cursor = lerCursor(opcoes.cursor);
   const busca = termoSeguro(opcoes.busca);
+  const buscaVazia = pediuBusca && !busca;
 
   // ───────────────────────────────────────────────────────────────────────────
   // 1) As LINHAS-BASE: conversas (Fila) ou episódios (Casos)
@@ -343,20 +475,36 @@ export async function projetarCasos(
     // 🔴 A FILA é o trabalho VIVO mais o que TERMINOU nesta semana. As duas
     //    consultas saem do MESMO campo `resolvido_em` — é isso que faz
     //    `semana.terminaram` e os itens "concluido" nunca se contradizerem (R1).
+    // 🔴 PEDIR UMA CONVERSA PELO ID NÃO É VARRER A FILA.
+    //
+    // A Ficha chama esta mesma função com `conversa_id` — e as duas consultas
+    // abaixo são as da FILA: "as que não terminaram" e "as que terminaram nesta
+    // semana". Uma conversa encerrada há 8 dias não cabe em nenhuma das duas:
+    // ela voltava VAZIA, e a Ficha, sem linha nenhuma, caía em "em conversa" —
+    // dizendo que um atendimento encerrado no mês passado está acontecendo
+    // agora. Quando o id é dado, a janela não se aplica: lê-se A LINHA.
+    const porId = Boolean(filtro.conversa_id);
     const ativas = await lerEmLotes((de, ate) => {
-      let q = supabase.from('conversations').select(COLUNAS_CONVERSA)
-        .eq('company_id', companyId)                       // 🔴 R9/§7
-        .is('resolvido_em', null);
-      if (filtro.conversa_id) q = q.eq('id', filtro.conversa_id);
-      return q.order('last_message_at', { ascending: false }).order('id', { ascending: false }).range(de, ate);
+      let q = supabase.from('conversations').select(COLUNAS_CONVERSA).eq('company_id', companyId); // 🔴 R9/§7
+      if (porId) q = q.eq('id', filtro.conversa_id as string);
+      else q = q.is('resolvido_em', null);
+      return q
+        .order('last_message_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(de, ate);
     });
-    const daSemana = await lerEmLotes((de, ate) => {
-      let q = supabase.from('conversations').select(COLUNAS_CONVERSA)
-        .eq('company_id', companyId)                       // 🔴 R9/§7
-        .gte('resolvido_em', janelaDaSemanaISO);
-      if (filtro.conversa_id) q = q.eq('id', filtro.conversa_id);
-      return q.order('resolvido_em', { ascending: false }).order('id', { ascending: false }).range(de, ate);
-    });
+    const daSemana = porId
+      ? { linhas: [] as Linha[], ok: true }
+      : await lerEmLotes((de, ate) =>
+          supabase
+            .from('conversations')
+            .select(COLUNAS_CONVERSA)
+            .eq('company_id', companyId) // 🔴 R9/§7
+            .gte('resolvido_em', janelaDaSemanaISO)
+            .order('resolvido_em', { ascending: false })
+            .order('id', { ascending: false })
+            .range(de, ate),
+        );
     indisponivel.conversas = !ativas.ok || !daSemana.ok;
     const vistas = new Set<string>();
     for (const c of ativas.linhas.concat(daSemana.linhas)) {
@@ -370,7 +518,10 @@ export async function projetarCasos(
     // próprio. Era exatamente a duplicata de hoje: a mesma pessoa aparecia como
     // "conversa" e como "Atendimento da equipe (observado)".
     const episodios = await lerPorLotesDeIds(
-      supabase, companyId, 'conversation_id', conversas.map((c) => String(c.id)),
+      supabase,
+      companyId,
+      'conversation_id',
+      conversas.map((c) => String(c.id)),
     );
     indisponivel.sessoes = !episodios.ok;
     sessaoPorConversa = correnteporConversa(episodios.linhas);
@@ -378,16 +529,29 @@ export async function projetarCasos(
     // ⚠️ O episódio ÓRFÃO e ABERTO continua aparecendo: é a atendente
     //    conversando pelo celular dela, que o Atlas observa e que ainda não tem
     //    conversa no painel (📊 E7). Ele é o único caso que vira card PRÓPRIO.
-    const orfaos = filtro.conversa_id ? { linhas: [] as Linha[], ok: true } : await ler(
-      supabase.from('attendance_sessions').select(COLUNAS_SESSAO)
-        .eq('company_id', companyId)                       // 🔴 R9/§7
-        .is('conversation_id', null)
-        .eq('status', 'open')
-        .is('resolvido_em', null)
-        .order('last_event_at', { ascending: false })
-        .limit(LOTE),
-    );
+    // ⛔ E NÃO SE FILTRA POR `status`. 📊 12.754 das 12.755 sessões estão
+    //    `closed` — mas isso é o Atlas fechando por 6 h de silêncio para o RAG
+    //    (`attendance_distiller`), não é desfecho (E9). `.eq('status','open')`
+    //    escondia praticamente TODO episódio órfão da Fila e ressuscitava, por
+    //    outro caminho, o defeito de §1.1: o relógio decidindo o fim.
+    //    O órfão entra pelo RELÓGIO ÚNICO — e o silêncio dele vira `parado`,
+    //    que é um estado visível, não um sumiço.
+    const orfaos = porId
+      ? { linhas: [] as Linha[], ok: true }
+      : await ler(
+          supabase
+            .from('attendance_sessions')
+            .select(COLUNAS_SESSAO)
+            .eq('company_id', companyId) // 🔴 R9/§7
+            .is('conversation_id', null)
+            .is('resolvido_em', null)
+            .gte('last_event_at', janelaDoOrfaoISO)
+            .order('last_event_at', { ascending: false })
+            .limit(LOTE),
+        );
     if (!orfaos.ok) indisponivel.sessoes = true;
+    // ⚠️ o teto DECLARADO: veio cheio, então há órfão que não coube.
+    if (orfaos.linhas.length >= LOTE) indisponivel.sessoes = true;
     sessoes = orfaos.linhas;
   } else {
     // 🔴 CASOS: por EPISÓDIO, com cursor e busca NO BANCO. 📊 §1.5: a busca
@@ -396,8 +560,10 @@ export async function projetarCasos(
     let idsPorNome: string[] = [];
     if (busca) {
       const porNome = await ler(
-        supabase.from('conversations').select('id, user_phone')
-          .eq('company_id', companyId)                     // 🔴 R9/§7
+        supabase
+          .from('conversations')
+          .select('id, user_phone')
+          .eq('company_id', companyId) // 🔴 R9/§7
           .or(`user_name.ilike.%${busca}%,user_phone.ilike.%${digitos(busca) || busca}%`)
           .range(0, LOTE - 1),
       );
@@ -405,34 +571,61 @@ export async function projetarCasos(
       idsPorNome = porNome.linhas.slice(0, 200).map((c) => String(c.id));
     }
 
-    const pagina = await ler((() => {
-      let q = supabase.from('attendance_sessions').select(COLUNAS_SESSAO)
-        .eq('company_id', companyId);                      // 🔴 R9/§7
-      if (busca) {
-        const alvos = [
-          `protocolo.ilike.%${busca}%`,
-          `counterparty.ilike.%${digitos(busca) || busca}%`,
-          ...(idsPorNome.length ? [`conversation_id.in.(${idsPorNome.join(',')})`] : []),
-        ];
-        q = q.or(alvos.join(','));
-      }
-      if (cursor) {
-        // as DUAS chaves, no BANCO — o desempate não pode ser do cliente.
-        q = q.or(`last_event_at.lt.${cursor.at},and(last_event_at.eq.${cursor.at},id.lt.${cursor.id})`);
-      }
-      return q
-        .order('last_event_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(limite + 1);
-    })());
+    const pagina = await ler(
+      (() => {
+        let q = supabase
+          .from('attendance_sessions')
+          .select(COLUNAS_SESSAO)
+          .eq('company_id', companyId); // 🔴 R9/§7
+        if (busca) {
+          // ⚠️ sem coluna de protocolo, a busca por protocolo não tem onde
+          //    casar no episódio; ela continua chegando ao banco pelo telefone e
+          //    pelo nome (via conversa). O que NÃO se faz é filtrar em memória e
+          //    chamar o resultado de "nada encontrado" (§1.5).
+          const alvos = [
+            `counterparty.ilike.%${digitos(busca) || busca}%`,
+            ...(idsPorNome.length ? [`conversation_id.in.(${idsPorNome.join(',')})`] : []),
+          ];
+          q = q.or(alvos.join(','));
+        }
+        if (cursor) {
+          // as DUAS chaves, no BANCO — o desempate não pode ser do cliente.
+          q = q.or(
+            `last_event_at.lt.${cursor.at},and(last_event_at.eq.${cursor.at},id.lt.${cursor.id})`,
+          );
+        }
+        return q
+          .order('last_event_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(limite + 1);
+      })(),
+    );
     indisponivel.sessoes = indisponivel.sessoes || !pagina.ok;
     sessoes = pagina.linhas.slice(0, limite);
+    // 🔴 has_more é do RESULTADO UNIDO, não de uma das fontes. Ele olhava só
+    //    `attendance_sessions`; as conversas sem episódio eram cortadas logo
+    //    abaixo sem tocar nele, e o botão "carregar mais" sumia com casos ainda
+    //    por mostrar. Qualquer fonte com sobra ⇒ há mais.
     has_more = pagina.linhas.length > limite;
 
     // as conversas destes episódios (para nome, telefone, dono e desfecho)
-    const idsDeConversa = Array.from(new Set(sessoes.map((s) => s.conversation_id).filter(Boolean).map(String)));
+    const idsDeConversa = Array.from(
+      new Set(
+        sessoes
+          .map((s) => s.conversation_id)
+          .filter(Boolean)
+          .map(String),
+      ),
+    );
     if (idsDeConversa.length) {
-      const hidrata = await lerPorLotesDeIds(supabase, companyId, 'id', idsDeConversa, 'conversations', COLUNAS_CONVERSA);
+      const hidrata = await lerPorLotesDeIds(
+        supabase,
+        companyId,
+        'id',
+        idsDeConversa,
+        'conversations',
+        COLUNAS_CONVERSA,
+      );
       if (!hidrata.ok) indisponivel.conversas = true;
       conversas = hidrata.linhas;
     }
@@ -440,26 +633,34 @@ export async function projetarCasos(
     // 🔴 R3 — "conversa sem episódio ⇒ 1 caso implícito". Sem isto, uma conversa
     //    que nunca virou episódio SUMIRIA de Casos (e hoje ela aparece lá).
     //    A mesma janela de cursor, sobre a mesma chave, para o merge ser estável.
-    const implicitas = await ler((() => {
-      let q = supabase.from('conversations').select(COLUNAS_CONVERSA)
-        .eq('company_id', companyId);                      // 🔴 R9/§7
-      if (busca) {
-        q = q.or(`user_name.ilike.%${busca}%,user_phone.ilike.%${digitos(busca) || busca}%`);
-      }
-      if (cursor) {
-        q = q.or(`last_message_at.lt.${cursor.at},and(last_message_at.eq.${cursor.at},id.lt.${cursor.id})`);
-      }
-      return q
-        .order('last_message_at', { ascending: false })
-        .order('id', { ascending: false })
-        .range(0, limite);
-    })());
+    const implicitas = await ler(
+      (() => {
+        let q = supabase.from('conversations').select(COLUNAS_CONVERSA).eq('company_id', companyId); // 🔴 R9/§7
+        if (busca) {
+          q = q.or(`user_name.ilike.%${busca}%,user_phone.ilike.%${digitos(busca) || busca}%`);
+        }
+        if (cursor) {
+          q = q.or(
+            `last_message_at.lt.${cursor.at},and(last_message_at.eq.${cursor.at},id.lt.${cursor.id})`,
+          );
+        }
+        return q
+          .order('last_message_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(0, limite);
+      })(),
+    );
     if (!implicitas.ok) indisponivel.conversas = true;
+    if (implicitas.linhas.length > limite) has_more = true; // 🔴 a outra fonte também tem sobra
     const candidatas = implicitas.linhas.slice(0, limite);
     if (candidatas.length) {
       const comEpisodio = await lerPorLotesDeIds(
-        supabase, companyId, 'conversation_id', candidatas.map((c) => String(c.id)),
-        'attendance_sessions', 'id, company_id, conversation_id',
+        supabase,
+        companyId,
+        'conversation_id',
+        candidatas.map((c) => String(c.id)),
+        'attendance_sessions',
+        'id, company_id, conversation_id',
       );
       if (!comEpisodio.ok) indisponivel.sessoes = true;
       const temEpisodio = new Set(comEpisodio.linhas.map((s) => String(s.conversation_id)));
@@ -472,19 +673,47 @@ export async function projetarCasos(
     }
   }
 
+  // ⛔ [P2-7] nada casou porque nada foi perguntado: devolver o acervo aqui
+  //    seria responder outra pergunta.
+  if (buscaVazia) {
+    return {
+      items: [],
+      busca_invalida: true,
+      semana: await montarSemana(supabase, companyId, indisponivel),
+      indisponivel,
+      cursor: null,
+      has_more: false,
+    };
+  }
+
   const conversaPorId = new Map(conversas.map((c) => [String(c.id), c]));
 
   // ───────────────────────────────────────────────────────────────────────────
   // 2) As fontes de CONTEXTO — cada uma falha sozinha (R5)
   // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 AS COLUNAS REAIS de `work_waits` (📊 05/09/2026, `information_schema`):
+  //    id · company_id · conversation_id · work_run_id · kind · scope · status ·
+  //    vence_em · satisfeito_por · satisfeito_em · avisos · created_at · updated_at.
+  //    ⛔ NÃO existem `attendance_session_id` nem `due_at` — pedi-los devolvia
+  //    42703 na consulta INTEIRA, e o `try/catch` transformava isso em
+  //    "esperas indisponíveis" todo dia, em silêncio. A espera se liga ao caso
+  //    pela CONVERSA; não há coluna de episódio, e inventar uma é inventar
+  //    junção.
   const esperas = await ler(
-    supabase.from('work_waits')
-      .select('id, company_id, conversation_id, attendance_session_id, kind, status, scope, due_at, vence_em, created_at')
-      .eq('company_id', companyId)                          // 🔴 R9/§7
+    supabase
+      .from('work_waits')
+      .select(
+        'id, company_id, conversation_id, work_run_id, kind, scope, status, vence_em, created_at',
+      )
+      .eq('company_id', companyId) // 🔴 R9/§7
       .eq('status', 'ativo')
-      .limit(2000),
+      .limit(TETO_DE_CONTEXTO),
   );
-  indisponivel.esperas = !esperas.ok;
+  indisponivel.esperas =
+    !esperas.ok ||
+    // ⚠️ o teto DECLARADO: se veio exatamente o teto, há espera que não coube —
+    //    e um recorte silencioso é o zero silencioso outra vez (R5).
+    esperas.linhas.length >= TETO_DE_CONTEXTO;
 
   // 🔴 DOIS recortes de `work_runs`, e é de propósito:
   //    (a) o trabalho que FALHOU  → R6 `trabalho_falhou`;
@@ -492,17 +721,23 @@ export async function projetarCasos(
   //        `assumido_por_humano` — o caso que a atendente destravou e que
   //        `.eq('unblock_state','travado')` apagava da Fila.
   const runsFalhos = await ler(
-    supabase.from('work_runs')
-      .select('id, company_id, conversation_id, status, runtime_kind, unblock_state, current_step_key, error_code, error_message, created_at, input_payload')
-      .eq('company_id', companyId)                          // 🔴 R9/§7
+    supabase
+      .from('work_runs')
+      .select(
+        'id, company_id, conversation_id, status, runtime_kind, unblock_state, current_step_key, error_code, error_message, created_at, input_payload',
+      )
+      .eq('company_id', companyId) // 🔴 R9/§7
       .eq('status', 'failed')
       .order('created_at', { ascending: false })
-      .limit(500),
+      .limit(TETO_DE_CONTEXTO),
   );
   const runsTravados = await ler(
-    supabase.from('work_runs')
-      .select('id, company_id, conversation_id, status, runtime_kind, unblock_state, current_step_key, error_code, error_message, created_at, input_payload')
-      .eq('company_id', companyId)                          // 🔴 R9/§7
+    supabase
+      .from('work_runs')
+      .select(
+        'id, company_id, conversation_id, status, runtime_kind, unblock_state, current_step_key, error_code, error_message, created_at, input_payload',
+      )
+      .eq('company_id', companyId) // 🔴 R9/§7
       // 🔴 `assumido_por_humano` CONTINUA NA FILA.
       //
       // 📊 26/08/2026: o BLOCO C da SPEC-093 passou a gravar
@@ -522,9 +757,14 @@ export async function projetarCasos(
       // declaração — e uma constante escondida dele é uma consulta que ele não vê.
       .in('unblock_state', ['travado', 'assumido_por_humano'])
       .order('created_at', { ascending: false })
-      .limit(500),
+      .limit(TETO_DE_CONTEXTO),
   );
-  indisponivel.trabalhos = !runsFalhos.ok || !runsTravados.ok;
+  indisponivel.trabalhos =
+    !runsFalhos.ok ||
+    !runsTravados.ok ||
+    // ⚠️ o teto DECLARADO: veio cheio, então há trabalho parado que não coube.
+    runsFalhos.linhas.length >= TETO_DE_CONTEXTO ||
+    runsTravados.linhas.length >= TETO_DE_CONTEXTO;
   const runsPorId = new Map<string, Linha>();
   for (const r of runsFalhos.linhas.concat(runsTravados.linhas)) runsPorId.set(String(r.id), r);
   const runs = Array.from(runsPorId.values());
@@ -535,14 +775,25 @@ export async function projetarCasos(
   const aprovacoesPorConversa = new Map<string, Linha>();
   if (runs.length) {
     const aprovacoes = await ler(
-      supabase.from('approval_requests')
-        .select('id, company_id, work_run_id, status, title, created_at')
-        .eq('company_id', companyId)                        // 🔴 R9/§7
+      supabase
+        .from('approval_requests')
+        // ⛔ NÃO existe `title` em `approval_requests` (📊 05/09/2026,
+        //    `information_schema.columns`). O que existe é `preview` e
+        //    `requested_preview`, os dois JSONB. Pedir `title` devolvia 42703 e
+        //    derrubava a consulta inteira — nenhuma aprovação jamais chegou à
+        //    próxima ação, e o erro morria no `try/catch`.
+        .select(
+          'id, company_id, work_run_id, status, action_type, preview, requested_preview, created_at',
+        )
+        .eq('company_id', companyId) // 🔴 R9/§7
         .eq('status', 'pending')
-        .in('work_run_id', runs.map((r) => String(r.id)))
-        .limit(500),
+        .in(
+          'work_run_id',
+          runs.map((r) => String(r.id)),
+        )
+        .limit(TETO_DE_CONTEXTO),
     );
-    indisponivel.aprovacoes = !aprovacoes.ok;
+    indisponivel.aprovacoes = !aprovacoes.ok || aprovacoes.linhas.length >= TETO_DE_CONTEXTO; // ⚠️ o teto DECLARADO
     for (const a of aprovacoes.linhas) {
       const run = runsPorId.get(String(a.work_run_id));
       const conversa = run?.conversation_id ? String(run.conversation_id) : null;
@@ -550,21 +801,21 @@ export async function projetarCasos(
     }
   }
 
+  // ⚠️ UM índice só, pela CONVERSA — é a única chave que a tabela tem. O
+  //    episódio herda a espera da conversa dele; o episódio ÓRFÃO (sem
+  //    conversa) não tem espera, e a tela não finge que tem.
   const esperaPorConversa = new Map<string, Linha>();
-  const esperaPorSessao = new Map<string, Linha>();
   for (const w of esperas.linhas) {
-    if (!KINDS_DE_ESPERA.has(String(w.kind))) continue;     // ⛔ fora do CHECK do banco
+    if (!KINDS_DE_ESPERA.has(String(w.kind))) continue; // ⛔ fora do CHECK do banco
     if (w.conversation_id && !esperaPorConversa.has(String(w.conversation_id))) {
       esperaPorConversa.set(String(w.conversation_id), w);
-    }
-    if (w.attendance_session_id && !esperaPorSessao.has(String(w.attendance_session_id))) {
-      esperaPorSessao.set(String(w.attendance_session_id), w);
     }
   }
   const runPorConversa = new Map<string, Linha>();
   for (const r of runs) {
     if (!r.conversation_id) continue;
-    if (!runPorConversa.has(String(r.conversation_id))) runPorConversa.set(String(r.conversation_id), r);
+    if (!runPorConversa.has(String(r.conversation_id)))
+      runPorConversa.set(String(r.conversation_id), r);
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -574,51 +825,103 @@ export async function projetarCasos(
 
   if (quadro) {
     for (const c of conversas) {
-      items.push(montarCaso({
-        conversa: c,
-        sessao: sessaoPorConversa.get(String(c.id)) || null,
-        esperaPorConversa, esperaPorSessao, runPorConversa, aprovacoesPorConversa, agoraMs,
-      }));
+      items.push(
+        montarCaso({
+          conversa: c,
+          sessao: sessaoPorConversa.get(String(c.id)) || null,
+          porEpisodio: false,
+          esperaPorConversa,
+          runPorConversa,
+          aprovacoesPorConversa,
+          agoraMs,
+        }),
+      );
     }
     for (const s of sessoes) {
-      items.push(montarCaso({
-        conversa: null, sessao: s,
-        esperaPorConversa, esperaPorSessao, runPorConversa, aprovacoesPorConversa, agoraMs,
-      }));
+      items.push(
+        montarCaso({
+          conversa: null,
+          sessao: s,
+          porEpisodio: false,
+          esperaPorConversa,
+          runPorConversa,
+          aprovacoesPorConversa,
+          agoraMs,
+        }),
+      );
     }
   } else {
     for (const s of sessoes) {
-      items.push(montarCaso({
-        conversa: s.conversation_id ? conversaPorId.get(String(s.conversation_id)) || null : null,
-        sessao: s,
-        esperaPorConversa, esperaPorSessao, runPorConversa, aprovacoesPorConversa, agoraMs,
-      }));
+      items.push(
+        montarCaso({
+          conversa: s.conversation_id ? conversaPorId.get(String(s.conversation_id)) || null : null,
+          sessao: s,
+          porEpisodio: true,
+          esperaPorConversa,
+          runPorConversa,
+          aprovacoesPorConversa,
+          agoraMs,
+        }),
+      );
     }
     for (const c of conversas) {
       if (!c.__implicita) continue;
-      items.push(montarCaso({
-        conversa: c, sessao: null,
-        esperaPorConversa, esperaPorSessao, runPorConversa, aprovacoesPorConversa, agoraMs,
-      }));
-    }
-    items.sort((a, b) => String(b.ultimo_evento_em || '').localeCompare(String(a.ultimo_evento_em || ''))
-      || String(b.key).localeCompare(String(a.key)));
-    const ultimo = items[items.length - 1];
-    if (ultimo) {
-      proximoCursor = escreverCursor(ultimo.ultimo_evento_em, ultimo.session_id || ultimo.conversa_id || ultimo.key);
+      items.push(
+        montarCaso({
+          conversa: c,
+          sessao: null,
+          porEpisodio: true,
+          esperaPorConversa,
+          runPorConversa,
+          aprovacoesPorConversa,
+          agoraMs,
+        }),
+      );
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 4) O FILTRO, e ele vem ANTES do corte da página
+  // ───────────────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ O estágio é DERIVADO (dono, espera, run, relógio): o PostgREST não tem
+  // como filtrá-lo. Mas filtrar DEPOIS de cortar a página devolvia "3 parados"
+  // porque só 3 dos 50 da página estavam parados — e a página seguinte trazia
+  // outros, sem que ninguém soubesse que a conta não era a da corretora. O
+  // filtro roda sobre TUDO o que a janela do cursor trouxe, e só então a
+  // página é cortada.
   const filtrados = items.filter((i) => {
     if (filtro.estagio && i.stage !== filtro.estagio) return false;
     if (filtro.so_ativos && i.stage === 'concluido') return false;
     return true;
   });
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 5) A PÁGINA — 🔴 P1-6: UM espaço de chave, ordenado UMA vez
+  // ───────────────────────────────────────────────────────────────────────────
+  //
+  // A chave é `(ultimo_evento_em, id)`, e ela vale para as duas origens: o id
+  // de um episódio é o da SESSÃO; o do caso implícito (conversa que nunca virou
+  // episódio) é o da CONVERSA, sobre o MESMO campo derivado. Antes, os
+  // episódios paginavam por `last_event_at` e as conversas por
+  // `last_message_at`, e o desempate se fazia por `key` — string com prefixo
+  // `epi:`/`conv:`, que é OUTRO espaço de chave. Duas réguas na mesma lista
+  // fazem um caso sumir entre a página 1 e a 2, em silêncio.
+  let paginados = filtrados;
+  if (!quadro) {
+    paginados = ordenarPelaChave(filtrados);
+    if (paginados.length > limite) {
+      paginados = paginados.slice(0, limite);
+      has_more = true;
+    }
+    const ultimo = paginados[paginados.length - 1];
+    if (ultimo) proximoCursor = escreverCursor(ultimo.ordem_em, idDaChave(ultimo));
+  }
+
   const semana = await montarSemana(supabase, companyId, indisponivel);
 
   const projecao: Projecao = {
-    items: filtrados,
+    items: paginados,
     semana,
     indisponivel,
     cursor: proximoCursor,
@@ -626,7 +929,7 @@ export async function projetarCasos(
   };
   if (quadro) {
     const counts = zeroCountsByStage();
-    for (const i of filtrados) counts[i.stage] += 1;
+    for (const i of paginados) counts[i.stage] += 1;
     projecao.counts = counts;
   }
   return projecao;
@@ -636,18 +939,43 @@ export async function projetarCasos(
 // As peças
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 🔴 P1-6 — O ID DA CHAVE DE PAGINAÇÃO. Um espaço só: o episódio entra pelo id
+ * da sessão, o caso implícito pelo id da conversa. Nunca a `key` com prefixo,
+ * que ordena `conv:` antes de `epi:` e não tem nada a ver com a ordem do banco.
+ */
+function idDaChave(c: Caso): string {
+  return String(c.session_id || c.conversa_id || c.key);
+}
+
+/** A lista ordenada UMA vez pela chave `(ultimo_evento_em desc, id desc)` — a
+ *  mesma ordem que as duas consultas pediram ao banco. */
+function ordenarPelaChave(itens: Caso[]): Caso[] {
+  return [...itens].sort((a, b) => {
+    const t = String(b.ordem_em || '').localeCompare(String(a.ordem_em || ''));
+    if (t !== 0) return t;
+    return idDaChave(b).localeCompare(idDaChave(a));
+  });
+}
+
 /** `.in(coluna, ids)` em lotes — uma URL do PostgREST não aguenta 4.000 ids. */
 async function lerPorLotesDeIds(
-  supabase: Cliente, companyId: string, coluna: string, ids: string[],
-  tabela = 'attendance_sessions', colunas = COLUNAS_SESSAO,
+  supabase: Cliente,
+  companyId: string,
+  coluna: string,
+  ids: string[],
+  tabela = 'attendance_sessions',
+  colunas = COLUNAS_SESSAO,
 ): Promise<Leitura> {
   if (!ids.length) return { linhas: [], ok: true };
   const linhas: Linha[] = [];
   for (let i = 0; i < ids.length; i += 200) {
     const fatia = ids.slice(i, i + 200);
     const r = await ler(
-      supabase.from(tabela).select(colunas)
-        .eq('company_id', companyId)                        // 🔴 R9/§7
+      supabase
+        .from(tabela)
+        .select(colunas)
+        .eq('company_id', companyId) // 🔴 R9/§7
         .in(coluna, fatia),
     );
     if (!r.ok) return { linhas, ok: false };
@@ -671,8 +999,18 @@ function correnteporConversa(sessoes: Linha[]): Map<string, Linha> {
 interface EntradaDoCaso {
   conversa: Linha | null;
   sessao: Linha | null;
+  /** 🔴 P1-5 — QUAL É A UNIDADE desta linha.
+   *
+   *  `true`  CASOS: a linha É o episódio. O desfecho dele é o `resolvido_em`
+   *          DA SESSÃO e de mais nada. Herdar o da conversa marcaria os 5,8
+   *          episódios médios daquele telefone como encerrados de uma vez —
+   *          fechar UM atendimento apagaria a história dos outros cinco.
+   *  `false` FILA: a linha é a CONVERSA, com o episódio corrente dentro dela.
+   *          Aí o desfecho é o da conversa OU o do episódio corrente: os dois
+   *          encerram aquele card, e é o mesmo card.
+   */
+  porEpisodio: boolean;
   esperaPorConversa: Map<string, Linha>;
-  esperaPorSessao: Map<string, Linha>;
   runPorConversa: Map<string, Linha>;
   aprovacoesPorConversa: Map<string, Linha>;
   agoraMs: number;
@@ -692,25 +1030,30 @@ function montarCaso(e: EntradaDoCaso): Caso {
   // 🔴 R1 — o desfecho é ESCRITO. Da conversa OU do episódio (E8), nunca do
   //    relógio, e NUNCA de `attendance_sessions.status` (E9: o Atlas fecha a
   //    sessão por 6h de silêncio para o RAG; isso não é o fim do atendimento).
-  const resolvido_em = conversa?.resolvido_em || sessao?.resolvido_em || null;
-  const resolucao_motivo = conversa?.resolucao_motivo || sessao?.resolucao_motivo || null;
+  const daSessao = Boolean(e.porEpisodio && sessao);
+  const resolvido_em = daSessao
+    ? sessao?.resolvido_em || null
+    : conversa?.resolvido_em || sessao?.resolvido_em || null;
+  const resolucao_motivo = daSessao
+    ? sessao?.resolucao_motivo || null
+    : conversa?.resolucao_motivo || sessao?.resolucao_motivo || null;
 
   const dono: Dono | null = conversa?.claimed_by
-    ? { id: String(conversa.claimed_by), nome: String(conversa.claimed_by_name || 'Alguém da equipe') }
+    ? {
+        id: String(conversa.claimed_by),
+        nome: String(conversa.claimed_by_name || 'Alguém da equipe'),
+      }
     : null;
 
-  const linhaDeEspera = (conversaId ? e.esperaPorConversa.get(conversaId) : null)
-    || (sessionId ? e.esperaPorSessao.get(sessionId) : null)
-    || null;
+  const linhaDeEspera = (conversaId ? e.esperaPorConversa.get(conversaId) : null) || null;
   const esperando: Espera | null = linhaDeEspera
     ? {
-      kind: String(linhaDeEspera.kind),
-      desde: linhaDeEspera.created_at || null,
-      due_at: linhaDeEspera.due_at || linhaDeEspera.vence_em || null,
-      vencida: Boolean((linhaDeEspera.due_at || linhaDeEspera.vence_em)
-        && ms(linhaDeEspera.due_at || linhaDeEspera.vence_em) < agoraMs),
-      fonte_id: String(linhaDeEspera.id),
-    }
+        kind: String(linhaDeEspera.kind),
+        desde: linhaDeEspera.created_at || null,
+        vence_em: linhaDeEspera.vence_em || null,
+        vencida: Boolean(linhaDeEspera.vence_em && ms(linhaDeEspera.vence_em) < agoraMs),
+        fonte_id: String(linhaDeEspera.id),
+      }
     : null;
 
   const run = conversaId ? e.runPorConversa.get(conversaId) || null : null;
@@ -738,10 +1081,12 @@ function montarCaso(e: EntradaDoCaso): Caso {
   else stage = 'parado';
 
   const parado = stage === 'parado';
-  const distilada = (sessao?.summary as { distilled?: Record<string, string> } | null)?.distilled || {};
-  const servico = SERVICO_LABEL[String(sessao?.servico || distilada.servico || '')]
-    || sessao?.servico || distilada.servico || null;
-  const protocolo = (sessao?.protocolo || distilada.protocolo || null) as string | null;
+  const distilada =
+    (sessao?.summary as { distilled?: Record<string, string> } | null)?.distilled || {};
+  const servico = rotuloDoPedido(sessao?.servico || distilada.servico);
+  // 📊 ZERO das 9.196 sessões com `distilled` têm a chave `protocolo`; a
+  //    coluna não existe. Fica lido de onde ele PODERIA vir, e null é null.
+  const protocolo = (distilada.protocolo || null) as string | null;
   const telefone = digitos(conversa?.user_phone || sessao?.counterparty) || null;
   const cliente = (conversa?.user_name || '').trim() || null;
 
@@ -752,22 +1097,48 @@ function montarCaso(e: EntradaDoCaso): Caso {
   if (esperando?.vencida) atencao.push('espera_vencida');
 
   const proxima_acao = escolherProximaAcao({
-    pediuPessoa, aprovacao, run, esperando, conversaId,
+    pediuPessoa,
+    aprovacao,
+    run,
+    esperando,
+    conversaId,
   });
 
-  const ha_quanto_tempo = ultimo_evento_em ? humanizarDuracao(ms(ultimo_evento_em), agoraMs) : null;
-  const situacao = frasesDaSituacao(stage, { dono, esperando, cliente, servico, resolucao_motivo });
+  // ⛔ [P3-2] RELÓGIO NO FUTURO É AGORA. 📊 um `last_message_at` adiantado
+  //    (fuso do provedor, relógio do celular) produzia duração NEGATIVA, e
+  //    "parado há -3 dias" é uma tela que ninguém acredita mais.
+  //    [P3-1] E sem relógio nenhum a resposta é a AUSÊNCIA COM NOME — a tela
+  //    dizia "Parado há —", que parece defeito de carga.
+  const ha_quanto_tempo = ultimo_evento_em
+    ? humanizarDuracao(Math.min(ms(ultimo_evento_em), agoraMs), agoraMs)
+    : null;
+  const situacao = frasesDaSituacao(stage, {
+    dono,
+    esperando,
+    cliente,
+    servico,
+    resolucao_motivo,
+    temRelogio: Boolean(ultimo_evento_em),
+  });
 
+  // 🔴 A CHAVE, e ela é a da UNIDADE. Em CASOS, dois episódios da mesma
+  //    conversa são duas linhas — se a chave fosse a da conversa, eles
+  //    colidiriam e o React mostraria um no lugar do outro.
   const caso: Caso = {
-    key: sessionId && !conversaId ? `epi:${sessionId}` : `conv:${conversaId}`,
+    key: daSessao || (sessionId && !conversaId) ? `epi:${sessionId}` : `conv:${conversaId}`,
     stage,
-    kind: sessionId && !conversaId ? 'episodio' : 'conversa',
+    kind: daSessao || (sessionId && !conversaId) ? 'episodio' : 'conversa',
     conversa_id: conversaId,
     session_id: sessionId,
     telefone,
     cliente,
+    pedido: servico,
     protocolo,
     ultimo_evento_em,
+    ordem_em:
+      daSessao || (sessionId && !conversaId)
+        ? sessao?.last_event_at || sessao?.started_at || null
+        : conversa?.last_message_at || conversa?.created_at || null,
     resolvido_em,
     resolucao_motivo,
     dono,
@@ -775,7 +1146,11 @@ function montarCaso(e: EntradaDoCaso): Caso {
     work_run_id: run ? String(run.id) : null,
     unblock_state: run ? (run.unblock_state ? String(run.unblock_state) : null) : null,
     agora: { situacao, dono, esperando, ha_quanto_tempo, atencao, proxima_acao },
-    titulo: cliente || (servico ? `${servico}${telefone ? ` · ${telefone}` : ''}` : null) || telefone || 'Atendimento',
+    titulo:
+      cliente ||
+      (servico ? `${servico}${telefone ? ` · ${telefone}` : ''}` : null) ||
+      telefone ||
+      'Atendimento',
     detalhe: situacao,
     quando: ultimo_evento_em,
   };
@@ -792,39 +1167,102 @@ function montarCaso(e: EntradaDoCaso): Caso {
  * próxima ação declarada" é uma resposta, `null` mudo não é. E toda ação traz a
  * FONTE de onde saiu — sem autoridade, não há próxima ação; há ficção.
  */
+/**
+ * 🔴 R11 — O QUE O CORRETOR LÊ QUANDO O ACIONAMENTO PARA.
+ *
+ * `work_runs.error_message` é texto de máquina: `KeyError: 'x'`, um traceback,
+ * um código. Ele ia CRU para o card e para a próxima ação. O CÓDIGO do erro
+ * vira frase de gente aqui, e o que não estiver na lista cai na frase honesta —
+ * nunca no texto do motor.
+ */
+const FRASE_DO_ERRO: Record<string, string> = {
+  ura_timeout: 'A seguradora não respondeu a tempo.',
+  ura_desconhecida: 'A seguradora mudou o atendimento e o sistema não reconheceu a tela.',
+  tela_desconhecida: 'A seguradora mudou o atendimento e o sistema não reconheceu a tela.',
+  sem_resposta: 'A seguradora não respondeu.',
+  numero_invalido: 'O telefone do atendimento não foi aceito pela seguradora.',
+  apolice_nao_encontrada: 'A seguradora não encontrou a apólice.',
+  fora_do_horario: 'A seguradora está fora do horário de atendimento.',
+  credenciais_invalidas: 'O acesso à seguradora foi recusado.',
+  cancelado_pelo_humano: 'Alguém interrompeu o acionamento.',
+};
+const FRASE_PADRAO_DO_ERRO = 'O acionamento parou e precisa de uma pessoa.';
+
+function fraseDoTrabalhoParado(run: Linha): string {
+  const codigo = String(run.error_code || '')
+    .trim()
+    .toLowerCase();
+  return FRASE_DO_ERRO[codigo] || FRASE_PADRAO_DO_ERRO;
+}
+
+/**
+ * O TÍTULO da aprovação, tirado de onde ele REALMENTE mora: `preview` (ou
+ * `requested_preview`), os dois JSONB. ⚠️ E é peneirado — 🔴 R11: o `preview` é
+ * escrito pelo motor e pode trazer chave de máquina. Só um texto curto e
+ * legível sai daqui; qualquer outra coisa vira a frase honesta de ausência.
+ */
+function tituloDaAprovacao(a: Linha): string {
+  const previa = (a.preview || a.requested_preview) as Record<string, unknown> | null;
+  const bruto =
+    previa && typeof previa === 'object'
+      ? (previa.titulo ?? previa.title ?? previa.resumo ?? previa.summary ?? previa.descricao)
+      : null;
+  const texto = String(bruto ?? '').trim();
+  const legivel =
+    texto &&
+    texto.length <= 120 &&
+    !/[_.]/.test(texto.replace(/[.]$/, '')) && // ⛔ `x.y` e `snake_case` não vão para a tela
+    !/[{}[\]]/.test(texto);
+  return legivel ? texto : 'há uma decisão esperando você';
+}
+
 function escolherProximaAcao(e: {
-  pediuPessoa: boolean; aprovacao: Linha | null; run: Linha | null;
-  esperando: Espera | null; conversaId: string | null;
+  pediuPessoa: boolean;
+  aprovacao: Linha | null;
+  run: Linha | null;
+  esperando: Espera | null;
+  conversaId: string | null;
 }): ProximaAcao {
   if (e.pediuPessoa) {
     return {
       texto: 'Assuma a conversa — o cliente pediu para falar com uma pessoa.',
-      fonte: 'conversa', fonte_id: e.conversaId, regra: 'pessoa',
+      fonte: 'conversa',
+      fonte_id: e.conversaId,
+      regra: 'pessoa',
     };
   }
   if (e.aprovacao) {
     return {
-      texto: `Aprove ou recuse: ${String(e.aprovacao.title || 'há uma decisão esperando você')}.`,
-      fonte: 'aprovacao', fonte_id: String(e.aprovacao.id), regra: 'aprovacao',
+      texto: `Aprove ou recuse: ${tituloDaAprovacao(e.aprovacao)}.`,
+      fonte: 'aprovacao',
+      fonte_id: String(e.aprovacao.id),
+      regra: 'aprovacao',
     };
   }
   if (e.run) {
     return {
-      texto: String(e.run.error_message || 'O trabalho parou e precisa de uma pessoa.'),
-      fonte: 'trabalho', fonte_id: String(e.run.id), regra: 'passo_do_trabalho',
+      // ⛔ NUNCA `error_message`: é texto de motor (R11).
+      texto: fraseDoTrabalhoParado(e.run),
+      fonte: 'trabalho',
+      fonte_id: String(e.run.id),
+      regra: 'passo_do_trabalho',
     };
   }
-  if (e.esperando?.due_at) {
+  if (e.esperando?.vence_em) {
     return {
       texto: e.esperando.vencida
         ? 'O prazo da espera venceu — cobre quem está devendo a resposta.'
         : 'Aguardando a resposta dentro do prazo combinado.',
-      fonte: 'espera', fonte_id: e.esperando.fonte_id, regra: 'espera_com_prazo',
+      fonte: 'espera',
+      fonte_id: e.esperando.fonte_id,
+      regra: 'espera_com_prazo',
     };
   }
   return {
     texto: 'Sem próxima ação declarada.',
-    fonte: 'projecao', fonte_id: null, regra: 'sem_proxima_acao_declarada',
+    fonte: 'projecao',
+    fonte_id: null,
+    regra: 'sem_proxima_acao_declarada',
   };
 }
 
@@ -836,10 +1274,18 @@ const MOTIVO_EM_PORTUGUES: Record<string, string> = {
   expirou: 'o prazo expirou',
 };
 
-function frasesDaSituacao(stage: Stage, e: {
-  dono: Dono | null; esperando: Espera | null; cliente: string | null;
-  servico: string | null; resolucao_motivo: string | null;
-}): string {
+function frasesDaSituacao(
+  stage: Stage,
+  e: {
+    dono: Dono | null;
+    esperando: Espera | null;
+    cliente: string | null;
+    servico: string | null;
+    resolucao_motivo: string | null;
+    /** 🔴 [P3-1] há relógio? Sem ele não se diz "parado há X" nem se inventa X. */
+    temRelogio: boolean;
+  },
+): string {
   switch (stage) {
     case 'concluido':
       return `Encerrado — ${MOTIVO_EM_PORTUGUES[String(e.resolucao_motivo || '')] || 'desfecho registrado'}.`;
@@ -861,12 +1307,17 @@ function frasesDaSituacao(stage: Stage, e: {
       // 🔴 O estado que a SPEC-097 cria. Antes disto, ele se chamava
       //    "concluído" — e 584 atendimentos que ninguém encerrou eram
       //    apresentados ao corretor como trabalho terminado.
-      return 'Parado — ninguém falou nem trabalhou nisso, e não há desfecho escrito.';
+      //    ⛔ [P3-1] E SEM RELÓGIO NENHUM A FRASE É OUTRA. Um caso sem
+      //    `last_message_at` e sem `started_at` não tem "há quanto tempo": a
+      //    tela mostrava "Parado há —", que parece defeito de carga. Dizer que
+      //    não há movimento registrado é uma resposta; um travessão não é.
+      return e.temRelogio
+        ? 'Parado — ninguém falou nem trabalhou nisso, e não há desfecho escrito.'
+        : 'Sem movimento registrado — não há nem uma data para dizer desde quando.';
     default:
       return 'Em andamento.';
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 SPEC-086 BLOCO D — A PERGUNTA DA SEXTA-FEIRA, agora na projeção (U5.3)
@@ -900,55 +1351,117 @@ async function montarSemana(
 ): Promise<ResumoDaSemana> {
   const semana = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
 
-  const [resolvidas, esperas] = await Promise.all([
+  // 🔴 A MESMA REGRA QUE PRODUZ O ESTÁGIO.
+  //
+  // 📊 O defeito de §1.1 era o payload se contradizer: itens "concluido" ao
+  // lado de `terminaram: 0`. O conserto de então fez os dois saírem de
+  // `resolvido_em` — mas de `conversations.resolvido_em` SÓ, e depois o estágio
+  // passou a aceitar também o do EPISÓDIO. A contradição voltava pelo outro
+  // lado: um episódio encerrado virava card "Encerrado" e não entrava na conta
+  // da sexta-feira.
+  //
+  // Agora a conta é: EPISÓDIOS resolvidos na semana + as conversas resolvidas
+  // na semana que NÃO têm episódio resolvido — sem dupla contagem, e é a mesma
+  // unidade que a lista mostra.
+  const [episodios, conversas, esperas] = await Promise.all([
     ler(
-      supabase.from('conversations').select('resolucao_motivo')
-        .eq('company_id', companyId)          // 🔴 §7
+      supabase
+        .from('attendance_sessions')
+        .select('id, conversation_id, resolucao_motivo')
+        .eq('company_id', companyId) // 🔴 §7
         .gte('resolvido_em', semana)
-        .range(0, 1999),
+        .range(0, TETO_DE_CONTEXTO - 1),
     ),
     ler(
-      supabase.from('work_waits').select('kind, status')
-        .eq('company_id', companyId)          // 🔴 §7
+      supabase
+        .from('conversations')
+        .select('id, resolucao_motivo')
+        .eq('company_id', companyId) // 🔴 §7
+        .gte('resolvido_em', semana)
+        .range(0, TETO_DE_CONTEXTO - 1),
+    ),
+    ler(
+      supabase
+        .from('work_waits')
+        .select('kind, status')
+        .eq('company_id', companyId) // 🔴 §7
         .eq('status', 'ativo')
-        .range(0, 1999),
+        .range(0, TETO_DE_CONTEXTO - 1),
     ),
   ]);
 
   // ⚠️ Os motivos vivem no CHECK do banco; esta lista é a MESMA, e o guarda
   //    `test_o_atendimento_termina_e_o_produto_sabe` compara as duas.
   const SUCESSO = new Set([
-    'acionamento_concluido', 'encaminhado',
-    'resolvido_pelo_segurado', 'fechado_por_humano',
+    'acionamento_concluido',
+    'encaminhado',
+    'resolvido_pelo_segurado',
+    'fechado_por_humano',
   ]);
   const porMotivo: Record<string, number> = {};
   let terminaram = 0;
   let morreram = 0;
-  for (const c of resolvidas.linhas) {
-    const m = String(c.resolucao_motivo || '');
-    if (!m) continue;
-    porMotivo[m] = (porMotivo[m] || 0) + 1;
-    if (m === 'expirou') morreram += 1;
-    else if (SUCESSO.has(m)) terminaram += 1;
+
+  /**
+   * ⛔ [P2-3] UM DESFECHO COM MOTIVO ESTRANHO AINDA É UM DESFECHO.
+   *
+   * O laço antigo contava `expirou` como "morreu esperando", os quatro do
+   * sucesso como "terminaram" — e qualquer outro valor SUMIA: nem numa conta,
+   * nem na outra. O caso aparecia "Encerrado" na lista e não existia na
+   * sexta-feira. Motivo fora da lista conta como terminado e se DECLARA como
+   * `outro` em `por_motivo`, para que a diferença apareça em vez de evaporar.
+   */
+  const conta = (motivo: string) => {
+    const m = String(motivo || '').trim();
+    if (!m) return;
+    if (m === 'expirou') {
+      porMotivo[m] = (porMotivo[m] || 0) + 1;
+      morreram += 1;
+      return;
+    }
+    if (SUCESSO.has(m)) {
+      porMotivo[m] = (porMotivo[m] || 0) + 1;
+      terminaram += 1;
+      return;
+    }
+    porMotivo.outro = (porMotivo.outro || 0) + 1;
+    terminaram += 1;
+  };
+
+  const conversasJaContadas = new Set(
+    episodios.linhas.map((e) => String(e.conversation_id || '')).filter(Boolean),
+  );
+  for (const e of episodios.linhas) conta(String(e.resolucao_motivo || ''));
+  for (const c of conversas.linhas) {
+    // ⛔ a conversa cujo episódio já foi contado NÃO conta de novo: ela é o
+    //    ESPELHO do mesmo desfecho (o BFF grava nos dois).
+    if (conversasJaContadas.has(String(c.id))) continue;
+    conta(String(c.resolucao_motivo || ''));
   }
+
   const porKind: Record<string, number> = {};
   for (const w of esperas.linhas) {
     const k = String(w.kind || '?');
     porKind[k] = (porKind[k] || 0) + 1;
   }
 
-  if (!resolvidas.ok || !esperas.ok) {
-    if (!resolvidas.ok) indisponivel.conversas = true;
-    if (!esperas.ok) indisponivel.esperas = true;
-    // ⛔ o zero DECLARADO: sumir com os campos faria a tela mostrar
-    //    "0 terminaram" num dia em que ninguém conseguiu olhar.
-    return {
-      terminaram, ainda_esperam: esperas.linhas.length, morreram_esperando: morreram,
-      por_motivo: porMotivo, por_kind: porKind, indisponivel: true,
-    };
-  }
+  // ⛔ O ZERO — E O NÚMERO TRUNCADO — DECLARADOS. Uma fonte fora do ar e um
+  //    recorte no teto produzem o mesmo estrago: um número com cara de medido
+  //    que não é o da corretora.
+  const truncou =
+    episodios.linhas.length >= TETO_DE_CONTEXTO ||
+    conversas.linhas.length >= TETO_DE_CONTEXTO ||
+    esperas.linhas.length >= TETO_DE_CONTEXTO;
+  if (!episodios.ok) indisponivel.sessoes = true;
+  if (!conversas.ok) indisponivel.conversas = true;
+  if (!esperas.ok) indisponivel.esperas = true;
+
   return {
-    terminaram, ainda_esperam: esperas.linhas.length, morreram_esperando: morreram,
-    por_motivo: porMotivo, por_kind: porKind, indisponivel: false,
+    terminaram,
+    ainda_esperam: esperas.linhas.length,
+    morreram_esperando: morreram,
+    por_motivo: porMotivo,
+    por_kind: porKind,
+    indisponivel: !episodios.ok || !conversas.ok || !esperas.ok || truncou,
   };
 }

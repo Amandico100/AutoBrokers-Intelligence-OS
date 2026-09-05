@@ -57,10 +57,16 @@ function internalKey(): string | null {
   return process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || null;
 }
 
-async function loadScoped(supabase: ReturnType<typeof getSupabaseAdmin>, id: string, companyId: string) {
+async function loadScoped(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  id: string,
+  companyId: string,
+) {
   const { data } = await supabase
     .from('conversations')
-    .select('id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, human_handoff_reason, resolvido_em')
+    .select(
+      'id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, human_handoff_reason, resolvido_em',
+    )
     .eq('id', id)
     .eq('company_id', companyId)
     .maybeSingle();
@@ -74,7 +80,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const supabase = getSupabaseAdmin();
 
   const conversation = await loadScoped(supabase, id, ctx.companyId);
-  if (!conversation) return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
+  if (!conversation)
+    return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
 
   const { data: messages, error } = await supabase
     .from('messages')
@@ -88,7 +95,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Zera não-lidas ao abrir (melhor esforço).
-  supabase.from('conversations').update({ unread_count: 0 }).eq('id', id).then(() => {});
+  //
+  // 🔴 COM `company_id`. Sem ele, este UPDATE atravessava a corretora: o
+  //    backend usa service role, e a RLS não protege contra erro de filtro no
+  //    código (CLAUDE.md §7). O GET acima já é escopado — mas um UPDATE que
+  //    confia no escopo de outra consulta é um UPDATE sem escopo.
+  supabase
+    .from('conversations')
+    .update({ unread_count: 0 })
+    .eq('id', id)
+    .eq('company_id', ctx.companyId)
+    .then(() => {});
 
   return NextResponse.json({ conversation, messages: messages || [] });
 }
@@ -100,7 +117,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const supabase = getSupabaseAdmin();
 
   const conversation = await loadScoped(supabase, id, ctx.companyId);
-  if (!conversation) return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
+  if (!conversation)
+    return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
 
   let body: Record<string, unknown> = {};
   try {
@@ -110,7 +128,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const action = String(body.action || '');
 
-  const { data: meRow } = await supabase.from('users_v2').select('name, email').eq('id', ctx.userId).maybeSingle();
+  const { data: meRow } = await supabase
+    .from('users_v2')
+    .select('name, email')
+    .eq('id', ctx.userId)
+    .maybeSingle();
   const myName = String(meRow?.name || meRow?.email || 'Atendente humano');
 
   if (action === 'claim') {
@@ -132,10 +154,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // responder por cima da atendente — é o guarda irmão
     // `test_o_atendimento_sabe_como_terminou.py` que o mede.
     //
+    // ⛔ [P1-1] QUEM JÁ TERMINOU NÃO SE ASSUME.
+    //
+    // Assumir uma conversa encerrada gravava `claimed_by` POR CIMA do desfecho:
+    // o atendimento continuava encerrado, com um dono novo e um `claimed_at`
+    // posterior ao fim — e a ficha passava a dizer que outra pessoa atendeu.
+    // Quem quiser voltar a um caso encerrado precisa REABRI-LO, e reabrir é um
+    // gesto que ainda não existe (P-097-REABRIR-ATENDIMENTO).
+    if (conversation.resolvido_em) {
+      return NextResponse.json(
+        { error: 'Este atendimento já terminou. Para voltar a ele, é preciso reabri-lo.' },
+        { status: 409 },
+      );
+    }
+
     // Atômico: só assume se ninguém (ou eu mesmo) for o dono.
     const { data: updated, error } = await supabase
       .from('conversations')
-      .update({ claimed_by: ctx.userId, claimed_by_name: myName, claimed_at: new Date().toISOString() })
+      .update({
+        claimed_by: ctx.userId,
+        claimed_by_name: myName,
+        claimed_at: new Date().toISOString(),
+      })
       .eq('id', id)
       .eq('company_id', ctx.companyId)
       .or(`claimed_by.is.null,claimed_by.eq.${ctx.userId}`)
@@ -143,7 +183,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .maybeSingle();
     if (error) {
       console.error('[CONVERSAS] claim error:', error.message);
-      return NextResponse.json({ error: 'Erro ao assumir (a migration de claim já foi aplicada?)' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Erro ao assumir (a migration de claim já foi aplicada?)' },
+        { status: 500 },
+      );
     }
     if (!updated) {
       const cur = await loadScoped(supabase, id, ctx.companyId);
@@ -190,6 +233,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     //   sem handoff aberto
     //        → `open`, como sempre. Uma pessoa que só entrou para dar um oi
     //          não deve criar um pedido de atendimento ao sair.
+    // ⛔ [P1-1] E DEVOLVER À IA UM ATENDIMENTO ENCERRADO ERA PIOR AINDA: o
+    //    update apagava `claimed_by/claimed_by_name/claimed_at` e devolvia o
+    //    status para `open`. O desfecho continuava escrito, mas sem autor — e
+    //    uma conversa `open` com `resolvido_em` é a contradição que a §1.1
+    //    existe para acabar.
+    if (conversation.resolvido_em) {
+      return NextResponse.json(
+        { error: 'Este atendimento já terminou. Para voltar a ele, é preciso reabri-lo.' },
+        { status: 409 },
+      );
+    }
+
     const handoffAberto = Boolean(conversation.human_handoff_reason) && !conversation.resolvido_em;
     const { error } = await supabase
       .from('conversations')
@@ -201,7 +256,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
       .eq('id', id)
       .eq('company_id', ctx.companyId);
-    if (error) return NextResponse.json({ error: 'Erro ao devolver ao atendente IA' }, { status: 500 });
+    if (error)
+      return NextResponse.json({ error: 'Erro ao devolver ao atendente IA' }, { status: 500 });
     // ⚠️ Devolver o que ninguém tinha assumido não é um gesto — é um `no-op` que
     // sujaria a variante com um passo que não aconteceu.
     if (conversation.claimed_by) {
@@ -249,8 +305,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ⚠️ Sem `motivo` no corpo (chamada antiga da API), o padrão continua sendo
     // `fechado_por_humano`: a atendente clicou, e isso é o que se sabe.
     const MOTIVOS_DO_CHECK = [
-      'acionamento_concluido', 'encaminhado', 'resolvido_pelo_segurado',
-      'fechado_por_humano', 'expirou',
+      'acionamento_concluido',
+      'encaminhado',
+      'resolvido_pelo_segurado',
+      'fechado_por_humano',
+      'expirou',
     ];
     const motivoPedido = String(body.motivo || '').trim();
     if (motivoPedido && !MOTIVOS_DO_CHECK.includes(motivoPedido)) {
@@ -272,9 +331,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const agora = new Date().toISOString();
     const { error } = await supabase
       .from('conversations')
-      .update(motivoPedido
-        ? { status: 'closed', resolvido_em: agora, resolucao_motivo: motivoPedido }
-        : { status: 'closed', resolvido_em: agora, resolucao_motivo: 'fechado_por_humano' })
+      .update(
+        motivoPedido
+          ? { status: 'closed', resolvido_em: agora, resolucao_motivo: motivoPedido }
+          : { status: 'closed', resolvido_em: agora, resolucao_motivo: 'fechado_por_humano' },
+      )
       .eq('id', id)
       .eq('company_id', ctx.companyId)
       .is('resolvido_em', null);
@@ -290,6 +351,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .eq('company_id', ctx.companyId)
       .not('resolvido_em', 'is', null);
     if (erroStatus) return NextResponse.json({ error: 'Erro ao encerrar' }, { status: 500 });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 🔴 P1-5 — E O DESFECHO MORA NO EPISÓDIO CORRENTE, NÃO SÓ NA CONVERSA.
+    // ─────────────────────────────────────────────────────────────────────
+    //
+    // 📊 A conversa é a THREAD PERPÉTUA com o telefone (668 conversas para 667
+    // telefones, nenhuma fechada na vida) e ela guarda 5,8 episódios em média
+    // (12.755 `attendance_sessions` sobre 2.184 contatos). Escrever o desfecho
+    // só na conversa faria "o guincho de hoje terminou" apagar de uma vez a
+    // batida de agosto e a dúvida de julho da MESMA pessoa.
+    //
+    // ⛔ Por isso a gravação é no EPISÓDIO CORRENTE — a sessão mais recente
+    // ligada a esta conversa — e a conversa fica como ESPELHO. As duas pontas
+    // usam o mesmo motivo, o mesmo instante e o mesmo CHECK; a projeção lê a
+    // sessão em Casos e as duas na Fila (`lib/atendimento/casos.ts`).
+    //
+    // ⚠️ Falha SOZINHA: se o episódio não puder ser escrito, a conversa já foi
+    // encerrada e a tela não deve travar por isso — mas nada é inventado, e
+    // Casos continua mostrando o episódio aberto até que ele seja escrito.
+    try {
+      const { data: episodio } = await supabase
+        .from('attendance_sessions')
+        .select('id, resolvido_em')
+        .eq('company_id', ctx.companyId) // 🔴 §7
+        .eq('conversation_id', id)
+        .is('resolvido_em', null)
+        .order('last_event_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (episodio?.id) {
+        await supabase
+          .from('attendance_sessions')
+          .update({
+            resolvido_em: agora,
+            resolucao_motivo: motivoPedido || 'fechado_por_humano',
+          })
+          .eq('id', episodio.id)
+          .eq('company_id', ctx.companyId) // 🔴 §7
+          .is('resolvido_em', null); // o primeiro fim é o que vale
+      }
+    } catch {
+      /* o episódio segue aberto; a conversa já está encerrada — fail-soft */
+    }
 
     // ⛔ E só encerra quem ainda não tinha encerrado — a mesma regra do
     // `.is('resolvido_em', null)` acima, agora na linha do tempo: o primeiro
@@ -334,22 +438,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // `scripts/spec090-a-regra-do-prefixo-e-uma-so.test.mjs`.
     const ehNota = ehAnotacao(text);
 
+    // ⛔ [P3-8] E NÃO SE ESCREVE NUM ATENDIMENTO ENCERRADO.
+    //
+    // O auto-claim abaixo grava `status: 'HUMAN_REQUESTED'` e um dono novo. Numa
+    // conversa com `resolvido_em`, isso escrevia POR CIMA do desfecho: o caso
+    // voltava a "precisa de você" sem que ninguém o tivesse reaberto, e o autor
+    // do atendimento virava quem digitou por último. Reabrir é um gesto
+    // explícito, e ele ainda não existe (P-097-REABRIR-ATENDIMENTO).
+    if (conversation.resolvido_em) {
+      return NextResponse.json(
+        {
+          error:
+            'Este atendimento já terminou. Para voltar a falar com o segurado, é preciso reabri-lo.',
+        },
+        { status: 409 },
+      );
+    }
+
     // Auto-claim: enviar como humano pausa a IA e marca o dono.
-    const { error: claimErr } = ehNota ? { error: null } : await supabase
-      .from('conversations')
-      .update({
-        status: 'HUMAN_REQUESTED',
-        claimed_by: ctx.userId,
-        claimed_by_name: myName,
-        claimed_at: new Date().toISOString(),
-        last_message_preview: text.substring(0, 100),
-        last_message_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('company_id', ctx.companyId);
+    const { error: claimErr } = ehNota
+      ? { error: null }
+      : await supabase
+          .from('conversations')
+          .update({
+            status: 'HUMAN_REQUESTED',
+            claimed_by: ctx.userId,
+            claimed_by_name: myName,
+            claimed_at: new Date().toISOString(),
+            last_message_preview: text.substring(0, 100),
+            last_message_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .eq('company_id', ctx.companyId);
     if (claimErr) {
       console.error('[CONVERSAS] send/claim error:', claimErr.message);
-      return NextResponse.json({ error: 'Erro ao assumir a conversa (migration de claim aplicada?)' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Erro ao assumir a conversa (migration de claim aplicada?)' },
+        { status: 500 },
+      );
     }
 
     const { data: newMessage, error: insertErr } = await supabase
@@ -416,7 +542,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const res = await fetch(`${backend}/api/webhook/send-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Admin-API-Key': key },
-          body: JSON.stringify({ session_id: conversation.session_id, phone: conversation.user_phone, message: text }),
+          body: JSON.stringify({
+            session_id: conversation.session_id,
+            phone: conversation.user_phone,
+            message: text,
+          }),
         });
         // 🔴 UMA NOTA NUNCA FOI "ENTREGUE". O backend responde
         //    `{"status":"anotada","enviada":false}` e não chama
@@ -458,8 +588,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // ⚠️ `anotada` é o que permite à tela mostrar "anotação registrada"
     //    em vez de um balão de mensagem enviada.
-    return NextResponse.json({ ok: true, message: newMessage, delivered,
-                              anotada: ehNota });
+    return NextResponse.json({ ok: true, message: newMessage, delivered, anotada: ehNota });
   }
 
   return NextResponse.json({ error: 'Ação inválida' }, { status: 400 });

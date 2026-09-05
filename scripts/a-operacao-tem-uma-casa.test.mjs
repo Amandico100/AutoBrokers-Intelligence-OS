@@ -154,6 +154,15 @@ export const MUTACOES = [
   { id: 'M13', arquivo: 'lib/atendimento/casos.ts',
     o_que: "o rótulo do estágio vira a chave crua (`estagio_label = estagio`)",
     reprova: "[13] (o corretor vê 'precisa_de_voce' em vez de \"pediu uma pessoa\" — R11)" },
+  { id: 'M14', arquivo: 'lib/atendimento/casos.ts',
+    o_que: "no cabeçalho, trocar `vence_em` por `due_at` numa consulta a `work_waits` (a coluna NÃO existe no banco)",
+    reprova: '[14] (42703 — column work_waits.due_at does not exist; schema_vivo.json)' },
+  { id: 'M15', arquivo: 'app/api/dashboard/conversas/[id]/route.ts',
+    o_que: 'tirar o 409 do `claim` numa conversa com `resolvido_em` (o claim volta a gravar dono por cima do desfecho)',
+    reprova: '[15] (o autor do atendimento encerrado é sobrescrito por quem clicou depois)' },
+  { id: 'M16', arquivo: 'lib/atendimento/casos.ts',
+    o_que: 'o episódio volta a herdar `resolvido_em` DA CONVERSA em Casos (`conversa?.resolvido_em || sessao?.resolvido_em`)',
+    reprova: '[15] (encerrar UM atendimento marca os 5,8 episódios daquele telefone)' },
   // U9 (`mirror_conversation_id` obrigatório → [B1]) e U10 (backfill sem o 1:1
   // → [B4]) são do guarda irmão em python, e estão declaradas lá.
 ];
@@ -374,6 +383,86 @@ function fixtures() {
 function existe(rel) { return fs.existsSync(path.join(RAIZ, rel)); }
 function fonte(rel) { return fs.readFileSync(path.join(RAIZ, rel), 'utf8'); }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔴 [14] SCHEMA VIVO — a lente do DADO. O dublê ATÉ AQUI aceitava qualquer
+// coluna em `.select(...)`, e por isso ficou VERDE quando `casos.ts` pedia
+// `work_waits.due_at`, `work_waits.attendance_session_id`,
+// `attendance_sessions.protocolo` e `approval_requests.title` — NENHUMA
+// existe no banco (📊 `backend/tests/fixtures/schema_vivo.json`, medido em
+// information_schema.columns). O PostgREST real devolve 42703 para isto; o
+// dublê agora faz o mesmo, e [14] acusa a consulta que pediu a coluna errada.
+//
+// ⚠️ `attendance_sessions` na fixture é ANTERIOR à migration desta SPEC: as
+// 3 colunas que ELA acrescenta (`conversation_id`, `resolvido_em`,
+// `resolucao_motivo`) são aceitas aqui porque a migration existe e as
+// declara — lidas do PRÓPRIO arquivo `.sql`, nunca digitadas de novo.
+// ─────────────────────────────────────────────────────────────────────────────
+const CAMINHO_SCHEMA_VIVO = 'backend/tests/fixtures/schema_vivo.json';
+const CAMINHO_MIGRATION_097 = 'backend/supabase/migrations/20260905_01_spec097_episodio_tem_conversa.sql';
+
+const SCHEMA_VIVO = JSON.parse(fonte(CAMINHO_SCHEMA_VIVO));
+
+/** As colunas que uma migration `ADD COLUMN IF NOT EXISTS` declara para `tabela`. */
+function colunasDaMigration(caminhoRel, tabelaAlvo) {
+  if (!existe(caminhoRel)) return [];
+  const sql = fonte(caminhoRel);
+  const re = new RegExp(`ALTER\\s+TABLE\\s+public\\.${tabelaAlvo}\\s+ADD\\s+COLUMN\\s+IF\\s+NOT\\s+EXISTS\\s+(\\w+)`, 'gi');
+  const nomes = [];
+  let m;
+  while ((m = re.exec(sql))) nomes.push(m[1]);
+  return nomes;
+}
+
+// O schema EFETIVO = o medido (schema_vivo.json) + o que ESTA SPEC acrescenta
+// e já tem migration escrita — nunca um "achismo" de coluna que a SPEC ainda
+// vai criar.
+const SCHEMA_EFETIVO = JSON.parse(JSON.stringify(SCHEMA_VIVO.tabelas || {}));
+for (const nomeDaColuna of colunasDaMigration(CAMINHO_MIGRATION_097, 'attendance_sessions')) {
+  if (!SCHEMA_EFETIVO.attendance_sessions) SCHEMA_EFETIVO.attendance_sessions = {};
+  SCHEMA_EFETIVO.attendance_sessions[nomeDaColuna] = 'timestamp with time zone';
+}
+
+/** `tabela` fora do schema_vivo (não é uma das 8 medidas) não trava — está fora do escopo desta fixture. */
+function colunaExiste(tabela, coluna) {
+  const t = SCHEMA_EFETIVO[tabela];
+  if (!t) return true;
+  return Object.prototype.hasOwnProperty.call(t, coluna);
+}
+
+/**
+ * Parser do `select(...)` do PostgREST: vírgulas de topo (fora de parênteses),
+ * alias `x:coluna` (fica com o que vem DEPOIS do `:`), relação `tabela(colunas)`
+ * (fica só com o nome antes do `(` — a coluna interna não é desta tabela) e
+ * `->`/`->>` (fica só com a parte ANTES do operador — o resto é chave de JSON).
+ */
+function colunasDoSelect(str) {
+  const partes = [];
+  let profundidade = 0;
+  let atual = '';
+  for (const ch of String(str || '')) {
+    if (ch === '(') profundidade += 1;
+    if (ch === ')') profundidade -= 1;
+    if (ch === ',' && profundidade === 0) { partes.push(atual); atual = ''; }
+    else atual += ch;
+  }
+  if (atual.trim()) partes.push(atual);
+
+  const colunas = [];
+  for (let p of partes) {
+    p = p.trim();
+    if (!p || p === '*') continue;
+    const parenIdx = p.indexOf('(');
+    if (parenIdx !== -1) p = p.slice(0, parenIdx).trim();       // relação: não valida colunas internas
+    if (!p) continue;
+    if (p.includes(':')) p = p.split(':').pop().trim();          // alias
+    if (p.includes('->')) p = p.split('->')[0].trim();           // ->/->> : só a coluna
+    p = p.replace(/::\w+$/, '').trim();                          // cast ::tipo
+    p = p.replace(/^!(inner|left)\s*/i, '').trim();
+    if (p) colunas.push(p);
+  }
+  return colunas;
+}
+
 function carregarTS(caminhoRelativo, resolverImport, opcoes = {}) {
   const saida = ts.transpileModule(fonte(caminhoRelativo), {
     compilerOptions: {
@@ -425,7 +514,16 @@ function dubleSupabase(linhasPorTabela, registro, falhar = new Set()) {
     };
     registro.push(consulta);
     const cadeia = {};
-    cadeia.select = (colunas, opcoes) => { consulta.op = consulta.payload ? consulta.op : 'select'; consulta.colunas = String(colunas ?? ''); consulta.opcoes = opcoes ?? {}; return cadeia; };
+    cadeia.select = (colunas, opcoes) => {
+      consulta.op = consulta.payload ? consulta.op : 'select';
+      consulta.colunas = String(colunas ?? '');
+      consulta.opcoes = opcoes ?? {};
+      // 🔴 [14] — a validação do PostgREST real: coluna que não existe é 42703,
+      // não uma linha inventada pelo dublê.
+      consulta.colunasPedidas = colunasDoSelect(consulta.colunas);
+      consulta.colunasInvalidas = consulta.colunasPedidas.filter((c) => !colunaExiste(nome, c));
+      return cadeia;
+    };
     cadeia.insert = (payload) => { consulta.op = 'insert'; consulta.payload = payload; return cadeia; };
     cadeia.update = (payload) => { consulta.op = 'update'; consulta.payload = payload; return cadeia; };
     cadeia.upsert = (payload) => { consulta.op = 'upsert'; consulta.payload = payload; return cadeia; };
@@ -465,6 +563,13 @@ function dubleSupabase(linhasPorTabela, registro, falhar = new Set()) {
       }
     };
     const resolver = () => {
+      // 🔴 [14] — igual ao PostgREST: coluna inexistente falha ANTES de
+      // qualquer outra coisa, com 42703 (a lente do DADO, não a do dublê).
+      if (consulta.op === 'select' && (consulta.colunasInvalidas || []).length) {
+        const erro = new Error(`column ${nome}.${consulta.colunasInvalidas[0]} does not exist`);
+        erro.__schemaCode = '42703';
+        throw erro;
+      }
       if (falhar.has(nome)) {
         const erro = new Error(`FONTE_INDISPONIVEL: a consulta a "${nome}" falhou (dublê)`);
         erro.__fonte = nome;
@@ -507,7 +612,8 @@ function dubleSupabase(linhasPorTabela, registro, falhar = new Set()) {
           ? { data: null, count: linhas.length, error: null }
           : { data: linhas, count: o.count ? linhas.length : null, error: null };
       } catch (e) {
-        return { data: null, count: null, error: { message: String(e.message), code: 'FONTE_INDISPONIVEL' } };
+        const codigo = e.__schemaCode || 'FONTE_INDISPONIVEL';
+        return { data: null, count: null, error: { message: String(e.message), code: codigo } };
       }
     };
     cadeia.maybeSingle = () => { const c = corpo(); return Promise.resolve({ data: (c.data || [])[0] ?? null, error: c.error }); };
@@ -634,8 +740,8 @@ async function observarRota(caminho, { companyId = CO_ALFA, params = null, url =
 }
 
 /** Roda o POST de `conversas/[id]` (o claim). Devolve o payload do UPDATE. */
-async function observarClaim({ companyId = CO_ALFA, acao = 'claim', corpoExtra = {} } = {}) {
-  const mundo = fixtures();
+async function observarClaim({ companyId = CO_ALFA, acao = 'claim', corpoExtra = {}, id = 'cv-alfa-0000', linhas = null } = {}) {
+  const mundo = linhas || fixtures();
   const registro = [];
   const supabase = dubleSupabase(mundo, registro);
   const sessao = { companyId, userId: U_ALFA };
@@ -646,9 +752,10 @@ async function observarClaim({ companyId = CO_ALFA, acao = 'claim', corpoExtra =
     const mod = carregarTS(CAMINHO_CLAIM, resolvedor({ supabase, sessao }));
     if (typeof mod.POST !== 'function') return { erro: `SEM_POST: ${CAMINHO_CLAIM}`, registro, mundo };
     const pedido = { url: 'http://t.local/c', json: async () => ({ action: acao, ...corpoExtra }) };
-    const resposta = await silenciando(() => mod.POST(pedido, { params: Promise.resolve({ id: 'cv-alfa-0000' }) }));
+    const resposta = await silenciando(() => mod.POST(pedido, { params: Promise.resolve({ id }) }));
     const updates = registro.filter((c) => c.tabela === 'conversations' && c.op === 'update');
-    return { corpo: resposta?.body, status: resposta?.status ?? 200, registro, updates, mundo };
+    const updatesDeSessao = registro.filter((c) => c.tabela === 'attendance_sessions' && c.op === 'update');
+    return { corpo: resposta?.body, status: resposta?.status ?? 200, registro, updates, updatesDeSessao, mundo };
   } catch (e) {
     return { erro: `${e.name}: ${e.message}`, registro, mundo };
   } finally {
@@ -1101,6 +1208,20 @@ function analisarLinguagemHumana({ fila, casos, ficha }) {
   return p;
 }
 
+// [14] · schema vivo — nenhuma consulta pediu coluna fora do schema_vivo.json
+// (+ as 3 colunas que a migration desta SPEC declara para `attendance_sessions`).
+function analisarSchemaVivo({ registros }) {
+  const p = [];
+  for (const reg of registros) {
+    for (const c of (reg || [])) {
+      if (c.op === 'select' && (c.colunasInvalidas || []).length) {
+        p.push(`consulta a "${c.tabela}" pediu coluna que NÃO EXISTE: ${c.colunasInvalidas.join(', ')} (schema_vivo.json)`);
+      }
+    }
+  }
+  return p;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 `--fila-json` — a MESMA execução, servida a quem não é Node
 //
@@ -1294,6 +1415,362 @@ checar(analisarLinguagemHumana({
   ficha: { corpo: { timeline: [{ label: 'Atendimento concluído' }] } },
 }), '[13] payload-controle limpo — texto humano não é acusado (prova que o guarda distingue)');
 
+console.log('\n[14] SCHEMA VIVO — nenhuma consulta pediu coluna que não existe no banco');
+checar(analisarSchemaVivo({ registros: [
+  obsFila.registro, obsCasos.registro, obsRotaFila.registro, obsClaim.registro, obsFicha.registro,
+  obsPag1.registro, obsPag2.registro, obsBusca.registro, obsFalha.registro,
+  obsBeta.registro, obsCruzada.registro,
+] }), '[14] `projetarCasos`/rotas de atendimento só pedem colunas do schema_vivo.json (+ migration 20260905_01)');
+
+// PAR — a mesma régua, sobre uma consulta com o defeito de propósito e sobre
+// uma consulta limpa (protocolo §9.2: toda bateria precisa de controle).
+const regSuja14 = [];
+const resultadoSuja14 = await dubleSupabase(fixtures(), regSuja14)
+  .from('work_waits').select('id, due_at').eq('company_id', CO_ALFA);
+checar(
+  (!resultadoSuja14.error || resultadoSuja14.error.code !== '42703')
+    ? [`o dublê não devolveu 42703 para \`work_waits.due_at\` (recebeu: ${JSON.stringify(resultadoSuja14.error)})`]
+    : [],
+  '[14] o dublê responde `due_at` em `work_waits` exatamente como o PostgREST — 42703',
+);
+controle(analisarSchemaVivo({ registros: [regSuja14] }),
+  '[14] CONTROLE — select-controle com `due_at` em `work_waits` (coluna que não existe) é acusado por [14]');
+
+const regLimpa14 = [];
+const resultadoLimpa14 = await dubleSupabase(fixtures(), regLimpa14)
+  .from('work_waits').select('id, kind, status, vence_em').eq('company_id', CO_ALFA);
+checar(
+  resultadoLimpa14.error ? [`select-controle LIMPO recebeu erro inesperado: ${JSON.stringify(resultadoLimpa14.error)}`] : [],
+  '[14] o dublê NÃO falha um select-controle limpo (`vence_em`, não `due_at`)',
+);
+checar(analisarSchemaVivo({ registros: [regLimpa14] }),
+  '[14] CONTROLE — select-controle LIMPO não é acusado por [14] (prova que a régua distingue)');
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// [15] O QUE A LENTE DO DADO E O RED TEAM ACHARAM — cada conserto, uma régua
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 🔴 Todas EXECUTAM o produto (§9.4): nenhuma lê o código à procura de uma
+// frase. E cada uma tem, ao lado, a observação-CONTROLE com o defeito de volta
+// — senão o verde não prova nada (§9.3).
+
+console.log('\n[15] OS CONSERTOS DO DADO E DO RED TEAM');
+
+// ── um mundo pequeno, feito para as bordas que a fixture grande não tem ──────
+function mundoDasBordas() {
+  const AGORA_ISO = iso(AGORA);
+  return {
+    conversations: [
+      // (a) encerrada há 40 DIAS — fora da janela da semana e fora das ativas
+      { id: 'cv-b-velha', company_id: CO_ALFA, channel: 'whatsapp', status: 'closed',
+        user_phone: telefone(1), user_name: 'Segurado Borda 1', last_message_preview: 'x',
+        last_message_at: iso(AGORA - 40 * D), created_at: iso(AGORA - 60 * D), session_id: 'ss-b-1',
+        claimed_by: null, claimed_by_name: null, claimed_at: null,
+        resolvido_em: iso(AGORA - 40 * D), resolucao_motivo: 'acionamento_concluido' },
+      // (b) SEM relógio nenhum — nem `last_message_at`, nem `created_at`
+      { id: 'cv-b-sem-relogio', company_id: CO_ALFA, channel: 'whatsapp', status: 'open',
+        user_phone: telefone(2), user_name: 'Segurado Borda 2', last_message_preview: null,
+        last_message_at: null, created_at: null, session_id: 'ss-b-2',
+        claimed_by: null, claimed_by_name: null, claimed_at: null,
+        resolvido_em: null, resolucao_motivo: null },
+      // (c) relógio no FUTURO
+      { id: 'cv-b-futuro', company_id: CO_ALFA, channel: 'whatsapp', status: 'open',
+        user_phone: telefone(3), user_name: 'Segurado Borda 3', last_message_preview: 'x',
+        last_message_at: iso(AGORA + 5 * D), created_at: AGORA_ISO, session_id: 'ss-b-3',
+        claimed_by: null, claimed_by_name: null, claimed_at: null,
+        resolvido_em: null, resolucao_motivo: null },
+      // (d) a conversa do encerramento por EPISÓDIO
+      { id: 'cv-b-encerrar', company_id: CO_ALFA, channel: 'whatsapp', status: 'open',
+        user_phone: telefone(4), user_name: 'Segurado Borda 4', last_message_preview: 'x',
+        last_message_at: iso(AGORA - 2 * H), created_at: iso(AGORA - 9 * D), session_id: 'ss-b-4',
+        claimed_by: null, claimed_by_name: null, claimed_at: null,
+        resolvido_em: null, resolucao_motivo: null },
+    ],
+    attendance_sessions: [
+      // dois episódios da MESMA conversa (d) — um antigo, um corrente
+      { id: 'as-b-antigo', company_id: CO_ALFA, conversation_id: 'cv-b-encerrar', counterparty: telefone(4),
+        observer_number: '5511900009999', status: 'closed', started_at: iso(AGORA - 9 * D),
+        last_event_at: iso(AGORA - 8 * D), resolvido_em: null, resolucao_motivo: null,
+        summary: { distilled: { servico: 'guincho' } }, ramo: 'auto', servico: 'guincho' },
+      { id: 'as-b-corrente', company_id: CO_ALFA, conversation_id: 'cv-b-encerrar', counterparty: telefone(4),
+        observer_number: '5511900009999', status: 'open', started_at: iso(AGORA - 3 * H),
+        last_event_at: iso(AGORA - 2 * H), resolvido_em: null, resolucao_motivo: null,
+        summary: { distilled: { servico: 'bateria' } }, ramo: 'auto', servico: 'bateria' },
+      // um episódio RESOLVIDO nesta semana, com motivo FORA do CHECK
+      { id: 'as-b-motivo-estranho', company_id: CO_ALFA, conversation_id: null, counterparty: telefone(5),
+        observer_number: '5511900009999', status: 'closed', started_at: iso(AGORA - 4 * D),
+        last_event_at: iso(AGORA - 3 * D), resolvido_em: iso(AGORA - 2 * D),
+        resolucao_motivo: 'motivo_que_o_check_nao_conhece',
+        summary: { distilled: { servico: 'vidros' } }, ramo: 'auto', servico: 'vidros' },
+    ],
+    work_waits: [],
+    work_runs: [
+      // o trabalho que parou, com `error_message` de MÁQUINA
+      { id: 'wr-b-1', company_id: CO_ALFA, conversation_id: 'cv-b-futuro', status: 'failed',
+        runtime_kind: 'acionamento', unblock_state: null, current_step_key: 'ura.menu',
+        error_code: 'ura_timeout', error_message: "KeyError: 'x' em unblock_state (work_run 3f2a)",
+        created_at: iso(AGORA - 1 * H), input_payload: {} },
+    ],
+    approval_requests: [],
+    messages: [],
+  };
+}
+
+const bordas = mundoDasBordas();
+
+// ── [15a] P1-1/P3-8 — quem já terminou não se assume, não se devolve, não recebe
+const mundoEncerrado = fixtures();
+const CONVERSA_ENCERRADA = `cv-alfa-${String(N_FRESCAS).padStart(4, '0')}`;   // uma das 3 com resolvido_em
+const claimEncerrado = await observarClaim({ id: CONVERSA_ENCERRADA, linhas: mundoEncerrado });
+const releaseEncerrado = await observarClaim({ id: CONVERSA_ENCERRADA, acao: 'release', linhas: fixtures() });
+const sendEncerrado = await observarClaim({ id: CONVERSA_ENCERRADA, acao: 'send', corpoExtra: { text: 'oi' }, linhas: fixtures() });
+
+function analisarNaoMexeNoEncerrado({ nome, obs }) {
+  if (obs?.erro) return [`${nome} não executou: ${obs.erro}`];
+  const p = [];
+  if (obs.status !== 409) {
+    p.push(`\`${nome}\` numa conversa ENCERRADA devolveu ${obs.status}, não 409 — o desfecho é sobrescrivível pela tela`);
+  }
+  const escreveuDono = (obs.updates || []).some((u) => u.payload
+    && ('claimed_by' in u.payload || 'status' in u.payload));
+  if (escreveuDono) {
+    p.push(`\`${nome}\` GRAVOU dono/status por cima de um atendimento encerrado — o autor do caso passa a ser quem clicou depois`);
+  }
+  return p;
+}
+
+checar(analisarNaoMexeNoEncerrado({ nome: 'claim', obs: claimEncerrado }),
+  '[15] assumir um atendimento ENCERRADO devolve 409 e não grava dono por cima do desfecho (P1-1)');
+checar(analisarNaoMexeNoEncerrado({ nome: 'release', obs: releaseEncerrado }),
+  '[15] devolver à IA um atendimento ENCERRADO devolve 409 e não apaga o autor (P1-1)');
+checar(analisarNaoMexeNoEncerrado({ nome: 'send', obs: sendEncerrado }),
+  '[15] escrever num atendimento ENCERRADO devolve 409 — não reabre por escrita (P3-8)');
+controle(analisarNaoMexeNoEncerrado({
+  nome: 'claim', obs: { status: 200, updates: [{ payload: { claimed_by: U_ALFA, claimed_at: 'x' } }] },
+}), '[15] claim-controle que devolve 200 e grava dono numa conversa encerrada');
+
+// ── [15b] P1-5 — o desfecho é gravado no EPISÓDIO CORRENTE, e a conversa espelha
+const encerrarPorEpisodio = await observarClaim({
+  id: 'cv-b-encerrar', acao: 'close', corpoExtra: { motivo: 'acionamento_concluido' }, linhas: bordas,
+});
+
+function analisarEncerraOEpisodio({ obs }) {
+  if (obs?.erro) return [`o encerramento não executou: ${obs.erro}`];
+  const p = [];
+  const naSessao = (obs.updatesDeSessao || []).filter((u) => u.payload && 'resolvido_em' in u.payload);
+  if (!naSessao.length) {
+    p.push('o "Encerrar" não gravou `resolvido_em` em `attendance_sessions` — o desfecho ficou só na CONVERSA, que é a thread perpétua do telefone (📊 5,8 episódios por contato)');
+    return p;
+  }
+  const motivos = naSessao.map((u) => String(u.payload.resolucao_motivo || ''));
+  if (!motivos.includes('acionamento_concluido')) {
+    p.push(`o episódio foi encerrado com motivo ${JSON.stringify(motivos)} em vez do que a atendente escolheu`);
+  }
+  const naConversa = (obs.updates || []).filter((u) => u.payload && 'resolvido_em' in u.payload);
+  if (!naConversa.length) p.push('a CONVERSA não recebeu o espelho do desfecho');
+  // ⛔ e o episódio ANTIGO da mesma conversa continua aberto
+  const antigo = (obs.mundo.attendance_sessions || []).find((x) => x.id === 'as-b-antigo');
+  const corrente = (obs.mundo.attendance_sessions || []).find((x) => x.id === 'as-b-corrente');
+  if (antigo && antigo.resolvido_em) {
+    p.push('o episódio ANTIGO da mesma conversa também foi encerrado — encerrar UM atendimento apagou a história dos outros');
+  }
+  if (corrente && !corrente.resolvido_em) {
+    p.push('o episódio CORRENTE não foi encerrado — o desfecho não chegou onde o caso mora');
+  }
+  return p;
+}
+checar(analisarEncerraOEpisodio({ obs: encerrarPorEpisodio }),
+  '[15] "Encerrar" grava o desfecho no EPISÓDIO CORRENTE, espelha na conversa e NÃO toca no episódio anterior (P1-5)');
+controle(analisarEncerraOEpisodio({
+  obs: { updates: [{ payload: { resolvido_em: 'x' } }], updatesDeSessao: [],
+    mundo: { attendance_sessions: [{ id: 'as-b-antigo' }, { id: 'as-b-corrente' }] } },
+}), '[15] encerramento-controle que grava só na conversa (os 5,8 episódios do telefone num balde)');
+
+// ── [15c] P1-2 — `has_more` é do RESULTADO UNIDO
+const paginaCurta = await observarProjecao({ opcoes: { limite: 5 } });
+function analisarHasMoreUnido({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const itens = itensDe(obs);
+  const p = [];
+  if (itens.length > 5) p.push(`a página pediu 5 e devolveu ${itens.length} — o corte da página não é o corte do RESULTADO`);
+  if (obs.saida?.has_more !== true) {
+    p.push('`has_more` é falso numa página de 5 sobre 4.000 episódios — o botão "carregar mais" some com o acervo atrás dele (P1-2)');
+  }
+  if (!obs.saida?.cursor) p.push('a página não devolveu cursor — não há como pedir a próxima');
+  return p;
+}
+checar(analisarHasMoreUnido({ obs: paginaCurta }),
+  '[15] a página de Casos corta o RESULTADO UNIDO e declara `has_more` (P1-2)');
+controle(analisarHasMoreUnido({ obs: { saida: { items: [1, 2, 3, 4, 5], has_more: false, cursor: null } } }),
+  '[15] página-controle que corta e diz `has_more: false` (o acervo escondido atrás do botão que sumiu)');
+
+// ── [15d] P2-5 — cursor forjado é DESCARTADO, não vira predicado
+const CURSOR_INJETADO = `2026-01-01T00:00:00Z|x,id.gt.0,or(company_id.neq.${CO_ALFA})`;
+const comCursorForjado = await observarProjecao({ opcoes: { cursor: CURSOR_INJETADO, limite: 20 } });
+function analisarCursorInjetado({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const p = [];
+  const sujas = (obs.registro || []).filter((c) => c.or.some((e) => e.includes('id.gt.0') || e.includes('company_id.neq')));
+  if (sujas.length) {
+    p.push(`${sujas.length} consulta(s) levaram o cursor FORJADO para dentro do \`or(...)\`: ${sujas[0].or.find((e) => e.includes('id.gt.0') || e.includes('company_id.neq'))} — quem controla a URL reescrevia o predicado (P2-5)`);
+  }
+  if (!itensDe(obs).length) p.push('a projeção devolveu ZERO itens com o cursor inválido — ele deveria ser descartado e a lista voltar à primeira página');
+  return p;
+}
+checar(analisarCursorInjetado({ obs: comCursorForjado }),
+  '[15] cursor forjado é descartado (não entra no `or` do PostgREST) e a lista volta à primeira página (P2-5)');
+controle(analisarCursorInjetado({
+  obs: { registro: [{ or: [`last_event_at.lt.2026-01-01T00:00:00Z,id.gt.0,or(company_id.neq.${CO_ALFA})`], predicados: [] }], saida: { items: [1] } },
+}), '[15] projeção-controle que injeta o cursor cru no `or(...)`');
+
+// ── [15e] P2-7 — busca só de curinga devolve NADA, declarado
+const buscaSoCuringa = await observarProjecao({ opcoes: { busca: '____' } });
+function analisarBuscaSoCuringa({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const p = [];
+  const itens = itensDe(obs);
+  if (itens.length) {
+    p.push(`uma busca por "____" (só curingas do LIKE) devolveu ${itens.length} itens — o acervo inteiro com cara de resultado (P2-7)`);
+  }
+  if (obs.saida?.busca_invalida !== true) {
+    p.push('a lista voltou vazia SEM dizer por quê — "nada encontrado" e "sua busca não tinha nenhuma letra" são respostas diferentes');
+  }
+  return p;
+}
+checar(analisarBuscaSoCuringa({ obs: buscaSoCuringa }),
+  '[15] busca só com curinga (`____`) devolve lista VAZIA e declarada, nunca o acervo (P2-7)');
+controle(analisarBuscaSoCuringa({ obs: { saida: { items: [1, 2, 3], busca_invalida: false } } }),
+  '[15] busca-controle que devolve o acervo para um termo sem letra nenhuma');
+
+// ── [15f] P2-8 — o erro do motor não chega ao corretor
+const comErroDeMotor = await observarProjecao({ opcoes: { group_by: 'stage' }, linhas: bordas });
+function analisarErroDeMotor({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const p = [];
+  const textos = itensDe(obs).flatMap((i) => [i.detalhe, i.agora?.situacao, i.agora?.proxima_acao?.texto].filter(Boolean));
+  if (!textos.length) return ['nenhum texto foi produzido — nada foi medido'];
+  const crus = textos.filter((t) => /KeyError|Traceback|work_run|unblock_state|ura_timeout/.test(String(t)));
+  if (crus.length) p.push(`o texto do motor chegou ao corretor: ${JSON.stringify(crus[0])} (R11/P2-8)`);
+  const humano = textos.some((t) => /seguradora não respondeu a tempo|precisa de uma pessoa/i.test(String(t)));
+  if (!humano) p.push('o trabalho parado não produziu NENHUMA frase humana — o código do erro não virou explicação');
+  return p;
+}
+checar(analisarErroDeMotor({ obs: comErroDeMotor }),
+  '[15] `error_code` vira frase de gente; `error_message` NUNCA chega ao card (P2-8)');
+controle(analisarErroDeMotor({
+  obs: { saida: { items: [{ detalhe: "KeyError: 'x' em unblock_state (work_run 3f2a)" }] } },
+}), '[15] payload-controle com `error_message` cru na próxima ação');
+
+// ── [15g] P2-1 — a Ficha de uma conversa encerrada há 40 dias
+const fichaVelha = await observarProjecao({
+  filtro: { conversa_id: 'cv-b-velha' }, opcoes: { group_by: 'stage' }, linhas: bordas,
+});
+function analisarFichaForaDaJanela({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const p = [];
+  const item = itensDe(obs).find((i) => i.conversa_id === 'cv-b-velha');
+  if (!item) {
+    p.push('pedir a conversa PELO ID devolveu vazio: ela foi encerrada há 40 dias e não cabe nem em "ativas" nem na janela da semana — a Ficha abriria sem linha nenhuma (P2-1)');
+    return p;
+  }
+  if (item.stage !== 'concluido') {
+    p.push(`a conversa encerrada há 40 dias voltou como '${item.stage}' — a Ficha diria que um atendimento do mês passado está acontecendo agora`);
+  }
+  return p;
+}
+checar(analisarFichaForaDaJanela({ obs: fichaVelha }),
+  '[15] pedir uma conversa PELO ID ignora a janela da semana e devolve o desfecho dela (P2-1)');
+controle(analisarFichaForaDaJanela({ obs: { saida: { items: [] } } }),
+  '[15] projeção-controle que aplica a janela da Fila a um pedido por id');
+
+// ── [15h] P2-2/P2-3 — a semana conta EPISÓDIO e não perde o motivo estranho
+function analisarSemanaPorEpisodio({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const semana = obs.saida?.semana;
+  const p = [];
+  if (!semana) return ['a projeção não devolveu `semana`'];
+  if (!semana.terminaram) {
+    p.push('o episódio resolvido nesta semana não entrou em `semana.terminaram` — a conta lê só `conversations` e o card já diz "Encerrado" (P2-2)');
+  }
+  if (!semana.por_motivo || !semana.por_motivo.outro) {
+    p.push('o desfecho com motivo FORA do CHECK sumiu das duas contas — nem terminou, nem morreu esperando; ele existia e não aparecia em lugar nenhum (P2-3)');
+  }
+  return p;
+}
+checar(analisarSemanaPorEpisodio({ obs: comErroDeMotor }),
+  '[15] `semana` conta o EPISÓDIO resolvido e declara o motivo desconhecido como `outro` (P2-2/P2-3)');
+controle(analisarSemanaPorEpisodio({ obs: { saida: { semana: { terminaram: 0, por_motivo: {} } } } }),
+  '[15] semana-controle que lê só `conversations` e engole o motivo fora do CHECK');
+
+// ── [15i] P3-1/P3-2 — sem relógio, e relógio no futuro
+function analisarRelogio({ obs }) {
+  if (obs?.erro) return [`a projeção não executou: ${obs.erro}`];
+  const p = [];
+  const itens = itensDe(obs);
+  const negativas = itens.filter((i) => /-\d/.test(String(i.agora?.ha_quanto_tempo || '')));
+  if (negativas.length) {
+    p.push(`${negativas.length} caso(s) com duração NEGATIVA (${negativas[0].agora.ha_quanto_tempo}) — um relógio adiantado do provedor produzia "parado há -3 dias" (P3-2)`);
+  }
+  const semRelogio = itens.find((i) => i.conversa_id === 'cv-b-sem-relogio');
+  if (semRelogio && semRelogio.parado_ha === null && semRelogio.stage === 'parado') {
+    // ⚠️ `parado` sem duração é aceitável — o que não pode é a tela inventar um número
+    if (!/sem movimento|não sabemos|nunca/i.test(String(semRelogio.agora?.situacao || ''))) {
+      p.push('o caso SEM relógio nenhum não diz que não há movimento registrado — a tela mostrava "Parado há —", que parece defeito de carga (P3-1)');
+    }
+  }
+  return p;
+}
+checar(analisarRelogio({ obs: comErroDeMotor }),
+  '[15] relógio no futuro não vira duração negativa e a ausência de relógio tem FRASE (P3-1/P3-2)');
+controle(analisarRelogio({ obs: { saida: { items: [{ key: 'a', agora: { ha_quanto_tempo: '-3d 4h' } }] } } }),
+  '[15] payload-controle com duração negativa ("parado há -3 dias")');
+
+// ── [15j] P3-7 — nenhuma ESCRITA sem `company_id`
+function analisarEscritaComTenant({ obs, nome }) {
+  if (obs?.erro) return [`${nome} não executou: ${obs.erro}`];
+  const escritas = (obs.registro || []).filter((c) => c.op === 'update' || c.op === 'delete');
+  const semTenant = escritas.filter((c) => !c.predicados.some((x) => x.coluna === 'company_id'));
+  if (!escritas.length) return [`${nome} não fez escrita nenhuma — nada foi medido`];
+  return semTenant.length
+    ? [`${semTenant.length} escrita(s) em \`${[...new Set(semTenant.map((c) => c.tabela))].join(', ')}\` SEM \`.eq('company_id', …)\` — o backend usa service role e a RLS não protege contra erro de filtro no código (CLAUDE.md §7)`]
+    : [];
+}
+const claimLimpo = await observarClaim({});
+checar(analisarEscritaComTenant({ obs: claimLimpo, nome: 'o claim' }),
+  '[15] toda escrita das rotas de conversa carrega `company_id` — inclusive a de não-lidas (P3-7)');
+controle(analisarEscritaComTenant({
+  nome: 'rota-controle',
+  obs: { registro: [{ op: 'update', tabela: 'conversations', predicados: [{ op: 'eq', coluna: 'id' }] }] },
+}), '[15] escrita-controle sem `company_id` (o UPDATE que atravessa a corretora)');
+
+// ── [15k] P3-3 — a timeline ordena por INSTANTE, não por texto
+function analisarOrdemDaTimeline({ ficha }) {
+  if (ficha?.erro) return [`a ficha não executou: ${ficha.erro}`];
+  const timeline = ficha.corpo?.ficha?.timeline ?? ficha.corpo?.timeline ?? [];
+  if (timeline.length < 2) return ['a timeline tem menos de 2 eventos — a ordem não foi medida'];
+  const p = [];
+  for (let i = 1; i < timeline.length; i += 1) {
+    const anterior = Date.parse(String(timeline[i - 1].at));
+    const atual = Date.parse(String(timeline[i].at));
+    if (!Number.isNaN(anterior) && !Number.isNaN(atual) && atual < anterior) {
+      p.push(`a timeline está fora de ordem no evento ${i} (${timeline[i].label}): ${timeline[i].at} vem depois de ${timeline[i - 1].at} no texto, mas antes no tempo — `
+        + 'o mesmo instante escrito com fuso diferente é a mesma hora e duas strings (P3-3)');
+      break;
+    }
+  }
+  return p;
+}
+checar(analisarOrdemDaTimeline({ ficha: obsFicha }),
+  '[15] a timeline da Ficha está ordenada por INSTANTE (fusos diferentes, mesma hora) (P3-3)');
+controle(analisarOrdemDaTimeline({
+  ficha: { corpo: { timeline: [
+    { at: '2026-09-05T12:00:00Z', label: 'a' },
+    { at: '2026-09-05T09:00:00-03:00', label: 'b' },
+    { at: '2026-09-05T10:00:00Z', label: 'c' },
+  ] } },
+}), '[15] timeline-controle ordenada por texto (o fuso `-03:00` cai três horas fora do lugar)');
+
 console.log('\n[CTL] O ARNÊS — os dublês conseguem discordar de si mesmos');
 
 const provaDoDuble = await (async () => {
@@ -1344,10 +1821,10 @@ const provaDasMutacoes = (() => {
       p.push(`a mutação ${m.id} aponta para um caminho que não existe: ${m.arquivo}`);
     }
   }
-  if (MUTACOES.length !== 11) p.push(`MUTACOES tem ${MUTACOES.length} entradas; 11 são deste guarda (as outras 2 são do guarda python)`);
+  if (MUTACOES.length !== 14) p.push(`MUTACOES tem ${MUTACOES.length} entradas; 14 são deste guarda (as outras 2 são do guarda python)`);
   return p;
 })();
-checar(provaDasMutacoes, '[CTL] as 11 mutações deste guarda têm marcador único e caminho real');
+checar(provaDasMutacoes, '[CTL] as 14 mutações deste guarda têm marcador único e caminho real');
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${'='.repeat(78)}`);

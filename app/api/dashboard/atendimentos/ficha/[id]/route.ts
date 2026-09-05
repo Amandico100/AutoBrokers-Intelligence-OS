@@ -68,14 +68,32 @@ function internalKey(): string | null {
 }
 
 const INSURER_LABEL: Record<string, string> = {
-  allianz: 'Allianz', porto: 'Porto Seguro', hdi: 'HDI', yelum: 'Yelum', tokio: 'Tokio Marine',
-  alfa: 'Alfa', azul: 'Azul Seguros', bradesco: 'Bradesco Seguros', mapfre: 'Mapfre',
-  zurich: 'Zurich', suhai: 'Suhai', sompo: 'Sompo', itau: 'Itaú Seguros', youse: 'Youse',
+  allianz: 'Allianz',
+  porto: 'Porto Seguro',
+  hdi: 'HDI',
+  yelum: 'Yelum',
+  tokio: 'Tokio Marine',
+  alfa: 'Alfa',
+  azul: 'Azul Seguros',
+  bradesco: 'Bradesco Seguros',
+  mapfre: 'Mapfre',
+  zurich: 'Zurich',
+  suhai: 'Suhai',
+  sompo: 'Sompo',
+  itau: 'Itaú Seguros',
+  youse: 'Youse',
 };
 const SERVICO_LABEL: Record<string, string> = {
-  guincho: 'Guincho', bateria: 'Bateria', pneu: 'Pneu', chaveiro: 'Chaveiro',
-  eletricista: 'Eletricista', encanador: 'Hidráulica', eletrodomesticos: 'Eletrodomésticos',
-  vidros: 'Vidros', sinistro: 'Sinistro', consulta: 'Consulta',
+  guincho: 'Guincho',
+  bateria: 'Bateria',
+  pneu: 'Pneu',
+  chaveiro: 'Chaveiro',
+  eletricista: 'Eletricista',
+  encanador: 'Hidráulica',
+  eletrodomesticos: 'Eletrodomésticos',
+  vidros: 'Vidros',
+  sinistro: 'Sinistro',
+  consulta: 'Consulta',
 };
 
 /** Os cinco motivos do CHECK, ditos como uma pessoa diria. */
@@ -93,10 +111,16 @@ const insurerFromRef = (ref?: string | null): string => {
 };
 
 interface Dispatch {
-  insurer_phone: string; case_id: string | null; state: string | null;
-  subservice: string | null; client_phone: string | null; playbook_ref?: string | null;
-  captured: Record<string, unknown>; slots?: Record<string, unknown>;
-  reason?: string | null; created_at: string | null;
+  insurer_phone: string;
+  case_id: string | null;
+  state: string | null;
+  subservice: string | null;
+  client_phone: string | null;
+  playbook_ref?: string | null;
+  captured: Record<string, unknown>;
+  slots?: Record<string, unknown>;
+  reason?: string | null;
+  created_at: string | null;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -107,11 +131,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: conversation } = await supabase
     .from('conversations')
-    .select('id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, claimed_at, last_message_at, last_message_preview, created_at, resolvido_em, resolucao_motivo')
+    .select(
+      'id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, claimed_at, last_message_at, last_message_preview, created_at, resolvido_em, resolucao_motivo',
+    )
     .eq('id', id)
     .eq('company_id', ctx.companyId)
     .maybeSingle();
-  if (!conversation) return NextResponse.json({ error: 'Atendimento não encontrado' }, { status: 404 });
+  if (!conversation)
+    return NextResponse.json({ error: 'Atendimento não encontrado' }, { status: 404 });
 
   const { data: messages } = await supabase
     .from('messages')
@@ -135,9 +162,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       );
       if (res.ok) {
         const all: Dispatch[] = (await res.json())?.dispatches || [];
-        dispatch = all.find((d) =>
-          isMirror ? digits(d.insurer_phone) === phone : digits(d.client_phone) === phone,
-        ) || null;
+        dispatch =
+          all.find((d) =>
+            isMirror ? digits(d.insurer_phone) === phone : digits(d.client_phone) === phone,
+          ) || null;
       }
     } catch (e) {
       if (!(e instanceof BackendUrlError)) console.error('[FICHA] dispatch fetch error');
@@ -149,7 +177,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const protocolo = String(captured.protocol || '') || null;
   const insurer = dispatch ? insurerFromRef(dispatch.playbook_ref) : null;
   const servico = dispatch
-    ? (SERVICO_LABEL[dispatch.subservice || ''] || dispatch.subservice || 'Assistência')
+    ? SERVICO_LABEL[dispatch.subservice || ''] || dispatch.subservice || 'Assistência'
     : null;
 
   // Espelho persistente da conversa com a seguradora (link "ver acionamento")
@@ -180,7 +208,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       if (d) {
         const partes = [d.resumo || d.summary].filter(Boolean);
         if (!partes.length && (d.servico || d.tipo)) {
-          partes.push(`Atendimento de ${SERVICO_LABEL[d.servico || ''] || d.servico || d.tipo}${d.desfecho ? ` — ${d.desfecho}` : ''}.`);
+          partes.push(
+            `Atendimento de ${SERVICO_LABEL[d.servico || ''] || d.servico || d.tipo}${d.desfecho ? ` — ${d.desfecho}` : ''}.`,
+          );
         }
         resumoDestilado = partes.join(' ') || null;
       }
@@ -214,11 +244,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   let resumo = resumoDestilado;
   if (!resumo) {
     if (dispatch && !caso?.resolvido_em) {
-      const fraseDoEstado = dispatch.state === 'captured' && protocolo
-        ? '' : ` ${dispatchStateMeta(dispatch.state).detalhe}`;
-      resumo = `${servico} acionado na ${insurer}.`
-        + (protocolo ? ` Protocolo ${protocolo} garantido.` : '')
-        + fraseDoEstado;
+      const fraseDoEstado =
+        dispatch.state === 'captured' && protocolo
+          ? ''
+          : ` ${dispatchStateMeta(dispatch.state).detalhe}`;
+      resumo =
+        `${servico} acionado na ${insurer}.` +
+        (protocolo ? ` Protocolo ${protocolo} garantido.` : '') +
+        fraseDoEstado;
     } else {
       resumo = agora?.situacao || STAGE_META[stage]?.desc || 'Atendimento em andamento.';
     }
@@ -228,7 +261,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // A LINHA DO TEMPO — só o que aconteceu, e só com a hora em que aconteceu.
   // ───────────────────────────────────────────────────────────────────────────
   const timeline: TimelineEvent[] = [];
-  const põe = (e: TimelineEvent | null) => { if (e && e.at) timeline.push(e); };
+  const põe = (e: TimelineEvent | null) => {
+    if (e && e.at) timeline.push(e);
+  };
 
   const firstMsg = msgs.find((m) => m.role === 'user');
   põe({
@@ -267,15 +302,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // hora dela no banco, e é ela que entra aqui.
   try {
     const [{ data: runs }, { data: esperas }] = await Promise.all([
-      supabase.from('work_runs')
+      supabase
+        .from('work_runs')
         .select('id, status, unblock_state, error_message, created_at')
-        .eq('company_id', ctx.companyId)            // 🔴 §7
+        .eq('company_id', ctx.companyId) // 🔴 §7
         .eq('conversation_id', id)
         .order('created_at', { ascending: true })
         .limit(50),
-      supabase.from('work_waits')
-        .select('id, kind, status, created_at, due_at')
-        .eq('company_id', ctx.companyId)            // 🔴 §7
+      supabase
+        .from('work_waits')
+        // 🔴 A COLUNA REAL DO PRAZO É `vence_em` (📊 05/09/2026,
+        // `information_schema.columns`). `due_at` NÃO existe: a consulta
+        // inteira voltava 42703 e o `catch` de fail-soft a transformava numa
+        // timeline sem NENHUMA espera, todos os dias, sem uma linha de log.
+        .select('id, kind, status, created_at, vence_em')
+        .eq('company_id', ctx.companyId) // 🔴 §7
         .eq('conversation_id', id)
         .order('created_at', { ascending: true })
         .limit(50),
@@ -294,12 +335,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     for (const w of (esperas || []) as Record<string, string>[]) {
       põe({
         at: w.created_at,
-        label: w.kind === 'esperando_cliente'
-          ? 'Passamos a esperar o segurado'
-          : w.kind === 'esperando_humano'
-            ? 'Passamos a esperar alguém da equipe'
-            : 'Passamos a esperar a seguradora',
-        detail: w.due_at ? `Prazo combinado: ${new Date(w.due_at).toLocaleString('pt-BR')}.` : null,
+        label:
+          w.kind === 'esperando_cliente'
+            ? 'Passamos a esperar o segurado'
+            : w.kind === 'esperando_humano'
+              ? 'Passamos a esperar alguém da equipe'
+              : 'Passamos a esperar a seguradora',
+        detail: w.vence_em
+          ? `Prazo combinado: ${new Date(w.vence_em).toLocaleString('pt-BR')}.`
+          : null,
         done: w.status !== 'ativo',
         fonte: 'espera',
         fonte_id: String(w.id),
@@ -333,14 +377,27 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  timeline.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  // 🔴 ORDENA POR INSTANTE, NÃO POR TEXTO. As fontes escrevem o mesmo momento
+  //    de formas diferentes — `2026-09-05T12:00:00Z`, `2026-09-05T09:00:00-03:00`
+  //    e `2026-09-05 12:00:00+00` são o MESMO instante e três strings
+  //    distintas, e o `localeCompare` colocava a do meio três horas antes. Uma
+  //    linha do tempo fora de ordem conta outra história.
+  //    ⚠️ Data ilegível vai para o FIM, nunca para 1970: um evento sem hora
+  //    encabeçando a página faria parecer que ele veio primeiro.
+  const instante = (v: unknown): number => {
+    const t = Date.parse(String(v ?? ''));
+    return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+  };
+  timeline.sort((a, b) => instante(a.at) - instante(b.at));
 
   // Anexos que o cliente (ou o atendente) enviou
   const anexos: Anexo[] = [];
   for (const m of msgs) {
-    const de = m.role === 'user' ? 'cliente' as const : 'atendente' as const;
-    if (m.image_url) anexos.push({ id: m.id, tipo: 'imagem', url: m.image_url, quando: m.created_at, de });
-    else if (m.audio_url) anexos.push({ id: m.id, tipo: 'audio', url: m.audio_url, quando: m.created_at, de });
+    const de = m.role === 'user' ? ('cliente' as const) : ('atendente' as const);
+    if (m.image_url)
+      anexos.push({ id: m.id, tipo: 'imagem', url: m.image_url, quando: m.created_at, de });
+    else if (m.audio_url)
+      anexos.push({ id: m.id, tipo: 'audio', url: m.audio_url, quando: m.created_at, de });
     else if (m.type === 'document' && m.content?.startsWith('http')) {
       anexos.push({ id: m.id, tipo: 'arquivo', url: m.content, quando: m.created_at, de });
     }
@@ -419,17 +476,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       quando: conversation.last_message_at || conversation.created_at,
       resumo,
       resumo_fonte: resumoDestilado ? 'espelho' : 'regras',
-      acionamento: dispatch ? {
-        seguradora: insurer,
-        servico,
-        protocolo,
-        estado: dispatch.state,
-        espelho_conversa_id: espelhoConversaId,
-      } : null,
-      veiculo: (slots.veiculo_placa || slots.veiculo_descricao) ? {
-        placa: slots.veiculo_placa || null,
-        descricao: slots.veiculo_descricao || null,
-      } : null,
+      acionamento: dispatch
+        ? {
+            seguradora: insurer,
+            servico,
+            protocolo,
+            estado: dispatch.state,
+            espelho_conversa_id: espelhoConversaId,
+          }
+        : null,
+      veiculo:
+        slots.veiculo_placa || slots.veiculo_descricao
+          ? {
+              placa: slots.veiculo_placa || null,
+              descricao: slots.veiculo_descricao || null,
+            }
+          : null,
       apolice,
       timeline,
       anexos,

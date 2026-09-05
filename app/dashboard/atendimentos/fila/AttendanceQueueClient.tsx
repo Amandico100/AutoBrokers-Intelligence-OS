@@ -1,7 +1,7 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// A FILA — o QUADRO do que está acontecendo agora (SPEC-097 · U1.1/U5.2/R10).
+// A FILA — o QUADRO do que está acontecendo agora (SPEC-097 · U1.1/U5.2/R10/R12).
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // 🔴 O que mudou, e por quê:
@@ -17,20 +17,28 @@
 //   ⛔ §1.2  quem assumia virava "precisa de você". Agora quem cuida aparece no
 //            card, e a coluna "Com a equipe" finalmente existe.
 //
-// ⚠️ LINGUAGEM: nada de nome de campo, status técnico ou id nesta tela. O card
-// diz "esperando a seguradora há 2 dias", "Ana está atendendo", "parado há 3
-// dias — ninguém encerrou". Se não dá para ler em voz alta para o corretor, não
-// entra.
+// 📱 MOBILE-FIRST (R12). Duas leituras, e a escolha fica salva:
 //
-// 📱 MOBILE-FIRST: as colunas rolam na horizontal, uma por vez (`snap`), com o
-// card compacto — segurado, o que foi pedido, há quanto tempo, quem cuida e UM
-// chip de atenção. No desktop as mesmas colunas ficam lado a lado.
+//   QUADRO   as colunas rolam na horizontal, uma por vez (`snap`), cada uma com
+//            a CONTAGEM no cabeçalho e cards compactos. No desktop as mesmas
+//            colunas ficam lado a lado, cada uma com a sua própria rolagem, e o
+//            cabeçalho fica grudado no topo.
+//   LISTA    uma faixa por caso, larga, na ordem de urgência — a leitura de quem
+//            está com o celular na mão e uma mão só.
+//
+// ⛔ Sem arrastar: o estágio é DERIVADO do que aconteceu, não de onde alguém
+// soltou o card. Arrastar prometeria mudar o mundo e mudaria só a tela.
+//
+// ⚠️ O vocabulário visual (card, linha, chip, quem cuida) mora em
+// `components/atendimento/caso-visual.tsx` — a mesma peça que a tela de Casos
+// usa. Duas telas, um jeito de mostrar um caso.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Headphones, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Columns3, Headphones, List, Loader2, RefreshCw, TriangleAlert } from 'lucide-react';
 
-import { DetailHeader, StatusPill } from '@/components/patterns';
+import { DetailHeader } from '@/components/patterns';
+import { CardDoCaso, LinhaDoCaso, ROTULO_DO_ESTAGIO } from '@/components/atendimento/caso-visual';
 import { STAGE_META, type Stage } from '@/lib/attendance/dispatch-states';
 import type { Caso } from '@/lib/atendimento/casos';
 import { icons } from '@/lib/icons';
@@ -39,7 +47,12 @@ import { cn } from '@/lib/utils';
 interface Payload {
   items: Caso[];
   counts?: Record<Stage, number>;
-  semana?: { terminaram: number; ainda_esperam: number; morreram_esperando: number; indisponivel: boolean };
+  semana?: {
+    terminaram: number;
+    ainda_esperam: number;
+    morreram_esperando: number;
+    indisponivel: boolean;
+  };
   indisponivel?: Record<string, boolean>;
 }
 
@@ -62,114 +75,58 @@ const ORDEM_NO_QUADRO: Record<Stage, number> = {
 
 /** O título de cada coluna, na voz de quem trabalha — não na do banco. */
 const TITULO_DA_COLUNA: Record<Stage, string> = {
-  precisa_de_voce: 'Precisa de você',
-  esperando: 'Esperando resposta',
-  acionando: 'Acionando a seguradora',
-  monitorando: 'Acompanhando o prestador',
-  protocolo: 'Protocolo garantido',
-  em_conversa: 'Em conversa',
-  com_equipe: 'Com a equipe',
-  observacao: 'Atendimento da equipe',
-  parado: 'Parado',
+  ...ROTULO_DO_ESTAGIO,
   concluido: 'Encerrados nesta semana',
 };
 
-const COLUNAS = (Object.keys(ORDEM_NO_QUADRO) as Stage[])
-  .sort((a, b) => ORDEM_NO_QUADRO[a] - ORDEM_NO_QUADRO[b]);
+const COLUNAS = (Object.keys(ORDEM_NO_QUADRO) as Stage[]).sort(
+  (a, b) => ORDEM_NO_QUADRO[a] - ORDEM_NO_QUADRO[b],
+);
 
-/** Um chip só. Dois chips num card de celular viram ruído. */
-const CHIP_DE_ATENCAO: Record<string, { label: string; tone: 'danger' | 'warning' }> = {
-  pediu_pessoa: { label: 'pediu uma pessoa', tone: 'danger' },
-  trabalho_falhou: { label: 'o acionamento parou', tone: 'danger' },
-  espera_vencida: { label: 'prazo vencido', tone: 'warning' },
-  parado: { label: 'ninguém encerrou', tone: 'warning' },
+/** A cor da régua do cabeçalho da coluna — o TOM vem da lista canônica. */
+const REGUA_DO_TOM: Record<string, string> = {
+  danger: 'bg-danger/70',
+  warning: 'bg-warning/70',
+  success: 'bg-success/70',
+  info: 'bg-primary/60',
+  neutral: 'bg-border',
+  approval: 'bg-primary/60',
 };
-const PRIORIDADE_DO_CHIP = ['pediu_pessoa', 'trabalho_falhou', 'espera_vencida', 'parado'];
 
-function fmtPhone(p: string | null): string {
-  if (!p) return '';
-  const d = p.replace(/\D/g, '');
-  if (d.length >= 12) return `(${d.slice(2, 4)}) ${d.slice(4, -4)}-${d.slice(-4)}`;
-  return p;
-}
+const PREFERENCIA_DE_LEITURA = 'autobrokers.atendimentos.fila.leitura';
 
-/** "há 3 dias" · "há 2 horas" · "agora há pouco" — nunca "2026-09-05T12:00Z". */
-function haQuantoTempo(item: Caso): string {
-  const bruto = item.agora?.ha_quanto_tempo;
-  if (!bruto) return '';
-  const dias = /^(\d+)d/.exec(bruto);
-  if (dias) return `há ${dias[1]} ${dias[1] === '1' ? 'dia' : 'dias'}`;
-  const horas = /^(\d+)h/.exec(bruto);
-  if (horas) return `há ${horas[1]} ${horas[1] === '1' ? 'hora' : 'horas'}`;
-  const min = /^(\d+)min/.exec(bruto);
-  if (min && Number(min[1]) > 5) return `há ${min[1]} minutos`;
-  return 'agora há pouco';
-}
-
-/** A frase do card. É ela que o corretor lê primeiro. */
-function oQueEstaAcontecendo(item: Caso): string {
-  const quando = haQuantoTempo(item);
-  if (item.stage === 'concluido') {
-    return item.agora?.situacao || 'Encerrado.';
-  }
-  if (item.dono) return `${item.dono.nome} está atendendo${quando ? ` · ${quando}` : ''}`;
-  if (item.esperando) {
-    const dequem = item.esperando.kind === 'esperando_cliente' ? 'o segurado'
-      : item.esperando.kind === 'esperando_humano' ? 'alguém da equipe'
-        : 'a seguradora';
-    return `esperando ${dequem}${quando ? ` ${quando}` : ''}`;
-  }
-  if (item.stage === 'parado') return `parado ${quando} — ninguém encerrou`;
-  if (item.stage === 'precisa_de_voce') {
-    return item.agora?.proxima_acao?.regra === 'passo_do_trabalho'
-      ? `o acionamento parou ${quando} e precisa de uma pessoa`
-      : `pediu uma pessoa ${quando}`;
-  }
-  return `${item.agora?.situacao || 'Em andamento.'}${quando ? ` · ${quando}` : ''}`;
-}
-
-function CardDoCaso({ item, onOpen }: { item: Caso; onOpen: (i: Caso) => void }) {
-  const razao = PRIORIDADE_DO_CHIP.find((r) => (item.agora?.atencao || []).includes(r as never));
-  const chip = razao ? CHIP_DE_ATENCAO[razao] : null;
-  const abre = Boolean(item.conversa_id);
-  return (
-    <button
-      onClick={() => onOpen(item)}
-      disabled={!abre}
-      className={cn(
-        'w-full rounded-lg border border-border bg-surface p-3 text-left transition-colors',
-        abre ? 'hover:border-primary/40 hover:bg-surface-2' : 'cursor-default',
-        item.stage === 'precisa_de_voce' && 'border-danger/40',
-      )}
-    >
-      <p className="truncate text-sm font-semibold leading-tight text-foreground">
-        {item.cliente || fmtPhone(item.telefone) || 'Segurado'}
-      </p>
-      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-        {oQueEstaAcontecendo(item)}
-      </p>
-      {(chip || item.protocolo || item.sem_conversa_vinculada) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {chip && <StatusPill tone={chip.tone} label={chip.label} />}
-          {item.protocolo && (
-            <span className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              {item.protocolo}
-            </span>
-          )}
-          {item.sem_conversa_vinculada && (
-            <span className="text-[10px] text-faint">sem conversa vinculada</span>
-          )}
-        </div>
-      )}
-    </button>
-  );
-}
+/** Quantos cards uma coluna mostra antes de mandar para a lista completa. Não é
+ *  um teto de dados (a rota lê tudo): é um teto de PINTURA — 600 nós numa
+ *  coluna deixam o celular lento e ninguém rola até o fim de nenhuma delas. */
+const CARDS_POR_COLUNA = 50;
 
 export default function AttendanceQueueClient() {
   const router = useRouter();
   const [dados, setDados] = useState<Payload | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [responsavel, setResponsavel] = useState('todos');
+  const [leitura, setLeitura] = useState<'quadro' | 'lista'>('quadro');
+
+  // A leitura escolhida sobrevive ao refresh. Em `try/catch` porque navegador
+  // com armazenamento bloqueado LANÇA ao ler `localStorage` — e a escolha entre
+  // quadro e lista não é motivo para uma tela inteira não abrir.
+  useEffect(() => {
+    try {
+      const salva = window.localStorage.getItem(PREFERENCIA_DE_LEITURA);
+      if (salva === 'lista' || salva === 'quadro') setLeitura(salva);
+    } catch {
+      /* sem preferência — quadro */
+    }
+  }, []);
+
+  const escolherLeitura = (v: 'quadro' | 'lista') => {
+    setLeitura(v);
+    try {
+      window.localStorage.setItem(PREFERENCIA_DE_LEITURA, v);
+    } catch {
+      /* sem drama */
+    }
+  };
 
   const load = useCallback(async (manual?: boolean) => {
     if (manual) setRefreshing(true);
@@ -194,16 +151,33 @@ export default function AttendanceQueueClient() {
   const donos = useMemo(() => {
     const mapa = new Map<string, string>();
     for (const i of items) if (i.dono) mapa.set(i.dono.id, i.dono.nome);
-    return Array.from(mapa.entries());
+    return Array.from(mapa.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
   }, [items]);
 
-  const visiveis = useMemo(() => items.filter((i) => {
-    if (responsavel === 'todos') return true;
-    if (responsavel === 'ninguem') return !i.dono;
-    return i.dono?.id === responsavel;
-  }), [items, responsavel]);
+  const visiveis = useMemo(
+    () =>
+      items.filter((i) => {
+        if (responsavel === 'todos') return true;
+        if (responsavel === 'ninguem') return !i.dono;
+        return i.dono?.id === responsavel;
+      }),
+    [items, responsavel],
+  );
+
+  /** A LISTA usa a mesma ordem do quadro: urgência primeiro, e dentro do
+   *  estágio o que se moveu por último em cima. */
+  const emOrdem = useMemo(
+    () =>
+      [...visiveis].sort((a, b) => {
+        const d = ORDEM_NO_QUADRO[a.stage] - ORDEM_NO_QUADRO[b.stage];
+        if (d !== 0) return d;
+        return String(b.ultimo_evento_em || '').localeCompare(String(a.ultimo_evento_em || ''));
+      }),
+    [visiveis],
+  );
 
   const emAndamento = visiveis.filter((i) => i.stage !== 'concluido').length;
+  const precisamDeVoce = visiveis.filter((i) => i.stage === 'precisa_de_voce').length;
   const fontesForaDoAr = Object.entries(dados?.indisponivel || {})
     .filter(([, v]) => v === true)
     .map(([k]) => k);
@@ -212,39 +186,97 @@ export default function AttendanceQueueClient() {
     if (i.conversa_id) router.push(`/dashboard/atendimentos/ficha/${i.conversa_id}`);
   };
 
+  const vazio = dados !== null && visiveis.length === 0;
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="mx-auto w-full max-w-7xl shrink-0 space-y-4 px-4 pt-6 sm:px-6 sm:pt-10">
+      <div className="mx-auto w-full max-w-[100rem] shrink-0 space-y-3 px-4 pt-6 sm:px-6 sm:pt-10">
         <DetailHeader
           icon={icons.conversas}
           title="Fila de Atendimentos"
           subtitle="O que está acontecendo agora — o quadro se atualiza sozinho."
-          breadcrumb={[{ label: 'Atendimentos', href: '/dashboard/atendimentos' }, { label: 'Fila' }]}
+          breadcrumb={[
+            { label: 'Atendimentos', href: '/dashboard/atendimentos' },
+            { label: 'Fila' },
+          ]}
         />
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* A BARRA. No celular ela quebra em duas alturas em vez de espremer os
+            controles: um seletor de 28px de altura não se acerta com o polegar. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <p className="text-xs text-muted-foreground">
-            {dados === null
-              ? 'Carregando…'
-              : `${emAndamento} em andamento · ${dados.semana?.terminaram ?? 0} encerrado(s) nesta semana`}
+            {dados === null ? (
+              'Carregando…'
+            ) : (
+              <>
+                <strong className="font-semibold text-foreground">{emAndamento}</strong> em
+                andamento
+                {precisamDeVoce > 0 && (
+                  <>
+                    {' · '}
+                    <strong className="font-semibold text-danger">{precisamDeVoce}</strong> precisa
+                    de você
+                  </>
+                )}
+                {' · '}
+                {dados.semana?.terminaram ?? 0} encerrado(s) nesta semana
+              </>
+            )}
           </p>
+
           <span className="hidden flex-1 sm:block" />
+
+          {/* Quadro × Lista — o segmentado, no tamanho do polegar. */}
+          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
+            {(
+              [
+                ['quadro', 'Quadro', Columns3],
+                ['lista', 'Lista', List],
+              ] as const
+            ).map(([v, rot, Icone]) => (
+              <button
+                key={v}
+                onClick={() => escolherLeitura(v)}
+                aria-pressed={leitura === v}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                  leitura === v
+                    ? 'bg-brand-soft text-primary'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icone className="h-3.5 w-3.5" />
+                {rot}
+              </button>
+            ))}
+          </div>
+
           {donos.length > 0 && (
             <select
               value={responsavel}
               onChange={(e) => setResponsavel(e.target.value)}
-              className="rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-muted-foreground focus:border-primary focus:outline-none"
+              aria-label="Filtrar por quem cuida"
+              className="rounded-lg border border-border bg-surface px-2.5 py-2 text-xs text-muted-foreground focus:border-primary focus:outline-none"
             >
               <option value="todos">Todo mundo</option>
               <option value="ninguem">Sem ninguém cuidando</option>
-              {donos.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+              {donos.map(([id, nome]) => (
+                <option key={id} value={id}>
+                  {nome}
+                </option>
+              ))}
             </select>
           )}
+
           <button
             onClick={() => load(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
             Atualizar
           </button>
         </div>
@@ -258,56 +290,94 @@ export default function AttendanceQueueClient() {
           </p>
         )}
 
-        {dados !== null && visiveis.length === 0 && (
+        {vazio && (
           <div className="rounded-xl border border-border bg-surface p-8 text-center">
             <Headphones className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium text-foreground">Está tudo sob controle</p>
             <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-              Nenhum atendimento em andamento agora. Quando um segurado chamar no WhatsApp,
-              ele aparece aqui na hora.
+              {responsavel === 'todos'
+                ? 'Nenhum atendimento em andamento agora. Quando um segurado chamar no WhatsApp, ele aparece aqui na hora.'
+                : 'Ninguém com esse filtro tem atendimento agora. Escolha "Todo mundo" para ver o quadro inteiro.'}
             </p>
           </div>
         )}
       </div>
 
-      {/* O QUADRO. No celular as colunas rolam na horizontal, uma por vez; no
-          desktop elas ficam lado a lado. Sem arrastar: o estágio é derivado do
-          que aconteceu, não de onde alguém soltou o card. */}
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-7xl px-4 pb-10 sm:px-6">
-          <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3">
-            {COLUNAS.map((stage) => {
-              const grupo = visiveis.filter((i) => i.stage === stage);
-              if (grupo.length === 0) return null;
-              const meta = STAGE_META[stage];
-              return (
-                <section
-                  key={stage}
-                  className="w-[84vw] max-w-xs shrink-0 snap-start rounded-xl border border-border bg-surface-2/40 p-2.5 sm:w-72"
-                >
-                  <header className="mb-2 flex items-baseline gap-2 px-0.5">
-                    <StatusPill tone={meta.tone} label={`${TITULO_DA_COLUNA[stage]} · ${grupo.length}`} />
-                  </header>
-                  <p className="mb-2 px-0.5 text-[11px] leading-snug text-faint">{meta.desc}</p>
-                  <div className="space-y-2">
-                    {grupo.slice(0, 50).map((i) => (
-                      <CardDoCaso key={i.key} item={i} onOpen={abrir} />
-                    ))}
-                    {grupo.length > 50 && (
-                      <p className="px-0.5 pt-1 text-[11px] text-muted-foreground">
-                        e mais {grupo.length - 50} —{' '}
-                        <a href="/dashboard/atendimentos/casos" className="text-primary">ver todos os casos</a>
-                      </p>
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[100rem] px-4 pb-10 sm:px-6">
+          {/* ───────────────────────── O QUADRO ───────────────────────── */}
+          {leitura === 'quadro' && !vazio && (
+            <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 sm:snap-none">
+              {COLUNAS.map((stage) => {
+                const grupo = visiveis.filter((i) => i.stage === stage);
+                if (grupo.length === 0) return null;
+                const meta = STAGE_META[stage];
+                return (
+                  <section
+                    key={stage}
+                    className={cn(
+                      'flex w-[84vw] max-w-[19rem] shrink-0 snap-start flex-col rounded-xl',
+                      'border border-border bg-surface-2/40 sm:w-[19rem]',
+                      'sm:max-h-[calc(100vh-15rem)]',
                     )}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
+                  >
+                    {/* O CABEÇALHO COM A CONTAGEM — grudado no topo enquanto a
+                        coluna rola, senão a pessoa perde de vista onde está. */}
+                    <header className="sticky top-0 z-10 rounded-t-xl border-b border-border/60 bg-surface-2/95 px-3 py-2.5 backdrop-blur">
+                      <div className="flex items-center gap-2">
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'h-2 w-2 shrink-0 rounded-full',
+                            REGUA_DO_TOM[meta.tone] || 'bg-border',
+                          )}
+                        />
+                        <h2 className="min-w-0 flex-1 truncate text-xs font-semibold tracking-[-0.01em] text-foreground">
+                          {TITULO_DA_COLUNA[stage]}
+                        </h2>
+                        <span className="shrink-0 rounded-full border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+                          {grupo.length}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-[11px] leading-snug text-faint">
+                        {meta.desc}
+                      </p>
+                    </header>
 
-          <p className="mt-2 text-[11px] text-muted-foreground">
+                    <div className="min-h-0 space-y-2 overflow-y-auto p-2.5">
+                      {grupo.slice(0, CARDS_POR_COLUNA).map((i) => (
+                        <CardDoCaso key={i.key} item={i} onOpen={abrir} />
+                      ))}
+                      {grupo.length > CARDS_POR_COLUNA && (
+                        <p className="px-0.5 pt-1 text-[11px] text-muted-foreground">
+                          e mais {grupo.length - CARDS_POR_COLUNA} —{' '}
+                          <a href="/dashboard/atendimentos/casos" className="text-primary">
+                            ver todos os casos
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ───────────────────────── A LISTA ───────────────────────── */}
+          {leitura === 'lista' && !vazio && (
+            <div className="mx-auto max-w-3xl space-y-2">
+              {emOrdem.map((i) => (
+                <LinhaDoCaso key={i.key} item={i} onOpen={abrir} />
+              ))}
+            </div>
+          )}
+
+          <p className="mt-3 text-[11px] text-muted-foreground">
             A lista completa, com busca por nome, telefone ou protocolo, está em{' '}
-            <a href="/dashboard/atendimentos/casos" className="text-primary">Casos</a>.
+            <a href="/dashboard/atendimentos/casos" className="text-primary">
+              Casos
+            </a>
+            .
           </p>
         </div>
       </div>

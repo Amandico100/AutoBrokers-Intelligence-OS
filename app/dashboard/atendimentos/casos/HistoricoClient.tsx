@@ -1,7 +1,7 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CASOS — tudo o que já aconteceu, por EPISÓDIO (SPEC-097 · U5.2/R3/R10).
+// CASOS — tudo o que já aconteceu, por EPISÓDIO (SPEC-097 · U5.2/R3/R10/R12).
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // 🔴 A busca saiu daqui e foi para o banco.
@@ -17,15 +17,20 @@
 // ⚠️ "Histórico" saiu do nome: aqui não mora só o passado — mora o CASO, esteja
 // ele parado, esperando ou encerrado.
 //
-// 🔎 E a busca é o atalho do SEGURADO: digite o nome ou o telefone e a lista
-// vira "os casos daquela pessoa". Não é um cadastro de clientes.
+// 🔎 E a busca é o atalho do SEGURADO (U5.5): digite o nome ou o telefone e a
+// lista vira "os casos daquela pessoa". Não é um cadastro de clientes.
+//
+// 📱 MOBILE-FIRST (R12): a busca e os filtros ficam GRUDADOS no topo enquanto a
+// lista rola — no celular, rolar de volta para trocar de filtro é o momento em
+// que a pessoa desiste. A linha do caso é a mesma peça da Fila.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { History, Loader2, Search, TriangleAlert } from 'lucide-react';
+import { History, Loader2, Search, TriangleAlert, X } from 'lucide-react';
 
-import { DetailHeader, StatusPill } from '@/components/patterns';
-import { STAGE_META, type Stage } from '@/lib/attendance/dispatch-states';
+import { DetailHeader } from '@/components/patterns';
+import { LinhaDoCaso, fmtPhone } from '@/components/atendimento/caso-visual';
+import type { Stage } from '@/lib/attendance/dispatch-states';
 import type { Caso } from '@/lib/atendimento/casos';
 import { icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
@@ -35,21 +40,10 @@ interface Payload {
   cursor: string | null;
   has_more: boolean;
   indisponivel?: Record<string, boolean>;
+  /** o termo tinha só curinga e não sobrou letra nenhuma — a lista volta vazia
+   *  DE PROPÓSITO, e a tela diz isso em vez de "nada encontrado". */
+  busca_invalida?: boolean;
 }
-
-/** O rótulo curto — esta é uma lista densa. O TOM vem da lista canônica. */
-const ROTULO_CURTO: Record<Stage, string> = {
-  precisa_de_voce: 'Precisa de você',
-  acionando: 'Acionando',
-  protocolo: 'Protocolo garantido',
-  monitorando: 'Acompanhando prestador',
-  em_conversa: 'Em conversa',
-  com_equipe: 'Com a equipe',
-  esperando: 'Esperando resposta',
-  observacao: 'Atendimento da equipe',
-  parado: 'Parado',
-  concluido: 'Encerrado',
-};
 
 const FILTROS: { id: string; label: string; estagio?: Stage }[] = [
   { id: 'todos', label: 'Todos' },
@@ -58,20 +52,6 @@ const FILTROS: { id: string; label: string; estagio?: Stage }[] = [
   { id: 'parado', label: 'Parados', estagio: 'parado' },
   { id: 'concluido', label: 'Encerrados', estagio: 'concluido' },
 ];
-
-function fmtWhen(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-    + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtPhone(p: string | null): string {
-  if (!p) return '';
-  const d = p.replace(/\D/g, '');
-  if (d.length >= 12) return `(${d.slice(2, 4)}) ${d.slice(4, -4)}-${d.slice(-4)}`;
-  return p;
-}
 
 export default function HistoricoClient() {
   const router = useRouter();
@@ -86,6 +66,7 @@ export default function HistoricoClient() {
   const [filtro, setFiltro] = useState('todos');
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [foraDoAr, setForaDoAr] = useState(false);
+  const [buscaInvalida, setBuscaInvalida] = useState(false);
   const pedido = useRef(0);
 
   // 🔴 A busca vai ao SERVIDOR — com uma pausa para não disparar uma consulta
@@ -95,14 +76,17 @@ export default function HistoricoClient() {
     return () => clearTimeout(t);
   }, [query]);
 
-  const url = useCallback((depoisDe?: string | null) => {
-    const p = new URLSearchParams();
-    if (termo) p.set('busca', termo);
-    const f = FILTROS.find((x) => x.id === filtro);
-    if (f?.estagio) p.set('estagio', f.estagio);
-    if (depoisDe) p.set('cursor', depoisDe);
-    return `/api/dashboard/atendimentos/casos?${p.toString()}`;
-  }, [termo, filtro]);
+  const url = useCallback(
+    (depoisDe?: string | null) => {
+      const p = new URLSearchParams();
+      if (termo) p.set('busca', termo);
+      const f = FILTROS.find((x) => x.id === filtro);
+      if (f?.estagio) p.set('estagio', f.estagio);
+      if (depoisDe) p.set('cursor', depoisDe);
+      return `/api/dashboard/atendimentos/casos?${p.toString()}`;
+    },
+    [termo, filtro],
+  );
 
   useEffect(() => {
     const meu = pedido.current + 1;
@@ -117,6 +101,7 @@ export default function HistoricoClient() {
         setCursor(j.cursor);
         setTemMais(Boolean(j.has_more));
         setForaDoAr(Object.values(j.indisponivel || {}).some(Boolean));
+        setBuscaInvalida(Boolean(j.busca_invalida));
       } catch {
         if (pedido.current === meu) setItems([]);
       }
@@ -141,122 +126,144 @@ export default function HistoricoClient() {
 
   const lista = useMemo(() => items || [], [items]);
 
+  /** Quando a busca é um telefone, a tela DIZ de quem são os casos: é o atalho
+   *  vindo de Segurados, e sem esta linha ele parece uma busca qualquer. */
+  const pessoaDaBusca = useMemo(() => {
+    if (!termo || !lista.length) return null;
+    const so = /^[\d\s()+-]+$/.test(termo);
+    if (!so) return null;
+    const nomes = Array.from(new Set(lista.map((i) => i.cliente).filter(Boolean)));
+    return nomes.length === 1 ? nomes[0] : fmtPhone(termo);
+  }, [termo, lista]);
+
+  const abrir = (i: Caso) => {
+    if (i.conversa_id) router.push(`/dashboard/atendimentos/ficha/${i.conversa_id}`);
+  };
+
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-4xl space-y-4 px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
         <DetailHeader
           icon={icons.conversas}
           title="Casos"
           subtitle="Cada atendimento, do primeiro pedido ao desfecho — busque por nome, telefone ou protocolo."
-          breadcrumb={[{ label: 'Atendimentos', href: '/dashboard/atendimentos' }, { label: 'Casos' }]}
+          breadcrumb={[
+            { label: 'Atendimentos', href: '/dashboard/atendimentos' },
+            { label: 'Casos' },
+          ]}
         />
 
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar o segurado por nome, telefone ou protocolo"
-            className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-          />
-          {items === null && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />}
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {FILTROS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFiltro(f.id)}
-              className={cn(
-                'shrink-0 rounded-full border px-3 py-1.5 text-xs transition-colors',
-                filtro === f.id
-                  ? 'border-primary/50 bg-brand-soft text-primary'
-                  : 'border-border bg-surface text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {foraDoAr && (
-          <p className="flex items-center gap-1.5 rounded-lg border border-warning/40 px-3 py-2 text-xs text-warning">
-            <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-            Parte das informações não carregou agora — esta lista pode estar incompleta.
-          </p>
-        )}
-
-        {items === null ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Procurando…
-          </div>
-        ) : lista.length === 0 ? (
-          <div className="rounded-xl border border-border bg-surface p-8 text-center">
-            <History className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium text-foreground">
-              {termo ? `Nada encontrado para "${termo}"` : 'Nada por aqui ainda'}
-            </p>
-            <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-              {termo
-                ? 'Procuramos em todos os atendimentos da corretora — nome, telefone e protocolo.'
-                : 'Cada atendimento fica registrado aqui, com a conversa completa para consultar quando quiser.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {lista.map((i) => {
-                const meta = STAGE_META[i.stage];
-                return (
-                  <button
-                    key={i.key}
-                    onClick={() => i.conversa_id && router.push(`/dashboard/atendimentos/ficha/${i.conversa_id}`)}
-                    disabled={!i.conversa_id}
-                    className={cn(
-                      'w-full rounded-xl border border-border bg-surface p-3.5 text-left transition-colors',
-                      i.conversa_id ? 'hover:border-primary/40 hover:bg-surface-2' : 'cursor-default',
-                    )}
-                  >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-                        {i.cliente || fmtPhone(i.telefone) || 'Segurado'}
-                      </p>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">{fmtWhen(i.ultimo_evento_em)}</span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {i.agora?.situacao || i.detalhe}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                      <StatusPill tone={meta?.tone || 'neutral'} label={ROTULO_CURTO[i.stage] || i.stage} />
-                      {i.protocolo && (
-                        <span className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                          {i.protocolo}
-                        </span>
-                      )}
-                      {i.sem_conversa_vinculada && (
-                        <span className="text-[11px] text-faint">sem conversa vinculada</span>
-                      )}
-                      <span className="flex-1" />
-                      {i.conversa_id && <span className="text-[11px] text-primary">abrir o caso →</span>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Paginação por cursor — nunca um teto fixo que esconde o resto. */}
-            {temMais && (
+        {/* 📱 A busca e os filtros GRUDAM no topo: no celular, subir a tela de
+            volta só para trocar de filtro é onde a pessoa desiste. */}
+        <div className="sticky top-0 z-20 -mx-4 mt-4 space-y-2 bg-background/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 focus-within:border-primary/50">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar o segurado por nome, telefone ou protocolo"
+              className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            />
+            {items === null && (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+            )}
+            {Boolean(query) && items !== null && (
               <button
-                onClick={carregarMais}
-                disabled={carregandoMais}
-                className="mx-auto flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setQuery('')}
+                aria-label="Limpar a busca"
+                className="shrink-0 text-muted-foreground hover:text-foreground"
               >
-                {carregandoMais && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Carregar mais casos
+                <X className="h-4 w-4" />
               </button>
             )}
-          </>
-        )}
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-0.5">
+            {FILTROS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFiltro(f.id)}
+                aria-pressed={filtro === f.id}
+                className={cn(
+                  'shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                  filtro === f.id
+                    ? 'border-primary/50 bg-brand-soft text-primary'
+                    : 'border-border bg-surface text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-3">
+          {pessoaDaBusca && items !== null && lista.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {lista.length} caso{lista.length > 1 ? 's' : ''} de{' '}
+              <strong className="font-semibold text-foreground">{pessoaDaBusca}</strong>
+              {temMais ? ' (há mais abaixo)' : ''}
+            </p>
+          )}
+
+          {foraDoAr && (
+            <p className="flex items-center gap-1.5 rounded-lg border border-warning/40 px-3 py-2 text-xs text-warning">
+              <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+              Parte das informações não carregou agora — esta lista pode estar incompleta.
+            </p>
+          )}
+
+          {items === null ? (
+            <div className="space-y-2" aria-busy>
+              {/* o esqueleto tem a ALTURA da linha real: a lista não pula quando
+                  os casos chegam, e quem está lendo não perde o lugar. */}
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-[92px] animate-pulse rounded-xl border border-border bg-surface-2/50"
+                />
+              ))}
+            </div>
+          ) : lista.length === 0 ? (
+            <div className="rounded-xl border border-border bg-surface p-8 text-center">
+              <History className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {buscaInvalida
+                  ? 'Essa busca não tem nada para procurar'
+                  : termo
+                    ? `Nada encontrado para "${termo}"`
+                    : 'Nada por aqui ainda'}
+              </p>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
+                {buscaInvalida
+                  ? 'Escreva pelo menos uma letra ou um número — um nome, um telefone ou um protocolo.'
+                  : termo
+                    ? 'Procuramos em todos os atendimentos da corretora — nome, telefone e protocolo.'
+                    : 'Cada atendimento fica registrado aqui, com a conversa completa para consultar quando quiser.'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {lista.map((i) => (
+                  <LinhaDoCaso key={i.key} item={i} onOpen={abrir} />
+                ))}
+              </div>
+
+              {/* Paginação por cursor — nunca um teto fixo que esconde o resto. */}
+              {temMais && (
+                <button
+                  onClick={carregarMais}
+                  disabled={carregandoMais}
+                  className="mx-auto flex w-full max-w-xs items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {carregandoMais && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Carregar mais casos
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
