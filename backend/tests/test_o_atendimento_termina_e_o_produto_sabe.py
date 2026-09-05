@@ -66,6 +66,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util as _u
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -1063,3 +1064,11 @@ def test_abrir_espera_NUNCA_derruba_o_checkpoint():
     assert "except Exception" in corpo
     codigo = _so_o_codigo_py(corpo)
     assert "raise" not in codigo
+
+
+if __name__ == "__main__":
+    # 🔴 P3 (lente de verdade): este guarda migrado só media sob `pytest` --
+    # rodado como script (`python tests/...py`), devolvia nada e rc=0, e o
+    # padrão do resto da SPEC-097 é `python backend/tests/...py`. Quem seguir
+    # esse padrão sem isto media um carimbo.
+    sys.exit(pytest.main([__file__, "-q"]))

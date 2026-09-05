@@ -94,7 +94,10 @@ cortador corta.
 
 Rodar:  PYTHONIOENCODING=utf-8 python backend/tests/test_o_atendimento_sabe_como_terminou.py
         (de dentro de `backend/`, ou da raiz -- o arquivo resolve o caminho)
-        `--mutar` acrescenta as 2 mutacoes por copia (so com a arvore parada).
+        `--mutar` roda as 3 mutacoes por copia (so com a arvore parada); cada
+        uma em SUBPROCESSO sobre a copia mutada, restaurando por copia em
+        `finally` -- as verificacoes de forma/ancora ([C1]) rodam so sobre a
+        fonte LIMPA, nunca dentro de uma mutacao. `--mutar U12` roda so ela.
 """
 from __future__ import annotations
 
@@ -106,6 +109,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import types
 
@@ -1125,19 +1129,24 @@ def bloco_C():
 
 # ===========================================================================
 # As mutacoes por COPIA -- so com `--mutar`
+#
+# 🔴 A-2 (lente de verdade): `[C1]` mede a FORMA das mutacoes contra a fonte --
+# medir isso DENTRO de uma corrida mutada e medir a propria mutacao que acabou
+# de trocar a ancora. Por isso cada mutacao roda em SUBPROCESSO, chamando este
+# mesmo arquivo com `--medir-blocos` (so B1..B8, nunca o bloco [C]), sobre a
+# copia MUTADA em disco -- e o processo PAI (que tem [C1] na sua propria
+# corrida, sobre a fonte LIMPA, antes de qualquer mutacao) nunca reusa o
+# placar global OK/FAIL/NOMES_FALHOS do filho. Restaura por copia em `finally`.
 # ===========================================================================
-def _remedir():
-    """Roda tudo de novo, limpando o placar e devolvendo os nomes falhos."""
-    global OK, FAIL
-    NOMES_FALHOS.clear()
-    OK = FAIL = 0
-    _rodar()
-    return set(NOMES_FALHOS)
+def rodar_mutacoes(filtro_id=None):
+    _p("\n[M] MUTACOES POR COPIA -- cada uma em SUBPROCESSO, arvore precisa estar parada")
+    selecionadas = [m for m in MUTACOES if filtro_id is None or m[3] == filtro_id]
+    if filtro_id and not selecionadas:
+        _p("        ID desconhecido: %r (validos: %s)"
+           % (filtro_id, ", ".join(m[3] for m in MUTACOES)))
 
-
-def rodar_mutacoes():
-    _p("\n[M] MUTACOES POR COPIA -- a arvore precisa estar parada")
-    for caminho, de, para, marcador in MUTACOES:
+    resultado = []  # [(marcador, ficou_vermelho, [nomes])]
+    for caminho, de, para, marcador in selecionadas:
         alvo = os.path.join(RAIZ, caminho)
         if not os.path.exists(alvo):
             pular("mutacao %s (%s)" % (marcador, caminho),
@@ -1152,26 +1161,37 @@ def rodar_mutacoes():
         shutil.copyfile(alvo, backup)
         try:
             io.open(alvo, "w", encoding="utf-8").write(original.replace(de, para, 1))
-            # 🔴 o veredito e por NOME NOVO, nunca por contagem de falhas.
-            NOMES_FALHOS.clear()
-            antes = set(NOMES_FALHOS)
-            try:
-                depois = _remedir()
-                novos = sorted(depois - antes)
-                ficou_vermelho = bool(novos)
-            except Exception as exc:  # noqa: BLE001
-                _p("        o arquivo mutado NAO carrega (%s) -- o produto nem sobe: VERMELHO"
-                   % type(exc).__name__)
-                novos, ficou_vermelho = [], True
-            if novos:
-                _p("        nomes NOVOS que ficaram vermelhos: %s" % "; ".join(novos))
-            elif not ficou_vermelho:
-                _p("        nenhum nome novo ficou vermelho")
+            r = subprocess.run(
+                [sys.executable, os.path.abspath(__file__), "--medir-blocos"],
+                cwd=RAIZ, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            nomes = set()
+            for linha in r.stdout.splitlines():
+                if linha.startswith("NOMES_FALHOS::"):
+                    resto = linha[len("NOMES_FALHOS::"):]
+                    nomes = set(n for n in resto.split("|") if n)
+            if r.returncode not in (0, 1):
+                nomes.add("[SUBPROCESSO] o arquivo mutado nao roda ate o fim (rc=%d): %s"
+                          % (r.returncode, (r.stderr or r.stdout or "")[-300:]))
+            ficou_vermelho = bool(nomes)
+            if nomes:
+                _p("        %s -> nomes NOVOS vermelhos: %s" % (marcador, "; ".join(sorted(nomes))))
+            else:
+                _p("        %s -> nenhum nome novo ficou vermelho" % marcador)
             par(ficou_vermelho, "mutacao %s em %s" % (marcador, rel(alvo)),
                 "a mutacao foi aplicada e NENHUM NOME NOVO ficou vermelho -- o bloco e carimbo")
+            resultado.append((marcador, ficou_vermelho, sorted(nomes)))
         finally:
             shutil.copyfile(backup, alvo)
             os.remove(backup)
+
+    vermelhas = [(m, n) for m, ok, n in resultado if ok]
+    verdes = [m for m, ok, _n in resultado if not ok]
+    resumo = ", ".join("%s->[%s]" % (m, (n[0] if n else "?")) for m, n in vermelhas)
+    _p("\n  PLACAR DAS MUTACOES: %d mutacoes . %d vermelhas por nome (%s) . %d verdes%s"
+       % (len(resultado), len(vermelhas), resumo, len(verdes),
+          (" (" + ", ".join(verdes) + ")") if verdes else ""))
+    return verdes
 
 
 def _rodar():
@@ -1187,7 +1207,37 @@ def _rodar():
 
 
 def main():
+    # 🔴 modo interno do subprocesso de mutacao: SO os blocos B1..B8 (nunca o
+    # bloco [C], que mede a FORMA das mutacoes contra a fonte -- rodar [C]
+    # dentro de uma corrida mutada e medir a propria mutacao que trocou a
+    # ancora, nao o produto). Imprime os nomes falhos numa linha parseavel.
+    if "--medir-blocos" in sys.argv:
+        _fechar_a_rede()
+        try:
+            bloco_B1()
+            bloco_B2()
+            bloco_B3()
+            bloco_B4()
+            bloco_B5()
+            bloco_B6()
+            bloco_B7()
+            bloco_B8()
+        finally:
+            _abrir_a_rede()
+        _p("NOMES_FALHOS::" + "|".join(sorted(NOMES_FALHOS)))
+        return 1 if FAIL else 0
+
     mutar = "--mutar" in sys.argv or os.environ.get("AUTOBROKERS_MUTAR") == "1"
+    filtro_mutacao = None
+    if "--mutar" in sys.argv:
+        i = sys.argv.index("--mutar")
+        if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("--"):
+            candidato = sys.argv[i + 1]
+            if any(m[3] == candidato for m in MUTACOES):
+                filtro_mutacao = candidato
+            else:
+                _p("  ⚠️ --mutar %r nao e um marcador conhecido (%s) -- rodando TODAS"
+                   % (candidato, ", ".join(m[3] for m in MUTACOES)))
 
     _p("=" * 78)
     _p("  O ATENDIMENTO SABE COMO TERMINOU -- o guarda da ESCRITA  (SPEC-097)")
@@ -1195,16 +1245,22 @@ def main():
     _fechar_a_rede()
     try:
         _rodar()
-        if mutar:
-            rodar_mutacoes()
-        else:
-            _p("\n[M] MUTACOES POR COPIA -- NAO rodaram (sem `--mutar`).")
-            _p("      ⛔ Elas escrevem em `backend/app/` e `backend/scripts/`, e os builders")
-            _p("      escrevem la em paralelo. Com a arvore parada: `--mutar`. A lista")
-            _p("      declarada esta em `MUTACOES`, no topo deste arquivo (%d entradas;" % len(MUTACOES))
-            _p("      as outras 10 das 12 da SPEC sao do guarda `a-operacao-tem-uma-casa.test.mjs`).")
     finally:
         _abrir_a_rede()
+
+    # 🔴 A partir daqui OK/FAIL/NOMES_FALHOS SO refletem a corrida LIMPA acima
+    # ([C1] incluso). As mutacoes rodam em processo FILHO (rodar_mutacoes) e
+    # nunca escrevem nesse placar -- e' assim que o rc deixa de ser
+    # contaminado pela ULTIMA mutacao aplicada (A-2).
+    verdes_mutacao = []
+    if mutar:
+        verdes_mutacao = rodar_mutacoes(filtro_mutacao)
+    else:
+        _p("\n[M] MUTACOES POR COPIA -- NAO rodaram (sem `--mutar`).")
+        _p("      ⛔ Elas escrevem em `backend/app/` e `backend/scripts/`, e os builders")
+        _p("      escrevem la em paralelo. Com a arvore parada: `--mutar`. A lista")
+        _p("      declarada esta em `MUTACOES`, no topo deste arquivo (%d entradas;" % len(MUTACOES))
+        _p("      as outras 10 das 12 da SPEC sao do guarda `a-operacao-tem-uma-casa.test.mjs`).")
 
     _p("\n" + "=" * 78)
     _p("  %d ok · %d falha(s) · %d pulado(s)" % (OK, FAIL, len(PULADOS)))
@@ -1215,8 +1271,11 @@ def main():
         _p("  🔴 Em `7f3f3eb` (a copia limpa) esta lista E o GATE ZERO da SPEC-097 (§4 BLOCO 0.1).")
     else:
         _p("\n  VERDE -- o desfecho e escrito, mora no episodio, e a IA cala quando alguem assume.")
+    if verdes_mutacao:
+        _p("  ⛔ %d mutacao(oes) NAO ficaram vermelhas: %s -- o arnes nao guarda essa regra."
+           % (len(verdes_mutacao), ", ".join(verdes_mutacao)))
     _p("=" * 78)
-    return 1 if FAIL else 0
+    return 1 if (FAIL or verdes_mutacao) else 0
 
 
 def test_o_atendimento_sabe_como_terminou():

@@ -1554,7 +1554,24 @@ def teste_robo_de_seguradora_sai_da_mesa_e_cliente_fica() -> None:
         sys.modules["app.services.insurer_registry"] = _reg
         _spec_reg.loader.exec_module(_reg)
 
-    _ns = {"os": os, "Dict": dict, "Any": object, "Set": set}
+    # 🔴 CLAUDE.md §9.3 — verdade vencida: `_br_variants` deixou de ter corpo
+    # próprio e passou a DELEGAR para `app.telefone_br.variantes_br` (SPEC-097
+    # P3-4, a regra do 9º dígito mora num só lugar). Este guarda recorta o
+    # corpo de `_br_variants` e o executa num namespace à parte — sem
+    # `variantes_br` disponível, o recorte quebra com `NameError`, mesmo o
+    # produto estando certo. Carrega o módulo real (zero import de `app.core`/
+    # `app.services`, então não sobe o mundo) e injeta a função verdadeira.
+    if "app.telefone_br" not in sys.modules:
+        _cam_tel = os.path.join(RAIZ, "backend", "app", "telefone_br.py")
+        _spec_tel = importlib.util.spec_from_file_location(
+            "app.telefone_br", _cam_tel)
+        _tel = importlib.util.module_from_spec(_spec_tel)
+        sys.modules["app.telefone_br"] = _tel
+        _spec_tel.loader.exec_module(_tel)
+    _variantes_br_real = sys.modules["app.telefone_br"].variantes_br
+
+    _ns = {"os": os, "Dict": dict, "Any": object, "Set": set,
+           "variantes_br": _variantes_br_real}
     for _fn in ("_digits", "_br_variants", "insurer_allowlist"):
         _corpo = _corpo_da_funcao(_fn, fonte_intake)
         checar(len(_corpo) > 40,
@@ -1563,6 +1580,27 @@ def teste_robo_de_seguradora_sai_da_mesa_e_cliente_fica() -> None:
         _assinatura = [l for l in fonte_intake.split("\n")
                        if l.startswith(f"def {_fn}(")][0]
         exec(_assinatura + "\n" + _corpo, _ns)  # noqa: S102
+
+    # 🔴 A LIÇÃO QUE TINHA DE MIGRAR (§9.3): `_br_variants` virou um repasse
+    # para `variantes_br`, mas a regra do 9º dígito — NAS DUAS DIREÇÕES — é
+    # exatamente o que este guarda existe para proteger. Chama o recorte REAL
+    # (não uma cópia reinventada aqui) e prova que ele ainda sabe o que fazer.
+    _com_nono = _ns["_br_variants"]("5511987654321")   # SP, COM o 9º dígito
+    checar("5511987654321" in _com_nono and "551187654321" in _com_nono,
+           "🔴 `_br_variants` (o repasse) acha a variante SEM o 9º dígito",
+           f"variantes={_com_nono}")
+    _sem_nono = _ns["_br_variants"]("551187654321")    # SP, SEM o 9º dígito
+    checar("551187654321" in _sem_nono and "5511987654321" in _sem_nono,
+           "e acha a variante COM o 9º dígito, na direção oposta",
+           f"variantes={_sem_nono}")
+    # CONTROLE — a lição tem de conseguir FALHAR: um número que não é BR (sem
+    # `55` na frente) não pode ganhar um 9º dígito inventado. Se a régua
+    # aprovasse qualquer conjunto não-vazio, ela não guardaria a REGRA, só a
+    # execução — e é exatamente o carimbo que este arquivo existe para evitar.
+    _estrangeiro = _ns["_br_variants"]("12125551234")
+    checar(_estrangeiro == {"12125551234"},
+           "CONTROLE — número que não começa em 55 NÃO ganha variante nova",
+           f"variantes={_estrangeiro} (a régua tem de saber distinguir isto)")
 
     # 🔴 DUAS ISCAS, e elas existem por um motivo medido.
     #
