@@ -981,7 +981,13 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
                     or a.unit != b.unit
                     or isinstance(a.value, dict) or isinstance(b.value, dict))
     if incomparavel:
-        return {"metric_id": a.metric_id, "unit": a.unit,
+        return {"metric_id": a.metric_id,
+                # 🔴 SPEC-097 U7/P2-11 — o NOME vem junto, também quando a
+                #    comparação é RECUSADA. É justamente a recusa que o modelo
+                #    tem de narrar em português ("não dá para comparar X"), e
+                #    sem `label` ele só teria a chave para nomear o X.
+                "label": a.label,
+                "unit": a.unit,
                 "atual": a.value, "anterior": b.value,
                 "delta": UNAVAILABLE, "delta_pct": UNAVAILABLE,
                 "time_basis": a.time_basis, "confidence": BAIXA,
@@ -989,7 +995,7 @@ def comparar(a: MetricResult, b: MetricResult) -> Dict[str, Any]:
                                          "dois valores"]}
     atual, anterior = float(a.value), float(b.value)
     return {
-        "metric_id": a.metric_id, "unit": a.unit,
+        "metric_id": a.metric_id, "label": a.label, "unit": a.unit,
         "atual": atual, "anterior": anterior,
         "delta": atual - anterior,
         "delta_pct": (100.0 * (atual - anterior) / anterior) if anterior else None,

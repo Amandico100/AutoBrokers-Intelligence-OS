@@ -116,6 +116,40 @@ def e_motivo_valido(motivo: Any) -> bool:
     return str(motivo or "") in MOTIVOS
 
 
+#: 🔴 Quanta folga o relógio do chamador ganha, em minutos.
+#:
+#: ⚠️ **Não é zero, e não é generoso.** Zero recusaria um desfecho legítimo por
+#: um relógio 200 ms adiantado — e o `quando_iso` do corredor é gerado na
+#: máquina dele, não no banco. Cinco minutos cobrem a deriva de NTP de um
+#: contêiner e não cobrem nada mais: o defeito medido pelo red team era
+#: `hoje + 30 DIAS`, que mantinha o atendimento dentro de `terminaram` por um
+#: mês.
+FOLGA_DO_RELOGIO_MIN = 5
+
+
+def _recusar_futuro(quando_iso: str, agora) -> None:
+    """⛔ Desfecho é **fato passado**. Uma data no futuro não é um erro do
+    mundo: é um relógio errado ou um chamador inventando data — e ela
+    contamina `semana.terminaram` e o estágio da tela pelos dias seguintes.
+
+    ⚠️ **Data ILEGÍVEL passa de propósito.** Quem recusa formato é o banco
+    (`timestamptz`), e duplicar o parser aqui só criaria um segundo jeito de
+    discordar dele. O que esta função julga é o *momento*, não a *forma*.
+    """
+    from datetime import datetime, timedelta
+
+    try:
+        alvo = datetime.fromisoformat(str(quando_iso).replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return
+    if alvo.tzinfo is None:
+        alvo = alvo.replace(tzinfo=agora.tzinfo)
+    if alvo - agora > timedelta(minutes=FOLGA_DO_RELOGIO_MIN):
+        raise ValueError(
+            "resolvido_em no futuro (%s > agora + %dmin) — desfecho é fato "
+            "passado" % (quando_iso, FOLGA_DO_RELOGIO_MIN))
+
+
 # =============================================================================
 # O escritor — e ele é IDEMPOTENTE por construção
 # =============================================================================
@@ -165,8 +199,15 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
     ⛔ **`claimed_by` não é tocado.** Encerrar não é desatribuir: quem atendeu
     continua sendo a dona do atendimento depois de ele terminar.
 
-    ⛔ **Nunca levanta.** Uma falha aqui custa a marca de fim; deixar a exceção
-    subir custaria a resposta ao segurado, que vale mais.
+    ⛔ **Nunca levanta POR FALHA DO MUNDO.** Banco fora do ar, episódio de
+    outra corretora, conversa já resolvida: tudo isso devolve `(False, porquê)`
+    — uma falha aqui custa a marca de fim, e deixar a exceção subir custaria a
+    resposta ao segurado, que vale mais.
+
+    🔴 **As ÚNICAS exceções são dois `ValueError` de CHAMADOR ERRADO** — motivo
+    fora da lista fechada e `quando_iso` no futuro. Isso não é o mundo falhando,
+    é código escrito errado. Devolver `False` ali deixava o defeito passar
+    calado, porque o chamador do corredor **não olha o retorno**.
 
     🔴 **IDEMPOTENTE PELO FILTRO, não por leitura antes.** O `UPDATE` traz
     `.is_("resolvido_em", "null")`: uma conversa já resolvida não é resolvida de
@@ -185,15 +226,33 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
     if not empresa:
         return False, "sem_company_id"
     if not e_motivo_valido(motivo):
+        # 🔴 AQUI ELE LEVANTA — e é a ÚNICA coisa que este arquivo levanta.
+        #
+        # ⚠️ "Nunca levanta" fala do MUNDO: banco fora do ar, linha de outra
+        # corretora, conversa já resolvida. Nada disso é culpa de quem chamou, e
+        # engolir custa uma marca de fim. Um motivo fora da lista fechada é
+        # outra coisa: é DEFEITO DE CHAMADOR, sempre — 📊 os 3 chamadores de
+        # produção passam constantes deste módulo (`dispatch_router:1373`,
+        # `handoff_watchdog:580`, `canario_097:187`), então esta linha só é
+        # alcançável por código novo escrito errado.
+        #
+        # ⛔ E devolver `(False, "motivo_invalido")` era o pior dos mundos: o
+        # `_marcar_fim_do_atendimento` ignora o retorno dentro de um `try` que
+        # engole tudo, então o chamador seguia achando que marcou e o
+        # atendimento ficava sem desfecho **em silêncio**.
         logger.error("[FIM] motivo %r não está na lista fechada %s — nada foi "
                      "gravado", motivo, MOTIVOS)
-        return False, "motivo_invalido"
+        raise ValueError(
+            "motivo %r não está na lista fechada %s — o CHECK do banco recusaria"
+            % (motivo, MOTIVOS))
     episodio = str(attendance_session_id or "").strip()
     if not (conversation_id or session_id):
         if not episodio:
             return False, "sem_conversa"
 
-    quando = quando_iso or datetime.now(timezone.utc).isoformat()
+    agora = datetime.now(timezone.utc)
+    quando = quando_iso or agora.isoformat()
+    _recusar_futuro(quando, agora)
     conversa = str(conversation_id or "").strip()
     marcou_episodio = False
 
@@ -264,12 +323,44 @@ def pausar_ia(conversa: Any) -> bool:
 
     ⚠️ Este helper é **um só** de propósito (§5). Três cópias da mesma pergunta
     em dois arquivos é como uma delas fica para trás na próxima regra.
+
+    ---------------------------------------------------------------------------
+    🔴 E A PAUSA É DO ATENDIMENTO **VIVO** — ela morre com o desfecho
+
+    ⛔ Sem esta terceira linha, o caminho feliz da Fila nova **desligava o robô
+    para sempre** naquele segurado:
+
+    ```
+    a atendente ASSUME  → claimed_by preenchido        → a IA cala  ✅
+    a atendente ENCERRA → resolvido_em escrito,
+                          e `claimed_by` FICA (R2/U1.2:
+                          encerrar não é desatribuir)  → a IA cala  ⛔ PARA SEMPRE
+    ```
+
+    📊 `webhook.py::get_or_create_conversation` reusa a MESMA linha por
+    `(company, user_id, channel)` — não abre conversa nova por atendimento. Então
+    a mensagem que o segurado mandar em **novembro** cai na linha encerrada em
+    setembro, com o dono de setembro ainda nela, e ninguém responde. Só o
+    `release` limpava o dono, e ninguém dá `release` numa conversa já encerrada.
+
+    ⚠️ **E os DOIS motivos morrem com o desfecho, não só o dono.** Um
+    `HUMAN_REQUESTED` que terminou também é passado: manter a pausa por ele
+    faria o pedido de ajuda de agosto calar o robô em dezembro. Quem quiser a
+    pessoa de novo pede de novo, e o pedido novo é o que pausa.
+
+    ⛔ **A alternativa era o `close` apagar `claimed_by`** — e ela custa a
+    autoria que a R2 existe para guardar (`conversas/[id]/route.ts:268-271`). O
+    dado fica; o que expira é o SILÊNCIO.
     """
     linha = conversa or {}
     try:
         status = str(linha.get("status") or "").strip()
         dono = linha.get("claimed_by")
+        desfecho = linha.get("resolvido_em")
     except AttributeError:                       # não é dicionário: não pausa
+        return False
+    if str(desfecho or "").strip():
+        # 🔴 O atendimento TERMINOU. Não há mais quem calar.
         return False
     if status.upper() == HUMAN_REQUESTED:
         return True

@@ -27,6 +27,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Set, Tuple
 
+from app.telefone_br import variantes_br
+
 logger = logging.getLogger(__name__)
 
 # O que permite buscar e descriptografar uma mídia no WhatsApp.
@@ -101,18 +103,13 @@ def _digits(value: Any) -> str:
 
 
 def _br_variants(number: str) -> Set[str]:
-    """Variantes com/sem o nono dígito (mesma regra do channel_security)."""
-    d = _digits(number)
-    if not d:
-        return set()
-    forms = {d}
-    if d.startswith("55"):
-        rest = d[2:]
-        if len(rest) == 11 and rest[2] == "9":
-            forms.add("55" + rest[:2] + rest[3:])
-        elif len(rest) == 10:
-            forms.add("55" + rest[:2] + "9" + rest[2:])
-    return forms
+    """Variantes com/sem o nono dígito.
+
+    🔴 **A regra mora em `app/telefone_br.py`, e é UMA só** (SPEC-097 P3-4).
+    Esta era a cópia mais antiga; ela agora só reexporta, porque o backfill do
+    elo e os guardas precisam da MESMA resposta sem subir o mundo (§5).
+    """
+    return variantes_br(number)
 
 
 def insurer_allowlist() -> Dict[str, str]:
@@ -556,10 +553,19 @@ def _conversa_unica_do_telefone(supabase, sessions_table: str, empresa: Any,
     um elo ambíguo é pior que não gravar: a timeline do segurado passaria a
     mostrar o atendimento de outra pessoa.
 
-    ⚠️ A normalização é a MESMA que o produto já usa para achar conversa por
-    telefone (`webhook.py::_conversa_do_telefone`): só os dígitos. Um segundo
-    jeito de normalizar seria um segundo conjunto de elos, divergente do
-    primeiro.
+    🔴 **A normalização é `variantes_br`, a MESMA que este arquivo já usa para
+    correlacionar telefone 40 linhas abaixo** (`:866`, `:1007`). ⚠️ A versão
+    anterior desta função casava por **igualdade exata de dígitos**, e a
+    docstring dizia que era "a mesma do produto" — era a de `webhook.py`, não a
+    deste arquivo. 📊 O efeito: um par gravado com o nono dígito de um lado e
+    sem ele do outro virava *órfão* em vez de elo, e o 📊 57,8% de casamento era
+    o resultado do casador estrito, não do acervo (SPEC-097 P3-4). Um segundo
+    jeito de normalizar é um segundo conjunto de elos, divergente do primeiro
+    (`CLAUDE.md` §9.4).
+
+    ⛔ **O `.in_` amplia o casador, NÃO afrouxa a regra do 1:1.** Se as duas
+    formas do mesmo telefone acharem duas conversas DIFERENTES, isso é ambíguo e
+    continua sem elo — é justamente o caso em que gravar seria mentir.
 
     ⛔ Só vale para `attendance_sessions`: `observed_sessions` (o acervo do
     Atlas com seguradoras) não tem — nem deve ter — conversa de segurado.
@@ -567,13 +573,13 @@ def _conversa_unica_do_telefone(supabase, sessions_table: str, empresa: Any,
     if sessions_table != "attendance_sessions":
         return None
     empresa_id = str(empresa or "").strip()
-    digitos = "".join(c for c in str(telefone or "") if c.isdigit())
-    if not empresa_id or not digitos:
+    formas = sorted(variantes_br(telefone))
+    if not empresa_id or not formas:
         return None
     try:
         achado = (supabase.client.table("conversations").select("id")
                   .eq("company_id", empresa_id)          # 🔴 §7
-                  .eq("user_phone", digitos).limit(5).execute())
+                  .in_("user_phone", formas).limit(5).execute())
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ATLAS] elo conversa↔episódio não resolvido (%s)",
                        type(erro).__name__)

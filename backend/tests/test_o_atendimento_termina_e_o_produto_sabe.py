@@ -68,6 +68,8 @@ import importlib.util as _u
 import re
 from pathlib import Path
 
+import pytest
+
 RAIZ = Path(__file__).resolve().parent.parent
 MIG_A = (RAIZ / "supabase" / "migrations"
          / "20260826_04_spec086_blocoA_a_conversa_tem_fim.sql")
@@ -336,11 +338,19 @@ def test_MOTIVO_FORA_DA_LISTA_nao_chega_ao_banco():
     banco recusou por CHECK, e o executor teve de escolher outro valor **no
     meio da execução**.
     """
+    # 🔴 A LICAO MIGROU EM 05/09/2026 (CLAUDE.md §9.3): o motivo invalido
+    # deixou de devolver `(False, "motivo_invalido")` e passou a LEVANTAR.
+    # 📊 A razao, medida pela lente do dado da SPEC-097: o corredor
+    # (`dispatch_router._marcar_fim_do_atendimento`) chama `marcar_fim` dentro
+    # de um `try` que engole tudo e NAO OLHA O RETORNO — entao o `False` saia
+    # calado e o atendimento ficava sem desfecho sem ninguem saber.
+    #
+    # ⚠️ O QUE ESTE GATE AFIRMA NAO MUDOU: nada chega ao banco.
     banco = _Banco({"conversations": [_conversa()]})
-    marcou, porque = asyncio.run(FIM.marcar_fim(
-        banco, company_id=EMPRESA_1, motivo="acionamento_aberto",
-        conversation_id=CONVERSA_1))
-    assert marcou is False and porque == "motivo_invalido"
+    with pytest.raises(ValueError):
+        asyncio.run(FIM.marcar_fim(
+            banco, company_id=EMPRESA_1, motivo="acionamento_aberto",
+            conversation_id=CONVERSA_1))
     assert banco.chamadas == [], "chegou a consultar o banco com motivo inválido"
     assert banco.dados["conversations"][0]["resolvido_em"] is None
 
@@ -922,7 +932,10 @@ def test_a_LISTA_DE_SUCESSO_e_a_MESMA_no_Python_no_TS_e_no_BANCO():
 
     # 🔴 e `expirou` NÃO está entre eles, nos dois lados
     assert FIM.EXPIROU not in no_ts
-    assert "if (m === 'expirou') morreram += 1;" in rota, (
+    # 🔄 097 (05/09/2026): a contagem virou a função `conta(motivo)` — a FORMA
+    #    mudou, a lição não: `expirou` incrementa `morreram`, nunca `terminaram`.
+    bloco_expirou = rota.split("if (m === 'expirou') {", 1)[1].split("}", 1)[0]
+    assert "morreram += 1" in bloco_expirou and "terminaram" not in bloco_expirou, (
         "o painel deixou de separar quem MORREU esperando de quem terminou")
 
     # e o CHECK do banco conhece os cinco
@@ -935,15 +948,18 @@ def test_o_painel_filtra_por_corretora_nas_DUAS_consultas_novas():
     corretoras na tela de UMA."""
     # 🔄 E14 — segue quem CONTA, não um caminho fixo.
     _de_onde, rota = _fonte_dos_contadores()
-    bloco = rota.split("const semana = new Date(", 1)[1].split("return NextResponse", 1)[0]
+    # 🔄 097: `montarSemana` devolve um objeto, não um NextResponse; e são TRÊS
+    #    consultas (episódios, conversas, esperas) — cada uma com a sua corretora.
+    bloco = rota.split("const semana = new Date(", 1)[1].split("const SUCESSO = new Set(", 1)[0]
     # 🔄 E14 (bônus): a mensagem de falha contava `chr(34)+chr(34)` — string
     #    VAZIA, que casa em todo lugar. Ela diria "só 481 filtros" no dia em que
     #    o guarda reprovasse. Mensagem errada num guarda é o mesmo defeito que
     #    ele existe para pegar: responde, e responde errado.
+    consultas = bloco.count(".from('")
     filtros = bloco.count("eq('company_id'")
-    assert filtros == 2, (
-        f"só {filtros} filtro(s) por corretora no bloco dos contadores — as DUAS "
-        "consultas precisam do seu (§7: o backend usa service role)")
+    assert consultas >= 2 and filtros == consultas, (
+        f"{filtros} filtro(s) por corretora para {consultas} consulta(s) no bloco dos "
+        "contadores — TODAS precisam do seu (§7: o backend usa service role)")
 
 
 def test_o_painel_DECLARA_quando_os_contadores_nao_carregaram():
@@ -951,8 +967,14 @@ def test_o_painel_DECLARA_quando_os_contadores_nao_carregaram():
     "0 terminaram" num dia em que ninguém conseguiu olhar."""
     # 🔄 E14 — segue quem CONTA, não um caminho fixo.
     de_onde, rota = _fonte_dos_contadores()
-    assert "indisponivel: true" in rota, de_onde
-    assert "indisponivel: false" in rota, de_onde
+    # 🔄 097: o campo é CALCULADO (`!episodios.ok || … || truncou`), e não mais
+    #    literal — o teto atingido também declara (red team P2-6). O que se
+    #    afirma: a semana carrega `indisponivel` e ele depende de `.ok` e do teto.
+    corpo = rota.split("async function montarSemana", 1)[1]
+    linha = [l for l in corpo.split(chr(10))
+             if l.strip().startswith("indisponivel:") and "Record<" not in l]
+    assert linha and ".ok" in linha[0] and "truncou" in linha[0], (de_onde, linha)
+    assert "const truncou" in corpo and "TETO_DE_CONTEXTO" in corpo, de_onde
     assert "semana" in rota, de_onde
 
 

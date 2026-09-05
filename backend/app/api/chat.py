@@ -149,7 +149,7 @@ async def chat_endpoint(
         # ==============================================================================
         conv_check = (
             await db.client.table("conversations")
-            .select("id, status, unread_count, company_id, claimed_by") # Pega tudo que precisa
+            .select("id, status, unread_count, company_id, claimed_by, resolvido_em") # Pega tudo que precisa
             .eq("session_id", str(chat_request.sessionId))
             .limit(1)
             .execute()
@@ -603,7 +603,7 @@ async def chat_stream(
     # valendo.
     conv_check = (
         await db.client.table("conversations")
-        .select("id, status, unread_count, company_id, claimed_by")
+        .select("id, status, unread_count, company_id, claimed_by, resolvido_em")
         .eq("session_id", str(chat_request.sessionId))
         .limit(1)
         .execute()

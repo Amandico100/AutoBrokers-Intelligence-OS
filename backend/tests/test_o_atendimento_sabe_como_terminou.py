@@ -148,6 +148,12 @@ MUTACOES = [
      '        return False, "sem_espelho"\n'
      "    if not (conversation_id or session_id):",
      "U9"),
+    # U12 -- a pausa deixa de morrer com o desfecho -> [B6d] fica vermelho.
+    #        ⚠️ `if False:` e nao a remocao da linha: a mutacao tem de RODAR.
+    ("app/services/o_fim_do_atendimento.py",
+     'if str(desfecho or "").strip():',
+     'if False:  # _MUTADO_U12',
+     "U12"),
     # U10 -- o backfill grava o ambiguo -> [B4] fica vermelho
     ("scripts/backfill_097_episodio_tem_conversa.py",
      "len(candidatas) == 1",
@@ -527,14 +533,63 @@ def bloco_B1():
           "[B1d] o episodio SEM conversa (📊 E7: 42,2%) tambem recebe desfecho",
           "marcou=%r porque=%r orfao=%r" % (marcou_orfao, porque_orfao, orfao))
 
-    # --- (d) motivo fora do CHECK nao chega ao banco ----------------------
+    # --- (d) motivo fora do CHECK: LEVANTA, e nao chega ao banco ----------
+    #
+    # 🔴 A LICAO MIGROU, e o fato mudou debaixo dela (CLAUDE.md §9.3). Ate
+    # 05/09/2026 esta assercao exigia `(False, "motivo_invalido")`. A lente do
+    # dado mostrou o custo: `_marcar_fim_do_atendimento` (o corredor) chama
+    # `marcar_fim` DENTRO de um `try` que engole tudo e NAO OLHA O RETORNO --
+    # entao um motivo invalido saia calado e o atendimento ficava sem desfecho
+    # sem ninguem saber. Motivo fora da lista nao e falha do mundo: e chamador
+    # escrito errado, e os 3 chamadores de producao passam constantes do
+    # proprio modulo. O que este bloco continua exigindo -- e e o que importa --
+    # e que NADA seja escrito.
     banco = Banco(mundo())
-    marcou_ruim, _ = asyncio.run(FIM.marcar_fim(
-        banco, company_id=CO_ALFA, motivo="inventado_pela_tela",
-        conversation_id=CONVERSA_A))
+    levantou = False
+    try:
+        marcou_ruim, _ = asyncio.run(FIM.marcar_fim(
+            banco, company_id=CO_ALFA, motivo="inventado_pela_tela",
+            conversation_id=CONVERSA_A))
+    except ValueError:
+        marcou_ruim, levantou = False, True
     certo((not marcou_ruim) and not banco.escritas("conversations"),
           "[B1e] motivo fora da lista fechada NAO chega ao banco (nenhuma escrita)",
           "escritas=%r" % banco.escritas())
+    certo(levantou,
+          "[B1e2] e ele LEVANTA `ValueError` -- o corredor engole o retorno, "
+          "entao devolver `False` era um defeito silencioso",
+          "nao levantou; marcou=%r" % (marcou_ruim,))
+
+    # --- (e) `quando_iso` no FUTURO tambem e recusado ---------------------
+    #
+    # 📊 Red team, 05/09/2026: um `resolvido_em` de HOJE+30 DIAS era aceito, e
+    # `.gte('resolvido_em', janela_da_semana)` o mantinha dentro de `terminaram`
+    # pelos 30 dias seguintes. Desfecho e FATO PASSADO.
+    from datetime import datetime, timedelta, timezone
+
+    futuro = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    banco = Banco(mundo())
+    recusou_futuro = False
+    try:
+        asyncio.run(FIM.marcar_fim(
+            banco, company_id=CO_ALFA, motivo=FIM.FECHADO_POR_HUMANO,
+            conversation_id=CONVERSA_A, quando_iso=futuro))
+    except ValueError:
+        recusou_futuro = True
+    certo(recusou_futuro and not banco.escritas("conversations"),
+          "[B1f] `resolvido_em` no FUTURO e recusado, e nada e escrito",
+          "levantou=%r escritas=%r" % (recusou_futuro, banco.escritas()))
+
+    # 🔴 A LINHA DE CONTROLE do [B1f]: a MESMA chamada com data de AGORA tem de
+    #    PASSAR. Sem ela, um "recusou" provaria so que a funcao recusa sempre.
+    banco = Banco(mundo())
+    agora_iso = datetime.now(timezone.utc).isoformat()
+    marcou_agora, porque_agora = asyncio.run(FIM.marcar_fim(
+        banco, company_id=CO_ALFA, motivo=FIM.FECHADO_POR_HUMANO,
+        conversation_id=CONVERSA_A, quando_iso=agora_iso))
+    par(marcou_agora and bool(banco.escritas("conversations")),
+        "[B1f] data-controle: com `quando_iso` de AGORA a MESMA chamada grava",
+        "marcou=%r porque=%r" % (marcou_agora, porque_agora))
 
     # ---- PARES -----------------------------------------------------------
     # 🔴 a implementacao-controle que EXIGE o espelho: no-op silencioso.
@@ -873,6 +928,56 @@ def bloco_B6():
                     erros.append("%r -> %r, esperado %r  (%s)" % (conversa, obtido, esperado, porque))
             certo(not erros, "[B6b] `pausar_ia` pausa por status OU por dono, e so por isso",
                   "\n         ".join(erros))
+
+            # =======================================================
+            # 🔴 [B6d] A IA VOLTA A FALAR DEPOIS QUE O ATENDIMENTO TERMINA
+            # =======================================================
+            #
+            # 📊 Red team, 05/09/2026 (P0-1). O caminho FELIZ da Fila nova:
+            #
+            #     a atendente ASSUME   -> `claimed_by`               -> cala ✅
+            #     a atendente ENCERRA  -> `resolvido_em`, e o dono
+            #                             FICA (R2: encerrar nao e
+            #                             desatribuir)               -> cala ⛔ PARA SEMPRE
+            #
+            # `get_or_create_conversation` reusa a MESMA linha por telefone --
+            # nao abre conversa nova por atendimento. Entao a mensagem que o
+            # segurado mandar em NOVEMBRO cai nesta linha encerrada, com o dono
+            # de setembro ainda nela, e ninguem responde. So o `release` limpava
+            # o dono, e ninguem da `release` numa conversa ja encerrada.
+            #
+            # A pausa e do atendimento VIVO: os DOIS motivos morrem com o
+            # desfecho.
+            depois = [
+                ({"status": "closed", "claimed_by": U_ALFA,
+                  "resolvido_em": "2026-09-05T18:00:00Z"}, False,
+                 "🔴 assumida E encerrada -- a IA tem de voltar a falar"),
+                ({"status": "HUMAN_REQUESTED", "claimed_by": None,
+                  "resolvido_em": "2026-09-05T18:00:00Z"}, False,
+                 "o pedido de ajuda de agosto nao cala o robo em dezembro"),
+                ({"status": "open", "claimed_by": U_ALFA,
+                  "resolvido_em": None}, True,
+                 "🔴 CONTROLE: a MESMA linha sem desfecho continua calando"),
+                ({"status": "HUMAN_REQUESTED", "claimed_by": None,
+                  "resolvido_em": None}, True,
+                 "CONTROLE: pedido de pessoa VIVO continua calando"),
+                ({"status": "closed", "claimed_by": U_ALFA,
+                  "resolvido_em": "   "}, True,
+                 "CONTROLE: `resolvido_em` em branco NAO e desfecho"),
+            ]
+            erros2 = []
+            for conversa, esperado, porque in depois:
+                try:
+                    obtido = bool(f(conversa))
+                except Exception as exc:  # noqa: BLE001
+                    obtido, porque = None, "%s (%s)" % (porque, type(exc).__name__)
+                if obtido != esperado:
+                    erros2.append("%r -> %r, esperado %r  (%s)"
+                                  % (conversa, obtido, esperado, porque))
+            certo(not erros2,
+                  "[B6d] a IA volta a falar depois que o atendimento termina "
+                  "(a pausa e do atendimento VIVO, e morre com o desfecho)",
+                  "\n         ".join(erros2))
 
     # --- a metade FRACA, e ela esta declarada: os CHAMADORES usam o helper --
     #

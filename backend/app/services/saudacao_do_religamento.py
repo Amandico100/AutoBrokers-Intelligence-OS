@@ -41,6 +41,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from app.services.o_fim_do_atendimento import pausar_ia
+
 logger = logging.getLogger(__name__)
 
 #: ≤ 12h — saúda e pergunta se ainda precisa.
@@ -75,11 +77,34 @@ def decidir_saudacao(conversa: Dict[str, Any], *,
     """
     agora = agora or datetime.now(timezone.utc)
 
-    if conversa.get("claimed_by") or conversa.get("claimed_by_name"):
-        return {"envia": False, "motivo": "reivindicada_por_pessoa", "faixa": None}
+    # 🔴 SPEC-097 E6 — A PERGUNTA "A IA FICA CALADA?" É UMA SÓ, e mora em
+    #    `pausar_ia`. Aqui havia a TERCEIRA cópia manual dela (`claimed_by` e
+    #    `HUMAN_REQUESTED` testados na unha). ⚠️ Cópia não é redundância barata:
+    #    é a que fica para trás na próxima regra — foi assim que `webhook.py` e
+    #    `chat.py` passaram meses pausando só por status e respondendo por cima
+    #    da atendente que tinha assumido (`CLAUDE.md` §5).
+    #
+    # ⚠️ `claimed_by_name` continua ao lado: o helper decide pelo DONO
+    #    (`claimed_by`), e esta tela também recusa quando só o nome chegou.
+    #    Este `or` não é uma segunda regra de pausa — é um dado a mais na mesma.
+    # ⛔ E O ATENDIMENTO QUE JA TERMINOU NAO SE SAUDA.
+    #
+    # 🔴 Esta linha nasceu junto com o conserto P0-1: `pausar_ia` passou a
+    # devolver `False` quando `resolvido_em` esta escrito (a pausa e do
+    # atendimento VIVO). Sem esta recusa, a conversa ASSUMIDA e ENCERRADA
+    # deixaria de ser recusada aqui — e "ainda precisa de ajuda?" chegaria ao
+    # segurado depois de o caso ter sido resolvido, que e pior que o silencio.
+    if str(conversa.get("resolvido_em") or "").strip():
+        return {"envia": False, "motivo": "atendimento_ja_encerrado", "faixa": None}
 
-    if str(conversa.get("status") or "").upper() == STATUS_HUMANO:
-        return {"envia": False, "motivo": "handoff_humano", "faixa": None}
+    if pausar_ia(conversa) or conversa.get("claimed_by_name"):
+        # O MOTIVO continua nomeado, porque a corretora lê o motivo. Quem
+        # decide é o helper; o que se escolhe aqui é só COMO se chama o que ele
+        # decidiu.
+        reivindicada = bool(conversa.get("claimed_by") or conversa.get("claimed_by_name"))
+        return {"envia": False,
+                "motivo": "reivindicada_por_pessoa" if reivindicada else "handoff_humano",
+                "faixa": None}
 
     if conversa.get("ja_respondida"):
         return {"envia": False, "motivo": "ja_respondida", "faixa": None}
@@ -197,6 +222,8 @@ async def conversas_elegiveis(company_id: str, *,
 
     conversas = await (db.client.table("conversations")
                  .select("id, company_id, status, claimed_by, claimed_by_name, "
+                         "resolvido_em, "     # 🔴 P0-1: sem a coluna, a recusa
+                                              #    acima nunca teria o que ler
                          "user_name, user_phone, last_message_at, channel")
                  .eq("company_id", str(company_id))
                  .gte("last_message_at", corte)

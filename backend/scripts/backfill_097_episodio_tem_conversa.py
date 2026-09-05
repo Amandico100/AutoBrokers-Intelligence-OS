@@ -17,11 +17,14 @@ E7).
 episódio ligado à conversa errada mostra ao segurado o atendimento de outra
 pessoa. ⛔ Por isso o ambíguo **não é gravado** — nunca "a primeira candidata".
 
-⚠️ A normalização do telefone é a MESMA do produto (`webhook.py::
-_conversa_do_telefone` e `dispatch_router::_digits`): só os dígitos. Um segundo
-jeito de normalizar produziria um segundo conjunto de elos, divergente do
-primeiro (CLAUDE.md §9.4: padrão medido com um motor e aplicado com outro é um
-padrão sobre outra coisa).
+🔴 A normalização do telefone é `app/telefone_br.py::variantes_br` — a MESMA
+regra do nono dígito que o Atlas usa para correlacionar telefone
+(`observer_intake:866,1007`) e que o intake usa para gravar o elo novo. ⚠️ Ela
+NÃO é "só os dígitos": 📊 medido em 05/09/2026, o casador estrito tratava
+`5548988887777` e `554888887777` como duas pessoas, e um par gravado com o 9 de
+um lado e sem ele do outro virava órfão. Um segundo jeito de normalizar produz
+um segundo conjunto de elos, divergente do primeiro (CLAUDE.md §9.4: padrão
+medido com um motor e aplicado com outro é um padrão sobre outra coisa).
 """
 from __future__ import annotations
 
@@ -33,6 +36,12 @@ from typing import Any, Dict, List, Tuple
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if RAIZ not in sys.path:
     sys.path.insert(0, RAIZ)
+
+# ⚠️ DEPOIS do `sys.path`, e é o ÚNICO import de `app.` no corpo do módulo: o
+#    guarda carrega este arquivo solto, por caminho. `app/telefone_br.py` não
+#    importa nada — nem `app.core`, nem `app.services` — justamente para poder
+#    ser importado aqui sem subir o mundo (SPEC-097 P3-4).
+from app.telefone_br import variantes_br
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -51,12 +60,6 @@ def p(texto: Any = "") -> None:
         print(str(texto).encode(cod, "replace").decode(cod, "replace"))
 
 
-def so_digitos(telefone: Any) -> str:
-    """A MESMA normalização que o produto já usa para achar conversa por
-    telefone. ⛔ Não invente outra."""
-    return "".join(c for c in str(telefone or "") if c.isdigit())
-
-
 def casar_1_para_1(sessoes, conversas) -> Tuple[Dict[str, str], List[str], List[str]]:
     """Quais episódios têm UMA conversa — **FUNÇÃO PURA**, e é ela que o guarda
     executa.
@@ -67,26 +70,38 @@ def casar_1_para_1(sessoes, conversas) -> Tuple[Dict[str, str], List[str], List[
         ambiguos  [attendance_session_id]                    2+ conversas
         orfaos    [attendance_session_id]                    nenhuma conversa
 
-    🔴 A chave é `(company_id, dígitos do telefone)` — a corretora entra na
-    chave, não num filtro depois (§7). Sem ela, dois segurados de corretoras
-    diferentes com o mesmo número seriam a mesma pessoa.
+    🔴 A chave é `(company_id, telefone)` — a corretora entra na chave, não num
+    filtro depois (§7). Sem ela, dois segurados de corretoras diferentes com o
+    mesmo número seriam a mesma pessoa.
+
+    ⚠️ **E o telefone entra pelas suas VARIANTES** (`variantes_br`): a conversa
+    é indexada sob as duas formas do nono dígito, e o episódio procura pelas
+    duas. 📊 P3-4: o casador estrito transformava em órfão todo par gravado com
+    9 de um lado e sem 9 do outro.
+
+    ⛔ **Ampliar o casador não afrouxa o 1:1.** As candidatas são
+    DESDUPLICADAS: se as duas formas acham a MESMA conversa, é uma; se acham
+    duas conversas diferentes, é ambíguo — e ambíguo não é gravado.
     """
     por_telefone: Dict[Tuple[str, str], List[str]] = {}
     for c in conversas or []:
-        telefone = so_digitos((c or {}).get("user_phone"))
-        if not telefone:
-            continue
-        chave = (str((c or {}).get("company_id") or ""), telefone)
-        por_telefone.setdefault(chave, []).append(str((c or {}).get("id")))
+        empresa = str((c or {}).get("company_id") or "")
+        for forma in variantes_br((c or {}).get("user_phone")):
+            por_telefone.setdefault((empresa, forma), []).append(str((c or {}).get("id")))
 
     elos: Dict[str, str] = {}
     ambiguos: List[str] = []
     orfaos: List[str] = []
     for s in sessoes or []:
         sid = str((s or {}).get("id"))
-        chave = (str((s or {}).get("company_id") or ""),
-                 so_digitos((s or {}).get("counterparty")))
-        candidatas = por_telefone.get(chave, [])
+        empresa = str((s or {}).get("company_id") or "")
+        candidatas: List[str] = []
+        vistas = set()
+        for forma in sorted(variantes_br((s or {}).get("counterparty"))):
+            for cid in por_telefone.get((empresa, forma), []):
+                if cid not in vistas:
+                    vistas.add(cid)
+                    candidatas.append(cid)
         # 🔴 A ÂNCORA DESTE BACKFILL, e ela mora numa LINHA SÓ de propósito:
         #    a mutação U10 do guarda troca `== 1` por `>= 1` aqui, e assim ela
         #    muda o COMPORTAMENTO (grava o ambíguo) em vez de quebrar a sintaxe.

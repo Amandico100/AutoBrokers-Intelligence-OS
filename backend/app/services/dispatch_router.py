@@ -491,6 +491,109 @@ async def _conversa_provada_da_sessao(db, company_id: str,
     return bruto
 
 
+#: 🔴 Quanto tempo para trás o episódio corrente pode estar, em horas.
+#:
+#: ⚠️ O acionamento fala com a SEGURADORA; o episódio é a conversa com o
+#: SEGURADO, e ela costuma emudecer assim que o segurado descreve o problema.
+#: Exigir que o episódio esteja "vivo agora" recusaria o caso normal. 📊 O Atlas
+#: fecha o episódio com 6 h de silêncio (`observer_intake._SESSION_GAP`), então
+#: 24 h dão folga de um ciclo inteiro sem alcançar o guincho do mês passado.
+_JANELA_DO_EPISODIO_H = 24
+
+
+async def _episodio_do_atendimento(db, company_id: str,
+                                   session: Dict[str, Any]) -> str:
+    """Qual EPISÓDIO (`attendance_sessions`) este acionamento está atendendo.
+
+    🔴 **SPEC-097 U1.2 — o elo que faltava.** 📊 Medido em 05/09/2026:
+    `grep -rn "attendance_session_id" backend/app` dava 15 ocorrências e **ZERO
+    escritas**. `_marcar_fim_do_atendimento` já sabia usar o episódio, mas
+    ninguém jamais o punha na sessão de acionamento — então, com
+    `DISPATCH_MIRROR=0`, o corredor continuava saindo sem marcar nada, que era
+    exatamente o defeito que a U1.2 diz consertar. Ler a chave e nunca
+    escrevê-la é um elo que não existe.
+
+    ⚠️ **A junção é `(company_id, counterparty)`, e a normalização é a MESMA**
+    que o resto do produto usa para achar conversa por telefone: só dígitos
+    (`_digits` aqui, `so_digitos` no backfill, `_conversa_unica_do_telefone` no
+    Atlas). 📊 `attendance_sessions.counterparty` é 12.762/12.762 só dígitos e
+    `session["client_phone"]` já passou por `_digits` em `start_live_dispatch`.
+    Um segundo jeito de normalizar seria um segundo conjunto de elos (§9.4).
+
+    🔴 **O MAIS RECENTE dentro da janela, e o empate RECUSA.** 📊 5,8 episódios
+    por contato: o contato tem passado, e marcar o desfecho no episódio errado
+    encerraria o guincho de março com o motivo da dúvida de agosto. O corredor
+    está rodando AGORA, então o episódio corrente é o de `last_event_at` mais
+    novo; quando dois empatam no mesmo instante não há "o mais novo", e um
+    palpite valeria menos que a ausência.
+
+    ⛔ **Nunca levanta, e `""` é resposta legítima** — contato sem episódio
+    (chat web, teste, simulador) existe, e ali o espelho segue sendo a âncora.
+    """
+    guardado = str(session.get("attendance_session_id") or "").strip()
+    if _UUID.match(guardado):
+        return guardado                     # já resolvido nesta sessão
+
+    empresa = str(company_id or "").strip()
+    # ⛔ `company_id="sim"` é o simulador (SPEC-087). Ele não tem episódio, e
+    #    um SELECT por ele só custaria uma ida ao banco por acionamento falso.
+    if not _UUID.match(empresa):
+        return ""
+    telefone = _digits(str(session.get("client_phone") or ""))
+    if not telefone:
+        return ""
+
+    try:
+        achado = await (db.client.table("attendance_sessions")
+                        .select("id, last_event_at")
+                        .eq("company_id", empresa)          # 🔴 §7
+                        .eq("counterparty", telefone)
+                        .order("last_event_at", desc=True)
+                        .limit(2).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[FIM] episódio do atendimento não resolvido (%s) — o "
+                       "desfecho fica com o espelho", type(erro).__name__)
+        return ""
+    linhas = list(achado.data or [])
+    if not linhas:
+        return ""
+
+    quando = str(linhas[0].get("last_event_at") or "")
+    if len(linhas) > 1 and str(linhas[1].get("last_event_at") or "") == quando:
+        # 🔴 Empate no MESMO instante: não há episódio corrente, há dois.
+        logger.info("[FIM] dois episódios deste contato empatam em "
+                    "`last_event_at` — nenhum é marcado pelo corredor")
+        return ""
+
+    referencia = _agora()
+    try:
+        nascida = datetime.fromisoformat(
+            str(session.get("created_at") or "").replace("Z", "+00:00"))
+        referencia = nascida if nascida.tzinfo else nascida.replace(tzinfo=timezone.utc)
+    except Exception:  # noqa: BLE001
+        pass                                 # sem `created_at` legível: agora
+    try:
+        visto = datetime.fromisoformat(quando.replace("Z", "+00:00"))
+        if visto.tzinfo is None:
+            visto = visto.replace(tzinfo=timezone.utc)
+    except Exception:  # noqa: BLE001
+        return ""                            # sem relógio não há janela
+    if referencia - visto > timedelta(hours=_JANELA_DO_EPISODIO_H):
+        logger.info("[FIM] o episódio mais novo deste contato é anterior à "
+                    "janela de %dh — o acionamento não o encerra",
+                    _JANELA_DO_EPISODIO_H)
+        return ""
+
+    episodio = str(linhas[0].get("id") or "")
+    if not _UUID.match(episodio):
+        return ""
+    # 🔴 E AGORA A CHAVE É ESCRITA — era esta a linha que não existia em lugar
+    #    nenhum do produto. Resolver uma vez por sessão também poupa o SELECT
+    #    em cada checkpoint.
+    session["attendance_session_id"] = episodio
+    return episodio
+
+
 async def _garantir_work_run(db, company_id: str, insurer_digits: str,
                              session: Dict[str, Any]) -> Optional[str]:
     """O Work Run desta sessão — reaproveitado, nunca duplicado.
@@ -1258,9 +1361,11 @@ async def _marcar_fim_do_atendimento(db, company_id: str,
         conversa = str(session.get("mirror_conversation_id") or "").strip()
         if not _UUID.match(conversa or ""):
             conversa = ""
-        episodio = str(session.get("attendance_session_id") or "").strip()
-        if not _UUID.match(episodio or ""):
-            episodio = ""
+        # 🔴 E QUANDO A SESSÃO NÃO CONHECE O EPISÓDIO, ELA O RESOLVE.
+        #    Sem esta linha `episodio` era SEMPRE `""` (📊 zero escritas da
+        #    chave em todo o backend) e o parágrafo acima descrevia um caminho
+        #    que nenhuma execução alcançava.
+        episodio = await _episodio_do_atendimento(db, str(company_id), session)
         if not conversa and not episodio:
             logger.info("[FIM] fase '%s' terminou o acionamento, mas esta sessão "
                         "não tem conversa espelhada nem episódio — nada a marcar", fase)

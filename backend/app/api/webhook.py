@@ -628,7 +628,7 @@ async def process_whatsapp_message_background(
 
             check_status = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("status, claimed_by")
+                .select("status, claimed_by, resolvido_em")  # 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou
                 .eq("company_id", company_id)
                 .eq("session_id", session_id)
                 .limit(1)

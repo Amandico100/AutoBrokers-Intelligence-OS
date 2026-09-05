@@ -463,8 +463,37 @@ def colapsar_avisos(avisos: Sequence[str]) -> List[str]:
 
 
 #: 🔴 As chaves de UMA comparação, na ordem em que quem lê precisa delas.
-CAMPOS_DA_COMPARACAO = ("metric_id", "unit", "atual", "anterior", "delta",
-                        "delta_pct", "time_basis", "confidence")
+#:
+#: ⚠️ `label` está PRIMEIRO, e não é estética: é o único campo desta lista que o
+#: modelo tem permissão de DIZER. `metric_id` continua aqui porque ele é a
+#: chave de junção entre o bloco e o Artifact (a régua da 094.1) — mas
+#: `COMO_FALAR` proíbe escrevê-lo, e sem `label` a proibição era uma ordem
+#: impossível: o modelo recebia a chave e mais nada com que chamar o número.
+CAMPOS_DA_COMPARACAO = ("label", "metric_id", "unit", "atual", "anterior",
+                        "delta", "delta_pct", "time_basis", "confidence")
+
+
+def _label_do_registry(metric_id: str) -> str:
+    """O nome em português desta métrica, perguntado ao registry. `""` quando
+    não dá para saber.
+
+    ⛔ **Import LAZY, e é obrigatório:** `metricas.registry` importa este
+    módulo. Um import no topo fecharia o ciclo e nenhum dos dois carregaria.
+
+    ⚠️ E a ausência é `""`, nunca a chave: devolver `production.new_vs_renewal`
+    como se fosse nome seria reintroduzir o defeito pela porta do conserto.
+    `nome_da_metrica` é quem sabe virar chave em palavras, e ele é chamado com
+    o objeto inteiro — aqui só existe o id.
+    """
+    chave = str(metric_id or "").strip()
+    if not chave:
+        return ""
+    try:
+        from app.comercial.metricas.registry import definicao
+
+        return str(getattr(definicao(chave), "label", "") or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _comparacao_citavel(c: Dict[str, Any]) -> Dict[str, Any]:
@@ -489,6 +518,19 @@ def _comparacao_citavel(c: Dict[str, Any]) -> Dict[str, Any]:
         if chave in c:
             saida[chave] = _limpar(c[chave])
     saida.setdefault("metric_id", str(c.get("metric_id") or ""))
+    # 🔴 SPEC-097 U7/P2-11 — O NOME VIAJA COM A COMPARAÇÃO.
+    #
+    # 📊 Medido em 05/09/2026: `COMO_FALAR` mandava *"diga o NOME da métrica — o
+    # campo `label`"* e proibia a chave, e a comparação levava **só a chave**. O
+    # modelo tinha uma ordem e nenhum jeito de cumpri-la — foi por aqui que
+    # `production.new_vs_renewal@1` chegou ao Founder.
+    #
+    # ⚠️ Quem calculou a comparação (`registry.comparar`) já manda o `label`
+    # junto; o `_label_do_registry` é a rede para as comparações antigas, as
+    # montadas à mão e as de teste. Perguntar ao registry é ler a MESMA fonte
+    # que deu o nome à métrica — não é um segundo vocabulário.
+    if not str(saida.get("label") or "").strip():
+        saida["label"] = _label_do_registry(saida.get("metric_id"))
     for chave in ("atual", "anterior", "delta", "delta_pct"):
         if saida.get(chave) is None:
             saida[chave] = UNAVAILABLE

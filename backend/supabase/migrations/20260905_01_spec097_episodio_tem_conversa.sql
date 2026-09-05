@@ -5,9 +5,11 @@
 -- OBJETIVO:  o EPISÓDIO de atendimento passa a saber de qual conversa ele é —
 --            e a saber como terminou, mesmo quando conversa nenhuma existe.
 --
--- APPLY:     `attendance_sessions` ganha `conversation_id` (FK ON DELETE SET
---            NULL), `resolvido_em`, `resolucao_motivo` (o MESMO CHECK da
---            conversa) e o índice `(company_id, conversation_id)`.
+-- APPLY:     `attendance_sessions` ganha `conversation_id` (FK **COMPOSTA**
+--            `(conversation_id, company_id) → conversations (id, company_id)`,
+--            `ON DELETE SET NULL (conversation_id)`), `resolvido_em`,
+--            `resolucao_motivo` (o MESMO CHECK da conversa) e o índice
+--            `(company_id, conversation_id)`.
 -- VERIFY:    o bloco VERIFY no fim deste arquivo (SQL executável).
 -- ROLLBACK:  o bloco ROLLBACK no fim deste arquivo.
 --
@@ -34,6 +36,28 @@
 -- ficam sem desfecho para sempre.
 --
 -- ---------------------------------------------------------------------------
+-- 🔴 POR QUE A FK É COMPOSTA — e a simples deixava o elo atravessar corretora
+-- ---------------------------------------------------------------------------
+--
+-- ⛔ `REFERENCES conversations(id)` prova que a conversa EXISTE. Não prova que
+-- ela é DESTA corretora. O elo é o único dado novo desta SPEC, e nada impedia
+-- um episódio da Resulta nascer apontando para uma conversa da AutoFleet: o
+-- código degrada bem (a hidratação filtra por `company_id` e o episódio vira
+-- "sem conversa"), mas o dado sujo fica no banco para sempre.
+--
+-- 🔴 §7: *"RLS + filtro no repository + constraints e foreign keys"*. O par
+-- `(conversation_id, company_id)` é a constraint dessa lista, e ele repete o
+-- que a SPEC-090 BLOCO A já fez em `work_runs` — mesma forma, mesma razão.
+--
+-- 📊 Medido em 05/09/2026: `conversations` **já tem** índice único sobre
+-- `(id, company_id)` — a FK apenas o referencia, nenhum índice novo nasce aqui.
+--
+-- ⚠️ `ON DELETE SET NULL (conversation_id)` — a LISTA DE COLUNAS não é enfeite:
+-- `attendance_sessions.company_id` é NOT NULL, e um `SET NULL` sem lista
+-- tentaria anular as DUAS colunas e estouraria no `DELETE` da conversa. A
+-- sintaxe é PG15+; 📊 o banco é PostgreSQL **17.6** (medido em 05/09/2026).
+--
+-- ---------------------------------------------------------------------------
 -- 🔴 POR QUE `ON DELETE SET NULL`, e não CASCADE
 -- ---------------------------------------------------------------------------
 --
@@ -49,8 +73,24 @@
 
 -- ① o ELO (R3). ⚠️ `NULL` é o valor normal: 📊 42,2% dos episódios ficam sem.
 ALTER TABLE public.attendance_sessions
-  ADD COLUMN IF NOT EXISTS conversation_id uuid NULL
-  REFERENCES public.conversations(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS conversation_id uuid NULL;
+
+-- ①.b 🔴 e a FK é COMPOSTA — a corretora entra na chave (§7). Guardada por
+--     `pg_constraint` porque `ADD CONSTRAINT` não tem `IF NOT EXISTS`.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'fk_attendance_sessions_conversa'
+       AND conrelid = 'public.attendance_sessions'::regclass
+  ) THEN
+    ALTER TABLE public.attendance_sessions
+      ADD CONSTRAINT fk_attendance_sessions_conversa
+      FOREIGN KEY (conversation_id, company_id)
+      REFERENCES public.conversations (id, company_id)
+      ON DELETE SET NULL (conversation_id);
+  END IF;
+END $$;
 
 -- ② o DESFECHO no episódio (E8) — as duas colunas andam juntas.
 ALTER TABLE public.attendance_sessions
@@ -133,7 +173,41 @@ COMMENT ON COLUMN public.attendance_sessions.resolucao_motivo IS
 --   select conname, confdeltype, pg_get_constraintdef(oid)
 --     from pg_constraint
 --    where conrelid='public.attendance_sessions'::regclass and contype='f';
---   -- esperado: confdeltype = 'n'  (SET NULL) para a FK de conversation_id
+--   -- esperado: `fk_attendance_sessions_conversa` com confdeltype = 'n'
+--   --           (SET NULL) e definição
+--   --           FOREIGN KEY (conversation_id, company_id)
+--   --             REFERENCES conversations(id, company_id)
+--   --             ON DELETE SET NULL (conversation_id)
+--
+-- V1.b · 🔴 O CONTROLE DA FK COMPOSTA — o elo CROSS-TENANT é RECUSADO e o
+--        elo da MESMA corretora é ACEITO. Sem as duas metades, um "recusou"
+--        provaria só que a linha era inválida por outro motivo.
+--        ⚠️ Desfeito por `raise`: nada fica gravado.
+--
+--   do $$
+--   declare v_ep uuid; v_cv uuid; v_co uuid; v_outra uuid;
+--           recusou boolean := false; aceitou boolean := false; v_erro text := '';
+--   begin
+--     select id, company_id into v_cv, v_co from conversations limit 1;
+--     select id into v_ep from attendance_sessions
+--      where company_id = v_co limit 1;
+--     select company_id into v_outra from conversations
+--      where company_id <> v_co limit 1;
+--
+--     begin update attendance_sessions set conversation_id = v_cv
+--            where id = (select id from attendance_sessions
+--                         where company_id = v_outra limit 1);
+--     exception when foreign_key_violation then recusou := true;
+--               when others then v_erro := v_erro||' cross='||SQLSTATE; end;
+--
+--     begin update attendance_sessions set conversation_id = v_cv
+--            where id = v_ep; aceitou := true;
+--     exception when others then v_erro := v_erro||' mesma='||SQLSTATE; end;
+--
+--     raise exception 'V1.b || cross-tenant recusado? % || mesma corretora '
+--                     'aceita? % || outros:[%]', recusou, aceitou, v_erro;
+--   end $$;
+--   -- esperado: t | t | []
 --
 -- V2 · 🔴 O CONTROLE — o banco RECUSA o motivo inválido E ACEITA o válido.
 --      ⚠️ A transação é desfeita por `raise`: nada fica gravado.
@@ -188,6 +262,8 @@ COMMENT ON COLUMN public.attendance_sessions.resolucao_motivo IS
 --     drop constraint if exists ck_attendance_sessions_resolucao_coerente;
 --   alter table public.attendance_sessions
 --     drop constraint if exists ck_attendance_sessions_resolucao_motivo;
+--   alter table public.attendance_sessions
+--     drop constraint if exists fk_attendance_sessions_conversa;
 --   -- ⚠️ As COLUNAS não são derrubadas por padrão: elas passam a guardar o
 --   --    desfecho de atendimentos reais, e apagá-las apaga essa história.
 --   --    Só com decisão explícita do Founder (§8.6):

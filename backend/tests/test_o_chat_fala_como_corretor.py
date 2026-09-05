@@ -34,6 +34,8 @@ O CONTRATO QUE ESTE GUARDA FIXA
     [B5]  o aviso da metrica que FALHOU nao tem chave
     [B6]  o resumo deterministico e a frase de direcao nao tem chave
     [B7]  a regra curta esta no prompt do chat
+    [B8]  a COMPARACAO que vai ao modelo tem NOME (e nao so a chave), e todo
+          ponteiro fica DENTRO do bloco delimitado
 
 🔴 DE [B2] A [B6] CADA ASSERCAO EXECUTA O PRODUTO: o catalogo sai da ferramenta
 de verdade, a recusa sai de `propor_a_partir_do_pedido` com o registry REAL, o
@@ -109,6 +111,14 @@ MUTACOES = [
      'rotulo = str(getattr(m, "label", "") or "").strip()',
      'rotulo = ""  # _MUTADO_U7A',
      "U7A"),
+    # U7C -- a comparacao volta a ir ao modelo SEM nome -> [B8] vermelho.
+    #        📊 P2-11: `COMO_FALAR` manda dizer o `label` e proibe a chave, e a
+    #        comparacao levava SO a chave. A mutacao apaga o resgate pelo
+    #        registry, e a comparacao montada a mao fica sem nome nenhum.
+    ("app/comercial/evidence_pack.py",
+     'saida["label"] = _label_do_registry(saida.get("metric_id"))',
+     'saida["label"] = ""  # _MUTADO_U7C',
+     "U7C"),
     # U7B -- o catalogo volta a publicar o ponteiro -> [B2] vermelho.
     ("app/agents/tools/executive_intelligence.py",
      'itens.append({"label": d.label,',
@@ -518,6 +528,128 @@ def bloco_B7():
 
 
 # ===========================================================================
+# [B8] U7/P2-11 -- a COMPARACAO tem nome, e o ponteiro nao sai do bloco
+# ===========================================================================
+def bloco_B8():
+    _p("\n[B8] U7/P2-11 -- a comparacao que vai ao modelo tem NOME, nao so chave")
+    import json
+
+    try:
+        from app.comercial.evidence_pack import (
+            ABERTURA, FECHAMENTO, EvidencePack, metrica,
+        )
+        from app.comercial.metricas import registry
+    except Exception as exc:  # noqa: BLE001
+        certo(False, "[B8] registry e evidence_pack importam",
+              "%s: %s" % (type(exc).__name__, exc))
+        return
+
+    todas = registry.todas()
+    if not todas:
+        certo(False, "[B8] ha metrica registrada para comparar")
+        return
+    mid, d = sorted(todas.items())[0]
+
+    def _m(valor, inicio, fim):
+        return metrica(mid, valor, d.unit, period={"start": inicio, "end": fim},
+                       time_basis=d.time_basis, version=d.version, label=d.label)
+
+    # 🔴 EXECUTA O MOTOR: as duas primeiras comparacoes saem de
+    #    `registry.comparar`, e a segunda cai no ramo RECUSADO (janelas de
+    #    duracao diferente) -- que e justamente o caso que o modelo precisa
+    #    narrar em portugues, e onde so havia a chave para nomear o numero.
+    comp_ok = registry.comparar(_m(1680, "2026-01-01", "2026-01-31"),
+                                _m(1500, "2025-01-01", "2025-01-31"))
+    comp_recusada = registry.comparar(_m(1680, "2026-01-01", "2026-01-31"),
+                                      _m(400, "2025-01-01", "2025-12-31"))
+    # ⚠️ E a TERCEIRA vem SEM `label`, montada a mao: e a comparacao de um
+    #    chamador que nao passou pelo motor. E ela quem prova o resgate pelo
+    #    registry -- e e ela que a mutacao U7C mata.
+    comp_a_mao = {"metric_id": mid, "unit": d.unit, "atual": 10.0,
+                  "anterior": 8.0, "delta": 2.0, "delta_pct": 25.0,
+                  "time_basis": d.time_basis, "confidence": "MEDIUM"}
+
+    pack = EvidencePack(
+        company_id="co-097", period={"start": "2026-01-01", "end": "2026-01-31"},
+        compare_period={"start": "2025-01-01", "end": "2025-01-31"},
+        comparacoes=[comp_ok, comp_recusada, comp_a_mao])
+    bloco = pack.bloco_para_o_modelo()
+    corpo = json.loads(bloco.split(ABERTURA, 1)[1].split(FECHAMENTO, 1)[0])
+    linhas = corpo.get("comparacoes") or []
+
+    sem_nome = [c for c in linhas if not str(c.get("label") or "").strip()]
+    certo(len(linhas) == 3 and not sem_nome,
+          "[B8a] TODA comparacao do bloco carrega `label` -- inclusive a "
+          "montada a mao (o nome vem do registry)",
+          "linhas=%d sem nome=%r" % (len(linhas), sem_nome[:2]))
+
+    erradas = [(c.get("metric_id"), c.get("label")) for c in linhas
+               if str(c.get("label") or "") != d.label
+               or chaves_em(str(c.get("label")))]
+    certo(not erradas,
+          "[B8b] e o nome e o `label` REGISTRADO (%r), nao a chave virada em "
+          "palavras" % d.label, "%r" % erradas[:3])
+
+    # 🔴 A recusa continua dizendo POR QUE: o nome novo veio AO LADO do motivo,
+    #    nunca no lugar dele -- senao o modelo le a ausencia como estabilidade.
+    recusada = next((c for c in linhas if c.get("delta_pct") == "UNAVAILABLE"), None)
+    certo(recusada is not None
+          and str((recusada or {}).get("motivo") or "").strip()
+          and str((recusada or {}).get("label") or "").strip(),
+          "[B8c] a comparacao RECUSADA leva o motivo E o nome, juntos",
+          "%r" % (recusada,))
+
+    # ---- e o ponteiro fica DENTRO do bloco -------------------------------
+    #
+    # ⚠️ METADE FRACA, e declarada: a composicao abaixo e a de
+    # `relatorios_comerciais.py:684-689` (cabecalho + bloco + instrucao). O que
+    # se afirma e que TODO ponteiro cai DENTRO dos delimitadores -- a mesma
+    # pergunta que o guarda da 094 faz com dinheiro ("ha `R$ 1.234` FORA do
+    # bloco?"). A chave DENTRO do bloco e a chave de juncao com o Artifact, e
+    # ela FICA (guarda [14]③ da 094.1).
+    RC, _erro_rc = carregar_solto("app/agents/tools/relatorios_comerciais.py",
+                                  "_rc_u7b")
+    instrucao = getattr(RC, "_COMO_FALAR", "") if RC else ""
+    if not instrucao:
+        pular("[B8d]", "`relatorios_comerciais._COMO_FALAR` nao carregou")
+    else:
+        texto = ("RELATORIO_PRONTO - Raio-X Comercial de **janeiro**.\n\n"
+                 "[Abrir o relatorio](https://exemplo/artifact)\n\n"
+                 + bloco + "\n\n" + instrucao)
+        fora = texto.replace(bloco, " ")
+        # 🔴 AS DUAS METADES, e a segunda impede a vacuidade: o ponteiro tem de
+        #    EXISTIR (ele e a chave de juncao com o Artifact -- guarda [14]③ da
+        #    094.1) e tem de estar INTEIRO dentro dos delimitadores.
+        #
+        # ⚠️ `"@1" in fora` NAO serve de regua aqui: a propria instrucao cita
+        #    `@1` para PROIBI-LO ("a versao (`@1`)"), e uma regua que reprovasse
+        #    a proibicao mandaria apagar o texto que resolve o problema.
+        certo(not chaves_em(fora) and bool(chaves_em(bloco)),
+              "[B8d] o ponteiro existe e cai INTEIRO dentro do bloco: nenhum "
+              "chega ao texto que acompanha a resposta",
+              "fora=%r · dentro=%r" % (chaves_em(fora)[:5], chaves_em(bloco)[:3]))
+
+    # ---- OS PARES --------------------------------------------------------
+    orfa = EvidencePack(
+        company_id="co-097", period={"start": "2026-01-01", "end": "2026-01-31"},
+        comparacoes=[{"metric_id": "inventada.que_nao_existe", "unit": "count",
+                      "atual": 1.0, "anterior": 1.0, "delta": 0.0,
+                      "delta_pct": 0.0, "time_basis": d.time_basis,
+                      "confidence": "LOW"}])
+    linha_orfa = (json.loads(orfa.bloco_para_o_modelo().split(ABERTURA, 1)[1]
+                             .split(FECHAMENTO, 1)[0]).get("comparacoes")
+                  or [{}])[0]
+    par(not str(linha_orfa.get("label") or "").strip(),
+        "[B8] pack-controle: metrica que o registry NAO conhece fica sem nome "
+        "-- e [B8a] CONSEGUE ficar vermelho",
+        "veio label=%r" % (linha_orfa.get("label"),))
+    par(bool(chaves_em("production.new_vs_renewal@1"))
+        and bool(chaves_em("a comissao de production.new_vs_renewal caiu")),
+        "[B8] detector-controle: a chave crua e o ponteiro continuam sendo "
+        "acusados (senao [B8d] passaria por vacuidade)")
+
+
+# ===========================================================================
 # As mutacoes por COPIA -- so com `--mutar`
 # ===========================================================================
 def _rodar():
@@ -529,6 +661,7 @@ def _rodar():
     bloco_B5()
     bloco_B6()
     bloco_B7()
+    bloco_B8()
 
 
 def _remedir():

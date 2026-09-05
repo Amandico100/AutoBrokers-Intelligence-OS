@@ -104,6 +104,7 @@ _CHAVES_SEGURAS = (
     "playbook_ref", "subservice", "state", "reason", "company_id",
     "insurer_phone", "insurer_key", "ramo", "servico", "retry_count",
     "sentinela_attempts", "mirror_idx", "mirror_conversation_id", "work_run_id",
+    "attendance_session_id",  # SPEC-097: o elo com o episódio é id de banco, como mirror_conversation_id
     "created_at", "followup_at", "closing_at", "transcript_total", "live",
     "missing_slots", "step_counts", "silencios_seguidos",
     # 🔴 `confirmacoes` SAIU DAQUI — e ela estava errada desde a primeira linha.
