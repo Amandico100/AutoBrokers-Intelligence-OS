@@ -1547,8 +1547,19 @@ def main():
 
 
 def test_o_chat_fala_tipado():
-    """🔴 A prova nasceu ANTES do codigo (protocolo §4, opcao B)."""
-    assert main() == 0
+    """🔴 A prova nasceu ANTES do codigo (protocolo §4, opcao B).
+
+    📊 05/09: na SUITE inteira este guarda falhava (assert 1 == 0) e passava
+    isolado — ordem de import: as cascas de `app.*` e o limiter singleton de
+    outros testes ficam no processo do pytest. Um guarda que sobe o router de
+    producao precisa do processo LIMPO: roda a si mesmo num subprocesso, como
+    `test_todos_os_guardas_script_rodam` faz com os guardas-script.
+    """
+    import subprocess
+    r = subprocess.run([sys.executable, os.path.abspath(__file__)], cwd=RAIZ,
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, (r.stdout[-3000:] + r.stderr[-1500:])
 
 
 if __name__ == "__main__":
