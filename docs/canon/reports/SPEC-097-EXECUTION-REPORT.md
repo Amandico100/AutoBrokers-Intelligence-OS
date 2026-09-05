@@ -58,7 +58,8 @@ nota 0–100 do orquestrador: {A PREENCHER}
 
 ## 3. Commits
 ```
-5850c43 SPEC v1.0 · ad71e57 dossiê · 806282a aquecimento/emendas (v1.1) · {A PREENCHER}
+5850c43 SPEC v1.0 · ad71e57 dossiê · 806282a aquecimento/emendas (v1.1) · a0234f4 guardas (gate zero) · 2938996 backend U1–U3 · daa619b tela/BFF · 7ae06fb U7
+e3bb30d schema vivo · cbcf985 [13] · a4c9815 v1.2 · bca4d27 dossiê · 8861143 FE: DADO+red team+visual+[14][15] · 8865192 BE: P0-1 e cia · 90ff89c migration aplicada · {A PREENCHER}
 ```
 ## 4. Gate zero (📊 cópia limpa `../AutoBrokers-FIX-gate0` em 7f3f3eb, desenhista Opus 276k)
 ```
@@ -74,7 +75,20 @@ já verdes na cópia limpa (revisados): [10b] a Ficha não lê work_events · [B
 espelho, o episódio é o fato), `resolvido_em`, `resolucao_motivo` (o MESMO CHECK da conversa, SPEC-086) e o índice `(company_id, conversation_id)`; APPLY/VERIFY/ROLLBACK
 no arquivo; `COMMENT ON COLUMN` diz que o `status` fechado por 6 h do Atlas NÃO é desfecho (E9). Backfill `backend/scripts/backfill_097_episodio_tem_conversa.py`
 (`--dry-run` padrão; normalização = a de `webhook.py::_conversa_do_telefone`): 📊 lidos 12.755 episódios · 728 conversas · **elos 1:1 a gravar 7.367 (57,8%)** ·
-ambíguos 5 (não gravados) · órfãos 5.383. {A PREENCHER: APPLY · VERIFY · advisors antes/depois · backfill --vivo}
+ambíguos 5 (não gravados) · órfãos 5.383.
+**APPLY (📊 05/09 ~15:55, MCP `apply_migration spec097_episodio_tem_conversa`, PostgreSQL 17.6):** `{"success":true}`. A FK virou **COMPOSTA**
+`(conversation_id, company_id) → conversations(id, company_id) ON DELETE SET NULL (conversation_id)` depois do red team P2-10 (a simples deixava o elo atravessar
+corretora); `conversations` já tinha o índice único `(id, company_id)`.
+**VERIFY:** V1 3 colunas nullable ✓ · FK `confdeltype='n'` com a definição composta ✓ · **V1.b** `cross-tenant recusado? t || mesma corretora aceita? t || outros:[]` ·
+**V2** `motivo INVALIDO recusado? t || so metade recusada? t || motivo VALIDO aceito? t || outros:[]` · V3 2 índices ✓ · `com_elo=0 de 12.762` antes do backfill.
+**Advisors:** security 133 (2 ERROR/9 WARN/122 INFO — nenhum novo; o único de `attendance_sessions` é o `rls_enabled_no_policy` que já existia) · performance
+**269 INFO/49 WARN** (baseline 267/49): os +2 são `unindexed_foreign_keys` da FK composta (o índice `(company_id, conversation_id)` cobre a busca; o advisor
+exige a ordem da FK) e `unused_index` do índice parcial recém-criado — ambos INFO, esperados.
+**Backfill `--vivo` (📊 05/09):** 1ª corrida interrompida pelo shell em 6.168 elos; 2ª corrida (idempotente: `.is_('conversation_id','null')`) → `já ligados 6.168 ·
+elos 1:1 a gravar 1.206 · GRAVADOS 1.206 · falhas 0 · VERIFY com_elo=7374 de 12762`. SQL independente: `com_elo 7.374 · únicos esperados 7.374 · ambíguos 5 ·
+ambíguos gravados por engano 0 · cross_tenant 0 · resolvidos 0 · conversas resolvidas 0`. A regra do 9º dígito (P3-4) mudou ZERO elo: os dois lados já estavam na mesma
+forma — o defeito era latente.
+`backend/tests/fixtures/schema_vivo.json` e `backend/supabase/migrations/MANIFEST.md` atualizados no mesmo commit (`90ff89c`).
 ## 6. Guardas e mutações (📊 05/09, depois dos builders)
 ```
 npm run test:casa                        [1]–[13] · 0 falhas · VERDE (tela+BFF `daa619b`; [13] linguagem humana com PAR)
