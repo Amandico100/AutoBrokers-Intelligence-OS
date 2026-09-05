@@ -126,8 +126,13 @@ print("\n[4] Ficha - pagina e entradas")
 check("pagina da ficha existe",
       (WEB / "app/dashboard/atendimentos/ficha/[conversaId]/FichaClient.tsx").exists())
 _ficha_ui = _src("app/dashboard/atendimentos/ficha/[conversaId]/FichaClient.tsx")
+# 🔄 SPEC-097 (05/09/2026): a Ficha foi reescrita mobile-first e os rótulos mudaram
+#    ("Assumir o atendimento"; o botão de copiar troca o texto por um ícone quando
+#    copiado). O que se afirma não mudou: a Ficha tem os gestos de ASSUMIR e de
+#    COPIAR O DOSSIÊ — medidos pelo handler, que é o que persiste (CLAUDE.md §9.3).
 check("ficha tem acoes (conversa/assumir/dossie)",
-      "Assumir atendimento" in _ficha_ui and "Copiar doss" in _ficha_ui)
+      ("Assumir o atendimento" in _ficha_ui or "Assumir atendimento" in _ficha_ui)
+      and "copiarDossie" in _ficha_ui and "ficha.dossier" in _ficha_ui)
 _fila = _src("app/dashboard/atendimentos/fila/AttendanceQueueClient.tsx")
 check("Fila abre a ficha", "/dashboard/atendimentos/ficha/" in _fila)
 _hist = _src("app/dashboard/atendimentos/casos/HistoricoClient.tsx")

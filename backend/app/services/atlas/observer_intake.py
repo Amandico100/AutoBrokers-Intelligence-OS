@@ -27,7 +27,21 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Set, Tuple
 
-from app.telefone_br import variantes_br
+try:
+    from app.telefone_br import variantes_br
+except ModuleNotFoundError:  # pragma: no cover - só nos guardas que carregam este arquivo por CAMINHO
+    # 📊 05/09/2026: quatro guardas (spec038_sentinela, spec045, caixa_alta, repareamento)
+    # carregam este módulo com `spec_from_file_location` sobre um pacote `app` de
+    # casca — `app.telefone_br` não existe lá. A regra do 9º dígito continua UMA
+    # (o arquivo é o mesmo); só o caminho de carga muda.
+    import importlib.util as _ilu
+    from pathlib import Path as _Path
+
+    _spec = _ilu.spec_from_file_location(
+        "app.telefone_br", _Path(__file__).resolve().parents[2] / "telefone_br.py")
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    variantes_br = _mod.variantes_br
 
 logger = logging.getLogger(__name__)
 
