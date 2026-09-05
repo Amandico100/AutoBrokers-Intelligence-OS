@@ -318,6 +318,41 @@ function dubleSupabase(linhasPorTabela, registro) {
   return { from: tabela };
 }
 
+/**
+ * Dublê de Supabase com CONFLITO 23505 no PRIMEIRO insert em `messages` — usado
+ * só pelo [3] (R3). O dublê comum sempre aplica o insert; este simula o índice
+ * único parcial (conversation_id, client_request_id) recusando a gravação uma
+ * vez, para medir se a rota reaproveita a linha existente (SELECT por
+ * `payload->>client_request_id`) e segue, em vez de responder erro.
+ */
+function dubleSupabaseComConflito23505(linhasPorTabela, registro) {
+  const base = dubleSupabase(linhasPorTabela, registro);
+  let jaConflitou = false;
+  return {
+    from(nome) {
+      const antes = registro.length;
+      const cad = base.from(nome);
+      const consultaAtual = registro[antes];
+      if (nome === 'messages') {
+        const singleOriginal = cad.single;
+        cad.single = (...a) => {
+          // 🔴 `.insert(payload).select('id')` reseta `consulta.op` para
+          // 'select' (o dublê comum não distingue "select de escrita" de
+          // "select de leitura") — o sinal confiável de "isto foi um INSERT"
+          // é ter um `payload` de escrita na cadeia, não o `op` no instante
+          // em que `.single()` roda.
+          if (!jaConflitou && consultaAtual.payload != null) {
+            jaConflitou = true;
+            return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
+          }
+          return singleOriginal(...a);
+        };
+      }
+      return cad;
+    },
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // O placar — três verbos (o molde de 095/protocolo §5)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -378,9 +413,9 @@ function respostaSSE(eventos) {
  * corpo) e a resposta. A rota de HOJE não lê a sessão nem grava a pergunta — o
  * guarda MEDE isso.
  */
-async function rodarStream({ sessao, corpo, linhas = fixtures() }) {
+async function rodarStream({ sessao, corpo, linhas = fixtures(), criarSupabase = dubleSupabase }) {
   const registroSupabase = [];
-  const supabase = dubleSupabase(linhas, registroSupabase);
+  const supabase = criarSupabase(linhas, registroSupabase);
   const chamadasFetch = [];
   const linhaDoTempo = []; // ordem entre inserts do supabase e o fetch ao backend
   const fetchOriginal = globalThis.fetch;
@@ -395,9 +430,18 @@ async function rodarStream({ sessao, corpo, linhas = fixtures() }) {
   // envolve o supabase para registrar a ordem dos inserts em messages
   const supabaseVigiado = {
     from(nome) {
+      const antes = registroSupabase.length;
       const cad = supabase.from(nome);
+      const consultaAtual = registroSupabase[antes];
       const insertOriginal = cad.insert;
       cad.insert = (p) => { linhaDoTempo.push({ tipo: 'insert', tabela: nome }); return insertOriginal(p); };
+      // também registra SELECT (single/maybeSingle) na linha do tempo — o [3]
+      // (R3) precisa provar que o SELECT de reaproveitamento acontece ANTES
+      // do fetch ao backend, não só que ele existe.
+      const singleOriginal = cad.single;
+      cad.single = (...a) => { linhaDoTempo.push({ tipo: consultaAtual.op, tabela: nome }); return singleOriginal(...a); };
+      const maybeSingleOriginal = cad.maybeSingle;
+      cad.maybeSingle = (...a) => { linhaDoTempo.push({ tipo: consultaAtual.op, tabela: nome }); return maybeSingleOriginal(...a); };
       return cad;
     },
   };
@@ -533,8 +577,33 @@ devendo(analisar400SemCrid(streamSemCrid), 'sem client_request_id o BFF do strea
 
 // ── [3] R3 · conflito no índice = retentativa ─────────────────────────────────
 console.log('\n[3] R3 — conflito no índice único (23505) é retentativa, não erro');
-devendo(['o BFF ainda não trata o conflito 23505 do índice de idempotência (A.2/R3): ' +
-  'como não grava a pergunta, também não reaproveita a linha existente'], 'conflito 23505 → reaproveita a linha e segue', 'R3');
+function analisarConflito23505(res) {
+  const problemas = [];
+  if (res.erro) return [`a rota estourou: ${res.erro.message}`];
+  const status = res.resposta?.status;
+  if (typeof status === 'number' && status >= 400) {
+    problemas.push(`o BFF respondeu ${status} para um conflito 23505 — deveria reaproveitar a linha e seguir (nunca 4xx/5xx)`);
+  }
+  const consultaReaproveita = res.registroSupabase.find((q) => q.tabela === 'messages' && q.op === 'select' &&
+    q.predicados.some((p) => /client_request_id/.test(String(p.coluna))));
+  if (!consultaReaproveita) {
+    problemas.push('depois do 23505 a rota não fez um SELECT em `messages` filtrando por client_request_id (ou equivalente) — não reaproveitou a linha existente');
+  }
+  const idxSelect = res.linhaDoTempo.findIndex((e) => e.tipo === 'select' && e.tabela === 'messages');
+  const idxFetch = res.linhaDoTempo.findIndex((e) => e.tipo === 'fetch' && /\/chat\/stream$/.test(e.url));
+  if (consultaReaproveita && idxFetch !== -1 && (idxSelect === -1 || idxSelect > idxFetch)) {
+    problemas.push('o SELECT que reaproveita a linha (por client_request_id) não aconteceu ANTES do fetch ao backend');
+  }
+  return problemas;
+}
+const streamConflito = await rodarStream({
+  sessao: { userId: U_ALFA, companyId: CO_ALFA },
+  corpo: { chatInput: 'x', sessionId: SS_ALFA, client_request_id: 'crid-5' },
+  linhas: fixtures(),
+  criarSupabase: dubleSupabaseComConflito23505,
+});
+console.log(`      status: ${streamConflito.resposta?.status} · select de reaproveitamento: ${streamConflito.registroSupabase.some((q) => q.tabela === 'messages' && q.op === 'select') ? 'sim' : 'não'}`);
+devendo(analisarConflito23505(streamConflito), 'conflito 23505 → reaproveita a linha e segue', 'R3');
 
 // ── [4] S.3 · /api/messages GET confere o dono ────────────────────────────────
 async function messagesGET({ sessao, cookies, conversationId, linhas }) {
@@ -745,17 +814,62 @@ console.log('\n[11] C.1 — lerEventos: 3 seq em ordem; a lacuna (1,2,4) vira tr
 devendo(await analisarLerEventos(), 'lerEventos lê seq em ordem e marca a lacuna', 'C.1');
 
 // ── [12] C.1 · o estado do Turno ──────────────────────────────────────────────
-function analisarTurno() {
+/** Fabrica um Turno inicial mínimo, sem depender de `turnoNovo` existir. */
+function turnoInicialDeTeste(crid, amid) {
+  return { status: 'submitting', clientRequestId: crid, assistantMessageId: amid, userMessageId: null, stage: null, transport: 'ok', aviso: null, artifacts: [] };
+}
+function eventoDeTeste(type, payload = {}) {
+  return { protocol: 'autobrokers.interaction.v1', seq: 1, type, turn: {}, payload };
+}
+/** Roda a sequência `sequencia` de eventos pelo reducer dado, a partir de um Turno novo. */
+function rodarSequenciaNoReducer(reduzir, crid, amid, tiposEPayloads) {
+  let t = turnoInicialDeTeste(crid, amid);
+  for (const [type, payload] of tiposEPayloads) t = reduzir(t, eventoDeTeste(type, payload));
+  return t;
+}
+async function analisarTurno() {
   const problemas = [];
   const mod = carregarProtocolo();
   if (!mod) { problemas.push('`lib/chat/protocolo.ts` ainda não existe (C.1) — o estado Turno (submitting→streaming→complete; policy sem content) não foi escrito'); return problemas; }
   if (mod.__erro) { problemas.push(`lib/chat/protocolo.ts não carrega: ${mod.__erro}`); return problemas; }
-  const temTurno = mod.Turno || mod.reduzirTurno || mod.turnoReducer || mod.reducer;
-  if (!temTurno) problemas.push('protocolo.ts não exporta o estado/reducer do `Turno` (submitting→streaming→complete)');
+  const reduzir = mod.reduzirTurno || mod.reduzir || mod.turnoReducer || mod.reducer;
+  if (typeof reduzir !== 'function') { problemas.push('protocolo.ts não exporta o reducer do `Turno` (reduzirTurno/reduzir)'); return problemas; }
+
+  // sequência A: turn.accepted → policy.blocked{code:'billing'} → turn.completed
+  const t1 = rodarSequenciaNoReducer(reduzir, 'crid-a', 'am-a', [
+    ['turn.accepted', { user_message_id: 'um-a', assistant_message_id: 'am-a' }],
+    ['policy.blocked', { code: 'billing', message_human: 'Sem crédito para continuar.' }],
+    ['turn.completed', {}],
+  ]);
+  if (t1.status !== 'failed') problemas.push(`turn.accepted→policy.blocked(billing)→turn.completed deveria terminar status 'failed', terminou '${t1.status}'`);
+  if (!t1.aviso || t1.aviso.kind !== 'policy') problemas.push(`o aviso do turno não é kind:'policy' (veio ${JSON.stringify(t1.aviso)})`);
+  for (const chave of ['content', 'texto', 'text']) {
+    if (Object.prototype.hasOwnProperty.call(t1, chave) && t1[chave]) {
+      problemas.push(`o Turno tem um campo '${chave}' preenchido — o aviso de policy virou conteúdo do assistente (R5)`);
+    }
+  }
+
+  // sequência B: turn.accepted → 3 deltas → assistant.content.completed → turn.completed
+  let t2 = turnoInicialDeTeste('crid-b', 'am-b');
+  let textoAcumulado = '';
+  t2 = reduzir(t2, eventoDeTeste('turn.accepted', { user_message_id: 'um-b', assistant_message_id: 'am-b' }));
+  for (const pedaco of ['ola', ', ', 'mundo']) {
+    t2 = reduzir(t2, eventoDeTeste('assistant.content.delta', { text: pedaco }));
+    // a concatenação em si é responsabilidade da TELA (page.tsx lê
+    // evento.payload.text/delta a cada delta), não do reducer — o reducer só
+    // precisa deixar o evento passar sem quebrar o status; medimos as DUAS
+    // coisas separadamente, como a tela faz.
+    textoAcumulado += pedaco;
+  }
+  t2 = reduzir(t2, eventoDeTeste('assistant.content.completed', {}));
+  t2 = reduzir(t2, eventoDeTeste('turn.completed', {}));
+  if (t2.status !== 'complete') problemas.push(`turn.accepted→3 deltas→completed→turn.completed deveria terminar status 'complete', terminou '${t2.status}'`);
+  if (textoAcumulado !== 'ola, mundo') problemas.push(`a concatenação dos deltas deu '${textoAcumulado}' — esperado 'ola, mundo'`);
+
   return problemas;
 }
 console.log('\n[12] C.1 — o Turno percorre submitting→streaming→complete; policy.blocked não vira content');
-devendo(analisarTurno(), 'o Turno tem os estados e policy.blocked não cria mensagem do assistente', 'C.1');
+devendo(await analisarTurno(), 'o Turno tem os estados e policy.blocked não cria mensagem do assistente', 'C.1');
 
 // ── [13]-[16] os componentes do shell ─────────────────────────────────────────
 function analisarComponente(rel, nome) {
@@ -820,7 +934,48 @@ function analisarAutoscroll(chatFonte) {
   if (!/Voltar ao fim/.test(chatFonte)) problemas.push('não há o botão "Voltar ao fim" (C.2) — quem rolou para cima não tem como voltar');
   return problemas;
 }
-devendo(analisarAutoscroll(CHAT_FONTE), 'o scroll é condicional (≤120px) e há "Voltar ao fim"', 'C.2');
+/**
+ * 🔴 O LIMIAR em si — `analisarAutoscroll` só confere que a FORMA do efeito
+ * incondicional morreu; nada ali mede o NÚMERO. Trocar `120` por `Infinity`
+ * (E14, a 14ª mutação) deixava tudo verde, porque nenhuma asserção calculava
+ * "a 500px do fim, isso ainda manda rolar?" — a decisão real de `estaPertoDoFim`
+ * é inline (fecha sobre `rolagemRef`, não é função pura exportável), então o
+ * limiar numérico (`const PERTO_DO_FIM = …`) é extraído da fonte e a MESMA
+ * fórmula (`distancia <= limiar`) é executada com um dublê de "distância ao
+ * fim" — não um regex sobre a comparação (que usa o nome da constante, não um
+ * literal), e sim sobre a declaração da constante.
+ */
+function extrairLimiarAutoscroll(chatFonte) {
+  const decl = /const\s+PERTO_DO_FIM\s*=\s*([^;]+);/.exec(chatFonte);
+  if (!decl) return null;
+  const valor = Number(decl[1].trim());
+  return Number.isNaN(valor) ? null : valor;
+}
+function pertoDoFim(distanciaAoFimPx, limiar) {
+  return distanciaAoFimPx <= limiar;
+}
+function analisarLimiarAutoscroll(chatFonte) {
+  const problemas = [];
+  const limiar = extrairLimiarAutoscroll(chatFonte);
+  if (limiar == null) {
+    // fallback: a decisão pode ter sido reescrita sem a constante nomeada —
+    // ainda assim precisa haver um limiar numérico ≤200 na comparação.
+    const m = /<=\s*(\d{2,3})\b/.exec(chatFonte);
+    if (!m || !(Number(m[1]) <= 200)) {
+      problemas.push('não há limiar numérico de autoscroll ≤200px identificável na fonte (nem `PERTO_DO_FIM`, nem comparação inline)');
+    }
+    return problemas;
+  }
+  if (!Number.isFinite(limiar)) {
+    problemas.push(`PERTO_DO_FIM = ${String(limiar)} não é finito — a tela SEMPRE acha que está perto do fim e sempre rola (E14)`);
+    return problemas;
+  }
+  if (pertoDoFim(500, limiar)) problemas.push(`com o limiar ${limiar}, a 500px do fim a tela ainda decide "rolar" — deveria ser NÃO`);
+  if (!pertoDoFim(100, limiar)) problemas.push(`com o limiar ${limiar}, a 100px do fim a tela decide "não rolar" — limiar pequeno/zerado demais`);
+  if (limiar > 200) problemas.push(`PERTO_DO_FIM = ${limiar} é grande demais para ser "perto do fim" (deveria ser ≤200)`);
+  return problemas;
+}
+devendo([...analisarAutoscroll(CHAT_FONTE), ...analisarLimiarAutoscroll(CHAT_FONTE)], 'o scroll é condicional (≤120px) e há "Voltar ao fim"', 'C.2');
 
 // ═════════════════════════════════════════════════════════════════════════════
 // LINHAS DE CONTROLE — cada guarda acima consegue ficar VERMELHO (PAR sintético)
@@ -844,6 +999,13 @@ controle(analisar401SemFetch({ resposta: { status: 200 }, chamadasFetch: [{ url:
 // [2] PAR: linha do tempo com o insert DEPOIS do fetch.
 controle(analisarGravaAntes({ erro: null, linhaDoTempo: [{ tipo: 'fetch', url: 'http://backend.local/chat/stream' }, { tipo: 'insert', tabela: 'messages' }] }), '[2] insert da pergunta depois do fetch');
 controle(analisar400SemCrid({ resposta: { status: 200 } }), '[2] sem client_request_id respondendo 200');
+
+// [3] PAR: uma rota-controle que devolve 409 no conflito 23505.
+controle(analisarConflito23505({
+  resposta: { status: 409 },
+  registroSupabase: [{ tabela: 'messages', op: 'select', predicados: [{ op: 'eq', coluna: 'payload->>client_request_id', valor: 'crid-5' }] }],
+  linhaDoTempo: [{ tipo: 'select', tabela: 'messages' }, { tipo: 'fetch', url: 'http://backend.local/chat/stream' }],
+}), '[3] rota-controle devolvendo 409 no conflito 23505');
 
 // [4] PAR: u-beta recebendo 200 na conversa de u-alfa, tendo consultado messages.
 controle(analisarDono({ resposta: { status: 200 }, registroSupabase: [{ tabela: 'messages', predicados: [] }] }, { resposta: { status: 200 } }), '[4] conversa de outro dono devolvendo 200');
@@ -874,6 +1036,23 @@ controle(analisarRetry("<AvisoDoTurno onRetry={() => { const id = crypto.randomU
 function detectorDeAusencia(rel) { return existe(rel) ? [] : [`${rel} ausente`]; }
 controle(detectorDeAusencia('lib/chat/protocolo.ts.INEXISTENTE'), '[11]/[12] o detector acusa um módulo ausente');
 
+// [12] PAR: um reducer-CONTROLE que grava o aviso de policy como content do assistente.
+controle((() => {
+  const reducerRuim = (turno, ev) => {
+    if (ev.type === 'policy.blocked') {
+      return { ...turno, status: 'failed', content: ev.payload.message_human, aviso: { kind: 'policy', code: ev.payload.code, message_human: ev.payload.message_human } };
+    }
+    if (ev.type === 'turn.completed') return { ...turno, status: turno.status === 'failed' ? turno.status : 'complete' };
+    return turno;
+  };
+  const t1 = rodarSequenciaNoReducer(reducerRuim, 'crid-c', 'am-c', [
+    ['turn.accepted', {}],
+    ['policy.blocked', { code: 'billing', message_human: 'sem credito' }],
+    ['turn.completed', {}],
+  ]);
+  return Object.prototype.hasOwnProperty.call(t1, 'content') && t1.content ? ['o reducer-controle grava o aviso como content do assistente'] : [];
+})(), '[12] reducer-controle que grava o aviso como content (deve ser reprovado)');
+
 // [14] PAR: um trecho sintético com setTimeout ligado a estágio é reconhecido.
 function detectaRelogioNoEstagio(s) {
   const problemas = [];
@@ -892,6 +1071,12 @@ controle((() => {
 
 // [16] PAR: page-fonte com o efeito incondicional de volta.
 controle(analisarAutoscroll('useEffect(() => { scrollToBottom(); }, [messages]);\nconst scrollToBottom = () => ref.scrollIntoView();'), '[16] o useEffect(scrollToBottom,[messages]) incondicional de volta');
+// [16] PAR: o limiar numérico — 120→Infinity (E14) tem de reprovar; a fonte real não pode.
+controle(analisarLimiarAutoscroll(CHAT_FONTE.replace('const PERTO_DO_FIM = 120;', 'const PERTO_DO_FIM = Infinity;')), '[16] PERTO_DO_FIM = Infinity (E14 — sempre rola)');
+{
+  const limiarCorreto = analisarLimiarAutoscroll(CHAT_FONTE);
+  controle(limiarCorreto.length === 0 ? ['(o detector aprovou o limiar real, como deve)'] : limiarCorreto, '[16] o detector APROVA o limiar real (veredito oposto do PAR acima)');
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${'='.repeat(78)}`);
