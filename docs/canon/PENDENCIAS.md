@@ -10335,5 +10335,8 @@ Red team P3-5: os 11 `.eq('company_id')` existem, mas uma fonte suja (ou uma mut
 ## P-097-TELEFONE-BR-DUPLICADO · a regra do 9º dígito ainda tem duas cópias
 A 097 criou `backend/app/telefone_br.py` (`so_digitos`, `variantes_br`) e migrou o Atlas e o backfill para ele; `whatsapp/channel_security.py::_variants` e `platform_outbound.py::_phone_variants` continuam copiando a regra. **Destrava:** os dois importarem de `telefone_br`. **Dono:** 🤖. **Custo:** um par (com 9/sem 9) tratado diferente por canal.
 
+## P-097-BUSCA-NA-URL · a busca de Casos empurra `conversation_id.in.(~200 UUIDs)` na query string
+Juiz fresco (05/09): a busca por nome/telefone acha conversas e depois pede os episódios com um `in()` de até ~200 ids na URL do PostgREST — inócuo hoje, frágil num tenant grande (limite de URL). **Destrava:** busca do lado do episódio (junção no banco ou RPC). **Dono:** 🤖.
+
 ## P-097-DOIS-RELOGIOS · `ordem_em` lê `last_message_at`/`created_at` sem guarda de coerência
 Lente de verdade (P3 L2): a mutação "semana lê `last_message_at` e a Fila lê `last_event_at`" fica verde — não há asserção que prove que os dois relógios da lista e da semana são o MESMO. **Destrava:** asserção de coerência no guarda `test:casa`. **Dono:** 🤖.

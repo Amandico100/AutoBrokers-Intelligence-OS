@@ -226,10 +226,10 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     Stop/falha/disconnect; uma linha de atividade das tool_calls (📊 `on_tool_start` não existe neste grafo); histórico por cursor.
     Relatório `reports/SPEC-096-EXECUTION-REPORT.md` · SPEC `specs/SPEC-096-o-chat-responde-e-continua.md` · 13 pendências P-096-* (2 do Founder:
     allowedDomains dos widgets; a chave interna nos dois contêineres).
-1º  SPEC-097 · A operação tem uma casa — CONVERTER MEDINDO (proposta + research pack na pasta; a 096 deixou: `notice`/`policy.blocked` tipados
-    para o card de caso, `payload.turn` como elo turno↔peça, e a regra "o corpo não escolhe a corretora" que a 097 estende a Case/Conversation)
-2º  SPEC-097.1 · Pós-acionamento (🧑 pedido do Founder em 05/09: as conversas reais da Regina/Saionara depois do acionamento → RAG, Follow-up,
-    handoff claro; meta ≥ 95% resolvido) — LEVE/PADRÃO, no mesmo chat da 097
+✅  SPEC-097 · A operação tem uma casa — FEITA em 05/09/2026, nota 93 (juiz fresco 93): o desfecho é escrito no episódio (migration 20260905_01 aplicada,
+    7.374 elos), o dono é dimensão e a IA cala/volta a falar pelo desfecho, um read model sem teto, Quadro/Caso no celular, linguagem humana (U7). 13 P-097-*.
+1º  SPEC-097.1 · O caso se explica sozinho (pós-acionamento) — EM EXECUÇÃO no mesmo chat (v1.1, aquecimento 78, 19 emendas): o corpus de acionamento
+    está no tenant AutoFleet; meta 95% é inalcançável por desenho (teto 94,7/90,5) → régua em turnos de intenção; U1 estado, U2 handoff PÓS, U3 cartas/prompt/Follow-up, U4 régua
 3º  SPEC-098 (proposta + research pack na pasta)  →  depois, o MASTERPLAN
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta. Canário vivo SEMPRE por script,

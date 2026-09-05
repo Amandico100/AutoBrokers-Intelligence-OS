@@ -91,16 +91,18 @@ forma — o defeito era latente.
 `backend/tests/fixtures/schema_vivo.json` e `backend/supabase/migrations/MANIFEST.md` atualizados no mesmo commit (`90ff89c`).
 ## 6. Guardas e mutações (📊 05/09, depois dos builders)
 ```
-npm run test:casa                        [1]–[13] · 0 falhas · VERDE (tela+BFF `daa619b`; [13] linguagem humana com PAR)
-test_o_atendimento_sabe_como_terminou    42 ok · 0 falhas · --mutar 2/2 por NOME novo (U9 portão do espelho → [B1a-d]; U10 backfill ambíguo → [B4a/b/d][C1])
-test_o_chat_fala_como_corretor (U7)      38 ok · 0 falhas — "o número sai com NOME; o ponteiro fica no relatório"
-test_quem_fala_primeiro_cala_o_outro     migrado (exige pausar_ia) · TUDO VERDE
+npm run test:casa                        [1]–[15] · 📊 86 asserções (40 de CONTROLE) · 0 falhas · VERDE (HEAD 45ffde0; [13] é REGRA, [14] schema vivo, [15] escrita+leitura)
+  --mutar (runner por cópia)             📊 16 mutações · 16 VERMELHAS por nome · 0 verdes · árvore idêntica antes/depois (juiz reproduziu)
+test_o_atendimento_sabe_como_terminou    46 ok · 0 falhas · --mutar em subprocesso: 3/3 por NOME (U9 → [B1a-f]; U10 → [B4a/b/d]; U12 → [B6d] "a IA volta a falar")
+test_o_chat_fala_como_corretor (U7)      44 ok (juiz) · --mutar 3/3 (U7A → [B4b]; U7B → [B2b]; U7C → [B8a/b] label em toda comparação)
+test_quem_fala_primeiro_cala_o_outro     migrado (exige pausar_ia) · test_o_atendimento_termina_e_o_produto_sabe 52 · test_o_clique 11 · test_o_espelho_vira_conversa 20 · saudacao 50 · pulso_360 284
+(📊 os números de 42/38/2-de-2 da rodada 1 ficaram aqui até o juiz apontar — corrigidos em e424ccd+; §12.1)
 atendimento-estados.test.mjs             66/66 (parado no vocabulário) · test_a_chave_de_juncao 25 · test_conversa_que_acabou 4 · test_handoff_chega 7
 npx tsc --noEmit EXIT=0 · npm run test:rotas-montam VERDE
 next build (📊 05/09 ~16:40, ae546f7)     exit 0 · 301 rotas · Middleware 94,7 kB
 next start -p 3977 + requisições          Ready in 39,6s · GET /api/dashboard/atendimentos → 401 (o portão de sessão EXECUTOU) · /api/dashboard/atendimentos/casos → 401
                                           · /dashboard/atendimentos/fila → 307 (login) · /login → 200 · servidor parado por PID (§9.1: a rota que executa código responde)
-mutações do mjs (11 declaradas)          {A PREENCHER: rodadas por cópia pela lente de verdade}
+mutações do mjs                          16 declaradas com {ancora, substituto, vermelho[]} · rodadas por cópia pela lente (19/26 na 1ª rodada) e pelo juiz (16/16)
 ```
 ## 7. O painel e o juiz
 **Rodada 1 (05/09 ~14:00, red team ‖ lente do DADO sobre `7ae06fb`):**
@@ -139,9 +141,27 @@ na árvore limpa ([C1] avaliado com U10 aplicada); `test_o_espelho_vira_conversa
 crus); `[7]` mede a Fila; `[15]` mede a leitura; `MUTACOES` com `{ancora, substituto, vermelho[]}` + runner `--mutar` por cópia (**16/16 vermelhas por nome**, árvore
 idêntica); python: mutação em subprocesso, forma na fonte limpa (**3/3**), `--mutar <ID>`; espelho chama a regra real (20 passed). 📊 86 asserções mjs (40 de controle).
 
-**Juiz fresco:** {A PREENCHER}
+**Juiz fresco** (Opus, 145k, contexto limpo, HEAD 45ffde0→e424ccd só docs): **NOTA 93/100.** J1: **18 achados CONFIRMADOS CONSERTADOS por comando**
+(P0-1 pelo canário Q4b com par Q2; os 3 P1 do red team; os 6 P1 do DADO); **nenhum conserto criou defeito**; 2 NÃO declarados (P3-5 reconferência de tenant →
+P-097-RECONFERE-TENANT; busca por protocolo → não existe coluna: P-097-PROTOCOLO-SEM-CASA). J2: tudo verde (86/16-16; 46/3-3; 44; 4 migrados; rotas; tsc). J3 dado:
+3 colunas nullable · 7.374/12.762 elos (57,78%) · 0 em par ambíguo · 0 cross-tenant · 0/729 conversas e 0 episódios com `resolvido_em` fora do canário · 0 sobras.
+**J5 — a régua do §0 contra a Fila REAL da Resulta** (`projetarCasos` real sobre 272 conversas + 1.000 episódios, PII por SHA-256): 🔴 **`concluido: 0`** onde a régua
+velha dava 584 fantasmas · **268 PARADOS** · **`com_equipe: 1`** já no acervo · encerrar → `concluido=1` E `semana.terminaram=1` no MESMO payload · R11: **1.263 textos
+visíveis, 0 termos técnicos** · 📊 o contato mais ativo da Resulta tem **30 episódios para 1 conversa** (a tese de R3 medida). Três residuais do juiz: (1) §6 deste
+relatório com números vencidos → corrigido; (2) `send` em encerrada "409 sem corpo" → verificado: os três verbos devolvem frase humana (`route.ts:167/195/454`);
+o arnês do juiz leu o 409 anterior do dono (`:418`), que também tem corpo; (3) a busca empurra `conversation_id.in.(~200 UUIDs)` na URL → P-097-BUSCA-NA-URL.
 ## 8. Canário vivo
-{A PREENCHER}
+📊 05/09 20:09, Resulta, `AUTOBROKERS_CANARIO=1 python scripts/canario_097.py --vivo` (rodado pelo juiz fresco; sem Redis local, e não precisou):
+```
+Q1 abrir_espera → abriu=True | linhas=1 ativas=1 kind=esperando_seguradora → OK
+Q2 CONTROLE (mesma conversa, SEM dono) → pausar_ia=False → OK · claimed_by preenchido, status=open → pausar_ia=True → OK
+Q3 marcar_fim(episódio) → EPISÓDIO resolvido_em=…20:09:24 motivo=resolvido_pelo_segurado · CONVERSA espelhada no MESMO instante (E8) → OK
+Q4 claimed_by depois do fim continua → OK · Q4b claimed_by + resolvido_em → pausar_ia=False → OK — a pausa é do atendimento VIVO (P0-1)
+Q5 corredor SEM espelho → o EPISÓDIO recebe acionamento_concluido, elo gravado na sessão → OK · CONTROLE telefone sem episódio → '' → OK
+limpeza 0/0/0 por id e corretora
+```
+Amandus → Resulta → AutoFleet: o canário grava só na Resulta (linhas próprias, removidas); Amandus é WhatsApp pessoal (fora por ordem do Founder); AutoFleet coberto pela
+projeção real do juiz (J5) e pelos guardas com dois tenants ([11] cruzada).
 ## 9. O que ficou fora · pendências · a caixa do Founder
 **Fora (com gatilho):** U4 espera com escritor (P-097-ESPERA-COM-ESCRITOR → a 097.1 escreve no pós-acionamento) · U6.3 drag (P-097-DRAG) · reabrir atendimento
 (P-097-REABRIR-ATENDIMENTO, decisão) · protocolo durável (P-097-PROTOCOLO-SEM-CASA) · reconferência de tenant na projeção (P-097-RECONFERE-TENANT) · `telefone_br`
@@ -157,4 +177,4 @@ SESSOES-ORFAS, DOCUMENTOS-DO-ATENDIMENTO, APPROVAL-SEM-CONVERSA, POLLING-10S, DR
 - Nenhum motor paralelo: sem tabela de casos, sem event store, sem escritor novo de ciclo de vida além dos que existem (marcar_fim/claim) — só estendidos.
 - Nenhuma mensagem saiu; nenhum agente ligado; InfoCap só leitura; nenhum segredo/PII impresso.
 ## 11. Entrega
-{A PREENCHER}
+{PUSH}
