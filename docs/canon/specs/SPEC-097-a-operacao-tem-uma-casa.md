@@ -9,10 +9,11 @@
 > proposta ancorava o caso na conversa, e `work_waits` já errou por essa âncora (0 linhas na vida); (4) **um read model, sem teto**: a Fila
 > lê 120 de 448 conversas da AutoFleet e a busca de Casos é `filter()` no cliente — buscar um protocolo de 60 dias devolve "nada" (falso zero);
 > Lista e Quadro passam a chamar UMA função, com paginação e busca no banco; (5) **o "AGORA" e a timeline com hora**: situação, dono, de
-> quem espera, há quanto tempo, atenção, próxima ação — só sobre o que EXISTE no banco (sem SLA inventado, sem LLM), e os 7 de 10 tipos de
+> quem espera, há quanto tempo, atenção, próxima ação — só sobre o que EXISTE no banco (sem SLA inventado, sem LLM), e os 6 de 9 tipos de
 > evento da Ficha que hoje têm `at: null` ganham hora e fonte.
 >
-> **v1.0 · 05/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha CRÍTICO** (piso da §3.2: escrita no ciclo de vida do atendimento em
+> **v1.1 · 05/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha CRÍTICO** · v1.0 + aquecimento (Opus, 160 mil tokens: **nota 74 → 18 emendas E1–E18
+aplicadas**; as duas falsas assinadas — 656 e `.limit(200)` — refutadas por comando; U4 e U6.3 saíram por orçamento; E6 obrigatória entrou como U2.3) (piso da §3.2: escrita no ciclo de vida do atendimento em
 > produção — `resolvido_em`, `claimed_by`, `work_waits`, e uma migration expand-first) · nasce da proposta
 > `specs-propostas/SPEC-097-a-operacao-tem-uma-casa.md` (03/09, 722 linhas; RP0: research pack SHA-256 `26fda881…4ad0` CONFERE, HEAD da proposta
 > `67506906` envelhecido) + o research pack (45 KB) + a medição de 05/09 (investigador/pesquisador, 193 mil tokens). 📊 Nota do investigador para a
@@ -59,22 +60,24 @@ grava `status: 'HUMAN_REQUESTED', claimed_by: ctx.userId, …` juntos; a cascata
 
 ### 1.3 · 🔴 A espera tem esquema completo e ZERO linhas — e a proposta construía 4 views e um gate sobre ela
 📊 `work_waits`: FK `(conversation_id, company_id)`, CHECK de `kind` (`esperando_documento` NEM É kind válido), `select(count="exact")` → **0 na
-vida**. Escritor: `backend/app/services/o_fim_do_atendimento.py` (`marcar_fim`, `abrir_espera`), chamado de `dispatch_router.py:1187,1244` e
-`tasks/handoff_watchdog.py:480` — **os três exigem `session["mirror_conversation_id"]`**: sem o espelho ligado, no-op silencioso. O contador
+vida**. Escritor: `backend/app/services/o_fim_do_atendimento.py` (`marcar_fim`, `abrir_espera`) — 📊 E2: ele NUNCA exigiu `mirror_conversation_id` e já aceita
+`session_id`; o portão está nos CHAMADORES (`services/dispatch_router.py:1194,1252`, `tasks/handoff_watchdog.py:480`): é o corredor que só chama
+com o espelho ligado. E o botão "Encerrar" de Conversas (📊 E3: existe em `conversas/[id]/route.ts:236`; a Ficha só tem Assumir) JÁ escreve
+`resolvido_em` — com o motivo cravado `fechado_por_humano` (E4). 📊 0 escritas em 728: ninguém apertou, e o corredor não chega ao escritor. O contador
 `ainda_esperam` da SPEC-086 (`atendimentos/route.ts:296`) diz "0" todo dia com `indisponivel: false` — não é medição, é ausência de escritor.
 `resolvido_em` tem o mesmo escritor e a mesma causa: **o desfecho da 086 é a dimensão mais bem desenhada (CHECK no banco, guarda de 956
 linhas) e a pior servida (0 escritas)**.
 
 ### 1.4 · 🔴 O caso é o episódio, não a conversa — a hipótese §8 da proposta se inverte
-📊 668 conversas com telefone → 667 pares (company, phone) distintos; **656 telefones têm exatamente 1 conversa**; pares com >1 conversa em 7
+📊 668 conversas com telefone → 667 pares (company, phone) distintos; **666 telefones têm exatamente 1 conversa**; pares com >1 conversa em 7
 dias: **0**; `count(distinct session_id)` = 728 = 1 sessão por conversa. Duração: até 29 dias; mensagens: 24 conversas com 200+ (máx 1.326). A
 conversa é o CANAL perpétuo com a pessoa. E `attendance_sessions` (12.755 linhas: `started_at`, `last_event_at`, `status`, `ramo`, `servico`,
 `summary`) → 2.184 contatos distintos, **5,8 sessões por contato, 1.216 contatos (56%) com 2+ em 7 dias** — é a granularidade de EPISÓDIO, e
 **não tem `conversation_id`**. Ancorar o caso na conversa funde 5,8 episódios num balde; `work_waits` já apostou nessa âncora (FK na conversa).
 
 ### 1.5 · 🔴 Não há N+1; há TETO FIXO, e ele já mente
-📊 `grep "map(async|Promise.all(.*map|for .* await"` nas 5 rotas de atendimento → 0. `atendimentos/route.ts:81 .limit(200)` sobre **448**
-conversas da AutoFleet (73% invisível em Casos); `:181 work_runs .limit(30)`; `:281 attendance_sessions .limit(40)` sobre 12.755 (0,3%);
+📊 `grep "map(async|Promise.all(.*map|for .* await"` nas 5 rotas de atendimento → 0. `atendimentos/route.ts:83 .limit(120)` sobre **448**
+conversas da AutoFleet (73% invisível em Casos); `:180 work_runs .limit(30)`; `:247 attendance_sessions .limit(40)` sobre 12.755 (0,3%);
 `segurados/route.ts:33 .limit(500)`. A busca de Casos é `filter()` no cliente sobre os 120 → "nada encontrado" para um protocolo de 60 dias, sem
 distinguir "não existe" de "além do teto" (invariante 16 da proposta violada hoje). 📊 p50 ≈ 1,0 s (5 consultas em série + 1 HTTP), polling a cada
 10 s ≈ 30 mil consultas/operador/dia; payload cru 45 KB.
@@ -89,7 +92,7 @@ confirmação": `approval_requests` sem `conversation_id` (10 linhas na vida, 5 
 filtros) — G4 é verdade por construção; o risco é regredi-la. ✅ A rota já é `/dashboard/atendimentos/casos` ("Histórico" sobrou como label em
 `lib/mock/tenant-modules.ts:27` e um `<a>` em `AttendanceQueueClient.tsx:211` → BLOCO K vira 1 linha). ✅ Notas internas já consolidadas
 (prefixo `📝 [nota interna] ` em `messages`, `lib/atendimento/a-nota-da-atendente`) → BLOCO I sem trabalho. ✅ `attendance_cases` NÃO existe
-(D-097-02 sem objeto). ✅ Ficha (SPEC-046) já tem a maior parte do Case Workspace; a timeline existe e **7 dos 10 tipos têm `at: null`**. ✅ 5/5
+(D-097-02 sem objeto). ✅ Ficha (SPEC-046) já tem a maior parte do Case Workspace; a timeline existe e **6 dos 9 tipos têm `at: null`** (E16: o do claim sai de `claimed_at`). ✅ 5/5
 rotas de atendimento filtram tenant — o piso CRÍTICO desta SPEC não é auth: é ESCRITA no ciclo de vida. ✅ Guardas vivos que a 097 tem de
 respeitar/migrar: `test_o_clique_da_atendente_nao_apaga_da_fila.py` (congela a regra "o que sai da fila" — MIGRA, não remove),
 `test_o_atendimento_termina_e_o_produto_sabe.py` (motivos = CHECK), `atendimento-estados.test.mjs` (espelho dos estados do dispatch),
@@ -103,18 +106,25 @@ respeitar/migrar: `test_o_clique_da_atendente_nao_apaga_da_fila.py` (congela a r
 ## 2. AS REGRAS QUE ESTA SPEC FIXA
 
 ```
-R1  DESFECHO    "encerrado" ⇔ `resolvido_em IS NOT NULL` (com `resolucao_motivo` do CHECK). Nunca deduzido de relógio. Silêncio ⇒ PARADO
-                (`parado_desde` = last_message_at), visível na Fila com "parado há X" — e sai só por desfecho escrito.
+R1  DESFECHO    "encerrado" ⇔ `resolvido_em IS NOT NULL` (com `resolucao_motivo` do CHECK). Nunca deduzido de relógio. Silêncio ⇒ PARADO.
+                🔴 UM relógio (E5): `ultimo_evento_em = greatest(conversations.last_message_at, attendance_sessions.last_event_at)`; a Fila, o
+                `parado_ha` e o `semana` leem ESSE campo — nunca dois. E o `status` que o Atlas fecha por 6 h de silêncio
+                (`attendance_distiller:200-240`, para o RAG) NÃO é desfecho (E9): a projeção o ignora para ENCERRADO.
 R2  DONO        `claimed_by` é dimensão própria; o claim NÃO escreve `status`. A projeção testa dono ANTES de status. Cardinalidade 1; ∅ é legítimo.
+                🔴 E6 (obrigatória): a IA PAUSA quando `HUMAN_REQUESTED` OU `claimed_by IS NOT NULL` — helper único `pausar_ia(conversa)` usado em
+                `webhook.py:628` e `chat.py:173,620` (📊 hoje pausam só por status: sem isto, a IA responde por cima da atendente).
 R3  EPISÓDIO    o caso é o EPISÓDIO (`attendance_sessions`), ligado à conversa por `attendance_sessions.conversation_id` (coluna nova, nullable,
-                expand-first). Conversa sem episódio ⇒ 1 caso implícito por conversa (compatibilidade). O read model é por episódio.
-R4  ESPERA      `work_waits` só existe se tiver ESCRITOR que dispare sem o espelho: `abrir_espera`/`marcar_fim` passam a aceitar o episódio
-                (session) e resolvem a conversa pela junção R3. Esperas que o corredor conhece (seguradora, cliente) são escritas ali; "documento"
-                não existe como kind e não entra.
+                expand-first). 📊 E7: só 57,8% das sessões casam 1:1 por telefone — as 5.383 órfãs continuam CASOS (com o que a sessão tem), rotuladas
+                "sem conversa vinculada", e ganham o elo quando o Atlas gravar (U3.3). E8: o desfecho mora no EPISÓDIO (`attendance_sessions.resolvido_em`,
+                `resolucao_motivo`, na mesma migration) e é espelhado na conversa quando ligada. A FILA é uma linha por CONVERSA (o episódio corrente
+                dela); CASOS é a lista por episódio. Conversa sem episódio ⇒ 1 caso implícito.
+R4  ESPERA      SAI DESTA MARCHA (E10): 📊 4 acionamentos em 30 dias, só `esperando_humano` é escrito, e a FK de `work_waits` barra o episódio órfão.
+                A Fila mostra espera SÓ se `work_waits` tiver linha ativa (hoje 0) — nunca deduzida. P-097-ESPERA-COM-ESCRITOR guarda o gatilho.
 R5  UM READ MODEL  `lib/atendimento/casos.ts::projetarCasos(company, filtro, {group_by?, cursor?, busca?})` é a ÚNICA função de leitura; Fila e
                 Casos a chamam; paginação e busca no BANCO; sem `.limit(120)`; `indisponivel: true` quando uma fonte falha — nunca zero silencioso.
 R6  ATENÇÃO     razões DERIVADAS e só as observáveis: `pediu_pessoa` (HUMAN_REQUESTED), `trabalho_falhou` (work_run failed/travado com conversa),
-                `aprovacao_pendente` (approval com conversa/episódio), `parado` (R1), `espera_vencida` (só se `work_waits.due_at` existir). Sem SLA
+                `parado` (R1), `espera_vencida` (só se `work_waits.due_at` existir). `aprovacao_pendente` NÃO (E17: `approval_requests` sem conversa;
+                ponte run→conversa com 4 linhas). Sem SLA
                 inventado, sem LLM, sem "prioridade" digitável.
 R7  PRÓXIMA AÇÃO  precedência determinística: pessoa obrigatória → aprovação → passo do trabalho (blocker) → espera com prazo → "sem próxima ação
                 declarada". Nunca ficção.
@@ -237,47 +247,52 @@ referência nova entrou sem substituir outra; a §7.3 fechou em 7.
 
 ### BLOCO 0 · Gate zero e o censo que vira régua
 - **0.1** guardas novos VERMELHOS em cópia limpa: (i) o `else` do silêncio ainda vira `concluido` · (ii) claim escreve status · (iii) `attendance_sessions`
-  sem `conversation_id` · (iv) `abrir_espera` exige `mirror_conversation_id` · (v) `.limit(120)` na Fila · (vi) busca de Casos no cliente ·
+  sem `conversation_id` · (iv) a IA não pausa por `claimed_by` (E6) · (v) `.limit(120)` na Fila · (vi) busca de Casos no cliente ·
   (vii) 7 tipos de timeline com `at: null` · (viii) duas funções de leitura (Fila ≠ Casos) · (ix) `semana.terminaram` contradiz `items`.
 - **0.2** 📊 régua antes: 584 "encerrados" sem `resolvido_em`; `work_waits` 0; `claimed_by` 1; 120/448; p50 da Fila 1,0 s (7 execuções).
 
 ### BLOCO U1 · O desfecho para de ser deduzido do relógio (escrita)
 - **U1.1** `atendimentos/route.ts`: o ramo `else stage='concluido'` MORRE; nasce `parado` (`parado_desde`, `parado_ha`); `concluido` ⇔ `resolvido_em`.
-- **U1.2** o escritor do desfecho (`o_fim_do_atendimento.py::marcar_fim`) deixa de exigir `mirror_conversation_id`: aceita `conversation_id` OU
-  `attendance_session_id` (R3) e resolve o outro pela junção; o botão "Encerrar" da Ficha e o fim do corredor (`dispatch_router.py:1187,1244`,
-  `handoff_watchdog.py:480`) passam a chegar nele.
+- **U1.2** `marcar_fim` aceita `conversation_id` OU `attendance_session_id` (R3), grava o desfecho no EPISÓDIO e espelha na conversa; os CHAMADORES
+  (`services/dispatch_router.py:1194,1252`, `handoff_watchdog.py:480`) deixam de condicionar ao espelho — chamam com a sessão. O botão "Encerrar"
+  (Conversas) passa a PERGUNTAR o motivo (E4: os 5 do CHECK) e a Ficha ganha o mesmo botão (E3).
 - **U1.3** `semana.terminaram`/`ainda_esperam` continuam lendo `resolvido_em`/`work_waits` — agora com escritor; `indisponivel: true` se a consulta falhar.
-- **U1.4** MIGRA `test_o_clique_da_atendente_nao_apaga_da_fila.py` (a regra "o que sai da fila" muda: só desfecho escrito tira; a lição migra).
+- **U1.4** MIGRA `test_o_clique_da_atendente_nao_apaga_da_fila.py` (E13: hoje é regex sobre `route.ts` e não afirma nada sobre a fila → vira asserção que
+  EXECUTA `projetarCasos`: só desfecho escrito tira) e os guardas da 086 que leem `atendimentos/route.ts` por caminho (E14: `:818,:855,:866` ficariam verdes por
+  vacuidade quando os contadores mudarem de lugar → apontam para `projetarCasos`).
 
 ### BLOCO U2 · A verdade do dono (escrita)
 - **U2.1** `conversas/[id]/route.ts:120`: o claim grava `claimed_by`, `claimed_by_name`, `claimed_at` — e NÃO `status`. `HUMAN_REQUESTED` continua
   sendo do handoff (o pedido do cliente), não do claim.
 - **U2.2** a projeção testa `claimed_by` antes de `HUMAN_REQUESTED`: "Ana está atendendo" volta a ser alcançável; "pediu uma pessoa" = HUMAN_REQUESTED ∧ sem dono.
+- **U2.3** (E6) `pausar_ia(conversa)` = `status == HUMAN_REQUESTED or claimed_by is not None`, usado em `webhook.py:628` e `chat.py:173,620`; guarda com PAR.
 
 ### BLOCO U3 · O episódio ganha identidade (migration expand-first)
 - **U3.1** `backend/supabase/migrations/2026MMDD_01_spec097_episodio_tem_conversa.sql`: `ALTER TABLE attendance_sessions ADD COLUMN IF NOT EXISTS
-  conversation_id uuid NULL REFERENCES conversations(id) ON DELETE SET NULL` + índice `(company_id, conversation_id)`; APPLY/VERIFY/ROLLBACK.
-- **U3.2** backfill por junção (company, telefone normalizado) onde a junção é 1:1 (📊 666/667) — script com `--dry-run`, VERIFY = contagem preenchida.
-- **U3.3** o escritor de sessões (onde o corredor cria `attendance_sessions`) passa a gravar `conversation_id` quando a conversa existe (o espelho já
-  sabe; sem espelho, pela junção por telefone). Guarda: nova sessão criada com conversa conhecida tem o elo.
+  conversation_id uuid NULL REFERENCES conversations(id) ON DELETE SET NULL`, `resolvido_em timestamptz NULL`, `resolucao_motivo text NULL` (mesmo CHECK
+  da conversa, E8) + índice `(company_id, conversation_id)`; APPLY/VERIFY/ROLLBACK.
+- **U3.2** backfill por junção (company, telefone normalizado) onde a junção é 1:1 — 📊 E7: **57,8%** das sessões; as 42,2% órfãs NÃO são gravadas (ambíguo
+  ou sem conversa) e seguem como casos "sem conversa vinculada". Script `--dry-run`, VERIFY = contagens (preenchidas / órfãs / ambíguas).
+- **U3.3** o escritor de sessões é o Atlas (`atlas/observer_intake.py:606`, E12) e só tem o telefone: grava `conversation_id` quando a junção por
+  (company, telefone) é ÚNICA no momento da escrita; senão null. Guarda: sessão nova com telefone único → elo; ambíguo → null.
 - 💡 decisão registrada (protocolo §9, nota): episódio = `attendance_sessions` **85** × tabela `cases` nova **30** (motor paralelo; CLAUDE.md §5) ×
   caso = conversa **20** (📊 §1.4 inverte).
 
-### BLOCO U4 · A espera ganha escritor (ou não existe)
-- **U4.1** `abrir_espera` aceita episódio (U1.2) e grava `work_waits` com `kind` do CHECK (seguradora/cliente), `due_at` quando o corredor tem prazo.
-- **U4.2** a Fila mostra "esperando a seguradora · 2d 14h" a partir de `work_waits` ativos (R4); a view "Aguardando documento" NÃO nasce.
-- **U4.3** guarda: `work_waits` recebe linha quando o corredor entra em espera com conversa conhecida (dublê do corredor) — e ZERO sem episódio nem conversa.
+### BLOCO U4 · A espera — SAIU desta marcha (E10/E18)
+- A Fila LÊ `work_waits` ativos se existirem (R4) e nada mais. O escritor por episódio, o `due_at` do corredor e a FK que aceite o órfão são a
+  pendência P-097-ESPERA-COM-ESCRITOR — volta quando o corredor entrar em espera com o espelho ligado (📊 4 acionamentos em 30 d).
 
 ### BLOCO U5 · Um read model, sem teto
-- **U5.1** `lib/atendimento/casos.ts::projetarCasos` (R5): fonte única; `group_by: 'stage'` para o Quadro; `cursor (last_event_at, id)` + `busca`
-  (protocolo/nome/telefone normalizado) no banco; sem `.limit(120)`; `indisponivel` por fonte.
+- **U5.1** `lib/atendimento/casos.ts::projetarCasos` (R5): fonte única; a FILA/Quadro é por CONVERSA ativa (≤ 📊 700 por corretora: lê TODAS em lotes de
+  1.000, sem teto, agrupa e conta por estágio em memória — E11: estágio é derivado, PostgREST não agrega); CASOS é por episódio com `cursor
+  (ultimo_evento_em, id)` + `busca` (protocolo/nome/telefone normalizado) no banco; `indisponivel` por fonte.
 - **U5.2** Fila e Casos chamam a função; a busca sai do cliente; "nada encontrado" só quando o banco disse 0.
 - **U5.3** contadores da 086 saem da mesma projeção (uma verdade por payload — R1 fecha a contradição de 1.1).
 
 ### BLOCO U6 · O AGORA e a timeline com hora
 - **U6.1** Ficha: bloco AGORA = situação (R1) · dono (R2) · de quem espera (R4) · há quanto tempo · atenção (R6) · próxima ação (R7) · protocolo.
 - **U6.2** timeline: os 7 tipos com `at: null` ganham `at` da fonte; cada item com `fonte`/`fonte_id`; sem `work_events`.
-- **U6.3** ordenável e paginada por cursor; sem LLM.
+- **U6.3** SAIU (E18): a timeline é ordenável e inteira por caso (📊 máx 1.326 mensagens: a Ficha já carrega); paginação volta com P-097-TIMELINE-CURSOR.
 
 ### BLOCO E · Canário vivo
 - `backend/scripts/canario_097.py` (`AUTOBROKERS_CANARIO=1`, Resulta): cria conversa + episódio canário, abre espera pelo escritor, assume (claim),
@@ -313,7 +328,8 @@ referência nova entrou sem substituir outra; a §7.3 fechou em 7.
 ## 6. PENDÊNCIAS QUE NASCEM AQUI
 P-097-DOCUMENTOS-DO-ATENDIMENTO (a evidência como coluna de mensagem, sem proveniência) · P-097-MIDIA-INALCANCAVEL (📊 9.002 mídias do history sync
 sem `waE2E.Message`) · P-097-APPROVAL-SEM-CONVERSA (`approval_requests` não volta ao atendimento) · P-097-POLLING-10S (30 mil consultas/operador/dia;
-Realtime só depois de medir) · P-097-DRAG (§16).
+Realtime só depois de medir) · P-097-DRAG (§16) · P-097-ESPERA-COM-ESCRITOR (U4) · P-097-TIMELINE-CURSOR (U6.3) ·
+P-097-SESSOES-ORFAS (📊 42,2% sem conversa 1:1).
 
 ## 7. A CAIXA DO FOUNDER
 - **Nada bloqueante.** As duas decisões que a proposta mandava para você (U3 espera: escritor ou sai; U4 episódio) foram pontuadas e decididas
