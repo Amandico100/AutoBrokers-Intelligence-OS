@@ -55,9 +55,12 @@ porteira de crédito (`:357`, `pode_consumir(companyId)`), monta o grafo por `co
 cérebro, a memória e o crédito são da corretora que o corpo disser**. O backend fica numa URL pública
 (`NEXT_PUBLIC_API_URL`, `lib/backend-url.ts:21`); `/chat/stream` não exige chave interna (`grep -n "X-Internal-Key" chat.py` →
 0) e as checagens de widget (domínio + limite) só rodam quando **não** há `userId` (`:432`, `if agent_data and not
-chat_request.userId`) — quem manda um `userId` qualquer pula as duas. **INFERÊNCIA (a refutar no aquecimento, com um POST
-real de uma sessão da AutoFleet com o `companyId` da Resulta, num turno canário):** P0 pelo teste do produto (§2): uma
-corretora lê o conhecimento e gasta o crédito de outra. 📊 `grep -rn "chat/stream" app components lib public` → **um único chamador** (`page.tsx:364`); o widget usa `/api/chat` → `/chat` JSON (`app/embed/[agentId]/page.tsx:425`, `chat.py:82`) — **o BFF pode ignorar o `companyId` do corpo sem quebrar o widget.** O padrão certo já existe ao lado: `lib/auxiliaries/server.ts:31` (`resolveSessionCompany`: `activeCompanyId` validado em `company_members`, senão `users_v2.company_id` — o único helper que PROVA a filiação; 📊 nenhuma rota de chat o usa, e por isso trocar de empresa no seletor da SPEC-047 não troca o cérebro), `app/api/conversations/route.ts:21-27`
+chat_request.userId`) — quem manda um `userId` qualquer pula as duas. 🔴 **FATO (📊 04/09/2026 22:35, BLOCO 0.2, contra o backend IMPLANTADO, sem sessão nenhuma):** `curl -X POST {smith-api}/chat/stream`
+com `companyId` da Resulta + `agentId` inexistente + `userId` arbitrário → **HTTP 200**, SSE `{"token": "⚠️ Agente não encontrado…"}`,
+TTFB 3,44 s (a Resulta FOI carregada e o grafo dela montado); CONTROLE: o mesmo POST com `companyId` inexistente → **HTTP 404**
+`{"detail":"Company not found"}`. O par 200×404 é a diferença que só o `companyId` do corpo produz — e nenhuma linha foi gravada
+(o INSERT só acontece com `full_response.strip()`). P0 pelo teste do produto (§2): qualquer cliente HTTP, sem login, escolhe a
+corretora cujo cérebro e crédito vai usar. 📊 `grep -rn "chat/stream" app components lib public` → **um único chamador** (`page.tsx:364`); o widget usa `/api/chat` → `/chat` JSON (`app/embed/[agentId]/page.tsx:425`, `chat.py:82`) — **o BFF pode ignorar o `companyId` do corpo sem quebrar o widget.** O padrão certo já existe ao lado: `lib/auxiliaries/server.ts:31` (`resolveSessionCompany`: `activeCompanyId` validado em `company_members`, senão `users_v2.company_id` — o único helper que PROVA a filiação; 📊 nenhuma rota de chat o usa, e por isso trocar de empresa no seletor da SPEC-047 não troca o cérebro), `app/api/conversations/route.ts:21-27`
 (iron-session → `userId`; `users_v2.company_id`) e `backend/app/api/work_runs.py:1-6` ("`company_id` nunca vem do cliente").
 
 ### 1.2 · 🔴 `/api/messages` entrega qualquer conversa a quem tiver um cookie

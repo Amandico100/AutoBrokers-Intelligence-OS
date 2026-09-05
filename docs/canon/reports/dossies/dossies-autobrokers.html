@@ -61,11 +61,11 @@ code{font-size:.9em;background:var(--sunk);padding:1px 5px;border-radius:4px}
 main{padding:34px 44px 80px;max-width:1040px}
 section.page{display:none}
 section.page.on{display:block}
-.head{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start;padding-bottom:22px;border-bottom:1px solid var(--line)}
+.head{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,340px);gap:24px;align-items:start;padding-bottom:22px;border-bottom:1px solid var(--line)}
 .head p.lede{color:var(--ink-2);max-width:68ch;margin:10px 0 0;font-size:16px}
 .meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px;color:var(--muted);font-size:13px}
 .meta b{color:var(--ink-2);font-weight:600}
-.gauge{min-width:190px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.gauge{min-width:190px;max-width:340px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
 .gauge .big{font-family:"Archivo";font-weight:800;font-size:40px;line-height:1;letter-spacing:-.02em}
 .gauge .big small{font-size:16px;color:var(--muted);font-weight:500}
 .bar{height:6px;background:var(--sunk);border-radius:3px;margin-top:10px;overflow:hidden}
@@ -140,6 +140,7 @@ ul.tight li{margin:5px 0}
     <a href="#s0941" data-p="s0941">094.1 · A fábrica de relatórios<small>CRÍTICO · opção B · ≈8h30</small><span class="chip ok">82</span></a>
     <div class="grp eyebrow">Feita · sessão nova</div>
     <a href="#s095" data-p="s095">095 · Relatórios que o corretor entende<small>PADRÃO · opção B · ≈6h20</small><span class="chip ok">84</span></a>
+    <a href="#s096" data-p="s096">096 · O chat responde e continua<small>CRÍTICO · opção B · em execução</small><span class="chip info">agora</span></a>
     <div class="grp eyebrow">Método</div>
     <a href="#proto" data-p="proto">Protocolo AAA v11.2<small>de 72 para o que é hoje</small><span class="chip info">v11.2</span></a>
     <div class="grp eyebrow">Fila</div>
@@ -170,6 +171,7 @@ ul.tight li{margin:5px 0}
     <tr><td><a href="#s094">094</a></td><td>O número executivo nasce de um modelo canônico com ponteiro; censo da InfoCap; adapter; registry de métricas</td><td>CRÍTICO</td><td class="n">14–18h → ≈9h em 3 janelas</td><td class="n">84</td><td><span class="chip ok">no ar 03/09 ~21:00</span></td></tr>
     <tr><td><a href="#s0941">094.1</a></td><td>A fábrica de relatórios: 12 métricas novas (sinistros, funil, cancelamentos, cross-sell, pendências, SUSEP × carteira), o chat lista e propõe com aprovação, protocolo escrito</td><td>CRÍTICO · B</td><td class="n">12–16h → ≈8h30 em 2 janelas</td><td class="n">82</td><td><span class="chip ok">no ar 04/09 ~03:30</span></td></tr>
     <tr><td><a href="#s095">095</a></td><td>Relatórios que o corretor entende: Entregas vira Relatórios, cada card diz o que é, o briefing é UM card, 35 peças de teste fora, placar honesto, o relatório abre pelo achado e diz o que fazer, versões, data do dado honesta</td><td>PADRÃO · B · sessão nova</td><td class="n">5–7h → ≈6h20 numa janela</td><td class="n">84</td><td><span class="chip ok">no ar 04/09 ~17:20</span></td></tr>
+    <tr><td><a href="#s096">096</a></td><td>O chat responde, mostra o trabalho e continua: o browser deixa de escolher a corretora (P0), o chat fala tipado, a pergunta é do servidor, o parcial sobrevive, a conversa longa abre rápido</td><td>CRÍTICO · opção B</td><td class="n">em execução</td><td class="n">—</td><td><span class="chip info">agora</span></td></tr>
     <tr><td><a href="#proto">Protocolo</a></td><td>v10 → v11 → v11.1 → v11.2 no mesmo dia, cada passo medido</td><td>—</td><td class="n">≈3h no total</td><td class="n">72 → ~88</td><td><span class="chip ok">opção B em vigor</span></td></tr>
   </table></div>
   <div class="legend"><span>📊 medido, com fonte</span><span>💭 estimativa ou exemplo</span><span>🧑 decisão sua</span><span>🤖 execução</span></div>
@@ -647,6 +649,68 @@ ul.tight li{margin:5px 0}
 </section>
 
 <!-- ============================ PROTOCOLO ============================ -->
+<section class="page" id="p-s096">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-096 · v1.1 · CRÍTICO · opção B (três marchas) · convertida em 04/09/2026 · EM EXECUÇÃO</div>
+      <h1>O chat responde, mostra o trabalho e continua</h1>
+      <p class="lede">Esta página acompanha a SPEC do chat enquanto ela é executada: o que ela promete, o que a medição achou por baixo do chat de hoje, o que já foi decidido e feito, em que bloco cada equipe está, e o que ficou de fora com o gatilho que traz de volta. Ela é atualizada a cada bloco fechado; a nota só entra no fim.</p>
+      <div class="meta"><span>SPEC <b>specs/SPEC-096-o-chat-responde-e-continua.md</b></span><span>faixa <b>6–8h</b></span><span>laço sob B <b>investigador+pesquisador · aquecimento (82) · desenhista · 2 builders em paralelo (tela+BFF ‖ backend) · red team · 2 lentes · juiz fresco · canário vivo</b></span><span>orçamento <b>≤ 2,5 M tokens</b></span><span>base <b>origin/main = e1494ab</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">estado</div><div class="big">em<small> execução</small></div><div class="bar"><i style="width:45%"></i></div><div class="sub">convertida medindo · aquecimento nota 82 (16 emendas, as 2 falsas assinadas pegas) · gate zero vermelho na cópia limpa · builders em paralelo desde 22:30</div></div>
+  </div>
+
+  <h2>1 · O que ela promete — o teste do produto</h2>
+  <div class="callout">Terça, 09:12, a dona da Resulta escreve no celular "quantas apólices da Porto vencem em setembro?". A pergunta aparece na hora, com o botão virando <b>Parar</b>. Meio segundo depois, uma linha discreta: <b>● Consultando a carteira…</b> — que nasce do evento real da ferramenta, nunca de um relógio. A resposta escorre; se ela rolou para cima para reler, a tela não puxa e aparece "Voltar ao fim". <b>Parar</b> no meio: o que veio fica, marcado "parada por você", e a pergunta não some. Enter duas vezes: UMA pergunta, UMA resposta. O Wi-Fi cai: a tela diz "Reconectando…" e, ao recarregar, a resposta INTEIRA está lá — o servidor terminou sem ela. "Gera o Pulso 360": a resposta vem com um card <b>Pulso 360 · 2026 · Abrir · Perguntar sobre isso</b>, e o card continua lá amanhã. Sem crédito, o que aparece é um aviso com cara de aviso — e nada disso entra na memória. A conversa de 400 mensagens abre em menos de um segundo com as 60 últimas. Nada do que ela viu tem nome de tool, nó, MCP ou LangGraph. <b>E em nenhum momento o browser dela disse ao servidor qual corretora ela é — o servidor sabe.</b></div>
+  <p class="lede">A régua que você deu: <i>"sempre que tiver dúvida de como deve ser o chat, pense em como é o Claude"</i>. A referência nº 1 da SPEC é o chat do Claude.ai — a linha única de atividade, o Stop que preserva o parcial, o Artifact como card com versões, o Retry que não apaga a pergunta, o autoscroll que não puxa. O juiz compara abrindo o claude.ai ao lado da nossa tela.</p>
+
+  <h2>2 · O que a medição achou por baixo do chat de hoje (04/09, código em e1494ab e banco)</h2>
+  <div class="tw"><table>
+    <tr><th>achado</th><th>medido</th><th>o que a 096 faz</th></tr>
+    <tr><td>🔴 <b>O browser escolhe a corretora</b></td><td>📊 o POST do chat leva <code>companyId</code>, <code>userId</code> e <code>agentId</code> no corpo; o proxy repassa cego, sem ler a sessão; o backend carrega o cérebro, a memória e o crédito da corretora que o corpo disser. O backend fica numa URL pública e as checagens de widget só rodam quando NÃO há <code>userId</code> — quem manda um <code>userId</code> qualquer pula as duas. <b>P0 cross-tenant — provado AO VIVO em 04/09 22:35 contra o backend implantado, sem login: 200 com a Resulta carregada × 404 com corretora inexistente, zero custo</b> (CLAUDE.md §7). 📊 o widget usa outra porta (<code>/api/chat</code>), então o conserto não quebra nada</td><td><b>BLOCO S:</b> o BFF deriva usuário e corretora da sessão (o mesmo helper que valida a filiação e faz o seletor de empresa da 047 chegar ao chat); o corpo não tem voz; o backend honra identidade só com a chave interna</td></tr>
+    <tr><td>🔴 <b><code>/api/messages</code> entrega qualquer conversa</b></td><td>📊 a rota testa a PRESENÇA do cookie, não o dono; service role; lê e escreve em qualquer conversa cujo UUID se conheça — inclusive injetar mensagem como "assistente"</td><td><b>S.3:</b> toda leitura/escrita passa pelo dono da conversa; conversa de outro = 404</td></tr>
+    <tr><td><b>Um turno, três escritores</b></td><td>📊 a pergunta é gravada pelo browser, em paralelo, sem esperar; a resposta é gravada pelo backend só no fim do stream — se cai no meio, some. 12.502 perguntas × 12.528 respostas no banco: as contagens não batem. Enter duplo = duas perguntas</td><td><b>BLOCO A:</b> o servidor grava a pergunta ANTES de responder, com uma chave por envio (<code>client_request_id</code>, índice único — o mesmo padrão do WhatsApp); a geração corre numa task própria: fechar a aba não a mata, e o parcial sobrevive à falha e ao Stop</td></tr>
+    <tr><td><b>Tudo é <code>{"token"}</code></b></td><td>📊 "créditos insuficientes", "nenhum agente", o bloqueio de segurança e a exceção crua (<code>str(e)</code>) saem como token — viram resposta, viram memória. A SPEC-081 já tinha visto isso e contornou fazendo o modelo ANUNCIAR que ia consultar</td><td><b>BLOCO B:</b> protocolo tipado v1 (tipo + sequência + identidade): conteúdo é conteúdo, estágio é estágio, aviso é aviso, erro é erro com código e correlação — nunca a exceção crua</td></tr>
+    <tr><td><b>O estágio não vem de onde a proposta achava</b></td><td>📊 <code>on_tool_start</code> NUNCA é emitido neste grafo (o nó de tools chama o método privado, que pula o callback) e eventos <code>custom</code> não passam na versão usada. A proposta apostava nisso</td><td><b>B.2:</b> o estágio sai de onde o runtime JÁ conta a verdade — a decisão do modelo de chamar a tool (<code>tool_call</code>) e o início/fim do nó — sem trocar o motor. O BLOCO 0.4 mede qual evento carrega o nome antes de escrever</td></tr>
+    <tr><td><b>A conversa carrega inteira; cada token re-renderiza tudo</b></td><td>📊 p95 = 129 mensagens por conversa, máx 1.326, 71 acima de 80; 800 re-renders de Markdown por resposta; e o proxy joga fora o cabeçalho anti-buffer que o backend manda</td><td><b>BLOCO D + C:</b> últimas 60 + "carregar anteriores" por cursor; deltas por frame; bolha memoizada; o cabeçalho chega ao browser</td></tr>
+  </table></div>
+
+  <h2>3 · As decisões que você delegou — executadas antes do código, com nota</h2>
+  <ul class="tight">
+    <li><b>F-094-07 (InfoCap da Amandus)</b> → opção B, feita: a conexão foi <b>arquivada</b> espelhando o escritor real do produto + auditoria. 📊 VERIFY: Amandus <code>archived</code>, Resulta <code>connected</code>. A P1 da conta compartilhada fechou. Nota 90.</li>
+    <li><b>F-094.1-02/08 (proposta pendente)</b> → recusada pelo escritor existente (era métrica de TESTE da 094.1). 📊 <code>rejected</code>. Nota 85.</li>
+    <li><b>F-094.1-01 (Tool Gateway)</b> → fica desligado: 155 diffs em sombra, 0 idênticos; a 096 é justamente a régua que vai permitir medir a sombra por tool. Nota 85 × ligar 15.</li>
+    <li><b>F-094.1-03 (094.2 portal)</b> → fila, depois da 098 (piso CRÍTICO; depende de "cada coisa sabe de quem é"). Nota 75.</li>
+    <li><b>F-095-01 (leitura do modelo no Pulso)</b> → autorizada por você; vira unidade LEVE própria (<code>P-095-LEITURA-DO-MODELO</code>), fora da 096.</li>
+    <li><b>F-095-02 (briefing por WhatsApp/e-mail)</b> → pendência documentada com o passo-a-passo (<code>P-095-BRIEFING-POR-CANAL</code>): para quem, em que canal, a que hora, e o template Utility antes de 01/10.</li>
+  </ul>
+
+  <h2>4 · Os blocos, e onde cada um está</h2>
+  <div class="tw"><table>
+    <tr><th>bloco</th><th>o que entrega</th><th>estado</th></tr>
+    <tr><td><b>0</b> gate zero + medição viva</td><td>guardas vermelhos na cópia limpa (10 itens); a prova do P0 sem custo de modelo; TTFT antes; o despejo dos eventos do grafo (0.4)</td><td>guardas ✔ vermelhos (mjs 21 · py 13 + 5) · 0.2 ✔ P0 provado ao vivo (200×404) · 0.4 com o builder</td></tr>
+    <tr><td><b>S</b> segurança (piso)</td><td>sessão manda no BFF; chave interna no backend; dono em <code>/api/messages</code>; voz deriva da sessão</td><td>em construção (2 builders)</td></tr>
+    <tr><td><b>A</b> o turno</td><td>pergunta gravada pelo servidor; índice de idempotência; parcial sobrevive; geração até o fim</td><td>em construção</td></tr>
+    <tr><td><b>B</b> o protocolo</td><td>eventos tipados v1; catálogo tool → frase da corretora; erro seguro; Stop</td><td>em construção</td></tr>
+    <tr><td><b>C</b> o shell</td><td>linha de atividade; card do relatório; aviso com cara de aviso; Parar; autoscroll que não puxa; Tentar de novo</td><td>em construção</td></tr>
+    <tr><td><b>D</b> o histórico</td><td>60 últimas + "carregar anteriores"; dedupe do Realtime por chave</td><td>em construção</td></tr>
+    <tr><td><b>E</b> canário vivo</td><td>3 turnos reais na Resulta em modo canário, com limpeza; TTFT não piorou; a linha de controle (401)</td><td>depois dos builders</td></tr>
+    <tr><td><b>painel</b></td><td>red team · lente do DADO · lente verdade/regressão · juiz fresco que confirma e audita</td><td>depois dos builders</td></tr>
+  </table></div>
+
+  <h2>5 · O que saiu da proposta (4.096 linhas) — e o gatilho que traz de volta</h2>
+  <ul class="tight">
+    <li><b>Tabelas novas de turno</b> (<code>chat_turns</code>, <code>chat_turn_refs</code>): o turno cabe no <code>payload</code> da mensagem, com o índice que o WhatsApp já usa. Volta quando alguém precisar consultar turnos sem passar por mensagens.</li>
+    <li><b>Replay ao vivo por Redis</b>: gravar até o fim resolve o refresh; o replay é para ver o parcial AO VIVO depois de reconectar. Volta quando uma corretora reclamar de resposta longa (medido, não presumido).</li>
+    <li><b>Cards de Work Run e de Aprovação no chat</b>: 📊 4 de 3.661 Work Runs têm conversa; as aprovações do chat eram a proposta de teste. Volta com a 097 (casos) ou a 1ª Skill que crie trabalho pelo chat.</li>
+    <li><b>Subir o LangGraph</b> para o event streaming novo: o estágio sai sem trocar motor; trocar motor é infraestrutura. Volta quando uma tool precisar emitir progresso próprio ("3 fontes encontradas").</li>
+    <li><b>18 Golden Conversations, INP/Playwright, virtualização, upload tipado, aprovação por linguagem natural</b>: cada um com o seu gatilho na SPEC §5.</li>
+  </ul>
+
+  <h2>6 · Sua caixa</h2>
+  <div class="callout"><b>Nada a decidir antes de executar.</b> O P0 é fechado sem pergunta: derivar a corretora da sessão é a regra do CLAUDE.md §7. Depois: (a) quer o replay ao vivo (💭 4h)? (b) o Stop em multiprocesso quando houver 2 réplicas da API; (c) se a memória das conversas antigas deve ser limpa do "[Erro interno…]" que hoje está gravado como resposta.</div>
+</section>
+
 <section class="page" id="p-proto">
   <div class="head">
     <div>
