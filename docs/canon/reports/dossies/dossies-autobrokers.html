@@ -141,6 +141,7 @@ ul.tight li{margin:5px 0}
     <div class="grp eyebrow">Feita · sessão nova</div>
     <a href="#s095" data-p="s095">095 · Relatórios que o corretor entende<small>PADRÃO · opção B · ≈6h20</small><span class="chip ok">84</span></a>
     <a href="#s096" data-p="s096">096 · O chat responde e continua<small>CRÍTICO · opção B · ≈12h em 3 janelas</small><span class="chip ok">86</span></a>
+    <a href="#s097" data-p="s097">097 · A operação tem uma casa<small>CRÍTICO · opção B · em execução</small><span class="chip info">agora</span></a>
     <div class="grp eyebrow">Método</div>
     <a href="#proto" data-p="proto">Protocolo AAA v11.2<small>de 72 para o que é hoje</small><span class="chip info">v11.2</span></a>
     <div class="grp eyebrow">Fila</div>
@@ -172,6 +173,7 @@ ul.tight li{margin:5px 0}
     <tr><td><a href="#s0941">094.1</a></td><td>A fábrica de relatórios: 12 métricas novas (sinistros, funil, cancelamentos, cross-sell, pendências, SUSEP × carteira), o chat lista e propõe com aprovação, protocolo escrito</td><td>CRÍTICO · B</td><td class="n">12–16h → ≈8h30 em 2 janelas</td><td class="n">82</td><td><span class="chip ok">no ar 04/09 ~03:30</span></td></tr>
     <tr><td><a href="#s095">095</a></td><td>Relatórios que o corretor entende: Entregas vira Relatórios, cada card diz o que é, o briefing é UM card, 35 peças de teste fora, placar honesto, o relatório abre pelo achado e diz o que fazer, versões, data do dado honesta</td><td>PADRÃO · B · sessão nova</td><td class="n">5–7h → ≈6h20 numa janela</td><td class="n">84</td><td><span class="chip ok">no ar 04/09 ~17:20</span></td></tr>
     <tr><td><a href="#s096">096</a></td><td>O chat responde, mostra o trabalho e continua: o browser deixa de escolher a corretora (P0), o chat fala tipado, a pergunta é do servidor, o parcial sobrevive, a conversa longa abre rápido</td><td>CRÍTICO · opção B</td><td class="n">≈12h</td><td class="n">≈3,2 M</td><td><span class="chip ok">86</span></td></tr>
+    <tr><td><a href="#s097">097</a></td><td>A operação tem uma casa: o desfecho deixa de ser deduzido do relógio (584 "encerrados" que ninguém encerrou), o dono deixa de ser o status, o caso é o episódio, um read model sem teto, o AGORA e a timeline com hora</td><td>CRÍTICO · opção B</td><td class="n">em execução</td><td class="n">—</td><td><span class="chip info">agora</span></td></tr>
     <tr><td><a href="#proto">Protocolo</a></td><td>v10 → v11 → v11.1 → v11.2 no mesmo dia, cada passo medido</td><td>—</td><td class="n">≈3h no total</td><td class="n">72 → ~88</td><td><span class="chip ok">opção B em vigor</span></td></tr>
   </table></div>
   <div class="legend"><span>📊 medido, com fonte</span><span>💭 estimativa ou exemplo</span><span>🧑 decisão sua</span><span>🤖 execução</span></div>
@@ -728,6 +730,40 @@ ul.tight li{margin:5px 0}
 
   <h2>7 · Sua caixa</h2>
   <div class="callout"><b>1.</b> Clique <b>Implantar</b> (smith-api + smith-web) e confirme que os DOIS contêineres têm a MESMA <code>BACKEND_INTERNAL_API_KEY</code>/<code>ADMIN_API_KEY</code> — sem ela no Next, o painel cai no legado em silêncio (P-096-CHAVE-INTERNA-NO-NEXT). <b>2.</b> Depois do Implantar, eu meço a régua de tempo por curl (TTFT ≤ 1,47 s; <code>[DONE]</code> bem antes de 8,7 s) — só peça. <b>3.</b> <code>allowedDomains</code> nos agentes com widget (📊 0 de 3 têm; P-096-WIDGET-SEM-DOMINIO). <b>4.</b> Limpar da memória o "[Erro interno…]" das conversas antigas? (P-096-MEMORIA-LE-ERRO). <b>5.</b> Replay ao vivo (💭 4h) só se uma corretora reclamar.</div>
+</section>
+
+<section class="page" id="p-s097">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-097 · v1.0 · CRÍTICO · opção B (três marchas) · convertida em 05/09/2026 · EM EXECUÇÃO (mesma sessão, a pedido do Founder)</div>
+      <h1>A operação tem uma casa</h1>
+      <p class="lede">A proposta pedia um "workspace de operações": Fila com Lista e Quadro, Casos, Case Workspace, timeline, documentos. A medição de 05/09 mostrou que o problema não é de leitura — é de <b>escrita</b>: a Fila diz que 584 de 668 atendimentos foram encerrados e o banco diz que ninguém encerrou nenhum; a espera tem tabela pronta e zero linhas na vida; assumir um atendimento pelo botão o deixa em "pediu uma pessoa"; e o "caso" não é a conversa (1 telefone = 1 conversa perpétua de até 29 dias), é o episódio dentro dela. Esta página acompanha a execução.</p>
+      <div class="meta"><span>SPEC <b>specs/SPEC-097-a-operacao-tem-uma-casa.md</b></span><span>faixa <b>6–8h</b></span><span>laço sob B <b>investigador+pesquisador · aquecimento · desenhista · builders · red team · 2 lentes · juiz fresco · canário vivo</b></span><span>orçamento <b>≤ 2,5 M tokens</b></span><span>base <b>origin/main = 7f3f3eb</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">estado</div><div class="big">em<small> execução</small></div><div class="bar"><i style="width:15%"></i></div><div class="sub">proposta medida (nota 62: SPEC de leitura para um problema de escrita) · SPEC v1.0 escrita · aquecimento rodando</div></div>
+  </div>
+
+  <h2>1 · O que a medição achou (05/09, banco + código)</h2>
+  <div class="tw"><table>
+    <tr><th>achado</th><th>medido</th><th>o que a 097 faz</th></tr>
+    <tr><td>🔴 <b>O desfecho é deduzido do relógio</b></td><td>📊 a Fila rotula 584 de 668 conversas "Atendimento encerrado" pelo ramo "silêncio > 48 h"; <code>resolvido_em</code> NULL em 728/728; <code>status='closed'</code> = 0. O mesmo JSON diz "terminaram: 0". 87,4% do acervo some do quadro</td><td><b>U1:</b> nasce o estado PARADO; "encerrado" só com <code>resolvido_em</code> escrito; o escritor do desfecho (SPEC-086) passa a disparar sem depender do espelho</td></tr>
+    <tr><td>🟠 <b>Dono e status fundidos</b></td><td>📊 o único escritor de <code>claimed_by</code> grava <code>status='HUMAN_REQUESTED'</code> junto; a cascata testa o status antes do dono: "Ana está atendendo" é inalcançável. Latente: "Assumir" foi usado 1 vez</td><td><b>U2:</b> o claim não escreve status; a projeção testa o dono antes</td></tr>
+    <tr><td>🔴 <b>A espera tem esquema e zero linhas</b></td><td>📊 <code>work_waits</code> = 0 na vida; os 3 chamadores exigem <code>mirror_conversation_id</code>. 4 views da proposta e um gate inteiro estavam sobre isso</td><td><b>U4:</b> a espera ganha escritor por episódio — ou não existe na tela</td></tr>
+    <tr><td>🔴 <b>O caso é o episódio, não a conversa</b></td><td>📊 666 de 667 telefones têm exatamente 1 conversa (perpétua: até 1.326 mensagens, 29 dias); o mesmo contato gera 5,8 <code>attendance_sessions</code>, 56% com 2+ em 7 dias; a sessão não tem <code>conversation_id</code></td><td><b>U3:</b> o episódio ganha o elo com a conversa (migration expand-first + backfill onde é 1:1)</td></tr>
+    <tr><td><b>Teto fixo, não N+1</b></td><td>📊 <code>.limit(120)</code> sobre 448 conversas da AutoFleet; a busca de Casos é <code>filter()</code> no cliente: um protocolo de 60 dias "não existe"</td><td><b>U5:</b> uma função de leitura, cursor e busca no banco, Lista e Quadro sobre a mesma projeção</td></tr>
+    <tr><td><b>Timeline sem hora</b></td><td>📊 7 dos 10 tipos de evento da Ficha têm <code>at: null</code>; <code>work_events</code> é 100% telemetria de motor</td><td><b>U6:</b> o AGORA (situação, dono, de quem espera, há quanto tempo, atenção, próxima ação) e a timeline com hora e fonte</td></tr>
+  </table></div>
+
+  <h2>2 · O que saiu da proposta, e por quê</h2>
+  <ul class="tight">
+    <li><b>Documentos como evidência</b> — 📊 13 imagens e 0 áudios com URL em 25.061 mensagens; <code>documents</code> é a base de conhecimento. Vira pendência.</li>
+    <li><b>Notas</b> — já consolidadas (prefixo <code>📝 [nota interna]</code>). <b>Cutover Histórico→Casos</b> — a rota já é Casos; sobrou um label.</li>
+    <li><b>Drag-and-drop</b> — não há arrastar hoje; construir para governar é o risco que a proposta queria evitar.</li>
+    <li><b>4 views de espera + gate de espera</b> — sobre tabela com 0 linhas. <b>Tabela de casos nova</b> — o episódio já existe.</li>
+  </ul>
+
+  <h2>3 · Sua caixa</h2>
+  <div class="callout"><b>Nada bloqueante.</b> As duas decisões que a proposta mandava para você (a espera: escritor ou sai; o episódio como identidade do caso) foram pontuadas e decididas na SPEC (§4 U3/U4). Depois: ligar o espelho do WhatsApp nas corretoras (com ele o corredor sabe a conversa sem junção por telefone).</div>
 </section>
 
 <section class="page" id="p-proto">
