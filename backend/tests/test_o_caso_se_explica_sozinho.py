@@ -291,9 +291,16 @@ MUTACOES = [
      '    return "PÓS-ACIONAMENTO: responda com o que está escrito."\n\n\n'
      "def _bloco_do_prompt_original(",
      "U3"),
-    # U3B -- o gate `attendance` some do anexo do bloco -> [E3] vermelho
+    # U3B -- o gate `attendance` SOME do anexo do bloco -> [E3b] vermelho
+    #        ⚠️ A ancora e de DUAS linhas de proposito: `if _papel ==
+    #        "attendance":` aparece TAMBEM no bloco de acionamento (l.1081), e
+    #        `replace(..., 1)` trocaria o errado -- a mutacao mediria outra
+    #        regra e ninguem saberia.
     ("app/agents/graph.py",
-     "bloco_do_prompt", "bloco_do_prompt_MUTADO_0971_U3B",
+     'if _papel == "attendance":\n'
+     "            from app.atendimento.pos_acionamento import bloco_do_prompt",
+     "if True:  # _MUTADO_0971_U3B\n"
+     "            from app.atendimento.pos_acionamento import bloco_do_prompt",
      "U3B"),
     # U4 -- a regua conta MENSAGEM em vez de TURNO -> [G1]/[I2] vermelhos
     ("scripts/regua_0971.py",
@@ -1041,6 +1048,59 @@ def problemas_de_lingua(texto):
     return p
 
 
+class _LogMudo:
+    """O `logger` que o trecho extraido de `graph.py` usa. Nao e enfeite: sem
+    ele o `exec` estoura em `logger.info` e a assercao reprovaria por
+    NameError -- por outro motivo, que e o mesmo que nao medir nada."""
+
+    def info(self, *a, **k):
+        return None
+
+    warning = error = debug = info
+
+
+def _trecho_que_anexa_o_bloco(fonte):
+    """Recorta de `graph.py` o `try:` que anexa o bloco POS ao prompt.
+
+    Devolve `(codigo_dedentado, porque)`. 🔴 O recorte NAO e a assercao: ele e
+    o caminho ate o codigo do produto, que e EXECUTADO em [E3]. Se o recorte
+    falhar, o bloco diz por que -- nunca finge medir."""
+    linhas = fonte.splitlines()
+    alvos = [i for i, l in enumerate(linhas)
+             if "import bloco_do_prompt" in l or "bloco_do_prompt()" in l]
+    if not alvos:
+        return None, ("`graph.py` nao menciona `bloco_do_prompt` -- o builder "
+                      "ainda nao anexou o bloco POS ao prompt (U3.2)")
+    i = alvos[0]
+    inicio = None
+    for j in range(i, max(-1, i - 40), -1):
+        if linhas[j].strip() == "try:":
+            inicio = j
+            break
+    if inicio is None:
+        return None, "nao achei o `try:` que abre o anexo do bloco POS"
+    recuo = len(linhas[inicio]) - len(linhas[inicio].lstrip())
+    fim = None
+    for j in range(i, min(len(linhas), i + 60)):
+        crua = linhas[j]
+        if not crua.strip():
+            continue
+        atual = len(crua) - len(crua.lstrip())
+        if fim is None:
+            if atual == recuo and crua.strip().startswith("except"):
+                fim = j
+            continue
+        if atual > recuo:
+            fim = j
+        else:
+            break
+    if fim is None:
+        return None, "nao achei o `except` que fecha o anexo do bloco POS"
+    corpo = "\n".join(l[recuo:] if len(l) > recuo else l.lstrip()
+                      for l in linhas[inicio:fim + 1])
+    return corpo, ""
+
+
 def bloco_F():
     _p("\n[F] R6 -- as 6 cartas falam como corretora, e cada uma tem dono da proxima acao")
     PA, erro = importar("app.atendimento.pos_acionamento",
@@ -1114,24 +1174,61 @@ def bloco_E():
     except Exception as e:  # noqa: BLE001
         certo(False, "[E2] o bloco de ABERTURA e medivel", repr(e))
 
-    # E3 -- ⚠️ A METADE FRACA, DECLARADA: o GATE mora dentro de uma funcao de
-    #       1.100 linhas de `graph.py` que so roda com langgraph, LLM e banco.
-    #       Aqui se le a FONTE sem comentario -- e o PAR abaixo prova que a
-    #       leitura consegue acusar uma fonte sem gate (CLAUDE.md §9.4).
-    fonte = so_o_codigo_py(ler("app/agents/graph.py"))
-    def _tem_gate(texto):
-        i = texto.find("bloco_do_prompt")
-        if i < 0:
-            return False
-        janela = texto[max(0, i - 1500):i + 500]
-        return ('_papel == "attendance"' in janela
-                or "_papel == 'attendance'" in janela
-                or 'agent_role") or "").strip().lower()' in janela and "attendance" in janela)
-    certo(_tem_gate(fonte),
-          "[E3] `graph.py` anexa o bloco POS sob o gate `agent_role=='attendance'`",
-          "📊 4 agentes attendance (E16); metade fraca declarada")
-    par(not _tem_gate('base_instructions += bloco_do_prompt()'),
-        "[E3p] a fonte-controle SEM gate e acusada pela mesma leitura")
+    # ===================================================================
+    # E3 -- 🔴 O GATE, EXECUTADO. Nao lido.
+    #
+    # ⚠️ A primeira versao desta assercao LIA a fonte (`texto.find` + janela de
+    # 1.500 chars) e o builder mediu que ela nao guardava nada: o nome mutado
+    # `bloco_do_prompt_MUTADO_...` ainda casa como PREFIXO de `bloco_do_prompt`,
+    # e o gate do bloco de ACIONAMENTO cai dentro da janela e satisfaz a busca
+    # sozinho. Guarda que nao tem como ficar vermelho e carimbo (§9.3).
+    #
+    # 🔴 O conserto e EXECUTAR o trecho real. O bloco mora dentro de
+    # `_build_initial_state` (async, ~1.100 linhas, exige langgraph, LLM e
+    # banco), entao o guarda EXTRAI o `try:` que anexa o bloco e o RODA com
+    # `real_agent_data` de um agente `attendance` e de um que nao e. O que se
+    # afirma e o COMPORTAMENTO do codigo do produto sobre dois papeis reais --
+    # a extracao e so o caminho ate ele.
+    # ===================================================================
+    trecho, porque = _trecho_que_anexa_o_bloco(ler("app/agents/graph.py"))
+    if trecho is None:
+        certo(False, "[E3] o trecho de `graph.py` que anexa o bloco POS e localizavel",
+              porque)
+    else:
+        def _rodar_o_trecho(codigo, papel):
+            ns = {"real_agent_data": {"agent_role": papel},
+                  "base_instructions": "PROMPT BASE DO AGENTE.",
+                  "logger": _LogMudo()}
+            try:
+                exec(compile(codigo, "<graph.py:bloco_pos>", "exec"), ns)  # noqa: S102
+                return str(ns.get("base_instructions") or ""), None
+            except Exception as exc:  # noqa: BLE001
+                return "", exc
+
+        prompt_att, exc_att = _rodar_o_trecho(trecho, "attendance")
+        prompt_com, exc_com = _rodar_o_trecho(trecho, "commercial")
+        try:
+            gerado = str(PA.bloco_do_prompt()) if PA is not None else ""
+        except Exception:  # noqa: BLE001
+            gerado = ""
+        certo(exc_att is None and bool(gerado) and gerado in prompt_att,
+              "[E3] com `agent_role=='attendance'` o prompt GANHA o bloco gerado",
+              "exc=%r len_bloco=%d len_prompt=%d" % (exc_att, len(gerado), len(prompt_att)))
+        certo(exc_com is None and bool(gerado) and gerado not in prompt_com
+              and prompt_com == "PROMPT BASE DO AGENTE.",
+              "[E3b] com `agent_role != attendance` o prompt NAO ganha o bloco",
+              "exc=%r prompt=%r" % (exc_com, prompt_com[:200]))
+
+        # 🔴 O CORTADOR: o MESMO trecho com o gate trocado por `if True:` --
+        #    e a U3B em miniatura. Se ele NAO entregar o bloco ao agente
+        #    comercial, [E3b] nao mede o gate: mede outra coisa.
+        sem_gate = trecho.replace('if _papel == "attendance":', "if True:", 1)
+        prompt_sem, exc_sem = _rodar_o_trecho(sem_gate, "commercial")
+        par(exc_sem is None and sem_gate != trecho and bool(gerado)
+            and gerado in prompt_sem,
+            "[E3p] o MESMO trecho SEM o gate entrega o bloco a quem nao atende "
+            "(a assercao consegue reprovar)",
+            "trocou=%r exc=%r prompt=%r" % (sem_gate != trecho, exc_sem, prompt_sem[:160]))
 
 
 def bloco_J():
