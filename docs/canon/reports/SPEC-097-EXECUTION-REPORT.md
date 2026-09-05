@@ -86,7 +86,20 @@ npx tsc --noEmit EXIT=0 · npm run test:rotas-montam VERDE
 mutações do mjs (11 declaradas)          {A PREENCHER: rodadas por cópia pela lente de verdade}
 ```
 ## 7. O painel e o juiz
-{A PREENCHER}
+**Rodada 1 (05/09 ~14:00, red team ‖ lente do DADO sobre `7ae06fb`):**
+- **Lente do DADO** (Opus, 146k): **REPROVOU o read model** — e o guarda de 1.362 linhas estava VERDE. `lib/atendimento/casos.ts` selecionava **três colunas que
+  não existem** (📊 42703): `work_waits.attendance_session_id`/`due_at` (é `vence_em`; esperas sempre "indisponíveis"), `attendance_sessions.protocolo` (toda leitura de
+  sessões falhava → Casos devolvia ZERO episódios) e `approval_requests.title` (é `preview`). Mais: ninguém escreve `attendance_session_id` na sessão de dispatch (o
+  caminho "sem espelho" era morto); Encerrar a conversa derramava o desfecho sobre os 5,8 episódios do telefone (`conversa || sessao`); o cursor de Casos misturava
+  dois relógios e dois espaços de chave (inócuo até o backfill ligar os elos); `semana.terminaram` voltava a contradizer a lista; a Fila filtrava o órfão pelo `status`
+  de 6 h do Atlas (E9); tetos silenciosos novos sem `has_more`. Passou: os 📊 da §1 (5+ reproduzidos), a migration (CHECK idêntico ao da conversa, `ON DELETE SET NULL`,
+  VERIFY/ROLLBACK), o backfill (7.374/5/5.383 = SQL independente), `pausar_ia` nos 3 pontos, zero PII, canário limpo.
+  **A lição (a mesma da 094.1, agora na tela):** um dublê construído à mão concorda com o código por construção. `schema_vivo.json` ganhou as 6 tabelas do atendimento
+  (`e3bb30d`) e o guarda [14] passa a construir o dublê a partir dele — coluna desconhecida devolve 42703 como o PostgREST.
+- **Consertos:** tela/BFF (builder da tela, em curso: colunas reais; concluído ⇔ sessão; Encerrar grava no episódio corrente; cursor só da sessão; `semana` pela mesma
+  regra; órfão parado pelo relógio único; tetos declaram `has_more`) · backend (builder novo: o corredor passa o episódio a `marcar_fim`; `ValueError` no motivo
+  inválido; `pausar_ia` em `saudacao_do_religamento.py`; passo novo no canário).
+{A PREENCHER: red team · lente verdade · juiz}
 ## 8. Canário vivo
 {A PREENCHER}
 ## 9. O que ficou fora · pendências · a caixa do Founder
