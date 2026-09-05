@@ -460,6 +460,19 @@ async def _empresa_do_widget(db, *, agent_id, company_do_corpo):
     return dona
 
 
+def _e_conflito_de_chave(erro: BaseException) -> bool:
+    """O banco recusou por chave repetida?
+
+    🔴 O `messages_turno_sem_duplicata_uidx` recusa uma SEGUNDA resposta
+    para o mesmo (conversa, papel, client_request_id) — e e para recusar
+    mesmo. O que ele nao pode e virar `persisted: false`: a tentativa nova tem
+    de ACHAR a linha do turno e escrever nela.
+    """
+    texto = ("%s %s" % (type(erro).__name__, erro)).lower()
+    return ("23505" in texto or "409" in texto or "duplicate key" in texto
+            or "conflict" in texto)
+
+
 def _sse_legado(payload: Dict[str, Any]) -> str:
     return "data: %s\n\n" % json.dumps(payload)
 
@@ -857,7 +870,49 @@ async def chat_stream(
             else:
                 message_data["payload"] = {"turn": dados_do_turno}
 
-            await db.client.table("messages").upsert(message_data, on_conflict="id").execute()
+            try:
+                await db.client.table("messages").upsert(message_data, on_conflict="id").execute()
+            except BaseException as choque:  # noqa: BLE001
+                if not (_e_conflito_de_chave(choque) and client_request_id):
+                    raise
+                # 🔴 A TENTATIVA CHEGOU COM UM `id` NOVO.
+                # 📊 05/09/2026, canário --vivo: a 2ª tentativa do mesmo
+                # `client_request_id` veio com outro `assistantMessageId`, o
+                # índice recusou (`409 Conflict`) e a RESPOSTA BOA virou
+                # `persisted: false` — o parcial da 1ª ficava na tela para
+                # sempre. O UPSERT por `id` nao alcanca esse caso: a linha
+                # existe, mas com OUTRA chave primaria. Entao a achamos pelo
+                # que de fato identifica o turno — conversa + papel +
+                # `client_request_id` — e escrevemos NELA, mantendo o `id`
+                # antigo (que e o que a tela ja tem na mao).
+                do_turno = (
+                    await db.client.table("messages")
+                    .select("id, payload")
+                    .eq("conversation_id", conversation_id)
+                    .eq("role", "assistant")
+                    .eq("payload->>client_request_id", client_request_id)
+                    .limit(1)
+                    .execute()
+                ).data or []
+                if not do_turno:
+                    raise
+                id_antigo = do_turno[0]["id"]
+                dados_do_turno["attempt"] = int(
+                    (((do_turno[0].get("payload") or {}).get("turn") or {}).get("attempt")) or 1
+                ) + 1
+                await (
+                    db.client.table("messages")
+                    .update({
+                        "content": conteudo,
+                        "type": "text",
+                        "payload": {"client_request_id": client_request_id,
+                                    "turn": dados_do_turno},
+                    })
+                    .eq("id", id_antigo)
+                    .execute()
+                )
+                logger.info("[STREAM] retentativa reaproveitou a linha %s (tentativa %s)",
+                            str(id_antigo)[:8], dados_do_turno["attempt"])
 
             await db.client.table("conversations").update({
                 "last_message_preview": conteudo[:100],
