@@ -142,7 +142,7 @@ MUTACOES = [
     ("app/agents/graph.py",
      "tool_start", "tool_start_MUTADO", "B9"),
     ("app/api/chat.py",
-     'status="interrupted"', 'status="interrupted_MUTADO"', "B5"),
+     'estado = "interrupted"', 'estado = "interrupted_MUTADO"', "B5"),
     (MIGRATION_096,
      "WHERE", "WHERE_MUTADO", "B11"),
 ]
@@ -264,6 +264,11 @@ OK = FAIL = 0
 PULADOS: list = []
 ESPERADOS: list = []
 JA_PODEM_VIRAR: list = []
+# 🔴 CONSERTO (1): o CONJUNTO de nomes de assercoes que ja falharam (de
+# verdade OU esperadas). `rodar_mutacoes` compara este conjunto antes x
+# depois de cada mutacao -- so conta como ACUSADA a mutacao que fez aparecer
+# um nome NOVO (ou um `certo` que virou falha).
+NOMES_FALHOS: set = set()
 
 
 def _p(texto):
@@ -281,6 +286,7 @@ def certo(cond, rotulo, detalhe=""):
         _p("  [ok] %s" % rotulo)
     else:
         FAIL += 1
+        NOMES_FALHOS.add(rotulo)
         _p("  [FALHOU] %s" % rotulo + ("\n         %s" % str(detalhe)[:600] if detalhe else ""))
     return bool(cond)
 
@@ -293,6 +299,7 @@ def devendo(cond, rotulo, bloco, detalhe=""):
         JA_PODEM_VIRAR.append("%s   [era devendo('%s')]" % (rotulo, bloco))
     else:
         FAIL += 1
+        NOMES_FALHOS.add(rotulo)
         ESPERADOS.append("%s   (esperado ate %s)" % (rotulo, bloco))
         _p("  VERMELHO-ESPERADO %s   (ate %s)" % (rotulo, bloco)
            + ("\n         %s" % str(detalhe)[:600] if detalhe else ""))
@@ -330,6 +337,22 @@ def ler(relativo):
 
 def existe(relativo):
     return os.path.exists(os.path.join(RAIZ, relativo))
+
+
+def razao_ausencia(mod_opcional, mensagem_produto):
+    """🔴 CONSERTO (bonus): escolhe a razao certa quando um bloco B3-B13
+    depende de um modulo opcional que falhou ao importar. Se a falha e um
+    `ModuleNotFoundError` de PACOTE DE TERCEIRO (ex.: langgraph ausente
+    nesta maquina), a causa e AMBIENTE -- dizer "ainda nao existe" seria
+    FALSO quando o codigo do produto ja esta escrito e so falta o pacote."""
+    if isinstance(mod_opcional, dict) and mod_opcional.get("__erro"):
+        erro = str(mod_opcional["__erro"])
+        if erro.startswith("ModuleNotFoundError"):
+            m = re.search(r"No module named '([^']+)'", erro)
+            pacote = m.group(1).split(".")[0] if m else erro
+            return ("AMBIENTE: falta %s -- o bloco nao pode ser medido nesta maquina "
+                    "(%s)" % (pacote, erro))
+    return mensagem_produto
 
 
 def modulo_opt(nome_arquivo, nome_modulo):
@@ -497,7 +520,8 @@ def bloco_B_grafo(ctx):
 
     # ---- B3 · a ordem dos eventos, turno feliz com 1 tool ------------------
     if not tem_eventos:
-        motivo = ("`stream_agent_eventos` ainda nao existe em graph.py (B.2) -- hoje so ha "
+        motivo = razao_ausencia(graph,
+                  "`stream_agent_eventos` ainda nao existe em graph.py (B.2) -- hoje so ha "
                   "`stream_agent`, que devolve string (§1.5). O projetor tipado do BLOCO B "
                   "nao foi escrito.")
         devendo(False, "[B3] a ordem: turn.accepted -> stage.* -> delta*N -> content.completed -> turn.completed",
@@ -585,7 +609,7 @@ def bloco_A_turno(ctx):
                 "S.2", "📊 chat.py nao tem `_modo_de_confianca` -- hoje o backend honra qualquer "
                 "userId do corpo, sem chave (§1.1). Chave errada tem de valer como sem chave.")
     else:
-        certo("X-Internal-Key" in chat,
+        certo(re.search(r'"X-Internal-Key"', chat) is not None,
               "[B8] o modo painel exige X-Internal-Key valida", "sem a checagem da chave interna")
 
     # ---- B4 · porteira sem gravar (R5) -- fonte enquanto o motor tipado nao existe
@@ -596,6 +620,11 @@ def bloco_A_turno(ctx):
     devendo("/chat/stop" in chat, "[B7] `POST /chat/stop {client_request_id}` cancela a task e grava o parcial (interrupted)",
             "B.4", "📊 chat.py nao tem a rota `/chat/stop` -- o Stop do BLOCO B.4/R8 nao existe; "
             "hoje 'Parar' so aborta o fetch do browser, e o backend nao sabe.")
+    # 🔴 CONSERTO (3): nenhuma assercao citava "interrupted" -- a mutacao #6
+    # (status="interrupted" -> _MUTADO) passava despercebida.
+    certo(re.search(r'estado = "interrupted"', chat) is not None,
+          "[B7] o Stop grava status interrupted",
+          "sem o literal \"interrupted\" em chat.py")
 
     # ---- B6 · a task propria (A.4) -----------------------------------------
     devendo("TURNOS_ATIVOS" in chat and "create_task" in chat,
@@ -614,7 +643,7 @@ def bloco_A_turno(ctx):
         certo("CREATE UNIQUE INDEX IF NOT EXISTS messages_turno_sem_duplicata_uidx" in mig,
               "[B11] a migration cria o indice unico `messages_turno_sem_duplicata_uidx` com IF NOT EXISTS",
               "sem o CREATE UNIQUE INDEX IF NOT EXISTS")
-        certo("WHERE" in mig and "client_request_id" in mig,
+        certo(re.search(r"\bWHERE\b", mig) is not None and "client_request_id" in mig,
               "[B11] o indice e PARCIAL (`WHERE ... client_request_id IS NOT NULL`)",
               "sem o WHERE parcial -- sem ele, uma linha sem client_request_id colidiria (expand-first)")
         for marca in ("APPLY", "VERIFY", "ROLLBACK"):
@@ -709,17 +738,30 @@ def rodar_mutacoes(ctx):
         shutil.copyfile(alvo, backup)
         try:
             io.open(alvo, "w", encoding="utf-8").write(original.replace(de, para, 1))
-            antes = FAIL
+            # 🔴 CONSERTO (1): compara o CONJUNTO de nomes que falharam antes x
+            # depois -- nao a contagem crua de FAIL (que so cresce enquanto a
+            # lista de VERMELHO ESPERADO nao estiver vazia, e faria QUALQUER
+            # mutacao "acusar" mesmo sem relacao com ela).
+            antes_nomes = set(NOMES_FALHOS)
+            novos: list = []
             try:
                 ctx["remedir"]()
-                ficou_vermelho = FAIL > antes
+                depois_nomes = set(NOMES_FALHOS)
+                novos = sorted(depois_nomes - antes_nomes)
+                ficou_vermelho = bool(novos)
             except RuntimeError as exc:
                 if "MUTACAO_QUEBROU_O_MODULO" not in str(exc):
                     raise
                 _p("        o arquivo mutado NAO carrega: o produto nem sobe -- VERMELHO")
                 ficou_vermelho = True
+            if novos:
+                _p("        nomes NOVOS que ficaram vermelhos: %s" % "; ".join(novos))
+            elif ficou_vermelho:
+                _p("        (o modulo mutado nao carregou -- nenhuma assercao rodou)")
+            else:
+                _p("        nenhum nome novo ficou vermelho")
             par(ficou_vermelho, "mutacao %s em %s" % (rotulo, rel(alvo)),
-                "a mutacao foi aplicada e NENHUMA assercao ficou vermelha -- o bloco %s e carimbo" % rotulo)
+                "a mutacao foi aplicada e NENHUM NOME NOVO ficou vermelho -- o bloco %s e carimbo" % rotulo)
         finally:
             shutil.copyfile(backup, alvo)
             os.remove(backup)
