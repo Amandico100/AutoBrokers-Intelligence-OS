@@ -36,10 +36,16 @@ FAIXA DE RELÓGIO .....  6–8h   ORÇAMENTO ≤ 2,5 M tokens de subagentes
 ```
 começou 04/09 ~18:10 (preflight) · primeira linha de código de produto: ~22:30 (builders) — 4h20 de conversão+aquecimento+guardas,
    com 2 interrupções por limite (19:20 desenhista morto no 429; ~22:10 janela)
-rodadas de painel: {A PREENCHER} · achados por lente: {A PREENCHER}
-defeitos que o painel NÃO pegou e quem pegou: {A PREENCHER}
-rodadas da bateria: inteiras {N} · parciais {N} · minutos esperando {N}
-nota 0–100 do orquestrador: {A PREENCHER}
+rodadas de painel: 2 (red team ‖ lente DADO → consertos → lente verdade → juiz fresco) · achados: red team 16 (14 únicos) · DADO 3 P1 + 6 P2
+   (2 únicos: canário `users`, UPSERT na retentativa) · verdade 1 P0 + 3 P1 + 9 P2 (todos únicos, do ARNÊS) · juiz 3 resíduos únicos · canário 1 P1 único
+defeitos que o painel NÃO pegou e quem pegou: o 409 da retentativa com id novo — o CANÁRIO VIVO; a casca em `app.core` que fazia B3–B13 mentirem
+   — o builder do backend; a migration por aplicar — o red team (era do orquestrador); a conversa canário apagada no meio da rodada — o orquestrador
+rodadas da bateria: inteiras 1 (ao fim, árvore parada) · parciais ≈ 40 (guardas por bloco, mutações, canário ×3, build ×2) · minutos esperando ≈ 150
+   (build 17,6 min sob contenção; import do grafo 4 min por rodada de guarda; pip das dependências do grafo ≈ 25 min)
+nota 0–100 do orquestrador: **86** — o P0 fechou nas duas portas e está provado ao vivo nas duas; o chat fala tipado e o parcial sobrevive; o
+   painel achou 30 coisas e o juiz confirmou 26 + 3 resíduos que foram fechados; perde por: orçamento 📊 ≈ 3,2 M de subagentes contra 2,5 M
+   (+28%: 5 rodadas de builder e 4 de Sonnet por causa dos buracos do arnês, que só apareceram porque o grafo real não importava nesta máquina),
+   duas interrupções por limite, e a régua de tempo (TTFT/[DONE]) que só se prova depois do Implantar
 ```
 📊 Um trecho da conversão (as decisões delegadas, a SPEC v1.0, a aplicação das emendas) rodou com o orquestrador como **Opus 4.8** (troca de
 atribuição pelo harness na virada da janela; voltou a Fable 5.1 por `/model`). O que esse trecho produziu passou pelo aquecimento (Opus 5,
@@ -65,7 +71,9 @@ desligado · F-094.1-03 → 094.2 depois da 098 · F-095-01 → P-095-LEITURA-DO
 ## 3. Commits
 ```
 5a883c2 decisões delegadas · 9ed8cc8 SPEC v1.0 · 07a7ba7 aquecimento/emendas · 7b47531 guardas (gate zero) · 7c9e21f P0 fato + dossiê ·
-f31643a baseline 0.3 · befd44a backend · 14c8434 tela+BFF · {N} arnês do guarda py · {A PREENCHER: consertos do painel, migration, relatório}
+f31643a baseline 0.3 · befd44a backend · 14c8434 tela+BFF · ffaf04d arnês py · b4a2459 arnês mjs · 2002d31 INTEGRADO · c97b93d consertos tela/BFF ·
+fbb2a60 consertos backend · 6fa3568 pendências · c39d780 guardas [17]–[24] · afaf1e4 dossiê · 4162155 retentativa + canário · ee236ce/cefd444 relatório ·
+ea72dc3 resíduos do juiz (cursor, turno em voo, agente inexistente) + guardas por execução (bloco [D]) + relatório final
 ```
 
 ## 4. Gate zero (📊 cópia limpa `../AutoBrokers-FIX-gate0` em e1494ab)
@@ -134,7 +142,19 @@ guardas antigos                npm run test:relatorios VERDE ([13]–[16] execut
   forma, e o [12] do mjs era vácuo (M12 não reprovava); 9 P2. 📊 Das 7 mutações próprias da lente, 6 ficaram VERDES — o número que mede o
   buraco. **Conserto:** Sonnet reescreveu essas asserções por EXECUÇÃO do `/chat/stream` dublado (molde do builder), com dois tenants e o
   wrapper executado; M12 e [25] (`seq` repetido) acrescentados — ver §6.
-{A PREENCHER: juiz}
+- **Juiz fresco** (Opus, 196k, contexto limpo, sobre `4162155`): **30 achados reverificados — 26 CONFIRMADOS CONSERTADOS**, 1 pela metade
+  (o cursor: a consulta de desempate existia, a ORDENAÇÃO por `id` não — 📊 3 páginas, "a3, a1", a2 sumia), 1 "na tela sim, no servidor
+  não" (Enter duplo: 1 pergunta gravada ✔, mas 2 POSTs do mesmo turno em voo viravam 2 gerações), 2 aceitos por decisão (contrato legado do
+  widget; o vermelho pré-existente). Resíduos que ele achou sozinho: `if dona:` deixava o `companyId` do corpo sobreviver quando o agente
+  não existe (o oráculo 200×404 da §1.1 continuava para agentId inexistente); `TURNOS_ATIVOS[chave] = task` sem checar a chave; a mutação
+  B7 do guarda python não ficava vermelha (6/7, o buraco só mudou de lugar). Auditoria do dado: índice com `role`, 0 canário, 0 status fora
+  do vocabulário, 0 texto de UI em `content` — 📊 e o controle honesto: `payload ? 'turn'` = 0 em toda a tabela, **os zeros são por
+  vacuidade até o deploy**. Canário do juiz: ORDEM certa · Q2 1 linha `attempt=2` · Q3 `complete` · controles OK · limpeza 0/0/0.
+  Contra o Claude: iguais na linha única, no Stop (mais forte: é do servidor), no Retry e no autoscroll; abaixo no replay ao vivo (§5) e no
+  Artifact (lá é um lugar, aqui um card+link). **Nota do juiz: 88/100.**
+- **Consertos dos resíduos** (orquestrador, depois do juiz): ordenação `(created_at desc, id desc)` nas duas rotas do histórico; um turno em
+  voo não ganha 2ª geração (`notice{turn_in_progress}`, sem gravar); agente inexistente em modo widget → 404 antes de tocar a corretora
+  (nas duas portas). Confirmação mecânica: guardas + mutações rerodados abaixo.
 
 ## 8. Canário vivo (E.1/E.2) — `backend/scripts/canario_096.py --vivo`, Resulta, `AUTOBROKERS_CANARIO=1`
 **Rodada 1 (05/09 05:13, nesta máquina, app in-process com o lifespan de produção, chave interna do `.env.local` do Next só no processo):**
@@ -182,7 +202,18 @@ limpa o que criou (0/0/0). O que ela NÃO prova: o tempo — 📊 150 s aqui sã
 `[DONE]` bem antes de 8,7 s) é medida depois do Implantar, por curl no smith-api, como o BLOCO 0.3 fez. **Isso vai para a caixa do Founder.**
 
 ## 9. O que ficou fora e por quê · pendências
-{A PREENCHER — P-096-*}
+O que saiu da proposta, com gatilho: SPEC §5 (tabelas de turno, replay ao vivo, cards de Work/Approval, subir o LangGraph, Golden Conversations,
+INP/Playwright, virtualização, upload tipado, aprovação por linguagem natural). Pendências abertas em `PENDENCIAS.md` (13): 🧑 **P-096-WIDGET-SEM-DOMINIO**
+(0/3 agentes ativos com `allowedDomains`) · 🧑 **P-096-CHAVE-INTERNA-NO-NEXT** (sem a chave em smith-web o painel cai no legado em silêncio) ·
+P-096-STOP-MULTIPROCESSO · P-096-REPLAY-AO-VIVO · P-096-MOTOR-DE-EVENTOS · P-096-ARTIFACT-SEM-CONVERSA · P-096-COMPANY-DATA-IGNORA-ATIVA ·
+P-096-LEGADO-ERRO-COMO-TEXTO · P-096-SESSION-FAIL-OPEN · 🧑 P-096-MEMORIA-LE-ERRO · P-096-WORK-RUNS-CHAVE-SO-ENV · P-096-VOZ-N8N · P-096-GUARDA-MEMORIAS-VERMELHO.
+
+### A caixa do Founder
+1. **Implantar** smith-api + smith-web e confirmar que os DOIS contêineres têm a MESMA `BACKEND_INTERNAL_API_KEY`/`ADMIN_API_KEY` (P-096-CHAVE-INTERNA-NO-NEXT).
+2. Depois do Implantar, a régua de tempo: `curl` no smith-api como o BLOCO 0.3 — TTFT ≤ 1,47 s e `[DONE]` bem antes de 8,7 s (o orquestrador faz, se você mandar).
+3. `allowedDomains` nos agentes que têm widget (P-096-WIDGET-SEM-DOMINIO) — ação sua na tela do agente.
+4. Se quer limpar da memória o "[Erro interno…]" das conversas antigas (P-096-MEMORIA-LE-ERRO).
+5. O replay ao vivo (💭 4h) só se uma corretora reclamar de resposta longa.
 
 ## 10. Declarações
 - Nenhum motor paralelo: o turno mora em `messages.payload`; sem tabela de turno, sem fila nova, sem publisher novo; Redis não entrou; o grafo

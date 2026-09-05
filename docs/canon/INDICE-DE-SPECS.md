@@ -220,9 +220,15 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     sessão nova por SPEC) decidida pelo Founder em 03/09 — a 095 foi a PRIMEIRA em sessão nova (PADRÃO: desenhista ‖ 2 builders ‖ red team).
     📊 A 095 foi convertida MEDINDO: a proposta valia 41/100 para a queixa real do Founder; a SPEC definitiva está em
     `specs/SPEC-095-relatorios-que-o-corretor-entende.md` e o que saiu dela (shares, envio, PDF, busca, favoritos) tem gatilho na §5.
-1º  SPEC-096 · Chat Runtime Performance & Interaction Shell — ABRIR EM SESSÃO NOVA com `docs/canon/PROMPT-DE-ABERTURA-DE-SESSAO-POR-SPEC.md`
-    (a 095 deixou para ela o gancho `?pergunta=` do chat e o composer que remonta ao enviar a 1ª mensagem)
-2º  SPEC-097 (proposta + research pack na pasta)  →  3º SPEC-098 (idem)  →  depois, o MASTERPLAN
+✅  SPEC-096 · O chat responde, mostra o trabalho e continua — executada em 04–05/09/2026 (CRÍTICO, nota 86, juiz 88):
+    🔴 o browser deixava de escolher a corretora (P0 provado AO VIVO no backend implantado, fechado nas DUAS portas: painel pela sessão,
+    widget pelo agente); o chat fala tipado (protocolo v1); a pergunta é do servidor e é uma só (índice aplicado); o parcial sobrevive ao
+    Stop/falha/disconnect; uma linha de atividade das tool_calls (📊 `on_tool_start` não existe neste grafo); histórico por cursor.
+    Relatório `reports/SPEC-096-EXECUTION-REPORT.md` · SPEC `specs/SPEC-096-o-chat-responde-e-continua.md` · 13 pendências P-096-* (2 do Founder:
+    allowedDomains dos widgets; a chave interna nos dois contêineres).
+1º  SPEC-097 · A operação tem uma casa — CONVERTER MEDINDO (proposta + research pack na pasta; a 096 deixou: `notice`/`policy.blocked` tipados
+    para o card de caso, `payload.turn` como elo turno↔peça, e a regra "o corpo não escolhe a corretora" que a 097 estende a Case/Conversation)
+2º  SPEC-098 (proposta + research pack na pasta)  →  depois, o MASTERPLAN
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta. Canário vivo SEMPRE por script,
     com `AUTOBROKERS_CANARIO=1` (regra nos pacotes desde a 095).
