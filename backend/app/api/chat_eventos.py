@@ -125,6 +125,8 @@ CODIGOS = {
     "policy",
     "billing",
     "no_agent",
+    "agent_not_found",
+    "human_mode",
     "unknown",
 }
 
@@ -136,6 +138,8 @@ MENSAGENS_HUMANAS = {
     "policy": "Não posso seguir com este pedido.",
     "billing": "Os créditos da corretora acabaram. Fale com quem administra a conta.",
     "no_agent": "Nenhum agente configurado para esta corretora.",
+    "agent_not_found": "O agente desta conversa nao esta mais disponivel.",
+    "human_mode": "Alguem da equipe assumiu esta conversa.",
     "unknown": "Algo deu errado por aqui. Tente de novo em instantes.",
 }
 

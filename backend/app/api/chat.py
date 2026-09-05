@@ -113,6 +113,15 @@ async def chat_endpoint(
         if not chat_request.chatInput and not chat_request.audioData and not chat_request.imageUrl:
             raise HTTPException(status_code=400, detail="No content provided")
 
+        # 🔴 A MESMA lei do /chat/stream: sem chave interna, quem manda no
+        # `userId` e na corretora é o AGENTE, não o corpo (S.2/R1).
+        if _modo_de_confianca(request) == "widget":
+            chat_request.userId = None
+            dona = await _empresa_do_widget(db, agent_id=chat_request.agentId,
+                                            company_do_corpo=chat_request.companyId)
+            if dona:
+                chat_request.companyId = uuid.UUID(str(dona))
+
         logger.info(f"[CHAT] Request: company={chat_request.companyId}, session={chat_request.sessionId}")
 
         # Transcrever áudio
@@ -338,11 +347,17 @@ CABECALHO_INTERNO = "X-Internal-Key"
 #: ⚠️ Este literal aparece UMA vez no arquivo de propósito: é o tipo do evento
 #: de porteira, e quem o renomear renomeia num lugar só.
 TIPO_POLICY_BLOCKED = "policy.blocked"
-TIPO_POLICY_NOTICE = "policy.notice"
+#: ⚠️ `notice` SEM ponto — e o nome do contrato R4 da SPEC, e e por ele
+#: que a tela decide entre "nao deu para responder" e "alguem assumiu daqui".
+TIPO_POLICY_NOTICE = "notice"
 
 #: Sem evento nenhum, a conexão precisa dar sinal de vida antes de qualquer
 #: proxy desistir dela. 15 s é metade do timeout mais curto que já vimos.
 SEGUNDOS_DE_BATIMENTO = 15
+
+#: Tetos do BLOCO A.4 — memoria por turno, e turnos por processo.
+TETO_DE_EVENTOS_NA_FILA = 5000
+TETO_DE_TURNOS_ATIVOS = 200
 
 #: Os turnos em voo, por `company_id:client_request_id`. 🔴 A chave leva o
 #: tenant: um `client_request_id` de outra corretora não para o turno desta.
@@ -397,6 +412,54 @@ def _modo_de_confianca(request: Request) -> str:
     return "widget"
 
 
+async def _empresa_do_widget(db, *, agent_id, company_do_corpo):
+    """No widget, a CREDENCIAL é o AGENTE — e o corpo não escolhe a corretora.
+
+    🔴 O defeito que isto fecha. Sem chave interna, o `companyId` chegava do
+    corpo e era usado para carregar a corretora e para GASTAR O CRÉDITO dela.
+    A única barreira era o domínio do widget — e 📊 `widget_security.py:18-19`
+    devolve `True` quando não há `allowedDomains`, que é o caso de 0 de 8
+    agentes hoje. Ou seja: qualquer um que soubesse um `companyId` consumia a
+    conta de outra corretora.
+
+    A partir daqui o `agentId` é a credencial: a corretora é a DONA do agente.
+    Um `agentId` da corretora A só serve à corretora A, mande o corpo o que
+    mandar. Divergência não é erro (o widget antigo continua funcionando) — é
+    log, e o valor do corpo é ignorado.
+    """
+    if not agent_id:
+        logger.warning("[WIDGET SECURITY] trust=widget_sem_agente — sem agentId não há credencial")
+        return None
+    try:
+        achado = (
+            await db.client.table("agents")
+            .select("id, company_id, widget_config")
+            .eq("id", str(agent_id))
+            .limit(1)
+            .execute()
+        ).data
+    except Exception as erro_de_leitura:  # noqa: BLE001
+        logger.warning("[WIDGET SECURITY] agente ilegivel: %s", type(erro_de_leitura).__name__)
+        return None
+    if not achado:
+        return None
+
+    dona = achado[0].get("company_id")
+    if dona and company_do_corpo and str(dona) != str(company_do_corpo):
+        logger.warning(
+            "[WIDGET SECURITY] trust=widget_company_ignored agente=%s corpo=%s dona=%s",
+            str(agent_id)[:8], str(company_do_corpo)[:8], str(dona)[:8],
+        )
+
+    configuracao = achado[0].get("widget_config") or {}
+    if not (configuracao.get("allowedDomains") or []):
+        # ⚠️ Permite (não quebra widget instalado), mas fica registrado: sem
+        # domínio, a porta de entrada do agente é pública.
+        logger.warning("[WIDGET SECURITY] widget_sem_dominio agente=%s — "
+                       "qualquer origem passa; configure allowedDomains", str(agent_id)[:8])
+    return dona
+
+
 def _sse_legado(payload: Dict[str, Any]) -> str:
     return "data: %s\n\n" % json.dumps(payload)
 
@@ -415,7 +478,10 @@ def _resposta_de_politica(*, modo: str, turno: Dict[str, Any], tipo: str, code: 
             seq = Sequenciador(turno)
             yield seq.sse("turn.accepted", dict(turno))
             yield seq.sse(tipo, {"code": code, "message_human": texto})
-            yield seq.sse("turn.completed", {"status": "blocked", "error_code": code,
+            # 🔴 `failed`, nao `blocked`: o vocabulario de `status` tem tres
+            # palavras — complete · interrupted · failed (A.3). O motivo mora
+            # em `error_code`, que e onde a tela ja olha.
+            yield seq.sse("turn.completed", {"status": "failed", "error_code": code,
                                              "persisted": False})
         else:
             yield _sse_legado(legado)
@@ -448,6 +514,12 @@ async def chat_stream(
         # 🔴 O corpo não escolhe a identidade. Sem a chave do BFF, o `userId`
         # some — e com ele somem os privilégios que ele carregava.
         chat_request.userId = None
+        # ...nem a CORRETORA: ela é derivada do agente, antes da porteira gastar
+        # crédito e antes de carregar a `companies` (ver `_empresa_do_widget`).
+        dona = await _empresa_do_widget(db, agent_id=chat_request.agentId,
+                                        company_do_corpo=chat_request.companyId)
+        if dona:
+            chat_request.companyId = uuid.UUID(str(dona))
 
     client_request_id = (chat_request.clientRequestId or "").strip()
     if modo == "painel" and not client_request_id:
@@ -474,9 +546,14 @@ async def chat_stream(
     )
 
     # Check HUMAN_REQUESTED status
+    # 🔴 A conversa e lida pela SESSAO, mas ela TEM DONO. Sem esta
+    # conferencia, um `sessionId` de outra corretora era lido, respondido e
+    # gravado aqui — a leitura nao filtrava empresa nenhuma (R1). Um
+    # `company_id` nulo e legado (o `/chat` ainda o preenche depois) e continua
+    # valendo.
     conv_check = (
         await db.client.table("conversations")
-        .select("id, status, unread_count")
+        .select("id, status, unread_count, company_id")
         .eq("session_id", str(chat_request.sessionId))
         .limit(1)
         .execute()
@@ -486,6 +563,18 @@ async def chat_stream(
     current_unread = 0
 
     if conv_check and conv_check.data and len(conv_check.data) > 0:
+        dona_da_conversa = conv_check.data[0].get("company_id")
+        if dona_da_conversa and str(dona_da_conversa) != str(chat_request.companyId):
+            logger.warning(
+                "[STREAM] trust=conversa_de_outra_corretora sessao=%s dona=%s pedida=%s",
+                str(chat_request.sessionId)[:8], str(dona_da_conversa)[:8],
+                str(chat_request.companyId)[:8],
+            )
+            return _resposta_de_politica(
+                modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="policy",
+                texto=MENSAGENS_HUMANAS["policy"],
+                legado={"token": MENSAGENS_HUMANAS["policy"], "blocked": True},
+            )
         conv_status = conv_check.data[0].get("status")
         conversation_id = conv_check.data[0].get("id")
         current_unread = conv_check.data[0].get("unread_count") or 0
@@ -501,8 +590,8 @@ async def chat_stream(
                 return StreamingResponse(human_mode_response(), media_type="text/event-stream",
                                          headers=dict(CABECALHOS_SSE))
             return _resposta_de_politica(
-                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="policy",
-                texto="Alguém da equipe assumiu esta conversa.",
+                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="human_mode",
+                texto=MENSAGENS_HUMANAS["human_mode"],
                 legado={"token": ""},
             )
 
@@ -569,7 +658,7 @@ async def chat_stream(
             # Agent not found
             logger.warning(f"[STREAM] Agent {chat_request.agentId} not found")
             return _resposta_de_politica(
-                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="no_agent",
+                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="agent_not_found",
                 texto=TEXTO_AGENTE_NAO_ENCONTRADO,
                 legado={"token": TEXTO_AGENTE_NAO_ENCONTRADO},
             )
@@ -726,6 +815,29 @@ async def chat_stream(
             if not conversation_id:
                 return False
 
+            # 🔴 C2 — RETENTATIVA É A MESMA LINHA, NÃO UMA NOVA.
+            # R3: repetir a pergunta é uma nova TENTATIVA do mesmo turno, e a
+            # tela reusa o mesmo `assistantMessageId` e o mesmo
+            # `client_request_id`. Um INSERT aqui violava a chave primária E o
+            # índice novo, caía no `except BaseException` e a resposta boa da 2ª
+            # tentativa terminava como `persisted: false` — o parcial da 1ª
+            # ficava na tela para sempre. Com UPSERT por `id`, a tentativa nova
+            # SUBSTITUI a linha: conteúdo novo, status novo, `attempt` somado.
+            anteriores = (
+                await db.client.table("messages")
+                .select("payload")
+                .eq("id", assistant_message_id)
+                .limit(1)
+                .execute()
+            ).data or []
+            tentativa_anterior = 0
+            if anteriores:
+                tentativa_anterior = int(
+                    (((anteriores[0].get("payload") or {}).get("turn") or {}).get("attempt")) or 0
+                )
+            dados_do_turno = dict(dados_do_turno)
+            dados_do_turno["attempt"] = tentativa_anterior + 1
+
             message_data = {
                 "id": assistant_message_id,
                 "conversation_id": conversation_id,
@@ -745,7 +857,7 @@ async def chat_stream(
             else:
                 message_data["payload"] = {"turn": dados_do_turno}
 
-            await db.client.table("messages").insert(message_data).execute()
+            await db.client.table("messages").upsert(message_data, on_conflict="id").execute()
 
             await db.client.table("conversations").update({
                 "last_message_preview": conteudo[:100],
@@ -753,8 +865,9 @@ async def chat_stream(
                 "unread_count": current_unread + 1,
             }).eq("id", conversation_id).execute()
 
-            logger.info("[STREAM] resposta gravada em %s (%s)",
-                        str(conversation_id)[:8], dados_do_turno.get("status"))
+            logger.info("[STREAM] resposta gravada em %s (%s, tentativa %s)",
+                        str(conversation_id)[:8], dados_do_turno.get("status"),
+                        dados_do_turno.get("attempt"))
             return True
         except BaseException as erro_ao_gravar:  # noqa: BLE001
             # ⚠️ `BaseException` e não `Exception`: `CancelledError` desce de
@@ -835,7 +948,15 @@ async def chat_stream(
     # =========================================================================
     # MODO PAINEL — o turno tipado, numa task que não morre com a conexão
     # =========================================================================
-    fila: "asyncio.Queue" = asyncio.Queue()
+    # ⚠️ Dois tetos, e nenhuma fila nova (§5): a fila do turno tem teto para
+    # o consumidor que sumiu nao crescer sem fim na memoria, e o processo tem
+    # teto de turnos em voo. Estourou o segundo, e 429 — nao e espera muda.
+    if len(TURNOS_ATIVOS) >= TETO_DE_TURNOS_ATIVOS:
+        logger.warning("[STREAM] teto de turnos em voo atingido (%d)", len(TURNOS_ATIVOS))
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="muitos turnos em voo; tente de novo em instantes")
+
+    fila: "asyncio.Queue" = asyncio.Queue(maxsize=TETO_DE_EVENTOS_NA_FILA)
 
     # 🔴 ANTES do `create_task`: a task COPIA o contexto, e é essa cópia que o
     # Artifact Hub vai encontrar quando publicar no meio do turno.
@@ -850,9 +971,15 @@ async def chat_stream(
         erro = None
 
         def emitir(tipo: str, payload: Dict[str, Any]) -> None:
-            # `put_nowait`: a fila não tem teto, então emitir NUNCA suspende —
-            # e o que não suspende não morre no meio de um cancelamento.
-            fila_de_saida.put_nowait((tipo, payload))
+            # `put_nowait`: emitir NUNCA suspende — e o que nao suspende nao
+            # morre no meio de um cancelamento. Fila cheia = consumidor que
+            # sumiu: o evento e descartado, a GERACAO segue, e a resposta e
+            # gravada do mesmo jeito (o que importa e a persistencia).
+            try:
+                fila_de_saida.put_nowait((tipo, payload))
+            except asyncio.QueueFull:
+                logger.warning("[STREAM] fila cheia no turno %s; evento %s descartado",
+                               (client_request_id or "-")[:8], tipo)
 
         try:
             emitir("turn.accepted", dict(turno))
@@ -886,8 +1013,16 @@ async def chat_stream(
                 elif especie == "tool_end":
                     emitir("stage.completed", {"key": estagio_da_tool(ev.get("name"))["key"]})
                 elif especie == "error":
-                    erro = erro_seguro(ev.get("exc") or RuntimeError("falha no stream"))
+                    excecao = ev.get("exc") or RuntimeError("falha no stream")
+                    erro = erro_seguro(excecao)
                     estado = "failed"
+                    # 🔴 A MESMA correlacao que foi ao browser tem de estar no
+                    # log — senao o corretor liga com um `correlation_id` que nao
+                    # existe em lugar nenhum. ⛔ O TIPO da excecao, nunca o texto
+                    # dela, e nunca a pergunta do corretor.
+                    logger.error("[STREAM] turno falhou correlation_id=%s code=%s exc=%s",
+                                 erro.get("correlation_id"), erro.get("code"),
+                                 type(excecao).__name__)
                     break
         except asyncio.CancelledError:
             # Parar foi decisão de alguém — o parcial vale, e ele é gravado.
@@ -895,44 +1030,63 @@ async def chat_stream(
         except BaseException as exc:  # noqa: BLE001
             estado = "failed"
             erro = erro_seguro(exc)
-            logger.error("[STREAM] turno %s falhou (%s) correlacao=%s",
-                         (client_request_id or "-")[:8], type(exc).__name__,
-                         erro.get("correlation_id"))
+            logger.error("[STREAM] turno falhou correlation_id=%s code=%s exc=%s",
+                         erro.get("correlation_id"), erro.get("code"), type(exc).__name__)
 
-        conteudo = "".join(partes)
-        entregas = await _entregas_do_turno()
-        for entrega in entregas:
-            emitir("artifact.ready", entrega)
-        if erro:
-            emitir("error", erro)
-        if conteudo:
-            emitir("assistant.content.completed", {"content": conteudo})
+        finally:
+            # 🔴 O FECHO DO TURNO E `finally`, e nao codigo solto depois do
+            # `except`. Uma excecao no meio daqui (um SELECT de entregas que
+            # falha, por exemplo) deixava a chave viva em TURNOS_ATIVOS e a
+            # sentinela sem ser posta — o consumidor ficava em batimento
+            # eterno e o Stop achava um turno que nao existia mais.
+            try:
+                conteudo = "".join(partes)
+                entregas = await _entregas_do_turno()
+                for entrega in entregas:
+                    emitir("artifact.ready", entrega)
+                if erro:
+                    emitir("error", erro)
+                if conteudo:
+                    # ⚠️ O campo e `content` — e o nome do contrato R6.
+                    emitir("assistant.content.completed", {"content": conteudo})
 
-        dados_do_turno = {
-            "client_request_id": client_request_id,
-            "status": estado,
-            "ttft_ms": ttft_ms,
-            "total_ms": int((time.monotonic() - comeco) * 1000),
-            "stages": estagios,
-            "artifacts": [{"artifact_id": e["artifact_id"], "title": e["title"]} for e in entregas],
-            "error_code": (erro or {}).get("code"),
-        }
-        if estado == "interrupted":
-            # E11 — quem parou fica escrito ao lado do parcial.
-            dados_do_turno["stopped_by"] = PARADAS.pop(chave_do_turno, None)
+                dados_do_turno = {
+                    "client_request_id": client_request_id,
+                    "status": estado,
+                    "ttft_ms": ttft_ms,
+                    "total_ms": int((time.monotonic() - comeco) * 1000),
+                    "stages": estagios,
+                    "artifacts": [{"artifact_id": e["artifact_id"], "title": e["title"]}
+                                  for e in entregas],
+                    "error_code": (erro or {}).get("code"),
+                }
+                if estado == "interrupted":
+                    # E11 — quem parou fica escrito ao lado do parcial.
+                    dados_do_turno["stopped_by"] = PARADAS.get(chave_do_turno)
 
-        gravou = await _persistir(conteudo, dados_do_turno)
-        TURNOS_ATIVOS.pop(chave_do_turno, None)
-        PARADAS.pop(chave_do_turno, None)
-
-        emitir("turn.completed", {
-            "status": estado,
-            "ttft_ms": ttft_ms,
-            "total_ms": dados_do_turno["total_ms"],
-            "persisted": gravou,
-            "error_code": dados_do_turno["error_code"],
-        })
-        fila_de_saida.put_nowait(None)
+                gravou = await _persistir(conteudo, dados_do_turno)
+                emitir("turn.completed", {
+                    "status": estado,
+                    "ttft_ms": ttft_ms,
+                    "total_ms": dados_do_turno["total_ms"],
+                    "persisted": gravou,
+                    "error_code": dados_do_turno["error_code"],
+                })
+            except BaseException as falha_no_fecho:  # noqa: BLE001
+                logger.error("[STREAM] falha ao fechar o turno %s: %s",
+                             (client_request_id or "-")[:8], type(falha_no_fecho).__name__)
+            finally:
+                # ⛔ Estes tres nao dependem de nada dar certo acima.
+                TURNOS_ATIVOS.pop(chave_do_turno, None)
+                PARADAS.pop(chave_do_turno, None)
+                try:
+                    fila_de_saida.put_nowait(None)
+                except asyncio.QueueFull:
+                    # A fila cheia ja e sinal de consumidor ausente; e o
+                    # gerador ainda tem a segunda saida: ele confere
+                    # `task.done()` a cada batimento.
+                    logger.warning("[STREAM] sentinela nao coube na fila do turno %s",
+                                   (client_request_id or "-")[:8])
 
     task = asyncio.create_task(_gerar(fila))
     TURNOS_ATIVOS[chave_do_turno] = task
@@ -944,8 +1098,13 @@ async def chat_stream(
                 try:
                     item = await asyncio.wait_for(fila.get(), timeout=SEGUNDOS_DE_BATIMENTO)
                 except asyncio.TimeoutError:
-                    # ⛔ O batimento é um EVENTO, nunca texto: ele não entra em
-                    # `content` e não aparece na conversa.
+                    if task.done() and fila.empty():
+                        # A task terminou e nao ha mais nada a ler: se a
+                        # sentinela se perdeu (fila cheia), o turno acaba aqui
+                        # do mesmo jeito — batimento eterno nao e opcao.
+                        break
+                    # ⛔ O batimento e um EVENTO, nunca texto: ele nao entra em
+                    # `content` e nao aparece na conversa.
                     yield seq.sse("heartbeat", {})
                     continue
                 if item is None:

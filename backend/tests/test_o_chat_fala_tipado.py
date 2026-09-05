@@ -210,7 +210,7 @@ def _guardar(nome):
 
 
 def _cascas():
-    for sub in ("api", "services", "agents", "comercial", "core", "providers", "tasks"):
+    for sub in ("api", "services", "agents", "comercial", "providers", "tasks"):  # "core" NAO: app/core/__init__ exporta settings/get_supabase_client (📊 05/09)
         nome = "app." + sub
         atual = sys.modules.get(nome)
         if atual is not None and getattr(atual, "__file__", None) is None:
@@ -442,7 +442,7 @@ def coletar_sync(gerador_async):
     async def _rodar():
         async for x in gerador_async:
             saida.append(x)
-    asyncio.get_event_loop().run_until_complete(_rodar())
+    asyncio.run(_rodar())  # 3.12+/3.14 nao cria loop implicito
     return saida
 
 
@@ -618,6 +618,18 @@ def bloco_A_turno(ctx):
     else:
         certo(re.search(r'"X-Internal-Key"', chat) is not None,
               "[B8] o modo painel exige X-Internal-Key valida", "sem a checagem da chave interna")
+
+    # ---- B8b · em modo WIDGET a corretora vem do AGENTE, nunca do corpo (C3, 05/09) ----
+    certo("_empresa_do_widget" in chat and "widget_company_ignored" in chat,
+          "[B8] modo widget: o `companyId` do CORPO e IGNORADO -- a corretora usada e a DONA do `agentId` "
+          "(divergencia vira log `trust=widget_company_ignored`, nunca 403)",
+          "sem isso `pode_consumir(<companyId do corpo>)` gasta o credito de OUTRA corretora; a unica barreira era "
+          "widget_security.py:18-19 (`if not allowed_domains: return True`) e 📊 0 de 3 agentes ativos tem allowedDomains")
+    certo("conversa_de_outra_corretora" in chat,
+          "[B8] a conversa lida por `session_id` confere o DONO antes de responder (R1)",
+          "o conv_check filtrava so por session_id: um sessionId de outra corretora era lido, respondido e gravado")
+    par("_empresa_do_widget" not in "if agent_data and not chat_request.userId:",
+        "[B8] o detector acha o chat.py ANTIGO (que honrava o corpo)", "o detector aceita o codigo de antes")
 
     # ---- B4 · porteira sem gravar (R5) -- fonte enquanto o motor tipado nao existe
     if not tem_modo:

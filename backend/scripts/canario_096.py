@@ -84,8 +84,12 @@ def plano():
     p("  3. Q1 '%s' → TTFSE, TTFT, T_COMPLETE e a ORDEM dos tipos" % PERGUNTA)
     p("  4. Q2 com o MESMO client_request_id → conta as respostas gravadas")
     p("  5. Q3 abandonando o consumo no 5º evento → espera e confere `complete`")
-    p("  6. CONTROLE (E.2): o mesmo POST SEM a chave, com userId no corpo →")
-    p("     tem de rodar em modo widget (resposta legada `{token}`)")
+    p("  6. CONTROLE (E.2), duas linhas que CONSEGUEM falhar:")
+    p("     (a) sem chave, companyId INEXISTENTE + agentId real da Resulta →")
+    p("         o turno é servido para a corretora DO AGENTE (o corpo é ignorado,")
+    p("         log `trust=widget_company_ignored`)")
+    p("     (b) sem chave, userId qualquer → modo widget, userId descartado")
+    p("         (resposta legada `{token}`, log `[STREAM] modo=widget`)")
     p("  7. apaga as mensagens e a conversa criadas, e prova count=0")
     p("")
     p("  Régua: TTFT ≤ %.2fs (1,3 × %.2f) e T_COMPLETE < %.2fs"
@@ -140,7 +144,9 @@ async def vivo(company_id, limpar=True):
         return 2
     agent_id = agentes[0]["id"]
 
-    usuarios = (db.table("users").select("id, role")
+    # 🔴 A tabela é `users_v2`. 📊 `users` devolve PGRST205 ("could not find
+    # the table in the schema cache") — o canário inteiro morria no passo 0.
+    usuarios = (db.table("users_v2").select("id, role")
                 .eq("company_id", company_id).limit(5).execute()).data or []
     escolhido = next((u for u in usuarios if u.get("role") == "admin_company"), None) or (usuarios[0] if usuarios else None)
     if not escolhido:
@@ -238,16 +244,47 @@ async def vivo(company_id, limpar=True):
             await asyncio.sleep(12)
 
             # ---------- CONTROLE (E.2) --------------------------------------
+            # ⚠️ A primeira versão desta linha media "nenhum envelope tipado
+            # saiu" — e isso é verdade em TODA resposta de widget, inclusive
+            # numa em que o corpo mandasse na corretora. Um controle que não
+            # consegue falhar não é controle (CLAUDE.md §9.3). As duas linhas
+            # abaixo CONSEGUEM: cada uma tem um veredito que depende do
+            # conserto.
+
+            # (a) o corpo não escolhe a CORRETORA: `companyId` inexistente +
+            #     `agentId` REAL da Resulta → o turno tem de ser servido para a
+            #     Resulta (a dona do agente), não 404 nem a company do corpo.
             crid4 = str(uuid.uuid4())
             d4 = corpo(crid4)
+            d4["companyId"] = str(uuid.uuid4())          # uma corretora que não existe
             ids_das_mensagens.append(d4["assistantMessageId"])
             r4 = await cliente.post("/chat/stream", json=d4)   # SEM a chave
             eventos = eventos_do_corpo(r4.text)
             formas = {("legado {token}" if "token" in e else e.get("type", "?")) for e in eventos}
-            p("CONTROLE: status=%s formas=%s" % (r4.status_code, sorted(formas)))
-            p("CONTROLE: modo widget é o esperado — %s"
-              % ("OK (nenhum envelope tipado saiu)" if not any(str(f).startswith("turn.") for f in formas)
+            p("CONTROLE (a): companyId inexistente + agentId da Resulta → status=%s formas=%s"
+              % (r4.status_code, sorted(formas)))
+            p("CONTROLE (a): %s"
+              % ("OK — o turno rodou na corretora DO AGENTE (o corpo foi ignorado)"
+                 if r4.status_code == 200 and "legado {token}" in formas
+                 else "⛔ o corpo escolheu a corretora (404/erro = a company do corpo foi usada)"))
+            p("           procure no log: `trust=widget_company_ignored`")
+
+            # (b) o corpo não escolhe a PESSOA: `userId` qualquer, sem chave →
+            #     modo widget, `userId` descartado.
+            crid5 = str(uuid.uuid4())
+            d5 = corpo(crid5)
+            d5["userId"] = str(uuid.uuid4())             # um usuário que não é dali
+            ids_das_mensagens.append(d5["assistantMessageId"])
+            r5 = await cliente.post("/chat/stream", json=d5)   # SEM a chave
+            formas5 = {("legado {token}" if "token" in e else e.get("type", "?"))
+                       for e in eventos_do_corpo(r5.text)}
+            p("CONTROLE (b): userId estranho sem chave → status=%s formas=%s"
+              % (r5.status_code, sorted(formas5)))
+            p("CONTROLE (b): %s"
+              % ("OK — modo widget (nenhum envelope tipado; userId descartado)"
+                 if not any(str(f).startswith("turn.") for f in formas5)
                  else "⛔ SAIU ENVELOPE TIPADO SEM CHAVE"))
+            p("           procure no log: `[STREAM] modo=widget`")
 
         # ---------- VERIFY ---------------------------------------------------
         gravadas = (db.table("messages")
