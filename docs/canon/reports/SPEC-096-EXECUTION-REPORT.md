@@ -110,6 +110,18 @@ npm run test:rotas-montam      A TABELA DE ROTAS MONTA (295 rotas)
 npx tsc --noEmit               EXIT=0 (builder da tela, depois da 2ª leva)
 next build                     ✓ Compiled successfully in 17.6 min (sob contenção) · 134 páginas · /dashboard/chat, /api/chat/stream, /api/chat/stop presentes
 guardas antigos                npm run test:relatorios VERDE ([13]–[16] executam page.tsx: ?pergunta= intacto) · entregas-tudo-abre · entregas-mostra-o-historico VERDES
+next start + 1 request         §9.1: o servidor RESPONDEU em 191 s (Ready in 80,8 s sob carga) · POST /api/chat/stop → 401 · GET /api/messages → 401 (rotas que executam código)
+SUÍTE INTEIRA                  📊 933 passed · 10 failed · 38 xfailed · 1 xpassed em 27m48 (árvore parada, HEAD c269b3b). Triagem dos 10, cada um rerodado isolado:
+                               · test_o_chat_fala_tipado (o NOSSO): PASSA isolado (1 passed, 18 s) — falhava por ORDEM de import na suíte (cascas de app.* e o
+                                 limiter singleton de outros testes) → a entrada pytest passou a rodar o guarda num SUBPROCESSO limpo (como os guardas-script)
+                               · test_o_protocolo_tem_policia: 1 falha REAL de docs — a SPEC-096 declarava "MUTAÇÕES" (plural) e a polícia procura `muta[çc][ãa]o`
+                                 → linha "MUTAÇÃO — a regra" acrescentada; 49 ok, 0 falhas
+                               · test_o_pulso_360, test_o_sinistro_deixa_rastro: PASSAM isolados (classe do harness, P-093B-HARNESS — igual à 095)
+                               · test_a_atendente_aperta_o_botao: o guarda imprime "47 passaram, 0 falharam" e o node 24 morre no fim com
+                                 `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` (libuv sob carga) → ambiente, não produto
+                               · test_todos_os_guardas_script_rodam: lista_de_documentos, corredor_da_porto, ontologia, arvore_limpa PASSAM isolados (4 passed);
+                                 sem_corredor_de_vidro é XPASS(strict) de um xfail pré-existente ("P-226 · a triar") — não é da 096
+                               Nenhuma das 10 é regressão de produto da 096.
 ```
 
 ## 7. O painel (red team · lente DADO · lente verdade/regressão) e o juiz fresco

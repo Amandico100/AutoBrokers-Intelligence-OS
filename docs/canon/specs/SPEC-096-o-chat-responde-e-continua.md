@@ -345,6 +345,8 @@ R12 VOZ/WIDGET  `sendVoiceToN8N` e `/api/chat` (widget) NÃO mudam de contrato; 
   APPLY/VERIFY/ROLLBACK e é `IF NOT EXISTS`; `stream_agent_eventos` emite `tool_start` a partir de um `tool_call_chunk` (dublê do grafo) e
   NUNCA a partir de relógio; `pecas_do_turno` registrado por `ArtifactService.publicar` vira `artifact.ready`. E no mjs: o BFF do stream
   repassa `X-Accel-Buffering: no` (PAR: rota-controle que monta 3 headers → vermelho).
+- **MUTAÇÃO** — a regra: toda asserção acima tem a sua mutação por cópia (o arquivo de produto é copiado, mutado com um marcador ÚNICO,
+  o guarda roda e tem de ficar VERMELHO por um NOME NOVO de asserção, e o arquivo é restaurado por cópia — nunca `git checkout`).
 - **MUTAÇÕES** (por cópia): header `X-Accel-Buffering` removido do BFF → [S.1]; corpo volta a vencer a sessão → [S.1]; `eq(user_id)` removido → [S.3]; chave interna ignorada → [S.2];
   `policy.blocked` volta a `token` → [B.3]; `str(e)` de volta → [B.3]; `await` removido da gravação da pergunta → [A.2]; índice
   sem `WHERE` → [A.1]; limite removido → [D.1]; `on_tool_start` ignorado → [B.2]; parcial não gravado → [A.3];
