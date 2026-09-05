@@ -215,5 +215,6 @@ P-097.1-RAG-AUTOFLEET-VAZIO (📊 0 documentos) · P-097.1-INTERLOCUTOR-POR-CADA
 4. **A linha da atendente:** o filtro R11 descarta pessoal/colegas antes de qualquer carta ou régua — nada seu a decidir; só saber que existe.
 
 ## 8. GATE FINAL
+MUTAÇÃO — a regra: cada mutação declarada (U1…U8, por cópia, medida em subprocesso) deixa VERMELHA uma asserção de NOME NOVO; uma mutação verde reprova o gate.
 guarda `test_o_caso_se_explica_sozinho.py` VERDE com PARES · `--mutar` 16/16 por nome · regressão zero nos guardas de atendimento da 086/090/097 · `npm run test:casa` 16/16 ·
 régua rodada no acervo com as duas linhas · canário vivo com supressão provada · suíte inteira (árvore parada) · relatório com card · push `git push origin HEAD:main`.
