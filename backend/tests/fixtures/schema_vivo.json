@@ -3,7 +3,21 @@
  "medido_em": "04/09/2026",
  "fonte": "select table_name, column_name, data_type, is_nullable from information_schema.columns where table_schema='public' and table_name in ('approval_requests','work_runs','work_events')",
  "enums": {
-  "work_runs.status": ["draft", "queued", "planning", "running", "waiting_approval", "waiting_input", "paused", "retry_scheduled", "cancelling", "cancelled", "failed", "completed", "expired"]
+  "work_runs.status": [
+   "draft",
+   "queued",
+   "planning",
+   "running",
+   "waiting_approval",
+   "waiting_input",
+   "paused",
+   "retry_scheduled",
+   "cancelling",
+   "cancelled",
+   "failed",
+   "completed",
+   "expired"
+  ]
  },
  "tabelas": {
   "approval_requests": {
@@ -105,6 +119,85 @@
    "capability_pack_release_id": "uuid",
    "unblock_state": "text",
    "conversation_id": "uuid"
+  },
+  "attendance_sessions": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "observer_number": "text",
+   "counterparty": "text",
+   "insurer_key": "text",
+   "started_at": "timestamp with time zone",
+   "last_event_at": "timestamp with time zone",
+   "status": "text",
+   "ramo": "text",
+   "servico": "text",
+   "summary": "jsonb",
+   "created_at": "timestamp with time zone"
+  },
+  "company_members": {
+   "id": "uuid",
+   "user_id": "uuid",
+   "company_id": "uuid",
+   "role": "character varying",
+   "is_owner": "boolean",
+   "status": "character varying",
+   "created_at": "timestamp with time zone"
+  },
+  "conversations": {
+   "id": "uuid",
+   "user_id": "uuid",
+   "session_id": "text",
+   "title": "text",
+   "created_at": "timestamp with time zone",
+   "updated_at": "timestamp with time zone",
+   "company_id": "uuid",
+   "status": "character varying",
+   "channel": "character varying",
+   "last_message_preview": "text",
+   "unread_count": "integer",
+   "agent_name": "text",
+   "status_color": "character varying",
+   "user_name": "text",
+   "user_avatar": "text",
+   "user_phone": "text",
+   "last_message_at": "timestamp with time zone",
+   "agent_id": "uuid",
+   "human_handoff_reason": "text",
+   "claimed_by": "uuid",
+   "claimed_by_name": "text",
+   "claimed_at": "timestamp with time zone",
+   "ficha_atendimento": "jsonb",
+   "resolvido_em": "timestamp with time zone",
+   "resolucao_motivo": "text"
+  },
+  "messages": {
+   "id": "uuid",
+   "conversation_id": "uuid",
+   "role": "text",
+   "content": "text",
+   "created_at": "timestamp with time zone",
+   "type": "text",
+   "audio_url": "text",
+   "image_url": "text",
+   "sender_user_id": "uuid",
+   "payload": "jsonb"
+  },
+  "work_waits": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "conversation_id": "uuid",
+   "work_run_id": "uuid",
+   "kind": "text",
+   "scope": "text",
+   "status": "text",
+   "vence_em": "timestamp with time zone",
+   "satisfeito_por": "text",
+   "satisfeito_em": "timestamp with time zone",
+   "avisos": "integer",
+   "created_at": "timestamp with time zone",
+   "updated_at": "timestamp with time zone"
   }
- }
+ },
+ "_doc_097": "SPEC-097 (05/09/2026): conversations, attendance_sessions, work_waits, messages e company_members lidos de information_schema.columns — porque o read model `lib/atendimento/casos.ts` leu TRES colunas que nao existiam (work_waits.due_at/attendance_session_id, attendance_sessions.protocolo, approval_requests.title) e o guarda ficou verde com um dublê que as inventava. ⚠️ attendance_sessions esta ANTES da migration 20260905_01 (sem conversation_id/resolvido_em/resolucao_motivo): quem aplicar a migration atualiza esta fixture no mesmo commit.",
+ "medido_em_097": "05/09/2026"
 }
