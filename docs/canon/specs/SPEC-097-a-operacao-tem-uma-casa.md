@@ -13,7 +13,8 @@
 > evento da Ficha que hoje têm `at: null` ganham hora e fonte.
 >
 > **v1.1 · 05/09/2026 · protocolo v11.2 + opção B (três marchas) · marcha CRÍTICO** · v1.0 + aquecimento (Opus, 160 mil tokens: **nota 74 → 18 emendas E1–E18
-aplicadas**; as duas falsas assinadas — 656 e `.limit(200)` — refutadas por comando; U4 e U6.3 saíram por orçamento; E6 obrigatória entrou como U2.3) (piso da §3.2: escrita no ciclo de vida do atendimento em
+aplicadas**; as duas falsas assinadas — 656 e `.limit(200)` — refutadas por comando; U4 e U6.3 saíram por orçamento; E6 obrigatória entrou como U2.3) · **v1.2**: a direção direta do Founder em 05/09 (linguagem humana em tudo → U7;
+Kanban/Casos mobile-first modelados em Hermes/Trello/Linear → régua de U5/U6; Segurados vira busca-atalho; o pós-acionamento vira a SPEC-097.1) (piso da §3.2: escrita no ciclo de vida do atendimento em
 > produção — `resolvido_em`, `claimed_by`, `work_waits`, e uma migration expand-first) · nasce da proposta
 > `specs-propostas/SPEC-097-a-operacao-tem-uma-casa.md` (03/09, 722 linhas; RP0: research pack SHA-256 `26fda881…4ad0` CONFERE, HEAD da proposta
 > `67506906` envelhecido) + o research pack (45 KB) + a medição de 05/09 (investigador/pesquisador, 193 mil tokens). 📊 Nota do investigador para a
@@ -47,7 +48,8 @@ aplicadas**; as duas falsas assinadas — 656 e `.limit(200)` — refutadas por 
 📊 `app/api/dashboard/atendimentos/route.ts:217-221`: cascata `closed → HUMAN_REQUESTED → claimed_by → fresh(<48h) → else 'concluido'` com
 `detalhe: … || 'Atendimento encerrado.'` (`:232`). Rodando a MESMA cascata sobre o acervo (668 conversas WhatsApp): **concluido 584 · em_conversa
 84** (AutoFleet 371/77 · Resulta 205/7 · Amandus 8/0). 📊 `conversations.status`: open 669 · active 59 · **closed 0** · HUMAN_REQUESTED 0;
-`resolvido_em NOT NULL = 0/728`; `resolucao_motivo NULL = 728`. Todos os 584 vieram do `else` do silêncio. O cliente filtra
+`resolvido_em NOT NULL = 0/728`; `resolucao_motivo NULL = 728`. Todos os 584 vieram do `else` do silêncio. 🧑 (Founder, 05/09): parte desses atendimentos — Resulta e Amandus com DDD 47 — eram SIMULAÇÕES que não
+terminavam; isso explica parte do acervo, não a regra: a tela continua não podendo deduzir desfecho de silêncio. O cliente filtra
 `stage !== 'concluido'` (`AttendanceQueueClient.tsx:98`) → **87,4% do acervo fora do quadro**. E o MESMO payload devolve `semana.terminaram: 0,
 indisponivel: false` (`:270-330`, SPEC-086) — contradição dentro de uma resposta (CLAUDE.md §9.5: responde, e responde errado). 📊 6 das 7
 colunas do quadro nunca recebem conversa por essa cascata (só `em_conversa` e `concluido`).
@@ -133,6 +135,13 @@ R8  TIMELINE    projeção sobre conversations/messages, attendance_sessions/dis
 R9  TENANT      toda relação Caso→Conversa/Trabalho/Aprovação/Peça é resolvida pela corretora da sessão (`resolveSessionCompany`); dois tenants
                 no guarda. UUID não é autorização.
 R10 CUTOVER     nenhuma tela nova ao lado das existentes: a Fila e os Casos de hoje passam a ler `projetarCasos`; "Histórico" some do label.
+R11 HUMANO      🧑 (Founder, 05/09) NENHUMA chave de métrica, variável, nome de campo/tabela ou status técnico chega ao corretor — nem no chat
+                (📊 hoje: `production.new_vs_renewal@1`, `portfolio.cancellation_rate`, `data.coverage@1` aparecem nas respostas), nem em Fila/Casos/
+                Quadro, nem no handoff. O ponteiro (`chave@versão`, pack_id) é do ARTIFACT; o texto fala como um corretor explicaria. Teste: "o Claude
+                escreveria isso?". Guarda com regex sobre o texto que as tools devolvem e sobre a tela.
+R12 MOBILE      a Fila/Quadro e o Caso funcionam no celular PRIMEIRO (colunas roláveis, card compacto com segurado · pedido · estágio · há quanto tempo ·
+                quem cuida · 1 chip de atenção) e no desktop com colunas lado a lado; referências: o Kanban do Hermes Agent, Trello, Linear (§3).
+                Segurados = busca-atalho para os casos da pessoa (não é CRM).
 ```
 
 ---
@@ -287,12 +296,24 @@ referência nova entrou sem substituir outra; a §7.3 fechou em 7.
   1.000, sem teto, agrupa e conta por estágio em memória — E11: estágio é derivado, PostgREST não agrega); CASOS é por episódio com `cursor
   (ultimo_evento_em, id)` + `busca` (protocolo/nome/telefone normalizado) no banco; `indisponivel` por fonte.
 - **U5.2** Fila e Casos chamam a função; a busca sai do cliente; "nada encontrado" só quando o banco disse 0.
+- **U5.4** (R12) o Quadro é mobile-first: colunas roláveis na horizontal com contagem no cabeçalho, card compacto (segurado · pedido · estágio · há quanto
+  tempo · quem cuida · 1 chip de atenção), filtro por responsável e "Atualizar"; no desktop, colunas lado a lado. Tokens visuais dos cards da 095. Sem drag.
+- **U5.5** Segurados = busca por nome/telefone → os casos da pessoa (dentro de Casos); a página própria, se ficar, é só esse atalho.
 - **U5.3** contadores da 086 saem da mesma projeção (uma verdade por payload — R1 fecha a contradição de 1.1).
 
 ### BLOCO U6 · O AGORA e a timeline com hora
-- **U6.1** Ficha: bloco AGORA = situação (R1) · dono (R2) · de quem espera (R4) · há quanto tempo · atenção (R6) · próxima ação (R7) · protocolo.
+- **U6.1** Ficha: bloco AGORA = situação (R1) · dono (R2) · de quem espera (R4) · há quanto tempo · atenção (R6) · próxima ação (R7) · protocolo; depois
+  "O que foi pedido", "O que aconteceu" (timeline humana), "Documentos" (só o que existe: anexos das mensagens — sem gaveta vazia), "Conversa" (link),
+  "Dados" (apólice · seguradora · serviço · sinistro × assistência). Quando está tudo sob controle, uma linha diz isso; quando precisa de humano, diz o quê e por quê.
 - **U6.2** timeline: os 7 tipos com `at: null` ganham `at` da fonte; cada item com `fonte`/`fonte_id`; sem `work_events`.
 - **U6.3** SAIU (E18): a timeline é ordenável e inteira por caso (📊 máx 1.326 mensagens: a Ficha já carrega); paginação volta com P-097-TIMELINE-CURSOR.
+
+### BLOCO U7 · Linguagem humana no chat e no atendimento (R11) — 🧑 pedido direto do Founder
+- **U7.1** as tools de relatório/métrica do chat devolvem ao modelo o NOME HUMANO da métrica (do registry) e nunca `chave@versão`; o ponteiro segue só
+  para o Artifact/evidence pack (a régua da 094 é do Artifact, não do texto). Regra curta no system prompt do agente do chat.
+- **U7.2** Fila/Casos/Ficha/Quadro: nenhum identificador técnico visível (guarda [13] do mjs: regex sobre o HTML renderizado pelo dublê).
+- **U7.3** guarda `backend/tests/test_o_chat_fala_como_corretor.py`: executa as tools com dublê e reprova `\b[a-z_]+\.[a-z_]+@\d+\b` e chaves `snake.case`
+  no texto devolvido; PAR com tool-controle que devolve a chave. Canário: uma pergunta de métrica ao vivo sem chave na resposta.
 
 ### BLOCO E · Canário vivo
 - `backend/scripts/canario_097.py` (`AUTOBROKERS_CANARIO=1`, Resulta): cria conversa + episódio canário, abre espera pelo escritor, assume (claim),
@@ -329,13 +350,16 @@ referência nova entrou sem substituir outra; a §7.3 fechou em 7.
 P-097-DOCUMENTOS-DO-ATENDIMENTO (a evidência como coluna de mensagem, sem proveniência) · P-097-MIDIA-INALCANCAVEL (📊 9.002 mídias do history sync
 sem `waE2E.Message`) · P-097-APPROVAL-SEM-CONVERSA (`approval_requests` não volta ao atendimento) · P-097-POLLING-10S (30 mil consultas/operador/dia;
 Realtime só depois de medir) · P-097-DRAG (§16) · P-097-ESPERA-COM-ESCRITOR (U4) · P-097-TIMELINE-CURSOR (U6.3) ·
-P-097-SESSOES-ORFAS (📊 42,2% sem conversa 1:1).
+P-097-SESSOES-ORFAS (📊 42,2% sem conversa 1:1) · **SPEC-097.1 · Pós-acionamento** (🧑 Founder: ler as conversas REAIS da Regina e da Saionara — Resulta, DDD 48 — depois
+do acionamento: o que o cliente pergunta, como as atendentes resolvem → cartas de RAG, instruções do agente de Follow-up da Central de Agentes (conferir se está
+ligado), handoff que diz "é pós-acionamento, a dúvida é X, falta Y"; meta: resolver ≥ 95%). Nasce logo depois desta, no mesmo chat.
 
 ## 7. A CAIXA DO FOUNDER
 - **Nada bloqueante.** As duas decisões que a proposta mandava para você (U3 espera: escritor ou sai; U4 episódio) foram pontuadas e decididas
   (§4 U3/U4): o episódio é `attendance_sessions` com o elo para a conversa; a espera só existe com escritor.
 - **Depois:** (a) o espelho do WhatsApp (Atlas) ligado nas corretoras — com ele o corredor sabe a conversa sem a junção por telefone; (b) documentos
-  do atendimento como evidência (P-097-DOCUMENTOS) quando houver acervo.
+  do atendimento como evidência (P-097-DOCUMENTOS) quando houver acervo; (c) a 097.1 (pós-acionamento) lê conversas da Resulta (DDD 48) só para
+  ANÁLISE — nada é enviado e nada da Amandus/DDD 47 entra como parâmetro (são pessoais/simulação).
 
 ## 8. GATE FINAL
 ```

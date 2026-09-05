@@ -228,7 +228,9 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     allowedDomains dos widgets; a chave interna nos dois contêineres).
 1º  SPEC-097 · A operação tem uma casa — CONVERTER MEDINDO (proposta + research pack na pasta; a 096 deixou: `notice`/`policy.blocked` tipados
     para o card de caso, `payload.turn` como elo turno↔peça, e a regra "o corpo não escolhe a corretora" que a 097 estende a Case/Conversation)
-2º  SPEC-098 (proposta + research pack na pasta)  →  depois, o MASTERPLAN
+2º  SPEC-097.1 · Pós-acionamento (🧑 pedido do Founder em 05/09: as conversas reais da Regina/Saionara depois do acionamento → RAG, Follow-up,
+    handoff claro; meta ≥ 95% resolvido) — LEVE/PADRÃO, no mesmo chat da 097
+3º  SPEC-098 (proposta + research pack na pasta)  →  depois, o MASTERPLAN
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta. Canário vivo SEMPRE por script,
     com `AUTOBROKERS_CANARIO=1` (regra nos pacotes desde a 095).
