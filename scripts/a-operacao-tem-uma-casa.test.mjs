@@ -151,6 +151,9 @@ export const MUTACOES = [
   { id: 'U12', arquivo: 'app/api/dashboard/atendimentos/ficha/[id]/route.ts',
     o_que: "acrescentar `work_events` como fonte da timeline",
     reprova: '[10] (telemetria de motor vira evento do atendimento — §18/R8)' },
+  { id: 'M13', arquivo: 'lib/atendimento/casos.ts',
+    o_que: "o rótulo do estágio vira a chave crua (`estagio_label = estagio`)",
+    reprova: "[13] (o corretor vê 'precisa_de_voce' em vez de \"pediu uma pessoa\" — R11)" },
   // U9 (`mirror_conversation_id` obrigatório → [B1]) e U10 (backfill sem o 1:1
   // → [B4]) são do guarda irmão em python, e estão declaradas lá.
 ];
@@ -1034,6 +1037,70 @@ function analisarEstagioParado({ estagios }) {
   return [];
 }
 
+// [13] R11 — LINGUAGEM HUMANA: nenhum texto do corretor expõe chave/vocabulário
+// de máquina. As chaves do JSON são contrato de código — o alvo aqui é só o
+// TEXTO que a tela mostra (§9.4: regex sobre o texto REAL, produzido pelo
+// motor real, nunca sobre a declaração).
+const RE_CHAVE_METRICA = /\b[a-z_]+\.[a-z_]+@\d+\b/;
+const RE_IDENTIFICADOR_PONTO = /\b[a-z]+_[a-z_]+\.[a-z_]+\b/;
+const RE_VOCAB_TECNICO = /\b(tool|node|lease|redis|qdrant|run_id|work_run|unblock_state|HUMAN_REQUESTED|claimed_by|resolvido_em|session_id|conversation_id|uuid|null|undefined|NaN)\b/;
+
+/** Só os TEXTOS que a tela mostra ao corretor — nunca as CHAVES do JSON. */
+function textosDoItem(i) {
+  const t = [];
+  const add = (v) => { if (typeof v === 'string' && v.trim()) t.push(v); };
+  if (!i || typeof i !== 'object') return t;
+  add(i.detalhe);
+  add(i.titulo);
+  add(i.estagio_label);
+  if (i.proxima_acao) add(i.proxima_acao.texto);
+  const listaAtencao = i.atencao || i.agora?.atencao || [];
+  for (const a of listaAtencao) {
+    if (typeof a === 'string') add(a);
+    else if (a && typeof a === 'object') { add(a.texto); add(a.label); add(a.rotulo); }
+  }
+  if (i.agora && typeof i.agora === 'object') {
+    add(i.agora.situacao);
+    add(i.agora.ha_quanto_tempo);
+    if (i.agora.proxima_acao) add(i.agora.proxima_acao.texto);
+  }
+  return t;
+}
+
+/** Os textos da timeline da Ficha (`label`/`texto`/`descricao` — nunca `fonte`/`fonte_id`). */
+function textosDaTimeline(timeline) {
+  const t = [];
+  const add = (v) => { if (typeof v === 'string' && v.trim()) t.push(v); };
+  for (const e of (timeline || [])) { add(e.label); add(e.texto); add(e.descricao); }
+  return t;
+}
+
+function analisarLinguagemHumana({ fila, casos, ficha }) {
+  if (fila?.erro) return [`a projeção da Fila não executou: ${fila.erro}`];
+  if (casos?.erro) return [`a projeção de Casos não executou: ${casos.erro}`];
+  if (ficha?.erro) return [`a ficha não executou: ${ficha.erro}`];
+  const p = [];
+  const textos = [
+    ...itensDe(fila).flatMap(textosDoItem),
+    ...itensDe(casos).flatMap(textosDoItem),
+    ...textosDaTimeline(ficha.corpo?.ficha?.timeline ?? ficha.corpo?.timeline ?? []),
+  ];
+  if (!textos.length) return ['nenhum texto visível foi encontrado nos três payloads (Fila/Casos/Ficha) — nada foi medido (R11)'];
+  const achados = new Map();
+  for (const texto of textos) {
+    const motivos = [];
+    if (RE_CHAVE_METRICA.test(texto)) motivos.push('chave de métrica (x.y@n)');
+    if (RE_IDENTIFICADOR_PONTO.test(texto)) motivos.push('identificador snake_case.com.ponto');
+    const vocab = texto.match(RE_VOCAB_TECNICO);
+    if (vocab) motivos.push(`vocabulário técnico ("${vocab[0]}")`);
+    if (motivos.length) achados.set(texto, motivos);
+  }
+  for (const [texto, motivos] of achados) {
+    p.push(`texto para o corretor expõe linguagem de máquina: "${texto}" — ${motivos.join('; ')} (R11)`);
+  }
+  return p;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 🔴 `--fila-json` — a MESMA execução, servida a quem não é Node
 //
@@ -1213,6 +1280,20 @@ controle(analisarCutover({
 controle(analisarEstagioParado({ estagios: "export const ATTENDANCE_STAGES = ['em_conversa','concluido'] as const;" }),
   "[12] lista-controle sem 'parado'");
 
+console.log('\n[13] R11 — LINGUAGEM HUMANA: nenhum texto do corretor é chave/vocabulário de máquina');
+checar(analisarLinguagemHumana({ fila: obsFila, casos: obsCasos, ficha: obsFicha }),
+  '[13] `detalhe`/`titulo`/`estagio_label`/`proxima_acao.texto`/`atencao`/timeline/`agora.*` não citam chave de métrica, identificador snake_case.com.ponto nem vocabulário técnico (R11)');
+controle(analisarLinguagemHumana({
+  fila: { saida: { items: [{ key: 'a', detalhe: 'aguardando work_run 3f2a (unblock_state=travado)' }] } },
+  casos: { saida: { items: [] } },
+  ficha: { corpo: { timeline: [] } },
+}), '[13] payload-controle com `detalhe` citando work_run/unblock_state — linguagem de máquina no texto do corretor');
+checar(analisarLinguagemHumana({
+  fila: { saida: { items: [{ key: 'a', detalhe: 'Aguardando retorno da seguradora há 2 dias.' }] } },
+  casos: { saida: { items: [] } },
+  ficha: { corpo: { timeline: [{ label: 'Atendimento concluído' }] } },
+}), '[13] payload-controle limpo — texto humano não é acusado (prova que o guarda distingue)');
+
 console.log('\n[CTL] O ARNÊS — os dublês conseguem discordar de si mesmos');
 
 const provaDoDuble = await (async () => {
@@ -1263,10 +1344,10 @@ const provaDasMutacoes = (() => {
       p.push(`a mutação ${m.id} aponta para um caminho que não existe: ${m.arquivo}`);
     }
   }
-  if (MUTACOES.length !== 10) p.push(`MUTACOES tem ${MUTACOES.length} entradas; 10 são deste guarda (as outras 2 são do guarda python)`);
+  if (MUTACOES.length !== 11) p.push(`MUTACOES tem ${MUTACOES.length} entradas; 11 são deste guarda (as outras 2 são do guarda python)`);
   return p;
 })();
-checar(provaDasMutacoes, '[CTL] as 10 mutações deste guarda têm marcador único e caminho real');
+checar(provaDasMutacoes, '[CTL] as 11 mutações deste guarda têm marcador único e caminho real');
 
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n${'='.repeat(78)}`);
