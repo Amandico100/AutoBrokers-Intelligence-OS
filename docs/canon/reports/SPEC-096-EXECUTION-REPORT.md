@@ -234,4 +234,13 @@ P-096-LEGADO-ERRO-COMO-TEXTO · P-096-SESSION-FAIL-OPEN · 🧑 P-096-MEMORIA-LE
 - FATO/INFERÊNCIA/RECOMENDAÇÃO separados no texto; números 📊 com comando; 💭 marcados.
 
 ## 11. Entrega
-{A PREENCHER: saída do `git push origin HEAD:main`}
+```
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   e1494ab..17374cc  HEAD -> main
+$ git fetch origin && git rev-list --count origin/main..HEAD
+0
+```
+📊 05/09/2026 ~10:40 — 27 commits (e1494ab..17374cc: SPEC, guardas, backend, tela/BFF, consertos do painel, migration, relatório, INDICE, dossiê,
+pendências, prompt da 097). O EasyPanel constrói a `main`: **o Founder clica Implantar (smith-api + smith-web)** e confere a chave interna nos dois
+contêineres (P-096-CHAVE-INTERNA-NO-NEXT). Depois disso, a régua de tempo por curl (§8).
