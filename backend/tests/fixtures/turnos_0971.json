@@ -29,19 +29,19 @@
   {"turno": 13, "conversa": "cv-0971-07", "em": "2026-09-04T08:30:00-03:00", "espera_ativa": false,
    "mensagens": ["e a previsao do para-brisa?"], "rotulo_esperado": "H"},
   {"turno": 14, "conversa": "cv-0971-08", "em": "2026-09-03T17:40:00-03:00", "espera_ativa": false,
-   "mensagens": ["abre o sinistro do meu outro carro tambem?"], "rotulo_esperado": "I"},
+   "mensagens": ["abre o sinistro do meu outro carro tambem?"], "rotulo_esperado": "I", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
   {"turno": 15, "conversa": "cv-0971-09", "em": "2026-09-04T09:20:00-03:00", "espera_ativa": true,
-   "mensagens": ["hoje temos que cobra-los de novo, ne?"], "rotulo_esperado": "J"},
+   "mensagens": ["hoje temos que cobra-los de novo, ne?"], "rotulo_esperado": "J", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
   {"turno": 16, "conversa": "cv-0971-10", "em": "2026-09-04T21:05:00-03:00", "espera_ativa": true,
    "mensagens": ["esperou um monte e ainda nao deu certo", "estou parado no acostamento"],
-   "rotulo_esperado": "K1"},
+   "rotulo_esperado": "K1", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
   {"turno": 17, "conversa": "cv-0971-11", "em": "2026-09-04T22:10:00-03:00", "espera_ativa": false,
    "mensagens": ["muito abuso", "disseram que o prestador foi ao local mas nao foi"],
-   "rotulo_esperado": "K2"},
+   "rotulo_esperado": "K2", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
   {"turno": 18, "conversa": "cv-0971-12", "em": "2026-09-05T07:50:00-03:00", "espera_ativa": false,
-   "mensagens": ["quero cancelar o atendimento"], "rotulo_esperado": "K3"},
+   "mensagens": ["quero cancelar o atendimento"], "rotulo_esperado": "K3", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
   {"turno": 19, "conversa": "cv-0971-13", "em": "2026-09-05T08:15:00-03:00", "espera_ativa": false,
-   "mensagens": ["ate a indenizacao ser paga, leva quanto tempo?"], "rotulo_esperado": "L"},
+   "mensagens": ["ate a indenizacao ser paga, leva quanto tempo?"], "rotulo_esperado": "L", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
 
   {"_doc_ruido": "🔴 O RUIDO E PARTE DA FIXTURE, nao enfeite: 📊 no acervo, 88 msgs sao social (M), 84 midia sem texto (Z) e 633 fragmentos (N). Se a regua contasse isto, passaria de 95% sem resolver nada (CLAUDE.md §9.5) -- e e por isso que [G1] mede o DENOMINADOR."},
   {"turno": 20, "conversa": "cv-0971-01", "em": "2026-09-05T09:00:00-03:00", "espera_ativa": true,
@@ -59,5 +59,11 @@
 
   {"_doc_par": "🔴 O TURNO QUE E O PAR DE [G2b]: rotulo de ESTADO (A) com espera ativa. Sem ele, `estado_REAL` seria zero nas DUAS passadas e o par de [G2p] nao conseguiria diferir -- guarda que nao pode ficar vermelho nao guarda nada (§9.3)."},
   {"turno": 26, "conversa": "cv-0971-14", "em": "2026-09-05T10:00:00-03:00", "espera_ativa": true,
-   "mensagens": ["e ai, saiu alguma novidade do meu caso?"], "rotulo_esperado": "A"}
+   "mensagens": ["e ai, saiu alguma novidade do meu caso?"], "rotulo_esperado": "A"},
+  {"_doc_r11": "🔴 R11 -- a linha da atendente carrega CASO, COLEGA e VIDA PESSOAL no mesmo fio (📊 relatorio §2: 58% cai em N, e a amostra de 60 mostrou creche, fim de semana e `passa pra fulana`). Estes dois turnos vem de conversa que `e_atendimento_de_seguro` DESCARTA: a regua os conta em `descartados` e NAO os poe no denominador. 💭 sinteticos, zero PII."},
+  {"turno": 27, "conversa": "cv-0971-15", "em": "2026-09-05T11:00:00-03:00", "espera_ativa": false,
+   "pessoal": true, "mensagens": ["como foi o fim de semana?", "levei as criancas na praia"],
+   "rotulo_esperado": "N"},
+  {"turno": 28, "conversa": "cv-0971-15", "em": "2026-09-05T11:05:00-03:00", "espera_ativa": false,
+   "pessoal": true, "mensagens": ["passa pra fulana, por favor"], "rotulo_esperado": "N"}
 ]

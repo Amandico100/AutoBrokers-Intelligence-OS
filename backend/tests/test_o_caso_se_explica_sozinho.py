@@ -34,7 +34,7 @@ O CONTRATO QUE ESTE GUARDA FIXA -- e o que os builders tem de escrever
                                devolve a PRIMEIRA categoria != M/N/Z da rajada;
                                'N' quando nenhuma casa.
         mapa_de_cartas() -> {rotulo: id_da_carta}       (D,E,F,C,B,H)
-        bloco_de_pos_acionamento() -> str               🔴 GERADO de
+        bloco_do_prompt() -> str               🔴 GERADO de
                                `mapa_de_cartas()` -- nunca constante (E9).
 
     app/services/dispatch_router.py::registrar_checkpoint            (U1.1/R4)
@@ -60,7 +60,7 @@ O CONTRATO QUE ESTE GUARDA FIXA -- e o que os builders tem de escrever
           `pos_acionamento:<categoria>` quando o motivo vem vazio (E19).
 
     app/agents/graph.py  (~l.1092)                                   (U3.2)
-        · anexa `bloco_de_pos_acionamento()` ao prompt base sob o MESMO gate
+        · anexa `bloco_do_prompt()` ao prompt base sob o MESMO gate
           `agent_role == 'attendance'` do bloco de acionamento.
         ⛔ o bloco de ABERTURA nao muda: hash congelado em [E2].
 
@@ -75,6 +75,45 @@ O CONTRATO QUE ESTE GUARDA FIXA -- e o que os builders tem de escrever
     app/api/auxiliaries.py                                           (U3.3)
         · o draft do follow-up carrega a ESPERA ativa da conversa e devolve
           `dry_run: true` NA RESPOSTA (hoje so no metadata do run, l.689).
+
+    ---- v1.2 (a direcao do Founder: o acompanhamento e uma FASE) ----------
+    app/atendimento/acompanhamento.py                           (R10/U5.1-3)
+        pode_falar_com_o_cliente(db, company_id, conversa) -> (pode, porque)
+        async entregar_novidade(db, *, company_id, conversation_id, texto,
+                                gatilho) -> {"gerada", "entregue",
+                                             "suprimida_por", "texto"}
+        🔴 UMA PORTA SO para os dois gatilhos. Nela moram `agents.is_active`,
+        `companies.agent_enabled`, `acionamento_profile.acompanhamento` e
+        `pausar_ia` -- duas portas seriam dois lugares para esquecer o
+        desligador, e desligador esquecido e mensagem no WhatsApp de um
+        segurado de verdade (R7).
+
+    app/services/dispatch_router.py::registrar_checkpoint          (U5.1)
+        · estado/previsao que MUDA em `captured`/`monitoring` chama
+          `entregar_novidade` UMA vez, com texto humano (C3) do estado.
+        ⛔ previsao que nao mudou: nao chama.
+
+    app/tasks/handoff_watchdog.py::varrer_esperas_vencidas         (U5.2)
+        · `scope='pos_acionamento'` vencida: alem do aviso a equipe (hoje),
+          chama `entregar_novidade` com "ainda sem novidade; a corretora esta
+          cobrando" -- uma por aviso, ate `AVISOS_ATE_EXPIRAR`, sem previsao.
+        ⛔ `scope='acionamento'`: comportamento de hoje, nada ao cliente.
+
+    app/atendimento/pos_acionamento.py                          (R9/R11/U3.1)
+        SITUACOES_PARA_HUMANO   🔴 a FONTE UNICA lida pelo prompt, pelo
+                                handoff e pela regua (K1,K2,K3,J,L,F*,B*,E*,Z,P)
+        e_atendimento_de_seguro(conversa) -> bool     (R11: pessoal e colega
+                                sao DESCARTADOS, nunca viram carta nem regua)
+
+    app/agents/tools/human_handoff.py                              (U2.3)
+        · o handoff POS grava `ficha_atendimento.agente_concluiu = {em,
+          motivo}` (jsonb existente). ⛔ `resolvido_em` continua sendo o
+          desfecho da CORRETORA.
+
+    scripts/regua_0971.py                                        (R8/U4.1)
+        · alem do que a v1.1 pedia: `resolvido_pelo_agente` (carta ∨ estado ∨
+          handoff com dossie COMPLETO) · `resolvido_sem_humano` (carta ∨
+          estado) · `para_humano_sem_dossie` · `descartados` (R11).
 
     lib/atendimento/casos.ts + scripts/a-operacao-tem-uma-casa.test.mjs  (U1.3/E6)
         · DUAS esperas ativas (escopos diferentes) -> a projecao escolhe a de
@@ -120,6 +159,22 @@ A TABELA -- assercao -> R/U da SPEC -> PAR -> mutacao que a derruba
   [I1]   nenhum motor novo (cron/scheduler) §5       [I1p] fonte-controle com   --
                                                      APScheduler e acusada
   [I2]   classificar_turno e UM objeto so   §9.4     [I2p] copia != original    U4
+  ---- v1.2 ------------------------------------------------------------------
+  [M1]   previsao que MUDA gera a novidade   R10/U5.1 [M1p] sem mudanca, nao    --
+  [M2]   desligado: GERADA e SUPRIMIDA,      R7/U5.3  [M2p] ligado: ENTREGUE    U6
+         ZERO envio (3 desligadores)
+  [N1]   espera POS vencida fala com o       R10/U5.2 [N3] `acionamento` segue  U6B
+         cliente, uma por aviso                       como hoje; [N3b] no teto
+  [N2]   a mensagem e honesta                R3       [N2b] sem data/previsao   --
+  [N4]   o vigia usa a PORTA UNICA           R7       0 envios reais            U6B
+  [O1]   ACEITA atendimento de verdade       R11      [O2p] separa os DOIS      U7
+  [O2]   DESCARTA pessoal e colega           R11      lados                     U7
+  [O3]   a regua PUBLICA os descartados      U4.1     [O3p] a fixture tem       --
+  [Q1]   handoff grava `agente_concluiu`     U2.3     [Q1p] e NAO resolvido_em  --
+  [Q2]   as DUAS reguas sao publicadas       R8       [Q2p] elas DIFEREM        --
+  [Q3]   handoff sem dossie NAO conta        R8       [Q3b] vai para            U8
+                                                      para_humano_sem_dossie
+  [Q4]   SITUACOES_PARA_HUMANO e UM objeto   R9/§9.4  [Q4p] fonte sem a lista   --
 
 ===============================================================================
 COMO ELE FUNCIONA -- sem rede, sem banco, sem servidor
@@ -231,14 +286,14 @@ MUTACOES = [
      "U2C"),
     # U3 -- o bloco do prompt vira CONSTANTE -> [E1]/[J1] vermelhos
     ("app/atendimento/pos_acionamento.py",
-     "def bloco_de_pos_acionamento(",
-     "def bloco_de_pos_acionamento(*a, **k):  # _MUTADO_0971_U3\n"
+     "def bloco_do_prompt(",
+     "def bloco_do_prompt(*a, **k):  # _MUTADO_0971_U3\n"
      '    return "PÓS-ACIONAMENTO: responda com o que está escrito."\n\n\n'
-     "def _bloco_de_pos_acionamento_original(",
+     "def _bloco_do_prompt_original(",
      "U3"),
     # U3B -- o gate `attendance` some do anexo do bloco -> [E3] vermelho
     ("app/agents/graph.py",
-     "bloco_de_pos_acionamento", "bloco_de_pos_acionamento_MUTADO_0971_U3B",
+     "bloco_do_prompt", "bloco_do_prompt_MUTADO_0971_U3B",
      "U3B"),
     # U4 -- a regua conta MENSAGEM em vez de TURNO -> [G1]/[I2] vermelhos
     ("scripts/regua_0971.py",
@@ -256,6 +311,29 @@ MUTACOES = [
     ("app/api/auxiliaries.py",
      "esperando_seguradora", "esperando_seguradora_MUTADO_0971_U5B",
      "U5B"),
+    # ---- v1.2 (R10/R11/R8, SPEC §4 G) -------------------------------------
+    # U6 -- a novidade SAI mesmo com o agente desligado -> [M2] vermelho
+    ("app/atendimento/acompanhamento.py",
+     "def pode_falar_com_o_cliente(",
+     "def pode_falar_com_o_cliente(*a, **k):  # _MUTADO_0971_U6\n"
+     '    return True, ""\n\n\n'
+     "def _pode_falar_com_o_cliente_original(",
+     "U6"),
+    # U6B -- o vigia manda ao cliente por fora da porta unica -> [N4] vermelho
+    ("app/tasks/handoff_watchdog.py",
+     "entregar_novidade", "_entregar_direto_MUTADO_0971_U6B",
+     "U6B"),
+    # U7 -- o filtro deixa passar conversa pessoal -> [O2] vermelho
+    ("app/atendimento/pos_acionamento.py",
+     "def e_atendimento_de_seguro(",
+     "def e_atendimento_de_seguro(*a, **k):  # _MUTADO_0971_U7\n"
+     "    return True\n\n\n"
+     "def _e_atendimento_de_seguro_original(",
+     "U7"),
+    # U8 -- handoff SEM `Onde parou` passa a contar como resolvido -> [Q3] vermelho
+    ("scripts/regua_0971.py",
+     "o_que_fazer", "o_que_fazer_MUTADO_0971_U8",
+     "U8"),
 ]
 
 # ===========================================================================
@@ -999,12 +1077,12 @@ def bloco_E():
         certo(False, "[E1] `pos_acionamento` importa", repr(erro))
     else:
         try:
-            bloco = PA.bloco_de_pos_acionamento()
+            bloco = PA.bloco_do_prompt()
             exc = None
         except Exception as e:  # noqa: BLE001
             bloco, exc = "", e
         certo(exc is None and len(str(bloco)) > 200,
-              "[E1] `bloco_de_pos_acionamento()` gera texto",
+              "[E1] `bloco_do_prompt()` gera texto",
               "exc=%r len=%d" % (exc, len(str(bloco))))
         mapa = {}
         try:
@@ -1042,7 +1120,7 @@ def bloco_E():
     #       leitura consegue acusar uma fonte sem gate (CLAUDE.md §9.4).
     fonte = so_o_codigo_py(ler("app/agents/graph.py"))
     def _tem_gate(texto):
-        i = texto.find("bloco_de_pos_acionamento")
+        i = texto.find("bloco_do_prompt")
         if i < 0:
             return False
         janela = texto[max(0, i - 1500):i + 500]
@@ -1052,7 +1130,7 @@ def bloco_E():
     certo(_tem_gate(fonte),
           "[E3] `graph.py` anexa o bloco POS sob o gate `agent_role=='attendance'`",
           "📊 4 agentes attendance (E16); metade fraca declarada")
-    par(not _tem_gate('base_instructions += bloco_de_pos_acionamento()'),
+    par(not _tem_gate('base_instructions += bloco_do_prompt()'),
         "[E3p] a fonte-controle SEM gate e acusada pela mesma leitura")
 
 
@@ -1064,12 +1142,12 @@ def bloco_J():
         certo(False, "[J1] `pos_acionamento` importa", repr(erro))
         return
     try:
-        antes = PA.bloco_de_pos_acionamento()
-        igual = PA.bloco_de_pos_acionamento()
+        antes = PA.bloco_do_prompt()
+        igual = PA.bloco_do_prompt()
         original = PA.mapa_de_cartas
         PA.mapa_de_cartas = lambda: {}
         try:
-            depois = PA.bloco_de_pos_acionamento()
+            depois = PA.bloco_do_prompt()
         finally:
             PA.mapa_de_cartas = original
         exc = None
@@ -1422,6 +1500,438 @@ def bloco_I():
 
 
 # ===========================================================================
+# [M] O ACOMPANHAMENTO (R10/U5.1) -- a novidade nasce, e o desligador cala
+#
+# 🔴 A PORTA E UMA SO. O gatilho do corredor (U5.1) e o do vigia (U5.2) passam
+# pela MESMA funcao, porque e nela que moram `agents.is_active`,
+# `companies.agent_enabled`, `acionamento_profile.acompanhamento` e `pausar_ia`.
+# Duas portas seriam dois lugares para esquecer o desligador -- e o desligador
+# esquecido e mensagem no WhatsApp de um segurado de verdade (R7).
+#
+#     app/atendimento/acompanhamento.py
+#       pode_falar_com_o_cliente(db, company_id, conversa) -> (pode, porque)
+#       async entregar_novidade(db, *, company_id, conversation_id, texto,
+#                               gatilho) -> {"gerada", "entregue",
+#                                            "suprimida_por", "texto"}
+# ===========================================================================
+def _mundo_do_acompanhamento(ligado=True, acompanhamento=True, assumida=False):
+    conversa = conversa_acionada()
+    conversa["status"] = "open"
+    if assumida:
+        conversa["claimed_by"] = "u-atendente-1"
+        conversa["claimed_by_name"] = "Alguem da equipe"
+    perfil = {} if acompanhamento else {"acompanhamento": False}
+    return {"conversations": [conversa],
+            "companies": [{"id": CO_ALFA, "agent_enabled": bool(ligado),
+                           "acionamento_profile": perfil}],
+            "agents": [{"id": "ag-1", "company_id": CO_ALFA,
+                        "agent_role": "attendance", "is_active": bool(ligado)}],
+            "work_waits": [espera_ativa()],
+            "work_events": [], "messages": []}
+
+
+def _com_outbound_dublado(fn):
+    """Roda `fn(envios)` com TODA saida de WhatsApp dublada e CONTADA."""
+    envios = []
+    try:
+        from app.services import whatsapp_service as WS
+    except Exception as exc:  # noqa: BLE001
+        return None, envios, exc
+    original = WS.WhatsappService.send_message
+
+    def _sem_saida(self, *a, **k):  # noqa: ANN001
+        envios.append((a, k))
+        return False
+
+    WS.WhatsappService.send_message = _sem_saida
+    try:
+        return fn(envios), envios, None
+    except Exception as exc:  # noqa: BLE001
+        return None, envios, exc
+    finally:
+        WS.WhatsappService.send_message = original
+
+
+def bloco_M():
+    _p("\n[M] R10/U5.1 -- o corredor gera a NOVIDADE, e o desligador a suprime")
+    import asyncio
+
+    AC, erro = importar("app.atendimento.acompanhamento",
+                        "a porta unica do acompanhamento ainda nao existe")
+    if AC is None:
+        certo(False, "[M1] `app/atendimento/acompanhamento.py` importa", repr(erro))
+        return
+
+    # ---- M1: o corredor CHAMA a porta quando a previsao MUDA ---------------
+    chamadas = []
+
+    async def _recorder(db, **k):
+        chamadas.append(k)
+        return {"gerada": True, "entregue": False, "suprimida_por": "duble",
+                "texto": str(k.get("texto") or "")}
+
+    original = AC.entregar_novidade
+    AC.entregar_novidade = _recorder
+    try:
+        mundo = _mundo_do_acompanhamento()
+        mundo["work_waits"] = [espera_ativa(vence="2026-09-12T12:00:00+00:00")]
+        banco, _dr, exc = _checkpoint("captured", protocolo="P-CANARIO-1",
+                                      previsao="2026-09-19T12:00:00+00:00",
+                                      dados=mundo)
+        # o CONTROLE: o MESMO checkpoint, com a previsao que ja estava escrita
+        chamadas_com_mudanca = list(chamadas)
+        chamadas[:] = []
+        mundo2 = _mundo_do_acompanhamento()
+        mundo2["work_waits"] = [espera_ativa(vence="2026-09-12T12:00:00+00:00")]
+        _b2, _d2, _e2 = _checkpoint("captured", protocolo="P-CANARIO-1",
+                                    previsao="2026-09-12T12:00:00+00:00",
+                                    dados=mundo2)
+        chamadas_sem_mudanca = list(chamadas)
+    finally:
+        AC.entregar_novidade = original
+
+    certo(exc is None and len(chamadas_com_mudanca) == 1,
+          "[M1] previsao que MUDA em `captured` gera UMA novidade ao cliente",
+          "exc=%r chamadas=%r" % (exc, chamadas_com_mudanca))
+    texto = str((chamadas_com_mudanca or [{}])[0].get("texto") or "")
+    certo(bool(texto) and not problemas_de_lingua(texto)
+          and ("seguradora" in texto.lower() or "loja" in texto.lower()),
+          "[M1b] a novidade e TEXTO HUMANO e diz o estado (R3/R6)",
+          "texto=%r problemas=%r" % (texto[:200], problemas_de_lingua(texto)[:4]))
+    par(not chamadas_sem_mudanca,
+        "[M1p] o MESMO checkpoint SEM mudanca de previsao nao gera novidade",
+        "chamadas=%r" % (chamadas_sem_mudanca,))
+
+    # ---- M2: o desligador. A novidade e GERADA e SUPRIMIDA, e nada sai ------
+    def _entregar(mundo):
+        banco = Banco(mundo)
+
+        def _rodar(_envios):
+            return asyncio.run(AC.entregar_novidade(
+                banco, company_id=CO_ALFA, conversation_id=CONVERSA_A,
+                texto="A loja ainda nao devolveu a previsao; seguimos cobrando.",
+                gatilho="corredor"))
+
+        r, envios, exc_ = _com_outbound_dublado(_rodar)
+        return r or {}, envios, exc_, banco
+
+    for nome, mundo in (("agente desligado", _mundo_do_acompanhamento(ligado=False)),
+                        ("acompanhamento=false",
+                         _mundo_do_acompanhamento(acompanhamento=False)),
+                        ("conversa assumida",
+                         _mundo_do_acompanhamento(assumida=True))):
+        r, envios, exc_, banco = _entregar(mundo)
+        certo(exc_ is None and r.get("gerada") is True and r.get("entregue") is False
+              and bool(str(r.get("suprimida_por") or "").strip()) and envios == [],
+              "[M2 · %s] a novidade e GERADA e SUPRIMIDA, e ZERO envio" % nome,
+              "exc=%r r=%r envios=%r" % (exc_, r, envios))
+        eventos = [c["carga"] for c in banco.escritas("work_events", "insert")]
+        certo(any("suprimida_por" in json.dumps(e, default=str) for e in eventos),
+              "[M2b · %s] a supressao fica REGISTRADA (`suprimida_por`)" % nome,
+              "work_events=%r" % (eventos,))
+
+    # ---- o CONTROLE de [M2]: tudo LIGADO, a novidade e entregue -------------
+    r_on, envios_on, exc_on, _b = _entregar(_mundo_do_acompanhamento())
+    par(exc_on is None and r_on.get("entregue") is True
+        and not str(r_on.get("suprimida_por") or "").strip(),
+        "[M2p] com o agente LIGADO e o acompanhamento LIGADO, ela e ENTREGUE "
+        "(as duas passadas CONSEGUEM diferir)",
+        "r=%r envios=%r exc=%r" % (r_on, envios_on, exc_on))
+
+
+# ===========================================================================
+# [N] O VIGIA QUE JA RODA (R10/U5.2) -- a espera vencida fala com o cliente
+# ===========================================================================
+def _vigiar(mundo):
+    """Roda `varrer_esperas_vencidas` REAL com o banco dublado."""
+    import asyncio
+
+    WD, erro = importar("app.tasks.handoff_watchdog", "o vigia nao carrega")
+    if WD is None:
+        return None, None, erro
+    try:
+        from app.core import database as DB
+    except Exception as exc:  # noqa: BLE001
+        return None, None, exc
+    banco = Banco(mundo)
+
+    async def _cliente():
+        return banco
+
+    original = DB.create_async_supabase_client
+    DB.create_async_supabase_client = _cliente
+    try:
+        resumo = asyncio.run(WD.varrer_esperas_vencidas())
+        return banco, resumo, None
+    except Exception as exc:  # noqa: BLE001
+        return banco, None, exc
+    finally:
+        DB.create_async_supabase_client = original
+
+
+def bloco_N():
+    _p("\n[N] R10/U5.2 -- a espera VENCIDA avisa a equipe (como hoje) E fala com o cliente")
+    AC, erro = importar("app.atendimento.acompanhamento",
+                        "a porta unica do acompanhamento ainda nao existe")
+    if AC is None:
+        certo(False, "[N1] `app/atendimento/acompanhamento.py` importa", repr(erro))
+        return
+    FIM, _e = importar("app.services.o_fim_do_atendimento", "o desfecho nao carrega")
+    teto = getattr(FIM, "AVISOS_ATE_EXPIRAR", 3) if FIM else 3
+
+    vencida = "2026-09-01T12:00:00+00:00"
+    chamadas = []
+
+    async def _recorder(db, **k):
+        chamadas.append(k)
+        return {"gerada": True, "entregue": False, "suprimida_por": "duble",
+                "texto": str(k.get("texto") or "")}
+
+    original = AC.entregar_novidade
+    AC.entregar_novidade = _recorder
+    try:
+        mundo = _mundo_do_acompanhamento()
+        mundo["work_waits"] = [espera_ativa(vence=vencida)]
+        _b, resumo, exc = _vigiar(mundo)
+        do_pos = list(chamadas)
+
+        # CONTROLE: a espera do TRAVAMENTO vencida -> comportamento de hoje
+        chamadas[:] = []
+        mundo2 = _mundo_do_acompanhamento()
+        mundo2["work_waits"] = [espera_ativa(vence=vencida, scope="acionamento",
+                                             kind="esperando_humano", ident="ww-ac-1")]
+        _b2, _r2, _e2 = _vigiar(mundo2)
+        do_acionamento = list(chamadas)
+
+        # e a espera que JA gastou os avisos nao fala mais
+        chamadas[:] = []
+        mundo3 = _mundo_do_acompanhamento()
+        linha = espera_ativa(vence=vencida)
+        linha["avisos"] = teto
+        mundo3["work_waits"] = [linha]
+        _b3, _r3, _e3 = _vigiar(mundo3)
+        no_teto = list(chamadas)
+    finally:
+        AC.entregar_novidade = original
+
+    certo(exc is None and len(do_pos) == 1,
+          "[N1] espera `pos_acionamento` vencida gera UMA mensagem ao cliente",
+          "exc=%r resumo=%r chamadas=%r" % (exc, resumo, do_pos))
+    texto = str((do_pos or [{}])[0].get("texto") or "").lower()
+    certo("novidade" in texto and "cobra" in texto,
+          "[N2] a mensagem e a HONESTA: sem novidade, e a corretora esta cobrando (R3)",
+          "texto=%r" % texto[:200])
+    # ⚠️ `bool(texto)` NAO e enfeite: sem ele, uma mensagem VAZIA passaria na
+    #    regex e [N2b] seria um guarda que nao tem como falhar (§9.3).
+    certo(bool(texto) and not re.search(
+              r"previs[ãa]o de |\b\d{2}/\d{2}\b|\bat[ée] \d+ *(h|dia|min)", texto),
+          "[N2b] e NAO inventa previsao, data nem prazo",
+          "texto=%r" % texto[:200])
+    par(bool(re.search(r"previs[ãa]o de |\b\d{2}/\d{2}\b",
+                       "previsao de 12/09 para a peca")),
+        "[N2bp] a regex de previsao inventada SABE acusar (texto-controle)")
+    par(not do_acionamento,
+        "[N3] a espera do TRAVAMENTO (`scope='acionamento'`) segue como hoje: "
+        "avisa a equipe e NAO fala com o cliente",
+        "chamadas=%r" % (do_acionamento,))
+    par(not no_teto,
+        "[N3b] no teto de `AVISOS_ATE_EXPIRAR` (%d) o cliente nao recebe mais nada" % teto,
+        "chamadas=%r" % (no_teto,))
+
+    # ---- N4: o vigia NAO tem porta propria. Com o desligador ligado e SEM
+    #          recorder, a saida real tem de ser ZERO.
+    mundo4 = _mundo_do_acompanhamento(acompanhamento=False)
+    mundo4["work_waits"] = [espera_ativa(vence=vencida)]
+
+    def _rodar(_envios):
+        return _vigiar(mundo4)
+
+    (_b4, _r4, exc4), envios, exc_out = _com_outbound_dublado(_rodar)
+    certo(exc_out is None and envios == [],
+          "[N4] com `acompanhamento=false` o vigia nao manda NADA ao cliente "
+          "(ele usa a porta unica, nao uma propria)",
+          "envios=%r exc=%r" % (envios, exc_out or exc4))
+
+
+# ===========================================================================
+# [O] R11 -- so ATENDIMENTO vira conhecimento
+#
+# 💭 As conversas abaixo sao SINTETICAS, reescritas do §2 do relatorio (a linha
+# da atendente carrega caso, colega e vida pessoal no mesmo fio). ZERO PII.
+# ===========================================================================
+_PESSOAIS = [
+    ["oi, tudo bem? como foi o fim de semana?", "levei as criancas na praia"],
+    ["passa pra fulana, por favor", "me coloca em copia do e-mail"],
+    ["voce ja almocou?", "vou sair mais cedo hoje"],
+    ["bom diaaa", "kkkk"],
+]
+_ATENDIMENTOS = [
+    ["meu carro quebrou, preciso de guincho na br"],
+    ["o vidro do para-brisa trincou, tem cobertura?"],
+    ["qual o valor da franquia do meu seguro?"],
+    ["a oficina credenciada ja recebeu a autorizacao da seguradora?"],
+]
+
+
+def bloco_O():
+    _p("\n[O] R11 -- conversa pessoal e coordenacao entre colegas NAO viram conhecimento")
+    PA, erro = importar("app.atendimento.pos_acionamento",
+                        "o filtro `e_atendimento_de_seguro` ainda nao existe")
+    if PA is None:
+        certo(False, "[O1] `pos_acionamento` importa", repr(erro))
+        return
+    filtro = getattr(PA, "e_atendimento_de_seguro", None)
+    if not callable(filtro):
+        certo(False, "[O1] `e_atendimento_de_seguro(conversa)` existe e e chamavel",
+              "encontrado=%r" % (filtro,))
+        return
+
+    def _conversa(msgs):
+        return {"id": "cv-sintetica", "company_id": CO_ALFA,
+                "mensagens": [{"role": "user", "content": m} for m in msgs],
+                "messages": [{"role": "user", "content": m} for m in msgs],
+                "texto": " ".join(msgs)}
+
+    aceitos, erros = [], []
+    for msgs in _ATENDIMENTOS:
+        try:
+            aceitos.append(bool(filtro(_conversa(msgs))))
+        except Exception as e:  # noqa: BLE001
+            erros.append(e)
+    certo(not erros and all(aceitos) and len(aceitos) == len(_ATENDIMENTOS),
+          "[O1] ACEITA as %d conversas de atendimento (guincho, vidro, franquia, oficina)"
+          % len(_ATENDIMENTOS),
+          "aceitos=%r erros=%r" % (aceitos, erros[:2]))
+
+    descartados = []
+    for msgs in _PESSOAIS:
+        try:
+            descartados.append(not bool(filtro(_conversa(msgs))))
+        except Exception as e:  # noqa: BLE001
+            erros.append(e)
+    certo(not erros and all(descartados) and len(descartados) == len(_PESSOAIS),
+          "[O2] DESCARTA papo pessoal e coordenacao entre colegas",
+          "descartados=%r" % (descartados,))
+    par(all(descartados) and all(aceitos),
+        "[O2p] o filtro separa os DOIS lados -- ele nao esta so dizendo sim ou so nao",
+        "aceitos=%r descartados=%r" % (aceitos, descartados))
+
+    # ---- O3: e a REGUA conta o que foi descartado (U4.1) --------------------
+    turnos, motivo = _turnos_da_fixture()
+    RG, erro_rg = carregar_solto("scripts/regua_0971.py", "_regua_0971_o")
+    if turnos is None or RG is None or not hasattr(RG, "medir"):
+        certo(False, "[O3] a regua conta os descartados por R11",
+              "fixture=%r regua=%r" % (motivo, erro_rg))
+        return
+    try:
+        r = RG.medir(turnos)
+        exc = None
+    except Exception as e:  # noqa: BLE001
+        r, exc = {}, e
+    pessoais = len([t for t in turnos if t.get("pessoal")])
+    certo(exc is None and int(r.get("descartados") or 0) == pessoais,
+          "[O3] a regua PUBLICA quantos turnos foram descartados por R11",
+          "exc=%r descartados=%r esperado=%d" % (exc, r.get("descartados"), pessoais))
+    par(pessoais > 0,
+        "[O3p] a fixture TEM turnos descartaveis (senao a contagem seria zero por vazio)",
+        "pessoais=%d" % pessoais)
+
+
+# ===========================================================================
+# [Q] R8/U2.3 -- o agente ENCERRA a parte dele, e as duas reguas dizem isso
+# ===========================================================================
+def bloco_Q():
+    _p("\n[Q] R8/U2.3 -- o handoff POS grava `agente_concluiu`, e a regua conta as DUAS linhas")
+    import asyncio
+
+    HH, erro = importar("app.agents.tools.human_handoff", "a tool de handoff nao carrega")
+    if HH is None:
+        certo(False, "[Q1] `human_handoff` importa", repr(erro))
+    else:
+        mundo = {"conversations": [conversa_acionada()],
+                 "work_waits": [espera_ativa()], "messages": []}
+        banco = Banco(mundo, sincrono=True)
+        tool = HH.HumanHandoffTool(banco)
+
+        async def _sem_saida(*a, **k):
+            return {"avisado": False, "motivo": "duble do guarda"}
+
+        tool._avisar_suporte = _sem_saida
+        try:
+            asyncio.run(tool._arun(reason="", session_id="ss-pos-1", company_id=CO_ALFA))
+            exc = None
+        except Exception as e:  # noqa: BLE001
+            exc = e
+        cargas = [c["carga"] for c in banco.escritas("conversations", "update")]
+        marca = {}
+        for c in cargas:
+            ficha = (c or {}).get("ficha_atendimento") or {}
+            if isinstance(ficha, dict) and ficha.get("agente_concluiu"):
+                marca = ficha["agente_concluiu"]
+        certo(exc is None and isinstance(marca, dict)
+              and bool(str(marca.get("em") or "").strip())
+              and bool(str(marca.get("motivo") or "").strip()),
+              "[Q1] o handoff POS grava `ficha_atendimento.agente_concluiu = {em, motivo}`",
+              "exc=%r cargas=%r" % (exc, cargas))
+        # ⛔ `resolvido_em` continua sendo o desfecho da CORRETORA (U2.3).
+        par(not any("resolvido_em" in (c or {}) for c in cargas),
+            "[Q1p] o handoff NAO grava `resolvido_em` -- encerrar a parte do agente "
+            "nao e resolver o caso da corretora",
+            "cargas=%r" % (cargas,))
+
+    turnos, motivo = _turnos_da_fixture()
+    RG, erro_rg = carregar_solto("scripts/regua_0971.py", "_regua_0971_q")
+    PA, erro_pa = importar("app.atendimento.pos_acionamento", "as cartas nao existem")
+    if turnos is None or RG is None or not hasattr(RG, "medir") or PA is None:
+        certo(False, "[Q2] a regua e o modulo das cartas carregam",
+              "fixture=%r regua=%r cartas=%r" % (motivo, erro_rg, erro_pa))
+        return
+    try:
+        r = RG.medir(turnos)
+        exc2 = None
+    except Exception as e:  # noqa: BLE001
+        r, exc2 = {}, e
+    agente = int((r or {}).get("resolvido_pelo_agente") or 0)
+    sem_humano = int((r or {}).get("resolvido_sem_humano") or 0)
+    certo(exc2 is None and "resolvido_pelo_agente" in r and "resolvido_sem_humano" in r,
+          "[Q2] a regua publica as DUAS linhas (R8)",
+          "exc=%r chaves=%r" % (exc2, sorted(r)))
+    par(agente > sem_humano,
+        "[Q2p] as duas linhas SAO diferentes na fixture (o handoff POS soma "
+        "algo que a outra nao conta -- §9.3)",
+        "resolvido_pelo_agente=%r resolvido_sem_humano=%r" % (agente, sem_humano))
+
+    # 🔴 O handoff SEM `Onde parou`/`O que fazer` NAO conta. Sem esta linha,
+    #    "foi para humano" viraria carimbo de resolvido (R8, CLAUDE.md §9.5).
+    quebrados = [dict(t, dossie={"o_que_fazer": ""}) if t.get("dossie") else t
+                 for t in turnos]
+    try:
+        r_quebrado = RG.medir(quebrados)
+    except Exception as e:  # noqa: BLE001
+        r_quebrado = {"ERRO": e}
+    certo(int(r_quebrado.get("resolvido_pelo_agente") or 0) < agente,
+          "[Q3] handoff SEM `Onde parou`/`O que fazer` NAO conta como resolvido",
+          "quebrado=%r inteiro=%d" % (r_quebrado.get("resolvido_pelo_agente"), agente))
+    certo(int(r_quebrado.get("para_humano_sem_dossie") or 0) > 0,
+          "[Q3b] o que perdeu o dossie aparece em `para_humano_sem_dossie`",
+          "r=%r" % (r_quebrado,))
+
+    # A FONTE UNICA (R9): a mesma lista no prompt, no handoff e na regua.
+    situacoes = getattr(PA, "SITUACOES_PARA_HUMANO", None)
+    certo(situacoes is not None
+          and getattr(RG, "SITUACOES_PARA_HUMANO", None) is situacoes,
+          "[Q4] `SITUACOES_PARA_HUMANO` da regua e o MESMO OBJETO do modulo (§9.4)",
+          "cartas=%r regua=%r" % (type(situacoes), type(getattr(RG, "SITUACOES_PARA_HUMANO", None))))
+    fonte_hh = so_o_codigo_py(ler("app/agents/tools/human_handoff.py"))
+    certo("SITUACOES_PARA_HUMANO" in fonte_hh,
+          "[Q4b] o handoff LE a mesma lista (metade fraca: leitura da fonte)",
+          "📊 sem isto, `O que fazer` seria uma segunda verdade sobre R9")
+    par("SITUACOES_PARA_HUMANO" not in so_o_codigo_py(
+            'def _o_que_fazer(c, m):\n    return "Confira e siga."  # sem a lista'),
+        "[Q4p] a fonte-controle SEM a lista e acusada pela mesma leitura")
+
+
+# ===========================================================================
 # As mutacoes por COPIA -- so com `--mutar`
 #
 # 🔴 Cada uma roda em SUBPROCESSO sobre a copia MUTADA, e o processo PAI (que
@@ -1513,6 +2023,10 @@ def _rodar():
     bloco_H()
     bloco_L()
     bloco_I()
+    bloco_M()
+    bloco_N()
+    bloco_O()
+    bloco_Q()
 
 
 def main():
