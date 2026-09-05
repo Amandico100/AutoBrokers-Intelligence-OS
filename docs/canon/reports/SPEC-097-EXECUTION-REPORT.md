@@ -177,4 +177,29 @@ SESSOES-ORFAS, DOCUMENTOS-DO-ATENDIMENTO, APPROVAL-SEM-CONVERSA, POLLING-10S, DR
 - Nenhum motor paralelo: sem tabela de casos, sem event store, sem escritor novo de ciclo de vida além dos que existem (marcar_fim/claim) — só estendidos.
 - Nenhuma mensagem saiu; nenhum agente ligado; InfoCap só leitura; nenhum segredo/PII impresso.
 ## 11. Entrega
-{PUSH}
+```
+$ git rev-list --count HEAD..origin/main   → 0
+$ git merge-base --is-ancestor origin/main 332e389 && git push origin 332e389:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   7f3f3eb..332e389  332e389 -> main
+$ git rev-list --count origin/main..332e389 → 0        (📊 05/09/2026 ~19:55)
+```
+Suíte inteira (📊 árvore com o builder da 097.1 parado, HEAD 8529008): **932 passed · 13 failed · 38 xfailed · 1 xpassed em 20m50**. Triagem: `test_o_protocolo_tem_policia` = 1 falha
+REAL de docs — a SPEC-097.1 v1.1 sem §7.3/BLOCO 0/"O QUE SAIU" (corrigida na v1.2; a 097 passa) · `test_todos_os_guardas_script_rodam` (11) e `test_o_sinistro_deixa_rastro` =
+classe do harness (P-093B-HARNESS), rerodados isolados em §11.1 · `test_a_atendente_aperta_o_botao` (1ª corrida com `-x`) = node 24 morreu com `0xC0000409` sob carga; isolado 6 passed.
+Nenhuma regressão de produto da 097. O commit empurrado (332e389) NÃO inclui o guarda vermelho da 097.1 (8529008), de propósito.
+### 11.1 Triagem isolada dos 13 (📊 05/09 ~20:10)
+```
+test_o_protocolo_tem_policia ............ FALHA REAL de docs: SPEC-097.1 v1.1 sem §7.3/BLOCO 0/O QUE SAIU/MUTAÇÃO → v1.2 (c41ceef+) passa (52 ok)
+test_spec038_sentinela · test_spec045_observacao_whatsapp · test_a_caixa_alta_do_acronimo_nao_apaga_audio · test_o_repareamento_nao_duplica
+   ..................................... 🔴 REGRESSÃO REAL da 097 (P3-4): `from app.telefone_br import variantes_br` em observer_intake.py — os 4 guardas carregam o
+                                          módulo por CAMINHO sobre um pacote `app` de casca → ModuleNotFoundError. CONSERTO d758b81: import com fallback por caminho
+                                          (a regra continua uma). Rerodados: 8/24/ok/ok verdes. Empurrado à main (332e389..d758b81).
+test_spec046_ficha_limpeza_admin ........ verdade vencida (§9.3): o guarda procurava "Assumir atendimento"/"Copiar doss" na Ficha reescrita (R12); os gestos existem
+                                          (`Assumir o atendimento`, `copiarDossie`) → guarda migrado para o handler; 58 ok (d758b81)
+test_nenhuma_mutacao_foi_commitada ...... artefato de ORDEM: o guarda da 097.1 (8529008) declara mutações sobre código que o builder ainda não escreveu → passa
+                                          quando a 097.1 fecha (não é da 097; na main só se o builder não terminar — acompanhado)
+test_o_formulario_nao_e_inocuo · test_o_handoff_nao_e_um_buraco · test_ontologia_e_unica · test_sem_corredor_de_vidro_nao_e_beco · test_a_arvore_ficou_limpa_no_fim ·
+test_o_sinistro_deixa_rastro ........... PASSAM isolados (classe do harness, P-093B-HARNESS; sem_corredor_de_vidro é XPASS(strict) pré-existente)
+```
+📊 Saldo: 2 regressões reais da 097 (uma de import, uma de rótulo) — ambas achadas pela suíte inteira, consertadas e empurradas no mesmo dia; nenhuma de produto para o segurado.
