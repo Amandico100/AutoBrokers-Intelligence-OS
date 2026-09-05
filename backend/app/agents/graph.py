@@ -1598,57 +1598,217 @@ async def invoke_agent(
     }
 
 
-async def stream_agent(
+# ===========================================================================
+# O TURNO TIPADO — SPEC-096 · BLOCO B.2
+#
+# 🔴 O que mudou, e por quê. Até aqui `stream_agent` era um gerador de STRING:
+# quem o consumia recebia texto e mais nada, e por isso a tela não tinha como
+# saber que o agente parou para consultar a apólice. 📊 §1.5 da SPEC-096: o nó
+# `tools` chama `tool._arun` direto (`nodes.py:1089`), pulando o CallbackManager
+# — o gancho `on_tool_…` do LangChain NUNCA é emitido por este grafo. O
+# estágio, então, não pode nascer dele; nasce do `tool_call_chunk` que o MODELO
+# emite ao decidir chamar a tool, e do `tool_calls` da AIMessage quando o modelo
+# não streama.
+#
+# 🔴 `KINDS_DO_PROJETOR` é a DECLARAÇÃO do que sai daqui, e `_ev` a honra: um
+# `kind` que não esteja declarado não é emitido. Renomear a declaração sem
+# renomear a emissão CALA o estágio — e é exatamente isso que a mutação [B9]
+# provoca de propósito.
+#
+# `stream_agent_eventos` projeta o MESMO laço de `astream_events(version="v1")`
+# em dicts tipados. `stream_agent` continua existindo, com a mesma assinatura e
+# a mesma promessa (só strings) — o widget, o WhatsApp e quem mais consome não
+# percebem a mudança.
+# ===========================================================================
+
+#: Os únicos `kind` que o projetor emite. Um `kind` fora desta lista não sai:
+#: quem projeta o turno (o `/chat/stream`) só sabe traduzir estes quatro, e um
+#: quinto silencioso viraria evento perdido na tela.
+KINDS_DO_PROJETOR = ("delta", "tool_start", "tool_end", "error")
+
+
+def _ev(kind: str, **payload):
+    """Um item do projetor — ou `None`, se o `kind` não estiver declarado."""
+    if kind not in KINDS_DO_PROJETOR:
+        logger.error("[Stream] kind fora do protocolo, descartado: %r", kind)
+        return None
+    item = {"kind": kind}
+    item.update(payload)
+    return item
+
+
+def _nome_e_id(candidato):
+    if isinstance(candidato, dict):
+        return candidato.get("name"), candidato.get("id")
+    return getattr(candidato, "name", None), getattr(candidato, "id", None)
+
+
+def _tool_starts_do_chunk(chunk, vistas):
+    """O PRIMEIRO pedaço com `name` já anuncia a tool — antes de ela rodar."""
+    pedacos = getattr(chunk, "tool_call_chunks", None)
+    if not pedacos and isinstance(chunk, dict):
+        pedacos = chunk.get("tool_call_chunks")
+    saida = []
+    for pedaco in pedacos or []:
+        nome, ident = _nome_e_id(pedaco)
+        chave = ident or nome
+        if not nome or chave in vistas:
+            continue
+        vistas.add(chave)
+        saida.append(nome)
+    return saida
+
+
+def _tool_starts_da_mensagem(output, vistas):
+    """O caminho de quem não streama: as `tool_calls` da AIMessage já fechada."""
+    mensagem = None
+    if isinstance(output, dict) and isinstance(output.get("messages"), list) and output["messages"]:
+        mensagem = output["messages"][-1]
+    elif hasattr(output, "tool_calls"):
+        mensagem = output
+    chamadas = getattr(mensagem, "tool_calls", None) or []
+    saida = []
+    for chamada in chamadas:
+        nome, ident = _nome_e_id(chamada)
+        chave = ident or nome
+        if not nome or chave in vistas:
+            continue
+        vistas.add(chave)
+        saida.append(nome)
+    return saida
+
+
+def _texto_do_conteudo(content) -> str:
+    """O conteúdo do chunk pode ser string ou lista de blocos (Anthropic)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        partes = []
+        for bloco in content:
+            if isinstance(bloco, dict) and bloco.get("type") == "text":
+                partes.append(bloco.get("text", ""))
+            elif isinstance(bloco, str):
+                partes.append(bloco)
+        return "".join(partes)
+    return ""
+
+
+#: 🔴 As tarefas de memória vivem aqui para não serem coletadas pelo GC no meio
+#: do caminho (`create_task` sozinho devolve uma referência fraca ao mundo).
+_TAREFAS_DE_MEMORIA = set()
+
+
+async def _disparar_memoria(graph, config, *, session_id, user_id, company_id,
+                            channel, agent_id, supabase_client, async_supabase_client):
+    """O gatilho de summarization — 🔴 FORA do caminho da resposta.
+
+    📊 04/09/2026, backend implantado: o último token de "Responda apenas: OK"
+    chegava em 1,13 s e o `[DONE]` só em 8,71 s. Os ~7,5 s de diferença eram
+    ISTO rodando ainda dentro do gerador, com o stream aberto e o campo de
+    digitação da corretora travado. Agora roda numa task própria: o turno fecha,
+    e a memória se organiza depois.
+    """
+    try:
+        final_state = await graph.aget_state(config)
+        all_messages = final_state.values.get("messages", [])
+
+        client_to_use = async_supabase_client if async_supabase_client else supabase_client
+        memory_service = MemoryService(client_to_use)
+        settings = await memory_service.get_memory_settings_async(agent_id)
+
+        human_messages_count = sum(1 for m in all_messages if isinstance(m, HumanMessage))
+        logger.info(
+            f"[Stream Memory] Trigger check: msgs={human_messages_count}, "
+            f"threshold={settings.get('web_message_threshold', 20)}"
+        )
+
+        should_trigger = memory_service.should_summarize(
+            settings=settings,
+            channel=channel,
+            messages_count=human_messages_count,
+            last_message_at=datetime.now(),
+            session_ended=False,
+        )
+        if should_trigger:
+            await memory_service.schedule_summarization_async(
+                session_id=session_id,
+                user_id=user_id,
+                company_id=company_id,
+                messages=all_messages,
+                channel=channel,
+                settings=settings,
+                agent_id=agent_id,
+            )
+            logger.info(f"[Stream Memory] ✅ Summarization scheduled async for session {session_id}")
+    except Exception as e:
+        logger.error(f"[Stream Memory] Error in background trigger: {e}")
+
+
+async def stream_agent_eventos(
     graph,
-    user_message: str,
-    company_id: str,
-    user_id: str,
-    session_id: str,
-    company_config: Dict[str, Any],
+    user_message: str = None,
+    company_id: str = None,
+    user_id: str = None,
+    session_id: str = None,
+    company_config: Dict[str, Any] = None,
     options: Dict[str, Any] = None,
     supabase_client=None,
     agent_id: str = None,
-    async_supabase_client=None,  # <--- ADICIONADO: Suporte Async
+    async_supabase_client=None,
+    client_request_id: str = None,
 ):
+    """Projeta `astream_events` em eventos tipados do turno.
+
+    Emite dicts: `{"kind": "delta", "text"}` · `{"kind": "tool_start", "name"}`
+    · `{"kind": "tool_end", "name"}` · `{"kind": "error", "exc"}`.
+
+    ⛔ Não formata texto de erro e não decide o que a corretora lê: quem projeta
+    o turno (o `/chat/stream`) traduz `tool_start` pelo CATÁLOGO e `error` por
+    `erro_seguro`. Aqui só se diz o que o runtime fez.
     """
-    Stream agent responses token-by-token using SSE.
-    Includes robust fallback and ASYNC MEMORY SUMMARIZATION.
-    """
-    # Build initial state directly (now async)
-    initial_state, config, real_agent_data = await _build_initial_state(
-        user_message,
-        company_id,
-        user_id,
-        session_id,
-        company_config,
-        options,
-        supabase_client,
-        agent_id,
+    if user_message is None and company_config is None:
+        # Sem pergunta e sem corretora não há estado a montar: o grafo recebido
+        # já é a fonte dos eventos. É por esta porta que o guarda exercita o
+        # PROJETOR sobre um grafo dublado sem tocar no banco.
+        initial_state = {"messages": []}
+        config = {"configurable": {"thread_id": "%s:%s" % (company_id, session_id)}}
+    else:
+        initial_state, config, real_agent_data = await _build_initial_state(
+            user_message,
+            company_id,
+            user_id,
+            session_id,
+            company_config,
+            options,
+            supabase_client,
+            agent_id,
+        )
+
+        # === LANGSMITH TRACING (Multi-Tenant) ===
+        from app.core.langsmith_setup import get_langsmith_config, is_langsmith_enabled
+
+        if is_langsmith_enabled():
+            ls_config = get_langsmith_config(
+                company_id=company_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+                channel="web",
+            )
+            config["metadata"] = ls_config["metadata"]
+            config["tags"] = ls_config["tags"]
+            config["run_name"] = ls_config["run_name"]
+            logger.debug(f"[LangSmith] Stream trace configurado: {ls_config['run_name']}")
+
+    channel = "web"
+    logger.info(
+        "[Stream] astream_events thread=%s:%s turno=%s",
+        str(company_id)[:8], str(session_id)[:8], str(client_request_id or "-")[:8],
     )
 
-    # Contexto para canal (usado na memória e LangSmith)
-    channel = "web"
-
-    # === LANGSMITH TRACING (Multi-Tenant) ===
-    # Injeta metadados para isolamento por company/agent no dashboard
-    from app.core.langsmith_setup import get_langsmith_config, is_langsmith_enabled
-
-    if is_langsmith_enabled():
-        ls_config = get_langsmith_config(
-            company_id=company_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-            channel=channel,
-        )
-        config["metadata"] = ls_config["metadata"]
-        config["tags"] = ls_config["tags"]
-        config["run_name"] = ls_config["run_name"]
-        logger.debug(f"[LangSmith] Stream trace configurado: {ls_config['run_name']}")
-
-    logger.info(f"[Stream] Iniciando astream_events para thread {company_id}:{session_id}")
-
     has_streamed = False
+    vistas = set()      # ids de chamadas de tool já anunciadas (dedup)
+    abertas = []        # estágios anunciados e ainda não fechados
 
     try:
         # === RETRY LOOP PARA RESILIÊNCIA DE CONEXÃO ===
@@ -1659,22 +1819,26 @@ async def stream_agent(
 
         for attempt in range(max_retries):
             try:
-                # Loop de Eventos
                 async for event in graph.astream_events(initial_state, config, version="v1"):
                     kind = event["event"]
                     name = event.get("name", "")
                     data = event.get("data", {})
+                    node = (event.get("metadata") or {}).get("langgraph_node")
 
-                    # --- Streaming Token por Token ---
-                    # Filtra por langgraph_node: só streama tokens do nó "agent" (orquestrador).
-                    # Tokens do SubAgent (que rodam no nó "tools") são ignorados.
+                    # --- Token a token, só do nó `agent` ---------------------
+                    # Tokens do SubAgent (que roda no nó `tools`) são ignorados.
                     if kind == "on_chat_model_stream":
-                        event_node = event.get("metadata", {}).get("langgraph_node")
-                        if event_node != "agent":
+                        if node != "agent":
                             continue
                         chunk = data.get("chunk")
-                        content = None
 
+                        for nome in _tool_starts_do_chunk(chunk, vistas):
+                            abertas.append(nome)
+                            item = _ev("tool_start", name=nome)
+                            if item:
+                                yield item
+
+                        content = None
                         if hasattr(chunk, "content"):
                             content = chunk.content
                         elif isinstance(chunk, dict):
@@ -1682,49 +1846,51 @@ async def stream_agent(
                         elif isinstance(chunk, str):
                             content = chunk
 
-                        if content:
-                            text_to_yield = ""
-                            if isinstance(content, list):
-                                for block in content:
-                                    if isinstance(block, dict) and block.get("type") == "text":
-                                        text_to_yield += block.get("text", "")
-                                    elif isinstance(block, str):
-                                        text_to_yield += block
-                            elif isinstance(content, str):
-                                text_to_yield = content
+                        texto = _texto_do_conteudo(content) if content else ""
+                        if texto:
+                            item = _ev("delta", text=texto)
+                            if item:
+                                yield item
+                            has_streamed = True
 
-                            if text_to_yield:
-                                yield text_to_yield
-                                has_streamed = True
-
-                    # --- Fallback no Fim do Agente ---
-                    elif kind == "on_chain_end" and name == "agent" and not has_streamed:
+                    elif kind == "on_chain_end" and name == "agent":
                         output = data.get("output")
-                        final_text = ""
-                        if isinstance(output, dict) and "messages" in output:
-                            msgs = output["messages"]
-                            if isinstance(msgs, list) and len(msgs) > 0:
-                                last_msg = msgs[-1]
-                                final_text = getattr(last_msg, "content", str(last_msg))
-                            elif hasattr(msgs, "content"):
-                                final_text = msgs.content
-                        elif hasattr(output, "content"):
-                            final_text = output.content
 
-                        if final_text:
-                            if isinstance(final_text, list):
-                                text_parts = []
-                                for block in final_text:
-                                    if isinstance(block, dict) and block.get("type") == "text":
-                                        text_parts.append(block.get("text", ""))
-                                    elif isinstance(block, str):
-                                        text_parts.append(block)
-                                final_text = "".join(text_parts)
+                        # O modelo que não streama ainda declara a tool aqui.
+                        for nome in _tool_starts_da_mensagem(output, vistas):
+                            abertas.append(nome)
+                            item = _ev("tool_start", name=nome)
+                            if item:
+                                yield item
 
+                        # --- Fallback no fim do agente ----------------------
+                        if not has_streamed:
+                            final_text = ""
+                            if isinstance(output, dict) and "messages" in output:
+                                msgs = output["messages"]
+                                if isinstance(msgs, list) and len(msgs) > 0:
+                                    last_msg = msgs[-1]
+                                    final_text = getattr(last_msg, "content", str(last_msg))
+                                elif hasattr(msgs, "content"):
+                                    final_text = msgs.content
+                            elif hasattr(output, "content"):
+                                final_text = output.content
+
+                            final_text = _texto_do_conteudo(final_text)
                             if final_text:
-                                logger.info(f"[Stream] ⚠️ Fallback Node 'agent': Enviando {len(final_text)} chars.")
-                                yield final_text
+                                logger.info(f"[Stream] ⚠️ Fallback Node 'agent': {len(final_text)} chars.")
+                                item = _ev("delta", text=final_text)
+                                if item:
+                                    yield item
                                 has_streamed = True
+
+                    elif kind == "on_chain_end" and node == "tools":
+                        # O nó `tools` fechou: todo estágio aberto está cumprido.
+                        for nome in (abertas or [""]):
+                            item = _ev("tool_end", name=nome)
+                            if item:
+                                yield item
+                        abertas = []
 
                 # Stream completado com sucesso
                 if not has_streamed:
@@ -1732,12 +1898,16 @@ async def stream_agent(
                         final_state = await graph.aget_state(config)
                         final_text = final_state.values.get("final_response", "")
                         if final_text:
-                            yield str(final_text)
+                            item = _ev("delta", text=str(final_text))
+                            if item:
+                                yield item
                             has_streamed = True
                     except Exception as final_error:  # noqa: BLE001
                         logger.warning(f"[Stream] final_response fallback indisponivel: {type(final_error).__name__}")
                 break
 
+            except asyncio.CancelledError:
+                raise
             except (PsycopgOperationalError, Exception) as retry_error:
                 error_str = str(retry_error).lower()
                 is_connection_error = any(kw in error_str for kw in ["closed", "connection", "consuming input failed", "server closed"])
@@ -1746,60 +1916,68 @@ async def stream_agent(
                     logger.warning(f"[Stream] ⚠️ Conexão DB perdida (tentativa {attempt + 1}/{max_retries}): {type(retry_error).__name__}")
                     await asyncio.sleep(1)  # Backoff antes de retry
                     continue
-                else:
-                    # Erro não recuperável ou tentativas esgotadas
-                    logger.error(f"[Stream] ❌ Erro após {attempt + 1} tentativas: {retry_error}")
-                    raise  # Re-raise para o except externo
+                logger.error(f"[Stream] ❌ Erro após {attempt + 1} tentativas: {type(retry_error).__name__}")
+                raise
 
-        # === 🚀 MEMORY SYSTEM V2 - SUMMARIZATION TRIGGER (ADICIONADO) ===
-        # Executado APÓS o fim do stream, não bloqueia a resposta visual
-        if supabase_client or async_supabase_client:
-            try:
-                # 1. Recuperar estado atualizado do grafo para contar mensagens
-                final_state = await graph.aget_state(config)
-                all_messages = final_state.values.get("messages", [])
+    except asyncio.CancelledError:
+        # Parar é decisão de quem pediu — não é falha, e o parcial já saiu.
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[Stream] Error during streaming: {exc}", exc_info=True)
+        item = _ev("error", exc=exc)
+        if item:
+            yield item
+        return
 
-                # 2. Configurar Memory Service
-                client_to_use = async_supabase_client if async_supabase_client else supabase_client
-                memory_service = MemoryService(client_to_use)
+    # === MEMÓRIA — depois do turno, nunca dentro dele ========================
+    if supabase_client or async_supabase_client:
+        try:
+            tarefa = asyncio.create_task(_disparar_memoria(
+                graph, config,
+                session_id=session_id, user_id=user_id, company_id=company_id,
+                channel=channel, agent_id=agent_id,
+                supabase_client=supabase_client,
+                async_supabase_client=async_supabase_client,
+            ))
+            _TAREFAS_DE_MEMORIA.add(tarefa)
+            tarefa.add_done_callback(_TAREFAS_DE_MEMORIA.discard)
+        except RuntimeError as agendamento:  # sem loop: nada a agendar
+            logger.warning(f"[Stream Memory] gatilho nao agendado: {agendamento}")
 
-                # 3. Ler settings Async por agent_id
-                settings = await memory_service.get_memory_settings_async(agent_id)
 
-                # 4. Contar mensagens Humanas
-                human_messages_count = sum(
-                    1 for m in all_messages if isinstance(m, HumanMessage)
-                )
+async def stream_agent(
+    graph,
+    user_message: str,
+    company_id: str,
+    user_id: str,
+    session_id: str,
+    company_config: Dict[str, Any],
+    options: Dict[str, Any] = None,
+    supabase_client=None,
+    agent_id: str = None,
+    async_supabase_client=None,  # <--- Suporte Async
+):
+    """Stream token a token — o CONTRATO ANTIGO, intacto.
 
-                logger.info(
-                    f"[Stream Memory] Trigger check: msgs={human_messages_count}, threshold={settings.get('web_message_threshold', 20)}"
-                )
-
-                should_trigger = memory_service.should_summarize(
-                    settings=settings,
-                    channel=channel,
-                    messages_count=human_messages_count,
-                    last_message_at=datetime.now(),
-                    session_ended=False,
-                )
-
-                if should_trigger:
-                    await memory_service.schedule_summarization_async(
-                        session_id=session_id,
-                        user_id=user_id,
-                        company_id=company_id,
-                        messages=all_messages,
-                        channel=channel,
-                        settings=settings,
-                        agent_id=agent_id,
-                    )
-                    logger.info(
-                        f"[Stream Memory] ✅ Summarization scheduled async for session {session_id}"
-                    )
-
-            except Exception as e:
-                logger.error(f"[Stream Memory] Error in background trigger: {e}")
-
-    except Exception as e:
-        logger.error(f"[Stream] Error during streaming: {e}", exc_info=True)
-        yield "\n\n[Erro interno no servidor durante a geração da resposta.]"
+    ⚠️ Este é o wrapper de compatibilidade: quem consome (widget, WhatsApp e
+    qualquer chamador que espere texto) continua recebendo **só strings**. Ele
+    itera `stream_agent_eventos` e deixa passar o texto; o estágio e o erro
+    tipado são vistos apenas por quem sabe lê-los.
+    """
+    async for ev in stream_agent_eventos(
+        graph,
+        user_message=user_message,
+        company_id=company_id,
+        user_id=user_id,
+        session_id=session_id,
+        company_config=company_config,
+        options=options,
+        supabase_client=supabase_client,
+        agent_id=agent_id,
+        async_supabase_client=async_supabase_client,
+    ):
+        if ev.get("kind") == "delta":
+            yield ev.get("text") or ""
+        elif ev.get("kind") == "error":
+            # O consumidor legado só entende texto: a frase é a mesma de sempre.
+            yield "\n\n[Erro interno no servidor durante a geração da resposta.]"

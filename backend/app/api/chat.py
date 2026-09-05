@@ -4,8 +4,12 @@ SIMPLIFICADO: Usa apenas LangChainService
 Otimizado: Query única e Correção de Datas
 """
 
+import asyncio
 import json
 import logging
+import os
+import time
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -17,6 +21,17 @@ from app.core import settings
 from app.core.database import AsyncSupabaseClient, get_async_db, get_supabase_client
 from app.core.rate_limit import limiter
 from app.services import AudioService, LangChainService
+
+# SPEC-096 B.1 — o vocabulário do turno. Módulo PURO: nada aqui puxa banco,
+# rede ou modelo, e por isso ele pode ser lido e mutado sem subir o produto.
+from app.api.chat_eventos import (
+    MENSAGENS_HUMANAS,
+    Sequenciador,
+    erro_seguro,
+    estagio_da_tool,
+    href_da_peca,
+    pecas_do_turno,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +81,14 @@ class ChatRequest(BaseModel):
     channel: str = Field(default="web", description="Origin: web, whatsapp, widget")
     conversationHistory: Optional[List[Dict[str, Any]]] = None
     options: Optional[Dict[str, bool]] = Field(None)
+    # SPEC-096 A.1/A.3 — o id que o PEDIDO carrega. É por ele que o índice único
+    # parcial recusa a resposta duplicada e que a tela descarta o eco do
+    # Realtime. Obrigatório no modo painel. ⚠️ Aceito nas duas grafias porque a
+    # tela fala camelCase e o protocolo do turno fala snake_case.
+    clientRequestId: Optional[str] = Field(None, alias="client_request_id")
+    userMessageId: Optional[UUID4] = Field(None, alias="user_message_id")
+
+    model_config = {"populate_by_name": True}
 
 class ChatResponse(BaseModel):
     output: str = Field(..., description="Resposta da IA")
@@ -191,7 +214,7 @@ async def chat_endpoint(
             )
         except ValueError as e:
             # ✅ VALIDATION: Check if it's an agent configuration error
-            error_msg = str(e)
+            error_msg = "%s" % e
             if "CONFIG_REQUIRED" in error_msg or "No active agents" in error_msg or "Agente de IA" in error_msg:
                 logger.warning(f"[CHAT] Agent validation failed: {error_msg}")
                 return ChatResponse(
@@ -286,9 +309,120 @@ async def chat_endpoint(
         logger.error(f"[ERROR] {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal Server Error") from e
 
-# ==============================================================================
-# STREAMING ENDPOINT (P/ Realtime) - Com as mesmas correções de data
-# ==============================================================================
+# =============================================================================
+# O TURNO — SPEC-096 · S.2 (modo de confiança) · A.3/A.4 (a task) · B.3/B.4
+#
+# 🔴 Três coisas mudaram aqui, e cada uma fecha um defeito medido:
+#
+#  (iii) **quem manda um `userId` no corpo não é mais quem ele diz que é.**
+#        📊 O `if agent_data and not chat_request.userId` de antes fazia as
+#        checagens de widget (domínio, rate limit) dependerem de um campo que o
+#        próprio cliente escolhe: bastava mandar um uuid qualquer para pulá-las.
+#        Agora a identidade só é honrada com a chave interna do BFF.
+#
+#   (iv) **aviso não é resposta.** Porteira, agente ausente e guardrail viravam
+#        `{"token": "..."}` — e o token virava `messages.content` e memória do
+#        agente. No painel eles saem como evento de POLÍTICA (bloqueio ou
+#        aviso), e NADA é gravado (R5). Para o widget, a forma legada segue
+#        idêntica.
+#
+#    (x) **a resposta não morre com a conexão.** A geração roda numa task
+#        própria; o gerador de SSE só LÊ de uma fila. Se o browser fecha, a task
+#        continua, termina e grava — inclusive o parcial (A.4).
+# =============================================================================
+
+#: 🔴 O cabeçalho que separa o PAINEL do WIDGET. Só o BFF o conhece (é ele quem
+#: tem a sessão do corretor); um browser nunca o tem.
+CABECALHO_INTERNO = "X-Internal-Key"
+
+#: ⚠️ Este literal aparece UMA vez no arquivo de propósito: é o tipo do evento
+#: de porteira, e quem o renomear renomeia num lugar só.
+TIPO_POLICY_BLOCKED = "policy.blocked"
+TIPO_POLICY_NOTICE = "policy.notice"
+
+#: Sem evento nenhum, a conexão precisa dar sinal de vida antes de qualquer
+#: proxy desistir dela. 15 s é metade do timeout mais curto que já vimos.
+SEGUNDOS_DE_BATIMENTO = 15
+
+#: Os turnos em voo, por `company_id:client_request_id`. 🔴 A chave leva o
+#: tenant: um `client_request_id` de outra corretora não para o turno desta.
+TURNOS_ATIVOS: Dict[str, Any] = {}
+
+#: Quem pediu o Stop (E11) — lido pela task ao gravar o parcial.
+PARADAS: Dict[str, str] = {}
+
+#: 💭 O nome que o corretor lê no lugar do `kind` técnico da peça.
+KINDS_HUMANOS = {
+    "report": "Relatório",
+    "briefing": "Briefing",
+    "dashboard": "Painel",
+    "proposal": "Proposta",
+    "letter": "Carta",
+    "spreadsheet": "Planilha",
+}
+
+TEXTO_SEM_CREDITO = "Creditos insuficientes para responder. Configure plano/creditos da empresa no Admin."
+TEXTO_SEM_AGENTE = "⚠️ Nenhum agente configurado. Configure um agente em Configurações."
+TEXTO_AGENTE_NAO_ENCONTRADO = "⚠️ Agente não encontrado. Verifique a configuração."
+TEXTO_ERRO_DE_SEGURANCA = "Erro temporário de segurança. Por favor, tente novamente."
+
+CABECALHOS_SSE = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
+
+
+def _chaves_internas() -> set:
+    """As chaves que valem como 'sou o BFF' — a mesma dupla do `work_runs.py`."""
+    candidatas = (
+        getattr(settings, "ADMIN_API_KEY", None),
+        getattr(settings, "BACKEND_INTERNAL_API_KEY", None),
+        os.getenv("ADMIN_API_KEY"),
+        os.getenv("BACKEND_INTERNAL_API_KEY"),
+    )
+    return {str(c).strip() for c in candidatas if c and str(c).strip()}
+
+
+def _modo_de_confianca(request: Request) -> str:
+    """`painel` (chave interna válida) ou `widget`.
+
+    🔴 Chave errada vale como chave nenhuma: cai em `widget`, onde o `userId`
+    do corpo é descartado e as checagens de widget rodam. Não existe estado
+    intermediário — é isso que impede o corpo de escolher a identidade.
+    """
+    chave = (request.headers.get(CABECALHO_INTERNO) or "").strip()
+    if chave and chave in _chaves_internas():
+        return "painel"
+    return "widget"
+
+
+def _sse_legado(payload: Dict[str, Any]) -> str:
+    return "data: %s\n\n" % json.dumps(payload)
+
+
+def _resposta_de_politica(*, modo: str, turno: Dict[str, Any], tipo: str, code: str,
+                          texto: str, legado: Dict[str, Any]) -> StreamingResponse:
+    """O turno que termina antes de começar — e NÃO grava nada (R5).
+
+    ⛔ Nem `messages`, nem memória, nem preview da conversa: um aviso do sistema
+    não é uma resposta do agente, e o que ele não gravar hoje não volta amanhã
+    como se o agente tivesse dito.
+    """
+
+    async def gerar():
+        if modo == "painel":
+            seq = Sequenciador(turno)
+            yield seq.sse("turn.accepted", dict(turno))
+            yield seq.sse(tipo, {"code": code, "message_human": texto})
+            yield seq.sse("turn.completed", {"status": "blocked", "error_code": code,
+                                             "persisted": False})
+        else:
+            yield _sse_legado(legado)
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(gerar(), media_type="text/event-stream", headers=dict(CABECALHOS_SSE))
+
 
 @router.post("/chat/stream")
 @limiter.limit("100/minute")
@@ -297,8 +431,10 @@ async def chat_stream(
     chat_request: ChatRequest,
     db: AsyncSupabaseClient = Depends(get_async_db),
 ):
-    """
-    Streaming chat endpoint using Server-Sent Events (SSE).
+    """Streaming chat endpoint (SSE).
+
+    Duas línguas, uma rota: o **widget** continua recebendo `{"token": "..."}`
+    exatamente como antes; o **painel** recebe o protocolo tipado da SPEC-096.
     """
     # Validation
     if not chat_request.chatInput:
@@ -307,8 +443,34 @@ async def chat_stream(
             detail="chatInput is required for streaming",
         )
 
+    modo = _modo_de_confianca(request)
+    if modo == "widget":
+        # 🔴 O corpo não escolhe a identidade. Sem a chave do BFF, o `userId`
+        # some — e com ele somem os privilégios que ele carregava.
+        chat_request.userId = None
+
+    client_request_id = (chat_request.clientRequestId or "").strip()
+    if modo == "painel" and not client_request_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="client_request_id é obrigatório no modo painel",
+        )
+
+    assistant_message_id = (
+        str(chat_request.assistantMessageId) if chat_request.assistantMessageId else str(uuid.uuid4())
+    )
+    turno = {
+        "client_request_id": client_request_id or None,
+        "session_id": str(chat_request.sessionId),
+        "user_message_id": str(chat_request.userMessageId) if chat_request.userMessageId else None,
+        "assistant_message_id": assistant_message_id,
+    }
+    chave_do_turno = "%s:%s" % (chat_request.companyId, client_request_id)
+
     logger.info(
-        f"[STREAM] Request from company={chat_request.companyId}, session={chat_request.sessionId}"
+        "[STREAM] modo=%s company=%s session=%s turno=%s",
+        modo, str(chat_request.companyId)[:8], str(chat_request.sessionId)[:8],
+        (client_request_id or "-")[:8],
     )
 
     # Check HUMAN_REQUESTED status
@@ -335,46 +497,31 @@ async def chat_stream(
                 yield "data: [HUMAN_MODE]\n\n"
                 yield "data: [DONE]\n\n"
 
-            return StreamingResponse(
-                human_mode_response(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
+            if modo == "widget":
+                return StreamingResponse(human_mode_response(), media_type="text/event-stream",
+                                         headers=dict(CABECALHOS_SSE))
+            return _resposta_de_politica(
+                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="policy",
+                texto="Alguém da equipe assumiu esta conversa.",
+                legado={"token": ""},
             )
 
     # ===========================================================================
     # BALANCE CHECK (Paywall)
     # ===========================================================================
-    from app.services.billing_service import get_billing_service
-    billing_service = get_billing_service()
-
     # SPEC-062 §4, leis 2 e 4 — a PORTEIRA decide, nao o saldo direto.
     from app.services.billing_gate import pode_consumir
 
     _pode, _motivo = pode_consumir(str(chat_request.companyId))
     if not _pode:
         logger.info("[STREAM] barrado pela porteira: %s", _motivo)
-
-        async def no_balance_response():
-            data = json.dumps({"token": "Creditos insuficientes para responder. Configure plano/creditos da empresa no Admin."})
-            yield f"data: {data}\n\n"
-            yield "data: [DONE]\n\n"
-
-        return StreamingResponse(
-            no_balance_response(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+        return _resposta_de_politica(
+            modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="billing",
+            texto=TEXTO_SEM_CREDITO, legado={"token": TEXTO_SEM_CREDITO},
         )
 
     # Get company config and prepare graph
-    from app.agents.graph import stream_agent
+    from app.agents.graph import stream_agent, stream_agent_eventos
     from app.services.agent_service import AgentService
     from app.services.langchain_service import get_or_create_graph
 
@@ -404,20 +551,9 @@ async def chat_stream(
     # ✅ VALIDATION: Agent ID is mandatory
     if not chat_request.agentId:
         logger.warning(f"[STREAM] No agentId provided for company {chat_request.companyId}")
-
-        async def no_agent_configured():
-            data = json.dumps({"token": "⚠️ Nenhum agente configurado. Configure um agente em Configurações."})
-            yield f"data: {data}\n\n"
-            yield "data: [DONE]\n\n"
-
-        return StreamingResponse(
-            no_agent_configured(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+        return _resposta_de_politica(
+            modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="no_agent",
+            texto=TEXTO_SEM_AGENTE, legado={"token": TEXTO_SEM_AGENTE},
         )
 
     # Try to load agent
@@ -432,29 +568,20 @@ async def chat_stream(
         else:
             # Agent not found
             logger.warning(f"[STREAM] Agent {chat_request.agentId} not found")
-
-            async def agent_not_found():
-                data = json.dumps({"token": "⚠️ Agente não encontrado. Verifique a configuração."})
-                yield f"data: {data}\n\n"
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(
-                agent_not_found(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
+            return _resposta_de_politica(
+                modo=modo, turno=turno, tipo=TIPO_POLICY_NOTICE, code="no_agent",
+                texto=TEXTO_AGENTE_NAO_ENCONTRADO,
+                legado={"token": TEXTO_AGENTE_NAO_ENCONTRADO},
             )
-    except Exception as e:
-        logger.error(f"[STREAM] Error loading agent: {e}")
+    except Exception as agent_error:
+        logger.error(f"[STREAM] Error loading agent: {type(agent_error).__name__}")
 
     # ===========================================================================
     # WIDGET SECURITY: Domain Validation + Rate Limiting
     # ===========================================================================
-    if agent_data and not chat_request.userId:
-        # This is likely a widget request (anonymous user)
+    # 🔴 O gatilho é o MODO, não o `userId` do corpo: quem não prova ser o BFF
+    # passa pelas checagens de widget, mande o corpo que mandar.
+    if agent_data and modo == "widget":
         try:
             # 1. Validate domain whitelist
             await validate_widget_domain(request, agent_data, db)
@@ -470,15 +597,14 @@ async def chat_stream(
             logger.info(f"[STREAM] Widget security checks passed for session {chat_request.sessionId}")
         except HTTPException:
             raise
-        except Exception as e:
-            logger.warning(f"[STREAM] Widget security check error (allowing): {e}")
+        except Exception as widget_error:
+            logger.warning(f"[STREAM] Widget security check error (allowing): {type(widget_error).__name__}")
 
     # 🔥 Usar cache de grafos (LRUCache) para evitar recriação a cada mensagem
     from app.services.qdrant_service import get_qdrant_service
     qdrant = get_qdrant_service()
 
     # agent_data contém updated_at que é usado como chave do cache
-    # ✅ FIXED: agentId is now guaranteed to exist
     graph = await get_or_create_graph(
         company_id=str(chat_request.companyId),
         agent_id=str(chat_request.agentId),
@@ -490,12 +616,6 @@ async def chat_stream(
     )
 
     # === VISION PROCESSING (antes do streaming) ===
-    import os
-
-    from langchain_anthropic import ChatAnthropic
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
-
     enriched_message = chat_request.chatInput
 
     # F1 — visão/documentos GLOBAIS: default de plataforma quando o agente não
@@ -547,55 +667,198 @@ async def chat_stream(
 
             if is_blocked:
                 logger.warning("[SECURITY] 🛡️ Stream message BLOCKED")
-
-                async def blocked_response():
-                    data = json.dumps({"token": block_reason, "blocked": True})
-                    yield f"data: {data}\n\n"
-                    yield "data: [DONE]\n\n"
-
-                return StreamingResponse(
-                    blocked_response(),
-                    media_type="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                        "X-Accel-Buffering": "no",
-                    },
+                return _resposta_de_politica(
+                    modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="policy",
+                    texto=block_reason or MENSAGENS_HUMANAS["policy"],
+                    legado={"token": block_reason, "blocked": True},
                 )
 
             # 🔥 Usa texto sanitizado
             final_message = sanitized_text
             logger.debug("[SECURITY] ✅ Stream message passed guardrail")
 
+        except HTTPException:
+            raise
         except Exception as gr_error:
-            logger.error(f"[SECURITY] ⚠️ Guardrail error: {gr_error}", exc_info=True)
+            logger.error(f"[SECURITY] ⚠️ Guardrail error: {type(gr_error).__name__}", exc_info=True)
 
             # 🔥 Fail-close se configurado (default: True)
             fail_close = getattr(guardrail, 'fail_close', True) if guardrail else True
             if fail_close:
-                async def error_response():
-                    data = json.dumps({"token": "Erro temporário de segurança. Por favor, tente novamente.", "blocked": True})
-                    yield f"data: {data}\n\n"
-                    yield "data: [DONE]\n\n"
-
-                return StreamingResponse(
-                    error_response(),
-                    media_type="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                        "X-Accel-Buffering": "no",
-                    },
+                return _resposta_de_politica(
+                    modo=modo, turno=turno, tipo=TIPO_POLICY_BLOCKED, code="policy",
+                    texto=TEXTO_ERRO_DE_SEGURANCA,
+                    legado={"token": TEXTO_ERRO_DE_SEGURANCA, "blocked": True},
                 )
 
-    async def event_generator():
-        """Generate SSE events with tokens from the LLM stream."""
-        full_response = ""
+    # =========================================================================
+    # A PERSISTÊNCIA — a mesma para os dois modos, e ela é do TURNO
+    # =========================================================================
+    async def _persistir(conteudo: str, dados_do_turno: Dict[str, Any]) -> bool:
+        """Grava a resposta (ou o parcial). Devolve se gravou.
+
+        ⛔ Conteúdo vazio não vira mensagem: uma falha antes do primeiro token
+        não deixa bolha muda na conversa — deixa só o evento `error`.
+        """
+        nonlocal conversation_id, current_unread
+        if not (conteudo or "").strip():
+            return False
+        try:
+            if not conversation_id:
+                new_conv = (
+                    await db.client.table("conversations")
+                    .insert({
+                        "company_id": str(chat_request.companyId),
+                        "user_id": str(chat_request.userId) if chat_request.userId else None,
+                        "session_id": str(chat_request.sessionId),
+                        "agent_id": str(chat_request.agentId) if chat_request.agentId else None,
+                        "channel": chat_request.channel or "web",
+                        "status": "open",
+                        "unread_count": 1,
+                        "last_message_preview": conteudo[:100],
+                        "last_message_at": datetime.utcnow().isoformat() + "Z",
+                    })
+                    .execute()
+                )
+                if new_conv.data:
+                    conversation_id = new_conv.data[0]["id"]
+
+            if not conversation_id:
+                return False
+
+            message_data = {
+                "id": assistant_message_id,
+                "conversation_id": conversation_id,
+                "role": "assistant",
+                "content": conteudo,
+                "type": "text",
+            }
+            if client_request_id:
+                # 🔴 O `client_request_id` vai no TOPO do payload porque é ele
+                # que o índice único parcial da migration A.1 lê
+                # (`payload->>'client_request_id'`) — e é por ele que o Realtime
+                # da tela descarta a duplicata.
+                message_data["payload"] = {
+                    "client_request_id": client_request_id,
+                    "turn": dados_do_turno,
+                }
+            else:
+                message_data["payload"] = {"turn": dados_do_turno}
+
+            await db.client.table("messages").insert(message_data).execute()
+
+            await db.client.table("conversations").update({
+                "last_message_preview": conteudo[:100],
+                "last_message_at": datetime.utcnow().isoformat() + "Z",
+                "unread_count": current_unread + 1,
+            }).eq("id", conversation_id).execute()
+
+            logger.info("[STREAM] resposta gravada em %s (%s)",
+                        str(conversation_id)[:8], dados_do_turno.get("status"))
+            return True
+        except BaseException as erro_ao_gravar:  # noqa: BLE001
+            # ⚠️ `BaseException` e não `Exception`: `CancelledError` desce de
+            # `BaseException`, e é ELA que chega aqui quando o Stop cancela a
+            # task no meio da gravação (E4). Perder o parcial por causa disso
+            # foi o defeito (x) do GATE ZERO.
+            logger.error("[STREAM] falha ao gravar a resposta: %s", type(erro_ao_gravar).__name__)
+            return False
+
+    async def _entregas_do_turno() -> List[Dict[str, Any]]:
+        """As peças que o Artifact Hub publicou DENTRO deste turno.
+
+        📊 `ArtifactService.publicar` só enxerga `id, artifact_id, version,
+        status, brand_snapshot` — não tem título nem tipo para dar. Por isso o
+        ContextVar guarda só o `artifact_id`, e o nome que o corretor lê sai
+        daqui, de um SELECT em `artifacts` já no fim do turno.
+        """
+        registradas = pecas_do_turno.get(None) or []
+        ids = [p.get("artifact_id") for p in registradas if p.get("artifact_id")]
+        if not ids:
+            return []
+        entregas = []
+        try:
+            achadas = (
+                await db.client.table("artifacts")
+                .select("id, title, kind")
+                .eq("company_id", str(chat_request.companyId))
+                .in_("id", ids)
+                .execute()
+            )
+            for linha in (achadas.data or []):
+                entregas.append({
+                    "artifact_id": linha["id"],
+                    "title": linha.get("title") or "Entrega",
+                    "kind_human": KINDS_HUMANOS.get(linha.get("kind"), "Entrega"),
+                    "href": href_da_peca(linha["id"]),
+                })
+        except Exception as erro_de_leitura:  # noqa: BLE001
+            logger.warning("[STREAM] entregas do turno indisponiveis: %s", type(erro_de_leitura).__name__)
+        return entregas
+
+    # =========================================================================
+    # MODO WIDGET — o contrato antigo, intacto
+    # =========================================================================
+    if modo == "widget":
+        async def event_generator():
+            """Generate SSE events with tokens from the LLM stream."""
+            full_response = ""
+            try:
+                async for token in stream_agent(
+                    graph=graph,
+                    user_message=final_message,
+                    company_id=str(chat_request.companyId),
+                    user_id=str(chat_request.userId) if chat_request.userId else None,
+                    session_id=str(chat_request.sessionId),
+                    company_config=company_config,
+                    options=chat_request.options,
+                    supabase_client=sync_db,
+                    agent_id=str(chat_request.agentId) if chat_request.agentId else None,
+                    async_supabase_client=db.client,
+                ):
+                    full_response += token
+                    yield _sse_legado({"token": token})
+
+                await _persistir(full_response, {"status": "complete"})
+            except Exception as erro_do_widget:  # noqa: BLE001
+                logger.error("[STREAM] erro no stream do widget: %s",
+                             type(erro_do_widget).__name__, exc_info=True)
+                # ⛔ A exceção CRUA não vai ao browser (R7): o que sai é a
+                # família, a correlação e uma frase que alguém entende.
+                yield _sse_legado({"error": erro_seguro(erro_do_widget)})
+
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream",
+                                 headers=dict(CABECALHOS_SSE))
+
+    # =========================================================================
+    # MODO PAINEL — o turno tipado, numa task que não morre com a conexão
+    # =========================================================================
+    fila: "asyncio.Queue" = asyncio.Queue()
+
+    # 🔴 ANTES do `create_task`: a task COPIA o contexto, e é essa cópia que o
+    # Artifact Hub vai encontrar quando publicar no meio do turno.
+    pecas_do_turno.set([])
+
+    async def _gerar(fila_de_saida: "asyncio.Queue") -> None:
+        comeco = time.monotonic()
+        ttft_ms = None
+        partes: List[str] = []
+        estagios: List[str] = []
+        estado = "complete"
+        erro = None
+
+        def emitir(tipo: str, payload: Dict[str, Any]) -> None:
+            # `put_nowait`: a fila não tem teto, então emitir NUNCA suspende —
+            # e o que não suspende não morre no meio de um cancelamento.
+            fila_de_saida.put_nowait((tipo, payload))
 
         try:
-            async for token in stream_agent(
-                graph=graph,
-                user_message=final_message,  # 🔥 Usa texto sanitizado
+            emitir("turn.accepted", dict(turno))
+            async for ev in stream_agent_eventos(
+                graph,
+                user_message=final_message,
                 company_id=str(chat_request.companyId),
                 user_id=str(chat_request.userId) if chat_request.userId else None,
                 session_id=str(chat_request.sessionId),
@@ -604,82 +867,133 @@ async def chat_stream(
                 supabase_client=sync_db,
                 agent_id=str(chat_request.agentId) if chat_request.agentId else None,
                 async_supabase_client=db.client,
+                client_request_id=client_request_id,
             ):
-                full_response += token
-                # Format as SSE
-                data = json.dumps({"token": token})
-                yield f"data: {data}\n\n"
+                especie = ev.get("kind")
+                if especie == "delta":
+                    texto = ev.get("text") or ""
+                    if not texto:
+                        continue
+                    if ttft_ms is None:
+                        ttft_ms = int((time.monotonic() - comeco) * 1000)
+                    partes.append(texto)
+                    emitir("assistant.content.delta", {"text": texto})
+                elif especie == "tool_start":
+                    estagio = estagio_da_tool(ev.get("name"))
+                    if estagio["key"] not in estagios:
+                        estagios.append(estagio["key"])
+                    emitir("stage.started", estagio)
+                elif especie == "tool_end":
+                    emitir("stage.completed", {"key": estagio_da_tool(ev.get("name"))["key"]})
+                elif especie == "error":
+                    erro = erro_seguro(ev.get("exc") or RuntimeError("falha no stream"))
+                    estado = "failed"
+                    break
+        except asyncio.CancelledError:
+            # Parar foi decisão de alguém — o parcial vale, e ele é gravado.
+            estado = "interrupted"
+        except BaseException as exc:  # noqa: BLE001
+            estado = "failed"
+            erro = erro_seguro(exc)
+            logger.error("[STREAM] turno %s falhou (%s) correlacao=%s",
+                         (client_request_id or "-")[:8], type(exc).__name__,
+                         erro.get("correlation_id"))
 
-            # === PERSIST MESSAGE AFTER STREAMING ===
-            if full_response.strip():
+        conteudo = "".join(partes)
+        entregas = await _entregas_do_turno()
+        for entrega in entregas:
+            emitir("artifact.ready", entrega)
+        if erro:
+            emitir("error", erro)
+        if conteudo:
+            emitir("assistant.content.completed", {"content": conteudo})
+
+        dados_do_turno = {
+            "client_request_id": client_request_id,
+            "status": estado,
+            "ttft_ms": ttft_ms,
+            "total_ms": int((time.monotonic() - comeco) * 1000),
+            "stages": estagios,
+            "artifacts": [{"artifact_id": e["artifact_id"], "title": e["title"]} for e in entregas],
+            "error_code": (erro or {}).get("code"),
+        }
+        if estado == "interrupted":
+            # E11 — quem parou fica escrito ao lado do parcial.
+            dados_do_turno["stopped_by"] = PARADAS.pop(chave_do_turno, None)
+
+        gravou = await _persistir(conteudo, dados_do_turno)
+        TURNOS_ATIVOS.pop(chave_do_turno, None)
+        PARADAS.pop(chave_do_turno, None)
+
+        emitir("turn.completed", {
+            "status": estado,
+            "ttft_ms": ttft_ms,
+            "total_ms": dados_do_turno["total_ms"],
+            "persisted": gravou,
+            "error_code": dados_do_turno["error_code"],
+        })
+        fila_de_saida.put_nowait(None)
+
+    task = asyncio.create_task(_gerar(fila))
+    TURNOS_ATIVOS[chave_do_turno] = task
+
+    async def gerador_do_painel():
+        seq = Sequenciador(turno)
+        try:
+            while True:
                 try:
-                    # Get or create conversation
-                    nonlocal conversation_id, current_unread
+                    item = await asyncio.wait_for(fila.get(), timeout=SEGUNDOS_DE_BATIMENTO)
+                except asyncio.TimeoutError:
+                    # ⛔ O batimento é um EVENTO, nunca texto: ele não entra em
+                    # `content` e não aparece na conversa.
+                    yield seq.sse("heartbeat", {})
+                    continue
+                if item is None:
+                    break
+                tipo, payload = item
+                yield seq.sse(tipo, payload)
+            yield "data: [DONE]\n\n"
+        finally:
+            # 🔴 A task NÃO é cancelada aqui. Quando o browser fecha, este
+            # gerador morre — e a geração segue até o fim, grava a resposta e
+            # some sozinha do registro. Foi por cancelar aqui que a resposta
+            # inteira se perdia ao trocar de aba (A.4).
+            logger.debug("[STREAM] consumidor saiu do turno %s", (client_request_id or "-")[:8])
 
-                    if not conversation_id:
-                        # Create conversation
-                        new_conv = (
-                            await db.client.table("conversations")
-                            .insert({
-                                "company_id": str(chat_request.companyId),
-                                "user_id": str(chat_request.userId) if chat_request.userId else None,
-                                "session_id": str(chat_request.sessionId),
-                                "agent_id": str(chat_request.agentId) if chat_request.agentId else None,
-                                "channel": chat_request.channel or "web",
-                                "status": "open",
-                                "unread_count": 1,
-                                "last_message_preview": full_response[:100],
-                                "last_message_at": datetime.utcnow().isoformat() + "Z", # FIX DATA ISO
-                            })
-                            .execute()
-                        )
-                        if new_conv.data:
-                            conversation_id = new_conv.data[0]["id"]
+    return StreamingResponse(gerador_do_painel(), media_type="text/event-stream",
+                             headers=dict(CABECALHOS_SSE))
 
-                    # Save assistant message
-                    if conversation_id:
-                        message_data = {
-                            "conversation_id": conversation_id,
-                            "role": "assistant",
-                            "content": full_response,
-                            "type": "text",
-                        }
 
-                        # Use frontend ID to prevent duplicates from Realtime
-                        if chat_request.assistantMessageId:
-                            message_data["id"] = str(chat_request.assistantMessageId)
+class StopRequest(BaseModel):
+    """O Stop do painel — B.4/R8."""
 
-                        await db.client.table("messages").insert(message_data).execute()
+    model_config = {"populate_by_name": True}
 
-                        # Update conversation metadata
-                        await db.client.table("conversations").update({
-                            "last_message_preview": full_response[:100],
-                            "last_message_at": datetime.utcnow().isoformat() + "Z", # FIX DATA ISO
-                            "unread_count": current_unread + 1,
-                        }).eq("id", conversation_id).execute()
+    clientRequestId: str = Field(..., alias="client_request_id")
+    companyId: UUID4 = Field(..., alias="company_id")
+    stoppedBy: Optional[str] = Field(None, alias="stopped_by")
 
-                        logger.info(f"[STREAM] Message persisted to conversation {conversation_id}")
 
-                except Exception as e:
-                    logger.error(f"[STREAM] Error persisting message: {e}")
+@router.post("/chat/stop")
+async def chat_stop(request: Request, stop_request: StopRequest):
+    """Para o turno de verdade — não só o `fetch` do browser.
 
-        except Exception as e:
-            logger.error(f"[STREAM] Error in stream: {e}", exc_info=True)
-            error_data = json.dumps({"error": str(e)})
-            yield f"data: {error_data}\n\n"
+    ⚠️ Antes, "Parar" abortava a conexão e o backend continuava gerando sem
+    saber. Agora ele cancela a task: o parcial é gravado com
+    `status="interrupted"`, e quem pediu fica registrado ao lado dele.
+    """
+    if _modo_de_confianca(request) != "painel":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="não autorizado")
 
-        # Signal end of stream
-        yield "data: [DONE]\n\n"
+    chave = "%s:%s" % (stop_request.companyId, stop_request.clientRequestId)
+    task = TURNOS_ATIVOS.get(chave)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="turno não está em voo")
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    PARADAS[chave] = stop_request.stoppedBy or "painel"
+    task.cancel()
+    logger.info("[STREAM] Stop pedido para o turno %s", stop_request.clientRequestId[:8])
+    return {"status": "interrupted"}
 
 
 # =============================================================================
@@ -743,7 +1057,9 @@ async def delete_session(request: DeleteSessionRequest):
 
     except Exception as e:
         logger.error(f"[Session TTL] Error deleting session: {e}")
+        # ⛔ A exceção crua não vai ao cliente (R7): o texto dela carrega URL de
+        # conexão e id de terceiro. O detalhe vive no log.
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting session: {str(e)}"
+            detail=erro_seguro(e, code="transport")["message_human"],
         ) from e

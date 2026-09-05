@@ -384,6 +384,14 @@ class ArtifactService:
              .maybe_single().execute()).data
         if not v:
             raise ValueError("versao inexistente")
+
+        # SPEC-096 B.3 — a peça publicada DENTRO de um turno de chat avisa o
+        # turno. 🔴 Antes do `return` da republicação: republicar é publicar de
+        # novo, e o corretor tem de ver o link do mesmo jeito. Fora de um turno
+        # (rotina, tick, API) o ContextVar está vazio e isto não faz nada.
+        from app.api.chat_eventos import registrar_peca
+        registrar_peca(v["artifact_id"])
+
         if v["status"] == "published":
             return v
 
