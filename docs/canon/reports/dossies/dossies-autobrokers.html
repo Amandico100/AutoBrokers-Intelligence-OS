@@ -657,7 +657,7 @@ ul.tight li{margin:5px 0}
       <p class="lede">Esta página acompanha a SPEC do chat enquanto ela é executada: o que ela promete, o que a medição achou por baixo do chat de hoje, o que já foi decidido e feito, em que bloco cada equipe está, e o que ficou de fora com o gatilho que traz de volta. Ela é atualizada a cada bloco fechado; a nota só entra no fim.</p>
       <div class="meta"><span>SPEC <b>specs/SPEC-096-o-chat-responde-e-continua.md</b></span><span>faixa <b>6–8h</b></span><span>laço sob B <b>investigador+pesquisador · aquecimento (82) · desenhista · 2 builders em paralelo (tela+BFF ‖ backend) · red team · 2 lentes · juiz fresco · canário vivo</b></span><span>orçamento <b>≤ 2,5 M tokens</b></span><span>base <b>origin/main = e1494ab</b></span></div>
     </div>
-    <div class="gauge"><div class="eyebrow">estado</div><div class="big">em<small> execução</small></div><div class="bar"><i style="width:45%"></i></div><div class="sub">convertida medindo · aquecimento nota 82 (16 emendas, as 2 falsas assinadas pegas) · gate zero vermelho na cópia limpa · builders em paralelo desde 22:30</div></div>
+    <div class="gauge"><div class="eyebrow">estado</div><div class="big">em<small> execução</small></div><div class="bar"><i style="width:78%"></i></div><div class="sub">convertida medindo · aquecimento 82 · gate zero vermelho · builders entregues · painel: red team 16 achados + lente do DADO 3 P1 → consertados e re-guardados ([17]–[24]) · migration aplicada · faltam: lente verdade, juiz fresco + canário vivo, push</div></div>
   </div>
 
   <h2>1 · O que ela promete — o teste do produto</h2>
@@ -688,14 +688,14 @@ ul.tight li{margin:5px 0}
   <h2>4 · Os blocos, e onde cada um está</h2>
   <div class="tw"><table>
     <tr><th>bloco</th><th>o que entrega</th><th>estado</th></tr>
-    <tr><td><b>0</b> gate zero + medição viva</td><td>guardas vermelhos na cópia limpa (10 itens); a prova do P0 sem custo de modelo; TTFT antes; o despejo dos eventos do grafo (0.4)</td><td>guardas ✔ vermelhos (mjs 21 · py 13 + 5) · 0.2 ✔ P0 provado ao vivo (200×404) · 0.4 com o builder</td></tr>
-    <tr><td><b>S</b> segurança (piso)</td><td>sessão manda no BFF; chave interna no backend; dono em <code>/api/messages</code>; voz deriva da sessão</td><td>em construção (2 builders)</td></tr>
-    <tr><td><b>A</b> o turno</td><td>pergunta gravada pelo servidor; índice de idempotência; parcial sobrevive; geração até o fim</td><td>em construção</td></tr>
-    <tr><td><b>B</b> o protocolo</td><td>eventos tipados v1; catálogo tool → frase da corretora; erro seguro; Stop</td><td>em construção</td></tr>
-    <tr><td><b>C</b> o shell</td><td>linha de atividade; card do relatório; aviso com cara de aviso; Parar; autoscroll que não puxa; Tentar de novo</td><td>em construção</td></tr>
-    <tr><td><b>D</b> o histórico</td><td>60 últimas + "carregar anteriores"; dedupe do Realtime por chave</td><td>em construção</td></tr>
+    <tr><td><b>0</b> gate zero + medição viva</td><td>guardas vermelhos na cópia limpa (10 itens); a prova do P0 sem custo de modelo; TTFT antes; o despejo dos eventos do grafo (0.4)</td><td>✔ gate zero vermelho (mjs 21 · py 13 + 5) · ✔ 0.2 P0 provado ao vivo (200×404) · ✔ 0.3 TTFT 1,13 s / [DONE] 8,71 s · 0.4 medido com dublê (o grafo real não sobe nesta máquina)</td></tr>
+    <tr><td><b>S</b> segurança (piso)</td><td>sessão manda no BFF; chave interna no backend; dono em <code>/api/messages</code>; voz deriva da sessão</td><td>✔ feito · painel fechou o 2º buraco: em modo widget a corretora vem do AGENTE, não do corpo</td></tr>
+    <tr><td><b>A</b> o turno</td><td>pergunta gravada pelo servidor; índice de idempotência; parcial sobrevive; geração até o fim</td><td>✔ feito · migration aplicada (05/09) · retentativa substitui o parcial (UPSERT)</td></tr>
+    <tr><td><b>B</b> o protocolo</td><td>eventos tipados v1; catálogo tool → frase da corretora; erro seguro; Stop</td><td>✔ feito · 38/38 tools no catálogo · notice/failed · correlation_id no log</td></tr>
+    <tr><td><b>C</b> o shell</td><td>linha de atividade; card do relatório; aviso com cara de aviso; Parar; autoscroll que não puxa; Tentar de novo</td><td>✔ feito · Enter duplo travado · guardas [1]–[24] verdes</td></tr>
+    <tr><td><b>D</b> o histórico</td><td>60 últimas + "carregar anteriores"; dedupe do Realtime por chave</td><td>✔ feito · cursor (created_at, id)</td></tr>
     <tr><td><b>E</b> canário vivo</td><td>3 turnos reais na Resulta em modo canário, com limpeza; TTFT não piorou; a linha de controle (401)</td><td>depois dos builders</td></tr>
-    <tr><td><b>painel</b></td><td>red team · lente do DADO · lente verdade/regressão · juiz fresco que confirma e audita</td><td>depois dos builders</td></tr>
+    <tr><td><b>painel</b></td><td>red team · lente do DADO · lente verdade/regressão · juiz fresco que confirma e audita</td><td>red team ✔ (16) · DADO ✔ (3 P1 + 6 P2) · verdade: rodando · juiz: a seguir</td></tr>
   </table></div>
 
   <h2>5 · O que saiu da proposta (4.096 linhas) — e o gatilho que traz de volta</h2>
