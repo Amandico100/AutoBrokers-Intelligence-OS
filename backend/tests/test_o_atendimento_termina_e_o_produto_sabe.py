@@ -23,6 +23,43 @@ work_runs presos em `queued` ......  5   o mais velho há 29 dias
 2. ⚠️ Os cinco presos são **todos** `intelligence.detect_signals` — jobs de
    background, não atendimento. O buraco é real; a prova do atendimento é a
    conversa de 730 horas, não eles.
+
+===============================================================================
+🔄 MIGRADO EM 05/09/2026 PELA SPEC-097 — o que mudou aqui, e por quê (§9.3)
+===============================================================================
+
+⚠️ **Três asserções liam `app/api/dashboard/atendimentos/route.ts` por caminho
+fixo.** 📊 E14: a SPEC-097 move os contadores da 086 para
+`lib/atendimento/casos.ts::projetarCasos` (R5/U5.3) — e no dia da mudança as
+três ficariam **VERDES POR VACUIDADE**, medindo um arquivo que não decide mais
+nada. Elas agora leem `_fonte_dos_contadores()`, que **prefere a projeção e cai
+na rota**, e que **REPROVA quando nenhuma das duas tem os contadores**. É a
+diferença entre um guarda e um carimbo.
+
+⚠️ **`test_o_dispatch_LIGA_o_marcador_no_checkpoint` exigia
+`mirror_conversation_id` no corpo do escritor.** 📊 E2: `marcar_fim` NUNCA
+exigiu o espelho — o portão está no CHAMADOR, e a 097 (U1.2) o faz chamar pelo
+EPISÓDIO. Congelar o espelho aqui deixaria o guarda VERMELHO no dia em que o
+produto ficasse CERTO, que é o pior tipo de teste. A asserção passou a exigir
+**alguma âncora de atendimento** — espelho, conversa ou episódio — e um `except`.
+
+⚠️ **`test_o_painel_ao_FECHAR_deixa_marca` congelava o motivo cravado
+`fechado_por_humano`.** 📊 E4: o botão "Encerrar" passa a PERGUNTAR o motivo (os
+5 do CHECK). A asserção agora exige que o motivo gravado seja **um dos cinco**,
+sem exigir qual — o que continua proibindo inventar desfecho, que era o ponto.
+
+⚠️ **E um achado de passagem, consertado junto:** a mensagem de falha de
+`test_o_painel_filtra_por_corretora_nas_DUAS_consultas_novas` contava
+`chr(34)+chr(34)` — a string VAZIA, que casa em toda posição. No dia em que o
+guarda reprovasse, ele diria *"só 481 filtros"*. É o CLAUDE.md §9.5 dentro do
+próprio guarda: responde, e responde errado.
+
+⛔ **O que NÃO entrou aqui, de propósito:** o `parado` (R1), o claim sem `status`
+(R2) e o desfecho por episódio (R3/E8). Eles ainda não existem, e um guarda que
+já estava verde não é o lugar de uma regra por construir — isso apagaria a
+fronteira entre *"isto regrediu"* e *"isto ainda não foi feito"*. Eles nascem
+VERMELHOS em `scripts/a-operacao-tem-uma-casa.test.mjs` e
+`backend/tests/test_o_atendimento_sabe_como_terminou.py`, que são o GATE ZERO.
 """
 from __future__ import annotations
 
@@ -80,6 +117,34 @@ def _so_o_codigo_ts(fonte: str) -> str:
 
     sem_bloco = _re.sub(r"/\*.*?\*/", " ", fonte, flags=_re.S)
     return "\n".join(l.split("//", 1)[0] for l in sem_bloco.splitlines())
+
+
+# =============================================================================
+# 🔴 DE ONDE VÊM OS CONTADORES — a projeção da 097, ou a rota de hoje
+# =============================================================================
+
+PROJECAO_097 = RAIZ.parent / "lib" / "atendimento" / "casos.ts"
+ROTA_DA_FILA = (RAIZ.parent / "app" / "api" / "dashboard" / "atendimentos"
+                / "route.ts")
+
+
+def _fonte_dos_contadores() -> tuple:
+    """`(caminho, texto_sem_comentario)` de quem DECIDE os contadores da 086.
+
+    🔴 E14 — a SPEC-097 (U5.3) tira os contadores da rota e os põe em
+    `projetarCasos`. Um caminho fixo aqui viraria carimbo no dia da mudança.
+    Preferimos a projeção; caímos na rota; e se NENHUMA das duas contar, o
+    chamador reprova em vez de passar por vacuidade."""
+    for caminho in (PROJECAO_097, ROTA_DA_FILA):
+        if not caminho.exists():
+            continue
+        texto = _so_o_codigo_ts(caminho.read_text(encoding="utf-8"))
+        if "terminaram" in texto and "resolucao_motivo" in texto:
+            return caminho, texto
+    raise AssertionError(
+        "nem `lib/atendimento/casos.ts` nem `app/api/dashboard/atendimentos/route.ts` "
+        "contam `terminaram` a partir de `resolucao_motivo` — os contadores da SPEC-086 "
+        "sumiram dos dois lugares, e as asserções abaixo passariam MEDINDO NADA (E14)")
 
 
 # =============================================================================
@@ -349,7 +414,17 @@ def test_o_dispatch_LIGA_o_marcador_no_checkpoint():
     assert "await _marcar_fim_do_atendimento(db, company_id, session, fase)" in fonte
     corpo = fonte.split("async def _marcar_fim_do_atendimento", 1)[1].split("\nasync def ", 1)[0]
     assert "motivo_do_estado_do_dispatch" in corpo
-    assert "mirror_conversation_id" in corpo
+    # 🔄 MIGRADO (SPEC-097 / E2): este guarda exigia `mirror_conversation_id`.
+    #    📊 `marcar_fim` NUNCA exigiu o espelho — o portão está AQUI, no CHAMADOR,
+    #    e a U1.2 o faz chamar pelo EPISÓDIO (`attendance_session_id`). Congelar o
+    #    espelho deixaria este teste VERMELHO no dia em que o produto ficasse
+    #    CERTO, que é o pior tipo de teste (§9.3). O que continua obrigatório é
+    #    haver ALGUMA âncora de atendimento — sem nenhuma, nada é marcado.
+    ancoras = ("mirror_conversation_id", "conversation_id", "attendance_session_id",
+               "session_id")
+    assert any(a in corpo for a in ancoras), (
+        "o escritor não passa âncora nenhuma para `marcar_fim` — sem conversa e sem "
+        f"episódio, nada é marcado. Esperava uma de: {ancoras}")
     assert "except Exception" in corpo, "uma falha aqui derrubaria o checkpoint"
 
 
@@ -792,7 +867,16 @@ def test_o_painel_ao_FECHAR_deixa_marca():
                             / "conversas" / "[id]"
                             / "route.ts").read_text(encoding="utf-8"))
     fecho = rota.split("if (action === 'close')", 1)[1].split("if (action === 'send')", 1)[0]
-    assert "resolucao_motivo: 'fechado_por_humano'" in fecho
+    # 🔄 MIGRADO (SPEC-097 / E4): este guarda exigia o motivo CRAVADO
+    #    `fechado_por_humano`. O botão passa a PERGUNTAR o motivo (os 5 do CHECK)
+    #    e cravar o valor deixa de ser possível. O que NÃO muda — e é o ponto do
+    #    teste — é que o motivo gravado saia da LISTA FECHADA: inventar desfecho
+    #    na tela é o que a SPEC-086 existe para impedir.
+    assert "resolucao_motivo" in fecho, "o fecho não grava motivo nenhum"
+    dos_cinco = [m for m in FIM.MOTIVOS if f"'{m}'" in fecho or f'"{m}"' in fecho]
+    assert dos_cinco, (
+        "o motivo gravado ao fechar não é nenhum dos cinco do CHECK "
+        f"({FIM.MOTIVOS}) — ou é inventado, ou vem de um lugar que este guarda não vê")
     assert "resolvido_em: agora" in fecho
     assert ".is('resolvido_em', null)" in fecho, (
         "fechar na tela apagaria o desfecho REAL de um atendimento que o robô "
@@ -823,9 +907,8 @@ def test_a_LISTA_DE_SUCESSO_e_a_MESMA_no_Python_no_TS_e_no_BANCO():
     o Python **decide** o que é sucesso, e o TS **conta** para a tela. Nenhuma
     pode ser apagada; o que dá para fazer é exigir que digam o mesmo.
     """
-    rota = _so_o_codigo_ts((RAIZ.parent / "app" / "api" / "dashboard"
-                            / "atendimentos"
-                            / "route.ts").read_text(encoding="utf-8"))
+    # 🔄 E14 — a projeção da 097 quando ela existir; a rota enquanto não.
+    _de_onde, rota = _fonte_dos_contadores()
     sql = _so_o_codigo_sql(MIG_A.read_text(encoding="utf-8"))
 
     # o TS conta como sucesso exatamente os quatro do Python
@@ -850,23 +933,27 @@ def test_a_LISTA_DE_SUCESSO_e_a_MESMA_no_Python_no_TS_e_no_BANCO():
 def test_o_painel_filtra_por_corretora_nas_DUAS_consultas_novas():
     """🔴 §7 — uma só consulta sem `company_id` mostra a semana de TODAS as
     corretoras na tela de UMA."""
-    rota = _so_o_codigo_ts((RAIZ.parent / "app" / "api" / "dashboard"
-                            / "atendimentos"
-                            / "route.ts").read_text(encoding="utf-8"))
+    # 🔄 E14 — segue quem CONTA, não um caminho fixo.
+    _de_onde, rota = _fonte_dos_contadores()
     bloco = rota.split("const semana = new Date(", 1)[1].split("return NextResponse", 1)[0]
-    assert bloco.count("eq('company_id', ctx.companyId)") == 2, (
-        f"só {bloco.count(chr(34)+chr(34))} filtros — as DUAS consultas precisam do seu")
+    # 🔄 E14 (bônus): a mensagem de falha contava `chr(34)+chr(34)` — string
+    #    VAZIA, que casa em todo lugar. Ela diria "só 481 filtros" no dia em que
+    #    o guarda reprovasse. Mensagem errada num guarda é o mesmo defeito que
+    #    ele existe para pegar: responde, e responde errado.
+    filtros = bloco.count("eq('company_id'")
+    assert filtros == 2, (
+        f"só {filtros} filtro(s) por corretora no bloco dos contadores — as DUAS "
+        "consultas precisam do seu (§7: o backend usa service role)")
 
 
 def test_o_painel_DECLARA_quando_os_contadores_nao_carregaram():
     """⛔ O zero silencioso de novo: sumir com os campos faria a tela mostrar
     "0 terminaram" num dia em que ninguém conseguiu olhar."""
-    rota = _so_o_codigo_ts((RAIZ.parent / "app" / "api" / "dashboard"
-                            / "atendimentos"
-                            / "route.ts").read_text(encoding="utf-8"))
-    assert "indisponivel: true" in rota
-    assert "indisponivel: false" in rota
-    assert "semana: semanaResumo" in rota
+    # 🔄 E14 — segue quem CONTA, não um caminho fixo.
+    de_onde, rota = _fonte_dos_contadores()
+    assert "indisponivel: true" in rota, de_onde
+    assert "indisponivel: false" in rota, de_onde
+    assert "semana" in rota, de_onde
 
 
 # ===========================================================================

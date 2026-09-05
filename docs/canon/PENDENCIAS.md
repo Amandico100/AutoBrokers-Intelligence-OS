@@ -10295,3 +10295,30 @@ A 096 só fez a rota derivar a corretora da sessão (S.4). O runtime de voz é d
 📊 05/09/2026 (lente de verdade da 096): 4 problemas; o guarda mede só `app/dashboard/personalizacao/memorias/page.tsx`, arquivo INTOCADO por
 `e1494ab..HEAD` — vermelho PRÉ-EXISTENTE, não regressão. A árvore não tem baseline verde para ele. **Destrava:** rodar o guarda em `e1494ab`,
 achar o commit que o quebrou (`git bisect`) e decidir: migrar o guarda (verdade vencida) ou consertar a tela. **Dono:** 🤖. 💭 45 min.
+
+## P-097-ESPERA-COM-ESCRITOR · `work_waits` tem esquema completo e ZERO linhas — a espera saiu da 097 até ter escritor
+📊 05/09/2026: `select count(*) from work_waits` → 0 na vida; os 3 chamadores de `abrir_espera` (`services/dispatch_router.py:1194,1252`, `tasks/handoff_watchdog.py:480`)
+só chamam com o espelho do WhatsApp ligado; 📊 4 acionamentos em 30 dias; a FK `(conversation_id, company_id)` barra o episódio órfão. A 097 LÊ `work_waits` se houver
+linha e não deduz espera de texto. **Destrava:** o corredor chamar `abrir_espera(attendance_session_id=…)` quando entra em espera (seguradora/cliente), com `due_at`
+quando há prazo, e a FK aceitar o episódio. Entram com ele: as views "Aguardando seguradora/cliente", `espera_vencida` com prazo e o gate G7 da proposta. **Dono:** 🤖. 💭 3h.
+
+## P-097-TIMELINE-CURSOR · a timeline da Ficha corta em 500 mensagens SEM aviso
+📊 `ficha/[id]/route.ts`: `messages … .limit(500)` contra conversas de até 1.326 mensagens; não há `has_more`. A 097 entrega `has_more` verdadeiro; a paginação por cursor
+saiu por orçamento (E18). **Dono:** 🤖. 💭 1h30.
+
+## P-097-SESSOES-ORFAS · 42,2% das `attendance_sessions` não casam 1:1 com uma conversa por telefone
+📊 05/09/2026 (aquecimento): 57,8% casam; o resto é ambíguo (mesmo telefone, várias conversas/empresas) ou sem conversa. Ficam como casos "sem conversa vinculada".
+**Destrava:** o espelho do WhatsApp ligado (o Atlas passa a conhecer a conversa) e uma normalização única de telefone no produto. **Dono:** 🧑 liga o espelho · 🤖.
+
+## P-097-DOCUMENTOS-DO-ATENDIMENTO · não existe autoridade de documento de atendimento
+📊 `documents` é a base de conhecimento (RAG); a evidência do atendimento é coluna de mensagem (`image_url` NOT NULL = 13, `audio_url` = 0 em 25.061); `artifacts` sem conversa
+(P-096-ARTIFACT-SEM-CONVERSA); 📊 9.002 mídias do history sync inalcançáveis (sem `waE2E.Message`). D-097-07 da proposta vira pendência. **Dono:** 🤖 quando houver acervo.
+
+## P-097-APPROVAL-SEM-CONVERSA · `approval_requests` não volta ao atendimento
+📊 sem `conversation_id`; ponte run→conversa com 4 linhas em 3.708. A razão `aprovacao_pendente` saiu de R6. **Destrava:** a 055/098 gravarem a conversa/episódio na aprovação. **Dono:** 🤖.
+
+## P-097-POLLING-10S · a Fila consulta a cada 10 s (≈ 30 mil consultas/operador/dia)
+📊 5 consultas em série + 1 HTTP, p50 ≈ 1,0 s, `setInterval` 10 s. Realtime/SSE só depois de medir com a projeção nova. **Dono:** 🤖. 💭 2h.
+
+## P-097-DRAG · arrastar cards não existe e não entra até haver comando de negócio por coluna
+Proposta §16: drag = comando, nunca estado. Não há drag hoje; construir para governar é o risco. **Volta** quando uma corretora pedir. **Dono:** 🧑 decide.
