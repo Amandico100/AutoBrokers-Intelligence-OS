@@ -71,7 +71,20 @@ export const DISPATCH_STATES_ENCERRADOS = [
   'needs_human',
 ] as const;
 
-/** Os estágios em linguagem humana — o que o corretor lê na tela. */
+/**
+ * Os estágios em linguagem humana — o que o corretor lê na tela.
+ *
+ * 🔴 SPEC-097 (R1/R4) acrescentou DOIS, e os dois nasceram aqui de propósito:
+ * `encaminhado` nasceu fora desta lista em 04/08 e a tela mentiu por um dia.
+ *
+ *   `parado`     o silêncio. 📊 05/09/2026: a cascata da Fila terminava em
+ *                `else stage = 'concluido'`, e 584 de 668 conversas (87,4%)
+ *                apareciam ENCERRADAS com `resolvido_em` NULL em 728/728.
+ *                Ninguém tinha encerrado nada — o relógio encerrava. Agora
+ *                "ninguém falou há 48h" tem nome próprio, e ele não é um fim.
+ *   `esperando`  a espera declarada por uma linha ATIVA de `work_waits` (R4).
+ *                Nunca deduzida do texto da conversa.
+ */
 export const ATTENDANCE_STAGES = [
   'precisa_de_voce',
   'acionando',
@@ -79,7 +92,9 @@ export const ATTENDANCE_STAGES = [
   'monitorando',
   'em_conversa',
   'com_equipe',
+  'esperando',
   'observacao',
+  'parado',
   'concluido',
 ] as const;
 
@@ -225,10 +240,20 @@ export const STAGE_META: Record<Stage, { label: string; tone: StageTone; desc: s
     tone: 'warning',
     desc: 'alguém da corretora assumiu',
   },
+  esperando: {
+    label: 'Esperando resposta',
+    tone: 'warning',
+    desc: 'há uma espera aberta — de quem e desde quando estão no caso',
+  },
   observacao: {
     label: 'Atendimento da equipe (observado)',
     tone: 'neutral',
     desc: 'a atendente conversa e o sistema registra',
+  },
+  parado: {
+    label: 'Parado',
+    tone: 'danger',
+    desc: 'ninguém falou nem trabalhou nisso, e não há desfecho escrito',
   },
   concluido: {
     label: 'Concluído',

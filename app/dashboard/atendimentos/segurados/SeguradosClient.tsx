@@ -3,6 +3,12 @@
 // SPEC-043 — Segurados atendidos (lista real derivada dos atendimentos).
 // SPEC-046 — o clique abre um PERFIL leve: dados + lista de atendimentos,
 // e cada atendimento abre a Ficha (não mais a conversa crua direto).
+//
+// 🔴 SPEC-097 — ISTO NÃO É UM CRM, e passou a não fingir que é. Segurado é um
+// ATALHO DE BUSCA: "ver todos os casos desta pessoa" leva para Casos com o
+// telefone já buscado — a MESMA busca, no MESMO banco, com a mesma resposta.
+// Uma segunda lista de pessoas, com a sua própria noção de "atendimento",
+// seria o motor paralelo que o CLAUDE.md §5 proíbe.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -141,9 +147,20 @@ export default function SeguradosClient() {
 
                   {aberto && (
                     <div className="border-t border-border/60 px-3.5 py-2.5">
-                      <p className="mb-2 text-[11px] font-medium text-muted-foreground">
-                        Atendimentos deste cliente
-                      </p>
+                      <div className="mb-2 flex items-baseline gap-2">
+                        <p className="text-[11px] font-medium text-muted-foreground">
+                          Atendimentos deste segurado
+                        </p>
+                        <span className="flex-1" />
+                        <button
+                          onClick={() => router.push(
+                            `/dashboard/atendimentos/casos?busca=${encodeURIComponent(s.telefone)}`,
+                          )}
+                          className="text-[11px] text-primary hover:underline"
+                        >
+                          ver todos os casos →
+                        </button>
+                      </div>
                       <div className="space-y-1.5">
                         {s.historico.map((a) => (
                           <button

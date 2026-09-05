@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/vault/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
+import { projetarCasos, type Agora } from '@/lib/atendimento/casos';
 import {
   type Stage,
+  STAGE_META,
   dispatchStateMeta,
-  isDispatchStateEncerrado,
   stageFromDispatchState,
 } from '@/lib/attendance/dispatch-states';
 
@@ -27,11 +28,29 @@ export const dynamic = 'force-dynamic';
 // `Stage` era declarado aqui à mão — e sem `observacao`. Agora vem da lista
 // canônica: quem decide o vocabulário de estágio é um arquivo só.
 
+/**
+ * 🔴 SPEC-097 · R8/U6.2 — TODO EVENTO TEM HORA, FONTE E `fonte_id`.
+ *
+ * 📊 Medido em 05/09/2026 (§1.7 / E16): **6 dos 9** tipos desta linha do tempo
+ * nasciam com `at: null`. A tela mostrava "Cliente identificado" e "Ana assumiu"
+ * sem hora nenhuma — e "o que aconteceu, e quando" é a pergunta que a ficha
+ * existe para responder.
+ *
+ * ⛔ Um evento sem hora REAL não entra. Preferimos não mostrar o passo a
+ * carimbar nele um horário inventado: o estado ATUAL do acionamento (protocolo
+ * garantido, prestador a caminho) vive no bloco AGORA, que é onde ele é
+ * verdade — não na linha do tempo, que é uma lista de coisas que aconteceram.
+ *
+ * `fonte` é a AUTORIDADE de onde o item veio e `fonte_id` a linha dela: sem o
+ * id, ninguém consegue voltar à origem para conferir.
+ */
 interface TimelineEvent {
-  at: string | null;
+  at: string;
   label: string;
   detail: string | null;
   done: boolean;
+  fonte: 'conversa' | 'corredor' | 'trabalho' | 'espera' | 'aprovacao';
+  fonte_id: string;
 }
 
 interface Anexo {
@@ -59,6 +78,15 @@ const SERVICO_LABEL: Record<string, string> = {
   vidros: 'Vidros', sinistro: 'Sinistro', consulta: 'Consulta',
 };
 
+/** Os cinco motivos do CHECK, ditos como uma pessoa diria. */
+const MOTIVO_EM_PORTUGUES: Record<string, string> = {
+  acionamento_concluido: 'o acionamento foi concluído',
+  encaminhado: 'a seguradora encaminhou o atendimento',
+  resolvido_pelo_segurado: 'o segurado resolveu por conta',
+  fechado_por_humano: 'a equipe encerrou',
+  expirou: 'o prazo expirou sem resposta',
+};
+
 const insurerFromRef = (ref?: string | null): string => {
   const key = String(ref || '').split('-')[0];
   return INSURER_LABEL[key] || 'Seguradora';
@@ -79,7 +107,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: conversation } = await supabase
     .from('conversations')
-    .select('id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, last_message_at, created_at')
+    .select('id, company_id, session_id, channel, status, user_phone, user_name, claimed_by, claimed_by_name, claimed_at, last_message_at, last_message_preview, created_at, resolvido_em, resolucao_motivo')
     .eq('id', id)
     .eq('company_id', ctx.companyId)
     .maybeSingle();
@@ -161,84 +189,151 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  // Estágio + resumo por regras (mesma linguagem da Fila)
-  const now = Date.now();
-  const lastAt = conversation.last_message_at ? new Date(conversation.last_message_at).getTime() : 0;
-  const fresh = now - lastAt < 48 * 3600e3;
-  let stage: Stage;
-  if (dispatch) {
-    stage = stageFromDispatchState(dispatch.state);
-  } else if (conversation.status === 'closed') stage = 'concluido';
-  else if (conversation.status === 'HUMAN_REQUESTED') stage = 'precisa_de_voce';
-  else if (conversation.claimed_by) stage = 'com_equipe';
-  else stage = fresh ? 'em_conversa' : 'concluido';
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔴 O AGORA (U6.1) — e ele NÃO é calculado aqui.
+  //
+  // A ficha tinha a SUA cascata de estágio, escrita à mão, com o mesmo
+  // `else 'concluido'` do relógio que a Fila tinha (§1.1). Duas telas, duas
+  // cascatas, dois resultados para o mesmo atendimento. R5: uma função só.
+  // ───────────────────────────────────────────────────────────────────────────
+  const projecao = await projetarCasos(ctx, { conversa_id: id }, { group_by: 'stage' });
+  const caso = projecao.items.find((c) => c.conversa_id === id) || projecao.items[0] || null;
+  const agora: Agora | null = caso?.agora || null;
+
+  let stage: Stage = caso?.stage || 'em_conversa';
+  // O acionamento VIVO no Redis é mais recente que qualquer linha durável — ele
+  // refina o estágio enquanto está em voo. ⛔ Mas nunca o ENCERRA: o desfecho é
+  // escrito (R1), e um `resolvido` do motor sem `resolvido_em` no banco era
+  // exatamente como 584 atendimentos apareciam encerrados sem que ninguém os
+  // tivesse encerrado.
+  if (dispatch && !caso?.resolvido_em) {
+    const doMotor = stageFromDispatchState(dispatch.state);
+    if (doMotor !== 'concluido') stage = doMotor;
+  }
 
   let resumo = resumoDestilado;
   if (!resumo) {
-    if (dispatch) {
-      // A frase do estado vem do mapa canônico. Antes só DOIS estados tinham
-      // frase própria aqui (`monitoring` e `needs_human`): um caso `resolvido`
-      // produzia "Guincho acionado na Porto." e ponto final — o desfecho, que é
-      // o que o corretor abre a ficha para saber, não era dito em lugar nenhum.
-      // `captured` com número já foi dito na linha do protocolo; não se repete.
+    if (dispatch && !caso?.resolvido_em) {
       const fraseDoEstado = dispatch.state === 'captured' && protocolo
         ? '' : ` ${dispatchStateMeta(dispatch.state).detalhe}`;
       resumo = `${servico} acionado na ${insurer}.`
         + (protocolo ? ` Protocolo ${protocolo} garantido.` : '')
         + fraseDoEstado;
-    } else if (stage === 'com_equipe') {
-      resumo = `${conversation.claimed_by_name || 'Alguém da equipe'} assumiu este atendimento.`;
-    } else if (stage === 'precisa_de_voce') {
-      resumo = 'O cliente pediu para falar com uma pessoa da corretora.';
-    } else if (stage === 'em_conversa') {
-      resumo = 'Conversa em andamento com o atendente.';
     } else {
-      resumo = 'Atendimento encerrado — a conversa completa está disponível abaixo.';
+      resumo = agora?.situacao || STAGE_META[stage]?.desc || 'Atendimento em andamento.';
     }
   }
 
-  // Linha do tempo de EVENTOS (determinística: conversa + estado do motor)
-  const firstMsg = msgs.find((m) => m.role === 'user');
+  // ───────────────────────────────────────────────────────────────────────────
+  // A LINHA DO TEMPO — só o que aconteceu, e só com a hora em que aconteceu.
+  // ───────────────────────────────────────────────────────────────────────────
   const timeline: TimelineEvent[] = [];
-  timeline.push({
+  const põe = (e: TimelineEvent | null) => { if (e && e.at) timeline.push(e); };
+
+  const firstMsg = msgs.find((m) => m.role === 'user');
+  põe({
     at: firstMsg?.created_at || conversation.created_at,
-    label: isMirror ? 'Acionamento aberto' : 'Cliente pediu ajuda',
+    label: isMirror ? 'Acionamento aberto' : 'O segurado pediu ajuda',
     detail: null,
     done: true,
+    fonte: 'conversa',
+    fonte_id: String(firstMsg?.id || conversation.id),
   });
-  const identificado = Boolean(slots.titular_cpf || slots.titular_nome || conversation.user_name);
-  if (identificado && !isMirror) {
-    timeline.push({ at: null, label: 'Cliente identificado', detail: conversation.user_name || slots.titular_nome || null, done: true });
+
+  if (conversation.user_name && !isMirror) {
+    // 🔴 a hora é a do CADASTRO da conversa — a fonte, não um palpite.
+    põe({
+      at: conversation.created_at,
+      label: 'Segurado identificado',
+      detail: conversation.user_name,
+      done: true,
+      fonte: 'conversa',
+      fonte_id: String(conversation.id),
+    });
   }
-  if (dispatch) {
-    timeline.push({
+
+  if (dispatch?.created_at) {
+    põe({
       at: dispatch.created_at,
-      label: `Acionou a ${insurer}`,
+      label: `Acionamos a ${insurer}`,
       detail: servico,
       done: true,
+      fonte: 'corredor',
+      fonte_id: String(dispatch.case_id || dispatch.insurer_phone),
     });
-    if (protocolo) {
-      timeline.push({ at: null, label: `Protocolo ${protocolo} garantido`, detail: 'Serviço confirmado na seguradora.', done: true });
-    }
-    if (dispatch.state === 'monitoring') {
-      timeline.push({ at: null, label: 'Prestador a caminho', detail: 'Acompanhando a chegada até o fim.', done: false });
-    }
-    if (dispatch.state === 'needs_human') {
-      timeline.push({ at: null, label: 'Entregue à equipe', detail: dispatch.reason || 'O dossiê completo foi enviado à corretora.', done: true });
-    } else if (isDispatchStateEncerrado(dispatch.state)) {
-      // `encaminhado`, `resolvido` e `test_aborted` são TERMINAIS e não tinham
-      // evento nenhum: a linha do tempo de um caso encerrado com sucesso parava
-      // em "Acionou a Porto" e parecia trabalho travado no meio.
-      const desfecho = dispatchStateMeta(dispatch.state);
-      timeline.push({ at: null, label: desfecho.label, detail: desfecho.detalhe, done: true });
-    }
   }
-  if (conversation.claimed_by) {
-    timeline.push({ at: null, label: `${conversation.claimed_by_name || 'Equipe'} assumiu`, detail: null, done: true });
+
+  // O trabalho, a espera e a aprovação deste atendimento — cada linha tem a
+  // hora dela no banco, e é ela que entra aqui.
+  try {
+    const [{ data: runs }, { data: esperas }] = await Promise.all([
+      supabase.from('work_runs')
+        .select('id, status, unblock_state, error_message, created_at')
+        .eq('company_id', ctx.companyId)            // 🔴 §7
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: true })
+        .limit(50),
+      supabase.from('work_waits')
+        .select('id, kind, status, created_at, due_at')
+        .eq('company_id', ctx.companyId)            // 🔴 §7
+        .eq('conversation_id', id)
+        .order('created_at', { ascending: true })
+        .limit(50),
+    ]);
+    for (const r of (runs || []) as Record<string, string>[]) {
+      if (r.status !== 'failed' && !r.unblock_state) continue;
+      põe({
+        at: r.created_at,
+        label: 'O acionamento parou e precisou de uma pessoa',
+        detail: r.error_message || null,
+        done: r.unblock_state === 'assumido_por_humano',
+        fonte: 'trabalho',
+        fonte_id: String(r.id),
+      });
+    }
+    for (const w of (esperas || []) as Record<string, string>[]) {
+      põe({
+        at: w.created_at,
+        label: w.kind === 'esperando_cliente'
+          ? 'Passamos a esperar o segurado'
+          : w.kind === 'esperando_humano'
+            ? 'Passamos a esperar alguém da equipe'
+            : 'Passamos a esperar a seguradora',
+        detail: w.due_at ? `Prazo combinado: ${new Date(w.due_at).toLocaleString('pt-BR')}.` : null,
+        done: w.status !== 'ativo',
+        fonte: 'espera',
+        fonte_id: String(w.id),
+      });
+    }
+  } catch {
+    /* a ficha abre sem estes eventos — fail-soft */
   }
-  if (conversation.status === 'closed') {
-    timeline.push({ at: conversation.last_message_at, label: 'Atendimento concluído', detail: null, done: true });
+
+  if (conversation.claimed_by && conversation.claimed_at) {
+    põe({
+      at: conversation.claimed_at,
+      label: `${conversation.claimed_by_name || 'Alguém da equipe'} assumiu o atendimento`,
+      detail: null,
+      done: true,
+      fonte: 'conversa',
+      fonte_id: String(conversation.id),
+    });
   }
+
+  // 🔴 R1 — o fim é o `resolvido_em` ESCRITO, com o motivo que alguém declarou.
+  //    Era `conversation.status === 'closed'` com a hora da última mensagem.
+  if (conversation.resolvido_em) {
+    põe({
+      at: conversation.resolvido_em,
+      label: 'Atendimento encerrado',
+      detail: MOTIVO_EM_PORTUGUES[String(conversation.resolucao_motivo || '')] || null,
+      done: true,
+      fonte: 'conversa',
+      fonte_id: String(conversation.id),
+    });
+  }
+
+  timeline.sort((a, b) => String(a.at).localeCompare(String(b.at)));
 
   // Anexos que o cliente (ou o atendente) enviou
   const anexos: Anexo[] = [];
@@ -311,6 +406,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         telefone: phone || null,
       },
       stage,
+      // 🔴 U6.1 — as SEIS dimensões do AGORA, prontas para a tela. Elas saem da
+      //    projeção (R5), então a Ficha e a Fila NUNCA discordam sobre o mesmo
+      //    atendimento — que era o que acontecia com duas cascatas.
+      agora,
+      parado_ha: caso?.parado_ha || null,
+      resolvido_em: caso?.resolvido_em || null,
+      resolucao_motivo: caso?.resolucao_motivo || null,
+      desfecho_em_portugues: caso?.resolucao_motivo
+        ? MOTIVO_EM_PORTUGUES[String(caso.resolucao_motivo)] || null
+        : null,
       quando: conversation.last_message_at || conversation.created_at,
       resumo,
       resumo_fonte: resumoDestilado ? 'espelho' : 'regras',
@@ -329,7 +434,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       timeline,
       anexos,
       dossier,
-      pode_assumir: !isMirror && conversation.status !== 'closed',
+      pode_assumir: !isMirror && !conversation.resolvido_em,
+      // ⛔ E3 — a Ficha ganha o mesmo botão Encerrar de Conversas, e ele
+      //    PERGUNTA o motivo. Encerrar só faz sentido uma vez: quem já tem
+      //    desfecho escrito não termina de novo.
+      pode_encerrar: !isMirror && !conversation.resolvido_em,
       assumido_por: conversation.claimed_by_name || null,
       mensagens_total: msgs.length,
     },

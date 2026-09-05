@@ -24,7 +24,10 @@ export type GalleryItem = {
 // SPEC-046: linguagem humana, sem selos de MVP — as quatro áreas estão vivas.
 export const atendimentoAreas: ModuleArea[] = [
   { key: 'fila', icon: icons.fila, title: 'Fila', description: 'O que está acontecendo agora, em tempo real.', href: '/dashboard/atendimentos/fila' },
-  { key: 'historico', icon: icons.casos, title: 'Histórico', description: 'Tudo que já aconteceu, com busca — cada item abre a ficha.', href: '/dashboard/atendimentos/casos' },
+  // 🔴 SPEC-097 · R10 — "Histórico" virou "Casos". Não é só o passado que mora
+  //    aqui: um caso PARADO há três dias está aberto, e chamá-lo de histórico
+  //    era a mesma mentira que a Fila contava ao marcá-lo como concluído.
+  { key: 'casos', icon: icons.casos, title: 'Casos', description: 'Cada atendimento, do pedido ao desfecho — busque por nome, telefone ou protocolo.', href: '/dashboard/atendimentos/casos' },
   { key: 'conversas', icon: icons.conversas, title: 'Conversas', description: 'As conversas completas, como no WhatsApp.', href: '/dashboard/atendimentos/conversas' },
   { key: 'segurados', icon: icons.equipe, title: 'Segurados', description: 'Clientes atendidos e o histórico de cada um.', href: '/dashboard/atendimentos/segurados' },
 ];

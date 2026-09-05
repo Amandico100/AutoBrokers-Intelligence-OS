@@ -114,10 +114,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const myName = String(meRow?.name || meRow?.email || 'Atendente humano');
 
   if (action === 'claim') {
+    // 🔴 SPEC-097 · U2.1 — O CLAIM DEIXOU DE ESCREVER `status`.
+    //
+    // 📊 Medido em 05/09/2026 (§1.2): este era o ÚNICO escritor de
+    // `claimed_by`, e ele gravava `status: 'HUMAN_REQUESTED'` junto. A cascata
+    // da Fila testava o status ANTES do dono — então a coluna "com a equipe"
+    // era **inalcançável**: quem assumia virava "precisa de você" na hora, e a
+    // tela pedia uma pessoa para um caso que já tinha uma.
+    //
+    // 🔴 R2: dono e status são DIMENSÕES DIFERENTES. `HUMAN_REQUESTED` continua
+    // sendo do handoff — o PEDIDO do cliente, escrito por quem o recebe — e não
+    // do gesto de assumir. Quem assume escreve DONO.
+    //
+    // ⚠️ E a IA precisa pausar pelas DUAS coisas (E6/R2): `pausar_ia(conversa)`
+    // = `status == HUMAN_REQUESTED or claimed_by is not None`, no backend
+    // (`webhook.py`, `chat.py`). Sem esse par, tirar o status daqui faria a IA
+    // responder por cima da atendente — é o guarda irmão
+    // `test_o_atendimento_sabe_como_terminou.py` que o mede.
+    //
     // Atômico: só assume se ninguém (ou eu mesmo) for o dono.
     const { data: updated, error } = await supabase
       .from('conversations')
-      .update({ status: 'HUMAN_REQUESTED', claimed_by: ctx.userId, claimed_by_name: myName, claimed_at: new Date().toISOString() })
+      .update({ claimed_by: ctx.userId, claimed_by_name: myName, claimed_at: new Date().toISOString() })
       .eq('id', id)
       .eq('company_id', ctx.companyId)
       .or(`claimed_by.is.null,claimed_by.eq.${ctx.userId}`)
@@ -216,13 +234,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ⛔ `.is('resolvido_em', null)` — quem já terminou não termina de novo, e o
     // primeiro motivo é o que vale. Sem isto, fechar na tela um atendimento que
     // o robô já concluiu apagaria o desfecho REAL.
+    // 🔴 SPEC-097 · U1.2 (E4) — O BOTÃO PASSA A PERGUNTAR O MOTIVO.
+    //
+    // Ele cravava `fechado_por_humano` em todo encerramento, e o comentário
+    // que estava aqui dizia por quê: *"o botão não pergunta nada à atendente;
+    // gravar outro motivo seria inventar o desfecho"*. Estava certo — enquanto
+    // a tela não perguntasse. Agora ela pergunta, e o motivo vem de quem sabe.
+    //
+    // ⛔ A lista é FECHADA: são os cinco valores do
+    // `ck_conversations_resolucao_motivo`. Um motivo fora dela é um UPDATE que
+    // o Postgres RECUSA — e continuar aceitando texto livre seria devolver ao
+    // painel o direito de inventar desfecho, que é o que a SPEC-086 impede.
+    //
+    // ⚠️ Sem `motivo` no corpo (chamada antiga da API), o padrão continua sendo
+    // `fechado_por_humano`: a atendente clicou, e isso é o que se sabe.
+    const MOTIVOS_DO_CHECK = [
+      'acionamento_concluido', 'encaminhado', 'resolvido_pelo_segurado',
+      'fechado_por_humano', 'expirou',
+    ];
+    const motivoPedido = String(body.motivo || '').trim();
+    if (motivoPedido && !MOTIVOS_DO_CHECK.includes(motivoPedido)) {
+      return NextResponse.json({ error: 'Motivo de encerramento desconhecido.' }, { status: 400 });
+    }
+
+    // 🔴 `resolvido_em` e `resolucao_motivo` andam JUNTOS (há CHECK): uma
+    // conversa que acabou "por um motivo, em momento nenhum" sumiria de toda
+    // consulta por período.
+    //
+    // ⛔ `.is('resolvido_em', null)` — quem já terminou não termina de novo, e o
+    // primeiro motivo é o que vale. Sem isto, fechar na tela um atendimento que
+    // o robô já concluiu apagaria o desfecho REAL.
+    //
+    // 🔴 SPEC-097 · R2 — E O DONO FICA. Este update apagava
+    // `claimed_by/claimed_by_name/claimed_at` junto com o fecho: dois segundos
+    // depois de encerrar, o atendimento não tinha mais autor. Quem atendeu
+    // atendeu, e é isso que a ficha, a sombra e a semana precisam saber.
     const agora = new Date().toISOString();
     const { error } = await supabase
       .from('conversations')
-      .update({
-        status: 'closed', claimed_by: null, claimed_by_name: null, claimed_at: null,
-        resolvido_em: agora, resolucao_motivo: 'fechado_por_humano',
-      })
+      .update(motivoPedido
+        ? { status: 'closed', resolvido_em: agora, resolucao_motivo: motivoPedido }
+        : { status: 'closed', resolvido_em: agora, resolucao_motivo: 'fechado_por_humano' })
       .eq('id', id)
       .eq('company_id', ctx.companyId)
       .is('resolvido_em', null);
@@ -233,18 +285,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // tocar no motivo que já existe.
     const { error: erroStatus } = await supabase
       .from('conversations')
-      .update({ status: 'closed', claimed_by: null, claimed_by_name: null, claimed_at: null })
+      .update({ status: 'closed' })
       .eq('id', id)
       .eq('company_id', ctx.companyId)
       .not('resolvido_em', 'is', null);
     if (erroStatus) return NextResponse.json({ error: 'Erro ao encerrar' }, { status: 500 });
 
-    // 🔴 `desfecho: 'desconhecido'` — e é a verdade, não um placeholder.
-    // ⚠️ O botão **Encerrar** não pergunta nada à atendente. Gravar
-    // `aberto_na_seguradora` ou `pago` aqui seria inventar o desfecho, e é
-    // exatamente o dado que a SPEC existe para NÃO fabricar (§12.1 do CLAUDE.md:
-    // número ilustrativo não vira fato). Quando a tela perguntar, o enum já existe.
-    //
     // ⛔ E só encerra quem ainda não tinha encerrado — a mesma regra do
     // `.is('resolvido_em', null)` acima, agora na linha do tempo: o primeiro
     // fim é o que vale, e dois `claims.encerrado` seriam duas variantes.
@@ -253,10 +299,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         companyId: ctx.companyId,
         conversationId: id,
         eventType: 'claims.encerrado',
-        payload: { desfecho: 'desconhecido' },
+        payload: { desfecho: motivoPedido || 'fechado_por_humano' },
       });
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, resolucao_motivo: motivoPedido || 'fechado_por_humano' });
   }
 
   if (action === 'send') {

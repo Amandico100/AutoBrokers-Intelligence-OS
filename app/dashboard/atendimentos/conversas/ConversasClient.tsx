@@ -165,6 +165,7 @@ export function ConversasClient() {
   const [erroDaConversa, setErroDaConversa] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [perguntandoMotivo, setPerguntandoMotivo] = useState(false);
   const [notice, setNotice] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -241,7 +242,17 @@ export function ConversasClient() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, selectedId]);
 
-  const act = async (action: string, text?: string) => {
+  // ⛔ Os CINCO do CHECK do banco — a mesma lista da Ficha. Encerrar sem motivo
+  //    é encerrar sem saber o que deu certo.
+  const MOTIVOS_DE_ENCERRAMENTO = [
+    { id: 'acionamento_concluido', label: 'O serviço foi prestado' },
+    { id: 'encaminhado', label: 'A seguradora encaminhou' },
+    { id: 'resolvido_pelo_segurado', label: 'O segurado resolveu por conta' },
+    { id: 'fechado_por_humano', label: 'A equipe encerrou' },
+    { id: 'expirou', label: 'O prazo expirou sem resposta' },
+  ];
+
+  const act = async (action: string, text?: string, motivo?: string) => {
     if (!selectedId) return;
     setNotice('');
     if (action === 'send') setSending(true);
@@ -249,7 +260,7 @@ export function ConversasClient() {
       const res = await fetch(`/api/dashboard/conversas/${selectedId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, text }),
+        body: JSON.stringify({ action, text, motivo }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -450,13 +461,40 @@ export function ConversasClient() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => act('close')}
+                    onClick={() => setPerguntandoMotivo(true)}
                     className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <X className="h-3.5 w-3.5" /> Encerrar
                   </button>
                 )}
               </div>
+
+              {/* 🔴 SPEC-097 · E4 — ENCERRAR PERGUNTA O MOTIVO.
+                  Ele cravava `fechado_por_humano` em tudo: "a atendente
+                  encerrou" e "o cliente desistiu" viravam o mesmo estado, e a
+                  pergunta da sexta-feira ficava sem resposta. */}
+              {perguntandoMotivo && (
+                <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
+                  <p className="text-sm font-medium text-foreground">Como este atendimento terminou?</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {MOTIVOS_DE_ENCERRAMENTO.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => { setPerguntandoMotivo(false); act('close', undefined, m.id); }}
+                        className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-foreground transition-colors hover:border-primary/40 hover:bg-brand-soft"
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setPerguntandoMotivo(false)}
+                    className="mt-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Mensagens */}
