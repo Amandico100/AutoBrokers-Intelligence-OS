@@ -48,8 +48,13 @@
 ## BLOCO 0 · Remedir antes de codar (o censo que vira régua)
 
 Antes do primeiro builder, o guarda [G] reproduz sobre o acervo (só SELECT, zero PII) os 📊 desta §1 — 36 conversas com acionamento · 1.088 mensagens do cliente depois
-do `t0` · 542 turnos · 283 com intenção · 27 humanos por desenho — com a regra §0.4 do `reality-report-0971.md` no MESMO motor (Postgres com `translate` de acentos,
-CLAUDE.md §9.4). Um número que não reproduz é emenda, não é build. O gate zero do desenhista já ficou VERMELHO em cópia limpa (📊 18 ok · 20 falhas, `8529008`).
+do `t0` · 542 turnos · 283 **mensagens** com intenção · 27 humanos por desenho — com a regra §0.4 do `reality-report-0971.md`. O gate zero do desenhista ficou VERMELHO em
+cópia limpa (📊 18 ok · 20 falhas, `8529008`).
+🔴 **O que a régua mediu depois (lente P1-4, §9.4 pela terceira vez nesta leva):** o investigador mediu o `t0` em Postgres (`translate(lower(...))`, `~`); a régua só tem o
+PostgREST (não há SQL cru no backend) e aplica a MESMA regex em Python sobre `_norm` — e o corpus sai **32 conversas com t0 · 932 mensagens do cliente · 464 turnos ·
+denominador 111** (as 4 conversas de diferença têm `t0` e nenhuma mensagem do cliente depois dele). A régua publica as DUAS medições lado a lado, a regra de corte da rajada, e o
+teto calculado ao vivo em TURNOS (📊 95,5 % com J / 94,6 % sem J) ao lado do teto do relatório em MENSAGENS (94,7 % / 90,5 %) — duas unidades declaradas, nunca comparadas
+direto. Não se forçou o número: um motor novo de SQL seria §5.
 
 ## 1. O QUE FOI MEDIDO (📊 05/09/2026, `reality-report-0971.md` + aquecimento)
 
