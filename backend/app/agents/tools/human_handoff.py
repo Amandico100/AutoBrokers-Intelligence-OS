@@ -197,8 +197,9 @@ _TITULOS = {
 #: depois dele é pós-acionamento igual.
 # ⛔ `encaminhado` NÃO está aqui (red team 097.1 [8]): é a seguradora dizendo "aqui não
 #    se abre chamado, vá pelo link" — o checkpoint ENCERRA o atendimento (MOTIVO_DO_ESTADO)
-#    e a R4 o exclui da espera. Chamar isso de PÓS-ACIONAMENTO seria dossiê de um caso
-#    que não foi acionado.
+#    e a R4 o exclui da espera. Dar a esse caso o título de pós (o 🔁) seria dossiê
+#    de um caso que não foi acionado. ⚠️ Esta prosa NÃO repete o literal do título de
+#    propósito: a mutação U2 troca a 1ª ocorrência dele no arquivo (juiz 097.1, P0).
 FASES_JA_ACIONADAS = ("captured", "monitoring")
 
 
