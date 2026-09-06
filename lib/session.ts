@@ -75,6 +75,37 @@ export function clearSession(): void {
   }
 }
 
+/**
+ * 🔴 SPEC-098 · U4.c — TROCAR DE EMPRESA REESCREVE O QUE O NAVEGADOR GUARDA.
+ *
+ * 📊 Medido em 06/09/2026 (`lib/session.ts:33`): `companyId` é gravado no login
+ * e vale 7 a 30 dias. Quem trocava de empresa no seletor via o servidor mudar
+ * (a sessão do cookie passa a apontar para a nova) e o navegador continuar com
+ * a ANTIGA guardada. Nenhuma tela reclamava: uma parte da tela falava por uma
+ * corretora e a outra parte, pela outra — e a conta de qual estava certa era do
+ * corretor.
+ *
+ * Passar `null` APAGA a chave inteira: sessão sem empresa é melhor que sessão
+ * com a empresa errada.
+ */
+export function atualizarEmpresaNaSessaoLocal(companyId: string | null): void {
+  if (typeof window === 'undefined') return;
+  const sessionStr = localStorage.getItem(SESSION_KEY);
+  if (!sessionStr) return;
+  try {
+    const session: SessionData = JSON.parse(sessionStr);
+    if (companyId === null) {
+      clearSession();
+      return;
+    }
+    session.companyId = companyId;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Sessão ilegível é sessão que não serve para nada — some com ela.
+    clearSession();
+  }
+}
+
 export function isAuthenticated(): boolean {
   return getSession() !== null;
 }

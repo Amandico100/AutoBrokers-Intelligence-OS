@@ -14,6 +14,7 @@ import {
     SessionData,
 } from '@/lib/iron-session';
 import { createClient } from '@supabase/supabase-js';
+import { resolveSessionCompany } from '@/lib/auxiliaries/server';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -22,6 +23,19 @@ const supabaseAdmin = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } },
 );
+
+/**
+ * 🔴 SPEC-098 · U4.a — o FastAPI passa a EXIGIR a chave interna nestas rotas.
+ *
+ * 📊 Medido em 06/09/2026: `GET …/api/sanitization/jobs?company_id=<uuid falso>`
+ * respondia **200** direto na internet. O comentário do backend dizia
+ * "company_id is provided by the Next.js proxy" e nada verificava que quem
+ * chamava era o proxy. Esta proxy autentica a sessão (já autenticava) e agora
+ * também se identifica: quem fala é o nosso servidor, não o navegador.
+ */
+function chaveInterna(): string {
+    return process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || '';
+}
 
 async function resolveCompanyId(frontendCompanyId?: string | null): Promise<string | null> {
     try {
@@ -43,16 +57,11 @@ async function resolveCompanyId(frontendCompanyId?: string | null): Promise<stri
             if (data?.company_id) return data.company_id;
         }
 
-        const userSession = await getIronSession<SessionData>(cookieStore, sessionOptions);
-        if (userSession.userId) {
-            if (userSession.companyId) return userSession.companyId;
-            const { data } = await supabaseAdmin
-                .from('users_v2')
-                .select('company_id')
-                .eq('id', userSession.userId)
-                .single();
-            if (data?.company_id) return data.company_id;
-        }
+        // 🔴 SPEC-098 · U4.b-Next — a empresa ATIVA vence a primária.
+        // `resolveSessionCompany` revalida o vínculo em `company_members` a cada
+        // requisição; `userSession.companyId` era o do login, congelado.
+        const daSessao = await resolveSessionCompany();
+        if (daSessao?.companyId) return daSessao.companyId;
 
         return null;
     } catch (error) {
@@ -79,6 +88,7 @@ export async function GET(
 
         const response = await fetch(
             `${BACKEND_URL}/api/sanitization/jobs/${jobId}?company_id=${companyId}`,
+            { headers: { 'X-Internal-Key': chaveInterna() }, cache: 'no-store' },
         );
 
         const data = await response.json();
@@ -115,7 +125,7 @@ export async function DELETE(
 
         const response = await fetch(
             `${BACKEND_URL}/api/sanitization/jobs/${jobId}?company_id=${companyId}`,
-            { method: 'DELETE' },
+            { method: 'DELETE', headers: { 'X-Internal-Key': chaveInterna() }, cache: 'no-store' },
         );
 
         const data = await response.json();

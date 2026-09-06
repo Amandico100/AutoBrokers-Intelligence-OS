@@ -165,6 +165,18 @@ export async function POST(request: NextRequest) {
         audio_url: audio_url || metadata?.audio_url || null,
         image_url: image_url || metadata?.image_url || null,
         payload: payload || null,
+        // 🔴 SPEC-098 · U5.a (R8) — QUEM ESCREVEU FICA ESCRITO.
+        //
+        // 📊 Medido em 06/09/2026: `sender_user_id` estava preenchido em **2**
+        // mensagens do acervo inteiro. Toda mensagem escrita por uma pessoa da
+        // corretora chegava ao banco sem dono — e depois não havia como dizer
+        // quem falou, nem para auditar, nem para aprender o jeito de atender a
+        // partir do que a corretora de fato escreve.
+        //
+        // O ator é o da SESSÃO. A sessão de admin não escreve por ninguém: ela
+        // fica em branco de propósito, porque um master admin lendo a conversa
+        // não é o remetente dela.
+        sender_user_id: quem.tipo === 'usuario' ? quem.userId : null,
       })
       .select()
       .single();

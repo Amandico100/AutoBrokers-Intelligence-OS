@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import { conferirPromptGravado } from '@/lib/admin/provision-tenant';
+import { requireMasterAdmin, assertSameOrigin } from '@/lib/admin/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,11 +31,15 @@ function toNumber(value: unknown): number {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const adminCookie = cookieStore.get('smith_admin_session');
+    // 🔴 SPEC-098 · U4.a — a presença do cookie não é autoridade (`:35→:94`).
+    // Esta rota provisiona agente e CRÉDITO numa corretora escolhida pelo corpo;
+    // conferir só se o cookie existe é deixar a porta encostada.
+    const xo = assertSameOrigin(request);
+    if (xo) return NextResponse.json({ error: 'Pedido bloqueado.' }, { status: xo.status });
 
-    if (!adminCookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await requireMasterAdmin();
+    if (!auth.ok) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: auth.status });
     }
 
     const body = await request.json().catch(() => ({}));

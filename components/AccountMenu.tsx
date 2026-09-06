@@ -13,6 +13,7 @@ export function AccountMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [empresa, setEmpresa] = useState('');
 
   useEffect(() => {
     const session = getSession();
@@ -20,6 +21,21 @@ export function AccountMenu() {
       setUserName(`${session.firstName} ${session.lastName}`);
       setUserEmail(session.email);
     }
+
+    // 🔴 SPEC-098 · U4.c — a EMPRESA vem do servidor, não do que o navegador
+    // guardou no login. 📊 06/09/2026: `getSession()` devolve o `companyId`
+    // congelado por 7 a 30 dias; quem trabalha em duas corretoras via aqui o
+    // nome da que estava ativa quando entrou, não o da que está ativa agora.
+    let vivo = true;
+    fetch('/api/user/company-data')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (vivo && d?.companyName) setEmpresa(d.companyName);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -64,6 +80,7 @@ export function AccountMenu() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white truncate">{userName}</p>
                   <p className="text-xs text-gray-400 truncate">{userEmail}</p>
+                  {empresa && <p className="text-xs text-gray-500 truncate">{empresa}</p>}
                 </div>
               </div>
 

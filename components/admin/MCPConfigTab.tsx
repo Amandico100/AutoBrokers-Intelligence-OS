@@ -57,7 +57,13 @@ export function MCPConfigTab({ agentId, companyId }: Props) {
   const [disconnectingServer, setDisconnectingServer] = useState<string | null>(null);
 
   const { toast } = useToast();
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+  // 🔴 SPEC-098 · U4.a — as conexões passam pela NOSSA casa, não direto no
+  // backend. 📊 06/09/2026: estas sete chamadas iam do navegador para o FastAPI
+  // com o `company_id` na URL, e o FastAPI respondia 200 para qualquer UUID. A
+  // proxy `app/api/mcp/[...caminho]` confere quem pede antes de repassar — e um
+  // navegador não pode carregar a chave interna, então a chamada direta tinha
+  // de sair. String vazia = mesma origem: `/api/mcp/...`.
+  const BACKEND_URL = '';
 
   // Listener para mensagens do popup OAuth
   useEffect(() => {

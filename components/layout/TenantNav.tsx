@@ -10,7 +10,7 @@ import { icons } from '@/lib/icons';
 import { PILLARS, SECONDARY, isActiveRoute, type NavItem } from '@/lib/navigation';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { clearSession } from '@/lib/session';
+import { clearSession, atualizarEmpresaNaSessaoLocal } from '@/lib/session';
 
 /**
  * Corpo da navegação tenant — usado pela sidebar desktop e pelo drawer mobile.
@@ -63,7 +63,13 @@ export function TenantNav({ onNavigate }: { onNavigate?: () => void }) {
         body: JSON.stringify({ company_id: companyId }),
       });
       if (res.ok) {
-        // Recarrega tudo — todas as telas passam a responder pela empresa ativa.
+        // 🔴 SPEC-098 · U4.c — antes de recarregar, o que o navegador guarda
+        // passa a apontar para a empresa nova. Recarregar sem isso deixava o
+        // `localStorage` com a empresa ANTIGA por até 30 dias, e quem lê de lá
+        // (o menu da conta, o rodapé) continuava mostrando a corretora errada.
+        // A empresa que vale é a que o SERVIDOR confirmou, não a que foi pedida.
+        const j = await res.json().catch(() => null);
+        atualizarEmpresaNaSessaoLocal(j?.company_id || j?.companyId || null);
         window.location.assign('/dashboard');
         return;
       }

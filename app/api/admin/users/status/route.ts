@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { getIronSession } from 'iron-session';
 import { createClient } from '@supabase/supabase-js';
 import { adminSessionOptions, AdminSessionData } from '@/lib/iron-session';
+import { requireMasterAdmin, assertSameOrigin } from '@/lib/admin/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,11 +86,20 @@ export async function PUT(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const adminCookie = cookieStore.get('smith_admin_session');
+    // 🔴 SPEC-098 · U4.a — A PRESENÇA DO COOKIE NÃO É AUTORIDADE.
+    //
+    // 📊 Medido em 06/09/2026 (`:88→:111`): esta rota conferia só se o cookie
+    // `smith_admin_session` EXISTIA — nunca o decifrava — e depois gravava
+    // `company_id: companyId` vindo do corpo. Qualquer pessoa com um cookie de
+    // admin (o seu próprio, de qualquer corretora, expirado ou adulterado)
+    // movia qualquer usuário para qualquer corretora. O cookie é assinado: só
+    // a sessão DECIFRADA prova quem é, e aprovar usuário é ato de master admin.
+    const xo = assertSameOrigin(request);
+    if (xo) return NextResponse.json({ error: 'Pedido bloqueado.' }, { status: xo.status });
 
-    if (!adminCookie) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const auth = await requireMasterAdmin();
+    if (!auth.ok) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: auth.status });
     }
 
     const body = await request.json();

@@ -11,20 +11,45 @@ const supabaseAdmin = createClient(
 );
 
 /**
+ * 🔴 SPEC-098 · U4.a (E9) — ESTA ROTA ERA UM ORÁCULO PÚBLICO.
+ *
+ * 📊 Medido em 06/09/2026 (`leads/identify/route.ts:33-55`): sem sessão, sem
+ * cookie e sem cabeçalho, com service role, ela recebia `{email, companyId}` e
+ * devolvia `isNew` e o **nome** do lead. Não era só uma escrita: era LEITURA de
+ * dado pessoal. Quem soubesse um UUID de corretora perguntava, um e-mail por
+ * vez, quem é cliente dela — e recebia o nome da pessoa junto. Respondia 200,
+ * não travava nada e não aparecia em log de erro nenhum.
+ *
+ * Agora: só o nosso próprio servidor chama (chave interna), e a resposta é
+ * apenas o identificador do lead. Nem `name`, nem `isNew` — os dois respondiam
+ * à pergunta "esta pessoa é cliente de vocês?", que ninguém de fora pode fazer.
+ * `companyId` continua vindo do corpo porque quem chama é o nosso BFF, que já
+ * resolveu a corretora pela sessão; para o mundo, a porta está fechada.
+ */
+function chaveInternaOk(req: NextRequest): boolean {
+  const esperada = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || '';
+  if (!esperada) return false; // sem chave configurada, ninguém entra
+  const recebida = req.headers.get('x-internal-key') || '';
+  return recebida.length > 0 && recebida === esperada;
+}
+
+/**
  * POST /api/leads/identify
  *
- * Identifica ou cria um lead baseado no e-mail.
- * Retorna UUID estável para carregar memória da IA.
+ * Identifica ou cria um lead pelo e-mail e devolve **só** o identificador dele.
  */
 export async function POST(req: NextRequest) {
+  if (!chaveInternaOk(req)) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  }
+
   try {
     const { email, name, companyId } = await req.json();
 
     if (!email || !companyId) {
-      return NextResponse.json({ error: 'Email e CompanyID são obrigatórios' }, { status: 400 });
+      return NextResponse.json({ error: 'E-mail e empresa são obrigatórios' }, { status: 400 });
     }
 
-    // Validação básica de e-mail
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return NextResponse.json({ error: 'E-mail inválido' }, { status: 400 });
@@ -39,7 +64,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (existing) {
-      // Atualiza last_seen e nome (se o novo for mais completo)
       await supabaseAdmin
         .from('leads')
         .update({
@@ -48,11 +72,8 @@ export async function POST(req: NextRequest) {
         })
         .eq('id', existing.id);
 
-      return NextResponse.json({
-        leadId: existing.id,
-        isNew: false,
-        name: existing.name || name,
-      });
+      // 🔴 Só o id. Devolver `name`/`isNew` era responder de fora quem é cliente.
+      return NextResponse.json({ leadId: existing.id });
     }
 
     // 2. Cria novo lead
@@ -72,11 +93,7 @@ export async function POST(req: NextRequest) {
       throw error;
     }
 
-    return NextResponse.json({
-      leadId: newLead.id,
-      isNew: true,
-      name: name?.trim() || null,
-    });
+    return NextResponse.json({ leadId: newLead.id });
   } catch (error) {
     console.error('[LEADS API] Error identifying lead:', error);
     return NextResponse.json({ error: 'Falha ao processar identificação' }, { status: 500 });
