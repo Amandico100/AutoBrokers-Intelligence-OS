@@ -10338,5 +10338,32 @@ A 097 criou `backend/app/telefone_br.py` (`so_digitos`, `variantes_br`) e migrou
 ## P-097-BUSCA-NA-URL · a busca de Casos empurra `conversation_id.in.(~200 UUIDs)` na query string
 Juiz fresco (05/09): a busca por nome/telefone acha conversas e depois pede os episódios com um `in()` de até ~200 ids na URL do PostgREST — inócuo hoje, frágil num tenant grande (limite de URL). **Destrava:** busca do lado do episódio (junção no banco ou RPC). **Dono:** 🤖.
 
+## P-097.1-MIDIA-SEM-TEXTO · 84 mensagens do cliente no pós-acionamento são áudio/foto/PDF sem transcrição
+📊 05/09: o classificador de turno lê texto; mídia vira rótulo `Z` e vai para humano com a mídia no dossiê. **Destrava:** transcrição/OCR no canal. **Dono:** 🤖. **Custo de esquecer:** um pedaço do pós-acionamento nunca é resolvido pelo agente.
+
+## P-097.1-MARKDOWN-NO-CANAL · 222 mensagens em 60 conversas mandam `**markdown**` ao WhatsApp do segurado
+📊 05/09: o WhatsApp renderiza `*` e não `**`; `##` chega literal. É a R11 da 097 (linguagem humana) quebrando no canal. **Destrava:** normalizar a saída do canal (conversor md→WhatsApp no publisher). **Dono:** 🤖.
+
+## P-097.1-CARTAS-SEM-PROCEDENCIA · 13.154 de 18.715 `knowledge_cards` sem `source_document_id`
+📊 05/09 (aquecimento): 70,3 % das cartas globais não dizem de onde vieram; não há como amarrar carta a tenant ou documento. Contradiz a rastreabilidade da SPEC-052. **Dono:** 🤖 (SPEC-052/070).
+
+## P-097.1-CARTAS-NO-RAG · as 6 cartas do pós-acionamento existem em código; o publicador precisa rodar onde há Qdrant
+`backend/scripts/publicar_cartas_0971.py --vivo` cria 6 documentos em cada tenant (Resulta e AutoFleet) pelo trilho `documents → ingestion_service`. Passo a passo no relatório da 097.1 §9 (console do EasyPanel, serviço smith-api). **Dono:** 🧑 executa (ou 🤖 quando tiver console). **Custo:** o agente responde pelo prompt gerado, mas o RAG por corretora fica sem as cartas.
+
+## P-097.1-RAG-AUTOFLEET-VAZIO · o tenant onde o acionamento acontece tem 0 documentos
+📊 05/09: `documents` = 0 na AutoFleet (Regina); 10 na Resulta. As 6 cartas são o primeiro conteúdo. **Dono:** 🧑 (o que mais entra) · 🤖 (publicador).
+
+## P-097.1-INTERLOCUTOR-POR-CADASTRO · quem fala (segurado × parceiro × oficina) é heurístico
+📊 62 % do tráfego pós-acionamento é de parceiro/oficina; o dossiê diz "não dá para saber" quando não sabe. **Destrava:** cadastro de parceiros/oficinas por corretora. **Dono:** 🧑 decide · 🤖.
+
+## P-097.1-ACOMPANHAMENTO-NA-CENTRAL · o desligador do acompanhamento não tem tela
+`companies.acionamento_profile.acompanhamento` (ausente = ligado) é lido pela porta única; não há botão na Central de Agentes. **Destrava:** um toggle na tela do agente de atendimento. **Dono:** 🤖.
+
+## P-097.1-KINDS-DUPLICADOS · `_KINDS_CITAVEIS` (auxiliaries.py) duplica `KINDS` (o_fim_do_atendimento.py)
+A mutação U5B do guarda ancora no literal; unificar exige mover a âncora junto. `_DE_QUEM`/`_ROTULO_DO_KIND` já declaram `KINDS` como fonte e `kinds_sem_frase()` acusa kind sem tradução. **Dono:** 🤖.
+
+## P-097.1-DOC · `esperando_cliente` não nasce: o corredor não registra "pedi documento ao cliente"
+📊 06/09: as âncoras reais do corredor capturam `protocol`, `password`, `eta_minutes`, `ticket_de_entrada`, `schedule*`, `tracking_link` — nenhuma de documento pedido. Sem escritor real, a espera `esperando_cliente` ficou FORA (nada inventado). **Destrava:** o corredor/agente gravar o pedido de documento (slot ou evento). **Dono:** 🤖.
+
 ## P-097-DOIS-RELOGIOS · `ordem_em` lê `last_message_at`/`created_at` sem guarda de coerência
 Lente de verdade (P3 L2): a mutação "semana lê `last_message_at` e a Fila lê `last_event_at`" fica verde — não há asserção que prove que os dois relógios da lista e da semana são o MESMO. **Destrava:** asserção de coerência no guarda `test:casa`. **Dono:** 🤖.
