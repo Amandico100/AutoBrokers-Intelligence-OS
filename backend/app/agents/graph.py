@@ -202,6 +202,17 @@ async def create_agent_graph(
     # agent_id já foi definido acima
     collection_name = agent_data.get("collection_name") if agent_data else None
 
+    # SPEC-098 [G-RAG] — a coleção do agente não pode ser de OUTRA corretora.
+    # 📊 O tenant do RAG é o NOME DA COLEÇÃO (não há filtro por company_id no
+    # payload do Qdrant), e este nome vem de uma coluna de `agents`. Uma coluna
+    # editada errado leria o acervo alheio sem levantar erro nenhum.
+    from ..services.knowledge_scope import colecao_permitida, company_collection
+    if company_id and not colecao_permitida(str(company_id), collection_name):
+        logger.warning(
+            "[Graph] 🔒 coleção '%s' não pertence à corretora da requisição — "
+            "usando a coleção da própria corretora", collection_name)
+        collection_name = company_collection(str(company_id))
+
     kb_tool = KnowledgeBaseTool(
         company_id=company_id, agent_id=agent_id, collection_name=collection_name
     )
@@ -1252,11 +1263,35 @@ async def _build_initial_state(
                 _company_display_name = str(_c.data[0].get("company_name") or _c.data[0].get("legal_name") or "")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Graph] company name lookup falhou: {type(e).__name__}")
+
+    # === SPEC-098 U3 — A CORRETORA e O JEITO entram no prompt ESTÁTICO ===
+    #
+    # 📊 Até 06/09/2026 a identidade da corretora no prompt era UMA STRING: o
+    # nome, e só para `attendance`/`insured_external`. Para o Core a corretora
+    # não existia — enquanto `_FALE_COMO_CORRETOR` entrava SEMPRE. O produto já
+    # tinha uma voz, e ela era a da AutoBrokers.
+    #
+    # 🔴 Os dois blocos vão no `static_prompt`, nunca no `dynamic_context`: o
+    # bloco estático é o único que recebe `cache_control: ephemeral`
+    # (`nodes.py:613-621`, TTL 5 min) e o jeito muda por APROVAÇÃO — 📊 `tone`
+    # mudou 0 vezes em 6 versões. Um bloco que muda uma vez por trimestre no
+    # lugar cacheado é grátis; no dinâmico seria pago em toda chamada.
+    _facts_block = _jeito_block = ""
+    try:
+        if company_id and supabase_client is not None:
+            from ..services.brand.capture import BrandCaptureService
+            _facts_block, _jeito_block = BrandCaptureService(
+                supabase_client).render_blocos_do_prompt(str(company_id))
+    except Exception as e:  # noqa: BLE001 — marca fora do ar não cala o agente
+        logger.warning(f"[Graph] blocos de marca indisponíveis: {type(e).__name__}")
+
     static_prompt = build_composite_prompt(
         base_instructions,
         agent_role=_agent_role_for_prompt,
         agent_display_name=_agent_display_name,
         company_display_name=_company_display_name,
+        company_facts_block=_facts_block,
+        jeito_block=_jeito_block,
     )
 
     # Prompt DINÂMICO (memória) - NÃO será cacheado

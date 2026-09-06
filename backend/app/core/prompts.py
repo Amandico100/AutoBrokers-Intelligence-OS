@@ -289,6 +289,8 @@ def build_composite_prompt(
     agent_role: str = None,
     agent_display_name: str = None,
     company_display_name: str = None,
+    company_facts_block: str = None,
+    jeito_block: str = None,
 ) -> str:
     """
     Constrói o prompt híbrido combinando regras do sistema com instruções do cliente.
@@ -297,13 +299,24 @@ def build_composite_prompt(
         client_instructions: Instruções personalizadas do cliente (tom, regras de negócio)
         agent_display_name: nome configurado pela corretora para o ATENDENTE
             (SPEC-017 identidade configurável — nunca hard-code de plataforma)
+        company_facts_block: SPEC-098 R5 — `A CORRETORA` renderizado dos FATOS
+            (nome, ramos, seguradoras, área, desde). Vale para **todos** os
+            papéis. 📊 Até 06/09/2026 só o NOME entrava, e só no atendimento:
+            para o Core a corretora do usuário simplesmente não existia.
+        jeito_block: SPEC-098 R4 — `O JEITO DESTA CORRETORA`, já validado e
+            varrido por `services/brand/jeito_de_atender.render`. Só entra para
+            `attendance`/`insured_external`, e **nunca** muda o que o agente PODE
+            fazer: quem decide poder é `resolve_active_capabilities`, que não vê
+            este texto.
 
     Returns:
         Prompt completo fundido com separadores claros
 
     Arquitetura:
         [CORE - Governança e Ferramentas]
+        [SPEC-098: A CORRETORA — todos os papéis]
         ---
+        [SPEC-098: O JEITO — só atendimento]
         [CLIENT - Tom e Contexto]
         ---
         [FOOTER - Reforço de Segurança]
@@ -347,6 +360,21 @@ def build_composite_prompt(
 - NUNCA diga "da sua corretora" — diga o NOME da corretora.
 - NUNCA cite nomes internos da plataforma, de blueprints ou de sistemas ao cliente."""
 
+    # SPEC-098 R5 — A CORRETORA, para TODOS os papéis, logo depois da identidade.
+    # O Core precisa dela tanto quanto o atendimento: um copiloto que não sabe
+    # em que ramos a corretora trabalha nem com que seguradoras responde no
+    # genérico e o corretor conserta à mão toda vez.
+    _facts = (company_facts_block or "").strip()
+    if _facts:
+        base_prompt = base_prompt.strip() + "\n\n" + _facts
+
+    # SPEC-098 R4 — O JEITO só para quem FALA COM O SEGURADO. O Core não recebe
+    # o jeito de atender: ele não conversa com o cliente final, e um bloco de
+    # tom no copiloto interno seria texto pago sem leitor.
+    _jeito = (jeito_block or "").strip()
+    if _jeito and role_norm not in ("attendance", "insured_external"):
+        _jeito = ""
+
     # 🔴 A HORA SAIU DAQUI — ELA DESTRUÍA O CACHE A CADA 60 SEGUNDOS.
     #
     # Este texto inteiro é o `static_prompt`, e é o único bloco que recebe
@@ -370,7 +398,7 @@ Hoje é {weekday}, {hoje} (horário de Brasília).
 Use esta informação para contexto temporal quando o usuário mencionar datas relativas (amanhã, próxima semana, etc).
 
 ---
-
+{(_jeito + chr(10) + chr(10) + '---' + chr(10) + chr(10)) if _jeito else ''}
 ### 🎯 INSTRUÇÕES ESPECÍFICAS DO CLIENTE
 {client_instructions.strip()}
 

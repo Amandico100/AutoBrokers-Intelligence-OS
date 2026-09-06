@@ -37,6 +37,17 @@ CAMPOS_EDITAVEIS = {
 }
 
 
+def _campo_vazio(valor: Any) -> bool:
+    """Um campo NULL, `""`, `[]` ou `{}` nao tem origem para afirmar (D21)."""
+    if valor is None:
+        return True
+    if isinstance(valor, str):
+        return not valor.strip()
+    if isinstance(valor, (list, dict)):
+        return len(valor) == 0
+    return False
+
+
 def _autorizar(chave: Optional[str]) -> None:
     esperada = (os.getenv("BACKEND_INTERNAL_API_KEY")
                 or os.getenv("ADMIN_API_KEY") or "").strip()
@@ -82,10 +93,19 @@ async def obter(company_id: str, x_internal_key: Optional[str] = Header(None)):
                       "ink_colors, source_url, confidence")
               .eq("company_id", company_id).eq("is_current", True).execute()).data or []
 
+    # 🔴 D21/U1.4 — A PROCEDENCIA NAO AFIRMA ORIGEM DE CAMPO VAZIO.
+    # 📊 06/09/2026: duas das 14 procedencias da unica marca publicada
+    # (`susep_code`, `service_area`) apontavam para colunas NULL. A tela mostrava
+    # "informado pelo corretor" ao lado de um campo em branco. O conserto na
+    # gravacao (`_aplicar`) vale de agora em diante; este filtro cobre o que ja
+    # esta gravado, sem esperar backfill.
+    procedencia = {x["field_path"]: x for x in proc
+                   if not _campo_vazio(perfil.get(x["field_path"]))}
+
     return {
         "ok": True,
         "profile": perfil,
-        "provenance": {p["field_path"]: p for p in proc},
+        "provenance": procedencia,
         "sources": fontes,
         "assets": assets,
     }
@@ -102,16 +122,29 @@ async def capturar(payload: CapturaIn, x_internal_key: Optional[str] = Header(No
         logger.exception("[brand] captura falhou")
         raise HTTPException(500, f"falha na captura: {type(exc).__name__}") from exc
 
+    # 🔴 E14 — O CONTRATO ESTAVA QUEBRADO, E O SINTOMA ERA MUDO.
+    # 📊 Esta rota serializava `erro`; a tela lia `error`
+    # (`BrandIdentityClient.tsx:103`). Resultado: 500, site vazio e "nenhuma
+    # fonte" chegavam identicos — todos como "A captura nao encontrou o
+    # suficiente". Nao havia erro no log: as duas metades estavam certas
+    # sozinhas e erradas juntas.
     return {
         "ok": r.status in ("captured", "partial"),
         "status": r.status,
-        "erro": r.erro,
+        "error": r.erro,
         "avisos": r.avisos,
         "completeness": r.completeness,
+        "campos": sorted(r.campos.keys()),
         "campos_propostos": sorted(r.campos.keys()),
         "assets": r.assets,
+        # `error_humano` viaja por fonte: e o que responde "por que o Instagram
+        # nao entrou?" sem mostrar `HTTP 429` a quem nao programa (R10/R11).
+        "sources": [{"kind": f["kind"], "status": f["status"],
+                     "http_status": f.get("http_status"),
+                     "error_humano": f.get("error")} for f in r.sources],
         "fontes": [{"kind": f["kind"], "status": f["status"],
                     "http_status": f.get("http_status")} for f in r.sources],
+        "jeito_proposto": bool(r.jeito_proposto),
     }
 
 
@@ -125,6 +158,87 @@ async def editar(payload: EdicaoIn, x_internal_key: Optional[str] = Header(None)
     svc = BrandCaptureService(get_supabase_client())
     perfil = svc.editar(payload.company_id, valores, payload.user_id)
     return {"ok": True, "profile": perfil, "campos": sorted(valores.keys())}
+
+
+class ProporJeitoIn(BaseModel):
+    company_id: str
+    #: "site" refaz a leitura da identidade (e propoe de novo); "conversas"
+    #: aprende com o que as atendentes ja escreveram.
+    origem: str = "conversas"
+    amostra: int = 300
+
+
+class AprovarJeitoIn(BaseModel):
+    company_id: str
+    user_id: Optional[str] = None
+    ajustes: Optional[dict[str, Any]] = None
+
+
+@router.post("/jeito/propor")
+async def propor_jeito(payload: ProporJeitoIn,
+                       x_internal_key: Optional[str] = Header(None)):
+    """Propoe um Jeito de atender. 🔴 NUNCA publica (R2).
+
+    A proposta e uma so por vez, e o `tone` ativo nao e tocado aqui de forma
+    nenhuma — nem pela leitura do site, nem pela leitura das conversas.
+    """
+    _autorizar(x_internal_key)
+    svc = BrandCaptureService(get_supabase_client())
+    origem = (payload.origem or "").strip().lower()
+
+    if origem == "site":
+        # Reaproveita a captura: e ela que baixa o site, le por modelo e grava a
+        # proposta. Uma segunda leitura aqui seria motor paralelo (§5).
+        try:
+            r = await svc.capturar(payload.company_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[brand] proposta pelo site falhou")
+            raise HTTPException(500, f"falha na leitura: {type(exc).__name__}") from exc
+        return {"ok": bool(r.jeito_proposto), "origem": "leitura_do_site",
+                "status": r.status, "error": r.erro,
+                "evidencia": r.jeito_evidencia,
+                "jeito": r.jeito_proposto}
+
+    if origem != "conversas":
+        raise HTTPException(400, "origem deve ser 'site' ou 'conversas'")
+
+    try:
+        lido = svc.propor_jeito_das_conversas(payload.company_id,
+                                              amostra=payload.amostra)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("[brand] proposta pelas conversas falhou")
+        raise HTTPException(500, f"falha na leitura: {type(exc).__name__}") from exc
+
+    if not lido.get("ok"):
+        return {"ok": False, "origem": "conversas", "motivo": lido.get("motivo"),
+                "lidas": lido.get("lidas"), "descartadas": lido.get("descartadas")}
+
+    svc.propor_jeito(payload.company_id, lido["jeito"], origem="conversas",
+                     evidencia=lido["evidencia"])
+    return {"ok": True, "origem": "conversas", "jeito": lido["jeito"],
+            "evidencia": lido["evidencia"], "lidas": lido.get("lidas"),
+            "descartadas": lido.get("descartadas")}
+
+
+@router.post("/jeito/aprovar")
+async def aprovar_jeito(payload: AprovarJeitoIn,
+                        x_internal_key: Optional[str] = Header(None)):
+    """A corretora publica o proprio jeito, com versao gravada.
+
+    ⚠️ Quem PODE aprovar e decidido no BFF (`requireCompanyMember({write:true})`
+    na rota do Next). Aqui, como em todo este router, confere-se a chave interna:
+    o backend nao tem sessao de usuario, e inventar uma seria motor paralelo.
+    """
+    _autorizar(x_internal_key)
+    svc = BrandCaptureService(get_supabase_client())
+    try:
+        r = svc.aprovar_jeito(payload.company_id, payload.user_id, payload.ajustes)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("[brand] aprovacao do jeito falhou")
+        raise HTTPException(500, f"falha ao aprovar: {type(exc).__name__}") from exc
+    return r
 
 
 @router.get("/preview")

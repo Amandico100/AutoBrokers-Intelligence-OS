@@ -70,6 +70,12 @@ class SinaisWeb:
     texto_md: str = ""
     http_status: Optional[int] = None
     via: str = "direct"
+    #: SPEC-098 U1.2/E14 — por que a leitura profunda não entrou, quando não
+    #: entrou. 📊 Até 06/09/2026 o motivo do Firecrawl era DESCARTADO aqui
+    #: (`:395-396` devolvia `None` e pronto): um 402 "crédito esgotado" chegava
+    #: à corretora como "a captura não encontrou o suficiente". Quem engole o
+    #: motivo obriga o dono a adivinhar o conserto.
+    motivo_firecrawl: Optional[str] = None
 
     def as_extract(self) -> dict:
         d = {
@@ -364,7 +370,8 @@ async def buscar_pagina(url: str, *, allowlist: Optional[list[str]] = None) -> S
 
 
 async def buscar_com_firecrawl(url: str, *, supabase=None,
-                               company_id: Optional[str] = None) -> Optional[SinaisWeb]:
+                               company_id: Optional[str] = None
+                               ) -> tuple[Optional[SinaisWeb], Optional[str]]:
     """Usa Firecrawl quando há chave. Resolve JS; é o que pega construtor de site.
 
     Delega ao cliente único em `services/research/firecrawl.py` — inclusive para
@@ -376,7 +383,7 @@ async def buscar_com_firecrawl(url: str, *, supabase=None,
         FirecrawlClient, FirecrawlIndisponivel, configurado)
 
     if not configurado():
-        return None
+        return None, "sem_chave"
 
     cli = FirecrawlClient(supabase, company_id=company_id)
     try:
@@ -386,14 +393,16 @@ async def buscar_com_firecrawl(url: str, *, supabase=None,
         r = await cli.scrape(url, formatos=["html", "markdown"], so_conteudo=False,
                              skill="brand.capture_identity")
     except FirecrawlIndisponivel:
-        return None
+        return None, "indisponivel"
     except Exception as exc:  # noqa: BLE001
         logger.warning("[brand] Firecrawl indisponivel (%s) — seguindo por busca direta",
                        type(exc).__name__)
-        return None
+        return None, type(exc).__name__
 
+    # 🔴 O MOTIVO SOBE. `r.erro` traz "HTTP 402" quando o crédito acabou
+    # (`firecrawl.py:161`), e é essa string que vira frase humana na tela.
     if not r.ok or not isinstance(r.dados, dict):
-        return None
+        return None, (r.erro or "falha")
 
     dados = r.dados
     html = dados.get("html") or dados.get("rawHtml") or ""
@@ -406,7 +415,7 @@ async def buscar_com_firecrawl(url: str, *, supabase=None,
     sinais.descricao = sinais.descricao or meta.get("description")
     sinais.og_image = sinais.og_image or meta.get("ogImage")
     sinais.http_status = meta.get("statusCode") or 200
-    return sinais
+    return sinais, None
 
 
 async def coletar(url: str, *, allowlist: Optional[list[str]] = None,
@@ -419,13 +428,16 @@ async def coletar(url: str, *, allowlist: Optional[list[str]] = None,
     """
     direto = await buscar_pagina(url, allowlist=allowlist)
     try:
-        fc = await buscar_com_firecrawl(url, supabase=supabase, company_id=company_id)
-    except Exception:  # noqa: BLE001
-        fc = None
+        fc, motivo = await buscar_com_firecrawl(url, supabase=supabase,
+                                                company_id=company_id)
+    except Exception as exc:  # noqa: BLE001
+        fc, motivo = None, type(exc).__name__
 
     if not fc:
+        direto.motivo_firecrawl = motivo
         return direto
     if not direto.http_status or direto.http_status >= 400:
+        fc.motivo_firecrawl = motivo
         return fc
 
     for campo in ("titulo", "descricao", "nome", "legal_name", "tagline",
@@ -439,6 +451,7 @@ async def coletar(url: str, *, allowlist: Optional[list[str]] = None,
     fc.sociais = {**direto.sociais, **fc.sociais}
     fc.endereco = fc.endereco or direto.endereco
     fc.via = "firecrawl+direct"
+    fc.motivo_firecrawl = motivo
     return fc
 
 

@@ -22,6 +22,7 @@ class LLMFactory:
         api_key: str,
         company_id: str = None,
         agent_id: str = None,
+        service_type: Optional[str] = None,
     ):
         """
         Create LLM with hierarchy: Agent Config > Company Config.
@@ -77,9 +78,16 @@ class LLMFactory:
         # `service_type` distingue: consumo de corretora é "chat"; o que a
         # plataforma gasta por conta própria é "plataforma", e some do custo por
         # corretora sem sumir do total.
+        #
+        # SPEC-098 R12 — "custo com nome": um trabalho que NÃO é conversa não
+        # pode entrar no ledger como se fosse. A leitura do site da corretora
+        # tem `company_id` (é dela o gasto) e cairia em "chat" pela regra antiga,
+        # somando ao custo de atendimento uma linha que nunca foi atendimento.
+        # Quem sabe o que está fazendo passa `service_type`; os 11 chamadores de
+        # hoje não passam nada e continuam decididos pela mesma regra.
         callbacks = [
             CostCallbackHandler(
-                service_type="chat" if company_id else "plataforma",
+                service_type=service_type or ("chat" if company_id else "plataforma"),
                 company_id=company_id,
                 agent_id=agent_id,
                 model_name=model,

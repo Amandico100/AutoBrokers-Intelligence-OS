@@ -61,6 +61,32 @@ def company_collection(company_id: str) -> str:
     return f"company_{str(company_id).replace('-', '_')}"
 
 
+def colecao_permitida(company_id: str, collection_name: Optional[str]) -> bool:
+    """Esta coleção do Qdrant pode ser lida por ESTA corretora? — **PURA** (SPEC-098 [G-RAG]).
+
+    🔴 Por que existe: 📊 06/09/2026 — não há `FieldCondition(key="company_id")`
+    em `qdrant_service.py`; o tenant do RAG **é o nome da coleção**
+    (`company_<id>`, `:133-135`), e no chat esse nome vem de
+    `agents.collection_name` (`graph.py:203`). Ou seja: uma COLUNA DO BANCO
+    decide de quem é o conhecimento que o agente lê, não o `company_id` da
+    requisição. Uma linha de `agents` editada errado — por engano ou não —
+    aponta o agente de uma corretora para o acervo de outra, e nada barra.
+
+    A regra, e só ela: vale a coleção da PRÓPRIA corretora ou o acervo global
+    curado. Vazio/`None` é permitido porque significa "use o padrão", e o padrão
+    é derivado do `company_id` da requisição (`company_collection`).
+
+    Isto não é o conserto definitivo (o filtro no payload é `P-098-RAG-COLECAO-DO-AGENTE`);
+    é a cerca que impede a coluna de mandar enquanto ele não vem.
+    """
+    nome = (collection_name or "").strip()
+    if not nome:
+        return True
+    if nome == GLOBAL_COLLECTION:
+        return True
+    return nome == company_collection(company_id)
+
+
 def normalize_document_scope(agent_id: Optional[str], requested_scope: Optional[str] = None) -> str:
     """Default seguro: 'agent' se houver agent_id; senão 'tenant'. requested_scope só se válido."""
     if requested_scope and requested_scope in VALID_SCOPES:
