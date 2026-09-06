@@ -5,12 +5,13 @@ Agent Config API - Endpoints para configurar o agente LLM de cada empresa
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, validator
 
+from app.core.auth import require_internal_key
 from app.core import get_supabase_client
 from app.services.encryption_service import get_encryption_service
 from app.services.portao_do_prompt import (
@@ -27,6 +28,28 @@ from app.services.langchain_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# =============================================================================
+# 🔴 SPEC-098 U4.a/R7 — A CHAVE DO BFF (o buraco que este arquivo era)
+# =============================================================================
+#
+# 📊 Medido em 06/09/2026, ao vivo, contra o smith-api em produção:
+#
+#     GET …/api/sanitization/jobs?company_id=<uuid falso>   → 200
+#     GET …/api/mcp/servers?company_id=<uuid falso>         → 200
+#
+# 📊 E `grep -c 'Depends(\|_require_internal_key\|_autorizar'` neste arquivo,
+# antes desta linha existir: **0**. O `company_id` chegava de fora e era usado
+# como se fosse credencial.
+#
+# ⚠️ O comentário que existia aqui — *"company_id is provided by the Next.js
+# proxy after session validation"* — descrevia uma INTENÇÃO. Nada verificava que
+# o chamador era o proxy. Comentário não é guarda; `Depends` é.
+#
+# 🔴 ORDEM DE IMPLANTAÇÃO (R7): **smith-web primeiro, smith-api depois.** A web
+# passa a MANDAR `X-Internal-Key`; a api passa a EXIGIR. Na ordem inversa, o
+# painel fica 401 até a web subir.
+
 
 
 # ===== MODELS =====
@@ -221,7 +244,8 @@ async def list_models(provider: str):
     return models
 
 
-@router.get("/config/{company_id}", response_model=AgentConfigResponse)
+@router.get("/config/{company_id}", response_model=AgentConfigResponse,
+            dependencies=[Depends(require_internal_key)])
 async def get_agent_config(company_id: str):
     """
     Busca configuração atual do agente para uma empresa
@@ -289,7 +313,7 @@ async def get_agent_config(company_id: str):
         ) from e
 
 
-@router.put("/config/{company_id}")
+@router.put("/config/{company_id}", dependencies=[Depends(require_internal_key)])
 async def save_agent_config(company_id: str, config: AgentConfigRequest):
     """
     Salva configuração do agente para uma empresa
@@ -410,7 +434,8 @@ async def save_agent_config(company_id: str, config: AgentConfigRequest):
         ) from e
 
 
-@router.post("/test/{company_id}", response_model=TestConnectionResponse)
+@router.post("/test/{company_id}", response_model=TestConnectionResponse,
+             dependencies=[Depends(require_internal_key)])
 async def test_llm_connection(company_id: str, test_request: TestConnectionRequest):
     """
     Testa conexão com o LLM antes de salvar

@@ -25,11 +25,16 @@ def _db() -> Any:
 
 
 def _exigir_chave_interna(chave: Optional[str]) -> None:
-    """Rotas internas exigem a chave de serviço."""
-    import os
+    """Rotas internas exigem a chave de serviço.
 
-    esperada = (os.getenv("ADMIN_API_KEY") or "").strip()
-    if not esperada or (chave or "").strip() != esperada:
+    🔴 SPEC-098 R7 — fecha `P-096-WORK-RUNS-CHAVE-SO-ENV`. Este helper lia
+    **só** `os.getenv("ADMIN_API_KEY")`: ignorava `BACKEND_INTERNAL_API_KEY` e
+    ignorava `settings`. Duas listas de chaves válidas no mesmo produto é uma
+    rota autenticando e a vizinha não, pela mesma requisição.
+    """
+    from app.core.auth import _chaves_internas
+
+    if (chave or "").strip() not in _chaves_internas() or not (chave or "").strip():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="não autorizado")
 
 

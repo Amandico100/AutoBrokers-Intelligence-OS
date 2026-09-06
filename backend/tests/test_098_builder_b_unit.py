@@ -1,0 +1,562 @@
+"""SPEC-098 · builder B — os seams do FastAPI, a empresa ativa e o ator até o efeito.
+
+⚠️ **Este arquivo NÃO é o guarda da SPEC.** O guarda é
+`backend/tests/test_cada_coisa_sabe_de_quem_e.py`, do desenhista, e é ele que o
+gate final roda com `--mutar`. Aqui ficam os testes de UNIDADE do builder B:
+cada gate do card com a saída colada.
+
+🔴 **Por que um `FastAPI()` mínimo, e não `app.main`.** 📊 Importar `app.main`
+leva ≈4 min (ele sobe LangChain, Qdrant, Redis e o grafo). Um teste que custa
+4 min não é rodado — e teste que não se roda não guarda nada. Montamos só os
+routers que esta unidade toca; a dependency é a MESMA função de produção
+(`app.core.auth.require_internal_key`), então o que se prova aqui é o
+comportamento do MOTOR, não de uma cópia (CLAUDE.md §9.4).
+
+⛔ NENHUMA mensagem sai: `_entregar_agora` e o Redis são dublados. NENHUM banco
+real é tocado: os clientes são dublês.
+"""
+from __future__ import annotations
+
+import asyncio
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+CHAVE = "chave-de-teste-098"
+ERRADA = "chave-errada-098"
+
+
+# ===========================================================================
+# Dublês
+# ===========================================================================
+
+
+class _Res:
+    """⚠️ AGUARDÁVEL de propósito: `get_current_company_id` faz
+    `await db.client.table(...).execute()` (o cliente real é async) e
+    `vinculo_vigente` passa pelo `_talvez_await`. Um dublê que só servisse a um
+    dos dois esconderia metade do caminho."""
+
+    def __init__(self, data):
+        self.data = data
+
+    def __await__(self):
+        async def _eu():
+            return self
+        return _eu().__await__()
+
+
+class _Tabela:
+    """Um dublê de PostgREST que RESPONDE ao que foi filtrado.
+
+    ⚠️ Ele guarda os `.eq()` recebidos e devolve linhas só quando TODOS batem.
+    Um dublê que devolve sempre a mesma linha não conseguiria ficar vermelho
+    quando o código esquecesse o `company_id` — e é justamente isso que os
+    testes de tenant precisam poder detectar.
+    """
+
+    def __init__(self, linhas, registro):
+        self._linhas = linhas
+        self._filtros = {}
+        self._registro = registro
+
+    def select(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def single(self, *_a, **_k):
+        """⚠️ `.single()` do PostgREST devolve UM objeto, não uma lista — e é
+        assim que `get_current_company_id` lê a corretora primária."""
+        self._single = True
+        return self
+
+    def eq(self, coluna, valor):
+        self._filtros[coluna] = str(valor)
+        return self
+
+    def insert(self, linha):
+        self._registro.append(("insert", linha))
+        return _Feito(_Res([dict(linha, id="art-1")]))
+
+    def execute(self):
+        self._registro.append(("select", dict(self._filtros)))
+        casam = [l for l in self._linhas
+                 if all(str(l.get(k)) == v for k, v in self._filtros.items())]
+        if getattr(self, "_single", False):
+            return _Res(casam[0] if casam else None)
+        return _Res(casam)
+
+
+class _Feito:
+    def __init__(self, res):
+        self._res = res
+
+    def execute(self):
+        return self._res
+
+
+class _Cliente:
+    def __init__(self, tabelas, registro=None):
+        self._tabelas = tabelas
+        self.registro = registro if registro is not None else []
+
+    def table(self, nome):
+        return _Tabela(self._tabelas.get(nome, []), self.registro)
+
+
+class _Db:
+    def __init__(self, cliente):
+        self.client = cliente
+
+
+# ===========================================================================
+# [G5] · as 14 rotas com `company_id` de fora exigem a chave do BFF
+# ===========================================================================
+
+#: 🔴 A tabela é a LISTA DO CARD, escrita à mão. Derivá-la do próprio router
+#: (`[r.path for r in router.routes]`) faria o teste concordar com o código:
+#: se alguém apagasse a dependency de uma rota, a lista encolheria junto e o
+#: teste continuaria verde. É a mutação M9 que isto precisa pegar.
+ROTAS = [
+    ("sanitization", "POST",   "/api/sanitization/upload"),
+    ("sanitization", "GET",    "/api/sanitization/jobs?company_id=X"),
+    ("sanitization", "GET",    "/api/sanitization/jobs/j1?company_id=X"),
+    ("sanitization", "GET",    "/api/sanitization/download/j1?company_id=X"),
+    ("sanitization", "DELETE", "/api/sanitization/jobs/j1?company_id=X"),
+    ("agent_config", "GET",    "/api/agent/config/C"),
+    ("agent_config", "PUT",    "/api/agent/config/C"),
+    ("agent_config", "POST",   "/api/agent/test/C"),
+    ("mcp",          "GET",    "/api/mcp/servers"),
+    ("mcp",          "GET",    "/api/mcp/servers/s1/tools"),
+    ("mcp",          "POST",   "/api/mcp/agent/a1/enable-server"),
+    ("mcp",          "DELETE", "/api/mcp/agent/a1/disable-server/m1?company_id=X"),
+    ("mcp",          "PATCH",  "/api/mcp/agent/a1/tool/t1/toggle?company_id=X"),
+    ("mcp",          "POST",   "/api/mcp/agent/a1/disconnect/m1?company_id=X"),
+]
+
+
+@pytest.fixture(scope="module")
+def cliente_http():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    os.environ["ADMIN_API_KEY"] = CHAVE
+    os.environ.setdefault("BACKEND_INTERNAL_API_KEY", CHAVE)
+
+    from app.api import agent_config, mcp, sanitization
+
+    app = FastAPI()
+    app.include_router(sanitization.router, prefix="/api/sanitization")
+    app.include_router(agent_config.router, prefix="/api/agent")
+    app.include_router(mcp.router, prefix="/api/mcp")
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _chamar(cliente, metodo, url, chave=None):
+    cabecalhos = {"X-Internal-Key": chave} if chave else {}
+    return cliente.request(metodo, url, headers=cabecalhos,
+                           json={} if metodo in ("POST", "PUT", "PATCH") else None)
+
+
+@pytest.mark.parametrize("arquivo,metodo,url", ROTAS)
+def test_g5_sem_chave_e_401(cliente_http, arquivo, metodo, url):
+    r = _chamar(cliente_http, metodo, url)
+    assert r.status_code == 401, f"{arquivo} {metodo} {url} devolveu {r.status_code}"
+
+
+@pytest.mark.parametrize("arquivo,metodo,url", ROTAS)
+def test_g5_chave_errada_e_401(cliente_http, arquivo, metodo, url):
+    """🔴 Chave errada = chave nenhuma. Mesmo status, mesma frase."""
+    r = _chamar(cliente_http, metodo, url, chave=ERRADA)
+    assert r.status_code == 401, f"{arquivo} {metodo} {url} devolveu {r.status_code}"
+
+
+@pytest.mark.parametrize("arquivo,metodo,url", ROTAS)
+def test_g5_chave_certa_chega_no_handler(cliente_http, arquivo, metodo, url):
+    """🔴 O CONTROLE. Sem ele, um `Depends` que recusasse TODA request passaria
+    nos dois testes acima — e o painel ficaria 401 para sempre com o gate verde.
+
+    ⚠️ Não se afirma 200: o handler dublado bate em banco/gateway que não
+    existem aqui. Afirma-se que a PORTA abriu — qualquer coisa que não seja 401.
+    """
+    r = _chamar(cliente_http, metodo, url, chave=CHAVE)
+    assert r.status_code != 401, f"{arquivo} {metodo} {url} recusou a chave VÁLIDA"
+
+
+# ===========================================================================
+# [G6] · a empresa ativa
+# ===========================================================================
+
+
+def _auth():
+    from app.core import auth
+    return auth
+
+
+def test_g6_header_com_chave_devolve_a_ativa():
+    auth = _auth()
+    os.environ["ADMIN_API_KEY"] = CHAVE
+    db = _Db(_Cliente({
+        "company_members": [{"company_id": "ATIVA", "user_id": "U", "status": "active", "id": 1}],
+        "users_v2": [{"id": "U", "status": "active", "company_id": "PRIMARIA"}],
+    }))
+    r = asyncio.run(auth.get_current_company_id(
+        user_id="U", db=db, x_internal_key=CHAVE, x_active_company_id="ATIVA"))
+    assert r == "ATIVA"
+
+
+def test_g6_header_sem_chave_e_ignorado_vale_a_primaria():
+    """⚠️ Ignorado, não recusado: sem chave o header é ruído, e o comportamento
+    de hoje (a primária) é o seguro."""
+    auth = _auth()
+    db = _Db(_Cliente({
+        "company_members": [{"company_id": "ATIVA", "user_id": "U", "status": "active", "id": 1}],
+        "users_v2": [{"id": "U", "status": "active", "company_id": "PRIMARIA"}],
+    }))
+    r = asyncio.run(auth.get_current_company_id(
+        user_id="U", db=db, x_internal_key=None, x_active_company_id="ATIVA"))
+    assert r == "PRIMARIA"
+
+
+def test_g6_chave_errada_tambem_e_ignorada():
+    auth = _auth()
+    os.environ["ADMIN_API_KEY"] = CHAVE
+    db = _Db(_Cliente({
+        "company_members": [{"company_id": "ATIVA", "user_id": "U", "status": "active", "id": 1}],
+        "users_v2": [{"id": "U", "status": "active", "company_id": "PRIMARIA"}],
+    }))
+    r = asyncio.run(auth.get_current_company_id(
+        user_id="U", db=db, x_internal_key=ERRADA, x_active_company_id="ATIVA"))
+    assert r == "PRIMARIA"
+
+
+def test_g6_sem_vinculo_e_403_nunca_a_primaria():
+    """🔴 Cair na primária aqui devolveria dado da corretora ERRADA com 200."""
+    from fastapi import HTTPException
+
+    auth = _auth()
+    os.environ["ADMIN_API_KEY"] = CHAVE
+    db = _Db(_Cliente({
+        "company_members": [],
+        "users_v2": [{"id": "U", "status": "active", "company_id": "PRIMARIA"}],
+    }))
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(auth.get_current_company_id(
+            user_id="U", db=db, x_internal_key=CHAVE, x_active_company_id="OUTRA"))
+    assert e.value.status_code == 403
+
+
+def test_g6_vinculo_inativo_e_403():
+    from fastapi import HTTPException
+
+    auth = _auth()
+    os.environ["ADMIN_API_KEY"] = CHAVE
+    db = _Db(_Cliente({
+        "company_members": [{"company_id": "ATIVA", "user_id": "U", "status": "inactive", "id": 1}],
+        "users_v2": [{"id": "U", "status": "active", "company_id": "PRIMARIA"}],
+    }))
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(auth.get_current_company_id(
+            user_id="U", db=db, x_internal_key=CHAVE, x_active_company_id="ATIVA"))
+    assert e.value.status_code == 403
+
+
+def test_g6_conta_suspensa_e_403_mesmo_com_vinculo_ativo():
+    """As duas metades da R9: o vínculo vive, a CONTA foi suspensa."""
+    from fastapi import HTTPException
+
+    auth = _auth()
+    os.environ["ADMIN_API_KEY"] = CHAVE
+    db = _Db(_Cliente({
+        "company_members": [{"company_id": "ATIVA", "user_id": "U", "status": "active", "id": 1}],
+        "users_v2": [{"id": "U", "status": "suspended", "company_id": "PRIMARIA"}],
+    }))
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(auth.get_current_company_id(
+            user_id="U", db=db, x_internal_key=CHAVE, x_active_company_id="ATIVA"))
+    assert e.value.status_code == 403
+
+
+def test_g6_banco_explode_e_500_nunca_a_primaria():
+    from fastapi import HTTPException
+
+    auth = _auth()
+    os.environ["ADMIN_API_KEY"] = CHAVE
+
+    class _Explode:
+        def table(self, _nome):
+            raise RuntimeError("supabase mudo")
+
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(auth.get_current_company_id(
+            user_id="U", db=_Db(_Explode()), x_internal_key=CHAVE,
+            x_active_company_id="ATIVA"))
+    assert e.value.status_code == 500
+
+
+def test_g6_vinculo_vigente_levanta_em_erro_de_banco():
+    """🔴 `vinculo_vigente` NUNCA devolve True nem False por erro — LEVANTA."""
+    auth = _auth()
+
+    class _Explode:
+        def table(self, _nome):
+            raise RuntimeError("supabase mudo")
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(auth.vinculo_vigente(_Db(_Explode()), "C", "U"))
+
+
+# ===========================================================================
+# [G7] · o ator e a conversa viajam
+# ===========================================================================
+
+
+def _linha_base(**extra):
+    base = dict(company_id="C", workflow_key="w", outcome_type="o",
+                outcome_title="t", source_type="chat", source_id=None,
+                conversation_id=None, runtime_kind="k", status="queued",
+                risk_level="low", idempotency_key="idem-1", input_payload={})
+    base.update(extra)
+    return base
+
+
+def _db_de_run(registro):
+    cli = _Cliente({"work_runs": []}, registro)
+    return cli
+
+
+def test_g7_run_grava_o_ator_quando_o_chamador_o_conhece():
+    from app.services.work.runs import criar_registro_sem_fila
+
+    registro = []
+    asyncio.run(criar_registro_sem_fila(_db_de_run(registro),
+                                        requester_user_id="U1",
+                                        requester_agent_id="A1", **_linha_base()))
+    inserts = [l for op, l in registro if op == "insert"]
+    assert inserts and inserts[0]["requester_user_id"] == "U1"
+    assert inserts[0]["requester_agent_id"] == "A1"
+
+
+def test_g7_run_sem_ator_nao_inventa_a_chave():
+    """⚠️ O CONTROLE: a chave só entra quando tem valor."""
+    from app.services.work.runs import criar_registro_sem_fila
+
+    registro = []
+    asyncio.run(criar_registro_sem_fila(_db_de_run(registro), **_linha_base()))
+    inserts = [l for op, l in registro if op == "insert"]
+    assert "requester_user_id" not in inserts[0]
+    assert "requester_agent_id" not in inserts[0]
+
+
+@pytest.mark.parametrize("vazio", [None, "", "  ", "None"])
+def test_g7_run_sem_company_levanta(vazio):
+    from app.services.work.runs import criar_registro_sem_fila
+
+    with pytest.raises(ValueError):
+        asyncio.run(criar_registro_sem_fila(_db_de_run([]),
+                                            **_linha_base(company_id=vazio)))
+
+
+def test_g7_peca_herda_a_conversa_do_run_da_MESMA_corretora():
+    from app.services.artifacts.service import ArtifactService
+
+    registro = []
+    cli = _Cliente({"work_runs": [{"id": "R1", "company_id": "C", "conversation_id": "CONV"}]},
+                   registro)
+    svc = ArtifactService.__new__(ArtifactService)
+    svc.db = cli
+    assert svc._conversa_da_peca("C", "R1", None) == "CONV"
+
+
+def test_g7_peca_nao_herda_conversa_de_run_de_OUTRA_corretora():
+    """🔴 O CONTROLE do tenant. Sem o `.eq(company_id)`, isto devolveria `CONV`
+    — e a FK COMPOSTA recusaria o INSERT da peça inteira."""
+    from app.services.artifacts.service import ArtifactService
+
+    cli = _Cliente({"work_runs": [{"id": "R1", "company_id": "OUTRA", "conversation_id": "CONV"}]})
+    svc = ArtifactService.__new__(ArtifactService)
+    svc.db = cli
+    assert svc._conversa_da_peca("C", "R1", None) is None
+
+
+def test_g7_aprovacao_herda_a_conversa_do_run():
+    from app.services.work.approvals import WorkApprovalService
+
+    cli = _Cliente({"work_runs": [{"id": "R1", "company_id": "C", "conversation_id": "CONV"}]})
+    svc = WorkApprovalService.__new__(WorkApprovalService)
+    svc.db = cli
+    assert svc._conversa_do_run("C", "R1") == "CONV"
+    assert svc._conversa_do_run("OUTRA", "R1") is None   # o controle do tenant
+
+
+# ===========================================================================
+# [G8] · o PAR do envio — a porta revalida o ator no instante do efeito
+# ===========================================================================
+
+
+@pytest.fixture
+def porta(monkeypatch):
+    """Monta a porta com TUDO dublado: nada sai, nada toca Redis nem banco."""
+    from app.services import platform_outbound as po
+
+    entregas = []
+    fila = []
+    eventos = []
+
+    async def _entregar(company_id, phone, text, kind, summary):
+        entregas.append((company_id, phone, kind))
+        return {"ok": True, "queued": False, "reason": None}
+
+    async def _agente_ligado(_cid):
+        return True
+
+    async def _enfileirar(company_id, phone, text, kind, summary, *, espera_s,
+                          tentativas=0, adiamentos=0, actor_user_id=None):
+        fila.append({"phone": phone, "kind": kind, "actor_user_id": actor_user_id})
+        return True
+
+    async def _recusa(company_id, actor_user_id, kind, summary):
+        eventos.append({"event_type": "envio.recusado", "actor_id": actor_user_id,
+                        "kind": kind})
+
+    monkeypatch.setattr(po, "_entregar_agora", _entregar)
+    monkeypatch.setattr(po, "_enfileirar", _enfileirar)
+    monkeypatch.setattr(po, "_registrar_envio_recusado", _recusa)
+    import app.services.atlas.attendance_capture as ac
+    monkeypatch.setattr(ac, "attendance_agent_active", _agente_ligado, raising=False)
+    return po, entregas, fila, eventos
+
+
+def _vinculo(po, monkeypatch, resposta):
+    async def _v(_cid, _uid):
+        return resposta
+    monkeypatch.setattr(po, "_vinculo_do_ator_vigente", _v)
+
+
+def test_g8_vinculo_vigente_entrega_uma_vez(porta, monkeypatch):
+    po, entregas, _fila, eventos = porta
+    _vinculo(po, monkeypatch, True)
+    r = asyncio.run(po.send_to_client_guarded("C", "5511999999999", "oi",
+                                              temperatura=po.QUENTE,
+                                              actor_user_id="U1"))
+    assert r["ok"] is True
+    assert len(entregas) == 1
+    assert eventos == []
+
+
+def test_g8_vinculo_revogado_zero_entregas_e_evento(porta, monkeypatch):
+    po, entregas, _fila, eventos = porta
+    _vinculo(po, monkeypatch, False)
+    r = asyncio.run(po.send_to_client_guarded("C", "5511999999999", "oi",
+                                              temperatura=po.QUENTE,
+                                              actor_user_id="U1"))
+    assert r["status"] == "recusado"
+    assert r["motivo"] == "o vínculo de quem pediu não está mais vigente"
+    assert entregas == []
+    assert len(eventos) == 1 and eventos[0]["event_type"] == "envio.recusado"
+
+
+def test_g8_sem_ator_e_o_comportamento_de_hoje(porta, monkeypatch):
+    """🔴 A LINHA DE CONTROLE (CLAUDE.md §9.2). O revalidador é dublado para
+    RECUSAR — e mesmo assim a mensagem sai, porque sem ator ele não é chamado.
+    Sem esta linha, um "recusou" acima poderia ser mérito de qualquer coisa."""
+    po, entregas, _fila, eventos = porta
+    _vinculo(po, monkeypatch, False)
+    r = asyncio.run(po.send_to_client_guarded("C", "5511999999999", "oi",
+                                              temperatura=po.QUENTE))
+    assert r["ok"] is True
+    assert len(entregas) == 1
+    assert eventos == []
+
+
+def test_g8_a_fila_carrega_o_ator():
+    """A entrada gravada leva o ator — e SÓ o id (nada de PII no Redis)."""
+    from app.services import platform_outbound as po
+
+    gravadas = []
+
+    class _R:
+        async def rpush(self, _k, raw):
+            gravadas.append(raw)
+
+    async def _redis():
+        return _R()
+
+    import app.core.redis as redismod
+    original = redismod.get_async_redis_client
+    redismod.get_async_redis_client = _redis
+    try:
+        assert asyncio.run(po._enfileirar("C", "5511999999999", "oi", "other", "",
+                                          espera_s=1, actor_user_id="U1")) is True
+        assert asyncio.run(po._enfileirar("C", "5511999999999", "oi", "other", "",
+                                          espera_s=1)) is True
+    finally:
+        redismod.get_async_redis_client = original
+
+    import json
+    com_ator = json.loads(gravadas[0])
+    sem_ator = json.loads(gravadas[1])
+    assert com_ator["actor_user_id"] == "U1"
+    # 🔴 O CONTROLE: sem ator, a chave NÃO existe — é assim que a entrada
+    #    ANTIGA da fila cai em "sem ator" por construção (compatibilidade).
+    assert "actor_user_id" not in sem_ator
+
+
+def test_g8_item_da_fila_com_ator_revogado_e_descartado(porta, monkeypatch):
+    """O drenador re-chama a porta; quem recusa é a porta, não o drenador."""
+    po, entregas, _fila, eventos = porta
+    _vinculo(po, monkeypatch, False)
+    r = asyncio.run(po.send_to_client_guarded(
+        "C", "5511999999999", "oi", "other", "", temperatura=po.QUENTE,
+        actor_user_id="U1", tentativas=3, adiamentos=1))
+    assert entregas == []
+    assert r["status"] == "recusado"
+
+
+# ===========================================================================
+# [K] · a migration tem APPLY / VERIFY / ROLLBACK e é idempotente no texto
+# ===========================================================================
+
+MIGRATIONS = [
+    "20260906_01_spec098_de_quem_e.sql",
+    "20260906_02_spec098_indice_cobre_a_fk.sql",
+]
+
+
+@pytest.mark.parametrize("nome", MIGRATIONS)
+def test_k_migration_tem_as_tres_secoes(nome):
+    p = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / nome
+    texto = p.read_text(encoding="utf-8")
+    for secao in ("-- APPLY", "-- VERIFY", "-- ROLLBACK"):
+        assert secao in texto, f"{nome} sem {secao}"
+
+
+@pytest.mark.parametrize("nome", MIGRATIONS)
+def test_k_migration_e_idempotente(nome):
+    """Todo DDL de criação do APPLY é guardado: `IF NOT EXISTS` ou `pg_constraint`.
+
+    ⚠️ Só o APPLY entra na régua: VERIFY e ROLLBACK moram em comentário e não
+    rodam. Medir o arquivo inteiro faria o `create index` do ROLLBACK reprovar
+    uma migration correta.
+    """
+    p = Path(__file__).resolve().parents[1] / "supabase" / "migrations" / nome
+    aplica = p.read_text(encoding="utf-8").upper().split("-- VERIFY")[0]
+    assert aplica.count("ADD COLUMN") == aplica.count("ADD COLUMN IF NOT EXISTS"),         f"{nome}: ADD COLUMN sem IF NOT EXISTS"
+    assert aplica.count("CREATE INDEX") == aplica.count("CREATE INDEX IF NOT EXISTS"),         f"{nome}: CREATE INDEX sem IF NOT EXISTS"
+    # ADD CONSTRAINT não aceita IF NOT EXISTS: tem de vir guardado por pg_constraint
+    if "ADD CONSTRAINT" in aplica:
+        assert "PG_CONSTRAINT" in aplica, f"{nome}: ADD CONSTRAINT desprotegido"
+    # 🔴 O CONTROLE — a régua CONSEGUE ficar vermelha. Sem esta prova ela é
+    #    carimbo: um arquivo com `ADD COLUMN` cru tem de reprovar (CLAUDE.md §9.3).
+    if "ADD COLUMN" in aplica:
+        estragado = aplica.replace("ADD COLUMN IF NOT EXISTS", "ADD COLUMN")
+        assert estragado.count("ADD COLUMN") != estragado.count("ADD COLUMN IF NOT EXISTS")
+    if "CREATE INDEX" in aplica:
+        estragado = aplica.replace("CREATE INDEX IF NOT EXISTS", "CREATE INDEX")
+        assert estragado.count("CREATE INDEX") != estragado.count("CREATE INDEX IF NOT EXISTS")

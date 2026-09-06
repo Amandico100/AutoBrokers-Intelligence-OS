@@ -10,9 +10,10 @@ The Python backend trusts the proxy (same as billing pattern).
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from ..core.auth import require_internal_key
 from ..core.config import settings
 from ..models.sanitization import (
     SanitizationJobListResponse,
@@ -25,11 +26,34 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# =============================================================================
+# 🔴 SPEC-098 U4.a/R7 — A CHAVE DO BFF (o buraco que este arquivo era)
+# =============================================================================
+#
+# 📊 Medido em 06/09/2026, ao vivo, contra o smith-api em produção:
+#
+#     GET …/api/sanitization/jobs?company_id=<uuid falso>   → 200
+#     GET …/api/mcp/servers?company_id=<uuid falso>         → 200
+#
+# 📊 E `grep -c 'Depends(\|_require_internal_key\|_autorizar'` neste arquivo,
+# antes desta linha existir: **0**. O `company_id` chegava de fora e era usado
+# como se fosse credencial.
+#
+# ⚠️ O comentário que existia aqui — *"company_id is provided by the Next.js
+# proxy after session validation"* — descrevia uma INTENÇÃO. Nada verificava que
+# o chamador era o proxy. Comentário não é guarda; `Depends` é.
+#
+# 🔴 ORDEM DE IMPLANTAÇÃO (R7): **smith-web primeiro, smith-api depois.** A web
+# passa a MANDAR `X-Internal-Key`; a api passa a EXIGIR. Na ordem inversa, o
+# painel fica 401 até a web subir.
+
+
 
 # ===== UPLOAD =====
 
 
-@router.post("/upload", response_model=SanitizationUploadResponse)
+@router.post("/upload", response_model=SanitizationUploadResponse,
+             dependencies=[Depends(require_internal_key)])
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -94,7 +118,8 @@ async def upload_document(
 # ===== LIST JOBS =====
 
 
-@router.get("/jobs", response_model=SanitizationJobListResponse)
+@router.get("/jobs", response_model=SanitizationJobListResponse,
+            dependencies=[Depends(require_internal_key)])
 async def list_jobs(company_id: str):
     """List all sanitization jobs for a company.
 
@@ -118,7 +143,8 @@ async def list_jobs(company_id: str):
 # ===== GET JOB STATUS =====
 
 
-@router.get("/jobs/{job_id}", response_model=SanitizationJobResponse)
+@router.get("/jobs/{job_id}", response_model=SanitizationJobResponse,
+            dependencies=[Depends(require_internal_key)])
 async def get_job(
     job_id: str,
     company_id: str,
@@ -147,7 +173,7 @@ async def get_job(
 # ===== DOWNLOAD =====
 
 
-@router.get("/download/{job_id}")
+@router.get("/download/{job_id}", dependencies=[Depends(require_internal_key)])
 async def download_sanitized(
     job_id: str,
     company_id: str,
@@ -186,7 +212,7 @@ async def download_sanitized(
 # ===== DELETE JOB =====
 
 
-@router.delete("/jobs/{job_id}")
+@router.delete("/jobs/{job_id}", dependencies=[Depends(require_internal_key)])
 async def delete_job(
     job_id: str,
     company_id: str,

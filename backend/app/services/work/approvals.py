@@ -112,6 +112,26 @@ class WorkApprovalService:
             "expires_at": expira.isoformat(),
         }
 
+        # 🔴 SPEC-098 U5.a — A APROVAÇÃO SABE DE QUAL CONVERSA VEIO
+        #    (fecha P-097-APPROVAL-SEM-CONVERSA).
+        #
+        # 📊 Medido em 06/09/2026: `approval_requests` = 10 linhas, e **nenhuma
+        # coluna de conversa existia**. Quem abrisse a caixa de aprovações via
+        # *"autorizar envio para o cliente"* sem nenhum caminho de volta para a
+        # conversa em que o cliente pediu.
+        #
+        # ⚠️ **A conversa é HERDADA do run, não perguntada ao chamador.** O run
+        # já a conhece (SPEC-090 BLOCO A) e os chamadores de `solicitar` são
+        # passos de workflow que não a carregam. Herdar preenche a coluna sem
+        # mudar assinatura de ninguém.
+        #
+        # ⛔ Falha de leitura NÃO derruba o pedido de aprovação: a aprovação é a
+        # porta de segurança, e trocá-la por uma exceção porque o elo não pôde
+        # ser lido seria deixar a ação passar sem porta. Sem elo é `NULL`.
+        conversa = self._conversa_do_run(company_id, work_run_id)
+        if conversa:
+            registro["conversation_id"] = conversa
+
         try:
             res = self.db.table("approval_requests").insert(registro).execute()
             linha = (res.data or [{}])[0]
@@ -127,6 +147,61 @@ class WorkApprovalService:
                      f"Aguardando sua aprovação: {preview.get('titulo') or action_type}")
         return linha
 
+    # ------------------------------------------------------------------
+
+    def _conversa_do_run(self, company_id: str, work_run_id: Optional[str]) -> Optional[str]:
+        """A conversa que o run já conhece (SPEC-098 U5.a).
+
+        ⛔ O SELECT filtra por `company_id`: `approval_requests` ganhou FK
+        COMPOSTA `(conversation_id, company_id)`, e um elo lido da corretora
+        errada faria o INSERT da aprovação ser RECUSADO pelo banco — trocando um
+        campo vazio por uma aprovação que não nasce. CLAUDE.md §7.
+        """
+        if not work_run_id:
+            return None
+        try:
+            res = (self.db.table("work_runs").select("conversation_id")
+                   .eq("id", str(work_run_id)).eq("company_id", str(company_id))
+                   .limit(1).execute())
+            linhas = getattr(res, "data", None) or []
+            return str(linhas[0]["conversation_id"]) if linhas and linhas[0].get("conversation_id") else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Approvals] não deu para herdar a conversa do run: %s",
+                           type(exc).__name__)
+            return None
+
+    # ------------------------------------------------------------------
+    #
+    # ⛔ 📊 SPEC-098 BLOCO 0, MEDIDO EM 06/09/2026 — O PORTEIRO EXISTE, MAS É
+    #    OUTRO, E ELE CONFERE MENOS
+    #
+    #     grep -rn "validar_para_execucao" backend/app   →  1: a DEFINIÇÃO, aqui
+    #     grep -rn "validar_para_execucao" backend/tests →  1:
+    #       tests/broker_outcome_regression_pack.py:244 — que procura a STRING no
+    #       arquivo, não chama a função (CLAUDE.md §9.4: teste que chama o regex
+    #       guarda o regex, não o motor).
+    #     grep -rn "marcar_executada" backend/app        →  0 chamadores
+    #
+    # 🔴 **ZERO chamadores — e o ponto em que a aprovação vira efeito EXISTE.**
+    # Ele é `app/comercial/metricas/promover.py::conferir_a_decisao`, que lê
+    # `approval_requests` com `DECISOES_QUE_APROVAM`/`STATUS_QUE_APROVAM`
+    # próprios, escritos naquele arquivo, em vez de chamar esta função.
+    #
+    # ⚠️ **E as duas listas não conferem a mesma coisa.** Esta função também
+    # confere `expires_at` (janela vencida → `ApprovalExpired`, e marca a linha),
+    # `status='executed'` (efeito repetido) e o **fingerprint** do payload — a
+    # pergunta *"o conteúdo mudou depois que o humano aprovou?"*. 📊 Nenhuma das
+    # três é feita em `promover.py`. Uma proposta aprovada há três dias, com o
+    # payload editado depois, é promovida lá e seria RECUSADA aqui.
+    #
+    # ⛔ **Não se conserta daqui.** `promover.py` é motor paralelo desta função
+    # (CLAUDE.md §5) e o conserto é fazê-lo CHAMAR esta — mas o arquivo está fora
+    # da unidade desta SPEC, e trocá-lo às cegas mexeria no gate de HITL das
+    # métricas comerciais sem teste do outro lado. Fica com nome e com endereço:
+    # **`P-098-APROVACAO-SEM-EXECUTOR`** — `promover.py::conferir_a_decisao` deve
+    # passar a chamar `WorkApprovalService.validar_para_execucao` e
+    # `marcar_executada`, ganhando de graça validade, fingerprint e
+    # não-repetição.
     # ------------------------------------------------------------------
 
     def validar_para_execucao(self, *, company_id: str, approval_id: str,

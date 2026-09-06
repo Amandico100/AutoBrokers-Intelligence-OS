@@ -51,7 +51,8 @@
    "requested_preview": "jsonb",
    "requested_at": "timestamp with time zone",
    "resolved_at": "timestamp with time zone",
-   "resolved_by_user_id": "uuid"
+   "resolved_by_user_id": "uuid",
+   "conversation_id": "uuid"
   },
   "work_events": {
    "id": "bigint",
@@ -258,7 +259,8 @@
    "tags": "ARRAY",
    "created_at": "timestamp with time zone",
    "updated_at": "timestamp with time zone",
-   "archived_at": "timestamp with time zone"
+   "archived_at": "timestamp with time zone",
+   "conversation_id": "uuid"
   },
   "brand_assets": {
    "id": "uuid",
@@ -337,7 +339,11 @@
    "is_published": "boolean",
    "created_at": "timestamp with time zone",
    "updated_at": "timestamp with time zone",
-   "updated_by": "uuid"
+   "updated_by": "uuid",
+   "tone_proposto": "jsonb",
+   "tone_proposto_origem": "text",
+   "tone_proposto_em": "timestamp with time zone",
+   "tone_evidencia": "jsonb"
   },
   "brand_sources": {
    "id": "uuid",
@@ -493,5 +499,6 @@
  },
  "_doc_097": "SPEC-097 (05/09/2026): conversations, attendance_sessions, work_waits, messages e company_members lidos de information_schema.columns — porque o read model `lib/atendimento/casos.ts` leu TRES colunas que nao existiam (work_waits.due_at/attendance_session_id, attendance_sessions.protocolo, approval_requests.title) e o guarda ficou verde com um dublê que as inventava. attendance_sessions DEPOIS da migration 20260905_01 (aplicada em 05/09/2026: conversation_id, resolvido_em, resolucao_motivo).",
  "medido_em_097": "05/09/2026",
- "medido_em_098": "06/09/2026 - SPEC-098 acrescentou 12 tabelas (brand_*, companies, users_v2, agents, artifacts, work_events, usage_events, token_usage_logs), lidas de information_schema.columns no mesmo dia, ANTES da migration 20260906_01 (tone_proposto e conversation_id em artifacts/approval_requests ainda nao existem aqui; o builder B atualiza a fixture depois do APPLY)."
+ "medido_em_098": "06/09/2026 - SPEC-098 acrescentou 12 tabelas (brand_*, companies, users_v2, agents, artifacts, work_events, usage_events, token_usage_logs), lidas de information_schema.columns no mesmo dia, ANTES da migration 20260906_01 (tone_proposto e conversation_id em artifacts/approval_requests ainda nao existem aqui; o builder B atualiza a fixture depois do APPLY).",
+ "medido_em_098_pos_migration": "06/09/2026 - DEPOIS da migration 20260906_01_spec098_de_quem_e (aplicada e VERIFICADA no mesmo dia): brand_profiles.tone_proposto/_origem/_em e tone_evidencia (a proposta R2, separada do `tone` ATIVO), artifacts.conversation_id e approval_requests.conversation_id (FK COMPOSTA com company_id, ON DELETE SET NULL). As seis colunas nascem NULAS: 0 de 143 pecas, 0 de 10 aprovacoes e 0 de 3 perfis preenchidos no APPLY."
 }

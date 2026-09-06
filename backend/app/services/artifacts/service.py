@@ -94,6 +94,7 @@ class ArtifactService:
               subtitle: Optional[str] = None, summary: Optional[str] = None,
               kind: str = "report", origin: str = "chat",
               work_run_id: Optional[str] = None, requested_by: Optional[str] = None,
+              conversation_id: Optional[str] = None,
               data_sources: Optional[list[dict]] = None,
               subject_ref: Optional[dict] = None,
               tags: Optional[list[str]] = None,
@@ -116,7 +117,9 @@ class ArtifactService:
         self._garantir_template(template_key)
         marca = BrandCaptureService(self.db).snapshot_para_artefato(company_id)
 
-        art = (self.db.table("artifacts").insert({
+        conversa = self._conversa_da_peca(company_id, work_run_id, conversation_id)
+
+        linha = {
             "company_id": company_id, "kind": kind, "title": title,
             "subtitle": subtitle, "summary": summary, "template_key": template_key,
             "work_run_id": work_run_id, "requested_by": requested_by,
@@ -127,7 +130,17 @@ class ArtifactService:
             # `tags` estava preenchida em 0/136 peças — não havia como a lista
             # da corretora separar o que é dela do que é teste nosso.
             "tags": list(tags or []),
-        }).execute()).data
+        }
+        # 🔴 SPEC-098 U5.a — DE QUAL CONVERSA ESTA PEÇA NASCEU
+        #    (fecha P-096-ARTIFACT-SEM-CONVERSA).
+        #
+        # ⚠️ **A chave só entra quando tem valor.** 📊 A maioria das peças
+        # continuará sem conversa — Rotina e Cobrança criam peça sem ninguém
+        # conversando —, e `NULL` é a resposta certa para elas, não uma falha.
+        if conversa:
+            linha["conversation_id"] = str(conversa)
+
+        art = (self.db.table("artifacts").insert(linha).execute()).data
         if not art:
             raise RuntimeError("artefato nao criado")
         artefato = art[0]
@@ -148,6 +161,49 @@ class ArtifactService:
                      actor_id=requested_by, detalhe=detalhe)
 
         return {"artifact": artefato, "version": versao, "brand": marca}
+
+    def _conversa_da_peca(self, company_id: str, work_run_id: Optional[str],
+                          conversation_id: Optional[str]) -> Optional[str]:
+        """De qual conversa esta peça nasceu — dito, ou HERDADO do run.
+
+        🔴 **Duas fontes, nesta ordem, e nenhuma inventada:**
+
+        1. o que o chamador DISSE (`conversation_id`) — ele está no turno e sabe;
+        2. o que o RUN já sabe (`work_runs.conversation_id`) — 📊 a SPEC-090
+           BLOCO A pôs essa coluna lá e o acionamento a preenche.
+
+        ⚠️ **Herdar é o que fecha a lacuna sem tocar em 19 chamadores.** 📊
+        Medido em 06/09/2026: 143 peças, `requested_by` = 0 e nenhuma coluna de
+        conversa. Exigir que cada um dos chamadores passasse o parâmetro deixaria
+        a coluna vazia por mais uma SPEC — quem não sabe da conversa continua não
+        sabendo, mas quem tem run passa a saber de graça.
+
+        ⛔ **O SELECT filtra por `company_id`.** `artifacts` tem 📊 `rls=true` e
+        `policies=0`, e o backend roda com service role: sem o filtro, um
+        `work_run_id` de outra corretora traria a conversa dela — e a FK composta
+        recusaria o INSERT, derrubando a criação da peça por um dado que nem
+        deveria ter sido lido (CLAUDE.md §7).
+
+        ⚠️ Falha de leitura devolve `None`, não levanta: a peça sem elo é uma
+        peça completa (o elo é enriquecimento), e derrubar a entrega do relatório
+        porque o `SELECT` do elo falhou trocaria um dado ausente por trabalho
+        perdido.
+        """
+        if conversation_id:
+            return str(conversation_id)
+        if not work_run_id:
+            return None
+        try:
+            res = (self.db.table("work_runs").select("conversation_id")
+                   .eq("id", str(work_run_id))
+                   .eq("company_id", str(company_id))
+                   .limit(1).execute())
+            linhas = getattr(res, "data", None) or []
+            return str(linhas[0]["conversation_id"]) if linhas and linhas[0].get("conversation_id") else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Artifacts] não deu para herdar a conversa do run: %s",
+                           type(exc).__name__)
+            return None
 
     def _garantir_template(self, template_key: str) -> None:
         """Põe no banco o template que o catálogo declara, se ele ainda não estiver lá.

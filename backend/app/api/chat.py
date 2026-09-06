@@ -7,7 +7,6 @@ Otimizado: Query única e Correção de Datas
 import asyncio
 import json
 import logging
-import os
 import time
 import uuid
 from datetime import datetime
@@ -18,6 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import UUID4, BaseModel, Field
 
 from app.core import settings
+from app.core.auth import _chaves_internas
 from app.core.database import AsyncSupabaseClient, get_async_db, get_supabase_client
 from app.core.rate_limit import limiter
 from app.services import AudioService, LangChainService
@@ -405,15 +405,12 @@ CABECALHOS_SSE = {
 }
 
 
-def _chaves_internas() -> set:
-    """As chaves que valem como 'sou o BFF' — a mesma dupla do `work_runs.py`."""
-    candidatas = (
-        getattr(settings, "ADMIN_API_KEY", None),
-        getattr(settings, "BACKEND_INTERNAL_API_KEY", None),
-        os.getenv("ADMIN_API_KEY"),
-        os.getenv("BACKEND_INTERNAL_API_KEY"),
-    )
-    return {str(c).strip() for c in candidatas if c and str(c).strip()}
+#: 🔴 SPEC-098 R7 — a definição MUDOU DE CASA, não foi copiada. Ela agora mora
+#: em `app/core/auth.py`, ao lado do `require_internal_key` que os outros
+#: routers usam, e este arquivo a IMPORTA. Duas cópias da lista de chaves
+#: válidas seriam duas respostas para "quem é o BFF" (CLAUDE.md §5), e a
+#: divergência apareceria como uma rota autenticando e a vizinha não.
+#: ⚠️ O nome local fica: `_modo_de_confianca` e os testes já o chamam assim.
 
 
 def _modo_de_confianca(request: Request) -> str:
@@ -1257,48 +1254,91 @@ async def chat_stop(request: Request, stop_request: StopRequest):
 # =============================================================================
 
 @router.delete("/session")
-async def delete_session(request: DeleteSessionRequest):
+async def delete_session(request: Request, delete_request: DeleteSessionRequest):
+    """Apaga os checkpoints de uma sessão que expirou (TTL de 24 h).
+
+    -------------------------------------------------------------------------
+    🔴 SPEC-098 U4.a/E5 — O CORPO NÃO ESCOLHE MAIS A CORRETORA
+    -------------------------------------------------------------------------
+
+    📊 Medido em 06/09/2026: esta rota era o irmão do P0 da SPEC-096. Ela não
+    passava por `_modo_de_confianca`, aceitava `companyId` do corpo e a única
+    checagem de posse tinha um **`except → pass` explícito** — comentado como
+    *"para não quebrar o widget"*. Um banco mudo (ou um erro de digitação numa
+    coluna) transformava a checagem em nada, e o `thread_id` era montado com o
+    `companyId` que o corpo mandasse.
+
+    ⚠️ **Fail-open é pior que guarda nenhum**: com guarda nenhum o defeito é
+    visível; com fail-open ele é uma linha de log de nível `warning` em produção.
+
+    Agora existem dois modos, e é o CABEÇALHO que decide qual:
+
+        `painel` (chave interna válida)  o BFF já tem a sessão do corretor —
+                                         o `companyId` do corpo é honrado e a
+                                         posse é conferida contra ele;
+        `widget` (sem chave)             o `companyId` do corpo é IGNORADO: a
+                                         corretora é **DERIVADA** da linha de
+                                         `conversations` achada por `session_id`.
+
+    🔴 Por que derivar funciona: `conversations.session_id` tem UNIQUE
+    (`conversations_session_id_key`) — a sessão aponta para no máximo uma linha,
+    e essa linha JÁ diz de quem ela é. O widget nunca precisou dizer a corretora;
+    ele só precisava dizer a sessão.
+
+    ⛔ E o `except → pass` morreu: banco mudo agora é **503**, não permissão.
+    Não conseguir provar a posse não é o mesmo que provar a posse. A memória de
+    sessão que não foi apagada agora é apagada na próxima tentativa; a memória
+    apagada da corretora errada não volta.
     """
-    Delete LangGraph checkpoints for an expired session.
-    
-    Called by the widget frontend when session TTL (24h) expires.
-    This cleans up both the working memory (checkpoints) to prevent
-    the AI from "remembering" old conversations.
-    
-    Args:
-        request: DeleteSessionRequest with sessionId and companyId
-    
-    Returns:
-        {"success": True} on success, error details on failure
-    """
-    # === Validar ownership: sessionId deve pertencer ao companyId ===
+    modo = _modo_de_confianca(request)
+    session_id = str(delete_request.sessionId)
+
     try:
         db = get_supabase_client()
         conv = db.client.table("conversations") \
-            .select("id") \
-            .eq("session_id", request.sessionId) \
-            .eq("company_id", request.companyId) \
+            .select("id, company_id") \
+            .eq("session_id", session_id) \
             .limit(1) \
             .execute()
+        linhas = (conv.data or [])
+    except Exception as e:
+        # 🔴 O `except → pass` de antes morava aqui. 503, não `pass`.
+        logger.error("[Session TTL] não deu para conferir de quem é a sessão: %s",
+                     type(e).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível confirmar de quem é esta sessão agora. Tente de novo.",
+        ) from e
 
-        if not conv.data:
+    if not linhas:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found for this company",
+        )
+
+    dona = str(linhas[0].get("company_id") or "")
+    if modo == "painel":
+        # O BFF provou que é o BFF: o `companyId` que ele mandou vale como
+        # afirmação — e é conferido contra a dona real.
+        if str(delete_request.companyId) != dona:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found for this company"
+                detail="Session not found for this company",
             )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning(f"[Session TTL] Ownership check failed: {e}")
-        # Fail-open: se a checagem falhar, permitir o delete
-        # para não quebrar o fluxo do widget
-        pass
+    elif not dona:
+        # Conversa sem corretora não deveria existir; sem ela não há `thread_id`
+        # legítimo para montar. Não se adivinha com o corpo.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found for this company",
+        )
 
     try:
         from app.services.memory_service import MemoryService
 
-        # Compose thread_id in LangGraph format
-        thread_id = f"{request.companyId}:{request.sessionId}"
+        # 🔴 O `thread_id` é montado com a corretora DERIVADA do banco — nunca
+        #    com a que veio no corpo. É esta linha que o defeito atacava.
+        thread_id = f"{dona}:{session_id}"
 
         logger.info(f"[Session TTL] Deleting expired session: {thread_id}")
 

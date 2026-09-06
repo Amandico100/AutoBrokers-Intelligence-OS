@@ -693,10 +693,66 @@ def governar_envio_sync(company_id: str, *, temperatura: str = FRIA,
 # ===========================================================================
 
 
+async def _vinculo_do_ator_vigente(company_id: str, actor_user_id: str) -> bool:
+    """O ator ainda pertence a esta corretora, AGORA? (SPEC-098 R9)
+
+    ⚠️ Import tardio e delegação a `app.core.auth.vinculo_vigente` — a pergunta
+    é UMA e a resposta mora lá (CLAUDE.md §5). Este helper só existe para
+    resolver o cliente de banco e traduzir erro em recusa.
+
+    🔴 **Erro de banco → `False`, e AQUI isto é o lado fechado.** `vinculo_vigente`
+    levanta de propósito, porque quem pergunta decide; e quem pergunta é a porta
+    de saída, onde "não sei" nunca pode virar "pode enviar". É a mesma regra do
+    interruptor do atendimento logo abaixo, que assume DESLIGADO quando não
+    consegue confirmar.
+    """
+    try:
+        from app.core.auth import vinculo_vigente
+        from app.core.database import get_supabase_client
+
+        return await vinculo_vigente(get_supabase_client(), str(company_id), str(actor_user_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PLATFORM SEND] não deu para confirmar o vínculo de quem "
+                     "pediu o envio em %s (%s) — tratando como NÃO vigente",
+                     company_id, type(exc).__name__)
+        return False
+
+
+async def _registrar_envio_recusado(company_id: str, actor_user_id: str,
+                                    kind: str, summary: str) -> None:
+    """Grava o Work Event `envio.recusado` — em linguagem humana.
+
+    ⛔ **Sem criar run novo.** `work_events` é append-only e aceita
+    `work_run_id` nulo; abrir um run só para registrar uma recusa inventaria um
+    trabalho que ninguém pediu (SPEC-098 §E, Q4).
+
+    ⚠️ Best-effort: a recusa já aconteceu quando esta função roda. Falhar em
+    ESCREVER a recusa não pode fazer a mensagem sair.
+    """
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client().client
+        await asyncio.to_thread(lambda: db.table("work_events").insert({
+            "company_id": str(company_id),
+            "event_type": "envio.recusado",
+            "severity": "warning",
+            "actor_type": "user",
+            "actor_id": str(actor_user_id),
+            "message_human": ("Mensagem não enviada: o vínculo de quem pediu não "
+                              "está mais vigente nesta corretora."),
+            "payload": {"kind": kind, "resumo": (summary or "")[:200]},
+        }).execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PLATFORM SEND] recusa não pôde ser registrada: %s",
+                     type(exc).__name__)
+
+
 async def send_to_client_guarded(company_id: str, phone: str, text: str,
                                  kind: str = "other", summary: str = "",
                                  *, temperatura: str = FRIA,
-                                 tentativas: int = 0, adiamentos: int = 0) -> Dict[str, Any]:
+                                 tentativas: int = 0, adiamentos: int = 0,
+                                 actor_user_id: Optional[str] = None) -> Dict[str, Any]:
     """Envio guardado: cliente ocupado → FILA (retry); livre → governador → envia.
 
     `temperatura` tem padrão **FRIA** de propósito. Quem esquecer de declarar
@@ -706,6 +762,44 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     E **nada** sai daqui com o agente de atendimento desligado — ver o bloco
     abaixo, que é a primeira coisa que esta função faz.
     """
+    # =====================================================================
+    # 🔴 SPEC-098 R9 — QUEM PEDIU AINDA PODE PEDIR? A PERGUNTA É FEITA AQUI,
+    #    NO INSTANTE DO EFEITO, E NÃO NO INSTANTE DO PEDIDO.
+    # =====================================================================
+    #
+    # 📊 Medido em 06/09/2026: efeitos externos que re-checam o ATOR no instante
+    # do efeito = **NENHUM**. Esta função nem recebia o ator, e a fila Redis
+    # `platform_queue:{company_id}` faz replay com o `company_id` gravado —
+    # 📊 `chat` tem p95 de **5,4 dias** e máximo de 6,9 dias de duração de run.
+    # Em 5,4 dias uma pessoa é demitida, tem o acesso revogado, e a mensagem que
+    # ela enfileirou sai assinada pela corretora mesmo assim.
+    #
+    # 🔴 **Snapshot é auditoria, não autorização** (D-098-04). O
+    # `requester_user_id` gravado no run prova quem PEDIU; a única coisa que
+    # prova que a pessoa AINDA pode é perguntar agora.
+    #
+    # ⚠️ **POR QUE AQUI, NO TOPO, E NÃO NO DRENADOR:** é a mesma razão do
+    # interruptor logo abaixo. O drenador (`check_platform_queue`, :912)
+    # **RE-CHAMA** esta função — então uma revalidação aqui cobre o caminho
+    # direto E o replay da fila, e todo chamador futuro herda a proteção sem
+    # saber que ela existe. No drenador, protegeria só o drenador.
+    #
+    # ⚠️ E **antes** do atalho `QUENTE`: o atalho é o caminho que sai mais rápido,
+    # e é justamente o que menos pode escapar.
+    #
+    # ⛔ **SEM ATOR = comportamento de hoje.** O job de sistema (cobrança,
+    # follow-up, briefing) não tem pessoa por trás, e exigir uma quebraria tudo
+    # que hoje funciona. É também o CONTROLE do teste: se o caminho "sem ator"
+    # mudasse, um "recusou" não provaria nada sobre a revalidação.
+    if actor_user_id:
+        if not await _vinculo_do_ator_vigente(company_id, actor_user_id):
+            logger.warning("[PLATFORM SEND] recusado: quem pediu não tem mais "
+                           "vínculo vigente em %s (kind=%s)", company_id, kind)
+            await _registrar_envio_recusado(company_id, actor_user_id, kind, summary)
+            return {"status": "recusado",
+                    "motivo": "o vínculo de quem pediu não está mais vigente",
+                    "ok": False, "queued": False}
+
     # 🔴 O INTERRUPTOR DO ATENDIMENTO, LIDO NA FUNÇÃO QUE ENVIA (SPEC-078 A.1).
     #
     # 📊 Medido em 17/08/2026: `check_platform_queue` roda a cada 10 min, para
@@ -765,7 +859,7 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     if reason:
         await _enfileirar(company_id, phone, text, kind, summary,
                           espera_s=_RETRY_MIN_S, tentativas=int(tentativas) + 1,
-                          adiamentos=int(adiamentos))
+                          adiamentos=int(adiamentos), actor_user_id=actor_user_id)
         try:
             from app.services.activity_log import log_activity
 
@@ -789,7 +883,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
         enfileirou = await _enfileirar(company_id, phone, text, kind, summary,
                                        espera_s=veredito.esperar_s,
                                        tentativas=int(tentativas),
-                                       adiamentos=int(adiamentos) + 1)
+                                       adiamentos=int(adiamentos) + 1,
+                                       actor_user_id=actor_user_id)
         logger.info(f"[GOVERNADOR] adiado {veredito.esperar_s}s company={company_id}: "
                     f"{veredito.motivo}")
         return {"ok": bool(enfileirou), "queued": bool(enfileirou), "reason": "governador",
@@ -799,7 +894,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
 
 
 async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary: str,
-                      *, espera_s: int, tentativas: int = 0, adiamentos: int = 0) -> bool:
+                      *, espera_s: int, tentativas: int = 0, adiamentos: int = 0,
+                      actor_user_id: Optional[str] = None) -> bool:
     """Guarda na fila que já existia, com o `next_try` que o chamador mandou.
 
     Os dois contadores viajam com a entrada. Antes eles nasciam zerados a cada
@@ -814,6 +910,18 @@ async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary
                  "summary": summary, "attempts": int(tentativas),
                  "adiamentos": int(adiamentos),
                  "next_try": (_agora() + timedelta(seconds=int(espera_s))).isoformat()}
+        # 🔴 SPEC-098 R9 — O ATOR VIAJA NA ENTRADA DA FILA.
+        #
+        # ⚠️ **A chave só entra quando tem valor**, e isso é o que dá
+        # COMPATIBILIDADE de graça: uma entrada gravada ANTES desta linha existir
+        # não tem `actor_user_id`, o drenador lê `entry.get(...)` -> `None`, e ela
+        # cai em "sem ator" — o comportamento de hoje, por construção. Nenhuma
+        # mensagem já enfileirada é descartada por causa desta mudança.
+        #
+        # ⚠️ E é só o ID. ⛔ Nunca nome, telefone de corretor ou e-mail: a fila é
+        # Redis, aparece em `MONITOR` e em dump, e CLAUDE.md §7 proíbe PII lá.
+        if actor_user_id:
+            entry["actor_user_id"] = str(actor_user_id)
         await r.rpush(_QUEUE_KEY.format(company_id=company_id),
                       json.dumps(entry, ensure_ascii=False))
         return True
@@ -909,12 +1017,20 @@ async def check_platform_queue() -> int:
                         entry["next_try"] = (now + timedelta(seconds=_RETRY_MIN_S)).isoformat()
                         await r.rpush(key, json.dumps(entry, ensure_ascii=False))
                         continue
+                    # 🔴 SPEC-098 R9/E8 — o drenador RE-CHAMA a porta, e por
+                    # isso não precisa (nem deve) revalidar sozinho: basta
+                    # devolver o ator que a entrada carrega. Uma segunda
+                    # revalidação aqui seria a segunda resposta para a mesma
+                    # pergunta, e as duas divergiriam no primeiro conserto.
+                    # ⚠️ `entry.get` devolve `None` para a entrada ANTIGA — que é
+                    # exatamente "sem ator", o comportamento de hoje.
                     res = await send_to_client_guarded(
                         str(company_id), entry.get("phone") or "",
                         entry.get("text") or "", entry.get("kind") or "other",
                         entry.get("summary") or "",
                         tentativas=int(entry.get("attempts") or 0),
-                        adiamentos=int(entry.get("adiamentos") or 0))
+                        adiamentos=int(entry.get("adiamentos") or 0),
+                        actor_user_id=entry.get("actor_user_id"))
                     if res.get("ok") and not res.get("queued"):
                         sent += 1
                 except Exception as e:  # noqa: BLE001

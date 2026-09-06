@@ -263,6 +263,19 @@ async def propor(db: Any, *, company_id: str, proposta: Any,
         risk_level=RISCO,
         idempotency_key=chave,
         input_payload=dict(resumo, aprovador=aprovador),
+        # 🔴 SPEC-098 R8 — QUEM PEDIU VIAJA COM O TRABALHO.
+        #
+        # 📊 Medido em 06/09/2026: `work_runs` = 3.799 linhas com
+        # `requester_user_id` preenchido em **0**. Este é o único chamador de
+        # `criar_registro_sem_fila` que CONHECE a pessoa (`solicitante`) — ele já
+        # a gravava em `source_id` e em `approval_requests.requested_by_user_id`,
+        # e deixava vazia a coluna que existe para isso desde a SPEC-055.
+        #
+        # ⚠️ `source_id` é `text` e serve para reencontrar; `requester_user_id` é
+        # `uuid` e é a coluna por onde se pergunta *"o que ESTA pessoa pediu?"*.
+        # Ter o dado num campo de texto e a coluna certa vazia é o defeito da
+        # CLAUDE.md §12.1 pelo avesso.
+        requester_user_id=str(solicitante) if solicitante else None,
     )
     run_id = str((registro or {}).get("id") or "")
     if not run_id:

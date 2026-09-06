@@ -409,6 +409,8 @@ async def criar_registro_sem_fila(
     workflow_version: str = "1.0.0",
     current_step_key: Optional[str] = None,
     progress_percent: Optional[int] = None,
+    requester_user_id: Optional[str] = None,
+    requester_agent_id: Optional[str] = None,
 ) -> dict:
     """Grava um `work_run` **sem enfileirar no outbox**. Devolve a linha.
 
@@ -438,6 +440,23 @@ async def criar_registro_sem_fila(
     ⚠️ Este helper **não** engole exceção de INSERT: quem chama decide se a
     falha derruba o trabalho ou só o espelho.
     """
+    # 🔴 SPEC-098 R8 — SEM CORRETORA NÃO SE GRAVA. LEVANTA.
+    #
+    # ⚠️ `str(None)` é `"None"`: sem esta linha, um `company_id=None` virava a
+    # STRING `"None"` e seguia para o INSERT, para o `thread_id`
+    # (`work:None:<uuid>`) e para o `select` de idempotência. O banco recusaria
+    # o uuid — mas só depois de o trabalho inteiro achar que tinha corretora, e
+    # a mensagem de erro falaria de sintaxe de uuid, não de tenant faltando.
+    #
+    # 🔴 É a mesma lei do LangMem (SPEC-098 §3): *falha dura sem company*. Um
+    # run sem corretora não é um run degradado — é um run que ninguém consegue
+    # ler de volta, porque toda leitura do produto filtra por `company_id` (§7).
+    if not company_id or not str(company_id).strip() or str(company_id).strip() == "None":
+        raise ValueError(
+            "work_run sem company_id: todo trabalho é DE UMA corretora "
+            "(CLAUDE.md §7 · SPEC-098 R8)"
+        )
+
     cli = getattr(db, "client", db)
     empresa = str(company_id)
 
@@ -480,6 +499,26 @@ async def criar_registro_sem_fila(
         linha["progress_percent"] = progress_percent
     if correlation_id is not None:
         linha["correlation_id"] = correlation_id
+
+    # 🔴 SPEC-098 R8 — O ATOR VIAJA COM O TRABALHO.
+    #
+    # 📊 Medido em 06/09/2026: `work_runs` = 3.796 linhas, `requester_user_id`
+    # preenchido em **0**, `requester_agent_id` em **0**. As colunas existem
+    # desde a SPEC-055 e nunca tiveram escritor: reconstruir *"quem pediu este
+    # trabalho"* era impossível para 100% do acervo.
+    #
+    # ⚠️ **A chave só entra na linha quando tem valor**, como `correlation_id`
+    # logo acima: mandar `None` explícito num INSERT do PostgREST é diferente de
+    # omitir, e a coluna tem default. Quem não conhece o ator não inventa um.
+    #
+    # ⛔ **Isto é AUDITORIA, não autorização** (D-098-04). Um `requester_user_id`
+    # gravado prova quem PEDIU; não prova que essa pessoa ainda pode. Quem
+    # autoriza é a revalidação no instante do efeito
+    # (`platform_outbound.send_to_client_guarded` → `vinculo_vigente`, R9).
+    if requester_user_id:
+        linha["requester_user_id"] = str(requester_user_id)
+    if requester_agent_id:
+        linha["requester_agent_id"] = str(requester_agent_id)
 
     await _talvez_await(cli.table("work_runs").insert(linha).execute())
     return {**linha, "reused": False}
