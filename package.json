@@ -15,6 +15,8 @@
     "test:relatorios": "node scripts/relatorios-dizem-o-que-sao.test.mjs",
     "test:chat-shell": "node scripts/o-chat-responde-e-continua.test.mjs",
     "test:casa": "node scripts/a-operacao-tem-uma-casa.test.mjs",
+    "test:de-quem-e": "node scripts/cada-coisa-sabe-de-quem-e.test.mjs",
+    "test:de-quem-e-backend": "cd backend && python tests/test_cada_coisa_sabe_de_quem_e.py",
     "test:atendimento-termina": "python backend/tests/test_o_atendimento_sabe_como_terminou.py",
     "test:chat-tipado": "python backend/tests/test_o_chat_fala_tipado.py",
     "test:chat-como-corretor": "python backend/tests/test_o_chat_fala_como_corretor.py",

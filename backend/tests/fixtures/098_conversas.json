@@ -1,0 +1,710 @@
+{
+ "_doc": "FIXTURE SINTETICA DA SPEC-098 [D]. 44 mensagens humanas (role=assistant, payload.origem=espelho; o canal e a corretora vem de `conversations`, porque `messages` nao tem `channel` nem `company_id` -- 📊 06/09): 20 AFETIVAS na corretora Alfa, com emoji em 5 delas (uso PONTUAL: presente e minoria); 20 formais com Sr/Sra na Beta, sem emoji; e 4 PESSOAIS (2 em cada corretora) que `e_atendimento_de_seguro` TEM de descartar e o produto TEM de contar. ⛔ Nenhum nome de pessoa, telefone, apolice ou placa reais: os telefones sao sentinelas 5511900000xxx / 5547900000xxx. 💭 os textos sao ilustrativos, escritos para casar o motor REAL do filtro -- e o bloco [D0] prova isso rodando o motor sobre esta fixture.",
+ "companies": {
+  "alfa": "co-alfa-0000-4000-8000-000000000001",
+  "beta": "co-beta-0000-4000-8000-000000000002"
+ },
+ "esperado": {
+  "alfa": {
+   "saudacao": "afetiva",
+   "emoji": "pontual",
+   "tratamento": "voce",
+   "_emoji_em": "5 de 20 mensagens (~25%: dentro da faixa do \"pontual\", longe das bordas)"
+  },
+  "beta": {
+   "saudacao": "direta",
+   "emoji": "nao",
+   "tratamento": "senhor_senhora"
+  },
+  "conversas_lidas": 14,
+  "mensagens_humanas": 44,
+  "descartadas_por_corretora": 2,
+  "conversas_lidas_por_corretora": 7
+ },
+ "conversations": [
+  {
+   "id": "cv-alfa-000",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-alfa-000",
+   "user_phone": "5511900000000",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-alfa-001",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-alfa-001",
+   "user_phone": "5511900000004",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-alfa-002",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-alfa-002",
+   "user_phone": "5511900000008",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-alfa-003",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-alfa-003",
+   "user_phone": "5511900000012",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-alfa-004",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-alfa-004",
+   "user_phone": "5511900000016",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-beta-000",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-beta-000",
+   "user_phone": "5547900000000",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-beta-001",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-beta-001",
+   "user_phone": "5547900000004",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-beta-002",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-beta-002",
+   "user_phone": "5547900000008",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-beta-003",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-beta-003",
+   "user_phone": "5547900000012",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-beta-004",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-beta-004",
+   "user_phone": "5547900000016",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-pessoal-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-pessoal-1",
+   "user_phone": "5511900009000",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-pessoal-2",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-pessoal-2",
+   "user_phone": "5511900009001",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-pessoal-3",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-pessoal-3",
+   "user_phone": "5511900009002",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  },
+  {
+   "id": "cv-pessoal-4",
+   "company_id": "co-beta-0000-4000-8000-000000000002",
+   "channel": "whatsapp",
+   "session_id": "ss-cv-pessoal-4",
+   "user_phone": "5511900009003",
+   "status": "open",
+   "claimed_by": null,
+   "last_message_at": "2026-09-01T12:00:00+00:00",
+   "created_at": "2026-09-01T10:00:00+00:00"
+  }
+ ],
+ "messages": [
+  {
+   "id": "ms-cv-alfa-000-000",
+   "conversation_id": "cv-alfa-000",
+   "role": "assistant",
+   "content": "Oieee boa tarde 🙏 tudo bem com você?",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:00:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-000-001",
+   "conversation_id": "cv-alfa-000",
+   "role": "assistant",
+   "content": "Oi, bom dia! 😊 Já estou vendo isso pra você agorinha",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:01:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-000-002",
+   "conversation_id": "cv-alfa-000",
+   "role": "assistant",
+   "content": "Oieee! Consegui falar com a seguradora, te explico passo a passo",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:02:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-000-003",
+   "conversation_id": "cv-alfa-000",
+   "role": "assistant",
+   "content": "Bom dia! ☀️ Eu abri o chamado e te mando o protocolo assim que sair",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:03:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-001-004",
+   "conversation_id": "cv-alfa-001",
+   "role": "assistant",
+   "content": "Oi querida, tudo bem? Vou acompanhar esse sinistro de pertinho",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:04:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-001-005",
+   "conversation_id": "cv-alfa-001",
+   "role": "assistant",
+   "content": "Oiee 😄 o guincho já foi acionado, fica tranquila",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:05:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-001-006",
+   "conversation_id": "cv-alfa-001",
+   "role": "assistant",
+   "content": "Oi! Antes de te pedir documento eu quero te explicar o que vai acontecer",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:06:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-001-007",
+   "conversation_id": "cv-alfa-001",
+   "role": "assistant",
+   "content": "Bom dia! 🙏 Eu já pedi a vistoria, te aviso quando marcarem",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:07:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-002-008",
+   "conversation_id": "cv-alfa-002",
+   "role": "assistant",
+   "content": "Oieee, boa tarde! Eu conferi a apólice e a cobertura está ativa",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:08:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-002-009",
+   "conversation_id": "cv-alfa-002",
+   "role": "assistant",
+   "content": "Oi! Vou te explicar direitinho como funciona a franquia",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:09:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-002-010",
+   "conversation_id": "cv-alfa-002",
+   "role": "assistant",
+   "content": "Oiee, o vidro está na oficina credenciada, eu acompanho pra você",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:10:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-002-011",
+   "conversation_id": "cv-alfa-002",
+   "role": "assistant",
+   "content": "Bom dia! Eu vi seu boleto aqui, a parcela já compensou",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:11:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-003-012",
+   "conversation_id": "cv-alfa-003",
+   "role": "assistant",
+   "content": "Oi! Vou te mandar o passo a passo do reembolso, é rapidinho",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:12:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-003-013",
+   "conversation_id": "cv-alfa-003",
+   "role": "assistant",
+   "content": "Oieee pedi o carro reserva, me confirma o endereço por favor",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:13:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-003-014",
+   "conversation_id": "cv-alfa-003",
+   "role": "assistant",
+   "content": "Oi, tudo bem? Eu explico antes de pedir qualquer documento, viu",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:14:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-003-015",
+   "conversation_id": "cv-alfa-003",
+   "role": "assistant",
+   "content": "Bom dia! O laudo saiu, vou te resumir em português",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:15:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-004-016",
+   "conversation_id": "cv-alfa-004",
+   "role": "assistant",
+   "content": "Oiee! A seguradora pediu o boletim de ocorrência, eu te ajudo a tirar",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:16:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-004-017",
+   "conversation_id": "cv-alfa-004",
+   "role": "assistant",
+   "content": "Oi! Eu já falei com o prestador, o reparo começa amanhã",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:17:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-004-018",
+   "conversation_id": "cv-alfa-004",
+   "role": "assistant",
+   "content": "Oieee, boa tarde sua renovação está encaminhada",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:18:00+00:00"
+  },
+  {
+   "id": "ms-cv-alfa-004-019",
+   "conversation_id": "cv-alfa-004",
+   "role": "assistant",
+   "content": "Oi! Eu acompanho esse chamado até o pagamento sair, pode deixar",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:19:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-000-000",
+   "conversation_id": "cv-beta-000",
+   "role": "assistant",
+   "content": "Sr. cliente, bom dia. Informo que o chamado foi registrado.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:00:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-000-001",
+   "conversation_id": "cv-beta-000",
+   "role": "assistant",
+   "content": "Sra., boa tarde. Segue o procedimento para abertura do sinistro.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:01:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-000-002",
+   "conversation_id": "cv-beta-000",
+   "role": "assistant",
+   "content": "Sr., o protocolo do atendimento foi gerado e consta em nosso sistema.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:02:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-000-003",
+   "conversation_id": "cv-beta-000",
+   "role": "assistant",
+   "content": "Sra., informamos que a vistoria da frota sera agendada pela seguradora.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:03:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-001-004",
+   "conversation_id": "cv-beta-001",
+   "role": "assistant",
+   "content": "Sr., o procedimento de reboque requer a apresentacao do documento do veiculo.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:04:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-001-005",
+   "conversation_id": "cv-beta-001",
+   "role": "assistant",
+   "content": "Sra., a cobertura contratada nao contempla este item da apolice.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:05:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-001-006",
+   "conversation_id": "cv-beta-001",
+   "role": "assistant",
+   "content": "Sr., segue a orientacao: dirija-se a oficina credenciada mais proxima.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:06:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-001-007",
+   "conversation_id": "cv-beta-001",
+   "role": "assistant",
+   "content": "Sra., o prazo de analise do laudo e definido pela seguradora.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:07:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-002-008",
+   "conversation_id": "cv-beta-002",
+   "role": "assistant",
+   "content": "Sr., a franquia aplicavel consta na apolice vigente.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:08:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-002-009",
+   "conversation_id": "cv-beta-002",
+   "role": "assistant",
+   "content": "Sra., solicito o envio do boletim de ocorrencia para prosseguirmos.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:09:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-002-010",
+   "conversation_id": "cv-beta-002",
+   "role": "assistant",
+   "content": "Sr., o prestador foi acionado conforme o procedimento padrao.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:10:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-002-011",
+   "conversation_id": "cv-beta-002",
+   "role": "assistant",
+   "content": "Sra., informo que a parcela consta em aberto no sistema da seguradora.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:11:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-003-012",
+   "conversation_id": "cv-beta-003",
+   "role": "assistant",
+   "content": "Sr., a renovacao da apolice da frota exige nova vistoria.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:12:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-003-013",
+   "conversation_id": "cv-beta-003",
+   "role": "assistant",
+   "content": "Sra., o endosso solicitado foi encaminhado a seguradora.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:13:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-003-014",
+   "conversation_id": "cv-beta-003",
+   "role": "assistant",
+   "content": "Sr., o atendimento permanece em analise pela area tecnica.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:14:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-003-015",
+   "conversation_id": "cv-beta-003",
+   "role": "assistant",
+   "content": "Sra., segue o numero do chamado para acompanhamento.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:15:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-004-016",
+   "conversation_id": "cv-beta-004",
+   "role": "assistant",
+   "content": "Sr., a indenizacao depende da conclusao do laudo pericial.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:16:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-004-017",
+   "conversation_id": "cv-beta-004",
+   "role": "assistant",
+   "content": "Sra., o carro reserva nao consta na cobertura desta apolice.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:17:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-004-018",
+   "conversation_id": "cv-beta-004",
+   "role": "assistant",
+   "content": "Sr., a assistencia 24 horas atende conforme o procedimento contratual.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:18:00+00:00"
+  },
+  {
+   "id": "ms-cv-beta-004-019",
+   "conversation_id": "cv-beta-004",
+   "role": "assistant",
+   "content": "Sra., informo que o conserto foi autorizado pela seguradora.",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:19:00+00:00"
+  },
+  {
+   "id": "ms-cv-pessoal-1-090",
+   "conversation_id": "cv-pessoal-1",
+   "role": "assistant",
+   "content": "kkkkk meu filho esqueceu a mochila na creche de novo",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:30:00+00:00"
+  },
+  {
+   "id": "ms-cv-pessoal-2-091",
+   "conversation_id": "cv-pessoal-2",
+   "role": "assistant",
+   "content": "vamos no churrasco no fim de semana? levo a sobremesa",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:31:00+00:00"
+  },
+  {
+   "id": "ms-cv-pessoal-3-092",
+   "conversation_id": "cv-pessoal-3",
+   "role": "assistant",
+   "content": "bom dia meninas, hoje vou sair mais cedo, estou em reuniao",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:32:00+00:00"
+  },
+  {
+   "id": "ms-cv-pessoal-4-093",
+   "conversation_id": "cv-pessoal-4",
+   "role": "assistant",
+   "content": "passa pra fulana esse cliente que eu vou na academia",
+   "type": "text",
+   "sender_user_id": null,
+   "payload": {
+    "origem": "espelho"
+   },
+   "created_at": "2026-09-01T12:33:00+00:00"
+  }
+ ]
+}
