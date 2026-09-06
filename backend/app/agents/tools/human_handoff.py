@@ -725,6 +725,11 @@ class HumanHandoffTool(BaseTool):
 
         linhas += ["", _TRACO]
         try:
+            # 🔴 §7 (red team 097.1 [7]): `messages` não tem `company_id` — a corretora
+            #    é conferida na CONVERSA (lida com `.eq("company_id")` em `_arun`) antes
+            #    desta leitura; conversa sem corretora não tem transcrição no dossiê.
+            if not str(conversa.get("company_id") or "").strip():
+                raise PermissionError("conversa sem corretora: a transcrição não entra")
             msgs = (self.supabase_client.table("messages")
                     .select("role, content, created_at, payload")
                     .eq("conversation_id", conversa["id"])
