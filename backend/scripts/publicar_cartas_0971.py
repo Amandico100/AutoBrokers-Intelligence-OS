@@ -30,7 +30,7 @@ EasyPanel → serviço `smith-api` → aba Console
   python scripts/publicar_cartas_0971.py            → mostra o plano, nada grava
   ...confira "2 tenants · 6 cartas"...
   python scripts/publicar_cartas_0971.py --vivo     → termina em
-                                                      "VERIFY: 6/6 documentos"
+                                                      "VERIFY: 12/12 documentos"
 ```
 
 ⛔ Nenhuma mensagem sai. Nenhum agente é ligado. Zero PII: as cartas são

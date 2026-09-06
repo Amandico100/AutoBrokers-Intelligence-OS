@@ -195,7 +195,11 @@ _TITULOS = {
 #: As fases do corredor em que o acionamento JÁ FOI ENTREGUE.
 #: ⚠️ `encaminhado` entra: o entregável está em mãos, e a pergunta que vem
 #: depois dele é pós-acionamento igual.
-FASES_JA_ACIONADAS = ("captured", "monitoring", "encaminhado")
+# ⛔ `encaminhado` NÃO está aqui (red team 097.1 [8]): é a seguradora dizendo "aqui não
+#    se abre chamado, vá pelo link" — o checkpoint ENCERRA o atendimento (MOTIVO_DO_ESTADO)
+#    e a R4 o exclui da espera. Chamar isso de PÓS-ACIONAMENTO seria dossiê de um caso
+#    que não foi acionado.
+FASES_JA_ACIONADAS = ("captured", "monitoring")
 
 
 def _e_pos_acionamento(conversa: Dict[str, Any],

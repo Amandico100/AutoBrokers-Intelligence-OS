@@ -209,8 +209,8 @@ P-097.1-RAG-AUTOFLEET-VAZIO (📊 0 documentos) · P-097.1-INTERLOCUTOR-POR-CADA
 1. **Meta:** decidido por você — handoff com dossiê completo conta como resolvido pelo agente (`resolvido_pelo_agente` ≥ 95 %); o número "sem humano" fica publicado ao lado.
 2. **Quando religar o WhatsApp:** os agentes seguem `is_active=false` até você ligar; o acompanhamento nasce LIGADO por corretora (desligue em `acionamento_profile.acompanhamento`).
 3. **Publicar as 6 cartas no RAG (não urgente; pode ser no fim).** Passo a passo, no EasyPanel: abrir o serviço **smith-api** → aba **Console** (terminal do contêiner) →
-   colar `python scripts/publicar_cartas_0971.py` (mostra o plano, nada grava) → conferir "2 tenants · 6 cartas" → colar `python scripts/publicar_cartas_0971.py --vivo` →
-   a saída termina com `VERIFY: 6/6 documentos nos 2 tenants`. Se o console abrir fora de `/app`, antes: `cd /app`. Se der erro de Qdrant, me mande a linha do erro. O
+   colar `python scripts/publicar_cartas_0971.py` (mostra o plano, nada grava) → conferir "2 tenants · 6 cartas = 12 documentos" → colar `python scripts/publicar_cartas_0971.py --vivo` →
+   a saída termina com `VERIFY: 12/12 documentos nos 2 tenants` (6 cartas × 2 corretoras). Se o console abrir fora de `/app`, antes: `cd /app`. Se der erro de Qdrant, me mande a linha do erro. O
    relatório da SPEC repete estes passos com a saída esperada.
 4. **A linha da atendente:** o filtro R11 descarta pessoal/colegas antes de qualquer carta ou régua — nada seu a decidir; só saber que existe.
 
