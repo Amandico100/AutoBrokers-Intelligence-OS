@@ -52,6 +52,7 @@ um.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -480,6 +481,90 @@ def e_kind_valido(kind: Any) -> bool:
     return str(kind or "") in KINDS
 
 
+# ---------------------------------------------------------------------------
+# 🔴 O PRAZO É UM `timestamptz` — e quem escreve nele fala DUAS línguas
+# ---------------------------------------------------------------------------
+#
+# 📊 Achado do red team em 05/09/2026 ([3]): `vence_em` recebia o texto CRU do
+# que a seguradora disse. Três desfechos, todos ruins:
+#
+#   'amanha de manha'  → o INSERT levanta e a espera some — e a ANTERIOR já
+#                        tinha virado `'substituida'`: o caso fica SEM estado,
+#                        pior do que antes da SPEC.
+#   '12/09/2026'       → é EXATAMENTE o que a âncora `schedule` produz
+#                        (`corridor_playbooks:1852`, grupo `(\d{1,2}/\d{1,2}/…)`).
+#                        Postgres com DateStyle `ISO, MDY` lê **9 de dezembro**,
+#                        três meses adiante, em silêncio; e `'29/08/2026'` — a
+#                        data da cena do §0 — levanta.
+#   previsão no PASSADO → a espera nasce vencida e o vigia dispara no 1º tick.
+#
+# ⚠️ CLAUDE.md §9.4 literal: **um padrão medido num motor e aplicado noutro é um
+# padrão sobre outra coisa.** A data é escrita em Python, na língua do Brasil, e
+# é em Python que ela vira instante — nunca no `DateStyle` do servidor.
+#
+# 🔴 E esta é a ÚNICA porta: `dispatch_router` monta o texto do agendamento e
+# manda por aqui; `abrir_espera` valida por aqui **antes** de tocar na anterior.
+
+#: O fuso da corretora. ⚠️ `'12/09/2026'` sem hora é meia-noite **em Brasília**,
+#: não em UTC: em UTC seriam 21h do dia 11, e o dia mudaria na frente do cliente.
+try:  # pragma: no cover - depende do tzdata do sistema
+    from zoneinfo import ZoneInfo
+
+    FUSO_DA_CORRETORA: Any = ZoneInfo("America/Sao_Paulo")
+except Exception:  # noqa: BLE001  # pragma: no cover
+    from datetime import timezone as _tz
+
+    FUSO_DA_CORRETORA = _tz.utc
+
+_DATA_BR = re.compile(
+    r"^(\d{1,2})/(\d{1,2})/(\d{2,4})"
+    r"(?:[\s,]+(?:[àa]s\s+)?(\d{1,2})[:h](\d{1,2})?)?\s*$", re.IGNORECASE)
+
+
+def instante_br(bruto: Any) -> str:
+    """Texto de prazo → ISO-8601 em UTC. `""` quando **não dá para saber**.
+
+    Aceita ISO-8601 (com ou sem fuso) e `dd/mm/aaaa` (com ou sem hora), sempre
+    lido como **dia/mês/ano**. ⛔ Recusa o resto — e recusar é a resposta certa:
+    'amanhã de manhã' não é um instante, e chutar um faria o vigia cobrar numa
+    data que ninguém prometeu (R3).
+
+    🔴 **PURA.** É o guarda do `timestamptz`, e o guarda tem de conseguir
+    reprovar: `instante_br('12/13/2026')` é `""` porque não existe mês 13 — é
+    assim que se descobre que a leitura é BR e não MDY.
+    """
+    from datetime import datetime, timezone
+
+    texto = str(bruto or "").strip()
+    if not texto:
+        return ""
+
+    quando = None
+    achado = _DATA_BR.match(texto)
+    if achado:
+        dia, mes, ano = (int(achado.group(1)), int(achado.group(2)),
+                         int(achado.group(3)))
+        if ano < 100:
+            ano += 2000
+        hora = int(achado.group(4) or 0)
+        minuto = int(achado.group(5) or 0)
+        try:
+            quando = datetime(ano, mes, dia, hora, minuto,
+                              tzinfo=FUSO_DA_CORRETORA)
+        except ValueError:
+            # 📊 `12/13/2026` cai aqui: mês 13 não existe. Em MDY seria 12 de
+            #    dezembro, e o silêncio de três meses é o defeito [3].
+            return ""
+    else:
+        try:
+            quando = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001
+            return ""
+        if quando.tzinfo is None:
+            quando = quando.replace(tzinfo=FUSO_DA_CORRETORA)
+    return quando.astimezone(timezone.utc).isoformat()
+
+
 async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
                        vence_em_iso: str, scope: str = "default",
                        work_run_id: str = "") -> Tuple[bool, str]:
@@ -499,13 +584,26 @@ async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
         logger.error("[ESPERA] kind %r não está em %s — nada foi gravado", kind, KINDS)
         return False, "kind_invalido"
 
+    # 🔴 A VALIDAÇÃO VEM ANTES DE TOCAR NA ANTERIOR — achado [3] do red team.
+    #
+    # ⚠️ A ordem é a regra inteira: a substituição fecha a espera que existia, e
+    # um INSERT que levanta DEPOIS disso deixa o caso **sem estado nenhum** —
+    # pior do que antes desta SPEC. Validar aqui é o que garante que só se
+    # derruba a anterior quando a nova tem como nascer.
+    vence = instante_br(vence_em_iso)
+    if not vence:
+        logger.warning("[ESPERA] prazo ilegível (%r) — a espera NÃO foi aberta e a "
+                       "anterior segue ativa. `vence_em` é timestamptz: só ISO ou "
+                       "dd/mm/aaaa (R3)", str(vence_em_iso)[:40])
+        return False, "vence_em_ilegivel"
+
     linha: Dict[str, Any] = {
         "company_id": empresa,                      # 🔴 §7
         "conversation_id": str(conversation_id),
         "kind": str(kind),
         "scope": str(scope or "default")[:120],
         "status": ATIVO,
-        "vence_em": str(vence_em_iso),
+        "vence_em": vence,
     }
     # 🔴 SPEC-093-B BLOCO B — a espera de uma conversa COM SOMBRA nasce ligada a ela.
     #
@@ -543,13 +641,14 @@ async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
     #
     # ⛔ O escopo do TRAVAMENTO ganha o mesmo comportamento, e é correto: dois
     # `needs_human` seguidos com prazos diferentes tinham o mesmo defeito.
+    substituidas: list = []
     try:
-        substituidas = await satisfazer_espera(
+        substituidas = await _fechar_esperas_ativas(
             db, company_id=empresa, conversation_id=str(conversation_id),
             por="substituida", scope=str(scope or "default"))
         if substituidas:
             logger.info("[ESPERA] %d espera(s) do escopo '%s' substituída(s) pela nova",
-                        substituidas, scope)
+                        len(substituidas), scope)
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ESPERA] substituição não feita (%s) — o INSERT ainda "
                        "pode bater no UNIQUE", type(erro).__name__)
@@ -559,8 +658,27 @@ async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
     except Exception as erro:  # noqa: BLE001
         texto = str(erro).lower()
         if "uq_work_waits_ativo_por_escopo" in texto or "duplicate key" in texto:
+            await _devolver_ao_ativo(db, empresa, substituidas,
+                                     conversation_id=str(conversation_id),
+                                     scope=str(scope or "default"))
             return False, "ja_existe_espera_ativa"
-        logger.warning("[ESPERA] não aberta (%s) kind=%s", type(erro).__name__, kind)
+        # 🔴 O INSERT FALHOU DEPOIS DE A ANTERIOR TER SIDO FECHADA — e é aqui
+        # que o caso ficaria SEM ESTADO ([3] do red team). ⛔ Não existe
+        # desfecho aceitável em que a espera antiga desapareça porque a nova
+        # não conseguiu nascer: ela volta a `ativo`.
+        devolvidas = await _devolver_ao_ativo(
+            db, empresa, substituidas, conversation_id=str(conversation_id),
+            scope=str(scope or "default"))
+        # 🔴 O NÚMERO É O EFEITO, NUNCA A INTENÇÃO (§12.1). E quando ele é ZERO
+        #    com esperas fechadas, o log grita: é a conversa ficando sem estado.
+        if substituidas and not devolvidas:
+            logger.error("[ESPERA] ❌ não aberta (%s) e a anterior NÃO voltou a "
+                         "`ativo` — a conversa %s… está SEM ESPERA",
+                         type(erro).__name__, str(conversation_id)[:8])
+        else:
+            logger.warning("[ESPERA] não aberta (%s) kind=%s — %d espera(s) "
+                           "devolvida(s) a `ativo`", type(erro).__name__, kind,
+                           devolvidas)
         return False, type(erro).__name__
 
     try:
@@ -581,11 +699,77 @@ async def satisfazer_espera(db, *, company_id: str, conversation_id: str,
     🔴 O filtro por corretora está aqui (§7), e o `status='ativo'` torna a
     operação idempotente: satisfazer duas vezes fecha uma vez.
     """
+    fechadas = await _fechar_esperas_ativas(
+        db, company_id=company_id, conversation_id=conversation_id,
+        por=por, scope=scope)
+    return len(fechadas)
+
+
+async def _devolver_ao_ativo(db, company_id: str, linhas: Any,
+                             conversation_id: str = "", scope: str = "") -> int:
+    """Desfaz uma substituição que não valeu — as linhas voltam a `ativo`.
+
+    ⛔ **Só existe para o caminho de erro de `abrir_espera`.** 📊 Sem ela, um
+    INSERT recusado deixa a conversa sem espera nenhuma: o vigia não varre
+    nada, o dossiê diz *"não há espera registrada"* e ninguém sabe que houve
+    perda — o defeito [3] do red team, na sua forma mais silenciosa.
+
+    ⚠️ **Devolve QUANTAS voltaram de verdade**, e o número é o que se registra.
+    📊 Um contador que soma a intenção em vez do efeito foi o que fez este
+    conserto quase passar num arnês em que ele não funcionava: o log dizia
+    *"devolvida (1 linha)"* enquanto a linha seguia `satisfeito`.
+
+    🔴 E há DOIS caminhos, porque o primeiro pode não ter id: o `UPDATE` devolve
+    as linhas fechadas, mas nem todo cliente devolve o `id`. Sem o segundo
+    caminho — por conversa e escopo, só o que foi fechado como `'substituida'` —
+    o silêncio voltaria pela porta dos fundos.
+    """
+    empresa = str(company_id or "").strip()
+    volta = {"status": ATIVO, "satisfeito_por": None, "satisfeito_em": None}
+    devolvidas = 0
+    for linha in (linhas or []):
+        ident = str((linha or {}).get("id") or "")
+        if not empresa or not ident:
+            continue
+        try:
+            achado = await (db.client.table("work_waits").update(dict(volta))
+                            .eq("company_id", empresa)     # 🔴 §7
+                            .eq("id", ident).execute())
+            devolvidas += len(achado.data or [])
+        except Exception as erro:  # noqa: BLE001
+            logger.error("[ESPERA] ❌ a espera %s NÃO voltou a ativo (%s) — esta "
+                         "conversa pode ter ficado sem estado", ident[:8],
+                         type(erro).__name__)
+
+    if devolvidas or not (empresa and conversation_id and linhas):
+        return devolvidas
+    try:
+        achado = await (db.client.table("work_waits").update(dict(volta))
+                        .eq("company_id", empresa)         # 🔴 §7
+                        .eq("conversation_id", str(conversation_id))
+                        .eq("scope", str(scope or "default"))
+                        .eq("satisfeito_por", "substituida")
+                        .eq("status", SATISFEITO).execute())
+        devolvidas = len(achado.data or [])
+    except Exception as erro:  # noqa: BLE001
+        logger.error("[ESPERA] ❌ nenhuma espera voltou a ativo (%s) — a conversa "
+                     "%s… pode ter ficado SEM ESTADO", type(erro).__name__,
+                     str(conversation_id)[:8])
+    return devolvidas
+
+
+async def _fechar_esperas_ativas(db, *, company_id: str, conversation_id: str,
+                                 por: str, scope: str = "default") -> list:
+    """O corpo de `satisfazer_espera`, devolvendo as LINHAS fechadas.
+
+    ⚠️ As linhas — e não a contagem — porque `abrir_espera` precisa saber
+    **quais** devolver ao ar se o INSERT novo não vingar.
+    """
     from datetime import datetime, timezone
 
     empresa = str(company_id or "").strip()
     if not empresa or not conversation_id:
-        return 0
+        return []
     try:
         achado = await (db.client.table("work_waits")
                         .update({"status": SATISFEITO,
@@ -599,7 +783,7 @@ async def satisfazer_espera(db, *, company_id: str, conversation_id: str,
                         .execute())
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ESPERA] não satisfeita (%s)", type(erro).__name__)
-        return 0
+        return []
 
     fechadas = list(achado.data or [])
     # 🔴 SPEC-093-B BLOCO B — quanto tempo a espera durou, em dias inteiros.
@@ -621,7 +805,7 @@ async def satisfazer_espera(db, *, company_id: str, conversation_id: str,
         except Exception as erro:  # noqa: BLE001
             logger.warning("[SOMBRA] espera satisfeita não registrada (%s)",
                            type(erro).__name__)
-    return len(fechadas)
+    return fechadas
 
 
 def _dias_entre(inicio: Any, fim: Any) -> int:

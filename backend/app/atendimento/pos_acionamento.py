@@ -113,6 +113,31 @@ def vai_para_humano(rotulo: Any) -> bool:
     return str(rotulo or "") in SITUACOES_PARA_HUMANO
 
 
+#: 🔴 QUANTO TEMPO SE ESPERA A SEGURADORA, em horas, quando ela não prometeu
+#: nada. 📊 **48 h, medido:** o caso do pós-acionamento do acervo dura 6,9 dias
+#: (mediana, `reality-report-0971.md`). ⛔ O padrão anterior era +24 h, e com o
+#: teto de avisos do vigia isso fechava o atendimento **25 h depois do
+#: protocolo**, com a seguradora ainda devendo resposta ([2] do red team).
+PRAZO_POS_ACIONAMENTO_HORAS = 48
+
+
+def prazo_pos_acionamento_horas(companhia: Any) -> int:
+    """`acionamento_profile.prazo_pos_acionamento_horas` — **PURA**.
+
+    ⚠️ Ausente = `PRAZO_POS_ACIONAMENTO_HORAS`. Uma corretora que atende
+    seguradora lenta escreve 96; nenhuma precisa escrever 48 para ter o que a
+    SPEC promete. ⛔ Valor ilegível ou ≤ 0 também cai no padrão: um prazo zero
+    faria a espera nascer vencida e o vigia cobrar no primeiro tick.
+    """
+    perfil = (companhia or {}).get("acionamento_profile") if isinstance(companhia, dict) else None
+    perfil = perfil if isinstance(perfil, dict) else {}
+    try:
+        horas = int(float(str(perfil.get("prazo_pos_acionamento_horas")).strip()))
+    except Exception:  # noqa: BLE001
+        return PRAZO_POS_ACIONAMENTO_HORAS
+    return horas if horas > 0 else PRAZO_POS_ACIONAMENTO_HORAS
+
+
 # ===========================================================================
 # 2. A CASCATA — a primeira regra que casa vence
 #
@@ -130,17 +155,40 @@ _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
         r"|(esperei|esperou|esperando) (um monte|ate agora|horas)"
         r"|(estou|to) (parado |presa |preso )?(no acostamento|na pista|na estrada)"
         r"|local de risco|guincho nao (veio|chegou)")),
+    # 🔴 `mas nao foi` era largo demais — [4] do red team. 📊 *"a peça chegou
+    #    mas não foi montada ainda"* virava RECLAMAÇÃO e ia para humano, quando
+    #    é `H` (peça/previsão). ⚠️ O caso do acervo que a cascata precisa pegar
+    #    é *"disseram que o prestador foi ao local mas nao foi"* — e ele casa
+    #    por `muito abuso`, que vem na mesma rajada. O que se exige agora é a
+    #    palavra da NEGAÇÃO DO SERVIÇO, não um "mas não foi" qualquer.
     ("K2", re.compile(
         r"muito abuso|absurdo|descaso|um desrespeito|pessimo|nao e verdade"
-        r"|e mentira|mas nao foi|reclama(cao|r) (disso|com)|to indignad")),
+        r"|e mentira|mas nao (foi|apareceu) (ninguem|nada|feito|realizado|atendid)"
+        r"|nao fizeram nada|reclama(cao|r) (disso|com)|to indignad"
+        # 📊 *"nao quero mais esperar, ja faz 3 horas"* era K3 (`nao quero
+        #    mais`) e virava "quer cancelar" — handoff pelo motivo errado.
+        r"|nao (quero|aguento) mais esperar|nao aguento mais")),
+    # 🔴 CANCELAR A VISTORIA É AGENDA, NÃO DESISTÊNCIA — [4] do red team.
+    #
+    # ⛔ Esta regra vem ANTES de K3 de propósito, e é a razão de a cascata ter
+    # ordem: `cancelar` sozinho casaria primeiro e mandaria para humano quem só
+    # quer remarcar. 📊 *"preciso cancelar a vistoria e remarcar"* e *"gostaria
+    # de cancelar o agendamento"* são as duas frases medidas.
+    # ⚠️ E ela NÃO come *"quero cancelar o atendimento"* (turno 18 da fixture):
+    # o que se cancela ali é o serviço, e isso tem consequência na apólice.
+    ("C", re.compile(
+        r"(cancelar|remarcar|desmarcar|adiar|mudar|trocar) "
+        r"(a |o |essa |esse |meu |minha )?(vistoria|agendamento|visita|horario|data)")),
     ("K3", re.compile(r"cancelar|desistir|nao quero mais|desisti do")),
     ("L",  re.compile(r"indeniza|ser pag[ao]|pagamento (da|do)|prazo de pagamento")),
     ("I",  re.compile(
         r"abre? o (sinistro|chamado|atendimento)|abrir (outro|um novo|mais um)"
         r"|outro carro (tambem|meu)|de um outro veiculo")),
+    # 📊 *"vcs cobram a seguradora pra mim?"* caía em `N` — a abreviação que o
+    #    WhatsApp escreve ([4] do red team). `voces` e `vcs` são a mesma palavra.
     ("J",  re.compile(
         r"cobra-los|cobrar (eles|de novo|a seguradora|a oficina|a loja)"
-        r"|temos que cobrar|voces cobram|da uma cobrada")),
+        r"|temos que cobrar|(voces|vcs|vc) cobra|da uma cobrada")),
     ("D",  re.compile(r"carro reserva|carro de cortesia|fico sem carro|veiculo reserva")),
     ("E",  re.compile(
         r"franquia|reembols|consigo receber|custos que tive|taxa (de|do)"
@@ -150,9 +198,16 @@ _CASCATA: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
         r"|amanha de manha|marcar (para|o dia)")),
     ("G",  re.compile(
         r"credenciada|oficina|outra opcao de|mais perto de casa|trocar de loja")),
+    # 🔴 `mandar (o|a|os|as) ` casava **"pode mandar o guincho de novo?"** —
+    #    [4] do red team, e o produto respondia a carta C5 (*"me manda os
+    #    documentos"*) a quem está sem guincho. ⚠️ §9.5: o passo não travava,
+    #    respondia ERRADO, e chegava ao cliente. O verbo agora exige o OBJETO:
+    #    o que se manda aqui é papel, não caminhão.
     ("B",  re.compile(
         r"document|comprovante|nota fiscal|(a|o) (foto|pdf|arquivo)"
-        r"|o que (falta|faltam)|(faltam|falta) algum|mandar (o|a|os|as) ")),
+        r"|o que (falta|faltam)|(faltam|falta) algum"
+        r"|(mandar|enviar|mando|envio) (o|a|os|as) "
+        r"(document|comprovante|nota|foto|pdf|arquivo|laudo|boletim|papel)")),
     ("H",  re.compile(
         r"\bpeca\b|\bpecas\b|previsao|para-brisa|\bvidro\b|chegou a peca"
         r"|quando (chega|fica pronto)|\bprazo\b")),
@@ -325,6 +380,28 @@ _DE_QUEM: Dict[str, str] = {
     "esperando_cliente": "esperando você mandar o que falta",
     "esperando_humano": "esperando alguém da equipe da corretora",
 }
+
+
+def kinds_sem_frase() -> Tuple[str, ...]:
+    """Os kinds do BANCO que este arquivo não sabe dizer em português.
+
+    🔴 **`o_fim_do_atendimento.KINDS` é a fonte única** (achado da lente
+    DADO+verdade: três listas dos mesmos três kinds). ⚠️ Este mapa **não** vira
+    a lista derivada porque cada entrada é uma TRADUÇÃO, e traduções não se
+    geram: `esperando_cliente` vira *"esperando você mandar o que falta"* para
+    o segurado e *"o segurado"* para a equipe — audiências diferentes, frases
+    opostas. O que se deriva é a COBERTURA.
+
+    ⛔ Um kind novo no banco sem frase aqui vira SILÊNCIO em `texto_da_espera`
+    (ele devolve `""`), e silêncio é o defeito mais caro desta SPEC. Esta função
+    existe para que isso apareça — o guarda a chama, e ela devolve `()` quando
+    está tudo coberto.
+    """
+    try:
+        from app.services.o_fim_do_atendimento import KINDS
+    except Exception:  # noqa: BLE001
+        return ()
+    return tuple(k for k in KINDS if k not in _DE_QUEM)
 
 
 def _dia_e_mes(bruto: Any) -> str:

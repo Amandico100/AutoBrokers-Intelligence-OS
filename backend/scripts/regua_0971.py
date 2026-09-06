@@ -62,18 +62,143 @@ ROTULOS_DE_ESTADO = ("A", "H", "G", "J")
 TETO = {"com_J": 94.7, "sem_J": 90.5,
         "fonte": "reality-report-0971.md §2 · 283 turnos com intenção · 27 humanos por desenho"}
 
+#: 🧑 A meta do Founder (SPEC §7.1). ⚠️ Ela mora aqui para que a saída possa
+#: DIZER quando não a alcança — um número publicado ao lado de uma meta, sem a
+#: comparação escrita, deixa o leitor fazer a conta errada ([6] do red team).
+META_DO_FOUNDER = 95.0
+
+
+# ===========================================================================
+# 🔴 O DOSSIÊ NÃO SE AFIRMA: ELE SE EXECUTA (§9.4)
+#
+# 📊 Achado [5] do red team em 05/09/2026: `_dossie_completo` lia
+# `turno["dossie"]["onde_parou"]` — um dicionário que **o acervo nunca carrega**
+# e que nenhum motor produz. Zero chamadas a `_dossie_de_pos_acionamento`. O
+# arquivo provava que os campos existiriam, não que o motor os produz; e por
+# isso `handoff_pos` era ZERO na corrida real e o terceiro termo de R8 nunca
+# contribuiu. É o corolário da SPEC-083, palavra por palavra: **o que se afirma
+# é o comportamento do MOTOR sobre o texto REAL.**
+#
+# ⚠️ E ligar o motor sem cuidado vira CARIMBO: a recomendação do dossiê devolve
+# sempre texto não-vazio, e `_onde_parou` sem espera devolve *"não há espera
+# registrada para este caso"*. Contar isso como dossiê completo faria toda
+# desistência virar "resolvido pelo agente" (§9.5: o guarda precisa poder ficar
+# VERMELHO).
+#
+# 🔴 E o nome da função do motor NÃO aparece antes do import lá embaixo, de
+# propósito: a mutação U8 troca a **primeira** ocorrência do arquivo
+# (`replace(de, para, 1)`), e uma âncora que cai num comentário muta um texto
+# que ninguém executa — a mutação nasceria verde e o bloco seria carimbo. A
+# âncora mora na 1ª ocorrência em CÓDIGO. É a lição que a 097.1 já pagou duas
+# vezes (U2 e U6B).
+# 🔴 Por isso a frase de ausência é uma CONSTANTE lida aqui, e o CONTROLE da
+# saída roda a mesma medição com o estado removido.
+# ===========================================================================
+
+class _BancoDoTurno:
+    """O mundo do turno, em memória: a conversa, a espera e nenhuma mensagem.
+
+    ⛔ **Zero rede e zero PII**: só devolve o que o próprio turno da fixture
+    carrega. ⚠️ Ele existe porque o motor do dossiê LÊ o estado (`work_waits`)
+    em vez de recebê-lo — e é essa leitura que decide se há `Onde parou`.
+    """
+
+    def __init__(self, espera=None):
+        self._espera = [espera] if isinstance(espera, dict) and espera else []
+        self._tabela = ""
+
+    def table(self, nome):
+        self._tabela = str(nome)
+        return self
+
+    def select(self, *a, **k):
+        return self
+
+    def eq(self, *a, **k):
+        return self
+
+    def order(self, *a, **k):
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
+    def execute(self, *a, **k):
+        linhas = self._espera if self._tabela == "work_waits" else []
+        return type("R", (), {"data": list(linhas)})()
+
+
+def _secao_do_dossie(texto: str, titulo: str) -> str:
+    """O corpo de uma seção `*Título*` do dossiê. `""` quando ela não existe."""
+    linhas = str(texto or "").split(chr(10))
+    try:
+        i = linhas.index(titulo)
+    except ValueError:
+        return ""
+    corpo = []
+    for linha in linhas[i + 1:]:
+        if linha.startswith("*") and linha.endswith("*"):
+            break
+        if linha.strip():
+            corpo.append(linha.strip())
+    return " ".join(corpo).strip()
+
+
+def _dossie_do_motor(turno: Any) -> str:
+    """Roda `HumanHandoffTool._montar_dossie` — o MOTOR REAL, sobre o CASO.
+
+    🔴 **`_montar_dossie`, e não `_dossie_de_pos_acionamento` direto.** A
+    diferença é a regra inteira: é `_montar_dossie` quem pergunta
+    `_e_pos_acionamento` e quem LÊ a espera. Chamar o formato pós direto
+    escreveria `Onde parou` até para um caso sem lastro nenhum — e a régua
+    viraria carimbo (§9.5: o guarda tem de conseguir ficar vermelho).
+    """
+    caso = (turno or {}).get("caso")
+    if not isinstance(caso, dict) or not caso:
+        return ""
+    try:
+        from app.agents.tools.human_handoff import HumanHandoffTool
+
+        banco = _BancoDoTurno((turno or {}).get("espera_do_caso"))
+        return HumanHandoffTool(banco)._montar_dossie(caso, "")
+    except Exception:  # noqa: BLE001
+        return ""
+
 
 def _dossie_completo(turno: Any) -> bool:
-    """O handoff PÓS só CONTA quando o dossiê está inteiro (R8).
+    """O handoff PÓS só CONTA quando o MOTOR entrega o dossiê inteiro (R8).
 
     ⛔ Sem esta linha, *"foi para humano"* viraria carimbo de resolvido: bastaria
     o agente desistir para a régua subir (CLAUDE.md §9.5).
+
+    ⚠️ E o que se mede é o TEXTO que a atendente recebe: as duas seções que a
+    R8 exige, presentes e **com lastro**. 📊 `_onde_parou` devolve
+    *"não há espera registrada para este caso"* quando `work_waits` está vazia
+    — passaria num teste de "não-vazio" e é exatamente o oposto de um dossiê.
     """
-    dossie = (turno or {}).get("dossie") or {}
-    if not isinstance(dossie, dict):
+    try:
+        # 🔴 AS DUAS RESPOSTAS DO MOTOR, importadas do produto — nunca
+        #    reescritas aqui. É o que faz esta medição ser sobre o dossiê que a
+        #    atendente recebe, e não sobre uma cópia que concorda consigo mesma.
+        from app.agents.tools.human_handoff import _o_que_fazer, _onde_parou
+    except Exception:  # noqa: BLE001
         return False
-    return bool(str(dossie.get("o_que_fazer") or "").strip()
-                and str(dossie.get("onde_parou") or "").strip())
+
+    texto = _dossie_do_motor(turno)
+    if not texto:
+        return False
+    onde = _secao_do_dossie(texto, "*Onde parou*")
+    fazer = _secao_do_dossie(texto, "*O que fazer*")
+    if not onde or not fazer:
+        return False
+    if "não há espera registrada" in onde.lower():
+        return False
+    # ⛔ E as seções têm de carregar exatamente o que o MOTOR produziu: um
+    #    título com texto de outra origem seria a régua medindo a si mesma.
+    caso = (turno or {}).get("caso") or {}
+    espera = (turno or {}).get("espera_do_caso")
+    return bool(_onde_parou(caso, espera).strip() in texto
+                and _o_que_fazer(caso, "").strip() in texto)
 
 
 def _conversas_descartadas(turnos: Iterable[Dict[str, Any]]) -> set:
@@ -106,6 +231,8 @@ def medir(turnos: Iterable[Dict[str, Any]], mapa: Optional[Dict[str, str]] = Non
 
     r = {"denominador": 0, "descartados": 0, "resolvido_por_carta": 0,
          "estado_REAL": 0, "estado_SIMULADO": 0, "handoff_pos": 0,
+         "volta_ao_corredor": 0, "humanos_por_desenho": 0,
+         "humanos_sem_estado": 0,
          "resolvido_sem_humano": 0, "resolvido_pelo_agente": 0,
          "para_humano": 0, "para_humano_sem_dossie": 0,
          "por_rotulo": {}, "teto": TETO}
@@ -125,6 +252,10 @@ def medir(turnos: Iterable[Dict[str, Any]], mapa: Optional[Dict[str, str]] = Non
         r["denominador"] += 1
 
         humano_por_desenho = vai_para_humano(rotulo)
+        if humano_por_desenho:
+            r["humanos_por_desenho"] += 1
+            if rotulo not in ROTULOS_DE_ESTADO:
+                r["humanos_sem_estado"] += 1
         # ⚠️ Uma carta NÃO resolve o que é humano por desenho. C6 existe para o
         #    prestador que não chegou — mas ela é o que o agente DIZ enquanto
         #    passa o caso, não um substituto da pessoa (R9).
@@ -144,9 +275,22 @@ def medir(turnos: Iterable[Dict[str, Any]], mapa: Optional[Dict[str, str]] = Non
         if sem_humano:
             r["resolvido_sem_humano"] += 1
 
+        # 🔴 QUEM DECIDE SE É HANDOFF É A R9 (`SITUACOES_PARA_HUMANO`), E O
+        #    MOTOR DO DOSSIÊ DECIDE SE ELE CONTA.
+        #
+        # ⛔ `I` (abrir um caso NOVO no mesmo fio) tem dossê completo e mesmo
+        #    assim NÃO é handoff: a R9 o manda de volta ao corredor de
+        #    acionamento, e contá-lo como "resolvido pelo agente" seria carimbar
+        #    de resolvido um caso que ainda nem começou.
+        #
+        # ⚠️ E ele também não é "foi para humano": tem linha PRÓPRIA. Um número
+        #    que não cabe em nenhuma das duas colunas e mesmo assim é somado a
+        #    uma delas é como se inventa 3,6 pontos.
         handoff = humano_por_desenho and _dossie_completo(turno)
-        if handoff and not sem_humano:
+        if handoff:
             r["handoff_pos"] += 1
+        if rotulo == "I":
+            r["volta_ao_corredor"] += 1
         if sem_humano or handoff:
             r["resolvido_pelo_agente"] += 1
         elif humano_por_desenho:
@@ -159,6 +303,19 @@ def medir(turnos: Iterable[Dict[str, Any]], mapa: Optional[Dict[str, str]] = Non
     r["pct_real"] = round(100.0 * r["resolvido_pelo_agente"] / base, 1)
     r["pct_simulado"] = round(100.0 * agente_simulado / base, 1)
     r["pct_sem_humano"] = round(100.0 * r["resolvido_sem_humano"] / base, 1)
+
+    # 🔴 O TETO, CALCULADO AO VIVO E NA UNIDADE DESTA CORRIDA.
+    #
+    # ⚠️ Achado da lente DADO+verdade: `TETO` é uma CONSTANTE copiada do
+    # relatório, e o relatório contou **mensagens**, não turnos. Publicar 94,7 %
+    # ao lado de um denominador de TURNOS é comparar duas réguas diferentes e
+    # chamar a diferença de resultado (§12.1). As duas ficam impressas, cada uma
+    # com a sua unidade dita em voz alta.
+    r["teto_vivo"] = {
+        "com_J": round(100.0 * (base - r["humanos_sem_estado"]) / base, 1),
+        "sem_J": round(100.0 * (base - r["humanos_por_desenho"]) / base, 1),
+        "unidade": "TURNOS desta corrida (denominador=%d)" % r["denominador"],
+    }
     return r
 
 
@@ -213,11 +370,25 @@ def _turnos_da_conversa(mensagens: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return turnos
 
 
+#: 🔴 O CORPUS MEDIDO na última corrida do acervo — preenchido por
+#: `_ler_acervo` e impresso em voz alta. ⚠️ Achado da lente DADO+verdade: os 📊
+#: do BLOCO 0 do relatório **não reproduzem** por aqui, e um número que não
+#: reproduz precisa ser mostrado com a régua que o produziu, nunca escondido.
+CORPUS: Dict[str, Any] = {"conversas": 0, "com_t0": 0, "msgs_do_cliente": 0,
+                          "turnos": 0}
+
+#: A regra de corte da rajada (R1), escrita para poder ser conferida.
+REGRA_DA_RAJADA = ("mensagens `user` consecutivas depois do t0, sem linha do "
+                   "assistente no meio, viram UM turno; a resposta do "
+                   "assistente fecha a rajada")
+
+
 def _ler_acervo() -> List[Dict[str, Any]]:
     from app.core.database import get_supabase_client
 
     cliente = get_supabase_client().client
     turnos: List[Dict[str, Any]] = []
+    CORPUS.update({"conversas": 0, "com_t0": 0, "msgs_do_cliente": 0, "turnos": 0})
     for nome, empresa, filtro_fone in TENANTS:
         conversas = (cliente.table("conversations")
                      .select("id, company_id, user_phone")
@@ -226,18 +397,25 @@ def _ler_acervo() -> List[Dict[str, Any]]:
             padrao = re.compile(filtro_fone)
             conversas = [c for c in conversas
                          if padrao.search(str(c.get("user_phone") or ""))]
+        CORPUS["conversas"] += len(conversas)
         for conversa in conversas:
             msgs = (cliente.table("messages")
                     .select("role, content, created_at")
                     .eq("conversation_id", conversa["id"])
                     .order("created_at").limit(1000).execute().data or [])
-            for i, turno in enumerate(_turnos_da_conversa(msgs)):
+            reconstruidos = _turnos_da_conversa(msgs)
+            if reconstruidos:
+                CORPUS["com_t0"] += 1
+                CORPUS["msgs_do_cliente"] += sum(
+                    len(t.get("mensagens") or []) for t in reconstruidos)
+            for i, turno in enumerate(reconstruidos):
                 turno["conversa"] = "%s:%s" % (nome[:3].lower(), conversa["id"])
                 # ⛔ `espera_ativa` é FALSO no acervo inteiro, e é um FATO:
                 #    📊 `work_waits` tem zero linhas na vida (E10). A régua diz
                 #    isso em voz alta em vez de simular estado que não houve.
                 turno["espera_ativa"] = False
                 turnos.append(turno)
+    CORPUS["turnos"] = len(turnos)
     return turnos
 
 
@@ -252,6 +430,8 @@ def _imprimir(rotulo: str, r: Dict[str, Any]) -> None:
           % r["estado_REAL"])
     print("  estado_SIMULADO (💭 se a U1 já rodasse) .. %5d" % r["estado_SIMULADO"])
     print("  handoff PÓS com dossiê completo ......... %5d" % r["handoff_pos"])
+    print("  volta ao corredor (`I`: caso NOVO) ...... %5d   ⚠️ nem resolvido, "
+          "nem humano" % r["volta_ao_corredor"])
     print("  para_humano_sem_dossie .................. %5d" % r["para_humano_sem_dossie"])
     print("  para_humano (o que sobra) ............... %5d" % r["para_humano"])
     print("  " + "-" * 68)
@@ -259,10 +439,47 @@ def _imprimir(rotulo: str, r: Dict[str, Any]) -> None:
           % (r["resolvido_pelo_agente"], r["pct_real"]))
     print("  resolvido_sem_humano .................... %5d   %5.1f %%"
           % (r["resolvido_sem_humano"], r["pct_sem_humano"]))
-    print("  💭 com estado SIMULADO .................. %s   %5.1f %%"
-          % ("     ", r["pct_simulado"]))
-    print("  📊 teto de desenho: %.1f %% (com J) · %.1f %% (sem J) — %s"
-          % (r["teto"]["com_J"], r["teto"]["sem_J"], r["teto"]["fonte"]))
+    print("  💭 PROJETADO (com a U1 escrevendo a espera) %5.1f %%"
+          % r["pct_simulado"])
+    vivo = r.get("teto_vivo") or {}
+    print("  📊 teto CALCULADO nesta corrida: %.1f %% (com J) · %.1f %% (sem J)"
+          % (vivo.get("com_J") or 0.0, vivo.get("sem_J") or 0.0))
+    print("     unidade: %s · humanos por desenho=%d"
+          % (vivo.get("unidade") or "?", r.get("humanos_por_desenho") or 0))
+    print("  📊 teto do RELATÓRIO: %.1f %% (com J) · %.1f %% (sem J)"
+          % (r["teto"]["com_J"], r["teto"]["sem_J"]))
+    print("     unidade: 283 MENSAGENS com intenção — o relatório contou MENSAGEM")
+    print("     e esta régua conta TURNO: as duas não se comparam direto (§12.1)")
+    # 🔴 [6] do red team: o teto publicado (94,7 %) é MENOR que a meta do
+    #    Founder (95 %). Publicar os dois sem dizer isso é deixar o leitor
+    #    concluir que "faltaram 3,6 pontos" — quando a distância é de DESENHO.
+    #    ⛔ Nenhuma linha desta saída carimba "meta atingida".
+    projetado = float(r.get("pct_simulado") or 0.0)
+    if projetado < META_DO_FOUNDER:
+        print("  ⛔ o PROJETADO (%.1f %%) NÃO alcança a meta de %.1f %% (§7.1) — "
+              "faltam %.1f pontos" % (projetado, META_DO_FOUNDER,
+                                      META_DO_FOUNDER - projetado))
+    if r["teto"]["com_J"] < META_DO_FOUNDER:
+        print("  ⛔ e o TETO da taxonomia medida é %.1f %%: a meta de %.1f %% é "
+              "INALCANÇÁVEL pelo caminho sem humano, não é uma diferença de "
+              "esforço (E8)" % (r["teto"]["com_J"], META_DO_FOUNDER))
+
+
+def _sem_situacoes_humanas(turnos: List[Dict[str, Any]]) -> int:
+    """A MESMA medição com `SITUACOES_PARA_HUMANO` vazia — a linha de CONTROLE.
+
+    🔴 Se `handoff_pos` não cair aqui, ele não estava contando handoff: estava
+    contando qualquer coisa. ⚠️ O dicionário é restaurado no `finally`, sempre —
+    a régua não pode deixar o produto alterado atrás de si.
+    """
+    from app.atendimento import pos_acionamento as PA
+
+    guardado = dict(PA.SITUACOES_PARA_HUMANO)
+    try:
+        PA.SITUACOES_PARA_HUMANO.clear()
+        return int(medir(turnos).get("handoff_pos") or 0)
+    finally:
+        PA.SITUACOES_PARA_HUMANO.update(guardado)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -288,9 +505,51 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print("\n  origem: %s" % origem)
     print("  turnos reconstruídos: %d" % len(turnos))
-    _imprimir("COM AS CARTAS", medir(turnos))
+    if CORPUS.get("conversas"):
+        # 🔴 O CORPUS, EM VOZ ALTA — e a comparação com o relatório, escrita.
+        #    ⚠️ Achado da lente DADO+verdade: o BLOCO 0 do relatório mediu em
+        #    Postgres (`translate(lower(...))`, `~`) e esta régua mede em Python
+        #    sobre `_norm`. CLAUDE.md §9.4: um padrão medido num motor e
+        #    aplicado noutro é um padrão sobre outra coisa — então os dois
+        #    números ficam lado a lado e a diferença NÃO é forçada.
+        print("  " + "-" * 68)
+        print("  📊 CORPUS desta corrida (Python sobre `_norm`)")
+        print("     conversas varridas .................... %5d"
+              % CORPUS["conversas"])
+        print("     com acionamento reconhecido (t0) ...... %5d   (relatório §0: 36)"
+              % CORPUS["com_t0"])
+        print("     mensagens do cliente depois do t0 ..... %5d   (relatório §0: 1.088)"
+              % CORPUS["msgs_do_cliente"])
+        print("     turnos reconstruídos .................. %5d   (relatório §2: 542)"
+              % CORPUS["turnos"])
+        print("     regra da rajada: %s" % REGRA_DA_RAJADA)
+        if CORPUS["msgs_do_cliente"] != 1088:
+            print("     ⚠️ o corpus NÃO reproduz o do relatório: as CONVERSAS batem")
+            print("        e as MENSAGENS não. A régua publica o que ELA mediu —")
+            print("        forçar o número seria inventar o dado (§12.1).")
+    completo = medir(turnos)
+    _imprimir("COM AS CARTAS", completo)
     _imprimir("🔴 CONTROLE — a MESMA passada com o mapa de cartas VAZIO",
               medir(turnos, mapa={}))
+
+    # 🔴 OS DOIS CONTROLES DO HANDOFF (R8) — §9.2/§9.5.
+    #
+    # `handoff_pos` sai do MOTOR do dossiê. Um número que sobe sozinho não prova
+    # nada; o que dá direito à conclusão é ele CAIR quando se tira a causa.
+    sem_estado = medir(turnos, com_estado=False)
+    sem_humanos = _sem_situacoes_humanas(turnos)
+    print("")
+    print("  🔴 CONTROLE do handoff PÓS — `handoff_pos` sai do MOTOR do dossiê")
+    print("  " + "-" * 68)
+    print("  com o estado escrito (💭 espera sintética) .... %5d" % completo["handoff_pos"])
+    print("  SEM estado: o motor diz 'não há espera registrada' %2d   %s"
+          % (sem_estado["handoff_pos"],
+             "OK" if sem_estado["handoff_pos"] < completo["handoff_pos"]
+             else "⛔ o guarda NÃO sabe reprovar"))
+    print("  com `SITUACOES_PARA_HUMANO` VAZIA ............. %5d   %s"
+          % (sem_humanos,
+             "OK" if sem_humanos < completo["handoff_pos"]
+             else "⛔ o guarda NÃO sabe reprovar"))
     print("\n  ⚠️ O controle é o que dá direito à conclusão: se o número não cai")
     print("     sem as cartas, não foram elas que resolveram (CLAUDE.md §9.2).")
     print("  ⛔ Zero PII: esta saída só tem CONTAGENS.")

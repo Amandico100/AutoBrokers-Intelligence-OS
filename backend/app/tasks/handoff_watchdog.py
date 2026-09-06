@@ -430,6 +430,12 @@ EVENTO_HANDOFF_REALERTADO = "handoff.realertado"
 EVENTO_HANDOFF_NO_TETO = "handoff.teto_de_lembretes"
 
 #: Como o alerta descreve o que se esperava. ⛔ Sem nome de pessoa.
+#: Como se diz cada kind **para a EQUIPE**. ⚠️ 🔴 A fonte dos kinds é
+#: `o_fim_do_atendimento.KINDS` (lente DADO+verdade: três listas dos mesmos
+#: três valores); o que muda aqui é a FRASE, e ela é de outra audiência — o
+#: segurado lê *"esperando você mandar o que falta"*, a atendente lê
+#: *"o segurado"*. ⛔ O `.get(..., "alguém")` abaixo é o que impede que um kind
+#: novo vire alerta quebrado: ele degrada para uma palavra honesta.
 _ROTULO_DO_KIND = {
     "esperando_cliente": "o segurado",
     "esperando_seguradora": "a seguradora",
@@ -477,10 +483,10 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
     resumo = {"vencidas": 0, "avisadas": 0, "expiradas": 0, "erros": 0}
     try:
         from app.core.database import create_async_supabase_client
-        from app.services.o_fim_do_atendimento import (
-            AVISOS_ATE_EXPIRAR, EXPIROU, VENCIDO, deve_expirar_a_conversa,
-            marcar_fim,
-        )
+        # ⚠️ Só o teto de avisos é lido aqui: quem escreve status e quem decide
+        #    o FIM é `_contar_o_aviso`, e ele importa o que precisa (§5 — uma
+        #    decisão, um lugar).
+        from app.services.o_fim_do_atendimento import AVISOS_ATE_EXPIRAR
 
         db = await create_async_supabase_client()
         agora_iso = datetime.now(timezone.utc).isoformat()
@@ -513,35 +519,35 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
                        "há mais que não foram olhadas nesta rodada",
                        _MAX_WAITS_POR_PASSADA)
 
+    # 🔴 UM ALARME POR CONVERSA, E A CONVERSA É A UNIDADE — [2c] do red team.
+    #
+    # 📊 A mesma conversa pode ter DUAS esperas ativas ao mesmo tempo, e a
+    # SPEC-097.1 criou isso de propósito: o travamento do corredor
+    # (`scope='acionamento'`) e a espera da seguradora (`pos_acionamento`)
+    # convivem porque o `UNIQUE` é por escopo. Varrendo por LINHA, o grupo da
+    # corretora recebia **dois alertas por passada sobre a mesma pessoa** — seis
+    # em trinta minutos. ⚠️ O próprio `_anotar_no_diario` já diz por que isso é
+    # dano e não ruído: alarme repetido é como se ensina uma equipe a ignorar
+    # alarme.
+    por_conversa: Dict[str, list] = {}
     for wait in vencidas:
-        empresa = str(wait.get("company_id") or "")
-        conversa_id = str(wait.get("conversation_id") or "")
+        chave = "%s|%s" % (str(wait.get("company_id") or ""),
+                           str(wait.get("conversation_id") or ""))
+        por_conversa.setdefault(chave, []).append(wait)
+
+    for chave, esperas in por_conversa.items():
+        empresa, _, conversa_id = chave.partition("|")
         if not empresa or not conversa_id:
             continue
-        avisos = int(wait.get("avisos") or 0) + 1
+        # O contador do alarme é o MAIOR das esperas da conversa: é o que
+        # responde "há quanto tempo esta conversa está sendo cobrada".
+        avisos = max(int(w.get("avisos") or 0) for w in esperas) + 1
 
-        # ---- ① o evento CONTÁVEL --------------------------------------------
-        try:
-            await db.client.table("work_events").insert({
-                "company_id": empresa,                       # 🔴 §7
-                "work_run_id": wait.get("work_run_id") or None,
-                "event_type": EVENTO_ESPERA_VENCIDA,
-                "actor_type": "system",
-                "severity": "warning",
-                "message_human": ("Uma espera do atendimento venceu e ninguém "
-                                  "agiu. A corretora foi avisada."),
-                # ⛔ Sem dado de pessoa: quem guarda o conteúdo é o Espelho, e
-                #    `payload_redacted` tem esse nome por um motivo.
-                "payload_redacted": {"kind": str(wait.get("kind") or ""),
-                                     "scope": str(wait.get("scope") or ""),
-                                     "avisos": avisos,
-                                     "vence_em": str(wait.get("vence_em") or "")},
-            }).execute()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[EsperaWatchdog] evento não gravado (%s)", type(exc).__name__)
-            resumo["erros"] += 1
+        for wait in esperas:
+            await _uma_espera_vencida(db, wait, empresa, conversa_id,
+                                      agora_iso, resumo)
 
-        # ---- ② o alerta À CORRETORA — ⛔ NUNCA ao segurado -------------------
+        # ---- ② o alerta À CORRETORA — ⛔ NUNCA ao segurado, UM por conversa --
         try:
             conversa = await (db.client.table("conversations")
                               .select("id, company_id, session_id, user_name, "
@@ -552,9 +558,13 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
             if linhas:
                 from app.agents.tools.human_handoff import HumanHandoffTool
 
-                rotulo = _ROTULO_DO_KIND.get(str(wait.get("kind") or ""), "alguém")
-                texto = (f"⏳ ESPERA VENCIDA — esperava {rotulo} e o prazo passou. "
-                         f"(aviso {avisos} de {AVISOS_ATE_EXPIRAR})")
+                rotulos = []
+                for w in esperas:
+                    r = _ROTULO_DO_KIND.get(str(w.get("kind") or ""), "alguém")
+                    if r not in rotulos:
+                        rotulos.append(r)
+                texto = (f"⏳ ESPERA VENCIDA — esperava {' e '.join(rotulos)} e o "
+                         f"prazo passou. (aviso {avisos} de {AVISOS_ATE_EXPIRAR})")
                 aviso = await HumanHandoffTool(db)._avisar_suporte(
                     empresa, linhas[0], texto)
                 if aviso.get("avisado"):
@@ -577,14 +587,21 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
         # sobre de quem se espera.
         #
         # 🔴 E ela sai pela PORTA ÚNICA do acompanhamento, nunca por saída
-        # própria. ⚠️ O bloco ② acima manda o dossiê para o
-        # GRUPO DA CORRETORA; mandar por ali o texto do segurado entregaria a
-        # mensagem dele à equipe e não a ele. São dois destinos diferentes, e
-        # é por isso que são duas chamadas.
+        # própria. ⚠️ O bloco ② acima manda o dossiê para o GRUPO DA CORRETORA;
+        # mandar por ali o texto do segurado entregaria a mensagem dele à equipe
+        # e não a ele. São dois destinos diferentes, e é por isso que são duas
+        # chamadas.
         #
-        # ⚠️ UMA POR AVISO, e o mesmo contador: `avisos` já é o relógio deste
-        # laço, e um segundo contador divergiria do primeiro (§5).
-        if str(wait.get("scope") or "") == "pos_acionamento" and avisos <= AVISOS_ATE_EXPIRAR:
+        # 🔴 **UMA POR VENCIMENTO, não uma por aviso** — [2b] do red team.
+        # 📊 `MENSAGEM_SEM_NOVIDADE` é uma CONSTANTE: "uma por aviso até o teto"
+        # entregava ao segurado a **mesma frase três vezes em trinta minutos**.
+        # A equipe continua sendo reavisada; o cliente é avisado quando o prazo
+        # vira, e depois disso o produto tem a decência de calar até haver
+        # notícia de verdade.
+        primeiro_vencimento = [w for w in esperas
+                               if str(w.get("scope") or "") == "pos_acionamento"
+                               and int(w.get("avisos") or 0) == 0]
+        if primeiro_vencimento:
             try:
                 from app.atendimento.acompanhamento import (
                     MENSAGEM_SEM_NOVIDADE, entregar_novidade,
@@ -601,24 +618,106 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
                 resumo["erros"] += 1
 
         # ---- ③ o contador, e o FIM depois de N ------------------------------
-        try:
-            campos = {"avisos": avisos, "updated_at": agora_iso}
-            if deve_expirar_a_conversa({"avisos": avisos}):
-                campos["status"] = VENCIDO
-            await (db.client.table("work_waits").update(campos)
-                   .eq("company_id", empresa)                # 🔴 §7
-                   .eq("id", str(wait["id"])).execute())
-            if campos.get("status") == VENCIDO:
-                marcou, _ = await marcar_fim(db, company_id=empresa, motivo=EXPIROU,
-                                             conversation_id=conversa_id,
-                                             quando_iso=agora_iso)
-                if marcou:
-                    resumo["expiradas"] += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[EsperaWatchdog] contador não atualizado (%s)",
-                           type(exc).__name__)
-            resumo["erros"] += 1
+        for wait in esperas:
+            await _contar_o_aviso(db, wait, empresa, conversa_id, agora_iso,
+                                  resumo)
 
     logger.info("[EsperaWatchdog] vencidas=%(vencidas)d avisadas=%(avisadas)d "
                 "expiradas=%(expiradas)d erros=%(erros)d", resumo)
     return resumo
+
+
+async def _uma_espera_vencida(db, wait, empresa: str, conversa_id: str,
+                              agora_iso: str, resumo: Dict[str, int]) -> None:
+    """① O evento CONTÁVEL — um por ESPERA, sempre.
+
+    ⚠️ O evento continua por LINHA mesmo com o alarme por conversa: quem conta
+    esperas vencidas no digest precisa de uma por espera, e o `payload_redacted`
+    já carrega o escopo que as distingue.
+    """
+    avisos = int(wait.get("avisos") or 0) + 1
+
+    # 🔴 `work_events.work_run_id` é NOT NULL, com FK composta — achado da lente
+    # DADO+verdade. 📊 Só 4 de 729 conversas têm `work_run`: para as outras 725
+    # este INSERT VIOLA a coluna, cai no `except` e vira um warning por passada.
+    # ⚠️ A espera vencida não fica sem registro: o `avisos` da própria linha de
+    # `work_waits` é o contador durável, e o alerta à corretora saiu.
+    if not str(wait.get("work_run_id") or "").strip():
+        logger.info("[EsperaWatchdog] espera sem `work_run_id` — o vencimento "
+                    "fica em `work_waits.avisos` (work_events exige a sombra)")
+        return
+    try:
+        await db.client.table("work_events").insert({
+            "company_id": empresa,                       # 🔴 §7
+            "work_run_id": wait.get("work_run_id"),
+            "event_type": EVENTO_ESPERA_VENCIDA,
+            "actor_type": "system",
+            "severity": "warning",
+            "message_human": ("Uma espera do atendimento venceu e ninguém "
+                              "agiu. A corretora foi avisada."),
+            # ⛔ Sem dado de pessoa: quem guarda o conteúdo é o Espelho, e
+            #    `payload_redacted` tem esse nome por um motivo.
+            "payload_redacted": {"kind": str(wait.get("kind") or ""),
+                                 "scope": str(wait.get("scope") or ""),
+                                 "avisos": avisos,
+                                 "vence_em": str(wait.get("vence_em") or "")},
+        }).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[EsperaWatchdog] evento não gravado (%s)", type(exc).__name__)
+        resumo["erros"] += 1
+
+
+async def _contar_o_aviso(db, wait, empresa: str, conversa_id: str,
+                          agora_iso: str, resumo: Dict[str, int]) -> None:
+    """③ O contador da espera — e o FIM do atendimento, que **não é de todo escopo**.
+
+    🔴 **`pos_acionamento` NUNCA encerra o caso** — [2] do red team, e é defeito
+    de PRODUTO. 📊 O caso do pós-acionamento dura 6,9 dias (mediana); com três
+    avisos de 10 em 10 minutos o vigia escrevia `resolvido_em` e
+    `resolucao_motivo='expirou'` **meia hora depois do prazo**, com a seguradora
+    ainda devendo resposta. Nem a SPEC nem a R10 pedem isso: R10 diz que a fase
+    *"termina no desfecho"*, e um desfecho fabricado pelo relógio não é desfecho.
+
+    ⚠️ **A ESPERA, essa sim, sai de `ativo`** — ela venceu, e isso é verdade. O
+    que morre é a espera; o atendimento do segurado continua aberto, e a
+    corretora segue vendo a conversa na fila.
+
+    ⛔ E o status escrito é `'vencido'`, não `'expirou'`: `ck_work_waits_status`
+    conhece quatro valores (`ativo`, `satisfeito`, `vencido`, `cancelado`) e
+    esta SPEC não aplica migration. `expirou` é motivo de CONVERSA, nunca status
+    de espera — e era justamente confundir os dois que fechava o atendimento.
+
+    🔴 O `.eq("status", "ativo")` no UPDATE também é conserto: sem ele, uma
+    espera que `marcar_fim` acabou de satisfazer no mesmo instante voltava a
+    `vencido` com `satisfeito_por='desfecho'` — duas verdades na mesma linha.
+    """
+    from app.services.o_fim_do_atendimento import (
+        ESCOPO_POS_ACIONAMENTO, EXPIROU, VENCIDO, deve_expirar_a_conversa,
+        marcar_fim,
+    )
+
+    avisos = int(wait.get("avisos") or 0) + 1
+    try:
+        campos = {"avisos": avisos, "updated_at": agora_iso}
+        if deve_expirar_a_conversa({"avisos": avisos}):
+            campos["status"] = VENCIDO
+        await (db.client.table("work_waits").update(campos)
+               .eq("company_id", empresa)                # 🔴 §7
+               .eq("status", "ativo")                    # ⛔ nunca reabre o que fechou
+               .eq("id", str(wait["id"])).execute())
+        if campos.get("status") != VENCIDO:
+            return
+        if str(wait.get("scope") or "") == ESCOPO_POS_ACIONAMENTO:
+            logger.info("[EsperaWatchdog] espera de pós-acionamento vencida em "
+                        "definitivo (conversa %s…) — o vigia para de falar, e o "
+                        "atendimento SEGUE ABERTO", conversa_id[:8])
+            return
+        marcou, _ = await marcar_fim(db, company_id=empresa, motivo=EXPIROU,
+                                     conversation_id=conversa_id,
+                                     quando_iso=agora_iso)
+        if marcou:
+            resumo["expiradas"] += 1
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[EsperaWatchdog] contador não atualizado (%s)",
+                       type(exc).__name__)
+        resumo["erros"] += 1

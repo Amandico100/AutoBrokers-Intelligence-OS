@@ -19,17 +19,20 @@ consegue dizer nada sobre a U1; só um canário consegue.
 ## O que ele mede
 
 ```
-Q1  `registrar_checkpoint(captured, protocolo, previsão)` — o MOTOR real
+Q1  a TELA da seguradora passa por `extract_capture_anchors` (o motor REAL do
+    corredor) e o `captured` que ele devolve vai para `registrar_checkpoint`
     → 1 linha ativa em `work_waits`, `scope='pos_acionamento'`,
       `kind='esperando_seguradora'`, com a corretora e com `vence_em`.
       CONTROLE, ANTES: nenhuma espera na conversa (senão Q1 mede o passado).
 
-Q2  o MESMO checkpoint com a previsão MUDADA
+Q2  a MESMA tela com OUTRA data
     → a espera anterior fica `satisfeito_por='substituida'` e sobra UMA ativa
       (📊 até 05/09 a segunda era PERDIDA no UNIQUE — [B3p]/[K2]);
     → e a NOVIDADE é GERADA e **SUPRIMIDA**: 📊 os 4 agentes `attendance` estão
-      `is_active=false`, então em produção nada sai — e `suprimida_por` fica
-      gravado em `work_events` provando que houve algo a dizer.
+      `is_active=false`, então em produção nada sai — e o motivo fica gravado em
+      `ficha_atendimento.acompanhamento` provando que houve algo a dizer.
+      CONTROLE: ZERO `work_events` tentados (a coluna `work_run_id` é NOT NULL
+      e esta conversa não tem sombra — achado da lente DADO+verdade).
 
 Q3  o dossiê do handoff sobre a conversa canário (montagem PURA, nada enviado)
     → título `🔁 PÓS-ACIONAMENTO`, `Onde parou` com a espera escrita, e
@@ -81,19 +84,51 @@ def p(texto="") -> None:
         print(str(texto).encode(cod, "replace").decode(cod, "replace"))
 
 
+#: 💭 A TELA DO CANÁRIO — texto de seguradora, no formato que as âncoras reais
+#: leem. ⛔ Números óbvios e fictícios: o canário nunca copia tela de segurado.
+TELA_DO_CANARIO = ("Seu servico foi aberto com sucesso! Protocolo: 2026-00000971. "
+                   "O atendimento esta agendado para o dia %s as 14:00.")
+
+
+def _captured_do_motor(dia):
+    """O `captured` que o CORREDOR REAL escreveria diante desta tela.
+
+    🔴 P0 do red team: montar `session['protocolo']` à mão provava a espera
+    sobre uma sessão que **a produção nunca monta**. Aqui a tela passa por
+    `extract_capture_anchors` — o mesmo motor de `insurer_dispatch_service:2323`
+    — e o que entra no checkpoint é o que ele devolveu (CLAUDE.md §9.4).
+
+    Devolve `(captured, nome_do_corredor, tela)`.
+    """
+    from app.services.corridor_playbooks import _PLAYBOOKS, extract_capture_anchors
+
+    tela = TELA_DO_CANARIO % dia.strftime("%d/%m/%Y")
+    for nome in sorted(_PLAYBOOKS):
+        achado = extract_capture_anchors(_PLAYBOOKS[nome], tela) or {}
+        if achado.get("protocol") and achado.get("schedule"):
+            return achado, nome, tela
+    return {}, "", tela
+
+
 def plano() -> int:
     p("PLANO do canário 097.1 (nada foi executado — rode com `--vivo`):")
     p("  0. CONTROLE ANTES: conta as esperas da conversa canário → tem de ser 0")
     p("     (senão Q1 mediria uma linha que já existia)")
     p("  1. cria a conversa canário (title '%s') e o EPISÓDIO canário," % MARCA)
     p("     ligados pela junção R3, mais uma conversa de CONTROLE sem acionamento")
-    p("  2. Q1 `dispatch_router.registrar_checkpoint(state='captured')` — o MOTOR")
-    p("     REAL, com protocolo e previsão → VERIFY: 1 linha ativa em")
-    p("     `work_waits`, `scope='pos_acionamento'`, `kind='esperando_seguradora'`,")
-    p("     com `company_id` e `vence_em` = a previsão informada")
-    p("  3. Q2 o MESMO checkpoint com a previsão MUDADA → VERIFY: a anterior")
+    p("  2. Q1 a TELA da seguradora passa por `extract_capture_anchors` (o motor")
+    p("     REAL do corredor) e o `captured` que ele devolve vai para")
+    p("     `dispatch_router.registrar_checkpoint(state='captured')` → VERIFY: 1")
+    p("     linha ativa em `work_waits`, `scope='pos_acionamento'`,")
+    p("     `kind='esperando_seguradora'`, com `company_id` e `vence_em` = o DIA")
+    p("     agendado na tela, lido dd/mm (nunca MDY)")
+    p("     🔴 antes desta versão a sessão era montada à mão, com chaves que")
+    p("     nenhum escritor produz — o P0 do red team")
+    p("  3. Q2 a MESMA tela com OUTRA data → VERIFY: a anterior")
     p("     `satisfeito_por='substituida'`, UMA ativa; e a NOVIDADE é gerada e")
-    p("     SUPRIMIDA (📊 agentes desligados) com `suprimida_por` em `work_events`")
+    p("     SUPRIMIDA (📊 agentes desligados), com o motivo gravado em")
+    p("     `ficha_atendimento.acompanhamento` — e ZERO `work_events` tentados,")
+    p("     porque `work_run_id` é NOT NULL e esta conversa não tem sombra")
     p("  4. Q3 `HumanHandoffTool._montar_dossie` (montagem PURA, nada é enviado)")
     p("     → título `🔁 PÓS-ACIONAMENTO`, `Onde parou` com a espera escrita,")
     p("     e NUNCA 'conclua o acionamento'. CONTROLE: a conversa sem acionamento")
@@ -120,6 +155,10 @@ async def vivo(company_id: str, limpar: bool = True) -> int:  # noqa: C901
     db = await create_async_supabase_client()
 
     agora = datetime.now(timezone.utc)
+    # As duas datas que a seguradora "diz" na tela — a segunda é a previsão que
+    # MUDOU, e é ela que tem de gerar a novidade (U5.1).
+    dia_1 = agora + timedelta(days=3)
+    dia_2 = agora + timedelta(days=10)
     session_id = str(uuid.uuid4())
     conversa_id = conversa_controle_id = episodio_id = None
     resultado = 0
@@ -181,13 +220,29 @@ async def vivo(company_id: str, limpar: bool = True) -> int:  # noqa: C901
             resultado = 1
 
         # ---------- 2. Q1: o MOTOR real abre a espera --------------------
-        previsao_1 = (agora + timedelta(days=3)).isoformat()
+        #
+        # 🔴 P0 do red team (05/09/2026): esta sessão era montada À MÃO, com
+        # `protocolo` e `previsao` soltos e dentro de `slots` — **chaves que
+        # nenhum escritor do produto produz**. O canário provava a espera sobre
+        # uma sessão que a produção nunca monta (CLAUDE.md §9.4: o texto da tela
+        # vem do acervo, não da imaginação).
+        #
+        # Agora a tela passa pelo MOTOR real (`extract_capture_anchors`), e o
+        # que vai para o checkpoint é o `captured` que ele devolveu.
+        cap_1, corredor, tela_1 = _captured_do_motor(dia_1)
+        if not cap_1.get("protocol") or not cap_1.get("schedule"):
+            p("⛔ FALTOU: nenhuma âncora real de corredor casou a tela do canário —")
+            p("   sem `captured` do motor o canário mediria a sessão imaginada.")
+            p("   tela=%r captured=%r" % (tela_1[:80], cap_1))
+            return 2
+        p("Q1 âncoras REAIS do corredor `%s` → captured=%r" % (corredor, cap_1))
         sessao = {"state": "captured", "case_id": "case-%s" % MARCA,
                   "mirror_conversation_id": conversa_id,
                   "playbook_ref": "canaria-auto", "subservice": "vidros",
                   "company_id": company_id, "client_phone": TELEFONE_CANARIO,
-                  "protocolo": "P-CANARIO-0971", "previsao": previsao_1,
-                  "slots": {"protocolo": "P-CANARIO-0971", "previsao": previsao_1}}
+                  # ⚠️ `slots` é o que a URA PEDE, nunca o que ela devolve.
+                  "slots": {"placa": "ABC1D23", "cep": "01310000"},
+                  "captured": dict(cap_1)}
         await DR.registrar_checkpoint(company_id, TELEFONE_CANARIO, dict(sessao))
 
         linhas = esperas_da_conversa(conversa_id)
@@ -196,7 +251,10 @@ async def vivo(company_id: str, limpar: bool = True) -> int:  # noqa: C901
                  and str(ativas[0].get("scope")) == ESCOPO_POS_ACIONAMENTO
                  and str(ativas[0].get("kind")) == "esperando_seguradora"
                  and str(ativas[0].get("company_id")) == company_id
-                 and str(ativas[0].get("vence_em") or "")[:10] == previsao_1[:10])
+                 # 🔴 O prazo é o DIA QUE A SEGURADORA DISSE na tela, lido
+                 #    como dd/mm ([3] do red team: em MDY `12/09` viraria
+                 #    dezembro, e o vigia só cobraria em três meses).
+                 and str(ativas[0].get("vence_em") or "")[:10] == dia_1.strftime("%Y-%m-%d"))
         p("Q1 checkpoint `captured` → linhas=%d ativas=%d scope=%s kind=%s"
           % (len(linhas), len(ativas),
              ativas[0].get("scope") if ativas else "—",
@@ -211,9 +269,8 @@ async def vivo(company_id: str, limpar: bool = True) -> int:  # noqa: C901
                              .eq("company_id", company_id)             # 🔴 §7
                              .eq("event_type", "atendimento.novidade_ao_cliente")
                              .execute()).data or [])
-        previsao_2 = (agora + timedelta(days=10)).isoformat()
-        sessao2 = dict(sessao, previsao=previsao_2,
-                       slots={"protocolo": "P-CANARIO-0971", "previsao": previsao_2})
+        cap_2, _corredor2, _tela2 = _captured_do_motor(dia_2)
+        sessao2 = dict(sessao, captured=dict(cap_2))
         await DR.registrar_checkpoint(company_id, TELEFONE_CANARIO, sessao2)
 
         linhas2 = esperas_da_conversa(conversa_id)
@@ -235,14 +292,31 @@ async def vivo(company_id: str, limpar: bool = True) -> int:  # noqa: C901
         novas = [e for e in novidades][eventos_antes:] if len(novidades) > eventos_antes else []
         suprimidas = [e for e in novas
                       if str(((e.get("payload_redacted") or {}).get("suprimida_por") or ""))]
-        p("Q2b novidade: eventos novos=%d · suprimidos=%d · motivo=%s"
-          % (len(novas), len(suprimidas),
-             (suprimidas[0]["payload_redacted"].get("suprimida_por")
-              if suprimidas else "—")))
+
+        # 🔴 A SUPRESSÃO MORA NA FICHA DA CONVERSA — achado da lente
+        # DADO+verdade. 📊 `work_events.work_run_id` é NOT NULL e só 4 de 729
+        # conversas têm `work_run`: para a conversa canária, que não tem sombra,
+        # o INSERT em `work_events` **violaria a coluna** e a prova sumiria no
+        # `except`. O registro que sempre existe é
+        # `ficha_atendimento.acompanhamento`, e é ele que o canário confere.
+        ficha_depois = ((sinc.table("conversations").select("ficha_atendimento")
+                         .eq("company_id", company_id)                 # 🔴 §7
+                         .eq("id", conversa_id).limit(1).execute()).data or [{}])[0]
+        marca = ((ficha_depois.get("ficha_atendimento") or {}).get("acompanhamento")
+                 if isinstance(ficha_depois.get("ficha_atendimento"), dict) else None)
+        marca = marca if isinstance(marca, dict) else {}
+        motivo_suprimida = str((marca.get("ultima") or {}).get("motivo") or "")
+        na_ficha = int(marca.get("suprimidas") or 0) >= 1 and bool(motivo_suprimida)
+        p("Q2b novidade: na ficha suprimidas=%s motivo=%r · work_events novos=%d "
+          "(suprimidos=%d)"
+          % (marca.get("suprimidas"), motivo_suprimida, len(novas), len(suprimidas)))
         p("Q2b régua: 📊 os agentes estão DESLIGADOS, então a novidade é GERADA e"
-          " SUPRIMIDA, nunca enviada → %s"
-          % ("OK" if len(novas) == 1 and len(suprimidas) == 1 else "⛔ FALHOU"))
-        if not (len(novas) == 1 and len(suprimidas) == 1):
+          " SUPRIMIDA, nunca enviada, e a supressão fica ESCRITA → %s"
+          % ("OK" if na_ficha else "⛔ FALHOU"))
+        p("Q2b CONTROLE: nenhum `work_events` foi tentado sem `work_run_id` "
+          "(a conversa canária não tem sombra) → %s"
+          % ("OK" if not novas else "⛔ FALHOU (%d eventos)" % len(novas)))
+        if not na_ficha or novas:
             resultado = 1
 
         # ---------- 4. Q3: o dossiê PÓS (montagem pura) ------------------

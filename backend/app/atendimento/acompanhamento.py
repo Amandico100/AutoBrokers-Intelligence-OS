@@ -151,13 +151,82 @@ async def _run_da_conversa(db, company_id: str, conversation_id: str) -> Optiona
     return None
 
 
+async def _anotar_na_ficha(db, *, company_id: str, conversation_id: str,
+                           gatilho: str, entregue: bool,
+                           suprimida_por: str) -> None:
+    """A novidade fica contável NA CONVERSA — `ficha_atendimento.acompanhamento`.
+
+    🔴 **É este o registro que sobrevive em produção**, e a razão é medida: 📊
+    `work_events.work_run_id` é **NOT NULL** (com FK composta), e só **4 de 729**
+    conversas têm `work_run`. O INSERT em `work_events` para uma conversa sem
+    sombra viola a coluna, cai no `except` e some — a supressão que a SPEC
+    promete deixar PROVADA nunca seria escrita (achado da lente DADO+verdade).
+
+    ⚠️ A fusão é ADITIVA, como `agente_concluiu`: lê a ficha, acrescenta a
+    chave, grava. ⛔ Sobrescrever o `jsonb` inteiro apagaria protocolo, serviço
+    e seguradora — o dado que o dossiê lê para dizer o que é o caso.
+
+    ⛔ E nunca levanta: um registro perdido não pode custar a mensagem.
+    """
+    from datetime import datetime, timezone
+
+    empresa = str(company_id or "").strip()
+    if not empresa or not str(conversation_id or "").strip():
+        return
+    try:
+        achado = await (db.client.table("conversations")
+                        .select("id, ficha_atendimento")
+                        .eq("company_id", empresa)              # 🔴 §7
+                        .eq("id", str(conversation_id)).limit(1).execute())
+        atual = (achado.data or [{}])[0] or {}
+        ficha = atual.get("ficha_atendimento")
+        ficha = dict(ficha) if isinstance(ficha, dict) else {}
+
+        anterior = ficha.get("acompanhamento")
+        anterior = dict(anterior) if isinstance(anterior, dict) else {}
+        contagem = int(anterior.get("suprimidas") or 0)
+        if not entregue:
+            contagem += 1
+        ficha["acompanhamento"] = {
+            "suprimidas": contagem,
+            "entregues": int(anterior.get("entregues") or 0) + (1 if entregue else 0),
+            "ultima": {"em": datetime.now(timezone.utc).isoformat(),
+                       "gatilho": str(gatilho or ""),
+                       "entregue": bool(entregue),
+                       # ⛔ Sem o TEXTO: quem guarda conteúdo é o Espelho.
+                       "motivo": str(suprimida_por or "")},
+        }
+        await (db.client.table("conversations")
+               .update({"ficha_atendimento": ficha})
+               .eq("company_id", empresa)                       # 🔴 §7
+               .eq("id", str(conversation_id)).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ACOMPANHAMENTO] novidade não anotada na ficha (%s)",
+                       type(erro).__name__)
+
+
 async def _registrar(db, *, company_id: str, work_run_id: Optional[str],
-                     gatilho: str, entregue: bool, suprimida_por: str) -> None:
-    """A novidade fica CONTÁVEL — entregue ou calada."""
+                     gatilho: str, entregue: bool, suprimida_por: str,
+                     conversation_id: str = "") -> None:
+    """A novidade fica CONTÁVEL — entregue ou calada.
+
+    🔴 **Dois destinos, e o primeiro é o que sempre existe.** A ficha da
+    conversa é escrita sempre; `work_events` **só quando há `work_run_id`** —
+    a coluna é NOT NULL, e insistir nela sem sombra é escrever no `except`.
+    """
+    await _anotar_na_ficha(db, company_id=company_id,
+                           conversation_id=conversation_id, gatilho=gatilho,
+                           entregue=entregue, suprimida_por=suprimida_por)
+    if not str(work_run_id or "").strip():
+        # ⚠️ Não é silêncio: a ficha acima já guardou. 📊 725 de 729 conversas
+        #    caem aqui, e antes desta linha as 725 eram um warning por evento.
+        logger.info("[ACOMPANHAMENTO] sem `work_run_id` — a novidade fica na "
+                    "ficha da conversa (work_events.work_run_id é NOT NULL)")
+        return
     try:
         await db.client.table("work_events").insert({
             "company_id": str(company_id),                      # 🔴 §7
-            "work_run_id": work_run_id or None,
+            "work_run_id": work_run_id,
             "event_type": EVENTO_NOVIDADE,
             "actor_type": "system",
             "severity": "info" if entregue else "warning",
@@ -204,6 +273,7 @@ async def entregar_novidade(db, *, company_id: str, conversation_id: str,
     if conversa is None:
         resposta["suprimida_por"] = "conversa_nao_encontrada"
         await _registrar(db, company_id=company_id, work_run_id=run_id,
+                     conversation_id=conversation_id,
                          gatilho=gatilho, entregue=False,
                          suprimida_por=resposta["suprimida_por"])
         return resposta
@@ -213,6 +283,7 @@ async def entregar_novidade(db, *, company_id: str, conversation_id: str,
         #    que a corretora fechou.
         resposta["suprimida_por"] = "atendimento_ja_encerrado"
         await _registrar(db, company_id=company_id, work_run_id=run_id,
+                     conversation_id=conversation_id,
                          gatilho=gatilho, entregue=False,
                          suprimida_por=resposta["suprimida_por"])
         return resposta
@@ -221,6 +292,7 @@ async def entregar_novidade(db, *, company_id: str, conversation_id: str,
     if not pode:
         resposta["suprimida_por"] = porque or "desligado"
         await _registrar(db, company_id=company_id, work_run_id=run_id,
+                     conversation_id=conversation_id,
                          gatilho=gatilho, entregue=False,
                          suprimida_por=resposta["suprimida_por"])
         logger.info("[ACOMPANHAMENTO] novidade GERADA e SUPRIMIDA (%s) gatilho=%s",
@@ -231,6 +303,7 @@ async def entregar_novidade(db, *, company_id: str, conversation_id: str,
     if not telefone:
         resposta["suprimida_por"] = "conversa_sem_telefone"
         await _registrar(db, company_id=company_id, work_run_id=run_id,
+                     conversation_id=conversation_id,
                          gatilho=gatilho, entregue=False,
                          suprimida_por=resposta["suprimida_por"])
         return resposta
@@ -263,6 +336,7 @@ async def entregar_novidade(db, *, company_id: str, conversation_id: str,
         resposta["suprimida_por"] = "canal_indisponivel"
 
     await _registrar(db, company_id=company_id, work_run_id=run_id,
+                     conversation_id=conversation_id,
                      gatilho=gatilho, entregue=bool(resposta["entregue"]),
                      suprimida_por=str(resposta["suprimida_por"]))
     return resposta

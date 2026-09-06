@@ -1286,11 +1286,13 @@ _ESPERA_DO_TRAVAMENTO_MIN = 30
 _ESCOPO_DO_TRAVAMENTO = "acionamento"
 
 
-#: 🔴 SPEC-097.1 U1.1 — quanto tempo se espera a seguradora quando ela NÃO
-#: deu previsão, em minutos. ⚠️ Um dia, não trinta minutos: 📊 o caso do acervo
-#: dura 6,9 dias (mediana), e cobrar a loja de meia em meia hora não é
-#: acompanhar, é assediar.
-_ESPERA_DO_POS_ACIONAMENTO_MIN = 24 * 60
+#: 🔴 SPEC-097.1 U1.1 — quanto tempo se espera a seguradora quando ela NÃO deu
+#: previsão. ⚠️ **48 horas, e o número mudou por medição:** 📊 o caso do acervo
+#: dura **6,9 dias** (mediana), e o padrão anterior de +24 h fechava o
+#: atendimento no dia seguinte com a seguradora ainda devendo resposta ([2] do
+#: red team). ⛔ E o padrão é só padrão: quem manda é
+#: `companies.acionamento_profile.prazo_pos_acionamento_horas`.
+_ESPERA_DO_POS_ACIONAMENTO_MIN = 48 * 60
 
 
 def _env_int_espera_pos() -> int:
@@ -1304,14 +1306,73 @@ def _env_int_espera_pos() -> int:
     return max(1, n)
 
 
-def _do_slot(session: Dict[str, Any], nome: str) -> str:
-    """O valor de um slot, venha ele solto na sessão ou dentro de `slots`."""
-    direto = str((session or {}).get(nome) or "").strip()
-    if direto:
-        return direto
-    slots = (session or {}).get("slots")
-    if isinstance(slots, dict):
-        return str(slots.get(nome) or "").strip()
+async def _minutos_de_espera_do_perfil(db, company_id: str) -> int:
+    """O prazo da CORRETORA, em minutos — `acionamento_profile` (U1.1).
+
+    ⛔ **Nunca levanta e nunca fica sem resposta**: corretora não lida devolve
+    o padrão. Um prazo ausente não pode custar a espera.
+    """
+    import os
+
+    from app.atendimento.pos_acionamento import prazo_pos_acionamento_horas
+
+    # ⚠️ A variável de ambiente é a saída de emergência da operação e vence
+    #    tudo — mas só quando alguém a escreveu. Ela existia antes desta SPEC.
+    if str(os.getenv("POS_ACIONAMENTO_ESPERA_MINUTOS") or "").strip():
+        return _env_int_espera_pos()
+
+    try:
+        achado = await (db.client.table("companies")
+                        .select("id, acionamento_profile")
+                        .eq("id", str(company_id)).limit(1).execute())
+        companhia = (achado.data or [{}])[0] or {}
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[POS-ACIONAMENTO] prazo da corretora não lido (%s) — "
+                       "usando o padrão", type(erro).__name__)
+        companhia = {}
+    return max(1, int(prazo_pos_acionamento_horas(companhia)) * 60)
+
+
+def _prazo_do_agendamento(captured: Dict[str, Any]) -> str:
+    """O que a seguradora PROMETEU vira o prazo da espera — ou `""`.
+
+    🔴 **Lê o formato REAL da sessão** (`extract_capture_anchors`,
+    `corridor_playbooks:8964`): `schedule` é um DICIONÁRIO — `{day, at}` no
+    auto, `{day, from, to}` na janela da Porto, `{day, periodo}` na
+    residencial — e `eta_minutes` é o número de minutos, em texto.
+
+    ⚠️ 📊 Achado [1] do red team: este bloco lia `session['protocolo'] /
+    ['previsao'] / ['documentos_pendentes']`, **chaves que nenhum escritor
+    produz** — o único hit do grep era o próprio leitor. A espera nunca nascia,
+    e o guarda ficava verde porque fabricava a sessão imaginada (§9.4: o texto
+    da tela vem do acervo, não da imaginação).
+
+    ⛔ E a data sai por `instante_br`, nunca por `str()`: `'12/09/2026'` é 12 de
+    setembro em toda ferramenta, não 9 de dezembro em uma delas ([3]).
+    """
+    from app.services.o_fim_do_atendimento import instante_br
+
+    agenda = (captured or {}).get("schedule")
+    if isinstance(agenda, dict) and str(agenda.get("day") or "").strip():
+        hora = str(agenda.get("at") or agenda.get("from") or "").strip()
+        texto = str(agenda["day"]).strip()
+        if hora:
+            texto = "%s %s" % (texto, hora.replace("h", ":").strip(":"))
+        # ⚠️ `periodo` ('manhã'/'tarde') fica de fora do prazo de propósito:
+        #    ele não é uma hora, e transformá-lo em uma seria inventar (R3).
+        instante = instante_br(texto)
+        if instante:
+            return instante
+        instante = instante_br(str(agenda["day"]).strip())
+        if instante:
+            return instante
+
+    minutos = str((captured or {}).get("eta_minutes") or "").strip()
+    if minutos.isdigit():
+        from datetime import datetime, timedelta, timezone
+
+        return (datetime.now(timezone.utc)
+                + timedelta(minutes=max(1, int(minutos)))).isoformat()
     return ""
 
 
@@ -1337,8 +1398,7 @@ async def _pos_acionamento_do_checkpoint(db, company_id: str,
 
         from app.atendimento import acompanhamento, pos_acionamento
         from app.services.o_fim_do_atendimento import (
-            ESCOPO_POS_ACIONAMENTO, ESPERANDO_CLIENTE, ESPERANDO_SEGURADORA,
-            abrir_espera,
+            ESCOPO_POS_ACIONAMENTO, ESPERANDO_SEGURADORA, abrir_espera,
         )
 
         # 🔴 AS DUAS FASES, escritas em POSITIVO. ⛔ `encaminhado` fica de fora
@@ -1352,25 +1412,45 @@ async def _pos_acionamento_do_checkpoint(db, company_id: str,
         if not conversa or not _UUID.match(conversa):
             return
 
-        protocolo = _do_slot(session, "protocolo")
-        previsao = _do_slot(session, "previsao")
-        documentos = _do_slot(session, "documentos_pendentes")
-        if not (protocolo or previsao or documentos):
+        # 🔴 O FORMATO REAL, e ele é UM SÓ: `session['captured']`, escrito por
+        #    `insurer_dispatch_service:2323` a partir de
+        #    `corridor_playbooks.extract_capture_anchors`. Nada de `slots`:
+        #    📊 `session['slots']` é o que a URA **pede** (placa, cep, `*_opcao`),
+        #    nunca o que a seguradora **devolve**.
+        captured = session.get("captured")
+        captured = captured if isinstance(captured, dict) else {}
+        protocolo = str(captured.get("protocol") or "").strip()
+        agendamento = bool(str((captured.get("schedule") or {}).get("day") or "").strip()
+                           if isinstance(captured.get("schedule"), dict) else False)
+        eta = str(captured.get("eta_minutes") or "").strip()
+        if not (protocolo or agendamento or eta):
             # ⚠️ Fase sem entregável nenhum não é espera: é o corredor no meio
             #    do caminho. Abrir aqui encheria `work_waits` de linhas que
             #    ninguém consegue satisfazer (o PAR [A2] mede exatamente isto).
             return
 
         # ---- de quem se espera --------------------------------------------
-        if documentos and not (protocolo or previsao):
-            kind = ESPERANDO_CLIENTE
-        else:
-            # ⚠️ R2/E13: `esperando_oficina` NÃO é um kind. "a loja" é palavra
-            #    de texto humano; o banco conhece três kinds e só três.
-            kind = ESPERANDO_SEGURADORA
+        #
+        # ⚠️ R2/E13: `esperando_oficina` NÃO é um kind. "a loja" é palavra de
+        #    texto humano; o banco conhece três kinds e só três.
+        #
+        # ⛔ **`esperando_cliente` fica de fora, e é por FALTA DE ESCRITOR.**
+        #    📊 05/09/2026: o corredor não registra em lugar nenhum que pediu
+        #    documento ao segurado — `extract_capture_anchors` lê `protocol`,
+        #    `password`, `eta`, `ticket_de_entrada`, `schedule*` e
+        #    `tracking_link`, e nenhuma âncora de documento existe (grep por
+        #    'documento' em `corridor_playbooks.py`: só texto de instrução ao
+        #    cliente). Inventar aqui a chave que ninguém escreve é exatamente o
+        #    defeito [1] que esta função acabou de pagar. Quando houver escritor,
+        #    o kind entra — está em `KINDS` esperando (P-097.1-DOC).
+        kind = ESPERANDO_SEGURADORA
 
-        vence = previsao or (_agora() + timedelta(
-            minutes=_env_int_espera_pos())).isoformat()
+        # ---- até quando ----------------------------------------------------
+        #
+        # ⚠️ `prometido` e `vence` são coisas diferentes de propósito: o
+        # primeiro é o que a SEGURADORA disse; o segundo é o prazo da espera,
+        # que na falta de promessa é o da corretora. Só o primeiro é notícia.
+        prometido = _prazo_do_agendamento(captured)
 
         # ---- o estado ANTERIOR, lido ANTES de a nova espera nascer ---------
         #
@@ -1390,7 +1470,26 @@ async def _pos_acionamento_do_checkpoint(db, company_id: str,
             logger.warning("[POS-ACIONAMENTO] estado anterior não lido (%s)",
                            type(erro).__name__)
 
-        mudou = bool(anterior) and str(anterior.get("vence_em") or "") != str(vence)
+        # ⛔ ESPERA JÁ ABERTA E NADA PROMETIDO = NADA A FAZER. Sem esta linha,
+        #    cada checkpoint de `monitoring` empurraria o prazo 48 h para a
+        #    frente: a espera nunca venceria, e o vigia nunca cobraria ninguém.
+        if anterior and not prometido:
+            return
+
+        if prometido:
+            vence = prometido
+        else:
+            minutos = await _minutos_de_espera_do_perfil(db, str(company_id))
+            vence = (_agora() + timedelta(minutes=minutos)).isoformat()
+
+        # 🔴 A NOVIDADE se mede com a MESMA RÉGUA com que se fala (§9.4): a
+        # frase entrega `_dia_e_mes(vence)`, então é o DIA que decide se houve
+        # notícia. ⛔ Comparar o instante cru mandaria a MESMA frase duas vezes
+        # quando só o fuso da conversão mudasse — e frase repetida ao segurado
+        # é o defeito [2b] noutro lugar.
+        mudou = (bool(anterior) and bool(prometido)
+                 and pos_acionamento._dia_e_mes(anterior.get("vence_em"))
+                 != pos_acionamento._dia_e_mes(vence))
 
         await abrir_espera(db, company_id=str(company_id),
                            conversation_id=conversa,

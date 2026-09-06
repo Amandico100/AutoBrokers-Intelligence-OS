@@ -72,12 +72,57 @@ ignora o desligador · U7 filtro deixa passar pessoal · U8 handoff sem `Onde pa
 mensagem vazia; consertado). Achados fora do contrato entregues ao builder: o vigia avisa a equipe por `_avisar_suporte` (nunca a mensagem do cliente por ali); a varredura de
 `work_waits` é GLOBAL (o `company_id` vem da linha); `_marcar_fim_do_atendimento` roda antes da espera no checkpoint (`encaminhado` não gera novidade); `avisos` incrementa no fim do laço.
 
-## 5. O builder
-{A PREENCHER}
-## 6. Guardas e mutações
-{A PREENCHER}
+## 5. O builder (Opus, 424k, ≈1h40 — commit `0fa413a`)
+| peça | o que nasceu |
+|---|---|
+| `backend/app/atendimento/pos_acionamento.py` | as 6 cartas como DADOS; `SITUACOES_PARA_HUMANO` (R9, fonte única); `classificar_turno` (cascata de regex sobre o TURNO, normalização = a do SQL, §9.4); `mapa_de_cartas`; `bloco_do_prompt` GERADO; `texto_da_espera`; `e_atendimento_de_seguro` (R11) |
+| `backend/app/atendimento/acompanhamento.py` | a PORTA ÚNICA para falar com o cliente fora do turno: `pode_falar_com_o_cliente` (4 desligadores: `pausar_ia`, `companies.agent_enabled`, `agents.is_active`, `acionamento_profile.acompanhamento`) e `entregar_novidade` (entrega ou SUPRIME com `suprimida_por` em `work_events`). Nenhum job novo |
+| corredor (`dispatch_router`) | `_pos_acionamento_do_checkpoint`: `captured`/`monitoring` com protocolo/previsão → espera `pos_acionamento` (`vence_em` = previsão ou +24 h); previsão MUDOU → novidade pela porta única; `encaminhado` fora; escopo `acionamento` intocado |
+| `o_fim_do_atendimento` | `abrir_espera` substitui a anterior do mesmo escopo ANTES de inserir (📊 hoje a 2ª seria perdida no UNIQUE); `marcar_fim` satisfaz as ativas com `desfecho` |
+| `human_handoff` | título `🔁 PÓS-ACIONAMENTO · <SERVIÇO>`, `Quem fala` (honesto), `O que ele quer`, `Onde parou`, `Falta`, `O que fazer` por situação; `human_handoff_reason` default; `ficha_atendimento.agente_concluiu={em,motivo}` sem tocar `resolvido_em` |
+| `graph.py` · `auxiliaries.py` · `handoff_watchdog.py` | bloco PÓS sob o gate `attendance` (abertura byte a byte igual, hash `ae32a67…`); o draft do Follow-up lê a espera ("ESTADO DO CASO") e expõe `dry_run` no corpo; o vigia ganha o ramo `pos_acionamento` (mensagem honesta por aviso, pela porta única) |
+| `regua_0971.py` · `canario_0971.py` · `publicar_cartas_0971.py` · migration `20260905_02` | a régua com as duas linhas; canário e publicador em dry-run; a data migration escrita e NÃO aplicada |
+| `casos.ts` + arnês mjs | `melhorEspera` (menor `vence_em`; empate → `pos_acionamento`); dublê com duas esperas; `--fila-json` expõe `work_waits` |
+Lições do builder: duas mutações (U2, U6B) nasciam verdes porque a âncora aparecia primeiro num COMENTÁRIO — âncora mora na 1ª ocorrência em CÓDIGO; o fiscal
+`honestidade_do_handoff` acusou uma docstring (reescrita, o fiscal ficou largo de propósito); `_KINDS_CITAVEIS` duplica `KINDS` → P-097.1-KINDS-DUPLICADOS.
+## 6. Guardas e mutações (📊 05/09, HEAD 0fa413a)
+```
+python tests/test_o_caso_se_explica_sozinho.py        87 ok · 0 falhas · 0 pulados · VERDE (blocos A B K C D E F G H J L I M N O Q, todos executando o motor real)
+  --mutar (cópia + subprocesso)                        16 rodadas · 16 VERMELHAS por nome novo · 0 verdes
+regressão (7 guardas de atendimento)                   143 passed (sabe_como_terminou --mutar 3/3 · quem_fala_primeiro · termina_e_o_produto_sabe (migrado §9.3) ·
+                                                       handoff_chega_em_alguem · chave_de_juncao · saudacao_do_religamento · chat_fala_como_corretor)
+npm run test:casa                                      0 falhas (dublê com duas esperas; --fila-json com work_waits) · npx tsc --noEmit rc=0
+suíte inteira (builder, árvore em movimento)           938 passed · 8 failed · 38 xfailed — as 8 na linha de base da 097 (rerodada com a árvore parada em §11)
+```
+**A régua no acervo real** (📊 `python scripts/regua_0971.py`, SELECT nos dois tenants, zero PII):
+```
+turnos reconstruídos 464 · denominador (com intenção) 112 · descartados por R11 5
+resolvido_por_carta 102 · estado_REAL 0 (📊 zero `captured` no banco) · estado_SIMULADO 25 (💭)
+handoff_pos 0 (o histórico não tem dossiê) · para_humano_sem_dossie 6 · para_humano (por desenho) 10
+resolvido_pelo_agente 102 = 91,1 %  ·  resolvido_sem_humano 102 = 91,1 %  ·  teto de desenho 94,7 % / 90,5 %
+CONTROLE (mapa vazio): 0 = 0,0 %  ← o controle derruba
+```
+⚠️ Leitura honesta: no ACERVO HISTÓRICO o agente resolveria 91,1 % dos turnos com intenção por carta; os 10 restantes são humanos por desenho (R9) e, no produto novo,
+recebem o dossiê PÓS no instante do handoff — o que a régua só pode SIMULAR (o juiz mede isso em §7). {JUIZ_REGUA}
 ## 7. O painel e o juiz
-{A PREENCHER}
+**Rodada 1 (05/09 ~22:30, red team ‖ lente DADO+verdade sobre `0fa413a`):**
+- 🔴 **Red team — P0: a espera NUNCA nascia.** `_pos_acionamento_do_checkpoint` lia `session['protocolo'/'previsao'/'documentos_pendentes']` — chaves que ninguém escreve;
+  o corredor grava `session['captured'] = {protocol, schedule: {day, at}, eta_minutes}` (`insurer_dispatch_service.py:2323` ← `corridor_playbooks.py:1852`). Provado com o
+  motor real e a sessão real: 0 esperas; controle com as chaves inventadas: 1. E o guarda [A][K][M] e o canário FABRICAVAM a sessão imaginada — verdes sobre um formato que
+  a produção não monta (§9.4, de novo: o dublê concorda com o código por construção). **Conserto:** o produto lê `captured` (com `schedule.day` dd/mm/aaaa, nunca MDY);
+  a fixture do guarda passa a VIR DO MOTOR (`extract_capture_anchors` com os corredores reais sobre um texto de tela — `c0dd53b`); o canário monta a sessão pelo caminho real.
+  P1: (a) o vigia ENCERRAVA o atendimento do segurado 30 min depois do prazo (regra do escopo `acionamento` vazando para `pos_acionamento`; prazo +24 h × caso de 6,9 dias);
+  (b) a mesma frase ao segurado 3× em 30 min; (c) duas esperas = 6 avisos ao grupo; (d) `vence_em` cru — `'12/09/2026'` virava 9 de dezembro (MDY) e o INSERT falho era
+  engolido depois de a anterior já ter sido substituída. P2: 5 classificações erradas; a régua não executava o motor do dossiê (`handoff_pos` = 0 por construção).
+  Resistiu: supressão em 12 combinações dos desligadores (0 envios; controle 1); conversa assumida cala; `bloco_do_prompt()` sem termo técnico; §5 zero hits; publicador idempotente.
+- 🔴 **Lente DADO+verdade** (worktree isolado): P1-1 a supressão NUNCA seria gravada — `work_events.work_run_id` é NOT NULL e o INSERT mandava `None` (📊 4/729 conversas têm
+  `work_run`) → a supressão vai para `ficha_atendimento.acompanhamento`, e o dublê passa a impor NOT NULL; P1-2 a mutação U6 ficava vermelha pelo motivo errado (a âncora quebrava o
+  `async def`); P1-3 `[C2b]` presa a "29/08" = `created_at` da fixture (uma `texto_da_espera` que inventa a data passaria) ; P1-4 **os 📊 do BLOCO 0 não reproduzem**: a régua dá
+  464 turnos (o relatório mediu 542) porque o `t0` era regex Python sobre `_norm` e o investigador mediu em Postgres (§9.4 — a terceira vez que a lição aparece nesta leva), e o rótulo
+  "283 turnos" mentia a unidade (são msgs). P2: `[B3p]` cego (`len<=1`); migration fora do MANIFEST; três listas dos mesmos 3 `kind`. Sólido: D3 CHECK/UNIQUE, D4 `agente_concluiu`
+  aditivo, D5 migration idempotente, V4 hash da abertura byte a byte; 108 asserções E · 2 F legítimas · 1 F→E; declaradas 16/16, das suas 6 uma verde (L2 = P1-3).
+- **Consertos:** {CONSERTOS_R1}
+{JUIZ_0971}
 ## 8. Canário vivo e a régua no acervo
 {A PREENCHER}
 ## 9. O que ficou fora · pendências · a caixa do Founder
