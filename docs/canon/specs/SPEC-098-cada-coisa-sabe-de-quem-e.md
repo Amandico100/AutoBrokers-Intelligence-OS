@@ -185,7 +185,7 @@ idêntico: os commits da branch são só docs e a fixture); `../AutoBrokers-FIX-
   `agents.collection_name` (`graph.py:203`) — uma coluna do banco decide o tenant, não o `company_id` da requisição. Sem condição, `query_filter = None` (`:815`).
 
 ### 1.4 De quem é: colunas vazias e o revalidador morto
-- 📊 `work_runs` 3.796: `conversation_id` **4** (0,1 %) · `requester_user_id` **0** · `owner_user_id` **0** · `requester_agent_id` **0**. `artifacts` 143: `requested_by` **0**, **sem coluna
+- 📊 `work_runs` 3.796: `conversation_id` **4** (0,1 %) · `requester_user_id` **0** · `owner_user_id` **0** · `requester_agent_id` **0** — ⚠️ builder B mediu: a coluna JÁ tinha 5 escritores e o RPC `work_run_create` a grava; está em 0 porque 3.781 runs são `system` (o tick). O que a U5.a acrescenta é o chamador que conhece o `user_id` e a falha dura sem `company_id`. `artifacts` 143: `requested_by` **0**, **sem coluna
   de conversa**. `approval_requests` 10: `requested_by_user_id` 8. `work_events` 38.633: `actor_type='user'` em **1**.
 - 📊 Duração dos runs (`percentile_cont` sobre `finished_at-started_at`): `system` 3.781, p95 **11,4 s** · `chat` 8, p50 24 min, p95 **5,4 dias**, máx 6,9 dias · `routine` 7, p95 9,6 min.
 - 📊 Efeitos externos que re-checam o ATOR no instante do efeito: **nenhum**. `send_to_client_guarded(company_id, phone, text, …)` (`platform_outbound.py:696`) não recebe ator; a
@@ -233,7 +233,7 @@ idêntico: os commits da branch são só docs e a fixture); `../AutoBrokers-FIX-
   `send_to_client_guarded` ganha `actor_user_id: Optional[str]` — quando vem, revalida **dentro dela**, antes de qualquer entrega; o drain (`:912`) **re-chama** `send_to_client_guarded`
   (E8), então só precisa repassar `actor_user_id=entry.get("actor_user_id")` — a entrada da fila carrega o ator e a entrada ANTIGA (sem a chave) cai em "sem ator" por
   construção (é o CONTROLE do teste). Recusa grava Work Event `envio.recusado` com motivo humano. Sem ator (job de sistema), o comportamento de hoje se mantém (com `company_id` explícito). `validar_para_execucao` é
-  **ligado** onde a aprovação vira efeito, se esse ponto existir (BLOCO 0 mede); senão, pendência com o nome do executor que falta.
+  **ligado** onde a aprovação vira efeito — ⚠️ builder B mediu: o executor EXISTE, `app/comercial/metricas/promover.py::conferir_a_decisao`, e REIMPLEMENTA o gate sem conferir `expires_at`, `executed` nem fingerprint (motor paralelo do `validar_para_execucao`); consertá-lo é de outra unidade → `P-098-APROVACAO-SEM-EXECUTOR` passa a chamar-se **`P-098-APROVACAO-REIMPLEMENTA-O-GATE`**, com o endereço.
 - **R10 · A tela diz a verdade.** Cada `capture_status` tem cara própria; a fonte que falhou diz o motivo em português (mapa `erro técnico → frase humana`, 402 do Firecrawl
   incluído); a procedência só afirma origem de campo **com valor**; `erro`→`error` corrigido no contrato; zero chave de código visível (R11 da 097). Reprovam: `google_business`,
   `HTTP 429`, `EgressBlockedError`, `display_name`, `about_md` na tela.
@@ -297,7 +297,7 @@ sem `company_id` (LangMem).
   que casa é `uq_conversations_id_company (id, company_id)`; o padrão é `fk_attendance_sessions_conversa` da 097) + índice; `approval_requests.conversation_id uuid` idem; limpeza D21;
   **`COMMENT ON COLUMN user_memories.user_id`** dizendo que a população é o SEGURADO da conversa, não o membro da corretora (E10; 📊 0/41 são membros). Advisors antes/depois no relatório.
 - U2.2 `backend/app/services/brand/jeito_de_atender.py`: `ESCOLHAS` (R3), `validar(dict) -> Jeito` (rejeita valor fora do enum, trunca listas, descarta injeção — R4),
-  `render(jeito) -> str` (≤900 chars, PT-BR, começa por `### 🏢 O JEITO DESTA CORRETORA`), `vazio(jeito) -> bool` (mede conteúdo, não presença — D18). `BrandCaptureService.aprovar_jeito(company_id, user_id, ajustes)`:
+  `render(jeito) -> str` (≤1.400 chars — TETO_BLOCO, E13 —, PT-BR, começa por `### 🏢 O JEITO DESTA CORRETORA`), `vazio(jeito) -> bool` (mede conteúdo, não presença — D18). `BrandCaptureService.aprovar_jeito(company_id, user_id, ajustes)`:
   valida, move `tone_proposto`→`tone`, `_versionar(reason="jeito_aprovado")`, limpa a proposta. `propor_jeito(company_id, jeito, origem, evidencia)` grava a proposta.
 - U2.3 `propor_jeito_das_conversas(company_id, amostra=300)`: lê saídas humanas (`role='assistant'`, `origem='espelho'`, `channel='whatsapp'`) das conversas que passam em
   `e_atendimento_de_seguro`; **estatística determinística** (taxa de abertura afetiva, emoji, `Sr/Sra`, primeira pessoa, tamanho médio, acentuação) → mapeia para as cinco escolhas
@@ -360,11 +360,11 @@ sem `company_id` (LangMem).
 
 ### E · Canário (Resulta, `AUTOBROKERS_CANARIO=1`, nada sai, limpa por id e corretora) — `backend/scripts/canario_098.py --dry-run|--vivo`
 Q1 `propor_jeito` grava `tone_proposto` na Resulta e **não** toca `tone` (controle: `tone` idêntico antes/depois) → Q2 `aprovar_jeito` com um `user_id` canário admin move para `tone`
-e cria versão (`brand_profile_versions` +1) → Q3 `render` do `tone` aprovado tem ≤900 chars e contém o rótulo humano; um princípio envenenado inserido na proposta **não** aparece →
+e cria versão (`brand_profile_versions` +1) → Q3 `render` do `tone` aprovado tem ≤1.400 chars e contém o rótulo humano; um princípio envenenado inserido na proposta **não** aparece →
 Q4 `send_to_client_guarded(actor_user_id=<canário sem vínculo>)` com dublê de entrega → recusado, Work Event gravado (sem run novo: `work_events` é append-only — o canário grava
 o evento na conversa canário e o conta) → Q5 os SEIS curls com uuid falso: `GET /api/agent/config/<uuid>` · `GET /api/mcp/servers?company_id=<uuid>` · `GET /api/sanitization/jobs?company_id=<uuid>` ·
-`GET /api/sanitization/download/<uuid>?company_id=<uuid>` · `DELETE /api/chat/session` com corpo `{sessionId, companyId}` de uuid falso · `POST {smith-web}/api/leads/identify` com
-`{email: canario@exemplo.invalid, companyId: <uuid>}` → todos 401/403 e nenhum corpo com `name`; controle `/health` 200 → Q6 limpeza: `tone` restaurado ao valor de antes, versão
+`GET /api/sanitization/download/<uuid>?company_id=<uuid>` · `DELETE /api/chat/session` com corpo `{sessionId, companyId}` de uuid falso (→ **404** por desenho: a corretora é DERIVADA da sessão e a sessão não existe — o corpo não escolheu nada; builder B) · `POST {smith-web}/api/leads/identify` com
+`{email: canario@exemplo.invalid, companyId: <uuid>}` → 401/403 nas cinco, 404 no DELETE, e nenhum corpo com `name`; controle `/health` 200 → Q6 limpeza: `tone` restaurado ao valor de antes, versão
 canário removida, `tone_proposto` limpo, evento canário contado; prova 0/0/0 por id e corretora. ⛔ O canário **nunca** chama modelo real nem Firecrawl (dublês) e nunca envia.
 
 ### G · Guardas (desenhista, ANTES do código; gate zero VERMELHO em `821752f`)
