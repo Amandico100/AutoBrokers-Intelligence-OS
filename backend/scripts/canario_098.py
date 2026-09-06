@@ -308,13 +308,27 @@ async def vivo(company_id: str, limpar: bool = True, com_curls: bool = True) -> 
                          .select("tone, tone_proposto")
                          .eq("company_id", company_id)
                          .eq("id", pid).limit(1).execute()).data[0]
-            restam_v = 0  # append-only: a versao marcada NAO e lixo (ver acima)
+            # 🔴 Juiz fresco (06/09): `aprovar_jeito` faz UPSERT de procedência de `tone`
+            #    e a limpeza não a tocava — sobrava "jeito aprovado no painel" para um
+            #    `tone` = {} (a classe que a migration D21 apagou). Apaga por perfil+campo.
+            try:
+                (sinc.table("brand_field_provenance").delete()
+                 .eq("company_id", company_id)          # 🔴 §7
+                 .eq("brand_profile_id", pid).eq("field_path", "tone").execute())
+            except Exception as exc:  # noqa: BLE001
+                p("LIMPEZA — procedência de tone não apagada: %s" % type(exc).__name__)
+            restam_proc = len((sinc.table("brand_field_provenance").select("id")
+                               .eq("brand_profile_id", pid).eq("field_path", "tone")
+                               .execute()).data or [])
+            # append-only: a versão marcada fica e é CONTADA, não escondida (§9.3/§12.1)
+            restam_v = 0 if versao_canario else 0
             voltou = json.dumps(conferido.get("tone"), sort_keys=True) == \
                 json.dumps(tone_antes, sort_keys=True)
             restam_p = 1 if conferido.get("tone_proposto") else 0
-            p("LIMPEZA — tone restaurado=%s · propostas=%d · versões canário=%d "
-              "(esperado 0/0/0)" % (voltou, restam_p, restam_v))
-            if not voltou or restam_p or restam_v:
+            p("LIMPEZA — tone restaurado=%s · propostas=%d · procedência de tone=%d · "
+              "versões que FICAM (append-only, marcadas): %d (esperado True/0/0/1)"
+              % (voltou, restam_p, restam_proc, 1 if versao_canario else 0))
+            if not voltou or restam_p or restam_proc:
                 resultado = 1
     return resultado
 

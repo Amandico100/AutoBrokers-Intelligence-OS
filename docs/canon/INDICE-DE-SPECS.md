@@ -231,8 +231,13 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 ✅  SPEC-097.1 · O caso se explica sozinho (pós-acionamento) — FEITA em 06/09/2026, nota 93 (juiz fresco 93 em 2 rodadas): a espera nasce do corredor
     (formato REAL `captured`), o acompanhamento é fase com porta única e 4 desligadores (novidade + mensagem honesta do vigia, suprimidas com o agente desligado),
     6 cartas geram o prompt, handoff diz PÓS e encerra a parte do agente, R11 no distiller; 📊 régua 91,0 % por carta hoje · 💭 96,4 % projetado. 9 P-097.1-*.
-1º  SPEC-098 · Cada coisa sabe de quem é — CONVERTER MEDINDO, em CHAT NOVO (prompt pronto: `docs/canon/PROMPT-DE-ABERTURA-098-PREENCHIDO.md`)
-3º  SPEC-098 (proposta + research pack na pasta)  →  depois, o MASTERPLAN
+✅  SPEC-098 · Cada coisa sabe de quem é — FEITA em 06/09/2026 (CRÍTICO, opção B, nota 91; juiz fresco 92): convertida MEDINDO (a proposta valia 58: Team não
+    existe, `user_memories` é do SEGURADO, o "fresh gate" era código morto); 5 unidades — o site é LIDO por um modelo e propõe fatos + o Jeito de atender; o Jeito existe
+    (5 escolhas em PT + 4 listas, proposta → aprovação, versionado, nasce do site ou das 📊 11.981 mensagens reais das atendentes); o agente fala com ele sem poder novo
+    (bloco ≤1.400, três camadas, M6-bis); a empresa ATIVA vale em 8 rotas de cobrança + topo + n8n e 15 rotas do FastAPI público exigem chave (📊 2 respondiam 200 ao vivo);
+    o ator viaja até o efeito (run/peça/aprovação/mensagem) e a porta do WhatsApp revalida o vínculo. 2 migrations aplicadas. Relatório `reports/SPEC-098-EXECUTION-REPORT.md` ·
+    SPEC `specs/SPEC-098-cada-coisa-sabe-de-quem-e.md` · 22 P-098-*. 🔴 Implantar smith-web ANTES de smith-api.
+1º  o MASTERPLAN — SPEC-099 · Channel Fabric v2 (converter MEDINDO, em CHAT NOVO); 094.2 onde o Founder decidir (F-094.1-03)
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta. Canário vivo SEMPRE por script,
     com `AUTOBROKERS_CANARIO=1` (regra nos pacotes desde a 095).
