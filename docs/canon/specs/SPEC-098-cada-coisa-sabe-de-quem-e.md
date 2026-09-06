@@ -107,7 +107,7 @@ Antes do primeiro builder, o guarda [G0] do desenhista reproduz — em cópia li
 **VERMELHO** onde o produto está errado: `tone` = `{}` nas 3 linhas (medir CONTEÚDO, não presença — um `IS NOT NULL` mentiria) · `capture.py` sem chamada de LLM ·
 `capture.py:188` só o site alimenta a extração · `capture_status` com 0 leitores em `.tsx` · `brand.py:108` serializa `erro` e `BrandIdentityClient.tsx:103` lê `error` ·
 `company_members` com 0 matches em `backend/app` · `auth.py:157` lê `users_v2.company_id` · 3 arquivos FastAPI com `company_id: str` e zero guardas · `validar_para_execucao`
-com 0 chamadores · `work_runs.requester_user_id` 0/3.796 · `messages.sender_user_id` 0/12.299 nas saídas humanas · `lib/session.ts:33` congela `companyId` · o RAG decide o
+com 0 chamadores · `work_runs.requester_user_id` 0/3.796 · `messages.sender_user_id` 0/11.981 nas saídas humanas · `lib/session.ts:33` congela `companyId` · o RAG decide o
 tenant por `agents.collection_name` (`graph.py:203`). O número do executor vence o desta SPEC; os dois lados ficam escritos.
 
 🔴 **E o gate zero mede o FastAPI ao vivo, sem dado:** `curl -o /dev/null -w '%{http_code}' https://…smith-api…/api/sanitization/jobs?company_id=00000000-0000-4000-8000-000000000000`
