@@ -160,7 +160,9 @@ ESCOLHAS_DA_R3 = {
 # ===========================================================================
 MUTACOES = [
     # ---- U1: o site e LIDO --------------------------------------------------
-    # M1 -- a leitura por modelo volta a ser pulada -> [B1]/[B2] vermelhos
+    # M1 -- a leitura por modelo volta a ser pulada -> [B5] vermelho (a chamada
+    #   e cortada DENTRO de `capturar()`; [B1]/[B2] chamam `_propor_por_leitura`
+    #   direto e nao veem essa mutacao -- CLAUDE.md §9.4, [B5] fecha a porta)
     ("app/services/brand/capture.py",
      "self._propor_por_leitura(", "self._nao_ha_leitura_MUTADO_098_M1(",
      "M1"),
@@ -1115,6 +1117,111 @@ def bloco_B():
     certo(bool(erro_humano) and not re.search(r"JSONDecode|Traceback|Exception|None", erro_humano),
           "[B4] o erro da leitura chega em PORTUGUES, nunca como nome de excecao (R10)",
           repr(erro_humano)[:200])
+
+    # ------------------------------------------------------------------
+    # [B5] CLAUDE.md §9.4 -- as asercoes acima chamam `_propor_por_leitura`
+    # DIRETO (via `_chamar_leitura`). Isso mede o helper, nao o MOTOR: uma
+    # mutacao que corta a chamada dentro de `capturar()` (M1) nao aparece
+    # aqui, porque `capturar()` nunca roda neste bloco. [B5] fecha essa
+    # porta executando `capturar()` de verdade, com tudo mais dublado.
+    #
+    # ⚠️ NOME NOVO: `[B3]` ja e o par "modelo devolvendo lixo" (acima). Marcar
+    # esta com o mesmo rotulo faria dois testes diferentes responderem pelo
+    # mesmo nome no placar de `--mutar` -- por isso [B5]/[B5b], e o comentario
+    # da mutacao M1 (§4 G) aponta para ca.
+    # ------------------------------------------------------------------
+    banco3 = Banco(mundo_das_duas_corretoras())
+    svc3 = mod.BrandCaptureService(banco3)
+
+    async def _coletar_dublado(*a, **k):
+        return sinais
+
+    async def _visual_dublado(*a, **k):
+        return None
+
+    fabrica, err_fab = importar("app.factories.llm_factory", "a fabrica de LLM do produto")
+    utils, err_utils = importar("app.core.utils", "a chave por provedor")
+    if err_fab or err_utils:
+        certo(False, "[B5] capturar() chama a leitura por modelo -- o site lido "
+              "chega ao resultado pelo MOTOR (M1)",
+              str(err_fab or err_utils))
+        return
+
+    dublado3 = _ModeloDublado(PROPOSTA_BOA)
+    original_create_llm = fabrica.LLMFactory.create_llm
+    original_chave3 = getattr(utils, "get_api_key_for_provider", None)
+    original_coletar = getattr(mod, "coletar", None)
+    original_visual = getattr(mod.BrandCaptureService, "_propor_visual", None)
+    fabrica.LLMFactory.create_llm = staticmethod(lambda *a, **k: dublado3)
+    if original_chave3 is not None:
+        utils.get_api_key_for_provider = lambda *a, **k: "chave-de-mentira-098"
+    mod.coletar = _coletar_dublado
+    mod.BrandCaptureService._propor_visual = _visual_dublado
+    try:
+        import asyncio
+        resultado3 = asyncio.run(svc3.capturar(CO_ALFA))
+    except Exception as exc:  # noqa: BLE001
+        resultado3 = None
+        _p("      📊 [B5] capturar() levantou %s: %s" % (type(exc).__name__, exc))
+    finally:
+        fabrica.LLMFactory.create_llm = original_create_llm
+        if original_chave3 is not None:
+            utils.get_api_key_for_provider = original_chave3
+        if original_coletar is not None:
+            mod.coletar = original_coletar
+        if original_visual is not None:
+            mod.BrandCaptureService._propor_visual = original_visual
+
+    campos3 = set(getattr(resultado3, "campos", {}) or {}) if resultado3 else set()
+    tone3 = ((getattr(resultado3, "campos", {}) or {}).get("tone_proposto")
+             or getattr(resultado3, "jeito_proposto", None)) if resultado3 else None
+    _p("      📊 [B5] capturar() -> campos da leitura: %s · jeito proposto: %s"
+       % (sorted(campos3 & set(HOJE_NUNCA_PROPOSTOS)), bool(tone3)))
+    certo(bool(campos3 & set(HOJE_NUNCA_PROPOSTOS)) or bool(tone3),
+          "[B5] capturar() chama a leitura por modelo -- o site lido chega ao "
+          "resultado pelo MOTOR (M1)",
+          "nenhum campo de leitura chegou em `capturar()` -- so o helper foi testado, "
+          "nao o caminho real" if resultado3 else "capturar() nao completou")
+
+    # [B5b] CONTROLE (CLAUDE.md §9.3): com `_propor_por_leitura` trocado por um
+    # no-op DENTRO DESTE TESTE (nunca em capture.py), `capturar()` nao pode
+    # propor campo nenhum de leitura -- prova que [B5] SABE distinguir os dois
+    # mundos, e nao fica verde por construcao.
+    banco4 = Banco(mundo_das_duas_corretoras())
+    svc4 = mod.BrandCaptureService(banco4)
+
+    async def _sem_leitura(self, *a, **k):
+        return None
+
+    dublado4 = _ModeloDublado(PROPOSTA_BOA)
+    fabrica.LLMFactory.create_llm = staticmethod(lambda *a, **k: dublado4)
+    if original_chave3 is not None:
+        utils.get_api_key_for_provider = lambda *a, **k: "chave-de-mentira-098"
+    mod.coletar = _coletar_dublado
+    mod.BrandCaptureService._propor_visual = _visual_dublado
+    original_leitura = mod.BrandCaptureService._propor_por_leitura
+    mod.BrandCaptureService._propor_por_leitura = _sem_leitura
+    try:
+        import asyncio
+        resultado4 = asyncio.run(svc4.capturar(CO_ALFA))
+    except Exception as exc:  # noqa: BLE001
+        resultado4 = None
+        _p("      📊 [B5b] capturar() levantou %s: %s" % (type(exc).__name__, exc))
+    finally:
+        fabrica.LLMFactory.create_llm = original_create_llm
+        if original_chave3 is not None:
+            utils.get_api_key_for_provider = original_chave3
+        if original_coletar is not None:
+            mod.coletar = original_coletar
+        if original_visual is not None:
+            mod.BrandCaptureService._propor_visual = original_visual
+        mod.BrandCaptureService._propor_por_leitura = original_leitura
+
+    campos4 = set(getattr(resultado4, "campos", {}) or {}) if resultado4 else set()
+    par(not (campos4 & set(HOJE_NUNCA_PROPOSTOS)),
+        "[B5b] CONTROLE: com `_propor_por_leitura` trocada por um no-op, "
+        "capturar() NAO propoe campo de leitura",
+        "propos %s mesmo com a leitura desligada" % sorted(campos4))
 
 
 # ===========================================================================
