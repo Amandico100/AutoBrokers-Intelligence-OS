@@ -1,69 +1,464 @@
 [
-  {"_doc": "TURNOS SINTETICOS do pos-acionamento -- SPEC-097.1, guarda [G]. 💭 ILUSTRATIVO: cada rajada foi REESCRITA a partir da taxonomia medida em `reality-report-0971.md` §2 (📊 1.088 mensagens do cliente depois do acionamento, 36 conversas). ZERO PII: nomes, telefones, placas, apolices e protocolos sao ficticios e obvios. A unidade e o TURNO (R1): `mensagens` e a rajada sem resposta no meio -- 📊 2,01 msgs por turno no acervo. `rotulo_esperado` e o gabarito do guarda; `espera_ativa` diz se havia `work_waits` ativa NO INSTANTE do turno (E10)."},
-
-  {"turno": 1, "conversa": "cv-0971-01", "em": "2026-08-30T09:12:00-03:00", "espera_ativa": true,
-   "mensagens": ["bom dia", "deram algum retorno da seguradora?"], "rotulo_esperado": "A"},
-  {"turno": 2, "conversa": "cv-0971-01", "em": "2026-08-31T14:02:00-03:00", "espera_ativa": true,
-   "mensagens": ["permanece a mesma situacao ainda?"], "rotulo_esperado": "A"},
-  {"turno": 3, "conversa": "cv-0971-02", "em": "2026-08-30T10:40:00-03:00", "espera_ativa": false,
-   "mensagens": ["me passa certinho os documentos que faltam?", "quero mandar tudo de uma vez"],
-   "rotulo_esperado": "B"},
-  {"turno": 4, "conversa": "cv-0971-02", "em": "2026-08-30T18:20:00-03:00", "espera_ativa": false,
-   "mensagens": ["segue o comprovante de postagem"], "rotulo_esperado": "B"},
-  {"turno": 5, "conversa": "cv-0971-03", "em": "2026-09-01T08:55:00-03:00", "espera_ativa": false,
-   "mensagens": ["para agendar a vistoria?", "hoje a tarde nao teria opcao?"], "rotulo_esperado": "C"},
-  {"turno": 6, "conversa": "cv-0971-03", "em": "2026-09-02T09:10:00-03:00", "espera_ativa": false,
-   "mensagens": ["tem direito aquele carro reserva de sete dias?"], "rotulo_esperado": "D"},
-  {"turno": 7, "conversa": "cv-0971-04", "em": "2026-09-01T11:30:00-03:00", "espera_ativa": false,
-   "mensagens": ["mudaria um pouco o valor da franquia?"], "rotulo_esperado": "E"},
-  {"turno": 8, "conversa": "cv-0971-04", "em": "2026-09-01T16:45:00-03:00", "espera_ativa": false,
-   "mensagens": ["aqueles custos que tive com guincho, consigo receber?"], "rotulo_esperado": "E"},
-  {"turno": 9, "conversa": "cv-0971-05", "em": "2026-09-02T13:05:00-03:00", "espera_ativa": false,
-   "mensagens": ["a roda o seguro nao cobre?", "sabes como funciona?"], "rotulo_esperado": "F"},
-  {"turno": 10, "conversa": "cv-0971-06", "em": "2026-09-02T15:25:00-03:00", "espera_ativa": true,
-   "mensagens": ["me da outra opcao de credenciada, essa esta lotada"], "rotulo_esperado": "G"},
-  {"turno": 11, "conversa": "cv-0971-06", "em": "2026-09-03T09:00:00-03:00", "espera_ativa": true,
-   "mensagens": ["a oficina daqui do bairro atende pela seguradora?"], "rotulo_esperado": "G"},
-  {"turno": 12, "conversa": "cv-0971-07", "em": "2026-09-03T10:15:00-03:00", "espera_ativa": false,
-   "mensagens": ["podem trocar o vidro ja, ne?", "a peca chegou?"], "rotulo_esperado": "H"},
-  {"turno": 13, "conversa": "cv-0971-07", "em": "2026-09-04T08:30:00-03:00", "espera_ativa": false,
-   "mensagens": ["e a previsao do para-brisa?"], "rotulo_esperado": "H"},
-  {"turno": 14, "conversa": "cv-0971-08", "em": "2026-09-03T17:40:00-03:00", "espera_ativa": false,
-   "mensagens": ["abre o sinistro do meu outro carro tambem?"], "rotulo_esperado": "I", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
-  {"turno": 15, "conversa": "cv-0971-09", "em": "2026-09-04T09:20:00-03:00", "espera_ativa": true,
-   "mensagens": ["hoje temos que cobra-los de novo, ne?"], "rotulo_esperado": "J", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
-  {"turno": 16, "conversa": "cv-0971-10", "em": "2026-09-04T21:05:00-03:00", "espera_ativa": true,
-   "mensagens": ["esperou um monte e ainda nao deu certo", "estou parado no acostamento"],
-   "rotulo_esperado": "K1", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
-  {"turno": 17, "conversa": "cv-0971-11", "em": "2026-09-04T22:10:00-03:00", "espera_ativa": false,
-   "mensagens": ["muito abuso", "disseram que o prestador foi ao local mas nao foi"],
-   "rotulo_esperado": "K2", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
-  {"turno": 18, "conversa": "cv-0971-12", "em": "2026-09-05T07:50:00-03:00", "espera_ativa": false,
-   "mensagens": ["quero cancelar o atendimento"], "rotulo_esperado": "K3", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
-  {"turno": 19, "conversa": "cv-0971-13", "em": "2026-09-05T08:15:00-03:00", "espera_ativa": false,
-   "mensagens": ["ate a indenizacao ser paga, leva quanto tempo?"], "rotulo_esperado": "L", "dossie": {"onde_parou": "esperando a seguradora desde 29/08", "o_que_fazer": "cobrar a seguradora e responder aqui"}},
-
-  {"_doc_ruido": "🔴 O RUIDO E PARTE DA FIXTURE, nao enfeite: 📊 no acervo, 88 msgs sao social (M), 84 midia sem texto (Z) e 633 fragmentos (N). Se a regua contasse isto, passaria de 95% sem resolver nada (CLAUDE.md §9.5) -- e e por isso que [G1] mede o DENOMINADOR."},
-  {"turno": 20, "conversa": "cv-0971-01", "em": "2026-09-05T09:00:00-03:00", "espera_ativa": true,
-   "mensagens": ["muito obrigado, Deus abencoe"], "rotulo_esperado": "M"},
-  {"turno": 21, "conversa": "cv-0971-02", "em": "2026-09-05T09:05:00-03:00", "espera_ativa": false,
-   "mensagens": ["obrigada!"], "rotulo_esperado": "M"},
-  {"turno": 22, "conversa": "cv-0971-03", "em": "2026-09-05T09:10:00-03:00", "espera_ativa": false,
-   "mensagens": [""], "rotulo_esperado": "Z"},
-  {"turno": 23, "conversa": "cv-0971-06", "em": "2026-09-05T09:15:00-03:00", "espera_ativa": true,
-   "mensagens": ["Ta!", "Isso!"], "rotulo_esperado": "N"},
-  {"turno": 24, "conversa": "cv-0971-07", "em": "2026-09-05T09:20:00-03:00", "espera_ativa": false,
-   "mensagens": ["Ele mesmo orientou"], "rotulo_esperado": "N"},
-  {"turno": 25, "conversa": "cv-0971-09", "em": "2026-09-05T09:25:00-03:00", "espera_ativa": true,
-   "mensagens": ["Ainda nao respondi"], "rotulo_esperado": "N"},
-
-  {"_doc_par": "🔴 O TURNO QUE E O PAR DE [G2b]: rotulo de ESTADO (A) com espera ativa. Sem ele, `estado_REAL` seria zero nas DUAS passadas e o par de [G2p] nao conseguiria diferir -- guarda que nao pode ficar vermelho nao guarda nada (§9.3)."},
-  {"turno": 26, "conversa": "cv-0971-14", "em": "2026-09-05T10:00:00-03:00", "espera_ativa": true,
-   "mensagens": ["e ai, saiu alguma novidade do meu caso?"], "rotulo_esperado": "A"},
-  {"_doc_r11": "🔴 R11 -- a linha da atendente carrega CASO, COLEGA e VIDA PESSOAL no mesmo fio (📊 relatorio §2: 58% cai em N, e a amostra de 60 mostrou creche, fim de semana e `passa pra fulana`). Estes dois turnos vem de conversa que `e_atendimento_de_seguro` DESCARTA: a regua os conta em `descartados` e NAO os poe no denominador. 💭 sinteticos, zero PII."},
-  {"turno": 27, "conversa": "cv-0971-15", "em": "2026-09-05T11:00:00-03:00", "espera_ativa": false,
-   "pessoal": true, "mensagens": ["como foi o fim de semana?", "levei as criancas na praia"],
-   "rotulo_esperado": "N"},
-  {"turno": 28, "conversa": "cv-0971-15", "em": "2026-09-05T11:05:00-03:00", "espera_ativa": false,
-   "pessoal": true, "mensagens": ["passa pra fulana, por favor"], "rotulo_esperado": "N"}
+ {
+  "_doc": "TURNOS SINTETICOS do pos-acionamento -- SPEC-097.1, guarda [G]. 💭 ILUSTRATIVO: cada rajada foi REESCRITA a partir da taxonomia medida em `reality-report-0971.md` §2 (📊 1.088 mensagens do cliente depois do acionamento, 36 conversas). ZERO PII: nomes, telefones, placas, apolices e protocolos sao ficticios e obvios. A unidade e o TURNO (R1): `mensagens` e a rajada sem resposta no meio -- 📊 2,01 msgs por turno no acervo. `rotulo_esperado` e o gabarito do guarda; `espera_ativa` diz se havia `work_waits` ativa NO INSTANTE do turno (E10)."
+ },
+ {
+  "turno": 1,
+  "conversa": "cv-0971-01",
+  "em": "2026-08-30T09:12:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "bom dia",
+   "deram algum retorno da seguradora?"
+  ],
+  "rotulo_esperado": "A"
+ },
+ {
+  "turno": 2,
+  "conversa": "cv-0971-01",
+  "em": "2026-08-31T14:02:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "permanece a mesma situacao ainda?"
+  ],
+  "rotulo_esperado": "A"
+ },
+ {
+  "turno": 3,
+  "conversa": "cv-0971-02",
+  "em": "2026-08-30T10:40:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "me passa certinho os documentos que faltam?",
+   "quero mandar tudo de uma vez"
+  ],
+  "rotulo_esperado": "B"
+ },
+ {
+  "turno": 4,
+  "conversa": "cv-0971-02",
+  "em": "2026-08-30T18:20:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "segue o comprovante de postagem"
+  ],
+  "rotulo_esperado": "B"
+ },
+ {
+  "turno": 5,
+  "conversa": "cv-0971-03",
+  "em": "2026-09-01T08:55:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "para agendar a vistoria?",
+   "hoje a tarde nao teria opcao?"
+  ],
+  "rotulo_esperado": "C"
+ },
+ {
+  "turno": 6,
+  "conversa": "cv-0971-03",
+  "em": "2026-09-02T09:10:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "tem direito aquele carro reserva de sete dias?"
+  ],
+  "rotulo_esperado": "D"
+ },
+ {
+  "turno": 7,
+  "conversa": "cv-0971-04",
+  "em": "2026-09-01T11:30:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "mudaria um pouco o valor da franquia?"
+  ],
+  "rotulo_esperado": "E"
+ },
+ {
+  "turno": 8,
+  "conversa": "cv-0971-04",
+  "em": "2026-09-01T16:45:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "aqueles custos que tive com guincho, consigo receber?"
+  ],
+  "rotulo_esperado": "E"
+ },
+ {
+  "turno": 9,
+  "conversa": "cv-0971-05",
+  "em": "2026-09-02T13:05:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "a roda o seguro nao cobre?",
+   "sabes como funciona?"
+  ],
+  "rotulo_esperado": "F"
+ },
+ {
+  "turno": 10,
+  "conversa": "cv-0971-06",
+  "em": "2026-09-02T15:25:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "me da outra opcao de credenciada, essa esta lotada"
+  ],
+  "rotulo_esperado": "G"
+ },
+ {
+  "turno": 11,
+  "conversa": "cv-0971-06",
+  "em": "2026-09-03T09:00:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "a oficina daqui do bairro atende pela seguradora?"
+  ],
+  "rotulo_esperado": "G"
+ },
+ {
+  "turno": 12,
+  "conversa": "cv-0971-07",
+  "em": "2026-09-03T10:15:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "podem trocar o vidro ja, ne?",
+   "a peca chegou?"
+  ],
+  "rotulo_esperado": "H"
+ },
+ {
+  "turno": 13,
+  "conversa": "cv-0971-07",
+  "em": "2026-09-04T08:30:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "e a previsao do para-brisa?"
+  ],
+  "rotulo_esperado": "H"
+ },
+ {
+  "turno": 14,
+  "em": "2026-09-03T17:40:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "abre o sinistro do meu outro carro tambem?"
+  ],
+  "rotulo_esperado": "I",
+  "caso": {
+   "id": "cv-0971-humano",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "user_name": "Cliente Canario",
+   "user_phone": "5511900000001",
+   "status": "HUMAN_REQUESTED",
+   "claimed_by": null,
+   "last_message_preview": "o prestador nao veio e estou na pista",
+   "ficha_atendimento": {
+    "servico": "guincho",
+    "seguradora": "canaria",
+    "ramo": "auto",
+    "protocolo": "P-CANARIO-1",
+    "dispatch_state": "captured",
+    "faltando": []
+   }
+  },
+  "espera_do_caso": {
+   "id": "ww-pos-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "conversation_id": "cv-0971-humano",
+   "kind": "esperando_seguradora",
+   "scope": "pos_acionamento",
+   "status": "ativo",
+   "vence_em": "2026-09-12T12:00:00+00:00",
+   "created_at": "2026-08-29T09:00:00+00:00"
+  }
+ },
+ {
+  "turno": 15,
+  "em": "2026-09-04T09:20:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "hoje temos que cobra-los de novo, ne?"
+  ],
+  "rotulo_esperado": "J",
+  "caso": {
+   "id": "cv-0971-humano",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "user_name": "Cliente Canario",
+   "user_phone": "5511900000001",
+   "status": "HUMAN_REQUESTED",
+   "claimed_by": null,
+   "last_message_preview": "o prestador nao veio e estou na pista",
+   "ficha_atendimento": {
+    "servico": "guincho",
+    "seguradora": "canaria",
+    "ramo": "auto",
+    "protocolo": "P-CANARIO-1",
+    "dispatch_state": "captured",
+    "faltando": []
+   }
+  },
+  "espera_do_caso": {
+   "id": "ww-pos-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "conversation_id": "cv-0971-humano",
+   "kind": "esperando_seguradora",
+   "scope": "pos_acionamento",
+   "status": "ativo",
+   "vence_em": "2026-09-12T12:00:00+00:00",
+   "created_at": "2026-08-29T09:00:00+00:00"
+  }
+ },
+ {
+  "turno": 16,
+  "em": "2026-09-04T21:05:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "esperou um monte e ainda nao deu certo",
+   "estou parado no acostamento"
+  ],
+  "rotulo_esperado": "K1",
+  "caso": {
+   "id": "cv-0971-humano",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "user_name": "Cliente Canario",
+   "user_phone": "5511900000001",
+   "status": "HUMAN_REQUESTED",
+   "claimed_by": null,
+   "last_message_preview": "o prestador nao veio e estou na pista",
+   "ficha_atendimento": {
+    "servico": "guincho",
+    "seguradora": "canaria",
+    "ramo": "auto",
+    "protocolo": "P-CANARIO-1",
+    "dispatch_state": "captured",
+    "faltando": []
+   }
+  },
+  "espera_do_caso": {
+   "id": "ww-pos-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "conversation_id": "cv-0971-humano",
+   "kind": "esperando_seguradora",
+   "scope": "pos_acionamento",
+   "status": "ativo",
+   "vence_em": "2026-09-12T12:00:00+00:00",
+   "created_at": "2026-08-29T09:00:00+00:00"
+  }
+ },
+ {
+  "turno": 17,
+  "em": "2026-09-04T22:10:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "muito abuso",
+   "disseram que o prestador foi ao local mas nao foi"
+  ],
+  "rotulo_esperado": "K2",
+  "caso": {
+   "id": "cv-0971-humano",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "user_name": "Cliente Canario",
+   "user_phone": "5511900000001",
+   "status": "HUMAN_REQUESTED",
+   "claimed_by": null,
+   "last_message_preview": "o prestador nao veio e estou na pista",
+   "ficha_atendimento": {
+    "servico": "guincho",
+    "seguradora": "canaria",
+    "ramo": "auto",
+    "protocolo": "P-CANARIO-1",
+    "dispatch_state": "captured",
+    "faltando": []
+   }
+  },
+  "espera_do_caso": {
+   "id": "ww-pos-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "conversation_id": "cv-0971-humano",
+   "kind": "esperando_seguradora",
+   "scope": "pos_acionamento",
+   "status": "ativo",
+   "vence_em": "2026-09-12T12:00:00+00:00",
+   "created_at": "2026-08-29T09:00:00+00:00"
+  }
+ },
+ {
+  "turno": 18,
+  "em": "2026-09-05T07:50:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "quero cancelar o atendimento"
+  ],
+  "rotulo_esperado": "K3",
+  "caso": {
+   "id": "cv-0971-humano",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "user_name": "Cliente Canario",
+   "user_phone": "5511900000001",
+   "status": "HUMAN_REQUESTED",
+   "claimed_by": null,
+   "last_message_preview": "o prestador nao veio e estou na pista",
+   "ficha_atendimento": {
+    "servico": "guincho",
+    "seguradora": "canaria",
+    "ramo": "auto",
+    "protocolo": "P-CANARIO-1",
+    "dispatch_state": "captured",
+    "faltando": []
+   }
+  },
+  "espera_do_caso": {
+   "id": "ww-pos-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "conversation_id": "cv-0971-humano",
+   "kind": "esperando_seguradora",
+   "scope": "pos_acionamento",
+   "status": "ativo",
+   "vence_em": "2026-09-12T12:00:00+00:00",
+   "created_at": "2026-08-29T09:00:00+00:00"
+  }
+ },
+ {
+  "turno": 19,
+  "em": "2026-09-05T08:15:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "ate a indenizacao ser paga, leva quanto tempo?"
+  ],
+  "rotulo_esperado": "L",
+  "caso": {
+   "id": "cv-0971-humano",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "user_name": "Cliente Canario",
+   "user_phone": "5511900000001",
+   "status": "HUMAN_REQUESTED",
+   "claimed_by": null,
+   "last_message_preview": "o prestador nao veio e estou na pista",
+   "ficha_atendimento": {
+    "servico": "guincho",
+    "seguradora": "canaria",
+    "ramo": "auto",
+    "protocolo": "P-CANARIO-1",
+    "dispatch_state": "captured",
+    "faltando": []
+   }
+  },
+  "espera_do_caso": {
+   "id": "ww-pos-1",
+   "company_id": "co-alfa-0000-4000-8000-000000000001",
+   "conversation_id": "cv-0971-humano",
+   "kind": "esperando_seguradora",
+   "scope": "pos_acionamento",
+   "status": "ativo",
+   "vence_em": "2026-09-12T12:00:00+00:00",
+   "created_at": "2026-08-29T09:00:00+00:00"
+  }
+ },
+ {
+  "_doc_ruido": "🔴 O RUIDO E PARTE DA FIXTURE, nao enfeite: 📊 no acervo, 88 msgs sao social (M), 84 midia sem texto (Z) e 633 fragmentos (N). Se a regua contasse isto, passaria de 95% sem resolver nada (CLAUDE.md §9.5) -- e e por isso que [G1] mede o DENOMINADOR."
+ },
+ {
+  "turno": 20,
+  "conversa": "cv-0971-01",
+  "em": "2026-09-05T09:00:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "muito obrigado, Deus abencoe"
+  ],
+  "rotulo_esperado": "M"
+ },
+ {
+  "turno": 21,
+  "conversa": "cv-0971-02",
+  "em": "2026-09-05T09:05:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "obrigada!"
+  ],
+  "rotulo_esperado": "M"
+ },
+ {
+  "turno": 22,
+  "conversa": "cv-0971-03",
+  "em": "2026-09-05T09:10:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   ""
+  ],
+  "rotulo_esperado": "Z"
+ },
+ {
+  "turno": 23,
+  "conversa": "cv-0971-06",
+  "em": "2026-09-05T09:15:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "Ta!",
+   "Isso!"
+  ],
+  "rotulo_esperado": "N"
+ },
+ {
+  "turno": 24,
+  "conversa": "cv-0971-07",
+  "em": "2026-09-05T09:20:00-03:00",
+  "espera_ativa": false,
+  "mensagens": [
+   "Ele mesmo orientou"
+  ],
+  "rotulo_esperado": "N"
+ },
+ {
+  "turno": 25,
+  "conversa": "cv-0971-09",
+  "em": "2026-09-05T09:25:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "Ainda nao respondi"
+  ],
+  "rotulo_esperado": "N"
+ },
+ {
+  "_doc_par": "🔴 O TURNO QUE E O PAR DE [G2b]: rotulo de ESTADO (A) com espera ativa. Sem ele, `estado_REAL` seria zero nas DUAS passadas e o par de [G2p] nao conseguiria diferir -- guarda que nao pode ficar vermelho nao guarda nada (§9.3)."
+ },
+ {
+  "turno": 26,
+  "conversa": "cv-0971-14",
+  "em": "2026-09-05T10:00:00-03:00",
+  "espera_ativa": true,
+  "mensagens": [
+   "e ai, saiu alguma novidade do meu caso?"
+  ],
+  "rotulo_esperado": "A"
+ },
+ {
+  "_doc_r11": "🔴 R11 -- a linha da atendente carrega CASO, COLEGA e VIDA PESSOAL no mesmo fio (📊 relatorio §2: 58% cai em N, e a amostra de 60 mostrou creche, fim de semana e `passa pra fulana`). Estes dois turnos vem de conversa que `e_atendimento_de_seguro` DESCARTA: a regua os conta em `descartados` e NAO os poe no denominador. 💭 sinteticos, zero PII."
+ },
+ {
+  "turno": 27,
+  "conversa": "cv-0971-15",
+  "em": "2026-09-05T11:00:00-03:00",
+  "espera_ativa": false,
+  "pessoal": true,
+  "mensagens": [
+   "como foi o fim de semana?",
+   "levei as criancas na praia"
+  ],
+  "rotulo_esperado": "N"
+ },
+ {
+  "turno": 28,
+  "conversa": "cv-0971-15",
+  "em": "2026-09-05T11:05:00-03:00",
+  "espera_ativa": false,
+  "pessoal": true,
+  "mensagens": [
+   "passa pra fulana, por favor"
+  ],
+  "rotulo_esperado": "N"
+ },
+ {
+  "_doc_dossie": "🔴 Os turnos de situacao humana (R9) carregam a CONVERSA e a ESPERA REAIS, nao um `dossie` a mao: a regua tem de montar o dossie com `_dossie_de_pos_acionamento` (o MOTOR) e so contar `handoff_pos` quando o texto trouxer `Onde parou` E `O que fazer` (CLAUDE.md §9.4). 💭 A conversa e sintetica; zero PII."
+ }
 ]

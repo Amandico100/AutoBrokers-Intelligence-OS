@@ -683,20 +683,65 @@ def conversa_sem_acionamento():
 # ===========================================================================
 # [A] O CORREDOR ESCREVE A ESPERA -- `registrar_checkpoint`, MOTOR REAL
 # ===========================================================================
-def _sessao(fase, protocolo=None, previsao=None):
+#: 🔴 A TELA. 💭 O texto e sintetico, mas ele NAO e a fixture: a fixture e o
+#: que sai do MOTOR (`extract_capture_anchors`) quando este texto passa pelas
+#: ancoras REAIS de um corredor REAL. Se o texto nao casar as ancoras, [A0]
+#: fica vermelho -- e um texto que nao casa a ancora e imaginacao (§9.4).
+TELA_COM_PROTOCOLO = (
+    "Seu servico foi aberto com sucesso! Protocolo: 2026-99887766. "
+    "O atendimento esta agendado para o dia 12/09/2026 as 14:00. "
+    "Previsao de chegada: 40 min."
+)
+TELA_COM_OUTRA_DATA = (
+    "Seu servico foi aberto com sucesso! Protocolo: 2026-99887766. "
+    "O atendimento esta agendado para o dia 19/09/2026 as 14:00. "
+    "Previsao de chegada: 40 min."
+)
+TELA_SEM_NADA = "Certo. Vou verificar aqui e ja te retorno."
+
+
+def capturado_pelo_motor(tela):
+    """O que o CORREDOR REAL escreveria em `session['captured']` diante desta
+    tela. Devolve `(captured, corredor, erro)`.
+
+    🔴 P0 do red team (05/09/2026): o guarda fabricava
+    `session['protocolo']` e `session['slots']['previsao']` -- chaves que
+    **ninguem escreve**. O corredor escreve `captured.protocol`,
+    `captured.schedule` (um DICIONARIO `{day, at}`) e `captured.eta_minutes`
+    (`insurer_dispatch_service.py:2323` <- `corridor_playbooks.py:1852`). Uma
+    fixture inventada deixa [A][K][M] verdes sobre uma sessao que a producao
+    nunca monta."""
+    try:
+        from app.services.corridor_playbooks import _PLAYBOOKS, extract_capture_anchors
+    except Exception as erro:  # noqa: BLE001
+        return None, "", erro
+    for nome in sorted(_PLAYBOOKS):
+        achado = extract_capture_anchors(_PLAYBOOKS[nome], tela)
+        if achado.get("protocol") and achado.get("schedule"):
+            return achado, nome, None
+    # a tela sem nada tambem passa pelo motor -- e o motor devolve {}
+    for nome in sorted(_PLAYBOOKS):
+        return extract_capture_anchors(_PLAYBOOKS[nome], tela) or {}, nome, None
+    return None, "", RuntimeError("nenhum corredor carregado")
+
+
+def _sessao(fase, tela=None, captured=None):
+    """A sessao do corredor -- no formato que o MOTOR monta, nunca a mao."""
     s = {"state": fase, "work_run_id": RUN_A, "case_id": "case-canario",
          "mirror_conversation_id": CONVERSA_A, "playbook_ref": "canaria-auto",
-         "subservice": "vidros", "company_id": CO_ALFA}
-    if protocolo:
-        s["protocolo"] = protocolo
-        s["slots"] = {"protocolo": protocolo}
-    if previsao:
-        s["previsao"] = previsao
-        s.setdefault("slots", {})["previsao"] = previsao
+         "subservice": "vidros", "company_id": CO_ALFA,
+         # ⚠️ `slots` e o que a URA PEDE (placa, cep), nunca o que a
+         #    seguradora devolve -- e era exatamente ai que o guarda antigo
+         #    escondia o protocolo imaginado.
+         "slots": {"placa": "ABC1D23", "cep": "01310000"}}
+    if captured is None and tela is not None:
+        captured, _corredor, _erro = capturado_pelo_motor(tela)
+    if captured:
+        s["captured"] = dict(captured)
     return s
 
 
-def _checkpoint(fase, protocolo=None, previsao=None, dados=None):
+def _checkpoint(fase, tela=None, captured=None, dados=None, sessao=None):
     """Roda o funil REAL (`registrar_checkpoint`) com o banco dublado."""
     import asyncio
 
@@ -712,8 +757,9 @@ def _checkpoint(fase, protocolo=None, previsao=None, dados=None):
     original = DR._db
     DR._db = _db_dublado
     try:
-        asyncio.run(DR.registrar_checkpoint(CO_ALFA, "5511999999999",
-                                            _sessao(fase, protocolo, previsao)))
+        asyncio.run(DR.registrar_checkpoint(
+            CO_ALFA, "5511999999999",
+            sessao if sessao is not None else _sessao(fase, tela, captured)))
     except Exception as exc:  # noqa: BLE001
         return banco, None, exc
     finally:
@@ -727,21 +773,32 @@ def _inserts_de_espera(banco):
 
 def bloco_A():
     _p("\n[A] R4/U1.1 -- o corredor ABRE a espera quando o acionamento entrega protocolo")
-    banco, _dr, erro = _checkpoint("captured", protocolo="P-CANARIO-1",
-                                   previsao="2026-09-12T12:00:00+00:00")
-    if banco is None:
-        certo(False, "[A1] `registrar_checkpoint` roda com o banco dublado", repr(erro))
+
+    # ---- A0: a FIXTURE VEM DO MOTOR ---------------------------------------
+    captured, corredor, erro_c = capturado_pelo_motor(TELA_COM_PROTOCOLO)
+    if captured is None:
+        certo(False, "[A0] a sessao e montada pelo MOTOR (`extract_capture_anchors`)",
+              razao_ausencia(erro_c, "os corredores nao carregam"))
         return
-    if erro is not None:
+    certo(bool(captured.get("protocol")) and bool(captured.get("schedule")),
+          "[A0] a tela passa pelas ANCORAS REAIS de `%s` e produz `captured`" % corredor,
+          "captured=%r" % (captured,))
+    par(not capturado_pelo_motor(TELA_SEM_NADA)[0].get("protocol"),
+        "[A0p] a tela SEM protocolo nao produz `captured.protocol` "
+        "(a extracao nao carimba)",
+        "captured=%r" % (capturado_pelo_motor(TELA_SEM_NADA)[0],))
+
+    banco, _dr, erro = _checkpoint("captured", tela=TELA_COM_PROTOCOLO)
+    if banco is None or erro is not None:
         certo(False, "[A1] `registrar_checkpoint` roda com o banco dublado",
-              "%s: %s" % (type(erro).__name__, erro))
+              repr(erro))
         return
 
     abertas = _inserts_de_espera(banco)
     pos = [c for c in abertas if str((c or {}).get("scope")) == "pos_acionamento"]
     certo(len(pos) == 1,
           "[A1] `captured` COM protocolo abre UMA espera de pos-acionamento",
-          "inserts em work_waits=%r" % (abertas,))
+          "captured=%r inserts=%r" % (captured, abertas))
     linha = pos[0] if pos else {}
     certo(str(linha.get("kind")) == "esperando_seguradora",
           "[A1b] a espera e `esperando_seguradora` (R2/E13: `esperando_oficina` NAO e kind)",
@@ -752,16 +809,34 @@ def bloco_A():
           "[A1c] a linha tem corretora (§7), conversa e `vence_em`",
           "linha=%r" % (linha,))
 
-    # 🔴 O PAR de [A1]: o MESMO motor, o MESMO mundo, SEM protocolo e SEM
-    #    previsao. Se abrir aqui tambem, [A1] nao mede o protocolo -- mede a fase.
-    banco2, _dr2, erro2 = _checkpoint("captured")
+    # ---- A5: 12/09/2026 e SETEMBRO. Nunca 9 de dezembro. -------------------
+    #
+    # 🔴 P1 [3] do red team: `12/09/2026` lido como MDY vira 9-dez -- tres
+    #    meses de espera fantasma, e o vigia so cobraria em dezembro. A ancora
+    #    do corredor produz dd/mm/aaaa (`corridor_playbooks.py:1852`), entao a
+    #    leitura tem de ser dd/mm.
+    vence = str(linha.get("vence_em") or "")
+    certo(("-09-" in vence[:10]) and vence[:4] == "2026",
+          "[A5] `schedule` 12/09/2026 vira `vence_em` em SETEMBRO/2026 (dd/mm, nunca MDY)",
+          "vence_em=%r (schedule=%r)" % (vence, captured.get("schedule")))
+    par("-12-" not in vence[:10],
+        "[A5p] e NAO vira dezembro -- o par que a leitura MDY reprovaria",
+        "vence_em=%r" % vence)
+
+    # ---- A2/A6: os controles ----------------------------------------------
+    banco2, _dr2, erro2 = _checkpoint("captured", tela=TELA_SEM_NADA)
     sem = _inserts_de_espera(banco2) if banco2 is not None else []
     par(not [c for c in sem if str((c or {}).get("scope")) == "pos_acionamento"],
-        "[A2] `captured` SEM protocolo e SEM previsao nao abre nada",
+        "[A2] tela SEM protocolo e SEM agendamento nao abre nada",
         "abriu %r (erro=%r)" % (sem, erro2))
 
-    # E5 -- `encaminhado` ja ENCERRA o atendimento antes (MOTIVO_DO_ESTADO).
-    banco3, _dr3, _e3 = _checkpoint("encaminhado", protocolo="P-CANARIO-1")
+    banco6, _dr6, _e6 = _checkpoint("captured", captured={})
+    sem6 = _inserts_de_espera(banco6) if banco6 is not None else []
+    par(not [c for c in sem6 if str((c or {}).get("scope")) == "pos_acionamento"],
+        "[A6] sessao SEM `captured` (o corredor no meio do caminho) abre ZERO",
+        "abriu %r" % (sem6,))
+
+    banco3, _dr3, _e3 = _checkpoint("encaminhado", tela=TELA_COM_PROTOCOLO)
     enc = _inserts_de_espera(banco3) if banco3 is not None else []
     certo(not [c for c in enc if str((c or {}).get("scope")) == "pos_acionamento"],
           "[A3] `encaminhado` NAO abre espera nova (E5: `marcar_fim` venceu)",
@@ -1273,6 +1348,19 @@ def _turnos_da_fixture():
     return [t for t in bruto if isinstance(t, dict) and "turno" in t], None
 
 
+def _sem_lastro(turno):
+    """O MESMO turno humano, sem a espera e sem o estado na ficha.
+
+    🔴 E o que se tira e o LASTRO -- nao uma chave `dossie` inventada. Sem
+    espera e sem `dispatch_state`, o MOTOR nao tem o que escrever em
+    `Onde parou`, e e o motor que decide se o dossie esta completo (§9.4)."""
+    if not isinstance(turno.get("caso"), dict):
+        return turno
+    caso = dict(turno["caso"])
+    caso["ficha_atendimento"] = {"servico": "guincho"}
+    return dict(turno, caso=caso, espera_do_caso=None)
+
+
 def bloco_G():
     _p("\n[G] R8/U4.1 -- a regua conta TURNO, exclui M/N/Z e publica o teto")
     turnos, motivo = _turnos_da_fixture()
@@ -1328,6 +1416,61 @@ def bloco_G():
     certo(r.get("teto") is not None,
           "[G3] a regua publica o TETO de desenho ao lado do numero (E8)",
           "chaves=%r" % sorted(r))
+
+    # ---- G5: a regua chama o MOTOR do dossie, nao uma chave inventada ------
+    #
+    # 🔴 P2 [5] do red team: `_dossie_completo` lia `turno["dossie"]`, um
+    #    dicionario que so o guarda escrevia -- sobre o acervo real ele nunca
+    #    existe e `handoff_pos` era ZERO por construcao. R8 nao estava medido.
+    #    O motor e `HumanHandoffTool._dossie_de_pos_acionamento`.
+    HH, erro_hh = importar("app.agents.tools.human_handoff", "a tool nao carrega")
+    humanos = [x for x in turnos if isinstance(x.get("caso"), dict)]
+    sem = None
+    if HH is None or not humanos:
+        certo(False, "[G5] a regua conta `handoff_pos` pelo MOTOR do dossie",
+              "handoff=%r turnos_humanos=%d" % (erro_hh, len(humanos)))
+    else:
+        def _dossie_real(turno):
+            """O dossie pela PORTA de verdade (`_montar_dossie`), nunca pelo
+            ramo POS chamado a dedo: e a porta que decide, com
+            `_espera_ativa` + `_e_pos_acionamento`, se este caso e
+            pos-acionamento. Chamar `_dossie_de_pos_acionamento` direto
+            escreveria `Onde parou` SEMPRE -- e a regra viraria carimbo."""
+            espera_ = turno.get("espera_do_caso")
+            banco_ = Banco({"conversations": [turno["caso"]],
+                            "work_waits": [espera_] if espera_ else [],
+                            "messages": []}, sincrono=True)
+            return HH.HumanHandoffTool(banco_)._montar_dossie(turno["caso"], "")
+
+        try:
+            com_lastro = _dossie_real(humanos[0])
+            sem = _sem_lastro(humanos[0])
+            sem_lastro_txt = _dossie_real(sem)
+            exc_d = None
+        except Exception as e:  # noqa: BLE001
+            com_lastro = sem_lastro_txt = ""
+            exc_d = e
+        certo(exc_d is None and "Onde parou" in com_lastro
+              and "O que fazer" in com_lastro,
+              "[G5] o MOTOR do dossie entrega `Onde parou` e `O que fazer` "
+              "para o turno humano COM lastro",
+              "exc=%r dossie=%r" % (exc_d, com_lastro[:220]))
+        certo(int(r.get("handoff_pos") or 0) == len(humanos),
+              "[G5b] a regua conta TODOS os turnos humanos com dossie completo",
+              "handoff_pos=%r humanos=%d" % (r.get("handoff_pos"), len(humanos)))
+
+        # 🔴 O CORTADOR: um turno com a chave INVENTADA `dossie` completa, mas
+        #    SEM lastro nenhum. Se ele contar, a regua nao esta chamando o
+        #    motor -- esta lendo o que o guarda escreveu (o defeito exato).
+        forjado = dict(sem or {}, dossie={"onde_parou": "x", "o_que_fazer": "y"})
+        try:
+            r_forjado = RG.medir([forjado])
+        except Exception as e:  # noqa: BLE001
+            r_forjado = {"ERRO": e}
+        par(int(r_forjado.get("handoff_pos") or 0) == 0
+            and "Onde parou" not in sem_lastro_txt,
+            "[G5p] um `dossie` FORJADO no turno nao conta -- quem decide e o motor",
+            "r=%r dossie_sem_lastro=%r" % (r_forjado, sem_lastro_txt[:160]))
 
     # 🔴 A LINHA DE CONTROLE: a MESMA passada com o mapa de cartas VAZIO.
     try:
@@ -1670,34 +1813,36 @@ def bloco_M():
     original = AC.entregar_novidade
     AC.entregar_novidade = _recorder
     try:
+        # 🔴 As DUAS telas passam pelo MOTOR: a primeira agenda 12/09, a
+        #    segunda 19/09. A previsao "muda" porque a SEGURADORA mudou de
+        #    ideia na tela -- nao porque o guarda trocou um dicionario.
+        cap_12, _c1, _e1 = capturado_pelo_motor(TELA_COM_PROTOCOLO)
+        cap_19, _c2, _e2c = capturado_pelo_motor(TELA_COM_OUTRA_DATA)
+        anterior = espera_ativa(vence="2026-09-12T12:00:00+00:00")
         mundo = _mundo_do_acompanhamento()
-        mundo["work_waits"] = [espera_ativa(vence="2026-09-12T12:00:00+00:00")]
-        banco, _dr, exc = _checkpoint("captured", protocolo="P-CANARIO-1",
-                                      previsao="2026-09-19T12:00:00+00:00",
-                                      dados=mundo)
-        # o CONTROLE: o MESMO checkpoint, com a previsao que ja estava escrita
+        mundo["work_waits"] = [dict(anterior)]
+        banco, _dr, exc = _checkpoint("captured", captured=cap_19, dados=mundo)
+        # o CONTROLE: o MESMO checkpoint, com a data que ja estava escrita
         chamadas_com_mudanca = list(chamadas)
         chamadas[:] = []
         mundo2 = _mundo_do_acompanhamento()
-        mundo2["work_waits"] = [espera_ativa(vence="2026-09-12T12:00:00+00:00")]
-        _b2, _d2, _e2 = _checkpoint("captured", protocolo="P-CANARIO-1",
-                                    previsao="2026-09-12T12:00:00+00:00",
-                                    dados=mundo2)
+        mundo2["work_waits"] = [dict(anterior)]
+        _b2, _d2, _e2 = _checkpoint("captured", captured=cap_12, dados=mundo2)
         chamadas_sem_mudanca = list(chamadas)
     finally:
         AC.entregar_novidade = original
 
     certo(exc is None and len(chamadas_com_mudanca) == 1,
-          "[M1] previsao que MUDA em `captured` gera UMA novidade ao cliente",
-          "exc=%r chamadas=%r" % (exc, chamadas_com_mudanca))
+          "[M1] agendamento que MUDA em `captured` gera UMA novidade ao cliente",
+          "exc=%r cap_19=%r chamadas=%r" % (exc, cap_19, chamadas_com_mudanca))
     texto = str((chamadas_com_mudanca or [{}])[0].get("texto") or "")
     certo(bool(texto) and not problemas_de_lingua(texto)
           and ("seguradora" in texto.lower() or "loja" in texto.lower()),
           "[M1b] a novidade e TEXTO HUMANO e diz o estado (R3/R6)",
           "texto=%r problemas=%r" % (texto[:200], problemas_de_lingua(texto)[:4]))
     par(not chamadas_sem_mudanca,
-        "[M1p] o MESMO checkpoint SEM mudanca de previsao nao gera novidade",
-        "chamadas=%r" % (chamadas_sem_mudanca,))
+        "[M1p] o MESMO checkpoint com a data que JA estava escrita nao gera novidade",
+        "cap_12=%r chamadas=%r" % (cap_12, chamadas_sem_mudanca))
 
     # ---- M2: o desligador. A novidade e GERADA e SUPRIMIDA, e nada sai ------
     def _entregar(mundo):
@@ -1779,10 +1924,18 @@ def bloco_N():
     vencida = "2026-09-01T12:00:00+00:00"
     chamadas = []
 
-    async def _recorder(db, **k):
+    def _recorder(db, **k):
+        """⚠️ `async` de verdade: o vigia faz `await`. Um recorder sincrono
+        estouraria dentro do `try` do produto e o bloco reprovaria por outro
+        motivo -- e mutacao (ou guarda) que reprova por outro motivo nao mede
+        a regra."""
         chamadas.append(k)
-        return {"gerada": True, "entregue": False, "suprimida_por": "duble",
-                "texto": str(k.get("texto") or "")}
+
+        async def _resposta():
+            return {"gerada": True, "entregue": False, "suprimida_por": "duble",
+                    "texto": str(k.get("texto") or "")}
+
+        return _resposta()
 
     original = AC.entregar_novidade
     AC.entregar_novidade = _recorder
@@ -1834,6 +1987,110 @@ def bloco_N():
     par(not no_teto,
         "[N3b] no teto de `AVISOS_ATE_EXPIRAR` (%d) o cliente nao recebe mais nada" % teto,
         "chamadas=%r" % (no_teto,))
+
+    # ---- N5: o pos-acionamento NAO encerra o atendimento no teto -----------
+    #
+    # 🔴 P1 [2] do red team: o vigia chama `marcar_fim(motivo=EXPIROU)` na
+    #    conversa depois de N avisos. Para o TRAVAMENTO isso faz sentido; para
+    #    o POS-ACIONAMENTO, nao: 📊 o caso dura 6,9 dias (mediana) e o prazo
+    #    padrao e de 30 min. Encerrar ali e dizer ao segurado que o caso
+    #    acabou enquanto a peca ainda nao chegou.
+    mundo5 = _mundo_do_acompanhamento()
+    linha5 = espera_ativa(vence="2026-09-01T12:00:00+00:00")
+    linha5["avisos"] = teto
+    mundo5["work_waits"] = [linha5]
+    banco5, resumo5, exc5 = _vigiar(mundo5)
+    conversas = (banco5.linhas("conversations") if banco5 else [])
+    encerrou = any(c.get("resolvido_em") or c.get("resolucao_motivo")
+                   for c in conversas)
+    certo(exc5 is None and not encerrou,
+          "[N5] no teto de avisos o escopo `pos_acionamento` NAO encerra a conversa",
+          "resumo=%r conversas=%r" % (resumo5, conversas))
+    espera5 = [w for w in (banco5.linhas("work_waits") if banco5 else [])
+               if str(w.get("id")) == "ww-pos-1"]
+    certo(bool(espera5) and str(espera5[0].get("status")) in ("vencido", "expirou"),
+          "[N5b] mas a ESPERA sai de `ativo` (ela venceu, e isso e verdade)",
+          "espera=%r" % (espera5,))
+    # o PAR: o TRAVAMENTO no mesmo teto CONTINUA encerrando -- e a prova de que
+    # [N5] mede o escopo, e nao "o vigia nunca encerra nada".
+    mundo5b = _mundo_do_acompanhamento()
+    linha5b = espera_ativa(vence="2026-09-01T12:00:00+00:00", scope="acionamento",
+                           kind="esperando_humano", ident="ww-ac-1")
+    linha5b["avisos"] = teto
+    mundo5b["work_waits"] = [linha5b]
+    banco5b, _r5b, _e5b = _vigiar(mundo5b)
+    conversas5b = (banco5b.linhas("conversations") if banco5b else [])
+    par(any(c.get("resolvido_em") or c.get("resolucao_motivo") for c in conversas5b),
+        "[N5p] o escopo `acionamento` no teto SEGUE encerrando (o guarda mede o "
+        "ESCOPO, nao o vigia inteiro)",
+        "conversas=%r" % (conversas5b,))
+
+    # ---- N6: UMA mensagem ao cliente por vencimento -----------------------
+    #
+    # 🔴 P1 [2b]: com `HANDOFF_REALERTA_HORAS` a equipe e reavisada; se o
+    #    cliente receber a MESMA frase a cada passada, o produto vira spam --
+    #    e a 097.1 jurou nao piorar a cadencia humana (R7).
+    chamadas[:] = []
+    original2 = AC.entregar_novidade
+    AC.entregar_novidade = _recorder
+    try:
+        m6 = _mundo_do_acompanhamento()
+        m6["work_waits"] = [espera_ativa(vence=vencida)]
+        _b6, _r6, _e6 = _vigiar(m6)
+        primeira = list(chamadas)
+
+        chamadas[:] = []
+        m6b = _mundo_do_acompanhamento()
+        ja_avisada = espera_ativa(vence=vencida)
+        ja_avisada["avisos"] = 1
+        m6b["work_waits"] = [ja_avisada]
+        b6b, r6b, _e6b = _vigiar(m6b)
+        segunda = list(chamadas)
+    finally:
+        AC.entregar_novidade = original2
+    certo(len(primeira) == 1,
+          "[N6] o PRIMEIRO vencimento (avisos 0 -> 1) fala com o cliente UMA vez",
+          "chamadas=%r" % (primeira,))
+    certo(not segunda,
+          "[N6b] a passada seguinte (avisos 1 -> 2) avisa so a EQUIPE, nao o cliente",
+          "chamadas=%r" % (segunda,))
+    par(int((r6b or {}).get("vencidas") or 0) >= 1,
+        "[N6p] e a segunda passada REALMENTE rodou sobre a espera "
+        "(o silencio ao cliente nao e o vigia parado)",
+        "resumo=%r" % (r6b,))
+
+    # ---- N7: duas esperas vencidas, UM aviso a equipe por varredura --------
+    #
+    # 🔴 P1 [2c]: a mesma conversa com espera de travamento E de
+    #    pos-acionamento rende dois alertas por passada ao mesmo grupo, sobre o
+    #    mesmo caso. Alarme repetido e como se ensina uma equipe a ignorar
+    #    alarme (o proprio `abrir_espera` diz isso).
+    m7 = _mundo_do_acompanhamento()
+    m7["work_waits"] = [espera_ativa(vence=vencida),
+                        espera_ativa(vence=vencida, scope="acionamento",
+                                     kind="esperando_humano", ident="ww-ac-1")]
+    avisos_equipe = []
+
+    def _contar_avisos(_envios):
+        HH, _err = importar("app.agents.tools.human_handoff", "a tool nao carrega")
+        if HH is None:
+            return None
+        orig = HH.HumanHandoffTool._avisar_suporte
+
+        async def _duble(self, company_id, conversa, texto=None, *a, **k):  # noqa: ANN001
+            avisos_equipe.append(str(texto or "")[:80])
+            return {"avisado": True, "motivo": ""}
+
+        HH.HumanHandoffTool._avisar_suporte = _duble
+        try:
+            return _vigiar(m7)
+        finally:
+            HH.HumanHandoffTool._avisar_suporte = orig
+
+    _r7, _envios7, exc7 = _com_outbound_dublado(_contar_avisos)
+    certo(exc7 is None and len(avisos_equipe) == 1,
+          "[N7] duas esperas vencidas na MESMA conversa = UM aviso a equipe por varredura",
+          "avisos=%r exc=%r" % (avisos_equipe, exc7))
 
     # ---- N4: o vigia NAO tem porta propria. Com o desligador ligado e SEM
     #          recorder, a saida real tem de ser ZERO.
@@ -2000,8 +2257,11 @@ def bloco_Q():
 
     # 🔴 O handoff SEM `Onde parou`/`O que fazer` NAO conta. Sem esta linha,
     #    "foi para humano" viraria carimbo de resolvido (R8, CLAUDE.md §9.5).
-    quebrados = [dict(t, dossie={"o_que_fazer": ""}) if t.get("dossie") else t
-                 for t in turnos]
+    #
+    # ⚠️ E o que se TIRA e a ESPERA e o estado da ficha -- nao uma chave
+    #    `dossie` inventada. Sem eles o MOTOR nao tem o que escrever em
+    #    `Onde parou`, e e o motor que decide (§9.4).
+    quebrados = [_sem_lastro(t) for t in turnos]
     try:
         r_quebrado = RG.medir(quebrados)
     except Exception as e:  # noqa: BLE001
