@@ -1235,7 +1235,7 @@ class BrandCaptureService:
 
         # 🔴 DEPOIS do update: `_versionar` fotografa a linha COMO ELA ESTA. Antes,
         # a versao guardaria o jeito ANTIGO com o nome do novo.
-        self._versionar(company_id, pid, "jeito_aprovado", ["tone"])
+        self._versionar(company_id, pid, "human_edit", ["tone"])  # o CHECK de brand_profile_versions.reason so aceita capture|human_edit|recapture|revert|seed (canario vivo 06/09); a aprovacao pela administradora E uma edicao humana, e changed_fields=["tone"] a distingue
         return {"ok": True, "tone": validado}
 
     # ==================================================================

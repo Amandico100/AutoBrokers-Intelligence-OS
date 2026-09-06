@@ -471,7 +471,7 @@ def test_aprovar_move_para_tone_versiona_e_limpa_a_proposta():
     assert r["ok"] and linha["tone"]["saudacao"] == "afetiva"
     assert linha["tone_proposto"] is None
     versoes = banco.dados.get("brand_profile_versions") or []
-    assert len(versoes) == 1 and versoes[0]["reason"] == "jeito_aprovado"
+    assert len(versoes) == 1 and versoes[0]["reason"] == "human_edit" and versoes[0]["changed_fields"] == ["tone"]
     # 🔴 a versão fotografa a linha DEPOIS da aprovação
     assert versoes[0]["snapshot"]["tone"]["saudacao"] == "afetiva"
 

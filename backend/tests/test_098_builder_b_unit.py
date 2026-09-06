@@ -18,6 +18,7 @@ real é tocado: os clientes são dublês.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -417,13 +418,18 @@ def porta(monkeypatch):
         return True
 
     async def _enfileirar(company_id, phone, text, kind, summary, *, espera_s,
-                          tentativas=0, adiamentos=0, actor_user_id=None):
-        fila.append({"phone": phone, "kind": kind, "actor_user_id": actor_user_id})
+                          tentativas=0, adiamentos=0, actor_user_id=None,
+                          work_run_id=None):
+        fila.append({"phone": phone, "kind": kind, "actor_user_id": actor_user_id,
+                     "work_run_id": work_run_id})
         return True
 
-    async def _recusa(company_id, actor_user_id, kind, summary):
+    async def _recusa(company_id, actor_user_id, kind, summary, *,
+                      work_run_id=None, phone=""):
+        # ⚠️ CONSERTO 2: o dublê carrega o `work_run_id` e o telefone porque é
+        #    a PRESENÇA do run que escolhe o destino do registro.
         eventos.append({"event_type": "envio.recusado", "actor_id": actor_user_id,
-                        "kind": kind})
+                        "kind": kind, "work_run_id": work_run_id, "phone": phone})
 
     monkeypatch.setattr(po, "_entregar_agora", _entregar)
     monkeypatch.setattr(po, "_enfileirar", _enfileirar)
@@ -460,6 +466,10 @@ def test_g8_vinculo_revogado_zero_entregas_e_evento(porta, monkeypatch):
     assert r["motivo"] == "o vínculo de quem pediu não está mais vigente"
     assert entregas == []
     assert len(eventos) == 1 and eventos[0]["event_type"] == "envio.recusado"
+    # 🔴 CONSERTO 2: sem run, o registro NÃO pode tentar `work_events`
+    #    (`work_run_id` é NOT NULL) — e o telefone chega para achar a ficha.
+    assert eventos[0]["work_run_id"] is None
+    assert eventos[0]["phone"] == "5511999999999"
 
 
 def test_g8_sem_ator_e_o_comportamento_de_hoje(porta, monkeypatch):
@@ -692,8 +702,10 @@ def test_r9_o_envio_humano_do_painel_revalida_o_ator(monkeypatch):
     async def _vinculo(_company_id, _ator):
         return vigente["resposta"]
 
-    async def _registrar(company_id, _ator, kind, _summary):
-        eventos.append({"company_id": company_id, "kind": kind})
+    async def _registrar(company_id, _ator, kind, _summary, *,
+                         work_run_id=None, phone=""):
+        eventos.append({"company_id": company_id, "kind": kind,
+                        "work_run_id": work_run_id})
 
     def _mandou(*a, **_k):
         enviadas.append(a)
@@ -719,6 +731,8 @@ def test_r9_o_envio_humano_do_painel_revalida_o_ator(monkeypatch):
     assert r.status_code == 403, r.text
     assert enviadas == [], "a mensagem SAIU com o vínculo revogado"
     assert len(eventos) == 1 and eventos[0]["company_id"] == "co-alfa"
+    # ⚠️ O painel não tem run: o registro vai para a ficha da conversa.
+    assert eventos[0]["work_run_id"] is None
 
     # 🔴 O PAR: com o vínculo vigente, 1 entrega. Sem ele, um endpoint que
     #    recusasse tudo passaria no teste acima e mataria o atendimento.
@@ -761,3 +775,165 @@ def test_r9_o_work_event_da_recusa_usa_a_coluna_que_existe():
     assert "payload_redacted" in escritas and escritas <= colunas
     # 🔴 O PAR: a coluna do defeito NÃO pode voltar.
     assert '"payload":' not in fonte, "voltou a gravar na coluna fantasma `payload`"
+
+
+
+# ===========================================================================
+# CONSERTO 2 · o registro da recusa tem DOIS destinos — e quem escolhe é o run
+# ===========================================================================
+
+class _TabelaDaFicha:
+    """Um PostgREST mínimo que sabe `in_`, `order` e `update` — e que RECUSA
+    `work_events` sem `work_run_id`.
+
+    🔴 📊 `information_schema.columns` (06/09/2026): `work_events.work_run_id`
+    é NOT NULL. Um dublê que aceitasse esse INSERT deixaria verde exatamente o
+    defeito que o canário vivo mediu (`recusa não pôde ser registrada:
+    APIError`). Aqui ele responde 23502, como o banco.
+    """
+
+    def __init__(self, nome, mundo, registro):
+        self.nome, self.mundo, self.registro = nome, mundo, registro
+        self.filtros, self.dentro, self.op, self.carga = {}, None, "select", None
+
+    def select(self, *_a, **_k):
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def eq(self, coluna, valor):
+        self.filtros[coluna] = str(valor)
+        return self
+
+    def in_(self, coluna, valores):
+        self.dentro = (coluna, [str(v) for v in valores])
+        return self
+
+    def insert(self, carga):
+        self.op, self.carga = "insert", carga
+        return self
+
+    def update(self, carga):
+        self.op, self.carga = "update", carga
+        return self
+
+    def _casa(self, linha):
+        if any(str(linha.get(k)) != v for k, v in self.filtros.items()):
+            return False
+        if self.dentro and str(linha.get(self.dentro[0])) not in self.dentro[1]:
+            return False
+        return True
+
+    def execute(self):
+        linhas = self.mundo.setdefault(self.nome, [])
+        self.registro.append({"tabela": self.nome, "op": self.op,
+                              "carga": self.carga, "filtros": dict(self.filtros)})
+        if self.op == "insert":
+            if self.nome == "work_events" and not (self.carga or {}).get("work_run_id"):
+                raise RuntimeError('23502: null value in column '
+                                   '"work_events.work_run_id" violates not-null')
+            linhas.append(dict(self.carga))
+            return _Res([dict(self.carga)])
+        if self.op == "update":
+            tocadas = [l for l in linhas if self._casa(l)]
+            for l in tocadas:
+                l.update(self.carga or {})
+            return _Res([dict(l) for l in tocadas])
+        return _Res([dict(l) for l in linhas if self._casa(l)])
+
+
+def _banco_da_ficha(monkeypatch, conversas):
+    mundo = {"conversations": conversas, "work_events": []}
+    registro = []
+
+    class _Cli:
+        def table(self, nome):
+            return _TabelaDaFicha(nome, mundo, registro)
+
+    class _DbSinc:
+        client = _Cli()
+
+    import app.core.database as dbmod
+    monkeypatch.setattr(dbmod, "get_supabase_client", lambda: _DbSinc())
+    return mundo, registro
+
+
+def test_r9_sem_run_a_recusa_vai_para_a_ficha_da_conversa(monkeypatch):
+    """🔴 O defeito que o canário vivo pegou em 06/09/2026.
+
+    `work_events.work_run_id` é NOT NULL (📊 information_schema) e o envio do
+    painel não tem run: o INSERT levantava `APIError` dentro do `except` mudo e
+    a recusa **não ficava registrada em lugar nenhum**. O destino que sempre
+    existe é a ficha da conversa — o mesmo precedente da 097.1
+    (`atendimento/acompanhamento.py::_registrar`).
+    """
+    import app.services.platform_outbound as po
+
+    conversa = {"id": "cv-1", "company_id": "co-alfa",
+                # 📊 gravado SEM o nono dígito de propósito: `variantes_br`
+                #    (SPEC-097) é o que faz o telefone com 9 casar com este.
+                "user_phone": "551100000001", "ficha_atendimento": {}}
+    mundo, registro = _banco_da_ficha(monkeypatch, [conversa])
+
+    asyncio.run(po._registrar_envio_recusado("co-alfa", "u-demitido", "other", "x",
+                                             phone="5511900000001"))
+
+    assert mundo["work_events"] == [], "tentou `work_events` sem run (NOT NULL)"
+    anotadas = conversa["ficha_atendimento"].get("envios_recusados") or []
+    assert len(anotadas) == 1
+    assert "vínculo" in anotadas[0]["motivo"] and anotadas[0]["ator"] == "u-demitido"
+    # ⛔ §7: nem telefone nem texto da mensagem na ficha.
+    assert "5511900000001" not in json.dumps(anotadas[0])
+    # 🔴 §7: o UPDATE é filtrado por `company_id` — nunca só por `id`.
+    upd = [w for w in registro if w["op"] == "update"]
+    assert len(upd) == 1 and upd[0]["filtros"].get("company_id") == "co-alfa"
+
+
+def test_r9_com_run_a_recusa_e_um_work_event(monkeypatch):
+    """🔴 O PAR. Com run, o Work Event é possível — e é o registro certo.
+
+    Sem este lado, "0 eventos" acima poderia ser mérito de uma função quebrada.
+    """
+    import app.services.platform_outbound as po
+
+    conversa = {"id": "cv-1", "company_id": "co-alfa",
+                "user_phone": "5511900000001", "ficha_atendimento": {}}
+    mundo, _registro = _banco_da_ficha(monkeypatch, [conversa])
+
+    asyncio.run(po._registrar_envio_recusado(
+        "co-alfa", "u-demitido", "other", "x",
+        work_run_id="99999999-9999-4999-8999-999999999999",
+        phone="5511900000001"))
+
+    assert len(mundo["work_events"]) == 1
+    linha = mundo["work_events"][0]
+    assert linha["work_run_id"] == "99999999-9999-4999-8999-999999999999"
+    assert linha["company_id"] == "co-alfa" and linha["event_type"] == "envio.recusado"
+    assert "vínculo" in linha["message_human"]
+    # ⛔ `id` é GENERATED ALWAYS AS IDENTITY (📊 information_schema): mandar
+    #    valor nele é erro 428C9.
+    assert "id" not in linha
+    # ⚠️ Com run, a ficha não é usada: o registro tem UM destino por vez.
+    assert not (conversa["ficha_atendimento"].get("envios_recusados") or [])
+
+
+def test_r9_sem_conversa_o_registro_e_um_warning_sem_pii(monkeypatch, caplog):
+    """O envio a quem nunca falou com a corretora: não há ficha, e não se
+    inventa uma. 📊 É o caminho que o canário 098 mede (telefone que não é de
+    ninguém) — e o aviso não pode carregar o número."""
+    import logging
+
+    import app.services.platform_outbound as po
+
+    mundo, _registro = _banco_da_ficha(monkeypatch, [])
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(po._registrar_envio_recusado("co-alfa", "u-demitido", "other", "x",
+                                                 phone="5500000000098"))
+    assert mundo["work_events"] == []
+    avisos = [r.getMessage() for r in caplog.records
+              if "sem conversa para o telefone" in r.getMessage()]
+    assert len(avisos) == 1 and "5500000000098" not in avisos[0]

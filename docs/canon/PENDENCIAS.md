@@ -10426,3 +10426,12 @@ Lente DADO (06/09): outros motivos do Firecrawl (timeout, 5xx, 403) voltam a ser
 
 ## P-098-BILLING-CHECKOUT-SEM-CHAMADOR · `app/api/billing/checkout/subscription` foi migrada para a empresa ativa, mas não tem chamador na UI
 `app/dashboard/plano/page.tsx` virou redirect na 062 e a chave do Stripe é placeholder. A rota agora resolve por `resolveSessionCompany` (098). **Destrava:** decidir se a rota vive (062) ou sai. **Dono:** 🧑 decide.
+
+## P-098-CANARIO-VERSIONA · cada rodada do canário 098 deixa UMA versão marcada em `brand_profile_versions` (append-only)
+📊 06/09: a tabela tem trigger `brand_versions_append_only` (DELETE exige `app.brand_versions_purge=on`, que o PostgREST não seta). O canário aprova um jeito de verdade (é o que provou o CHECK de `reason`), restaura `tone` sem versionar, e a versão fica com o princípio "registro automático do canário da SPEC-098". Hoje: 📊 5 versões assim na Resulta (3 das rodadas que acharam e consertaram o defeito, sem a marca; 2 marcadas). **Destrava:** o serviço governado de purga/offboarding (062/114) com a chave de purga, ou um marcador de canário na tabela. **Dono:** 🤖. **Custo de esquecer:** ruído no histórico de versões da corretora (1 linha por rodada de canário).
+
+## P-098-RUN-NOS-JOBS · os 4 chamadores de sistema de `send_to_client_guarded` não passam `work_run_id`
+Conserto 2 (06/09): `delivery_executor`, `dispatch_followup`, `saudacao_do_religamento` e o drain conhecem (ou poderiam conhecer) o run e não o repassam — a recusa deles, se houvesse ator, cairia na ficha em vez do Work Event. Hoje não têm ator (controle). **Destrava:** repassar `work_run_id` onde existe. **Dono:** 🤖 (099).
+
+## P-098-FIXTURE-NOT-NULL · `schema_vivo.json` não carrega `is_nullable` nem defaults
+O dublê dos guardas responde 42703 a coluna desconhecida, mas aceitava INSERT sem `work_run_id` — foi o canário vivo que pegou o NOT NULL. O conserto 2 pôs o NOT NULL de `work_events` como constante datada no dublê (23502). **Destrava:** a fixture guardar `{tipo, nulo, default}` por coluna e o dublê ler dali. **Dono:** 🤖 (próxima SPEC que tocar a fixture).

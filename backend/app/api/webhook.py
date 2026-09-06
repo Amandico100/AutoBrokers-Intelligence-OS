@@ -1910,8 +1910,17 @@ async def admin_send_message(
         if ator:
             from app.services.platform_outbound import ator_ainda_pode
 
+            # 🔴 CONSERTO 2 — `work_run_id` fica None, e isso é a VERDADE deste
+            # caminho: a atendente responde pelo painel, não há Work Run. 📊
+            # `work_events.work_run_id` é NOT NULL (information_schema,
+            # 06/09/2026), então a recusa aqui é anotada na FICHA da conversa
+            # daquele telefone — o mesmo destino da 097.1
+            # (`atendimento/acompanhamento.py::_registrar`). O `phone` vai
+            # junto só para ACHAR a conversa; ele nunca é gravado.
             if not await ator_ainda_pode(company_id, ator, kind="atendimento_humano",
-                                         summary=(payload.message or "")[:80]):
+                                         summary=(payload.message or "")[:80],
+                                         work_run_id=None,
+                                         phone=(payload.phone or "")):
                 raise HTTPException(
                     status_code=403,
                     detail="Quem pediu o envio não tem mais vínculo vigente nesta corretora.")

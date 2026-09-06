@@ -718,37 +718,120 @@ async def _vinculo_do_ator_vigente(company_id: str, actor_user_id: str) -> bool:
         return False
 
 
-async def _registrar_envio_recusado(company_id: str, actor_user_id: str,
-                                    kind: str, summary: str) -> None:
-    """Grava o Work Event `envio.recusado` — em linguagem humana.
+async def _anotar_recusa_na_ficha(company_id: str, actor_user_id: str,
+                                  motivo: str, phone: str) -> None:
+    """Sem run, a recusa vai para a FICHA da conversa daquela corretora.
 
-    ⛔ **Sem criar run novo.** `work_events` é append-only e aceita
-    `work_run_id` nulo; abrir um run só para registrar uma recusa inventaria um
-    trabalho que ninguém pediu (SPEC-098 §E, Q4).
+    ⚠️ O precedente e a mesma regra da 097.1 (`atendimento/acompanhamento.py`,
+    `_registrar`): `work_events.work_run_id` e NOT NULL, entao o registro que
+    sempre existe e o da conversa.
 
-    ⚠️ Best-effort: a recusa já aconteceu quando esta função roda. Falhar em
-    ESCREVER a recusa não pode fazer a mensagem sair.
+    ⛔ **Sem telefone e sem o texto da mensagem.** A ficha guarda quando, por
+    que e quem pediu — nada que identifique o segurado (CLAUDE.md §7). O teto
+    de 20 entradas existe para a ficha nao crescer sem fim.
+
+    ⚠️ **Sem conversa para este telefone, o registro e um `logger.warning` com
+    a CONTAGEM de variantes procuradas** — nunca o numero. E o caminho de um
+    envio a alguem que nunca falou com a corretora; ele nao inventa conversa.
     """
+    try:
+        from app.core.database import get_supabase_client
+
+        variantes = sorted(_phone_variants(phone))
+        if not variantes:
+            logger.warning("[PLATFORM SEND] recusa sem telefone utilizável em %s "
+                           "— nada anotado", company_id)
+            return
+        db = get_supabase_client().client
+
+        def _achar():
+            return (db.table("conversations")
+                    .select("id, ficha_atendimento")
+                    .eq("company_id", str(company_id))          # 🔴 §7
+                    .in_("user_phone", variantes)
+                    .order("last_message_at", desc=True)
+                    .limit(1).execute())
+
+        achadas = (await asyncio.to_thread(_achar)).data or []
+        if not achadas:
+            logger.warning("[PLATFORM SEND] recusa sem conversa para o telefone "
+                           "em %s (%d variante(s) procuradas) — nada anotado",
+                           company_id, len(variantes))
+            return
+
+        conversa = achadas[0]
+        ficha = conversa.get("ficha_atendimento")
+        ficha = dict(ficha) if isinstance(ficha, dict) else {}
+        anteriores = ficha.get("envios_recusados")
+        anteriores = list(anteriores) if isinstance(anteriores, list) else []
+        anteriores.append({"em": _agora().isoformat(),
+                           "motivo": str(motivo or ""),
+                           "ator": str(actor_user_id or "")})
+        ficha["envios_recusados"] = anteriores[-20:]
+
+        def _gravar():
+            return (db.table("conversations")
+                    .update({"ficha_atendimento": ficha})
+                    .eq("company_id", str(company_id))          # 🔴 §7
+                    .eq("id", str(conversa.get("id"))).execute())
+
+        await asyncio.to_thread(_gravar)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PLATFORM SEND] recusa não pôde ser anotada na ficha: %s",
+                     type(exc).__name__)
+
+
+async def _registrar_envio_recusado(company_id: str, actor_user_id: str,
+                                    kind: str, summary: str, *,
+                                    work_run_id: Optional[str] = None,
+                                    phone: str = "") -> None:
+    """A recusa fica CONTAVEL — em linguagem humana, e em um de DOIS lugares.
+
+    🔴 **Com `work_run_id` -> Work Event `envio.recusado`. Sem ele -> a ficha
+    da conversa.** 📊 Medido em `information_schema.columns` (06/09/2026):
+    `work_events.work_run_id` e **NOT NULL** e `id` e `GENERATED ALWAYS AS
+    IDENTITY` — insistir no evento sem run levantava `APIError` e a recusa nao
+    ficava registrada em lugar nenhum. A docstring anterior afirmava o oposto
+    ("aceita `work_run_id` nulo"): era falso, e o canario vivo mostrou o
+    `[PLATFORM SEND] recusa nao pode ser registrada: APIError`.
+
+    ⛔ **Sem criar run novo.** Abrir um run so para registrar uma recusa
+    inventaria um trabalho que ninguem pediu (SPEC-098 §E, Q4) — e por isso o
+    caminho sem run escreve na conversa, como faz a 097.1 em
+    `atendimento/acompanhamento.py:_registrar`.
+
+    ⛔ E o INSERT **nao manda `id`**: a coluna e `GENERATED ALWAYS`, e mandar
+    valor nela e erro `428C9`. Os dois escritores vivos (`acompanhamento.py`,
+    `dispatch_router.py:682`) tambem nao mandam.
+
+    ⚠️ Best-effort: a recusa ja aconteceu quando esta funcao roda. Falhar em
+    ESCREVER a recusa nao pode fazer a mensagem sair.
+    """
+    motivo = ("Mensagem não enviada: o vínculo de quem pediu não está mais "
+              "vigente nesta corretora.")
+    if not str(work_run_id or "").strip():
+        # ⚠️ Nao e silencio: a ficha abaixo guarda. O evento exigiria um run que
+        #    este envio nao tem (`work_run_id` e NOT NULL).
+        await _anotar_recusa_na_ficha(company_id, actor_user_id, motivo, phone)
+        return
     try:
         from app.core.database import get_supabase_client
 
         db = get_supabase_client().client
         await asyncio.to_thread(lambda: db.table("work_events").insert({
-            "company_id": str(company_id),
+            "company_id": str(company_id),                      # 🔴 §7
+            "work_run_id": str(work_run_id),
             "event_type": "envio.recusado",
             "severity": "warning",
             "actor_type": "user",
             "actor_id": str(actor_user_id),
-            "message_human": ("Mensagem não enviada: o vínculo de quem pediu não "
-                              "está mais vigente nesta corretora."),
-            # 🔴 CONSERTO 1 (guarda [J3] do desenhista): a coluna é
-            # `payload_redacted`, não `payload`. 📊 `work_events` em
+            "message_human": motivo,
+            # 🔴 CONSERTO 1 (guarda [J3] do desenhista): a coluna e
+            # `payload_redacted`, nao `payload`. 📊 `work_events` em
             # `tests/fixtures/schema_vivo.json`: id, company_id, work_run_id,
             # work_step_id, attempt_id, event_type, actor_type, actor_id,
             # severity, message_human, **payload_redacted**, created_at.
-            # Com o nome errado, o INSERT falhava com 42703 e a recusa não
-            # ficava registrada em lugar nenhum — e como esta função é
-            # best-effort (`except` mudo), ninguém veria.
+            # ⛔ Sem telefone e sem o texto da mensagem.
             "payload_redacted": {"kind": kind, "resumo": (summary or "")[:200]},
         }).execute())
     except Exception as exc:  # noqa: BLE001
@@ -757,7 +840,9 @@ async def _registrar_envio_recusado(company_id: str, actor_user_id: str,
 
 
 async def ator_ainda_pode(company_id: str, actor_user_id: Optional[str],
-                          *, kind: str = "other", summary: str = "") -> bool:
+                          *, kind: str = "other", summary: str = "",
+                          work_run_id: Optional[str] = None,
+                          phone: str = "") -> bool:
     """A pessoa que pediu este efeito AINDA pode pedi-lo? — a porta R9, uma só.
 
     🔴 SPEC-098 · CONSERTO 1 (red team B4). A revalidação do ator existia e
@@ -784,7 +869,11 @@ async def ator_ainda_pode(company_id: str, actor_user_id: Optional[str],
         return True
     logger.warning("[PLATFORM SEND] recusado: quem pediu não tem mais "
                    "vínculo vigente em %s (kind=%s)", company_id, kind)
-    await _registrar_envio_recusado(company_id, actor_user_id, kind, summary)
+    # 🔴 CONSERTO 2 — o registro tem DOIS destinos, e quem escolhe e a presenca
+    #    do run: `work_events.work_run_id` e NOT NULL (📊 information_schema,
+    #    06/09/2026). Sem run, a recusa vai para a ficha da conversa.
+    await _registrar_envio_recusado(company_id, actor_user_id, kind, summary,
+                                    work_run_id=work_run_id, phone=phone)
     return False
 
 
@@ -792,7 +881,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
                                  kind: str = "other", summary: str = "",
                                  *, temperatura: str = FRIA,
                                  tentativas: int = 0, adiamentos: int = 0,
-                                 actor_user_id: Optional[str] = None) -> Dict[str, Any]:
+                                 actor_user_id: Optional[str] = None,
+                                 work_run_id: Optional[str] = None) -> Dict[str, Any]:
     """Envio guardado: cliente ocupado → FILA (retry); livre → governador → envia.
 
     `temperatura` tem padrão **FRIA** de propósito. Quem esquecer de declarar
@@ -835,7 +925,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     # ⚠️ A pergunta mora em `ator_ainda_pode` (logo acima) desde o CONSERTO 1:
     # o envio humano do painel (`webhook.admin_send_message`) não passa por esta
     # função, e precisava da MESMA porta — não de uma segunda.
-    if not await ator_ainda_pode(company_id, actor_user_id, kind=kind, summary=summary):
+    if not await ator_ainda_pode(company_id, actor_user_id, kind=kind, summary=summary,
+                                 work_run_id=work_run_id, phone=phone):
         return {"status": "recusado",
                 "motivo": "o vínculo de quem pediu não está mais vigente",
                 "ok": False, "queued": False}
@@ -899,7 +990,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     if reason:
         await _enfileirar(company_id, phone, text, kind, summary,
                           espera_s=_RETRY_MIN_S, tentativas=int(tentativas) + 1,
-                          adiamentos=int(adiamentos), actor_user_id=actor_user_id)
+                          adiamentos=int(adiamentos), actor_user_id=actor_user_id,
+                          work_run_id=work_run_id)
         try:
             from app.services.activity_log import log_activity
 
@@ -924,7 +1016,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
                                        espera_s=veredito.esperar_s,
                                        tentativas=int(tentativas),
                                        adiamentos=int(adiamentos) + 1,
-                                       actor_user_id=actor_user_id)
+                                       actor_user_id=actor_user_id,
+                                       work_run_id=work_run_id)
         logger.info(f"[GOVERNADOR] adiado {veredito.esperar_s}s company={company_id}: "
                     f"{veredito.motivo}")
         return {"ok": bool(enfileirou), "queued": bool(enfileirou), "reason": "governador",
@@ -935,7 +1028,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
 
 async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary: str,
                       *, espera_s: int, tentativas: int = 0, adiamentos: int = 0,
-                      actor_user_id: Optional[str] = None) -> bool:
+                      actor_user_id: Optional[str] = None,
+                      work_run_id: Optional[str] = None) -> bool:
     """Guarda na fila que já existia, com o `next_try` que o chamador mandou.
 
     Os dois contadores viajam com a entrada. Antes eles nasciam zerados a cada
@@ -962,6 +1056,10 @@ async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary
         # Redis, aparece em `MONITOR` e em dump, e CLAUDE.md §7 proíbe PII lá.
         if actor_user_id:
             entry["actor_user_id"] = str(actor_user_id)
+        # ⚠️ Mesma regra para o run: so entra quando existe, e a entrada ANTIGA
+        #    (sem a chave) cai em "sem run" — a recusa dela vai para a ficha.
+        if work_run_id:
+            entry["work_run_id"] = str(work_run_id)
         await r.rpush(_QUEUE_KEY.format(company_id=company_id),
                       json.dumps(entry, ensure_ascii=False))
         return True
@@ -1070,7 +1168,8 @@ async def check_platform_queue() -> int:
                         entry.get("summary") or "",
                         tentativas=int(entry.get("attempts") or 0),
                         adiamentos=int(entry.get("adiamentos") or 0),
-                        actor_user_id=entry.get("actor_user_id"))
+                        actor_user_id=entry.get("actor_user_id"),
+                        work_run_id=entry.get("work_run_id"))
                     if res.get("ok") and not res.get("queued"):
                         sent += 1
                 except Exception as e:  # noqa: BLE001

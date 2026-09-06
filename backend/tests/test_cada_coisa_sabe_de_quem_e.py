@@ -108,6 +108,8 @@ U_SOCIO = "u-socio-0000-4000-8000-000000000001"   # membro das DUAS (os socios r
 U_SO_ALFA = "u-alfa-0000-4000-8000-000000000002"
 U_REVOGADO = "u-revg-0000-4000-8000-000000000003"
 CONVERSA_A = "11111111-1111-4111-8111-111111111111"
+#: 🔴 O run do [J3c] -- o UNICO lado do par em que `work_events` aceita a linha.
+RUN_098 = "99999999-9999-4999-8999-999999999999"
 UUID_FALSO = "00000000-0000-4000-8000-000000000000"
 CHAVE_BOA = "chave-interna-do-bff-098"
 CHAVE_RUIM = "chave-que-nao-vale-098"
@@ -248,10 +250,12 @@ MUTACOES = [
      "M11"),
     # ---- U5: o ator viaja ate o efeito --------------------------------------
     # M13 -- a revalidacao sai da porta unica de saida -> [J2] vermelho
-    # (ancora atualizada em 06/09 depois do CONSERTO 1, que extraiu a pergunta para
-    #  `ator_ainda_pode` -- a lente verdade mediu a ancora antiga como obsoleta)
+    # (ancora atualizada em 06/09: o CONSERTO 1 extraiu a pergunta para
+    #  `ator_ainda_pode`, e o CONSERTO 2 acrescentou `work_run_id`/`phone` a
+    #  chamada -- a ancora e a CHAMADA INTEIRA, nas duas linhas que ela ocupa)
     ("app/services/platform_outbound.py",
-     '    if not await ator_ainda_pode(company_id, actor_user_id, kind=kind, summary=summary):',
+     "    if not await ator_ainda_pode(company_id, actor_user_id, kind=kind, summary=summary,\n"
+     "                                 work_run_id=work_run_id, phone=phone):",
      '    if False:  # _MUTADO_098_M13',
      "M13"),
     # M14 -- a fila ignora o ator (o drain nao repassa) -> [J4] vermelho
@@ -439,6 +443,19 @@ def pegar(modulo, nome, razao):
 _SCHEMA = json.load(io.open(CAMINHO_SCHEMA_VIVO, encoding="utf-8")).get("tabelas", {})
 
 
+#: 🔴 AS COLUNAS **NOT NULL** QUE O DUBLE PRECISA MODELAR (CONSERTO 2).
+#
+# 📊 Medido em `information_schema.columns` (06/09/2026, projeto
+# dcajcvlzcjbmyapmklil): `work_events.work_run_id` e `is_nullable='NO'` e
+# `work_events.id` e `GENERATED ALWAYS AS IDENTITY`. A fixture guarda so o
+# TIPO de cada coluna, entao um duble que so conferia NOME deixava VERDE um
+# INSERT que a producao recusa com 23502 -- e foi exatamente o que aconteceu:
+# o canario vivo imprimiu `recusa nao pode ser registrada: APIError` com o
+# guarda [J3] verde. Esta linha e o CONTROLE que impede o defeito de voltar.
+_NAO_NULO = {"work_events": ("company_id", "work_run_id", "event_type",
+                             "message_human")}
+
+
 def colunas_da_tabela(tabela):
     """`None` para tabela fora da fixture: fora do escopo desta medicao, nao
     trava (mentir para os dois lados seria pior que nao medir)."""
@@ -607,6 +624,17 @@ class _Consulta:
                     "precisa atualizar tests/fixtures/schema_vivo.json)"
                     % (self.tabela, nome))
 
+    def _conferir_nao_nulos(self, carga):
+        """O PostgREST real: coluna NOT NULL sem valor e 23502.
+
+        ⚠️ So no INSERT: um UPDATE que nao toca a coluna nao a apaga."""
+        for coluna in _NAO_NULO.get(self.tabela, ()):  # noqa: SIM118
+            if not str(carga.get(coluna) or "").strip():
+                raise RuntimeError(
+                    '23502: null value in column "%s.%s" violates not-null '
+                    "constraint (duble, medido em information_schema em "
+                    "06/09/2026)" % (self.tabela, coluna))
+
     def _rodar(self):
         linhas = self.banco.dados.setdefault(self.tabela, [])
         self.banco.registro.append({"tabela": self.tabela, "op": self.op,
@@ -627,6 +655,7 @@ class _Consulta:
             for nova in cargas:
                 nova = dict(nova)
                 self._conferir_colunas(nova.keys())
+                self._conferir_nao_nulos(nova)
                 nova.setdefault("id", "%s-%d" % (self.tabela[:3], len(linhas) + 1))
                 linhas.append(nova)
                 saida.append(dict(nova))
@@ -2140,21 +2169,67 @@ def bloco_J():
               and not re.search(r"[A-Z]{2,}_[A-Z]", motivo),
               "[J2b] a recusa vem com motivo em PORTUGUES, citando o vinculo (R9)",
               repr(r_no)[:250])
-        eventos = [l for l in banco.linhas("work_events")
-                   if str(l.get("event_type") or "").startswith("envio.recusado")]
-        tentativas = [r for r in banco.escritas("work_events")]
-        colunas_pedidas = set()
-        for r in tentativas:
-            carga = r.get("carga") or {}
-            colunas_pedidas |= set((carga if isinstance(carga, dict) else {}).keys())
-        fora = sorted(colunas_pedidas - (colunas_da_tabela("work_events") or set()))
-        certo(len(eventos) >= 1,
-              "[J3] a recusa grava o Work Event `envio.recusado` com motivo humano",
-              "tentativas de escrita=%d · colunas que NAO existem em `work_events`: %s "
-              "(o duble responde 42703 igual ao PostgREST -- em producao a recusa "
-              "tambem nao seria registrada)" % (len(tentativas), fora))
-        certo("message_human" in colunas_pedidas,
-              "[J3b] a recusa escreve `message_human` -- o motivo em linguagem de gente (R9)")
+        # ===================================================================
+        # [J3] O PAR DO REGISTRO DA RECUSA -- CONSERTO 2, e ele tem DOIS lados
+        #
+        # 🔴 📊 `work_events.work_run_id` e NOT NULL (information_schema,
+        # 06/09/2026), e o envio do painel NAO tem run. O guarda antigo pedia
+        # so "1 evento gravado" e ficava VERDE com o duble aceitando um INSERT
+        # que a producao recusa com 23502 -- o canario vivo mediu
+        # `recusa nao pode ser registrada: APIError`, e a recusa nao ficava em
+        # lugar nenhum. Agora o duble responde 23502, e a regua e um PAR:
+        #
+        #   COM run  -> 1 Work Event, com `work_run_id` preenchido
+        #   SEM run  -> 0 Work Events e a anotacao na FICHA da conversa
+        # ===================================================================
+        # (a) o lado SEM run -- e o `r_no` logo acima, que nao passou run.
+        eventos_sem_run = banco.escritas("work_events")
+        fichas = [w for w in banco.escritas("conversations", op="update")
+                  if "envios_recusados" in (((w.get("carga") or {})
+                                             .get("ficha_atendimento") or {}))]
+        anotadas = [c for c in banco.linhas("conversations")
+                    if (c.get("ficha_atendimento") or {}).get("envios_recusados")]
+        certo(not eventos_sem_run and len(fichas) == 1 and len(anotadas) == 1,
+              "[J3] SEM `work_run_id`: 0 INSERTs em `work_events` (NOT NULL) e a "
+              "recusa anotada na FICHA da conversa",
+              "work_events=%d · updates com `envios_recusados`=%d · conversas "
+              "anotadas=%d" % (len(eventos_sem_run), len(fichas), len(anotadas)))
+        registro = ((anotadas[0].get("ficha_atendimento") or {})
+                    .get("envios_recusados") or [{}])[-1] if anotadas else {}
+        certo(bool(str(registro.get("motivo") or "").strip())
+              and "vinculo" in _sem_acento(registro.get("motivo"))
+              and str(registro.get("ator") or "") == U_REVOGADO
+              and TELEFONE not in json.dumps(registro),
+              "[J3b] a anotacao traz motivo humano + quem pediu, e NENHUM telefone (§7)",
+              repr(registro)[:250])
+
+        # (b) o lado COM run -- e o unico em que o Work Event pode existir.
+        if "work_run_id" not in parametros:
+            certo(False, "[J3c] COM `work_run_id`: 1 Work Event `envio.recusado`",
+                  "PRODUTO: a porta nao recebe `work_run_id` (CONSERTO 2)")
+        else:
+            r_run, e_run = enviar(actor_user_id=U_REVOGADO, work_run_id=RUN_098)
+            tentativas = banco.escritas("work_events")
+            colunas_pedidas = set()
+            for w in tentativas:
+                carga = w.get("carga") or {}
+                colunas_pedidas |= set((carga if isinstance(carga, dict) else {}).keys())
+            fora = sorted(colunas_pedidas - (colunas_da_tabela("work_events") or set()))
+            eventos = [l for l in banco.linhas("work_events")
+                       if str(l.get("event_type") or "") == "envio.recusado"]
+            certo(len(tentativas) == 1 and len(eventos) == 1 and not fora
+                  and str(eventos[0].get("work_run_id") or "") == RUN_098,
+                  "[J3c] COM `work_run_id`: 1 Work Event `envio.recusado`, com o run "
+                  "preenchido e so colunas que existem",
+                  "escritas=%d · gravados=%d · colunas fora de `work_events`: %s · "
+                  "erro=%s (o duble responde 42703/23502 igual ao PostgREST)"
+                  % (len(tentativas), len(eventos), fora, e_run))
+            certo("message_human" in colunas_pedidas,
+                  "[J3d] a recusa escreve `message_human` -- o motivo em linguagem "
+                  "de gente (R9)")
+            certo(str((r_run or {}).get("status")) == "recusado",
+                  "[J3e] CONTROLE: com run a recusa continua sendo recusa (0 entregas)",
+                  "resposta=%r entregas=%d" % (r_run, len(entregas)))
 
         # J4 -- a fila. O drain re-chama a porta (E8): a entrada com ator
         #       revogado nao pode virar entrega 40 minutos depois.

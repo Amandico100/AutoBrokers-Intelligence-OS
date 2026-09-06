@@ -298,7 +298,7 @@ sem `company_id` (LangMem).
   **`COMMENT ON COLUMN user_memories.user_id`** dizendo que a população é o SEGURADO da conversa, não o membro da corretora (E10; 📊 0/41 são membros). Advisors antes/depois no relatório.
 - U2.2 `backend/app/services/brand/jeito_de_atender.py`: `ESCOLHAS` (R3), `validar(dict) -> Jeito` (rejeita valor fora do enum, trunca listas, descarta injeção — R4),
   `render(jeito) -> str` (≤1.400 chars — TETO_BLOCO, E13 —, PT-BR, começa por `### 🏢 O JEITO DESTA CORRETORA`), `vazio(jeito) -> bool` (mede conteúdo, não presença — D18). `BrandCaptureService.aprovar_jeito(company_id, user_id, ajustes)`:
-  valida, move `tone_proposto`→`tone`, `_versionar(reason="jeito_aprovado")`, limpa a proposta. `propor_jeito(company_id, jeito, origem, evidencia)` grava a proposta.
+  valida, move `tone_proposto`→`tone`, `_versionar(reason="human_edit", changed_fields=["tone"])` (o CHECK de `reason` só aceita `capture|human_edit|recapture|revert|seed` — canário vivo 06/09), limpa a proposta. `propor_jeito(company_id, jeito, origem, evidencia)` grava a proposta.
 - U2.3 `propor_jeito_das_conversas(company_id, amostra=300)`: lê saídas humanas (`role='assistant'`, `origem='espelho'`, `channel='whatsapp'`) das conversas que passam em
   `e_atendimento_de_seguro`; **estatística determinística** (taxa de abertura afetiva, emoji, `Sr/Sra`, primeira pessoa, tamanho médio, acentuação) → mapeia para as cinco escolhas
   por regra publicada; UMA chamada de modelo (`brand_capture`) só para `principios`/`termos_preferidos`/`evitar` a partir de 60 trechos anonimizados; `evidencia` = as taxas +
