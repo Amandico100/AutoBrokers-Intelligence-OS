@@ -185,15 +185,18 @@ REGISTRADOS e os filtros APLICADOS). A rede fica FECHADA. Quando um modulo do
 produto nao importa nesta maquina, o bloco mostra a CAUSA CRUA -- nunca "ainda
 nao existe" (a licao da 096).
 
-🔴 CADA ASSERCAO EXECUTA O PRODUTO. As excecoes sao [E3] e [I1] -- gate e
-ausencia de motor sao FORMA da fonte (CLAUDE.md §9.4, a excecao escrita) -- e
-cada uma vem com o seu cortador-PAR, que prova que a leitura CONSEGUE acusar.
+🔴 CADA ASSERCAO EXECUTA O PRODUTO. A UNICA excecao e [I1] -- "nao existe
+motor novo" e ausencia, e ausencia so se le na fonte (CLAUDE.md §9.4, a
+excecao escrita) --, e ela vem com o cortador-PAR que prova que a leitura
+CONSEGUE acusar. ⚠️ [E3] e [C5] JA foram para execucao ([E3] roda o trecho de
+`graph.py` com `exec`; [C5] chama `_titulo_humano`/`_o_que_fazer`), e esta
+docstring dizia o contrario ate a lente DADO+VERDADE apontar (P3-1).
 
 Rodar:  PYTHONIOENCODING=utf-8 python tests/test_o_caso_se_explica_sozinho.py
         (de dentro de `backend/`)
         `--mutar` roda as mutacoes por COPIA, cada uma em SUBPROCESSO sobre a
         copia mutada, restaurando em `finally`; as checagens de FORMA ([E3],
-        [I1], [C5]) rodam so na fonte LIMPA. `--mutar U5` roda so ela.
+        [I1]) roda so na fonte LIMPA. `--mutar U5` roda so ela.
 """
 from __future__ import annotations
 
@@ -319,12 +322,18 @@ MUTACOES = [
      "esperando_seguradora", "esperando_seguradora_MUTADO_0971_U5B",
      "U5B"),
     # ---- v1.2 (R10/R11/R8, SPEC §4 G) -------------------------------------
-    # U6 -- a novidade SAI mesmo com o agente desligado -> [M2] vermelho
+    # U6 -- a porta sempre deixa passar -> [M2]x3 e [N4] vermelhos
+    #      ⚠️ A ancora carrega o `async` e o INICIO da assinatura real.
+    #      📊 A lente mediu (05/09/2026): a versao anterior ancorava em
+    #      `"def pode_falar_com_o_cliente("` e produzia
+    #      `def pode_falar...(*a, **k)` seguido de `async def _original(db,` --
+    #      o modulo virava SyntaxError e o vermelho saia em `[M1]/[N1] importa`.
+    #      🔴 Mutacao que reprova por OUTRO motivo nao mede a regra.
     ("app/atendimento/acompanhamento.py",
-     "def pode_falar_com_o_cliente(",
-     "def pode_falar_com_o_cliente(*a, **k):  # _MUTADO_0971_U6\n"
+     "async def pode_falar_com_o_cliente(db, company_id: str,",
+     "async def pode_falar_com_o_cliente(*a, **k):  # _MUTADO_0971_U6\n"
      '    return True, ""\n\n\n'
-     "def _pode_falar_com_o_cliente_original(",
+     "async def _pode_falar_com_o_cliente_original(db, company_id: str,",
      "U6"),
     # U6B -- o vigia manda ao cliente por fora da porta unica -> [N4] vermelho
     ("app/tasks/handoff_watchdog.py",
@@ -588,6 +597,13 @@ class _Consulta:
             saida = []
             for nova in cargas:
                 nova = dict(nova)
+                # 🔴 O banco recusa. O dublê tambem -- com o MESMO codigo.
+                for coluna in NAO_NULO.get(self.tabela, ()):
+                    if nova.get(coluna) is None:
+                        raise RuntimeError(
+                            '23502: null value in column "%s" of relation "%s" '
+                            "violates not-null constraint (duble, schema medido "
+                            "em 05/09/2026)" % (coluna, self.tabela))
                 nova.setdefault("id", "%s-%d" % (self.tabela[:3], len(linhas) + 1))
                 nova.setdefault("created_at", "2026-09-05T12:00:00+00:00")
                 linhas.append(nova)
@@ -622,6 +638,26 @@ class _ConsultaSincrona(_Consulta):
 
     def execute(self):  # type: ignore[override]
         return self._rodar()
+
+
+#: 🔴 AS COLUNAS `NOT NULL` QUE O BANCO IMPOE DE VERDADE.
+#:
+#: 📊 Medido em 05/09/2026 (`information_schema.columns` + `pg_constraint`,
+#: lente DADO+VERDADE):
+#:
+#:     work_events.work_run_id | uuid | is_nullable = NO
+#:     fk_work_events_run_same_company (work_run_id, company_id) -> work_runs
+#:     work_waits.work_run_id  | uuid | is_nullable = YES   <- a espera PODE
+#:                                                             nascer sem run
+#:
+#: ⚠️ E isso NAO e detalhe de schema: 📊 4 de 729 conversas tem `work_run`.
+#: Um dublê que aceita `work_run_id: null` deixa VERDE uma escrita que a
+#: producao recusa com 23502 -- e a supressao da novidade sumiria sem rastro,
+#: que e exatamente a contabilidade que [M2b] existe para cobrar.
+NAO_NULO = {
+    "work_events": ("company_id", "work_run_id", "event_type"),
+    "work_waits": ("company_id", "conversation_id", "kind"),
+}
 
 
 class Banco:
@@ -910,9 +946,18 @@ def bloco_B():
           and str(antiga[0].get("satisfeito_por")) == "substituida",
           "[B3] a espera nova SUBSTITUI a anterior no mesmo escopo",
           "rodou=%r exc=%r linhas=%r" % (rodou2, exc2, todas))
-    par(len(ativas) <= 1,
-        "[B3p] depois da substituicao sobra UMA ativa no escopo (o UNIQUE)",
-        "ativas=%r" % (ativas,))
+    # ⚠️ `<= 1` era VERDE COM ZERO -- e zero e o pior desfecho possivel: a
+    #    anterior vira 'substituida' e a nova nao entra, e o caso fica SEM
+    #    estado nenhum (P2-1 da lente; o INSERT engolido do P1 [3] do red
+    #    team faz exatamente isso). Exigir UMA, e que seja a NOVA.
+    certo(len(ativas) == 1
+          and str(ativas[0].get("vence_em")) == "2026-09-20T12:00:00+00:00",
+          "[B3b] sobra EXATAMENTE uma ativa, e e a NOVA (a data nova)",
+          "ativas=%r" % (ativas,))
+    par(bool(antiga) and str(antiga[0].get("satisfeito_por")) == "substituida"
+        and len(ativas) == 1,
+        "[B3p] a anterior saiu por `substituida` E a nova ficou -- nunca ZERO",
+        "antiga=%r ativas=%d" % (antiga, len(ativas)))
 
 
 def bloco_K():
@@ -992,6 +1037,8 @@ def regua_do_dossie_pos(texto):
 
 def bloco_C():
     _p("\n[C] R5/U2.1 -- o dossie de um caso JA ACIONADO diz POS, e nunca 'conclua'")
+    _PA, _erro_pa = importar("app.atendimento.pos_acionamento", "as cartas nao carregam")
+    PA_ESPERA = getattr(_PA, "texto_da_espera", None) if _PA else None
     HH, erro = importar("app.agents.tools.human_handoff",
                         "a tool de handoff ainda nao carrega")
     if HH is None:
@@ -1019,9 +1066,36 @@ def bloco_C():
           "problemas=%r\n         dossie=%r" % (problemas, dossie[:400]))
     certo("VIDROS" in dossie.upper(),
           "[C2] o titulo nomeia o SERVICO em lingua de gente", dossie[:120])
-    certo("esperando" in dossie.lower() and "29/08" in dossie,
-          "[C2b] `Onde parou` diz de quem se espera E desde quando (a espera ativa)",
-          dossie[:400])
+    # ⚠️ `"29/08" in dossie` era carimbo: 29/08 e o `created_at` da fixture,
+    #    e a lente provou com a mutacao L2 (`desde = "29/08"` fixo) que um
+    #    `texto_da_espera` que INVENTA a data passava. A data agora e DERIVADA
+    #    da fixture, e [C2c] a faz VARIAR.
+    desde_iso = espera_ativa()["created_at"]
+    dia_mes = "%s/%s" % (desde_iso[8:10], desde_iso[5:7])
+    certo("esperando" in dossie.lower() and dia_mes in dossie,
+          "[C2b] `Onde parou` diz de quem se espera E desde quando (%s, da fixture)"
+          % dia_mes, dossie[:400])
+
+    # 🔴 [C2c] -- DUAS esperas, DUAS datas, DOIS textos. E o motor
+    #    (`texto_da_espera`) que responde; uma constante daria o mesmo texto.
+    if PA_ESPERA is not None:
+        try:
+            a = PA_ESPERA(espera_ativa(desde="2026-08-29T09:00:00+00:00"))
+            b = PA_ESPERA(espera_ativa(desde="2026-09-02T09:00:00+00:00"))
+            exc_te = None
+        except Exception as e:  # noqa: BLE001
+            a = b = ""
+            exc_te = e
+        certo(exc_te is None and "29/08" in a and "02/09" in b,
+              "[C2c] `texto_da_espera` LE a data da espera (29/08 e 02/09)",
+              "exc=%r a=%r b=%r" % (exc_te, a[:120], b[:120]))
+        par(a != b,
+            "[C2p] os dois textos SAO diferentes -- a data nao e constante "
+            "(a mutacao L2 da lente reprovaria aqui)",
+            "a=%r b=%r" % (a[:80], b[:80]))
+    else:
+        certo(False, "[C2c] `texto_da_espera` existe em `pos_acionamento`",
+              "nao consegui importar o motor do texto da espera")
 
     # 🔴 O PAR que prova que a regua distingue: o MESMO caso, o dossie de HOJE.
     banco2 = Banco(mundo, sincrono=True)
@@ -1455,9 +1529,24 @@ def bloco_G():
               "[G5] o MOTOR do dossie entrega `Onde parou` e `O que fazer` "
               "para o turno humano COM lastro",
               "exc=%r dossie=%r" % (exc_d, com_lastro[:220]))
-        certo(int(r.get("handoff_pos") or 0) == len(humanos),
-              "[G5b] a regua conta TODOS os turnos humanos com dossie completo",
-              "handoff_pos=%r humanos=%d" % (r.get("handoff_pos"), len(humanos)))
+        # ⚠️ "turno com caso" NAO e "turno que vai para humano": R9 tira o
+        #    `I` da lista de proposito (nova abertura volta ao CORREDOR, nao ao
+        #    handoff). O esperado sai de `SITUACOES_PARA_HUMANO`, a fonte unica
+        #    -- contar os 6 seria o guarda inventando uma segunda R9.
+        _PA_G, _e_pa_g = importar("app.atendimento.pos_acionamento",
+                                  "as cartas nao carregam")
+        situacoes_r9 = getattr(_PA_G, "SITUACOES_PARA_HUMANO", {}) or {}
+        de_humano = [x for x in humanos
+                     if str(x.get("rotulo_esperado")) in situacoes_r9]
+        certo(bool(de_humano) and int(r.get("handoff_pos") or 0) == len(de_humano),
+              "[G5b] a regua conta os turnos de `SITUACOES_PARA_HUMANO` com dossie completo",
+              "handoff_pos=%r esperados=%d (de %d com caso) rotulos=%r"
+              % (r.get("handoff_pos"), len(de_humano), len(humanos),
+                 sorted(str(x.get("rotulo_esperado")) for x in humanos)))
+        par(len(de_humano) < len(humanos),
+            "[G5b-p] e ha turno com caso que R9 NAO manda para humano (o `I`) -- "
+            "o esperado vem da lista, nao do tamanho da fixture",
+            "com_caso=%d de_humano=%d" % (len(humanos), len(de_humano)))
 
         # 🔴 O CORTADOR: um turno com a chave INVENTADA `dossie` completa, mas
         #    SEM lastro nenhum. Se ele contar, a regua nao esta chamando o
@@ -1868,8 +1957,20 @@ def bloco_M():
               "[M2 · %s] a novidade e GERADA e SUPRIMIDA, e ZERO envio" % nome,
               "exc=%r r=%r envios=%r" % (exc_, r, envios))
         eventos = [c["carga"] for c in banco.escritas("work_events", "insert")]
-        certo(any("suprimida_por" in json.dumps(e, default=str) for e in eventos),
-              "[M2b · %s] a supressao fica REGISTRADA (`suprimida_por`)" % nome,
+        fichas = [c["carga"] for c in banco.escritas("conversations", "update")]
+        na_ficha = any("acompanhamento" in json.dumps(f, default=str) for f in fichas)
+        no_evento = any(e.get("work_run_id") and "suprimida_por" in
+                        json.dumps(e, default=str) for e in eventos)
+        certo(na_ficha or no_evento,
+              "[M2b · %s] a supressao fica REGISTRADA -- na ficha da conversa "
+              "ou num `work_events` COM run" % nome,
+              "ficha=%r work_events=%r" % (fichas, eventos))
+        # 🔴 P1-1 da lente: 📊 4 de 729 conversas tem `work_run`, e
+        #    `work_events.work_run_id` e NOT NULL. Um evento sem run nao e
+        #    "quase gravado": e 23502, engolido pelo `except`, e a supressao
+        #    some. Contabilidade prometida e nao entregue.
+        certo(all(e.get("work_run_id") for e in eventos),
+              "[M2c · %s] nenhum `work_events` e tentado com `work_run_id` NULO" % nome,
               "work_events=%r" % (eventos,))
 
     # ---- o CONTROLE de [M2]: tudo LIGADO, a novidade e entregue -------------
@@ -2279,20 +2380,41 @@ def bloco_Q():
           and getattr(RG, "SITUACOES_PARA_HUMANO", None) is situacoes,
           "[Q4] `SITUACOES_PARA_HUMANO` da regua e o MESMO OBJETO do modulo (§9.4)",
           "cartas=%r regua=%r" % (type(situacoes), type(getattr(RG, "SITUACOES_PARA_HUMANO", None))))
-    fonte_hh = so_o_codigo_py(ler("app/agents/tools/human_handoff.py"))
-    certo("SITUACOES_PARA_HUMANO" in fonte_hh,
-          "[Q4b] o handoff LE a mesma lista (metade fraca: leitura da fonte)",
-          "📊 sem isto, `O que fazer` seria uma segunda verdade sobre R9")
-    par("SITUACOES_PARA_HUMANO" not in so_o_codigo_py(
-            'def _o_que_fazer(c, m):\n    return "Confira e siga."  # sem a lista'),
-        "[Q4p] a fonte-controle SEM a lista e acusada pela mesma leitura")
+    # 🔴 [Q4c] -- EXECUCAO, no molde de [J1]. `grep` do simbolo provava que
+    #    o NOME aparece na fonte, nao que `_o_que_fazer` OBEDECE a lista
+    #    (P2-4 da lente). Aqui a lista muda e o `O que fazer` tem de mudar.
+    if HH is None or not isinstance(situacoes, dict):
+        certo(False, "[Q4c] mudar `SITUACOES_PARA_HUMANO` MUDA o `O que fazer`",
+              "handoff=%r tipo=%r" % (erro if HH is None else "ok", type(situacoes)))
+    else:
+        caso = conversa_acionada()
+        caso["last_message_preview"] = "o prestador nao veio e estou na pista"
+        guardado = dict(situacoes)
+        try:
+            antes = HH._o_que_fazer(caso, "")
+            igual = HH._o_que_fazer(caso, "")
+            situacoes.clear()
+            depois = HH._o_que_fazer(caso, "")
+            exc_q = None
+        except Exception as e:  # noqa: BLE001
+            antes = igual = depois = ""
+            exc_q = e
+        finally:
+            situacoes.clear()
+            situacoes.update(guardado)
+        certo(exc_q is None and antes and depois != antes,
+              "[Q4c] esvaziar `SITUACOES_PARA_HUMANO` MUDA o `O que fazer` do dossie",
+              "exc=%r antes=%r depois=%r" % (exc_q, antes[:110], depois[:110]))
+        par(antes == igual,
+            "[Q4p] sem mexer em nada o texto e IGUAL (a diferenca veio da lista)",
+            "antes=%r igual=%r" % (antes[:80], igual[:80]))
 
 
 # ===========================================================================
 # As mutacoes por COPIA -- so com `--mutar`
 #
 # 🔴 Cada uma roda em SUBPROCESSO sobre a copia MUTADA, e o processo PAI (que
-# tem as checagens de FORMA -- [E3], [I1], [C5] -- na sua propria corrida sobre
+# tem a checagem de FORMA que sobrou -- [I1] -- na sua propria corrida sobre
 # a fonte LIMPA) nunca reusa o placar do filho. Restaura por copia em `finally`.
 # ===========================================================================
 def _nomes_falhos_num_filho():
