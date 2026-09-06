@@ -30,11 +30,11 @@ FAIXA DE RELÓGIO .....  4–6h   ORÇAMENTO ≤ 1,3 M (📊 a 097 gastou ≈2,9
 
 ## 0.1 Telemetria (protocolo §11)
 ```
-começou 05/09 ~17:00 (investigador) · primeira linha de código de produto: {A PREENCHER}
-rodadas de painel: {A PREENCHER}
-defeitos que o painel NÃO pegou e quem pegou: {A PREENCHER}
-rodadas da bateria: {A PREENCHER}
-nota 0–100 do orquestrador: {A PREENCHER}
+começou 05/09 ~17:00 (investigador) · primeira linha de código de produto: 05/09 ~22:00 (builder, depois do gate zero vermelho e da v1.2)
+rodadas de painel: 1 (red team ‖ lente DADO+verdade) + juiz fresco em 2 rodadas (73 → 93)
+defeitos que o painel NÃO pegou e quem pegou: o juiz pegou 5 (a âncora U2 na prosa do conserto [8]; a régua em traceback; `caso` nunca carregado; o `O que fazer` PRÉ no dossiê PÓS; a limpeza do canário contra o append-only) e a ausência de R11 no distiller; o desenhista pegou o próprio carimbo ([N2b] vazio) e o builder pegou dois seus (âncoras em comentário)
+rodadas da bateria: suíte inteira 1× no fim (árvore parada) + guardas node 12/12 + tsc
+nota 0–100 do orquestrador: 92 — o juiz deu 93; desconto meu pela régua REAL só poder medir 91,0 % até o corredor capturar protocolos de verdade (o 96,4 % é projetado, e está escrito como tal)
 ```
 
 ## 1. O que a conversão mediu (e o que mudou o desenho)
@@ -61,7 +61,9 @@ nota 0–100 do orquestrador: {A PREENCHER}
 
 ## 3. Commits
 ```
-24fe713 SPEC v1.0 · d11d257 v1.1 (19 emendas) · 8529008 guardas (gate zero 18 ok · 20 falhas) · c41ceef v1.2 (direção do Founder) · 22d0b57 MUTAÇÃO (polícia 52 ok) · {A PREENCHER}
+24fe713 SPEC v1.0 · d11d257 v1.1 (19 emendas) · 8529008 guardas (gate zero 18 ok · 20 falhas) · c41ceef v1.2 (direção do Founder) · 22d0b57 MUTAÇÃO (polícia 52 ok) ·
+5517427 guardas v1.2 · e157d5b [E] por execução · 0fa413a BUILDER (produto) · 84641ed relatório · c0dd53b sessão REAL na fixture · f7eacbd lente no guarda · 74af224 consertos red team+lente ·
+7745c62/3f0c15f [7][8][9] · 2fed44e BLOCO 0 · 18f0544 MANIFEST+pendências · 2826d43 U2 · 5f94c20 juiz r1 · {FINAL}
 ```
 ## 4. Gate zero
 📊 `python tests/test_o_caso_se_explica_sozinho.py` em `8529008`: **18 ok · 20 falhas · 0 pulados**; blocos [A][B][K][C][D][E][F][G][H][J][L][I] executando o motor real
@@ -92,7 +94,8 @@ python tests/test_o_caso_se_explica_sozinho.py        87 ok · 0 falhas · 0 pul
 regressão (7 guardas de atendimento)                   143 passed (sabe_como_terminou --mutar 3/3 · quem_fala_primeiro · termina_e_o_produto_sabe (migrado §9.3) ·
                                                        handoff_chega_em_alguem · chave_de_juncao · saudacao_do_religamento · chat_fala_como_corretor)
 npm run test:casa                                      0 falhas (dublê com duas esperas; --fila-json com work_waits) · npx tsc --noEmit rc=0
-suíte inteira (builder, árvore em movimento)           938 passed · 8 failed · 38 xfailed — as 8 na linha de base da 097 (rerodada com a árvore parada em §11)
+suíte inteira (árvore parada, HEAD 5f94c20)             944 passed · 7 failed · 38 xfailed · 1 xpassed em 18m02 — triagem isolada: policia = 1 doc (este relatorio sem a nota → preenchida); test_r11_no_destilador 5 passed; sinistro_deixa_rastro 1 passed; 3 guardas-script rc=0; arvore_limpa = harness (P-093B-HARNESS). Nenhuma regressao de produto.
+--mutar final (orquestrador, árvore parada)            PLACAR DAS MUTACOES: 16 rodadas · 16 vermelhas · 0 verdes (rc=0; arvore identica)
 ```
 **A régua no acervo real** (📊 `python scripts/regua_0971.py`, SELECT nos dois tenants, zero PII):
 ```
@@ -103,7 +106,7 @@ resolvido_pelo_agente 102 = 91,1 %  ·  resolvido_sem_humano 102 = 91,1 %  ·  t
 CONTROLE (mapa vazio): 0 = 0,0 %  ← o controle derruba
 ```
 ⚠️ Leitura honesta: no ACERVO HISTÓRICO o agente resolveria 91,1 % dos turnos com intenção por carta; os 10 restantes são humanos por desenho (R9) e, no produto novo,
-recebem o dossiê PÓS no instante do handoff — o que a régua só pode SIMULAR (o juiz mede isso em §7). {JUIZ_REGUA}
+recebem o dossiê PÓS no instante do handoff — o que a régua só pode SIMULAR (o juiz mede isso em §7). Ver §8: o juiz mediu a projeção com o motor real e o controle inverte.
 ## 7. O painel e o juiz
 **Rodada 1 (05/09 ~22:30, red team ‖ lente DADO+verdade sobre `0fa413a`):**
 - 🔴 **Red team — P0: a espera NUNCA nascia.** `_pos_acionamento_do_checkpoint` lia `session['protocolo'/'previsao'/'documentos_pendentes']` — chaves que ninguém escreve;
@@ -121,14 +124,87 @@ recebem o dossiê PÓS no instante do handoff — o que a régua só pode SIMULA
   464 turnos (o relatório mediu 542) porque o `t0` era regex Python sobre `_norm` e o investigador mediu em Postgres (§9.4 — a terceira vez que a lição aparece nesta leva), e o rótulo
   "283 turnos" mentia a unidade (são msgs). P2: `[B3p]` cego (`len<=1`); migration fora do MANIFEST; três listas dos mesmos 3 `kind`. Sólido: D3 CHECK/UNIQUE, D4 `agente_concluiu`
   aditivo, D5 migration idempotente, V4 hash da abertura byte a byte; 108 asserções E · 2 F legítimas · 1 F→E; declaradas 16/16, das suas 6 uma verde (L2 = P1-3).
-- **Consertos:** {CONSERTOS_R1}
-{JUIZ_0971}
+- **Consertos (`74af224`, `7745c62`, `3f0c15f`):** o produto lê `captured` (`schedule.day` em dd/mm/aaaa pelo `instante_br`, nunca MDY; `eta_minutes`); prazo do perfil
+  (`acionamento_profile.prazo_pos_acionamento_horas`, padrão 48 h); espera já aberta sem promessa nova não reabre; o vigia agrupa por conversa, `pos_acionamento` vai a `vencido`
+  SEM `marcar_fim`, UMA mensagem ao cliente por vencimento (avisos 0→1), UM aviso à equipe por conversa; `abrir_espera` valida antes de substituir e devolve a anterior se o
+  INSERT falhar; a supressão vai para `ficha_atendimento.acompanhamento` (work_events só com run); cascata do classificador ajustada com os exemplos reais; a régua executa
+  `_montar_dossie` real, decide por `SITUACOES_PARA_HUMANO` (`I` → `volta_ao_corredor`) e publica corpus e teto ao vivo; `encaminhado` fora do PÓS; transcrição só com a
+  corretora conferida; roteiro do publicador 12/12. `esperando_cliente` ficou FORA por falta de escritor real de "documento pedido" (P-097.1-DOC). Guarda 109 ok · 16/16 · arnês do
+  red team 30 ok.
+**Juiz fresco — rodada 1** (Opus, 211k, HEAD 3f0c15f): **NOTA 73, gate VERMELHO** — os 15 achados do painel CONFIRMADOS CONSERTADOS com controles que invertem, mas 5 defeitos
+NOVOS: (1) P0 `--mutar` 15/16 — a prosa do conserto [8] virou a 1ª ocorrência de "PÓS-ACIONAMENTO" e a U2 mutava o comentário (a segunda vez nesta SPEC: âncora mora na 1ª
+ocorrência em CÓDIGO); (2) a régua terminava em traceback (`medir(com_estado=)`); (3) `handoff_pos` zero por construção (`_ler_acervo` não carregava o `caso`) — a mesma forma do
+P0 do red team; (4) PRODUTO: o `O que fazer` do dossiê PÓS era a recomendação PRÉ-acionamento (R9 inerte; com a lista vazia os 6 continuavam "completos"); (5) o canário vivo não tinha
+volta (`work_events` append-only; run cascateia) e deixou 1 conversa + 1 run + 4 events; J6: R11 não estava no distiller. Canário Q1–Q4 OK e **zero mensagens provado**.
+**Consertos da rodada 1 do juiz (`2826d43`, `5f94c20`):** prosa sem o literal (U2 volta a derrubar [C1]); `medir(turnos, mapa, com_estado)`; `_ler_acervo` carrega a conversa
+real como `caso` e a espera ativa real; `_o_que_fazer` no PÓS vem da situação (R9) + espera e o controle INVERTE (0/6 com a lista vazia); o canário chama
+`_pos_acionamento_do_checkpoint` sem criar run/events e limpa 0/0/0 (o lixo da 1ª corrida purgado por `set_config('app.work_events_purge','on',true)`); o portão R11 entra em
+`attendance_distiller._destilar_sessao` antes da LLM (`test_r11_no_destilador.py`, pessoal → 0 cartas; atendimento → 2).
+**Juiz fresco — rodada 2** (mesmo juiz, HEAD 5f94c20, 238k acumulados): **NOTA FINAL 93/100.** Os 5 defeitos + J6 → CONFIRMADO CONSERTADO por comando: U2 com
+ocorrência única do literal (l.750, o título); régua rc=0 com REAL 91,0 % × PROJETADO 96,4 % × controles; `caso` em 464/464 turnos (a conversa real + a rajada real);
+R9 no dossiê PÓS com ações específicas por situação e o controle com a lista vazia INVERTENDO (0/6); canário sem run/events, limpeza 0/0/0, `messages 25072 → 25072`,
+`platform_sends 5 → 5`, zero órfãos após a purga governada; R11 no distiller antes da LLM. Aberto sem P0/P1: a espera de escopo `acionamento` (086) segue chamando
+`marcar_fim(EXPIROU)` no teto de avisos (legado, não desta SPEC); "pode mandar o guincho" → `N` (não responde errado; não responde); `[E3]` listado como FORMA na docstring;
+`_KINDS_CITAVEIS` (pendência). O `--mutar` do gate final é do orquestrador (§6).
 ## 8. Canário vivo e a régua no acervo
-{A PREENCHER}
+**Canário vivo** (📊 06/09 ~04:30, Resulta, `AUTOBROKERS_CANARIO=1 python scripts/canario_0971.py --vivo`, HEAD 5f94c20; a 1ª corrida do juiz em 3f0c15f fez Q1–Q4 e
+crashou na LIMPEZA — `work_events` é append-only e o run cascateava; o lixo foi purgado por `set_config('app.work_events_purge','on',true)` e o canário deixou de criar run/events):
+```
+CONTROLE ANTES — esperas na conversa canário: 0 → OK
+Q1 âncoras REAIS do corredor `alfa-auto-whatsapp@v1` → captured={protocol: '2026-00000971', schedule: {day: '09/09/2026', at: '14:00'}}
+Q1 checkpoint `captured` → linhas=1 ativas=1 scope=pos_acionamento kind=esperando_seguradora · prazo = a previsão → OK
+Q2 previsão mudou → linhas=2 ativas=1 substituídas=1 → OK
+Q2b novidade: na ficha suprimidas=1 motivo='agente_desligado_na_corretora' · work_events da corretora antes=12984 depois=12984 → OK (zero tentados)
+Q3 dossiê: título PÓS=True · 'Onde parou'=True · 'conclua'=False → OK · CONTROLE: conversa sem acionamento → título antigo → OK
+Q4 marcar_fim → ativas=0 por_desfecho=1 → OK
+LIMPEZA — work_waits=0 · episódios=0 · conversas=0 (esperado 0/0/0)
+```
+📊 Zero mensagens (juiz, SELECT antes/depois): `messages 25072 → 25072` · `platform_sends 5 → 5` · `max(messages.created_at)` inalterado (05/09 14:41). Amandus → Resulta →
+AutoFleet: o canário grava só na Resulta (linhas próprias, removidas); Amandus é WhatsApp pessoal; AutoFleet coberto pela régua (o acervo dela) e pelos guardas com dois tenants.
+
+**A régua no acervo real** (📊 06/09, `python scripts/regua_0971.py`, SELECT nos dois tenants, zero PII, rc=0):
+```
+corpus: 531 conversas varridas · 32 com t0 · 932 msgs do cliente · 464 turnos   (relatório em Postgres: 36 · 1.088 · 542 — §9.4; as duas publicadas)
+denominador (com intenção) 111 · descartados R11 5 · resolvido_por_carta 101 · estado_REAL 0 (📊 esperas ativas no banco: 0) · estado_SIMULADO 25 (💭)
+handoff_pos REAL 0 (o histórico não tem espera escrita) · volta_ao_corredor 1 (rótulo I) · para_humano_sem_dossie 6
+resolvido_pelo_agente 101 = 91,0 %  ·  resolvido_sem_humano 101 = 91,0 %  ·  CONTROLE (mapa vazio) 0 = 0,0 %
+💭 PROJETADO com a espera ESCRITA (o que a U1 faz nascer): carta 101 + handoff_pos 6 → 107 = 96,4 %   (≥ 95 %)
+controles do handoff: SEM estado → 0 completos · com SITUACOES_PARA_HUMANO VAZIA → 0 completos   (o critério inverte — não é carimbo)
+teto de desenho ao vivo em TURNOS: 95,5 % (com J) / 94,6 % (sem J)   ·   teto do relatório em MENSAGENS: 94,7 % / 90,5 %
+```
+**Leitura honesta para o Founder:** hoje, sobre o acervo histórico (que não tem estado escrito), o agente resolveria 91,0 % dos turnos com intenção por carta; os 10 restantes são
+humanos por desenho (R9). Com o estado que esta SPEC faz nascer, o dossiê PÓS fica completo nesses turnos e a régua projeta **96,4 %** — contando o handoff com dossiê
+completo como "a parte do agente terminou" (🧑 decisão de 05/09). As duas linhas ficam publicadas; a de controle derruba.
 ## 9. O que ficou fora · pendências · a caixa do Founder
-{A PREENCHER}
+**Fora (com gatilho):** Rotina/cron para o acompanhamento (nunca — os 3 gatilhos existem) · Follow-up como Auxiliar instalado (fica o rascunho manual lendo o estado) ·
+`esperando_cliente` (sem escritor real de "documento pedido" no corredor → P-097.1-DOC) · classificar mídia (P-097.1-MIDIA-SEM-TEXTO) · markdown no WhatsApp
+(P-097.1-MARKDOWN-NO-CANAL) · procedência das 13.154 cartas (P-097.1-CARTAS-SEM-PROCEDENCIA) · interlocutor por cadastro (P-097.1-INTERLOCUTOR-POR-CADASTRO) · toggle na
+Central (P-097.1-ACOMPANHAMENTO-NA-CENTRAL) · `_KINDS_CITAVEIS` (P-097.1-KINDS-DUPLICADOS) · publicar as cartas no RAG (P-097.1-CARTAS-NO-RAG) · RAG da AutoFleet vazio
+(P-097.1-RAG-AUTOFLEET-VAZIO). Total: **9 P-097.1-***. O resíduo do red team [2] no escopo `acionamento` (a espera do travamento ainda chama `marcar_fim` no teto de avisos)
+é comportamento da 086, não desta SPEC — registrado, não tocado.
+
+**A caixa do Founder (097.1):**
+1. **Implantar** (a `main` leva 097 + 097.1). Nada muda para o segurado enquanto os agentes de atendimento estiverem desligados: a espera nasce, a novidade e a mensagem honesta
+   são GERADAS e SUPRIMIDAS (fica escrito na ficha), o dossiê PÓS chega à equipe pelo caminho de handoff que já existe.
+2. **Quando religar o WhatsApp e ligar os agentes:** o acompanhamento nasce LIGADO por corretora. Para desligar numa corretora: `companies.acionamento_profile.acompanhamento = false`
+   (a tela na Central é P-097.1-ACOMPANHAMENTO-NA-CENTRAL). O prazo padrão da espera é 48 h (`acionamento_profile.prazo_pos_acionamento_horas`).
+3. **Publicar as 6 cartas no RAG das duas corretoras — passo a passo (não urgente):**
+   ```
+   EasyPanel → projeto AutoBrokers → serviço smith-api → aba "Console" (o terminal do contêiner)
+   1) python scripts/publicar_cartas_0971.py            ← mostra o plano: "2 tenants · 6 cartas = 12 documentos"; nada grava
+   2) python scripts/publicar_cartas_0971.py --vivo     ← cria os 12 documentos pelo trilho documents → ingestion_service → Qdrant
+      a última linha tem de ser:  VERIFY: 12/12 documentos nos 2 tenants
+   Se o console abrir fora da pasta do app:  cd /app  (e repita). Rodar duas vezes NÃO duplica (idempotente por corretora + hash).
+   Se aparecer erro com "Qdrant" ou "MinIO": copie a linha do erro e me mande.
+   ```
+4. **A meta:** decidida por você — handoff com dossiê completo conta para o agente. 📊 Hoje 91,0 % por carta no acervo (sem estado escrito); 💭 96,4 % projetado com o estado que
+   esta SPEC faz nascer. O número REAL só aparece quando os agentes estiverem ligados e o corredor capturar protocolos de verdade — a régua está pronta para medir isso.
+5. **A linha da atendente:** pessoal/colegas é descartado antes de virar carta (no distiller) e antes da régua. Nada a decidir; só saber que existe.
 ## 10. Declarações
 - Nenhum motor paralelo: nenhum scheduler/cron/listener novo; a espera nasce no funil existente; a novidade e a mensagem honesta saem pelo caminho de resposta do agente e pelo vigia que já roda.
 - Nenhuma mensagem saiu (agentes desligados; supressão provada); nenhum agente ligado; InfoCap só leitura; nenhum segredo/PII impresso; conversa pessoal descartada.
 ## 11. Entrega
-{A PREENCHER}
+```
+{PUSH_SAIDA}
+```
+

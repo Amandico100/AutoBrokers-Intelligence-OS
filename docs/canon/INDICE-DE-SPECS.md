@@ -228,8 +228,10 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     allowedDomains dos widgets; a chave interna nos dois contêineres).
 ✅  SPEC-097 · A operação tem uma casa — FEITA em 05/09/2026, nota 93 (juiz fresco 93): o desfecho é escrito no episódio (migration 20260905_01 aplicada,
     7.374 elos), o dono é dimensão e a IA cala/volta a falar pelo desfecho, um read model sem teto, Quadro/Caso no celular, linguagem humana (U7). 13 P-097-*.
-1º  SPEC-097.1 · O caso se explica sozinho (pós-acionamento) — EM EXECUÇÃO no mesmo chat (v1.1, aquecimento 78, 19 emendas): o corpus de acionamento
-    está no tenant AutoFleet; meta 95% é inalcançável por desenho (teto 94,7/90,5) → régua em turnos de intenção; U1 estado, U2 handoff PÓS, U3 cartas/prompt/Follow-up, U4 régua
+✅  SPEC-097.1 · O caso se explica sozinho (pós-acionamento) — FEITA em 06/09/2026, nota 93 (juiz fresco 93 em 2 rodadas): a espera nasce do corredor
+    (formato REAL `captured`), o acompanhamento é fase com porta única e 4 desligadores (novidade + mensagem honesta do vigia, suprimidas com o agente desligado),
+    6 cartas geram o prompt, handoff diz PÓS e encerra a parte do agente, R11 no distiller; 📊 régua 91,0 % por carta hoje · 💭 96,4 % projetado. 9 P-097.1-*.
+1º  SPEC-098 · Cada coisa sabe de quem é — CONVERTER MEDINDO, em CHAT NOVO (prompt pronto: `docs/canon/PROMPT-DE-ABERTURA-098-PREENCHIDO.md`)
 3º  SPEC-098 (proposta + research pack na pasta)  →  depois, o MASTERPLAN
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
     ⚠️ converta e execute em seguida, uma por vez. Número medido hoje vence número da proposta. Canário vivo SEMPRE por script,

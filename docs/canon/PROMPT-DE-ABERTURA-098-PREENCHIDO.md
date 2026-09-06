@@ -5,7 +5,7 @@ Não leia PENDENCIAS/INDICE inteiros — por número, quando citados.
 
 ## Estado (o que o chat anterior deixou)
 - `main` em `{MAIN_SHA}` · últimas SPECs fechadas: `097 · A operação tem uma casa (nota 93; juiz fresco 93)` — relatório em
-  `docs/canon/reports/SPEC-097-EXECUTION-REPORT.md` — e `097.1 · O caso se explica sozinho (nota {NOTA_0971}; juiz fresco {JUIZ_0971})` —
+  `docs/canon/reports/SPEC-097-EXECUTION-REPORT.md` — e `097.1 · O caso se explica sozinho (nota 93; juiz fresco 93 em 2 rodadas)` —
   `docs/canon/reports/SPEC-097.1-EXECUTION-REPORT.md` · dossiês do Founder (dashboard):
   https://claude.ai/code/artifact/afe1510d-f31c-4d13-9441-aa920ad2b868 — republicar com `url` a cada bloco fechado (fonte em
   `docs/canon/reports/dossies/dossies-autobrokers.html`; a página nova nasce como `<section class="page" id="p-s0NN">` + link no nav + linha na
@@ -40,7 +40,7 @@ aritmeticamente impossível e trilho de RAG inexistente) — o investigador mede
   mutação por CÓPIA medida em SUBPROCESSO decidida por NOME NOVO (a 097 perdeu uma rodada por guardas que não conseguiam ficar vermelhos; hoje o padrão
   é `scripts/a-operacao-tem-uma-casa.test.mjs --mutar` e `backend/tests/test_o_atendimento_sabe_como_terminou.py --mutar`), dublê que nasce do
   `backend/tests/fixtures/schema_vivo.json` (a 097 caiu em 3 colunas fantasmas), canário vivo POR SCRIPT com `AUTOBROKERS_CANARIO=1` que VERIFICA e
-  LIMPA pelo id e pela corretora, orçamento no card (LEVE 0,5 M · PADRÃO 1,3 M · CRÍTICO 2,5 M — 📊 a 097 gastou ≈2,9 M; a 097.1 {TOKENS_0971}).
+  LIMPA pelo id e pela corretora, orçamento no card (LEVE 0,5 M · PADRÃO 1,3 M · CRÍTICO 2,5 M — 📊 a 097 gastou ≈2,9 M; a 097.1 ≈3,4 M (investigador 146k · aquecimento 160k · desenhista 3 rodadas ≈ 850k · builder 424k + consertos 471k + 217k · painel 359k · juiz 238k)).
 - Um escritor por arquivo; nunca `git add -A`; push só `git push origin <sha>:main` de commits gateados; ⚠️ nunca empurrar um guarda VERMELHO à main
   (a 097.1 fez isso por um hotfix e teve de correr atrás).
 - Segurança: ⛔ nenhuma mensagem sai para segurado/seguradora · ⛔ nenhum agente de atendimento ligado · ⛔ InfoCap somente leitura · ⛔ banco SELECT
