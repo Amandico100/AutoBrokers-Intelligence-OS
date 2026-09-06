@@ -10417,3 +10417,12 @@ A 098 reescreve `companyId` na troca; o resto continua congelado no login (7–3
 
 ## P-098-AGENT-CONFIG-SEM-CHAMADOR-NA-WEB · `agent_config.py` (3 rotas) não tem chamador em fonte do Next
 Builder C (06/09): `grep "agent/config" app` → 0. A 098 pôs `require_internal_key` nelas sem quebrar nada. **Destrava:** apagar ou ligar pela Central de Agentes. **Dono:** 🤖. **Custo de esquecer:** rota de configuração de LLM viva e sem dono.
+
+## P-098-JEITO-NAO-SEPARA-AS-DUAS · a proposta pelas conversas separa Resulta × AutoFleet com 300 mensagens e NÃO com 3.000
+📊 06/09 (lente DADO): `--amostra 300` → Resulta *você/emoji/cordial* × AutoFleet *Sr./Sra./sem emoji/formal*; `--amostra 3000` → o MESMO bloco nas duas: a taxa de `Sr/Sra` da AutoFleet cai de 0,170 para 0,135, abaixo do limiar 0,15 (`capture.py:451,461`), e esse único número decide `tratamento` E `formalidade`. No acervo inteiro (11.887 msgs) `Sr/Sra` é 10,55 % × 9,18 % — quase igual; o discriminador com sinal é a saudação `oiee+` (0,68 % × 0,07 %, 10×) e ele não decide nada. O guarda [G2]/[D] prova a oposição só numa fixture sintética. **Destrava:** limiares relativos (por comparação com a mediana das corretoras) ou pesos por sinal com o `oiee+`/emoji decidindo `saudacao`, e um teste sobre as taxas REAIS gravadas como fixture. Nada chega ao segurado sem aprovação; a evidência (taxas e amostra) vai na tela. **Dono:** 🤖. **Custo de esquecer:** duas corretoras diferentes recebendo a mesma proposta e a corretora ajustando à mão o que o produto prometeu aprender.
+
+## P-098-FIRECRAWL-FRASE-SO-402 · `frase_humana_do_firecrawl` só traduz o 402
+Lente DADO (06/09): outros motivos do Firecrawl (timeout, 5xx, 403) voltam a ser engolidos. **Destrava:** mapa completo de motivo→frase humana. **Dono:** 🤖.
+
+## P-098-BILLING-CHECKOUT-SEM-CHAMADOR · `app/api/billing/checkout/subscription` foi migrada para a empresa ativa, mas não tem chamador na UI
+`app/dashboard/plano/page.tsx` virou redirect na 062 e a chave do Stripe é placeholder. A rota agora resolve por `resolveSessionCompany` (098). **Destrava:** decidir se a rota vive (062) ou sai. **Dono:** 🧑 decide.

@@ -8,6 +8,7 @@ import {
   SessionData,
 } from '@/lib/iron-session';
 import { createClient } from '@supabase/supabase-js';
+import { resolveSessionCompany } from '@/lib/auxiliaries/server';
 import Stripe from 'stripe';
 
 const supabaseAdmin = createClient(
@@ -48,18 +49,18 @@ async function getSessionInfo(): Promise<SessionInfo> {
       }
     }
 
-    // Try user session
+    // Sessão do corretor: a empresa ATIVA (seletor), validada em company_members a
+    // cada request — SPEC-098 U4.b-Next (lente DADO, 06/09: esta era a última rota
+    // de cobrança que resolvia pela PRIMÁRIA e criava o checkout na corretora
+    // errada para um sócio com a outra empresa selecionada).
+    const sessao = await resolveSessionCompany();
+    if (sessao) {
+      return { userId: sessao.userId, companyId: sessao.companyId };
+    }
     const userSession = await getIronSession<SessionData>(cookieStore, sessionOptions);
     if (userSession.userId) {
-      const { data } = await supabaseAdmin
-        .from('users_v2')
-        .select('company_id')
-        .eq('id', userSession.userId)
-        .single();
-
-      if (data?.company_id) {
-        return { userId: userSession.userId, companyId: data.company_id };
-      }
+      // vínculo ativo revogado → resolveSessionCompany devolve null e NÃO se cai na primária
+      return { userId: userSession.userId, companyId: null };
     }
 
     return { userId: null, companyId: null };

@@ -128,12 +128,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const action = String(body.action || '');
 
+  // 📊 SPEC-098 (lente verdade, 06/09): `users_v2` NÃO tem coluna `name` (tem
+  // `first_name`/`last_name`) — o SELECT antigo falhava e toda conversa assumida
+  // gravava o fallback "Atendente humano" (provado no banco: 1/1). Só colunas do
+  // `schema_vivo.json`.
   const { data: meRow } = await supabase
     .from('users_v2')
-    .select('name, email')
+    .select('first_name, last_name, email')
     .eq('id', ctx.userId)
     .maybeSingle();
-  const myName = String(meRow?.name || meRow?.email || 'Atendente humano');
+  const nomeCompleto = [meRow?.first_name, meRow?.last_name].filter(Boolean).join(' ').trim();
+  const myName = String(nomeCompleto || meRow?.email || 'Atendente humano');
 
   if (action === 'claim') {
     // 🔴 SPEC-097 · U2.1 — O CLAIM DEIXOU DE ESCREVER `status`.

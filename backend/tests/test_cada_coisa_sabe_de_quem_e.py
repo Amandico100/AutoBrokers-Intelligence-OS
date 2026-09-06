@@ -248,11 +248,11 @@ MUTACOES = [
      "M11"),
     # ---- U5: o ator viaja ate o efeito --------------------------------------
     # M13 -- a revalidacao sai da porta unica de saida -> [J2] vermelho
+    # (ancora atualizada em 06/09 depois do CONSERTO 1, que extraiu a pergunta para
+    #  `ator_ainda_pode` -- a lente verdade mediu a ancora antiga como obsoleta)
     ("app/services/platform_outbound.py",
-     '    if actor_user_id:\n'
-     '        if not await _vinculo_do_ator_vigente(company_id, actor_user_id):',
-     '    if False:  # _MUTADO_098_M13\n'
-     '        if not await _vinculo_do_ator_vigente(company_id, actor_user_id):',
+     '    if not await ator_ainda_pode(company_id, actor_user_id, kind=kind, summary=summary):',
+     '    if False:  # _MUTADO_098_M13',
      "M13"),
     # M14 -- a fila ignora o ator (o drain nao repassa) -> [J4] vermelho
     ("app/services/platform_outbound.py",
