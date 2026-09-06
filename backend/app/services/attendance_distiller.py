@@ -36,6 +36,12 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+# 🔴 SPEC-097.1 R11 — a FONTE ÚNICA do que é atendimento de seguro, a MESMA que
+# a régua e o prompt leem. ⛔ Reescrever o critério aqui seria uma segunda
+# verdade sobre o que é conversa de trabalho, e a que ficasse para trás seria
+# esta — a que decide o que entra no RAG (§5/§9.4).
+from app.atendimento.pos_acionamento import e_atendimento_de_seguro
+
 logger = logging.getLogger(__name__)
 
 _MARKER = "distiller:last_run"
@@ -1368,6 +1374,31 @@ async def _destilar_sessao(sess: Dict[str, Any], stats: Dict[str, int],
             summary = dict(sess.get("summary") or {})
             summary["distilled"] = {"skipped": "curta"}
             await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
+            return
+
+        # 🔴 SPEC-097.1 R11 — O PORTÃO, **ANTES** DE VIRAR CARTA.
+        #
+        # 🧑 Decisão do Founder (05/09): *"tudo que for pessoal deve ser
+        # descartado"*. A R11 diz que o corte acontece antes de a conversa virar
+        # carta (aqui) **ou** entrar na régua. 📊 O juiz mediu em 06/09/2026 que
+        # só a metade da régua existia: `e_atendimento_de_seguro` não era
+        # importada em lugar nenhum deste arquivo, e o celular da atendente
+        # (creche, fim de semana, *"passa pra fulana"*) seguia caminho até o RAG.
+        #
+        # ⚠️ O portão fica **antes do modelo**, não depois: uma conversa pessoal
+        # não deve custar uma chamada de LLM para depois ser jogada fora.
+        #
+        # ⛔ E o descarte é CONTADO. Portão que barra em silêncio é
+        # indistinguível de portão que não barrou nada (a lição de
+        # `cards_fora_de_escopo`, três parágrafos acima na mesma rodada).
+        if not e_atendimento_de_seguro(text):
+            summary = dict(sess.get("summary") or {})
+            summary["distilled"] = {"skipped": "fora_de_atendimento_r11"}
+            await asyncio.to_thread(_save_session_summary_sync, sess["id"], summary)
+            async with trava:
+                stats["descartadas_r11"] = stats.get("descartadas_r11", 0) + 1
+            logger.info("[DESTILADOR] sessão %s DESCARTADA por R11 (conversa "
+                        "pessoal ou de colegas) — 0 cartas", sess.get("id"))
             return
         raw = await _call_llm(_STAGE1_SYSTEM, text,
                               company_id=str(sess.get("company_id") or ""))

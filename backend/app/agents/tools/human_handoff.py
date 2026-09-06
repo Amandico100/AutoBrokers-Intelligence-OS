@@ -241,12 +241,61 @@ def _quem_fala(conversa: Dict[str, Any]) -> str:
     return "não dá para saber pelo texto — confirme antes de tratar por nome"
 
 
+def _com_a_espera(conversa: Dict[str, Any],
+                  espera: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """O MESMO caso, com a espera lida pendurada nele — uma CÓPIA.
+
+    🔴 Achado [J-4] do juiz (06/09/2026): as peças puras do dossiê recebiam só
+    a conversa, e `_e_pos_acionamento` sem a espera devolvia `False` para todo
+    caso cujo lastro mora **só** em `work_waits` — que é a cena do §0 (a ficha
+    do acervo não tem `dispatch_state`). O título vinha certo, porque
+    `_montar_dossie` passa a espera; a recomendação vinha do ramo de ANTES do
+    acionamento. ⚠️ *Não trava, responde errado, chega à atendente* (§9.5).
+
+    ⛔ E é cópia, nunca mutação: a linha lida do banco não ganha chave que o
+    banco não tem.
+    """
+    caso = dict(conversa or {})
+    if isinstance(espera, dict) and espera:
+        caso["espera"] = dict(espera)
+    return caso
+
+
+def _a_espera_do_caso(conversa: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """A espera pendurada por `_com_a_espera`. `None` quando não há."""
+    espera = (conversa or {}).get("espera")
+    return espera if isinstance(espera, dict) and espera else None
+
+
+def _ultimas_do_cliente(conversa: Dict[str, Any]) -> list:
+    """O que o cliente disse por último — a base do rótulo do turno.
+
+    ⚠️ `mensagens` (a rajada real do turno) tem prioridade sobre
+    `last_message_preview` porque a prévia guarda UMA linha e o turno costuma
+    ter mais de uma: 📊 no acervo, *"muito abuso"* + *"disseram que o prestador
+    foi ao local mas não foi"* chegam juntas, e só a segunda diz o que houve.
+    """
+    msgs = (conversa or {}).get("mensagens")
+    if isinstance(msgs, (list, tuple)) and msgs:
+        return [str(m or "") for m in msgs][-4:]
+    return [str((conversa or {}).get("last_message_preview") or "")]
+
+
+#: 🔴 A recomendação de um caso já acionado cuja situação a R9 **não conhece**.
+#: ⚠️ Ela é uma CONSTANTE de propósito, e a régua sabe disso: um dossiê cujo
+#: *"O que fazer"* é esta linha **não conta** como dossiê completo (R8). Sem
+#: essa distinção, esvaziar `SITUACOES_PARA_HUMANO` deixaria os dossiês
+#: "completos" do mesmo jeito e a R9 seria inerte — foi o [J-4] do juiz.
+RECOMENDACAO_SEM_SITUACAO = (
+    "Cobrar quem está devendo (a seguradora ou a loja) e responder aqui.")
+
+
 def _o_que_ele_quer(conversa: Dict[str, Any]) -> str:
     """O rótulo do turno, em português — do MESMO motor da régua (§9.4)."""
     try:
         from app.atendimento.pos_acionamento import CATEGORIAS, classificar_turno
 
-        rotulo = classificar_turno([str(conversa.get("last_message_preview") or "")])
+        rotulo = classificar_turno(_ultimas_do_cliente(conversa))
         return CATEGORIAS.get(rotulo) or "não deu para entender o que ele quer"
     except Exception as exc:  # noqa: BLE001
         logger.warning("[HumanHandoff] rótulo do turno indisponível (%s)",
@@ -375,38 +424,46 @@ def _o_que_fazer(conversa: Dict[str, Any], motivo: str) -> str:
     O agente conduziu a conversa inteira e sabe onde parou — entregar isso
     mastigado é a diferença entre ela agir em dez segundos e ela reler tudo.
     """
+    # 🔴 SPEC-097.1 R5/R9 — O CASO JÁ ACIONADO TEM OUTRA RECOMENDAÇÃO, E ELA
+    #    VEM ANTES DE TUDO.
+    #
+    # ⛔ Antes o `proximo_passo` da ficha vinha primeiro. Ele é escrito pelo
+    # fluxo de ANTES do acionamento ("peça o endereço exato"), e entregá-lo a
+    # um caso que já tem protocolo é mandar a atendente refazer trabalho
+    # entregue — o mesmo defeito do "conclua o acionamento", com outra roupa.
+    #
+    # ⛔ E a razão vem da FONTE ÚNICA `SITUACOES_PARA_HUMANO` (R9), a mesma que
+    # o prompt e a régua leem. Escrever aqui uma segunda lista de "o que fazer
+    # por situação" seria uma segunda verdade sobre R9 — e a que ficasse para
+    # trás seria justamente esta, que é a que a atendente lê.
+    espera = _a_espera_do_caso(conversa)
+    if _e_pos_acionamento(conversa, espera):
+        try:
+            from app.atendimento.pos_acionamento import (
+                SITUACOES_PARA_HUMANO, classificar_turno, texto_da_espera,
+            )
+
+            rotulo = classificar_turno(_ultimas_do_cliente(conversa)
+                                       + [str(motivo or "")])
+            # ⚠️ A espera entra na frase porque *"cobrar"* sem dizer DE QUEM é
+            #    instrução que a atendente não consegue executar (R3).
+            frase = texto_da_espera(espera)
+            quem = (" O caso está %s." % frase) if frase else ""
+            razao = SITUACOES_PARA_HUMANO.get(rotulo)
+            if razao:
+                return ("%s. Responda ao cliente aqui mesmo depois.%s"
+                        % (razao.capitalize(), quem))
+            return RECOMENDACAO_SEM_SITUACAO + quem
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] recomendação de caso já acionado "
+                           "indisponível (%s)", type(exc).__name__)
+            return RECOMENDACAO_SEM_SITUACAO
+
     ficha = conversa.get("ficha_atendimento") or {}
     if isinstance(ficha, dict):
         sugestao = str(ficha.get("proximo_passo") or ficha.get("sugestao") or "").strip()
         if sugestao:
             return sugestao
-
-    # 🔴 SPEC-097.1 R5/R9 — O CASO JÁ ACIONADO TEM OUTRA RECOMENDAÇÃO.
-    #
-    # ⛔ E ela vem da FONTE ÚNICA `SITUACOES_PARA_HUMANO` (R9), a mesma que o
-    # prompt e a régua leem. Escrever aqui uma segunda lista de "o que fazer
-    # por situação" seria uma segunda verdade sobre R9 — e a que ficasse para
-    # trás seria justamente esta, que é a que a atendente lê.
-    if _e_pos_acionamento(conversa):
-        try:
-            from app.atendimento.pos_acionamento import (
-                CATEGORIAS, SITUACOES_PARA_HUMANO, classificar_turno,
-            )
-
-            rotulo = classificar_turno([str(conversa.get("last_message_preview") or ""),
-                                        str(motivo or "")])
-            razao = SITUACOES_PARA_HUMANO.get(rotulo)
-            if razao:
-                return "%s. Responda ao cliente aqui mesmo depois." % razao.capitalize()
-            return ("O acionamento já foi feito: cobre quem está devendo a "
-                    "resposta e volte com o que disseram, mesmo que seja "
-                    "\"ainda sem data\". A pessoa %s."
-                    % (CATEGORIAS.get(rotulo) or "quer uma resposta do caso"))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[HumanHandoff] recomendação de pós-acionamento "
-                           "indisponível (%s)", type(exc).__name__)
-            return ("O acionamento já foi feito: cobre quem está devendo a "
-                    "resposta e volte com o que disseram.")
 
     texto = _texto_do_caso(conversa, motivo)
     if "sinistro" in texto:
@@ -722,7 +779,12 @@ class HumanHandoffTool(BaseTool):
             linhas.append("nada com o cliente. O que falta é a resposta de quem "
                           "está devendo.")
 
-        linhas += ["", "*O que fazer*", _o_que_fazer(conversa, motivo)]
+        # 🔴 [J-4]: a recomendação recebe A ESPERA, não só a conversa. Sem ela
+        #    `_o_que_fazer` reavaliava o estado do caso sem o lastro que trouxe
+        #    o dossiê até aqui e caía no ramo de antes do acionamento — título
+        #    certo, ação errada, e a R9 inerte.
+        linhas += ["", "*O que fazer*",
+                   _o_que_fazer(_com_a_espera(conversa, espera), motivo)]
 
         linhas += ["", _TRACO]
         try:

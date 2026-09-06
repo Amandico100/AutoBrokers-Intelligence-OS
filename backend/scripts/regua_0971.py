@@ -144,6 +144,26 @@ def _secao_do_dossie(texto: str, titulo: str) -> str:
     return " ".join(corpo).strip()
 
 
+def _caso_do_turno(turno: Any) -> Dict[str, Any]:
+    """O CASO deste turno: a conversa lida do banco + a rajada REAL do turno.
+
+    🔴 Achado [J-3] do juiz (06/09/2026): `_ler_acervo` nunca escrevia `caso`,
+    e por isso `_dossie_do_motor` devolvia `""` em **464 de 464** turnos. O
+    motor estava ligado e nunca alimentado — a mesma forma do P0 [1] (leitor
+    sem escritor), e o terceiro termo da R8 não contribuía **por isso**, não
+    por limite do histórico.
+
+    ⚠️ As mensagens do turno viajam DENTRO do caso porque é sobre elas que o
+    motor decide o rótulo (§9.4: o texto vem do acervo, não da prévia de uma
+    linha só).
+    """
+    caso = (turno or {}).get("caso")
+    if not isinstance(caso, dict) or not caso:
+        return {}
+    mensagens = (turno or {}).get("mensagens") or []
+    return dict(caso, mensagens=[str(m or "") for m in mensagens])
+
+
 def _dossie_do_motor(turno: Any) -> str:
     """Roda `HumanHandoffTool._montar_dossie` — o MOTOR REAL, sobre o CASO.
 
@@ -153,8 +173,8 @@ def _dossie_do_motor(turno: Any) -> str:
     escreveria `Onde parou` até para um caso sem lastro nenhum — e a régua
     viraria carimbo (§9.5: o guarda tem de conseguir ficar vermelho).
     """
-    caso = (turno or {}).get("caso")
-    if not isinstance(caso, dict) or not caso:
+    caso = _caso_do_turno(turno)
+    if not caso:
         return ""
     try:
         from app.agents.tools.human_handoff import HumanHandoffTool
@@ -180,7 +200,9 @@ def _dossie_completo(turno: Any) -> bool:
         # 🔴 AS DUAS RESPOSTAS DO MOTOR, importadas do produto — nunca
         #    reescritas aqui. É o que faz esta medição ser sobre o dossiê que a
         #    atendente recebe, e não sobre uma cópia que concorda consigo mesma.
-        from app.agents.tools.human_handoff import _o_que_fazer, _onde_parou
+        from app.agents.tools.human_handoff import (
+            RECOMENDACAO_SEM_SITUACAO, _com_a_espera, _o_que_fazer, _onde_parou,
+        )
     except Exception:  # noqa: BLE001
         return False
 
@@ -193,12 +215,22 @@ def _dossie_completo(turno: Any) -> bool:
         return False
     if "não há espera registrada" in onde.lower():
         return False
+    # 🔴 [J-4] — E A AÇÃO TEM DE SER A DA SITUAÇÃO, NÃO A LINHA GENÉRICA.
+    #
+    # ⛔ `RECOMENDACAO_SEM_SITUACAO` é o que o motor escreve quando a R9 **não
+    #    conhece** a situação do turno: *"cobrar quem está devendo"*. É uma boa
+    #    frase para a atendente e uma péssima prova para a régua — ela é
+    #    CONSTANTE, então aceitá-la faria o dossiê continuar "completo" com
+    #    `SITUACOES_PARA_HUMANO` VAZIA, e a R9 seria inerte (o controle do juiz
+    #    tem de INVERTER: sem a lista, zero completos).
+    if fazer.strip().startswith(RECOMENDACAO_SEM_SITUACAO.strip()):
+        return False
     # ⛔ E as seções têm de carregar exatamente o que o MOTOR produziu: um
     #    título com texto de outra origem seria a régua medindo a si mesma.
-    caso = (turno or {}).get("caso") or {}
+    caso = _caso_do_turno(turno)
     espera = (turno or {}).get("espera_do_caso")
     return bool(_onde_parou(caso, espera).strip() in texto
-                and _o_que_fazer(caso, "").strip() in texto)
+                and _o_que_fazer(_com_a_espera(caso, espera), "").strip() in texto)
 
 
 def _conversas_descartadas(turnos: Iterable[Dict[str, Any]]) -> set:
@@ -217,16 +249,26 @@ def _conversas_descartadas(turnos: Iterable[Dict[str, Any]]) -> set:
             if not e_atendimento_de_seguro({"mensagens": msgs})}
 
 
-def medir(turnos: Iterable[Dict[str, Any]], mapa: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def medir(turnos: Iterable[Dict[str, Any]], mapa: Optional[Dict[str, str]] = None,
+          com_estado: bool = True) -> Dict[str, Any]:
     """As duas réguas sobre uma lista de turnos. **PURA — sem banco e sem LLM.**
 
     `mapa=None` usa o mapa do módulo; `mapa={}` é a LINHA DE CONTROLE, e é ela
     que dá direito à conclusão: se o número não cair sem as cartas, as cartas
     não eram a causa (CLAUDE.md §9.2).
+
+    `com_estado=False` é a SEGUNDA linha de controle: a MESMA passada com a
+    espera arrancada de todo turno. 🔴 Sem ela o `handoff_pos` seria um número
+    que só sobe — e número que não sabe cair não prova causa nenhuma. ⚠️ Era
+    exatamente aqui que a régua morria em traceback ([J-2] do juiz): o bloco
+    de controle chamava um argumento que a função não tinha, e a prova exigida
+    pelo conserto do achado [5] **nunca rodou**.
     """
     if mapa is None:
         mapa = mapa_de_cartas()
     lista = [t for t in (turnos or []) if isinstance(t, dict) and t.get("mensagens") is not None]
+    if not com_estado:
+        lista = [dict(t, espera_do_caso=None, espera_ativa=False) for t in lista]
     descartadas = _conversas_descartadas(lista)
 
     r = {"denominador": 0, "descartados": 0, "resolvido_por_carta": 0,
@@ -357,16 +399,18 @@ def _turnos_da_conversa(mensagens: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         return []
     turnos: List[Dict[str, Any]] = []
     rajada: List[str] = []
+    quando = ""
     for m in mensagens:
         if str(m.get("created_at") or "") <= t0:
             continue
         if str(m.get("role")) == "user":
             rajada.append(str(m.get("content") or ""))
+            quando = str(m.get("created_at") or "") or quando
         elif rajada:
-            turnos.append({"mensagens": list(rajada)})
+            turnos.append({"mensagens": list(rajada), "em": quando})
             rajada = []
     if rajada:
-        turnos.append({"mensagens": list(rajada)})
+        turnos.append({"mensagens": list(rajada), "em": quando})
     return turnos
 
 
@@ -376,6 +420,47 @@ def _turnos_da_conversa(mensagens: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 #: reproduz precisa ser mostrado com a régua que o produziu, nunca escondido.
 CORPUS: Dict[str, Any] = {"conversas": 0, "com_t0": 0, "msgs_do_cliente": 0,
                           "turnos": 0}
+
+#: 📊 Quantas conversas de cada corretora têm espera ATIVA no banco. Preenchido
+#: por `_ler_acervo`. ⚠️ Fica impresso mesmo (e principalmente) quando é zero:
+#: é ele que distingue *"o motor não produz"* de *"o motor não tem o que ler"*.
+ESPERAS_REAIS: Dict[str, int] = {}
+
+
+def _espera_sintetica(turno: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """💭 A espera que a U1 ESCREVERIA para este caso — **ilustrativa** (§12.1).
+
+    ⛔ Ela NUNCA entra na linha REAL. Existe só para responder a pergunta do
+    Founder — *"quando a U1 estiver escrevendo, o número chega à meta?"* — e
+    aparece na saída com o 💭 colado, porque um número projetado citado como
+    medido é o defeito que a §12.1 nomeia.
+
+    A data é a do TURNO REAL: o que é imaginado aqui é a LINHA em `work_waits`,
+    não o acervo.
+    """
+    caso = (turno or {}).get("caso")
+    if not isinstance(caso, dict) or not caso:
+        return None
+    return {"id": "projetada", "company_id": caso.get("company_id"),
+            "conversation_id": caso.get("id"),
+            "kind": "esperando_seguradora", "scope": "pos_acionamento",
+            "status": "ativo", "vence_em": None,
+            "created_at": str((turno or {}).get("em") or "")}
+
+
+def _com_espera_sintetica(turnos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A MESMA lista de turnos, cada um com a 💭 espera projetada.
+
+    ⚠️ **Só a espera do DOSSIÊ muda.** `espera_ativa` (o termo do ESTADO)
+    continua como o banco o entregou: quem projeta o estado é `pct_simulado`,
+    que já existe. Mexer nos dois de uma vez faria dois fatores mudarem na
+    mesma linha, e aí nenhum dos dois responderia por nada (§9.2).
+    """
+    saida = []
+    for turno in turnos:
+        espera = _espera_sintetica(turno)
+        saida.append(dict(turno, espera_do_caso=espera) if espera else dict(turno))
+    return saida
 
 #: A regra de corte da rajada (R1), escrita para poder ser conferida.
 REGRA_DA_RAJADA = ("mensagens `user` consecutivas depois do t0, sem linha do "
@@ -390,9 +475,30 @@ def _ler_acervo() -> List[Dict[str, Any]]:
     turnos: List[Dict[str, Any]] = []
     CORPUS.update({"conversas": 0, "com_t0": 0, "msgs_do_cliente": 0, "turnos": 0})
     for nome, empresa, filtro_fone in TENANTS:
+        # 🔴 [J-3]: a CONVERSA INTEIRA, porque é ela o `caso` que o motor do
+        #    dossiê lê. `ficha_atendimento` e `user_name` não são enfeite: são
+        #    o que decide o título, o serviço e a apólice na tela da atendente.
+        #    ⛔ Só SELECT, e nenhum campo de conteúdo entra na saída (zero PII).
         conversas = (cliente.table("conversations")
-                     .select("id, company_id, user_phone")
+                     .select("id, company_id, session_id, user_name, user_phone, "
+                             "ficha_atendimento, last_message_preview, "
+                             "claimed_by_name")
                      .eq("company_id", empresa).limit(2000).execute().data or [])
+        # 🔴 A ESPERA REAL, se houver. 📊 06/09/2026 são ZERO em toda a tabela —
+        #    e a régua diz isso em voz alta em vez de simular o que não houve.
+        esperas_por_conversa: Dict[str, Dict[str, Any]] = {}
+        try:
+            for linha in (cliente.table("work_waits")
+                          .select("id, company_id, conversation_id, kind, scope, "
+                                  "status, vence_em, created_at")
+                          .eq("company_id", empresa).eq("status", "ativo")
+                          .limit(2000).execute().data or []):
+                chave_w = str(linha.get("conversation_id") or "")
+                if chave_w and chave_w not in esperas_por_conversa:
+                    esperas_por_conversa[chave_w] = linha
+        except Exception:  # noqa: BLE001
+            esperas_por_conversa = {}
+        ESPERAS_REAIS[nome] = len(esperas_por_conversa)
         if filtro_fone:
             padrao = re.compile(filtro_fone)
             conversas = [c for c in conversas
@@ -408,12 +514,15 @@ def _ler_acervo() -> List[Dict[str, Any]]:
                 CORPUS["com_t0"] += 1
                 CORPUS["msgs_do_cliente"] += sum(
                     len(t.get("mensagens") or []) for t in reconstruidos)
+            espera_real = esperas_por_conversa.get(str(conversa["id"]))
             for i, turno in enumerate(reconstruidos):
                 turno["conversa"] = "%s:%s" % (nome[:3].lower(), conversa["id"])
-                # ⛔ `espera_ativa` é FALSO no acervo inteiro, e é um FATO:
-                #    📊 `work_waits` tem zero linhas na vida (E10). A régua diz
-                #    isso em voz alta em vez de simular estado que não houve.
-                turno["espera_ativa"] = False
+                # ⛔ `espera_ativa` sai do BANCO, e hoje é FALSO no acervo
+                #    inteiro — 📊 `work_waits` tem zero linhas ativas (E10). A
+                #    régua lê a tabela e diz o que achou; ela não simula.
+                turno["espera_ativa"] = bool(espera_real)
+                turno["caso"] = dict(conversa)
+                turno["espera_do_caso"] = dict(espera_real) if espera_real else None
                 turnos.append(turno)
     CORPUS["turnos"] = len(turnos)
     return turnos
@@ -532,23 +641,38 @@ def main(argv: Optional[List[str]] = None) -> int:
     _imprimir("🔴 CONTROLE — a MESMA passada com o mapa de cartas VAZIO",
               medir(turnos, mapa={}))
 
+    # 🔴 A LINHA PROJETADA (💭) — a pergunta do Founder, com a marca colada.
+    #
+    # ⚠️ 📊 `handoff_pos` REAL é o que o motor produz com o que ESTÁ ESCRITO
+    # hoje; o PROJETADO é o mesmo motor com a espera que a U1 escreveria. Os
+    # dois ficam impressos SEPARADOS porque somá-los seria publicar uma
+    # projeção com cara de medição (§12.1).
+    projetados = _com_espera_sintetica(turnos)
+    projetado = medir(projetados)
+    _imprimir("💭 PROJETADO — a MESMA passada com a espera que a U1 escreveria",
+              projetado)
+
     # 🔴 OS DOIS CONTROLES DO HANDOFF (R8) — §9.2/§9.5.
     #
     # `handoff_pos` sai do MOTOR do dossiê. Um número que sobe sozinho não prova
     # nada; o que dá direito à conclusão é ele CAIR quando se tira a causa.
-    sem_estado = medir(turnos, com_estado=False)
-    sem_humanos = _sem_situacoes_humanas(turnos)
+    sem_estado = medir(projetados, com_estado=False)
+    sem_humanos = _sem_situacoes_humanas(projetados)
     print("")
     print("  🔴 CONTROLE do handoff PÓS — `handoff_pos` sai do MOTOR do dossiê")
     print("  " + "-" * 68)
-    print("  com o estado escrito (💭 espera sintética) .... %5d" % completo["handoff_pos"])
+    if ESPERAS_REAIS:
+        print("  📊 conversas com espera ATIVA no banco: %s"
+              % ", ".join("%s=%d" % (k, v) for k, v in sorted(ESPERAS_REAIS.items())))
+    print("  📊 handoff_pos REAL (a espera que ESTÁ escrita) %5d" % completo["handoff_pos"])
+    print("  💭 handoff_pos PROJETADO (espera sintética) ... %5d" % projetado["handoff_pos"])
     print("  SEM estado: o motor diz 'não há espera registrada' %2d   %s"
           % (sem_estado["handoff_pos"],
-             "OK" if sem_estado["handoff_pos"] < completo["handoff_pos"]
+             "OK" if sem_estado["handoff_pos"] < projetado["handoff_pos"]
              else "⛔ o guarda NÃO sabe reprovar"))
     print("  com `SITUACOES_PARA_HUMANO` VAZIA ............. %5d   %s"
           % (sem_humanos,
-             "OK" if sem_humanos < completo["handoff_pos"]
+             "OK" if sem_humanos < projetado["handoff_pos"]
              else "⛔ o guarda NÃO sabe reprovar"))
     print("\n  ⚠️ O controle é o que dá direito à conclusão: se o número não cai")
     print("     sem as cartas, não foram elas que resolveram (CLAUDE.md §9.2).")
