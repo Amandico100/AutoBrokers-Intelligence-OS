@@ -1254,6 +1254,20 @@ async def registrar_checkpoint(company_id: str, insurer_phone: str,
         # espera demais" divergiriam, e o grupo receberia dois alarmes com
         # cadências diferentes sobre a mesma conversa (§5).
         await _abrir_espera_do_travamento(db, company_id, session, fase)
+
+        # 🔴 SPEC-097.1 U1.1/U5.1 — E O ACIONAMENTO VIRA UMA ESPERA COM NOME.
+        #
+        # 📊 Medido em 05/09/2026: `work_waits` tem ZERO linhas na vida e
+        # `work_steps` com `step_type='dispatch_phase'` são 12 em todo o banco,
+        # sem um `captured` sequer. Não é que falte escritor: é que o único
+        # escritor que existia só conhecia `needs_human`. Depois do protocolo,
+        # o produto não sabia de quem estava esperando — e "e a previsão do
+        # vidro?" não tinha resposta possível.
+        #
+        # ⚠️ **O mesmo funil, um ponto só.** 📊 `registrar_checkpoint` é
+        # chamado de UM lugar (`save_active_dispatch:306`); os 27 escritores de
+        # `session["state"]` passam todos por aqui. Nenhum motor novo (§5).
+        await _pos_acionamento_do_checkpoint(db, company_id, session, fase)
         return run_id
     except Exception as e:  # noqa: BLE001
         # ERRO, não warning: falhar aqui devolve o produto ao defeito que esta
@@ -1270,6 +1284,135 @@ _ESPERA_DO_TRAVAMENTO_MIN = 30
 #: O escopo da espera aberta por travamento. ⚠️ Fixo de propósito: um wait
 #: ATIVO por escopo, e um acionamento travado é UMA espera, não uma por fase.
 _ESCOPO_DO_TRAVAMENTO = "acionamento"
+
+
+#: 🔴 SPEC-097.1 U1.1 — quanto tempo se espera a seguradora quando ela NÃO
+#: deu previsão, em minutos. ⚠️ Um dia, não trinta minutos: 📊 o caso do acervo
+#: dura 6,9 dias (mediana), e cobrar a loja de meia em meia hora não é
+#: acompanhar, é assediar.
+_ESPERA_DO_POS_ACIONAMENTO_MIN = 24 * 60
+
+
+def _env_int_espera_pos() -> int:
+    import os
+
+    try:
+        n = int(str(os.getenv("POS_ACIONAMENTO_ESPERA_MINUTOS") or "").strip()
+                or _ESPERA_DO_POS_ACIONAMENTO_MIN)
+    except Exception:  # noqa: BLE001
+        return _ESPERA_DO_POS_ACIONAMENTO_MIN
+    return max(1, n)
+
+
+def _do_slot(session: Dict[str, Any], nome: str) -> str:
+    """O valor de um slot, venha ele solto na sessão ou dentro de `slots`."""
+    direto = str((session or {}).get(nome) or "").strip()
+    if direto:
+        return direto
+    slots = (session or {}).get("slots")
+    if isinstance(slots, dict):
+        return str(slots.get(nome) or "").strip()
+    return ""
+
+
+async def _pos_acionamento_do_checkpoint(db, company_id: str,
+                                         session: Dict[str, Any],
+                                         fase: str) -> None:
+    """O acionamento entregou algo — abre a espera e conta a novidade (R4/R10).
+
+    ⛔ **Nunca levanta**: um erro aqui não pode custar o checkpoint, que é a
+    única coisa que impede o acionamento de voltar a morar só no Redis.
+
+    ⛔ **`encaminhado` NÃO entra** (E5). Ele está em `MOTIVO_DO_ESTADO` e
+    `_marcar_fim_do_atendimento` acabou de ENCERRAR o atendimento algumas
+    linhas acima, no mesmo checkpoint: abrir uma espera para um atendimento
+    encerrado é criar trabalho que ninguém vai fazer.
+
+    ⛔ **E o escopo do travamento continua intocado** (E4): a espera nasce em
+    `pos_acionamento`, senão o ramo `else` do helper de cima a satisfaria no
+    mesmo instante em que ela nascesse.
+    """
+    try:
+        from datetime import timedelta
+
+        from app.atendimento import acompanhamento, pos_acionamento
+        from app.services.o_fim_do_atendimento import (
+            ESCOPO_POS_ACIONAMENTO, ESPERANDO_CLIENTE, ESPERANDO_SEGURADORA,
+            abrir_espera,
+        )
+
+        # 🔴 AS DUAS FASES, escritas em POSITIVO. ⛔ `encaminhado` fica de fora
+        #    (E5) e `needs_human` também: aquela é a espera do TRAVAMENTO, e
+        #    ela tem escopo próprio.
+        abre_espera = str(fase or "") in ("captured", "monitoring")
+        if not abre_espera:
+            return
+
+        conversa = str(session.get("mirror_conversation_id") or "").strip()
+        if not conversa or not _UUID.match(conversa):
+            return
+
+        protocolo = _do_slot(session, "protocolo")
+        previsao = _do_slot(session, "previsao")
+        documentos = _do_slot(session, "documentos_pendentes")
+        if not (protocolo or previsao or documentos):
+            # ⚠️ Fase sem entregável nenhum não é espera: é o corredor no meio
+            #    do caminho. Abrir aqui encheria `work_waits` de linhas que
+            #    ninguém consegue satisfazer (o PAR [A2] mede exatamente isto).
+            return
+
+        # ---- de quem se espera --------------------------------------------
+        if documentos and not (protocolo or previsao):
+            kind = ESPERANDO_CLIENTE
+        else:
+            # ⚠️ R2/E13: `esperando_oficina` NÃO é um kind. "a loja" é palavra
+            #    de texto humano; o banco conhece três kinds e só três.
+            kind = ESPERANDO_SEGURADORA
+
+        vence = previsao or (_agora() + timedelta(
+            minutes=_env_int_espera_pos())).isoformat()
+
+        # ---- o estado ANTERIOR, lido ANTES de a nova espera nascer ---------
+        #
+        # 🔴 É a comparação que decide se há NOVIDADE (R10-b). Ler depois de
+        # abrir compararia a linha nova com ela mesma, e o cliente nunca seria
+        # avisado de nada.
+        anterior: Dict[str, Any] = {}
+        try:
+            achado = await (db.client.table("work_waits")
+                            .select("id, vence_em, kind, scope, status, created_at")
+                            .eq("company_id", str(company_id))     # 🔴 §7
+                            .eq("conversation_id", conversa)
+                            .eq("scope", ESCOPO_POS_ACIONAMENTO)
+                            .eq("status", "ativo").limit(1).execute())
+            anterior = (achado.data or [{}])[0] or {}
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[POS-ACIONAMENTO] estado anterior não lido (%s)",
+                           type(erro).__name__)
+
+        mudou = bool(anterior) and str(anterior.get("vence_em") or "") != str(vence)
+
+        await abrir_espera(db, company_id=str(company_id),
+                           conversation_id=conversa,
+                           kind=kind,
+                           scope=ESCOPO_POS_ACIONAMENTO,
+                           vence_em_iso=str(vence),
+                           work_run_id=str(session.get("work_run_id") or ""))
+
+        # ---- a NOVIDADE (U5.1) — pela PORTA ÚNICA, nunca por saída própria --
+        if not mudou:
+            return
+        quando = pos_acionamento._dia_e_mes(vence)
+        texto = ("Novidade no seu caso: a seguradora atualizou a previsão"
+                 + (" para %s." % quando if quando else ".")
+                 + " Se mudar de novo, eu te aviso aqui, sem você precisar "
+                   "perguntar.")
+        await acompanhamento.entregar_novidade(
+            db, company_id=str(company_id), conversation_id=conversa,
+            texto=texto, gatilho="corredor")
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[POS-ACIONAMENTO] espera da fase '%s' não registrada (%s) — "
+                       "o acionamento seguiu normalmente", fase, type(erro).__name__)
 
 
 async def _abrir_espera_do_travamento(db, company_id: str,

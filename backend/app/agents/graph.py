@@ -1092,6 +1092,37 @@ async def _build_initial_state(
     except Exception as e:  # noqa: BLE001 — nunca pode quebrar o chat
         logger.warning("[Assistencia] bloco nao anexado: %s", type(e).__name__)
 
+    # === O QUE VEM DEPOIS DO PROTOCOLO (SPEC-097.1 U3.2, 05/09/2026) ===
+    #
+    # 🔴 O DEFEITO, medido em 05/09: os prompts dos 4 agentes `attendance` têm
+    # 1,5 KB e cobrem **só a ABERTURA** — coletar uma informação por vez, não
+    # inventar protocolo, risco grave vai para humano. **Zero linhas** sobre
+    # andamento, previsão, peça, vistoria, franquia, carro reserva, oficina,
+    # reembolso ou indenização. 📊 E é exatamente aí que mora o tráfego: 64 %
+    # do pós-acionamento do acervo é logística de reparo.
+    #
+    # 🔴 E ELE É GERADO, não constante (E9). O mapa intenção→carta é uma
+    # FUNÇÃO (`mapa_de_cartas`), e este texto sai dela — o mesmo desenho de
+    # `conhecimento_de_assistencia` logo acima, pela mesma razão: uma carta
+    # nova muda o prompt no mesmo instante, e a régua chama o MESMO motor
+    # (CLAUDE.md §9.4).
+    #
+    # 🔴 O GATE É O MESMO da linha 439 e do bloco de acionamento acima: só
+    # quem ATENDE recebe. Ensinar o agente comercial a responder sobre
+    # previsão de peça é ensiná-lo a prometer o que ele não alcança.
+    try:
+        _papel = str((real_agent_data or {}).get("agent_role") or "").strip().lower()
+        if _papel == "attendance":
+            from app.atendimento.pos_acionamento import bloco_do_prompt
+
+            _bloco_pos = bloco_do_prompt()
+            if _bloco_pos:
+                base_instructions = f"{base_instructions}\n\n{_bloco_pos}"
+                logger.info("[PosAcionamento] bloco de acompanhamento no prompt "
+                            "(%d chars)", len(_bloco_pos))
+    except Exception as e:  # noqa: BLE001 — nunca pode quebrar o chat
+        logger.warning("[PosAcionamento] bloco nao anexado: %s", type(e).__name__)
+
     # === COMO FALAR DE NÚMERO (SPEC-097 U7, 05/09/2026) ===
     #
     # 🔴 O DEFEITO, medido pelo Founder no produto vivo: as respostas do chat

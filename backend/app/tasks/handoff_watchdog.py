@@ -568,6 +568,38 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
                          type(exc).__name__, empresa)
             resumo["erros"] += 1
 
+        # ---- ②b A MENSAGEM HONESTA AO CLIENTE (SPEC-097.1 U5.2) -------------
+        #
+        # 🔴 SÓ no escopo do PÓS-ACIONAMENTO. A espera do TRAVAMENTO
+        # (`scope='acionamento'`) segue exatamente como hoje: avisa a equipe e
+        # não fala com o segurado — quem está travado é o corredor, e dizer ao
+        # cliente "ainda sem novidade" quando o robô é que parou seria mentir
+        # sobre de quem se espera.
+        #
+        # 🔴 E ela sai pela PORTA ÚNICA do acompanhamento, nunca por saída
+        # própria. ⚠️ O bloco ② acima manda o dossiê para o
+        # GRUPO DA CORRETORA; mandar por ali o texto do segurado entregaria a
+        # mensagem dele à equipe e não a ele. São dois destinos diferentes, e
+        # é por isso que são duas chamadas.
+        #
+        # ⚠️ UMA POR AVISO, e o mesmo contador: `avisos` já é o relógio deste
+        # laço, e um segundo contador divergiria do primeiro (§5).
+        if str(wait.get("scope") or "") == "pos_acionamento" and avisos <= AVISOS_ATE_EXPIRAR:
+            try:
+                from app.atendimento.acompanhamento import (
+                    MENSAGEM_SEM_NOVIDADE, entregar_novidade,
+                )
+
+                await entregar_novidade(
+                    db, company_id=empresa,                  # 🔴 §7 — da LINHA
+                    conversation_id=conversa_id,
+                    texto=MENSAGEM_SEM_NOVIDADE,
+                    gatilho="espera_vencida")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[EsperaWatchdog] novidade ao cliente não gerada "
+                               "(%s) | empresa=%s", type(exc).__name__, empresa)
+                resumo["erros"] += 1
+
         # ---- ③ o contador, e o FIM depois de N ------------------------------
         try:
             campos = {"avisos": avisos, "updated_at": agora_iso}

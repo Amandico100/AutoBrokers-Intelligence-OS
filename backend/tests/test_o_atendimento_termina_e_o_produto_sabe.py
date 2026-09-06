@@ -393,8 +393,16 @@ def test_marcar_duas_vezes_marca_UMA(  ):
     assert banco.dados["conversations"][0]["resolucao_motivo"] == FIM.ENCAMINHADO, (
         "o segundo motivo sobrescreveu o primeiro — o desfecho REAL foi apagado")
     # 🔴 e o `is_` do UPDATE é o que garante isso
-    _, _, _, nulos, _ = banco.chamadas[1]
-    assert "resolvido_em" in nulos
+    #
+    # ⚠️ Procurado por TABELA, não por posição. 📊 A SPEC-097.1 U1.2 acrescentou
+    # um `UPDATE work_waits` dentro de `marcar_fim` (o desfecho fecha as esperas
+    # do atendimento), e um índice fixo passou a apontar para ele. O que este
+    # gate afirma é o `is_("resolvido_em","null")` do UPDATE **da conversa** —
+    # e é assim que ele continua afirmando isso quando outra escrita entrar.
+    updates_de_conversa = [c for c in banco.chamadas
+                           if c[0] == "update" and c[1] == "conversations"]
+    assert len(updates_de_conversa) == 2, banco.chamadas
+    assert all("resolvido_em" in c[3] for c in updates_de_conversa), banco.chamadas
 
 
 def test_dois_tenants_resolver_em_A_nao_toca_B():
@@ -471,9 +479,25 @@ def test_a_migration_deixa_work_run_id_NULO():
         "a ÂNCORA é a conversa; uma espera sem dono não é varrível")
 
 
-def test_DOIS_waits_ativos_no_mesmo_escopo_sao_RECUSADOS():
+def test_DOIS_waits_ativos_no_mesmo_escopo_sao_IMPOSSIVEIS_e_a_NOVA_SUBSTITUI():
     """Gate ② — ⛔ senão o vencimento dispara duas vezes e a corretora recebe
-    alerta em dobro."""
+    alerta em dobro.
+
+    🔴 **A LIÇÃO NÃO MUDOU; O DESFECHO MUDOU** (CLAUDE.md §9.3, SPEC-097.1
+    R4/U1.2). Continua sendo impossível haver DUAS esperas ativas no mesmo
+    escopo — o `UNIQUE uq_work_waits_ativo_por_escopo` é o que garante isso, e
+    é ele que este teste guarda.
+
+    ⚠️ O que mudou é o que acontece com a SEGUNDA. Até 05/09/2026 ela batia no
+    índice, voltava `ja_existe_espera_ativa` e era **PERDIDA em silêncio** —
+    achado do gate zero da 097.1 ([B3p]/[K2]), e defeito de produto, não de
+    teste: no pós-acionamento isso é a previsão que mudou de 12/09 para 19/09
+    e que ninguém nunca soube; o vigia seguiria cobrando pela data velha.
+
+    Agora a nova SUBSTITUI a anterior: a primeira é fechada com
+    `satisfeito_por='substituida'` **antes** do INSERT, e o que sobra ativo é
+    uma linha só. Manter aqui a afirmação vencida só ensinaria a ignorar teste.
+    """
     banco = _Banco()
     a, _ = asyncio.run(FIM.abrir_espera(banco, company_id=EMPRESA_1,
                                         conversation_id=CONVERSA_1,
@@ -483,11 +507,25 @@ def test_DOIS_waits_ativos_no_mesmo_escopo_sao_RECUSADOS():
                                              conversation_id=CONVERSA_1,
                                              kind=FIM.ESPERANDO_CLIENTE,
                                              vence_em_iso="2026-08-26T13:00:00+00:00"))
-    assert a is True and b is False
-    assert porque == "ja_existe_espera_ativa", (
-        "o UNIQUE virou erro genérico — o chamador não consegue distinguir "
-        "'já esperava' de 'o banco caiu'")
-    assert len(banco.dados["work_waits"]) == 1
+    assert a is True and b is True, (
+        "a segunda espera foi RECUSADA — é o defeito antigo: a previsão nova "
+        f"se perde e o vigia cobra pela data velha ({porque})")
+
+    linhas = banco.dados["work_waits"]
+    ativas = [l for l in linhas if l.get("status") == FIM.ATIVO]
+    assert len(ativas) == 1, (
+        f"⛔ {len(ativas)} esperas ATIVAS no mesmo escopo — o UNIQUE existe "
+        f"exatamente para que isso seja impossível: {linhas}")
+    assert ativas[0]["vence_em"] == "2026-08-26T13:00:00+00:00", (
+        "a que sobrou é a VELHA — substituir ao contrário é pior que não "
+        "substituir")
+
+    # 🔴 A LINHA DE CONTROLE: a anterior não sumiu nem virou "satisfeita" por
+    #    um motivo qualquer. Quem lê o histórico precisa distinguir "o que se
+    #    esperava aconteceu" de "a espera foi trocada por uma mais nova".
+    antigas = [l for l in linhas if l.get("status") != FIM.ATIVO]
+    assert len(antigas) == 1 and antigas[0]["satisfeito_por"] == "substituida", (
+        f"a espera anterior não ficou marcada como substituída: {antigas}")
 
 
 def test_CONTROLE_outro_ESCOPO_pode_esperar_ao_mesmo_tempo():

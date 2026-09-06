@@ -490,6 +490,14 @@ function mundoAlfa() {
     { id: 'ww-5', company_id: CO_ALFA, conversation_id: 'cv-alfa-0004', attendance_session_id: 'as-alfa-0004', kind: 'esperando_cliente', status: 'ativo', scope: 'default', vence_em: null, due_at: null, created_at: iso(AGORA - 1 * D) },
     // e um SATISFEITO, que não pode aparecer como espera ativa
     { id: 'ww-6', company_id: CO_ALFA, conversation_id: 'cv-alfa-0005', attendance_session_id: 'as-alfa-0005', kind: 'esperando_cliente', status: 'satisfeito', scope: 'default', vence_em: iso(AGORA - 9 * D), due_at: iso(AGORA - 9 * D), created_at: iso(AGORA - 10 * D) },
+    // 🔴 SPEC-097.1 U1.3/E6 — A CONVERSA COM **DUAS** ESPERAS ATIVAS.
+    //
+    // ⚠️ Sem este par, a regra da escolha (menor `vence_em`; empate →
+    // `pos_acionamento`) nunca era EXERCITADA: o dublê tinha no máximo uma
+    // espera por conversa, e a projeção passava por sorte. `cv-alfa-0000` já
+    // tinha a do TRAVAMENTO (`ww-1`, vence em 6h); esta é a do PÓS, e vence
+    // ANTES — então é ela que a tela tem de mostrar.
+    { id: 'ww-7', company_id: CO_ALFA, conversation_id: 'cv-alfa-0000', attendance_session_id: 'as-alfa-0000', kind: 'esperando_seguradora', status: 'ativo', scope: 'pos_acionamento', vence_em: iso(AGORA + 2 * H), due_at: iso(AGORA + 2 * H), created_at: iso(AGORA - 1 * D) },
   ];
 
   // 📊 §1.6 — 2 `work_runs` failed COM conversa (R6: `trabalho_falhou`).
@@ -1825,6 +1833,14 @@ if (process.argv.includes('--fila-json')) {
       work_runs: mundoJson.work_runs.map((r) => ({
         id: r.id, company_id: r.company_id, unblock_state: r.unblock_state,
         case_id: r.input_payload?.case_id ?? null,
+      })),
+      // 🔴 SPEC-097.1 [L] — sem as LINHAS de espera, quem lê de fora não tem
+      // como provar QUAL das duas a projeção escolheu (E6). O guarda python
+      // compara o `fonte_id` do item com a linha de menor `vence_em`.
+      work_waits: mundoJson.work_waits.map((w) => ({
+        id: w.id, company_id: w.company_id, conversation_id: w.conversation_id,
+        kind: w.kind, scope: w.scope, status: w.status, vence_em: w.vence_em,
+        created_at: w.created_at,
       })),
     },
   }));

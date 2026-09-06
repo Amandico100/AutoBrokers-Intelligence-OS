@@ -507,8 +507,78 @@ FOLLOWUP_SYSTEM_PROMPT = (
     "desconto, preço ou prazo que não esteja no histórico; não pressione de forma agressiva; se faltar "
     "informação, peça confirmação com naturalidade; não use linguagem robótica; não diga que é uma IA; "
     "no máximo ~500 caracteres; português do Brasil. Escreva SOMENTE o texto final da mensagem, sem "
-    "aspas e sem rótulos."
+    "aspas e sem rótulos. "
+    # 🔴 SPEC-097.1 U3.3 — AS TRÊS COISAS QUE O RASCUNHO TEM DE DIZER.
+    #
+    # 📊 Medido em 05/09/2026: este prompt e o payload do draft não conheciam
+    # `work_waits`, então as instruções (a) e (b) eram literalmente impossíveis
+    # de obedecer — o modelo não tinha de onde tirar "onde o caso está" nem "de
+    # quem se está esperando", e a única saída dele era inventar.
+    "A mensagem diz TRÊS coisas, nesta ordem: (a) onde o caso está; (b) de quem "
+    "se está esperando agora; (c) o que a pessoa precisa fazer — ou que ela não "
+    "precisa fazer nada. "
+    "Quando vier um ESTADO DO CASO no pedido, use exatamente o que estiver "
+    "escrito nele e não acrescente data, prazo, protocolo, valor nem "
+    "autorização que não esteja ali. "
+    "Quando NÃO vier estado nenhum, diga que ainda não houve novidade e que a "
+    "corretora está cobrando — e não invente previsão nem prazo."
 )
+
+#: 🔴 SPEC-097.1 U3.3/E11 — O RASCUNHO DIZ, EM VOZ ALTA, QUE É RASCUNHO.
+#:
+#: 📊 Até 05/09/2026 `dry_run` existia só dentro do `metadata` do
+#: `auxiliary_runs`: **quem chamava a rota não tinha como saber** que aquilo
+#: era um rascunho para aprovação humana. Uma tela que assumisse "enviado" não
+#: teria uma linha para consultar.
+#:
+#: ⚠️ **UMA fonte, dois leitores.** O corpo da resposta e o `metadata` do run
+#: leem daqui. Duas constantes divergiriam, e a rota mentiria para um dos dois.
+CONTRATO_DO_RASCUNHO: Dict[str, Any] = {"dry_run": True,
+                                        "requires_human_approval": True}
+
+#: Os `kind` de espera que um rascunho pode CITAR.
+#: ⚠️ Lista curta e literal de propósito (R3/E13): `esperando_oficina` **não
+#: existe** no banco, e citar um kind que o CHECK não conhece é afirmar o que
+#: não está escrito. Um kind fora desta lista não vira frase — vira silêncio.
+_KINDS_CITAVEIS = ("esperando_seguradora", "esperando_cliente", "esperando_humano")
+
+
+async def _estado_do_caso(db, company_id: str,
+                          conversation_id: Optional[str]) -> str:
+    """A espera ATIVA da conversa, em português. `""` quando não há.
+
+    🔴 R3 — é a única fonte de "onde o caso está" que o rascunho conhece. Sem
+    linha em `work_waits`, o rascunho não tem estado e **diz isso**.
+    """
+    if not conversation_id:
+        return ""
+    try:
+        achado = (
+            await db.client.table("work_waits")
+            .select("id, kind, scope, status, vence_em, created_at")
+            .eq("company_id", company_id)          # 🔴 §7
+            .eq("conversation_id", conversation_id)
+            .eq("status", "ativo")
+            .limit(4)
+            .execute()
+        )
+        linhas = [l for l in (achado.data or [])
+                  if str(l.get("kind") or "") in _KINDS_CITAVEIS]
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AUX] follow-up estado do caso não lido: {type(e).__name__}")
+        return ""
+    if not linhas:
+        return ""
+    # A MESMA regra da projeção (E6/U1.3): menor `vence_em`, empate → pós.
+    linhas.sort(key=lambda w: (str(w.get("vence_em") or "9999"),
+                               0 if str(w.get("scope")) == "pos_acionamento" else 1))
+    try:
+        from app.atendimento.pos_acionamento import texto_da_espera
+
+        return texto_da_espera(linhas[0])
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[AUX] texto da espera indisponível: {type(e).__name__}")
+        return ""
 
 
 FOLLOWUP_TONE_GUIDE = {
@@ -528,7 +598,8 @@ class FollowUpDraftRequest(BaseModel):
 
 
 async def _draft_followup(
-    messages: List[Dict[str, Any]], objective: str, tone: str = ""
+    messages: List[Dict[str, Any]], objective: str, tone: str = "",
+    estado: str = "",
 ) -> Tuple[str, Dict[str, Any], str]:
     """Gera UMA mensagem de follow-up (texto puro) com o LLM. Retorna (message, usage, model)."""
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -540,6 +611,13 @@ async def _draft_followup(
     parts: List[str] = []
     if messages:
         parts.append(_format_transcript(messages))
+    # 🔴 SPEC-097.1 U3.3/E12 — O ESTADO ESCRITO VAI AO MODELO.
+    #
+    # ⛔ E quando não há estado, NADA é dito no lugar dele: uma linha "sem
+    # previsão informada" já seria matéria-prima para o modelo inventar uma.
+    est = (estado or "").strip()
+    if est:
+        parts.append(f"ESTADO DO CASO (escrito no atendimento): {est}")
     obj = (objective or "").strip()
     parts.append(f"Objetivo do follow-up: {obj}" if obj else "Objetivo do follow-up: retomar o contato de forma cordial.")
     tone_guide = FOLLOWUP_TONE_GUIDE.get((tone or "").strip().lower())
@@ -645,8 +723,11 @@ async def draft_follow_up_whatsapp(
             user_id=payload.user_id,
         )
 
+    estado = await _estado_do_caso(db, company_id, conversation_id)
+
     try:
-        message, usage, model_name = await _draft_followup(messages, objective, tone)
+        message, usage, model_name = await _draft_followup(messages, objective, tone,
+                                                           estado=estado)
     except Exception as e:  # noqa: BLE001
         logger.error(f"[AUX] follow-up draft LLM failed: {type(e).__name__}")
         if run_id:
@@ -686,7 +767,7 @@ async def draft_follow_up_whatsapp(
                         "provider": "openai",
                         "model": model_name,
                         "source": "follow_up_whatsapp",
-                        "dry_run": True,
+                        "dry_run": CONTRATO_DO_RASCUNHO["dry_run"],
                         "conversation_id": conversation_id,
                         "tone": tone or "profissional",
                     },
@@ -695,4 +776,6 @@ async def draft_follow_up_whatsapp(
         except Exception as e:  # noqa: BLE001
             logger.error(f"[AUX] follow-up succeed update error: {type(e).__name__}")
 
-    return {"success": True, "draft": {"message": message}, "run_id": run_id, "model": model_name}
+    # 🔴 E11 — o corpo da resposta DIZ que é rascunho e que precisa de gente.
+    return {"success": True, "draft": {"message": message}, "run_id": run_id,
+            "model": model_name, "estado": estado, **CONTRATO_DO_RASCUNHO}

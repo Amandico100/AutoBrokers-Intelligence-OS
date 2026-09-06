@@ -176,6 +176,98 @@ _TITULOS = {
 }
 
 
+# ===========================================================================
+# 🔴 SPEC-097.1 R5/U2 — O CASO JÁ ACIONADO É OUTRO CASO.
+#
+# 📊 Medido em 05/09/2026: `_TITULOS` não tem uma entrada de pós-acionamento,
+# então um segurado que pergunta pela previsão do vidro chegava à atendente
+# como `🪟 ASSISTÊNCIA · VIDROS` — o mesmo cabeçalho de quem acabou de bater o
+# carro — com a recomendação *"conclua o acionamento"* de um acionamento que
+# já tinha sido feito seis dias antes.
+#
+# ⚠️ As três coisas que o dossiê de hoje não diz e a atendente precisa:
+#   1. que é PÓS-acionamento (senão ela reabre um caso que já anda);
+#   2. **de quem** se está esperando — cliente, oficina e seguradora são
+#      ações OPOSTAS;
+#   3. o que fazer AGORA, e nunca "concluir" o que já foi concluído.
+# ===========================================================================
+
+#: As fases do corredor em que o acionamento JÁ FOI ENTREGUE.
+#: ⚠️ `encaminhado` entra: o entregável está em mãos, e a pergunta que vem
+#: depois dele é pós-acionamento igual.
+FASES_JA_ACIONADAS = ("captured", "monitoring", "encaminhado")
+
+
+def _e_pos_acionamento(conversa: Dict[str, Any],
+                       espera: Optional[Dict[str, Any]] = None) -> bool:
+    """O acionamento deste atendimento já saiu? — **PURA** (o ESTADO, nunca
+    o texto: `dispatch_state` e a espera escrita, não uma palavra na conversa).
+    """
+    ficha = conversa.get("ficha_atendimento") or {}
+    if isinstance(ficha, dict):
+        if str(ficha.get("dispatch_state") or "") in FASES_JA_ACIONADAS:
+            return True
+        if str(ficha.get("protocolo") or "").strip():
+            return True
+    if isinstance(espera, dict) and str(espera.get("scope") or "") == "pos_acionamento":
+        return True
+    return False
+
+
+def _quem_fala(conversa: Dict[str, Any]) -> str:
+    """Segurado, parceiro ou indefinido — e **honesto quando não sabe**.
+
+    📊 62 % do tráfego pós-acionamento do acervo NÃO é do segurado (parceiro e
+    oficina somam 673 mensagens contra 254). ⛔ E reconhecer por identidade
+    ficou de FORA da SPEC (não há cadastro de parceiros): então quando a
+    heurística não decide, a resposta é *"não dá para saber"* — nunca um chute
+    que faz a atendente tratar a oficina como se fosse a segurada.
+    """
+    nome = str(conversa.get("user_name") or "").strip()
+    texto = str(conversa.get("last_message_preview") or "").lower()
+    marcas_de_parceiro = ("aquele caso do", "meu cliente", "o segurado de",
+                          "estamos com o veículo", "a loja aqui", "oficina aqui")
+    if any(m in texto for m in marcas_de_parceiro):
+        return "um parceiro ou a oficina (pelo jeito de escrever)"
+    marcas_de_segurado = ("meu carro", "meu veículo", "minha apólice", "meu vidro",
+                          "estou", "fiquei", "meu caso")
+    if any(m in texto for m in marcas_de_segurado):
+        return "o próprio segurado%s" % (" (%s)" % nome if nome else "")
+    return "não dá para saber pelo texto — confirme antes de tratar por nome"
+
+
+def _o_que_ele_quer(conversa: Dict[str, Any]) -> str:
+    """O rótulo do turno, em português — do MESMO motor da régua (§9.4)."""
+    try:
+        from app.atendimento.pos_acionamento import CATEGORIAS, classificar_turno
+
+        rotulo = classificar_turno([str(conversa.get("last_message_preview") or "")])
+        return CATEGORIAS.get(rotulo) or "não deu para entender o que ele quer"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] rótulo do turno indisponível (%s)",
+                       type(exc).__name__)
+        return "não deu para entender o que ele quer"
+
+
+def _onde_parou(conversa: Dict[str, Any], espera: Optional[Dict[str, Any]]) -> str:
+    """De quem se espera e desde quando — **só do que está ESCRITO** (R3)."""
+    try:
+        from app.atendimento.pos_acionamento import texto_da_espera
+
+        frase = texto_da_espera(espera)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] estado da espera indisponível (%s)",
+                       type(exc).__name__)
+        frase = ""
+    if frase:
+        return "o caso está %s." % frase
+    # ⛔ Sem linha de espera não se inventa de quem se espera (R3). Dizer que
+    #    não se sabe é informação; dizer "esperando a seguradora" sem lastro é
+    #    mandar a atendente cobrar quem talvez não deva nada.
+    return ("não há espera registrada para este caso — confira no corredor de "
+            "quem se está esperando antes de cobrar.")
+
+
 def _texto_do_caso(conversa: Dict[str, Any], motivo: str) -> str:
     """Tudo que se sabe do caso, junto e minúsculo — para procurar palavra."""
     ficha = conversa.get("ficha_atendimento") or {}
@@ -283,6 +375,33 @@ def _o_que_fazer(conversa: Dict[str, Any], motivo: str) -> str:
         sugestao = str(ficha.get("proximo_passo") or ficha.get("sugestao") or "").strip()
         if sugestao:
             return sugestao
+
+    # 🔴 SPEC-097.1 R5/R9 — O CASO JÁ ACIONADO TEM OUTRA RECOMENDAÇÃO.
+    #
+    # ⛔ E ela vem da FONTE ÚNICA `SITUACOES_PARA_HUMANO` (R9), a mesma que o
+    # prompt e a régua leem. Escrever aqui uma segunda lista de "o que fazer
+    # por situação" seria uma segunda verdade sobre R9 — e a que ficasse para
+    # trás seria justamente esta, que é a que a atendente lê.
+    if _e_pos_acionamento(conversa):
+        try:
+            from app.atendimento.pos_acionamento import (
+                CATEGORIAS, SITUACOES_PARA_HUMANO, classificar_turno,
+            )
+
+            rotulo = classificar_turno([str(conversa.get("last_message_preview") or ""),
+                                        str(motivo or "")])
+            razao = SITUACOES_PARA_HUMANO.get(rotulo)
+            if razao:
+                return "%s. Responda ao cliente aqui mesmo depois." % razao.capitalize()
+            return ("O acionamento já foi feito: cobre quem está devendo a "
+                    "resposta e volte com o que disseram, mesmo que seja "
+                    "\"ainda sem data\". A pessoa %s."
+                    % (CATEGORIAS.get(rotulo) or "quer uma resposta do caso"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] recomendação de pós-acionamento "
+                           "indisponível (%s)", type(exc).__name__)
+            return ("O acionamento já foi feito: cobre quem está devendo a "
+                    "resposta e volte com o que disseram.")
 
     texto = _texto_do_caso(conversa, motivo)
     if "sinistro" in texto:
@@ -452,6 +571,16 @@ class HumanHandoffTool(BaseTool):
         o que é → quem é → o que houve → o que falta → **o que fazer** → a
         conversa → o link.
         """
+        # 🔴 SPEC-097.1 U2.1 — a espera é LIDA, não deduzida do texto.
+        #
+        # ⚠️ Achado do gate zero: `_o_que_fazer` e o dossiê só enxergavam a
+        # ficha e as mensagens. `dispatch_state` e `work_waits` não chegavam
+        # aqui — então "de quem se espera" era impossível de dizer, e o dossiê
+        # seguia mentindo em todo caso cujo estado só existe na tabela.
+        espera = self._espera_ativa(conversa)
+        if _e_pos_acionamento(conversa, espera):
+            return self._dossie_de_pos_acionamento(conversa, motivo, espera)
+
         titulo = _titulo_humano(conversa, motivo)
         linhas = [titulo, _TRACO]
 
@@ -505,6 +634,106 @@ class HumanHandoffTool(BaseTool):
 
         # O LINK e o estado. `claimed_by_name` existe justamente para evitar
         # que duas atendentes corram para a mesma conversa.
+        linhas += [_TRACO]
+        link = _link_da_conversa(conversa)
+        if link:
+            linhas.append(f"▶ {link}")
+        linhas.append(_quem_assumiu(conversa))
+        return "\n".join(linhas)
+
+    # ------------------------------------------------------------------ #
+    # 🔴 SPEC-097.1 U2.1 — o dossiê do caso que já foi acionado
+    # ------------------------------------------------------------------ #
+    def _espera_ativa(self, conversa: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """A linha de `work_waits` ativa desta conversa. `None` sem lastro.
+
+        ⛔ Best-effort: um dossiê sem a espera continua melhor que dossiê
+        nenhum — mas ele DIZ que não achou, em vez de inventar de quem se
+        espera (R3).
+        """
+        try:
+            achado = (self.supabase_client.table("work_waits")
+                      .select("id, company_id, conversation_id, kind, scope, "
+                              "status, vence_em, created_at")
+                      .eq("company_id", str(conversa.get("company_id") or ""))  # 🔴 §7
+                      .eq("conversation_id", str(conversa.get("id") or ""))
+                      .eq("status", "ativo")
+                      .limit(4).execute())
+            linhas = list(achado.data or [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] espera não lida (%s)", type(exc).__name__)
+            return None
+        if not linhas:
+            return None
+        # ⚠️ A MESMA regra da projeção (E6/U1.3): entre esperas ativas, a de
+        #    menor `vence_em`; empate → `pos_acionamento`. Duas telas com
+        #    ordens diferentes contariam duas histórias do mesmo caso.
+        linhas.sort(key=lambda w: (str(w.get("vence_em") or "9999"),
+                                   0 if str(w.get("scope")) == "pos_acionamento" else 1))
+        return linhas[0]
+
+    def _dossie_de_pos_acionamento(self, conversa: Dict[str, Any], motivo: str,
+                                   espera: Optional[Dict[str, Any]]) -> str:
+        """O formato de §3.3 do relatório, com as quatro perguntas da atendente.
+
+        ⛔ *"conclua o acionamento"* NUNCA aparece aqui: o acionamento já foi
+        feito, e mandar concluí-lo é mandar refazer trabalho entregue.
+        """
+        servico = ""
+        texto_do_caso = _texto_do_caso(conversa, motivo)
+        for chave, (_emoji, nome) in _TITULOS.items():
+            if chave in texto_do_caso and chave not in ("sinistro", "consulta"):
+                servico = nome
+                break
+        titulo = "🔁 *PÓS-ACIONAMENTO%s*" % (" · %s" % servico if servico else "")
+
+        linhas = [titulo, _TRACO]
+        quem = str(conversa.get("user_name") or "").strip()
+        fone = _fone_bonito(conversa.get("user_phone"))
+        so_digitos = "".join(ch for ch in quem if ch.isdigit())
+        if quem and so_digitos == quem:
+            quem = ""
+        linhas.append(" · ".join([p for p in (quem or "cliente não identificado", fone) if p]))
+        apolice = _linha_da_apolice(conversa)
+        if apolice:
+            linhas.append(apolice)
+        ficha = conversa.get("ficha_atendimento") or {}
+        protocolo = str((ficha or {}).get("protocolo") or "").strip() if isinstance(ficha, dict) else ""
+        if protocolo:
+            linhas.append("Acionamento já entregue · protocolo com o cliente")
+
+        linhas += ["", "*Quem fala*", _quem_fala(conversa)]
+        linhas += ["", "*O que ele quer*", _o_que_ele_quer(conversa)]
+        linhas += ["", "*Onde parou*", _onde_parou(conversa, espera)]
+
+        falta = _o_que_falta(conversa)
+        linhas += ["", "*Falta*"]
+        if falta:
+            linhas += [f"⚠️ {f}" for f in falta]
+        else:
+            # ⚠️ A seção NÃO some quando não falta nada: *"nada com o cliente"*
+            #    é a informação que impede a atendente de pedir documento a
+            #    quem já mandou tudo.
+            linhas.append("nada com o cliente. O que falta é a resposta de quem "
+                          "está devendo.")
+
+        linhas += ["", "*O que fazer*", _o_que_fazer(conversa, motivo)]
+
+        linhas += ["", _TRACO]
+        try:
+            msgs = (self.supabase_client.table("messages")
+                    .select("role, content, created_at, payload")
+                    .eq("conversation_id", conversa["id"])
+                    .order("created_at", desc=True)
+                    .limit(_MSGS_NO_DOSSIE).execute().data or [])
+            if msgs:
+                linhas.append(f"*CONVERSA* _(últimas {len(msgs)})_")
+                for m in reversed(msgs):
+                    linhas.append(_linha_da_conversa(m))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[HumanHandoff] histórico indisponível (%s)", type(exc).__name__)
+            linhas.append("_(não consegui carregar o histórico — você entra sem ele)_")
+
         linhas += [_TRACO]
         link = _link_da_conversa(conversa)
         if link:
@@ -588,16 +817,22 @@ class HumanHandoffTool(BaseTool):
         ja_estava_com_a_equipe = False
         try:
             def _estado_anterior():
+                # 🔴 SPEC-097.1 U2.2/U2.3 — a leitura passou a trazer a FICHA e
+                # a última mensagem. ⚠️ Não é curiosidade: sem elas não há como
+                # saber que o caso já foi acionado, e é isso que decide o
+                # `human_handoff_reason` padrão e a marca `agente_concluiu`.
                 return (self.supabase_client.table("conversations")
-                        .select("status")
+                        .select("id, status, ficha_atendimento, "
+                                "last_message_preview, human_handoff_reason")
                         .eq("company_id", company_id)
                         .eq("session_id", session_id)
                         .limit(1).execute())
 
             antes = await asyncio.to_thread(_estado_anterior)
+            linha_anterior = (antes.data or [{}])[0] or {}
             ja_estava_com_a_equipe = bool(
                 (antes.data or []) and
-                str((antes.data[0] or {}).get("status") or "") == "HUMAN_REQUESTED")
+                str(linha_anterior.get("status") or "") == "HUMAN_REQUESTED")
         except Exception as exc:  # noqa: BLE001
             # Não sabemos o estado anterior. Trata como PRIMEIRO pedido: o
             # caminho que avisa. Falhar para o lado de avisar demais.
@@ -606,8 +841,53 @@ class HumanHandoffTool(BaseTool):
 
         try:
             dados: Dict[str, Any] = {"status": "HUMAN_REQUESTED"}
-            if motivo:
-                dados["human_handoff_reason"] = motivo
+
+            # 🔴 SPEC-097.1 U2.2/E19 — O MOTIVO NUNCA VAI VAZIO NUM CASO
+            # ACIONADO.
+            #
+            # 📊 Medido em 05/09/2026: `human_handoff_reason` é NULL em
+            # **725 de 729** conversas. A causa não é falta de escritor — é o
+            # `if motivo:` desta linha: o agente chama a tool sem motivo, e o
+            # campo nunca é escrito. A atendente abre a Fila e vê "precisa de
+            # você" sem uma palavra sobre POR QUÊ.
+            #
+            # ⚠️ O motivo EXPLÍCITO continua vencendo sempre: o padrão só
+            # preenche o silêncio.
+            motivo_gravado = motivo
+            if not motivo_gravado and _e_pos_acionamento(linha_anterior):
+                try:
+                    from app.atendimento.pos_acionamento import classificar_turno
+
+                    rotulo = classificar_turno(
+                        [str(linha_anterior.get("last_message_preview") or "")])
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[HumanHandoff] rótulo do turno indisponível "
+                                   "(%s)", type(exc).__name__)
+                    rotulo = "N"
+                motivo_gravado = "pos_acionamento:%s" % rotulo
+            if motivo_gravado:
+                dados["human_handoff_reason"] = motivo_gravado
+
+            # 🔴 SPEC-097.1 U2.3 — A PARTE DO AGENTE TERMINOU AQUI.
+            #
+            # 🧑 Decisão do Founder (05/09): *"entregar para o humano é um
+            # status em que o agente não tem mais o que fazer"*. O turno conta
+            # como resolvido pelo AutoBrokers; o CASO segue aberto na Fila da
+            # corretora até alguém encerrar.
+            #
+            # ⛔ E é por isso que `resolvido_em` NÃO é tocado: aquele campo é o
+            # desfecho da CORRETORA. Escrevê-lo aqui faria a Fila esconder um
+            # caso que ninguém atendeu ainda.
+            if _e_pos_acionamento(linha_anterior):
+                from datetime import datetime, timezone
+
+                ficha_atual = linha_anterior.get("ficha_atendimento")
+                ficha_nova = dict(ficha_atual) if isinstance(ficha_atual, dict) else {}
+                ficha_nova["agente_concluiu"] = {
+                    "em": datetime.now(timezone.utc).isoformat(),
+                    "motivo": motivo_gravado or "pos_acionamento:N",
+                }
+                dados["ficha_atendimento"] = ficha_nova
 
             # 🔴 EM THREAD — 18/08/2026, junto com o conserto do `exige_async`.
             #

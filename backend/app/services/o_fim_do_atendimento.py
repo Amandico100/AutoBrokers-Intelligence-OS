@@ -300,6 +300,32 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
         #    Os dois terminam igual — nada muda — e o chamador não precisa
         #    distinguir para seguir trabalhando.
         return False, "ja_resolvida_ou_de_outra_corretora"
+    # 🔴 SPEC-097.1 U1.2 — O DESFECHO FECHA AS ESPERAS DO ATENDIMENTO.
+    #
+    # ⚠️ **Em TODOS os escopos**, e é por isso que não passa por
+    # `satisfazer_espera` (que filtra por escopo): quando o atendimento acaba,
+    # acabou também a espera do travamento, a do pós-acionamento e qualquer
+    # outra. Deixar uma ativa faria o vigia de 10 minutos cobrar uma conversa
+    # ENCERRADA — e alarme sobre caso resolvido é como se ensina uma equipe a
+    # ignorar alarme (a mesma razão do parágrafo do `else` no corredor).
+    #
+    # ⛔ Best-effort e por fora do retorno: a marca de fim vale mais que a
+    # limpeza das esperas.
+    if conversa:
+        try:
+            await (db.client.table("work_waits")
+                   .update({"status": SATISFEITO,
+                            "satisfeito_por": "desfecho",
+                            "satisfeito_em": quando,
+                            "updated_at": quando})
+                   .eq("company_id", empresa)               # 🔴 §7
+                   .eq("conversation_id", str(conversa))
+                   .eq("status", ATIVO)
+                   .execute())
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[FIM] esperas não fechadas (%s) — o vigia ainda pode "
+                           "cobrar uma conversa encerrada", type(erro).__name__)
+
     logger.info("[FIM] atendimento encerrado motivo=%s episodio=%s conversa=%s",
                 motivo, bool(marcou_episodio), bool(marcou_conversa))
     return True, motivo
@@ -420,6 +446,20 @@ ESPERANDO_SEGURADORA = "esperando_seguradora"
 ESPERANDO_HUMANO = "esperando_humano"
 KINDS: Tuple[str, ...] = (ESPERANDO_CLIENTE, ESPERANDO_SEGURADORA, ESPERANDO_HUMANO)
 
+#: 🔴 SPEC-097.1 U1.2 — O ESCOPO DA FASE QUE VEM DEPOIS DO PROTOCOLO.
+#:
+#: ⚠️ **Distinto de `'acionamento'` de propósito.** O `UNIQUE`
+#: `uq_work_waits_ativo_por_escopo (company_id, conversation_id, scope) where
+#: status='ativo'` permite UMA ativa **por escopo** — então o travamento do
+#: corredor e a espera da seguradora convivem, que é o que a vida faz.
+#: ⛔ Reusar `'acionamento'` faria a espera do pós nascer e morrer no mesmo
+#: checkpoint: o ramo `else` de `_abrir_espera_do_travamento` satisfaz toda
+#: fase ≠ `needs_human` naquele escopo (achado do gate zero, E4).
+ESCOPO_POS_ACIONAMENTO = "pos_acionamento"
+
+#: O escopo do travamento do corredor — o de sempre (SPEC-086 BLOCO B).
+ESCOPO_ACIONAMENTO = "acionamento"
+
 ATIVO = "ativo"
 SATISFEITO = "satisfeito"
 VENCIDO = "vencido"
@@ -486,6 +526,34 @@ async def abrir_espera(db, *, company_id: str, conversation_id: str, kind: str,
                            type(erro).__name__)
     if work_run_id:
         linha["work_run_id"] = str(work_run_id)
+
+    # 🔴 SPEC-097.1 U1.2 — A NOVA SUBSTITUI A ANTERIOR, NO MESMO ESCOPO.
+    #
+    # 📊 Achado do gate zero da 097.1 ([B3p]/[K2]), e é defeito de PRODUTO, não
+    # de teste: até aqui a segunda chamada batia no `UNIQUE`, voltava
+    # `ja_existe_espera_ativa` — e a espera NOVA era simplesmente PERDIDA. No
+    # pós-acionamento isso é a previsão que mudou de 12/09 para 19/09 e ninguém
+    # nunca soube: o vigia seguiria cobrando pela data velha.
+    #
+    # ⚠️ **Satisfazer ANTES de inserir**, nesta ordem: o índice parcial só
+    # olha `status='ativo'`, então fechar a anterior é o que abre a vaga. E o
+    # motivo é `'substituida'` de propósito — quem ler o histórico precisa
+    # distinguir *"o que se esperava aconteceu"* de *"a espera foi trocada por
+    # uma mais nova"*.
+    #
+    # ⛔ O escopo do TRAVAMENTO ganha o mesmo comportamento, e é correto: dois
+    # `needs_human` seguidos com prazos diferentes tinham o mesmo defeito.
+    try:
+        substituidas = await satisfazer_espera(
+            db, company_id=empresa, conversation_id=str(conversation_id),
+            por="substituida", scope=str(scope or "default"))
+        if substituidas:
+            logger.info("[ESPERA] %d espera(s) do escopo '%s' substituída(s) pela nova",
+                        substituidas, scope)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ESPERA] substituição não feita (%s) — o INSERT ainda "
+                       "pode bater no UNIQUE", type(erro).__name__)
+
     try:
         await db.client.table("work_waits").insert(linha).execute()
     except Exception as erro:  # noqa: BLE001

@@ -804,12 +804,34 @@ export async function projetarCasos(
   // ⚠️ UM índice só, pela CONVERSA — é a única chave que a tabela tem. O
   //    episódio herda a espera da conversa dele; o episódio ÓRFÃO (sem
   //    conversa) não tem espera, e a tela não finge que tem.
+  //
+  // 🔴 SPEC-097.1 U1.3/E6 — DUAS ESPERAS ATIVAS NA MESMA CONVERSA AGORA
+  //    EXISTEM, e a escolha deixou de ser o acaso da ordem do `Map`.
+  //
+  //    O `UNIQUE uq_work_waits_ativo_por_escopo` é por ESCOPO: o travamento do
+  //    corredor (`acionamento`) e a espera da seguradora (`pos_acionamento`)
+  //    convivem de propósito. Até aqui, quem chegasse primeiro na lista
+  //    ganhava — e a tela mostrava "esperando a equipe" para um caso cuja
+  //    seguradora vence em duas horas, ou o contrário, sem regra nenhuma.
+  //
+  //    ⚠️ A regra é: **a de menor `vence_em`** (é a que cobra primeiro);
+  //    empate → `pos_acionamento` (é a que o segurado está sentindo).
+  //    ⛔ Espera SEM `vence_em` vai para o fim: ela não cobra ninguém.
   const esperaPorConversa = new Map<string, Linha>();
+  const melhorEspera = (a: Linha, b: Linha): Linha => {
+    const va = String(a.vence_em || '9999');
+    const vb = String(b.vence_em || '9999');
+    if (va !== vb) return va < vb ? a : b;
+    if (String(a.scope) === 'pos_acionamento') return a;
+    if (String(b.scope) === 'pos_acionamento') return b;
+    return a;
+  };
   for (const w of esperas.linhas) {
     if (!KINDS_DE_ESPERA.has(String(w.kind))) continue; // ⛔ fora do CHECK do banco
-    if (w.conversation_id && !esperaPorConversa.has(String(w.conversation_id))) {
-      esperaPorConversa.set(String(w.conversation_id), w);
-    }
+    if (!w.conversation_id) continue;
+    const chave = String(w.conversation_id);
+    const atual = esperaPorConversa.get(chave);
+    esperaPorConversa.set(chave, atual ? melhorEspera(atual, w) : w);
   }
   const runPorConversa = new Map<string, Linha>();
   for (const r of runs) {
