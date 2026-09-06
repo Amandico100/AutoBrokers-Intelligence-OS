@@ -88,7 +88,7 @@ nota 0–100 do orquestrador ......... 91/100 — as 5 unidades entregues e prov
 **Worktree:** `AutoBrokers-FIX` (+ `AutoBrokers-FIX-gate0` para o gate zero · `AutoBrokers-FIX-mut` para as mutações)
 **Executor:** orquestrador Fable 5.1 · subagentes Opus 5 (+1 Sonnet mecânico) · protocolo v11.2 + opção B
 **Início:** 06/09/2026 02:55 · **Conclusão:** 06/09/2026 ~11:50
-**Commit inicial:** `366ac8a` (SPEC v1.0) · **Commit final:** `{SHA_FINAL}`
+**Commit inicial:** `366ac8a` (SPEC v1.0) · **Commit final:** `01b5905 (código até `81b09da`; docs e canário honesto em `01b5905`)`
 **Estado final:** CONCLUÍDA — pendente só o Implantar do Founder (web antes de api)
 
 ---
@@ -231,4 +231,14 @@ Código: `git revert` dos commits da branch (lista em §3) — a web volta a nã
 📊 06/09: bateria INTEIRA 1× (1.014 passed · 7 failed · 48 errors · 38 xfailed · 19 min 32 s, árvore parada); parciais ≈85 no diário; triagem: 48 errors + 3 failed = dependência de ordem (passam isolados e em pares — P-098-UNIT-B-NA-SUITE), 3 failed = guardas-script preexistentes (`test_todos_os_guardas_script_rodam`), 1 failed = este relatório com placeholders (fechado). Nenhuma regressão de produto.
 
 ## 14. A entrega (`git push`) — saída colada
-{PUSH}
+📊 06/09/2026 ~12:00, da branch `feat/spec098-de-quem-e`:
+```
+$ git fetch origin && git rev-list --count HEAD..origin/main
+0
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   821752f..01b5905  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
+Depois deste push, um commit de docs (esta seção e o SHA no dossiê) foi empurrado da mesma forma. **Entregar não é commitar — é empurrar.** Agora o Founder clica Implantar: **smith-web primeiro, smith-api depois.**
