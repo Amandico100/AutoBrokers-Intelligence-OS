@@ -4,7 +4,7 @@ Leia, nesta ordem e só isto: `CLAUDE.md` · o protocolo inteiro (22 KB) · `doc
 Não leia PENDENCIAS/INDICE inteiros — por número, quando citados.
 
 ## Estado (o que o chat anterior deixou)
-- `main` em `{MAIN_SHA}` · últimas SPECs fechadas: `097 · A operação tem uma casa (nota 93; juiz fresco 93)` — relatório em
+- `main` em `4f9d4cb (ou o último commit de docs da 097.1 logo acima dele — confira com `git log -1 origin/main`)` · últimas SPECs fechadas: `097 · A operação tem uma casa (nota 93; juiz fresco 93)` — relatório em
   `docs/canon/reports/SPEC-097-EXECUTION-REPORT.md` — e `097.1 · O caso se explica sozinho (nota 93; juiz fresco 93 em 2 rodadas)` —
   `docs/canon/reports/SPEC-097.1-EXECUTION-REPORT.md` · dossiês do Founder (dashboard):
   https://claude.ai/code/artifact/afe1510d-f31c-4d13-9441-aa920ad2b868 — republicar com `url` a cada bloco fechado (fonte em

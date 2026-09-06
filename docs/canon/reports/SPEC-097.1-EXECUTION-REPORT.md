@@ -63,7 +63,7 @@ nota 0–100 do orquestrador: 92 — o juiz deu 93; desconto meu pela régua REA
 ```
 24fe713 SPEC v1.0 · d11d257 v1.1 (19 emendas) · 8529008 guardas (gate zero 18 ok · 20 falhas) · c41ceef v1.2 (direção do Founder) · 22d0b57 MUTAÇÃO (polícia 52 ok) ·
 5517427 guardas v1.2 · e157d5b [E] por execução · 0fa413a BUILDER (produto) · 84641ed relatório · c0dd53b sessão REAL na fixture · f7eacbd lente no guarda · 74af224 consertos red team+lente ·
-7745c62/3f0c15f [7][8][9] · 2fed44e BLOCO 0 · 18f0544 MANIFEST+pendências · 2826d43 U2 · 5f94c20 juiz r1 · {FINAL}
+7745c62/3f0c15f [7][8][9] · 2fed44e BLOCO 0 · 18f0544 MANIFEST+pendências · 2826d43 U2 · 5f94c20 juiz r1 · 4f9d4cb relatório final + dossiê + índice + prompt 098 (empurrado à main)
 ```
 ## 4. Gate zero
 📊 `python tests/test_o_caso_se_explica_sozinho.py` em `8529008`: **18 ok · 20 falhas · 0 pulados**; blocos [A][B][K][C][D][E][F][G][H][J][L][I] executando o motor real
@@ -205,6 +205,11 @@ Central (P-097.1-ACOMPANHAMENTO-NA-CENTRAL) · `_KINDS_CITAVEIS` (P-097.1-KINDS-
 - Nenhuma mensagem saiu (agentes desligados; supressão provada); nenhum agente ligado; InfoCap só leitura; nenhum segredo/PII impresso; conversa pessoal descartada.
 ## 11. Entrega
 ```
-{PUSH_SAIDA}
+$ git rev-list --count HEAD..origin/main   → 0
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   d758b81..4f9d4cb  HEAD -> main
+$ git rev-list --count origin/main..HEAD → 0        (📊 06/09/2026 ~05:15)
+(este commit de docs, com a saída colada, empurrado em seguida)
 ```
 
