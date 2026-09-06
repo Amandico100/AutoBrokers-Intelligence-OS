@@ -21,6 +21,32 @@ function backend(): { url: string; key: string } | null {
   return { url, key };
 }
 
+/**
+ * 🔴 SPEC-098 · U1.2/E14 · CONSERTO 1 — O CONTRATO DA FALHA: `erro` → `error`.
+ *
+ * 📊 Medido em 06/09/2026 (§1.1): `brand.py:108` serializa `erro` e a tela lê
+ * `j?.error` (`BrandIdentityClient.tsx:103`). Toda falha virava a MESMA frase —
+ * "A captura não encontrou o suficiente" — e 500, site vazio e "sem fonte"
+ * ficavam indistinguíveis para quem estava olhando.
+ *
+ * O conserto principal é no backend (serializar `error`). Esta tradução é
+ * DEFESA EM PROFUNDIDADE, e ela tem uma razão de calendário: a ordem de
+ * implantação da R7 é **web antes de api**. Entre um deploy e o outro, o api
+ * implantado ainda serializa `erro` — e é justamente nessa janela que a tela
+ * nova encontraria o corpo velho.
+ *
+ * ⛔ Só ACRESCENTA: se o corpo já traz `error`, nada é tocado. Uma resposta de
+ * sucesso (`erro: null`) não ganha `error` — senão a tela mostraria falha numa
+ * captura que deu certo.
+ */
+function traduzirErro(body: any): any {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const jaTem = typeof body.error === 'string' && body.error.trim();
+  const veioErro = typeof body.erro === 'string' && body.erro.trim();
+  if (jaTem || !veioErro) return body;
+  return { ...body, error: body.erro };
+}
+
 async function chamar(
   caminho: string,
   init: RequestInit & { timeoutMs?: number } = {},
@@ -49,7 +75,7 @@ async function chamar(
       },
       cache: 'no-store',
     });
-    const body = await r.json().catch(() => ({}));
+    const body = traduzirErro(await r.json().catch(() => ({})));
     return { ok: r.ok, status: r.status, body };
   } catch (e: any) {
     const abortou = e?.name === 'AbortError';

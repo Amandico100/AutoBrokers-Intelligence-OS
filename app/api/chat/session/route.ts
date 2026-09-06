@@ -10,9 +10,26 @@
  * resposta era 200. É o irmão do P0 da SPEC-096: quem grita não é o erro, é o
  * silêncio.
  *
- * Agora: exige a sessão do corretor, manda o `company_id` DA SESSÃO (o do corpo
- * é descartado) e carimba a chave interna, para que o backend saiba que quem
- * fala é o nosso próprio servidor e não o navegador de alguém.
+ * 🔴 CONSERTO 1 (red team B2) — E EXIGIR A SESSÃO MATOU O WIDGET.
+ *
+ * 📊 O único chamador desta rota é `app/embed/[agentId]/page.tsx:97` — o
+ * navegador do VISITANTE anônimo, que não tem sessão de corretor e nunca terá.
+ * Exigir `resolveSessionCompany()` devolvia **401** e a memória da sessão
+ * expirada deixava de ser apagada.
+ *
+ * 📊 E havia um segundo efeito: o backend ganhou um "modo widget" cuidadoso
+ * (`backend/app/api/chat.py:1289-1300`, E5) que, SEM chave, deriva a corretora
+ * da linha de `conversations` achada por `session_id` (que tem UNIQUE). Esse
+ * modo ficou INALCANÇÁVEL, porque a única porta que leva até ele sempre exigia
+ * sessão e sempre carimbava a chave. O caminho seguro existia e não tinha quem
+ * o usasse.
+ *
+ * Agora são DOIS modos, e em nenhum deles o corpo escolhe a corretora:
+ *
+ *   painel  · com sessão de corretor → chave interna + `companyId` DA SESSÃO.
+ *   widget  · sem sessão → repassa **só o `sessionId`**, SEM chave. O backend
+ *             deriva a corretora da linha. O `companyId` do corpo é descartado
+ *             nos dois casos.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveSessionCompany } from '@/lib/auxiliaries/server';
@@ -36,9 +53,6 @@ export async function DELETE(request: NextRequest) {
     if (xo) return NextResponse.json({ error: 'Pedido bloqueado.' }, { status: xo.status });
 
     const sessao = await resolveSessionCompany();
-    if (!sessao) {
-        return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
 
     try {
         const body = await request.json().catch(() => ({} as any));
@@ -49,21 +63,27 @@ export async function DELETE(request: NextRequest) {
         }
 
         const chave = chaveInterna();
-        if (!chave) {
+        if (sessao && !chave) {
             return NextResponse.json(
                 { error: 'Serviço de conversas não configurado.' },
                 { status: 503 },
             );
         }
 
+        // 🔴 Modo PAINEL: a chave e o `companyId` DA SESSÃO.
+        //    Modo WIDGET: sem chave e sem corretora — quem diz de quem é a
+        //    sessão é a linha de `conversations`, no backend (E5).
+        const cabecalhos: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (sessao && chave) cabecalhos['X-Internal-Key'] = chave;
+
         const response = await fetch(`${BACKEND_URL}/chat/session`, {
             method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Internal-Key': chave,
-            },
-            // 🔴 O `companyId` é o da SESSÃO. O que veio no corpo não tem voz.
-            body: JSON.stringify({ sessionId, companyId: sessao.companyId }),
+            headers: cabecalhos,
+            // ⛔ O `companyId` do corpo NUNCA viaja: no painel vale o da sessão,
+            //    no widget vale o derivado da linha.
+            body: JSON.stringify(
+                sessao && chave ? { sessionId, companyId: sessao.companyId } : { sessionId },
+            ),
             cache: 'no-store',
         });
 

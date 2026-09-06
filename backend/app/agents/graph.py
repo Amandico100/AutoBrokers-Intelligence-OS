@@ -206,6 +206,13 @@ async def create_agent_graph(
     # 📊 O tenant do RAG é o NOME DA COLEÇÃO (não há filtro por company_id no
     # payload do Qdrant), e este nome vem de uma coluna de `agents`. Uma coluna
     # editada errado leria o acervo alheio sem levantar erro nenhum.
+    # 🔴 CONSERTO 1 (pendência P3 do red team): NORMALIZAR ANTES DE PERGUNTAR.
+    # 📊 `colecao_permitida(cid, "   ")` → True (a função faz `strip()` por
+    # dentro e vazio significa "use o padrão"), mas o nome NÃO normalizado
+    # seguia daqui para `KnowledgeBaseTool` — que recebia três espaços como
+    # nome de coleção. Quem pergunta tem de usar o nome que perguntou.
+    collection_name = (collection_name or "").strip() or None
+
     from ..services.knowledge_scope import colecao_permitida, company_collection
     if company_id and not colecao_permitida(str(company_id), collection_name):
         logger.warning(

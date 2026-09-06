@@ -741,11 +741,51 @@ async def _registrar_envio_recusado(company_id: str, actor_user_id: str,
             "actor_id": str(actor_user_id),
             "message_human": ("Mensagem não enviada: o vínculo de quem pediu não "
                               "está mais vigente nesta corretora."),
-            "payload": {"kind": kind, "resumo": (summary or "")[:200]},
+            # 🔴 CONSERTO 1 (guarda [J3] do desenhista): a coluna é
+            # `payload_redacted`, não `payload`. 📊 `work_events` em
+            # `tests/fixtures/schema_vivo.json`: id, company_id, work_run_id,
+            # work_step_id, attempt_id, event_type, actor_type, actor_id,
+            # severity, message_human, **payload_redacted**, created_at.
+            # Com o nome errado, o INSERT falhava com 42703 e a recusa não
+            # ficava registrada em lugar nenhum — e como esta função é
+            # best-effort (`except` mudo), ninguém veria.
+            "payload_redacted": {"kind": kind, "resumo": (summary or "")[:200]},
         }).execute())
     except Exception as exc:  # noqa: BLE001
         logger.error("[PLATFORM SEND] recusa não pôde ser registrada: %s",
                      type(exc).__name__)
+
+
+async def ator_ainda_pode(company_id: str, actor_user_id: Optional[str],
+                          *, kind: str = "other", summary: str = "") -> bool:
+    """A pessoa que pediu este efeito AINDA pode pedi-lo? — a porta R9, uma só.
+
+    🔴 SPEC-098 · CONSERTO 1 (red team B4). A revalidação do ator existia e
+    estava correta, mas morava DENTRO de `send_to_client_guarded` — e
+    📊 medido em 06/09/2026, os 4 chamadores dessa função são jobs de sistema:
+    nenhum tem pessoa por trás, nenhum passava `actor_user_id`. **Zero de
+    quatro.** O código que fecha o defeito estava escrito, testado em unidade e
+    inalcançável (CLAUDE.md §12: existir não é funcionar).
+
+    📊 E o envio que TEM humano por trás não passa por aquela função: é
+    `POST /api/webhook/send-message` (`webhook.py`), o único caminho em que a
+    atendente do painel fala com o segurado. Extrair a pergunta para cá é o que
+    deixa os dois caminhos usarem a MESMA porta — em vez de um segundo
+    revalidador ao lado do primeiro (CLAUDE.md §5).
+
+    ⛔ **Sem ator = comportamento de hoje** (`True`). O job de sistema não tem
+    pessoa por trás, e exigir uma quebraria tudo que hoje funciona. É também o
+    CONTROLE do teste: se o caminho "sem ator" mudasse, um "recusou" não
+    provaria nada sobre a revalidação.
+    """
+    if not actor_user_id:
+        return True
+    if await _vinculo_do_ator_vigente(company_id, actor_user_id):
+        return True
+    logger.warning("[PLATFORM SEND] recusado: quem pediu não tem mais "
+                   "vínculo vigente em %s (kind=%s)", company_id, kind)
+    await _registrar_envio_recusado(company_id, actor_user_id, kind, summary)
+    return False
 
 
 async def send_to_client_guarded(company_id: str, phone: str, text: str,
@@ -791,14 +831,14 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     # follow-up, briefing) não tem pessoa por trás, e exigir uma quebraria tudo
     # que hoje funciona. É também o CONTROLE do teste: se o caminho "sem ator"
     # mudasse, um "recusou" não provaria nada sobre a revalidação.
-    if actor_user_id:
-        if not await _vinculo_do_ator_vigente(company_id, actor_user_id):
-            logger.warning("[PLATFORM SEND] recusado: quem pediu não tem mais "
-                           "vínculo vigente em %s (kind=%s)", company_id, kind)
-            await _registrar_envio_recusado(company_id, actor_user_id, kind, summary)
-            return {"status": "recusado",
-                    "motivo": "o vínculo de quem pediu não está mais vigente",
-                    "ok": False, "queued": False}
+    #
+    # ⚠️ A pergunta mora em `ator_ainda_pode` (logo acima) desde o CONSERTO 1:
+    # o envio humano do painel (`webhook.admin_send_message`) não passa por esta
+    # função, e precisava da MESMA porta — não de uma segunda.
+    if not await ator_ainda_pode(company_id, actor_user_id, kind=kind, summary=summary):
+        return {"status": "recusado",
+                "motivo": "o vínculo de quem pediu não está mais vigente",
+                "ok": False, "queued": False}
 
     # 🔴 O INTERRUPTOR DO ATENDIMENTO, LIDO NA FUNÇÃO QUE ENVIA (SPEC-078 A.1).
     #

@@ -541,7 +541,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const backend = getBackendUrl();
         const res = await fetch(`${backend}/api/webhook/send-message`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Admin-API-Key': key },
+          // 🔴 SPEC-098 R9 · CONSERTO 1 — O ATOR VIAJA COM O PEDIDO.
+          //
+          // 📊 A revalidação do ator no backend tinha ZERO chamadores: ela
+          // vivia dentro de `send_to_client_guarded`, e os 4 chamadores
+          // daquela função são jobs de sistema. ESTE é o único envio com uma
+          // pessoa atrás — e ele não mandava quem era.
+          //
+          // ⛔ O id vem de `ctx.userId` (a SESSÃO conferida logo acima), nunca
+          // do corpo do pedido do navegador. E vai junto da chave interna: o
+          // backend só lê o cabeçalho porque a chave já provou que quem fala é
+          // a nossa casa.
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-API-Key': key,
+            'X-Actor-User-Id': ctx.userId ?? '',
+          },
           body: JSON.stringify({
             session_id: conversation.session_id,
             phone: conversation.user_phone,

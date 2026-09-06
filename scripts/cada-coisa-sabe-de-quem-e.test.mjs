@@ -141,6 +141,7 @@ const ts = require('typescript');
 const CO_ALFA = 'co-alfa-0000-4000-8000-000000000001';
 const CO_BETA = 'co-beta-0000-4000-8000-000000000002';
 const U_SOCIO = 'u-socio-0000-4000-8000-000000000001';
+const AG_ALFA = 'ag-alfa-0000-4000-8000-000000000001'; // o agente do widget da Alfa — a credencial 'em tabela' do visitante anônimo
 const CONVERSA_A = '11111111-1111-4111-8111-111111111111';
 const CHAVE_BOA = 'chave-interna-do-bff-098';
 const TELEFONE = '5511900000001';
@@ -349,7 +350,11 @@ function mundo() {
     ],
     messages: [],
     leads: [{ id: 'ld-1', company_id: CO_ALFA, email: 'quem@exemplo.invalid', name: 'Nome Que Nao Pode Vazar' }],
-    agents: [{ id: 'ag-alfa', company_id: CO_ALFA, agent_role: 'attendance', is_active: false }],
+    agents: [
+      { id: 'ag-alfa', company_id: CO_ALFA, agent_role: 'attendance', is_active: false },
+      // o agente LIGADO do widget da Alfa — a credencial 'em tabela' do visitante anônimo ([7-bis])
+      { id: AG_ALFA, company_id: CO_ALFA, agent_role: 'attendance', is_active: true, allow_direct_chat: true },
+    ],
     documents: [],
   };
 }
@@ -1251,6 +1256,23 @@ function analisarSemAutoridade() {
   const p = [];
   for (const [caminho, metodo, obs] of semAutoridadeObs) {
     if (obs.erro) { p.push(`${caminho}: ${obs.erro}`); continue; }
+    if (caminho === CAMINHO_CHAT_SESSION) {
+      // 🔴 §9.3 (06/09, red team B2): o ÚNICO chamador desta rota é o navegador anônimo do
+      // widget (`app/embed/[agentId]/page.tsx`, 'use client'). Exigir 401 aqui matava o widget.
+      // O que continua sendo guardado é a LIÇÃO: sem sessão, o corpo NÃO escolhe a corretora —
+      // a rota repassa SÓ `{sessionId}` ao backend, SEM `X-Internal-Key` (modo widget da E5: o
+      // backend deriva a corretora da linha de `conversations` por `session_id`).
+      const ch = obs.chamadas || [];
+      if (ch.length !== 1) { p.push(`${caminho} sem sessão fez ${ch.length} chamada(s) ao backend — tem de ser exatamente 1`); continue; }
+      const cab = Object.fromEntries(Object.entries(ch[0].headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
+      if (cab['x-internal-key']) p.push(`${caminho} sem sessão MANDOU a chave interna ao backend — o visitante anônimo ganhou o modo painel`);
+      let corpoSaida = {};
+      try { corpoSaida = JSON.parse(ch[0].init?.body || '{}'); } catch { p.push(`${caminho}: corpo repassado não é JSON`); }
+      const chaves = Object.keys(corpoSaida).sort();
+      if (chaves.join(',') !== 'sessionId') p.push(`${caminho} sem sessão repassou ${JSON.stringify(chaves)} — tem de ser SÓ ["sessionId"] (o \`companyId\` do corpo é do navegador, não credencial)`);
+      if (JSON.stringify(corpoSaida).includes(CO_BETA)) p.push(`${caminho} repassou o companyId que o NAVEGADOR escolheu (${CO_BETA})`);
+      continue;
+    }
     if (![401, 403].includes(obs.status)) {
       p.push(`${caminho} (${metodo}) sem sessão nem autoridade respondeu ${obs.status} — `
         + `tem de ser 401/403 (corpo: ${JSON.stringify(obs.corpo).slice(0, 140)})`);
@@ -1262,22 +1284,38 @@ function analisarSemAutoridade() {
   }
   return p;
 }
-checar(analisarSemAutoridade(), '[7] `chat/session`, `admin/users/status` e `bootstrap-tenant` recusam quem não tem autoridade');
+checar(analisarSemAutoridade(), '[7] sem autoridade, `chat/session` repassa SÓ sessionId sem chave (o corpo não escolhe a corretora); `admin/users/status` e `bootstrap-tenant` recusam');
 
 // ══ [7-bis] `leads/identify` NÃO É UM ORÁCULO DE PII (E9) ═══════════════════
 console.log('\n[7-bis] `leads/identify` — chave interna, e a resposta só traz `leadId`');
 const CORPO_LEAD = { email: 'quem@exemplo.invalid', name: 'Alguem', companyId: CO_ALFA };
-const leadSemChave = await executarRota(CAMINHO_LEADS, { metodo: 'POST', corpo: CORPO_LEAD });
+// 🔴 §9.3 (06/09, red team B2): o visitante anônimo do widget É o chamador. Sem chave ele manda o
+// `agentId` (que já está na URL do widget) e TENTA escolher outra corretora pelo corpo (CO_BETA):
+// a corretora tem de ser DERIVADA do agente (CO_ALFA), e a resposta continua só `{leadId}`.
+const leadSemChave = await executarRota(CAMINHO_LEADS, {
+  metodo: 'POST', corpo: { email: 'quem@exemplo.invalid', name: 'Alguem', agentId: AG_ALFA, companyId: CO_BETA },
+  cabecalhos: { 'x-forwarded-for': '203.0.113.9' },
+});
 const leadComChave = await executarRota(CAMINHO_LEADS, {
   metodo: 'POST', corpo: CORPO_LEAD, cabecalhos: { 'x-internal-key': CHAVE_BOA },
 });
 function analisarLeads() {
   const p = [];
   if (leadComChave.erro) { p.push(leadComChave.erro); return p; }
-  if (!leadSemChave.erro && ![401, 403].includes(leadSemChave.status)) {
-    p.push(`sem \`X-Internal-Key\` a rota respondeu ${leadSemChave.status} — `
-      + `tem de ser 401 (corpo: ${JSON.stringify(leadSemChave.corpo).slice(0, 140)})`);
+  if (leadSemChave.erro) { p.push(leadSemChave.erro); return p; }
+  if ([401, 403].includes(leadSemChave.status)) {
+    p.push(`sem \`X-Internal-Key\` a rota respondeu ${leadSemChave.status} — o visitante anônimo do widget é o ÚNICO chamador (B2); `
+      + 'a porta fica aberta e a cerca é o agentId em tabela');
   }
+  const empresasDoAnonimo = empresasConsultadas(leadSemChave.registro || []);
+  if (empresasDoAnonimo.includes(CO_BETA)) {
+    p.push(`sem chave, o \`companyId\` do CORPO (${CO_BETA}) chegou a uma consulta — o navegador escolheu o tenant`);
+  }
+  if (!empresasDoAnonimo.includes(CO_ALFA)) {
+    p.push(`sem chave, nenhuma consulta caiu na corretora do AGENTE (${CO_ALFA}) — a derivação por agentId não aconteceu (consultou: ${JSON.stringify(empresasDoAnonimo)}; status ${leadSemChave.status}; corpo ${JSON.stringify(leadSemChave.corpo).slice(0,160)}; tabelas ${JSON.stringify((leadSemChave.registro||[]).map((c)=>c.tabela+':'+c.op))})`);
+  }
+  const chavesAnonimo = Object.keys(leadSemChave.corpo || {}).filter((k) => k !== 'leadId' && k !== 'error');
+  if (chavesAnonimo.length) p.push(`sem chave a resposta traz ${chavesAnonimo.join(', ')} além de \`leadId\``);
   const corpo = leadComChave.corpo || {};
   const proibidos = Object.keys(corpo).filter((k) => k !== 'leadId' && k !== 'error');
   if (proibidos.length) {
@@ -1290,7 +1328,7 @@ function analisarLeads() {
   }
   return p;
 }
-checar(analisarLeads(), '[7-bis] a resposta de `leads/identify` traz SÓ `leadId`; sem chave, 401');
+checar(analisarLeads(), '[7-bis] a resposta de `leads/identify` traz SÓ `leadId`; sem chave, a corretora é a do agentId — nunca a do corpo');
 checar((() => {
   const c = leadComChave.corpo || {};
   if (leadComChave.erro) return [leadComChave.erro];

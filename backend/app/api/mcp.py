@@ -59,6 +59,30 @@ async def _validate_agent_belongs_to_company(agent_id: str, company_id: str) -> 
         return False
 
 
+async def _validate_connection_belongs_to_company(connection_id: str, company_id: str) -> bool:
+    """A conexão OAuth pertence a ESTA corretora?
+
+    🔴 SPEC-098 · CONSERTO 1 (red team B1). `DELETE /connections/{id}` apagava a
+    conexão do Gmail/Calendar por id, **sem chave, sem corretora e sem dono** —
+    escrita destrutiva cross-tenant. `agent_mcp_connections` não tem
+    `company_id`: quem sabe de quem é a conexão é o AGENTE dela. Então a
+    pergunta é feita em dois saltos, com o mesmo cliente e o mesmo filtro que
+    `_validate_agent_belongs_to_company` usa.
+
+    ⛔ Erro de banco → **False**. Não conseguir provar a posse não é o mesmo que
+    provar a posse (a mesma regra do `DELETE /chat/session`).
+    """
+    try:
+        supabase = get_supabase_client().client
+        conexao = supabase.table("agent_mcp_connections")             .select("agent_id")             .eq("id", connection_id)             .single()             .execute()
+        agent_id = (conexao.data or {}).get("agent_id")
+        if not agent_id:
+            return False
+        return await _validate_agent_belongs_to_company(str(agent_id), company_id)
+    except Exception:
+        return False
+
+
 class EnableServerRequest(BaseModel):
     mcp_server_id: str
     company_id: str
@@ -170,9 +194,18 @@ async def disable_server_for_agent(
     return result
 
 
-@router.get("/agent/{agent_id}/tools")
-async def list_agent_mcp_tools(agent_id: str):
-    """Lista todas as MCP tools habilitadas para um agente."""
+@router.get("/agent/{agent_id}/tools", dependencies=[Depends(require_internal_key)])
+async def list_agent_mcp_tools(agent_id: str, company_id: str = Query(...)):
+    """Lista todas as MCP tools habilitadas para um agente.
+
+    🔴 SPEC-098 · CONSERTO 1 (red team B1): esta rota ficou de fora do `Depends`
+    da primeira passada e não recebia `company_id`. A proxy do Next carimbava a
+    chave e conferia a corretora da sessão — e o backend ignorava a corretora
+    aqui, então um corretor legítimo de A lia as tools do agente de B.
+    """
+    if not await _validate_agent_belongs_to_company(agent_id, company_id):
+        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+
     gateway = get_mcp_gateway()
     tools = await gateway.get_agent_mcp_tools(agent_id)
 
@@ -226,7 +259,7 @@ async def toggle_mcp_tool(
 # OAUTH - Credenciais da PLATAFORMA
 # =========================================================================
 
-@router.get("/oauth/providers")
+@router.get("/oauth/providers", dependencies=[Depends(require_internal_key)])
 async def list_oauth_providers():
     """
     Lista providers OAuth e se estão configurados na plataforma.
@@ -257,16 +290,24 @@ async def list_oauth_providers():
     return {"providers": providers}
 
 
-@router.get("/oauth/url/{provider}")
+@router.get("/oauth/url/{provider}", dependencies=[Depends(require_internal_key)])
 async def get_oauth_url(
     provider: str,
     agent_id: str = Query(...),
-    mcp_server_id: str = Query(...)
+    mcp_server_id: str = Query(...),
+    company_id: str = Query(...)
 ):
     """
     Gera URL de autorização OAuth.
     Usa credenciais da PLATAFORMA (variáveis de ambiente).
+
+    🔴 SPEC-098 · CONSERTO 1 (red team B1): o `state` assinado leva o `agent_id`
+    dentro. Sem esta cerca, qualquer um mandava o backend assinar um convite de
+    OAuth para o agente de OUTRA corretora.
     """
+    if not await _validate_agent_belongs_to_company(agent_id, company_id):
+        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+
     from ..services.mcp_oauth_service import get_mcp_oauth_service
 
     oauth = get_mcp_oauth_service()
@@ -278,6 +319,21 @@ async def get_oauth_url(
     return result
 
 
+# 🔴 A ÚNICA ROTA DESTE ARQUIVO QUE FICA PÚBLICA — E POR QUÊ.
+#
+# Quem chama `/oauth/callback/{provider}` é o NAVEGADOR do corretor, redirecionado
+# pelo Google/GitHub/Slack. Não passa pela nossa proxy e não pode carregar a chave
+# interna: exigir `X-Internal-Key` aqui mataria todo o OAuth.
+#
+# ⚠️ O que faz o papel do guarda é o `state` ASSINADO com HMAC-SHA256
+# (`_encode_state`/`_decode_state` em `mcp_oauth_service.py`): o `agent_id` chega
+# de dentro da assinatura, não da barra de endereços. E o convite que gera esse
+# `state` (`GET /oauth/url/...`) agora exige a chave E confere o agente contra a
+# corretora — então ninguém consegue fazer o backend assinar um state alheio.
+#
+# 📊 Esta exceção está escrita também no varredor do router
+# (`tests/test_098_builder_b_unit.py`, `ABERTAS_COM_RAZAO`): uma rota só fica
+# fora do `Depends` com a razão ao lado dela.
 @router.get("/oauth/callback/{provider}")
 async def oauth_callback(
     provider: str,
@@ -330,9 +386,16 @@ async def oauth_callback(
         return HTMLResponse(content=html_content, status_code=400)
 
 
-@router.get("/agent/{agent_id}/connections")
-async def list_agent_connections(agent_id: str):
-    """Lista conexões OAuth de um agente."""
+@router.get("/agent/{agent_id}/connections", dependencies=[Depends(require_internal_key)])
+async def list_agent_connections(agent_id: str, company_id: str = Query(...)):
+    """Lista conexões OAuth de um agente.
+
+    🔴 SPEC-098 · CONSERTO 1 (red team B1): sem chave e sem corretora, esta rota
+    devolvia as CONTAS CONECTADAS de qualquer agente de qualquer corretora.
+    """
+    if not await _validate_agent_belongs_to_company(agent_id, company_id):
+        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+
     from ..services.mcp_oauth_service import get_mcp_oauth_service
 
     oauth = get_mcp_oauth_service()
@@ -369,9 +432,18 @@ async def disconnect_agent(
     return {"success": True}
 
 
-@router.delete("/connections/{connection_id}")
-async def delete_connection(connection_id: str):
-    """Remove uma conexão completamente."""
+@router.delete("/connections/{connection_id}", dependencies=[Depends(require_internal_key)])
+async def delete_connection(connection_id: str, company_id: str = Query(...)):
+    """Remove uma conexão completamente.
+
+    🔴 SPEC-098 · CONSERTO 1 (red team B1) — ERA O PIOR DOS QUATRO: escrita
+    DESTRUTIVA anônima. Sem chave, sem corretora e sem dono, qualquer pessoa na
+    internet derrubava a integração de Gmail/Calendar de qualquer corretora — e
+    não há tela nenhuma que diga por quê.
+    """
+    if not await _validate_connection_belongs_to_company(connection_id, company_id):
+        raise HTTPException(status_code=403, detail="Conexão não pertence a esta empresa")
+
     from ..services.mcp_oauth_service import get_mcp_oauth_service
 
     oauth = get_mcp_oauth_service()

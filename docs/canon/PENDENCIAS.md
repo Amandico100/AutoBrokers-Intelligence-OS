@@ -10367,3 +10367,53 @@ A mutação U5B do guarda ancora no literal; unificar exige mover a âncora junt
 
 ## P-097-DOIS-RELOGIOS · `ordem_em` lê `last_message_at`/`created_at` sem guarda de coerência
 Lente de verdade (P3 L2): a mutação "semana lê `last_message_at` e a Fila lê `last_event_at`" fica verde — não há asserção que prove que os dois relógios da lista e da semana são o MESMO. **Destrava:** asserção de coerência no guarda `test:casa`. **Dono:** 🤖.
+
+# 🟣 SPEC-098 · Cada coisa sabe de quem é — abertas em 06/09/2026
+
+## P-098-TEAM-QUANDO-HOUVER · Team/`teams`/`team_members` saíram da 098: as tabelas não existem e ninguém pediu equipe
+📊 06/09: `information_schema.tables` → 0 para `teams`/`team_members`; `company_members` = 10 vínculos em 3 corretoras. **Destrava:** a primeira corretora com >6 pessoas ativas OU a 099 precisar atribuir canal a um grupo. **Dono:** 🤖 (099/103). **Custo de esquecer:** nenhum hoje; a 099 inventaria o próprio conceito de time.
+
+## P-098-USER-MEMORIES-E-DO-SEGURADO · `user_memories` guarda a memória do SEGURADO com nome de "usuário"
+📊 06/09: 41 linhas, 0 pertencem a membro de corretora (`company_members`), 41 vêm de `conversations.user_id`; `profile` = `{}` em 41/41 (nunca escrita). A 098 gravou o `COMMENT ON COLUMN user_memories.user_id` (migration 20260906_01). **Destrava:** a 102 renomear/separar a população e criar o perfil do CORRETOR (o bloco F da proposta da 098 saiu por isto). **Dono:** 🤖 (102). **Custo de esquecer:** o próximo leitor repete o erro da proposta (User Profile em cima da tabela errada).
+
+## P-098-DRENO-CHAVE-INTERNA · 12 cópias locais de `_autorizar`/`_require_internal_key` continuam ao lado do canônico
+A 098 criou `core/auth.py::require_internal_key` (14 rotas) e `_chaves_internas` (movida de `chat.py`; `work_runs.py` já a importa — fecha P-096-WORK-RUNS-CHAVE-SO-ENV). 📊 `grep -rn "def _autorizar\|def _require_internal_key" backend/app/api` → 12. **Destrava:** cada arquivo importar o canônico (mecânico, Sonnet). **Dono:** 🤖. **Custo de esquecer:** duas semânticas de "chave errada" (uma cai em 401, outra pode cair em 403).
+
+## P-098-MCP-ROTAS-SEM-COMPANY · três rotas de `mcp.py` agem por id sem cerca de corretora
+Builder B (06/09): `DELETE /connections/{id}` (e duas irmãs) apagam/alteram conexão OAuth por id sem `.eq(company_id)`; a 098 pôs `require_internal_key` nelas (só o BFF chega), mas o BFF novo (`app/api/mcp/[...caminho]`) repassa a empresa da sessão e o backend não a confere na linha. **Destrava:** `.eq("company_id", …)` nas três + teste com dois tenants. **Dono:** 🤖 (101). **Custo de esquecer:** IDOR interno entre corretoras via id adivinhado, atrás da chave.
+
+## P-098-FILA-SEM-EXPIRE · a fila do WhatsApp (`platform_queue:{company_id}`) é `rpush` sem TTL de Redis
+📊 `platform_outbound.py:817` sem `expire`; expiração só lógica (`_MAX_ATTEMPTS=12`×2h, `_MAX_ADIAMENTOS=200`) e só se o dreno rodar. A 098 pôs a revalidação do ator na porta; a entrada em si é eterna. **Destrava:** `expire` de 48h na chave + evento quando a entrada morrer por idade. **Dono:** 🤖 (099). **Custo de esquecer:** worker parado por dias entrega mensagem velha ao voltar.
+
+## P-098-APROVACAO-REIMPLEMENTA-O-GATE · o executor de aprovação existe e reimplementa `validar_para_execucao` pela metade
+Builder B (06/09): `app/comercial/metricas/promover.py::conferir_a_decisao` lê `status='approved'` e executa **sem** conferir `expires_at`, `executed` nem o fingerprint do payload — o `validar_para_execucao` (`approvals.py:132`) continua com 0 chamadores. **Destrava:** `promover.py` chamar `validar_para_execucao` e `marcar_executada`; teste com aprovação expirada e payload alterado. **Dono:** 🤖 (055/094.x). **Custo de esquecer:** aprovação editada depois de aprovada executa o payload novo; aprovação vencida executa.
+
+## P-098-PROCEDENCIA-PROPOSTO-NO-CHECK · `brand_field_provenance_source_kind_check` não aceita `proposto`
+Builder A (06/09): o CHECK vivo aceita os valores antigos; gravar `proposto` daria 23514 e derrubaria a captura. A leitura do site grava `inferred` por um mapa de uma linha em `capture.py` (honesto: o modelo inferiu) e a tela traduz para "proposto pela leitura do site". **Destrava:** migration que amplia o CHECK; trocar a linha do mapa. **Dono:** 🤖. **Custo de esquecer:** nenhum funcional; só o nome no banco não é o da tela.
+
+## P-098-REDES-BLOQUEIAM-LEITURA · Instagram/LinkedIn bloqueiam leitura anônima (📊 429 ×3) e o Firecrawl está sem crédito
+A tela diz a verdade ("a rede bloqueia a leitura automática — cole a bio") e aceita `bio_colada`; o backend ainda não a trata como fonte da leitura. **Destrava:** (a) crédito no Firecrawl (já prevalece sobre o 429); (b) `bio_colada` entrar em `_propor_por_leitura` como fonte `colada`; (c) Graph API oficial na 099/101. **Dono:** 🧑 (crédito) · 🤖 (b, c). **Custo de esquecer:** a identidade nasce só do site.
+
+## P-098-FIRECRAWL-SEM-LEDGER-DE-402 · o 402 do Firecrawl agora chega à tela, mas não há tabela de saldo nem histórico de "acabou quando"
+`usage_events` grava créditos por chamada; nenhum lugar grava o 402 como evento. **Destrava:** evento `firecrawl.credito_esgotado` em `usage_events` + leitura no painel de custos. **Dono:** 🤖 (104). **Custo de esquecer:** "quando acabou?" continua sem resposta pelo banco.
+
+## P-098-COMPANY-MEMORIES-ORFA · `company_memories` tem 0 linhas e o escritor tem 0 chamadores
+📊 06/09: `registrar_fato_da_corretora`, `propor_aprendizado`, `MemoryFabric.confirmar` → 0 chamadores fora da definição; `fatos_da_corretora` só é lido pelo endpoint admin. A 098 NÃO a usou de propósito (o Jeito de atender mora em `brand_profiles.tone`, versionado). **Destrava:** a 102 decidir se liga (quem escreve, quando) ou apaga. **Dono:** 🤖 (102). **Custo de esquecer:** uma tabela que promete memória da corretora e nunca aprende.
+
+## P-098-COOKIE-USER-ID-DO-FASTAPI · as 9 rotas de billing/stripe do FastAPI leem um cookie `user_id` que ninguém grava
+📊 06/09 (aquecimento): `grep -rn "user_id" --include=*.ts app lib | grep -i cookie` → 0; `grep -rn set_cookie backend/app` → 0; cookies reais: `smith_user_session`, `ab_oauth_state`. As rotas são caminho morto; o dinheiro passa pelo Next (a 098 as migrou para `resolveSessionCompany`). O `get_current_company_id` ganhou `X-Active-Company-Id` com chave (preparo). **Destrava:** decidir apagar as 9 rotas ou ligá-las pelo BFF com chave. **Dono:** 🧑 decide · 🤖. **Custo de esquecer:** código de dinheiro que ninguém testa em produção.
+
+## P-098-JUIZ-LLM-ASSINATURA · `evals/juiz_llm.py:119` chama `create_llm(provider=…, model=…, temperature=0)` e a assinatura não aceita
+Investigador (06/09): `llm_factory.py:19-25` não tem esses kwargs nem `**kwargs` → `TypeError` em runtime. **Destrava:** alinhar a chamada. **Dono:** 🤖 (062). **Custo de esquecer:** o juiz LLM dos evals não roda.
+
+## P-098-SANITIZATION-SEM-SAME-ORIGIN · as proxies de sanitization autenticam a sessão mas não exigem same-origin nas mutações
+Builder C (06/09). **Destrava:** `assertSameOrigin` em upload/delete. **Dono:** 🤖. **Custo de esquecer:** CSRF em upload de documento.
+
+## P-098-SESSAO-LOCAL-GUARDA-MAIS-QUE-EMPRESA · `smith_user_session` no localStorage ainda carrega e-mail/nome/plano além de `companyId`
+A 098 reescreve `companyId` na troca; o resto continua congelado no login (7–30 dias). **Destrava:** o cliente ler tudo do servidor (`/api/user/company-data`) e o localStorage guardar só a preferência. **Dono:** 🤖. **Custo de esquecer:** nome/plano velhos no menu depois de mudar no servidor.
+
+## P-098-JEITO-HISTORICO-SEM-CONTRATO · a aba do Jeito mostra histórico de versões só se o GET trouxer `versions`
+`brand_profile_versions` (📊 6 linhas + as da 098) existe; `GET /api/brand/profile` não a serializa. **Destrava:** o backend devolver as últimas 10 versões (`reason`, `changed_fields`, `created_at`). **Dono:** 🤖. **Custo de esquecer:** "o que valia antes?" sem resposta na tela.
+
+## P-098-AGENT-CONFIG-SEM-CHAMADOR-NA-WEB · `agent_config.py` (3 rotas) não tem chamador em fonte do Next
+Builder C (06/09): `grep "agent/config" app` → 0. A 098 pôs `require_internal_key` nelas sem quebrar nada. **Destrava:** apagar ou ligar pela Central de Agentes. **Dono:** 🤖. **Custo de esquecer:** rota de configuração de LLM viva e sem dono.

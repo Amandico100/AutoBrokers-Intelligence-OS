@@ -560,3 +560,204 @@ def test_k_migration_e_idempotente(nome):
     if "CREATE INDEX" in aplica:
         estragado = aplica.replace("CREATE INDEX IF NOT EXISTS", "CREATE INDEX")
         assert estragado.count("CREATE INDEX") != estragado.count("CREATE INDEX IF NOT EXISTS")
+
+
+# ===========================================================================
+# CONSERTO 1 · B1 — o varredor do ROUTER (não a lista escrita à mão)
+# ===========================================================================
+#
+# 🔴 O red team achou 4 rotas de `/api/mcp` abertas — uma delas um DELETE
+# destrutivo anônimo — e o `ROTAS` acima não as viu, porque ele enumera as rotas
+# que FORAM CONSERTADAS. Um guarda que lista o que já foi feito não consegue
+# achar o que falta: é carimbo, não régua (CLAUDE.md §9.5).
+#
+# ⚠️ A lista à mão CONTINUA (é ela que pega a mutação M9, em que uma dependency
+# some e uma lista derivada encolheria junto). O varredor é o COMPLEMENTO: ele
+# mede o TODO e obriga a exceção a ser escrita ao lado da rota.
+
+#: A única rota do router que fica sem `Depends`, com a razão ao lado.
+#: 🔴 Uma rota entra aqui por decisão escrita, nunca por esquecimento.
+ABERTAS_COM_RAZAO = {
+    ("/oauth/callback/{provider}", "GET"):
+        "quem chama é o NAVEGADOR redirecionado pelo Google/GitHub/Slack: não "
+        "passa pela proxy e não pode carregar a chave. O guarda dela é o `state` "
+        "assinado com HMAC (`_encode_state`), e o convite que gera esse state "
+        "(`GET /oauth/url/...`) exige a chave E confere o agente.",
+}
+
+
+def _rotas_do_router():
+    from app.api import mcp as mod
+
+    saida = []
+    for rota in mod.router.routes:
+        for metodo in sorted(getattr(rota, "methods", set()) - {"HEAD", "OPTIONS"}):
+            nomes = {getattr(getattr(d, "dependency", None), "__name__", "")
+                     for d in getattr(rota, "dependencies", [])}
+            saida.append((rota.path, metodo, "require_internal_key" in nomes))
+    return saida
+
+
+def test_g5bis_varredura_do_router_mcp__toda_rota_guardada_ou_declarada():
+    """Itera `mcp.router.routes` e exige a chave em TODAS — menos as declaradas.
+
+    📊 Red team 06/09/2026 (`scratchpad/rt2_api.py`): `GET /agent/{id}/tools`,
+    `GET /agent/{id}/connections`, `DELETE /connections/{id}` e
+    `GET /oauth/url/...` respondiam **200 sem chave nenhuma**, com `/servers`
+    (guardada) devolvendo 401 na mesma bateria como linha de controle.
+    """
+    todas = _rotas_do_router()
+    abertas = [(p, m) for p, m, guardada in todas if not guardada]
+    sem_razao = [x for x in abertas if x not in ABERTAS_COM_RAZAO]
+    assert not sem_razao, (
+        "rotas de /api/mcp sem `Depends(require_internal_key)` e sem razão escrita: "
+        f"{sem_razao}")
+    # 🔴 O CONTROLE: o varredor CONSEGUE ler o router. Se ele nunca vê rota
+    #    nenhuma, ele está lendo o vazio e ficaria verde para sempre.
+    assert len(todas) >= 11, f"o varredor enxergou só {len(todas)} rotas"
+    assert ABERTAS_COM_RAZAO, "sem exceção declarada, ele não prova que sabe distinguir"
+
+
+@pytest.mark.parametrize("metodo,url", [
+    ("GET", "/api/mcp/agent/a1/tools?company_id=X"),
+    ("GET", "/api/mcp/agent/a1/connections?company_id=X"),
+    ("GET", "/api/mcp/oauth/url/google?agent_id=a1&mcp_server_id=m1&company_id=X"),
+    ("GET", "/api/mcp/oauth/providers"),
+    ("DELETE", "/api/mcp/connections/cx1?company_id=X"),
+])
+def test_g5bis_as_rotas_abertas_do_red_team_agora_sao_401(cliente_http, metodo, url):
+    """A reprodução do red team, com a mesma bateria — agora 401."""
+    assert _chamar(cliente_http, metodo, url).status_code == 401
+
+
+def test_g5bis_agente_de_outra_corretora_com_chave_boa_e_403(cliente_http, monkeypatch):
+    """Chave boa não é permissão para o agente alheio: a corretora ainda decide.
+
+    🔴 Era o coração do B1: a proxy resolvia `company_id = A` (verdadeiro),
+    carimbava a chave, e o backend não olhava a corretora nessas rotas — então
+    saía a lista de contas conectadas da corretora B.
+    """
+    from app.api import mcp as mod
+
+    vistos = []
+
+    async def _pertence(agent_id, company_id):
+        vistos.append((agent_id, company_id))
+        return agent_id == "a-da-alfa" and company_id == "co-alfa"
+
+    monkeypatch.setattr(mod, "_validate_agent_belongs_to_company", _pertence)
+
+    r = _chamar(cliente_http, "GET",
+                "/api/mcp/agent/a-da-beta/connections?company_id=co-alfa", chave=CHAVE)
+    assert r.status_code == 403, r.text
+    assert vistos, "a rota nem chegou a perguntar de quem é o agente"
+
+    # 🔴 O PAR: o agente da PRÓPRIA corretora continua passando — senão a cerca
+    #    teria fechado a porta de quem podia entrar.
+    class _Oauth:
+        @staticmethod
+        async def get_agent_connections(_agent_id):
+            return []
+
+    import app.services.mcp_oauth_service as oauth_mod
+    monkeypatch.setattr(oauth_mod, "get_mcp_oauth_service", lambda: _Oauth())
+    ok = _chamar(cliente_http, "GET",
+                 "/api/mcp/agent/a-da-alfa/connections?company_id=co-alfa", chave=CHAVE)
+    assert ok.status_code == 200, ok.text
+
+
+# ===========================================================================
+# CONSERTO 1 · B4 — a revalidação do ator é ALCANÇADA por um chamador real
+# ===========================================================================
+
+def test_r9_o_envio_humano_do_painel_revalida_o_ator(monkeypatch):
+    """📊 Red team: `send_to_client_guarded` tinha 4 chamadores e **0** com ator.
+
+    O envio que TEM humano por trás é `POST /api/webhook/send-message` — a
+    atendente respondendo pelo painel — e ele nunca passou por aquela função.
+    A pergunta foi extraída para `platform_outbound.ator_ainda_pode` (porta
+    ÚNICA, CLAUDE.md §5) e o BFF passa a mandar `X-Actor-User-Id`.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import app.api.webhook as w
+    import app.services.platform_outbound as po
+    from app.core.auth import require_master_admin
+
+    enviadas = []
+    eventos = []
+    vigente = {"resposta": False}
+
+    async def _vinculo(_company_id, _ator):
+        return vigente["resposta"]
+
+    async def _registrar(company_id, _ator, kind, _summary):
+        eventos.append({"company_id": company_id, "kind": kind})
+
+    def _mandou(*a, **_k):
+        enviadas.append(a)
+        return True
+
+    monkeypatch.setattr(po, "_vinculo_do_ator_vigente", _vinculo)
+    monkeypatch.setattr(po, "_registrar_envio_recusado", _registrar)
+    monkeypatch.setattr(w.integration_service, "get_whatsapp_integration",
+                        lambda *_a, **_k: {"instance": "duble"})
+    monkeypatch.setattr(w.whatsapp_service, "send_message", _mandou)
+
+    app = FastAPI()
+    app.include_router(w.router)
+    app.dependency_overrides[require_master_admin] = lambda: True
+    cliente = TestClient(app, raise_server_exceptions=False)
+
+    corpo = {"session_id": "whatsapp:5511900000001:co-alfa:default",
+             "phone": "5511900000001", "message": "Bom dia, tudo certo por aqui."}
+
+    # 🔴 Vínculo REVOGADO: 0 entregas, e a recusa fica registrada.
+    r = cliente.post("/api/webhook/send-message", json=corpo,
+                     headers={"X-Actor-User-Id": "u-demitido"})
+    assert r.status_code == 403, r.text
+    assert enviadas == [], "a mensagem SAIU com o vínculo revogado"
+    assert len(eventos) == 1 and eventos[0]["company_id"] == "co-alfa"
+
+    # 🔴 O PAR: com o vínculo vigente, 1 entrega. Sem ele, um endpoint que
+    #    recusasse tudo passaria no teste acima e mataria o atendimento.
+    vigente["resposta"] = True
+    r2 = cliente.post("/api/webhook/send-message", json=corpo,
+                      headers={"X-Actor-User-Id": "u-empregado"})
+    assert r2.status_code == 200, r2.text
+    assert len(enviadas) == 1 and len(eventos) == 1
+
+    # 🔴 O CONTROLE: SEM ator (job de sistema) o comportamento é o de hoje —
+    #    entrega, sem perguntar nada. É o que dá sentido aos dois de cima.
+    vigente["resposta"] = False
+    r3 = cliente.post("/api/webhook/send-message", json=corpo)
+    assert r3.status_code == 200 and len(enviadas) == 2 and len(eventos) == 1
+
+
+def test_r9_o_work_event_da_recusa_usa_a_coluna_que_existe():
+    """📊 Guarda [J3] do desenhista: a coluna é `payload_redacted`.
+
+    `work_events` em `tests/fixtures/schema_vivo.json` não tem `payload` — o
+    INSERT falharia com 42703 e, como a função é best-effort (`except` mudo), a
+    recusa sumiria em silêncio: em produção a mensagem barrada não deixaria
+    rastro nenhum.
+    """
+    import inspect
+    import json
+
+    import app.services.platform_outbound as po
+
+    esquema = json.loads(
+        (Path(__file__).resolve().parent / "fixtures" / "schema_vivo.json")
+        .read_text(encoding="utf-8"))
+    colunas = set(((esquema.get("tabelas") or {}).get("work_events") or {}).keys())
+    assert "payload_redacted" in colunas and "payload" not in colunas
+
+    fonte = inspect.getsource(po._registrar_envio_recusado)
+    escritas = {c for c in ("payload_redacted", "event_type", "actor_type", "actor_id",
+                            "severity", "message_human", "company_id")
+                if '"%s":' % c in fonte}
+    assert "payload_redacted" in escritas and escritas <= colunas
+    # 🔴 O PAR: a coluna do defeito NÃO pode voltar.
+    assert '"payload":' not in fonte, "voltou a gravar na coluna fantasma `payload`"

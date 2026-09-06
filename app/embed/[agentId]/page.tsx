@@ -363,9 +363,16 @@ export default function EmbedChat() {
       const response = await fetch('/api/leads/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 🔴 SPEC-098 · CONSERTO 1 (red team B2) — O `agentId` É QUEM DIZ A
+        // CORRETORA. Este arquivo tem `'use client'`: é o navegador do
+        // visitante, e ele não pode carregar a chave interna nem escolher a
+        // corretora. A rota deriva o `company_id` da linha de `agents`; o
+        // `companyId` daqui de baixo não tem voz sem a chave, e só fica no
+        // corpo para o dia em que o painel use a mesma rota.
         body: JSON.stringify({
           email: data.email,
           name: data.name,
+          agentId,
           companyId: agent.company_id,
         }),
       });

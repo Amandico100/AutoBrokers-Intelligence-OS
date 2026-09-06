@@ -21,7 +21,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminForCompany, getAdminContext, assertSameOrigin } from '@/lib/admin/admin-auth';
-import { resolveSessionCompany } from '@/lib/auxiliaries/server';
+import { resolveSessionCompany, getSupabaseAdmin } from '@/lib/auxiliaries/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +65,63 @@ async function corretoraDoPedido(pedida: string | null): Promise<Resolvida> {
   return { ok: false, status: 401 };
 }
 
+/**
+ * 🔴 SPEC-098 · CONSERTO 1 (red team B1) — A CERCA AGENTE ↔ CORRETORA.
+ *
+ * 📊 Medido em 06/09/2026: a proxy conferia o `company_id` e descartava o que
+ * vinha na URL, mas **nunca conferia o `agent_id`**. Um corretor logado
+ * legítimo da corretora A pedia `/api/mcp/agent/<agente da B>/connections`: a
+ * proxy resolvia `company_id = A` (verdadeiro), carimbava a chave interna, e o
+ * backend não olhava a corretora naquelas rotas. Saía a lista de contas
+ * conectadas da B — e com o `DELETE /connections/<id>`, a integração dela caía.
+ *
+ * O backend também foi fechado (é lá que a decisão final mora). Esta cerca é a
+ * primeira porta: recusa antes de a chave interna ser carimbada, e devolve 403
+ * em vez de deixar o pedido chegar ao FastAPI com o crachá da casa.
+ *
+ * ⛔ Erro de banco → 403. Não conseguir provar a posse não é prová-la.
+ */
+async function objetoDaCorretora(
+  caminho: string[],
+  busca: URLSearchParams,
+  companyId: string,
+): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+
+  // `agent/<agent_id>/…` e `oauth/url/<provider>?agent_id=…`
+  const agentId =
+    (caminho[0] === 'agent' && caminho[1]) || busca.get('agent_id') || null;
+  if (agentId) {
+    const { data, error } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('id', agentId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (error || !data?.id) return false;
+  }
+
+  // `connections/<connection_id>` — a conexão não tem `company_id`; quem sabe
+  // de quem ela é é o agente dela (dois saltos, o mesmo do backend).
+  if (caminho[0] === 'connections' && caminho[1]) {
+    const { data: conexao, error: e1 } = await supabase
+      .from('agent_mcp_connections')
+      .select('agent_id')
+      .eq('id', caminho[1])
+      .maybeSingle();
+    if (e1 || !conexao?.agent_id) return false;
+    const { data: dono, error: e2 } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('id', conexao.agent_id)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (e2 || !dono?.id) return false;
+  }
+
+  return true;
+}
+
 async function repassar(
   req: NextRequest,
   caminho: string[],
@@ -100,6 +157,21 @@ async function repassar(
   const busca = new URLSearchParams(req.nextUrl.searchParams);
   busca.set('company_id', quem.companyId); // 🔴 o conferido, sempre
   if (corpo && typeof corpo === 'object') corpo.company_id = quem.companyId;
+
+  // 🔴 A corretora conferida não basta: o OBJETO pedido também tem de ser dela.
+  let dela = false;
+  try {
+    dela = await objetoDaCorretora(caminho, busca, quem.companyId);
+  } catch (e) {
+    console.error('[MCP PROXY] não deu para conferir de quem é o agente:', e);
+    dela = false;
+  }
+  if (!dela) {
+    return NextResponse.json(
+      { detail: 'Este agente não é desta corretora.' },
+      { status: 403 },
+    );
+  }
 
   const alvo = `${BACKEND_URL}/api/mcp/${caminho.map(encodeURIComponent).join('/')}?${busca.toString()}`;
 

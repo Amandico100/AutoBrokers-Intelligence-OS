@@ -3824,3 +3824,16 @@ Os três passam nos seus gates de bloco (31 e 26 verdes, `py_compile`), mas a re
 **Decisão do orquestrador:** não reverter (revert + re-revert custa mais do que o risco); registrar aqui e no relatório da 094;
 push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a branch carrega código não gateado.
 **Autorização:** orquestrador (nenhuma condição de parada: nada envia, nada cross-tenant).
+
+---
+
+## 06/09/2026 · SPEC-098 · a proxy de MCP no Next não existia — ESSENCIAL
+
+- **Problema:** a U4.a manda o FastAPI exigir `X-Internal-Key` em `mcp.py` (📊 `GET /api/mcp/servers?company_id=<uuid falso>` respondia **200** ao vivo, sem chave nem sessão).
+  O builder C mediu que **não havia proxy**: `grep "agent/config|api/mcp" app/api` → 0; `components/admin/MCPConfigTab.tsx` chamava 7 endpoints do FastAPI **direto do navegador**.
+  Fechar o backend sem a proxy mataria a aba de conexões no deploy.
+- **Mudança:** nasce `app/api/mcp/[...caminho]/route.ts` — autentica a sessão (`resolveSessionCompany`), confere que `agent_id`/`connection_id` do caminho pertencem à corretora da
+  sessão (conserto do red team), repassa `company_id` DA SESSÃO e carimba a chave. `MCPConfigTab.tsx` aponta para ela.
+- **Autorização:** protocolo §9 (≤30 min, ≤2 arquivos, sem decisão a tomar — sem ela o produto quebra); registrada aqui porque o texto da SPEC não a previa (CLAUDE.md §11).
+- **Registro:** SPEC-098 U4.a · relatório §8 · pendência `P-098-MCP-ROTAS-SEM-COMPANY` (as cercas por linha no backend, além da proxy).
+- **Consequência de implantação:** smith-web ANTES de smith-api (a web passa a mandar a chave; a api passa a exigir).

@@ -1874,6 +1874,7 @@ async def _conversa_do_telefone(db, company_id: str, phone: str) -> Optional[str
 @router.post("/api/webhook/send-message")
 async def admin_send_message(
     payload: AdminSendMessagePayload,
+    request: Request,
     _: bool = Depends(require_master_admin)
 ):
     """Admin send message - requires logged in user"""
@@ -1885,6 +1886,36 @@ async def admin_send_message(
 
         company_id = parts[2]
         agent_id = parts[3] if len(parts) > 3 and parts[3] != "default" else None
+
+        # =====================================================================
+        # 🔴 SPEC-098 R9 · CONSERTO 1 (red team B4) — QUEM PEDIU AINDA PODE?
+        # =====================================================================
+        #
+        # 📊 Medido em 06/09/2026: a revalidação do ator (R9) tinha **ZERO**
+        # chamadores. Ela morava dentro de `send_to_client_guarded`, e os 4
+        # chamadores daquela função são jobs de sistema, sem pessoa por trás.
+        # O único envio com um humano atrás é ESTE — a atendente respondendo
+        # pelo painel — e ele nunca passou por lá.
+        #
+        # O `actor_user_id` chega no cabeçalho `X-Actor-User-Id`, carimbado pelo
+        # nosso BFF (`app/api/dashboard/conversas/[id]/route.ts`) JUNTO da chave
+        # interna. ⛔ Nunca vem do navegador direto: o cabeçalho só é lido
+        # porque `require_master_admin` já provou que quem fala é a nossa casa.
+        # Sem o cabeçalho (chamador antigo, job), o comportamento é o de hoje.
+        #
+        # ⛔ A pergunta é a MESMA de `platform_outbound` — a porta é uma só
+        # (CLAUDE.md §5). E ela vem ANTES de `send_message`: perguntar depois de
+        # enviar é enviar.
+        ator = (request.headers.get("X-Actor-User-Id") or "").strip() or None
+        if ator:
+            from app.services.platform_outbound import ator_ainda_pode
+
+            if not await ator_ainda_pode(company_id, ator, kind="atendimento_humano",
+                                         summary=(payload.message or "")[:80]):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Quem pediu o envio não tem mais vínculo vigente nesta corretora.")
+
         integration = integration_service.get_whatsapp_integration(company_id, agent_id)
 
         if not integration:
