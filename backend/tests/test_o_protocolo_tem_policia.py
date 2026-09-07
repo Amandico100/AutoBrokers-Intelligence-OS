@@ -68,7 +68,19 @@ def linhas_do_card_ausentes(trecho):
 
 
 def numero_da_spec(nome):
-    m = re.search(r"SPEC-0?(\d{2,3})", os.path.basename(nome))
+    """`SPEC-0NN` → NN. `SPEC-EXTRA-NNN` → 1000+NNN.
+
+    🔴 SPEC-EXTRA-001 (07/09/2026): a família EXTRA nascia ISENTA por omissão —
+    `SPEC-0?(\\d{2,3})` não casa em "SPEC-EXTRA-001", o número virava None e
+    nenhum dos blocos [7]/[8] a olhava. Uma SPEC que ENVIA cobrança passava
+    pela polícia sem ser vista. EXTRA entra sob a v11 (>= PRIMEIRA_SPEC_SOB_V11)
+    por construção: 1000+n é sempre maior que qualquer SPEC numerada.
+    """
+    base = os.path.basename(nome)
+    m = re.search(r"SPEC-EXTRA-(\d{1,3})", base)
+    if m:
+        return 1000 + int(m.group(1))
+    m = re.search(r"SPEC-0?(\d{2,3})", base)
     return int(m.group(1)) if m else None
 
 
@@ -267,6 +279,15 @@ def bloco_7_os_relatorios():
           " · ".join(conferir_relatorio(bom)))
     certo("EXECUTION CARD" in ler(TEMPLATE) and re.search(r"FAIXA DE REL[ÓO]GIO", ler(TEMPLATE)),
           "o template ja traz card e faixa: quem o segue passa no bloco [7]")
+    # 🔴 SPEC-EXTRA-001: a familia EXTRA NAO e isenta. CONTROLE positivo (e reconhecida
+    # e cai sob a v11) e negativo (um relatorio EXTRA sem card REPROVA como qualquer outro).
+    certo((numero_da_spec("SPEC-EXTRA-001-EXECUTION-REPORT.md") or 0) >= PRIMEIRA_SPEC_SOB_V11,
+          "CONTROLE: SPEC-EXTRA-NNN e reconhecida e fica SOB a v11 (nao isenta por omissao)")
+    certo(numero_da_spec("SPEC-098-EXECUTION-REPORT.md") == 98 and numero_da_spec("SPEC-EXTRA-001-x.md") != 1,
+          "CONTROLE: a numeracao antiga continua igual e EXTRA-001 nao vira a SPEC-001")
+    extras = [a for a in alvos if "EXTRA" in os.path.basename(a)]
+    certo(all(a in sob for a in extras),
+          "todo relatorio SPEC-EXTRA-* esta na lista julgada pelo bloco [7] (achei %d)" % len(extras))
 
 
 def bloco_8_as_specs():

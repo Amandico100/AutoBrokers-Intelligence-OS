@@ -495,10 +495,2754 @@
    "password_migrated_at": "timestamp with time zone",
    "reset_attempts": "integer",
    "accepted_terms_version": "uuid"
+  },
+  "billing_sent_log": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "recibo": "text",
+   "portal_key": "text",
+   "apolice_susep": "text",
+   "cliente_nome": "text",
+   "send_mode": "text",
+   "doc_sent": "boolean",
+   "created_at": "timestamp with time zone"
+  },
+  "human_support_destinations": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "name": "text",
+   "destination_type": "text",
+   "channel_provider": "text",
+   "tenant_connection_id": "uuid",
+   "destination_ref": "text",
+   "display_ref": "text",
+   "is_primary": "boolean",
+   "priority_order": "integer",
+   "fallback_enabled": "boolean",
+   "silence_minutes": "integer",
+   "active_hours": "jsonb",
+   "escalation_rules": "jsonb",
+   "metadata": "jsonb",
+   "is_active": "boolean",
+   "created_at": "timestamp with time zone",
+   "updated_at": "timestamp with time zone"
+  },
+  "integrations": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "provider": "character varying",
+   "identifier": "character varying",
+   "token": "text",
+   "instance_id": "text",
+   "base_url": "text",
+   "is_active": "boolean",
+   "created_at": "timestamp with time zone",
+   "client_token": "text",
+   "buffer_enabled": "boolean",
+   "buffer_debounce_seconds": "integer",
+   "buffer_max_wait_seconds": "integer",
+   "agent_id": "uuid",
+   "updated_at": "timestamp with time zone",
+   "webhook_token_hash": "text",
+   "webhook_token_prefix": "text",
+   "alert_target": "jsonb",
+   "channel_status": "text",
+   "last_seen_at": "timestamp with time zone",
+   "purpose": "text",
+   "paired_jid": "text",
+   "paired_phone_e164": "text",
+   "paired_at": "timestamp with time zone",
+   "permite_envio_de_auxiliar": "boolean"
+  },
+  "platform_sends": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "phone": "text",
+   "kind": "text",
+   "summary": "text",
+   "sent_at": "timestamp with time zone",
+   "created_at": "timestamp with time zone"
+  },
+  "routines": {
+   "id": "uuid",
+   "company_id": "uuid",
+   "created_by": "uuid",
+   "agent_id": "uuid",
+   "name": "text",
+   "instructions": "text",
+   "schedule": "jsonb",
+   "delivery": "jsonb",
+   "timezone": "text",
+   "is_active": "boolean",
+   "last_run_at": "timestamp with time zone",
+   "next_run_at": "timestamp with time zone",
+   "consecutive_failures": "integer",
+   "created_at": "timestamp with time zone",
+   "updated_at": "timestamp with time zone",
+   "knowledge": "text",
+   "config": "jsonb",
+   "visibility": "text",
+   "skill_key": "text",
+   "skill_release_id": "uuid",
+   "tenant_auxiliary_id": "uuid",
+   "work_pattern": "text",
+   "last_work_run_id": "uuid"
   }
  },
  "_doc_097": "SPEC-097 (05/09/2026): conversations, attendance_sessions, work_waits, messages e company_members lidos de information_schema.columns — porque o read model `lib/atendimento/casos.ts` leu TRES colunas que nao existiam (work_waits.due_at/attendance_session_id, attendance_sessions.protocolo, approval_requests.title) e o guarda ficou verde com um dublê que as inventava. attendance_sessions DEPOIS da migration 20260905_01 (aplicada em 05/09/2026: conversation_id, resolvido_em, resolucao_motivo).",
  "medido_em_097": "05/09/2026",
  "medido_em_098": "06/09/2026 - SPEC-098 acrescentou 12 tabelas (brand_*, companies, users_v2, agents, artifacts, work_events, usage_events, token_usage_logs), lidas de information_schema.columns no mesmo dia, ANTES da migration 20260906_01 (tone_proposto e conversation_id em artifacts/approval_requests ainda nao existem aqui; o builder B atualiza a fixture depois do APPLY).",
- "medido_em_098_pos_migration": "06/09/2026 - DEPOIS da migration 20260906_01_spec098_de_quem_e (aplicada e VERIFICADA no mesmo dia): brand_profiles.tone_proposto/_origem/_em e tone_evidencia (a proposta R2, separada do `tone` ATIVO), artifacts.conversation_id e approval_requests.conversation_id (FK COMPOSTA com company_id, ON DELETE SET NULL). As seis colunas nascem NULAS: 0 de 143 pecas, 0 de 10 aprovacoes e 0 de 3 perfis preenchidos no APPLY."
+ "medido_em_098_pos_migration": "06/09/2026 - DEPOIS da migration 20260906_01_spec098_de_quem_e (aplicada e VERIFICADA no mesmo dia): brand_profiles.tone_proposto/_origem/_em e tone_evidencia (a proposta R2, separada do `tone` ATIVO), artifacts.conversation_id e approval_requests.conversation_id (FK COMPOSTA com company_id, ON DELETE SET NULL). As seis colunas nascem NULAS: 0 de 143 pecas, 0 de 10 aprovacoes e 0 de 3 perfis preenchidos no APPLY.",
+ "detalhe": {
+  "agents": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "name": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "slug": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "is_active": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "true"
+   },
+   "llm_provider": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "llm_model": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "llm_api_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "llm_temperature": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0.7"
+   },
+   "llm_max_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "2000"
+   },
+   "llm_top_p": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "1.0"
+   },
+   "llm_top_k": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "40"
+   },
+   "llm_frequency_penalty": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0.0"
+   },
+   "llm_presence_penalty": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0.0"
+   },
+   "agent_system_prompt": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "agent_enabled": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "true"
+   },
+   "use_langchain": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "allow_web_search": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "true"
+   },
+   "allow_vision": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "vision_model": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "vision_api_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "tools_config": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": "'{}'::jsonb"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "avatar_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "reasoning_effort": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'medium'::character varying"
+   },
+   "verbosity": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'medium'::character varying"
+   },
+   "is_hyde_enabled": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "widget_config": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": "'{}'::jsonb"
+   },
+   "security_settings": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": "'{\"enabled\": false, \"check_nsfw\": true, \"check_urls\": false, \"pii_action\": \"mask\", \"custom_regex\": [], \"error_message\": \"Sua mensagem viola as políticas de segurança.\", \"url_whitelist\": [], \"allowed_topics\": [], \"check_jailbreak\": true, \"check_secret_keys\": true}'::jsonb"
+   },
+   "is_subagent": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "allow_direct_chat": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "retrieval_mode": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'semantic'::text"
+   },
+   "agent_role": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "agent_audience": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "blueprint_version": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "context_package": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "studio_source_kind": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "desligado_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "approval_requests": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "tenant_connection_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "permission_grant_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "requested_by_user_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "approved_by_user_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "subject_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "subject_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "action_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'pending'::text"
+   },
+   "risk_level": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'medium'::text"
+   },
+   "preview": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "request_payload": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "approval_result": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "error_message": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "expires_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "approved_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "rejected_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "executed_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "work_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "work_step_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "idempotency_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "action_fingerprint": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "decision": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "decision_payload": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "requested_preview": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "requested_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "resolved_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "resolved_by_user_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "conversation_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "artifacts": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'report'::text"
+   },
+   "title": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "subtitle": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "summary": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "template_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "work_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "requested_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "origin": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'chat'::text"
+   },
+   "status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'draft'::text"
+   },
+   "current_version": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": "0"
+   },
+   "subject_ref": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "tags": {
+    "tipo": "ARRAY",
+    "nulo": false,
+    "default": "'{}'::text[]"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "archived_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "conversation_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "attendance_sessions": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "observer_number": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "counterparty": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "insurer_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "started_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": null
+   },
+   "last_event_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": null
+   },
+   "status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'open'::text"
+   },
+   "ramo": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "servico": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "summary": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "conversation_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "resolvido_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "resolucao_motivo": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "billing_sent_log": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "recibo": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "portal_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "apolice_susep": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "cliente_nome": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "send_mode": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'test'::text"
+   },
+   "doc_sent": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "brand_assets": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "storage_ref": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "mime_type": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "byte_size": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "width": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "height": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "has_transparency": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": null
+   },
+   "ink_colors": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'[]'::jsonb"
+   },
+   "source_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "source_kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'derived'::text"
+   },
+   "derived_from_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "confidence": {
+    "tipo": "numeric",
+    "nulo": false,
+    "default": "0.50"
+   },
+   "is_current": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "true"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "created_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "brand_field_provenance": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "brand_profile_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "field_path": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "source_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "source_kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "source_detail": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "confidence": {
+    "tipo": "numeric",
+    "nulo": false,
+    "default": "0.50"
+   },
+   "human_edited": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   },
+   "human_edited_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "human_edited_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "captured_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "brand_profile_versions": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "brand_profile_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "version": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": null
+   },
+   "snapshot": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": null
+   },
+   "reason": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "changed_fields": {
+    "tipo": "ARRAY",
+    "nulo": false,
+    "default": "'{}'::text[]"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "created_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "brand_profiles": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "website_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "instagram_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "linkedin_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "google_business_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "facebook_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "display_name": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "legal_name": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "tagline": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "mission": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "about_md": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "services": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'[]'::jsonb"
+   },
+   "differentiators": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'[]'::jsonb"
+   },
+   "service_area": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "founded_year": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "susep_code": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "contact": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "insurers": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'[]'::jsonb"
+   },
+   "palette": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "typography": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "logo_asset_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "visual_style": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'aurora'::text"
+   },
+   "tone": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "capture_status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'empty'::text"
+   },
+   "captured_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "capture_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "capture_error": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "completeness": {
+    "tipo": "numeric",
+    "nulo": false,
+    "default": "0"
+   },
+   "is_published": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "tone_proposto": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": null
+   },
+   "tone_proposto_origem": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "tone_proposto_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "tone_evidencia": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "brand_sources": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "brand_profile_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'pending'::text"
+   },
+   "http_status": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "fetched_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "duration_ms": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "error": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "extract": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "content_hash": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "companies": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_name": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "legal_name": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "cnpj": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "webhook_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "n8n_instance_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "plan_type": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'starter'::character varying"
+   },
+   "monthly_fee": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0"
+   },
+   "setup_fee": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0"
+   },
+   "max_users": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "5"
+   },
+   "status": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'active'::character varying"
+   },
+   "primary_contact_name": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "primary_contact_email": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "primary_contact_phone": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "notes": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "use_langchain": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "agent_enabled": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "llm_provider": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "llm_model": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "llm_api_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "llm_temperature": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0.7"
+   },
+   "llm_max_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "2000"
+   },
+   "llm_top_p": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "1.0"
+   },
+   "llm_top_k": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "llm_frequency_penalty": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": null
+   },
+   "llm_presence_penalty": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": null
+   },
+   "agent_system_prompt": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "agent_user_prompt_template": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "agent_config_updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "agent_config_updated_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "allow_web_search": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "true"
+   },
+   "allow_vision": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "vision_api_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "vision_model": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "cep": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "street": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "number": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "complement": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "neighborhood": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "city": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "state": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "company_kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'client'::text"
+   },
+   "acionamento_profile": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "is_technical": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   }
+  },
+  "company_members": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "user_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "role": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": "'member'::character varying"
+   },
+   "is_owner": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   },
+   "status": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": "'active'::character varying"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "conversations": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "user_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "session_id": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "title": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "status": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'open'::character varying"
+   },
+   "channel": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'web'::character varying"
+   },
+   "last_message_preview": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "unread_count": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "agent_name": {
+    "tipo": "text",
+    "nulo": true,
+    "default": "'Smith Agent'::text"
+   },
+   "status_color": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'green'::character varying"
+   },
+   "user_name": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "user_avatar": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "user_phone": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "last_message_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "agent_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "human_handoff_reason": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "claimed_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "claimed_by_name": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "claimed_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "ficha_atendimento": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "resolvido_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "resolucao_motivo": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "human_support_destinations": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "name": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "destination_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "channel_provider": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'manual'::text"
+   },
+   "tenant_connection_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "destination_ref": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "display_ref": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "is_primary": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   },
+   "priority_order": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": "100"
+   },
+   "fallback_enabled": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   },
+   "silence_minutes": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": "0"
+   },
+   "active_hours": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "escalation_rules": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'[]'::jsonb"
+   },
+   "metadata": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "is_active": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "true"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "integrations": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "provider": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'z-api'::character varying"
+   },
+   "identifier": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "token": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "instance_id": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "base_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": "'https://api.z-api.io/instances'::text"
+   },
+   "is_active": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "true"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "timezone('utc'::text, now())"
+   },
+   "client_token": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "buffer_enabled": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "true"
+   },
+   "buffer_debounce_seconds": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "3"
+   },
+   "buffer_max_wait_seconds": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "10"
+   },
+   "agent_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "webhook_token_hash": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "webhook_token_prefix": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "alert_target": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": null
+   },
+   "channel_status": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "last_seen_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "purpose": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'attendance'::text"
+   },
+   "paired_jid": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "paired_phone_e164": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "paired_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "permite_envio_de_auxiliar": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
+   }
+  },
+  "messages": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "conversation_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "role": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "content": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "type": {
+    "tipo": "text",
+    "nulo": true,
+    "default": "'text'::text"
+   },
+   "audio_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "image_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "sender_user_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "payload": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "platform_sends": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "phone": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "summary": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "sent_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "routines": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "created_by": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "agent_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "name": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "instructions": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "schedule": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "delivery": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "timezone": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'America/Sao_Paulo'::text"
+   },
+   "is_active": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "true"
+   },
+   "last_run_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "next_run_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "consecutive_failures": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": "0"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "knowledge": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "config": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "visibility": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'company'::text"
+   },
+   "skill_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "skill_release_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "tenant_auxiliary_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "work_pattern": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "last_work_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "token_usage_logs": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "uuid_generate_v4()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "agent_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "service_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "model_name": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "input_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "output_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "total_cost_usd": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0"
+   },
+   "details": {
+    "tipo": "jsonb",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "billed": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "billed_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "cache_creation_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "cache_read_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "cached_tokens": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   }
+  },
+  "usage_events": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "work_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "work_step_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "correlation_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "source": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "skill_slug": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "capability_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "tool_name": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "provider": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "model": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "input_tokens": {
+    "tipo": "bigint",
+    "nulo": false,
+    "default": "0"
+   },
+   "output_tokens": {
+    "tipo": "bigint",
+    "nulo": false,
+    "default": "0"
+   },
+   "units": {
+    "tipo": "numeric",
+    "nulo": false,
+    "default": "0"
+   },
+   "unit_kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'token'::text"
+   },
+   "provider_cost_usd": {
+    "tipo": "numeric",
+    "nulo": false,
+    "default": "0"
+   },
+   "artifact_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "idempotency_key": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "billing_status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'PRE_LAUNCH_NON_BILLABLE'::text"
+   },
+   "occurred_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "users_v2": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "email": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "password_hash": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "first_name": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "last_name": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "cpf": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "phone": {
+    "tipo": "character varying",
+    "nulo": false,
+    "default": null
+   },
+   "birth_date": {
+    "tipo": "date",
+    "nulo": false,
+    "default": null
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "status": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'pending'::character varying"
+   },
+   "plan_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "plan_status": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'active'::character varying"
+   },
+   "subscription_amount": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": null
+   },
+   "billing_cycle": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "subscription_started_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "subscription_renews_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "subscription_canceled_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "stripe_customer_id": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "stripe_subscription_id": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "credits_used_this_month": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "credits_limit": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "storage_used_mb": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": "0"
+   },
+   "storage_limit_mb": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": null
+   },
+   "usage_reset_date": {
+    "tipo": "date",
+    "nulo": true,
+    "default": null
+   },
+   "last_login_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "last_login_ip": {
+    "tipo": "inet",
+    "nulo": true,
+    "default": null
+   },
+   "failed_login_attempts": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "account_locked_until": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "terms_accepted_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": false,
+    "default": null
+   },
+   "privacy_policy_accepted_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": false,
+    "default": null
+   },
+   "marketing_consent": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "data_deletion_requested_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "google_id": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "github_id": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": null
+   },
+   "oauth_provider": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'email'::character varying"
+   },
+   "created_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": "now()"
+   },
+   "deleted_at": {
+    "tipo": "timestamp without time zone",
+    "nulo": true,
+    "default": null
+   },
+   "role": {
+    "tipo": "character varying",
+    "nulo": true,
+    "default": "'member'::character varying"
+   },
+   "is_owner": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": "false"
+   },
+   "avatar_url": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "reset_token": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "reset_token_expires_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "password_migrated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "reset_attempts": {
+    "tipo": "integer",
+    "nulo": true,
+    "default": "0"
+   },
+   "accepted_terms_version": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "work_events": {
+   "id": {
+    "tipo": "bigint",
+    "nulo": false,
+    "default": null
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "work_run_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "work_step_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "attempt_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "event_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "actor_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'system'::text"
+   },
+   "actor_id": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "severity": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'info'::text"
+   },
+   "message_human": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "payload_redacted": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  },
+  "work_runs": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "requester_user_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "requester_agent_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "parent_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "correlation_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "source_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "source_id": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "outcome_type": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "outcome_title": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "outcome_description": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "status": {
+    "tipo": "USER-DEFINED",
+    "nulo": false,
+    "default": "'draft'::work_run_status"
+   },
+   "priority": {
+    "tipo": "smallint",
+    "nulo": false,
+    "default": "50"
+   },
+   "risk_level": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'low'::text"
+   },
+   "visibility": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'company'::text"
+   },
+   "owner_user_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "runtime_kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'smith'::text"
+   },
+   "workflow_key": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "workflow_version": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'1.0.0'::text"
+   },
+   "thread_id": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "graph_version": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'1'::text"
+   },
+   "input_payload": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "input_fingerprint": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "result_summary": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "result_payload": {
+    "tipo": "jsonb",
+    "nulo": false,
+    "default": "'{}'::jsonb"
+   },
+   "error_code": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "error_message": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "progress_percent": {
+    "tipo": "smallint",
+    "nulo": false,
+    "default": "0"
+   },
+   "current_step_key": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "idempotency_key": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "cost_budget_brl": {
+    "tipo": "numeric",
+    "nulo": true,
+    "default": null
+   },
+   "cost_actual_brl": {
+    "tipo": "numeric",
+    "nulo": false,
+    "default": "0"
+   },
+   "currency": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'BRL'::text"
+   },
+   "requested_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "queued_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "started_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "paused_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "finished_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "cancel_requested_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "cancelled_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "next_attempt_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "lease_owner": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "lease_token": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "lease_expires_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "heartbeat_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "skill_release_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "capability_pack_release_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "unblock_state": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "conversation_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   }
+  },
+  "work_waits": {
+   "id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": "gen_random_uuid()"
+   },
+   "company_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "conversation_id": {
+    "tipo": "uuid",
+    "nulo": false,
+    "default": null
+   },
+   "work_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "kind": {
+    "tipo": "text",
+    "nulo": false,
+    "default": null
+   },
+   "scope": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'default'::text"
+   },
+   "status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'ativo'::text"
+   },
+   "vence_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": null
+   },
+   "satisfeito_por": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "satisfeito_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "avisos": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": "0"
+   },
+   "created_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   }
+  }
+ },
+ "detalhe_doc": "SPEC-EXTRA-001 (07/09/2026, P-098-FIXTURE-NOT-NULL): `detalhe[tabela][coluna] = {tipo, nulo, default}` lido de information_schema.columns (is_nullable, column_default) para todas as tabelas de `tabelas` + billing_sent_log, platform_sends, human_support_destinations, integrations, routines, activity_log. `tabelas` continua {coluna: tipo} por compatibilidade com os dubles antigos. Um duble que aceita INSERT sem coluna NOT NULL sem default deve responder 23502 lendo daqui.",
+ "detalhe_medido_em": "07/09/2026"
 }

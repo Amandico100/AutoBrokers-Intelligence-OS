@@ -1715,3 +1715,25 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
   e some quando o pack não tem achado. 💭 3h. Não entra na 096 (RISCO/SUPERFÍCIE diferentes; um escritor por arquivo).
 - **F-095-02 (briefing por WhatsApp/e-mail) → PENDÊNCIA documentada** em `PENDENCIAS.md` (`P-095-BRIEFING-POR-CANAL`), com o
   que um chat futuro precisa saber para executar sem reabrir a pesquisa.
+
+
+---
+
+## D-E001-01…10 · A operação dos pilotos — as decisões que governam a SPEC-EXTRA-001 — 07/09/2026
+
+**Decisões do Founder, tomadas na conversa de planejamento de 06–07/09/2026 e no prompt de abertura da EXTRA-001.** Registradas aqui pelo orquestrador ao converter a proposta; nenhuma delas é interpretação.
+
+| ID | decisão | como entra no produto |
+|---|---|---|
+| **D-E001-01** | Prioridade imediata: fechar a cobrança e preservar o atendimento nos pilotos (Resulta, AutoFleet) | a EXTRA-001 passa na frente da 099 |
+| **D-E001-02** | O atendimento continua no Evolution Go; não migrar provedor agora | nenhuma linha de `integrations` é criada, renomeada ou desativada |
+| **D-E001-03** | Cobrança e atendimento usam, por ora, o MESMO número pareado da corretora; não exigir segundo QR | a cobrança sai pela conexão da corretora com `permite_envio_de_auxiliar=true` (regra da SPEC-078 B), fixada e revalidada no efeito |
+| **D-E001-04** | Dois modos reais: *encaminhar para a equipe* e *enviar direto ao cliente* | `send_mode` ∈ {`equipe`, `cliente`} com motor; `test`/`none` continuam; `approval`/`live` antigos ficam retidos com explicação |
+| **D-E001-05** | No modo equipe, texto e PDF vão prontos para encaminhar, sem marca de teste nem instrução interna misturada | nota interna em mensagem própria; o texto final é o mesmo que iria ao cliente |
+| **D-E001-06** | Respostas do cliente, anti-repetição e aviso de falhas são parte do produto completo desta EXTRA | contexto do caso no atendimento; retorno registrado no ledger; reserva antes do efeito; incidentes em Atividades |
+| **D-E001-07** | Testes vivos SOMENTE entre os dois números de teste do Founder (TESTE-A e TESTE-B, valores fora do repositório); os números operacionais da Resulta e da AutoFleet estão proibidos | allowlist privada no env do canário; guarda no último ponto de efeito; 📊 a conexão ativa da Resulta É TESTE-A (…4743), medido em 07/09 |
+| **D-E001-08** | Criar a família EXTRA; manter 099→114 numeradas, com a execução linear pausada temporariamente | `SPEC-EXTRA-001…`; a polícia do protocolo passa a reconhecer a família |
+| **D-E001-09** | Depois: investigação Agger (EXTRA-002), canais após os pilotos (099), renovação e demais auxiliares em propostas próprias | fila registrada no INDICE e no dossiê |
+| **D-E001-10** | Atualizar o dossiê de SPECs ao longo do trabalho, não só no encerramento | página `#extra001` republicada a cada bloco fechado |
+
+**Não decidido (fica na caixa do Founder da EXTRA-001):** ligar o agente de atendimento da Resulta por uma janela curta para provar a resposta automática ao vivo (a allowlist de entrada de produção contém só TESTE-B).
