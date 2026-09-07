@@ -16,18 +16,37 @@ function normalizeRoutineConfig(value: unknown): Record<string, unknown> {
   const portalKeys = Array.isArray(cfg.portal_keys)
     ? cfg.portal_keys.map((v) => String(v || '').trim()).filter(Boolean)
     : ['allianz_corretor'];
-  const sendMode = ['test', 'approval', 'live', 'none'].includes(String(cfg.send_mode || ''))
+  // 🔴 SPEC-EXTRA-001 §1 — os QUATRO modos que a tela oferece, mais os dois
+  // legados.
+  //
+  // `approval` e `live` continuam aceitos e são gravados COMO ESTÃO. Não são
+  // promovidos para `cliente` aqui — e isso é a trava, não uma omissão: uma
+  // config antiga que dizia "ao vivo" numa época em que nada saía viraria, na
+  // primeira gravação, uma autorização para cobrar segurados de verdade que
+  // ninguém deu. Quem os retém é o Python (`normalize_billing_config` →
+  // `retido_legado`, nada sai e o blocker explica); a tela mostra o aviso e
+  // pede que a pessoa escolha uma modalidade.
+  const sendMode = ['test', 'none', 'equipe', 'cliente', 'approval', 'live'].includes(String(cfg.send_mode || ''))
     ? String(cfg.send_mode)
     : 'test';
   const maxBoletos = Number.isInteger(cfg.max_boletos_por_execucao)
     ? Math.max(1, Math.min(50, Number(cfg.max_boletos_por_execucao)))
     : 10;
+  // Só dígitos e comprimento conferido no destino (a rota não é o lugar da
+  // regra do 9º dígito: ela já existe em dois lugares e uma terceira cópia é
+  // P-097-TELEFONE-BR-DUPLICADO).
+  const teamNumber = String(cfg.team_number || '').replace(/\D/g, '');
   return {
     ...cfg,
     kind: BILLING_KIND,
     portal_keys: portalKeys.length ? portalKeys : ['allianz_corretor'],
     approval_required: cfg.approval_required !== false,
     send_mode: sendMode,
+    team_number: teamNumber,
+    // A confirmação explícita do envio direto ao segurado. Booleano de
+    // verdade: `"false"` (string) vindo de um formulário mal serializado não
+    // pode virar `true` por ser truthy.
+    confirmacao_cliente: cfg.confirmacao_cliente === true,
     test_number: String(cfg.test_number || '').replace(/\D/g, ''),
     max_boletos_por_execucao: maxBoletos,
     management_provider: String(cfg.management_provider || 'infocap').trim() || 'infocap',
@@ -271,6 +290,25 @@ export async function POST(req: NextRequest) {
     if (config.kind === BILLING_KIND) {
       const portals = Array.isArray(config.portal_keys) ? config.portal_keys : [];
       if (!portals.length) return NextResponse.json({ error: 'Selecione ao menos um portal para a cobranca.' }, { status: 400 });
+
+      // 🔴 SPEC-EXTRA-001 §1 — os dois modos REAIS têm cada um a sua condição,
+      // e ela é conferida aqui além da tela: o botão desabilitado é cortesia,
+      // a rota é a barreira. Um POST direto sem confirmação ligaria envio a
+      // segurado sem ninguém ter dito que sim.
+      const modo = String(config.send_mode || '');
+      const equipeDigitos = String(config.team_number || '');
+      if (modo === 'equipe' && (equipeDigitos.length < 10 || equipeDigitos.length > 13)) {
+        return NextResponse.json(
+          { error: 'Informe o WhatsApp de quem recebe o pacote (DDI+DDD+numero).' },
+          { status: 400 },
+        );
+      }
+      if (modo === 'cliente' && config.confirmacao_cliente !== true) {
+        return NextResponse.json(
+          { error: 'Para enviar diretamente ao cliente e preciso confirmar o envio direto.' },
+          { status: 400 },
+        );
+      }
     }
 
     const nextRun = proximaExecucao(schedule);

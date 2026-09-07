@@ -141,8 +141,13 @@ const modosDeclarados = Array.from(
 
 conferir('a lista de modos foi encontrada', modosDeclarados.length > 0,
   'sem isto as duas assercoes abaixo passariam sobre uma lista vazia');
-conferir('o seletor oferece EXATAMENTE `test` e `none`',
-  JSON.stringify([...modosDeclarados].sort()) === JSON.stringify(['none', 'test']),
+// 🔴 SPEC-EXTRA-001 (07/09/2026) — o FATO mudou e a licao migrou (CLAUDE.md §9.3):
+// `equipe` e `cliente` ganharam motor (`_entregar_cobranca_real` em
+// billing_collection.py). O conjunto exato continua sendo a assercao — um
+// valor a mais ou a menos fica vermelho — e a negativa abaixo continua
+// guardando que `live`/`approval` nao voltam.
+conferir('o seletor oferece EXATAMENTE `test`, `none`, `equipe` e `cliente`',
+  JSON.stringify([...modosDeclarados].sort()) === JSON.stringify(['cliente', 'equipe', 'none', 'test']),
   `oferece: ${modosDeclarados.join(', ') || '(nada)'}`);
 conferir('nenhum modo sem motor (`live`, `approval`) esta na lista',
   !modosDeclarados.includes('live') && !modosDeclarados.includes('approval'),

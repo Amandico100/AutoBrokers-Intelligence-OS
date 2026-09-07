@@ -31,6 +31,29 @@ interface Run {
   error: string | null;
 }
 
+/**
+ * Uma parcela da cobrança REAL que ainda espera alguém — SPEC-EXTRA-001 §6.
+ *
+ * Os campos são exatamente os que a rota `pendencias` devolve. Note o que NÃO
+ * está aqui: telefone. Só `to_last4`, os últimos 4 dígitos (CLAUDE.md §7).
+ */
+interface PendenciaDaCobranca {
+  id: string;
+  status: string;
+  modalidade: string | null;
+  portal_key: string | null;
+  recibo: string | null;
+  cliente_nome: string | null;
+  apolice_susep: string | null;
+  to_last4: string | null;
+  sent_at: string | null;
+  updated_at: string | null;
+  retorno_do_cliente: string | null;
+  retorno_em: string | null;
+  encaminhado_ao_cliente_em: string | null;
+  motivo: string | null;
+}
+
 const DIAS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const BILLING_KIND = 'billing_collection';
 
@@ -105,11 +128,119 @@ const DIAS_DA_SEMANA: { valor: number; curto: string; longo: string }[] = [
  * pior que a ausência da opção: ensina o corretor a confiar num controle que
  * não existe. Os valores continuam válidos no banco; a SPEC-079 os devolve
  * quando tiverem motor.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * SPEC-EXTRA-001 (📊 07/09/2026) — DOIS MODOS NOVOS ENTRAM, E ENTRAM PORQUE
+ * AGORA TÊM MOTOR: `_entregar_cobranca_real` em
+ * `backend/app/services/billing_collection.py` reserva a obrigação, chama a
+ * porta de saída e marca o ledger.
+ *
+ *   equipe   ✅ a atendente recebe o pacote pronto (nota interna + texto +
+ *              boleto) e repassa. Envio interno: um número só, o da corretora.
+ *   cliente  ✅ o segurado recebe o texto e o boleto. Exige confirmação
+ *              explícita nesta tela (`confirmacao_cliente`) — o motor recusa
+ *              sem ela.
+ *
+ * `approval` e `live` NÃO voltam: eles continuam sem motor, e agora têm nome
+ * para o que são — `retido_legado`. Uma config que ainda os carregue não
+ * envia nada, e a tela pede que a pessoa escolha uma das quatro modalidades.
+ * A regra continua a mesma de 17/08: nenhum controle sem motor por trás.
  */
 const MODOS_COM_MOTOR = [
   { valor: 'test', rotulo: 'Teste — envia para o meu número de teste' },
   { valor: 'none', rotulo: 'Somente relatório — não envia nada' },
+  { valor: 'equipe', rotulo: 'Encaminhar para minha equipe — a atendente recebe o pacote pronto e repassa' },
+  { valor: 'cliente', rotulo: 'Enviar diretamente ao cliente — o segurado recebe texto e boleto' },
 ] as const;
+
+/**
+ * O nome que a corretora lê no lugar da chave do portal.
+ *
+ * 📊 Cópia de `NOME_DA_SEGURADORA` (`billing_collection.py:458-473`), com o
+ * mesmo fallback: portal novo sem entrada vira o prefixo em maiúsculas
+ * (`sancor_corretor` → "SANCOR"), que ainda é reconhecível — nunca a palavra
+ * genérica "seguradora", que parece defeito de sistema para quem lê.
+ *
+ * ⚠️ Cópia envelhece. Ela está aqui porque a lista de pendências não tem por
+ * que fazer uma chamada ao backend só para traduzir seis chaves; e o custo de
+ * envelhecer é baixo justamente por causa do fallback — uma seguradora nova
+ * aparece com o nome derivado, não some nem vira "seguradora".
+ */
+const NOME_DA_SEGURADORA: Record<string, string> = {
+  allianz_corretor: 'ALLIANZ',
+  hdi_corretor: 'HDI SEGUROS',
+  porto_corretor: 'PORTO SEGURO',
+  yelum_corretor: 'YELUM',
+  tokiomarine_corretor: 'TOKIO MARINE',
+  bradesco_corretor: 'BRADESCO SEGUROS',
+  mapfre_corretor: 'MAPFRE',
+  azul_corretor: 'AZUL SEGUROS',
+  alfa_corretor: 'ALFA SEGURADORA',
+  sulamerica_corretor: 'SULAMERICA',
+  sompo_corretor: 'SOMPO SEGUROS',
+  suhai_corretor: 'SUHAI',
+  sura_corretor: 'SURA',
+  zurich_corretor: 'ZURICH',
+  segurosunimed_corretor: 'SEGUROS UNIMED',
+};
+
+function nomeDaSeguradora(portalKey: string): string {
+  const chave = String(portalKey || '').trim().toLowerCase();
+  if (!chave) return 'seguradora não identificada';
+  if (NOME_DA_SEGURADORA[chave]) return NOME_DA_SEGURADORA[chave];
+  if (chave.endsWith('_corretor')) return chave.slice(0, -'_corretor'.length).replace(/_/g, ' ').toUpperCase();
+  return chave.toUpperCase();
+}
+
+/**
+ * O que a corretora vê no lugar do estado do ledger — SPEC-EXTRA-001 §2.
+ *
+ * 🔴 A tradução não é enfeite. `parcial` e `incerto` são estados que só
+ * significam alguma coisa para quem escreveu o motor; para quem trabalha na
+ * corretora, um diz "o texto foi e o PDF não" e o outro diz "não sei se saiu".
+ * A diferença entre os dois decide se alguém reenvia ou se alguém confere
+ * antes — e essa decisão chega ao segurado.
+ *
+ * `contestado` é o único que precisa do que o cliente respondeu junto, então
+ * ele é uma função e não uma string.
+ */
+const RETORNO_DO_CLIENTE: Record<string, string> = {
+  ja_paguei: 'já paguei',
+  nao_sou: 'não sou essa pessoa',
+  nao_quero: 'não quer receber',
+  segunda_via: 'pediu segunda via',
+  duvida: 'ficou com dúvida',
+  outro: 'respondeu algo fora do previsto',
+};
+
+const SITUACAO_HUMANA: Record<string, string> = {
+  entregue_equipe: 'Entregue à equipe — falta encaminhar ao cliente',
+  parcial: 'Texto foi, PDF não',
+  incerto: 'Não sei se saiu — precisa de conferência',
+  suprimido: 'Cliente pediu para não receber',
+  falhou: 'Não saiu',
+  adiado: 'Adiado — tenta na próxima execução',
+};
+
+function situacaoEmPortugues(item: PendenciaDaCobranca): string {
+  if (item.status === 'contestado') {
+    const retorno = RETORNO_DO_CLIENTE[String(item.retorno_do_cliente || '')] || 'respondeu';
+    return `Cliente respondeu: ${retorno}`;
+  }
+  return SITUACAO_HUMANA[item.status] || item.status;
+}
+
+/**
+ * Estados de onde NÃO se libera reenvio, e o porquê ao lado.
+ *
+ * ⛔ `suprimido` é terminal: o cliente pediu para não receber, e essa decisão
+ * é dele. A rota responde 409 de qualquer jeito — desabilitar aqui é para a
+ * pessoa não tentar, e ler o motivo em vez de um erro.
+ */
+const NAO_LIBERA: Record<string, string> = {
+  suprimido: 'O cliente pediu para não receber. Essa decisão é dele.',
+  incerto: 'Confira antes: liberar sem saber se saiu pode cobrar o cliente duas vezes.',
+};
 
 /**
  * As chaves que `build_customer_message` de fato substitui.
@@ -245,6 +376,18 @@ export default function PainelDeRotinas({
   // renderizado ATRÁS do overlay do modal e o corretor não o vê.
   const [erroDoModal, setErroDoModal] = useState('');
   const [liberando, setLiberando] = useState(false);
+
+  // 🔴 SPEC-EXTRA-001 §6 — a FILA da cobrança real.
+  //
+  // Sem esta lista, `entregue_equipe` (a atendente recebeu, o cliente ainda
+  // não) e `parcial` (o texto foi, o PDF não) ficariam pendurados no banco sem
+  // ninguém para vê-los: o relatório da rotina é uma foto do dia, não uma fila
+  // de trabalho. `null` = ainda carregando; `[]` = carregou e não há nada.
+  const [pendencias, setPendencias] = useState<PendenciaDaCobranca[] | null>(null);
+  const [erroPendencias, setErroPendencias] = useState('');
+  const [agindoNaPendencia, setAgindoNaPendencia] = useState<string>('');
+  const [motivoDaLiberacao, setMotivoDaLiberacao] = useState<Record<string, string>>({});
+  const ehAuxiliarDeCobranca = ROTINA_DO_AUXILIAR[auxiliarSlug] === BILLING_KIND;
 
   /** SPEC-078 E.4 — ver o comentário no botão e na rota. */
   const liberarReenvioDeTeste = async () => {
@@ -382,6 +525,18 @@ export default function PainelDeRotinas({
     setBillingConfig({ portal_keys: (marcado ? [...semEle, key] : semEle).sort() });
   };
   const billingSendMode = String(billingConfig?.send_mode || 'test');
+  // 🔴 SPEC-EXTRA-001 — config que ainda carrega `approval`/`live`.
+  //
+  // Ela não é convertida em silêncio para `cliente`: promover uma escolha
+  // antiga, feita quando nada saía, em autorização para cobrar segurados de
+  // verdade seria decidir pela corretora a coisa mais cara desta tela. O
+  // seletor fica SEM valor até alguém escolher, e o aviso diz o que está
+  // acontecendo enquanto isso: nada sai.
+  const billingModoLegado = !!billingConfig
+    && !MODOS_COM_MOTOR.some((m) => m.valor === billingSendMode);
+  const billingTeamNumber = String(billingConfig?.team_number || '');
+  const billingTeamDigitos = billingTeamNumber.replace(/\D/g, '');
+  const billingConfirmacaoCliente = billingConfig?.confirmacao_cliente === true;
 
   // 🔴 SPEC-078 D.7 — o textarea abria VAZIO quando não havia template salvo.
   // O corretor nunca via a mensagem que o segurado receberia; ele via um campo
@@ -491,6 +646,70 @@ export default function PainelDeRotinas({
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [load]);
+
+  /** As pendências da cobrança real. Só existe no Auxiliar de Cobrança. */
+  const carregarPendencias = useCallback(async () => {
+    if (!ehAuxiliarDeCobranca) return;
+    try {
+      const res = await fetch('/api/dashboard/auxiliaries/cobranca/pendencias', { cache: 'no-store' });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j?.ok) {
+        // Dizer "não consegui carregar" é diferente de mostrar lista vazia. Uma
+        // fila vazia por engano é uma fila que ninguém trabalha.
+        setErroPendencias(j?.error || 'Não consegui carregar as pendências.');
+        setPendencias([]);
+        return;
+      }
+      setErroPendencias('');
+      setPendencias((j.itens || []) as PendenciaDaCobranca[]);
+    } catch {
+      setErroPendencias('Não consegui carregar as pendências.');
+      setPendencias([]);
+    }
+  }, [ehAuxiliarDeCobranca]);
+
+  useEffect(() => { carregarPendencias(); }, [carregarPendencias]);
+
+  /**
+   * As duas decisões humanas da fila.
+   *
+   * Elas não enviam nada: `encaminhado` carimba quem repassou e quando;
+   * `liberar` devolve a parcela ao estado que a próxima execução pode
+   * reclamar, e por isso exige motivo escrito.
+   */
+  const decidirPendencia = async (
+    item: PendenciaDaCobranca,
+    acao: 'encaminhado' | 'liberar',
+  ) => {
+    const motivo = (motivoDaLiberacao[item.id] || '').trim();
+    if (acao === 'liberar' && !motivo) {
+      setErroPendencias('Escreva o motivo da liberação — ele fica registrado junto com a parcela.');
+      return;
+    }
+    if (acao === 'liberar' && !confirm(
+      'Liberar esta parcela para ser cobrada de novo?\n\n'
+      + 'A próxima execução da rotina vai tentar entregá-la outra vez.',
+    )) return;
+    setAgindoNaPendencia(item.id);
+    setErroPendencias('');
+    try {
+      const res = await fetch(`/api/dashboard/auxiliaries/cobranca/${acao}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, ...(motivo ? { motivo } : {}) }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j?.ok) {
+        setErroPendencias(j?.error || 'Não foi possível concluir a ação.');
+      } else {
+        setMotivoDaLiberacao((m) => ({ ...m, [item.id]: '' }));
+      }
+    } catch {
+      setErroPendencias('Falha de conexão.');
+    }
+    setAgindoNaPendencia('');
+    carregarPendencias();
+  };
 
   /**
    * O modelo de rotina deste Auxiliar, carregado uma vez.
@@ -665,6 +884,110 @@ export default function PainelDeRotinas({
           </div>
         )}
 
+        {/* 🔴 SPEC-EXTRA-001 §6 — PENDÊNCIAS DA COBRANÇA.
+            A fila do que a cobrança real deixou esperando decisão de gente.
+            Ela vive FORA do modal de propósito: o modal é onde se configura, e
+            isto é trabalho do dia. Só aparece no Auxiliar de Cobrança — em
+            qualquer outro não existe ledger para ler. */}
+        {ehAuxiliarDeCobranca && (
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-foreground">Pendências da cobrança</p>
+              <p className="text-[11px] text-faint">
+                O que já saiu e ainda espera alguém. Envios em teste não aparecem aqui.
+              </p>
+            </div>
+
+            {erroPendencias && (
+              <p className="mt-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+                {erroPendencias}
+              </p>
+            )}
+
+            {pendencias === null ? (
+              <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando pendências…
+              </div>
+            ) : pendencias.length === 0 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Nenhuma pendência. Tudo que saiu já foi resolvido.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {pendencias.map((p) => {
+                  const bloqueio = NAO_LIBERA[p.status];
+                  const ocupado = agindoNaPendencia === p.id;
+                  return (
+                    <div key={p.id} className="rounded-lg border border-border bg-surface-2 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-foreground">
+                            {p.cliente_nome || 'Cliente sem nome no portal'}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {nomeDaSeguradora(String(p.portal_key || ''))}
+                            {p.recibo ? ` · parcela/recibo ${p.recibo}` : ''}
+                            {/* ⛔ O telefone NUNCA aparece inteiro — só os
+                                últimos 4 dígitos (CLAUDE.md §7). Eles bastam
+                                para a atendente reconhecer o contato que ela
+                                já tem na mão. */}
+                            {p.to_last4 ? ` · para …${p.to_last4}` : ''}
+                            {' · '}{fmt(p.sent_at || p.updated_at)}
+                          </p>
+                        </div>
+                        <StatusPill
+                          tone={
+                            p.status === 'entregue_equipe' ? 'warning'
+                              : p.status === 'suprimido' || p.status === 'falhou' ? 'danger'
+                                : 'neutral'
+                          }
+                          label={situacaoEmPortugues(p)}
+                        />
+                      </div>
+
+                      {p.motivo && (
+                        <p className="mt-1.5 text-[11px] text-muted-foreground">Observação: {p.motivo}</p>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {p.status === 'entregue_equipe' && (
+                          <button
+                            onClick={() => decidirPendencia(p, 'encaminhado')}
+                            disabled={ocupado}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[11px] text-foreground transition-colors hover:border-primary/40 disabled:opacity-50"
+                          >
+                            {ocupado && <Loader2 className="h-3 w-3 animate-spin" />}
+                            Marcar como encaminhado ao cliente
+                          </button>
+                        )}
+                        <input
+                          value={motivoDaLiberacao[p.id] || ''}
+                          onChange={(e) => setMotivoDaLiberacao((m) => ({ ...m, [p.id]: e.target.value }))}
+                          disabled={!!bloqueio || ocupado}
+                          placeholder="Motivo da liberação"
+                          className="min-w-[10rem] flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[11px] text-foreground outline-none disabled:opacity-50"
+                        />
+                        <button
+                          onClick={() => decidirPendencia(p, 'liberar')}
+                          disabled={!!bloqueio || ocupado || !(motivoDaLiberacao[p.id] || '').trim()}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[11px] text-foreground transition-colors hover:border-primary/40 disabled:opacity-50"
+                        >
+                          {ocupado && <Loader2 className="h-3 w-3 animate-spin" />}
+                          Liberar reenvio
+                        </button>
+                        {/* O porquê fica AO LADO do botão desabilitado. Um
+                            controle apagado sem explicação é um controle que a
+                            pessoa tenta de novo amanhã. */}
+                        {bloqueio && <span className="text-[11px] text-muted-foreground">{bloqueio}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {editing !== null && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !saving && setEditing(null)}>
             <div
@@ -818,19 +1141,27 @@ export default function PainelDeRotinas({
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">Modo de envio</label>
+                        {/* 🔴 SPEC-EXTRA-001 — o seletor fica SEM valor quando a
+                            config é legada. Pré-selecionar "Teste" esconderia o
+                            problema (a pessoa salvaria sem escolher e acharia
+                            que estava em teste); pré-selecionar "cliente"
+                            ligaria envio real por conta própria. */}
                         <select
-                          value={MODOS_COM_MOTOR.some((m) => m.valor === billingSendMode) ? billingSendMode : 'test'}
+                          value={billingModoLegado ? '' : billingSendMode}
                           onChange={(e) => setBillingConfig({ send_mode: e.target.value })}
                           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
                         >
+                          {billingModoLegado && <option value="">Escolha uma modalidade…</option>}
                           {MODOS_COM_MOTOR.map((m) => (
                             <option key={m.valor} value={m.valor}>{m.rotulo}</option>
                           ))}
                         </select>
-                        <p className="mt-1 text-[11px] text-faint">
-                          Enviar direto ao segurado ainda não está disponível — vem
-                          na próxima etapa, com aprovação e limite diário.
-                        </p>
+                        {billingModoLegado && (
+                          <p className="mt-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                            Esta configuração é antiga e <strong>não envia nada</strong>.
+                            Escolha uma modalidade.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -855,16 +1186,70 @@ export default function PainelDeRotinas({
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">
                           Número que recebe a simulação
                         </label>
+                        {/* ⛔ Nunca um telefone real como placeholder. 📊 Aqui
+                            havia um número de celular verdadeiro, e um exemplo
+                            copiado sem pensar é gente recebendo cobrança de uma
+                            corretora que não é a dela. A máscara mostra o
+                            FORMATO, que é o que o campo precisa ensinar. */}
                         <input
                           value={billingTestNumber}
                           onChange={(e) => setBillingConfig({ test_number: e.target.value })}
-                          placeholder="5547988087463"
+                          placeholder="55 47 9XXXX-XXXX"
                           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
                         />
                         <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                           Em Teste, o segurado <strong>nunca</strong> recebe nada. A mensagem e
                           o boleto vão só para este número.
                         </p>
+                      </div>
+                    )}
+
+                    {/* 🔴 SPEC-EXTRA-001 §1 — o WhatsApp de quem recebe o pacote.
+                        Em `equipe` nada sai para o segurado: o envio é interno,
+                        para um número só, o da própria corretora. Quem repassa
+                        é a atendente — e é por isso que existe a fila de
+                        pendências abaixo. */}
+                    {billingSendMode === 'equipe' && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          WhatsApp de quem recebe o pacote (sua equipe)
+                        </label>
+                        <input
+                          value={billingTeamNumber}
+                          onChange={(e) => setBillingConfig({ team_number: e.target.value })}
+                          placeholder="55 47 9XXXX-XXXX"
+                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                        />
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          A atendente recebe a mensagem pronta e o boleto, e repassa ao
+                          cliente. Depois de repassar, marque em <strong>Pendências da
+                          cobrança</strong> — é assim que a parcela sai da fila.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 🔴 SPEC-EXTRA-001 §1 — a confirmação do envio direto.
+                        Este é o único controle desta tela que faz um segurado
+                        receber uma mensagem sem ninguém no meio. Um `<select>`
+                        é fácil demais para uma decisão desse tamanho: a
+                        confirmação é um ato separado, e o motor recusa sem ela
+                        (`confirmacao_cliente`), não só a tela. */}
+                    {billingSendMode === 'cliente' && (
+                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                        <p className="text-[12px] leading-relaxed text-amber-700 dark:text-amber-300">
+                          O cliente vai receber diretamente pelo WhatsApp da corretora.
+                          Cada parcela é cobrada uma vez; a resposta dele chega ao
+                          atendimento.
+                        </p>
+                        <label className="mt-2 inline-flex items-start gap-2 text-[12px] text-foreground">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={billingConfirmacaoCliente}
+                            onChange={(e) => setBillingConfig({ confirmacao_cliente: e.target.checked })}
+                          />
+                          <span>Entendi e confirmo o envio direto ao cliente.</span>
+                        </label>
                       </div>
                     )}
                     <div>
@@ -1008,7 +1393,7 @@ export default function PainelDeRotinas({
                       <input
                         value={form.number}
                         onChange={(e) => setForm({ ...form, number: e.target.value })}
-                        placeholder="5547999998888"
+                        placeholder="55 47 9XXXX-XXXX"
                         className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-foreground outline-none"
                       />
                     </div>
@@ -1041,6 +1426,13 @@ export default function PainelDeRotinas({
                     || (billingConfig && billingSendMode === 'test'
                         && billingTestNumber.replace(/\D/g, '').length < 10
                         && form.number.replace(/\D/g, '').length < 10)
+                    // 🔴 SPEC-EXTRA-001 — as condições dos modos REAIS.
+                    // A rota confere as mesmas (o botão é cortesia, a rota é a
+                    // barreira); travar aqui evita a viagem até o 400.
+                    || (billingConfig && billingModoLegado)
+                    || (billingConfig && billingSendMode === 'equipe'
+                        && (billingTeamDigitos.length < 10 || billingTeamDigitos.length > 13))
+                    || (billingConfig && billingSendMode === 'cliente' && !billingConfirmacaoCliente)
                   )}
                   className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
                 >
