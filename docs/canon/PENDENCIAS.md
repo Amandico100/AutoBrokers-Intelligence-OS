@@ -10480,3 +10480,15 @@ Decisão do Founder (caixa). A allowlist de inbound em produção contém só TE
 
 ## P-E001-ROTINA-MORA-NO-AUXILIAR-ONCONFLICT · o guarda vizinho exige `on_conflict="company_id,recibo,send_mode"` no motor
 Continua verdadeiro (o modo teste ainda usa essa chave), mas é uma verdade do modo TESTE, e o guarda a afirma como "a chave de dedup do motor". **Destrava:** reescrever a asserção como "a chave do MODO TESTE". **Dono:** 🤖. **Custo de esquecer:** confusão de leitor.
+
+## P-E001-INVARIANTE-SEM-DADO · a exclusão da atendente (B1) nunca tocou dado real
+Juiz fresco (07/09): 📊 `select is_active, (config ? 'team_number'), count(*) from routines` → 1 rotina de cobrança, `is_active=false`, sem `team_number`. A invariante "a atendente não herda nem encerra o caso" está provada por dublês (G27/G28/G28b + M19/M21/M22) e nunca por dado. **Destrava:** o canário Q4 no implantado com uma rotina `equipe` configurada, ou a Resulta ligando a rotina. **Dono:** 🧑/🤖. **Custo de esquecer:** a garantia repousa em dublê até o primeiro uso real.
+
+## P-E001-LEDGER-REF-TABELA-LIVRE · `ledger_ref["table"]` é escolhido por dicionário pelo chamador
+Red team (07/09): `_marcar_no_ledger` grava na tabela que o `ledger_ref` nomeia; hoje só a cobrança o preenche, com literal. **Destrava:** allowlist de tabelas na porta (`billing_sent_log`). **Dono:** 🤖 (099). **Custo de esquecer:** um chamador futuro marcando estado numa tabela que não é ledger.
+
+## P-E001-REQUIRE-INTERNAL-KEY-SEM-COMPARE-DIGEST · a chave interna é comparada com `in`, não com `compare_digest`
+Red team (07/09), pré-existente (SPEC-098 U4): `core/auth.py::require_internal_key`. **Destrava:** `hmac.compare_digest` por candidata. **Dono:** 🤖. **Custo de esquecer:** timing side-channel teórico na única porta da rota do canário.
+
+## P-E001-RELATORIO-COM-TELEFONE-DO-SEGURADO · o relatório de texto da rotina imprime o WhatsApp completo do segurado
+Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Clientes encontrados"): a peça (Artifact) não tem telefone, o relatório de texto tem. **Destrava:** `to_last4` no relatório de texto. **Dono:** 🤖. **Custo de esquecer:** o relatório circula com PII que a peça promete não ter.
