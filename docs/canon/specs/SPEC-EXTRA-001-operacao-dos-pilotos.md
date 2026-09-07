@@ -4,7 +4,7 @@
 > **Protocolo AAA v11.2 + opção B** (`DECISAO-DO-RITMO-03-09-2026.md`). Proposta de origem:
 > `docs/canon/specs-propostas/SPEC-EXTRA-001-operacao-dos-pilotos.md` (v1.0, 07/09, hash de entrada
 > `e62b12bd…`; cópia canônica sanitizada `5d23fc3d…`). Research pack `3ce221c0…` — conferido byte a byte.
-> **v1.1** · emendada pelo aquecimento (§0.5).
+> **v1.1** · emendada pelo aquecimento em 07/09/2026 (§0.5: 11 emendas, 2 defeitos materiais fechados no desenho).
 >
 > **Branch:** `feat/spec-extra-001-operacao-pilotos` a partir de `34424fa` (= `origin/main` em 07/09/2026, 0 atrás / 0 à frente).
 > **Relatório:** `docs/canon/reports/SPEC-EXTRA-001-EXECUTION-REPORT.md`.
@@ -40,7 +40,7 @@ REFERÊNCIA ...........  interna: CLAUDE.md §7 (dois tenants) · `backend/tests
                         (forma do canário) · externa: §7 desta SPEC (Postgres constraints · AWS outbox · Stripe webhooks · WhatsApp Business Policy)
 GATES ................  G00–G23 da proposta, mapeados em §8 para comandos; gate zero VERMELHO em cópia limpa; mutações M1–M14 por nome; canário Q1–Q6
 O ELO ................  "o cliente não recebe PORQUE a porta exige o agente ligado e escolhe integração sem `para=auxiliar`" — A (0 agentes ligados,
-                        📊 SELECT em `agents`), B (`platform_outbound.py:948-990` + `integration_service.py:274-298`), B chega em A ✅ (ramo `live` de
+                        📊 `SELECT is_active FROM agents WHERE agent_role='attendance'` → 4/4 false), B (`platform_outbound.py:948-990` + `integration_service.py:274-298`), B chega em A ✅ (ramo `live` de
                         `billing_collection.py:1736` nunca chama a porta; se chamasse, cairia em `agente_desligado`/`sem_canal`)
 FAIXA DE RELÓGIO .....  8–11 h de trabalho · em 2 janelas prováveis
 ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes (CRÍTICO). Estourou → menos lentes, nunca menos mutação
@@ -51,7 +51,7 @@ ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes (CRÍTICO). Estourou →
 - O **modo teste** de 17/08 (`send_mode='test'`): destino `test_number`, prefixo `[TESTE AutoBrokers…]`, dedup desligada por padrão, `liberar-reenvio` apaga só `test`. 📊 `test_a_cobranca_esta_como_estava.py` 34/34 antes e depois.
 - O **observador não desliga**, o **QR não é refeito**, nenhuma linha de `integrations` é criada, renomeada ou desativada. Nome de instância continua vindo de `channel_identity.nome_da_instancia`.
 - O interruptor do atendimento (`agents.is_active`) continua governando **quem responde**. Esta SPEC não o liga em corretora nenhuma.
-- O corredor/dispatch com seguradora não é tocado; `INSURER_DISPATCH_LIVE=false` e `DISPATCH_FINALIZE_MODE=test` (📊 env de produção lido em 07/09) continuam sendo o freio.
+- O corredor/dispatch com seguradora não é tocado. Os freios, em série: o agente de atendimento **desligado** (`attendance_agent_active`, lido em `observer_intake.py:820` e `platform_outbound.py:975`), `INSURER_DISPATCH_LIVE=false` **explícito** no env de produção (📊 lido em 07/09; `dispatch_live_enabled` é "ausente = ABERTO" desde 14/08 — só o valor explícito fecha) e `DISPATCH_FINALIZE_MODE=test` (📊 env; o default do código é `live`).
 
 ### 0.2 As decisões do Founder que governam (registradas em FOUNDER-DECISIONS como D-E001-01…10)
 
@@ -71,15 +71,29 @@ D-E001-01 prioridade = fechar cobrança e preservar atendimento · 02 Evolution 
 |---|---|---|
 | multi-tenant | CLAUDE.md §7 · `test_spec048_isolamento_corretoras.py` | filtro `company_id` em toda leitura/escrita nova de `billing_sent_log`; teste com dois tenants |
 | regressão do modo teste | `backend/tests/test_a_cobranca_esta_como_estava.py` | 34/34 antes e depois, byte a byte no caminho `test` |
-| a porta única | `platform_outbound.send_to_client_guarded` | todo efeito real passa por ela; `_entregar_agora` continua o único `send_*` |
+| a porta única | `platform_outbound.send_to_client_guarded` | todo efeito da **cobrança real** passa por ela; no caminho da cobrança, `_entregar_agora` é o único `send_*` (📊 fora dele há 30+ chamadores diretos no backend — não são desta SPEC) |
 | migration | `docs/canon/MIGRATIONS-AUTHORITY.md` | APPLY/VERIFY/ROLLBACK escritos antes |
 | guarda serve? | CLAUDE.md §9.3 + mutações M1–M14 | cada gate fica VERMELHO com o defeito reintroduzido |
 | canário | `backend/scripts/canario_098.py` | `--dry-run` imprime o plano; `--vivo` só com `AUTOBROKERS_CANARIO=1`; limpeza por id |
 | não avaliadas | SLO de latência · OpenAPI · tela designada de UI | veredito "não avaliada" |
 
-### 0.5 O que o aquecimento mudou (preenchido depois da rodada)
+### 0.5 O que o aquecimento mudou (Opus, contexto limpo, 07/09/2026 · 📊 138k tokens · nota 86 · 11 emendas · 2 defeitos materiais)
 
-_(seção preenchida na emenda v1.1 — ver relatório §0.1)_
+| # | emenda | onde |
+|---|---|---|
+| 1 | 🔴 **DEFEITO 1** — `registrar_retorno` estava proposto DENTRO de `process_whatsapp_message_background`, mas 📊 `webhook.py:1366-1372` faz `observer_tap` **no endpoint** e `return`a antes de o background existir quando `purpose='observer'` e o agente está desligado (= a Resulta hoje). O hook migra para o **endpoint**, entre a resolução da integração e `observer_tap`; G14/G16 rodam com observador consumindo; **G24** e **M15** nascem | §4.2 · §8 |
+| 2 | 🔴 **DEFEITO 2** — a reserva por `ignore_duplicates` do PostgREST não infere índice único PARCIAL (o `ON CONFLICT` precisa repetir o predicado; PostgREST não expressa) → 42P10 ou 23505 estourado. A reserva vira **função no banco** (`billing_reservar_obrigacao`, `ON CONFLICT … WHERE send_mode='real' DO NOTHING RETURNING`), chamada por RPC; a reclamação de `falhou/adiado/liberado/parcial` vira `billing_reclamar_obrigacao` (UPDATE condicional). G07 exige o 23505/`ganhou=false` do **Postgres real** no canário; **G25** e **M16** nascem | §3.1 · §7 · §8 |
+| 3 | `avisar_suporte_humano(client, company_id, texto, rotulo)` **não recebe `cfg`** (📊 `:227`); é chamado 3× (`:1697`, `:1711`, `:1720`). A supressão do canário entra por parâmetro explícito `suprimir=cfg.get("canario")` nas três chamadas; **G26** nasce (📊 2 grupos `…@g.us` ativos no banco) | §0.3 · §6 · §9 |
+| 4 | no modo `equipe`, `contexto_de_cobranca` **exclui** o `team_number` da corretora (senão a resposta da atendente puxa os casos de todos os clientes) — parâmetro `excluir_phones` | §4.1 |
+| 5 | `_already_sent_recibos` não é "leitor antigo que continua correto": os modos reais precisam de leitor próprio (`send_mode='real'` + status) — o §10 foi corrigido | §3.3 · §10 |
+| 6 | `incerto` **sai** da lista liberável pela rota `liberar` (contradizia §3.1); `portal_key` vazio é **retido**, nunca gravado como `''` | §3.1 · §5 |
+| 7 | "`_entregar_agora` continua o único `send_*`" vale **no caminho da cobrança real**; 📊 há 30+ chamadores diretos de `send_*` no backend fora dele | §0.4 |
+| 8 | o comando do card ganha `WHERE agent_role='attendance'` (📊 8 linhas em `agents`; 4 `attendance`, todas `false`); o relatório existir desde o início é o que o template manda (instrução 1) — mantido | §0 |
+| 9 | os freios do acionamento no canário são, em série: agente de atendimento desligado (`attendance_agent_active`, lido em `observer_tap:820` e `platform_outbound:975`) e `INSURER_DISPATCH_LIVE=false` **explícito** no env de produção (📊 `dispatch_live_enabled` é "ausente = ABERTO" desde 14/08 — o valor explícito é o que fecha) e `DISPATCH_FINALIZE_MODE=test` (default do código é `live`) | §0.1 |
+| 10 | janela do canário: a rotina canário nasce `is_active=false` e é executada **pelo script**, nunca pelo scheduler; as tarefas periódicas do tenant (vigia, weekly, sugestões, drenador) não são tocadas nem paradas — o canário não cria trabalho para elas (o ledger e o item são sintéticos; nada entra em `platform_queue`) | §9 |
+| 11 | higiene: `PainelDeRotinas.tsx:861` tem um telefone de teste real como `placeholder` → máscara `55 47 9XXXX-XXXX` (U3) | §5 |
+
+**Veredito do aquecimento:** não liberada como estava; as emendas 1–3 são pré-condição do primeiro commit de produto. **Aplicadas nesta v1.1.** Segundo ELO, agora medido: "o retorno do cliente não é registrado PORQUE o evento para em `observer_tap` antes do background" — A (observador + agente desligado, 📊 SELECT), B (`observer_intake.py:830` + `webhook.py:1366-1372`), B chega em A ✅.
 
 ---
 
@@ -183,7 +197,7 @@ CREATE INDEX billing_sent_log_to_phone_idx ON billing_sent_log (company_id, to_p
 
 - Modos reais gravam `send_mode='real'` + `modalidade` — a **identidade da obrigação** `(company_id, portal_key, recibo)` não depende de modo, dia ou run (G08, G11). Legado `test` continua com `send_mode='test'` e a chave antiga.
 - **Estados**: `reservado` → `aceito_pelo_canal` (texto ok, sem doc previsto) · `entregue_equipe` (equipe, texto+doc) · `parcial` (texto ok, doc falhou) · `incerto` (efeito possível, registro pós-envio falhou ou timeout) · `falhou` (nada saiu; re-claimável) · `adiado` (cortesia/governador; re-claimável) · `liberado` (humano liberou reenvio, com motivo) · `suprimido` (cliente pediu para não receber / contato errado) · `contestado` (já paguei / dúvida — a sequência para até conferência).
-- **Reserva**: `INSERT … ON CONFLICT DO NOTHING RETURNING` (PostgREST `ignore_duplicates`) — só quem recebe a linha de volta envia (G07). Linha existente com `status IN ('falhou','adiado','liberado')` é reclamada por `UPDATE … WHERE id=? AND status=?` retornando a linha (atômico). `parcial` → reclamada só para o **componente doc** (G06). `incerto`, `entregue_equipe`, `aceito_pelo_canal`, `suprimido`, `contestado` → **nunca** reclamadas automaticamente (G10, G14).
+- **Reserva** (emenda 2): função no banco `billing_reservar_obrigacao(p_company_id, p_portal_key, p_recibo, p_modalidade, p_to_phone, p_to_last4, p_cliente_nome, p_apolice_susep, p_routine_id, p_work_run_id, p_integration_id, p_canario) RETURNS TABLE(id uuid, ganhou boolean, status text)` — `INSERT … send_mode='real', status='reservado' … ON CONFLICT (company_id, portal_key, recibo) WHERE send_mode='real' DO NOTHING RETURNING`; sem linha de volta, devolve a existente com `ganhou=false`. Só quem recebe `ganhou=true` envia (G07). PostgREST não infere índice parcial por `on_conflict`, por isso é RPC. Linha existente com `status IN ('falhou','adiado','liberado','parcial')` é reclamada por `billing_reclamar_obrigacao(p_id, p_company_id, p_de_status text[]) RETURNS boolean` (`UPDATE … SET status='reservado', reserved_at=now(), attempts=attempts+1 WHERE id AND company_id AND status = ANY(p_de_status)`), atômico. `parcial` → reclamada só para o **componente doc** (G06). `incerto`, `entregue_equipe`, `aceito_pelo_canal`, `suprimido`, `contestado` → **nunca** reclamadas automaticamente (G10, G14). `portal_key` vazio → item **retido** ("sem seguradora identificada"), nunca gravado como `''`.
 - Falha na leitura/reserva → `blockers` + incidente; **não envia** (G09).
 
 ### 3.2 A porta de saída — `platform_outbound.send_to_client_guarded` ganha
@@ -202,7 +216,7 @@ Retorno ganha `doc_ok` e `integration_id`. `_entregar_agora` continua o **único
 
 ### 3.3 O que a rotina faz por modo (em `execute_billing_collection_routine`)
 - `test` → `_send_test_messages` **inalterado**.
-- `equipe`/`cliente` → `_entregar_cobranca_real(...)`: fixa a integração UMA vez (`_find_whatsapp_integration`, que já aplica `para="auxiliar"`), monta pacote, reserva, envia pela porta, marca o ledger, registra incidentes. Sem canal → nada sai, incidente `cobranca.sem_canal`.
+- `equipe`/`cliente` → `_entregar_cobranca_real(...)`: fixa a integração UMA vez (`_find_whatsapp_integration`, que já aplica `para="auxiliar"`), monta pacote, **reserva por RPC**, envia pela porta, marca o ledger, registra incidentes. Sem canal → nada sai, incidente `cobranca.sem_canal`. O leitor dos modos reais é próprio (`_obrigacoes_reais(client, company_id)` → `send_mode='real'` com `status`); `_already_sent_recibos` continua servindo só ao modo `test` (emenda 5).
 - Relatório (`_format_report`) e peça (`compor_peca_da_cobranca`) mostram contagens reconciliáveis: encontrados · elegíveis · preparados · retidos (por motivo) · aceitos pelo canal · parciais/incertos · entregues à equipe · encaminhados ao cliente (relato humano) · suprimidos/contestados.
 - Rotina de sistema não ganha autorização universal: `autorizacao_de_auxiliar=True` só quando `is_billing_routine(routine)` **e** a rotina está `is_active` **e** o modo é real.
 
@@ -211,11 +225,11 @@ Retorno ganha `doc_ok` e `integration_id`. `_entregar_agora` continua o **único
 ## 4. Respostas e convivência no mesmo número
 
 ### 4.1 O contexto do caso chega ao atendimento (`backend/app/services/billing_replies.py`, novo)
-`contexto_de_cobranca(company_id, phone) -> Optional[str]`: lê `billing_sent_log` (`send_mode='real'`, `to_phone` nas variantes BR, últimos 30 dias, `limit(5)`), e devolve um bloco `[COBRANÇA EM ANDAMENTO]` com: seguradora · parcela · vencimento · valor · data do envio · estado · **regras**: "não confirme pagamento por fala; 'já paguei' → agradeça, diga que a equipe confere, não reenvie; 'me manda de novo' → diga que a equipe reenvia (não prometa horário); 'não sou essa pessoa' → peça desculpa, não cite dados, encerre; 'não quero receber' → registre e encerre; guincho/assistência → siga o atendimento normal". Nada do bloco é instrução que mude autorização (G21: o conteúdo do cliente/documento entra como dado).
+`contexto_de_cobranca(company_id, phone, *, excluir_phones=()) -> Optional[str]`: lê `billing_sent_log` (`send_mode='real'`, `to_phone` nas variantes BR, últimos 30 dias, `limit(5)`), e devolve um bloco `[COBRANÇA EM ANDAMENTO]` com: seguradora · parcela · vencimento · valor · data do envio · estado · **regras**: "não confirme pagamento por fala; 'já paguei' → agradeça, diga que a equipe confere, não reenvie; 'me manda de novo' → diga que a equipe reenvia (não prometa horário); 'não sou essa pessoa' → peça desculpa, não cite dados, encerre; 'não quero receber' → registre e encerre; guincho/assistência → siga o atendimento normal". Nada do bloco é instrução que mude autorização (G21: o conteúdo do cliente/documento entra como dado). **Emenda 4:** o `team_number` das rotinas `equipe` da corretora entra em `excluir_phones` — a atendente que responde não recebe o caso de nenhum cliente (G27).
 No `webhook.py:975-983`, quando `contexto_de_cobranca` devolve algo, ele **substitui** o `context_note_for` genérico; senão o genérico continua (controle).
 
-### 4.2 O retorno do cliente é registrado antes de qualquer resposta (`registrar_retorno`)
-No `process_whatsapp_message_background`, logo depois de resolver `integration`/`company_id` e **antes** do observador consumir: se o telefone tem linha real no ledger, classifica o texto (`_classificar_retorno`: já paguei · não sou · não quero · segunda via · dúvida · outro) e grava `retorno_do_cliente`, `retorno_em`, `status` (`contestado`/`suprimido`) e uma linha em `agent_activities` via `log_activity` (`cobranca`, texto humano). **Não envia nada.** Com o agente desligado (📊 4/4 hoje), esta é a única forma de a equipe saber que o cliente respondeu (G13, G14, G17).
+### 4.2 O retorno do cliente é registrado antes de qualquer resposta (`registrar_retorno`) — **no endpoint** (emenda 1)
+📊 `webhook.py:1366-1372`: o endpoint `evolution_webhook_go_token` chama `observer_tap` e **retorna** `{"status":"observed"}` quando `purpose='observer'` e o agente está desligado — o background nunca nasce. Por isso `registrar_retorno` roda **no endpoint**, entre `_resolve_webhook_integration` e `observer_tap` (e no endpoint `evolution` legado no ponto equivalente), em `try/except` que nunca derruba o fluxo, sobre o texto extraído do evento cru (`go_event_to_v2_envelope` já existe; usar o mesmo extrator do texto e do `fromMe`/grupo). Se o telefone tem linha real no ledger, classifica o texto (`_classificar_retorno`: já paguei · não sou · não quero · segunda via · dúvida · outro) e grava `retorno_do_cliente`, `retorno_em`, `status` (`contestado`/`suprimido`) e uma linha em `agent_activities` via `log_activity` (`cobranca`, texto humano). **Não envia nada.** Com o agente desligado (📊 4/4 hoje), esta é a única forma de a equipe saber que o cliente respondeu (G13, G14, G17). **G24:** o gate exercita o endpoint com `purpose='observer'` e agente desligado e prova que o ledger mudou; **M15** move o hook para dentro do background e o gate fica vermelho.
 Classificação por regex em PT com pares mínimos fixados (`backend/tests/corpus/retornos_de_cobranca.json`, sintéticos). Mídia sem texto → `outro` (P-097.1-MIDIA-SEM-TEXTO continua).
 
 ### 4.3 Convivência (G15, G16)
@@ -230,15 +244,16 @@ Classificação por regex em PT com pares mínimos fixados (`backend/tests/corpu
 
 - `components/auxiliares/PainelDeRotinas.tsx`: `MODOS_COM_MOTOR` = `test · none · equipe · cliente`; campo `team_number` (equipe); confirmação explícita para `cliente` (texto: "O cliente vai receber diretamente pelo WhatsApp da corretora. Cada parcela é cobrada uma vez."); configuração legada `approval`/`live` mostra o aviso e força a escolha antes de salvar; texto "Enviar direto ao segurado ainda não está disponível" **sai**. Lista **"Pendências da cobrança"** (rows do ledger com `status IN (parcial, incerto, entregue_equipe sem encaminhado, contestado, suprimido, falhou)`), com ações: *Marcar como encaminhado ao cliente* · *Liberar reenvio* (motivo obrigatório).
 - `app/api/dashboard/rotinas/route.ts`: `normalizeBillingConfig` aceita os 4 modos + `team_number` + `confirmacao_cliente`; nunca promove legado.
-- Rotas novas (todas por `resolveSessionCompany`, filtro `company_id` obrigatório): `app/api/dashboard/auxiliaries/cobranca/pendencias/route.ts` (GET) · `…/encaminhado/route.ts` (POST id, motivo?) · `…/liberar/route.ts` (POST id, motivo) — `liberar` só de `entregue_equipe|parcial|incerto|falhou|adiado|suprimido?` — **suprimido não libera** (preferência do cliente); `contestado` libera só com motivo.
+- Rotas novas (todas por `resolveSessionCompany`, filtro `company_id` obrigatório): `app/api/dashboard/auxiliaries/cobranca/pendencias/route.ts` (GET) · `…/encaminhado/route.ts` (POST id, motivo?) · `…/liberar/route.ts` (POST id, motivo) — `liberar` só de `entregue_equipe|parcial|falhou|adiado` e de `contestado` com motivo; **`suprimido` e `incerto` não liberam** (409: preferência do cliente / efeito possível não é efeito ausente).
 - `liberar-reenvio` (teste) não muda.
+- Higiene (emenda 11): o `placeholder` com telefone real em `PainelDeRotinas.tsx:861` vira máscara `55 47 9XXXX-XXXX`.
 - Guarda `scripts/rotina-mora-no-auxiliar.test.mjs` atualizado: a asserção "nenhum modo sem motor (`live`, `approval`)" continua; ganha "os modos `equipe` e `cliente` existem e têm motor" (`grep` da função `_entregar_cobranca_real` no Python).
 
 ---
 
 ## 6. Alertas, incidentes e painel (G17)
 - Toda falha vira `log_activity(company_id, "cobranca", título humano, detalhe)` → tabela `agent_activities` (📊 `activity_log.py:50`) — o painel de Atividades já existe; sem inbox novo.
-- `avisar_suporte_humano` continua; o relatório diz "aviso ao grupo: enviado / falhou / sem destino / suprimido (canário)". Nunca "humano avisado" por tentativa falha.
+- `avisar_suporte_humano(client, company_id, texto, rotulo, *, suprimir=False)` — as **três** chamadas (`:1697`, `:1711`, `:1720`) passam `suprimir=bool(cfg.get("canario"))`; o relatório diz "aviso ao grupo: enviado / falhou / sem destino / suprimido (canário)". Nunca "humano avisado" por tentativa falha (G26).
 - Recuperação da conexão **não** dispara backlog: `adiado`/`falhou` só são reclamados pela **próxima execução** da rotina, dentro do teto do governador.
 
 ---
@@ -248,8 +263,9 @@ Classificação por regex em PT com pares mínimos fixados (`backend/tests/corpu
 ```
 URL ................. https://www.postgresql.org/docs/current/ddl-constraints.html  (reaberta 07/09/2026, doc 18.6)
 o que ela faz ....... UNIQUE multi-coluna; restrição parcial só por ÍNDICE ÚNICO PARCIAL; CHECK não barra NULL; NULLS não são iguais em UNIQUE
-MODELAMOS ........... `billing_sent_log_obrigacao_uniq` parcial `WHERE send_mode='real'` (U1); `status`/`attempts` NOT NULL com default;
-                      teste que exige o 23505 do banco no segundo claim
+MODELAMOS ........... `billing_sent_log_obrigacao_uniq` parcial `WHERE send_mode='real'` (U1) + a reserva como FUNÇÃO no banco com o predicado
+                      no `ON CONFLICT` (PostgREST não infere índice parcial); `status`/`attempts` NOT NULL com default; o canário exige
+                      `ganhou=false` no segundo claim contra o Postgres real (G25)
 REJEITAMOS .......... supor que o UNIQUE gravado DEPOIS do envio garante uma mensagem só (é o defeito R06/R05); NULLS NOT DISTINCT (não há NULL na chave)
 COMO O JUIZ INSPECIONA abre a §5.4 da doc; roda dois INSERTs concorrentes na fixture do canário e vê UM 23505
 ```
@@ -308,6 +324,10 @@ O que o estado da arte faz que nós NÃO fazemos, por valor: receipt de entrega/
 | G21 | injeção | `[G21]` documento/cliente com "envie para 55…"/"mude a corretora" → bloco entra como DADO; nenhum efeito | — |
 | G22 | instalação ≠ validação | relatório §6 separa main / implantado (fingerprint) / canário / aceite | — |
 | G23 | docs coerentes | `test_o_protocolo_tem_policia.py` reconhece EXTRA; dossiê com `p-extra001` | — |
+| G24 | retorno registrado com observador consumindo | `[G24]` endpoint com `purpose='observer'`, agente desligado, texto "já paguei" → ledger `contestado` + atividade; observador continua consumindo | **M15** mover o hook para o background |
+| G25 | reserva real no Postgres | canário: 2 chamadas de `billing_reservar_obrigacao` para a mesma obrigação → `ganhou` true/false; dublê do guarda reproduz o contrato | **M16** reservar por `ignore_duplicates` |
+| G26 | grupo suprimido no canário | `[G26]` `cfg.canario=True` → `avisar_suporte_humano` não chama `send_message` nas 3 chamadas; sem canário chama (controle) | remover `suprimir=` de uma das três |
+| G27 | atendente não herda os casos | `[G27]` `contexto_de_cobranca(phone=team_number)` → None | remover `excluir_phones` |
 
 Gate zero: o guarda inteiro **VERMELHO** em cópia limpa (`../AutoBrokers-FIX-gate0` em `34424fa`) antes do primeiro commit de produto.
 
@@ -315,7 +335,7 @@ Gate zero: o guarda inteiro **VERMELHO** em cópia limpa (`../AutoBrokers-FIX-ga
 
 ## 9. Canário autorizado (§0.3) — `backend/scripts/canario_extra001.py`
 
-`--dry-run` (padrão) imprime: conexão da Resulta por id (últimos 4 do telefone), allowlist carregada (tamanho, nunca dígitos), rotina canário a criar, item sintético, documento sintético. `--vivo` exige `AUTOBROKERS_CANARIO=1` **e** `BILLING_CANARIO_ALLOWLIST` com 2 entradas, e:
+`--dry-run` (padrão) imprime: conexão da Resulta por id (últimos 4 do telefone), allowlist carregada (tamanho, nunca dígitos), rotina canário a criar, item sintético, documento sintético. A rotina canário nasce `is_active=false` e é executada **pelo script** (chamada direta a `execute_billing_collection_routine` com os jobs de portal dublados por item sintético), nunca pelo scheduler; nada entra em `platform_queue`; as tarefas periódicas do tenant não são tocadas (emenda 10). `--vivo` exige `AUTOBROKERS_CANARIO=1` **e** `BILLING_CANARIO_ALLOWLIST` com 2 entradas, e:
 - **Q1 equipe**: rotina canário (`config.canario=True`, `send_mode='equipe'`, `team_number`=TESTE-B), item sintético `recibo=CANARIO-…`, PDF sintético "SEM VALIDADE — TESTE" em `portal-evidence/canario/…` → 3 mensagens chegam em TESTE-B; ledger `entregue_equipe`, `canario=true`; **aviso ao grupo suprimido**.
 - **Q2 cliente**: mesma parcela, modo `cliente`, `item.whatsapp`=TESTE-B → **0 envios** (G11: entregue à equipe sem encaminhado); depois `liberar` com motivo → 1 envio (texto+PDF).
 - **Q3 reexecução**: rodar de novo → 0 envios, relatório diz "já cobrado".
@@ -326,7 +346,7 @@ Gate zero: o guarda inteiro **VERMELHO** em cópia limpa (`../AutoBrokers-FIX-ga
 ---
 
 ## 10. Migração e compatibilidade
-- Additiva; leitores antigos (`_already_sent_recibos`, `liberar-reenvio`) continuam corretos porque só olham `send_mode='test'`.
+- Additiva; `liberar-reenvio` continua correto porque só apaga `send_mode='test'`; `_already_sent_recibos` continua servindo ao modo `test`; os modos reais ganham leitor próprio (emenda 5).
 - Legado desconhecido: linhas antigas (`send_mode` real de outra época) — 📊 não existem (0 linhas). O default `status='entregue'` é conservador.
 - Backfill: nenhum.
 - ROLLBACK: `DROP INDEX` + `ALTER TABLE … DROP COLUMN` (nenhum leitor antigo depende das colunas novas). Mensagens já enviadas não se desfazem; o ledger fica.
