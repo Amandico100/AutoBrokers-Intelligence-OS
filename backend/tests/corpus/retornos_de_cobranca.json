@@ -1,0 +1,57 @@
+{
+  "_doc": "SPEC-EXTRA-001 · o corpus do retorno do cliente a uma cobranca. TODAS as frases sao SINTETICAS, escritas a mao em 07/09/2026 pelo desenhista: nenhuma veio de conversa real, nenhuma carrega nome, CPF, apolice, placa ou telefone. Elas existem para que `billing_replies.classificar_retorno` seja medida sobre TEXTO, e nao sobre a intencao de quem a escreveu.",
+  "_como_usar": "[G14] carrega este arquivo e chama `classificar_retorno(frase)` -- o MOTOR (CLAUDE.md §9.4), nunca o regex dele. Cada entrada tem `texto`, `esperado` e, quando faz parte de um par minimo, `par` com o id do irmao. O PAR e o que da direito a conclusao (CLAUDE.md §9.2): duas frases parecidas, veredito OPOSTO. Um classificador que devolvesse `outro` para tudo acertaria 6 das 40 e ficaria vermelho no primeiro par.",
+  "_rotulos": ["ja_paguei", "nao_sou", "nao_quero", "segunda_via", "duvida", "outro"],
+  "_regra_do_par": "Onde ha `par`, o guarda exige que os DOIS lados saiam com rotulos diferentes. Nao basta a soma de acertos: uma regra que casasse 'ja paguei' dentro de 'ja paguei? nao, ainda nao' passaria pela contagem e erraria o cliente que esta perguntando.",
+  "frases": [
+    {"id": "P01a", "texto": "ja paguei ontem", "esperado": "ja_paguei", "par": "P01b"},
+    {"id": "P01b", "texto": "ja paguei? nao, ainda nao paguei", "esperado": "duvida", "par": "P01a"},
+    {"id": "P02a", "texto": "esse boleto ja foi pago na semana passada", "esperado": "ja_paguei", "par": "P02b"},
+    {"id": "P02b", "texto": "esse boleto ja foi pago mesmo? nao lembro de ter pago", "esperado": "duvida", "par": "P02a"},
+    {"id": "P03a", "texto": "paguei no debito automatico, ta tudo em dia", "esperado": "ja_paguei"},
+    {"id": "P03b", "texto": "fiz o pix hoje de manha, o comprovante ta aqui", "esperado": "ja_paguei"},
+    {"id": "P04a", "texto": "quitei essa parcela mes passado", "esperado": "ja_paguei"},
+    {"id": "P04b", "texto": "nao quitei nada ainda, quando vence?", "esperado": "duvida", "par": "P04a"},
+
+    {"id": "P05a", "texto": "nao sou essa pessoa", "esperado": "nao_sou", "par": "P05b"},
+    {"id": "P05b", "texto": "sou eu sim, pode falar", "esperado": "outro", "par": "P05a"},
+    {"id": "P06a", "texto": "voces erraram o numero, aqui nao e essa pessoa", "esperado": "nao_sou"},
+    {"id": "P06b", "texto": "acho que voces trocaram o numero, esse contrato nao e meu", "esperado": "nao_sou"},
+    {"id": "P07a", "texto": "numero errado", "esperado": "nao_sou", "par": "P07b"},
+    {"id": "P07b", "texto": "o numero da apolice esta errado no boleto", "esperado": "duvida", "par": "P07a"},
+    {"id": "P08a", "texto": "essa pessoa nao mora mais aqui", "esperado": "nao_sou"},
+
+    {"id": "P09a", "texto": "nao quero receber mais essas mensagens", "esperado": "nao_quero", "par": "P09b"},
+    {"id": "P09b", "texto": "nao quero pagar por boleto, tem pix?", "esperado": "duvida", "par": "P09a"},
+    {"id": "P10a", "texto": "para de me mandar mensagem", "esperado": "nao_quero"},
+    {"id": "P10b", "texto": "me tira dessa lista por favor", "esperado": "nao_quero"},
+    {"id": "P11a", "texto": "descadastrar", "esperado": "nao_quero"},
+    {"id": "P11b", "texto": "nao me mande mais nada, cancelei o seguro", "esperado": "nao_quero"},
+    {"id": "P12a", "texto": "sair", "esperado": "nao_quero", "par": "P12b"},
+    {"id": "P12b", "texto": "vou sair de viagem, consigo pagar na volta?", "esperado": "duvida", "par": "P12a"},
+
+    {"id": "P13a", "texto": "manda de novo o boleto", "esperado": "segunda_via", "par": "P13b"},
+    {"id": "P13b", "texto": "manda de novo o que voce disse, nao entendi", "esperado": "duvida", "par": "P13a"},
+    {"id": "P14a", "texto": "preciso da segunda via", "esperado": "segunda_via"},
+    {"id": "P14b", "texto": "o pdf nao abriu aqui, pode reenviar?", "esperado": "segunda_via"},
+    {"id": "P15a", "texto": "consegue mandar o codigo de barras?", "esperado": "segunda_via"},
+    {"id": "P15b", "texto": "esse boleto venceu, manda um atualizado", "esperado": "segunda_via"},
+    {"id": "P16a", "texto": "reenvia o arquivo por favor", "esperado": "segunda_via"},
+
+    {"id": "P17a", "texto": "esse valor esta certo?", "esperado": "duvida"},
+    {"id": "P17b", "texto": "que parcela e essa? nao entendi a cobranca", "esperado": "duvida"},
+    {"id": "P18a", "texto": "de qual seguro e isso?", "esperado": "duvida"},
+    {"id": "P18b", "texto": "posso pagar depois do dia 10?", "esperado": "duvida"},
+    {"id": "P19a", "texto": "isso e golpe?", "esperado": "duvida"},
+
+    {"id": "P20a", "texto": "preciso de guincho", "esperado": "outro", "par": "P20b"},
+    {"id": "P20b", "texto": "preciso do boleto de novo", "esperado": "segunda_via", "par": "P20a"},
+    {"id": "P21a", "texto": "bati o carro agora, o que eu faco?", "esperado": "outro"},
+    {"id": "P21b", "texto": "quero contratar seguro residencial tambem", "esperado": "outro"},
+    {"id": "P22a", "texto": "obrigado", "esperado": "outro"},
+    {"id": "P22b", "texto": "bom dia", "esperado": "outro"},
+    {"id": "P23a", "texto": "", "esperado": "outro"},
+    {"id": "P23b", "texto": "👍", "esperado": "outro"}
+  ],
+  "_midia_sem_texto": "Evento de midia sem legenda chega aqui como texto vazio (P23a) e sai como `outro` -- P-097.1-MIDIA-SEM-TEXTO continua aberta: classificar audio/imagem NAO e desta SPEC."
+}
