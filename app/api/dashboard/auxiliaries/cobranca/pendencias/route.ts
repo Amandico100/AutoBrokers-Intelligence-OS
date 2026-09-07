@@ -39,6 +39,10 @@ const ESTADOS_PENDENTES = [
   'suprimido',
   'falhou',
   'adiado',
+  // `liberado` fica na fila até a PRÓXIMA execução da rotina reenviar — senão a
+  // liberação some da tela e, com a rotina pausada, ninguém mais a vê (painel
+  // 07/09, lente produto+DADO P4).
+  'liberado',
 ];
 
 export async function GET() {

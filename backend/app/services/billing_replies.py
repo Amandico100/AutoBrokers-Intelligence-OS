@@ -395,7 +395,10 @@ async def contexto_de_cobranca(company_id: str, phone: str, *,
         linhas: List[str] = []
         for caso in casos:
             pedacos = [_nome_da_seguradora(caso.get("portal_key"))]
-            recibo = str(caso.get("recibo") or "").strip()
+            # `\s+` → " ": o recibo vem da raspagem do portal, e uma quebra de
+            # linha dentro dele fabricaria uma "linha nova" no bloco do prompt
+            # (red team 07/09). Dado é dado; nunca vira ordem.
+            recibo = re.sub(r"\s+", " ", str(caso.get("recibo") or "")).strip()
             if recibo:
                 pedacos.append("parcela/recibo %s" % recibo[:24])
             # ⚠️ SEM vencimento e SEM valor, e não por esquecimento: 📊 medido
@@ -451,7 +454,10 @@ async def telefones_da_equipe_de_cobranca(company_id: str) -> List[str]:
             res = (db.client.table("routines")
                    .select("id, config, is_active")
                    .eq("company_id", str(company_id))      # 🔴 CLAUDE.md §7
-                   .eq("is_active", True)
+                   # 🔴 SEM `is_active` de propósito (painel 07/09, produto+DADO P1):
+                   #    a rotina PAUSADA continua com o ledger cheio de
+                   #    `to_phone = team_number` — a atendente voltaria a herdar
+                   #    (e a encerrar) o caso alheio. 📊 07/09: todas pausadas.
                    .execute())
             return list(res.data or [])
 
@@ -506,13 +512,22 @@ def _repetido(caso: Dict[str, Any], rotulo: str) -> bool:
 
 
 async def registrar_retorno(company_id: str, phone: str,
-                            texto: str) -> Optional[dict]:
+                            texto: str, *,
+                            excluir_phones: Iterable[str] = ()) -> Optional[dict]:
     """Grava o que o cliente respondeu na linha de cobrança dele. Ou ``None``.
 
     ``None`` — sem escrita nenhuma — quando o telefone **não tem** linha real no
     ledger desta corretora. 🔴 É o que impede a SEGURADORA e a URA de virarem
     interlocutor: elas conversam com o produto o dia inteiro e nunca receberam
     cobrança de ninguém.
+
+    🔴 **E a ATENDENTE também não é interlocutor** (painel da EXTRA-001, 07/09:
+    as lentes produto+DADO e red team acharam o mesmo blocker). No modo
+    `equipe` o ledger grava `to_phone = team_number` — o pacote foi PARA ela.
+    Se ela escrever "não quero mais receber isso" no canal da corretora, sem
+    esta exclusão a cobrança do SEGURADO viraria `suprimido` — terminal, e a
+    tela diria "Cliente respondeu" sobre alguém que nunca falou. A leitura
+    (`contexto_de_cobranca`) já se protegia; a escrita, que não se desfaz, não.
 
     ⛔ **Ela REGISTRA. Ela não responde, não envia, não liga agente e não toca a
     ficha da conversa.**
@@ -522,6 +537,8 @@ async def registrar_retorno(company_id: str, phone: str,
         return None
     digitos = so_digitos(phone)
     if not digitos:
+        return None
+    if excluir_phones and _e_variante(digitos, excluir_phones):
         return None
 
     casos = await _casos_do_telefone(company_id, digitos, 1)

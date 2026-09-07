@@ -123,6 +123,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     id,
-    mensagem: 'Liberada. A próxima execução da rotina tenta de novo.',
+    // Para onde vai o reenvio é a MODALIDADE da rotina (equipe ou cliente), não
+    // esta tela: dizer isso aqui evita a atendente esperar que "liberar" mande
+    // ao cliente quando a rotina está em "Encaminhar para minha equipe"
+    // (painel 07/09, lente produto+DADO P4). Com a rotina pausada, nada sai.
+    mensagem:
+      'Liberada. A próxima execução da rotina tenta de novo — pela modalidade configurada nela '
+      + '(para a equipe ou direto ao cliente). Se a rotina estiver pausada, nada sai até ela rodar.',
   });
 }

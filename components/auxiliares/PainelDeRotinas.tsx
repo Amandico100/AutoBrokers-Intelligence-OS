@@ -220,6 +220,7 @@ const SITUACAO_HUMANA: Record<string, string> = {
   suprimido: 'Cliente pediu para não receber',
   falhou: 'Não saiu',
   adiado: 'Adiado — tenta na próxima execução',
+  liberado: 'Liberada — sai na próxima execução da rotina, pela modalidade configurada',
 };
 
 function situacaoEmPortugues(item: PendenciaDaCobranca): string {

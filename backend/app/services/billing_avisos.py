@@ -188,9 +188,19 @@ def aviso_de_portal(corretora: str, seguradora: str, o_que_houve: str,
     ])
 
 
+#: SPEC-EXTRA-001 — o que "enviado" quer dizer depende de PARA QUEM foi. No modo
+#: `equipe` o boleto foi para a atendente, e o grupo não pode ler "enviado ao
+#: cliente" (§12.1: o texto mente quando o nome do número mente — painel 07/09).
+_ENVIADOS_POR_MODO = {
+    "equipe": "✅ {n} pacote(s) entregue(s) à EQUIPE para encaminhar — o cliente ainda não recebeu",
+    "cliente": "✅ {n} boleto(s) aceito(s) pelo WhatsApp para o cliente _(aceito pelo canal; não é confirmação de leitura)_",
+    "test": "✅ {n} simulação(ões) enviada(s) ao número de teste",
+}
+
+
 def aviso_de_resumo(corretora: str, *, seguradoras: List[str], enviados: int,
                     pendentes: int, tarefas: int, sem_telefone: List[Dict[str, Any]],
-                    agora: Optional[datetime] = None) -> str:
+                    agora: Optional[datetime] = None, modalidade: str = "test") -> str:
     """🔵 O que aconteceu na execução. Uma linha por desfecho."""
     partes = [
         _CABECALHOS[TIPO_RESUMO],
@@ -199,9 +209,12 @@ def aviso_de_resumo(corretora: str, *, seguradoras: List[str], enviados: int,
         f"Seguradoras varridas: {', '.join(seguradoras) if seguradoras else 'nenhuma'}",
     ]
     if enviados:
-        partes.append(f"✅ {enviados} boleto(s) enviado(s)")
+        partes.append(_ENVIADOS_POR_MODO.get(str(modalidade or "test"), _ENVIADOS_POR_MODO["test"]).format(n=enviados))
     if pendentes:
-        partes.append(f"⏳ {pendentes} ficam para amanhã _(limite de envios do dia)_")
+        # Sem afirmar a CAUSA: o item pode ter ficado por teto do dia, por
+        # retenção (sem boleto, sem telefone) ou por já ter sido cobrado. A
+        # causa de cada um está no relatório e na lista de Pendências.
+        partes.append(f"⏳ {pendentes} não saíram nesta execução _(o motivo de cada um está no relatório)_")
     if tarefas:
         partes.append(f"🔴 {tarefas} precisam de você _(mensagem acima)_")
     for item in sem_telefone[:5]:

@@ -17,6 +17,16 @@ o canário                                            backend/app/services/canar
 ```
 ⛔ Você NÃO recebe: o relatório dos builders, o esforço, "está funcionando", o resumo.
 
+## O EXECUTION CARD do lote que você julga (o do relatório §0.0)
+```
+OUTCOME ..............  a cobrança chega a quem deve (equipe ou cliente), uma vez por parcela, com o retorno do cliente registrado e toda falha visível
+RISCO ................  8   SUPERFÍCIE 3   PISO §3.2 (envia + migration)   NÍVEL CRÍTICO · opção B
+UNIDADES .............  U1 motor+porta+migration · U2 respostas · U3 tela e rotas · U4 guardas · U5 canário · U6 docs
+COESÃO ...............  SPEC §0        PARALELISMO REAL U1 ∥ U3 · U2 depois de U1
+TIME .................  desenhista · 3 builders · verificador · 2 lentes + red team · juiz fresco
+REFERÊNCIA ...........  SPEC §0.4 · §7      GATES G00–G27 · M1–M20 · Q1–Q6      O ELO SPEC §0      FAIXA DE RELÓGIO 8–13 h
+```
+
 ## As travas
 ```
 ⛔ NENHUMA mensagem sai. NENHUM agente é ligado. NENHUM portal. Banco: só SELECT (o RPC `billing_reservar_obrigacao` ESCREVE — não o chame; leia o VERIFY no relatório §4 e o código).

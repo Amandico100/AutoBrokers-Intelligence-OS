@@ -456,7 +456,11 @@ def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optiona
     # 🔴 O telefone da EQUIPE vem por `telefone_br`, a regra única do produto
     # (P-097-TELEFONE-BR-DUPLICADO) — importado no topo deste arquivo.
     team_number = so_digitos(raw.get("team_number"))
-    confirmacao_cliente = bool(raw.get("confirmacao_cliente"))
+    # 🔴 `_truthy`, nunca `bool(...)`: `bool("false") is True`. A rota Next grava
+    #    booleano, mas esta checagem existe justamente para a config gravada por
+    #    outro caminho — e "false" como texto não pode ligar o envio ao segurado
+    #    (red team da EXTRA-001, 07/09).
+    confirmacao_cliente = _truthy(raw.get("confirmacao_cliente"))
 
     if send_mode in MODOS_LEGADOS:
         send_mode = MODO_RETIDO
@@ -1301,6 +1305,20 @@ ESTADOS_RECLAMAVEIS = ("falhou", "adiado", "liberado", "parcial")
 #: O que a porta responde → o estado que fica no ledger quando ela nem chegou a
 #: enviar. `adiado` é reclamável amanhã; `falhou` também. A diferença é o que a
 #: pessoa lê na tela: "a vazão não abriu" e "não consegui" não são a mesma notícia.
+# O MOTIVO que a corretora lê (painel 07/09, lente produto+DADO P3): o token da
+# porta (`conexao_trocada`, `fora_da_allowlist`…) é para quem investiga; quem
+# lê Atividades e o relatório é atendimento de corretora.
+MOTIVO_EM_PORTUGUES = {
+    "governador": "fora da janela ou do limite de envios do dia — tenta na próxima execução",
+    "cliente_em_atendimento": "o cliente estava em atendimento — tenta na próxima execução",
+    "sem_canal": "a corretora não tem WhatsApp autorizado para o Auxiliar",
+    "conexao_trocada": "a conexão de WhatsApp mudou desde o início da execução — nada saiu por segurança",
+    "agente_desligado": "o agente de atendimento está desligado",
+    "fora_da_allowlist": "número não autorizado no teste",
+    "erro_envio": "o WhatsApp não aceitou a mensagem",
+    "recusado": "quem pediu o envio não tem mais vínculo com a corretora",
+}
+
 _ESTADO_POR_RECUSA = {
     "governador": "adiado",
     "cliente_em_atendimento": "adiado",
@@ -1584,6 +1602,25 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
                              f"Nada foi enviado para ela.")
             continue
 
+        if str(reserva.get("status") or "") == "colisao_recibo":
+            # 🔴 O recibo bateu na constraint ANTIGA `(company_id, recibo,
+            #    send_mode)` porque OUTRA seguradora já tem uma obrigação com
+            #    o mesmo número. Não é "já cobrado": é um cliente que o robô
+            #    não consegue distinguir com segurança. RETÉM, com incidente,
+            #    e a equipe cobra (aquecimento EXTRA-001, achado 8a). Vem ANTES
+            #    da checagem do id: desde a 20260907_02 a função devolve id NULL
+            #    neste ramo, para o id da OUTRA parcela nunca viajar.
+            await _incidente(
+                company_id, "Cobrança retida: recibo igual ao de outra seguradora",
+                f"{seguradora} · recibo ...{recibo[-4:]} — a equipe precisa cobrar esta parcela")
+            blockers.append(
+                f"parcela {rotulo} ({seguradora}): NAO cobrada — o numero do recibo e igual "
+                f"ao de outra seguradora ja cobrada; tarefa para a equipe")
+            entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+                             "portal": portal_key, "ok": False, "status": "retido",
+                             "status_anterior": "colisao_recibo", "motivo": "colisao de recibo"})
+            continue
+
         ledger_id = str(reserva.get("id") or "")
         if not ledger_id:
             blockers.append(f"parcela {rotulo} ({seguradora}): a reserva nao devolveu "
@@ -1593,22 +1630,6 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
         somente_documento = False
         if not reserva.get("ganhou"):
             estado = str(reserva.get("status") or estado_anterior or "")
-            if estado == "colisao_recibo":
-                # 🔴 O recibo bateu na constraint ANTIGA `(company_id, recibo,
-                #    send_mode)` porque OUTRA seguradora já tem uma obrigação com
-                #    o mesmo número. Não é "já cobrado": é um cliente que o robô
-                #    não consegue distinguir com segurança. RETÉM, com incidente,
-                #    e a equipe cobra (aquecimento EXTRA-001, achado 8a).
-                await _incidente(
-                    company_id, "Cobrança retida: recibo igual ao de outra seguradora",
-                    f"{seguradora} · recibo ...{recibo[-4:]} — a equipe precisa cobrar esta parcela")
-                blockers.append(
-                    f"parcela {rotulo} ({seguradora}): NAO cobrada — o numero do recibo e igual "
-                    f"ao de outra seguradora ja cobrada; tarefa para a equipe")
-                entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
-                                 "portal": portal_key, "ok": False, "status": "retido",
-                                 "status_anterior": estado, "motivo": "colisao de recibo"})
-                continue
             if estado not in ESTADOS_RECLAMAVEIS:
                 # 🔴 E ELA APARECE. Uma parcela que não sai porque já está em
                 #    outro estado tem de ser LEGÍVEL no relatório — inclusive a
@@ -1718,10 +1739,11 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
                                             status=estado, last_error=motivo[:200])
                 except Exception:  # noqa: BLE001
                     logger.error("[COBRANCA] nao consegui marcar %s no ledger", estado)
-            blockers.append(f"parcela {rotulo} ({seguradora}): nao enviada ({motivo})")
+            motivo_humano = MOTIVO_EM_PORTUGUES.get(motivo, motivo)
+            blockers.append(f"parcela {rotulo} ({seguradora}): nao enviada — {motivo_humano}")
             if estado == "falhou":
                 await _incidente(company_id, "Cobrança não enviada",
-                                 f"A parcela {rotulo} da {seguradora} não saiu: {motivo}. "
+                                 f"A parcela {rotulo} da {seguradora} não saiu: {motivo_humano}. "
                                  f"Ela aparece na lista de Pendências.")
             if motivo == "governador" and orcamento_s <= 0:
                 pendentes = len(fila) - indice - 1
@@ -2410,7 +2432,10 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
             enviados=len([s for s in test_sends if s.get("ok")]),
             pendentes=max(0, len(fila) - len(test_sends)),
             tarefas=len(tarefas),
-            sem_telefone=sem_telefone),
+            sem_telefone=sem_telefone,
+            # 🔴 O grupo lê "entregue à EQUIPE" no modo equipe — nunca "enviado"
+            #    sem dizer a quem (painel 07/09, lente produto+DADO P2).
+            modalidade=str(cfg.get("send_mode") or "test")),
         "resumo", suprimir=suprimir_aviso)
     # ⚠️ A cadeia de `elif` que ficava AQUI — a que explicava `approval` e
     # `live` depois de a entrega já ter acontecido — subiu para o despacho por

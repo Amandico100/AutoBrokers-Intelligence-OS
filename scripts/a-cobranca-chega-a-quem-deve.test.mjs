@@ -136,7 +136,7 @@ if (!painel) {
     telefones.length === 0,
     `achou ${telefones.length}: ${telefones.map((t) => '…' + t.slice(-4)).join(', ')} (so os 4 ultimos digitos aparecem aqui — CLAUDE.md §7)`);
   // 🔴 CONTROLE: o padrao CONSEGUE casar. Sem isto, um regex quebrado passaria.
-  par('o padrao de telefone consegue casar', /\b55\d{10,11}\b/.test('placeholder="5547988087463"'),
+  par('o padrao de telefone consegue casar', /\b55\d{10,11}\b/.test('placeholder="5500900000001"'),
     'nem num numero obvio ele casa — a assercao acima nao mede nada');
 }
 

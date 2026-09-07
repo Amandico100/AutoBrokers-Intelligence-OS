@@ -53,11 +53,19 @@ async def rodar_extra001(
 ):
     """Executa Q1–Q6 dentro do serviço implantado. Só com a allowlist no ambiente."""
     from app.services.canario_extra001 import RESULTA, rodar
+    from app.services.platform_outbound import _allowlist_do_canario, _autorizado_no_canario
 
-    if not os.getenv("BILLING_CANARIO_ALLOWLIST", "").strip() or not os.getenv("CANARIO_TESTE_B", "").strip():
+    # 🔴 As DUAS trancas que a SPEC §9 promete, aqui na porta e não só lá dentro
+    #    (painel 07/09, lente verdade B2): ≥ 2 entradas na allowlist E o destino
+    #    dentro dela. `AUTOBROKERS_CANARIO` não é gate de entrada — é ligado só
+    #    durante a corrida e restaurado (ver canario_extra001.rodar).
+    allow = _allowlist_do_canario()
+    destino = "".join(ch for ch in os.getenv("CANARIO_TESTE_B", "") if ch.isdigit())
+    if len(allow) < 2 or not destino or not _autorizado_no_canario(destino, allow):
         raise HTTPException(
             status_code=409,
-            detail="canário desarmado: faltam BILLING_CANARIO_ALLOWLIST e/ou CANARIO_TESTE_B no ambiente")
+            detail="canário desarmado: BILLING_CANARIO_ALLOWLIST precisa de 2 números e CANARIO_TESTE_B "
+                   "precisa estar nela (variáveis do ambiente do smith-api)")
     try:
         return {"ok": True, **(await rodar(RESULTA, limpar=limpar, esperar_retorno_s=esperar_retorno_s))}
     except Exception as exc:  # noqa: BLE001

@@ -77,7 +77,24 @@ Hook no **endpoint** `evolution_webhook_go_token` (e no `evolution` legado) entr
 - `app/api/dashboard/rotinas/route.ts`: `normalizeBillingConfig` aceita os 4 modos + `team_number` (só dígitos) + `confirmacao_cliente`; legado `approval|live` preservado como está (o Python normaliza para retido).
 - Rotas novas (todas `resolveSessionCompany` + `.eq('company_id')`): `app/api/dashboard/auxiliaries/cobranca/pendencias/route.ts` GET → `{ ok, itens: [{ id, status, modalidade, portal_key, recibo, cliente_nome, apolice_susep, to_last4, sent_at, updated_at, retorno_do_cliente, retorno_em, encaminhado_ao_cliente_em, motivo }] }` (send_mode='real', status ∈ parcial|incerto|entregue_equipe(sem encaminhado)|contestado|suprimido|falhou|adiado, `order updated_at desc limit 100`); `…/encaminhado/route.ts` POST `{id, motivo?}` só de `entregue_equipe` → `encaminhado_ao_cliente_em=now`, `encaminhado_por=<user>`; `…/liberar/route.ts` POST `{id, motivo}` só de `entregue_equipe|parcial|falhou|adiado` e `contestado` com motivo → `status='liberado'`; `suprimido`/`incerto` → 409; id de outro tenant → 404; motivo vazio em liberar → 400.
 
-## 7. Travas de todo pacote
+## 7. O EXECUTION CARD do lote (o mesmo do relatório §0.0 — quem executa carrega o card)
+```
+OUTCOME ..............  a cobrança chega a quem deve (equipe ou cliente), uma vez por parcela, com o retorno do cliente registrado e toda falha visível
+RISCO ................  8 = ALCANCE 3 + REVERSIBILIDADE 3 + FREQUÊNCIA 2
+SUPERFÍCIE ...........  3
+PISO APLICADO ........  §3.2 envia + migration de estrutura → CRÍTICO
+NÍVEL ................  CRÍTICO · opção B
+UNIDADES .............  U1 motor+porta+migration · U2 respostas · U3 tela e rotas · U4 guardas · U5 canário · U6 docs
+COESÃO ...............  ver SPEC §0
+PARALELISMO REAL .....  U1 ∥ U3 · U2 depois de U1
+TIME .................  desenhista · 3 builders · verificador · 2 lentes + red team · juiz fresco
+REFERÊNCIA ...........  SPEC §0.4 (interna) · §7 (externa)
+GATES ................  G00–G27 · M1–M20 · canário Q1–Q6
+O ELO ................  SPEC §0
+FAIXA DE RELÓGIO .....  8–13 h
+```
+
+## 8. Travas de todo pacote
 ```
 ⛔ NENHUMA mensagem sai. NENHUM agente é ligado. NENHUM portal. API InfoCap: só leitura. Banco: SELECT livre; escrita só pela migration desta SPEC (U1) com APPLY/VERIFY/ROLLBACK.
 ⛔ NUNCA imprimir CPF, telefone, apólice, placa, nome de pessoa, senha ou token. Telefones só por alias TESTE-A/TESTE-B ou últimos 4.

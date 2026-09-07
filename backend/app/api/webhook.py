@@ -1403,7 +1403,23 @@ async def _registrar_retorno_de_cobranca(integration: dict, body: Any) -> None:
         # decidir pelo cliente com base num palpite.
         if not phone or not texto:
             return
-        await registrar_retorno(company_id, phone, texto)
+        # 🔴 A ATENDENTE não é o cliente (painel 07/09, B1 das duas lentes): no
+        #    modo `equipe` o ledger tem `to_phone = team_number`, e uma mensagem
+        #    dela ao canal da corretora encerraria a cobrança do segurado.
+        #    A mesma lista que protege a LEITURA (`contexto_de_cobranca`) protege
+        #    a ESCRITA.
+        # 🔴 E o hook está no caminho quente de TODO inbound (red team P2):
+        #    2 s é o teto — passou disso, o atendimento segue e o retorno é
+        #    perdido com um warning, nunca o contrário.
+        from app.services.billing_replies import telefones_da_equipe_de_cobranca
+
+        async def _registrar() -> None:
+            equipe = await telefones_da_equipe_de_cobranca(company_id)
+            await registrar_retorno(company_id, phone, texto, excluir_phones=equipe)
+
+        await asyncio.wait_for(_registrar(), timeout=2.0)
+    except asyncio.TimeoutError:
+        logger.warning("[COBRANCA RETORNO] não registrado: banco lento (>2s); o atendimento seguiu")
     except Exception as e:  # noqa: BLE001
         # ⛔ Sem telefone, sem texto do cliente, sem nome — só o tipo do erro.
         logger.warning("[COBRANCA RETORNO] não registrado: %s", type(e).__name__)

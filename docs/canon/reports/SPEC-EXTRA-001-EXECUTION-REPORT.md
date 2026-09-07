@@ -109,7 +109,37 @@ ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes · gasto: (preencher)
 (preencher com saída real)
 
 ## 6. Canário e rollout
-(preencher)
+
+### 6.1 Estado separado (proposta §18)
+
+| marco | evidência exigida | estado |
+|---|---|---|
+| Implementado e gateado | commits `50d2b4e…` · guarda 155/155 · mutações · painel · juiz fresco | (preencher ao fechar) |
+| Entregue na main | SHA remoto + saída do `git push` | (preencher §14) |
+| Implantado | `code_fingerprint` do `/health` diferente de `9c8c9f09bd153538` (📊 07/09 antes do deploy) + `POST /api/admin/canario/extra001/plano` com chave respondendo 200 | **pendente do clique Implantar** (🧑) |
+| Validado no canário autorizado | Q1–Q6 pela rota admin, com aliases | **pendente**: só roda no implantado (P-E001-CANARIO-VIVO-NO-IMPLANTADO). Censo local (`--dry-run`, 📊 07/09): conexão da Resulta = observer `connected`, remetente …4743 = TESTE-A, destino …7463 = TESTE-B, os dois na allowlist |
+| Validado pelas pilotos | feedback de Saionara/Regina registrado pelo Founder | não iniciado — roteiro em `docs/canon/ROTEIRO-VALIDACAO-EXTRA-001-ATENDENTES.md` |
+| Ativado em linhas operacionais | fora da autorização | **não realizado, não presumido** |
+
+### 6.2 Ordem de implantação — medida, não copiada da 098
+
+📊 `app/api/dashboard/rotinas/route.ts` novo grava `send_mode ∈ {equipe, cliente}`; o `normalize_billing_config` **antigo** (`billing_collection.py:403-405` em `34424fa`) devolve `test` para qualquer valor fora de `{test, approval, live, none}`. Web nova + API antiga = uma rotina salva como "Enviar ao cliente" executaria como **teste** (para o `test_number`, que pode estar vazio → nada sai, mas a tela mentiria). API nova + web antiga = a web só oferece `test/none`, a API entende os dois → inócuo.
+
+**Ordem: smith-api PRIMEIRO, smith-web DEPOIS.** Sem migration pendente (já aplicada). Variáveis novas no smith-api (🧑): `BILLING_CANARIO_ALLOWLIST` (os dois números de teste, só dígitos com 55, separados por vírgula) e `CANARIO_TESTE_B` (o número que recebe). Nenhuma variável nova para a operação normal.
+
+### 6.3 Canário (Q1–Q6) — preencher depois do Implantar
+
+| Q | o que prova | resultado |
+|---|---|---|
+| Q1 | equipe: 3 mensagens em TESTE-B; ledger `entregue_equipe`, `canario=true` | pendente |
+| Q2a/Q2b | cliente: 0 envios até liberar; depois texto + PDF | pendente |
+| Q3 | reexecução: 0 envios | pendente |
+| Q4 / Q4-vivo | retorno "já paguei" → `contestado` + atividade; a resposta REAL de TESTE-B pelo webhook | pendente |
+| Q5 | destino fora da allowlist → `fora_da_allowlist`, 0 envios | pendente |
+| Q6 | limpeza por id: ledger 0 · platform_sends 0 · atividades 0 · PDF removido | pendente |
+
+**Flags criadas ou alteradas:** nenhuma flag de produto. `canario` é campo de config gravado só pelo script/rota do canário; a tela nunca o expõe.
+**Auto-pause configurado:** o freio existente (`parar_envios`) continua valendo para a cobrança real (a porta consulta `envios_parados`).
 
 ## 7. Gate da SPEC
 (preencher)

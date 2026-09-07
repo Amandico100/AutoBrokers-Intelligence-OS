@@ -166,12 +166,32 @@ async def rodar(company_id: str = RESULTA, *, limpar: bool = True,
     from app.services.platform_outbound import _autorizado_no_canario
 
     r = Relato()
-    os.environ["AUTOBROKERS_CANARIO"] = "1"
     allow = _allowlist()
     destino = _digits(os.getenv("CANARIO_TESTE_B", ""))
     if len(allow) < 2 or not destino or not _autorizado_no_canario(destino, allow):
         r.veredito("Q0", False, "allowlist com menos de 2 entradas ou destino fora dela — nada roda")
         return r.como_dict()
+    # 🔴 `AUTOBROKERS_CANARIO` marca toda peça publicada como canário (artifacts/
+    #    service.py::e_canario lê o env EM TEMPO DE CHAMADA). Esta função roda
+    #    dentro do smith-api, que não morre ao fim — deixar a variável ligada
+    #    marcaria as peças de TODAS as corretoras até o próximo restart (painel
+    #    07/09, lente verdade B1). Liga só durante a corrida, e restaura sempre.
+    _tinha = os.environ.get("AUTOBROKERS_CANARIO")
+    os.environ["AUTOBROKERS_CANARIO"] = "1"
+    try:
+        return await _rodar_marcado(company_id, limpar=limpar, esperar_retorno_s=esperar_retorno_s,
+                                    r=r, allow=allow, destino=destino)
+    finally:
+        if _tinha is None:
+            os.environ.pop("AUTOBROKERS_CANARIO", None)
+        else:
+            os.environ["AUTOBROKERS_CANARIO"] = _tinha
+
+
+async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: int,
+                         r: Relato, allow: set, destino: str) -> Dict[str, Any]:
+    from app.core.database import get_supabase_client
+    from app.services import billing_collection as BC
 
     db = get_supabase_client().client
     inicio = datetime.now(timezone.utc)

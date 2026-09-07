@@ -257,8 +257,10 @@ MUTACOES = [
      "if False:  # _MUTADO_E001_M12",
      "M12"),
     # ---- G13 · o contexto e do CASO, nao dos 30 ultimos envios --------------
+    # ⚠️ ancora corrigida (lente verdade 07/09): o codigo usa `MAX_CASOS = 5` e
+    #    `.limit(limite)`, nao `.limit(5)` literal — a ancora antiga nao existia.
     ("app/services/billing_replies.py",
-     ".limit(5)", ".limit(30)  # _MUTADO_E001_M13",
+     "MAX_CASOS = 5", "MAX_CASOS = 30  # _MUTADO_E001_M13",
      "M13"),
     # ---- G14 · `suprimido` e terminal ---------------------------------------
     ("app/api/dashboard/auxiliaries/cobranca/liberar/route.ts",
@@ -290,13 +292,24 @@ MUTACOES = [
      "  # _MUTADO_E001_M18",
      "M18_aviso_sem_suprimir"),
     # M19 -- o `excluir_phones` some do contexto -> [G27]
+    #    ⚠️ ancora UNICA (lente verdade 07/09): `excluir_phones` aparece em varios
+    #    lugares; a linha da LEITURA e `if _e_variante(digitos, excluir_phones):`
+    #    (a da escrita, M21, tem `excluir_phones and` na frente).
     ("app/services/billing_replies.py",
-     "excluir_phones", "_excluir_phones_MUTADO_E001_M19",
+     "if _e_variante(digitos, excluir_phones):", "if False:  # _MUTADO_E001_M19",
      "M19_atendente_herda"),
     # M20 -- o filtro de corretora sai da leitura do ledger -> [G18] (§7)
+    #    ⚠️ ancora UNICA: a de `_consulta_dos_casos`, com as duas linhas seguintes.
     ("app/services/billing_replies.py",
-     '.eq("company_id", str(company_id))', ".limit(500)  # _MUTADO_E001_M20",
+     '.eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7\n'
+     '            .eq("send_mode", "real")',
+     '.eq("send_mode", "real")  # _MUTADO_E001_M20',
      "M20_sem_company_id"),
+    # M21 -- a ESCRITA deixa de excluir a atendente -> [G28] (painel 07/09, B1)
+    ("app/services/billing_replies.py",
+     "if excluir_phones and _e_variante(digitos, excluir_phones):",
+     "if False:  # _MUTADO_E001_M21",
+     "M21_atendente_encerra"),
 ]
 
 #: Os 16 marcadores que a SPEC §8 nomeia. ⚠️ CONTAR nao basta: um `M17`
@@ -309,6 +322,7 @@ MUTACOES_ACRESCENTADAS = {
     "M18_aviso_sem_suprimir": "[G26] · a SPEC descreve a mutacao ('remover suprimir= de uma das tres') e nao lhe da numero",
     "M19_atendente_herda": "[G27] · idem: a SPEC descreve ('remover excluir_phones') sem numerar",
     "M20_sem_company_id": "[G18] · CLAUDE.md §7 -- a SPEC nao numera mutacao de isolamento, e ela e a mais barata de introduzir",
+    "M21_atendente_encerra": "[G28] · painel 07/09 (B1 das duas lentes): a ESCRITA do retorno tambem exclui a atendente",
 }
 
 # ===========================================================================
@@ -1958,6 +1972,35 @@ def bloco_G13():
         par(nao_excluido is not None,
             "[G27] e sem `excluir_phones` ela receberia (o par prova o efeito)",
             "o parametro nao muda nada -- ele nao exclui coisa nenhuma")
+
+    # [G28] 🔴 A ESCRITA tambem: a atendente que responde nao ENCERRA o caso de
+    # ninguem. Painel 07/09 (produto+DADO e red team, o mesmo blocker): a leitura
+    # se protegia com `excluir_phones`; `registrar_retorno` nao tinha o parametro,
+    # e "nao quero mais receber" escrito pela ATENDENTE no canal da corretora
+    # virava `suprimido` -- terminal -- na cobranca do SEGURADO. CLAUDE.md §9.4:
+    # a licao parou na metade barata.
+    registrar, erro = pegar(br, "registrar_retorno", "o registro do retorno")
+    if certo(registrar is not None, "[G28] `registrar_retorno` existe", erro):
+        ok_sig, faltam = aceita(registrar, "excluir_phones")
+        if certo(ok_sig, "[G28] `registrar_retorno` aceita `excluir_phones`", faltam):
+            caso_eq = linha_de_ledger(id="bsl-equipe-w", to_phone=TEL_EQUIPE,
+                                      modalidade="equipe", status="entregue_equipe")
+            banco4 = Banco(mundo(ledger=[caso_eq]))
+            with Encaixe(banco4, FakeWhatsapp()):
+                calado = rodar(registrar(CO_ALFA, TEL_EQUIPE, "nao quero mais receber isso",
+                                         excluir_phones=(TEL_EQUIPE,)))
+            depois = banco4.ledger_por_id("bsl-equipe-w") if hasattr(banco4, "ledger_por_id") else None
+            certo(calado is None, "[G28] a atendente escreve e NADA e gravado", calado)
+            if depois is not None:
+                certo(str(depois.get("status")) == "entregue_equipe",
+                      "[G28] e o estado da parcela do segurado NAO mudou", depois.get("status"))
+            banco5 = Banco(mundo(ledger=[linha_de_ledger(id="bsl-equipe-w2", to_phone=TEL_EQUIPE,
+                                                         modalidade="equipe", status="entregue_equipe")]))
+            with Encaixe(banco5, FakeWhatsapp()):
+                sem_exclusao = rodar(registrar(CO_ALFA, TEL_EQUIPE, "nao quero mais receber isso"))
+            par(sem_exclusao is not None and str(sem_exclusao.get("status")) == "suprimido",
+                "[G28] PAR: sem `excluir_phones` a mesma frase suprimiria (o par prova o efeito)",
+                "o parametro nao muda nada: %r" % (sem_exclusao,))
 
 
 # ===========================================================================
