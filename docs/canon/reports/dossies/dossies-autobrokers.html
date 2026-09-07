@@ -899,7 +899,7 @@ ul.tight li{margin:5px 0}
       <p class="lede">Você decidiu: fechar a cobrança e preservar o atendimento para Resulta e AutoFleet antes de qualquer SPEC estrutural; o mesmo WhatsApp da corretora serve às duas coisas; a corretora escolhe entre <b>encaminhar para a equipe</b> (a atendente recebe o pacote pronto e repassa) e <b>enviar direto ao cliente</b>; ninguém recebe o mesmo boleto duas vezes; quem responde é atendido com o caso certo; toda falha aparece. Esta página acompanha a execução bloco a bloco e é atualizada a cada bloco fechado. Os números de teste aparecem só como TESTE-A e TESTE-B.</p>
       <div class="meta"><span>SPEC <b>specs/SPEC-EXTRA-001-operacao-dos-pilotos.md</b></span><span>base <b>34424fa</b> (= main)</span><span>laço <b>investigador+pesquisador (orquestrador) · aquecimento · desenhista · 3 builders · 2 lentes + red team · juiz fresco · canário TESTE-A → TESTE-B</b></span><span>orçamento <b>≤ 2,5 M tokens</b></span></div>
     </div>
-    <div class="gauge"><div class="eyebrow">estado</div><div class="big">B0<small> medido</small></div><div class="bar"><i style="width:12%"></i></div><div class="sub">conversão feita com 20 medições no código e no banco; aquecimento em curso; nota só no fim</div></div>
+    <div class="gauge"><div class="eyebrow">estado</div><div class="big">v1.1<small> em obra</small></div><div class="bar"><i style="width:25%"></i></div><div class="sub">conversão com 20 medições; aquecimento 86 com 2 defeitos fechados no desenho; desenhista e 2 builders em paralelo; nota só no fim</div></div>
   </div>
 
   <h2>1 · O que a medição mostrou antes de escrever uma linha (07/09)</h2>
@@ -917,10 +917,10 @@ ul.tight li{margin:5px 0}
   <div class="tw"><table>
     <tr><th>bloco</th><th>o que entrega</th><th>estado</th></tr>
     <tr><td><b>U0</b> medir</td><td>20 medições no código e no banco; hashes dos insumos; sanitização das cópias canônicas</td><td>✔ feito 07/09</td></tr>
-    <tr><td><b>aquecimento</b></td><td>um executor em contexto limpo refuta a SPEC com 15 perguntas (2 falsas assinadas)</td><td>⏳ em curso</td></tr>
-    <tr><td><b>U4</b> guardas</td><td>gate zero vermelho em cópia limpa; mutações M1–M14 por nome; EXTRA na polícia</td><td>—</td></tr>
-    <tr><td><b>U1</b> motor</td><td>modos equipe/cliente, pacote humano limpo, ledger com reserva, porta com documento e conexão fixada, migration</td><td>—</td></tr>
-    <tr><td><b>U3</b> tela</td><td>modalidades na tela do Auxiliar, pendências de cobrança com "encaminhado ao cliente" e "liberar reenvio"</td><td>—</td></tr>
+    <tr><td><b>aquecimento</b></td><td>um executor em contexto limpo refuta a SPEC com 15 perguntas (2 falsas assinadas)</td><td>✔ nota 86 · 11 emendas · 2 defeitos que a SPEC não via: o retorno do cliente estava proposto num ponto que a produção nunca percorre (o observador consome no endpoint antes), e a reserva por PostgREST não funciona contra índice parcial (virou função no banco). SPEC v1.1</td></tr>
+    <tr><td><b>U4</b> guardas</td><td>gate zero vermelho em cópia limpa; mutações M1–M16 por nome; EXTRA na polícia</td><td>⏳ desenhista em curso · EXTRA já entra na polícia (commit 50d2b4e)</td></tr>
+    <tr><td><b>U1</b> motor</td><td>modos equipe/cliente, pacote humano limpo, ledger com reserva (função no banco), porta com documento e conexão fixada, migration</td><td>⏳ builder em curso</td></tr>
+    <tr><td><b>U3</b> tela</td><td>modalidades na tela do Auxiliar, pendências de cobrança com "encaminhado ao cliente" e "liberar reenvio"</td><td>⏳ builder em curso</td></tr>
     <tr><td><b>U2</b> respostas</td><td>contexto do caso no atendimento; retorno do cliente registrado antes do observador; takeover intacto</td><td>—</td></tr>
     <tr><td><b>painel</b></td><td>verdade+regressão · produto+DADO · red team · juiz fresco</td><td>—</td></tr>
     <tr><td><b>U5</b> canário</td><td>Q1 equipe · Q2 cliente (só depois de "liberar") · Q3 reexecução · Q4 retorno · Q5 fora da allowlist · Q6 limpeza</td><td>—</td></tr>
