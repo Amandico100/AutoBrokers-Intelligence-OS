@@ -114,6 +114,22 @@ def _digits(value: Any) -> str:
     return "".join(ch for ch in str(value or "") if ch.isdigit())
 
 
+# 🔴 A REGRA DO TELEFONE É UMA SÓ, e ela mora em `app.telefone_br`
+# (P-097-TELEFONE-BR-DUPLICADO). Este arquivo NÃO reescreve o nono dígito nem a
+# normalização: ele importa.
+#
+# ⚠️ O `except` não é uma segunda regra. `_digits` acima é literalmente "só os
+# dígitos" — a mesma normalização, que já estava aqui desde a SPEC-023 — e o
+# fallback existe por um motivo medido: `test_a_sessao_caida_volta_e_o_aviso…`
+# carrega este módulo com um pacote `app` SINTÉTICO (`__path__ = []`), onde
+# nenhum submódulo resolve. Sem ele, um guarda verde ficaria vermelho por causa
+# do carregador do próprio guarda, e não por causa do produto.
+try:
+    from app.telefone_br import so_digitos
+except Exception:  # noqa: BLE001
+    so_digitos = _digits
+
+
 def _truthy(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on", "sim"}
 
@@ -224,8 +240,17 @@ def tarefas_para_a_equipe(items: List[Dict[str, Any]], cfg: Optional[Dict[str, A
     return out
 
 
-async def avisar_suporte_humano(client, company_id: str, texto: str, rotulo: str) -> bool:
+async def avisar_suporte_humano(client, company_id: str, texto: str, rotulo: str,
+                                *, suprimir: bool = False) -> bool:
     """Manda o aviso para o grupo de suporte humano DESTA corretora.
+
+    🔴 `suprimir=True` — SPEC-EXTRA-001 §0.3. O canário roda num tenant REAL, e
+    📊 a Resulta tem um grupo de WhatsApp de verdade em
+    `human_support_destinations` (`…@g.us`). Um teste autorizado entre dois
+    telefones do Founder não pode mandar "3 parcelas em atraso" para o grupo de
+    trabalho da corretora — o item é sintético, e o aviso seria uma informação
+    falsa numa conversa de gente. Keyword-only e com default `False`: os três
+    chamadores continuam com o comportamento de hoje quando não há canário.
 
     O agente nunca sabe o nome do grupo. Ele diz "avise o suporte desta
     corretora" e o sistema resolve em `human_support_destinations` — assim mil
@@ -236,6 +261,9 @@ async def avisar_suporte_humano(client, company_id: str, texto: str, rotulo: str
     e o relatorio diz que faltou destino. Falhar aqui derrubaria a colheita
     inteira por causa de um campo em branco.
     """
+    if suprimir:
+        logger.info("[COBRANCA] aviso ao grupo humano SUPRIMIDO (canario): %s", rotulo)
+        return False
     try:
         def _destino():
             res = (client.table("human_support_destinations")
@@ -396,13 +424,60 @@ def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_
     return ordenar_para_entrega(fila), retidos
 
 
+# ==========================================================================
+# SPEC-EXTRA-001 · U1 — AS QUATRO MODALIDADES QUE TÊM MOTOR
+# ==========================================================================
+#
+# 🔴 `approval` e `live` NÃO são modalidades: são configuração antiga.
+#
+# 📊 Medido em 07/09/2026: `send_billing_whatsapp` só aparece em
+# `_create_approval_request` (`:793`) — nenhum consumidor jamais executou um
+# pedido de aprovação de cobrança; e o ramo `live` (`:1734-1743`) termina em
+# duas frases de blocker, sem chamar porta nenhuma. Ou seja: as duas
+# "modalidades" existiam na tela e não existiam no produto.
+#
+# ⛔ E elas NÃO são promovidas automaticamente. Mapear `live` → `cliente` seria
+# ligar o envio ao segurado numa corretora que nunca escolheu isso — a decisão
+# tem de ser tomada por gente, na tela, uma vez. Por isso o normalize devolve
+# `retido_legado`: nada sai, e o relatório diz o que fazer.
+MODOS_COM_MOTOR = ("test", "none", "equipe", "cliente")
+MODOS_REAIS = ("equipe", "cliente")
+MODOS_LEGADOS = ("approval", "live")
+MODO_RETIDO = "retido_legado"
+
+
 def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     raw = config if isinstance(config, dict) else {}
     delivery = delivery if isinstance(delivery, dict) else {}
     portals = _as_list(raw.get("portal_keys") or raw.get("selected_portals")) or DEFAULT_PORTAL_KEYS[:]
-    send_mode = str(raw.get("send_mode") or "test").strip().lower()
-    if send_mode not in {"test", "approval", "live", "none"}:
+    send_mode_original = str(raw.get("send_mode") or "test").strip().lower()
+    send_mode = send_mode_original
+    retido_motivo = ""
+    # 🔴 O telefone da EQUIPE vem por `telefone_br`, a regra única do produto
+    # (P-097-TELEFONE-BR-DUPLICADO) — importado no topo deste arquivo.
+    team_number = so_digitos(raw.get("team_number"))
+    confirmacao_cliente = bool(raw.get("confirmacao_cliente"))
+
+    if send_mode in MODOS_LEGADOS:
+        send_mode = MODO_RETIDO
+        retido_motivo = ("configuração antiga: escolha Encaminhar para minha equipe "
+                         "ou Enviar ao cliente")
+    elif send_mode not in MODOS_COM_MOTOR:
         send_mode = "test"
+    elif send_mode == "equipe" and len(team_number) < 10:
+        # Sem para QUEM encaminhar, `equipe` não é uma modalidade — é uma
+        # mensagem sem destino. Reter é a única resposta honesta.
+        send_mode = MODO_RETIDO
+        retido_motivo = ("modo Encaminhar para minha equipe sem o WhatsApp da equipe: "
+                         "informe o número na tela do Auxiliar")
+    elif send_mode == "cliente" and not confirmacao_cliente:
+        # A tela pede a confirmação explícita antes de salvar. O motor a exige
+        # de novo, porque a config pode ter sido gravada por outro caminho — e
+        # "o segurado recebe direto" nunca pode valer por omissão.
+        send_mode = MODO_RETIDO
+        retido_motivo = ("modo Enviar ao cliente sem a confirmação da corretora: "
+                         "confirme na tela do Auxiliar antes de ligar")
+
     test_number = _digits(raw.get("test_number") or delivery.get("number") or "")
     return {
         **raw,
@@ -410,6 +485,12 @@ def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optiona
         "portal_keys": portals,
         "approval_required": bool(raw.get("approval_required", True)),
         "send_mode": send_mode,
+        "send_mode_original": send_mode_original,
+        "retido_motivo": retido_motivo,
+        "team_number": team_number,
+        "confirmacao_cliente": confirmacao_cliente,
+        # ⛔ Só o script de canário grava isto. A tela NUNCA o expõe.
+        "canario": bool(raw.get("canario")),
         "test_number": test_number,
         "message_template": str(raw.get("message_template") or DEFAULT_MESSAGE_TEMPLATE).strip() or DEFAULT_MESSAGE_TEMPLATE,
         "attendant_name": _first_text(raw.get("attendant_name"), raw.get("nome_atendente"), default="nossa equipe"),
@@ -1182,6 +1263,512 @@ async def _registrar_no_governador(company_id: str, number: str,
         pass
 
 
+# ==========================================================================
+# SPEC-EXTRA-001 · U1 — OS MODOS REAIS: `equipe` e `cliente`
+# ==========================================================================
+#
+# 🔴 NENHUM MOTOR NOVO (CLAUDE.md §5). Este bloco não tem fila, scheduler,
+# sender nem ledger próprio:
+#
+#     o ledger    É `billing_sent_log`, a tabela que já existia
+#     a porta     É `platform_outbound.send_to_client_guarded`, a que já existia
+#     o freio     É o governador de vazão, o que já existia
+#     o registro  É `log_activity` → `agent_activities`, o painel que já existe
+#     o retentador É a PRÓXIMA EXECUÇÃO DA ROTINA — e é por isso que a SPEC
+#                 recusou uma fila durável: a rotina já volta amanhã, e uma fila
+#                 ao lado dela seria um segundo relógio para o mesmo trabalho.
+#
+# O que é novo é a ORDEM: **reservar antes de enviar**. É o padrão outbox lido
+# na fonte (AWS, "Transactional outbox"): a intenção é gravada antes do efeito,
+# e o consumidor é idempotente. Gravar depois — que é o que a tabela fazia — é
+# como o mesmo boleto sai duas vezes quando um processo morre no meio.
+
+
+#: `contact_status` que autorizam falar com o SEGURADO. Lista de permissão, e
+#: curta: 📊 `infocap_connector.py:1183` devolve `found` quando a apólice foi
+#: localizada; todo o resto (`not_found`, `provider_error`, `auth_error`,
+#: `source_limited`, `policy_number_ambiguous`) é "não sei quem é este
+#: telefone". Cobrar sem saber de quem é o número é o pior desfecho possível
+#: desta SPEC — pior que não cobrar.
+CONTATOS_ACEITOS = ("found", "ok")
+
+#: Estados que admitem uma nova tentativa. ⛔ `incerto`, `entregue_equipe`,
+#: `aceito_pelo_canal`, `suprimido`, `contestado` e `reservado` NUNCA entram:
+#: efeito possível não é efeito ausente, e preferência do cliente não se desfaz
+#: por retomada automática (WhatsApp Business Policy).
+ESTADOS_RECLAMAVEIS = ("falhou", "adiado", "liberado", "parcial")
+
+#: O que a porta responde → o estado que fica no ledger quando ela nem chegou a
+#: enviar. `adiado` é reclamável amanhã; `falhou` também. A diferença é o que a
+#: pessoa lê na tela: "a vazão não abriu" e "não consegui" não são a mesma notícia.
+_ESTADO_POR_RECUSA = {
+    "governador": "adiado",
+    "cliente_em_atendimento": "adiado",
+    "sem_canal": "falhou",
+    "conexao_trocada": "falhou",
+    "agente_desligado": "falhou",
+    "fora_da_allowlist": "falhou",
+    "erro_envio": "falhou",
+}
+
+
+async def _incidente(company_id: str, titulo: str, detalhe: str = "") -> None:
+    """Toda falha material vira uma linha em ATIVIDADES, no painel que já existe.
+
+    ⛔ Sem PII: nem telefone, nem CPF, nem nome de segurado, nem apólice. O que
+    identifica o caso para quem lê é a seguradora e os últimos dígitos do
+    recibo — e é o bastante para achar a linha na lista de Pendências.
+    """
+    try:
+        from app.services.activity_log import log_activity
+
+        await log_activity(str(company_id), "cobranca", titulo[:180], detalhe[:400])
+    except Exception:  # noqa: BLE001
+        # O incidente é o registro da falha, não a falha. Perder o registro é
+        # ruim; derrubar a cobrança por causa dele é pior.
+        logger.warning("[COBRANCA] incidente nao registrado: %s", titulo[:80])
+
+
+def _whatsapp_legivel(numero: Any) -> str:
+    """`5547999998888` → `+55 47 99999-8888`. Para a atendente LER e digitar.
+
+    ⚠️ Só aparece na NOTA INTERNA, que vai para a própria corretora — nunca em
+    log, relatório de execução, artifact ou prompt.
+    """
+    d = so_digitos(numero)
+    if not d:
+        return "não informado"
+    if d.startswith("55") and len(d) in (12, 13):
+        ddd, resto = d[2:4], d[4:]
+        meio = resto[:-4] if len(resto) > 4 else resto
+        return f"+55 {ddd} {meio}-{resto[-4:]}"
+    return d
+
+
+def _nota_interna_para_a_equipe(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
+    """A mensagem que a ATENDENTE lê — separada da que ela vai encaminhar.
+
+    🔴 Ela é uma mensagem PRÓPRIA, e não um prefixo do texto do cliente. Um
+    cabeçalho colado no texto final obriga a pessoa a editar antes de
+    encaminhar — e o que ela encaminha editando às pressas é o que o segurado
+    lê. Duas mensagens: uma para trabalhar, outra para repassar inteira.
+    """
+    valor = item.get("valor")
+    valor_txt = (f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                 if isinstance(valor, (int, float)) else str(valor or "não informado"))
+    return "\n".join([
+        "📋 COBRANÇA · para encaminhar",
+        "",
+        f"Cliente: {_first_text(item.get('cliente_nome'), item.get('nome_segurado'), default='cliente')}",
+        f"Seguradora: {_portal_insurer_name(item, cfg)}",
+        f"Parcela: {_first_text(item.get('numero_parcela'), item.get('parcela'), default='?')}",
+        f"Vencimento: {item.get('vencimento') or '?'}",
+        f"Valor: {valor_txt}",
+        f"WhatsApp do cliente: {_whatsapp_legivel(item.get('whatsapp'))}",
+        "",
+        "👇 a mensagem abaixo e o PDF são para encaminhar ao cliente, inteiros.",
+        "Quando encaminhar, marque no painel (Auxiliares → Cobrança → Pendências).",
+    ])
+
+
+def _pacote_humano(item: Dict[str, Any], cfg: Dict[str, Any],
+                   boleto: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """O que sai: a nota da equipe, o texto final e o documento.
+
+    🔴 `texto_final` é `build_customer_message` PURO — sem prefixo, sem sufixo,
+    sem instrução, sem a palavra "simulação". 📊 R03: o modo teste envolve o
+    texto em `[TESTE AutoBrokers…]` e numa frase de rodapé (`:888-905`), e é
+    assim que ele tem de continuar. Reusar aquela composição num modo real
+    entregaria ao segurado uma mensagem que diz que é teste — ou obrigaria a
+    atendente a apagar duas linhas antes de encaminhar.
+    """
+    caminho = str((boleto or {}).get("storage_path") or "").strip().lstrip("/")
+    documento = ({"bucket": PORTAL_EVIDENCE_BUCKET, "path": caminho,
+                  "filename": boleto_document_name(item)} if caminho else None)
+    return {
+        "nota_interna": _nota_interna_para_a_equipe(item, cfg),
+        "texto_final": build_customer_message(item, cfg["message_template"], cfg),
+        "documento": documento,
+    }
+
+
+def _obrigacoes_reais(client, company_id: str) -> Dict[str, Dict[str, Any]]:
+    """O que esta corretora JÁ cobrou de verdade, por `(seguradora, recibo)`.
+
+    🔴 **Leitor próprio dos modos reais** — `_already_sent_recibos` continua
+    servindo só ao modo `test`, com a chave antiga e o `except → set()` dele.
+    Aqui a regra é oposta: esta função **levanta**. 📊 R04: falha de leitura
+    devolvendo lista vazia significa "nunca cobrei ninguém" — e a resposta a
+    isso seria cobrar todo mundo de novo. Quem chama trata a exceção como
+    "não envia nada hoje".
+    """
+    res = (client.table("billing_sent_log")
+           .select("id, portal_key, recibo, status, text_ok, doc_ok, modalidade, "
+                   "encaminhado_ao_cliente_em, updated_at")
+           .eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7
+           .eq("send_mode", "real")
+           .execute())
+    fora: Dict[str, Dict[str, Any]] = {}
+    for linha in (res.data or []):
+        chave = f"{str(linha.get('portal_key') or '').strip()}|{str(linha.get('recibo') or '').strip()}"
+        fora[chave] = dict(linha)
+    return fora
+
+
+def _reservar_obrigacao(client, *, company_id: str, portal_key: str, recibo: str,
+                        modalidade: str, to_phone: str, to_last4: str,
+                        cliente_nome: str, apolice_susep: str,
+                        routine_id: Optional[str], work_run_id: Optional[str],
+                        integration_id: Optional[str], canario: bool) -> Dict[str, Any]:
+    """A reserva atômica, pela função do banco. Levanta se o banco recusar.
+
+    ⚠️ RPC, e não `upsert(ignore_duplicates=True)`: a identidade da obrigação é
+    um índice único PARCIAL (`WHERE send_mode='real'`), e o `ON CONFLICT` de um
+    índice parcial exige repetir o predicado — que o PostgREST não expressa. O
+    upsert mandaria `ON CONFLICT (cols) DO NOTHING` sem o `WHERE` e receberia
+    **42P10**. Ver o cabeçalho da migration 20260907_01.
+    """
+    res = client.rpc("billing_reservar_obrigacao", {
+        "p_company_id": str(company_id),
+        "p_portal_key": str(portal_key),
+        "p_recibo": str(recibo),
+        "p_modalidade": str(modalidade),
+        "p_to_phone": str(to_phone or "") or None,
+        "p_to_last4": str(to_last4 or "") or None,
+        "p_cliente_nome": str(cliente_nome or "") or None,
+        "p_apolice_susep": str(apolice_susep or "") or None,
+        "p_routine_id": str(routine_id) if routine_id else None,
+        "p_work_run_id": str(work_run_id) if work_run_id else None,
+        "p_integration_id": str(integration_id) if integration_id else None,
+        "p_canario": bool(canario),
+    }).execute()
+    linhas = res.data or []
+    return dict(linhas[0]) if linhas else {"id": None, "ganhou": False, "status": None}
+
+
+def _reclamar_obrigacao(client, *, ledger_id: str, company_id: str,
+                        de_status: List[str]) -> bool:
+    """Reclama uma obrigação que ficou num estado que admite nova tentativa."""
+    res = client.rpc("billing_reclamar_obrigacao", {
+        "p_id": str(ledger_id),
+        "p_company_id": str(company_id),
+        "p_de_status": list(de_status),
+    }).execute()
+    dados = res.data
+    if isinstance(dados, list):
+        dados = dados[0] if dados else False
+    if isinstance(dados, dict):
+        dados = dados.get("billing_reclamar_obrigacao")
+    return bool(dados)
+
+
+def _marcar_estado(client, company_id: str, ledger_id: str, **campos: Any) -> None:
+    """Escreve o estado na linha do ledger, sempre com o dono na cláusula."""
+    campos.setdefault("updated_at", datetime.now(timezone.utc).isoformat())
+    (client.table("billing_sent_log").update(campos)
+     .eq("company_id", str(company_id))              # 🔴 CLAUDE.md §7
+     .eq("id", str(ledger_id)).execute())
+
+
+async def _entregar_cobranca_real(client, routine: Dict[str, Any],
+                                  fila: List[Dict[str, Any]],
+                                  boletos: List[Dict[str, Any]],
+                                  cfg: Dict[str, Any], blockers: List[str],
+                                  *, work_run_id: Optional[str] = None,
+                                  ) -> List[Dict[str, Any]]:
+    """`equipe` e `cliente`: reserva, envia pela porta única, marca o estado.
+
+    A ordem é a do dano, e cada passo tem um desfecho escrito:
+
+        1. fixa a CONEXÃO uma vez        sem canal  → nada sai, incidente
+        2. lê o que já foi cobrado       falhou     → nada sai, incidente (R04)
+        3. por item: pré-condições       faltou     → retido, com motivo
+        4.           RESERVA (RPC)       perdeu     → não envia; talvez reclame
+        5.           porta de saída      recusou    → adiado/falhou no ledger
+        6.           marca o estado      levantou   → `incerto`, nunca retry
+    """
+    company_id = str(routine.get("company_id") or "")
+    modalidade = str(cfg.get("send_mode") or "")
+    canario = bool(cfg.get("canario"))
+    entregas: List[Dict[str, Any]] = []
+
+    if modalidade not in MODOS_REAIS:
+        return entregas
+
+    # 1) A CONEXÃO, FIXADA UMA VEZ. `_find_whatsapp_integration` já é o único
+    #    lugar que pede `para="auxiliar"` (SPEC-078 B) — e continua sendo.
+    integration = await asyncio.to_thread(_find_whatsapp_integration, client, company_id)
+    if not integration:
+        blockers.append("cobranca: a corretora nao tem canal de WhatsApp autorizado "
+                        "para o Auxiliar — nenhuma mensagem saiu")
+        await _incidente(company_id, "Cobrança sem canal de WhatsApp",
+                         "Nenhuma conexão ativa desta corretora está autorizada a "
+                         "enviar como Auxiliar. Nada foi enviado.")
+        return entregas
+    integration_id = str(integration.get("id") or "")
+
+    # 2) O QUE JÁ FOI COBRADO. Falha de leitura NÃO vira lista vazia (R04/G09).
+    try:
+        ja_cobrado = await asyncio.to_thread(_obrigacoes_reais, client, company_id)
+    except Exception as exc:  # noqa: BLE001
+        blockers.append(f"cobranca: nao consegui ler o historico de cobrancas "
+                        f"({type(exc).__name__}) — NADA foi enviado, para nao "
+                        f"cobrar duas vezes a mesma parcela")
+        await _incidente(company_id, "Cobrança não executada: histórico ilegível",
+                         "Não deu para ler quem já foi cobrado. Preferi não enviar "
+                         "nada a arriscar cobrar a mesma parcela duas vezes.")
+        return entregas
+
+    by_recibo = _boletos_by_recibo(boletos)
+    orcamento_s = float(GOVERNOR_WAIT_BUDGET_S)
+    routine_id = str(routine.get("id") or "") or None
+
+    for indice, item in enumerate(ordenar_para_entrega(fila)):
+        portal_key = str(item.get("portal") or "").strip()
+        recibo = str(item.get("recibo") or "").strip()
+        rotulo = f"...{recibo[-4:]}" if recibo else "?"
+        seguradora = _portal_insurer_name(item, cfg)
+
+        # 3) PRÉ-CONDIÇÕES — cada uma com o motivo que a pessoa vai ler.
+        if not portal_key or not recibo:
+            blockers.append("1 parcela sem seguradora ou sem recibo identificado: "
+                            "nao cobrada (nao da para garantir que ela e unica)")
+            await _incidente(company_id, "Parcela sem identificação",
+                             "Uma parcela veio sem seguradora ou sem recibo. Sem isso "
+                             "não dá para garantir que ela só será cobrada uma vez.")
+            continue
+        boleto = by_recibo.get(recibo)
+        caminho = str((boleto or {}).get("storage_path") or "").strip()
+        if not caminho:
+            blockers.append(f"parcela {rotulo} ({seguradora}): o boleto nao esta no "
+                            f"cofre — nao cobrada")
+            continue
+
+        if modalidade == "equipe":
+            destino = so_digitos(cfg.get("team_number"))
+        else:
+            destino = so_digitos(item.get("whatsapp"))
+            contato = str(item.get("contact_status") or "").strip().lower()
+            if contato not in CONTATOS_ACEITOS:
+                blockers.append(f"parcela {rotulo} ({seguradora}): o telefone do cliente "
+                                f"nao esta confirmado ({contato or 'sem status'}) — nao cobrada")
+                continue
+        if len(destino) < 10:
+            blockers.append(f"parcela {rotulo} ({seguradora}): destino invalido — nao cobrada")
+            continue
+
+        # 4) A RESERVA. Antes do efeito, SEMPRE — e ela é pedida mesmo quando a
+        #    leitura acima já diz que a parcela foi cobrada.
+        #
+        #    🔴 A leitura é um retrato; a reserva é a decisão. Entre uma e outra
+        #    cabe a execução da outra máquina — e um motor que decidisse pelo
+        #    retrato mandaria a segunda mensagem exatamente na hora em que duas
+        #    execuções se cruzam, que é o único momento em que isso importa.
+        anterior = ja_cobrado.get(f"{portal_key}|{recibo}") or {}
+        estado_anterior = str(anterior.get("status") or "")
+
+        try:
+            reserva = await asyncio.to_thread(
+                _reservar_obrigacao, client, company_id=company_id,
+                portal_key=portal_key, recibo=recibo, modalidade=modalidade,
+                to_phone=destino, to_last4=destino[-4:],
+                cliente_nome=str(item.get("cliente_nome") or ""),
+                apolice_susep=str(item.get("apolice_susep") or ""),
+                routine_id=routine_id, work_run_id=work_run_id,
+                integration_id=integration_id, canario=canario)
+        except Exception as exc:  # noqa: BLE001
+            blockers.append(f"parcela {rotulo} ({seguradora}): nao consegui reservar a "
+                            f"cobranca ({type(exc).__name__}) — NAO enviei")
+            await _incidente(company_id, "Cobrança não reservada",
+                             f"A parcela {rotulo} da {seguradora} não pôde ser reservada. "
+                             f"Nada foi enviado para ela.")
+            continue
+
+        ledger_id = str(reserva.get("id") or "")
+        if not ledger_id:
+            blockers.append(f"parcela {rotulo} ({seguradora}): a reserva nao devolveu "
+                            f"identificador — NAO enviei")
+            continue
+
+        somente_documento = False
+        if not reserva.get("ganhou"):
+            estado = str(reserva.get("status") or estado_anterior or "")
+            if estado not in ESTADOS_RECLAMAVEIS:
+                # 🔴 E ELA APARECE. Uma parcela que não sai porque já está em
+                #    outro estado tem de ser LEGÍVEL no relatório — inclusive a
+                #    reserva órfã que ficou de um processo que morreu (`reservado`)
+                #    e a `incerto`, que ninguém vai reclamar automaticamente.
+                #    Sumir em silêncio é o que faz ninguém ir atrás (G19).
+                blockers.append(
+                    f"parcela {rotulo} ({seguradora}): nao cobrada agora — "
+                    f"{NOME_HUMANO_DO_ESTADO.get(estado, estado)} "
+                    f"(estado no ledger: {estado})")
+                entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+                                 "portal": portal_key, "ok": False, "status": "ja cobrado",
+                                 "status_anterior": estado, "motivo": "ja cobrado"})
+                continue
+            reclamou = await asyncio.to_thread(
+                _reclamar_obrigacao, client, ledger_id=ledger_id,
+                company_id=company_id, de_status=list(ESTADOS_RECLAMAVEIS))
+            if not reclamou:
+                entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+                                 "portal": portal_key, "ok": False, "status": estado,
+                                 "motivo": "outra execucao pegou primeiro"})
+                continue
+            # 🔴 `parcial` = o TEXTO já chegou; só o PDF faltou. Reenviar o texto
+            #    seria uma segunda abordagem ao mesmo cliente pela mesma parcela.
+            somente_documento = (estado == "parcial" and bool(anterior.get("text_ok")))
+
+        pacote = _pacote_humano(item, cfg, boleto)
+
+        # 5) A PORTA ÚNICA. Nada aqui chama `send_*` diretamente.
+        from app.services.platform_outbound import send_to_client_guarded
+
+        if modalidade == "equipe" and not somente_documento:
+            # A nota interna é uma mensagem à parte, e falhar nela não impede o
+            # pacote — mas vira pendência: a atendente receberia texto e PDF sem
+            # saber de quem são.
+            nota = await _com_orcamento_do_governador(
+                lambda: send_to_client_guarded(
+                    company_id, destino, pacote["nota_interna"],
+                    kind="billing_equipe_nota",
+                    summary=f"nota interna da cobranca ({seguradora})",
+                    work_run_id=work_run_id, integration_id=integration_id,
+                    autorizacao_de_auxiliar=True, enfileirar=False,
+                    destino_interno=True, canario=canario),
+                orcamento_s)
+            orcamento_s = nota["orcamento"]
+            if not (nota["res"] or {}).get("ok"):
+                blockers.append(f"parcela {rotulo} ({seguradora}): a nota interna para a "
+                                f"equipe nao saiu ({(nota['res'] or {}).get('reason') or 'sem motivo'})")
+
+        chamada = await _com_orcamento_do_governador(
+            lambda: send_to_client_guarded(
+                company_id, destino,
+                "" if somente_documento else pacote["texto_final"],
+                kind=("billing_equipe" if modalidade == "equipe" else "billing_cliente"),
+                summary=f"cobranca da parcela ({seguradora})",
+                work_run_id=work_run_id, integration_id=integration_id,
+                autorizacao_de_auxiliar=True,
+                documento=pacote["documento"], enfileirar=False,
+                destino_interno=(modalidade == "equipe"),
+                ledger_ref={"table": "billing_sent_log", "id": ledger_id},
+                canario=canario),
+            orcamento_s)
+        orcamento_s = chamada["orcamento"]
+        res = chamada["res"] or {}
+
+        entrada: Dict[str, Any] = {
+            "cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+            "portal": portal_key, "to_last4": destino[-4:],
+            "ok": bool(res.get("ok")), "doc_ok": res.get("doc_ok"),
+            "ledger_id": ledger_id, "modalidade": modalidade,
+        }
+
+        # 6) O ESTADO. Quem enviou já marcou; quem não enviou marca aqui.
+        if res.get("ok"):
+            entrada["status"] = str(res.get("status") or "aceito_pelo_canal")
+            if res.get("ledger") == "falhou":
+                # 🔴 O efeito ACONTECEU e o registro não. `incerto` é a única
+                #    resposta honesta — e ele nunca é reclamado automaticamente.
+                entrada["status"] = "incerto"
+                try:
+                    await asyncio.to_thread(_marcar_estado, client, company_id, ledger_id,
+                                            status="incerto",
+                                            last_error="registro pos-envio falhou")
+                except Exception:  # noqa: BLE001
+                    await _incidente(company_id, "Cobrança enviada sem registro completo",
+                                     f"A parcela {rotulo} da {seguradora} foi enviada, mas o "
+                                     f"registro do resultado falhou. NÃO reenvie sem conferir.")
+                blockers.append(f"parcela {rotulo} ({seguradora}): enviada, mas o registro "
+                                f"do resultado falhou — marcada como INCERTA, nao sera reenviada")
+            elif entrada["status"] == "parcial":
+                blockers.append(f"parcela {rotulo} ({seguradora}): o texto saiu e o PDF nao "
+                                f"— pendente na lista da cobranca")
+                await _incidente(company_id, "Cobrança sem o boleto anexado",
+                                 f"A parcela {rotulo} da {seguradora} saiu sem o PDF. "
+                                 f"A lista de Pendências mostra a linha para reenviar o anexo.")
+        else:
+            motivo = str(res.get("reason") or "erro_envio")
+            # ⚠️ Quando a PORTA já disse em que estado a linha ficou, é o dela
+            #    que vale: só ela sabe se o efeito era possível (`incerto`).
+            #    O mapa abaixo cobre as recusas que nem chegaram ao canal.
+            estado = str(res.get("status") or "") or _ESTADO_POR_RECUSA.get(motivo, "falhou")
+            entrada["status"] = estado
+            entrada["motivo"] = motivo
+            if not res.get("status"):
+                try:
+                    await asyncio.to_thread(_marcar_estado, client, company_id, ledger_id,
+                                            status=estado, last_error=motivo[:200])
+                except Exception:  # noqa: BLE001
+                    logger.error("[COBRANCA] nao consegui marcar %s no ledger", estado)
+            blockers.append(f"parcela {rotulo} ({seguradora}): nao enviada ({motivo})")
+            if estado == "falhou":
+                await _incidente(company_id, "Cobrança não enviada",
+                                 f"A parcela {rotulo} da {seguradora} não saiu: {motivo}. "
+                                 f"Ela aparece na lista de Pendências.")
+            if motivo == "governador" and orcamento_s <= 0:
+                pendentes = len(fila) - indice - 1
+                blockers.append(
+                    f"governador de envio: parei em {len(entregas) + 1} item(ns) — "
+                    f"{pendentes} ficaram para a proxima execucao (estao como 'adiado' "
+                    f"no ledger e serao retomados de la)")
+                entregas.append(entrada)
+                break
+
+        entregas.append(entrada)
+
+    return entregas
+
+
+async def _com_orcamento_do_governador(chamar, orcamento_s: float) -> Dict[str, Any]:
+    """Chama a porta; se o GOVERNADOR mandar esperar e couber no orçamento, espera.
+
+    ⚠️ Esperar e tentar de novo é seguro porque `governar_envio` só consome o
+    slot quando LIBERA (`_tentar_gate` é um `SET NX EX`). Uma recusa não gasta
+    espaçamento de ninguém, então a segunda pergunta não é uma segunda reserva.
+
+    ⚠️ `asyncio.sleep`, nunca `time.sleep`: congelar o event loop por seis
+    minutos derrubaria o atendimento de TODAS as corretoras (a lição do Bloco H).
+    """
+    restante = float(orcamento_s)
+    while True:
+        res = await chamar()
+        if res.get("ok") or str(res.get("reason") or "") != "governador":
+            return {"res": res, "orcamento": restante}
+        espera = float(res.get("esperar_s") or 0)
+        if espera <= 0 or espera > restante:
+            return {"res": res, "orcamento": 0.0}
+        await asyncio.sleep(espera)
+        restante -= espera
+
+
+def _contagem_dos_estados(entregas: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Quantas ficaram em cada estado. É o que o relatório e a peça imprimem."""
+    fora: Dict[str, int] = {}
+    for entrada in entregas or []:
+        estado = str(entrada.get("status") or "")
+        if estado:
+            fora[estado] = fora.get(estado, 0) + 1
+    return fora
+
+
+#: Como cada estado se chama para quem não escreveu o código.
+NOME_HUMANO_DO_ESTADO = {
+    "aceito_pelo_canal": "aceitas pelo WhatsApp",
+    "entregue_equipe": "entregues à equipe",
+    "parcial": "sem o boleto anexado",
+    "incerto": "incertas (enviadas, registro falhou)",
+    "falhou": "não enviadas",
+    "adiado": "adiadas para a próxima execução",
+    "liberado": "liberadas para reenvio",
+    "suprimido": "o cliente pediu para não receber",
+    "contestado": "o cliente contestou",
+    "reservado": "reservadas e sem desfecho",
+    "ja cobrado": "já cobradas antes",
+}
+
+
 def _format_report(
     *,
     routine: Dict[str, Any],
@@ -1194,6 +1781,8 @@ def _format_report(
     test_sends: List[Dict[str, Any]],
     fila: Optional[List[Dict[str, Any]]] = None,
     retidos: Optional[List[Dict[str, Any]]] = None,
+    estados: Optional[Dict[str, int]] = None,
+    aviso_ao_grupo: str = "",
 ) -> str:
     ok_boletos = [b for b in boletos if b.get("ok")]
     ok_test_sends = [s for s in test_sends if s.get("ok")]
@@ -1221,6 +1810,19 @@ def _format_report(
                 lines.append(f"Boletos anexados como PDF: {docs_sent}.")
         else:
             lines.append("Modo teste ativo: nenhum cliente real recebeu mensagem.")
+    # SPEC-EXTRA-001 — as contagens dos modos REAIS, reconciliáveis com a fila.
+    # 🔴 Uma linha por estado, com o nome que a pessoa entende. "3 enviadas" não
+    # é uma contagem honesta quando uma delas saiu sem o boleto.
+    if cfg.get("send_mode") in MODOS_REAIS and estados:
+        rotulo = ("encaminhadas para a equipe" if cfg.get("send_mode") == "equipe"
+                  else "enviadas ao cliente")
+        lines.append(f"Modo {cfg.get('send_mode')} ({rotulo}):")
+        for estado, quantos in sorted(estados.items()):
+            lines.append(f"- {quantos} {NOME_HUMANO_DO_ESTADO.get(estado, estado)}")
+    if cfg.get("send_mode") == MODO_RETIDO:
+        lines.append(f"NADA FOI ENVIADO — {cfg.get('retido_motivo') or 'configuracao antiga'}.")
+    if aviso_ao_grupo:
+        lines.append(f"Aviso ao grupo humano: {aviso_ao_grupo}.")
     # TAREFAS PARA GENTE. O robo avisa o segurado, mas quem converte debito em
     # boleto e a atendente — o botao que faz isso escreve no contrato e o robo
     # nao o toca. Sem esta secao, a conversao nunca acontece e o segurado fica
@@ -1312,6 +1914,7 @@ def compor_peca_da_cobranca(
     tarefas: List[Dict[str, Any]],
     blockers: List[str],
     test_sends: List[Dict[str, Any]],
+    estados: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """Execução da cobrança → blocos do Artifact Hub. Pura, e não recalcula nada.
 
@@ -1364,6 +1967,24 @@ def compor_peca_da_cobranca(
         blocos.append({"block": "callout", "props": {
             "tone": "info", "title": "Somente relatório",
             "text": "Nenhuma mensagem foi enviada ao cliente nesta execução.",
+        }})
+    elif modo == MODO_RETIDO:
+        blocos.append({"block": "callout", "props": {
+            "tone": "warning", "title": "Configuração antiga",
+            "text": (str(cfg.get("retido_motivo") or "")
+                     or "Escolha uma modalidade na tela do Auxiliar.")
+                    + " Nada foi enviado nesta execução.",
+        }})
+    elif modo in MODOS_REAIS and estados:
+        # 🔴 A peça repete as MESMAS contagens do relatório — ela não conta nada
+        # por conta própria. Duas contagens da mesma execução divergindo é o que
+        # o corretor descobre comparando as duas na frente de alguém.
+        blocos.append({"block": "kpis", "props": {
+            "title": ("O que foi encaminhado à equipe" if modo == "equipe"
+                      else "O que foi enviado ao cliente"),
+            "items": [{"label": NOME_HUMANO_DO_ESTADO.get(estado, estado),
+                       "value": str(quantos)}
+                      for estado, quantos in sorted(estados.items())],
         }})
 
     if tarefas:
@@ -1431,8 +2052,17 @@ def compor_peca_da_cobranca(
 def _gerar_artefato_da_cobranca(supabase, company_id: str, routine: Dict[str, Any],
                                 titulo: str, subtitulo: str, resumo: str,
                                 payload: Dict[str, Any],
-                                blocos: List[Dict[str, Any]]) -> Optional[str]:
+                                blocos: List[Dict[str, Any]],
+                                inicio_da_varredura: Optional[datetime] = None,
+                                work_run_id: Optional[str] = None) -> Optional[str]:
     """Cria, renderiza e publica a peça. Devolve o id, ou None.
+
+    🔴 CONSERTO MEDIDO (SPEC-EXTRA-001 U1, fora do escopo original): esta função
+    usava `inicio_da_varredura` **sem recebê-lo** — era um nome livre, e a
+    chamada levantava `NameError` sempre. O `except` do chamador engolia tudo e
+    escrevia `[COBRANCA] peca nao gerada: NameError` no log do contêiner, onde
+    ninguém olha. Ou seja: desde a SPEC-095 B.2 a peça da Cobrança **nunca foi
+    publicada**, e o sintoma era invisível de fora. Agora ele é um parâmetro.
 
     Roda em thread porque `ArtifactService` é síncrono — é o mesmo cliente
     Supabase bloqueante que o resto deste arquivo já usa via `asyncio.to_thread`.
@@ -1450,11 +2080,12 @@ def _gerar_artefato_da_cobranca(supabase, company_id: str, routine: Dict[str, An
         summary=resumo,
         kind="report",
         origin="routine",
-        # `work_run_id=None`: a cobrança não roda dentro de um Work Run hoje
-        # (📊 zero `work_runs` com source_type='routine'). O Hub aceita, e
-        # inventar um Work Run só para preencher a coluna seria o segundo motor
-        # que a SPEC-078 e o CLAUDE.md §5 proíbem.
-        work_run_id=None,
+        # `work_run_id`: quando a rotina roda pela PONTE (`WORK_RUNS_ROUTINE_BRIDGE`,
+        # `workflows.bridge_rotina`), o run existe e agora viaja até aqui
+        # (P-098-RUN-NOS-JOBS, parcial). Quando ela roda in-process, continua
+        # `None` — e inventar um Work Run só para preencher a coluna seria o
+        # segundo motor que a SPEC-078 e o CLAUDE.md §5 proíbem.
+        work_run_id=work_run_id or None,
         # 🔴 SPEC-095 · B.1: a identidade da peça de Cobrança já era o id da
         # rotina — 📊 preenchida em 5/5 execuções, os únicos `subject_ref.id`
         # não vazios de todo o banco (5/136). Ganhou só o `produtor`, que é o
@@ -1598,7 +2229,15 @@ def purgar_evidencias_antigas(supabase, *, dias: Optional[int] = None,
     return resultado
 
 
-async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) -> str:
+async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], *,
+                                             work_run_id: Optional[str] = None) -> str:
+    """A execução da rotina de cobrança.
+
+    ⚠️ `work_run_id` é keyword-only e opcional: quando a rotina roda pela ponte
+    (`WORK_RUNS_ROUTINE_BRIDGE=1` → `workflows.bridge_rotina`), o run existe e
+    passa a viajar até o ledger, a porta de saída e a peça. Quando ela roda
+    in-process — o caminho de hoje — continua `None`, e nada muda.
+    """
     client = _client(supabase)
     company_id = str(routine.get("company_id") or "")
     cfg = normalize_billing_config(routine.get("config"), routine.get("delivery"))
@@ -1679,24 +2318,54 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
     ):
         blockers.append(f"{quantos} inadimplente(s) nao cobrado(s): {motivo}")
 
+    # ======================================================================
+    # SPEC-EXTRA-001 — O DESPACHO POR MODALIDADE, num lugar só
+    # ======================================================================
+    #
+    # 📊 Antes, a decisão do que fazer com a fila estava espalhada: uma chamada
+    # incondicional a `_send_test_messages` aqui e uma cadeia de `elif` de
+    # blockers 40 linhas abaixo, DEPOIS de a entrega já ter acontecido. Duas
+    # metades da mesma decisão em dois lugares é como `live` conseguiu existir
+    # na tela por semanas sem existir no produto.
     approval_id = None
-    wants_approval = cfg.get("send_mode") == "approval" or (cfg.get("send_mode") == "live" and cfg.get("approval_required"))
-    if fila and wants_approval:
-        approval_id = await asyncio.to_thread(_create_approval_request, client, routine, fila, boletos, cfg)
-        if not approval_id:
-            blockers.append("nao consegui criar pedido de aprovacao")
-    test_sends = await _send_test_messages(client, routine, fila, boletos, cfg, blockers) if fila else []
+    modo = str(cfg.get("send_mode") or "")
+    entregas: List[Dict[str, Any]] = []
+    if not fila:
+        pass
+    elif modo == "test":
+        # ⛔ INTACTO. O modo teste de 17/08/2026 é o CONTROLE desta SPEC.
+        entregas = await _send_test_messages(client, routine, fila, boletos, cfg, blockers)
+    elif modo in MODOS_REAIS:
+        entregas = await _entregar_cobranca_real(
+            client, routine, fila, boletos, cfg, blockers, work_run_id=work_run_id)
+    elif modo == MODO_RETIDO:
+        blockers.append(
+            f"{cfg.get('retido_motivo') or 'configuracao antiga'} — "
+            f"nenhuma mensagem saiu nesta execucao "
+            f"(modo gravado: {cfg.get('send_mode_original')})")
+    elif modo == "none":
+        blockers.append("modo somente relatorio: nenhuma mensagem sera enviada ao cliente")
+    test_sends = entregas
+    estados = _contagem_dos_estados(entregas) if modo in MODOS_REAIS else {}
 
     # OS AVISOS AO GRUPO HUMANO. Saem depois da entrega, porque o resumo precisa
     # saber quantos sairam. Nenhum deles fala com segurado.
     from app.services import billing_avisos as avisos
 
     nome_corretora = str(cfg.get("brokerage_name") or "Corretora")
+    # ⛔ SPEC-EXTRA-001 §0.3 — no canário o grupo real da corretora fica FORA.
+    #    As três chamadas passam a mesma decisão; deixar uma sem `suprimir=`
+    #    mandaria um aviso sobre parcelas sintéticas para gente de verdade.
+    suprimir_aviso = bool(cfg.get("canario"))
+    aviso_ao_grupo = "suprimido (canario)" if suprimir_aviso else "sem novidade"
     tarefas = tarefas_para_a_equipe(items, cfg)
     if tarefas:
         enviado = await avisar_suporte_humano(
-            client, company_id, avisos.aviso_de_tarefas(nome_corretora, tarefas), "tarefas")
-        if not enviado:
+            client, company_id, avisos.aviso_de_tarefas(nome_corretora, tarefas), "tarefas",
+            suprimir=suprimir_aviso)
+        aviso_ao_grupo = ("suprimido (canario)" if suprimir_aviso
+                          else ("enviado" if enviado else "falhou ou sem destino cadastrado"))
+        if not enviado and not suprimir_aviso:
             blockers.append(
                 f"{len(tarefas)} tarefa(s) para a equipe NAO foram avisadas no WhatsApp "
                 f"— a corretora nao tem grupo de suporte cadastrado (veja abaixo)")
@@ -1714,7 +2383,7 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
                     nome_corretora,
                     NOME_DA_SEGURADORA.get(str(job.get("portal_key") or ""), str(job.get("portal_key") or "")),
                     o_que_houve),
-                "portal")
+                "portal", suprimir=suprimir_aviso)
 
     sem_telefone = [r for r in retidos if "sem telefone" in str(r.get("retido_por") or "")]
     await avisar_suporte_humano(
@@ -1726,21 +2395,11 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
             pendentes=max(0, len(fila) - len(test_sends)),
             tarefas=len(tarefas),
             sem_telefone=sem_telefone),
-        "resumo")
-    if items and cfg.get("send_mode") == "approval":
-        blockers.append("modo aprovacao: mensagens aguardam aprovacao antes de qualquer envio ao cliente")
-    elif items and cfg.get("send_mode") == "none":
-        blockers.append("modo somente relatorio: nenhuma mensagem sera enviada ao cliente")
-    elif items and cfg.get("send_mode") == "live" and not customer_send_allowed(cfg):
-        blockers.append("envio ao cliente bloqueado por configuracao/gate de seguranca")
-    elif items and cfg.get("send_mode") == "live":
-        # SPEC-045 + SPEC-063 Bloco C: quando o envio live for homologado, ele
-        # DEVE sair por app.services.platform_outbound.send_to_client_guarded
-        # — que hoje ja carrega as tres guardas de uma vez: fila de cortesia
-        # (nao atropela atendimento), governador de vazao (espacamento, tetos,
-        # janela, freio) e registro em platform_sends. Nunca por send_message
-        # direto: e o send_message direto que ignora as tres.
-        blockers.append("envio direto ao cliente permanece desativado nesta fase de homologacao")
+        "resumo", suprimir=suprimir_aviso)
+    # ⚠️ A cadeia de `elif` que ficava AQUI — a que explicava `approval` e
+    # `live` depois de a entrega já ter acontecido — subiu para o despacho por
+    # modalidade, junto com a decisão que ela descrevia. Ver o bloco
+    # "O DESPACHO POR MODALIDADE" acima.
 
     # SPEC-078 F.5 — a execução vira Artifact ANTES de devolver o texto.
     #
@@ -1772,12 +2431,15 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
                 "found": len(items), "queue": len(fila), "held": len(retidos),
                 "human_tasks": len(tarefas), "blockers": blockers[:12],
                 "send_mode": cfg.get("send_mode"),
+                "estados": estados,
             },
             compor_peca_da_cobranca(
                 routine=routine, cfg=cfg, items=items, boletos=boletos,
                 fila=fila, retidos=retidos, tarefas=tarefas,
-                blockers=blockers, test_sends=test_sends,
+                blockers=blockers, test_sends=test_sends, estados=estados,
                 inicio_da_varredura=inicio_da_varredura),
+            inicio_da_varredura,
+            work_run_id,
         )
         if artifact_id:
             logger.info("[COBRANCA] peca publicada no Artifact Hub: %s", artifact_id)
@@ -1796,4 +2458,6 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any]) 
         test_sends=test_sends,
         fila=fila,
         retidos=retidos,
+        estados=estados,
+        aviso_ao_grupo=aviso_ao_grupo,
     )

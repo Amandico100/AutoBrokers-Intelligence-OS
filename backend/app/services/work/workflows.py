@@ -351,7 +351,11 @@ async def bridge_rotina(ctx: dict) -> str:
         rotina = res.data if res else None
         if not rotina:
             raise ValueError(f"rotina {routine_id} não encontrada")
-        await routine_engine._execute_routine(ctx["db"], rotina)
+        # ⚠️ SPEC-EXTRA-001 — o run VIAJA. Sem esta linha a cobrança executada
+        #    pela ponte grava um ledger sem dizer qual trabalho a produziu, e
+        #    a recusa da porta não tem Work Event onde cair (P-098-RUN-NOS-JOBS).
+        await routine_engine._execute_routine(
+            ctx["db"], rotina, work_run_id=str(ctx.get("run_id") or "") or None)
         return rotina.get("name") or routine_id
 
     nome = await executar_passo(

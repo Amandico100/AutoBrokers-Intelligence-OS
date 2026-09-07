@@ -192,6 +192,54 @@ def _phone_variants(phone: str) -> set:
     return _br_variants(phone)
 
 
+# ===========================================================================
+# SPEC-EXTRA-001 U1 — a allowlist do canário
+# ===========================================================================
+#
+# 🔴 O canário desta SPEC manda mensagem de verdade, num tenant de verdade, pelo
+# número de verdade da corretora. A única coisa que separa "teste autorizado" de
+# "cobrança acidental num segurado" é esta lista — e por isso ela vigia os DOIS
+# lados: o REMETENTE (o `paired_phone_e164` da conexão fixada) e o DESTINATÁRIO.
+#
+# ⚠️ A comparação é por `telefone_br.variantes_br`, **nunca** por "últimos 4
+# dígitos". Dois celulares diferentes terminam nos mesmos 4 dígitos com
+# frequência banal; e o mesmo celular aparece com e sem o nono dígito conforme
+# quem o gravou. Comparar por sufixo erra dos dois lados ao mesmo tempo.
+#
+# ⛔ Lista vazia + `canario=True` recusa TUDO. Não saber quem está autorizado
+# nunca é permissão para enviar — é a mesma regra do governador sem Redis.
+_ENV_ALLOWLIST_CANARIO = "BILLING_CANARIO_ALLOWLIST"
+
+
+def _allowlist_do_canario(env: Optional[Dict[str, str]] = None) -> set:
+    """Os telefones autorizados a participar de um canário, em todas as formas.
+
+    ⛔ Devolve VARIANTES, não os números como foram escritos: assim um número
+    gravado com o nono dígito no env casa com o mesmo número sem ele no banco.
+    ⛔ Nada aqui vai para log — nem o tamanho da lista sai desta função.
+    """
+    from app.telefone_br import so_digitos, variantes_br
+
+    bruto = (env if env is not None else os.environ).get(_ENV_ALLOWLIST_CANARIO, "")
+    formas: set = set()
+    for pedaco in str(bruto or "").replace(";", ",").split(","):
+        numero = so_digitos(pedaco)
+        if numero:
+            formas |= variantes_br(numero)
+    return formas
+
+
+def _autorizado_no_canario(numero: Any, allowlist: Optional[set] = None) -> bool:
+    """Este número está na allowlist do canário? Vazio ou ausente → não."""
+    from app.telefone_br import variantes_br
+
+    permitidos = _allowlist_do_canario() if allowlist is None else allowlist
+    if not permitidos:
+        return False
+    formas = variantes_br(numero)
+    return bool(formas and (formas & permitidos))
+
+
 # Estados em que o cliente NÃO está ocupado, para os fins da fila de cortesia.
 #
 # `test_aborted` e `insurer_closed`: o acionamento acabou.
@@ -877,12 +925,161 @@ async def ator_ainda_pode(company_id: str, actor_user_id: Optional[str],
     return False
 
 
+# ===========================================================================
+# SPEC-EXTRA-001 U1 — a conexão FIXADA, o documento e o ledger
+# ===========================================================================
+
+
+def _conexao_fixada_sync(integration_id: str) -> Optional[Dict[str, Any]]:
+    from app.core.database import get_supabase_client
+    from app.services.integration_service import get_integration_service
+
+    return get_integration_service(get_supabase_client().client
+                                   ).get_integration_by_id(str(integration_id))
+
+
+async def conexao_fixada(company_id: str, integration_id: Optional[str], *,
+                         para_auxiliar: bool = False) -> Tuple[Optional[Dict[str, Any]], str]:
+    """A conexão que o chamador FIXOU, relida por id e revalidada agora.
+
+    🔴 SPEC-EXTRA-001 · R09. 📊 Medido em 07/09/2026: `_entregar_agora`
+    perguntava `get_platform_whatsapp_integration(company_id)` **no instante do
+    efeito** — ou seja, escolhia a conexão de novo, depois de a rotina já ter
+    escolhido uma. Duas escolhas independentes do mesmo canal é como uma
+    mensagem sai por um número que ninguém autorizou para aquele trabalho.
+
+    ⚠️ **Revalidar não é reescolher.** Divergiu qualquer coisa — sumiu, está
+    inativa, é de outra corretora, ou não pode enviar para este uso — a resposta
+    é `conexao_trocada` e **nada sai**. Nunca "então uso outra".
+
+    ⚠️ `get_integration_by_id` já filtra `is_active=True`, mas **não** filtra
+    `company_id` (📊 `integration_service.py:154-173`) — por isso o `company_id`
+    é conferido aqui, do lado de cá (CLAUDE.md §7: o service role não tem RLS).
+    """
+    if not str(integration_id or "").strip():
+        return None, "sem_conexao_fixada"
+    try:
+        integracao = await asyncio.to_thread(_conexao_fixada_sync, str(integration_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PLATFORM SEND] não deu para reler a conexão fixada de %s "
+                     "(%s) — tratando como TROCADA", company_id, type(exc).__name__)
+        return None, "conexao_trocada"
+    if not integracao:
+        return None, "conexao_trocada"
+    # 🔴 O CINTO ALÉM DO SUSPENSÓRIO. Hoje quem recusa a conexão desligada é o
+    #    `.eq("is_active", True)` DENTRO de `get_integration_by_id` — ou seja, a
+    #    regra que esta porta precisa está guardada em outra função, e uma
+    #    mudança lá a apaga aqui sem ninguém ver (é o §9.4: o que se afirma tem
+    #    de ser o comportamento desta porta sobre a linha REAL). As quatro
+    #    revalidações do CONTRATOS §3 são feitas aqui, sobre o que chegou.
+    if integracao.get("is_active") is False:
+        logger.warning("[PLATFORM SEND] a conexão fixada de %s está DESLIGADA "
+                       "— recusado", company_id)
+        return None, "conexao_trocada"
+    if str(integracao.get("company_id") or "") != str(company_id):
+        logger.error("[PLATFORM SEND] a conexão fixada não é da corretora %s "
+                     "— recusado", company_id)
+        return None, "conexao_trocada"
+
+    from app.services.integration_service import IntegrationService
+
+    uso = (IntegrationService.ENVIO_DE_AUXILIAR if para_auxiliar
+           else IntegrationService.ENVIO_DE_PLATAFORMA)
+    if not IntegrationService.pode_enviar(integracao, para=uso):
+        logger.warning("[PLATFORM SEND] a conexão fixada de %s não pode enviar "
+                       "para o uso '%s'", company_id, uso)
+        return None, "conexao_trocada"
+    return integracao, ""
+
+
+def _assinar_documento_sync(bucket: str, caminho: str, ttl_s: int) -> str:
+    from app.core.database import get_supabase_client
+
+    res = get_supabase_client().client.storage.from_(bucket).create_signed_url(caminho, ttl_s)
+    if isinstance(res, dict):
+        return str(res.get("signedURL") or res.get("signedUrl") or res.get("signed_url") or "")
+    dados = getattr(res, "data", None)
+    if isinstance(dados, dict):
+        return str(dados.get("signedURL") or dados.get("signedUrl") or dados.get("signed_url") or "")
+    return ""
+
+
+#: Validade do link assinado do documento. Curta de propósito: a URL é
+#: entregue ao provedor de WhatsApp no ato, e um link que vive uma semana é um
+#: boleto de terceiro acessível por quem tiver a URL durante uma semana.
+_TTL_DOCUMENTO_S = 15 * 60
+
+
+async def _assinar_documento(documento: Optional[Dict[str, Any]]) -> Tuple[str, str]:
+    """`({"bucket","path","filename"})` → `(url_assinada, nome)`. Falha → `("", nome)`.
+
+    ⚠️ Assinado **no instante do efeito**, e não quando a rotina montou o
+    pacote: entre montar e enviar pode haver uma hora de fila de governador, e
+    um link que expirou entrega ao segurado um anexo que não abre.
+    """
+    if not isinstance(documento, dict):
+        return "", ""
+    caminho = str(documento.get("path") or "").strip().lstrip("/")
+    nome = str(documento.get("filename") or "documento.pdf").strip() or "documento.pdf"
+    bucket = str(documento.get("bucket") or "portal-evidence").strip() or "portal-evidence"
+    if not caminho:
+        return "", nome
+    try:
+        return await asyncio.to_thread(_assinar_documento_sync, bucket, caminho,
+                                       _TTL_DOCUMENTO_S), nome
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PLATFORM SEND] não consegui assinar o documento (%s)",
+                     type(exc).__name__)
+        return "", nome
+
+
+def _marcar_no_ledger_sync(company_id: str, ledger_ref: Dict[str, Any],
+                           campos: Dict[str, Any]) -> None:
+    from app.core.database import get_supabase_client
+
+    tabela = str(ledger_ref.get("table") or "billing_sent_log")
+    (get_supabase_client().client.table(tabela)
+     .update(campos)
+     .eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7
+     .eq("id", str(ledger_ref.get("id")))
+     .execute())
+
+
+def _estado_do_envio(*, kind: str, texto_ok: bool, previa_doc: bool,
+                     doc_ok: Optional[bool]) -> str:
+    """O estado HONESTO da obrigação, por componente — não por "deu certo".
+
+    📊 R06, medido em 07/09/2026 (`billing_collection.py:1081-1108`): quando o
+    texto era aceito e o PDF falhava, a linha era gravada com `doc_sent=False` e
+    **contava como enviada**. O segurado recebia "segue o boleto abaixo" e mais
+    nada, e o relatório dizia que a cobrança tinha saído. Um estado só para
+    dois componentes é o defeito; por isso aqui são dois.
+    """
+    if not texto_ok:
+        return "falhou"
+    if not previa_doc:
+        return "aceito_pelo_canal"
+    if not doc_ok:
+        return "parcial"
+    # ⚠️ `entregue_equipe` é DIFERENTE de "o cliente recebeu". Ele diz que o
+    # pacote chegou a UMA PESSOA DA CORRETORA, que ainda precisa encaminhar —
+    # e é por isso que a decisão de encaminhar tem coluna própria no ledger.
+    return "entregue_equipe" if kind == "billing_equipe" else "aceito_pelo_canal"
+
+
 async def send_to_client_guarded(company_id: str, phone: str, text: str,
                                  kind: str = "other", summary: str = "",
                                  *, temperatura: str = FRIA,
                                  tentativas: int = 0, adiamentos: int = 0,
                                  actor_user_id: Optional[str] = None,
-                                 work_run_id: Optional[str] = None) -> Dict[str, Any]:
+                                 work_run_id: Optional[str] = None,
+                                 integration_id: Optional[str] = None,
+                                 autorizacao_de_auxiliar: bool = False,
+                                 documento: Optional[Dict[str, Any]] = None,
+                                 enfileirar: bool = True,
+                                 destino_interno: bool = False,
+                                 ledger_ref: Optional[Dict[str, Any]] = None,
+                                 canario: bool = False) -> Dict[str, Any]:
     """Envio guardado: cliente ocupado → FILA (retry); livre → governador → envia.
 
     `temperatura` tem padrão **FRIA** de propósito. Quem esquecer de declarar
@@ -891,6 +1088,40 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
 
     E **nada** sai daqui com o agente de atendimento desligado — ver o bloco
     abaixo, que é a primeira coisa que esta função faz.
+
+    🔴 SPEC-EXTRA-001 U1 — OS SEIS ARGUMENTOS NOVOS, E POR QUE OS DEFAULTS SÃO O
+    CONTROLE
+    =========================================================================
+    Todos são keyword-only e todos têm default igual ao comportamento de hoje.
+    Um chamador que existia antes desta SPEC e não foi editado passa por aqui
+    letra por letra como passava — e é isso que dá direito de dizer que um
+    "recusou" novo veio da regra nova, e não de uma mudança de caminho.
+
+    ``integration_id``            a conexão FIXADA pelo chamador. Relida por id e
+                                  revalidada no efeito; divergiu → `conexao_trocada`,
+                                  e **nunca** se escolhe outra no lugar.
+    ``autorizacao_de_auxiliar``   `True`: quem autoriza é a CORRETORA (conexão
+                                  autorizada + trabalho instalado), não o
+                                  interruptor do atendimento. 📊 Medido em
+                                  07/09/2026: os 4 agentes `attendance` do banco
+                                  estão desligados — exigir o agente para um
+                                  trabalho que a corretora instalou e ligou é
+                                  travar a cobrança por causa de outro produto.
+                                  `False` (default): exige o agente, como hoje.
+    ``documento``                 `{"bucket","path","filename"}` — assinado no
+                                  instante do efeito e enviado DEPOIS do texto.
+    ``enfileirar``                `False`: cortesia e governador devolvem o motivo
+                                  em vez de guardar na fila. A cobrança tem
+                                  retentador próprio (a próxima execução da
+                                  rotina) e não precisa de uma fila que a
+                                  represe por dias.
+    ``destino_interno``           `True`: o destino é UM número da própria
+                                  corretora → intervalo curto do governador, o
+                                  mesmo do modo teste.
+    ``ledger_ref``                `{"table","id"}` — `_entregar_agora` marca ali
+                                  `text_ok`/`doc_ok`/`sent_at`/`status`.
+    ``canario``                   `True`: remetente **e** destinatário têm de
+                                  estar em `BILLING_CANARIO_ALLOWLIST`.
     """
     # =====================================================================
     # 🔴 SPEC-098 R9 — QUEM PEDIU AINDA PODE PEDIR? A PERGUNTA É FEITA AQUI,
@@ -931,6 +1162,82 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
                 "motivo": "o vínculo de quem pediu não está mais vigente",
                 "ok": False, "queued": False}
 
+    # =====================================================================
+    # 🔴 SPEC-EXTRA-001 — O CANÁRIO SÓ FALA COM QUEM FOI AUTORIZADO, DOS DOIS
+    #    LADOS. E ele é conferido ANTES da autorização e do governador: um
+    #    envio de canário para fora da lista não é "adiado", é proibido.
+    # =====================================================================
+    conexao: Optional[Dict[str, Any]] = None
+    if canario:
+        permitidos = _allowlist_do_canario()
+        if not permitidos:
+            logger.error("[PLATFORM SEND] canário pedido sem allowlist carregada "
+                         "em %s — recusado", company_id)
+            return {"ok": False, "queued": False, "reason": "fora_da_allowlist"}
+        if not _autorizado_no_canario(phone, permitidos):
+            logger.error("[PLATFORM SEND] canário recusado em %s: o DESTINATÁRIO "
+                         "não está na allowlist", company_id)
+            return {"ok": False, "queued": False, "reason": "fora_da_allowlist"}
+        # O REMETENTE também. Sem conexão fixada não há remetente para conferir,
+        # e "não sei de que número sai" nunca é permissão num teste vivo.
+        conexao, motivo_conexao = await conexao_fixada(
+            company_id, integration_id, para_auxiliar=autorizacao_de_auxiliar)
+        if not conexao:
+            logger.error("[PLATFORM SEND] canário recusado em %s: %s",
+                         company_id, motivo_conexao or "sem conexão fixada")
+            return {"ok": False, "queued": False,
+                    "reason": ("fora_da_allowlist"
+                               if motivo_conexao == "sem_conexao_fixada"
+                               else "conexao_trocada")}
+        if not _autorizado_no_canario(conexao.get("paired_phone_e164"), permitidos):
+            logger.error("[PLATFORM SEND] canário recusado em %s: o REMETENTE "
+                         "(número pareado da conexão) não está na allowlist",
+                         company_id)
+            return {"ok": False, "queued": False, "reason": "fora_da_allowlist"}
+
+    # =====================================================================
+    # 🔴 SPEC-EXTRA-001 — QUEM AUTORIZA ESTE ENVIO: A CORRETORA OU O AGENTE?
+    # =====================================================================
+    #
+    # São duas perguntas diferentes que estavam coladas numa só.
+    #
+    #   plataforma (default) → o produto fala por conta própria (alerta do
+    #        Vigia, follow-up, sugestão). Quem autoriza é o interruptor do
+    #        ATENDIMENTO, exatamente como desde a SPEC-078 A.1. Nada muda.
+    #
+    #   auxiliar → é trabalho que a corretora INSTALOU, configurou e ligou, e
+    #        que sai pela conexão que ela autorizou (`permite_envio_de_auxiliar`,
+    #        SPEC-078 B). O interruptor do atendimento diz "quem responde
+    #        conversa", e não tem nada a dizer sobre a cobrança que a corretora
+    #        pediu. 📊 07/09/2026: 4/4 agentes `attendance` desligados — a
+    #        cobrança nunca sairia, e o motivo apareceria como "agente_desligado",
+    #        que é uma frase sobre outro produto.
+    #
+    # ⚠️ A autorização de auxiliar NÃO é mais frouxa: ela EXIGE a conexão
+    #    fixada, revalidada agora, e que essa conexão passe por `pode_enviar(
+    #    para="auxiliar")` — a mesma regra da 078, sem exceção nova.
+    if autorizacao_de_auxiliar:
+        if conexao is None:
+            conexao, motivo_conexao = await conexao_fixada(
+                company_id, integration_id, para_auxiliar=True)
+        else:
+            motivo_conexao = ""
+        if not conexao:
+            logger.warning("[PLATFORM SEND] bloqueado em %s: %s (kind=%s)",
+                           company_id, motivo_conexao or "conexao_trocada", kind)
+            return {"ok": False, "queued": False,
+                    "reason": motivo_conexao or "conexao_trocada"}
+    elif integration_id:
+        # Caminho de plataforma que ainda assim fixou a conexão: revalida pelo
+        # regime de PLATAFORMA (onde o observador continua proibido).
+        conexao, motivo_conexao = await conexao_fixada(
+            company_id, integration_id, para_auxiliar=False)
+        if not conexao:
+            logger.warning("[PLATFORM SEND] bloqueado em %s: %s (kind=%s)",
+                           company_id, motivo_conexao or "conexao_trocada", kind)
+            return {"ok": False, "queued": False,
+                    "reason": motivo_conexao or "conexao_trocada"}
+
     # 🔴 O INTERRUPTOR DO ATENDIMENTO, LIDO NA FUNÇÃO QUE ENVIA (SPEC-078 A.1).
     #
     # 📊 Medido em 17/08/2026: `check_platform_queue` roda a cada 10 min, para
@@ -963,35 +1270,47 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     # False quando não consegue confirmar, e o import entra no mesmo `try`
     # porque um interruptor que sumiu não é permissão para falar — é o mesmo
     # padrão de guarda-por-import de `delivery_executor._whatsapp`.
-    try:
-        from app.services.atlas.attendance_capture import attendance_agent_active
+    if not autorizacao_de_auxiliar:
+        try:
+            from app.services.atlas.attendance_capture import attendance_agent_active
 
-        agente_ligado = await attendance_agent_active(str(company_id))
-    except Exception as exc:  # noqa: BLE001
-        logger.error("[PLATFORM SEND] não deu para confirmar se o agente de %s "
-                     "está ligado (%s) — assumindo DESLIGADO", company_id,
-                     type(exc).__name__)
-        agente_ligado = False
-    if not agente_ligado:
-        # `queued: False` explícito: quem drena a fila decide pelo par
-        # (ok, queued), e omitir a chave faria uma recusa parecer entrega.
-        logger.info("[PLATFORM SEND] bloqueado: agente de atendimento de %s "
-                    "está desligado (kind=%s)", company_id, kind)
-        return {"ok": False, "queued": False, "reason": "agente_desligado"}
+            agente_ligado = await attendance_agent_active(str(company_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[PLATFORM SEND] não deu para confirmar se o agente de %s "
+                         "está ligado (%s) — assumindo DESLIGADO", company_id,
+                         type(exc).__name__)
+            agente_ligado = False
+        if not agente_ligado:
+            # `queued: False` explícito: quem drena a fila decide pelo par
+            # (ok, queued), e omitir a chave faria uma recusa parecer entrega.
+            logger.info("[PLATFORM SEND] bloqueado: agente de atendimento de %s "
+                        "está desligado (kind=%s)", company_id, kind)
+            return {"ok": False, "queued": False, "reason": "agente_desligado"}
 
     if str(temperatura) == QUENTE:
         # Sem fila de cortesia e sem governador: a conversa em andamento É o
         # motivo de estar enviando. Adiar aqui seria deixar a pessoa no vácuo.
-        return await _entregar_agora(company_id, phone, text, kind, summary)
+        return await _entregar_agora(company_id, phone, text, kind, summary,
+                                     integration=conexao, documento=documento,
+                                     ledger_ref=ledger_ref, canario=canario)
 
     # 1) Cortesia primeiro. Ela não consome slot do governador: uma mensagem
     #    que nem vai sair agora não pode gastar o espaçamento de quem vai.
     reason = await client_busy(company_id, phone)
     if reason:
+        if not enfileirar:
+            # ⚠️ Quem chamou tem retentador próprio (a próxima execução da
+            # rotina). Guardar aqui só duplicaria o retentador e faria a
+            # mensagem sair um dia, sozinha, sem ninguém esperando por ela.
+            logger.info("[PLATFORM SEND] não enviado (%s) e NÃO enfileirado "
+                        "company=%s", reason, company_id)
+            return {"ok": False, "queued": False, "reason": "cliente_em_atendimento",
+                    "motivo": reason}
         await _enfileirar(company_id, phone, text, kind, summary,
                           espera_s=_RETRY_MIN_S, tentativas=int(tentativas) + 1,
                           adiamentos=int(adiamentos), actor_user_id=actor_user_id,
-                          work_run_id=work_run_id)
+                          work_run_id=work_run_id, integration_id=integration_id,
+                          documento=documento, ledger_ref=ledger_ref, canario=canario)
         try:
             from app.services.activity_log import log_activity
 
@@ -1004,7 +1323,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
         return {"ok": True, "queued": True, "reason": reason}
 
     # 2) O governador. Daqui em diante, `pode=True` já reservou o slot.
-    veredito = await governar_envio(company_id, temperatura=FRIA)
+    veredito = await governar_envio(company_id, temperatura=FRIA,
+                                    para_numero_de_teste=bool(destino_interno))
     if not veredito.pode:
         if veredito.esperar_s <= 0:
             # Recusa estrutural (freio puxado). Enfileirar aqui faria tudo sair
@@ -1012,24 +1332,38 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
             logger.warning(f"[GOVERNADOR] recusado company={company_id}: {veredito.motivo}")
             return {"ok": False, "queued": False, "reason": "governador",
                     "motivo": veredito.motivo}
+        if not enfileirar:
+            logger.info("[GOVERNADOR] não enviado e NÃO enfileirado company=%s: %s",
+                        company_id, veredito.motivo)
+            return {"ok": False, "queued": False, "reason": "governador",
+                    "motivo": veredito.motivo, "esperar_s": veredito.esperar_s}
         enfileirou = await _enfileirar(company_id, phone, text, kind, summary,
                                        espera_s=veredito.esperar_s,
                                        tentativas=int(tentativas),
                                        adiamentos=int(adiamentos) + 1,
                                        actor_user_id=actor_user_id,
-                                       work_run_id=work_run_id)
+                                       work_run_id=work_run_id,
+                                       integration_id=integration_id,
+                                       documento=documento, ledger_ref=ledger_ref,
+                                       canario=canario)
         logger.info(f"[GOVERNADOR] adiado {veredito.esperar_s}s company={company_id}: "
                     f"{veredito.motivo}")
         return {"ok": bool(enfileirou), "queued": bool(enfileirou), "reason": "governador",
                 "motivo": veredito.motivo, "esperar_s": veredito.esperar_s}
 
-    return await _entregar_agora(company_id, phone, text, kind, summary)
+    return await _entregar_agora(company_id, phone, text, kind, summary,
+                                 integration=conexao, documento=documento,
+                                 ledger_ref=ledger_ref, canario=canario)
 
 
 async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary: str,
                       *, espera_s: int, tentativas: int = 0, adiamentos: int = 0,
                       actor_user_id: Optional[str] = None,
-                      work_run_id: Optional[str] = None) -> bool:
+                      work_run_id: Optional[str] = None,
+                      integration_id: Optional[str] = None,
+                      documento: Optional[Dict[str, Any]] = None,
+                      ledger_ref: Optional[Dict[str, Any]] = None,
+                      canario: bool = False) -> bool:
     """Guarda na fila que já existia, com o `next_try` que o chamador mandou.
 
     Os dois contadores viajam com a entrada. Antes eles nasciam zerados a cada
@@ -1060,6 +1394,24 @@ async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary
         #    (sem a chave) cai em "sem run" — a recusa dela vai para a ficha.
         if work_run_id:
             entry["work_run_id"] = str(work_run_id)
+        # ⚠️ SPEC-EXTRA-001 — mesma regra para as quatro chaves novas: elas só
+        # entram quando existem, e a entrada gravada ANTES delas existirem cai
+        # no comportamento de hoje (`entry.get(...)` → `None`/`False`). Nenhuma
+        # mensagem já enfileirada muda de caminho por causa desta SPEC.
+        # ⛔ O que viaja é referência, nunca conteúdo de segurado: id da conexão,
+        #    caminho do arquivo no bucket, id da linha do ledger. A fila é Redis
+        #    e aparece em `MONITOR` (CLAUDE.md §7).
+        if integration_id:
+            entry["integration_id"] = str(integration_id)
+        if isinstance(documento, dict) and documento.get("path"):
+            entry["documento"] = {"bucket": str(documento.get("bucket") or "portal-evidence"),
+                                  "path": str(documento.get("path")),
+                                  "filename": str(documento.get("filename") or "documento.pdf")}
+        if isinstance(ledger_ref, dict) and ledger_ref.get("id"):
+            entry["ledger_ref"] = {"table": str(ledger_ref.get("table") or "billing_sent_log"),
+                                   "id": str(ledger_ref.get("id"))}
+        if canario:
+            entry["canario"] = True
         await r.rpush(_QUEUE_KEY.format(company_id=company_id),
                       json.dumps(entry, ensure_ascii=False))
         return True
@@ -1069,22 +1421,124 @@ async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary
 
 
 async def _entregar_agora(company_id: str, phone: str, text: str,
-                          kind: str, summary: str) -> Dict[str, Any]:
-    """O envio propriamente dito. Único ponto que chama o canal de WhatsApp."""
+                          kind: str, summary: str, *,
+                          integration: Optional[Dict[str, Any]] = None,
+                          documento: Optional[Dict[str, Any]] = None,
+                          ledger_ref: Optional[Dict[str, Any]] = None,
+                          canario: bool = False) -> Dict[str, Any]:
+    """O envio propriamente dito. Único ponto que chama o canal de WhatsApp.
+
+    🔴 SPEC-EXTRA-001 — o que mudou, e o que **não** mudou:
+
+    * `integration=None` → continua perguntando `get_platform_whatsapp_integration`,
+      exatamente como sempre fez. É o CONTROLE.
+    * `integration=<fixada>` → usa a conexão que a porta já revalidou. Escolher
+      de novo aqui seria uma segunda decisão sobre o mesmo canal.
+    * `documento` sai **depois** do texto, e só se o texto foi aceito — a
+      mensagem anuncia o anexo; anexo sem anúncio é arquivo solto de origem
+      desconhecida para quem recebe.
+    * `text` vazio é legítimo: é o reparo de um `parcial`, em que só o PDF
+      faltou. Reenviar o texto ali seria uma segunda abordagem ao mesmo cliente.
+    """
     try:
         from app.services.integration_service import get_integration_service
         from app.services.whatsapp_service import get_whatsapp_service
 
-        integration = get_integration_service().get_platform_whatsapp_integration(str(company_id))
+        if integration is None:
+            integration = get_integration_service().get_platform_whatsapp_integration(str(company_id))
         if not integration:
+            # Nada saiu: aqui a falha de registro não muda desfecho nenhum.
+            try:
+                await _marcar_no_ledger(company_id, ledger_ref, status="falhou",
+                                        last_error="sem canal de WhatsApp elegivel")
+            except Exception:  # noqa: BLE001
+                logger.error("[PLATFORM SEND] 'sem canal' não registrado no ledger de %s",
+                             company_id)
             return {"ok": False, "queued": False, "reason": "sem_canal"}
-        ok = await asyncio.to_thread(get_whatsapp_service().send_message, _digits(phone), text, integration)
-        if ok:
-            await record_platform_send(company_id, phone, kind, summary or text[:120])
-        return {"ok": bool(ok), "queued": False, "reason": None}
+
+        destino = _digits(phone)
+        texto = str(text or "")
+        if texto.strip():
+            ok = await asyncio.to_thread(get_whatsapp_service().send_message,
+                                         destino, texto, integration)
+        else:
+            # Nada a dizer nesta passagem: o texto já foi aceito antes.
+            ok = True
+
+        doc_ok: Optional[bool] = None
+        if ok and isinstance(documento, dict) and documento.get("path"):
+            url, nome = await _assinar_documento(documento)
+            if not url:
+                doc_ok = False
+            else:
+                doc_ok = bool(await asyncio.to_thread(
+                    get_whatsapp_service().send_document, destino, url, nome, integration))
+
+        if ok and texto.strip():
+            await record_platform_send(company_id, phone, kind, summary or texto[:120])
+
+        estado = _estado_do_envio(kind=kind, texto_ok=bool(ok),
+                                  previa_doc=bool(isinstance(documento, dict)
+                                                  and documento.get("path")),
+                                  doc_ok=doc_ok)
+        resposta: Dict[str, Any] = {
+            "ok": bool(ok), "queued": False, "reason": None, "doc_ok": doc_ok,
+            "integration_id": str(integration.get("id") or "") or None,
+            "status": estado, "canario": bool(canario),
+        }
+        try:
+            campos: Dict[str, Any] = {"status": estado,
+                                      "updated_at": _agora().isoformat()}
+            if texto.strip():
+                campos["text_ok"] = bool(ok)
+            if doc_ok is not None:
+                campos["doc_ok"] = bool(doc_ok)
+                campos["doc_sent"] = bool(doc_ok)   # espelho da coluna legada
+            if ok:
+                campos["sent_at"] = _agora().isoformat()
+                campos["to_last4"] = destino[-4:]
+            await _marcar_no_ledger(company_id, ledger_ref, **campos)
+        except Exception as exc:  # noqa: BLE001
+            # 🔴 A MENSAGEM JÁ SAIU. Levantar daqui faria o chamador achar que
+            # nada aconteceu e tentar de novo — que é exatamente a segunda
+            # cobrança que esta SPEC existe para impedir. O efeito é o fato; o
+            # registro é o que falhou, e quem chamou grava `incerto`.
+            logger.error("[PLATFORM SEND] envio feito mas NÃO registrado no "
+                         "ledger de %s: %s", company_id, type(exc).__name__)
+            resposta["ledger"] = "falhou"
+        return resposta
     except Exception as e:  # noqa: BLE001
         logger.error(f"[PLATFORM SEND] envio falhou: {type(e).__name__}")
-        return {"ok": False, "queued": False, "reason": "erro_envio"}
+        # 🔴 `incerto`, NÃO `falhou`. A exceção estourou depois de o pedido ter
+        # sido entregue ao provedor: o timeout clássico é exatamente "ele
+        # aceitou e não respondeu". Chamar isso de `falhou` autorizaria a
+        # próxima execução a reclamar a parcela e mandar a segunda cobrança
+        # para o mesmo segurado — o defeito que esta SPEC existe para fechar.
+        # Efeito POSSÍVEL não é efeito ausente (padrão outbox, AWS).
+        try:
+            await _marcar_no_ledger(company_id, ledger_ref, status="incerto",
+                                    last_error=f"erro_envio:{type(e).__name__}")
+        except Exception:  # noqa: BLE001
+            logger.error("[PLATFORM SEND] falha de envio não registrada no ledger de %s",
+                         company_id)
+        return {"ok": False, "queued": False, "reason": "erro_envio",
+                "status": "incerto"}
+
+
+async def _marcar_no_ledger(company_id: str, ledger_ref: Optional[Dict[str, Any]],
+                            **campos: Any) -> None:
+    """Escreve o estado na linha do ledger. Sem `ledger_ref`, não faz nada.
+
+    ⚠️ **Levanta de propósito** quando a escrita falha DEPOIS de um envio: quem
+    chamou precisa saber a diferença entre "gravei" e "não sei se gravei". Os
+    dois usos em que a falha é irrelevante (os caminhos que não enviaram nada)
+    chamam dentro de `try` próprio.
+    """
+    if not isinstance(ledger_ref, dict) or not ledger_ref.get("id") or not campos:
+        return
+    campos.setdefault("updated_at", _agora().isoformat())
+    await asyncio.to_thread(_marcar_no_ledger_sync, str(company_id),
+                            ledger_ref, dict(campos))
 
 
 async def check_platform_queue() -> int:
@@ -1169,7 +1623,14 @@ async def check_platform_queue() -> int:
                         tentativas=int(entry.get("attempts") or 0),
                         adiamentos=int(entry.get("adiamentos") or 0),
                         actor_user_id=entry.get("actor_user_id"),
-                        work_run_id=entry.get("work_run_id"))
+                        work_run_id=entry.get("work_run_id"),
+                        # ⚠️ As quatro chaves da EXTRA-001: a entrada ANTIGA não
+                        # as tem, `entry.get` devolve None/False, e ela sai
+                        # exatamente como saía antes desta SPEC.
+                        integration_id=entry.get("integration_id"),
+                        documento=entry.get("documento"),
+                        ledger_ref=entry.get("ledger_ref"),
+                        canario=bool(entry.get("canario")))
                     if res.get("ok") and not res.get("queued"):
                         sent += 1
                 except Exception as e:  # noqa: BLE001

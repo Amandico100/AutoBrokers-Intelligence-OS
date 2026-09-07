@@ -249,8 +249,16 @@ async def _deliver(routine: Dict[str, Any], output: str) -> Tuple[bool, str]:
     return False, f"canal de entrega desconhecido: {channel}"
 
 
-async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
-    """Roda UMA rotina (já claimada) e registra o resultado."""
+async def _execute_routine(supabase, routine: Dict[str, Any], *,
+                           work_run_id: Optional[str] = None) -> None:
+    """Roda UMA rotina (já claimada) e registra o resultado.
+
+    ⚠️ `work_run_id` é keyword-only e opcional: quem chama pela PONTE
+    (`workflows.bridge_rotina`) tem o run e o repassa; o scheduler in-process
+    não tem e continua chamando sem ele — o comportamento de hoje, intacto.
+    Ele existe para o run atravessar até o ledger da cobrança e a porta de
+    saída (P-098-RUN-NOS-JOBS, parcial).
+    """
     routine_id = routine["id"]
     # SPEC-078 F.3 — a execução nasce sabendo DE QUEM ELA É.
     #
@@ -300,8 +308,14 @@ async def _execute_routine(supabase, routine: Dict[str, Any]) -> None:
                 resolve_routine_timeout(),
                 int(os.getenv("BILLING_COLLECTION_TIMEOUT_SECONDS", "900")),
             )
+            # ⚠️ O `work_run_id` só é PASSADO quando existe. Não é estilo: o
+            # caminho in-process (o de hoje) chama exatamente como chamava, e
+            # é isso que mantém o CONTROLE — um dublê ou um chamador antigo
+            # que não conheça o argumento continua funcionando. Quem tem o run
+            # é a ponte, e só ela o entrega.
+            extra = {"work_run_id": work_run_id} if work_run_id else {}
             output = await asyncio.wait_for(
-                execute_billing_collection_routine(supabase, routine),
+                execute_billing_collection_routine(supabase, routine, **extra),
                 timeout=min(billing_timeout, 1800),
             )
         else:
