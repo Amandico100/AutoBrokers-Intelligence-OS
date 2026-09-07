@@ -3837,3 +3837,22 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 - **Autorização:** protocolo §9 (≤30 min, ≤2 arquivos, sem decisão a tomar — sem ela o produto quebra); registrada aqui porque o texto da SPEC não a previa (CLAUDE.md §11).
 - **Registro:** SPEC-098 U4.a · relatório §8 · pendência `P-098-MCP-ROTAS-SEM-COMPANY` (as cercas por linha no backend, além da proxy).
 - **Consequência de implantação:** smith-web ANTES de smith-api (a web passa a mandar a chave; a api passa a exigir).
+
+
+## 07/09/2026 · SPEC-EXTRA-001 · a peça da Cobrança nunca era publicada — ESSENCIAL
+**Problema:** `_gerar_artefato_da_cobranca` referenciava `inicio_da_varredura` sem recebê-lo (📊 `billing_collection.py:1470` contra a assinatura de `:1431`) → `NameError` em toda execução, engolido pelo `except` do chamador ("peca nao gerada: NameError"). Desde a SPEC-095 B.2 nenhuma execução da Cobrança virou peça no Artifact Hub. **Evidência:** U1, BLOCO 0. **Consequência:** consertado na própria U1 (é o arquivo e o bloco que ela editava); o `work_run_id` passou a viajar até `ArtifactService.criar`. **Autorização:** licença do Founder para consertar o que o projeto ganha (prompt de abertura); §9 do protocolo (≤ 2 arquivos, sem decisão).
+
+## 07/09/2026 · SPEC-EXTRA-001 · rota admin do canário — ESSENCIAL
+**Problema:** o canário vivo não pode rodar na máquina do orquestrador: sem Redis o governador recusa mensagem fria (falha fechada, `platform_outbound.py:476-480`). **Evidência:** `avaliar_vazao(redis_ok=False)`; `.env` local sem `REDIS_URL`. **Consequência:** `POST /api/admin/canario/extra001` atrás de `require_internal_key`, sem escolha de destino no corpo (destino e allowlist só pelo ambiente), executa `canario_extra001.rodar` no contêiner. Nenhum controle relaxado. **Autorização:** proposta §16 ("se o sistema não permitir ativação seletiva, implementar essa limitação antes do canário"); nota 80 contra 55 (Founder no console) e 0 (desligar governador).
+
+## 07/09/2026 · SPEC-EXTRA-001 · a polícia do protocolo reconhece a família EXTRA — ESSENCIAL
+**Problema:** `numero_da_spec` = `SPEC-0?(\d{2,3})` → `SPEC-EXTRA-001` virava `None` e ficava isenta dos blocos [7]/[8]. **Consequência:** `SPEC-EXTRA-NNN` → `1000+NNN` (sempre sob a v11), com dois controles. **Autorização:** proposta §19 ("não excluir EXTRA dos guardas").
+
+## 07/09/2026 · SPEC-EXTRA-001 · recibo igual ao de outra seguradora — ESSENCIAL
+**Problema:** a constraint antiga `(company_id, recibo, send_mode)` continua vigiando `billing_sent_log`; um recibo de outra seguradora com o mesmo número bateria nela e a função de reserva devolveria a linha da OUTRA seguradora como "já cobrado" (aquecimento, achado 8a). **Consequência:** `billing_reservar_obrigacao` devolve `status='colisao_recibo'` e o motor RETÉM com incidente "recibo igual ao de outra seguradora — a equipe cobra". VERIFY V4c no Postgres real. **Autorização:** §9.1 (integridade é material).
+
+## 07/09/2026 · SPEC-EXTRA-001 · dois telefones reais como placeholder na tela — ESSENCIAL
+**Problema:** `PainelDeRotinas.tsx:861` e `:1011` traziam telefones completos como exemplo (um deles o número de teste do Founder). **Consequência:** máscara `55 47 9XXXX-XXXX`; o guarda mjs recusa `55\d{10,11}` no tsx. **Autorização:** CLAUDE.md §7 (PII no repositório).
+
+## 07/09/2026 · SPEC-EXTRA-001 · dois guardas vizinhos migraram o fato — VALIOSA
+`scripts/rotina-mora-no-auxiliar.test.mjs` ("exatamente test e none" → "exatamente test, none, equipe e cliente"; a negativa `live`/`approval` continua) e `backend/tests/test_spec023_cobranca.py` ("env + live permite" → "live é legado retido; nenhum env o promove"). CLAUDE.md §9.3: a lição migra em vez de morrer.

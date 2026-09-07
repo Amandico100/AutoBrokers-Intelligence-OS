@@ -10441,3 +10441,42 @@ O dublê dos guardas responde 42703 a coluna desconhecida, mas aceitava INSERT s
 
 ## P-098-FICHA-RMW · `_anotar_recusa_na_ficha` faz read-modify-write de `ficha_atendimento`, a mesma coluna que o acompanhamento da 097.1 escreve
 Juiz fresco (06/09): dois escritores concorrentes na mesma jsonb → last-write-wins. Hoje improvável (a recusa sem run só nasce do envio humano pelo painel). **Destrava:** `jsonb_set`/RPC de append atômico para a ficha, usado pelos dois escritores. **Dono:** 🤖 (099). **Custo de esquecer:** um registro de acompanhamento ou de recusa perdido sob concorrência.
+
+
+# SPEC-EXTRA-001 · A operação dos pilotos — 07/09/2026
+
+## P-E001-LEDGER-SEM-VENCIMENTO-E-VALOR · `billing_sent_log` não guarda vencimento nem valor da parcela
+U2 (07/09): o bloco `[COBRANÇA EM ANDAMENTO]` diz seguradora, parcela/recibo, data do envio e estado — não diz "vence em dd/mm, R$ X", que é o que o cliente pergunta. **Destrava:** duas colunas aditivas (`vencimento date`, `valor numeric`) numa migration nova + gravá-las na reserva (`billing_reservar_obrigacao`). **Dono:** 🤖. **Custo de esquecer:** o agente responde "a parcela 2/6 da Porto" sem conseguir dizer o valor.
+
+## P-E001-LEGADO-ENTREGUE-NAO-CONTESTA · `status='entregue'` (default das linhas antigas) não vira `contestado`
+U2 seguiu o CONTRATOS à letra: `ja_paguei`/`duvida` só mudam o status a partir dos estados novos. 📊 07/09: 0 linhas legadas em produção, então hoje é inócuo. **Destrava:** decidir se `entregue` entra na lista, ou backfill do legado quando existir. **Dono:** 🤖. **Custo de esquecer:** um "já paguei" numa linha antiga grava o retorno e não aparece na lista de Pendências pelo estado.
+
+## P-E001-RETORNO-IDEMPOTENTE-POR-CONTEUDO · o hook do webhook roda antes da dedup do provedor
+`registrar_retorno` é chamado no endpoint, antes de `_is_duplicate_namespaced`; um evento reentregue chama duas vezes. A janela de 10 min por rótulo absorve. **Destrava:** amarrar ao `message_id` do evento. **Dono:** 🤖. **Custo de esquecer:** nenhum funcional hoje; volume alto duplicaria atividades.
+
+## P-E001-ROUTINES-POR-INBOUND · uma consulta a `routines` por mensagem inbound no caminho da IA
+`telefones_da_equipe_de_cobranca` lê as rotinas ativas da corretora a cada mensagem que vai à IA (para excluir a atendente do contexto). **Destrava:** cache curto por `company_id` (Redis, 60 s). **Dono:** 🤖. **Custo de esquecer:** +1 SELECT por mensagem atendida.
+
+## P-E001-FILA-SEM-AUTORIZACAO-DE-AUXILIAR · a entrada da fila Redis não carrega `autorizacao_de_auxiliar` nem `destino_interno`
+U1 seguiu o CONTRATOS §3 (a entrada carrega `integration_id`, `documento`, `ledger_ref`, `canario`). Hoje inócuo: a cobrança usa `enfileirar=False` e nada dela entra na fila. **Destrava:** carregar as duas chaves quando um chamador futuro usar auxiliar COM fila. **Dono:** 🤖 (099). **Custo de esquecer:** replay recusado por `conexao_trocada`/`agente_desligado` para um chamador que ainda não existe.
+
+## P-E001-INCERTO-ESCRITA-DUPLA · `incerto` depende de uma segunda escrita que pode falhar pelo mesmo motivo
+Desenhista (07/09): quando o UPDATE pós-envio falha, o motor tenta gravar `incerto`; se a segunda escrita também falhar, a linha fica `reservado` — que também nunca é reclamada e aparece como "reserva órfã" no relatório (G19). O relatório diz INCERTA. **Destrava:** o relatório/tela tratarem `reservado` envelhecido (> 1 h) como "incerto — conferir". **Dono:** 🤖. **Custo de esquecer:** a tela mostra "reservado" onde a verdade é "não sei se saiu".
+
+## P-E001-AGENT-ACTIVITIES-FORA-DA-FIXTURE · `agent_activities` não está em `schema_vivo.json`
+O dublê aceita qualquer coluna nela. 📊 07/09: a tabela existe, `category` não tem CHECK (`auxiliares` já está fora da tupla `CATEGORIES` de `activity_log.py`). **Destrava:** incluir na fixture; `CATEGORIES` virar validação ou sumir. **Dono:** 🤖. **Custo de esquecer:** um insert em coluna errada passa no guarda.
+
+## P-E001-GET-INTEGRATION-SEM-TENANT · `get_integration_by_id` não filtra `company_id`
+A porta revalida `company_id` na conexão fixada (G12), mas os outros chamadores de `get_integration_by_id` confiam em quem chama. **Destrava:** parâmetro `company_id` obrigatório na função. **Dono:** 🤖 (099). **Custo de esquecer:** um id de integração de outra corretora aceito por um chamador desatento.
+
+## P-E001-CANARIO-VIVO-NO-IMPLANTADO · o canário vivo (Q1–Q6) só roda dentro do smith-api implantado
+📊 07/09: sem Redis o governador recusa mensagem fria (falha fechada, correto); localmente não há Redis. A rota admin `POST /api/admin/canario/extra001` (chave interna) existe para isso e exige `BILLING_CANARIO_ALLOWLIST` e `CANARIO_TESTE_B` no ambiente do contêiner. **Destrava:** 🧑 Implantar + as duas variáveis no smith-api; depois 🤖 chama a rota e cola o resultado no relatório §6. **Dono:** 🧑/🤖. **Custo de esquecer:** G25 (23505 real) e Q1–Q6 ficam "não comprovados ao vivo".
+
+## P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY · a resposta REAL de TESTE-B pelo webhook só é medível depois do Implantar
+O código do hook ainda não está no ar. **Destrava:** depois do deploy, `POST …/extra001?esperar_retorno_s=180` e o Founder responde de TESTE-B. **Dono:** 🧑/🤖. **Custo de esquecer:** G24 fica provado só com o endpoint dublado.
+
+## P-E001-AGENTE-DA-RESULTA-PARA-RESPOSTA-VIVA · a resposta automática ao vivo exige ligar o agente de atendimento da Resulta
+Decisão do Founder (caixa). A allowlist de inbound em produção contém só TESTE-B, o que confina quem é respondido. **Dono:** 🧑. **Custo de esquecer:** o roteiro 4.4 das atendentes fica "não testado".
+
+## P-E001-ROTINA-MORA-NO-AUXILIAR-ONCONFLICT · o guarda vizinho exige `on_conflict="company_id,recibo,send_mode"` no motor
+Continua verdadeiro (o modo teste ainda usa essa chave), mas é uma verdade do modo TESTE, e o guarda a afirma como "a chave de dedup do motor". **Destrava:** reescrever a asserção como "a chave do MODO TESTE". **Dono:** 🤖. **Custo de esquecer:** confusão de leitor.
