@@ -359,7 +359,18 @@ O que ainda **não** vê: a prova viva de ponta a ponta (depende do Implantar + 
 ```
 
 ## 14. A entrega (`git push`) — saída colada
-(preencher)
+
+```
+$ git fetch origin; git rev-list --count HEAD..origin/main   → 0 (atrás)
+$ git rev-list --count origin/main..HEAD                     → 18 (à frente)
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   34424fa..ba7ba75  HEAD -> main
+$ git fetch origin && git rev-parse --short origin/main      → ba7ba75
+$ git rev-list --count origin/main..HEAD                     → 0
+```
+
+📊 07/09/2026. A `main` remota está em `ba7ba75` (código em `0be100a` + o relatório). O commit do dossiê/§14 vem em seguida e é empurrado do mesmo jeito. **Implantar** é do Founder (EasyPanel): **smith-api primeiro, smith-web depois** (§6.2), e as duas variáveis do canário no smith-api.
 
 ## 📊 A BATERIA — quantas vezes ela rodou nesta SPEC
 
