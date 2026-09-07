@@ -1290,9 +1290,8 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
     if str(temperatura) == QUENTE:
         # Sem fila de cortesia e sem governador: a conversa em andamento É o
         # motivo de estar enviando. Adiar aqui seria deixar a pessoa no vácuo.
-        return await _entregar_agora(company_id, phone, text, kind, summary,
-                                     integration=conexao, documento=documento,
-                                     ledger_ref=ledger_ref, canario=canario)
+        return await _entregar(company_id, phone, text, kind, summary,
+                               conexao, documento, ledger_ref, canario)
 
     # 1) Cortesia primeiro. Ela não consome slot do governador: uma mensagem
     #    que nem vai sair agora não pode gastar o espaçamento de quem vai.
@@ -1351,6 +1350,23 @@ async def send_to_client_guarded(company_id: str, phone: str, text: str,
         return {"ok": bool(enfileirou), "queued": bool(enfileirou), "reason": "governador",
                 "motivo": veredito.motivo, "esperar_s": veredito.esperar_s}
 
+    return await _entregar(company_id, phone, text, kind, summary,
+                           conexao, documento, ledger_ref, canario)
+
+
+async def _entregar(company_id: str, phone: str, text: str, kind: str, summary: str,
+                    conexao: Optional[Dict[str, Any]], documento: Optional[Dict[str, Any]],
+                    ledger_ref: Optional[Dict[str, Any]], canario: bool) -> Dict[str, Any]:
+    """Chama `_entregar_agora` COMO HOJE quando nenhum kwarg novo foi usado.
+
+    🔴 Default = comportamento de hoje, byte a byte — inclusive na ASSINATURA
+    da chamada. 📊 07/09/2026: `test_098_builder_b_unit` substitui
+    `_entregar_agora` por um dublê com a assinatura antiga (5 posicionais) e
+    caía com `unexpected keyword argument 'integration'`. Um chamador antigo
+    (e um dublê antigo) não pode saber que a porta ganhou parâmetros.
+    """
+    if conexao is None and documento is None and ledger_ref is None and not canario:
+        return await _entregar_agora(company_id, phone, text, kind, summary)
     return await _entregar_agora(company_id, phone, text, kind, summary,
                                  integration=conexao, documento=documento,
                                  ledger_ref=ledger_ref, canario=canario)
