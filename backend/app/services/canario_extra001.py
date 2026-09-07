@@ -1,0 +1,300 @@
+# -*- coding: utf-8 -*-
+"""O canário vivo da SPEC-EXTRA-001 — a cobrança chega a quem deve, medido no ar.
+
+Por que isto é um MÓDULO do serviço, e não só um script
+=======================================================
+📊 07/09/2026: toda mensagem FRIA passa pelo governador (`platform_outbound.
+governar_envio`), e sem Redis ele recusa — falha fechada, e é assim que tem de
+ser. Nesta máquina não há Redis; no contêiner implantado há. Então o canário
+vivo roda ONDE o produto roda: `backend/scripts/canario_extra001.py` imprime o
+plano localmente (`--dry-run`), e a rota admin `POST /api/admin/canario/extra001`
+(chave interna) executa `rodar(...)` dentro do smith-api implantado.
+
+⛔ Nunca relaxa um controle para testar: o governador, a porta única, a
+allowlist, a reserva — tudo o que vale para a corretora vale aqui.
+
+O que ele mede
+==============
+```
+Q1  EQUIPE    rotina canário (config.canario=True, send_mode='equipe',
+              team_number=TESTE-B) · item SINTÉTICO · PDF sintético sem
+              validade financeira → 3 mensagens chegam em TESTE-B (nota
+              interna, texto limpo, PDF); ledger `entregue_equipe`, canario=true.
+              O aviso ao grupo real da corretora é SUPRIMIDO.
+Q2  CLIENTE   a mesma parcela em `cliente` (whatsapp=TESTE-B) → 0 envios
+              (G11: entregue à equipe, sem "encaminhado"); depois `liberado`
+              com motivo → texto + PDF chegam.
+Q3  REEXECUÇÃO a mesma parcela de novo → 0 envios, "já cobrado".
+Q4  RETORNO   `registrar_retorno(TESTE-B, "já paguei")` pelo caminho de U2 →
+              ledger `contestado` + linha em agent_activities. (A resposta
+              REAL de TESTE-B pelo webhook só é medível depois do Implantar:
+              `--esperar-retorno` olha o ledger por N segundos.)
+Q5  ALLOWLIST rotina com team_number FORA da allowlist → a porta recusa
+              (`fora_da_allowlist`), 0 envios, incidente.
+Q6  LIMPEZA   ledger (por id + company + canario), platform_sends do canário,
+              atividades do canário, o PDF do cofre. VERIFY 0/0/0.
+```
+
+⛔ Nunca imprime telefone, nome ou id inteiro: só aliases, últimos 4 e
+prefixos de 8 caracteres. ⛔ Só roda com `BILLING_CANARIO_ALLOWLIST` com ≥ 2
+entradas e o destino (`CANARIO_TESTE_B`) dentro dela — os valores reais vivem
+no ambiente, nunca aqui.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+#: 📊 `select id from companies where company_name='Resulta Seguros'` (07/09/2026)
+RESULTA = "04b5cdbc-04cd-4ddf-8e4b-f43efb062fab"
+MARCA = "CANARIO-EXTRA001"
+#: ⛔ Um número que não é de ninguém — o "fora da allowlist" do Q5.
+FORA_DA_ALLOWLIST = "5500900000001"
+
+PDF_SINTETICO = (
+    b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n"
+    b"4 0 obj<</Length 120>>stream\nBT /F1 18 Tf 20 120 Td (DOCUMENTO DE TESTE - SEM VALIDADE) Tj "
+    b"0 -30 Td (AutoBrokers - canario EXTRA-001) Tj 0 -30 Td (nao pagar, nao e boleto) Tj ET\nendstream\nendobj\n"
+    b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+    b"xref\n0 6\n0000000000 65535 f \ntrailer<</Size 6/Root 1 0 R>>\nstartxref\n0\n%%EOF\n"
+)
+
+
+def _mask(v: Any, n: int = 4) -> str:
+    s = str(v or "")
+    return f"...{s[-n:]}" if s else "?"
+
+
+def _pref(v: Any) -> str:
+    return str(v or "")[:8]
+
+
+def _digits(v: Any) -> str:
+    return "".join(ch for ch in str(v or "") if ch.isdigit())
+
+
+class Relato:
+    """Linhas do canário, sem PII, e o veredito por pergunta."""
+
+    def __init__(self) -> None:
+        self.linhas: List[str] = []
+        self.perguntas: Dict[str, str] = {}
+
+    def p(self, texto: str) -> None:
+        self.linhas.append(texto)
+        logger.info("[CANARIO EXTRA-001] %s", texto)
+
+    def veredito(self, q: str, ok: bool, detalhe: str = "") -> None:
+        self.perguntas[q] = ("OK" if ok else "FALHOU") + (f" — {detalhe}" if detalhe else "")
+        self.p(f"{q}: {'✅' if ok else '❌'} {detalhe}")
+
+    def como_dict(self) -> Dict[str, Any]:
+        return {"perguntas": self.perguntas, "linhas": self.linhas}
+
+
+def _allowlist() -> set:
+    from app.services.platform_outbound import _allowlist_do_canario
+
+    return set(_allowlist_do_canario())
+
+
+def plano(company_id: str = RESULTA) -> Dict[str, Any]:
+    """`--dry-run`: o que o canário FARIA, com o censo — sem tocar em nada."""
+    from app.core.database import get_supabase_client
+    from app.services.billing_collection import _find_whatsapp_integration
+
+    r = Relato()
+    allow = _allowlist()
+    destino = _digits(os.getenv("CANARIO_TESTE_B", ""))
+    r.p(f"allowlist do canário: {len(allow)} entrada(s) (BILLING_CANARIO_ALLOWLIST)")
+    r.p(f"destino TESTE-B configurado: {'sim' if destino else 'NÃO'} ({_mask(destino)})")
+    db = get_supabase_client().client
+    integ = _find_whatsapp_integration(db, company_id)
+    if integ:
+        r.p(f"conexão autorizada como Auxiliar: {_pref(integ.get('id'))}… purpose={integ.get('purpose')} "
+            f"status={integ.get('channel_status')} remetente={_mask(integ.get('paired_phone_e164'))}")
+    else:
+        r.p("conexão autorizada como Auxiliar: NENHUMA — o canário não sairia")
+    from app.services.platform_outbound import _autorizado_no_canario
+
+    r.p(f"remetente na allowlist: {bool(integ) and _autorizado_no_canario(integ.get('paired_phone_e164'), allow)}")
+    r.p(f"destino na allowlist: {bool(destino) and _autorizado_no_canario(destino, allow)}")
+    r.p("plano: Q1 equipe → Q2 cliente (0, depois liberado) → Q3 reexecução (0) → Q4 retorno (U2) → "
+        "Q5 fora da allowlist (recusa) → Q6 limpeza 0/0/0")
+    return r.como_dict()
+
+
+def _rotina(company_id: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    return {"id": str(uuid.uuid4()), "company_id": company_id, "name": f"{MARCA} (rotina sintética, não persistida)",
+            "config": cfg, "delivery": {}}
+
+
+def _cfg(modalidade: str, *, destino: str, team_number: Optional[str] = None) -> Dict[str, Any]:
+    from app.services.billing_collection import normalize_billing_config
+
+    return normalize_billing_config({
+        "kind": "billing_collection", "send_mode": modalidade,
+        "team_number": team_number or "", "confirmacao_cliente": True, "canario": True,
+        "portal_keys": ["allianz_corretor"], "brokerage_name": "Resulta Seguros (teste)",
+        "attendant_name": "equipe de teste", "insurer_name": "ALLIANZ",
+    })
+
+
+def _item(recibo: str, destino: str) -> Dict[str, Any]:
+    return {
+        "portal": "allianz_corretor", "recibo": recibo, "cliente_nome": "Cliente Canário",
+        "cpf_cnpj": "", "whatsapp": destino, "contact_status": "found",
+        "apolice_susep": f"{MARCA}-APOLICE", "vencimento": "2026-08-01", "valor": 0.0,
+        "parcela": "1/1", "item_segurado": "veículo de teste (sem validade)",
+    }
+
+
+async def rodar(company_id: str = RESULTA, *, limpar: bool = True,
+                esperar_retorno_s: int = 0) -> Dict[str, Any]:
+    """O canário VIVO. Só roda onde há Redis e com a allowlist configurada."""
+    from app.core.database import get_supabase_client
+    from app.services import billing_collection as BC
+    from app.services.platform_outbound import _autorizado_no_canario
+
+    r = Relato()
+    os.environ["AUTOBROKERS_CANARIO"] = "1"
+    allow = _allowlist()
+    destino = _digits(os.getenv("CANARIO_TESTE_B", ""))
+    if len(allow) < 2 or not destino or not _autorizado_no_canario(destino, allow):
+        r.veredito("Q0", False, "allowlist com menos de 2 entradas ou destino fora dela — nada roda")
+        return r.como_dict()
+
+    db = get_supabase_client().client
+    inicio = datetime.now(timezone.utc)
+    recibo = f"{MARCA}-{int(time.time())}"
+    caminho = f"canario/extra001/{recibo}.pdf"
+    ledger_ids: List[str] = []
+
+    try:
+        # O documento sintético entra no cofre da corretora, marcado pelo caminho.
+        await asyncio.to_thread(
+            lambda: db.storage.from_(BC.PORTAL_EVIDENCE_BUCKET).upload(
+                caminho, PDF_SINTETICO, {"content-type": "application/pdf"}))
+        r.p(f"PDF sintético no cofre: {caminho}")
+        boleto = {"recibo": recibo, "ok": True, "storage_path": caminho}
+        item = _item(recibo, destino)
+
+        async def executar(modalidade: str, team_number: Optional[str] = None) -> Dict[str, Any]:
+            cfg = _cfg(modalidade, destino=destino, team_number=team_number)
+            blockers: List[str] = []
+            entregas = await BC._entregar_cobranca_real(
+                db, _rotina(company_id, cfg), [item], [boleto], cfg, blockers, work_run_id=None)
+            for e in entregas:
+                if e.get("ledger_id") and e["ledger_id"] not in ledger_ids:
+                    ledger_ids.append(str(e["ledger_id"]))
+            return {"entregas": entregas, "blockers": blockers}
+
+        def ledger() -> Optional[Dict[str, Any]]:
+            res = (db.table("billing_sent_log").select("*").eq("company_id", company_id)
+                   .eq("send_mode", "real").eq("recibo", recibo).limit(1).execute())
+            return (res.data or [None])[0]
+
+        # Q1 — EQUIPE
+        q1 = await executar("equipe", team_number=destino)
+        l1 = ledger() or {}
+        r.p(f"Q1 entregas={[(e.get('status'), e.get('ok'), e.get('doc_ok')) for e in q1['entregas']]} "
+            f"blockers={q1['blockers'][:4]}")
+        r.veredito("Q1", l1.get("status") == "entregue_equipe" and l1.get("canario") is True
+                   and l1.get("text_ok") is True and l1.get("doc_ok") is True,
+                   f"ledger status={l1.get('status')} to={_mask(l1.get('to_last4'))} modalidade={l1.get('modalidade')}")
+
+        # Q2 — CLIENTE sem liberar: 0 envios
+        q2a = await executar("cliente")
+        l2a = ledger() or {}
+        r.veredito("Q2a", not any(e.get("ok") for e in q2a["entregas"]) and l2a.get("status") == "entregue_equipe",
+                   f"0 envios; ledger continua {l2a.get('status')}; motivo={[e.get('motivo') for e in q2a['entregas']]}")
+        # ... e depois de LIBERAR com motivo: texto + PDF
+        if l2a.get("id"):
+            await asyncio.to_thread(BC._marcar_estado, db, company_id, str(l2a["id"]),
+                                    status="liberado", motivo="canário EXTRA-001: liberação de teste")
+        q2b = await executar("cliente")
+        l2b = ledger() or {}
+        r.veredito("Q2b", any(e.get("ok") for e in q2b["entregas"]) and l2b.get("doc_ok") is True
+                   and l2b.get("modalidade") == "cliente",
+                   f"ledger status={l2b.get('status')} modalidade={l2b.get('modalidade')} attempts={l2b.get('attempts')}")
+
+        # Q3 — REEXECUÇÃO: 0 envios
+        q3 = await executar("cliente")
+        l3 = ledger() or {}
+        r.veredito("Q3", not any(e.get("ok") for e in q3["entregas"]) and l3.get("attempts") == l2b.get("attempts"),
+                   f"0 envios; attempts={l3.get('attempts')}; blockers={q3['blockers'][:2]}")
+
+        # Q4 — RETORNO pelo caminho de U2 (simulado) e, se pedido, o real pelo webhook
+        try:
+            from app.services.billing_replies import registrar_retorno
+
+            ret = await registrar_retorno(company_id, destino, "já paguei ontem, pode conferir")
+            l4 = ledger() or {}
+            r.veredito("Q4", bool(ret) and l4.get("retorno_do_cliente") == "ja_paguei"
+                       and l4.get("status") == "contestado",
+                       f"retorno={l4.get('retorno_do_cliente')} status={l4.get('status')}")
+        except Exception as exc:  # noqa: BLE001
+            r.veredito("Q4", False, f"billing_replies indisponível ({type(exc).__name__})")
+        if esperar_retorno_s > 0:
+            r.p(f"Q4-vivo: esperando até {esperar_retorno_s}s por uma resposta REAL de TESTE-B pelo webhook…")
+            fim = time.time() + esperar_retorno_s
+            visto = None
+            while time.time() < fim:
+                l = ledger() or {}
+                if l.get("retorno_em") and str(l.get("retorno_em")) > (l4.get("retorno_em") or ""):
+                    visto = l
+                    break
+                await asyncio.sleep(5)
+            r.veredito("Q4-vivo", bool(visto), f"retorno={(visto or {}).get('retorno_do_cliente')}" if visto else "sem resposta no prazo")
+
+        # Q5 — FORA DA ALLOWLIST: a porta recusa
+        item_q5 = _item(f"{recibo}-Q5", destino)
+        boleto_q5 = {"recibo": item_q5["recibo"], "ok": True, "storage_path": caminho}
+        cfg5 = _cfg("equipe", destino=destino, team_number=FORA_DA_ALLOWLIST)
+        blockers5: List[str] = []
+        e5 = await BC._entregar_cobranca_real(db, _rotina(company_id, cfg5), [item_q5], [boleto_q5], cfg5,
+                                              blockers5, work_run_id=None)
+        for e in e5:
+            if e.get("ledger_id"):
+                ledger_ids.append(str(e["ledger_id"]))
+        r.veredito("Q5", not any(e.get("ok") for e in e5) and any("fora_da_allowlist" in str(e.get("motivo")) for e in e5),
+                   f"motivos={[e.get('motivo') for e in e5]}")
+    finally:
+        if limpar:
+            await _limpar(db, company_id, recibo, caminho, ledger_ids, inicio, destino, r)
+        else:
+            r.p("limpeza PULADA (--sem-limpeza): apague por id + company_id + canario")
+    return r.como_dict()
+
+
+async def _limpar(db, company_id: str, recibo: str, caminho: str, ledger_ids: List[str],
+                  inicio: datetime, destino: str, r: Relato) -> None:
+    """Só o que o canário criou, por id e marca. Nunca `delete` sem `company_id`."""
+    def _q():
+        led = (db.table("billing_sent_log").delete().eq("company_id", company_id).eq("canario", True)
+               .like("recibo", f"{recibo}%").execute().data or [])
+        ps = (db.table("platform_sends").delete().eq("company_id", company_id).eq("phone", destino)
+              .gte("sent_at", inicio.isoformat()).like("kind", "billing%").execute().data or [])
+        act = (db.table("agent_activities").delete().eq("company_id", company_id).eq("category", "cobranca")
+               .gte("created_at", inicio.isoformat()).execute().data or [])
+        try:
+            db.storage.from_("portal-evidence").remove([caminho])
+            pdf = "removido"
+        except Exception as exc:  # noqa: BLE001
+            pdf = f"não removido ({type(exc).__name__})"
+        sobra = (db.table("billing_sent_log").select("id").eq("company_id", company_id)
+                 .eq("canario", True).like("recibo", f"{recibo}%").execute().data or [])
+        return len(led), len(ps), len(act), pdf, len(sobra)
+
+    led, ps, act, pdf, sobra = await asyncio.to_thread(_q)
+    r.p(f"limpeza: ledger {led} · platform_sends {ps} · atividades {act} · pdf {pdf}")
+    r.veredito("Q6", sobra == 0, f"VERIFY: restam {sobra} linha(s) do canário no ledger")

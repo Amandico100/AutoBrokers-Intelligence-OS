@@ -246,6 +246,9 @@ app.include_router(pricing_router, tags=["Admin Pricing"])
 app.include_router(plans_router, tags=["Admin Plans"])
 app.include_router(billing_router, tags=["Billing (Owner)"])
 app.include_router(billing_admin_router, tags=["Admin Billing"])
+# SPEC-EXTRA-001: o canário da cobrança roda ONDE há Redis (o contêiner), atrás da chave interna.
+from app.api.admin_canario import router as admin_canario_router  # noqa: E402
+app.include_router(admin_canario_router, tags=["Admin Canário"])
 
 # SPEC-034/036: superficies do portal admin (Central de Agentes, Acionamentos,
 # Insights, Registro, Mapas/Alfaiate)
