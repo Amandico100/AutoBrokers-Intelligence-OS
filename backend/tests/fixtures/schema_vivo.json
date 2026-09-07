@@ -505,7 +505,27 @@
    "cliente_nome": "text",
    "send_mode": "text",
    "doc_sent": "boolean",
-   "created_at": "timestamp with time zone"
+   "created_at": "timestamp with time zone",
+   "status": "text",
+   "modalidade": "text",
+   "text_ok": "boolean",
+   "doc_ok": "boolean",
+   "to_phone": "text",
+   "to_last4": "text",
+   "integration_id": "uuid",
+   "work_run_id": "uuid",
+   "routine_id": "uuid",
+   "reserved_at": "timestamp with time zone",
+   "sent_at": "timestamp with time zone",
+   "updated_at": "timestamp with time zone",
+   "attempts": "integer",
+   "last_error": "text",
+   "motivo": "text",
+   "encaminhado_ao_cliente_em": "timestamp with time zone",
+   "encaminhado_por": "uuid",
+   "retorno_do_cliente": "text",
+   "retorno_em": "timestamp with time zone",
+   "canario": "boolean"
   },
   "human_support_destinations": {
    "id": "uuid",
@@ -1167,6 +1187,106 @@
     "tipo": "timestamp with time zone",
     "nulo": false,
     "default": "now()"
+   },
+   "status": {
+    "tipo": "text",
+    "nulo": false,
+    "default": "'entregue'::text"
+   },
+   "modalidade": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "text_ok": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": null
+   },
+   "doc_ok": {
+    "tipo": "boolean",
+    "nulo": true,
+    "default": null
+   },
+   "to_phone": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "to_last4": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "integration_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "work_run_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "routine_id": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "reserved_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "sent_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "updated_at": {
+    "tipo": "timestamp with time zone",
+    "nulo": false,
+    "default": "now()"
+   },
+   "attempts": {
+    "tipo": "integer",
+    "nulo": false,
+    "default": "0"
+   },
+   "last_error": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "motivo": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "encaminhado_ao_cliente_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "encaminhado_por": {
+    "tipo": "uuid",
+    "nulo": true,
+    "default": null
+   },
+   "retorno_do_cliente": {
+    "tipo": "text",
+    "nulo": true,
+    "default": null
+   },
+   "retorno_em": {
+    "tipo": "timestamp with time zone",
+    "nulo": true,
+    "default": null
+   },
+   "canario": {
+    "tipo": "boolean",
+    "nulo": false,
+    "default": "false"
    }
   },
   "brand_assets": {

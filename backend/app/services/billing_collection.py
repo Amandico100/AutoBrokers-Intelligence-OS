@@ -1593,6 +1593,22 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
         somente_documento = False
         if not reserva.get("ganhou"):
             estado = str(reserva.get("status") or estado_anterior or "")
+            if estado == "colisao_recibo":
+                # 🔴 O recibo bateu na constraint ANTIGA `(company_id, recibo,
+                #    send_mode)` porque OUTRA seguradora já tem uma obrigação com
+                #    o mesmo número. Não é "já cobrado": é um cliente que o robô
+                #    não consegue distinguir com segurança. RETÉM, com incidente,
+                #    e a equipe cobra (aquecimento EXTRA-001, achado 8a).
+                await _incidente(
+                    company_id, "Cobrança retida: recibo igual ao de outra seguradora",
+                    f"{seguradora} · recibo ...{recibo[-4:]} — a equipe precisa cobrar esta parcela")
+                blockers.append(
+                    f"parcela {rotulo} ({seguradora}): NAO cobrada — o numero do recibo e igual "
+                    f"ao de outra seguradora ja cobrada; tarefa para a equipe")
+                entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+                                 "portal": portal_key, "ok": False, "status": "retido",
+                                 "status_anterior": estado, "motivo": "colisao de recibo"})
+                continue
             if estado not in ESTADOS_RECLAMAVEIS:
                 # 🔴 E ELA APARECE. Uma parcela que não sai porque já está em
                 #    outro estado tem de ser LEGÍVEL no relatório — inclusive a

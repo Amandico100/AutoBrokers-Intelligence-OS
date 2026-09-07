@@ -222,14 +222,18 @@ BEGIN
      LIMIT 1;
 
     IF v_id IS NULL THEN
-        -- Caiu na constraint antiga (mesmo recibo, outra seguradora). A linha
-        -- existe, só não é a que o predicado acima procura.
-        SELECT b.id, b.status INTO v_id, v_status
+        -- Caiu na constraint antiga (mesmo recibo, OUTRA seguradora). A linha
+        -- existe, mas NÃO é esta obrigação. 🔴 Devolver o status dela seria
+        -- dizer "já cobrado" sobre um cliente que nunca foi cobrado (aquecimento
+        -- EXTRA-001, achado 8a). O chamador recebe um estado próprio e RETÉM o
+        -- item com incidente — a equipe cobra; o robô não cala.
+        SELECT b.id INTO v_id
           FROM public.billing_sent_log b
          WHERE b.company_id = p_company_id
            AND b.send_mode  = 'real'
            AND b.recibo     = v_recibo
          LIMIT 1;
+        v_status := 'colisao_recibo';
     END IF;
 
     RETURN QUERY SELECT v_id, false, v_status;
