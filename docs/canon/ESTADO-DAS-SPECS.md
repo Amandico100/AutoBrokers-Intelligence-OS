@@ -92,6 +92,18 @@
 | **087** | O laço de auto-atualização (absorve a SPEC-080) | a escrever |
 | **088** | A Central de Agentes em grupos | a escrever |
 
+> ⚠️ Esta tabela parou em 21/08. **De 088 a 098 a autoridade é o `INDICE-DE-SPECS.md`** (088, 093-B, 094, 094.1, 095, 096, 097, 097.1, 098 FEITAS e na main; 091 absorvida).
+
+---
+
+## 🆕 A FAMÍLIA EXTRA — 07/09/2026 (decisão do Founder D-E001-08)
+
+| SPEC | assunto | estado |
+|---|---|---|
+| **EXTRA-001** | **A operação dos pilotos** — a cobrança chega a quem deve (equipe ou cliente), respostas com o caso certo, uma abordagem por parcela, falhas visíveis; atendimento/observador/QR intactos | 🔨 **EM EXECUÇÃO** desde 07/09 (CRÍTICO, opção B, chat novo; branch `feat/spec-extra-001-operacao-pilotos`; aquecimento 86) |
+| **EXTRA-002** | Investigação Agger (cotação/renovação pelo navegador) | proposta a escrever em chat novo, depois da EXTRA-001 |
+| **099 → 114** | o MASTERPLAN | ⏸ **PAUSADAS** sem renumerar; retomam por dependência comprovada (canais → 099 depois dos pilotos) |
+
 ---
 
 ## O que fazer com este arquivo
