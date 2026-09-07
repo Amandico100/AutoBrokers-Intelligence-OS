@@ -751,12 +751,16 @@ def run():
 
     os.environ.pop("BILLING_CUSTOMER_SEND_ENABLED", None)
     check("sem env nao envia cliente", customer_send_allowed({"send_mode": "live"}, env={}) is False)
+    # SPEC-EXTRA-001 (07/09/2026) -- o FATO mudou e a licao migrou (CLAUDE.md §9.3):
+    # `live` deixou de ser modalidade. `normalize_billing_config` o devolve como
+    # `retido_legado`, e NENHUM env o promove a envio direto (G02/M2). Quem envia
+    # ao cliente e a modalidade `cliente`, pela porta unica -- nunca esta flag.
     check(
-        "env + live + sem aprovacao permite cliente",
+        "env + live + sem aprovacao NAO permite mais: live e legado retido (EXTRA-001)",
         customer_send_allowed(
             {"send_mode": "live", "approval_required": False},
             env={"BILLING_CUSTOMER_SEND_ENABLED": "true"},
-        ) is True,
+        ) is False,
     )
     check(
         "aprovacao ligada bloqueia envio direto",

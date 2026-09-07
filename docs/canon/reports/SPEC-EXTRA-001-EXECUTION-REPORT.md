@@ -87,7 +87,23 @@ ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes · gasto: (preencher)
 (preencher)
 
 ## 4. Migrations
-(preencher com APPLY/VERIFY/ROLLBACK)
+
+### `20260907_01_spec_extra001_billing_sent_log_estados.sql`
+
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | `billing_sent_log` ganha estado por componente, identidade da obrigação `(company_id, portal_key, recibo)` para os modos reais e as funções de reserva/reclamação atômicas |
+| **Expand-first** | sim — 20 `ADD COLUMN IF NOT EXISTS` (todas nulas ou com default), 2 índices parciais `IF NOT EXISTS`, 2 `CREATE OR REPLACE FUNCTION`; nenhum DROP, nenhum backfill |
+| **Destrutiva** | não |
+| **APPLY** | aplicada em produção em 07/09/2026 via MCP `apply_migration` (`spec_extra001_billing_sent_log_estados`) → `{"success":true}`; o texto aplicado é o do arquivo canônico (com o ajuste `colisao_recibo` já dentro) |
+| **VERIFY** | 📊 07/09/2026 · V1 `count(*)` das 20 colunas = **20** · V2 `pg_indexes` = **2** linhas, ambas `WHERE (send_mode = 'real'::text)` · V3 `pg_proc` = **2** funções com a assinatura do contrato · V4 contra o **Postgres real**, tenant Resulta, `canario=true`: 1ª reserva `ganhou=true, status=reservado`; 2ª (mesma obrigação, modalidade diferente) `ganhou=false`, **mesmo id**; 3ª (outro `portal_key`, mesmo recibo) `ganhou=false, status=colisao_recibo`; `billing_reclamar_obrigacao` a partir de `reservado` → **false**; com `company_id` de outro tenant → **false**; a linha do VERIFY apagada por `id + company_id + canario + recibo` (1 linha) · V5 controle `count(*) where send_mode='test'` = **0** antes e depois |
+| **ROLLBACK** | escrito no cabeçalho do arquivo: `DROP FUNCTION ×2` → `DROP INDEX ×2` → `DROP COLUMN ×20`; seguro enquanto não houver linha `send_mode='real'` (📊 0 hoje); mensagens já enviadas não se desfazem |
+| **Aplicada em produção** | sim · 07/09/2026 · versão registrada pelo MCP |
+| **MANIFEST atualizado** | sim (linha da U1; classe passa de ⏳ para APLICADA neste relatório) |
+
+**Advisors antes:** 📊 security 133 (2 ERROR · 9 WARN · 122 INFO)
+**Advisors depois:** 📊 security 133 (2 ERROR · 9 WARN · 122 INFO)
+**Diferença:** nenhuma. As duas funções novas declaram `SET search_path = public, pg_temp` — não entram no `function_search_path_mutable` (que continua listando só os 3 triggers antigos).
 
 ## 5. Testes executados
 (preencher com saída real)
