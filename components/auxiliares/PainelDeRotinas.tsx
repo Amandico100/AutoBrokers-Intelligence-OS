@@ -241,6 +241,8 @@ function situacaoEmPortugues(item: PendenciaDaCobranca): string {
 const NAO_LIBERA: Record<string, string> = {
   suprimido: 'O cliente pediu para não receber. Essa decisão é dele.',
   incerto: 'Confira antes: liberar sem saber se saiu pode cobrar o cliente duas vezes.',
+  // Já está liberada: o botão de novo só devolveria 409 (juiz fresco 07/09, P-J1).
+  liberado: 'Já liberada — sai na próxima execução da rotina.',
 };
 
 /**

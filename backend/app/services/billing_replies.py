@@ -438,7 +438,7 @@ async def contexto_de_cobranca(company_id: str, phone: str, *,
         return None
 
 
-async def telefones_da_equipe_de_cobranca(company_id: str) -> List[str]:
+async def telefones_da_equipe_de_cobranca(company_id: str) -> Optional[List[str]]:
     """Os `team_number` das rotinas de cobrança ATIVAS desta corretora.
 
     Uma consulta só (SPEC §4.3). É o `excluir_phones` de
@@ -470,8 +470,13 @@ async def telefones_da_equipe_de_cobranca(company_id: str) -> List[str]:
                 fora.append(numero)
         return fora
     except Exception as e:  # noqa: BLE001
+        # 🔴 FALHA FECHADA (juiz fresco 07/09, B-J2): "não consegui ler quem é a
+        #    equipe" NÃO é "a equipe está vazia". Devolver `[]` aqui faria o
+        #    registro do retorno gravar um estado TERMINAL na cobrança do
+        #    segurado por uma mensagem que pode ser da atendente. `None` diz
+        #    "não sei" — e quem escreve, diante de "não sei", não escreve.
         logger.warning("[COBRANCA CONTEXTO] equipe não lida: %s", type(e).__name__)
-        return []
+        return None  # type: ignore[return-value]
 
 
 # ===========================================================================

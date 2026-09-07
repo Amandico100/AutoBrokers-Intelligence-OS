@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   const { data: linha, error: erroLeitura } = await supabase
     .from('billing_sent_log')
-    .select('id, status')
+    .select('id, status, reserved_at')
     .eq('id', id)
     .eq('company_id', ctx.companyId)   // 🔴 NUNCA sem esta linha.
     .eq('send_mode', 'real')
@@ -86,7 +86,13 @@ export async function POST(req: NextRequest) {
   }
 
   const status = String(linha.status || '');
-  if (!LIBERAVEIS.includes(status)) {
+  // 🔴 A RESERVA ÓRFÃ tem porta de saída (juiz fresco 07/09, P-J3): um processo
+  // que morreu com a reserva na mão deixava a parcela "reservado" para sempre —
+  // nunca reclamada pela rotina, nunca liberável aqui. Passada 1 h da reserva,
+  // ninguém está "trabalhando nela agora": a pessoa pode liberar, com motivo.
+  const reservadaHaMs = linha.reserved_at ? Date.now() - new Date(String(linha.reserved_at)).getTime() : 0;
+  const reservaOrfa = status === 'reservado' && reservadaHaMs > 60 * 60 * 1000;
+  if (!LIBERAVEIS.includes(status) && !reservaOrfa) {
     return NextResponse.json(
       {
         ok: false,
@@ -103,7 +109,7 @@ export async function POST(req: NextRequest) {
     .eq('id', id)
     .eq('company_id', ctx.companyId)   // 🔴 NUNCA sem esta linha.
     .eq('send_mode', 'real')
-    .in('status', LIBERAVEIS)          // a corrida perde aqui, não no banco.
+    .in('status', reservaOrfa ? ['reservado'] : LIBERAVEIS)   // a corrida perde aqui, não no banco.
     .select('id');
 
   if (error) {

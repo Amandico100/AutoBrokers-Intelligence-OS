@@ -999,7 +999,7 @@ async def process_whatsapp_message_background(
             # guarda o telefone de quem recebeu o pacote para encaminhar.
             _equipe = await telefones_da_equipe_de_cobranca(company_id)
             _note = await contexto_de_cobranca(company_id, payload.phone,
-                                               excluir_phones=_equipe)
+                                               excluir_phones=_equipe or ())
             if not _note:
                 _note = await context_note_for(company_id, payload.phone)
             if _note:
@@ -1415,6 +1415,12 @@ async def _registrar_retorno_de_cobranca(integration: dict, body: Any) -> None:
 
         async def _registrar() -> None:
             equipe = await telefones_da_equipe_de_cobranca(company_id)
+            if equipe is None:
+                # 🔴 FALHA FECHADA (juiz fresco 07/09, B-J2): sem saber quem é a
+                #    equipe, este texto pode ser da atendente — e o registro
+                #    escreve estado TERMINAL. Não sei → não escrevo.
+                logger.warning("[COBRANCA RETORNO] não registrado: equipe ilegível")
+                return
             await registrar_retorno(company_id, phone, texto, excluir_phones=equipe)
 
         await asyncio.wait_for(_registrar(), timeout=2.0)

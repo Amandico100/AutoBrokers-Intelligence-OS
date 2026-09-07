@@ -194,7 +194,7 @@ def aviso_de_portal(corretora: str, seguradora: str, o_que_houve: str,
 _ENVIADOS_POR_MODO = {
     "equipe": "✅ {n} pacote(s) entregue(s) à EQUIPE para encaminhar — o cliente ainda não recebeu",
     "cliente": "✅ {n} boleto(s) aceito(s) pelo WhatsApp para o cliente _(aceito pelo canal; não é confirmação de leitura)_",
-    "test": "✅ {n} simulação(ões) enviada(s) ao número de teste",
+    "test": "✅ {n} boleto(s) enviado(s) ao número de TESTE (simulação)",
 }
 
 
@@ -214,7 +214,7 @@ def aviso_de_resumo(corretora: str, *, seguradoras: List[str], enviados: int,
         # Sem afirmar a CAUSA: o item pode ter ficado por teto do dia, por
         # retenção (sem boleto, sem telefone) ou por já ter sido cobrado. A
         # causa de cada um está no relatório e na lista de Pendências.
-        partes.append(f"⏳ {pendentes} não saíram nesta execução _(o motivo de cada um está no relatório)_")
+        partes.append(f"⏳ {pendentes} ficam para amanhã _(o motivo de cada um está no relatório)_")
     if tarefas:
         partes.append(f"🔴 {tarefas} precisam de você _(mensagem acima)_")
     for item in sem_telefone[:5]:

@@ -315,6 +315,11 @@ MUTACOES = [
      "if excluir_phones and _e_variante(digitos, excluir_phones):",
      "if False:  # _MUTADO_E001_M21",
      "M21_atendente_encerra"),
+    # M22 -- o CHAMADOR deixa de passar a exclusao -> [G28b] (juiz fresco 07/09, B-J1)
+    ("app/api/webhook.py",
+     "registrar_retorno(company_id, phone, texto, excluir_phones=equipe)",
+     "registrar_retorno(company_id, phone, texto)  # _MUTADO_E001_M22",
+     "M22_webhook_sem_excluir"),
 ]
 
 #: Os 16 marcadores que a SPEC §8 nomeia. ⚠️ CONTAR nao basta: um `M17`
@@ -328,6 +333,7 @@ MUTACOES_ACRESCENTADAS = {
     "M19_atendente_herda": "[G27] · idem: a SPEC descreve ('remover excluir_phones') sem numerar",
     "M20_sem_company_id": "[G18] · CLAUDE.md §7 -- a SPEC nao numera mutacao de isolamento, e ela e a mais barata de introduzir",
     "M21_atendente_encerra": "[G28] · painel 07/09 (B1 das duas lentes): a ESCRITA do retorno tambem exclui a atendente",
+    "M22_webhook_sem_excluir": "[G28b] · juiz fresco 07/09 (B-J1): o CHAMADOR do webhook passa a exclusao — sem isto o guarda era carimbo",
 }
 
 # ===========================================================================
@@ -2006,6 +2012,24 @@ def bloco_G13():
             par(sem_exclusao is not None and str(sem_exclusao.get("status")) == "suprimido",
                 "[G28] PAR: sem `excluir_phones` a mesma frase suprimiria (o par prova o efeito)",
                 "o parametro nao muda nada: %r" % (sem_exclusao,))
+
+    # [G28b] 🔴 O CHAMADOR (juiz fresco 07/09, B-J1): o guarda acima prova a funcao;
+    # sem esta asserção, apagar o `excluir_phones=` do webhook deixava tudo verde
+    # com o blocker B1 inteiro de volta (§9.5: carimbo). E a lista da equipe
+    # FALHA FECHADA (B-J2): `None` = "nao sei" e o webhook NAO grava.
+    fonte_webhook = io.open(os.path.join(RAIZ, "app", "api", "webhook.py"), encoding="utf-8").read()
+    certo("registrar_retorno(company_id, phone, texto, excluir_phones=equipe)" in fonte_webhook,
+          "[G28b] o webhook passa `excluir_phones=equipe` a `registrar_retorno` (o chamador, nao so a funcao)")
+    certo("if equipe is None:" in fonte_webhook,
+          "[G28b] e com a equipe ILEGIVEL (None) o webhook NAO grava (falha fechada)")
+    equipe_fn, _ = pegar(br, "telefones_da_equipe_de_cobranca", "a lista da equipe")
+    if equipe_fn is not None:
+        class _BancoQueCai:
+            def table(self, *_a, **_k):
+                raise RuntimeError("42703 simulado")
+        with Encaixe(_BancoQueCai(), FakeWhatsapp()):
+            lida = rodar(equipe_fn(CO_ALFA))
+        certo(lida is None, "[G28b] banco caido -> a equipe e `None` (nao `[]`): nao sei != vazio", lida)
 
 
 # ===========================================================================
