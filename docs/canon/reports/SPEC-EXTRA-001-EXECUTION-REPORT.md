@@ -78,10 +78,50 @@ ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes · gasto: (preencher)
 ---
 
 ## 1. Resumo executivo
-(preencher)
+
+A corretora passa a escolher, na tela do Auxiliar de Cobrança, entre **Encaminhar para minha equipe** (a atendente recebe uma nota interna, o texto final limpo e o PDF, e repassa ao cliente) e **Enviar diretamente ao cliente** (o segurado recebe texto limpo + PDF pelo WhatsApp já pareado da corretora). Antes desta SPEC, "enviar ao cliente" era uma frase no relatório (📊 `billing_collection.py:1734-1737` em `34424fa`) e o modo de aprovação criava um pedido que ninguém consumia.
+
+Cada parcela é cobrada **uma vez**: a obrigação `(corretora, seguradora, recibo)` é **reservada no banco antes do efeito** por uma função Postgres (o índice único parcial não é inferido pelo PostgREST — achado do aquecimento), o estado é registrado por componente (texto/PDF), "incerto" nunca é repetido às cegas, trocar de modo ou de dia não reabre a cobrança, e um recibo igual ao de outra seguradora é **retido** com incidente em vez de virar "já cobrado". A porta única do WhatsApp ganhou conexão fixada e revalidada no instante do efeito, autorização de Auxiliar independente do interruptor do atendimento, documento, e uma allowlist de canário que exige remetente **e** destinatário autorizados.
+
+O cliente que responde é ouvido **mesmo com o agente de atendimento desligado** (📊 4/4 hoje): o retorno é registrado no endpoint do webhook, antes de o observador consumir, e vira pendência na tela; o atendimento (quando ligado) recebe o bloco do caso em vez de uma nota genérica. A atendente **não** é interlocutor — nem para ler o caso, nem para encerrá-lo (o blocker que as duas lentes acharam e o conserto fechou com par de guarda). Observador, QR, sessões e o modo teste de 17/08 não mudaram (34/34 byte a byte).
+
+**Ficou de fora, com gatilho:** e-mail/Meta/segundo QR (099), reenvio automático de 2ª via a pedido do cliente (tarefa da equipe), régua de lembretes, resposta automática viva no canário (caixa do Founder). **Não comprovado ao vivo ainda:** Q1–Q6 do canário e o 23505 concorrente no Postgres — só rodam dentro do smith-api implantado (sem Redis o governador recusa mensagem fria, e isso está certo).
 
 ## 2. Escopo executado por bloco
-(preencher)
+
+### U1 — motor, porta e migration
+| Entrega prevista | Estado | Evidência |
+|---|---|---|
+| modos `equipe`/`cliente` com motor; `approval`/`live` retidos | CONCLUÍDA | `normalize_billing_config`, `_entregar_cobranca_real`; [G02] + M2 |
+| pacote humano limpo (nota interna + texto final + PDF) | CONCLUÍDA | `_pacote_humano`; [G03] + M3 |
+| ledger com estados por componente e reserva antes do efeito | CONCLUÍDA | migration `20260907_01` aplicada, `billing_reservar_obrigacao`; [G06]–[G11], [G19]; VERIFY §4 |
+| porta com conexão fixada, autorização de auxiliar, documento, `enfileirar=False`, allowlist | CONCLUÍDA | `send_to_client_guarded`; [G01], [G12] + M1, M12 |
+| aviso ao grupo suprimido no canário; incidentes em Atividades | CONCLUÍDA | [G17], [G26] + M18 |
+| `work_run_id` da ponte até o ledger | PARCIAL (P-098-RUN-NOS-JOBS) | `routine_engine`, `workflows.bridge_rotina` |
+
+### U2 — respostas e convivência
+| Entrega prevista | Estado | Evidência |
+|---|---|---|
+| bloco do caso no atendimento, atendente excluída | CONCLUÍDA | `contexto_de_cobranca`; [G13], [G27] + M13, M19 |
+| retorno registrado no ENDPOINT antes do observador | CONCLUÍDA | `registrar_retorno` + hook; [G24] + M15; corpus 43/43 [G14] |
+| a atendente não encerra o caso (conserto do painel) | CONCLUÍDA | [G28] em par + M21 |
+| takeover/URA intactos | CONCLUÍDA | [G15] diff vazio em `o_fim_do_atendimento.py`; [G16] |
+
+### U3 — tela e rotas Next
+| Entrega prevista | Estado | Evidência |
+|---|---|---|
+| 4 modalidades, `team_number`, confirmação, legado retido, placeholders mascarados | CONCLUÍDA | `PainelDeRotinas.tsx`; mjs verde; `tsc` |
+| rotas `pendencias`/`encaminhado`/`liberar` com 401/404/409/400 | CONCLUÍDA | mjs [G18]; `next start` + requisição real (§5) |
+
+### U4 — guardas · U5 — canário · U6 — docs
+| Entrega prevista | Estado | Evidência |
+|---|---|---|
+| gate zero vermelho em cópia limpa; mutações por nome | CONCLUÍDA | 32 vermelhos em `50d2b4e`; `--mutar` (§5) |
+| canário Q1–Q6 | ESCRITO, NÃO RODADO AO VIVO | `canario_extra001.py`; censo `--dry-run` verde; rota admin; depende do Implantar (§6) |
+| EXTRA reconhecida pela polícia do protocolo | CONCLUÍDA | `test_o_protocolo_tem_policia.py` com controle |
+| SPEC, relatório, INDICE, ESTADO, FOUNDER-DECISIONS, CHANGE-ADDENDA, PENDENCIAS, dossiê | CONCLUÍDA | commits §3 |
+
+**Entregas da SPEC que NÃO foram executadas:** nenhuma da §2 obrigatória. A prova viva (canário) ficou dependente do Implantar, com o motivo medido (Redis) e o mecanismo pronto.
 
 ## 3. Arquivos alterados
 (preencher)
@@ -145,22 +185,63 @@ ORÇAMENTO ............  ≤ 2,5 M tokens de subagentes · gasto: (preencher)
 (preencher)
 
 ## 8. Mudanças além do texto da SPEC
-(preencher)
+
+| ID em `CHANGE-ADDENDA.md` | Classe | Estado | Resumo |
+|---|---|---|---|
+| 07/09 · peça da Cobrança nunca publicada | ESSENCIAL | feita | `NameError` engolido desde a 095; consertado em U1 |
+| 07/09 · rota admin do canário | ESSENCIAL | feita | o canário vivo roda onde há Redis, atrás da chave interna |
+| 07/09 · EXTRA na polícia do protocolo | ESSENCIAL | feita | `SPEC-EXTRA-NNN` → sob a v11 |
+| 07/09 · colisão de recibo | ESSENCIAL | feita | `colisao_recibo` retido com incidente; migration 02 devolve id NULL |
+| 07/09 · telefones reais como placeholder | ESSENCIAL | feita | máscara na tela; guarda mjs |
+| 07/09 · guardas vizinhos migraram o fato | VALIOSA | feita | `rotina-mora-no-auxiliar`, `test_spec023` |
 
 ## 9. Decisões registradas
-(preencher)
 
-## 10. Riscos remanescentes
-(preencher)
+| ID em `FOUNDER-DECISIONS.md` | Assunto | Estado |
+|---|---|---|
+| D-E001-01…10 | as decisões do Founder que governam a EXTRA-001 | registradas 07/09 |
+| (caixa) | ligar o agente da Resulta por uma janela para a resposta viva | não decidido |
+
+## 10. Riscos remanescentes e dívida assumida
+
+| Risco | Severidade | Por que foi aceito | Onde será fechado |
+|---|---|---|---|
+| Q1–Q6 e o 23505 concorrente ainda não provados ao vivo | alta (é a prova do produto) | só rodam no implantado; mecanismo pronto (rota admin) | depois do Implantar, nesta mesma SPEC (caixa do Founder) |
+| `incerto` depende de uma 2ª escrita que pode falhar pelo mesmo motivo | média | `reservado` também nunca é reclamado e aparece no relatório | P-E001-INCERTO-ESCRITA-DUPLA |
+| hook do retorno no caminho quente de todo inbound (teto 2 s) | média | 1 SELECT por mensagem; falha nunca derruba o atendimento | P-E001-ROUTINES-POR-INBOUND (cache) |
+| a constraint antiga `(company_id, recibo, send_mode)` continua não-parcial | baixa | colisão vira retenção com incidente, nunca silêncio | migration futura que a torne parcial (099) |
+| `status='entregue'` legado não vira `contestado` | baixa | 📊 0 linhas legadas | P-E001-LEGADO-ENTREGUE-NAO-CONTESTA |
+| ledger sem vencimento/valor | baixa | o bloco diz que não tem | P-E001-LEDGER-SEM-VENCIMENTO-E-VALOR |
 
 ## 11. Impacto para o corretor
-(preencher)
+
+Hoje a corretora consegue: escolher se o boleto atrasado vai para a **equipe** (pacote pronto para repassar, com uma nota dizendo de quem é) ou **direto para o cliente**; saber que **nenhum cliente recebe a mesma parcela duas vezes** (nem trocando de modo, nem no dia seguinte, nem com duas execuções ao mesmo tempo); ver na tela **o que ficou pendente e por quê** em português (texto foi e PDF não; não sei se saiu; cliente respondeu "já paguei"; cliente pediu para não receber); marcar "encaminhado ao cliente" e "liberar reenvio" com motivo; e ser avisada quando um cliente responde à cobrança, mesmo com o agente de atendimento desligado. O grupo de suporte deixa de ler "enviado" quando o boleto foi para a própria equipe.
+
+O que ainda **não** vê: a prova viva de ponta a ponta (depende do Implantar + duas variáveis + o clique na rota do canário) e a resposta automática ao cliente (depende de ligar o agente).
 
 ## 12. Estado do Master Plan
-(preencher)
+
+- [x] `INDICE-DE-SPECS.md` e `ESTADO-DAS-SPECS.md`: EXTRA-001 em execução; 099→114 pausadas sem renumerar.
+- [x] `FOUNDER-DECISIONS.md`: D-E001-01…10.
+- [x] `CHANGE-ADDENDA.md`: 6 adendas.
+- [x] `MANIFEST.md`: migrations 20260907_01 e 20260907_02 (aplicadas).
+- [x] `PENDENCIAS.md`: 12 P-E001-*.
+
+**Próxima etapa do plano:** EXTRA-002 · investigação Agger (proposta a escrever em chat novo). Depois 099 (canais, após os pilotos).
+**Pré-condições:** Implantar esta SPEC; canário Q1–Q6 verde no implantado; roteiro com Saionara/Regina conduzido pelo Founder.
 
 ## 13. ROLLBACK da SPEC inteira
-(preencher)
+
+```text
+1. aplicação: reverter os commits da branch (git revert em ordem inversa); a API antiga normaliza equipe/cliente para 'test' —
+   uma rotina configurada em modo real passaria a rodar como TESTE (para o test_number), então antes de reverter, pôr as rotinas
+   de cobrança em 'none'.
+2. flags: nenhuma. Retirar BILLING_CANARIO_ALLOWLIST e CANARIO_TESTE_B do smith-api.
+3. banco: ROLLBACK das migrations 20260907_02 (reaplicar os corpos da 01) e 20260907_01 (DROP FUNCTION ×2, DROP INDEX ×2,
+   DROP COLUMN ×20) — só seguro sem linhas send_mode='real' (📊 0 hoje).
+4. side effects já executados: mensagens enviadas não se desfazem; o ledger fica (é a prova de que saíram).
+5. o que NÃO é reversível: as mensagens do canário (TESTE-A → TESTE-B) e as linhas de agent_activities do período.
+```
 
 ## 14. A entrega (`git push`) — saída colada
 (preencher)

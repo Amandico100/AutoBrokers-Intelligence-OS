@@ -259,8 +259,11 @@ MUTACOES = [
     # ---- G13 · o contexto e do CASO, nao dos 30 ultimos envios --------------
     # ⚠️ ancora corrigida (lente verdade 07/09): o codigo usa `MAX_CASOS = 5` e
     #    `.limit(limite)`, nao `.limit(5)` literal — a ancora antiga nao existia.
+    #    ⚠️ 2ª correcao (--mutar 07/09): subir MAX_CASOS nao contamina, porque o
+    #    filtro por telefone continua; o que faria o contexto virar "os 30 ultimos
+    #    envios da corretora" e PERDER o filtro de telefone — e essa e a mutacao.
     ("app/services/billing_replies.py",
-     "MAX_CASOS = 5", "MAX_CASOS = 30  # _MUTADO_E001_M13",
+     '.in_("to_phone", formas)', '.limit(30)  # _MUTADO_E001_M13',
      "M13"),
     # ---- G14 · `suprimido` e terminal ---------------------------------------
     ("app/api/dashboard/auxiliaries/cobranca/liberar/route.ts",
@@ -300,10 +303,12 @@ MUTACOES = [
      "M19_atendente_herda"),
     # M20 -- o filtro de corretora sai da leitura do ledger -> [G18] (§7)
     #    ⚠️ ancora UNICA: a de `_consulta_dos_casos`, com as duas linhas seguintes.
+    #    ⚠️ 2ª correcao: a ancora nao pode carregar o `#` do comentario (o runner
+    #    recusa ancora que so existe em comentario); `.select(COLUNAS_DO_CASO)` e
+    #    a linha imediatamente acima do filtro, e so existe em `_consulta_dos_casos`.
     ("app/services/billing_replies.py",
-     '.eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7\n'
-     '            .eq("send_mode", "real")',
-     '.eq("send_mode", "real")  # _MUTADO_E001_M20',
+     '.select(COLUNAS_DO_CASO)\n            .eq("company_id", str(company_id))',
+     '.select(COLUNAS_DO_CASO)  # _MUTADO_E001_M20',
      "M20_sem_company_id"),
     # M21 -- a ESCRITA deixa de excluir a atendente -> [G28] (painel 07/09, B1)
     ("app/services/billing_replies.py",
