@@ -1911,7 +1911,7 @@ def bloco_G13():
 
     # 200 envios a OUTROS telefones + 1 caso real deste cliente.
     ruido = [linha_de_ledger(id="bsl-%d" % i, recibo="R-RUIDO-%04d" % i,
-                             to_phone="55009%08d" % i,
+                             to_phone="55009%08d" % (10_000_000 + i),  # fora da faixa dos sentinelas (U2 mediu a colisao em 07/09)
                              to_last4=("%08d" % i)[-4:])
              for i in range(200)]
     caso = linha_de_ledger(id="bsl-caso", to_phone=TEL_CLIENTE,

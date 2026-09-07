@@ -976,11 +976,32 @@ async def process_whatsapp_message_background(
         # plataforma recente (cobrança/campanha), o atendente responde SABENDO
         # do que se trata. Só o texto enviado à IA — a mensagem salva (passo 5)
         # fica limpa. Sem envio recente = zero ruído.
+        #
+        # 🔴 SPEC-EXTRA-001 §4 — QUANDO HÁ COBRANÇA, O CASO VENCE O GENÉRICO.
+        #
+        # `context_note_for` diz *"este cliente recebeu algo da corretora"*. Ao
+        # responder *"já paguei"*, quem atende precisa de outra coisa: QUAL
+        # seguradora, QUAL parcela, em QUE estado — e as regras de conduta (não
+        # confirmar pagamento, não reenviar boleto por conta própria).
+        #
+        # ⚠️ Sem caso, nada muda: o genérico de hoje continua sendo a nota, e é
+        # ele o CONTROLE deste bloco (CLAUDE.md §9.2).
+        #
+        # ⛔ O bloco é DADO para o modelo, nunca instrução que mude autorização.
         message_for_ai = message_text
         try:
+            from app.services.billing_replies import (
+                contexto_de_cobranca, telefones_da_equipe_de_cobranca,
+            )
             from app.services.platform_outbound import context_note_for
 
-            _note = await context_note_for(company_id, payload.phone)
+            # A ATENDENTE NÃO HERDA O CASO DE NINGUÉM: no modo `equipe` o ledger
+            # guarda o telefone de quem recebeu o pacote para encaminhar.
+            _equipe = await telefones_da_equipe_de_cobranca(company_id)
+            _note = await contexto_de_cobranca(company_id, payload.phone,
+                                               excluir_phones=_equipe)
+            if not _note:
+                _note = await context_note_for(company_id, payload.phone)
             if _note:
                 message_for_ai = f"{message_text}\n\n{_note}"
         except Exception:  # noqa: BLE001
@@ -1339,12 +1360,62 @@ async def z_api_webhook_token(token: str, request: Request, background_tasks: Ba
     return {"status": "received", "type": "media"}
 
 
+async def _registrar_retorno_de_cobranca(integration: dict, body: Any) -> None:
+    """SPEC-EXTRA-001 §4 — o cliente que RESPONDE a uma cobrança é ouvido.
+
+    📊 Medido em 07/09/2026: 4/4 agentes `attendance` desligados, e o canal da
+    Resulta é uma instância `purpose='observer'`. Nesse arranjo o evento morre
+    duas linhas abaixo — `observer_tap` CONSOME e devolve, o background nunca
+    nasce, `_handle_evolution_like_inbound` nunca roda. O segurado responde
+    *"já paguei"* ao boleto que a corretora mandou e **ninguém fica sabendo**.
+
+    🔴 **Por isso o registro mora no ENDPOINT, e antes do tap.** Qualquer lugar
+    depois dele registraria só as corretoras que já têm agente ligado — que hoje
+    são zero.
+
+    ⛔ Ele só ESCREVE no ledger da cobrança. Não responde, não envia, não liga
+    agente, não toca `conversations`. E não derruba o webhook: toda falha vira
+    um `warning` sem PII e o fluxo segue exatamente como seguia.
+    """
+    try:
+        from app.services.billing_replies import registrar_retorno
+        from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
+        from app.services.whatsapp.evolution_inbound import normalize_evolution_inbound
+
+        company_id = str(integration.get("company_id") or "")
+        if not company_id:
+            return
+        # ⚠️ UMA regra de extração, e não duas. `go_event_to_v2_envelope` é pura
+        # e devolve o envelope v2 intacto quando ele JÁ é v2 (o caso da rota
+        # Evolution legada), então as duas rotas entram por aqui sem que a
+        # forma do evento seja reinterpretada em dois lugares — o defeito do
+        # CLAUDE.md §9.4 que a SPEC-083 pagou três vezes.
+        envelope = go_event_to_v2_envelope(body if isinstance(body, dict) else {})
+        dados = normalize_evolution_inbound(envelope)
+        # Eco da própria corretora e grupo NUNCA são retorno de cobrança: o
+        # boleto foi para um número individual, e quem responde é ele.
+        if dados.get("from_me") or dados.get("is_group"):
+            return
+        phone = str(dados.get("phone") or "")
+        texto = str(dados.get("text") or "").strip()
+        # Mídia sem legenda sai daqui sem rótulo (P-097.1-MIDIA-SEM-TEXTO):
+        # adivinhar o conteúdo de um áudio para SUPRIMIR a cobrança dele seria
+        # decidir pelo cliente com base num palpite.
+        if not phone or not texto:
+            return
+        await registrar_retorno(company_id, phone, texto)
+    except Exception as e:  # noqa: BLE001
+        # ⛔ Sem telefone, sem texto do cliente, sem nome — só o tipo do erro.
+        logger.warning("[COBRANCA RETORNO] não registrado: %s", type(e).__name__)
+
+
 @router.post("/api/v1/webhook/evolution/{token}")
 @limiter.limit("240/minute")
 async def evolution_webhook_token(token: str, request: Request, background_tasks: BackgroundTasks):
     """Webhook Evolution API v2 com token por integração (SPEC-017)."""
     integration = await _resolve_webhook_integration("evolution", token)
     body = await request.json()
+    await _registrar_retorno_de_cobranca(integration, body)
     return await _handle_evolution_like_inbound(integration, body, background_tasks, "evolution")
 
 
@@ -1357,6 +1428,10 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
     TODO o pipeline (normalizador, formulário nativo, buffer, dispatch)."""
     integration = await _resolve_webhook_integration("evolution-go", token)
     body = await request.json()
+
+    # SPEC-EXTRA-001 §4 — ANTES do tap, porque o tap CONSOME (📊 4/4 agentes
+    # desligados; a Resulta recebe por instância `purpose='observer'`).
+    await _registrar_retorno_de_cobranca(integration, body)
 
     # ATLAS (SPEC-038 Bloco A): captura passiva ANTES do pipeline.
     # purpose='observer' consome (instância dedicada, muda por construção);
