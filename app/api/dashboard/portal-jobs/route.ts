@@ -13,12 +13,70 @@ export const dynamic = 'force-dynamic';
 
 const JOB_SELECT = 'id, company_id, portal_key, journey, status, evidence, screenshots, attempts, created_at, started_at, finished_at, error';
 
+// ---------------------------------------------------------------------------
+// Nome humano do portal, com FALLBACK LOCAL.
+//
+// 📊 Medido em 08/09/2026: os jobs de vidro gravam `portal_key='vidros_lanternas'`,
+// e essa chave NAO existe na tabela `portals` — o `.in('key', keys)` volta vazio
+// e a tela mostrava a chave crua para o corretor. Um nome de coluna nao e
+// linguagem humana (R11), entao o mapa do banco passa a ser a primeira escolha,
+// nao a unica.
+// ---------------------------------------------------------------------------
+const PORTAL_NOMES_LOCAIS: Record<string, string> = {
+  vidros_lanternas: 'Portal de Vidros',
+  vidros_api: 'Portal de Vidros',
+  allianz_corretor: 'Allianz',
+  hdi_corretor: 'HDI',
+  tokiomarine_corretor: 'Tokio Marine',
+  yelum_corretor: 'Yelum',
+  mapfre_corretor: 'Mapfre',
+  zurich_corretor: 'Zurich',
+};
+
+/** Ultimo recurso: transforma `alguma_chave_corretor` em "Alguma Chave". */
+// Nao exportar: `route.ts` so aceita os handlers e a config do Next — um export
+// extra faz o build reclamar de "does not match the required types of a Route".
+function nomeLegivelDeChave(key: string): string {
+  const limpo = String(key || '')
+    .replace(/_(corretor|portal|api|lanternas)$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+  if (!limpo) return 'Portal';
+  return limpo.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 async function portalNameMap(supabase: ReturnType<typeof getSupabaseAdmin>, keys: string[]) {
-  if (!keys.length) return {};
-  const { data } = await supabase.from('portals').select('key, name').in('key', keys);
   const out: Record<string, string> = {};
-  for (const row of data || []) out[String(row.key)] = String(row.name || row.key);
+  for (const key of keys) out[key] = PORTAL_NOMES_LOCAIS[key] || nomeLegivelDeChave(key);
+  if (!keys.length) return out;
+  const { data } = await supabase.from('portals').select('key, name').in('key', keys);
+  // O nome cadastrado pela corretora vence o fallback — o fallback so cobre o buraco.
+  for (const row of data || []) {
+    const nome = String(row.name || '').trim();
+    if (nome) out[String(row.key)] = nome;
+  }
   return out;
+}
+
+/** O que o corretor precisa ver de um acionamento, sem chave nem status cru. */
+function detalhesDoAcionamento(row: any) {
+  const ev = row.evidence && typeof row.evidence === 'object' && !Array.isArray(row.evidence)
+    ? row.evidence
+    : {};
+  const passos = Array.isArray(ev.adaptive_steps) ? ev.adaptive_steps.length : 0;
+  const provaBruta = ev.prova;
+  const prova = typeof provaBruta === 'string'
+    ? provaBruta
+    : (provaBruta && typeof provaBruta === 'object' && !Array.isArray(provaBruta)
+      ? String(provaBruta.url || provaBruta.href || '')
+      : '');
+  return {
+    protocolo: String(ev.protocolo || '').trim() || null,
+    resumo: String(ev.resumo || '').trim() || null,
+    prova: prova.trim() || null,
+    tem_screenshot: Array.isArray(row.screenshots) && row.screenshots.length > 0,
+    passos,
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -27,14 +85,18 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const status = req.nextUrl.searchParams.get('status') || 'needs_human';
   const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get('limit') || 20), 1), 50);
+  const jobId = String(req.nextUrl.searchParams.get('job_id') || '').trim();
 
   let q = supabase
     .from('portal_jobs')
     .select(JOB_SELECT)
+    // 🔴 O filtro de tenant nao muda: nenhum caminho novo (nem o `job_id`) le
+    // linha de outra corretora. Uma prova e um protocolo sao dados de segurado.
     .eq('company_id', ctx.companyId)
     .order('created_at', { ascending: false })
-    .limit(limit);
-  if (status !== 'all') q = q.eq('status', status);
+    .limit(jobId ? 1 : limit);
+  if (jobId) q = q.eq('id', jobId);
+  else if (status !== 'all') q = q.eq('status', status);
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -50,7 +112,25 @@ export async function GET(req: NextRequest) {
     }
   }
   const names = await portalNameMap(supabase, keys);
-  return NextResponse.json({ jobs: rows.map((row) => sanitizePortalJob(row, names)) });
+
+  // 📊 Uma screenshot e base64 de PNG inteiro. Mandar 20 delas de uma vez faz a
+  // listagem pesar dezenas de MB, e o corretor quase sempre quer ver UMA. Entao a
+  // lista completa (`status=all`) diz apenas que a prova EXISTE; o botao "Ver
+  // prova" busca a linha unica por `job_id`, que vem com a imagem.
+  const listaCompleta = !jobId && status === 'all';
+  const jobs = rows.map((row) => {
+    const base = sanitizePortalJob(row, names);
+    return {
+      ...base,
+      ...detalhesDoAcionamento(row),
+      screenshot: listaCompleta ? null : base.screenshot,
+    };
+  });
+  if (jobId) {
+    if (!jobs.length) return NextResponse.json({ error: 'job_not_found' }, { status: 404 });
+    return NextResponse.json({ job: jobs[0], jobs });
+  }
+  return NextResponse.json({ jobs });
 }
 
 export async function POST(req: NextRequest) {

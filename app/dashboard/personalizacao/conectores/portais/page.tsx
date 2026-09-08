@@ -6,7 +6,7 @@
 // portais (ex.: cobrança de boletos) quando o founder ligar o gate.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Archive, Loader2, ExternalLink, Trash2, Check, Lock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Archive, Loader2, ExternalLink, Trash2, Check, Lock, AlertTriangle, RefreshCw, Activity, Image as ImageIcon } from 'lucide-react';
 
 import { DetailHeader } from '@/components/patterns/DetailHeader';
 import { icons } from '@/lib/icons';
@@ -28,15 +28,48 @@ type PortalJob = {
   screenshot: string | null;
   attempts: number;
   created_at: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  protocolo?: string | null;
+  resumo?: string | null;
+  prova?: string | null;
+  tem_screenshot?: boolean;
+  passos?: number;
 };
 
 const CAT_LABEL: Record<string, string> = { vidros: 'Vidros', corretor: 'Corretor', sinistro: 'Sinistro' };
+
+// O corretor nunca le chave nem status cru (R11). Estes dois mapas sao a unica
+// porta pela qual `journey` e `status` chegam a tela.
+const JORNADA_LABEL: Record<string, string> = {
+  abrir_atendimento: 'Abrir atendimento de vidro',
+  login_check: 'Conferir acesso',
+  cobranca_sweep: 'Buscar boletos',
+};
+
+const ESTADO: Record<string, { label: string; classe: string }> = {
+  queued: { label: 'Na fila', classe: 'border-border bg-surface-2 text-muted-foreground' },
+  running: { label: 'Em andamento', classe: 'border-sky-500/30 bg-sky-500/10 text-sky-600' },
+  done: { label: 'Concluído', classe: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' },
+  needs_human: { label: 'Precisa de uma pessoa', classe: 'border-amber-500/30 bg-amber-500/10 text-amber-600' },
+  failed: { label: 'Falhou', classe: 'border-danger/30 bg-danger/10 text-danger' },
+  archived: { label: 'Arquivado', classe: 'border-border bg-surface-2 text-faint' },
+};
+
+const EM_CURSO = ['queued', 'running'];
+
+const jornadaLabel = (j: string) => JORNADA_LABEL[j] || 'Trabalho no portal';
+const estadoDe = (s: string) => ESTADO[s] || { label: 'Em análise', classe: 'border-border bg-surface-2 text-muted-foreground' };
+const hora = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR') : null);
 
 export default function PortaisPage() {
   const [portals, setPortals] = useState<Portal[] | null>(null);
   const [creds, setCreds] = useState<Record<string, Cred>>({});
   const [forms, setForms] = useState<Record<string, { username: string; password: string }>>({});
   const [hitlJobs, setHitlJobs] = useState<PortalJob[]>([]);
+  const [allJobs, setAllJobs] = useState<PortalJob[] | null>(null);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [provas, setProvas] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -50,6 +83,39 @@ export default function PortaisPage() {
     }
   }, []);
 
+  const loadAllJobs = useCallback(async () => {
+    setLoadingJobs(true);
+    try {
+      const res = await fetch('/api/dashboard/portal-jobs?status=all&limit=20', { cache: 'no-store', credentials: 'same-origin' });
+      const j = await res.json().catch(() => ({}));
+      setAllJobs(res.ok ? (j.jobs || []) : []);
+    } catch {
+      setAllJobs([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, []);
+
+  // A imagem so viaja quando alguem pede: a listagem manda `tem_screenshot`, e a
+  // linha unica (`job_id=`) e que traz o base64. 20 provas de uma vez seriam MBs
+  // que quase ninguem abre.
+  const verProva = useCallback(async (job: PortalJob) => {
+    if (job.prova) { window.open(job.prova, '_blank', 'noreferrer'); return; }
+    if (provas[job.id]) { setProvas((p) => ({ ...p, [job.id]: '' })); return; }
+    setBusy(job.id);
+    try {
+      const res = await fetch(`/api/dashboard/portal-jobs?job_id=${encodeURIComponent(job.id)}`, { cache: 'no-store', credentials: 'same-origin' });
+      const j = await res.json().catch(() => ({}));
+      const img = res.ok ? String(j.job?.screenshot || '') : '';
+      if (!img) { setNotice('Este acionamento não guardou uma imagem da tela.'); return; }
+      setProvas((p) => ({ ...p, [job.id]: img }));
+    } catch {
+      setNotice('Não consegui abrir a prova agora.');
+    } finally {
+      setBusy('');
+    }
+  }, [provas]);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/dashboard/portal-credentials', { cache: 'no-store' });
@@ -60,9 +126,20 @@ export default function PortaisPage() {
       (j.credentials || []).forEach((c: Cred) => { map[c.portal_key] = c; });
       setCreds(map);
       loadHitlJobs();
+      loadAllJobs();
     } catch { setNotice('Falha de conexão.'); setPortals([]); }
-  }, [loadHitlJobs]);
+  }, [loadHitlJobs, loadAllJobs]);
   useEffect(() => { load(); }, [load]);
+
+  // Enquanto houver trabalho na fila ou em andamento, a tela se atualiza sozinha
+  // a cada 30 s. Quando tudo termina, o timer para — nao adianta bater no banco
+  // de 30 em 30 segundos para ver a mesma lista parada.
+  const temTrabalhoVivo = (allJobs || []).some((j) => EM_CURSO.includes(j.status));
+  useEffect(() => {
+    if (!temTrabalhoVivo) return;
+    const t = setInterval(() => { loadAllJobs(); loadHitlJobs(); }, 30000);
+    return () => clearInterval(t);
+  }, [temTrabalhoVivo, loadAllJobs, loadHitlJobs]);
 
   const patchForm = (k: string, patch: Partial<{ username: string; password: string }>) =>
     setForms((f) => {
@@ -108,6 +185,7 @@ export default function PortaisPage() {
     setBusy('');
     if (!res.ok) { setNotice(j.error || 'Nao consegui reenfileirar o portal.'); return; }
     await loadHitlJobs();
+    await loadAllJobs();
   };
 
   const archiveJob = async (job: PortalJob) => {
@@ -122,6 +200,7 @@ export default function PortaisPage() {
     setBusy('');
     if (!res.ok) { setNotice(j.error || 'Nao consegui arquivar a pendencia.'); return; }
     await loadHitlJobs();
+    await loadAllJobs();
   };
 
   return (
@@ -204,6 +283,98 @@ export default function PortaisPage() {
             })}
           </section>
         )}
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              Acionamentos no portal
+            </div>
+            <button
+              onClick={() => loadAllJobs()}
+              disabled={loadingJobs}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2 disabled:opacity-50"
+            >
+              {loadingJobs ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Atualizar
+            </button>
+          </div>
+          <p className="text-[11px] text-faint">
+            O que os agentes fizeram nos portais da sua corretora — do mais recente para o mais antigo.
+            {temTrabalhoVivo && ' Tem trabalho acontecendo agora: esta lista se atualiza sozinha a cada 30 segundos.'}
+          </p>
+
+          {allJobs === null ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando acionamentos…
+            </div>
+          ) : allJobs.length === 0 ? (
+            <p className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-sm text-muted-foreground">
+              Nenhum acionamento ainda. Quando um agente entrar num portal pela sua corretora, ele aparece aqui.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {allJobs.map((job) => {
+                const estado = estadoDe(job.status);
+                const inicio = hora(job.started_at || job.created_at);
+                const fim = hora(job.finished_at);
+                const temProva = !!job.prova || !!job.tem_screenshot;
+                return (
+                  <div key={job.id} className="rounded-xl border border-border bg-surface p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">{job.portal_name}</p>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${estado.classe}`}>
+                        {estado.label}
+                      </span>
+                      <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        {jornadaLabel(job.journey)}
+                      </span>
+                    </div>
+
+                    {job.protocolo && (
+                      <p className="mt-2 inline-flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-600">
+                        Protocolo {job.protocolo}
+                      </p>
+                    )}
+
+                    {(job.resumo || job.message) && (
+                      <p className="mt-2 text-xs text-muted-foreground">{job.resumo || job.message}</p>
+                    )}
+
+                    <p className="mt-2 text-[11px] text-faint">
+                      {inicio ? `Começou em ${inicio}` : 'Ainda não começou'}
+                      {fim ? ` · terminou em ${fim}` : ''}
+                      {job.passos ? ` · ${job.passos} passos no portal` : ''}
+                      {job.attempts > 1 ? ` · ${job.attempts}ª tentativa` : ''}
+                    </p>
+
+                    {temProva && (
+                      <button
+                        onClick={() => verProva(job)}
+                        disabled={busy === job.id}
+                        className="mt-3 inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface disabled:opacity-50"
+                      >
+                        {busy === job.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : job.prova ? <ExternalLink className="h-3.5 w-3.5" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                        {provas[job.id] ? 'Esconder a prova' : 'Ver prova'}
+                      </button>
+                    )}
+
+                    {provas[job.id] && (
+                      <a href={provas[job.id]} target="_blank" rel="noreferrer">
+                        <img
+                          src={provas[job.id]}
+                          alt={`Tela do ${job.portal_name} no fim do acionamento`}
+                          className="mt-3 max-h-96 w-full rounded-md border border-border object-contain"
+                        />
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         {portals === null ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
