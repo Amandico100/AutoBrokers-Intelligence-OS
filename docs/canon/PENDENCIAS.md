@@ -10492,3 +10492,39 @@ Red team (07/09), pré-existente (SPEC-098 U4): `core/auth.py::require_internal_
 
 ## P-E001-RELATORIO-COM-TELEFONE-DO-SEGURADO · o relatório de texto da rotina imprime o WhatsApp completo do segurado
 Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Clientes encontrados"): a peça (Artifact) não tem telefone, o relatório de texto tem. **Destrava:** `to_last4` no relatório de texto. **Dono:** 🤖. **Custo de esquecer:** o relatório circula com PII que a peça promete não ter.
+
+## P-PILOTO-01 · concorrência e isolamento por corretora — 🔴 IMPORTANTE (Founder, 08/09/2026)
+📊 Medido 08/09: o atendimento roda em 1 processo uvicorn sem `--workers`; o buffer processava as conversas prontas em série; envio ao WhatsApp era síncrono dentro do event loop (`requests.post` timeout 30 s + `sleep 0.7`); LLM sem timeout/retry. Teto seguro estimado 3–4 simultâneos por corretora e uma corretora travada atrasava todas. Hoje (U1, 08/09) o envio saiu do laço e o buffer ficou paralelo com semáforo — alívio, não solução. **Destrava:** desenho + execução de isolamento por tenant (fila/worker por corretora ou processos múltiplos, timeout no modelo, backpressure, prova com duas corretoras e uma delas travada). **Alvo do Founder:** ≥4 atendimentos simultâneos por corretora e nenhuma interferência entre corretoras. **Dono:** 🤖. **Custo de esquecer:** com centenas de corretoras, um travamento em uma para todas — "irreparável para a AutoBrokers" (Founder).
+
+## P-PILOTO-02 · o acionamento pelo portal não aparece na Fila nem na Ficha
+📊 `lib/atendimento/casos.ts` lê 5 tabelas e nenhuma é `portal_jobs`; `portal_tool.py:421` grava só `session_id` (colunas `work_run_id`, `agent_id`, `operation_key` existem e ficam vazias). U4 (08/09) deu uma tela em Conectores → Portais. **Destrava:** preencher o elo no insert; `projetarCasos` lê `portal_jobs`; fase "no portal da seguradora"; coluna durável `protocolo`. **Dono:** 🤖.
+
+## P-PILOTO-03 · o PDF do segurado some da Ficha
+📊 `webhook.py:~1795-1813` extrai o texto do documento e descarta a URL; `ficha/[id]/route.ts:417` só mostraria `type='document'` com URL, e ninguém grava isso. **Destrava:** guardar a URL (coluna ou `type='document'`) e mostrar na gaveta "Documentos e fotos". **Dono:** 🤖.
+
+## P-PILOTO-04 · sinistro, empresarial e condomínio sem checklist — o agente precisa fazer a primeira parte e entregar mastigado (Founder, 08/09)
+📊 Sinistro é uma linha de prompt (`prompts.py:165`); empresarial e condomínio só existem como teclas dentro do corredor residencial; `ficha.faltando` nunca é populado para eles. **Destrava:** checklist estruturado por tipo (colisão, roubo, incêndio, empresarial, condomínio) no desenho de `conhecimento_de_assistencia`, escritor de `ficha.faltando`, entradas em `_TITULOS`, teste de língua no dossiê. **Dono:** 🤖.
+
+## P-PILOTO-05 · formulário nativo da Porto e da Azul não tem schema
+📊 `native_flows` só em HDI e Yelum auto (`corridor_playbooks.py:2982, 3010`). Porto e Azul: "sem schema recuperável; só um acionamento ao vivo produz um" (relatório da 092). **Destrava:** o primeiro acionamento real observado nessas duas; até lá a tela de formulário vai a handoff com dossiê. **Dono:** 🧑 coleta + 🤖 schema.
+
+## P-PILOTO-06 · corpus, régua, inventário e roteiro de coleta precisam ser regenerados após cada dia de piloto
+📊 corpus de 23/08; 18 sessões novas não medidas; `INVENTARIO-DE-ROTAS.md` de 24/08 com denominador anterior à 089 (P-089-C); `medir_rota.py:~569` ainda imprime "🧑 acesso ao Espelho" (vencida: o leitor existe, falta vocabulário). **Destrava:** `gerar_corpus_de_telas.py --todas` → `medir_rota.py --todas --com-espelho --formato markdown` → `roteiro_de_coleta.py`; trocar a frase. **Dono:** 🤖, rotina de fim de dia durante os pilotos.
+
+## P-PILOTO-07 · portal de vidros: passo 7 de verdade e fotos
+📊 `adaptive.py:1152-1163` para no protocolo e só recomenda loja/domicílio; `vidros_apifirst.py:33` "Não escolhe loja. Não agenda."; zero linhas para anexo de fotos (desenho atual: repassar o link de vistoria). **Destrava:** HAR + vídeo/prints dos acionamentos manuais da Regina em `docs/intake/MATERIAIS/PORTAL VIDROS/` → `portal_factory.py lab har/api-infer` → jornada até o agendamento; decidir fotos (nossas × link). **Dono:** 🧑 material + 🤖.
+
+## P-PILOTO-08 · tela desconhecida no portal não aprende
+📊 `tela_cega` (SPEC-087) só é escrita pelo corredor de URA; o worker do navegador grava `debug_dom` num jsonb que ninguém varre. **Destrava:** estender a fila de aprendizado ao portal. **Dono:** 🤖.
+
+## P-PILOTO-09 · credenciais dentro da árvore do repositório
+📊 08/09: `docs/canon/CREDENCIAIS EASYPANEL.txt` (não versionado) dentro do repo; e os valores foram colados no chat. **Destrava:** mover o arquivo para fora da árvore; rotacionar as chaves coladas quando conveniente. **Dono:** 🧑. **Custo de esquecer:** um `git add` publica tudo.
+
+## P-PILOTO-10 · o grupo de suporte da AutoFleet foi cadastrado na Resulta
+📊 08/09 21:48: `human_support_destinations` ganhou "Suporte AutoFleet" com `company_id` da **Resulta Seguros**; a AutoFleet segue com zero destinos. Efeito: handoff da AutoFleet não tem para onde ir e a Resulta pode mandar dossiê para o grupo errado. **Destrava:** apagar a linha na Resulta e recriar dentro da AutoFleet (trocar a corretora no dashboard antes), como principal. **Dono:** 🧑 hoje à noite.
+
+## P-PILOTO-11 · canário Q1–Q6 da cobrança no implantado
+📊 08/09: `BILLING_CANARIO_ALLOWLIST` e `CANARIO_TESTE_B` já estão no smith-api. Falta rodar `POST /api/admin/canario/extra001` (chave interna) e colar Q1–Q6 em §6.3 do relatório da EXTRA-001; fecha `P-E001-CANARIO-VIVO-NO-IMPLANTADO`. **Dono:** 🤖, antes do dia da Saionara.
+
+## P-PILOTO-12 · a régua de linguagem humana não roda nos dossiês
+📊 `problemas_de_lingua` aplicada só às cartas e à novidade ao cliente (`test_o_caso_se_explica_sozinho.py:1268,1275,1928`). U2 (08/09) cobre `build_handoff_dossier`; falta `_montar_dossie`. **Dono:** 🤖.

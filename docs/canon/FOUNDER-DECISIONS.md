@@ -1737,3 +1737,15 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
 | **D-E001-10** | Atualizar o dossiê de SPECs ao longo do trabalho, não só no encerramento | página `#extra001` republicada a cada bloco fechado |
 
 **Não decidido (fica na caixa do Founder da EXTRA-001):** ligar o agente de atendimento da Resulta por uma janela curta para provar a resposta automática ao vivo (a allowlist de entrada de produção contém só TESTE-B).
+
+## Decisões dos pilotos — 08/09/2026 (véspera dos atendimentos reais)
+
+| # | decisão | efeito |
+|---|---|---|
+| **D-PILOTO-01** | Conhecimento de atendimento e pós-acionamento (cartas, respostas, regras) é **GLOBAL**: toda corretora conectada usa o mesmo, nunca por corretora | `publicar_cartas_0971.py --global` publica no tenant Global Knowledge; retrieval tem de ler o global (ver relatório U5) |
+| **D-PILOTO-02** | **Não** encerrar em lote as 467 conversas abertas da AutoFleet: o agente responde de qualquer forma e é melhor que responda com o histórico | nada a fazer; a Regina responder pelo celular pausa o robô naquela conversa, e isso é o desejado |
+| **D-PILOTO-03** | Ligar o agente com HDI e Yelum mesmo com o formulário nativo; a trava de laço (P-092-10) entra hoje | U2 |
+| **D-PILOTO-04** | Follow-up do pós-acionamento sai depois do horário combinado com o prestador (ou do protocolo) e **só entre 8h e 19h** no fuso da corretora; fora disso fica para a manhã seguinte | U5; `POS_ACIONAMENTO_ESPERA_MINUTOS=90` |
+| **D-PILOTO-05** | Coleta dirigida (delegada ao orquestrador): percorrer a URA até a tela de confirmação e **recusar**; nunca confirmar chamado sem demanda real. O protocolo dessas rotas fica para o primeiro cliente de verdade | evita despachar prestador por engano; a rota ganha as telas, não o desfecho |
+| **D-PILOTO-06** | Executar o essencial de 08/09 **sem o protocolo AAA** (14% do pacote semanal de tokens): builders Opus por unidade, orquestrador como juiz, testes por unidade | `PLANO-PILOTOS-AJUSTES-2026-09-08.md` |
+| **D-PILOTO-07** | Meta explícita: ≥4 atendimentos simultâneos por corretora e nenhuma corretora interferindo em outra | P-PILOTO-01 |
