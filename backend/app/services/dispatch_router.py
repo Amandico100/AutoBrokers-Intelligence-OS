@@ -1306,6 +1306,34 @@ def _env_int_espera_pos() -> int:
     return max(1, n)
 
 
+#: 📊 O número que o follow-up de sessão usava desde 12/07/2026, escrito à mão
+#: dentro de `_followup_schedule`. ⚠️ Vira constante para que a mesma pergunta
+#: — *"quanto tempo depois do prestador se pergunta se deu certo?"* — tenha UM
+#: número, e para que a variável de operação possa vencê-lo sem editar código.
+_ESPERA_DO_FOLLOWUP_MIN = 45
+
+#: O intervalo entre a pergunta e o encerramento carinhoso. Era `2h30` literal.
+_ESPERA_DO_ENCERRAMENTO_MIN = 150
+
+
+def _espera_do_followup_min() -> int:
+    """Minutos entre o horário combinado e o *"o prestador foi?"*.
+
+    ⚠️ **O padrão daqui NÃO é o de `_env_int_espera_pos`**, e a diferença é de
+    propósito: aquele responde *"quanto tempo se espera a SEGURADORA responder"*
+    (48 h, medido no acervo); este responde *"quanto tempo depois do serviço se
+    pergunta se deu certo"* (45 min). Um padrão só faria o produto perguntar
+    dois dias depois — ou cobrar a seguradora 45 minutos depois de acionar.
+    🔴 Em produção os dois são vencidos pela MESMA variável de operação
+    (`POS_ACIONAMENTO_ESPERA_MINUTOS=90`), que é o que o Founder ajusta.
+    """
+    import os
+
+    if str(os.getenv("POS_ACIONAMENTO_ESPERA_MINUTOS") or "").strip():
+        return _env_int_espera_pos()
+    return _ESPERA_DO_FOLLOWUP_MIN
+
+
 async def _minutos_de_espera_do_perfil(db, company_id: str) -> int:
     """O prazo da CORRETORA, em minutos — `acionamento_profile` (U1.1).
 
@@ -1354,10 +1382,31 @@ def _prazo_do_agendamento(captured: Dict[str, Any]) -> str:
 
     agenda = (captured or {}).get("schedule")
     if isinstance(agenda, dict) and str(agenda.get("day") or "").strip():
-        hora = str(agenda.get("at") or agenda.get("from") or "").strip()
+        # 🔴 A HORA SUMIA — medido em 08/09/2026, aqui mesmo.
+        #
+        # 📊 `"17h".replace("h", ":").strip(":")` é `"17"`, e `_DATA_BR` exige
+        # um separador (`(\d{1,2})[:h](\d{1,2})?`). Sem ele a linha inteira não
+        # casava, o `instante_br` devolvia `""` e o ramo de baixo salvava o dia
+        # — **à meia-noite**:
+        #
+        #     {'at': '17h'}            -> 2026-09-09T03:00Z  (00:00 em SP)
+        #     {'from': '8 h','to':...} -> 2026-09-09T03:00Z  (00:00 em SP)
+        #     {'at': '14:30'}          -> 2026-09-09T17:30Z  ✓ o único que passava
+        #
+        # ⚠️ E não era caso raro: a âncora de auto captura `(\d{1,2}[:h]\d{0,2})`
+        # — `\d{0,2}` permite ZERO dígitos, que é exatamente `"17h"` — e a
+        # janela da Porto captura `(\d{1,2}\s?h)`, que é **sempre** `"8 h"`.
+        # A janela da Porto perdia a hora em 100% dos casos.
+        #
+        # 🔴 Agora a hora é NORMALIZADA para `HH:MM` antes de ir ao motor —
+        # `instante_br` continua sendo o único parser (§5).
+        hora = str(agenda.get("at") or agenda.get("from") or "").strip().lower()
         texto = str(agenda["day"]).strip()
         if hora:
-            texto = "%s %s" % (texto, hora.replace("h", ":").strip(":"))
+            achado = re.match(r"^(\d{1,2})\s*[:h]?\s*(\d{1,2})?", hora)
+            if achado:
+                texto = "%s %s:%02d" % (texto, achado.group(1),
+                                        int(achado.group(2) or 0))
         # ⚠️ `periodo` ('manhã'/'tarde') fica de fora do prazo de propósito:
         #    ele não é uma hora, e transformá-lo em uma seria inventar (R3).
         instante = instante_br(texto)
@@ -1394,7 +1443,6 @@ async def _pos_acionamento_do_checkpoint(db, company_id: str,
     mesmo instante em que ela nascesse.
     """
     try:
-        from datetime import timedelta
 
         from app.atendimento import acompanhamento, pos_acionamento
         from app.services.o_fim_do_atendimento import (
@@ -1476,11 +1524,57 @@ async def _pos_acionamento_do_checkpoint(db, company_id: str,
         if anterior and not prometido:
             return
 
-        if prometido:
-            vence = prometido
+        # 🔴 A ESPERA VENCE QUANDO O FOLLOW-UP DEVE SAIR — não quando o
+        # prestador chega. Decisão do Founder, 08/09/2026.
+        #
+        # ⚠️ **`vence_em` mudou de significado, e é de propósito.** Ele era o
+        # instante PROMETIDO: a espera vencia às 14h, o vigia disparava às 14h e
+        # o segurado recebia *"e aí, deu tudo certo?"* no exato minuto em que o
+        # guincho estava encostando. Agora ele é o instante do FOLLOW-UP —
+        # combinado + `POS_ACIONAMENTO_ESPERA_MINUTOS`, dentro de 08:00–19:00.
+        #
+        # ⛔ E por isso a frase abaixo passou a dizer `prometido`, nunca `vence`:
+        # depois desta linha os dois são coisas diferentes, e anunciar ao
+        # segurado a hora em que o ROBÔ vai perguntar, chamando-a de "previsão
+        # da seguradora", é o campo que mente da `CLAUDE.md` §12.1.
+        # ⚠️ **O PERÍODO VEM PRIMEIRO, e é medido.** 📊 08/09/2026: para
+        # `{day, periodo}` o `_prazo_do_agendamento` devolve o dia **à
+        # meia-noite** (ele recusa o período e cai no ramo do dia). Usar isso
+        # como base mandaria o follow-up às 08:00 da manhã perguntar sobre um
+        # serviço marcado para a TARDE. O fim do período é a base honesta.
+        #
+        # ⛔ E ele continua não sendo PREVISÃO: 'tarde' não vira "às 18h" na
+        # boca do produto — vira só a hora em que o produto PERGUNTA.
+        combinado = acompanhamento.fim_do_periodo_combinado(
+            captured.get("schedule"))
+        if combinado is None and prometido:
+            from datetime import datetime as _dt
+
+            combinado = _dt.fromisoformat(prometido)
+        # 🔴 **DUAS ESPERAS, DUAS PERGUNTAS — e misturar as duas custou o
+        # gate zero da 097.1.** 📊 Medido em 08/09/2026:
+        #
+        #     combinado CONHECIDO    → "quanto tempo depois do serviço eu pergunto
+        #                               se deu certo?"  45 min (90 em produção)
+        #     combinado DESCONHECIDO → "quanto tempo eu espero a SEGURADORA
+        #                               responder?"      48 h — o caso do acervo
+        #                               dura 6,9 dias (`_ESPERA_DO_POS_ACIONAMENTO_MIN`)
+        #
+        # ⛔ Somar as 48 h a um agendamento das 14:00 joga a pergunta para
+        # **dois dias depois** do guincho. E o estrago não para aí: como o dia
+        # muda, o comparador de novidade acusa mudança onde nada mudou, e o
+        # segurado recebe *"a seguradora atualizou a previsão"* sobre a MESMA
+        # data — foi assim que o `[M1p]` de `test_o_caso_se_explica_sozinho`
+        # ficou vermelho, e ele estava certo.
+        #
+        # ⚠️ Em produção os dois viram 90: `POS_ACIONAMENTO_ESPERA_MINUTOS`
+        # vence os dois padrões, e é essa a variável que o Founder ajusta.
+        if combinado is not None:
+            minutos = _espera_do_followup_min()
         else:
             minutos = await _minutos_de_espera_do_perfil(db, str(company_id))
-            vence = (_agora() + timedelta(minutes=minutos)).isoformat()
+        vence = acompanhamento.calcular_envio_do_follow_up(
+            _agora(), combinado, minutos).isoformat()
 
         # 🔴 A NOVIDADE se mede com a MESMA RÉGUA com que se fala (§9.4): a
         # frase entrega `_dia_e_mes(vence)`, então é o DIA que decide se houve
@@ -1501,7 +1595,10 @@ async def _pos_acionamento_do_checkpoint(db, company_id: str,
         # ---- a NOVIDADE (U5.1) — pela PORTA ÚNICA, nunca por saída própria --
         if not mudou:
             return
-        quando = pos_acionamento._dia_e_mes(vence)
+        # ⚠️ O DIA que o segurado ouve é o PROMETIDO pela seguradora, não o do
+        #    follow-up. `vence` só volta a ser a fonte quando não há promessa —
+        #    e aí os dois coincidem no que importa, que é o dia.
+        quando = pos_acionamento._dia_e_mes(prometido or vence)
         texto = ("Novidade no seu caso: a seguradora atualizou a previsão"
                  + (" para %s." % quando if quando else ".")
                  + " Se mudar de novo, eu te aviso aqui, sem você precisar "
@@ -2447,21 +2544,28 @@ def _followup_schedule(captured: Dict[str, Any]) -> tuple:
       marcado do prestador (não após o protocolo);
     - ETA em minutos → 45min após a previsão de chegada;
     - sem nada → 45min após agora.
-    Janela educada: nunca mandar mensagem entre 21h e 8h30 (America/Sao_Paulo)
-    — adia para as 9h da manhã seguinte."""
+
+    🔴 **A janela deixou de ser daqui** (08/09/2026): quem decide a hora é
+    `acompanhamento.calcular_envio_do_follow_up` — 08:00–19:00 no fuso da
+    corretora. Esta função lê a BASE e só."""
     from datetime import datetime, timedelta, timezone as _tz
 
-    try:
-        from zoneinfo import ZoneInfo
+    from app.atendimento import acompanhamento as _acomp
 
-        tz = ZoneInfo("America/Sao_Paulo")
-    except Exception:  # noqa: BLE001
-        tz = _tz.utc
+    # ⚠️ O fuso vem do MESMO leitor da janela (`AGENT_OS_TENANT_TIMEZONE`).
+    #    Antes era `ZoneInfo("America/Sao_Paulo")` escrito aqui: a primeira
+    #    corretora de Manaus teria a base lida num fuso e a janela em outro.
+    tz = _acomp.fuso_da_corretora()
     now = datetime.now(tz)
     base = now
     captured = captured or {}
     sched = captured.get("schedule") or {}
-    if sched.get("day"):
+    periodo_combinado = _acomp.fim_do_periodo_combinado(sched)
+    if periodo_combinado is not None:
+        # `{day, periodo}` — o corredor residencial. 'tarde' não é previsão,
+        # mas o FIM da tarde é base honesta para perguntar "deu tudo certo?".
+        base = periodo_combinado.astimezone(tz)
+    elif sched.get("day"):
         try:
             parts = [p for p in str(sched["day"]).split("/") if p]
             d = int(parts[0])
@@ -2484,15 +2588,28 @@ def _followup_schedule(captured: Dict[str, Any]) -> tuple:
         except Exception:  # noqa: BLE001
             base = now
 
-    def _polite(dt):
-        if dt.hour >= 21:
-            return (dt + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
-        if dt.hour < 8 or (dt.hour == 8 and dt.minute < 30):
-            return dt.replace(hour=9, minute=0, second=0, microsecond=0)
-        return dt
-
-    follow = _polite(max(base + timedelta(minutes=45), now + timedelta(minutes=20)))
-    closing = _polite(follow + timedelta(hours=2, minutes=30))
+    # 🔴 A JANELA É UMA SÓ — e antes eram DUAS (CLAUDE.md §5).
+    #
+    # 📊 Medido em 08/09/2026, neste arquivo: `_polite` (aqui) adiava a partir
+    # das 21h para as 9h, com `America/Sao_Paulo` ESCRITO NO CÓDIGO; a espera do
+    # pós-acionamento (`_pos_acionamento_do_checkpoint`) não tinha janela
+    # nenhuma. Dois motores para "quando se pode falar com o segurado" divergem
+    # — e divergiram: a mesma corretora, no mesmo minuto, podia mandar a
+    # pergunta do prestador e calar a novidade, ou o contrário.
+    #
+    # 🔴 A decisão do Founder (08/09/2026) é **08:00–19:00 no fuso da
+    # corretora** (`AGENT_OS_TENANT_TIMEZONE`), e ela mora em UM lugar:
+    # `acompanhamento.calcular_envio_do_follow_up`. Isto aqui passou a ser
+    # apenas o leitor da BASE — o horário que o prestador combinou.
+    #
+    # ⚠️ `now + 20min` continua de pé: um agendamento no passado não vira
+    # pergunta imediata, e a função pura já garante que nada nasce vencido.
+    piso = now + timedelta(minutes=20)
+    follow = _acomp.calcular_envio_do_follow_up(
+        now, max(base, piso - timedelta(minutes=_espera_do_followup_min())),
+        _espera_do_followup_min())
+    closing = _acomp.calcular_envio_do_follow_up(
+        follow, follow, _ESPERA_DO_ENCERRAMENTO_MIN)
     return follow.astimezone(_tz.utc).isoformat(), closing.astimezone(_tz.utc).isoformat()
 
 

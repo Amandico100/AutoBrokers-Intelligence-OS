@@ -47,6 +47,188 @@ MENSAGEM_SEM_NOVIDADE = (
 )
 
 
+# =============================================================================
+# 🔴 A JANELA DO FOLLOW-UP — decisão do Founder, 08/09/2026
+# =============================================================================
+#
+# > *"O follow-up tem que sair um tempo DEPOIS do horário que o prestador
+# >  combinou. E nunca depois das 19h nem antes das 8h — o que cair fora fica
+# >  para o outro dia."*
+#
+# 🔴 **Por que 8–19 e não a janela que já existe.** `platform_outbound` tem uma
+# janela de envio (`dentro_da_janela`, 08:00–20:00, domingo bloqueado) e ela
+# governa o OUTBOUND DA PLATAFORMA — prospecção fria, mensagem que ninguém
+# pediu. O follow-up é outra coisa: é a continuação de um atendimento que o
+# próprio segurado abriu, e o Founder fixou 19h para ele.
+#
+# ⚠️ **O que NÃO é duplicado:** o leitor de fuso. `fuso_da_corretora` é
+# importado de `platform_outbound` — dois lugares lendo
+# `AGENT_OS_TENANT_TIMEZONE` com padrões diferentes é exatamente o motor
+# paralelo que a `CLAUDE.md` §5 proíbe. O que muda aqui é a POLÍTICA (as horas),
+# não o mecanismo.
+#
+# ⛔ E o domingo NÃO é bloqueado de propósito: guincho, chaveiro e encanador
+# acontecem no domingo, e perguntar "o prestador foi?" na segunda-feira sobre um
+# serviço de domingo é perguntar tarde demais para servir de alguma coisa.
+HORA_ABRE = 8
+HORA_FECHA = 19
+
+
+def fuso_da_corretora(tz: Any = None):
+    """O fuso em que a janela é lida — **o mesmo leitor do outbound**.
+
+    Aceita um nome (`'America/Manaus'`), um `tzinfo` já pronto, ou `None`
+    (`AGENT_OS_TENANT_TIMEZONE`, senão `America/Sao_Paulo`).
+    """
+    from datetime import tzinfo as _tzinfo
+
+    if isinstance(tz, _tzinfo):
+        return tz
+    from app.services.platform_outbound import fuso_da_corretora as _leitor
+
+    return _leitor(tz if isinstance(tz, str) and tz.strip() else None)
+
+
+def _com_fuso(quando: Any, padrao: Any):
+    """Datetime ingênuo ganha o fuso `padrao`; o que já tem fuso é respeitado."""
+    return quando if quando.tzinfo is not None else quando.replace(tzinfo=padrao)
+
+
+def _empurrar_para_a_janela(local: Any) -> Any:
+    """Um instante LOCAL cai dentro de 08:00–19:00 — ou vai para a manhã seguinte.
+
+    🔴 **PURA.** É a única regra de horário deste produto, e ela precisa
+    conseguir ficar vermelha: `18:59` sai `18:59`, `19:00` sai `08:00 do dia
+    seguinte`. Um guarda que aceitasse os dois não guardaria nada (§9.3).
+    """
+    from datetime import timedelta
+
+    if local.hour < HORA_ABRE:
+        return local.replace(hour=HORA_ABRE, minute=0, second=0, microsecond=0)
+    if local.hour >= HORA_FECHA:
+        amanha = local + timedelta(days=1)
+        return amanha.replace(hour=HORA_ABRE, minute=0, second=0, microsecond=0)
+    return local
+
+
+def calcular_envio_do_follow_up(agora_utc: Any,
+                                horario_combinado_local: Any = None,
+                                espera_min: int = 90,
+                                tz: Any = None) -> Any:
+    """Quando o *"o prestador foi? deu tudo certo?"* deve sair — **PURA**, em UTC.
+
+    ```
+    base  = o horário que o prestador COMBINOU, quando se sabe
+            (fim do período, se ele veio como 'manhã'/'tarde')
+            senão, o momento do protocolo — que é `agora`
+    envio = base + espera
+    janela: < 08:00 → 08:00 do MESMO dia · >= 19:00 → 08:00 do dia SEGUINTE
+    ```
+
+    ⚠️ **Nunca no passado.** Um agendamento que já passou (a seguradora
+    respondeu tarde, o corredor reprocessou) daria um envio anterior a `agora`,
+    e a espera nasceria vencida — o vigia dispararia na passada seguinte, sem
+    esperar nada. O `max` corrige antes da janela, nunca depois: corrigir depois
+    devolveria o envio para fora do horário.
+    """
+    from datetime import timedelta, timezone
+
+    fuso = fuso_da_corretora(tz)
+    agora = _com_fuso(agora_utc, timezone.utc).astimezone(fuso)
+    base = (agora if horario_combinado_local is None
+            else _com_fuso(horario_combinado_local, fuso).astimezone(fuso))
+
+    envio = base + timedelta(minutes=max(1, int(espera_min)))
+    if envio < agora:
+        envio = agora
+    return _empurrar_para_a_janela(envio).astimezone(timezone.utc)
+
+
+def dentro_da_janela_do_follow_up(agora_utc: Any = None, tz: Any = None) -> bool:
+    """Dá para falar com o segurado AGORA? — **PURA** e **falha FECHADA**.
+
+    ⛔ Qualquer erro devolve `False`. Não saber que horas são na casa do cliente
+    é razão para calar, nunca para mandar mensagem às 3 da manhã.
+
+    ⚠️ 📊 **Um nome de fuso inválido NÃO é um erro aqui**, e é bom saber:
+    `platform_outbound.fuso_da_corretora:382-388` cai em `UTC-3` de propósito
+    (contêiner sem `tzdata`). O `except` abaixo pega o que sobra — o leitor
+    ausente, o relógio que não responde.
+    """
+    from datetime import datetime, timezone
+
+    try:
+        fuso = fuso_da_corretora(tz)
+        agora = _com_fuso(agora_utc or datetime.now(timezone.utc), timezone.utc)
+        local = agora.astimezone(fuso)
+        return HORA_ABRE <= local.hour < HORA_FECHA
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ACOMPANHAMENTO] janela local desconhecida (%s) — calando",
+                       type(erro).__name__)
+        return False
+
+
+#: 📊 O formato REAL de `session['captured']['schedule']`
+#: (`corridor_playbooks.extract_capture_anchors:9010-9040`), e são três:
+#: `{day, at}` (auto) · `{day, from, to}` (janela da Porto) · `{day, periodo}`
+#: (residencial). Os dois primeiros já viram instante em
+#: `dispatch_router._prazo_do_agendamento`; o terceiro é recusado lá **de
+#: propósito** — 'tarde' não é uma hora, e virar uma seria inventar.
+#: ⚠️ Aqui ele NÃO vira previsão para o cliente: vira só a BASE do follow-up,
+#: que é uma pergunta ("deu tudo certo?"), não uma promessa.
+_FIM_DO_PERIODO = ((("manh",), 12), (("tarde", "vesper"), 18), (("noite",), 19))
+
+
+def fim_do_periodo_combinado(schedule: Any, tz: Any = None) -> Any:
+    """`{day, periodo}` → o FIM do período, em UTC. `None` quando não dá para saber.
+
+    🔴 **Recusa é resposta.** Dia ilegível, período que não é manhã/tarde/noite
+    → `None`, e o chamador cai no momento do protocolo. Chutar aqui faria o
+    produto perguntar "o prestador foi?" antes de o prestador ter ido.
+    """
+    import re as _re
+    from datetime import datetime, timezone
+
+    if not isinstance(schedule, dict):
+        return None
+    dia_bruto = str(schedule.get("day") or "").strip()
+    periodo = str(schedule.get("periodo") or "").strip().lower()
+    if not dia_bruto or not periodo:
+        return None
+
+    # ⚠️ O dia vem com o nome da semana colado ('quinta-feira 20/08/2026'), e
+    #    `instante_br` casa a string INTEIRA (`^...$`). Extrair o `dd/mm` é o
+    #    que faz o motor de verdade ser chamado, em vez de um parser próprio.
+    achado = _re.search(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", dia_bruto)
+    if not achado:
+        return None
+    ano = achado.group(3) or str(datetime.now(timezone.utc).year)
+
+    # A hora do FIM: a última do texto ('tarde das 13:00 as 18:00' → 18), e o
+    # padrão do rótulo quando o texto não traz hora nenhuma.
+    horas = _re.findall(r"(\d{1,2})\s*[:h]\s*(\d{2})?", periodo)
+    if horas:
+        hora, minuto = int(horas[-1][0]), int(horas[-1][1] or 0)
+    else:
+        hora, minuto = 0, 0
+        for apelidos, padrao in _FIM_DO_PERIODO:
+            if any(a in periodo for a in apelidos):
+                hora = padrao
+                break
+        if not hora:
+            return None
+    if not (0 <= hora <= 23 and 0 <= minuto <= 59):
+        return None
+
+    from app.services.o_fim_do_atendimento import instante_br
+
+    iso = instante_br("%s/%s/%s %02d:%02d" % (achado.group(1), achado.group(2),
+                                              ano, hora, minuto))
+    if not iso:
+        return None
+    return datetime.fromisoformat(iso).astimezone(fuso_da_corretora(tz))
+
+
 def _perfil(companhia: Any) -> Dict[str, Any]:
     perfil = (companhia or {}).get("acionamento_profile")
     return perfil if isinstance(perfil, dict) else {}
@@ -81,6 +263,19 @@ async def pode_falar_com_o_cliente(db, company_id: str,
         logger.warning("[ACOMPANHAMENTO] `pausar_ia` indisponível (%s) — calando",
                        type(erro).__name__)
         return False, "estado_da_conversa_desconhecido"
+
+    # 🔴 O QUINTO DESLIGADOR — a JANELA, e ela é do Founder (08/09/2026).
+    #
+    # ⚠️ O cálculo do `vence_em` já faz a espera nascer dentro do horário
+    # (`dispatch_router._pos_acionamento_do_checkpoint`). Esta linha é o guarda
+    # do CHAMADOR, e existe porque o outro gatilho não passa por aquele cálculo:
+    # o corredor pode receber a resposta da seguradora às 23h e chamar
+    # `entregar_novidade` na hora. Uma janela calculada num lugar e não conferida
+    # no outro é uma janela que protege metade das saídas.
+    #
+    # ⛔ **Falha FECHADA**: fuso ilegível → `False` → cala.
+    if not dentro_da_janela_do_follow_up():
+        return False, "fora_da_janela_local"
 
     empresa = str(company_id or "").strip()
     if not empresa:
@@ -342,5 +537,8 @@ async def entregar_novidade(db, *, company_id: str, conversation_id: str,
     return resposta
 
 
-__all__ = ["EVENTO_NOVIDADE", "MENSAGEM_SEM_NOVIDADE", "acompanhamento_ligado",
-           "pode_falar_com_o_cliente", "entregar_novidade"]
+__all__ = ["EVENTO_NOVIDADE", "MENSAGEM_SEM_NOVIDADE", "HORA_ABRE", "HORA_FECHA",
+           "acompanhamento_ligado", "pode_falar_com_o_cliente",
+           "entregar_novidade", "fuso_da_corretora",
+           "calcular_envio_do_follow_up", "dentro_da_janela_do_follow_up",
+           "fim_do_periodo_combinado"]

@@ -1974,7 +1974,17 @@ def bloco_M():
               "work_events=%r" % (eventos,))
 
     # ---- o CONTROLE de [M2]: tudo LIGADO, a novidade e entregue -------------
-    r_on, envios_on, exc_on, _b = _entregar(_mundo_do_acompanhamento())
+    # 08/09/2026: o follow-up ganhou janela 8h-19h (D-PILOTO-04). O CONTROLE
+    # 'tudo ligado => entregue' nao pode depender do relogio de parede: aqui a
+    # janela e congelada ABERTA; a janela em si tem teste proprio.
+    _janela_real = getattr(AC, 'dentro_da_janela_do_follow_up', None)
+    if _janela_real is not None:
+        AC.dentro_da_janela_do_follow_up = lambda agora_utc=None, tz=None: True
+    try:
+        r_on, envios_on, exc_on, _b = _entregar(_mundo_do_acompanhamento())
+    finally:
+        if _janela_real is not None:
+            AC.dentro_da_janela_do_follow_up = _janela_real
     par(exc_on is None and r_on.get("entregue") is True
         and not str(r_on.get("suprimida_por") or "").strip(),
         "[M2p] com o agente LIGADO e o acompanhamento LIGADO, ela e ENTREGUE "
