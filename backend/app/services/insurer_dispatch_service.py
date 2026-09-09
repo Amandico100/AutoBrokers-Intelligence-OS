@@ -2029,7 +2029,6 @@ def _responder_formulario_nativo(
     # a verdade: "este formulário já teve uma resposta escrita no transcript".
     contagens[chave_do_laco] = ja_respondido + 1
     if live and not enviado:
-        session["state"] = "needs_human"
         # ⚠️ O SUFIXO É PARA MÁQUINA, e existe porque `work_events.payload.motivo`
         # (roteador, `eventos_do_travamento`) é o ÚNICO campo desta sessão que
         # chega à linha do tempo — quem investiga em produção lê a coluna, não
@@ -2042,6 +2041,7 @@ def _responder_formulario_nativo(
                 f"flow={diag.get('flow_id')}" if diag.get("flow_id") else "",
                 f"erro={diag.get('erro')}" if diag.get("erro") else "",
             ) if p)
+        session["state"] = "needs_human"
         session["reason"] = ("formulario_envio_falhou"
                              + (f":{marca}"[:170] if marca else ""))
         return session

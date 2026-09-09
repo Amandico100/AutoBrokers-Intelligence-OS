@@ -107,7 +107,7 @@ NAO_SAO_TRAVAMENTO = {
     "finalize_test_abort",  # modo teste: rodou até o fim e cancelou de propósito
 }
 
-# As 16 famílias de travamento. 🔴 Família nova aqui é trabalho da §D.1: ela
+# As 17 famílias de travamento. 🔴 Família nova aqui é trabalho da §D.1: ela
 # tem de receber um veredito (retoma / não retoma / vai direto ao humano)
 # ANTES de entrar nesta lista. Por isso o teste compara por igualdade.
 FAMILIAS_DE_TRAVAMENTO = {
@@ -133,6 +133,7 @@ FAMILIAS_DE_TRAVAMENTO = {
     # padrao silencioso e' o defeito que aquela SPEC existe para matar*.
     "formulario_sem_envelope",
     "formulario_pronto_sem_flow_token",
+    "formulario_em_laco",   # 08/09/2026 (P-092-10): NÃO RETOMA — o que se repetiria é uma CONFIRMAÇÃO; vai direto ao humano
     "formulario_pronto_sem_transporte",
     "handoff_trigger",
     "human_phase_guard",
