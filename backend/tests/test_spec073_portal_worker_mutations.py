@@ -541,7 +541,10 @@ else:
     os.environ["GLOBAL_KILL_SWITCH"] = salvo
 src_loop = inspect.getsource(W.poll_loop)
 check("M24: o freio e checado DENTRO do laco, nao so no boot",
-      src_loop.find("while True") < src_loop.find("kill_switch_ativo"))
+      # A CHAMADA tem de vir depois do 'while True'. Procurar o NOME cru
+      # falhava por um comentario que cita 'runtime.kill_switch_ativo' antes
+      # do laco (08/09/2026): o guarda ficou vermelho com o freio no lugar.
+      src_loop.find("kill_switch_ativo()", src_loop.find("while True")) > 0)
 
 # ==========================================================================
 print("\n[LINHA DE CONTROLE] a SPEC-073 nao virou 'nega tudo'")
