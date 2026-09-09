@@ -7,7 +7,8 @@ import {
   buildDestinationFields,
   demoteActivePrimaries,
   getAdminClient,
-  getCompanyId,
+  SEM_CORRETORA_NA_SESSAO,
+  companyIdDoSeletor,
   maskDestinationRef,
   serializeDestination,
   tenantConnectionBelongsToCompany,
@@ -27,8 +28,9 @@ export async function GET(request: NextRequest) {
     if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
+    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
+    const companyId = await companyIdDoSeletor();
+    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
 
     const { searchParams } = new URL(request.url);
     const active = searchParams.get('active');
@@ -74,8 +76,9 @@ export async function POST(request: NextRequest) {
     if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 400 });
+    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
+    const companyId = await companyIdDoSeletor();
+    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
 
     let body: Record<string, any> = {};
     try {

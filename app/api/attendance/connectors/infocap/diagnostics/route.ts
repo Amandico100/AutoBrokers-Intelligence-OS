@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getIronSession } from 'iron-session';
-import { getAdminClient, getCompanyId } from '@/lib/attendance/support-destinations';
+import { SEM_CORRETORA_NA_SESSAO, companyIdDoSeletor } from '@/lib/attendance/support-destinations';
 import { sessionOptions, SessionData } from '@/lib/iron-session';
 import { diagnoseInfocapConnection } from '@/lib/attendance/connectors/infocap-policy-lookup';
 
@@ -20,9 +20,9 @@ export async function GET(_request: NextRequest) {
     const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
     if (!session.userId) return NextResponse.json({ ok: false, error: 'Não autorizado' }, { status: 401 });
 
-    const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ ok: false, error: 'Empresa não encontrada' }, { status: 404 });
+    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
+    const companyId = await companyIdDoSeletor();
+    if (!companyId) return NextResponse.json({ ok: false, error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
 
     const diag = await diagnoseInfocapConnection(companyId);
 

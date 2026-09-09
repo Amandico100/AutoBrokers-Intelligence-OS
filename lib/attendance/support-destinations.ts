@@ -2,6 +2,8 @@
 // Nunca retorna destination_ref cru; segredos/tokens vivem no Vault, não aqui.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
+import { resolveSessionCompany } from '@/lib/auxiliaries/server';
+
 export const DESTINATION_TYPES = [
   'whatsapp_group',
   'whatsapp_individual',
@@ -23,10 +25,29 @@ export function getAdminClient(): SupabaseClient {
   );
 }
 
-export async function getCompanyId(supabaseAdmin: SupabaseClient, userId: string): Promise<string | null> {
-  const { data, error } = await supabaseAdmin.from('users_v2').select('company_id').eq('id', userId).single();
-  if (error || !data?.company_id) return null;
-  return data.company_id as string;
+/**
+ * A frase que a tela mostra quando não dá para dizer de qual corretora é o
+ * pedido. Sem jargão: o corretor precisa saber o que FAZER.
+ */
+export const SEM_CORRETORA_NA_SESSAO =
+  'Não deu para confirmar de qual corretora é este pedido. Escolha a corretora no seletor do topo e entre de novo.';
+
+/**
+ * A corretora SELECIONADA no seletor — nunca a primária do cadastro.
+ *
+ * 🔴 Aqui morava `getCompanyId(supabaseAdmin, userId)`, que lia
+ * `users_v2.company_id`. 📊 Medido em 09/09/2026 (PLANO-HANDOFF-E-PAUSA §1-A):
+ * era por isso que os destinos das DUAS corretoras apareciam nas duas telas, e
+ * que a AutoFleet ficava sem destino enquanto o sócio via a lista da Resulta —
+ * o handoff saía (ou não saía) pela corretora errada.
+ *
+ * `resolveSessionCompany` (SPEC-098) valida o vínculo em `company_members` a
+ * cada request e devolve `null` quando o vínculo caiu. ⛔ `null` NUNCA cai na
+ * primária: o chamador responde 403 com {@link SEM_CORRETORA_NA_SESSAO}.
+ */
+export async function companyIdDoSeletor(): Promise<string | null> {
+  const ctx = await resolveSessionCompany();
+  return ctx?.companyId ?? null;
 }
 
 function isPlainObject(v: unknown): boolean {

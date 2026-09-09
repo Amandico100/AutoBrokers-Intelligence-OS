@@ -7,7 +7,8 @@ import {
   buildDestinationFields,
   demoteActivePrimaries,
   getAdminClient,
-  getCompanyId,
+  SEM_CORRETORA_NA_SESSAO,
+  companyIdDoSeletor,
   maskDestinationRef,
   serializeDestination,
   tenantConnectionBelongsToCompany,
@@ -27,8 +28,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
+    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
+    const companyId = await companyIdDoSeletor();
+    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
 
     const { data: existing, error: findErr } = await supabaseAdmin
       .from('human_support_destinations')
@@ -111,8 +113,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
     const supabaseAdmin = getAdminClient();
-    const companyId = await getCompanyId(supabaseAdmin, session.userId);
-    if (!companyId) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
+    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
+    const companyId = await companyIdDoSeletor();
+    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
 
     const { data, error } = await supabaseAdmin
       .from('human_support_destinations')

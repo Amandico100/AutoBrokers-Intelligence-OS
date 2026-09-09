@@ -476,13 +476,17 @@ export default function HumanSupportSettingsClient() {
               <Icon icon={icons.renovacao} size={16} className="animate-spin" /> Carregando…
             </div>
           ) : items.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-              Nenhum destino configurado ainda. Crie o primeiro acima.
+            <div className="rounded-xl border border-warning/40 bg-card p-8 text-center text-sm text-foreground">
+              Esta corretora ainda não tem destino de suporte. Enquanto isso, nenhum handoff sai.
+              <span className="mt-1 block text-muted-foreground">Crie o primeiro destino acima.</span>
             </div>
           ) : (
             <ul className="space-y-2">
               {items.map((d) => (
-                <li key={d.id} className="rounded-xl border border-border bg-card p-3">
+                <li
+                  key={d.id}
+                  className={`rounded-xl border border-border bg-card p-3 ${d.is_active ? '' : 'opacity-60'}`}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-medium text-foreground">{d.name}</p>
@@ -511,7 +515,10 @@ export default function HumanSupportSettingsClient() {
                     <StatusPill tone="neutral" label={channelProviderLabel(d.channel_provider)} />
                     {d.is_primary && <StatusPill tone="info" label="Principal" />}
                     {d.fallback_enabled && <StatusPill tone="neutral" label="Fallback" />}
-                    <StatusPill tone={d.is_active ? 'success' : 'neutral'} label={d.is_active ? 'Ativo' : 'Inativo'} />
+                    <StatusPill
+                      tone={d.is_active ? 'success' : 'warning'}
+                      label={d.is_active ? 'Ativo' : 'Desativado'}
+                    />
                     {d.silence_minutes > 0 && (
                       <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
                         silêncio {d.silence_minutes} min
