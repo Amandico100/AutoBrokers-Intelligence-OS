@@ -71,13 +71,36 @@ def client_chat_allowed(
         return False
     if remote.endswith(("@g.us", "@broadcast", "@newsletter", "@call")):
         return False
+    # 🔴 A REGRA DO `@lid` SAIU DAQUI E VIROU FUNÇÃO — 09/09/2026.
+    #
+    # Esta fronteira era o ÚNICO lugar do produto que resolvia o telefone certo
+    # num chat endereçado por `@lid`. O normalizador do webhook não sabia disso
+    # e criava conversa-fantasma com o LID no lugar do telefone. Regra que vive
+    # em um arquivo só é regra que o segundo leitor não tem como obedecer:
+    # agora ela mora em `identidade_do_evento.telefone_do_evento` e os dois a
+    # chamam. ⚠️ O comportamento aqui não muda — o `@lid` sem alternativo de
+    # linha continua recusado, agora porque a função devolve vazio.
+    # ⚠️ As duas formas de import, pelo motivo explicado em
+    # `evolution_inbound.py`: este módulo também é carregado POR CAMINHO nos
+    # guardas, com `app.services.whatsapp` dublado. O `except` carrega o MESMO
+    # arquivo e quebra alto se ele não existir — nunca devolve regra pela metade.
+    try:
+        from app.services.whatsapp.identidade_do_evento import telefone_do_evento
+    except ImportError:  # carga por caminho, nos guardas
+        import importlib.util as _il
+
+        _caminho = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "whatsapp", "identidade_do_evento.py")
+        _spec = _il.spec_from_file_location("_identidade_do_evento", _caminho)
+        _mod = _il.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        telefone_do_evento = _mod.telefone_do_evento
+
     if remote.endswith("@lid"):
-        alternate = str(alternate_jid or "").strip().lower()
-        if not alternate.endswith("@s.whatsapp.net"):
-            return False
-        number = _digits(alternate.split("@", 1)[0].split(":", 1)[0])
+        number = telefone_do_evento(
+            {"remoteJid": remote, "remoteJidAlt": str(alternate_jid or "")})
     else:
-        number = _digits(counterparty or remote.split("@", 1)[0].split(":", 1)[0])
+        number = _digits(counterparty) or telefone_do_evento({"remoteJid": remote})
     if not number:
         return False
     own = _digits(observer_number)

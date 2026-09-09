@@ -1177,6 +1177,57 @@ async def process_whatsapp_message_background(
             required_role="attendance",
         )
 
+        # =====================================================================
+        # 🔴 A SEGUNDA PERGUNTA — E ELA É NA SAÍDA, NÃO NA ENTRADA (09/09/2026)
+        # =====================================================================
+        #
+        # 📊 Medido no primeiro dia de piloto: de 14 respostas do robô por cima
+        # da atendente, **2 chegaram a 25 segundos ou menos depois da fala dela**.
+        # Não foram pausa quebrada — foram CORRIDA. A mensagem do segurado já
+        # estava no buffer (8-25 s de debounce) e o modelo já estava pensando
+        # quando a Regina escreveu. O portão da entrada (`is_human_mode`, ~380
+        # linhas acima) tinha perguntado **antes** de tudo isso, e a resposta era
+        # verdadeira quando ele perguntou.
+        #
+        # ⛔ Uma pergunta só, no começo do turno, não tem como cobrir um turno
+        # que dura meio minuto. Esta é a MESMA pergunta (`pausar_ia`, o helper
+        # único — CLAUDE.md §5), refeita no último instante em que ainda dá para
+        # não falar.
+        #
+        # 🔴 E ela vem ANTES do passo 8 de propósito: mais adiante a resposta é
+        # GRAVADA em `messages` e vira preview da conversa. Gravar uma fala que
+        # não vai sair põe no chat da corretora uma frase que o segurado nunca
+        # recebeu — e a atendente responderia achando que o robô já disse aquilo.
+        #
+        # ⚠️ Falha de leitura CALA (fail-closed), como o portão irmão da entrada:
+        # não conseguir confirmar que a conversa está livre nunca é permissão
+        # para falar. O custo é uma resposta perdida; o outro custo é duas vozes.
+        try:
+            from app.services.o_fim_do_atendimento import pausar_ia
+
+            _estado_agora = await asyncio.to_thread(
+                lambda: supabase.client.table("conversations")
+                .select("status, claimed_by, resolvido_em")
+                .eq("company_id", company_id)
+                .eq("id", conversation_id)
+                .limit(1)
+                .execute()
+            )
+            _linhas_agora = getattr(_estado_agora, "data", None) or []
+            _assumida_no_meio = pausar_ia(_linhas_agora[0]) if _linhas_agora else False
+        except Exception as e:  # noqa: BLE001
+            logger.error("[WEBHOOK] 🛑 não consegui reconferir a conversa antes de "
+                         "responder (%s) — a IA NÃO fala", type(e).__name__)
+            _assumida_no_meio = True
+
+        if _assumida_no_meio:
+            # A resposta pronta é DESCARTADA, e é isso mesmo: uma pessoa assumiu
+            # esta conversa enquanto o modelo escrevia. Ela não é reaproveitável
+            # depois — o contexto mudou junto com quem está atendendo.
+            logger.info("[WEBHOOK] 👤 a conversa foi assumida DURANTE o turno — "
+                        "resposta do agente descartada, nada foi enviado")
+            return
+
         # 8. Salvar Resposta IA
         try:
             await asyncio.to_thread(
@@ -1596,6 +1647,88 @@ async def _registrar_retorno_de_cobranca(integration: dict, body: Any) -> None:
         logger.warning("[COBRANCA RETORNO] não registrado: %s", type(e).__name__)
 
 
+async def _pausar_quando_a_atendente_fala(integration: dict, body: Any) -> None:
+    """A atendente respondeu e o agente está DESLIGADO — a conversa cala mesmo assim.
+
+    🔴 O DEFEITO C' DE 09/09/2026, medido no primeiro dia de piloto.
+
+    📊 430 mensagens `fromMe` humanas naquele dia, 11 tentativas de pausa. Com o
+    agente desligado, `observer_tap` CONSOME o evento (`observer_intake.py:812`)
+    e o pipeline — onde mora o ramo `fromMe` que pausa — nunca roda. A conversa
+    que a Regina assumiu ficava `open`, e no instante em que o Founder ligasse o
+    agente ela voltava a ser do robô.
+
+    🔴 **POR QUE AQUI, DEPOIS DO TAP E ANTES DO `return`, e não nas duas outras
+    formas que estavam na mesa** (a decisão pedida em voz alta, para o próximo
+    leitor não a refazer):
+
+      (a) *antes* do tap, como `_registrar_retorno_de_cobranca` — funciona, mas
+          roda TAMBÉM quando o agente está ligado, e aí o ramo `fromMe` do
+          pipeline pausa de novo: **dois UPDATEs para a mesma pausa**, um deles
+          sem o `conversation_id` que o espelho devolve. Duplicação de escrita.
+      (b) *dentro* do tap (`from_me and not insurer`) — o Observador teria de
+          conhecer `#nota`, a voz própria do robô e a pausa. Ele é MUDO por
+          construção e não decide nada sobre fala (`observer_intake.py:1-20`);
+          e as três regras passariam a existir em dois arquivos, que é como uma
+          delas fica para trás (CLAUDE.md §5).
+      (c) **aqui**: só roda quando o tap CONSUMIU — exatamente o caso em que o
+          pipeline não vai rodar. Os dois caminhos são mutuamente exclusivos,
+          então a pausa acontece **uma vez** e as regras continuam morando neste
+          arquivo, ao lado do ramo `fromMe` que as escreveu.
+
+    ⛔ E ela obedece às mesmas três exceções, sem reescrevê-las: eco da própria
+    voz não pausa, `#nota` não pausa, seguradora e grupo não são atendente.
+
+    ⚠️ Teto de 2 s e falha aberta, como o hook da cobrança: o webhook responde
+    ao WhatsApp de qualquer jeito.
+    """
+    try:
+        from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
+
+        empresa = str(integration.get("company_id") or "")
+        if not empresa:
+            return
+        dados = normalize_evolution_inbound(
+            go_event_to_v2_envelope(body if isinstance(body, dict) else {}))
+        # Só o `fromMe` de uma conversa individual com telefone RESOLVÍVEL. Um
+        # `@lid` sem alternativo chega aqui com `phone` vazio, e pausar sem
+        # saber QUEM é a contraparte pausaria a conversa de outra pessoa.
+        if not dados.get("from_me") or dados.get("is_group"):
+            return
+        telefone = str(dados.get("phone") or "")
+        if not telefone:
+            return
+        texto = str(dados.get("text") or "")
+
+        async def _pausar() -> None:
+            from app.services.atlas.espelho_chat import pausar_por_intervencao_humana
+            from app.services.atlas.observer_intake import _br_variants, insurer_allowlist
+            from app.services.whatsapp.voz_propria import e_a_nossa_propria_voz
+
+            # A URA da seguradora não é a atendente da corretora, e a conversa
+            # com ela não é a do segurado.
+            if any(v in insurer_allowlist() for v in _br_variants(telefone)):
+                return
+            if texto and e_a_nossa_propria_voz(empresa, telefone, texto):
+                logger.info("[ESPELHO] eco da própria voz (agente desligado) — "
+                            "nada a pausar")
+                return
+            if texto and _e_uma_anotacao(texto):
+                logger.info("[NOTA] anotação da atendente (agente desligado) — "
+                            "a conversa NÃO é pausada")
+                return
+            await pausar_por_intervencao_humana(
+                company_id=empresa, counterparty=telefone)
+
+        await asyncio.wait_for(_pausar(), timeout=2.0)
+    except asyncio.TimeoutError:
+        logger.warning("[ESPELHO] pausa por intervenção não registrada: banco "
+                       "lento (>2s); o webhook seguiu")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[ESPELHO] pausa por intervenção não registrada: %s",
+                       type(e).__name__)
+
+
 @router.post("/api/v1/webhook/evolution/{token}")
 @limiter.limit("240/minute")
 async def evolution_webhook_token(token: str, request: Request, background_tasks: BackgroundTasks):
@@ -1629,6 +1762,9 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
 
         _observed = await observer_tap(integration, body if isinstance(body, dict) else {})
         if _observed is not None:
+            # 🔴 O TAP CONSUMIU = O AGENTE ESTÁ DESLIGADO, e o ramo `fromMe` do
+            # pipeline — o que pausa a conversa — não vai rodar. Ver a função.
+            await _pausar_quando_a_atendente_fala(integration, body)
             return _observed
     except Exception as e:  # noqa: BLE001
         logger.error(f"[WEBHOOK EVOLUTION-GO] atlas tap error: {type(e).__name__}")
@@ -1808,8 +1944,17 @@ async def _handle_evolution_like_inbound(
                     logger.info("[NOTA] anotação da atendente — a IA CONTINUA "
                                 "atendendo nesta conversa")
                 else:
+                    # 🔴 PELO ID DA CONVERSA, E O TELEFONE SÓ COMO PLANO B.
+                    #
+                    # 📊 09/09/2026: a pausa era gravada por `user_phone`, e num
+                    # chat por `@lid` o "telefone" era o LID — a pausa caía numa
+                    # conversa-fantasma e a real seguia com o robô solto. O
+                    # `telefone_do_evento` conserta o telefone; este argumento
+                    # dispensa a pergunta: `espelhar_no_chat` ACABOU de devolver
+                    # o id da linha em que esta mensagem entrou.
                     await pausar_por_intervencao_humana(
-                        company_id=_empresa, counterparty=str(normalized["phone"]))
+                        company_id=_empresa, counterparty=str(normalized["phone"]),
+                        conversation_id=_conversa_espelhada)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[ESPELHO] intervenção humana não registrada: {type(e).__name__}")
 

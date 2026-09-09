@@ -158,8 +158,32 @@ def run():
     check("P1.2: canal (@newsletter) é ignorado", evo.normalize_evolution_inbound(nl)["skip"])
     bc = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "5547999990000@broadcast"}}}
     check("P1.2: lista de transmissão (@broadcast) é ignorada", evo.normalize_evolution_inbound(bc)["skip"])
+    # 🔴 MIGRADO EM 09/09/2026 — A LIÇÃO CONTINUA, O FATO MUDOU (CLAUDE.md §9.3).
+    #
+    # A afirmação daqui era *"contato individual em `@lid` CONTINUA passando"*, e
+    # ela guardava uma lição certa: `@lid` é chat de PESSOA, não é grupo nem
+    # status, e não pode ser descartado junto com `@broadcast`/`@newsletter`.
+    #
+    # ⛔ Mas ela passava com o LID **ocupando o lugar do telefone** — e foi
+    # exatamente esse o defeito medido no primeiro dia de piloto: 📊 as 5 pausas
+    # por intervenção humana de toda a história do produto foram gravadas em
+    # conversas-FANTASMA de 15 dígitos, e a conversa real do segurado seguia com
+    # o robô falando por cima da atendente.
+    #
+    # A lição migra: `@lid` continua sendo pessoa e continua passando — **desde
+    # que o telefone de verdade venha junto** (`remoteJidAlt`, que o conversor
+    # do Evolution GO preserva). Sem ele, não há a quem responder, e a mensagem
+    # para com um motivo próprio em vez de criar uma pessoa que não existe.
     lid = {**base, "data": {**base["data"], "key": {**base["data"]["key"], "remoteJid": "98765432101@lid"}}}
-    check("P1.2: contato individual em @lid CONTINUA passando", not evo.normalize_evolution_inbound(lid)["skip"])
+    n_lid = evo.normalize_evolution_inbound(lid)
+    check("P1.2: @lid SEM telefone alternativo não vira conversa-fantasma",
+          n_lid["skip"] and n_lid["skip_reason"] == "lid_sem_telefone" and not n_lid["phone"], n_lid)
+    lid_ok = {**base, "data": {**base["data"], "key": {
+        **base["data"]["key"], "remoteJid": "98765432101@lid",
+        "remoteJidAlt": "5547999990000@s.whatsapp.net"}}}
+    n_lid_ok = evo.normalize_evolution_inbound(lid_ok)
+    check("P1.2: contato individual em @lid CONTINUA passando (com o telefone real)",
+          not n_lid_ok["skip"] and n_lid_ok["phone"] == "5547999990000", n_lid_ok)
 
     # F1: mídia do cliente (imagem/documento) NÃO é descartada — vira media info.
     img = {**base, "data": {**base["data"], "message": {"imageMessage": {"caption": "olha o estrago", "mimetype": "image/jpeg"}}}}

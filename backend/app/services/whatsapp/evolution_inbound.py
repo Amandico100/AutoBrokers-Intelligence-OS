@@ -25,6 +25,35 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+# 🔴 A IDENTIDADE DA CONTRAPARTE VEM DE UM LUGAR SÓ (09/09/2026).
+#
+# Este arquivo dizia `remoteJid.split("@")[0]` e chamava aquilo de telefone. Em
+# chat endereçado por `@lid` (WhatsApp Web / dispositivo vinculado) isso devolve
+# um LID de 15 dígitos, nasce uma conversa-FANTASMA e a pausa da atendente cai
+# nela — enquanto a conversa real segue com o robô falando por cima.
+# `identidade_do_evento` é o acerto que já existia em `client_chat_allowed`,
+# promovido a função única e usada pelos dois normalizadores.
+#
+# ⚠️ E O IMPORT TEM DUAS FORMAS PORQUE ESTE ARQUIVO É CARREGADO DE DUAS FORMAS.
+# 📊 Sete guardas (`test_spec038_observer`, `test_spec040_onda1_*`,
+# `test_spec017_interactive_inbound`, …) carregam este módulo POR CAMINHO, com
+# `app.services.whatsapp` substituído por um `ModuleType` vazio — e nesse mundo
+# o import absoluto estoura `ModuleNotFoundError`. ⛔ O `except` NÃO engole nada:
+# ele carrega **o mesmo arquivo**, ao lado deste, e quebra alto se ele sumir. Um
+# `except: pass` aqui seria o defeito dos 2.255 ImportError silenciosos (P-121).
+try:
+    from app.services.whatsapp.identidade_do_evento import telefone_do_evento
+except ImportError:  # carga por caminho, nos guardas
+    import importlib.util as _il
+    import os as _os
+
+    _caminho = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                             "identidade_do_evento.py")
+    _spec = _il.spec_from_file_location("_identidade_do_evento", _caminho)
+    _mod = _il.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    telefone_do_evento = _mod.telefone_do_evento
+
 # O rótulo do vídeo. Constante porque quem atende (o prompt do agente) e quem
 # testa precisam da MESMA frase — e porque ela é o que o modelo lê para saber
 # que não há nada de visual para ele analisar.
@@ -862,7 +891,11 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
         # `media_meta` que fica guardado tem só tipo, nome e legenda.
         "raw_message": msg_dict or None,
         "message_id": str(message_id) if message_id else None,
-        "phone": _phone_from_jid(remote_jid),
+        # ⛔ NUNCA `_phone_from_jid(remote_jid)` — ver o comentário do import.
+        # Vale para os DOIS sentidos: a entrada e o `fromMe` da atendente. Se
+        # cada um resolvesse o telefone de um jeito, a resposta dela cairia
+        # numa conversa e a do segurado noutra, que foi exatamente o defeito.
+        "phone": telefone_do_evento(key, data) or None,
         "connected_phone": _phone_from_jid(payload.get("sender")) or str(payload.get("instance") or "") or None,
         "sender_name": data.get("pushName") or None,
         "text": text,
@@ -883,6 +916,15 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(remote_jid, str) and remote_jid.endswith(("@broadcast", "@newsletter", "@call")):
         return {**out, "skip": True, "skip_reason": "non_individual"}
     if not out["phone"]:
+        # 🔴 O `@lid` SEM ALTERNATIVO GANHOU MOTIVO PRÓPRIO, e não é cosmético.
+        #
+        # Antes desta linha o LID virava "telefone" e a mensagem seguia: nascia
+        # uma conversa-fantasma de 15 dígitos e o produto respondia dentro dela.
+        # Agora ela para aqui — e o motivo diz POR QUE parou, para o dia em que
+        # um provider entregar `@lid` sem `remoteJidAlt` e alguém precisar
+        # contar quantas mensagens isso custou. ⛔ Sem telefone nenhum no log.
+        if isinstance(remote_jid, str) and remote_jid.lower().endswith("@lid"):
+            return {**out, "skip": True, "skip_reason": "lid_sem_telefone"}
         return {**out, "skip": True, "skip_reason": "no_phone"}
     if not out["text"] and not media:
         return {**out, "skip": True, "skip_reason": "no_text"}

@@ -636,8 +636,9 @@ async def _espelhar_com_desfecho(*, company_id: str, counterparty: str, texto: s
         return None, motivo
 
 
-async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
+async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str = "",
                                         quem: str = "Atendente pelo celular",
+                                        conversation_id: Optional[str] = None,
                                         db: Any = None) -> bool:
     """Uma pessoa respondeu: o agente cala NESTA conversa, e só nesta.
 
@@ -657,10 +658,25 @@ async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
     Devolve ``True`` quando alguma conversa foi pausada. Nunca levanta — se a
     pausa falhar, a captura e o espelho já aconteceram, e o pior caso é o
     agente responder junto uma vez, não o produto cair.
+
+    🔴 `conversation_id` VENCE O TELEFONE — 09/09/2026, e é o conserto do dia.
+
+    📊 Medido no banco de produção: as **5** pausas por intervenção humana de
+    toda a história do produto foram gravadas em conversas com `user_phone` de
+    15 dígitos — conversas-FANTASMA nascidas de um `@lid` lido como telefone. A
+    conversa real seguia `open`, e o robô respondia por cima da atendente.
+
+    O `id` não tem essa ambiguidade: quem chama daqui do webhook **já tem** o id
+    que `espelhar_no_chat` devolveu para a mensagem que a atendente acabou de
+    mandar. É a mesma linha, sem intermediário. O caminho por telefone continua
+    como plano B — o Observador e a sincronização em lote não têm o id à mão.
     """
-    telefone = _digitos(counterparty)
     empresa = str(company_id or "").strip()
-    if not telefone or not empresa:
+    if not empresa:
+        return False
+    conversa = str(conversation_id or "").strip()
+    telefone = _digitos(counterparty)
+    if not conversa and not telefone:
         return False
 
     if db is None:
@@ -670,12 +686,18 @@ async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
     cliente = getattr(db, "client", db)
 
     def _trabalho() -> bool:
-        resposta = (cliente.table("conversations").update({
+        consulta = cliente.table("conversations").update({
             "status": "HUMAN_REQUESTED",
             "claimed_by_name": quem,
             "claimed_at": _agora_iso(),
-        }).eq("company_id", empresa).eq("channel", "whatsapp")
-          .eq("user_phone", telefone).neq("status", "closed").execute())
+        }).eq("company_id", empresa)
+        if conversa:
+            consulta = consulta.eq("id", conversa)
+        else:
+            # `channel` só entra no caminho por TELEFONE: o mesmo número pode
+            # ter conversa em mais de um canal, e o id já é único.
+            consulta = consulta.eq("channel", "whatsapp").eq("user_phone", telefone)
+        resposta = consulta.neq("status", "closed").execute()
         return bool(getattr(resposta, "data", None))
 
     try:
@@ -683,11 +705,26 @@ async def pausar_por_intervencao_humana(*, company_id: str, counterparty: str,
         if pausou:
             # Sem o telefone no log: é a linha de trabalho de uma pessoa real
             # e a de um segurado (CLAUDE.md §13.3). Qual corretora basta.
-            logger.info("[ESPELHO] intervenção humana pausou o agente numa conversa de %s",
-                        empresa)
+            logger.info("[ESPELHO] intervenção humana pausou o agente numa conversa de %s "
+                        "(por %s)", empresa, "id" if conversa else "telefone")
+        else:
+            # 🔴 ZERO LINHAS É INCIDENTE, NÃO ROTINA — e era invisível.
+            #
+            # A pausa que não casa linha nenhuma significa que **a atendente
+            # falou e o robô continua livre para responder por cima dela**. Isso
+            # atravessou o primeiro dia de piloto sem uma única linha de log:
+            # o `True/False` voltava para um chamador que o descartava.
+            #
+            # ⛔ Sem tabela nova (CLAUDE.md §5): `contar` é o escritor que já
+            # existe, o mesmo que alimenta `/health` por `diagnostico()`.
+            logger.error("[ESPELHO] intervenção humana NÃO pausou nada em %s "
+                         "(alvo=%s) — o agente pode responder por cima da pessoa",
+                         empresa, "id" if conversa else "telefone")
+            await contar("pausa:zero_linhas")
         return pausou
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ESPELHO] não consegui pausar a conversa (%s)", type(erro).__name__)
+        await contar("pausa:erro")
         return False
 
 
