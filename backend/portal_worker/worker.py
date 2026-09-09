@@ -376,6 +376,9 @@ def _augment_hitl_evidence(result, evidence: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _capture_hitl_screenshot(page) -> str | None:
+    """JPEG do visivel em data URL. O caminho vivo do worker usa
+    `adaptive.capturar_prova` (tenta a tela inteira e sobe ao cofre); esta
+    continua sendo a forma minima, sem dependencia nenhuma."""
     try:
         raw = await page.screenshot(type="jpeg", quality=60, full_page=False)
         if not raw:
@@ -384,6 +387,153 @@ async def _capture_hitl_screenshot(page) -> str | None:
     except Exception as e:  # noqa: BLE001
         logger.warning("[PORTAL] falha ao capturar screenshot HITL: %s", type(e).__name__)
         return None
+
+
+# ---------------------------------------------------------------------------
+# A PROVA DE TODO DESFECHO — e o resumo que uma pessoa consegue ler
+# ---------------------------------------------------------------------------
+# 📊 Medido em 08/09/2026 neste arquivo: a foto da tela so era tirada
+# `if result.status == "needs_human"`. Ou seja, o unico desfecho que deixava
+# imagem era o que dava errado. Um acionamento BEM-SUCEDIDO, com numero de
+# atendimento aberto na seguradora, nao deixava nenhuma — e e justamente esse
+# que alguem vai querer conferir quando o segurado ligar dizendo que nao foi
+# atendido.
+#
+# 🔴 E onde a foto mora importa: base64 dentro do `jsonb` faz cada leitura da
+# evidencia arrastar centenas de KB de imagem, inclusive nas telas que so
+# querem o numero do protocolo. O bucket privado `portal-evidence` ja existe e
+# ja e usado para o PDF do boleto. O base64 continua sendo o FALLBACK: se o
+# envio falhar, a prova cai em `screenshots` como sempre caiu — perder a
+# imagem seria pior que guarda-la no lugar caro.
+_BUCKET_DA_PROVA = "portal-evidence"
+
+
+async def _prova_do_desfecho(page, evidence: Dict[str, Any], motivo: str):
+    """Fotografa a tela atual. Import tardio: `adaptive` puxa as journeys, e o
+    worker so as carrega quando vai de fato rodar um job."""
+    try:
+        from portal_worker.adaptive import capturar_prova
+
+        return await capturar_prova(page, evidence, motivo)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] falha ao capturar prova (%s): %s", motivo, type(e).__name__)
+        return None
+
+
+def _nome_do_arquivo_da_prova(motivo: Any, ordem: int) -> str:
+    limpo = re.sub(r"[^a-z0-9-]+", "-", str(motivo or "prova").lower()).strip("-") or "prova"
+    return f"{ordem:02d}-{limpo[:40]}.jpg"
+
+
+async def _materializar_provas(supa, job_id: Any, evidence: Dict[str, Any]) -> list:
+    """Sobe cada foto ao cofre e troca o base64 pela REFERENCIA na evidencia.
+
+    Devolve o que NAO subiu, em data URL, para o chamador jogar em
+    `screenshots` — o comportamento antigo, agora reservado ao dia ruim.
+    """
+    fallback: list = []
+    provas = (evidence or {}).get("prova")
+    if not isinstance(provas, list):
+        return fallback
+    for ordem, entrada in enumerate(provas):
+        if not isinstance(entrada, dict):
+            continue
+        b64 = str(entrada.pop("b64", "") or "")
+        if not b64:
+            continue
+        caminho = f"{job_id}/{_nome_do_arquivo_da_prova(entrada.get('motivo'), ordem)}"
+        destino = None
+        try:
+            destino = await _upload_portal_blob(
+                supa, caminho, base64.b64decode(b64), "image/jpeg")
+        except Exception:  # noqa: BLE001
+            destino = None
+        if destino:
+            entrada["onde"] = f"{_BUCKET_DA_PROVA}/{destino}"
+        else:
+            entrada["onde"] = "na propria evidencia do job (o cofre nao aceitou a imagem)"
+            fallback.append("data:image/jpeg;base64," + b64)
+    return fallback
+
+
+def _proximo_passo_humano(passo7: Dict[str, Any]) -> str:
+    """A frase curta do que falta fazer depois do protocolo. `passo7` ja traz a
+    recomendacao longa; aqui e a versao que cabe numa linha de resumo."""
+    preferencia = str((passo7 or {}).get("preferencia") or "").strip()
+    if preferencia == "domicilio" and (passo7 or {}).get("tem_domicilio"):
+        return "agendar o atendimento a domicilio com o segurado (dia e hora)"
+    if preferencia == "domicilio":
+        return "o portal nao ofereceu domicilio para este CEP — escolher uma loja com o segurado"
+    if preferencia == "loja":
+        return "mostrar as lojas da tela e deixar o segurado escolher"
+    return "escolher com o segurado entre loja e atendimento a domicilio"
+
+
+def _primeira_linha(texto: Any, limite: int = 160) -> str:
+    for linha in str(texto or "").splitlines():
+        linha = linha.strip()
+        if linha:
+            return linha[:limite]
+    return ""
+
+
+def resumo_do_desfecho(status: str, evidence: Dict[str, Any]) -> str:
+    """PURO: uma frase em portugues dizendo o que aconteceu neste acionamento.
+
+    🔴 Por que existe: a evidencia de um job e um dicionario com `stage_80`,
+    `passo7`, `hitl.kind` e `adaptive_steps`. Ela responde tudo — para quem
+    conhece as chaves. Quem abre o dashboard as 22h porque um segurado ligou
+    nao conhece, e o que ele precisa saber cabe numa linha.
+
+    ⚠️ Nenhuma chave tecnica sai daqui: o sublinhado e trocado por espaco no
+    fim, de proposito, porque os textos crus do portal e dos validadores
+    carregam nomes de campo (`onde_realizar_o_servico`) e eles nao sao
+    portugues.
+    """
+    ev = evidence if isinstance(evidence, dict) else {}
+    protocolo = str(ev.get("protocolo") or "").strip()
+    passo7 = ev.get("passo7") if isinstance(ev.get("passo7"), dict) else {}
+    passo = ev.get("passo") if isinstance(ev.get("passo"), dict) else {}
+    pedido = passo7.get("pedido_do_segurado") or ev.get("pedido_do_segurado") or {}
+    peca = str((pedido or {}).get("peca") or "").strip() if isinstance(pedido, dict) else ""
+    tela = str(passo.get("titulo") or "").strip()
+    pergunta = str(ev.get("pergunta") or "").strip()
+    mensagem = str(ev.get("message") or "").strip()
+
+    partes: list = []
+    if status == "done":
+        partes.append("Atendimento aberto no portal" if protocolo
+                      else "O robo concluiu no portal (o portal nao mostrou numero nesta tela)")
+        if protocolo:
+            partes.append(f"n {protocolo}")
+        if peca:
+            partes.append(f"peca: {peca}")
+        if passo7:
+            partes.append("proximo passo: " + _proximo_passo_humano(passo7))
+        elif mensagem:
+            partes.append(_primeira_linha(mensagem))
+    elif status == "needs_human":
+        if protocolo:
+            partes.append(f"O atendimento JA FOI ABERTO (n {protocolo}) e o robo parou pedindo uma pessoa"
+                          " — nao repita, repetir abre um segundo pedido")
+        else:
+            partes.append(f"Parou na tela '{tela}' pedindo uma pessoa" if tela
+                          else "Parou e pediu uma pessoa")
+        detalhe = pergunta or _primeira_linha(ev.get("stage_80")) or _primeira_linha(mensagem)
+        if detalhe:
+            partes.append(f"a tela pergunta: {detalhe}" if pergunta else detalhe)
+        if peca:
+            partes.append(f"peca: {peca}")
+    else:
+        partes.append("Nao consegui concluir no portal")
+        if protocolo:
+            partes.append(f"ATENCAO: o atendimento ja tinha sido aberto (n {protocolo}) antes da falha")
+        detalhe = _primeira_linha(ev.get("error")) or _primeira_linha(mensagem)
+        if detalhe:
+            partes.append(detalhe)
+
+    texto = " · ".join(p for p in partes if p)
+    return " ".join(texto.replace("_", " ").split())
 
 
 def proxy_do_portal(portal_key: str) -> Dict[str, str] | None:
@@ -705,10 +855,18 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             )
             try:
                 result = await asyncio.wait_for(journey_fn(page, params, evidence), timeout=JOB_TIMEOUT_SECONDS)
+            # 🔴 A foto do fracasso tem de ser tirada AQUI, dentro do
+            # `async with async_playwright()`. O `except` la de baixo roda com o
+            # Playwright ja PARADO: a pagina nao existe mais, e uma tentativa de
+            # fotografar de la nao devolve imagem — devolve um travamento.
             except asyncio.TimeoutError:
+                await _prova_do_desfecho(page, evidence, "estouro-de-tempo")
                 raise RuntimeError(
                     f"journey excedeu o teto de {JOB_TIMEOUT_SECONDS}s (PORTAL_JOB_TIMEOUT_SECONDS)"
                 ) from None
+            except Exception:
+                await _prova_do_desfecho(page, evidence, "excecao")
+                raise
             if account_row and result.status == "done" and (result.captured or {}).get("logged_in"):
                 state = await context.storage_state()
                 session_storage = await _capture_session_storage(page)
@@ -718,10 +876,12 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                 )
             screenshots = list(result.screenshots or [])
             if result.status == "needs_human":
-                hitl_shot = await _capture_hitl_screenshot(page)
-                if hitl_shot:
-                    screenshots.insert(0, hitl_shot)
                 evidence = _augment_hitl_evidence(result, evidence)
+            # 🔴 TODO desfecho terminal deixa foto — inclusive o que deu certo.
+            # A tela do protocolo ja foi fotografada la dentro pelo laco
+            # adaptativo, no instante em que o numero apareceu; esta e a tela em
+            # que o trabalho de fato terminou, que pode ser outra.
+            await _prova_do_desfecho(page, evidence, f"desfecho-{result.status}")
             await browser.close()
     except Exception as e:  # noqa: BLE001
         # 🔴 Falhar DEPOIS de um efeito material não é a mesma coisa que falhar
@@ -754,12 +914,18 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
         houve_efeito = not _G.pode_repetir_com_seguranca(evidence)
         status_final = "needs_human" if houve_efeito else "failed"
 
-        supa.table("portal_jobs").update({
+        erro = f"{type(e).__name__}: {str(e)[:300]}"
+        evidence["resumo"] = resumo_do_desfecho(status_final, {**evidence, "error": erro})
+        fallback = await _materializar_provas(supa, job_id, evidence)
+        patch_falha: Dict[str, Any] = {
             "status": status_final,
-            "error": f"{type(e).__name__}: {str(e)[:300]}",
+            "error": erro,
             "evidence": _redigir(evidence),
             "finished_at": _now(),
-        }).eq("id", job_id).execute()
+        }
+        if fallback:
+            patch_falha["screenshots"] = fallback
+        supa.table("portal_jobs").update(patch_falha).eq("id", job_id).execute()
         return
 
     # O envelope da SPEC-073 H1 é ADITIVO: journey antiga continua gravando a
@@ -767,6 +933,10 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     evidence.update(runtime.selar_evidencia())
     final = (evidence if result.status == "needs_human"
              else {**evidence, **(result.captured or {}), "message": result.message})
+    final["resumo"] = resumo_do_desfecho(result.status, final)
+    # As fotos sobem ao cofre e a evidencia fica com a REFERENCIA. O que nao
+    # subir volta como data URL e cai em `screenshots`, como sempre caiu.
+    screenshots = (await _materializar_provas(supa, job_id, final)) + screenshots
     supa.table("portal_jobs").update({
         "status": result.status,
         "evidence": _redigir(final),

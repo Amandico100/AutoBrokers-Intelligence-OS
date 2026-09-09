@@ -11,11 +11,15 @@ parse_action / is_confirm_screen sao PUROS e testaveis offline.
 """
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import os
 import unicodedata
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from portal_worker import redaction as _RED
 from portal_worker.journeys import JourneyResult
 from portal_worker.journeys.vidros_lanternas import explicar_match, explicar_especifico
 # Duas declaracoes do mesmo modulo de proposito: a linha acima e o placar de
@@ -194,6 +198,71 @@ async def registrar_protocolo_da_pagina(page, evidence: Dict[str, Any]) -> str:
     # gravando o protocolo de um pedido e a franquia de outro.
     registrar_franquia_e_vistoria(evidence, bruto)
     return registrar_protocolo(evidence, bruto)
+
+
+# ---------------------------------------------------------------------------
+# A PROVA — a foto da tela que o robo estava vendo
+# ---------------------------------------------------------------------------
+# 📊 Medido em 08/09/2026 (`worker.py`, `if result.status == "needs_human"`): o
+# worker so fotografava a tela quando PARAVA. Um acionamento que dava certo —
+# com numero de atendimento, o desfecho que mais importa provar — nao deixava
+# imagem nenhuma. Quem quisesse conferir o que o robo fez tinha o texto que o
+# proprio robo escreveu, e mais nada.
+#
+# 🔴 E a foto da tela do PROTOCOLO nao pode esperar o fim: ela e a unica tela
+# que prova que o pedido existe na seguradora, e o passo seguinte (escolher
+# loja, agendar) NAVEGA para longe dela. Fotografar depois e fotografar outra
+# coisa.
+CHAVE_PROVA = "prova"
+TETO_DA_FOTO_SEG = 15.0
+
+
+def _agora_utc() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def capturar_prova(page, evidence: Dict[str, Any], motivo: str,
+                         teto_seg: float = TETO_DA_FOTO_SEG) -> Optional[Dict[str, Any]]:
+    """Fotografa a tela ATUAL e guarda a foto em `evidence["prova"]`.
+
+    Tenta a tela INTEIRA primeiro (`full_page`) e cai para o visivel quando o
+    Playwright recusa — uma tela de portal cabe em duas dobras, e a prova que
+    corta o rodape corta justamente o botao que faltava clicar.
+
+    Guarda a foto em base64 aqui, e nao no cofre: esta funcao roda no meio de um
+    laco que pode morrer no passo seguinte, e uma chamada de rede a mais e uma
+    forma a mais de perder a prova. Quem sobe ao bucket e o worker, no fim, com
+    `_materializar_provas` — e o base64 e o fallback caso ele nao consiga.
+
+    ⚠️ NUNCA levanta excecao e NUNCA trava: um acionamento nao pode morrer por
+    causa da fotografia dele.
+    """
+    if page is None or not isinstance(evidence, dict):
+        return None
+    bruto = None
+    inteira = False
+    for full_page in (True, False):
+        try:
+            bruto = await asyncio.wait_for(
+                page.screenshot(type="jpeg", quality=60, full_page=full_page), teto_seg)
+        except Exception:  # noqa: BLE001
+            bruto = None
+            continue
+        if bruto:
+            inteira = full_page
+            break
+    if not bruto:
+        return None
+    entrada = {
+        "motivo": str(motivo or "desfecho")[:40],
+        "quando": _agora_utc(),
+        "tela_inteira": bool(inteira),
+        "b64": base64.b64encode(bruto).decode("ascii"),
+    }
+    provas = evidence.setdefault(CHAVE_PROVA, [])
+    if isinstance(provas, list):
+        provas.append(entrada)
+    return entrada
 
 
 async def capture_state(page) -> Dict[str, Any]:
@@ -1146,6 +1215,10 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
             # de decidir qualquer outra, e gravar o numero: dai em diante nada
             # que der errado consegue mais apaga-lo.
             protocolo = registrar_protocolo(evidence, state.get("text", ""))
+            # 🔴 E a FOTO, aqui, antes de qualquer outra coisa. Esta tela e a
+            # unica que prova que o pedido existe na seguradora; o passo
+            # seguinte navega para longe dela e nao volta.
+            await capturar_prova(page, evidence, "protocolo")
             evidence["final"] = state.get("text", "")[:1200]
             passo7 = decidir_no_passo_7(state, collected)
             evidence["passo7"] = passo7
@@ -1266,7 +1339,16 @@ async def run_adaptive(page, goal: str, collected: Dict[str, Any], evidence: Dic
             evidence["pedido_do_segurado"] = _pedido_do_segurado(collected)
         sig = (action.get("action"), action.get("target"), action.get("value"), applied)
         steps = evidence.setdefault("adaptive_steps", [])
-        steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied[:80]})
+        # 📊 Ate 08/09/2026 a trilha era `{a,t,v,r}` — a acao, o alvo, o valor e
+        # o resultado. Nenhuma das quatro diz EM QUE TELA aquilo aconteceu nem
+        # QUANDO: lendo a trilha de um acionamento real nao dava para separar
+        # "preencheu o CEP na tela do segurado" de "preencheu o CEP na tela da
+        # corretora", nem para saber onde o fluxo demorou. `url`, `tela` e `ts`
+        # ja estao na mao (o `state` acabou de ser lido) — custo zero de rede.
+        steps.append({"a": sig[0], "t": sig[1], "v": (action.get("value") or "")[:30], "r": applied[:80],
+                      "url": str(state.get("url") or "")[:300],
+                      "tela": _RED.redigir_texto(state.get("heading") or "")[:120],
+                      "ts": _agora_utc()})
         # Parada antecipada: 3 acoes identicas seguidas sem mudar nada = tela travada.
         # Para com o DOM (diagnostico) em vez de arrastar ate MAX_STEPS.
         sigs = [(s["a"], s["t"], s["v"], s["r"]) for s in steps[-3:]]
