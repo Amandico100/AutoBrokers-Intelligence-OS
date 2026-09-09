@@ -7,6 +7,7 @@ import { decidirPatchDeAgente } from '@/lib/admin/admin-auth-policy';
 import { getTenantAgentConfig, patchTenantAgentConfig, roleForKey, setTenantAgentActive } from '@/lib/admin/tenant-agent-store';
 import { ativarTodosOsCorredores } from '@/lib/admin/tenant-corridor-store';
 import { previaDaSaudacao } from '@/lib/admin/saudacao-religamento';
+import { registrarBotaoDoAgente } from '@/lib/admin/historico-do-botao';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
     const toggled = await setTenantAgentActive(
       auth.supabase, auth.ctx.companyId, role, body.is_active);
     if (!toggled.ok) return NextResponse.json(toggled, { status: 400 });
+
+    // 🔴 09/09/2026 — O HISTÓRICO DE QUEM LIGOU E QUEM DESLIGOU.
+    //
+    // 📊 Até aqui o único vestígio era `agents.desligado_em` — a ÚLTIMA vez, e
+    // apagada no religamento. Investigar um dia de piloto com isso é inferência.
+    // Uma linha por transição em `agent_activities` responde *"o agente estava
+    // ligado às 14h, e quem mexeu?"* — que é a pergunta que vai ser feita.
+    //
+    // ⛔ Best-effort pelo mesmo motivo dos corredores e da prévia: falhar em
+    // registrar não desfaz um toggle que já aconteceu.
+    if ((toggled as { mudou?: boolean }).mudou) {
+      await registrarBotaoDoAgente(auth.supabase, {
+        companyId: auth.ctx.companyId,
+        userId: auth.ctx.userId ?? '',
+        ligou: body.is_active,
+      });
+    }
 
     // 🔴 SPEC-093 BLOCO G — LIGAR O ATENDIMENTO LIGA OS CORREDORES JUNTO.
     //

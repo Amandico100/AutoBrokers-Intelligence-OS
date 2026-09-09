@@ -2,8 +2,13 @@
 // Sanitizado: nunca expõe hash, tokens, stripe, CPF ou IDs técnicos ao corretor.
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+// 🔴 09/09/2026 — `attendant` faltava aqui e a tela mostrava a palavra crua
+// "attendant" para quem tem o papel. E o rótulo de `member` mudou junto com a
+// permissão: Membro liga e desliga o agente de atendimento (decisão do Founder).
 const ROLE_LABEL: Record<string, string> = {
-  admin_company: 'Administrador', admin: 'Administrador', owner: 'Dono', member: 'Membro', master_admin: 'Master',
+  admin_company: 'Administrador', admin: 'Administrador', owner: 'Dono',
+  member: 'Membro — liga e desliga o agente', attendant: 'Atendente — liga e desliga o agente',
+  master_admin: 'Master',
 };
 
 // SPEC-048: a equipe vem dos VÍNCULOS (company_members) — quem pertence a

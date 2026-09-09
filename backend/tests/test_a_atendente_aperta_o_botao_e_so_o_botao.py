@@ -42,6 +42,8 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent.parent
 TESTE_MJS = RAIZ / "scripts" / "admin-auth-policy.test.mjs"
 MJS_DA_ROTA = RAIZ / "scripts" / "spec093-a-rota-do-botao.test.mjs"
+MJS_DO_MEMBRO = RAIZ / "scripts" / "o-membro-liga-o-agente.test.mjs"
+HISTORICO = RAIZ / "lib" / "admin" / "historico-do-botao.ts"
 POLITICA = RAIZ / "lib" / "admin" / "admin-auth-policy.ts"
 ROTA = RAIZ / "app" / "api" / "dashboard" / "agents" / "[agentKey]" / "route.ts"
 
@@ -174,3 +176,74 @@ def test_a_ROTA_do_botao_e_executada_de_verdade():
     assert r.returncode == 0, (
         (r.stdout or "")[-2500:] + chr(10) + (r.stderr or "")[-800:])
     assert "0 falharam" in (r.stdout or ""), (r.stdout or "")[-800:]
+
+
+# ---------------------------------------------------------------------------
+# 🔴 09/09/2026 — O MEMBRO LIGA O AGENTE (decisão do Founder)
+# ---------------------------------------------------------------------------
+#
+# 📊 O papel `attendant` foi criado em 25/08 para a Regina e a Saionara — e o
+# cadastro real delas nunca mudou: elas continuam **`member`** em
+# `company_members`. O botão devolvia 403 para as duas pessoas que o produto
+# precisa que o apertem.
+#
+# ⚠️ Este executor existe pelo mesmo motivo dos de cima: 📊 um `scripts/*.test.mjs`
+# sem executor já ficou semanas sem rodar neste repositório.
+
+
+@_sem_node
+def test_o_membro_liga_o_agente_e_o_historico_registra():
+    """A rota REAL sobre o `requireCompanyMember` REAL, com banco falso.
+
+    🔴 Inclui a linha de controle §9.2: a MESMA rota com a política ANTIGA
+    (sem `member`) tem de dar 403 — sem ela, o verde não prova a mudança.
+    """
+    r = _rodar_mjs(MJS_DO_MEMBRO)
+    assert r.returncode == 0, (
+        (r.stdout or "")[-3000:] + chr(10) + (r.stderr or "")[-800:])
+    assert "0 falharam" in (r.stdout or ""), (r.stdout or "")[-900:]
+
+
+def test_member_pode_alternar_mas_NAO_escrever_configuracao():
+    """⚠️ Abrir o botão para `member` não pode abrir prompt, equipe nem cobrança.
+
+    🔴 É a mesma separação que existe para `attendant`, e o guarda é estrutural:
+    `member` entra em ATTENDANCE_TOGGLE_ROLES e **não** em TENANT_WRITE_ROLES.
+    """
+    politica = POLITICA.read_text(encoding="utf-8")
+
+    i_write = politica.index("export const TENANT_WRITE_ROLES")
+    linha_write = politica[i_write:politica.index(chr(10), i_write)]
+    assert "'member'" not in linha_write, (
+        "`member` entrou em TENANT_WRITE_ROLES — abrir o botão abriu o prompt "
+        "do agente, a equipe e a cobrança junto, que é exatamente o que a "
+        "separação por CAMPO existe para evitar")
+
+    i_tog = politica.index("export const ATTENDANCE_TOGGLE_ROLES")
+    linha_tog = politica[i_tog:politica.index(chr(10), i_tog)]
+    assert "'member'" in linha_tog, (
+        "`member` saiu de ATTENDANCE_TOGGLE_ROLES — a Regina e a Saionara "
+        "voltaram a levar 403 no botão que elas apertam todo dia")
+
+
+def test_o_liga_desliga_deixa_HISTORICO_e_nao_cria_tabela():
+    """📊 Antes disto, o único vestígio era `agents.desligado_em` — a ÚLTIMA vez,
+    apagada no religamento. Investigar um dia de piloto com isso é inferência.
+
+    ⛔ E o histórico mora em `agent_activities` (SPEC-036), que já existe, já tem
+    tela e já tem RLS. Tabela nova aqui seria motor paralelo (CLAUDE.md §5).
+    """
+    assert HISTORICO.is_file(), "o escritor do histórico do botão sumiu"
+    fonte = HISTORICO.read_text(encoding="utf-8")
+    assert "agent_activities" in fonte, (
+        "o histórico deixou de gravar em agent_activities")
+    q = chr(39)
+    for tabela in ("agent_toggle_log", "toggle_history", "agent_toggle_history"):
+        assert f"from({q}{tabela}{q})" not in fonte, (
+            f"tabela paralela: {tabela}")
+    assert "CREATE TABLE" not in fonte, "o escritor do histórico criou schema"
+
+    rota = ROTA.read_text(encoding="utf-8")
+    assert "registrarBotaoDoAgente(" in rota, (
+        "a rota parou de registrar quem ligou/desligou — o histórico virou "
+        "recurso pronto que ninguém chama")

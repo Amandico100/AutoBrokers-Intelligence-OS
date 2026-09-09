@@ -67,6 +67,7 @@ async function patch({ role, isOwner = false, body, agentKey = 'even' }) {
     patchTenantAgentConfig: null,
     ativarTodosOsCorredores: null,
     previaDaSaudacao: null,
+    registrarBotaoDoAgente: null,
   };
 
   const rota = carregarTS('app/api/dashboard/agents/[agentKey]/route.ts', (id) => {
@@ -94,7 +95,7 @@ async function patch({ role, isOwner = false, body, agentKey = 'even' }) {
         },
         setTenantAgentActive: async (_s, _c, r, ativo) => {
           feito.setTenantAgentActive = { role: r, is_active: ativo };
-          return { ok: true, is_active: ativo, religou: ativo, desligado_em: null };
+          return { ok: true, is_active: ativo, religou: ativo, mudou: true, desligado_em: null };
         },
       };
     }
@@ -103,6 +104,14 @@ async function patch({ role, isOwner = false, body, agentKey = 'even' }) {
         ativarTodosOsCorredores: async () => {
           feito.ativarTodosOsCorredores = true;
           return { ok: true, ativados: 14, respeitados: 0, ja_ativos: 0, sem_ancora: 0 };
+        },
+      };
+    }
+    if (id === '@/lib/admin/historico-do-botao') {
+      return {
+        registrarBotaoDoAgente: async (_s, arg) => {
+          feito.registrarBotaoDoAgente = arg;
+          return { ok: true };
         },
       };
     }
@@ -133,9 +142,27 @@ console.log('\n== SPEC-093 — a ROTA do botão, executada ==\n');
   assert('🔴 e nada foi gravado', r.feito.patchTenantAgentConfig === null);
 }
 {
+  // 🔴 O FATO MUDOU EM 09/09/2026 (decisão do Founder), E O TESTE MUDA COM ELE.
+  //
+  // A Regina e a Saionara são **Membro** em `company_members` — nunca foram
+  // cadastradas como `attendant`. São elas que ligam o agente de manhã e
+  // desligam quando saem. A afirmação vencida ("member NÃO alterna") não some:
+  // ela MIGRA para o que continua verdadeiro logo abaixo — `member` não
+  // escreve configuração, e um papel desconhecido não alterna nada.
   const r = await patch({ role: 'member', body: { is_active: true } });
-  assert('`member` NÃO alterna', r.status === 403);
-  assert('e o agente não foi ligado', r.feito.setTenantAgentActive === null);
+  assert('🔴 `member` LIGA o agente de atendimento', r.status === 200);
+  assert('🔴 e o agente FOI ligado', r.feito.setTenantAgentActive?.is_active === true);
+  assert('🔴 e o histórico registrou quem ligou',
+    r.feito.registrarBotaoDoAgente?.ligou === true);
+}
+{
+  // 🔴 A LINHA DE CONTROLE que dá direito à conclusão acima: a rota CONSEGUE
+  // recusar um toggle. Sem ela, um `if` desligado deixaria tudo verde.
+  const r = await patch({ role: 'visitante', body: { is_active: true } });
+  assert('CONTROLE: papel desconhecido NÃO alterna', r.status === 403);
+  assert('CONTROLE: e o agente não foi ligado', r.feito.setTenantAgentActive === null);
+  assert('CONTROLE: e nada foi para o histórico',
+    r.feito.registrarBotaoDoAgente === null);
 }
 {
   const r = await patch({ role: 'attendant', body: { variables: { x: 1 } } });

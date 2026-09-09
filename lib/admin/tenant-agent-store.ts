@@ -122,6 +122,11 @@ export async function setTenantAgentActive(
   return {
     ok: true as const, is_active: isActive,
     religou: transicao.religou,
+    // 🔴 09/09/2026 — quem grava o HISTÓRICO precisa saber se o clique foi
+    // evento. `religou` sozinho não serve: um DESLIGAMENTO também é uma linha
+    // que a corretora vai querer ler, e `religou:false` não distingue
+    // "desligou agora" de "apertou num agente que já estava desligado".
+    mudou: transicao.muda,
     // O valor de ANTES de limpar — é ele que diz há quanto tempo o atendimento
     // esteve fora, e quem decide a saudação precisa dele.
     desligado_em: transicao.religou ? desligadoEmAntes : (campos.desligado_em as string | null),

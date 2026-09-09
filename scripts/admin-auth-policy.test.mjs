@@ -56,10 +56,22 @@ console.log('\n== SPEC-093 BLOCO A — o papel attendant ==\n');
 const ATT = { role: 'attendant', isOwner: false };
 const MEM = { role: 'member', isOwner: false };
 const ADM = { role: 'admin_company', isOwner: false };
+// 🔴 09/09/2026 — a NOVA linha de controle. `member` deixou de ser o papel que
+// nao alterna (decisao do Founder: sao a Regina e a Saionara, e sao Membro),
+// entao o controle passa a ser um papel que o produto nao conhece. Sem um papel
+// que RECUSA, "todo mundo pode" passaria como sucesso (CLAUDE.md §9.3).
+const DESCONHECIDO = { role: 'visitante', isOwner: false };
 
 // o papel, isolado
 assert('attendant PODE alternar atendimento', canToggleAttendanceAgent(ATT) === true);
-assert('member NAO pode alternar', canToggleAttendanceAgent(MEM) === false);
+// 🔴 DECISAO DO FOUNDER, 09/09/2026 — `member` LIGA E DESLIGA O AGENTE.
+// A afirmacao vencida ("member NAO pode alternar") migra para as duas linhas
+// que continuam verdadeiras: member NAO escreve configuracao, e um papel
+// desconhecido nao alterna nada.
+assert('🔴 member PODE alternar atendimento', canToggleAttendanceAgent(MEM) === true);
+assert('🔴 mas member NAO escreve configuracao', canWriteTenantConfig(MEM) === false);
+assert('CONTROLE: papel desconhecido NAO pode alternar',
+  canToggleAttendanceAgent(DESCONHECIDO) === false);
 assert('admin_company continua podendo alternar', canToggleAttendanceAgent(ADM) === true);
 assert('attendant NAO escreve configuracao', canWriteTenantConfig(ATT) === false);
 
@@ -90,9 +102,25 @@ assert('②b 🔴 attendant NAO alterna o agente CORE',
 //    pelo corpo — nao existe campo de empresa para forjar. A prova esta' no
 //    guarda pytest que le a rota.
 
-// ④ LINHA DE CONTROLE — member continua 403 no toggle
-assert('④ CONTROLE: member continua 403 no toggle',
-  decidir(MEM, 'attendance', ['is_active']).permitido === false);
+// ④ `member` alterna o ATENDIMENTO — e so o atendimento, e so o toggle.
+assert('④ 🔴 member alterna is_active do ATENDIMENTO',
+  decidir(MEM, 'attendance', ['is_active']).permitido === true);
+assert('④ e a acao e TOGGLE, nao config',
+  decidir(MEM, 'attendance', ['is_active']).acao === 'toggle');
+assert('④ 🔴 member NAO muda variables',
+  decidir(MEM, 'attendance', ['variables']).permitido === false);
+assert('④ 🔴 member NAO muda overrides',
+  decidir(MEM, 'attendance', ['overrides']).permitido === false);
+assert('④ 🔴 member com corpo MISTO nao passa por baixo',
+  decidir(MEM, 'attendance', ['is_active', 'variables']).permitido === false);
+assert('④ 🔴 member NAO alterna o agente CORE',
+  decidir(MEM, 'core', ['is_active']).permitido === false);
+assert('④ e member nao liga corredor nenhum (nao escreve configuracao)',
+  decidir(MEM, 'attendance', ['is_active']).escreveConfiguracao === false);
+
+// ④b LINHA DE CONTROLE — o portao CONSEGUE recusar um toggle
+assert('④b CONTROLE: papel desconhecido continua 403 no toggle',
+  decidir(DESCONHECIDO, 'attendance', ['is_active']).permitido === false);
 
 // ⑤ LINHA DE CONTROLE — admin_company continua podendo TUDO
 assert('⑤ CONTROLE: admin_company alterna',

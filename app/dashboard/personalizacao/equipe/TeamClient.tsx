@@ -206,9 +206,15 @@ export function TeamClient() {
                           é exatamente o papel que recebe 403 ao tentar ligar o
                           agente de atendimento. Quem escolhesse "Atendente"
                           para a atendente acertava o nome e errava a permissão,
-                          e só descobriria no primeiro dia de piloto. */}
-                      <option value="member">Membro — só consulta</option>
-                      <option value="attendant">Atendente — liga e desliga o agente</option>
+                          e só descobriria no primeiro dia de piloto.
+
+                          🔴 09/09/2026 — e a decisão do Founder resolveu o resto
+                          pela raiz: MEMBRO liga e desliga o agente. O rótulo
+                          "só consulta" virou mentira no mesmo dia, e um rótulo
+                          que mente sobre a permissão é o defeito que este
+                          comentário existe para não repetir. */}
+                      <option value="member">Membro — liga e desliga o agente</option>
+                      <option value="attendant">Atendente — liga e desliga o agente (mesmo poder)</option>
                       <option value="admin_company">Administrador — configura tudo</option>
                     </select>
                   </label>

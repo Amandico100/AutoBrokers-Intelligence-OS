@@ -21,8 +21,25 @@ export const TENANT_WRITE_ROLES = ['owner', 'admin', 'admin_company', 'master_ad
  * ✅ E não precisa de migration: 📊 `company_members.role` é `character varying`
  * **sem CHECK e sem enum** — as únicas constraints são as duas FK, a PK e a
  * UNIQUE `(user_id, company_id)`. Criar o papel é dado, não schema.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 🔴 DECISÃO DO FOUNDER, 09/09/2026 — `member` ENTRA NESTA LISTA.
+ *
+ * O papel `attendant` foi criado em 25/08 para a Regina e a Saionara — e o
+ * cadastro real delas nunca mudou: elas continuam **Membro** em
+ * `company_members`, e são elas que ligam o agente de manhã e desligam quando
+ * saem. O papel existia; a permissão não chegava a quem precisava dela.
+ *
+ * ⚠️ **E abrir isto NÃO abre mais nada.** `member` continua fora de
+ * `TENANT_WRITE_ROLES` — prompt, tom, nome do agente, equipe, cobrança e chaves
+ * seguem exigindo administrador. O portão por CAMPO de `decidirPatchDeAgente` é
+ * o que torna esta abertura segura: quem só está aqui passa apenas pelo corpo
+ * `{is_active}` do agente de **atendimento**, e por mais nada.
+ *
+ * ⛔ E o tenant não se move: a corretora vem de `requireCompanyMember`, que a lê
+ * da sessão e confere o vínculo ativo. Membro da A não liga o agente da B.
  */
-export const ATTENDANCE_TOGGLE_ROLES = [...TENANT_WRITE_ROLES, 'attendant'];
+export const ATTENDANCE_TOGGLE_ROLES = [...TENANT_WRITE_ROLES, 'attendant', 'member'];
 
 /**
  * Pode alternar o `is_active` do agente de ATENDIMENTO da própria corretora?
