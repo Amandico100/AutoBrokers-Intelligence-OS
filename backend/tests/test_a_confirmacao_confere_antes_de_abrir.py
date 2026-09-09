@@ -583,8 +583,14 @@ def teste_a_correcao_tem_teto_e_termina_em_gente() -> None:
            "esgotado o teto, aí sim vira gente — com o motivo escrito", str(s.get("reason")))
     # O dossiê que já existia continua servindo: quem assume lê o caso inteiro.
     dossie = DS.build_handoff_dossier(s, s.get("reason") or "")
-    checar("1235" in dossie and "conferencia_divergente" in dossie,
+    # 🔴 VERDADE VENCIDA, MIGRADA EM 08/09/2026 (§9.3). O motivo chegava ao
+    # cartão como `conferencia_divergente` — nome de chave numa tela que uma
+    # atendente lê com o segurado esperando (R11). A lição é a mesma — o
+    # dossiê tem de dizer POR QUE parou — e agora ela é cobrada na frase.
+    checar("1235" in dossie and "não bate com os dados do caso" in dossie,
            "e o dossiê leva o endereço CERTO e o motivo", dossie[:200])
+    checar("conferencia_divergente" not in dossie,
+           "e o motivo NÃO sai como nome de chave", dossie[:200])
 
     # 🔴 CONTROLE: a Azul, cuja tela OFERECE o conserto, responde a OPÇÃO —
     # o degrau 1 da escada, e não o texto do degrau 2.

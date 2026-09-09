@@ -1615,6 +1615,77 @@ def _moldura_da_resposta(session: Dict[str, Any],
     return {k: v for k, v in moldura.items() if v} or None
 
 
+#: Um status HTTP escrito dentro de uma mensagem de erro do provedor
+#: (`"HTTP 500: ..."`, `"HTTP 429 from Evolution GO"`) — 📊 é assim que o
+#: `EvolutionGoProvider._post` reporta hoje, e é a única forma em que o número
+#: chega até aqui quando o transporte devolve `bool`.
+_STATUS_NO_TEXTO = re.compile(r"\bHTTP[ :]*(\d{3})\b", re.IGNORECASE)
+
+
+def _sem_o_token(texto: str, token: str) -> str:
+    """Apaga a credencial de um texto que vai ser GRAVADO.
+
+    🔴 O `flow_token` autoriza responder em nome da corretora. Ele aparece no
+    corpo que o provedor devolve em erro (a rota ecoa o `paramsJSON`), e um
+    diagnóstico que o carrega transforma cada log numa cópia da chave."""
+    limpo = str(texto or "")
+    alvo = str(token or "").strip()
+    if alvo and len(alvo) >= 6:
+        limpo = limpo.replace(alvo, "«token»")
+    return limpo
+
+
+def _diagnostico_do_envio(retorno: Any, *, flow_id: str, token: str,
+                          envelope: str, campos: int) -> Dict[str, Any]:
+    """O que se sabe sobre a resposta de formulário que não saiu — sem PII.
+
+    ⚠️ **Só se grava o que o transporte devolve.** O `flow_sender` do webhook
+    devolve `bool` hoje: nestes casos `status` e `corpo` saem vazios, e o
+    diagnóstico DIZ isso em vez de inventar um número. Quando o transporte
+    devolve o `SendResult` (ou levanta a exceção do provedor), o status e os
+    200 primeiros caracteres do corpo entram — e é o mesmo campo, lido do
+    mesmo jeito, sem uma segunda estrutura em paralelo."""
+    diag: Dict[str, Any] = {
+        "erro": "", "status": None, "corpo": "", "flow_id": str(flow_id or ""),
+        "envelope": str(envelope or ""), "campos": int(campos),
+        # 🔴 O token NUNCA, nem truncado ao meio: só o suficiente para casar
+        # duas linhas de log do mesmo formulário.
+        "flow_token_final": (re.sub(r"\W", "", str(token or ""))[-4:] or ""),
+    }
+    if isinstance(retorno, BaseException):
+        diag["erro"] = type(retorno).__name__
+    corpo = ""
+    for atributo in ("error", "message", "text", "detail"):
+        valor = getattr(retorno, atributo, None)
+        if isinstance(valor, str) and valor.strip():
+            corpo = valor
+            break
+    if not corpo and isinstance(retorno, BaseException):
+        corpo = str(retorno)
+    resposta = getattr(retorno, "response", None)
+    for fonte, atributo in ((retorno, "status_code"), (retorno, "status"),
+                            (resposta, "status_code"), (resposta, "status")):
+        valor = getattr(fonte, atributo, None)
+        if isinstance(valor, int):
+            diag["status"] = valor
+            break
+    if not corpo and resposta is not None:
+        texto = getattr(resposta, "text", None)
+        if isinstance(texto, str):
+            corpo = texto
+    if diag["status"] is None and corpo:
+        achado = _STATUS_NO_TEXTO.search(corpo)
+        if achado:
+            diag["status"] = int(achado.group(1))
+    diag["corpo"] = _sem_o_token(corpo, token)[:200]
+    if not diag["erro"] and not diag["corpo"]:
+        # ⚠️ Recusa MUDA: o transporte devolveu falso e não disse por quê.
+        # Escrever isso é melhor que um campo vazio — o campo vazio parece
+        # "ninguém tentou", e alguém tentou.
+        diag["erro"] = "recusa_sem_motivo_do_transporte"
+    return diag
+
+
 def _responder_formulario_nativo(
     session: Dict[str, Any],
     playbook: Dict[str, Any],
@@ -1816,6 +1887,56 @@ def _responder_formulario_nativo(
         session["reason"] = "formulario_pronto_sem_transporte"
         return session
 
+    # =====================================================================
+    # 🔴 P-092-10 — A TRAVA DE LAÇO DO FORMULÁRIO. Ela existia e nunca era
+    # chamada aqui.
+    #
+    # 📊 Medido pelo red team, com linha de controle (PENDENCIAS, P-092-10):
+    #
+    #     volta 1..8: state=ura envios=1..8
+    #     BASE 8b49fdb envios=8  ·  HEAD envios=8
+    #     _would_loop diria laço? True   ← existe, responde certo, e nunca é chamado
+    #     step_counts = None   retry_count = None
+    #
+    # ⚠️ E o formulário **é** o passo de confirmação da família HDI/Yelum — a
+    # própria `_POLITICA_DE_RETOMADA` escreve isso para justificar
+    # `DIRETO_AO_HUMANO`. Oito confirmações não são oito respostas: são até
+    # oito chamados abertos para o mesmo segurado.
+    #
+    # 🔴 POR QUE O TETO AQUI É 1 E NA URA É 2. `_would_loop` pede DUAS saídas
+    # iguais antes de parar, e está certo para TECLA: a URA legitimamente
+    # cobra "1" em passos seguidos (teste Allianz 12/07). Confirmação não é
+    # tecla — repetir uma tecla custa um turno, repetir uma confirmação custa
+    # um chamado duplicado. Por isso a contagem por formulário vale 1, e o
+    # `_would_loop` fica como segunda porta: quando as duas últimas saídas já
+    # foram esta mesma resposta, ele para mesmo que a contagem tenha se
+    # perdido numa sessão que voltou do Redis.
+    # =====================================================================
+    n_campos = len(montado["params"])
+    resumo_de_sucesso = f"[FORMULÁRIO NATIVO respondido: {n_campos} campos]"
+    contagens = session.setdefault("step_counts", {})
+    # A contagem é POR FORMULÁRIO: dois formulários diferentes na mesma sessão
+    # são duas confirmações legítimas, e um teto compartilhado mataria a
+    # segunda. `tela_do_travamento` (roteador) lê a última chave daqui — e
+    # passa a saber dizer QUAL formulário travou.
+    chave_do_laco = f"formulario_nativo:{montado.get('flow_id') or 'sem_id'}"
+    ja_respondido = int(contagens.get(chave_do_laco) or 0)
+    if ja_respondido >= 1 or _would_loop(session, resumo_de_sucesso, "formulario_nativo"):
+        session["state"] = "needs_human"
+        session["reason"] = "formulario_em_laco"
+        # ⚠️ NADA vai para o `transcript` aqui, e isso é decisão. As duas
+        # únicas direções que existem são `in` e `out`, e todo leitor
+        # (dossiê, `admin_spec034`) rotula o que não é `out` como "seguradora".
+        # Uma nota nossa entraria na tela como fala DELA — mentira, no cartão
+        # que existe para não mentir. O que aconteceu já sai em português pelo
+        # motivo; o número de voltas fica aqui, para quem investiga.
+        session["formulario_em_laco"] = {
+            "flow_id": str(montado.get("flow_id") or ""),
+            "ja_respondido": ja_respondido,
+            "reapresentacoes": ja_respondido + 1,
+        }
+        return session
+
     live = bool(session.get("live")) and dispatch_live_enabled()
     # 🔴 A FRASE NÃO PODE DIZER "respondido" QUANDO NADA SAIU.
     #
@@ -1840,8 +1961,8 @@ def _responder_formulario_nativo(
     # Duas linhas que se contradizem no mesmo cartão de WhatsApp — e é o mesmo
     # defeito que o comentário do `live` ao lado diz estar matando, um ramo
     # adiante. Consertar metade de uma mentira deixa a outra metade.
-    n_campos = len(montado["params"])
     enviado = None
+    retorno = None
     if live:
         # 🔴 O ENVELOPE AUSENTE NÃO É "ENVIO QUE FALHOU" — conserto do B3.
         #
@@ -1865,15 +1986,30 @@ def _responder_formulario_nativo(
             return session
         envelope = str(session.get("envelope_do_flow") or "")
         try:
-            enviado = flow_sender(
+            retorno = flow_sender(
                 flow_token=token,
                 nome_do_envelope=envelope,
                 params=montado["params"],
                 flow_response_params=_moldura_da_resposta(session, montado),
             )
+            enviado = bool(retorno)
         except Exception as exc:  # noqa: BLE001 — transporte nunca derruba o motor
             enviado = False
-            session["flow_envio_erro"] = type(exc).__name__
+            retorno = exc
+        if not enviado:
+            # 🔴 "SÓ O NOME DA EXCEÇÃO" NÃO RESPONDE NENHUMA PERGUNTA.
+            #
+            # 📊 O campo `flow_envio_erro` existia e guardava `"Exception"` —
+            # e ninguém o lia. Com o piloto no ar amanhã, a pergunta que vai
+            # aparecer é *"por que o formulário da Yelum não sai?"*, e ela se
+            # responde com STATUS e CORPO, não com o nome de uma classe.
+            #
+            # ⚠️ O token NUNCA entra: ele autoriza responder em nome da
+            # corretora, é credencial, e `_sem_o_token` o apaga do texto do
+            # provedor antes de qualquer gravação.
+            session["flow_envio_erro"] = _diagnostico_do_envio(
+                retorno, flow_id=str(montado.get("flow_id") or ""),
+                token=token, envelope=envelope, campos=n_campos)
     if live and enviado:
         resumo = f"[FORMULÁRIO NATIVO respondido: {n_campos} campos]"
     elif live:
@@ -1886,9 +2022,28 @@ def _responder_formulario_nativo(
         {"direction": "out", "text": resumo, "at": _now(), "dry_run": not live,
          "enviado": bool(enviado), "step": "formulario_nativo"}
     )
+    # 🔴 A CONTAGEM SÓ SOBE DEPOIS DA SAÍDA REGISTRADA — P-092-10.
+    #
+    # Contá-la antes faria a tentativa que MORREU ANTES de sair (sem envelope)
+    # gastar a única resposta que este formulário tem. Aqui, `step_counts` diz
+    # a verdade: "este formulário já teve uma resposta escrita no transcript".
+    contagens[chave_do_laco] = ja_respondido + 1
     if live and not enviado:
         session["state"] = "needs_human"
-        session["reason"] = "formulario_envio_falhou"
+        # ⚠️ O SUFIXO É PARA MÁQUINA, e existe porque `work_events.payload.motivo`
+        # (roteador, `eventos_do_travamento`) é o ÚNICO campo desta sessão que
+        # chega à linha do tempo — quem investiga em produção lê a coluna, não
+        # o dicionário da sessão. O dossiê corta tudo depois do `:` e a
+        # atendente continua lendo uma frase. Cabe nos 180 caracteres da coluna.
+        diag = session.get("flow_envio_erro") or {}
+        marca = ";".join(
+            p for p in (
+                f"http={diag.get('status')}" if diag.get("status") else "",
+                f"flow={diag.get('flow_id')}" if diag.get("flow_id") else "",
+                f"erro={diag.get('erro')}" if diag.get("erro") else "",
+            ) if p)
+        session["reason"] = ("formulario_envio_falhou"
+                             + (f":{marca}"[:170] if marca else ""))
         return session
     session["state"] = "ura"
     return session
@@ -3213,17 +3368,312 @@ def reply_human_phase(
     return session
 
 
+# ===========================================================================
+# 🔴 O DOSSIÊ FALA PORTUGUÊS — R11 do Founder, aplicada ao cartão de handoff.
+#
+# 📊 Medido em 08/09/2026, no próprio texto que sai para o WhatsApp da equipe:
+#
+#     Seguradora: YELUM · Serviço: maquina_de_lavar
+#     Motivo: formulario_incompleto:rb_NivelDaRua,rb_InformacoesLocal
+#     - protocol: 68977599
+#     - client_phone: 5547988087463
+#
+# ⚠️ Quatro nomes de chave interna numa tela que uma atendente lê com o
+# segurado esperando. `loop_guard` não diz o que houve; `sentinela_stall` não
+# diz o que fazer; e `maquina_de_lavar` é o mesmo defeito que o `_TITULOS` do
+# `human_handoff` já tinha consertado no OUTRO dossiê — a correção existia e
+# não tinha atravessado para cá.
+#
+# 🔴 A regra que fecha a porta: o que é lido por gente sai em frase; o que é
+# lido por máquina fica no `session["reason"]`, que é de onde o `work_events`
+# tira o `payload.motivo`. Os dois existem, e nenhum finge ser o outro.
+# ===========================================================================
+
+#: Cada motivo em UMA frase que diz o que houve — e, quando muda a próxima
+#: ação de quem lê, o que fazer. A chave é o prefixo ANTES do `:`; o sufixo
+#: (lista de campos, regex do gatilho) nunca é impresso cru.
+_MOTIVOS_EM_PORTUGUES = {
+    # --- corredor / playbook ------------------------------------------
+    "playbook_not_found": "não existe corredor configurado para esta seguradora — "
+                          "o acionamento não chegou a começar",
+    "insurer_closed": "a seguradora encerrou a conversa antes de terminar",
+    "finalize_test_abort": "o acionamento parou de propósito: o modo de ensaio "
+                           "está ligado e nada foi aberto de verdade",
+    "reconciliacao_boot": "o acionamento estava aberto quando o sistema reiniciou",
+    "handoff": "o acionamento parou e precisa de uma pessoa",
+    # --- a seguradora pediu gente / outro caminho ----------------------
+    "handoff_trigger": "a própria seguradora pediu para falar com uma pessoa",
+    "encaminhado": "a seguradora não abre este chamado por aqui e mandou seguir "
+                   "por outro caminho",
+    "encaminhamento_sem_link": "a seguradora mandou seguir por outro caminho e "
+                               "não disse qual",
+    # --- falta dado ----------------------------------------------------
+    "missing_slots": "a seguradora pediu um dado que o caso não tem, numa tela "
+                     "sem volta",
+    "sem_chute": "a seguradora pediu um dado que o caso não tem — e o robô não "
+                 "responde o que não sabe",
+    # --- laço ----------------------------------------------------------
+    "loop_guard": "a seguradora repetiu a mesma pergunta e o robô já tinha "
+                  "respondido a mesma coisa duas vezes",
+    # 🔴 P-092-10: o formulário ganhou a MESMA trava da URA, e ela precisa de
+    # frase própria — "responderam de novo o formulário" e "responderam de novo
+    # uma tecla" levam a atendente a lugares diferentes no app.
+    "formulario_em_laco": "a seguradora mostrou o mesmo formulário outra vez "
+                          "depois de ele já ter sido respondido — o robô parou "
+                          "para não abrir o chamado em duplicidade",
+    "sentinela_stall": "a conversa ficou parada e as tentativas automáticas de "
+                       "retomar acabaram",
+    # --- formulário do app ---------------------------------------------
+    "formulario_nativo_desconhecido": "a seguradora abriu um formulário dentro "
+                                      "do app que o robô ainda não conhece",
+    "formulario_incompleto": "o formulário do app pede um dado que o caso não tem "
+                             "(as perguntas dele estão abaixo)",
+    "formulario_pronto_sem_flow_token": "a resposta do formulário ficou pronta, mas "
+                                        "a seguradora não mandou o código que "
+                                        "autoriza respondê-lo",
+    "formulario_pronto_sem_transporte": "a resposta do formulário ficou pronta, mas "
+                                        "este WhatsApp ainda não sabe responder "
+                                        "formulário — marque você, está tudo abaixo",
+    "formulario_sem_envelope": "a resposta do formulário ficou pronta e NÃO saiu: "
+                               "faltou a identificação que vem na tela da "
+                               "seguradora. Nada foi enviado",
+    "formulario_envio_falhou": "a resposta do formulário foi tentada e o envio "
+                               "falhou — pode ter chegado, não dá para saber",
+    # --- conferência / confirmação --------------------------------------
+    "conferencia_divergente": "o resumo que a seguradora leu de volta não bate "
+                              "com os dados do caso",
+    "confirmacao_bloqueada": "a confirmação foi barrada por segurança antes de "
+                             "abrir o chamado",
+    # --- o guarda da fase humana (e os motivos que ele devolve) ----------
+    "human_phase_guard": "o robô redigiu uma resposta e ela não passou na "
+                         "conferência de segurança",
+    "model_declined": "o robô não soube responder esta tela",
+    "too_long": "a resposta que o robô redigiu ficou longa demais para a URA",
+    "protocol_without_capture": "o robô ia falar de protocolo sem que a seguradora "
+                                "tivesse dado um",
+    "invented_number": "a resposta trazia um número que não veio do caso",
+    "silencio": "o robô decidiu não responder esta tela",
+    "empty": "o robô não produziu resposta nenhuma para esta tela",
+}
+
+#: Os sufixos que VALE traduzir: são nomes de campo, e o nome humano deles
+#: existe no vocabulário único da ficha. Gatilho de handoff não entra — ⚠️ o
+#: sufixo dele é o REGEX do corredor (`cancelar\s+(o\s+)?chamado`), e imprimir
+#: isso é pior que não imprimir nada.
+_MOTIVOS_QUE_NOMEIAM_CAMPOS = ("missing_slots", "sem_chute", "conferencia_divergente")
+
+
+def motivo_em_portugues(reason: str) -> str:
+    """A frase que a atendente lê no lugar do motivo interno.
+
+    Motivo desconhecido **não vira o próprio nome**: vira a frase honesta de
+    que parou e precisa de gente. 🔴 Devolver a chave crua no `else` faria
+    exatamente o que esta função existe para impedir — e faria em silêncio, no
+    dia em que alguém escrevesse um motivo novo."""
+    bruto = str(reason or "").strip()
+    if not bruto:
+        return _MOTIVOS_EM_PORTUGUES["handoff"]
+    chave, _, sufixo = bruto.partition(":")
+    chave = chave.strip()
+    frase = _MOTIVOS_EM_PORTUGUES.get(chave)
+    if frase and chave in _MOTIVOS_QUE_NOMEIAM_CAMPOS and sufixo.strip():
+        campos = [c.strip() for c in sufixo.split(",") if c.strip()]
+        nomes = [_rotulo_legivel(c) for c in campos]
+        if nomes:
+            frase = f"{frase} — falta: {', '.join(nomes)}"
+    if frase:
+        return frase
+    # ⚠️ O Vigia já chama com uma FRASE ("Travou na URA e a recuperação
+    # automática esgotou"). Frase que já é frase passa inteira; chave que
+    # ninguém mapeou some, e o cartão diz a verdade mínima.
+    if " " in bruto and "_" not in bruto:
+        return bruto
+    return _MOTIVOS_EM_PORTUGUES["handoff"]
+
+
+#: Serviços que o `_TITULOS` do `human_handoff` não nomeia — ele é por
+#: CATEGORIA, e o corredor trabalha por SUBSERVIÇO. Aqui só o que falta lá.
+_SUBSERVICOS_EM_PORTUGUES = {
+    "maquina_de_lavar": "MÁQUINA DE LAVAR",
+    "ar_condicionado": "AR-CONDICIONADO",
+    "eletrodomesticos": "ELETRODOMÉSTICO",
+    "limpeza_caixa_dagua": "LIMPEZA DE CAIXA D'ÁGUA",
+    "consulta_veterinaria": "CONSULTA VETERINÁRIA",
+    "bateria_nova": "BATERIA NOVA",
+    "taxi": "TÁXI",
+    "tecnico": "TÉCNICO",
+}
+
+
+def rotulo_do_servico(subservice: str) -> str:
+    """O nome do serviço como uma pessoa o diz.
+
+    Reaproveita o `_TITULOS` do `human_handoff` — a mesma tabela que já
+    conserta este defeito no dossiê da atendente. Import tardio e com rede:
+    este módulo é núcleo puro e o `human_handoff` arrasta o LangChain junto;
+    rótulo é enfeite de leitura e nunca pode derrubar um acionamento."""
+    chave = str(subservice or "").strip().lower()
+    if not chave:
+        return "não informado"
+    if chave in _SUBSERVICOS_EM_PORTUGUES:
+        return _SUBSERVICOS_EM_PORTUGUES[chave]
+    try:
+        from app.agents.tools.human_handoff import _TITULOS
+
+        if chave in _TITULOS:
+            return _TITULOS[chave][1]
+    except Exception:  # noqa: BLE001
+        pass
+    return chave.replace("_", " ").upper()
+
+
+#: O que a seguradora ENTREGOU, com o nome que a atendente usa.
+_CAPTURADOS_EM_PORTUGUES = {
+    "protocol": "Protocolo do chamado",
+    "password": "Senha que o prestador vai pedir",
+    "eta_minutes": "Previsão de chegada (minutos)",
+    "ticket_de_entrada": "Número do atendimento no chat (não é o do chamado)",
+    "schedule": "Agendamento",
+    "tracking_link": "Link de acompanhamento",
+    "client_phone": "Telefone do cliente",
+    "protocolo": "Protocolo do chamado",
+}
+
+
+def _rotulo_legivel(chave: str) -> str:
+    """Nome humano de um campo. Quando o vocabulário da ficha não conhece o
+    campo, ele devolve o PRÓPRIO nome — e é exatamente aí que o `_` vaza. Esta
+    função é a última peneira antes do WhatsApp."""
+    bruto = str(chave or "").strip()
+    if not bruto:
+        return ""
+    nome = _rotulo(bruto)
+    if nome != bruto:
+        return nome
+    nome = _CAPTURADOS_EM_PORTUGUES.get(bruto) or ""
+    if nome:
+        return nome
+    # `problema_eletrico_opcao` → "problema eletrico"; `rb_NivelDaRua` →
+    # "Nivel Da Rua". Nenhum dos dois é bonito; os dois são legíveis, e é isso
+    # que separa "campo que ninguém batizou" de "chave vazando".
+    limpo = re.sub(r"^(rb|cb|tx|dd)_", "", bruto)
+    limpo = re.sub(r"_?(opcao|texto|id)$", "", limpo)
+    limpo = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", limpo)
+    return limpo.replace("_", " ").strip() or bruto.replace("_", " ")
+
+
+#: Um nome de campo solto no meio de uma frase — `local_cep`, `rb_NivelDaRua`.
+#: 💭 Regex irmã da `_SNAKE` que o guarda de língua da 097 usa nos testes.
+_CHAVE_SOLTA = re.compile(r"\b[a-zA-Z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)+\b")
+
+
+def _frase_sem_chaves(texto: str) -> str:
+    """Traduz TODO nome de campo que sobrou dentro de uma frase pronta.
+
+    A última peneira: frases montadas para outro leitor (o cérebro, o log)
+    atravessam o dossiê inteiras, e é por dentro delas que a chave volta."""
+    limpo = str(texto or "").replace("`", "")
+    return _CHAVE_SOLTA.sub(lambda m: _rotulo_legivel(m.group(0)), limpo)
+
+
+def _valor_legivel(chave: str, valor: Any) -> str:
+    """O valor como se fala. `schedule` é um dicionário — imprimi-lo cru
+    entregava `{'day': '12/09', 'periodo': 'manha'}` a quem ia ligar para o
+    segurado."""
+    if isinstance(valor, dict):
+        dia = str(valor.get("day") or "").strip()
+        de, ate = str(valor.get("from") or "").strip(), str(valor.get("to") or "").strip()
+        periodo = str(valor.get("periodo") or valor.get("at") or "").strip()
+        partes = [p for p in (dia, (f"das {de} às {ate}" if de and ate else periodo)) if p]
+        return ", ".join(partes) or "sem detalhe"
+    if isinstance(valor, (list, tuple)):
+        return ", ".join(str(v) for v in valor)
+    texto = str(valor)
+    if "phone" in str(chave) or "telefone" in str(chave):
+        return telefone_curto(texto)
+    return texto
+
+
+def telefone_curto(numero: str) -> str:
+    """Só os quatro últimos dígitos. 🔴 O dossiê vai para um GRUPO de WhatsApp
+    e fica no histórico dele para sempre; o número inteiro do segurado não
+    precisa estar ali para a atendente achar o caso — para isso existe o link
+    do painel, uma linha acima."""
+    digitos = re.sub(r"\D", "", str(numero or ""))
+    if not digitos:
+        return "não informado"
+    if len(digitos) <= 4:
+        return f"final {digitos}"
+    return f"final {digitos[-4:]}"
+
+
+def link_do_caso(session: Dict[str, Any]) -> str:
+    """O link direto para a Ficha no painel — a MESMA rota que o
+    `human_handoff._link_da_conversa` usa (`/dashboard/atendimentos/conversas`).
+
+    Sem URL configurada devolve "" e a linha some: link quebrado num cartão de
+    handoff é pior que link nenhum — ele custa um toque e a atendente perde a
+    página inteira no celular."""
+    base = (os.getenv("SMITH_WEB_URL") or os.getenv("FRONTEND_URL")
+            or os.getenv("APP_BASE_URL") or "").strip().rstrip("/")
+    ident = str(session.get("conversation_id") or session.get("case_id") or "").strip()
+    if not base or not ident:
+        return ""
+    return f"{base}/dashboard/atendimentos/conversas?c={ident}"
+
+
+def _rotulos_do_formulario(session: Dict[str, Any],
+                           playbook: Dict[str, Any]) -> Dict[str, Any]:
+    """`{campo: pergunta}` e `{campo: {id_da_opcao: título}}` do formulário que
+    esta sessão respondeu — para o cartão dizer *"Em relação ao nível da rua:
+    Subsolo"* no lugar de *"rb_NivelDaRua: 4"*.
+
+    Lê o schema do PRÓPRIO corredor pelo `flow_id` que a montagem gravou. Sem
+    schema resolvível, devolve vazio e o cartão cai no rótulo prettificado —
+    nunca na chave crua."""
+    perguntas: Dict[str, str] = {}
+    opcoes: Dict[str, Dict[str, str]] = {}
+    flow_id = str((session.get("flow_resposta") or {}).get("flow_id") or "").strip()
+    if not flow_id:
+        return {"perguntas": perguntas, "opcoes": opcoes}
+    try:
+        schema = native_flow(playbook, flow_id)
+        for _tela, comp in _flow_components(schema or {}):
+            nome = str(comp.get("name") or "")
+            if not nome:
+                continue
+            rotulo_do_campo = str(comp.get("label") or "").strip()
+            if rotulo_do_campo:
+                perguntas[nome] = rotulo_do_campo
+            titulos = {str(o.get("id")): str(o.get("title") or "")
+                       for o in comp.get("options") or [] if o.get("id")}
+            if titulos:
+                opcoes[nome] = titulos
+    except Exception:  # noqa: BLE001 — enfeite de leitura nunca derruba dossiê
+        return {"perguntas": {}, "opcoes": {}}
+    return {"perguntas": perguntas, "opcoes": opcoes}
+
+
 def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     """Dossiê MASTIGADO para o humano assumir sem perguntar nada ao cliente
-    (exigência do founder: 'entregar tudo mastigadinho'). Texto de WhatsApp."""
+    (exigência do founder: 'entregar tudo mastigadinho'). Texto de WhatsApp.
+
+    🔴 **Nada aqui sai em nome de chave.** Motivo, serviço, campo capturado e
+    campo de formulário passam por tradutor; telefone sai com os quatro últimos
+    dígitos e o caso se acha pelo link do painel."""
     playbook = get_playbook(session.get("playbook_ref") or "") or {}
     slots = session.get("slots") or {}
     captured = session.get("captured") or {}
     insurer = str(playbook.get("insurer_key") or "?").upper()
     linhas = [
         "🚨 *ATENDIMENTO PRECISA DE VOCÊ*",
-        f"Seguradora: {insurer} · Serviço: {session.get('subservice') or '?'}",
-        f"Motivo: {reason or session.get('reason') or 'handoff'}",
+        f"Seguradora: {insurer} · Serviço: {rotulo_do_servico(session.get('subservice') or '')}",
+        f"O que aconteceu: {motivo_em_portugues(reason or session.get('reason') or '')}",
+    ]
+    link = link_do_caso(session)
+    if link:
+        linhas.append(f"Abrir o caso no painel: {link}")
+    linhas += [
         "",
         "*Dados do caso:*",
     ]
@@ -3236,12 +3686,17 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     for key, label in labels.items():
         val = str(slots.get(key) or "").strip()
         if val:
+            # ⚠️ O telefone de contato é telefone do mesmo jeito que o
+            # `client_phone` lá embaixo: mascarar um e imprimir o outro
+            # protegeria metade do número da mesma pessoa.
+            if key == "telefone_contato":
+                val = telefone_curto(val)
             linhas.append(f"- {label}: {val}")
     if captured:
         linhas.append("")
         linhas.append("*Já capturado da seguradora:*")
         for k, v in captured.items():
-            linhas.append(f"- {k}: {v}")
+            linhas.append(f"- {_rotulo_legivel(k)}: {_valor_legivel(k, v)}")
 
     # FORMULÁRIO NATIVO: o que o humano vê aqui decide se ele leva 10 segundos
     # ou reentrevista o segurado. Quando a resposta está pronta, vai pronta —
@@ -3249,18 +3704,35 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     # com as opções DELA, para ele perguntar com as palavras certas.
     flow_resposta = session.get("flow_resposta") or {}
     if flow_resposta:
+        # 🔴 Os `id` de opção e os `name` de campo são do MOLDE do formulário,
+        # não do vocabulário de ninguém: `rb_NivelDaRua: 4` manda a atendente
+        # procurar um campo chamado "rb" e marcar um "4" que a tela não mostra.
+        # A tela mostra "Em relação ao nível da rua" e "Subsolo" — e as duas
+        # coisas estão no schema que o próprio corredor guarda.
+        dicionario = _rotulos_do_formulario(session, playbook)
+        perguntas, titulos = dicionario["perguntas"], dicionario["opcoes"]
+
+        def _campo(nome: str) -> str:
+            return perguntas.get(nome) or _rotulo_legivel(nome)
+
+        def _escolha(nome: str, valor: Any) -> str:
+            mapa = titulos.get(nome) or {}
+            itens = valor if isinstance(valor, (list, tuple)) else [valor]
+            return ", ".join(str(mapa.get(str(v)) or v) for v in itens)
+
         linhas.append("")
         if flow_resposta.get("ok") and flow_resposta.get("params"):
             linhas.append("*Formulário do app: RESPOSTA PRONTA — é só marcar assim:*")
             for campo, valor in (flow_resposta["params"] or {}).items():
-                escolha = ", ".join(str(v) for v in valor) if isinstance(valor, (list, tuple)) else str(valor)
-                linhas.append(f"- {campo}: {escolha}")
+                linhas.append(f"- {_campo(campo)}: {_escolha(campo, valor)}")
             if flow_resposta.get("defaults_used"):
-                linhas.append(f"  (saíram de padrão: {', '.join(flow_resposta['defaults_used'])} — confira)")
+                padroes = ", ".join(_campo(c) for c in flow_resposta["defaults_used"])
+                linhas.append(f"  (saíram de padrão: {padroes} — confira)")
         else:
             linhas.append("*Formulário do app: FALTA dado para responder.*")
             for det in (flow_resposta.get("missing_detail") or [])[:6]:
-                pergunta = str(det.get("pergunta") or det.get("campo") or "")
+                pergunta = (str(det.get("pergunta") or "").strip()
+                            or _rotulo_legivel(det.get("campo") or ""))
                 opcoes = ", ".join(str(o.get("titulo") or o.get("id")) for o in det.get("opcoes") or [])
                 linhas.append(f"- {pergunta}" + (f"\n  opções: {opcoes}" if opcoes else ""))
                 if det.get("motivo") == "valor_nao_reconhecido":
@@ -3274,7 +3746,12 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
              or session.get("motivo_legivel") or {})
     if falta.get("rotulo"):
         linhas.append("")
-        linhas.append(f"*A seguradora pediu e não temos:* {falta['rotulo']}")
+        # ⚠️ `falta_para_a_ura.rotulo` é escrito para o CÉREBRO — ele chega
+        # como "local_cep (a tela `local_cep_ask` pede isso)". Traduzir na
+        # origem estragaria o prompt; traduzir aqui é o certo, porque são dois
+        # leitores com necessidades opostas lendo o mesmo campo.
+        linhas.append(f"*A seguradora pediu e não temos:* "
+                      f"{_frase_sem_chaves(falta['rotulo'])}")
     tail = [t for t in (session.get("transcript") or []) if t.get("text")][-6:]
     if tail:
         linhas.append("")
@@ -3297,8 +3774,13 @@ def build_handoff_dossier(session: Dict[str, Any], reason: str = "") -> str:
     # anunciar "Dossiê entregue à equipe" para um dossiê que ninguém recebeu.
     # Flag que mente encerra a investigação.
     avisado = bool(session.get("client_notified_handoff"))
+    # 🔴 O NÚMERO INTEIRO NÃO PRECISA ESTAR AQUI — e este cartão é reencaminhável.
+    #
+    # Ele vai para um GRUPO de WhatsApp e fica no histórico dele para sempre.
+    # Os quatro últimos dígitos bastam para a atendente CONFERIR que abriu a
+    # conversa certa; para CHEGAR nela existe o link do painel, no cabeçalho.
     linhas.append(
-        f"Cliente no WhatsApp: {session.get('client_phone') or '?'} — "
+        f"Cliente no WhatsApp: {telefone_curto(session.get('client_phone') or '')} — "
         + ("ele JÁ foi avisado que a equipe vai assumir."
            if avisado else
            "🔴 ele AINDA NÃO foi avisado. Fale com ele primeiro."))
@@ -3435,6 +3917,11 @@ _POLITICA_DE_RETOMADA: Dict[str, str] = {
     "conferencia_divergente": NAO_RETOMA,
     # 🔴 Retomar repetiria exatamente o laço que o guarda acabou de cortar.
     "loop_guard": NAO_RETOMA,
+    # 🔴 P-092-10, e pela MESMA razão do `loop_guard` acima — mais uma: aqui a
+    # resposta que se repetiria é uma CONFIRMAÇÃO. Uma retomada mandaria o
+    # segundo prestador à casa de alguém, que é o desfecho que a nota do
+    # `formulario_envio_falhou` (duas dezenas de linhas acima) descreve.
+    "formulario_em_laco": NAO_RETOMA,
     # Não é travamento: a rota não existe. O conserto é criar o corredor.
     "playbook_not_found": NAO_RETOMA,
     # ⚠️ P-084-67, fora do escopo desta SPEC por §9: faltam canal e token de

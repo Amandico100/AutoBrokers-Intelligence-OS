@@ -346,9 +346,23 @@ def teste_o_formulario_completo_e_montado_e_o_incompleto_recusado():
     checar((sessao2.get("flow_resposta") or {}).get("ok") is True,
            "mas a resposta fica montada na sessão")
     dossie = MOTOR.build_handoff_dossier(sessao2, sessao2.get("reason") or "")
-    checar("RESPOSTA PRONTA" in dossie and "rb_NivelDaRua: 4" in dossie,
+    # 🔴 VERDADE VENCIDA, MIGRADA EM 08/09/2026 (§9.3). Esta linha exigia
+    # `rb_NivelDaRua: 4` — o `name` do campo e o `id` da opção, como estão no
+    # MOLDE do formulário. Era o que o dossiê tinha, e o teste guardava o
+    # defeito: a atendente procurava um campo chamado "rb" e um "4" que a tela
+    # não mostra. O que a tela mostra — e o que ela precisa marcar — é a
+    # PERGUNTA e o TÍTULO da opção, e os dois estão no schema do corredor.
+    #
+    # ⚠️ A lição não morre, migra: continua sendo "campo por campo, para ele
+    # clicar em 10 segundos". Só que agora nas palavras da tela.
+    checar("RESPOSTA PRONTA" in dossie
+           and "Em relação ao nível da rua" in dossie
+           and "Nível da rua - com acesso livre" in dossie,
            "e o dossiê entrega ao humano o que marcar, campo por campo",
            "ele clica em 10 segundos em vez de reentrevistar o segurado")
+    checar("rb_NivelDaRua" not in dossie,
+           "e o NOME DE CAMPO do molde não aparece (R11 — língua humana)",
+           dossie[:200])
 
     # --- caso incompleto: recusa, e nomeia o que falta ----------------------
     incompleto = dict(CASO_COMPLETO)

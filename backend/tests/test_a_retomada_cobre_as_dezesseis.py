@@ -132,8 +132,16 @@ def test_sao_dezesseis():
     # ⚠️ O nome deste arquivo continua dizendo DEZESSEIS, e fica: ele nomeia
     # o achado que o criou (📊 *uma* de dezesseis retomava). Renomear apagaria
     # a historia; o numero vive aqui, medido do fonte.
-    assert len(familias) == 17, (
-        f"o fonte tem {len(familias)} famílias de travamento, não 17: "
+    #
+    # 🔴 E DEZESSETE VIROU DEZOITO em 08/09/2026, pelo mesmo tipo de conserto.
+    # `formulario_em_laco` nasceu para fechar a P-092-10: a URA reapresentava a
+    # mesma tela e o corredor RESPONDIA de novo — 📊 8 voltas, 8 envios, e o
+    # formulario e' o passo de CONFIRMACAO da familia HDI/Yelum. O veredito
+    # dele e' `nao_retoma` pela razao do `loop_guard` mais uma: o que se
+    # repetiria e' uma confirmacao, e confirmacao repetida manda o segundo
+    # prestador a' casa de alguem.
+    assert len(familias) == 18, (
+        f"o fonte tem {len(familias)} famílias de travamento, não 18: "
         f"{sorted(familias)}")
 
 
@@ -166,6 +174,9 @@ def test_sao_dezesseis():
     # não retoma, e continuar também não resolve — falta CONSERTO
     ("conferencia_divergente", M.NAO_RETOMA),
     ("loop_guard", M.NAO_RETOMA),
+    # 🔴 P-092-10. A mesma razao do `loop_guard`, mais uma: aqui o que se
+    # repetiria e' uma CONFIRMACAO, e nao uma tecla.
+    ("formulario_em_laco", M.NAO_RETOMA),
     ("playbook_not_found", M.NAO_RETOMA),
     # 🔴 Sabe-se que NADA SAIU. `NAO_RETOMA` porque refazer da' no mesmo —
     # falta a CAPTURA, nao a rede — e o motivo proprio existe para que quem

@@ -41,9 +41,25 @@ def _load(dotted, rel):
     return mod
 
 
-for name in ("app", "app.services", "app.tasks"):
+for name in ("app", "app.services", "app.tasks", "app.atendimento"):
     module = sys.modules.setdefault(name, types.ModuleType(name))
     module.__path__ = []
+
+# ATUALIZADO em 08/09/2026 — CLAUDE.md §9.3: o fato mudou, o teste muda com ele.
+#
+# 🔴 `_followup_schedule` deixou de ter janela PRÓPRIA (era `_polite`, com
+# `America/Sao_Paulo` escrito no código) e passou a chamar a única janela do
+# produto, `acompanhamento.calcular_envio_do_follow_up`. O `__path__ = []` acima
+# faz `from app.atendimento import acompanhamento` falhar — então os módulos
+# que a nova cadeia atravessa entram aqui, pelo MESMO `_load`.
+#
+# ⚠️ Nenhum deles é dublê: são os arquivos de produção. O que este bloco monta é
+# só o pacote falso que o `_load` exige — o comportamento medido continua sendo
+# o do MOTOR (§9.4).
+_load("app.services.platform_outbound", "app/services/platform_outbound.py")
+_load("app.services.o_fim_do_atendimento", "app/services/o_fim_do_atendimento.py")
+_load("app.atendimento.acompanhamento", "app/atendimento/acompanhamento.py")
+sys.modules["app.atendimento"].acompanhamento = sys.modules["app.atendimento.acompanhamento"]
 
 pb = _load("app.services.corridor_playbooks", "app/services/corridor_playbooks.py")
 dispatch = _load("app.services.insurer_dispatch_service", "app/services/insurer_dispatch_service.py")
@@ -80,9 +96,18 @@ def run():
     s["client_phone"] = "5547988087463"
     s["reason"] = "handoff_trigger:formulario nativo"
     dossie = dispatch.build_handoff_dossier(s, s["reason"])
-    check("dossie: cabecalho + seguradora + servico", "PRECISA DE VOC" in dossie and "YELUM" in dossie and "guincho" in dossie, dossie[:80])
+    # 🔴 DUAS VERDADES VENCIDAS, MIGRADAS EM 08/09/2026 (§9.3):
+    #   1. o servico saia como `guincho`, o nome da chave. Agora sai GUINCHO,
+    #      do mesmo `_TITULOS` que o dossie da atendente ja usava;
+    #   2. o telefone do cliente saia INTEIRO num cartao que vive para sempre
+    #      no historico de um grupo de WhatsApp. Agora sai o final.
+    # As duas licoes continuam testadas — cabecalho completo, e o cliente
+    # identificavel — e o guarda ficou mais forte: ele agora reprova o vazamento.
+    check("dossie: cabecalho + seguradora + servico", "PRECISA DE VOC" in dossie and "YELUM" in dossie and "GUINCHO" in dossie, dossie[:80])
+    check("dossie: o servico NAO sai como nome de chave", "guincho" not in dossie, dossie[:80])
     check("dossie: dados do caso (CPF/placa/local)", "11122233344" in dossie and "ABC1D23" in dossie and "Rua A" in dossie)
-    check("dossie: cliente e proxima acao", "5547988087463" in dossie and "Conversas" in dossie)
+    check("dossie: cliente e proxima acao", "final 7463" in dossie and "Conversas" in dossie)
+    check("dossie: o telefone do cliente NAO sai inteiro", "5547988087463" not in dossie)
 
     # ---------- Fila multi-cliente (memory fallback) ----------
     pos1 = asyncio.run(router.enqueue_dispatch("coQ", "551130039303", {"case_id": "q1", "playbook_ref": "porto-auto-whatsapp@v1", "subservice": "guincho", "slots": SLOTS, "client_phone": "111"}))
