@@ -131,10 +131,36 @@ ISENTOS = {
 }
 
 
+def _envia_mensagem(fn: ast.AST) -> bool:
+    """A função envia — chamando direto OU jogando o envio numa thread.
+
+    🔴 ATUALIZADO EM 08/09/2026, e a lição MIGROU em vez de morrer.
+
+    `whatsapp_service.send_message` é síncrono (`requests` + `time.sleep`) e
+    era chamado direto de corrotina, congelando o event loop de todo mundo. O
+    conserto o envolveu em `asyncio.to_thread(whatsapp_service.send_message,
+    ...)` — e ali ele deixa de ser um `Call` e vira um ARGUMENTO.
+
+    ⚠️ O detector antigo só enxergava `Call`. Sem esta função ele pararia de
+    ver `admin_send_message`, o guarda ficaria verde por CEGUEIRA, e a isenção
+    dela viraria "fantasma". Um envio atrás de uma thread continua sendo um
+    envio ao segurado; o portão vale igual.
+    """
+    if "send_message" in _chamadas(fn):
+        return True
+    for f in ast.walk(fn):
+        if isinstance(f, ast.Call) and isinstance(f.func, ast.Attribute) \
+                and f.func.attr == "to_thread":
+            for arg in f.args:
+                if isinstance(arg, ast.Attribute) and arg.attr == "send_message":
+                    return True
+    return False
+
+
 def _fala_com_segurado(fn: ast.AST, fonte: str) -> bool:
     """A função manda mensagem para um DESTINO derivado do segurado?"""
     trecho = ast.get_source_segment(fonte, fn) or ""
-    if "send_message" not in _chamadas(fn):
+    if not _envia_mensagem(fn):
         return False
     return any(p in trecho for p in ("payload.phone", "session_id", "sessao",
                                      "para_o_segurado", "phone,"))
@@ -190,11 +216,34 @@ def teste_o_audio_que_falha_nao_responde_sozinho():
     # ocorrência dentro do comentário que explica o conserto, e reprovou o
     # código por causa da própria documentação — o mesmo erro que já cometi
     # duas vezes hoje. Comentário não envia mensagem; `send_message` envia.
-    i = fonte.find('send_message(payload.phone, "Erro ao processar áudio."')
+    #
+    # 🔴 ATUALIZADO EM 08/09/2026 — A LIÇÃO MIGROU, A ÂNCORA MUDOU.
+    #
+    # A âncora era o texto literal `"Erro ao processar áudio."`. Era verdade —
+    # até a frase deixar de ser aquela. O produto falava de SI ("erro ao
+    # processar") para alguém que acabou de descrever uma batida; agora diz o
+    # que aconteceu em português e pede o próximo passo.
+    #
+    # ⚠️ Manter a âncora vencida deixaria este guarda VERMELHO por causa de um
+    # conserto — que é o jeito mais rápido de ensinar todo mundo a ignorar
+    # teste (CLAUDE.md §9.3). O que este arquivo protege nunca foi a frase: é o
+    # PORTÃO antes dela. A âncora passa a ser a constante da frase nova, e as
+    # duas checagens de baixo continuam idênticas.
+    i = fonte.find("payload.phone, AVISO_DE_AUDIO_ILEGIVEL, integration,")
     checar(i > 0, "o caminho do áudio que falha existe",
            "se sumiu, o teste precisa saber por quê antes de ficar verde")
     if i <= 0:
         return
+
+    # E a frase antiga não pode ter sobrado em nenhum envio. Só em comentário,
+    # que é onde a história dela mora.
+    for no in ast.walk(ast.parse(fonte)):
+        if isinstance(no, ast.Constant) and no.value == "Erro ao processar áudio.":
+            checar(False, "a frase de sistema não é mais enviada ao segurado",
+                   f"literal viva na linha {no.lineno}")
+            break
+    else:
+        checar(True, "a frase de sistema não é mais enviada ao segurado")
 
     # A checagem tem de estar ANTES do envio, na mesma vizinhança.
     janela = fonte[max(0, i - 1400):i]

@@ -25,6 +25,11 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+# O rótulo do vídeo. Constante porque quem atende (o prompt do agente) e quem
+# testa precisam da MESMA frase — e porque ela é o que o modelo lê para saber
+# que não há nada de visual para ele analisar.
+MARCA_DO_VIDEO = "[Cliente enviou um vídeo]"
+
 # Wrappers que embrulham a mensagem real (interativas costumam vir dentro).
 _WRAPPER_KEYS = (
     "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
@@ -815,6 +820,30 @@ def normalize_evolution_inbound(payload: Dict[str, Any]) -> Dict[str, Any]:
             break
 
     text = _text_from_message(msg_dict)
+
+    # 🔴 VÍDEO — o cliente mandava e NINGUÉM respondia.
+    #
+    # O mapa de mídia acima conhece imagem, documento e áudio. Vídeo não estava
+    # lá, e `_text_from_message` só devolve a LEGENDA — então o vídeo sem
+    # legenda caía em `skip:no_text` e o segurado ficava falando sozinho: ele
+    # gravou a batida, apertou enviar e não voltou nada. Nem erro, nem silêncio
+    # explicado — nada.
+    #
+    # ⛔ O vídeo NÃO é baixado. Baixar exigiria storage, mime, transcodificação
+    # e um modelo que leia vídeo — nenhum dos quais existe hoje. O que ele
+    # precisa é CHEGAR: vira texto de contexto, entra no pipeline de texto
+    # normal (buffer → agente) e quem atende pede uma foto ou a descrição.
+    #
+    # A legenda, quando existe, vem JUNTO e numa linha própria — ela é a fala do
+    # cliente e não pode ser engolida pelo rótulo. Sozinha, ela também não
+    # bastava: "olha isso aqui" sem dizer que houve um vídeo faz o agente
+    # responder no vazio.
+    _video = msg_dict.get("videoMessage")
+    if isinstance(_video, dict):
+        _legenda = _video.get("caption")
+        _legenda = _legenda.strip() if isinstance(_legenda, str) and _legenda.strip() else None
+        text = MARCA_DO_VIDEO + (f"\n{_legenda}" if _legenda else "")
+
     interactive = None
     if not text and not media:
         rendered = _interactive_from_message(msg_dict)

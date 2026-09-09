@@ -575,7 +575,15 @@ def test_CONTROLE_o_cortador_de_comentario_realmente_corta():
     assert enganosa in fonte, "a frase-sentinela sumiu do arquivo — troque-a"
     assert enganosa not in limpo, (
         "o comentário que causou o defeito sobreviveu ao corte")
-    assert "success = whatsapp_service.send_message(payload.phone" in limpo, (
+    # 🔴 ÂNCORA ATUALIZADA EM 08/09/2026 — a lição migrou, o fato mudou.
+    #
+    # A linha era `success = whatsapp_service.send_message(payload.phone, ...)`.
+    # Ela deixou de existir porque o envio é SÍNCRONO (`requests` + `time.sleep`)
+    # e chamá-lo direto de uma corrotina congelava o event loop de todos os
+    # atendimentos; agora ele vai por `asyncio.to_thread`. O que este CONTROLE
+    # prova continua idêntico — o cortador de comentários não pode comer código
+    # de verdade. Só a linha de código escolhida como amostra mudou.
+    assert "whatsapp_service.send_message, payload.phone, payload.message" in limpo, (
         "o cortador comeu CÓDIGO de verdade — ele está cortando demais")
 
 

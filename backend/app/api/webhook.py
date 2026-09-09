@@ -279,6 +279,84 @@ def _url_de_midia(client, bucket: str, file_path: str) -> Optional[str]:
     return client.storage.from_(bucket).get_public_url(file_path)
 
 
+# =============================================================================
+# 🔴 A FOTO GRANDE — o descarte em silêncio
+# =============================================================================
+#
+# O teto era 5 MB e o `return None` era mudo. Do lado do segurado: ele
+# fotografou o para-choque com um celular moderno, apertou enviar, e não voltou
+# NADA. Nem a análise, nem um pedido de outra foto, nem um erro. E a foto de
+# dano é justamente a mensagem que ele mais precisa que chegue.
+#
+# ⚠️ 5 MB não é limite de lugar nenhum: o WhatsApp aceita até 16 MB de mídia, e
+# é esse o número que descreve o que pode entrar pela porta. O limite do modelo
+# de visão é OUTRO (≈5 MB) e mora dentro — por isso são duas constantes, não
+# uma. Confundi-las foi o que fez o produto recusar o que o canal entrega.
+_LIMITE_DO_WHATSAPP_BYTES = 16 * 1024 * 1024
+_LIMITE_DA_VISAO_BYTES = 5 * 1024 * 1024
+
+# ⛔ Sentinela, e não `None`, porque `None` é o que o chamador já usa para
+# "falhou e eu não sei explicar". Foto grande demais é a única falha aqui que o
+# produto sabe explicar em português — e explicar é a diferença entre um
+# segurado atendido e um segurado no vácuo. Um objeto próprio (comparado com
+# `is`) não pode ser confundido com uma URL de verdade.
+FOTO_GRANDE_DEMAIS = "__foto_grande_demais__"
+
+# A frase que o segurado lê. Sem jargão, sem código de erro, e ela pede a
+# PRÓXIMA AÇÃO — porque avisar sem dizer o que fazer devolve o problema para
+# quem já está no acostamento.
+AVISO_DE_AUDIO_ILEGIVEL = (
+    "Não consegui ouvir o seu áudio agora. Pode me escrever em poucas palavras "
+    "o que aconteceu?"
+)
+
+AVISO_DE_FOTO_GRANDE = (
+    "Recebi a sua foto, mas ela veio grande demais e não consegui abrir aqui. "
+    "Pode mandar de novo em tamanho menor, ou tirar outra pela câmera do "
+    "WhatsApp mesmo?"
+)
+
+
+def _encolher_para_a_visao(image_bytes: bytes, limite: int) -> "bytes | None":
+    """Recomprime a foto até caber em `limite`. `None` = não deu (ou sem Pillow).
+
+    ⚠️ Pillow **não** está em `requirements.txt` e esta SPEC não adiciona
+    dependência (o Dockerfile instala só o que está lá). Então o import é
+    condicional e a ausência dele não é erro: sem Pillow o produto ainda ganha o
+    teto de 16 MB e o aviso humano; com Pillow, ganha também a foto grande
+    ATENDIDA em vez de recusada. Um caminho a mais, nenhum caminho a menos.
+    """
+    try:
+        from PIL import Image  # opcional de propósito: pode não estar instalado
+    except Exception:  # noqa: BLE001
+        logger.info("[VISION] Pillow ausente — sem redução; vale só o teto de tamanho")
+        return None
+
+    import io
+
+    # Qualidade primeiro, tamanho depois: o que o modelo lê é o DETALHE (placa,
+    # trinca, número do chassi), e reduzir pixel destrói detalhe antes de
+    # destruir peso. Só encolhe de verdade quando recomprimir não bastou.
+    dados = None
+    for escala, qualidade in ((1.0, 82), (1.0, 68), (0.75, 75), (0.55, 70), (0.4, 65)):
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                img = img.convert("RGB")
+                if escala != 1.0:
+                    largura = max(1, int(img.width * escala))
+                    altura = max(1, int(img.height * escala))
+                    img = img.resize((largura, altura))
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=qualidade, optimize=True)
+                dados = buffer.getvalue()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[VISION] redução falhou (%s)", type(e).__name__)
+            return None
+        if len(dados) <= limite:
+            return dados
+    return None
+
+
 async def process_image_for_vision(
     image_url: str, company_id: str, supabase_client
 ) -> Optional[str]:
@@ -290,9 +368,30 @@ async def process_image_for_vision(
             response.raise_for_status()
             image_bytes = response.content
 
-        if len(image_bytes) > 5 * 1024 * 1024:
-            logger.warning(f"[VISION] Image too large: {len(image_bytes)} bytes")
-            return None
+        # Acima do que o próprio canal entrega, não há o que fazer com os bytes
+        # — mas há o que dizer a quem enviou. 📊 Log sem PII: só o tamanho.
+        if len(image_bytes) > _LIMITE_DO_WHATSAPP_BYTES:
+            logger.warning("[VISION] foto acima do limite do canal: %d bytes (teto %d)",
+                           len(image_bytes), _LIMITE_DO_WHATSAPP_BYTES)
+            return FOTO_GRANDE_DEMAIS
+
+        # ⚠️ Entre 5 MB e 16 MB a foto PASSA — reduzida quando dá, inteira
+        # quando não dá. Não reduzir custa o CONTEXTO VISUAL (o modelo recusa e
+        # o `except` do chamador segue sem ele); recusar a foto custa a FOTO,
+        # que a atendente veria no chat. O barato aqui é o caminho que entrega
+        # alguma coisa, não o que devolve nada.
+        if len(image_bytes) > _LIMITE_DA_VISAO_BYTES:
+            menor = await asyncio.to_thread(
+                _encolher_para_a_visao, image_bytes, _LIMITE_DA_VISAO_BYTES
+            )
+            if menor is None:
+                logger.warning("[VISION] foto de %d bytes acima do limite do modelo e "
+                               "não reduzida — segue para o storage assim mesmo",
+                               len(image_bytes))
+            else:
+                logger.info("[VISION] foto reduzida de %d para %d bytes",
+                            len(image_bytes), len(menor))
+                image_bytes = menor
 
         # Gerar caminho único
         today = date.today().isoformat()
@@ -436,6 +535,18 @@ async def process_whatsapp_message_background(
         try:
             from app.services.dispatch_router import try_route_insurer_inbound
 
+            # ⚠️ ESTES TRÊS NÃO GANHARAM `to_thread`, E É DE PROPÓSITO.
+            #
+            # `_send_to_insurer`, `_send_to_client` e o lambda do cartógrafo são
+            # funções SÍNCRONAS entregues a outro motor, que as chama como
+            # `callable(...)`. Embrulhar em `to_thread` faria cada uma devolver
+            # uma corrotina que ninguém aguarda — o envio simplesmente não
+            # aconteceria, e o corredor da seguradora pararia em silêncio. O
+            # conserto certo delas é mudar o CONTRATO do chamador (aceitar
+            # awaitable), que é obra de outra SPEC e não véspera de piloto.
+            #
+            # Por isso o guarda de `to_thread` mira só a chamada DIRETA no corpo
+            # do `async def`: é lá que o defeito é real e o conserto é local.
             def _send_to_insurer(text_out: str) -> None:
                 whatsapp_service.send_message(payload.phone, text_out, integration)
 
@@ -706,7 +817,17 @@ async def process_whatsapp_message_background(
                     except Exception:  # noqa: BLE001
                         _pode_falar = False
                     if _pode_falar:
-                        whatsapp_service.send_message(payload.phone, "Erro ao processar áudio.", integration)
+                        # 🔴 "Erro ao processar áudio." era o produto falando de
+                        # SI para uma pessoa que acabou de descrever uma batida.
+                        # Ela não sabe o que é processar áudio, não é culpada
+                        # pelo erro e não recebe o que fazer agora. A frase nova
+                        # diz a mesma verdade em língua de gente e devolve um
+                        # caminho — escrever em poucas palavras — que funciona
+                        # mesmo com a transcrição fora do ar.
+                        await asyncio.to_thread(
+                            whatsapp_service.send_message,
+                            payload.phone, AVISO_DE_AUDIO_ILEGIVEL, integration,
+                        )
                     else:
                         logger.info("[WEBHOOK] 🔇 audio falhou, mas o agente está em silêncio — não respondo")
                     return
@@ -722,6 +843,36 @@ async def process_whatsapp_message_background(
             final_image_url = await process_image_for_vision(
                 payload.image.imageUrl, company_id, supabase.client
             )
+            # 🔴 A FOTO GRANDE NÃO SOME MAIS EM SILÊNCIO.
+            #
+            # O sentinela (e não `None`) é o único caso em que o produto SABE o
+            # que aconteceu e sabe o que pedir. As duas pré-condições de fala
+            # são as mesmas do ramo do áudio, e pelo mesmo motivo:
+            #
+            #   is_human_mode            a atendente está conduzindo — o robô
+            #                            não se intromete. Aqui ele NÃO fala e
+            #                            NÃO retorna: a mensagem segue o fluxo
+            #                            e a foto aparece no chat dela.
+            #   attendance_agent_active  o portão de silêncio. Erro de leitura
+            #                            = silêncio (fail-closed).
+            if final_image_url is FOTO_GRANDE_DEMAIS:
+                final_image_url = None
+                if not is_human_mode:
+                    try:
+                        from app.services.atlas.attendance_capture import attendance_agent_active
+
+                        _pode_falar = await attendance_agent_active(company_id)
+                    except Exception:  # noqa: BLE001
+                        _pode_falar = False
+                    if _pode_falar:
+                        await asyncio.to_thread(
+                            whatsapp_service.send_message,
+                            payload.phone, AVISO_DE_FOTO_GRANDE, integration,
+                        )
+                    else:
+                        logger.info("[WEBHOOK] 🔇 foto grande, mas o agente está em "
+                                    "silêncio — não respondo")
+                    return
             # Legenda = fala do cliente ("o que tem nessa imagem?"); sem legenda, placeholder.
             caption = payload.image.caption or (payload.text.message if payload.text else None)
             message_text = caption or ("📷 [Imagem]" if is_human_mode else "🖼️ [Imagem enviada]")
@@ -962,10 +1113,11 @@ async def process_whatsapp_message_background(
         if not _pode:
             logger.info("[WEBHOOK] barrado pela porteira: %s", _motivo)
             # Enviar mensagem informativa ao usuário
-            whatsapp_service.send_message(
+            await asyncio.to_thread(
+                whatsapp_service.send_message,
                 to_number=payload.phone,
                 text="⚠️ Serviço temporariamente indisponível. Por favor, entre em contato com o suporte.",
-                integration=integration
+                integration=integration,
             )
             return
 
@@ -1064,8 +1216,20 @@ async def process_whatsapp_message_background(
         # 9. Enviar no WhatsApp
         # LOG SANITIZADO
         logger.info(f"[WEBHOOK BACKGROUND] Sending response to {safe_phone}")
-        success = whatsapp_service.send_message(
-            to_number=payload.phone, text=ai_response, integration=integration
+        # 🔴 `send_message` é SÍNCRONO — `requests.post` com timeout de 30 s e
+        # `time.sleep(0.7)` entre balões. Chamado direto de uma corrotina, ele
+        # PARA O EVENT LOOP INTEIRO: enquanto uma conversa espera a Evolution
+        # responder, nenhum outro webhook é lido, nenhum outro buffer é
+        # processado, nenhuma outra pessoa é atendida. Uma resposta de três
+        # balões para um segurado congela o produto por mais de dois segundos —
+        # e um timeout congela por trinta.
+        #
+        # ⚠️ `to_thread` não muda um argumento nem um retorno: o valor devolvido
+        # é o mesmo `bool`, e a exceção sobe pelo mesmo caminho. O que muda é
+        # que o loop continua atendendo os outros enquanto este envio acontece.
+        success = await asyncio.to_thread(
+            whatsapp_service.send_message,
+            to_number=payload.phone, text=ai_response, integration=integration,
         )
 
         if success:
@@ -1088,7 +1252,8 @@ async def process_whatsapp_message_background(
         # que a pessoa pode fazer agora.
         if _pode_falar_ao_cliente and not _resposta_ja_enviada:
             try:
-                whatsapp_service.send_message(
+                await asyncio.to_thread(
+                    whatsapp_service.send_message,
                     to_number=payload.phone,
                     text=("Tive uma falha técnica aqui e não consegui processar sua "
                           "última mensagem. Pode enviar de novo, por favor? "
@@ -2047,13 +2212,20 @@ async def admin_send_message(
                 company_id=company_id, phone=str(payload.phone),
                 mensagem=str(payload.message))
 
+        # ⚠️ Mesmo motivo do envio do agente: os três são síncronos (`requests`
+        # com 30 s de timeout) e este é o caminho da ATENDENTE respondendo pelo
+        # painel. Segurar o event loop aqui é segurar todos os outros
+        # atendimentos enquanto uma pessoa manda um "bom dia".
         success = False
         if payload.message:
-            success = whatsapp_service.send_message(payload.phone, payload.message, integration)
+            success = await asyncio.to_thread(
+                whatsapp_service.send_message, payload.phone, payload.message, integration)
         elif payload.image_url:
-            success = whatsapp_service.send_image(payload.phone, payload.image_url, "", integration)
+            success = await asyncio.to_thread(
+                whatsapp_service.send_image, payload.phone, payload.image_url, "", integration)
         elif payload.audio_url:
-            success = whatsapp_service.send_audio(payload.phone, payload.audio_url, integration)
+            success = await asyncio.to_thread(
+                whatsapp_service.send_audio, payload.phone, payload.audio_url, integration)
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to send")

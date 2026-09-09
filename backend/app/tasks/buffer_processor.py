@@ -3,6 +3,7 @@ Buffer Processor - Periodic task to check and process WhatsApp message buffers.
 ASYNC VERSION: Redis operations are non-blocking.
 """
 
+import asyncio
 import logging
 import os
 
@@ -28,6 +29,87 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
         return default
 
 
+# =============================================================================
+# 🔴 A FILA QUE ERA UMA FILA DE VERDADE
+# =============================================================================
+#
+# O laço processava as conversas prontas UMA DEPOIS DA OUTRA, com `await`
+# dentro do `for`. A quarta pessoa da fila esperava as três da frente — e cada
+# uma delas custa uma chamada de LLM mais um envio no WhatsApp. Numa manhã de
+# piloto, isso é o segurado nº 4 olhando para o "digitando…" que não vem.
+#
+# ⛔ Paralelismo aqui NÃO é novidade arriscada: o caminho direto do webhook já
+# dispara `process_whatsapp_message_background` por `background_tasks`, várias
+# ao mesmo tempo, desde sempre. E `check_buffers` roda com `max_instances=10` —
+# ou seja, dez varreduras podem se sobrepor. O serial era serial só DENTRO de
+# uma varredura; nunca foi garantia de nada.
+#
+# 📊 O que foi conferido antes de mudar (leitura do código, 08/09/2026):
+#   `get_and_clear_buffer`  é um pipeline Redis `get`+`delete` — ATÔMICO. Duas
+#                           tarefas na mesma chave: uma leva o buffer, a outra
+#                           leva `None` e desiste. É o que já protegia contra
+#                           as varreduras sobrepostas.
+#   estado por conversa     tudo que a tarefa usa nasce dentro dela (chave,
+#                           buffer, payload). Nada é lido e escrito entre
+#                           iterações.
+#   singletons              `supabase`, `whatsapp_service`, `integration_service`
+#                           já eram compartilhados pelo caminho concorrente do
+#                           webhook. Nada novo os alcança aqui.
+#
+# Por isso o padrão é 6, e não 3.
+_PARALELISMO_PADRAO = 6
+
+
+async def processar_buffers_prontos(chaves, buffer_service, processar,
+                                    paralelismo: int = 0) -> dict:
+    """Processa as conversas prontas EM PARALELO, com teto.
+
+    Recebe as peças por parâmetro (chaves, serviço, função de processamento)
+    porque é assim que o teste exercita ESTE motor com dublês, em vez de
+    reimplementar o laço e provar outra coisa (CLAUDE.md §9.4).
+
+    ⛔ `return_exceptions=True` é a regra inteira: uma conversa que estoura não
+    pode levar as outras junto. Antes, com `await` no `for`, a primeira exceção
+    caía no `except` de fora e as conversas seguintes da varredura **nunca eram
+    processadas** — o defeito de uma pessoa virava silêncio para todas.
+    """
+    limite = paralelismo or _env_int("WHATSAPP_BUFFER_PARALELISMO", _PARALELISMO_PADRAO)
+    semaforo = asyncio.Semaphore(limite)
+
+    async def _uma(chave: str) -> bool:
+        async with semaforo:
+            if not await buffer_service.should_process(chave):
+                return False
+            buffer = await buffer_service.get_and_clear_buffer(chave)
+            if not buffer:
+                return False
+            combined_msg = buffer_service.get_combined_message(buffer)
+            msg_count = len(buffer["messages"])
+            logger.info("[BUFFER] Processing buffer: %d messages", msg_count)
+            await processar(
+                payload_dict=buffer["payload"],
+                combined_message=combined_msg,
+                buffered_messages=list(buffer.get("messages") or []),
+            )
+            logger.info("[BUFFER] ✅ Processed: combined %d msgs", msg_count)
+            return True
+
+    resultados = await asyncio.gather(*(_uma(c) for c in chaves), return_exceptions=True)
+
+    processadas = 0
+    falhas = 0
+    for r in resultados:
+        if isinstance(r, BaseException):
+            falhas += 1
+            # ⚠️ SEM PII: nem telefone, nem chave (a chave TERMINA no telefone).
+            # Só o tipo do erro — que é o que diz o que consertar.
+            logger.error("[BUFFER] ❌ uma conversa falhou (%s) — as outras seguiram",
+                         type(r).__name__)
+        elif r:
+            processadas += 1
+    return {"processadas": processadas, "falhas": falhas, "vistas": len(resultados)}
+
+
 async def check_buffers():
     """
     Periodic job - scans Redis for ready buffers (async, non-blocking).
@@ -39,7 +121,7 @@ async def check_buffers():
 
     try:
         cursor = 0
-        processed_count = 0
+        chaves = []
 
         while True:
             cursor, keys = await redis.scan(
@@ -51,33 +133,16 @@ async def check_buffers():
                 # (`whatsapp_buffer:{integracao}:{telefone}`) e o varredor passa
                 # a chave INTEIRA. Extrair o telefone e remontar a chave era o
                 # que prendia o buffer ao formato antigo de uma parte só.
-                chave = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
-                phone = chave.rsplit(":", 1)[-1]
-
-                if await buffer_service.should_process(chave):
-                    buffer = await buffer_service.get_and_clear_buffer(chave)
-
-                    if buffer:
-                        combined_msg = buffer_service.get_combined_message(buffer)
-                        msg_count = len(buffer["messages"])
-
-                        logger.info(
-                            f"[BUFFER] Processing buffer for {phone}: {msg_count} messages"
-                        )
-
-                        await process_whatsapp_message_background(
-                            payload_dict=buffer["payload"],
-                            combined_message=combined_msg,
-                            buffered_messages=list(buffer.get("messages") or []),
-                        )
-
-                        logger.info(
-                            f"[BUFFER] ✅ Processed {phone}: combined {msg_count} msgs"
-                        )
-                        processed_count += 1
+                chaves.append(
+                    key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+                )
 
             if cursor == 0:
                 break
+
+        if chaves:
+            await processar_buffers_prontos(
+                chaves, buffer_service, process_whatsapp_message_background)
 
     except Exception as e:
         logger.error(f"[BUFFER] ❌ Error in check_buffers: {e}", exc_info=True)
