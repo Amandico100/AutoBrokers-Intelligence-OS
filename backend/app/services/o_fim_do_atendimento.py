@@ -52,8 +52,9 @@ um.
 from __future__ import annotations
 
 import logging
+import os
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -873,3 +874,565 @@ def deve_expirar_a_conversa(wait) -> bool:
     então o terceiro aviso é o que fecha.
     """
     return int((wait or {}).get("avisos") or 0) >= AVISOS_ATE_EXPIRAR
+
+
+# =============================================================================
+# 🔴 A ÚLTIMA PALAVRA HUMANA DA CORRETORA MANDA
+#     (PLANO-HANDOFF-E-PAUSA-2026-09-09 §2 · U3 · decisão do Founder 09/09)
+# =============================================================================
+#
+# > *"Não é 'conversa de 15 dias'; é **quando foi a última vez que uma pessoa da
+# > corretora escreveu nesta conversa**."*
+#
+# ```
+# o agente responde ao segurado SE, E SÓ SE:
+#   1. não há palavra humana da corretora nesta conversa nos últimos N dias
+#      (cada nova mensagem da atendente RENOVA o prazo)
+#   2. e a conversa não está reivindicada nem em HUMAN_REQUESTED  → `pausar_ia`
+#   3. e o agente está ligado                                    → fora daqui
+# ```
+#
+# ⚠️ **A regra (1) é a que faltava, e ela vale RETROATIVAMENTE.** Nenhuma coluna
+# nova, nenhuma migration, nenhuma varredura: as 467 conversas antigas passam a
+# obedecer no instante em que o agente liga, porque a resposta já está escrita
+# em `messages`.
+#
+# 📊 **Por que N = 7 (nota 82/100 no plano §2):** assistência se resolve em 1–3
+# dias; quem volta depois de uma semana quase sempre traz assunto novo; e o
+# sinistro que a Regina conduz por semanas já está protegido pela RENOVAÇÃO a
+# cada mensagem dela. N = 15 protege o caso raro do retorno em 10 dias e cala o
+# agente em muitos contatos legítimos — e esse custo é invisível: segurado sem
+# resposta.
+#
+# -----------------------------------------------------------------------------
+# 🔴 O DEFEITO QUE ESTA SEÇÃO TEVE DE RESOLVER ANTES DE EXISTIR: O PRÓPRIO ECO
+# -----------------------------------------------------------------------------
+#
+# ⛔ *"humana = `role='assistant'` com `payload.origem in ('espelho','dashboard')`"*
+# **não basta**, e a ingenuidade aqui custaria o produto inteiro:
+#
+# ```
+# webhook.py:1183   a resposta da IA é gravada com role='assistant' e SEM payload
+# webhook.py:1766   a mesma resposta VOLTA como `fromMe` e o espelho a grava
+#                   de novo — role='assistant', payload.origem='espelho'
+# ```
+#
+# 📊 É o defeito que `whatsapp/voz_propria.py` documenta desde 14/08: *"o agente
+# responderia UMA vez, pausaria a si mesmo e emudeceria para sempre"*. ⚠️ E o
+# `voz_propria` **não serve aqui**: ele é digital em Redis, TTL de 180 s e
+# consumo destrutivo — não há como perguntar a ele, sete dias depois, quem
+# escreveu aquela linha.
+#
+# 🔴 Então o eco é reconhecido **no acervo**, e exige as DUAS coisas:
+#
+# ```
+# A. o texto do balão está contido na fala que o agente gravou      (por balão!)
+# B. e chegou dentro de _ECO_SEGUNDOS daquela fala
+# ```
+#
+# ⚠️ Uma só não serve. Só (A): a atendente que digita *"ok"* meia hora depois
+# vira eco e o robô fala por cima dela. Só (B): a atendente que responde em 40
+# segundos — a corrida C'' do plano — vira eco, e é justamente ela quem mais
+# precisa ser ouvida. ⛔ Exigir as duas deixa passar só o que é mesmo eco.
+#
+# 🔴 **E a direção da dúvida é o SILÊNCIO.** Falha de leitura, payload ilegível,
+# origem desconhecida: tudo isso conta como palavra humana e o agente cala. É a
+# mesma escolha de `voz_propria` e de `pode_falar_com_o_cliente`: calar é chato e
+# reversível pelo botão "Devolver ao agente"; falar por cima da atendente na
+# frente do segurado, não.
+
+#: 📊 O padrão da plataforma, em dias. Ver a nota 82/100 acima.
+JANELA_SILENCIO_HUMANO_DIAS = 7
+
+#: A env que muda o padrão para a plataforma inteira.
+_ENV_DA_JANELA = "JANELA_SILENCIO_HUMANO_DIAS"
+
+#: A chave do override por corretora, em `companies.acionamento_profile`.
+_CHAVE_DA_JANELA = "janela_silencio_humano_dias"
+
+#: 🔴 As origens em que uma PESSOA da corretora escreveu.
+#:
+#:   `espelho`    `fromMe` pelo celular ou pelo WhatsApp Web
+#:                (`espelho_chat.py:610`)
+#:   `dashboard`  o painel (`app/api/dashboard/conversas/[id]/route.ts:532`)
+#:
+#: ⚠️ A resposta do próprio agente é gravada **sem `payload`** — é por isso que
+#: a lista é fechada e por inclusão: uma origem nova e desconhecida não vira
+#: "humana" por acidente, e também não vira "robô" por acidente (ver
+#: `_falas_do_agente`).
+ORIGENS_HUMANAS: Tuple[str, ...] = ("espelho", "dashboard")
+
+#: Quantas linhas da conversa a janela carrega. ⚠️ É o teto do custo desta
+#: regra: uma consulta por turno, servida por `idx_messages_by_conversation
+#: (conversation_id, created_at)`, que já existe (`schema_completo.sql:2191`).
+#: 📊 40 cobre com folga o par ida-e-volta de um atendimento inteiro; quem
+#: escrever mais que isso depois da atendente já está calado por outro motivo.
+_MENSAGENS_DA_JANELA = 40
+
+#: A folga do eco. ⚠️ **O MESMO número do `voz_propria._TTL_SEGUNDOS`**, e pela
+#: mesma razão: o eco volta em segundos, e o teto é folgado para um provedor
+#: lento não fazer o agente se calar sozinho.
+_ECO_SEGUNDOS = 180
+
+#: Quanto do passado imediato pertence ao TURNO que está acontecendo agora.
+#:
+#: 🔴 `webhook.py` grava a mensagem do segurado (passo 5) **antes** de montar o
+#: prompt (passo 7). Sem esta folga, "a última mensagem da conversa" seria
+#: sempre a que acabou de chegar, e o reencontro nunca seria detectado.
+_TURNO_SEGUNDOS = 120
+
+
+def _quando(valor: Any):
+    """Texto do PostgREST → `datetime` em UTC, ou `None`. **PURA.**
+
+    ⛔ `None` é resposta, não erro: uma linha sem `created_at` legível não pode
+    renovar nem vencer prazo nenhum — quem chama decide o que fazer com a
+    dúvida, e nesta seção a dúvida sempre cala o agente.
+    """
+    from datetime import datetime, timezone
+
+    if hasattr(valor, "tzinfo"):
+        return valor if valor.tzinfo else valor.replace(tzinfo=timezone.utc)
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        quando = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return quando.replace(tzinfo=timezone.utc) if quando.tzinfo is None else quando
+
+
+def _texto_normalizado(valor: Any) -> str:
+    """A mesma normalização do `voz_propria._digital`: espaço colapsado, pontas
+    aparadas, minúsculas. ⚠️ O WhatsApp não devolve byte a byte o que recebeu."""
+    return re.sub(r"\s+", " ", str(valor or "")).strip().lower()
+
+
+def janela_de_silencio_dias(companhia: Any = None) -> int:
+    """N, em dias — **PURA** (lê a env, não o banco).
+
+    ```
+    padrão da plataforma   JANELA_SILENCIO_HUMANO_DIAS = 7
+    env                    JANELA_SILENCIO_HUMANO_DIAS=15
+    corretora              acionamento_profile.janela_silencio_humano_dias
+    ```
+
+    🔴 **`0` DESLIGA A REGRA, e é um valor legítimo** — é como uma corretora que
+    não quer a janela volta ao comportamento de antes de 09/09 sem deploy. ⛔ Por
+    isso o piso é `0` e não `1`: um `max(1, …)` transformaria "desligado" em
+    "um dia", que é outra coisa.
+
+    ⚠️ Valor ilegível ou negativo cai no padrão — nunca em zero. Um typo no
+    `acionamento_profile` não pode DESLIGAR a proteção da atendente em silêncio.
+    """
+    padrao = JANELA_SILENCIO_HUMANO_DIAS
+    try:
+        bruto = os.environ.get(_ENV_DA_JANELA)
+        if bruto is not None and str(bruto).strip():
+            lido = int(float(str(bruto).strip()))
+            if lido >= 0:
+                padrao = lido
+    except Exception:  # noqa: BLE001
+        pass
+
+    perfil = (companhia or {}).get("acionamento_profile") if isinstance(companhia, dict) else None
+    perfil = perfil if isinstance(perfil, dict) else {}
+    if _CHAVE_DA_JANELA not in perfil:
+        return padrao
+    try:
+        # ⚠️ `int(float(...))` de propósito: o painel pode gravar `7.0`.
+        # ⛔ Mas `bool` **não** é inteiro válido aqui: `True` viraria 1 dia.
+        valor = perfil.get(_CHAVE_DA_JANELA)
+        if isinstance(valor, bool):
+            raise ValueError("bool nao e prazo")
+        dias = int(float(str(valor).strip()))
+    except Exception:  # noqa: BLE001
+        logger.warning("[JANELA] `%s` ilegível no acionamento_profile — usando %d",
+                       _CHAVE_DA_JANELA, padrao)
+        return padrao
+    return dias if dias >= 0 else padrao
+
+
+# ---------------------------------------------------------------------------
+# PURO — as perguntas sobre UMA linha de `messages`
+# ---------------------------------------------------------------------------
+
+def _payload(mensagem: Any) -> Dict[str, Any]:
+    bruto = (mensagem or {}).get("payload") if isinstance(mensagem, dict) else None
+    return bruto if isinstance(bruto, dict) else {}
+
+
+def e_origem_humana(mensagem: Any) -> bool:
+    """A linha nasceu de um teclado da corretora? — **PURA.**
+
+    ⛔ `role='user'` é o segurado e nunca chega aqui. `role='assistant'` sem
+    `payload` é o agente (`webhook.py:1183`).
+    """
+    if str((mensagem or {}).get("role") or "").strip().lower() != "assistant":
+        return False
+    return str(_payload(mensagem).get("origem") or "").strip().lower() in ORIGENS_HUMANAS
+
+
+def e_anotacao(mensagem: Any) -> bool:
+    """`#nota` — anotar **não é** assumir (SPEC-090 BLOCO C). **PURA.**
+
+    🔴 Duas marcas, e as duas são necessárias:
+
+    ```
+    payload.nota_interna   o painel escreve (route.ts:532) — legível por máquina
+    o prefixo no content   o painel TAMBÉM prefixa, e o espelho só tem isto
+    ```
+
+    ⚠️ A regra do prefixo é **uma só** e mora em `a_nota_da_atendente.e_nota`
+    (§5). ⛔ Se ela não importar, a dúvida vira "é palavra humana" e o agente
+    cala: uma anotação que cala o robô é um incômodo; uma intervenção lida como
+    anotação é o robô falando por cima da atendente.
+    """
+    if _payload(mensagem).get("nota_interna") is True:
+        return True
+    try:
+        from app.services.a_nota_da_atendente import e_nota
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[JANELA] regra do `#nota` indisponível (%s) — a linha "
+                       "conta como palavra humana", type(erro).__name__)
+        return False
+    return bool(e_nota((mensagem or {}).get("content")))
+
+
+def _falas_do_agente(mensagens) -> List[Tuple[Any, str]]:
+    """`(instante, texto normalizado)` de cada fala que o AGENTE gravou.
+
+    ⚠️ `role='assistant'` **sem** origem conhecida. É a linha do passo 8 do
+    webhook — a única do acervo que é comprovadamente do robô.
+    """
+    falas: List[Tuple[Any, str]] = []
+    for m in mensagens or ():
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("role") or "").strip().lower() != "assistant":
+            continue
+        if e_origem_humana(m):
+            continue
+        quando = _quando(m.get("created_at"))
+        texto = _texto_normalizado(m.get("content"))
+        if quando is not None and texto:
+            falas.append((quando, texto))
+    return falas
+
+
+def e_eco_do_agente(mensagem: Any, falas_do_agente) -> bool:
+    """Este `espelho` é o eco do que o próprio produto acabou de dizer? — **PURA.**
+
+    🔴 **As duas condições, nunca uma só** (ver o cabeçalho da seção):
+    o texto do balão está CONTIDO na fala gravada **e** chegou dentro de
+    `_ECO_SEGUNDOS` dela.
+
+    ⚠️ `in` e não `==` porque `whatsapp_service.send_message` quebra a resposta
+    em balões (S17-9): comparar o texto inteiro reconheceria zero ecos — é o
+    mesmo motivo pelo qual `voz_propria` registra a digital **por balão**.
+    """
+    texto = _texto_normalizado((mensagem or {}).get("content"))
+    quando = _quando((mensagem or {}).get("created_at"))
+    if not texto or quando is None:
+        return False
+    for fala_em, fala in falas_do_agente or ():
+        atraso = (quando - fala_em).total_seconds()
+        if -1.0 <= atraso <= _ECO_SEGUNDOS and texto in fala:
+            return True
+    return False
+
+
+def ultima_palavra_humana(mensagens):
+    """O instante da última vez que uma PESSOA da corretora escreveu — ou `None`.
+
+    🔴 **PURA**, e é o coração da regra: cada nova mensagem dela RENOVA o prazo,
+    então o que interessa é a **mais recente**, não a primeira.
+
+    ⛔ Não conta: o segurado (`role='user'`), o próprio agente, o eco do agente
+    espelhado e a anotação `#nota`.
+    """
+    falas = _falas_do_agente(mensagens)
+    ultima = None
+    for m in mensagens or ():
+        if not isinstance(m, dict) or not e_origem_humana(m):
+            continue
+        if e_anotacao(m) or e_eco_do_agente(m, falas):
+            continue
+        quando = _quando(m.get("created_at"))
+        if quando is not None and (ultima is None or quando > ultima):
+            ultima = quando
+    return ultima
+
+
+def _dia_br(quando) -> str:
+    """`16/09` — a data como a Regina lê. ⛔ Nunca o ISO cru na ficha."""
+    from datetime import timezone
+
+    try:
+        return quando.astimezone(FUSO_DA_CORRETORA).strftime("%d/%m")
+    except Exception:  # noqa: BLE001
+        return quando.astimezone(timezone.utc).strftime("%d/%m")
+
+
+def silenciar_por_palavra_humana(*, ultima_humana, agora=None, n_dias=None):
+    """`(calar, motivo_em_portugues)` — **PURA**.
+
+    🔴 O motivo é uma FRASE, e é de propósito: ela vai para o feed e para a
+    ficha, onde quem lê é a Regina. 📊 `CLAUDE.md` §12.1 — um código de motivo
+    (`janela_humana`) obrigaria a tela a traduzir, e a tradução é onde o texto
+    envelhece longe do código que o produz.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    dias = janela_de_silencio_dias() if n_dias is None else int(n_dias)
+    if dias <= 0:
+        # ⚠️ A regra está desligada. Continua valendo tudo o mais.
+        return False, ""
+    if ultima_humana is None:
+        return False, ""
+    agora = agora or datetime.now(timezone.utc)
+    vence = ultima_humana + timedelta(days=dias)
+    if agora >= vence:
+        return False, ""
+    faz = max(0, int((agora - ultima_humana).total_seconds() // 86400))
+    quanto = "hoje" if faz == 0 else ("há 1 dia" if faz == 1 else "há %d dias" % faz)
+    return True, ("a atendente falou nesta conversa %s; o agente fica em silêncio "
+                  "até %s ou até ela devolver a conversa" % (quanto, _dia_br(vence)))
+
+
+# ---------------------------------------------------------------------------
+# O ADAPTADOR — uma consulta, e ela nunca levanta
+# ---------------------------------------------------------------------------
+
+async def _executar(consulta):
+    """`execute()` de PostgREST — e a casa tem os DOIS clientes.
+
+    🔴 **Medido em 09/09/2026, e foi o que quase matou o bloco do
+    reencontro em silêncio:** os serviços recebem o `AsyncSupabaseClient`
+    (`database.py:235`) e escrevem `await …execute()`; o `graph.py` recebe o
+    `SupabaseClient` SÍNCRONO e escreve `…execute()` sem `await`. Um `await`
+    sobre a resposta síncrona levanta `TypeError`, o `except` do chamador
+    engole, e o bloco **nunca aparece no prompt** — sem nada ficar vermelho
+    (`CLAUDE.md` §9.1).
+
+    ⚠️ O caminho síncrono vai para `to_thread` de propósito: `execute()` do
+    cliente síncrono é `requests` puro e pararia o event loop inteiro enquanto
+    uma conversa espera o PostgREST — a mesma razão do `to_thread` do envio no
+    `webhook.py`.
+    """
+    import asyncio
+    import inspect
+
+    executar = consulta.execute
+    if inspect.iscoroutinefunction(executar):
+        return await executar()
+    resultado = await asyncio.to_thread(executar)
+    return (await resultado) if inspect.isawaitable(resultado) else resultado
+
+
+def _cliente(db):
+    """O PostgREST de dentro do `db`. ⚠️ Os chamadores da casa passam ora o
+    wrapper (`db.client`), ora o cliente cru — `graph.py:1289` faz as duas
+    coisas no mesmo arquivo."""
+    return db.client if hasattr(db, "client") else db
+
+
+async def janela_de_mensagens(db, conversation_id: str, *, teto: int = 0):
+    """As últimas linhas da conversa, mais nova primeiro. `(linhas, erro)`.
+
+    ⚠️ **Sem filtro JSON no banco, de propósito.** 📊 `espelho_chat` documenta
+    que filtrar `payload->>origem` no PostgREST foi o que cegou o espelho; a
+    marca é lida **em Python**, sobre as poucas linhas carregadas. A consulta
+    usa só `conversation_id` + `created_at`, que é exatamente o índice que
+    existe.
+
+    🔴 **`messages` não tem `company_id`** (`schema_vivo.json`): quem garante o
+    §7 é o `conversation_id`, e ele tem de ter sido resolvido COM a corretora.
+    """
+    conversa = str(conversation_id or "").strip()
+    if not conversa:
+        return [], "sem_conversa"
+    try:
+        achado = await _executar(_cliente(db).table("messages")
+                                 .select("role, content, created_at, payload")
+                                 .eq("conversation_id", conversa)
+                                 .order("created_at", desc=True)
+                                 .limit(int(teto or _MENSAGENS_DA_JANELA)))
+    except Exception as erro:  # noqa: BLE001
+        # ⛔ NUNCA loga conteúdo nem id de conversa — só o veredito.
+        logger.warning("[JANELA] mensagens não lidas (%s)", type(erro).__name__)
+        return [], type(erro).__name__
+    return (achado.data or []), ""
+
+
+async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
+                          companhia: Any = None, agora=None, n_dias=None):
+    """A porta inteira: `(calar, motivo)` — **e nunca levanta**.
+
+    ```
+    ① reivindicada / HUMAN_REQUESTED   `pausar_ia`, o helper de sempre (§5)
+    ② palavra humana há menos de N     a regra nova do plano §2
+    ```
+
+    🔴 A ordem é a ordem do DANO, como em `pode_falar_com_o_cliente`: quem já
+    está com a conversa no teclado vem primeiro, e nesse caso nem se paga a
+    consulta.
+
+    ⛔ **Falha de leitura CALA** (fail-closed). Não saber quem escreveu por
+    último não é permissão para falar.
+    """
+    if not str(company_id or "").strip():
+        return True, "sem corretora: o agente não fala sem saber de quem é a conversa"
+
+    try:
+        if pausar_ia(conversa or {}):
+            dono = str((conversa or {}).get("claimed_by_name") or "").strip()
+            if str((conversa or {}).get("claimed_by") or "").strip():
+                return True, ("%s assumiu esta conversa; o agente só volta pelo "
+                              "botão \"Devolver ao agente\""
+                              % (dono or "Uma pessoa da corretora"))
+            return True, ("o segurado pediu para falar com uma pessoa; o agente "
+                          "fica em silêncio até alguém devolver a conversa")
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[JANELA] `pausar_ia` indisponível (%s) — calando",
+                       type(erro).__name__)
+        return True, "não consegui saber se alguém assumiu a conversa"
+
+    dias = janela_de_silencio_dias(companhia) if n_dias is None else int(n_dias)
+    if dias <= 0:
+        # 🔴 A regra está DESLIGADA nesta corretora — e desligada é desligada:
+        #    nem a consulta acontece. É o que torna `N=0` uma mutação capaz de
+        #    ficar vermelha (CLAUDE.md §9.3).
+        return False, ""
+
+    linhas, erro = await janela_de_mensagens(db, str((conversa or {}).get("id") or ""))
+    if erro == "sem_conversa":
+        # ⚠️ Sem `id` não há como consultar. Não é falha do mundo: é chamador
+        #    sem conversa, e aí a regra (2) simplesmente não se aplica.
+        return False, ""
+    if erro:
+        return True, "não consegui ler o histórico desta conversa"
+
+    return silenciar_por_palavra_humana(
+        ultima_humana=ultima_palavra_humana(linhas), agora=agora, n_dias=dias)
+
+
+# =============================================================================
+# 🔴 ASSUNTO NOVO e RELIGAMENTO — o que o agente precisa SABER antes de falar
+# =============================================================================
+#
+# 📊 09/09/2026, produção: o robô cumprimentou *"bom dia, é bom começar o dia com
+# você"* às 11:40 **na 30ª mensagem** de um sinistro com vítima. ⛔ Ele não sabia
+# que já estava no meio de uma conversa, porque ninguém nunca lhe disse.
+#
+# ⚠️ **É DADO, nunca autorização.** O bloco descreve o que aconteceu na conversa;
+# ele não muda regra protegida do prompt, não concede ferramenta e não decide
+# quem fala — quem decide é `a_ia_deve_calar`, acima.
+
+#: 💭 O texto do reencontro. ⚠️ Curto de propósito: 📊 os agentes `attendance`
+#: têm prompt de ~1,5 KB, e meia página aqui competiria com as instruções da
+#: dona do agente em vez de somar a elas (a mesma razão do `_FALE_COMO_CORRETOR`).
+_ASSUNTO_NOVO = (
+    "ESTE CONTATO VOLTA DEPOIS DE %s:\n"
+    "- Trate como ASSUNTO NOVO: cumprimente e pergunte o que houve agora.\n"
+    "- Não presuma que é o mesmo caso de antes.\n"
+    "- Use o histórico só como MEMÓRIA (\"vi que já falamos sobre …\"), nunca "
+    "como se a conversa não tivesse parado."
+)
+
+_RELIGAMENTO = (
+    "ESTA CONVERSA JÁ ESTÁ EM ANDAMENTO:\n"
+    "- NÃO cumprimente como se fosse o começo (nada de \"bom dia, é bom começar "
+    "o dia com você\"): a última mensagem foi da própria corretora, %s.\n"
+    "- Continue de onde parou, sem se reapresentar e sem repetir o que já foi "
+    "perguntado."
+)
+
+
+def _quanto_tempo(segundos: float) -> str:
+    """*"3 meses"*, *"13 dias"*, *"2 horas"* — como uma pessoa diria. **PURA.**"""
+    dias = int(segundos // 86400)
+    if dias >= 60:
+        return "%d meses" % (dias // 30)
+    if dias >= 1:
+        return "1 dia" if dias == 1 else "%d dias" % dias
+    horas = int(segundos // 3600)
+    if horas >= 1:
+        return "1 hora" if horas == 1 else "%d horas" % horas
+    return "poucos minutos"
+
+
+def contexto_do_reencontro(mensagens, *, agora=None, n_dias=None) -> str:
+    """O bloco de prompt do reencontro, ou `""`. **PURA.**
+
+    ⛔ **A mensagem que acabou de chegar não conta.** `webhook.py` grava o que o
+    segurado escreveu (passo 5) ANTES de montar o prompt (passo 7): sem a folga
+    de `_TURNO_SEGUNDOS`, "a última mensagem da conversa" seria sempre a
+    própria, e o reencontro nunca seria visto.
+
+    ⚠️ `""` é a resposta mais comum, e é a certa: no meio de um atendimento
+    normal não há nada a dizer, e um bloco a mais em todo turno é token pago
+    contra a atenção do modelo.
+    """
+    from datetime import datetime, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    dias = janela_de_silencio_dias() if n_dias is None else int(n_dias)
+
+    anterior = None
+    anterior_em = None
+    for m in mensagens or ():
+        if not isinstance(m, dict):
+            continue
+        quando = _quando(m.get("created_at"))
+        if quando is None or (agora - quando).total_seconds() < _TURNO_SEGUNDOS:
+            continue
+        if anterior_em is None or quando > anterior_em:
+            anterior, anterior_em = m, quando
+    if anterior is None:
+        # Primeiro contato desta conversa: não há reencontro nenhum.
+        return ""
+
+    idade = (agora - anterior_em).total_seconds()
+    if dias > 0 and idade > dias * 86400:
+        return _ASSUNTO_NOVO % _quanto_tempo(idade)
+    if str(anterior.get("role") or "").strip().lower() == "assistant":
+        return _RELIGAMENTO % ("há " + _quanto_tempo(idade))
+    return ""
+
+
+async def bloco_do_reencontro(db, *, company_id: str, conversation_id: str = "",
+                              session_id: str = "", agora=None,
+                              n_dias=None) -> str:
+    """O mesmo bloco, indo buscar a conversa. **Nunca levanta**, `""` no escuro.
+
+    🔴 O `company_id` é obrigatório e entra na resolução por `session_id` (§7):
+    o backend usa service role, e uma conversa achada só pelo `session_id`
+    poderia ser de outra corretora.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return ""
+    conversa = str(conversation_id or "").strip()
+    if not conversa:
+        sessao = str(session_id or "").strip()
+        if not sessao:
+            return ""
+        try:
+            achado = await _executar(_cliente(db).table("conversations")
+                                     .select("id")
+                                     .eq("company_id", empresa)   # 🔴 §7
+                                     .eq("session_id", sessao)
+                                     .limit(1))
+            conversa = str(((achado.data or [{}])[0] or {}).get("id") or "")
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[REENCONTRO] conversa não resolvida (%s)",
+                           type(erro).__name__)
+            return ""
+    linhas, erro = await janela_de_mensagens(db, conversa)
+    if erro:
+        # ⚠️ Aqui a dúvida NÃO cala ninguém: o pior caso é o agente falar sem
+        #    esta dica, que é exatamente o comportamento de antes de 09/09.
+        return ""
+    return contexto_do_reencontro(linhas, agora=agora, n_dias=n_dias)

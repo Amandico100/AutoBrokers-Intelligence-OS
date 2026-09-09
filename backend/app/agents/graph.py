@@ -1484,6 +1484,33 @@ async def _build_initial_state(
         except Exception as e:  # noqa: BLE001
             logger.warning("[CONDUTA] não injetada (%s)", type(e).__name__)
 
+        # --- R · ASSUNTO NOVO ou RELIGAMENTO (plano de 09/09, U3) ----------
+        #
+        # 📊 09/09/2026, produção: o robô cumprimentou *"bom dia, é bom começar
+        # o dia com você"* às 11:40, na **30ª mensagem** de um sinistro com
+        # vítima. E o espelho do contrário também é defeito: o segurado que
+        # volta três meses depois recebe a continuação de um caso encerrado.
+        #
+        # 🔴 O agente nunca soube QUANDO foi a mensagem anterior — o histórico
+        # que ele recebe não tem relógio. Esta é a linha que conta a ele.
+        #
+        # ⚠️ **É DADO, não autorização**: quem decide se o agente fala é
+        # `a_ia_deve_calar`, no gate de entrada. Este bloco só diz em que ponto
+        # da conversa ele está. ⛔ E o motor é UM só (`o_fim_do_atendimento`):
+        # nada de uma segunda régua de janela aqui dentro (§5).
+        try:
+            from app.services.o_fim_do_atendimento import bloco_do_reencontro
+
+            _bloco_reencontro = await bloco_do_reencontro(
+                supabase_client, company_id=str(company_id),
+                session_id=str(session_id or ""))
+            if _bloco_reencontro:
+                dynamic_context += f"\n\n{_bloco_reencontro}"
+                logger.info("[REENCONTRO] bloco injetado (%d chars)",
+                            len(_bloco_reencontro))
+        except Exception as e:  # noqa: BLE001 — nunca derruba o turno
+            logger.warning("[REENCONTRO] não injetado (%s)", type(e).__name__)
+
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context
 
