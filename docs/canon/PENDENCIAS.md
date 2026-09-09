@@ -10528,3 +10528,15 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 
 ## P-PILOTO-12 · a régua de linguagem humana não roda nos dossiês
 📊 `problemas_de_lingua` aplicada só às cartas e à novidade ao cliente (`test_o_caso_se_explica_sozinho.py:1268,1275,1928`). U2 (08/09) cobre `build_handoff_dossier`; falta `_montar_dossie`. **Dono:** 🤖.
+
+## P-PILOTO-13 · 174 conversas-fantasma LID e o CHECK de `resolucao_motivo`
+📊 09/09: `migrar_conversas_fantasma_lid.py` (plano) achou 174 conversas com `user_phone` de LID (106 AutoFleet, 68 Resulta), 10 com pausa humana presa; o `--vivo` está bloqueado por `ck_conversations_resolucao_motivo` (lista fechada, sem `fantasma_lid`). **Destrava:** migration (APPLY/VERIFY/ROLLBACK, `MIGRATIONS-AUTHORITY.md`) acrescentando o valor, depois `--vivo`. Daqui para a frente nenhuma fantasma nasce (identidade única do evento, commit `8dae4d4`). **Dono:** 🤖.
+
+## P-PILOTO-14 · o rastro de sinistro (`claims_shadow`) sai mudo sem sombra
+📊 `claims_shadow.registrar_evento` devolve `False` antes do INSERT quando não há `work_run` (`work_events.work_run_id` NOT NULL); `claims.handoff_pedido` nunca gravou. O handoff hoje grava em `agent_activities`. **Destrava:** decisão de arquitetura — sombra abre no pedido de humano, ou `work_events` aceita evento sem run. **Dono:** 🤖.
+
+## P-PILOTO-15 · pausa não protege conversa com `resolvido_em` preenchido
+`pausar_ia` devolve False quando `resolvido_em` está preenchido e a pausa não limpa o campo; conversa encerrada e reaberta pelo segurado com intervenção humana não fica protegida. **Dono:** 🤖.
+
+## P-PILOTO-16 · o papel `attendant` ficou redundante com `member`
+Desde 09/09 `member` liga/desliga o agente. Decidir se `attendant` some (quem o tem continua funcionando). **Dono:** 🧑 decisão · 🤖.
