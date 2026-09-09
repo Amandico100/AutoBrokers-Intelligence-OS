@@ -84,4 +84,37 @@ delegada ao orquestrador) · D-PILOTO-06 executar o essencial sem AAA por limite
 
 ## 5. Resultado da execução
 
-(preenchido pelo orquestrador ao fechar: testes com saída real, commits, push, o que ficou)
+**Commits na `main` (08/09, 22h–01h):** `e77f1c2` docs · `936d9dd` U4 · `4454599` U3 · `46743ca` guarda M24 ·
+`21c5ed9` U2 · `b433a9f` U5 · `f3f9031` U2-conserto (guarda) · `fce1098` U1 · + este.
+
+**Testes por unidade (saída real dos builders, conferida):** U1 `10 passed` + 63 arquivos relacionados sem
+regressão vs baseline · U2 `16 passed` + `100 passed` (retomada, painel, formulário) · U3 `48 ok / 0 fail` +
+10 mutações vermelhas · U4 `tsc --noEmit` exit 0 + `rotas-montam` OK (301 rotas) · U5 `24 passed` +
+`156 passed`.
+
+**Gates do juiz, em isolamento, depois de todos os commits (📊 08/09 ~00h40):**
+`py_compile` dos 8 módulos tocados OK · `test_098_builder_b_unit` 80 passed · `test_a_central_diz_a_verdade`
+530 ok · `test_o_sinistro_deixa_rastro` 249 ok · `test_a_cobranca_chega_a_quem_deve` 162 ok ·
+`test_ninguem_fala_com_o_segurado_sem_o_agente_ligado` rc=0 · `test_quem_fala_primeiro_cala_o_outro` rc=0 ·
+`test_o_caso_se_explica_sozinho` 109 ok · `test_o_travamento_vira_linha` + dossiê + retomada 75 passed ·
+`test_spec073_portal_worker_mutations` 0 FALHOU.
+
+**O que a suíte inteira mostrou e por que não vale como prova:** os builders rodaram `pytest tests/` em lote
+com a árvore em edição concorrente (15 failed / 48 errors); os 48 erros eram de `test_098_builder_b_unit`,
+que passa 80/80 isolado — poluição de `sys.modules["app"]` deixada por `test_o_sinistro_deixa_rastro`
+(anotar como pendência de higiene de testes). ⚠️ A suíte inteira com árvore parada NÃO foi rodada hoje
+(decisão de tokens, D-PILOTO-06); é a primeira coisa a fazer na próxima sessão com folga.
+
+**Guardas que acusaram e foram atendidos:** `test_o_travamento_vira_linha` (família `formulario_em_laco`
+sem triagem; motivo `formulario_envio_falhou` escrito longe do `needs_human`) · `[M2p]` da 097.1 passou a
+congelar a janela do follow-up aberta · M24 do worker procurava o nome num comentário.
+
+**Implantação (🧑):** smith-api → portal-worker (`PORTAL_EFEITO_MATERIAL_LIBERADO=true` no ambiente dele)
+→ smith-web; depois `/health`, `publicar_cartas_0971.py --global --vivo`, grupo de suporte na AutoFleet.
+
+**Achados dos builders que viraram pendência (acrescentar em PENDENCIAS na próxima sessão):** supressão do
+follow-up fora da janela é perdida, não adiada (só `avisos == 0` fala) · `_dia_e_mes` compara em UTC ·
+`webhook._responder_formulario_nativo` devolve bool e descarta o status do provedor · `dispatch_router`
+:1210/:1973 grava `Motivo: {reason}` cru em `work_runs.result_summary` · `vidros_lanternas` não existe em
+`portals` · bucket `portal-evidence` sem retenção · `test_o_sinistro_deixa_rastro` deixa `sys.modules`
+sintético.
