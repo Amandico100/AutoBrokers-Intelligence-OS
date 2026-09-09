@@ -79,6 +79,110 @@ def _env_int(nome: str, padrao: int, minimo: int = 1) -> int:
         return padrao
 
 
+# ===========================================================================
+# O RASTRO DURÁVEL DO HANDOFF — 09/09/2026
+# ===========================================================================
+#
+# 📊 Medido em 09/09/2026 (primeiro dia de piloto real da AutoFleet): esta
+# ferramenta rodou **5 vezes**, `_avisar_suporte` devolveu
+# `{"avisado": False, "motivo": "a corretora não tem destino de suporte humano
+# configurado"}` nas 5, e o único vestígio foi um `logger.error`. O log do
+# contêiner some no próximo deploy. **Nada ficou no banco.**
+#
+# 🔴 E O `claims.handoff_pedido` NÃO ERA O RASTRO — nunca foi, por construção.
+#
+# `claims_shadow.registrar_evento` grava em `work_events`, e `work_events`
+# tem `work_run_id` **NOT NULL** com FK para `work_runs`. A função resolve
+# esse run por `sombra_da_conversa(...)` e, quando não existe,
+# `if not run_id: return False` — sai ANTES do INSERT, sem levantar nada. O
+# `except` do `registrar_gesto` e o `try` do chamador não engoliram exceção
+# nenhuma: **não houve exceção**. 📊 4 de 729 conversas têm sombra de sinistro
+# (a sombra só abre quando o detector reconhece sinistro), então o caminho
+# normal de um handoff é "sem sombra → `False` silencioso".
+#
+# ⛔ Por isso o rastro do handoff NÃO pode morar em `work_events`: ele
+# precisaria de um `work_run` que a conversa não tem, e abrir sombra
+# retroativa está fora desta unidade (e fora deste arquivo).
+#
+# ✅ Ele mora em `agent_activities`, pelo escritor que já existe
+# (`activity_log.log_activity`, o mesmo feed de Atividades que o acionamento
+# usa): tem `company_id`, não exige run nenhum e é o lugar onde a corretora
+# já olha o que o robô fez. Nenhum escritor novo (CLAUDE.md §5).
+#
+# ⚠️ Os nomes de máquina abaixo existem para o log e para os guardas. O que
+# vai para o feed é FRASE, em português — a atendente lê o feed.
+EVENTO_HANDOFF_FALHOU = "handoff.falhou"
+EVENTO_HANDOFF_ENTREGUE = "handoff.entregue"
+_CATEGORIA_DA_ATIVIDADE = "atendimentos"
+
+TITULO_HANDOFF_FALHOU = "Pedido de ajuda humana sem ninguém para receber"
+TITULO_HANDOFF_ENTREGUE = "Atendimento entregue a uma pessoa da equipe"
+FRASE_DA_FALHA = ("O agente pediu ajuda humana e ninguém foi avisado: %s.")
+FRASE_DA_ENTREGA = ("O agente entregou o atendimento à equipe e o dossiê do caso "
+                    "foi enviado ao destino de suporte da corretora.")
+
+#: 🔴 O motivo NUNCA vai vazio — e nunca vai em código de máquina.
+#: 📊 09/09/2026: `human_handoff_reason` ficou NULL em **4 das 5** conversas do
+#: piloto, mesmo depois do conserto da 097.1. A causa: aquele conserto só
+#: preenche o silêncio **quando o caso já foi acionado**
+#: (`_e_pos_acionamento`), e as 5 conversas do dia eram sinistros NOVOS, sem
+#: acionamento nenhum. Fora daquele ramo, `if motivo_gravado:` simplesmente
+#: não escrevia — e a Fila mostrava "precisa de você" sem uma palavra sobre
+#: por quê. Agora existe um terceiro degrau, que vale para TODO handoff.
+MOTIVO_SEM_DECLARACAO = "o agente pediu ajuda humana sem dizer o motivo"
+
+_LIMITE_DO_MOTIVO = 300
+
+
+def _motivo_em_portugues(motivo: Optional[str]) -> str:
+    """O `reason` da ferramenta virado frase legível — **PURA**.
+
+    ⚠️ Ela NÃO reescreve o que o modelo disse: o texto do modelo já vem em
+    português e reescrevê-lo seria inventar motivo. O que ela faz é o que a
+    atendente precisa para ler a linha da Fila:
+
+        espaços e quebras colapsados      "pediu\\n  humano" → "pediu humano"
+        slug vira frase                   "cliente_pediu_humano" → "cliente pediu humano"
+        teto de 300 caracteres            a Fila mostra uma linha, não um parágrafo
+
+    ⛔ Não capitaliza: `human_handoff_reason` é comparado por igualdade em
+    guardas existentes, e mudar a primeira letra quebraria a promessa de que
+    *"o motivo explícito é preservado, não sobrescrito"*.
+    """
+    texto = " ".join(str(motivo or "").split())
+    if texto and " " not in texto and "_" in texto:
+        # 🔴 `cliente_pediu_humano` é nome de variável, não frase. A regra da
+        #    097 ([13], R11) é língua humana em tudo que a corretora lê.
+        texto = texto.replace("_", " ")
+    return texto[:_LIMITE_DO_MOTIVO]
+
+
+async def registrar_o_desfecho_do_handoff(company_id: str, evento: str,
+                                          motivo: str, conversa_id: str = "") -> None:
+    """UMA linha durável em `agent_activities` para o desfecho do handoff.
+
+    ⛔ **Nunca levanta** e nunca leva PII: o `session_id` do WhatsApp carrega o
+    TELEFONE do segurado (`whatsapp:5547…:<empresa>`), então o que identifica o
+    caso aqui é o `conversations.id` (uuid) — e mais nada.
+    """
+    entregue = evento == EVENTO_HANDOFF_ENTREGUE
+    titulo = TITULO_HANDOFF_ENTREGUE if entregue else TITULO_HANDOFF_FALHOU
+    detalhe = FRASE_DA_ENTREGA if entregue else (FRASE_DA_FALHA % (motivo or "motivo desconhecido"))
+    if conversa_id:
+        detalhe = "%s Conversa %s." % (detalhe, str(conversa_id)[:8])
+    try:
+        from app.services.activity_log import log_activity
+
+        await log_activity(str(company_id or ""), _CATEGORIA_DA_ATIVIDADE,
+                           titulo, detalhe)
+        logger.info("[HumanHandoff] %s registrado no feed | empresa=%s", evento, company_id)
+    except Exception as exc:  # noqa: BLE001
+        # ⚠️ O rastro é o conserto do silêncio; ele não pode virar a causa de
+        #    um handoff que não acontece.
+        logger.error("[HumanHandoff] rastro '%s' NÃO registrado (%s)",
+                     evento, type(exc).__name__)
+
+
 async def reivindicar_o_aviso(conversa_id: str, horas: int) -> bool:
     """Alguém já avisou o grupo sobre esta conversa nas últimas `horas`?
 
@@ -863,6 +967,9 @@ class HumanHandoffTool(BaseTool):
     async def _arun(self, reason: Optional[str] = None, session_id: Optional[str] = None,
                     company_id: Optional[str] = None, **kwargs) -> str:
         motivo = str(reason or "").strip()
+        # 🔴 FORA DO `try` — o rastro da falha precisa do motivo mesmo quando a
+        #    marcação da conversa estoura antes de calculá-lo.
+        motivo_humano = _motivo_em_portugues(motivo)
         logger.info("[HumanHandoff] 🔔 pedido | empresa=%s | sessao=%s | motivo=%s",
                     company_id, session_id, motivo)
 
@@ -925,7 +1032,7 @@ class HumanHandoffTool(BaseTool):
             #
             # ⚠️ O motivo EXPLÍCITO continua vencendo sempre: o padrão só
             # preenche o silêncio.
-            motivo_gravado = motivo
+            motivo_gravado = motivo_humano
             if not motivo_gravado and _e_pos_acionamento(linha_anterior):
                 try:
                     from app.atendimento.pos_acionamento import classificar_turno
@@ -937,8 +1044,23 @@ class HumanHandoffTool(BaseTool):
                                    "(%s)", type(exc).__name__)
                     rotulo = "N"
                 motivo_gravado = "pos_acionamento:%s" % rotulo
-            if motivo_gravado:
-                dados["human_handoff_reason"] = motivo_gravado
+
+            # 🔴 O TERCEIRO DEGRAU — 09/09/2026, e é ele que fechou o NULL.
+            #
+            # 📊 As 5 conversas do piloto da AutoFleet eram sinistros NOVOS:
+            # `_e_pos_acionamento` devolvia `False`, o modelo chamou a tool sem
+            # `reason`, e o `if motivo_gravado:` abaixo não escrevia nada. 4 de 5
+            # ficaram com `human_handoff_reason` NULL **depois** do conserto da
+            # 097.1, porque aquele conserto só cobria o pós-acionamento.
+            #
+            # ⚠️ Um "não sei" ESCRITO vale mais que um NULL: a atendente lê que
+            # o robô pediu ajuda e não declarou o motivo — que é a verdade — em
+            # vez de olhar um campo vazio e não saber se é falta de motivo ou
+            # falta de escritor. E é isso que faz o campo virar medida: NULL
+            # agora significa "esta linha é anterior a 09/09", nada mais.
+            if not motivo_gravado:
+                motivo_gravado = MOTIVO_SEM_DECLARACAO
+            dados["human_handoff_reason"] = motivo_gravado
 
             # 🔴 SPEC-097.1 U2.3 — A PARTE DO AGENTE TERMINOU AQUI.
             #
@@ -991,6 +1113,11 @@ class HumanHandoffTool(BaseTool):
             logger.error("[HumanHandoff] ❌ conversa não encontrada/atualizada | "
                          "empresa=%s | sessao=%s — NADA foi prometido ao cliente",
                          company_id, session_id)
+            # 🔴 Esta falha também deixa linha. Ela é MAIS grave que a de
+            #    destino ausente — aqui a conversa nem aparece na Fila.
+            await registrar_o_desfecho_do_handoff(
+                company_id, EVENTO_HANDOFF_FALHOU,
+                "a conversa do pedido não foi encontrada para marcar")
             return FALHA_DO_HANDOFF.format(motivo="conversa nao encontrada para marcar")
 
         # 2) avisar o humano de verdade — UMA vez por conversa, não por turno
@@ -1017,6 +1144,19 @@ class HumanHandoffTool(BaseTool):
         #
         # ⛔ `motivo` é TEXTO LIVRE do modelo e NUNCA entra no payload: o que fica
         # gravado é o enum de duas casas.
+        #
+        # 🔴 E ELE NÃO É O RASTRO DO HANDOFF — medido em 09/09/2026.
+        #
+        # 📊 5 pedidos na AutoFleet, **0** linhas `work_events` com `claims.%`.
+        # A causa não é este `try`: `registrar_evento` sai por
+        # `if not run_id: return False` quando a conversa não tem sombra de
+        # sinistro (`work_events.work_run_id` é NOT NULL com FK para
+        # `work_runs`), e as 5 conversas não tinham. Nenhuma exceção foi
+        # levantada — logo nada foi engolido aqui.
+        #
+        # ⚠️ Ele CONTINUA, porque quando a sombra existe ele é o único que
+        # coloca o handoff na linha do tempo do sinistro. O rastro que vale
+        # para TODA corretora é o `registrar_o_desfecho_do_handoff` lá embaixo.
         try:
             # 🔴 O MESMO detector do BLOCO A, e não um regex novo aqui: dois
             # classificadores para a mesma pergunta são dois classificadores para
@@ -1042,6 +1182,8 @@ class HumanHandoffTool(BaseTool):
         aviso = await self._avisar_suporte(company_id, conversa, motivo)
 
         if aviso["avisado"]:
+            await registrar_o_desfecho_do_handoff(
+                company_id, EVENTO_HANDOFF_ENTREGUE, motivo_humano, conversa_id)
             return SUCESSO_DO_HANDOFF
 
         # Reservou e não avisou: devolve a vez, senão o Vigia fica mudo pelas
@@ -1059,6 +1201,16 @@ class HumanHandoffTool(BaseTool):
         # mesmo defeito com outra roupa.
         logger.error("[HumanHandoff] ⚠️ conversa marcada mas SUPORTE NÃO AVISADO | "
                      "empresa=%s | motivo=%s", company_id, aviso["motivo"])
+        # 🔴 A LINHA QUE FALTAVA — 09/09/2026.
+        #
+        # 📊 As 5 falhas do piloto morreram no `logger.error` acima. O log do
+        # contêiner some no deploy seguinte, e de fora ninguém tinha como
+        # perguntar "quantas vezes o robô pediu ajuda e ninguém recebeu?".
+        # Agora a pergunta tem resposta em SQL, e a corretora vê a linha no
+        # feed de Atividades no mesmo dia.
+        await registrar_o_desfecho_do_handoff(
+            company_id, EVENTO_HANDOFF_FALHOU,
+            aviso["motivo"] or "motivo desconhecido", conversa_id)
         return FALHA_DO_HANDOFF.format(motivo=aviso["motivo"] or "desconhecido")
 
     def _run(self, reason: Optional[str] = None, session_id: Optional[str] = None,

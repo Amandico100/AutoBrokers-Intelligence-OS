@@ -868,6 +868,59 @@ def _sinais_do_codigo() -> dict:
     return sinais
 
 
+#: 🔴 TETO DA VARREDURA. O health é chamado por load balancer: ele responde
+#: "há corretora ligada sem destino?" e não faz censo do banco.
+_TETO_DE_CORRETORAS_NO_HEALTH = 40
+
+
+async def _corretoras_ligadas_sem_destino_de_suporte(db) -> list:
+    """As corretoras com agente de atendimento LIGADO cujo handoff não sai.
+
+    🔴 Nasceu em 09/09/2026, primeiro dia de piloto real. 📊 A AutoFleet passou
+    o dia com o agente ligado e **zero** destinos de suporte: a ferramenta de
+    handoff rodou 5 vezes, recusou mentir e ninguém foi avisado — e não havia
+    onde olhar para descobrir isso. "Agente ligado" e "alguém para receber" são
+    duas configurações que ninguém liga uma à outra até o dia em que um
+    segurado com sinistro pede uma pessoa.
+
+    ⚠️ Roda o MOTOR (`resolver_destino_de_suporte`), não uma consulta parecida:
+    o handoff sai por ele, então é ele que decide (CLAUDE.md §9.4). Devolve
+    NOMES de corretora — nada de PII, nada de destino, nada de segredo.
+    """
+    from app.services.dispatch_router import resolver_destino_de_suporte
+
+    res = await (db.client.table("agents").select("company_id")
+                 .eq("agent_role", "attendance").eq("is_active", True)
+                 .limit(_TETO_DE_CORRETORAS_NO_HEALTH * 4).execute())
+    ligadas: list = []
+    for linha in (res.data or []):
+        cid = str((linha or {}).get("company_id") or "").strip()
+        if cid and cid not in ligadas:
+            ligadas.append(cid)
+    ligadas = ligadas[:_TETO_DE_CORRETORAS_NO_HEALTH]
+    if not ligadas:
+        return []
+
+    nomes: dict = {}
+    try:
+        r2 = await (db.client.table("companies").select("id, company_name")
+                    .in_("id", ligadas).execute())
+        for linha in (r2.data or []):
+            nomes[str((linha or {}).get("id"))] = str(
+                (linha or {}).get("company_name") or "").strip()
+    except Exception:  # noqa: BLE001
+        pass
+
+    sem_destino: list = []
+    for cid in ligadas:
+        alvo = await resolver_destino_de_suporte(cid)
+        if not (alvo or {}).get("destino"):
+            # ⚠️ Sem nome legível a linha continua útil: o id curto é o que
+            #    permite achar a corretora, e não identifica pessoa nenhuma.
+            sem_destino.append(nomes.get(cid) or ("corretora %s" % cid[:8]))
+    return sorted(sem_destino)
+
+
 @app.get("/health")
 async def health_check(request: Request):
     """Health check detalhado - verifica conexão real com ambos os clientes"""
@@ -914,6 +967,23 @@ async def health_check(request: Request):
         health_status["codigo"]["espelho_contadores"] = await diagnostico()
     except Exception:  # noqa: BLE001
         health_status["codigo"]["espelho_contadores"] = {}
+
+    # AGENTE LIGADO E NINGUÉM PARA RECEBER O HANDOFF — 09/09/2026.
+    #
+    # 🔴 Fica aqui, e não em `_sinais_do_codigo`, porque consulta o banco e o
+    # resolvedor é assíncrono — a mesma razão do `espelho_contadores`.
+    #
+    # ⛔ `None` no erro, e NUNCA 503: uma corretora sem destino é um defeito de
+    # configuração dela, não um serviço doente. Derrubar o health tiraria do ar
+    # o produto inteiro de todas as outras por causa dessa lista.
+    try:
+        health_status["codigo"]["corretoras_ligadas_sem_destino_de_suporte"] = \
+            await _corretoras_ligadas_sem_destino_de_suporte(
+                request.app.state.supabase_async)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HEALTH] destinos de suporte nao conferidos (%s)",
+                       type(exc).__name__)
+        health_status["codigo"]["corretoras_ligadas_sem_destino_de_suporte"] = None
 
     # 1. Verificar cliente async (primary - non-blocking)
     try:

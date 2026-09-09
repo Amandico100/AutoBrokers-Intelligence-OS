@@ -40,6 +40,9 @@ import os
 import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BACKEND = os.path.join(RAIZ, "backend")
+if BACKEND not in sys.path:
+    sys.path.insert(0, BACKEND)
 FALHAS: list[str] = []
 
 
@@ -58,6 +61,149 @@ def _ler(*partes: str) -> str:
 
 def _sem_comentario_py(fonte: str) -> str:
     return "\n".join(l for l in fonte.split("\n") if not l.lstrip().startswith("#"))
+
+
+# ===========================================================================
+# O DUBLÊ DE SUPABASE — para chamar o MOTOR, não o texto-fonte dele
+# ===========================================================================
+#
+# 🔴 CLAUDE.md §9.4, aplicado a este arquivo em 09/09/2026.
+#
+# O guarda [B5] procurava a string `human_support_destinations` DENTRO do
+# corpo de `resolver_destino_de_suporte` e comparava a posição dela com a do
+# perfil legado. Isso prova que as duas palavras estão escritas na ordem
+# certa. Não prova que a corretora B, sem destino, recebe vazio — e foi
+# exatamente isso que aconteceu na AutoFleet em 09/09: 5 handoffs sem destino,
+# com o guarda verde o tempo todo.
+#
+# ⚠️ E provar isso pede DOIS tenants de verdade (CLAUDE.md §7): a pergunta
+# "A resolve o destino de A?" só tem valor ao lado de "A nunca devolve o de B".
+CO_ALFA = "co-alfa-0000-4000-8000-000000000001"     # tem destino
+CO_BETA = "co-beta-0000-4000-8000-000000000002"     # NÃO tem — a AutoFleet de 09/09
+CO_GAMA = "co-gama-0000-4000-8000-000000000003"     # só destino DESATIVADO
+CO_DELTA = "co-delt-0000-4000-8000-000000000004"    # só o perfil legado
+
+GRUPO_DE_ALFA = "120363000000000001@g.us"
+GRUPO_SECUNDARIO_DE_ALFA = "120363000000000002@g.us"
+GRUPO_DE_GAMA = "120363000000000003@g.us"
+LEGADO_DE_ALFA = "5547900000001"                    # 💭 fictício — nunca PII real
+LEGADO_DE_DELTA = "5547900000004"
+
+
+class _Resposta:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Consulta:
+    """Só o que o motor usa: `select/eq/in_/order/limit/execute` — assíncrono."""
+
+    def __init__(self, banco, tabela):
+        self.banco, self.tabela = banco, tabela
+        self._iguais: list = []
+        self._dentro: list = []
+        self._ordens: list = []
+        self._teto = None
+
+    def select(self, *a, **k):
+        return self
+
+    def eq(self, campo, valor):
+        self._iguais.append((campo, valor))
+        return self
+
+    def in_(self, campo, valores):
+        self._dentro.append((campo, list(valores)))
+        return self
+
+    def order(self, campo, desc=False):
+        self._ordens.append((campo, bool(desc)))
+        return self
+
+    def limit(self, n):
+        self._teto = int(n)
+        return self
+
+    async def execute(self):
+        self.banco.registro.append((self.tabela, list(self._iguais)))
+        if self.tabela in self.banco.falhar:
+            raise RuntimeError("FONTE_INDISPONIVEL: %s (dublê)" % self.tabela)
+        linhas = [dict(l) for l in (self.banco.mundo.get(self.tabela) or [])]
+        for campo, valor in self._iguais:
+            linhas = [l for l in linhas if l.get(campo) == valor]
+        for campo, valores in self._dentro:
+            linhas = [l for l in linhas if l.get(campo) in valores]
+        # ⚠️ Em ordem INVERSA e com `sort` estável: é assim que `.order(a).order(b)`
+        #    vira "a primeiro, b como desempate" — igual ao PostgREST.
+        for campo, desc in reversed(self._ordens):
+            linhas.sort(key=lambda l: (l.get(campo) is None, l.get(campo)
+                                       if l.get(campo) is not None else 0),
+                        reverse=desc)
+        if self._teto is not None:
+            linhas = linhas[:self._teto]
+        return _Resposta(linhas)
+
+
+class BancoDeDuasCorretoras:
+    def __init__(self, mundo=None, falhar=()):
+        self.mundo = mundo if mundo is not None else mundo_de_duas_corretoras()
+        self.falhar = set(falhar or ())
+        self.registro: list = []
+
+    def table(self, nome):
+        return _Consulta(self, nome)
+
+    @property
+    def client(self):
+        return self
+
+
+def mundo_de_duas_corretoras() -> dict:
+    """O mundo medido em 09/09: uma corretora configurada, outra ligada e muda."""
+    return {
+        "human_support_destinations": [
+            # ⚠️ O secundário vem PRIMEIRO na lista de propósito: se o motor não
+            #    ordenar por `is_primary`, ele devolve este e o guarda fica vermelho.
+            {"company_id": CO_ALFA, "destination_ref": GRUPO_SECUNDARIO_DE_ALFA,
+             "is_primary": False, "priority_order": 2, "is_active": True},
+            {"company_id": CO_ALFA, "destination_ref": GRUPO_DE_ALFA,
+             "is_primary": True, "priority_order": 1, "is_active": True},
+            # 🔴 A GAMA tem destino na tela — DESATIVADO. "Inativo" tem de valer.
+            {"company_id": CO_GAMA, "destination_ref": GRUPO_DE_GAMA,
+             "is_primary": True, "priority_order": 1, "is_active": False},
+        ],
+        "companies": [
+            # 🔴 A ALFA tem os DOIS: a tela e o legado. A tela tem de ganhar.
+            {"id": CO_ALFA, "acionamento_profile":
+                {"suporte_humano_whatsapp": LEGADO_DE_ALFA}},
+            {"id": CO_BETA, "acionamento_profile": {}},
+            {"id": CO_GAMA, "acionamento_profile": {}},
+            {"id": CO_DELTA, "acionamento_profile":
+                {"suporte_humano_whatsapp": LEGADO_DE_DELTA}},
+        ],
+        "integrations": [],
+        "agents": [],
+        "agent_activities": [],
+    }
+
+
+def resolver_com_duble(banco, company_id: str) -> dict:
+    """Roda o MOTOR real contra o dublê. Devolve `{destino, fonte, recusa}`."""
+    import asyncio
+
+    from app.core import database as _db
+    from app.services import dispatch_router as DR
+
+    async def _falso_cliente():
+        return banco
+
+    original = getattr(_db, "create_async_supabase_client", None)
+    _db.create_async_supabase_client = _falso_cliente  # type: ignore[assignment]
+    try:
+        return asyncio.run(DR.resolver_destino_de_suporte(company_id))
+    finally:
+        if original is not None:
+            _db.create_async_supabase_client = original  # type: ignore[assignment]
 
 
 def teste_a_falha_nunca_declara_sucesso():
@@ -167,20 +313,81 @@ def teste_destino_compartilhado_e_recusado():
 
 
 def teste_o_resolvedor_le_a_tabela_que_a_ui_grava():
-    print("\n[B5] O backend lê a tabela onde a UI grava")
-    router = _ler("backend", "app", "services", "dispatch_router.py")
-    corpo = router.split("async def resolver_destino_de_suporte", 1)[-1].split("\nasync def ", 1)[0]
+    """🔴 MIGRADO EM 09/09/2026 — de inspecionar texto-fonte para chamar o motor.
 
-    pos_tabela = corpo.find("human_support_destinations")
-    pos_legado = corpo.find("acionamento_profile")
-    checar(pos_tabela != -1, "lê human_support_destinations",
-           "📊 esta tabela não aparecia UMA VEZ em backend/app/")
-    checar(pos_tabela != -1 and pos_legado != -1 and pos_tabela < pos_legado,
-           "e ela vem ANTES do perfil legado",
-           "a corretora configura na tela; a tela tem de ganhar")
-    checar('.eq("is_active", True)' in corpo, "só destino ativo")
-    checar('.order("is_primary", desc=True)' in corpo,
-           "respeita o destino marcado como principal")
+    A versão anterior procurava as palavras `human_support_destinations` e
+    `acionamento_profile` dentro do corpo da função e comparava a POSIÇÃO
+    delas. Ela ficou verde o dia inteiro em que a AutoFleet, com o agente
+    ligado, não tinha destino nenhum e 5 pedidos de ajuda humana morreram sem
+    ninguém saber. **Um teste que lê o código guarda o código; o que a
+    corretora sente é o que o MOTOR devolve** (CLAUDE.md §9.4).
+
+    O que ele passou a provar, com dois tenants reais (CLAUDE.md §7):
+    a A resolve o destino da A · a B, sem destino, recebe VAZIO (e não o da A)
+    · a tela vence o legado · inativo não vale · e as duas linhas de CONTROLE
+    que dão direito à conclusão: uma corretora só com legado resolve pelo
+    legado (o dublê não devolve vazio para tudo), e a A e a B não trocam de
+    resposta quando a ordem das perguntas inverte.
+    """
+    print("\n[B5] O resolvedor RESOLVE — motor real, dois tenants, dublê de banco")
+    try:
+        banco = BancoDeDuasCorretoras()
+        alfa = resolver_com_duble(banco, CO_ALFA)
+        beta = resolver_com_duble(banco, CO_BETA)
+        gama = resolver_com_duble(banco, CO_GAMA)
+        delta = resolver_com_duble(banco, CO_DELTA)
+    except Exception as exc:  # noqa: BLE001
+        checar(False, "o motor roda contra o dublê", f"{type(exc).__name__}: {exc}")
+        return
+
+    checar(alfa.get("destino") == GRUPO_DE_ALFA,
+           "A corretora COM destino resolve o dela",
+           f"veio {alfa!r}")
+    checar(alfa.get("fonte") == "human_support_destinations",
+           "e pela tabela que a UI grava, não pelo perfil legado",
+           "📊 a ALFA tem os dois; a tela tem de ganhar — veio "
+           f"{alfa.get('fonte')!r}")
+    checar(alfa.get("destino") != GRUPO_SECUNDARIO_DE_ALFA,
+           "e é o marcado como PRINCIPAL, não o primeiro da lista",
+           "o secundário vem antes no mundo do dublê de propósito")
+    checar(alfa.get("recusa") is None, "sem recusa quando o destino é exclusivo")
+
+    # 🔴 O DEFEITO DE 09/09, MEDIDO PELO MOTOR: a AutoFleet respondia VAZIO.
+    checar(beta.get("destino") == "",
+           "A corretora SEM destino recebe vazio — e é isso que trava o handoff",
+           f"veio {beta!r}")
+    checar(beta.get("recusa") is None,
+           "e vazio não é recusa: são estados diferentes",
+           "recusa = destino existe e é compartilhado; vazio = não existe")
+    checar(GRUPO_DE_ALFA not in (beta.get("destino") or ""),
+           "🔴 §7: a B NUNCA recebe o destino da A",
+           "seria dossiê com CPF de segurado no grupo da outra corretora")
+    checar(GRUPO_SECUNDARIO_DE_ALFA not in (beta.get("destino") or ""),
+           "nem o secundário da A")
+
+    checar(gama.get("destino") == "",
+           "destino DESATIVADO não vale — 'desativar' desativa de verdade",
+           f"veio {gama!r}")
+
+    # ⚠️ AS LINHAS DE CONTROLE (§9.2): sem elas, um dublê que devolvesse vazio
+    #    para tudo faria as asserções da B e da GAMA passarem por engano.
+    checar(delta.get("destino") == LEGADO_DE_DELTA
+           and delta.get("fonte", "").startswith("acionamento_profile"),
+           "CONTROLE: corretora só com legado resolve PELO legado",
+           f"veio {delta!r} — se este vier vazio, o dublê é que está mudo")
+    banco2 = BancoDeDuasCorretoras()
+    beta2 = resolver_com_duble(banco2, CO_BETA)
+    alfa2 = resolver_com_duble(banco2, CO_ALFA)
+    checar(beta2.get("destino") == "" and alfa2.get("destino") == GRUPO_DE_ALFA,
+           "CONTROLE: invertida a ordem das perguntas, as respostas não trocam",
+           f"beta={beta2!r} alfa={alfa2!r}")
+
+    # E o fail-closed: não conseguir PROVAR exclusividade não é permissão.
+    quebrado = BancoDeDuasCorretoras(falhar=("companies",))
+    alfa_cego = resolver_com_duble(quebrado, CO_ALFA)
+    checar(alfa_cego.get("destino") == "" and alfa_cego.get("recusa"),
+           "consulta que falha RECUSA — dúvida não é permissão para enviar CPF",
+           f"veio {alfa_cego!r}")
 
 
 def teste_o_prompt_nao_promete_o_que_a_ferramenta_nao_tem():
