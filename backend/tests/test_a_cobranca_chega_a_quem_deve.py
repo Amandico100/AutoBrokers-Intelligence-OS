@@ -2116,33 +2116,81 @@ def bloco_G14():
 # ===========================================================================
 def bloco_G15():
     _p("\n[G15]/[G16] o atendimento continua inteiro ao lado da cobranca")
-    # 🔴 GUARDA DE FORMA, declarado: `o_fim_do_atendimento.py` nao pode mudar
-    #    nesta SPEC. Nao ha motor para "este arquivo nao mudou" -- e diff.
-    alvo = "backend/app/services/o_fim_do_atendimento.py"
-    saida = None
-    for base in ("origin/main", "main"):
-        r = subprocess.run(["git", "diff", "--numstat", base, "--", alvo],
-                           cwd=PROJETO, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace")
-        if r.returncode == 0:
-            saida = (base, (r.stdout or "").strip())
-            break
-    if saida is None:
-        pular("[G15] diff de `o_fim_do_atendimento.py`",
-              "nem `origin/main` nem `main` resolvem nesta maquina -- AMBIENTE, "
-              "nao produto")
+    # 🔴 O QUE ESTE GATE GARANTE — e a ancora MUDOU em 09/09/2026 (CLAUDE.md §9.3).
+    #
+    #    ANTES: `git diff --numstat origin/main -- o_fim_do_atendimento.py` tinha
+    #    de vir VAZIO. Era verdade -- ate o arquivo mudar por outra razao. Em
+    #    09/09 ele ganhou `a_ia_deve_calar` (a janela da palavra humana), e o
+    #    gate ficou vermelho sem que a COBRANCA tivesse tocado em nada: um
+    #    guarda de bytes acusa o autor errado, e um guarda que acusa o autor
+    #    errado e o guarda que se aprende a ignorar.
+    #
+    #    A LICAO MIGRA, nao morre: o que a cobranca nao pode fazer e REABRIR ou
+    #    ALTERAR a regra de fim de atendimento. Entao o que se afirma agora e o
+    #    COMPORTAMENTO do motor (§9.4), e nao os bytes do arquivo:
+    #
+    #      (a) a tabela-verdade de `pausar_ia` continua a mesma -- quatro casos,
+    #          e um deles e o CONTROLE que prova que ela consegue dizer "nao";
+    #      (b) `a_ia_deve_calar` SEM palavra humana devolve False -- a porta nova
+    #          nao cala ninguem por acidente;
+    #      (c) e o modulo da cobranca nao escreve em `conversations` (mais
+    #          abaixo, [G16]), que e o dano concreto que [G15] existe para pegar.
+    F, erro = importar("app.services.o_fim_do_atendimento", "o fim do atendimento")
+    if not certo(F is not None, "[G15] `o_fim_do_atendimento` importa", erro):
+        return
+    pausar_ia = getattr(F, "pausar_ia", None)
+    if not certo(pausar_ia is not None, "[G15] `pausar_ia` existe"):
+        return
+
+    # (a) A TABELA-VERDADE, executada -- nao lida.
+    tabela = [
+        ({"status": "HUMAN_REQUESTED"}, True, "o segurado pediu uma pessoa"),
+        ({"status": "open", "claimed_by": "uma-pessoa"}, True, "a atendente assumiu"),
+        ({"status": "HUMAN_REQUESTED", "resolvido_em": "2026-09-01T10:00:00+00:00"},
+         False, "atendimento encerrado nao fica calado para sempre"),
+        ({"status": "open"}, False, "CONTROLE: conversa livre -- a IA fala"),
+    ]
+    for linha, esperado, porque in tabela:
+        certo(bool(pausar_ia(linha)) is esperado,
+              "[G15] `pausar_ia` intacto: %s -> %s" % (porque, esperado),
+              "devolveu %r para %r" % (pausar_ia(linha), linha))
+
+    # (b) A PORTA NOVA, sem palavra humana nenhuma, LIBERA -- e o duble e um
+    #     `messages` vazio, que e o caso mais comum da vida.
+    calar = getattr(F, "a_ia_deve_calar", None)
+    if calar is None:
+        pular("[G15] `a_ia_deve_calar`", "a porta ainda nao existe neste commit")
     else:
-        base, texto = saida
-        certo(texto == "",
-              "[G15] `o_fim_do_atendimento.py` esta INTACTO (diff vazio vs %s)" % base,
-              texto)
-        # CONTROLE: o comando CONSEGUE ver diferenca (senao ele mede nada).
-        r2 = subprocess.run(["git", "diff", "--numstat", base, "--",
-                             "backend/app/services/billing_collection.py"],
-                            cwd=PROJETO, capture_output=True, text=True,
-                            encoding="utf-8", errors="replace")
-        _p("      📊 CONTROLE do diff: billing_collection vs %s -> %r"
-           % (base, (r2.stdout or "").strip()[:60]))
+        class _ResVazio:
+            data: list = []
+
+        class _TabelaVazia:
+            def __getattr__(self, _nome):
+                return lambda *a, **k: self
+
+            def execute(self):
+                return _ResVazio()
+
+        class _ClienteVazio:
+            def table(self, _nome):
+                return _TabelaVazia()
+
+        class _DBVazio:
+            client = _ClienteVazio()
+
+        veredito = rodar(calar(_DBVazio(), company_id=CO_ALFA,
+                               conversa={"id": "11111111-1111-1111-1111-111111111111",
+                                         "status": "open"}))
+        certo(veredito[0] is False,
+              "[G15] `a_ia_deve_calar` sem palavra humana LIBERA a resposta",
+              veredito)
+        # CONTROLE: a MESMA porta, na conversa assumida, CALA. Sem esta linha o
+        # duble vazio provaria "False" por estar quebrado, nao por estar certo.
+        assumida = rodar(calar(_DBVazio(), company_id=CO_ALFA,
+                               conversa={"id": "11111111-1111-1111-1111-111111111111",
+                                         "status": "open", "claimed_by": "alguem"}))
+        par(assumida[0] is True,
+            "[G15] a porta CONSEGUE calar (conversa assumida)", assumida)
 
     # [G16] telefone que nunca teve linha real no ledger -> no-op absoluto.
     br, erro = importar("app.services.billing_replies", "o modulo das respostas")

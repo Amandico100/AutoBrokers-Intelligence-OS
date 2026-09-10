@@ -388,9 +388,20 @@ def teste_o_agente_respeita_a_pausa():
     # ⚠️ CLAUDE.md §9.3: quando o fato muda, o teste muda com ele, e a lição
     # migra em vez de morrer — o que se guarda continua sendo *"o agente lê o
     # estado da conversa antes de falar"*.
+    # 🔴 MIGRADO DE NOVO EM 09/09/2026 — e pela MESMA lição.
+    #
+    # A porta ganhou um degrau: `a_ia_deve_calar(...)` chama `pausar_ia` e soma
+    # a janela da palavra humana (a atendente que respondeu ontem pelo celular
+    # não tem `claimed_by`, e só a janela a enxerga). ⛔ Exigir o nome antigo
+    # obrigaria o `webhook.py` a fazer a MESMA pergunta duas vezes só para
+    # agradar o guarda. O que se guarda continua sendo *"o agente lê o estado
+    # da conversa antes de falar"* — e agora ele lê um estado maior.
+    portas = ("pausar_ia(", "a_ia_deve_calar(")
     for arquivo in ("backend/app/api/chat.py", "backend/app/api/webhook.py"):
-        checar("pausar_ia(" in _comandos(arquivo),
-               f"{os.path.basename(arquivo)} PERGUNTA a `pausar_ia(...)` antes de o agente falar")
+        codigo = _comandos(arquivo)
+        checar(any(p in codigo for p in portas),
+               f"{os.path.basename(arquivo)} PERGUNTA a porta única "
+               f"(`pausar_ia` / `a_ia_deve_calar`) antes de o agente falar")
 
 
 def teste_a_resposta_do_dashboard_nao_volta_em_dobro():

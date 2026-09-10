@@ -989,13 +989,23 @@ def bloco_B6():
     # por execucao aqui custaria o dobro do orcamento desta unidade. Esta
     # assercao le a FONTE SEM COMENTARIOS -- e o PAR abaixo prova que o cortador
     # corta, senao a prosa aprova por vacuidade (SPEC-086 pagou isso 7 vezes).
+    #
+    # 🔴 A ANCORA GANHOU UMA SEGUNDA PORTA em 09/09/2026, e a licao MIGROU
+    #    (CLAUDE.md §9.3). O que [B6c] existe para impedir e o chamador testar
+    #    `status == 'HUMAN_REQUESTED'` NA UNHA. `a_ia_deve_calar(...)` nao e
+    #    fuga da regra: ela e a porta que CHAMA `pausar_ia` primeiro e soma a
+    #    janela da palavra humana. Exigir o nome antigo obrigaria o webhook a
+    #    perguntar duas vezes a mesma coisa so para agradar o guarda -- e um
+    #    guarda que pede codigo morto e um guarda que se aprende a burlar.
+    portas = ("pausar_ia(", "a_ia_deve_calar(")
     for arquivo in ("app/api/webhook.py", "app/api/chat.py"):
         if not existe(arquivo):
             pular("[B6c] %s" % arquivo, "o arquivo nao existe nesta arvore")
             continue
         codigo = so_o_codigo_py(ler(arquivo))
-        certo("pausar_ia(" in codigo,
-              "[B6c] `%s` CHAMA `pausar_ia(...)` (E6)" % arquivo,
+        certo(any(p in codigo for p in portas),
+              "[B6c] `%s` CHAMA a porta unica -- `pausar_ia(...)` ou "
+              "`a_ia_deve_calar(...)` (E6)" % arquivo,
               "📊 hoje ele testa `status == 'HUMAN_REQUESTED'` na unha, e a conversa "
               "assumida continua recebendo resposta do robo")
 

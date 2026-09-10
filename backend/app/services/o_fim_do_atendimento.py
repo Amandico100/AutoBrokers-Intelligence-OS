@@ -1175,6 +1175,22 @@ def _dia_br(quando) -> str:
         return quando.astimezone(timezone.utc).strftime("%d/%m")
 
 
+#: 🔴 O COMEÇO DA FRASE DA JANELA — e é UMA constante de propósito.
+#:
+#: ⚠️ Os portões precisam separar *"calou porque alguém assumiu"* de *"calou
+#: porque a atendente escreveu há pouco"*: só o segundo vira linha no feed. Um
+#: terceiro elemento na tupla mudaria a assinatura que sete testes já
+#: desempacotam; a frase já carrega a informação, e quem a escreve e quem a lê
+#: passam pela **mesma** constante — que é o que impede o `startswith` de virar
+#: regex sobre a prosa (`CLAUDE.md` §9.4).
+_PREFIXO_DA_JANELA = "a atendente falou nesta conversa"
+
+
+def foi_a_janela(motivo: Any) -> bool:
+    """Este `motivo` de `a_ia_deve_calar` é o da JANELA? — **PURA.**"""
+    return str(motivo or "").startswith(_PREFIXO_DA_JANELA)
+
+
 def silenciar_por_palavra_humana(*, ultima_humana, agora=None, n_dias=None):
     """`(calar, motivo_em_portugues)` — **PURA**.
 
@@ -1197,8 +1213,8 @@ def silenciar_por_palavra_humana(*, ultima_humana, agora=None, n_dias=None):
         return False, ""
     faz = max(0, int((agora - ultima_humana).total_seconds() // 86400))
     quanto = "hoje" if faz == 0 else ("há 1 dia" if faz == 1 else "há %d dias" % faz)
-    return True, ("a atendente falou nesta conversa %s; o agente fica em silêncio "
-                  "até %s ou até ela devolver a conversa" % (quanto, _dia_br(vence)))
+    return True, ("%s %s; o agente fica em silêncio até %s ou até ela devolver "
+                  "a conversa" % (_PREFIXO_DA_JANELA, quanto, _dia_br(vence)))
 
 
 # ---------------------------------------------------------------------------
@@ -1316,6 +1332,71 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
 
     return silenciar_por_palavra_humana(
         ultima_humana=ultima_palavra_humana(linhas), agora=agora, n_dias=dias)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 O SILÊNCIO FICA VISÍVEL — uma linha por conversa por dia, e só isso
+# ---------------------------------------------------------------------------
+#
+# ⚠️ **Sem tabela nova** (`CLAUDE.md` §5): o escritor é o `log_activity` que já
+# alimenta a página Atividades. O que a Regina precisa ver é *"o agente ficou
+# calado nesta conversa porque eu falei"* — e ela precisa ver isso UMA vez, não
+# a cada mensagem do segurado.
+#
+# ⛔ **A memória do "uma vez por dia" é do PROCESSO, de propósito.** Guardá-la
+# no banco custaria uma leitura por turno para economizar uma escrita por turno
+# — e o feed é best-effort. Um contêiner novo repete a linha no máximo uma vez
+# por dia por conversa, e é um preço que o feed paga sem mentir.
+
+#: `{ "empresa:conversa:2026-09-09": True }` — e o teto existe para o dicionário
+#: não virar vazamento numa instância que roda semanas.
+_SILENCIO_JA_ANOTADO: Dict[str, bool] = {}
+_TETO_DO_MEMO = 5000
+
+
+def _chave_do_dia(company_id: str, conversation_id: str, agora=None) -> str:
+    from datetime import datetime, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    try:
+        dia = agora.astimezone(FUSO_DA_CORRETORA).strftime("%Y-%m-%d")
+    except Exception:  # noqa: BLE001
+        dia = agora.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    return "%s:%s:%s" % (company_id, conversation_id, dia)
+
+
+async def anotar_silencio_no_feed(*, company_id: str, conversation_id: str,
+                                  motivo: str, agora=None) -> bool:
+    """A linha do silêncio no feed. `True` se ESCREVEU. **Nunca levanta.**
+
+    🔴 Só o silêncio da JANELA vira linha. ⛔ Conversa reivindicada já tem o seu
+    próprio registro (o takeover escreve na ficha): anotar de novo aqui encheria
+    o feed de uma linha por mensagem do segurado enquanto a atendente conduz.
+    """
+    if not foi_a_janela(motivo):
+        return False
+    empresa = str(company_id or "").strip()
+    conversa = str(conversation_id or "").strip()
+    if not empresa or not conversa:
+        return False
+
+    chave = _chave_do_dia(empresa, conversa, agora)
+    if chave in _SILENCIO_JA_ANOTADO:
+        return False
+    if len(_SILENCIO_JA_ANOTADO) >= _TETO_DO_MEMO:
+        _SILENCIO_JA_ANOTADO.clear()
+    _SILENCIO_JA_ANOTADO[chave] = True
+
+    try:
+        from app.services.activity_log import log_activity
+
+        await log_activity(empresa, "atendimentos",
+                           "O agente ficou em silêncio nesta conversa",
+                           str(motivo or ""))
+        return True
+    except Exception as erro:  # noqa: BLE001
+        logger.debug("[JANELA] feed não anotado (%s)", type(erro).__name__)
+        return False
 
 
 # =============================================================================

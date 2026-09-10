@@ -312,6 +312,52 @@ async def pode_falar_com_o_cliente(db, company_id: str,
         # 📊 05/09/2026: é ESTE ramo que roda em produção — 4 agentes
         #    `attendance`, todos `is_active=false`.
         return False, "agente_de_atendimento_desligado"
+
+    # 🔴 O SEXTO DESLIGADOR — A JANELA DA PALAVRA HUMANA (§2 do plano, 09/09).
+    #
+    # ⚠️ **O follow-up é a saída mais perigosa desta regra**, e é por isso que
+    # ele tem de perguntar: a atendente que assumiu o caso pelo WhatsApp dela
+    # não clicou em botão nenhum (`claimed_by` vazio, status `open`), e o
+    # *"deu tudo certo?"* automático chegaria ao segurado por cima da conversa
+    # que ela está conduzindo — horas depois, sem ninguém ver.
+    #
+    # 🔴 **Aqui, e não lá em cima, de propósito.** A porta única
+    # (`a_ia_deve_calar`) refaz o `pausar_ia` puro — de graça — e em troca chega
+    # com a `companhia` JÁ LIDA, que é o que dá à corretora o seu próprio N
+    # (`acionamento_profile.janela_silencio_humano_dias`). Consultar antes
+    # pagaria uma leitura de `messages` para conversas que a hora local, o
+    # agente desligado ou o acompanhamento desligado já tinham calado.
+    #
+    # ⛔ O código devolvido é `palavra_humana_recente` porque é ELE que vai para
+    # `suprimida_por` — a FRASE vai para o log e para o feed, onde quem lê é a
+    # Regina (`CLAUDE.md` §12.1).
+    try:
+        from app.services.o_fim_do_atendimento import (
+            a_ia_deve_calar, anotar_silencio_no_feed, foi_a_janela, pausar_ia,
+        )
+
+        calar, motivo = await a_ia_deve_calar(db, company_id=empresa,
+                                              conversa=conversa,
+                                              companhia=companhia)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ACOMPANHAMENTO] janela indisponível (%s) — calando",
+                       type(erro).__name__)
+        return False, "estado_da_conversa_desconhecido"
+
+    if calar:
+        if foi_a_janela(motivo):
+            logger.info("[ACOMPANHAMENTO] follow-up calado: %s", motivo)
+            await anotar_silencio_no_feed(
+                company_id=empresa,
+                conversation_id=str((conversa or {}).get("id") or ""),
+                motivo=motivo)
+            return False, "palavra_humana_recente"
+        # ⚠️ O código diz a VERDADE sobre a causa: a conversa pode ter sido
+        #    assumida entre o `pausar_ia` lá de cima e este instante — ou a
+        #    leitura do histórico pode ter falhado, e aí calou por dúvida, que
+        #    é outra coisa. `suprimida_por` é o que a Regina vai ler depois.
+        return False, ("conversa_assumida" if pausar_ia(conversa or {})
+                       else "estado_da_conversa_desconhecido")
     return True, ""
 
 

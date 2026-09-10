@@ -115,7 +115,8 @@ async def chat_endpoint(
 
         # 🔴 A MESMA lei do /chat/stream: sem chave interna, quem manda no
         # `userId` e na corretora é o AGENTE, não o corpo (S.2/R1).
-        if _modo_de_confianca(request) == "widget":
+        modo = _modo_de_confianca(request)
+        if modo == "widget":
             chat_request.userId = None
             dona = await _empresa_do_widget(db, agent_id=chat_request.agentId,
                                             company_do_corpo=chat_request.companyId)
@@ -175,14 +176,38 @@ async def chat_endpoint(
         # 🔴 SPEC-097 U2.3/E6 — pausa por STATUS **ou por DONO**: a conversa que
         # a atendente assumiu (`claimed_by`) segue `open`, e a IA respondia por
         # cima dela. `pausar_ia` é o helper único das duas razões.
-        from app.services.o_fim_do_atendimento import HUMAN_REQUESTED, pausar_ia
+        #
+        # 🔴 E A JANELA ENTRA AQUI **SÓ NO WIDGET** (09/09/2026). Esta rota é
+        # DUAS rotas: no `widget` quem digita é o SEGURADO (o mesmo atendimento
+        # do WhatsApp, por outro canal — e a atendente responde a ele pelo
+        # painel, com `payload.origem='dashboard'`); no `painel` quem digita é a
+        # PRÓPRIA corretora, conversando com o agente dela. ⛔ Ligar a janela no
+        # painel seria calar o agente para quem o está usando.
+        from app.services.o_fim_do_atendimento import (
+            HUMAN_REQUESTED, a_ia_deve_calar, anotar_silencio_no_feed, foi_a_janela,
+            pausar_ia,
+        )
 
-        if pausar_ia(linha_da_conversa):
+        _calar = pausar_ia(linha_da_conversa)
+        _motivo_do_silencio = ""
+        if not _calar and modo == "widget" and conversation_id:
+            _calar, _motivo_do_silencio = await a_ia_deve_calar(
+                db, company_id=str(existing_company_id or chat_request.companyId),
+                conversa=linha_da_conversa)
+
+        if _calar:
             # ⚠️ A RAZÃO vai no log: "pausada" por pedido do segurado e
             # "pausada" porque alguém assumiu são operações diferentes, e sem a
             # razão escrita não dá para saber qual delas segurou a resposta.
             razao = (HUMAN_REQUESTED if str(conv_status or "").upper() == HUMAN_REQUESTED
                      else "claimed_by")
+            if foi_a_janela(_motivo_do_silencio):
+                razao = "janela"
+                logger.info("[CHAT] 🚫 %s", _motivo_do_silencio)
+                await anotar_silencio_no_feed(
+                    company_id=str(existing_company_id or chat_request.companyId),
+                    conversation_id=str(conversation_id or ""),
+                    motivo=_motivo_do_silencio)
             logger.info("[CHAT] 🚫 Modo HUMANO (%s) - Agente pausado", razao)
 
             if user_message and conversation_id:
@@ -627,11 +652,31 @@ async def chat_stream(
         current_unread = conv_check.data[0].get("unread_count") or 0
 
         # 🔴 SPEC-097 U2.3/E6 — o mesmo portão do `/chat`: status OU dono.
-        from app.services.o_fim_do_atendimento import HUMAN_REQUESTED, pausar_ia
+        # ⚠️ E a JANELA só no `widget`, pela mesma razão do `/chat`: no `painel`
+        #    quem digita é a corretora, e calar o agente para ela seria calar o
+        #    agente para quem o está usando.
+        from app.services.o_fim_do_atendimento import (
+            HUMAN_REQUESTED, a_ia_deve_calar, anotar_silencio_no_feed, foi_a_janela,
+            pausar_ia,
+        )
 
-        if pausar_ia(conv_check.data[0]):
+        _calar = pausar_ia(conv_check.data[0])
+        _motivo_do_silencio = ""
+        if not _calar and modo == "widget" and conversation_id:
+            _calar, _motivo_do_silencio = await a_ia_deve_calar(
+                db, company_id=str(chat_request.companyId),
+                conversa=conv_check.data[0])
+
+        if _calar:
             razao = (HUMAN_REQUESTED if str(conv_status or "").upper() == HUMAN_REQUESTED
                      else "claimed_by")
+            if foi_a_janela(_motivo_do_silencio):
+                razao = "janela"
+                logger.info("[STREAM] 🚫 %s", _motivo_do_silencio)
+                await anotar_silencio_no_feed(
+                    company_id=str(chat_request.companyId),
+                    conversation_id=str(conversation_id or ""),
+                    motivo=_motivo_do_silencio)
             logger.info("[STREAM] 🚫 Conversa em modo HUMANO (%s) - não streamar", razao)
 
             async def human_mode_response():

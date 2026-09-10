@@ -733,25 +733,55 @@ async def process_whatsapp_message_background(
         # (`claimed_by` preenchido) continua com status `open` — e o robô
         # respondia POR CIMA dela. `pausar_ia` é o helper único que responde as
         # duas razões, e por isso o `select` passou a trazer `claimed_by`.
+        #
+        # 🔴 E A TERCEIRA RAZÃO — A JANELA (PLANO-HANDOFF-E-PAUSA §2, 09/09/2026).
+        #
+        # ⚠️ `pausar_ia` responde *"alguém está com a conversa AGORA?"*. Ele não
+        # responde *"alguém da corretora falou ONTEM?"* — e a atendente que
+        # respondeu pelo celular ontem não clicou em botão nenhum: não há
+        # `claimed_by`, o status segue `open`, e o robô voltava a falar por cima
+        # dela hoje. `a_ia_deve_calar` é a porta ÚNICA que soma as duas
+        # perguntas (§5) e **nunca levanta** — o `except` abaixo continua sendo
+        # o guarda do que ela não prevê.
+        #
+        # 🔴 O `select` ganhou `id` porque a janela precisa LER a conversa em
+        # `messages`, e `messages` não tem `company_id`: o `conversation_id`
+        # resolvido junto com a corretora é o que cumpre o §7.
         is_human_mode = False
         try:
-            from app.services.o_fim_do_atendimento import pausar_ia
+            from app.services.o_fim_do_atendimento import (
+                a_ia_deve_calar, anotar_silencio_no_feed, foi_a_janela,
+            )
 
             check_status = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("status, claimed_by, resolvido_em")  # 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou
+                .select("id, status, claimed_by, claimed_by_name, resolvido_em")  # 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou
                 .eq("company_id", company_id)
                 .eq("session_id", session_id)
                 .limit(1)
                 .execute()
             )
             if check_status.data and len(check_status.data) > 0:
-                if pausar_ia(check_status.data[0]):
+                _linha_da_conversa = check_status.data[0]
+                _calar, _motivo = await a_ia_deve_calar(
+                    supabase, company_id=str(company_id), conversa=_linha_da_conversa)
+                if _calar:
                     is_human_mode = True
-                    logger.info("[WEBHOOK] 👤 Modo Humano detectado (status=%s dono=%s). "
-                                "Pulando IA.",
-                                check_status.data[0].get("status"),
-                                bool(check_status.data[0].get("claimed_by")))
+                    # ⛔ A FRASE só vai para o log quando é a da JANELA: a do
+                    #    takeover carrega `claimed_by_name`, que é NOME DE
+                    #    PESSOA, e nome de pessoa não entra em log.
+                    if foi_a_janela(_motivo):
+                        logger.info("[WEBHOOK] 👤 a IA fica em silêncio nesta "
+                                    "conversa: %s", _motivo)
+                    else:
+                        logger.info("[WEBHOOK] 👤 Modo Humano detectado (status=%s "
+                                    "dono=%s). Pulando IA.",
+                                    _linha_da_conversa.get("status"),
+                                    bool(_linha_da_conversa.get("claimed_by")))
+                    await anotar_silencio_no_feed(
+                        company_id=str(company_id),
+                        conversation_id=str(_linha_da_conversa.get("id") or ""),
+                        motivo=_motivo)
         except Exception as e:
             is_human_mode = True
             logger.error(
@@ -1202,19 +1232,32 @@ async def process_whatsapp_message_background(
         # ⚠️ Falha de leitura CALA (fail-closed), como o portão irmão da entrada:
         # não conseguir confirmar que a conversa está livre nunca é permissão
         # para falar. O custo é uma resposta perdida; o outro custo é duas vozes.
+        #
+        # 🔴 E A PERGUNTA DA SAÍDA É A PORTA INTEIRA, não só o takeover: a
+        # atendente que responde pelo CELULAR durante o turno não clica em
+        # botão nenhum — a fala dela chega pelo espelho, `claimed_by` continua
+        # vazio, e só a JANELA vê isso. É a mesma `a_ia_deve_calar` da entrada,
+        # refeita no último instante em que ainda dá para não falar (§5).
+        _motivo_do_silencio = ""
         try:
-            from app.services.o_fim_do_atendimento import pausar_ia
+            from app.services.o_fim_do_atendimento import (
+                a_ia_deve_calar, anotar_silencio_no_feed, foi_a_janela,
+            )
 
             _estado_agora = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("status, claimed_by, resolvido_em")
+                .select("id, status, claimed_by, claimed_by_name, resolvido_em")
                 .eq("company_id", company_id)
                 .eq("id", conversation_id)
                 .limit(1)
                 .execute()
             )
             _linhas_agora = getattr(_estado_agora, "data", None) or []
-            _assumida_no_meio = pausar_ia(_linhas_agora[0]) if _linhas_agora else False
+            if _linhas_agora:
+                _assumida_no_meio, _motivo_do_silencio = await a_ia_deve_calar(
+                    supabase, company_id=str(company_id), conversa=_linhas_agora[0])
+            else:
+                _assumida_no_meio = False
         except Exception as e:  # noqa: BLE001
             logger.error("[WEBHOOK] 🛑 não consegui reconferir a conversa antes de "
                          "responder (%s) — a IA NÃO fala", type(e).__name__)
@@ -1224,6 +1267,24 @@ async def process_whatsapp_message_background(
             # A resposta pronta é DESCARTADA, e é isso mesmo: uma pessoa assumiu
             # esta conversa enquanto o modelo escrevia. Ela não é reaproveitável
             # depois — o contexto mudou junto com quem está atendendo.
+            # ⚠️ Em `try` próprio: o de cima é fail-closed e pode ter caído
+            #    ANTES do import. Um NameError aqui derrubaria o descarte, que é
+            #    justamente a parte que protege a atendente.
+            try:
+                from app.services.o_fim_do_atendimento import (
+                    anotar_silencio_no_feed, foi_a_janela,
+                )
+
+                if foi_a_janela(_motivo_do_silencio):
+                    logger.info("[WEBHOOK] 👤 a atendente falou DURANTE o turno: %s",
+                                _motivo_do_silencio)
+                    await anotar_silencio_no_feed(
+                        company_id=str(company_id),
+                        conversation_id=str(conversation_id),
+                        motivo=_motivo_do_silencio)
+            except Exception as _e_feed:  # noqa: BLE001
+                logger.debug("[WEBHOOK] feed do silêncio não escrito (%s)",
+                             type(_e_feed).__name__)
             logger.info("[WEBHOOK] 👤 a conversa foi assumida DURANTE o turno — "
                         "resposta do agente descartada, nada foi enviado")
             return

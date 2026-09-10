@@ -171,12 +171,22 @@ class _Tabela:
     def limit(self, *a, **k):
         return self
 
+    def order(self, *a, **k):
+        # ⚠️ 09/09/2026: a porta ganhou a JANELA da palavra humana, e ela lê
+        #    `messages` com `.order(...)`. Sem este método o dublê levantava
+        #    `AttributeError`, a porta caía no fail-closed e o CONTROLE das 10h
+        #    ficava vermelho — por falta do dublê, não por defeito do produto.
+        return self
+
     def execute(self):
         if self.nome == "companies":
             return _Res([{"id": "empresa-1", "agent_enabled": True,
                           "acionamento_profile": {"acompanhamento": True}}])
         if self.nome == "agents":
             return _Res([{"id": "a1", "is_active": True, "agent_role": "attendance"}])
+        # 🔴 `messages` VAZIO é o "sim" desta tabela: sem palavra humana
+        #    nenhuma, a janela não cala ninguém — e a recusa que sobrar só pode
+        #    ter vindo da HORA, que é o que este arquivo mede.
         return _Res([])
 
 
@@ -289,7 +299,22 @@ def test_a_janela_falha_FECHADA_quando_o_relogio_nao_responde(monkeypatch):
 # ===========================================================================
 
 
-def _agendar(captured, tz_nome=SP, espera="90"):
+#: 🔴 O RELÓGIO CONGELADO — 09/09/2026, 12:00 em São Paulo.
+#:
+#: ⚠️ **Sem ele estes casos só passavam de manhã.** `calcular_envio_do_follow_up`
+#: nunca devolve um instante no PASSADO (`if envio < agora: envio = agora`), e o
+#: motor lê a hora do mundo em `dispatch_router._agora`. Rodando às 20h, o
+#: agendamento das 17h do MESMO dia deixava de dar 18:30 e virava 08:00 do dia
+#: seguinte: o guarda ficava vermelho por causa do relógio da máquina, não do
+#: produto — e um guarda que muda de cor sozinho é um guarda que se aprende a
+#: ignorar (`CLAUDE.md` §9.3).
+#:
+#: ⛔ O congelamento é do CHAMADOR (`_agora`), não do `datetime` inteiro: o que
+#: se prova continua sendo o comportamento do motor sobre uma hora dada.
+ANCORA = datetime(2026, 9, 9, 15, 0, tzinfo=timezone.utc)   # 12:00 em SP
+
+
+def _agendar(captured, tz_nome=SP, espera="90", agora=ANCORA):
     """Roda `_pos_acionamento_do_checkpoint` e devolve o `vence_em` gravado.
 
     🔴 É o MOTOR que se mede: a função pura já tem tabela própria acima. O que
@@ -320,10 +345,12 @@ def _agendar(captured, tz_nome=SP, espera="90"):
         client = _ClienteVazio()
 
     abrir_antes, entregar_antes = F.abrir_espera, _A.entregar_novidade
+    agora_antes = R._agora
     tz_antes = os.environ.get("AGENT_OS_TENANT_TIMEZONE")
     espera_antes = os.environ.get("POS_ACIONAMENTO_ESPERA_MINUTOS")
     F.abrir_espera = _abrir
     _A.entregar_novidade = _entregar
+    R._agora = lambda: agora
     os.environ["AGENT_OS_TENANT_TIMEZONE"] = tz_nome
     if espera:
         os.environ["POS_ACIONAMENTO_ESPERA_MINUTOS"] = espera
@@ -336,6 +363,7 @@ def _agendar(captured, tz_nome=SP, espera="90"):
              "captured": captured}, "captured"))
     finally:
         F.abrir_espera, _A.entregar_novidade = abrir_antes, entregar_antes
+        R._agora = agora_antes
         for chave, valor in (("AGENT_OS_TENANT_TIMEZONE", tz_antes),
                              ("POS_ACIONAMENTO_ESPERA_MINUTOS", espera_antes)):
             if valor is None:
@@ -395,7 +423,10 @@ def test_as_48h_de_espera_da_seguradora_nao_se_somam_ao_agendamento():
     #    é ela que impede o produto de cobrar a seguradora 45 min depois.
     sem = _agendar({"protocol": "5181"}, espera="")
     longe = datetime.fromisoformat(sem["vence_em_iso"])
-    assert (longe - datetime.now(timezone.utc)).total_seconds() > 24 * 3600
+    # ⚠️ Contra a ÂNCORA, não contra o relógio da máquina: é a hora que o motor
+    #    viu (`_agora` congelado) que dá sentido a "mais de 24 h a partir de
+    #    agora".
+    assert (longe - ANCORA).total_seconds() > 24 * 3600
 
 
 def test_o_periodo_da_tarde_nao_vira_pergunta_de_manha():
