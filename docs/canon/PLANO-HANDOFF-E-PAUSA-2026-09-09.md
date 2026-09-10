@@ -97,3 +97,29 @@ texto-fonte; migrar para chamar o motor). Deploy: smith-api → smith-web. 💭 
 direção) · duas linhas duplicadas na Amandus · rota `admin/integrations` fora do helper canônico ·
 CPF/placa em texto puro no corpo das mensagens (redação do `messages.content`) · o ramo `fromMe` do
 webhook com 230 linhas e um teste que mede bytes de código.
+
+## 6. Resultado da execução (09/09, noite)
+
+**Commits na `main` a partir de `9e75d9f`:** `b1f6f57` U1 tenant · `c36e9a3` U5 membros ligam o agente ·
+`1b64d81` U4 rastro do handoff + `/health` · `ba9688e` U3 motor da janela · `8dae4d4` U2 pausa ·
+`0fa6e62` pendências 13–16 · `07ad723` U6 janela ligada nos portões · + este.
+
+**Decisão do orquestrador:** N = **7 dias** (`JANELA_SILENCIO_HUMANO_DIAS=7`, override por corretora em
+`acionamento_profile.janela_silencio_humano_dias`; `0` desliga). Trocar para 15 é uma variável no EasyPanel.
+
+**Gates do juiz, em isolamento, árvore parada (📊 09/09 ~23h):** pytest de 6 arquivos `182 passed` ·
+`test_a_atendente_fala_e_o_robo_cala` TUDO VERDE · `test_a_janela_esta_ligada_nos_portoes` TUDO VERDE ·
+`test_o_handoff_que_falha_deixa_rastro` 22 verdes · `test_handoff_chega_em_alguem` rc=0 (agora chama o
+motor, dois tenants) · `test_a_cobranca_chega_a_quem_deve` 169 ok · `test_quem_fala_primeiro_cala_o_outro`
+TUDO VERDE · `test_ninguem_fala_com_o_segurado_sem_o_agente_ligado` rc=0 · `test_o_caso_se_explica_sozinho`
+verde · `test_o_sinistro_deixa_rastro` 249 ok · `test_a_central_diz_a_verdade` 530 ok ·
+`test_o_atendimento_sabe_como_terminou` verde · `tsc --noEmit` 0 · rotas montam (301) ·
+`o-destino-de-suporte-e-da-corretora-selecionada` rc=0 · `o-membro-liga-o-agente` rc=0 ·
+`admin-auth-policy` rc=0 · `cada-coisa-sabe-de-quem-e` rc=0. A suíte inteira não foi rodada (tokens).
+
+**Implantação (🧑):** smith-api **e** smith-web (os dois mudaram). Depois: `/health` deve trazer
+`corretoras_ligadas_sem_destino_de_suporte: []`; a tela Suporte humano da AutoFleet mostra só o grupo dela.
+
+**Ficou:** P-PILOTO-13 (174 fantasmas LID + CHECK) · 14 (sombra de sinistro muda) · 15 (`resolvido_em` vs
+pausa) · 16 (papel `attendant`) · `#nota` pelo WhatsApp ainda chega ao segurado (SPEC-090) · botão "Devolver ao
+agente" na tela não foi conferido (o release existe na rota).
