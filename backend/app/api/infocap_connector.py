@@ -992,6 +992,7 @@ async def infocap_lookup(
     cliente_path = config.get("infocap_cliente_path") or "/cliente"
     ligacoes_path = config.get("infocap_ligacoes_path") or "/cliente_ligacoes"
     documento_path = config.get("infocap_documento_path") or "/documento"
+    itens_path = config.get("infocap_itens_path") or "/itens"
     documentos_path = config.get("infocap_documentos_path") or config.get("infocap_policy_search_path") or "/documentos"
     documentos_search_param = config.get("infocap_documentos_search_param") or config.get("infocap_policy_search_param") or "texto"
 
@@ -1160,7 +1161,14 @@ async def infocap_lookup(
                             catalog_match_count=len(matches_raw),
                         ),
                     ))
-                pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
+                policy_items = await _fetch_policy_items(
+                    client, headers, itens_path=itens_path,
+                    codfil=policy_locator["codfil"], nosnum=policy_locator["nosnum"], company_id=company_id,
+                )
+                pack = _build_evidence_pack(
+                    selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked,
+                    envelope=detail_envelope, items=policy_items,
+                )
                 pack = await _maybe_attach_official_policy_document_evidence(
                     pack=pack,
                     detail_envelope=detail_envelope,
@@ -1383,7 +1391,14 @@ async def infocap_lookup(
                         catalog_match_count=len(locator_matches),
                     ),
                 ))
-            pack = _build_evidence_pack(selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked, envelope=detail_envelope)
+            policy_items = await _fetch_policy_items(
+                client, headers, itens_path=itens_path,
+                codfil=policy_locator["codfil"], nosnum=policy_locator["nosnum"], company_id=company_id,
+            )
+            pack = _build_evidence_pack(
+                selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked,
+                envelope=detail_envelope, items=policy_items,
+            )
             pack = await _maybe_attach_official_policy_document_evidence(
                 pack=pack,
                 detail_envelope=detail_envelope,
@@ -2237,7 +2252,12 @@ async def _maybe_attach_official_policy_document_evidence(
     )
     if not requested:
         return pack
-    if not pack.get("document_evidence_required") or not pack.get("official_document_source_available"):
+    # 🔴 Antes: o PDF só era lido quando NÃO havia cobertura estruturada. Com as
+    # garantias de `/itens` chegando, essa condição desligaria o documento
+    # exatamente nas perguntas que dependem dele — cláusula, exclusão,
+    # sublimite escrito em prosa. Havendo fonte documental e pedido de detalhe,
+    # lê-se o documento TAMBÉM: as duas fontes se somam, não se excluem.
+    if not pack.get("official_document_source_available"):
         return pack
 
     candidates = _extract_official_document_candidates(detail_envelope if isinstance(detail_envelope, dict) else {})
@@ -3184,7 +3204,199 @@ _COVERAGE_LABEL_KEYS = ("descricao", "cobertura", "garantia", "nome", "clausula"
 _COVERAGE_AMOUNT_KEYS = (
     "valor", "is", "importancia_segurada", "importancia", "limite",
     "limite_maximo_indenizacao", "lmi", "capital", "valor_is", "valor_segurado",
+    # 📊 medido 10/09/2026 na CorpAPI da Resulta (GET /itens?nosnum=&codfil=):
+    # a importância segurada de cada garantia chama-se `impseg`. A ausência
+    # desta chave é o motivo de `coverage_sections` nascer sem valor mesmo
+    # quando a fonte devolve o LMI de cada cobertura.
+    "impseg",
 )
+
+
+# ---------------------------------------------------------------------------
+# COBERTURAS ITEM A ITEM — `GET /itens?nosnum=&codfil=`
+#
+# 🔴 A cobertura NÃO vive no /documento. 📊 Medido ao vivo em 10/09/2026 com a
+# credencial da Resulta (somente leitura): `/itens` devolve
+# `itens[].garantias[]` com `garantia` (nome), `impseg` (LMI), `premio`,
+# `taxa`, `valfran` e `franquia` — 6 garantias na apólice residencial HDI e 15
+# na apólice de condomínio Allianz que o corretor pediu no chat do painel e
+# recebeu "a fonte não retornou itens de cobertura".
+# ---------------------------------------------------------------------------
+
+_ITENS_CACHE_TTL_S = 180  # apólice muda por endosso; minutos bastam e a resposta fica rápida
+
+
+def _money_br(value: Any) -> Optional[str]:
+    """Número da fonte -> 'R$ 1.234,56'. Texto já formatado passa direto."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.upper().startswith("R$"):
+            return text
+        try:
+            number = float(text.replace(".", "").replace(",", "."))
+        except ValueError:
+            return text
+    else:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+    formatted = f"{number:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+    return f"R$ {formatted}"
+
+
+def _deductible_text(item: Dict[str, Any]) -> Optional[str]:
+    """Franquia da garantia: o texto da fonte ('10.00%-350,00', '20 - R$ 4.000,00')
+    é o que o corretor precisa ler; `valfran` só entra quando há valor > 0."""
+    raw = str(item.get("franquia") or "").strip()
+    if raw and raw not in ("0", "0,00", "0.00"):
+        return raw
+    valfran = item.get("valfran")
+    try:
+        if valfran is not None and float(valfran) > 0:
+            return _money_br(valfran)
+    except (TypeError, ValueError):
+        pass
+    if raw:
+        return "sem franquia"
+    return None
+
+
+def _flatten_item_garantias(items: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        for garantia in item.get("garantias") or []:
+            if isinstance(garantia, dict):
+                out.append({**garantia, "_item": item.get("item")})
+    return out
+
+
+def _normalize_coverage_items(items: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Coberturas item a item: rótulo + LMI + prêmio + franquia, com a fonte escrita."""
+    sections: List[Dict[str, Any]] = []
+    for garantia in _flatten_item_garantias(items):
+        label = _human_label(_first_str(garantia, list(_COVERAGE_LABEL_KEYS)))
+        if not label:
+            continue
+        sections.append({
+            "label": label,
+            "amount": _money_br(garantia.get("impseg")),
+            "premium": _money_br(garantia.get("premio")),
+            "deductible": _deductible_text(garantia),
+            "rate": garantia.get("taxa") or None,
+            "item_number": garantia.get("_item"),
+            "source_field": "garantia",
+            "amount_source_field": "impseg",
+            "source": "infocap:/itens.garantias",
+        })
+    return sections[:80]
+
+
+def _risk_object_from_items(items: Optional[List[Dict[str, Any]]], unmasked: bool = False) -> List[Dict[str, Any]]:
+    """Dados do RISCO (o que está segurado) — endereço só para quem é de dentro."""
+    out: List[Dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        kind = _first_str(item, ["tipo_imovel", "atividade", "descricao", "modelo"])
+        if kind and not any(ch.isalpha() for ch in str(kind)):
+            kind = None  # "0"/"-" da fonte não é tipo de imóvel; é campo vazio disfarçado
+        entry: Dict[str, Any] = {
+            "item_number": item.get("item"),
+            "kind": kind,
+            "plate": (str(item.get("placa") or "").strip().upper() or None),
+            "city": _first_str(item, ["cidade"]),
+            "state": _first_str(item, ["estado"]),
+            "clauses": _first_str(item, ["clausulas"]),
+        }
+        if unmasked:
+            entry["address"] = _first_str(item, ["endereco"])
+            entry["district"] = _first_str(item, ["bairro"])
+            entry["zip"] = _first_str(item, ["cep"])
+        out.append({k: v for k, v in entry.items() if v not in (None, "")})
+    return [entry for entry in out if entry][:10]
+
+
+def _premium_summary(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Prêmio da apólice com nome humano (o campo cru mente para quem lê `preliq`)."""
+    mapping = (
+        ("net_premium", "preliq", "Prêmio líquido"),
+        ("installment_surcharge", "preadi", "Adicional de fracionamento"),
+        ("discount", "predes", "Desconto"),
+        ("costs", "precus", "Custo de apólice"),
+        ("iof", "preiof", "IOF"),
+        ("total_premium", "pretot", "Prêmio total"),
+        ("first_installment", "prepri", "Primeira parcela"),
+    )
+    summary: Dict[str, Any] = {}
+    for key, field, label in mapping:
+        value = _money_br(doc.get(field))
+        if value:
+            summary[key] = {"label": label, "value": value, "provider_field": field}
+    if doc.get("numpar"):
+        summary["installments_count"] = doc.get("numpar")
+    if doc.get("forma_pag"):
+        summary["payment_method"] = doc.get("forma_pag")
+    return summary
+
+
+async def _fetch_policy_items(
+    client: "httpx.AsyncClient",
+    headers: Dict[str, str],
+    *,
+    itens_path: str,
+    codfil: Any,
+    nosnum: Any,
+    company_id: str,
+) -> List[Dict[str, Any]]:
+    """Lê `/itens` (coberturas + objeto do risco) com cache curto no Redis.
+
+    Best-effort: falha aqui nunca derruba a consulta da apólice — o pack só
+    volta a ficar sem cobertura estruturada, que é o estado anterior.
+    """
+    if not codfil or not nosnum:
+        return []
+    cache_key = f"infocap:itens:{_short_hash(str(company_id))}:{codfil}:{nosnum}"
+    redis_client = None
+    try:
+        from app.core.redis import get_async_redis_client
+
+        redis_client = await get_async_redis_client()
+        cached = await redis_client.get(cache_key)
+        if cached:
+            parsed = json.loads(cached)
+            if isinstance(parsed, list):
+                return parsed
+    except Exception as exc:  # noqa: BLE001 — cache é acelerador, nunca dependência
+        logger.debug(f"[INFOCAP ITENS] cache indisponivel: {type(exc).__name__}")
+        redis_client = None
+    try:
+        res = await client.get(itens_path, params={"codfil": codfil, "nosnum": nosnum}, headers=headers)
+        if res.status_code >= 400:
+            logger.info(f"[INFOCAP ITENS] http_status={res.status_code} sem coberturas estruturadas")
+            return []
+        payload = res.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[INFOCAP ITENS] leitura falhou: {type(exc).__name__}")
+        return []
+    itens = payload.get("itens") if isinstance(payload, dict) and isinstance(payload.get("itens"), list) else _extract_array(payload)
+    itens = [item for item in (itens or []) if isinstance(item, dict)]
+    if redis_client is not None and itens:
+        try:
+            await redis_client.setex(cache_key, _ITENS_CACHE_TTL_S, json.dumps(itens, ensure_ascii=False, default=str))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"[INFOCAP ITENS] cache write falhou: {type(exc).__name__}")
+    logger.info(
+        f"[INFOCAP ITENS] company_hash={_short_hash(str(company_id))} itens={len(itens)} "
+        f"garantias={len(_flatten_item_garantias(itens))}"
+    )
+    return itens
 
 
 
@@ -3710,14 +3922,26 @@ def _build_evidence_pack(
     unmasked: bool = False,
     *,
     envelope: Optional[Dict[str, Any]] = None,
+    items: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """R1B canonical evidence pack: no raw envelope, no URL, no invented coverage."""
     coverage_doc = _merge_envelope_coverage(doc, envelope)
+    # As garantias de `/itens` entram no MESMO documento de cobertura: os sinais
+    # de assistência/residencial passam a enxergar "ASSISTENCIA 24HS",
+    # "DANOS ELÉTRICOS" etc., que antes só existiam se o PDF fosse lido.
+    garantias = _flatten_item_garantias(items)
+    if garantias:
+        coverage_doc = {**coverage_doc, "garantias": garantias}
     base = _sanitize_policy(coverage_doc, unmasked)
     texts = _coverage_texts(coverage_doc)
     joined = " ".join(texts)
     has_text = bool(texts)
     sections = _coverage_sections(coverage_doc)
+    rich_sections = _normalize_coverage_items(items)
+    if rich_sections:
+        # A versão rica (LMI + prêmio + franquia por cobertura) substitui a
+        # genérica: mesma fonte, mais campos.
+        sections = rich_sections
 
     signals = {
         "residential": _signal(joined, has_text, _SIG_RESIDENTIAL),
@@ -3781,6 +4005,9 @@ def _build_evidence_pack(
         "risk_address_summary_masked": _first_str(doc, ["cidade", "municipio", "estado", "uf"]),
         "object_summary": _first_str(doc, ["objeto", "bem", "descricao_objeto", "local_risco"]),
         "coverage_sections": sections,
+        "coverage_source": "infocap:/itens.garantias" if rich_sections else ("infocap:/documento" if sections else None),
+        "risk_objects": _risk_object_from_items(items, unmasked),
+        "premium_summary": _premium_summary(doc),
         "coverages_count": base.get("coverages_count"),
         "coverage_evidence_status": coverage_status,
         "structured_coverage_available": structured_available,
@@ -3860,6 +4087,7 @@ async def infocap_policy_detail(
 
     auth_path = config.get("infocap_auth_path") or "/login"
     documento_path = config.get("infocap_documento_path") or "/documento"
+    itens_path = config.get("infocap_itens_path") or "/itens"
     codfil = ref_codfil
     nosnum = ref_value
     prefer_insurer = (config.get("infocap_prefer_insurer") or "").strip() or None
@@ -3930,7 +4158,13 @@ async def infocap_policy_detail(
                         catalog_match_count=0,
                     ),
                 )
-            pack = _build_evidence_pack(doc, prefer_insurer, prefer_product, unmasked, envelope=detail_envelope)
+            policy_items = await _fetch_policy_items(
+                client, headers, itens_path=itens_path, codfil=codfil, nosnum=nosnum, company_id=company_id,
+            )
+            pack = _build_evidence_pack(
+                doc, prefer_insurer, prefer_product, unmasked,
+                envelope=detail_envelope, items=policy_items,
+            )
             pack = await _maybe_attach_official_policy_document_evidence(
                 pack=pack,
                 detail_envelope=detail_envelope,

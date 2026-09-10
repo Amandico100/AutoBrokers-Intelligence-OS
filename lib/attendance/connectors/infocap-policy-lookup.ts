@@ -113,7 +113,19 @@ export interface InfocapEvidencePack {
   holder_name_masked: string | null;
   risk_address_summary_masked: string | null;
   object_summary: string | null;
-  coverage_sections: Array<{ label: string; amount: string | null }>;
+  // Cobertura item a item: o limite (`amount`) nunca vinha sozinho na fonte —
+  // `/itens.garantias` traz franquia e prêmio de CADA cobertura, e o tipo
+  // precisa dizer isso a quem for consumir daqui.
+  coverage_sections: Array<{
+    label: string;
+    amount: string | null;
+    premium?: string | null;
+    deductible?: string | null;
+    source?: string | null;
+  }>;
+  coverage_source?: string | null;
+  premium_summary?: Record<string, unknown> | null;
+  risk_objects?: Array<Record<string, unknown>>;
   coverages_count: number | null;
   cancelled: boolean;
   assistance_signals: {

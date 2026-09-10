@@ -104,17 +104,37 @@ def _facts_from_sections(pack: Dict[str, Any], locator_hash: Optional[str]) -> L
         if not _is_human_label(label):
             continue
         fact_type = "assistance" if _ASSISTANCE_LABEL_RE.search(label) else "coverage"
+        # A cobertura estruturada da InfoCap (`/itens.garantias`) traz prêmio e
+        # franquia POR cobertura. Sem carregá-los aqui, o fato chegava à LLM só
+        # com o limite — e a franquia, que era a pergunta, sumia no caminho.
+        detail: Dict[str, Any] = {"provider_field": section.get("source") or "coverage_sections"}
+        if section.get("premium"):
+            detail["premium"] = section.get("premium")
+        if section.get("deductible"):
+            detail["participation"] = section.get("deductible")
         facts.append(
             _fact(
                 fact_type=fact_type,
                 label=label,
                 value=section.get("amount"),
                 source="infocap_structured",
-                source_detail={"provider_field": "coverage_sections"},
+                source_detail=detail,
                 confidence="high",
                 locator_hash=locator_hash,
             )
         )
+        if section.get("deductible"):
+            facts.append(
+                _fact(
+                    fact_type="deductible",
+                    label=f"Franquia — {label}",
+                    value=section.get("deductible"),
+                    source="infocap_structured",
+                    source_detail={"provider_field": section.get("source") or "coverage_sections"},
+                    confidence="high",
+                    locator_hash=locator_hash,
+                )
+            )
     return facts
 
 

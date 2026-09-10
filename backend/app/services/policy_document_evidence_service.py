@@ -39,6 +39,10 @@ OFFICIAL_POLICY_DOCUMENT_TYPE = "official_policy_document"
 OFFICIAL_POLICY_DOCUMENT_SOURCE = "official_policy_document"
 OFFICIAL_POLICY_PROVIDER = "infocap"
 MAX_EVIDENCE_TEXT_CHARS = 700
+# 🔴 O corretor pediu "leia o PDF inteiro". Os trechos por regex respondem o que
+# o regex previu; o TEXTO da apólice responde o que ele perguntar. O limite é de
+# contexto, não de política: uma apólice residencial tem ~4 páginas.
+MAX_DOCUMENT_TEXT_CHARS = 60_000
 
 _INTENT_TERMS = (
     "cobertura",
@@ -139,6 +143,42 @@ def _redact_short_text(value: str) -> str:
     text = re.sub(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b", "[documento-redigido]", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:MAX_EVIDENCE_TEXT_CHARS]
+
+
+def _redact_long_text(value: str) -> str:
+    """Mesma redacao de URL/CPF/CNPJ dos trechos, sem o corte de 700 chars.
+
+    Sem isto o texto integral seria descartado inteiro por
+    `_sanitize_pipeline_output` no primeiro `https://` do rodape da apolice.
+    """
+    text = str(value or "")
+    text = re.sub(r"https?://\S+", "[url-redigida]", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b", "[documento-redigido]", text)
+    text = re.sub(r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b", "[documento-redigido]", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def build_document_plain_text(pages: Iterable[Dict[str, Any]]) -> str:
+    """Texto integral da apolice oficial, pagina a pagina, para a LLM ler de verdade."""
+    blocks: List[str] = []
+    total = 0
+    for page in pages or []:
+        content = _redact_long_text(str(page.get("content") or page.get("text") or ""))
+        if not content:
+            continue
+        try:
+            page_number = int(page.get("page_number") or 0) or len(blocks) + 1
+        except (TypeError, ValueError):
+            page_number = len(blocks) + 1
+        block = "[pagina {}]\n{}".format(page_number, content)
+        if total + len(block) > MAX_DOCUMENT_TEXT_CHARS:
+            blocks.append(block[: max(0, MAX_DOCUMENT_TEXT_CHARS - total)])
+            break
+        blocks.append(block)
+        total += len(block)
+    return "\n\n".join(blocks)
 
 
 def _split_page_fragments(text: str) -> List[str]:
@@ -575,6 +615,7 @@ class PolicyDocumentEvidenceService:
                     evidence=evidence,
                     parser_used=(cached.get("metadata") or {}).get("parser_used") or "direct_text",
                     page_count=len(pages) or (cached.get("metadata") or {}).get("page_count"),
+                    pages=pages,
                     qdrant_ingested=True,
                     case_id=case_id,
                 )
@@ -645,6 +686,7 @@ class PolicyDocumentEvidenceService:
         parser_used = "direct_text"
         document_status = "evidence_ready" if evidence else "low_confidence"
 
+        docling_pages: List[Dict[str, Any]] = []
         fallback_parser = self.docling_parser or self._docling_fallback_parser
         if not evidence and fallback_parser:
             document_status = "docling_pending"
@@ -691,6 +733,7 @@ class PolicyDocumentEvidenceService:
             evidence=evidence,
             parser_used=parser_used,
             page_count=len(pages),
+            pages=(docling_pages or pages),
             qdrant_ingested=qdrant_ingested,
             case_id=case_id,
         )
@@ -710,6 +753,7 @@ class PolicyDocumentEvidenceService:
         page_count: Any,
         qdrant_ingested: bool,
         case_id: Optional[str],
+        pages: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         confidence = _confidence_for_evidence(evidence)
         result = {
@@ -731,6 +775,10 @@ class PolicyDocumentEvidenceService:
             "extraction_confidence": confidence,
             "evidence_items": evidence[:20],
             "evidence_count": len(evidence),
+            # 🔴 O TEXTO da apolice, nao so os trechos que o regex previu: e o
+            # que responde "cobertura X esta contratada?" quando a pergunta nao
+            # cabe em nenhum padrao.
+            "document_text": build_document_plain_text(pages or []),
             "qdrant_ingested": qdrant_ingested,
             "case_id": case_id,
             "created_at": datetime.now(timezone.utc).isoformat(),

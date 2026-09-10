@@ -172,9 +172,18 @@ def _compose_coverage_answer(pack: Dict[str, Any], facts: List[Dict[str, Any]]) 
     if structured:
         lines.append("As coberturas registradas na apólice são:")
         lines.append("")
-        for f in structured[:20]:
+        for f in structured[:40]:
             amount = f.get("value")
-            lines.append(f"- **{f.get('label')}**" + (f" — {amount}" if amount else ""))
+            detail = f.get("source_detail") or {}
+            entry = f"- **{f.get('label')}**" + (f" — limite {amount}" if amount else "")
+            extras = []
+            if detail.get("participation"):
+                extras.append(f"franquia {detail['participation']}")
+            if detail.get("premium"):
+                extras.append(f"prêmio {detail['premium']}")
+            if extras:
+                entry += " (" + " · ".join(extras) + ")"
+            lines.append(entry)
     else:
         doc_facts = [f for f in coverage_facts if f.get("source") == "official_document"]
         if doc_facts:

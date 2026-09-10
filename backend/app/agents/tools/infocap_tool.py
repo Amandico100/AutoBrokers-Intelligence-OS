@@ -73,9 +73,12 @@ def _internal_key() -> Optional[str]:
 class InfocapPolicyLookupTool(BaseTool):
     name: str = "infocap_policy_lookup"
     description: str = (
-        "Consulta apolices e detalhes operacionais na InfoCap da propria corretora. "
-        "Use CPF/CNPJ ou nome para listar apolices; depois use o policy_ref retornado "
-        "para detalhar uma apolice especifica. Nao inventa cobertura se a fonte nao trouxer."
+        "Apolices da propria corretora na InfoCap: dados do segurado e do risco, COBERTURAS ITEM A ITEM "
+        "com limite/LMI, FRANQUIA e PREMIO de cada uma, premio total, vigencia, parcelas/boletos e, "
+        "quando a fonte entrega o PDF da apolice, o TEXTO do documento oficial para o que nao e estruturado. "
+        "Busque por CPF/CNPJ, nome do segurado, numero da apolice ou policy_ref. "
+        "SEMPRE chame esta ferramenta antes de dizer que nao tem cobertura, franquia, premio ou detalhe de apolice — "
+        "nunca responda 'nao consigo buscar essa informacao' sem ter chamado. Nao inventa o que a fonte nao trouxer."
     )
     args_schema: Type[BaseModel] = InfocapLookupInput
 
@@ -331,9 +334,45 @@ class InfocapPolicyLookupTool(BaseTool):
                 f"apolice_selecionada: {number} — {insurer or '-'} {product or ''} — "
                 f"vigencia {selected.get('valid_from') or '-'} a {selected.get('valid_to') or '-'} — situacao: {selected.get('policy_status') or '-'}"
             )
+        # COBERTURAS ITEM A ITEM — o que o corretor pede e o que a fonte entrega
+        # em `/itens.garantias`: nome, limite (LMI), franquia e premio de CADA
+        # cobertura. Vem antes dos fatos porque e a resposta da pergunta.
+        sections = [s for s in (pack.get("coverage_sections") or []) if isinstance(s, dict)]
+        if sections:
+            lines.append(
+                f"coberturas_item_a_item ({len(sections)} contratadas — fonte: "
+                f"{pack.get('coverage_source') or 'sistema de gestao da corretora'}; "
+                "LISTE TODAS na resposta, com limite, franquia e premio de cada):"
+            )
+            for section in sections[:60]:
+                bits = [f"limite {section.get('amount')}" if section.get("amount") else None,
+                        f"franquia {section.get('deductible')}" if section.get("deductible") else None,
+                        f"premio {section.get('premium')}" if section.get("premium") else None]
+                suffix = " — " + " · ".join(b for b in bits if b) if any(bits) else ""
+                lines.append(f"- {section.get('label')}{suffix}")
+        premium_summary = pack.get("premium_summary") or {}
+        if premium_summary:
+            money = [
+                f"{v.get('label')}: {v.get('value')}"
+                for v in premium_summary.values()
+                if isinstance(v, dict) and v.get("value")
+            ]
+            if money:
+                lines.append("premio_da_apolice: " + " · ".join(money))
+            if premium_summary.get("installments_count"):
+                lines.append(
+                    f"parcelamento: {premium_summary.get('installments_count')}x"
+                    + (f" — {premium_summary.get('payment_method')}" if premium_summary.get("payment_method") else "")
+                )
+        for risk in (pack.get("risk_objects") or [])[:5]:
+            if isinstance(risk, dict) and risk:
+                lines.append(
+                    "objeto_do_risco: "
+                    + " · ".join(f"{k}: {v}" for k, v in risk.items() if v not in (None, ""))
+                )
         if facts:
             lines.append("fatos_confirmados (unica fonte permitida de fatos):")
-            for fact in facts[:25]:
+            for fact in facts[:60]:
                 detail_info = fact.get("source_detail") or {}
                 extra = []
                 if detail_info.get("participation"):
@@ -376,6 +415,22 @@ class InfocapPolicyLookupTool(BaseTool):
         if limitations:
             lines.append("limitacoes_da_fonte: " + "; ".join(str(item) for item in limitations[:3]))
 
+        # TEXTO DA APOLICE OFICIAL: quando a InfoCap entrega o PDF, ele vem aqui
+        # inteiro (ate o limite de contexto). O que nao esta estruturado —
+        # clausula, exclusao, sublimite escrito em prosa — se responde daqui.
+        document_text = str(((pack.get("official_policy_document_evidence") or {}).get("document_text")) or "").strip()
+        if document_text and not client_facing:
+            budget = 24000
+            body = document_text[:budget]
+            lines.extend([
+                "",
+                "TEXTO DA APOLICE OFICIAL (documento da seguradora, pagina a pagina — LEIA e responda por aqui "
+                "o que nao estiver nos campos estruturados; cite a pagina):",
+                body,
+                ("[...texto truncado por tamanho — peca para eu reabrir o documento se faltar algo...]"
+                 if len(document_text) > budget else ""),
+            ])
+
         vehicle_info = data.get("vehicle_info") or {}
         if vehicle_info.get("placa") or vehicle_info.get("veiculo"):
             linha = (
@@ -407,6 +462,7 @@ class InfocapPolicyLookupTool(BaseTool):
             "",
             "REGRAS OBRIGATORIAS DA RESPOSTA FINAL:",
             "1. Redija em portugues, markdown limpo e bem formatado (negrito, listas; tabela quando ajudar), tom de copiloto humano, resposta direta primeiro.",
+            "1b. Se houver coberturas_item_a_item, LISTE TODAS (nenhuma de fora), cada uma com limite, franquia e premio — de preferencia numa tabela. Nunca resuma para 'uma cobertura' quando o bloco traz varias.",
             "2. Use SOMENTE os fatos acima. NUNCA invente valor, cobertura, servico, prazo ou status. Valores em R$: apenas os listados.",
             "3. Se houver opcoes_de_apolice, liste TODAS com os numeros exatos e peca a escolha.",
             "4. Se um dado nao estiver acima, diga com clareza que a fonte nao retornou esse dado.",
@@ -536,9 +592,13 @@ class InfocapPolicyLookupTool(BaseTool):
         if pack.get("installments"):
             lines.append(f"- Parcelas retornadas: {len(pack.get('installments') or [])}")
         if secs:
-            lines.append("- Coberturas estruturadas:")
-            for section in secs[:20]:
-                lines.append(f"   - {section.get('label')}" + (f" - {section.get('amount')}" if section.get("amount") else ""))
+            lines.append(f"- Coberturas contratadas ({len(secs)}), item a item:")
+            for section in secs[:60]:
+                bits = [f"limite {section.get('amount')}" if section.get("amount") else None,
+                        f"franquia {section.get('deductible')}" if section.get("deductible") else None,
+                        f"premio {section.get('premium')}" if section.get("premium") else None]
+                suffix = " - " + " · ".join(b for b in bits if b) if any(bits) else ""
+                lines.append(f"   - {section.get('label')}{suffix}")
         elif pack.get("document_evidence_ready"):
             lines.extend(InfocapPolicyLookupTool._document_evidence_lines(pack))
         else:
