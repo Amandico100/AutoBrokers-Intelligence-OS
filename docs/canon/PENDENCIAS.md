@@ -10540,3 +10540,15 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 
 ## P-PILOTO-16 · o papel `attendant` ficou redundante com `member`
 Desde 09/09 `member` liga/desliga o agente. Decidir se `attendant` some (quem o tem continua funcionando). **Dono:** 🧑 decisão · 🤖.
+
+## P-PILOTO-17 · `agents.llm_max_tokens` gravado em 1200/2000 mente para quem abre a tela
+📊 10/09: o agente core da Resulta tinha 1200; 10 de 95 respostas do chat cortadas exatamente nesse teto. O piso de 8192 (`llm_factory.py`) conserta o comportamento sem tocar o banco; o número na tela continua errado. **Destrava:** atualizar `llm_max_tokens` dos 8 agentes para 8192 pela tela ou por SQL com manifesto. **Dono:** 🧑.
+
+## P-PILOTO-18 · o chat do painel não registra que ferramenta o agente chamou
+📊 10/09: `messages.payload` só tem `turn`; sem `tool_invocations`/atividade para o chat web. Auditar "por que o agente disse que não conseguia" exigiu reproduzir a API. **Destrava:** gravar as tool calls do turno no `payload.turn` (nome, status, ms). **Dono:** 🤖.
+
+## P-PILOTO-19 · InfoCap da Resulta: duas conexões arquivadas (uma com credencial inválida) além da ativa; `/parcelas`, `/comissoes`, `/financeiro` respondem 403
+O resolver escolhe certo hoje; o financeiro que o corretor pediu depende de a corretora liberar o perfil da API, não de código. **Dono:** 🧑 (limpar conexões; pedir perfil à InfoCap).
+
+## P-PILOTO-20 · 4 guardas antigos de policy quebram no harness por `nodes.py` importar `honestidade_do_handoff` (desde 23/08)
+`test_infocap_policy_output_guard`, `test_spec016_*`: o stub de `app.agents` com `__path__=[]` não acha o módulo. Pré-existente, não é regressão de 10/09. **Destrava:** o harness registra o módulo no stub. **Dono:** 🤖.
