@@ -1282,6 +1282,46 @@ async def janela_de_mensagens(db, conversation_id: str, *, teto: int = 0):
     return (achado.data or []), ""
 
 
+# ---------------------------------------------------------------------------
+# Números de TESTE que ficam FORA da regra (Founder, 10/09/2026)
+# ---------------------------------------------------------------------------
+# `JANELA_SILENCIO_EXCECOES` = telefones separados por vírgula (só dígitos,
+# com ou sem o 55 e com ou sem o nono dígito). Enquanto o número estiver na
+# lista, o agente trata a conversa dele como conversa NOVA: nem a janela de
+# N dias nem a pausa por intervenção humana o calam. Só o piloto usa isto;
+# lista vazia = ninguém é exceção. Nunca escrever números aqui: só no ambiente.
+_ENV_EXCECOES_DA_JANELA = "JANELA_SILENCIO_EXCECOES"
+
+
+def _variantes_do_telefone(telefone: Any) -> set:
+    d = re.sub(r"\D", "", str(telefone or ""))
+    if not d:
+        return set()
+    if d.startswith("55") and len(d) >= 12:
+        d = d[2:]
+    out = {d}
+    if len(d) == 11 and d[2] == "9":          # DDD + 9 + 8 dígitos → sem o nono
+        out.add(d[:2] + d[3:])
+    elif len(d) == 10:                         # DDD + 8 dígitos → com o nono
+        out.add(d[:2] + "9" + d[2:])
+    return out
+
+
+def telefone_e_excecao_da_janela(telefone: Any, bruto: Optional[str] = None) -> bool:
+    """O telefone está na lista de exceções do ambiente? Falha para o lado do NÃO."""
+    try:
+        lista = os.getenv(_ENV_EXCECOES_DA_JANELA, "") if bruto is None else bruto
+        alvo = _variantes_do_telefone(telefone)
+        if not alvo:
+            return False
+        for item in str(lista or "").split(","):
+            if _variantes_do_telefone(item) & alvo:
+                return True
+        return False
+    except Exception:  # noqa: BLE001
+        return False
+
+
 async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
                           companhia: Any = None, agora=None, n_dias=None):
     """A porta inteira: `(calar, motivo)` — **e nunca levanta**.
@@ -1300,6 +1340,9 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
     """
     if not str(company_id or "").strip():
         return True, "sem corretora: o agente não fala sem saber de quem é a conversa"
+    if telefone_e_excecao_da_janela((conversa or {}).get("user_phone")):
+        logger.info("[JANELA] telefone de teste na lista de exceções: tratado como conversa nova")
+        return False, ""
 
     try:
         if pausar_ia(conversa or {}):
