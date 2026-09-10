@@ -2,6 +2,7 @@
 LLM Factory to decouple LLM creation from Graph logic.
 """
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from langchain_anthropic import ChatAnthropic
@@ -13,6 +14,38 @@ from app.core.config import settings
 from app.factories.model_policy import resolve_chat_model
 
 logger = logging.getLogger(__name__)
+
+#: 🔴 O PISO DE SAÍDA DA CONVERSA — a resposta do corretor não cabe em 1200.
+#:
+#: 📊 09/09/2026, Resulta Seguros (`agents.llm_max_tokens` do agente core,
+#: `20845996`): **1200**. Em `token_usage_logs` desde 08/09, **10 de 95**
+#: chamadas bateram `output_tokens = 1200` EXATO — e as mesmas 10 respostas
+#: estão gravadas em `messages` terminando no meio de uma palavra
+#: ("...com valores individuais e fran"). O corretor digitava "continue".
+#:
+#: Uma apólice lida item a item — coberturas, limites, franquias — não cabe em
+#: 1200 tokens, e o campo do banco foi preenchido uma vez, há muito tempo, para
+#: outro modelo e outro custo. ⚠️ O piso NÃO engessa: quem configurou MAIS que
+#: o piso continua mandando; ele só impede que um número velho corte a resposta
+#: pela metade. E vale só para quem CONVERSA (core e atendimento) — auxiliar e
+#: subagente, que devolvem um campo ou um JSON curto, mantêm o que está gravado.
+PISO_DE_SAIDA_DA_CONVERSA = int(os.getenv("PISO_DE_SAIDA_DA_CONVERSA", "8192"))
+
+#: Papéis que falam com gente e por isso têm piso.
+PAPEIS_QUE_CONVERSAM = ("", "core", "attendance")
+
+
+def piso_de_saida(agent_role, max_tokens):
+    """Devolve o teto de saída efetivo — nunca abaixo do piso, para quem conversa."""
+    papel = str(agent_role or "").strip().lower()
+    if papel not in PAPEIS_QUE_CONVERSAM:
+        return max_tokens
+    try:
+        atual = int(max_tokens)
+    except (TypeError, ValueError):
+        return PISO_DE_SAIDA_DA_CONVERSA
+    return max(atual, PISO_DE_SAIDA_DA_CONVERSA)
+
 
 class LLMFactory:
     @staticmethod
@@ -51,6 +84,16 @@ class LLMFactory:
         max_tokens = source.get("llm_max_tokens") or company_config.get(
             "llm_max_tokens", 8192
         )
+        # 🔴 Um número velho no banco não corta a resposta pela metade.
+        max_tokens_gravado = max_tokens
+        max_tokens = piso_de_saida((agent_data or {}).get("agent_role"), max_tokens)
+        if max_tokens != max_tokens_gravado:
+            logger.info(
+                "[Factory] teto de saida elevado ao piso da conversa: %s -> %s "
+                "(papel=%s, agente=%s)",
+                max_tokens_gravado, max_tokens,
+                (agent_data or {}).get("agent_role"), agent_id or "-",
+            )
 
         reasoning_effort = source.get("reasoning_effort") or "medium"
 

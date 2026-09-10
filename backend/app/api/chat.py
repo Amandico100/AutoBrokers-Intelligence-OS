@@ -1108,6 +1108,11 @@ async def chat_stream(
         estagios: List[str] = []
         estado = "complete"
         erro = None
+        # 🔴 POR QUE O MODELO PAROU DE FALAR — §12.1: fato, não inferência.
+        # 📊 09/09/2026: as 10 respostas cortadas da Resulta foram gravadas com
+        # `status="complete"` e nada mais; descobrir o motivo exigiu cruzar
+        # `messages` com `token_usage_logs` à mão. Agora o motivo vem no turno.
+        desfecho: Dict[str, Any] = {}
 
         def emitir(tipo: str, payload: Dict[str, Any]) -> None:
             # `put_nowait`: emitir NUNCA suspende — e o que nao suspende nao
@@ -1151,6 +1156,15 @@ async def chat_stream(
                     emitir("stage.started", estagio)
                 elif especie == "tool_end":
                     emitir("stage.completed", {"key": estagio_da_tool(ev.get("name"))["key"]})
+                elif especie == "final":
+                    # ⛔ Não vira evento SSE novo: o contrato do turno é o que a
+                    # tela já sabe ler (R6). Isto é diagnóstico, e vai ao banco.
+                    desfecho = {
+                        "finish_reason": ev.get("finish_reason"),
+                        "usage": ev.get("usage"),
+                        "continuations": ev.get("continuations"),
+                        "truncated": ev.get("truncated"),
+                    }
                 elif especie == "error":
                     excecao = ev.get("exc") or RuntimeError("falha no stream")
                     erro = erro_seguro(excecao)
@@ -1199,6 +1213,11 @@ async def chat_stream(
                                   for e in entregas],
                     "error_code": (erro or {}).get("code"),
                 }
+                # ⚠️ Só o que o modelo de fato declarou entra: chave com `None`
+                # é ruído no `payload` e mente sobre ter havido medição.
+                for chave, valor in (desfecho or {}).items():
+                    if valor is not None:
+                        dados_do_turno[chave] = valor
                 if estado == "interrupted":
                     # E11 — quem parou fica escrito ao lado do parcial.
                     dados_do_turno["stopped_by"] = PARADAS.get(chave_do_turno)

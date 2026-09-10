@@ -1751,7 +1751,108 @@ async def invoke_agent(
 #: Os únicos `kind` que o projetor emite. Um `kind` fora desta lista não sai:
 #: quem projeta o turno (o `/chat/stream`) só sabe traduzir estes quatro, e um
 #: quinto silencioso viraria evento perdido na tela.
-KINDS_DO_PROJETOR = ("delta", "tool_start", "tool_end", "error")
+KINDS_DO_PROJETOR = ("delta", "tool_start", "tool_end", "error", "final")
+
+
+#: 🔴 O MOTIVO PELO QUAL O MODELO PAROU DE FALAR — e por que ele virou evento.
+#:
+#: 📊 09/09/2026, Resulta Seguros, chat do painel: das 30 respostas gravadas em
+#: `messages`, **10 terminavam no meio de uma palavra** ("...com valores
+#: individuais e fran"). As MESMAS 10 aparecem em `token_usage_logs` com
+#: `output_tokens = 1200` exato — que é o `agents.llm_max_tokens` gravado do
+#: agente core. O corretor escrevia "continue" e o agente continuava: prova de
+#: que o texto existia e foi CORTADO na saída, não de erro de modelo.
+#:
+#: ⚠️ Nada no sistema sabia disso. O turno era gravado com `status="complete"`
+#: — porque, do ponto de vista do stream, ele terminou mesmo. O diagnóstico
+#: acima só foi possível cruzando duas tabelas à mão; daqui em diante o motivo
+#: fica escrito no `payload` da mensagem (§12: fato, não inferência).
+MOTIVOS_DE_CORTE = ("length", "max_tokens", "max_output_tokens", "MAX_TOKENS")
+
+#: Quantas vezes o servidor pede "continue de onde parou" antes de desistir.
+#: ⛔ Teto, e não laço livre: uma resposta que não cabe em 4 fôlegos tem outro
+#: problema, e cobrar 4× o mesmo turno já é caro demais.
+VOLTAS_DE_CONTINUACAO = 3
+
+#: Quanto do fim da resposta cortada volta ao modelo como âncora da emenda.
+CAUDA_PARA_EMENDAR = 400
+
+
+def _motivo_de_parada(mensagem) -> tuple:
+    """Lê `(motivo, uso)` de uma mensagem do modelo — provedor a provedor.
+
+    OpenAI/OpenRouter escrevem `finish_reason`; Anthropic escreve `stop_reason`;
+    Google escreve `finish_reason` em maiúsculas. Nenhum deles é obrigatório, e
+    a ausência NÃO é corte: quem não declara nada devolve `(None, uso)`.
+    """
+    if mensagem is None:
+        return None, None
+
+    # `on_chat_model_end` entrega um `LLMResult` (ou um dict com `generations`),
+    # não a mensagem: desembrulha-se até achar quem carrega o metadado.
+    geracoes = getattr(mensagem, "generations", None)
+    if geracoes is None and isinstance(mensagem, dict):
+        geracoes = mensagem.get("generations")
+    if geracoes:
+        try:
+            primeira = geracoes[0]
+            if isinstance(primeira, (list, tuple)):
+                primeira = primeira[0]
+            interna = getattr(primeira, "message", None)
+            if interna is None and isinstance(primeira, dict):
+                interna = primeira.get("message")
+            if interna is not None:
+                return _motivo_de_parada(interna)
+        except (IndexError, KeyError, TypeError):
+            pass
+
+    meta = getattr(mensagem, "response_metadata", None)
+    if meta is None and isinstance(mensagem, dict):
+        meta = mensagem.get("response_metadata")
+    meta = meta or {}
+    motivo = meta.get("finish_reason") or meta.get("stop_reason")
+    if not motivo:
+        # Alguns wrappers aninham o motivo dentro de `usage`/`choices`.
+        motivo = ((meta.get("usage") or {}).get("finish_reason")) or None
+
+    uso = getattr(mensagem, "usage_metadata", None)
+    if uso is None and isinstance(mensagem, dict):
+        uso = mensagem.get("usage_metadata")
+    if not uso:
+        bruto = meta.get("usage") or meta.get("token_usage") or {}
+        if isinstance(bruto, dict) and bruto:
+            uso = {
+                "input_tokens": bruto.get("input_tokens") or bruto.get("prompt_tokens"),
+                "output_tokens": bruto.get("output_tokens") or bruto.get("completion_tokens"),
+            }
+    return (str(motivo) if motivo else None), (uso or None)
+
+
+def _cortou(motivo) -> bool:
+    """⛔ `stop`/`end_turn`/`tool_calls` NÃO são corte. Só o teto de saída é."""
+    return str(motivo or "").strip() in MOTIVOS_DE_CORTE
+
+
+def _ultima_mensagem_do_output(output):
+    """A última mensagem do que o nó `agent` devolveu — ou o próprio output."""
+    if isinstance(output, dict) and "messages" in output:
+        msgs = output["messages"]
+        if isinstance(msgs, (list, tuple)) and msgs:
+            return msgs[-1]
+        return msgs
+    return output
+
+
+def _pedido_de_emenda(cauda: str) -> str:
+    """A frase que o servidor manda ao modelo — o corretor nunca a digita."""
+    return (
+        "Sua resposta anterior foi cortada no meio porque atingiu o limite de "
+        "tokens de saída. CONTINUE exatamente de onde parou, sem repetir o que "
+        "já escreveu, sem recomeçar e sem cumprimentar de novo. Não comente que "
+        "houve corte.\n\n"
+        "Últimos caracteres já entregues ao corretor:\n"
+        "...%s" % (cauda or "")
+    )
 
 
 def _ev(kind: str, **payload):
@@ -1937,6 +2038,16 @@ async def stream_agent_eventos(
     vistas = set()      # ids de chamadas de tool já anunciadas (dedup)
     abertas = []        # estágios anunciados e ainda não fechados
 
+    # 🔴 O QUE A EMENDA PRECISA SABER (P-PILOTO · resposta pela metade).
+    # `estado_da_volta` é o que se manda ao grafo nesta rodada; `cauda` é o fim
+    # do que JÁ saiu, e é ela que ancora a emenda; `motivo`/`uso` são o que o
+    # modelo declarou na ÚLTIMA volta — e é isso que vai ao `payload`.
+    estado_da_volta = initial_state
+    cauda = ""
+    motivo = None
+    uso = None
+    voltas = 0
+
     try:
         # === RETRY LOOP PARA RESILIÊNCIA DE CONEXÃO ===
         # Supabase/PgBouncer pode fechar conexões inativas. Tentamos até 3x.
@@ -1944,107 +2055,168 @@ async def stream_agent_eventos(
 
         max_retries = 3
 
-        for attempt in range(max_retries):
-            try:
-                async for event in graph.astream_events(initial_state, config, version="v1"):
-                    kind = event["event"]
-                    name = event.get("name", "")
-                    data = event.get("data", {})
-                    node = (event.get("metadata") or {}).get("langgraph_node")
+        while True:
+            streamou_nesta_volta = False
+            for attempt in range(max_retries):
+                try:
+                    async for event in graph.astream_events(estado_da_volta, config, version="v1"):
+                        kind = event["event"]
+                        name = event.get("name", "")
+                        data = event.get("data", {})
+                        node = (event.get("metadata") or {}).get("langgraph_node")
 
-                    # --- Token a token, só do nó `agent` ---------------------
-                    # Tokens do SubAgent (que roda no nó `tools`) são ignorados.
-                    if kind == "on_chat_model_stream":
-                        if node != "agent":
-                            continue
-                        chunk = data.get("chunk")
+                        # --- Token a token, só do nó `agent` ---------------------
+                        # Tokens do SubAgent (que roda no nó `tools`) são ignorados.
+                        if kind == "on_chat_model_stream":
+                            if node != "agent":
+                                continue
+                            chunk = data.get("chunk")
 
-                        for nome in _tool_starts_do_chunk(chunk, vistas):
-                            abertas.append(nome)
-                            item = _ev("tool_start", name=nome)
-                            if item:
-                                yield item
+                            for nome in _tool_starts_do_chunk(chunk, vistas):
+                                abertas.append(nome)
+                                item = _ev("tool_start", name=nome)
+                                if item:
+                                    yield item
 
-                        content = None
-                        if hasattr(chunk, "content"):
-                            content = chunk.content
-                        elif isinstance(chunk, dict):
-                            content = chunk.get("content")
-                        elif isinstance(chunk, str):
-                            content = chunk
+                            content = None
+                            if hasattr(chunk, "content"):
+                                content = chunk.content
+                            elif isinstance(chunk, dict):
+                                content = chunk.get("content")
+                            elif isinstance(chunk, str):
+                                content = chunk
 
-                        texto = _texto_do_conteudo(content) if content else ""
-                        if texto:
-                            item = _ev("delta", text=texto)
-                            if item:
-                                yield item
-                            has_streamed = True
-
-                    elif kind == "on_chain_end" and name == "agent":
-                        output = data.get("output")
-
-                        # O modelo que não streama ainda declara a tool aqui.
-                        for nome in _tool_starts_da_mensagem(output, vistas):
-                            abertas.append(nome)
-                            item = _ev("tool_start", name=nome)
-                            if item:
-                                yield item
-
-                        # --- Fallback no fim do agente ----------------------
-                        if not has_streamed:
-                            final_text = ""
-                            if isinstance(output, dict) and "messages" in output:
-                                msgs = output["messages"]
-                                if isinstance(msgs, list) and len(msgs) > 0:
-                                    last_msg = msgs[-1]
-                                    final_text = getattr(last_msg, "content", str(last_msg))
-                                elif hasattr(msgs, "content"):
-                                    final_text = msgs.content
-                            elif hasattr(output, "content"):
-                                final_text = output.content
-
-                            final_text = _texto_do_conteudo(final_text)
-                            if final_text:
-                                logger.info(f"[Stream] ⚠️ Fallback Node 'agent': {len(final_text)} chars.")
-                                item = _ev("delta", text=final_text)
+                            texto = _texto_do_conteudo(content) if content else ""
+                            if texto:
+                                item = _ev("delta", text=texto)
                                 if item:
                                     yield item
                                 has_streamed = True
+                                streamou_nesta_volta = True
+                                cauda = (cauda + texto)[-CAUDA_PARA_EMENDAR:]
 
-                    elif kind == "on_chain_end" and node == "tools":
-                        # O nó `tools` fechou: todo estágio aberto está cumprido.
-                        for nome in (abertas or [""]):
-                            item = _ev("tool_end", name=nome)
-                            if item:
-                                yield item
-                        abertas = []
+                            # ⚠️ O motivo pode vir no ÚLTIMO chunk (Anthropic o
+                            # manda no chunk final do stream), não só no
+                            # `on_chat_model_end`. Lê-se dos dois — o que
+                            # declarar por último vence.
+                            motivo_do_chunk, uso_do_chunk = _motivo_de_parada(chunk)
+                            if motivo_do_chunk:
+                                motivo = motivo_do_chunk
+                            if uso_do_chunk:
+                                uso = uso_do_chunk
 
-                # Stream completado com sucesso
-                if not has_streamed:
-                    try:
-                        final_state = await graph.aget_state(config)
-                        final_text = final_state.values.get("final_response", "")
-                        if final_text:
-                            item = _ev("delta", text=str(final_text))
-                            if item:
-                                yield item
-                            has_streamed = True
-                    except Exception as final_error:  # noqa: BLE001
-                        logger.warning(f"[Stream] final_response fallback indisponivel: {type(final_error).__name__}")
+                        elif kind == "on_chat_model_end":
+                            if node != "agent":
+                                continue
+                            motivo_do_fim, uso_do_fim = _motivo_de_parada(data.get("output"))
+                            if motivo_do_fim:
+                                motivo = motivo_do_fim
+                            if uso_do_fim:
+                                uso = uso_do_fim
+
+                        elif kind == "on_chain_end" and name == "agent":
+                            output = data.get("output")
+
+                            # O modelo que não streama ainda declara a tool aqui.
+                            for nome in _tool_starts_da_mensagem(output, vistas):
+                                abertas.append(nome)
+                                item = _ev("tool_start", name=nome)
+                                if item:
+                                    yield item
+
+                            # O motivo também mora na mensagem final do nó —
+                            # é por aqui que o modelo que NÃO streama o declara.
+                            motivo_do_no, uso_do_no = _motivo_de_parada(
+                                _ultima_mensagem_do_output(output))
+                            if motivo_do_no:
+                                motivo = motivo_do_no
+                            if uso_do_no:
+                                uso = uso_do_no
+
+                            # --- Fallback no fim do agente ----------------------
+                            if not streamou_nesta_volta:
+                                final_text = ""
+                                if isinstance(output, dict) and "messages" in output:
+                                    msgs = output["messages"]
+                                    if isinstance(msgs, list) and len(msgs) > 0:
+                                        last_msg = msgs[-1]
+                                        final_text = getattr(last_msg, "content", str(last_msg))
+                                    elif hasattr(msgs, "content"):
+                                        final_text = msgs.content
+                                elif hasattr(output, "content"):
+                                    final_text = output.content
+
+                                final_text = _texto_do_conteudo(final_text)
+                                if final_text:
+                                    logger.info(f"[Stream] ⚠️ Fallback Node 'agent': {len(final_text)} chars.")
+                                    item = _ev("delta", text=final_text)
+                                    if item:
+                                        yield item
+                                    has_streamed = True
+                                    streamou_nesta_volta = True
+                                    cauda = (cauda + final_text)[-CAUDA_PARA_EMENDAR:]
+
+                        elif kind == "on_chain_end" and node == "tools":
+                            # O nó `tools` fechou: todo estágio aberto está cumprido.
+                            for nome in (abertas or [""]):
+                                item = _ev("tool_end", name=nome)
+                                if item:
+                                    yield item
+                            abertas = []
+
+                    # Stream completado com sucesso
+                    if not has_streamed:
+                        try:
+                            final_state = await graph.aget_state(config)
+                            final_text = final_state.values.get("final_response", "")
+                            if final_text:
+                                item = _ev("delta", text=str(final_text))
+                                if item:
+                                    yield item
+                                has_streamed = True
+                                streamou_nesta_volta = True
+                                cauda = (cauda + str(final_text))[-CAUDA_PARA_EMENDAR:]
+                        except Exception as final_error:  # noqa: BLE001
+                            logger.warning(f"[Stream] final_response fallback indisponivel: {type(final_error).__name__}")
+                    break
+
+                except asyncio.CancelledError:
+                    raise
+                except (PsycopgOperationalError, Exception) as retry_error:
+                    error_str = str(retry_error).lower()
+                    is_connection_error = any(kw in error_str for kw in ["closed", "connection", "consuming input failed", "server closed"])
+
+                    if is_connection_error and attempt < max_retries - 1:
+                        logger.warning(f"[Stream] ⚠️ Conexão DB perdida (tentativa {attempt + 1}/{max_retries}): {type(retry_error).__name__}")
+                        await asyncio.sleep(1)  # Backoff antes de retry
+                        continue
+                    logger.error(f"[Stream] ❌ Erro após {attempt + 1} tentativas: {type(retry_error).__name__}")
+                    raise
+
+            # =================================================================
+            # 🔴 MEIA RESPOSTA NÃO SAI DAQUI — a emenda é do SERVIDOR
+            # =================================================================
+            # 📊 09/09/2026, Resulta: 10 das 30 respostas do painel terminavam
+            # no meio de uma palavra, e as 10 batiam `output_tokens = 1200`
+            # (o teto do agente) em `token_usage_logs`. Quem emendava era o
+            # CORRETOR, digitando "continue".
+            #
+            # ⛔ Não é motor novo (§5): é o MESMO grafo, o MESMO `thread_id` e
+            # o MESMO projetor — só que o pedido de continuação vem de dentro.
+            # O checkpointer já guarda o trecho cortado, então o modelo lê a si
+            # mesmo; a cauda vai junto para o caso de não haver checkpoint.
+            if not (_cortou(motivo) and voltas < VOLTAS_DE_CONTINUACAO):
                 break
 
-            except asyncio.CancelledError:
-                raise
-            except (PsycopgOperationalError, Exception) as retry_error:
-                error_str = str(retry_error).lower()
-                is_connection_error = any(kw in error_str for kw in ["closed", "connection", "consuming input failed", "server closed"])
-
-                if is_connection_error and attempt < max_retries - 1:
-                    logger.warning(f"[Stream] ⚠️ Conexão DB perdida (tentativa {attempt + 1}/{max_retries}): {type(retry_error).__name__}")
-                    await asyncio.sleep(1)  # Backoff antes de retry
-                    continue
-                logger.error(f"[Stream] ❌ Erro após {attempt + 1} tentativas: {type(retry_error).__name__}")
-                raise
+            voltas += 1
+            logger.info("[Stream] resposta cortada (%s) — emendando, volta %d/%d",
+                        motivo, voltas, VOLTAS_DE_CONTINUACAO)
+            estado_da_volta = dict(estado_da_volta)
+            estado_da_volta["messages"] = [HumanMessage(content=_pedido_de_emenda(cauda))]
+            # ⚠️ O motivo é ZERADO antes da volta: se a emenda terminar limpa e
+            # o provedor não declarar nada, o turno não pode herdar o "length"
+            # da volta anterior e emendar para sempre.
+            motivo = None
 
     except asyncio.CancelledError:
         # Parar é decisão de quem pediu — não é falha, e o parcial já saiu.
@@ -2055,6 +2227,14 @@ async def stream_agent_eventos(
         if item:
             yield item
         return
+
+    # 🔴 O TURNO DIZ POR QUE PAROU — §12.1: fato medido, não inferência.
+    # Quem grava (`/chat/stream`) põe isto no `payload` da mensagem. Sem esta
+    # linha, o diagnóstico do próximo corte volta a ser cruzar duas tabelas.
+    item = _ev("final", finish_reason=motivo, usage=uso, continuations=voltas,
+               truncated=bool(_cortou(motivo)))
+    if item:
+        yield item
 
     # === MEMÓRIA — depois do turno, nunca dentro dele ========================
     if supabase_client or async_supabase_client:
