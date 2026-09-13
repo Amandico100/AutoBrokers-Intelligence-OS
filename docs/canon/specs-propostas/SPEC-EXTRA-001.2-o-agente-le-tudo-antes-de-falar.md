@@ -187,7 +187,7 @@ Continuar código, testes, gates, migrations em branch e preparação do rollout
 7. **Guarda de pergunta repetida** sobre o motor e o acervo (§7.3).
 8. **Apresentação condicional ao reencontro** — a decisão sai do modelo (§8.1); **hierarquia de tamanho medida** (§8.2); **identidade da thread fixada por assunto** (§8.3).
 9. **Dedupe do espelho por `wa_message_id` no pipeline do agente** (§9.1).
-10. **Uma conversa por contraparte** (LID × telefone) + as 174 fantasmas + a trava que impede a 175ª (§9.2, §11).
+10. **Uma conversa por contraparte** (LID × telefone) + as **175** fantasmas + a trava que impede a **176ª** (§9.2, §11).
 11. **Ordem correta do silêncio** e **P-PILOTO-15**; **todo silêncio no feed com motivo** (§9.3, §9.4).
 12. **Nome do agente** (D-PILOTO-12), inteiro: campo, apresentação, "especialista", troca, recusa de colisão, assinatura 🤖 (§10).
 
@@ -247,6 +247,8 @@ evento do WhatsApp (texto · imagem · áudio · documento)
 
 > AAA §5 ①: *"o executor REMEDE o que a SPEC afirma. **O número dele vence**."* Este documento envelhece; o BLOCO 0 é quem o corrige.
 
+0. 🔴 **ANTES DE TUDO — o candidato a P0 cross-tenant.** 📊 **104 de 134** `wa_message_id` repetidos aparecem sob **dois `company_id`** (RESEARCH-PACK §3.6), com texto idêntico, 6 contrapartes, nenhum `observer_number` compartilhado. Determinar a causa: ingestão cruzada? o mesmo segurado nas duas corretoras com id reaproveitado? **Confirmado como cross-tenant → PARE, registre em `FOUNDER-DECISIONS.md` e trate como P0 próprio** (CLAUDE.md §10 item 4 e §7). ⛔ **Nenhuma migration antes deste veredito** — M2 cria índice sobre `(company_id, contraparte)` e um dado cruzado faria a migration falhar ou, pior, passar.
+
 1. **Preflight na ordem do CLAUDE.md §2**: `git fetch`, `HEAD..origin/main` (tem de ser **0** — diferente disso, **pare e pergunte**), `origin/main..HEAD`, branch, `git rev-parse HEAD` (vai no relatório), `git status --short`.
 2. **Reabrir cada `arquivo:linha` desta SPEC e do RESEARCH-PACK.** Divergência → corrigir na SPEC definitiva **e anotar** (o RP §1 traz cinco correções já feitas ao diagnóstico; espere mais).
 3. 🔴 **Recontar os desvios de mídia:** `grep -n 'type": "media"' backend/app/api/webhook.py` **tem de voltar 3**. Voltou 2 ou 4 → o mapa mudou e a unidade B muda com ele.
@@ -255,7 +257,7 @@ evento do WhatsApp (texto · imagem · áudio · documento)
 6. **Medir os traços das mensagens reais** com a **função do motor** (`tracos_da_mensagem`), imprimindo só contagens: quantas terminam em pontuação final · quantas são dado curto · quantas terminam em conectivo. 🔴 CLAUDE.md §9.4: *medir com a ferramenta que vai usar*. Um número medido em SQL e aplicado em Python é um número sobre outra coisa.
 7. **Gerar o corpus das 20 rajadas** (§13) e conferir que ele tem variedade de tamanho (2, 3, 4, 5+), de intervalo (faixas 0–3, 3–8, 8–18, 18–25, > 25 s), **mídia em pelo menos 3**, e **as duas corretoras**.
 8. **Ler `MIGRATIONS-AUTHORITY.md` inteiro** antes de qualquer SQL. Medir o schema vivo de `conversations` e `messages` (colunas, constraints, índices, RLS, triggers) por `information_schema`/catálogo — **nunca por suposição**; e **quem é o escritor de cada coluna tocada** (a ficha tem **três**: `nodes.py:849+`, `human_handoff.py:1078-1084`, `atendimento/acompanhamento.py:419-441`).
-9. **Contar as fantasmas hoje.** 📊 09/09: 774 conversas, **174 fantasmas** (106 AutoFleet, 68 Resulta), 165 sem par real. ⚠️ **Divergência registrada:** o script diz **7** com pausa a copiar (`migrar_conversas_fantasma_lid.py:24-31`); `PENDENCIAS.md` P-PILOTO-13 diz **10**. O BLOCO 0 decide qual é, com a consulta.
+9. **Recontar as fantasmas.** 📊 13/09: 860 conversas, **175 fantasmas** (106 AutoFleet, **69** Resulta), **100% abertas**, **10** com pausa presa, **9** com par real, **166 sem par** (RESEARCH-PACK §3.5). ⚠️ Eram **174** em 09/09: **nasce cerca de uma por dia**, e é isso que a trava da M2 para. ⚠️ Divergência a resolver: o script diz **7** com pausa (`migrar_conversas_fantasma_lid.py:24-31`, medição de 09/09), o banco diz **10** hoje — **o dry-run do BLOCO 0 decide**, e o número dele vence.
 10. **Confirmar se o fork Evolution Go implantado tem `POST /chat/sendPresence/{instance}`** (`rotas_de_envio_medidas()`, `evolution_go.py:577`). 🔴 **Não tem → a presença fica desligada, com pendência nomeada. Não se simula "digitando…".**
 11. **Rodar os guardas que não podem quebrar** e anotar o verde de partida: `tests/test_midia_e_concorrencia_do_webhook.py`, `tests/test_a_ultima_palavra_humana_manda.py`, `tests/test_a_janela_esta_ligada_nos_portoes.py`, `tests/test_quem_fala_primeiro_cala_o_outro.py`, `tests/test_o_atendimento_tem_memoria.py`, os três do espelho.
 12. **Reencontrar por número** P-PILOTO-13, 15, 16, 17, 18 e dar `FECHADA` / `CONTINUA` / `MORREU` (AAA §2). ⚠️ P-PILOTO-15 **não é** o que o plano de execução supôs — o texto real fala de `resolvido_em`, não da ordem das checagens. **As duas coisas entram** (§9.3).
@@ -699,7 +701,7 @@ ck_conversations_resolucao_coerente / ck_conversations_resolucao_motivo
 
 ⚠️ **Sem tabela nova** (CLAUDE.md §5): o escritor continua sendo o `log_activity` que já alimenta a página Atividades (`:1434-1438`).
 
-**GATE E.** Mesma entrega duas vezes → **1** linha em `messages` e **1** turno; LID e telefone da mesma contraparte → **1** conversa, e a segunda é recusada pelo índice; as 174 fantasmas fechadas com VERIFY em zero; telefone na lista de exceções **não** fura o takeover; cada um dos 5 motivos de silêncio produz linha no feed.
+**GATE E.** Mesma entrega duas vezes → **1** linha em `messages` e **1** turno; LID e telefone da mesma contraparte → **1** conversa, e a segunda é recusada pelo índice; as **175** fantasmas fechadas com VERIFY em zero (e as **10** com pausa presa com a pausa copiada **antes** do fechamento); telefone na lista de exceções **não** fura o takeover; cada um dos 5 motivos de silêncio produz linha no feed.
 **MUTAÇÃO E.** (a) tirar o `wa_message_id` do insert do pipeline → o guarda de dedupe → **vermelho**; (b) desligar a normalização de LID → duas conversas → **vermelho**; (c) reverter a ordem de `a_ia_deve_calar` → o guarda do takeover → **vermelho**.
 
 ---
@@ -794,7 +796,7 @@ Nos textos que vão ao grupo de suporte e ao dossiê, **o agente assina `🤖 {a
 - **ROLLBACK:** recriar o CHECK sem o valor. ⚠️ **Só é seguro se nenhuma linha já usar `fantasma_lid`** — o ROLLBACK confere isso primeiro e, havendo linhas, **não** reverte: registra. (Reverter apagaria a razão pela qual 174 conversas foram fechadas.)
 - **Depois:** rodar `migrar_conversas_fantasma_lid.py --vivo`, com o dry-run colado antes e o VERIFY do próprio script depois (ele já imprime o esperado, `:276-281`).
 
-### M2 — `conversations.contraparte` e a trava da fantasma nº 175
+### M2 — `conversations.contraparte` e a trava da fantasma nº 176
 
 - **APPLY:** (a) `ALTER TABLE ... ADD COLUMN IF NOT EXISTS contraparte text`; (b) backfill aplicando a normalização às linhas existentes; (c) **índice único parcial** sobre `(company_id, contraparte)` restrito a `channel='whatsapp' AND agent_id IS NULL AND status <> 'closed'`, com `IF NOT EXISTS`. Expand-first: **sim** (nada some; os escritores passam a preencher antes de o índice existir). Destrutiva: **não**.
 - 🔴 **Ordem obrigatória:** escritores preenchendo → backfill → **contar duplicatas** → resolver as duplicatas → **só então** criar o índice. Criar o índice com duplicata viva falha a migration inteira. O BLOCO 0 conta antes.
@@ -822,7 +824,7 @@ Nos textos que vão ao grupo de suporte e ao dossiê, **o agente assina `🤖 {a
 | **G6** | todo `required_slots` de todo corredor está em `ROTULOS` **e** é gravado na ficha | `slots_do_atendimento()` × `corridor_playbooks` reais | 🔴 **vermelho HOJE** (`agua_escorrendo`) = gate zero. Mutação: devolver a tupla velha de 15 |
 | **G7** | slot já confirmado **não** é perguntado de novo | replay estrutural do encanador 10/09 pelo motor (`bloco_para_o_prompt` + `slots_reperguntados`) | esvaziar `ficha["confirmados"]` |
 | **G8** | 0 cumprimentos fora da abertura; e a resposta respeita a classe de tamanho | `deve_se_apresentar` + `classe_do_tamanho` reais sobre o replay 10/09 | devolver `SEMPRE se apresente` ao bloco estático |
-| **G9** | a mesma entrega duas vezes → **1** linha e **1** turno | payload real reenviado pela rota real | tirar o `wa_message_id` do insert do pipeline |
+| **G9** | a mesma entrega duas vezes → **1** linha e **1** turno; **e o mesmo `wa_message_id` nunca aparece sob dois `company_id`** | payload real reenviado pela rota real + a consulta de §3.6 do RP sobre o acervo | tirar o `wa_message_id` do insert do pipeline. 🔴 A segunda asserção é **vermelha HOJE** (104 de 134): ela fica verde pelo veredito do BLOCO 0 item 0, não por edição do teste |
 | **G10** | LID e telefone da mesma contraparte → **1** conversa; a segunda é recusada pelo banco | `telefone_do_evento` real + VERIFY V3 da M2 | desligar a normalização de `@lid` |
 | **G11** | silêncio: exceção **não** fura o takeover, e **todo** motivo vira linha no feed | `a_ia_deve_calar` + `anotar_silencio_no_feed` reais, os 5 motivos | reverter a ordem das checagens |
 | **G12** | o nome: apresentação usa o `agent_name`; "especialista" nunca é o agente; o **servidor** recusa nome colidente | duas corretoras com nomes diferentes + a rota real de gravação | aceitar nome de agente igual ao de um membro |
@@ -857,7 +859,9 @@ tracos_da_mensagem(texto) ──► Tracos  ──► janela_de_espera(Tracos) �
 
 ⛔ **Nenhum campo de texto. Nenhum telefone. Nenhuma data absoluta.** `company` é `"A"`/`"B"`, não o UUID.
 
-**O gerador** — `backend/scripts/gerar_corpus_de_rajadas.py`, read-only, que (a) acha rajadas de ≥ 2 mensagens de entrada em ≤ 30 s, (b) aplica **`tracos_da_mensagem` do motor** a cada texto, (c) grava só os traços, (d) imprime as contagens 📊 do relatório, (e) traz uma **linha de CONTROLE** — se `n_chars` somado for 0 em tudo, a extração não rodou (CLAUDE.md §9.2).
+**O gerador** — `backend/scripts/gerar_corpus_de_rajadas.py`, read-only, que (a) acha rajadas de ≥ 2 mensagens de entrada em ≤ 30 s 🔴 **lendo `attendance_transcripts.wa_timestamp`, nunca `messages.created_at`** (§0.3: o segundo é o relógio do espelho e infla as rajadas em **+39,2%**), com o filtro `insurer_key is null` conferido contra o motor `canais_observados.natureza_da_contraparte` (📊 divergência de 0,006%), (b) aplica **`tracos_da_mensagem` do motor** a cada texto, (c) grava só os traços, (d) imprime as contagens 📊 do relatório, (e) traz **duas linhas de CONTROLE** (CLAUDE.md §9.2): se `n_chars` somado for 0 em tudo, a extração não rodou; **e a mesma consulta pelos dois relógios tem de devolver números diferentes** — iguais significa que o `wa_timestamp` não foi usado.
+
+📊 **A matéria-prima existe de sobra:** 20.727 rajadas, 5.608 com mídia, nas três corretoras (Resulta 14.509 · AutoFleet 6.202 · AMANDUS 16). O RESEARCH-PACK §3.4 já traz **28 candidatas estratificadas** por tamanho × ritmo × corretora, com UUID, para o executor não recomeçar a busca.
 
 **Critérios de aceite do corpus:** 20 rajadas · tamanhos 2, 3, 4 e 5+ representados · intervalos nas faixas 0–3, 3–8, 8–18, 18–25 e **> 25 s** · **≥ 3 com mídia** · **as duas corretoras** · e **pelo menos as 4 rajadas que fragmentaram no piloto** (elas são a régua: `turnos_hoje` = 2, `turnos_esperados` = 1).
 
@@ -1089,8 +1093,10 @@ o que mudou para o segurado · o que mudou para a Regina e a Saionara · o que f
 
 | item | o que é | o que custa esquecer | bloqueia? |
 |---|---|---|---|
-| **Nome do agente de cada corretora** | confirmar que "Amanda" (Resulta) e "AutoFleet Assistente" continuam certos, e que nenhum coincide com nome de atendente | o agente e a atendente se confundem no grupo e no dossiê | não — a SPEC recusa **mudanças novas** e avisa sobre colisão existente |
+| 🔴 **Qual é o nome do agente da Resulta** | 📊 a D-PILOTO-12 diz *"Amanda fica"*, mas em 13/09 a linha `Amanda` está **desativada** e o agente **ativo** se chama **`AutoBrokers`** (o mesmo da AutoFleet). Uma frase sua resolve: `Amanda` volta, ou `AutoBrokers` fica | o agente se apresenta com um nome que a Saionara não reconhece — e a decisão registrada e o banco continuam discordando | não — a SPEC usa o que estiver ativo e **escreve qual foi** |
+| **Colisão de nome agente × equipe** | 📊 hoje são **zero** (9 nomes de agente × 10 membros, nem nome completo nem primeiro nome) | nenhum custo hoje; a trava existe para o dia em que alguém digitar o nome da atendente no card Agente | não |
 | **Presença "digitando…"** | decidir se fica **ligada** nos pilotos | 💭 pode parecer artificial para alguns segurados; começar desligada é o padrão seguro | não — `PRESENCA_DIGITANDO_LIGADA` nasce desligada |
 | **Janela de 18 s para frase inacabada** | confirmar que esperar até 18 s por uma frase incompleta é aceitável | segurado ansioso pode achar lento; o teto de 25 s limita o pior caso | não — os números saem medidos e são configuráveis |
 | **Implantar** | o clique no EasyPanel, se a autoridade assim exigir | o trabalho fica na main e **não** no ar (CLAUDE.md §2) | 🔴 sim, para o canário |
-| **Fechar as 174 fantasmas** | 📊 165 sem par real serão **fechadas**, não mescladas | conversas antigas some do "aberto"; o histórico **fica** | não — mas é decisão de dado, e vai escrita |
+| **Fechar as 175 fantasmas** | 📊 **166 das 175 não têm par real** e serão **fechadas**, não mescladas; as **10** com pausa de atendente presa têm a pausa copiada antes | as conversas somem do "aberto" (o histórico **fica**); e a **176ª** nasce amanhã se a trava não entrar | não — mas é decisão de dado, e vai escrita |
+| 🔴 **`wa_message_id` repetido entre corretoras** | 📊 **104 de 134** ids repetidos aparecem sob **dois `company_id`**, com texto idêntico, sem observador compartilhado. **INFERÊNCIA**, não fato | se for cross-tenant de verdade, é P0 e **para a SPEC** (CLAUDE.md §10 item 4) | 🔴 **pode** — o BLOCO 0 investiga **antes** de qualquer migration e registra o veredito |

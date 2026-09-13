@@ -535,7 +535,7 @@ Janelas por tipo (💭, a confirmar no BLOCO 0):
 | tipo | janela de dedup | por quê |
 |---|---|---|
 | `pedido_de_ajuda` | a cadência do re-alerta (`HANDOFF_REALERTA_HORAS`, hoje 6 h) | é o mesmo pedido |
-| `espera_vencida` | por vencimento (§7.2) | um por prazo que virou |
+| `espera_vencida` | por vencimento (§7.2 **desta SPEC**) | um por prazo que virou |
 | `sinistro` | 24 h | um sinistro por dia por conversa; dois sinistros diferentes no mesmo dia são 💭 caso raro e a SPEC prefere repetir a calar |
 | `conclusao` | 24 h | uma conclusão por conversa por dia |
 | `resumo_diario` | 1 por dia por corretora | por construção |

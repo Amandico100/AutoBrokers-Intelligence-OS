@@ -52,7 +52,7 @@ escolhesse. **O cliente corrigiu o robô.**
 | **D-PILOTO-11** | Fonte de verdade: **PDF** para cobertura/franquia/cláusula/plano; **sistema de gestão** para parcela/quitação/status/vigência. **A arquitetura não nasce presa à InfoCap**: porta `PolicyDataProvider`, InfoCap = primeiro adaptador, Quiver/Agger/Segfy = adaptadores. Seguradoras e ramos são **catálogo nosso** (chave SUSEP), nunca a lista do sistema de gestão. Corretora só com PDFs também é atendida | `FOUNDER-DECISIONS.md:1755` |
 | **D-PILOTO-14** | Alta qualidade sem ser exorbitante: AAA opção B, **≤ 12 guardas novos**, bateria sobre o **motor** e o **acervo real** | `FOUNDER-DECISIONS.md:1758` |
 | **D-PILOTO-16** | **SPEC-101 vira a porta**; EXTRA-002 Agger, EXTRA-008 Quiver e EXTRA-009 Segfy viram **adaptadores dela** e mantêm seus números | `FOUNDER-DECISIONS.md:1760` |
-| **D-PILOTO-20** | Esta proposta nasce no chat do Fable com laço leve; **a execução é em chat novo, sob AAA opção B** | `FOUNDER-DECISIONS.md:1763` |
+| **D-PILOTO-20** | Esta proposta nasce no chat do Fable com laço leve; **a execução é em chat novo, sob AAA opção B** | `FOUNDER-DECISIONS.md:1764` |
 
 ⚠️ **D-PILOTO-16 tem consequência direta no escopo desta SPEC:** a 001.1 **não constrói a SPEC-101**. Ela entrega a
 porta no lugar certo, com o contrato completo e **dois** adaptadores (InfoCap e PdfOnly), e deixa escrito o que a
@@ -106,7 +106,7 @@ vermelho por construção.
 já produz fatos tipados **com fonte e confiança**:
 
 ```python
-# policy_facts.py:23
+# policy_facts.py:22
 FACT_SOURCES = ("infocap_structured", "official_document", "policy_rule")
 # :24-34
 FACT_TYPES  = ("coverage","assistance","deductible","limit","installment",
@@ -261,7 +261,7 @@ classificado (BLOCKER · ESSENCIAL · VALIOSA · FUTURA) com problema, evidênci
 | a porta e o registry | `backend/app/providers/policy_data_provider.py:41,55,137,144` | **evolui** — modelo canônico, 5 operações, reconciliação |
 | o adaptador InfoCap | `policy_data_provider.py:55-131` (`InfocapPolicyDataProvider`) | **envolve o conector**; nada do conector é reescrito |
 | o conector | `backend/app/api/infocap_connector.py` (4.487 linhas) | **intocado como motor**; deixa de ser chamado fora de `app/providers/` |
-| fatos com origem e confiança | `backend/app/services/policy_facts.py:23,84,165` | **vira o modelo canônico**; `infocap_structured` é renomeado |
+| fatos com origem e confiança | `backend/app/services/policy_facts.py:22,84,165` | **vira o modelo canônico**; `infocap_structured` é renomeado |
 | o compositor da resposta | `backend/app/services/policy_answer_composer.py:279,297,332` | `_real_vigencia`/`_compose_options` **sobem para a porta** e passam a valer para todos os papéis |
 | evidência documental (PDF) | `backend/app/services/policy_document_evidence_service.py` (844 linhas) | **mantido**; muda o **gatilho**, não o motor |
 | catálogo de seguradoras (chave SUSEP) | `docs/canon/providers/susep/seguradora-coenti.json` + `susep_ses_provider.py` | **pendura nele**; o adaptador mapeia o código do fornecedor para a nossa chave |
@@ -294,8 +294,17 @@ de que a fronteira está no lugar errado: **pare e registre** em `FOUNDER-DECISI
 Toda operação da porta recebe `company_id` **explicitamente**, como primeiro parâmetro nomeado, e o repassa ao
 resolver de conexão. Nenhuma operação deduz tenant de contexto global, de sessão ou do LLM.
 
-- O cache documental e o cache de `/itens` (180 s, `bf963b0`) têm chave **`company_id + connection_id + policy_ref`**.
-  Chave sem `company_id` é **blocker**, não pendência.
+- 📊 **Conferido em 13/09 — `company_id` já está nas duas chaves de cache. Não é incógnita, e não há P0 aqui:**
+  ```
+  infocap_connector.py:3365                    f"infocap:itens:{_short_hash(company_id)}:{codfil}:{nosnum}"
+  policy_document_evidence_service.py:126-129  f"policydoc:{company_hash}:infocap:{locator_hash}:{content_hash}"
+  ```
+  🔴 **O que falta nas duas é o `connection_id`.** 📊 A Resulta tem **três** conexões InfoCap, duas arquivadas,
+  uma com credencial inválida (P-PILOTO-19). Trocar a conexão ativa **não invalida o cache**: por até 180 s o
+  corretor continua lendo o que a conexão antiga devolveu. É defeito de **frescor dentro do mesmo tenant** —
+  **não é cross-tenant e não para a SPEC**.
+  A chave passa a ser **`company_id + connection_id + policy_ref`**. Chave sem `company_id` seria blocker;
+  chave sem `connection_id` é **ESSENCIAL**, e **M-A4** mede as duas.
 - `policy_ref` segue o padrão já provado na SPEC-094: derivado por corretora, estável entre conexões do mesmo
   tenant, e **opaco** para quem o consome.
 - Prova: teste com **dois tenants reais** (fixture de duas conexões distintas) em que a leitura do tenant B nunca
@@ -868,6 +877,21 @@ Nota 💭 40 — ela toca 7 arquivos, o catálogo de capacidades, o mapa de even
 e nada disso muda um byte do que o corretor lê (protocolo §2: é **pendência**, não blocker). Fica registrada
 como pendência nova, com gatilho: *"quando a segunda corretora usar um sistema de gestão diferente"*.
 
+### 7.4.2 As quatro instruções que o diagnóstico §1.1 nomeia — veredito por linha
+
+📊 O diagnóstico diz que *"o prompt ensina a listar em 3 de 4 instruções (`prompts.py:126, 185, 189, 206`)"*.
+Reabertas em 13/09, **as quatro estão no `ATTENDANCE_BASE_PROMPT`** e nenhuma delas ensina a listar:
+
+| linha | o que diz | veredito |
+|---|---|---|
+| **:126** | *"Mais de uma apólice vigente? ESCOLHA VOCÊ a coerente com o pedido… Só pergunte se houver 2+ do MESMO ramo."* | ✅ **FICA** — é a regra que a SPEC estende ao `core` |
+| **:185** | *"O cliente escolheu a apólice/seguradora UMA vez? Ela vale até o FIM do atendimento — nunca ofereça a lista de novo."* | ✅ **FICA** |
+| **:189** | *"NUNCA escreva placeholders técnicos… Sem número da apólice na lista? Peça a escolha pela POSIÇÃO (1, 2, 3…)."* | ⚠️ **FICA, e ganha uma condição.** Não ensina a listar: ensina a **não** escrever *"número não retornado pela fonte"* ao segurado. Mas pressupõe que existe uma lista. Passa a valer **só quando a porta devolver `ambiguous_policy`** — a mesma condição de `nodes.py:263`. Apagá-la traria de volta o placeholder técnico na conversa do segurado |
+| **:206** | *"só ofereça as com vigência ATUAL… Vencidas/canceladas não são opção — no máximo cite que existem no histórico."* | ✅ **FICA** — 🔴 é, palavra por palavra, o que esta SPEC promove de texto de prompt a comportamento da porta |
+
+**RECOMENDAÇÃO:** nenhuma das quatro sai. O defeito de §1.1 não estava no `ATTENDANCE_BASE_PROMPT` — estava no
+**briefing da tool** (`infocap_tool.py:405` e `:467`) e no **silêncio do `CORE_BASE_PROMPT`**.
+
 ⚠️ E há uma armadilha de contagem: o `ATTENDANCE_BASE_PROMPT` (L83-218) **já tem** a regra certa em **L126**
 (*"Mais de uma apólice vigente? ESCOLHA VOCÊ…"*) e em **L206** (*"só ofereça as com vigência ATUAL"*). 📊 O
 `CORE_BASE_PROMPT` **não tem nenhuma** — as palavras "vigência" só aparecem nele como **lista de dados que a tool
@@ -1040,12 +1064,22 @@ BLOCO 0 **medindo quem lê a coluna de `companies` hoje** — não por simetria.
 PAPEIS_QUE_CONVERSAM = ("", "core", "attendance")
 ```
 
-**`insured_external` não está na lista.** É o papel do agente que fala com o **segurado** (GLOSSARIO: *"quem fala
-com o segurado"*). Ele fica com o valor gravado no banco — 📊 hoje 1200 ou 2000 — **sem piso**.
+**FATO:** `insured_external` não está na tupla (`llm_factory.py:35`). É o papel do agente que fala com o
+**segurado** (GLOSSARIO: *"quem fala com o segurado"*), e `piso_de_saida` (`:38-47`) devolve o valor do banco
+sem elevá-lo quando o papel não está na lista.
 
-**Teste do produto (protocolo §2):** consertar isto muda um byte do que chega **ao segurado** — a resposta dele
-pode ser cortada no meio, exatamente como 10 das 95 respostas do corretor foram. **É BLOCKER, não pendência.**
-A correção é uma palavra na tupla, e o guarda é a mutação que a remove.
+🔴 **FATO que impede vender isto como incidente:** 📊 medido em 13/09, os **8 agentes da base são 4 `core` +
+4 `attendance`**. **Não existe hoje nenhuma instância viva com `agent_role='insured_external'`.** Ninguém foi
+cortado por isto — **não há vítima medida**.
+
+**INFERÊNCIA (não FATO):** é um **defeito latente**. No dia em que a primeira corretora instalar um agente
+`insured_external`, ele nasce com o teto do banco (📊 hoje 1200 ou 2000) e a resposta ao segurado sai cortada —
+exatamente como 10 das 95 respostas do corretor saíram em 10/09.
+
+**RECOMENDAÇÃO:** consertar agora e guardar com **M-E2**. A correção é uma palavra na tupla; o guarda é o que
+impede a palavra de sumir de novo. ⚠️ **Classificação honesta: ESSENCIAL, não BLOCKER** — o teste do produto
+(protocolo §2) pergunta *"muda UM BYTE do que chega ao segurado?"*, e hoje a resposta medida é **não, porque não
+há esse agente**. Chamar de blocker um achado latente é inflá-lo com a linguagem de um incidente.
 
 ### 9.3 P-PILOTO-18 — o rastro da ferramenta · **⚠️ a pendência está DESATUALIZADA, e o conserto é outro**
 
@@ -1117,8 +1151,8 @@ o teste chama `porta.listar_apolices(...)`, nunca um regex sobre a mesma tabela 
 | **M-B1** | `test_vencida_nunca_vira_opcao` | sobre as 📊 31 linhas mascaradas do acervo: `listar_apolices` devolve 0 vencidas e `historico_oculto` bate com `documents_count`. 🔴 **Caso de 12 apólices com a única vigente na posição 11** → ela é encontrada | (a) filtro de vigência desligado; (b) **`listar_apolices` lendo `policies[:10]`** → o caso de 12 fica vermelho |
 | **M-B2** | `test_so_pergunta_com_duas_do_mesmo_ramo` | **par de controle**: 1 auto + 1 resi → não pergunta; 2 auto → pergunta | ramo diferente contado como ambíguo |
 | **M-B3** | `test_o_ramo_sai_da_conversa_nao_da_ultima_frase` | frases reais do acervo: CPF puro + "meu carro quebrou" 2 mensagens antes → auto; `chaveiro` com contexto de casa → resi | `_product_hint_from_query(user_query)` restaurado |
-| **M-C1** | `test_o_corretor_recebe_a_apolice_nao_a_lista` | corpus das 7 perguntas de 10/09 pelo MOTOR → 7 de 7 em 1 rodada, 0 listagens | `"liste TODAS com os numeros exatos"` de volta em `:468` |
-| **M-C2** | `test_a_cobertura_continua_inteira` | golden HDI = **10** linhas; Allianz condomínio = **15**. 🔴 **vermelho em 6 de 10** | **apagar a regra 1b** de `:466` |
+| **M-C1** | `test_o_corretor_recebe_a_apolice_nao_a_lista` | corpus das 7 perguntas de 10/09 pelo MOTOR → 7 de 7 em 1 rodada, 0 listagens | `"liste TODAS com os numeros exatos"` de volta em **`infocap_tool.py:467`** |
+| **M-C2** | `test_a_cobertura_continua_inteira` | golden HDI = **10** linhas; Allianz condomínio = **15**. 🔴 **vermelho em 6 de 10** | **apagar a regra 1b de `infocap_tool.py:465`** — ⚠️ **`:465` FICA, `:467` SAI**: uma linha de diferença reintroduz o defeito |
 | **M-D1** | `test_o_documento_e_lido_sempre_que_a_pergunta_e_de_apolice` | 7 de 7 disparam leitura documental; **linha de controle:** pergunta não-apólice → 0 | gatilho por palavra-chave de volta |
 | **M-D2** | `test_a_divergencia_aparece_inteira` | franquia 550 × 600 → as duas na resposta, com origem; forma de pagamento = **cartão** (das parcelas) | `forma_pag` do cabeçalho vencendo |
 | **M-E1** | `test_a_pergunta_sobrevive_ao_bloco` | turno do tamanho medido dos dois piores do acervo → responde a pergunta | repetição da pergunta removida |

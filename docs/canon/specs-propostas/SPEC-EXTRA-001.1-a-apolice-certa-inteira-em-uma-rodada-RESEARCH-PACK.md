@@ -47,6 +47,14 @@ backend/app/providers/policy_data_provider.py            149 linhas · 5.670 byt
   :41   class PolicyDataProvider(Protocol):  provider_key: str
   :46       async def lookup(self, **kwargs) -> Dict[str, Any]
   :50       async def detail(self, **kwargs) -> Dict[str, Any]
+        🔴 `vehicle` NAO esta no Protocol — so na implementacao concreta (:112).
+           O contrato de verdade e um hasattr:  vehicle_tool.py:58
+             if not provider or not hasattr(provider, "vehicle"):
+                 return {"content": "Fonte de veiculos indisponivel.", "found": False}
+           -> adaptador sem `vehicle` NAO quebra: responde "indisponivel", e o atendente
+              pede a PLACA ao cliente — o que infocap_tool.py:256 existe para impedir.
+           E billing_collection.py:797 chama `lookup` com guarda so de `provider is None`,
+           SEM hasattr -> adaptador sem `lookup` levanta AttributeError na cobranca.
   :55   class InfocapPolicyDataProvider:  provider_key = "infocap"
   :60       lookup(...)   → app.api.infocap_connector.infocap_lookup
   :88       detail(...)   → app.api.infocap_connector.infocap_policy_detail
@@ -57,15 +65,23 @@ backend/app/providers/policy_data_provider.py            149 linhas · 5.670 byt
   :149  register_policy_data_provider(InfocapPolicyDataProvider())
 ```
 
-📊 **E cinco chamadores já falam com ela**, não com o conector:
+📊 **Censo dos consumidores** — comando (a barra vertical escapada):
+`grep -rn "get_policy_data_provider|provider\.lookup|provider\.detail|provider\.vehicle" backend/app --include=*.py -E`
+
+**CINCO módulos, OITO pontos de chamada:**
 
 ```
-backend/app/agents/tools/infocap_tool.py:151-159       "a tool fala com a PORTA PolicyDataProvider, nunca com o…"
-backend/app/agents/tools/insurer_dispatch_tool.py:967
-backend/app/agents/tools/portal_tool.py:337-346
-backend/app/agents/tools/vehicle_tool.py:55-57
-backend/app/providers/brokerage_analytics_provider.py:193-196   "o MESMO padrão de policy_data_provider.py:134-149"
+app/agents/tools/infocap_tool.py           :159 resolve · :169 detail · :183 lookup · :217 lookup · :265 vehicle
+app/agents/tools/insurer_dispatch_tool.py  :970 resolve · :974 vehicle
+app/agents/tools/portal_tool.py            :346 resolve · :350 vehicle
+app/agents/tools/vehicle_tool.py           :57  resolve · :64  vehicle   ← atrás de hasattr (:58)
+app/services/billing_collection.py         :793 resolve · :797 lookup    🔴 FORA de app/agents/ — é da EXTRA-001.6
 ```
+
+⚠️ **DIVERGE de uma leitura anterior deste pacote:** `brokerage_analytics_provider.py:193-196` **é COMENTÁRIO**
+(*"o MESMO padrão de `policy_data_provider.py:134-149`"*), não chamada; e faltava `billing_collection.py`, o
+caminho que resolve o telefone do inadimplente. **Erro de leitura de `grep`: contar linha que CASA como linha
+que CHAMA.**
 
 **FATO:** a fronteira existe e tem cinco consumidores.
 **INFERÊNCIA:** ela não isola nada, porque `lookup`/`detail` devolvem `Dict[str, Any]` com a **forma da InfoCap**
@@ -129,7 +145,9 @@ não impede o conector de emitir `ambiguous_policy` antes.
 
 | linha | evidência | veredito |
 |---|---|---|
-| **:1315-1330** | `if documents_count > 1 and not requested_policy_number: return _done({"status":"ambiguous_policy", "matches":[p for p in policies[:10]], "requires_human":True, "blockers":["multiple_policies"]})` — **contagem pura, nenhuma data** | CONFERE |
+| **:1316** | `if documents_count > 1 and not requested_policy_number:` — **contagem pura, nenhuma data** | CONFERE · ⚠️ a linha é **1316**, não 1315 |
+| **:1323** | `"documents_count": documents_count` — a contagem **CHEIA** | — |
+| **:1326** | `"matches": [p for p in policies[:10]]` — a lista **TRUNCADA em 10** | 🔴 **ACHADO NOVO:** filtrar vigência sobre `matches` esconderia a única vigente de quem tem 11+ apólices, e `historico_oculto` derivado de `len(matches)` **mentiria**. A porta lê a lista inteira; `historico_oculto` deriva de `documents_count` |
 | :940 | `infocap_lookup(payload, x_autobrokers_internal_key, db)` · payload em `:182` | superfície do adaptador |
 | :4039 | `infocap_policy_detail(...)` · payload em `:3187` | idem |
 | :4250 | `infocap_vehicle_item(...)` — **sem rota HTTP**, só interno · payload em `:4204` | idem |
@@ -137,6 +155,12 @@ não impede o conector de emitir `ambiguous_policy` antes.
 | :3269 | `_flatten_item_garantias` | achatamento das garantias |
 | :1508, :3464, :3870 | `_INSTALLMENT_KEYS = {"parcelas","prestacoes","prestações","installments"}` — **parcelas vêm do payload do `/documento`, não de rota própria** | CONFERE |
 | :3599 → :2188 → :2225 → :3695 / :3739 | cadeia do PDF oficial: `_extract_official_document_candidates` → `_fetch_official_document_candidate_for_policy_pipeline` → `_maybe_attach_official_policy_document_evidence` → `_inspect_pdf_bytes` / `_classify_official_document_response`; auditoria em `:2539` | CONFERE |
+
+📊 **O leitor do catálogo nosso já existe** — `backend/app/providers/susep_ses_provider.py`:
+`mapa_de_seguradoras:129` · `mapa_de_siglas:155` · `mapa_de_ramos:184` · `nomes_dos_grupos:221` ·
+`cogrupo_de:233` · `coenti_de:258`.
+🔴 **RECOMENDAÇÃO:** um `policy_catalog.py` que leia o JSON por conta própria seria **segundo catálogo**. Se
+existir, ele só traduz o código do fornecedor e **delega** a `coenti_de` / `cogrupo_de`.
 
 📊 **`/seguradoras` e `/ramos` não são chamados em lugar nenhum do código.** Comando:
 `grep -rn "seguradoras\|/ramos" backend --include=*.py`. As duas únicas menções estão em **docstring** de
@@ -199,10 +223,25 @@ provider, sem LLM)"* e a constante quebra a promessa.
 | `SYSTEM_BASE_PROMPT = CORE_BASE_PROMPT` | :220 | — |
 | outras instruções citadas pelo diagnóstico | `:133` (vidros: "apenas apólices AUTO ATIVAS"), `:185`, `:189` | CONFEREM |
 | "SEMPRE se apresente" | **:357-359** (diagnóstico dizia 352-361) | DIVERGE na linha; injetado só se `role in ("attendance","insured_external") and display_name` (`:351`) |
-| 📊 **`InfoCap`** | **:31, :37, :40, :42, :133, :193** (+ comentário `:365`) = **6 ocorrências** | 🔴 três delas dentro do `CORE_BASE_PROMPT` |
+| 📊 **`InfoCap`** | **8 linhas · 10 ocorrências**: `:31` `:37` `:40` `:42` `:47` `:131`×2 `:133`×2 `:193` | ⚠️ **DIVERGE de uma leitura anterior deste pacote, que dizia "6" e omitia `:47` e `:131`.** 🔴 **`:47` é a mais grave: é a única dentro do `CORE_BASE_PROMPT`** |
+| 📊 dessas, **prosa × identificador** | **9 prosa** · **1 identificador** (`:37`, `` `infocap_policy_lookup` ``) | o identificador é o **nome registrado da tool** — `infocap_tool.py:74`, `gateway_cutover.py:102`, `chat_eventos.py:214`, `prompt_effective_service.py:80`, `nodes.py:38,576,1004,1146`. Renomeá-lo é **cutover de catálogo**, não edição de texto |
+| 📊 o identificador chega ao usuário? | **não** | `chat_eventos.py:19` documenta que o rótulo exibido é *"apólice"*, **nunca** `infocap_policy_lookup` |
 | 📊 **`CorpAPI`** | **0 ocorrências** | — |
 
-Comando: `grep -nic "infocap" backend/app/core/prompts.py` e `grep -ni "infocap" backend/app/core/prompts.py`.
+Comandos: `grep -ni "infocap" backend/app/core/prompts.py` (8 linhas) · `grep -o -i "infocap" … | wc -l` (10).
+🔴 **Consequência para o guarda:** `grep -i "infocap" → 0` é **impossível sem um cutover fora de escopo**. O
+guarda mede **menção em PROSA** — `grep -nE 'InfoCap'`, sensível a caixa — com **allowlist escrita** do
+identificador.
+
+**Veredito sobre as quatro instruções que o diagnóstico §1.1 nomeia** (`:126`, `:185`, `:189`, `:206`) — as
+quatro estão no `ATTENDANCE_BASE_PROMPT` e **nenhuma ensina a listar**:
+
+| linha | veredito |
+|---|---|
+| `:126` *"ESCOLHA VOCÊ a coerente com o pedido… só pergunte se 2+ do MESMO ramo"* | **FICA** — é a regra estendida ao `core` |
+| `:185` *"escolheu UMA vez? vale até o FIM — nunca ofereça a lista de novo"* | **FICA** |
+| `:189` *"NUNCA escreva placeholders técnicos… Peça a escolha pela POSIÇÃO (1, 2, 3…)"* | **FICA com condição** — ela impede *"número não retornado pela fonte"* de chegar ao segurado, mas pressupõe lista; passa a valer **só quando a porta devolver `ambiguous_policy`**. Apagá-la traz o placeholder técnico de volta |
+| `:206` *"só ofereça as com vigência ATUAL… vencidas no máximo como histórico"* | **FICA** — é, palavra por palavra, o que a SPEC promove de prompt a comportamento da porta |
 
 ### 2.9 `backend/app/factories/llm_factory.py`
 
@@ -218,9 +257,14 @@ Comando: `grep -nic "infocap" backend/app/core/prompts.py` e `grep -ni "infocap"
        max_tokens = piso_de_saida((agent_data or {}).get("agent_role"), max_tokens)
 ```
 
-🔴 **DEFEITO NOVO, não listado no diagnóstico:** **`insured_external` não está em `PAPEIS_QUE_CONVERSAM`.** É o
-papel do agente que fala com o **segurado** (GLOSSARIO). Ele fica com o valor do banco — 📊 1200 ou 2000 — **sem
-piso**. Teste do produto (protocolo §2): muda um byte do que chega ao segurado → **BLOCKER**.
+🔴 **DEFEITO NOVO, não listado no diagnóstico:** `insured_external` **não está** em `PAPEIS_QUE_CONVERSAM`
+(`:35`). É o papel do agente que fala com o **segurado** (GLOSSARIO).
+
+⚠️ **Mas a prova para aqui, e o rótulo muda com ela.** 📊 Os 8 agentes da base são **4 `core` + 4 `attendance`**
+(§3.1): **nenhuma instância viva de `insured_external`**. Ninguém foi cortado.
+**FATO:** a tupla exclui o papel. **INFERÊNCIA:** é **defeito latente** — o primeiro agente `insured_external`
+instalado nasce com o teto do banco. **Classificação: ESSENCIAL, não BLOCKER** (protocolo §2: hoje não muda byte
+nenhum, porque o agente não existe).
 
 ### 2.10 `backend/app/services/assistance_policy.py`
 
@@ -298,7 +342,7 @@ linhas com alguma chave de ferramenta (tool_calls|tools|tool_invocations): 0
 | as 7 perguntas reais do chat de 10/09 | idem | extrair **só as perguntas**, redigir PII, gravar em `backend/tests/corpus/perguntas_do_chat/` |
 | o golden HDI (10 coberturas) e Allianz condomínio (15) | exigiria chamar a InfoCap com um documento real | montar **pela porta, em memória**, e persistir só o que o teste compara |
 | tamanho real dos dois turnos de 120/128 chunks | exigiria ler o payload de RAG | contar chunks e caracteres, sem imprimir conteúdo |
-| se `tool_invocations` guarda `tool_args` **cru** hoje | não consultado | 🔴 **primeira consulta do BLOCO 0** — se guardar, é **P1 de segurança**, não pendência |
+| se `tool_invocations` guarda `tool_args` **cru** hoje | 📊 **improvável por construção, medido no código:** `invocation_recorder.py:55-60` define `_CAMPOS_SENSIVEIS` (cpf, cnpj, documento, telefone, email, senha, token, placa, `policy_number`, cartão…); `resumo_da_entrada:111-128` grava `"[omitido]"` para eles e `{"tipo":"texto","tamanho":N}` para o resto; `gateway.py:294-307` insere `input_fingerprint` (sha256[:32]) e `input_summary`, **nunca os argumentos** | vira **conferência**, não incógnita: `SELECT input_summary FROM tool_invocations LIMIT 5` no BLOCO 0, para provar que o escritor implantado é este |
 | quem lê `companies.llm_max_tokens` | não rastreado | `grep` + teste |
 | a DDL real de `tool_invocations` | não rastreada no repositório (📊 declarado em `20260816_02_spec075_portal_job_lineage_priority.sql:147`) | ler do catálogo do Postgres e registrar no `MANIFEST.md` como `NÃO RASTREADA` |
 
@@ -476,6 +520,11 @@ Cada uma tem resposta **óbvia e errada**. As duas primeiras são **afirmações
    `arquivo:linha`, e diga por que a solução da pendência criaria motor paralelo.
 7. *"O piso de 8192 já protege todo mundo que conversa."* — conte os papéis da tupla e diga qual falta.
 8. *"`agents.llm_max_tokens` é o único lugar do default 2000."* — conte os lugares.
+8b. *"Basta um `grep -i 'infocap'` em `core/prompts.py` dar zero."* — diga quantas das ocorrências são **prosa**
+    e quantas são **o nome registrado da ferramenta**, e o que o segundo caso custaria.
+8c. *"`vehicle()` está no contrato da porta."* — mostre o `Protocol` e mostre o `hasattr` que faz o papel dele.
+8d. *"Filtrar vigência sobre `matches` resolve."* — diga o que acontece com um cliente de 12 apólices cuja única
+    vigente está na posição 11.
 9. *"`policy_status` da fonte diz se a apólice está vigente."* — cite a docstring que diz o contrário e a data
    do bug que a originou.
 10. *"Ler `/ramos` e `/seguradoras` da CorpAPI conserta o catálogo."* — diga o que D-PILOTO-11 manda, e o que já
@@ -499,8 +548,11 @@ Cada uma tem resposta **óbvia e errada**. As duas primeiras são **afirmações
 4. O tamanho real, em caracteres e chunks, dos dois turnos de 120/128 chunks — define o teto de §9.1.
 5. Se algum consumidor lê `companies.llm_max_tokens`.
 6. O comportamento exato de `nodes.py:273` (precedência de `and`/`or`).
-7. Se o cache de 180 s de `/itens` (`bf963b0`) tem `company_id` na chave — 🔴 se não tiver, é **P0 cross-tenant**,
-   e nesse caso a SPEC **para** e registra (CLAUDE.md §10, item 4).
+7. ~~Se o cache de `/itens` tem `company_id`~~ — 📊 **MEDIDO em 13/09; não é mais desconhecido e não há P0:**
+   `infocap_connector.py:3365` → `f"infocap:itens:{_short_hash(company_id)}:{codfil}:{nosnum}"`;
+   `policy_document_evidence_service.py:126-129` → `f"policydoc:{company_hash}:infocap:{locator_hash}:{hash}"`.
+   **As duas já têm `company_id`.** 🔴 Falta **`connection_id`**: a Resulta tem 3 conexões InfoCap e trocar a
+   ativa não invalida o cache por até 180 s. **Frescor dentro do mesmo tenant — ESSENCIAL, não P0.**
 8. Se a HDI e a Allianz do golden continuam com 10 e 15 coberturas hoje.
 
 **Nenhum destes vira afirmação na SPEC definitiva sem comando ao lado.**
