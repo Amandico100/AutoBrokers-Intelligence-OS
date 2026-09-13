@@ -559,7 +559,7 @@ Nada pede motor novo (§5 do CLAUDE.md): tudo cabe em `portal_jobs` + `portal_se
 8. **Observabilidade por portal** na Central de Agentes: última verificação, taxa de sucesso 7 d, motivo da última falha.
 9. **Credencial recusada é classe própria**, nunca "erro desconhecido" — porque a ação é humana e imediata.
 
-### 9.4 EXTRA-001.6 reescrita · A cobrança prova que funciona — PADRÃO 💭 6–9h
+### 9.4 EXTRA-001.6 reescrita · A cobrança prova que funciona — CRÍTICO (envia + migration: piso §3.2 do protocolo; corrigido em 13/09) 💭 6–9h
 
 Objetivo: a rotina roda em `equipe`, a atendente recebe **uma mensagem inteira por segurado** com N boletos, nunca o
 mesmo boleto duas vezes, nunca o mesmo segurado mais de 1× por N dias; cada portal diz em português por que não
