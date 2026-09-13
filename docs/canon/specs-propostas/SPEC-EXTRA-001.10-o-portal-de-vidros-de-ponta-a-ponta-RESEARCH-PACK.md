@@ -82,8 +82,8 @@ PY
  119 GET   /atendimentos   200   CodigoAtendimento=None
  156 GET   /atendimentos   200   CodigoAtendimento=None
  204 PATCH /atendimentos   200   CodigoAtendimento=<chave ausente>
- 213 GET   /atendimentos   200   CodigoAtendimento=23232316   ← NASCEU
- 249 GET   /atendimentos   200   CodigoAtendimento=23232316
+ 213 GET   /atendimentos   200   CodigoAtendimento=…2316   ← NASCEU
+ 249 GET   /atendimentos   200   CodigoAtendimento=…2316
 (zero POST /questionarios em toda a captura)
 
 #### VIDRAÇARIA  ·  "3|129|N|10700|1|0|V"   ← A LINHA DE CONTROLE
@@ -96,15 +96,64 @@ PY
  258 POST  /questionarios/perguntas  204   (fim do questionário)
  265 POST  /questionarios/regras-reparo 200
  268 POST  /questionarios           200
- 271 GET   /atendimentos            200   CodigoAtendimento=23087562   ← NASCEU
+ 271 GET   /atendimentos            200   CodigoAtendimento=…7562   ← NASCEU
 ```
 
-🔴 **Por que isto é uma causa e não uma coincidência (protocolo §0.3):** medi A (o
-número nasce depois do PATCH, na lataria), medi B (o número **não** nasce depois do
-PATCH, na vidraçaria), e medi que B **chega** em A — o mesmo `GET /atendimentos`,
-imediatamente após o mesmo PATCH, dá resultado **oposto**, e a única coisa que muda
-entre as duas capturas é a **categoria** do `CodigoItemCoberto`. A vidraçaria é a
-linha de controle da lataria (CLAUDE.md §9.2).
+🔴 **Por que isto é uma causa e não uma coincidência (protocolo §0.3):** medi A (o número
+nasce depois do PATCH, na lataria), medi B (o número **não** nasce depois do PATCH, na
+vidraçaria), e medi que B **chega** em A — o mesmo `GET /atendimentos`, imediatamente após
+o mesmo PATCH, dá resultado **oposto**. A vidraçaria é a linha de controle da lataria
+(CLAUDE.md §9.2).
+
+⚠️ **Separando FATO de INFERÊNCIA, como o CLAUDE.md §12 exige:**
+
+```
+FATO ......... o resultado oposto do mesmo GET após o mesmo PATCH, nas duas capturas.
+               Reproduzível pelo comando acima, hoje, sem rede.
+INFERÊNCIA ... que a variável explicativa é a CATEGORIA do CodigoItemCoberto.
+               📊 N = 1 por categoria (uma captura `L`, uma `V`). É a leitura mais
+               simples que cobre as duas observações e bate com a tela (lataria não
+               tem passo 4), mas NÃO está provada em duas peças da mesma categoria.
+O QUE A TESTA  a captura nº 1 é PARA-BRISA — outra peça de categoria `V`. Nulo depois
+               do PATCH ali = inferência confirmada com N=2 em `V`. Nascido no PATCH =
+               inferência derrubada, e a variável real é outra (CodigoTipoScript,
+               ausência de questionário, ou regra de apólice).
+POR QUE NÃO BLOQUEIA  o desenho é fail-closed: categoria desconhecida devolve
+               FRONTEIRA_ABRIR (arma antes). Os dois desfechos mudam o MAPA, não a TRAVA.
+```
+
+### 2.1-b 📊 Onde o `token_autorizacao` entra — e por que isso move P1-4
+
+Conferido nas duas capturas, pelo header de cada requisição a `api.autoglass.com.br`:
+
+```
+AUSENTE    GET /seguradoras/ · GET /apolices · POST /atendimentos
+PRESENTE   de PUT /atendimentos/corretores em diante — inclusive em
+           GET /apolices/itens-cobertos e GET /motivos-dano
+```
+
+🔴 **Consequência:** o catálogo daquela apólice **só existe depois de o atendimento ter
+sido aberto** (depois da fronteira A). "Ler o catálogo antes de perguntar" é impossível
+como slogan; o que é possível é **perguntar a FAMÍLIA antes de abrir e o ESPECÍFICO
+depois**. É a reescrita de P1-4 na proposta, e é por isso que P1-4 saiu da lista "não
+depende" da §14.
+
+### 2.1-c 📊 O freio de efeito material é GLOBAL ao processo
+
+```bash
+sed -n '291,310p' backend/portal_worker/journeys/__init__.py
+```
+
+```
+:294-303  def efeito_material_liberado() -> bool:
+              return str(_os.getenv("PORTAL_EFEITO_MATERIAL_LIBERADO","false"))… in (…)
+:306      def motivo_para_barrar(portal_key: str, journey: str) -> str:
+```
+
+🔴 **`os.getenv` do processo; e `motivo_para_barrar` não recebe job, nem CPF, nem
+`company_id`.** Ligar o freio para o canário libera **todos os jobs de vidros em voo
+naquele worker**. Isto não é uma pergunta em aberto: é o bloco **P0-6**, BLOCKER, e é
+pré-requisito do canário da §10.
 
 ### 2.2 As 7 escritas da lataria (HAR Yelum 1, 09/09/2026)
 
@@ -124,8 +173,22 @@ linha de controle da lataria (CLAUDE.md §9.2).
 7  POST  /atendimentos/emitir-atendimento-formalizado/{codigo}      ← O COMPROVANTE
 ```
 
-⚠️ **`lab har` conta 14 escritas.** São estas **7 + os 7 `OPTIONS` de preflight CORS**
-que o browser dispara antes de cada uma. O gate G1 compara **as 7**.
+⚠️ **`lab har` conta 14 escritas.** São estas **7 + os 7 `OPTIONS` de preflight CORS** que
+o browser dispara antes de cada uma.
+
+🔴 **E das 7, a SPEC contrata 5.** 📊 As escritas **5** e **6** aparecem em 2 de 2 HAR
+(YELUM 1 #43/#44 · ANTIGO #75/#76) e ficam **fora do contrato**, por razões diferentes:
+`vistorias-previas/processar` porque nenhum campo que o motor leia muda com ela e
+`PermiteVistoriaMobile` é `false` em todas as capturas (volta com a captura nº 3);
+`corretores-reclamacoes` porque é o canal de **reclamação** do corretor, disparado pela
+tela — ⛔ um robô que abre reclamação sozinho é efeito material que ninguém pediu.
+**G1 compara as 5 e afirma que as 2 NÃO saíram.**
+
+📊 **E quem lê o HAR no teste já existe:** `app/services/portals/lab/trafego.py:160`
+`importar_har(caminho, *, host_portal="", incluir_ruido=False) -> Trafego` — tolerante a
+entrada truncada, e usa o `classificar_origem` da SPEC-073 para o ruído, "para que Lab e
+produção nunca discordem sobre o que é ruído" (docstring). ⛔ **G1 chama esta função.**
+A CLI `lab har` imprime relatório para humano; ela não é a interface do teste.
 
 ### 2.3 🔴 O corpo do PATCH: 11 no contrato, 8 no fio
 
@@ -168,12 +231,24 @@ VIDRAÇARIA  {"CodigoItemCoberto":"3|129|N|10700|1|0|V", "CodigoCidade":8214,
              "PerimetroDano":"U", "Cep":"<8c>", "ServicosMartelinhoLataria":[]}
 ```
 
-🔴 **INFERÊNCIA (declarada como tal, e testável):** `ItemRemovido`, `EventoComposto`
-e `PolimentoFarol` somem porque o AngularJS serializa com `JSON.stringify`, que
-**descarta chaves `undefined`** — e as três leem `passo3.dados.X` sem ternário.
-`CodigoZona` sobrevive porque o bundle a escreve com um ternário explícito para
-`null`. **FATO:** em 2 de 2 capturas o corpo tem 8 chaves. **O gate G1 mede o fato,
-não a inferência.**
+🔴 **A regra é POR CAMPO — e uma regra cega de "omitir se None" derruba o gate.** Leia as
+duas linhas acima com atenção ao que **está lá mesmo estando vazio**:
+
+```
+SEMPRE PRESENTE, mesmo vazio
+   "CodigoZona": null                   nas DUAS capturas
+   "ServicosMartelinhoLataria": [...]   na lataria · []  na vidraçaria
+SEMPRE AUSENTE quando não respondido
+   ItemRemovido · EventoComposto · PolimentoFarol    nas duas
+```
+
+**FATO:** o corpo tem 8 chaves em 2 de 2, e duas delas viajam vazias.
+**INFERÊNCIA (testável):** os 3 ausentes somem porque leem `passo3.dados.X` sem ternário
+→ `undefined` → `JSON.stringify` descarta; `CodigoZona` sobrevive pelo ternário explícito
+para `null`, e `ServicosMartelinhoLataria` pelo `(t || []).map(…)`.
+🔴 **Uma assinatura Python com `Optional = None` em todos e um filtro `if v is not None`
+produziria 6 chaves, não 8 — e G1 ficaria vermelho por construção.** É por isso que a
+proposta (P0-1) separa a assinatura em dois grupos.
 
 ### 2.4 Os 38 códigos, os 43 slugs, e os 5 que só existem no bundle
 

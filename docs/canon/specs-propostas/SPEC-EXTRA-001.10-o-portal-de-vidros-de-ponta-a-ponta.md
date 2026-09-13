@@ -36,7 +36,7 @@ de controle nos dois sentidos (CLAUDE.md §9.2):
 
 | captura | categoria | `GET /atendimentos` logo **depois** do PATCH |
 |---|---|---|
-| Yelum lataria, 09/09 | `L` | `CodigoAtendimento = 23232316` — **nasceu no PATCH** |
+| Yelum lataria, 09/09 | `L` | `CodigoAtendimento = …2316` — **nasceu no PATCH** |
 | Yelum vidro de porta, 14/08 | `V` | `CodigoAtendimento = None` — nasce no `POST /questionarios` |
 
 `vidros_estado.py:233` fixa **uma** fronteira. Para lataria ela arma no lugar errado: o
@@ -69,11 +69,11 @@ SUPERFÍCIE ...... 2 — vários comportamentos, em lugares que eu listo: journe
 PISO APLICADO ... §3.2 "qualquer coisa que ENVIE acionamento" → CRÍTICO no mínimo.
                   A conta já dava CRÍTICO (RISCO 8); o piso confirma.
 NÍVEL ........... CRÍTICO
-UNIDADES ........ 15 blocos (5 em P0 · 6 em P1 · 4 em P2)
+UNIDADES ........ 16 blocos (6 em P0 · 6 em P1 · 4 em P2)
 COESÃO .......... P0-1..P0-3 tocam o MESMO contrato (SessaoVidros ↔ vidros_estado ↔
-                  vidros_apifirst) → JUNTOS, um dono. P0-4 e P0-5 são disjuntos e podem
-                  ir em paralelo. P1 depende de P0 fechado.
-PARALELISMO REAL  no máximo 2 escritores: {P0-1..P0-3} e {P0-4, P0-5}. Nunca 3.
+                  vidros_apifirst) → JUNTOS, um dono. P0-4, P0-5 e P0-6 são disjuntos
+                  entre si e dos três primeiros. P1 depende de P0 fechado.
+PARALELISMO REAL  no máximo 2 escritores: {P0-1..P0-3} e {P0-4, P0-5, P0-6}. Nunca 3.
                   `vidros_api.py` é ARQUIVO-HUB: UM dono por vez (§3.4).
 TIME ............ desenhista da prova (antes do código) · builder por unidade ·
                   verificador mecânico · painel de 3 lentes · red team · integrador ·
@@ -82,13 +82,13 @@ REFERÊNCIA ...... interna: `backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim
                   (ponta a ponta, turno a turno) · `MIGRATIONS-AUTHORITY.md` se houver
                   SQL. externa: §13 (6 referências, cada uma inspecionável)
 GATES ........... os 12 da §16, cada um com a mutação que o deixa vermelho (§8)
-O ELO ........... "a fronteira muda por CATEGORIA" → medi A (lataria: o número nasce no
-                  PATCH) · medi B (vidraçaria: não nasce no PATCH, nasce no POST
-                  /questionarios) · e medi que B CHEGA em A: o mesmo `GET /atendimentos`,
-                  logo após o mesmo PATCH, dá resultado OPOSTO. É a linha de controle.
+O ELO ........... "a fronteira muda por CATEGORIA": A, B e a passagem de B para A estão
+                  medidos na tabela da §0.2, com a linha de controle. Ver também o §2.1
+                  do RESEARCH-PACK, que separa o FATO da INFERÊNCIA de atribuição.
 FAIXA DE RELÓGIO  💭 10–14 h · 💭 1,5–2,5 M tokens de subagentes (teto CRÍTICO §10)
-BLOCKER ......... P0 inteiro. Sem ele o API-first está morto (não grava) ou é perigoso
-                  (arma a fronteira no lugar errado).
+BLOCKER ......... P0 inteiro — e dentro dele, DOIS blocos que sozinhos param tudo:
+                  P0-1 (sem o PATCH o API-first não grava) e P0-6 (sem freio por job o
+                  canário libera todos os acionamentos de vidros em voo).
 ```
 
 ---
@@ -167,6 +167,7 @@ desta tabela vira entrada em [`CHANGE-ADDENDA.md`](../CHANGE-ADDENDA.md), classi
 | motor de perguntas do portal | `vidros_questionario.rodar_questionario` + `SessaoVidros.proxima_pergunta` | ⛔ nenhum motor de questionário paralelo |
 | perguntas ao segurado | `perguntas_do_portal_de_vidros.py` (`_UNIVERSAIS`, `_ESPECIFICAS_POR_IDENTIDADE`, `o_que_falta`) | ⛔ nenhuma segunda tabela de perguntas |
 | derivar contrato de captura | **SPEC-077** `portal_factory.py lab har\|api-infer\|promote` — a escada OBSERVED → CANDIDATE → APPROVED | ⛔ **nenhum contrato à mão.** A ferramenta existe e nunca foi usada sobre este material |
+| **ler um HAR em teste** | `app/services/portals/lab/trafego.py:160` `importar_har(caminho, *, host_portal, incluir_ruido)` — devolve `Trafego`, tolera entrada truncada, usa o `classificar_origem` da SPEC-073 para o ruído | ⛔ **nenhum segundo leitor de HAR em `backend/tests/`.** A CLI `lab har` imprime relatório; quem G1 chama é esta função |
 | vigiar job parado | `app/tasks/vigia_do_portal.py` | ⛔ nenhum vigia novo |
 | a rota do agente ao portal | `PortalActionTool` + `build_portal_params` | ⛔ nenhuma tool nova de vidros |
 
@@ -209,27 +210,26 @@ corpo · host de API: api.autoglass.com.br`. ⚠️ **As "14 escritas" são 7 es
 preflight `OPTIONS`.** O gate G1 compara as 7. 🔴 **Divergiu? O número do executor vence,
 e a SPEC se corrige por emenda escrita.**
 
-### 4.1 Três perguntas que o BLOCO 0 tem de RESPONDER — elas mudam o desenho
+### 4.1 O que o BLOCO 0 CONFIRMA, e a única pergunta que continua aberta
 
 ```
-Q-A  O freio PORTAL_EFEITO_MATERIAL_LIBERADO é POR JOB ou GLOBAL?
-     Se global, ligá-lo no canário abre a porta para todos os jobs de vidros em voo.
-     Nesse caso nasce o bloco P0-6 (BLOCKER, via CHANGE-ADDENDA): uma allowlist de
-     job/CPF, como a BILLING_CANARIO_ALLOWLIST já faz na cobrança.
+C-A  ✅ RESPONDIDA (13/09) — o freio É GLOBAL ao processo:
+     `journeys/__init__.py:294-303` lê `os.getenv`; `motivo_para_barrar(portal_key,
+     journey)` (`:306`) não recebe job nem CPF. Isto NÃO é mais uma pergunta: virou o
+     bloco P0-6, BLOCKER. O executor apenas CONFIRMA as duas linhas e segue.
 
-Q-B  `GET /apolices/itens-cobertos` exige o Token (isto é, exige que o
-     `POST /atendimentos` já tenha acontecido)?
-     📊 Na ordem BRUTA do HAR o POST vem ANTES do itens-cobertos. Se o catálogo só
-     existir depois da fronteira A, a desambiguação de P1-4 acontece ENTRE as duas
-     fronteiras — read-only para `V`, e DEPOIS DO EFEITO para `L`. Para `L` ela teria de
-     sair do catálogo genérico da seguradora. Isto muda P1-4.
+C-B  ✅ RESPONDIDA (13/09) — o catálogo só existe DEPOIS de abrir o atendimento:
+     📊 o header `token_autorizacao` está AUSENTE em `/seguradoras`, `/apolices` e no
+     `POST /atendimentos`, e PRESENTE de `PUT /atendimentos/corretores` em diante,
+     inclusive em `/apolices/itens-cobertos`. Isso REESCREVE P1-4 e tira P1-4 da lista
+     "não depende" da §14. O executor confirma pelo HAR e segue.
 
-Q-C  O autocomplete do portal lista "Liberty" ou "Yelum"?
+Q-C  🔴 ABERTA — o autocomplete do portal lista "Liberty" ou "Yelum"?
      📊 O bundle serve `seguradoras/liberty/` com `<title>Menu Atendimento - Liberty</title>`,
      e `portal_params.py:69-71` traduz LIBERTY → "Yelum", texto que
      `vidros_lanternas.py:1090-1108` DIGITA no `#seguradora-input`. Se o campo lista
      "Liberty", o caminho DOM pode estar clicando na primeira opção de uma busca que não
-     casou.
+     casou. Só uma tela responde — medir antes de consertar.
 ```
 
 ---
@@ -249,27 +249,39 @@ async def atualizar_atendimento(self, *,
     codigo_objeto_causa: int,     # de GET /motivos-dano, pela peça
     avaliacao_dano: str,          # o relato — o portal exige mín. 30 chars
     perimetro_dano: str,          # "U" | "R" | "N"  (PRIMEIRA LETRA)
-    cep: str = "", codigo_zona: Optional[int] = None,
+    cep: str = "",
+    # ── SEMPRE presentes no corpo, mesmo vazios (ver a regra abaixo) ──────────
+    codigo_zona: Optional[int] = None,            # vai como `null` quando ausente
+    servicos_martelinho_lataria: Optional[list] = None,   # vai como `[]` quando vazio
+    # ── OMITIDOS do corpo quando não respondidos ─────────────────────────────
     item_removido: Optional[bool] = None,     # "O item permanece no veículo?"
     evento_composto: Optional[bool] = None,   # "Mais de um item danificado?"
     polimento_farol: Optional[bool] = None,   # só quando a oferta apareceu
-    servicos_martelinho_lataria: Optional[list] = None,  # [{CodigoServico, CodigoObjetoCausa}]
 ) -> Dict[str, Any]:
 ```
 
-🔴 **A regra do corpo — o coração do gate G1.** O contrato do bundle tem **11 campos**.
-📊 **O que sai no fio, em 2 de 2 capturas, são 8**: `ItemRemovido`, `EventoComposto` e
-`PolimentoFarol` **não aparecem**, porque o AngularJS serializa com `JSON.stringify`, que
-**descarta chaves `undefined`**. `CodigoZona` sobrevive porque o bundle a escreve com um
-ternário explícito para `null`.
+🔴 **A regra do corpo — o coração do gate G1, e ela é POR CAMPO, não uma regra só.** O
+contrato do bundle tem **11 campos**; 📊 **o que sai no fio, em 2 de 2 capturas, são 8** —
+e os 3 que somem não somem porque são `None`, e sim porque o AngularJS serializa com
+`JSON.stringify`, que **descarta `undefined`**. Dois campos escapam disso no bundle e
+**sempre viajam**:
+
+| campo | no fio, 2 de 2 capturas | por quê |
+|---|---|---|
+| `CodigoZona` | **`null`** (lataria e vidraçaria) | o bundle o escreve com ternário explícito para `null` |
+| `ServicosMartelinhoLataria` | **`[{…},{…}]`** na lataria · **`[]`** na vidraçaria | `(t \|\| []).map(…)` — um array vazio ainda é um array |
+| `ItemRemovido` · `EventoComposto` · `PolimentoFarol` | **ausentes nas duas** | leem `passo3.dados.X` sem ternário → `undefined` → descartados |
 
 ```
-✅ CERTO   omitir a chave quando o valor é None  → corpo de 8 chaves, igual ao HAR
+✅ CERTO   codigo_zona=None                      → "CodigoZona": null      (a chave VAI)
+✅ CERTO   servicos_martelinho_lataria=None      → "…Lataria": []          (a chave VAI)
+✅ CERTO   item_removido=None                    → a chave NÃO ENTRA
+❌ ERRADO  omitir toda chave cujo valor é None   → corpo de 6 chaves, e G1 vermelho
 ❌ ERRADO  mandar "ItemRemovido": null           → corpo de 11 chaves, ≠ do HAR
 ```
 
-Um `null` explícito onde o portal nunca viu um `null` é um campo inventado.
-**Onde entra:** `vidros_apifirst.py`, entre o `POST /atendimentos` (`:225`) e o
+🔴 **Uma regra cega de "omitir se None" derruba o próprio gate** — sairiam 6 chaves, não
+8. **Onde entra:** `vidros_apifirst.py`, entre o `POST /atendimentos` (`:225`) e o
 questionário (`:275`), **e depois de P0-2**.
 
 **Gate P0-1:** o replay offline do HAR da Yelum lataria produz um corpo de PATCH igual ao
@@ -281,12 +293,35 @@ capturado — mesmas chaves, mesma ordem, mesmos valores não-PII.
 
 ```
 POST /atendimentos            ← nasce NumeroProtocolo (16 dígitos) + Token
-PUT  /atendimentos/corretores   {"Documento": "<CPF/CNPJ do corretor>"}
+PUT  /atendimentos/corretores   {"Documento": "<CPF/CNPJ do corretor>"}   ← e é AQUI que o
+                                 header `token_autorizacao` passa a viajar (ver §4.1 C-B)
 POST /solicitantes              {RelacaoTitular, EmailSegurado, [EmailTitularAplice,]
                                  NomeSolicitante, CpfCnpjSolicitante, EmailCorretor,
                                  Telefones, TermoExibido, TermoAceito}
 PATCH /atendimentos           ← P0-1
 ```
+
+🔴 **As 7 escritas do HAR, e as 5 que esta SPEC contrata.** 📊 Nos dois HAR da Yelum
+aparecem **sempre** mais duas escritas depois do PATCH (YELUM 1 #43/#44 · ANTIGO #75/#76):
+
+```
+CONTRATADAS (5) — o motor as emite, e G1 compara a sequência
+   1 POST  /atendimentos        2 PUT /atendimentos/corretores    3 POST /solicitantes
+   4 PATCH /atendimentos        5 POST /atendimentos/emitir-atendimento-formalizado/{cod}
+                                  (o COMPROVANTE — só no caminho de lataria, P1-5)
+
+FORA DO CONTRATO (2) — observadas em 2 de 2, e deliberadamente não emitidas
+   POST /atendimentos/{cod}/vistorias-previas/processar   corpo `{"params":{}}`. 📊 A
+      resposta não muda nenhum campo que o motor leia, e `PermiteVistoriaMobile` é
+      `false` em todas as capturas: emitir seria imitar o browser sem saber o efeito.
+      🟡 Volta com a captura nº 3 (apólice COM vistoria), junto de P1-6.
+   POST /corretores-reclamacoes   📊 é o canal de RECLAMAÇÃO do corretor, disparado pela
+      tela, não pelo fluxo do pedido. ⛔ Um robô que abre reclamação sozinho na
+      seguradora é efeito material que ninguém pediu.
+```
+
+⚠️ **G1 compara as 5, e afirma explicitamente que as 2 não saíram** — um replay que
+emitisse 7 seria tão errado quanto um que emitisse 3.
 
 🔴 **`RelacaoTitular` é string, e Corretor é `"6"`, não `"4"`.** `vidros_api.py:296-305`
 já tem `RELACAO_TITULAR` com `6: "Corretor"` e o comentário que explica por que decorar a
@@ -322,6 +357,21 @@ lataria quebra — em produção, com dinheiro.
 **Gate P0-3:** dois casos, mesma superfície, veredito oposto (protocolo §5):
 `"1|142|S|11335|1|0|L"` → autorização pedida **antes do PATCH**;
 `"3|129|N|10700|1|0|V"` → autorização pedida **antes do `POST /questionarios`**.
+
+⚠️ **O que é FATO e o que é INFERÊNCIA aqui — e G2 escreve os dois.** **FATO:** nas duas
+capturas, o mesmo `GET /atendimentos` logo após o mesmo PATCH deu resultado oposto (§0.2).
+**INFERÊNCIA:** que a variável que explica a diferença é a **categoria** — e ela vem de
+**N=1 por categoria**. É a leitura mais simples que cobre as duas observações, e é
+coerente com a tela (lataria não tem passo 4), mas não está provada em duas peças da
+mesma categoria.
+
+🔴 **A captura nº 1 é o teste desta inferência, e G2 diz isso por escrito:** ela é
+para-brisa, ou seja, **outra peça de categoria `V`**. Se o `CodigoAtendimento` continuar
+nulo depois do PATCH nela, a inferência **se confirma** com N=2 em `V`. Se nascer no
+PATCH, ela **cai** — e a variável real é outra (o `CodigoTipoScript`, a ausência de
+questionário, ou uma regra da apólice). **O desenho fail-closed sobrevive aos dois
+desfechos**, porque categoria desconhecida já devolve `FRONTEIRA_ABRIR`; o que muda é o
+mapa, não a trava.
 
 ### P0-4 · Um mapa só de seguradora, e ele é o do portal
 
@@ -385,6 +435,11 @@ cidade onde ele quer o serviço.** Quem quebra o vidro viajando conserta onde es
 antes de o portal abrir. 💭 Copy: *"Em qual cidade você quer fazer o serviço? (pode ser
 diferente da cidade onde você mora)"*.
 
+⚠️ **`cidade_para_o_servico` não é `onde_realizar_o_servico`, e os dois convivem:** o
+primeiro é **lugar** (qual município — vira `CodigoCidade` no PATCH, obrigatório); o
+segundo, que já existe em `TRANSPORTAVEIS`, é **modalidade** (loja × domicílio — vira a
+preferência do passo 7). Perguntar um não responde o outro.
+
 **A reconciliação das três verdades.** 📊 Hoje três lugares discordam:
 
 | lugar | o que diz | 📊 |
@@ -400,9 +455,56 @@ mensagens ao segurado. **A verdade única passa a ser `TRANSPORTAVEIS`**, a úni
 que é **código executado**: `prompts.py:133` aponta para a lista sem repeti-la, e a
 `description` da tool passa a ser **gerada** de `TRANSPORTAVEIS` + a família da peça.
 
-**Gate P0-5:** G4 — um teste que lê `TRANSPORTAVEIS` e falha se o texto do prompt ou da
-tool listar um campo a mais ou a menos. Mutação: acrescentar um campo a `TRANSPORTAVEIS`
-sem tocar nos textos.
+**Gate P0-5:** G4, em duas metades (a primeira é comportamento, a segunda é forma):
+(a) chamar `build_portal_params` com um payload **sem o campo novo** e exigir que ele
+**recuse**, nomeando o campo; (b) um teste de **forma** — regex sobre `prompts.py:133` —
+que falha se o texto voltar a **enumerar** campos em vez de apontar para a lista.
+⚠️ (b) é a exceção legítima do CLAUDE.md §9.4: o alvo é a FORMA da declaração, não o
+motor. Mutação de (a): acrescentar um campo a `TRANSPORTAVEIS` sem ensiná-lo ao payload.
+
+---
+
+### P0-6 · O freio por JOB — 🔴 BLOCKER, e é o que torna o canário possível
+
+📊 **Medido em 13/09/2026, não inferido:** o freio é **global ao processo**.
+
+```
+portal_worker/journeys/__init__.py:294-303
+    def efeito_material_liberado() -> bool:
+        return str(_os.getenv("PORTAL_EFEITO_MATERIAL_LIBERADO","false"))… in ("1","true","yes","on")
+portal_worker/journeys/__init__.py:306
+    def motivo_para_barrar(portal_key: str, journey: str) -> str:
+        # ⚠️ não recebe job, não recebe CPF, não recebe company_id
+```
+
+🔴 **Consequência direta:** ligá-lo para o canário **libera todos os jobs de vidros em voo
+naquele worker**, de qualquer corretora. O canário da §10 é impossível de fazer com
+segurança sem este bloco — por isso ele **não** é uma pergunta do BLOCO 0, é um bloco
+numerado de P0, e é **BLOCKER**.
+
+**O contrato**, espelhando o que a cobrança já faz (⛔ não inventar mecanismo novo —
+`BILLING_CANARIO_ALLOWLIST` é o molde, e a EXTRA-001 já o provou em produção):
+
+```python
+# portal_worker/journeys/__init__.py — ao lado de efeito_material_liberado()
+_ENV_ALLOWLIST = "PORTAL_CANARIO_ALLOWLIST"   # job_id ou hash de CPF, separados por vírgula
+
+def efeito_material_liberado_para(*, job_id: str = "", cpf_hash: str = "") -> bool:
+    """A trava global continua valendo; a allowlist a ESTREITA, nunca a alarga.
+
+    🔴 Allowlist vazia com o freio ligado = comportamento de hoje (todos passam).
+    Allowlist preenchida = SÓ os listados passam, e os demais são barrados com motivo.
+    ⛔ Nunca o contrário: a allowlist não liga o freio, ela só o restringe.
+    """
+```
+
+`motivo_para_barrar` ganha os mesmos dois parâmetros, **opcionais**, e devolve o motivo
+legível (*"fora da allowlist do canário"*), porque quem barra tem de gravar no job **por
+que** barrou — é o que o próprio docstring de `:306` já exige.
+
+**Gate P0-6:** dois jobs simultâneos, mesma journey, freio ligado e allowlist com **um**
+deles: o listado passa, o outro é barrado **com motivo gravado**. É o par de casos com
+veredito oposto do protocolo §5.
 
 ---
 
@@ -486,8 +588,17 @@ pergunta do QUESTIONÁRIO 80%  → entra em `PerguntasResposta` (o motor que já
 ```
 
 **O contrato:** as famílias entram em `_ESPECIFICAS_POR_IDENTIDADE`, e cada `Pergunta`
-ganha um campo de destino — `DESTINO_CATALOGO` ou `DESTINO_QUESTIONARIO`. 📊 Do .docx
-(64 parágrafos, 8 blocos, **23 perguntas distintas**):
+ganha um campo de destino — `DESTINO_CATALOGO` ou `DESTINO_QUESTIONARIO`.
+
+⚠️ **A contagem, reconciliada (CLAUDE.md §12.1).** O diagnóstico §10.5 fixa o gate em
+**"20 perguntas"**; 📊 esta proposta contou **23 tipos distintos** relendo os 64 parágrafos
+do .docx em 13/09. Não é discordância de método, é denominador: as 3 a mais são **placa**
+(que sai da InfoCap e por isso o diagnóstico não a contou como pergunta ao segurado) e a
+separação de **vidro fixo** × **sobe-e-desce** em duas, porque elas escolhem itens
+diferentes do catálogo. 🔴 **O gate G6 usa 23**, e o executor recontará no BLOCO 0 — se o
+número dele divergir, o dele vence e o gate se ajusta por emenda escrita.
+
+📊 Do .docx (64 parágrafos, 8 blocos, **23 perguntas distintas**):
 
 | família | perguntas | destino |
 |---|---|---|
@@ -508,16 +619,29 @@ captura**. Ver §14.
 **Gate P1-3:** G6 — as **23 perguntas distintas do .docx** casam com um slot existente,
 com nome e família. Mutação: apagar a família `retrovisor` do mapa.
 
-### P1-4 · Desambiguação guiada pelo catálogo — ler ANTES de perguntar
+### P1-4 · Desambiguação pelo catálogo — **depois** de abrir, e só para o específico
 
-🔴 **Hoje o código lê `itens-cobertos` e `motivos-dano` DEPOIS de já ter cobrado tudo do
-segurado.** 📊 E o catálogo **varia por apólice, não por seguradora**: Yelum 09/09 = **21
-itens** (categorias `L`,`V`; 7 motivos) · Yelum 14/08 = **30 itens** (`L`,`U`,`V`; 12
-motivos) · Porto 15/08 = 21 itens (`V`; 14 motivos).
+📊 O catálogo **varia por apólice, não por seguradora**: Yelum 09/09 = **21 itens**
+(categorias `L`,`V`; 7 motivos) · Yelum 14/08 = **30 itens** (`L`,`U`,`V`; 12 motivos) ·
+Porto 15/08 = 21 itens (`V`; 14 motivos). **Duas apólices da mesma seguradora, 21 × 30.**
+Decorar catálogo é errado por construção.
 
-**Duas apólices da mesma seguradora, 21 × 30 itens.** Decorar catálogo é errado por
-construção — e **perguntar antes de ler também é**: se a apólice não tem categoria `U`,
-perguntar sobre roda desperdiça mensagem e cria expectativa.
+🔴 **Mas "ler antes de perguntar" não é possível como a intuição sugere, e a medição diz
+por quê.** 📊 O header `token_autorizacao` está **AUSENTE** em `/seguradoras`, `/apolices`
+e no `POST /atendimentos`, e **PRESENTE** de `PUT /atendimentos/corretores` em diante —
+inclusive em `/apolices/itens-cobertos`. **O catálogo da apólice só existe depois de o
+atendimento ter sido aberto**, ou seja, depois da fronteira A.
+
+**Isto parte a desambiguação em duas, e a divisão é a própria regra:**
+
+```
+ANTES de abrir   só o que o preflight e a conversa dão: a FAMÍLIA da peça (para-brisa,
+                 porta, vigia, retrovisor, farol, lanterna, para-choque, lataria), a
+                 data, o relato, rodovia/urbano e a cidade. É o que P0-5 cobra.
+DEPOIS de abrir  o ESPECÍFICO — qual das 4 lanternas, qual dos 3 faróis, capa com ou sem
+                 pisca. Aqui o catálogo já está na mão, e só se pergunta o que separa
+                 ≥ 2 itens DAQUELA apólice.
+```
 
 ```python
 def perguntas_que_restringem(itens_cobertos: list, familia: str) -> List[Pergunta]:
@@ -527,12 +651,18 @@ def perguntas_que_restringem(itens_cobertos: list, familia: str) -> List[Pergunt
     """
 ```
 
-⚠️ **A ordem real depende de Q-B do BLOCO 0.** Se `itens-cobertos` exigir o Token, a
-desambiguação acontece **entre as duas fronteiras** — read-only para `V`, e **depois do
-efeito** para `L`; nesse caso, para `L`, ela sai do catálogo genérico da seguradora.
+⚠️ **E para categoria `L` a conta é outra, porque ela já cruzou a fronteira.** Na lataria
+o PATCH materializa (P0-3), então uma pergunta feita depois de ler o catálogo chega
+**depois de o pedido existir**. Duas consequências, e as duas entram no desenho: (1) para
+`L`, a lista de peças a montar vem de **`GET atendimentos/servicos-itens`** (o catálogo de
+serviços de martelinho, 📊 exercido na captura de 09/09), não de `itens-cobertos`; (2) o
+que a conversa precisa ter **antes** de abrir é a **lista de peças amassadas e a
+confirmação de mesmo evento** — porque perguntá-las depois é conversar com o segurado
+sobre um pedido que já nasceu.
 
 **Gate P1-4:** com o catálogo de 21 itens, "qual tipo de farol?" **não é feita**; com o de
-30, é. Dois casos, veredito oposto.
+30, é. Dois casos, veredito oposto. E um segundo caso: nenhuma pergunta de catálogo é
+emitida **antes** do `POST /atendimentos` — porque antes dele não há catálogo.
 
 ### P1-5 · Lataria como caminho próprio
 
@@ -639,17 +769,18 @@ guarda o regex, não o comportamento.
 
 | # | o guarda | o que ele chama | a mutação que o deixa **vermelho** |
 |---|---|---|---|
-| **G1** | **Replay do HAR da Yelum lataria** produz a mesma sequência de 7 escritas e o mesmo corpo de PATCH (8 chaves) | `abrir_atendimento_api` inteiro, contra fixture derivado do HAR por `lab har` | acrescentar `"ItemRemovido": None` → 9 chaves ≠ 8 |
+| **G1** | **Replay do HAR da Yelum lataria** produz as **5 escritas contratadas, na ordem**, e o corpo de PATCH exato (8 chaves, com `CodigoZona:null` e `…Lataria:[…]`) | `abrir_atendimento_api` inteiro, contra fixture lido por **`app/services/portals/lab/trafego.py:160 importar_har(...)`** — ⛔ sem segundo leitor de HAR em `backend/tests/` | acrescentar `"ItemRemovido": None` → 9 chaves · **ou** omitir `CodigoZona` quando `None` → 7 chaves |
 | **G2** | A fronteira material é **calculada**, não fixa | `ST.fronteira_materializar_de` + `guard.acao_material_esperada` no fluxo real | trocar por `ST.FRONTEIRA_MATERIALIZAR` fixo → o caso `L` fica vermelho |
 | **G3** | **ZERO** slug desconhecido; e `sompo → GRUPO_HDI` está certo | `API.slug_da_seguradora` sobre os 43 do bundle e os 38 da API | "corrigir" `GRUPO_HDI` para `SOMPO` |
-| **G4** | As três verdades dizem a **mesma** coisa | lê `TRANSPORTAVEIS` e confere contra `prompts.py` e a tool | acrescentar um campo a `TRANSPORTAVEIS` sem tocar nos textos |
+| **G4** | (a) `build_portal_params` **recusa** payload sem o campo novo, nomeando-o · (b) `prompts.py:133` **não enumera** campos | (a) o motor; (b) regex sobre o texto — exceção legítima do §9.4 (o alvo é a FORMA da declaração) | (a) acrescentar campo a `TRANSPORTAVEIS` sem ensiná-lo ao payload · (b) reescrever o prompt enumerando |
 | **G5** | Endpoint `CANDIDATE` **não sai**, mesmo com as duas flags ligadas | `POST agendamentos` com freio ligado e Approval concedida | promover o endpoint a `APPROVED` no fixture → ele sai |
 | **G6** | As **23 perguntas do .docx** casam com slot existente, com nome e família | `o_que_falta` + `_ESPECIFICAS_POR_IDENTIDADE`, sobre o texto real do .docx | apagar a família `retrovisor` |
 | **G7** | A régua do trincado **vem do portal** — ZERO limite numérico no código | varre o caminho do para-brisa procurando literal de cm | reintroduzir `_LIMITE_CM = 10.0` ali |
 | **G8** | O Vigia enxerga a `portal_key` que a journey grava | `vigia_do_portal.diagnosticar` sobre job do caminho novo | trocar a `portal_key` sem mexer no Vigia |
+| **G9** | 🔴 `POST agendamentos` e `POST direcionamentos` continuam **CANDIDATE** enquanto o acervo tiver **zero** exercícios deles | conta os exercícios nos HAR do acervo por `trafego.importar_har` e confere contra o estado declarado no contrato do repo | marcar qualquer um dos dois como `APPROVED` no contrato → fica vermelho **sem** captura nova |
+| **G10** | Freio por job: com allowlist de **um** job, o listado passa e o outro é **barrado com motivo** | `efeito_material_liberado_para` + `motivo_para_barrar` em dois jobs simultâneos | esvaziar a allowlist e esperar que os dois passem |
 
-**Sobram 4 do teto.** ⚠️ São para o que o painel achar — não para preencher. Candidato
-natural (G9): **desligar `PORTAL_VIDROS_API_FIRST` devolve o comportamento de hoje** (§11).
+**Sobram 2 do teto de 12.** ⚠️ São para o que o painel achar — não para preencher.
 
 🔴 **A regra da mutação (protocolo §10):** roda em **worktree próprio ou com lock
 exclusivo**, restaura por **cópia** (nunca `git checkout`), e o orquestrador **não roda a
@@ -659,16 +790,11 @@ bateria inteira** enquanto um juiz muta.
 
 ## §9 · Migrations
 
-**📊 Nenhuma migration é necessária para P0 e P1.** Todo o estado cabe em colunas
-existentes: `portal_jobs.params` · `portal_jobs.evidence` (jsonb) · `approval_requests` ·
-o checkpoint durável da SPEC-073 (já usado por `_checkpoint`).
-
-🔴 **Se o executor concluir que precisa de SQL**, a regra é inteira: leitura obrigatória de
-[`MIGRATIONS-AUTHORITY.md`](../MIGRATIONS-AUTHORITY.md), diretório
-`backend/supabase/migrations/`, idempotente, expand-first, e **APPLY / VERIFY / ROLLBACK
-escritos ANTES de rodar**. ⚠️ Migration que altera dado, estrutura, trava ou quem pode ler
-dispara o piso CRÍTICO (§3.2) — esta SPEC já é CRÍTICA; muda a lente do painel, não a
-marcha.
+**📊 Nenhuma migration é necessária.** O estado cabe em `portal_jobs.params` ·
+`portal_jobs.evidence` (jsonb) · `approval_requests` · o checkpoint da SPEC-073.
+🔴 **Se surgir SQL:** [`MIGRATIONS-AUTHORITY.md`](../MIGRATIONS-AUTHORITY.md) antes,
+`backend/supabase/migrations/`, idempotente, expand-first, **APPLY / VERIFY / ROLLBACK
+escritos ANTES de rodar**.
 
 ---
 
@@ -685,17 +811,18 @@ agendamento** — justamente a parte que depende da captura nº 1.
 **ANTES**
 
 ```
+[ ] 🔴 P0-6 NO AR — sem o freio por job, este canário não acontece. É pré-requisito
+       duro, não checklist: `PORTAL_CANARIO_ALLOWLIST` preenchida com ESTE job/CPF
 [ ] 🧑 Founder confirma apólice Yelum ATIVA com cobertura de lataria no veículo de teste
 [ ] 🧑 Founder confirma o CPF do titular — por variável de ambiente, nunca versionado
-[ ] 🤖 PORTAL_EFEITO_MATERIAL_LIBERADO ligado SÓ para este job (ver Q-A do BLOCO 0)
-[ ] 🤖 PORTAL_VIDROS_API_FIRST ligado SÓ para este job
+[ ] 🤖 PORTAL_EFEITO_MATERIAL_LIBERADO ligado · PORTAL_VIDROS_API_FIRST ligada
 [ ] 🤖 a saída dos três comandos da §1, colada no relatório
 ```
 
-🔴 **"Só para esse job" é exigência, e a SPEC não presume que exista** (Q-A). Se o freio
-for global, ligá-lo abre a porta para todos os jobs de vidros em voo — e nasce o bloco
-P0-6 (**BLOCKER**, via `CHANGE-ADDENDA`): allowlist de job ou de CPF, como a
-`BILLING_CANARIO_ALLOWLIST` já faz na cobrança.
+🔴 **Por que P0-6 é pré-requisito e não conveniência:** 📊 o freio é **global ao processo**
+(`journeys/__init__.py:294-303` lê `os.getenv`; `motivo_para_barrar` não recebe job nem
+CPF). Ligá-lo sem a allowlist libera **todos os jobs de vidros em voo naquele worker**,
+de qualquer corretora — o oposto do que um canário é.
 
 **OS CASOS**
 
@@ -832,18 +959,21 @@ o Work Run e o portal worker continuam únicos.
 
 ```
 🟢 NÃO DEPENDE — fecha nesta SPEC, sem esperar ninguém
-   P0 inteiro · P1-1 (ler e APRESENTAR lojas, dias e horários — 📊 a captura de 14/08 já
-   tem a lista de lojas e o calendário) · P1-3 nas famílias de CATÁLOGO (retrovisor, farol,
-   lanterna, para-choque — a lista de `itens-cobertos` já as prova) · P1-4 ·
-   🔴 P1-5 LATARIA INTEIRA, até o comprovante · P1-6 (o caminho multipart escrito e
-   desligado) · P2-1 · P2-2 · P2-4 · 🔴 O CANÁRIO
+   P0 inteiro (incluindo P0-6, o freio por job) · P1-1 (ler e APRESENTAR lojas, dias e
+   horários — 📊 a captura de 14/08 já tem a lista de lojas e o calendário) ·
+   P1-3 nas famílias de CATÁLOGO (retrovisor, farol, lanterna, para-choque — a lista de
+   `itens-cobertos` já as prova) · 🔴 P1-5 LATARIA INTEIRA, até o comprovante ·
+   P1-6 (o caminho multipart escrito e desligado) · P2-1 · P2-2 · P2-4 · 🔴 O CANÁRIO
 
 🟡 DEPENDE — fica escrito, CANDIDATE, e desligado
    P1-2 `POST agendamentos` e `POST direcionamentos` — é o último clique, e nunca foi visto
-   (📊 zero exercícios em 4 HAR) · P1-3 nas perguntas de PARA-BRISA (chuva · degradê · ADAS)
-   e de VIGIA (desembaçador): o agente as faz, mas a resposta não vai ao questionário do
-   portal enquanto não houver tela medida · P2-1 na régua real do trincado, que vem no
-   texto da pergunta do portal
+   (📊 zero exercícios em 4 HAR; G9 é quem impede promovê-los sem captura) ·
+   P1-3 nas perguntas de PARA-BRISA (chuva · degradê · ADAS) e de VIGIA (desembaçador): o
+   agente as faz, mas a resposta não vai ao questionário do portal enquanto não houver
+   tela medida · P2-1 na régua real do trincado, que vem no texto da pergunta do portal ·
+   ⚠️ P1-4 PARCIALMENTE: o mecanismo de restrição fecha aqui, mas a lista de perguntas
+   que ele filtra para PARA-BRISA e VIGIA vem da captura nº 1 (é a mesma dependência de
+   P1-3). Para as famílias de catálogo, P1-4 fecha nesta SPEC.
 ```
 
 **A ordem de ataque por seguradora:**
@@ -877,19 +1007,22 @@ escada da SPEC-077, depois do Cobrador da Allianz.
 ## §16 · Definição final de conclusão — a lista fechada
 
 ```
-[ ] 1. BLOCO 0 remedido, com a saída dos 6 comandos colada, as perguntas Q-A/Q-B/Q-C
-       RESPONDIDAS, e as divergências escritas como emenda
-[ ] 2. G1 verde: replay offline do HAR da Yelum lataria produz a MESMA sequência de 7
-       escritas e o MESMO corpo de PATCH (8 chaves, não 11) · e a mutação que acrescenta
-       `"ItemRemovido": None` o deixa VERMELHO
+[ ] 1. BLOCO 0 remedido, com a saída dos 6 comandos colada, C-A e C-B CONFIRMADAS, Q-C
+       RESPONDIDA, e as divergências escritas como emenda
+[ ] 2. G1 verde: replay offline do HAR da Yelum lataria produz as 5 escritas CONTRATADAS
+       na ordem, NÃO emite as 2 fora do contrato, e produz o corpo de PATCH exato (8
+       chaves, com `CodigoZona:null` e `ServicosMartelinhoLataria` presentes) · as duas
+       mutações — `"ItemRemovido": None` (9 chaves) e omitir `CodigoZona` (7) — o deixam
+       VERMELHO · e ele lê o HAR por `trafego.importar_har`, sem segundo leitor
 [ ] 3. G2 verde: `"…|L"` arma a fronteira ANTES do PATCH · `"…|V"` arma antes do
        `POST /questionarios` · e a mutação que volta a constante fixa fica VERMELHA
 [ ] 4. G3 verde: ZERO slug desconhecido pelo portal · `sompo → GRUPO_HDI` provado ·
-       `ITAU` fora do caminho ativo · Yelum = `LIBERTY` em todo lugar
-[ ] 5. G4 · G5 · G6 · G7 · G8 verdes, cada um com a mutação rerodada e a saída colada
-[ ] 6. 🔴 O CANÁRIO: 1 acionamento de LATARIA na Yelum, com o veículo de teste do Founder,
-       do WhatsApp ao COMPROVANTE — Q1 a Q7 respondidos com saída real, e as duas
-       variáveis provadas desligadas depois
+       `ITAU` com `ativa: False` · Yelum = `LIBERTY` em todo lugar
+[ ] 5. G4 (as duas metades) · G5 · G6 · G7 · G8 · G9 · G10 verdes, cada um com a mutação
+       rerodada e a saída colada
+[ ] 6. 🔴 O CANÁRIO, e ele só começa com **P0-6 no ar**: 1 acionamento de LATARIA na
+       Yelum, com o veículo de teste do Founder, do WhatsApp ao COMPROVANTE — Q1 a Q7
+       respondidos com saída real, e as duas variáveis provadas desligadas depois
 [ ] 7. A bateria inteira rodada no gate de cada bloco e no fim (2 a 4 vezes na SPEC,
        protocolo §10), com a contagem do diário do conftest no relatório
 [ ] 8. `next start` + 1 requisição a `/api/…` SE a SPEC tiver tocado `app/`,
