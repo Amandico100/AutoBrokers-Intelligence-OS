@@ -1,13 +1,12 @@
 # SPEC-EXTRA-001.5 — O AGENTE SABE O QUE CADA PLANO COBRE
 ## Três níveis de assistência por seguradora, numa base com fonte e página por linha
 
-**Produto:** AutoBrokers Intelligence OS. **Status:** PROPOSTA PARA CONVERSÃO, AQUECIMENTO E EXECUÇÃO — não é SPEC
-aprovada nem implementação realizada. **Versão:** 1.0 · **Data:** 13/09/2026.
-**Baseline:** `a0bb5fe` (📊 `git rev-parse HEAD` em 13/09/2026; 0 atrás e 0 à frente de `origin/main`).
+**Status:** PROPOSTA PARA CONVERSÃO, AQUECIMENTO E EXECUÇÃO — não é SPEC aprovada nem implementação realizada.
+**Versão:** 1.0 · 13/09/2026. **Baseline:** `a0bb5fe` (📊 `git rev-parse HEAD` hoje; 0 atrás e 0 à frente de `origin/main`).
 **Branch sugerida:** `feat/spec-extra-001-5-planos-de-assistencia`.
 **SPEC definitiva a criar:** `docs/canon/specs/SPEC-EXTRA-001.5-o-agente-sabe-o-que-cada-plano-cobre.md`.
-**Research Pack:** `SPEC-EXTRA-001.5-…-RESEARCH-PACK.md` — **as evidências `arquivo:linha` (IDs C01–C57) e as
-consultas 📊 (M1–M7) estão lá; esta proposta as cita por ID e não as repete.**
+**Research Pack:** `SPEC-EXTRA-001.5-…-RESEARCH-PACK.md` — **as evidências `arquivo:linha` (C01–C57) e as consultas
+📊 (M1–M7) vivem lá; esta proposta as cita por ID e não as repete.**
 **Prompt:** `PROMPT-DE-ABERTURA-EXTRA-001.5.md`. **Relatório:** `docs/canon/reports/SPEC-EXTRA-001.5-EXECUTION-REPORT.md`.
 **Origem:** `DIAGNOSTICO-PILOTOS-E-PLANO-EXTRA-2026-09-12.md` §1.3, §3 (bloco 001.5), **§7.3**, **§7.6**, §12.1.
 **Protocolo:** AAA v11.2 + OPÇÃO B. Marcha **PADRÃO** · **1 lente + 1 juiz fresco + canário vivo** · 💭 10–14 h ·
@@ -26,34 +25,32 @@ consultas 📊 (M1–M7) estão lá; esta proposta as cita por ID e não as repe
 
 ### 0.1 Os números, remedidos hoje (consultas em RP §2)
 
-📊 **13/09/2026**, banco de produção, só SELECT e contagem:
-
-| o que se mediu | resultado |
+| 📊 medido em 13/09/2026, banco de produção, só SELECT | resultado |
 |---|---|
 | documentos em `normative_documents` · **indexados** (`ingested` + `chunk_count>0`) | **194** · **97** |
 | **seguradoras reais** com condição geral indexada | **8** (allianz azul bradesco hdi mapfre porto tokio yelum) + `susep`, o regulador |
-| siglas da **carteira viva** da corretora piloto · com chave canônica · cobertura de prêmio | **61** · 14 · **83,86%** |
+| siglas da **carteira viva** da piloto · com chave canônica · cobertura de prêmio | **61** · 14 · **83,86%** |
 | das 14 canônicas, quantas têm CG **sob a mesma chave** | **6** — `tokio` não casa com `tokio_marine` (§0.3 ③) |
 | **planos/níveis de assistência estruturados** em qualquer tabela | **0** — nenhuma tabela, nenhuma coluna |
-| corpus por ramo | auto **24** · residencial **24** · condomínio **8** · **vida 101** (a maior fatia **não** é a carteira dos pilotos) |
+| corpus por ramo | auto **24** · resi **24** · condomínio **8** · **vida 101** (a maior fatia **não** é a carteira dos pilotos) |
 | cartas publicadas · de assistência · **sem** seguradora nomeada | **17.995** · **1.535** · **784** |
-| perguntas reais no acervo (`messages`, papel humano) | guincho **121** · vidro **93** · carro reserva **81** · eletricista **36** · granizo **26** · chaveiro **24** · encanador **24** |
+| perguntas reais no acervo (`messages`, papel humano) | guincho **121** · vidro **93** · carro reserva **81** · eletricista **36** · granizo **26** · chaveiro **24** |
 
-⚠️ **Três números do diagnóstico não bateram; o de hoje vence** (protocolo §5 ①; detalhe em RP §3): *"10 de 61
-seguradoras"* → **8**, e **6** exigindo que a chave case · *"`knowledge_cards` 857/39/4"* → **17.995/1.535/20** ·
-*"a ligação apólice → CG por SUSEP **já casa hoje**"* → 🔴 **não existe, e está bloqueada** (§0.3 ②).
+⚠️ **Três números do diagnóstico não bateram; o de hoje vence** (protocolo §5 ①; RP §3): *"10 de 61 seguradoras"* →
+**8**, e **6** exigindo que a chave case · *"`knowledge_cards` 857/39/4"* → **17.995/1.535/20** · *"a ligação apólice
+→ CG por SUSEP **já casa hoje**"* → 🔴 **não existe, e está bloqueada** (§0.3 ②).
 
-E o motivo de tudo: o agente **misturou Allianz auto com residencial** e admitiu *"não recuperei o detalhe fino do
-plano VIP"*. 📊 O que ele tem hoje é `assistance_policy.py` — **142 linhas, três serviços residenciais fixos**
-(`:28`), **sem seguradora, sem produto, sem nível, e a palavra "carro reserva" não aparece no arquivo**.
+E o motivo: o agente **misturou Allianz auto com residencial** e admitiu *"não recuperei o detalhe fino do plano
+VIP"*. 📊 O que ele tem hoje é `assistance_policy.py` — **142 linhas, três serviços residenciais fixos** (`:28`),
+**sem seguradora, sem produto, sem nível; "carro reserva" não aparece no arquivo**.
 
 ### 0.2 Decisões do Founder já incorporadas — são lei
 
 | ID | Decisão | Onde |
 |---|---|---|
-| **D-PILOTO-01** | Conhecimento de atendimento é **GLOBAL**: toda corretora usa o mesmo, nunca por corretora | `FOUNDER-DECISIONS.md:1745` |
+| **D-PILOTO-01** | Conhecimento de atendimento é **GLOBAL**: toda corretora usa o mesmo | `FOUNDER-DECISIONS.md:1745` |
 | **D-PILOTO-08** | Numeração **EXTRA-001.5**; nada renumera | `:1752` |
-| **D-PILOTO-11** | **PDF** vence em cobertura/franquia/cláusula/**plano**; sistema de gestão em parcela/status. A arquitetura **não nasce presa à InfoCap**. **Seguradoras e ramos são catálogo nosso (chave SUSEP)** | `:1755` |
+| **D-PILOTO-11** | **PDF** vence em cobertura/franquia/**plano**; sistema de gestão em parcela/status. Não nasce presa à InfoCap. **Seguradoras e ramos são catálogo nosso (chave SUSEP)** | `:1755` |
 | **D-PILOTO-14** | **≤ 12 guardas novos**, bateria sobre o **motor** e o **acervo real** | `:1758` |
 | **D-PILOTO-16** | SPEC-101 vira a porta; EXTRA-002/008/009 viram adaptadores | `:1760` |
 | **D-PILOTO-20** | Execução em **chat novo**, sob AAA opção B | `:1763` |
@@ -64,40 +61,39 @@ aqui.**
 
 ### 0.3 🔴 As quatro correções que mudam esta SPEC — todas medidas hoje
 
-**① O corpus não mora em `documents`. Mora em `normative_documents` — e o pipeline inteiro já existe.**
-📊 `doc_kind` **não existe** em `documents`; é coluna de `normative_documents`, com CHECK de 9 valores (RP M7, C55).
-`insurance_corpus.py` (2.020 linhas) já faz descobrir · classificar · **aprovar/rejeitar/candidatos** · baixar ·
-extrair · limpar · partir · etiquetar · indexar no global · versionar · reconferir. 🔴 **A fila de curadoria que a
-proposta pediu (`curation_status`) JÁ EXISTE**: `status` + `approved_at`/`approved_by`, com `vencidos()` exigindo
-`approved_at is not null` (RP C29). Criar outra seria motor paralelo (CLAUDE.md §5). Esta SPEC pendura na que
-existe; acrescenta a curadoria da **linha extraída**, que é outro julgamento (§5.4).
+**① O corpus não mora em `documents`. Mora em `normative_documents` — e o pipeline inteiro já existe.** 📊 `doc_kind`
+**não existe** em `documents` (RP M7). `insurance_corpus.py` (2.020 linhas) já faz descobrir · classificar ·
+**aprovar/rejeitar/candidatos** · baixar · extrair · limpar · partir · etiquetar · indexar no global · versionar ·
+reconferir. 🔴 **A fila de curadoria que a proposta pediu (`curation_status`) JÁ EXISTE**: `status` +
+`approved_at`/`approved_by`, com `vencidos()` exigindo `approved_at is not null` (RP C29). Criar outra seria motor
+paralelo (CLAUDE.md §5). Esta SPEC pendura na que existe e acrescenta a curadoria da **linha extraída**, que é outro
+julgamento (§5.4).
 
-**② O elo apólice → condições gerais não existe. E está ativamente bloqueado.**
-📊 O extrator existe (`insurance_corpus.py:65`) e o lado do corpus está pronto (`susep_process` em **190 de 194**).
-Mas `grep -rn 'eq("susep_process"' backend/` → **vazio**, e a única ocorrência de `susep` na camada de apólice é o
+**② O elo apólice → condições gerais não existe. E está ativamente bloqueado.** 📊 O extrator existe
+(`insurance_corpus.py:65`) e o lado do corpus está pronto (`susep_process` em **190 de 194**). Mas
+`grep -rn 'eq("susep_process"' backend/` → **vazio**, e a única ocorrência de `susep` na camada de apólice é o
 contrário do que se precisa: `policy_document_evidence_service.py:204-209` tem **`susep` dentro de
-`_BOILERPLATE_RE`** — **toda linha do PDF da apólice que menciona SUSEP é descartada como entulho institucional**,
-inclusive a que carrega o número do processo. A ponte não está faltando: está **demolida**, por um filtro escrito
-para outro fim. §7.2 a reabre, e **M-C2 exige ZERO casamentos com o filtro de volta** — é assim que se prova que era
-o filtro (CLAUDE.md §9.4).
+`_BOILERPLATE_RE`** — **toda linha do PDF da apólice que menciona SUSEP é descartada como entulho**, inclusive a que
+carrega o número do processo. A ponte não está faltando: está **demolida**, por um filtro escrito para outro fim.
+§7.2 a reabre, e **M-C2 exige ZERO casamentos com o filtro de volta** — é assim que se prova que era o filtro
+(CLAUDE.md §9.4).
 
-**③ Não existe chave canônica de seguradora. Existem quatro, e duas já discordam.**
-📊 14 tabelas têm `insurer_key`; **zero constraints** a mencionam. `portals`→`tokio_marine` ·
-`normative_documents`→`tokio` · `knowledge_cards`→`tokio` (mais 5 chaves que `portals` não tem) ·
-`seguradora-coenti.json`→`tokio_marine`. **Consequência:** a Tokio tem **25 documentos** e, num casamento por chave
-canônica, **cairia para zero, em silêncio**. A HDI tem **10** e **não está entre as 61 siglas** — é a seguradora da
-apólice de referência da Saionara. 🔴 **Base pendurada em chave que ninguém governa emudece por digitação.** §5.1
-resolve antes do primeiro dado; **M-A1** fica vermelho.
+**③ Não existe chave canônica de seguradora. Existem quatro, e duas já discordam.** 📊 14 tabelas têm `insurer_key`;
+**zero constraints** a mencionam. `portals`→`tokio_marine` · `normative_documents`→`tokio` ·
+`knowledge_cards`→`tokio` (mais 5 chaves que `portals` não tem) · `seguradora-coenti.json`→`tokio_marine`.
+**Consequência:** a Tokio tem **25 documentos** e, num casamento por chave canônica, **cairia para zero, em
+silêncio**. A HDI tem **10** e **não está entre as 61 siglas** — é a seguradora da apólice de referência da Saionara.
+🔴 **Base pendurada em chave que ninguém governa emudece por digitação.** §5.1 resolve antes do primeiro dado.
 
-**④ A procedência é gravada e morre na volta — e o corpus não tem página.**
-📊 `insurance_corpus.py:1125-1171` grava na raiz do payload `insurer_key`, `doc_kind`, `susep_process`,
-`effective_from`, `vigente`, `unit_id`, `faceta`; 📊 `qdrant_service.py:891-909` monta o resultado com **oito
-chaves, e nenhuma é essas**. A procedência entra estruturada e volta **como texto** (a etiqueta colada dentro do
-pedaço). Somado: 📊 **`doc_kind` nunca filtra** — não está no índice de payload (`:88-99`) nem na assinatura de
-`search_similar` (`:639-668`). E 🔴 **o corpus normativo não tem página**: o corte é por **seção**
-(`insurance_corpus.py:696`). Do outro lado, o caminho da apólice **tem** página (`:387-407`) e `nodes.py:297-303`
-**já rejeita página inventada** — mas o fallback docling devolve **uma única página, `page_number: 1`** (`:539-549`).
-**Citar a partir do chunk é impossível; citar a partir do docling é mentir.** §7.1 extrai da **fonte arquivada**.
+**④ A procedência é gravada e morre na volta — e o corpus não tem página.** 📊 `insurance_corpus.py:1125-1171` grava
+na raiz do payload `insurer_key`, `doc_kind`, `susep_process`, `effective_from`, `vigente`, `unit_id`, `faceta`;
+📊 `qdrant_service.py:891-909` monta o resultado com **oito chaves, e nenhuma é essas** — a procedência entra
+estruturada e volta **como texto** (a etiqueta colada dentro do pedaço). 📊 **`doc_kind` nunca filtra**: não está no
+índice de payload (`:88-99`) nem na assinatura de `search_similar` (`:639-668`). E 🔴 **o corpus normativo não tem
+página** — o corte é por **seção** (`:696`); do outro lado, o caminho da apólice **tem** página
+(`policy_document_evidence_service.py:387-407`) e `nodes.py:297-303` **já rejeita página inventada**, mas o fallback
+docling devolve **uma única página, `page_number: 1`** (`:539-549`). **Citar a partir do chunk é impossível; citar a
+partir do docling é mentir.** §7.1 extrai da **fonte arquivada**.
 
 ### 0.4 EXECUTION CARD proposto — a medir no BLOCO 0, não a copiar
 
@@ -110,7 +106,7 @@ RISCO ................ 7 = ALCANCE 3 (o SEGURADO lê "você tem carro reserva")
                           + FREQUÊNCIA 2 (toda pergunta de cobertura, no chat e no atendimento)
                        ⚠️ VER §0.5: a soma dá CRÍTICO e a marcha fixada é PADRÃO. Registrada, não silenciada
 SUPERFÍCIE ........... 2 (peça nova — tabela e Skill — mais comportamentos que eu consigo listar)
-                       ⚠️ vira 3 se o BLOCO 0 achar leitor do corpus normativo fora da lista de §3.1
+                       ⚠️ vira 3 se o BLOCO 0 achar leitor do corpus fora da lista de §3.1
 PISO APLICADO ........ §3.2 dispara em UM ponto e só nele: a migration que ALARGA O CHECK de `doc_kind`
                        numa tabela VIVA e de DDL não rastreada (§11.2). A tabela nova é aditiva
 NÍVEL ................ PADRÃO — opção B, com o reforço de §0.5
@@ -136,19 +132,20 @@ ORÇAMENTO ............ 💭 0,9–1,5 M tokens no chat executor. Medir, não pr
 
 ### 0.5 🔴 A divergência de marcha, escrita em vez de escondida
 
-A conta dá **RISCO 7 → CRÍTICO** (§3.1). A marcha fixada pelo Founder é **PADRÃO** (diagnóstico §8/§12.1,
+A conta dá **RISCO 7 → CRÍTICO** (§3.1); a marcha fixada pelo Founder é **PADRÃO** (diagnóstico §8/§12.1,
 D-PILOTO-14), ajustada nesta redação para **1 lente + juiz fresco + canário**. §3.1 diz *"se o rótulo e a soma
 discordarem, a soma vence"*; §3.2 diz que a exceção do Founder **só sobe**. **Não é condição de parada** (nenhuma
 das oito do CLAUDE.md §10): é divergência a resolver com nota (§9).
 
-| caminho | nota | por quê |
-|---|---|---|
-| **PADRÃO com o piso aplicado nos dois pontos onde ele dispara** | **86** | a lente única é "produto + DADO" — a que §5 ④ **exige** quando o outcome é dataset; o juiz fresco audita o dado; o canário prova a resposta; e §11.2 recebe tratamento CRÍTICO com manifesto completo |
-| subir tudo para 3 lentes | 62 | duas lentes a mais lendo o mesmo diff; o defeito aqui é **dado errado com cara de certo**, e isso uma lente de DADO pega melhor que três de código |
-| baixar e seguir sem registrar | 15 | rebaixamento silencioso de um RISCO 7 que chega ao segurado |
+- **PADRÃO com o piso aplicado nos dois pontos onde ele dispara — 86.** A lente única é "produto + DADO", a que §5 ④
+  **exige** quando o outcome é dataset; o juiz fresco audita o dado; o canário prova a resposta; e §11.2 recebe
+  tratamento CRÍTICO com manifesto completo.
+- **Subir tudo para 3 lentes — 62.** Duas lentes a mais lendo o mesmo diff; o defeito aqui é **dado errado com cara
+  de certo**, e isso uma lente de DADO pega melhor que três de código.
+- **Baixar e seguir sem registrar — 15.** Rebaixamento silencioso de um RISCO 7 que chega ao segurado.
 
 🔴 **O executor recalcula no BLOCO 0.** Soma 6+? escreve a divergência no card, mantém a marcha e **aplica o piso
-nos dois pontos**: (a) a migration de §11.2, (b) todo texto que chega ao segurado (§6.3). Soma 5 ou menos? escreve
+nos dois pontos**: (a) a migration de §11.2, (b) todo texto que chega ao segurado (§6.2). Soma 5 ou menos? escreve
 por quê.
 
 ---
@@ -191,21 +188,21 @@ de pessoa, nunca.** E o trecho entra **como referência** (documento + página +
 `insurer_assistance_plans` (com **`nivel`**) e `insurer_assistance_services` (com **documento-fonte e página
 obrigatórios por CHECK**), migrations expand-first com APPLY/VERIFY/ROLLBACK (§11); ③ a Skill única
 `cobertura_e_assistencia` com os **cinco estados** e origem escrita (§6); ④ `assistance_policy.py` **vira fallback
-com marca** — não é apagado nem duplicado (§6.4); ⑤ as **três ondas** com revisão humana antes de publicar (§7);
-⑥ `doc_kind` passa a **filtrar** e a **procedência volta como campo** (§6.5); ⑦ a **tela mínima** (§8); ⑧ a
-**medição declarada** com `origem` no turno (§9); ⑨ **P-PILOTO-04**, só a parte de conhecimento.
+com marca** (§6.4); ⑤ as **três ondas** com revisão humana antes de publicar (§7); ⑥ `doc_kind` passa a **filtrar** e
+a **procedência volta como campo** (§6.5); ⑦ a **tela mínima** (§8); ⑧ a **medição declarada** com `origem` no turno
+(§9); ⑨ **P-PILOTO-04**, só a parte de conhecimento.
 
-| Fora desta SPEC | Por que não entra | Gatilho de retorno |
+| Fora desta SPEC | Por que não entra | Volta em |
 |---|---|---|
-| **cotação e renovação** (orçar o plano superior, preço, emissão) | 🔴 outra SPEC inteira. Esta **diz** que o plano superior existe e o que cobre; **quem orça é gente** | EXTRA-003 · EXTRA-004 |
-| a porta `PolicyDataProvider` e o modelo canônico de apólice | é a **001.1**; 📊 a porta existe (`policy_data_provider.py:41`). A 001.5 **consome, não edita** — dois escritores no mesmo arquivo é o que §3.4 proíbe | EXTRA-001.1, antes desta |
-| ler a apólice certa em uma rodada (vigência, ramo, briefing) | é a 001.1; a 001.5 recebe a apólice já escolhida | EXTRA-001.1 |
-| coberturas patrimoniais (LMI, franquia, cláusula) | a 001.1 as entrega pela reconciliação CORP × PDF; a base nova só entra na pergunta de **assistência/serviço** | já coberto pela 001.1 |
-| adaptadores Quiver / Agger / Segfy | sem credencial medida; a base pendura na **chave nossa** e já nasce servindo qualquer um | EXTRA-002 / 008 / 009 |
+| **cotação e renovação** do plano superior | 🔴 outra SPEC. Esta **diz** que o plano superior existe e o que cobre; **quem orça é gente** | EXTRA-003 · 004 |
+| a porta `PolicyDataProvider` e o modelo canônico de apólice | é a **001.1**; 📊 a porta existe (`policy_data_provider.py:41`). A 001.5 **consome, não edita** — dois escritores no mesmo arquivo é o que §3.4 proíbe | EXTRA-001.1 |
+| ler a apólice certa em uma rodada (vigência, ramo, briefing) | é a 001.1; a 001.5 recebe a apólice escolhida | EXTRA-001.1 |
+| coberturas patrimoniais (LMI, franquia, cláusula) | a 001.1 as entrega pela reconciliação CORP × PDF | já na 001.1 |
+| adaptadores Quiver / Agger / Segfy | sem credencial; a base pendura na **chave nossa** e já serve qualquer um | EXTRA-002/008/009 |
 | reescrever o chunker para carregar **página** | tocaria 42.091 pedaços por algo que §7.1 resolve pela fonte arquivada | pendência com número |
-| normalizar `insurer_key` nas 14 tabelas | migração de dado não medida; o módulo resolve no ponto de uso (nota 82 × 40) | pendência com número |
+| normalizar `insurer_key` nas 14 tabelas | migração não medida; o módulo resolve no ponto de uso (nota 82 × 40) | pendência com número |
 | `ficha.faltando`, `_TITULOS`, dossiê de sinistro (resto de P-PILOTO-04) | é a 001.3 | EXTRA-001.3 |
-| rajadas, debounce, dossiê ao grupo | 001.2 e 001.3; mesmo arquivo, dois escritores | EXTRA-001.2 / 001.3 |
+| rajadas, debounce, dossiê ao grupo | 001.2 e 001.3; mesmo arquivo, dois escritores | EXTRA-001.2/001.3 |
 
 🔴 **Nada do obrigatório sai em silêncio.** Conflito material vai para `CHANGE-ADDENDA.md` classificado
 (BLOCKER · ESSENCIAL · VALIOSA · FUTURA), com problema, evidência, consequência e autorização (CLAUDE.md §11).
@@ -215,24 +212,23 @@ com marca** — não é apagado nem duplicado (§6.4); ⑤ as **três ondas** co
 
 ## 3. Autoridades preservadas e arquitetura
 
-### 3.1 O que se reaproveita, por caminho (evidência em RP §1)
+### 3.1 O que se reaproveita (evidência `arquivo:linha` em RP §1)
 
 | peça | já existe em | o que a 001.5 faz |
 |---|---|---|
-| corpus, curadoria, versão, manutenção | `insurance_corpus.py` (2.020 linhas) · `normative_documents` · `normative_document_versions` | **reusa inteiro**; nenhum segundo pipeline |
-| extrator e normalizador de processo SUSEP | `insurance_corpus.py:49,65` · `susep_rep2.py:214-216` | reusa; falta **chamá-lo do lado da apólice** (§7.2) |
-| fila de curadoria do documento | `insurance_corpus.py:1887,1900,1908,1921-1942` · `api/corpus.py:90-96` | **pendura**; a curadoria da **linha** é irmã (§5.4) |
-| manutenção por `content_hash` | `insurance_corpus.py:58-62,1433-1438`; 📊 `next_check_at` em 194/194 | reusa; §7.4 estende à linha |
-| arquivo da fonte (bytes, MinIO) | `insurance_corpus.py:1608` → `knowledge/acervo_arquivo.py` | 🔴 **é daqui que a extração lê a página** (§7.1) |
+| corpus, curadoria, versão, manutenção | `insurance_corpus.py` · `normative_documents` · `normative_document_versions` | **reusa inteiro**; nenhum segundo pipeline |
+| extrator e normalizador de processo SUSEP | `insurance_corpus.py:49,65` · `susep_rep2.py:214` | reusa; falta **chamá-lo do lado da apólice** (§7.2) |
+| fila de curadoria do documento | `insurance_corpus.py:1887,1900,1908,1921` · `api/corpus.py:90` | **pendura**; a curadoria da **linha** é irmã (§5.4) |
+| manutenção por `content_hash` | `insurance_corpus.py:58-62,1433-1438`; 📊 `next_check_at` 194/194 | reusa; §7.4 estende à linha |
+| arquivo da fonte (bytes, MinIO) | `insurance_corpus.py:1608` → `acervo_arquivo.py` | 🔴 **é daqui que a extração lê a página** (§7.1) |
 | coleção global e escopo | `knowledge_scope.py:37,383-389` | reusa; **nenhuma coleção nova** |
-| busca híbrida com filtros | `search_service.py:466-579` · `qdrant_service.py:434-579,835-854` | **estende** com `doc_kind`; nenhum buscador novo |
+| busca híbrida com filtros | `search_service.py:466-579` · `qdrant_service.py:434,835` | **estende** com `doc_kind`; nenhum buscador novo |
 | catálogo de seguradoras e ramos | `docs/canon/providers/susep/*.json` · `susep_ses_provider.py:129-212` | **pendura**; §5.1 acrescenta o que falta |
 | a porta da apólice | `policy_data_provider.py:41,55,137,144` | **consome o que a 001.1 entregar**; não edita |
-| plano vindo do documento | `policy_document_evidence_service.py:230-318` (`assistance_plan`/`assistance_services`) | 🔴 **já extrai o bloco de assistência do PDF.** Reusa |
+| plano vindo do documento | `policy_document_evidence_service.py:230-318` | 🔴 **já extrai o bloco de assistência do PDF.** Reusa |
 | regra de assistência residencial | `assistance_policy.py` (142 linhas) | **vira fallback com marca** (§6.4) |
-| guarda de afirmação com lastro | `tests/test_a_cobertura_tem_lastro_no_acervo.py` | **referência interna do juiz**; molde de M-B2 |
-| guarda de página citada | `nodes.py:297-303` (rejeita página inventada) | **reusa o padrão** |
-| registro de ferramenta do turno | `tool_invocations` · `skills/gateway.py:294,323` · `nodes.py:784,1057` | grava `origem` pelo que existe; **nenhum segundo registro** |
+| guarda de afirmação com lastro · de página citada | `tests/test_a_cobertura_tem_lastro_no_acervo.py` · `nodes.py:297-303` | referência do juiz; **reusa o padrão** |
+| registro de ferramenta do turno | `tool_invocations` · `gateway.py:294` · `nodes.py:784,1057` | grava `origem` pelo que existe; **nenhum segundo registro** |
 
 ### 3.2 🔴 A fronteira, escrita como regra verificável
 
@@ -250,9 +246,9 @@ NENHUMA linha entra sem documento-fonte e página. O BANCO recusa, não o códig
 
 CLAUDE.md §7 exige *"teste de isolamento com dois tenants reais"*. **Esta base não tem tenant.** A prova é **"não
 existe dado de corretora aqui"**, em três partes (guarda **M-A4**): ① **estrutural** — nenhuma tabela tem
-`company_id`, `user_id` ou FK para `companies`; um `ALTER TABLE` que acrescente `company_id` deixa o guarda vermelho,
-porque conhecimento global com coluna de dono é o começo de "a base da Resulta"; ② **de conteúdo** — o varredor de
-PII existente roda sobre as colunas de texto e acha **zero**; ③ **de efeito** — a leitura usa
+`company_id`, `user_id` ou FK para `companies`; um `ALTER TABLE` que acrescente `company_id` deixa o guarda
+vermelho, porque conhecimento global com coluna de dono é o começo de "a base da Resulta"; ② **de conteúdo** — o
+varredor de PII existente roda sobre as colunas de texto e acha **zero**; ③ **de efeito** — a leitura usa
 `build_global_search_kwargs()` (`knowledge_scope.py:384`), que **não passa `company_id` algum**, e o teste de duas
 corretoras prova que **as duas recebem a mesma resposta** para a mesma apólice da mesma seguradora.
 
@@ -275,14 +271,14 @@ diz *"o Essencial da HDI tem guincho até 200 km"*; **quem tem esse plano** nunc
    **com** e **sem** `susep` em `_BOILERPLATE_RE` e contar os processos recuperados. 📊 Esperado: **0 com, ≥1 sem**.
 6. **Medir o ELO com a ferramenta que vai usar** (CLAUDE.md §9.4): rodar a Skill **atual** sobre 10 perguntas reais
    de "carro reserva" e mostrar `assistance_policy.py:28` devolvendo os mesmos três serviços residenciais.
-7. **Ler `MIGRATIONS-AUTHORITY.md` inteiro** antes de qualquer SQL. 🔴 Ler o DDL **real** de `normative_documents`
-   no catálogo do Postgres: 📊 a tabela é **classe SEM_ARQUIVO** (RP C55).
+7. **Ler `MIGRATIONS-AUTHORITY.md` inteiro** antes de qualquer SQL. 🔴 Ler o DDL **real** de `normative_documents` no
+   catálogo do Postgres: 📊 a tabela é **classe SEM_ARQUIVO** (RP C55).
 8. **Linha de base da suíte** (falhas preexistentes nomeadas, uma a uma). 🔴 Conferir se **P-PILOTO-20** já foi
    fechada pela 001.1 — com aqueles 4 guardas mudos, esta SPEC não fecha.
 9. **Recontar RISCO e SUPERFÍCIE** e escrever o card definitivo, com §0.5 resolvida por escrito.
 
-**GATE B0:** matriz `premissa → observação nova → comando/consulta → decisão`, com **as divergências listadas**.
-Nenhum achado não reproduzido entra como incidente confirmado.
+**GATE B0:** matriz `premissa → observação nova → comando → decisão`, com **as divergências listadas**. Nenhum achado
+não reproduzido entra como incidente confirmado.
 **MUTAÇÃO B0:** o aquecimento carrega **duas afirmações deliberadamente falsas, assinadas** (prompt §6). O executor
 refuta **com comando**, não com leitura.
 
@@ -303,8 +299,8 @@ runtime."* **O que a 001.5 acrescenta:**
    de qualquer tabela por **mapa explícito** e devolve a sentinela `UNKNOWN` (**a string, nunca `None`** — o motivo
    está em `susep_ses_provider.py:92-95`) quando não casa.
 2. **As linhas de conciliação que faltam:** `tokio` → `tokio_marine`, e as chaves de `knowledge_cards` ausentes de
-   `portals` (`axa`, `chubb`, `essor`, `itau`, `unimed`, `youse`) entram **listadas**, com o critério ao lado.
-   🔴 Uma por uma, revisada por gente.
+   `portals` (`axa`, `chubb`, `essor`, `itau`, `unimed`, `youse`), **listadas, com o critério ao lado**. 🔴 Uma por
+   uma, revisada por gente.
 3. **`hdi` entra nas siglas** ou fica registrado por que não entra — 📊 tem 10 documentos e é a seguradora da
    apólice de referência.
 4. **A tabela nova referencia a chave canônica**; **M-A1** fica vermelho com chave que o catálogo não conhece.
@@ -319,49 +315,42 @@ Duas tabelas: **88**. Tabela única: **60** — repete o plano em cada serviço,
 que o Founder fixou fica no pai.**
 
 ```sql
-insurer_assistance_plans                       -- O PLANO: o que a seguradora vende, e em que nível
+insurer_assistance_plans                     -- O PLANO: o que a seguradora vende, e em que nível
   id uuid pk
-  insurer_key text not null                    -- chave CANÔNICA (§5.1)
-  ramo text not null                           -- chave nossa (ramo-cogrupo.json)
-  produto text not null                        -- "Auto Perfil"; 'GERAL' quando a CG não separa
-  plano text not null                          -- "Essencial", "Completo", "VIP"
-  nivel int not null                           -- 1..N DENTRO do produto. 1 = o mais básico
-  vigencia_inicio date not null                -- a condição que vale na EMISSÃO da apólice (§7.2)
-  vigencia_fim date null                       -- null = vigente
-  susep_process text null                      -- o elo com a condição geral
-  documento_id uuid not null                   -- FK -> normative_documents
-  pagina int not null                          -- a página onde o plano é nomeado
-  confianca text not null                      -- alta | media | baixa
-  curadoria text not null                      -- rascunho | proposto | publicado | rejeitado
-  revisado_por uuid null · revisado_em timestamptz null
-  content_hash text not null                   -- do documento de origem, para a manutenção (§7.4)
+  insurer_key   text not null                -- chave CANÔNICA (§5.1)
+  ramo          text not null                -- chave nossa (ramo-cogrupo.json)
+  produto       text not null                -- "Auto Perfil"; 'GERAL' quando a CG não separa
+  plano         text not null                -- "Essencial", "Completo", "VIP"
+  nivel         int  not null                -- 1..N DENTRO do produto. 1 = o mais básico
+  vigencia_inicio date not null              -- a condição que vale na EMISSÃO da apólice (§7.2)
+  vigencia_fim    date null                  -- null = vigente
+  susep_process text null                    -- o elo com a condição geral
+  documento_id  uuid not null                -- FK -> normative_documents
+  pagina        int  not null                -- a página onde o plano é nomeado
+  confianca     text not null                -- alta | media | baixa
+  curadoria     text not null                -- rascunho | proposto | publicado | rejeitado
+  revisado_por  uuid null · revisado_em timestamptz null
+  content_hash  text not null                -- do documento de origem, para a manutenção (§7.4)
   unique (insurer_key, ramo, produto, plano, vigencia_inicio)
   unique (insurer_key, ramo, produto, nivel, vigencia_inicio)   -- 🔴 dois planos no mesmo nível é erro
 
-insurer_assistance_services                    -- A LINHA: o que o plano faz, com fonte obrigatória
+insurer_assistance_services                  -- A LINHA: o que o plano faz, com fonte obrigatória
   id uuid pk
-  plano_id uuid not null                       -- FK -> insurer_assistance_plans, on delete cascade
-  servico text not null                        -- chave nossa: guincho | carro_reserva | chaveiro |
-                                               -- vidros | eletricista | encanador | hospedagem | ...
-  coberto text not null                        -- sim | nao | condicionado
-  limite_valor numeric null · limite_unidade text null   -- km | dias | acionamentos_ano | reais | horas
-  limite_texto text null                       -- a prosa, quando o limite não é número
-  carencia_dias int null · condicao text null  -- "só em caso de sinistro coberto"
-  documento_id uuid not null                   -- 🔴 NOT NULL
-  pagina int not null                          -- 🔴 NOT NULL, >= 1
-  trecho_hash text not null                    -- sha256 do trecho; o trecho CRU não é copiado
-  confianca text not null · curadoria text not null
-  revisado_por uuid null · revisado_em timestamptz null
+  plano_id      uuid not null                -- FK -> insurer_assistance_plans, on delete cascade
+  servico       text not null                -- chave nossa: guincho | carro_reserva | chaveiro |
+                                             -- vidros | eletricista | encanador | hospedagem | ...
+  coberto       text not null                -- sim | nao | condicionado
+  limite_valor  numeric null · limite_unidade text null   -- km | dias | acionamentos_ano | reais
+  limite_texto  text null                    -- a prosa, quando o limite não é número
+  carencia_dias int null · condicao text null             -- "só em caso de sinistro coberto"
+  documento_id  uuid not null                -- 🔴 NOT NULL
+  pagina        int  not null                -- 🔴 NOT NULL, >= 1
+  trecho_hash   text not null                -- sha256 do trecho; o trecho CRU não é copiado
+  confianca     text not null · curadoria text not null
+  revisado_por  uuid null · revisado_em timestamptz null
   unique (plano_id, servico)
-```
 
-🔴 **`servico` é chave nossa, não texto livre.** Uma tabela em que "carro reserva", "veículo reserva" e "carro
-extra" são três serviços diferentes não responde a pergunta. O vocabulário nasce **das perguntas reais do acervo**
-(📊 §0.1) e mora num arquivo versionado ao lado do catálogo, com sinônimos declarados — **nunca num regex escondido**.
-
-### 5.3 🔴 Os CHECKs — no BANCO, não no código
-
-```sql
+-- 🔴 Os três CHECKs de insurer_assistance_services:
 constraint servico_tem_fonte check (
     documento_id is not null and pagina is not null and pagina >= 1
     and trecho_hash is not null and length(trecho_hash) = 64),
@@ -370,19 +359,21 @@ constraint servico_publicado_foi_revisado check (
 constraint limite_tem_unidade check (limite_valor is null or limite_unidade is not null)
 ```
 
-O segundo impede o pior desfecho desta SPEC: **uma extração assistida por modelo publicando sozinha**. O terceiro é
-pequeno e caro: 💭 `limite_valor=200` sem unidade vira "200 dias de carro reserva" na cabeça de quem lê. **Número
-sem unidade é número errado.**
+🔴 **`servico` é chave nossa, não texto livre.** Uma tabela em que "carro reserva", "veículo reserva" e "carro extra"
+são três serviços diferentes não responde a pergunta. O vocabulário nasce **das perguntas reais do acervo** (📊 §0.1)
+e mora num arquivo versionado ao lado do catálogo, com sinônimos declarados — **nunca num regex escondido**.
 
-### 5.4 A curadoria da linha é irmã da curadoria do documento
+O segundo CHECK impede o pior desfecho desta SPEC: **uma extração assistida por modelo publicando sozinha**. O
+terceiro é pequeno e caro: 💭 `limite_valor=200` sem unidade vira "200 dias de carro reserva" na cabeça de quem lê.
+**Número sem unidade é número errado.**
 
-| o que é curado | onde já mora | o que a 001.5 acrescenta |
-|---|---|---|
-| **o documento** (esta CG é de quem, de que ramo, e vale?) | `normative_documents.status` + `approved_at`/`approved_by`; `aprovar()`/`rejeitar()`/`candidatos()` | nada. Reusa |
-| **a linha extraída** (este plano tem este serviço com este limite?) | 🔴 não existe | `curadoria` + `revisado_por`/`revisado_em`, e a fila na tela (§8) |
+### 5.3 A curadoria da linha é irmã da curadoria do documento
 
-**São dois julgamentos.** Aprovar o PDF da HDI não é aprovar *"guincho até 200 km"*. Um campo só publicaria 40
-linhas que ninguém leu.
+O **documento** já é curado (`normative_documents.status` + `approved_at`/`approved_by`, com
+`aprovar()`/`rejeitar()`/`candidatos()`) — a 001.5 não acrescenta nada ali. A **linha extraída** não é curada por
+ninguém hoje, e ganha `curadoria` + `revisado_por`/`revisado_em` nas duas tabelas, com a fila na tela (§8).
+**São dois julgamentos:** aprovar o PDF da HDI não é aprovar *"guincho até 200 km"*. Um campo só publicaria 40 linhas
+que ninguém leu.
 
 **GATE A:** ① as tabelas existem com os CHECKs, e `INSERT` sem `documento_id`, sem `pagina`, com `pagina=0` e
 `curadoria='publicado'` sem revisor são **recusados pelo banco**, com o erro colado; ② `chave_canonica("tokio")` e
@@ -400,26 +391,26 @@ resposta.
 > `search_service.py` / `qdrant_service.py` · `nodes.py:307-317` (o guarda que muda de regra).
 
 **Skill ou tool?** 📊 O GLOSSARIO define Skill como procedimento versionado (`skills`/`skill_releases`, 21 releases)
-e Tool como implementação (`tool_definitions`). 📊 O caminho de apólice de hoje é **tool** (`graph.py:447-449`), e o
+e Tool como implementação (`tool_definitions`). 📊 O caminho de apólice de hoje é **tool** (`graph.py:447-449`); o
 `SkillRegistry` só é tocado por `gateway_cutover.py:153` e `auxiliaries/factory.py:333`. **Tool sob capability
-própria: 88** (é o caminho que o chat e o atendimento percorrem, e ganha o registro em `tool_invocations` de graça;
-o nome "Skill" do diagnóstico é o **conceito**). **Skill release: 45** (segundo caminho de resolução ao lado do que
-a tool usa). ⚠️ **O BLOCO 0 confere** se algum agente resolve skill em runtime; se resolver, reescreve com o número.
+própria: 88** — é o caminho que o chat e o atendimento percorrem, e ganha o registro em `tool_invocations` de graça;
+o nome "Skill" do diagnóstico é o **conceito**. **Skill release: 45** — segundo caminho de resolução ao lado do que a
+tool usa. ⚠️ **O BLOCO 0 confere** se algum agente resolve skill em runtime; se resolver, reescreve com o número.
 
 ### 6.1 A cadeia, do pedido à resposta
 
 ```
 pergunta ("ele tem carro reserva?")
- ①  apólice VIGENTE do ramo deduzido        ← pela PORTA (001.1). A 001.5 não escolhe apólice
- ②  documento oficial da apólice             ← já no caminho feliz da 001.1
+ ①  apólice VIGENTE do ramo deduzido    ← pela PORTA (001.1). A 001.5 não escolhe apólice
+ ②  documento oficial da apólice         ← já no caminho feliz da 001.1
  ③  produto + plano contratado
-       a) linha "Assistência"/bloco 24h do PDF   (policy_document_evidence_service.py:230-318)
-       b) `tabela_itens` do sistema de gestão    (o nome do plano; hoje só vira sinal, :4015)
-       c) processo SUSEP do PDF                  (§7.2 — amarra na condição geral CERTA)
- ④  chave canônica: seguradora + ramo + produto + plano  → insurer_assistance_plans
- ⑤  a linha do serviço perguntado                       → insurer_assistance_services
- ⑥  a prosa, quando a pergunta pede "por quê"  → RAG global, FILTRADO por insurer_key +
-                                                 doc_kind + vigência na data da apólice
+       a) linha "Assistência"/bloco 24h do PDF  (policy_document_evidence_service.py:230-318)
+       b) `tabela_itens` do sistema de gestão   (o nome do plano; hoje só vira sinal, :4015)
+       c) processo SUSEP do PDF                 (§7.2 — amarra na condição geral CERTA)
+ ④  chave canônica: seguradora + ramo + produto + plano → insurer_assistance_plans
+ ⑤  a linha do serviço perguntado                      → insurer_assistance_services
+ ⑥  a prosa, quando a pergunta pede "por quê" → RAG global, FILTRADO por insurer_key +
+                                                doc_kind + vigência na data da apólice
  ⑦  existe plano de nível > o contratado, mesmo produto e vigência? → o gancho (§6.3)
 ```
 
@@ -428,18 +419,18 @@ pergunta ("ele tem carro reserva?")
 
 ### 6.2 Os cinco estados — e a distinção que o Founder pediu
 
-| estado | quando | 💭 como sai na conversa | conta como |
-|---|---|---|---|
-| `coberto` | linha publicada diz `sim` | *"Tem sim: carro reserva por 7 dias. (Condições gerais da HDI, p. 23.)"* | acerto |
-| `nao_coberto` | linha publicada diz `nao` | *"No plano dele, não. O Essencial da HDI não tem carro reserva. (Condições gerais, p. 23.)"* | acerto |
-| `condicionado` | `condicionado` + `condicao` | *"Tem, mas só em caso de sinistro coberto — não em pane. (p. 24.)"* | acerto |
-| `nao_contratado` | o serviço existe no produto e o **nível contratado** não o inclui | *"O plano dele é o Essencial, que não inclui. O Completo inclui 7 dias."* | acerto |
-| 🔴 `nao_sabemos_ainda` | não há linha publicada para essa seguradora/ramo/produto/plano, **ou o plano não foi identificado** | *"Ainda não tenho as condições da <seguradora> para esse produto na base. Posso confirmar com a seguradora — quer que eu abra?"* | **acerto** |
+| estado | quando | 💭 como sai na conversa |
+|---|---|---|
+| `coberto` | linha publicada diz `sim` | *"Tem sim: carro reserva por 7 dias. (Condições gerais da HDI, p. 23.)"* |
+| `nao_coberto` | linha publicada diz `nao` | *"No plano dele, não. O Essencial da HDI não tem carro reserva. (p. 23.)"* |
+| `condicionado` | `condicionado` + `condicao` | *"Tem, mas só em caso de sinistro coberto — não em pane. (p. 24.)"* |
+| `nao_contratado` | o serviço existe no produto e o **nível contratado** não o inclui | *"O plano dele é o Essencial, que não inclui. O Completo inclui 7 dias."* |
+| 🔴 `nao_sabemos_ainda` | não há linha publicada para essa seguradora/ramo/produto/plano, **ou o plano não foi identificado** | *"Ainda não tenho as condições da <seguradora> para esse produto na base. Posso confirmar com a seguradora — quer que eu abra?"* |
 
-🔴 **E o sexto, que não é estado da base:** `fonte_indisponivel` — a apólice não carregou, o documento não abriu, a
-busca falhou. 💭 *"Não consegui abrir a apólice dele agora."* **Isto é falha**, tem outro texto, e outra coluna na
-tela (§9). **Confundir os dois é o defeito que esta SPEC existe para matar:** *"não sabemos ainda"* é honestidade
-sobre a base; *"a fonte não retornou"* é um incidente.
+**Os cinco contam como acerto na medição de §9.** 🔴 **E o sexto, que não é estado da base:** `fonte_indisponivel` —
+a apólice não carregou, o documento não abriu, a busca falhou. 💭 *"Não consegui abrir a apólice dele agora."*
+**Isto é falha**, tem outro texto, e outra coluna na tela. **Confundir os dois é o defeito que esta SPEC existe para
+matar:** *"não sabemos ainda"* é honestidade sobre a base; *"a fonte não retornou"* é um incidente.
 
 ⚠️ **Regra de texto (e o piso de §0.5 se aplica aqui):** toda frase que diz **"não"** carrega documento e página.
 Uma frase que diz "não cobre" **sem lastro** é proibida — custa um acionamento a que o segurado tinha direito.
@@ -492,12 +483,12 @@ de filtro de `search_similar`, no molde de `_filtro_de_seguradora:434` (o braço
 explícita: *"For best results, create payload indexes before ingesting data"*.
 
 **GATE B:** ① **30 perguntas reais do acervo**, por categoria (carro reserva, granizo, chaveiro, vidros, guincho,
-residência) — 🔴 **só as perguntas, PII removida** — rodadas **pelo motor**: cada uma devolve um dos cinco estados,
-e todo estado ≠ `nao_sabemos_ainda` traz **documento e página**; ② **linha de controle** (CLAUDE.md §9.2): pergunta
-que **não** é de assistência (💭 "quantas parcelas faltam?") **não** consulta a base; ③ **par de controle:** a mesma
+residência) — 🔴 **só as perguntas, PII removida** — rodadas **pelo motor**: cada uma devolve um dos cinco estados, e
+todo estado ≠ `nao_sabemos_ainda` traz **documento e página**; ② **linha de controle** (CLAUDE.md §9.2): pergunta que
+**não** é de assistência (💭 "quantas parcelas faltam?") **não** consulta a base; ③ **par de controle:** a mesma
 pergunta em duas apólices de níveis diferentes do mesmo produto → vereditos opostos, gancho só na inferior;
-④ `doc_kind='condicoes_gerais'` filtra: com e sem o filtro os conjuntos diferem, e **zero** `manual_do_segurado`
-com o filtro ligado.
+④ `doc_kind='condicoes_gerais'` filtra: com e sem o filtro os conjuntos diferem, e **zero** `manual_do_segurado` com
+o filtro ligado.
 **MUTAÇÃO B:** (a) `nao_sabemos_ainda` colapsando em `nao_coberto`; (b) origem removida; (c) plano inferido pela
 seguradora; (d) gancho sem plano superior; (e) guarda de `nodes.py` apagado. **As cinco vermelhas.**
 
@@ -525,7 +516,7 @@ escolhido porque 📊 devolvia 11.064 linhas onde o PyPDF2 devolvia 519).
 ```
 
 ⚠️ **O verificador não é o revisor: ele só reprova, nunca aprova.** Um verificador que promove a `publicado` seria a
-curadoria automática que o CHECK de §5.3 existe para impedir. 💭 **Meta da onda 1:** as **6 seguradoras** cuja chave
+curadoria automática que o CHECK de §5.2 existe para impedir. 💭 **Meta da onda 1:** as **6 seguradoras** cuja chave
 já casa, nos 3 ramos dos pilotos. O número real sai da onda, não desta proposta.
 
 ### 7.2 Onda 2 — o elo apólice → condição geral pelo processo SUSEP
@@ -553,8 +544,8 @@ Por isso o plano tem `vigencia_inicio`/`vigencia_fim`, e a Skill busca **pela da
 carteira viva de 2025 da corretora piloto, 3.861 linhas, soma de `pretot` por sigla**, e cobre **83,86%** do prêmio.
 A fila são as **12 siglas da carteira sem `coenti`** (`MAP, AXA, MAG, JUNT, AIG, ESSO, ITAU, BERK, CHUB, FATO, JNS,
 MITS`) mais as canônicas sem CG (`alfa, seguros_unimed, sompo, suhai, sulamerica, sura, zurich`). ⚠️ **O BLOCO 0
-remede a carteira pela porta** (D-PILOTO-11: o catálogo é nosso, o **peso** é da corretora). Das nove seguradoras
-que o diagnóstico nomeia, **8 já estão presentes** — 📊 só a Zurich falta.
+remede a carteira pela porta** (D-PILOTO-11: o catálogo é nosso, o **peso** é da corretora). Das nove seguradoras que
+o diagnóstico nomeia, **8 já estão presentes** — 📊 só a Zurich falta.
 
 **`doc_kind='manual_de_assistencia'` é valor novo** e 📊 **não está entre os 9 do CHECK** → §11.2. ⚠️ Dívida herdada
 a registrar, não a consertar: 📊 **3 dos 9 valores não têm escritor** (`condicoes_particulares`, `glossario`,
@@ -626,7 +617,7 @@ HOJE (📊 13/09/2026)
 **plano publicado** ≠ seguradoras que a corretora **usa**.
 
 **`origem` no turno:** toda resposta da Skill grava, no registro que **já existe** (`tool_invocations`, via
-`nodes.py:784,1057` → `skills/gateway.py:294,323`): o **estado** (§6.2), a `insurer_key` canônica, o `plano_id`, o
+`nodes.py:784,1057` → `gateway.py:294,323`): o **estado** (§6.2), a `insurer_key` canônica, o `plano_id`, o
 `documento_id` e a `pagina`. 🔴 **Nenhum segundo registro** (CLAUDE.md §5) e 🔴 **nenhum argumento cru** — um
 `tool_args` desse caminho carrega CPF; grava-se `{"documento": "presente"}`. ⚠️ Se o BLOCO 0 achar que
 `tool_invocations` já guarda argumento cru hoje, é **P1 de segurança** e a drenagem vem antes da funcionalidade.
@@ -657,8 +648,8 @@ teste chama a tool e o banco, nunca um regex sobre a mesma tabela que o código 
 | **M-C3** | `test_a_condicao_e_a_da_emissao_nao_a_de_hoje` | apólice antiga → a versão **vigente na emissão**; par de controle com duas versões do mesmo processo | busca por `now()` |
 | **M-D1** | `test_a_cobertura_da_base_nao_mente_para_cima` | a régua conta seguradora × ramo com plano publicado; 40 linhas de um ramo só **não** inflam | contagem por linhas |
 
-⚠️ **Não contam no teto** (e não servem para ampliá-lo): o VERIFY das migrations e o varredor de PII — são **gates
-de bloco**. **Se o executor discordar, corta um da lista e escreve qual.**
+⚠️ **Não contam no teto** (e não servem para ampliá-lo): o VERIFY das migrations e o varredor de PII — são **gates de
+bloco**. **Se o executor discordar, corta um da lista e escreve qual.**
 🔴 **CLAUDE.md §9.3:** cada mutação roda em **cópia**, em subprocesso, produz **falha nova nomeada**, e a árvore é
 restaurada por cópia. **Um guarda que não conseguiu ficar vermelho não é guarda.**
 
@@ -675,7 +666,7 @@ arquivos sem versão. Diretório canônico: `backend/supabase/migrations/`. Proi
 ```sql
 -- APPLY (expand-first · idempotente) — não toca objeto existente
 CREATE TABLE IF NOT EXISTS insurer_assistance_plans ( … );      -- §5.2
-CREATE TABLE IF NOT EXISTS insurer_assistance_services ( … );   -- §5.2, com os 3 CHECKs de §5.3
+CREATE TABLE IF NOT EXISTS insurer_assistance_services ( … );   -- §5.2, com os 3 CHECKs
 CREATE INDEX IF NOT EXISTS ix_iap_chave ON insurer_assistance_plans (insurer_key, ramo, produto, nivel);
 CREATE INDEX IF NOT EXISTS ix_ias_servico ON insurer_assistance_services (plano_id, servico);
 CREATE INDEX IF NOT EXISTS ix_ias_curadoria ON insurer_assistance_services (curadoria)
@@ -757,13 +748,13 @@ publicado e revisado — **canário com base vazia prova só o `nao_sabemos_aind
 | 5 | apólice no nível máximo | idem | o gancho **não** aparece (par de controle do 4) |
 | 6 | "cobre granizo?" | WhatsApp, **TESTE-A** | linguagem de conversa, mesma verdade, origem em português |
 | 7 | pergunta que **não** é de assistência | chat `core` | **linha de controle**: a base não é consultada |
-| 8 | busca derrubada de propósito, em ambiente controlado | — | `fonte_indisponivel`, com texto **diferente** do caso 2 |
+| 8 | busca derrubada de propósito, em ambiente controlado | — | `fonte_indisponivel`, texto **diferente** do caso 2 |
 
 🔴 **Os casos 5, 7 e 8 são os que dão direito à conclusão** (CLAUDE.md §9.2). Sem eles, "funcionou" pode ser um
 `return "nao_sabemos_ainda"` no topo da função.
 
-**Depois:** desligar apenas a habilitação temporária; conferir que não ficou agente amplamente ligado; preservar
-logs **sem PII**; entregar evidências **por alias**.
+**Depois:** desligar apenas a habilitação temporária; conferir que não ficou agente amplamente ligado; preservar logs
+**sem PII**; entregar evidências **por alias**.
 
 **📋 O que só o Founder faz:** ① colar as perguntas dos casos 1–5 e 7 no chat da Resulta (ou autorizar a conta);
 ② mandar a mensagem do caso 6 do aparelho TESTE-A; ③ 🔴 **revisar e publicar as primeiras linhas da fila de
@@ -801,8 +792,7 @@ Founder. ⚠️ Mexeu em `app/`: `npm run test:rotas-montam` **e** `next start` 
 | Validado pelas pilotos | feedback real, registrado pelo Founder |
 
 **Rollback:** o código é reversível (a Skill é aditiva; `assistance_policy.py` continua inteiro e volta a ser o
-caminho único). As migrations têm ROLLBACK próprio, com as duas ressalvas de §11: **exportar a curadoria antes** e
-**não reverter o CHECK com linha usando o valor novo**.
+caminho único). As migrations têm ROLLBACK próprio, com as duas ressalvas de §11.
 
 ---
 
@@ -833,7 +823,7 @@ caminho único). As migrations têm ROLLBACK próprio, com as duas ressalvas de 
 > Três referências, todas **fontes primárias**, reabertas em **13/09/2026** pelo redator. O pesquisador do executor
 > reabre cada uma e **registra a data dele** (protocolo §7.3).
 
-**① PROV-O: The PROV Ontology — W3C Recommendation, 30/04/2013** · https://www.w3.org/TR/prov-o/ · reaberta 13/09/2026
+**① PROV-O: The PROV Ontology — W3C Recommendation, 30/04/2013** · https://www.w3.org/TR/prov-o/
 **Faz:** proveniência com **Entity**, **Activity**, **Agent** e as relações `wasDerivedFrom`, `wasAttributedTo`
 (*"the ascribing of an entity to an agent"*) e `wasQuotedFrom`.
 **MODELAMOS (um ponto):** **`wasQuotedFrom` + `wasAttributedTo` na mesma linha** — de **onde** foi citada
@@ -846,8 +836,8 @@ relacionais. E rejeitamos guardar proveniência em **log**: proveniência é **d
 veio, quem publicou, em que data. Uma sem resposta reprova a amostra (protocolo §0.4).
 
 **② Citations — documentação oficial da API da Anthropic** ·
-https://platform.claude.com/docs/en/docs/build-with-claude/citations · reaberta 13/09/2026 (301 de
-`docs.anthropic.com`; **registrar o redirect**, não trocar a URL em silêncio).
+https://platform.claude.com/docs/en/docs/build-with-claude/citations (301 de `docs.anthropic.com`; **registrar o
+redirect**, não trocar a URL em silêncio).
 **Faz:** *"Citations return the exact passages that support each claim."* Três formatos de localização:
 **`page_location`** com `start_page_number` (*"1-indexed"*) para PDF, **`char_location`** para texto e
 **`content_block_location`** para conteúdo customizado; cada bloco traz `cited_text`.
@@ -863,7 +853,7 @@ significa "carro reserva por 7 dias no Completo" continua sendo julgamento. Por 
 uma linha cuja página **não** exista no documento.
 
 **③ Enabling Large Language Models to Generate Text with Citations — Gao, Yen, Yu, Chen · EMNLP 2023** ·
-https://arxiv.org/abs/2305.14627 · reaberta 13/09/2026
+https://arxiv.org/abs/2305.14627
 **Faz:** propõe o ALCE, com *"automatic metrics along three dimensions — fluency, correctness, and citation
 quality"*. 📊 *"on the ELI5 dataset, even the best models lack complete citation support 50% of the time"*.
 **MODELAMOS (um ponto):** **qualidade de citação é dimensão separada de correção, e se mede em separado.** Uma
@@ -896,35 +886,34 @@ base pendura na chave nossa e vale para qualquer adaptador.
 
 ## 17. Definição final de conclusão — lista fechada, verificável
 
-1. A **chave canônica** existe num módulo único, `tokio` e `tokio_marine` resolvem para a mesma, e o que não casa
-   sai **`UNKNOWN` listado**.
+1. A **chave canônica** existe num módulo único, `tokio` e `tokio_marine` resolvem para a mesma, e o que não casa sai
+   **`UNKNOWN` listado**.
 2. As duas tabelas existem, com os **três CHECKs**, e as **três inserções adversariais** falharam com a mensagem
-   colada.
-3. 📊 **Zero** colunas `company_id`/`user_id`; varredor de PII = **0**; duas corretoras recebem a **mesma** resposta.
-4. A Skill responde nos **cinco estados**, e **`nao_sabemos_ainda` nunca vira "não cobre"**; `fonte_indisponivel`
-   tem texto próprio e outra coluna na tela.
-5. **30 perguntas reais do acervo** (sem PII) rodadas **pelo motor** → todo estado ≠ `nao_sabemos_ainda` cita
+   colada. 📊 **Zero** colunas `company_id`/`user_id`; varredor de PII = **0**; duas corretoras, mesma resposta.
+3. A Skill responde nos **cinco estados**, **`nao_sabemos_ainda` nunca vira "não cobre"**, e `fonte_indisponivel` tem
+   texto próprio e outra coluna na tela.
+4. **30 perguntas reais do acervo** (sem PII) rodadas **pelo motor** → todo estado ≠ `nao_sabemos_ainda` cita
    **documento e página**.
-6. As **linhas de controle** funcionam: pergunta não-assistência não consulta a base; nível máximo não mostra
-   gancho; `susep` de volta no boilerplate → **ZERO** casamentos.
-7. `assistance_policy.py` continua existindo **como fallback marcado**, e o guarda de `nodes.py:307` **mudou de
-   regra sem morrer**.
-8. Onda 1 produziu linhas publicadas para ≥ 1 seguradora em ≥ 1 ramo dos pilotos, **todas revisadas por gente**.
-9. Onda 2: o processo SUSEP sai do PDF da apólice e casa com a condição **vigente na emissão**.
-10. Onda 3: `manual_de_assistencia` aceito depois da migration e **recusado antes**.
-11. `doc_kind` **filtra**, com índice criado **antes** da ingestão nova; a procedência **volta como campo**.
-12. A tela mostra cobertura por **seguradora × ramo** (não por linhas) e a fila com trecho e página.
-13. As **duas migrations** aplicadas, VERIFY colado, ROLLBACK exercitado, **manifesto** de §11.2 escrito, e
+5. As **linhas de controle** funcionam: pergunta não-assistência não consulta a base; nível máximo não mostra gancho;
+   `susep` de volta no boilerplate → **ZERO** casamentos.
+6. `assistance_policy.py` continua existindo **como fallback marcado**, e o guarda de `nodes.py:307` **mudou de regra
+   sem morrer**.
+7. Onda 1 produziu linhas publicadas para ≥ 1 seguradora em ≥ 1 ramo dos pilotos, **todas revisadas por gente**;
+   onda 2 casou o processo SUSEP com a condição **vigente na emissão**; onda 3 teve `manual_de_assistencia` aceito
+   depois da migration e **recusado antes**.
+8. `doc_kind` **filtra**, com índice criado **antes** da ingestão nova; a procedência **volta como campo**.
+9. A tela mostra cobertura por **seguradora × ramo** (não por linhas) e a fila com trecho e página.
+10. As **duas migrations** aplicadas, VERIFY colado, ROLLBACK exercitado, **manifesto** de §11.2 escrito, e
     `MANIFEST.md` atualizado com `normative_documents` como **NÃO RASTREADA**.
-14. Os **12 guardas** existem e cada um ficou **vermelho** na sua mutação, em cópia, em subprocesso, com falha nova
+11. Os **12 guardas** existem e cada um ficou **vermelho** na sua mutação, em cópia, em subprocesso, com falha nova
     nomeada; o canônico **M-A4** também.
-15. Canário: os **8 casos** rodados, só com TESTE-A/TESTE-B e a conta do Founder, evidências por alias.
-16. `git push` feito, saída colada, SHA remoto conferido, serviços implantados e **uma requisição que executa
+12. Canário: os **8 casos** rodados, só com TESTE-A/TESTE-B e a conta do Founder, evidências por alias.
+13. `git push` feito, saída colada, SHA remoto conferido, serviços implantados e **uma requisição que executa
     código** respondida.
-17. Relatório com **EXECUTION CARD**, a **divergência de marcha de §0.5 resolvida por escrito**,
+14. Relatório com **EXECUTION CARD**, a **divergência de marcha de §0.5 resolvida por escrito**,
     FATO/INFERÊNCIA/RECOMENDAÇÃO separados, 📊/💭 em todo número, pendências drenadas **por número**, dossiê
     publicado ou **publicação pendente** declarada com o passo exato.
-18. **Declaração explícita de que nenhum motor paralelo foi criado** — nominalmente: nenhum segundo pipeline de
+15. **Declaração explícita de que nenhum motor paralelo foi criado** — nominalmente: nenhum segundo pipeline de
     ingestão, nenhuma segunda coleção de Qdrant, nenhuma segunda fila de curadoria, nenhum segundo catálogo de
     seguradoras, nenhum segundo registro de chamada de ferramenta, nenhuma segunda porta de apólice.
 

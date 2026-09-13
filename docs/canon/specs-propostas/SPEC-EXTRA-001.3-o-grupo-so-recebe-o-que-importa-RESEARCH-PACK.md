@@ -114,7 +114,9 @@
 |---|---|---|
 | **R39** | `platform_sends` — migration `backend/supabase/migrations/20260720_02_spec045_platform_sends.sql:7-17`. 7 colunas: `id, company_id, phone, kind, summary, sent_at, created_at`. `kind` é `text not null`, **sem CHECK** | Os `kind` novos entram como **dado**. ⛔ Não criar CHECK (congelaria a lista) |
 | **R40** | Escritores: `platform_outbound.py:305` (INSERT) e `:312` (`record_platform_send`), `dispatch_router.py:244`, `billing_collection.py:1261`, `dispatch_followup.py:320`, `platform_outbound.py:1494` — **todos com telefone de segurado** | Nenhum é do grupo |
-| **R41** | 🔴 `backend/app/services/platform_outbound.py:606-617` `_historico_sync`: lê `platform_sends` por `company_id` nas últimas 26 h **sem filtrar `kind`**, e alimenta o governador de vazão (12/h · 20 novos/dia, SPEC-063 Bloco C); o comentário :632-636 explica que a fonte é durável de propósito | 🔴 **O achado que o diagnóstico não tinha.** Escrever `grupo_*` aqui sem filtrar **consome a cota de mensagens ao segurado**. Ver §3.5 |
+| **R41** | 🔴 `backend/app/services/platform_outbound.py` `_historico_sync` faz **TRÊS** leituras de `platform_sends` por `company_id`, **nenhuma filtrando `kind`**: `recentes` (**:606-610**, 26 h) · `primeiro` (**:611-613**, data do 1º envio) · `total_res` (**:614-616**, `count="exact"` da história inteira). O comentário :632-636 explica que a fonte é durável de propósito | 🔴 **O achado que o diagnóstico não tinha.** `recentes` governa a cota imediata; **`primeiro` e `total_res` governam a MATURIDADE** (R41b) |
+| **R41b** | 🔴 `maturidade_do_canal(dias_de_uso, envios_no_total)` **:424-441** — `'maduro'` exige `>= _MADURO_DIAS` (30) **E** `>= _MADURO_ENVIOS` (200); chamada em **:697** com os valores de R41; decide `teto_do_dia` **:444-445**. O docstring diz literalmente que *"só volume → 200 envios feitos numa tarde é exatamente a rajada que este arquivo existe para impedir"* | 🔴 **Com `grupo_*`/`billing_nota` contados, um canal que NUNCA falou com segurado amadurece e SOBE o teto diário.** É o contrário do que a função existe para provar |
+| **R41c** | `SPEC-EXTRA-001.6:408-409, 412, 417, 430` cria `billing_nota` (nota interna à atendente) e `billing_doc`; 📊 a 001.6 mede 7 parcelas virando **17 linhas** em `platform_sends` | 🔴 **`billing_nota` não começa com `grupo_`** e, sob filtro por prefixo, consumiria a cota do segurado. Por isso o contrato é **allowlist** (ou coluna `conta_na_cota`), nunca prefixo — e a lista é **arquivo-hub** entre a 001.3 e a 001.6 |
 | **R42** | `work_events` + `_anotar_no_diario` `handoff_watchdog.py:446-473`: grava `company_id`, `event_type`, `actor_type='system'`, `severity`, `message_human[:400]`, `payload_redacted`; `work_run_id` fica **nulo** de propósito (:454-456) | **É onde o `motivo` classificado mora.** ⛔ E a carga nunca leva nome, telefone ou texto de mensagem (:458-460) |
 | **R43** | `EVENTO_HANDOFF_REALERTADO="handoff.realertado"` (**:429**), `EVENTO_HANDOFF_NO_TETO` (**:430**), `EVENTO_ESPERA_VENCIDA` (**:407**); o comentário **:409-425** diz que as três perguntas *"quantos alertas saíram / quantos eram de quem esperava / o teto foi atingido"* não tinham resposta | O contrato do BLOCO E já estava escrito aqui em 26/08 |
 | **R44** | `agent_activities` — 6 colunas (`id, company_id, category, title, detail, created_at`); escrito por `human_handoff.py:160-183` | É a segunda trilha, e é a que permitiu reconstruir o 10/09 |
@@ -139,7 +141,8 @@
 | **R53** | Único **escritor** das listas: `pairing_orchestrator.py:775-777`, e só por `setdefault(..., [])` — **cria vazias**. Nenhuma rota popula | 📊 O conjunto de exclusão é **sempre vazio**, salvo edição manual no banco |
 | **R54** | 🔴 `backend/app/api/whatsapp_channel.py:1124` faz `update({"alert_target": target})` com `target` montado em :1096-1102 como `{"number":…}` ou `{"use_support_destination":True}` — **apaga** `observer_scope`, `observer_exclusions` e `internal_numbers`. Mesmo padrão em `app/api/admin_atlas.py:470` | **Pendência nova.** Um escritor destrutivo sobre um JSONB compartilhado |
 | **R55** | `company_members` — migration `20260721_01_spec047_rls_e_company_members.sql:17-26`, **uma** que cria e **nenhuma** que altera. 7 colunas, **nenhuma de contato** | ✅ Confirma o diagnóstico |
-| **R56** | O telefone da equipe vem de `users_v2.phone`, lido por `getTeam` (`lib/admin/tenant-overview-store.ts:17`) e mostrado em `app/dashboard/personalizacao/equipe/TeamClient.tsx:13` (campo `phone`) | 🔴 **A fonte 1 do BLOCO B já existe e já está na tela certa** |
+| **R56** | O telefone da equipe vem de `users_v2.phone`, **já selecionado** por `getTeam` (`lib/admin/tenant-overview-store.ts:17-24`) e mostrado em `TeamClient.tsx:13` (campo `phone`). 📊 preenchido em **796 de 796** usuários | 🔴 **A fonte 1 do BLOCO B já existe, já está preenchida e já está na tela certa. ⛔ NENHUMA coluna nova em `company_members`** |
+| **R56b** | ⚠️ **Preenchido ≠ utilizável.** Nada no schema ou no código prova o **formato** dos 796, nem que o número é WhatsApp: `users_v2.phone` é texto livre | O casamento tem de ser por `_variantes_do_telefone` (R32), e o G-B1 leva um caso com telefone de membro **mal formatado** (com `+55`, sem `55`, com máscara, com e sem nono dígito). **PENDENTE DE MEDIÇÃO:** a distribuição de formatos |
 | **R57** | A tela: `app/dashboard/personalizacao/equipe/page.tsx` + `TeamClient.tsx` (259 linhas). `app/dashboard/equipe/page.tsx:16-20` é só um `redirect`. API única: `app/api/dashboard/team/route.ts` | Onde o sub-bloco entra |
 
 ### 2.10 Autorização — o BLOCO G
@@ -153,7 +156,7 @@
 | **R62** | `TENANT_WRITE_ROLES = ['owner','admin','admin_company','master_admin']` (`admin-auth-policy.ts:5`); `canWriteTenantConfig` (:150); `ATTENDANCE_TOGGLE_ROLES` acrescenta `attendant` e `member` (:42) | 🔴 **Aplicar `write:true` RESTRINGE quem pode mexer.** Caixa do Founder item 2 |
 | **R63** | **As 6 mutações abertas**, conferidas uma a uma: `attendance/support-destinations/route.ts:72` (POST) · `…/[destinationId]/route.ts:23` (PATCH) · `…/[destinationId]/route.ts:108` (DELETE) · `dashboard/portal-credentials/route.ts:58` (POST) · `:78` (DELETE) · `dashboard/whatsapp-channel/route.ts:236` (POST). Nenhuma chama `requireCompanyMember`, `assertSameOrigin` ou `writeAudit` | O BLOCO G |
 | **R64** | 🔴 A #6 despacha **6 ações** por `body.action` (`whatsapp-channel/route.ts:244`): `set-auxiliary-authorization` (:263, escreve `integrations.permite_envio_de_auxiliar`), `set-alert` (:306), `disconnect` (:318), `retry`/`cancel` (:328), `pairing` (:349) | **Desconectar o WhatsApp da corretora não exige papel administrativo hoje** |
-| **R65** | A causa é **estrutural**: `resolveSessionCompany` (`lib/auxiliaries/server.ts:31`) devolve `{userId, companyId}` e **nada mais** — a rota não tem o papel disponível nem se quisesse | Não é esquecimento pontual |
+| **R65** | A causa é **estrutural**, e são **dois** resolvedores, não um: as 3 de `portal-credentials`/`whatsapp-channel` usam `resolveSessionCompany` (`lib/auxiliaries/server.ts:31` → `{userId, companyId}`); as 3 de `support-destinations` usam **`getIronSession` cru + `companyIdDoSeletor()`** (`app/api/attendance/support-destinations/route.ts:25-27`; `lib/attendance/support-destinations.ts:48` → `string | null`) | ⚠️ **A conclusão é a mesma — nenhum dos dois devolve papel** — mas a prova é diferente, e o executor precisa das duas. O conserto é trocar o resolvedor, ⛔ não acrescentar um `if` |
 | **R66** | ⚠️ `lib/attendance/support-destinations.ts:20` usa `createClient(..., SUPABASE_SERVICE_ROLE_KEY)` e **escreve direto na tabela**, sem passar pelo backend Python | 🔴 A única proteção dessas três rotas é o código delas. RLS não protege contra service role |
 
 ### 2.11 O gate de ligar o agente
@@ -234,7 +237,13 @@ select count(*) filter (where role='user')  as ultima_do_segurado,
 | `human_handoff_reason` vazio | **129 de 131** | `select (human_handoff_reason is null or human_handoff_reason='') , count(*) … group by 1` |
 | origem das falas humanas | `espelho` **32.231** · sem payload **1.334** · `dashboard` **0** | `select lower(coalesce(payload->>'origem','(sem)')), count(*) from messages group by 1` |
 
-🔴 **FATO que muda a leitura:** `select count(*) from work_events where event_type like 'handoff%'` → **0**. O re-alerta de 6 h **nunca disparou** sobre essas 58 desde que a telemetria existe (SPEC-086 C.1, 26/08).
+🔴 **O NÚMERO JÁ DERIVOU NA MESMA TARDE.** Uma segunda passada em 13/09 deu **131 · 59 elegíveis · 72 caladas** (contra 58/73 da primeira). O acervo é vivo e o espelho grava enquanto se mede: **58 e 59 são o mesmo fato em dois instantes.**
+
+⛔ **Consequência de contrato:** o `58` é 📊 **datado, na prosa, e NUNCA na asserção de um guarda**. G-A1 e G-A3 afirmam *"todas as elegíveis medidas no BLOCO 0 calam"*, com linha de controle. Um guarda que fixe `58` fica vermelho na primeira mensagem nova — e ensina a equipe a ignorar guarda, que é o defeito que a SPEC existe para consertar.
+
+⚠️ **E o teto por passada não é 58:** `varrer_handoffs_parados` tem `.limit(_MAX_POR_PASSADA)` = **50** (`handoff_watchdog.py:45, :146`) e corte `last_message_at < agora − HANDOFF_ALERTA_MINUTOS` (30 min, :43, :108-112). O certo é **≤ 50 por passada, em ondas de 6 h**.
+
+🔴 **FATO que muda a leitura:** `select count(*) from work_events where event_type like 'handoff%'` → **0**. O re-alerta de 6 h **nunca disparou** sobre essas conversas desde que a telemetria existe (SPEC-086 C.1, 26/08).
 
 📊 **A razão medida:** `select company_id, destination_type, is_primary, is_active, silence_minutes from human_support_destinations` → 4 linhas, **1 ativa** (AMANDUS), Resulta e AutoFleet com `is_active=false`. E `select id, company_name, agent_enabled from companies` → **os 5 com `agent_enabled=false`**.
 
@@ -278,7 +287,12 @@ recentes = (db.client.table("platform_sends").select("sent_at")
 
 📊 Estado atual de `platform_sends`: **19 linhas na base inteira** — `billing` 18 (17/08 a 11/09) e `acionamento_protocolo` 1 (19/08). Por isso ninguém percebeu.
 
-🔴 **INFERÊNCIA de alta confiança:** escrever os `grupo_*` sem consertar isso faz as mensagens ao **grupo** consumirem a cota de mensagens ao **segurado**. Num dia movimentado, o produto para de falar com clientes e o motivo é invisível. **O conserto é pré-requisito do BLOCO E**, com linha de controle (CLAUDE.md §9.3).
+🔴 **INFERÊNCIA de alta confiança, e são DOIS danos:**
+
+1. **Cota imediata** (`recentes`): mensagens ao **grupo** consomem a cota do **segurado**. Num dia movimentado o produto para de falar com clientes, e o motivo é invisível.
+2. **Maturidade** (`primeiro` + `total_res` → `maturidade_do_canal`, R41b): um canal que **nunca falou com segurado** amadurece com tráfego interno e **sobe o teto diário** — o oposto exato do que a função prova.
+
+**O conserto é pré-requisito do BLOCO E, nas TRÊS leituras, e é ALLOWLIST — não prefixo** (R41c: `billing_nota` da 001.6 não tem prefixo `grupo_` e seria contado). Com linha de controle (CLAUDE.md §9.3): N linhas `grupo_*` + N `billing_nota` não mexem em cota, `dias_de_uso` nem maturidade; N linhas `billing` mexem nas quatro.
 
 ### 3.6 Schema medido — o que existe hoje
 
@@ -296,6 +310,21 @@ select column_name, data_type from information_schema.columns
 | `agent_activities` | `id, company_id, category, title, detail, created_at` | 6 |
 | `conversations` | 25, incl. `status, user_phone, human_handoff_reason, claimed_by, claimed_by_name, claimed_at, ficha_atendimento, resolvido_em, resolucao_motivo` | — |
 | tabela de números internos | 🔴 **não existe** (`… table_name like '%internal%' or like '%alert_target%'` → 0 linhas) | R49 |
+
+### 3.7 🔴 O estado do produto — a pré-condição do canário
+
+📊 Medido em 13/09/2026. **Tem de ser remedido e colado no relatório ANTES do primeiro caso do canário:**
+
+```sql
+select company_id, destination_type, is_primary, is_active from human_support_destinations;
+--  4 linhas · 3 empresas · 1 ATIVA (AMANDUS) · Resulta e AutoFleet is_active=false
+select id, company_name, agent_enabled from companies;          -- agent_enabled=false em 5 de 5
+select count(*) from work_events where event_type like 'handoff%';   -- 0
+```
+
+⚠️ **Sem essa linha escrita, "0 mensagens ao grupo" será lido como "a guarda funcionou" — e não é: é o produto desligado.** Um canário que mede silêncio num sistema já mudo prova nada (CLAUDE.md §9.3).
+
+🔴 **A ordem obrigatória do canário** (§14 da SPEC): criar destino no tenant de teste → ligar o agente → **medir a linha de base com a guarda DESLIGADA** → ligar a guarda e repetir. **O terceiro passo é o que dá direito à conclusão** (CLAUDE.md §9.2).
 
 📊 Volumetria auxiliar: `agent_activities` por categoria — `atendimentos` 125 · `qualidade` 66 · `acionamentos` 41 · `auxiliares` 5. `work_events` por tipo — `step.*`/`run.*` dominam; `espera.vencida` **3** (todas 10/09); `travamento.*` **3** (todas 10/09).
 
@@ -327,6 +356,7 @@ select column_name, data_type from information_schema.columns
 5. **Quantos balões o dossiê real gera** — a medição de §3.4 é sobre sessão sintética.
 6. **Se existe alguma edição manual de `internal_numbers`** no banco — decide se há backfill (§13 da SPEC).
 7. **Se `work_events` tem escritor para tudo que o resumo das 19h precisa contar.** 📊 `agente.cerebro|sentinela|vigia`: 0 de 0 (diagnóstico §11.2c). `handoff.realertado`: 0. **Número sem escritor vira "não medido", nunca estimativa.**
+7b. 🔴 **`motivo_classe` não tem escritor NENHUM hoje.** 📊 `grep -rn "motivo_classe" backend/app` → **0**; `human_handoff_reason` vazio em **129 de 131**, e as 2 preenchidas são prosa livre. **Consequência de contrato:** se `desconhecido` caísse em `regra`, todo pedido de ajuda sairia do denominador e a eficiência daria **~100% sem medir nada**. Por isso `desconhecido` fica fora do numerador **e** do denominador, com linha própria, e o resumo **não publica** o número acima de 💭 30% de desconhecidos. **O escritor nomeado é `app/agents/tools/human_handoff.py`** (`_arun` :1182 e `_montar_dossie` :710); os gatilhos automáticos gravam `desconhecido` explicitamente. **PENDENTE DE MEDIÇÃO:** a fatia real de desconhecidos num dia de piloto, que calibra o limite.
 8. **Qual é o volume real de um dia de piloto** com o agente ligado 8 h — todo o dimensionamento desta SPEC vem de 1h53 de operação em três dias.
 9. **Se a Saionara e a Regina leem o grupo no celular ou no WhatsApp Web** — muda a régua de tamanho da mensagem.
 10. **Se algum outro serviço lê `platform_sends` sem filtrar `kind`** além do governador (R41). Uma varredura, não uma suposição.
@@ -387,15 +417,18 @@ rg -n "P-PILOTO-02|P-PILOTO-03|P-PILOTO-04|P-PILOTO-10|P-PILOTO-12|P-PILOTO-13|P
 
 1. *"O re-alerta de 6 h não checa humano nenhum."* **Falso.** Checa duas coisas (R12, R13). Falta **a janela**.
 2. *"Basta pôr `bloco_unico=True` e o dossiê chega inteiro."* Incompleto: são **três** caminhos, e o caminho da tool já tem a flag — quem consertar um e declarar vitória repete o erro de 18/08.
-3. *"`platform_sends` é só um log; escrever nele é inócuo."* **Falso** — R41. Ele alimenta o governador.
+3. *"`platform_sends` é só um log; escrever nele é inócuo."* **Falso** — R41. Ele alimenta o governador em **três** leituras, e duas delas decidem a **maturidade do canal**.
+3b. *"Basta excluir os `kind` que começam com `grupo_`."* **Falso** — R41c: `billing_nota` da 001.6 não tem esse prefixo e seria contado. É **allowlist**, não prefixo.
+3c. *"Se `motivo_classe` vier vazio, é ajuda por regra — o agente não erra sem prova."* **Falso e perigoso** — §5 item 7b: com zero escritores hoje, isso dá **~100% de eficiência sem medir nada**.
 4. *"A guarda tem de ser fail-closed, como a do atendimento."* **Não.** A assimetria é deliberada (§5.4 da SPEC): calar por falha de infraestrutura é o defeito pior.
 5. *"O grupo deve calar sobre tudo quando há humano na conversa."* **Não.** Sinistro, conclusão e resumo passam sempre (§5.3). Uma guarda que cala tudo reprova no G-A1 pela linha de controle.
 6. *"`company_members` tem telefone, é só ler."* **Falso** — R55. O telefone é de `users_v2`.
 7. *"`alert_target.internal_numbers` já resolve os números da casa, basta popular."* **Falso** — R51/R53/R54: três formatos, nenhum escritor, e um `update` que apaga tudo.
 8. *"O resumo das 19h precisa de um scheduler novo."* **Falso** — R71. Entra no APScheduler que já existe, no padrão do relatório semanal.
 9. *"`requireCompanyMember` é só trocar a linha; não muda nada para ninguém."* **Falso** — R62: `write:true` exige papel administrativo, e isso pode tirar acesso de quem usa a tela hoje.
-10. *"O 58 de 58 é fato consolidado."* É fato **em SQL**. Em Python pode ser outro número (§3.3). Quem citar sem remedir viola CLAUDE.md §9.4.
-11. *"As 58 já estão gerando mensagem hoje."* **Falso** — `handoff.realertado` = 0. É risco carregado, não dano em curso. Dizer o contrário é vender inferência como incidente.
+10. *"O 58 de 58 é fato consolidado."* É fato **em SQL, num instante**. Em Python pode ser outro número (§3.3), e 📊 na mesma tarde já deu **59/72**. Quem citar sem remedir viola CLAUDE.md §9.4; quem **fixar 58 numa asserção** cria um guarda que fica vermelho sozinho.
+11. *"As 58 já estão gerando mensagem hoje."* **Falso** — `handoff.realertado` = 0. É risco carregado, não dano em curso. Dizer o contrário é vender inferência como incidente. ⚠️ E quando disparar, o teto é **≤ 50 por passada**, não 58.
+11b. *"O canário mostrou 0 mensagens ao grupo: a guarda funcionou."* **Não prova nada** se o produto estava desligado — 📊 hoje há **1 destino ativo em 4** (nenhum das pilotos) e `agent_enabled=false` em **5 de 5**. Sem a linha de base do §3.7 (com a guarda desligada), o canário mede silêncio num sistema já mudo.
 12. *"Como `espera_vencida` repete 3×, basta cortar `AVISOS_ATE_EXPIRAR` para 1."* **Quebra a expiração** (R19). Corta-se quantos **chegam ao grupo**, não o contador interno.
 
 ---

@@ -95,19 +95,19 @@ TESTE-B: [preencher antes de colar · allowlist privada]
 
 1. **Preflight Git** na ordem do CLAUDE.md §2. 🔴 `git rev-list --count HEAD..origin/main` **tem de ser 0**. Se não for, **pare e pergunte qual árvore usar**.
 2. **Abra o relatório** pelo template, começando pelo **EXECUTION CARD** (AAA §0.2) e recalculando RISCO e SUPERFÍCIE você mesmo. **Piso CRÍTICO** — não rebaixe para economizar tokens.
-3. **BLOCO 0** — os dez passos da §4 da proposta. Investigador + pesquisador em **um** agente (AAA §10). O ponto que não pode faltar: **remedir as 58 pelo motor Python**, não por SQL (§3.3 do research pack). É a medição mais importante do bloco.
+3. **BLOCO 0** — os dez passos da §4 da proposta. Investigador + pesquisador em **um** agente (AAA §10). O ponto que não pode faltar: **remedir as conversas elegíveis pelo motor Python**, não por SQL (§3.3 do research pack) — 📊 o número já derivou de 58 para 59 na mesma tarde, então ele é datado e nunca vira literal de guarda. É a medição mais importante do bloco.
 4. **Converta em SPEC definitiva** em `docs/canon/specs/`, com: card · BLOCO 0 que manda remedir · as 7 unidades com contrato e gate · **a mutação de cada gate** · §7.3 com as 5 referências **reabertas por você** (a data da reabertura vai na SPEC) · "O QUE SAIU" com o gatilho de retorno · pendências por número · Caixa do Founder.
 5. **Aquecimento** (AAA §5.2) com as perguntas da §6 abaixo, em contexto limpo, Opus, **uma rodada**. Emende a SPEC com o que voltar.
 6. ⛔ **Não monte painel de juízes sobre a SPEC** (AAA §5.1). O painel julga **código, teste rodando e banco**.
 
 ---
 
-## 6. Aquecimento — 14 perguntas
+## 6. Aquecimento — 15 perguntas
 
 > As perguntas **1 e 2** afirmam algo **FALSO** com todas as letras, assinadas por mim. São exercício, **não regras do projeto**. Se uma delas tiver deixado de ser falsa por mudança na árvore, substitua-a por outra falsa **medida** antes de enviar.
 
 1. **AFIRMAÇÃO DELIBERADAMENTE FALSA, assinada pelo orquestrador:** *"O re-alerta de 6 h nunca checa se há um humano na conversa — por isso saem 58 mensagens."* Refute pelo código executável, dizendo **quais** checagens já existem, **onde**, e **quantas conversas** elas já calam hoje.
-2. **AFIRMAÇÃO DELIBERADAMENTE FALSA, assinada pelo orquestrador:** *"Gravar os envios ao grupo em `platform_sends` é inócuo: a tabela é só um log."* Mostre o caminho executável que contradiz isso e diga o que quebra.
+2. **AFIRMAÇÃO DELIBERADAMENTE FALSA, assinada pelo orquestrador:** *"Gravar os envios ao grupo em `platform_sends` é inócuo: a tabela é só um log."* Mostre o caminho executável que contradiz isso, diga **quantas** leituras sem filtro existem, e o que cada uma governa. *(Resposta óbvia e incompleta: "uma, a da cota da hora".)*
 3. A guarda deve ser **fail-open** ou **fail-closed** quando não consegue ler o banco? Justifique pela consequência de cada erro, e diga onde no repositório essa escolha já foi feita **ao contrário** e por quê.
 4. Quais tipos de mensagem **passam** pela guarda mesmo com um humano na conversa, e por quê cada um? *(Resposta óbvia e errada: "nenhum".)*
 5. A janela do grupo deve ter número próprio ou o mesmo do atendimento? Mostre a função, a env e o override por corretora, e diga o que acontece quando o valor é **0**.
@@ -116,8 +116,9 @@ TESTE-B: [preencher antes de colar · allowlist privada]
 8. `espera_vencida` manda 3 avisos. O que quebra se você simplesmente mudar `AVISOS_ATE_EXPIRAR` de 3 para 1?
 9. O que a lista de números da casa tem de fazer, **além** de não responder? Nomeie os quatro efeitos e diga onde cada um entra. E diga por que a chave `internal_numbers` que já existe no JSONB não resolve — com três razões medidas.
 10. Aplicar `requireCompanyMember({write:true})` nas 6 rotas **tira acesso de alguém**? De quem? Como você descobre isso **antes** de a Saionara reclamar na segunda-feira?
-11. A fórmula de eficiência das 19h: o que entra no numerador, o que entra no denominador, e o que fica **fora dos dois**? O que acontece quando o denominador é zero? E um `motivo` desconhecido cai em qual classe, e por quê?
-12. Reproduza **três** medições da proposta com comando e resultado, redigidos sem PII: (a) as 7 mensagens do 10/09, (b) as 58 elegíveis, (c) os balões do dossiê. Diga se algum número **não** bateu.
+11. A fórmula de eficiência das 19h: o que entra no numerador, o que entra no denominador, e o que fica **fora dos dois**? O que acontece quando o denominador é zero? E um `motivo` desconhecido cai em qual classe? *(Resposta óbvia e ERRADA: "em `regra`, para não punir o agente". Rode `grep -rn "motivo_classe" backend/app` e conte quantas conversas têm `human_handoff_reason` preenchido **antes** de responder — depois diga que eficiência a fórmula daria hoje.)*
+11b. Quem **escreve** `motivo_classe`? Nomeie o arquivo e a função, e diga o que os gatilhos automáticos (re-alerta, espera vencida) gravam quando não sabem o motivo.
+12. Reproduza **três** medições da proposta com comando e resultado, redigidos sem PII: (a) as 7 mensagens do 10/09, (b) as elegíveis ao re-alerta, (c) os balões do dossiê. 🔴 **Espera-se que (b) NÃO bata** — a proposta mediu 58 e depois 59 na mesma tarde. Diga o seu número e explique por que ele **não** pode virar literal num guarda.
 13. Liste o que você **NÃO** entendeu ou não conseguiu provar. ⛔ *"Entendi tudo"* reprova o exercício.
 14. Ache um **defeito material** que esta proposta não aponta — ou diga exatamente onde procurou e não achou. Entregue a nota 0–100 e o card que você aplicaria.
 
@@ -131,7 +132,7 @@ TESTE-B: [preencher antes de colar · allowlist privada]
 - **Lista de números da casa no card Equipe**, com os **quatro** efeitos (não responde · não entra na Fila · não vai ao grupo · captura marcada `interno`) e migration expand-first com APPLY/VERIFY/ROLLBACK.
 - **Mensagem inteira** nos três caminhos; espera vencida com **um** aviso; `ura_silent`/`human_silent` viram linha do resumo; queda de canal vai **ao dono**; reabertura não fura o marcador.
 - **Os quatro modelos** — 🆘 PRECISO DE AJUDA · 🚨 NOVO SINISTRO · ✅ ATENDIMENTO CONCLUÍDO · 📊 ATENDIMENTOS REALIZADOS (19h) — com `wa.me/55DDDNÚMERO` sem `+`, **sem** link de painel, **sem** últimas mensagens, e o campo `motivo` classificado em incapacidade × regra.
-- **Todo envio ao grupo contado** em `platform_sends`, **sem envenenar o governador de vazão**.
+- **Todo envio ao grupo contado** em `platform_sends`, **sem envenenar o governador de vazão** — 🔴 as **três** leituras de `_historico_sync` (cota da hora/dia, `dias_de_uso` e `total` → `maturidade_do_canal`), por **allowlist** de `kind` e nunca por prefixo, alinhada com `billing_nota`/`billing_doc` da 001.6.
 - **Gate de ligar o agente**: sem destino ativo + canal conectado, recusa com frase humana.
 - **As 6 mutações** com `requireCompanyMember` + `assertSameOrigin` + auditoria.
 - **12 guardas** novos, **12 mutações** vermelhas, todos sobre o **motor** e o **acervo real**.
@@ -163,6 +164,10 @@ ROTAS NEXT        mexeu em `app/` ou env: `npm run test:rotas-montam` + `next st
 ⚠️ **A baseline da suíte já tem falhas** (P-PILOTO-20: 4 guardas de policy quebram por import desde 23/08). Demonstre-as na base **e** no head, triagem nominal. ⛔ Não rotule toda falha como "pré-existente".
 
 🔴 **Canário vivo é obrigatório** — os 8 casos da §14 da proposta, **incluindo o par de controle** (caso 8: conversa sem humano tem de **receber** mensagem). Um canário que só prova que o produto calou não prova nada.
+
+⚠️ **E antes do primeiro caso, escreva a pré-condição** (§14 da proposta, §3.7 do research pack): 📊 hoje há **1 destino ativo em 4** (nenhum das pilotos) e `agent_enabled=false` em **5 de 5**. A ordem é: criar destino no tenant de teste → ligar o agente → **medir a linha de base com a guarda DESLIGADA** → ligar a guarda e repetir. 🔴 Sem esse terceiro passo, "0 mensagens ao grupo" é o produto desligado, não a guarda funcionando.
+
+🔴 **Teto de guardas, explícito:** **7 arquivos**, 12 guardas nomeados, 💭 ~30 asserções (§12.1 da proposta). O teto de D-PILOTO-14 conta **arquivos**. `G-F1/G-G1` é **um** arquivo com 5 asserções — separá-lo em cinco não melhora a prova e estoura o teto. Se quiser separar, diga qual guarda sai.
 
 ---
 

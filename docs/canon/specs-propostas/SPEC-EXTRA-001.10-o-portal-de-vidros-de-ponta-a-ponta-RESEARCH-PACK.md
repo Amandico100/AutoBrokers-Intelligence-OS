@@ -74,31 +74,29 @@ python - <<'PY'   # imprime só método, path e o campo CodigoAtendimento
 PY
 ```
 
-📊 **Saída, 13/09/2026, sobre os dois HAR da Yelum:**
+📊 **Saída, 13/09/2026, sobre os dois HAR da Yelum** (nº = índice da entrada no HAR):
 
 ```
-#### LATARIA (CodigoItemCoberto "1|142|S|11335|1|0|L")
- 111 POST   /atendimentos            -> 200   CodigoAtendimento=<chave ausente>
- 119 GET    /atendimentos            -> 200   CodigoAtendimento=None
- 156 GET    /atendimentos            -> 200   CodigoAtendimento=None
- 204 PATCH  /atendimentos            -> 200   CodigoAtendimento=<chave ausente>
- 213 GET    /atendimentos            -> 200   CodigoAtendimento=23232316   ← NASCEU
- 249 GET    /atendimentos            -> 200   CodigoAtendimento=23232316
+#### LATARIA  ·  CodigoItemCoberto "1|142|S|11335|1|0|L"
+ 111 POST  /atendimentos   200   CodigoAtendimento=<chave ausente>
+ 119 GET   /atendimentos   200   CodigoAtendimento=None
+ 156 GET   /atendimentos   200   CodigoAtendimento=None
+ 204 PATCH /atendimentos   200   CodigoAtendimento=<chave ausente>
+ 213 GET   /atendimentos   200   CodigoAtendimento=23232316   ← NASCEU
+ 249 GET   /atendimentos   200   CodigoAtendimento=23232316
 (zero POST /questionarios em toda a captura)
 
-#### VIDRACARIA (CodigoItemCoberto "3|129|N|10700|1|0|V")   ← A LINHA DE CONTROLE
- 129 POST   /atendimentos            -> 200   CodigoAtendimento=<chave ausente>
- 136 GET    /atendimentos            -> 200   CodigoAtendimento=None
- 173 GET    /atendimentos            -> 200   CodigoAtendimento=None
- 229 PATCH  /atendimentos            -> 200   CodigoAtendimento=<chave ausente>
- 234 GET    /atendimentos            -> 200   CodigoAtendimento=None        ← NÃO nasceu
- 241 POST   /questionarios/perguntas -> 200
- 253 POST   /questionarios/perguntas -> 200
- 256 POST   /questionarios/perguntas -> 200
- 258 POST   /questionarios/perguntas -> 204   (fim do questionário)
- 265 POST   /questionarios/regras-reparo -> 200
- 268 POST   /questionarios          -> 200
- 271 GET    /atendimentos            -> 200   CodigoAtendimento=23087562   ← NASCEU
+#### VIDRAÇARIA  ·  "3|129|N|10700|1|0|V"   ← A LINHA DE CONTROLE
+ 129 POST  /atendimentos            200   <chave ausente>
+ 136 GET   /atendimentos            200   None
+ 173 GET   /atendimentos            200   None
+ 229 PATCH /atendimentos            200   <chave ausente>
+ 234 GET   /atendimentos            200   None          ← NÃO nasceu
+ 241/253/256 POST /questionarios/perguntas  200 (3 perguntas)
+ 258 POST  /questionarios/perguntas  204   (fim do questionário)
+ 265 POST  /questionarios/regras-reparo 200
+ 268 POST  /questionarios           200
+ 271 GET   /atendimentos            200   CodigoAtendimento=23087562   ← NASCEU
 ```
 
 🔴 **Por que isto é uma causa e não uma coincidência (protocolo §0.3):** medi A (o
@@ -225,39 +223,27 @@ python - <<'PY'
 PY
 ```
 
-📊 **77 endpoints distintos.** Os que a proposta usa, com o corpo lido do bundle:
+📊 **77 endpoints distintos** (o código declara 19 constantes). ⛔ **Os corpos dos que a
+SPEC usa estão na proposta (P1-1, P1-2, P1-6, P2-2) e não se repetem aqui.** O que o
+executor precisa saber é que **eles saíram deste comando**, e que reexecutá-lo é como se
+confere qualquer um que a proposta não tenha citado.
+
+📊 **Três achados só desta leitura, não citados na proposta:**
 
 ```
-GET  agendamentos/opcoes-disponiveis     (sem params)
-GET  agendamentos/datas-disponiveis      {CodigoProduto, CodigoCliente, Ano}
-GET  agendamentos/horarios-disponiveis   {CodigoCliente, DataAgendamento, CodigoProduto}
-POST agendamentos                        {CodigoCliente, DataDeAgendamento, Horario,
-                                          CodigoProduto, QuantidadeTempoServico,
-                                          QuantidadeTempoPermanencia, Encaixe}
-POST direcionamentos                     {CodigoCliente, CodigoProduto, TipoCredenciado}
-POST lojas/consultar-distancias          {CodigoAtendimento, Cep, Uf, Cidade, Logradouro, Bairro}
-POST atendimentos-fotografias/web        FormData: "CodigoAtendimento" + N× "Imagens"
-                                          transformRequest: angular.identity
-                                          headers: {"Content-Type": undefined}
-GET  atendimentos/vistoriamobile         ?telefone=<telefone>
-PUT  atendimentos/corretores             {Documento}
-PUT  atendimentos/cep                    {Cep}
-PUT  atendimentos/cancelar               {codigoMotivoCancelamento, codigoAtendimento,
-                                          observacaoMotivoCancelamento}
-GET  cidades                             {UF, ExibeMunicipios, PolidorFarol}
-GET  clientes/cidades                    {CodigoCidade, CodigoTipoScript, CodigoScript,
-                                          Chassi, Reembolso}
-GET  clientes/cidades-proximas           (mesmos params)
-GET  atendimentos/servicos-itens         {CodigoScript, CodigoTipoScript}
-GET  atendimentos/ofertas-polimentos-farois {codigoScript, codigoSeguradora, codigoTipoScript}
-POST atendimentos/emitir-atendimento-formalizado/{codigo}
+GET  clientes/cidades-proximas  {CodigoCidade, CodigoTipoScript, CodigoScript, Chassi,
+                                 Reembolso}   ← alternativa a clientes/cidades quando a
+                                 cidade escolhida não tem rede. Útil ao slot de P0-5.
+GET  atendimentos/ofertas-polimentos-farois {codigoScript, codigoSeguradora,
+                                 codigoTipoScript}  ← é o "polimento de farol" que o
+                                 roteiro da Regina §3.5 manda capturar. Ele EXISTE, e
+                                 alimenta o campo `PolimentoFarol` do PATCH.
+`regraDeBloqueio`               quatro travas por apólice — BloqueioAtendimentoPorReembolso,
+                                 …PorEventoComposto, …PorLataria, …PorTipoScript.
+                                 🔴 Nenhuma é lida pelo nosso código. Vale uma pendência:
+                                 o portal pode recusar lataria ou evento composto, e o
+                                 robô descobriria só no erro.
 ```
-
-📊 **Achado extra, não citado na proposta mas útil ao executor:** o bundle tem uma
-estrutura `regraDeBloqueio` com quatro travas por apólice —
-`BloqueioAtendimentoPorReembolso`, `BloqueioAtendimentoPorEventoComposto`,
-`BloqueioAtendimentoPorLataria`, `BloqueioAtendimentoPorTipoScript`. **Nenhuma é lida
-pelo nosso código.** Vale uma pendência.
 
 ### 2.6 O portal diz que lataria não agenda
 
@@ -300,25 +286,19 @@ Cod 35 (Tipo O)  "QUAL O LADO DO ITEM DANIFICADO?"
                  NÃO SABE (40) · LADO DO CARONA (38) · LADO DO MOTORISTA (39)
 ```
 
-⚠️ **`NumeroOrdem` é 0 em duas das três, e a ordem de `Respostas` não é a da tela**
-(em `Cod 35`, "NÃO SABE" vem primeiro no array). **Nunca escolher opção por posição.**
-O motor stateless reenvia o array inteiro a cada rodada — é o que torna o replay
+⚠️ **`NumeroOrdem` é 0 em duas das três, e a ordem de `Respostas` não é a da tela** (em
+`Cod 35`, "NÃO SABE" vem primeiro no array). **Nunca escolher opção por posição.** O
+motor é stateless e reenvia o array inteiro a cada rodada — é o que torna o replay
 offline possível.
 
 ### 2.9 A régua de 5/20 cm é de LATARIA
 
 📊 `GET atendimentos/servicos-detalhes`, chamado **na captura de lataria**:
+`[{1,"MENOR QUE 05cm"}, {2,"ENTRE 5 E 20cm"}, {3,"MAIOR QUE 20cm"}]`.
 
-```json
-[{"Codigo":1,"Tamanho":"MENOR QUE 05cm"},
- {"Codigo":2,"Tamanho":"ENTRE 5 E 20cm"},
- {"Codigo":3,"Tamanho":"MAIOR QUE 20cm"}]
-```
-
-🟡 **Refinamento do diagnóstico:** ele fala em "três réguas" para o trincado. São
-**duas coisas diferentes**: 10 cm × moeda de 1 real é a contradição real (trincado de
-para-brisa, decide troca × reparo); 5/20 cm é o **amassado de lataria**, e não
-compete com nenhuma delas.
+🟡 **Refinamento do diagnóstico:** ele fala em "três réguas" para o trincado. São **duas
+coisas diferentes**: 10 cm × moeda de 1 real é a contradição real (trincado de
+para-brisa, decide troca × reparo); 5/20 cm é o **amassado de lataria**.
 
 ### 2.10 O preflight da Porto que morre sem cobertura
 
