@@ -329,9 +329,9 @@ registradas aqui e vão para `FOUNDER-DECISIONS.md` como D-PILOTO-08…14 quando
 | D-PILOTO-13 | Eficiência do resumo das 19h: **sinistro conta como sucesso**; sucesso = **até enviar ao segurado a mensagem do acionamento** (protocolo, link ou agendamento); pós-acionamento fora. | 001.3 muda a fórmula (§7.5). Uma objeção minha registrada lá. |
 | D-PILOTO-14 | Execuções de **alta qualidade sem serem exorbitantemente longas**. | §8: AAA opção B na execução, laço leve na criação das SPECs, orçamento de tokens por SPEC. |
 
-Pendentes de decisão sua, ainda: **D-PILOTO-15** (as cinco entregas sem SPEC viram "001.0" ou ficam registradas como
-estão — §7.2 explica) e **D-PILOTO-16** (EXTRA-008/009 Quiver/Segfy × SPEC-101: qual número vence; com a porta de
-§7.3 a resposta natural é "a 101 vira a porta e as EXTRA-00x viram adaptadores").
+**13/09:** D-PILOTO-15 = SIM (001.0 existe); D-PILOTO-16, 17, 18, 19 e 20 decididas por delegação e registradas em
+`FOUNDER-DECISIONS.md` (SPEC-101 = porta e EXTRA-002/008/009 = adaptadores; Bradesco pela captura dupla; cobrança em
+`equipe`, N = 7 dias, reativar só depois do BLOCO 0 da 001.6; senhas na segunda não travam; criação neste chat, execução em chat novo).
 
 ### 7.2 Os dois itens que você não entendeu, explicados
 
@@ -831,9 +831,8 @@ exatamente o desfecho das 17:17 e das 17:38 de 10/09.
    decidir `equipe` × `cliente`, dizer o N de "1 cobrança por segurado a cada N dias".
 3. **Regina: a captura nº 1** (para-brisa na Yelum até o horário confirmado, HAR *with content*) — é a única que
    destrava o 100 % da vidraçaria. As outras 11 capturas podem vir aos poucos.
-4. **Decidir D-PILOTO-15** (001.0 sim/não), **D-PILOTO-16** (SPEC-101 vira a porta; EXTRA-008/009 viram adaptadores)
-   e **D-PILOTO-17** (Bradesco vidros: `abraseuatendimento` × `agendeseuservico`).
-5. **Confirmar a eficiência com a distinção "ajuda por incapacidade × ajuda por regra"** (§7.5) ou mandar a fórmula pura.
+4. ~~Decidir D-PILOTO-15/16/17~~ — decididas em 13/09 (§7.1).
+5. ~~Eficiência~~ — decidida: distinção incapacidade × regra (D-PILOTO-13).
 6. Ainda abertos de 09–10/09: `publicar_cartas_0971.py --global --vivo`; P-PILOTO-09 (arquivo de credenciais),
    17 (`llm_max_tokens` no banco), 19.
 
@@ -844,3 +843,90 @@ chat, na ordem de 12.1, uma por vez, com o laço leve de §8 (proposta → revis
 para você). Cada proposta nasce em `docs/canon/specs-propostas/SPEC-EXTRA-001.x-….md` + RESEARCH-PACK + prompt de
 abertura, no padrão da EXTRA-001. A execução de cada uma é em chat novo, sob AAA opção B, com a marcha da tabela
 de §8. Nenhuma SPEC começa a ser executada antes de você ler o resumo dela.
+
+## 13. ANÁLISE DE QUALIDADE — estamos usando um míssil para matar uma mosca?
+
+Você pediu uma resposta sincera, com nota, sobre se o protocolo AAA e o laço de agentes estão em excesso. A resposta
+curta: **os instrumentos estão certos; a dose desta semana está errada.** O que segue é a prova, com os números
+do próprio projeto, depois a leitura do que a comunidade mede, e por fim a recomendação com nota.
+
+### 13.1 O que o projeto já mediu a favor do protocolo (FATO)
+
+| medição | onde está | o que diz |
+|---|---|---|
+| 📊 Painel de juízes em 2 de 6 SPECs: **com painel 47 achados · 22 defeitos de produto; sem painel 19 achados · 0 defeitos de produto** (3,7×) | CLAUDE.md §2, auditoria de 30/08 | O revisor separado do construtor acha o que o construtor não vê. |
+| 📊 SPEC-093-B: a única frente que **reconstruiu o resultado sobre 1.851 sessões reais** achou os dois maiores defeitos (40,8 % dos PDFs de sinistro não viravam evento; a "variante" era um histograma) — o painel de código aprovou o dataset errado | dossiê 093-B | Quem julga só o código aprova dado errado. A lente do dado existe por isso. |
+| 📊 SPEC-094: **366 asserções verdes com fakes** e a tool **não rodava no grafo**; só o juiz fresco com canário vivo achou | dossiê 094 | Um agente que constrói e testa a si mesmo se dá verde. O canário vivo é o gate que não mente. |
+| 📊 O painel custa **~4 % do relógio**; a bateria de testes custa **~50 %** | CLAUDE.md §2 | O caro não é o juiz. É a bateria e, como esta semana mostrou, **os documentos**. |
+| 📊 Esta semana, o revisor da 001.1 devolveu 1 BLOCKER real (um gate impossível de passar), 6 ESSENCIAIS com linha, 3 deles erros de medição do próprio redator | §13.4 abaixo | Um segundo par de olhos sobre a proposta paga, mas parte do que ele acha é custo que o tamanho da proposta criou. |
+
+### 13.2 O que o projeto mediu contra a dose atual (FATO)
+
+| medição | o que diz |
+|---|---|
+| 📊 **Duas janelas de 5 h esgotadas em fase de planejamento**; zero linha de produto entregue desde 10/09 | O gargalo hoje não é qualidade, é o relógio. |
+| 📊 A tarde de 13/09: **10 agentes Opus em paralelo**, ~300 k tokens cada, esgotaram a janela em ~40 min. Paralelismo não reduz tokens — só reduz relógio, e o relógio é limitado pela janela de qualquer forma | Dez agentes ao mesmo tempo é a forma mais rápida de perder tudo de uma vez. Erro meu. |
+| 📊 As propostas 001.1–001.4 têm **98–113 KB cada** (a EXTRA-001, modelo, tinha 48 KB); com RESEARCH-PACK e PROMPT, **~170 KB por SPEC**, ~1 MB para seis. Muitas são maiores que o código que descrevem | Documento maior que o diff é sinal de excesso (a comunidade cita exatamente isso). |
+| 📊 Três arquivos por SPEC repetem ~40 % do conteúdo (o PROMPT é 90 % igual entre SPECs; o RESEARCH-PACK repete as linhas da proposta) | Redundância paga em criação e em leitura do executor. |
+| 📊 As **cinco entregas de 08–10/09 sem AAA** (builders Opus + eu como juiz, testes por unidade) subiram em 2 dias, estão no ar, com 11 guardas rodando, 10 verdes. Os pilotos mostraram defeitos **de escopo e de produto** (a apólice errada, o grupo inundado, o "residência"), não defeitos de construção do que foi pedido | O laço leve **constrói bem o que se pede**. O que faltou foi entender o que pedir — e isso veio da auditoria (medição do acervo), não de painel. |
+| 📊 Revisor da 001.1: dos 10 achados, 3 eram números de linha deslocados por uma unidade e 2 eram "desconhecidos" que o redator poderia ter medido | Parte da revisão é custo induzido por documento longo, não defeito de produto. |
+
+### 13.3 A minha leitura (INFERÊNCIA, e a opinião que você pediu)
+
+1. **O painel + juiz fresco + canário vivo não são o míssil. São a mira.** Os três casos acima (22 × 0; 40,8 %;
+   366 verdes com a tool morta) são defeitos que **chegariam ao segurado ou ao corretor**. Nenhum deles foi achado
+   pelo agente que construiu. Isso não é "o agente diz que ficou bom"; é o agente **medindo que não ficou**. Para
+   o que muda o que o cliente lê, o que envia mensagem e o que mexe em dinheiro, essa mira vale o que custa.
+   **Nota de manter o painel nas SPECs CRÍTICAS: 90.**
+2. **O míssil é o resto do rito aplicado a tudo, e é o que estourou as janelas:** propostas de 100 KB, três
+   arquivos por SPEC, pesquisa externa obrigatória em toda proposta, red team em SPEC de tela, aquecimento com 16
+   perguntas em SPEC de relatório, e dez agentes em paralelo. Para uma SPEC LEVE (001.0, 001.7, 001.9) o AAA
+   inteiro é **excesso medido**: o risco dessas entregas é zero para o segurado, e um Opus sozinho com um juiz
+   entrega a mesma coisa. **Nota do AAA completo em SPEC LEVE: 35. Nota de Opus + 1 juiz em SPEC LEVE: 88.**
+3. **"Opus sozinho daria 100/100"** — para CRÍTICO, não. A medição 366-verdes-tool-morta é a prova: o construtor
+   se dá verde. **Nota de Opus sozinho em CRÍTICO: 55.** Para LEVE: **85**. Para PADRÃO (motor sem envio): **72**.
+4. **O laço antigo "subagente + juízes críticos" era mais rápido e não era pior no que ele via.** Ele era pior no
+   que ele **não via**: dado errado (lente do dado) e código que não roda no produto (canário vivo). Essas duas
+   peças custam pouco (o painel é 4 % do relógio) e são o que separa "o agente disse que ficou bom" de "ficou".
+   **Recomendo trazer o laço antigo de volta como a marcha PADRÃO**, com essas duas peças acopladas.
+5. **O que sinto igual a você:** o rito virou burocracia quando passou a ser aplicado por reflexo. A regra do
+   protocolo é "marcha por risco"; esta semana eu apliquei marcha CRÍTICA na **criação** das propostas, que é
+   trabalho de escrita, não de produto. Isso foi erro de dose, meu.
+
+### 13.4 O que muda a partir de agora (RECOMENDAÇÃO, já aplicada às SPECs que faltam)
+
+| regra | antes (esta semana) | agora | nota |
+|---|---|---|---|
+| **Marcha por risco, de verdade** | tudo em CRÍTICO | CRÍTICO só onde envia mensagem, muda o que o cliente lê ou mexe em dinheiro (001.1, 001.2, 001.3, 001.4, 001.6, 001.10, 001.8); PADRÃO = 1 lente + juiz fresco + canário (001.5); LEVE = Opus + 1 juiz, sem painel, sem red team (001.0, 001.7, 001.9) | 90 |
+| **Tamanho da proposta** | 100 KB + RP 50 KB + prompt 20 KB | proposta ≤ 40 KB com o research como apêndice; **um** PROMPT-modelo compartilhado + 1 página por SPEC | 88 |
+| **Agentes em paralelo** | 10 | **≤ 4**, e um orçamento por janela: criação ≤ 1,5 M tokens, execução ≤ 2,5 M por SPEC | 92 |
+| **Modelo por papel** | Opus em tudo | Opus para construir e para o juiz fresco; **Sonnet** para pesquisa na web, revisão de documento e inventário | 85 |
+| **Bateria** | sem teto na prática | ≤ 12 guardas novos por SPEC, todos pelo motor sobre acervo real (já é D-PILOTO-14); proibido teste que reimplementa a regra | 90 |
+| **Pesquisa externa** | obrigatória em toda proposta | só quando a SPEC introduz um padrão novo (porta, fila, breaker); reaproveitar as referências já citadas nas SPECs anteriores | 85 |
+| **O que nunca sai** | — | juiz fresco + canário vivo em tudo que envia; lente do dado sempre que o resultado é dataset; EXECUTION CARD; `git push` com saída no relatório | 95 |
+
+**Nota do que fizemos esta semana, do jeito que fizemos: 58/100.** Instrumentos certos, dose errada, duas janelas
+perdidas. **Nota do "AAA dosado" acima: 88/100.** **Nota de voltar ao laço antigo para tudo: 70** — rápido, mas
+a medição 22 × 0 diz que ele deixa passar defeito de produto onde dói. **A resposta à sua pergunta: não é
+míssil para mosca; é míssil disparado em toda mosca.** O protocolo está certo e fica; a dose muda, e a mudança
+começa nas cinco propostas que ainda faltam.
+
+### 13.5 O que a comunidade mede e diz (pesquisa de 13/09; fontes em 13.6)
+
+| fonte | o que mediu ou defendeu | condição em que vale |
+|---|---|---|
+| **Anthropic, "Building effective agents"** (orientação) | comece pela solução mais simples; o padrão avaliador-otimizador (crítico em laço) só vale com **critério claro de avaliação** e **melhora demonstrável a cada rodada** | sem critério e sem melhora medida, o laço é custo puro |
+| **Anthropic, sistema de pesquisa multi-agente** (📊 medição interna) | orquestrador Opus + subagentes Sonnet bateu Opus sozinho em **90,2 %** num eval de pesquisa; custo: agente ≈ **4×** os tokens de um chat, multi-agente ≈ **15×** | só para tarefa paralelizável, com mais contexto do que cabe numa janela, e valor alto o bastante para pagar 15× |
+| **MAST, "Why do multi-agent LLM systems fail?"** (📊 1.600+ traces, 14 modos de falha) | "ganhos em benchmarks são frequentemente mínimos"; falhas de design do sistema, desalinhamento entre agentes e **falha de verificação** | o aparato não paga se a verificação no fim é fraca |
+| **Cognition, "Don't build multi-agents" → "What's actually working"** (opinião de produto, com retratação parcial) | agentes paralelos que **escrevem** ao mesmo tempo tomam decisões conflitantes; o que funciona: **revisor de contexto limpo** (pega o que o gerador saturado não vê), roteamento entre modelos, escrita single-threaded | vários contribuem inteligência; **um só escreve** |
+| **"Nine judges, two effective votes"** (📊 arXiv 2605.29800) | painel de 9 juízes de 7 famílias dá elevação **nula ou negativa** sobre o melhor juiz sozinho (84,2 % vs 77,7 %): erros correlacionados; 9 opiniões ≈ **2 votos independentes** | diversidade de modelo importa mais que quantidade; painel homogêneo grande é desperdício |
+| **"More rounds, more noise"** (📊 arXiv 2603.16244) + Self-Refine | o ganho vem nas **1–2 primeiras rodadas** de revisão; a 3ª satura e pode piorar | parar em duas rodadas |
+| **Fowler/Thoughtworks, "agentic programming"** (experimento próprio) | paralelizar geração de código dependente força conserto prematuro ou conflito na fusão; "harness engineering" é custo real | paralelismo de escrita ajuda pouco em código |
+| **Gap verificação × geração** (várias linhas) | verificar é mais barato e mais confiável que gerar de novo | 1 verificador antes de N geradores |
+
+**Tabela de convergência:** tarefa sequencial de código → 1 agente forte, escrita única (1×) · exploração paralelizável → orquestrador + subagentes (15×, só se o valor pagar) · garantir qualidade → **1 revisor de contexto fresco**, não N (~2×) · rodadas de crítica → parar em 1–2 · critério objetivo (compila, responde 200, casa o regex no motor) → **teste determinístico, não juiz** · julgamento qualitativo → 1 juiz forte; painel só com famílias diferentes.
+
+**O que isso diz do nosso protocolo, item a item:** o **juiz fresco com canário vivo** é o padrão mais defendido (Cognition, Anthropic, e a nossa medição 366-verdes-tool-morta) — fica. **Painel de 3 lentes do mesmo modelo** é o caso "nove juízes, dois votos": vale como lentes **de assunto diferente** (dado × código × produto — foi assim que a lente do dado achou o que as outras não acharam), não como três opiniões sobre a mesma coisa — fica só onde as lentes são de fato diferentes, e uma delas é sempre a do dado. **Red team + juiz de confirmação + auditoria externa** na mesma SPEC é a 3ª e 4ª rodada que a literatura mede como ruído — corta para PADRÃO, fica só em CRÍTICO com envio. **Dez agentes em paralelo escrevendo documentos** é exatamente o modo de falha da Cognition e do Fowler — cap de 4, e um só escreve por arquivo. **Guardas pelo motor** (§9.4/§9.5 do CLAUDE.md) são o "teste determinístico em vez de juiz" — é onde o projeto já está certo e barato.
+
+### 13.6 Fontes
+Anthropic — Building effective agents (anthropic.com/engineering/building-effective-agents) · Anthropic — How we built our multi-agent research system (anthropic.com/engineering/multi-agent-research-system) · Why Do Multi-Agent LLM Systems Fail? (arxiv.org/abs/2503.13657) · Cognition — Don't Build Multi-Agents (cognition.com/blog/dont-build-multi-agents) · Cognition — Multi-Agents: What's Actually Working (cognition.com/blog/multi-agents-working) · Martin Fowler — Agentic Programming (martinfowler.com/bliki/AgenticProgramming.html) e Pushing AI autonomy (martinfowler.com/articles/pushing-ai-autonomy.html) · Nine Judges, Two Effective Votes (arxiv.org/pdf/2605.29800) · More Rounds, More Noise (arxiv.org/pdf/2603.16244) · Self-Refine (arxiv.org/pdf/2303.17651) · LangChain — How and when to build multi-agent systems (langchain.com/blog/how-and-when-to-build-multi-agent-systems). Não encontrado: uma thread nomeada de Hacker News ou um post do Simon Willison com o termo "overkill" — a posição dele é caso a caso.
