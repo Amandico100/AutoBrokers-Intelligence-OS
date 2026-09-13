@@ -97,7 +97,7 @@ Por demanda, **nunca "por via das dúvidas"**:
 2. **Abra o relatório** pelo template, **começando pelo EXECUTION CARD** (§0.2 do protocolo). Refaça a conta de RISCO e SUPERFÍCIE você mesmo; a proposta sugere **RISCO 8 · SUPERFÍCIE 2 · CRÍTICO**, e a soma vence o rótulo. ⛔ Não rebaixe para economizar tokens: o piso da §3.2 já é CRÍTICO porque **isto envia**.
 3. **BLOCO 0 — remeça.** Um agente investigador+pesquisador. Os onze itens estão na §4 da proposta. 🔴 **Quatro deles bloqueiam código:**
    - por que `registrar_ato_do_agente` grava **0 linhas** tendo 3 chamadores (**O ELO**, §0.3 do protocolo: medi A · medi B · **medi que B chega em A?**);
-   - qual é a **redação real** da frase de encerramento de setembro, em `observed_events`;
+   - ⚠️ a frase de encerramento **já está medida** (`falta de contato`, 10 eventos, 0 casam) — você **confirma** com a consulta e com o **controle** (a mesma regex no mesmo texto), não descobre;
    - quantas opções `parse_options` devolve no menu real, **cru** e **normalizado**;
    - a **triagem nominal** dos três testes vermelhos de hoje.
 4. **BLOCO 0-bis — o acervo.** 🔴 **Sem isto os gates não têm sobre o que rodar:** o corpus local termina em **21/08** e a sessão de 10/09 **não está lá**. Regenere o corpus, rode a régua e **commite a linha de base** (hoje não existe nenhuma). Comandos na §4.1 da proposta.
@@ -121,8 +121,10 @@ Por demanda, **nunca "por via das dúvidas"**:
 9. *"Isso pode levar alguns instantes"* é boa âncora de transferência para humano? Conte no acervo e diga quantos falsos positivos ela traz — e em qual seguradora.
 10. Que campo já existe na sessão, hoje, que o Vigia honra como silêncio de 60 s? Quem o escreve, e quem **deveria** passar a escrevê-lo?
 11. Todo `fromMe` é um humano digitando? O que acontece se o eco da nossa própria voz abrir a pausa do bloco C?
-12. Rode os cinco testes do §2.9 do RESEARCH PACK **antes de escrever uma linha**. Quantos estão vermelhos? Para cada um: pré-existente, regressão das entregas de 08–10/09, ou defeito desta SPEC? ⛔ "pré-existente" em bloco não é resposta.
+12. Rode os cinco testes do §2.9 do RESEARCH PACK **antes de escrever uma linha** — com `python tests/<arquivo>.py`, ⛔ **nunca com `pytest`** (📊 `pytest` nesses dois arquivos devolve *"no tests ran"*, **exit 5**, porque eles não têm `def test_`: verde falso sobre um teste que dá 1). Quantos estão vermelhos? Para cada um: pré-existente, regressão das entregas de 08–10/09, ou defeito desta SPEC? ⛔ "pré-existente" em bloco não é resposta.
 13. Como se roda a bateria inteira neste repositório, e o que acontece se você esquecer `PYTHONIOENCODING=utf-8`? (Resposta óbvia e errada: `pytest`.)
+13-bis. Para "perguntar ao segurado e voltar", quantas peças você precisa construir? Nomeie por arquivo e linha o que **abre** a espera com prazo, o que a **vence** e o que a **resolve** quando o cliente responde — e diga qual é o único pedaço que de fato não existe. (Resposta óbvia e errada: *"nenhuma existe, vou criar a fila"*.)
+13-ter. Como a sua função nova fala com o segurado? Leia a assinatura de `dispatch_router.py:2652` e `:2813` antes de responder. E **por onde entra a resposta dele**? (Resposta óbvia e errada: *"importo `send_to_client`"* — e há uma segunda armadilha na volta.)
 14. **Liste o que você NÃO entendeu ou não conseguiu provar.** ⛔ "entendi tudo" reprova o exercício.
 15. **Ache um defeito material que a proposta não aponta** — ou diga onde procurou e não achou. Entregue a nota 0–100 e o card que você aplicaria.
 
@@ -137,7 +139,7 @@ Por demanda, **nunca "por via das dúvidas"**:
 | **A · Regra B** | nenhum slot `*_opcao` chega cru à URA. `resolver_tecla` lê a **tela real** e converte rótulo → dígito; slot vazio **não envia** e vira `needs_human` com motivo nomeado; `qual_seguro_opcao` derivado, e **sem default** (ele decide o ramo da apólice, não navega) |
 | **B · Regra A** | "opção inválida" reparada pelo motor, **antes** do Sentinela, **uma vez por tela**, **sem consumir tentativa**; o Cérebro recebe `ultima_resposta_recusada` e as opções da tela; tentativas **por tela**, com teto de sessão |
 | **C · humano da corretora** | pausa de **60 s** renovável a cada envio real à seguradora, **máx. 2 renovações**; uma mensagem ao grupo com `AGENTE` e `EU CUIDO`; **os nove gatilhos de grupo calados** enquanto ela está aberta; e o eco da nossa voz **não** abre pausa |
-| **D · humano da seguradora** | âncora **positiva** de entrada na fase humana, vinda da tabela **medida**; `needs_human` **reentra** em `human_phase` (com controle negativo do robô); o resumo sai **uma vez**; a linha ao grupo só se já houve pedido de ajuda; **perguntar ao segurado e voltar**; **dois relógios** (fila × humano sumido, com `heartbeat < timeout`); encerramento reconhecido; **`work_events` com linhas `agente.*`** |
+| **D · humano da seguradora** | âncora **positiva** de entrada na fase humana, vinda da tabela **medida**; `needs_human` **reentra** em `human_phase` (com controle negativo do robô); o resumo sai **uma vez**; a linha ao grupo só se já houve pedido de ajuda; **perguntar ao segurado e voltar** — 🔴 pendurado no motor de espera que **já existe** (`dispatch_router.py:1614` abre · `handoff_watchdog.py:704` vence · `o_fim_do_atendimento.py:736,748` resolve), com um `scope` novo e **nenhuma fila nova**; **dois relógios** (fila × humano sumido, com `heartbeat < timeout`); **o encerramento por "falta de contato"** reconhecido (📊 10 eventos no banco, 0 casam a regex de hoje — ⚠️ *"falta de interação"* é OUTRA frase e **já casa**); **`work_events` com linhas `agente.*`** (📊 hoje 0 de 45.672) |
 | **E · acervo** | azul e porto consertadas; homônimos medidos; corpus, régua, inventário e roteiro regenerados; a frase vencida do `medir_rota.py` removida; o teste do Sentinela passa a chamar o motor |
 
 ⛔ **Nenhum motor paralelo** (CLAUDE.md §5). O parser de menu, a tabela de fronteiras, o campo de silêncio de 60 s, o registro de eventos, o watchdog e a régua **já existem** — a §3.1 da proposta lista cada um por arquivo. Escrever um segundo é defeito, não entrega.
@@ -193,7 +195,7 @@ A saída real do `push` vai **colada** no relatório, com o SHA remoto conferido
 **No fim, entregue:**
 
 1. O que mudou para quem aciona, em língua de gente.
-2. SPEC definitiva, relatório com o card e a telemetria de cinco linhas, SHAs, e migration com VERIFY/ROLLBACK **se** houver (a previsão é **nenhuma**).
+2. SPEC definitiva, relatório com o card e a telemetria de cinco linhas, SHAs, e migration com VERIFY/ROLLBACK **se** houver (a previsão é **nenhuma**). 🔴 **E a contagem de guardas MEDIDA** (`ls tests/test_*.py | wc -l` antes e depois): a §10 da proposta declara **13** linhas para um teto de **12** — funda duas, ou entregue 13 com a justificação escrita. ⛔ Não chame 13 de 12.
 3. Quais gates passaram, quais dependem de ação física, e o que **não** foi comprovado.
 4. Estado separado: **implementado / na main / implantado / canário técnico / aceite das pilotos / ativação operacional**. ⛔ `main` verde não é produção.
 5. A declaração explícita de que **nenhum motor paralelo foi criado**, com a lista da §3.1 da proposta conferida item a item.

@@ -86,7 +86,7 @@ Medidos em 13/09 sobre `backend/tests/corpus/telas_reais/` (16 arquivos, 📊 4.
    (`zonas_do_acervo.FRONTEIRAS` / `AVISO_DE_ESPERA`), §8.1.
 ```
 
-✅ **O que se confirmou, e vale como alvo:** *"Vou transferir seu caso para um especialista"* existe **literal, 42 vezes** (allianz-residencial 31, allianz-auto 11); e o menu das três opções existe **16 vezes** (15 sessões na allianz-residencial + 1 na allianz-auto) — mas **com uma redação que importa**:
+✅ **O que se confirmou, e vale como alvo:** *"Vou transferir seu caso para um especialista"* — 📊 **banco 234 · corpus 42** (allianz-residencial 31, allianz-auto 11); e *"qual seguro deseja utilizar"* — 📊 **banco 114 · corpus 16** (15 sessões na allianz-residencial + 1 na allianz-auto). ⚠️ **A distância entre os dois números de cada linha é exatamente o corpus congelado em 21/08** — e é por isso que o BLOCO 0-bis vem antes de tudo. A redação do menu importa:
 
 ```
 Qual seguro deseja utilizar?
@@ -375,12 +375,22 @@ python scripts/roteiro_de_coleta.py --markdown
    "não respondeu" mente. O relatório diz quantas do 10/09 caem nisso
 ```
 
-**E duas coisas que o corpus regenerado precisa conter, ou o bloco não fechou:**
+**GATE 0-bis — e ele é por identidade, não por contagem.** 📊 Hoje: `max(wa_timestamp)` do corpus = **2026-08-21**, enquanto o banco tem **819 eventos em setembro**, o último em **2026-09-12**. Um `grep -c '2026-09' > 0` passaria com **uma** tela de qualquer dia e de qualquer seguradora — e o gate desta SPEC é uma sessão específica. Então:
 
-1. a sessão Allianz de **10/09** (a do `"residência"`), em `allianz-residencial.jsonl`;
-2. a frase de encerramento de setembro medida no item 7 do BLOCO 0 — se ela **não** entrar no corpus, a âncora do bloco D não tem como ser guardada offline, e isso vai escrito como limitação, não escondido.
+```
+① a SESSÃO DE 10/09 ESTÁ NO CORPUS, PELO ID          ⛔ não "há telas de setembro"
+   o `session_id` (prefixo de 8 caracteres) da sessão do "residência" aparece em
+   `allianz-residencial.jsonl`, e o relatório cita o prefixo
+② ≥ 1 ocorrência de "falta de contato" no corpus     ⛔ é a frase do §8.5, e sem ela
+   grep -ic "falta de contato" tests/corpus/telas_reais/*.jsonl        GD-2 não roda offline
+③ `max(wa_timestamp)` do corpus alcança setembro     📊 hoje 2026-08-21; o banco vai a 2026-09-12
+④ LINHA-DE-BASE-DE-ROTAS.json COMMITADA              📊 hoje não existe nenhuma
+⑤ INDICE.md cobre os 16 arquivos                     📊 hoje cobre 1 (sobrescrito por
+                                                        uma geração --seguradora bradesco)
+⑥ `medir_rota.py --comparar-com` contra a base       sai 0
+```
 
-**GATE 0-bis:** (1) `grep -c '2026-09' backend/tests/corpus/telas_reais/*.jsonl` > 0 na allianz; (2) `LINHA-DE-BASE-DE-ROTAS.json` commitado; (3) `INDICE.md` do corpus cobre os **16** arquivos — 📊 hoje cobre **1** (foi sobrescrito por uma geração `--seguradora bradesco`, carimbo 23/08); (4) `medir_rota.py --comparar-com` roda contra a base e sai **0**.
+⚠️ Se ① ou ② não entrarem no corpus depois da regeneração, **isso vai escrito como limitação nomeada** — e o gate correspondente fica **não comprovado**, nunca "verde por aproximação".
 
 ⚠️ **Uma assimetria achada e registrada:** 📊 existem `tokio-residencial.jsonl` e `tokio-condominio.jsonl` (59 telas, 6 sessões) e **`rotas()` não produz nenhuma rota tokio residencial/condomínio** — corpus que a régua nunca mede. É **pendência**, não blocker (não muda byte para o segurado hoje), e entra em `PENDENCIAS.md` com o número novo.
 
@@ -649,8 +659,10 @@ dispatch_watchdog.py:575  cutucada — 🔴 esta vai para a SEGURADORA, não par
 # corridor_playbooks.py — exemplo no allianz-residencial
 {"step": "transferencia_ao_especialista",
  "anchor": r"vou transferir seu caso para um especialista",
- # 📊 98 sessões (zonas_do_acervo.FRONTEIRAS["allianz"]) · 42 ocorrências literais no
- #    corpus de hoje: allianz-residencial 31, allianz-auto 11 (grep -ic, 13/09)
+ # 📊 98 sessões (zonas_do_acervo.FRONTEIRAS["allianz"], medido em 21/08)
+ # 📊 BANCO, 13/09: 234 eventos  ·  📊 CORPUS, 13/09: 42 (allianz-residencial 31 + auto 11)
+ # 🔴 os dois números ficam: 234 é o que existe, 42 é o que o guarda offline alcança —
+ #    a diferença É o corpus congelado em 21/08, e ela some depois do BLOCO 0-bis
  "reply": "", "noop": True, "enters_human_phase": True,
  "notes": "âncora medida em zonas_do_acervo.FRONTEIRAS['allianz']"}
 ```
@@ -937,7 +949,7 @@ A regeneração em si **subiu para o BLOCO 0-bis** (§4.1), porque os gates de A
 
 ---
 
-## 10. GUARDAS E MUTAÇÕES — doze, e nem um a mais (D-PILOTO-14)
+## 10. GUARDAS E MUTAÇÕES — treze declarados, teto de doze (D-PILOTO-14)
 
 > Regra de admissão, do CLAUDE.md §9.3–§9.5: **todo guarda chama o MOTOR e lê o ACERVO**. Guarda que roda regex por fora, ou que reimplementa a regra, não entra. E **todo guarda vem com a mutação que o deixa vermelho** — um guarda que não consegue falhar não guarda nada.
 
@@ -957,7 +969,19 @@ A regeneração em si **subiu para o BLOCO 0-bis** (§4.1), porque os gates de A
 | **GD-3** | os dois relógios existem, e o heartbeat é menor que o teto | fila 15 min → **nenhuma** cutucada; humano falou e sumiu 11 min → cutucada; e `HUMAN_NUDGE_S < FILA_ALERTA_S` | fundir os relógios → vermelho nos dois sentidos |
 | **GD-4** | o agente deixa rastro | ≥ 1 linha `agente.cerebro\|sentinela\|vigia` por sessão que chamou o Cérebro | remover o `registrar_ato_do_agente` de `:2967` → vermelho |
 
-📊 São **13 linhas** na tabela porque GA-3 e GB-3 cabem dentro dos arquivos de GA-2 e GB-1 — **12 arquivos de guarda novos, no máximo**, e o relatório traz a contagem real. Se passar de 12, corta-se o de menor valor marginal e registra-se qual e por quê (§9.1 do protocolo).
+🔴 **São TREZE linhas, e chamá-las de doze seria o defeito que esta SPEC existe para matar.** O teto da D-PILOTO-14 é de **guardas**, e a tabela tem 13. Duas saídas honestas, e o executor escolhe **uma**, com a nota registrada:
+
+```
+(a) FUNDIR duas linhas num guarda só — as candidatas naturais são GA-2+GA-3
+    (as duas afirmam coisas sobre `resolver_tecla` na mesma tela) e GB-1+GB-3
+    (as duas sobre o mesmo reparo). Fundidas: 11 ou 12 guardas
+(b) ENTREGAR 13 e registrar em CHANGE-ADDENDA por que o 13º valia mais que o teto
+⛔ o que NÃO se faz é contar 13 e escrever "12"
+```
+
+**A contagem vai medida, não afirmada.** O relatório traz `ls backend/tests/test_*.py | wc -l` **antes e depois**, e a diferença é o número de guardas novos — é a régua do §0.4 do protocolo aplicada ao próprio teto.
+
+⚠️ **E GT tem uma condição de promoção:** ele mora **dentro de GC-3**; se GC-3 passar de **200 linhas**, GT vira arquivo próprio (e a conta acima refaz-se). Um guarda de isolamento multi-tenant escondido no fim de um arquivo de 400 linhas é um guarda que ninguém relê.
 
 **Onde a mutação roda:** worktree próprio ou lock exclusivo, restaurando **por cópia**, nunca `git checkout` (§10 do protocolo). ⚠️ E a lição da EXTRA-001: *a suíte restaura arquivos por cópia* — o orquestrador **não** roda a bateria inteira enquanto um juiz muta. `backend/scripts/verificar_mutacoes.py` (293 linhas) já executa mutações contra `test_a_regua_nao_tem_furo.py` **e exige vermelho**: é o padrão a copiar, não a reinventar.
 
@@ -1184,7 +1208,9 @@ A SPEC está concluída quando **todos** os itens abaixo forem verdadeiros, cada
 □  D · âncora positiva; needs_human reentra; pergunta ao segurado e volta; dois relógios;
       insurer_closed reconhece a Allianz; work_events com linhas `agente.*`
 □  E · azul e porto consertadas; homônimos medidos; corpus, régua, inventário e roteiro regenerados
-□  os 12 guardas verdes, e cada MUTAÇÃO demonstrada VERMELHA em subprocesso nomeado
+□  os guardas verdes, e cada MUTAÇÃO demonstrada VERMELHA em subprocesso nomeado
+□  a CONTAGEM de guardas novos medida (`ls tests/test_*.py | wc -l` antes e depois), e a
+   escolha registrada: fundiu duas linhas, ou entregou 13 com a justificativa (§10)
 □  GT · dois tenants, mesma seguradora, uma em pausa: nada atravessa (CLAUDE.md §7)
 □  régua `medir_rota.py --todas --com-espelho` sem regressão contra a linha de base
 □  replay Allianz 10/09 → "1" · mutação "residência" vermelha
