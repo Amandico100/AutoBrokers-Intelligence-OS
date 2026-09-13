@@ -123,8 +123,12 @@ número**, os gates e a mutação de cada gate, e as pendências **por número**
    segurado).
 3. **BLOCO 0 — converter medindo** (§4 da proposta). Reabra **cada** `arquivo:linha` do research pack. Divergiu?
    corrija na SPEC definitiva **e anote a divergência**. O seu número vence o do documento.
-4. 🔴 **A primeira consulta do BLOCO 0** é esta: `tool_invocations` guarda `tool_args` **cru** hoje? Se guardar,
-   é **P1 de segurança** e a drenagem vem antes da funcionalidade.
+4. **Duas conferências curtas no começo do BLOCO 0** — as duas já têm resposta provável medida no código, e
+   você as **confirma**, não as investiga do zero:
+   (a) `SELECT input_summary FROM tool_invocations LIMIT 5` → o escritor implantado é o de
+   `invocation_recorder.py:55-60,111-128` (omite campo sensível por nome)? Se **não** for, aí sim é P1.
+   (b) as chaves de cache de `infocap_connector.py:3365` e `policy_document_evidence_service.py:126-129` já têm
+   `company_id` (medido) — o que falta é `connection_id`. **Não trate `company_id` como incógnita.**
 5. **Meça o ELO, não duas pontas** (protocolo §0.3): a afirmação-título é *"a resposta vem errada PORQUE a porta
    é um cano"*. Meça A (as respostas erradas), meça B (a porta devolve o dict cru) e **meça que B chega em A** —
    rodando o motor sobre o acervo e mostrando `policy_status` cru virando "ativa".
@@ -158,8 +162,18 @@ número**, os gates e a mutação de cada gate, e as pendências **por número**
    escolha entre duas vigentes é legítima.
 6. P-PILOTO-18 diz que o chat não registra tool call. **Refute com `arquivo:linha`** e explique por que
    implementar a pendência como está escrita criaria motor paralelo.
-7. O piso de 8192 protege todo mundo que conversa? **Conte os papéis da tupla** e diga qual falta — e para quem
-   isso muda um byte.
+7. O piso de 8192 protege todo mundo que conversa? **Conte os papéis da tupla** e diga qual falta. 🔴 **E depois
+   conte quantos agentes desse papel existem hoje na base** — o achado é BLOCKER ou latente? Justifique pelo
+   teste do produto (protocolo §2).
+7b. *"Basta o guarda exigir `grep -i 'infocap'` = 0 em `core/prompts.py`."* Quantas ocorrências são **prosa** e
+    quantas são o **nome registrado da ferramenta**? O que a segunda exigiria, e o identificador chega ao
+    usuário? Cite a linha que responde isso.
+7c. `vehicle()` está no `Protocol` da porta? Mostre o contrato, mostre o que faz o papel dele hoje, e diga o que
+    um adaptador novo sem `vehicle` responderia ao segurado.
+7d. Filtrar vigência na porta sobre `matches` resolve? Diga o que acontece com um cliente de **12 apólices** cuja
+    única vigente está na **posição 11**, e de onde `historico_oculto` tem de vir.
+7e. Quantos módulos chamam a porta hoje, e **em qual diretório está o que a fronteira não previa**? Qual SPEC é
+    dona dele?
 8. `agents.llm_max_tokens` é o único lugar do default 2000? Conte os lugares, com caminho e linha.
 9. `policy_status` da fonte diz se a apólice está vigente? Cite a docstring que diz o contrário e a **data do
    bug** que a originou.
@@ -189,14 +203,16 @@ proibição de linhas operacionais permanecem inequívocas.
 | **Dois adaptadores** | `InfoCapProvider` (envolve o conector, não o reescreve) e `PdfOnlyProvider` (mínimo, e é ele que prova que o contrato é contrato) |
 | **Reconciliação** | pura, por rótulo normalizado, **mostra as duas** quando diverge, com o **contador de prêmio** acendendo o sinal de cadastro incompleto |
 | **Vigência e ramo** | filtrados **na porta**, antes de `ambiguous_policy`; `auto_selected_reason` em português; `historico_oculto: N`; ramo de ficha + 3 últimas humanas, **para todos os papéis** |
-| **Briefing e guarda** | listar apólice deixa de ser o padrão; **listar cobertura continua sendo**; `CORE_BASE_PROMPT` ganha a regra; zero "InfoCap" em `core/prompts.py` |
+| **Briefing e guarda** | listar apólice deixa de ser o padrão; **listar cobertura continua sendo** (`infocap_tool.py:465` FICA, `:467` SAI); `CORE_BASE_PROMPT` ganha a regra; **zero menção em PROSA** a `InfoCap` em `core/prompts.py` (hoje 8 linhas/10 ocorrências), com **allowlist escrita** do identificador `infocap_policy_lookup` |
+| **O contrato inteiro** | 8 membros: as 5 novas **+ `lookup`/`detail`/`vehicle` como DEPRECIADOS**, porque os 8 pontos de chamada de hoje os usam — e `billing_collection.py:797` é da **EXTRA-001.6**, que corre em paralelo. Nenhum `hasattr(provider, …)` sobra como contrato |
 | **PDF** | lido **sempre** que a pergunta é de apólice, com **linha de controle** provando que a não-apólice não dispara |
 | **Contexto e tokens** | teto declarado no bloco recuperado, pergunta repetida **depois** dele, `llm_max_tokens` corrigido no banco e nos defaults, `insured_external` no piso |
 | **Rastro** | a chamada de ferramenta do turno auditável **por junção**, sem segundo registro, **sem PII** |
 | **Provas** | 12 guardas + o canônico de isolamento, cada um **vermelho** na sua mutação, em cópia, em subprocesso |
 
-🔴 **Não crie:** segunda porta de apólice, segundo catálogo de seguradoras, segundo caminho de leitura
-documental, segundo registro de tool call, runtime/scheduler/RAG/memória paralelos (CLAUDE.md §5).
+🔴 **Não crie:** segunda porta de apólice (`policy_data_provider.py` existe), segundo catálogo de seguradoras
+(`susep_ses_provider.coenti_de:258` / `cogrupo_de:233` existem), segundo caminho de leitura documental, segundo
+registro de tool call (`tool_invocations` existe), runtime/scheduler/RAG/memória paralelos (CLAUDE.md §5).
 
 ---
 

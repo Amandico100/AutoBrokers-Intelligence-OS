@@ -1517,7 +1517,8 @@ A SPEC está concluída quando **todas** as linhas abaixo forem verdadeiras, cad
 10. Migration aplicada, VERIFY colado (**8 de 8 em 8192**), ROLLBACK exercitado, `MANIFEST.md` atualizado, e os
     **quatro defaults de 2000** (📊 `agents`, `companies`, `agent_config.py:133`, `models/agent.py:19`) tratados
     ou registrados com número.
-11. `piso_de_saida("insured_external", 1200)` devolve **8192** — o segurado deixa de ter resposta cortada.
+11. `piso_de_saida("insured_external", 1200)` devolve **8192** — 📊 defeito **latente** (zero instâncias
+    vivas medidas em 13/09), fechado antes de existir vítima.
 12. A chamada de ferramenta do turno é **auditável por junção**, sem segundo registro, **sem PII**, e o varredor
     não acha nada.
 13. Turno do tamanho medido dos dois piores do acervo **responde a pergunta**.
