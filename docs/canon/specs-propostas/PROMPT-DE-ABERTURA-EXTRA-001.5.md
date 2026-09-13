@@ -104,14 +104,15 @@ gates e a mutação de cada gate, e as pendências **por número**. Os modelos v
    aberta). Recalcule RISCO e SUPERFÍCIE e **resolva por escrito a divergência de marcha da §0.5**.
 3. **BLOCO 0 — converter medindo** (§4 da proposta). Reabra **cada** `arquivo:linha` do research pack §1 e **rerode
    as 7 medições do §2**. Divergiu? corrija na SPEC definitiva **e anote**. O seu número vence.
-4. 🔴 **A primeira prova do BLOCO 0 é um comando, não uma leitura:** rode o extrator documental sobre um PDF de
-   apólice do acervo **com** e **sem** `susep` em `_BOILERPLATE_RE` (`policy_document_evidence_service.py:208`) e
-   conte os processos recuperados. 📊 Esperado: **0 com o filtro, ≥1 sem**. É isso que transforma a onda 2 de
-   intenção em conserto.
+4. 🔴 **A primeira prova do BLOCO 0 é um comando, não uma leitura:** rode
+   `extrair_susep(build_document_plain_text(pages))` sobre um PDF de apólice do acervo. **Voltou o processo?** então
+   `_BOILERPLATE_RE` **não** era o bloqueio (ele só governa fragmentos de evidência), §7.2 ① fica opcional, e a linha
+   de controle de M-C2 vai para o caminho realmente usado. **Não voltou?** aí sim meça com e sem `susep` no filtro.
+   🔴 **Este passo decide o desenho da onda 2 — não pule para o conserto.**
 5. **Meça o ELO, não duas pontas** (protocolo §0.3): a afirmação-título é *"o agente responde genérico PORQUE não há
    plano estruturado"*. Meça A (as respostas genéricas do acervo), meça B (0 linhas de plano em qualquer tabela) e
    **meça que B chega em A** — rodando a Skill **atual** sobre 10 perguntas reais de "carro reserva" e mostrando
-   `assistance_policy.py:28` devolvendo os mesmos três serviços residenciais.
+   `assistance_policy.py:28` devolvendo os mesmos três serviços residenciais — e confirme que a cadeia viva é `graph.py:447-449` → `infocap_tool.py:319` → `policy_answer_composer.py:376`.
 6. **Converta em SPEC definitiva** com: BLOCO 0, as 5 unidades, gates e **MUTAÇÃO por bloco**, a seção "O QUE O
    ESTADO DA ARTE FAZ, E O QUE MODELAMOS" com as **3 URLs reabertas e a data**, "O QUE SAIU E QUANDO VOLTA",
    pendências por número e a caixa do Founder.
@@ -129,17 +130,18 @@ gates e a mutação de cada gate, e as pendências **por número**. Os modelos v
 > mudança na árvore, **substitua por outra falsa medida** antes de enviar.
 
 1. 🔴 **AFIRMAÇÃO DELIBERADAMENTE FALSA DO EXERCÍCIO, assinada pelo orquestrador:** *"A ligação apólice → condições
-   gerais pelo processo SUSEP já casa hoje; a SPEC só precisa consumi-la."* Refute com `grep` e mostre **a linha que
-   bloqueia o caminho**, com o comando que a prova.
+   gerais pelo processo SUSEP não funciona porque `susep` está no `_BOILERPLATE_RE`: é só tirar de lá."* Refute
+   mostrando **onde `is_boilerplate_fragment` é de fato chamado** e **por onde o texto integral passa** — e diga qual
+   comando decide a questão (é o passo 5 do BLOCO 0).
 2. 🔴 **AFIRMAÇÃO DELIBERADAMENTE FALSA DO EXERCÍCIO, assinada pelo orquestrador:** *"O corpus de condições gerais
    mora na tabela `documents`, na coluna `doc_kind`; e não existe fila de curadoria, por isso a SPEC cria
    `curation_status`."* Refute as **duas** metades, com a consulta e com `arquivo:linha`.
 3. O pedaço indexado do corpus carrega página? Diga onde o corte acontece e **de onde a extração vai tirar a
-   página**, com caminho. E diga o que o docling faz com a paginação no caminho da apólice.
-4. `insurer_key` é uma chave só? **Conte as tabelas, conte as constraints**, e mostre as duas chaves que já
-   discordam — com o número de documentos que sumiria em silêncio.
-5. Apagar `assistance_policy.py` é o conserto? Diga **o que mais cai junto** e por que a regra do guarda muda em vez
-   de morrer.
+   página**, com caminho. E diga **quantos dos 56 documentos têm `storage_ref`** — sem esse número a onda 1 não abre.
+4. A SPEC precisa escrever um normalizador de seguradora? **Ache o que já existe**, diga **quantos chamadores** tem,
+   e explique a diferença entre `para="corredor"` e `para="conhecimento"` — com o exemplo que o docstring dá.
+5. Apagar `assistance_policy.py` é o conserto? Diga **o que mais cai junto**, **qual é a cadeia viva de três arquivos
+   que responde "tem carro reserva?" hoje**, e por que registrar uma tool nova ao lado dela seria motor paralelo.
 6. *"Não sabemos ainda"* e *"a fonte não retornou"* são a mesma coisa para o usuário? Explique a diferença **e o que
    cada uma faz na tela e na contagem**.
 7. A condição geral **atual** da seguradora serve para responder sobre uma apólice de 2023? Cite a frase do próprio

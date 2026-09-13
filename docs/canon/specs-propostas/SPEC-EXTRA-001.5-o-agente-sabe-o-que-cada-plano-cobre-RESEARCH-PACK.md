@@ -17,14 +17,17 @@ Leitura de código não é prova de funcionamento. 🔴 **O número do executor 
 |---|---|---|
 | C01 | `backend/app/providers/policy_data_provider.py:41-52` | `class PolicyDataProvider(Protocol)` — só `provider_key`, `lookup(**kwargs) -> Dict`, `detail(**kwargs) -> Dict`. ⚠️ `vehicle` existe na implementação (`:112`) e **não** no Protocol |
 | C02 | `policy_data_provider.py:55,58,137,144,149` | `InfocapPolicyDataProvider` (**única** implementação) · `register_policy_data_provider` · `get_policy_data_provider(provider_key="infocap")` · registro no import. Registry **em memória**, sem env, sem tabela |
-| C04 | `backend/app/services/assistance_policy.py:28` | `STANDARD_SERVICES = ("eletricista","chaveiro","hidraulica_encanador")` — **142 linhas no arquivo inteiro**; nenhuma seguradora, produto ou nível; "carro reserva" **não aparece** |
+| C04 | `backend/app/services/assistance_policy.py:28` | `STANDARD_SERVICES = ("eletricista","chaveiro","hidraulica_encanador")` — **141 linhas no arquivo inteiro**; nenhuma seguradora, produto ou nível; "carro reserva" **não aparece** |
 | C05 | `assistance_policy.py:4-6` | *"migração para tabela `platform_policies` com overrides por seguradora/produto/plano/corretora está prevista para quando o primeiro override existir"* |
 | C06 | `assistance_policy.py:47-58` | `_is_residential` — gatilho por **substring** `"resid"` (`:54`) / token `"resi"` (`:56`) |
 | C07 | `assistance_policy.py:123` | `locator_hash = None` fixo em `policy_rule_facts` — o fato de regra **perde o vínculo com a apólice** |
 | C08 | `backend/app/services/policy_answer_composer.py:24` | **único** importador de `assistance_policy` em produção |
 | C09 | `backend/app/agents/nodes.py:307-317` | o guarda anula a resposta final se `assistance_policy_applied` está no contrato e o texto não contém "eletricista" **e** "chaveiro" **e** ("hidraulica"\|"hidráulica"\|"encanador") |
 | C10 | `nodes.py:297-303` | o guarda **já** rejeita página citada que não está no texto determinístico — o padrão que M-A3 copia |
-| C11 | `backend/app/services/policy_document_evidence_service.py:204-209` | 🔴 `_BOILERPLATE_RE` contém **`susep`**: toda linha do PDF da apólice que menciona SUSEP é descartada |
+| C11 | `policy_document_evidence_service.py:204-209` | `_BOILERPLATE_RE` contém **`susep`** — ⚠️ **mas veja C11b antes de concluir que isso bloqueia o elo** |
+| **C11b** | `policy_document_evidence_service.py:238` (`is_boilerplate_fragment`), usado só em `:278`, `:291`, `:307`, `:340` e `policy_facts.py:163` | 🔴 **o filtro governa apenas FRAGMENTOS de evidência.** O **texto integral** (`build_document_plain_text:163`, entregue em `:781` como `document_text`) **não passa por ele** — e `extrair_susep` opera sobre texto. **A ponte não está demolida por um filtro**; falta o consumidor |
+| **C11c** | `backend/app/services/corridor_playbooks.py:8225` | `normalize_insurer_key(insurer, para="corredor"\|"conhecimento")` — **a chave canônica EXISTE**. `_INSURER_ALIASES` (`:8155`) trata `tokio`/`tokio marine`/`tokio_marine`/`tokyo`; `_OPERADO_POR` (`:8214`, `{"itau":"porto"}`) só é aplicado com `para="corredor"`; o docstring `:8226-8231` explica por quê: *"uma carta do Itaú fica sob Itaú, senão o agente responde regra da Porto a segurado do Itaú"*. 📊 **14 chamadores** (25 ocorrências com definição e testes) |
+| **C11d** | `backend/app/agents/tools/portal_params.py:90` | `normalize_insurer` — o nome **como o PORTAL conhece**. É outra coisa, e **não serve** para a chave de conhecimento |
 | C12 | `policy_document_evidence_service.py:230-318` | `_ASSISTANCE_HEADER_RE = assist[êe]ncia\s*24\s*h`; emite `kind="assistance_plan"` (`:286`) e `kind="assistance_services"` (`:302`); `_SERVICE_TERM_RE` (`:231-235`) inclui `guincho` |
 | C13 | `policy_document_evidence_service.py:387-407` | `_base_item` grava `page_number` e `chunk_id="{doc}:p{n}:{i}"` — **o caminho da apólice TEM página** |
 | C14 | `policy_document_evidence_service.py:539-549` | 🔴 o fallback docling devolve **uma única página, `page_number: 1`**, com o markdown inteiro dentro |
@@ -159,6 +162,10 @@ portals (15 valores) ...................... inclui `tokio_marine`
 knowledge_cards (20 valores) .............. inclui `tokio`, e axa · chubb · essor · itau · unimed ·
                                             youse, que não existem em portals
 ```
+⚠️ **Isto NÃO significa que falte um normalizador** — ele existe (C11c) e já resolve `tokio` ↔ `tokio_marine`. O que
+falta é o **banco** conhecer a chave (zero constraints) e a base nova **gravar já normalizado**, com
+`para="conhecimento"`. 🔴 **Criar um `chave_canonica(valor)` de um argumento seria o terceiro normalizador e
+colapsaria a distinção corredor × conhecimento** (CLAUDE.md §5).
 
 ### M4 · Zero plano estruturado
 
@@ -228,7 +235,7 @@ document_chunks / insurer_assistance_plans / global_knowledge ... não existem
 |---|---|---|---|
 | D1 | §3: *"hoje **10 de 61** seguradoras com CG"* | **8** por chave própria (M1); **6** quando a chave tem de casar com o catálogo (M2) | o **§1.3 do mesmo documento já dizia 8**. O "10" é o número frouxo |
 | D2 | §1.3: *"`knowledge_cards`: **857**, **39** de assistência, **4** nomeiam seguradora"* | **17.995** · **1.535** · **20** chaves (M5) | número de um recorte antigo; o denominador de hoje é outro |
-| D3 | §1.3 e §3: *"a ligação apólice → CG pelo processo SUSEP **já casa hoje**"* | 🔴 **não existe código que case** — e o caminho está **bloqueado** (C11) | a maior correção; vira a onda 2 inteira, com linha de controle própria (M-C2) |
+| D3 | §1.3 e §3: *"a ligação apólice → CG pelo processo SUSEP **já casa hoje**"* | 🔴 **não existe código que case**: o extrator existe (C22) e o corpus tem o campo (190/194), mas **não há consumidor** | vira a onda 2, com a linha de controle **no caminho realmente usado** (M-C2) |
 
 **Comandos que sustentam D3:**
 ```bash
@@ -236,11 +243,13 @@ grep -rn 'eq("susep_process"\|by_susep\|por_susep' backend/ --include=*.py      
 grep -rni "susep" backend/app/services/policy_facts.py backend/app/services/assistance_policy.py \
      backend/app/services/policy_answer_composer.py backend/app/providers/policy_data_provider.py \
      backend/app/agents/tools/infocap_tool.py                                     # VAZIO
-sed -n '204,209p' backend/app/services/policy_document_evidence_service.py        # `susep` no _BOILERPLATE_RE
 ```
+🔴 **O que NÃO sustenta D3, e a primeira versão desta proposta afirmava:** que `susep` em `_BOILERPLATE_RE`
+bloqueava o elo. **Não bloqueia** — C11b. A medição que decide está no BLOCO 0 passo 5:
+`extrair_susep(build_document_plain_text(pages))` sobre um PDF real. **Ainda não rodada.**
 
-⚠️ Uma quarta imprecisão, do **pacote do redator** (não do diagnóstico): *"o corpus de condições gerais —
-`documents`/`doc_kind`"*. **`doc_kind` não existe em `documents`** (M7).
+⚠️ Duas imprecisões do **pacote do redator** (não do diagnóstico): *"o corpus — `documents`/`doc_kind`"* (**`doc_kind`
+não existe em `documents`**, M7) e *"localize o código que já casa [apólice ↔ CG]"* (**não existe**, D3).
 
 ---
 
@@ -272,8 +281,10 @@ pytest backend/tests/test_a_cobertura_tem_lastro_no_acervo.py \
    desenhou. **Não editar `policy_data_provider.py` aqui.**
 2. **Quantas condições gerais nomeiam níveis de plano.** Sabemos que 56 documentos são dos ramos dos pilotos; não
    sabemos quantos separam "Essencial / Completo / VIP". **É o número que decide o tamanho real da onda 1.**
-3. **Se as fontes arquivadas no MinIO estão completas** para os 56 — `_guardar_a_fonte` existe; a cobertura dele não
-   foi medida.
+3. 🔴 **Se as fontes arquivadas no MinIO existem para os 56** — `_guardar_a_fonte` (`insurance_corpus.py:1608`)
+   existe, mas a cobertura **nunca foi medida**, e 📊 o comentário desse mesmo ponto registra `storage_ref`
+   preenchido em **0 de 29** numa medição anterior. **A onda 1 e o CHECK `pagina NOT NULL` dependem disso**: sem o
+   arquivo não há página que exista. É o passo 8 do BLOCO 0, e pode acrescentar re-arquivamento ao relógio.
 4. **Se `tool_invocations` guarda `tool_args` cru hoje.** Se guardar, é **P1 de segurança** e a drenagem vem antes.
 5. **O peso da carteira hoje**, pela porta — o `placar_das_siglas` é de 04/09 e mede 2025.
 6. **Se P-PILOTO-20 já foi fechada pela 001.1.**
@@ -286,11 +297,16 @@ pytest backend/tests/test_a_cobertura_tem_lastro_no_acervo.py \
 ## 6. Armadilhas que o aquecimento tem de refutar
 
 1. *"O corpus de condições gerais mora em `documents`, e `doc_kind` é coluna de lá."* **Não.** (M7)
-2. *"A ligação apólice → CG pelo processo SUSEP já casa hoje."* **Não casa — e está bloqueada.** (D3, C11)
+2. *"A ligação apólice → CG pelo processo SUSEP já casa hoje."* **Não casa** — falta o consumidor. 🔴 **E a
+   contra-armadilha:** *"está bloqueada porque `susep` está no `_BOILERPLATE_RE`"* também é **falso** — o filtro só
+   governa fragmentos; o texto integral não passa por ele. (D3, C11b)
 3. *"O pedaço indexado tem página, então a citação sai de graça."* **Não tem.** (C26, C43)
 4. *"Criar `curation_status` é necessário porque não há fila de curadoria."* **Há.** (C29)
-5. *"`insurer_key` é uma chave só, é só usar."* **São quatro, e duas já discordam.** (M3, M2)
-6. *"Apagar `assistance_policy.py` é o conserto."* Apagar derruba o guarda de `nodes.py:307` junto. (C09)
+5. *"Não existe normalizador de seguradora, então a SPEC escreve um."* 🔴 **Existe** —
+   `normalize_insurer_key(..., para="conhecimento")`, 14 chamadores. Escrever outro é o terceiro. (C11c, C11d)
+6. *"Apagar `assistance_policy.py` é o conserto."* Apagar derruba o guarda de `nodes.py:307` junto — e o caminho vivo
+   é `graph.py:447` → `infocap_tool.py:319` → `policy_answer_composer.py:376`: **uma tool nova ao lado seria a
+   segunda porta para a mesma pergunta.** (C09)
 7. *"Basta ligar `citations: true` na API e a base fica certa."* A garantia é de **ponteiro válido**, não de
    afirmação correta. (§15 ② da proposta)
 8. *"A condição geral atual da seguradora serve para qualquer apólice dela."* O próprio código avisa que não. (C32)

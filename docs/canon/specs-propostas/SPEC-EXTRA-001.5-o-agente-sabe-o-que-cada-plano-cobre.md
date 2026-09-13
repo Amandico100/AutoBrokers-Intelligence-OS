@@ -41,7 +41,7 @@ consultas 📊 (M1–M7) vivem lá; esta proposta as cita por ID e não as repet
 apólice → CG por SUSEP **já casa hoje**"* → 🔴 **não existe, e está bloqueada** (§0.3 ②).
 
 E o motivo: o agente **misturou Allianz auto com residencial** e admitiu *"não recuperei o detalhe fino do plano
-VIP"*. 📊 O que ele tem hoje é `assistance_policy.py` — **142 linhas, três serviços residenciais fixos** (`:28`),
+VIP"*. 📊 O que ele tem hoje é `assistance_policy.py` — **141 linhas, três serviços residenciais fixos** (`:28`),
 **sem seguradora, sem produto, sem nível; "carro reserva" não aparece no arquivo**.
 
 ### 0.2 Decisões do Founder já incorporadas — são lei
@@ -63,18 +63,24 @@ mesmo para a Resulta, a AutoFleet e quem entrar amanhã. §3.3 prova que isso n�
 fila de curadoria que a proposta pediu (`curation_status`) JÁ EXISTE** (C29). Criar outra seria **motor paralelo**
 (CLAUDE.md §5): a SPEC pendura na que existe e acrescenta só a curadoria da **linha extraída** (§5.3).
 
-**② O elo apólice → condição geral não existe, e está ativamente bloqueado.** O extrator existe
-(`insurance_corpus.py:65`) e `susep_process` está em **190 de 194**, mas `grep -rn 'eq("susep_process"' backend/` →
-**vazio**. 🔴 E a única ocorrência de `susep` na camada de apólice é `_BOILERPLATE_RE`
-(`policy_document_evidence_service.py:204-209`): **toda linha do PDF que menciona SUSEP é descartada como entulho** —
-inclusive a do número do processo. A ponte não falta: está **demolida** por um filtro escrito para outro fim. §7.2 a
-reabre, e **M-C2 exige ZERO com o filtro de volta** (CLAUDE.md §9.4).
+**② O elo apólice → condição geral não existe — mas ele NÃO está bloqueado por um filtro.** ⚠️ **Correção da
+primeira versão desta proposta.** O extrator existe (`insurance_corpus.py:65`) e `susep_process` está em **190 de
+194**; falta o consumidor (`grep -rn 'eq("susep_process"' backend/` → **vazio**). É verdade que `susep` está em
+`_BOILERPLATE_RE` (`policy_document_evidence_service.py:204-209`), mas 📊 `is_boilerplate_fragment` só governa
+**fragmentos de evidência** (`:278`, `:291`, `:307`, `:340`, `policy_facts.py:163`): o **texto integral**
+(`build_document_plain_text:163`, entregue em `:781` como `document_text`) **não passa por ele**, e `extrair_susep`
+opera sobre texto. 🔴 Um guarda em cima do filtro mediria acoplamento auto-infligido. **Quem decide é o BLOCO 0
+passo 5** (§4), e §7.2 ① fica condicionado a ele.
 
-**③ Não existe chave canônica de seguradora; existem quatro, e duas já discordam.** 📊 **14 tabelas** têm
-`insurer_key` e **zero constraints** a mencionam. `portals`→`tokio_marine` · `normative_documents` e
-`knowledge_cards`→`tokio` (mais 5 chaves que `portals` não tem) · catálogo→`tokio_marine`. A Tokio tem **25
-documentos** e num casamento canônico **cairia para zero, em silêncio**; a HDI tem **10** e **não está entre as 61
-siglas**. 🔴 Base pendurada em chave que ninguém governa **emudece por digitação**. §5.1 resolve antes do 1º dado.
+**③ A chave canônica EXISTE — o risco é criar a terceira.** ⚠️ **Correção da primeira versão desta proposta.**
+📊 `corridor_playbooks.py:8225` já tem `normalize_insurer_key(insurer, para="corredor"|"conhecimento")`, com
+`_INSURER_ALIASES` (`:8155`) tratando `tokio`/`tokio marine`/`tokio_marine`/`tokyo` e o docstring (`:8226-8231`)
+explicando por que `para="conhecimento"` **não** aplica `_OPERADO_POR` (`:8214`). 📊 **14 chamadores**; mais
+`portal_params.py:90` `normalize_insurer`, que é o nome **como o portal conhece** e não serve aqui. O que continua
+verdade: 📊 **14 tabelas** têm `insurer_key` e **zero constraints** a mencionam; `portals`→`tokio_marine` ×
+`normative_documents`/`knowledge_cards`→`tokio`; a HDI tem **10** documentos e **não está entre as 61 siglas**.
+🔴 **§5.1 pendura na função que existe.** Um `chave_canonica(valor)` de um argumento colapsaria a distinção
+corredor × conhecimento e seria **o terceiro normalizador** (CLAUDE.md §5).
 
 **④ A procedência é gravada e morre na volta — e o corpus não tem página.** `insurance_corpus.py:1125-1171` grava
 `insurer_key`, `doc_kind`, `susep_process`, `effective_from`, `unit_id`, `faceta` no payload;
@@ -109,7 +115,7 @@ TIME ................. investigador+pesquisador (um agente, §10) · desenhista 
 REFERÊNCIA ........... INTERNA: backend/tests/test_a_cobertura_tem_lastro_no_acervo.py (254 linhas) — o
                        guarda que já exige que toda afirmação de COBERTURA aponte uma tela do acervo. É o
                        mesmo formato aplicado à linha da tabela. O juiz abre e compara
-                       EXTERNA: as 3 de §15, reabertas em 13/09/2026
+                       EXTERNA: as 3 de §14, reabertas em 13/09/2026
 GATES ................ GA, GB, GC, GD, GE, G-MIG, G-CANÁRIO + os canônicos
 O ELO ................ "o agente responde genérico PORQUE não há plano estruturado": medir A (respostas
                        genéricas do acervo), medir B (0 linhas de plano) e 🔴 medir que B CHEGA em A —
@@ -181,8 +187,8 @@ a **procedência volta como campo** (§6.5); ⑦ a **tela mínima** (§8); ⑧ a
 |---|---|---|
 | **cotação e renovação** do plano superior | 🔴 outra SPEC. Esta **diz** que o plano superior existe e o que cobre; **quem orça é gente** | EXTRA-003 · 004 |
 | a porta `PolicyDataProvider` e o modelo canônico de apólice | é a **001.1**; 📊 a porta existe (`policy_data_provider.py:41`). A 001.5 **consome, não edita** — dois escritores no mesmo arquivo é o que §3.4 proíbe | EXTRA-001.1 |
-| escolher a apólice certa em uma rodada; coberturas patrimoniais (LMI, franquia, cláusula) | a 001.1 entrega as duas coisas; a 001.5 recebe a apólice escolhida | EXTRA-001.1 |
-| adaptadores Quiver / Agger / Segfy | sem credencial; a base pendura na **chave nossa** e já serve qualquer um | EXTRA-002/008/009 |
+| escolher a apólice certa; coberturas patrimoniais (LMI, franquia, cláusula) | a 001.1 entrega as duas; a 001.5 recebe a apólice escolhida | EXTRA-001.1 |
+| adaptadores Quiver / Agger / Segfy | sem credencial; a base pendura na **chave nossa** | EXTRA-002/008/009 |
 | reescrever o chunker para carregar **página** | tocaria 42.091 pedaços por algo que §7.1 resolve pela fonte arquivada | pendência com número |
 | normalizar `insurer_key` nas 14 tabelas | migração não medida; o módulo resolve no ponto de uso (82 × 40) | pendência com número |
 | `ficha.faltando`, `_TITULOS`, dossiê de sinistro (resto de P-PILOTO-04); rajadas e dossiê ao grupo | 001.2 e 001.3; mesmo arquivo, dois escritores | EXTRA-001.2 / 001.3 |
@@ -205,7 +211,7 @@ a **procedência volta como campo** (§6.5); ⑦ a **tela mínima** (§8); ⑧ a
 | catálogo de seguradoras e ramos | `providers/susep/*.json` · `susep_ses_provider.py:129-212` | **pendura**; §5.1 acrescenta o que falta |
 | a porta da apólice | `policy_data_provider.py:41,55,137,144` | **consome o que a 001.1 entregar**; não edita |
 | plano vindo do documento | `policy_document_evidence_service.py:230-318` | 🔴 **já extrai o bloco de assistência do PDF.** Reusa |
-| regra de assistência residencial | `assistance_policy.py` (142 linhas) | **vira fallback com marca** (§6.4) |
+| regra de assistência residencial | `assistance_policy.py` (141 linhas) | **vira fallback com marca** (§6.4) |
 | guarda de afirmação com lastro · de página citada | `tests/test_a_cobertura_tem_lastro_no_acervo.py` · `nodes.py:297-303` | referência do juiz; **reusa o padrão** |
 | registro de ferramenta do turno | `tool_invocations` · `gateway.py:294` · `nodes.py:784,1057` | grava `origem` pelo que existe; **nenhum segundo registro** |
 
@@ -246,15 +252,27 @@ diz *"o Essencial da HDI tem guincho até 200 km"*; **quem tem esse plano** nunc
    a porta**.
 3. **Reabrir cada `arquivo:linha` do RP §1** e **rerodar as 7 medições do RP §2**. Divergiu? corrigir **e anotar**.
 4. **Medir o casamento de chave** (RP M2/M3): contar os órfãos dos dois lados. É o que decide o tamanho do Bloco A.
-5. 🔴 **Provar a armadilha do `susep` com comando:** rodar o extrator documental sobre um PDF de apólice do acervo
-   **com** e **sem** `susep` em `_BOILERPLATE_RE` e contar os processos recuperados. 📊 Esperado: **0 com, ≥1 sem**.
-6. **Medir o ELO com a ferramenta que vai usar** (CLAUDE.md §9.4): rodar a Skill **atual** sobre 10 perguntas reais
+5. 🔴 **Medir o elo SUSEP no caminho REAL, antes de tocar em filtro nenhum:** rodar
+   `extrair_susep(build_document_plain_text(pages))` sobre um PDF de apólice do acervo. **Voltou o processo?** então
+   `_BOILERPLATE_RE` **não** era o bloqueio (ele só governa fragmentos de evidência), **§7.2 ① é opcional**, e
+   **M-C2 põe a linha de controle no caminho realmente usado**. **Não voltou?** aí sim medir com e sem `susep` no
+   filtro e registrar os dois números. 🔴 **Este passo decide o desenho da onda 2; não pule para o conserto.**
+6. **Medir o caminho vivo da assistência antes de escrever a Skill** (achado de §6.4):
+   `graph.py:447-449` → `infocap_tool.py:319` → `policy_answer_composer.py:376`. **Quem responde hoje "tem carro
+   reserva?" é esse caminho, e ele tem de continuar sendo o único.**
+7. **Medir o ELO com a ferramenta que vai usar** (CLAUDE.md §9.4): rodar a Skill **atual** sobre 10 perguntas reais
    de "carro reserva" e mostrar `assistance_policy.py:28` devolvendo os mesmos três serviços residenciais.
-7. **Ler `MIGRATIONS-AUTHORITY.md` inteiro** antes de qualquer SQL, e ler o DDL **real** de `normative_documents` no
+8. 🔴 **Medir a cobertura do arquivo da fonte, porque a onda 1 e o CHECK de `pagina` dependem dela:**
+   `select count(*) filter (where storage_ref is not null), count(*) from normative_document_versions` restrito aos
+   **56** documentos dos ramos dos pilotos. 📊 O comentário de `insurance_corpus.py:1608` registra **`storage_ref`
+   preenchido em 0 de 29** numa medição anterior, e a cobertura de `_guardar_a_fonte` **nunca foi medida**.
+   **A onda 1 e o CHECK `pagina NOT NULL` só abrem com esse número.** Vier baixo: o BLOCO A re-arquiva as fontes
+   faltantes **antes** de qualquer extração, e isso entra no relógio.
+9. **Ler `MIGRATIONS-AUTHORITY.md` inteiro** antes de qualquer SQL, e ler o DDL **real** de `normative_documents` no
    catálogo do Postgres — 📊 a tabela é **classe SEM_ARQUIVO** (RP C55).
-8. **Linha de base da suíte** (falhas preexistentes nomeadas, uma a uma). 🔴 Conferir se **P-PILOTO-20** já foi
-   fechada pela 001.1 — com aqueles 4 guardas mudos, esta SPEC não fecha.
-9. **Recontar RISCO e SUPERFÍCIE** e escrever o card definitivo, com §0.5 resolvida por escrito.
+10. **Linha de base da suíte** (falhas preexistentes nomeadas, uma a uma). 🔴 Conferir se **P-PILOTO-20** já foi
+    fechada pela 001.1 — com aqueles 4 guardas mudos, esta SPEC não fecha.
+11. **Recontar RISCO e SUPERFÍCIE** e escrever o card definitivo, com §0.5 resolvida por escrito.
 
 **GATE B0:** matriz `premissa → observação nova → comando → decisão`, com **as divergências listadas**. Nenhum achado
 não reproduzido entra como incidente confirmado.
@@ -265,23 +283,39 @@ refuta **com comando**, não com leitura.
 
 ## 5. BLOCO A — A CHAVE E A TABELA
 
-> Arquivo-hub. **UM dono. Primeiro, sozinho.** Arquivos: `backend/app/providers/insurer_catalog.py` (novo, pequeno)
-> · `docs/canon/providers/susep/seguradora-coenti.json` (linhas novas, revisadas) · as duas migrations de §11.
+> Arquivo-hub. **UM dono. Primeiro, sozinho.** Arquivos: `docs/canon/providers/susep/seguradora-coenti.json` e
+> `corridor_playbooks.py:8155` (linhas de alias novas, revisadas) · as duas migrations de §11. ⚠️ **Nenhum módulo
+> normalizador novo** — §5.1.
 
-### 5.1 A chave canônica — governada, antes do primeiro dado
+### 5.1 A chave canônica — pendurar na que existe, nunca criar a terceira
 
-📊 A governança certa já está escrita (`susep_ses_provider.py:165-167`): *"Uma sigla só entra por igualdade de nome
-COMPLETO com o Noenti do SES ou por DECISÃO EXPLÍCITA de gente. Nunca por derivação de string em runtime."* A 001.5
-acrescenta quatro coisas e nada mais:
+🔴 **A 001.5 NÃO escreve um normalizador.** Ela usa o que existe (§0.3 ③):
 
-1. **Um módulo de leitura único** — `insurer_catalog.py` — com `chave_canonica(valor)`, que resolve por **mapa
-   explícito** e devolve a sentinela `UNKNOWN` (**a string, nunca `None`** — o motivo em `susep_ses_provider.py:92-95`).
-2. **As linhas de conciliação que faltam**, listadas com o critério ao lado: `tokio` → `tokio_marine`, e as chaves de
-   `knowledge_cards` ausentes de `portals` (`axa`, `chubb`, `essor`, `itau`, `unimed`, `youse`). 🔴 Uma por uma,
-   revisada por gente.
-3. **`hdi` entra nas siglas**, ou fica registrado por que não entra — 📊 tem 10 documentos e é a seguradora da
+```python
+normalize_insurer_key(insurer, para="conhecimento")   # corridor_playbooks.py:8225
+```
+
+⚠️ **`para="conhecimento"` é obrigatório, e não é detalhe.** `para="corredor"` aplica `_OPERADO_POR` (`:8214`,
+`{"itau": "porto"}`) — por onde se **aciona**. A base desta SPEC diz **de quem é a regra**: uma condição geral do
+Itaú fica sob **Itaú**, senão o agente responde regra da Porto a segurado do Itaú (o docstring `:8226-8231` diz
+exatamente isso). ⚠️ E `portal_params.py:90` `normalize_insurer` é **outra coisa** — o nome como o **portal**
+conhece — e não serve aqui.
+
+O que a 001.5 acrescenta, e só isso:
+
+1. **As linhas de conciliação que faltarem** vão para os JSON versionados (`providers/susep/*.json`) ou para
+   `_INSURER_ALIASES`, com o critério ao lado — 📊 as chaves de `knowledge_cards` ausentes de `portals` (`axa`,
+   `chubb`, `essor`, `itau`, `unimed`, `youse`). 🔴 Uma por uma, revisada por gente; a governança já está escrita
+   (`susep_ses_provider.py:165-167`: *"nunca por derivação de string em runtime"*).
+2. **`hdi` entra nas siglas**, ou fica registrado por que não entra — 📊 tem 10 documentos e é a seguradora da
    apólice de referência da Saionara.
-4. **A tabela nova referencia a chave canônica**; **M-A1** fica vermelho com chave que o catálogo não conhece.
+3. **A tabela nova grava `insurer_key` já normalizado** por essa função; **M-A1** fica vermelho com chave que ela
+   não resolve. O que não resolve sai **`UNKNOWN` listado** (a string, nunca `None` — `susep_ses_provider.py:92-95`).
+
+⚠️ **`backend/app/providers/insurer_catalog.py` só nasce se for CONSOLIDAÇÃO declarada** — isto é, se o executor
+migrar os **14 chamadores** de `normalize_insurer_key` para ele, com a distinção `para=` preservada e um guarda
+provando que ninguém ficou para trás. **Sem isso, é o terceiro normalizador e o Bloco A não o cria** (CLAUDE.md §5).
+A decisão vai escrita no BLOCO 0, com nota.
 
 ⚠️ **O que a 001.5 NÃO faz:** normalizar `insurer_key` nas 14 tabelas existentes (§2, pendência com número).
 
@@ -349,11 +383,13 @@ e ganha `curadoria` + `revisado_por`/`revisado_em`, com a fila na tela (§8). **
 da HDI não é aprovar *"guincho até 200 km"*. Um campo só publicaria 40 linhas que ninguém leu.
 
 **GATE A:** ① as tabelas existem com os CHECKs, e `INSERT` sem `documento_id`, sem `pagina`, com `pagina=0` e
-`curadoria='publicado'` sem revisor são **recusados pelo banco**, com o erro colado; ② `chave_canonica("tokio")` e
-`chave_canonica("tokio_marine")` devolvem **a mesma**; `chave_canonica("xpto")` devolve `UNKNOWN` **com o nome
-listado**; ③ nenhuma coluna `company_id`, varredor de PII = **0**; ④ duas corretoras, a mesma apólice → **a mesma**
+`curadoria='publicado'` sem revisor são **recusados pelo banco**, com o erro colado; ② `normalize_insurer_key("tokio", para="conhecimento")` e
+`normalize_insurer_key("tokio_marine", para="conhecimento")` dão **a mesma** chave, e uma desconhecida sai `UNKNOWN`
+**listado**; ③ nenhuma coluna `company_id`, varredor de PII = **0**; ④ duas corretoras, a mesma apólice → **a mesma**
 resposta.
-**MUTAÇÃO A:** (a) `documento_id`/`pagina` nullable; (b) `pagina=0`; (c) `publicado` com `revisado_por IS NULL`;
+**MUTAÇÃO A:** (a) 🔴 **`servico_tem_fonte` removido** — ⚠️ *tornar a coluna nullable NÃO serve como mutação: com o
+CHECK no lugar o INSERT continua recusado, e o guarda ficaria verde. O `NOT NULL` é **redundância deliberada** ao
+lado do CHECK; quem guarda é o CHECK*; (b) `pagina=0`; (c) `publicado` com `revisado_por IS NULL`;
 (d) `ADD COLUMN company_id`; (e) `limite_valor` sem `limite_unidade`. **As cinco vermelhas.**
 
 ---
@@ -363,11 +399,24 @@ resposta.
 > Arquivos: `backend/app/agents/tools/cobertura_e_assistencia.py` (novo) · `assistance_policy.py` (vira fallback) ·
 > `search_service.py` / `qdrant_service.py` · `nodes.py:307-317`.
 
-**Skill ou tool?** 📊 O caminho de apólice de hoje é **tool** (`graph.py:447-449`); o `SkillRegistry` só é tocado por
-`gateway_cutover.py:153` e `auxiliaries/factory.py:333`. **Tool sob capability própria: 88** (é o caminho que o chat
-e o atendimento percorrem, e ganha o registro em `tool_invocations` de graça; "Skill" no diagnóstico é o
-**conceito**) × **skill release: 45** (segundo caminho de resolução ao lado da tool). ⚠️ **O BLOCO 0 confere** se
-algum agente resolve skill em runtime; se resolver, reescreve com o número.
+🔴 **Antes de "skill ou tool": CAMINHO ÚNICO.** 📊 Quem responde "tem carro reserva?" hoje é uma cadeia só —
+`graph.py:447-449` (`InfocapPolicyLookupTool`) → `infocap_tool.py:319` → `policy_answer_composer.py:376`
+(`apply_residential_assistance_policy`). **Uma tool nova registrada ao lado criaria uma segunda porta para a mesma
+pergunta** — motor paralelo no chamador, que é o lugar onde ele não aparece no diff da tabela. Duas formas, com nota:
+
+**A forma, com nota:** **o compositor consulta a base — 90** (`policy_answer_composer` chama
+`cobertura_e_assistencia` no lugar de `apply_residential_assistance_policy`; a tool de apólice continua a única
+registrada: um caminho, um registro em `tool_invocations`, zero mudança no `graph.py`, e o fallback de §6.4 fica no
+mesmo ponto de decisão) × **tool nova registrada e a antiga delegando — 70** (exige provar que a antiga nunca
+responde sozinha) × **tool nova ao lado da antiga — 10**: 🔴 duas portas para a mesma pergunta. **Proibido.**
+
+🔴 **O guarda é o M-B5, ampliado — não um guarda novo** (o teto de 12 de D-PILOTO-14 não se mexe): uma pergunta de
+cobertura de assistência produz **um** vencedor — o caminho da base quando há linha publicada, o fallback quando não
+há, **nunca os dois**. Mutação: registrar a tool nova em `graph.py` **ao lado** da existente → vermelho.
+
+⚠️ Sobre `SkillRegistry`: 📊 ele só é tocado por `gateway_cutover.py:153` e `auxiliaries/factory.py:333`. **"Skill"
+no diagnóstico é o conceito**; um skill release seria um terceiro caminho de resolução. O BLOCO 0 confere se algum
+agente resolve skill em runtime; se resolver, reescreve com o número.
 
 ### 6.1 A cadeia, do pedido à resposta
 
@@ -420,7 +469,7 @@ para a atendente**, nomeada pelo card Equipe — nunca pelo nome do agente (D-PI
 
 ### 6.4 O que acontece com `assistance_policy.py`
 
-📊 Hoje: 142 linhas, três serviços (`:28`), gatilho por substring `"resid"` (`:54`), um único importador
+📊 Hoje: 141 linhas, três serviços (`:28`), gatilho por substring `"resid"` (`:54`), um único importador
 (`policy_answer_composer.py:24`). O arquivo declara a intenção em `:4-6`: *"migração para tabela `platform_policies`
 com overrides por seguradora/produto/plano/corretora está prevista para quando o primeiro override existir"*. **O
 primeiro override é esta SPEC.**
@@ -489,10 +538,13 @@ já casa, nos 3 ramos dos pilotos. O número real sai da onda, não desta propos
 
 ### 7.2 Onda 2 — o elo apólice → condição geral pelo processo SUSEP
 
-① `susep` **sai** de `_BOILERPLATE_RE` (`policy_document_evidence_service.py:208`) — ⚠️ ele está lá por um motivo
-real (rodapé institucional), então a substituição é cirúrgica: continua descartando `ouvidoria|sac 24`, e passa a
-**capturar** a linha que casa `_RE_SUSEP`. **M-C2 exige ZERO com o filtro de volta.** ② `extrair_susep` roda sobre o
-texto do PDF da apólice, e o processo entra no modelo canônico da 001.1 com origem `documento_oficial`.
+① 🔴 **`extrair_susep` passa a rodar sobre `build_document_plain_text(pages)`** — o **texto integral** da apólice, que
+`policy_document_evidence_service.py:781` já entrega como `document_text` e que **não passa por
+`is_boilerplate_fragment`**. O processo entra no modelo canônico da 001.1 com origem `documento_oficial`.
+② ⚠️ **Mexer em `_BOILERPLATE_RE` é OPCIONAL e condicionado ao BLOCO 0 passo 5.** Se o passo 5 mostrar que o texto
+integral já devolve o processo, **não se toca no filtro** — ele governa só os fragmentos de evidência, e alterá-lo
+seria mexer num guarda de outro fim. Só se o processo **não** vier é que `susep` sai da lista, cirurgicamente
+(continua descartando `ouvidoria|sac 24`), e aí a mutação de M-C2 passa a ser o filtro.
 ③ `normative_documents` é consultado por `susep_process` — 📊 **190 de 194 têm o campo**. Casou → a condição geral
 **daquele contrato** é a fonte, não "a condição geral atual da seguradora".
 
@@ -555,8 +607,7 @@ Zurich       —            —              —           —      ⚪ sem cond
 
 **② A fila de curadoria** — cada item mostra seguradora · ramo · produto · plano/nível · serviço · o que o extrator
 propôs · **o trecho e a página ao lado**, para a pessoa não precisar abrir o PDF. Publicar exige a leitura; rejeitar
-exige motivo. ⚠️ **Não exibir nome de tabela, coluna, SQL ou `insurer_key`** — a tela fala "seguradora", "condições
-gerais", "página".
+exige motivo. ⚠️ **Nada de nome de tabela, coluna, SQL ou `insurer_key` na tela.**
 
 **GATE D:** a tela abre com a base vazia (estado vazio honesto: *"nenhum plano publicado ainda"*), com uma seguradora
 publicada, e com um item na fila; publicar grava `revisado_por`/`revisado_em`; trocar de corretora **não muda nada**
@@ -601,17 +652,17 @@ teste chama a tool e o banco, nunca um regex sobre a mesma tabela que o código 
 
 | # | guarda | o que afirma | mutação que o deixa VERMELHO |
 |---|---|---|---|
-| **M-A1** | `test_a_seguradora_tem_uma_chave_so` | `chave_canonica("tokio")==chave_canonica("tokio_marine")`; desconhecida → `UNKNOWN` **listado**; nenhuma linha com chave fora do catálogo | chave nova aceita sem decisão |
+| **M-A1** | `test_a_seguradora_tem_uma_chave_so` | a base usa **`normalize_insurer_key(..., para="conhecimento")`**, e `tokio`/`tokio_marine`/`tokio marine` dão a mesma; desconhecida → `UNKNOWN` **listado**; 🔴 **par de controle:** `para="corredor"` aplica `_OPERADO_POR` (Itaú → Porto) e `para="conhecimento"` **não** | usar `para="corredor"` na base (a carta do Itaú some sob Porto) |
 | **M-A2** | `test_a_linha_sem_fonte_nao_entra` | o **banco** recusa `documento_id` nulo, `pagina` nula, `pagina=0`, `trecho_hash` de tamanho errado | CHECK `servico_tem_fonte` removido |
 | **M-A3** | `test_a_pagina_existe_e_o_trecho_bate` | a `pagina` existe no documento e o `trecho_hash` bate com o texto **daquela** página; `nivel` único no produto; limite sem unidade recusado | página inexistente aceita |
 | **M-A4** ⚖️ | `test_a_base_de_planos_nao_tem_dono` — **canônico, não conta no teto** (CLAUDE.md §7) | nenhum `company_id`; varredor de PII = **0**; duas corretoras → mesma resposta | `ADD COLUMN company_id` |
-| **M-B1** | `test_nao_sabemos_ainda_nao_vira_nao` | sem linha publicada → `nao_sabemos_ainda` com frase própria; **par:** com linha → `nao_coberto` **com fonte** | estado desconhecido virando "não cobre" |
+| **M-B1** | `test_nao_sabemos_ainda_nao_vira_nao` | **par 1:** sem linha publicada → `nao_sabemos_ainda` com frase própria; com linha → `nao_coberto` **com fonte**. 🔴 **par 2:** busca derrubada → **`fonte_indisponivel`**, com texto **diferente** do `nao_sabemos_ainda` | (a) estado desconhecido virando "não cobre"; (b) `fonte_indisponivel` devolvendo o texto de `nao_sabemos_ainda` |
 | **M-B2** | `test_a_resposta_traz_documento_e_pagina` | sobre as **30 perguntas reais do acervo** (sem PII), pelo motor: todo estado ≠ `nao_sabemos_ainda` cita documento e página | origem removida do contrato |
 | **M-B3** | `test_o_gancho_so_aparece_com_plano_superior` | **par de controle:** nível 1 com nível 2 na tabela → gancho; nível máximo → **sem** gancho | gancho com `nivel` máximo |
 | **M-B4** | `test_o_plano_vem_da_apolice_nao_do_chute` | PDF sem nome de plano → `nao_sabemos_ainda`, nunca "o padrão da seguradora" | plano inferido só pela seguradora |
-| **M-B5** | `test_o_guarda_dos_servicos_mudou_de_regra_nao_morreu` | com `assistencia_da_base` a resposta não pode omitir serviço da base; com o fallback, a regra dos 3 continua | guarda de `nodes.py:307` apagado |
+| **M-B5** | `test_um_vencedor_so_e_o_guarda_mudou_de_regra` | 🔴 **um caminho só responde** a pergunta de assistência — base quando há linha publicada, fallback quando não há, **nunca os dois** (§6); e com `assistencia_da_base` a resposta não pode omitir serviço da base, enquanto com o fallback a regra dos 3 continua | (a) registrar a tool nova em `graph.py` **ao lado** da existente; (b) guarda de `nodes.py:307` apagado |
 | **M-C1** | `test_extracao_nao_publica_sem_gente` | o verificador só reprova; nada chega a `publicado` sem `revisado_por`+`revisado_em` | verificador promovendo a `publicado` |
-| **M-C2** | `test_o_susep_da_apolice_encontra_a_condicao` | sobre um PDF real do acervo: o processo é extraído e casa. 🔴 **Controle:** com `susep` de volta no boilerplate → **ZERO** | `susep` de volta em `_BOILERPLATE_RE` |
+| **M-C2** | `test_o_susep_da_apolice_encontra_a_condicao` | sobre um PDF real do acervo: `extrair_susep(build_document_plain_text(pages))` devolve o processo **e ele casa** com `normative_documents`. 🔴 **A linha de controle é do caminho REALMENTE usado**, definida pelo BLOCO 0 passo 5 — nunca uma mutação em `_BOILERPLATE_RE` se o filtro não estiver no caminho | apólice cujo processo não existe no corpus → o casamento tem de devolver **nada**, não a condição "mais parecida" |
 | **M-C3** | `test_a_condicao_e_a_da_emissao_nao_a_de_hoje` | apólice antiga → a versão **vigente na emissão**; par de controle com duas versões do mesmo processo | busca por `now()` |
 | **M-D1** | `test_a_cobertura_da_base_nao_mente_para_cima` | a régua conta seguradora × ramo com plano publicado; 40 linhas de um ramo só **não** inflam | contagem por linhas |
 
@@ -640,8 +691,6 @@ CREATE INDEX IF NOT EXISTS ix_ias_curadoria ON insurer_assistance_services (cura
     WHERE curadoria <> 'publicado';
 
 -- VERIFY (a saída vai COLADA no relatório)
-SELECT table_name, count(*) FROM information_schema.columns WHERE table_schema='public'
-   AND table_name IN ('insurer_assistance_plans','insurer_assistance_services') GROUP BY 1;
 SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
  WHERE conrelid='insurer_assistance_services'::regclass AND contype='c';
  -- esperado: servico_tem_fonte · servico_publicado_foi_revisado · limite_tem_unidade
@@ -670,12 +719,17 @@ existente perde validade.
 
 ```sql
 -- APPLY (expand-first: o CHECK novo é SUPERCONJUNTO do antigo)
+-- 🔴 TRANSAÇÃO ÚNICA, e não é formalidade: entre o DROP e o ADD a tabela viva (194 linhas, com
+--    escritor ativo — o corpus reconfere sozinho) fica SEM TRAVA. Fora de transação, uma ingestão
+--    que caia nessa janela grava um doc_kind que o CHECK novo recusaria, e o ADD falha depois.
+BEGIN;
 ALTER TABLE normative_documents DROP CONSTRAINT IF EXISTS normative_documents_doc_kind_check;
 ALTER TABLE normative_documents ADD  CONSTRAINT normative_documents_doc_kind_check
   CHECK (doc_kind = ANY (ARRAY[
     'condicoes_gerais','condicoes_especiais','condicoes_particulares','manual_do_segurado',
     'nota_tecnica','circular_susep','tabela_coberturas','glossario','regulamento',
     'manual_de_assistencia']));          -- <- o único valor novo
+COMMIT;
 
 -- VERIFY
 SELECT pg_get_constraintdef(oid) FROM pg_constraint
@@ -728,17 +782,16 @@ curadoria**, ou indicar quem revisa — **é a única dependência humana, e ela
 seguradora, um ramo, ~10 linhas já destravam os casos 1, 3, 4 e 5; ④ o clique do EasyPanel, se houver.
 
 **Validação com Saionara e Regina:** o executor prepara roteiro e telas, o Founder conduz, o executor **não as
-contata**. Valida-se, em linguagem delas: a resposta diz de onde veio de um jeito que dá para conferir? *"ainda não
-sabemos"* soa honesto ou soa falha? o gancho soa útil ou soa empurrão de venda? a fila é revisável por quem não é
-técnico, olhando o trecho, sem abrir o PDF? 📊 A Saionara é a dona do caso de referência (a HDI cujo cadastro
-escondia **R$ 125,94 de Assistências Essenciais, 41% do prêmio**) — pedir a ela **as perguntas, nunca os dados**.
-Registrar: **"não testado" × "aprovado no canário técnico" × "validado pela atendente"**.
+contata**. Valida-se, em linguagem delas: dá para conferir de onde veio? *"ainda não sabemos"* soa honesto ou soa
+falha? o gancho soa útil ou soa empurrão? a fila é revisável por quem não é técnico, sem abrir o PDF? 📊 A Saionara é
+a dona do caso de referência (a HDI cujo cadastro escondia **R$ 125,94, 41% do prêmio**) — pedir a ela **as
+perguntas, nunca os dados**. Registrar: **não testado × canário técnico × validado pela atendente**.
 
 ---
 
 ## 13. Entrega, implantação e documentação
 
-⚠️ **O procedimento de push, implantação e dossiê está no PROMPT-DE-ABERTURA §9–§10 e não se repete aqui.** O que é
+⚠️ **O procedimento de push, implantação e dossiê está no PROMPT-DE-ABERTURA §8–§9 e não se repete aqui.** O que é
 próprio desta SPEC:
 
 - **Serviços:** `smith-api` **e** `smith-web` (a tela de §8 muda o front). **Variáveis novas:** 💭 nenhuma prevista.
@@ -761,7 +814,7 @@ próprio desta SPEC:
 
 ---
 
-## 15. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
+## 14. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
 
 > Três referências, todas **fontes primárias**, reabertas em **13/09/2026** pelo redator. O pesquisador do executor
 > reabre cada uma e **registra a data dele** (protocolo §7.3).
@@ -807,7 +860,7 @@ Artifact Hub continuam únicos. Modela-se o **padrão**.
 
 ---
 
-## 16. A fila depois desta entrega — contexto, não autorização
+## 15. A fila depois desta entrega — contexto, não autorização
 
 ```
 001.0 → 001.6-P0 → 001.1 → 001.2 → 001.3 ∥ 001.4 → 001.6 → 001.7 → 001.10 ∥ ★ 001.5 (esta) → 001.8 → 001.9
@@ -820,9 +873,10 @@ base pendura na chave nossa e vale para qualquer adaptador.
 
 ---
 
-## 17. Definição final de conclusão — lista fechada, verificável
+## 16. Definição final de conclusão — lista fechada, verificável
 
-1. `chave_canonica` resolve `tokio` e `tokio_marine` para a mesma; o que não casa sai **`UNKNOWN` listado**.
+1. A base grava `insurer_key` normalizado por **`normalize_insurer_key(..., para="conhecimento")`** — nenhum
+   normalizador novo; o que não casa sai **`UNKNOWN` listado**.
 2. As duas tabelas existem com os **três CHECKs**; as **três inserções adversariais** falharam, com a mensagem
    colada. 📊 **Zero** colunas `company_id`/`user_id`; varredor de PII = **0**; duas corretoras, mesma resposta.
 3. A Skill responde nos **cinco estados**; **`nao_sabemos_ainda` nunca vira "não cobre"**; `fonte_indisponivel` tem
