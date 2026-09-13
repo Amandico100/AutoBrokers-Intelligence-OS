@@ -34,7 +34,7 @@ Esta seção existe porque o pacote do redator manda conferir cada `arquivo:linh
 | **C4** | "a ficha guarda `apolice_confirmada: bool`, **não os slots já respondidos**" | a ficha **tem** `confirmados: {}` e **tem** o bloco *"JÁ CONFIRMADO com o cliente — **não pergunte de novo**"* (`attendance_ficha.py:274`). O defeito é outro e mais preciso: **o escritor cobre 15 de 35 slots** | 🔴 o conserto não é "criar a ficha de slots" — é **fechar o buraco entre o vocabulário e o escritor** (§2.4) |
 | **C5** | "a corretora escolhe o nome no card Agente (**já existe `agent_name`**)" | 📊 **`companies.agent_name` não existe** (0 linhas em `information_schema`). `conversations.agent_name` é **rótulo de quem atendeu** — 📊 `Espelho` 782 · `Smith Agent` 73 · `AutoBrokers` 4 · `Motor de Acionamento` 1. O nome configurável é **outro campo**: `agents.name` / `context_package[…].variables.attendant_name` → `display_name` | 🔴 a SPEC que mexesse em `agent_name` mexeria no campo errado. §2.6, §3.8 |
 | **C6** | §1.4 mede rajadas "em `messages`" | 🔴 **`messages.created_at` é o relógio do ESPELHO**, não do segurado; infla as rajadas em **+39,2%**. O relógio real é `attendance_transcripts.wa_timestamp` | 🔴 **muda a fonte do corpus e de toda calibragem.** §3.0 |
-| **C7** | "dedupe do espelho por `wa_message_id`" (implícito: falta o índice) | 📊 o índice existe desde 06/08 e é **por conversa**; 📊 **134 ids repetidos, 100% entre conversas DIFERENTES, 0 dentro da mesma**, e **104 atravessam corretoras** | 🔴 dar a chave ao pipeline **não basta**; e há candidato a **P0 cross-tenant**. §3.6 |
+| **C7** | "dedupe do espelho por `wa_message_id`" (implícito: falta o índice) | 📊 o índice existe desde 06/08 e é **por conversa**; 📊 **134 ids repetidos, 100% entre conversas DIFERENTES, 0 dentro da mesma**, e **104 atravessam corretoras — por construção, não por vazamento** | 🔴 dar a chave ao pipeline **não basta**; e a invariante ingênua de tenant é **falsa**. §3.6 |
 | **C8** | "174 conversas fantasma (P-PILOTO-13)" | 📊 **175** hoje (106 AutoFleet, 69 Resulta), **100% abertas**, **10** com pausa presa, **9** com par real, **166 sem par** | o ganho é a **176ª não nascer**, não recuperar as 166. §3.5 |
 | **C9** | "ordem `pausar_ia` × exceções — P-PILOTO-15" | 🔴 **P-PILOTO-15 é outra coisa**: `resolvido_em` mata a pausa. A inversão de ordem é um defeito **medido hoje, sem pendência própria** | as **duas** entram. §2.9, §8 |
 | **C10** | D-PILOTO-12: *"'Amanda' na Resulta é escolha da Saionara e fica"* | 📊 a linha `Amanda` está **desativada**; o agente **ativo** da Resulta se chama **`AutoBrokers`** | 🧑 **caixa do Founder**, não decisão do executor. §3.8 |
@@ -464,7 +464,7 @@ ck_conversations_resolucao_motivo    CHECK (resolucao_motivo IS NULL OR resoluca
 
 RLS: `relrowsecurity=true` em `conversations`, `messages` e `attendance_transcripts`; `relforcerowsecurity=false` nas três. **O backend usa service role: o filtro no código é a única proteção efetiva** (CLAUDE.md §7).
 
-### 3.6 🔴 O espelho em dobro — e um candidato a P0 cross-tenant que ninguém tinha visto
+### 3.6 🔴 O espelho em dobro — e por que o id atravessa corretoras sem ser vazamento
 
 **`wa_message_id` existe e está preenchido em 96,03%** (`messages.payload->>'wa_message_id'`, jsonb; não há coluna dedicada):
 
@@ -510,7 +510,9 @@ Cruzando com as fantasmas: **35 dos 134** são par fantasma × real (10 fantasma
 
 🔴🔴 **E 104 dos 134 atravessam CORRETORAS** (108 linhas no acervo). O medidor investigou antes de reportar: os 110 grupos têm **texto idêntico** (0 com texto diferente → **não é colisão de id**), tocam **6 contrapartes**, **nenhuma é seguradora** (`insurer_key is null` em 100%), e os `observer_number` **não são compartilhados** (0 dos 5 observadores aparece em mais de uma empresa). Ids repetidos são curtos (22 e 32 chars) contra 41/36 dos únicos. Linhas: Resulta 88 · AutoFleet 103 · AMANDUS 25.
 
-> **INFERÊNCIA, não fato:** a mesma mensagem de WhatsApp está gravada sob **dois `company_id`**. A causa não se determina por contagem sem ler conteúdo, e conteúdo não foi lido. 🔴 **Tratar como candidato a P0 cross-tenant e investigar ANTES de qualquer migração** — é a classe de defeito do CLAUDE.md §7 e uma das oito condições de parada do §10.
+> 🔴 **CAUSA DETERMINADA — e não é vazamento.** ✅ **Reproduzido e explicado pelo revisor em 13/09/2026 — NÃO é vazamento.** Nos 104 grupos: papéis **opostos** nas duas pontas (`user` × `assistant`) em **104/104**; o telefone da conversa em A é o `integrations.paired_phone_e164` da empresa **B** em **104/104**; mesmo telefone nas duas pontas em **0**; e **nenhuma instância Evolution compartilhada** (7 linhas em `integrations`, nenhum `instance_id` com mais de um `company_id`). São **as duas pontas da mesma conversa entre linhas das próprias corretoras** (Resulta ↔ AutoFleet ↔ Amandus): o WhatsApp dá **um id global**, o espelho do remetente grava `assistant` e o do destinatário grava `user`. **Nenhum dado atravessou tenant.**
+>
+> ⚠️ **O que isto obriga:** a invariante *“o mesmo `wa_message_id` nunca sob dois `company_id`”* é **falsa por construção**. A que vale, e que G9 afirma, é: *nenhum id sob dois `company_id` **com o mesmo papel**, nem com o telefone da conversa **fora** das linhas pareadas da outra corretora*.
 
 *(Bônus: `attendance_transcripts` tem **110** `message_id` repetidos em 166.365 linhas — a tabela **não** tem UNIQUE em `message_id`.)*
 
@@ -562,6 +564,8 @@ select column_name from information_schema.columns
 | AMANDUS | JOANA | ❌ |
 | Blueprint Studio | AutoBrokers · **Even** | ❌ ❌ |
 
+🔴 **E há um fato pior que a divergência de nome:** as **3** linhas ativas têm papel **`core`**; a única `attendance` (“Amanda”) está **desativada**. ⚠️ **Não existe agente `attendance` ativo hoje** — e o bloco de identidade de `prompts.py:352-354` só entra para `attendance`/`insured_external`. Logo, **nenhuma apresentação está sendo montada em prompt nenhum**.
+
 🔴🔴 **Divergência material com D-PILOTO-12.** A decisão diz *"'Amanda' na Resulta é escolha da Saionara e **fica**"*. 📊 Mas a linha `Amanda` está **desativada**, e o agente **ativo** da Resulta se chama **`AutoBrokers`**. **O nome que o Founder acredita estar em uso não é o que o agente ativo carrega.** Isto é caixa do Founder, não decisão do executor.
 ⚠️ `Even` é nomenclatura da SPEC-013, declarada **memória superada** pelo CLAUDE.md §4 — desativada, mas ainda no banco.
 
@@ -588,7 +592,7 @@ select column_name from information_schema.columns
 | intervalos abaixo de 1 s | `wa_timestamp` vem do `messageTimestamp` do WhatsApp, com granularidade de **segundo inteiro** |
 | comparar com "174 fantasmas em 12/09" | não há snapshot histórico. Medido o estado de hoje: **175**. O delta com 09/09 é verificável; com 12/09 não |
 | reproduzir os "30 pares" do espelho | nenhum critério razoável devolve 30 (varia de 99 a 1.112). O critério que produziu 30 é desconhecido |
-| causa raiz do `wa_message_id` cross-tenant | as contagens provam que acontece e **excluem** colisão de id e observador compartilhado; a causa exige leitura de conteúdo, que não foi feita |
+| ~~causa raiz do `wa_message_id` cross-tenant~~ | ✅ **RESOLVIDO** pelo revisor em 13/09: são as duas pontas da mesma conversa entre linhas das próprias corretoras (§3.6). Saiu da lista |
 | `companies.agent_name` | **a coluna não existe** |
 
 ⛔ **Escritas: zero.** Sessão `read_only`, guarda de verbo em Python, nenhum script do repositório rodado com `--vivo`. Nenhum conteúdo de mensagem, CPF, CNPJ, telefone, nome de segurado, placa, e-mail ou credencial foi impresso ou gravado.
@@ -807,7 +811,7 @@ cd backend && python -m pytest tests/test_midia_e_concorrencia_do_webhook.py -q
 |---|---|---|
 | **P-PILOTO-13** | texto real (`PENDENCIAS.md:10532-10533`): *"174 conversas com `user_phone` de LID (106 AutoFleet, 68 Resulta), 10 com pausa humana presa; o `--vivo` está bloqueado por `ck_conversations_resolucao_motivo`… **Destrava:** migration acrescentando o valor, depois `--vivo`"*. 📊 **Hoje são 175** (106 AutoFleet, **69** Resulta), 10 com pausa, e o CHECK confirmado no banco sem `fantasma_lid` | **absorve**: migration M1 + `--vivo` com VERIFY + o índice que impede a **176ª** |
 | **P-PILOTO-15** | 🔴 **texto real** (`PENDENCIAS.md:10538-10539`): *"pausa não protege conversa com `resolvido_em` preenchido; `pausar_ia` devolve False quando `resolvido_em` está preenchido e a pausa não limpa o campo"*. ⚠️ **Não é** "a ordem de `pausar_ia` × exceções" — essa é uma segunda coisa, medida hoje (§2.9) e sem pendência própria | **absorve as duas**: (a) a pausa passa a valer em conversa reaberta; (b) a exceção de teste deixa de vir antes do takeover |
-| **novas, a abrir** | 🔴 `wa_message_id` repetido entre **corretoras** (§3.6) — candidato a P0 · ⚠️ PII em `conversations.human_handoff_reason` (§3.7) · `conversation_logs` só grava sucesso (§3.7) · `attendance_transcripts` sem UNIQUE em `message_id` · `conversations.agent_name` com `'Smith Agent'` como default (nome revogado, GLOSSARIO) | a primeira **pode parar a SPEC** (CLAUDE.md §10 item 4); as outras são pendência com dono e destrava |
+| **novas, a abrir** | ⚠️ PII em `conversations.human_handoff_reason` (§3.7) · `conversation_logs` só grava sucesso (§3.7) · `attendance_transcripts` sem UNIQUE em `message_id` · `conversations.agent_name` com `'Smith Agent'` como default (nome revogado, GLOSSARIO) | pendências com dono e destrava. ⚠️ O `wa_message_id` entre corretoras **saiu desta lista**: causa determinada, não é defeito (§3.6) |
 | P-PILOTO-16, 17, 18 | citadas pelo diagnóstico §5 como "→001.2/001.1" | **reencontrar por número no BLOCO 0** e dar `FECHADA`/`CONTINUA`/`MORREU` (AAA §2). Não assumir que continuam abertas |
 | P-PILOTO-01 | uma corretora trava a outra | **fora**: é a EXTRA-001.8. Esta SPEC só promete que a trava é **por conversa** e prova com o teste de paralelismo existente |
 | P-264 | `tela_cega` com escritor e sem leitor | **fora**, mas é o precedente citado na §D: nenhum registro novo desta SPEC nasce sem leitor |

@@ -46,19 +46,19 @@
 
 | ID | decisão (13/09/2026) | como entra no produto |
 |---|---|---|
-| **D-PILOTO-18** | **O modo da rotina é `equipe`**, não `cliente`. A atendente recebe o pacote e repassa. | `send_mode='equipe'`; `cliente` continua existindo e não é usado no piloto |
-| **D-PILOTO-19** | **N = 7 dias** por segurado ("uma cobrança por segurado a cada N dias") | `dias_entre_cobrancas_do_mesmo_segurado` = 7, na tela, clamp 1–30 |
-| **D-PILOTO-19** | **`attendant_name` = a atendente humana da Resulta.** O executor **confirma o nome com o Founder** e nunca o inventa. | blocker quando vazio (§4.4); o nome vai na **caixa do Founder**, não num palpite |
-| **D-PILOTO-19** | **`team_number` = TESTE-B durante o canário**; trocar pelo número real da atendente é ato **só do Founder**, depois. | §7 e §9 |
-| **D-PILOTO-19** | **A rotina só é reativada depois que o BLOCO P0 estiver no ar.** Reativar antes = avalanche picotada na atendente. | §9.1, ordem de implantação |
-| **D-PILOTO-19** | **As senhas novas da Allianz e da Mapfre chegam na segunda-feira, e isso NÃO trava nada.** O canário roda com Tokio, HDI, Yelum e Zurich; os dois portais entram quando a senha chegar. | §8.4 e `P-E0016-SENHAS-ALLIANZ-MAPFRE` |
+| **D-PILOTO-18** | **O modo da rotina é `equipe`**, não `cliente` (nota 92 × 48). A atendente recebe o pacote e repassa. | `send_mode='equipe'`; `cliente` continua existindo e não é usado no piloto |
+| **D-PILOTO-18** | **N = 7 dias** por segurado (nota 85 × 3 dias 60 × 14 dias 70) | `dias_entre_cobrancas_do_mesmo_segurado` = 7, na tela, clamp 1–30 |
+| **D-PILOTO-18** | **`attendant_name` = a atendente humana da Resulta.** O executor **confirma o nome com o Founder** e nunca o inventa. | blocker quando vazio (§5, P0.4); o nome vai na **caixa do Founder**, não num palpite |
+| **D-PILOTO-18** | **`team_number` = TESTE-B durante o canário**; trocar pelo número real da atendente é ato **só do Founder**, depois. | §1.1 e §10.2 |
+| **D-PILOTO-18** | **A rotina só é reativada depois que o bloco implantável estiver no ar.** Reativar antes = avalanche picotada na atendente (nota 25). | §5 (a equivalência de nomes) e §15.1 |
+| **D-PILOTO-19** | **As senhas novas da Allianz e da Mapfre chegam na segunda-feira (15/09), e isso NÃO trava nada.** O canário roda com Tokio, HDI, Yelum e Zurich; os dois portais entram quando a senha chegar. | §8.1, §10.2 e `P-E0016-SENHAS-ALLIANZ-MAPFRE` |
 | **D-PILOTO-08** | numeração EXTRA-001.1…001.10 mantida | esta é a 001.6 |
 | **D-PILOTO-14** | execuções de alta qualidade sem serem exorbitantemente longas | teto de **12 guardas novos**; painel de 3 lentes, uma rodada |
 | **D-E001-03** | cobrança e atendimento usam o MESMO número pareado da corretora | nenhuma conexão é criada, renomeada ou desativada |
 | **D-E001-04/05** | `equipe` = nota interna separada + texto final limpo + PDF | preservado byte a byte; o que muda é **quantos balões** |
 | **D-E001-07** | testes vivos **só** entre TESTE-A e TESTE-B | §1 |
 
-> ⚠️ **D-PILOTO-08…20 ainda NÃO estão em `docs/canon/FOUNDER-DECISIONS.md`** — 📊 13/09: `grep -n "D-PILOTO" docs/canon/FOUNDER-DECISIONS.md` devolve **D-PILOTO-01…07 apenas**. O diagnóstico §7 previu que elas entrariam "quando a primeira SPEC abrir". **Esta SPEC as registra** (§10.3). Não é interpretação: os textos estão no diagnóstico §7.1 e no pacote de abertura desta SPEC.
+> 📊 **D-PILOTO-01…20 já estão gravadas** em `docs/canon/FOUNDER-DECISIONS.md` (commit `c0aaf65`; a 18 em `:1762`, a 19 em `:1763`). O entregável desta SPEC **não é registrar** — é **conferir, no BLOCO 0, se o texto gravado bate com o que esta SPEC executa**, e emendar o que divergir, com a diferença escrita (§10.3).
 
 ### 0.4 EXECUTION CARD proposto — a medir e reafirmar no BLOCO 0
 

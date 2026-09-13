@@ -79,7 +79,7 @@ Por demanda: `SPEC-EXECUTION-REPORT-TEMPLATE.md` · `ESTADO-DAS-SPECS.md` (só a
 
 1. **Preflight Git** na ordem do CLAUDE.md §2. `HEAD..origin/main` ≠ 0 → **pare e pergunte qual árvore usar**.
 2. **Abra o relatório** pelo template, começando pelo **EXECUTION CARD** (AAA §0.2). Piso **CRÍTICO** — ⛔ não rebaixe para economizar tokens. O card proposto está na §0.2 da proposta: RISCO **8**, SUPERFÍCIE **3**, 6 unidades, 3 lentes + red team + juiz fresco.
-3. 🔴 **BLOCO 0 item 0 PRIMEIRO: o candidato a P0 cross-tenant.** 📊 104 de 134 `wa_message_id` repetidos aparecem sob **dois `company_id`**. Determine a causa. Confirmado → **pare, registre em `FOUNDER-DECISIONS.md`, trate como P0 próprio**. ⛔ **Nenhuma migration antes deste veredito.**
+3. **BLOCO 0 item 0: reconfirme o artefato das duas pontas — uma consulta, não uma parada.** 📊 104 de 134 `wa_message_id` repetidos estão sob dois `company_id` **por construção**: são as duas pontas da mesma conversa entre as linhas das próprias corretoras (papéis opostos 104/104; telefone de A = `paired_phone_e164` de B 104/104; zero instâncias Evolution compartilhadas). ⚠️ **Não é vazamento e não para a SPEC.** Reconfirme com a consulta antes de escrever a invariante de G9; **só** um grupo com o **mesmo papel** nas duas pontas, ou com telefone fora das linhas pareadas, seria cross-tenant de verdade.
 4. **BLOCO 0 completo** (§4 da proposta, 12 itens): reabra cada `arquivo:linha`, reconte os **três** desvios de mídia, remeça o buraco da ficha, **meça a duração real de um turno** (o TTL da trava sai daí, não dos 💭 90 s), aplique `tracos_da_mensagem` ao texto real, gere o corpus, leia o `MIGRATIONS-AUTHORITY.md`, reconte as fantasmas, confirme a rota de presença no fork Go implantado, rode os guardas que não podem quebrar, e dê veredito às pendências.
 5. **Converta em SPEC definitiva** com: card · BLOCO 0 · unidades coesas · gate **e mutação por bloco** · §7.3 com as 7 referências externas **reabertas por você, com a data nova** · "O QUE SAIU" com gatilho · pendências · caixa do Founder.
 6. **Aquecimento (§6 abaixo) no lugar de painel sobre a SPEC.** ⛔ Não se monta painel de juiz sobre documento (AAA §5.1). Uma rodada, emende, e execute **nesta mesma sessão**.
@@ -151,7 +151,7 @@ Atualize **durante a execução e a cada bloco fechado**, com um escritor por ar
 
 🔴 **Leia o HTML publicado inteiro antes de republicar com `url`** e confira o resultado no link. Sem ferramenta ou acesso → atualize a fonte e diga **"publicação do dossiê pendente"**, com o arquivo e o passo exato. ⛔ Nunca alegue que atualizou. ⛔ Nunca publique número de teste ou dado de cliente.
 
-Registre também: `ESTADO-DAS-SPECS.md` (seção da família EXTRA, **sem renumerar**) · `PENDENCIAS.md` (P-PILOTO-13 e 15 com veredito + as novas: cross-tenant, PII em `human_handoff_reason`, `conversation_logs` só grava sucesso, `attendance_transcripts` sem UNIQUE em `message_id`, `'Smith Agent'` como default) · `CHANGE-ADDENDA.md` · `MANIFEST.md` das migrations · a memória local do programa.
+Registre também: `ESTADO-DAS-SPECS.md` (seção da família EXTRA, **sem renumerar**) · `PENDENCIAS.md` (P-PILOTO-13 e 15 com veredito + as novas: PII em `human_handoff_reason`, `conversation_logs` só grava sucesso, `attendance_transcripts` sem UNIQUE em `message_id`, `'Smith Agent'` como default) · `CHANGE-ADDENDA.md` · `MANIFEST.md` das migrations · a memória local do programa.
 
 ---
 
@@ -172,7 +172,7 @@ Implantação pela autoridade vigente — serviços: **backend** (webhook, buffe
 3. Quais gates passaram, quais dependem de ação física, o que **não** foi comprovado.
 4. Estado **separado**: implementado / na main / implantado / canário técnico / aceite das pilotos / ativação operacional.
 5. Dossiê atualizado, ou pendência de publicação nomeada.
-6. Caixa do Founder com as ações concretas mínimas — incluindo 🔴 **qual é o nome do agente da Resulta** (a decisão diz "Amanda"; o banco diz `AutoBrokers`, e a linha `Amanda` está desativada).
+6. Caixa do Founder com as ações concretas mínimas — incluindo 🔴 **qual é o nome do agente da Resulta**. 📊 A decisão D-PILOTO-12 diz “Amanda”; o banco diz que as 3 linhas ativas são `AutoBrokers`/`AutoBrokers`/`AutoBrokers Sandbox`, **todas `core`**, e que **não existe agente `attendance` ativo** (a “Amanda” é `attendance` e está desativada). ⚠️ **O BLOCO 0 escreve essa nota em `FOUNDER-DECISIONS.md` ANTES do canário do GATE F**, com as duas saídas (religar a linha `Amanda` ou a Saionara reescolher), segue com o que estiver ativo e diz no relatório qual foi.
 7. Handoff: a próxima da fila é a **EXTRA-001.3** (o grupo só recebe o que importa), que **depende** da peça "uma conversa por contraparte" que esta SPEC entrega. ⛔ Não a execute agora.
 
 **Comece pelo preflight, pelo item 0 do BLOCO 0 e pelo card.** ⛔ Não me devolva só uma análise: valide, converta e execute esta SPEC dentro da autorização descrita, seguindo o AAA até a entrega e a comprovação possível.
