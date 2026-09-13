@@ -2,7 +2,7 @@
 ## Cota por corretora · rodízio · teto por chamada · contrapressão que não perde mensagem
 
 **Status:** PROPOSTA PARA CONVERSÃO, AQUECIMENTO E EXECUÇÃO — não é SPEC canônica nem implementação.
-**Versão:** 1.0 · **13/09/2026** · **Baseline:** worktree `AutoBrokers-FIX`, HEAD `53a22c3`, 📊 `git rev-list --count HEAD..origin/main` → 0. Todas as linhas citadas foram reabertas hoje; o BLOCO 0 as remede.
+**Versão:** 1.0 · **13/09/2026** · **Baseline:** worktree `AutoBrokers-FIX`, HEAD `53a22c3` (📊 `git rev-list --count HEAD..origin/main` → 0). Toda linha citada foi reaberta hoje; o BLOCO 0 as remede.
 **Branch:** `feat/spec-extra-001.8-isolamento-por-corretora` · **SPEC definitiva:** `docs/canon/specs/SPEC-EXTRA-001.8-uma-corretora-nao-trava-a-outra.md` · **Relatório:** `docs/canon/reports/SPEC-EXTRA-001.8-EXECUTION-REPORT.md` · **Research Pack:** `SPEC-EXTRA-001.8-uma-corretora-nao-trava-a-outra-RESEARCH-PACK.md`.
 **Origem:** DIAGNÓSTICO §3 bloco 001.8 e §12.1 linha 11 · **P-PILOTO-01** · **D-PILOTO-07** · `PLANO-PILOTOS-AJUSTES-2026-09-08.md` §2.1.
 **Depende de:** **EXTRA-001.2** §5 (trava de turno por conversa). Esta SPEC **pendura** nela e não a duplica — §3.3.
@@ -23,7 +23,7 @@
 |---|---|---|
 | **D-PILOTO-07** | *"≥ 4 atendimentos simultâneos por corretora e nenhuma corretora interferindo em outra"* | **4 é o piso da COTA**, não o teto do sistema (§6.2). "Nenhuma interferência" vira número medido (§5.4) |
 | **D-PILOTO-14** | AAA opção B; **≤ 12 guardas novos**; bateria sobre motor e acervo real | §12 gasta **10**. Os 2 restantes são para o que o painel achar — ⛔ não para preencher |
-| **D-PILOTO-06** | as entregas de 08/09 saíram sem AAA | o semáforo de `buffer_processor.py` nasceu ali e é **alívio, não solução** (texto do Founder em P-PILOTO-01). Esta SPEC termina o trabalho |
+| **D-PILOTO-06** | as entregas de 08/09 saíram sem AAA | o semáforo de `buffer_processor.py` nasceu ali e é **alívio, não solução** (texto do Founder em P-PILOTO-01) |
 | **D-PILOTO-20** | criação neste chat, **execução em chat novo** sob AAA opção B | o `PROMPT-DE-ABERTURA-EXTRA-001.8.md` é o que o Founder cola |
 | **D-PILOTO-02** | a atendente responder pelo celular pausa o robô, e isso é o desejado | conversa pausada não pode ocupar cota (§6.4) |
 
@@ -55,9 +55,9 @@ FAIXA DE RELÓGIO ..... 💭 8–12 h
 ORÇAMENTO ............ 💭 ≤ 2,5 M tokens de subagentes. Estourou → menos LENTES, nunca menos MUTAÇÃO
 ```
 
-🔴 **BLOCKER nesta SPEC** (teste do produto, protocolo §2): qualquer achado em que **uma corretora muda o que a outra recebe** — latência, silêncio, mensagem perdida ou duplicada. É isolamento (CLAUDE.md §7) e **não se rebaixa a pendência** (protocolo §6). Nome de variável, formato de log e tela são pendência, e seguem.
+🔴 **BLOCKER nesta SPEC** (teste do produto, protocolo §2): qualquer achado em que **uma corretora muda o que a outra recebe** — latência, silêncio, mensagem perdida ou duplicada. É isolamento (CLAUDE.md §7) e **não se rebaixa a pendência**. Nome de variável, formato de log e tela são pendência, e seguem.
 
-### 0.3 🔴 O ELO — onde exatamente uma corretora alcança a outra
+### 0.3 🔴 O ELO — onde uma corretora alcança a outra
 
 A afirmação é *"A atrasa B **porque** compartilham recurso sem partição"*. Medi A, medi B, e medi **que B chega em A**: são **quatro** recursos compartilhados, e três ninguém tinha apontado.
 
@@ -70,15 +70,14 @@ A afirmação é *"A atrasa B **porque** compartilham recurso sem partição"*. 
    na fila: ela NEM É OLHADA por 10 s. O elo não é "esperar a vez" — é "não existir para o varredor".
 
 ② A LISTA É UMA SÓ, SEM AGRUPAMENTO E SEM ORDEM
-   buffer_processor.py:126-141  redis.scan(match="whatsapp_buffer:*") → chaves.append(...)
-   buffer_processor.py:97       asyncio.gather(*(_uma(c) for c in chaves))
+   buffer_processor.py:126-141 scan(match="whatsapp_buffer:*") · :97 gather(*(_uma(c) for c in chaves))
    📊 Zero `sort`, zero agrupamento por corretora, zero rodízio. A ordem é a do SCAN — ordem de
    slot, arbitrária. 50 chaves da Resulta e 1 da AutoFleet: a da AutoFleet cai onde calhar.
 
 ③ O RELÓGIO NÃO EXISTE EM NENHUM PONTO DO TURNO
    📊 grep -n "wait_for\|timeout" backend/app/tasks/buffer_processor.py  →  ZERO linhas
    📊 grep -rn "timeout\|max_retries" backend/app/factories/             →  ZERO linhas
-   graph.py:1603  await graph.ainvoke(...)   ·   graph.py:2062  graph.astream_events(...)
+   graph.py:1603 `await graph.ainvoke(...)` · graph.py:2062 `graph.astream_events(...)`
    Uma chamada pendurada segura 1 dos 6 slots até o SDK desistir — e é o SDK que decide, não nós.
 
 ④ O POÇO DE THREADS É UM SÓ, E NINGUÉM O DIMENSIONOU
@@ -89,67 +88,42 @@ A afirmação é *"A atrasa B **porque** compartilham recurso sem partição"*. 
    único cujo tamanho o repositório NÃO SABE — depende do `cpu_count` do contêiner. BLOCO 0 mede.
 ```
 
-⚠️ **Um quinto elo que NÃO entra:** o rate limit do webhook é **por IP** (`webhook.py:1387` `@limiter.limit("120/minute")`, `rate_limit.py:28` `key_func=get_real_client_ip`) — todas as corretoras do mesmo provedor dividem o balde. Mas é balde de **entrada**, e a entrada não é o gargalo medido. Vai para pendência com o número (§18).
+⚠️ **Um quinto elo que NÃO entra:** o rate limit do webhook é **por IP** (`webhook.py:1387`, `rate_limit.py:28` `key_func=get_real_client_ip`) — todas as corretoras do mesmo provedor dividem o balde. Mas é balde de **entrada**, e a entrada não é o gargalo medido. Vai para pendência com o número (§18).
 
 ---
 
 ## 1. AUTORIZAÇÃO DE TESTES
 
-### 1.1 Allowlist
-
 **TESTE-A** e **TESTE-B** vêm da allowlist privada do Founder, por variável de ambiente. ⛔ Nunca commitar, imprimir, logar ou publicar os números; nas evidências, sempre o alias.
 
-🔴 **O que esta SPEC exige e as outras não:** os dois números em **CORRETORAS DIFERENTES ao mesmo tempo** — é a única forma de provar isolamento. Se estiverem na mesma corretora, **o canário não prova nada**, e o executor diz isso em vez de declarar verde (§14.1).
-
-### 1.2 Autorizado
+🔴 **O que esta SPEC exige e as outras não:** os dois números em **CORRETORAS DIFERENTES ao mesmo tempo** — é a única forma de provar isolamento. Na mesma corretora, **o canário não prova nada**, e o executor diz isso em vez de declarar verde (§14).
 
 ```
-✅ ler o repositório · rodar a suíte · scripts read-only
-✅ SELECT em produção, só contagens e tempos — NUNCA conteúdo de mensagem
-✅ escrever código, testes e documentação · commit e push na branch da SPEC
-✅ teste de carga SINTÉTICO contra o motor, com dublês (§5.3) — zero provedor externo
-✅ no canário e só nele: conversas entre TESTE-A e TESTE-B, em corretoras de teste
+✅ PODE   ler o repositório · rodar a suíte · scripts read-only · SELECT em produção só de
+          contagens e tempos (NUNCA conteúdo de mensagem) · escrever código, testes e docs ·
+          commit e push na branch · teste de carga SINTÉTICO contra o motor, com dublês (§5.3)
+✅ PODE, no canário e só nele: conversas entre TESTE-A e TESTE-B, em corretoras de teste
+
+⛔ NÃO PODE  mensagem a segurado, seguradora, atendente ou grupo real · número operacional da
+             Resulta ou da AutoFleet como remetente · carga contra a API de LLM, a Evolution ou
+             portal de seguradora · ligar o agente em corretora operacional "só para medir" ·
+             imprimir CPF, CNPJ, telefone, placa, nome de segurado, e-mail ou credencial ·
+             deixar a flag de atraso (§11.2) ligada fora do canário · merge sem o gate final
 ```
 
-### 1.3 Proibido
-
-```
-⛔ mensagem a segurado, seguradora, atendente ou grupo real
-⛔ número operacional da Resulta ou da AutoFleet como remetente
-⛔ carga contra a API de LLM, contra a Evolution ou contra portal de seguradora
-⛔ ligar o agente em corretora operacional "só para medir"
-⛔ imprimir CPF, CNPJ, telefone, placa, nome de segurado, e-mail ou credencial
-⛔ deixar a flag de atraso injetado (§11.2) ligada fora do canário
-⛔ merge na `main` sem o gate final
-```
-
-### 1.4 Verificação antes de cada efeito
-
-Ambiente + tenant de teste + conexão fixada + identidade real do remetente + destino normalizado + **a flag de atraso está ligada SÓ para o `company_id` de teste**. Identidade não confirmada → **não envia**, e não escolhe outra conexão sozinho.
+**Antes de cada efeito:** ambiente + tenant de teste + conexão fixada + identidade real do remetente + destino normalizado + **a flag de atraso ligada SÓ para o `company_id` de teste**. Identidade não confirmada → **não envia**, e não escolhe outra conexão sozinho.
 
 🔴 **A trava própria desta SPEC:** o atraso injetado (§11.2) é o único mecanismo novo capaz de **degradar o produto de propósito**. Nasce fail-closed: sem `ISOLAMENTO_ATRASO_ALLOWLIST` com o `company_id` exato, devolve 0 ms e não dorme. Lista vazia = ninguém — o desenho de `JANELA_SILENCIO_EXCECOES` (commit `05f46a9`).
 
-### 1.5 Falta de canal ou ação física
-
-Continuar código, testes, gates e preparação. Para o Founder ficam: parear TESTE-A e TESTE-B em duas corretoras de teste, e dimensionar o serviço no EasyPanel (§9.4). **Ausência de canário não vira aprovação** — vira PARCIAL com o nome do que faltou.
+**Falta de canal ou ação física:** continuar código, testes, gates e preparação. Para o Founder ficam parear os dois números em corretoras distintas e dimensionar o serviço (§9.4). **Ausência de canário não vira aprovação** — vira PARCIAL com o nome do que faltou.
 
 ---
 
 ## 2. Escopo e exclusões
 
-### 2.1 Obrigatório
+**Obrigatório:** (1) **medir** a latência por etapa (webhook → buffer → grafo → LLM → envio) e o tamanho real dos quatro recursos do §0.3; (2) **cota por corretora + rodízio** no processador atual, sem fila nova; (3) **teto por chamada e por turno** no LLM e nas ferramentas, retry com backoff só em erro transitório, **breaker por provedor de LLM**; (4) **contrapressão** — cota cheia, a mensagem espera; nunca se perde, nunca expira em silêncio; "digitando…" ligado; dono avisado; (5) **processos** — lock de líder em Redis para os 24 jobs do APScheduler e o caminho preparado para separar o serviço; (6) **observabilidade por corretora** na Central de Agentes; (7) **prova** com duas corretoras, uma travada de propósito.
 
-1. **Medir** a latência por etapa (webhook → buffer → grafo → LLM → envio) e o tamanho real dos quatro recursos do §0.3.
-2. **Cota por corretora + rodízio** no processador atual; sem fila nova.
-3. **Teto por chamada e por turno** no LLM e nas ferramentas; retry com backoff só em erro transitório; **breaker por provedor de LLM**.
-4. **Contrapressão**: cota cheia → a mensagem espera; nunca se perde, nunca expira em silêncio; "digitando…" ligado; dono avisado quando a espera passa do combinado.
-5. **Processos**: lock de líder em Redis para os 24 jobs do APScheduler; caminho preparado e nomeado para o Founder separar o serviço de jobs.
-6. **Observabilidade por corretora** na Central de Agentes.
-7. **Prova** com duas corretoras, uma travada de propósito.
-
-### 2.2 Fora (tabela com gatilho de retorno em §18)
-
-Troca de provedor de WhatsApp · multicanal · rate limit por corretora na entrada do webhook · executor de threads por caminho · fila nova em Redis Streams · autoscaling · Prometheus/OpenTelemetry · pool de banco por tenant · breaker de **portal** (é da 001.6) · trava de turno e pausa humana (são da 001.2).
+**Fora** (com gatilho de retorno em §18): troca de provedor de WhatsApp · multicanal · rate limit por corretora na entrada do webhook · executor de threads por caminho · fila nova em Redis Streams · autoscaling · Prometheus/OpenTelemetry · pool de banco por tenant · breaker de **portal** (é da 001.6) · trava de turno e pausa humana (são da 001.2).
 
 ---
 
@@ -169,7 +143,7 @@ Troca de provedor de WhatsApp · multicanal · rate limit por corretora na entra
 | espaçamento por corretora | `backend/app/services/platform_outbound.py:119` (`platform_gate:{company_id}`), `:582-584` | **precedente** de chave Redis com tenant no caminho de envio; mesma convenção de nome |
 | fábrica de LLM | `backend/app/factories/llm_factory.py:140-253` | **recebe** `timeout` e `max_retries` nos quatro construtores. Nenhuma fábrica nova |
 | Central de Agentes | `backend/app/core/central_de_agentes.py` (cache Redis 60 s; linha 29: *"zero migration, zero tabela nova"*), `backend/app/api/admin_spec034.py:56-67`, front `app/admin/central-agentes/page.tsx:640` | **ganha um bloco por corretora**, respeitando a declaração do próprio módulo |
-| trava de turno por conversa | **EXTRA-001.2 §5** (`abrir_turno`/`fechar_turno`, `whatsapp_turno:{escopo}:{telefone}`) | **pendura**: a cota entra ANTES da trava; a trava continua por conversa (§3.3) |
+| trava de turno por conversa | **EXTRA-001.2 §5** (`abrir_turno`/`fechar_turno`) | **pendura**: a cota entra ANTES da trava; a trava continua por conversa (§3.3) |
 
 ### 3.2 O contrato lógico, sem tabela nova
 
@@ -197,7 +171,7 @@ A 001.2 §5.4 diz, com todas as letras: *"⛔ Trava por corretora é o defeito d
 
 🔴 **A ordem importa:** a cota é adquirida **antes** da trava de turno. Se fosse depois, uma conversa esperando a trava (porque outra rodada da mesma conversa está em voo) ocuparia um slot de cota da corretora — e a 001.2 teria criado, dentro da 001.8, o gargalo que a 001.8 existe para matar.
 
-⚠️ **Se a 001.2 não estiver na `main`** (BLOCO 0 item 14): implementar a cota deixando o ponto de inserção da trava **escrito e vazio**, com a ordem documentada. ⛔ Não implementar a trava aqui — seria motor paralelo.
+⚠️ **Se a 001.2 não estiver na `main`** (BLOCO 0): implementar a cota deixando o ponto de inserção da trava **escrito e vazio**, com a ordem documentada. ⛔ Não implementar a trava aqui — seria motor paralelo.
 
 ---
 
@@ -205,27 +179,18 @@ A 001.2 §5.4 diz, com todas as letras: *"⛔ Trava por corretora é o defeito d
 
 > **Este documento envelhece. O número do executor vence** (protocolo §5 ①).
 
-| # | premissa | comando que a confere | valor de 13/09 |
-|---|---|---|---|
-| 1 | o semáforo é global e vale 6 | `sed -n '60,80p' backend/app/tasks/buffer_processor.py` | `_PARALELISMO_PADRAO = 6`; `Semaphore(limite)` na :77 |
-| 2 | a conferência está dentro do semáforo | `sed -n '79,85p' …/buffer_processor.py` | `async with semaforo:` → `should_process` na :81 |
-| 3 | zero timeout no processador | `grep -n "wait_for\|timeout" …/buffer_processor.py` | **0 linhas** |
-| 4 | zero timeout/retry na fábrica de LLM | `grep -rn "timeout\|max_retries" backend/app/factories/` | **0 linhas** |
-| 5 | o turno não tem teto | `grep -n "ainvoke\|astream_events" backend/app/agents/graph.py` | `:1603`, `:2062` — sem `wait_for` |
-| 6 | 24 jobs, um processo, sem lock de líder | `grep -c "add_job" …/buffer_processor.py` · `grep -rn "advisory\|leader\|lider" backend/app \| wc -l` | **24** · **0** |
-| 7 | uvicorn sem `--workers` | `grep -n CMD backend/Dockerfile` | `uvicorn app.main:app --host 0.0.0.0 --port 8000` |
-| 8 | 306 `to_thread` sem executor dimensionado | `grep -rn "asyncio.to_thread" backend/app \| wc -l` · `grep -rn "set_default_executor" backend/app` | **306** · **0** |
-| 9 | 🔴 **quantas threads o contêiner tem** | `python -c "import os; print(os.cpu_count(), min(32,(os.cpu_count() or 1)+4))"` **rodado DENTRO do smith-api implantado** | ⛔ **DESCONHECIDO** — é o número mais importante do BLOCO 0 |
-| 10 | a cota por tenant já existe para Work Runs | `sed -n '252,280p' backend/app/workers/smith_worker.py` | `CONCORRENCIA_POR_TENANT`, `_por_tenant`, `_liberar_slot` |
-| 11 | Streams+consumer group já existem | `sed -n '26,30p;74,120p' backend/app/services/work/queue.py` | `STREAM_KEY`, `CONSUMER_GROUP`, `xreadgroup`, `xautoclaim`, `xack` |
-| 12 | lease com tenant na chave já existe | `sed -n '86,96p;280,290p;415,425p' backend/portal_worker/leases.py` | TTL 120 s, `set(nx=True, ex=…)`, chave com `empresa` |
-| 13 | TTL do buffer 60 s, teto de espera 25 s | `sed -n '73,76p' backend/app/core/config.py` | `DEBOUNCE=8 · MAX_WAIT=25 · TTL=60` |
-| 14 | a trava de turno da 001.2 já está na árvore? | `grep -n "abrir_turno" backend/app/services/message_buffer_service.py` | **a confirmar** — muda §3.3 |
-| 15 | latência real por etapa hoje | §5.1 | ⛔ **não existe registro no caminho do atendimento** |
-| 16 | corretoras com agente ligado | `select count(*) from agents where agent_role='attendance' and is_active` | a remedir (📊 08/09: **3 de 3 desligados**) |
+🔴 **A matriz completa — 16 premissas, cada uma com o comando que a confere e o valor de 13/09 — está no RESEARCH-PACK §2.** O executor a roda inteira e cola o valor de hoje ao lado. Os três itens que decidem o desenho:
 
-**GATE B0.** A matriz preenchida com o valor de hoje e o comando ao lado; o item **9** medido no serviço implantado, não na máquina do executor; o item **15** com a decisão registrada de qual sinal se usa. 🔴 **Item 9 ausente = o BLOCO E não pode ser dimensionado, e a SPEC diz isso em vez de chutar.**
+```
+item 9   🔴 quantas threads o contêiner realmente tem
+         python -c "import os; print(os.cpu_count(), min(32,(os.cpu_count() or 1)+4))"
+         RODADO DENTRO DO smith-api IMPLANTADO. Hoje: ⛔ DESCONHECIDO.
+         Sem ele o BLOCO E não pode ser dimensionado — e a SPEC diz isso em vez de chutar.
+item 14  a trava de turno da 001.2 já está na árvore?  →  muda a §3.3
+item 15  latência por etapa hoje  →  ⛔ NÃO EXISTE registro no caminho do atendimento (§5.1)
+```
 
+**GATE B0.** Matriz preenchida com valor de hoje e comando ao lado; item 9 medido no serviço implantado; item 15 com a decisão registrada de qual sinal se usa.
 **MUTAÇÃO B0.** O desenhista afirma no aquecimento, assinado, que *"o semáforo de 6 já é por corretora, porque a chave do buffer tem o escopo"*. O executor refuta com a linha 77 e explica que a chave isola **dados**, não **vez na fila**.
 
 ---
@@ -241,12 +206,10 @@ A 001.2 §5.4 diz, com todas as letras: *"⛔ Trava por corretora é o defeito d
 payload["turn"] = {
     "status": "completed" | "failed" | "timeout" | "adiado",
     "total_ms": int,                       # do 1º evento do webhook ao envio aceito
-    "etapas": [
-        {"nome": "buffer_espera", "ms": int},   # last_at → saída do rodízio
-        {"nome": "fila_cota",     "ms": int},   # espera pela cota da corretora
-        {"nome": "grafo",         "ms": int},   # ainvoke inteiro
-        {"nome": "envio",         "ms": int},   # whatsapp_service.send_message
-    ],
+    "etapas": [{"nome": "buffer_espera", "ms": int},   # last_at → saída do rodízio
+               {"nome": "fila_cota",     "ms": int},   # espera pela cota da corretora
+               {"nome": "grafo",         "ms": int},   # ainvoke inteiro
+               {"nome": "envio",         "ms": int}],  # whatsapp_service.send_message
     "provedor": str, "modelo": str,        # para o breaker do §7.4 ter a quem culpar
     "finish_reason": str | None, "usage": dict | None,   # os MESMOS nomes do chat.py
 }
@@ -265,7 +228,7 @@ def _esta_pronta(data: dict, agora: datetime) -> bool:
     8 s desde a última OU 25 s desde a primeira (pisos travados, :158/:166)."""
 
 async def should_process(self, key: str) -> bool:
-    """Fica: é o caminho de uma chave só, e a 001.2 o chama. Passa a delegar a `_esta_pronta`."""
+    """Fica: é o caminho de uma chave só, e a 001.2 o chama. Delega a `_esta_pronta`."""
 
 async def prontas(self, chaves: list[str]) -> list[str]:
     """UM `MGET` para o lote; devolve as prontas, na ordem recebida.
@@ -273,7 +236,7 @@ async def prontas(self, chaves: list[str]) -> list[str]:
     GET+DEL atômico (:183-186). Aqui só se PERGUNTA."""
 ```
 
-🔴 **Por que isto é medição e não fila:** hoje cada varredura faz **um GET por conversa aberta, por segundo, atrás de um semáforo de 6**. É ao mesmo tempo o custo que ninguém contou e a causa do elo ① — e não dá para medir a fila de uma corretora enquanto a conferência da outra está presa atrás de um turno de LLM.
+🔴 **Por que isto é medição e não fila:** hoje cada varredura faz **um GET por conversa aberta, por segundo, atrás de um semáforo de 6**. É o custo que ninguém contou e a causa do elo ① — e não dá para medir a fila de uma corretora enquanto a conferência da outra está presa atrás de um turno de LLM.
 
 ### 5.3 O teste de carga, sintético e reproduzível
 
@@ -326,9 +289,9 @@ X = 💭 2 s de partida, SUBSTITUÍDO pelo número medido no BLOCO 0 (proposta: 
 @staticmethod
 def escopo_da_chave(chave: str) -> str:
     """`whatsapp_buffer:{escopo}:{telefone}` → escopo.
-    🔴 Chave malformada, ou escopo vazio/`sem-integracao` → "" (fail-closed).
-    A recusa é a mesma da 001.2 §5.3 e pela mesma razão: duas corretoras com o mesmo
-    telefone cairiam na mesma chave, e uma travaria a outra."""
+    🔴 Chave malformada, ou escopo vazio/`sem-integracao` → "" (fail-closed). A recusa é a
+    mesma da 001.2 §5.3 e pela mesma razão: duas corretoras com o mesmo telefone cairiam na
+    mesma chave, e uma travaria a outra."""
 
 # backend/app/tasks/buffer_processor.py
 _COTA_PADRAO = 4                 # 🔴 D-PILOTO-07: o PISO é 4 por corretora
@@ -336,20 +299,20 @@ _PARALELISMO_PADRAO = 6          # fica o nome; o VALOR sobe (§9.3)
 
 def ordenar_em_rodizio(chaves: list[str]) -> list[str]:
     """Agrupa por escopo e intercala: A1 B1 C1 · A2 B2 C2 · A3 …
-    Determinística: dentro do escopo preserva a ordem recebida; entre escopos, ordem
-    estável do escopo. ⛔ Não é aleatório nem por tamanho de fila — é rodízio simples.
-    Sem determinismo o guarda G2 não consegue afirmar nada."""
+    Determinística: dentro do escopo preserva a ordem recebida; entre escopos, ordem estável
+    do escopo. ⛔ Não é aleatório nem por tamanho de fila — é rodízio simples. Sem determinismo
+    o guarda G2 não consegue afirmar nada."""
 
 async def processar_buffers_prontos(chaves, buffer_service, processar,
                                     paralelismo: int = 0,
                                     cota_por_corretora: int = 0,
                                     timeout_s: float = 0) -> dict:
     """Parâmetros novos, todos com default 0 = "leia do ambiente".
-    ⚠️ A assinatura antiga continua válida: test_midia_e_concorrencia_do_webhook.py:519
-    chama com `paralelismo=6` e `paralelismo=1` e TEM DE CONTINUAR VERDE (§3.3)."""
+    ⚠️ A assinatura antiga continua válida: test_midia_e_concorrencia_do_webhook.py:519 chama
+    com `paralelismo=6` e `paralelismo=1` e TEM DE CONTINUAR VERDE (§3.3)."""
 ```
 
-Variáveis novas, por nome: **`WHATSAPP_COTA_POR_CORRETORA`** (💭 4) · **`WHATSAPP_TURNO_TIMEOUT_S`** (§7.2). `WHATSAPP_BUFFER_PARALELISMO` já existe — 📊 e **não está definida em lugar nenhum** (nem `.env`, nem compose, nem docs), ou seja, em produção vale 6.
+Variáveis novas, por nome: **`WHATSAPP_COTA_POR_CORRETORA`** (💭 4) · **`WHATSAPP_TURNO_TIMEOUT_S`** (§7.2). `WHATSAPP_BUFFER_PARALELISMO` já existe — 📊 e **não está definida em lugar nenhum** (nem `.env`, nem compose, nem docs): em produção vale 6.
 
 ### 6.3 A ordem de aquisição É a regra
 
@@ -380,7 +343,7 @@ async def _uma(chave: str) -> bool:
 Conversa **pausada por intervenção humana** (D-PILOTO-02) e conversa dentro da **janela de silêncio** não chegam a `processar` — mas hoje chegam a ocupar um slot, porque o silêncio é decidido lá dentro. ⚠️ Esta SPEC **não move** a decisão de silêncio (é da 001.2/001.3). Ela **mede**: se o `total_ms` de uma conversa calada for < 50 ms, ela sai da cota na prática; se não for, vira **pendência com o número**, nunca conserto silencioso.
 
 **GATE B.** ① 50 chaves de uma corretora + 4 de outra pelo motor real: as 4 terminam dentro de X (§5.4); ② `ordenar_em_rodizio` sobre 3 corretoras devolve intercalado e **estável entre execuções**; ③ `escopo_da_chave("whatsapp_buffer:sem-integracao:…")` → `""`, e a chave é adiada, não processada; ④ **o teste de paralelismo existente continua verde**.
-**MUTAÇÃO B.** (a) cota removida (`cota_por_corretora=10_000`) → ① **vermelho**; (b) ordem invertida (global antes da cota) → ① **vermelho**; (c) rodízio trocado pela ordem do SCAN → ② **vermelho**.
+**MUTAÇÃO B.** (a) cota removida (`cota_por_corretora=10_000`) → ① **vermelho**; (b) ordem invertida → ① **vermelho**; (c) rodízio trocado pela ordem do SCAN → ② **vermelho**.
 
 ---
 
@@ -447,7 +410,7 @@ meio-aberto:  depois de T (💭 120 s), deixa passar UMA chamada
 **Contrato:** teto default para todo `httpx.AsyncClient` criado no backend, e um guarda que **conta zero** clientes sem `timeout` (G6). ⚠️ Os 4 achados estão fora do caminho do atendimento; entram porque são 4 linhas e porque o guarda só consegue ficar vermelho se a regra valer para todos.
 
 **GATE C.** ① os 4 construtores recebem `timeout` e `max_retries` (teste que lê os kwargs reais, não o fonte); ② `wait_for` no atendimento e **nenhum** `wait_for` total em volta do `astream_events`; ③ backoff com jitter: duas chamadas com o mesmo `n` dão valores diferentes; ④ 401 não entra no backoff; ⑤ breaker abre na 5ª e a 6ª chamada não sai; ⑥ zero `httpx.AsyncClient()` sem timeout.
-**MUTAÇÃO C.** (a) tirar `timeout` de um construtor → ① vermelho; (b) aplicar backoff ao 401 → ④ vermelho; (c) breaker sem meio-aberto (nunca fecha) → uma chamada depois de T falha → ⑤ vermelho.
+**MUTAÇÃO C.** (a) tirar `timeout` de um construtor → ① vermelho; (b) aplicar backoff ao 401 → ④ vermelho; (c) breaker sem meio-aberto → uma chamada depois de T falha → ⑤ vermelho.
 
 ---
 
@@ -455,12 +418,7 @@ meio-aberto:  depois de T (💭 120 s), deixa passar UMA chamada
 
 ### 8.1 🔴 O defeito que a contrapressão descobre: o buffer EXPIRA
 
-```
-message_buffer_service.py:127   await self.redis.setex(key, settings.BUFFER_TTL_SECONDS, ...)
-core/config.py:75               BUFFER_TTL_SECONDS: int = 60
-```
-
-📊 **O TTL do buffer é 60 s, contado desde a última escrita.** Com a fila andando em 1 s, é rede de segurança. Com a cota cheia e 50 conversas na frente, **uma conversa pode esperar mais de 60 s — e o Redis apaga o buffer.** O segurado escreveu, o webhook respondeu `{"status":"buffered"}`, e a mensagem sumiu **sem uma linha em lugar nenhum**. Não é consequência da cota: já é verdade hoje, e a cota o torna alcançável.
+📊 `message_buffer_service.py:127` grava com `setex(key, settings.BUFFER_TTL_SECONDS, …)` e `core/config.py:75` diz `BUFFER_TTL_SECONDS: int = 60`. **O TTL é 60 s, contado desde a última escrita.** Com a fila andando em 1 s, é rede de segurança. Com a cota cheia e 50 conversas na frente, **uma conversa pode esperar mais de 60 s — e o Redis apaga o buffer.** O segurado escreveu, o webhook respondeu `{"status":"buffered"}`, e a mensagem sumiu **sem uma linha em lugar nenhum**. Não é consequência da cota: já é verdade hoje, e a cota o torna alcançável.
 
 ```python
 async def adiar(self, chave: str, *, motivo: str) -> None:
@@ -483,11 +441,11 @@ Chamado sempre que uma chave pronta **não** é servida: cota cheia · turno tom
 
 ### 8.3 O "digitando…" e o aviso ao dono
 
-- **Presença "digitando…"**: o contrato é da **EXTRA-001.2 §6.4** (`sendPresence`, `presence ∈ {composing, paused, …}`). ⛔ Não reimplementar. Esta SPEC só acrescenta o gatilho: conversa **adiada por cota** liga a presença. Se a 001.2 não estiver na `main`, o gatilho fica escrito e desligado, e vira pendência nominal.
+- **Presença "digitando…"**: o contrato é da **EXTRA-001.2 §6.4** (`sendPresence`). ⛔ Não reimplementar. Esta SPEC só acrescenta o gatilho: conversa **adiada por cota** liga a presença. Se a 001.2 não estiver na `main`, o gatilho fica escrito e desligado, e vira pendência nominal.
 - **Aviso ao dono**: corretora acima da cota por mais de N s (💭 60) gera **um** aviso ao destino de suporte dela, pelo caminho que a **EXTRA-001.3** governa, com a mesma guarda de "humano já está nesta conversa" e **um** aviso por janela — nunca de 10 em 10 minutos, que foi como o grupo virou ruído (DIAGNÓSTICO §1.5). ⛔ Nenhum destino novo, nenhum canal novo.
 - 💭 Copy ilustrativa, nunca citável: *"estamos com 12 conversas ao mesmo tempo aqui na Resulta e 4 estão esperando a vez. Ninguém foi perdido — vão sendo respondidas por ordem de chegada."*
 
-**GATE D.** ① 200 chaves de uma corretora, cota 4, processador de 2 s: **zero** `expiradas` e entrada = processadas + adiadas; ② `adiar` renova o TTL e **não** altera `last_at` (duas leituras do JSON); ③ o aviso ao dono sai **uma vez** por janela, não por varredura.
+**GATE D.** ① 200 chaves de uma corretora, cota 4, processador de 2 s: **zero** `expiradas` e entrada = processadas + adiadas; ② `adiar` renova o TTL e **não** altera `last_at`; ③ o aviso ao dono sai **uma vez** por janela, não por varredura.
 **MUTAÇÃO D.** (a) `adiar` vira `pass` → ① **vermelho** com `expiradas > 0`; (b) `adiar` reescreve o buffer inteiro → ② **vermelho** (a rajada nunca fecha); (c) tirar a janela do aviso → ③ **vermelho** com N avisos.
 
 ---
@@ -535,7 +493,7 @@ loop.set_default_executor(ThreadPoolExecutor(
     thread_name_prefix="to_thread"))
 ```
 
-🔴 O default de hoje depende do `cpu_count` do contêiner e **ninguém o conhece** (BLOCO 0 item 9). Num contêiner de 1 vCPU são **5 threads** para 306 pontos de `to_thread` — e por elas passam quase todas as leituras ao Supabase de **todas** as corretoras. Tornar o número explícito e nomeado é o mínimo, e é literalmente o que o Bulkhead manda (§17 E1: *"consider using processes, thread pools, and semaphores"*).
+🔴 O default de hoje depende do `cpu_count` do contêiner e **ninguém o conhece** (BLOCO 0 item 9). Num contêiner de 1 vCPU são **5 threads** para 306 pontos de `to_thread` — e por elas passam quase todas as leituras ao Supabase de **todas** as corretoras. Tornar o número explícito e nomeado é o mínimo, e é o que o Bulkhead manda (§17 E1: *"consider using processes, thread pools, and semaphores"*).
 
 ⚠️ **Um executor por caminho (bulkhead completo) fica FORA** — mudaria 306 chamadas. §18, com gatilho.
 
@@ -543,8 +501,7 @@ loop.set_default_executor(ThreadPoolExecutor(
 
 | serviço | o que muda | quando |
 |---|---|---|
-| **smith-api** | variáveis novas: `WHATSAPP_COTA_POR_CORRETORA` · `WHATSAPP_TURNO_TIMEOUT_S` · `LLM_TIMEOUT_SEGUNDOS` · `LLM_MAX_RETRIES` · `LLM_BREAKER_FALHAS` · `LLM_BREAKER_SEGUNDOS` · `EXECUTOR_THREADS` · `SCHEDULER_ENABLED` · `ISOLAMENTO_ATRASO_ALLOWLIST` (vazia em produção) | nesta SPEC |
-| **smith-api** | réplicas: continua **1** | nesta SPEC |
+| **smith-api** | variáveis novas: `WHATSAPP_COTA_POR_CORRETORA` · `WHATSAPP_TURNO_TIMEOUT_S` · `LLM_TIMEOUT_SEGUNDOS` · `LLM_MAX_RETRIES` · `LLM_BREAKER_FALHAS` · `LLM_BREAKER_SEGUNDOS` · `EXECUTOR_THREADS` · `SCHEDULER_ENABLED` · `ISOLAMENTO_ATRASO_ALLOWLIST` (vazia em produção). Réplicas: continua **1** | nesta SPEC |
 | **smith-jobs** (novo, opcional) | mesma imagem; comando `python -m app.tasks.jobs_runner`; `SCHEDULER_ENABLED=true`; 1 réplica. A API passa a `SCHEDULER_ENABLED=false` | 🧑 depois desta SPEC |
 | **portal-worker** | nada | — |
 
@@ -633,9 +590,7 @@ Todos sobre o **MOTOR** e sobre o **ACERVO real** (CLAUDE.md §9.4). ⛔ Proibid
 | **G9** | 401 não entra no backoff; breaker abre na 5ª e fecha depois de T | aplicar backoff ao 401 |
 | **G10** | 🔴 sem `ISOLAMENTO_ATRASO_ALLOWLIST`, o atraso é **ZERO** para qualquer `company_id` | default virar "todos" |
 
-⚠️ **G3, G5 e G10 não se negociam:** G3 é o outcome, G5 é a linha de controle herdada da 001.2, G10 é a trava do mecanismo perigoso desta SPEC.
-
-⚠️ Mutação roda em **worktree próprio ou com lock exclusivo**, restaura por **CÓPIA**, nunca `git checkout` (protocolo §10). A bateria inteira **não** roda enquanto um juiz muta.
+⚠️ **G3, G5 e G10 não se negociam:** G3 é o outcome, G5 é a linha de controle herdada da 001.2, G10 é a trava do mecanismo perigoso desta SPEC. Mutação roda em **worktree próprio ou com lock exclusivo**, restaura por **CÓPIA**, nunca `git checkout` (protocolo §10); a bateria inteira **não** roda enquanto um juiz muta.
 
 ---
 
@@ -649,23 +604,13 @@ Todos sobre o **MOTOR** e sobre o **ACERVO real** (CLAUDE.md §9.4). ⛔ Proibid
 
 ## 14. Canário controlado em produção
 
-### 14.1 Antes
+**Antes:** confirmar TESTE-A e TESTE-B, cada um na **sua** corretora de teste; conferir o remetente real sem tocar QR operacional; fixar janela e orçamento; provar os bloqueios com saídas simuladas **antes** de qualquer envio vivo. 🔴 **Os dois números na mesma corretora → o canário não prova isolamento.** O executor registra **PARCIAL com nome**; ⛔ nunca converte em verde e ⛔ nunca liga corretora operacional "só para medir".
 
-Confirmar TESTE-A e TESTE-B, cada um na **sua** corretora de teste; conferir o remetente real sem tocar QR operacional; fixar janela e orçamento; provar os bloqueios com saídas simuladas **antes** de qualquer envio vivo.
+**Durante:** os seis casos da §11.3, nesta ordem, com o antes e o depois. Nenhum envio fora da allowlist, inclusive por alerta, fila, reenvio e resposta automática.
 
-🔴 **Os dois números na mesma corretora → o canário não prova isolamento.** O executor registra **PARCIAL com nome**; ⛔ nunca converte em verde e ⛔ nunca liga corretora operacional "só para medir".
+**Depois:** esvaziar `ISOLAMENTO_ATRASO_ALLOWLIST`; conferir que nenhuma intenção do canário ficou pendente; repetir o caso 1 e mostrar que o número voltou; preservar logs sem PII; entregar evidências com aliases.
 
-### 14.2 Durante
-
-Os seis casos da §11.3, nesta ordem, com o antes e o depois. Nenhum envio fora da allowlist, inclusive por alerta, fila, reenvio e resposta automática.
-
-### 14.3 Depois
-
-Esvaziar `ISOLAMENTO_ATRASO_ALLOWLIST`; conferir que nenhuma intenção do canário ficou pendente; repetir o caso 1 e mostrar que o número voltou; preservar logs sem PII; entregar evidências com aliases.
-
-### 14.4 Validação com Saionara e Regina
-
-Esta SPEC **não muda o que elas veem**, exceto pelo aviso do §8.3 e pelo bloco da Central. O que se valida é só isso: a frase do aviso soa humana? o bloco por corretora responde *"perdi alguma mensagem?"* sem explicação? O Founder conduz; o executor não as contata.
+**Com Saionara e Regina:** esta SPEC **não muda o que elas veem**, exceto pelo aviso do §8.3 e pelo bloco da Central. Valida-se só isso: a frase do aviso soa humana? o bloco por corretora responde *"perdi alguma mensagem?"* sem explicação? O Founder conduz; o executor não as contata.
 
 ---
 
@@ -713,30 +658,24 @@ ROLLBACK, em 3 variáveis:
 
 ## 17. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
 
-> 🔴 O pesquisador (protocolo §7.3) **reabre** as três e escreve a data na SPEC definitiva. Abaixo, a leitura de **13/09/2026**.
+> 🔴 O pesquisador (protocolo §7.3) **reabre** as três e escreve a data na SPEC definitiva. As citações literais completas estão no RESEARCH-PACK §4; abaixo, a forma de quatro linhas. Leitura de **13/09/2026**.
 
-### E1 — Microsoft · Bulkhead pattern
-**URL:** https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead · reaberta 13/09/2026
-**Faz:** particiona recursos por consumidor para que a falha de um não se propague. Nomeia o nosso elo ④: *"the client's connection pool might be exhausted. At that point, the consumer's requests to other services are affected"*, e *"Many requests from one client might exhaust available resources in the service… which causes a cascading failure effect"*. Para partir consumidores recomenda *"processes, thread pools, and semaphores"*, e diz que bulkhead se combina com *"retry, circuit breaker, and throttling patterns"*.
+### E1 — Microsoft · Bulkhead pattern — https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead
+**Faz:** parte recursos por consumidor para que a falha de um não se propague; nomeia o nosso elo ④ (*"the client's connection pool might be exhausted… the consumer's requests to other services are affected"*) e recomenda, para partir consumidores, *"processes, thread pools, and semaphores"*, combinados com *"retry, circuit breaker, and throttling"*.
 **MODELAMOS:** ① **semáforo por consumidor** = a cota por corretora do §6, com o consumidor sendo o `escopo` da chave do buffer; ② **thread pool dimensionado** = `EXECUTOR_THREADS` do §9.3 — a partição que o documento manda fazer primeiro e que hoje não existe.
-**REJEITAMOS:** *"deploying them into separate virtual machines, containers, or processes"* como forma **desta** SPEC. Um contêiner por corretora é a granularidade que o próprio texto manda escolher com cuidado (*"determine the level of granularity"*) e que, com duas corretoras piloto, custa mais do que entrega. §18, com gatilho.
+**REJEITAMOS:** *"deploying them into separate virtual machines, containers, or processes"* como forma **desta** SPEC: um contêiner por corretora é a granularidade que o próprio texto manda escolher com cuidado e que, com duas corretoras piloto, custa mais do que entrega. §18, com gatilho.
 **Como o juiz inspeciona:** abre a página, confere que "Problems and considerations" cita semáforos e thread pools, e compara com `cota_de()` e `set_default_executor` no diff.
 
-### E2 — Kubernetes · API Priority and Fairness
-**URL:** https://kubernetes.io/docs/concepts/cluster-administration/flow-control/ · reaberta 13/09/2026
-**Faz:** é a implementação de referência de **cota + fila justa** num sistema multi-inquilino real. O limite global de concorrência é *"divided up among a configurable set of priority levels"*, e cada nível *"will only dispatch as many concurrent requests as its particular limit allows"*; dentro do nível, *"a fair-queuing algorithm prevents requests from different flows from starving each other"*. O objetivo declarado é o nosso, palavra por palavra: *"a poorly-behaved [controller] need not starve others"*.
-**MODELAMOS:** ① **teto global repartido em cotas** — é o §6.3 (cota da corretora dentro do teto do processo), e é a razão de o "pool por corretora sem teto global" valer 62; ② *"introduces a limited amount of queuing, so that no requests are rejected in cases of very brief bursts"* → o §8: a rajada **espera**, não é recusada nem perdida.
-**REJEITAMOS:** ① **borrowing** (nível ocioso emprestar concorrência ao saturado) — com 2 corretoras não paga, e emprestar é a porta pela qual a interferência volta; ② **shuffle sharding** — resolve *quem divide fila com quem* quando há mais inquilinos que filas; a nossa cota é nominal por `escopo` e não precisa de sorteio.
-**Como o juiz inspeciona:** abre a página, lê "Concepts", e confere que a nossa cota é subdivisão de um teto (e não um teto novo por corretora) lendo a ordem de aquisição em `_uma`.
+### E2 — Kubernetes · API Priority and Fairness — https://kubernetes.io/docs/concepts/cluster-administration/flow-control/
+**Faz:** é a implementação de referência de **cota + fila justa** num sistema multi-inquilino real: o limite global é *"divided up among a configurable set of priority levels"*, cada nível *"will only dispatch as many concurrent requests as its particular limit allows"*, e dentro dele *"a fair-queuing algorithm prevents requests from different flows from starving each other"*. O objetivo declarado é o nosso: *"a poorly-behaved [controller] need not starve others"*.
+**MODELAMOS:** ① **teto global repartido em cotas** = §6.3 (a cota da corretora **dentro** do teto do processo), e é a razão de o "pool por corretora sem teto global" valer 62; ② *"a limited amount of queuing, so that no requests are rejected in cases of very brief bursts"* → §8: a rajada **espera**, não é recusada nem perdida.
+**REJEITAMOS:** ① **borrowing** (nível ocioso emprestar ao saturado) — com 2 corretoras não paga, e emprestar é a porta pela qual a interferência volta; ② **shuffle sharding** — resolve *quem divide fila com quem* quando há mais inquilinos que filas; a nossa cota é nominal por `escopo` e não precisa de sorteio.
+**Como o juiz inspeciona:** abre "Concepts" e confere que a nossa cota é subdivisão de um teto — e não um teto novo por corretora — lendo a ordem de aquisição em `_uma`.
 
-### E3 — Redis · `SET` (NX/EX) e o script de soltura
-**URL:** https://redis.io/docs/latest/commands/set/ · reaberta 13/09/2026
-**Faz:** documenta que `SET resource-name anystring NX EX max-lock-time` *"is a simple way to implement a locking system with Redis"*, e prescreve as duas correções que o tornam honesto: *"Instead of setting a fixed string, set a non-guessable large random string, called token"* e *"Instead of releasing the lock with DEL, send a script that only removes the key if the value matches"* —
-```lua
-if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end
-```
+### E3 — Redis · `SET` (NX/EX) e o script de soltura — https://redis.io/docs/latest/commands/set/
+**Faz:** documenta que `SET resource-name anystring NX EX max-lock-time` *"is a simple way to implement a locking system with Redis"*, e prescreve as duas correções que o tornam honesto: *"set a non-guessable large random string, called token"* e *"send a script that only removes the key if the value matches"* — `if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end`.
 **MODELAMOS:** o **lock de líder do agendador** (§9.2): token aleatório, `EX 60`, renovação a cada 20 s, soltura pelo script literal. É o padrão que `portal_worker/leases.py:130-145, :421` já roda em produção — reaproveitamos a forma, não copiamos o arquivo (aquele é lease por conta de portal).
-**REJEITAMOS:** ① **Redlock** (que a própria página recomenda por cima do `SET NX`): temos **um** Redis, não N independentes; Redlock sem N mestres é cerimônia sem garantia. ② **Redis Streams com consumer group** para o atendimento — lida (https://redis.io/docs/latest/develop/data-types/streams/, mesma data) e **rejeitada de propósito**: o padrão já existe no repo (`app/services/work/queue.py:26-116`, com `xreadgroup`/`xautoclaim`/`xack`) e serve Work Runs; trazê-lo para o WhatsApp criaria uma segunda fila sobre a mesma mensagem — o motor paralelo do CLAUDE.md §5. O buffer **já é** a fila e o `GET+DEL` em pipeline **já é** a entrega única.
+**REJEITAMOS:** ① **Redlock** (que a própria página recomenda por cima do `SET NX`): temos **um** Redis, não N independentes — Redlock sem N mestres é cerimônia sem garantia; ② **Redis Streams com consumer group** para o atendimento (lido em https://redis.io/docs/latest/develop/data-types/streams/, mesma data) — o padrão já existe no repo (`app/services/work/queue.py:26-116`) e serve Work Runs; trazê-lo para o WhatsApp criaria uma segunda fila sobre a mesma mensagem, o motor paralelo do CLAUDE.md §5.
 **Como o juiz inspeciona:** abre "Patterns" na página, compara o Lua do diff caractere a caractere com o da doc, e confirma que não há `DEL` cego no caminho de soltura.
 
 ---
@@ -754,7 +693,7 @@ if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) el
 | **pool de banco por corretora** | o Supabase é acessado por service role com pool único; partir isso é SPEC própria | saturação de conexões medida |
 | **breaker de portal** | é da **EXTRA-001.6 §B3.3**, já escrita | — (não volta; só se referencia) |
 
-🔴 **Nada da §2.1 sai em silêncio.** Conflito material vira proposta em `CHANGE-ADDENDA.md` — recorte unilateral não se chama "otimização AAA" (CLAUDE.md §11).
+🔴 **Nada do escopo obrigatório sai em silêncio.** Conflito material vira proposta em `CHANGE-ADDENDA.md` — recorte unilateral não se chama "otimização AAA" (CLAUDE.md §11).
 
 ---
 
@@ -777,14 +716,14 @@ Ordem canônica (DIAGNÓSTICO §12.1): `001.0 → 001.6-P0 → 001.1 → 001.2 �
 
 ```
 [ ]  1. EXECUTION CARD no topo do relatório, com o X do §5.4 preenchido e o comando ao lado
-[ ]  2. BLOCO 0: as 16 premissas remedidas, com comando e valor de hoje — inclusive o item 9
-        (cpu_count/threads DENTRO do smith-api implantado)
+[ ]  2. BLOCO 0: as 16 premissas do RESEARCH-PACK §2 remedidas, com comando e valor de hoje —
+        inclusive o item 9 (cpu_count/threads DENTRO do smith-api implantado)
 [ ]  3. G1–G10 verdes, e as 10 mutações VERMELHAS, cada uma com o nome da falha nova em subprocesso
 [ ]  4. o teste de paralelismo que já existe (test_midia_e_concorrencia_do_webhook.py:519)
         continua VERDE — a linha de controle herdada da 001.2
 [ ]  5. `expiradas == 0` sob a carga do §5.3 e no caso 4 do canário
 [ ]  6. canário: os 6 casos da §11.3, com TESTE-A e TESTE-B em CORRETORAS DIFERENTES, e o número
-        do caso 2 comparado ao do caso 1 — ou o PARCIAL nomeado da §14.1
+        do caso 2 comparado ao do caso 1 — ou o PARCIAL nomeado da §14
 [ ]  7. `ISOLAMENTO_ATRASO_ALLOWLIST` vazia no implantado, conferida DEPOIS do canário
 [ ]  8. a suíte inteira, 2 a 4 vezes na SPEC, com a contagem no relatório
 [ ]  9. `next start` + uma requisição a `/api/…` respondendo 200 (mexeu na Central)
