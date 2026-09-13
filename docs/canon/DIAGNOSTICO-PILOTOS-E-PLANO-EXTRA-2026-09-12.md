@@ -930,3 +930,24 @@ começa nas cinco propostas que ainda faltam.
 
 ### 13.6 Fontes
 Anthropic — Building effective agents (anthropic.com/engineering/building-effective-agents) · Anthropic — How we built our multi-agent research system (anthropic.com/engineering/multi-agent-research-system) · Why Do Multi-Agent LLM Systems Fail? (arxiv.org/abs/2503.13657) · Cognition — Don't Build Multi-Agents (cognition.com/blog/dont-build-multi-agents) · Cognition — Multi-Agents: What's Actually Working (cognition.com/blog/multi-agents-working) · Martin Fowler — Agentic Programming (martinfowler.com/bliki/AgenticProgramming.html) e Pushing AI autonomy (martinfowler.com/articles/pushing-ai-autonomy.html) · Nine Judges, Two Effective Votes (arxiv.org/pdf/2605.29800) · More Rounds, More Noise (arxiv.org/pdf/2603.16244) · Self-Refine (arxiv.org/pdf/2303.17651) · LangChain — How and when to build multi-agent systems (langchain.com/blog/how-and-when-to-build-multi-agent-systems). Não encontrado: uma thread nomeada de Hacker News ou um post do Simon Willison com o termo "overkill" — a posição dele é caso a caso.
+
+### 13.7 A decisão de 13/09 à noite: o laço curto substitui o AAA completo nas EXTRA-001.x
+
+📊 O dia de criação das propostas custou **30 % da cota semanal de Opus e 20 % da de Fable** para 8 propostas
+revisadas e 3 rascunhos, e sofreu duas quedas (uma por limite da janela, uma por rede). Isso é o custo do rito
+inteiro aplicado a documentos. Não repete na execução. A partir daqui:
+
+| opção | nota | por quê |
+|---|---|---|
+| **C · Laço curto**: Fable orquestra · 1–2 builders Opus · **1 juiz fresco Opus com canário vivo** (+1 lente do dado só em CRÍTICO) · guardas pelo motor · push com saída. Sem aquecimento, sem painel, sem red team, sem auditoria externa, sem conversão da proposta. ≤ 3 agentes ao mesmo tempo. Teto 💭 1 M tokens por SPEC CRÍTICA | **88** | Mantém as duas peças que a medição do projeto provou (juiz fresco + canário: 366-verdes-tool-morta; lente do dado: 40,8 %), corta tudo o que a literatura mede como ruído (painel homogêneo, rodadas 3+, paralelismo de escrita). É o laço antigo do Founder com as duas peças acopladas |
+| B · AAA dosado (§13.4) | 80 | Melhor que o atual, mas ainda três lentes em CRÍTICO e três arquivos por SPEC: não cabe no orçamento desta semana |
+| A · AAA completo como está no protocolo | 40 | Duas janelas por SPEC; a fila de 11 não termina este mês |
+| D · Opus sozinho, sem juiz | 60 | Rápido; deixa passar exatamente o defeito que chega ao cliente |
+
+**Consequências imediatas:** (1) `PROMPT-DE-ABERTURA-EXTRA-001.x-MODELO.md` é o prompt único de execução; os
+prompts individuais já escritos valem, mas o modelo prevalece onde divergir (marcha, laço, tetos); (2) as
+propostas já escritas **são** as SPECs: o executor não converte, executa; (3) RESEARCH-PACK deixa de ser
+obrigatório; (4) **001.9 (rotas do painel) e 001.8 (isolamento) ficam para depois do piloto medido** — 001.9 é tela
+(nota "mover agora" 34) e 001.8 não tem, até hoje, uma medição de contenção real (1h53 de uso em três dias); se o
+piloto de 001.7 mostrar uma corretora atrasando outra, 001.8 sobe; (5) 001.0 fica, mas por último e em LEVE.
+Ordem de execução: **001.6-P0 → 001.1 → 001.2 → 001.3 → 001.4 → 001.6 → 001.7 → 001.10 → 001.5 → 001.0 → (001.8, 001.9)**.
