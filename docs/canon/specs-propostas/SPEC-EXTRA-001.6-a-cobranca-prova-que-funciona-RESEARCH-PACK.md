@@ -206,6 +206,21 @@ grep -rn "send_to_client_guarded(" backend/app --include=*.py | grep -v "def "
 
 🔴 Ligar `bloco_unico` incondicionalmente em `_entregar_agora` transformaria a saudação de religamento e o follow-up em blocos únicos — o oposto do que `whatsapp_service.py:139-152` documenta ("os balões existem por um motivo bom"). E um **parâmetro novo** não sobrevive ao replay: `P-E001-FILA-SEM-AUTORIZACAO-DE-AUXILIAR` registra que a entrada da fila carrega `integration_id`, `documento`, `ledger_ref` e `canario` — e nada mais. O `kind` **já viaja**. Por isso a decisão é uma tabela de `kind`.
 
+### 2.4 `platform_sends` não é só do governador — quem mais lê
+
+```bash
+grep -rn "record_platform_send(" backend/app --include=*.py | grep -v "def "
+# 📊 13/09: 4 escritores — billing_collection.py:1261 · dispatch_router.py:244 ·
+#            platform_outbound.py:1494 · dispatch_followup.py:320
+```
+
+| leitor | linha | o que faz |
+|---|---|---|
+| `context_note_for` | `platform_outbound.py:1659-1682` | últimos 30 envios da corretora, filtra pelo telefone, monta `[CONTEXTO DA PLATAFORMA]` com **`hits[:3]`** por `summary`/`kind` |
+| Central de Agentes | `app/core/heartbeat.py:311-320` | conta produção por `kind` com filtro `in`; o comentário de 03/09 registra 📊 `billing 4 · acionamento_protocolo 1` |
+
+🔴 **É por isso que P0.5 grava uma linha por COMPONENTE com `kind` próprio, e não uma por balão nem uma coluna `unidades`:** por balão, a mesma cobrança ocuparia os três lugares do contexto do cliente; por coluna, seria migration — e o P0 deixaria de ser implantável sem migration, que é a razão de ele existir.
+
 ---
 
 ## 3. Os dois scripts de medição rodados hoje (read-only)
@@ -258,7 +273,7 @@ rg -n "P-264|P-PILOTO-11|P-E001-CANARIO-VIVO-NO-IMPLANTADO" docs/canon/PENDENCIA
 cat docs/canon/MIGRATIONS-AUTHORITY.md
 ```
 
-Depois, as 14 premissas da proposta §4.2, uma a uma, com a saída colada. **O número do executor vence o deste pacote.**
+Depois, as 15 premissas da proposta §4.2, uma a uma, com a saída colada. **O número do executor vence o deste pacote.**
 
 ---
 
@@ -267,7 +282,7 @@ Depois, as 14 premissas da proposta §4.2, uma a uma, com a saída colada. **O n
 1. **O texto exato das telas dos 12 prints.** Estão no bucket; ninguém os transcreveu. É a primeira tarefa do BLOCO 0, e dela depende o corpus do G3.
 2. **Se as senhas novas resolvem.** 📊 A Allianz responde a mesma tela desde 18/08 e a Mapfre nunca teve um `done` — mas nunca foi testada uma senha diferente. 💭 A hipótese "senha expirada" explica os dois; não está provada.
 3. **Quantas parcelas por segurado existem na carteira real.** 📊 7 parcelas/dia nos dois dias, e o diagnóstico registra 4 do mesmo CNPJ — mas a distribuição por segurado em 30 dias não foi medida (o ledger está vazio e os itens não são persistidos fora de `routine_runs.output_full`).
-4. **Se `cpf_cnpj` chega preenchido em todas as 6 journeys.** Confirmado em `allianz_corretor.py:170, :1578`. As outras cinco não foram lidas linha a linha. 🔴 **O BLOCO 0 tem de medir isso** — é a chave do agrupamento e da regra de N dias.
+4. **Quantos itens reais trazem `cpf_cnpj`, e em quais das 6 journeys.** Confirmado só na Allianz (`allianz_corretor.py:170, :1578`); as outras cinco não foram lidas linha a linha, e o **preenchimento no acervo não foi contado**. 🔴 É a **premissa 15** do BLOCO 0 — a chave do agrupamento e da janela de N dias. Por isso a SPEC define `segurado_chave` com fallback por nome em vez de depender do documento: se o preenchimento for baixo, a regra continua valendo.
 5. **O custo real do prólogo de `login_check`** (💭 6 jobs × ≈100 s). Nunca foi executado.
 6. **Se a Central de Agentes (`/agents-status`) aceita um grupo novo sem mudar o contrato do front.** `admin_spec034.py:56` não foi lido em profundidade.
 7. **Quanto do `evidence.body_text` cabe redigido** sem estourar o `jsonb` do job.
@@ -281,15 +296,18 @@ Depois, as 14 premissas da proposta §4.2, uma a uma, com a saída colada. **O n
 3. *"A Mapfre falhou sem motivo."* — **Não.** 📊 O motivo está escrito em `evidence.message`; quem não lê é a linha do relatório.
 4. *"A Allianz caiu por fragilidade de navegação (38 seletores)."* — **Não.** A tela real diz "Acesso negado / valide os dados". Fragilidade é hipótese para depois da senha nova.
 5. *"Basta acrescentar 'Acesso negado' à lista `_FAIL`."* — **Cuidado.** `_norm` tira acento e maiúscula ANTES de comparar: escrever com maiúscula produz um padrão que nunca casa e um teste que fica verde porque normaliza igual (CLAUDE.md §9.4).
-6. *"Agrupar por `cpf_cnpj` basta."* — **Não.** Sem o portal na chave, dois homônimos de seguradoras diferentes viram um segurado; e a mensagem nomeia uma seguradora só.
+6. *"Uma chave de segurado basta."* — **Não, são duas.** `chave_do_grupo` (com o portal) decide o que cabe na MESMA mensagem, porque o texto nomeia uma seguradora só; `segurado_chave` (sem o portal) decide a janela de N dias, porque a pergunta dela vale ENTRE seguradoras. Trocar uma pela outra ou faz a janela nunca casar, ou junta duas seguradoras numa mensagem que ninguém escreveu.
 7. *"A regra de N dias substitui a dedup por parcela."* — **Não.** São perguntas diferentes: a dedup protege a PARCELA (identidade), a janela protege o SEGURADO (frequência). Uma não implica a outra.
 8. *"A reserva pode ser por grupo."* — **Não.** Apagaria a identidade `(company_id, portal_key, recibo)` e reabriria "cobrar de novo trocando o agrupamento".
 9. *"`CREATE OR REPLACE` com um parâmetro a mais substitui a função."* — **Não.** Cria uma sobrecarga; com DEFAULT, a chamada de 12 argumentos passa a ser **ambígua** (42725) — em produção, na hora de reservar.
 10. *"`health='unknown'` é um defeito e deve sumir."* — **Não.** É o **meio-aberto** do circuit breaker: senha nova merece veredito novo, e é o único gesto humano que reabre o circuito sem inventar botão.
-11. *"O teste `test_a_cobranca_esta_como_estava` prova que a mensagem sai inteira."* — **Não.** 📊 Ele mede uma constante de 292 caracteres **escrita dentro do teste**, que o produto não envia; o texto real tem 331 e vira 2 balões. Guarda verde, produto picotado.
+11. *"O teste `test_a_cobranca_esta_como_estava` prova que a mensagem sai inteira."* — **Não, duas vezes.** 📊 (a) Ele mede uma constante de 292 caracteres **escrita dentro do teste**, que o produto não envia; o texto real tem 331 e vira 2 balões. (b) O helper `caminho_de_hoje` (`:146-149`) **reimplementa** o `if bloco_unico` do produto — prova que o fatiador funciona, não que alguém o usa (CLAUDE.md §9.4).
 12. *"O canário Q1–Q6 já foi rodado."* — **Não.** Ele está escrito desde 07/09 e **nunca rodou ao vivo**; as variáveis estão no smith-api desde 08/09 (`P-PILOTO-11`).
 13. *"Criar uma tabela de telas desconhecidas é o caminho."* — **Cuidado.** P-264: 📊 `tela_cega` tem 2 linhas e zero leitores desde 26/08. Fila sem leitor não é fila.
 14. *"Retry resolve credencial recusada."* — **Não.** Não é falha transitória; repetir entrada bloqueia a conta da corretora no portal.
+
+15. *"A coluna do ledger é o CPF/CNPJ."* — **Não.** Ela guarda `doc:…` OU `nome:…` OU `recibo:…`; chamá-la de `cpf_cnpj` seria um nome que mente (CLAUDE.md §12.1), e a consequência prática é pior que o nome: quem ler "cpf_cnpj" conclui que o segurado sem documento não é protegido pela janela — e a SPEC decidiu o contrário.
+16. *"Copiar o corpo da função na migration nova é seguro."* — **Não.** É assim que o `EXCEPTION WHEN unique_violation` e o ramo `colisao_recibo` somem sem ninguém ver. Gere de `pg_get_functiondef` e faça diff.
 
 ---
 

@@ -35,25 +35,23 @@ vidros_sessao.py:139-237   os métodos que existem: 9. `atualizar_atendimento`: 
 
 🔴 **O PATCH é o que grava peça, causa, cidade e local.** Sem ele o questionário do
 portal não tem de onde nascer — ele deriva do `CodigoItemCoberto`, que só o PATCH
-grava. O módulo salta do `POST /atendimentos` direto para
-`QZ.rodar_questionario` (`vidros_apifirst.py:275-279`). **Com a flag
-`PORTAL_VIDROS_API_FIRST` ligada hoje, o pedido nasce vazio e o questionário não
-tem como responder.**
+grava. O módulo salta do `POST /atendimentos` direto para `QZ.rodar_questionario`
+(`vidros_apifirst.py:275-279`). **Com a flag `PORTAL_VIDROS_API_FIRST` ligada hoje,
+o pedido nasce vazio e o questionário não tem como responder.**
 
 E há um segundo defeito, mais caro, porque é silencioso:
 
-📊 **A fronteira do efeito material muda de lugar por categoria de peça.** Medido
-nos dois HAR da Yelum, com linha de controle nos dois sentidos (CLAUDE.md §9.2):
+📊 **A fronteira do efeito material muda de lugar por categoria de peça.** Medido nos
+dois HAR da Yelum, com linha de controle nos dois sentidos (CLAUDE.md §9.2):
 
 | captura | categoria | `GET /atendimentos` logo **depois** do PATCH |
 |---|---|---|
 | Yelum lataria, 09/09 | `L` | `CodigoAtendimento = 23232316` — **nasceu no PATCH** |
 | Yelum vidro de porta, 14/08 | `V` | `CodigoAtendimento = None` — só nasce no `POST /questionarios` |
 
-`vidros_estado.py:233` fixa **uma** fronteira (`FRONTEIRA_MATERIALIZAR =
-"gravar_questionario"`). Para lataria ela arma no lugar errado: o guard autoriza
-depois que o pedido já existe. 🔴 **É a receita de um segundo atendimento, pago,
-no nome do mesmo segurado** — e o portal não deixa desfazer
+`vidros_estado.py:233` fixa **uma** fronteira. Para lataria ela arma no lugar errado:
+o guard autoriza depois que o pedido já existe. 🔴 **É a receita de um segundo
+atendimento, pago, no nome do mesmo segurado** — e o portal não deixa desfazer
 (`O-PORTAL-DE-VIDROS-TELA-POR-TELA.md` §3 e §9.5).
 
 ### 0.3 As decisões do Founder já incorporadas — não se reabrem
@@ -418,19 +416,18 @@ o código conhece .......... 3 — PORTO · AZUL · ITAU   (vidros_apifirst.py:1
 
 🔴 **Três defeitos, não um:**
 
-1. **`ITAU` está no código e não está entre os 38 ativos.** Ele existe como rota no
-   bundle, mas a API não o oferece. A promessa fail-closed de
-   `slug_da_seguradora` (`vidros_apifirst.py:82-97`) fica de pé por acidente para
-   35 seguradoras e **quebra justamente para o ITAU**, que passa.
-2. **Yelum é `LIBERTY`.** 📊 O bundle roteia `LIBERTY: "yelum"` (o nome do estado do
-   ui-router) e serve os templates de `app/paginas/seguradoras/liberty/`, com
-   `<title>Menu Atendimento - Liberty</title>`. Enquanto isso
-   `portal_params.py:69-71` traduz `LIBERTY → "Yelum"` e
+1. **`ITAU` está no código e não está entre os 38 ativos.** Existe como rota no
+   bundle; a API não o oferece. O fail-closed de `slug_da_seguradora`
+   (`vidros_apifirst.py:82-97`) fica de pé por acidente para 35 seguradoras e
+   **quebra justamente para o ITAU**, que passa.
+2. **Yelum é `LIBERTY`.** 📊 O bundle roteia `LIBERTY: "yelum"` e serve os templates
+   de `app/paginas/seguradoras/liberty/`, com `<title>Menu Atendimento - Liberty</title>`.
+   Enquanto isso `portal_params.py:69-71` traduz `LIBERTY → "Yelum"` e
    `vidros_lanternas.py:1090-1108` **digita esse texto** no `#seguradora-input`.
-   Ver a pergunta Q-C do BLOCO 0: **medir antes de consertar.**
-3. **`sompo` e `SOMPO` são coisas diferentes.** 📊 O bundle diz
-   `GRUPO_HDI: "sompo"` **e** `SOMPO: "sompo-seguros"`. Quem "corrigir" o primeiro
-   para `SOMPO` roteia o segurado para a seguradora errada.
+   Ver Q-C do BLOCO 0: **medir antes de consertar.**
+3. **`sompo` e `SOMPO` são coisas diferentes.** 📊 `GRUPO_HDI: "sompo"` **e**
+   `SOMPO: "sompo-seguros"`. Quem "corrigir" o primeiro roteia o segurado para a
+   seguradora errada.
 
 **O contrato:** um único mapa em `vidros_api.py` (o módulo que já é a autoridade de
 contrato do portal), derivado da medição, com as duas direções:
@@ -532,28 +529,22 @@ POST lojas/consultar-distancias            {CodigoAtendimento, Cep, Uf, Cidade, 
 ```
 
 ⚠️ **`POST lojas/consultar-distancias` é um POST e NÃO é escrita de negócio** — 📊 na
-captura de 14/08 ele roda depois do pedido já criado e devolve distância e tempo.
-Ele **não** passa pelo guard como fronteira material; passa pela allowlist de host,
-como qualquer leitura. Tratar um cálculo de rota como efeito material seria armar o
-guard onde não há nada a desfazer — e treinar a equipe a ignorá-lo.
+captura de 14/08 ele roda depois do pedido criado e devolve distância e tempo. Ele
+**não** passa pelo guard como fronteira material. Armar o guard num cálculo de rota
+treina a equipe a ignorá-lo.
 
 🔴 **Isto é o que elimina a razão de sortear loja.** `adaptive.py:936-960` explica,
-com três motivos medidos, por que o robô não escolhe a loja: *"a lista de lojas só
-existe NESTA tela. O segurado nunca a viu."* **P1-1 faz a lista existir na conversa.**
-A decisão continua sendo do segurado; o que muda é que ele passa a ter o que
-decidir.
+com três motivos medidos, por que o robô não escolhe: *"a lista de lojas só existe
+NESTA tela. O segurado nunca a viu."* **P1-1 faz a lista existir na conversa.** A
+decisão continua sendo do segurado; o que muda é que ele passa a ter o que decidir.
 
-💭 A copy proposta, uma mensagem só:
-
-> *"Seu pedido está aberto — protocolo XXXXXXXX. Franquia de R$ XXX,XX.*
-> *Agora é só escolher onde consertar:*
-> *1️⃣ AUTOGLASS Centro — Rua Tal, 555 — 4,2 km (12 min) — tem agenda quinta e sexta*
-> *2️⃣ AUTOGLASS Sul — Av. Outra, 120 — 9,8 km (21 min) — tem agenda amanhã*
-> *Me diz o número e o dia que prefere."*
+💭 Copy proposta, uma mensagem só: protocolo · franquia · as lojas numeradas com
+endereço, distância em km, tempo em minutos e os dias com agenda · *"me diz o número
+e o dia que prefere"*.
 
 **Gate P1-1:** a partir do agregado do HAR de 14/08 (que tem a lista real de lojas),
-o motor produz uma mensagem que contém **nome, endereço e distância de cada loja**,
-e **nenhuma loja que não esteja no agregado**.
+o motor produz uma mensagem com **nome, endereço e distância de cada loja**, e
+**nenhuma loja que não esteja no agregado**.
 
 ---
 
@@ -706,13 +697,13 @@ comprovante ................... POST atendimentos/emitir-atendimento-formalizado
 
 🔴 **A descoberta que evita um hardcode:** o robô **não precisa saber** que lataria
 não tem agendamento. **O portal diz.** `DisponibilizarAgendamento: false` +
-`IrParaConclusaoDeAtendimento: true` é a instrução, legível por máquina, e vale para
+`IrParaConclusaoDeAtendimento: true` é instrução legível por máquina, e vale para
 qualquer peça que um dia se comporte assim. ⛔ **Não escrever
 `if categoria == "L": nao_perguntar_loja`.** Ler a resposta.
 
-E o que isso muda na conversa: 💭 *"Nesse tipo de reparo a seguradora é que indica a
-oficina — ela te manda o endereço por e-mail e SMS. Não precisa escolher nada."*
-📊 É literalmente o que a Regina escreve no .docx (parágrafos 50 e 57).
+💭 Na conversa: *"Nesse tipo de reparo a seguradora é que indica a oficina — ela te
+manda o endereço por e-mail e SMS. Não precisa escolher nada."* 📊 É literalmente o
+que a Regina escreve no .docx (parágrafos 50 e 57).
 
 **Gate P1-5:** o replay da lataria chega ao `emitir-atendimento-formalizado` e
 **nunca** pergunta loja nem domicílio.
@@ -730,26 +721,19 @@ POST atendimentos-fotografias/web                      → MULTIPART
      transformRequest: angular.identity, headers: {"Content-Type": undefined}
 ```
 
-🔴 **`SessaoVidros.chamar` só sabe JSON** (`vidros_sessao.py:108-121`:
-`JSON.stringify(corpo)` e `Content-Type: application/json`). Multipart exige um
-**segundo caminho de `page.evaluate`** que monte um `FormData` no browser e **deixe o
-`Content-Type` em branco**, para o browser escrever o `boundary`.
-
-```python
-async def enviar_fotografias(self, *, codigo_atendimento: str,
-                             imagens: List[bytes]) -> Dict[str, Any]:
-    """O ÚNICO caminho multipart da sessão. Mesma allowlist, mesmo teto."""
-```
+🔴 **`SessaoVidros.chamar` só sabe JSON** (`vidros_sessao.py:108-121`). Multipart
+exige um **segundo caminho de `page.evaluate`**, que monte um `FormData` no browser e
+**deixe o `Content-Type` em branco**, para o browser escrever o `boundary`:
+`async def enviar_fotografias(self, *, codigo_atendimento, imagens) -> Dict` — o
+único caminho multipart da sessão, mesma allowlist, mesmo teto.
 
 ⛔ **Não instalar `requests`/`httpx`, não abrir socket, não trocar de transporte.** O
-motivo está no docstring de `vidros_sessao.py:11-16`: é a mesma sessão, o mesmo
-cookie, o mesmo app.
+motivo está em `vidros_sessao.py:11-16`: é a mesma sessão, o mesmo cookie, o mesmo app.
 
 📊 **E a razão de nunca termos visto isto funcionar está medida:**
-`PermiteVistoriaMobile: false` e `LinkVistoriaMobile: ""` em **todas** as capturas —
-a seguradora não habilitou vistoria naquelas apólices. `vidros_api.py:345-370` já
-documenta isso e já recusa inventar o link. **Aqui se escreve o caminho; a captura
-nº 3 da Regina o liga.**
+`PermiteVistoriaMobile: false` e `LinkVistoriaMobile: ""` em **todas** as capturas.
+`vidros_api.py:345-370` já recusa inventar o link. **Aqui se escreve o caminho; a
+captura nº 3 da Regina o liga.**
 
 **Gate P1-6:** com `PermiteVistoriaMobile: false`, o motor **não** chama
 `vistoriamobile` e **não** promete link. Com `true` (fixture), chama uma vez e o link
@@ -770,22 +754,19 @@ entra em `evidence["link_vistoria"]` — a chave que `adaptive.py:132-141` já e
 | `GET atendimentos/servicos-detalhes` | 5 cm / 20 cm | 🔴 **amassado de LATARIA** — 📊 a chamada roda na captura de lataria, não na de vidro |
 
 🔴 **Duas réguas legítimas e uma contradição real.** A contradição é 10 cm × moeda de
-1 real, e ela decide **troca × reparo** — ou seja, qual serviço o vidraceiro vai
-prestar. 5/20 cm não entra na conta: é outra peça.
+1 real, e ela decide **troca × reparo** — qual serviço o vidraceiro vai prestar.
+5/20 cm não entra na conta: é outra peça.
 
 **A regra:** a régua do trincado **vem do portal ou não existe**. O texto da pergunta
 chega em `DescricaoPergunta` / `DescricaoResposta` do `POST /questionarios/perguntas`,
-e é dele que se extrai o limite. Enquanto não houver a captura nº 1 (que traz o
-questionário do para-brisa), o agente pergunta em **linguagem do segurado** e deixa o
-portal decidir:
-
-💭 *"A trinca é maior ou menor que um cartão de crédito?"* — e a resposta casa com a
-opção real da tela por `match_option`, que é o que o código já faz para "como
+e é dele que se extrai o limite. Até a captura nº 1, o agente pergunta em linguagem do
+segurado — 💭 *"a trinca é maior ou menor que um cartão de crédito?"* — e a resposta
+casa com a opção real da tela por `match_option`, como o código já faz para "como
 ocorreu" (`perguntas_do_portal_de_vidros.py:214-222`).
 
-**Gate P2-1:** G7 — um teste que exige **ZERO** limite numérico de trincado escrito no
-código quando a régua não veio do portal. Mutação: reintroduzir `_LIMITE_CM = 10.0`
-no caminho do para-brisa e o teste fica vermelho.
+**Gate P2-1:** G7 — **ZERO** limite numérico de trincado escrito no código quando a
+régua não veio do portal. Mutação: reintroduzir `_LIMITE_CM = 10.0` no caminho do
+para-brisa.
 
 ---
 
@@ -800,13 +781,10 @@ GET   atendimentos/motivos-cancelamento   → a lista de motivos (nunca decorar)
 PATCH atendimentos/abandonar              (declarado no bundle; zero capturas)
 ```
 
-`vidros_estado.py:234-235` já tem `FRONTEIRA_CANCELAR` e `FRONTEIRA_ABANDONAR`, e
+`vidros_estado.py:234-235` já tem `FRONTEIRA_CANCELAR` e `FRONTEIRA_ABANDONAR`;
 `ESTADOS` já tem `CANCELADO` e `ABANDONADO` (`:60-61`). 🔴 **São fronteiras materiais
-e passam pelo guard como qualquer outra** — cancelar um pedido é um efeito que sai do
-prédio.
-
-⚠️ **`abandonar` fica CANDIDATE** (zero capturas). `cancelar` está medido e pode ser
-`APPROVED` pela escada da SPEC-077.
+e passam pelo guard como qualquer outra.** ⚠️ `abandonar` fica CANDIDATE (zero
+capturas); `cancelar` está medido e pode ser `APPROVED` pela escada da SPEC-077.
 
 ---
 
@@ -886,33 +864,29 @@ SPEC já é CRÍTICA, então não muda a marcha; muda a lente do painel.
 > 🔴 **Este é o gate que nenhum teste substitui.** Build verde não prova que a
 > aplicação sobe (CLAUDE.md §9.1); teste verde não prova que o portal aceita.
 
-### 10.1 O que é
+### 10.1 O que é, e por que lataria
 
 **Um acionamento de LATARIA na Yelum, com o veículo de teste do Founder, do WhatsApp
-ao comprovante.**
-
-📊 **Por que lataria, e não vidro:** é o único ramo **fechável hoje**. 100% do fluxo
-está medido, do preflight ao `emitir-atendimento-formalizado`, e **não existe escolha
-de loja nem agendamento** — que é exatamente a parte que depende da captura nº 1.
+ao comprovante.** 📊 É o único ramo **fechável hoje**: 100% do fluxo está medido, do
+preflight ao `emitir-atendimento-formalizado`, e **não existe escolha de loja nem
+agendamento** — que é justamente a parte que depende da captura nº 1.
 
 ### 10.2 ANTES
 
 ```
-[ ] 🧑 o Founder confirma que o veículo de teste tem apólice Yelum ATIVA com
-       cobertura de lataria/martelinho (o preflight dirá; confirmar antes evita
-       gastar o canário num 400)
-[ ] 🧑 o Founder confirma o CPF do titular (entra em variável de ambiente, nunca em
-       arquivo versionado, nunca no chat)
+[ ] 🧑 Founder confirma apólice Yelum ATIVA com cobertura de lataria no veículo de
+       teste (o preflight dirá; confirmar antes evita gastar o canário num 400)
+[ ] 🧑 Founder confirma o CPF do titular — por variável de ambiente, nunca em arquivo
+       versionado, nunca no chat
 [ ] 🤖 PORTAL_EFEITO_MATERIAL_LIBERADO ligado SÓ para este job (ver Q-A do BLOCO 0)
 [ ] 🤖 PORTAL_VIDROS_API_FIRST ligado SÓ para este job
-[ ] 🤖 a saída dos três comandos de verificação da §1.2, colada no relatório
+[ ] 🤖 a saída dos três comandos da §1.2, colada no relatório
 ```
 
-🔴 **"Só para esse job" é uma exigência, e a SPEC não presume que exista.** É a
-pergunta Q-A do BLOCO 0. Se o freio for global, ligá-lo abre a porta para todos os
-jobs de vidros em voo — e aí nasce o bloco P0-6 (**BLOCKER**, via `CHANGE-ADDENDA`):
-uma allowlist de job ou de CPF, como a `BILLING_CANARIO_ALLOWLIST` já faz na
-cobrança.
+🔴 **"Só para esse job" é exigência, e a SPEC não presume que exista** (Q-A do BLOCO
+0). Se o freio for global, ligá-lo abre a porta para todos os jobs de vidros em voo —
+e nasce o bloco P0-6 (**BLOCKER**, via `CHANGE-ADDENDA`): uma allowlist de job ou de
+CPF, como a `BILLING_CANARIO_ALLOWLIST` já faz na cobrança.
 
 ### 10.3 Os casos
 
@@ -998,45 +972,58 @@ quebrar essa propriedade.**
 
 ## §13 · O que o estado da arte faz, e o que modelamos
 
-> 🔴 Protocolo §7.3. Cada uma em quatro linhas, e uma quinta dizendo **como o juiz
-> inspeciona**. ⚠️ A data de reabertura é do **pesquisador da execução**: ele abre
-> cada uma, diz se envelheceu e se há melhor.
+> 🔴 Protocolo §7.3. Cada uma: o que faz · o que MODELAMOS (um ponto) · o que
+> REJEITAMOS · como o juiz INSPECIONA. ⚠️ A data de reabertura é do **pesquisador da
+> execução**: ele abre cada uma, diz se envelheceu e se há melhor.
 
-**1. Especificação HAR 1.2 (W3C Web Performance)** · `https://w3c.github.io/web-performance/specs/HAR/Overview.html`
-- **O que faz:** define o formato que o DevTools exporta — `log.entries[]`, `request.postData.text`, `response.content.text`.
-- **O que MODELAMOS:** um ponto — que `response.content.text` só existe no export **"with content"**, e que sem ele o arquivo é uma lista de portas fechadas. É por isso que o roteiro da Regina insiste nessa opção, e por isso o `lab har` denuncia `har_sem_corpos`.
-- **O que REJEITAMOS:** usar o HAR como fonte de verdade permanente. Ele é uma **observação datada**, não um contrato — é a razão da escada OBSERVED → CANDIDATE → APPROVED.
-- **Como o juiz inspeciona:** abre a spec, confere que `content.text` é opcional, e roda `lab har` sobre um HAR do acervo para ver o campo `har_sem_corpos`.
+**1. HAR 1.2 (W3C Web Performance)** · `https://w3c.github.io/web-performance/specs/HAR/Overview.html`
+O formato que o DevTools exporta (`log.entries[]`, `request.postData.text`,
+`response.content.text`). · **Modelamos:** `content.text` só existe no export **"with
+content"**; sem ele o arquivo é uma lista de portas fechadas — é por isso que o
+roteiro da Regina insiste nessa opção e que o `lab har` denuncia `har_sem_corpos`. ·
+**Rejeitamos:** o HAR como verdade permanente; ele é **observação datada**, e é a
+razão da escada OBSERVED → CANDIDATE → APPROVED. · **Juiz:** abre a spec, confere que
+`content.text` é opcional, roda `lab har` sobre um HAR do acervo.
 
 **2. RFC 5789 — PATCH Method for HTTP** · `https://www.rfc-editor.org/rfc/rfc5789`
-- **O que faz:** define `PATCH` como aplicação de uma **modificação parcial**, e diz que o servidor decide como interpretar o documento de patch.
-- **O que MODELAMOS:** um ponto — **omitir é diferente de mandar `null`**. É a regra do corpo de 8 × 11 chaves de P0-1, e não é detalhe de estilo: é a diferença entre "não mexi neste campo" e "apague este campo".
-- **O que REJEITAMOS:** a ideia de que `PATCH` é seguro por ser parcial. 📊 Aqui ele é a fronteira material da lataria.
-- **Como o juiz inspeciona:** abre a §2 da RFC e compara com o corpo do HAR e com o corpo que o motor produz.
+Define `PATCH` como **modificação parcial**, interpretada pelo servidor. ·
+**Modelamos:** **omitir ≠ mandar `null`** — é a regra do corpo de 8 × 11 chaves de
+P0-1, e é a diferença entre "não mexi neste campo" e "apague este campo". ·
+**Rejeitamos:** a ideia de que `PATCH` é seguro por ser parcial — 📊 aqui ele é a
+fronteira material da lataria. · **Juiz:** abre a §2 da RFC e compara com o corpo do
+HAR e com o que o motor produz.
 
 **3. Idempotency keys da Stripe** · `https://docs.stripe.com/api/idempotent_requests`
-- **O que faz:** um cabeçalho que deixa o cliente repetir uma chamada sem criar uma segunda cobrança.
-- **O que MODELAMOS:** um ponto — a **pergunta antes do retry**. Não temos o cabeçalho (o portal não o oferece), mas temos a pergunta que ele responde: *"isto já aconteceu?"* — e ela vive em `safe_to_retry_open` e em `atendimento_aberto_existente`, que é a dedup do **próprio portal**, mais barata que descobrir a duplicidade depois.
-- **O que REJEITAMOS:** inventar uma chave de idempotência do nosso lado e achar que ela protege. Ela não chega ao servidor da Maxpar; o que protege é o checkpoint durável da SPEC-073.
-- **Como o juiz inspeciona:** abre a doc, e depois lê `vidros_sessao.py:186-194` e `vidros_estado.py:109-118`.
+Um cabeçalho que deixa repetir a chamada sem criar uma segunda cobrança. ·
+**Modelamos:** a **pergunta antes do retry** — *"isto já aconteceu?"* — que vive em
+`safe_to_retry_open` e em `atendimento_aberto_existente` (a dedup do **próprio
+portal**). · **Rejeitamos:** inventar uma chave do nosso lado e achar que protege;
+ela não chega ao servidor da Maxpar. O que protege é o checkpoint durável da
+SPEC-073. · **Juiz:** abre a doc, depois lê `vidros_sessao.py:186-194` e
+`vidros_estado.py:109-118`.
 
 **4. Pact — consumer-driven contract testing** · `https://docs.pact.io/`
-- **O que faz:** o consumidor grava o que espera do provedor, e o contrato roda como teste dos dois lados.
-- **O que MODELAMOS:** um ponto — o contrato é **gerado da interação real**, não escrito à mão. É exatamente o que `lab api-infer` faz a partir do HAR, e é por isso que esta SPEC proíbe contrato manuscrito.
-- **O que REJEITAMOS:** o **provider verification**. Não temos acesso ao servidor da Maxpar e nunca teremos; o lado do provedor é substituído pela escada de promoção e pelo canário.
-- **Como o juiz inspeciona:** abre a doc de "consumer contract", roda `lab api-infer` sobre um HAR e compara a forma do que sai.
+O consumidor grava o que espera do provedor e o contrato vira teste. ·
+**Modelamos:** o contrato é **gerado da interação real**, nunca escrito à mão — é o
+que `lab api-infer` faz, e por isso esta SPEC proíbe contrato manuscrito. ·
+**Rejeitamos:** o *provider verification* — não temos acesso ao servidor da Maxpar;
+o lado do provedor é substituído pela escada de promoção e pelo canário. · **Juiz:**
+abre "consumer contract", roda `lab api-infer` sobre um HAR, compara a forma.
 
-**5. VCR.py — record & replay de HTTP em teste** · `https://vcrpy.readthedocs.io/`
-- **O que faz:** grava respostas HTTP em "cassetes" e as reproduz offline, para o teste não depender de rede.
-- **O que MODELAMOS:** um ponto — o **replay offline determinístico** do gate G1. O HAR é o nosso cassete, e ele já existe.
-- **O que REJEITAMOS:** a biblioteca. ⛔ O transporte aqui é `page.evaluate` dentro do browser autenticado, não `requests`; instalar VCR seria criar um segundo transporte para agradar ao teste. **O fixture lê o HAR e alimenta um duplo de `page`.**
-- **Como o juiz inspeciona:** abre a doc de "record modes", e confere que o fixture de G1 não faz uma única chamada de rede.
+**5. VCR.py — record & replay de HTTP** · `https://vcrpy.readthedocs.io/`
+Grava respostas em "cassetes" e as reproduz offline. · **Modelamos:** o **replay
+offline determinístico** do gate G1 — o HAR é o nosso cassete e já existe. ·
+**Rejeitamos:** a biblioteca. ⛔ O transporte é `page.evaluate` dentro do browser
+autenticado; instalar VCR criaria um segundo transporte para agradar ao teste. O
+fixture lê o HAR e alimenta um duplo de `page`. · **Juiz:** abre "record modes" e
+confere que o fixture de G1 não faz uma única chamada de rede.
 
-**6. `har-to-openapi`** · 🔴 **o pesquisador confirma o repositório canônico na reabertura** (o pacote o nomeia; a proposta não afirma a URL).
-- **O que faz (esperado):** converte HAR em OpenAPI inferindo schemas dos corpos.
-- **O que MODELARÍAMOS:** nada de novo — `lab api-infer` já faz isto, e é nosso. A referência serve para o juiz **comparar a qualidade da inferência**: se a ferramenta externa infere algo que a nossa não infere, isso é um achado.
-- **O que REJEITAMOS:** substituir `lab api-infer`. ⛔ Seria motor paralelo (CLAUDE.md §5).
-- **Como o juiz inspeciona:** roda as duas sobre o mesmo HAR e compara a contagem de endpoints e de schemas.
+**6. `har-to-openapi`** · 🔴 **o pesquisador confirma o repositório canônico na
+reabertura** (o pacote o nomeia; esta proposta não afirma a URL).
+Converte HAR em OpenAPI inferindo schemas. · **Modelaríamos:** nada de novo —
+`lab api-infer` já faz, e é nosso; serve ao juiz para **comparar a qualidade da
+inferência**. · **Rejeitamos:** substituí-lo — ⛔ seria motor paralelo (CLAUDE.md §5).
+· **Juiz:** roda as duas sobre o mesmo HAR e compara endpoints e schemas.
 
 ⚠️ **Nenhuma destas referências vira autoridade.** Modela-se o **padrão**; o Tool
 Gateway, o Work Run e o portal worker continuam únicos.
@@ -1094,25 +1081,15 @@ P2-1 (o fecho)      a régua real do trincado, que vem no texto da pergunta do p
 
 **Depende de:** nada em código. 📊 O diagnóstico §12.1 a coloca na posição 9, e a
 única dependência real é **externa**: a captura nº 1, para o 100% de vidraçaria.
-**Lataria fecha sem ela.**
+**Lataria fecha sem ela.** ⚠️ Uma dependência de qualidade, não de código: a
+EXTRA-001.2 melhora a régua de língua que o canário usa no passo "Regina/Saionara
+leem a conversa". **Não bloqueia.**
 
-⚠️ **Uma dependência de qualidade, não de código:** a EXTRA-001.2 ("o agente lê tudo
-antes de falar") melhora a régua de língua que o canário usa no passo
-"Regina/Saionara leem a conversa". Se a 001.2 já estiver no ar, o canário é mais
-honesto. **Não bloqueia.**
-
-**Ela deixa para as seguintes:**
-
-```
-EXTRA-001.7 (piloto medido)     o acionamento de vidros passa a contar como sucesso na
-                                régua de eficiência de D-PILOTO-13 — ele agora chega
-                                ao protocolo sozinho
-EXTRA-001.5 (base de produtos)  a cobertura de vidros por nível de assistência ganha
-                                fonte real: o preflight do portal responde "tem
-                                cláusula" antes de qualquer escrita
-SPEC-101 (fábrica de conectores) o portal de vidros vira o segundo caso de uso real da
-                                escada da SPEC-077, depois do Cobrador da Allianz
-```
+**Ela deixa para as seguintes:** a **EXTRA-001.7** ganha o acionamento de vidros como
+sucesso na régua de eficiência de D-PILOTO-13 (ele agora chega ao protocolo sozinho);
+a **EXTRA-001.5** ganha fonte real de cobertura de vidros (o preflight do portal
+responde "tem cláusula" antes de qualquer escrita); a **SPEC-101** ganha o segundo
+caso de uso real da escada da SPEC-077, depois do Cobrador da Allianz.
 
 ---
 

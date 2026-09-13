@@ -62,13 +62,20 @@ Medidos em 13/09 sobre `backend/tests/corpus/telas_reais/` (16 arquivos, 📊 4.
    NÃO PODE RODAR até o corpus ser regenerado. Por isso a regeneração deixou de ser
    o último bloco e virou BLOCO 0-bis, pré-requisito de A, B e D (§4.1).
 
-🔴 "POR FALTA DE CONTATO, ESTOU ENCERRANDO" NÃO EXISTE NESSA REDAÇÃO.
-   📊 grep -ic "falta de contato" *.jsonl  →  0 nos 16
-   📊 grep -ic "estou encerrando" *.jsonl  →  3, só em bradesco-auto
-   E a redação real é  "estou encerrando este atendimento por falta de interaç…"
-   ⚠️ que a regex ATUAL JÁ CASA (`encerrad[ao] por (?:inatividade|falta de intera)`,
-   insurer_dispatch_service.py:2548). A frase de setembro que o diagnóstico mediu
-   está em `observed_events`, NÃO no corpus — e sai de uma consulta SQL, não de um grep.
+🔴 SÃO DUAS FRASES DIFERENTES, E SÓ UMA É O DEFEITO. O corpus só tem a inócua.
+
+   ① "falta de INTERAÇÃO"  —  JÁ CASA, não é defeito
+      📊 corpus 17 ocorrências · 📊 banco 36
+      "estou encerrando este atendimento por falta de interaç…"
+      ✅ casada por `encerrad[ao] por (?:inatividade|falta de intera)`
+         (insurer_dispatch_service.py:2548)
+
+   ② "falta de CONTATO"  —  🔴 NÃO CASA. É ESTE o defeito
+      📊 MEDIDO NO BANCO em 13/09 (`observed_events`, `text ilike '%falta de contato%'`):
+         10 eventos — allianz 9 em 6 sessões (até 2026-09-10) · hdi 1
+      📊 e ZERO deles casam a regex de :2544-2549, rodada como `~*`
+      ⛔ `grep -ic "falta de contato"` no corpus → 0 nos 16. A frase é de SETEMBRO,
+         e o corpus para em 21/08: ela sai de CONSULTA, nunca de grep.
 
 🔴 "ISSO PODE LEVAR ALGUNS INSTANTES" NÃO EXISTE EM NENHUMA REDAÇÃO.
    📊 grep -ic "instantes" *.jsonl  →  8, e nenhuma é essa frase.
@@ -292,12 +299,25 @@ Nada nesta SPEC cria tabela ou rota nova de leitura. Mesmo assim:
 2. **Remedir as cinco linhas da §0.1** e as da §3.1, uma a uma. Divergiu? corrige a SPEC definitiva e anota na matriz premissa → observação → comando → decisão.
 2-bis. 🔴 **`grep -rn "o_grupo_pode_saber" backend/`** — a guarda única da EXTRA-001.3. **Existe?** então esta SPEC **chama** e acrescenta a causa `pausa_humana`. **Não existe?** então esta SPEC **cria** a função, com a assinatura da §5 da 001.3, e a 001.3 depois a chama. ⛔ Em nenhuma hipótese se escreve a segunda (§7.3).
 3. **Recontar os órfãos da derivação** com o comando do RESEARCH-PACK §2.1 (AST). 📊 Hoje: 52 usados · 23 derivados · **29 órfãos**. Se o número mudou, ele manda.
-4. 🔴 **Descobrir por que `registrar_ato_do_agente` grava 0 linhas**, já que tem 3 chamadores. O ELO (§0.3 do protocolo): medi que a função existe · medi que é chamada · **medi que a chamada CHEGA ao INSERT?** Comando: `SELECT event_type, count(*) FROM work_events WHERE event_type LIKE 'agente.%' GROUP BY 1;` e, no código, ler de `dispatch_router.py:997` até `:1027` procurando o `return False` de `:1011-1013`. Sem esta resposta o bloco D não começa.
+4. 🔴 **Descobrir por que `registrar_ato_do_agente` grava 0 linhas**, já que tem 3 chamadores. 📊 **Medido em 13/09:** `SELECT count(*) FROM work_events WHERE event_type LIKE 'agente.%'` → **0, de 45.672 linhas na tabela.** O ELO (§0.3 do protocolo): medi que a função existe · medi que é chamada · **medi que a chamada CHEGA ao INSERT?**
+
+   O único `return` antes do INSERT é este, e a citação exata importa:
+
+   ```python
+   # dispatch_router.py
+   run_id = str(session.get("work_run_id") or "")     # :1011
+   if not run_id or not company_id:                   # :1012
+       return False                                   # :1013   ← a única porta de saída
+   ```
+
+   ⚠️ 🔴 **E esta hipótese NÃO é refutável por leitura** — porque `_garantir_work_run` (`:597`, `:662`) **preenche** `work_run_id` no caminho normal. Pela leitura, o campo deveria estar lá. **Então mede-se, não se deduz:** instrumentar e contar **quantas sessões chegam a `:2967` com `work_run_id` vazio** e quantas chegam com ele preenchido e **ainda assim** não produzem linha. Só uma das duas respostas é o conserto; a outra manda procurar em outro lugar (exceção engolida, CHECK do banco, ordem das `await`). ⛔ Sem esta resposta o bloco D6 não começa.
 5. 🔴 **Medir o dialeto do normalizador** (CLAUDE.md §9.4). `zonas_do_acervo.norm_para_classificar` (`:463`) × `insurer_dispatch_service._norm_text` (`:2939-2949`) × `corridor_playbooks._norm`. Rodar **os mesmos padrões de `FRONTEIRAS` nas três normalizações, sobre o mesmo acervo**, e escrever as três contagens lado a lado. **Um padrão medido com um normalizador e aplicado com outro é um padrão sobre outra coisa.** Se divergirem, o motor adota o normalizador que produziu o número.
 6. **Medir os dois relógios** com a consulta do §11.4 do diagnóstico reproduzida: tempo até a primeira fala do humano por seguradora (📊 Allianz 114 transferências, 50 atendentes: 59 % < 10 s · mediana 3 s · p90 10,5 min · máx 49 min) e tempo do último evento até o encerramento por inatividade (📊 56 encerramentos; Porto 95 s e Allianz 103 s são os piores). **Os valores de `FILA_ALERTA_S`, do prazo da pergunta ao segurado e do intervalo de holding saem daqui, medidos, não chutados.**
-7. 🔴 **Contar no BANCO, não no corpus**, as frases que viram âncora — porque o corpus local termina em 21/08 (§0.1.1). Em `observed_events`, por `insurer_key`, **só contagens**: a frase de encerramento de setembro (📊 diagnóstico: 9 mensagens em 6 sessões), as frases de recusa de menu do bloco B, e cada padrão de `FRONTEIRAS`. **Cada número com a consulta ao lado.** ⚠️ Leitura **paginada** obrigatória: o PostgREST corta em 1000 e 📊 o acervo tem 28.096 eventos (`regua_motor.py:222-226`).
+7. **Contar no BANCO, não no corpus**, as frases que viram âncora — porque o corpus local termina em 21/08 (§0.1.1). 📊 **Já medidas em 13/09, e o executor só confirma:** `falta de contato` → **10 eventos** (allianz 9 em 6 sessões, hdi 1), **0 casam** a regex atual (§8.5) · `falta de interação` → **36** no banco, **17** no corpus, **casam** · `vou transferir seu caso para um especialista` → **234** no banco, **42** no corpus · `qual seguro deseja utilizar` → **114**. **Falta medir:** as frases de **recusa de menu** do bloco B e cada padrão de `FRONTEIRAS` por seguradora. **Cada número com a consulta ao lado.** ⚠️ Leitura **paginada** obrigatória: o PostgREST corta em 1000 e 📊 o acervo tem 28.096 eventos (`regua_motor.py:222-226`).
 8. 🔴 **Medir o parser sobre o texto REAL do menu**, nas duas formas — cru e normalizado: `cartographer.parse_options("*1 - Residencial:* …")` devolve quantas opções? E depois de `corridor_playbooks._norm`? 📊 A previsão desta proposta é **0 e 3**. Se der outra coisa, o número do executor vence, e a camada 1 do bloco A é desenhada em cima do que ele mediu.
-9. 🔴 **Triagem NOMINAL da bateria vermelha de hoje.** Medido em 13/09, de dentro de `backend/`, com `PYTHONIOENCODING=utf-8`:
+9. 🔴 **Triagem NOMINAL da bateria vermelha de hoje.** Medido em 13/09, de dentro de `backend/`, com `PYTHONIOENCODING=utf-8`.
+
+   ⛔ **O comando é `python tests/<arquivo>.py`, nunca `pytest`.** 📊 `pytest tests/test_spec017_dispatch.py tests/test_spec031_auto_dispatch.py` devolve **"no tests ran", exit 5** — os dois arquivos têm **zero** `def test_`, e um exit 5 lido como sucesso esconderia as duas falhas. Rodados pelo caminho certo, **exit 1 nos dois**:
 
    ```
    test_spec017_dispatch.py                                exit 1   IndexError em :158,
@@ -680,6 +700,19 @@ def pode_reentrar_em_fase_humana(session, tela: str, seguradora: str) -> bool:
 
 1. `state = "human_phase"`. O Vigia **volta a vigiar sozinho** — `dispatch_watchdog.py:73` deixa de devolver `None` porque o estado mudou. **Nenhuma linha do Vigia precisa mudar para isso.**
 2. O **resumo determinístico** sai, **uma vez**: o caminho já existe (`insurer_dispatch_service.py:2911-2927`, `render_opening_message` em `corridor_playbooks.py:8384`) e já é guardado por `session["summary_sent"]` (`:2925-2926`). A reentrada **não** limpa a flag.
+
+   🔴 **Mas reentrar não basta: há uma SEGUNDA âncora, e ela é mais estreita.** O resumo não dispara pela tabela medida — dispara por uma regex **inline** em `:2915-2919`:
+
+   ```
+   me chamo |meu nome [ée] |como posso (?:te )?ajudar|darei? (?:continuidade|prosseguimento)|
+   prosseguirei com o atendimento|irei realizar seu atendimento|vou te ajudar
+   ```
+
+   Compare com `APRESENTACAO_HUMANA` (`zonas_do_acervo.py:216`), que tem o `\b` obrigatório em `sou`, o `(?!segurad|terceir|…)` que exclui rótulo de menu, `estou assumindo|assumindo seu atendimento`, `seja bem-vindo ao atendimento` — e, sobretudo, **o controle negativo do robô**. 🔴 **Consequência de deixar as duas:** uma sessão pode **reentrar** em `human_phase` pela tabela e **não emitir o resumo**, porque a inline não casou. O caso da Vivian voltaria a ficar mudo por outro motivo.
+
+   **Conserto: uma fonte só.** `:2915` passa a chamar a mesma função da tabela (`tem_apresentacao_humana(seguradora, texto_norm)`), e a regex inline morre. ⛔ Não se mantém a inline "por segurança": duas listas para o mesmo fato é como nasce a divergência que esta SPEC está consertando.
+
+   ⚠️ **E a régua do §9.4 vale aqui também:** a inline roda sobre `_norm_text` (`:2939-2949`) e a tabela foi medida sobre `norm_para_classificar` (`:463`). É o item 5 do BLOCO 0, e **este é o lugar onde ele deixa de ser curiosidade e vira conserto**.
 3. O grupo recebe **"a seguradora respondeu, retomei"** 🔴 **só se já tinha recebido o pedido de ajuda** — a condição é `session.get("dossier_sent")`. Sem dossiê antes, não há o que corrigir, e uma mensagem a mais é exatamente o ruído que a 001.3 existe para matar.
    💭 Copy: *"↩️ A {seguradora} respondeu no caso do {primeiro nome}. Retomei o atendimento — aviso quando tiver o protocolo."*
 4. `registrar_ato_do_agente(…, agente="cerebro", mensagem="reentrada em fase humana")` grava a linha (bloco D6).
@@ -690,15 +723,36 @@ def pode_reentrar_em_fase_humana(session, tela: str, seguradora: str) -> bool:
 
 📊 Todas as **7** chamadas de `send_to_client` no roteador são **avisos** (`dispatch_router.py:2667, 2893, 3091, 3126, 3163, 3304, 3345`). Nenhuma pergunta e espera. Em 10/09 a URA pediu **ponto de referência** — uma coisa que só o segurado sabe — e o Cérebro respondeu `NAO_SEI` duas vezes, **corretamente**, e a sessão morreu por não haver caminho.
 
+🔴 **E o mecanismo de "perguntar, esperar com prazo e resolver na resposta" JÁ EXISTE INTEIRO.** Escrever outro seria motor paralelo (CLAUDE.md §5). Os três pedaços, conferidos hoje:
+
+| pedaço | onde já mora |
+|---|---|
+| **abrir** a espera com prazo, em `work_waits` | `dispatch_router.py:1614` — `_abrir_espera_do_travamento(db, company_id, session, fase)`, que chama `abrir_espera` de `app/services/o_fim_do_atendimento.py` (SPEC-086 BLOCO B). ⚠️ **nunca levanta**, e o `UNIQUE` violado significa "já estava esperando" |
+| **vencer** o prazo | `app/tasks/handoff_watchdog.py:704` — marca `status=VENCIDO` em `work_waits`, com `.eq("company_id", …)` e `.eq("status","ativo")` (⛔ nunca reabre o que fechou) |
+| **resolver** quando o cliente responde | `app/services/o_fim_do_atendimento.py:736` e `:748` — `satisfazer_espera`, já com filtro por `company_id` e `scope` |
+
+⛔ **Esta SPEC não cria fila, não cria scheduler e não cria tabela.** Ela acrescenta um **`scope` novo** (`pergunta_ao_segurado`) a esse motor. O Vigia só cuida do **holding à seguradora** — que é o único pedaço que não existe.
+
 ```python
 # backend/app/services/dispatch_router.py
-async def perguntar_ao_segurado(company_id: str, session: dict, *,
-                                slot: str, pergunta: str,
-                                prazo_s: int) -> bool
+# ⚠️ `send_to_client` e `send_to_insurer` NÃO são funções deste módulo: são Callables
+#    INJETADOS pelo chamador (assinatura em :2652 e :2813). A função tem de recebê-los.
+async def perguntar_ao_segurado(
+    company_id: str,
+    session: Dict[str, Any],
+    *,
+    slot: str,
+    pergunta: str,
+    client_phone: str,                                   # de quem se espera a resposta
+    send_to_client: Callable[[str, str], Any],           # (telefone, texto)
+    send_to_insurer: Callable[[str], Any],               # (texto) — o holding
+    prazo_s: int,
+) -> bool
 
 session["esperando_do_segurado"] = {
-    "slot": str, "pergunta": str,
+    "slot": str, "pergunta": str, "client_phone": str,
     "pedido_em": iso, "ate": iso,
+    "wait_id": str,           # a linha de work_waits, scope="pergunta_ao_segurado"
     "holdings": int,          # quantas vezes seguramos a seguradora
     "tela": str,              # a tela que pediu
 }
@@ -707,14 +761,19 @@ session["esperando_do_segurado"] = {
 O desenho, em quatro movimentos:
 
 ```
-① pergunta pelo canal do CLIENTE (send_to_client, que já existe e já é governado)
+① pergunta pelo canal do CLIENTE — `send_to_client(client_phone, texto)`, o Callable
+   injetado, que já é governado pelo chamador
    💭 "Só uma coisa para a {seguradora} conseguir chegar aí: {pergunta}"
-② avisa a SEGURADORA que estamos confirmando — e 🔴 é este envio que reinicia o
+   e abre a espera por `abrir_espera(..., scope="pergunta_ao_segurado")`
+
+② avisa a SEGURADORA — `send_to_insurer(texto)` — e 🔴 é este envio que reinicia o
    relógio de inatividade da URA do outro lado (a mesma física da D-PILOTO-10)
    💭 "Um instante, por favor — estou confirmando esse dado com o segurado."
-③ o prazo. O Vigia já varre `dispatch:active:*` a cada 20 s: a espera vive na sessão
-   e é lida lá. ⛔ Nenhum scheduler novo. Se o BLOCO 0 provar que `work_waits` tem
-   leitor para este caso, usa-se `work_waits`; senão, o Vigia basta
+
+③ o prazo é de quem já o tem: `handoff_watchdog.py:704` vence a espera.
+   O Vigia do dispatch cuida SÓ do holding (repetir ② antes de a URA encerrar),
+   porque ele já varre `dispatch:active:*` a cada 20 s. ⛔ nenhum scheduler novo
+
 ④ o desfecho, e ele é obrigatório:
    · segurado respondeu a tempo  → preenche o slot, responde a URA, segue
    · prazo vencido               → repete ② (máx. HOLDINGS_MAX) e, esgotado,
@@ -724,6 +783,18 @@ O desenho, em quatro movimentos:
                                    não cutuca, e o dossiê diz "a seguradora encerrou
                                    enquanto eu esperava o segurado"
 ```
+
+🔴 **O PONTO DE REENTRADA DA RESPOSTA — e ele precisava ser nomeado.** Hoje o roteador **não tem handler de mensagem do cliente**: 📊 as 7 chamadas de `send_to_client` são todas de saída (R39), e nada no `dispatch_router` lê uma resposta que volta. A resposta do segurado chega pelo **caminho do atendimento**, e é lá que a espera é satisfeita (`o_fim_do_atendimento.py:736`/`:748`).
+
+```
+a reentrada é a SATISFAÇÃO DA ESPERA, não um handler novo:
+   resposta do cliente → caminho do atendimento → satisfazer_espera(scope="pergunta_ao_segurado")
+   → 🔴 e é AÍ que esta SPEC pendura o gancho: um retomador que carrega a sessão por
+     (company_id, insurer_phone) guardados na linha da espera, preenche o slot e
+     devolve o corredor ao passo que perguntou
+```
+
+⚠️ **O que o BLOCO 0 tem de medir antes de escrever o gancho:** se a linha de `work_waits` carrega `insurer_phone` (ou algo que o derive). Se não carregar, é **um campo**, não uma tabela — e a alternativa (varrer `dispatch:active:*` procurando quem esperava) é aceitável porque o Vigia já varre. ⛔ O que não é aceitável é um segundo caminho de entrada de mensagem do cliente.
 
 **Os valores saem medidos** no BLOCO 0 (item 6): `prazo_s` e `HOLDINGS_MAX` derivam do encerramento por inatividade **daquela seguradora** (📊 Allianz mín. 103 s · mediana 246 s; Yelum mín. 359 s). 💭 Ponto de partida a refutar: `prazo_s = 0,6 × mediana_da_seguradora`, `HOLDINGS_MAX = 2`.
 
@@ -766,22 +837,35 @@ falta de intera[çc][ãa]o esta conversa foi encerrada · conversa foi encerrada
 
 Efeito: `state="needs_human"`, `reason="insurer_closed"` (`:2551-2552`), rodando **depois** da captura de protocolo e do `detect_referral_step` (`:2527`) e **antes** de qualquer passo de URA.
 
-🔴 **Correção medida ao diagnóstico, e ela muda o trabalho.** O diagnóstico §11.2(a) escreve a frase como *"Por falta de contato, estou encerrando"*. 📊 Medido hoje no corpus: `grep -ic "falta de contato"` → **0 nos 16 arquivos**; `grep -ic "estou encerrando"` → **3, só em `bradesco-auto`**, e a redação real é *"Bom, estou encerrando este atendimento por falta de interaç…"* — 🔴 **que a regex de `:2548` JÁ CASA** (`encerrad[ao] por (?:…|falta de intera)`).
+🔴 **O defeito está MEDIDO, e este sub-bloco não depende do BLOCO 0 para começar.** São **duas frases diferentes**, e o diagnóstico as confundiu:
 
-**Então uma de duas coisas é verdade, e o BLOCO 0 decide qual:**
+📊 **Medido em 13/09 no banco de produção** (`observed_events`, só contagens):
 
+| frase | onde | 📊 quantos | casa `:2544-2549`? |
+|---|---|---|---|
+| *"…por falta de **interação**"* | corpus **17** · banco **36** | — | ✅ **sim**, por `encerrad[ao] por (?:inatividade\|falta de intera)` (`:2548`). **Não é defeito** |
+| *"…por falta de **contato**"* | 🔴 banco **10 eventos** — allianz **9 em 6 sessões** (até 2026-09-10) · hdi **1** | — | 🔴 **ZERO casam**, rodando a regex como `~*` sobre o texto real |
+
+```sql
+-- a consulta, para o executor reproduzir (SELECT, só contagem)
+select insurer_key, count(*) eventos, count(distinct session_id) sessoes,
+       max(wa_timestamp) ultimo
+  from observed_events
+ where text ilike '%falta de contato%'
+ group by 1 order by 2 desc;
+
+-- e o CONTROLE que dá direito à conclusão: a mesma regex do produto, no mesmo texto
+select count(*) filter (
+  where text ~* 'conversa ser[áa] encerrada|estamos encerrando (?:esta|a) conversa|tempo m[áa]ximo de espera.*excedid|encerrad[ao] por (?:inatividade|falta de intera)|falta de intera[çc][ãa]o esta conversa foi encerrada|conversa foi encerrada'
+) casam
+  from observed_events where text ilike '%falta de contato%';   -- 📊 0 de 10
 ```
-① a frase de setembro tem outra redação, que está em `observed_events` e não no corpus
-   (o corpus para em 21/08). → a SPEC acrescenta A REDAÇÃO MEDIDA, com a consulta ao lado
-② a frase já era coberta e o defeito real era OUTRO — por exemplo, a ordem: a Allianz
-   escreve a frase DEPOIS de a sessão já estar em `needs_human`, e `handle_insurer_message`
-   nem chega a `:2544`. → o conserto não é a âncora; é a reentrada do §8.2 aplicada ao
-   caminho de encerramento
-```
 
-⛔ **Escrever a âncora antes de saber qual das duas é verdade seria consertar o sintoma errado.** A consulta é o item 7 do BLOCO 0, e ela é bloqueante deste sub-bloco. Se for ①, a frase entra **com a contagem ao lado**; se for ②, o relatório registra que a âncora **não** precisava mudar e o achado do diagnóstico é corrigido por escrito.
+⚠️ **Note o dialeto** (CLAUDE.md §9.4): a consulta acima roda em **Postgres**, e o produto roda a mesma regex em **Python** sobre `_norm_text(insurer_message)`. O executor **repete o casamento em Python**, sobre o texto normalizado, antes de declarar o zero — é a regra do §9.4 aplicada ao próprio achado que a fundamenta.
 
-Em qualquer dos dois casos, o guarda é o mesmo e fecha a porta: **ZERO `human_phase` depois da frase de encerramento**, sobre o texto do acervo regenerado. E `insurer_closed` é o primeiro dos `NAO_REENTRAVEIS` (§8.2) — depois dela, nem o resumo, nem o Vigia, nem a cutucada.
+**Conserto:** a âncora ganha a redação real de `falta de contato`, com a contagem ao lado. **GD-2 nasce com essa frase**, não com a do enunciado. E `insurer_closed` é o primeiro dos `NAO_REENTRAVEIS` (§8.2) — depois dela, nem o resumo, nem o Vigia, nem a cutucada.
+
+📊 **Custo do defeito, herdado do diagnóstico §11.2:** o run de 10/09 ficou `waiting_input` **50 minutos** e queimou **3 alertas ao grupo** sobre uma conversa que a seguradora já tinha fechado.
 
 ### 8.6 D6 · Os atos do agente passam a existir
 
@@ -868,7 +952,7 @@ A regeneração em si **subiu para o BLOCO 0-bis** (§4.1), porque os gates de A
 | **GC-1** | a pausa cala o Sentinela | 60 s depois de `note_manual_outbound(foi_humano=True)`, o Sentinela não respondeu; e `foi_humano=False` **não** abre pausa (controle) | não escrever `silencio_deliberado_ate` → vermelho |
 | **GC-2** | a pausa tem teto | 3ª renovação não acontece; o corredor retoma | teto infinito → vermelho |
 | **GC-3** | com pausa aberta, **os nove** gatilhos calam | cada um dos nove devolve "não enviei: pausa humana" | remover a consulta de **um** deles → vermelho, e o guarda diz **qual** |
-| **GD-1** | `needs_human` reentra, e o resumo sai | replay da Vivian a partir de `needs_human` → resumo em ≤ 30 s; com *"assistente virtual"* **não** reentra (controle) | remover o controle negativo → o robô se apresentando reabre a sessão, vermelho |
+| **GD-1** | `needs_human` reentra **E** o resumo sai — as duas, porque reentrar sem emitir é o mesmo silêncio com outro nome | replay da Vivian a partir de `needs_human` → **reentrou** em `human_phase` **e** o resumo saiu, em ≤ 30 s; com *"assistente virtual"* **não** reentra (controle); e um texto que a tabela casa mas a regex inline de `:2915` **não** casaria → o resumo **sai** (é a prova de que a fonte virou uma só) | remover o controle negativo → o robô se apresentando reabre a sessão, vermelho. Restaurar a regex inline ao lado da tabela → o terceiro caso fica vermelho |
 | **GD-2** | encerrada é encerrada | **ZERO** `human_phase` depois da frase de encerramento **medida no item 7 do BLOCO 0**, sobre o acervo regenerado — e a frase que o guarda usa é a do acervo, ⛔ nunca a do enunciado (§8.5) | tirar a frase da âncora → vermelho pelo texto real. Se o BLOCO 0 concluir o caso ②, a mutação é reintroduzir a ordem antiga do `handle_insurer_message` |
 | **GD-3** | os dois relógios existem, e o heartbeat é menor que o teto | fila 15 min → **nenhuma** cutucada; humano falou e sumiu 11 min → cutucada; e `HUMAN_NUDGE_S < FILA_ALERTA_S` | fundir os relógios → vermelho nos dois sentidos |
 | **GD-4** | o agente deixa rastro | ≥ 1 linha `agente.cerebro\|sentinela\|vigia` por sessão que chamou o Cérebro | remover o `registrar_ato_do_agente` de `:2967` → vermelho |
@@ -880,12 +964,13 @@ A regeneração em si **subiu para o BLOCO 0-bis** (§4.1), porque os gates de A
 🔴 **Como a bateria se roda aqui — medido hoje, e não é `pytest`:**
 
 ```bash
-cd backend && PYTHONIOENCODING=utf-8 python tests/run_all.py    # o runner canônico
+cd backend && PYTHONIOENCODING=utf-8 python tests/run_all.py    # a bateria inteira
+PYTHONIOENCODING=utf-8 python tests/test_spec017_dispatch.py   # um arquivo só
 #   📊 347 arquivos test_*.py · cada um em PROCESSO separado · TIMEOUT_POR_TESTE = 180 s
 #   📊 a suíte NÃO usa `assert` na maioria: o padrão é um helper `checar(cond, texto)`
 #      que imprime ok/FALHA e sai com sys.exit(1). `grep -c assert` SUBESTIMA a cobertura
-#   ⚠️ não há Makefile, não há marcas pytest declaradas. `pytest tests/` só funciona por
-#      causa do conftest.py, que isola os 273 arquivos sem `def test_` em subprocesso
+#   ⛔ NÃO use `pytest` para rodar um destes arquivos: 📊 arquivo sem `def test_` devolve
+#      "no tests ran" com EXIT 5 — verde falso sobre um teste que, rodado direito, dá 1
 ```
 
 **Guardas novos desta SPEC nascem no padrão do arquivo vizinho** (`checar()` + `sys.exit`), não em `assert`, para que `run_all.py` os conte. E todos passam pelo `regua_motor` ou importam o motor direto (§3.1).

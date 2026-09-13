@@ -25,6 +25,8 @@ Você **cria**:
 docs/canon/specs/SPEC-EXTRA-001.6-a-cobranca-prova-que-funciona.md      ← a SPEC definitiva
 docs/canon/reports/SPEC-EXTRA-001.6-EXECUTION-REPORT.md                 ← o relatório, aberto no início
 backend/supabase/migrations/20260914_01_spec_extra0016_cobranca_por_segurado.sql
+backend/supabase/migrations/20260914_02_spec_extra0016_reserva_so_com_segurado.sql   ← no lote 2, depois do código
+backend/supabase/migrations/20260914_03_spec_extra0016_redigir_output_full.sql       ← ou a pendência nomeada (B4.4)
 backend/tests/test_a_cobranca_prova_que_funciona.py
 backend/tests/test_o_portal_diz_por_que_nao_entrou.py
 backend/tests/corpus/telas_reais_de_portal/<portal>-<desfecho>-<aaaammdd>.txt
@@ -71,14 +73,15 @@ Investigador, pesquisador, aquecimento e juízes continuam **read-only e sem env
 
 | ID | decisão |
 |---|---|
-| **D-PILOTO-18** | o modo da rotina é **`equipe`**, não `cliente` |
-| **D-PILOTO-19** | **N = 7 dias** por segurado · `attendant_name` = a atendente humana da Resulta (**confirme o nome com o Founder; nunca invente**) · `team_number` = **TESTE-B** durante o canário, e trocá-lo pelo número real é ato **só do Founder**, depois · a rotina **só é reativada depois que o BLOCO P0 estiver no ar** · as senhas de Allianz e Mapfre chegam na segunda e **não travam nada** |
+| **D-PILOTO-18** | o modo da rotina é **`equipe`**, não `cliente` (nota 92 × 48) |
+| **D-PILOTO-18** (`FOUNDER-DECISIONS.md:1762`) | **N = 7 dias** por segurado · `attendant_name` = a atendente humana da Resulta (**confirme o nome com o Founder; nunca invente**) · `team_number` = **TESTE-B** durante o canário, e trocá-lo pelo número real é ato **só do Founder**, depois · a rotina **só é reativada depois que o bloco implantável estiver no ar** — ⚠️ a decisão o chama de "BLOCO 0"; nesta SPEC ele é o **BLOCO P0** (BLOCO 0 é a medição) |
+| **D-PILOTO-19** (`:1763`) | as senhas de Allianz e Mapfre chegam na segunda (15/09) e **não travam nada** |
 | **D-PILOTO-08** | numeração EXTRA-001.1…001.10 mantida |
 | **D-PILOTO-14** | alta qualidade sem execuções exorbitantes — **teto de 12 guardas novos** |
 | **D-E001-03/04/05** | mesmo número pareado; `equipe` = nota interna separada + texto limpo + PDF |
 | **D-E001-07** | testes vivos só entre TESTE-A e TESTE-B |
 
-🔴 **D-PILOTO-08…20 ainda não estão em `docs/canon/FOUNDER-DECISIONS.md`** (📊 lá só existem D-PILOTO-01…07). **Registrá-las é entrega desta SPEC.** Os textos estão em `docs/canon/DIAGNOSTICO-PILOTOS-E-PLANO-EXTRA-2026-09-12.md` §7.1 e §12.
+📊 **D-PILOTO-01…20 já estão gravadas** em `docs/canon/FOUNDER-DECISIONS.md` (commit `c0aaf65`). O entregável **não é registrar**: é **conferir**, no BLOCO 0, se o texto da 18 e da 19 descreve o que você vai executar, e emendar com a diferença escrita se divergir. ⛔ Divergência material vira pergunta na caixa do Founder, nunca reescrita por conta própria.
 
 ---
 
@@ -104,8 +107,8 @@ Para subagentes: **o pacote, nunca o canon** — protocolo §0–§3, §5, §7.3
 
 1. **Preflight** (CLAUDE.md §2): `git fetch` · contagem atrás (🔴 tem de ser 0) · contagem à frente · branch · `git rev-parse HEAD` · `git status --short`. Registre o SHA no relatório.
 2. **Abra o relatório** pelo template, começando pelo **EXECUTION CARD** (§0.2 do protocolo), com as duas contas feitas — não copiadas da proposta.
-3. **BLOCO 0 — remeça.** As 14 premissas da proposta §4.2, cada uma com o comando e o valor de HOJE. **O seu número vence o da proposta.** Corrija o que divergir e anote a divergência (a §12.1 da proposta já lista oito coordenadas que mudaram entre 12 e 13/09 — espere mais).
-4. **Primeira tarefa concreta do BLOCO 0:** baixar e **ler** os 12 prints de `portal-evidence/{job}/00-desfecho-*.jpg` dos jobs de 10–11/09 e **transcrever o texto** para `backend/tests/corpus/telas_reais_de_portal/`. 🔴 Sem isso não existe o corpus do guarda G3 — 📊 `evidence.body_text` e `evidence.debug_dom` estão **vazios** em todos os seis jobs `failed`/`needs_human`.
+3. **BLOCO 0 — remeça.** As 15 premissas da proposta §4.2, cada uma com o comando e o valor de HOJE. **O seu número vence o da proposta.** Corrija o que divergir e anote a divergência (a §12.1 da proposta já lista oito coordenadas que mudaram entre 12 e 13/09 — espere mais).
+4. **Duas tarefas concretas do BLOCO 0, antes de qualquer desenho:** (a) medir a **premissa 15** — quantos itens reais trazem `cpf_cnpj` preenchido e quais das 6 journeys o extraem; é a chave do agrupamento e da janela de 7 dias, e nunca foi medida. (b) baixar e **ler** os 12 prints de `portal-evidence/{job}/00-desfecho-*.jpg` dos jobs de 10–11/09 e **transcrever o texto** para `backend/tests/corpus/telas_reais_de_portal/`. 🔴 Sem isso não existe o corpus do guarda G3 — 📊 `evidence.body_text` e `evidence.debug_dom` estão **vazios** em todos os seis jobs `failed`/`needs_human`.
 5. **Converta** em SPEC executável: BLOCO 0 · blocos com contrato e gate · as 12 mutações · a seção §7.3 com as 5 referências externas **reabertas por você** (com a data) · "O QUE SAIU" com gatilho · pendências · caixa do Founder.
 6. **Aqueça o executor** com as perguntas da §7 abaixo, em contexto limpo, **uma rodada**. Emende a SPEC com o que voltar. ⛔ Não monte painel de juízes sobre a SPEC (§5.1 do protocolo).
 7. **Execute**, na ordem dos blocos, com **um escritor por arquivo** e integração serial nos contratos compartilhados.
@@ -126,7 +129,7 @@ Para subagentes: **o pacote, nunca o canon** — protocolo §0–§3, §5, §7.3
 8. `portal_accounts.health = 'unknown'` é um defeito a eliminar ou uma peça do desenho? Ligue a sua resposta aos três estados do padrão de circuit breaker e a `app/api/portal.py:165`.
 9. Por que credencial recusada **não** entra no backoff com jitter, mesmo sendo uma falha de portal? Qual é o risco concreto, e para quem?
 10. O guarda `backend/tests/test_a_cobranca_esta_como_estava.py` afirma que "o inadimplente recebe UMA mensagem, como sempre recebeu". Rode o motor real e diga se a afirmação é verdadeira hoje. Se não for, explique **por que ela está verde** — e o que isso ensina sobre corpus de teste.
-11. Agrupar por `cpf_cnpj` é suficiente? Dê o caso concreto em que a chave sem o portal produz uma mensagem errada, e o caso em que o fallback por nome funde duas pessoas.
+11. A SPEC tem **duas** chaves de segurado — uma com o portal e outra sem. Diga qual serve para quê, e o que quebra se você usar uma no lugar da outra. Depois responda: a coluna do ledger devia se chamar `cpf_cnpj`? Justifique pelo que ela guarda quando a seguradora **não** devolve o documento — e diga se o segurado sem documento fica ou não protegido pela janela de 7 dias.
 12. O que acontece com a atendente se a rotina for reativada **antes** do BLOCO P0 estar no ar? Responda com o número de mensagens, calculado.
 13. Liste o que você **NÃO** entendeu ou não conseguiu provar. *"Entendi tudo"* não satisfaz o exercício.
 14. Ache um defeito material que esta SPEC **não** aponta — ou diga onde procurou e não achou. Entregue a nota 0–100 e o EXECUTION CARD que você aplicaria.
@@ -138,11 +141,13 @@ Para subagentes: **o pacote, nunca o canon** — protocolo §0–§3, §5, §7.3
 ## 8. Execução AAA — opção B, sem desperdício e sem atalho
 
 ```text
-NÍVEL      CRÍTICO por piso (§3.2: envia + migration de estrutura). A proposta §12.4 registra a
-           divergência com o diagnóstico, que fixara PADRÃO. Faça a sua conta no card e decida —
-           por escrito, com nota, e sem rebaixar segurança ou isolamento
+NÍVEL      CRÍTICO por piso (§3.2: envia + migration que cria coluna, índice e função). 🔴 NÃO é
+           escolha: o piso é absoluto e a soma do RISCO (6) já chega lá sozinha. Faça as duas
+           contas no card para registrá-las, não para decidir (proposta §12.4)
 TIME       desenhista antes do código · builders Opus por unidade coesa · verificador Sonnet ·
-           painel de 3 lentes CEGAS DE UMA VEZ (verdade+regressão · produto+DADO · red team) ·
+           INTEGRADOR (§3.1 exige com 3+ unidades: são 6, em dois hubs) ·
+           painel de 3 lentes CEGAS DE UMA VEZ (verdade+regressão · produto+DADO · red team — o red
+           team É uma das três, papel próprio com missão de quebrar, não uma 4ª lente) ·
            juiz fresco que confirma o conserto E audita o dado (§6.1)
 GUARDAS    🔴 no máximo 12 novos. Todos sobre o MOTOR e o ACERVO real. ⛔ proibido teste que
            reimplementa a regra. Cada guarda com a MUTAÇÃO que o deixa vermelho, nomeada

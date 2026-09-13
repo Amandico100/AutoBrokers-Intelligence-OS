@@ -73,10 +73,7 @@ SUPERFÍCIE ........... 2 — vários comportamentos, todos em lugares que EU LI
                        app/api/portal · 2 telas Next. Nenhum território não mapeado
 PISO APLICADO ........ §3.2 "qualquer coisa que ENVIE" + migration que ALTERA ESTRUTURA (coluna + índice +
                        função) → CRÍTICO. 🔴 O piso é absoluto; a soma (6) já chegaria a CRÍTICO sozinha
-NÍVEL ................ CRÍTICO · opção B
-                       ⚠️ DIVERGE de §8 do diagnóstico, que fixou "PADRÃO, 2 juízes". Registrado em §12.4 com
-                       nota: 3 lentes 90 × 2 lentes 62 × CRÍTICO com 4 agentes de painel 80. O custo da 3ª
-                       lente é ≈4% do relógio (CLAUDE.md §2); o desta SPEC ENVIA e mexe em estrutura
+NÍVEL ................ CRÍTICO · opção B. 🔴 Não é escolha: o piso §3.2 é absoluto (§12.4)
 UNIDADES ............. B0 medir · P0 a mensagem chega inteira · B1 ninguém é cobrado duas vezes ·
                        B2 a sessão morre e alguém sabe · B3 o portal é vigiado antes da rotina ·
                        B4 a prova tem leitor · B5 canário vivo e documentação
@@ -85,8 +82,11 @@ COESÃO ............... P0+B1 = billing_collection (arquivo-hub, UM dono por vez
 PARALELISMO REAL ..... B2/B3 (portal_worker) ∥ P0/B1 (backend/app/services) — conjuntos de arquivos disjuntos.
                        B4 depois de B1. As telas Next (B3.4) em paralelo com tudo
 TIME ................. investigador+pesquisador (um agente) · aquecimento Opus · desenhista Opus ·
-                       builders Opus (2) · verificador Sonnet · painel de 3 lentes (verdade+regressão ·
-                       produto+DADO · red team) · juiz fresco (§6.1)
+                       builders Opus (2) · verificador Sonnet · **INTEGRADOR** (§3.1 exige com 3+ unidades;
+                       aqui são 6, em DOIS hubs: billing_collection e portal_worker/worker) ·
+                       painel de 3 lentes CEGAS (verdade+regressão · produto+DADO · **red team, que é
+                       uma das três — papel próprio com missão de quebrar, não uma 4ª lente**) ·
+                       juiz fresco (§6.1). 📊 É a composição que a EXTRA-001 rodou
 REFERÊNCIA ........... interna: CLAUDE.md §7 · `backend/tests/test_a_cobranca_esta_como_estava.py` (o CONTROLE) ·
                        `test_a_cobranca_chega_a_quem_deve.py` (162 asserções da EXTRA-001) ·
                        `backend/supabase/migrations/20260907_01_*.sql` (o formato de migration desta família)
@@ -165,7 +165,7 @@ Ambiente · tenant · run de canário · conexão fixada por id · identidade re
 5. Governador contando mensagens reais.
 6. Dedup por parcela **sempre**, inclusive em teste, com a flag invertida.
 7. Agrupamento por segurado: 1 mensagem + N PDFs.
-8. "Não cobrar o mesmo segurado mais de 1× por N dias" (N=7), com `cpf_cnpj` no ledger (migration expand-first).
+8. "Não cobrar o mesmo segurado mais de 1× por N dias" (N=7), com `segurado_chave` no ledger (migration expand-first).
 9. Sessão que expira: TTL, `health` que muda, `session_reused` que diz a verdade.
 10. Canário diário de `login_check` nos 6 portais antes da rotina; `available_at` + backoff com jitter; circuit breaker por portal; `health` escrito e **mostrado**.
 11. Fila de telas desconhecidas de portal **entregue junto com o leitor**.
@@ -182,7 +182,7 @@ Ambiente · tenant · run de canário · conexão fixada por id · identidade re
 | Régua de lembretes recorrentes | a EXTRA-001 recusou inaugurá-la e nada mudou | decisão comercial do Founder |
 | `avisar_suporte_humano` deixar de falar com o grupo e passar a falar com o dono | é o coração da **001.3** (o grupo só recebe o que importa) | 001.3 — esta SPEC só acrescenta a frase do estágio novo |
 | Dedup por conteúdo/`message_id` do provedor | `P-E001-RETORNO-IDEMPOTENTE-POR-CONTEUDO`; sem efeito hoje | 099 |
-| Tabela nova para telas desconhecidas de portal | P-264 ensina: fila sem leitor não é fila. Aqui a fila é uma CONSULTA com leitor no dia 1 | se o volume medido passar de 💭 50 telas distintas/mês |
+| Tabela nova para telas desconhecidas de portal | P-264 ensina: fila sem leitor não é fila. Aqui a fila é uma CONSULTA com leitor no dia 1 | 🔴 **o medidor é a própria consulta do B4.2**: quando ela devolver mais de 💭 50 telas distintas por mês, ou quando o `jsonb` de `portal_jobs` começar a pesar na leitura da lista, a consulta vira tabela — e o leitor já existe, que é a condição que P-264 pede |
 
 ⛔ Nada da §2.1 sai em silêncio. Corte material vira proposta registrada em `CHANGE-ADDENDA.md` com classe e evidência (CLAUDE.md §11, D5).
 
@@ -215,7 +215,7 @@ rotina (equipe) em company X
   → cobranca_sweep por portal                 (como hoje)
   → itens + boletos                           (como hoje)
   → fila_de_cobranca (retém com motivo)       (como hoje)
-  → AGRUPAR POR SEGURADO  (cpf_cnpj|portal)   [B1] NOVO — 1 grupo = 1 mensagem
+  → AGRUPAR POR SEGURADO  (segurado_chave|portal) [B1] NOVO — 1 grupo = 1 mensagem
   → ordenar_para_entrega (grupo pelo mais velho)
   → por GRUPO: regra de N dias por segurado   [B1] NOVO
   →   por PARCELA: reserva atômica            (como hoje — a reserva NÃO agrupa)
@@ -252,7 +252,7 @@ git rev-parse HEAD                          # registrar no relatório
 git status --short
 ```
 
-### 4.2 As 14 premissas a remedir — cada uma com o comando
+### 4.2 As 15 premissas a remedir — cada uma com o comando
 
 | # | premissa desta SPEC | comando / consulta | 📊 valor em 13/09 |
 |---|---|---|---|
@@ -270,6 +270,7 @@ git status --short
 | 12 | os prints do desfecho existem e são a ÚNICA fonte do texto da tela | `select split_part(name,'/',2),count(*) from storage.objects where bucket_id='portal-evidence' and name like '%desfecho%' group by 1` **e** `select length(evidence->>'body_text'), length(evidence->>'debug_dom') from portal_jobs where status in ('failed','needs_human') and finished_at>='2026-09-10'` | 6 `done` · 4 `needs-human` · 2 `failed`; **`body_text` e `debug_dom` = 0 em todos** |
 | 13 | ninguém enfileira `login_check` | `grep -n '"journey"' backend/app/services/billing_collection.py` | só `"cobranca_sweep"` (`:680`) |
 | 14 | `tela_cega` tem escritor e não tem leitor | `select count(*) from tela_cega` + `grep -rn "tela_cega" backend --include=*.py` | **2 linhas**; zero leitores fora do escritor e dos testes (P-264) |
+| **15** | 🔴 **quantos itens reais trazem `cpf_cnpj` preenchido** — é a chave do agrupamento E da janela de 7 dias | ler `routine_runs.output_full` das execuções de 10–11/09 (a seção "Clientes encontrados" imprime `CPF/CNPJ` por item) e contar preenchidos × `?`; e `grep -rn "cpf_cnpj" backend/portal_worker/journeys/*.py` para ver **quais das 6 journeys** o extraem | **NÃO MEDIDO na redação.** 📊 Só se confirmou que a Allianz preenche (`allianz_corretor.py:170, :1578`). Se o preenchimento for baixo, a regra da §B1.3 muda de tamanho — e é por isso que ela **não** depende do documento (ver B1.2) |
 
 ### 4.3 🔴 O achado do BLOCO 0 que muda o desenho do guarda da Allianz
 
@@ -303,7 +304,9 @@ Matriz **premissa → observação nova → comando → decisão**, o mapa de ef
 ## 5. BLOCO P0 — A MENSAGEM CHEGA INTEIRA E A FALHA FALA PORTUGUÊS
 ### Implantável no 1º dia · não depende das senhas novas
 
-> 🔴 **Este bloco é a condição de reativar a rotina.** D-PILOTO-19: reativar antes disto = avalanche picotada na atendente.
+> 🔴 **Este bloco é a condição de reativar a rotina** (D-PILOTO-18: reativar antes = avalanche picotada na atendente, nota 25).
+>
+> ⚠️ **A equivalência de nomes, para ninguém se perder:** a decisão D-PILOTO-18 chama de **"BLOCO 0"** o bloco implantável no primeiro dia. Nesta SPEC, **BLOCO 0 é a medição** (§4, sem código) e o implantável é o **BLOCO P0** (§5). **"BLOCO 0 da D-PILOTO-18" = "BLOCO P0 desta SPEC".** A condição de reativar a rotina é **este** bloco estar no ar.
 
 ### P0.1 · `bloco_unico=True` nos três textos
 
@@ -386,18 +389,32 @@ O campo ganha rótulo humano na tela (`components/auxiliares/PainelDeRotinas.tsx
 
 ### P0.5 · O governador conta o que o canal recebeu
 
-**Contrato.** Uma linha em `platform_sends` por **mensagem entregue ao canal** — balão de texto e documento —, e a contagem vem da **mesma função** que o `send_message` usa para fatiar:
+🔴 **A decisão, tomada aqui e não deixada em aberto: UMA LINHA POR COMPONENTE, com `kind` próprio. Nem por balão, nem por coluna nova.**
 
-```python
-# whatsapp_service.py — exposto para quem precisa CONTAR sem enviar
-def contar_mensagens(texto: str, *, bloco_unico: bool = False) -> int: ...
-# platform_outbound.py
-async def record_platform_send(company_id, phone, kind, summary, *, unidades: int = 1) -> None: ...
-```
+`platform_sends` **não é só do governador**: 📊 13/09 ela tem **4 escritores** (`billing_collection.py:1261`, `dispatch_router.py:244`, `platform_outbound.py:1494`, `dispatch_followup.py:320`) e **leitores humanos**:
 
-⛔ Não reimplementar o fatiamento no contador. Se o contador decidir por conta própria, ele mede outra coisa (CLAUDE.md §9.4).
+| leitor | o que faz | o que 1 linha por BALÃO quebraria |
+|---|---|---|
+| `platform_outbound.py:1659-1682` `context_note_for` | pega os 30 últimos envios, filtra pelo telefone e monta o bloco `[CONTEXTO DA PLATAFORMA]` com **os 3 primeiros** (`hits[:3]`, por `summary`/`kind`) | 🔴 a **mesma** cobrança ocuparia os 3 lugares, e o agente perderia o contexto real do cliente |
+| `app/core/heartbeat.py:311-320` (Central de Agentes) | conta produção por `kind` com filtro `in` — 📊 o comentário de 03/09 registra `billing 4` | um card contando balões diria que a cobrança produziu 4× mais |
 
-📊 Depois: 7 parcelas em `equipe` → **21** linhas (7 notas + 7 textos + 7 PDFs). Antes: 7.
+E `record_platform_send(..., unidades=N)` exigiria **coluna nova** → migration → e o P0 **deixaria de ser implantável sem migration**, que é a razão de ele existir.
+
+**Contrato.** Uma linha por componente que o canal recebeu, com `kind` que diz qual é:
+
+| componente | `kind` | quem grava |
+|---|---|---|
+| o texto que a pessoa lê (a cobrança) | `billing` *(inalterado)* | `_entregar_agora`, como hoje |
+| a nota interna à atendente | `billing_nota` | `_entregar_agora` |
+| **cada boleto anexado** | `billing_doc` | `_entregar_agora`, **depois** do `send_document` aceito — hoje o PDF **não é contado em lugar nenhum** |
+
+E os dois leitores são ajustados **junto**, no mesmo bloco:
+- `context_note_for` ignora os `kind` de componente (`billing_nota`, `billing_doc`) ao montar as 3 linhas — a atendente e o cliente veem "a cobrança", não as peças dela;
+- os cards de `heartbeat.py` continuam filtrando `kind='billing'`, então continuam contando **cobranças**, e passam a contar 1 por segurado em vez de 1 por parcela (efeito do agrupamento do B1). Isso vai escrito no gate.
+
+⚠️ **E o balão?** Depois de P0.1 o texto é **1 balão por construção** (📊 medido: 331 ch → 1). Se `_fatiar_documento` algum dia devolver mais de um pedaço — texto acima de 3.500 caracteres —, isso é **sinal de defeito**, não de contabilidade: vira linha de log e blocker no relatório, nunca linhas a mais na tabela.
+
+📊 Depois, para 7 parcelas de 5 segurados em `equipe`: **5** linhas `billing` + 5 `billing_nota` + **7** `billing_doc` = 17 linhas, contra 7 hoje — e o PDF deixa de ser invisível.
 
 ### 🎯 GATE P0
 
@@ -410,7 +427,10 @@ async def record_platform_send(company_id, phone, kind, summary, *, unidades: in
    para tela de credencial recusada; CONTROLE: o dashboard real continua `done`
 ④ `attendant_name` vazio em `equipe` → rotina RETIDA, zero mensagens, motivo em português
 ⑤ rotina da Resulta em `test` (destino = a própria corretora) → 1 balão por texto e
-   `platform_sends` com a contagem real
+   `platform_sends` com uma linha por COMPONENTE (`billing` · `billing_nota` · `billing_doc`)
+⑥ 🔴 OS LEITORES, no mesmo gate: `context_note_for` sobre um cliente com 1 cobrança + 3 boletos
+   devolve UMA linha de cobrança (não três); os cards de `heartbeat.py` que filtram `kind='billing'`
+   continuam contando cobranças e nada mais entrou na conta deles
 ```
 
 **Implantação 1 (smith-api):** este bloco sozinho. Só depois disto o Founder reativa a rotina (§9.1).
@@ -424,7 +444,7 @@ async def record_platform_send(company_id, phone, kind, summary, *, unidades: in
 **Contrato.** `billing_collection.py:1059-1065`:
 
 ```python
-#: 🔴 INVERTIDA em 13/09/2026 (D-PILOTO-19). A decisão de 17/08 — "em teste não
+#: 🔴 INVERTIDA em 13/09/2026 (diagnóstico §9.4; CLAUDE.md §9.3). A de 17/08 — "em teste não
 #: deduplica, porque em teste o destino é a própria corretora e o que se quer é
 #: REPETIR" — produziu, em 10 e 11/09, os MESMOS 7 boletos nos dois dias, e a
 #: tela de Pendências vazia e correta ao mesmo tempo. Um controle que não pode
@@ -445,31 +465,48 @@ def dedup_de_envio_ativa(send_mode: Any, env: Optional[Dict[str, str]] = None) -
 
 **Contrato.** Função pura, nova, em `billing_collection.py`, entre `fila_de_cobranca` (termina em **`:424`**) e `ordenar_para_entrega` (**`:334`**):
 
-```python
-def chave_do_segurado(item: Dict[str, Any]) -> str:
-    """Quem é o segurado, para efeito de ENTREGA — e só para isso.
+🔴 **Duas chaves, e elas são diferentes de propósito** — a confusão entre as duas é o que produz "o segurado sem CPF nunca é limitado":
 
-    🔴 A chave inclui o PORTAL. Duas razões, as duas medidas:
-      1. o texto da mensagem nomeia a seguradora ("A Seguradora {x} informou"),
-         e um grupo com duas seguradoras exigiria uma mensagem que ninguém
-         escreveu e o Founder não aprovou;
-      2. sem `cpf_cnpj` o fallback é o NOME, e dois "João Silva" de seguradoras
-         diferentes não podem virar um segurado só.
-    ⚠️ E o mesmo segurado em DUAS seguradoras não recebe duas mensagens: quem
-    impede é a regra de N dias (B1.3). Uma regra por pergunta.
+```python
+def segurado_chave(item: Dict[str, Any]) -> str:
+    """QUEM é o segurado — independente de seguradora. É o que vai para o ledger.
+
+    🔴 O nome da coluna é `segurado_chave`, e NÃO `cpf_cnpj`, porque o valor nem
+    sempre É um documento (CLAUDE.md §12.1: campo cujo nome mente reinfecta todo
+    leitor seguinte). O prefixo diz de onde a identidade veio, e é isso que a
+    mensagem de retenção mostra para a pessoa poder discordar.
+
+    ⚠️ Sem documento, a identidade é o NOME normalizado. Isso pode unir dois
+    homônimos reais e segurar uma cobrança legítima por N dias — e é o erro que
+    se escolhe: não cobrar alguém por uma semana é recuperável; cobrar duas
+    vezes o mesmo segurado é o defeito que esta SPEC existe para fechar.
+    A retenção diz `por nome` e a pessoa libera pela tela se discordar.
     """
     doc = so_digitos(item.get("cpf_cnpj"))
-    portal = str(item.get("portal") or "").strip().lower()
     if doc:
-        return f"doc:{doc}|{portal}"
+        return f"doc:{doc}"
     nome = _norm_txt(item.get("cliente_nome") or item.get("nome_segurado"))
-    return f"nome:{nome}|{portal}" if nome else f"recibo:{item.get('recibo')}|{portal}"
+    return f"nome:{nome}" if nome else f"recibo:{str(item.get('recibo') or '').strip()}"
+
+
+def chave_do_grupo(item: Dict[str, Any]) -> str:
+    """QUEM + ONDE — é o que decide o que cabe numa MESMA mensagem.
+
+    🔴 Inclui o portal, porque o texto nomeia a seguradora ("A Seguradora {x}
+    informou") e um grupo com duas seguradoras exigiria uma mensagem que ninguém
+    escreveu e o Founder não aprovou (B1.5).
+    ⚠️ E o mesmo segurado em DUAS seguradoras não recebe duas mensagens: quem
+    impede é a janela de N dias (B1.3), que usa `segurado_chave` — SEM o portal.
+    Uma regra por pergunta.
+    """
+    return f"{segurado_chave(item)}|{str(item.get('portal') or '').strip().lower()}"
 
 
 def agrupar_por_segurado(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Devolve GRUPOS, na ordem da dívida mais velha do grupo.
 
-    Cada grupo: {"chave", "cliente_nome", "portal", "cpf_cnpj", "parcelas": [item, ...]}
+    Cada grupo: {"chave_do_grupo", "segurado_chave", "cliente_nome", "portal",
+                 "parcelas": [item, ...]}
     A ordem entre grupos é a de `ordenar_para_entrega` aplicada à parcela mais
     VELHA de cada grupo — a fila continua significando o que significava.
     """
@@ -495,12 +532,14 @@ def agrupar_por_segurado(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 **Contrato.**
 
 ```python
-#: D-PILOTO-19: N = 7. Na tela, ajustável por corretora.
+#: D-PILOTO-18 (13/09): N = 7 (nota 85 × 3 dias 60 × 14 dias 70). Na tela, ajustável por corretora.
 DIAS_ENTRE_COBRANCAS_PADRAO = 7
 
 def _segurados_cobrados_recentemente(client, company_id: str, dias: int) -> Dict[str, str]:
-    """`{cpf_cnpj: data_iso}` dos segurados já cobrados na janela.
+    """`{segurado_chave: data_iso}` dos segurados já cobrados na janela.
 
+    🔴 A leitura é por `segurado_chave` — SEM o portal. É isso que faz a janela
+    valer ENTRE seguradoras, que é a pergunta que ela responde.
     🔴 Falha de leitura LEVANTA — nunca devolve vazio. Vazio significaria
     "não cobrei ninguém", e a resposta a isso seria cobrar todo mundo de novo
     (R04 da EXTRA-001; é a mesma disciplina de `_obrigacoes_reais`).
@@ -510,8 +549,9 @@ def _segurados_cobrados_recentemente(client, company_id: str, dias: int) -> Dict
     """
 ```
 
-- O grupo cujo `cpf_cnpj` está na janela é **retido**, com motivo legível e a data: *"este segurado já foi cobrado em 11/09 (regra de 1 cobrança a cada 7 dias) — volta em 18/09"*. **Nada some** (CLAUDE.md §11.1).
-- Sem `cpf_cnpj` no item, a regra **não se aplica** e isso é dito no relatório — inventar identidade é pior que não ter.
+- O grupo cuja `segurado_chave` está na janela é **retido**, com motivo legível, a data e **de onde veio a identidade**: *"este segurado já foi cobrado em 11/09 (regra de 1 cobrança a cada 7 dias, identificado por CPF/CNPJ) — volta em 18/09"* · *"…(identificado por NOME, porque a seguradora não devolveu o documento) — se não for a mesma pessoa, libere pela tela"*. **Nada some** (CLAUDE.md §11.1).
+- 🔴 **A regra cobre TODO segurado, com ou sem documento.** Sem documento, a identidade é o nome normalizado (B1.2). Um item sem documento **e** sem nome cai no recibo — que nunca repete —, e aí sim a janela não o limita; isso vai escrito no relatório, contado.
+- 📊 **Quanto disso é real ainda não se sabe:** a premissa 15 do BLOCO 0 mede o preenchimento de `cpf_cnpj` no acervo. Se for alto, a janela é quase toda por documento; se for baixo, o fallback por nome passa a ser a regra — e a frase da retenção é o que deixa a pessoa discordar.
 - ⚠️ Não é uma reserva: a janela é de 7 dias e uma corrida de milissegundos é imaterial. Quem protege a parcela continua sendo a reserva atômica.
 
 ### B1.4 · A migration
@@ -546,32 +586,47 @@ Arquivo: `backend/supabase/migrations/20260914_01_spec_extra0016_cobranca_por_se
 
 -- ----------------------------------------------------------------- APPLY -----
 ALTER TABLE public.billing_sent_log
-  ADD COLUMN IF NOT EXISTS cpf_cnpj text;
+  ADD COLUMN IF NOT EXISTS segurado_chave text;
 
-COMMENT ON COLUMN public.billing_sent_log.cpf_cnpj IS
-  'CPF/CNPJ do segurado, só dígitos. Existe para a regra "1 cobrança por segurado a cada N dias" (D-PILOTO-19). ⛔ Dado da PRÓPRIA CORRETORA: NUNCA vai para log, relatório de execução, artifact, prompt ou RAG — fora daqui circulam só os 4 últimos dígitos (CLAUDE.md §7).';
+COMMENT ON COLUMN public.billing_sent_log.segurado_chave IS
+  'QUEM é o segurado, para a regra "1 cobrança por segurado a cada N dias" (D-PILOTO-18). Formato: "doc:<digitos>" quando a seguradora devolveu CPF/CNPJ, "nome:<normalizado>" quando não devolveu, "recibo:<n>" quando não há nem nome. 🔴 NÃO se chama cpf_cnpj porque nem sempre É um documento — nome que mente reinfecta todo leitor seguinte (CLAUDE.md §12.1). ⛔ Dado da PRÓPRIA CORRETORA: NUNCA vai para log, relatório de execução, artifact, prompt ou RAG (CLAUDE.md §7).';
 
--- A janela por segurado, com o company_id na frente: nenhuma leitura atravessa
--- tenant, nem no código nem no índice (CLAUDE.md §7).
+-- A janela por segurado. 🔴 SEM o portal na chave: a pergunta é "já falei com
+-- esta pessoa esta semana?", e ela vale ENTRE seguradoras. Com o company_id na
+-- frente, nenhuma leitura atravessa tenant (CLAUDE.md §7).
 CREATE INDEX IF NOT EXISTS billing_sent_log_segurado_idx
-    ON public.billing_sent_log (company_id, cpf_cnpj, sent_at DESC)
+    ON public.billing_sent_log (company_id, segurado_chave, sent_at DESC)
  WHERE send_mode = 'real';
 
+-- 🔴 O CORPO DA FUNÇÃO NÃO SE COPIA À MÃO. Gere-o do objeto que está no banco e
+--    acrescente só o parâmetro e o campo do INSERT:
+--        select pg_get_functiondef(p.oid) from pg_proc p
+--          join pg_namespace n on n.oid = p.pronamespace
+--         where n.nspname='public' and p.proname='billing_reservar_obrigacao';
+--    Copiar 60 linhas de plpgsql à mão é como o `EXCEPTION WHEN unique_violation`
+--    da 20260907_01 desaparece sem ninguém ver — e com ele a retenção de
+--    `colisao_recibo`, que é produto.
 CREATE OR REPLACE FUNCTION public.billing_reservar_obrigacao(
     p_company_id uuid, p_portal_key text, p_recibo text, p_modalidade text,
     p_to_phone text, p_to_last4 text, p_cliente_nome text, p_apolice_susep text,
     p_routine_id uuid, p_work_run_id uuid, p_integration_id uuid, p_canario boolean,
-    p_cpf_cnpj text                      -- 🔴 13º: sem DEFAULT, de propósito
+    p_segurado_chave text                -- 🔴 13º: sem DEFAULT, de propósito
 ) RETURNS TABLE(id uuid, ganhou boolean, status text)
 LANGUAGE plpgsql SET search_path = public, pg_temp
 AS $function$
--- corpo idêntico ao da 20260907_01, com `cpf_cnpj` no INSERT
+-- corpo GERADO de pg_get_functiondef, com `segurado_chave` no INSERT.
+-- ⚠️ Conferir que o `EXCEPTION WHEN unique_violation` e o ramo `colisao_recibo`
+--    vieram junto — um diff contra o texto gerado prova isso.
 $function$;
 
 -- ---------------------------------------------------------------- VERIFY -----
+-- V0) 🔴 o corpo novo é o antigo + o campo — e nada a menos
+--   select pg_get_functiondef(p.oid) ... ; diff contra o corpo da 20260907_01
+--   esperado: as únicas diferenças são o parâmetro e a coluna do INSERT;
+--             `EXCEPTION WHEN unique_violation` e `colisao_recibo` presentes
 -- V1) a coluna existe e é nula
 --   select column_name, is_nullable from information_schema.columns
---    where table_schema='public' and table_name='billing_sent_log' and column_name='cpf_cnpj';
+--    where table_schema='public' and table_name='billing_sent_log' and column_name='segurado_chave';
 --   esperado: 1 linha, is_nullable='YES'
 -- V2) o índice existe com o predicado certo
 --   select indexdef from pg_indexes where indexname='billing_sent_log_segurado_idx';
@@ -584,13 +639,13 @@ $function$;
 --   begin;
 --     select * from public.billing_reservar_obrigacao(
 --       (select id from public.companies order by created_at limit 1),
---       'verify_portal','VERIFY-0016','equipe',null,null,'VERIFY',null,null,null,null,true,'00000000000');
+--       'verify_portal','VERIFY-0016','equipe',null,null,'VERIFY',null,null,null,null,true,'doc:00000000000');
 --       -- esperado: ganhou=true, status='reservado'
---     select cpf_cnpj from public.billing_sent_log where recibo='VERIFY-0016';
---       -- esperado: '00000000000'
+--     select segurado_chave from public.billing_sent_log where recibo='VERIFY-0016';
+--       -- esperado: 'doc:00000000000'
 --     select * from public.billing_reservar_obrigacao(
 --       (select id from public.companies order by created_at limit 1),
---       'verify_portal','VERIFY-0016','cliente',null,null,'VERIFY',null,null,null,null,true,'00000000000');
+--       'verify_portal','VERIFY-0016','cliente',null,null,'VERIFY',null,null,null,null,true,'doc:00000000000');
 --       -- esperado: ganhou=FALSE, mesmo id
 --   rollback;   -- 🔴 o VERIFY não deixa lixo
 -- V5) CONTROLE — a chamada de 12 argumentos ainda resolve, sem 42725
@@ -610,7 +665,7 @@ $function$;
 --    'none' na tela e deixar a coluna onde está.
 -- drop function if exists public.billing_reservar_obrigacao(uuid,text,text,text,text,text,text,text,uuid,uuid,uuid,boolean,text);
 -- drop index if exists public.billing_sent_log_segurado_idx;
--- alter table public.billing_sent_log drop column if exists cpf_cnpj;
+-- alter table public.billing_sent_log drop column if exists segurado_chave;
 -- =============================================================================
 ```
 
@@ -647,9 +702,11 @@ Apólice: {numero_apolice}
 ```
 ① dedup ligada por padrão em `test`; `BILLING_DEDUP_TEST_DISABLED=1` desliga; a flag NÃO toca modo real
 ② `agrupar_por_segurado` sobre o ACERVO de 10–11/09 (corpus anonimizado): 4 parcelas do mesmo CNPJ = 1 grupo;
-   dois segurados distintos nunca se fundem; sem cpf_cnpj o fallback não funde nomes iguais de portais diferentes;
+   dois segurados distintos nunca se fundem; sem documento o fallback por nome agrupa, e NÃO junta portais diferentes
+   na mesma mensagem;
    dois `company_id` na entrada nunca produzem um grupo misto
-③ N dias: mesmo cpf_cnpj cobrado há 3 dias → retido com motivo e DATA; há 8 dias → cobrado
+③ N dias por `segurado_chave` (SEM o portal): mesmo segurado cobrado há 3 dias → retido com motivo, DATA e a
+   ORIGEM da identidade (documento × nome); há 8 dias → cobrado. CONTROLE: um segurado SEM documento também é retido
 ④ a reserva continua POR PARCELA: 4 parcelas do grupo = 4 linhas no ledger, 1 mensagem
 ⑤ migration aplicada com VERIFY V1–V6 rodado no Postgres real, saída colada no relatório
 ⑥ rotina da Resulta em `test`, DUAS execuções seguidas → a segunda envia ZERO
@@ -864,9 +921,17 @@ E: a URL assinada da evidência ganha TTL curto (💭 15 min) e **nunca** é ane
 
 **Contrato.** No relatório da execução, `cpf_cnpj` e `whatsapp` saem **mascarados** (`_mascarar_documento`, que já existe em `:1931`, e os 4 últimos dígitos do telefone). O que **não** muda:
 - a **nota interna** à atendente continua com o WhatsApp legível (`_whatsapp_legivel`, `:1350`) — ela precisa discar;
-- o **ledger** continua guardando `to_phone` e agora `cpf_cnpj`, com o comentário que diz que eles não saem dali.
+- o **ledger** continua guardando `to_phone` e agora `segurado_chave`, com o comentário que diz que eles não saem dali.
 
 Três níveis de exposição, de propósito: ledger (tenant, comentado) → nota à atendente (o número dela) → relatório e artifact (mascarados).
+
+🔴 **E o que já está gravado?** 📊 **7 de 49** execuções têm CPF/CNPJ em claro em `routine_runs.output_full` (escritas por `:1891`). Mascarar daqui para a frente não apaga o que já está lá. Duas saídas, e a SPEC escolhe a primeira:
+
+- **`20260914_03_spec_extra0016_redigir_output_full.sql`** — um `UPDATE` de redação sobre as 7 linhas, com **APPLY / VERIFY / ROLLBACK escritos antes**:
+  - APPLY: `update routine_runs set output_full = regexp_replace(output_full, '(CPF/CNPJ )[0-9./-]{11,18}', '\1•••', 'g') where id in (...)` — 🔴 **a lista de ids é fixada por um SELECT rodado antes**, nunca um `where like` aberto, para o UPDATE não crescer sozinho;
+  - VERIFY: `select count(*) ... where output_full like '%CPF/CNPJ%' and output_full ~ 'CPF/CNPJ [0-9]'` → esperado **0**; e a contagem de linhas afetadas = 7;
+  - ROLLBACK: 🔴 **não existe** — a redação é irreversível por construção. Por isso o APPLY grava antes um `select id, md5(output_full) from routine_runs where id in (...)` no relatório, e a decisão é registrada: **o dado apagado é PII de segurado que nunca deveria ter sido escrita ali**, e a mesma informação continua no ledger e na InfoCap. Irreversível **e** correto.
+- Se o Founder preferir não tocar no histórico: `P-E0016-PII-LEGADA-NO-OUTPUT-FULL`, com o custo de esquecer escrito — *"7 relatórios de execução com CPF/CNPJ de segurado em claro, legíveis por qualquer sessão autenticada da corretora; e o número cresce toda vez que a rotina roda antes do conserto"*.
 
 ### 🎯 GATE B4
 
@@ -900,9 +965,9 @@ Três níveis de exposição, de propósito: ledger (tenant, comentado) → nota
 
 | Q | o que prova | como |
 |---|---|---|
-| **Q7** | **1 mensagem inteira por segurado, com N boletos** | 2 itens sintéticos com o mesmo `cpf_cnpj`, mesmo portal → TESTE-B recebe **3** mensagens (nota, texto, 2 PDFs = 4 objetos, 1 balão cada) e **nenhuma** picotada |
+| **Q7** | **1 mensagem inteira por segurado, com N boletos** | 2 itens sintéticos com o mesmo documento, mesmo portal → TESTE-B recebe **3** mensagens (nota, texto, 2 PDFs = 4 objetos, 1 balão cada) e **nenhuma** picotada |
 | **Q8** | segunda execução no mesmo dia = **0** envios | repetir o job |
-| **Q9** | a regra de 7 dias bloqueia o mesmo segurado na **outra** seguradora | 3º item sintético, mesmo `cpf_cnpj`, portal diferente → retido com motivo e data |
+| **Q9** | a regra de 7 dias bloqueia o mesmo segurado na **outra** seguradora | 3º item sintético, mesmo documento, portal diferente → retido com motivo e data |
 | **Q10** | o canário de login roda antes e o motivo aparece em português | executar com **Tokio, HDI, Yelum, Zurich**; Allianz e Mapfre só quando a senha chegar |
 
 ⛔ Só TESTE-A → TESTE-B. Documentos sintéticos, sem linha digitável acionável. Limpeza por `id + company_id + canario`.
@@ -910,7 +975,7 @@ Três níveis de exposição, de propósito: ledger (tenant, comentado) → nota
 ### 10.3 Documentação e acompanhamento — obrigatórios, com um escritor por arquivo
 
 1. `docs/canon/specs/SPEC-EXTRA-001.6-…md` (a definitiva) e `docs/canon/reports/SPEC-EXTRA-001.6-EXECUTION-REPORT.md` pelo template, **abrindo com o EXECUTION CARD** e com a telemetria de 5 linhas.
-2. 🔴 **`FOUNDER-DECISIONS.md`: registrar D-PILOTO-08…20** (hoje só existem 01…07 — §0.3). Os textos estão no diagnóstico §7.1 e §12.
+2. `FOUNDER-DECISIONS.md`: 📊 D-PILOTO-01…20 **já gravadas** em `c0aaf65`. O trabalho é **conferir** que o texto da 18 (`:1762`) e da 19 (`:1763`) descreve o que esta SPEC executa — e emendar a linha, com a diferença escrita, se divergir. ⛔ Não reescrever decisão do Founder por conta própria: divergência material vira pergunta na caixa.
 3. `PENDENCIAS.md`: fechar `P-E001-CANARIO-VIVO-NO-IMPLANTADO`, `P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY` e `P-PILOTO-11` com prova; abrir as desta SPEC (§14).
 4. `CHANGE-ADDENDA.md`: tudo além do texto desta SPEC, classificado.
 5. `ESTADO-DAS-SPECS.md`, `INDICE-DE-SPECS.md`, `EXECUTION-MASTER-PLAN.md`: a 001.6 e a fila de §15.
@@ -929,10 +994,10 @@ Três níveis de exposição, de propósito: ledger (tenant, comentado) → nota
 | **G2** | `failed` com `error IS NULL` e `evidence.message` cheio → o motivo aparece | a linha REAL da Mapfre de 11/09, em corpus | **M2** voltar `:2331` a ler só `error` |
 | **G3** | `interpret_login` das 6 journeys sobre os 12 prints transcritos → ZERO "não reconhecida" para credencial recusada | corpus `telas_reais_de_portal/` | **M3** remover `"acesso negado"` do `_FAIL` |
 | **G4** | `attendant_name` vazio em modo real → rotina RETIDA, zero envios | `normalize_billing_config` | **M4** devolver o default `"nossa equipe"` |
-| **G5** | 7 parcelas em `equipe` → **21** linhas em `platform_sends` | `record_platform_send` + `contar_mensagens` | **M5** ignorar `unidades` |
+| **G5** | uma linha por componente (`billing` · `billing_nota` · `billing_doc`), o PDF contado, e `context_note_for` devolvendo **uma** linha de cobrança | `record_platform_send` + `context_note_for` + os cards de `heartbeat` | **M5** gravar o `billing_doc` com `kind='billing'` → o contexto do cliente volta a ser ocupado 3× |
 | **G6** | dedup ON por padrão em `test`; a flag só desliga `test` | `dedup_de_envio_ativa` | **M6** inverter de volta o default |
-| **G7** | agrupamento correto sobre o acervo; nunca funde tenants, nomes homônimos nem portais | `agrupar_por_segurado` | **M7** tirar `portal` da chave |
-| **G8** | a janela de N dias retém com motivo e data; fora da janela, cobra | o leitor do ledger | **M8** ignorar a janela |
+| **G7** | agrupamento correto sobre o acervo; nunca funde tenants nem portais numa mensagem; `segurado_chave` **não** leva portal e `chave_do_grupo` leva | `agrupar_por_segurado` · `segurado_chave` · `chave_do_grupo` | **M7** pôr o portal em `segurado_chave` → a janela deixa de valer entre seguradoras |
+| **G8** | a janela de N dias retém com motivo, data e **origem da identidade**; fora da janela, cobra; **um segurado sem documento também é retido** | o leitor do ledger | **M8** ignorar a janela |
 | **G9** | sessão vencida não é injetada; `session_reused` só quando valeu | `_load_session_bundle` + worker | **M9** ignorar o TTL |
 | **G10** | portal com breaker aberto não gera `cobranca_sweep`; senha nova reabre | prólogo da rotina + `/portal/credentials` | **M10** enfileirar assim mesmo |
 | **G11** | backoff com jitter, teto 3, **ZERO** para credencial recusada | `proximo_available_at` | **M11** aplicar backoff à credencial recusada |
@@ -988,11 +1053,18 @@ from app.services.whatsapp_service import _fatiar_documento
 | `:158` | "o inadimplente recebe UMA mensagem, como sempre recebeu" | 🔴 **é falsa hoje.** Ela mede uma constante `MSG_DA_COBRANCA` **reconstruída à mão** (292 ch) que o produto **não envia**. 📊 O texto que o produto realmente monta tem 331 ch e vira **2** balões. O guarda está verde e o produto está picotado — exatamente CLAUDE.md §9.4: *"o texto vem do acervo, não da imaginação"* |
 | `:212` | "a dedup continua DESLIGADA por padrão no modo teste" | **migra** e inverte, com três controles: `test` sem flag → `True`; `test` com `BILLING_DEDUP_TEST_DISABLED=1` → `False`; `equipe` com a flag ligada → `True` (prova que a flag só toca `test`) |
 
-🔴 **A migração obrigatória:** `:158` passa a medir o texto que o produto **monta**, chamando `build_customer_message`, e não uma constante escrita no teste. As duas linhas de CONTROLE de `:171-176` (texto longo faz os dois caminhos divergirem) **ficam** — são elas que dão direito à conclusão.
+🔴 **Duas migrações obrigatórias, e a segunda é a que o §9.4 exige:**
 
-### 12.4 A divergência de marcha, registrada
+1. `:158` passa a medir o texto que o produto **monta**, chamando `build_customer_message` — não uma constante escrita dentro do teste.
+2. 🔴 **O helper `caminho_de_hoje` (`:146-149`) sai.** Ele **reimplementa** a decisão do produto (`_fatiar(texto) if bloco_unico else split_whatsapp_balloons(...)`) — e hoje ele até acerta, porque a decisão é um `if` de uma linha em `send_message`. Com o P0.1 a decisão passa a ser **`e_documento(kind)`, em `platform_outbound`**, e um helper que continue perguntando "e se `bloco_unico` fosse True?" provaria que o fatiador funciona e **não** provaria que alguém o usa — que é literalmente o defeito da SPEC-083 (CLAUDE.md §9.4: *"o que se afirma é o comportamento do MOTOR sobre o texto REAL"*). O guarda migrado pergunta ao produto: `e_documento("billing_equipe")` e `send_message` com um dublê de provider que **conta os balões que chegaram ao canal**.
 
-O diagnóstico §8 fixou **PADRÃO, 2 juízes** para a 001.6. Esta proposta pede **CRÍTICO com 3 lentes**. Motivo: o piso do protocolo §3.2 é absoluto para o que ENVIA e para migration que altera estrutura, e a soma do RISCO (6) já chega a CRÍTICO sozinha. **Notas:** 3 lentes **90** · 2 lentes 62 (economiza ≈4% do relógio e abre mão da lente que achou o blocker de produto na EXTRA-001 — 📊 o B1 foi achado por DUAS lentes) · 4 agentes de painel 80 (não cabe em 6–9 h). **Decisão do executor no card; a divergência vai escrita no relatório.**
+As duas linhas de CONTROLE de `:171-176` (texto longo faz os dois caminhos divergirem) **ficam** — são elas que dão direito à conclusão.
+
+### 12.4 A marcha é CRÍTICO, e isso não é uma escolha
+
+A tabela de §8 do diagnóstico trazia "PADRÃO, 2 juízes" no **título** da 001.6 — e o próprio diagnóstico, em §13.4, já a lista como **CRÍTICO**. O título é que estava errado, e está corrigido.
+
+🔴 **O piso do protocolo §3.2 não admite escolha:** *"CRÍTICO no mínimo, independente da conta — qualquer coisa que ENVIE"* e *"migration que ALTERA DADO, ESTRUTURA, TRAVA ou QUEM PODE LER · ⚠️ só o COMMENT é isento; índice e GRANT disparam"*. Esta SPEC faz as duas coisas: envia mensagem e cria coluna, índice e função. E a soma do RISCO (6) chegaria a CRÍTICO sozinha. **Não há nota a dar nem decisão a tomar no card** — rebaixar aqui seria afrouxar a régua (§5 do protocolo).
 
 ---
 
@@ -1032,7 +1104,7 @@ O diagnóstico §8 fixou **PADRÃO, 2 juízes** para a 001.6. Esta proposta pede
 **URL:** https://www.postgresql.org/docs/current/indexes-partial.html · reaberta 13/09/2026
 **O que faz:** índice sobre um subconjunto definido por um predicado; e um UNIQUE parcial *"enforces uniqueness among the rows that satisfy the index predicate, without constraining those that do not"*.
 **O que MODELAMOS:** o índice da janela por segurado nasce parcial (`WHERE send_mode='real'`), como os dois da `20260907_01` — o modo `test` não é tocado, e a leitura da janela nunca atravessa tenant porque `company_id` é a primeira coluna.
-**O que REJEITAMOS:** transformar a regra de N dias num UNIQUE. Ela é uma **janela de tempo**, não uma identidade: um UNIQUE por `(company_id, cpf_cnpj)` impediria para sempre a segunda cobrança do mesmo segurado.
+**O que REJEITAMOS:** transformar a regra de N dias num UNIQUE. Ela é uma **janela de tempo**, não uma identidade: um UNIQUE por `(company_id, segurado_chave)` impediria para sempre a segunda cobrança do mesmo segurado.
 **Como o juiz inspeciona:** roda o VERIFY V2 e confere o predicado no `pg_indexes`.
 
 ---
@@ -1047,7 +1119,7 @@ O diagnóstico §8 fixou **PADRÃO, 2 juízes** para a 001.6. Esta proposta pede
 | pendência | o que destrava | dono |
 |---|---|---|
 | `P-E0016-SENHAS-ALLIANZ-MAPFRE` | as senhas novas (🧑 segunda-feira) → rodar `login_check` nos dois e colar o veredito | 🧑 → 🤖 |
-| `P-E0016-RESERVA-12-ARGS` | migration posterior que derruba a sobrecarga de 12 argumentos de `billing_reservar_obrigacao` | 🤖 |
+| `P-E0016-RESERVA-12-ARGS` | 🔴 **com prazo:** a migration `20260914_02` que derruba a sobrecarga de 12 argumentos entra **no mesmo lote da implantação 2**, depois de o código novo estar no ar e o VERIFY V5 provar que ninguém mais a chama (`select count(*) ... from pg_stat_user_functions` + `grep` no repo). Sobrecarga órfã é armadilha: um `git revert` do código voltaria a chamar a de 12 e gravaria linhas sem `segurado_chave` | 🤖 |
 | `P-E0016-NOME-DA-ATENDENTE` | o Founder diz o nome; o executor **nunca** o inventa | 🧑 |
 | `P-E0016-ALLIANZ-POR-PAPEL` | depois da senha nova, medir se os 38 seletores por atributo quebram; só então reescrever | 🤖 |
 | `P-E0016-TELA-CEGA-DA-URA-SEM-LEITOR` | o leitor de portal do B4.2 é o modelo; a URA ganha o mesmo (P-264) | 🤖 (001.4) |
@@ -1062,9 +1134,9 @@ O diagnóstico §8 fixou **PADRÃO, 2 juízes** para a 001.6. Esta proposta pede
 | # | o que vai | serviços | pré-requisito |
 |---|---|---|---|
 | **1** | **BLOCO P0 sozinho** | `smith-api` (backend) · `smith-web` se o rótulo "Quem assina" entrar junto | nenhum. **Não depende das senhas novas** |
-| **2** | B1 + B2 + B3 + B4 | `smith-api` **primeiro**, `smith-web` depois (mesma razão medida na EXTRA-001 §6.2: a web nova gravando um `send_mode` que a API antiga normaliza para `test` faria a tela mentir) · `portal-worker` junto do smith-api (B2/B3 moram nele) | migration `20260914_01` **aplicada e verificada** antes |
+| **2** | B1 + B2 + B3 + B4 | `smith-api` **primeiro**, `smith-web` depois (mesma razão medida na EXTRA-001 §6.2: a web nova gravando um `send_mode` que a API antiga normaliza para `test` faria a tela mentir) · `portal-worker` junto do smith-api (B2/B3 moram nele) | as migrations **aplicadas e verificadas** antes: `20260914_01` (coluna+índice+função de 13 args) e `20260914_03` (redação do legado); a `20260914_02` (derruba a sobrecarga de 12 args) vai **no mesmo lote, depois** de o código estar no ar |
 
-🔴 **Entre a implantação 1 e a reativação da rotina, nada mais.** D-PILOTO-19: reativar antes do P0 = avalanche picotada na atendente.
+🔴 **Entre a implantação 1 e a reativação da rotina, nada mais.** D-PILOTO-18: reativar antes do bloco implantável = avalanche picotada na atendente (📊 hoje, 5 mensagens por segurado).
 
 ### 15.2 Variáveis de ambiente novas (nome, sem valor)
 
@@ -1095,8 +1167,11 @@ git fetch origin && git rev-parse --short origin/main  # confere
 1. aplicação: reverter os commits da branch em ordem inversa. ⚠️ ANTES de reverter, pôr a rotina em 'none' —
    o código antigo normaliza 'equipe' para 'test' e passaria a mandar para o test_number.
 2. flags: nenhuma de produto. Retirar as 5 variáveis do §15.2 (todas têm default).
-3. banco: ROLLBACK da 20260914_01 (drop function 13 args · drop index · drop column) — só seguro sem linhas
-   `send_mode='real'`. 📊 0 em 13/09; se houver, o rollback correto é deixar a coluna e desligar a rotina.
+3. banco: ROLLBACK da 20260914_01 (drop function 13 args · drop index · drop column `segurado_chave`) — só seguro
+   sem linhas `send_mode='real'`. 📊 0 em 13/09; se houver, o rollback correto é deixar a coluna e desligar a rotina.
+   🔴 A 20260914_03 (redação da PII legada) **não tem rollback** e não deve ter: ver B4.4.
+   ⚠️ Se a 20260914_02 já tiver derrubado a sobrecarga de 12 argumentos, reverter o código sem reverter o banco
+   quebra a reserva — reverter as duas juntas, nesta ordem: código, depois banco.
 4. efeitos já executados: mensagens enviadas não se desfazem. O ledger fica — é a prova de que saíram.
 5. irreversível: as mensagens do canário (TESTE-A → TESTE-B) e as linhas de `agent_activities` do período.
 ```
@@ -1145,10 +1220,11 @@ Esta SPEC está concluída quando **todas** as linhas abaixo tiverem evidência 
 
 ```
 [ ]  1. EXECUTION CARD no topo do relatório, dentro do limite do guarda
-[ ]  2. BLOCO 0: as 14 premissas remedidas, com comando e valor de hoje
+[ ]  2. BLOCO 0: as 15 premissas remedidas, com comando e valor de hoje
 [ ]  3. G1–G12 verdes, e M1–M12 VERMELHAS, cada uma com o nome da falha nova em subprocesso
 [ ]  4. o guarda de controle migrado (§12.3) com as três linhas de controle intactas
-[ ]  5. migration 20260914_01 aplicada, VERIFY V1–V6 rodado no Postgres real, saída colada; MANIFEST atualizado
+[ ]  5. migrations aplicadas com VERIFY rodado no Postgres real e saída colada (01: V0–V6 · 03: a contagem antes e
+        depois · 02 no lote 2 com a prova de que ninguém chama a de 12 args); MANIFEST atualizado
 [ ]  6. suíte inteira ×2, com triagem nominal de toda falha contra a base
 [ ]  7. `next start` + uma requisição real, se as telas do B3.4 entraram
 [ ]  8. painel de 3 lentes + juiz fresco (§6.1), achados fundidos e consertados juntos
@@ -1156,7 +1232,7 @@ Esta SPEC está concluída quando **todas** as linhas abaixo tiverem evidência 
 [ ] 10. Q7–Q10 rodados com TESTE-A → TESTE-B, e a limpeza conferida
 [ ] 11. implantação 1 (P0) no ar, e a rotina reativada DEPOIS dela — nunca antes
 [ ] 12. `git push origin HEAD:main` com a saída colada e o head remoto conferido
-[ ] 13. D-PILOTO-08…20 registradas em FOUNDER-DECISIONS.md
+[ ] 13. D-PILOTO-18 e 19 CONFERIDAS contra o que foi executado (já gravadas em `c0aaf65`), com a divergência escrita se houver
 [ ] 14. PENDENCIAS atualizado: 3 fechadas, 6 abertas, P-264 re-justificada
 [ ] 15. dossiê republicado — ou "publicação pendente" com o arquivo e o passo exato
 [ ] 16. caixa do Founder com as ações concretas mínimas (senhas, nome da atendente, team_number, copy do plural)
