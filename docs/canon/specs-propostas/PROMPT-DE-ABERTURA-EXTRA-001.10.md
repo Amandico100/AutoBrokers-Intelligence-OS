@@ -54,14 +54,18 @@ confirmar contrato; nunca copie; mascare sempre.**
 
 ## 2. As autorizações atuais
 
+🔴 **A lista completa, com a allowlist e a verificação de três comandos que precede cada
+efeito, está na §1 da SPEC — leia-a lá, inteira, antes do primeiro bloco.** O resumo:
+
 ```
 ✅ PODE   ler todo o repositório · rodar a suíte · rodar scripts read-only ·
           replay OFFLINE dos 4 HAR · leituras do portal (GET) ·
           escrever código, testes e documentação · commit e push na sua branch
 
 ✅ PODE, no canário e SÓ nele
-          UM acionamento de LATARIA na Yelum com o veículo de teste do Founder,
-          com as duas variáveis de ambiente ligadas só para aquele job
+          UM acionamento de LATARIA na Yelum com o veículo de teste do Founder —
+          🔴 e SÓ depois de o bloco P0-6 (freio por job) estar no ar. Sem ele, ligar
+          o freio libera todos os jobs de vidros em voo naquele worker.
 
 ⛔ NÃO PODE
           qualquer escrita no portal fora do canário
@@ -74,14 +78,15 @@ confirmar contrato; nunca copie; mascare sempre.**
 
 🧑 **Os números de teste (TESTE-A e TESTE-B) e o CPF do veículo de teste vêm do
 Founder, por variável de ambiente.** Se faltarem, isso é caixa do Founder — e você
-**segue** com tudo o que não depende deles (a §14.1 da proposta lista o que é).
+**segue** com tudo o que não depende deles — a §14 da proposta, sob “🟢 NÃO DEPENDE”,
+lista item a item o que fecha sem esperar ninguém.
 
 ---
 
 ## 3. O estado herdado
 
 ```
-branch base ....... main · HEAD a0bb5fe (confira no preflight; se divergir, o seu vence)
+branch base ....... main · o HEAD do dia (o preflight MEDE; não presuma pelo nome da pasta)
 PORTAL_VIDROS_API_FIRST ......... nasce FALSE. Com ela desligada, nada muda hoje.
 PORTAL_EFEITO_MATERIAL_LIBERADO . o freio da SPEC-073
 o que está quebrado ............. o caminho API-first não grava peça/causa/cidade
@@ -115,14 +120,15 @@ que a faz voltar** · as pendências · a caixa do Founder.
 
 ---
 
-## 5. As perguntas de aquecimento — 14, e várias têm resposta óbvia E ERRADA
+## 5. As perguntas de aquecimento — 17, e várias têm resposta óbvia E ERRADA
 
 > Entregue estas perguntas ao executor de contexto limpo, junto da SPEC.
 > 🔴 Duas delas afirmam algo **falso**, com todas as letras, de propósito.
 
 ```
  1. O corpo do `PATCH /atendimentos` tem 11 campos, que é o contrato do bundle.
-    Certo ou errado? Prove com o HAR.
+    Certo ou errado? Prove com o HAR. E então: **a regra é "omitir toda chave cujo
+    valor é None"?** Quantas chaves saem se você fizer isso, e o que acontece com G1?
 
  2. A fronteira material do portal de vidros é o `POST /questionarios`.
     Certo ou errado? Se estiver errado, qual é a prova, e qual é a linha de controle?
@@ -149,18 +155,30 @@ que a faz voltar** · as pendências · a caixa do Founder.
     como fronteira material? Justifique.
 
 10. O `POST agendamentos` está inteiro no bundle e você tem o contrato. O que falta
-    para ele poder sair, e quantas travas são?
+    para ele poder sair, e quantas travas são? E **qual guarda fica vermelho** se
+    alguém promovê-lo a APPROVED sem captura nova?
 
-11. `SessaoVidros.chamar` serve para enviar as fotos da vistoria. Certo ou errado?
+11. Você vai rodar o canário. Basta ligar `PORTAL_EFEITO_MATERIAL_LIBERADO`?
+    O que exatamente acontece com os outros jobs de vidros em voo naquele worker?
     Cite arquivo e linha.
 
-12. Três lugares do código dizem coisas diferentes sobre o que o agente precisa ter
+12. O robô deve ler `itens-cobertos` ANTES de perguntar qualquer coisa ao segurado —
+    é a "regra de ouro". Certo ou errado? O que o header `token_autorizacao` diz
+    sobre isso, e o que muda na ordem das perguntas?
+
+13. O replay do gate G1 deve emitir as 7 escritas que aparecem no HAR. Certo ou
+    errado? Quais ficam fora, e por quê? E que função ele chama para ler o HAR?
+
+14. `SessaoVidros.chamar` serve para enviar as fotos da vistoria. Certo ou errado?
+    Cite arquivo e linha.
+
+15. Três lugares do código dizem coisas diferentes sobre o que o agente precisa ter
     antes de chamar o portal. Quais são os três, quantos campos cada um exige, e
     qual deles é a verdade? Por quê?
 
-13. 🔴 Liste o que você NÃO entendeu na SPEC. "Entendi tudo" reprova.
+16. 🔴 Liste o que você NÃO entendeu na SPEC. "Entendi tudo" reprova.
 
-14. 🔴 Ache um defeito REAL que a SPEC não aponta. Um só, com arquivo e linha.
+17. 🔴 Ache um defeito REAL que a SPEC não aponta. Um só, com arquivo e linha.
 ```
 
 ⚠️ **As duas afirmações falsas assinadas estão nas perguntas 5 e 6.** Não conte isso
@@ -214,7 +232,7 @@ cada um, escolha o maior, **registre e siga**. Travou 30 min → o mais conserva
 anota, segue. ⛔ Não pare para perguntar no meio da SPEC.
 
 **Pare e registre SÓ por uma das oito do CLAUDE.md §10** — mais a trava própria desta
-SPEC: se a verificação de três passos da §1.2 da proposta não bater, o bloco para.
+SPEC: se a verificação de três comandos da §1 da proposta não bater, o bloco para.
 
 ---
 
@@ -225,7 +243,7 @@ SPEC: se a verificação de três passos da §1.2 da proposta não bater, o bloc
     custa esquecer · bloqueia? (quase sempre NÃO). ⛔ Nunca pare para entregar uma linha dela
 [ ] o dossiê do Founder (o artifact de SPECs) é republicado com a MESMA url
 [ ] ESTADO-DAS-SPECS.md atualizado
-[ ] CHANGE-ADDENDA.md: tudo que sair do escopo da §2.1, classificado como
+[ ] CHANGE-ADDENDA.md: tudo que sair do escopo da §2 da SPEC, classificado como
     BLOCKER · ESSENCIAL · VALIOSA · FUTURA, ANTES de ser executado
 [ ] FOUNDER-DECISIONS.md: só se nascer decisão nova
 ```
@@ -234,11 +252,19 @@ SPEC: se a verificação de três passos da §1.2 da proposta não bater, o bloc
 
 ```
 1. confirmar a apólice Yelum ativa do veículo de teste, com cobertura de lataria
-2. o CPF do titular, por variável de ambiente
-3. ligar e desligar as duas flags no canário
+2. o CPF do titular, por variável de ambiente (nunca versionado, nunca no chat)
+3. ligar e desligar as duas flags no canário, e preencher a PORTAL_CANARIO_ALLOWLIST
+   com o job/CPF daquele acionamento
 4. 🔴 pedir à Regina a CAPTURA Nº 1 (para-brisa na Yelum até o agendamento
-   confirmado, HAR "with content") — é a única que destrava o 100% de vidraçaria
+   confirmado, HAR "with content") — a única que destrava o 100% de vidraçaria, E o
+   teste da inferência de categoria da §2.1 do RESEARCH-PACK
 5. confirmar com a Regina/Saionara que a conversa do canário soa humana
+6. 🔴 CANCELAR O PEDIDO REAL, PELO PORTAL, se o canário morrer depois do
+   `POST /atendimentos` — enquanto P2-2 (`cancelar` como journey) não estiver no ar,
+   isso é mão humana, e é a Regina que sabe fazer. ⛔ O executor NUNCA reexecuta:
+   `safe_to_retry_open` responde False, e está certo.
+7. confirmar que o e-mail/SMS da seguradora chegou com a loja indicada — é a única
+   prova de que o comprovante da lataria virou serviço do lado de lá
 ```
 
 📊 **A §14 da proposta separa, item a item, o que depende da captura nº 1 e o que

@@ -29,6 +29,8 @@
 | famílias sem específicas mapeadas | `perguntas_do_portal_de_vidros.py:355` | `grep -n "PECAS_SEM_ESPECIFICAS_MAPEADAS" app/services/perguntas_do_portal_de_vidros.py` | não |
 | `_UNIVERSAIS` e as específicas | `:199-276` e `:288-352` | `grep -n "_UNIVERSAIS\|_ESPECIFICAS_POR_IDENTIDADE" app/services/perguntas_do_portal_de_vidros.py` | não |
 | o Vigia só vê `vidros_lanternas` | `vigia_do_portal.py:306` | `grep -n "portal_key" app/tasks/vigia_do_portal.py` | não |
+| o freio de efeito material é global | `portal_worker/journeys/__init__.py:294-303` (`efeito_material_liberado`) e `:306` (`motivo_para_barrar`) | `sed -n '291,310p' portal_worker/journeys/__init__.py` | 🔴 **não estava no diagnóstico** — achado novo desta proposta |
+| o leitor de HAR reutilizável já existe | `app/services/portals/lab/trafego.py:160` (`importar_har`) | `grep -n "def importar_har" app/services/portals/lab/trafego.py` | 🔴 **não estava no diagnóstico** — ele cita só a CLI `lab har` |
 | a sessão só fala JSON | `vidros_sessao.py:108-121` (`JSON.stringify`, `Content-Type: application/json`) | `sed -n '103,125p' portal_worker/journeys/vidros_sessao.py` | 🟡 diagnóstico dizia `:105-119`; é **108-121** |
 | vistoria: campo conhecido, valor não | `vidros_api.py:345-370` | `sed -n '345,370p' portal_worker/journeys/vidros_api.py` | não |
 | `TipoAtendimento` só na Porto | `vidros_api.py:220-248` | `sed -n '218,250p' portal_worker/journeys/vidros_api.py` | não |
@@ -442,9 +444,8 @@ respostas JSON: 44 · com corpo capturado: 44
 | 🔴 **O questionário do PARA-BRISA nunca foi capturado** | é a peça mais frequente; e é onde a régua real do trincado mora | 🧑 captura nº 1 |
 | **O subfluxo de domicílio** | `AtendeServicoMovel:false` nas duas capturas; formas de pagamento nunca vistas | 🧑 captura nº 2 |
 | **Vistoria e upload de foto** | `PermiteVistoriaMobile:false` em todas; o link nunca foi gerado | 🧑 captura nº 3 |
-| **O freio é por job ou global?** | decide se o canário é seguro (Q-A do BLOCO 0) | 🤖 BLOCO 0 |
-| **`itens-cobertos` exige Token?** | decide se a desambiguação de P1-4 cabe antes ou depois da fronteira A (Q-B) | 🤖 BLOCO 0 |
 | **O autocomplete lista "Liberty" ou "Yelum"?** | decide se o caminho DOM está clicando na opção errada (Q-C) | 🤖 BLOCO 0, com a captura |
+| **A categoria é mesmo a variável da fronteira?** | 📊 N=1 por categoria; a atribuição é INFERÊNCIA (§2.1) | 🧑 captura nº 1 (outra peça `V`) |
 | **`regraDeBloqueio` (4 travas por apólice)** | o portal pode recusar lataria ou evento composto, e não lemos | 🤖 pendência nova |
 | **`abandonar`, `finalizar`** | declarados no bundle, zero capturas | 🧑 qualquer captura que os exerça |
 | **Bradesco** | qual dos dois portais aceita | 🧑 captura dupla (D-PILOTO-17) |
@@ -456,7 +457,12 @@ respostas JSON: 44 · com corpo capturado: 44
 
 | a resposta óbvia | por que está **errada** |
 |---|---|
-| *"O corpo do PATCH tem 11 campos, é o contrato do bundle"* | 📊 no fio são **8** em 2 de 2 capturas. Mandar `null` nos 3 ausentes é inventar campo, e o gate G1 fica vermelho. |
+| *"O corpo do PATCH tem 11 campos, é o contrato do bundle"* | 📊 no fio são **8** em 2 de 2 capturas. Mandar `null` nos 3 ausentes é inventar campo, e G1 fica vermelho. |
+| *"Então basta omitir toda chave cujo valor é None"* | 🔴 **Não.** 📊 `CodigoZona` viaja como `null` e `ServicosMartelinhoLataria` como `[]` nas duas capturas. A regra cega produz **6** chaves, e G1 fica vermelho pelo outro lado. A regra é POR CAMPO (§2.3). |
+| *"O freio já é por job; é só ligar no canário"* | 📊 `journeys/__init__.py:294-303` lê `os.getenv` do processo, e `motivo_para_barrar` não recebe job nem CPF. Ligar libera todos os jobs de vidros em voo. É o bloco P0-6. |
+| *"Dá para ler `itens-cobertos` antes de abrir o atendimento"* | 📊 o `token_autorizacao` só passa a viajar a partir do `PUT /atendimentos/corretores` — o catálogo **não existe** antes da fronteira A (§2.1-b). |
+| *"O replay tem de emitir as 7 escritas do HAR"* | 📊 duas delas (`vistorias-previas/processar`, `corretores-reclamacoes`) estão fora do contrato de propósito. Um replay que emitisse 7 seria tão errado quanto um que emitisse 3 (§2.2). |
+| *"O teste precisa de um leitor de HAR próprio"* | ⛔ `trafego.py:160 importar_har` já existe e é o mesmo que o Lab usa. Um segundo leitor é motor paralelo em miniatura. |
 | *"A fronteira material é o `POST /questionarios`"* | só para categoria `V`. Para `L` é o **PATCH**, e é assim que nasce o segundo atendimento pago. |
 | *"`ITAU` não existe no portal, é só apagar"* | 📊 ele **existe como rota** no bundle. O defeito é que a API não o oferece — a correção é `ativa: False`, não o apagamento cego. |
 | *"Yelum é Yelum"* | 📊 no portal ela é **`LIBERTY`**, com templates em `seguradoras/liberty/`. E o código digita "Yelum" num autocomplete. |

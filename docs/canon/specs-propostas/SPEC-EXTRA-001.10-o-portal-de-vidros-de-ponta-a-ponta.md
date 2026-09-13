@@ -261,27 +261,19 @@ async def atualizar_atendimento(self, *,
 ```
 
 🔴 **A regra do corpo — o coração do gate G1, e ela é POR CAMPO, não uma regra só.** O
-contrato do bundle tem **11 campos**; 📊 **o que sai no fio, em 2 de 2 capturas, são 8** —
-e os 3 que somem não somem porque são `None`, e sim porque o AngularJS serializa com
-`JSON.stringify`, que **descarta `undefined`**. Dois campos escapam disso no bundle e
-**sempre viajam**:
+contrato do bundle tem **11 campos**; 📊 **no fio, em 2 de 2 capturas, saem 8** — e os 3
+que somem não somem por serem `None`, e sim porque `JSON.stringify` **descarta
+`undefined`**. Dois campos escapam disso no bundle e **sempre viajam**:
 
 | campo | no fio, 2 de 2 capturas | por quê |
 |---|---|---|
-| `CodigoZona` | **`null`** (lataria e vidraçaria) | o bundle o escreve com ternário explícito para `null` |
-| `ServicosMartelinhoLataria` | **`[{…},{…}]`** na lataria · **`[]`** na vidraçaria | `(t \|\| []).map(…)` — um array vazio ainda é um array |
-| `ItemRemovido` · `EventoComposto` · `PolimentoFarol` | **ausentes nas duas** | leem `passo3.dados.X` sem ternário → `undefined` → descartados |
+| `CodigoZona` | **`null`** nas duas | o bundle o escreve com ternário explícito para `null` |
+| `ServicosMartelinhoLataria` | **`[{…},{…}]`** na lataria · **`[]`** na vidraçaria | `(t \|\| []).map(…)` — array vazio ainda é array |
+| `ItemRemovido` · `EventoComposto` · `PolimentoFarol` | **ausentes nas duas** | leem `passo3.dados.X` sem ternário → `undefined` |
 
-```
-✅ CERTO   codigo_zona=None                      → "CodigoZona": null      (a chave VAI)
-✅ CERTO   servicos_martelinho_lataria=None      → "…Lataria": []          (a chave VAI)
-✅ CERTO   item_removido=None                    → a chave NÃO ENTRA
-❌ ERRADO  omitir toda chave cujo valor é None   → corpo de 6 chaves, e G1 vermelho
-❌ ERRADO  mandar "ItemRemovido": null           → corpo de 11 chaves, ≠ do HAR
-```
-
-🔴 **Uma regra cega de "omitir se None" derruba o próprio gate** — sairiam 6 chaves, não
-8. **Onde entra:** `vidros_apifirst.py`, entre o `POST /atendimentos` (`:225`) e o
+🔴 **Uma regra cega de "omitir se None" derruba o próprio gate**: sairiam **6** chaves, não
+8 — e mandar `"ItemRemovido": null` produz 11. As duas falham G1, por lados opostos.
+**Onde entra:** `vidros_apifirst.py`, entre o `POST /atendimentos` (`:225`) e o
 questionário (`:275`), **e depois de P0-2**.
 
 **Gate P0-1:** o replay offline do HAR da Yelum lataria produz um corpo de PATCH igual ao
@@ -301,27 +293,23 @@ POST /solicitantes              {RelacaoTitular, EmailSegurado, [EmailTitularApl
 PATCH /atendimentos           ← P0-1
 ```
 
-🔴 **As 7 escritas do HAR, e as 5 que esta SPEC contrata.** 📊 Nos dois HAR da Yelum
-aparecem **sempre** mais duas escritas depois do PATCH (YELUM 1 #43/#44 · ANTIGO #75/#76):
+🔴 **O HAR tem 7 escritas; esta SPEC contrata 5.** 📊 Duas aparecem em 2 de 2 HAR depois do
+PATCH (YELUM 1 #43/#44 · ANTIGO #75/#76) e ficam **fora do contrato**:
 
 ```
-CONTRATADAS (5) — o motor as emite, e G1 compara a sequência
-   1 POST  /atendimentos        2 PUT /atendimentos/corretores    3 POST /solicitantes
-   4 PATCH /atendimentos        5 POST /atendimentos/emitir-atendimento-formalizado/{cod}
-                                  (o COMPROVANTE — só no caminho de lataria, P1-5)
+CONTRATADAS (5)  1 POST /atendimentos · 2 PUT /atendimentos/corretores ·
+                 3 POST /solicitantes · 4 PATCH /atendimentos ·
+                 5 POST /atendimentos/emitir-atendimento-formalizado/{cod}
+                   (o COMPROVANTE — só no caminho de lataria, P1-5)
 
-FORA DO CONTRATO (2) — observadas em 2 de 2, e deliberadamente não emitidas
-   POST /atendimentos/{cod}/vistorias-previas/processar   corpo `{"params":{}}`. 📊 A
-      resposta não muda nenhum campo que o motor leia, e `PermiteVistoriaMobile` é
-      `false` em todas as capturas: emitir seria imitar o browser sem saber o efeito.
-      🟡 Volta com a captura nº 3 (apólice COM vistoria), junto de P1-6.
-   POST /corretores-reclamacoes   📊 é o canal de RECLAMAÇÃO do corretor, disparado pela
-      tela, não pelo fluxo do pedido. ⛔ Um robô que abre reclamação sozinho na
-      seguradora é efeito material que ninguém pediu.
+FORA (2)  vistorias-previas/processar — 📊 nenhum campo que o motor leia muda com ela, e
+             `PermiteVistoriaMobile` é `false` em todas: emitir seria imitar o browser
+             sem saber o efeito. 🟡 Volta com a captura nº 3, junto de P1-6.
+          corretores-reclamacoes — 📊 é o canal de RECLAMAÇÃO do corretor, disparado pela
+             tela. ⛔ Um robô que abre reclamação sozinho é efeito que ninguém pediu.
 ```
 
-⚠️ **G1 compara as 5, e afirma explicitamente que as 2 não saíram** — um replay que
-emitisse 7 seria tão errado quanto um que emitisse 3.
+⚠️ **G1 compara as 5 e afirma que as 2 não saíram** — emitir 7 é tão errado quanto 3.
 
 🔴 **`RelacaoTitular` é string, e Corretor é `"6"`, não `"4"`.** `vidros_api.py:296-305`
 já tem `RELACAO_TITULAR` com `6: "Corretor"` e o comentário que explica por que decorar a
@@ -358,20 +346,17 @@ lataria quebra — em produção, com dinheiro.
 `"1|142|S|11335|1|0|L"` → autorização pedida **antes do PATCH**;
 `"3|129|N|10700|1|0|V"` → autorização pedida **antes do `POST /questionarios`**.
 
-⚠️ **O que é FATO e o que é INFERÊNCIA aqui — e G2 escreve os dois.** **FATO:** nas duas
-capturas, o mesmo `GET /atendimentos` logo após o mesmo PATCH deu resultado oposto (§0.2).
-**INFERÊNCIA:** que a variável que explica a diferença é a **categoria** — e ela vem de
-**N=1 por categoria**. É a leitura mais simples que cobre as duas observações, e é
-coerente com a tela (lataria não tem passo 4), mas não está provada em duas peças da
-mesma categoria.
+⚠️ **FATO × INFERÊNCIA, e G2 escreve os dois.** **FATO:** o mesmo `GET` logo após o mesmo
+PATCH deu resultado oposto nas duas capturas (§0.2). **INFERÊNCIA:** que a variável que
+explica é a **categoria** — com **N=1 por categoria**. É a leitura mais simples que cobre
+as duas observações e bate com a tela (lataria não tem passo 4), mas não está provada em
+duas peças da mesma categoria.
 
-🔴 **A captura nº 1 é o teste desta inferência, e G2 diz isso por escrito:** ela é
-para-brisa, ou seja, **outra peça de categoria `V`**. Se o `CodigoAtendimento` continuar
-nulo depois do PATCH nela, a inferência **se confirma** com N=2 em `V`. Se nascer no
-PATCH, ela **cai** — e a variável real é outra (o `CodigoTipoScript`, a ausência de
-questionário, ou uma regra da apólice). **O desenho fail-closed sobrevive aos dois
-desfechos**, porque categoria desconhecida já devolve `FRONTEIRA_ABRIR`; o que muda é o
-mapa, não a trava.
+🔴 **A captura nº 1 testa essa inferência, e G2 diz isso por escrito:** ela é para-brisa,
+**outra peça `V`**. Nulo depois do PATCH ali = confirmada, N=2 em `V`. Nascido no PATCH =
+derrubada, e a variável real é outra (`CodigoTipoScript`, ausência de questionário, regra
+de apólice). **O fail-closed sobrevive aos dois desfechos** — categoria desconhecida já
+devolve `FRONTEIRA_ABRIR`: muda o mapa, não a trava.
 
 ### P0-4 · Um mapa só de seguradora, e ele é o do portal
 
@@ -467,44 +452,36 @@ motor. Mutação de (a): acrescentar um campo a `TRANSPORTAVEIS` sem ensiná-lo 
 ### P0-6 · O freio por JOB — 🔴 BLOCKER, e é o que torna o canário possível
 
 📊 **Medido em 13/09/2026, não inferido:** o freio é **global ao processo**.
-
-```
-portal_worker/journeys/__init__.py:294-303
-    def efeito_material_liberado() -> bool:
-        return str(_os.getenv("PORTAL_EFEITO_MATERIAL_LIBERADO","false"))… in ("1","true","yes","on")
-portal_worker/journeys/__init__.py:306
-    def motivo_para_barrar(portal_key: str, journey: str) -> str:
-        # ⚠️ não recebe job, não recebe CPF, não recebe company_id
-```
+`journeys/__init__.py:294-303` — `efeito_material_liberado()` devolve
+`os.getenv("PORTAL_EFEITO_MATERIAL_LIBERADO")` do processo; `:306` —
+`motivo_para_barrar(portal_key, journey)` **não recebe job, nem CPF, nem `company_id`**.
 
 🔴 **Consequência direta:** ligá-lo para o canário **libera todos os jobs de vidros em voo
 naquele worker**, de qualquer corretora. O canário da §10 é impossível de fazer com
-segurança sem este bloco — por isso ele **não** é uma pergunta do BLOCO 0, é um bloco
-numerado de P0, e é **BLOCKER**.
+segurança sem este bloco — por isso ele **não** é pergunta do BLOCO 0: é bloco numerado de
+P0, e é **BLOCKER**.
 
 **O contrato**, espelhando o que a cobrança já faz (⛔ não inventar mecanismo novo —
 `BILLING_CANARIO_ALLOWLIST` é o molde, e a EXTRA-001 já o provou em produção):
 
 ```python
 # portal_worker/journeys/__init__.py — ao lado de efeito_material_liberado()
-_ENV_ALLOWLIST = "PORTAL_CANARIO_ALLOWLIST"   # job_id ou hash de CPF, separados por vírgula
+_ENV_ALLOWLIST = "PORTAL_CANARIO_ALLOWLIST"   # job_id ou hash de CPF, por vírgula
 
 def efeito_material_liberado_para(*, job_id: str = "", cpf_hash: str = "") -> bool:
     """A trava global continua valendo; a allowlist a ESTREITA, nunca a alarga.
-
-    🔴 Allowlist vazia com o freio ligado = comportamento de hoje (todos passam).
-    Allowlist preenchida = SÓ os listados passam, e os demais são barrados com motivo.
-    ⛔ Nunca o contrário: a allowlist não liga o freio, ela só o restringe.
+    🔴 Vazia com o freio ligado = comportamento de hoje. Preenchida = só os listados
+    passam. ⛔ Nunca o contrário: a allowlist não LIGA o freio, só o restringe.
     """
 ```
 
 `motivo_para_barrar` ganha os mesmos dois parâmetros, **opcionais**, e devolve o motivo
-legível (*"fora da allowlist do canário"*), porque quem barra tem de gravar no job **por
-que** barrou — é o que o próprio docstring de `:306` já exige.
+legível (*"fora da allowlist do canário"*) — quem barra tem de gravar no job **por que**
+barrou, como o próprio docstring de `:306` já exige.
 
-**Gate P0-6:** dois jobs simultâneos, mesma journey, freio ligado e allowlist com **um**
-deles: o listado passa, o outro é barrado **com motivo gravado**. É o par de casos com
-veredito oposto do protocolo §5.
+**Gate P0-6 (G10):** dois jobs simultâneos, mesma journey, freio ligado, allowlist com
+**um** deles: o listado passa, o outro é barrado **com motivo gravado**. É o par de casos
+com veredito oposto do protocolo §5.
 
 ---
 
@@ -626,43 +603,34 @@ com nome e família. Mutação: apagar a família `retrovisor` do mapa.
 Porto 15/08 = 21 itens (`V`; 14 motivos). **Duas apólices da mesma seguradora, 21 × 30.**
 Decorar catálogo é errado por construção.
 
-🔴 **Mas "ler antes de perguntar" não é possível como a intuição sugere, e a medição diz
-por quê.** 📊 O header `token_autorizacao` está **AUSENTE** em `/seguradoras`, `/apolices`
-e no `POST /atendimentos`, e **PRESENTE** de `PUT /atendimentos/corretores` em diante —
+🔴 **Mas "ler antes de perguntar" não é possível como a intuição sugere.** 📊 O header
+`token_autorizacao` está **AUSENTE** em `/seguradoras`, `/apolices` e no
+`POST /atendimentos`, e **PRESENTE** de `PUT /atendimentos/corretores` em diante —
 inclusive em `/apolices/itens-cobertos`. **O catálogo da apólice só existe depois de o
-atendimento ter sido aberto**, ou seja, depois da fronteira A.
-
-**Isto parte a desambiguação em duas, e a divisão é a própria regra:**
+atendimento ter sido aberto.** Isto parte a desambiguação em duas, e a divisão é a regra:
 
 ```
-ANTES de abrir   só o que o preflight e a conversa dão: a FAMÍLIA da peça (para-brisa,
-                 porta, vigia, retrovisor, farol, lanterna, para-choque, lataria), a
-                 data, o relato, rodovia/urbano e a cidade. É o que P0-5 cobra.
-DEPOIS de abrir  o ESPECÍFICO — qual das 4 lanternas, qual dos 3 faróis, capa com ou sem
-                 pisca. Aqui o catálogo já está na mão, e só se pergunta o que separa
-                 ≥ 2 itens DAQUELA apólice.
-```
+ANTES de abrir   a FAMÍLIA da peça (para-brisa, porta, vigia, retrovisor, farol,
+                 lanterna, para-choque, lataria), data, relato, rodovia/urbano e a
+                 cidade — é o que P0-5 cobra
+DEPOIS de abrir  o ESPECÍFICO — qual das 4 lanternas, qual dos 3 faróis, capa com ou
+                 sem pisca — e só o que separa ≥ 2 itens DAQUELA apólice:
 
-```python
 def perguntas_que_restringem(itens_cobertos: list, familia: str) -> List[Pergunta]:
-    """Das perguntas da família, só as que separam ≥ 2 itens DESTE catálogo.
-    Se o catálogo desta apólice tem um único FAROL, não se pergunta o tipo: a resposta
-    não muda nada e custa uma mensagem ao segurado.
-    """
+    """Se o catálogo desta apólice tem um único FAROL, não se pergunta o tipo: a
+    resposta não muda nada e custa uma mensagem ao segurado."""
 ```
 
-⚠️ **E para categoria `L` a conta é outra, porque ela já cruzou a fronteira.** Na lataria
-o PATCH materializa (P0-3), então uma pergunta feita depois de ler o catálogo chega
-**depois de o pedido existir**. Duas consequências, e as duas entram no desenho: (1) para
-`L`, a lista de peças a montar vem de **`GET atendimentos/servicos-itens`** (o catálogo de
-serviços de martelinho, 📊 exercido na captura de 09/09), não de `itens-cobertos`; (2) o
-que a conversa precisa ter **antes** de abrir é a **lista de peças amassadas e a
-confirmação de mesmo evento** — porque perguntá-las depois é conversar com o segurado
-sobre um pedido que já nasceu.
+⚠️ **Para categoria `L` a conta é outra, porque ela já cruzou a fronteira no PATCH
+(P0-3).** Duas consequências, ambas no desenho: (1) a lista de peças vem de
+**`GET atendimentos/servicos-itens`** (📊 exercido na captura de 09/09), não de
+`itens-cobertos`; (2) a conversa precisa ter **antes** de abrir a **lista de peças
+amassadas e a confirmação de mesmo evento** — perguntá-las depois é conversar sobre um
+pedido que já nasceu.
 
-**Gate P1-4:** com o catálogo de 21 itens, "qual tipo de farol?" **não é feita**; com o de
-30, é. Dois casos, veredito oposto. E um segundo caso: nenhuma pergunta de catálogo é
-emitida **antes** do `POST /atendimentos` — porque antes dele não há catálogo.
+**Gate P1-4:** dois casos com veredito oposto — com 21 itens "qual tipo de farol?" **não é
+feita**; com 30, é. E um terceiro: **nenhuma** pergunta de catálogo sai antes do
+`POST /atendimentos`, porque antes dele não há catálogo.
 
 ### P1-5 · Lataria como caminho próprio
 
@@ -904,47 +872,45 @@ isso (`vidros_apifirst.py:6-9`). **Nenhum bloco pode quebrar essa propriedade.**
 > cada uma, diz se envelheceu e se há melhor.
 
 **1. HAR 1.2 (W3C)** · `https://w3c.github.io/web-performance/specs/HAR/Overview.html`
-**Faz:** define o formato que o DevTools exporta. · **Modelamos:** `content.text` só existe
-no export **"with content"** — sem ele o arquivo é uma lista de portas fechadas; daí a
+**Faz:** o formato que o DevTools exporta. · **Modelamos:** `content.text` só existe no
+export **"with content"** — sem ele o arquivo é uma lista de portas fechadas; daí a
 insistência do roteiro da Regina e o `har_sem_corpos` do `lab har`. · **Rejeitamos:** o HAR
 como verdade permanente — é **observação datada**, e é a razão da escada OBSERVED →
 CANDIDATE → APPROVED. · **Juiz:** abre a spec, confere que `content.text` é opcional, roda
 `lab har` sobre um HAR do acervo.
 
 **2. RFC 5789 — PATCH** · `https://www.rfc-editor.org/rfc/rfc5789`
-**Faz:** define `PATCH` como modificação parcial interpretada pelo servidor. ·
-**Modelamos:** **omitir ≠ mandar `null`** — a regra do corpo de 8 × 11 chaves de P0-1. ·
-**Rejeitamos:** a ideia de que `PATCH` é seguro por ser parcial (📊 aqui ele é a fronteira
-material da lataria). · **Juiz:** abre a §2 da RFC e compara com o corpo do HAR e com o que
-o motor produz.
+**Faz:** `PATCH` é modificação parcial interpretada pelo servidor. · **Modelamos:**
+**omitir ≠ mandar `null`** — a regra por campo de P0-1. · **Rejeitamos:** a ideia de que
+`PATCH` é seguro por ser parcial (📊 aqui ele é a fronteira material da lataria). ·
+**Juiz:** abre a §2 da RFC e compara com o corpo do HAR e com o que o motor produz.
 
 **3. Idempotency keys da Stripe** · `https://docs.stripe.com/api/idempotent_requests`
 **Faz:** repetir a chamada sem criar uma segunda cobrança. · **Modelamos:** a **pergunta
-antes do retry** — *"isto já aconteceu?"* — que vive em `safe_to_retry_open` e em
+antes do retry** — *"isto já aconteceu?"* — em `safe_to_retry_open` e
 `atendimento_aberto_existente` (a dedup do **próprio portal**). · **Rejeitamos:** achar que
 uma chave nossa protege; ela não chega ao servidor da Maxpar — quem protege é o checkpoint
-durável da SPEC-073. · **Juiz:** abre a doc, lê `vidros_sessao.py:186-194` e
-`vidros_estado.py:109-118`.
+da SPEC-073. · **Juiz:** abre a doc, lê `vidros_sessao.py:186-194` e `vidros_estado.py:109-118`.
 
 **4. Pact — consumer-driven contracts** · `https://docs.pact.io/`
-**Faz:** o consumidor grava o que espera do provedor, e o contrato vira teste. ·
-**Modelamos:** o contrato é **gerado da interação real**, nunca escrito à mão — o que
-`lab api-infer` faz. · **Rejeitamos:** o *provider verification*; não temos acesso ao
-servidor da Maxpar, e o lado do provedor é substituído pela escada e pelo canário. ·
-**Juiz:** abre "consumer contract", roda `lab api-infer` sobre um HAR, compara a forma.
+**Faz:** o consumidor grava o que espera, e o contrato vira teste. · **Modelamos:** o
+contrato é **gerado da interação real**, nunca escrito à mão — o que `lab api-infer` faz. ·
+**Rejeitamos:** o *provider verification*; não temos acesso ao servidor da Maxpar, e o lado
+do provedor é substituído pela escada e pelo canário. · **Juiz:** abre "consumer contract",
+roda `lab api-infer` sobre um HAR, compara a forma.
 
 **5. VCR.py — record & replay** · `https://vcrpy.readthedocs.io/`
 **Faz:** grava respostas em "cassetes" e as reproduz offline. · **Modelamos:** o **replay
 offline determinístico** do gate G1 — o HAR é o nosso cassete. · **Rejeitamos:** a
-biblioteca. ⛔ O transporte é `page.evaluate` no browser autenticado; instalar VCR criaria
-um segundo transporte para agradar ao teste. · **Juiz:** abre "record modes" e confere que
-o fixture de G1 não faz uma chamada de rede.
+biblioteca; o transporte é `page.evaluate` no browser autenticado, e instalar VCR criaria um
+segundo transporte para agradar ao teste. · **Juiz:** abre "record modes" e confere que o
+fixture de G1 não faz uma chamada de rede.
 
 **6. `har-to-openapi`** · 🔴 **o pesquisador confirma o repositório canônico na reabertura**
 (o pacote o nomeia; esta proposta não afirma a URL). **Faz:** converte HAR em OpenAPI
-inferindo schemas. · **Modelaríamos:** nada — `lab api-infer` já faz, e é nosso; serve ao
-juiz para **comparar a qualidade da inferência**. · **Rejeitamos:** substituí-lo — ⛔ motor
-paralelo. · **Juiz:** roda as duas sobre o mesmo HAR e compara endpoints e schemas.
+inferindo schemas. · **Modelaríamos:** nada — `lab api-infer` já faz; serve ao juiz para
+**comparar a qualidade da inferência**. · **Rejeitamos:** substituí-lo — ⛔ motor paralelo. ·
+**Juiz:** roda as duas sobre o mesmo HAR e compara endpoints e schemas.
 
 ⚠️ **Nenhuma destas referências vira autoridade.** Modela-se o **padrão**; o Tool Gateway,
 o Work Run e o portal worker continuam únicos.
