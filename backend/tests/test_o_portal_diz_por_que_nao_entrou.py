@@ -26,6 +26,28 @@ O QUE ELE GUARDA (proposta §7 e §8; BLOCO 0 medido em 13/09/2026)
 
   G10-② SALVAR A SENHA POE `unknown` (o meio-aberto do breaker) -- e continua pondo.
 
+  B4.①  O TEXTO DA TELA PASSA A EXISTIR. Todo desfecho nao-`done` grava
+        `evidence.tela = {texto (REDIGIDO, <=2000), hash, url sem query, prova}`.
+        📊 13/09: nos 6 jobs nao-done de 10-11/09, `evidence.body_text` e
+        `evidence.debug_dom` sao NULL -- a frase "Acesso negado" so existia DENTRO
+        da imagem, e o primeiro humano a abri-la abriu 2 dias depois.
+        O guarda dirige `_run_job` REAL com o texto REAL da MAPFRE (corpus) e um
+        CPF sintetico dentro. CONTROLE: mesma tela -> mesmo hash; tela diferente ->
+        hash diferente; e o desfecho `done` NAO grava tela.
+
+  B4.②  A FILA DE TELAS DESCONHECIDAS E UMA CONSULTA -- E NASCE COM LEITOR.
+        Nenhuma tabela nova (P-264: 📊 `tela_cega` tem 2 linhas e ZERO leitores
+        desde 26/08). Agrupamento por portal+hash com filtro de `company_id` NO
+        CODIGO (CLAUDE.md §7), e os DOIS leitores no dia 1: o card do portal na
+        Central e a linha "tela nova hoje" no relatorio da rotina.
+
+  B4.③  O PRINT DE TELA DE LOGIN SAI MASCARADO. `page.evaluate` poe '••••••••'
+        em todo input password/text/email/tel ANTES de `page.screenshot`.
+        📊 o print da MAPFRE de 11/09 mostra o CPF do corretor EM CLARO.
+        O guarda afirma a ORDEM, nao a existencia: mascarar depois de fotografar
+        protege ninguem, e as duas versoes sao indistinguiveis para quem so
+        pergunte "a mascara rodou?".
+
   B3.4-④ AS DUAS TELAS MOSTRAM A MESMA PALAVRA, vinda da MESMA funcao
         (`app/services/saude_do_portal.rotulo_e_acao`): a rota da lista de credenciais e
         a Central de Agentes. O frontend so renderiza.
@@ -42,7 +64,8 @@ COMO ELE FUNCIONA -- sem rede, sem banco, sem navegador, sem mensagem
 
 Rodar:  PYTHONIOENCODING=utf-8 python tests/test_o_portal_diz_por_que_nao_entrou.py
         (de dentro de `backend/`)  ·  `--so G9` roda so um gate
-        `--mutar` roda M9, M11 e M13 por COPIA, cada uma em SUBPROCESSO sobre o arquivo
+        `--mutar` roda M9, M11, M13, M14, M-B4.1, M-B4.2 e M-B4.3 por COPIA, cada uma
+        em SUBPROCESSO sobre o arquivo
         mutado, restaurando por copia em `finally`.  ⛔ Nunca `git checkout` para restaurar.
 """
 from __future__ import annotations
@@ -67,6 +90,8 @@ PASS = FAIL = 0
 CO = "11111111-1111-1111-1111-111111111111"     # corretora sentinela
 CONTA = "22222222-2222-2222-2222-222222222222"
 AGORA = datetime(2026, 9, 13, 12, 0, 0, tzinfo=timezone.utc)
+# 📊 `evidence.message` REAL do job da MAPFRE de 11/09 (relatorio §1, premissa 6).
+MAPFRE_MSG_REAL = "a MAPFRE recusou a credencial (autenticacao invalida)"
 
 
 def check(nome, cond, extra=""):
@@ -236,16 +261,28 @@ class _Supa:
 
 
 class PaginaDuble:
-    """Nem Playwright nem navegador: so as chamadas que o codigo faz."""
+    """Nem Playwright nem navegador: so as chamadas que o codigo faz.
+
+    🔴 Ele guarda a ORDEM das chamadas (`ordem`) porque o B4.③ NAO afirma que a
+    mascara rodou: afirma que ela rodou ANTES da foto. Mascarar o campo depois
+    de fotografar a tela protege exatamente ninguem -- e as duas versoes sao
+    indistinguiveis para um teste que so pergunte "a mascara rodou?".
+    """
 
     url = "https://portal.exemplo/tela"
 
-    def __init__(self, texto=""):
+    def __init__(self, texto="", url=None):
         self.texto = texto
         self.fotos = 0
+        self.scripts = []        # todo JS avaliado, na ordem
+        self.ordem = []          # ("evaluate", js) | ("screenshot", None)
+        if url:
+            self.url = url
 
     async def evaluate(self, script, *a, **k):
         s = str(script)
+        self.scripts.append(s)
+        self.ordem.append(("evaluate", s))
         if "navigator.userAgent" in s:
             return "Mozilla/5.0 HeadlessChrome/126.0 Safari/537.36"
         if "sessionStorage" in s:
@@ -254,6 +291,7 @@ class PaginaDuble:
 
     async def screenshot(self, **k):
         self.fotos += 1
+        self.ordem.append(("screenshot", None))
         return b"\xff\xd8\xff-jpeg-falso"
 
     async def wait_for_timeout(self, ms):
@@ -352,17 +390,18 @@ def _db(sessao=None, conta=None):
 
 
 def _rodar_job(db, *, journey="cobranca_sweep", resultado=None, excecao=None,
-               evidence_da_journey=None, attempts=1, job_evidence=None):
+               evidence_da_journey=None, attempts=1, job_evidence=None,
+               texto_da_tela="", url_da_tela=None):
     """Roda `worker._run_job` INTEIRO com uma journey duble. Devolve (supa, storage_visto)."""
     from portal_worker import journeys as _J
     from portal_worker import worker as W
 
-    page = PaginaDuble()
+    page = PaginaDuble(texto_da_tela, url_da_tela)
     storage_visto = []
     _playwright_falso(page, storage_visto)
     supa = _Supa(db)
 
-    vistos = {"params": None}
+    vistos = {"params": None, "page": page}
 
     async def journey_duble(pg, params, ev):
         vistos["params"] = dict(params)
@@ -821,7 +860,10 @@ def gate_G10():
 # ==========================================================================
 # B3.4-④ -- AS DUAS TELAS, A MESMA PALAVRA, A MESMA FUNCAO
 # ==========================================================================
-CHAVES_AGENTE = {"id", "nome", "descricao", "cor", "grupo", "estado", "motivo",
+#: 🔴 `telas_desconhecidas` entrou no contrato do card em 14/09/2026 (SPEC-EXTRA-001.6
+#  B4.2). Ela e a FILA que P-264 exige que tenha leitor: o card e o leitor.
+CHAVES_AGENTE = {"telas_desconhecidas",
+                 "id", "nome", "descricao", "cor", "grupo", "estado", "motivo",
                  "pulso", "producao", "desligado", "trabalho", "acoes_hoje"}
 CHAVES_GRUPO = {"id", "titulo", "proposito", "resumo", "agentes"}
 
@@ -942,6 +984,377 @@ def gate_B34():
 
 
 # ==========================================================================
+# B4.① -- O TEXTO DA TELA PASSA A EXISTIR (redigido, com hash, com a foto ao lado)
+# ==========================================================================
+CORPUS_TELAS = os.path.join(RAIZ, "tests", "corpus", "telas_reais_de_portal")
+
+# 🔴 O CPF SINTETICO que entra no lugar do marcador `<cpf>` do corpus. O print
+# REAL da MAPFRE de 11/09 traz o CPF do corretor EM CLARO no campo "Numero do
+# CPF" (relatorio §1.1); o corpus foi para o repositorio ja redigido, entao o
+# guarda devolve o vazamento ao texto antes de entregá-lo ao motor -- senao ele
+# provaria que o redator limpa um texto que ja estava limpo.
+CPF_SINTETICO = "123.456.789-09"
+
+
+def _tela_do_corpus(arquivo):
+    return _ler(os.path.join(CORPUS_TELAS, arquivo))
+
+
+def gate_B41():
+    print("\n[B4.①] todo desfecho nao-`done` grava o TEXTO da tela -- redigido, com hash")
+    _chave_de_cofre()
+    from portal_worker import worker as W
+    from portal_worker.journeys import JourneyResult
+
+    mapfre = _tela_do_corpus("mapfre_corretor-failed-20260911.txt").replace("<cpf>", CPF_SINTETICO)
+    allianz = _tela_do_corpus("allianz_corretor-needs_human-20260911.txt")
+
+    check("o corpus da MAPFRE traz o campo do CPF (senao o guarda nao mede nada)",
+          CPF_SINTETICO in mapfre, mapfre[:80])
+
+    # --- o MOTOR: `_run_job` inteiro, desfecho `needs_human`, tela real da MAPFRE
+    supa, _, vistos = _rodar_job(
+        _db(), texto_da_tela=mapfre,
+        url_da_tela="https://www3.mapfre.com.br/portal/login?token=sessao-sintetica&u=fulano",
+        resultado=JourneyResult(status="needs_human", message=MAPFRE_MSG_REAL))
+    tela = (supa.ultimo_patch().get("evidence") or {}).get("tela")
+
+    check("`evidence.tela` existe no desfecho `needs_human`", isinstance(tela, dict) and bool(tela),
+          tela)
+    tela = tela or {}
+    check("...com EXATAMENTE as 4 chaves do contrato B4.1",
+          set(tela) == {"texto", "hash", "url", "prova"}, sorted(tela))
+    check("🔴 o CPF sintetico NAO esta no texto gravado (o redator rodou no NASCIMENTO do dado)",
+          CPF_SINTETICO not in str(tela.get("texto")), str(tela.get("texto"))[:200])
+    check("...nem os digitos dele sem pontuacao",
+          "12345678909" not in str(tela.get("texto")))
+    check("...e a marca do redator ficou no lugar (esconder que havia campo ensina a procurar errado)",
+          "<redacted:cpf>" in str(tela.get("texto")), str(tela.get("texto"))[:200])
+    check("🔴 mas a FRASE do portal continua la -- a prova serve para diagnosticar",
+          "autenticacao invalida" in W._norm_tela(tela.get("texto")),
+          W._norm_tela(tela.get("texto"))[:200])
+    check("o texto tem teto de 2000 caracteres", len(str(tela.get("texto"))) <= 2000,
+          len(str(tela.get("texto"))))
+    check("a URL entra SEM a query (ela carrega token de sessao em meio portal)",
+          tela.get("url") == "https://www3.mapfre.com.br/portal/login", tela.get("url"))
+    check("`prova` aponta para o print que subiu ao cofre",
+          str(tela.get("prova")) == "portal-evidence/job-sintetico/00-desfecho-needs-human.jpg",
+          tela.get("prova"))
+    check("...e o print EXISTE no cofre com esse caminho",
+          "job-sintetico/00-desfecho-needs-human.jpg" in supa.arquivos, sorted(supa.arquivos))
+
+    # --- CONTROLE do hash: mesma tela -> mesmo hash; tela diferente -> hash diferente
+    supa2, _, _ = _rodar_job(_db(), texto_da_tela=mapfre,
+                             resultado=JourneyResult(status="failed", message=MAPFRE_MSG_REAL))
+    tela2 = (supa2.ultimo_patch().get("evidence") or {}).get("tela") or {}
+    supa3, _, _ = _rodar_job(_db(), texto_da_tela=allianz,
+                             resultado=JourneyResult(status="needs_human",
+                                                     message="tela pos-login Allianz nao reconhecida"))
+    tela3 = (supa3.ultimo_patch().get("evidence") or {}).get("tela") or {}
+    check("CONTROLE: a MESMA tela em outro job da o MESMO hash (a fila consegue agrupar)",
+          tela.get("hash") and tela.get("hash") == tela2.get("hash"),
+          (tela.get("hash"), tela2.get("hash")))
+    check("CONTROLE: uma tela DIFERENTE da hash diferente (o guarda ve a diferenca)",
+          tela3.get("hash") and tela3.get("hash") != tela.get("hash"),
+          (tela.get("hash"), tela3.get("hash")))
+    check("o hash tem 16 hex (sha256 encurtado, ilegivel como identidade)",
+          len(str(tela.get("hash"))) == 16 and all(c in "0123456789abcdef" for c in str(tela.get("hash"))),
+          tela.get("hash"))
+    check("o desfecho `failed` tambem grava a tela (nao so o `needs_human`)",
+          bool(tela2), tela2)
+
+    # --- o caminho da EXCECAO tambem grava (era o unico que nem foto tinha antes)
+    supa4, _, _ = _rodar_job(_db(), texto_da_tela=allianz,
+                             excecao=RuntimeError("portal caiu no meio"))
+    tela4 = (supa4.ultimo_patch().get("evidence") or {}).get("tela") or {}
+    check("a excecao no meio da journey tambem deixa o texto da tela",
+          tela4.get("hash") == tela3.get("hash"), (tela4.get("hash"), tela3.get("hash")))
+
+    # --- CONTROLE NEGATIVO: `done` NAO grava tela (a tela do sucesso e dashboard)
+    supa5, _, _ = _rodar_job(_db(), texto_da_tela=_tela_do_corpus("hdi_corretor-done-20260911.txt"),
+                             resultado=JourneyResult(status="done", captured={"logged_in": True},
+                                                     message="ok"))
+    check("🔴 CONTROLE: o desfecho `done` NAO entra na fila de telas desconhecidas",
+          "tela" not in (supa5.ultimo_patch().get("evidence") or {}),
+          sorted(supa5.ultimo_patch().get("evidence") or {}))
+    check("...mas ele continua deixando a FOTO (a prova do trabalho que deu certo)",
+          bool((supa5.ultimo_patch().get("evidence") or {}).get("prova")))
+
+    # --- o motor nao pode morrer por causa da leitura da tela
+    class _PaginaMuda(PaginaDuble):
+        async def inner_text(self, _sel):
+            raise RuntimeError("a pagina fechou antes de responder")
+
+    ev = {}
+    asyncio.run(W._registrar_tela(_PaginaMuda(), ev, "desfecho-failed"))
+    check("🔴 uma pagina que nao responde NAO derruba o job -- so nao deixa tela",
+          "tela" not in ev, sorted(ev))
+
+
+# ==========================================================================
+# B4.② -- A FILA DE TELAS DESCONHECIDAS, E OS DOIS LEITORES NO MESMO DIA
+# ==========================================================================
+CO_BETA = "44444444-4444-4444-4444-444444444444"       # a SEGUNDA corretora
+
+
+def _job_com_tela(hash_, *, company_id=CO, portal="allianz_corretor", status="needs_human",
+                  horas=1, texto="Acesso negado. Por favor, valide os dados introduzidos.",
+                  prova="portal-evidence/j/00-desfecho-needs-human.jpg"):
+    return {"company_id": company_id, "portal_key": portal, "journey": "cobranca_sweep",
+            "status": status, "finished_at": (AGORA - timedelta(hours=horas)).isoformat(),
+            "message": None,
+            "tela": {"texto": texto, "hash": hash_, "url": "https://p/x", "prova": prova}}
+
+
+def gate_B42():
+    print("\n[B4.②] a fila de telas desconhecidas e uma CONSULTA -- e nasce com LEITOR")
+    from app.core.central_de_agentes import (frase_das_telas_desconhecidas,
+                                             grupo_dos_portais, telas_desconhecidas)
+
+    jobs = (
+        [_job_com_tela("aaaaaaaaaaaaaaaa", horas=h) for h in range(1, 13)]          # 12x
+        + [_job_com_tela("bbbbbbbbbbbbbbbb", horas=20,
+                         texto="Sistema temporariamente indisponivel. Tente mais tarde.")]
+        + [_job_com_tela("cccccccccccccccc", company_id=CO_BETA, horas=2,
+                         texto="Tela da OUTRA corretora, que nunca pode aparecer aqui.")]
+        + [_job_com_tela("dddddddddddddddd", status="done", horas=3)]               # done: fora
+        + [_job_com_tela("eeeeeeeeeeeeeeee", horas=24 * 90)]                        # velha: fora
+        + [{"company_id": CO, "portal_key": "allianz_corretor", "journey": "cobranca_sweep",
+            "status": "failed", "finished_at": (AGORA - timedelta(hours=4)).isoformat()}]
+    )
+
+    fila = telas_desconhecidas(jobs, company_id=CO, agora=AGORA)
+    allianz = fila.get("allianz_corretor") or {}
+    check("a fila agrupa por portal", set(fila) == {"allianz_corretor"}, sorted(fila))
+    check("duas telas DISTINTAS (o `hash` e quem agrupa, nao o texto)",
+          allianz.get("distintas") == 2, allianz.get("distintas"))
+    mf = allianz.get("mais_frequente") or {}
+    check("a mais frequente foi vista 12x", mf.get("vezes") == 12, mf.get("vezes"))
+    check("...e traz a `ultima` vez que apareceu", bool(mf.get("ultima")), mf.get("ultima"))
+    check("...e uma AMOSTRA do texto", "valide os dados" in str(mf.get("amostra")),
+          mf.get("amostra"))
+    check("...e o caminho do PRINT (o leitor consegue abrir a prova)",
+          str(mf.get("prova")).startswith("portal-evidence/"), mf.get("prova"))
+    check("a amostra tem teto de 120 caracteres", len(str(mf.get("amostra"))) <= 120,
+          len(str(mf.get("amostra"))))
+    check("🔴 CLAUDE.md §7: a tela da OUTRA corretora NAO aparece na fila desta",
+          "OUTRA corretora" not in json.dumps(fila, default=str)
+          and all(t.get("hash") != "cccccccccccccccc" for t in allianz.get("telas") or []),
+          json.dumps(fila, default=str)[:300])
+    check("o desfecho `done` NAO entra na fila (ele nao e tela desconhecida)",
+          all(t.get("hash") != "dddddddddddddddd" for t in allianz.get("telas") or []))
+    check("uma tela de 90 dias atras esta FORA da janela de 30 dias",
+          all(t.get("hash") != "eeeeeeeeeeeeeeee" for t in allianz.get("telas") or []))
+    check("um job nao-done SEM tela nao quebra e nao conta",
+          sum(t.get("vezes") for t in allianz.get("telas") or []) == 13,
+          [t.get("vezes") for t in allianz.get("telas") or []])
+
+    # --- CONTROLE do isolamento: com a OUTRA corretora, a fila e a dela
+    fila_beta = telas_desconhecidas(jobs, company_id=CO_BETA, agora=AGORA)
+    beta = fila_beta.get("allianz_corretor") or {}
+    check("CONTROLE: a mesma consulta para a corretora B devolve SO a tela dela",
+          beta.get("distintas") == 1
+          and (beta.get("mais_frequente") or {}).get("hash") == "cccccccccccccccc",
+          beta)
+
+    # --- a frase humana
+    check("a frase humana diz o que o corretor precisa saber",
+          frase_das_telas_desconhecidas(allianz)
+          == "2 telas que eu não reconheço — a mais frequente vista 12×",
+          frase_das_telas_desconhecidas(allianz))
+    check("sem tela desconhecida, a frase e VAZIA (linha vazia e ruido)",
+          frase_das_telas_desconhecidas({"distintas": 0, "mais_frequente": None}) == "")
+
+    # --- LEITOR 1: o card do portal na Central de Agentes (MOTOR real)
+    conta = {"id": CONTA, "company_id": CO, "portal_key": "allianz_corretor",
+             "account_label": "principal", "health": "pede_humano",
+             "updated_at": (AGORA - timedelta(hours=1)).isoformat()}
+    grupo = grupo_dos_portais([dict(conta)], jobs, AGORA, {"allianz_corretor": "Allianz Corretor"})
+    card = (grupo.get("agentes") or [{}])[0]
+    check("o card do portal carrega `telas_desconhecidas`",
+          isinstance(card.get("telas_desconhecidas"), dict), card.get("telas_desconhecidas"))
+    td = card.get("telas_desconhecidas") or {}
+    check("...com `distintas` e `mais_frequente`", set(td) == {"distintas", "mais_frequente"},
+          sorted(td))
+    check("🔴 O LEITOR: a frase esta no `motivo` que a tela mostra",
+          "telas que eu não reconheço" in str(card.get("motivo")), card.get("motivo"))
+    check("...com a contagem da mais frequente", "vista 13×" in str(card.get("motivo"))
+          or "vista 12×" in str(card.get("motivo")), card.get("motivo"))
+    check("o card continua com SO as chaves do contrato (uma chave a mais, declarada)",
+          set(card) == CHAVES_AGENTE, sorted(set(card) ^ CHAVES_AGENTE))
+    check("a Central agrega por PORTAL: nenhum company_id no card",
+          CO not in json.dumps(card, default=str) and CO_BETA not in json.dumps(card, default=str))
+    check("CONTROLE: sem tela desconhecida nenhuma, o card NAO ganha a frase",
+          "não reconheço" not in str((grupo_dos_portais(
+              [dict(conta)], [], AGORA, {}).get("agentes") or [{}])[0].get("motivo")))
+
+    # --- LEITOR 2: a linha do relatorio da rotina, por tela NOVA do dia
+    from app.services import billing_collection as BC
+
+    jobs_da_execucao = [
+        {"id": "j1", "portal_key": "allianz_corretor", "status": "needs_human",
+         "evidence": {"tela": {"hash": "aaaaaaaaaaaaaaaa", "texto": "Acesso negado. Valide os dados."}}},
+        {"id": "j2", "portal_key": "mapfre_corretor", "status": "failed",
+         "evidence": {"tela": {"hash": "ffffffffffffffff",
+                               "texto": "Autenticacao invalida! CPF 123.456.789-09"}}},
+    ]
+
+    class _ClienteComHistorico:
+        def __init__(self, conhecidos, quebra=False):
+            self.conhecidos, self.quebra, self.filtros = conhecidos, quebra, []
+
+        def table(self, _n):
+            return self
+
+        def select(self, *a, **k):
+            return self
+
+        def eq(self, c, v):
+            self.filtros.append((c, v))
+            return self
+
+        def in_(self, *a, **k):
+            return self
+
+        def lt(self, *a, **k):
+            return self
+
+        def limit(self, *a, **k):
+            return self
+
+        def execute(self):
+            if self.quebra:
+                raise RuntimeError("postgrest fora do ar")
+            return types.SimpleNamespace(data=[{"hash": h} for h in self.conhecidos])
+
+    cli = _ClienteComHistorico(["aaaaaaaaaaaaaaaa"])
+    novas, erro = BC.telas_novas_do_dia(cli, CO, jobs_da_execucao, agora=AGORA)
+    check("a leitura do historico filtra por company_id (CLAUDE.md §7)",
+          ("company_id", CO) in cli.filtros, cli.filtros)
+    check("SO a tela que aparece pela 1a vez hoje entra",
+          [n.get("hash") for n in novas] == ["ffffffffffffffff"], novas)
+    check("...e a amostra dela vai REDIGIDA para o relatorio",
+          "123.456.789-09" not in str(novas[0].get("amostra")) if novas else False,
+          novas[0].get("amostra") if novas else None)
+    check("sem erro de leitura, o motivo fica vazio", erro == "", erro)
+
+    relatorio = BC._format_report(
+        routine={"name": "Cobranca"}, cfg={"portal_keys": ["allianz_corretor"], "send_mode": "equipe"},
+        jobs=jobs_da_execucao, items=[], boletos=[], blockers=[], approval_id=None,
+        test_sends=[], telas_novas=novas)
+    check("🔴 O LEITOR 2: o relatorio da rotina ganha UMA linha por tela nova do dia",
+          "tela nova hoje no portal mapfre_corretor" in relatorio,
+          [l for l in relatorio.splitlines() if "tela nova" in l])
+    check("...e a tela ja conhecida NAO vira linha (a fila nao repete o que ja se sabe)",
+          "allianz_corretor" not in "\n".join(l for l in relatorio.splitlines()
+                                              if l.startswith("tela nova")))
+    check("CONTROLE: sem tela nova, o relatorio nao ganha a linha",
+          "tela nova hoje" not in BC._format_report(
+              routine={"name": "Cobranca"}, cfg={"portal_keys": [], "send_mode": "equipe"},
+              jobs=[], items=[], boletos=[], blockers=[], approval_id=None, test_sends=[]))
+
+    # --- 🔴 O ELO (protocolo §0.3): a tela do LOGIN chega em `telas_novas_do_dia`?
+    #     A funcao estar certa nao prova que alguem lhe entrega o job certo. E a
+    #     tela desconhecida mora no LOGIN: 📊 as duas telas nao-done de 10-11/09
+    #     (Allianz "Acesso negado", Mapfre "Autenticacao invalida!") sao telas de
+    #     login -- e quando o login falha a varredura nem chega a rodar, entao um
+    #     coletor que so olhasse `cobranca_sweep` nunca veria nenhuma delas.
+    colhidos = []
+    conta_falsa = {"id": "ac-1", "health": "ok",
+                   "updated_at": (AGORA - timedelta(hours=1)).isoformat()}
+    desfecho_do_login = {
+        "id": "job-login", "portal_key": "allianz_corretor", "status": "needs_human",
+        "error": None,
+        "evidence": {"message": "tela pos-login Allianz nao reconhecida",
+                     "tela": {"hash": "9999999999999999", "prova": "portal-evidence/x/00.jpg",
+                              "texto": "Acesso negado Por favor, valide os dados introduzidos."}}}
+
+    async def _poll_do_canario(_cli, job_id, _teto):
+        return dict(desfecho_do_login, id=job_id)
+
+    conta, enfileirar, poll = BC._portal_account, BC._enqueue_job, BC._poll_job
+    BC._portal_account = lambda *a, **k: dict(conta_falsa)
+    BC._enqueue_job = lambda *a, **k: "job-login_check-allianz_corretor"
+    BC._poll_job = _poll_do_canario
+    try:
+        asyncio.run(BC._canario_de_login(
+            None, {"company_id": CO, "config": {}},
+            {"portal_keys": ["allianz_corretor"], "poll_timeout_seconds": 1}, [], colhidos))
+    finally:
+        BC._portal_account, BC._enqueue_job, BC._poll_job = conta, enfileirar, poll
+
+    check("🔴 O ELO: o desfecho do `login_check` entra na lista de jobs da execucao",
+          [j.get("id") for j in colhidos] == ["job-login_check-allianz_corretor"], colhidos)
+    novas_do_login, _ = BC.telas_novas_do_dia(_ClienteComHistorico([]), CO, colhidos, agora=AGORA)
+    check("...e a tela DELE vira a linha do relatorio (a tela desconhecida mora no login)",
+          [n.get("hash") for n in novas_do_login] == ["9999999999999999"], novas_do_login)
+
+    _, erro2 = BC.telas_novas_do_dia(_ClienteComHistorico([], quebra=True), CO,
+                                     jobs_da_execucao, agora=AGORA)
+    check("se a leitura do historico FALHAR, o motivo volta escrito", erro2 == "RuntimeError", erro2)
+    rel_erro = BC._format_report(
+        routine={"name": "Cobranca"}, cfg={"portal_keys": [], "send_mode": "equipe"},
+        jobs=[], items=[], boletos=[], blockers=[], approval_id=None, test_sends=[],
+        telas_erro=erro2)
+    check("🔴 ...e o relatorio DIZ que nao conseguiu conferir (silencio seria mentira)",
+          "nao consegui conferir" in rel_erro.lower(),
+          [l for l in rel_erro.splitlines() if "conferir" in l.lower()])
+
+
+# ==========================================================================
+# B4.③ -- O PRINT DE TELA DE LOGIN SAI COM OS CAMPOS MASCARADOS
+# ==========================================================================
+def gate_B43():
+    print("\n[B4.③] a mascara entra no DOM ANTES da foto -- nao na imagem depois")
+    _chave_de_cofre()
+    from portal_worker import worker as W
+    from portal_worker.journeys import JourneyResult
+
+    mapfre = _tela_do_corpus("mapfre_corretor-failed-20260911.txt").replace("<cpf>", CPF_SINTETICO)
+    supa, _, vistos = _rodar_job(_db(), texto_da_tela=mapfre,
+                                 resultado=JourneyResult(status="needs_human",
+                                                         message=MAPFRE_MSG_REAL))
+    page = vistos["page"]
+    mascaras = [i for i, (tipo, js) in enumerate(page.ordem)
+                if tipo == "evaluate" and "••••••••" in str(js)]
+    fotos = [i for i, (tipo, _js) in enumerate(page.ordem) if tipo == "screenshot"]
+
+    check("a mascara foi avaliada no DOM", bool(mascaras),
+          [str(j)[:60] for (t, j) in page.ordem if t == "evaluate"])
+    check("a foto foi tirada", bool(fotos), page.fotos)
+    check("🔴 a mascara roda ANTES da foto (foto antes da mascara nao protege ninguem)",
+          bool(mascaras) and bool(fotos) and mascaras[0] < fotos[0], (mascaras, fotos))
+
+    js = str(page.ordem[mascaras[0]][1]) if mascaras else ""
+    for tipo in ("password", "text", "email", "tel"):
+        check("o JS cobre `input` de tipo %r" % tipo, "'%s'" % tipo in js, js[:200])
+    check("ele mexe SO em `input.value` (nao apaga a tela, nao navega)",
+          "querySelectorAll('input')" in js and "i.value" in js and "location" not in js, js[:200])
+
+    # --- CONTROLE: o desfecho `done` NAO mascara -- ele e dashboard, e a foto e prova
+    _, _, vistos_ok = _rodar_job(_db(), texto_da_tela=_tela_do_corpus("hdi_corretor-done-20260911.txt"),
+                                 resultado=JourneyResult(status="done", captured={"logged_in": True},
+                                                         message="ok"))
+    ok = vistos_ok["page"]
+    check("🔴 CONTROLE: no desfecho `done` a mascara NAO roda (o guarda ve a diferenca)",
+          not any("••••••••" in str(js) for (t, js) in ok.ordem if t == "evaluate"))
+    check("...e o `done` continua deixando foto", ok.fotos >= 1, ok.fotos)
+
+    # --- a mascara nao pode derrubar o job
+    class _PaginaTeimosa(PaginaDuble):
+        async def evaluate(self, script, *a, **k):
+            if "••••••••" in str(script):
+                raise RuntimeError("CSP bloqueou o evaluate")
+            return await PaginaDuble.evaluate(self, script, *a, **k)
+
+    ev = {}
+    pg = _PaginaTeimosa(mapfre)
+    asyncio.run(W._registrar_tela(pg, ev, "desfecho-needs_human"))
+    check("uma mascara que falha NAO derruba o job -- o texto continua sendo gravado",
+          isinstance(ev.get("tela"), dict) and bool(ev["tela"].get("hash")), ev)
+
+
+# ==========================================================================
 # AS MUTACOES -- (id, arquivo, de, para, gate)
 # ==========================================================================
 MUTACOES = [
@@ -965,10 +1378,37 @@ MUTACOES = [
      '    for _chave in ("excecao_transitoria", "tentativas_esgotadas", "requeue",\n'
      '                   "session_injetada", "session_reused", "sessao_vencida"):\n',
      '    for _chave in ():\n', "G11"),
+    # 🔴 M-B4.1: a REDACAO do texto da tela e desligada -- o CPF do corretor que o
+    #    print da MAPFRE mostra em claro passa a ser gravado em `evidence.tela.texto`.
+    ("M-B4.1", "portal_worker/worker.py",
+     "    texto = _R.redigir_texto(bruto)[:TETO_DO_TEXTO_DA_TELA]\n",
+     "    texto = bruto[:TETO_DO_TEXTO_DA_TELA]\n", "B4.1"),
+    # 🔴 M-B4.2: o agrupamento para de filtrar o tenant -- a tela da corretora B
+    #    aparece na fila da corretora A (CLAUDE.md §7: o filtro e no CODIGO).
+    ("M-B4.2", "app/core/central_de_agentes.py",
+     '        if alvo and str(j.get("company_id") or "") != alvo:\n',
+     "        if False:\n", "B4.2"),
+    # 🔴 M-B4.3: a FOTO passa a ser tirada ANTES da mascara. Nada deixa de rodar --
+    #    so a ordem muda, e a ordem e a unica coisa que protege o CPF do corretor.
+    ("M-B4.3", "portal_worker/worker.py",
+     '            if result.status != "done":\n'
+     '                await _registrar_tela(page, evidence, f"desfecho-{result.status}")\n'
+     '            await _prova_do_desfecho(page, evidence, f"desfecho-{result.status}")\n',
+     '            await _prova_do_desfecho(page, evidence, f"desfecho-{result.status}")\n'
+     '            if result.status != "done":\n'
+     '                await _registrar_tela(page, evidence, f"desfecho-{result.status}")\n',
+     "B4.3"),
+    # 🔴 M-B4.4: o desfecho do `login_check` para de entrar na lista de jobs da
+    #    execucao. Nada quebra, nada fica vermelho no produto -- e a fila de telas
+    #    novas do dia deixa de ver a UNICA tela que existe quando o login falha.
+    ("M-B4.4", "app/services/billing_collection.py",
+     "        if isinstance(resultado, dict) and jobs_vistos is not None:\n",
+     "        if False:\n", "B4.2"),
 ]
 
 GATES = {"G9": gate_G9, "B2.2": gate_B22, "B2.4": gate_B24, "G11": gate_G11,
-         "G10": gate_G10, "B3.4": gate_B34}
+         "G10": gate_G10, "B3.4": gate_B34,
+         "B4.1": gate_B41, "B4.2": gate_B42, "B4.3": gate_B43}
 
 
 def rodar_mutacoes(filtro=None):

@@ -50,6 +50,8 @@ async def rodar_extra001(
     limpar: bool = Query(True, description="apaga o que o canário criou (por id + company + marca)"),
     esperar_retorno_s: int = Query(0, ge=0, le=600,
                                    description="segundos para esperar uma resposta REAL de TESTE-B pelo webhook"),
+    portais: bool = Query(False, description="SPEC-EXTRA-001.6 Q10: abre os 4 portais com senha válida "
+                                             "(só login_check, leitura) — leva ≈2 min"),
 ):
     """Executa Q1–Q6 dentro do serviço implantado. Só com a allowlist no ambiente."""
     from app.services.canario_extra001 import RESULTA, rodar
@@ -67,7 +69,8 @@ async def rodar_extra001(
             detail="canário desarmado: BILLING_CANARIO_ALLOWLIST precisa de 2 números e CANARIO_TESTE_B "
                    "precisa estar nela (variáveis do ambiente do smith-api)")
     try:
-        return {"ok": True, **(await rodar(RESULTA, limpar=limpar, esperar_retorno_s=esperar_retorno_s))}
+        return {"ok": True, **(await rodar(RESULTA, limpar=limpar, esperar_retorno_s=esperar_retorno_s,
+                                           portais=portais))}
     except Exception as exc:  # noqa: BLE001
         logger.error("[CANARIO EXTRA-001] rodar falhou: %s", type(exc).__name__)
         raise HTTPException(status_code=500, detail=f"canário falhou: {type(exc).__name__}")

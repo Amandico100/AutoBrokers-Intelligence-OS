@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
 import re
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Dict
 from urllib.parse import unquote, urlsplit
@@ -763,6 +765,152 @@ async def _prova_do_desfecho(page, evidence: Dict[str, Any], motivo: str):
         return None
 
 
+# ---------------------------------------------------------------------------
+# O TEXTO DA TELA — a prova que alguém consegue LER (SPEC-EXTRA-001.6 B4.1/B4.3)
+# ---------------------------------------------------------------------------
+# 📊 Medido em 13/09/2026 (relatório da SPEC §1, premissa 12): nos 6 jobs
+# `failed`/`needs_human` de 10–11/09, `evidence.body_text` e `evidence.debug_dom`
+# são NULL. A única coisa que carregava a frase *"Acesso negado — Por favor,
+# valide os dados introduzidos"* era a IMAGEM em
+# `portal-evidence/{job}/00-desfecho-needs-human.jpg` — e o primeiro humano a
+# abri-la abriu DOIS DIAS depois. A foto existia; a palavra, não. Enquanto o
+# texto não existir no banco, toda mudança de tela de portal volta a exigir que
+# alguém abra uma imagem para descobrir o que o portal disse.
+#
+# 🔴 POR QUE O TEXTO NASCE REDIGIDO, e não é limpo depois pelo envelope:
+# `redaction.redigir_envelope` só sanitiza as chaves de DIAGNÓSTICO, e pôr
+# `tela` naquela lista soa prudente e faz o contrário — a segunda rede esconde o
+# buraco da primeira, e a mutação que desliga a redação de origem ficaria VERDE.
+# Uma redação, no nascimento do dado, com um guarda que consegue ficar vermelho
+# (CLAUDE.md §9.3).
+TETO_DO_TEXTO_DA_TELA = 2000
+TETO_DA_LEITURA_SEG = 5.0
+
+# 🔴 A MÁSCARA VAI NO DOM, ANTES DA FOTO — nunca na imagem depois.
+# 📊 O print da MAPFRE de 11/09 (transcrito em
+# `tests/corpus/telas_reais_de_portal/mapfre_corretor-failed-20260911.txt`)
+# mostra o CPF do corretor EM CLARO no campo "Número do CPF". Nota da proposta
+# §9 B4.3: mascarar no DOM antes da foto 92 × borrar a imagem depois 40 (custo e
+# dependência nova, e erra a caixa no dia em que o portal mudar o layout) × não
+# guardar a foto 20 (perde a única prova que existe).
+_JS_MASCARA_DOS_CAMPOS = """() => {
+  document.querySelectorAll('input').forEach(i => {
+    const t = (i.type || '').toLowerCase();
+    if (t === 'password' || t === 'text' || t === 'email' || t === 'tel') i.value = '••••••••';
+  });
+}"""
+
+
+def _norm_tela(valor: Any) -> str:
+    """A MESMA normalização que as journeys usam para casar tela.
+
+    Cópia declarada de `journeys/allianz_corretor._norm` (`:24-26`): NFKD →
+    ascii → lower → colapsa espaços. 🔴 CLAUDE.md §9.4 — *um padrão medido com um
+    motor e aplicado com outro é um padrão sobre outra coisa*. O hash da tela
+    existe para agrupar telas que as journeys consideram IGUAIS; se ele
+    normalizasse diferente, a mesma tela com um espaço a mais viraria duas
+    linhas na fila e a contagem "vista 12×" seria mentira.
+
+    ⚠️ Não é import da journey de propósito: o worker não pode depender de uma
+    seguradora específica para gravar a evidência de outra.
+    """
+    texto = unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode().lower()
+    return " ".join(texto.split())
+
+
+def _url_sem_query(url: Any) -> str:
+    """`https://portal/x?token=abc` → `https://portal/x`.
+
+    A query carrega identificador de sessão em metade dos portais (o `token=` do
+    exemplo é real: é assim que a MAPFRE devolve o login). Ela não entra na
+    evidência — e um `?u=fulano` também é PII.
+    """
+    bruto = str(url or "")
+    if not bruto:
+        return ""
+    try:
+        partes = urlsplit(bruto)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not partes.scheme and not partes.netloc:
+        return bruto[:300]
+    return f"{partes.scheme}://{partes.netloc}{partes.path}"[:300]
+
+
+async def _mascarar_campos_na_tela(page) -> bool:
+    """Põe '••••••••' em todo campo de texto ANTES da foto. NUNCA levanta."""
+    if page is None:
+        return False
+    try:
+        await asyncio.wait_for(page.evaluate(_JS_MASCARA_DOS_CAMPOS), TETO_DA_LEITURA_SEG)
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] mascara dos campos nao aplicada: %s", type(e).__name__)
+        return False
+
+
+async def _texto_da_tela(page) -> str:
+    """O texto visível da tela atual. Teto curto e `except` largo: ler a tela é
+    diagnóstico, e diagnóstico nunca pode derrubar o acionamento."""
+    if page is None:
+        return ""
+    try:
+        return str(await asyncio.wait_for(page.inner_text("body"), TETO_DA_LEITURA_SEG) or "")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] texto da tela nao lido: %s", type(e).__name__)
+        return ""
+
+
+async def _registrar_tela(page, evidence: Dict[str, Any], motivo: str) -> Dict[str, Any] | None:
+    """Máscara no DOM → texto REDIGIDO → hash. SÓ em desfecho NÃO-`done`.
+
+    ⚠️ A ordem é o contrato: `_mascarar_campos_na_tela` precisa rodar ANTES de
+    `_prova_do_desfecho`, e é por isso que ela mora aqui e não na função da foto
+    — quem chama esta função chama a foto na linha seguinte, e a leitura fica
+    óbvia para quem revisar.
+
+    ⛔ A tela do `done` não passa por aqui: ela é o dashboard logado (nenhum
+    campo de senha preenchido) e a foto dela é PROVA DE TRABALHO, não indício.
+    """
+    if page is None or not isinstance(evidence, dict):
+        return None
+    await _mascarar_campos_na_tela(page)
+    bruto = await _texto_da_tela(page)
+    texto = _R.redigir_texto(bruto)[:TETO_DO_TEXTO_DA_TELA]
+    if not texto.strip():
+        return None
+    tela = {
+        "texto": texto,
+        "hash": hashlib.sha256(_norm_tela(texto).encode("utf-8", "ignore")).hexdigest()[:16],
+        "url": _url_sem_query(getattr(page, "url", "")),
+        # O caminho do print só existe depois do upload ao cofre;
+        # `_ligar_prova_a_tela` o preenche no fim, com o `onde` real.
+        "prova": "",
+    }
+    evidence["tela"] = tela
+    logger.info("[PORTAL] tela registrada (%s): hash=%s %d ch", motivo, tela["hash"], len(texto))
+    return tela
+
+
+def _ligar_prova_a_tela(bloco: Any) -> None:
+    """Aponta `tela.prova` para o print que acabou de subir ao cofre.
+
+    🔴 Sem esta linha a fila de telas desconhecidas diria *"vi esta tela 12
+    vezes"* e não teria como mostrar NENHUMA delas — que é a definição de fila
+    sem leitor que P-264 existe para proibir.
+    """
+    if not isinstance(bloco, dict):
+        return
+    tela = bloco.get("tela")
+    provas = bloco.get("prova")
+    if not isinstance(tela, dict) or not isinstance(provas, list):
+        return
+    for entrada in reversed(provas):
+        if isinstance(entrada, dict) and entrada.get("onde"):
+            tela["prova"] = str(entrada["onde"])[:300]
+            return
+
+
 def _nome_do_arquivo_da_prova(motivo: Any, ordem: int) -> str:
     limpo = re.sub(r"[^a-z0-9-]+", "-", str(motivo or "prova").lower()).strip("-") or "prova"
     return f"{ordem:02d}-{limpo[:40]}.jpg"
@@ -1243,11 +1391,15 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             # Playwright ja PARADO: a pagina nao existe mais, e uma tentativa de
             # fotografar de la nao devolve imagem — devolve um travamento.
             except asyncio.TimeoutError:
+                # 🔴 B4.1/B4.3: a tela que estourou o tempo tambem deixa TEXTO, e os
+                # campos saem mascarados ANTES da foto.
+                await _registrar_tela(page, evidence, "estouro-de-tempo")
                 await _prova_do_desfecho(page, evidence, "estouro-de-tempo")
                 raise RuntimeError(
                     f"journey excedeu o teto de {JOB_TIMEOUT_SECONDS}s (PORTAL_JOB_TIMEOUT_SECONDS)"
                 ) from None
             except Exception:
+                await _registrar_tela(page, evidence, "excecao")
                 await _prova_do_desfecho(page, evidence, "excecao")
                 raise
             if account_row and result.status == "done" and (result.captured or {}).get("logged_in"):
@@ -1264,6 +1416,13 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
             # A tela do protocolo ja foi fotografada la dentro pelo laco
             # adaptativo, no instante em que o numero apareceu; esta e a tela em
             # que o trabalho de fato terminou, que pode ser outra.
+            #
+            # 🔴 E o desfecho NAO-`done` deixa tambem o TEXTO (B4.1), com os campos
+            # mascarados no DOM ANTES da foto (B4.3). A ordem destas duas linhas E
+            # o contrato: inverte-las mantem tudo rodando e fotografa o CPF do
+            # corretor em claro.
+            if result.status != "done":
+                await _registrar_tela(page, evidence, f"desfecho-{result.status}")
             await _prova_do_desfecho(page, evidence, f"desfecho-{result.status}")
             await browser.close()
     except Exception as e:  # noqa: BLE001
@@ -1326,6 +1485,7 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                                    "volta_em": quando, "motivo": type(e).__name__}
             evidence["resumo"] = resumo_do_desfecho("queued", {**evidence, "error": erro})
             fallback = await _materializar_provas(supa, job_id, evidence)
+            _ligar_prova_a_tela(evidence)
             patch_requeue: Dict[str, Any] = {
                 "status": "queued",
                 "available_at": quando,
@@ -1348,6 +1508,7 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
         _escrever_saude(supa, job, account_row,
                         veredito_de_saude(status_final, evidence, erro))
         fallback = await _materializar_provas(supa, job_id, evidence)
+        _ligar_prova_a_tela(evidence)
         patch_falha: Dict[str, Any] = {
             "status": status_final,
             "error": erro,
@@ -1376,6 +1537,7 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     # As fotos sobem ao cofre e a evidencia fica com a REFERENCIA. O que nao
     # subir volta como data URL e cai em `screenshots`, como sempre caiu.
     screenshots = (await _materializar_provas(supa, job_id, final)) + screenshots
+    _ligar_prova_a_tela(final)
     supa.table("portal_jobs").update({
         "status": result.status,
         "evidence": _redigir(final),

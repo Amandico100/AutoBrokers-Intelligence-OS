@@ -546,8 +546,13 @@ def _ler_tudo_sincrono() -> Dict[str, Any]:
     portal_contas = _seguro(lambda: cli.table("portal_accounts")
                             .select("portal_key, health, updated_at")
                             .execute().data or [], [])
+    # ⚠️ `tela:evidence->tela` traz o objeto INTEIRO da tela (texto redigido,
+    # hash, url, caminho do print) — é ele que alimenta a fila de telas
+    # desconhecidas. Sem esta coluna o card teria a frase e nenhum dado atrás
+    # dela, que é a `tela_cega` outra vez, do lado do leitor.
     portal_jobs = _seguro(lambda: cli.table("portal_jobs")
-                          .select("portal_key, journey, status, finished_at, evidence->>message")
+                          .select("portal_key, journey, status, finished_at, "
+                                  "evidence->>message, tela:evidence->tela")
                           .in_("journey", list(_JOURNEYS_DE_ACESSO))
                           .gte("created_at", d7)
                           .order("finished_at", desc=True)
@@ -637,6 +642,138 @@ def _nome_do_portal(chave: str, nomes: Dict[str, str]) -> str:
     return limpo.title() or "Portal"
 
 
+# ---------------------------------------------------------------------------
+# A FILA DE TELAS DESCONHECIDAS — uma CONSULTA com LEITOR, nunca uma tabela nova
+# ---------------------------------------------------------------------------
+# 🔴 P-264 é a prova de que fila sem leitor não é fila: 📊 `select count(*) from
+# tela_cega` → 2 linhas em 13/09/2026, e `grep -rn tela_cega backend --include=*.py`
+# não acha NENHUM leitor fora do escritor e dos testes, desde 26/08. Uma tabela
+# nasceu, alguém escreveu nela, e ninguém nunca leu.
+#
+# Por isso esta fila não é tabela (CLAUDE.md §5): é um AGRUPAMENTO sobre
+# `portal_jobs`, e os dois leitores nascem no mesmo dia — este card e a linha do
+# relatório da rotina (`billing_collection.telas_novas_do_dia`).
+# Nota da proposta §9 B4.2: consulta com leitor 90 × tabela nova com leitor 70 ×
+# tabela nova sem leitor 0 (proibido).
+TETO_DE_TELAS_LIDAS = 500
+JANELA_DE_TELAS_DIAS = 30
+TAMANHO_DA_AMOSTRA_DE_TELA = 120
+#: Os desfechos que POSSIVELMENTE são tela desconhecida. `done` fica fora: a tela
+#  do sucesso é o dashboard logado, e ela não é um mistério a resolver.
+STATUS_DE_TELA_DESCONHECIDA = ("needs_human", "failed")
+
+
+def _amostra_de_tela(texto: Any, limite: int = TAMANHO_DA_AMOSTRA_DE_TELA) -> str:
+    """O pedaço do texto da tela que vai para os olhos de alguém — redigido.
+
+    ⚠️ O texto já nasce redigido no worker (`_registrar_tela`). Ele passa aqui de
+    novo porque esta função também lê jobs GRAVADOS ANTES desta SPEC, e porque a
+    regra de `redaction.py` é *na dúvida, mascare*. Se o redator não estiver
+    disponível, a amostra sai VAZIA — nunca crua.
+    """
+    bruto = " ".join(str(texto or "").split())
+    if not bruto:
+        return ""
+    try:
+        from portal_worker.redaction import redigir_texto
+
+        bruto = redigir_texto(bruto)
+    except Exception:  # noqa: BLE001
+        return ""
+    return bruto[:limite]
+
+
+def telas_desconhecidas(jobs: List[Dict[str, Any]], *,
+                        company_id: Optional[str] = None,
+                        agora: Optional[datetime] = None,
+                        janela_dias: int = JANELA_DE_TELAS_DIAS,
+                        teto: int = TETO_DE_TELAS_LIDAS,
+                        tamanho_da_amostra: int = TAMANHO_DA_AMOSTRA_DE_TELA
+                        ) -> Dict[str, Dict[str, Any]]:
+    """PURA: as telas que o robô não reconheceu, agrupadas por PORTAL e por HASH.
+
+    Equivale a:
+
+        select portal_key, evidence->'tela'->>'hash' as tela, count(*) as vezes,
+               max(finished_at) as ultima, min(evidence->'tela'->>'texto') as amostra
+          from portal_jobs
+         where company_id = :company_id and status in ('needs_human','failed')
+           and evidence->'tela'->>'hash' is not null
+         group by 1,2 order by vezes desc;
+
+    🔴 `company_id` não é opcional por comodidade: quando ele vem, o filtro é NO
+    CÓDIGO (CLAUDE.md §7 — o backend usa service role, e RLS sem policy não
+    protege contra erro de filtro aqui). Quando ele NÃO vem, é porque quem chama
+    é a Central de Agentes, que é master-admin e agrega por PORTAL — e aí nenhum
+    identificador de corretora entra na saída, que é o que a torna segura.
+    """
+    alvo = str(company_id or "").strip()
+    limite = None
+    if agora is not None and janela_dias:
+        limite = agora - timedelta(days=int(janela_dias))
+
+    por_portal: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    lidos = 0
+    for j in (jobs or []):
+        if lidos >= teto:
+            break
+        if str(j.get("status") or "") not in STATUS_DE_TELA_DESCONHECIDA:
+            continue
+        if alvo and str(j.get("company_id") or "") != alvo:
+            continue
+        tela = j.get("tela")
+        if not isinstance(tela, dict):
+            evidencia = j.get("evidence")
+            tela = evidencia.get("tela") if isinstance(evidencia, dict) else None
+        if not isinstance(tela, dict):
+            continue
+        assinatura = str(tela.get("hash") or "").strip()
+        if not assinatura:
+            continue
+        quando = parse_iso(j.get("finished_at"))
+        if limite is not None and quando is not None and quando < limite:
+            continue
+        lidos += 1
+        portal = str(j.get("portal_key") or "").strip() or "?"
+        grupo = por_portal.setdefault(portal, {})
+        linha = grupo.setdefault(assinatura, {"hash": assinatura, "vezes": 0,
+                                              "ultima": None, "amostra": "", "prova": ""})
+        linha["vezes"] += 1
+        if quando and (linha["ultima"] is None or quando > linha["ultima"]):
+            linha["ultima"] = quando
+        if not linha["amostra"]:
+            linha["amostra"] = _amostra_de_tela(tela.get("texto"), tamanho_da_amostra)
+        if not linha["prova"] and tela.get("prova"):
+            linha["prova"] = str(tela.get("prova"))[:300]
+
+    saida: Dict[str, Dict[str, Any]] = {}
+    for portal, telas in por_portal.items():
+        # A mais frequente primeiro: é a que mais custa deixar sem entender.
+        ordenadas = sorted(telas.values(), key=lambda t: (-int(t["vezes"]), str(t["hash"])))
+        for linha in ordenadas:
+            linha["ultima"] = _iso(linha["ultima"])
+        saida[portal] = {"distintas": len(ordenadas),
+                         "mais_frequente": dict(ordenadas[0]) if ordenadas else None,
+                         "telas": ordenadas}
+    return saida
+
+
+def frase_das_telas_desconhecidas(dados: Optional[Dict[str, Any]]) -> str:
+    """"3 telas que eu não reconheço — a mais frequente vista 12×". Vazio = nada.
+
+    ⛔ Linha que diz "0 telas desconhecidas" é ruído: ela ocupa a mesma altura da
+    que importa e ensina o olho a pular a região inteira.
+    """
+    distintas = int((dados or {}).get("distintas") or 0)
+    if distintas <= 0:
+        return ""
+    substantivo = "telas que eu não reconheço" if distintas > 1 else "tela que eu não reconheço"
+    vezes = int(((dados or {}).get("mais_frequente") or {}).get("vezes") or 0)
+    if vezes <= 1:
+        return "%d %s" % (distintas, substantivo)
+    return "%d %s — a mais frequente vista %d×" % (distintas, substantivo, vezes)
+
+
 def grupo_dos_portais(contas: List[Dict[str, Any]], jobs: List[Dict[str, Any]],
                       agora: datetime, nomes: Optional[Dict[str, str]] = None
                       ) -> Optional[Dict[str, Any]]:
@@ -703,6 +840,12 @@ def grupo_dos_portais(contas: List[Dict[str, Any]], jobs: List[Dict[str, Any]],
                     bruto = ""
             alvo["motivo"] = bruto[:180] or None
 
+    # 🔴 A fila de telas desconhecidas (B4.2), agregada por PORTAL. Sem
+    # `company_id`: a Central é master-admin e o card já é da plataforma — e
+    # `_ler_tudo_sincrono` de propósito nem seleciona a coluna, para não haver o
+    # que vazar.
+    fila_de_telas = telas_desconhecidas(jobs, agora=agora)
+
     cartoes: List[Dict[str, Any]] = []
     for chave in sorted(por_portal):
         dados = por_portal[chave]
@@ -722,6 +865,12 @@ def grupo_dos_portais(contas: List[Dict[str, Any]], jobs: List[Dict[str, Any]],
             partes.append("nenhuma entrada registrada nos últimos 7 dias")
         if dados["motivo"]:
             partes.append("última falha: " + dados["motivo"])
+        # 🔴 O LEITOR da fila (P-264). Sem esta frase o agrupamento seria mais
+        # uma `tela_cega`: dado gravado que ninguém abre.
+        telas = fila_de_telas.get(chave) or {"distintas": 0, "mais_frequente": None}
+        frase_das_telas = frase_das_telas_desconhecidas(telas)
+        if frase_das_telas:
+            partes.append(frase_das_telas)
         cartoes.append({
             "id": "portal_" + chave,
             "nome": _nome_do_portal(chave, nomes),
@@ -750,6 +899,10 @@ def grupo_dos_portais(contas: List[Dict[str, Any]], jobs: List[Dict[str, Any]],
                 "travados": 0, "custo_brl_30d": None,
             },
             "acoes_hoje": dados["hoje"],
+            # A fila em forma de dado, para a tela poder abrir o print da mais
+            # frequente. `mais_frequente` traz `prova` = o caminho no cofre.
+            "telas_desconhecidas": {"distintas": telas.get("distintas") or 0,
+                                    "mais_frequente": telas.get("mais_frequente")},
         })
 
     gid, titulo, proposito = GRUPO_DOS_PORTAIS

@@ -33,6 +33,18 @@ Q5  ALLOWLIST rotina com team_number FORA da allowlist → a porta recusa
               (`fora_da_allowlist`), 0 envios, incidente.
 Q6  LIMPEZA   ledger (por id + company + canario), platform_sends do canário,
               atividades do canário, o PDF do cofre. VERIFY 0/0/0.
+
+SPEC-EXTRA-001.6 (proposta §10.2) — acrescentados em 14/09/2026:
+Q7  GRUPO     2 itens sintéticos com o MESMO documento e o mesmo portal →
+              1 nota + 1 texto + 2 PDFs em TESTE-B (platform_sends: billing 1 ·
+              billing_nota 1 · billing_doc 2); nada picotado (bloco único).
+Q8  REPETE    a mesma execução de novo no mesmo dia → 0 envios.
+Q9  JANELA    3º item, mesmo documento, OUTRA seguradora → retido pela regra de
+              N dias, com motivo, data e a origem da identidade.
+Q10 LOGIN     `portais=True`: o canário de login (`_canario_de_login`) roda nos 4
+              portais com senha válida (Tokio, HDI, Yelum, Zurich) e o motivo de
+              quem não entrou sai em português. Allianz/Mapfre esperam a senha
+              de 15/09 (D-PILOTO-19).
 ```
 
 ⛔ Nunca imprime telefone, nome ou id inteiro: só aliases, últimos 4 e
@@ -159,7 +171,7 @@ def _item(recibo: str, destino: str) -> Dict[str, Any]:
 
 
 async def rodar(company_id: str = RESULTA, *, limpar: bool = True,
-                esperar_retorno_s: int = 0) -> Dict[str, Any]:
+                esperar_retorno_s: int = 0, portais: bool = False) -> Dict[str, Any]:
     """O canário VIVO. Só roda onde há Redis e com a allowlist configurada."""
     from app.core.database import get_supabase_client
     from app.services import billing_collection as BC
@@ -180,7 +192,7 @@ async def rodar(company_id: str = RESULTA, *, limpar: bool = True,
     os.environ["AUTOBROKERS_CANARIO"] = "1"
     try:
         return await _rodar_marcado(company_id, limpar=limpar, esperar_retorno_s=esperar_retorno_s,
-                                    r=r, allow=allow, destino=destino)
+                                    r=r, allow=allow, destino=destino, portais=portais)
     finally:
         if _tinha is None:
             os.environ.pop("AUTOBROKERS_CANARIO", None)
@@ -189,7 +201,7 @@ async def rodar(company_id: str = RESULTA, *, limpar: bool = True,
 
 
 async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: int,
-                         r: Relato, allow: set, destino: str) -> Dict[str, Any]:
+                         r: Relato, allow: set, destino: str, portais: bool = False) -> Dict[str, Any]:
     from app.core.database import get_supabase_client
     from app.services import billing_collection as BC
 
@@ -208,11 +220,14 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
         boleto = {"recibo": recibo, "ok": True, "storage_path": caminho}
         item = _item(recibo, destino)
 
-        async def executar(modalidade: str, team_number: Optional[str] = None) -> Dict[str, Any]:
+        async def executar(modalidade: str, team_number: Optional[str] = None,
+                           itens: Optional[List[Dict[str, Any]]] = None,
+                           boletos: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
             cfg = _cfg(modalidade, destino=destino, team_number=team_number)
             blockers: List[str] = []
             entregas = await BC._entregar_cobranca_real(
-                db, _rotina(company_id, cfg), [item], [boleto], cfg, blockers, work_run_id=None)
+                db, _rotina(company_id, cfg), list(itens or [item]), list(boletos or [boleto]),
+                cfg, blockers, work_run_id=None)
             for e in entregas:
                 if e.get("ledger_id") and e["ledger_id"] not in ledger_ids:
                     ledger_ids.append(str(e["ledger_id"]))
@@ -288,6 +303,69 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
                 ledger_ids.append(str(e["ledger_id"]))
         r.veredito("Q5", not any(e.get("ok") for e in e5) and any("fora_da_allowlist" in str(e.get("motivo")) for e in e5),
                    f"motivos={[e.get('motivo') for e in e5]}")
+
+        # ------------------------------------------------------------------
+        # SPEC-EXTRA-001.6 — Q7..Q10 (proposta §10.2). Documentos SINTÉTICOS.
+        # ------------------------------------------------------------------
+        # Q7 — UM SEGURADO, N BOLETOS: 1 nota + 1 texto + 2 PDFs, nada picotado.
+        doc_q7 = "00000000000191"   # ⛔ sintético: 14 dígitos, CNPJ inválido de propósito
+        i7a = {**_item(f"{recibo}-Q7A", destino), "cpf_cnpj": doc_q7, "parcela": "1/2", "numero_parcela": "1/2"}
+        i7b = {**_item(f"{recibo}-Q7B", destino), "cpf_cnpj": doc_q7, "parcela": "2/2", "numero_parcela": "2/2"}
+        b7 = [{"recibo": i["recibo"], "ok": True, "storage_path": caminho} for i in (i7a, i7b)]
+        antes_q7 = datetime.now(timezone.utc)
+        q7 = await executar("equipe", team_number=destino, itens=[i7a, i7b], boletos=b7)
+
+        def _kinds_desde(marco: datetime) -> List[str]:
+            res = (db.table("platform_sends").select("kind").eq("company_id", company_id)
+                   .eq("phone", destino).gte("sent_at", marco.isoformat()).execute())
+            return [str((x or {}).get("kind") or "") for x in (res.data or [])]
+
+        kinds7 = await asyncio.to_thread(_kinds_desde, antes_q7)
+        oks7 = [e for e in q7["entregas"] if e.get("ok")]
+        r.p(f"Q7 entregas={[(e.get('status'), e.get('ok'), e.get('doc_ok')) for e in q7['entregas']]} "
+            f"platform_sends={sorted(kinds7)} blockers={q7['blockers'][:3]}")
+        r.veredito("Q7", len(oks7) == 2 and kinds7.count("billing") == 1
+                   and kinds7.count("billing_nota") == 1 and kinds7.count("billing_doc") == 2,
+                   f"2 parcelas do mesmo documento → {kinds7.count('billing')} texto · "
+                   f"{kinds7.count('billing_nota')} nota · {kinds7.count('billing_doc')} PDF(s)")
+
+        # Q8 — SEGUNDA EXECUÇÃO no mesmo dia: ZERO envios (janela por segurado + reserva por parcela).
+        antes_q8 = datetime.now(timezone.utc)
+        q8 = await executar("equipe", team_number=destino, itens=[i7a, i7b], boletos=b7)
+        kinds8 = await asyncio.to_thread(_kinds_desde, antes_q8)
+        r.veredito("Q8", not any(e.get("ok") for e in q8["entregas"]) and not kinds8,
+                   f"0 envios; estados={[e.get('status') for e in q8['entregas']]}; "
+                   f"motivo={str((q8['entregas'] or [{}])[0].get('motivo'))[:120]}")
+
+        # Q9 — O MESMO SEGURADO NA OUTRA SEGURADORA: retido pela janela de N dias, com motivo e data.
+        i9 = {**_item(f"{recibo}-Q9", destino), "cpf_cnpj": doc_q7, "portal": "hdi_corretor"}
+        b9 = [{"recibo": i9["recibo"], "ok": True, "storage_path": caminho}]
+        antes_q9 = datetime.now(timezone.utc)
+        q9 = await executar("equipe", team_number=destino, itens=[i9], boletos=b9)
+        kinds9 = await asyncio.to_thread(_kinds_desde, antes_q9)
+        e9 = (q9["entregas"] or [{}])[0]
+        r.veredito("Q9", e9.get("status") == "retido" and not kinds9
+                   and "identificado por" in str(e9.get("motivo") or ""),
+                   f"status={e9.get('status')} motivo={str(e9.get('motivo'))[:160]}")
+
+        # Q10 — O CANÁRIO DE LOGIN roda ANTES da varredura, nos 4 portais com senha válida
+        # (Tokio, HDI, Yelum, Zurich — D-PILOTO-19: Allianz e Mapfre esperam a senha de 15/09).
+        # ⚠️ Abre portais de verdade (só `login_check`, leitura) e leva ≈100 s por portal em
+        #    paralelo: só com `portais=True`.
+        if portais:
+            cfg10 = _cfg("equipe", destino=destino, team_number=destino)
+            cfg10["portal_keys"] = ["tokiomarine_corretor", "hdi_corretor", "yelum_corretor", "zurich_corretor"]
+            blockers10: List[str] = []
+            try:
+                aprovados = await BC._canario_de_login(db, _rotina(company_id, cfg10), cfg10, blockers10)
+                r.p(f"Q10 aprovados={sorted(aprovados.keys())} blockers={blockers10}")
+                r.veredito("Q10", len(aprovados) + len(blockers10) >= len(cfg10["portal_keys"]) - 0
+                           and all(("portal " in b) for b in blockers10),
+                           f"{len(aprovados)} de 4 portais entraram; os outros dizem por quê em português")
+            except Exception as exc:  # noqa: BLE001
+                r.veredito("Q10", False, f"o canário de login levantou ({type(exc).__name__})")
+        else:
+            r.p("Q10 pulado (portais=False): chame com ?portais=1 para abrir os 4 portais com senha válida")
     finally:
         if limpar:
             await _limpar(db, company_id, recibo, caminho, ledger_ids, inicio, destino, r)

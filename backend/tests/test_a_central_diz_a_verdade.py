@@ -174,8 +174,15 @@ FONTES_VALIDAS = {"tabela", "work_runs_do_eixo", "artifacts_do_eixo"}
 
 CHAVES_RAIZ = {"gerado_em", "cache_s", "grupos", "nao_instrumentado", "sem_card_por_decisao"}
 CHAVES_GRUPO = {"id", "titulo", "proposito", "resumo", "agentes"}
+# 🔴 A LICAO, escrita: `telas_desconhecidas` entrou no contrato do card em
+# 14/09/2026 (SPEC-EXTRA-001.6 B4.2) e SO os cards de PORTAL a carregam. Um teste
+# que guardasse a verdade vencida ("o card tem 12 chaves") ensinaria a ignorar
+# teste (CLAUDE.md §9.3): o fato mudou, entao a afirmacao muda com ele. A chave e
+# a fila de telas que o robo nao reconhece -- P-264 exige que toda fila nasca com
+# leitor, e o leitor e este card.
 CHAVES_AGENTE = {"id", "nome", "descricao", "cor", "grupo", "estado", "motivo",
                  "pulso", "producao", "desligado", "trabalho", "acoes_hoje"}
+CHAVES_AGENTE_DE_PORTAL = CHAVES_AGENTE | {"telas_desconhecidas"}
 CHAVES_TRABALHO = {"eixo", "execucoes_24h", "execucoes_7d", "falhas_7d", "duracao_media_s",
                    "fila_media_s", "artifacts_7d", "aprovacoes_pendentes", "travados",
                    "custo_brl_30d"}
@@ -949,9 +956,16 @@ def bloco_6_contrato():
               "sobrando %s / faltando %s" % (sorted(set(g) - CHAVES_GRUPO),
                                              sorted(CHAVES_GRUPO - set(g))))
         for a in g.get("agentes") or []:
-            certo(set(a) == CHAVES_AGENTE, "C1 agente %r tem so as chaves da §4" % a.get("id"),
-                  "sobrando %s / faltando %s" % (sorted(set(a) - CHAVES_AGENTE),
-                                                 sorted(CHAVES_AGENTE - set(a))))
+            # 🔴 O card de PORTAL carrega uma chave a mais, e ela e DECLARADA aqui:
+            # `telas_desconhecidas` (SPEC-EXTRA-001.6 B4.2). Aceitar "qualquer chave
+            # extra" transformaria este guarda em carimbo; aceitar UMA, nomeada, e
+            # so o fato que mudou.
+            esperadas_do_card = (CHAVES_AGENTE_DE_PORTAL
+                                 if str(a.get("id") or "").startswith("portal_")
+                                 else CHAVES_AGENTE)
+            certo(set(a) == esperadas_do_card, "C1 agente %r tem so as chaves da §4" % a.get("id"),
+                  "sobrando %s / faltando %s" % (sorted(set(a) - esperadas_do_card),
+                                                 sorted(esperadas_do_card - set(a))))
             for nome, esperadas in (("pulso", CHAVES_PULSO),
                                     ("producao", CHAVES_PRODUCAO),
                                     ("desligado", CHAVES_DESLIGADO)):

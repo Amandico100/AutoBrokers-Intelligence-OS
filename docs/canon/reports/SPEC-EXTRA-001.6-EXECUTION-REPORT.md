@@ -204,3 +204,110 @@ $ npx tsc --noEmit                                        rc=0 (13/09/2026)
 
 - gate P0 ⑤ da proposta (rotina da Resulta em `test` no IMPLANTADO → 1 balão por texto, `platform_sends` por componente): só depois do Implantar; entra no canário (B5).
 - dedup em `test` continua desligada por padrão (é o B1.1); por isso `test_a_cobranca_esta_como_estava.py:212` ainda afirma o padrão antigo — migra no B1.
+
+---
+
+## 3. LOTE 1 — BLOCO 1 (B1) ∥ BLOCOS 2+3 (B2, B3) · commit `6f1249f`
+
+Dois builders Opus 5 em paralelo, arquivos disjuntos (A: `billing_collection` + migration + Painel; B: `portal_worker` + `app/api/portal` + Central + telas). Integração pelo orquestrador: o vocabulário de `health` passou a ser importado do worker (`SAUDE_*`) em `billing_collection`, com fallback literal só quando o pacote do worker não está no PYTHONPATH.
+
+### 3.1 B1 — ninguém é cobrado duas vezes (Builder A · 📊 414k tokens · 53 min)
+
+| contrato | estado | evidência |
+|---|---|---|
+| B1.1 dedup SEMPRE, flag invertida (`BILLING_DEDUP_TEST_DISABLED` desliga, só em `test`) | CONCLUÍDA | G6 · M6 vermelha · `grep -rn BILLING_DEDUP_TEST_ENABLED backend/` → **0** (era 2) |
+| B1.2 `segurado_chave` (doc/nome/recibo, SEM portal) · `chave_do_grupo` (empresa\|segurado\|portal) · `agrupar_por_segurado` nos DOIS caminhos · 1 nota + 1 texto + N PDFs · N reservas por parcela | CONCLUÍDA | G7 sobre o acervo anonimizado: 4 parcelas do mesmo CNPJ = 1 grupo; tenants nunca se fundem; portais nunca na mesma mensagem · M7 vermelha |
+| B1.3 janela de N dias por `segurado_chave` (N=7, tela, clamp 1–30); retenção com motivo, DATA e ORIGEM da identidade; falha de leitura LEVANTA no modo real | CONCLUÍDA | G8: cobrado há 3 dias → retido; há 8 → cobra; sem documento → retido por NOME; outra seguradora → retido · M8 vermelha |
+| B1.4 migration `20260914_01` | **APLICADA** (§4) | VERIFY V0–V6 no Postgres real |
+| B1.5 copy do plural (💭 até o Founder emendar) | CONCLUÍDA | N=1 byte a byte igual ao template; N>1 plural nas frases fixas; template personalizado → singular com a lista |
+| B3.1 prólogo: `login_check` por portal ANTES de qualquer `cobranca_sweep`; breaker lido de `portal_accounts.health`+`updated_at` | CONCLUÍDA | G10: `credencial_recusada` não gera job nenhum; `login_check` ≠ `done` não abre varredura · M10 vermelha |
+| tela: "Dias entre cobranças do mesmo segurado" | CONCLUÍDA | `PainelDeRotinas.tsx` + clamp na rota; `tsc` rc=0 |
+
+**Divergências decididas pelo builder (registradas, com nota):** D1 uma passagem pelo governador POR GRUPO exigiria tocar `platform_outbound` (fora da lista) → N+1 passagens por grupo (85 × 60 × 0) — vira `P-E0016-GOVERNADOR-POR-APROXIMACAO` · D2 `chave_do_grupo` com TRÊS segmentos (empresa|segurado|portal) para o G7 poder ficar vermelho com dois tenants (88 × 45) · D3 em `test`, janela ilegível NÃO para a simulação (88 × 60; o guarda de 19/08 afirma "banco fora do ar: a entrega acontece") · D3b a flag de demonstração também desliga a janela em `test` (88 × 55) · D6 parcelas do mesmo segurado com telefones divergentes → retidas com motivo · D5c **defeito do P0 achado pelo builder**: o dublê de `test_a_sessao_caida_volta_e_o_aviso_diz_a_verdade.py` não aceitava `bloco_unico` (vermelho desde `94862ea`; a lista de vizinhos do P0 não o incluía) — consertado e migrado (58/58).
+
+### 3.2 B2 + B3 — a sessão morre, alguém sabe, o portal é vigiado (Builder B · 📊 296k tokens · 33 min)
+
+| contrato | estado | evidência |
+|---|---|---|
+| B2.1 TTL sobre `verified_at` (`PORTAL_SESSION_TTL_HORAS` 12, clamp 1–72); sessão vencida não é injetada, `evidence["sessao_vencida"]` | CONCLUÍDA | G9 · M9 vermelha |
+| B2.2 `health` com ESCRITOR nas duas tabelas (`_escrever_saude`, `updated_at` explícito, `company_id` no update); classificador PURO `veredito_de_saude` sobre as 6 mensagens reais do acervo | CONCLUÍDA | B2.2: Zurich logada com varredura vazia → `ok` (não é senha); Mapfre → `credencial_recusada`; Allianz depois do P0 → `credencial_recusada` · M13 vermelha |
+| B2.3 `session_injetada` (o fato) × `session_reused` (só quando valeu: `done`, `logged_in`, sem relogin) | CONCLUÍDA | controle: o job real de 11/09 replayado → `session_injetada=True`, `session_reused` ausente |
+| B2.4 Allianz: diagnóstico de sessão morta ANTES do `return`; uma retentativa; nunca com `failed` | CONCLUÍDA | B2.4 no guarda; diff de 17 linhas, zero seletor tocado. **Divergência D1 do builder:** o bloco "morto" de `:3786` não era morto — vive no ramo "logado mas sem tela de parcelas" (`_ensure_inadimplentes_page`); os dois ficam (92 × 25) |
+| B3.2 `available_at` + full jitter (`proximo_available_at`, base 60 s, teto 900, máx 3 tentativas); requeue só transitória e sem efeito material; credencial recusada NUNCA | CONCLUÍDA | G11 · M11 vermelha · M14 (defeito que o próprio builder criou e fechou: a 2ª tentativa herdava `excecao_transitoria` e escondia a senha recusada) |
+| B3.3 breaker nos três estados dentro de `portal_accounts.health`; `fora_do_ar` só depois de N transitórias seguidas; reabre pelo prólogo via `updated_at` | CONCLUÍDA | G10-② |
+| B3.4 `saude_do_portal.py` (rótulo humano ÚNICO) → `GET /portal/credentials` (`health_rotulo`, `health_acao`, `verificado_em`) e a tela de Conectores; grupo "Portais das seguradoras" na Central (pior `health` entre contas, última verificação, sucesso 7d, motivo da última falha) | CONCLUÍDA | B3.4-④; `test_a_central_diz_a_verdade` 530 ok; `tsc` rc=0; `test:rotas-montam` 301 rotas. **D3:** `unknown` pinta NÃO MEDIDO (cinza), não amarelo (88 × 55) |
+
+### 3.3 Verificação mecânica do lote (14/09/2026, árvore parada, HEAD `6f1249f`)
+
+```
+test_a_cobranca_prova_que_funciona.py ......... 161 assercoes verdes - 0 vermelhas   (--mutar: M1–M8, M10 = 9 vermelhas · 0 verdes)
+test_o_portal_diz_por_que_nao_entrou.py ....... 110 assercoes verdes - 0 vermelhas   (--mutar: M9, M11, M13, M14 = 4 vermelhas · 0 verdes)
+test_a_cobranca_esta_como_estava.py ........... 38 verdes (34 → 36 no P0 → 38 no B1: a dedup migrada e invertida em 3 linhas)
+test_a_cobranca_chega_a_quem_deve.py .......... 169 ok · 0 falha(s) · 3 pulado(s)
+test_spec078_bloco_a_seguranca.py ............. 39 verdes
+test_a_cobranca_alcanca_todas_as_seguradoras .. PASS=171 FAIL=0
+test_a_sessao_caida_volta_e_o_aviso_diz_a_verdade 58 verdes (estava VERMELHO desde o P0 — D5c)
+test_spec023_allianz_login.py ................. 20 ok / 0 fail
+test_a_central_diz_a_verdade.py ............... 530 ok, 0 falhas
+test_governador_de_envio.py ................... rc=0 · test_o_relatorio_abre_pelo_achado rc=0 · mapfre 93 · tokio 78 · yelum 68
+npx tsc --noEmit rc=0 · npm run test:rotas-montam OK (301 rotas)
+pré-existentes na base (não são desta SPEC): test_zurich_cobranca.py:123 IndexError
+```
+
+---
+
+## 4. Migrations
+
+### `20260914_01_spec_extra0016_cobranca_por_segurado.sql`
+
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | o ledger passa a saber DE QUEM é a parcela (`segurado_chave`), para a regra "1 cobrança por segurado a cada N dias" |
+| **Expand-first** | sim: coluna nula, índice parcial novo, SOBRECARGA de 13 args sem DEFAULT (a de 12 fica; `P-E0016-RESERVA-12-ARGS`) |
+| **Destrutiva** | não |
+| **APPLY** | `alter table … add column if not exists segurado_chave text` + COMMENT · `create index if not exists billing_sent_log_segurado_idx (company_id, segurado_chave, sent_at desc) where send_mode='real'` · `create or replace function billing_reservar_obrigacao(… 13 args)` com o corpo gerado de `pg_get_functiondef` do objeto vivo + a coluna/valor no INSERT |
+| **VERIFY (saída real, 14/09/2026 01:35 UTC)** | V0 `true uv · true colisao · true onconflict · true segurado` (13 args; 114 chars a mais que a de 12) · V1 `segurado_chave text nullable=YES` · V2 `… (company_id, segurado_chave, sent_at DESC) WHERE (send_mode = 'real'::text)` · V3 2 linhas: 12 args e 13 args · V4a `ganhou=true status=reservado` id `f43749af…` · V4b `segurado_chave='doc:00000000000'` · V4c `ganhou=false` **mesmo id** `f43749af…` · V5a 12 args `ganhou=true` (sem 42725) · V5b `segurado_chave is null = true` · V6 `send_mode='test'` = 0 · limpeza: 2 linhas VERIFY apagadas por recibo, `send_mode='real'` = 0 |
+| **ROLLBACK** | escrito no arquivo; só seguro com 0 linhas `real` (📊 0); ordem: código antes do schema |
+| **Aplicada em produção** | sim · 14/09/2026 · versão `spec_extra0016_cobranca_por_segurado` (MCP `apply_migration`) |
+| **MANIFEST atualizado** | sim (e a linha da `20260907_01`, que dizia "pendente" para uma função VIVA, corrigida para "aplicada 07/09") |
+
+**Advisors antes:** segurança 133 (122 `rls_enabled_no_policy` · 2 `security_definer_view` · 3 `function_search_path_mutable` · 3+3 SECURITY DEFINER executáveis) · desempenho 314
+**Advisors depois:** segurança **133** (iguais) · desempenho **315**
+**Diferença:** +1 em `unused_index` (180 → 181 achados no total; nenhum nome novo entre os que a primeira leitura listou — a diferença está na contagem agregada do próprio linter, e o índice novo numa tabela com 0 linhas é o candidato esperado; MIGRATIONS-AUTHORITY §8.7 proíbe remover por isso). Nenhum achado de segurança novo: a função nova tem `set search_path`.
+
+### 3.4 B4 — a prova tem leitor (Builder C · 📊 265k tokens · 36 min) · lote 2
+
+| contrato | estado | evidência |
+|---|---|---|
+| B4.1 `evidence["tela"]` (texto redigido ≤2000, `hash` sha256 do texto normalizado, `url` sem query, `prova`) em TODO desfecho não-`done` — nas três chamadas de `_prova_do_desfecho` (timeout, exceção, status) | CONCLUÍDA | B4.①: `page` dublê com o texto REAL da Mapfre + CPF sintético → o CPF NÃO está no texto gravado; hash estável · M-B4.1 vermelha. **D-B4-1:** `redaction.redigir_texto` JÁ cobria texto livre (9 padrões) — reaproveitado, nenhum redator novo (95 × 55 × 0) |
+| B4.2 fila de telas desconhecidas = CONSULTA sobre `portal_jobs` agrupada por `evidence.tela.hash`, com DOIS leitores: o card do portal na Central (`telas_desconhecidas` + frase "N telas que eu não reconheço — a mais frequente vista K×") e UMA linha por tela nova do dia no relatório da rotina | CONCLUÍDA | B4.② com dois tenants · M-B4.2 vermelha · **O ELO** (M-B4.4): as telas de LOGIN só chegam à fila porque o `_canario_de_login` passou a devolver os jobs vistos — sem isso a fila nunca veria a tela da Allianz/Mapfre (o `cobranca_sweep` nem é enfileirado) |
+| B4.3 máscara no DOM antes da foto (`input` password/text/email/tel → `••••••••`) em desfecho não-`done` | CONCLUÍDA | B4.③: o dublê registra a ORDEM (evaluate ANTES de screenshot) · M-B4.3 vermelha |
+| B4.4 `_format_report` sem CPF/CNPJ nem telefone inteiros (`...0272`, `...0002`); a nota interna continua com `_whatsapp_legivel` | CONCLUÍDA | G12 + M12 vermelha; CONTROLE: a nota CONTÉM o telefone |
+| migration `20260914_03` (redação do legado) | **APLICADA** (§4) | V0–V4 no Postgres real |
+| URL assinada da evidência com TTL curto | JÁ ERA | 📊 `_TTL_DOCUMENTO_S = 15*60` (`platform_outbound.py:1011`); o print nunca é assinado nem anexado |
+
+**Defeitos que o builder achou e fechou no caminho:** (1) `telas_novas_do_dia` receberia o WRAPPER do Supabase em vez do cliente postgrest (`AttributeError` em toda execução, silencioso) — corrigido; (2) o ELO da fila estava quebrado (acima). **Divergências:** D-B4-2 `prova` nasce `""` e é preenchida com o `onde` REAL depois do upload (90 × 40 × 10); D-B4-3 `tela` NÃO entra em `CHAVES_DE_DIAGNOSTICO` de propósito — uma segunda rede deixaria M-B4.1 verde (CLAUDE.md §9.3).
+
+### 3.5 Verificação mecânica do lote 2 (14/09/2026, árvore parada)
+
+```
+test_a_cobranca_prova_que_funciona.py ......... 177 assercoes verdes - 0 vermelhas   (--mutar: M1–M8, M10, M12 = 10 vermelhas · 0 verdes)
+test_o_portal_diz_por_que_nao_entrou.py ....... 172 assercoes verdes - 0 vermelhas   (--mutar: M9, M11, M13, M14, M-B4.1..4 = 8 vermelhas · 0 verdes)
+test_a_central_diz_a_verdade.py ............... 530 ok · test_a_cobranca_esta_como_estava 38 · test_a_cobranca_chega_a_quem_deve 169 ok
+test_spec073_portal_worker_mutations .......... 134 verdes · test_o_relatorio_abre_pelo_achado rc=0
+canário Q7–Q10 (orquestrador): py_compile ok; nenhum guarda cita o canário
+```
+
+### `20260914_03_spec_extra0016_redigir_output_full.sql`
+
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | apagar CPF/CNPJ e telefone de segurado dos relatórios de execução da cobrança JÁ gravados em `routine_runs.output_full` |
+| **Expand-first** | não se aplica (sem estrutura nova) |
+| **Destrutiva** | **sim** — altera dado gravado; decisão na proposta §9 B4.4 (irreversível e correto: o dado é PII que nunca deveria estar ali; continua na InfoCap e em `billing_sent_log.to_phone`) |
+| **APPLY** | `update routine_runs set output_full = regexp_replace(regexp_replace(output_full,'(CPF/CNPJ[: ]*)[0-9][0-9./-]{9,17}','\1•••','g'),'(WhatsApp: )[0-9]{8,15}','\1•••','g') where id in (<6 ids fixados>)` |
+| **A lista fixada (SELECT rodado ANTES, 14/09/2026)** | 6 linhas (não 7: o 7º relatório com "CPF/CNPJ" só tem `?`): `c0580f6c…` md5 `da2d39a3…` 1189 ch (17/08) · `b8742b94…` md5 `27af98f1…` 1005 (17/08) · `e8a2b731…` md5 `27af98f1…` 1005 (17/08) · `89e1c389…` md5 `c9545b90…` 729 (17/08) · `34722df5…` md5 `2a572730…` 1625 (10/09) · `37c77d7d…` md5 `bff62fc9…` 1625 (11/09). ⚠️ `routine_runs` não tem `created_at` (42703): o SELECT do arquivo usa `started_at` |
+| **VERIFY (saída real)** | V0 `ainda_com_pii` = **0** · V1 `com_documento` = **0** · V2 `com_telefone` = **0** · V3 CONTROLE `explicacoes_intactas` ("WhatsApp: sem telefone") = **7** · V4 CONTROLE `relatorios_inteiros` ("Clientes encontrados:" + "CPF/CNPJ") = **7** · V5 `CPF/CNPJ •••` = **6** · tamanhos depois: `c0580f6c` 1189 → 1140 · `34722df5` 1625 → 1519 |
+| **ROLLBACK** | não existe, por construção (escrito antes do APPLY); o que o substitui é o `md5`/`length` de antes, colado acima |
+| **Aplicada em produção** | sim · 14/09/2026 · versão `spec_extra0016_redigir_output_full` |
+| **MANIFEST atualizado** | sim |

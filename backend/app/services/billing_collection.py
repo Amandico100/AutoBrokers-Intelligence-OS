@@ -37,7 +37,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -2407,6 +2407,95 @@ NOME_HUMANO_DO_ESTADO = {
 }
 
 
+# ==========================================================================
+# SPEC-EXTRA-001.6 B4.2 — O SEGUNDO LEITOR DA FILA DE TELAS DESCONHECIDAS
+# ==========================================================================
+#
+# O primeiro leitor é o card do portal na Central de Agentes
+# (`app/core/central_de_agentes.telas_desconhecidas`). Este é o segundo, e ele
+# existe porque os dois respondem perguntas diferentes:
+#
+#     o card ............. "o que estou deixando de entender, no acumulado?"
+#     esta linha ......... "apareceu HOJE alguma tela que nunca apareceu antes?"
+#
+# 🔴 A segunda é a que chega a tempo. Uma tela nova é como um portal muda sem
+# avisar; descobri-la no dia custa uma leitura, descobri-la no acumulado de 30
+# dias custa a cobrança daquele portal enquanto ninguém olhar o card.
+#
+# ⛔ Nenhuma tabela nova (P-264, CLAUDE.md §5): a "fila" é a lista de jobs que a
+# própria execução já tem em mãos, comparada com os hashes que o banco já viu.
+TETO_DE_HASHES_ANTERIORES = 500
+TAMANHO_DA_AMOSTRA_DE_TELA_NO_RELATORIO = 80
+
+
+def _amostra_de_tela_do_relatorio(texto: Any) -> str:
+    """O pedaço da tela que vai para o relatório — redigido, uma linha só.
+
+    Se o redator não estiver disponível, a amostra sai VAZIA: um relatório sem a
+    frase da tela continua útil; um relatório com o CPF do corretor não.
+    """
+    bruto = " ".join(str(texto or "").split())
+    if not bruto:
+        return ""
+    try:
+        from portal_worker.redaction import redigir_texto
+
+        bruto = redigir_texto(bruto)
+    except Exception:  # noqa: BLE001
+        return ""
+    return bruto[:TAMANHO_DA_AMOSTRA_DE_TELA_NO_RELATORIO]
+
+
+def telas_novas_do_dia(client, company_id: Any, jobs: List[Dict[str, Any]],
+                       agora: Optional[datetime] = None
+                       ) -> Tuple[List[Dict[str, Any]], str]:
+    """As telas que esta execução viu e que o banco NUNCA tinha visto antes de hoje.
+
+    Devolve `(linhas, motivo_do_erro)`. 🔴 O erro volta ESCRITO em vez de virar
+    lista vazia: sem ele, "nenhuma tela nova" e "não consegui olhar" viram a
+    mesma linha no relatório — e a segunda é a que precisa de gente.
+
+    ⚠️ A leitura filtra por `company_id` no código (CLAUDE.md §7): o backend usa
+    service role, e a tela de uma corretora não é notícia para outra.
+    """
+    agora = agora or datetime.now(timezone.utc)
+    vistas: Dict[str, Dict[str, Any]] = {}
+    for job in (jobs or []):
+        if not isinstance(job, dict):
+            continue
+        evidencia = job.get("evidence")
+        tela = evidencia.get("tela") if isinstance(evidencia, dict) else None
+        if not isinstance(tela, dict):
+            continue
+        assinatura = str(tela.get("hash") or "").strip()
+        if not assinatura:
+            continue
+        linha = vistas.setdefault(assinatura, {
+            "hash": assinatura, "portal": str(job.get("portal_key") or "?"),
+            "vezes": 0, "amostra": "", "prova": str(tela.get("prova") or "")})
+        linha["vezes"] += 1
+        if not linha["amostra"]:
+            linha["amostra"] = _amostra_de_tela_do_relatorio(tela.get("texto"))
+    if not vistas:
+        return [], ""
+
+    inicio_do_dia = agora.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    try:
+        res = (client.table("portal_jobs")
+               .select("hash:evidence->tela->>hash")
+               .eq("company_id", str(company_id))
+               .in_("status", ["needs_human", "failed"])
+               .lt("finished_at", inicio_do_dia)
+               .limit(TETO_DE_HASHES_ANTERIORES)
+               .execute())
+        conhecidos = {str((r or {}).get("hash") or "") for r in (res.data or [])}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[COBRANCA] historico de telas nao lido: %s", type(exc).__name__)
+        return [], type(exc).__name__
+    return [linha for assinatura, linha in sorted(vistas.items())
+            if assinatura not in conhecidos], ""
+
+
 def _format_report(
     *,
     routine: Dict[str, Any],
@@ -2421,6 +2510,11 @@ def _format_report(
     retidos: Optional[List[Dict[str, Any]]] = None,
     estados: Optional[Dict[str, int]] = None,
     aviso_ao_grupo: str = "",
+    # 🔴 B4.2 — as telas que apareceram HOJE pela primeira vez, e o motivo de a
+    # conferência não ter sido possível. Os dois vazios = ninguém perguntou, e a
+    # seção inteira some (é assim que os chamadores antigos continuam idênticos).
+    telas_novas: Optional[List[Dict[str, Any]]] = None,
+    telas_erro: str = "",
 ) -> str:
     ok_boletos = [b for b in boletos if b.get("ok")]
     ok_test_sends = [s for s in test_sends if s.get("ok")]
@@ -2481,14 +2575,33 @@ def _format_report(
     if blockers:
         lines.append("Bloqueios/avisos:")
         lines.extend([f"- {b}" for b in blockers[:10]])
+    # 🔴 B4.2 — UMA linha por tela que apareceu HOJE pela primeira vez. Ela é o
+    # segundo leitor da fila de telas desconhecidas, e é o que chega a tempo:
+    # 📊 a Allianz gastou ≈100 s/dia por 25 dias produzindo a MESMA tela de
+    # "Acesso negado" sem que nenhuma linha em lugar nenhum a mencionasse.
+    for tela in (telas_novas or [])[:5]:
+        amostra = str(tela.get("amostra") or "").strip() or "(sem texto legivel)"
+        lines.append('tela nova hoje no portal %s: "%s" (vista %d×)'
+                     % (tela.get("portal") or "?", amostra, int(tela.get("vezes") or 1)))
+    if telas_erro:
+        # ⚠️ "nenhuma tela nova" e "nao consegui olhar" NAO podem virar a mesma
+        # linha. O silencio aqui seria uma afirmacao falsa.
+        lines.append("Nao consegui conferir se apareceu tela nova nos portais (%s)." % telas_erro)
     if items:
         lines.append("Clientes encontrados:")
         for item in items[:20]:
             valor = item.get("valor")
             valor_txt = f"R$ {valor:.2f}" if isinstance(valor, (int, float)) else str(valor or "valor nao informado")
-            phone = item.get("whatsapp") or f"sem telefone ({item.get('contact_status') or 'n/a'})"
+            # 🔴 B4.4: documento e telefone saem MASCARADOS daqui. Este texto vira
+            # `routine_runs.output_full` — e 📊 7 de 49 execuções já estão gravadas
+            # com o CPF do segurado em claro por causa desta linha (13/09/2026).
+            # Os 4 últimos dígitos bastam para a atendente distinguir dois
+            # homônimos; para DISCAR ela usa a nota interna.
+            doc = _mascarar_documento(item.get("cpf_cnpj")) or "?"
+            phone = (_mascarar_telefone(item.get("whatsapp"))
+                     or f"sem telefone ({item.get('contact_status') or 'n/a'})")
             lines.append(
-                f"- {item.get('cliente_nome') or 'Cliente'} | CPF/CNPJ {item.get('cpf_cnpj') or '?'} | "
+                f"- {item.get('cliente_nome') or 'Cliente'} | CPF/CNPJ {doc} | "
                 f"vcto {item.get('vencimento') or '?'} | {valor_txt} | WhatsApp: {phone}"
             )
     else:
@@ -2533,6 +2646,25 @@ def _mascarar_documento(valor: Any) -> str:
 
     O corretor precisa distinguir dois "João Silva" na mesma lista; para isso
     bastam quatro dígitos. O documento inteiro só existe no relatório integral.
+    """
+    d = _digits(valor)
+    return f"...{d[-4:]}" if len(d) >= 4 else ""
+
+
+def _mascarar_telefone(valor: Any) -> str:
+    """`5547999998888` → `...8888`. Serve para CONFERIR, não para discar.
+
+    🔴 SPEC-EXTRA-001.6 B4.4. 📊 Medido em 13/09/2026: 7 de 49 execuções da
+    cobrança têm CPF/CNPJ em claro em `routine_runs.output_full`, e o telefone
+    saía inteiro na mesma linha (`select count(*) from routine_runs r join
+    routines t on t.id=r.routine_id where t.config->>'kind'='billing_collection'
+    and r.output_full like '%CPF/CNPJ%'`). O relatório integral é legível por
+    qualquer sessão autenticada da corretora — é o lugar errado para o número do
+    segurado.
+
+    ⛔ Quem PRECISA do número inteiro é a atendente, e ela o recebe na nota
+    interna (`_whatsapp_legivel`), que vai para o WhatsApp dela e não fica
+    gravada em lugar nenhum. Três níveis de exposição, de propósito.
     """
     d = _digits(valor)
     return f"...{d[-4:]}" if len(d) >= 4 else ""
@@ -2964,7 +3096,9 @@ def _breaker_aberto(portal_key: str, account: Dict[str, Any], horas: int) -> str
 
 
 async def _canario_de_login(client, routine: Dict[str, Any], cfg: Dict[str, Any],
-                            blockers: List[str]) -> Dict[str, Dict[str, Any]]:
+                            blockers: List[str],
+                            jobs_vistos: Optional[List[Dict[str, Any]]] = None
+                            ) -> Dict[str, Dict[str, Any]]:
     """Enfileira um `login_check` por portal e devolve SÓ os que entraram.
 
     Devolve `{portal_key: account}`. Quem não está no dicionário não vira
@@ -3024,6 +3158,13 @@ async def _canario_de_login(client, routine: Dict[str, Any], cfg: Dict[str, Any]
         *[_poll_job(client, job_id, teto) for job_id in jobs.values()],
         return_exceptions=True)
     for portal_key, resultado in zip(list(jobs.keys()), resultados):
+        # 🔴 B4.2 — o desfecho do canário entra na lista de jobs da execução. É no
+        # LOGIN que a tela desconhecida mora: 📊 as duas telas não-`done` de
+        # 10–11/09 da Allianz e da Mapfre são telas de login ("Acesso negado",
+        # "Autenticação inválida!"). Sem esta linha, a fila de telas novas do dia
+        # olharia só a varredura — que nem chega a rodar quando o login falha.
+        if isinstance(resultado, dict) and jobs_vistos is not None:
+            jobs_vistos.append({**resultado, "portal_key": resultado.get("portal_key") or portal_key})
         if isinstance(resultado, BaseException):
             blockers.append(f"portal {portal_key}: o teste de entrada nao respondeu "
                             f"({type(resultado).__name__}) — nao varri este portal")
@@ -3075,7 +3216,9 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
     # 🔴 B3.1 — O CANÁRIO PRIMEIRO. Um `login_check` por portal ANTES de qualquer
     # varredura: quem não entra hoje não gasta 100 s de navegador para descobrir
     # isso no meio do caminho, e a corretora lê o motivo no relatório.
-    aprovados_pelo_canario = await _canario_de_login(client, routine, cfg, blockers)
+    jobs_do_canario: List[Dict[str, Any]] = []
+    aprovados_pelo_canario = await _canario_de_login(client, routine, cfg, blockers,
+                                                     jobs_do_canario)
     for portal_key in selected_portal_keys(cfg):
         try:
             if portal_key not in sei_varrer:
@@ -3261,6 +3404,19 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
         # Sem PII no log — nem o nome da corretora. Só o tipo do erro.
         logger.warning("[COBRANCA] peca nao gerada: %s", type(exc).__name__)
 
+    # 🔴 B4.2: a fila de telas desconhecidas ganha o seu segundo leitor aqui.
+    # Ela NUNCA pode derrubar a execução da cobrança — o relatório é o produto,
+    # e esta linha é um extra dentro dele.
+    try:
+        # ⚠️ `client`, não `supabase`: quem tem `.table()` é o postgrest de dentro
+        # do wrapper (`_client`, `:858`). Passar o wrapper faria a leitura levantar
+        # AttributeError toda execução, e o relatório diria "não consegui
+        # conferir" para sempre — falha silenciosa e permanente.
+        telas_novas, telas_erro = telas_novas_do_dia(
+            client, company_id, jobs_do_canario + jobs)
+    except Exception as exc:  # noqa: BLE001
+        telas_novas, telas_erro = [], type(exc).__name__
+
     return _format_report(
         routine=routine,
         cfg=cfg,
@@ -3274,4 +3430,6 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
         retidos=retidos,
         estados=estados,
         aviso_ao_grupo=aviso_ao_grupo,
+        telas_novas=telas_novas,
+        telas_erro=telas_erro,
     )

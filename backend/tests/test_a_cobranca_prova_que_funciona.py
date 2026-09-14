@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""SPEC-EXTRA-001.6 -- A COBRANCA PROVA QUE FUNCIONA. Os guardas G1..G8 e G12.
+"""SPEC-EXTRA-001.6 -- A COBRANCA PROVA QUE FUNCIONA. Os guardas G1..G8, G10 e G12.
 
 O QUE ELE GUARDA (proposta §11; BLOCO 0 medido em 13/09/2026)
 
@@ -35,7 +35,14 @@ O QUE ELE GUARDA (proposta §11; BLOCO 0 medido em 13/09/2026)
   G10 a rotina enfileira `login_check` de CADA portal antes de qualquer
       `cobranca_sweep`; breaker aberto (`credencial_recusada` / `fora_do_ar`
       dentro do prazo) nao gera job nenhum; canario reprovado nao abre varredura.
-  G12  (BLOCO 4 -- entra quando o bloco entrar)
+  G12 o RELATORIO DA EXECUCAO sai sem CPF/CNPJ nem telefone inteiros -- so os 4
+      ultimos digitos (`_mascarar_documento` / `_mascarar_telefone`, no
+      `_format_report` REAL, sobre um item do acervo anonimizado). 📊 13/09:
+      7 de 49 execucoes tem `CPF/CNPJ` em claro em `routine_runs.output_full`,
+      6 delas com digitos. CONTROLE: a NOTA INTERNA a atendente CONTINUA com o
+      WhatsApp legivel -- ela precisa discar, e um guarda que so dissesse "nao
+      tem telefone em lugar nenhum" ficaria verde no dia em que a atendente
+      perdesse o numero (CLAUDE.md §9.3).
 
 COMO ELE FUNCIONA -- sem rede, sem banco, sem mensagem
   🔴 CADA GATE EXECUTA O MOTOR (CLAUDE.md §9.4): `send_message` REAL com um
@@ -49,7 +56,7 @@ COMO ELE FUNCIONA -- sem rede, sem banco, sem mensagem
 
 Rodar:  PYTHONIOENCODING=utf-8 python tests/test_a_cobranca_prova_que_funciona.py
         (de dentro de `backend/`)  ·  `--so G3` roda so um gate
-        `--mutar` roda as mutacoes M1..M10 por COPIA, cada uma em SUBPROCESSO sobre
+        `--mutar` roda as mutacoes M1..M10 e M12 por COPIA, cada uma em SUBPROCESSO sobre
         o arquivo mutado, restaurando por copia em `finally`. `--mutar M3` so ela.
         ⛔ `--mutar` escreve em `backend/app/` e `backend/portal_worker/` -- so
         com a arvore PARADA. ⛔ Nunca `git checkout` para restaurar.
@@ -1114,6 +1121,97 @@ def gate_G10():
 
 
 # ==========================================================================
+# G12 -- O RELATORIO DA EXECUCAO SAI SEM CPF E SEM TELEFONE INTEIRO
+#        (e a NOTA A ATENDENTE continua com o telefone -- e o CONTROLE)
+# ==========================================================================
+#
+# 📊 Medido em 13/09/2026 (relatorio §1, premissa 11):
+#     select count(*) from routine_runs r join routines t on t.id=r.routine_id
+#      where t.config->>'kind'='billing_collection' and r.output_full like '%CPF/CNPJ%'
+#     -> 7 de 49 execucoes, 6 delas com digitos de documento.
+#
+# 🔴 TRES NIVEIS DE EXPOSICAO, DE PROPOSITO (proposta §9 B4.4):
+#     ledger ............ guarda `to_phone`, comentado, e nao sai dali
+#     nota a atendente .. WhatsApp LEGIVEL -- ela precisa DISCAR
+#     relatorio/artifact  mascarados -- o relatorio e legivel por qualquer sessao
+#                         autenticada da corretora, e o artifact pode virar link
+#                         publico de 30 dias
+#
+# E por isso o CONTROLE deste guarda e a nota interna: um guarda que so afirmasse
+# "nao tem telefone em lugar nenhum" ficaria verde no dia em que alguem apagasse
+# o telefone da nota da atendente -- e a atendente ficaria sem como ligar
+# (CLAUDE.md §9.3: prove que as duas coisas CONSEGUEM ser diferentes).
+def _maior_corrida_de_digitos(texto):
+    maior, atual = 0, 0
+    for ch in str(texto or ""):
+        atual = atual + 1 if ch.isdigit() else 0
+        maior = max(maior, atual)
+    return maior
+
+
+def gate_G12():
+    print("\n[G12] o relatorio da execucao sai sem CPF/CNPJ nem telefone inteiros")
+    from app.services import billing_collection as BC
+
+    com_documento = item_do_acervo(1)      # CNPJ de 14 digitos + WhatsApp
+    sem_telefone = item_do_acervo(0)       # documento, `whatsapp` vazio
+    doc = str(com_documento["cpf_cnpj"])
+    tel = str(com_documento["whatsapp"])
+    check("o item do acervo TEM documento e telefone (senao o guarda nao mede nada)",
+          len(doc) >= 11 and len(tel) >= 12, (len(doc), len(tel)))
+
+    relatorio = BC._format_report(
+        routine={"name": "Cobranca de boletos"}, cfg=cfg("equipe"),
+        jobs=[{"id": "j1", "portal_key": "tokiomarine_corretor", "status": "done"}],
+        items=[com_documento, sem_telefone], boletos=[], blockers=[],
+        approval_id=None, test_sends=[], estados={"entregue_equipe": 1})
+
+    check("🔴 o CNPJ inteiro NAO esta no relatorio da execucao", doc not in relatorio, doc[:4])
+    check("🔴 o telefone inteiro NAO esta no relatorio da execucao", tel not in relatorio)
+    check("...nem o telefone sem o 55 na frente", tel[2:] not in relatorio)
+    check("...nem o documento do segurado SEM telefone", str(sem_telefone["cpf_cnpj"]) not in relatorio)
+    check("os 4 ultimos digitos do documento FICAM (a atendente precisa distinguir dois homonimos)",
+          "CPF/CNPJ ...%s" % doc[-4:] in relatorio,
+          [l for l in relatorio.splitlines() if "CPF/CNPJ" in l])
+    check("...e os 4 ultimos do telefone tambem",
+          "WhatsApp: ...%s" % tel[-4:] in relatorio,
+          [l for l in relatorio.splitlines() if "WhatsApp" in l])
+    check("quem nao tem telefone continua dizendo POR QUE (`sem telefone (...)`)",
+          "sem telefone (nao encontrado)" in relatorio,
+          [l for l in relatorio.splitlines() if "sem telefone" in l])
+    check("🔴 nenhuma corrida de 8+ digitos sobrou no relatorio inteiro",
+          _maior_corrida_de_digitos(relatorio) < 8,
+          [l for l in relatorio.splitlines() if _maior_corrida_de_digitos(l) >= 8])
+    check("o relatorio continua dizendo o nome do cliente (mascarar demais cega a atendente)",
+          com_documento["cliente_nome"] in relatorio)
+    check("...e o valor e o vencimento", "733,13" in relatorio or "733.13" in relatorio,
+          [l for l in relatorio.splitlines() if "733" in l])
+
+    # --- 🔴 O CONTROLE: a NOTA INTERNA continua com o telefone LEGIVEL
+    nota = BC._nota_interna_para_a_equipe(com_documento, cfg("equipe"))
+    legivel = BC._whatsapp_legivel(tel)
+    check("CONTROLE: a nota a atendente CONTEM o WhatsApp legivel", legivel in nota,
+          [l for l in nota.splitlines() if "WhatsApp" in l])
+    check("...com TODOS os digitos do numero (ela precisa discar)",
+          "".join(c for c in legivel if c.isdigit()) == tel, legivel)
+    check("🔴 o guarda VE a diferenca: a nota tem o numero, o relatorio nao",
+          legivel in nota and legivel not in relatorio)
+
+    # --- e a nota do GRUPO (N parcelas, 1 mensagem) tambem continua com o numero
+    grupo = {"parcelas": [item_do_acervo(1), item_do_acervo(2)]}
+    nota_grupo = BC._nota_interna_do_grupo(grupo, cfg("equipe"))
+    check("CONTROLE: a nota do grupo de N parcelas tambem mantem o WhatsApp legivel",
+          legivel in nota_grupo, [l for l in nota_grupo.splitlines() if "WhatsApp" in l])
+
+    # --- a peca do Artifact Hub continua sem documento (ela ja era assim; nao regrediu)
+    blocos = BC.compor_peca_da_cobranca(
+        routine={"name": "Cobranca"}, cfg=cfg("equipe"), items=[com_documento], boletos=[],
+        fila=[com_documento], retidos=[], tarefas=[], blockers=[], test_sends=[])
+    check("CONTROLE de regressao: a peca do Artifact Hub continua sem documento inteiro",
+          doc not in json.dumps(blocos, default=str, ensure_ascii=False))
+
+
+# ==========================================================================
 # AS MUTACOES -- (id, arquivo, de, para, gate)
 # ==========================================================================
 
@@ -1148,10 +1246,18 @@ MUTACOES = [
     ("M10", "app/services/billing_collection.py",
      "            if account is None:\n                continue\n",
      '            if account is None:\n                account = {"id": None}\n', "G10"),
+    # 🔴 M12 desliga a mascara do relatorio da execucao: o documento e o telefone do
+    #    segurado voltam inteiros para `routine_runs.output_full` -- que foi
+    #    exatamente como as 7 execucoes de 📊 10 e 11/09 ficaram com CPF em claro.
+    ("M12", "app/services/billing_collection.py",
+     '            doc = _mascarar_documento(item.get("cpf_cnpj")) or "?"\n'
+     '            phone = (_mascarar_telefone(item.get("whatsapp"))\n',
+     '            doc = item.get("cpf_cnpj") or "?"\n'
+     '            phone = (str(item.get("whatsapp") or "")\n', "G12"),
 ]
 
 GATES = {"G1": gate_G1, "G2": gate_G2, "G3": gate_G3, "G4": gate_G4, "G5": gate_G5,
-         "G6": gate_G6, "G7": gate_G7, "G8": gate_G8, "G10": gate_G10}
+         "G6": gate_G6, "G7": gate_G7, "G8": gate_G8, "G10": gate_G10, "G12": gate_G12}
 
 
 def rodar_mutacoes(filtro=None):
