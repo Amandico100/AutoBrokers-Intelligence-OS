@@ -244,6 +244,36 @@ class WhatsappService:
             )
         return True
 
+    def send_presence(self, to_number: str, presence: str,
+                      integration: Dict[str, Any], delay_ms: int = 0) -> bool:
+        """"digitando…" — o BRANCH da fachada sobre a flag (§6.4).
+
+        🔴 `providers/base.py` declara o contrato de extensão com todas as
+        letras: *"adding a new capability MUST start by adding a flag here,
+        then having the fachada branch on it"*. Este é o branch.
+
+        ⛔ Provider que não anuncia `presence` não recebe chamada nenhuma — e
+        NÃO se simula "digitando…" com uma mensagem de texto. Degradação
+        honesta é silêncio, não promessa.
+
+        ⚠️ Devolve `bool` e NUNCA levanta: presença é enfeite, e nenhum enfeite
+        pode custar a resposta que vem atrás dele.
+        """
+        provider_label = str((integration or {}).get("provider") or "z-api").strip().lower()
+        if provider_label in ("z-api", "zapi", ""):
+            return False
+        try:
+            from app.services.whatsapp.registry import resolve_provider
+
+            provider = resolve_provider(integration)
+            if not getattr(provider.capabilities, "presence", False):
+                return False
+            resultado = provider.send_presence(to_number, presence, delay_ms)
+        except Exception as erro:  # noqa: BLE001
+            logger.debug("[WA PRESENCE] não enviada (%s)", type(erro).__name__)
+            return False
+        return bool(getattr(resultado, "ok", False))
+
     def send_audio(self, to_number: str, audio_url: str, integration: Dict[str, Any]) -> bool:
         return get_zapi_provider().send_audio(to_number, audio_url, integration).success
 

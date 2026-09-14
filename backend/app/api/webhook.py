@@ -27,7 +27,12 @@ from app.services.audio_service import AudioService
 # Services
 from app.services.integration_service import get_integration_service
 from app.services.langchain_service import LangChainService
-from app.services.message_buffer_service import get_message_buffer_service
+from app.services.message_buffer_service import (
+    REPLANEJAMENTOS_MAX,
+    TETO_DA_RAJADA_SEGUNDOS,
+    get_message_buffer_service,
+    texto_combinado_dos_itens,
+)
 from app.services.whatsapp.channel_security import (
     dedup_key,
     provider_matches_integration,
@@ -555,9 +560,88 @@ async def process_audio_for_storage(
 # ==============================================================================
 # MAIN BACKGROUND TASK
 # ==============================================================================
+async def _midia_do_turno(itens, *, company_id, agent_id, supabase_client,
+                          is_human_mode: bool):
+    """Descreve as imagens e transcreve os áudios DO TURNO. `(texto, url)`.
+
+    🔴 SPEC-EXTRA-001.2 §6.2 — a descrição e a transcrição saíam no WEBHOOK,
+    num turno próprio por arquivo. Agora saem AQUI, dentro do turno que já tem
+    a rajada inteira: o modelo lê a foto e a frase que a explica de uma vez.
+
+    ⚠️ Nada de motor novo: são as MESMAS `process_image_for_vision`,
+    `describe_image` e `AudioService.transcribe_audio_from_url` de sempre.
+    ⛔ Falha de mídia não derruba o turno — o texto do segurado ainda vale.
+    """
+    pedacos = []
+    url_da_imagem = None
+    for item in itens or []:
+        tipo = str((item or {}).get("tipo") or "").strip().lower()
+        midia = (item or {}).get("midia") or {}
+        if tipo == "image" and midia.get("imageUrl"):
+            try:
+                url = await process_image_for_vision(
+                    midia["imageUrl"], company_id, supabase_client)
+                if url is FOTO_GRANDE_DEMAIS:
+                    pedacos.append(
+                        "[o cliente enviou uma foto grande demais para eu abrir]")
+                    continue
+                if not url:
+                    continue
+                url_da_imagem = url
+                if is_human_mode:
+                    continue
+                from app.services.vision_service import describe_image
+
+                visao = await describe_image(
+                    url, company_id=str(company_id),
+                    agent_id=str(agent_id) if agent_id else None,
+                    purpose_hint="Atendente de corretora falando com o segurado")
+                if visao:
+                    pedacos.append(
+                        "[CONTEXTO VISUAL — imagem enviada pelo cliente]:\n%s" % visao)
+            except Exception as erro:  # noqa: BLE001
+                logger.error("[WEBHOOK] visão do turno falhou (%s)", type(erro).__name__)
+        elif tipo == "audio" and midia.get("audioUrl") and not is_human_mode:
+            try:
+                audio_service = AudioService(settings.OPENAI_API_KEY)
+                transcrito = await audio_service.transcribe_audio_from_url(
+                    midia["audioUrl"], company_id=company_id, agent_id=agent_id)
+                if transcrito:
+                    pedacos.append(str(transcrito))
+            except Exception as erro:  # noqa: BLE001
+                # ⛔ O mesmo desfecho do ramo de áudio de sempre: o produto NÃO
+                # fala de si para quem acabou de descrever uma batida.
+                logger.error("[WEBHOOK] transcrição do turno falhou (%s)",
+                             type(erro).__name__)
+    return "\n\n".join(p for p in pedacos if p), url_da_imagem
+
+
+async def _presenca(integration: dict, phone: str, estado: str,
+                    delay_ms: int = 0) -> None:
+    """"digitando…" — e a regra que impede a promessa vazia (§6.4).
+
+    🔴 Só é chamada DEPOIS do portão de silêncio. E02 é literal: *"only display
+    a typing indicator if you are going to respond."* ⛔ Nunca se simula
+    "digitando…" com uma mensagem de texto.
+    """
+    if not getattr(settings, "PRESENCA_DIGITANDO_LIGADA", False):
+        return
+    try:
+        await asyncio.to_thread(
+            whatsapp_service.send_presence, phone, estado, integration,
+            min(int(delay_ms or 0), TETO_DA_RAJADA_SEGUNDOS * 1000),
+        )
+    except Exception as erro:  # noqa: BLE001
+        # ⛔ Presença é enfeite. Um erro aqui nunca pode custar a RESPOSTA.
+        logger.debug("[PRESENCA] não enviada (%s)", type(erro).__name__)
+
+
 async def process_whatsapp_message_background(
     payload_dict: dict, combined_message: Optional[str] = None,
     buffered_messages: Optional[list] = None,
+    *,
+    turno=None, chave_do_buffer: str = "",
+    buffered_items: Optional[list] = None,
 ):
     """Processa mensagem WhatsApp em background (Evita bloqueio do Webhook)"""
     # AS DUAS CONDIÇÕES DO FALLBACK — ver o `except` no fim desta função.
@@ -904,6 +988,32 @@ async def process_whatsapp_message_background(
 
         if branch == "combined":
             message_text = combined_message
+            # 🔴 §6.3 — RE-LEITURA DO BUFFER, ainda antes de gravar a linha do
+            # segurado e de montar o prompt. A mensagem que chega no segundo 9
+            # de uma janela de 18 s entrava como resposta SEPARADA; agora entra
+            # nesta. Teto de REPLANEJAMENTOS_MAX para não virar laço — o que
+            # chegar depois fica no buffer, e a trava garante que vire o turno
+            # SEGUINTE, nunca um turno paralelo.
+            _itens_do_turno = list(buffered_items or [])
+            if turno is not None and chave_do_buffer:
+                _servico = await get_message_buffer_service()
+                for _rodada in range(REPLANEJAMENTOS_MAX):
+                    _novos = await _servico.mesclar_o_que_chegou(chave_do_buffer)
+                    if not _novos:
+                        break
+                    _itens_do_turno.extend(_novos)
+                    message_text = texto_combinado_dos_itens(_itens_do_turno)
+                    logger.info("[TURNO] re-planejamento %d: +%d item(ns) na MESMA "
+                                "resposta", _rodada + 1, len(_novos))
+            # A mídia da rajada é lida AQUI, dentro do turno (§6.2).
+            if _itens_do_turno:
+                _extra, _url_img = await _midia_do_turno(
+                    _itens_do_turno, company_id=company_id, agent_id=agent_id,
+                    supabase_client=supabase.client, is_human_mode=is_human_mode)
+                if _url_img:
+                    final_image_url = _url_img
+                if _extra:
+                    message_text = f"{message_text}\n\n{_extra}"
 
         elif branch == "audio":
             if is_human_mode:
@@ -1293,6 +1403,15 @@ async def process_whatsapp_message_background(
         except Exception:  # noqa: BLE001
             pass
 
+        # 🔴 "digitando…" — AQUI, e não antes (§6.4 regra 1). O portão de
+        # silêncio já passou (`is_human_mode` acima) e a resposta vai ser
+        # gerada. E02 é literal: *"only display a typing indicator if you are
+        # going to respond"* — prometer e calar é pior que calar.
+        # ⚠️ O `delay` do Evolution GO mantém o `composing` vivo re-enviando e
+        # manda `paused` sozinho no fim; o teto é o mesmo 25 s da rajada.
+        await _presenca(integration, payload.phone, "composing",
+                        TETO_DA_RAJADA_SEGUNDOS * 1000)
+
         ai_response, metrics = await langchain_service.process_message(
             user_message=message_for_ai,
             company_id=company_id,
@@ -1391,7 +1510,43 @@ async def process_whatsapp_message_background(
                              type(_e_feed).__name__)
             logger.info("[WEBHOOK] 👤 a conversa foi assumida DURANTE o turno — "
                         "resposta do agente descartada, nada foi enviado")
+            # §6.4 regra 4: `paused` SEMPRE ao terminar — inclusive quando o
+            # turno é descartado. Um "digitando…" pendurado é a promessa vazia.
+            await _presenca(integration, payload.phone, "paused")
             return
+
+        # =====================================================================
+        # 🔴 A TERCEIRA PERGUNTA — AINDA SOU O DONO DESTE TURNO? (§5.5)
+        # =====================================================================
+        #
+        # E01 é explícita: *"don't assume that a lock is retained as long as the
+        # process that had acquired it is alive"* — e o Redis não usa relógio
+        # monotônico para expirar TTL. Um turno que passou dos 90 s pode já ter
+        # sido reaberto por outra varredura, com o buffer inteiro na mão.
+        #
+        # ⛔ Enviar "por via das dúvidas" é exatamente o defeito que esta SPEC
+        # existe para matar: duas respostas para uma pergunta.
+        #
+        # 🔴 E vem ANTES do passo 8 pela mesma razão que a pergunta do silêncio:
+        # gravar uma fala que não vai sair põe no chat da corretora uma frase
+        # que o segurado nunca recebeu.
+        if turno is not None:
+            _servico_do_turno = await get_message_buffer_service()
+            if not await _servico_do_turno.ainda_sou_o_dono(
+                    turno.escopo, turno.phone, turno.token):
+                try:
+                    from app.services.o_fim_do_atendimento import anotar_silencio_no_feed
+
+                    await anotar_silencio_no_feed(
+                        company_id=str(company_id),
+                        conversation_id=str(conversation_id),
+                        motivo="turno_perdido")
+                except Exception as _e_feed:  # noqa: BLE001
+                    logger.debug("[TURNO] feed não escrito (%s)", type(_e_feed).__name__)
+                logger.info("[TURNO] a resposta demorou mais que o turno; outra "
+                            "rodada já respondeu — resposta descartada")
+                await _presenca(integration, payload.phone, "paused")
+                return
 
         # 8. Salvar Resposta IA
         try:
@@ -1461,6 +1616,9 @@ async def process_whatsapp_message_background(
             whatsapp_service.send_message,
             to_number=payload.phone, text=ai_response, integration=integration,
         )
+
+        # §6.4 regra 4: `paused` ao terminar, sempre.
+        await _presenca(integration, payload.phone, "paused")
 
         if success:
             _resposta_ja_enviada = True
@@ -1549,25 +1707,12 @@ async def z_api_webhook(request: Request, background_tasks: BackgroundTasks):
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK] dedupe skipped: {type(e).__name__}")
 
-        # Buffer Logic
-        if payload.text and payload.text.message:
-            phone = payload.phone
-            buffer_service = await get_message_buffer_service()
-            await buffer_service.add_message(
-                phone=phone,
-                message=payload.text.message,
-                company_id="pending",
-                user_id="pending",
-                integration={},
-                payload=payload_dict,
-            )
-            logger.info(f"[WEBHOOK] Text from {phone} buffered")
-            return {"status": "buffered", "phone": phone}
-
-        elif payload.audio or payload.image:
-            logger.info("[WEBHOOK] Dispatching media to background...")
-            background_tasks.add_task(process_whatsapp_message_background, payload_dict)
-            return {"status": "received", "type": "media"}
+        # Buffer Logic — 🔴 DESVIO DE MÍDIA Nº 1, MORTO (SPEC-EXTRA-001.2 §6.2).
+        # A foto abria um turno em PARALELO ao texto que ainda estava no buffer:
+        # o segurado mandava "bateu aqui" + foto e recebia duas respostas, uma
+        # delas sem ter visto a outra metade. Agora os dois são a mesma rajada.
+        if payload.text and payload.text.message or payload.audio or payload.image:
+            return await _buffer_or_dispatch_text(payload_dict, payload.phone)
 
         return {"status": "ignored"}
 
@@ -1708,16 +1853,53 @@ async def _upload_media_bytes(company_id: str, blob: bytes, mime: str, ext: str,
         return None
 
 
+def _item_do_inbound(payload_dict: dict) -> tuple:
+    """`(tipo, conteudo, midia)` deste evento — PURA, e é a única classificação.
+
+    🔴 SPEC-EXTRA-001.2 §6.2: foto, áudio e documento deixam de ser "outro
+    caminho". 📊 27,06% das rajadas do acervo têm mídia, e havia rajadas 100%
+    mídia — nessas, o buffer não via NADA e cada foto virava um turno próprio.
+
+    ⚠️ A legenda viaja NO MESMO item que o arquivo: são uma fala só, e separá-las
+    é o que fazia o agente responder a foto antes de ler o que ela explicava.
+    """
+    dados = payload_dict or {}
+    texto = str((dados.get("text") or {}).get("message") or "")
+    imagem = dados.get("image") or None
+    audio = dados.get("audio") or None
+    documento = dados.get("document") or None
+    if imagem:
+        return "image", str(imagem.get("caption") or texto or ""), dict(imagem)
+    if audio:
+        return "audio", texto, dict(audio)
+    if documento:
+        # O texto extraído do PDF já vem montado pelo caminho da Evolution.
+        return "document", texto, dict(documento)
+    return "text", texto, None
+
+
 async def _buffer_or_dispatch_text(payload_dict: dict, phone: str) -> dict:
-    """Humanização S17-9: texto entra no buffer com debounce (espera a rajada)."""
+    """Humanização S17-9: a mensagem entra no buffer e espera a rajada.
+
+    ⚠️ O nome ficou: o escopo é que cresceu. Desde a SPEC-EXTRA-001.2 isto é o
+    ÚNICO portão de entrada do buffer — texto, foto, áudio e documento.
+
+    O `escopo` NÃO é derivado aqui: quem o deriva é `add_message`
+    (`_integration_id` → `connectedPhone` → rótulo fixo), e uma segunda cópia
+    dessa cadeia divergiria da primeira (CLAUDE.md §5).
+    """
+    tipo, conteudo, midia = _item_do_inbound(payload_dict)
     buffer_service = await get_message_buffer_service()
     await buffer_service.add_message(
         phone=phone,
-        message=((payload_dict.get("text") or {}).get("message") or ""),
+        message=conteudo,
         company_id="pending",
         user_id="pending",
         integration={},
         payload=payload_dict,
+        tipo=tipo,
+        midia=midia,
+        wa_message_id=str(payload_dict.get("messageId") or ""),
     )
     return {"status": "buffered", "phone": f"...{str(phone)[-4:]}"}
 
@@ -1749,10 +1931,8 @@ async def z_api_webhook_token(token: str, request: Request, background_tasks: Ba
     if await _is_duplicate_namespaced("z-api", payload.messageId):
         return {"status": "ignored", "reason": "duplicate"}
     payload_dict["_integration_id"] = integration.get("id")
-    if payload.text and payload.text.message:
-        return await _buffer_or_dispatch_text(payload_dict, payload.phone)
-    background_tasks.add_task(process_whatsapp_message_background, payload_dict)
-    return {"status": "received", "type": "media"}
+    # 🔴 DESVIO DE MÍDIA Nº 2, MORTO (§6.2): texto e mídia pelo mesmo portão.
+    return await _buffer_or_dispatch_text(payload_dict, payload.phone)
 
 
 async def _registrar_retorno_de_cobranca(integration: dict, body: Any) -> None:
@@ -2341,9 +2521,10 @@ async def _handle_evolution_like_inbound(
         # do produto ainda não chama isto"*.
         "interactive": normalized.get("interactive"),
     }
-    if image_payload or audio_payload:
-        background_tasks.add_task(process_whatsapp_message_background, payload_dict)
-        return {"status": "received", "type": "media"}
+    # 🔴 DESVIO DE MÍDIA Nº 3, MORTO (§6.2) — e era o mais caro dos três: este é
+    # o caminho quente de `/evolution/{token}` e `/evolution-go/{token}`, por
+    # onde passa o atendimento inteiro. O documento já caía no buffer; a
+    # assimetria com foto e áudio era acidental.
     return await _buffer_or_dispatch_text(payload_dict, normalized["phone"])
 
 

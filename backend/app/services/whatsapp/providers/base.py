@@ -73,6 +73,11 @@ class ProviderCapabilities:
     interactive:
         Provider supports interactive message types (buttons, lists) on
         outbound sends.
+    presence:
+        Provider supports presence updates ("digitando…"/composing) on the
+        chat — :meth:`WhatsAppProvider.send_presence`. SPEC-EXTRA-001.2 §6.4.
+        ⛔ Quando ``False`` a fachada NÃO chama nada: não se simula "digitando…"
+        com uma mensagem de texto.
     """
 
     templates: bool = False
@@ -81,6 +86,7 @@ class ProviderCapabilities:
     media_by_id: bool = False
     hmac_webhook: bool = False
     interactive: bool = False
+    presence: bool = False
 
 
 # =========================================================================== #
@@ -157,6 +163,17 @@ class WhatsAppProvider(Protocol):
         Raises :class:`~app.services.whatsapp.exceptions.WhatsappRetryableError`
         on transient failures (HTTP 429/5xx, network blip). Terminal failures
         return :class:`SendResult` with ``ok=False``.
+        """
+        ...
+
+    def send_presence(self, to: str, presence: str,
+                      delay_ms: int = 0) -> SendResult:
+        """Publish a presence update ("composing"/"paused") on the chat.
+
+        Only called when ``ProviderCapabilities.presence`` is ``True``.
+        ``delay_ms`` is the milliseconds the indicator should stay alive —
+        capped at 25 000 by the caller, which is the interval after which
+        WhatsApp dismisses it on its own (§20 E02).
         """
         ...
 

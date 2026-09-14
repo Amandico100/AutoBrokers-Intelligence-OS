@@ -111,7 +111,14 @@ from app.services.whatsapp.providers.base import ProviderCapabilities
 
 logger = logging.getLogger(__name__)
 
-_GO_CAPABILITIES = ProviderCapabilities()
+# 🔴 `presence=True` é a ÚNICA flag ligada, e ela foi MEDIDA: o swagger do fork
+# implantado (14/09/2026, 83 rotas) expõe `POST /message/presence` com
+# `{number, state, delay, isAudio}`. ⚠️ Não é a rota `/chat/sendPresence` do
+# Evolution Node — essa devolve 404 aqui; são forks distintos (D1 do relatório).
+_GO_CAPABILITIES = ProviderCapabilities(presence=True)
+
+#: O enum que o fork aceita em `state`.
+ESTADOS_DE_PRESENCA = ("unavailable", "available", "composing", "recording", "paused")
 
 # 📊 As rotas de envio deste build do Evolution GO, transcritas do swagger em
 # 03/08/2026 (ver docstring). Ficam como DADO, e não como frase de comentário,
@@ -461,6 +468,29 @@ class EvolutionGoProvider:
 
     def send_text(self, to: str, text: str) -> SendResult:
         return self._post("/send/text", {"number": to, "text": text})
+
+    def send_presence(self, to: str, presence: str,
+                      delay_ms: int = 0) -> SendResult:
+        """"digitando…" pelo `_post` que já existe — SPEC-EXTRA-001.2 §6.4.
+
+        📊 `POST /message/presence` com `{number, state, delay, isAudio}`, do
+        swagger do fork implantado (14/09/2026). O `delay` é em MILISSEGUNDOS e
+        o próprio GO mantém o `composing` vivo re-enviando, mandando `paused` ao
+        fim — por isso não há laço de renovação do nosso lado.
+
+        ⛔ Nenhum cliente HTTP novo: é o mesmo `_post`, com a mesma auto-cura de
+        401 e a mesma política de retry.
+        """
+        estado = str(presence or "").strip().lower()
+        if estado not in ESTADOS_DE_PRESENCA:
+            return SendResult(ok=False, error=f"presence invalida: {estado[:24]}")
+        # 🔴 25 000 ms é o teto da Meta (§20 E02) e o mesmo teto da rajada.
+        # Prometer mais tempo do que o aparelho mostra é prometer o que não se
+        # cumpre — e o indicador some sozinho de qualquer jeito.
+        atraso = max(0, min(int(delay_ms or 0), 25_000))
+        return self._post("/message/presence", {
+            "number": to, "state": estado, "delay": atraso, "isAudio": False,
+        })
 
     def send_media(self, to: str, media: OutboundMedia) -> SendResult:
         if not media.url:

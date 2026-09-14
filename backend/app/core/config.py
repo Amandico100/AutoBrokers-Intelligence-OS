@@ -74,6 +74,33 @@ class Settings(BaseSettings):
     BUFFER_MAX_WAIT_SECONDS: int = 25  # Teto desde a primeira mensagem da rajada
     BUFFER_TTL_SECONDS: int = 60  # Redis TTL safety net
 
+    # SPEC-EXTRA-001.2 BLOCO AB — a trava de turno e a janela por conteúdo.
+    #
+    # 🔴 Nenhum destes números é palpite: cada um sai de uma medição registrada
+    # no relatório da SPEC. Constante de janela sem 📊 ao lado é achado (§20 E07).
+    #
+    # TTL do turno: 📊 p90 de 17,9 s e máximo de 53,4 s em 566 turnos medidos
+    # (`conversation_logs.response_time_ms`, 14/09/2026) — 90 s é ~1,7x o pior
+    # caso, com folga para o envio, e ainda solta a conversa antes de um minuto
+    # e meio se o processo morrer.
+    TURNO_TTL_SEGUNDOS: int = 90
+    TURNO_RENOVACOES_MAX: int = 3  # E01 exige teto na renovação
+
+    # A janela adaptativa. 📊 Distribuição dos intervalos DENTRO da rajada
+    # (52.099 intervalos, `attendance_transcripts.wa_timestamp`): 0-3 s 59,7% ·
+    # 3-8 s 15,5% · 8-18 s 16,3% · 18-25 s 5,8% · >25 s 2,9%.
+    JANELA_DADO_CURTO_SEGUNDOS: int = 3       # CPF, placa, "sim", um número
+    JANELA_FRASE_COMPLETA_SEGUNDOS: int = 8   # o comportamento de hoje
+    JANELA_FRASE_INACABADA_SEGUNDOS: int = 18  # sem pontuação, ou em conectivo
+
+    # Teto da re-leitura do buffer imediatamente antes de gerar (§6.3).
+    REPLANEJAMENTOS_MAX: int = 2
+
+    # 🔴 O "digitando…" nasce DESLIGADO: falhar para o lado de não prometer.
+    # E02 é literal — *"only display a typing indicator if you are going to
+    # respond"*. Mostrar "digitando…" e depois calar é pior que silêncio.
+    PRESENCA_DIGITANDO_LIGADA: bool = False
+
     # WhatsApp webhook security (42W0)
     # AUTH_MODE: disabled | shared_secret | provider_signature.
     #

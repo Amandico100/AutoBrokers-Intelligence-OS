@@ -80,19 +80,71 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
         async with semaforo:
             if not await buffer_service.should_process(chave):
                 return False
-            buffer = await buffer_service.get_and_clear_buffer(chave)
-            if not buffer:
-                return False
-            combined_msg = buffer_service.get_combined_message(buffer)
-            msg_count = len(buffer["messages"])
-            logger.info("[BUFFER] Processing buffer: %d messages", msg_count)
-            await processar(
-                payload_dict=buffer["payload"],
-                combined_message=combined_msg,
-                buffered_messages=list(buffer.get("messages") or []),
-            )
-            logger.info("[BUFFER] ✅ Processed: combined %d msgs", msg_count)
-            return True
+
+            # =============================================================
+            # 🔴 A TRAVA DE TURNO VEM ANTES DO `get_and_clear` (SPEC §5.2)
+            # =============================================================
+            #
+            # A ORDEM É A REGRA INTEIRA. Se a trava viesse depois, perder a
+            # trava custaria o BUFFER — as cinco mensagens do segurado
+            # sumiriam do Redis e ninguém as responderia. Perder a trava
+            # ANTES custa 1 segundo: o buffer fica, e a varredura tenta de
+            # novo na volta seguinte.
+            #
+            # ⚠️ `getattr` e não chamada direta: o motor continua aceitando
+            # um serviço de buffer sem trava (é o dublê do guarda de
+            # paralelismo, `test_midia_e_concorrencia_do_webhook.py:519`, a
+            # LINHA DE CONTROLE desta SPEC). Quem garante que o serviço REAL
+            # tem a trava é `test_uma_rajada_um_turno.py`.
+            _abrir = getattr(buffer_service, "abrir_turno", None)
+            turno = None
+            if _abrir is not None:
+                # ⚠️ Import LOCAL, e é de propósito: o motor é recortado do
+                # fonte por AST no guarda de paralelismo, e um import de topo
+                # que ele não pede vira `NameError` dentro do teste — não
+                # dentro do produto, que é onde se descobriria tarde.
+                from app.services.message_buffer_service import (
+                    Turno, partes_da_chave,
+                )
+
+                escopo, phone = partes_da_chave(chave)
+                token = await _abrir(escopo, phone)
+                if token is None:
+                    # 🔴 O buffer FICA. Ninguém o tocou.
+                    return False
+                turno = Turno(escopo, phone, token)
+
+            try:
+                buffer = await buffer_service.get_and_clear_buffer(chave)
+                if not buffer:
+                    return False
+                combined_msg = buffer_service.get_combined_message(buffer)
+                # Leitura de campo, não regra: v2 traz `itens`; o v1 que ainda
+                # estiver no Redis (<= 60 s de TTL) traz `messages`.
+                itens = [i for i in (buffer.get("itens") or []) if isinstance(i, dict)]
+                if not itens:
+                    itens = [{"tipo": "text", "texto": str(m or "")}
+                             for m in (buffer.get("messages") or [])]
+                msg_count = len(itens)
+                logger.info("[BUFFER] Processing buffer: %d itens", msg_count)
+                extras = {}
+                if turno is not None:
+                    extras["turno"] = turno
+                    extras["chave_do_buffer"] = chave
+                    extras["buffered_items"] = itens
+                await processar(
+                    payload_dict=buffer["payload"],
+                    combined_message=combined_msg,
+                    buffered_messages=[str(i.get("texto") or i.get("legenda") or "")
+                                       for i in itens],
+                    **extras,
+                )
+                logger.info("[BUFFER] ✅ Processed: combined %d itens", msg_count)
+                return True
+            finally:
+                if turno is not None:
+                    await buffer_service.fechar_turno(
+                        turno.escopo, turno.phone, turno.token)
 
     resultados = await asyncio.gather(*(_uma(c) for c in chaves), return_exceptions=True)
 
