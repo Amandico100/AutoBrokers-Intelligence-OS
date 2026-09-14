@@ -3874,3 +3874,24 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 
 ## 14/09/2026 · SPEC-EXTRA-001.6 · a mutação M9 da EXTRA-001 deixa de ser carimbo — VALIOSA
 **Problema:** com o segundo leitor do ledger (a janela de N dias), o stub de `_obrigacoes_reais` já não fazia o G09 da EXTRA-001 ficar vermelho (o leitor da janela levantava antes). **Consequência:** a mutação ancora no leitor da janela e stuba os dois; `--mutar M9` vermelha de novo. **Autorização:** CLAUDE.md §9.3 (um guarda que não consegue falhar não guarda nada).
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · o extrator documental lê as duas tabelas reais — ESSENCIAL
+**Problema:** 📊 `_COVERAGE_ROW_RE` exigia `R$` e franquia `\d{1,3}%`; sobre os dois PDFs reais do golden produzia **0** linhas na HDI (`<rótulo> <LMI>   <prêmio>` sem `R$`) e **1** na Allianz — e era "Prêmio Líquido". A proposta §8.1 só previa mudar o GATILHO. **Consequência:** 5 regex para os 2 layouts, franquias em prosa, parcelas do PDF, lista declarada de 12 rótulos que nunca são cobertura, teto 60 com estruturados antes dos fragmentos; 📊 HDI 10 e Allianz 21 saindo do `document_text` real. **Autorização:** D-E0011-02 (90 × 30).
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · `vehicle` fica no contrato (depreciado); só o `hasattr` sai — ESSENCIAL
+**Problema:** a proposta §5.1.1 mandava migrar os 4 chamadores de `vehicle` para `detalhar_apolice().item_de_risco` no BLOCO D; 📊 os 4 moram em acionamento (SPEC-017) e vidros (SPEC-025), fora da superfície testada por esta SPEC. **Consequência:** `hasattr` sai (o registry e o `mypy` recusam adaptador sem o membro — GA1 e G1d verdes), `ItemDeRisco` entra no modelo e é preenchido, a migração vira `P-E0011-VEHICLE-VIA-DETALHAR`. **Autorização:** D-E0011-13 (90 × 45).
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · o conector expõe `policies_all` ao lado de `matches[:10]` — VALIOSA
+**Problema:** `listar_apolices` tem de ler a lista INTEIRA (📊 caso real com 11 documentos e 10 `matches`); a proposta deixava a escolha entre expor ou filtrar antes de truncar. **Consequência:** 2 linhas no conector, `matches` intacto para quem já o lê; a decisão de vigência fica na porta. **Autorização:** D-E0011-09 (85 × 25).
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · o detalhe continua pelo `lookup` depreciado; `sem_vigente` é status novo — VALIOSA
+**Problema:** o item 2 da tabela §5.1.1 (`detail` → `detalhar_apolice`) exigiria reescrever o briefing e o compositor, que consomem o `policy_evidence_pack` (~40 chaves) que só o conector monta; e `ambiguous_policy` com `matches` vazio faria o guarda de `nodes.py:273` devolver "qual delas?" a um cliente sem vigente. **Consequência:** o detalhe vem do `lookup` com o `policy_number` escolhido pela porta; `sem_vigente` curto-circuita o compositor com a frase da §6.2. **Autorização:** D-E0011-10.
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · `familias_de_acionamento` no catálogo — VALIOSA
+**Problema:** "Liberty e Yelum são a MESMA seguradora; Itaú = grupo Porto" morava no briefing da tool (§5.4: é conhecimento de catálogo). **Consequência:** seção nova em `seguradora-coenti.json` com critério por linha e `susep_ses_provider.familia_de_acionamento` por igualdade; o briefing gera a linha do catálogo; mutação (linha fora do JSON → a frase some) vermelha. **Autorização:** D-E0011-12 (90 × 40).
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · quatro harnesses de guardas antigos ganham `app.providers.__path__` real — VALIOSA
+**Problema:** o conector passou a DELEGAR o número humano à porta e a porta importa o adaptador; os scripts que stubam `app`/`app.providers` com `__path__=[]` (`test_infocap_contract_capture`, `test_spec016_e2e_stub`, `test_spec016_1_answer_quality`, `test_spec017_attendance_unleashed`) morriam em `ModuleNotFoundError` — mesma classe de P-PILOTO-20. **Consequência:** harness carrega a porta real; 📊 108 · 21 · 51 · 27 verdes; 2 asserções migradas sob CLAUDE.md §9.3 (o registry aceitar adaptador incompleto ERA o defeito; listar apólice deixou de ser ordem incondicional). **Autorização:** orquestrador (harness, não regra).
+
+## 14/09/2026 · SPEC-EXTRA-001.1 · RLS na tabela de backup da migration — VALIOSA
+**Problema:** o advisor de segurança acusou ERROR `rls_disabled_in_public` depois do 1º APPLY. **Consequência:** `enable row level security` numa 2ª passada da mesma migration (o backend usa service role; nada muda); arquivo emendado. **Autorização:** D-E0011-15 (95 × 5).

@@ -879,3 +879,28 @@ exatamente o corredor do `work_run e5279497`, a única travessia ponta a ponta.
   agentes estão desligados e esta SPEC não liga nenhum.
 - ⚠️ **`CARTOGRAPHER_MODE=1` continua ligado** — o Cartógrafo manda WhatsApp
   real para seguradora (P-32, decisão ainda pendente).
+
+
+## P-PILOTO-17 · `agents.llm_max_tokens` gravado em 1200/2000 mente para quem abre a tela
+📊 10/09: o agente core da Resulta tinha 1200; 10 de 95 respostas do chat cortadas exatamente nesse teto. O piso de 8192 (`llm_factory.py`) conserta o comportamento sem tocar o banco; o número na tela continua errado. **Destrava:** atualizar `llm_max_tokens` dos 8 agentes para 8192 pela tela ou por SQL com manifesto. **Dono:** 🧑.
+
+✅ **FECHADA em 14/09/2026 pela SPEC-EXTRA-001.1 BLOCO E:** migration `20260914_06_spec_extra0011_llm_max_tokens.sql` aplicada (📊 VERIFY: 8 de 8 em 8192; backup por `agent_id` com os 8 valores originais; APPLY 2×; ROLLBACK exercitado e reaplicado); defaults de código 2000/1200 → 8192 em 5 lugares (`agent_config.py:82/:133/:288`, `models/agent.py:19`, `app/api/admin/sandbox/bootstrap-tenant/route.ts:106`); `insured_external` no piso (`PAPEIS_QUE_CONVERSAM`). O `DEFAULT 2000` de DDL fica em `P-E0011-DEFAULT-DDL-2000`; `companies.llm_max_tokens` NÃO subiu (D-E0011-01).
+
+
+## P-PILOTO-18 · o chat do painel não registra que ferramenta o agente chamou
+📊 10/09: `messages.payload` só tem `turn`; sem `tool_invocations`/atividade para o chat web. Auditar "por que o agente disse que não conseguia" exigiu reproduzir a API. **Destrava:** gravar as tool calls do turno no `payload.turn` (nome, status, ms). **Dono:** 🤖.
+
+✅ **REESCRITA E FECHADA em 14/09/2026 pela SPEC-EXTRA-001.1 BLOCO E.** O texto original estava vencido: 📊 `tool_invocations` existe (277 linhas em 14/09) e o chat grava nela desde `nodes.py:1057` (`RegistroDeInvocacao` → `ToolGateway`). O que faltava era (a) a LIGAÇÃO com o turno — feita: `trace_id = "<session_id>|<client_request_id>"` (coluna e escritor que já existiam; zero DDL) e `payload.turn.tool_calls` derivado por junção (uma escrita, dois leitores); (b) o contador observável do `_RegistroInerte`; (c) a DDL não rastreada de `tool_invocations` registrada no `MANIFEST.md` como `NÃO RASTREADA`, lida do catálogo. 📊 `input_summary` continua sem argumento cru (0 de 277 com 11 dígitos) — guarda `test_a_ferramenta_do_turno_deixa_rastro.py`. Implementar a pendência como estava escrita (gravar em `payload.turn`) teria criado um segundo registro (CLAUDE.md §5).
+
+
+## P-PILOTO-20 · 4 guardas antigos de policy quebram no harness por `nodes.py` importar `honestidade_do_handoff` (desde 23/08)
+`test_infocap_policy_output_guard`, `test_spec016_*`: o stub de `app.agents` com `__path__=[]` não acha o módulo. Pré-existente, não é regressão de 10/09. **Destrava:** o harness registra o módulo no stub. **Dono:** 🤖.
+
+---
+
+# SPEC-EXTRA-001.6 · A cobrança prova que funciona (14/09/2026)
+
+> As pendências desta SPEC. As três que ela fecha (`P-E001-CANARIO-VIVO-NO-IMPLANTADO`, `P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY`, `P-PILOTO-11`) só se movem para `PENDENCIAS-FECHADAS.md` quando o canário Q1–Q10 rodar no implantado.
+
+✅ **FECHADA em 14/09/2026 pela SPEC-EXTRA-001.1 BLOCO E:** o harness dos 4 scripts (`test_infocap_policy_output_guard`, `test_spec016_policy_intelligence`, `test_spec016_1_answer_quality`, `test_spec016_e2e_stub`) carrega o módulo real `honestidade_do_handoff` antes de `nodes.py`; os 4 RODAM e estão verdes (📊 14 · 92 · 51 · 21). Duas verdades vencidas migradas sob CLAUDE.md §9.3 (o registry agora RECUSA adaptador incompleto; listar apólice deixou de ser ordem incondicional). Mesma classe de conserto aplicada em `test_infocap_contract_capture` e `test_spec017_attendance_unleashed` (`app.providers.__path__` real).
+

@@ -10559,24 +10559,11 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 
 ## P-PILOTO-16 · o papel `attendant` ficou redundante com `member`
 Desde 09/09 `member` liga/desliga o agente. Decidir se `attendant` some (quem o tem continua funcionando). **Dono:** 🧑 decisão · 🤖.
-
-## P-PILOTO-17 · `agents.llm_max_tokens` gravado em 1200/2000 mente para quem abre a tela
-📊 10/09: o agente core da Resulta tinha 1200; 10 de 95 respostas do chat cortadas exatamente nesse teto. O piso de 8192 (`llm_factory.py`) conserta o comportamento sem tocar o banco; o número na tela continua errado. **Destrava:** atualizar `llm_max_tokens` dos 8 agentes para 8192 pela tela ou por SQL com manifesto. **Dono:** 🧑.
-
-## P-PILOTO-18 · o chat do painel não registra que ferramenta o agente chamou
-📊 10/09: `messages.payload` só tem `turn`; sem `tool_invocations`/atividade para o chat web. Auditar "por que o agente disse que não conseguia" exigiu reproduzir a API. **Destrava:** gravar as tool calls do turno no `payload.turn` (nome, status, ms). **Dono:** 🤖.
+⚠️ **CONTINUA (re-justificada em 14/09/2026 pela SPEC-EXTRA-001.1):** a proposta §15 manda registrar e não fechar — é decisão 🧑 (`attendant` × `member`), fora da superfície de apólice; a SPEC não a tocou.
 
 ## P-PILOTO-19 · InfoCap da Resulta: duas conexões arquivadas (uma com credencial inválida) além da ativa; `/parcelas`, `/comissoes`, `/financeiro` respondem 403
 O resolver escolhe certo hoje; o financeiro que o corretor pediu depende de a corretora liberar o perfil da API, não de código. **Dono:** 🧑 (limpar conexões; pedir perfil à InfoCap).
-
-## P-PILOTO-20 · 4 guardas antigos de policy quebram no harness por `nodes.py` importar `honestidade_do_handoff` (desde 23/08)
-`test_infocap_policy_output_guard`, `test_spec016_*`: o stub de `app.agents` com `__path__=[]` não acha o módulo. Pré-existente, não é regressão de 10/09. **Destrava:** o harness registra o módulo no stub. **Dono:** 🤖.
-
----
-
-# SPEC-EXTRA-001.6 · A cobrança prova que funciona (14/09/2026)
-
-> As pendências desta SPEC. As três que ela fecha (`P-E001-CANARIO-VIVO-NO-IMPLANTADO`, `P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY`, `P-PILOTO-11`) só se movem para `PENDENCIAS-FECHADAS.md` quando o canário Q1–Q10 rodar no implantado.
+⚠️ **CONTINUA (re-justificada em 14/09/2026 pela SPEC-EXTRA-001.1):** a porta ganhou `parcelas_em_aberto` com capacidade **PARCIAL** (devolve as parcelas do `/documento`; `/parcelas` segue 403). 📊 14/09: a Resulta tem 4 conexões InfoCap (3 `archived`, 1 delas `invalid_credentials`; 1 `connected/healthy`); o adaptador nunca escolhe `archived` (guarda `test_a_segunda_corretora_nao_ve_a_primeira`). Destrava: 🧑 pedir o perfil à InfoCap e limpar as 3 arquivadas.
 
 ## P-E0016-SENHAS-ALLIANZ-MAPFRE · as senhas novas chegam em 15/09; até lá os dois portais ficam `credencial_recusada`
 📊 13/09: Allianz recusada desde 18/08 (34 `needs_human`), Mapfre nunca entrou (2 `failed`). Com o P0, a Allianz passa a dizer `failed`/"credenciais rejeitadas" e o worker grava `health='credencial_recusada'`; o prólogo da rotina NÃO tenta de novo até alguém salvar a senha nova (que grava `unknown` = meio-aberto). **Destrava:** 🧑 salvar as senhas novas em Personalização > Conectores > Portais → 🤖 rodar `POST /api/admin/canario/extra001?portais=1` e colar o veredito dos 6 portais no relatório §6.3. **Dono:** 🧑 → 🤖. **Custa se esquecer:** metade dos inadimplentes (Allianz + Mapfre) nunca entra na cobrança, e a tela mostra ⛔ para sempre.
@@ -10631,3 +10618,39 @@ Fora do escopo desta SPEC (é a colheita crua da journey, não o relatório); ac
 
 ## P-E0016-POSTGREST-TETO-DE-LINHAS · as leituras do ledger (`_obrigacoes_reais`) não têm corte de data nem `.limit()`
 A janela ganhou `.gte(updated_at, corte)` no conserto; `_obrigacoes_reais` (EXTRA-001) continua lendo o ledger inteiro da corretora (💭 ~4 reservas/dia → ~250 dias até 1.000 linhas, o teto padrão do PostgREST). **Destrava:** paginar ou cortar por data; medir `db-max-rows` do projeto. **Dono:** 🤖. **Custa se esquecer:** um dia o "já cobrado" deixa de ver as linhas mais antigas — em silêncio.
+
+---
+
+## SPEC-EXTRA-001.1 — A apólice certa, inteira, em uma rodada (14/09/2026)
+
+> As pendências desta SPEC. As três que ela fecha (`P-PILOTO-17`, `P-PILOTO-18`, `P-PILOTO-20`) foram para `PENDENCIAS-FECHADAS.md` com a prova; `P-PILOTO-16` e `P-PILOTO-19` continuam, re-justificadas acima. O canário vivo (7 casos) e a validação com as atendentes dependem do Implantar (`ROTEIRO-CANARIO-EXTRA-001.1.md`, `ROTEIRO-VALIDACAO-EXTRA-001.1-ATENDENTES.md`).
+
+## P-E0011-CANARIO-VIVO-NO-IMPLANTADO · os 7 casos do canário só rodam depois de Implantar `smith-api` e `smith-web`
+📊 14/09: o código implantado é o de `cff20ef` (o Founder ainda não clicou Implantar); os 12 guardas + 1 canônico provam o motor sobre o acervo real em memória, o canário vivo não. **Destrava:** 🧑 Implantar; colar os casos 1–5 e 7 no chat `core` da Resulta e mandar o caso 6 do TESTE-A; registrar por alias no relatório §7. **Dono:** 🧑 (Implantar e colar) · 🤖 (registrar). **Custo de esquecer:** a SPEC fica "aprovada em fixture" sem a prova de produção que a §19.14 exige — e o caso 7 (linha de controle) é o que dá direito à conclusão "o PDF é lido sempre".
+
+## P-E0011-DEFAULT-DDL-2000 · `schema_completo.sql:454` (`agents`) e `:581` (`companies`) ainda têm `DEFAULT 2000`
+É DDL: exige manifesto completo (MIGRATIONS-AUTHORITY §5) e uma **segunda** migration, nunca um `ALTER` pendurado na `20260914_06`. **Destrava:** `ALTER TABLE … ALTER COLUMN llm_max_tokens SET DEFAULT 8192` com APPLY/VERIFY/ROLLBACK e manifesto. **Dono:** 🤖. **Custo de esquecer:** um INSERT que não passe pelos modelos Python nasce com 2000; o piso do `llm_factory` segura o comportamento, mas o dado volta a mentir na tela.
+
+## P-E0011-REDACAO-POR-SUBSTRING · `_CAMPOS_SENSIVEIS` do `invocation_recorder` casa por substring
+📊 `document_evidence_requested` (booleano, zero PII) sai `[omitido]` porque contém `document`. É over-redação — erro para o lado certo. **Destrava:** lista de exceções medida contra as 277 linhas reais. **Dono:** 🤖. **Custo de esquecer:** auditabilidade (não dá para ver se o PDF foi pedido); 🔴 está escrito como asserção verde no guarda para ninguém "consertar" transformando over-redação em vazamento.
+
+## P-E0011-PARSE-BR-DATE-ORFAO · `policy_answer_composer._parse_br_date` ficou sem chamador
+Depois que `_real_vigencia` passou a delegar a `classificar_vigencia` da porta. Fora dos arquivos autorizados do BLOCO B. **Destrava:** remover, com o guarda de fronteira conferindo que ninguém a importa. **Dono:** 🤖. **Custo de esquecer:** código morto que o próximo leitor copia como "a regra de data".
+
+## P-E0011-VEHICLE-VIA-DETALHAR · os 4 chamadores de `provider.vehicle(...)` migram para `detalhar_apolice(...).item_de_risco`
+📊 14/09: `ItemDeRisco` já existe em `Apolice` e já é preenchido pelo adaptador; os 4 `hasattr(provider, "vehicle")` saíram (o registry e o `mypy` recusam adaptador sem o membro). `vehicle` continua no `Protocol`, DEPRECIADO, ao lado de `lookup`/`detail` (o item 7 da tabela §5.1.1 é da EXTRA-001.6: `billing_collection.py:1205`). Decisão D-E0011-13 (90 × migrar já 45). **Destrava:** migrar `infocap_tool._enrich_vehicle`, `insurer_dispatch_tool:971`, `portal_tool:347`, `vehicle_tool:58` com os testes de acionamento (017) e vidros (025) verdes; depois que a 001.6 soltar o `lookup`, remover os 3 depreciados. **Dono:** 🤖 (SPEC-101 / EXTRA-001.10). **Custo de esquecer:** todo adaptador novo (Agger) implementa um método que só existe por história; o contrato fica com 9 membros em vez de 6.
+
+## P-E0011-FRANQUIA-EM-PROSA-SEM-DONO · 3 das 6 franquias em prosa da HDI não têm dono derivável
+📊 O PDF da HDI lista as franquias em prosa numa sequência sem dizer a cobertura; o cadastro só declara franquia em 3 das 10. A regra ancorada no cadastro casa 3 (2 confirmam o cadastro: Incêndio 350 = 350, Vidros 150 = 150; a 3ª é a divergência real: Danos Elétricos 600 × 550); as outras 3 (mínimos R$ 800, 650, 300) viram `Sinal("franquia_em_prosa_sem_dono")` — o corretor VÊ que existem. **Destrava:** (a) o layout posicional do PDF (âncora de página/coluna) ou (b) 🧑 o Founder/seguradora declarar quais coberturas carregam franquia por seguradora/ramo. **Dono:** 🧑 / 🤖 (EXTRA-001.5). **Custo de esquecer:** se o sinal for descartado sem resolver, o corretor responde "não há franquia" para Ruptura de Tubulações, Vendaval e Equipamentos — e o segurado descobre no sinistro.
+
+## P-E0011-TETO-DE-EVIDENCIA-60 · o teto de `evidence_items` subiu de 40 para 60; ninguém mediu outras seguradoras
+📊 HDI usa 20, Allianz 22 (estruturados de todas as páginas antes dos fragmentos). **Destrava:** medir sobre apólices reais de outras seguradoras (empresarial com 40 coberturas + franquias + 12 parcelas). **Dono:** 🤖 (EXTRA-001.5). **Custo de esquecer:** uma apólice grande volta a truncar em silêncio — e "inteira" deixa de ser verdade sem ninguém perceber.
+
+## P-E0011-ITENS-OBSERVACOES-SEM-ACERVO · `itens[].observacoes` não existe no único `/itens` mascarado que temos
+📊 0 ocorrências em `infocap_itens_garantias_masked.json`. O cano (observacoes → franquia em prosa quando não há valor) está testado com prosa sintética declarada, com par e controle; o CONTEÚDO real não. **Destrava:** capturar um `/itens` real com `observacoes` preenchido (mascarado) e trocar a prosa sintética. **Dono:** 🤖. **Custo de esquecer:** se a fonte escrever a franquia num formato que não imaginamos, ninguém percebe.
+
+## P-E0011-CUTOVER-DO-NOME-DA-TOOL · `infocap_policy_lookup` continua sendo o nome registrado da ferramenta
+📊 7 lugares fora do prompt (`infocap_tool.py:74`, `gateway_cutover.py:102` → `insurance.policy_lookup`, `chat_eventos.py:214`, `prompt_effective_service.py:80`, `nodes.py` ×4). O identificador nunca chega ao usuário (o rótulo da tela é "apólice"); a fronteira mede PROSA. **Destrava:** o cutover de catálogo (`insurance.policy_lookup` já existe no mapa) com gate de compatibilidade próprio. **Dono:** 🤖 (SPEC-101; gatilho: a segunda corretora com outro sistema de gestão). **Custo de esquecer:** nenhum byte para o corretor; um símbolo interno com nome de fornecedor.
+
+## P-E0011-CONEXOES-ARQUIVADAS-DA-RESULTA · 3 conexões InfoCap `archived` (1 com credencial inválida) ao lado da ativa
+📊 14/09 (`tenant_connections ⋈ connector_templates`). O resolver nunca escolhe `archived` (guarda), mas a tela de conectores mostra as quatro. **Destrava:** 🧑 apagar as 3 arquivadas em Conectores (ou 🤖 por migration de dado com manifesto). **Dono:** 🧑. **Custo de esquecer:** confusão na tela; e a chave de cache agora carrega `connection_id` — trocar a ativa invalida o cache como deve.
