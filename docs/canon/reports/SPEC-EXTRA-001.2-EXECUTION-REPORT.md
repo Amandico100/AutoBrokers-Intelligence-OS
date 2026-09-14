@@ -121,15 +121,52 @@ git status --short                        (limpo)
 
 ---
 
-## 2. BLOCO E — (preenche ao fechar)
+## 2. BLOCO E — uma conversa, uma linha, e todo silêncio com motivo (Builder E · Opus 5 · 📊 394k tokens · ≈3 h)
 
-## 3. BLOCO C — (preenche ao fechar)
+| entrega | o que mudou | prova |
+|---|---|---|
+| E.1 dedupe do pipeline | escritor ÚNICO de `messages` no pipeline (`gravar_mensagem_do_pipeline`) com `payload = {wa_message_id, origem: "agente", direcao}` e 23505 = sucesso silencioso. 📊 D-E-1: `whatsapp_service.send_message` devolve `bool` e fatia em balões — o id do provider NÃO atravessa a fachada; a linha da IA é gravada ANTES do envio, sem chave (declarado; a rede continua `e_a_nossa_propria_voz` + `_eco_do_dashboard`) → **P-E0012-02** | `test_uma_entrega_uma_linha_um_turno.py` **18/18**: a mesma entrega 2× pela rota real → 1 linha e 1 turno; a invariante CORRETA de tenant (nenhum grupo com o MESMO papel sob dois `company_id`; a ingênua é falsa por construção); 3/3 mutações vermelhas |
+| E.2 uma conversa por contraparte | `contraparte_de()` pura (delega a `telefone_do_evento`); os 2 resolvedores (webhook e espelho) buscam por `(company_id, contraparte, whatsapp, sem agente, aberta)` antes de criar e gravam a coluna; **M2** coluna + backfill + índice único parcial; **M1** CHECK com `fantasma_lid` + `MOTIVOS` | `test_uma_conversa_por_contraparte.py` **30/30**: `@lid` com alternativo e telefone → mesma chave; 2ª aberta recusada; PAR outra corretora aceita; fechada não bloqueia; 4/4 mutações vermelhas |
+| E.3 o silêncio | ordem `company_id → pausar_ia → exceção (só para a janela) → janela`; docstring de 4 passos; P-PILOTO-15 pela opção (b′): a pausa protege quando `claimed_at > resolvido_em` (D-E0012-03: 88 × limpar `resolvido_em` 35 — 📊 12 leitores do campo — × ingênua 40); `anotar_silencio_no_feed` sem o filtro `foi_a_janela`, escrito DENTRO de `a_ia_deve_calar` (D-E-3), memo por conversa/CLASSE/dia (a frase do takeover carrega nome — D-E-6); a não-calada por exceção vira linha; 📊 D-E-4: "sem corretora" NÃO produz linha (o feed escreve por `company_id`) — são 4 motivos com linha, não 5 | `test_todo_silencio_tem_motivo.py` **48/48**: exceção NÃO fura o takeover; 4 motivos → 4 linhas em português; 1 linha por conversa/classe/dia; conversa reaberta com atendente dentro → protegida; 4/4 mutações vermelhas |
+| E.4 `.env.example` | `BUFFER_*` 3/30/300 → 8/25/60 (o exemplo mentia sobre `config.py`) | leitura |
+
+Testes existentes migrados sob §9.3: `test_o_espelho_vira_conversa`, `test_quem_fala_primeiro_cala_o_outro` (carregam `identidade_do_evento` REAL; `contraparte` no whitelist do dublê) e — pelo orquestrador — `test_o_atendimento_termina_e_o_produto_sabe` (lê a lista do CHECK da migration que a define hoje: 6 motivos; 52 passed). 🔴 Defeito de arnês achado: `subprocess.run(text=True)` decodifica em cp1252 no Windows e estoura no 1º emoji — uma mutação VERMELHA era contada como verde; os arnês passam `encoding="utf-8", errors="replace"` (vale para todo guarda novo). Conferido pelo orquestrador: 18 + 30 + 48 verdes; 4/4 mutações do G11 vermelhas; espelho ×3 e portões verdes.
+
+## 3. BLOCO C — a ficha sabe o que já foi respondido (Builder C · Opus 5 · 📊 253k tokens · ≈2h15)
+
+| entrega | o que mudou | prova |
+|---|---|---|
+| C.1 o escritor deixa de ser lista à mão | `slots_do_atendimento()` = `ROTULOS ∪ required_slots` dos playbooks (lidos pelo MOTOR, não por regex — 📊 **54** `required_slots` distintos, **37** fora de `ROTULOS`, não 20/13: metade dos subserviços nasce em tempo de importação — divergência D6) − `CAMPOS_DE_CONTROLE = {dados_confirmados}` (D-E0012-04: 90); +37 rótulos em português; a tupla `_SLOTS_DA_FICHA` MORREU | `test_todo_slot_do_corredor_tem_ficha.py` **11/11** (🔴 vermelho de partida colado no docstring: `ImportError`, "o escritor gravou só problema_descricao/titular_cpf"); 3/3 mutações vermelhas |
+| C.2 origem por confirmação | `confirmados[slot] = {valor, origem ∈ cliente/sistema_de_gestao/corredor, em}` com leitura tolerante ao valor cru (D-E0012-05: 92); origem `sistema_de_gestao` só para placa/veículo quando há contexto InfoCap; o bloco do prompt separa "JÁ CONFIRMADO com o cliente — não pergunte" de "veio do sistema de gestão — confirme numa frase"; `dados_conhecidos` desembrulha (sem isso a URA receberia o dict como placa) | idem |
+| C.3 pergunta repetida | `slots_reperguntados(resposta, ficha, corredor)` pura sobre `ancoras_de_pergunta_por_slot.json` (72 slots, 56 com âncora, **16 sem** — 12 são pedaços de endereço perguntados em bloco → P-E0012-C3), no dialeto de `corridor_playbooks._norm` (IGNORECASE|DOTALL, com acento+negrito); em produção, o fiscal em `agent_node` regenera UMA vez com a lista e depois envia e registra `pergunta_repetida` em `log_activity` | `test_slot_confirmado_nao_se_pergunta.py` **21/21**: replay estrutural do encanador (`agua_escorrendo` confirmado → não volta); 3/3 mutações vermelhas |
+
+Divergências: D6 (54/37); D7 🔴 existe um SEGUNDO vocabulário (`corridor_playbooks._COMO_PERGUNTAR`, ~60 redações) — a docstring de `ROTULOS` ("o ÚNICO") era falsa; G6 é a trava que fica vermelha se divergirem → **P-E0012-C2**. Os 3 escritores da coluna são donos de chaves disjuntas (confirmado). Conferido pelo orquestrador: 11 + 21 verdes; 6/6 mutações; `test_o_atendimento_tem_memoria` (promovido para o motor) e `test_a_maquina_de_lavar_vai_ate_o_fim` (112) verdes.
 
 ## 4. BLOCO AB — (preenche ao fechar)
 
 ## 5. BLOCO DF — (preenche ao fechar)
 
-## 6. Migrations (APPLY / VERIFY / ROLLBACK)
+## 6. Migrations (APPLY / VERIFY / ROLLBACK) — as duas, aplicadas em 14/09/2026 (MCP), MANIFEST atualizado
+
+### `20260914_07_spec_extra001_2_check_fantasma_lid.sql` (M1)
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | `ck_conversations_resolucao_motivo` aceita `fantasma_lid` (destrava P-PILOTO-13) |
+| **Destrutiva** | não (a lista só cresce); expand-first |
+| **VERIFY (saída real)** | V1 `pg_get_constraintdef` contém `fantasma_lid` → **true** · V2 UPDATE com motivo fora da lista → **RECUSADO 23514**; com `fantasma_lid` → **ACEITO** (revertido) · V3 linhas com `fantasma_lid` → **175** · V4 fantasmas ainda abertas → **0** |
+| **`--vivo`** | `migrar_conversas_fantasma_lid.py --vivo` (14/09): **2 pausas copiadas · 175 fantasmas fechadas · 0 falhas · VERIFY do script = 0** (dry-run antes: 175 · 69 Resulta + 106 AutoFleet · 10 com pausa · 166 sem par). ⛔ Nenhuma mensagem apagada; não é o encerramento em lote da D-PILOTO-02 (são LIDs sem telefone) |
+| **ROLLBACK** | escrito; RECUSA reverter enquanto houver linhas com `fantasma_lid` (reverter deixaria 175 `closed` sem motivo, violando o CHECK de coerência) |
+
+### `20260914_08_spec_extra001_2_contraparte_unica.sql` (M2)
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | `conversations.contraparte` (só dígitos do telefone; `@lid` cru → NULL) + índice único parcial `uq_conversations_contraparte_aberta (company_id, contraparte) WHERE whatsapp AND agent_id IS NULL AND status <> 'closed' AND contraparte IS NOT NULL` — impede a fantasma nº 176 |
+| **Ordem seguida** | (a)+(b) coluna + backfill → **D0 duplicatas abertas = 0** → (c) índice (D-E0012-06: índice só com D0 = 0 — 92; fechar a mais antiga em lote 20) |
+| **VERIFY (saída real)** | V1 `indexdef` com as 4 cláusulas ✅ · V1b CONTROLE fantasmas sem chave = **171** (> 0: a recusa do LID rodou) · V2 duplicatas abertas = **0** · V3 2ª aberta da mesma contraparte → **RECUSADO 23505** · V4 outra corretora, mesma contraparte → **ACEITO** (o PAR) · V5 fechada → **ACEITO**; linhas de VERIFY apagadas (0 sobras; 879 conversas) |
+| **Advisors** | security depois das duas: sem ERROR novo (os mesmos 2 views definer + 3 funções pré-existentes; 123 INFO) |
+| **ROLLBACK** | `DROP INDEX IF EXISTS`; a coluna fica (expand-first) |
+| **Aplicadas em produção** | sim · 14/09/2026 · `spec_extra001_2_check_fantasma_lid` e `spec_extra001_2_contraparte_unica` (MCP) |
+| **Efeito de implantação declarado** | até o Implantar, conversas novas criadas pelo código antigo nascem sem `contraparte` (fora do índice, sem quebrar nada); depois do Implantar os dois resolvedores preenchem |
 
 ## 7. Painel: juiz fresco + lente do dado · conserto · suíte
 
@@ -143,6 +180,11 @@ git status --short                        (limpo)
 |---|---|---|---|
 | **D-E0012-01** | `TURNO_TTL_SEGUNDOS` = 90, 3 renovações | 90 **85** · 60 **55** (máx medido 53 s + envio) · 180 **40** (trava órfã longa) | premissa 5 |
 | **D-E0012-02** | `atendente_de_plantao` regra (2) usa `company_members.role='member'` ativo e não-owner (não existe `attendant`) | member **80** · criar papel `attendant` agora **25** (P-PILOTO-16 é decisão 🧑) | D3 |
+| **D-E0012-03** | P-PILOTO-15 pela opção (b′): a pausa protege quando o takeover (`claimed_at`) é DEPOIS do encerramento (`resolvido_em`); nenhum leitor de `resolvido_em` muda | (b′) **88** · (a) limpar `resolvido_em` **35** (📊 12 leitores; apagaria o fato de que terminou) · (b) ingênua **40** (volta o "calado para sempre" de 05/09) | Builder E |
+| **D-E0012-04** | `CAMPOS_DE_CONTROLE = {dados_confirmados}` — o único campo da tool que não é fala do cliente | **90** | Builder C |
+| **D-E0012-05** | `confirmados[slot]` vira `{valor, origem, em}` com leitura tolerante ao valor cru; origem `sistema_de_gestao` só para placa/veículo com contexto InfoCap; CPF fica `cliente` | **92** · valor cru + mapa paralelo de origem **40** | Builder C |
+| **D-E0012-06** | o índice único da M2 só entra com D0 = 0 duplicatas abertas (havia 0); duplicatas viram lista no relatório, nunca fechamento em lote | **92** · fechar a mais antiga **20** (D-PILOTO-02) | Builder E |
+| **D-E0012-07** | o feed do silêncio é escrito DENTRO de `a_ia_deve_calar`, memo por CLASSE (não pela frase, que carrega nome) | **85** | Builder E |
 
 ## 11. Riscos remanescentes
 
