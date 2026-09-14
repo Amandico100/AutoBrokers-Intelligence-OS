@@ -123,10 +123,29 @@ def policy_locator_hash(policy_locator: Dict[str, Any]) -> str:
     return _short_hash(f"{provider}:{codfil}:{nosnum}", 24)
 
 
-def policy_document_cache_key(company_id: str, policy_locator: Dict[str, Any], content_hash: str) -> str:
+def policy_document_cache_key(
+    company_id: str,
+    policy_locator: Dict[str, Any],
+    content_hash: str,
+    connection_id: str = "",
+) -> str:
+    """A chave do documento oficial: `company + connection + locator + conteudo`.
+
+    🔴 O `connection_id` entrou na SPEC-EXTRA-001.1 §3.3. O `company_id` ja
+    estava aqui — chave sem ele seria blocker de isolamento. O que faltava era
+    a CONEXAO: 📊 a corretora piloto tem **4** conexoes InfoCap (3 `archived`,
+    uma delas com `invalid_credentials`, e 1 `connected`), e trocar a conexao
+    ativa nao invalidava nada. E defeito de FRESCOR dentro do mesmo tenant —
+    ESSENCIAL, nao blocker — e M-A4 mede as duas partes da chave.
+
+    ⚠️ `connection_id` vazio mantem a chave da forma antiga, de proposito: as
+    entradas ja escritas continuam encontraveis, e quem ainda nao passa a
+    conexao nao perde o cache de uma vez (expand-first, CLAUDE.md §8).
+    """
     company_hash = _short_hash(company_id, 16)
     locator_hash = policy_locator_hash(policy_locator)
-    return f"policydoc:{company_hash}:infocap:{locator_hash}:{str(content_hash or '')[:24]}"
+    conexao = f"{_short_hash(connection_id, 12)}:" if str(connection_id or "").strip() else ""
+    return f"policydoc:{company_hash}:{conexao}infocap:{locator_hash}:{str(content_hash or '')[:24]}"
 
 
 def policy_document_evidence_requested(question: Optional[str], explicit: bool = False) -> bool:
@@ -584,6 +603,7 @@ class PolicyDocumentEvidenceService:
         agent_id: Optional[str] = None,
         force_refresh: bool = False,
         case_id: Optional[str] = None,
+        connection_id: str = "",
     ) -> Dict[str, Any]:
         if not policy_locator:
             return _empty_result(status="source_unavailable", cache_status="unavailable", blockers=["policy_locator_required"], company_id=company_id)
@@ -618,6 +638,7 @@ class PolicyDocumentEvidenceService:
                     pages=pages,
                     qdrant_ingested=True,
                     case_id=case_id,
+                    connection_id=connection_id,
                 )
 
         if not official_document_candidate or not official_document_candidate.get("url"):
@@ -736,6 +757,7 @@ class PolicyDocumentEvidenceService:
             pages=(docling_pages or pages),
             qdrant_ingested=qdrant_ingested,
             case_id=case_id,
+            connection_id=connection_id,
         )
 
     def _result(
@@ -754,6 +776,7 @@ class PolicyDocumentEvidenceService:
         qdrant_ingested: bool,
         case_id: Optional[str],
         pages: Optional[List[Dict[str, Any]]] = None,
+        connection_id: str = "",
     ) -> Dict[str, Any]:
         confidence = _confidence_for_evidence(evidence)
         result = {
@@ -762,7 +785,7 @@ class PolicyDocumentEvidenceService:
             "document_type": OFFICIAL_POLICY_DOCUMENT_TYPE,
             "document_status": document_status,
             "cache_status": cache_status,
-            "cache_key": policy_document_cache_key(company_id, policy_locator, content_hash),
+            "cache_key": policy_document_cache_key(company_id, policy_locator, content_hash, connection_id),
             "company_id": company_id,
             "policy_locator_hash": policy_locator_hash(policy_locator),
             "document_id": document_id,

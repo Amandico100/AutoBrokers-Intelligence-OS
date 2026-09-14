@@ -52,6 +52,18 @@ def _load_nodes_module():
         module = sys.modules.setdefault(name, types.ModuleType(name))
         module.__path__ = []
 
+    # 🔴 `app.providers` ganha o `__path__` REAL, e nao a lista vazia.
+    #    ⚠️ Ate a SPEC-EXTRA-001.1 a porta trazia o adaptador InfoCap DENTRO do
+    #    proprio arquivo, entao o registro nunca dependia de importar nada. Hoje
+    #    o adaptador mora em `app/providers/infocap_policy_provider.py` (a porta
+    #    devolve `Apolice`, e nao o dict do fornecedor), e com `__path__ = []` a
+    #    casca fazia o import falhar em silencio — o registry ficava VAZIO e o
+    #    G-E5.6 acusava a porta por um defeito do HARNESS. Guarda que mede a si
+    #    mesmo e pior que guarda nenhum, porque ele acusa outra peca.
+    providers = sys.modules.setdefault("app.providers", types.ModuleType("app.providers"))
+    providers.__path__ = [str(ROOT / "app" / "providers")]
+    providers.__package__ = "app.providers"
+
     constants = types.ModuleType("app.core.constants")
     constants.AGENT_CONTEXT_WINDOW_SIZE = 15
     sys.modules["app.core.constants"] = constants
@@ -243,7 +255,14 @@ def run_e2(policy_facts):
     facts = policy_facts.extract_policy_facts(pack)
     cov = [f for f in facts if f["fact_type"] == "coverage"]
     check("G-F1: seções estruturadas viram facts coverage", len(cov) == 2, facts)
-    check("G-F1: fonte é infocap_structured", all(f["source"] == "infocap_structured" for f in cov), cov)
+    # ⚠️ ATUALIZADO pela SPEC-EXTRA-001.1 §5.3 (CLAUDE.md §9.3: a licao migra).
+    #    `infocap_structured` punha o nome do FORNECEDOR dentro do modelo do
+    #    DOMINIO: numa corretora que use Quiver, o fato de uma cobertura
+    #    continuaria dizendo que veio da InfoCap.
+    check("G-F1: fonte é sistema_de_gestao (nunca o nome do fornecedor)",
+          all(f["source"] == "sistema_de_gestao" for f in cov), cov)
+    check("G-F1b: e NENHUM fact nomeia o fornecedor no campo `source`",
+          not any("infocap" in str(f.get("source") or "").lower() for f in facts), facts)
     check("G-F1: valor preservado", any(f["value"] == "R$ 15.000,00" for f in cov), cov)
 
     # Seção com label de assistência vira fact assistance.
@@ -297,7 +316,7 @@ def run_e2(policy_facts):
         },
     )
     facts = policy_facts.extract_policy_facts(pack)
-    doc_facts = [f for f in facts if f["source"] == "official_document"]
+    doc_facts = [f for f in facts if f["source"] == "documento_oficial"]
     check("G-F5: evidência documental vira fact", len(doc_facts) == 1, facts)
     check("G-F5: fact documental exige página", doc_facts and doc_facts[0]["source_detail"].get("page") == 3, doc_facts)
     check("G-F5: trecho preservado no source_detail", doc_facts and "eletricista" in doc_facts[0]["source_detail"].get("snippet", ""), doc_facts)
@@ -399,7 +418,16 @@ def run_e3(policy_facts, assistance_policy):
 
     # G-P6: resultado gera fact policy_rule para o compositor citar.
     rule_facts = assistance_policy.policy_rule_facts(result)
-    check("G-P6: política aplicada gera facts policy_rule", len(rule_facts) == 3 and all(f["source"] == "policy_rule" for f in rule_facts), rule_facts)
+    # ⚠️ `assistance_policy.py` ainda ESCREVE o valor legado `policy_rule`, e
+    #    isso e expand-first de proposito (CLAUDE.md §8): `policy_facts.
+    #    fonte_canonica()` o le como `regra_de_apolice`. O guarda afirma as DUAS
+    #    metades — o que se escreve HOJE e o que o leitor canonico entende.
+    check("G-P6: política aplicada gera 3 facts de regra", len(rule_facts) == 3, rule_facts)
+    check("G-P6a: o escritor legado ainda escreve `policy_rule` (expand-first)",
+          all(f["source"] == "policy_rule" for f in rule_facts), rule_facts)
+    check("G-P6b: e o leitor canonico o traduz para `regra_de_apolice`",
+          all(policy_facts.fonte_canonica(f["source"]) == "regra_de_apolice"
+              for f in rule_facts), rule_facts)
     not_applied = assistance_policy.apply_residential_assistance_policy(_sample_pack(), [])
     check("G-P6b: política não aplicada não gera facts", assistance_policy.policy_rule_facts(not_applied) == [], not_applied)
 
@@ -589,8 +617,18 @@ def run_e5(port):
     check("G-E5.6: registry resolve provider infocap", provider is not None and provider.provider_key == "infocap", provider)
     check("G-E5.7: provider tem lookup e detail", callable(getattr(provider, "lookup", None)) and callable(getattr(provider, "detail", None)))
 
-    class _FakeProvider:
-        provider_key = "quiver"
+    # 🔴 ATUALIZADO pela SPEC-EXTRA-001.1 §5.1.1, e esta e a atualizacao que
+    #    IMPORTA. Ate 14/09/2026 este guarda afirmava que o registry ACEITA um
+    #    provider com so `lookup` e `detail` — e era verdade. Era tambem o
+    #    defeito: 📊 `vehicle` nunca esteve no `Protocol`, entao 4 pontos de
+    #    chamada decidiam contrato com `hasattr(provider, "vehicle")`, e um
+    #    adaptador incompleto NAO quebrava: respondia "Fonte de veiculos
+    #    indisponivel", e o atendente pedia a placa ao cliente.
+    #    A licao migra (CLAUDE.md §9.3): o que se testa continua sendo "provider
+    #    futuro entra sem tocar em quem consome" — agora com o par que prova que
+    #    o INCOMPLETO e RECUSADO, com a lista do que falta.
+    class _ProviderIncompleto:
+        provider_key = "quiver_incompleto"
 
         async def lookup(self, **kwargs):
             return {"ok": True}
@@ -598,8 +636,41 @@ def run_e5(port):
         async def detail(self, **kwargs):
             return {"ok": True}
 
+    erro = ""
+    try:
+        port.register_policy_data_provider(_ProviderIncompleto())
+    except ValueError as exc:
+        erro = str(exc)
+    check("G-E5.8a: registry RECUSA provider sem os membros do contrato", bool(erro), erro)
+    check("G-E5.8b: e a recusa NOMEIA `vehicle` (nao 'adaptador invalido')",
+          "vehicle" in erro, erro)
+
+    class _FakeProvider(_ProviderIncompleto):
+        provider_key = "quiver"
+
+        def capacidades(self):
+            return None
+
+        async def buscar_cliente(self, **kwargs):
+            return None
+
+        async def listar_apolices(self, **kwargs):
+            return None
+
+        async def detalhar_apolice(self, **kwargs):
+            return None
+
+        async def documento_oficial(self, **kwargs):
+            return None
+
+        async def parcelas_em_aberto(self, **kwargs):
+            return []
+
+        async def vehicle(self, **kwargs):
+            return {"ok": True}
+
     port.register_policy_data_provider(_FakeProvider())
-    check("G-E5.8: registry aceita provider futuro (quiver)", port.get_policy_data_provider("quiver").provider_key == "quiver")
+    check("G-E5.8: registry aceita provider futuro COMPLETO (quiver)", port.get_policy_data_provider("quiver").provider_key == "quiver")
     check("G-E5.9: provider desconhecido retorna None", port.get_policy_data_provider("nao_existe") is None)
 
     # Estrutural: a tool fala com a PORTA, não com o conector InfoCap direto.

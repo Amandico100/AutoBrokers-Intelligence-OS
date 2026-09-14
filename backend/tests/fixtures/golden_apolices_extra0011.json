@@ -1,5 +1,5 @@
 {
- "_doc": "Golden da EXTRA-001.1, montado PELA PORTA (conector implantado, consulta em memoria) em 14/09/2026 e persistido so com os campos que o teste compara: rotulos, valores em R$, franquia, contagens, datas de vigencia. NAO contem nome, CPF/CNPJ, numero de apolice, endereco, referencia tecnica ou hash. As duas apolices sao as do caso de referencia do diagnostico de 12/09 (HDI residencial e Allianz condominio da corretora piloto). 'cadastro_sistema_de_gestao' = o que /itens e /documento devolvem; 'documento_oficial' = as linhas da tabela do PDF, transcritas do texto extraido.",
+ "_doc": "Golden da EXTRA-001.1, montado PELA PORTA (conector implantado, consulta em memoria) em 14/09/2026 e persistido so com os campos que o teste compara: rotulos, valores em R$, franquia, contagens, datas de vigencia. NAO contem nome, CPF/CNPJ, numero de apolice, endereco, referencia tecnica ou hash. As duas apolices sao as do caso de referencia do diagnostico de 12/09 (HDI residencial e Allianz condominio da corretora piloto). 'cadastro_sistema_de_gestao' = o que /itens e /documento devolvem; 'documento_oficial' = as linhas da tabela do PDF, transcritas do texto extraido. Correcao 14/09: os valores das parcelas do cadastro estavam x100 por um defeito do montador (numero tratado como texto BR); a fonte devolve 82,31 / 4.467,12 e o golden agora bate com o PDF.",
  "medido_em": "2026-09-14",
  "apolices": {
   "hdi_residencial": {
@@ -63,28 +63,28 @@
      {
       "numero": 1,
       "vencimento": "14/05/2026",
-      "valor": 8231.0,
+      "valor": 82.31,
       "quitada_em": "14/05/2026",
       "forma_de_pagamento": "Cartão de Crédito"
      },
      {
       "numero": 2,
       "vencimento": "13/06/2026",
-      "valor": 8231.0,
+      "valor": 82.31,
       "quitada_em": "13/06/2026",
       "forma_de_pagamento": "Cartão de Crédito"
      },
      {
       "numero": 3,
       "vencimento": "13/07/2026",
-      "valor": 8231.0,
+      "valor": 82.31,
       "quitada_em": "13/07/2026",
       "forma_de_pagamento": "Cartão de Crédito"
      },
      {
       "numero": 4,
       "vencimento": "12/08/2026",
-      "valor": 823.0,
+      "valor": 82.3,
       "quitada_em": "12/08/2026",
       "forma_de_pagamento": "Cartão de Crédito"
      }
@@ -243,6 +243,16 @@
      "clause": 3,
      "exclusion": 1,
      "assistance": 1
+    },
+    "franquia_por_rotulo": {
+     "_doc": "ACRESCENTADO pela EXTRA-001.1 BLOCO A em 14/09/2026. Associacao rotulo -> franquia em prosa do PDF da HDI, derivada da regra ESCRITA em `pdf_tabelas_reais_extra0011.json` (`layout`: 'franquias em prosa em linhas separadas, na ordem das coberturas com franquia') aplicada as 6 linhas de prosa e as 10 linhas de cobertura. 🔴 LINHA DE CONTROLE — a regra e falsificavel e DUAS das tres associacoes que o cadastro tambem tem CONFIRMAM: Incendio 350,00 = cadastro '10.00%-350,00'; Quebra de Vidros 150,00 = cadastro '10.00%-150,00'. A terceira DIVERGE: Danos Eletricos 600,00 x cadastro '10.00%-550,00' — e e exatamente a divergencia que a proposta §5.5 registra. Se a regra estivesse errada, as duas confirmacoes nao existiriam.",
+     "_regra": "i-esima prosa <-> i-esima cobertura do PDF que tem franquia",
+     "Incendio": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 350,00 para Queda de Raio.",
+     "Danos Eletricos": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 600,00",
+     "Quebra de Vidros": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 150,00",
+     "Ruptura de Tubulacoes": "15% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 800,00",
+     "Vendaval": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 650,00",
+     "Equip. Eletronicos/Eletrodomesticos": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 300,00 por equipamento"
     }
    }
   },
@@ -361,42 +371,42 @@
      {
       "numero": 1,
       "vencimento": "04/09/2026",
-      "valor": 446712.0,
+      "valor": 4467.12,
       "quitada_em": null,
       "forma_de_pagamento": "Boleto Bancário"
      },
      {
       "numero": 2,
       "vencimento": "20/10/2026",
-      "valor": 446711.0,
+      "valor": 4467.11,
       "quitada_em": null,
       "forma_de_pagamento": "Boleto Bancário"
      },
      {
       "numero": 3,
       "vencimento": "20/11/2026",
-      "valor": 446711.0,
+      "valor": 4467.11,
       "quitada_em": null,
       "forma_de_pagamento": "Boleto Bancário"
      },
      {
       "numero": 4,
       "vencimento": "20/12/2026",
-      "valor": 446711.0,
+      "valor": 4467.11,
       "quitada_em": null,
       "forma_de_pagamento": "Boleto Bancário"
      },
      {
       "numero": 5,
       "vencimento": "20/01/2027",
-      "valor": 446711.0,
+      "valor": 4467.11,
       "quitada_em": null,
       "forma_de_pagamento": "Boleto Bancário"
      },
      {
       "numero": 6,
       "vencimento": "20/02/2027",
-      "valor": 446713.0,
+      "valor": 4467.13,
       "quitada_em": null,
       "forma_de_pagamento": "Boleto Bancário"
      }

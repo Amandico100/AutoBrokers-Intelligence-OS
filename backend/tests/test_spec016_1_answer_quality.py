@@ -167,7 +167,13 @@ def run_facts(facts_mod, evidence_items):
         "official_policy_document_evidence": {"ok": True, "document_status": "evidence_ready", "evidence_items": evidence_items},
     }
     facts = facts_mod.extract_policy_facts(pack)
-    cov = [f for f in facts if f["fact_type"] == "coverage" and f["source"] == "official_document"]
+    # ⚠️ ATUALIZADO pela SPEC-EXTRA-001.1 §5.3: o valor canonico de `source`
+    #    deixou de ter o nome do FORNECEDOR dentro do modelo do DOMINIO
+    #    (`infocap_structured` -> `sistema_de_gestao`; `official_document` ->
+    #    `documento_oficial`). A LICAO MIGRA em vez de morrer (CLAUDE.md §9.3):
+    #    o que se testa continua sendo "o fact documental sabe que e documental",
+    #    agora pelo valor que vale para QUALQUER sistema de gestao.
+    cov = [f for f in facts if f["fact_type"] == "coverage" and f["source"] == "documento_oficial"]
     check("facts: coberturas documentais com label limpo", any(f["label"].lower().startswith("danos el") for f in cov), [f["label"] for f in cov])
     check("facts: valor da cobertura = LMI", any(f.get("value") == "R$ 45.000,00" for f in cov), cov)
     ded = [f for f in facts if f["fact_type"] == "deductible"]

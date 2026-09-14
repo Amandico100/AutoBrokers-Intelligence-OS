@@ -1,0 +1,38 @@
+{
+ "_doc": "🔴 A LINHA DE CONTROLE do contador de premio (M-A3). SINTETICA — nao e apolice de ninguem, e nenhum valor aqui foi lido de fonte real. Ela existe porque o BLOCO 0 mediu que a Allianz condominio NAO serve de controle: o contador acende nela tambem (📊 R$ 6.987,58, 28% faltando — divergencia D5, decisao D-E0011-03). Um detector que so tem exemplos que ACENDEM nao prova que ele consegue ficar apagado: sem esta fixture, `Sinal('cadastro_incompleto')` poderia estar aceso por um `return True` e ninguem veria (CLAUDE.md §9.2: 'a linha de controle e o que da direito a conclusao').",
+ "medido_em": "2026-09-14",
+ "natureza": "SINTETICA — construida para que a soma dos premios das coberturas BATA com o premio liquido, ao centavo",
+ "conferencia": "45,64 + 11,50 + 17,25 + 11,50 + 19,88 + 11,50 = 117,27 = premio_liquido",
+ "apelido": "controle_soma_bate",
+ "seguradora_abrev": "TESTE",
+ "ramo_abrev": "RESI",
+ "vigencia": {"inicio": "01/01/2026", "fim": "01/01/2027"},
+ "cancelado": false,
+ "cadastro_sistema_de_gestao": {
+  "fonte": "sintetica: mesma FORMA de `infocap:/itens.garantias`, valores inventados",
+  "garantias": [
+   {"garantia": "COBERTURA DE CONTROLE A", "impseg": 100000.0, "premio": 45.64, "franquia": "10.00%-350,00"},
+   {"garantia": "COBERTURA DE CONTROLE B", "impseg": 3000.0, "premio": 11.5, "franquia": null},
+   {"garantia": "COBERTURA DE CONTROLE C", "impseg": 3000.0, "premio": 17.25, "franquia": "10.00%-550,00"},
+   {"garantia": "COBERTURA DE CONTROLE D", "impseg": 3000.0, "premio": 11.5, "franquia": null},
+   {"garantia": "COBERTURA DE CONTROLE E", "impseg": 5000.0, "premio": 19.88, "franquia": null},
+   {"garantia": "COBERTURA DE CONTROLE F", "impseg": 3000.0, "premio": 11.5, "franquia": null}
+  ],
+  "soma_dos_premios": 117.27,
+  "premio_liquido": 117.27,
+  "premio_total": 126.0,
+  "iof": 8.73,
+  "numero_de_parcelas": 1,
+  "forma_pag_do_cabecalho": "Boleto Bancário",
+  "parcelas": [
+   {"numero": 1, "vencimento": "10/01/2026", "valor": 126.0, "quitada_em": "10/01/2026", "forma_de_pagamento": "Boleto Bancário"}
+  ],
+  "tabela_itens_presente": false,
+  "_nota_forma_pag": "🔴 O PAR do `cabecalho_divergente`: aqui o cabecalho e as parcelas CONCORDAM (Boleto x Boleto), e o sinal tem de ficar APAGADO. Na HDI real eles discordam (Boleto x 4x Cartao de Credito) e ele tem de ACENDER. Mesma superficie, veredito oposto."
+ },
+ "limiar": {
+  "_doc": "🔴 O PAR DA TOLERANCIA: a mesma apolice com um centavo a mais e a mesma com seis centavos a mais. A tolerancia declarada e R$ 0,05 — 'uma tolerancia generosa transforma o sinal em enfeite' (proposta §5.5 regra 3). Sem este par, trocar a tolerancia por `float('inf')` deixaria o guarda verde.",
+  "dentro_da_tolerancia": {"premio_liquido": 117.32, "diferenca_reais": 0.05, "sinal_esperado": "APAGADO"},
+  "fora_da_tolerancia": {"premio_liquido": 117.33, "diferenca_reais": 0.06, "sinal_esperado": "ACESO"}
+ }
+}

@@ -215,6 +215,14 @@ def _install_stubs():
     for name in ("app", "app.core", "app.api", "app.services", "app.providers", "app.agents"):
         module = sys.modules.setdefault(name, types.ModuleType(name))
         module.__path__ = []
+    # SPEC-EXTRA-001.1 BLOCO A: `app.providers` ganha o `__path__` REAL. A porta
+    # registra o adaptador InfoCap importando `app.providers.infocap_policy_provider`;
+    # com `__path__ = []` esse import falha em silencio, o registry fica vazio e
+    # `get_policy_data_provider("infocap")` devolve None — o guarda acusava a porta
+    # por um defeito do proprio harness (mesmo conserto de test_spec016_policy_intelligence).
+    providers = sys.modules["app.providers"]
+    providers.__path__ = [str(ROOT / "app" / "providers")]
+    providers.__package__ = "app.providers"
 
     config = types.ModuleType("app.core.config")
     config.settings = types.SimpleNamespace(INFOCAP_BASE_URL="", DOCLING_SERVICE_URL=None)

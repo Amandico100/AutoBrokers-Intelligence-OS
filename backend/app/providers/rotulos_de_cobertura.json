@@ -1,0 +1,93 @@
+{
+  "_doc": "Sinonimos de ROTULO de cobertura — o arquivo que o casamento CORP x PDF le. SPEC-EXTRA-001.1 BLOCO A (§5.5 regra 2: 'sinonimos declarados num arquivo, nao num regex escondido'). Revisavel por gente. Cada grupo tem o nome canonico humano, os rotulos normalizados que pertencem a ele e o CRITERIO medido que autorizou a linha. Casamento = igualdade do rotulo normalizado OU mesmo grupo declarado. NUNCA por substring solta: 📊 o censo da SPEC-094.1 mediu o token 'SEGUROS' casando 284 candidatos.",
+  "medido_em": "2026-09-14",
+  "fonte_das_linhas": "backend/tests/fixtures/golden_apolices_extra0011.json (HDI residencial e Allianz condominio da corretora piloto, montados pela porta em 14/09/2026)",
+  "como_normaliza": "minusculas · sem acento · pontuacao (. , / - ( ) etc.) vira espaco · espacos colapsados · sem espacos nas pontas. Nenhuma abreviacao e expandida por regra: a expansao e sempre uma LINHA deste arquivo, datada e com criterio.",
+  "regra_de_desempate": "quando o mesmo grupo tem mais de um candidato no documento, so desempata por LMI igual E se os dois rotulos compartilharem o PRIMEIRO token normalizado. Fora disso nao casa, e o sinal `rotulo_ambiguo` acende.",
+  "grupos": [
+    {
+      "id": "basica_simples",
+      "nome_canonico": "Incêndio / Raio / Explosão (Básica Simples)",
+      "rotulos": ["incendio raio explosao", "basica simples"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 82.000.000,00 nos dois lados; premio 2.671,11 (cadastro) x 2.671,09 (PDF)."
+    },
+    {
+      "id": "rc_condominio",
+      "nome_canonico": "RC Condomínio",
+      "rotulos": ["resp civil cond", "rc condominio"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 400.000,00 nos dois lados; premio 729,39 x 729,42."
+    },
+    {
+      "id": "rc_sindico",
+      "nome_canonico": "RC Síndico",
+      "rotulos": ["resp civil sind de con", "rc sindico"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 400.000,00 nos dois lados; premio 205,61 x 205,62."
+    },
+    {
+      "id": "rc_danos_morais",
+      "nome_canonico": "RC Danos Morais",
+      "rotulos": ["danos morais", "rc danos morais"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 50.000,00 nos dois lados; premio 61,56 nos dois."
+    },
+    {
+      "id": "rc_portoes",
+      "nome_canonico": "RC Portões Automáticos",
+      "rotulos": ["rc portoes", "rc portoes automaticos"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 30.000,00 nos dois lados; premio 789,80 x 789,78."
+    },
+    {
+      "id": "rc_familiar",
+      "nome_canonico": "Responsabilidade Civil Familiar",
+      "rotulos": ["resp civil familiar", "responsabilidade civil familiar"],
+      "criterio": "mesma cobertura na HDI residencial do golden: LMI R$ 3.000,00 nos dois lados."
+    },
+    {
+      "id": "incendio_bens_condominos",
+      "nome_canonico": "Incêndio de Bens de Condôminos",
+      "rotulos": ["incendio de bens condomin", "incendio de bens de condominos"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 2.000.000,00 nos dois lados; premio 307,30 x 307,26. O rotulo do cadastro esta TRUNCADO pela fonte ('CONDOMIN'), nao abreviado."
+    },
+    {
+      "id": "vidros",
+      "nome_canonico": "Quebra de Vidros",
+      "rotulos": ["vidros", "quebra de vidros", "quebra de vidros anuncios luminosos"],
+      "criterio": "duas apolices do golden. HDI: cadastro 'VIDROS' x PDF 'Quebra de Vidros', LMI R$ 3.000,00 nos dois. Allianz: cadastro 'QUEBRA DE VIDROS' x PDF 'Quebra de Vidros/Anuncios Luminosos', LMI R$ 70.000,00 e premio 2.318,11 nos dois."
+    },
+    {
+      "id": "roubo_furto_de_bens",
+      "nome_canonico": "Roubo e Furto Qualificado de Bens",
+      "rotulos": ["roubo", "roubo de bens", "roubo e furto de bens", "roubo furto qualificado de bens"],
+      "criterio": "duas apolices do golden. HDI: cadastro 'ROUBO' x PDF 'Roubo e Furto de Bens', LMI R$ 3.000,00 nos dois. Allianz: cadastro 'ROUBO DE BENS' x PDF 'Roubo/Furto Qualificado de Bens', LMI R$ 25.000,00 e premio 189,59 x 189,60. ⛔ 'Roubo de Bens de Condominos' (LMI R$ 35.000,00, premio 119,94) NAO entra neste grupo: e OUTRA cobertura da MESMA apolice, e por substring ela casaria com 'ROUBO DE BENS'."
+    },
+    {
+      "id": "equipamentos_eletronicos",
+      "nome_canonico": "Equipamentos Eletrônicos",
+      "rotulos": ["equipamentos eletronicos", "equip eletronicos eletrodomesticos"],
+      "criterio": "mesma cobertura na HDI residencial do golden: LMI R$ 3.000,00 nos dois lados."
+    },
+    {
+      "id": "tumultos",
+      "nome_canonico": "Tumultos, Greves e Lock-Outs",
+      "rotulos": ["tumultos", "tumultos greves lock outs"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 25.000,00 nos dois lados; premio 38,55 x 38,52."
+    },
+    {
+      "id": "vendaval",
+      "nome_canonico": "Vendaval / Ciclone / Tornado / Granizo",
+      "rotulos": ["vendaval", "vendaval cicl tornado gra", "vendaval ciclone tornado granizo"],
+      "criterio": "mesma cobertura na Allianz condominio do golden: LMI R$ 340.000,00 nos dois lados; premio 5.691,46 x 5.691,45. ⚠️ Na HDI o 'Vendaval' existe SO no PDF (R$ 47,36) — e por isso ele entra como cobertura NOVA de origem documento_oficial, nao como casamento."
+    },
+    {
+      "id": "assistencia_24h",
+      "nome_canonico": "Assistência 24h",
+      "rotulos": ["assitencia 24hs", "assistencia 24hs", "assistencia 24h"],
+      "criterio": "mesma cobertura na Allianz condominio do golden. 'ASSITENCIA' (sem o segundo 's') e o erro de digitacao da FONTE, transcrito como veio. 📊 premio 0,00 no cadastro x R$ 23,88 no PDF — e essa divergencia fica ESCRITA, nao resolvida."
+    },
+    {
+      "id": "ruptura_de_tubulacoes",
+      "nome_canonico": "Ruptura de Tubulações",
+      "rotulos": ["ruptura de tubulacoes", "ruptura de tanques e tubulacoes"],
+      "criterio": "os dois PDFs do golden usam a mesma familia de rotulo (HDI 'Ruptura de Tubulacoes'; Allianz 'Ruptura de Tanques e Tubulacoes'). ⚠️ Nenhum dos dois CADASTROS tem a cobertura: a linha existe para o dia em que tiver, e hoje as duas entram como cobertura NOVA de origem documento_oficial."
+    }
+  ]
+}

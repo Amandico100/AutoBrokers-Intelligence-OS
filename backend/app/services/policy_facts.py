@@ -15,11 +15,45 @@ Regras duras herdadas de P0/R1B (irreversíveis):
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
-FACT_SOURCES = ("infocap_structured", "official_document", "policy_rule")
+logger = logging.getLogger(__name__)
+
+#: 🔴 O nome do FORNECEDOR saiu de dentro do modelo do DOMÍNIO
+#: (SPEC-EXTRA-001.1 §5.3). O valor canônico chamava-se `infocap_structured`:
+#: numa corretora que usasse Quiver, o fato de uma cobertura continuaria
+#: dizendo que veio da InfoCap. É o tipo de defeito que, não corrigido agora,
+#: "reinfecta todo leitor seguinte" (CLAUDE.md §12.1).
+FACT_SOURCES = ("sistema_de_gestao", "documento_oficial", "regra_de_apolice")
+
+#: **Expand-first, e o antigo continua sendo LIDO** (CLAUDE.md §8). Os novos
+#: valores passam a ser escritos; os leitores aceitam os dois por `fonte_canonica`,
+#: com o antigo registrado em log. 📊 Não há backfill de banco a fazer: medido no
+#: BLOCO 0 (premissa 7) — `grep -rn "policy_facts|fact_type" backend/app` → os
+#: facts vivem em MEMÓRIA, dentro do turno; nenhuma tabela os persiste.
+FONTES_LEGADAS = {
+    "infocap_structured": "sistema_de_gestao",
+    "official_document": "documento_oficial",
+    "policy_rule": "regra_de_apolice",
+}
+
+
+def fonte_canonica(valor: Any) -> str:
+    """O valor antigo de `source` → o novo. O que já é novo passa direto.
+
+    ⚠️ Um valor desconhecido **volta como veio**: converter o que não se
+    reconhece esconderia a fonte nova de quem a lê.
+    """
+    texto = str(valor or "").strip()
+    novo = FONTES_LEGADAS.get(texto)
+    if novo is None:
+        return texto
+    logger.info("[POLICY FACTS] fonte legada %r lida como %r", texto, novo)
+    return novo
+
 
 FACT_TYPES = (
     "coverage",
@@ -117,7 +151,7 @@ def _facts_from_sections(pack: Dict[str, Any], locator_hash: Optional[str]) -> L
                 fact_type=fact_type,
                 label=label,
                 value=section.get("amount"),
-                source="infocap_structured",
+                source="sistema_de_gestao",
                 source_detail=detail,
                 confidence="high",
                 locator_hash=locator_hash,
@@ -129,7 +163,7 @@ def _facts_from_sections(pack: Dict[str, Any], locator_hash: Optional[str]) -> L
                     fact_type="deductible",
                     label=f"Franquia — {label}",
                     value=section.get("deductible"),
-                    source="infocap_structured",
+                    source="sistema_de_gestao",
                     source_detail={"provider_field": section.get("source") or "coverage_sections"},
                     confidence="high",
                     locator_hash=locator_hash,
@@ -176,7 +210,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                     fact_type="coverage",
                     label=label,
                     value=structured.get("lmi"),
-                    source="official_document",
+                    source="documento_oficial",
                     source_detail={**detail_base, "premium": structured.get("premium"), "participation": structured.get("participation")},
                     confidence="high",
                     locator_hash=locator_hash,
@@ -188,7 +222,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                         fact_type="deductible",
                         label=f"Franquia — {label}",
                         value=structured.get("participation"),
-                        source="official_document",
+                        source="documento_oficial",
                         source_detail=detail_base,
                         confidence="high",
                         locator_hash=locator_hash,
@@ -201,7 +235,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                     fact_type="assistance",
                     label=str(structured.get("plan") or snippet[:80]),
                     value=structured.get("premium"),
-                    source="official_document",
+                    source="documento_oficial",
                     source_detail=detail_base,
                     confidence="high",
                     locator_hash=locator_hash,
@@ -215,7 +249,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                     fact_type="assistance",
                     label="Serviços do plano de assistência",
                     value="; ".join(str(s) for s in services),
-                    source="official_document",
+                    source="documento_oficial",
                     source_detail=detail_base,
                     confidence="high",
                     locator_hash=locator_hash,
@@ -228,7 +262,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                     fact_type="limit",
                     label="Limite máximo de garantia da apólice (LMGA)",
                     value=structured.get("amount"),
-                    source="official_document",
+                    source="documento_oficial",
                     source_detail=detail_base,
                     confidence="high",
                     locator_hash=locator_hash,
@@ -242,7 +276,7 @@ def _facts_from_document_evidence(pack: Dict[str, Any], locator_hash: Optional[s
                 fact_type=fact_type,
                 label=label,
                 value=None,
-                source="official_document",
+                source="documento_oficial",
                 source_detail=detail_base,
                 confidence=confidence,
                 locator_hash=locator_hash,
@@ -262,7 +296,7 @@ def _validity_fact(pack: Dict[str, Any], locator_hash: Optional[str]) -> List[Di
             fact_type="validity",
             label="Vigência da apólice",
             value=value,
-            source="infocap_structured",
+            source="sistema_de_gestao",
             source_detail={"provider_field": "valid_from/valid_to"},
             confidence="high",
             locator_hash=locator_hash,
@@ -298,7 +332,11 @@ def has_confirmed_assistance(facts: List[Dict[str, Any]]) -> bool:
             continue
         if fact.get("fact_type") != "assistance":
             continue
-        if fact.get("source") not in FACT_SOURCES:
+        # ⚠️ Expand-first: o fact antigo (`infocap_structured`) continua sendo
+        # ACEITO enquanto houver quem o escreva — 📊 `assistance_policy.py:132`
+        # ainda escreve `policy_rule`. Rejeitá-lo aqui apagaria a assistência
+        # confirmada de um turno inteiro, em silêncio.
+        if fonte_canonica(fact.get("source")) not in FACT_SOURCES:
             continue
         if str(fact.get("confidence") or "").lower() in ("high", "medium"):
             return True

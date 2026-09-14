@@ -1164,6 +1164,7 @@ async def infocap_lookup(
                 policy_items = await _fetch_policy_items(
                     client, headers, itens_path=itens_path,
                     codfil=policy_locator["codfil"], nosnum=policy_locator["nosnum"], company_id=company_id,
+                    connection_id=connection_id,
                 )
                 pack = _build_evidence_pack(
                     selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked,
@@ -1177,6 +1178,7 @@ async def infocap_lookup(
                     token=token,
                     auth_cookies=auth_res.cookies,
                     credential_origin_url=base_url,
+                    connection_id=connection_id,
                 )
                 selected_policy = _sanitize_policy(selected_raw, unmasked)
                 client_flags: Dict[str, Any] = {}
@@ -1394,6 +1396,7 @@ async def infocap_lookup(
             policy_items = await _fetch_policy_items(
                 client, headers, itens_path=itens_path,
                 codfil=policy_locator["codfil"], nosnum=policy_locator["nosnum"], company_id=company_id,
+                connection_id=connection_id,
             )
             pack = _build_evidence_pack(
                 selected_raw, payload.prefer_insurer, payload.prefer_product, unmasked,
@@ -1407,6 +1410,7 @@ async def infocap_lookup(
                 token=token,
                 auth_cookies=auth_res.cookies,
                 credential_origin_url=base_url,
+                connection_id=connection_id,
             )
             selected_policy = _sanitize_policy(selected_raw, unmasked)
             return _done({
@@ -2232,8 +2236,13 @@ async def _maybe_attach_official_policy_document_evidence(
     auth_cookies: Any,
     credential_origin_url: Optional[str] = None,
     agent_id: Optional[str] = None,
+    connection_id: str = "",
 ) -> Dict[str, Any]:
-    """Attach R1C.1 evidence when requested and safe, without leaking source URL."""
+    """Attach R1C.1 evidence when requested and safe, without leaking source URL.
+
+    🔴 `connection_id` entra na CHAVE do cache documental (SPEC-EXTRA-001.1
+    §3.3): a mesma apólice lida por outra conexão da mesma corretora não pode
+    servir a leitura anterior."""
     if not isinstance(pack, dict):
         return pack
     try:
@@ -2289,6 +2298,7 @@ async def _maybe_attach_official_policy_document_evidence(
             fetcher=_fetcher,
             agent_id=agent_id,
             force_refresh=bool(getattr(payload, "force_document_evidence_refresh", False)),
+            connection_id=connection_id,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"[INFOCAP POLICY DOC] evidence pipeline failed: {type(exc).__name__}")
@@ -3354,15 +3364,27 @@ async def _fetch_policy_items(
     codfil: Any,
     nosnum: Any,
     company_id: str,
+    connection_id: str = "",
 ) -> List[Dict[str, Any]]:
     """Lê `/itens` (coberturas + objeto do risco) com cache curto no Redis.
 
     Best-effort: falha aqui nunca derruba a consulta da apólice — o pack só
     volta a ficar sem cobertura estruturada, que é o estado anterior.
+
+    🔴 A chave do cache é `company + connection + codfil + nosnum`
+    (SPEC-EXTRA-001.1 §3.3). O `company_id` já estava lá; o `connection_id`
+    faltava. 📊 A corretora piloto tem **4** conexões InfoCap — 3 `archived`
+    (uma com `invalid_credentials`) e 1 `connected`. Trocar a conexão ativa
+    NÃO invalidava o cache: por até 180 s o corretor continuava lendo o que a
+    conexão antiga devolveu. É defeito de FRESCOR dentro do mesmo tenant — não
+    é cross-tenant, e por isso é ESSENCIAL e não blocker. M-A4 mede as duas.
     """
     if not codfil or not nosnum:
         return []
-    cache_key = f"infocap:itens:{_short_hash(str(company_id))}:{codfil}:{nosnum}"
+    cache_key = (
+        f"infocap:itens:{_short_hash(str(company_id))}:"
+        f"{_short_hash(str(connection_id))}:{codfil}:{nosnum}"
+    )
     redis_client = None
     try:
         from app.core.redis import get_async_redis_client
@@ -4160,6 +4182,7 @@ async def infocap_policy_detail(
                 )
             policy_items = await _fetch_policy_items(
                 client, headers, itens_path=itens_path, codfil=codfil, nosnum=nosnum, company_id=company_id,
+                connection_id=connection_id,
             )
             pack = _build_evidence_pack(
                 doc, prefer_insurer, prefer_product, unmasked,
@@ -4173,6 +4196,7 @@ async def infocap_policy_detail(
                 token=token,
                 auth_cookies=auth_res.cookies,
                 credential_origin_url=base_url,
+                connection_id=connection_id,
             )
             _log("found", extra=f" confidence={pack.get('confidence')}")
             return {

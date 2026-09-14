@@ -22,7 +22,17 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 from app.services.assistance_policy import apply_residential_assistance_policy, policy_rule_facts
-from app.services.policy_facts import extract_policy_facts, has_confirmed_assistance
+# ⚠️ `fonte_canonica` e a metade LEITORA da renomeacao expand-first da
+# SPEC-EXTRA-001.1 §5.3: o compositor aceita o valor NOVO
+# (`sistema_de_gestao`/`documento_oficial`) E o antigo
+# (`infocap_structured`/`official_document`), que ainda chega de quem nao
+# migrou. 🔴 Sem isto, a renomeacao apagaria a lista de coberturas da
+# resposta em silencio — que e o defeito que ela existe para consertar.
+from app.services.policy_facts import (
+    extract_policy_facts,
+    fonte_canonica,
+    has_confirmed_assistance,
+)
 
 _INVALID_NUMBERS = {"", "0", "none", "null", "-"}
 
@@ -100,14 +110,14 @@ def _structured_assistance_labels(facts: List[Dict[str, Any]]) -> List[str]:
     return [
         str(f.get("label") or "").strip()
         for f in facts
-        if f.get("fact_type") == "assistance" and f.get("source") == "infocap_structured" and f.get("label")
+        if f.get("fact_type") == "assistance" and fonte_canonica(f.get("source")) == "sistema_de_gestao" and f.get("label")
     ]
 
 
 def _document_assistance_citations(facts: List[Dict[str, Any]]) -> List[str]:
     citations = []
     for f in facts:
-        if f.get("fact_type") != "assistance" or f.get("source") != "official_document":
+        if f.get("fact_type") != "assistance" or fonte_canonica(f.get("source")) != "documento_oficial":
             continue
         detail = f.get("source_detail") or {}
         page = detail.get("page")
@@ -167,7 +177,7 @@ def _compose_assistance_answer(
 
 def _compose_coverage_answer(pack: Dict[str, Any], facts: List[Dict[str, Any]]) -> str:
     coverage_facts = [f for f in facts if f.get("fact_type") == "coverage"]
-    structured = [f for f in coverage_facts if f.get("source") == "infocap_structured"]
+    structured = [f for f in coverage_facts if fonte_canonica(f.get("source")) == "sistema_de_gestao"]
     lines: List[str] = []
     if structured:
         lines.append("As coberturas registradas na apólice são:")
@@ -185,7 +195,7 @@ def _compose_coverage_answer(pack: Dict[str, Any], facts: List[Dict[str, Any]]) 
                 entry += " (" + " · ".join(extras) + ")"
             lines.append(entry)
     else:
-        doc_facts = [f for f in coverage_facts if f.get("source") == "official_document"]
+        doc_facts = [f for f in coverage_facts if fonte_canonica(f.get("source")) == "documento_oficial"]
         if doc_facts:
             lines.append("Coberturas registradas no documento oficial da apólice:")
             lines.append("")
