@@ -16,6 +16,11 @@ type Portal = {
 };
 type Cred = {
   portal_key: string; username: string | null; has_password: boolean; health: string; updated_at: string | null;
+  // 🔴 SPEC-EXTRA-001.6 B3.4: o rotulo e a acao vem PRONTOS do backend
+  // (`app/services/saude_do_portal.py`), a mesma funcao que alimenta a Central
+  // de Agentes. A tela nao traduz `health` — se traduzisse, seriam duas listas,
+  // e a segunda nunca avisa que envelheceu (SPEC-088 BLOCO D).
+  health_rotulo?: string | null; health_acao?: string | null; verificado_em?: string | null;
 };
 type PortalJob = {
   id: string;
@@ -420,6 +425,15 @@ export default function PortaisPage() {
                       >
                         {p.login_url} <ExternalLink className="h-3 w-3" />
                       </a>
+                      {!isPublic && cred?.health_rotulo ? (
+                        <p
+                          className={`mt-1 text-[11px] ${cred.health === 'ok' ? 'text-muted-foreground' : 'text-foreground'}`}
+                          data-saude={cred.health}
+                        >
+                          {cred.health_rotulo}
+                          {cred.health_acao ? <span className="text-muted-foreground"> — {cred.health_acao}</span> : null}
+                        </p>
+                      ) : null}
                     </div>
                     {connected && !isPublic && (
                       <button

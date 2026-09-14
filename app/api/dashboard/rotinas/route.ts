@@ -32,6 +32,14 @@ function normalizeRoutineConfig(value: unknown): Record<string, unknown> {
   const maxBoletos = Number.isInteger(cfg.max_boletos_por_execucao)
     ? Math.max(1, Math.min(50, Number(cfg.max_boletos_por_execucao)))
     : 10;
+  // 🔴 SPEC-EXTRA-001.6 B1.3 — quantos dias entre duas cobranças do MESMO
+  // segurado. O clamp existe nos dois lados pela mesma razão do `max_boletos`:
+  // o campo da tela é cortesia, a rota é a barreira, e o motor Python clampa de
+  // novo (1–30) porque a config pode ter sido gravada por outro caminho. 📊 0
+  // dias é o comportamento de 10–11/09: os mesmos 7 boletos nos dois dias.
+  const diasEntreCobrancas = Number.isInteger(cfg.dias_entre_cobrancas_do_mesmo_segurado)
+    ? Math.max(1, Math.min(30, Number(cfg.dias_entre_cobrancas_do_mesmo_segurado)))
+    : 7;
   // Só dígitos e comprimento conferido no destino (a rota não é o lugar da
   // regra do 9º dígito: ela já existe em dois lugares e uma terceira cópia é
   // P-097-TELEFONE-BR-DUPLICADO).
@@ -49,6 +57,7 @@ function normalizeRoutineConfig(value: unknown): Record<string, unknown> {
     confirmacao_cliente: cfg.confirmacao_cliente === true,
     test_number: String(cfg.test_number || '').replace(/\D/g, ''),
     max_boletos_por_execucao: maxBoletos,
+    dias_entre_cobrancas_do_mesmo_segurado: diasEntreCobrancas,
     management_provider: String(cfg.management_provider || 'infocap').trim() || 'infocap',
     message_template: String(cfg.message_template || '').trim(),
   };

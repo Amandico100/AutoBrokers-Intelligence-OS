@@ -525,7 +525,8 @@
    "encaminhado_por": "uuid",
    "retorno_do_cliente": "text",
    "retorno_em": "timestamp with time zone",
-   "canario": "boolean"
+   "canario": "boolean",
+   "segurado_chave": "text"
   },
   "human_support_destinations": {
    "id": "uuid",
@@ -1287,7 +1288,12 @@
     "tipo": "boolean",
     "nulo": false,
     "default": "false"
-   }
+   },
+    "segurado_chave": {
+     "tipo": "text",
+     "nulo": true,
+     "default": null
+    }
   },
   "brand_assets": {
    "id": {
@@ -3364,5 +3370,6 @@
   }
  },
  "detalhe_doc": "SPEC-EXTRA-001 (07/09/2026, P-098-FIXTURE-NOT-NULL): `detalhe[tabela][coluna] = {tipo, nulo, default}` lido de information_schema.columns (is_nullable, column_default) para todas as tabelas de `tabelas` + billing_sent_log, platform_sends, human_support_destinations, integrations, routines, activity_log. `tabelas` continua {coluna: tipo} por compatibilidade com os dubles antigos. Um duble que aceita INSERT sem coluna NOT NULL sem default deve responder 23502 lendo daqui.",
+ "medido_em_extra0016": "13/09/2026 -- `billing_sent_log.segurado_chave` entra pela migration 20260914_01 (SPEC-EXTRA-001.6 B1.4), ainda PENDENTE de APPLY. Ela esta aqui porque o codigo ja a le e escreve: sem ela o duble devolveria 42703 num caminho que em producao vai existir.",
  "detalhe_medido_em": "07/09/2026"
 }

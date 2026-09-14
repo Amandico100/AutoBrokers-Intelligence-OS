@@ -3766,7 +3766,22 @@ async def cobranca_sweep(page, params: Dict[str, Any], evidence: Dict[str, Any])
     """SPEC-023 P3: varre cobranca Allianz, extrai atrasados e baixa boletos quando possivel."""
     login = await login_check(page, params, evidence)
     if login.status != "done":
-        return login
+        # 🔴 SPEC-EXTRA-001.6 B2.4. O diagnóstico de sessão morta existia desde
+        # 18/08 — mas 30 linhas ABAIXO, num ramo que só roda com o login já
+        # concluído. 📊 Nas 34 tentativas entre 18/08 e 11/09 o `login_check`
+        # nunca devolveu `done`, então ele nunca rodou: a sessão de 27 dias era
+        # reinjetada, o portal devolvia a tela de login e o job morria em
+        # "tela pos-login nao reconhecida".
+        #
+        # ⛔ UMA retentativa, nunca laço. E credencial RECUSADA (`failed`) não é
+        # sessão morta: relogar com a mesma senha errada é bater na porta
+        # trancada, e é assim que o portal bloqueia a conta da corretora.
+        if login.status != "failed" and (await _diagnosticar_sessao_na_pagina(page, evidence)).get("morta"):
+            evidence["relogin"] = True
+            if await _relogin_fresh(page, params, evidence, motivo="sessao morta no servidor"):
+                login = await login_check(page, params, evidence)
+        if login.status != "done":
+            return login
 
     evidence["logged_in"] = True
     # O token do micro-app da Ficha de Gestão (EPAC) normalmente já vem válido

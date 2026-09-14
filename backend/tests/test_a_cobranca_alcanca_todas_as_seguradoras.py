@@ -176,9 +176,16 @@ check("fila de 20 e estavel entre duas execucoes (retomada previsivel)",
       [i["recibo"] for i in bc.fila_de_cobranca(vinte)[0]] == [i["recibo"] for i in fila20])
 
 fonte = (ROOT / "app" / "services" / "billing_collection.py").read_text(encoding="utf-8")
+# 🔴 13/09/2026 (SPEC-EXTRA-001.6 B1.2): a ancora era
+# `a_enviar = ordenar_para_entrega(items)`. O que este guarda afirma NAO mudou --
+# a lista INTEIRA continua entrando no envio, sem o corte por `max_boletos` (que
+# e teto de DOWNLOAD). Mudou o que o laco percorre: GRUPOS de um segurado (1
+# mensagem, N boletos), e `agrupar_por_segurado` ordena cada grupo e os grupos
+# entre si pela mesma `ordenar_para_entrega`. 📊 O acervo de 10-11/09 tinha 4
+# parcelas do mesmo CNPJ virando 4 abordagens a mesma pessoa.
 check("o envio NAO fatia mais a lista por max_boletos_por_execucao",
       "items[: int(cfg[\"max_boletos_por_execucao\"])]" not in fonte
-      and "a_enviar = ordenar_para_entrega(items)" in fonte)
+      and "a_enviar = agrupar_por_segurado(items)" in fonte)
 check("portal sem automacao vira aviso no relatorio, nao `continue` mudo",
       "ainda NAO tem automacao de cobranca" in fonte)
 

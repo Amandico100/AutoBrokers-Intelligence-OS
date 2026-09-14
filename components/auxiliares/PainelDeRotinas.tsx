@@ -563,6 +563,12 @@ export default function PainelDeRotinas({
   // existia na tela, o config não tinha a chave, e o segurado leria "Aqui é a
   // nossa equipe, da Resulta". Nos modos reais o motor RETÉM a rotina sem ele.
   const billingAttendantName = String(billingConfig?.attendant_name || '');
+  // 🔴 SPEC-EXTRA-001.6 B1.3 — o ritmo de cobrança do MESMO segurado. 📊 10 e
+  // 11/09: os mesmos 7 boletos nos dois dias. O motor clampa em 1–30 (e o
+  // default 7 é o D-PILOTO-18); aqui o campo só não deixa a pessoa digitar fora.
+  const billingDiasEntreCobrancas = Number(
+    billingConfig?.dias_entre_cobrancas_do_mesmo_segurado || 7,
+  );
   const setBillingConfig = (patch: Record<string, unknown>) => {
     setForm({
       ...form,
@@ -1185,6 +1191,28 @@ export default function PainelDeRotinas({
                         <p className="mt-1 text-[11px] text-faint">
                           Para o primeiro teste, 1 ou 2. Quem não couber hoje volta
                           amanhã de onde parou.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Dias entre cobranças do mesmo segurado
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={billingDiasEntreCobrancas}
+                          onChange={(e) =>
+                            setBillingConfig({
+                              dias_entre_cobrancas_do_mesmo_segurado: parseInt(e.target.value || '7', 10),
+                            })
+                          }
+                          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                        />
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          A mesma pessoa não é cobrada de novo antes disso — nem por
+                          outra seguradora. Quem ficar de fora aparece no relatório,
+                          com a data em que volta.
                         </p>
                       </div>
                     </div>

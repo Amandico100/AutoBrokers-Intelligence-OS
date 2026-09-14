@@ -23,6 +23,218 @@ JOB_TIMEOUT_SECONDS = int(os.getenv("PORTAL_JOB_TIMEOUT_SECONDS", "1200"))
 STALE_MARGIN_SECONDS = 600
 
 
+# --------------------------------------------------------------------------
+# A SAÚDE DO PORTAL — um vocabulário só, e ele mora onde está o ESCRITOR.
+#
+# 🔴 SPEC-EXTRA-001.6 B2.2/B3.3. `portal_accounts.health` existe desde
+# `20260706_03_spec020_portal.sql:21` e, 📊 medido em 13/09/2026,
+# `select health,count(*) from portal_accounts group by 1` devolvia
+# **16 de 16 = `unknown`**: a coluna nunca teve escritor. `portal_sessions.health`
+# tinha um escritor de UMA palavra só (`_save_session_state` grava `ok` no
+# sucesso) — nenhuma das duas sabia dizer POR QUE não entrou.
+#
+# As seis palavras abaixo são o vocabulário inteiro, e são as mesmas nas duas
+# tabelas e nas duas telas. O rótulo humano de cada uma mora em
+# `app/services/saude_do_portal.py`, que IMPORTA daqui — uma lista, um lugar.
+SAUDE_OK = "ok"
+SAUDE_EXPIRADA = "expirada"
+SAUDE_CREDENCIAL_RECUSADA = "credencial_recusada"
+SAUDE_PEDE_HUMANO = "pede_humano"
+SAUDE_FORA_DO_AR = "fora_do_ar"
+SAUDE_DESCONHECIDA = "unknown"
+
+VOCABULARIO_DE_SAUDE = (
+    SAUDE_OK, SAUDE_EXPIRADA, SAUDE_CREDENCIAL_RECUSADA,
+    SAUDE_PEDE_HUMANO, SAUDE_FORA_DO_AR, SAUDE_DESCONHECIDA,
+)
+
+# A ordem da GRAVIDADE, para quem agrega várias contas num card só (a Central).
+# Menor = pior. `credencial_recusada` vem primeiro porque é a única que não
+# volta sozinha: exige gesto humano (senha nova).
+GRAVIDADE_DA_SAUDE: Dict[str, int] = {
+    SAUDE_CREDENCIAL_RECUSADA: 0,
+    SAUDE_FORA_DO_AR: 1,
+    SAUDE_PEDE_HUMANO: 2,
+    SAUDE_EXPIRADA: 3,
+    SAUDE_DESCONHECIDA: 4,
+    SAUDE_OK: 5,
+}
+
+# ⛔ Só estas duas journeys escrevem saúde. `abrir_atendimento` (vidros) abre
+# pedido no portal e o desfecho dele NÃO é um veredito sobre a credencial: um
+# atendimento que pediu uma pessoa não significa que a senha parou de valer.
+JOURNEYS_QUE_DIZEM_DA_SAUDE = ("login_check", "cobranca_sweep")
+
+
+def _inteiro_do_ambiente(nome: str, padrao: int, minimo: int, maximo: int) -> int:
+    """Lido a cada chamada, de propósito: o valor vem do ambiente do serviço e
+    um teste tem de conseguir mudá-lo sem reimportar o módulo. Clamp SEMPRE —
+    `PORTAL_MAX_TENTATIVAS=50` no painel viraria 50 logins seguidos no portal
+    da seguradora, que é como a conta da corretora é bloqueada."""
+    try:
+        valor = int(str(os.getenv(nome, "")).strip() or padrao)
+    except Exception:  # noqa: BLE001
+        valor = padrao
+    return max(minimo, min(maximo, valor))
+
+
+def ttl_de_sessao_horas() -> int:
+    """PORTAL_SESSION_TTL_HORAS — quanto tempo uma sessão guardada ainda vale.
+
+    📊 13/09/2026: `select portal_key,health,verified_at from portal_sessions`
+    mostrou a sessão da Allianz com `verified_at` de **17/08** e `health='ok'` —
+    27 dias — reinjetada todo dia. A doc do Playwright (§13 E1) diz a frase com
+    todas as letras: *"you need to delete the stored state when it expires"*.
+    Aqui não se apaga: um login limpo sobrescreve o estado no sucesso. O que
+    faltava era SABER que venceu.
+    """
+    return _inteiro_do_ambiente("PORTAL_SESSION_TTL_HORAS", 12, 1, 72)
+
+
+def backoff_base_s() -> int:
+    return _inteiro_do_ambiente("PORTAL_BACKOFF_BASE_S", 60, 1, 3600)
+
+
+def backoff_teto_s() -> int:
+    return _inteiro_do_ambiente("PORTAL_BACKOFF_TETO_S", 900, 1, 86400)
+
+
+def max_tentativas_de_portal() -> int:
+    return _inteiro_do_ambiente("PORTAL_MAX_TENTATIVAS", 3, 1, 6)
+
+
+def breaker_horas() -> int:
+    """PORTAL_BREAKER_HORAS — quanto tempo `fora_do_ar` fica aberto.
+
+    ⚠️ Não há timer aqui: quem reabre é o PRÓLOGO da rotina, que lê
+    `portal_accounts.health` + `updated_at`. Um timer no worker seria scheduler
+    novo, e isso a CLAUDE.md §5 proíbe.
+    """
+    return _inteiro_do_ambiente("PORTAL_BREAKER_HORAS", 6, 1, 168)
+
+
+def _texto_normalizado(valor: Any) -> str:
+    """Minúsculas sem acento. 🔴 CLAUDE.md §9.4: o padrão é medido DEPOIS desta
+    normalização, então quem escreve marcador aqui escreve sem acento."""
+    import unicodedata
+
+    cru = unicodedata.normalize("NFKD", str(valor or ""))
+    return "".join(c for c in cru if not unicodedata.combining(c)).lower()
+
+
+# A credencial recusada é decidida pela MENSAGEM da journey, e num lugar só.
+# 📊 As mensagens REAIS do acervo (13/09/2026,
+# `select distinct portal_key,status,evidence->>'message' from portal_jobs
+#  where status in ('failed','needs_human') and finished_at>='2026-09-01'`):
+#   MAPFRE  failed       "a MAPFRE recusou a credencial (autenticacao invalida)"
+#   Allianz failed       "credenciais rejeitadas pelo portal Allianz"  (depois do P0)
+_MARCAS_DE_CREDENCIAL = ("recus", "rejeitad", "credenci", "invalid")
+
+# ⚠️ A tela de LOGIN devolvida a uma sessão injetada é `expirada`, e a lista tem
+# de ser ESTREITA. "tela pos-login Allianz nao reconhecida" contém a palavra
+# "login" e NÃO é sessão vencida — é tela desconhecida (`pede_humano`). Por isso
+# aqui só entram frases que afirmam a queda da sessão.
+_MARCAS_DE_SESSAO_CAIDA = (
+    "sessao caiu", "sessao morta", "sessao expirou", "sessao vencida",
+    "sessao invalida", "tela de login", "voltou para o login", "nao autenticado",
+)
+
+
+def veredito_de_saude(status: str, evidence: Dict[str, Any], message: str = "") -> str:
+    """PURO: o que este desfecho diz sobre a SAÚDE da conta no portal.
+
+    Devolve uma das palavras de `VOCABULARIO_DE_SAUDE` — ou **string vazia**,
+    que significa "não mude nada". A string vazia é o caso que mais importa: uma
+    exceção de rede não é um veredito sobre a senha, e gravar `fora_do_ar` na
+    primeira delas apagaria um `ok` verdadeiro por causa de um timeout.
+
+    🔴 O elo que este classificador fecha (protocolo §0.3): o job da Zurich de
+    11/09 terminou `needs_human` com `captured.logged_in=True` — *"http 200 com
+    ZERO parcelas"*. O LOGIN entrou; o `needs_human` é da varredura. Classificar
+    aquele job como problema de credencial mandaria o Founder trocar uma senha
+    que está certa.
+    """
+    ev = evidence if isinstance(evidence, dict) else {}
+    texto = _texto_normalizado(message or ev.get("message") or ev.get("error") or "")
+
+    # (1) exceção transitória: não é veredito. Só depois de esgotar as tentativas
+    #     o portal passa a ser chamado de `fora_do_ar`.
+    if ev.get("excecao_transitoria"):
+        return SAUDE_FORA_DO_AR if ev.get("tentativas_esgotadas") else ""
+
+    # (2) credencial recusada — a única que não volta sozinha (§13 E3,
+    #     "accelerated circuit breaking": a resposta de falha já basta).
+    if str(status) == "failed" and any(m in texto for m in _MARCAS_DE_CREDENCIAL):
+        return SAUDE_CREDENCIAL_RECUSADA
+
+    # (3) entrou é entrou. Vale inclusive para `needs_human` da VARREDURA.
+    if ev.get("logged_in"):
+        return SAUDE_OK
+    if str(status) == "done":
+        return SAUDE_OK
+
+    # (4) a sessão injetada não valeu: o portal devolveu a tela de login.
+    caiu = any(m in texto for m in _MARCAS_DE_SESSAO_CAIDA)
+    diagnostico = ev.get("sessao_morta_detectada")
+    if isinstance(diagnostico, dict) and diagnostico.get("morta"):
+        caiu = True
+    if caiu:
+        return SAUDE_EXPIRADA
+
+    # (5) o resto pede gente: CAPTCHA, 2FA, tela nova — e também a CONFIGURAÇÃO
+    #     que falta ("username/password ausentes"), que não é recusa de senha.
+    return SAUDE_PEDE_HUMANO
+
+
+def e_transitoria(exc: BaseException) -> bool:
+    """A falha é do MOMENTO (rede, relógio, navegador que não subiu)?
+
+    ⛔ Nunca é transitória a recusa de credencial: ela nem chega aqui (vem como
+    resultado `failed` da journey, não como exceção). §13 E3: *"stop retry
+    attempts if the circuit breaker indicates that a fault isn't transient"*.
+    """
+    if exc is None:
+        return False
+    nome = type(exc).__name__
+    texto = str(exc)
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
+        return True
+    if "Timeout" in nome:
+        return True
+    if isinstance(exc, OSError):
+        return True
+    # O teto por job vira RuntimeError logo acima (`journey excedeu o teto`), e
+    # o Playwright fala de `BrowserType.launch` quando o navegador não sobe.
+    for marca in ("excedeu o teto", "browsertype.launch", "net::", "target closed",
+                  "connection refused", "econnreset", "temporarily unavailable"):
+        if marca in texto.lower():
+            return True
+    return False
+
+
+def proximo_available_at(attempts: int, agora=None, rnd=None) -> str:
+    """Quando este job pode ser tentado de novo — FULL JITTER (§13 E4).
+
+    `espera = random(0, min(base * 2^n, teto))`. 📊 A fonte da AWS mede que o
+    full jitter reduz o trabalho do cliente em mais de 50% com 100 clientes
+    concorrentes. O teto daqui é BAIXO de propósito e o motivo não é carga do
+    servidor: é **bloqueio da conta da corretora** no portal da seguradora — um
+    efeito que a fonte não modela, e que pede um limite menor que o dela.
+    """
+    import random as _random
+    from datetime import timedelta as _timedelta
+
+    sorteio = rnd or _random.random
+    try:
+        n = max(0, int(attempts))
+    except Exception:  # noqa: BLE001
+        n = 0
+    limite = min(backoff_base_s() * (2 ** min(n, 20)), backoff_teto_s())
+    espera = float(sorteio()) * float(limite)
+    base = agora or datetime.now(timezone.utc)
+    return (base + _timedelta(seconds=espera)).isoformat()
+
+
 def portal_real_enabled() -> bool:
     return str(os.getenv("PORTAL_REAL_ENABLED", "false")).strip().lower() in ("1", "true", "yes", "on")
 
@@ -237,6 +449,30 @@ def _decode_session_blob(raw: str) -> Dict[str, Any]:
     return {"storage_state": data if isinstance(data, dict) else None, "session_storage": []}
 
 
+def idade_da_sessao_h(verified_at: Any, agora=None) -> float | None:
+    """Quantas horas tem este carimbo. `None` quando não há carimbo legível —
+    e ⚠️ ausência de carimbo NÃO é sessão nova: é sessão sem prova de quando foi
+    verificada, e o desfecho seguro é refazer o login."""
+    quando = _parse_iso(verified_at)
+    if quando is None:
+        return None
+    base = agora or datetime.now(timezone.utc)
+    return max(0.0, (base - quando).total_seconds() / 3600.0)
+
+
+def _parse_iso(valor: Any):
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        if texto.endswith("Z"):
+            texto = texto[:-1] + "+00:00"
+        quando = datetime.fromisoformat(texto)
+    except Exception:  # noqa: BLE001
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
+
+
 def _load_session_bundle(supa, job: Dict[str, Any], account: Dict[str, Any]) -> Dict[str, Any]:
     ident = _session_identity(job, account)
     if not ident:
@@ -244,7 +480,7 @@ def _load_session_bundle(supa, job: Dict[str, Any], account: Dict[str, Any]) -> 
     try:
         res = (
             supa.table("portal_sessions")
-            .select("storage_state_encrypted, health")
+            .select("storage_state_encrypted, health, verified_at")
             .eq("company_id", ident["company_id"])
             .eq("portal_key", ident["portal_key"])
             .eq("account_label", ident["account_label"])
@@ -254,6 +490,22 @@ def _load_session_bundle(supa, job: Dict[str, Any], account: Dict[str, Any]) -> 
         rows = res.data or []
         if not rows or not rows[0].get("storage_state_encrypted"):
             return {"storage_state": None, "session_storage": []}
+
+        # 🔴 O TTL (SPEC-EXTRA-001.6 B2.1). Sessão vencida NÃO é injetada, e o
+        # chamador grava o motivo na evidência. Não se apaga nada no banco: o
+        # login limpo sobrescreve o estado quando der certo, e apagar antes
+        # deixaria a conta sem sessão nenhuma se o login falhasse.
+        ttl_h = ttl_de_sessao_horas()
+        idade = idade_da_sessao_h(rows[0].get("verified_at"))
+        if idade is None or idade > ttl_h:
+            return {"storage_state": None, "session_storage": [], "vencida": {
+                "verified_at": rows[0].get("verified_at"),
+                "idade_h": (round(idade, 1) if idade is not None else None),
+                "ttl_h": ttl_h,
+                "motivo": ("a sessao guardada nao tem carimbo de verificacao"
+                           if idade is None else
+                           "a sessao guardada passou do prazo e nao foi reaproveitada"),
+            }}
         from portal_worker import vault
 
         raw = vault.decrypt(rows[0]["storage_state_encrypted"])
@@ -287,11 +539,17 @@ def _save_session_state(
             "session_storage": session_storage if isinstance(session_storage, list) else [],
         }
         encrypted = vault.encrypt(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+        agora = _now()
         row = {
             **ident,
             "storage_state_encrypted": encrypted,
-            "verified_at": _now(),
-            "health": "ok",
+            "verified_at": agora,
+            # ⚠️ A palavra vem da MESMA lista do classificador: `health` tem seis
+            # valores e um só vocabulário (`VOCABULARIO_DE_SAUDE`). E `updated_at`
+            # vai explícito porque o default da coluna só vale no INSERT — o
+            # breaker do B3.3 mede a idade do estado por ele.
+            "health": SAUDE_OK,
+            "updated_at": agora,
         }
         (
             supa.table("portal_sessions")
@@ -302,6 +560,91 @@ def _save_session_state(
     except Exception as e:  # noqa: BLE001
         logger.warning("[PORTAL] falha ao salvar sessao persistida: %s", type(e).__name__)
         return False
+
+
+def _escrever_saude(supa, job: Dict[str, Any], account: Dict[str, Any] | None,
+                    veredito: str) -> bool:
+    """Grava o veredito nas DUAS tabelas, com o MESMO vocabulário.
+
+    🔴 `portal_accounts.health` era uma coluna sem escritor (📊 16 de 16
+    `unknown` em 13/09/2026) e `portal_sessions.health` só sabia dizer `ok`.
+    Sem isto, o prólogo da rotina (B3.1) não tem o que ler e o breaker (B3.3)
+    não tem onde morar — ele vive INTEIRO aqui, sem tabela nem timer novos.
+
+    ⚠️ `updated_at` vai EXPLÍCITO: o default da coluna só vale no INSERT, e o
+    breaker mede a idade do estado por ele.
+    🔴 CLAUDE.md §7: o update da conta filtra `company_id` além do `id`.
+    """
+    if not veredito or veredito not in VOCABULARIO_DE_SAUDE:
+        return False
+    if str(job.get("journey") or "") not in JOURNEYS_QUE_DIZEM_DA_SAUDE:
+        return False
+    ident = _session_identity(job, account or {})
+    if not ident:
+        return False
+    agora = _now()
+    gravou = False
+    try:
+        (
+            supa.table("portal_sessions")
+            .upsert({**ident, "health": veredito, "updated_at": agora},
+                    on_conflict="company_id,portal_key,account_label")
+            .execute()
+        )
+        gravou = True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PORTAL] nao consegui gravar a saude da sessao: %s", type(e).__name__)
+    conta_id = (account or {}).get("id") or job.get("account_id")
+    if conta_id:
+        try:
+            (
+                supa.table("portal_accounts")
+                .update({"health": veredito, "updated_at": agora})
+                .eq("id", conta_id)
+                .eq("company_id", ident["company_id"])
+                .execute()
+            )
+            gravou = True
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[PORTAL] nao consegui gravar a saude da conta: %s", type(e).__name__)
+    return gravou
+
+
+# Marcas que uma journey deixa quando REFEZ o login no meio do trabalho. A
+# presença da chave já conta (o valor diz se o relogin deu certo; o que importa
+# aqui é que ele ACONTECEU — sessão que precisou de relogin não foi reusada).
+_MARCAS_DE_RELOGIN = ("relogin", "relogin_por_sessao_morta",
+                      "fresh_login_after_empty_search", "force_login_no_form")
+
+
+def houve_relogin(evidence: Dict[str, Any]) -> bool:
+    ev = evidence if isinstance(evidence, dict) else {}
+    return any(m in ev for m in _MARCAS_DE_RELOGIN)
+
+
+def decidir_session_reused(evidence: Dict[str, Any], status: str) -> Dict[str, Any]:
+    """`session_reused` passa a dizer a VERDADE (B2.3 · CLAUDE.md §12.1).
+
+    📊 O job real da Allianz de 11/09 carregava `session_reused: true` **e**
+    terminou `needs_human` de login: a chave era escrita no instante da INJEÇÃO,
+    antes de alguém saber se o estado valia. O nome mentia sobre o que guardava,
+    e conserta-se o CAMPO, não o texto:
+
+        `session_injetada`  o storage foi injetado no contexto  (o fato de lá)
+        `session_reused`    a sessão valeu: terminou em `done`, logado, sem relogin
+
+    Muta e devolve o próprio dicionário.
+    """
+    ev = evidence if isinstance(evidence, dict) else {}
+    valeu = (bool(ev.get("session_injetada"))
+             and str(status) == "done"
+             and bool(ev.get("logged_in"))
+             and not houve_relogin(ev))
+    if valeu:
+        ev["session_reused"] = True
+    else:
+        ev.pop("session_reused", None)
+    return ev
 
 
 async def _capture_session_storage(page) -> list:
@@ -524,6 +867,17 @@ def resumo_do_desfecho(status: str, evidence: Dict[str, Any]) -> str:
             partes.append(f"a tela pergunta: {detalhe}" if pergunta else detalhe)
         if peca:
             partes.append(f"peca: {peca}")
+    elif status == "queued":
+        # O desfecho que NAO e desfecho: a falha foi do momento e o trabalho
+        # volta para a fila sozinho. Quem le precisa saber que nao ha nada a
+        # fazer — e que tambem nao ficou nada pendente.
+        requeue = ev.get("requeue") if isinstance(ev.get("requeue"), dict) else {}
+        partes.append("Nao consegui agora e vou tentar de novo sozinho"
+                      + (f" (tentativa {requeue.get('tentativa')} de {requeue.get('de')})"
+                         if requeue.get("de") else ""))
+        detalhe = _primeira_linha(ev.get("error")) or _primeira_linha(mensagem)
+        if detalhe:
+            partes.append(detalhe)
     else:
         partes.append("Nao consegui concluir no portal")
         if protocolo:
@@ -531,6 +885,15 @@ def resumo_do_desfecho(status: str, evidence: Dict[str, Any]) -> str:
         detalhe = _primeira_linha(ev.get("error")) or _primeira_linha(mensagem)
         if detalhe:
             partes.append(detalhe)
+
+    # 🔴 B2.3: a frase da sessao usa o `session_reused` NOVO — o que so e
+    # verdadeiro quando a sessao VALEU. 📊 O job da Allianz de 11/09 dizia
+    # `session_reused: true` e tinha parado no login: quem lia o resumo
+    # concluia que a sessao estava boa e procurava o defeito no lugar errado.
+    if status != "done" and ev.get("session_injetada") and not ev.get("session_reused"):
+        partes.append("a sessao guardada do portal nao valeu — o robo refaz o login na proxima")
+    elif ev.get("sessao_vencida") and status != "done":
+        partes.append("a sessao guardada tinha passado do prazo e nem foi usada")
 
     texto = " · ".join(p for p in partes if p)
     return " ".join(texto.replace("_", " ").split())
@@ -743,6 +1106,18 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     evidence: Dict[str, Any] = dict(job.get("evidence") or {}) \
         if isinstance(job.get("evidence"), dict) else {}
 
+    # 🔴 ...mas o que é DESTA TENTATIVA não se herda da anterior.
+    #
+    # Com o requeue do B3.2 um job passa a rodar mais de uma vez sobre a MESMA
+    # linha de evidência. Um `excecao_transitoria` deixado pela tentativa 1
+    # faria `veredito_de_saude` devolver "não mude nada" na tentativa 2 — e a
+    # senha recusada descoberta na segunda volta não chegaria à tela. O mesmo
+    # vale para `session_injetada`: herdado, ele faria `session_reused` virar
+    # verdadeiro numa execução em que sessão nenhuma foi injetada.
+    for _chave in ("excecao_transitoria", "tentativas_esgotadas", "requeue",
+                   "session_injetada", "session_reused", "sessao_vencida"):
+        evidence.pop(_chave, None)
+
     # ----------------------------------------------------------------------
     # Runtime da SPEC-073 — ADITIVO. Journey antiga nunca lê `_runtime` e segue
     # funcionando igual; journey nova pega guard/profiler/checkpoint sem que a
@@ -806,10 +1181,18 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
                 session_bundle = _load_session_bundle(supa, job, account_row)
                 storage_state = session_bundle.get("storage_state")
                 session_storage = session_bundle.get("session_storage") or []
+                if session_bundle.get("vencida"):
+                    # 🔴 B2.1: o motivo fica escrito ANTES da journey rodar. É
+                    # esta linha que teria contado, em 18/08, que a sessão da
+                    # Allianz tinha 27 dias — e o login limpo teria batido na
+                    # senha recusada no mesmo dia, em vez de 25 dias depois.
+                    evidence["sessao_vencida"] = session_bundle["vencida"]
                 if storage_state:
                     context_kwargs["storage_state"] = storage_state
                     params["session_loaded"] = True
-                    evidence["session_reused"] = True
+                    # ⚠️ Aqui só se sabe que o estado foi INJETADO. Se ele VALEU,
+                    # quem diz é `decidir_session_reused`, no desfecho.
+                    evidence["session_injetada"] = True
             context = await browser.new_context(**context_kwargs)
             # A Ficha de Gestão (ngx-file-management) morre no boot com
             # InvalidCharacterError ao chamar setAttribute('-') — fatal no
@@ -915,7 +1298,55 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
         status_final = "needs_human" if houve_efeito else "failed"
 
         erro = f"{type(e).__name__}: {str(e)[:300]}"
+
+        # 🔴 A VOLTA PARA A FILA COM BACKOFF (B3.2 · §13 E4 full jitter).
+        #
+        # `available_at` era lido em `_candidatos_da_fila` e 📊 NUNCA escrito
+        # (0 linhas em 13/09/2026: `select count(*) from portal_jobs where
+        # available_at is not null` -> 0). Um timeout de rede virava `failed`
+        # definitivo, e a cobrança daquele portal simplesmente não acontecia.
+        #
+        # Três travas, e cada uma fecha uma porta diferente:
+        #   · só falha TRANSITÓRIA volta (credencial recusada NUNCA — bater na
+        #     porta trancada é o que bloqueia a conta da corretora);
+        #   · só volta o que PODE REPETIR COM SEGURANÇA — `pode_repetir_com_
+        #     seguranca` é a mesma autoridade da SPEC-074: efeito material
+        #     armado ou incerto nunca é retentado;
+        #   · teto de 3 tentativas. ⚠️ `attempts` JÁ foi incrementado no claim
+        #     (`_tentar_claim`), então aqui ele é a contagem desta tentativa.
+        transitoria = e_transitoria(e)
+        tentativas = int(job.get("attempts") or 0)
+        teto = max_tentativas_de_portal()
+        if transitoria:
+            evidence["excecao_transitoria"] = True
+        pode_voltar = transitoria and not houve_efeito and tentativas < teto
+        if pode_voltar:
+            quando = proximo_available_at(tentativas)
+            evidence["requeue"] = {"tentativa": tentativas, "de": teto,
+                                   "volta_em": quando, "motivo": type(e).__name__}
+            evidence["resumo"] = resumo_do_desfecho("queued", {**evidence, "error": erro})
+            fallback = await _materializar_provas(supa, job_id, evidence)
+            patch_requeue: Dict[str, Any] = {
+                "status": "queued",
+                "available_at": quando,
+                "error": f"{type(e).__name__}: requeue {tentativas}/{teto}",
+                "evidence": _redigir(evidence),
+            }
+            if fallback:
+                patch_requeue["screenshots"] = fallback
+            supa.table("portal_jobs").update(patch_requeue).eq("id", job_id).execute()
+            logger.info("[PORTAL] job %s volta para a fila (%d/%d) em %s",
+                        job_id, tentativas, teto, quando)
+            return
+        if transitoria and tentativas >= teto:
+            # Esgotou: agora sim o portal é chamado de `fora_do_ar` — e quem o
+            # reabre é o prólogo da rotina, lendo `updated_at` (B3.3).
+            evidence["tentativas_esgotadas"] = True
+
+        decidir_session_reused(evidence, status_final)
         evidence["resumo"] = resumo_do_desfecho(status_final, {**evidence, "error": erro})
+        _escrever_saude(supa, job, account_row,
+                        veredito_de_saude(status_final, evidence, erro))
         fallback = await _materializar_provas(supa, job_id, evidence)
         patch_falha: Dict[str, Any] = {
             "status": status_final,
@@ -933,7 +1364,15 @@ async def _run_job(supa, job: Dict[str, Any]) -> None:
     evidence.update(runtime.selar_evidencia())
     final = (evidence if result.status == "needs_human"
              else {**evidence, **(result.captured or {}), "message": result.message})
+    decidir_session_reused(final, result.status)
     final["resumo"] = resumo_do_desfecho(result.status, final)
+    # 🔴 A saúde sai do MESMO classificador para os dois caminhos. E o `captured`
+    # entra na conta mesmo quando `final` é a evidência crua do `needs_human`:
+    # 📊 o job da Zurich de 11/09 é `needs_human` com `captured.logged_in=True`
+    # — o login ENTROU, e chamar aquilo de problema de senha mandaria o Founder
+    # trocar uma credencial que está certa.
+    _escrever_saude(supa, job, account_row, veredito_de_saude(
+        result.status, {**final, **(result.captured or {})}, result.message or ""))
     # As fotos sobem ao cofre e a evidencia fica com a REFERENCIA. O que nao
     # subir volta como data URL e cai em `screenshots`, como sempre caiu.
     screenshots = (await _materializar_provas(supa, job_id, final)) + screenshots

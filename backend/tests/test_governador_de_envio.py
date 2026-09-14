@@ -607,7 +607,15 @@ def teste_a_rajada_da_cobranca_pergunta_antes():
            "e a consulta é ao governador de verdade, não a um freio local")
 
     # A ordem importa: perguntar DEPOIS de enviar não impede rajada nenhuma.
-    laco = fonte.index("for indice, item in enumerate(a_enviar):")
+    # 🔴 13/09/2026 (SPEC-EXTRA-001.6 B1.2): a âncora era
+    # `for indice, item in enumerate(a_enviar):`. O laço do modo teste passou a
+    # iterar GRUPOS (um segurado = uma abordagem, N boletos) — 📊 o acervo de
+    # 10–11/09 tinha 4 parcelas do mesmo CNPJ virando 4 abordagens. O que este
+    # guarda afirma NÃO mudou (perguntar antes de enviar, e parar quando o
+    # governador nega); mudou o nome do que o laço percorre, e manter a âncora
+    # antiga faria o guarda casar com nada — ou, pior, ficar verde por acaso
+    # numa versão futura (CLAUDE.md §9.3).
+    laco = fonte.index("for indice, grupo in enumerate(a_enviar):")
     pergunta = fonte.index("_esperar_o_governador", laco)
     envio = fonte.index("get_whatsapp_service().send_message", laco)
     checar(pergunta < envio,

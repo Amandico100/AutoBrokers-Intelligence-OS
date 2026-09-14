@@ -426,6 +426,130 @@ def fila_de_cobranca(items: List[Dict[str, Any]], *, horas: int = HORAS_MINIMAS_
 
 
 # ==========================================================================
+# SPEC-EXTRA-001.6 · B1.2 — UMA MENSAGEM POR SEGURADO, N BOLETOS
+# ==========================================================================
+#
+# 📊 Medido em 13/09/2026 sobre o acervo das execuções de 10 e 11/09 (os dois
+# dias trouxeram os MESMOS 7 itens): 4 dos 7 têm o MESMO CNPJ, a mesma
+# seguradora e o mesmo vencimento. A atendente recebeu QUATRO abordagens para a
+# mesma pessoa. 6 dos 7 itens trazem documento (86%); a HDI devolve `""` por
+# desenho, e é para ela que existe o fallback por nome.
+#
+# 🔴 DUAS CHAVES, E ELAS SÃO DIFERENTES DE PROPÓSITO. A confusão entre as duas é
+# o que produziria "o segurado sem CPF nunca é limitado" (ou o contrário: o
+# mesmo segurado cobrado em duas seguradoras no mesmo dia). Uma regra por
+# pergunta: `segurado_chave` responde QUEM; `chave_do_grupo` responde
+# QUEM + ONDE, que é o que cabe numa MESMA mensagem.
+
+
+def segurado_chave(item: Dict[str, Any]) -> str:
+    """QUEM é o segurado — independente de seguradora. É o que vai para o ledger.
+
+    🔴 O nome da coluna é `segurado_chave`, e NÃO `cpf_cnpj`, porque o valor nem
+    sempre É um documento (CLAUDE.md §12.1: campo cujo nome mente reinfecta todo
+    leitor seguinte). O prefixo diz de onde a identidade veio, e é isso que a
+    mensagem de retenção mostra para a pessoa poder discordar.
+
+    ⚠️ Sem documento, a identidade é o NOME normalizado. Isso pode unir dois
+    homônimos reais e segurar uma cobrança legítima por N dias — e é o erro que
+    se escolhe: não cobrar alguém por uma semana é recuperável; cobrar duas
+    vezes o mesmo segurado é o defeito que esta SPEC existe para fechar. A
+    retenção diz `por NOME` e a pessoa libera pela tela se discordar.
+    """
+    doc = so_digitos((item or {}).get("cpf_cnpj"))
+    if doc:
+        return f"doc:{doc}"
+    nome = _norm_txt(_first_text((item or {}).get("cliente_nome"),
+                                 (item or {}).get("nome_segurado"),
+                                 (item or {}).get("client_name")))
+    if nome:
+        return f"nome:{nome}"
+    return f"recibo:{str((item or {}).get('recibo') or '').strip()}"
+
+
+def chave_do_grupo(item: Dict[str, Any]) -> str:
+    """QUEM + ONDE — é o que decide o que cabe numa MESMA mensagem.
+
+    🔴 Inclui o portal, porque o texto nomeia a seguradora ("A Seguradora {x}
+    informou") e um grupo com duas seguradoras exigiria uma mensagem que
+    ninguém escreveu e o Founder não aprovou (B1.5).
+    ⚠️ E o mesmo segurado em DUAS seguradoras não recebe duas mensagens no mesmo
+    dia: quem impede é a janela de N dias, que usa `segurado_chave` — SEM o
+    portal.
+    🔴 E inclui o `company_id` quando o item o carrega, na FRENTE, como no índice
+    do banco (CLAUDE.md §7): dois tenants na mesma lista nunca produzem um grupo
+    misto, nem quando o CPF é o mesmo (o mesmo segurado pode ser cliente de duas
+    corretoras). Nos itens que o worker devolve hoje a chave vem vazia, e aí a
+    forma é exatamente `segurado_chave|portal`.
+    """
+    empresa = str((item or {}).get("company_id") or "").strip().lower()
+    portal = str((item or {}).get("portal") or "").strip().lower()
+    return f"{empresa}|{segurado_chave(item)}|{portal}" if empresa else f"{segurado_chave(item)}|{portal}"
+
+
+def agrupar_por_segurado(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Devolve GRUPOS, na ordem da dívida mais velha de cada grupo.
+
+    Cada grupo: `{"chave_do_grupo", "segurado_chave", "cliente_nome", "portal",
+    "company_id", "parcelas": [item, ...]}`.
+
+    A ordem entre grupos é a de `ordenar_para_entrega` aplicada à parcela mais
+    VELHA de cada grupo — a fila continua significando o que significava: quem
+    está mais perto do cancelamento sai primeiro. Dentro do grupo, as parcelas
+    também saem pela mesma régua.
+    """
+    grupos: Dict[str, Dict[str, Any]] = {}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        chave = chave_do_grupo(item)
+        grupo = grupos.get(chave)
+        if grupo is None:
+            grupo = {
+                "chave_do_grupo": chave,
+                "segurado_chave": segurado_chave(item),
+                "cliente_nome": _first_text(item.get("cliente_nome"), item.get("nome_segurado"),
+                                            default="cliente"),
+                "portal": str(item.get("portal") or "").strip(),
+                "company_id": str(item.get("company_id") or "").strip(),
+                "parcelas": [],
+            }
+            grupos[chave] = grupo
+        grupo["parcelas"].append(item)
+    for grupo in grupos.values():
+        grupo["parcelas"] = ordenar_para_entrega(grupo["parcelas"])
+    # A ordem entre grupos é decidida pelo MOTOR da fila, não por uma segunda
+    # régua escrita aqui: a parcela mais velha de cada grupo passa por
+    # `ordenar_para_entrega`, e a posição dela é a posição do grupo.
+    mais_velhas = ordenar_para_entrega([g["parcelas"][0] for g in grupos.values() if g["parcelas"]])
+    posicao = {chave_do_grupo(item): n for n, item in enumerate(mais_velhas)}
+    return sorted(grupos.values(), key=lambda g: posicao.get(g["chave_do_grupo"], 9999))
+
+
+def lista_de_parcelas(numeros: Iterable[Any]) -> str:
+    """`["2/6","3/6","4/6"]` → `"2/6, 3/6 e 4/6"`. Vírgula, e "e" antes da última."""
+    limpos: List[str] = []
+    for numero in numeros or []:
+        texto = str(numero or "").strip()
+        if texto and texto not in limpos:
+            limpos.append(texto)
+    if not limpos:
+        return ""
+    if len(limpos) == 1:
+        return limpos[0]
+    return ", ".join(limpos[:-1]) + " e " + limpos[-1]
+
+
+def _sem_repetir(valores: Iterable[Any]) -> List[str]:
+    fora: List[str] = []
+    for valor in valores or []:
+        texto = str(valor or "").strip()
+        if texto and texto not in fora:
+            fora.append(texto)
+    return fora
+
+
+# ==========================================================================
 # SPEC-EXTRA-001 · U1 — AS QUATRO MODALIDADES QUE TÊM MOTOR
 # ==========================================================================
 #
@@ -445,6 +569,12 @@ MODOS_COM_MOTOR = ("test", "none", "equipe", "cliente")
 MODOS_REAIS = ("equipe", "cliente")
 MODOS_LEGADOS = ("approval", "live")
 MODO_RETIDO = "retido_legado"
+
+#: SPEC-EXTRA-001.6 B1.3 · D-PILOTO-18 (13/09): N = 7 (nota 85 × 3 dias 60 ×
+#: 14 dias 70). Na tela, ajustável por corretora — o ritmo de cobrança é decisão
+#: de negócio dela, não do motor.
+DIAS_ENTRE_COBRANCAS_PADRAO = 7
+CHAVE_DIAS_ENTRE_COBRANCAS = "dias_entre_cobrancas_do_mesmo_segurado"
 
 
 def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -514,6 +644,12 @@ def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optiona
         "brokerage_name": _first_text(raw.get("brokerage_name"), raw.get("nome_corretora"), default="sua corretora"),
         "insurer_name": _first_text(raw.get("insurer_name"), raw.get("nome_seguradora"), default="ALLIANZ"),
         "max_boletos_por_execucao": _int_clamped(raw.get("max_boletos_por_execucao") or raw.get("max_boletos"), 10, 1, 50),
+        # SPEC-EXTRA-001.6 B1.3 — quantos dias entre duas cobranças do MESMO
+        # segurado. Clamp 1–30: 0 desligaria a regra por descuido de digitação
+        # (e "0 dias" é exatamente o defeito de 10–11/09), e mais de um mês
+        # deixaria de ser ritmo de cobrança para ser esquecimento.
+        CHAVE_DIAS_ENTRE_COBRANCAS: _int_clamped(
+            raw.get(CHAVE_DIAS_ENTRE_COBRANCAS), DIAS_ENTRE_COBRANCAS_PADRAO, 1, 30),
         "poll_timeout_seconds": _int_clamped(raw.get("poll_timeout_seconds"), 360, 30, 1800),
         "management_provider": str(raw.get("management_provider") or "infocap").strip().lower() or "infocap",
     }
@@ -659,6 +795,66 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
         return DEFAULT_MESSAGE_TEMPLATE.format_map(_MessageData(data))
 
 
+# ==========================================================================
+# SPEC-EXTRA-001.6 · B1.5 — A COPY DO PLURAL
+# ==========================================================================
+#
+# 💭 ILUSTRATIVA enquanto o Founder não emendar (proposta §B1.5, caixa do
+# Founder). O que NÃO é ilustrativo: **N = 1 continua byte a byte o template de
+# hoje**, que é travado desde 11/07/2026, e o guarda G7 prova isso comparando
+# com `build_customer_message`.
+#
+# 🔴 A transformação é do TEMPLATE PADRÃO, frase por frase — não uma segunda
+# mensagem escrita ao lado. Se a corretora personalizou o template, não há como
+# saber quais frases estão no singular sem reescrever o texto dela: nesse caso a
+# mensagem é a de sempre, com a LISTA de parcelas no lugar de `{numero_parcela}`.
+# Inventar plural no texto de outra pessoa é pior que repetir o singular.
+_PLURAL_DO_PADRAO = (
+    ("que a parcela {numero_parcela}", "que as parcelas {numero_parcela}"),
+    ("ainda está pendente", "ainda estão pendentes"),
+    ("gerou um novo boleto para pagamento", "gerou novos boletos para pagamento"),
+    ("Segue o boleto abaixo.", "Seguem os boletos abaixo."),
+)
+
+
+def mensagem_do_grupo(grupo: Dict[str, Any], cfg: Optional[Dict[str, Any]] = None) -> str:
+    """O texto ÚNICO que vai ao segurado por todas as parcelas do grupo."""
+    parcelas = list((grupo or {}).get("parcelas") or [])
+    cfg = cfg or {}
+    template = str(cfg.get("message_template") or DEFAULT_MESSAGE_TEMPLATE)
+    if len(parcelas) <= 1:
+        # ⛔ Caminho INTOCADO: uma parcela é a mensagem de hoje, letra por letra.
+        return build_customer_message(parcelas[0] if parcelas else {}, template, cfg)
+
+    numeros = lista_de_parcelas(_first_text(p.get("numero_parcela"), p.get("parcela"))
+                                for p in parcelas)
+    apolices = _sem_repetir(_first_text(p.get("numero_apolice"), p.get("apolice_susep"),
+                                       p.get("apolice")) for p in parcelas)
+    bens = _sem_repetir(_insured_item_name(p) for p in parcelas)
+    base = dict(parcelas[0])
+    base["numero_parcela"] = numeros
+    base["parcela"] = numeros
+    if apolices:
+        base["numero_apolice"] = ", ".join(apolices)
+        base["apolice"] = base["numero_apolice"]
+
+    if template.strip() != DEFAULT_MESSAGE_TEMPLATE.strip():
+        # Template da corretora: singular, com a lista. E vai registrado.
+        return build_customer_message(base, template, cfg)
+
+    texto = template
+    if len(bens) > 1:
+        # "do seguro do seus seguros" não é português. Quando os bens são
+        # diferentes, a frase deixa de ser "do seguro do X".
+        texto = texto.replace("do seguro do {item_segurado}", "de {item_segurado}")
+        base["item_segurado"] = "seus seguros"
+    for antes, depois in _PLURAL_DO_PADRAO:
+        texto = texto.replace(antes, depois)
+    if len(apolices) > 1:
+        texto = texto.replace("Apólice: {numero_apolice}", "Apólices: {numero_apolice}")
+    return build_customer_message(base, texto, cfg)
+
+
 def _client(supabase):
     return getattr(supabase, "client", supabase)
 
@@ -666,7 +862,10 @@ def _client(supabase):
 def _portal_account(client, company_id: str, portal_key: str) -> Optional[Dict[str, Any]]:
     res = (
         client.table("portal_accounts")
-        .select("id, portal_key, account_label, username, health")
+        # `updated_at` entra por causa do breaker (B3.1/B3.3): `fora_do_ar` é um
+        # estado com PRAZO, e sem a hora em que ele foi escrito não há como saber
+        # se o prazo já passou — o circuito ficaria aberto para sempre.
+        .select("id, portal_key, account_label, username, health, updated_at")
         .eq("company_id", company_id)
         .eq("portal_key", portal_key)
         .order("created_at", desc=False)
@@ -686,19 +885,36 @@ def _company_name(client, company_id: str) -> str:
         return ""
 
 
-def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict[str, Any], cfg: Dict[str, Any]) -> Optional[str]:
+#: As DUAS jornadas que esta rotina enfileira. Mesma fila (`portal_jobs`), mesmo
+#: worker, mesma tabela de sessão — só a jornada muda (CLAUDE.md §5: nada de
+#: scheduler, fila ou motor novo para o canário de login).
+JORNADA_DA_VARREDURA = "cobranca_sweep"
+JORNADA_DO_CANARIO = "login_check"
+#: `priority` menor = mais urgente (SPEC-075, `nice(1)`; default da coluna = 100).
+#: O canário é curto e a varredura depende dele: ele entra na frente.
+PRIORIDADE_DO_CANARIO = 50
+
+
+def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict[str, Any],
+                 cfg: Dict[str, Any], *, journey: str = JORNADA_DA_VARREDURA) -> Optional[str]:
+    e_canario = str(journey or "") == JORNADA_DO_CANARIO
     linha = {
         "company_id": str(routine["company_id"]),
         "portal_key": portal_key,
-        "journey": "cobranca_sweep",
+        "journey": "cobranca_sweep" if not e_canario else JORNADA_DO_CANARIO,
         "account_id": account.get("id"),
-        "params": {
+        # ⛔ O canário SÓ ENTRA E SAI: nada de `download_boletos`, nada de
+        # `max_boletos`. Ele responde uma pergunta — "a credencial ainda entra?"
+        # — e qualquer parâmetro de varredura aqui viraria trabalho de portal que
+        # ninguém pediu.
+        "params": ({"source": "routine_engine",
+                    "routine_id": str(routine.get("id") or "")} if e_canario else {
             "max_boletos": cfg["max_boletos_por_execucao"],
             "download_boletos": True,
             "require_downloads": True,
             "source": "routine_engine",
             "routine_id": str(routine.get("id") or ""),
-        },
+        }),
         "status": "queued",
     }
 
@@ -713,14 +929,19 @@ def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict
     # Por isso: tenta com, e se o banco recusar, repete sem. É o mesmo
     # raciocínio do `_candidatos_da_fila` no worker, e é o que "expand-first"
     # significa do lado do código, não só do lado do schema.
+    #
+    # O canário viaja pelo mesmo caminho: `priority` é coluna da mesma SPEC-075,
+    # então ela entra no MESMO dicionário opcional — se o banco recusar uma,
+    # recusa as duas, e o retry sem elas continua enfileirando o job.
+    extras = ({"priority": PRIORIDADE_DO_CANARIO} if e_canario
+              else {"operation_key": "billing.overdue.list"})
     ins = None
     try:
-        ins = client.table("portal_jobs").insert(
-            {**linha, "operation_key": "billing.overdue.list"}).execute()
+        ins = client.table("portal_jobs").insert({**linha, **extras}).execute()
     except Exception as e:  # noqa: BLE001
         logger.warning(
-            "[billing] insert com operation_key falhou (%s); repetindo sem a "
-            "coluna — a migration da SPEC-075 provavelmente ainda nao rodou",
+            "[billing] insert com as colunas da SPEC-075 falhou (%s); repetindo "
+            "sem elas — a migration provavelmente ainda nao rodou",
             type(e).__name__)
         ins = client.table("portal_jobs").insert(linha).execute()
 
@@ -729,7 +950,10 @@ def _enqueue_job(client, routine: Dict[str, Any], portal_key: str, account: Dict
     # SPEC-075 Bloco U — sombra. O caminho legado JÁ executou (o insert acima);
     # isto só registra o que a ponte teria escolhido. Nunca cria job, nunca
     # chama portal, e um erro aqui não pode custar a varredura.
-    if job_id:
+    # ⚠️ A sombra observa a VARREDURA (a operação `billing.overdue.list`). O
+    # canário de login não é uma operação de negócio da ponte — registrá-lo ali
+    # faria a matriz de capacidade contar uma operação que não existe.
+    if job_id and not e_canario:
         try:
             from app.services.portals.sombra import observar, sombra_ligada
 
@@ -984,21 +1208,34 @@ def boleto_document_name(item: Dict[str, Any]) -> str:
 
 
 def _format_test_message(item: Dict[str, Any], cfg: Dict[str, Any], boleto: Optional[Dict[str, Any]], boleto_url: str) -> str:
+    """A simulação de UMA parcela. ⛔ Saída byte a byte igual à de sempre."""
+    return _mensagem_de_teste({"parcelas": [item]}, cfg, [(item, boleto, boleto_url)])
+
+
+def _mensagem_de_teste(grupo: Dict[str, Any], cfg: Dict[str, Any],
+                       anexos: List[tuple]) -> str:
+    """A simulação de um GRUPO: o texto do segurado + uma linha por boleto.
+
+    🔴 O modo teste agrupa pelo MESMO motor do modo real (B1.2). Se ele não
+    agrupasse, o Founder ensaiaria uma coisa e a atendente receberia outra — que
+    foi exatamente o defeito de 10/09, quando o mesmo CNPJ produziu 4 abordagens.
+    """
     lines = [
         "[TESTE AutoBrokers - Auxiliar de Cobranca]",
-        build_customer_message(item, cfg["message_template"], cfg),
+        mensagem_do_grupo(grupo, cfg),
     ]
-    if sem_boleto_por_regra(item):
-        # Rede de seguranca: itens assim sao RETIDOS antes de chegar aqui. Se um
-        # dia chegar, a simulacao diz a verdade em vez de prometer um anexo.
-        lines.append("Boleto: nao existe (regra da seguradora). Este segurado NAO "
-                     "deveria receber mensagem do robo — tarefa da equipe.")
-    elif boleto_url:
-        lines.append("Boleto: enviado como documento PDF em seguida.")
-    elif boleto:
-        lines.append(f"Boleto: nao anexado nesta simulacao ({boleto.get('reason') or 'sem link disponivel'}).")
-    else:
-        lines.append("Boleto: nao baixado nesta execucao de teste.")
+    for item, boleto, boleto_url in anexos or []:
+        if sem_boleto_por_regra(item):
+            # Rede de seguranca: itens assim sao RETIDOS antes de chegar aqui. Se um
+            # dia chegar, a simulacao diz a verdade em vez de prometer um anexo.
+            lines.append("Boleto: nao existe (regra da seguradora). Este segurado NAO "
+                         "deveria receber mensagem do robo — tarefa da equipe.")
+        elif boleto_url:
+            lines.append("Boleto: enviado como documento PDF em seguida.")
+        elif boleto:
+            lines.append(f"Boleto: nao anexado nesta simulacao ({boleto.get('reason') or 'sem link disponivel'}).")
+        else:
+            lines.append("Boleto: nao baixado nesta execucao de teste.")
     lines.append("Esta mensagem foi enviada somente para o numero de teste configurado, nao para o cliente real.")
     return "\n\n".join(lines)
 
@@ -1040,6 +1277,10 @@ def _record_sent(client, company_id: str, item: Dict[str, Any], send_mode: str, 
                 "cliente_nome": str(item.get("cliente_nome") or ""),
                 "send_mode": send_mode,
                 "doc_sent": bool(doc_sent),
+                # SPEC-EXTRA-001.6 B1.3 — DE QUEM é esta parcela. É o que a
+                # janela de N dias lê depois, inclusive no modo teste (é lá que
+                # o Founder ensaia o que a atendente vai receber).
+                "segurado_chave": segurado_chave(item),
             },
             on_conflict="company_id,recibo,send_mode",
         ).execute()
@@ -1054,27 +1295,28 @@ def _record_sent(client, company_id: str, item: Dict[str, Any], send_mode: str, 
 # A dedup de entrega mora aqui, num lugar só, com nome — e não espalhada em
 # `if send_mode == ...` pelo caminho de entrega.
 #
-# 📊 A chave do índice único é `(company_id, recibo, send_mode)`; ela NÃO inclui
-# o destino. Foi por isso que o Founder decidiu em 17/08/2026 (nota 88) que o
-# modo TESTE não deduplica: em teste o destino é o número da própria corretora e
-# o que se quer é justamente REPETIR — testar amanhã, testar com outro número,
-# testar depois de mexer em alguma coisa. Com a chave atual, trocar o número de
-# teste não destravaria os mesmos boletos.
+# 🔴 INVERTIDA EM 13/09/2026 (SPEC-EXTRA-001.6 B1.1; CLAUDE.md §9.3).
 #
-# 19/08/2026: o Founder pediu que o registro de entrega saia do papel ("cada
-# parcela em atraso é enviada 1x"). O mecanismo agora existe e é exercido — o
-# padrão do modo teste continua o de 17/08 para não apagar a decisão anterior
-# num dia de demonstração. `BILLING_DEDUP_TEST_ENABLED=1` liga sem tocar em
-# código. Ver `docs/canon/PENDENCIAS.md`.
-FLAG_DEDUP_TESTE = "BILLING_DEDUP_TEST_ENABLED"
+# A decisão de 17/08/2026 (nota 88) era: "em teste não deduplica, porque em
+# teste o destino é a própria corretora e o que se quer é REPETIR". 📊 O que ela
+# produziu, medido em 13/09: a rotina da Resulta rodou em 10 e em 11/09 e mandou
+# os MESMOS 7 boletos nos dois dias — e a tela de Pendências ficava vazia e
+# correta ao mesmo tempo, porque nada era registrado. Um padrão que só pode
+# errar de um lado não é um padrão, é um defeito com data.
+#
+# O padrão passa a ser DEDUPLICAR, nos quatro modos. Quem quer repetir num dia
+# de demonstração LIGA a flag — e a flag ⛔ nunca toca modo real: lá repetir é
+# uma segunda cobrança ao segurado, e isso não é assunto de variável de ambiente.
+FLAG_DEDUP_TESTE_DESLIGADA = "BILLING_DEDUP_TEST_DISABLED"
 
 
 def dedup_de_envio_ativa(send_mode: Any, env: Optional[Dict[str, str]] = None) -> bool:
-    """`live` e `approval` nunca reenviam a mesma parcela. `test` só se ligado."""
+    """A dedup vale SEMPRE. Só o modo `test` consegue desligá-la, e só pela flag."""
     modo = str(send_mode or "").strip().lower()
     if modo != "test":
-        return True
-    return _truthy((env if env is not None else os.environ).get(FLAG_DEDUP_TESTE))
+        return True                       # ⛔ a flag NUNCA toca um modo real
+    fonte = env if env is not None else os.environ
+    return not _truthy(fonte.get(FLAG_DEDUP_TESTE_DESLIGADA))
 
 
 async def _send_test_messages(
@@ -1129,11 +1371,45 @@ async def _send_test_messages(
     sent: List[Dict[str, Any]] = []
     skipped = 0
     orcamento_s = float(GOVERNOR_WAIT_BUDGET_S)
-    a_enviar = ordenar_para_entrega(items)
-    for indice, item in enumerate(a_enviar):
-        recibo_key = str(item.get("recibo") or "").strip()
-        if recibo_key and recibo_key in already:
-            skipped += 1
+    # 🔴 B1.3 — A JANELA DE N DIAS TAMBÉM VALE AQUI, lendo o ledger do modo
+    # `test`. O modo teste existe para o Founder ver o que a atendente vai
+    # receber; um ensaio que repete o que o real não repetiria ensaia outra
+    # coisa. ⚠️ Ela segue a mesma chave da dedup: com a flag de demonstração
+    # ligada, nada limita — é o dia em que se quer repetir de propósito.
+    dias_da_janela = int(cfg.get(CHAVE_DIAS_ENTRE_COBRANCAS) or DIAS_ENTRE_COBRANCAS_PADRAO)
+    recentes: Dict[str, str] = {}
+    if dedup:
+        try:
+            recentes = await asyncio.to_thread(
+                _segurados_cobrados_recentemente, client, company_id,
+                dias_da_janela, send_mode)
+        except Exception as exc:  # noqa: BLE001
+            # ⚠️ AQUI, E SÓ AQUI, A FALHA DE LEITURA NÃO PARA A ENTREGA — e a
+            # diferença para o modo real é o DESTINO. 📊 19/08/2026, guarda
+            # `test_a_sessao_caida_volta_e_o_aviso_diz_a_verdade`: "banco fora do
+            # ar: a entrega acontece assim mesmo". Em `test` quem recebe é o
+            # número da própria corretora, e o pior desfecho de um ledger
+            # ilegível é a corretora ver a mesma simulação duas vezes. No modo
+            # real o pior desfecho é o SEGURADO ser cobrado duas vezes — e lá
+            # nada sai (R04). A dedup por recibo continua valendo.
+            blockers.append(f"modo teste: nao consegui ler quem ja foi cobrado nos "
+                            f"ultimos {dias_da_janela} dias ({type(exc).__name__}) — "
+                            f"a simulacao seguiu sem a regra de {dias_da_janela} dias")
+
+    # 🔴 B1.2 — o modo teste agrupa pelo MESMO motor do modo real.
+    a_enviar = agrupar_por_segurado(items)
+    for indice, grupo in enumerate(a_enviar):
+        parcelas = list(grupo.get("parcelas") or [])
+        novas = [p for p in parcelas
+                 if not (str(p.get("recibo") or "").strip() in already)]
+        skipped += len(parcelas) - len(novas)
+        if not novas:
+            continue
+        cobrado_em = recentes.get(str(grupo.get("segurado_chave") or ""))
+        if cobrado_em:
+            blockers.append(
+                f"{len(novas)} parcela(s) ({_portal_insurer_name(novas[0], cfg)}) nao "
+                f"simuladas: {_motivo_da_janela(cobrado_em, str(grupo.get('segurado_chave') or ''), dias_da_janela)}")
             continue
 
         # SPEC-063 Bloco C — o portao de vazao, UMA vez por segurado.
@@ -1145,32 +1421,38 @@ async def _send_test_messages(
             company_id, orcamento_s, para_numero_de_teste=True)
         orcamento_s -= esperou
         if not liberado:
-            pendentes = len(a_enviar) - indice
+            pendentes = sum(len(g.get("parcelas") or []) for g in a_enviar[indice:])
             blockers.append(
                 f"governador de envio: parei em {len(sent)} envio(s) — {motivo}. "
                 f"{pendentes} item(ns) ficaram para a proxima execucao (nao foram "
                 f"marcados como enviados, entao nao se perdem)")
             break
 
-        boleto = by_recibo.get(recibo_key)
-        boleto_url = await asyncio.to_thread(_signed_boleto_url, client, boleto.get("storage_path") if boleto else "")
-        text = _format_test_message(item, cfg, boleto, boleto_url)
-        entry = {
-            "cliente_nome": item.get("cliente_nome"),
-            "recibo": item.get("recibo"),
+        # Os anexos do grupo: um por parcela, na ordem da fila.
+        anexos: List[tuple] = []
+        for parcela in novas:
+            boleto = by_recibo.get(str(parcela.get("recibo") or "").strip())
+            url = await asyncio.to_thread(
+                _signed_boleto_url, client, boleto.get("storage_path") if boleto else "")
+            anexos.append((parcela, boleto, url))
+        text = _mensagem_de_teste({**grupo, "parcelas": novas}, cfg, anexos)
+        entradas = [{
+            "cliente_nome": parcela.get("cliente_nome"),
+            "recibo": parcela.get("recibo"),
             "to_last4": number[-4:],
-            "boleto_link": bool(boleto_url),
+            "boleto_link": bool(url),
             "ok": False,
-        }
+        } for parcela, _b, url in anexos]
+        ok = False
         try:
             # SPEC-EXTRA-001.6 P0.1 — a simulação é DOCUMENTO: vai inteira, como o
             # que a atendente vai receber em `equipe`. 📊 13/09: 520 ch → 3 balões.
-            ok = await asyncio.to_thread(
+            ok = bool(await asyncio.to_thread(
                 functools.partial(get_whatsapp_service().send_message,
-                                  number, text, integration, bloco_unico=True))
-            entry["ok"] = bool(ok)
+                                  number, text, integration, bloco_unico=True)))
         except Exception as e:  # noqa: BLE001
-            entry["error"] = type(e).__name__
+            for entry in entradas:
+                entry["error"] = type(e).__name__
             # 🔴 `type(e).__name__` virava a palavra "Exception" — o relatorio
             # dizia que falhou e nao dizia por que. O texto da excecao carrega
             # o status HTTP do provedor (ver `whatsapp_service.send_message`).
@@ -1178,21 +1460,27 @@ async def _send_test_messages(
             # motivo nao vier aqui, ele nao existe para essa pessoa.
             _motivo = str(e).strip() or type(e).__name__
             blockers.append(f"modo teste: falha ao enviar simulacao para ...{number[-4:]} — {_motivo[:220]}")
+        for entry in entradas:
+            entry["ok"] = ok
+
         # Boleto como DOCUMENTO PDF (decisão de produto 2026-07-10): o cliente
         # recebe o arquivo, não um link que expira. Link assinado é só fallback.
-        if entry["ok"] and boleto_url:
+        # 🔴 UM PDF POR PARCELA, todos depois do texto único que os anuncia.
+        for entry, (parcela, _boleto, boleto_url) in zip(entradas, anexos):
+            if not (ok and boleto_url):
+                continue
             doc_ok = await asyncio.to_thread(
                 get_whatsapp_service().send_document,
                 number,
                 boleto_url,
-                boleto_document_name(item),
+                boleto_document_name(parcela),
                 integration,
             )
             entry["document_sent"] = bool(doc_ok)
             if doc_ok:
                 # SPEC-EXTRA-001.6 P0.5 — o PDF é contado como componente, igual
                 # ao caminho real (`_entregar_agora`): uma linha `billing_doc`.
-                await _registrar_documento_no_governador(company_id, number, item)
+                await _registrar_documento_no_governador(company_id, number, parcela)
             if not doc_ok:
                 try:
                     link_ok = await asyncio.to_thread(
@@ -1205,20 +1493,24 @@ async def _send_test_messages(
                 except Exception:  # noqa: BLE001
                     entry["link_fallback"] = False
                 blockers.append("modo teste: envio do PDF como documento falhou; usei link temporario como fallback")
-        if entry["ok"]:
-            # A OUTRA METADE DA DEDUP: so entra em `billing_sent_log` quem
-            # realmente recebeu. E o que torna "parar no meio" seguro — quem nao
-            # saiu hoje nao foi marcado, e volta amanha de onde parou.
-            if dedup:
-                gravou = await asyncio.to_thread(
-                    _record_sent, client, company_id, item, send_mode, bool(entry.get("document_sent")))
-                entry["registrado"] = bool(gravou)
-                if not gravou:
-                    # 🔴 Registro que falha em silencio = mesmo boleto amanha.
-                    # Quem le o relatorio nao tem acesso ao log do conteiner.
-                    blockers.append(
-                        f"entrega feita mas NAO registrada em billing_sent_log "
-                        f"(recibo ...{recibo_key[-4:] or '?'}): este boleto pode sair de novo na proxima execucao")
+
+        if ok:
+            for entry, (parcela, _boleto, _url) in zip(entradas, anexos):
+                # A OUTRA METADE DA DEDUP: so entra em `billing_sent_log` quem
+                # realmente recebeu. E o que torna "parar no meio" seguro — quem nao
+                # saiu hoje nao foi marcado, e volta amanha de onde parou.
+                if dedup:
+                    gravou = await asyncio.to_thread(
+                        _record_sent, client, company_id, parcela, send_mode,
+                        bool(entry.get("document_sent")))
+                    entry["registrado"] = bool(gravou)
+                    if not gravou:
+                        # 🔴 Registro que falha em silencio = mesmo boleto amanha.
+                        # Quem le o relatorio nao tem acesso ao log do conteiner.
+                        recibo_key = str(parcela.get("recibo") or "").strip()
+                        blockers.append(
+                            f"entrega feita mas NAO registrada em billing_sent_log "
+                            f"(recibo ...{recibo_key[-4:] or '?'}): este boleto pode sair de novo na proxima execucao")
             # O registro de VAZAO (`platform_sends`, logo abaixo) e outra coisa:
             # ele conta mensagens para os tetos, e uma mensagem de teste ocupa
             # o canal exatamente como qualquer outra.
@@ -1227,8 +1519,12 @@ async def _send_test_messages(
             # que foi registrado. Sem esta linha o governador espacaria as
             # mensagens e continuaria achando que o dia esta zerado — o teto
             # diario nunca fecharia.
-            await _registrar_no_governador(company_id, number, item, cfg)
-        sent.append(entry)
+            #
+            # ⚠️ UMA linha por MENSAGEM (o grupo), não por parcela: é uma
+            # abordagem só, e contar quatro faria o governador achar que o canal
+            # falou quatro vezes com a mesma pessoa.
+            await _registrar_no_governador(company_id, number, novas[0], cfg)
+        sent.extend(entradas)
     if skipped:
         blockers.append(f"anti-duplicacao: {skipped} boleto(s) ja enviados anteriormente foram pulados (nao reenviamos o mesmo)")
     return sent
@@ -1427,6 +1723,41 @@ def _nota_interna_para_a_equipe(item: Dict[str, Any], cfg: Dict[str, Any]) -> st
     ])
 
 
+def _nota_interna_do_grupo(grupo: Dict[str, Any], cfg: Dict[str, Any]) -> str:
+    """A nota da atendente quando o segurado tem N parcelas na mesma seguradora.
+
+    ⛔ N = 1 devolve a nota de hoje, byte a byte. Com N > 1 ela LISTA as parcelas:
+    a atendente precisa conferir quantos anexos são, e uma nota que diz "Parcela:
+    3/12" com quatro PDFs embaixo é uma nota que mente sobre o pacote.
+    """
+    parcelas = list((grupo or {}).get("parcelas") or [])
+    if len(parcelas) <= 1:
+        return _nota_interna_para_a_equipe(parcelas[0] if parcelas else {}, cfg)
+    base = parcelas[0]
+    linhas = [
+        "📋 COBRANÇA · para encaminhar",
+        "",
+        f"Cliente: {_first_text(base.get('cliente_nome'), base.get('nome_segurado'), default='cliente')}",
+        f"Seguradora: {_portal_insurer_name(base, cfg)}",
+        f"{len(parcelas)} parcelas em atraso, {len(parcelas)} boletos em anexo:",
+    ]
+    for parcela in parcelas:
+        valor = parcela.get("valor")
+        valor_txt = (f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                     if isinstance(valor, (int, float)) else str(valor or "não informado"))
+        linhas.append(
+            f"- parcela {_first_text(parcela.get('numero_parcela'), parcela.get('parcela'), default='?')}"
+            f" · apólice {_first_text(parcela.get('numero_apolice'), parcela.get('apolice_susep'), default='?')}"
+            f" · vence {parcela.get('vencimento') or '?'} · {valor_txt}")
+    linhas += [
+        f"WhatsApp do cliente: {_whatsapp_legivel(base.get('whatsapp'))}",
+        "",
+        "👇 a mensagem abaixo e os PDFs são para encaminhar ao cliente, inteiros.",
+        "Quando encaminhar, marque no painel (Auxiliares → Cobrança → Pendências).",
+    ]
+    return "\n".join(linhas)
+
+
 def _pacote_humano(item: Dict[str, Any], cfg: Dict[str, Any],
                    boleto: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """O que sai: a nota da equipe, o texto final e o documento.
@@ -1438,14 +1769,21 @@ def _pacote_humano(item: Dict[str, Any], cfg: Dict[str, Any],
     entregaria ao segurado uma mensagem que diz que é teste — ou obrigaria a
     atendente a apagar duas linhas antes de encaminhar.
     """
-    caminho = str((boleto or {}).get("storage_path") or "").strip().lstrip("/")
-    documento = ({"bucket": PORTAL_EVIDENCE_BUCKET, "path": caminho,
-                  "filename": boleto_document_name(item)} if caminho else None)
     return {
         "nota_interna": _nota_interna_para_a_equipe(item, cfg),
         "texto_final": build_customer_message(item, cfg["message_template"], cfg),
-        "documento": documento,
+        "documento": _documento_do_boleto(item, boleto),
     }
+
+
+def _documento_do_boleto(item: Dict[str, Any],
+                         boleto: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """O anexo de UMA parcela: bucket, caminho e o nome que o cliente vê (sem PII)."""
+    caminho = str((boleto or {}).get("storage_path") or "").strip().lstrip("/")
+    if not caminho:
+        return None
+    return {"bucket": PORTAL_EVIDENCE_BUCKET, "path": caminho,
+            "filename": boleto_document_name(item)}
 
 
 def _obrigacoes_reais(client, company_id: str) -> Dict[str, Dict[str, Any]]:
@@ -1471,11 +1809,105 @@ def _obrigacoes_reais(client, company_id: str) -> Dict[str, Dict[str, Any]]:
     return fora
 
 
+#: SPEC-EXTRA-001.6 B1.3 — estados que CONTAM como "este segurado já foi
+#: cobrado". ⛔ `falhou`, `adiado`, `suprimido` e `reservado` NÃO contam: ninguém
+#: recebeu nada, e segurar a cobrança por causa deles seria não cobrar por um
+#: erro nosso. `incerto` CONTA: efeito possível não é efeito ausente, e o preço
+#: de errar para esse lado é uma semana de espera, não uma segunda cobrança.
+ESTADOS_QUE_CONTAM_COMO_COBRADO = ("aceito_pelo_canal", "entregue_equipe",
+                                   "parcial", "incerto")
+
+
+def _quando_saiu(linha: Dict[str, Any]) -> str:
+    """A data que a janela usa. `sent_at` primeiro; `updated_at` como segunda.
+
+    🔴 A ordem importa e o fallback não é folga: a linha `incerto` nasce de uma
+    exceção DEPOIS do envio, e ela **não tem** `sent_at` (a porta só o grava
+    quando o provedor respondeu). Filtrar a janela por `sent_at` no SQL deixaria
+    de fora justamente a cobrança que pode ter chegado ao segurado — por isso a
+    janela é recortada aqui, em Python, sobre as linhas da corretora.
+    """
+    return str(linha.get("sent_at") or linha.get("updated_at")
+               or linha.get("reserved_at") or linha.get("created_at") or "")
+
+
+def _segurados_cobrados_recentemente(client, company_id: str, dias: int,
+                                     send_mode: str = "real") -> Dict[str, str]:
+    """`{segurado_chave: data_iso}` dos segurados já cobrados na janela de N dias.
+
+    🔴 A leitura é por `segurado_chave` — SEM o portal. É isso que faz a janela
+    valer ENTRE seguradoras, que é a pergunta que ela responde: "já falei com
+    esta pessoa esta semana?".
+    🔴 Falha de leitura LEVANTA — nunca devolve vazio. Vazio significaria "não
+    cobrei ninguém", e a resposta a isso seria cobrar todo mundo de novo (R04 da
+    EXTRA-001; é a mesma disciplina de `_obrigacoes_reais`).
+    ⚠️ `send_mode` é parâmetro porque a janela vale nos DOIS mundos: no modo real
+    ela lê as cobranças reais; no modo `test`, as de teste — o Founder ensaia o
+    que a atendente vai receber, e um ensaio que repete o que o real não repetiria
+    ensaia outra coisa (foi o defeito de 10/09).
+    """
+    janela = max(1, int(dias or DIAS_ENTRE_COBRANCAS_PADRAO))
+    corte = datetime.now(timezone.utc) - timedelta(days=janela)
+    res = (client.table("billing_sent_log")
+           .select("segurado_chave, status, sent_at, updated_at, reserved_at, created_at")
+           .eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7
+           .eq("send_mode", str(send_mode))
+           .in_("status", list(ESTADOS_QUE_CONTAM_COMO_COBRADO))
+           .execute())
+    fora: Dict[str, str] = {}
+    for linha in (res.data or []):
+        chave = str((linha or {}).get("segurado_chave") or "").strip()
+        if not chave:
+            # Linha antiga, de antes da coluna existir. Ela não diz de quem é, e
+            # inventar um dono seria pior que não limitar: fica de fora, e o que
+            # protege a parcela continua sendo a reserva atômica.
+            continue
+        quando = _quando_saiu(linha)
+        momento = _para_datetime(quando)
+        if momento is None or momento < corte:
+            continue
+        anterior = fora.get(chave)
+        if anterior is None or quando > anterior:
+            fora[chave] = quando
+    return fora
+
+
+def _para_datetime(valor: Any) -> Optional[datetime]:
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        momento = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return None
+    return momento if momento.tzinfo else momento.replace(tzinfo=timezone.utc)
+
+
+def _motivo_da_janela(cobrado_em: Any, chave: str, dias: int) -> str:
+    """A frase que a pessoa lê — com a DATA e a ORIGEM da identidade.
+
+    🔴 A origem é produto, não detalhe: quando a identidade vem do NOME (porque a
+    seguradora não devolveu o documento), duas pessoas homônimas podem ter sido
+    unidas — e a única forma de alguém DISCORDAR é a frase dizer de onde a
+    identidade veio e o que fazer a respeito.
+    """
+    momento = _para_datetime(cobrado_em)
+    quando = momento.strftime("%d/%m") if momento else "?"
+    volta = (momento + timedelta(days=int(dias))).strftime("%d/%m") if momento else "?"
+    if str(chave or "").startswith("doc:"):
+        return (f"este segurado já foi cobrado em {quando} (regra de 1 cobrança a cada "
+                f"{dias} dias, identificado por CPF/CNPJ) — volta em {volta}")
+    return (f"este segurado já foi cobrado em {quando} (regra de 1 cobrança a cada "
+            f"{dias} dias, identificado por NOME, porque a seguradora não devolveu o "
+            f"documento) — volta em {volta}; se não for a mesma pessoa, libere pela tela")
+
+
 def _reservar_obrigacao(client, *, company_id: str, portal_key: str, recibo: str,
                         modalidade: str, to_phone: str, to_last4: str,
                         cliente_nome: str, apolice_susep: str,
                         routine_id: Optional[str], work_run_id: Optional[str],
-                        integration_id: Optional[str], canario: bool) -> Dict[str, Any]:
+                        integration_id: Optional[str], canario: bool,
+                        segurado: str = "") -> Dict[str, Any]:
     """A reserva atômica, pela função do banco. Levanta se o banco recusar.
 
     ⚠️ RPC, e não `upsert(ignore_duplicates=True)`: a identidade da obrigação é
@@ -1483,6 +1915,13 @@ def _reservar_obrigacao(client, *, company_id: str, portal_key: str, recibo: str
     índice parcial exige repetir o predicado — que o PostgREST não expressa. O
     upsert mandaria `ON CONFLICT (cols) DO NOTHING` sem o `WHERE` e receberia
     **42P10**. Ver o cabeçalho da migration 20260907_01.
+
+    🔴 `p_segurado_chave` é o 13º argumento, e a função de 13 argumentos é uma
+    SOBRECARGA sem default (migration `20260914_01`): com default, uma chamada de
+    12 casaria com as duas e o Postgres devolveria 42725 (ambiguous function
+    call) — em produção, na hora de reservar, com o boleto na mão. Enquanto essa
+    migration não estiver aplicada, esta chamada levanta e a parcela NÃO sai:
+    é o que a Implantação 2 exige na ordem certa (proposta §15.1).
     """
     res = client.rpc("billing_reservar_obrigacao", {
         "p_company_id": str(company_id),
@@ -1497,6 +1936,7 @@ def _reservar_obrigacao(client, *, company_id: str, portal_key: str, recibo: str
         "p_work_run_id": str(work_run_id) if work_run_id else None,
         "p_integration_id": str(integration_id) if integration_id else None,
         "p_canario": bool(canario),
+        "p_segurado_chave": str(segurado or "") or None,
     }).execute()
     linhas = res.data or []
     return dict(linhas[0]) if linhas else {"id": None, "ganhou": False, "status": None}
@@ -1579,133 +2019,201 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
     orcamento_s = float(GOVERNOR_WAIT_BUDGET_S)
     routine_id = str(routine.get("id") or "") or None
 
-    for indice, item in enumerate(ordenar_para_entrega(fila)):
-        portal_key = str(item.get("portal") or "").strip()
-        recibo = str(item.get("recibo") or "").strip()
-        rotulo = f"...{recibo[-4:]}" if recibo else "?"
-        seguradora = _portal_insurer_name(item, cfg)
+    # 2.b) QUEM JÁ FOI COBRADO ESTA SEMANA — a janela de N dias (B1.3).
+    #      🔴 Mesma disciplina do passo 2: falha de leitura NÃO vira "ninguém foi
+    #      cobrado". Ler errado aqui e cobrar de novo é o defeito que esta SPEC
+    #      existe para fechar.
+    dias_da_janela = int(cfg.get(CHAVE_DIAS_ENTRE_COBRANCAS) or DIAS_ENTRE_COBRANCAS_PADRAO)
+    try:
+        recentes = await asyncio.to_thread(
+            _segurados_cobrados_recentemente, client, company_id, dias_da_janela)
+    except Exception as exc:  # noqa: BLE001
+        blockers.append(f"cobranca: nao consegui ler quem ja foi cobrado nos ultimos "
+                        f"{dias_da_janela} dias ({type(exc).__name__}) — NADA foi enviado, "
+                        f"para nao cobrar o mesmo segurado duas vezes")
+        await _incidente(company_id, "Cobrança não executada: janela de cobrança ilegível",
+                         "Não deu para ler quem foi cobrado nos últimos dias. Preferi não "
+                         "enviar nada a arriscar falar duas vezes com o mesmo segurado.")
+        return entregas
 
-        # 3) PRÉ-CONDIÇÕES — cada uma com o motivo que a pessoa vai ler.
-        if not portal_key or not recibo:
-            blockers.append("1 parcela sem seguradora ou sem recibo identificado: "
-                            "nao cobrada (nao da para garantir que ela e unica)")
-            await _incidente(company_id, "Parcela sem identificação",
-                             "Uma parcela veio sem seguradora ou sem recibo. Sem isso "
-                             "não dá para garantir que ela só será cobrada uma vez.")
-            continue
-        boleto = by_recibo.get(recibo)
-        caminho = str((boleto or {}).get("storage_path") or "").strip()
-        if not caminho:
-            blockers.append(f"parcela {rotulo} ({seguradora}): o boleto nao esta no "
-                            f"cofre — nao cobrada")
+    # 🔴 B1.2 — A FILA VIRA GRUPOS. Um grupo é UM segurado numa seguradora, e ele
+    # recebe UMA abordagem: 1 nota interna + 1 texto + N boletos. A RESERVA
+    # continua por PARCELA (§3.1): agrupar é decisão de ENTREGA; reservar é
+    # decisão de OBRIGAÇÃO, e é ela que garante que a parcela sai uma vez só.
+    for indice, grupo in enumerate(agrupar_por_segurado(fila)):
+        parcelas = list(grupo.get("parcelas") or [])
+        seguradora = _portal_insurer_name(parcelas[0] if parcelas else {}, cfg)
+        chave_do_segurado = str(grupo.get("segurado_chave") or "")
+
+        # 3) A JANELA DE N DIAS, por SEGURADO — antes de reservar qualquer coisa.
+        #    ⚠️ Nada some: o grupo retido aparece no relatório com a frase que a
+        #    pessoa lê, e cada parcela dele entra nas entregas como `retido`
+        #    (CLAUDE.md §11.1).
+        cobrado_em = recentes.get(chave_do_segurado)
+        if cobrado_em:
+            motivo_janela = _motivo_da_janela(cobrado_em, chave_do_segurado, dias_da_janela)
+            blockers.append(f"{len(parcelas)} parcela(s) ({seguradora}) nao cobradas: "
+                            f"{motivo_janela}")
+            for item in parcelas:
+                entregas.append({"cliente_nome": item.get("cliente_nome"),
+                                 "recibo": str(item.get("recibo") or ""),
+                                 "portal": str(item.get("portal") or ""), "ok": False,
+                                 "status": "retido", "motivo": motivo_janela})
             continue
 
-        if modalidade == "equipe":
-            destino = so_digitos(cfg.get("team_number"))
-        else:
-            destino = so_digitos(item.get("whatsapp"))
-            contato = str(item.get("contact_status") or "").strip().lower()
-            if contato not in CONTATOS_ACEITOS:
-                blockers.append(f"parcela {rotulo} ({seguradora}): o telefone do cliente "
-                                f"nao esta confirmado ({contato or 'sem status'}) — nao cobrada")
+        # 4) PRÉ-CONDIÇÕES, PARCELA POR PARCELA — cada uma com o motivo que a
+        #    pessoa vai ler. Uma parcela que não passa sai do grupo; o grupo
+        #    segue com as outras.
+        vivas: List[Dict[str, Any]] = []
+        for item in parcelas:
+            portal_key = str(item.get("portal") or "").strip()
+            recibo = str(item.get("recibo") or "").strip()
+            rotulo = f"...{recibo[-4:]}" if recibo else "?"
+            if not portal_key or not recibo:
+                blockers.append("1 parcela sem seguradora ou sem recibo identificado: "
+                                "nao cobrada (nao da para garantir que ela e unica)")
+                await _incidente(company_id, "Parcela sem identificação",
+                                 "Uma parcela veio sem seguradora ou sem recibo. Sem isso "
+                                 "não dá para garantir que ela só será cobrada uma vez.")
                 continue
-        if len(destino) < 10:
-            blockers.append(f"parcela {rotulo} ({seguradora}): destino invalido — nao cobrada")
+            boleto = by_recibo.get(recibo)
+            documento = _documento_do_boleto(item, boleto)
+            if not documento:
+                blockers.append(f"parcela {rotulo} ({seguradora}): o boleto nao esta no "
+                                f"cofre — nao cobrada")
+                continue
+            if modalidade == "equipe":
+                destino = so_digitos(cfg.get("team_number"))
+            else:
+                destino = so_digitos(item.get("whatsapp"))
+                contato = str(item.get("contact_status") or "").strip().lower()
+                if contato not in CONTATOS_ACEITOS:
+                    blockers.append(f"parcela {rotulo} ({seguradora}): o telefone do cliente "
+                                    f"nao esta confirmado ({contato or 'sem status'}) — nao cobrada")
+                    continue
+            if len(destino) < 10:
+                blockers.append(f"parcela {rotulo} ({seguradora}): destino invalido — nao cobrada")
+                continue
+            vivas.append({"item": item, "portal_key": portal_key, "recibo": recibo,
+                          "rotulo": rotulo, "documento": documento, "destino": destino})
+        if not vivas:
             continue
 
-        # 4) A RESERVA. Antes do efeito, SEMPRE — e ela é pedida mesmo quando a
-        #    leitura acima já diz que a parcela foi cobrada.
+        # ⚠️ UM destino por mensagem. Duas parcelas do mesmo segurado com
+        #    telefones diferentes não cabem na mesma abordagem — e escolher um
+        #    dos dois em silêncio seria mandar o boleto para o número errado.
+        destino = vivas[0]["destino"]
+        for viva in [v for v in vivas if v["destino"] != destino]:
+            blockers.append(f"parcela {viva['rotulo']} ({seguradora}): o telefone desta "
+                            f"parcela e diferente do da primeira parcela do mesmo segurado "
+                            f"— nao cobrada nesta mensagem")
+        vivas = [v for v in vivas if v["destino"] == destino]
+
+        # 5) AS RESERVAS — uma por PARCELA, TODAS antes do primeiro efeito do
+        #    grupo. Perdeu a reserva de uma parcela → essa parcela sai do grupo;
+        #    perdeu todas → o grupo inteiro não sai.
         #
-        #    🔴 A leitura é um retrato; a reserva é a decisão. Entre uma e outra
-        #    cabe a execução da outra máquina — e um motor que decidisse pelo
-        #    retrato mandaria a segunda mensagem exatamente na hora em que duas
-        #    execuções se cruzam, que é o único momento em que isso importa.
-        anterior = ja_cobrado.get(f"{portal_key}|{recibo}") or {}
-        estado_anterior = str(anterior.get("status") or "")
+        #    🔴 A leitura do passo 2 é um retrato; a reserva é a decisão. Entre
+        #    uma e outra cabe a execução da outra máquina.
+        reservadas: List[Dict[str, Any]] = []
+        for viva in vivas:
+            item, recibo, rotulo = viva["item"], viva["recibo"], viva["rotulo"]
+            portal_key = viva["portal_key"]
+            anterior = ja_cobrado.get(f"{portal_key}|{recibo}") or {}
+            estado_anterior = str(anterior.get("status") or "")
+            try:
+                reserva = await asyncio.to_thread(
+                    _reservar_obrigacao, client, company_id=company_id,
+                    portal_key=portal_key, recibo=recibo, modalidade=modalidade,
+                    to_phone=destino, to_last4=destino[-4:],
+                    cliente_nome=str(item.get("cliente_nome") or ""),
+                    apolice_susep=str(item.get("apolice_susep") or ""),
+                    routine_id=routine_id, work_run_id=work_run_id,
+                    integration_id=integration_id, canario=canario,
+                    segurado=chave_do_segurado)
+            except Exception as exc:  # noqa: BLE001
+                blockers.append(f"parcela {rotulo} ({seguradora}): nao consegui reservar a "
+                                f"cobranca ({type(exc).__name__}) — NAO enviei")
+                await _incidente(company_id, "Cobrança não reservada",
+                                 f"A parcela {rotulo} da {seguradora} não pôde ser reservada. "
+                                 f"Nada foi enviado para ela.")
+                continue
 
-        try:
-            reserva = await asyncio.to_thread(
-                _reservar_obrigacao, client, company_id=company_id,
-                portal_key=portal_key, recibo=recibo, modalidade=modalidade,
-                to_phone=destino, to_last4=destino[-4:],
-                cliente_nome=str(item.get("cliente_nome") or ""),
-                apolice_susep=str(item.get("apolice_susep") or ""),
-                routine_id=routine_id, work_run_id=work_run_id,
-                integration_id=integration_id, canario=canario)
-        except Exception as exc:  # noqa: BLE001
-            blockers.append(f"parcela {rotulo} ({seguradora}): nao consegui reservar a "
-                            f"cobranca ({type(exc).__name__}) — NAO enviei")
-            await _incidente(company_id, "Cobrança não reservada",
-                             f"A parcela {rotulo} da {seguradora} não pôde ser reservada. "
-                             f"Nada foi enviado para ela.")
-            continue
-
-        if str(reserva.get("status") or "") == "colisao_recibo":
-            # 🔴 O recibo bateu na constraint ANTIGA `(company_id, recibo,
-            #    send_mode)` porque OUTRA seguradora já tem uma obrigação com
-            #    o mesmo número. Não é "já cobrado": é um cliente que o robô
-            #    não consegue distinguir com segurança. RETÉM, com incidente,
-            #    e a equipe cobra (aquecimento EXTRA-001, achado 8a). Vem ANTES
-            #    da checagem do id: desde a 20260907_02 a função devolve id NULL
-            #    neste ramo, para o id da OUTRA parcela nunca viajar.
-            await _incidente(
-                company_id, "Cobrança retida: recibo igual ao de outra seguradora",
-                f"{seguradora} · recibo ...{recibo[-4:]} — a equipe precisa cobrar esta parcela")
-            blockers.append(
-                f"parcela {rotulo} ({seguradora}): NAO cobrada — o numero do recibo e igual "
-                f"ao de outra seguradora ja cobrada; tarefa para a equipe")
-            entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
-                             "portal": portal_key, "ok": False, "status": "retido",
-                             "status_anterior": "colisao_recibo", "motivo": "colisao de recibo"})
-            continue
-
-        ledger_id = str(reserva.get("id") or "")
-        if not ledger_id:
-            blockers.append(f"parcela {rotulo} ({seguradora}): a reserva nao devolveu "
-                            f"identificador — NAO enviei")
-            continue
-
-        somente_documento = False
-        if not reserva.get("ganhou"):
-            estado = str(reserva.get("status") or estado_anterior or "")
-            if estado not in ESTADOS_RECLAMAVEIS:
-                # 🔴 E ELA APARECE. Uma parcela que não sai porque já está em
-                #    outro estado tem de ser LEGÍVEL no relatório — inclusive a
-                #    reserva órfã que ficou de um processo que morreu (`reservado`)
-                #    e a `incerto`, que ninguém vai reclamar automaticamente.
-                #    Sumir em silêncio é o que faz ninguém ir atrás (G19).
+            if str(reserva.get("status") or "") == "colisao_recibo":
+                # 🔴 O recibo bateu na constraint ANTIGA `(company_id, recibo,
+                #    send_mode)` porque OUTRA seguradora já tem uma obrigação com
+                #    o mesmo número. Não é "já cobrado": é um cliente que o robô
+                #    não consegue distinguir com segurança. RETÉM, com incidente,
+                #    e a equipe cobra (aquecimento EXTRA-001, achado 8a). Vem ANTES
+                #    da checagem do id: desde a 20260907_02 a função devolve id NULL
+                #    neste ramo, para o id da OUTRA parcela nunca viajar.
+                await _incidente(
+                    company_id, "Cobrança retida: recibo igual ao de outra seguradora",
+                    f"{seguradora} · recibo ...{recibo[-4:]} — a equipe precisa cobrar esta parcela")
                 blockers.append(
-                    f"parcela {rotulo} ({seguradora}): nao cobrada agora — "
-                    f"{NOME_HUMANO_DO_ESTADO.get(estado, estado)} "
-                    f"(estado no ledger: {estado})")
+                    f"parcela {rotulo} ({seguradora}): NAO cobrada — o numero do recibo e igual "
+                    f"ao de outra seguradora ja cobrada; tarefa para a equipe")
                 entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
-                                 "portal": portal_key, "ok": False, "status": "ja cobrado",
-                                 "status_anterior": estado, "motivo": "ja cobrado"})
+                                 "portal": portal_key, "ok": False, "status": "retido",
+                                 "status_anterior": "colisao_recibo", "motivo": "colisao de recibo"})
                 continue
-            reclamou = await asyncio.to_thread(
-                _reclamar_obrigacao, client, ledger_id=ledger_id,
-                company_id=company_id, de_status=list(ESTADOS_RECLAMAVEIS))
-            if not reclamou:
-                entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
-                                 "portal": portal_key, "ok": False, "status": estado,
-                                 "motivo": "outra execucao pegou primeiro"})
+
+            ledger_id = str(reserva.get("id") or "")
+            if not ledger_id:
+                blockers.append(f"parcela {rotulo} ({seguradora}): a reserva nao devolveu "
+                                f"identificador — NAO enviei")
                 continue
-            # 🔴 `parcial` = o TEXTO já chegou; só o PDF faltou. Reenviar o texto
-            #    seria uma segunda abordagem ao mesmo cliente pela mesma parcela.
-            somente_documento = (estado == "parcial" and bool(anterior.get("text_ok")))
 
-        pacote = _pacote_humano(item, cfg, boleto)
+            somente_documento = False
+            if not reserva.get("ganhou"):
+                estado = str(reserva.get("status") or estado_anterior or "")
+                if estado not in ESTADOS_RECLAMAVEIS:
+                    # 🔴 E ELA APARECE. Uma parcela que não sai porque já está em
+                    #    outro estado tem de ser LEGÍVEL no relatório — inclusive a
+                    #    reserva órfã que ficou de um processo que morreu (`reservado`)
+                    #    e a `incerto`, que ninguém vai reclamar automaticamente.
+                    #    Sumir em silêncio é o que faz ninguém ir atrás (G19).
+                    blockers.append(
+                        f"parcela {rotulo} ({seguradora}): nao cobrada agora — "
+                        f"{NOME_HUMANO_DO_ESTADO.get(estado, estado)} "
+                        f"(estado no ledger: {estado})")
+                    entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+                                     "portal": portal_key, "ok": False, "status": "ja cobrado",
+                                     "status_anterior": estado, "motivo": "ja cobrado"})
+                    continue
+                reclamou = await asyncio.to_thread(
+                    _reclamar_obrigacao, client, ledger_id=ledger_id,
+                    company_id=company_id, de_status=list(ESTADOS_RECLAMAVEIS))
+                if not reclamou:
+                    entregas.append({"cliente_nome": item.get("cliente_nome"), "recibo": recibo,
+                                     "portal": portal_key, "ok": False, "status": estado,
+                                     "motivo": "outra execucao pegou primeiro"})
+                    continue
+                # 🔴 `parcial` = o TEXTO já chegou; só o PDF faltou. Reenviar o texto
+                #    seria uma segunda abordagem ao mesmo cliente pela mesma parcela.
+                somente_documento = (estado == "parcial" and bool(anterior.get("text_ok")))
 
-        # 5) A PORTA ÚNICA. Nada aqui chama `send_*` diretamente.
+            reservadas.append({**viva, "ledger_id": ledger_id,
+                               "somente_documento": somente_documento})
+
+        if not reservadas:
+            continue
+
+        # 6) A PORTA ÚNICA. Nada aqui chama `send_*` diretamente.
         from app.services.platform_outbound import send_to_client_guarded
 
-        if modalidade == "equipe" and not somente_documento:
+        anunciadas = [r for r in reservadas if not r["somente_documento"]]
+        reparos = [r for r in reservadas if r["somente_documento"]]
+        kind_do_texto = "billing_equipe" if modalidade == "equipe" else "billing_cliente"
+
+        if modalidade == "equipe" and anunciadas:
             # A nota interna é uma mensagem à parte, e falhar nela não impede o
-            # pacote — mas vira pendência: a atendente receberia texto e PDF sem
-            # saber de quem são.
+            # pacote — mas vira pendência: a atendente receberia texto e PDFs sem
+            # saber de quem são. UMA por grupo, listando as N parcelas.
             nota = await _com_orcamento_do_governador(
                 lambda: send_to_client_guarded(
-                    company_id, destino, pacote["nota_interna"],
+                    company_id, destino,
+                    _nota_interna_do_grupo({**grupo, "parcelas": [r["item"] for r in anunciadas]}, cfg),
                     kind="billing_equipe_nota",
                     summary=f"nota interna da cobranca ({seguradora})",
                     work_run_id=work_run_id, integration_id=integration_id,
@@ -1714,85 +2222,139 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
                 orcamento_s)
             orcamento_s = nota["orcamento"]
             if not (nota["res"] or {}).get("ok"):
-                blockers.append(f"parcela {rotulo} ({seguradora}): a nota interna para a "
-                                f"equipe nao saiu ({(nota['res'] or {}).get('reason') or 'sem motivo'})")
+                blockers.append(f"{len(anunciadas)} parcela(s) ({seguradora}): a nota interna "
+                                f"para a equipe nao saiu "
+                                f"({(nota['res'] or {}).get('reason') or 'sem motivo'})")
 
-        chamada = await _com_orcamento_do_governador(
-            lambda: send_to_client_guarded(
-                company_id, destino,
-                "" if somente_documento else pacote["texto_final"],
-                kind=("billing_equipe" if modalidade == "equipe" else "billing_cliente"),
-                summary=f"cobranca da parcela ({seguradora})",
-                work_run_id=work_run_id, integration_id=integration_id,
-                autorizacao_de_auxiliar=True,
-                documento=pacote["documento"], enfileirar=False,
-                destino_interno=(modalidade == "equipe"),
-                ledger_ref={"table": "billing_sent_log", "id": ledger_id},
-                canario=canario),
-            orcamento_s)
-        orcamento_s = chamada["orcamento"]
-        res = chamada["res"] or {}
+        # 🔴 UM texto por GRUPO, e ele é o das parcelas ANUNCIADAS agora. As que
+        #    são reparo de `parcial` já tiveram o texto delas entregue antes —
+        #    repeti-lo seria uma segunda abordagem pela mesma parcela.
+        texto_do_grupo = (mensagem_do_grupo(
+            {**grupo, "parcelas": [r["item"] for r in anunciadas]}, cfg) if anunciadas else "")
+        # A sequência de chamadas à porta: o texto viaja com o PRIMEIRO PDF, e
+        # cada PDF restante vai numa chamada de texto vazio — o caminho que
+        # `_entregar_agora` já aceita para reparar um `parcial`.
+        sequencia: List[tuple] = []
+        for posicao, reservada in enumerate(anunciadas):
+            sequencia.append((reservada, texto_do_grupo if posicao == 0 else "", True))
+        for reservada in reparos:
+            sequencia.append((reservada, "", False))
 
-        entrada: Dict[str, Any] = {
-            "cliente_nome": item.get("cliente_nome"), "recibo": recibo,
-            "portal": portal_key, "to_last4": destino[-4:],
-            "ok": bool(res.get("ok")), "doc_ok": res.get("doc_ok"),
-            "ledger_id": ledger_id, "modalidade": modalidade,
-        }
-
-        # 6) O ESTADO. Quem enviou já marcou; quem não enviou marca aqui.
-        if res.get("ok"):
-            entrada["status"] = str(res.get("status") or "aceito_pelo_canal")
-            if res.get("ledger") == "falhou":
-                # 🔴 O efeito ACONTECEU e o registro não. `incerto` é a única
-                #    resposta honesta — e ele nunca é reclamado automaticamente.
-                entrada["status"] = "incerto"
+        texto_do_grupo_saiu = True
+        parou_no_governador = False
+        for reservada, texto, e_anunciada in sequencia:
+            rotulo, recibo = reservada["rotulo"], reservada["recibo"]
+            if e_anunciada and not texto_do_grupo_saiu:
+                # O texto que anunciava esta parcela não saiu. Mandar só o PDF
+                # seria um arquivo solto, de origem desconhecida para quem recebe.
                 try:
-                    await asyncio.to_thread(_marcar_estado, client, company_id, ledger_id,
-                                            status="incerto",
-                                            last_error="registro pos-envio falhou")
+                    await asyncio.to_thread(_marcar_estado, client, company_id,
+                                            reservada["ledger_id"], status="adiado",
+                                            last_error="o texto do grupo nao saiu")
                 except Exception:  # noqa: BLE001
-                    await _incidente(company_id, "Cobrança enviada sem registro completo",
-                                     f"A parcela {rotulo} da {seguradora} foi enviada, mas o "
-                                     f"registro do resultado falhou. NÃO reenvie sem conferir.")
-                blockers.append(f"parcela {rotulo} ({seguradora}): enviada, mas o registro "
-                                f"do resultado falhou — marcada como INCERTA, nao sera reenviada")
-            elif entrada["status"] == "parcial":
-                blockers.append(f"parcela {rotulo} ({seguradora}): o texto saiu e o PDF nao "
-                                f"— pendente na lista da cobranca")
-                await _incidente(company_id, "Cobrança sem o boleto anexado",
-                                 f"A parcela {rotulo} da {seguradora} saiu sem o PDF. "
-                                 f"A lista de Pendências mostra a linha para reenviar o anexo.")
-        else:
-            motivo = str(res.get("reason") or "erro_envio")
-            # ⚠️ Quando a PORTA já disse em que estado a linha ficou, é o dela
-            #    que vale: só ela sabe se o efeito era possível (`incerto`).
-            #    O mapa abaixo cobre as recusas que nem chegaram ao canal.
-            estado = str(res.get("status") or "") or _ESTADO_POR_RECUSA.get(motivo, "falhou")
-            entrada["status"] = estado
-            entrada["motivo"] = motivo
-            if not res.get("status"):
-                try:
-                    await asyncio.to_thread(_marcar_estado, client, company_id, ledger_id,
-                                            status=estado, last_error=motivo[:200])
-                except Exception:  # noqa: BLE001
-                    logger.error("[COBRANCA] nao consegui marcar %s no ledger", estado)
-            motivo_humano = MOTIVO_EM_PORTUGUES.get(motivo, motivo)
-            blockers.append(f"parcela {rotulo} ({seguradora}): nao enviada — {motivo_humano}")
-            if estado == "falhou":
-                await _incidente(company_id, "Cobrança não enviada",
-                                 f"A parcela {rotulo} da {seguradora} não saiu: {motivo_humano}. "
-                                 f"Ela aparece na lista de Pendências.")
-            if motivo == "governador" and orcamento_s <= 0:
-                pendentes = len(fila) - indice - 1
-                blockers.append(
-                    f"governador de envio: parei em {len(entregas) + 1} item(ns) — "
-                    f"{pendentes} ficaram para a proxima execucao (estao como 'adiado' "
-                    f"no ledger e serao retomados de la)")
-                entregas.append(entrada)
+                    logger.error("[COBRANCA] nao consegui marcar adiado no ledger")
+                entregas.append({"cliente_nome": reservada["item"].get("cliente_nome"),
+                                 "recibo": recibo, "portal": reservada["portal_key"],
+                                 "ok": False, "status": "adiado",
+                                 "motivo": "o texto do grupo nao saiu",
+                                 "ledger_id": reservada["ledger_id"], "modalidade": modalidade})
+                continue
+
+            chamada = await _com_orcamento_do_governador(
+                lambda: send_to_client_guarded(
+                    company_id, destino, texto,
+                    kind=kind_do_texto,
+                    summary=f"cobranca da parcela ({seguradora})",
+                    work_run_id=work_run_id, integration_id=integration_id,
+                    autorizacao_de_auxiliar=True,
+                    documento=reservada["documento"], enfileirar=False,
+                    destino_interno=(modalidade == "equipe"),
+                    ledger_ref={"table": "billing_sent_log", "id": reservada["ledger_id"]},
+                    canario=canario),
+                orcamento_s)
+            orcamento_s = chamada["orcamento"]
+            res = chamada["res"] or {}
+
+            entrada: Dict[str, Any] = {
+                "cliente_nome": reservada["item"].get("cliente_nome"), "recibo": recibo,
+                "portal": reservada["portal_key"], "to_last4": destino[-4:],
+                "ok": bool(res.get("ok")), "doc_ok": res.get("doc_ok"),
+                "ledger_id": reservada["ledger_id"], "modalidade": modalidade,
+            }
+
+            # 7) O ESTADO. Quem enviou já marcou; quem não enviou marca aqui.
+            if res.get("ok"):
+                entrada["status"] = str(res.get("status") or "aceito_pelo_canal")
+                if e_anunciada and not str(texto or "").strip():
+                    # 🔴 O TEXTO DESTA PARCELA SAIU — no texto do grupo, que
+                    #    nomeia todas as parcelas anunciadas. A porta não pode
+                    #    saber disso (ela recebeu texto vazio), e sem esta linha o
+                    #    ledger diria que o componente texto nunca foi entregue.
+                    try:
+                        await asyncio.to_thread(_marcar_estado, client, company_id,
+                                                reservada["ledger_id"], text_ok=True)
+                    except Exception:  # noqa: BLE001
+                        logger.error("[COBRANCA] nao consegui marcar text_ok no ledger")
+                if res.get("ledger") == "falhou":
+                    # 🔴 O efeito ACONTECEU e o registro não. `incerto` é a única
+                    #    resposta honesta — e ele nunca é reclamado automaticamente.
+                    entrada["status"] = "incerto"
+                    try:
+                        await asyncio.to_thread(_marcar_estado, client, company_id,
+                                                reservada["ledger_id"],
+                                                status="incerto",
+                                                last_error="registro pos-envio falhou")
+                    except Exception:  # noqa: BLE001
+                        await _incidente(company_id, "Cobrança enviada sem registro completo",
+                                         f"A parcela {rotulo} da {seguradora} foi enviada, mas o "
+                                         f"registro do resultado falhou. NÃO reenvie sem conferir.")
+                    blockers.append(f"parcela {rotulo} ({seguradora}): enviada, mas o registro "
+                                    f"do resultado falhou — marcada como INCERTA, nao sera reenviada")
+                elif entrada["status"] == "parcial":
+                    blockers.append(f"parcela {rotulo} ({seguradora}): o texto saiu e o PDF nao "
+                                    f"— pendente na lista da cobranca")
+                    await _incidente(company_id, "Cobrança sem o boleto anexado",
+                                     f"A parcela {rotulo} da {seguradora} saiu sem o PDF. "
+                                     f"A lista de Pendências mostra a linha para reenviar o anexo.")
+            else:
+                motivo = str(res.get("reason") or "erro_envio")
+                # ⚠️ Quando a PORTA já disse em que estado a linha ficou, é o dela
+                #    que vale: só ela sabe se o efeito era possível (`incerto`).
+                #    O mapa abaixo cobre as recusas que nem chegaram ao canal.
+                estado = str(res.get("status") or "") or _ESTADO_POR_RECUSA.get(motivo, "falhou")
+                entrada["status"] = estado
+                entrada["motivo"] = motivo
+                if not res.get("status"):
+                    try:
+                        await asyncio.to_thread(_marcar_estado, client, company_id,
+                                                reservada["ledger_id"],
+                                                status=estado, last_error=motivo[:200])
+                    except Exception:  # noqa: BLE001
+                        logger.error("[COBRANCA] nao consegui marcar %s no ledger", estado)
+                motivo_humano = MOTIVO_EM_PORTUGUES.get(motivo, motivo)
+                blockers.append(f"parcela {rotulo} ({seguradora}): nao enviada — {motivo_humano}")
+                if estado == "falhou":
+                    await _incidente(company_id, "Cobrança não enviada",
+                                     f"A parcela {rotulo} da {seguradora} não saiu: {motivo_humano}. "
+                                     f"Ela aparece na lista de Pendências.")
+                if str(texto or "").strip():
+                    # Era o texto do grupo: sem ele, os PDFs das outras parcelas
+                    # anunciadas também não saem.
+                    texto_do_grupo_saiu = False
+                if motivo == "governador" and orcamento_s <= 0:
+                    parou_no_governador = True
+
+            entregas.append(entrada)
+            if parou_no_governador:
                 break
 
-        entregas.append(entrada)
+        if parou_no_governador:
+            pendentes = max(0, len(fila) - len(entregas))
+            blockers.append(
+                f"governador de envio: parei em {len(entregas)} item(ns) — "
+                f"{pendentes} ficaram para a proxima execucao (estao como 'adiado' "
+                f"no ledger e serao retomados de la)")
+            break
 
     return entregas
 
@@ -2327,6 +2889,158 @@ def _blocker_do_job(job: Dict[str, Any]) -> str:
     return ""
 
 
+# ==========================================================================
+# SPEC-EXTRA-001.6 · B3.1 — O CANÁRIO DE LOGIN, SEM SCHEDULER NOVO
+# ==========================================================================
+#
+# 📊 Medido em 13/09/2026: `login_check` existe nas 6 journeys
+# (`portal_worker/journeys/__init__.py`) e NINGUÉM o enfileirava — este arquivo
+# escrevia `"journey": "cobranca_sweep"` fixo. A Allianz gastou ≈100 s por dia,
+# por 25 dias, para produzir a mesma linha de erro.
+#
+# 🔴 NENHUM MOTOR NOVO (CLAUDE.md §5): a rotina já é diária, então "canário
+# diário" e "prólogo da rotina" são o MESMO relógio. Sem scheduler, sem fila,
+# sem watchdog — o mesmo `portal_jobs`, o mesmo worker, uma jornada diferente. E
+# o veredito é de minutos antes, não de ontem.
+#
+#: Quanto tempo o `fora_do_ar` mantém o circuito ABERTO (padrão Circuit Breaker
+#: da Microsoft, §13 E3 da proposta). 💭 6 h. Clamp 1–72: abaixo de 1 h o breaker
+#: não protege nada, e acima de 3 dias ele vira esquecimento.
+PORTAL_BREAKER_HORAS_PADRAO = 6
+#: Quanto a rotina espera o canário de cada portal. 💭 120 s (o login leva ≈100 s).
+BILLING_LOGIN_CHECK_TETO_S_PADRAO = 120
+#: O vocabulário de `portal_accounts.health` — contrato com o portal-worker, que
+#: é quem ESCREVE (`portal_worker/worker.py`: `SAUDE_CREDENCIAL_RECUSADA`,
+#: `SAUDE_FORA_DO_AR`, `VOCABULARIO_DE_SAUDE`). `unknown` é o meio-aberto do
+#: padrão: tenta UMA vez, e a tentativa é o próprio canário.
+#:
+#: 🔴 UMA lista, UM lugar: o vocabulário de saúde mora em `portal_worker.worker`
+#: (quem o ESCREVE). Importa-se de lá, na mesma direção que
+#: `_portais_que_sei_varrer` já usa. O fallback literal existe só para o caso em
+#: que o pacote do worker não está no PYTHONPATH deste processo — e o guarda
+#: G10 prova que os dois valores batem com os do worker quando ele importa.
+try:
+    from portal_worker.worker import SAUDE_CREDENCIAL_RECUSADA, SAUDE_FORA_DO_AR
+except Exception:  # noqa: BLE001
+    SAUDE_CREDENCIAL_RECUSADA, SAUDE_FORA_DO_AR = "credencial_recusada", "fora_do_ar"
+HEALTH_DE_BREAKER_ABERTO = (SAUDE_CREDENCIAL_RECUSADA, SAUDE_FORA_DO_AR)
+
+
+def portal_breaker_horas(env: Optional[Dict[str, str]] = None) -> int:
+    fonte = env if env is not None else os.environ
+    return _int_clamped(fonte.get("PORTAL_BREAKER_HORAS"), PORTAL_BREAKER_HORAS_PADRAO, 1, 72)
+
+
+def login_check_teto_s(env: Optional[Dict[str, str]] = None) -> int:
+    fonte = env if env is not None else os.environ
+    return _int_clamped(fonte.get("BILLING_LOGIN_CHECK_TETO_S"),
+                        BILLING_LOGIN_CHECK_TETO_S_PADRAO, 30, 600)
+
+
+def _breaker_aberto(portal_key: str, account: Dict[str, Any], horas: int) -> str:
+    """A frase do relatório quando o circuito está ABERTO. `""` = pode tentar.
+
+    ⛔ `credencial_recusada` **só fecha por gesto humano**: salvar a senha nova
+    põe `health='unknown'` (`app/api/portal.py`), e aí a execução seguinte testa
+    uma vez. Tentar de novo sozinho é bater na porta trancada — e, em portal de
+    seguradora, é como se bloqueia a conta da corretora.
+    """
+    health = str((account or {}).get("health") or "").strip().lower()
+    if health == SAUDE_CREDENCIAL_RECUSADA:
+        return (f"portal {portal_key}: senha recusada pelo portal — atualize a senha em "
+                f"Personalizacao > Conectores > Portais (o robo nao tenta de novo ate isso)")
+    if health == SAUDE_FORA_DO_AR:
+        desde = _para_datetime((account or {}).get("updated_at"))
+        if desde is None:
+            # Sem a hora, não dá para saber se o prazo passou. O breaker de um
+            # estado sem data seria eterno: melhor tentar uma vez.
+            return ""
+        idade = (datetime.now(timezone.utc) - desde).total_seconds() / 3600.0
+        if idade < horas:
+            falta = max(1, int(round(horas - idade)))
+            return (f"portal {portal_key}: fora do ar desde {desde.strftime('%d/%m %H:%M')} "
+                    f"— tento de novo em {falta} h")
+    return ""
+
+
+async def _canario_de_login(client, routine: Dict[str, Any], cfg: Dict[str, Any],
+                            blockers: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Enfileira um `login_check` por portal e devolve SÓ os que entraram.
+
+    Devolve `{portal_key: account}`. Quem não está no dicionário não vira
+    `cobranca_sweep` — e o motivo já está escrito no relatório, em português.
+    """
+    company_id = str(routine.get("company_id") or "")
+    sei_varrer = set(_portais_que_sei_varrer())
+    horas = portal_breaker_horas()
+    contas: Dict[str, Dict[str, Any]] = {}
+    jobs: Dict[str, str] = {}
+    # ⚠️ A lista sai para uma variável de propósito: `for portal_key in
+    # selected_portal_keys(cfg):` é a ÂNCORA do guarda da data do dado
+    # (`test_o_relatorio_abre_pelo_achado`, [B2]), que confere que o carimbo da
+    # varredura vem ANTES do laço dos portais. Duas cópias literais daquela linha
+    # fariam o `find` dele achar a primeira e medir outra coisa.
+    portais_selecionados = selected_portal_keys(cfg)
+    for portal_key in portais_selecionados:
+        if portal_key not in sei_varrer:
+            # O laço da varredura já escreve a linha deste caso. Uma segunda
+            # cópia da mesma frase só duplicaria o relatório.
+            continue
+        try:
+            account = await asyncio.to_thread(_portal_account, client, company_id, portal_key)
+        except Exception as e:  # noqa: BLE001
+            blockers.append(f"portal {portal_key}: nao consegui ler a credencial "
+                            f"({type(e).__name__}) — nao varri este portal")
+            continue
+        if not account:
+            blockers.append(
+                f"portal {portal_key}: sem credencial conectada "
+                f"— cadastre em Personalizacao > Conectores > Portais")
+            continue
+        fechado = _breaker_aberto(portal_key, account, horas)
+        if fechado:
+            blockers.append(fechado)
+            continue
+        try:
+            job_id = await asyncio.to_thread(_enqueue_job, client, routine, portal_key,
+                                             account, cfg, journey=JORNADA_DO_CANARIO)
+        except Exception as e:  # noqa: BLE001
+            job_id = None
+            logger.warning("[billing] canario de login nao enfileirado: %s", type(e).__name__)
+        if not job_id:
+            blockers.append(f"portal {portal_key}: falha ao enfileirar o teste de entrada "
+                            f"(login) — nao varri este portal")
+            continue
+        jobs[portal_key] = job_id
+        contas[portal_key] = account
+
+    if not jobs:
+        return contas
+
+    # Em PARALELO: seis logins em série seriam dez minutos antes de a primeira
+    # varredura começar.
+    teto = login_check_teto_s()
+    resultados = await asyncio.gather(
+        *[_poll_job(client, job_id, teto) for job_id in jobs.values()],
+        return_exceptions=True)
+    for portal_key, resultado in zip(list(jobs.keys()), resultados):
+        if isinstance(resultado, BaseException):
+            blockers.append(f"portal {portal_key}: o teste de entrada nao respondeu "
+                            f"({type(resultado).__name__}) — nao varri este portal")
+            contas.pop(portal_key, None)
+            continue
+        if str((resultado or {}).get("status") or "") == "done":
+            continue
+        # 🔴 O motivo vem de `_blocker_do_job` — o texto REAL que o portal deu
+        #    (P0.2). Sem ele a linha diria "falhou" e mais nada.
+        linha = _blocker_do_job({**(resultado or {}),
+                                 "portal_key": (resultado or {}).get("portal_key") or portal_key})
+        blockers.append((linha or f"portal {portal_key}: o teste de entrada nao terminou")
+                        + " — nao varri este portal nesta execucao")
+        contas.pop(portal_key, None)
+    return contas
+
+
 async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], *,
                                              work_run_id: Optional[str] = None) -> str:
     """A execução da rotina de cobrança.
@@ -2358,6 +3072,10 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
     # sabe a hora da varredura é esta função, e ela a passa adiante.
     inicio_da_varredura = datetime.now(timezone.utc)
     sei_varrer = set(_portais_que_sei_varrer())
+    # 🔴 B3.1 — O CANÁRIO PRIMEIRO. Um `login_check` por portal ANTES de qualquer
+    # varredura: quem não entra hoje não gasta 100 s de navegador para descobrir
+    # isso no meio do caminho, e a corretora lê o motivo no relatório.
+    aprovados_pelo_canario = await _canario_de_login(client, routine, cfg, blockers)
     for portal_key in selected_portal_keys(cfg):
         try:
             if portal_key not in sei_varrer:
@@ -2365,11 +3083,8 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
                     f"portal {portal_key}: selecionado, mas ainda NAO tem automacao de cobranca "
                     f"— nenhum inadimplente deste portal entrou nesta execucao")
                 continue
-            account = await asyncio.to_thread(_portal_account, client, company_id, portal_key)
-            if not account:
-                blockers.append(
-                    f"portal {portal_key}: sem credencial conectada "
-                    f"— cadastre em Personalizacao > Conectores > Portais")
+            account = aprovados_pelo_canario.get(portal_key)
+            if account is None:
                 continue
             job_id = await asyncio.to_thread(_enqueue_job, client, routine, portal_key, account, cfg)
             if job_id:

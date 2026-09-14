@@ -845,7 +845,11 @@ class Banco:
             "apolice_susep": p.get("p_apolice_susep"),
             "routine_id": p.get("p_routine_id"), "work_run_id": p.get("p_work_run_id"),
             "integration_id": p.get("p_integration_id"),
-            "canario": bool(p.get("p_canario")), "attempts": 1,
+            "canario": bool(p.get("p_canario")),
+            # 🔴 SPEC-EXTRA-001.6 B1.4 — o 13o argumento. O duble grava o que a
+            #    funcao de 13 args grava; sem isto, a janela de N dias leria
+            #    sempre `None` e um guarda dela ficaria verde por engano.
+            "segurado_chave": p.get("p_segurado_chave"), "attempts": 1,
             "reserved_at": "2026-09-07T00:00:00+00:00",
             "updated_at": "2026-09-07T00:00:00+00:00",
         }
@@ -2388,7 +2392,14 @@ def bloco_G20():
     #    mediam uma constante escrita no teste (292 ch, que o produto nao envia)
     #    viraram seis, sobre o texto que o MOTOR monta e os baloes que o canal
     #    recebe. Nao e "atualizado": e a licao migrando (CLAUDE.md §9.3).
-    for arquivo, esperado in (("tests/test_a_cobranca_esta_como_estava.py", 36),
+    # 📊 36 -> 38 no MESMO dia, pelo B1.1: a assercao "a dedup continua DESLIGADA
+    #    por padrao no modo teste" guardava uma verdade VENCIDA -- ela e a regra
+    #    de 17/08 que, medida em 10 e 11/09, mandou os MESMOS 7 boletos nos dois
+    #    dias. Ela migrou para TRES linhas (test sem flag -> dedup; test com
+    #    `BILLING_DEDUP_TEST_DISABLED` -> sem dedup; `equipe` com a flag ->
+    #    dedup), e as tres juntas provam o que a antiga nao conseguia provar: que
+    #    a flag mexe SO no modo teste.
+    for arquivo, esperado in (("tests/test_a_cobranca_esta_como_estava.py", 38),
                               ("tests/test_spec078_bloco_a_seguranca.py", 39),
                               ("tests/test_governador_de_envio.py", None)):
         caminho = os.path.join(RAIZ, arquivo)

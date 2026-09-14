@@ -13,6 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.core.database import get_supabase_client
 from app.services import portal_vault
+from app.services.saude_do_portal import rotulo_e_acao
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/portal", tags=["Portal"])
@@ -135,10 +136,18 @@ async def list_credentials(
     )
     out = []
     for r in res.data or []:
+        # 🔴 SPEC-EXTRA-001.6 B3.4: o `health` ja vinha nesta lista e a tela NAO
+        # o renderizava — o corretor via "Conectado" numa credencial recusada.
+        # O rotulo humano nao nasce no frontend: ele vem daqui, da MESMA funcao
+        # que a Central de Agentes usa, porque duas telas com duas copias da
+        # mesma frase divergem no primeiro conserto.
+        saude = rotulo_e_acao(r.get("health"), r.get("updated_at"))
         # NUNCA devolve a senha — só se está configurada.
         out.append({
             "id": r["id"], "portal_key": r["portal_key"], "account_label": r.get("account_label"),
-            "username": r.get("username"), "health": r.get("health"),
+            "username": r.get("username"), "health": saude["health"],
+            "health_rotulo": saude["rotulo"], "health_acao": saude["acao"],
+            "verificado_em": saude["verificado_em"],
             "has_password": bool(r.get("secret_encrypted")), "updated_at": r.get("updated_at"),
         })
     return {"credentials": out}

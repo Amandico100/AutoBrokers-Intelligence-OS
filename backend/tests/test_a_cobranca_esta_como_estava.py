@@ -233,8 +233,21 @@ check("o intervalo curto do governador continua",
 # (`billing_sent_log` finalmente e lido e escrito); o que continua valendo e o
 # PADRAO do modo teste, decidido em 17/08 -- e agora isso e perguntado a
 # funcao, que consegue responder as duas coisas.
-check("a dedup continua DESLIGADA por padrao no modo teste (o boleto reenviado amanha)",
-      BILL.dedup_de_envio_ativa("test", env={}) is False)
+#
+# 🔴 13/09/2026 -- O PADRAO INVERTEU, E ESTE GUARDA MIGRA COM ELE (SPEC-EXTRA-001.6
+# B1.1; CLAUDE.md 9.3: "teste que guarda verdade vencida e pior que teste nenhum").
+# 📊 A regra de 17/08 -- "em teste nao deduplica, porque o que se quer e repetir"
+# -- produziu, em 10 e 11/09, os MESMOS 7 boletos nos dois dias. O padrao agora e
+# DEDUPLICAR nos quatro modos; quem quer repetir num dia de demonstracao LIGA
+# `BILLING_DEDUP_TEST_DISABLED`. A LICAO NAO MORREU, MIGROU: o que continua sendo
+# guardado e que a flag mexe SO no modo teste -- e sao as tres linhas abaixo que
+# provam isso, porque cada uma consegue dar um resultado diferente da outra.
+check("a dedup e o PADRAO tambem no modo teste (13/09: o boleto nao sai duas vezes)",
+      BILL.dedup_de_envio_ativa("test", env={}) is True)
+check("e a flag de demonstracao DESLIGA o modo teste",
+      BILL.dedup_de_envio_ativa("test", env={"BILLING_DEDUP_TEST_DISABLED": "1"}) is False)
+check("CONTROLE: a mesma flag ligada NAO toca um modo real -- `equipe` deduplica",
+      BILL.dedup_de_envio_ativa("equipe", env={"BILLING_DEDUP_TEST_DISABLED": "1"}) is True)
 check("CONTROLE: e o mecanismo existe de verdade -- live deduplica",
       BILL.dedup_de_envio_ativa("live", env={}) is True)
 check("o erro ainda carrega o motivo real, nao so o tipo",

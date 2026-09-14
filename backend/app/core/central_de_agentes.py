@@ -451,7 +451,8 @@ def _paginar(consulta, paginas: int) -> Tuple[List[Dict[str, Any]], bool]:
 def _vazio(agora: datetime, leitura_indisponivel: bool = False) -> Dict[str, Any]:
     return {"agora": agora, "attendance": [], "runs": [], "artefatos": [], "aprovacoes": [],
             "producoes": {}, "custo_instrumentado": False, "truncado": (),
-            "leitura_indisponivel": leitura_indisponivel}
+            "leitura_indisponivel": leitura_indisponivel,
+            "portal_contas": [], "portal_jobs": [], "portais": []}
 
 
 def _ler_tudo_sincrono() -> Dict[str, Any]:
@@ -537,10 +538,29 @@ def _ler_tudo_sincrono() -> Dict[str, Any]:
                 vistos.add(chave)
                 producoes[chave] = _max_coluna(cli, f.tabela or "", coluna, f.filtro)
 
+    # ---- portais das seguradoras: saúde da conta + os jobs de 7 dias ------ #
+    # 🔴 SPEC-EXTRA-001.6 B3.4-2. Agregado da PLATAFORMA: a Central é
+    # master-admin e mostra contagens por PORTAL, nunca por corretora — nenhum
+    # `company_id`, nenhum nome de cliente, nenhuma credencial sai daqui.
+    d7 = (agora - timedelta(seconds=_JANELA_7D)).isoformat()
+    portal_contas = _seguro(lambda: cli.table("portal_accounts")
+                            .select("portal_key, health, updated_at")
+                            .execute().data or [], [])
+    portal_jobs = _seguro(lambda: cli.table("portal_jobs")
+                          .select("portal_key, journey, status, finished_at, evidence->>message")
+                          .in_("journey", list(_JOURNEYS_DE_ACESSO))
+                          .gte("created_at", d7)
+                          .order("finished_at", desc=True)
+                          .limit(_PAGINA).execute().data or [], [])
+    portais = _seguro(lambda: cli.table("portals").select("key, name")
+                      .execute().data or [], [])
+
     return {"agora": agora, "attendance": attendance, "runs": runs, "artefatos": artefatos,
             "aprovacoes": aprovacoes, "producoes": producoes,
             "custo_instrumentado": custo_instrumentado,
-            "truncado": tuple(truncado), "leitura_indisponivel": False}
+            "truncado": tuple(truncado), "leitura_indisponivel": False,
+            "portal_contas": portal_contas, "portal_jobs": portal_jobs,
+            "portais": portais}
 
 
 def _chave_fonte(tabela: Optional[str], coluna: str, filtro: Optional[Dict[str, Any]]) -> str:
@@ -594,6 +614,148 @@ def _agregar_runs(runs: List[Dict[str, Any]], agora: datetime) -> Dict[str, Dict
 
 def _media(valores: List[float]) -> Optional[float]:
     return round(sum(valores) / len(valores), 1) if valores else None
+
+
+# As duas journeys que dizem algo sobre o ACESSO ao portal. `abrir_atendimento`
+# (vidros) fica fora: o desfecho dele não é veredito sobre a credencial.
+_JOURNEYS_DE_ACESSO = ("login_check", "cobranca_sweep")
+
+GRUPO_DOS_PORTAIS = ("portais_seguradoras", "PORTAIS DAS SEGURADORAS",
+                     "o robô consegue entrar, e quando não consegue diz por quê")
+
+# 💭 A cor do losango. Não é estado (o estado tem cor própria): é identidade.
+_COR_DO_PORTAL = "#6E8BC0"
+
+
+def _nome_do_portal(chave: str, nomes: Dict[str, str]) -> str:
+    """O nome que uma pessoa lê. ⚠️ `allianz_corretor` não é nome de seguradora:
+    é chave de tabela, e a Central proíbe chave na tela (SPEC-088 §4 / C10)."""
+    bruto = str(chave or "").strip()
+    if nomes.get(bruto):
+        return str(nomes[bruto])
+    limpo = bruto.replace("_corretor", "").replace("_", " ").strip()
+    return limpo.title() or "Portal"
+
+
+def grupo_dos_portais(contas: List[Dict[str, Any]], jobs: List[Dict[str, Any]],
+                      agora: datetime, nomes: Optional[Dict[str, str]] = None
+                      ) -> Optional[Dict[str, Any]]:
+    """PURA: um card por portal presente em `portal_accounts`.
+
+    🔴 Por que este grupo existe (SPEC-EXTRA-001.6 B3.4). 📊 Medido em
+    13/09/2026: a Allianz gastou ≈100 s/dia por 25 dias para produzir a mesma
+    linha de falha, e **nenhuma tela dizia**. `portal_accounts.health` estava
+    `unknown` nas 16 contas porque a coluna não tinha escritor; agora o worker
+    escreve, e aqui ela vira card.
+
+    ⛔ Sem PII e sem corretora: o card é por PORTAL, agregando as contas de
+    todas as empresas. A saúde mostrada é a PIOR das contas — um portal com uma
+    conta `ok` e uma `credencial_recusada` tem cobrança que não sai.
+    """
+    # ⚠️ Import local: `app.services.saude_do_portal` importa o vocabulário de
+    # `portal_worker`, e a Central não pode depender disso para SUBIR — ela é a
+    # tela que se abre justamente quando algo está fora do ar.
+    from app.services.saude_do_portal import (ESTADO_NA_CENTRAL, pior_saude,
+                                              rotulo_e_acao)
+
+    linhas = [c for c in (contas or []) if str(c.get("portal_key") or "").strip()]
+    if not linhas:
+        return None
+    nomes = nomes or {}
+
+    por_portal: Dict[str, Dict[str, Any]] = {}
+    for c in linhas:
+        chave = str(c.get("portal_key")).strip()
+        alvo = por_portal.setdefault(chave, {"saudes": [], "quando": None,
+                                             "total": 0, "done": 0, "motivo": None,
+                                             "ultima": None, "hoje": 0})
+        alvo["saudes"].append(c.get("health"))
+        quando = parse_iso(c.get("updated_at"))
+        if quando and (alvo["quando"] is None or quando > alvo["quando"]):
+            alvo["quando"] = quando
+
+    for j in (jobs or []):
+        chave = str(j.get("portal_key") or "").strip()
+        if chave not in por_portal:
+            continue
+        if str(j.get("journey") or "") not in _JOURNEYS_DE_ACESSO:
+            continue
+        alvo = por_portal[chave]
+        alvo["total"] += 1
+        terminou = parse_iso(j.get("finished_at"))
+        if str(j.get("status")) == "done":
+            alvo["done"] += 1
+        if terminou and (agora - terminou).total_seconds() <= 86400:
+            alvo["hoje"] += 1
+        if terminou and (alvo["ultima"] is None or terminou > alvo["ultima"]):
+            alvo["ultima"] = terminou
+        if str(j.get("status")) != "done" and alvo["motivo"] is None:
+            # ⚠️ A mensagem é texto que veio do PORTAL. Ela passa pelo redator
+            # antes de virar tela: `evidence.message` da MAPFRE traz o CPF do
+            # corretor em claro no print, e texto de portal não é confiável.
+            bruto = str(j.get("message") or "").strip()
+            if bruto:
+                try:
+                    from portal_worker.redaction import redigir_texto
+
+                    bruto = redigir_texto(bruto)
+                except Exception:  # noqa: BLE001
+                    bruto = ""
+            alvo["motivo"] = bruto[:180] or None
+
+    cartoes: List[Dict[str, Any]] = []
+    for chave in sorted(por_portal):
+        dados = por_portal[chave]
+        saude = pior_saude(dados["saudes"])
+        # A última verificação é a do JOB (quando o robô de fato entrou); sem job
+        # no período, o carimbo da conta é o que existe — e ele é honesto:
+        # `updated_at` muda quando a saúde muda.
+        verificado = dados["ultima"] or dados["quando"]
+        rot = rotulo_e_acao(saude, _iso(verificado))
+        partes = [rot["rotulo"]]
+        if rot["acao"]:
+            partes.append(rot["acao"])
+        if dados["total"]:
+            partes.append("%d de %d entradas concluíram nos últimos 7 dias"
+                          % (dados["done"], dados["total"]))
+        else:
+            partes.append("nenhuma entrada registrada nos últimos 7 dias")
+        if dados["motivo"]:
+            partes.append("última falha: " + dados["motivo"])
+        cartoes.append({
+            "id": "portal_" + chave,
+            "nome": _nome_do_portal(chave, nomes),
+            "descricao": "entrada no portal da seguradora (login e busca de boletos)",
+            "cor": _COR_DO_PORTAL,
+            "grupo": GRUPO_DOS_PORTAIS[0],
+            "estado": ESTADO_NA_CENTRAL.get(saude, "NAO_MEDIDO"),
+            "motivo": " · ".join(partes),
+            "pulso": {"ultimo": _iso(verificado), "origem": "work_runs",
+                      "origem_rotulo": "as execuções",
+                      "cadencia_humana": cadencia_humana(86400)},
+            "producao": {"ultimo": _iso(dados["ultima"]),
+                         "fonte": "portal_jobs.finished_at",
+                         "fonte_rotulo": "as entradas no portal",
+                         "cadencia_esperada_s": 86400,
+                         "cadencia_humana": cadencia_humana(86400),
+                         "limiar_s": 2 * 86400},
+            "desligado": {"declara": False, "todas_desligadas": None, "desde": None},
+            "trabalho": {
+                "eixo": None,
+                "execucoes_24h": dados["hoje"],
+                "execucoes_7d": dados["total"],
+                "falhas_7d": dados["total"] - dados["done"],
+                "duracao_media_s": None, "fila_media_s": None,
+                "artifacts_7d": None, "aprovacoes_pendentes": None,
+                "travados": 0, "custo_brl_30d": None,
+            },
+            "acoes_hoje": dados["hoje"],
+        })
+
+    gid, titulo, proposito = GRUPO_DOS_PORTAIS
+    return {"id": gid, "titulo": titulo, "proposito": proposito,
+            "resumo": resumo_do_grupo([c["estado"] for c in cartoes]),
+            "agentes": cartoes}
 
 
 def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
@@ -771,6 +933,20 @@ def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[st
         grupos.append({"id": gid, "titulo": "SEM GRUPO", "proposito": "grupo desconhecido: %s" % gid,
                        "resumo": resumo_do_grupo([c["estado"] for c in cartoes]),
                        "agentes": cartoes})
+
+    # 🔴 O grupo dos portais entra DEPOIS dos quatro históricos: a ordem da
+    # tela é a da urgência para o segurado, e o card do portal é do trabalho de
+    # fundo. Ele só aparece quando existe conta de portal — grupo vazio na tela
+    # é ruído, e ruído se ignora.
+    grupo_portais = grupo_dos_portais(
+        list(bruto.get("portal_contas") or []),
+        list(bruto.get("portal_jobs") or []),
+        agora,
+        {str(p.get("key")): str(p.get("name") or "")
+         for p in (bruto.get("portais") or []) if p.get("key")},
+    )
+    if grupo_portais:
+        grupos.append(grupo_portais)
 
     orfas = workflow_keys_sem_card(sorted(por_chave.keys()))
     if orfas:

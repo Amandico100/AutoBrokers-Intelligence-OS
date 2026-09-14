@@ -338,21 +338,35 @@ check("a decisao de deduplicar mora num lugar so, com nome",
       callable(getattr(BC, "dedup_de_envio_ativa", None)))
 check("modo live deduplica", BC.dedup_de_envio_ativa("live", env={}) is True)
 check("modo approval deduplica", BC.dedup_de_envio_ativa("approval", env={}) is True)
-check("modo teste NAO deduplica por padrao (nota 88, 17/08/2026)",
-      BC.dedup_de_envio_ativa("test", env={}) is False)
-check("CONTROLE: mas o modo teste pode deduplicar quando o Founder ligar",
-      BC.dedup_de_envio_ativa("test", env={BC.FLAG_DEDUP_TESTE: "1"}) is True)
+# 🔴 13/09/2026 -- A NOTA 88 FOI MEDIDA E INVERTIDA (SPEC-EXTRA-001.6 B1.1).
+# Ela dizia "em teste nao deduplica, porque o que se quer e repetir". 📊 Em 10 e
+# 11/09 a rotina da Resulta mandou os MESMOS 7 boletos nos dois dias. O padrao
+# agora e DEDUPLICAR; quem quer repetir liga `BILLING_DEDUP_TEST_DISABLED`. A
+# licao nao morreu: o que continua guardado e que a flag mexe SO no modo teste.
+check("modo teste deduplica por padrao (13/09/2026)",
+      BC.dedup_de_envio_ativa("test", env={}) is True)
+check("CONTROLE: e o Founder DESLIGA a dedup num dia de demonstracao",
+      BC.dedup_de_envio_ativa("test", env={BC.FLAG_DEDUP_TESTE_DESLIGADA: "1"}) is False)
+check("CONTROLE: a mesma flag nao toca o modo real",
+      BC.dedup_de_envio_ativa("equipe", env={BC.FLAG_DEDUP_TESTE_DESLIGADA: "1"}) is True)
 
 
 class ConsultaDeMentira:
     def __init__(self, banco, tabela):
-        self.banco, self.tabela, self._f = banco, tabela, []
+        self.banco, self.tabela, self._f, self._in = banco, tabela, [], []
 
     def select(self, *_a, **_k):
         return self
 
     def eq(self, coluna, valor):
         self._f.append((coluna, valor))
+        return self
+
+    def in_(self, coluna, valores):
+        # 🔴 13/09/2026: o leitor da janela de N dias (SPEC-EXTRA-001.6 B1.3) usa
+        # `.in_("status", ...)`. Sem este metodo o duble levantaria AttributeError
+        # e o teste mediria o duble, nao o produto.
+        self._in.append((coluna, [str(v) for v in valores]))
         return self
 
     def upsert(self, linha, on_conflict=""):
@@ -369,6 +383,8 @@ class ConsultaDeMentira:
         linhas = self.banco.linhas.get(self.tabela, [])
         for coluna, valor in self._f:
             linhas = [l for l in linhas if str(l.get(coluna)) == str(valor)]
+        for coluna, valores in self._in:
+            linhas = [l for l in linhas if str(l.get(coluna)) in valores]
         return types.SimpleNamespace(data=linhas)
 
 
@@ -386,8 +402,16 @@ class WhatsappDeMentira:
     def __init__(self):
         self.textos, self.docs = [], []
 
-    def send_message(self, numero, texto, _integ):
+    def send_message(self, numero, texto, _integ, **como):
+        # 🔴 13/09/2026: o duble recusava `bloco_unico=` e o P0 da
+        # SPEC-EXTRA-001.6 passou a mandar esse kwarg no modo teste
+        # (`bloco_unico=True`, para a simulacao chegar em UM balao). 📊 Medido em
+        # HEAD 94862ea: `send_message(... bloco_unico=True)` no produto x
+        # `send_message(self, numero, texto, _integ)` aqui = TypeError, e TODAS
+        # as assercoes de entrega deste arquivo estavam vermelhas ANTES desta
+        # unidade. Um duble que nao acompanha a assinatura mede a si mesmo.
         self.textos.append((numero, texto))
+        self.como = dict(como)
         return True
 
     def send_document(self, numero, url, nome, _integ):
@@ -424,7 +448,7 @@ def _entregar(*, banco, send_mode="test", env=None, itens=None):
     blockers: list = []
     velho = dict(os.environ)
     try:
-        os.environ.pop(BC.FLAG_DEDUP_TESTE, None)
+        os.environ.pop(BC.FLAG_DEDUP_TESTE_DESLIGADA, None)
         os.environ.update(env or {})
         enviados = asyncio.run(BC._send_test_messages(
             banco, {"company_id": "resulta", "delivery": {}}, itens, boletos, cfg, blockers))
@@ -436,19 +460,27 @@ def _entregar(*, banco, send_mode="test", env=None, itens=None):
     return enviados, blockers, zap
 
 
-# --- hoje (19/08), modo teste: nada muda. A demonstracao do Founder roda. --
+# --- modo teste, ledger vazio: a demonstracao do Founder roda -------------
+# 🔴 13/09/2026: esta secao dizia "modo teste: NADA e gravado em
+# billing_sent_log (repetir amanha e o objetivo)". Era a nota 88, e ela foi
+# medida: repetir amanha foi EXATAMENTE o que aconteceu em 10 e 11/09. Agora o
+# modo teste GRAVA -- e e por isso que a segunda execucao do mesmo dia nao
+# reenvia. O que nao mudou: com o ledger vazio, tudo sai.
 banco = BancoDeMentira()
 enviados, blockers, zap = _entregar(banco=banco)
 check("modo teste: os dois segurados sao entregues", len([e for e in enviados if e["ok"]]) == 2, enviados)
 check("modo teste: o PDF vai junto", len(zap.docs) == 2, zap.docs)
-check("modo teste: NADA e gravado em billing_sent_log (repetir amanha e o objetivo)",
-      banco.upserts == [], banco.upserts)
+check("modo teste: e agora o que saiu FICA registrado (e o que impede o 11/09)",
+      [u["linha"]["recibo"] for u in banco.upserts] == ["111", "222"], banco.upserts)
+check("modo teste: o registro guarda DE QUEM e a parcela (a janela de N dias le isto)",
+      all(str(u["linha"].get("segurado_chave") or "").startswith("nome:")
+          for u in banco.upserts), banco.upserts)
 
-# --- CONTROLE: o mesmo banco, o mesmo caminho, com a dedup LIGADA ---------
+# --- CONTROLE: o mesmo banco, o mesmo caminho, com quem ja recebeu --------
 banco2 = BancoDeMentira(linhas={"billing_sent_log": [
     {"company_id": "resulta", "recibo": "111", "send_mode": "test"}]})
-enviados2, blockers2, zap2 = _entregar(banco=banco2, env={BC.FLAG_DEDUP_TESTE: "1"})
-check("CONTROLE: com a dedup ligada, quem ja recebeu NAO recebe de novo",
+enviados2, blockers2, zap2 = _entregar(banco=banco2)
+check("CONTROLE: por padrao, quem ja recebeu NAO recebe de novo",
       [e["recibo"] for e in enviados2] == ["222"], enviados2)
 check("CONTROLE: e quem recebeu agora entra na tabela",
       [u["linha"]["recibo"] for u in banco2.upserts] == ["222"], banco2.upserts)
@@ -458,9 +490,17 @@ check("CONTROLE: gravado com a chave do indice unico que existe no banco",
 check("CONTROLE: e o relatorio diz quantos foram pulados",
       any("ja enviados" in b for b in blockers2), blockers2)
 
+# --- O PAR: a MESMA superficie, veredito oposto, so pela flag -------------
+banco2b = BancoDeMentira(linhas={"billing_sent_log": [
+    {"company_id": "resulta", "recibo": "111", "send_mode": "test"}]})
+enviados2b, _b2b, _z2b = _entregar(banco=banco2b,
+                                   env={BC.FLAG_DEDUP_TESTE_DESLIGADA: "1"})
+check("PAR: com a flag de demonstracao, o mesmo recibo sai de novo",
+      [e["recibo"] for e in enviados2b] == ["111", "222"], enviados2b)
+
 # --- a falha de gravacao NAO pode ser engolida ---------------------------
 banco3 = BancoDeMentira(quebradas=("billing_sent_log",))
-enviados3, blockers3, zap3 = _entregar(banco=banco3, env={BC.FLAG_DEDUP_TESTE: "1"})
+enviados3, blockers3, zap3 = _entregar(banco=banco3)
 check("banco fora do ar: a entrega acontece assim mesmo",
       len([e for e in enviados3 if e["ok"]]) == 2, enviados3)
 check("mas a falha de registro VIRA linha no relatorio (nao some)",

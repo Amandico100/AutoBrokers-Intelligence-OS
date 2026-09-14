@@ -5955,9 +5955,14 @@ barrado por `customer_send_allowed` e por blocker explícito. Enquanto isso não
 mudar, `billing_sent_log` continua vazia com o padrão atual.
 
 **O que destrava:** 🧑 o Founder decidir se o modo teste passa a deduplicar.
-`BILLING_DEDUP_TEST_ENABLED=1` liga sem tocar em código, e há teste dos dois
-lados (`backend/tests/test_a_sessao_caida_volta_e_o_aviso_diz_a_verdade.py`,
-bloco [4]).
+
+> 🔴 **INVERTIDA em 13/09/2026 pela SPEC-EXTRA-001.6 B1.1** (D-PILOTO-18; diagnóstico §9.4):
+> 📊 a decisão de 17/08 produziu os MESMOS 7 boletos em 10 e 11/09. O padrão passou a
+> ser DEDUPLICAR em todo modo, inclusive `test`; quem quer repetir num dia de
+> demonstração liga `BILLING_DEDUP_TEST_DISABLED=1` (a flag DESLIGA, e só toca `test`).
+> O valor antigo `BILLING_DEDUP_TEST_ENABLED` não existe mais no código. Guardas:
+> `test_a_cobranca_prova_que_funciona.py` G6 e o controle migrado em
+> `test_a_cobranca_esta_como_estava.py` (3 linhas).
 
 **O que custa esquecer:** com a flag **ligada**, uma segunda execução no mesmo
 dia não entrega nada — o que quebra uma demonstração feita depois da execução
