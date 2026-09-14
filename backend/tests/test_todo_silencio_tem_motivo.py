@@ -377,8 +377,49 @@ def ge3f():
               encoding="utf-8").read())
 
 
+def ge3g():
+    _p("\n[GE3g] `turno_perdido` nao e silencio do agente, e o feed nao fala em token (J6)")
+
+    # \U0001F4CA O defeito medido em 14/09/2026: o webhook mandava a STRING
+    #    `"turno_perdido"` para `anotar_silencio_no_feed`. Duas consequencias:
+    #    (1) a Regina lia um token cru de programador no feed dela;
+    #    (2) `classe_do_silencio("turno_perdido")` caia no padrao `takeover` —
+    #        entao o memo diario do turno perdido COMIA a linha do takeover
+    #        naquela conversa, no dia, e a intervencao humana sumia do feed.
+    check("\U0001F534 `turno_perdido` nao colide mais com a classe do takeover",
+          F.classe_do_silencio("turno_perdido") != F.classe_do_silencio(
+              "Regina assumiu esta conversa"),
+          "as duas dando `takeover` = um memo apagando o outro")
+    check("e a frase HUMANA do turno perdido tem classe propria",
+          F.classe_do_silencio(F.MOTIVO_TURNO_PERDIDO) == "turno_perdido",
+          F.classe_do_silencio(F.MOTIVO_TURNO_PERDIDO))
+    check("PAR: o takeover continua sendo o padrao (a frase comeca pelo NOME)",
+          F.classe_do_silencio("Regina assumiu esta conversa") == "takeover")
+
+    # \u26d4 Nenhuma frase que vai ao feed pode conter `_`: token de programador
+    #    nao e lingua de gente (D-PILOTO-14).
+    frases = [inicio for inicio, _classe in F._CLASSES_POR_INICIO]
+    frases.append(F.MOTIVO_EXCECAO_DE_TESTE)
+    com_underline = [f for f in frases if "_" in f]
+    check("nenhuma frase do feed carrega `_`", not com_underline, com_underline)
+
+    # \u26d4 E a entrada MORTA saiu: "sem corretora" nunca produziu linha, porque
+    #    `anotar_silencio_no_feed` escreve por `company_id` — e esse motivo e
+    #    justamente o que nao tem `company_id` (D-E-4).
+    inicios = [i for i, _c in F._CLASSES_POR_INICIO]
+    check("a entrada morta `sem corretora` saiu da tabela de classes",
+          not any(str(i).startswith("sem corretora") for i in inicios), inicios)
+
+    # E o webhook nao manda mais o token para o feed.
+    fonte = io.open(os.path.join(RAIZ, "app", "api", "webhook.py"),
+                    encoding="utf-8").read()
+    check('\u26d4 o webhook nao escreve `motivo="turno_perdido"` no feed',
+          'motivo="turno_perdido"' not in fonte,
+          "evento interno do runtime nao e silencio do agente")
+
+
 GATES = {"GE3a": ge3a, "GE3b": ge3b, "GE3c": ge3c, "GE3d": ge3d, "GE3e": ge3e,
-         "GE3f": ge3f}
+         "GE3f": ge3f, "GE3g": ge3g}
 
 
 # ===========================================================================
@@ -387,6 +428,11 @@ GATES = {"GE3a": ge3a, "GE3b": ge3b, "GE3c": ge3c, "GE3d": ge3d, "GE3e": ge3e,
 _ORDEM_NOVA = """    if telefone_e_excecao_da_janela((conversa or {}).get("user_phone")):"""
 
 MUTACOES = [
+    # (z) 🔴 J6 de volta: `turno_perdido` volta a cair na classe do takeover
+    ("M-E3z", "app/services/o_fim_do_atendimento.py",
+     '    (MOTIVO_TURNO_PERDIDO, "turno_perdido"),',
+     '    ("nunca casa isto", "turno_perdido"),',
+     "GE3g"),
     # (a) 🔴 A MUTACAO DO CARD: reverter a ORDEM. A excecao volta para antes do
     #     takeover -> o robo fala por cima da atendente. E o estado de ANTES.
     ("M-E3a", "app/services/o_fim_do_atendimento.py",

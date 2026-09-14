@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     # (`conversation_logs.response_time_ms`, 14/09/2026) — 90 s é ~1,7x o pior
     # caso, com folga para o envio, e ainda solta a conversa antes de um minuto
     # e meio se o processo morrer.
+    # ⚠️ **O QUE ESTE NÚMERO AINDA NÃO MEDE** (lente do dado, 14/09/2026).
+    # `response_time_ms` é o tempo do MODELO (attendance máx 35,5 s; core máx
+    # 53,4 s) — não a duração do TURNO. O turno soma, por cima: a busca da
+    # ficha, as regenerações dos fiscais, o InfoCap e o `send_message`
+    # SÍNCRONO (30 s de timeout, 0,7 s entre balões). ⛔ **Só o canário mede a
+    # posse real**; até lá, 90 s é uma escolha com margem, não um número
+    # medido do que se quer medir. A renovação (`TURNO_RENOVACOES_MAX`) é o
+    # que torna o erro recuperável.
     TURNO_TTL_SEGUNDOS: int = 90
     TURNO_RENOVACOES_MAX: int = 3  # E01 exige teto na renovação
 

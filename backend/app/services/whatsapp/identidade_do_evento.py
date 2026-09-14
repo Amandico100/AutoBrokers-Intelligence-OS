@@ -147,6 +147,16 @@ def contraparte_de(valor: Any, alternativo: Any = None) -> str:
     num motor e aplicado noutro é padrão sobre outra coisa (CLAUDE.md §9.4):
     o SQL repete `length(...) >= 13 AND left(...,2) <> '55'` porque é isto, e
     só isto, que esta função recusa.
+
+    ⚠️ **E AS DUAS REGRAS NÃO SÃO A MESMA FRASE — declarado, não escondido**
+    (J4, 14/09/2026). O backfill da M2 recusa por **COMPRIMENTO**
+    (`length(user_phone) >= 13`); este código recusa por **SUFIXO** (`@lid`,
+    `@g.us`) antes de chegar aos dígitos. Um `@lid` curto passaria pelo SQL e
+    seria recusado aqui — e um telefone internacional longo faria o contrário.
+    📊 Medido em produção em 14/09/2026: **0 linhas** divergentes (nenhuma
+    `contraparte` veio de `@lid`/`@g.us`), então **não há migration nova** — o
+    que há é esta linha, para que o próximo leitor não presuma uma equivalência
+    que ninguém provou.
     """
     texto = str(valor or "").strip()
     if not texto:

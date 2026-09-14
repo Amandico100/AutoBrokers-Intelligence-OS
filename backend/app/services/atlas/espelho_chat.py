@@ -529,37 +529,57 @@ async def _espelhar_com_desfecho(*, company_id: str, counterparty: str, texto: s
         if linhas:
             conversa_id = linhas[0]["id"]
         else:
-            nova = (cliente.table("conversations").insert({
-                "company_id": empresa, "channel": "whatsapp",
-                "user_id": usuario, "agent_id": None,
-                "user_phone": telefone,
-                # 🔴 O NÚMERO INTEIRO, e não os quatro últimos dígitos.
-                #
-                # Founder, 06/08/2026: *"esses dados não são públicos. São da
-                # corretora e não tem problema aparecer o número completo dentro
-                # do dashboard para a corretora. Não entendo por que vocês fazem
-                # isso sempre se piora a visualização."*
-                #
-                # Ele tem razão, e a distinção é a que importa em LGPD: mascarar
-                # protege quem NÃO deveria ver. A corretora é a controladora
-                # deste dado — é o cliente dela, no WhatsApp dela. Esconder ali
-                # não protege ninguém; só impede a atendente de reconhecer quem
-                # está falando.
-                #
-                # O que continua mascarado é outra coisa: telefone em LOG, em
-                # resposta de API do admin, em relatório (CLAUDE.md §13.3).
-                "user_name": nome or telefone,
-                # 🔴 A chave única da contraparte (E2). NULL quando o "telefone"
-                # não é telefone — o índice único parcial ignora NULL.
-                "contraparte": contraparte or None,
-                "session_id": session_id_do_chat(empresa, telefone),
-                # 'open', nunca HUMAN_REQUESTED: aquele estado significa "uma
-                # pessoa PEDIU para assumir" e alimenta o vigia de handoff.
-                # Uma conversa espelhada não pediu nada.
-                "status": "open", "status_color": "green",
-                "agent_name": "Espelho", "unread_count": 0,
-                "last_message_at": quando_iso,
-            }).execute().data or [])
+            # =========================================================
+            # 🔴 23505 AQUI É CORRIDA, NÃO FALHA — J4, 14/09/2026
+            # =========================================================
+            #
+            # ⚠️ O mesmo conserto do `webhook.get_or_create_conversation`, e
+            # pelo mesmo motivo: são DOIS resolvedores para a mesma chave do
+            # índice `uq_conversations_contraparte_aberta` (M2). O que chega
+            # depois leva 23505 — e o índice acabou de dizer que a conversa
+            # existe. ⛔ Levantar aqui derruba o espelho inteiro daquela
+            # mensagem; reler devolve a conversa certa.
+            try:
+                nova = (cliente.table("conversations").insert({
+                    "company_id": empresa, "channel": "whatsapp",
+                    "user_id": usuario, "agent_id": None,
+                    "user_phone": telefone,
+                    # 🔴 O NÚMERO INTEIRO, e não os quatro últimos dígitos.
+                    #
+                    # Founder, 06/08/2026: *"esses dados não são públicos. São da
+                    # corretora e não tem problema aparecer o número completo dentro
+                    # do dashboard para a corretora. Não entendo por que vocês fazem
+                    # isso sempre se piora a visualização."*
+                    #
+                    # Ele tem razão, e a distinção é a que importa em LGPD: mascarar
+                    # protege quem NÃO deveria ver. A corretora é a controladora
+                    # deste dado — é o cliente dela, no WhatsApp dela. Esconder ali
+                    # não protege ninguém; só impede a atendente de reconhecer quem
+                    # está falando.
+                    #
+                    # O que continua mascarado é outra coisa: telefone em LOG, em
+                    # resposta de API do admin, em relatório (CLAUDE.md §13.3).
+                    "user_name": nome or telefone,
+                    # 🔴 A chave única da contraparte (E2). NULL quando o "telefone"
+                    # não é telefone — o índice único parcial ignora NULL.
+                    "contraparte": contraparte or None,
+                    "session_id": session_id_do_chat(empresa, telefone),
+                    # 'open', nunca HUMAN_REQUESTED: aquele estado significa "uma
+                    # pessoa PEDIU para assumir" e alimenta o vigia de handoff.
+                    # Uma conversa espelhada não pediu nada.
+                    "status": "open", "status_color": "green",
+                    "agent_name": "Espelho", "unread_count": 0,
+                    "last_message_at": quando_iso,
+                }).execute().data or [])
+            except Exception as erro_conv:  # noqa: BLE001
+                if "23505" not in str(erro_conv) and "duplicate key" not in str(erro_conv).lower():
+                    raise
+                nova = (cliente.table("conversations").select("id, status")
+                        .eq("company_id", empresa).eq("contraparte", contraparte)
+                        .eq("channel", "whatsapp").is_("agent_id", "null")
+                        .neq("status", "closed")
+                        .limit(1).execute().data or [])
+                nasceu = False
             if not nova:
                 return None, "conversa_nao_criada"
             conversa_id = nova[0]["id"]
@@ -572,6 +592,33 @@ async def _espelhar_com_desfecho(*, company_id: str, counterparty: str, texto: s
         # mensagem de saída, com texto, recém-chegada.
         if _pode_haver_eco() and _eco_do_dashboard(conversa_id):
             return conversa_id, "eco_do_dashboard"
+
+        # 2b) esta mensagem JÁ ENTROU no chat DENTRO de uma linha combinada?
+        #
+        # 🔴 J7, 14/09/2026. O pipeline do agente grava UMA linha por RAJADA,
+        # com o texto combinado e o id da PRIMEIRA mensagem. As outras N−1 ids
+        # ficam fora do índice único — e o espelho, que grava mensagem a
+        # mensagem, escreveria de novo cada uma delas, em duplicidade, no mesmo
+        # chat: a atendente leria a rajada duas vezes, uma inteira e uma
+        # picada.
+        #
+        # ⚠️ SÓ para INBOUND: a linha combinada só existe no que o SEGURADO
+        # manda. É uma consulta por mensagem de entrada, e nenhuma nas de saída
+        # — o oposto do atalho de 771.313 leituras que morreu em 13/08.
+        if direcao == "in" and str(message_id or "").strip():
+            try:
+                ja = (cliente.table("messages").select("id")
+                      .eq("conversation_id", conversa_id)
+                      .contains("payload->wa_message_ids", [str(message_id)])
+                      .limit(1).execute().data or [])
+            except Exception as erro_ids:  # noqa: BLE001
+                # ⛔ Fail-open: uma linha repetida no chat é ruim; uma mensagem
+                # do segurado que NÃO aparece é pior.
+                logger.debug("[ESPELHO] consulta de wa_message_ids falhou (%s)",
+                             type(erro_ids).__name__)
+                ja = []
+            if ja:
+                return conversa_id, "ja_estava"
 
         # 3) a mensagem — TENTA GRAVAR, e deixa o banco responder se ela já
         #    estava lá.

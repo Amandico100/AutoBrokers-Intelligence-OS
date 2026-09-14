@@ -10621,6 +10621,30 @@ A janela ganhou `.gte(updated_at, corte)` no conserto; `_obrigacoes_reais` (EXTR
 
 ---
 
+## SPEC-EXTRA-001.2 — O agente lê tudo antes de falar · conserto único (14/09/2026)
+
+> As pendências que o **juiz fresco** e a **lente do dado** deixaram abertas depois do conserto único. Os nove achados de produto (J1–J9) foram corrigidos com guarda vermelho; o que está aqui é o que **não** coube nele.
+
+## P-E0012-J1 · o corpus não consegue separar a janela adaptativa de uma fixa de 8 s
+📊 14/09, depois de J1: sobre as 20 rajadas versionadas, a janela adaptativa e uma **fixa de 8 s** produzem os **mesmos 20 números de turno** — os únicos itens em que discordam são os 5 de dado curto (3 s) e o 1 de conectivo (18 s), e nenhum cai numa fronteira de turno. A linha de controle do guarda passou a comparar com o **estado de antes de J1** (18 s), que difere em 5 rajadas. **Destrava:** um corpus com rajadas que terminem em conectivo e em dado curto na fronteira — medido sobre o acervo, nunca escrito à mão (CLAUDE.md §9.4). **Dono:** 🤖. **Custa se esquecer:** a adaptativa vira uma fixa de 8 s na prática e ninguém percebe, porque nenhum guarda consegue ficar vermelho por isso.
+
+## P-E0012-J2 · as regenerações dos fiscais rodam DENTRO do grafo, que não recebe o turno
+`agent_node` pode chamar o modelo uma segunda vez (fiscal da pergunta repetida ou do tamanho) e **não tem como renovar a trava**: quem renova é o webhook, antes de gerar e antes de enviar. 📊 Com o teto de UMA regeneração por turno (J8), o pior caso são duas chamadas ao modelo dentro de um TTL de 90 s. **Destrava:** passar um `renovar` opcional pelo `config`/estado do grafo, ou medir no canário que a posse nunca vence aí. **Dono:** 🤖. **Custa se esquecer:** um turno lento perde a posse no meio e paga o caminho de devolução — que agora funciona, mas custa uma volta da varredura ao segurado.
+
+## P-E0012-J5 · a apresentação pendente não se apaga (a ficha é aditiva)
+`fundir` só sobrescreve com valor não vazio, então `apresentacao_pendente_em/nome` fica na ficha depois de promovido a `apresentado_em`. ⚠️ É inerte: `deve_se_apresentar` só olha `apresentado_em`, e assunto novo reescreve a identidade inteira. **Destrava:** uma forma de "apagar campo" no `fundir`, se algum dia outro campo precisar. **Dono:** 🤖. **Custa se esquecer:** um leitor futuro lê o pendente como "há uma apresentação para fazer" e escreve regra em cima de um resto.
+
+## P-E0012-J7 · a corrida entre o espelho e o pipeline pode perder o TEXTO COMBINADO
+Se o **espelho gravar primeiro** a mensagem que virou o primeiro id da rajada, o pipeline leva 23505 e a linha combinada não entra — o chat fica com a frase solta em vez do texto inteiro (as outras da rajada também entram, uma a uma, pelo espelho). O conserto de hoje torna a colisão determinística (primeiro id) e impede a **duplicação**; não impede essa perda. **Destrava:** medir a frequência real depois do Implantar e, se houver, promover a linha existente a combinada (UPDATE) em vez de recusar. **Dono:** 🤖. **Custa se esquecer:** a atendente lê meia rajada e responde sem o resto.
+
+## P-E0012-J10 · a rota sem integração cala e não deixa linha em lugar nenhum
+`escopo_serve_para_travar` recusa fail-closed (certo: responder pela corretora errada não é reversível), mas o feed escreve por `company_id` — e essa é justamente a rota em que ele ainda não existe. O silêncio não aparece para ninguém. **Destrava:** matar a rota legada sem token (H.2) ou um contador de plataforma por rota. **Dono:** 🤖. **Custa se esquecer:** um segurado sem resposta e nenhum lugar onde isso apareça.
+
+## P-E0012-J11 · o TTL do turno não foi medido sobre a duração do TURNO
+📊 `conversation_logs.response_time_ms` é o tempo do **modelo** (attendance máx 35,5 s; core máx 53,4 s). O turno soma ficha, fiscais, InfoCap e o `send_message` síncrono (30 s de timeout, 0,7 s entre balões). **Destrava:** medir posse aberta → posse fechada no canário. **Dono:** 🤖 depois do 🧑 Implantar. **Custa se esquecer:** 90 s continua sendo uma escolha com margem apresentada como número medido.
+
+---
+
 ## SPEC-EXTRA-001.1 — A apólice certa, inteira, em uma rodada (14/09/2026)
 
 > As pendências desta SPEC. As três que ela fecha (`P-PILOTO-17`, `P-PILOTO-18`, `P-PILOTO-20`) foram para `PENDENCIAS-FECHADAS.md` com a prova; `P-PILOTO-16` e `P-PILOTO-19` continuam, re-justificadas acima. O canário vivo (7 casos) e a validação com as atendentes dependem do Implantar (`ROTEIRO-CANARIO-EXTRA-001.1.md`, `ROTEIRO-VALIDACAO-EXTRA-001.1-ATENDENTES.md`).

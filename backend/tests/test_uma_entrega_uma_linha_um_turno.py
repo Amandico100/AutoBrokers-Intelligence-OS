@@ -112,6 +112,8 @@ def carregar_do_fonte(caminho, nomes, extras=None):
     return ns
 
 
+ESPELHO_PY = os.path.join(RAIZ, "app", "services", "atlas", "espelho_chat.py")
+
 MOTOR = carregar_do_fonte(
     WEBHOOK, ["payload_do_pipeline", "e_duplicata_do_banco",
               "gravar_mensagem_do_pipeline"])
@@ -129,12 +131,47 @@ class _Tabela:
         self.banco = banco
         self.nome = nome
         self._linha = None
+        self._filtros = {}
+        self._contem = None
+        self._lendo = False
 
     def insert(self, linha):
         self._linha = dict(linha)
         return self
 
+    # --- leitura: o que a consulta de `wa_message_ids` precisa (J7) --------
+    def select(self, *_a, **_k):
+        self._lendo = True
+        return self
+
+    def eq(self, campo, valor):
+        self._filtros[campo] = valor
+        return self
+
+    def contains(self, caminho, valores):
+        self._contem = (caminho, list(valores or []))
+        return self
+
+    def limit(self, _n):
+        return self
+
+    def _ler(self):
+        achadas = []
+        for l in (self.banco.linhas.get(self.nome) or []):
+            if any(l.get(k) != v for k, v in self._filtros.items()):
+                continue
+            if self._contem:
+                caminho, valores = self._contem
+                campo = str(caminho).split(">")[-1]
+                lista = (l.get("payload") or {}).get(campo) or []
+                if not all(v in lista for v in valores):
+                    continue
+            achadas.append(l)
+        return _Resposta(achadas)
+
     def execute(self):
+        if self._lendo and self._linha is None:
+            return self._ler()
         linha = self._linha or {}
         if self.nome == "messages":
             chave = (linha.get("conversation_id"),
@@ -152,6 +189,11 @@ class _Tabela:
             raise _ErroDoPostgrest(self.banco.explodir)
         self.banco.linhas.setdefault(self.nome, []).append(linha)
         return self
+
+
+class _Resposta:
+    def __init__(self, data):
+        self.data = data
 
 
 class BancoDuble:
@@ -351,13 +393,82 @@ def ge1e():
           trecho.count("gravar_mensagem_do_pipeline"))
 
 
-GATES = {"GE1a": ge1a, "GE1b": ge1b, "GE1c": ge1c, "GE1d": ge1d, "GE1e": ge1e}
+def ge1f():
+    _p("\n[GE1f] Rajada de 3 -> UMA linha com os TRES ids; reentrega de qualquer um -> 0 linha nova (J7)")
+
+    # \U0001F4CA O defeito medido em 14/09/2026: a linha COMBINADA do pipeline
+    #    entrava no indice com o id da ULTIMA mensagem da rajada, e o espelho
+    #    grava cada mensagem com o SEU id, na MESMA conversa. Quem chegasse
+    #    depois levava 23505 — e se o perdedor fosse o pipeline, era o TEXTO
+    #    COMBINADO que se perdia. Os N-1 ids ficavam fora do indice, entao a
+    #    reentrega da Meta de qualquer um deles virava linha nova.
+    ids = ["wamid.SINTETICO0001", "wamid.SINTETICO0002", "wamid.SINTETICO0003"]
+    banco = BancoDuble()
+
+    async def _rodar():
+        primeiro = await MOTOR["gravar_mensagem_do_pipeline"](
+            banco, dados=dict(ENTREGA, content="bateu o carro\nna avenida\ntem foto"),
+            wa_message_id=ids[0], direcao="in", wa_message_ids=ids)
+        # a Meta reentrega CADA uma das tres
+        de_novo = [await MOTOR["gravar_mensagem_do_pipeline"](
+            banco, dados=dict(ENTREGA, content="so a terceira"),
+            wa_message_id=i, direcao="in", wa_message_ids=[i]) for i in ids]
+        return primeiro, de_novo
+
+    primeiro, de_novo = asyncio.run(_rodar())
+    linhas = banco.linhas.get("messages") or []
+    check("a rajada de 3 virou UMA linha", primeiro == "gravada" and len(linhas) == 1,
+          "%s / %d linhas" % (primeiro, len(linhas)))
+    payload = (linhas[0] or {}).get("payload") or {}
+    check("\U0001F534 e a linha carrega os TRES ids", payload.get("wa_message_ids") == ids,
+          payload)
+    check("a chave do indice e o PRIMEIRO id, nao o ultimo",
+          payload.get("wa_message_id") == ids[0], payload)
+    check("a reentrega do PRIMEIRO id nao cria linha nova",
+          de_novo[0] == "ja_estava", de_novo)
+    check("e o texto combinado continua sendo o que esta no chat",
+          len(banco.linhas.get("messages") or []) >= 1
+          and "\n" in str(linhas[0].get("content")), linhas[0].get("content"))
+
+    # \u26a0\ufe0f Os ids 2 e 3 NAO estao no indice unico (a chave e uma so por linha):
+    #    quem os barra e a consulta do espelho por `payload->wa_message_ids`.
+    #    Este guarda prova que a LISTA existe e os contem; o espelho a consulta.
+    check("os ids 2 e 3 ficam registrados na LISTA, que e o que o espelho consulta",
+          all(i in (payload.get("wa_message_ids") or []) for i in ids[1:]), payload)
+
+    fonte = io.open(ESPELHO_PY, encoding="utf-8").read()
+    check("\U0001F534 o espelho consulta `payload->wa_message_ids` antes de gravar",
+          "payload->wa_message_ids" in fonte,
+          "sem a consulta, a atendente le a rajada duas vezes: inteira e picada")
+    pos_consulta = fonte.find("payload->wa_message_ids")
+    pos_insert = fonte.find("_inserir_mensagem(cliente, conversa_id)")
+    check("e a consulta vem ANTES do insert da mensagem",
+          0 < pos_consulta < pos_insert, (pos_consulta, pos_insert))
+    check('\u26a0\ufe0f e SO para inbound (a linha combinada so existe no que o segurado manda)',
+          'if direcao == "in" and str(message_id or "").strip():' in fonte,
+          "uma consulta por mensagem de SAIDA seria leitura paga por nada")
+
+
+GATES = {"GE1a": ge1a, "GE1b": ge1b, "GE1c": ge1c, "GE1d": ge1d, "GE1e": ge1e,
+         "GE1f": ge1f}
 
 
 # ===========================================================================
 # AS MUTACOES — por COPIA, em SUBPROCESSO. A arvore precisa estar parada.
 # ===========================================================================
 MUTACOES = [
+    # (d) 🔴 J7 de volta: a linha combinada volta a guardar UM id so
+    ("M-E1d", "app/api/webhook.py",
+     '    if todos:\n'
+     '        # \u26d4 TODOS os ids da rajada.',
+     '    if False:\n'
+     '        # \u26d4 TODOS os ids da rajada.',
+     "GE1f"),
+    # (e) 🔴 J7 de volta: o espelho deixa de consultar a lista de ids
+    ("M-E1e", "app/services/atlas/espelho_chat.py",
+     '        if direcao == "in" and str(message_id or "").strip():',
+     "        if False:",
+     "GE1f"),
     # (a) 🔴 A MUTACAO DO CARD: tirar o `wa_message_id` do insert do pipeline.
     #     E o estado de ANTES desta SPEC — a linha nasce fora do indice parcial.
     ("M-E1a", "app/api/webhook.py",

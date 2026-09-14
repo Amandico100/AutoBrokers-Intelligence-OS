@@ -117,7 +117,12 @@ def carregar_do_fonte(caminho, nomes, extras=None):
     return ns
 
 
-MOTOR = carregar_do_fonte(WEBHOOK, ["get_or_create_conversation"])
+# ⚠️ `_conversa_da_contraparte` e `e_duplicata_do_banco` entram junto (J4):
+#    o resolvedor real os chama, e recortar só um dos três provaria um motor
+#    que não existe.
+MOTOR = carregar_do_fonte(WEBHOOK, ["get_or_create_conversation",
+                                   "_conversa_da_contraparte",
+                                   "e_duplicata_do_banco"])
 
 from app.services.whatsapp.identidade_do_evento import (  # noqa: E402
     contraparte_de, telefone_do_evento,
@@ -170,6 +175,12 @@ class _Consulta:
     def execute(self):
         if self._linha is not None:
             return self._inserir()
+        # 🔴 A CORRIDA (J4): as `esconder_leituras` primeiras buscas não
+        #    enxergam a linha — é o outro resolvedor criando a conversa DEPOIS
+        #    desta busca e ANTES deste insert. O índice, esse, enxerga sempre.
+        if self.banco.esconder_leituras > 0:
+            self.banco.esconder_leituras -= 1
+            return _Resposta([])
         achadas = []
         for linha in self.banco.conversas:
             if all(linha.get(k) == v for k, v in self.filtros.items()) \
@@ -208,9 +219,10 @@ class _Resposta:
 
 
 class BancoDuble:
-    def __init__(self, conversas=None, indice_ligado=True):
+    def __init__(self, conversas=None, indice_ligado=True, esconder_leituras=0):
         self.conversas = list(conversas or [])
         self.indice_ligado = indice_ligado
+        self.esconder_leituras = int(esconder_leituras)
 
     def table(self, nome):
         return _Consulta(self, nome)
@@ -290,6 +302,53 @@ def ge2b():
     check("⛔ conversa de LID cru nasce com `contraparte` NULA",
           banco3.conversas[0].get("contraparte") is None,
           banco3.conversas[0].get("contraparte"))
+
+
+def ge2f():
+    _p("\n[GE2f] 23505 do indice novo NAO mata o turno: o resolvedor rele (J4)")
+    # 📊 O defeito medido: `get_or_create_conversation` terminava em
+    #    `except: raise`. Com o indice `uq_conversations_contraparte_aberta`
+    #    (M2) no ar e DOIS resolvedores (pipeline e espelho), a corrida entre
+    #    eles derrubava o turno ANTES de gravar a mensagem: o segurado nao
+    #    recebia nada, e nada no log dizia que a conversa ja existia.
+    banco = BancoDuble([{
+        "id": "conv-do-espelho", "company_id": EMPRESA_A, "user_id": "user-esp",
+        "channel": "whatsapp", "agent_id": None, "status": "open",
+        "contraparte": TELEFONE, "unread_count": 3,
+    }], esconder_leituras=2)   # as 2 buscas do resolvedor nao a enxergam
+    conv = asyncio.run(MOTOR["get_or_create_conversation"](
+        banco, company_id=EMPRESA_A, user_id="user-pipeline",
+        session_id="s-corrida", message_text="oi",
+        payload=_Payload(TELEFONE), channel="whatsapp", agent_id=None))
+    check("\U0001F534 levou 23505 e RELEU: devolveu a conversa que ja existia",
+          conv == "conv-do-espelho", conv)
+    check("e NAO criou uma segunda conversa", len(banco.conversas) == 1,
+          len(banco.conversas))
+
+    # ⛔ O PAR: 23505 de OUTRA causa (ou a conversa sumiu no meio) continua
+    #    subindo. Um `except` que engole tudo devolveria id inventado.
+    banco2 = BancoDuble([], esconder_leituras=0)
+    banco2.conversas.append({
+        "id": "conv-fechada", "company_id": EMPRESA_A, "user_id": "u",
+        "channel": "whatsapp", "agent_id": None, "status": "closed",
+        "contraparte": TELEFONE, "unread_count": 0})
+    # a fechada nao esta no indice, entao nao ha 23505 nenhum: a nova nasce
+    conv2 = asyncio.run(MOTOR["get_or_create_conversation"](
+        banco2, company_id=EMPRESA_A, user_id="u2", session_id="s2",
+        message_text="oi", payload=_Payload(TELEFONE), channel="whatsapp",
+        agent_id=None))
+    check("PAR: conversa FECHADA nao bloqueia — a nova nasce", conv2 != "conv-fechada",
+          conv2)
+    check("e o banco fica com as duas", len(banco2.conversas) == 2,
+          len(banco2.conversas))
+
+    # ⛔ E o ESPELHO tem o mesmo conserto, com a mesma leitura do 23505.
+    fonte_esp = io.open(ESPELHO, encoding="utf-8").read()
+    pos_insert = fonte_esp.find('nova = (cliente.table("conversations").insert({')
+    trecho = fonte_esp[pos_insert:pos_insert + 3000] if pos_insert > 0 else ""
+    check("o espelho tambem trata 23505 na criacao da conversa",
+          "23505" in trecho and "duplicate key" in trecho,
+          "sem isso o espelho cai inteiro naquela mensagem")
 
 
 def ge2c():
@@ -397,7 +456,7 @@ def ge2e():
           "having count(*) > 1" in sql.lower())
 
 
-GATES = {"GE2a": ge2a, "GE2b": ge2b, "GE2c": ge2c, "GE2d": ge2d, "GE2e": ge2e}
+GATES = {"GE2a": ge2a, "GE2b": ge2b, "GE2f": ge2f, "GE2c": ge2c, "GE2d": ge2d, "GE2e": ge2e}
 
 
 # ===========================================================================
@@ -411,9 +470,12 @@ MUTACOES = [
      "    if False:",
      "GE2a"),
     # (b) a busca por contraparte some do pipeline -> a fantasma nº 176 nasce.
+    # \u26a0\ufe0f A ancora mudou em 14/09/2026 (J4): a busca inline virou
+    #    `_conversa_da_contraparte`, a MESMA funcao que a releitura do 23505
+    #    usa. Desligar a funcao desliga as duas pontas de uma vez.
     ("M-E2b", "app/api/webhook.py",
-     "        conversa_por_contraparte = None\n        if contraparte:",
-     "        conversa_por_contraparte = None\n        if False:",
+     "    if not contraparte:\n        return None",
+     "    return None  # MUTACAO\n    if not contraparte:\n        return None",
      "GE2b"),
     # (c) a coluna deixa de ser gravada na criacao -> a chave nunca existe.
     ("M-E2c", "app/api/webhook.py",

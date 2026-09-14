@@ -228,8 +228,15 @@ SLOTS_DA_IDENTIDADE = frozenset({"titular_nome"})
 
 
 def identidade_vazia() -> Dict[str, Any]:
+    # 🔴 `apresentacao_pendente_*` é a INTENÇÃO do turno (J5, 14/09/2026):
+    # o bloco do prompt pediu a apresentação, mas ela só vira `apresentado_em`
+    # depois de o `send_message` confirmar que a mensagem SAIU. ⚠️ São dois
+    # campos de TEXTO, e não um dicionário, porque `identidade_de` e `fundir`
+    # tratam a identidade como mapa de strings — um dicionário aqui seria
+    # silenciosamente convertido em `str(...)` e voltaria ilegível.
     return {"assunto_id": "", "titular_nome": "", "apresentado_em": "",
-            "nome_da_apresentacao": ""}
+            "nome_da_apresentacao": "",
+            "apresentacao_pendente_em": "", "apresentacao_pendente_nome": ""}
 
 
 def identidade_de(ficha: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -548,7 +555,17 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
 # TERCEIRA vez. O bloco existia, era injetado — e estava vazio para aquele
 # slot, porque o escritor não o conhecia (§0.3 da SPEC-EXTRA-001.2).
 #
-# ⚠️ As âncoras vêm de `tests/fixtures/ancoras_de_pergunta_por_slot.json`:
+# 🔴 **AS ÂNCORAS MORAM EM `app/resources/`, NÃO EM `tests/`** (J9,
+# 14/09/2026). Elas nasceram como fixture, e o produto as lia de
+# `backend/tests/fixtures/` — um diretório que existe na árvore de trabalho e
+# não tem nenhuma promessa de existir na imagem que roda. ⛔ Produto que lê de
+# `tests/` é produto que funciona até alguém enxugar a imagem, e aí o fiscal da
+# pergunta repetida se desliga SOZINHO e em silêncio (o `except` abaixo).
+# ⚠️ O `Dockerfile` copia `app/` inteiro (`COPY . .`), e não há `.dockerignore`
+# — conferido em 14/09/2026. Os testes leem do MESMO arquivo: uma cópia seria
+# uma segunda verdade.
+#
+# ⚠️ As âncoras vêm de `app/resources/ancoras_de_pergunta_por_slot.json`:
 # arquivo DECLARADO e revisável, gerado do motor dos corredores mais as formas
 # escritas, cada uma carregando o texto do produto de onde saiu. Slot sem forma
 # declarada fica em `sem_ancora` — e o guarda G7 imprime quantos são. ⛔ Âncora
@@ -561,8 +578,9 @@ def _ler_ancoras() -> Dict[str, Any]:
     import json
     import os
 
-    raiz = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    caminho = os.path.join(raiz, "tests", "fixtures", _ANCORAS_ARQUIVO)
+    # `app/services/attendance_ficha.py` -> `app/` -> `app/resources/`.
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    caminho = os.path.join(app_dir, "resources", _ANCORAS_ARQUIVO)
     try:
         with open(caminho, encoding="utf-8") as fh:
             dados = json.load(fh)

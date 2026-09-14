@@ -433,28 +433,52 @@ def g2():
 
     um_turno = [r for r in corpus if r["turnos_esperados"] == 1]
     unia_hoje = [r for r in um_turno if r["turnos_hoje"] >= 2]
-    check("a maioria do corpus vira UM turno", len(um_turno) >= 15,
+    # 📊 RECONTADO em 14/09/2026, depois de J1 (os 18 s deixaram de ser o
+    # padrão): **12 de 20** rajadas viram UM turno, contra 17 quando tudo que
+    # não tinha ponto final esperava 18 s. ⚠️ É o preço DECLARADO da decisão:
+    # a agregação cai em 5 rajadas e a espera do último item do corpus cai de
+    # **11,0 s para 7,0 s** em TODAS (📊 medido sobre os 61 itens: os 18 s
+    # passaram de 37 itens — 60,7% — para 1, 1,6%).
+    check("a maioria do corpus vira UM turno", len(um_turno) >= 12,
           f"{len(um_turno)} de {len(corpus)}")
     check("e a maior parte delas HOJE virava 2+ respostas — é o defeito que morre",
           len(unia_hoje) >= 10, f"{len(unia_hoje)}")
 
-    # 🔴 LINHA DE CONTROLE: a mesma bateria com a janela FIXA de 8 s tem de dar
-    # OUTRO número. Sem ela, um corpus fácil "passaria" por acaso.
-    guardados = (M.JANELA_DADO_CURTO_SEGUNDOS, M.JANELA_FRASE_INACABADA_SEGUNDOS)
+    # =======================================================================
+    # 🔴 A LINHA DE CONTROLE — e ela MUDOU DE ALVO em 14/09/2026 (J1)
+    # =======================================================================
+    #
+    # ⚠️ O controle antigo comparava com uma janela FIXA de 8 s. Depois de J1
+    # isso deixou de ser um controle: 📊 sobre ESTE corpus a janela adaptativa
+    # e a fixa de 8 s produzem **exatamente os mesmos 20 números de turno** —
+    # os únicos itens em que elas discordam são os 5 de dado curto (3 s) e o 1
+    # de conectivo (18 s), e nenhum deles cai numa fronteira de turno aqui.
+    # ⛔ Manter aquela linha seria um guarda que não consegue falhar.
+    #
+    # 🔴 O controle que VALE agora é o estado de ANTES de J1: 18 s para tudo
+    # que não termina em pontuação. Ele TEM de dar outro número — é a prova de
+    # que J1 mudou o comportamento, e não só o texto.
+    guardado = M.JANELA_FRASE_COMPLETA_SEGUNDOS
     try:
-        M.JANELA_DADO_CURTO_SEGUNDOS = 8
-        M.JANELA_FRASE_INACABADA_SEGUNDOS = 8
-        fixa = 0
+        M.JANELA_FRASE_COMPLETA_SEGUNDOS = M.JANELA_FRASE_INACABADA_SEGUNDOS
+        antes_de_j1 = 0
         for rajada in corpus:
             RELOGIO[0] = datetime(2026, 9, 14, 12, 0, 0)
             if asyncio.run(_turnos_da_rajada(rajada)) != rajada["turnos_esperados"]:
-                fixa += 1
+                antes_de_j1 += 1
     finally:
-        (M.JANELA_DADO_CURTO_SEGUNDOS,
-         M.JANELA_FRASE_INACABADA_SEGUNDOS) = guardados
-    check("CONTROLE: com janela FIXA de 8 s o mesmo motor erra %d rajadas" % fixa,
-          fixa >= 3,
+        M.JANELA_FRASE_COMPLETA_SEGUNDOS = guardado
+    check("CONTROLE: com os 18 s de ANTES de J1 o mesmo motor erra %d rajadas"
+          % antes_de_j1, antes_de_j1 >= 3,
           "as duas medidas precisam CONSEGUIR ser diferentes (CLAUDE.md §9.2)")
+
+    # 📊 E a diferença entre a adaptativa e a fixa de 8 s existe, só que por
+    # ITEM e não por turno — é o que o corpus consegue provar hoje (P-E0012-J1).
+    fixa_8 = sum(1 for r in corpus for i in r["itens"]
+                 if M.janela_de_espera(M.tracos_da_mensagem(
+                     texto_com_os_tracos(i), tipo=i["tipo"])) != 8)
+    check("CONTROLE: a adaptativa difere da fixa de 8 s em %d itens" % fixa_8,
+          fixa_8 >= 4, "se nenhum item diferisse, a adaptativa seria uma fixa")
 
 
 # ===========================================================================
@@ -490,6 +514,42 @@ def g2b():
     check("uma frase completa, em 8 s", frase == 8, f"deu {frase}")
     check("uma frase inacabada, em 18 s", meio == 18, f"deu {meio}")
     check("e as três CONSEGUEM ser diferentes", len({curto, frase, meio}) == 3)
+
+    # =======================================================================
+    # 🔴 J1 — SEM PONTO FINAL NÃO É FRASE INTERROMPIDA (14/09/2026)
+    # =======================================================================
+    #
+    # 📊 O defeito: `janela_de_espera` devolvia 18 s para tudo que não
+    # terminasse em pontuação — **60,7% dos itens** do corpus versionado. No
+    # WhatsApp quase ninguém põe ponto, então "oi", "SOCORRO" e "bateu meu
+    # carro" — frases COMPLETAS — cobravam do segurado a espera da exceção.
+    #
+    # ⛔ Os 18 s agora exigem EVIDÊNCIA: `termina_em_conectivo`.
+    for texto, esperado in (("oi", 8),
+                            ("SOCORRO", 8),
+                            ("bateu meu carro", 8),
+                            ("preciso de ajuda", 8),
+                            ("o carro parou na", 18),
+                            ("eu estava indo e", 18),
+                            ("bati o carro mas", 18),
+                            ("12345678901", 3),
+                            ("sim", 3)):
+        deu = M.janela_de_espera(M.tracos_da_mensagem(texto))
+        check("%-22s espera %2d s" % ('"%s"' % texto, esperado), deu == esperado,
+              f"deu {deu} — 18 s para tudo sem ponto é o defeito J1")
+
+    # 📊 E a CONTAGEM sobre o corpus versionado, com o motor (CLAUDE.md §9.4):
+    # o corpus é a única fonte, e ele guarda só traços.
+    itens_do_corpus = [i for r in carregar_corpus() for i in r["itens"]]
+    esperas = [M.janela_de_espera(M.tracos_da_mensagem(
+        texto_com_os_tracos(i), tipo=i["tipo"])) for i in itens_do_corpus]
+    de_18 = sum(1 for e in esperas if e == 18)
+    check("no corpus REAL, os 18 s são a EXCEÇÃO (<= 10%% dos itens)",
+          de_18 * 10 <= len(esperas),
+          f"{de_18} de {len(esperas)} itens pedem 18 s — antes de J1 eram 37 (60,7%)")
+    media = sum(esperas) / float(len(esperas) or 1)
+    check("e a espera MÉDIA por item fica abaixo de 9 s", media < 9.0,
+          f"média {media:.1f} s (antes de J1: 12,3 s)")
 
 
 # ===========================================================================
@@ -609,8 +669,79 @@ def g5b():
           f"TURNO_RENOVACOES_MAX={M.TURNO_RENOVACOES_MAX}")
 
 
+def g5c():
+    _p("\n[G5c] Turno perdido NAO perde a rajada — ela volta ao buffer (J2)")
+
+    # \U0001F4CA O defeito medido em 14/09/2026: a trava abre ANTES do
+    #    `get_and_clear` (e tem de ser assim), entao quando a posse se perde
+    #    DEPOIS da geracao o buffer JA foi consumido. O `return` seco do
+    #    webhook jogava fora a rajada INTEIRA e ninguem respondia. Nao e o
+    #    defeito de duas respostas: e o de NENHUMA.
+    async def cenario():
+        s = servico_novo()
+        chave = s.chave(INTEG_A, TEL_A)
+        for texto in ("bateu meu carro", "na avenida", "tem foto aqui"):
+            await s.add_message(TEL_A, texto, "empresa", "user", {},
+                                {"_integration_id": INTEG_A}, escopo=INTEG_A,
+                                wa_message_id="wamid-%d" % len(texto))
+        token = await s.abrir_turno(INTEG_A, TEL_A, ttl_s=90)
+        buffer = await s.get_and_clear_buffer(chave)
+        itens = M.itens_do_buffer(buffer)
+
+        _andar(91)                       # o turno estourou o TTL no meio
+        outro = await s.abrir_turno(INTEG_A, TEL_A)   # outra rodada assumiu
+        perdi = not await s.ainda_sou_o_dono(INTEG_A, TEL_A, token)
+
+        devolveu = await s.devolver_itens_ao_buffer(
+            chave, itens, payload={"_integration_id": INTEG_A},
+            company_id="empresa", user_id="user", integration={})
+        await s.fechar_turno(INTEG_A, TEL_A, outro)
+
+        # a varredura seguinte encontra a rajada inteira de novo
+        _andar(30)
+        pronto = await s.should_process(chave)
+        de_volta = await s.get_and_clear_buffer(chave)
+        return perdi, devolveu, itens, pronto, M.itens_do_buffer(de_volta or {})
+
+    perdi, devolveu, itens, pronto, de_volta = asyncio.run(cenario())
+    check("a posse foi mesmo perdida (o cenario e o certo)", perdi is True)
+    check("\U0001F534 os itens VOLTARAM para o buffer", devolveu is True)
+    check("e voltaram TODOS — 0 mensagens perdidas",
+          len(de_volta) == len(itens) == 3,
+          "voltaram %d de %d — cada uma que falta e uma frase que o segurado "
+          "mandou e ninguem leu" % (len(de_volta), len(itens)))
+    check("a varredura seguinte ve a rajada pronta (UMA resposta, nao zero)",
+          pronto is True)
+    check("e cada item volta MARCADO como reentregue",
+          all(i.get("reentregue") for i in de_volta), de_volta[:1])
+    check("os ids do WhatsApp voltam junto (a dedupe continua valendo)",
+          all(i.get("wa_message_id") for i in de_volta), de_volta[:1])
+
+    # ------------------------------------------------------------------ #
+    # E o caminho REAL do webhook: renova, devolve e NUNCA perde
+    # ------------------------------------------------------------------ #
+    fonte = io.open(os.path.join(RAIZ, "app", "api", "webhook.py"),
+                    encoding="utf-8").read()
+    check("\U0001F534 `renovar_turno` TEM chamador no produto",
+          "renovar_turno(" in fonte or "_renovar_o_turno" in fonte,
+          "ela existia e ninguem a chamava: o TTL vencia no meio da geracao")
+    check("e ela e chamada mais de uma vez por turno (antes de gerar e de enviar)",
+          fonte.count("await _renovar_o_turno(") >= 2,
+          "%d chamada(s)" % fonte.count("await _renovar_o_turno("))
+
+    pos_posse = fonte.find("ainda_sou_o_dono")
+    pos_envio = fonte.find("to_number=payload.phone, text=ai_response")
+    trecho = fonte[pos_posse:pos_envio] if 0 < pos_posse < pos_envio else ""
+    check("quem perde a posse DEVOLVE a rajada antes de retornar",
+          "devolver_itens_ao_buffer" in trecho,
+          "\u26d4 `return` seco = a rajada do segurado no lixo")
+    check("\u26d4 e `turno_perdido` NAO vai mais ao feed do silencio (J6)",
+          "anotar_silencio_no_feed" not in trecho,
+          "evento interno do runtime nao e silencio do agente")
+
+
 GATES = {"G1a": g1a, "G1b": g1b, "G1c": g1c, "G1d": g1d, "G1e": g1e,
-         "G2": g2, "G2b": g2b, "G4": g4, "G5": g5, "G5b": g5b}
+         "G2": g2, "G2b": g2b, "G4": g4, "G5": g5, "G5b": g5b, "G5c": g5c}
 
 
 # ===========================================================================
@@ -667,6 +798,27 @@ MUTACOES = [
      '    if remoto.endswith("@lid"):',
      '    if False and remoto.endswith("@lid"):  # MUTACAO',
      "G1d"),
+    # (j) 🔴 J2 de volta: a rajada nao volta ao buffer e se perde
+    ("M-AB11", MBS,
+     "        devolvidos = [dict(i) for i in (itens or []) if isinstance(i, dict)]",
+     "        return False  # MUTACAO\n"
+     "        devolvidos = [dict(i) for i in (itens or []) if isinstance(i, dict)]",
+     "G5c"),
+    # (k) 🔴 J2 de volta: o turno nao renova e vence no meio da geracao
+    ("M-AB12", "app/api/webhook.py",
+     "        await _renovar_o_turno(turno, _renovacoes)\n\n"
+     "        ai_response, metrics = await langchain_service.process_message(",
+     "        ai_response, metrics = await langchain_service.process_message(",
+     "G5c"),
+    # (i2) 🔴 J1 de volta: 18 s para TUDO que não termina em ponto final
+    ("M-AB10", MBS,
+     "    if t.termina_em_conectivo:\n"
+     "        return JANELA_FRASE_INACABADA_SEGUNDOS\n"
+     "    return JANELA_FRASE_COMPLETA_SEGUNDOS",
+     "    if t.termina_em_pontuacao_final and not t.termina_em_conectivo:\n"
+     "        return JANELA_FRASE_COMPLETA_SEGUNDOS  # MUTACAO\n"
+     "    return JANELA_FRASE_INACABADA_SEGUNDOS",
+     "G2b"),
     # (i) o teto do buffer volta a poder SUBIR acima de 25 s
     ("M-AB9", MBS,
      "TETO_DA_RAJADA_SEGUNDOS = 25",

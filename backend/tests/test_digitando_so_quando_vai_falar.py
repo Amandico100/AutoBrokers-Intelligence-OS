@@ -281,7 +281,10 @@ def b4e():
 
     # O descarte por takeover e o descarte por posse perdida pausam ANTES de
     # devolver. Um "digitando…" pendurado é a promessa vazia da E02.
-    for marca in ("resposta do agente descartada", "rodada já respondeu"):
+    # ⚠️ A segunda marca MUDOU em 14/09/2026 (J2): a frase "outra rodada já
+    #    respondeu" era uma SUPOSIÇÃO — a posse pode ter vencido por TTL sem
+    #    ninguém assumir. O que o log diz agora é o que se sabe (CLAUDE.md §9.3).
+    for marca in ("resposta do agente descartada", "posse perdida ANTES do envio"):
         pos = fonte.find(marca)
         check("o descarte '%s' pausa a presença" % marca[:28],
               pos > 0 and '_presenca(integration, payload.phone, "paused")'

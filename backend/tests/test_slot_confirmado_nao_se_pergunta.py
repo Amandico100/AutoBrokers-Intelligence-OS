@@ -214,6 +214,35 @@ def gc7c_as_ancoras_vem_do_produto():
           len(mapa) > 0 and any(mapa.values()),
           "sem ancora nenhuma o guarda vira carimbo")
 
+    # ================================================================== #
+    # \U0001F534 O PRODUTO NAO LE DE `tests/` (J9, 14/09/2026)
+    # ================================================================== #
+    #
+    # As ancoras nasceram como fixture, e `attendance_ficha._ler_ancoras`
+    # abria `backend/tests/fixtures/...`. \u26d4 Um diretorio de testes nao tem
+    # promessa nenhuma de existir na imagem que roda: no dia em que ele nao
+    # for copiado, o fiscal da pergunta repetida se DESLIGA sozinho e em
+    # silencio (o `except` da funcao devolve `{}`).
+    import os as _os
+
+    from app.services import attendance_ficha as AF
+
+    caminho = _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(AF.__file__))),
+        "resources", AF._ANCORAS_ARQUIVO)
+    check("\U0001F534 o caminho do produto esta sob `app/`, nunca sob `tests/`",
+          _os.sep + "app" + _os.sep in caminho
+          and _os.sep + "tests" + _os.sep not in caminho, caminho)
+    check("e o arquivo existe LA", _os.path.isfile(caminho), caminho)
+    fonte = io.open(AF.__file__, encoding="utf-8").read()
+    check('\u26d4 `_ler_ancoras` nao monta mais um caminho com "tests"',
+          '"tests", "fixtures"' not in fonte,
+          "produto que le de tests/ funciona ate alguem enxugar a imagem")
+    check("e os TESTES leem do mesmo arquivo (uma copia seria uma 2a verdade)",
+          not _os.path.isfile(_os.path.join(RAIZ, "tests", "fixtures",
+                                            AF._ANCORAS_ARQUIVO)),
+          "sobrou uma copia em tests/fixtures")
+
     try:
         from app.agents.tools.insurer_dispatch_tool import InsurerDispatchInput
         descricoes = {k: (v.description or "")

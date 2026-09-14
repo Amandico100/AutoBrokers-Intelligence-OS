@@ -164,7 +164,8 @@ def nome_do_documento(texto: Any, payload_dict: Optional[dict] = None) -> Option
     return None
 
 
-def payload_do_pipeline(wa_message_id: Optional[str], direcao: str) -> dict:
+def payload_do_pipeline(wa_message_id: Optional[str], direcao: str,
+                        wa_message_ids: Optional[list] = None) -> dict:
     """O `payload` das linhas que o PIPELINE do agente grava em `messages`.
 
     🔴 **Por que ele existe (SPEC-EXTRA-001.2 BLOCO E1).** O índice único parcial
@@ -181,10 +182,27 @@ def payload_do_pipeline(wa_message_id: Optional[str], direcao: str) -> dict:
     linha fica fora do índice, declaradamente. Um `wa_message_id` falso faria
     duas mensagens diferentes colidirem, que é pior que nenhuma dedupe.
     """
-    chave = str(wa_message_id or "").strip()
+    todos = [str(i).strip() for i in (wa_message_ids or []) if str(i or "").strip()]
+    # 🔴 O PRIMEIRO id da rajada, não o último (J7, 14/09/2026).
+    #
+    # 📊 O defeito: a linha COMBINADA do pipeline entrava no índice com o id da
+    # ÚLTIMA mensagem da rajada, e o espelho grava cada mensagem com o SEU id,
+    # na MESMA conversa (E2). Quem chegasse depois levava 23505 — e se o
+    # perdedor fosse o pipeline, era o TEXTO COMBINADO que se perdia, ficando
+    # no chat só a última frase solta. Os N−1 ids ficavam fora do índice, então
+    # a reentrega da Meta de qualquer um deles virava linha nova.
+    #
+    # ⚠️ O PRIMEIRO id porque ele é o mais antigo da rajada: é o que o espelho
+    # tende a espelhar primeiro, e é o que torna a colisão determinística em
+    # vez de depender de quem terminou antes.
+    chave = str(wa_message_id or "").strip() or (todos[0] if todos else "")
     saida = {"origem": "agente", "direcao": str(direcao or "")}
     if chave:
         saida["wa_message_id"] = chave
+    if todos:
+        # ⛔ TODOS os ids da rajada. É a lista que o espelho consulta para não
+        # escrever de novo o que já está no chat como texto combinado.
+        saida["wa_message_ids"] = todos
     return saida
 
 
@@ -200,6 +218,7 @@ def e_duplicata_do_banco(erro: Any) -> bool:
 
 async def gravar_mensagem_do_pipeline(
     supabase_client, *, dados: dict, wa_message_id: Optional[str], direcao: str,
+    wa_message_ids: Optional[list] = None,
 ) -> str:
     """Grava UMA linha em `messages` e deixa o BANCO responder se ela já estava.
 
@@ -211,7 +230,34 @@ async def gravar_mensagem_do_pipeline(
     chave existir nos dois lados sem duas grafias.
     """
     linha = dict(dados or {})
-    linha["payload"] = payload_do_pipeline(wa_message_id, direcao)
+    linha["payload"] = payload_do_pipeline(wa_message_id, direcao, wa_message_ids)
+
+    # =====================================================================
+    # \U0001F534 O ID QUE J\u00c1 EST\u00c1 DENTRO DE UMA LINHA COMBINADA (J7, 14/09/2026)
+    # =====================================================================
+    #
+    # O \u00edndice \u00fanico cobre UM id por linha (`payload->>'wa_message_id'`). Uma
+    # linha combinada representa N mensagens, e as outras N\u22121 ficam fora dele:
+    # a reentrega da Meta de qualquer uma delas viraria uma linha nova, com o
+    # texto repetido no chat da corretora.
+    #
+    # \u26a0\ufe0f **Uma consulta por TURNO de entrada** \u2014 n\u00e3o por mensagem, e nenhuma
+    # nas de sa\u00edda. \u26d4 E fail-open: n\u00e3o conseguir consultar nunca pode custar
+    # a mensagem do segurado; o \u00edndice continua sendo a garantia dura.
+    chave_unica = str(wa_message_id or "").strip()
+    if str(direcao or "") == "in" and chave_unica and linha.get("conversation_id"):
+        try:
+            ja = await asyncio.to_thread(
+                lambda: supabase_client.table("messages").select("id")
+                .eq("conversation_id", linha["conversation_id"])
+                .contains("payload->wa_message_ids", [chave_unica])
+                .limit(1).execute()
+            )
+            if getattr(ja, "data", None):
+                return "ja_estava"
+        except Exception as erro_lista:  # noqa: BLE001
+            logger.debug("[MESSAGES] consulta de wa_message_ids falhou (%s)",
+                         type(erro_lista).__name__)
     try:
         await asyncio.to_thread(
             lambda: supabase_client.table("messages").insert(linha).execute()
@@ -221,6 +267,37 @@ async def gravar_mensagem_do_pipeline(
             return "ja_estava"
         raise
     return "gravada"
+
+
+async def _conversa_da_contraparte(
+    supabase_client, *, company_id: str, contraparte: str,
+    channel: str = "whatsapp", agent_id=None,
+):
+    """A conversa ABERTA desta contraparte — a MESMA chave do índice único.
+
+    🔴 As quatro cláusulas são as do `uq_conversations_contraparte_aberta`
+    (M2): `company_id`, `contraparte`, canal WhatsApp, `agent_id IS NULL` e
+    `status <> 'closed'`. ⚠️ Escrever essa chave duas vezes com grafias
+    diferentes seria ter duas chaves — por isso a busca do começo e a releitura
+    do 23505 são a MESMA função.
+    """
+    if not contraparte:
+        return None
+    busca = (
+        supabase_client.table("conversations")
+        .select("id, unread_count")
+        .eq("company_id", company_id)
+        .eq("contraparte", contraparte)
+        .eq("channel", channel)
+        .neq("status", "closed")
+    )
+    if agent_id:
+        busca = busca.eq("agent_id", agent_id)
+    else:
+        busca = busca.is_("agent_id", "null")
+    achado = await asyncio.to_thread(lambda: busca.limit(1).execute())
+    linhas = getattr(achado, "data", None) or []
+    return linhas[0] if linhas else None
 
 
 async def get_or_create_conversation(
@@ -247,24 +324,9 @@ async def get_or_create_conversation(
         from app.services.whatsapp.identidade_do_evento import contraparte_de
 
         contraparte = contraparte_de(payload.phone)
-        conversa_por_contraparte = None
-        if contraparte:
-            busca = (
-                supabase_client.table("conversations")
-                .select("id, unread_count")
-                .eq("company_id", company_id)
-                .eq("contraparte", contraparte)
-                .eq("channel", channel)
-                .neq("status", "closed")
-            )
-            if agent_id:
-                busca = busca.eq("agent_id", agent_id)
-            else:
-                busca = busca.is_("agent_id", "null")
-            achado = await asyncio.to_thread(lambda: busca.limit(1).execute())
-            linhas = getattr(achado, "data", None) or []
-            if linhas:
-                conversa_por_contraparte = linhas[0]
+        conversa_por_contraparte = await _conversa_da_contraparte(
+            supabase_client, company_id=company_id, contraparte=contraparte,
+            channel=channel, agent_id=agent_id)
 
         # Tentar encontrar conversa existente
         query = (
@@ -329,9 +391,40 @@ async def get_or_create_conversation(
             "last_message_at": current_time_iso, # FIX: Data correta
         }
 
-        insert_response = await asyncio.to_thread(
-            lambda: supabase_client.table("conversations").insert(new_conv).execute()
-        )
+        try:
+            insert_response = await asyncio.to_thread(
+                lambda: supabase_client.table("conversations").insert(new_conv).execute()
+            )
+        except Exception as erro_insert:  # noqa: BLE001
+            # =================================================================
+            # 🔴 23505 AQUI É CORRIDA, NÃO FALHA — J4, 14/09/2026
+            # =================================================================
+            #
+            # O índice `uq_conversations_contraparte_aberta` nasceu na M2 desta
+            # mesma SPEC. Ele impede a conversa duplicada — e passou a poder
+            # RECUSAR este insert, porque há DOIS resolvedores para a mesma
+            # contraparte: este e o do espelho (`espelho_chat._trabalho`). Uma
+            # mensagem que chega pelo pipeline enquanto o espelho cria a linha
+            # (ou vice-versa) leva 23505.
+            #
+            # ⛔ Deixar o erro subir mata o turno em SILÊNCIO: quem chamou está
+            # no passo 4, antes de gravar a mensagem e antes de gerar — o
+            # segurado não recebe nada. E o índice acabou de dizer, com todas
+            # as letras, que a conversa que este código queria criar JÁ EXISTE.
+            #
+            # 🔴 Relê pela MESMA chave do índice. Se a leitura não achar (o
+            # dono da corrida pode ter fechado a conversa no meio), o erro
+            # sobe — nunca se inventa um id.
+            if not e_duplicata_do_banco(erro_insert):
+                raise
+            logger.info("[CONVERSATION] 23505 na criação — outra rodada criou a "
+                        "conversa desta contraparte primeiro; relendo")
+            relido = await _conversa_da_contraparte(
+                supabase_client, company_id=company_id, contraparte=contraparte,
+                channel=channel, agent_id=agent_id)
+            if relido:
+                return relido["id"]
+            raise
 
         if insert_response.data:
             return insert_response.data[0]["id"]
@@ -634,6 +727,46 @@ async def _presenca(integration: dict, phone: str, estado: str,
     except Exception as erro:  # noqa: BLE001
         # ⛔ Presença é enfeite. Um erro aqui nunca pode custar a RESPOSTA.
         logger.debug("[PRESENCA] não enviada (%s)", type(erro).__name__)
+
+
+# =============================================================================
+# 🔴 O TURNO SE RENOVA — e a rajada NUNCA é jogada fora (J2, 14/09/2026)
+# =============================================================================
+#
+# 📊 O defeito medido: `renovar_turno` existia em
+# `message_buffer_service.py` e **não tinha um chamador no produto inteiro**
+# (`grep` = 0 fora dos testes). Um turno que passasse dos 90 s de TTL perdia a
+# posse, caía no `return` seco daqui de baixo — e o buffer já tinha sido
+# consumido pelo `get_and_clear` do varredor. A rajada inteira do segurado
+# sumia e **ninguém respondia**.
+#
+# ⚠️ O contador é uma lista de propósito: ele atravessa as chamadas dentro do
+# mesmo turno sem virar `global` nem atributo de objeto.
+async def _renovar_o_turno(turno, contador: list) -> bool:
+    """Estende o TTL do turno — E01: só o dono estende, e há TETO.
+
+    ⛔ Nunca levanta. Devolve `True` se renovou (ou se não havia turno a
+    renovar, que é o caminho do dublê sem trava).
+    """
+    if turno is None:
+        return True
+    try:
+        from app.services.message_buffer_service import (
+            TURNO_RENOVACOES_MAX, get_message_buffer_service,
+        )
+
+        feitas = int(contador[0] if contador else 0)
+        if feitas >= TURNO_RENOVACOES_MAX:
+            return False
+        servico = await get_message_buffer_service()
+        ok = await servico.renovar_turno(
+            turno.escopo, turno.phone, turno.token, renovacoes_feitas=feitas)
+        if ok and contador:
+            contador[0] = feitas + 1
+        return bool(ok)
+    except Exception as erro:  # noqa: BLE001
+        logger.debug("[TURNO] renovação não aconteceu (%s)", type(erro).__name__)
+        return False
 
 
 async def process_whatsapp_message_background(
@@ -975,6 +1108,11 @@ async def process_whatsapp_message_background(
             )
 
         # 3. Processar Conteúdo
+        # ⚠️ Fora do ramo de propósito (J2): quem perde a posse do turno lá
+        #    embaixo precisa saber QUAIS itens devolver ao buffer, e o `return`
+        #    seco de antes só conseguia perdê-los.
+        _itens_do_turno = list(buffered_items or [])
+        _renovacoes = [0]
         message_text = None
         final_audio_url = None
         final_image_url = None
@@ -994,7 +1132,6 @@ async def process_whatsapp_message_background(
             # nesta. Teto de REPLANEJAMENTOS_MAX para não virar laço — o que
             # chegar depois fica no buffer, e a trava garante que vire o turno
             # SEGUINTE, nunca um turno paralelo.
-            _itens_do_turno = list(buffered_items or [])
             if turno is not None and chave_do_buffer:
                 _servico = await get_message_buffer_service()
                 for _rodada in range(REPLANEJAMENTOS_MAX):
@@ -1172,9 +1309,16 @@ async def process_whatsapp_message_background(
             # `payload.messageId` é o id global do WhatsApp, o mesmo que o
             # dedupe do Redis usa (:1425) e o mesmo que o espelho grava. A
             # reentrega da Meta deixa de virar segunda linha e segunda leitura.
+            # 🔴 TODOS os ids da rajada (J7): a linha combinada representa N
+            # mensagens do WhatsApp, e não só a que fechou a janela.
+            _ids_da_rajada = [str(i.get("wa_message_id") or "")
+                              for i in _itens_do_turno
+                              if str((i or {}).get("wa_message_id") or "").strip()]
             _desfecho = await gravar_mensagem_do_pipeline(
                 supabase.client, dados=user_message_data,
-                wa_message_id=payload.messageId, direcao="in")
+                wa_message_id=(_ids_da_rajada[0] if _ids_da_rajada
+                               else payload.messageId),
+                direcao="in", wa_message_ids=_ids_da_rajada)
             logger.info("[MESSAGES] User message saved (%s).", _desfecho)
         except Exception as e:
             logger.error(f"[MESSAGES] Failed to save user msg: {e}")
@@ -1412,6 +1556,16 @@ async def process_whatsapp_message_background(
         await _presenca(integration, payload.phone, "composing",
                         TETO_DA_RAJADA_SEGUNDOS * 1000)
 
+        # 🔴 A RENOVAÇÃO ANTES DA GERAÇÃO (J2). 📊 O TTL é 90 s e o modelo
+        # mediu máx 53,4 s (`conversation_logs.response_time_ms`, 14/09) — mas
+        # esse é o tempo do MODELO: ferramenta, InfoCap e as regenerações dos
+        # fiscais somam por cima, e o envio soma depois. Renovar aqui é o que
+        # impede o turno de vencer NO MEIO da própria geração.
+        # ⚠️ As regenerações dos fiscais rodam DENTRO do grafo (`agent_node`),
+        #    que não recebe o turno; elas ficam cobertas por esta renovação e
+        #    pela de baixo — P-E0012-J2.
+        await _renovar_o_turno(turno, _renovacoes)
+
         ai_response, metrics = await langchain_service.process_message(
             user_message=message_for_ai,
             company_id=company_id,
@@ -1531,20 +1685,42 @@ async def process_whatsapp_message_background(
         # gravar uma fala que não vai sair põe no chat da corretora uma frase
         # que o segurado nunca recebeu.
         if turno is not None:
+            # 🔴 RENOVAR É A PRIMEIRA TENTATIVA, e ela vale mais que a pergunta
+            # (J2): `renovar_turno` roda o MESMO EVAL comparando o token, então
+            # ele já responde "sou o dono?" — e, quando é, ainda estende o TTL
+            # para cobrir o envio, que é síncrono e pode levar dezenas de
+            # segundos em três balões.
+            await _renovar_o_turno(turno, _renovacoes)
             _servico_do_turno = await get_message_buffer_service()
             if not await _servico_do_turno.ainda_sou_o_dono(
                     turno.escopo, turno.phone, turno.token):
+                # =============================================================
+                # 🔴 A RAJADA VOLTA PARA O BUFFER — NÃO SE PERDE (J2)
+                # =============================================================
+                #
+                # 📊 O `return` seco que estava aqui descartava a rajada
+                # INTEIRA: o `get_and_clear` do varredor já tinha esvaziado o
+                # Redis, então as cinco mensagens do segurado sumiam e ninguém
+                # respondia. ⛔ "Outra rodada já respondeu" era uma SUPOSIÇÃO:
+                # a posse pode ter sido perdida por TTL vencido sem que rodada
+                # nenhuma tenha assumido.
+                #
+                # ⚠️ E `turno_perdido` NÃO é silêncio do agente (J6): é evento
+                # interno do runtime. Ele não vai ao feed da Regina — ela não
+                # tem o que fazer com ele, e no feed ele aparecia como token
+                # cru, classificado junto do takeover.
                 try:
-                    from app.services.o_fim_do_atendimento import anotar_silencio_no_feed
-
-                    await anotar_silencio_no_feed(
-                        company_id=str(company_id),
-                        conversation_id=str(conversation_id),
-                        motivo="turno_perdido")
-                except Exception as _e_feed:  # noqa: BLE001
-                    logger.debug("[TURNO] feed não escrito (%s)", type(_e_feed).__name__)
-                logger.info("[TURNO] a resposta demorou mais que o turno; outra "
-                            "rodada já respondeu — resposta descartada")
+                    await _servico_do_turno.devolver_itens_ao_buffer(
+                        chave_do_buffer or _servico_do_turno.chave(
+                            turno.escopo, turno.phone),
+                        _itens_do_turno,
+                        payload=payload_dict, company_id=str(company_id),
+                        user_id=str(user_id or ""), integration=integration)
+                except Exception as _e_volta:  # noqa: BLE001
+                    logger.error("[TURNO] devolução ao buffer falhou (%s)",
+                                 type(_e_volta).__name__)
+                logger.warning("[TURNO] posse perdida ANTES do envio — resposta "
+                               "descartada e a rajada devolvida ao buffer")
                 await _presenca(integration, payload.phone, "paused")
                 return
 
@@ -1623,6 +1799,33 @@ async def process_whatsapp_message_background(
         if success:
             _resposta_ja_enviada = True
             logger.info(f"[WEBHOOK BACKGROUND] ✅ Message sent to {safe_phone}")
+            # =============================================================
+            # 🔴 A APRESENTAÇÃO SÓ CONTA DEPOIS DE SAIR (J5, 14/09/2026)
+            # =============================================================
+            #
+            # 📊 O defeito: `graph.py` gravava `identidade.apresentado_em` na
+            # MONTAGEM do prompt. Bastava montar. Se o turno fosse descartado
+            # depois — posse perdida, atendente assumiu, envio falhou — o
+            # segurado nunca ouvia a apresentação e a ficha já dizia que ela
+            # tinha acontecido: **"se apresenta uma vez" virava "nunca"**.
+            #
+            # ⚠️ Este é o ÚNICO ponto do produto em que se sabe que a mensagem
+            # SAIU. E ele ainda confere a terceira condição: que o texto
+            # enviado realmente carregue a apresentação — o modelo pode ter
+            # ignorado a instrução, e marcar aí seria mentir para o próximo
+            # turno (CLAUDE.md §9.4: o que se afirma é o comportamento sobre o
+            # texto REAL).
+            try:
+                from app.services.o_fim_do_atendimento import (
+                    confirmar_apresentacao_enviada,
+                )
+
+                await confirmar_apresentacao_enviada(
+                    supabase.client, company_id=str(company_id),
+                    session_id=str(session_id or ""), resposta=ai_response)
+            except Exception as _e_apres:  # noqa: BLE001
+                logger.debug("[APRESENTACAO] não confirmada (%s)",
+                             type(_e_apres).__name__)
         else:
             logger.error("[WEBHOOK BACKGROUND] Failed to send WhatsApp message")
 

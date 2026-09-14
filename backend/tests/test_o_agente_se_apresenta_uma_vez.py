@@ -99,8 +99,41 @@ def medir(chave, valor):
 # GD8a — 30 turnos, UMA apresentacao. E o assunto novo traz outra.
 # --------------------------------------------------------------------- #
 
-def _replay(n_turnos, *, agent_name=AGENTE, assunto_novo_no_turno=()):
+def _entregar(ident, *, resposta=None):
+    """Simula o passo 9 do webhook: o `send_message` devolveu True.
+
+    🔴 **É o que J5 acrescentou ao caminho** (14/09/2026). A montagem do
+    prompt só anota `apresentacao_pendente_*`; quem promove a
+    `apresentado_em` é `confirmar_apresentacao_enviada`, DEPOIS do envio — e
+    só se a resposta que saiu realmente carregar a apresentação.
+
+    ⚠️ O guarda chama o MOTOR (`a_resposta_se_apresenta`), nunca uma cópia da
+    regra (CLAUDE.md §9.4).
+    """
+    from app.services import o_fim_do_atendimento as F
+
+    pendente = str((ident or {}).get("apresentacao_pendente_em") or "")
+    if not pendente:
+        return dict(ident or {})
+    nome = str((ident or {}).get("apresentacao_pendente_nome") or "")
+    texto = resposta if resposta is not None else (
+        "Oi! Aqui é a %s, assistente virtual da %s. Como posso ajudar?"
+        % (nome, CORRETORA))
+    if not F.a_resposta_se_apresenta(texto, agent_name=nome):
+        return dict(ident or {})
+    novo = dict(ident)
+    novo["apresentado_em"] = pendente
+    novo["nome_da_apresentacao"] = nome
+    return novo
+
+
+def _replay(n_turnos, *, agent_name=AGENTE, assunto_novo_no_turno=(),
+            turnos_descartados=()):
     """Roda o MOTOR turno a turno, carregando a identidade como o produto faz.
+
+    `turnos_descartados` — os turnos em que a mensagem NÃO saiu (posse
+    perdida, atendente assumiu, envio falhou). ⛔ Neles a ficha NÃO pode
+    registrar que a apresentação aconteceu.
 
     Devolve a lista de blocos que o prompt receberia, um por turno.
     """
@@ -120,6 +153,8 @@ def _replay(n_turnos, *, agent_name=AGENTE, assunto_novo_no_turno=()):
             agent_name=agent_name if not callable(agent_name) else agent_name(i),
             corretora=CORRETORA, quem_vai_atender=None)
         blocos.append(bloco)
+        if i not in turnos_descartados:
+            ident = _entregar(ident)
     return blocos
 
 
@@ -215,6 +250,10 @@ def gd8c_trocar_o_nome_nao_muda_o_assunto_atual():
              "nome_da_apresentacao": ""}
     _, ident = F.bloco_de_quem_fala(assunto_novo=True, identidade=ident,
                                     agent_name="Aurora", corretora=CORRETORA)
+    check("a MONTAGEM so anota a intencao (J5), nunca o fato",
+          ident.get("apresentacao_pendente_nome") == "Aurora"
+          and not ident.get("apresentado_em"), ident)
+    ident = _entregar(ident)          # o `send_message` devolveu True
     check("a apresentacao gravou o nome usado",
           ident["nome_da_apresentacao"] == "Aurora" and ident["apresentado_em"],
           ident)
@@ -236,6 +275,9 @@ def gd8c_trocar_o_nome_nao_muda_o_assunto_atual():
     bloco_novo, ident2 = F.bloco_de_quem_fala(
         assunto_novo=True, identidade=ident_novo, agent_name="Helena",
         corretora=CORRETORA)
+    ident2 = _entregar(ident2, resposta=(
+        "Oi! Aqui é a Helena, assistente virtual da %s — antes eu me "
+        "apresentava como Aurora." % CORRETORA))
     check("no assunto seguinte ele diz que mudou de nome, UMA vez",
           "mudou de nome" in bloco_novo and "Helena" in bloco_novo
           and "Aurora" in bloco_novo, bloco_novo)
@@ -498,8 +540,192 @@ def gd8f_a_identidade_e_reescrita():
           and "Fulano" not in bloco_sem, bloco_sem)
 
 
+def gd8g_turno_descartado_ainda_se_apresenta():
+    _p("\n[GD8g] Turno DESCARTADO -> o proximo AINDA se apresenta (J5)")
+    from app.services import o_fim_do_atendimento as F
+
+    # 📊 O defeito medido em 14/09/2026: `graph.py` gravava
+    #    `identidade.apresentado_em` na MONTAGEM do prompt. Bastava montar. Se
+    #    o turno fosse descartado depois (posse perdida, atendente assumiu,
+    #    envio falhou), o segurado NUNCA ouvia a apresentacao e a ficha ja
+    #    dizia que ela tinha acontecido: "uma vez" virava "nunca".
+    blocos = _replay(3, turnos_descartados={0})
+    apresenta = [i for i, b in enumerate(blocos) if "apresente-se agora" in b.lower()]
+    check("\U0001F534 o turno 0 foi descartado -> o turno 1 AINDA se apresenta",
+          apresenta[:2] == [0, 1],
+          "a apresentacao que nao saiu nao pode contar como feita: %s" % apresenta)
+    check("e depois que ela SAI, o turno 2 ja cala",
+          len(apresenta) == 2, apresenta)
+
+    # PAR / CONTROLE: com o turno 0 entregue, so ha UMA apresentacao.
+    entregues = _replay(3)
+    apresenta2 = [i for i, b in enumerate(entregues) if "apresente-se agora" in b.lower()]
+    check("CONTROLE: entregue, apresenta UMA vez so", apresenta2 == [0], apresenta2)
+    check("e as duas medidas CONSEGUEM ser diferentes (CLAUDE.md §9.2)",
+          apresenta != apresenta2, (apresenta, apresenta2))
+
+    # ⛔ E a promocao exige que o TEXTO ENVIADO carregue a apresentacao: se o
+    #    modelo ignorou a instrucao, marcar seria mentir para o turno seguinte.
+    ident = {"assunto_id": "a1", "titular_nome": "", "apresentado_em": "",
+             "nome_da_apresentacao": ""}
+    _, ident = F.bloco_de_quem_fala(assunto_novo=True, identidade=ident,
+                                    agent_name=AGENTE, corretora=CORRETORA)
+    mudo = _entregar(ident, resposta="Certo, me manda o endereco por favor.")
+    check("resposta que NAO se apresenta nao marca a ficha",
+          not mudo.get("apresentado_em"), mudo)
+    certo = _entregar(ident)
+    check("PAR: a que se apresenta marca", bool(certo.get("apresentado_em")), certo)
+
+
+def gd8h_a_apresentacao_nao_repete_a_corretora():
+    _p("\n[GD8h] Nome que JA diz a corretora -> a corretora aparece UMA vez")
+    from app.services import o_fim_do_atendimento as F
+
+    # 📊 O `display_name` do blueprint e "AutoBrokers da {corretora}" — e a
+    #    linha saia "Aqui e a AutoBrokers da Resulta, assistente virtual da
+    #    Resulta" (achado do juiz, 14/09/2026).
+    linha = F.linha_da_apresentacao(F.MODO_PRIMEIRA,
+                                    agent_name="AutoBrokers da Corretora Sintetica",
+                                    corretora="Corretora Sintetica")
+    check("o nome da corretora aparece UMA vez", linha.count("Corretora Sintetica") == 1,
+          linha)
+    check("e a frase continua dizendo o que ele e",
+          "assistente virtual" in linha, linha)
+
+    # PAR: nome que NAO carrega a corretora continua ganhando o "da {corretora}".
+    outra = F.linha_da_apresentacao(F.MODO_PRIMEIRA, agent_name="Aurora",
+                                    corretora="Corretora Sintetica")
+    check("PAR: nome comum mantem 'assistente virtual da {corretora}'",
+          "assistente virtual da Corretora Sintetica" in outra, outra)
+    check("e as duas CONSEGUEM ser diferentes", linha != outra)
+
+
+def gd8i_uma_regeneracao_por_TURNO_e_os_metadados_ficam():
+    _p("\n[GD8i] UMA regeneracao por TURNO entre os fiscais, e os metadados sobrevivem")
+    from langchain_core.messages import AIMessage
+
+    from app.agents import nodes as N
+    import app.services.activity_log as AL
+
+    # ------------------------------------------------------------------ #
+    # (1) o teto: se o fiscal de cima JA regenerou, o do tamanho NAO regenera
+    # ------------------------------------------------------------------ #
+    # \U0001F4CA O defeito medido em 14/09/2026 (J8): os dois fiscais regeneravam em
+    #    sequencia — DUAS chamadas extras ao modelo num turno so, dobrando a
+    #    espera do segurado, e a segunda reescrita nao sabe nada sobre a
+    #    pergunta repetida que a primeira acabou de consertar.
+    feed = []
+
+    async def _log(company_id, category, title, detail=""):
+        feed.append({"company_id": company_id, "title": title})
+
+    estado = {"company_id": EMPRESA, "agent_data": {"agent_role": "attendance"}}
+    chamadas = []
+
+    async def _regenerar(_regua):
+        chamadas.append(_regua)
+        return "curtinha."
+
+    _log_real = AL.log_activity
+    AL.log_activity = _log
+    try:
+        # com `ja_regenerou=True` o motor NAO pode chamar `regenerar`
+        texto, classe = asyncio.run(N._resposta_no_tamanho_da_classe(
+            _CONVERSA_DE_760, estado, regenerar=_regenerar, ja_regenerou=True))
+        check("\U0001F534 o turno ja gastou a sua regeneracao: o 2o fiscal NAO chama o modelo",
+              chamadas == [], "chamou %d vez(es)" % len(chamadas))
+        check("a mensagem SAI assim mesmo (nunca travar o segurado)",
+              texto.strip() == _CONVERSA_DE_760.strip(), texto[:80])
+        check("e o defeito vai para o feed", any(
+            "tamanho_fora_da_classe" in str(f.get("title")) for f in feed), feed)
+        check("a classe que estourou e devolvida", bool(classe), classe)
+
+        # CONTROLE: sem regeneracao anterior, o mesmo motor REGENERA
+        feed2 = []
+
+        async def _log2(company_id, category, title, detail=""):
+            feed2.append(title)
+
+        AL.log_activity = _log2
+        chamadas2 = []
+
+        async def _regenerar2(_regua):
+            chamadas2.append(_regua)
+            return "curtinha."
+
+        texto2, classe2 = asyncio.run(N._resposta_no_tamanho_da_classe(
+            _CONVERSA_DE_760, estado, regenerar=_regenerar2, ja_regenerou=False))
+        check("CONTROLE: sem regeneracao anterior, ele REGENERA",
+              len(chamadas2) == 1, "chamou %d" % len(chamadas2))
+        check("e as duas medidas CONSEGUEM ser diferentes (CLAUDE.md \u00a79.2)",
+              len(chamadas) != len(chamadas2))
+        check("a resposta curta e que sai", texto2.strip() == "curtinha.", texto2)
+    finally:
+        AL.log_activity = _log_real
+
+    # ------------------------------------------------------------------ #
+    # (2) os METADADOS nao se perdem na substituicao
+    # ------------------------------------------------------------------ #
+    # \U0001F4CA Cada fiscal fazia `AIMessage(content=...)` cru: `response_metadata`,
+    #    `usage_metadata` e o `id` sumiam, e o turno regenerado ficava sem
+    #    custo e sem modelo na telemetria.
+    original = AIMessage(content="texto original",
+                         response_metadata={"model_name": "modelo-sintetico"},
+                         usage_metadata={"input_tokens": 11, "output_tokens": 22,
+                                         "total_tokens": 33},
+                         id="run-sintetico-1")
+    nova = N.mesma_mensagem_com_texto(original, "texto novo")
+    check("o texto e o novo", nova.content == "texto novo", nova.content)
+    check("\U0001F534 `response_metadata` sobrevive",
+          nova.response_metadata == original.response_metadata, nova.response_metadata)
+    check("`usage_metadata` sobrevive (e dele que sai o custo)",
+          nova.usage_metadata == original.usage_metadata, nova.usage_metadata)
+    check("e o `id` do rastro tambem", nova.id == original.id, nova.id)
+
+    # \u26d4 E nenhum fiscal do `agent_node` pode voltar a construir a mensagem crua.
+    fonte = io.open(os.path.join(RAIZ, "app", "agents", "nodes.py"),
+                    encoding="utf-8").read()
+    cruas = fonte.count("response = AIMessage(content=")
+    check("nenhum fiscal substitui a resposta por uma AIMessage CRUA",
+          cruas == 0, "%d sobrevivente(s) — sobrevivente = metadados perdidos" % cruas)
+
+
+def gd8j_desculpa_nao_e_culpa():
+    _p("\n[GD8j] A pergunta DELICADA casa por PALAVRA e na MESMA frase (J3)")
+    from app.services import o_fim_do_atendimento as F
+
+    # \U0001F4CA Os dois defeitos medidos em 14/09/2026: `"desculpa"` contem
+    #    `"culpa"`, e o acolhimento de uma frase virava `avisar` por causa da
+    #    pergunta de OUTRA frase. `avisar` tem o teto mais apertado do produto
+    #    (1 frase, 300 chars): casar por engano REGENERA uma resposta correta.
+    for texto in ("Desculpa a demora! Pode me dizer o endereco?",
+                  "Que bom que ninguem se feriu. Pode me dizer onde voce esta?",
+                  "Que bom que ningu\u00e9m se feriu. Pode me dizer onde voc\u00ea est\u00e1?"):
+        classe, _u, _c = F.classe_do_tamanho(texto)
+        check("%-46s -> conversa" % (texto[:44] + ".."),
+              classe == F.CLASSE_CONVERSA, "deu %s" % classe)
+
+    # PAR — a pergunta delicada de verdade CONTINUA sendo `avisar`.
+    for texto in ("Alguem se feriu?", "Algu\u00e9m se feriu?",
+                  "Houve alguma vitima no acidente?",
+                  "A culpa foi atribuida a quem?"):
+        classe, _u, _c = F.classe_do_tamanho(texto)
+        check("PAR: %-40s -> avisar" % (texto[:38] + ".."),
+              classe == F.CLASSE_AVISAR, "deu %s" % classe)
+
+    check("e as duas medidas CONSEGUEM ser diferentes (CLAUDE.md \u00a79.2)",
+          F.classe_do_tamanho("Desculpa a demora! Pode me dizer o endereco?")[0]
+          != F.classe_do_tamanho("Alguem se feriu?")[0])
+    check("sem `?` nenhuma palavra delicada muda a classe",
+          F.classe_do_tamanho("Nao houve vitima nenhuma.")[0] == F.CLASSE_CONVERSA)
+
+
 GATES = {
     "GD8a": gd8a_uma_apresentacao_por_assunto,
+    "GD8i": gd8i_uma_regeneracao_por_TURNO_e_os_metadados_ficam,
+    "GD8j": gd8j_desculpa_nao_e_culpa,
+    "GD8g": gd8g_turno_descartado_ainda_se_apresenta,
+    "GD8h": gd8h_a_apresentacao_nao_repete_a_corretora,
     "GD8b": gd8b_o_bloco_estatico_nao_manda_mais_se_apresentar,
     "GD8c": gd8c_trocar_o_nome_nao_muda_o_assunto_atual,
     "GD8d": gd8d_a_classe_do_tamanho,
@@ -534,6 +760,26 @@ MUTACOES = [
      "    CLASSE_CONVERSA: 450,",
      "    CLASSE_CONVERSA: 0,",
      "GD8d"),
+    # (h) 🔴 J8 de volta: o 2o fiscal regenera mesmo depois do 1o
+    ("M-D8h", "app/agents/nodes.py",
+     "    if ja_regenerou:",
+     "    if False:",
+     "GD8i"),
+    # (i) 🔴 J3 de volta: a palavra delicada volta a casar por SUBSTRING
+    ("M-D8i", "app/services/o_fim_do_atendimento.py",
+     "    delicada = pergunta_delicada(texto)",
+     '    delicada = "?" in texto and any(p in baixo for p in _PALAVRAS_DELICADAS)',
+     "GD8j"),
+    # (f) 🔴 J5 de volta: a MONTAGEM marca a apresentacao como feita
+    ("M-D8f", "app/services/o_fim_do_atendimento.py",
+     '                       marcar_apresentacao: bool = False)',
+     '                       marcar_apresentacao: bool = True)',
+     "GD8g"),
+    # (g) 🔴 a linha volta a repetir o nome da corretora
+    ("M-D8g", "app/services/o_fim_do_atendimento.py",
+     "    if nome and _nome_ja_diz_a_corretora(nome, corretora):",
+     "    if False:",
+     "GD8h"),
     # (e) o fiscal do tamanho nao regenera — o textao sai na primeira.
     ("M-D8e", "app/agents/nodes.py",
      "    estourou, classe, unidades, teto = fora_da_classe(texto or \"\")\n    if not estourou:",

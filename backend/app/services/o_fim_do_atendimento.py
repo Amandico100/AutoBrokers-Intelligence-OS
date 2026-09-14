@@ -1541,14 +1541,44 @@ MOTIVO_EXCECAO_DE_TESTE = ("número de teste: o agente respondeu mesmo com a "
 #:
 #: ⚠️ A frase continua sendo o que vai para o feed. A classe nunca aparece para
 #: a Regina.
+#: 💭 A frase de um turno que perdeu a posse. ⚠️ Ela quase nunca chega ao feed
+#: — `turno_perdido` é EVENTO INTERNO do runtime (J6, 14/09/2026), e o webhook
+#: o resolve com log. Ela existe para o dia em que algum caminho o mande para
+#: cá assim mesmo: 🔴 nesse dia o feed mostra uma FRASE, nunca o token cru, e
+#: nunca classificado como takeover (que carrega nome de pessoa na chave).
+MOTIVO_TURNO_PERDIDO = ("o agente perdeu a vez nesta conversa e vai responder "
+                        "na próxima")
+
 _CLASSES_POR_INICIO = (
-    ("sem corretora", "sem_corretora"),
+    # ⛔ `("sem corretora", "sem_corretora")` SAIU em 14/09/2026: era entrada
+    #    MORTA. 📊 D-E-4 já tinha medido que "sem corretora" nunca produz linha
+    #    — `anotar_silencio_no_feed` escreve por `company_id`, e esse é
+    #    justamente o motivo que não tem `company_id`. Uma classe que nenhum
+    #    caminho alcança é uma promessa de cobertura que não existe.
+    (MOTIVO_TURNO_PERDIDO, "turno_perdido"),
     ("o segurado pediu para falar com uma pessoa", "pedido_de_pessoa"),
     ("não consegui saber se alguém assumiu", "falha_ao_ler_o_takeover"),
     ("não consegui ler o histórico", "falha_ao_ler_o_historico"),
     (MOTIVO_EXCECAO_DE_TESTE, "excecao_de_teste"),
     (_PREFIXO_DA_JANELA, "janela"),
 )
+
+
+#: \U0001F534 Os TOKENS internos que algum caminho pode mandar para c\u00e1 por engano
+#: (J6, 14/09/2026). Eles nunca deviam chegar ao feed \u2014 e, se chegarem, t\u00eam
+#: classe pr\u00f3pria e frase de gente. \u26d4 O defeito que isto fecha: a string crua
+#: `"turno_perdido"` caía no padr\u00e3o `takeover`, e o memo di\u00e1rio de um comia a
+#: linha do outro naquela conversa \u2014 a interven\u00e7\u00e3o humana sumia do feed.
+_TOKENS_INTERNOS = {
+    "turno_perdido": ("turno_perdido", MOTIVO_TURNO_PERDIDO),
+}
+
+
+def frase_do_silencio(motivo: Any) -> str:
+    """O texto que vai ao feed \u2014 nunca um token de programador. **PURA**."""
+    texto = str(motivo or "").strip()
+    conhecido = _TOKENS_INTERNOS.get(texto)
+    return conhecido[1] if conhecido else texto
 
 
 def classe_do_silencio(motivo: Any) -> str:
@@ -1561,6 +1591,9 @@ def classe_do_silencio(motivo: Any) -> str:
     texto = str(motivo or "").strip()
     if not texto:
         return "sem_motivo"
+    conhecido = _TOKENS_INTERNOS.get(texto)
+    if conhecido:
+        return conhecido[0]
     for inicio, classe in _CLASSES_POR_INICIO:
         if texto.startswith(inicio):
             return classe
@@ -1610,6 +1643,8 @@ async def anotar_silencio_no_feed(*, company_id: str, conversation_id: str,
     if not empresa or not conversa or not str(motivo or "").strip():
         return False
 
+    # \u26d4 Token nunca vai para a tela de quem trabalha (J6).
+    motivo = frase_do_silencio(motivo)
     chave = _chave_do_dia(empresa, conversa, motivo, agora)
     if chave in _SILENCIO_JA_ANOTADO:
         return False
@@ -1821,6 +1856,50 @@ def _corretora_no_texto(corretora: Any) -> str:
     return "da %s" % nome if nome else "da corretora"
 
 
+def _nome_ja_diz_a_corretora(agent_name: Any, corretora: Any) -> bool:
+    """O nome do agente JÁ carrega o nome da corretora? — **PURA**.
+
+    ⚠️ Compara normalizado (sem acento, sem caixa) e por PALAVRA: "AutoBrokers
+    da Resulta" contra "Resulta" → `True`. ⛔ Corretora vazia nunca casa.
+    """
+    empresa = nome_normalizado(corretora)
+    nome = nome_normalizado(agent_name)
+    if not empresa or not nome:
+        return False
+    palavras = set(nome.split())
+    return all(p in palavras for p in empresa.split())
+
+
+#: 🔴 A marca da apresentação no TEXTO ENVIADO. Ela é o que
+#: `linha_da_apresentacao` ENSINA em todas as formas — "assistente virtual" —
+#: e por isso é o que se procura de volta (CLAUDE.md §9.4: o que se afirma é o
+#: comportamento do motor sobre o texto real).
+_MARCA_DA_APRESENTACAO = "assistente virtual"
+
+
+def a_resposta_se_apresenta(resposta: Any, *, agent_name: str = "") -> bool:
+    """O texto que SAIU realmente carrega a apresentação? — **PURA**.
+
+    🔴 **Por que isto existe (J5, 14/09/2026).** `apresentado_em` era gravado
+    na MONTAGEM do prompt: bastava o bloco ser montado para a ficha dizer "já
+    me apresentei". Se o turno fosse descartado depois (posse perdida, atendente
+    assumiu, envio falhou), o segurado nunca ouvia a apresentação — e o
+    próximo turno também não se apresentava. "Se apresenta UMA vez" virava
+    "nunca".
+
+    ⚠️ Duas condições: a marca que o produto ensina (`assistente virtual`) e,
+    quando há nome, o NOME. ⛔ Sem as duas, o modelo pode ter respondido outra
+    coisa — e marcar seria mentir para o turno seguinte.
+    """
+    texto = nome_normalizado(resposta)
+    if not texto:
+        return False
+    if _MARCA_DA_APRESENTACAO not in texto:
+        return False
+    nome = nome_normalizado(agent_name)
+    return (nome in texto) if nome else True
+
+
 def linha_da_apresentacao(modo: str, *, agent_name: str = "",
                           corretora: str = "", nome_anterior: str = "") -> str:
     """A ÚNICA linha que o bloco dinâmico recebe sobre apresentação. **PURA.**
@@ -1844,7 +1923,14 @@ def linha_da_apresentacao(modo: str, *, agent_name: str = "",
                 "UMA vez, assim: \"Oi! Aqui é a %s, %s — antes eu me "
                 "apresentava como %s.\" Depois siga direto para o que ele "
                 "precisa." % (quem, empresa, antes or "outro nome"))
-    if nome:
+    if nome and _nome_ja_diz_a_corretora(nome, corretora):
+        # 🔴 O `display_name` do blueprint é "AutoBrokers da {corretora}"
+        # (achado do juíz, 14/09/2026): a linha saía "Aqui é a AutoBrokers da
+        # Resulta, assistente virtual da Resulta". ⚠️ O nome da corretora fica
+        # UMA vez — ele já está dentro do nome.
+        exemplo = ("\"Oi! Aqui é a %s, assistente virtual. Como posso "
+                   "ajudar?\"" % nome)
+    elif nome:
         exemplo = ("\"Oi! Aqui é a %s, assistente virtual %s. Como posso "
                    "ajudar?\"" % (nome, empresa))
     else:
@@ -1886,8 +1972,20 @@ TETO_POR_CLASSE = {
 }
 
 #: 💭 O vocabulário do assunto DELICADO. ⚠️ Ele não decide sozinho: só conta
-#: quando a resposta PERGUNTA (tem `?`). "Que bom que ninguém se feriu" é
-#: acolhimento, não interrogatório.
+#: quando a resposta PERGUNTA (tem `?`) — e agora **na mesma frase** em que a
+#: palavra aparece.
+#:
+#: 🔴 **Dois defeitos medidos em 14/09/2026 (J3), e os dois vinham do `in`:**
+#:
+#: ```
+#: "desculpa"  contém  "culpa"          -> pedir desculpa virava assunto de CULPA
+#: "Que bom que ninguém se feriu. Pode me dizer onde você está?"
+#:                                      -> acolhimento + pergunta de OUTRA frase
+#:                                         viravam `avisar`, teto de 1 frase
+#: ```
+#:
+#: ⛔ `avisar` tem o teto mais apertado do produto (1 frase, 300 chars): casar
+#: por engano faz o fiscal do tamanho REGENERAR uma resposta que estava certa.
 _PALAVRAS_DELICADAS = (
     "vítima", "vitima", "ferido", "ferida", "feriu", "machucou", "machucado",
     "óbito", "obito", "faleceu", "morte", "morreu", "ambulância", "ambulancia",
@@ -1909,6 +2007,53 @@ _ITEM = re.compile(r"^\s*(?:\d{1,2}\s*[\).\-:]|[-*•·]|[a-z]\))\s+",
                    re.MULTILINE)
 _ITEM_EM_LINHA = re.compile(r"(?<!\d)(\d{1,2})\s*\)\s+")
 _FIM_DE_FRASE = re.compile(r"[.!?…]+(?:\s|$)|\n+")
+
+
+def _sem_acento(texto: Any) -> str:
+    """A normalização da casa, sem tocar em caixa alta/baixa da frase."""
+    import unicodedata
+
+    bruto = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in bruto if not unicodedata.combining(c))
+
+
+#: As frases da resposta. ⚠️ O ponto final NÃO se perde: ele é o que separa
+#: "Que bom que ninguém se feriu." de "Pode me dizer onde você está?".
+_FRASES = re.compile(r"[^.!?…\n]+[.!?…]*", re.UNICODE)
+
+#: 📊 Construída UMA vez: `\b` sobre a palavra SEM acento, e o texto também
+#: chega sem acento — é o mesmo dialeto nos dois lados (CLAUDE.md §9.4).
+_DELICADAS_POR_PALAVRA = None
+
+
+def _delicadas_por_palavra():
+    global _DELICADAS_POR_PALAVRA
+    if _DELICADAS_POR_PALAVRA is None:
+        alternativas = sorted(
+            {re.escape(_sem_acento(p).lower()) for p in _PALAVRAS_DELICADAS},
+            key=len, reverse=True)
+        _DELICADAS_POR_PALAVRA = re.compile(
+            r"\b(?:%s)\b" % "|".join(alternativas), re.UNICODE)
+    return _DELICADAS_POR_PALAVRA
+
+
+def pergunta_delicada(resposta: str) -> bool:
+    r"""A resposta faz uma pergunta sobre assunto DELICADO? — **PURA**.
+
+    Duas condições, e as duas na MESMA frase (J3):
+
+    1. a frase termina (ou contém) `?`;
+    2. a frase traz uma palavra delicada **como palavra** (`\b`), não como
+       pedaço de outra — ⛔ `"desculpa"` não é `"culpa"`.
+    """
+    texto = _sem_acento(resposta).lower()
+    if "?" not in texto:
+        return False
+    padrao = _delicadas_por_palavra()
+    for frase in _FRASES.findall(texto):
+        if "?" in frase and padrao.search(frase):
+            return True
+    return False
 
 
 def _contar_itens(texto: str) -> int:
@@ -1954,7 +2099,7 @@ def classe_do_tamanho(resposta: str, *, contexto: str = "") -> Tuple[str, int, i
     itens = _contar_itens(texto)
     frases = _contar_frases(texto)
 
-    delicada = "?" in texto and any(p in baixo for p in _PALAVRAS_DELICADAS)
+    delicada = pergunta_delicada(texto)
     if delicada or pista == CLASSE_AVISAR:
         return CLASSE_AVISAR, frases, n_chars
 
@@ -2217,7 +2362,8 @@ async def membros_da_corretora(db, company_id: str) -> List[Dict[str, Any]]:
 def bloco_de_quem_fala(*, assunto_novo: bool, identidade: Dict[str, Any],
                        agent_name: str, corretora: str,
                        quem_vai_atender: Optional[str] = None,
-                       agora=None) -> Tuple[str, Dict[str, Any]]:
+                       agora=None,
+                       marcar_apresentacao: bool = False) -> Tuple[str, Dict[str, Any]]:
     """`(bloco_do_prompt, identidade_nova)` — **PURA**.
 
     Três linhas, nunca mais: quem fala (APRESENTAÇÃO), como chamar o segurado
@@ -2256,7 +2402,74 @@ def bloco_de_quem_fala(*, assunto_novo: bool, identidade: Dict[str, Any],
     linhas.append(linha_de_quem_vai_atender(quem_vai_atender))
 
     if apresenta:
-        ident["apresentado_em"] = agora.isoformat()
-        ident["nome_da_apresentacao"] = str(agent_name or "").strip()
+        # 🔴 **A MONTAGEM NÃO MARCA MAIS** (J5, 14/09/2026). Ela só anota a
+        # INTENÇÃO; quem promove `apresentacao_pendente` a `apresentado_em` é
+        # `confirmar_apresentacao_enviada`, depois do `send_message` dizer que
+        # a mensagem SAIU (`webhook.py`, passo 9).
+        #
+        # ⚠️ `marcar_apresentacao=True` existe para o guarda exercitar o
+        # caminho antigo numa asserção única — o produto não o usa.
+        ident["apresentacao_pendente_em"] = agora.isoformat()
+        ident["apresentacao_pendente_nome"] = str(agent_name or "").strip()
+        if marcar_apresentacao:
+            ident["apresentado_em"] = agora.isoformat()
+            ident["nome_da_apresentacao"] = str(agent_name or "").strip()
 
     return "=== 🪪 QUEM FALA NESTE TURNO ===\n" + "\n".join(linhas), ident
+
+
+async def confirmar_apresentacao_enviada(supabase_client, *, company_id: str,
+                                         session_id: str, resposta: str,
+                                         agora=None) -> bool:
+    """Promove `apresentacao_pendente` a `apresentado_em` — **depois do envio**.
+
+    🔴 **O caminho todo, e nenhum atalho** (J5). Três coisas têm de ser
+    verdade para a ficha dizer "já me apresentei":
+
+    ```
+    1. o bloco pediu a apresentação      (`apresentacao_pendente` na ficha)
+    2. a RESPOSTA carrega a apresentação  (`a_resposta_se_apresenta`)
+    3. o `send_message` devolveu True    (quem chama, no passo 9 do webhook)
+    ```
+
+    ⛔ Falta qualquer uma e a ficha não muda — o próximo turno se apresenta,
+    que é o lado seguro do erro: repetir uma apresentação é chato; nunca se
+    apresentar é um agente sem nome.
+
+    ⚠️ Melhor-esforço: **nunca levanta**. Devolve `True` se gravou.
+    """
+    from datetime import datetime, timezone
+
+    try:
+        from app.services.attendance_ficha import (carregar, gravar,
+                                                   identidade_de)
+
+        empresa = str(company_id or "").strip()
+        sessao = str(session_id or "").strip()
+        if not empresa or not sessao:
+            return False
+        ficha = await carregar(supabase_client, empresa, sessao)
+        ident = identidade_de(ficha)
+        pendente_em = str(ident.get("apresentacao_pendente_em") or "")
+        if not pendente_em:
+            return False
+        nome = str(ident.get("apresentacao_pendente_nome") or "")
+        if not a_resposta_se_apresenta(resposta, agent_name=nome):
+            logger.info("[APRESENTACAO] a resposta enviada NÃO se apresentou — "
+                        "a ficha continua pedindo a apresentação")
+            return False
+        novo = {
+            "apresentado_em": pendente_em or (
+                agora or datetime.now(timezone.utc)).isoformat(),
+            "nome_da_apresentacao": nome,
+        }
+        # ⚠️ `fundir` é ADITIVO: valor vazio não sobrescreve, então o pendente
+        # não tem como ser apagado por aqui — e não precisa. Quem manda é
+        # `apresentado_em`: com ele preenchido, `deve_se_apresentar` cala, e
+        # nenhum turno seguinte volta a escrever o pendente no mesmo assunto.
+        await gravar(supabase_client, empresa, sessao, {"identidade": novo})
+        logger.info("[APRESENTACAO] confirmada DEPOIS do envio")
+        return True
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[APRESENTACAO] não confirmada (%s)", type(erro).__name__)
+        return False

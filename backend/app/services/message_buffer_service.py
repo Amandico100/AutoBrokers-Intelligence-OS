@@ -90,10 +90,30 @@ class Turno:
 # (§13). `janela_de_espera` decide, e é ela que roda no CI sobre o corpus.
 #
 # 📊 A distribuição que justifica três números, e não um (14/09/2026, sobre
-# `attendance_transcripts.wa_timestamp`, 52.099 intervalos): 0-3 s 59,7% ·
-# 3-8 s 15,5% · 8-18 s 16,3% · 18-25 s 5,8% · >25 s 2,9%. Uma janela fixa de
-# 8 s agrega 75% e fragmenta o resto; uma de 18 s agrega 91% e cobra 18 s de
-# TODA resposta, inclusive daquela em que o segurado só disse "sim".
+# `attendance_transcripts.wa_timestamp`, 52.099 intervalos) — 🔴 RECONTADA em
+# 14/09 COM O OPERADOR DO MOTOR (`should_process` fecha em `gap >= espera`,
+# então a faixa "0-3 s" é `gap < 3`, e não `gap <= 3`):
+#
+#   0-3 s  **55,8%**  ·  3-8 s 16,6%  ·  acima de 8 s 27,6%
+#
+# Uma janela fixa de 8 s agrega **72,4%** e fragmenta o resto. ⚠️ Os números
+# que este bloco trazia (59,7% e "75%") vinham de uma consulta com `<=`, que é
+# o dialeto do SQL e NÃO o do motor — CLAUDE.md §9.4: "um padrão medido com um
+# motor e aplicado com outro é um padrão sobre outra coisa".
+#
+# 🔴 E É POR ISSO QUE OS 18 s DEIXARAM DE SER O PADRÃO (14/09/2026, achado J1).
+# `janela_de_espera` devolvia 18 s para TUDO que não terminasse em pontuação —
+# e 📊 70% dos itens do corpus versionado não terminam. "oi", "SOCORRO" e
+# "bateu meu carro" são frases COMPLETAS sem ponto final: esperar 18 s por elas
+# é cobrar do segurado o preço da exceção. 📊 A lente mediu: 49,2% das rajadas
+# terminam num item que pedia 18 s, e a espera média saía 12,7 s contra 8,0 s
+# da fixa — a janela "adaptativa" era, na prática, uma fixa de 18.
+#
+# ⛔ 18 s agora exige EVIDÊNCIA de frase interrompida: `termina_em_conectivo`
+# (vírgula, "e", "que", "mas", preposição — o que `Tracos` já marca). Sem
+# pontuação e sem conectivo = frase completa = 8 s. 📊 O gap depois de um item
+# inacabado é p50 7 s / p75 14 s, então 18 s continua cobrindo quem de fato
+# parou no meio.
 
 #: 🔴 É o número da Meta (§20 E02: o indicador de digitação é descartado "after
 #: 25 seconds"), e é o mesmo teto da rajada. Uma constante, duas vidas.
@@ -219,6 +239,19 @@ def janela_de_espera(t: Tracos) -> int:
 
     🔴 O piso `max(...DEBOUNCE..., 8)` que morreu aqui tornava a
     janela de 3 s impossível por CONSTRUÇÃO — nenhuma configuração descia dela.
+
+    🔴 **O padrão é 8 s, não 18** (J1, 14/09/2026). A ordem das perguntas é o
+    contrato:
+
+    ```
+    dado curto  ("sim", "ABC1D23", um CPF)            ->  3 s
+    conectivo   ("o carro parou na", "eu estava e")   -> 18 s
+    o resto     ("oi", "SOCORRO", "bateu meu carro")  ->  8 s
+    ```
+
+    ⚠️ `termina_em_conectivo` só é calculado quando NÃO há pontuação final
+    (`tracos_da_mensagem`), então a frase que termina em ponto nunca chega aos
+    18 s por esta porta — é a mesma regra escrita uma vez só.
     """
     # mídia sem legenda: o segurado quase sempre manda a explicação logo atrás
     if t.tipo != "text" and t.n_chars == 0:
@@ -229,9 +262,13 @@ def janela_de_espera(t: Tracos) -> int:
         return JANELA_FRASE_COMPLETA_SEGUNDOS
     if t.dado_curto:
         return JANELA_DADO_CURTO_SEGUNDOS
-    if t.termina_em_pontuacao_final and not t.termina_em_conectivo:
-        return JANELA_FRASE_COMPLETA_SEGUNDOS
-    return JANELA_FRASE_INACABADA_SEGUNDOS
+    # 🔴 A ÚNICA porta para os 18 s: a mensagem parou num CONECTIVO. ⛔ Falta de
+    # pontuação NÃO é prova de frase interrompida — no WhatsApp quase ninguém
+    # põe ponto final, e tratar isso como interrupção fazia "SOCORRO" esperar
+    # 18 segundos (achado J1, 14/09/2026).
+    if t.termina_em_conectivo:
+        return JANELA_FRASE_INACABADA_SEGUNDOS
+    return JANELA_FRASE_COMPLETA_SEGUNDOS
 
 
 def partes_da_chave(chave: str) -> tuple:
@@ -539,6 +576,60 @@ class MessageBufferService:
         except Exception:  # noqa: BLE001
             return []
 
+    async def devolver_itens_ao_buffer(
+        self, key: str, itens: List[Dict[str, Any]], *,
+        payload: Optional[Dict[str, Any]] = None, company_id: str = "",
+        user_id: str = "", integration: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Devolve ao buffer os itens de um turno que NÃO foi entregue (J2).
+
+        🔴 **O defeito que isto mata, medido em 14/09/2026.** O turno abre
+        ANTES do `get_and_clear` (é a regra do `buffer_processor`), então
+        quando a posse se perde DEPOIS da geração o buffer **já foi
+        consumido**: o `return` seco que existia aqui jogava fora a rajada
+        INTEIRA do segurado e ninguém respondia. Ele não é o defeito de duas
+        respostas — é o de NENHUMA, que é pior.
+
+        ⚠️ Os itens voltam ANTES do que já estiver no buffer (a ordem da
+        conversa é a ordem em que a pessoa falou) e ganham `reentregue: True`,
+        para que uma leitura futura saiba que aquele item já passou por um
+        turno que não entregou.
+
+        ⛔ Nunca levanta: perder a devolução é ruim; derrubar o turno em cima
+        de uma falha de Redis é pior. Devolve `True` se gravou.
+        """
+        devolvidos = [dict(i) for i in (itens or []) if isinstance(i, dict)]
+        if not key or not devolvidos:
+            return False
+        for item in devolvidos:
+            item["reentregue"] = True
+        agora = datetime.now().isoformat()
+        try:
+            bruto = await self.redis.get(key)
+            if bruto:
+                dados = json.loads(bruto)
+                dados.setdefault("v", 2)
+                dados["itens"] = devolvidos + itens_do_buffer(dados)
+                dados.pop("messages", None)
+                dados["last_at"] = agora
+            else:
+                dados = {
+                    "v": 2, "itens": devolvidos,
+                    "first_at": agora, "last_at": agora,
+                    "company_id": company_id, "user_id": user_id,
+                    "integration": integration or {}, "payload": payload or {},
+                }
+            await self.redis.setex(key, settings.BUFFER_TTL_SECONDS,
+                                   json.dumps(dados))
+        except Exception as erro:  # noqa: BLE001
+            logger.error("[TURNO] não consegui devolver a rajada ao buffer (%s) "
+                         "— %d item(ns) sem resposta", type(erro).__name__,
+                         len(devolvidos))
+            return False
+        logger.info("[TURNO] posse perdida: %d item(ns) devolvidos ao buffer — "
+                    "a próxima varredura responde", len(devolvidos))
+        return True
+
     def get_combined_message(self, buffer: Dict) -> str:
         """
         Combine buffered messages into single text.
@@ -566,6 +657,15 @@ class MessageBufferService:
         chave de turno e **uma travaria a outra** — exatamente o que a
         D-PILOTO-07 proíbe. Recusar custa a resposta dessa rota; aceitar custa
         a resposta da corretora errada, e esse custo não é reversível.
+
+        ⚠️ **E a recusa é um SILÊNCIO SEM LINHA NO FEED — declarado** (J10,
+        14/09/2026). O feed (`anotar_silencio_no_feed`) escreve por
+        `company_id`, e esta rota é exatamente aquela em que o `company_id`
+        ainda não existe: o buffer é gravado antes de resolver o tenant. Ou
+        seja, o segurado que cai aqui não é respondido e ninguém vê. ⛔ O
+        fail-closed continua certo (responder pela corretora errada é pior);
+        o que falta é um lugar para a falta aparecer — **P-E0012-J10**, e o
+        que ela destrava é a morte da rota legada sem token (H.2).
         """
         esc = str(escopo or "").strip()
         return bool(esc) and esc != ESCOPO_SEM_INTEGRACAO

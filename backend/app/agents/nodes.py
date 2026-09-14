@@ -560,6 +560,35 @@ async def _ficha_do_turno(state: dict) -> dict:
         return {}
 
 
+def mesma_mensagem_com_texto(original, texto: str):
+    """Uma `AIMessage` nova com OUTRO texto — e os MESMOS metadados.
+
+    🔴 **O defeito, achado em 14/09/2026 (J8).** Cada fiscal substituía a
+    resposta por `AIMessage(content=...)` cru. Isso **descartava**
+    `response_metadata`, `usage_metadata` e o `id` da mensagem original — que
+    é de onde saem os tokens cobrados, o modelo que respondeu e a correlação
+    do rastro. ⚠️ Um turno regenerado ficava, para a telemetria, como um
+    turno sem custo e sem modelo.
+
+    ⛔ Nunca levanta: se a mensagem original não tiver os campos (um dublê de
+    teste, por exemplo), sai uma `AIMessage` simples — que é o comportamento
+    de antes, nunca pior.
+    """
+    extras = {}
+    for campo in ("response_metadata", "usage_metadata", "additional_kwargs",
+                  "id", "name"):
+        try:
+            valor = getattr(original, campo, None)
+        except Exception:  # noqa: BLE001
+            valor = None
+        if valor:
+            extras[campo] = valor
+    try:
+        return AIMessage(content=texto, **extras)
+    except Exception:  # noqa: BLE001
+        return AIMessage(content=texto)
+
+
 async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar):
     """O fiscal da pergunta repetida. UMA regeneração — e depois ENVIA.
 
@@ -620,7 +649,32 @@ async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar)
     return final, ainda
 
 
-async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar):
+async def _registrar_tamanho_no_feed(state: dict, classe: str, unidades: int,
+                                     teto: int, texto: str = "") -> None:
+    """A linha do feed quando a resposta sai fora da classe. **Nunca levanta.**
+
+    ⚠️ Escrita UMA vez, chamada de dois lugares (J8): quando a reescrita não
+    resolveu e quando o turno já tinha gasto a sua única regeneração. Duas
+    cópias da mesma frase seriam duas frases, e uma delas envelheceria.
+    """
+    try:
+        from app.services.activity_log import log_activity
+
+        company_id = str(state.get("company_id") or "")
+        if not company_id:
+            return
+        await log_activity(
+            company_id, "qualidade",
+            "Resposta longa demais na conversa (tamanho_fora_da_classe)",
+            "A resposta ficou fora da classe `%s` (%d de no máximo %d; %d "
+            "caracteres). A mensagem foi enviada assim mesmo."
+            % (classe, unidades, teto, len(str(texto or "").strip())))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[TAMANHO] feed indisponível: %s", type(exc).__name__)
+
+
+async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar,
+                                         ja_regenerou: bool = False):
     """O fiscal do TAMANHO. UMA regeneração — e depois ENVIA.
 
     SPEC-EXTRA-001.2 §8.2. Quarta instância do mesmo padrão dos fiscais acima
@@ -653,6 +707,25 @@ async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar):
     if not estourou:
         return texto, ""
 
+    # =====================================================================
+    # 🔴 UMA REGENERAÇÃO POR TURNO, ENTRE OS DOIS FISCAIS (J8, 14/09/2026)
+    # =====================================================================
+    #
+    # 📊 O defeito: o fiscal da pergunta repetida podia regenerar e, logo
+    # depois, este regenerava DE NOVO — duas chamadas extras ao modelo num
+    # turno só, dobrando a latência enquanto o segurado espera e arriscando
+    # que a segunda reescrita desfaça o conserto da primeira (a régua de
+    # tamanho não sabe nada sobre pergunta repetida).
+    #
+    # ⚠️ Quando o primeiro já regenerou, este NÃO regenera: registra no feed
+    # e a mensagem sai. É a mesma direção dos outros fiscais — nunca travar a
+    # resposta por uma régua de estilo (CLAUDE.md §9.5).
+    if ja_regenerou:
+        logger.warning("[TAMANHO] fora da classe %s, mas o turno JÁ regenerou "
+                       "uma vez — a mensagem SAI e o defeito vai ao feed", classe)
+        await _registrar_tamanho_no_feed(state, classe, unidades, teto, texto)
+        return texto, classe
+
     logger.warning("[TAMANHO] resposta fora da classe %s (%d unidades, teto %d; "
                    "%d chars) — regenerando UMA vez", classe, unidades, teto,
                    len((texto or "").strip()))
@@ -671,19 +744,7 @@ async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar):
     if not ainda:
         return final, ""
 
-    try:
-        from app.services.activity_log import log_activity
-
-        company_id = str(state.get("company_id") or "")
-        if company_id:
-            await log_activity(
-                company_id, "qualidade",
-                "Resposta longa demais na conversa (tamanho_fora_da_classe)",
-                "A resposta ficou fora da classe `%s` (%d de no máximo %d) "
-                "mesmo depois de uma reescrita. A mensagem foi enviada assim "
-                "mesmo." % (classe2, unidades2, teto2))
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("[TAMANHO] feed indisponível: %s", type(exc).__name__)
+    await _registrar_tamanho_no_feed(state, classe2, unidades2, teto2, final)
     return final, classe2
 
 
@@ -930,7 +991,7 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         guarded = _guard_infocap_policy_final_response(candidate, contract)
         if guarded and guarded.strip() != (candidate or "").strip():
             logger.info("[Agent Node] 🛡️ Output guard substituiu resposta de apólice fora do contrato")
-            response = AIMessage(content=guarded)
+            response = mesma_mensagem_com_texto(response, guarded)
         guarded_final = guarded or candidate
 
     # 🔴 O FISCAL DA TRANSFERÊNCIA — 18/08/2026.
@@ -950,7 +1011,7 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         if _honesto.strip() != (_texto_final or "").strip():
             logger.error("[Agent Node] 🛡️ resposta afirmava transferência sem handoff "
                          "confirmado — reescrita")
-            response = AIMessage(content=_honesto)
+            response = mesma_mensagem_com_texto(response, _honesto)
             if guarded_final:
                 guarded_final = _honesto
 
@@ -960,6 +1021,7 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
     # registro") e a atendente perguntou pela TERCEIRA vez. O bloco do prompt
     # já dizia "não pergunte de novo" — prosa no prompt não conserta prosa do
     # modelo (mesma lição do fiscal da transferência, logo acima).
+    _ja_regenerou = False
     if not has_tool_calls:
         _texto_gerado = extract_text_from_content(getattr(response, "content", "") or "")
 
@@ -979,8 +1041,12 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
 
         _final, _persistiu = await _resposta_sem_pergunta_repetida(
             _texto_gerado, state, regenerar=_regenerar)
-        if _final and _final.strip() != (_texto_gerado or "").strip():
-            response = AIMessage(content=_final)
+        # 🔴 J8: "regenerou" é exatamente "o texto mudou". ⚠️ Não há bandeira
+        # nova a carregar — a evidência é o próprio texto, e ela não pode
+        # divergir de si mesma.
+        _ja_regenerou = bool(_final and _final.strip() != (_texto_gerado or "").strip())
+        if _ja_regenerou:
+            response = mesma_mensagem_com_texto(response, _final)
             if guarded_final:
                 guarded_final = _final
         if _persistiu:
@@ -1006,9 +1072,10 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             return extract_text_from_content(getattr(_resp, "content", "") or "")
 
         _curto, _classe_fora = await _resposta_no_tamanho_da_classe(
-            _texto_atual, state, regenerar=_encurtar)
+            _texto_atual, state, regenerar=_encurtar,
+            ja_regenerou=_ja_regenerou)
         if _curto and _curto.strip() != (_texto_atual or "").strip():
-            response = AIMessage(content=_curto)
+            response = mesma_mensagem_com_texto(response, _curto)
             if guarded_final:
                 guarded_final = _curto
         if _classe_fora:

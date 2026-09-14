@@ -39,17 +39,36 @@ alimenta apenas `--de-arquivo`.
 | rajadas com mídia | ≥ 3 | **6** (7 imagens · 4 áudios · 1 documento · 1 vídeo) | ✅ |
 | as duas corretoras | A e B | A **11** · B **9** | ✅ |
 | rajadas que HOJE viram 2+ respostas | a régua | **19 de 20** | ✅ |
+| rajadas que a janela une em UM turno | a régua | **12 de 20** (era 17 antes de J1) | ⚠️ |
 
 ## Por que cada rajada entrou
 
 A escolha é **estratificada**, não aleatória, e roda nesta ordem:
 
 1. as que **fragmentaram hoje** (`turnos_hoje` ≥ 2) e que a janela **une em uma** —
-   📊 **16 das 20**. São a régua do outcome: o mesmo pedido, uma resposta só.
+   📊 **12 das 20** (recontado em 14/09 depois de J1; eram 16). São a régua do outcome: o mesmo pedido, uma resposta só.
 2. as que faltavam para cobrir tamanho, faixa de intervalo, mídia, dado curto e corretora.
 3. 🔴 **3 rajadas que a janela NÃO une** (`turnos_esperados` 2 ou 3), porque um intervalo
    interno passa de 25 s. ⛔ Elas entram de propósito: o teto de 25 s é a constante da Meta
    (§20 E02), e esconder o limite do corpus seria prometer o que a janela não faz.
+
+## 🔴 RECONTAGEM de 14/09/2026 — o achado J1 mudou `turnos_esperados`
+
+Os 18 s deixaram de ser o padrão da janela: eles agora exigem **`termina_em_conectivo`**, e
+tudo que não termina em pontuação nem em conectivo é **frase completa, 8 s** (o defeito era
+cobrar 18 s de "oi", "SOCORRO" e "bateu meu carro"). O `turnos_esperados` de cada linha foi
+**recomputado pelo motor** sobre este mesmo corpus.
+
+```
+📊 itens que pediam 18 s     37 de 61 (60,7%)  ->  1 de 61 (1,6%)
+📊 espera do ULTIMO item     11,0 s media      ->  7,0 s media
+📊 rajadas que viram 1 turno 17 de 20          ->  12 de 20
+```
+
+⚠️ **O preço está declarado:** 5 rajadas a mais fragmentam. É a troca escolhida — 4 s a menos
+de espera em **toda** conversa contra a agregação de 5 rajadas em 20. ⛔ E a linha de CONTROLE
+do guarda mudou de alvo junto: comparar com uma fixa de 8 s deixou de conseguir falhar
+(P-E0012-J1); o controle agora é o estado de **antes** de J1.
 
 ## Os campos de cada linha
 
