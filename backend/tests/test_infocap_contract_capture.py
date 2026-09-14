@@ -73,6 +73,18 @@ def _load_module():
     ):
         sys.modules.setdefault(name, types.ModuleType(name))
 
+    # SPEC-EXTRA-001.1 BLOCO B: o conector passou a DELEGAR o numero humano a
+    # porta (`from app.providers.policy_data_provider import numero_humano_valido`,
+    # infocap_connector.py:223). Com `app` stubado como modulo simples o import
+    # morria em `ModuleNotFoundError` — mesma classe de defeito de harness que
+    # P-PILOTO-20 (BLOCO E) fechou em 4 outros scripts. `app.providers` ganha o
+    # `__path__` REAL para a porta (pura) carregar de verdade.
+    _raiz = Path(__file__).resolve().parents[1]
+    sys.modules["app"].__path__ = [str(_raiz / "app")]
+    _prov = sys.modules.setdefault("app.providers", types.ModuleType("app.providers"))
+    _prov.__path__ = [str(_raiz / "app" / "providers")]
+    _prov.__package__ = "app.providers"
+
     sys.modules["app.core.config"].settings = types.SimpleNamespace(
         INFOCAP_BASE_URL="",
     )

@@ -263,6 +263,13 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
     if "policy_options" in required:
         # SPEC-016.1 D7: a LLM pode formatar como quiser, mas TODOS os números
         # humanos das opções precisam aparecer na resposta (nunca omitir opção).
+        #
+        # 🔴 SPEC-EXTRA-001.1 §7.3 — o guarda NÃO morre, ele passa a guardar a
+        # regra certa. `required_facts` só carrega `policy_options` quando a
+        # PORTA devolveu ambiguidade legítima (2+ apólices VIGENTES do MESMO
+        # ramo). Nos demais casos a lista vem vazia, e o guarda deixa de
+        # OBRIGAR a listagem — continua impedindo o modelo de ESCONDER uma
+        # opção, que é a razão de ele existir.
         options = contract.get("policy_options") or []
         for option in options[:10]:
             if not isinstance(option, dict):
@@ -270,8 +277,24 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
             number = str(option.get("policy_number") or option.get("numapo") or "").strip()
             if number and number.lower() not in {"0", "none", "null", "-"} and number not in candidate:
                 return rendered
-        if not options and ("seguradora" not in lower or "numero" not in lower and "número" not in lower):
-            return rendered
+        if not options:
+            # 📊 MEDIDO em 14/09/2026 ANTES de tocar nesta linha (protocolo
+            # §0.4), porque a precedência do `and`/`or` original mudava o
+            # significado conforme quem lesse. O comportamento real era
+            # `A and (B or (C and D))`, e as quatro combinações medidas foram:
+            #     só "seguradora" ...... ANULA     só "numero" .......... ANULA
+            #     nenhum dos dois ...... ANULA     os dois .............. ACEITA
+            # Os parênteses abaixo escrevem isso, sem mudar o veredito.
+            #
+            # 🔴 A linha FICA porque guarda um caso REAL: a fonte devolveu a
+            # ambiguidade sem número humano, e `ATTENDANCE_BASE_PROMPT` manda
+            # pedir a escolha "pela POSIÇÃO". Sem ela o modelo responde
+            # "escolha uma" sem dizer nem a seguradora, e o segurado não tem
+            # como escolher.
+            cita_seguradora = "seguradora" in lower
+            cita_numero = ("numero" in lower) or ("número" in lower)
+            if not (cita_seguradora and cita_numero):
+                return rendered
     if "coverage_absent" in required:
         absence_markers = (
             "nao retornou", "não retornou", "nao constam", "não constam",

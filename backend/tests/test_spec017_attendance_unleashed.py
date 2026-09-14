@@ -137,7 +137,24 @@ def run():
         {"status": "found", "selected": MATCHES[0], "policy_evidence_pack": {}},
         {"text": "rascunho", "facts": [], "assistance_policy": None},
         "coberturas da apolice", client_facing=False)
-    check("briefing corretor: regras canonicas preservadas", "liste TODAS" in briefing_corretor)
+    # 🔴 MIGRADA em 14/09/2026 (CLAUDE.md §9.3) — SPEC-EXTRA-001.1 BLOCO C.
+    # A asserção antiga era `"liste TODAS" in briefing_corretor`, e o que ela
+    # media era a regra 3 do bloco do corretor: *"Se houver opcoes_de_apolice,
+    # liste TODAS com os numeros exatos"*. 📊 Essa regra É o defeito que a
+    # EXTRA-001.1 conserta: o acervo de 09-11/09 mediu 7 de 7 perguntas
+    # respondidas com uma LISTA e zero com a única apólice vigente. Manter a
+    # afirmação vencida só ensinaria a ignorar o teste.
+    #
+    # A LIÇÃO MIGRA, não morre: o que não pode sumir do briefing do corretor é
+    # a regra **1b**, das COBERTURAS (`LISTE TODAS`, commit `bf963b0`) — ela
+    # mora a duas linhas da que saiu, e apagá-la reintroduz o "6 de 10". E a
+    # regra nova é testada junto: listar APÓLICE virou condicional.
+    check("briefing corretor: a regra 1b das COBERTURAS continua (bf963b0)",
+          "LISTE TODAS" in briefing_corretor, briefing_corretor[-900:])
+    check("briefing corretor: listar APOLICE deixou de ser ordem incondicional",
+          "NUNCA liste apolices" in briefing_corretor
+          and "Se houver opcoes_de_apolice" not in briefing_corretor,
+          briefing_corretor[-900:])
 
     # ---------- insurer_dispatch resolve fatos do veiculo server-side ----------
     disp_src = (ROOT / "app" / "agents" / "tools" / "insurer_dispatch_tool.py").read_text(encoding="utf-8")

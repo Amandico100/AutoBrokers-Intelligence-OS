@@ -101,6 +101,118 @@ def _product_hint_from_query(query: Optional[str]) -> Optional[str]:
 _STATUS_SEM_ESCOLHA = ("ambiguous_policy", "policy_number_ambiguous", "multiple_matches")
 
 
+#: Como a ORIGEM de uma linha se diz ao corretor. 🔴 Nunca o nome do fornecedor
+#: (§3.2): o que o corretor lê é "o sistema de gestão da corretora" e "o
+#: documento oficial da apólice".
+_ORIGEM_EM_PORTUGUES = {
+    "sistema_de_gestao": "cadastro do sistema de gestao",
+    "documento_oficial": "documento oficial da apolice",
+    "catalogo": "catalogo do AutoBrokers",
+    "manual": "registro manual",
+}
+
+
+def _pagina_da_cobertura(cobertura: Any) -> Optional[int]:
+    """A página do documento, quando o extrator a devolveu. `None` é legítimo."""
+    for nome in ("limite", "franquia", "premio"):
+        campo = getattr(cobertura, nome, None)
+        pagina = (getattr(campo, "detalhe", None) or {}).get("pagina")
+        if isinstance(pagina, int):
+            return pagina
+    return None
+
+
+def _origem_em_portugues(cobertura: Any) -> str:
+    """`Cobertura.origens` → a frase que vai ao lado da linha.
+
+    🔴 É esta frase que responde *"de onde veio esse número?"* — a pergunta que
+    o §19 da proposta obriga a resposta a responder. Uma linha sem origem é
+    exatamente o que o modelo canônico do BLOCO A proibiu de existir.
+    """
+    origens = tuple(getattr(cobertura, "origens", ()) or ())
+    nomes = [_ORIGEM_EM_PORTUGUES.get(o, o) for o in origens]
+    if not nomes:
+        return "origem nao declarada"
+    texto = " + ".join(nomes)
+    pagina = _pagina_da_cobertura(cobertura)
+    if pagina and "documento_oficial" in origens:
+        texto += " (p. %d)" % pagina
+    return texto
+
+
+def _linhas_das_coberturas(apolice: Any) -> list:
+    """As coberturas RECONCILIADAS, uma linha cada, com origem e divergência."""
+    from app.providers.policy_data_provider import Indisponivel, reais
+
+    linhas = []
+    for cobertura in (getattr(apolice, "coberturas", ()) or ())[:60]:
+        bits = []
+        if cobertura.limite.tem_valor:
+            bits.append("limite %s" % reais(cobertura.limite.valor))
+        if cobertura.franquia.tem_valor:
+            valor = cobertura.franquia.valor
+            if not isinstance(valor, Indisponivel):
+                bits.append("franquia %s" % valor)
+        if cobertura.premio.tem_valor:
+            bits.append("premio %s" % reais(cobertura.premio.valor))
+        sufixo = " — " + " · ".join(bits) if bits else ""
+        linhas.append("- %s%s — origem: %s" % (cobertura.rotulo, sufixo,
+                                               _origem_em_portugues(cobertura)))
+        for divergencia in cobertura.divergencias:
+            linhas.append("    · as duas fontes discordam — %s (diga as duas; nao escolha por conta)"
+                          % divergencia.como_frase())
+    return linhas
+
+
+def _linha_do_cadastro_incompleto(apolice: Any) -> Optional[str]:
+    """O `Sinal("cadastro_incompleto")` em PROSA, não em código de erro."""
+    from app.providers.policy_data_provider import reais
+
+    sinal = apolice.sinal("cadastro_incompleto") if hasattr(apolice, "sinal") else None
+    if sinal is None:
+        return None
+    detalhe = sinal.detalhe or {}
+    do_cadastro = int(detalhe.get("coberturas_do_cadastro") or 0)
+    total = len(getattr(apolice, "coberturas", ()) or ())
+    return (
+        "aviso_sobre_o_cadastro: o cadastro do sistema de gestao tem %d das %d coberturas "
+        "que o documento oficial mostra; faltam %s (%s%%) do premio liquido no cadastro. "
+        "As coberturas acima JA estao reconciliadas — responda por elas, e nao pelo cadastro."
+        % (do_cadastro, total, reais(detalhe.get("diferenca_reais")),
+           str(detalhe.get("diferenca_pct") or "-"))
+    )
+
+
+def _linha_da_familia_de_acionamento(insurer_key: Any) -> Optional[str]:
+    """A família de acionamento da seguradora — **do CATÁLOGO, não do prompt**.
+
+    🔴 SPEC-EXTRA-001.1 §5.4: *"Liberty e Yelum são a MESMA seguradora"* e
+    *"Itaú = grupo Porto"* moravam no texto do briefing (`infocap_tool.py:453`,
+    item 5). No prompt a regra vale **só enquanto o modelo obedecer**; no
+    arquivo revisado ela vale sempre, e muda por revisão datada de gente.
+    """
+    try:
+        from app.providers.susep_ses_provider import UNKNOWN, familia_de_acionamento
+
+        familia = familia_de_acionamento(insurer_key)
+        if not familia or familia == UNKNOWN:
+            return None
+        from app.providers.susep_ses_provider import linha_de_acionamento
+
+        linha = linha_de_acionamento(insurer_key) or {}
+        corredor = str(linha.get("corredor") or familia)
+        # Só a PRIMEIRA oração do critério: o resto é a justificativa da revisão,
+        # e ela mora no arquivo — o briefing carrega o motivo, não o parecer.
+        criterio = str(linha.get("criterio") or "").strip()
+        criterio = criterio.split(";")[0].split(":")[0].split(". ")[0].strip()
+        return "seguradora_para_acionamento: %s%s" % (
+            corredor, (" (%s)" % criterio) if criterio else "")
+    except Exception as e:  # noqa: BLE001 — o catálogo nunca derruba a consulta
+        logger.warning("[InfocapPolicyLookupTool] familia de acionamento indisponivel: %s",
+                       type(e).__name__)
+        return None
+
+
 def _match_product_kind(match: Dict[str, Any]) -> Optional[str]:
     from app.services.policy_answer_composer import humanize_product
 
@@ -118,7 +230,11 @@ class InfocapLookupInput(BaseModel):
     policy_number: Optional[str] = Field(default=None, description="Numero humano da apolice informado pelo corretor.")
     policy_ref: Optional[str] = Field(
         default=None,
-        description="Referencia tecnica interna da apolice, quando disponivel, no formato infocap:<codfil>:<nosnum>.",
+        # 🔴 G1b da fronteira (SPEC-EXTRA-001.1 §3.2): a descricao do argumento e
+        # TEXTO QUE CHEGA AO MODELO. Ate 14/09/2026 ela ensinava o formato interno
+        # do fornecedor — e o modelo repetia o formato ao corretor. A referencia e
+        # OPACA de proposito: quem a monta e a porta (`parse_policy_locator_ref`).
+        description="Referencia tecnica opaca da apolice, devolvida pela consulta anterior. Repasse-a como veio; nunca a construa nem a exiba.",
     )
     document_evidence_requested: Optional[bool] = Field(
         default=None,
@@ -432,6 +548,13 @@ class InfocapPolicyLookupTool(BaseTool):
                     if isinstance(m, dict)]
             filtradas = [m for m in crus if str(m.get("policy_locator_ref") or "") in refs]
             result["matches"] = filtradas or result.get("matches") or []
+            # 🔴 §7.1: o TEXTO das opções vem da PORTA, sobre as `ApoliceNaLista`
+            # já classificadas — e por isso a situação é a da DATA, nunca o
+            # `policy_status` cru do fornecedor (📊 3 residenciais "ativo", uma só
+            # vigente). O briefing imprime este texto; ele nunca é remontado lá.
+            from app.providers.policy_data_provider import opcoes_em_texto
+
+            result["opcoes_vigentes_em_texto"] = opcoes_em_texto(escolha.opcoes)
 
     async def _enrich_vehicle(self, result: Dict[str, Any], provider, document: Optional[str], db, key: str) -> None:
         """FICHA do atendimento: anexa placa/veículo da apólice AUTO selecionada
@@ -516,13 +639,21 @@ class InfocapPolicyLookupTool(BaseTool):
         if client_text:
             lines.append(f"cliente: {client_text}")
         if isinstance(selected, dict) and selected:
-            number = str(selected.get("policy_number") or selected.get("numapo") or "").strip() or "nao retornado"
+            # 🔴 O numero humano vem da PORTA (`numero_humano_de`): ela e que sabe
+            # quais chaves o carregam e que "0"/"000"/vazio NAO sao numero. A tool
+            # nomeava o campo do fornecedor aqui ate 14/09/2026 (G1b da fronteira).
+            from app.providers.policy_data_provider import numero_humano_de
+
+            number = numero_humano_de(selected, ausente="nao retornado")
             insurer = humanize_insurer(selected.get("insurer_key"))
             product = humanize_product(selected.get("product"))
             lines.append(
                 f"apolice_selecionada: {number} — {insurer or '-'} {product or ''} — "
                 f"vigencia {selected.get('valid_from') or '-'} a {selected.get('valid_to') or '-'} — situacao: {selected.get('policy_status') or '-'}"
             )
+            familia = _linha_da_familia_de_acionamento(selected.get("insurer_key"))
+            if familia:
+                lines.append(familia)
         # 🔴 §6.1: a escolha DIZ POR QUÊ. O motivo é texto humano, escrito pela
         # porta, e ele vai para o modelo junto com a apólice — é o que permite
         # ao corretor contestar a escolha em vez de descobri-la por acaso.
@@ -538,8 +669,40 @@ class InfocapPolicyLookupTool(BaseTool):
         # COBERTURAS ITEM A ITEM — o que o corretor pede e o que a fonte entrega
         # em `/itens.garantias`: nome, limite (LMI), franquia e premio de CADA
         # cobertura. Vem antes dos fatos porque e a resposta da pergunta.
+        # 🔴 §7.1: as coberturas vem da `Apolice` RECONCILIADA da PORTA — cadastro
+        # do sistema de gestao + documento oficial, com a ORIGEM escrita por linha
+        # e a divergencia dita quando as duas fontes discordam. Antes de
+        # 14/09/2026 o briefing lia `coverage_sections` cru, e por isso a resposta
+        # da HDI saia com 6 coberturas quando o documento mostra 10.
+        #
+        # ⚠️ Enquanto o BLOCO D nao ensina o extrator a ler as duas tabelas reais,
+        # `apolice_documental_do_pack` devolve `None` em producao e a apolice cai
+        # para as coberturas do cadastro — as MESMAS de antes, agora com origem.
+        # Nenhuma linha some por causa disso, e o elo fecha no BLOCO D.
+        apolice = None
+        if pack:
+            try:
+                from app.providers.infocap_policy_provider import apolice_reconciliada_do_pack
+
+                apolice = apolice_reconciliada_do_pack(pack)
+            except Exception as e:  # noqa: BLE001 — a porta nunca derruba a tool
+                logger.warning("[InfocapPolicyLookupTool] reconciliacao indisponivel: %s",
+                               type(e).__name__)
+        coberturas = tuple(getattr(apolice, "coberturas", ()) or ())
         sections = [s for s in (pack.get("coverage_sections") or []) if isinstance(s, dict)]
-        if sections:
+        if coberturas:
+            lines.append(
+                f"coberturas_item_a_item ({len(coberturas)} contratadas, reconciliadas entre o "
+                "cadastro do sistema de gestao da corretora e o documento oficial da apolice; "
+                "LISTE TODAS na resposta, com limite, franquia e premio de cada):"
+            )
+            lines.extend(_linhas_das_coberturas(apolice))
+            aviso = _linha_do_cadastro_incompleto(apolice)
+            if aviso:
+                lines.append(aviso)
+        elif sections:
+            # Caminho de seguranca: a reconciliacao falhou, mas a cobertura existe.
+            # Ela NUNCA some da resposta — some a origem, e o modelo e avisado.
             lines.append(
                 f"coberturas_item_a_item ({len(sections)} contratadas — fonte: "
                 f"{pack.get('coverage_source') or 'sistema de gestao da corretora'}; "
@@ -551,6 +714,27 @@ class InfocapPolicyLookupTool(BaseTool):
                         f"premio {section.get('premium')}" if section.get("premium") else None]
                 suffix = " — " + " · ".join(b for b in bits if b) if any(bits) else ""
                 lines.append(f"- {section.get('label')}{suffix}")
+        if apolice is not None:
+            from app.providers.policy_data_provider import Indisponivel
+
+            forma = apolice.forma_de_pagamento
+            if not isinstance(forma, Indisponivel) and str(forma).strip():
+                linha_forma = f"forma_de_pagamento: {forma} (lida das PARCELAS)"
+                cabecalho = apolice.sinal("cabecalho_divergente")
+                if cabecalho is not None:
+                    linha_forma += (
+                        " — o cabecalho do cadastro diz %s; a das parcelas e a que vale"
+                        % (cabecalho.detalhe or {}).get("no_cabecalho", "outra coisa")
+                    )
+                lines.append(linha_forma)
+            plano = apolice.plano_de_assistencia
+            if plano is not None and plano.nome.tem_valor:
+                lines.append(
+                    "plano_de_assistencia: %s — origem: %s%s"
+                    % (plano.nome.valor, _ORIGEM_EM_PORTUGUES.get(plano.nome.origem, plano.nome.origem),
+                       " (a fonte deu o NOME do plano, nao a lista de servicos: nao prometa servico "
+                       "que nao esteja escrito acima)" if plano.estado == "nao_sabemos_ainda" else "")
+                )
         premium_summary = pack.get("premium_summary") or {}
         if premium_summary:
             money = [
@@ -601,17 +785,47 @@ class InfocapPolicyLookupTool(BaseTool):
                 for i in open_items[:12]
             )
             lines.append(f"parcelas: {len(installments)} registradas; {len(open_items)} em aberto" + (f" ({open_desc})" if open_desc else ""))
+        # 🔴 §7.1: LISTAR DEIXA DE SER O PADRAO. O cabecalho `opcoes_de_apolice
+        # (liste TODAS…)` saiu em 14/09/2026: ele mandava listar em TODA consulta
+        # ambigua, inclusive quando a porta ja sabia qual era a apolice certa.
+        # 📊 O acervo de 09-11/09 mediu 7 de 7 perguntas respondidas com "qual
+        # delas?" e ZERO respondidas com a unica vigente.
+        #
+        # A lista so volta quando a porta devolve `ambiguous_policy` — 2+ apolices
+        # VIGENTES do MESMO ramo, a unica situacao em que perguntar e legitimo. O
+        # texto das opcoes vem da PORTA (`opcoes_em_texto` sobre as opcoes JA
+        # filtradas), com a situacao da DATA, nunca o `policy_status` cru.
         matches = data.get("matches") or []
-        if status in ("ambiguous_policy", "policy_number_ambiguous", "multiple_matches") and matches:
-            lines.append("opcoes_de_apolice (liste TODAS, com os numeros exatos):")
-            for match in matches[:10]:
-                if not isinstance(match, dict):
-                    continue
-                number = str(match.get("policy_number") or match.get("numapo") or "nao retornado").strip()
-                lines.append(
-                    f"- {number} — {humanize_insurer(match.get('insurer_key')) or '-'} · {humanize_product(match.get('product')) or '-'} · "
-                    f"vigencia {match.get('valid_from') or '-'} a {match.get('valid_to') or '-'} ({match.get('policy_status') or '-'})"
-                )
+        if status == "ambiguous_policy" and matches:
+            lines.append(
+                "apolices_vigentes_do_mesmo_ramo (a porta NAO conseguiu escolher: ha mais de uma "
+                "vigente do mesmo ramo; peca ao corretor que escolha UMA vez, com os numeros exatos):"
+            )
+            das_opcoes = str(data.get("opcoes_vigentes_em_texto") or "").strip()
+            if das_opcoes:
+                lines.extend(das_opcoes.split("\n")[1:])
+            else:
+                for match in matches[:10]:
+                    if not isinstance(match, dict):
+                        continue
+                    from app.providers.policy_data_provider import numero_humano_de
+
+                    number = numero_humano_de(match)
+                    lines.append(
+                        f"- {number} — {humanize_insurer(match.get('insurer_key')) or '-'} · "
+                        f"{humanize_product(match.get('product')) or '-'} · "
+                        f"vigencia {match.get('valid_from') or '-'} a {match.get('valid_to') or '-'}"
+                    )
+        elif status in ("policy_number_ambiguous", "multiple_matches") and matches:
+            # A fonte nao isolou a apolice pelo NUMERO humano informado — aqui a
+            # ambiguidade e de identificacao, nao de escolha de apolice vigente.
+            from app.providers.policy_data_provider import opcoes_em_texto
+
+            lines.append(
+                "apolices_com_o_mesmo_numero (o numero informado apareceu em mais de uma apolice; "
+                "peca seguradora, ramo ou vigencia para desempatar):"
+            )
+            lines.extend(opcoes_em_texto(matches).split("\n")[1:])
         limitations = pack.get("limitations") or []
         if limitations:
             lines.append("limitacoes_da_fonte: " + "; ".join(str(item) for item in limitations[:3]))
@@ -652,7 +866,13 @@ class InfocapPolicyLookupTool(BaseTool):
                 "2. Monte sua FICHA do atendimento com: titular, CPF, apolice, seguradora, placa/veiculo. Dai em diante USE a ficha — NAO consulte de novo, NAO pergunte nada que ja esteja aqui ou na conversa.",
                 "3. As apolices/seguradoras REAIS deste cliente sao SOMENTE as listadas neste bloco — NUNCA invente seguradora, apolice ou opcao que nao esteja aqui. O NOME do cliente e o do titular acima (ou o que ELE disser) — NUNCA invente nome.",
                 "4. Se houver mais de uma apolice vigente: escolha VOCE a coerente com o pedido (servico de CARRO -> apolice AUTO; celular/vida/residencia NUNCA atendem carro) e chame de novo com policy_number. So pergunte ao cliente se houver 2+ apolices do MESMO ramo — e pergunte UMA UNICA VEZ NA CONVERSA INTEIRA: se o cliente JA disse a seguradora (agora ou antes), chame IMEDIATAMENTE com o policy_number da opcao correspondente, SEM re-perguntar. A escolha dele vale ate o fim do atendimento.",
-                "5. Liberty e Yelum sao a MESMA seguradora (Liberty foi rebatizada para Yelum): apolice Liberty = corredor/insurer_key 'yelum' no acionamento. Itau = grupo Porto.",
+                # 🔴 §5.4: o conhecimento de FAMILIA saiu daqui e virou CATALOGO
+                # (`docs/canon/providers/susep/seguradora-coenti.json`, secao
+                # `familias_de_acionamento`, lida por `susep_ses_provider`). No
+                # prompt ele valia so enquanto o modelo obedecesse; no arquivo
+                # revisado ele vale sempre. Quando houver familia declarada, a
+                # linha `seguradora_para_acionamento` aparece ACIMA, nos dados.
+                "5. Para acionar, use a seguradora indicada em 'seguradora_para_acionamento' quando ela aparecer acima — ela ja considera rebatizacao e grupo economico. Sem essa linha, use a seguradora da apolice como ela veio.",
                 "6. Situacao interna da fonte ('recebido e nao entregue', apolices vencidas ocultadas) NAO interessa ao cliente — se a vigencia esta ok, siga direto para resolver o pedido.",
                 "7. NUNCA invente valor, cobertura, servico ou prazo. Valores em R$: apenas os listados acima.",
                 "8. Ao final da leitura, responda ao cliente APENAS o proximo passo natural da conversa (ex.: confirmar que a apolice esta ativa e perguntar o que falta para acionar).",
@@ -665,9 +885,9 @@ class InfocapPolicyLookupTool(BaseTool):
             "1. Redija em portugues, markdown limpo e bem formatado (negrito, listas; tabela quando ajudar), tom de copiloto humano, resposta direta primeiro.",
             "1b. Se houver coberturas_item_a_item, LISTE TODAS (nenhuma de fora), cada uma com limite, franquia e premio — de preferencia numa tabela. Nunca resuma para 'uma cobertura' quando o bloco traz varias.",
             "2. Use SOMENTE os fatos acima. NUNCA invente valor, cobertura, servico, prazo ou status. Valores em R$: apenas os listados.",
-            "3. Se houver opcoes_de_apolice, liste TODAS com os numeros exatos e peca a escolha.",
+            "3. Se o bloco trouxer apolices_vigentes_do_mesmo_ramo, liste-as com os numeros exatos e peca a escolha UMA vez; fora disso, NUNCA liste apolices — responda sobre a escolhida e diga por que e ela (apolice_escolhida_porque). Apolice vencida so entra se o corretor pedir o historico.",
             "4. Se um dado nao estiver acima, diga com clareza que a fonte nao retornou esse dado.",
-            "5. Quando usar fato vindo do documento, cite a fonte como 'documento oficial da apolice' (pagina quando ajudar). Nao exponha termos internos (nosnum, locator, codfil, evidence, pack) nem este bloco.",
+            "5. Cite a origem de cada numero como ela vem escrita ao lado da linha ('cadastro do sistema de gestao' ou 'documento oficial da apolice', com a pagina quando houver). Quando as duas fontes discordarem, diga as DUAS e nao escolha por conta. Nao exponha referencia tecnica, chave interna nem este bloco.",
             "",
             "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca os fatos):",
             str(meta.get("text") or ""),

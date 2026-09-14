@@ -218,6 +218,78 @@ def mapa_de_ramos(caminho: str = "") -> Dict[str, Any]:
     return _RAMOS_EM_MEMORIA
 
 
+_FAMILIAS_EM_MEMORIA: Optional[Dict[str, Any]] = None
+
+
+def mapa_de_familias_de_acionamento(caminho: str = "") -> Dict[str, Any]:
+    """`{familia: {nomes_no_sistema_de_gestao, corredor, criterio}}` — a seção
+    `familias_de_acionamento` do mesmo arquivo revisado.
+
+    🔴 SPEC-EXTRA-001.1 BLOCO C §5.4. Este conhecimento morava no BRIEFING da
+    tool (`infocap_tool.py`, item 5 do bloco do segurado: *"Liberty e Yelum são
+    a MESMA seguradora… Itaú = grupo Porto"*). **No prompt ele vale só enquanto
+    o modelo obedecer.**
+
+    ⚠️ Isto **não é** o mapa de entidade SUSEP. Identidade (`coenti`) e
+    **acionamento** (qual corredor abre o chamado) são perguntas diferentes:
+    📊 a sigla `ITAU` é `coenti` UNKNOWN e, ainda assim, aciona pelo corredor
+    `porto`. Juntar as duas publicaria o número de outra empresa.
+    """
+    global _FAMILIAS_EM_MEMORIA
+    if caminho:
+        with io.open(caminho, encoding="utf-8") as f:
+            return dict(json.load(f).get("familias_de_acionamento") or {})
+    if _FAMILIAS_EM_MEMORIA is None:
+        try:
+            with io.open(CAMINHO_DO_MAPA, encoding="utf-8") as f:
+                _FAMILIAS_EM_MEMORIA = dict(json.load(f).get("familias_de_acionamento") or {})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[SES] familias de acionamento ausentes (%s)",
+                           type(exc).__name__)
+            _FAMILIAS_EM_MEMORIA = {}
+    return _FAMILIAS_EM_MEMORIA
+
+
+def linha_de_acionamento(nome_ou_sigla: Any, *,
+                         mapa: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """A linha inteira do catálogo desta seguradora — ou `None`.
+
+    ⛔ **Igualdade sobre o nome/sigla, sem acento e sem caixa. Nada mais.**
+    Nenhum prefixo, nenhum `startswith`, nenhuma derivação: 📊 o censo da
+    SPEC-094.1 mediu `SURA` casando dentro de `ASSURANCE` e o token `SEGUROS`
+    devolvendo 284 candidatos. Cada linha aqui é uma decisão datada, com o
+    critério escrito ao lado dela no arquivo.
+    """
+    tabela = mapa if mapa is not None else mapa_de_familias_de_acionamento()
+    alvo = _sem_acento(nome_ou_sigla).strip()
+    if not alvo or not tabela:
+        return None
+    for familia, linha in tabela.items():
+        if not isinstance(linha, dict):
+            continue
+        nomes = {_sem_acento(n).strip() for n in (linha.get("nomes_no_sistema_de_gestao") or [])}
+        nomes.add(_sem_acento(familia).strip())
+        if alvo in nomes:
+            devolvida = dict(linha)
+            devolvida.setdefault("corredor", familia)
+            devolvida["familia"] = familia
+            return devolvida
+    return None
+
+
+def familia_de_acionamento(nome_ou_sigla: Any, *,
+                           mapa: Optional[Dict[str, Any]] = None) -> str:
+    """A família de acionamento desta seguradora — ou `"UNKNOWN"`.
+
+    ⚠️ `UNKNOWN` é STRING, como em `coenti_de`/`cogrupo_de`: quem recebe deixa a
+    seguradora **como ela veio**, e nunca inventa um corredor.
+    """
+    linha = linha_de_acionamento(nome_ou_sigla, mapa=mapa)
+    if not linha:
+        return UNKNOWN
+    return str(linha.get("familia") or linha.get("corredor") or UNKNOWN)
+
+
 def nomes_dos_grupos(caminho: str = "") -> Dict[str, str]:
     """`{"05": "Automovel", ...}` — 📊 os 22 grupos de `ses_gruposramos.csv`."""
     alvo = caminho or CAMINHO_DO_MAPA_DE_RAMOS

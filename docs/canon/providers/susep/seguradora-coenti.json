@@ -694,5 +694,28 @@
       "MITS"
     ],
     "medido_com": "a carteira viva de 2025 da corretora piloto, 3.861 linhas, soma de `pretot` por sigla"
+  },
+  "_doc_familias_de_acionamento": "🔴 SPEC-EXTRA-001.1 BLOCO C §5.4. Conhecimento que morava no BRIEFING da tool (`infocap_tool.py`, item 5 do bloco do segurado: 'Liberty e Yelum sao a MESMA seguradora... Itau = grupo Porto'). Sai do prompt porque NO PROMPT ELE VALE SO ENQUANTO O MODELO OBEDECER; aqui vale sempre, e muda por revisao datada de gente. ⛔ Cada linha e uma DECISAO EXPLICITA com o criterio escrito ao lado: casamento por derivacao de string continua PROIBIDO (📊 o censo da 094.1 mediu `SEGUROS` com 284 candidatos e `SURA` casando dentro de `ASSURANCE`). ⚠️ Isto NAO e o mapa de entidade SUSEP (`siglas`/`seguradoras`): e a FAMILIA DE ACIONAMENTO — qual corredor abre o chamado quando a apolice esta emitida em nome de outra marca do mesmo grupo.",
+  "medido_em_familias": "2026-09-14",
+  "familias_de_acionamento": {
+    "yelum": {
+      "nomes_no_sistema_de_gestao": [
+        "LIBE",
+        "LIBERTY",
+        "YELUM"
+      ],
+      "corredor": "yelum",
+      "criterio": "Liberty foi rebatizada para Yelum em 2024; e a mesma entidade (a sigla LIBE ja aponta para a canonica 'yelum' na secao `siglas`, coenti 05185). O acionamento de uma apolice Liberty entra pelo corredor `yelum`."
+    },
+    "porto": {
+      "nomes_no_sistema_de_gestao": [
+        "ITAU",
+        "ITAÚ",
+        "PORT",
+        "PORTO"
+      ],
+      "corredor": "porto",
+      "criterio": "Itau Seguros pertence ao grupo Porto Seguro para efeito de ACIONAMENTO: o chamado de uma apolice ITAU entra pelo corredor `porto`. ⚠️ A sigla ITAU continua `coenti` UNKNOWN na secao `siglas` de proposito — identidade SUSEP e acionamento sao perguntas diferentes, e juntar as duas publicaria o numero de outra empresa."
+    }
   }
 }
