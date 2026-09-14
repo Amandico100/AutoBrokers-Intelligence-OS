@@ -97,7 +97,7 @@ git status --short                        (limpo)
 | 4 | `ROTULOS` 35 · `_SLOTS_DA_FICHA` 15 · 20 fora | ✅ **35 · 15 · 20**. 📊 `corridor_playbooks.py`: **20** `required_slots` distintos, **13 fora de ROTULOS** (`agua_escorrendo`, `vazamento_local`, `risco_confirmado_registro_fechado`, `caixas_dagua_quantidade_opcao`, `chaveiro_necessidade_opcao`, `qual_seguro_opcao`, `aparelho_marca/modelo`, `ar_condicionado_*`, `idade_aparelho_opcao`, `chave_tipo_opcao`, `caixa_litros_opcao`) | comando da §0.3 + AST dos playbooks | G6 vermelho hoje confirmado; `slots_do_atendimento()` deriva de `ROTULOS ∪ required_slots` |
 | 5 | duração de um turno (para o TTL da trava): 💭 90 s | 📊 `conversation_logs.response_time_ms` (566 turnos; 276 de `attendance`): **p50 5,4 s · p90 17,9 s · máx 53,4 s** (attendance: 5,2 · 15,0 · 35,5) — é o tempo do modelo; o envio soma segundos | `percentile_cont` sobre `conversation_logs` | `TURNO_TTL_SEGUNDOS` = **90** (≈ 1,7× o máximo medido), 3 renovações — decisão D-E0012-01 |
 | 6 | traços das mensagens reais medidos com a função do motor | ⚠️ `tracos_da_mensagem` ainda não existe (é do bloco B). 📊 O export de **400 rajadas** reais desde 01/08 (Resulta 159 · AutoFleet 241; tamanhos 2: 247 · 3: 92 · 4: 33 · 5+: 28; com mídia 96; **só mídia 35**) está no scratchpad da sessão com texto — o gerador do corpus roda a função do motor sobre ele e grava só traços | `psycopg` read-only sobre `attendance_transcripts.wa_timestamp` (nunca `messages.created_at`) | o gerador aceita `--de-arquivo` (export) e o banco; o corpus versionado não carrega texto |
-| 7 | 20.727 rajadas · 72.610 msgs (85,6%) · 5.608 com mídia | 📊 hoje **20.834 · 72.933 (85,5% de 85.266) · 5.638 com mídia**; intervalos dentro da rajada: 0–3 s **31.052 (59,7%)** · 3–8 s 8.087 · 8–18 s 8.469 (16,3%) · 18–25 s 3.000 · >25 s 1.491 | a consulta do RP §3.1 sobre `wa_timestamp` | a janela por conteúdo continua justificada; 3 · 8 · 18 são o ponto de partida, calibrados pelo corpus no bloco B |
+| 7 | 20.727 rajadas · 72.610 msgs (85,6%) · 5.608 com mídia | 📊 hoje **20.834 · 72.933 (85,5% de 85.266) · 5.638 com mídia**; intervalos dentro da rajada: 0–3 s **31.052 (59,7% com `<=3`; 🔴 lente: com o operador do MOTOR, `gap<3`, são 29.113 = 55,8%** — a faixa de borda estava do lado errado; o RESEARCH-PACK tinha 56,0%) · 3–8 s 8.087 · 8–18 s 8.469 (16,3%) · 18–25 s 3.000 · >25 s 1.491 | a consulta do RP §3.1 sobre `wa_timestamp` | a janela por conteúdo continua justificada; 3 · 8 · 18 são o ponto de partida, calibrados pelo corpus no bloco B |
 | 7b | (novo) como as respostas chegam depois de uma rajada ≥3 hoje | 📊 **6.213** rajadas ≥3 (≤60 s) com resposta: **1 mensagem 1.048 (17%) · 2 mensagens 2.741 (44%) · 3+ 2.424 (39%)**; mediana **92 chars** por bloco de resposta, p90 432; demora mediana 67 s; rajadas só de mídia ≥3: 298, das quais 27 respondidas com 1 mensagem. ⚠️ não separa agente de atendente humana (RP §3.9). Amostra redigida lida: respostas humanas são curtas e resolvem ("ok", "enviado", "oriente a aguardar 2h e fazer o pagamento") | consulta de blocos consecutivos por direção | régua do outcome: **1 resposta, no máximo 2**, curtas — é o que a humana faz |
 | 8 | schema de `conversations`: `session_id` UNIQUE; `user_phone` sem índice; CHECK sem `fantasma_lid` | ✅ constraints e índices iguais aos da proposta; `ck_conversations_resolucao_motivo` = 5 valores sem `fantasma_lid`; 📊 **879** conversas (não 860); escritores da ficha: `nodes.py`, `human_handoff.py`, `acompanhamento.py` | catálogo | M1/M2 como propostas; `CONCURRENTLY` desnecessário |
 | 9 | 175 fantasmas (106 AutoFleet · 69 Resulta), 100% abertas, 10 com pausa, 9 com par | 📊 dry-run do script (14/09): **175 fantasmas · 175 abertas · 69 Resulta + 106 AutoFleet · 10 com pausa humana (5+5) · cópia da pausa possível em 2 · 166 sem par**; `--vivo` recusado até a M1 (o próprio script imprime o APPLY/VERIFY) | `python scripts/migrar_conversas_fantasma_lid.py` (dry-run, saída redigida) | M1 destrava; **2** (não 9) têm par real ainda aberto — o número de hoje vence |
@@ -136,7 +136,7 @@ Testes existentes migrados sob §9.3: `test_o_espelho_vira_conversa`, `test_quem
 
 | entrega | o que mudou | prova |
 |---|---|---|
-| C.1 o escritor deixa de ser lista à mão | `slots_do_atendimento()` = `ROTULOS ∪ required_slots` dos playbooks (lidos pelo MOTOR, não por regex — 📊 **54** `required_slots` distintos, **37** fora de `ROTULOS`, não 20/13: metade dos subserviços nasce em tempo de importação — divergência D6) − `CAMPOS_DE_CONTROLE = {dados_confirmados}` (D-E0012-04: 90); +37 rótulos em português; a tupla `_SLOTS_DA_FICHA` MORREU | `test_todo_slot_do_corredor_tem_ficha.py` **11/11** (🔴 vermelho de partida colado no docstring: `ImportError`, "o escritor gravou só problema_descricao/titular_cpf"); 3/3 mutações vermelhas |
+| C.1 o escritor deixa de ser lista à mão | `slots_do_atendimento()` = `ROTULOS ∪ required_slots` dos playbooks (lidos pelo MOTOR, não por regex — 📊 **54** `required_slots` distintos, **37** fora de `ROTULOS` ANTES do bloco (hoje `required_slots − ROTULOS` = **0**, porque o C.1 acrescentou os 37), não 20/13: metade dos subserviços nasce em tempo de importação — divergência D6) − `CAMPOS_DE_CONTROLE = {dados_confirmados}` (D-E0012-04: 90); +37 rótulos em português; a tupla `_SLOTS_DA_FICHA` MORREU | `test_todo_slot_do_corredor_tem_ficha.py` **11/11** (🔴 vermelho de partida colado no docstring: `ImportError`, "o escritor gravou só problema_descricao/titular_cpf"); 3/3 mutações vermelhas |
 | C.2 origem por confirmação | `confirmados[slot] = {valor, origem ∈ cliente/sistema_de_gestao/corredor, em}` com leitura tolerante ao valor cru (D-E0012-05: 92); origem `sistema_de_gestao` só para placa/veículo quando há contexto InfoCap; o bloco do prompt separa "JÁ CONFIRMADO com o cliente — não pergunte" de "veio do sistema de gestão — confirme numa frase"; `dados_conhecidos` desembrulha (sem isso a URA receberia o dict como placa) | idem |
 | C.3 pergunta repetida | `slots_reperguntados(resposta, ficha, corredor)` pura sobre `ancoras_de_pergunta_por_slot.json` (72 slots, 56 com âncora, **16 sem** — 12 são pedaços de endereço perguntados em bloco → P-E0012-C3), no dialeto de `corridor_playbooks._norm` (IGNORECASE|DOTALL, com acento+negrito); em produção, o fiscal em `agent_node` regenera UMA vez com a lista e depois envia e registra `pergunta_repetida` em `log_activity` | `test_slot_confirmado_nao_se_pergunta.py` **21/21**: replay estrutural do encanador (`agua_escorrendo` confirmado → não volta); 3/3 mutações vermelhas |
 
@@ -147,7 +147,7 @@ Divergências: D6 (54/37); D7 🔴 existe um SEGUNDO vocabulário (`corridor_pla
 | entrega | o que mudou | prova |
 |---|---|---|
 | A.1 trava de turno | `whatsapp_turno:{escopo}:{phone}` por `SET NX EX` com token `uuid4`; `renovar_turno`/`fechar_turno` por Lua CAS (só o dono solta); `TURNO_TTL_SEGUNDOS=90` (📊 p90 18 s · max 53 s — BLOCO 0), `TURNO_RENOVACOES_MAX=3`; o turno abre ANTES do `get_and_clear` em `processar_buffers_prontos_uma` e fecha no `finally`; escopo vazio → recusa fail-closed (D-E0012-08); reconferência de posse (`ainda_sou_o_dono`) antes de cada envio | `test_uma_rajada_um_turno.py` **60/60**: 2 processadores sobre a mesma rajada → 1 turno; rajada de 5 pelo corpus real → 1 resposta; TTL vence no meio → o segundo não envia; 9/9 mutações vermelhas (inclui `max(settings.BUFFER` de volta) |
-| A.2 janela por conteúdo | `tracos_da_mensagem` (dado curto · frase completa · frase inacabada · identificador placa/CPF) → `janela_de_espera` 3 · 8 · 18 s, `TETO_DA_RAJADA_SEGUNDOS=25`; o teto só DESCE (uma frase completa depois de uma inacabada encurta a espera, nunca alonga); o piso `max(settings.BUFFER_*, 8)` morreu — 📊 `grep "max(settings.BUFFER"` no produto = **0** (as 2 ocorrências restantes são o alvo da mutação no guarda) | idem; corpus: 📊 sobre as **400** rajadas do acervo (892 itens): pontuação final **235**, conectivo no fim **22**, dado curto **60**; a janela adaptativa fragmentaria **203** rajadas × a fixa de 8 s **273** (📊 lida no scratchpad, script `gerar_corpus_de_rajadas.py`) |
+| A.2 janela por conteúdo | `tracos_da_mensagem` (dado curto · frase completa · frase inacabada · identificador placa/CPF) → `janela_de_espera` 3 · 8 · 18 s, `TETO_DA_RAJADA_SEGUNDOS=25`; o teto só DESCE (uma frase completa depois de uma inacabada encurta a espera, nunca alonga); o piso `max(settings.BUFFER_*, 8)` morreu — 📊 `grep "max(settings.BUFFER"` no produto = **0** (as 2 ocorrências restantes são o alvo da mutação no guarda) | idem; corpus: 📊 sobre as **400** rajadas do acervo (1.059 itens, **892 de texto** — as contagens abaixo são sobre texto): pontuação final **235**, conectivo no fim **22**, dado curto **60**; a janela adaptativa fragmentaria **203** rajadas × a fixa de 8 s **273** (📊 lida no scratchpad, script `gerar_corpus_de_rajadas.py`) |
 | B.1 mídia no buffer | os 3 desvios de mídia do webhook morreram (`grep 'type": "media"'` = **0**); `_item_do_inbound` põe imagem/áudio/documento como item tipado no buffer v2 (`itens`, leitura tolerante ao v1); visão/transcrição rodam DENTRO do turno (`_midia_do_turno`), não no recebimento | `test_a_midia_entra_no_buffer.py` **23/23**: 10 imagens em 20 s → 1 turno, 1 resposta; imagem + legenda + texto → um só contexto; 5/5 mutações vermelhas |
 | B.2 re-planejamento | o que chegou durante o turno é mesclado ANTES de gravar e gerar (`mesclar_o_que_chegou`, `REPLANEJAMENTOS_MAX=2`); passado o teto, o resto fica para o próximo turno | idem |
 | B.3 presença | `send_presence` na fachada e no `EvolutionGoProvider` (`POST /message/presence`, teto 25 000 ms — 📊 rota confirmada no swagger do fork, D1); só DEPOIS do portão de silêncio (`a_ia_deve_calar`) e atrás de `PRESENCA_DIGITANDO_LIGADA` (default **false** — 🧑 liga depois do canário); sem `delay` no `/send/text` | `test_digitando_so_quando_vai_falar.py` **30/30**: calada → nenhuma presença; ligada e vai falar → 1 presença antes do texto; provider sem `presence` → nada; 5/5 mutações vermelhas |
@@ -192,6 +192,49 @@ Testes existentes: `test_a_ultima_palavra_humana_manda.py` **26** (eram 23; +3 c
 
 ## 7. Painel: juiz fresco + lente do dado · conserto · suíte
 
+### 7.1 Juiz fresco (Opus 5, sobre `c77f81c` · 📊 ≈199k tokens · 11 min) — **nota 62/100**
+
+Critério: 100 = a §23 cumprida e nada cruza tenant nem duplica. As 3 perguntas fixas: (1) **dado vazio** — buffer vazio esperava 18 s antes de abrir turno sobre nada; tipo de mídia não classificado (vídeo, sticker) virava texto vazio e `branch=none` sem linha; escopo vazio cala sem feed (J10); (2) **duas corretoras** — nenhum cruzamento achado: buffer e trava carregam o escopo da integração, índice único é por `company_id`, plantão/colisão/memo filtram `company_id` duas vezes; (3) **a mesma mensagem 2×** — retry morre no `SET NX`; 2 workers → 1 resposta (`abrir_turno` antes do `get_and_clear`; 0 caminhos de disparo fora do buffer); mas as regenerações encadeiam (J8).
+
+| # | grav. | o fato (prova) | destino |
+|---|---|---|---|
+| J1 | 🔴 BLOCKER | `janela_de_espera` devolvia **18 s para tudo sem pontuação** — 📊 70% dos itens do corpus versionado ("oi", "SOCORRO", "bateu meu carro" → 18 s); a D-E0012-10 mediu fragmentação, não latência | conserto (D-E0012-16) |
+| J2 | 🔴 BLOCKER | turno vencido faz `return` seco com o buffer já consumido: a rajada some sem resposta; `renovar_turno` **sem chamador** no produto | conserto |
+| J3 | ALTO | `classe_do_tamanho` casa "culpa" em "desculpa" e marca `avisar` a frase de acolhimento da própria docstring | conserto |
+| J4 | ALTO | backfill da M2 recusa por comprimento, `contraparte_de` por sufixo (📊 medido em produção: **0** linhas divergentes); `get_or_create_conversation` termina em `raise` → um 23505 do índice novo derruba o turno | conserto (só a metade de código; sem M3) |
+| J5 | MÉDIO | `apresentado_em` gravado na MONTAGEM do prompt: turno descartado → nunca se apresenta | conserto |
+| J6 | MÉDIO | `turno_perdido` chega ao feed como token cru e divide a chave do memo com o takeover | conserto |
+| J7 | MÉDIO | a linha combinada do pipeline (id da ÚLTIMA mensagem) colide com a do espelho no índice `messages_espelho_sem_duplicata_uidx`; os N−1 ids ficam fora do índice | conserto |
+| J8 | MÉDIO | dois fiscais podem encadear 2 regenerações (3 chamadas de LLM) e o `AIMessage` novo perde `response_metadata`/`usage_metadata` | conserto |
+| J9 | MÉDIO | produto lê `tests/fixtures/ancoras_de_pergunta_por_slot.json` | conserto (move para `app/resources/`) |
+| J10 | BAIXO | rota sem integração: fail-closed certo, silêncio sem feed (não há `company_id`) | P-E0012-J10 |
+
+Não verificado pelo juiz: banco (só leitura sem MCP), canário, se o DF roda hoje (📊 os 3 agentes ativos são `core`; o `display_name` do blueprint "AutoBrokers da {corretora}" duplicaria "da Resulta" na apresentação → conserto), a suíte inteira.
+
+### 7.2 Lente do dado (Opus 5 · 📊 ≈146k tokens · 10 min) — **fidelidade dos números 88/100**
+
+| # | afirmado | reconstruído | veredito |
+|---|---|---|---|
+| 1a | rajadas 85,5% do inbound | 20.871 · 85,5% (deriva de 1 dia) | SUSTENTA |
+| 1b | faixa 0–3 s **59,7%** | com `<=3` 59,6%; com o operador do MOTOR (`gap<3`) **55,8%**; teto `>=25` 1.811, não 1.495 | 🔴 NÃO SUSTENTA (corrigido no §1.2 e no docstring do motor) |
+| 1c | 6.213 rajadas ≥3: 17/44/39% · 67 s | 6.221 · 17/44/39 · 67 s | SUSTENTA |
+| 1d | mediana 92 · p90 432 → 450 chars | 92 · 431 por BLOCO (o fiscal mede o turno inteiro antes dos balões — unidade certa) | SUSTENTA |
+| 2 | 235 · 22 · 60 · 203 × 273 | **idênticos** com o motor real; 1.059 itens, 892 de texto; gap >25 s em 62 rajadas | SUSTENTA (rótulo corrigido) |
+| 3 | turno p50 5,4 · p90 18 · máx 53 → TTL 90 | 5,4 · 17,9 · 53,4 (`core`; `attendance` máx 35,5) — é tempo do MODELO, não da posse | PARCIAL (D-E0012-01 anotada) |
+| 4 | 54 · 37 · 72/56/16 | 54 ✅ · hoje `required − ROTULOS` = 0 · 72/56/16 ✅ | SUSTENTA (tempo verbal corrigido) |
+| 5 | corpus 20 · A 11 · B 9 · 6 mídia · 17 um turno · 0 PII | idem; scan próprio (11 dígitos, 8+, placa, `@`, capitalizada) = **0** | SUSTENTA |
+| 6 | 0 colisões · `Amanda` inativa · sem `attendant` | 0 pelo `colisao_com_a_equipe` REAL (8 agentes × 10 membros); 3 ativos todos `core`; papéis `{admin_company, member}` | SUSTENTA |
+| 7 | 175 fantasmas · 0 duplicatas · 0 id repetido na conversa | 175/0 · 0 · 0 (887 conversas, 635 com contraparte, 34.952 messages) | SUSTENTA |
+| 8 | (não medido) | **49,2%** das rajadas terminam num item que pedia 18 s; espera média **12,7 s × 8,0 s** da fixa; gap depois de inacabada p50 **7 s** · p75 14 s | 🔴 achado — mesma raiz do J1 |
+
+Não reconstruível: a posse real da trava (só o canário); agente × humano no outbound (`direction='out'` não distingue → "92 chars é o que a humana faz" é INFERÊNCIA forte, ≥98% humano); sub-3 s (granularidade de 1 s do `wa_timestamp`).
+
+### 7.3 Conserto único (Builder Opus 5)
+(preenche ao fechar)
+
+### 7.4 Suíte inteira
+(preenche ao fechar)
+
 ## 8. Canário (depois do Implantar)
 
 ## 9. O que ficou fora e por quê
@@ -200,7 +243,7 @@ Testes existentes: `test_a_ultima_palavra_humana_manda.py` **26** (eram 23; +3 c
 
 | id | decisão | opções e notas | por quê |
 |---|---|---|---|
-| **D-E0012-01** | `TURNO_TTL_SEGUNDOS` = 90, 3 renovações | 90 **85** · 60 **55** (máx medido 53 s + envio) · 180 **40** (trava órfã longa) | premissa 5 |
+| **D-E0012-01** | `TURNO_TTL_SEGUNDOS` = 90, 3 renovações | 90 **85** · 60 **55** (máx medido 53 s + envio) · 180 **40** (trava órfã longa) | premissa 5 · ⚠️ lente ②: o 53 s é `response_time_ms` (tempo do MODELO, papel `core`; `attendance` máx 35,5 s) — a posse real inclui visão/transcrição e balões e só o canário a mede; o juiz J2 achou `renovar_turno` sem chamador → conserto |
 | **D-E0012-02** | `atendente_de_plantao` regra (2) usa `company_members.role='member'` ativo e não-owner (não existe `attendant`) | member **80** · criar papel `attendant` agora **25** (P-PILOTO-16 é decisão 🧑) | D3 |
 | **D-E0012-03** | P-PILOTO-15 pela opção (b′): a pausa protege quando o takeover (`claimed_at`) é DEPOIS do encerramento (`resolvido_em`); nenhum leitor de `resolvido_em` muda | (b′) **88** · (a) limpar `resolvido_em` **35** (📊 12 leitores; apagaria o fato de que terminou) · (b) ingênua **40** (volta o "calado para sempre" de 05/09) | Builder E |
 | **D-E0012-04** | `CAMPOS_DE_CONTROLE = {dados_confirmados}` — o único campo da tool que não é fala do cliente | **90** | Builder C |
@@ -208,12 +251,17 @@ Testes existentes: `test_a_ultima_palavra_humana_manda.py` **26** (eram 23; +3 c
 | **D-E0012-06** | o índice único da M2 só entra com D0 = 0 duplicatas abertas (havia 0); duplicatas viram lista no relatório, nunca fechamento em lote | **92** · fechar a mais antiga **20** (D-PILOTO-02) | Builder E |
 | **D-E0012-08** | escopo vazio na trava de turno → RECUSA (fail-closed) em vez de chave global `whatsapp_turno::phone` | recusar **92** · chave global **30** (duas corretoras com o mesmo telefone disputariam um turno) | Builder AB |
 | **D-E0012-09** | visão e transcrição rodam dentro do TURNO, não no recebimento | no turno **90** (a legenda que chega 2 s depois entra no mesmo contexto) · no recebimento **55** (mais cedo, mas responde a meia rajada) | Builder AB |
-| **D-E0012-10** | janela 3 · 8 · 18 s com teto 25 confirmada (📊 adaptativa fragmenta 203 × fixa 273 sobre 400 rajadas); o teto só desce | **94** · fixa 8 s **60** · fixa 25 s **45** (lenta em toda conversa curta) | Builder AB |
+| **D-E0012-10** | janela 3 · 8 · 18 s com teto 25 confirmada (📊 adaptativa fragmenta 203 × fixa 273 sobre 400 rajadas); o teto só desce | **94** · fixa 8 s **60** · fixa 25 s **45** (lenta em toda conversa curta) | Builder AB · 🔴 **REVISTA no conserto (D-E0012-16)**: a nota media só a fragmentação; a lente mediu o CUSTO (49,2% das rajadas terminam num item que pedia 18 s; espera média 12,7 s × 8,0 s da fixa; gap depois de inacabada p50 7 s · p75 14 s) e o juiz mediu que 70% dos itens do corpus caíam em 18 s |
 | **D-E0012-11** | re-planejamento ANTES de gravar e gerar (teto 2) | **88** · re-gerar depois da geração **50** (custo dobrado) · ignorar o que chegou **20** (volta o "uma por uma") | Builder AB |
 | **D-E0012-12** | sem `delay` no `/send/text`; a presença é chamada explícita e só depois do portão de silêncio | **85** · `delay` no send **60** (o GO simularia "digitando" mesmo quando o portão manda calar) | Builder AB |
 | **D-E0012-13** | o teto de tamanho da classe conversa é DUPLO: 3 frases E 450 chars (📊 p90 = 432 no acervo; mediana 92) | duplo **92** · só frases **40** (o defeito de 10/09 tinha 760 chars em 3 frases e passaria) | Builder DF |
 | **D-E0012-14** | a recusa de nome colidente mora na rota do Next que grava `attendant_name`, não no FastAPI (que não grava o campo) | Next **85** · FastAPI **30** (validaria um caminho que ninguém usa) — fica **P-E0012-D4** | Builder DF |
 | **D-E0012-15** | o bloco de MEMÓRIA não é filtrado por assunto; o prompt desaconselha o nome vindo dela | desaconselhar + P-E0012-D1 **70** · suprimir memória no atendimento **45** (apagaria fatos de apólice) · marcar PII no `MemoryService` **80 mas fora do escopo** | Builder DF |
+| **D-E0012-16** | REVISÃO da D-E0012-10 depois do painel: 18 s SÓ quando a mensagem termina em conectivo; sem pontuação = 8 s; dado curto = 3 s | conectivo-só **90** · manter 18 para tudo sem ponto **20** (📊 70% dos itens; +4,7 s por rajada) · 15 s para tudo **50** | J1 + lente ⑧ |
+| **D-E0012-17** | posse perdida ANTES do envio devolve os itens ao buffer (re-`add`, marca `reentregue`); `renovar_turno` antes da geração, de cada regeneração e do envio | **92** · `return` seco **0** (rajada perdida) · TTL 300 sem renovar **35** (trava órfã de 5 min) | J2 |
+| **D-E0012-18** | J4: sem migration M3 — 📊 0 linhas divergentes em produção; a divergência de dialeto vira docstring de `contraparte_de`; o 23505 é relido nos DOIS resolvedores | **90** · M3 no-op **20** | J4 |
+| **D-E0012-19** | uma regeneração por turno entre os fiscais (o 2º só registra); metadados preservados ao substituir a resposta | **90** · encadear **30** (3 LLM num TTL de 90 s) | J8 |
+| **D-E0012-20** | `ancoras_de_pergunta_por_slot.json` mora em `app/resources/`; os testes leem de lá | **92** | J9 |
 | **D-E0012-07** | o feed do silêncio é escrito DENTRO de `a_ia_deve_calar`, memo por CLASSE (não pela frase, que carrega nome) | **85** | Builder E |
 
 ## 11. Riscos remanescentes
