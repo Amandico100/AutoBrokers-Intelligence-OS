@@ -380,6 +380,13 @@ To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
    cff20ef..3320cee  HEAD -> main
 ```
 
+2º push (o fechamento do relatório, `07d512d`):
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   3320cee..07d512d  HEAD -> main
+```
+3º push: o dossiê (`docs/canon/reports/dossies/dossies-autobrokers.html`, cópia do artifact republicado em 14/09 — página `#extra0011`).
+
 **Serviços a implantar (Founder):** `smith-api` (porta, tool, grafo, prompts, extrator, chat) e `smith-web` (o default de tokens do tenant de sandbox). Ordem: `smith-api` → `smith-web`. **Variáveis novas:** nenhuma obrigatória (`TETO_DO_CONTEXTO_RECUPERADO_CHARS` opcional, default 60000). **Migration:** já aplicada. **Depois do Implantar:** os 7 casos do canário (`ROTEIRO-CANARIO-EXTRA-001.1.md`).
 
 ## 13. Nota do orquestrador — **87/100**
