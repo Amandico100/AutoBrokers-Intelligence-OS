@@ -100,7 +100,8 @@
 
 | SPEC | assunto | estado |
 |---|---|---|
-| **EXTRA-001** | **A operação dos pilotos** — a cobrança chega a quem deve (equipe ou cliente), respostas com o caso certo, uma abordagem por parcela, falhas visíveis; atendimento/observador/QR intactos | 🔨 **EM EXECUÇÃO** desde 07/09 (CRÍTICO, opção B, chat novo; branch `feat/spec-extra-001-operacao-pilotos`; aquecimento 86) |
+| **EXTRA-001** | **A operação dos pilotos** — a cobrança chega a quem deve (equipe ou cliente), respostas com o caso certo, uma abordagem por parcela, falhas visíveis; atendimento/observador/QR intactos | ✅ **CONCLUÍDA COM RESSALVAS** 07/09/2026 (CRÍTICO, opção B; `main` `ba7ba75`; juiz fresco 88; canário vivo Q1–Q6 pendente do Implantar — fecha junto com o da 001.6) |
+| **EXTRA-001.6** | **A cobrança prova que funciona** — 1 mensagem inteira por segurado com N boletos, nunca a mesma parcela 2×, nunca o mesmo segurado 2× em 7 dias; cada portal diz em português por que não entrou; credencial recusada é classe própria; sessão que vence, breaker, canário de login antes da rotina; fila de telas de portal com leitor; PII fora do relatório | 🔨 **EM EXECUÇÃO** 13–14/09/2026 (CRÍTICO, laço curto D-PILOTO-20; branch `feat/extra-001-6-cobranca`; P0 na `main` em `94862ea`; migrations `20260914_01` e `_03` aplicadas; juiz fresco + lente do dado em curso) |
 | **EXTRA-002** | Investigação Agger (cotação/renovação pelo navegador) | proposta a escrever em chat novo, depois da EXTRA-001 |
 | **099 → 114** | o MASTERPLAN | ⏸ **PAUSADAS** sem renumerar; retomam por dependência comprovada (canais → 099 depois dos pilotos) |
 

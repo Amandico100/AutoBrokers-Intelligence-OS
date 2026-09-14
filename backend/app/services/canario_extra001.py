@@ -161,9 +161,24 @@ def _cfg(modalidade: str, *, destino: str, team_number: Optional[str] = None) ->
     })
 
 
-def _item(recibo: str, destino: str) -> Dict[str, Any]:
+def _item(recibo: str, destino: str, nome: str = "Cliente Canário") -> Dict[str, Any]:
+    """Uma parcela sintética. 🔴 O `nome` é a IDENTIDADE, e cada Q tem a sua.
+
+    ⚠️ 14/09/2026 (B2) — sem documento, `segurado_chave` cai no NOME. Todos os Q
+    usavam "Cliente Canário" e `cpf_cnpj=""`, ou seja: **um único segurado**. A
+    JANELA DE 7 DIAS, que roda ANTES da allowlist, retinha o Q5 por causa do Q1 —
+    e o Q5 (que existe para provar que a PORTA recusa um número fora da
+    allowlist) passava verde pelo motivo errado, sem a porta ter sido chamada. O
+    mesmo valia para Q2a e Q3: eles afirmam medir a RESERVA por recibo, e quem os
+    segurava era a janela por segurado.
+
+    🔴 A regra: **cada Q afirma UMA coisa, e o que o segura tem de ser a coisa
+    que ele afirma.** Q2a/Q2b/Q3 mantêm o recibo do Q1 de propósito (é a reserva
+    que eles medem) e ganham nome próprio para a janela não entrar na frente;
+    Q5 e Q7/Q9 têm identidade inteiramente própria.
+    """
     return {
-        "portal": "allianz_corretor", "recibo": recibo, "cliente_nome": "Cliente Canário",
+        "portal": "allianz_corretor", "recibo": recibo, "cliente_nome": nome,
         "cpf_cnpj": "", "whatsapp": destino, "contact_status": "found",
         "apolice_susep": f"{MARCA}-APOLICE", "vencimento": "2026-08-01", "valor": 0.0,
         "parcela": "1/1", "item_segurado": "veículo de teste (sem validade)",
@@ -218,7 +233,12 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
                 caminho, PDF_SINTETICO, {"content-type": "application/pdf"}))
         r.p(f"PDF sintético no cofre: {caminho}")
         boleto = {"recibo": recibo, "ok": True, "storage_path": caminho}
-        item = _item(recibo, destino)
+        # 🔴 B2 — IDENTIDADES SEPARADAS. Sem documento, quem identifica o segurado
+        # é o NOME, e a janela de 7 dias roda ANTES de tudo. Ver `_item`.
+        item = _item(recibo, destino, nome="Cliente Canário Q1")
+        # ⚠️ MESMO recibo do Q1, de propósito: o que tem de segurar Q2a e Q3 é a
+        # RESERVA por recibo — que é o que eles afirmam medir.
+        item_q2 = _item(recibo, destino, nome="Cliente Canário Q2")
 
         async def executar(modalidade: str, team_number: Optional[str] = None,
                            itens: Optional[List[Dict[str, Any]]] = None,
@@ -248,7 +268,7 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
                    f"ledger status={l1.get('status')} to={_mask(l1.get('to_last4'))} modalidade={l1.get('modalidade')}")
 
         # Q2 — CLIENTE sem liberar: 0 envios
-        q2a = await executar("cliente")
+        q2a = await executar("cliente", itens=[item_q2])
         l2a = ledger() or {}
         r.veredito("Q2a", not any(e.get("ok") for e in q2a["entregas"]) and l2a.get("status") == "entregue_equipe",
                    f"0 envios; ledger continua {l2a.get('status')}; motivo={[e.get('motivo') for e in q2a['entregas']]}")
@@ -256,14 +276,14 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
         if l2a.get("id"):
             await asyncio.to_thread(BC._marcar_estado, db, company_id, str(l2a["id"]),
                                     status="liberado", motivo="canário EXTRA-001: liberação de teste")
-        q2b = await executar("cliente")
+        q2b = await executar("cliente", itens=[item_q2])
         l2b = ledger() or {}
         r.veredito("Q2b", any(e.get("ok") for e in q2b["entregas"]) and l2b.get("doc_ok") is True
                    and l2b.get("modalidade") == "cliente",
                    f"ledger status={l2b.get('status')} modalidade={l2b.get('modalidade')} attempts={l2b.get('attempts')}")
 
         # Q3 — REEXECUÇÃO: 0 envios
-        q3 = await executar("cliente")
+        q3 = await executar("cliente", itens=[item_q2])
         l3 = ledger() or {}
         r.veredito("Q3", not any(e.get("ok") for e in q3["entregas"]) and l3.get("attempts") == l2b.get("attempts"),
                    f"0 envios; attempts={l3.get('attempts')}; blockers={q3['blockers'][:2]}")
@@ -292,7 +312,9 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
             r.veredito("Q4-vivo", bool(visto), f"retorno={(visto or {}).get('retorno_do_cliente')}" if visto else "sem resposta no prazo")
 
         # Q5 — FORA DA ALLOWLIST: a porta recusa
-        item_q5 = _item(f"{recibo}-Q5", destino)
+        # 🔴 B2 — identidade PRÓPRIA: o que tem de recusar o Q5 é a ALLOWLIST da
+        # porta, não a janela de 7 dias aberta pelo Q1.
+        item_q5 = _item(f"{recibo}-Q5", destino, nome="Cliente Canário Q5")
         boleto_q5 = {"recibo": item_q5["recibo"], "ok": True, "storage_path": caminho}
         cfg5 = _cfg("equipe", destino=destino, team_number=FORA_DA_ALLOWLIST)
         blockers5: List[str] = []
@@ -309,8 +331,10 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
         # ------------------------------------------------------------------
         # Q7 — UM SEGURADO, N BOLETOS: 1 nota + 1 texto + 2 PDFs, nada picotado.
         doc_q7 = "00000000000191"   # ⛔ sintético: 14 dígitos, CNPJ inválido de propósito
-        i7a = {**_item(f"{recibo}-Q7A", destino), "cpf_cnpj": doc_q7, "parcela": "1/2", "numero_parcela": "1/2"}
-        i7b = {**_item(f"{recibo}-Q7B", destino), "cpf_cnpj": doc_q7, "parcela": "2/2", "numero_parcela": "2/2"}
+        i7a = {**_item(f"{recibo}-Q7A", destino, nome="Cliente Canário Q7"),
+               "cpf_cnpj": doc_q7, "parcela": "1/2", "numero_parcela": "1/2"}
+        i7b = {**_item(f"{recibo}-Q7B", destino, nome="Cliente Canário Q7"),
+               "cpf_cnpj": doc_q7, "parcela": "2/2", "numero_parcela": "2/2"}
         b7 = [{"recibo": i["recibo"], "ok": True, "storage_path": caminho} for i in (i7a, i7b)]
         antes_q7 = datetime.now(timezone.utc)
         q7 = await executar("equipe", team_number=destino, itens=[i7a, i7b], boletos=b7)
@@ -338,7 +362,8 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
                    f"motivo={str((q8['entregas'] or [{}])[0].get('motivo'))[:120]}")
 
         # Q9 — O MESMO SEGURADO NA OUTRA SEGURADORA: retido pela janela de N dias, com motivo e data.
-        i9 = {**_item(f"{recibo}-Q9", destino), "cpf_cnpj": doc_q7, "portal": "hdi_corretor"}
+        i9 = {**_item(f"{recibo}-Q9", destino, nome="Cliente Canário Q7"),
+              "cpf_cnpj": doc_q7, "portal": "hdi_corretor"}
         b9 = [{"recibo": i9["recibo"], "ok": True, "storage_path": caminho}]
         antes_q9 = datetime.now(timezone.utc)
         q9 = await executar("equipe", team_number=destino, itens=[i9], boletos=b9)
@@ -356,14 +381,30 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
             cfg10 = _cfg("equipe", destino=destino, team_number=destino)
             cfg10["portal_keys"] = ["tokiomarine_corretor", "hdi_corretor", "yelum_corretor", "zurich_corretor"]
             blockers10: List[str] = []
+            rotina10 = _rotina(company_id, cfg10)
             try:
-                aprovados = await BC._canario_de_login(db, _rotina(company_id, cfg10), cfg10, blockers10)
+                aprovados = await BC._canario_de_login(db, rotina10, cfg10, blockers10)
                 r.p(f"Q10 aprovados={sorted(aprovados.keys())} blockers={blockers10}")
-                r.veredito("Q10", len(aprovados) + len(blockers10) >= len(cfg10["portal_keys"]) - 0
-                           and all(("portal " in b) for b in blockers10),
-                           f"{len(aprovados)} de 4 portais entraram; os outros dizem por quê em português")
+                # 🔴 P3 — UM VEREDITO QUE ACEITA ZERO PORTAIS NÃO É VEREDITO.
+                # A forma anterior (`len(aprovados) + len(blockers10) >= 4`) ficava
+                # VERDE com 0 aprovados e 4 blockers — que é exatamente o dia em
+                # que nenhuma seguradora foi varrida. A pergunta do Q10 é "o
+                # canário ENTRA?", e a resposta certa exige pelo menos um ENTROU,
+                # a soma EXATA dos 4 portais (nem um a mais, nem um a menos) e
+                # cada recusa dizendo QUAL portal, em português.
+                ok10 = (len(aprovados) >= 1
+                        and len(aprovados) + len(blockers10) == len(cfg10["portal_keys"])
+                        and all(b.startswith("portal ") for b in blockers10))
+                r.veredito("Q10", ok10,
+                           f"{len(aprovados)} de {len(cfg10['portal_keys'])} portais entraram "
+                           f"(mínimo 1); {len(blockers10)} recusa(s), cada uma nomeando o portal")
             except Exception as exc:  # noqa: BLE001
                 r.veredito("Q10", False, f"o canário de login levantou ({type(exc).__name__})")
+            # 🔴 P9 — A LIMPEZA DO Q10. Ele ENFILEIRA `login_check` de verdade, e
+            # sem isto o canário deixava lixo em `portal_jobs` a cada execução —
+            # a mesma regra do Q6: quem cria, apaga. Só os TERMINAIS: um job que
+            # ainda está rodando é trabalho do worker, não sujeira.
+            await _limpar_jobs_do_q10(db, company_id, str(rotina10.get("id") or ""), r)
         else:
             r.p("Q10 pulado (portais=False): chame com ?portais=1 para abrir os 4 portais com senha válida")
     finally:
@@ -372,6 +413,41 @@ async def _rodar_marcado(company_id: str, *, limpar: bool, esperar_retorno_s: in
         else:
             r.p("limpeza PULADA (--sem-limpeza): apague por id + company_id + canario")
     return r.como_dict()
+
+
+async def _limpar_jobs_do_q10(db, company_id: str, routine_id: str, r: Relato) -> None:
+    """Apaga os `portal_jobs` que o Q10 criou. Só os dele, só os terminais.
+
+    🔴 P9 — A marca é o `params->>routine_id` da rotina SINTÉTICA do Q10, que é um
+    uuid novo a cada execução (`_rotina`): nenhum job de produção pode casar com
+    ele. `.filter("params->>routine_id", "eq", ...)` é como o supabase-py escreve
+    um caminho de JSON no PostgREST — `.eq("params->>routine_id", ...)` não vale,
+    porque `eq` escapa o nome da coluna.
+
+    ⛔ `company_id` na cláusula, sempre (CLAUDE.md §7). ⛔ E só `done`/`failed`/
+    `needs_human`: apagar um job `queued`/`running` seria tirar da mesa trabalho
+    que o worker já pegou.
+    """
+    def _q():
+        apagados = (db.table("portal_jobs").delete()
+                    .eq("company_id", company_id)
+                    .eq("journey", "login_check")
+                    .filter("params->>routine_id", "eq", routine_id)
+                    .in_("status", ["done", "failed", "needs_human"])
+                    .execute().data or [])
+        sobra = (db.table("portal_jobs").select("id")
+                 .eq("company_id", company_id)
+                 .filter("params->>routine_id", "eq", routine_id)
+                 .execute().data or [])
+        return len(apagados), len(sobra)
+
+    try:
+        apagados, sobra = await asyncio.to_thread(_q)
+        r.p(f"limpeza Q10: portal_jobs {apagados} apagado(s); restam {sobra} "
+            f"(os que ainda não terminaram ficam com o worker)")
+    except Exception as exc:  # noqa: BLE001
+        r.p(f"limpeza Q10: NÃO consegui apagar os portal_jobs ({type(exc).__name__}) "
+            f"— apague por company_id + journey=login_check + params->>routine_id")
 
 
 async def _limpar(db, company_id: str, recibo: str, caminho: str, ledger_ids: List[str],

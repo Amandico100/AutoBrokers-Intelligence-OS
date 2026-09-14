@@ -455,9 +455,19 @@ def segurado_chave(item: Dict[str, Any]) -> str:
     se escolhe: não cobrar alguém por uma semana é recuperável; cobrar duas
     vezes o mesmo segurado é o defeito que esta SPEC existe para fechar. A
     retenção diz `por NOME` e a pessoa libera pela tela se discordar.
+
+    🔴 P6 — **um documento só vale como identidade se puder SER um documento.**
+    A seguradora devolve a coluna como texto, e o que chega ali nem sempre é
+    CPF/CNPJ: 📊 o acervo traz `"?"`, e uma tabela mal lida devolve o número do
+    ramo (`"000.000/0"` vira `0000000`, 7 dígitos) ou uma máscara vazia
+    (`"00000000000"`). Duas pessoas diferentes com o MESMO lixo no campo virariam
+    UM segurado — e a janela de N dias seguraria a cobrança da segunda por causa
+    da primeira. Por isso: só 11 (CPF) ou 14 (CNPJ) dígitos, e nunca todos
+    iguais. Fora disso a identidade cai no NOME, que é o fallback que já existe e
+    já se explica na frase de retenção.
     """
     doc = so_digitos((item or {}).get("cpf_cnpj"))
-    if doc:
+    if doc and len(doc) in (11, 14) and len(set(doc)) > 1:
         return f"doc:{doc}"
     nome = _norm_txt(_first_text((item or {}).get("cliente_nome"),
                                  (item or {}).get("nome_segurado"),
@@ -467,7 +477,7 @@ def segurado_chave(item: Dict[str, Any]) -> str:
     return f"recibo:{str((item or {}).get('recibo') or '').strip()}"
 
 
-def chave_do_grupo(item: Dict[str, Any]) -> str:
+def chave_do_grupo(item: Dict[str, Any], company_id: Optional[str] = None) -> str:
     """QUEM + ONDE — é o que decide o que cabe numa MESMA mensagem.
 
     🔴 Inclui o portal, porque o texto nomeia a seguradora ("A Seguradora {x}
@@ -481,13 +491,82 @@ def chave_do_grupo(item: Dict[str, Any]) -> str:
     misto, nem quando o CPF é o mesmo (o mesmo segurado pode ser cliente de duas
     corretoras). Nos itens que o worker devolve hoje a chave vem vazia, e aí a
     forma é exatamente `segurado_chave|portal`.
+
+    🔴 P7 — e quando o ITEM não carrega o `company_id`, quem o carrega é a
+    EXECUÇÃO. 📊 O worker devolve `evidence.inadimplentes` sem `company_id` em
+    100% dos jobs, então na produção de hoje a cláusula do tenant caía sempre
+    para o ramo sem empresa: a proteção existia no guarda (que monta o item à
+    mão) e não no caminho real. Os dois chamadores passam o `company_id` da
+    rotina; o parâmetro só entra quando o item não tem o seu (o item vence,
+    porque é o dado, não a suposição).
     """
-    empresa = str((item or {}).get("company_id") or "").strip().lower()
+    empresa = (str((item or {}).get("company_id") or "").strip().lower()
+               or str(company_id or "").strip().lower())
     portal = str((item or {}).get("portal") or "").strip().lower()
     return f"{empresa}|{segurado_chave(item)}|{portal}" if empresa else f"{segurado_chave(item)}|{portal}"
 
 
-def agrupar_por_segurado(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def consolidar_por_recibo(parcelas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Linhas com o MESMO `(portal, recibo)` são UMA parcela — porque são UM boleto.
+
+    📊 MEDIDO EM 14/09/2026 sobre `portal_jobs.evidence->'inadimplentes'` dos
+    jobs de cobrança de 11/09 (`select job, md5(i->>'recibo'), i->>'numero_parcela',
+    i->>'vencimento', i->>'valor' from portal_jobs, jsonb_array_elements(
+    evidence->'inadimplentes') i where journey='cobranca_sweep'`): o que a Tokio
+    devolve como "4 parcelas do mesmo CNPJ" são **4 lançamentos com o MESMO
+    recibo** (md5 idêntico nos quatro), a MESMA apólice, a MESMA parcela `"1"`, o
+    MESMO vencimento — e **um único boleto**, cujo `valor_original` é a SOMA dos
+    quatro.
+
+    🔴 O que isso quebrava, antes desta função: `_boletos_by_recibo` devolve UMA
+    chave para os quatro, o laço de entrega reservava a primeira e as outras três
+    caíam em *"nao cobrada agora — reservadas e sem desfecho"*. 📊 3 BLOQUEIOS
+    FALSOS por execução, todo dia, e o plural dizia "as parcelas 1" — o texto
+    repetindo o mesmo número quatro vezes.
+
+    ⚠️ Consolidar é decisão de LEITURA (o que o portal quis dizer), e vem ANTES
+    da reserva. A reserva continua sendo por `(company_id, portal_key, recibo)`,
+    que é o índice único do banco: consolidar não afrouxa a garantia — ela a
+    torna a mesma dos dois lados.
+
+    `valor` vira a soma quando TODOS os lançamentos são numéricos (senão fica o
+    do primeiro, porque somar texto seria inventar); `lancamentos` só nasce
+    quando há mais de um, e `numero_parcela` NUNCA muda — é o que a seguradora
+    escreveu. Linha sem recibo não se funde com ninguém.
+    """
+    baldes: List[List[Dict[str, Any]]] = []
+    indice: Dict[str, int] = {}
+    for item in parcelas or []:
+        if not isinstance(item, dict):
+            continue
+        recibo = str(item.get("recibo") or "").strip()
+        if not recibo:
+            # Sem recibo não há identidade de obrigação: consolidar seria juntar
+            # o que não se sabe se é o mesmo. A pré-condição do motor já retém.
+            baldes.append([item])
+            continue
+        chave = f"{str(item.get('portal') or '').strip().lower()}|{recibo}"
+        posicao = indice.get(chave)
+        if posicao is None:
+            indice[chave] = len(baldes)
+            baldes.append([item])
+        else:
+            baldes[posicao].append(item)
+
+    fora: List[Dict[str, Any]] = []
+    for balde in baldes:
+        primeiro = dict(balde[0])
+        if len(balde) > 1:
+            valores = [b.get("valor") for b in balde]
+            if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in valores):
+                primeiro["valor"] = round(sum(float(v) for v in valores), 2)
+            primeiro["lancamentos"] = len(balde)
+        fora.append(primeiro)
+    return fora
+
+
+def agrupar_por_segurado(items: List[Dict[str, Any]],
+                         company_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Devolve GRUPOS, na ordem da dívida mais velha de cada grupo.
 
     Cada grupo: `{"chave_do_grupo", "segurado_chave", "cliente_nome", "portal",
@@ -497,12 +576,22 @@ def agrupar_por_segurado(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     VELHA de cada grupo — a fila continua significando o que significava: quem
     está mais perto do cancelamento sai primeiro. Dentro do grupo, as parcelas
     também saem pela mesma régua.
+
+    🔴 `company_id` (P7) é o da EXECUÇÃO, e serve só ao item que não carrega o
+    seu: o worker devolve os inadimplentes sem essa chave, e sem o parâmetro a
+    cláusula de tenant nunca entrava no caminho real (CLAUDE.md §7).
+
+    🔴 E as parcelas do grupo passam por `consolidar_por_recibo` ANTES de serem
+    ordenadas: depois desta linha, `len(grupo["parcelas"])` significa *recibos
+    distintos* — que é o mesmo que dizer *boletos*, *reservas* e *PDFs*. Era
+    essa a diferença entre o corpus e o acervo real (📊 lá).
     """
+    empresa_da_execucao = str(company_id or "").strip()
     grupos: Dict[str, Dict[str, Any]] = {}
     for item in items or []:
         if not isinstance(item, dict):
             continue
-        chave = chave_do_grupo(item)
+        chave = chave_do_grupo(item, empresa_da_execucao)
         grupo = grupos.get(chave)
         if grupo is None:
             grupo = {
@@ -511,27 +600,65 @@ def agrupar_por_segurado(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "cliente_nome": _first_text(item.get("cliente_nome"), item.get("nome_segurado"),
                                             default="cliente"),
                 "portal": str(item.get("portal") or "").strip(),
-                "company_id": str(item.get("company_id") or "").strip(),
+                "company_id": (str(item.get("company_id") or "").strip()
+                               or empresa_da_execucao),
                 "parcelas": [],
             }
             grupos[chave] = grupo
         grupo["parcelas"].append(item)
     for grupo in grupos.values():
-        grupo["parcelas"] = ordenar_para_entrega(grupo["parcelas"])
+        grupo["parcelas"] = ordenar_para_entrega(consolidar_por_recibo(grupo["parcelas"]))
     # A ordem entre grupos é decidida pelo MOTOR da fila, não por uma segunda
     # régua escrita aqui: a parcela mais velha de cada grupo passa por
     # `ordenar_para_entrega`, e a posição dela é a posição do grupo.
     mais_velhas = ordenar_para_entrega([g["parcelas"][0] for g in grupos.values() if g["parcelas"]])
-    posicao = {chave_do_grupo(item): n for n, item in enumerate(mais_velhas)}
+    posicao = {chave_do_grupo(item, empresa_da_execucao): n
+               for n, item in enumerate(mais_velhas)}
     return sorted(grupos.values(), key=lambda g: posicao.get(g["chave_do_grupo"], 9999))
 
 
+def rotulos_das_parcelas(parcelas: Iterable[Dict[str, Any]]) -> List[str]:
+    """UM rótulo por parcela — e o rótulo só ganha apólice quando PRECISA.
+
+    📊 14/09/2026: a Tokio numera `"1"` em segurados diferentes e em apólices
+    diferentes do mesmo segurado. Depois da consolidação por recibo, duas
+    parcelas de um mesmo grupo podem legitimamente se chamar `"1"` — e uma lista
+    que dissesse só *"as parcelas 1"* mentiria sobre o pacote de dois boletos.
+
+    Quando os números já são distintos, o rótulo é o número e mais nada (é o caso
+    de 📊 `2/10`, `3/12`, `5/12` do acervo). Quando repetem, entram os 4 últimos
+    caracteres da apólice — que é o que a atendente vê no portal. Sem apólice, o
+    número se repete mesmo: *"1 e 1"* é feio e é verdade; *"1"* seria bonito e
+    falso.
+    """
+    lista = [p for p in (parcelas or []) if isinstance(p, dict)]
+    numeros = [_first_text(p.get("numero_parcela"), p.get("parcela"), default="?")
+               for p in lista]
+    if len(set(numeros)) == len(numeros):
+        return numeros
+    fora: List[str] = []
+    for numero, parcela in zip(numeros, lista):
+        if numeros.count(numero) == 1:
+            fora.append(numero)
+            continue
+        apolice = _first_text(parcela.get("numero_apolice"), parcela.get("apolice_susep"),
+                              parcela.get("apolice"))
+        fora.append(f"{numero} (apólice …{apolice[-4:]})" if apolice else numero)
+    return fora
+
+
 def lista_de_parcelas(numeros: Iterable[Any]) -> str:
-    """`["2/6","3/6","4/6"]` → `"2/6, 3/6 e 4/6"`. Vírgula, e "e" antes da última."""
+    """`["2/6","3/6","4/6"]` → `"2/6, 3/6 e 4/6"`. Vírgula, e "e" antes da última.
+
+    ⚠️ Ela JUNTA e mais nada — não deduplica. Quem decide o que é uma parcela é
+    `consolidar_por_recibo` (por recibo) e quem decide o rótulo é
+    `rotulos_das_parcelas`. Uma dedup aqui apagaria o caso legítimo de duas
+    apólices numeradas `"1"` no mesmo grupo, que é 📊 o que a Tokio devolve.
+    """
     limpos: List[str] = []
     for numero in numeros or []:
         texto = str(numero or "").strip()
-        if texto and texto not in limpos:
+        if texto:
             limpos.append(texto)
     if not limpos:
         return ""
@@ -744,10 +871,26 @@ def _portal_insurer_name(item: Dict[str, Any], cfg: Dict[str, Any]) -> str:
     return _first_text(cfg.get("insurer_name"), default="seguradora")
 
 
-def _insured_item_name(item: Dict[str, Any]) -> str:
+def _insured_item_name(item: Dict[str, Any], *, default: str = "seguro") -> str:
+    """O nome do BEM que a mensagem cita — ou `default` quando não há nome nenhum.
+
+    🔴 A-7 (14/09/2026) — **candidato só numérico não é nome de bem.** 📊 Os 5
+    itens reais da Tokio de 11/09 chegam sem `item_segurado`, sem `veiculo` e sem
+    `bem`, e com `ramo="180"`: o `_first_text` caía no ramo e a mensagem dizia
+    *"do seguro do 180"*. E quando nem o ramo vinha, o default `"seguro"` fazia
+    *"do seguro do seguro"*. As duas frases chegaram ao segurado.
+
+    Um número é o CÓDIGO do ramo, não o nome dele — e traduzir código de ramo
+    para nome comercial é tabela que ninguém escreveu e o Founder não aprovou.
+    Então ele não serve, e quem chama decide o que fazer com a ausência:
+    `build_customer_message` tira o `do {item_segurado}` da frase quando o
+    template é o PADRÃO (a frase vira *"a parcela 1 do seguro ainda está
+    pendente"*), e o template personalizado da corretora continua recebendo
+    `"seguro"`, porque reescrever o texto de outra pessoa é pior.
+    """
     vehicle = item.get("vehicle") if isinstance(item.get("vehicle"), dict) else {}
     policy = item.get("policy") if isinstance(item.get("policy"), dict) else {}
-    return _first_text(
+    for candidato in (
         item.get("item_segurado"),
         item.get("veiculo"),
         vehicle.get("veiculo") if vehicle else "",
@@ -756,8 +899,24 @@ def _insured_item_name(item: Dict[str, Any]) -> str:
         item.get("ramo"),
         policy.get("ramo") if policy else "",
         item.get("modalidade"),
-        default="seguro",
-    )
+    ):
+        texto = str(candidato or "").strip()
+        if not texto:
+            continue
+        # "180" e "0180" são código de ramo; "Fiat Mobi 2020" tem dígitos e é nome.
+        if all((ch.isdigit() or ch in " .,-/") for ch in texto):
+            continue
+        return texto
+    return default
+
+
+#: A frase do template PADRÃO que só existe quando há nome de bem para pôr nela.
+TRECHO_DO_ITEM_NO_PADRAO = "do seguro do {item_segurado}"
+
+
+def _texto_sem_o_item(texto: str) -> str:
+    """Tira o `do {item_segurado}` do template PADRÃO — e só dele (A-7)."""
+    return str(texto or "").replace(TRECHO_DO_ITEM_NO_PADRAO, "do seguro")
 
 
 class _MessageData(dict):
@@ -773,6 +932,12 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
     apolice = _first_text(item.get("numero_apolice"), item.get("apolice_susep"), item.get("apolice"))
     parcela = _first_text(item.get("numero_parcela"), item.get("parcela"))
     primeiro_nome = _primeiro_nome(segurado)
+    # 🔴 A-7 — sem nome de bem, o template PADRÃO perde o `do {item_segurado}`
+    #    em vez de imprimir "do seguro do seguro". Template personalizado não é
+    #    reescrito: ele recebe a palavra de sempre.
+    nome_do_bem = _insured_item_name(item, default="")
+    if not nome_do_bem and str(template or "").strip() == DEFAULT_MESSAGE_TEMPLATE.strip():
+        template = _texto_sem_o_item(template)
     data = {
         "cliente_nome": segurado,
         "nome_segurado": segurado,
@@ -781,7 +946,7 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
         "nome_corretora": _first_text(cfg.get("brokerage_name"), default="sua corretora"),
         "nome_seguradora": _portal_insurer_name(item, cfg),
         "numero_parcela": parcela,
-        "item_segurado": _insured_item_name(item),
+        "item_segurado": nome_do_bem or "seguro",
         "numero_apolice": apolice,
         "vencimento": item.get("vencimento") or "",
         "valor": valor_txt,
@@ -792,7 +957,10 @@ def build_customer_message(item: Dict[str, Any], template: str, config: Optional
     try:
         return template.format_map(_MessageData(data))
     except Exception:  # noqa: BLE001
-        return DEFAULT_MESSAGE_TEMPLATE.format_map(_MessageData(data))
+        # O socorro é o PADRÃO — e ele também perde o `do {item_segurado}` quando
+        # não há bem para citar, senão o caminho de exceção reintroduz a frase.
+        socorro = DEFAULT_MESSAGE_TEMPLATE if nome_do_bem else _texto_sem_o_item(DEFAULT_MESSAGE_TEMPLATE)
+        return socorro.format_map(_MessageData(data))
 
 
 # ==========================================================================
@@ -826,11 +994,13 @@ def mensagem_do_grupo(grupo: Dict[str, Any], cfg: Optional[Dict[str, Any]] = Non
         # ⛔ Caminho INTOCADO: uma parcela é a mensagem de hoje, letra por letra.
         return build_customer_message(parcelas[0] if parcelas else {}, template, cfg)
 
-    numeros = lista_de_parcelas(_first_text(p.get("numero_parcela"), p.get("parcela"))
-                                for p in parcelas)
+    # 🔴 A-5/A-2(c) — os rótulos vêm de `rotulos_das_parcelas`, um por PARCELA
+    #    (e parcela, aqui, já é recibo: `agrupar_por_segurado` consolidou). Dois
+    #    recibos que se chamam "1" aparecem os dois, com a apólice para distinguir.
+    numeros = lista_de_parcelas(rotulos_das_parcelas(parcelas))
     apolices = _sem_repetir(_first_text(p.get("numero_apolice"), p.get("apolice_susep"),
                                        p.get("apolice")) for p in parcelas)
-    bens = _sem_repetir(_insured_item_name(p) for p in parcelas)
+    bens = _sem_repetir(_insured_item_name(p, default="") for p in parcelas)
     base = dict(parcelas[0])
     base["numero_parcela"] = numeros
     base["parcela"] = numeros
@@ -846,8 +1016,16 @@ def mensagem_do_grupo(grupo: Dict[str, Any], cfg: Optional[Dict[str, Any]] = Non
     if len(bens) > 1:
         # "do seguro do seus seguros" não é português. Quando os bens são
         # diferentes, a frase deixa de ser "do seguro do X".
-        texto = texto.replace("do seguro do {item_segurado}", "de {item_segurado}")
+        texto = texto.replace(TRECHO_DO_ITEM_NO_PADRAO, "de {item_segurado}")
         base["item_segurado"] = "seus seguros"
+    elif bens:
+        # Um bem só, e ele pode não ser o da PRIMEIRA parcela (📊 o acervo real
+        # traz parcelas sem `item_segurado` ao lado de outras com ele).
+        base["item_segurado"] = bens[0]
+    else:
+        # 🔴 A-7 — nenhum bem nomeado: a frase perde o `do {item_segurado}` em
+        #    vez de virar "do seguro do seguro".
+        texto = _texto_sem_o_item(texto)
     for antes, depois in _PLURAL_DO_PADRAO:
         texto = texto.replace(antes, depois)
     if len(apolices) > 1:
@@ -1397,7 +1575,8 @@ async def _send_test_messages(
                             f"a simulacao seguiu sem a regra de {dias_da_janela} dias")
 
     # 🔴 B1.2 — o modo teste agrupa pelo MESMO motor do modo real.
-    a_enviar = agrupar_por_segurado(items)
+    # 🔴 P7 — e com o `company_id` da EXECUÇÃO, porque o item do worker não o traz.
+    a_enviar = agrupar_por_segurado(items, company_id)
     for indice, grupo in enumerate(a_enviar):
         parcelas = list(grupo.get("parcelas") or [])
         novas = [p for p in parcelas
@@ -1708,12 +1887,21 @@ def _nota_interna_para_a_equipe(item: Dict[str, Any], cfg: Dict[str, Any]) -> st
     valor = item.get("valor")
     valor_txt = (f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                  if isinstance(valor, (int, float)) else str(valor or "não informado"))
+    # 🔴 A-2(b) — quando o boleto consolida N lançamentos, a nota DIZ isso. 📊 A
+    #    Tokio devolve 4 linhas com o mesmo recibo e um boleto só: a atendente que
+    #    lesse "Parcela: 1 · R$ 2.737,26" com quatro linhas na tela do portal
+    #    acharia que faltaram três anexos. O número de lançamentos é o que fecha a
+    #    conta entre o que ela vê no portal e o que ela recebe aqui.
+    lancamentos = _int_clamped(item.get("lancamentos"), 1, 1, 999)
+    parcela_txt = _first_text(item.get("numero_parcela"), item.get("parcela"), default="?")
+    if lancamentos > 1:
+        parcela_txt = f"{parcela_txt} ({lancamentos} lançamentos num boleto, {valor_txt})"
     return "\n".join([
         "📋 COBRANÇA · para encaminhar",
         "",
         f"Cliente: {_first_text(item.get('cliente_nome'), item.get('nome_segurado'), default='cliente')}",
         f"Seguradora: {_portal_insurer_name(item, cfg)}",
-        f"Parcela: {_first_text(item.get('numero_parcela'), item.get('parcela'), default='?')}",
+        f"Parcela: {parcela_txt}",
         f"Vencimento: {item.get('vencimento') or '?'}",
         f"Valor: {valor_txt}",
         f"WhatsApp do cliente: {_whatsapp_legivel(item.get('whatsapp'))}",
@@ -1745,10 +1933,12 @@ def _nota_interna_do_grupo(grupo: Dict[str, Any], cfg: Dict[str, Any]) -> str:
         valor = parcela.get("valor")
         valor_txt = (f"R$ {float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                      if isinstance(valor, (int, float)) else str(valor or "não informado"))
+        lancamentos = _int_clamped(parcela.get("lancamentos"), 1, 1, 999)
+        consolidado = f" · {lancamentos} lançamentos num boleto" if lancamentos > 1 else ""
         linhas.append(
             f"- parcela {_first_text(parcela.get('numero_parcela'), parcela.get('parcela'), default='?')}"
             f" · apólice {_first_text(parcela.get('numero_apolice'), parcela.get('apolice_susep'), default='?')}"
-            f" · vence {parcela.get('vencimento') or '?'} · {valor_txt}")
+            f" · vence {parcela.get('vencimento') or '?'} · {valor_txt}{consolidado}")
     linhas += [
         f"WhatsApp do cliente: {_whatsapp_legivel(base.get('whatsapp'))}",
         "",
@@ -1853,6 +2043,14 @@ def _segurados_cobrados_recentemente(client, company_id: str, dias: int,
            .eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7
            .eq("send_mode", str(send_mode))
            .in_("status", list(ESTADOS_QUE_CONTAM_COMO_COBRADO))
+           # 🔴 O RECORTE VAI NO BANCO, e não só em Python. O PostgREST tem teto
+           #    de linhas (1.000 por padrão): numa corretora com histórico, a
+           #    página que volta seria a das linhas MAIS ANTIGAS, e o filtro em
+           #    Python jogaria fora tudo — devolvendo "ninguém foi cobrado esta
+           #    semana" em silêncio, que é exatamente o vazio que o `except`
+           #    desta função se recusa a produzir. O laço abaixo CONTINUA
+           #    conferindo a data, porque `updated_at` não é a data do envio.
+           .gte("updated_at", corte.isoformat())
            .execute())
     fora: Dict[str, str] = {}
     for linha in (res.data or []):
@@ -2040,7 +2238,10 @@ async def _entregar_cobranca_real(client, routine: Dict[str, Any],
     # recebe UMA abordagem: 1 nota interna + 1 texto + N boletos. A RESERVA
     # continua por PARCELA (§3.1): agrupar é decisão de ENTREGA; reservar é
     # decisão de OBRIGAÇÃO, e é ela que garante que a parcela sai uma vez só.
-    for indice, grupo in enumerate(agrupar_por_segurado(fila)):
+    # 🔴 P7 — o `company_id` da EXECUÇÃO viaja para a chave do grupo: o item que
+    #    o worker devolve não carrega o dele, e sem isto a cláusula de tenant da
+    #    chave só existia no guarda (CLAUDE.md §7).
+    for indice, grupo in enumerate(agrupar_por_segurado(fila, company_id)):
         parcelas = list(grupo.get("parcelas") or [])
         seguradora = _portal_insurer_name(parcelas[0] if parcelas else {}, cfg)
         chave_do_segurado = str(grupo.get("segurado_chave") or "")
@@ -3013,7 +3214,13 @@ def _blocker_do_job(job: Dict[str, Any]) -> str:
     """
     status = str((job or {}).get("status") or "")
     portal = (job or {}).get("portal_key")
-    motivo = ((job or {}).get("evidence") or {}).get("message") or (job or {}).get("error")
+    # ⚠️ `evidence` nem sempre é dicionário: 📊 jobs antigos gravaram a coluna
+    #    como TEXTO, e `"string".get` levanta `AttributeError` — dentro da função
+    #    que existe para EXPLICAR a falha, ou seja, a linha do relatório sumiria
+    #    junto com o motivo dela.
+    evidencia = (job or {}).get("evidence")
+    evidencia = evidencia if isinstance(evidencia, dict) else {}
+    motivo = evidencia.get("message") or (job or {}).get("error")
     if status == "needs_human":
         return f"portal {portal}: precisa de humano ({motivo or 'revisao'})"
     if status in {"failed", "timeout"}:
@@ -3039,8 +3246,22 @@ def _blocker_do_job(job: Dict[str, Any]) -> str:
 #: da Microsoft, §13 E3 da proposta). 💭 6 h. Clamp 1–72: abaixo de 1 h o breaker
 #: não protege nada, e acima de 3 dias ele vira esquecimento.
 PORTAL_BREAKER_HORAS_PADRAO = 6
-#: Quanto a rotina espera o canário de cada portal. 💭 120 s (o login leva ≈100 s).
-BILLING_LOGIN_CHECK_TETO_S_PADRAO = 120
+#: Quanto a rotina espera o canário de cada portal.
+#:
+#: 🔴 600 s desde 14/09/2026 (B1). Era 💭 120 s — um palpite sobre o tempo do
+#: LOGIN (≈100 s), não sobre o tempo de ESPERA, que é outra coisa: entre
+#: enfileirar e o worker pegar o job existe a FILA.
+#:
+#: 📊 Medido em 14/09/2026 sobre `portal_jobs` (`select
+#: percentile_cont(0.5) within group (order by extract(epoch from
+#: started_at - created_at)), max(...) from portal_jobs where journey in
+#: ('login_check','cobranca_sweep')`): mediana de **144 s** na fila, **máximo de
+#: 511 s** — com `PORTAL_WORKER_CONCURRENCY` = 1 (default) e `POLL_SECONDS` = 30,
+#: o worker é SERIAL: seis canários enfileirados juntos são atendidos um a um.
+#: Com teto de 120 s, do 2º portal em diante o `_poll_job` devolvia `timeout` e
+#: o portal era descartado: **5 de 6 portais deixavam de ser varridos** — e o
+#: relatório dizia que o teste de entrada falhou, o que era falso.
+BILLING_LOGIN_CHECK_TETO_S_PADRAO = 600
 #: O vocabulário de `portal_accounts.health` — contrato com o portal-worker, que
 #: é quem ESCREVE (`portal_worker/worker.py`: `SAUDE_CREDENCIAL_RECUSADA`,
 #: `SAUDE_FORA_DO_AR`, `VOCABULARIO_DE_SAUDE`). `unknown` é o meio-aberto do
@@ -3064,9 +3285,18 @@ def portal_breaker_horas(env: Optional[Dict[str, str]] = None) -> int:
 
 
 def login_check_teto_s(env: Optional[Dict[str, str]] = None) -> int:
+    """Quantos segundos a rotina espera o canário. `BILLING_LOGIN_CHECK_TETO_S`.
+
+    🔴 P4 — a variável se chama **`BILLING_LOGIN_CHECK_TETO_S`**, vale em
+    segundos, o padrão é `BILLING_LOGIN_CHECK_TETO_S_PADRAO` (600) e o clamp é
+    **60–900**: abaixo de 60 s nenhum login termina (📊 o login sozinho leva
+    ≈100 s), e acima de 900 s a rotina passaria quinze minutos esperando uma fila
+    antes de varrer qualquer coisa. Ela não está no `.env` de produção hoje — e
+    não precisa estar: o padrão é o valor medido.
+    """
     fonte = env if env is not None else os.environ
     return _int_clamped(fonte.get("BILLING_LOGIN_CHECK_TETO_S"),
-                        BILLING_LOGIN_CHECK_TETO_S_PADRAO, 30, 600)
+                        BILLING_LOGIN_CHECK_TETO_S_PADRAO, 60, 900)
 
 
 def _breaker_aberto(portal_key: str, account: Dict[str, Any], horas: int) -> str:
@@ -3093,6 +3323,41 @@ def _breaker_aberto(portal_key: str, account: Dict[str, Any], horas: int) -> str
             return (f"portal {portal_key}: fora do ar desde {desde.strftime('%d/%m %H:%M')} "
                     f"— tento de novo em {falta} h")
     return ""
+
+
+#: Por quanto tempo um `login_check` que ainda está na fila é REUSADO em vez de
+#: um novo ser enfileirado. 💭 30 min — mais que o pior tempo de fila medido
+#: (📊 511 s) e menos que o intervalo entre duas execuções diárias da rotina.
+JANELA_DE_REUSO_DO_CANARIO_MIN = 30
+
+
+def _login_check_na_fila(client, company_id: str, portal_key: str) -> str:
+    """O id de um `login_check` DESTE portal que ainda não terminou. `""` = não há.
+
+    🔴 P8 — sem isto, duas execuções no mesmo minuto (o scheduler que reenfileira,
+    o botão "executar agora" apertado duas vezes, a ponte de Work Runs correndo
+    junto da rotina in-process) enfileiram DOIS logins por portal. Login repetido
+    em portal de seguradora não é desperdício: é o gesto que faz a seguradora
+    bloquear a conta da corretora — o mesmo motivo pelo qual `credencial_recusada`
+    só fecha por gesto humano (`_breaker_aberto`).
+
+    ⚠️ Só reusa o que está `queued` ou `running`: um job terminado já tem
+    veredito, e o veredito de 40 min atrás não responde "a credencial entra
+    AGORA?" — que é a pergunta do canário.
+    """
+    corte = datetime.now(timezone.utc) - timedelta(minutes=JANELA_DE_REUSO_DO_CANARIO_MIN)
+    res = (client.table("portal_jobs")
+           .select("id, created_at")
+           .eq("company_id", str(company_id))          # 🔴 CLAUDE.md §7
+           .eq("portal_key", str(portal_key))
+           .eq("journey", JORNADA_DO_CANARIO)
+           .in_("status", ["queued", "running"])
+           .gte("created_at", corte.isoformat())
+           .order("created_at", desc=True)
+           .limit(1)
+           .execute())
+    linhas = res.data or []
+    return str((linhas[0] or {}).get("id") or "") if linhas else ""
 
 
 async def _canario_de_login(client, routine: Dict[str, Any], cfg: Dict[str, Any],
@@ -3135,12 +3400,24 @@ async def _canario_de_login(client, routine: Dict[str, Any], cfg: Dict[str, Any]
         if fechado:
             blockers.append(fechado)
             continue
+        # 🔴 P8 — um `login_check` por portal. Se já existe um na fila, REUSA o id.
         try:
-            job_id = await asyncio.to_thread(_enqueue_job, client, routine, portal_key,
-                                             account, cfg, journey=JORNADA_DO_CANARIO)
+            job_ja_na_fila = await asyncio.to_thread(_login_check_na_fila, client,
+                                                     company_id, portal_key)
         except Exception as e:  # noqa: BLE001
-            job_id = None
-            logger.warning("[billing] canario de login nao enfileirado: %s", type(e).__name__)
+            # Não saber se há um na fila não pode custar o canário: segue e
+            # enfileira. O pior caso é o de antes, não um caso novo.
+            job_ja_na_fila = ""
+            logger.warning("[billing] nao consegui ver a fila do canario: %s", type(e).__name__)
+        if job_ja_na_fila:
+            job_id = job_ja_na_fila
+        else:
+            try:
+                job_id = await asyncio.to_thread(_enqueue_job, client, routine, portal_key,
+                                                 account, cfg, journey=JORNADA_DO_CANARIO)
+            except Exception as e:  # noqa: BLE001
+                job_id = None
+                logger.warning("[billing] canario de login nao enfileirado: %s", type(e).__name__)
         if not job_id:
             blockers.append(f"portal {portal_key}: falha ao enfileirar o teste de entrada "
                             f"(login) — nao varri este portal")
@@ -3170,8 +3447,29 @@ async def _canario_de_login(client, routine: Dict[str, Any], cfg: Dict[str, Any]
                             f"({type(resultado).__name__}) — nao varri este portal")
             contas.pop(portal_key, None)
             continue
-        if str((resultado or {}).get("status") or "") == "done":
+        status = str((resultado or {}).get("status") or "")
+        if status == "done":
             continue
+        # 🔴 B1 — AUSÊNCIA DE VEREDITO NÃO É VEREDITO RUIM.
+        #
+        # `queued`, `running` e o `timeout` que o próprio `_poll_job` inventa
+        # quando o relógio acaba dizem a MESMA coisa: *o worker ainda não
+        # respondeu*. Não dizem nada sobre a credencial. Descartar o portal aqui
+        # era punir a corretora pela FILA — 📊 mediana de 144 s, máximo de 511 s,
+        # worker serial — e foi assim que 5 de 6 portais deixaram de ser varridos
+        # com todos os gates verdes.
+        #
+        # Então: varre assim mesmo, e o relatório avisa. Se a senha estiver
+        # errada, quem dirá é a varredura, com o texto real do portal. Um portal
+        # varrido de graça custa ≈100 s de navegador; um portal NÃO varrido custa
+        # a carteira inteira daquela seguradora, em silêncio.
+        if status not in TERMINAL_JOB_STATUSES:
+            blockers.append(f"portal {portal_key}: o teste de entrada nao terminou em {teto} s "
+                            f"— varri assim mesmo; se a senha estiver errada o relatorio dira")
+            continue
+        # ⛔ Daqui para baixo é VEREDITO RUIM — `failed` (credencial recusada) ou
+        #    `needs_human` do LOGIN. Aí sim o portal sai: insistir é bater na
+        #    porta trancada.
         # 🔴 O motivo vem de `_blocker_do_job` — o texto REAL que o portal deu
         #    (P0.2). Sem ele a linha diria "falhou" e mais nada.
         linha = _blocker_do_job({**(resultado or {}),

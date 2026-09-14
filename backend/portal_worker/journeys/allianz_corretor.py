@@ -701,14 +701,31 @@ _DASHBOARD_SIGNALS = (
 
 
 def interpret_login(page_text: str, url: str = "") -> JourneyResult:
-    """Classifica a tela pos-login da Allianz sem expor credenciais."""
+    """Classifica a tela pos-login da Allianz sem expor credenciais.
+
+    🔴 P5 (14/09/2026) — O DASHBOARD É CONTADO **ANTES** DA LISTA DE RECUSA.
+
+    `_FAIL` ganhou "acesso negado" e "valide os dados" no P0.3, e as duas frases
+    sao genericas o bastante para aparecer num TOAST sobre a tela ja logada (um
+    menu que a corretora nao tem permissao de abrir, por exemplo). Do jeito
+    anterior — `_FAIL` primeiro, sem olhar mais nada — uma sessao VIVA virava
+    `failed`, e `failed` com marca de credencial abre o breaker ate alguem salvar
+    uma senha nova (`worker.veredito_de_saude`). Ou seja: o portal parava de ser
+    varrido por causa de um aviso de permissao.
+
+    A regra passa a ser: recusa de credencial so vale quando a tela NAO parece o
+    dashboard. `hits >= 2` e o mesmo teto que ja decide o `done` — nao e um
+    numero novo, e o mesmo numero perguntado antes. E a tela REAL de 11/09
+    (`tests/corpus/telas_reais_de_portal/allianz_corretor-needs_human-20260911.txt`)
+    tem `hits = 0`: ela continua `failed`, que e o que o P0.3 consertou.
+    """
     text = _norm(page_text)
     url_norm = _norm(url)
-    if any(item in text for item in _FAIL):
+    hits = sum(1 for item in _DASHBOARD_SIGNALS if item in text)
+    if hits < 2 and any(item in text for item in _FAIL):
         return JourneyResult(status="failed", message="credenciais rejeitadas pelo portal Allianz")
     if any(item in text for item in _HITL):
         return JourneyResult(status="needs_human", message="portal Allianz pediu CAPTCHA/2FA")
-    hits = sum(1 for item in _DASHBOARD_SIGNALS if item in text)
     if hits >= 2 or "ngx-azb-epac/private/" in url_norm:
         return JourneyResult(status="done", captured={"logged_in": True, "portal": "allianz_corretor"})
     return JourneyResult(status="needs_human", message="tela pos-login Allianz nao reconhecida")

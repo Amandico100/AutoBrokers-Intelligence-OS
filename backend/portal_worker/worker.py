@@ -141,6 +141,13 @@ _MARCAS_DE_SESSAO_CAIDA = (
     "sessao invalida", "tela de login", "voltou para o login", "nao autenticado",
 )
 
+# 🔴 A-4 (14/09/2026) — A CONFIGURAÇÃO QUE FALTA NÃO É SENHA RECUSADA.
+# "credenciais ausentes" / "username/password ausentes" é a corretora que ainda
+# não cadastrou a conta. `credencial_recusada` abre o breaker até um gesto humano
+# na tela de Conectores — e o gesto pedido ali é *trocar a senha*, que não existe
+# para ser trocada. Quem lê tem de ver "falta cadastrar", e isso é `pede_humano`.
+_MARCAS_DE_CONFIG_FALTANDO = ("ausente", "nao configurad", "nao cadastrad")
+
 
 def veredito_de_saude(status: str, evidence: Dict[str, Any], message: str = "") -> str:
     """PURO: o que este desfecho diz sobre a SAÚDE da conta no portal.
@@ -164,9 +171,28 @@ def veredito_de_saude(status: str, evidence: Dict[str, Any], message: str = "") 
     if ev.get("excecao_transitoria"):
         return SAUDE_FORA_DO_AR if ev.get("tentativas_esgotadas") else ""
 
+    # 🔴 A-4 — A SESSÃO CAÍDA É LIDA **ANTES** DAS MARCAS DE CREDENCIAL.
+    #
+    # `_MARCAS_DE_CREDENCIAL` contém `"invalid"`, e `"sessao invalida"` casa com
+    # ele. Uma sessão que caiu é um estado TRANSITÓRIO — a próxima execução faz
+    # login de novo e entra. `credencial_recusada` não volta sozinha: ela abre o
+    # breaker **até alguém salvar uma senha nova na tela**. Ou seja: uma sessão
+    # caída desligava o portal da corretora por tempo indefinido, e a linha do
+    # relatório mandava trocar uma senha que estava certa.
+    #
+    # A ordem é a correção; a lista continua a mesma. O `done`/`logged_in` de
+    # (3) continua vencendo os dois, porque um job que ENTROU já respondeu a
+    # pergunta — e um relogin bem-sucedido cita a sessão caída no texto.
+    caiu = any(m in texto for m in _MARCAS_DE_SESSAO_CAIDA)
+    diagnostico = ev.get("sessao_morta_detectada")
+    if isinstance(diagnostico, dict) and diagnostico.get("morta"):
+        caiu = True
+    falta_cadastrar = any(m in texto for m in _MARCAS_DE_CONFIG_FALTANDO)
+
     # (2) credencial recusada — a única que não volta sozinha (§13 E3,
     #     "accelerated circuit breaking": a resposta de falha já basta).
-    if str(status) == "failed" and any(m in texto for m in _MARCAS_DE_CREDENCIAL):
+    if (str(status) == "failed" and not caiu and not falta_cadastrar
+            and any(m in texto for m in _MARCAS_DE_CREDENCIAL)):
         return SAUDE_CREDENCIAL_RECUSADA
 
     # (3) entrou é entrou. Vale inclusive para `needs_human` da VARREDURA.
@@ -176,10 +202,6 @@ def veredito_de_saude(status: str, evidence: Dict[str, Any], message: str = "") 
         return SAUDE_OK
 
     # (4) a sessão injetada não valeu: o portal devolveu a tela de login.
-    caiu = any(m in texto for m in _MARCAS_DE_SESSAO_CAIDA)
-    diagnostico = ev.get("sessao_morta_detectada")
-    if isinstance(diagnostico, dict) and diagnostico.get("morta"):
-        caiu = True
     if caiu:
         return SAUDE_EXPIRADA
 

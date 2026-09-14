@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""SPEC-EXTRA-001.6 -- A COBRANCA PROVA QUE FUNCIONA. Os guardas G1..G8, G10 e G12.
+"""SPEC-EXTRA-001.6 -- A COBRANCA PROVA QUE FUNCIONA. G1..G8, G10, G12 e G13.
 
-O QUE ELE GUARDA (proposta §11; BLOCO 0 medido em 13/09/2026)
+O QUE ELE GUARDA (proposta §11; BLOCO 0 medido em 13/09/2026, corrigido em 14/09
+pela lente do dado -- ver G7)
 
   G1  o texto REAL da cobranca vira UM balao pelos dois caminhos (porta real e modo
       teste) -- e a conversa (follow-up, saudacao) continua em baloes. CONTROLE:
@@ -23,18 +24,34 @@ O QUE ELE GUARDA (proposta §11; BLOCO 0 medido em 13/09/2026)
       CONTROLE pelo motor: `_send_test_messages` com o recibo ja no ledger nao
       reenvia; com a flag, reenvia. 📊 a de 17/08 produziu os MESMOS 7 boletos
       em 10 e em 11/09.
-  G7  `agrupar_por_segurado` sobre o ACERVO de 10-11/09 (7 itens, 4 segurados):
-      4 parcelas do mesmo CNPJ = 1 grupo = 1 mensagem + 4 PDFs + 4 RESERVAS;
-      dois segurados nunca se fundem; sem documento o fallback e o NOME; dois
-      portais nunca cabem na mesma mensagem; dois `company_id` nunca fazem grupo
-      misto; `segurado_chave` NAO leva portal e `chave_do_grupo` leva.
+  G7  🔴 A FORMA REAL DO ACERVO. 📊 14/09: as "4 parcelas do mesmo CNPJ" da Tokio
+      sao 4 LANCAMENTOS do MESMO recibo, mesma apolice, mesma parcela "1", mesmo
+      vencimento, e UM boleto cujo valor e a soma dos quatro. `consolidar_por_recibo`
+      funde: 1 grupo, 1 parcela, 1 PDF, 1 RESERVA, ZERO bloqueios (antes eram 3
+      bloqueios FALSOS por execucao, "reservadas e sem desfecho"), e a nota da
+      atendente diz "4 lancamentos num boleto". O caminho "N boletos" continua
+      provado por 💭 Segurado E (2 recibos distintos, 2 PDFs, 2 reservas) -- e e
+      ele que prova A-5: dois recibos numerados "1" viram "1 (apólice …AAAA) e
+      1 (apólice …BBBB)". Mais: P6 (documento so vale com 11 ou 14 digitos nao
+      todos iguais), P7 (o `company_id` da EXECUCAO entra na chave quando o item
+      nao o carrega -- 📊 o worker nunca o carrega) e A-7 (ramo numerico nao e
+      nome de bem: nada de "do seguro do 180" nem "do seguro do seguro").
+      Continua guardando: dois segurados nunca se fundem; sem documento o fallback
+      e o NOME; dois portais nunca cabem na mesma mensagem; dois `company_id`
+      nunca fazem grupo misto; `segurado_chave` NAO leva portal, `chave_do_grupo` leva.
   G8  a janela de N dias por `segurado_chave` (SEM o portal): retem com motivo,
       DATA e a ORIGEM da identidade; 8 dias cobra; sem documento tambem retem; a
       mesma pessoa na OUTRA seguradora tambem; e o ledger da outra corretora
       NUNCA atravessa.
   G10 a rotina enfileira `login_check` de CADA portal antes de qualquer
       `cobranca_sweep`; breaker aberto (`credencial_recusada` / `fora_do_ar`
-      dentro do prazo) nao gera job nenhum; canario reprovado nao abre varredura.
+      dentro do prazo) nao gera job nenhum; canario com VEREDITO RUIM (`failed`)
+      nao abre varredura -- mas 🔴 canario que NAO TERMINOU (`timeout`) VARRE
+      ASSIM MESMO, com a linha "varri assim mesmo" no relatorio (📊 a fila real
+      tem mediana de 144 s e maximo de 511 s num worker serial; com o teto antigo
+      de 120 s, 5 de 6 portais eram descartados por AUSENCIA de veredito). O teto
+      passa a 600 s (clamp 60..900). E 🔴 P8: um `login_check` que ja esta na fila
+      e REUSADO -- duas execucoes no mesmo minuto = 1 login por portal.
   G12 o RELATORIO DA EXECUCAO sai sem CPF/CNPJ nem telefone inteiros -- so os 4
       ultimos digitos (`_mascarar_documento` / `_mascarar_telefone`, no
       `_format_report` REAL, sobre um item do acervo anonimizado). 📊 13/09:
@@ -43,6 +60,11 @@ O QUE ELE GUARDA (proposta §11; BLOCO 0 medido em 13/09/2026)
       WhatsApp legivel -- ela precisa discar, e um guarda que so dissesse "nao
       tem telefone em lugar nenhum" ficaria verde no dia em que a atendente
       perdesse o numero (CLAUDE.md §9.3).
+  G13 `veredito_de_saude` (A-4): "sessao invalida" casa com a marca "invalid" das
+      credenciais -- e uma sessao caida virava `credencial_recusada`, que so fecha
+      por GESTO HUMANO. As marcas de SESSAO CAIDA passam a ser lidas ANTES, e
+      "credenciais ausentes" vira `pede_humano` (nao ha senha para trocar).
+      CONTROLES: as frases REAIS da Mapfre e da Allianz continuam recusa.
 
 COMO ELE FUNCIONA -- sem rede, sem banco, sem mensagem
   🔴 CADA GATE EXECUTA O MOTOR (CLAUDE.md §9.4): `send_message` REAL com um
@@ -56,7 +78,8 @@ COMO ELE FUNCIONA -- sem rede, sem banco, sem mensagem
 
 Rodar:  PYTHONIOENCODING=utf-8 python tests/test_a_cobranca_prova_que_funciona.py
         (de dentro de `backend/`)  ·  `--so G3` roda so um gate
-        `--mutar` roda as mutacoes M1..M10 e M12 por COPIA, cada uma em SUBPROCESSO sobre
+        `--mutar` roda as 18 mutacoes (M1..M13, com M3b/M7b..M7e/M10b/M10c) por
+        COPIA, cada uma em SUBPROCESSO sobre
         o arquivo mutado, restaurando por copia em `finally`. `--mutar M3` so ela.
         ⛔ `--mutar` escreve em `backend/app/` e `backend/portal_worker/` -- so
         com a arvore PARADA. ⛔ Nunca `git checkout` para restaurar.
@@ -354,6 +377,29 @@ def gate_G3():
         n = mods["allianz"]._norm(textos["allianz_corretor-needs_human-20260911.txt"])
         check("o texto REAL normalizado contem 'acesso negado' E 'valide os dados'",
               "acesso negado" in n and "valide os dados" in n)
+
+        # -- 🔴 P5: o DASHBOARD e contado ANTES da lista de recusa --------------
+        #    "acesso negado" e "valide os dados" entraram em `_FAIL` no P0.3 e sao
+        #    genericas o bastante para aparecer num TOAST sobre a tela JA LOGADA.
+        #    `failed` com marca de credencial abre o breaker ate alguem salvar uma
+        #    senha nova: a corretora pararia de ser varrida por um aviso de
+        #    permissao.
+        hits_real = sum(1 for s in mods["allianz"]._DASHBOARD_SIGNALS if s in n)
+        check("a tela REAL de recusa tem hits=0 de dashboard (por isso continua `failed`)",
+              hits_real == 0, hits_real)
+        com_toast = ALLIANZ_DASHBOARD_SINTETICO + " Acesso negado. Por favor, valide os dados."
+        r = mods["allianz"].interpret_login(com_toast)
+        check("🔴 P5: dashboard sintetico + 'acesso negado' num toast -> `done` (nao `failed`)",
+              r.status == "done", (r.status, getattr(r, "message", "")))
+        r_real = mods["allianz"].interpret_login(textos["allianz_corretor-needs_human-20260911.txt"])
+        check("CONTROLE: a tela REAL da Allianz (hits=0) CONTINUA `failed`",
+              r_real.status == "failed", (r_real.status, getattr(r_real, "message", "")))
+        r_1hit = mods["allianz"].interpret_login("Vendas. Acesso negado, valide os dados.")
+        check("CONTROLE: UM sinal de dashboard nao basta -- 1 hit ainda e `failed`",
+              r_1hit.status == "failed", (r_1hit.status, getattr(r_1hit, "message", "")))
+        r_2fa = mods["allianz"].interpret_login(ALLIANZ_DASHBOARD_SINTETICO + " informe o codigo de verificacao")
+        check("CONTROLE: o CAPTCHA/2FA continua vencendo o dashboard (`needs_human`)",
+              r_2fa.status == "needs_human", (r_2fa.status, getattr(r_2fa, "message", "")))
     if "hdi" in mods:
         r = mods["hdi"].interpret_login(textos["hdi_corretor-done-20260911.txt"], "https://www.hdi.com.br/digital2/home")
         check("CONTROLE (real): o dashboard da HDI e `done`", r.status == "done", r)
@@ -581,6 +627,14 @@ class BancoLeve:
         self.cai = set(cai)
         self.eventos = eventos if eventos is not None else []
         self._n = 0
+        #: 🔴 A-2(e) -- o INDICE UNICO PARCIAL do banco, modelado:
+        #:     billing_sent_log_obrigacao_uniq (company_id, portal_key, recibo)
+        #:     WHERE send_mode = 'real'
+        #: Sem isto o duble dizia "ganhou" a toda chamada, e o guarda nunca veria
+        #: o que a producao via: a 2a reserva do MESMO recibo perde, e a funcao
+        #: devolve o id da linha que ja existe com o status atual dela. Era esse
+        #: ramo que produzia os 3 bloqueios falsos dos 4 lancamentos da Tokio.
+        self.obrigacoes = {}
         self.client = self
 
     def table(self, nome):
@@ -591,9 +645,21 @@ class BancoLeve:
         self.eventos.append(("reserva", str(nome)))
         if nome in self.cai:
             raise RuntimeError("FONTE_INDISPONIVEL: rpc %s (duble)" % nome)
-        self._n += 1
-        dados = ([{"id": "bsl-%d" % self._n, "ganhou": True, "status": "reservado"}]
-                 if nome == "billing_reservar_obrigacao" else [])
+        dados = []
+        if nome == "billing_reservar_obrigacao":
+            p = dict(params or {})
+            chave = (str(p.get("p_company_id")), str(p.get("p_portal_key")),
+                     str(p.get("p_recibo")))
+            ja = self.obrigacoes.get(chave)
+            if ja is None:
+                self._n += 1
+                ja = {"id": "bsl-%d" % self._n, "status": "reservado"}
+                self.obrigacoes[chave] = ja
+                dados = [{"id": ja["id"], "ganhou": True, "status": ja["status"]}]
+            else:
+                # `ON CONFLICT ... DO NOTHING` + o SELECT que a funcao faz depois:
+                # o MESMO id, o status ATUAL, e `ganhou` falso.
+                dados = [{"id": ja["id"], "ganhou": False, "status": ja["status"]}]
         return types.SimpleNamespace(execute=lambda: types.SimpleNamespace(data=dados))
 
     def ledger(self):
@@ -755,26 +821,45 @@ def gate_G6():
 
 
 # ==========================================================================
-# G7 -- 1 mensagem por segurado, N boletos; nunca dois tenants, nunca dois portais
+# G7 -- A FORMA REAL DO ACERVO: 4 lancamentos = 1 boleto = 1 reserva = 1 PDF
+#       (e o caminho "N boletos" continua provado, por 💭 Segurado E)
 # ==========================================================================
+#
+# 🔴 14/09/2026 -- ESTE GUARDA PROVAVA UM CAMINHO QUE A PRODUCAO NAO TEM.
+# O corpus dizia que Segurado B tinha 4 parcelas com 4 recibos. 📊 A lente do
+# dado mediu `portal_jobs.evidence->'inadimplentes'` de 11/09 e achou outra
+# coisa: 4 LANCAMENTOS do MESMO recibo, mesma apolice, mesma parcela "1", mesmo
+# vencimento, e UM boleto cujo valor e a soma dos quatro. Com a forma real,
+# `_boletos_by_recibo` devolve 1 chave, o laco reservava 1 e produzia
+# 3 BLOQUEIOS FALSOS por execucao ("nao cobrada agora — reservadas e sem
+# desfecho") -- e o plural dizia "as parcelas 1".
+#
+# ⚠️ CLAUDE.md §9.4: "o texto da tela vem do acervo, nao da imaginacao". Vale
+# para a FORMA do dado tambem.
 
 def gate_G7():
-    print("\n[G7] `agrupar_por_segurado` sobre o ACERVO de 10-11/09: 4 parcelas = 1 mensagem")
+    print("\n[G7] a forma REAL: 4 lancamentos = 1 boleto = 1 reserva; 2 recibos = 2 PDFs")
     from app.services import billing_collection as BC
 
     itens = [dict(i) for i in ACERVO["itens"]]
-    grupos = BC.agrupar_por_segurado(itens)
+    grupos = BC.agrupar_por_segurado(itens, CO_ALFA)
     check("os 7 itens do acervo viram 4 grupos (4 segurados)", len(grupos) == 4,
           [(g.get("segurado_chave"), len(g.get("parcelas") or [])) for g in grupos])
     tamanhos = sorted(len(g["parcelas"]) for g in grupos)
-    check("um grupo tem as 4 parcelas do MESMO CNPJ; os outros tres tem 1",
-          tamanhos == [1, 1, 1, 4], tamanhos)
-    grande = [g for g in grupos if len(g["parcelas"]) == 4]
-    check("o grupo de 4 e identificado por DOCUMENTO",
-          len(grande) == 1 and str(grande[0]["segurado_chave"]).startswith("doc:"),
-          [g["segurado_chave"] for g in grande])
-    check("  ... e as 4 parcelas sao de UMA seguradora so",
-          len({str(p.get("portal")) for p in grande[0]["parcelas"]}) == 1)
+    check("🔴 depois de consolidar por recibo, TODO grupo tem UMA parcela "
+          "(os 4 lancamentos de B sao UM boleto)", tamanhos == [1, 1, 1, 1], tamanhos)
+    b = [g for g in grupos if str(g["parcelas"][0].get("recibo")) == "B-0001"]
+    check("o grupo de B existe e e identificado por DOCUMENTO",
+          len(b) == 1 and str(b[0]["segurado_chave"]).startswith("doc:"),
+          [g["segurado_chave"] for g in grupos])
+    b = b[0] if b else {"parcelas": [{}]}
+    check("  ... e a parcela consolidada diz que sao 4 lancamentos",
+          b["parcelas"][0].get("lancamentos") == 4, b["parcelas"][0].get("lancamentos"))
+    check("  ... e o valor e a SOMA dos quatro (676.31+684.05+643.77+733.13)",
+          b["parcelas"][0].get("valor") == 2737.26, b["parcelas"][0].get("valor"))
+    check("  ... e o numero da parcela NAO muda (e o que a seguradora escreveu)",
+          str(b["parcelas"][0].get("numero_parcela")) == "1",
+          b["parcelas"][0].get("numero_parcela"))
     check("o segurado SEM documento agrupa por NOME (fallback)",
           any(str(g["segurado_chave"]).startswith("nome:") for g in grupos),
           [g["segurado_chave"] for g in grupos])
@@ -784,6 +869,25 @@ def gate_G7():
           [str(g["parcelas"][0].get("vencimento")) for g in grupos]
           == sorted(str(g["parcelas"][0].get("vencimento")) for g in grupos),
           [str(g["parcelas"][0].get("vencimento")) for g in grupos])
+
+    # -- `consolidar_por_recibo`, a funcao PURA, com os controles que dao
+    #    direito a conclusao acima (CLAUDE.md §9.2) -----------------------------
+    sinteticos = [dict(i) for i in ACERVO["sinteticos"]]
+    check("CONTROLE: dois recibos DISTINTOS continuam duas parcelas",
+          len(BC.consolidar_por_recibo(sinteticos)) == 2,
+          [p.get("recibo") for p in BC.consolidar_por_recibo(sinteticos)])
+    check("  ... e nenhuma delas ganha `lancamentos` (so quem consolidou ganha)",
+          all("lancamentos" not in p for p in BC.consolidar_por_recibo(sinteticos)))
+    check("CONTROLE: o MESMO recibo em portais DIFERENTES nao se funde",
+          len(BC.consolidar_por_recibo([{"portal": "a", "recibo": "R"},
+                                        {"portal": "b", "recibo": "R"}])) == 2)
+    check("CONTROLE: linha SEM recibo nunca se funde com outra",
+          len(BC.consolidar_por_recibo([{"portal": "p", "recibo": ""},
+                                        {"portal": "p", "recibo": ""}])) == 2)
+    misto = BC.consolidar_por_recibo([{"portal": "p", "recibo": "R", "valor": 10.0},
+                                      {"portal": "p", "recibo": "R", "valor": "a combinar"}])
+    check("valor nao-numerico NAO e somado -- fica o do primeiro (somar texto e inventar)",
+          len(misto) == 1 and misto[0]["valor"] == 10.0, misto)
 
     # 🔴 as DUAS chaves, e a diferenca entre elas e o produto
     it = dict(ACERVO["itens"][1])
@@ -809,66 +913,175 @@ def gate_G7():
                                      for g in sem_nada),
           [g["segurado_chave"] for g in sem_nada])
 
-    # -- O MOTOR: o grupo de 4 sai como 1 nota + 1 texto + 4 PDFs --------------
+    # -- 🔴 P7: o `company_id` da EXECUCAO entra na chave quando o ITEM nao o tem
+    #    📊 o worker devolve os inadimplentes SEM `company_id` em 100% dos jobs,
+    #    entao ate aqui a clausula de tenant so existia no guarda.
+    sem_tenant = dict(ACERVO["itens"][1])
+    check("o item do acervo NAO carrega `company_id` (e a forma que o worker devolve)",
+          "company_id" not in sem_tenant, sorted(sem_tenant))
+    ka = BC.chave_do_grupo(sem_tenant, CO_ALFA)
+    kb = BC.chave_do_grupo(sem_tenant, CO_BETA)
+    check("🔴 P7: sem `company_id` no item, a chave usa o da EXECUCAO",
+          ka != kb and ka.startswith(CO_ALFA) and kb.startswith(CO_BETA), (ka, kb))
+    check("  ... e o `company_id` do ITEM vence o da execucao (o dado, nao a suposicao)",
+          BC.chave_do_grupo(dict(sem_tenant, company_id=CO_BETA), CO_ALFA).startswith(CO_BETA),
+          BC.chave_do_grupo(dict(sem_tenant, company_id=CO_BETA), CO_ALFA))
+    check("CONTROLE: sem nenhum dos dois, a chave e `segurado_chave|portal` (forma de hoje)",
+          BC.chave_do_grupo(sem_tenant).startswith("doc:"), BC.chave_do_grupo(sem_tenant))
+    g_alfa = BC.agrupar_por_segurado([dict(sem_tenant)], CO_ALFA)[0]
+    check("  ... e o GRUPO tambem carrega o `company_id` da execucao",
+          g_alfa.get("company_id") == CO_ALFA, g_alfa.get("company_id"))
+
+    # -- 🔴 P6: documento que nao pode SER documento cai no NOME ---------------
+    check("P6: '000.000/0' (7 digitos) NAO vira identidade por documento",
+          BC.segurado_chave({"cpf_cnpj": "000.000/0", "cliente_nome": "Fulano"}).startswith("nome:"),
+          BC.segurado_chave({"cpf_cnpj": "000.000/0", "cliente_nome": "Fulano"}))
+    check("P6: '00000000000' (11 digitos, TODOS iguais) NAO vira identidade",
+          BC.segurado_chave({"cpf_cnpj": "00000000000", "cliente_nome": "Fulano"}).startswith("nome:"),
+          BC.segurado_chave({"cpf_cnpj": "00000000000", "cliente_nome": "Fulano"}))
+    check("  ... e dois segurados com o MESMO lixo no campo NAO viram um so",
+          len(BC.agrupar_por_segurado([{"cpf_cnpj": "000.000/0", "cliente_nome": "Fulano",
+                                        "recibo": "L-1", "portal": "p"},
+                                       {"cpf_cnpj": "000.000/0", "cliente_nome": "Beltrano",
+                                        "recibo": "L-2", "portal": "p"}])) == 2)
+    check("CONTROLE: um CNPJ de 14 digitos de verdade CONTINUA virando `doc:`",
+          BC.segurado_chave({"cpf_cnpj": "00000000000272"}) == "doc:00000000000272",
+          BC.segurado_chave({"cpf_cnpj": "00000000000272"}))
+    check("CONTROLE: e um CPF de 11 digitos tambem",
+          BC.segurado_chave({"cpf_cnpj": "123.456.789-09"}) == "doc:12345678909",
+          BC.segurado_chave({"cpf_cnpj": "123.456.789-09"}))
+
+    # -- O MOTOR sobre a FORMA REAL: 1 texto + 1 nota + 1 PDF + 1 reserva ------
     fila = [dict(i) for i in ACERVO["itens"] if str(i.get("recibo")).startswith("B-")]
+    check("o acervo traz os 4 lancamentos de B com o MESMO recibo",
+          len(fila) == 4 and len({str(i["recibo"]) for i in fila}) == 1,
+          [i["recibo"] for i in fila])
     r = rodar_entrega(fila)
     chamadas = r["chamadas"]
     com_texto = [c for c in chamadas if str(c["texto"]).strip()]
     com_doc = [c for c in chamadas if c["documento"]]
     notas = [c for c in chamadas if c["kind"] == "billing_equipe_nota"]
-    check("MOTOR: as 4 parcelas do mesmo CNPJ -> UM texto ao cliente",
+    check("MOTOR: os 4 lancamentos -> UM texto ao cliente",
           len([c for c in com_texto if c["kind"] == "billing_equipe"]) == 1,
           [(c["kind"], len(c["texto"])) for c in chamadas])
-    check("MOTOR: UMA nota interna para a equipe (nao quatro)", len(notas) == 1, len(notas))
-    check("MOTOR: QUATRO documentos, um por parcela", len(com_doc) == 4,
-          [str((c["documento"] or {}).get("filename")) for c in com_doc])
-    check("MOTOR: cada PDF viaja com o `ledger_ref` da SUA parcela",
-          len({str((c["ledger_ref"] or {}).get("id")) for c in com_doc}) == 4,
-          [str((c["ledger_ref"] or {}).get("id")) for c in com_doc])
+    check("MOTOR: UMA nota interna para a equipe", len(notas) == 1, len(notas))
+    check("MOTOR: UM documento -- e um boleto so, porque o portal emitiu um so",
+          len(com_doc) == 1, [str((c["documento"] or {}).get("filename")) for c in com_doc])
     reservas = [x for x in r["banco"].rpcs if x["nome"] == "billing_reservar_obrigacao"]
-    check("MOTOR: QUATRO reservas -- a reserva continua POR PARCELA",
-          len(reservas) == 4, len(reservas))
-    check("  ... com os 4 recibos, e a MESMA `segurado_chave` nos quatro",
-          len({p["params"].get("p_recibo") for p in reservas}) == 4
-          and len({p["params"].get("p_segurado_chave") for p in reservas}) == 1,
-          [(p["params"].get("p_recibo"), p["params"].get("p_segurado_chave")) for p in reservas])
-    check("  ... e ela e a chave por DOCUMENTO, que e o que a janela le",
-          str(reservas[0]["params"].get("p_segurado_chave") or "").startswith("doc:"),
-          reservas[0]["params"].get("p_segurado_chave"))
+    check("MOTOR: UMA reserva (a reserva e por RECIBO, e o recibo e um so)",
+          len(reservas) == 1, [p["params"].get("p_recibo") for p in reservas])
+    check("🔴 MOTOR: ZERO bloqueios -- nenhum 'reservadas e sem desfecho' falso",
+          r["blockers"] == [], r["blockers"])
+    check("MOTOR: UMA entrega no relatorio (nao quatro)", len(r["entregas"]) == 1, r["entregas"])
+    check("  ... e a `segurado_chave` da reserva e a chave por DOCUMENTO",
+          str(reservas[0]["params"].get("p_segurado_chave") or "").startswith("doc:")
+          if reservas else False,
+          reservas[0]["params"].get("p_segurado_chave") if reservas else None)
     ev = r["eventos"]
     primeira_porta = next((i for i, e in enumerate(ev) if e[0] == "porta"), -1)
     ultima_reserva = max([i for i, e in enumerate(ev) if e[0] == "reserva"] or [99])
-    check("🔴 MOTOR: as 4 reservas vem ANTES do primeiro efeito do grupo",
+    check("🔴 MOTOR: a reserva vem ANTES do primeiro efeito do grupo",
           primeira_porta > ultima_reserva, ev)
-    check("MOTOR: as 4 parcelas aparecem no relatorio (uma entrega por parcela)",
-          len(r["entregas"]) == 4, r["entregas"])
+    nota_txt = notas[0]["texto"] if notas else ""
+    check("a NOTA da atendente diz que o boleto tem 4 lancamentos",
+          "4 lançamentos num boleto" in nota_txt,
+          [l for l in nota_txt.splitlines() if "Parcela" in l])
+    check("  ... com o valor SOMADO, que e o que ela vai conferir no portal",
+          "2.737,26" in nota_txt, [l for l in nota_txt.splitlines() if "Parcela" in l])
+
+    c_equipe = cfg("equipe")
+    texto = [c for c in com_texto if c["kind"] == "billing_equipe"][0]["texto"]
+    check("o texto da forma real e o SINGULAR de hoje, byte a byte",
+          texto == BC.build_customer_message(b["parcelas"][0],
+                                             c_equipe["message_template"], c_equipe), texto[:200])
+    check("  ... e ele NAO diz 'as parcelas 1' (o plural falso de antes)",
+          "as parcelas" not in texto, texto[:200])
+
+    # -- 💭 O CAMINHO "N BOLETOS": Segurado E, dois recibos na mesma seguradora -
+    fila_e = [dict(i) for i in ACERVO["sinteticos"]]
+    grupos_e = BC.agrupar_por_segurado(fila_e, CO_ALFA)
+    check("💭 E: dois recibos distintos = UM grupo com DUAS parcelas",
+          len(grupos_e) == 1 and len(grupos_e[0]["parcelas"]) == 2,
+          [(g["segurado_chave"], len(g["parcelas"])) for g in grupos_e])
+    re_ = rodar_entrega(fila_e)
+    doc_e = [c for c in re_["chamadas"] if c["documento"]]
+    notas_e = [c for c in re_["chamadas"] if c["kind"] == "billing_equipe_nota"]
+    texto_e = [c for c in re_["chamadas"]
+               if c["kind"] == "billing_equipe" and str(c["texto"]).strip()]
+    reservas_e = [x for x in re_["banco"].rpcs if x["nome"] == "billing_reservar_obrigacao"]
+    check("💭 E: DOIS documentos, um por recibo", len(doc_e) == 2,
+          [str((c["documento"] or {}).get("filename")) for c in doc_e])
+    check("💭 E: cada PDF viaja com o `ledger_ref` da SUA parcela",
+          len({str((c["ledger_ref"] or {}).get("id")) for c in doc_e}) == 2,
+          [str((c["ledger_ref"] or {}).get("id")) for c in doc_e])
+    check("💭 E: DUAS reservas, com os dois recibos",
+          len(reservas_e) == 2 and len({p["params"].get("p_recibo") for p in reservas_e}) == 2,
+          [p["params"].get("p_recibo") for p in reservas_e])
+    check("💭 E: UM texto e UMA nota (nada picotado)",
+          len(texto_e) == 1 and len(notas_e) == 1, (len(texto_e), len(notas_e)))
+    check("💭 E: ZERO bloqueios", re_["blockers"] == [], re_["blockers"])
 
     # A COPY do plural, sobre o texto que o motor montou
-    texto = [c for c in com_texto if c["kind"] == "billing_equipe"][0]["texto"]
-    c_equipe = cfg("equipe")
+    t_e = texto_e[0]["texto"] if texto_e else ""
     for pedaco in ("as parcelas", "Seguem os boletos abaixo.", "estão pendentes",
                    "gerou novos boletos"):
-        check("plural: o texto diz %r" % pedaco, pedaco in texto, texto[:200])
-    check("plural: as 4 apolices distintas viram `Apólices:`",
-          "Apólices:" in texto and "APOL-B1" in texto and "APOL-B4" in texto, texto[-120:])
+        check("plural: o texto diz %r" % pedaco, pedaco in t_e, t_e[:220])
+    check("plural: as apolices distintas viram `Apólices:`",
+          "Apólices:" in t_e, t_e[-160:])
+    check("🔴 A-5: DOIS recibos numerados '1' aparecem OS DOIS, com a apolice",
+          "1 (apólice …AAAA) e 1 (apólice …BBBB)" in t_e, t_e[:260])
     check("plural: a lista de parcelas usa virgula e `e` antes da ultima",
           BC.lista_de_parcelas(["2/6", "3/6", "4/6"]) == "2/6, 3/6 e 4/6",
           BC.lista_de_parcelas(["2/6", "3/6", "4/6"]))
+    check("CONTROLE: quando os numeros JA sao distintos, o rotulo e o numero e mais nada",
+          BC.rotulos_das_parcelas([{"numero_parcela": "2/6", "numero_apolice": "X"},
+                                   {"numero_parcela": "3/6", "numero_apolice": "Y"}])
+          == ["2/6", "3/6"],
+          BC.rotulos_das_parcelas([{"numero_parcela": "2/6", "numero_apolice": "X"},
+                                   {"numero_parcela": "3/6", "numero_apolice": "Y"}]))
+    check("CONTROLE: sem apolice para distinguir, o numero se REPETE ('1 e 1')",
+          BC.lista_de_parcelas(BC.rotulos_das_parcelas([{"numero_parcela": "1"},
+                                                        {"numero_parcela": "1"}])) == "1 e 1",
+          BC.rotulos_das_parcelas([{"numero_parcela": "1"}, {"numero_parcela": "1"}]))
+
     # 🔴 N=1 continua BYTE A BYTE o template de hoje
     um = dict(ACERVO["itens"][0])
     grupo_de_um = BC.agrupar_por_segurado([um])[0]
     check("N=1 usa o template de hoje BYTE A BYTE",
           BC.mensagem_do_grupo(grupo_de_um, c_equipe)
           == BC.build_customer_message(um, c_equipe["message_template"], c_equipe))
-    check("CONTROLE: e o do grupo de 4 e DIFERENTE do singular da 1a parcela",
-          BC.mensagem_do_grupo(grande[0], c_equipe)
-          != BC.build_customer_message(grande[0]["parcelas"][0],
+    check("CONTROLE: e o do grupo de DOIS e DIFERENTE do singular da 1a parcela",
+          BC.mensagem_do_grupo(grupos_e[0], c_equipe)
+          != BC.build_customer_message(grupos_e[0]["parcelas"][0],
                                        c_equipe["message_template"], c_equipe))
     # template PERSONALIZADO pela corretora: singular, com a LISTA no lugar da parcela
     c_pers = cfg("equipe", message_template="Oi {primeiro_nome}, parcela {numero_parcela}.")
-    pers = BC.mensagem_do_grupo(grande[0], c_pers)
+    pers = BC.mensagem_do_grupo(grupos_e[0], c_pers)
     check("template personalizado: nao inventamos plural -- a LISTA entra em `{numero_parcela}`",
-          pers.startswith("Oi ") and "3/12" in pers, pers)
+          pers.startswith("Oi ") and "apólice …AAAA" in pers, pers)
+
+    # -- 🔴 A-7: o item REAL da Tokio (ramo "180", sem descricao) --------------
+    #    📊 os 5 itens reais da Tokio chegam sem `item_segurado`/`veiculo`/`bem`
+    #    e com `ramo="180"`: a mensagem dizia "do seguro do 180". Sem o ramo, o
+    #    default dizia "do seguro do seguro". As duas frases chegaram ao segurado.
+    tokio = dict(ACERVO["itens"][1], ramo="180")
+    check("A-7: ramo numerico NAO e nome de bem", BC._insured_item_name(tokio, default="") == "",
+          BC._insured_item_name(tokio, default=""))
+    msg = BC.build_customer_message(tokio, c_equipe["message_template"], c_equipe)
+    check("A-7: a mensagem NAO diz 'do seguro do 180'", "do seguro do 180" not in msg, msg[:220])
+    check("A-7: nem 'do seguro do seguro'", "do seguro do seguro" not in msg, msg[:220])
+    check("A-7: a frase fica 'do seguro ainda está pendente'",
+          "do seguro ainda está pendente" in msg, msg[:220])
+    com_bem = BC.build_customer_message(dict(tokio, item_segurado="Fiat Mobi 2020"),
+                                        c_equipe["message_template"], c_equipe)
+    check("CONTROLE: com um bem de verdade, o nome ENTRA na frase (o guarda ve a diferenca)",
+          "do seguro do Fiat Mobi 2020 ainda está pendente" in com_bem, com_bem[:220])
+    check("CONTROLE: nome com digitos ('Fiat Mobi 2020') continua sendo nome",
+          BC._insured_item_name({"item_segurado": "Fiat Mobi 2020"}) == "Fiat Mobi 2020")
+    check("CONTROLE: template PERSONALIZADO nao e reescrito -- recebe a palavra de sempre",
+          BC.build_customer_message(tokio, "Oi {primeiro_nome}, {item_segurado}.", c_equipe)
+          .endswith(", seguro."),
+          BC.build_customer_message(tokio, "Oi {primeiro_nome}, {item_segurado}.", c_equipe))
 
 
 # ==========================================================================
@@ -1026,10 +1239,20 @@ def gate_G10():
           and BC.portal_breaker_horas({"PORTAL_BREAKER_HORAS": "999"}) == 72
           and BC.portal_breaker_horas({"PORTAL_BREAKER_HORAS": "0"}) == 1,
           BC.portal_breaker_horas({}))
-    check("o teto de espera do canario tem default 120s e clamp (30..600)",
-          BC.login_check_teto_s({}) == 120
-          and BC.login_check_teto_s({"BILLING_LOGIN_CHECK_TETO_S": "5"}) == 30
-          and BC.login_check_teto_s({"BILLING_LOGIN_CHECK_TETO_S": "9000"}) == 600)
+    # 🔴 B1 -- 📊 a fila real tem mediana de 144 s e maximo de 511 s, e o worker
+    #    e SERIAL (PORTAL_WORKER_CONCURRENCY=1). Com teto de 120 s, do 2o portal
+    #    em diante o `_poll_job` devolvia `timeout`.
+    check("o teto de espera do canario tem default 600s e clamp (60..900)",
+          BC.login_check_teto_s({}) == 600
+          and BC.login_check_teto_s({"BILLING_LOGIN_CHECK_TETO_S": "5"}) == 60
+          and BC.login_check_teto_s({"BILLING_LOGIN_CHECK_TETO_S": "9000"}) == 900,
+          (BC.login_check_teto_s({}), BC.login_check_teto_s({"BILLING_LOGIN_CHECK_TETO_S": "5"}),
+           BC.login_check_teto_s({"BILLING_LOGIN_CHECK_TETO_S": "9000"})))
+    check("o teto novo cobre o PIOR tempo de fila medido (511 s)",
+          BC.login_check_teto_s({}) > 511, BC.login_check_teto_s({}))
+    check("a variavel de ambiente esta escrita no docstring (P4)",
+          "BILLING_LOGIN_CHECK_TETO_S" in (BC.login_check_teto_s.__doc__ or ""),
+          BC.login_check_teto_s.__doc__)
 
     from datetime import datetime, timedelta, timezone
 
@@ -1037,8 +1260,9 @@ def gate_G10():
         return (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
 
     # allianz: ok · hdi: senha recusada · mapfre: fora do ar HA POUCO ·
-    # tokiomarine: fora do ar HA MUITO (o breaker reabre) · yelum: unknown e o
-    # login falha · zurich: sem credencial nenhuma
+    # tokiomarine: fora do ar HA MUITO (o breaker reabre) E o canario NAO TERMINA
+    # a tempo -- o caso da fila real (📊 mediana 144 s, maximo 511 s, worker
+    # serial) · yelum: unknown e o login FALHA · zurich: sem credencial nenhuma
     contas = {
         "allianz_corretor": {"id": "ac-1", "health": "ok", "updated_at": ha(1)},
         "hdi_corretor": {"id": "ac-2", "health": "credencial_recusada", "updated_at": ha(30)},
@@ -1063,6 +1287,12 @@ def gate_G10():
             if portal == "yelum_corretor":
                 return {"id": job_id, "portal_key": portal, "status": "failed", "error": None,
                         "evidence": {"message": "a YELUM recusou a credencial (autenticacao invalida)"}}
+            if portal == "tokiomarine_corretor":
+                # 🔴 B1 -- o que `_poll_job` devolve quando o RELOGIO acaba: nao e
+                #    veredito nenhum sobre a credencial, e o texto diz isso.
+                return {"id": job_id, "portal_key": portal, "status": "timeout",
+                        "error": "portal_job nao terminou dentro do tempo limite",
+                        "evidence": {}}
             return {"id": job_id, "portal_key": portal, "status": "done", "evidence": {}}
         return {"id": job_id, "portal_key": portal, "status": "done", "evidence": {}}
 
@@ -1105,7 +1335,7 @@ def gate_G10():
           "tokiomarine_corretor" in canarios, canarios)
     check("CONTROLE: `unknown` e meio-aberto -- tenta UMA vez, pelo proprio canario",
           "yelum_corretor" in canarios, canarios)
-    check("🔴 o canario que NAO terminou `done` nao abre varredura",
+    check("🔴 o canario com VEREDITO RUIM (`failed`) nao abre varredura",
           "yelum_corretor" not in varreduras, varreduras)
     check("so varre quem passou pelo canario",
           sorted(varreduras) == ["allianz_corretor", "tokiomarine_corretor"], sorted(varreduras))
@@ -1118,6 +1348,59 @@ def gate_G10():
           "recusou a credencial" in relatorio, relatorio[-1200:])
     check("o portal sem credencial continua com a linha de sempre",
           "sem credencial conectada" in relatorio, relatorio[-1200:])
+
+    # -- 🔴 B1: AUSENCIA DE VEREDITO NAO E VEREDITO RUIM ----------------------
+    #    📊 Com teto de 120 s contra uma fila de mediana 144 s (maximo 511 s) num
+    #    worker serial, o `login_check` estourava o relogio e o portal era
+    #    DESCARTADO: 5 de 6 portais deixavam de ser varridos, com todos os gates
+    #    verdes e o relatorio dizendo que o teste de entrada falhou -- o que era
+    #    falso. `timeout` diz "o worker nao respondeu", nao "a senha esta errada".
+    check("🔴 o canario que NAO TERMINOU (`timeout`) VARRE assim mesmo",
+          "tokiomarine_corretor" in varreduras, varreduras)
+    check("  ... e o relatorio diz isso, em portugues, sem acusar a senha",
+          "o teste de entrada nao terminou em" in relatorio
+          and "varri assim mesmo" in relatorio, relatorio[-1600:])
+    check("  ... e a frase avisa quem vai dizer a verdade se a senha estiver errada",
+          "se a senha estiver errada o relatorio dira" in relatorio, relatorio[-1600:])
+    check("CONTROLE: o `failed` continua sendo descarte (o guarda ve a diferenca)",
+          "nao varri este portal nesta execucao" in relatorio, relatorio[-1600:])
+
+    # -- 🔴 P8: UM `login_check` POR PORTAL, mesmo com duas execucoes juntas ---
+    #    Login repetido em portal de seguradora nao e desperdicio: e o gesto que
+    #    faz a seguradora bloquear a conta da corretora.
+    banco_com_fila = BancoLeve()
+    banco_com_fila.dados["portal_jobs"] = [{
+        "id": "job-login_check-allianz_corretor", "company_id": CO_ALFA,
+        "portal_key": "allianz_corretor", "journey": "login_check",
+        "status": "queued", "created_at": ha(0)}]
+    enfileirados.clear()
+    try:
+        asyncio.run(BC.execute_billing_collection_routine(banco_com_fila, rotina))
+    except Exception as e:  # noqa: BLE001
+        check("[G10] a 2a execucao roda", False, "%s: %s" % (type(e).__name__, e))
+    canarios2 = [p for p, j in enfileirados if j == BC.JORNADA_DO_CANARIO]
+    varreduras2 = [p for p, j in enfileirados if j == BC.JORNADA_DA_VARREDURA]
+    check("🔴 P8: o `login_check` que JA esta na fila e REUSADO (nao enfileira outro)",
+          "allianz_corretor" not in canarios2, canarios2)
+    check("  ... e o portal reusado continua sendo varrido (reusar nao e descartar)",
+          "allianz_corretor" in varreduras2, varreduras2)
+    check("CONTROLE: os OUTROS portais continuam enfileirando o canario deles",
+          "tokiomarine_corretor" in canarios2 and "yelum_corretor" in canarios2, canarios2)
+    # CONTROLE: um job login_check TERMINADO nao e reusado -- o veredito de 40min
+    # atras nao responde "a credencial entra AGORA?".
+    banco_terminado = BancoLeve()
+    banco_terminado.dados["portal_jobs"] = [{
+        "id": "job-login_check-allianz_corretor", "company_id": CO_ALFA,
+        "portal_key": "allianz_corretor", "journey": "login_check",
+        "status": "done", "created_at": ha(0)}]
+    enfileirados.clear()
+    try:
+        asyncio.run(BC.execute_billing_collection_routine(banco_terminado, rotina))
+    except Exception:  # noqa: BLE001
+        pass
+    check("CONTROLE: job `done` na tabela NAO e reusado (enfileira um canario novo)",
+          "allianz_corretor" in [p for p, j in enfileirados if j == BC.JORNADA_DO_CANARIO],
+          enfileirados)
 
 
 # ==========================================================================
@@ -1184,8 +1467,8 @@ def gate_G12():
           [l for l in relatorio.splitlines() if _maior_corrida_de_digitos(l) >= 8])
     check("o relatorio continua dizendo o nome do cliente (mascarar demais cega a atendente)",
           com_documento["cliente_nome"] in relatorio)
-    check("...e o valor e o vencimento", "733,13" in relatorio or "733.13" in relatorio,
-          [l for l in relatorio.splitlines() if "733" in l])
+    check("...e o valor e o vencimento", "676,31" in relatorio or "676.31" in relatorio,
+          [l for l in relatorio.splitlines() if "676" in l])
 
     # --- 🔴 O CONTROLE: a NOTA INTERNA continua com o telefone LEGIVEL
     nota = BC._nota_interna_para_a_equipe(com_documento, cfg("equipe"))
@@ -1198,7 +1481,7 @@ def gate_G12():
           legivel in nota and legivel not in relatorio)
 
     # --- e a nota do GRUPO (N parcelas, 1 mensagem) tambem continua com o numero
-    grupo = {"parcelas": [item_do_acervo(1), item_do_acervo(2)]}
+    grupo = {"parcelas": [item_do_acervo(1), item_do_acervo(5)]}
     nota_grupo = BC._nota_interna_do_grupo(grupo, cfg("equipe"))
     check("CONTROLE: a nota do grupo de N parcelas tambem mantem o WhatsApp legivel",
           legivel in nota_grupo, [l for l in nota_grupo.splitlines() if "WhatsApp" in l])
@@ -1212,6 +1495,65 @@ def gate_G12():
 
 
 # ==========================================================================
+# G13 -- SESSAO CAIDA NAO E SENHA RECUSADA (e credencial AUSENTE tambem nao)
+# ==========================================================================
+#
+# 🔴 14/09/2026, lente do dado (A-4). `_MARCAS_DE_CREDENCIAL` tem `"invalid"`, e
+# `"sessao invalida"` casa com ela. O classificador lia as marcas de credencial
+# ANTES das de sessao caida -- entao uma sessao que caiu (estado TRANSITORIO: a
+# proxima execucao faz login e entra) virava `credencial_recusada`, que so fecha
+# por GESTO HUMANO na tela de Conectores. Ou seja: o portal da corretora ficava
+# desligado por tempo indefinido, e a linha do relatorio mandava trocar uma senha
+# que estava certa.
+#
+# A ORDEM e a correcao; a lista continua a mesma.
+
+def gate_G13():
+    print("\n[G13] `veredito_de_saude`: sessao caida != senha recusada != falta cadastrar")
+    from portal_worker import worker as W
+
+    check("as marcas de credencial realmente contem 'invalid' (senao o guarda nao mede nada)",
+          "invalid" in W._MARCAS_DE_CREDENCIAL, W._MARCAS_DE_CREDENCIAL)
+    check("e 'sessao invalida' esta nas marcas de SESSAO CAIDA",
+          "sessao invalida" in W._MARCAS_DE_SESSAO_CAIDA, W._MARCAS_DE_SESSAO_CAIDA)
+    check("🔴 'sessao invalida' num `failed` -> `expirada`, NAO `credencial_recusada`",
+          W.veredito_de_saude("failed", {}, "a sessao invalida foi descartada") == W.SAUDE_EXPIRADA,
+          W.veredito_de_saude("failed", {}, "a sessao invalida foi descartada"))
+    check("🔴 'voltou para o login' num `failed` -> `expirada`",
+          W.veredito_de_saude("failed", {}, "o portal voltou para o login") == W.SAUDE_EXPIRADA,
+          W.veredito_de_saude("failed", {}, "o portal voltou para o login"))
+    check("🔴 'credenciais ausentes' -> `pede_humano` (nao ha senha para trocar)",
+          W.veredito_de_saude("failed", {}, "credenciais ausentes") == W.SAUDE_PEDE_HUMANO,
+          W.veredito_de_saude("failed", {}, "credenciais ausentes"))
+    check("  ... e 'username/password ausentes' tambem",
+          W.veredito_de_saude("failed", {}, "username/password ausentes") == W.SAUDE_PEDE_HUMANO,
+          W.veredito_de_saude("failed", {}, "username/password ausentes"))
+    # 🔴 OS CONTROLES: o que o guarda NAO pode ter quebrado
+    real_mapfre = "a MAPFRE recusou a credencial (autenticacao invalida)"
+    check("CONTROLE: a frase REAL da Mapfre continua `credencial_recusada`",
+          W.veredito_de_saude("failed", {}, real_mapfre) == W.SAUDE_CREDENCIAL_RECUSADA,
+          W.veredito_de_saude("failed", {}, real_mapfre))
+    real_allianz = "credenciais rejeitadas pelo portal Allianz"
+    check("CONTROLE: a frase REAL da Allianz continua `credencial_recusada`",
+          W.veredito_de_saude("failed", {}, real_allianz) == W.SAUDE_CREDENCIAL_RECUSADA,
+          W.veredito_de_saude("failed", {}, real_allianz))
+    check("CONTROLE: `done` continua `ok`, mesmo citando a sessao caida (relogin deu certo)",
+          W.veredito_de_saude("done", {}, "a sessao caiu e eu entrei de novo") == W.SAUDE_OK)
+    check("CONTROLE: `logged_in` vence tudo (o `needs_human` da Zurich e da VARREDURA)",
+          W.veredito_de_saude("needs_human", {"logged_in": True}, "http 200 com ZERO parcelas")
+          == W.SAUDE_OK)
+    check("CONTROLE: excecao transitoria sem tentativas esgotadas continua '' (nao mexe)",
+          W.veredito_de_saude("failed", {"excecao_transitoria": True}, "timeout") == "")
+    check("CONTROLE: 'tela pos-login Allianz nao reconhecida' continua `pede_humano`",
+          W.veredito_de_saude("needs_human", {}, "tela pos-login Allianz nao reconhecida")
+          == W.SAUDE_PEDE_HUMANO,
+          W.veredito_de_saude("needs_human", {}, "tela pos-login Allianz nao reconhecida"))
+    check("🔴 o guarda VE a diferenca: as duas frases dao vereditos DIFERENTES",
+          W.veredito_de_saude("failed", {}, "a sessao invalida foi descartada")
+          != W.veredito_de_saude("failed", {}, real_mapfre))
+
+
+# ==========================================================================
 # AS MUTACOES -- (id, arquivo, de, para, gate)
 # ==========================================================================
 
@@ -1219,7 +1561,7 @@ MUTACOES = [
     ("M1", "app/services/platform_outbound.py",
      '    "billing_cliente",       # o texto ao segurado, quando o modo cliente for ligado\n', "", "G1"),
     ("M2", "app/services/billing_collection.py",
-     '    motivo = ((job or {}).get("evidence") or {}).get("message") or (job or {}).get("error")\n',
+     '    motivo = evidencia.get("message") or (job or {}).get("error")\n',
      '    motivo = (job or {}).get("error")\n', "G2"),
     # 🔴 as DUAS frases: tirar so "acesso negado" deixaria "valide os dados" casar
     #    e o guarda continuaria verde -- mutacao que nao muda comportamento nao mede.
@@ -1242,10 +1584,41 @@ MUTACOES = [
     ("M8", "app/services/billing_collection.py",
      '        cobrado_em = recentes.get(chave_do_segurado)\n',
      "        cobrado_em = None\n", "G8"),
+    # 🔴 M7b desliga a CONSOLIDACAO por recibo: os 4 lancamentos do mesmo boleto
+    #    voltam a ser 4 parcelas, 1 reserva ganha e 3 perdem -> 3 BLOQUEIOS
+    #    FALSOS por execucao, que e o defeito que a lente do dado mediu.
+    ("M7b", "app/services/billing_collection.py",
+     '        grupo["parcelas"] = ordenar_para_entrega(consolidar_por_recibo(grupo["parcelas"]))\n',
+     '        grupo["parcelas"] = ordenar_para_entrega(grupo["parcelas"])\n', "G7"),
+    # 🔴 M7c aceita candidato so-numerico como nome de bem: volta "do seguro do 180".
+    ("M7c", "app/services/billing_collection.py",
+     '        # "180" e "0180" são código de ramo; "Fiat Mobi 2020" tem dígitos e é nome.\n'
+     '        if all((ch.isdigit() or ch in " .,-/") for ch in texto):\n'
+     "            continue\n", "", "G7"),
+    # 🔴 M7d aceita qualquer lixo como documento: dois segurados com "000.000/0"
+    #    no campo viram UM, e a janela de N dias segura a cobranca do segundo.
+    ("M7d", "app/services/billing_collection.py",
+     "    if doc and len(doc) in (11, 14) and len(set(doc)) > 1:\n",
+     "    if doc:\n", "G7"),
+    # 🔴 M7e ignora o `company_id` da execucao na chave do grupo (P7).
+    ("M7e", "app/services/billing_collection.py",
+     '    empresa = (str((item or {}).get("company_id") or "").strip().lower()\n'
+     '               or str(company_id or "").strip().lower())\n',
+     '    empresa = str((item or {}).get("company_id") or "").strip().lower()\n', "G7"),
     # 🔴 M10 abre a varredura mesmo com o breaker aberto ou o canario reprovado.
     ("M10", "app/services/billing_collection.py",
      "            if account is None:\n                continue\n",
      '            if account is None:\n                account = {"id": None}\n', "G10"),
+    # 🔴 M10b volta a DESCARTAR o portal cujo canario nao terminou: e o defeito
+    #    que tirava 5 de 6 portais da varredura com todos os gates verdes.
+    ("M10b", "app/services/billing_collection.py",
+     "        if status not in TERMINAL_JOB_STATUSES:\n",
+     "        if False:\n", "G10"),
+    # 🔴 M10c desliga a dedup do `login_check`: duas execucoes no mesmo minuto
+    #    fazem DOIS logins por portal na seguradora.
+    ("M10c", "app/services/billing_collection.py",
+     "        if job_ja_na_fila:\n",
+     "        if False:\n", "G10"),
     # 🔴 M12 desliga a mascara do relatorio da execucao: o documento e o telefone do
     #    segurado voltam inteiros para `routine_runs.output_full` -- que foi
     #    exatamente como as 7 execucoes de 📊 10 e 11/09 ficaram com CPF em claro.
@@ -1254,10 +1627,25 @@ MUTACOES = [
      '            phone = (_mascarar_telefone(item.get("whatsapp"))\n',
      '            doc = item.get("cpf_cnpj") or "?"\n'
      '            phone = (str(item.get("whatsapp") or "")\n', "G12"),
+    # 🔴 M3b volta a ler a lista de recusa ANTES de contar o dashboard: um toast
+    #    de "acesso negado" sobre a tela LOGADA vira `failed` -> breaker aberto
+    #    ate alguem trocar uma senha que esta certa (P5).
+    ("M3b", "portal_worker/journeys/allianz_corretor.py",
+     "    if hits < 2 and any(item in text for item in _FAIL):\n",
+     "    if any(item in text for item in _FAIL):\n", "G3"),
+    # 🔴 M13 volta a ler as marcas de CREDENCIAL antes das de SESSAO CAIDA: uma
+    #    sessao caida ("sessao invalida" casa com "invalid") vira senha recusada,
+    #    e o breaker fica aberto ate um gesto humano (A-4).
+    ("M13", "portal_worker/worker.py",
+     "    if (str(status) == \"failed\" and not caiu and not falta_cadastrar\n"
+     "            and any(m in texto for m in _MARCAS_DE_CREDENCIAL)):\n",
+     "    if str(status) == \"failed\" and any(m in texto for m in _MARCAS_DE_CREDENCIAL):\n",
+     "G13"),
 ]
 
 GATES = {"G1": gate_G1, "G2": gate_G2, "G3": gate_G3, "G4": gate_G4, "G5": gate_G5,
-         "G6": gate_G6, "G7": gate_G7, "G8": gate_G8, "G10": gate_G10, "G12": gate_G12}
+         "G6": gate_G6, "G7": gate_G7, "G8": gate_G8, "G10": gate_G10, "G12": gate_G12,
+         "G13": gate_G13}
 
 
 def rodar_mutacoes(filtro=None):

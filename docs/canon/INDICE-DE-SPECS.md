@@ -237,11 +237,15 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     (bloco ≤1.400, três camadas, M6-bis); a empresa ATIVA vale em 8 rotas de cobrança + topo + n8n e 15 rotas do FastAPI público exigem chave (📊 2 respondiam 200 ao vivo);
     o ator viaja até o efeito (run/peça/aprovação/mensagem) e a porta do WhatsApp revalida o vínculo. 2 migrations aplicadas. Relatório `reports/SPEC-098-EXECUTION-REPORT.md` ·
     SPEC `specs/SPEC-098-cada-coisa-sabe-de-quem-e.md` · 22 P-098-*. 🔴 Implantar smith-web ANTES de smith-api.
-▶   SPEC-EXTRA-001 · A operação dos pilotos — EM EXECUÇÃO desde 07/09/2026 (CRÍTICO, opção B, chat novo; D-E001-01…10): a cobrança chega a
+✅   SPEC-EXTRA-001 · A operação dos pilotos — CONCLUÍDA COM RESSALVAS em 07/09/2026 (`main` ba7ba75; canário vivo pendente do Implantar) (CRÍTICO, opção B, chat novo; D-E001-01…10): a cobrança chega a
     quem deve (modos `equipe` e `cliente` com motor, texto limpo + PDF, reserva antes do efeito, identidade da parcela por corretora+seguradora+recibo),
     a resposta do cliente chega ao atendimento com o caso certo e fica registrada mesmo com o agente desligado, toda falha vira pendência visível;
     modo teste de 17/08, observador, QR e sessões NÃO mudam. Canário só TESTE-A → TESTE-B. SPEC `specs/SPEC-EXTRA-001-operacao-dos-pilotos.md` ·
     relatório `reports/SPEC-EXTRA-001-EXECUTION-REPORT.md` · proposta e research pack em `specs-propostas/` (sanitizados).
+▶   SPEC-EXTRA-001.6 · A cobrança prova que funciona — EM EXECUÇÃO 13–14/09/2026 (CRÍTICO, laço curto D-PILOTO-20, primeira da
+    família EXTRA-001.x; diagnóstico dos pilotos §9 e §13.7): P0 na main (`94862ea`), B1–B4 na branch, migrations 01 e 03 aplicadas.
+    Proposta = SPEC (`specs-propostas/SPEC-EXTRA-001.6-a-cobranca-prova-que-funciona.md`) · relatório `reports/SPEC-EXTRA-001.6-EXECUTION-REPORT.md`.
+    Ordem seguinte (D-PILOTO-20 / diagnóstico §13.7): 001.1 → 001.2 → 001.3 → 001.4 → 001.7 → 001.10 → 001.5 → 001.0 → (001.8, 001.9).
     Depois dela, na ordem decidida pelo Founder (D-E001-09): EXTRA-002 · investigação Agger (proposta a escrever em chat novo) → 099 · canais
     após os pilotos (reconciliada com a 069) → EXTRA-003 renovação → EXTRA-004 cotação pelo chat → EXTRA-005 reativação → EXTRA-006 cross-sell →
     EXTRA-007 site de captação → EXTRA-008 Quiver → EXTRA-009 Segfy → EXTRA-010 assistente de e-mail.

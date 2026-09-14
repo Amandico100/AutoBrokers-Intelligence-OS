@@ -217,9 +217,26 @@ MUTACOES = [
      "M8"),
     # ---- G09 · falha de leitura/reserva NAO libera envio --------------------
     ("app/services/billing_collection.py",
-     "def _obrigacoes_reais(",
-     "def _obrigacoes_reais(*a, **k):  # _MUTADO_E001_M9\n"
-     "    return {}\n\n\ndef _obrigacoes_reais_original(",
+     # 🔴 14/09/2026 (EXTRA-001.6): a ancora passou a ser o leitor da JANELA, e o
+     #    stub cobre os DOIS leitores. Desde o B1.3 a rotina le `_obrigacoes_reais`
+     #    (passo 2) E `_segurados_cobrados_recentemente` (passo 2.b); com so o
+     #    primeiro stubado, o segundo continuava LEVANTANDO sobre o banco caido, a
+     #    rotina parava do mesmo jeito e M9 ficava VERDE -- um carimbo (CLAUDE.md
+     #    §9.3). Stubar os dois e exatamente o R04 nos dois leitores. O stub de
+     #    `_obrigacoes_reais` fica DEPOIS da definicao original no arquivo, entao
+     #    e ele que vence.
+     "def _segurados_cobrados_recentemente(",
+     "def _segurados_cobrados_recentemente(*a, **k):  # _MUTADO_E001_M9
+"
+     "    return {}
+
+
+def _obrigacoes_reais(*a, **k):  # _MUTADO_E001_M9
+"
+     "    return {}
+
+
+def _segurados_cobrados_recentemente_original(",
      "M9"),
     # ---- G10 · `incerto` nunca e reclamado ----------------------------------
     ("app/services/billing_collection.py",

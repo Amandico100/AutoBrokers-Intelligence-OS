@@ -344,6 +344,17 @@ async def _execute_routine(supabase, routine: Dict[str, Any], *,
         # ACONTECEU — varreu portal, baixou boleto, montou a fila — e só o
         # WhatsApp não saiu. Guardar o texto só no caminho feliz apagaria o
         # resultado do trabalho por causa do último passo dele.
+        # 🔴 AS DUAS COLUNAS SAEM DO MESMO TEXTO — e é isso que faz a máscara
+        #    valer para as duas. SPEC-EXTRA-001.6 (achado A-1): a migration
+        #    `20260914_03` limpou `output_full` e não olhou o preview; a tela lê
+        #    `completo || output_preview` (`app/dashboard/entregas/rotina/
+        #    [runId]/page.tsx:140`), então 4 execuções continuaram mostrando
+        #    CPF/CNPJ em claro. A limpeza histórica é a `20260914_04`; o que
+        #    impede a REINFECÇÃO é que `output` já chega mascarado da fonte
+        #    (`billing_collection._format_report` → `_mascarar_documento` /
+        #    `_mascarar_telefone`, guarda G12 com a mutação M12).
+        # ⛔ Não existe um segundo escritor do preview: uma linha, uma fonte.
+        #    Quem acrescentar outra rota de escrita aqui reabre o vazamento.
         output_full = output
         output_preview = output[:500]
         delivered, detail = await _deliver(routine, output)

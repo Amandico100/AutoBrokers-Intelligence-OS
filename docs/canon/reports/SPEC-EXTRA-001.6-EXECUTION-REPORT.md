@@ -95,7 +95,7 @@ BLOCKER (o que é) ....  muda um byte do que a ATENDENTE lê, do que o SEGURADO 
 | 4 | o texto real vira mais de um balão | motor: `build_customer_message` + `_nota_interna_para_a_equipe` + `_format_test_message` → `split_whatsapp_balloons` vs `_fatiar_documento` (item 💭 ilustrativo, `attendant_name=''` e `'Saionara'`) | texto **332–336 ch → 2** · nota **321 → 2** · teste **520–524 → 3** · com `_fatiar_documento` → **1, 1, 1** · com `attendant_name=''` a linha 2 é literalmente *"Aqui é a nossa equipe, da Resulta, tudo bem?"* | 331/322/517 → 2/2/3 | ✅ (±5 ch pelo item ilustrativo) |
 | 5 | `error` é sempre nulo nos jobs | `select count(*) filter (where error is null), count(*) from portal_jobs` | **124/129** — os 5 não-nulos são `vidros_lanternas.abrir_atendimento` de 06–10/07 (worker caído, Playwright sem binário); **100% nulo em todo job de cobrança e login** | 100% | ⚠️ **DIVERGE no número, não na conclusão**: para o relatório da cobrança, `error` continua sendo sempre NULL |
 | 6 | o motivo existe em `evidence.message` | `select distinct portal_key,status,evidence->>'message' from portal_jobs where status in ('failed','needs_human') and finished_at>='2026-09-01'` | Allianz `needs_human` *"tela pos-login Allianz nao reconhecida"* (2) · Mapfre `failed` *"a MAPFRE recusou a credencial (autenticacao invalida)"* (2) · Zurich `needs_human` *"200 com ZERO parcelas em 45/90 dias, duas vezes seguidas — NAO afirmo que ela esta em dia"* (2) | idem | ✅ |
-| 7 | a sessão nunca vence | `select portal_key,health,verified_at from portal_sessions order by verified_at` | **8 linhas, 8 `ok`**; Resulta: Allianz `verified_at` **17/08** (27 dias), HDI/Tokio/Yelum 11/09; Zurich **14/08**; e 3 linhas de 12/08 de outra empresa (a técnica) | 8 `ok`, Allianz 17/08, Zurich 14/08 | ✅ |
+| 7 | a sessão nunca vence | `select portal_key,health,verified_at,left(company_id::text,8) from portal_sessions order by verified_at` | **8 linhas, 8 `ok`**. Resulta (`04b5cdbc`): Allianz `verified_at` **17/08** (27 dias), HDI/Tokio/Yelum 11/09 — **sem linha de Zurich nem de Mapfre**. A outra empresa (`6c9c55e2`, a técnica): Allianz/HDI/Tokio 12/08 e **Zurich 14/08**. ⚠️ A primeira versão desta linha atribuiu a Zurich de 14/08 à Resulta; a lente do dado (§5, A-3) corrigiu | 8 `ok`, Allianz 17/08, Zurich 14/08 | ✅ com a correção da dona da sessão |
 | 8 | `portal_accounts.health` não tem escritor | `select health,count(*) from portal_accounts group by 1` | **16 de 16 = `unknown`** (8 portais × 2 empresas) | 16/16 | ✅ |
 | 9 | `available_at` nunca escrito | `select count(*) from portal_jobs where available_at is not null` | **0** | 0 | ✅ |
 | 10 | `attempts` nunca lido | `select max(attempts) from portal_jobs` + `worker.py:1001` (lê `available_at`) e `:1017` (`attempts+1`) | **1**; linhas exatas | 1 | ✅ |
@@ -311,3 +311,49 @@ canário Q7–Q10 (orquestrador): py_compile ok; nenhum guarda cita o canário
 | **ROLLBACK** | não existe, por construção (escrito antes do APPLY); o que o substitui é o `md5`/`length` de antes, colado acima |
 | **Aplicada em produção** | sim · 14/09/2026 · versão `spec_extra0016_redigir_output_full` |
 | **MANIFEST atualizado** | sim |
+
+---
+
+## 5. O PAINEL DO LAÇO CURTO — juiz fresco + lente do dado (14/09/2026, sobre `61073ff`)
+
+Dois agentes Opus 5 em contexto limpo, cegos entre si, read-only: o **juiz fresco** (proposta + diff + guardas rodados + `--mutar` + as três perguntas adversariais fixas do Founder) e a **lente do dado** (reconstrução das 15 premissas, das duas migrations e do número central do B1 sobre o acervo real, por SELECT).
+
+### 5.1 Juiz fresco — **FAIL · 79/100** (📊 309k tokens · 15 min)
+
+Amostra §0.4 reproduzida 3/3 (177 · 172 · `--mutar` 10+8 vermelhas; ledger 0, assinaturas 12+13, índice parcial, `pii_restante=0`). Vizinhos rerodados com os números do relatório.
+
+| # | [B/P] | achado (arquivo:linha) | TESTE DO PRODUTO | conserto (rodada 1) |
+|---|---|---|---|---|
+| 1 | **B** | `_canario_de_login`: teto de 120 s × fila real do worker de **144 s em média, 511 s máx.** (📊 `avg(started_at-created_at)` em `portal_jobs`); worker serial por padrão (`PORTAL_WORKER_CONCURRENCY` 1, poll 30 s) → o `login_check` estoura o teto, `contas.pop(portal)` e **5 de 6 portais deixam de ser varridos** | SIM — a atendente deixa de receber a cobrança de 5 portais | teto 600 s (clamp 60–900) **e** no timeout o portal é varrido assim mesmo com blocker (ausência de veredito ≠ veredito ruim); descarte só com `failed`/credencial |
+| 2 | **B** | canário: Q1, Q2a/b, Q3 e Q5 compartilham `segurado_chave` (`nome:cliente canario`) → a janela de 7 dias retém o Q5 ANTES da porta: a prova da allowlist ficaria vermelha por motivo falso; Q2a/Q3 verdes pelo motivo errado (§9.3) | SIM (segurança: Q5 é a única prova viva da allowlist) | identidade própria por Q (nome distinto; Q2/Q3 mantêm o recibo do Q1 para medirem a RESERVA) |
+| 3 | P | Q10 verde em qualquer cenário (`all([])` é True; 0 portais aprovados passa) | não (instrumento) | exigir ≥1 portal `ok` e aprovados+blockers = 4 |
+| 4 | P | `BILLING_LOGIN_CHECK_TETO_S` não declarada em documento nenhum | não | §15.2 abaixo + docstring |
+| 5 | P | Allianz: `_FAIL` avaliado ANTES dos `_DASHBOARD_SIGNALS`; um dashboard logado com "acesso negado" num toast viraria `credencial_recusada` (breaker aberto, Founder mandado trocar senha certa); não há print real de dashboard da Allianz para controle | não (não medido que ocorra) | `failed` só com `hits < 2` |
+| 6 | P | `segurado_chave` aceita documento de qualquer comprimento ("000.000/0" → `doc:0000000`; placeholder funde segurados) | não (acervo só tem 14 dígitos) | 11 ou 14 dígitos, não todos iguais; senão cai no nome |
+| 7 | P | a proteção multi-tenant de `chave_do_grupo` é vazia no caminho real (os itens de `_extract_items` não carregam `company_id`; o G7 injeta à mão) | não (a execução é de uma corretora) | `agrupar_por_segurado(items, company_id=...)` |
+| 8 | P | o prólogo dobra os jobs por execução e duas execuções no mesmo minuto enfileiram 2 `login_check` por portal (bater duas vezes é o que bloqueia conta) | não hoje | dedup na fila: reusar `login_check` `queued`/`running` dos últimos 30 min |
+| 9 | P | a limpeza do canário não apaga os `portal_jobs` do Q10 | não | apagar por `params->>routine_id` da rotina sintética |
+| 10 | P | a fila de telas da Central agrega sem `company_id` e a amostra pode trazer a razão social (rota `require_master_admin`: não é travessia) | não | `P-E0016-AMOSTRA-PODE-TRAZER-RAZAO-SOCIAL` (🧑) |
+
+**As três perguntas adversariais (respostas do juiz, com prova):** (1) **dado vazio/nulo** — `attendant_name="   "` retém; `evidence`/`error` NULL → "sem motivo registrado"; `verified_at` NULL → não injeta; `updated_at` NULL com `fora_do_ar` → tenta uma vez; `portal_keys []` → os 6 default; itens `[]` → `[]`; `evidence` sem `tela` → `([], "")`; o que quebra: dois itens sem doc, sem nome e sem recibo viram um grupo `recibo:` — no caminho real caem nas pré-condições. (2) **duas corretoras** — `_segurados_cobrados_recentemente` e `_escrever_saude` filtram `company_id` no CÓDIGO; `portal_sessions` UNIQUE `(company_id, portal_key, account_label)`; `telas_novas_do_dia` filtra; só a Central agrega (master-admin). (3) **a mesma mensagem duas vezes** — reserva por parcela intacta (RPC com `ON CONFLICT … WHERE send_mode='real'`); perder a reserva tira só a parcela; o requeue do worker limpa as chaves de tentativa e retorna antes de `_escrever_saude`; o que fica em aberto é o achado 8.
+
+### 5.2 Lente do dado — **PASS COM PENDÊNCIAS · 76/100** (📊 229k tokens · 20 min)
+
+15 premissas + 2 migrations reconstruídas por SELECT: **14 batem**; a premissa 7 tinha a dona da sessão errada (A-3, corrigida acima). A migration 01: diff 12 × 13 args com **exatamente 3 diferenças** (parâmetro, coluna, valor), 2245 → 2359 chars (+114), `unique_violation`/`colisao_recibo`/`ON CONFLICT`/`search_path` nas duas. A migration 03: 1189→1140, 1625→1519, 1005→956, 729→680; 6 mascaradas; 0 com dígito; 7 com rótulo; 7 "sem telefone". O classificador de saúde sobre os 12 jobs reais: 12/12 como o esperado. As 6 telas: 6 hashes distintos, zero PII sobrevivente.
+
+| # | [B/P] | achado | TESTE DO PRODUTO | conserto (rodada 1) |
+|---|---|---|---|---|
+| A-1 | **B** | 📊 **`routine_runs.output_preview`** (= `output[:500]`, `routine_engine.py:348`) ainda tem `CPF/CNPJ <dígitos>`/telefone em **5 execuções**; em 4 delas `output_full` é NULL e a tela (`entregas/rotina/[runId]/page.tsx:140`: `completo || output_preview`) mostra o preview → PII em claro na tela HOJE. A migration 03 filtrou por `output_full` e nunca olhou a coluna irmã. Varredura de 1.202 colunas texto/jsonb: nenhuma outra tabela de relatório/peça tem o texto | SIM (quem pode LER) | migration `20260914_04` sobre `output_preview`, ids fixados (5) |
+| A-2 | **B** | 📊 as "4 parcelas do mesmo CNPJ" da Tokio são **4 linhas com o MESMO recibo, mesma apólice, parcela "1", mesmo vencimento e UM boleto consolidado** (`valor_original` = soma). `_boletos_by_recibo` devolve 1 chave; o laço por grupos reserva 1 e produz **3 bloqueios falsos** ("reservadas e sem desfecho") por execução para a atendente ler; o corpus anonimizado inventou 4 recibos e o dublê `BancoLeve.rpc` não modela o índice único | SIM (o que a atendente lê, toda semana) | `consolidar_por_recibo` dentro do grupo antes de reservar; corpus com a forma real 📊 + um caso 💭 de N recibos; dublê fiel ao índice; G7 refeito |
+| A-3 | P | premissa 7 com a dona da sessão errada | não | corrigida no §1 |
+| A-4 | P | `veredito_de_saude`: `'invalid'` em `_MARCAS_DE_CREDENCIAL` captura "sessao invalida" → `credencial_recusada` (breaker aberto até gesto humano) | não (nenhuma journey escreve a frase hoje) | sessão caída avaliada antes da credencial; "ausente" → `pede_humano` |
+| A-5 | P | o plural decide por `len(parcelas)`, não por números distintos ("as parcelas 1") | não hoje (A-2 derruba antes) | plural por recibos distintos depois da consolidação; números iguais ganham o sufixo da apólice |
+| A-6 | P | docstring de `telas_desconhecidas` afirma "nenhum identificador de corretora na saída" — a amostra traz razão social em 4 de 6 telas reais | não (texto) | docstring corrigida |
+| A-7 | P | **"do seguro do 180"**: `_insured_item_name` cai no código de ramo da Tokio (📊 5 itens reais); e o default rende "do seguro do seguro" — pré-existente, mas a premissa 4 mediu o texto sobre um item 💭 e não o viu | não (pré-existente, caminho intocado) | candidato numérico não serve; sem nome de item, o template padrão rende "do seguro" |
+| "não vi" 1 | P | `_segurados_cobrados_recentemente` lê o ledger sem corte de data no SQL (teto de linhas do PostgREST deixaria de ver as recentes em silêncio) | não hoje (0 linhas) | `.gte("updated_at", corte)` |
+| "não vi" 2 | risco | **`login_check` nunca rodou em produção** (📊 129 jobs, 100% `cobranca_sweep`) — o prólogo é o maior risco do Implantar | — | canário Q10 depois da Implantação 2 |
+
+**A conta que a lente fez para a 1ª execução real em `equipe`** (com o nome e o `team_number` preenchidos; ledger vazio): 4 grupos (Tokio ×2, Yelum, HDI por NOME) → 4 notas + 4 textos + 4 PDFs + 4 reservas = 12 linhas em `platform_sends`; **2ª execução no dia seguinte: 4 grupos retidos pela janela, 0 mensagens** — três retenções "por CPF/CNPJ", uma "por NOME … libere pela tela". Com o config de hoje (sem `team_number`): **zero**, retido com motivo.
+
+### 5.3 O conserto — rodada 1 (Builder D, Opus 5)
+Os 4 blockers (juiz 1–2, lente A-1–A-2) + as 13 pendências baratas acima, numa rodada. Resultado em §5.4.

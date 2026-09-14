@@ -183,9 +183,13 @@ fonte = (ROOT / "app" / "services" / "billing_collection.py").read_text(encoding
 # mensagem, N boletos), e `agrupar_por_segurado` ordena cada grupo e os grupos
 # entre si pela mesma `ordenar_para_entrega`. 📊 O acervo de 10-11/09 tinha 4
 # parcelas do mesmo CNPJ virando 4 abordagens a mesma pessoa.
+# 🔴 14/09/2026 (P7): a ancora ganhou o `company_id` da EXECUCAO. 📊 O worker
+# devolve `evidence.inadimplentes` SEM `company_id` em 100% dos jobs, entao a
+# clausula de tenant da chave do grupo so existia no guarda, nunca no caminho
+# real (CLAUDE.md §7). O que este guarda afirma NAO mudou.
 check("o envio NAO fatia mais a lista por max_boletos_por_execucao",
       "items[: int(cfg[\"max_boletos_por_execucao\"])]" not in fonte
-      and "a_enviar = agrupar_por_segurado(items)" in fonte)
+      and "a_enviar = agrupar_por_segurado(items, company_id)" in fonte)
 check("portal sem automacao vira aviso no relatorio, nao `continue` mudo",
       "ainda NAO tem automacao de cobranca" in fonte)
 

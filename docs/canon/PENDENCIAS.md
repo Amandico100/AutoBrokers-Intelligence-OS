@@ -9211,6 +9211,8 @@ linha. É o mesmo formato da P-251.
 
 ---
 
+> 🔁 **CONTINUA, re-justificada (EXTRA-001.6, 14/09/2026):** o PORTAL passou a ter fila de telas desconhecidas COM leitor — uma CONSULTA sobre `portal_jobs.evidence->'tela'` agrupada por hash (`central_de_agentes.telas_desconhecidas`, `:686`) lida pelo card "Portais das seguradoras" da Central e por uma linha no relatório da rotina. A `tela_cega` da URA continua sem leitor (📊 2 linhas, zero leitores em 14/09). **O que destrava:** a 001.4 copia o modelo (ver `P-E0016-TELA-CEGA-DA-URA-SEM-LEITOR`).
+
 ## P-265 · O contador da fila é read-modify-write
 
 **Aberta em:** 26/08/2026 · **Dono:** 🤖 execução · **SPEC-087 BLOCO A**
@@ -10453,6 +10455,8 @@ Juiz fresco (06/09): dois escritores concorrentes na mesma jsonb → last-write-
 ## P-E001-LEDGER-SEM-VENCIMENTO-E-VALOR · `billing_sent_log` não guarda vencimento nem valor da parcela
 U2 (07/09): o bloco `[COBRANÇA EM ANDAMENTO]` diz seguradora, parcela/recibo, data do envio e estado — não diz "vence em dd/mm, R$ X", que é o que o cliente pergunta. **Destrava:** duas colunas aditivas (`vencimento date`, `valor numeric`) numa migration nova + gravá-las na reserva (`billing_reservar_obrigacao`). **Dono:** 🤖. **Custo de esquecer:** o agente responde "a parcela 2/6 da Porto" sem conseguir dizer o valor.
 
+> 🔁 **CONTINUA (EXTRA-001.6, 14/09/2026):** a migration `20260914_01` foi a oportunidade e o builder B1 NÃO acrescentou as colunas (o pacote mandou não). Recomendação registrada dele: acrescentar `vencimento date` e `valor numeric` na PRÓXIMA migration do ledger (nota 80), gravando-as na reserva — a tabela continua com 0 linhas, sem backfill.
+
 ## P-E001-LEGADO-ENTREGUE-NAO-CONTESTA · `status='entregue'` (default das linhas antigas) não vira `contestado`
 U2 seguiu o CONTRATOS à letra: `ja_paguei`/`duvida` só mudam o status a partir dos estados novos. 📊 07/09: 0 linhas legadas em produção, então hoje é inócuo. **Destrava:** decidir se `entregue` entra na lista, ou backfill do legado quando existir. **Dono:** 🤖. **Custo de esquecer:** um "já paguei" numa linha antiga grava o retorno e não aparece na lista de Pendências pelo estado.
 
@@ -10465,8 +10469,12 @@ U2 seguiu o CONTRATOS à letra: `ja_paguei`/`duvida` só mudam o status a partir
 ## P-E001-FILA-SEM-AUTORIZACAO-DE-AUXILIAR · a entrada da fila Redis não carrega `autorizacao_de_auxiliar` nem `destino_interno`
 U1 seguiu o CONTRATOS §3 (a entrada carrega `integration_id`, `documento`, `ledger_ref`, `canario`). Hoje inócuo: a cobrança usa `enfileirar=False` e nada dela entra na fila. **Destrava:** carregar as duas chaves quando um chamador futuro usar auxiliar COM fila. **Dono:** 🤖 (099). **Custo de esquecer:** replay recusado por `conexao_trocada`/`agente_desligado` para um chamador que ainda não existe.
 
+> 🔁 **CONTINUA (EXTRA-001.6, 14/09/2026):** é a evidência que fez a decisão "documento inteiro" viajar por `kind` (`MENSAGENS_QUE_SAO_DOCUMENTO`) e não por parâmetro — um parâmetro se perderia no replay pela fila e a mensagem voltaria a sair picotada.
+
 ## P-E001-INCERTO-ESCRITA-DUPLA · `incerto` depende de uma segunda escrita que pode falhar pelo mesmo motivo
 Desenhista (07/09): quando o UPDATE pós-envio falha, o motor tenta gravar `incerto`; se a segunda escrita também falhar, a linha fica `reservado` — que também nunca é reclamada e aparece como "reserva órfã" no relatório (G19). O relatório diz INCERTA. **Destrava:** o relatório/tela tratarem `reservado` envelhecido (> 1 h) como "incerto — conferir". **Dono:** 🤖. **Custo de esquecer:** a tela mostra "reservado" onde a verdade é "não sei se saiu".
+
+> 🔁 **CONTINUA (EXTRA-001.6, 14/09/2026):** não tocada; o laço por GRUPOS mantém a marcação `incerto` por parcela como estava.
 
 ## P-E001-AGENT-ACTIVITIES-FORA-DA-FIXTURE · `agent_activities` não está em `schema_vivo.json`
 O dublê aceita qualquer coluna nela. 📊 07/09: a tabela existe, `category` não tem CHECK (`auxiliares` já está fora da tupla `CATEGORIES` de `activity_log.py`). **Destrava:** incluir na fixture; `CATEGORIES` virar validação ou sumir. **Dono:** 🤖. **Custo de esquecer:** um insert em coluna errada passa no guarda.
@@ -10477,8 +10485,12 @@ A porta revalida `company_id` na conexão fixada (G12), mas os outros chamadores
 ## P-E001-CANARIO-VIVO-NO-IMPLANTADO · o canário vivo (Q1–Q6) só roda dentro do smith-api implantado
 📊 07/09: sem Redis o governador recusa mensagem fria (falha fechada, correto); localmente não há Redis. A rota admin `POST /api/admin/canario/extra001` (chave interna) existe para isso e exige `BILLING_CANARIO_ALLOWLIST` e `CANARIO_TESTE_B` no ambiente do contêiner. **Destrava:** 🧑 Implantar + as duas variáveis no smith-api; depois 🤖 chama a rota e cola o resultado no relatório §6. **Dono:** 🧑/🤖. **Custo de esquecer:** G25 (23505 real) e Q1–Q6 ficam "não comprovados ao vivo".
 
+> 🔁 **CONTINUA (EXTRA-001.6, 14/09/2026):** o canário ganhou Q7–Q10 (`canario_extra001.py`; `POST /api/admin/canario/extra001?portais=1` para o Q10). Roda depois da **Implantação 2** (smith-api + portal-worker com `6f1249f`/`61073ff`); o resultado Q1–Q10 vai colado em §6.3 do relatório da 001.6 e ESTA pendência fecha junto com `P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY` e `P-PILOTO-11`. **Custa se esquecer:** G25 (23505 real), Q1–Q6 e o agrupamento por segurado (Q7) ficam "não comprovados ao vivo".
+
 ## P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY · a resposta REAL de TESTE-B pelo webhook só é medível depois do Implantar
 O código do hook ainda não está no ar. **Destrava:** depois do deploy, `POST …/extra001?esperar_retorno_s=180` e o Founder responde de TESTE-B. **Dono:** 🧑/🤖. **Custo de esquecer:** G24 fica provado só com o endpoint dublado.
+
+> 🔁 **CONTINUA (EXTRA-001.6, 14/09/2026):** mesma corrida do canário acima, com `?esperar_retorno_s=180` e o Founder respondendo de TESTE-B.
 
 ## P-E001-AGENTE-DA-RESULTA-PARA-RESPOSTA-VIVA · a resposta automática ao vivo exige ligar o agente de atendimento da Resulta
 Decisão do Founder (caixa). A allowlist de inbound em produção contém só TESTE-B, o que confina quem é respondido. **Dono:** 🧑. **Custo de esquecer:** o roteiro 4.4 das atendentes fica "não testado".
@@ -10531,6 +10543,8 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 ## P-PILOTO-11 · canário Q1–Q6 da cobrança no implantado
 📊 08/09: `BILLING_CANARIO_ALLOWLIST` e `CANARIO_TESTE_B` já estão no smith-api. Falta rodar `POST /api/admin/canario/extra001` (chave interna) e colar Q1–Q6 em §6.3 do relatório da EXTRA-001; fecha `P-E001-CANARIO-VIVO-NO-IMPLANTADO`. **Dono:** 🤖, antes do dia da Saionara.
 
+> 🔁 **CONTINUA (EXTRA-001.6, 14/09/2026):** as variáveis estão no smith-api desde 08/09; a corrida acontece depois da Implantação 2 da 001.6 (o código do canário Q7–Q10 só existe a partir de `61073ff`).
+
 ## P-PILOTO-12 · a régua de linguagem humana não roda nos dossiês
 📊 `problemas_de_lingua` aplicada só às cartas e à novidade ao cliente (`test_o_caso_se_explica_sozinho.py:1268,1275,1928`). U2 (08/09) cobre `build_handoff_dossier`; falta `_montar_dossie`. **Dono:** 🤖.
 
@@ -10557,3 +10571,63 @@ O resolver escolhe certo hoje; o financeiro que o corretor pediu depende de a co
 
 ## P-PILOTO-20 · 4 guardas antigos de policy quebram no harness por `nodes.py` importar `honestidade_do_handoff` (desde 23/08)
 `test_infocap_policy_output_guard`, `test_spec016_*`: o stub de `app.agents` com `__path__=[]` não acha o módulo. Pré-existente, não é regressão de 10/09. **Destrava:** o harness registra o módulo no stub. **Dono:** 🤖.
+
+---
+
+# SPEC-EXTRA-001.6 · A cobrança prova que funciona (14/09/2026)
+
+> As pendências desta SPEC. As três que ela fecha (`P-E001-CANARIO-VIVO-NO-IMPLANTADO`, `P-E001-Q4-VIVO-DEPENDE-DE-DEPLOY`, `P-PILOTO-11`) só se movem para `PENDENCIAS-FECHADAS.md` quando o canário Q1–Q10 rodar no implantado.
+
+## P-E0016-SENHAS-ALLIANZ-MAPFRE · as senhas novas chegam em 15/09; até lá os dois portais ficam `credencial_recusada`
+📊 13/09: Allianz recusada desde 18/08 (34 `needs_human`), Mapfre nunca entrou (2 `failed`). Com o P0, a Allianz passa a dizer `failed`/"credenciais rejeitadas" e o worker grava `health='credencial_recusada'`; o prólogo da rotina NÃO tenta de novo até alguém salvar a senha nova (que grava `unknown` = meio-aberto). **Destrava:** 🧑 salvar as senhas novas em Personalização > Conectores > Portais → 🤖 rodar `POST /api/admin/canario/extra001?portais=1` e colar o veredito dos 6 portais no relatório §6.3. **Dono:** 🧑 → 🤖. **Custa se esquecer:** metade dos inadimplentes (Allianz + Mapfre) nunca entra na cobrança, e a tela mostra ⛔ para sempre.
+
+## P-E0016-RESERVA-12-ARGS · a sobrecarga de 12 argumentos de `billing_reservar_obrigacao` fica viva até a Implantação 2 provar que ninguém a chama
+📊 14/09: `billing_reservar_obrigacao` existe com 12 e com 13 argumentos (VERIFY V3); o código na `main` chama a de 13. **Destrava:** depois da Implantação 2, `select calls from pg_stat_user_functions where funcname='billing_reservar_obrigacao'` por assinatura + `grep -rn "p_canario\": " backend/` → migration `20260914_02` derrubando a de 12 (`drop function if exists … (uuid,text,text,text,text,text,text,text,uuid,uuid,uuid,boolean)`). **Dono:** 🤖. **Custa se esquecer:** um `git revert` do código voltaria a chamar a de 12 e gravaria linhas sem `segurado_chave` — a janela de 7 dias deixaria de ver essas cobranças.
+
+## P-E0016-NOME-DA-ATENDENTE · o campo "Quem assina a mensagem" existe e está VAZIO na rotina da Resulta
+📊 13/09: `config->>'attendant_name'` não existia; sem ele os modos `equipe`/`cliente` ficam RETIDOS (P0.4). **Destrava:** 🧑 preencher na tela do Auxiliar (depois do Implantar do smith-web). **Dono:** 🧑. **Custa se esquecer:** a rotina reativada não envia nada e o relatório diz por quê — nenhum dano, zero cobrança.
+
+## P-E0016-GOVERNADOR-POR-APROXIMACAO · um grupo de N boletos passa N+1 vezes pelo governador
+Builder B1 (D1): "UMA passagem pelo governador por grupo" exigiria um kwarg novo em `send_to_client_guarded` (`platform_outbound`, fora da lista do B1). Hoje: nota + texto/PDF₁ + (N−1) PDFs = N+1 passagens (antes eram 2N). Em `equipe` (`destino_interno`) o espaçamento é 25–55 s; em `cliente` seria 4–8 min entre o texto e os PDFs extras. **Destrava:** kwarg `mesma_aproximacao=True` na porta, que reusa o slot do governador para o mesmo destino na mesma chamada. **Dono:** 🤖 (dono de `platform_outbound`, antes de ligar o modo `cliente`). **Custa se esquecer:** no modo `cliente`, o segurado recebe "seguem os boletos" e o 2º PDF chega 4–8 min depois.
+
+## P-E0016-ALLIANZ-POR-PAPEL · a Allianz continua a journey mais frágil (📊 38 seletores por atributo × 5 por papel, 0 API)
+Não foi a fragilidade que a derrubou (foi a senha, P-E0016-SENHAS-ALLIANZ-MAPFRE), então esta SPEC não a tocou (proposta §2.2, E2). **Destrava:** depois da senha nova, se o `login_check` diário mostrar quebra de seletor, reescrever por `getByRole`/`getByLabel`. **Dono:** 🤖. **Custa se esquecer:** a próxima mudança de tela da Allianz derruba a cobrança dela de novo — mas agora a Central mostra o motivo no mesmo dia.
+
+## P-E0016-TELA-CEGA-DA-URA-SEM-LEITOR · o leitor de telas desconhecidas nasceu para o PORTAL; a `tela_cega` da URA continua sem (P-264 CONTINUA)
+📊 14/09: `tela_cega` = 2 linhas, zero leitores fora do escritor. O B4 fez a fila de portal como CONSULTA com leitor (card da Central + linha no relatório). **Destrava:** a 001.4 copia o modelo para a URA (consulta agrupada por hash + card + linha no resumo das 19h). **Dono:** 🤖 (EXTRA-001.4). **Custa se esquecer:** telas de URA que o corredor não reconhece continuam sendo descobertas por quem abre o banco.
+
+## P-E0016-GRUPO-COM-DUAS-SEGURADORAS · o mesmo segurado em duas seguradoras recebe DUAS mensagens (uma por semana)
+Por desenho (B1.2): `chave_do_grupo` inclui o portal porque o texto nomeia UMA seguradora; a janela de 7 dias faz a segunda esperar. **Destrava:** 🧑 decidir se quer 1 mensagem para N seguradoras — exige copy nova aprovada. **Dono:** 🧑. **Custa se esquecer:** nada hoje; é o comportamento acordado (D-PILOTO-18).
+
+## P-E0016-COPY-DO-PLURAL · a mensagem com N boletos usa uma copy 💭 proposta, não aprovada
+Proposta §6 B1.5: "as parcelas 2/6, 3/6 e 4/6 … gerou novos boletos … Seguem os boletos abaixo"; N=1 continua byte a byte igual ao template do Founder (11/07). **Destrava:** 🧑 ler a mensagem que TESTE-B recebeu no Q7 e aprovar ou emendar (a emenda é uma constante, `_PLURAL_DO_PADRAO`). **Dono:** 🧑. **Custa se esquecer:** a atendente repassa um plural que o Founder não leu.
+
+## P-E0016-ZURICH-GUARDA-VERMELHO-NA-BASE · `test_zurich_cobranca.py:123` falha com `IndexError` desde antes desta SPEC
+📊 14/09: mesma falha no worktree limpo `de79a13` (`atrasados[0]` numa lista vazia — provavelmente o fixture depende da data). **Destrava:** ler o fixture e fixar a data. **Dono:** 🤖. **Custa se esquecer:** a Zurich é o único portal de cobrança sem guarda verde.
+
+## P-E0016-VIGIA-NAO-VIGIA-COBRANCA · `vigia_do_portal` só olha `vidros_lanternas`
+Builder B (fora do escopo): jobs de cobrança/login que voltam à fila com `available_at` no futuro não têm vigia; se um dia ele passar a olhar todos os portais, um job em backoff parecerá "parado" e virará alarme falso. **Destrava:** ao ampliar o vigia, respeitar `available_at`. **Dono:** 🤖. **Custa se esquecer:** alarme falso no dia em que o vigia crescer.
+
+## P-E0016-COMMENT-DE-HEALTH-VENCIDO · o COMMENT de `portal_sessions.health` (migration `20260706_03:21`) diz `unknown|ok|needs_human|failed`
+O vocabulário real desde 14/09 é `ok · expirada · credencial_recusada · pede_humano · fora_do_ar · unknown` (`portal_worker.worker.VOCABULARIO_DE_SAUDE`). **Destrava:** migration só de COMMENT (isenta do piso, §3.2). **Dono:** 🤖. **Custa se esquecer:** quem lê a migration aprende o vocabulário errado.
+
+## P-E0016-DOSSIE-ATENDENTES-NAO-VALIDADO · o roteiro das atendentes está escrito e não foi conduzido
+`docs/canon/ROTEIRO-VALIDACAO-EXTRA-001.6-ATENDENTES.md` (8 perguntas). **Destrava:** 🧑 conduzir depois da Implantação 2 com a rotina em `equipe` e TESTE-B. **Dono:** 🧑. **Custa se esquecer:** o relatório fica em "aprovado no canário técnico", nunca "validado pela atendente".
+
+## P-E0016-AMOSTRA-PODE-TRAZER-RAZAO-SOCIAL · a amostra da tela desconhecida na Central pode trazer a razão social da corretora
+📊 14/09 (lente do dado): 4 das 6 telas reais de portal trazem a razão social; `redigir_texto` mascara PII de pessoa, não nome de empresa; a Central (`require_master_admin`) agrega por portal SEM `company_id`. Não é travessia entre corretoras (só master-admin lê). **Destrava:** 🧑 decidir entre (a) mostrar só `distintas` + `vezes` na Central, (b) manter. **Dono:** 🧑. **Custa se esquecer:** um operador da plataforma lê o nome de uma corretora numa tela desenhada para não ter nenhum.
+
+## P-E0016-PRINT-DA-TELA-SEM-ROTA-DE-ABRIR · o card diz "vi esta tela 12×" e não há rota que assine e abra o print
+`telas_desconhecidas.mais_frequente.prova` = `portal-evidence/{job}/00-….jpg`; falta um endpoint admin com URL assinada de TTL curto (modelo: `_TTL_DOCUMENTO_S = 15*60`). **Dono:** 🤖. **Custa se esquecer:** P-264 pelo lado do leitor.
+
+## P-E0016-MASCARA-NAO-COBRE-TEXTAREA · a máscara no DOM antes do print cobre `input` de 4 tipos, não `textarea`/`contenteditable`
+Nenhuma das 6 telas reais tem campo longo. **Destrava:** medir nos 6 portais; só então estender o JS. **Dono:** 🤖. **Custa se esquecer:** um portal novo com "observações" fotografado com o conteúdo em claro.
+
+## P-E0016-PII-NA-COLHEITA-CRUA · `portal_jobs.evidence->'inadimplentes'` carrega o documento do segurado em claro em 📊 50 jobs
+Fora do escopo desta SPEC (é a colheita crua da journey, não o relatório); achado pela lente do dado. `_redigir` do worker cobre as 12 chaves de diagnóstico, não a lista de inadimplentes. **Destrava:** decidir se a lista é redigida na evidência (o boleto precisa do recibo, não do CPF) — SPEC de portais. **Dono:** 🤖. **Custa se esquecer:** PII de segurado numa coluna `jsonb` legível por qualquer sessão com acesso a `portal_jobs`.
+
+## P-E0016-LOGIN-CHECK-NUNCA-RODOU-EM-PRODUCAO · o prólogo da rotina enfileira uma journey que nunca correu no implantado
+📊 14/09: `select distinct journey from portal_jobs` → só `cobranca_sweep` em 129 jobs. O prólogo (B3.1) espera 6 `login_check` antes de qualquer varredura; a fila real espera 144 s em média (worker serial, `PORTAL_WORKER_CONCURRENCY` default 1). **Destrava:** 🧑 Implantar + 🤖 `POST /api/admin/canario/extra001?portais=1` (Q10) e colar o veredito; 🧑 considerar `PORTAL_WORKER_CONCURRENCY=2..3` no portal-worker (o `leases.py` já suporta). **Dono:** 🧑/🤖. **Custa se esquecer:** a primeira rotina real em `equipe` leva ≈15 min e o relatório diz "o teste de entrada não terminou" em portais que estavam bem.
+
+## P-E0016-POSTGREST-TETO-DE-LINHAS · as leituras do ledger (`_obrigacoes_reais`) não têm corte de data nem `.limit()`
+A janela ganhou `.gte(updated_at, corte)` no conserto; `_obrigacoes_reais` (EXTRA-001) continua lendo o ledger inteiro da corretora (💭 ~4 reservas/dia → ~250 dias até 1.000 linhas, o teto padrão do PostgREST). **Destrava:** paginar ou cortar por data; medir `db-max-rows` do projeto. **Dono:** 🤖. **Custa se esquecer:** um dia o "já cobrado" deixa de ver as linhas mais antigas — em silêncio.

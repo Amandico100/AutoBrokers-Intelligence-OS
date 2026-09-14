@@ -704,8 +704,17 @@ def telas_desconhecidas(jobs: List[Dict[str, Any]], *,
     🔴 `company_id` não é opcional por comodidade: quando ele vem, o filtro é NO
     CÓDIGO (CLAUDE.md §7 — o backend usa service role, e RLS sem policy não
     protege contra erro de filtro aqui). Quando ele NÃO vem, é porque quem chama
-    é a Central de Agentes, que é master-admin e agrega por PORTAL — e aí nenhum
-    identificador de corretora entra na saída, que é o que a torna segura.
+    é a Central de Agentes, que é master-admin e agrega por PORTAL.
+
+    ⚠️ 14/09/2026 — E ESTE PARÁGRAFO DIZIA UMA COISA FALSA. Ele afirmava que
+    "nenhum identificador de corretora entra na saída". 📊 Medido sobre as 6
+    telas reais do acervo: a `amostra` traz a RAZÃO SOCIAL da corretora em 4
+    delas — porque o texto da tela do portal é o texto da tela do portal, e o
+    portal escreve o nome de quem está logado nela. O que a saída **não**
+    carrega é o `company_id`; o TEXTO pode trazer a razão social, e por isso
+    esta é uma superfície **master-admin**, não uma saída anônima
+    (`P-E0016-AMOSTRA-PODE-TRAZER-RAZAO-SOCIAL`). O `redigir_texto` de
+    `_amostra_de_tela` tira documento e telefone; nome de empresa, não.
     """
     alvo = str(company_id or "").strip()
     limite = None
