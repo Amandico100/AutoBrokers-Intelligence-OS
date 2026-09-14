@@ -242,6 +242,9 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     a resposta do cliente chega ao atendimento com o caso certo e fica registrada mesmo com o agente desligado, toda falha vira pendência visível;
     modo teste de 17/08, observador, QR e sessões NÃO mudam. Canário só TESTE-A → TESTE-B. SPEC `specs/SPEC-EXTRA-001-operacao-dos-pilotos.md` ·
     relatório `reports/SPEC-EXTRA-001-EXECUTION-REPORT.md` · proposta e research pack em `specs-propostas/` (sanitizados).
+✅   SPEC-EXTRA-001.2 · O agente lê tudo antes de falar — CONCLUÍDA COM RESSALVAS em 15/09/2026 (na main fc75193; canário dos 8 casos depois do Implantar) (CRÍTICO, laço curto D-PILOTO-20; nota 85):
+    uma rajada vira um turno, a ficha sabe o que foi respondido, o agente se apresenta uma vez e fala no tamanho de gente, uma conversa por contraparte, todo silêncio com motivo.
+    Proposta = SPEC (`specs-propostas/SPEC-EXTRA-001.2-o-agente-le-tudo-antes-de-falar.md`) · relatório `reports/SPEC-EXTRA-001.2-EXECUTION-REPORT.md`.
 ✅   SPEC-EXTRA-001.1 · A apólice certa, inteira, em uma rodada — CONCLUÍDA COM RESSALVAS em 14/09/2026 (na main 3320cee; canário dos 7 casos depois do Implantar) (CRÍTICO, laço curto D-PILOTO-20; nota 87):
     a porta deixa de ser um cano, a escolha mora nela e diz por quê, o PDF é lido sempre e reconciliado, o corretor recebe a apólice e não a lista.
     Proposta = SPEC (`specs-propostas/SPEC-EXTRA-001.1-a-apolice-certa-inteira-em-uma-rodada.md`) · relatório `reports/SPEC-EXTRA-001.1-EXECUTION-REPORT.md`.

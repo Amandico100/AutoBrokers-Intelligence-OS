@@ -149,6 +149,7 @@ ul.tight li{margin:5px 0}
     <a href="#extra001" data-p="extra001">EXTRA-001 · A operação dos pilotos<small>CRÍTICO · opção B · ≈14h em 2 janelas</small><span class="chip ok">87</span></a>
     <a href="#extra0016" data-p="extra0016">EXTRA-001.6 · A cobrança prova que funciona<small>CRÍTICO · laço curto · 13–14/09</small><span class="chip ok">84</span></a>
     <a href="#extra0011" data-p="extra0011">EXTRA-001.1 · A apólice certa, inteira, em uma rodada<small>CRÍTICO · laço curto · 14/09</small><span class="chip ok">87</span></a>
+    <a href="#extra0012" data-p="extra0012">EXTRA-001.2 · O agente lê tudo antes de falar<small>CRÍTICO · laço curto · 14–15/09</small><span class="chip ok">85</span></a>
     <div class="grp eyebrow">Pilotos · o que os testes ensinaram</div>
     <a href="#pilotos" data-p="pilotos">Diagnóstico e plano EXTRA-001.x<small>09–13/09 · 7 laudos · 11 blocos · 001.6 e 001.1 feitas</small><span class="chip info">em curso</span></a>
     <div class="grp eyebrow">Método</div>
@@ -188,6 +189,7 @@ ul.tight li{margin:5px 0}
     <tr><td><a href="#extra001">EXTRA-001</a></td><td>A operação dos pilotos: a cobrança chega a quem deve (equipe ou cliente, texto limpo + PDF, uma vez por parcela, com reserva antes do efeito), a resposta do cliente chega ao atendimento com o caso certo, toda falha vira pendência visível, e o modo teste/observador/QR não mudam</td><td>CRÍTICO · opção B</td><td class="n">8–13h → ≈14h em 2 janelas (uma morta pelo limite)</td><td class="n">87</td><td><span class="chip ok">na main ba7ba75</span> · <span class="chip warn">canário vivo depois do Implantar</span></td></tr>
     <tr><td><a href="#extra0016">EXTRA-001.6</a></td><td>A cobrança prova que funciona: uma mensagem inteira por segurado com N boletos (lançamentos do mesmo recibo consolidados), nunca a mesma parcela 2×, nunca o mesmo segurado 2× em 7 dias; cada portal diz em português por que não entrou; senha recusada é classe própria; sessão que vence, backoff, breaker e canário de login antes da rotina; fila de telas de portal com leitor; PII fora do relatório e do preview</td><td>CRÍTICO · laço curto</td><td class="n">6–9h → ≈9h numa janela</td><td class="n">84</td><td><span class="chip ok">na main 3ffe549</span> · <span class="chip warn">canário vivo depois do Implantar</span></td></tr>
     <tr><td><a href="#extra0011">EXTRA-001.1</a></td><td>A apólice certa, inteira, em uma rodada: a porta PolicyDataProvider deixa de ser um cano (modelo nosso com origem por campo, 2 adaptadores, reconciliação cadastro × PDF com divergência dita e contador de prêmio); a escolha mora na porta e diz por quê (vencida nunca vira opção; só pergunta com 2 vigentes do mesmo ramo; vale para corretor e segurado); o PDF é lido sempre e o extrator lê as tabelas reais (HDI 10, Allianz 21); o corretor recebe a apólice, não a lista; teto no contexto recuperado; tokens certos no banco; tool call ligada ao turno; 4 guardas mudos de volta</td><td>CRÍTICO · laço curto</td><td class="n">8–12h → ≈15h numa janela</td><td class="n">87</td><td><span class="chip ok">na main 07d512d</span> · <span class="chip warn">canário 7 casos depois do Implantar</span></td></tr>
+    <tr><td><a href="#extra0012">EXTRA-001.2</a></td><td>O agente lê tudo antes de falar: uma rajada de mensagens e fotos vira UM turno (trava por conversa, janela que escuta o conteúdo, mídia no buffer, re-planejamento), a ficha sabe o que já foi respondido e o agente não repete pergunta, se apresenta uma vez só, responde no tamanho de gente (3 frases e 450 caracteres), uma conversa por contraparte (175 fantasmas fechadas), todo silêncio com motivo no feed, o nome do agente nunca confunde com a equipe</td><td>CRÍTICO · laço curto</td><td class="n">6–9h → ≈8h numa janela</td><td class="n">85</td><td><span class="chip ok">na main fc75193</span> · <span class="chip warn">canário dos 8 casos depois do Implantar</span></td></tr>
     <tr><td><a href="#pilotos">Pilotos</a></td><td>Diagnóstico dos pilotos de 09–11/09 (1h53 de agente ligado, 0 protocolos, cobrança em modo teste) e o plano em 11 blocos EXTRA-001.0…001.10 (v2 de 13/09, com a parte cortada da mensagem, 3 laudos novos e as decisões D-PILOTO-08…14): apólice certa com porta agnóstica de sistema de gestão · agente lê tudo antes de falar · grupo só recebe o que importa · corredor não trava e o humano da seguradora é atendido · base de produtos com 3 níveis de assistência · cobrança provada (as duas senhas recusadas) · piloto medido · portal de vidros ponta a ponta · isolamento · painel · retroativa</td><td>diagnóstico</td><td class="n">—</td><td class="n">48 · 49</td><td><span class="chip warn">4 decisões abertas · pronto para virar SPECs</span></td></tr>
     <tr><td><a href="#proto">Protocolo</a></td><td>v10 → v11 → v11.1 → v11.2 no mesmo dia, cada passo medido</td><td>—</td><td class="n">≈3h no total</td><td class="n">72 → ~88</td><td><span class="chip ok">opção B em vigor</span></td></tr>
   </table></div>
@@ -1149,6 +1151,79 @@ ul.tight li{margin:5px 0}
   <p>Para a <b>001.5</b> (base de produtos): a chave canônica seguradora + ramo, o plano de assistência com estado "não sabemos ainda" e o nome do plano lido do cadastro. Para a <b>SPEC-101</b>: o contrato completo, <code>capacidades()</code> e dois adaptadores provando que ele aceita fornecedores de naturezas diferentes. Para a <b>001.2</b>: a resposta já vem de uma apólice só — "uma resposta por rajada" vira problema de buffer, não de conteúdo.</p>
   <h3>Referências usadas (5, reabertas em 14/09)</h3>
   <ul class="refs"><li>Cockburn · Ports &amp; Adapters — <span class="mono">modelamos a fronteira sem diretórios novos</span></li><li>Microsoft · Anti-Corruption Layer — <span class="mono">a porta devolve o modelo nosso, nunca o dicionário do fornecedor</span></li><li>PEP 544 — <span class="mono">o adaptador não herda; o verificador de tipos reprova o incompleto</span></li><li>W3C PROV-O — <span class="mono">origem, confiança e detalhe em cada campo</span></li><li>Liu et al. 2023 · Lost in the Middle — <span class="mono">a pergunta repetida depois do bloco; posição, não volume</span></li></ul>
+</section>
+<!-- ============================ EXTRA-001.2 ============================ -->
+<section class="page" id="p-extra0012">
+  <div class="head">
+    <div>
+      <div class="eyebrow">SPEC-EXTRA-001.2 · proposta executada como está · CRÍTICO · laço curto (D-PILOTO-20) · 14–15/09/2026</div>
+      <h1>O agente lê tudo antes de falar</h1>
+      <p class="lede">O segurado manda cinco mensagens e uma foto em doze segundos e recebe <b>uma</b> resposta (duas no máximo, e a segunda é continuação), que viu a foto, não pergunta o que ele já disse, não cumprimenta no meio da conversa e cabe numa tela. O agente se apresenta uma vez, com o nome que a corretora escolheu, e "vou passar para a especialista" nomeia uma pessoa real ou ninguém. Cada conversa tem uma linha só; cada silêncio tem um motivo no feed.</p>
+      <div class="meta"><span>branch <b>feat/extra-001-2-le-tudo-antes-de-falar</b></span><span>commit inicial <b>47bc8e3</b></span><span>main em <b>fc75193</b></span><span>faixa <b>6–9h</b> · realizado <b>≈8h numa janela</b> (mesmo chat da 001.1, sem queda)</span><span>relatório <b>reports/SPEC-EXTRA-001.2-EXECUTION-REPORT.md</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">nota do orquestrador</div><div class="big">85<small>/100</small></div><div class="bar"><i style="width:85%"></i></div><div class="sub">juiz fresco 62 antes do conserto (2 blockers + 2 altos + 5 médios, todos consertados com guarda vermelho) · lente do dado 88 (10 de 11 números bateram; um operador de borda e um custo não medido corrigidos) · o canário dos 8 casos e a validação com as atendentes dependem do Implantar</div></div>
+  </div>
+
+  <div class="ba">
+    <div class="antes"><div class="eyebrow">Como era (medido em 14/09 sobre 47bc8e3 e no acervo desde 01/08)</div><ul>
+      <li>📊 <b>85,5% de tudo que entra chega em rajada</b> (20.834 rajadas, 72.933 mensagens); das 6.213 rajadas de 3+ que receberam resposta, 83% receberam 2 ou mais mensagens de volta. A pessoa responde com mediana de 92 caracteres, em 1–2 mensagens.</li>
+      <li>O debounce era por ociosidade com piso de 8 s (<code>max(…, 8)</code>): uma pausa de 9 s abria o segundo turno. Zero trava por conversa: dois varredores podiam responder a mesma rajada. A foto, o áudio e o documento desviavam do buffer em 3 pontos e cada um ganhava resposta própria.</li>
+      <li>A ficha guardava um booleano; "água escorrendo?" foi perguntado 3× depois de "já fechei o registro". O prompt mandava "SEMPRE se apresente" e ensinava nomes inventados ("a Ana", "o Marcos") para a "especialista". Mensagens de 760 caracteres em 3 frases.</li>
+      <li>📊 175 conversas-fantasma (telefone × identificador do WhatsApp Web) partiam a mesma pessoa em duas linhas; 10 com pausa humana presa na fantasma. O CHECK do banco não deixava fechá-las. A pausa não protegia conversa encerrada e reaberta com atendente dentro. O silêncio por exceção de janela não deixava rastro.</li>
+    </ul></div>
+    <div class="depois"><div class="eyebrow">Como ficou</div><ul>
+      <li><b>Uma rajada, um turno:</b> trava por conversa no Redis (SET NX + token + liberação por CAS), aberta ANTES de esvaziar o buffer, renovada antes de gerar e de enviar; se a posse se perde, os itens voltam ao buffer — nunca somem. A janela escuta o conteúdo: dado curto 3 s · frase 8 s · terminou em conectivo 18 s · teto 25 s. Mídia entra no buffer como item; visão e transcrição rodam dentro do turno; o que chega durante a resposta é mesclado antes de gravar.</li>
+      <li><b>A ficha sabe o que já foi respondido:</b> 72 slots com origem (cliente · sistema de gestão · corredor); o prompt separa "já confirmado — não pergunte" de "veio do sistema — confirme numa frase"; um fiscal regenera uma vez se a resposta repete pergunta, depois envia e registra.</li>
+      <li><b>Fala como gente:</b> a apresentação sai do modelo (primeira vez · nunca · "mudei de nome" uma vez), marcada só depois do envio confirmado; classe de tamanho com teto duplo (3 frases E 450 caracteres = p90 do que a pessoa escreve), uma regeneração e depois envia; a identidade da thread é reescrita a cada assunto e o nome do segurado entra no prompt só dela.</li>
+      <li><b>O nome nunca confunde:</b> "assistente virtual da {corretora}" com nome vazio; "vou passar para a especialista" nomeia o único membro ativo ou ninguém (nunca o agente); o servidor recusa nome igual ao de alguém da equipe; o dossiê assina 🤖 {nome} e a pessoa sem emoji.</li>
+      <li><b>Uma conversa, uma linha, um motivo:</b> <code>contraparte</code> + índice único parcial (a fantasma nº 176 é recusada pelo banco); 175 fantasmas fechadas com motivo próprio e 2 pausas copiadas; escritor único do pipeline com todos os ids da rajada; ordem do silêncio corretora → pausa → exceção → janela, e cada classe vira uma linha em português no feed (uma por conversa por dia).</li>
+    </ul></div>
+  </div>
+
+  <h2>Números medidos</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v">20 de 20</div><div class="l">rajadas reais do corpus (só traços, 0 PII) processadas pelo motor em turnos previstos; 12 viram um turno só, 8 quebram no teto ou no gap real</div></div>
+    <div class="kpi"><div class="v">175 · 0</div><div class="l">fantasmas fechadas com VERIFY 0 · duplicatas abertas por contraparte hoje (887 conversas)</div></div>
+    <div class="kpi"><div class="v">10 + 2</div><div class="l">guardas novos (394 asserções) + 2 migrations com APPLY/VERIFY/ROLLBACK · 56 mutações vermelhas</div></div>
+    <div class="kpi"><div class="v">70% → 2%</div><div class="l">dos itens do corpus que esperariam 18 s antes e depois do conserto (a janela longa ficou só para o conectivo)</div></div>
+  </div>
+
+  <h2>O laço curto · o que cada frente pegou</h2>
+  <div class="tw"><table>
+    <tr><th>frente</th><th>veredito</th><th>o que só ela viu</th></tr>
+    <tr><td>BLOCO 0 (orquestrador)</td><td class="n">17 premissas · 7 divergências</td><td>O fork Evolution GO tem <code>/message/presence</code> (a proposta previa outro provider); não existe papel <code>attendant</code>; os 3 agentes ativos são do chat, a Amanda está inativa; 157 ids repetidos entre conversas e 0 na mesma (não é vazamento).</td></tr>
+    <tr><td>Builders E ∥ C · AB · DF (Opus 5)</td><td class="n">4 blocos</td><td>O E achou um arnês que contava mutação vermelha como verde (cp1252 no Windows). O C achou um segundo vocabulário de perguntas. O DF achou que o prompt ensinava nomes inventados — a "especialista" nascia ali.</td></tr>
+    <tr><td>Juiz fresco</td><td class="n">62 → conserto</td><td><b>Dois blockers:</b> a janela de 18 s virou o padrão (70% dos itens do corpus; "SOCORRO" esperava 18 s) e o turno vencido descartava a rajada inteira com <code>renovar_turno</code> sem chamador. Mais: "desculpa" casava "culpa"; 23505 do índice novo derrubava o turno; a apresentação marcada antes do envio podia virar "nunca".</td></tr>
+    <tr><td>Lente do dado</td><td class="n">88</td><td>10 de 11 números bateram na casa decimal com o motor real. Um operador de borda (59,7% era 55,8%) e <b>o custo que ninguém mediu:</b> 49% das rajadas terminam num item que pedia 18 s — espera média 12,7 s contra 8,0 s da fixa.</td></tr>
+    <tr><td>Conserto único</td><td class="n">9 de 9</td><td>18 s só com conectivo; posse perdida devolve ao buffer; palavra delicada por palavra e na mesma frase; 23505 relido; apresentação confirmada no envio; uma regeneração por turno; todos os ids da rajada no dedupe; fixture vira recurso do produto. 56 mutações vermelhas.</td></tr>
+    <tr><td>Suíte inteira</td><td class="n">1114 · 24 · 48 (0 da SPEC)</td><td>Árvore parada; falhas triadas contra a base.</td></tr>
+  </table></div>
+  <div class="callout ok"><b>A lição desta SPEC:</b> medir o benefício sem medir o custo dá nota 94 a uma decisão que fazia "SOCORRO" esperar 18 segundos. A lente que reconstruiu o tempo de espera do segurado, e não só quantas rajadas quebravam, derrubou a decisão em dez minutos.</div>
+
+  <h2>🧑 O que só você faz</h2>
+  <ul class="tight">
+    <li><b>Implantar</b> <code>smith-api</code> e <code>smith-web</code> com a main em <b>fc75193</b>. As migrations <code>20260914_07</code> e <code>_08</code> já estão aplicadas; nenhuma variável nova é obrigatória (7 novas com default).</li>
+    <li>Rodar o canário dos 8 casos (<code>docs/canon/ROTEIRO-CANARIO-EXTRA-001.2.md</code>) com TESTE-A/TESTE-B; <code>PRESENCA_DIGITANDO_LIGADA=true</code> só durante o caso 5. Me avisar para eu registrar.</li>
+    <li>Escolher o <b>nome do agente da Resulta</b> (a SPEC não decide; o mecanismo está pronto).</li>
+    <li>Depois, o roteiro com as atendentes (<code>ROTEIRO-VALIDACAO-EXTRA-001.2-ATENDENTES.md</code>) e decidir se o "digitando…" fica ligado.</li>
+  </ul>
+
+  <h2>Pendências deixadas · as que mudam alguma coisa</h2>
+  <ul class="pend">
+    <li><b>P-E0012-D1</b><span class="dono">🤖</span> o bloco de memória pode trazer o nome de um assunto antigo; o prompt desaconselha, o código não fecha.</li>
+    <li><b>P-E0012-J11</b><span class="dono">🤖 canário</span> o TTL de 90 s foi decidido pelo tempo do modelo, não pela posse real da trava.</li>
+    <li><b>P-E0012-J7</b><span class="dono">🤖</span> a corrida espelho × pipeline não duplica mais, mas pode perder o texto combinado da rajada.</li>
+    <li><b>P-E0012-C3</b><span class="dono">🤖</span> 16 slots sem âncora (12 são pedaços de endereço perguntados em bloco): o fiscal da pergunta repetida não os vê.</li>
+    <li><b>P-E0012-01</b><span class="dono">🤖</span> <code>human_handoff_reason</code> guarda narrativa de sinistro em claro (6 linhas).</li>
+    <li><b>P-E0012-02 · 03</b><span class="dono">🤖</span> a resposta da IA fora do dedupe durável; pedido de humano sem timestamp.</li>
+    <li><b>P-E0012-AB1 · J10</b><span class="dono">🤖</span> a rota legada sem integração cala e não deixa linha.</li>
+    <li><b>P-PILOTO-16 · P-E0012-D3</b><span class="dono">🧑</span> o papel <code>attendant</code> e o nome do agente da Resulta.</li>
+  </ul>
+
+  <h2>Para onde vai</h2>
+  <p>Para a <b>001.3</b> (o grupo só recebe o que importa): a assinatura 🤖 e o plantão por parâmetro já existem; os modelos de dossiê são dela. Para a <b>001.4</b>: todo inbound passa pelo buffer agora, então o corredor da seguradora herda a janela — a 001.4 decide se o humano da seguradora merece uma janela própria. Para a <b>001.7</b> (piloto medido): a posse real da trava, a latência sentida pelo segurado e o "digitando…" são as três medições que esta SPEC deixou para o piloto.</p>
+  <h3>Referências usadas (7, reabertas em 14/09)</h3>
+  <ul class="refs"><li>Redis · SET NX EX + release por CAS — <span class="mono">a trava de turno é o padrão canônico, com token</span></li><li>Meta · typing indicators — <span class="mono">só depois do portão de silêncio</span></li><li>Evolution GO · /message/presence — <span class="mono">medido no swagger do fork implantado</span></li><li>Meta/Evolution · reentrega de webhook — <span class="mono">o id da mensagem é a chave, todos os ids da rajada</span></li><li>Stripe · idempotency keys — <span class="mono">23505 é sucesso silencioso</span></li><li>"janela adaptativa não tem fonte" — <span class="mono">por isso foi medida sobre 400 rajadas reais, e revista</span></li><li>Clark &amp; Brennan · grounding — <span class="mono">apresentar-se uma vez; a identidade é da thread</span></li></ul>
 </section>
 <!-- ============================ PILOTOS 09-11/09 ============================ -->
 <section class="page" id="p-pilotos">

@@ -335,3 +335,17 @@ Triagem, uma a uma, isolada e contra a base `47bc8e3` (extraída por `git archiv
 - **Redis:** `DEL` das chaves `whatsapp_turno:*` órfãs se um rollback de código deixar trava aberta (TTL 90 s as apaga sozinho).
 
 ## 13. Entrega (`git push`, saída colada)
+
+Preflight (📊 saída real, 15/09/2026): `git fetch` · `HEAD..origin/main` = **0** · `origin/main..HEAD` = **14** · `merge-base --is-ancestor` ✅.
+
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   47bc8e3..fc75193  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
+
+**`main` = `fc75193`** (14 commits da SPEC: `0fdda09` BLOCO 0 · `2c18547` E · `610d76d` C · `2111cca` · `56d8bb3` AB · `c77f81c` DF · `d24eaa6` conserto · docs). Os commits de fechamento que vêm depois desta seção (ESTADO/INDICE, página do dossiê) sobem num segundo `git push` com a mesma forma; o hash final fica em `ESTADO-DAS-SPECS.md`.
+
+**Deploy (🧑, EasyPanel → Implantar):** `smith-api` (obrigatório) e `smith-web` (a frase de recusa do nome no card Agente). `portal-worker` não muda. Migrations `20260914_07` e `_08` já aplicadas. **Env por nome** (todas opcionais, com default): `TURNO_TTL_SEGUNDOS` · `TURNO_RENOVACOES_MAX` · `JANELA_DADO_CURTO_SEGUNDOS` · `JANELA_FRASE_COMPLETA_SEGUNDOS` · `JANELA_FRASE_INACABADA_SEGUNDOS` · `PRESENCA_DIGITANDO_LIGADA` (deixar ausente/false até o caso 5 do canário) · `REPLANEJAMENTOS_MAX`. Nada foi ligado. Rollback: §12.
