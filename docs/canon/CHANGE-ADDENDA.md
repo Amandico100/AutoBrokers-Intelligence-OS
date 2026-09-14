@@ -3895,3 +3895,21 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 
 ## 14/09/2026 · SPEC-EXTRA-001.1 · RLS na tabela de backup da migration — VALIOSA
 **Problema:** o advisor de segurança acusou ERROR `rls_disabled_in_public` depois do 1º APPLY. **Consequência:** `enable row level security` numa 2ª passada da mesma migration (o backend usa service role; nada muda); arquivo emendado. **Autorização:** D-E0011-15 (95 × 5).
+
+## 14/09/2026 · SPEC-EXTRA-001.2 · a janela de 18 s só com conectivo — ESSENCIAL
+**Problema:** a proposta §6.1 dava 18 s a toda "frase inacabada"; o motor classificava assim tudo sem pontuação (📊 70% dos itens do corpus; 49,2% das rajadas terminam num item desses). **Evidência:** juiz fresco J1 + lente ⑧ (espera média 12,7 s × 8,0 s). **Consequência:** 18 s só quando termina em conectivo; sem pontuação = 8 s. **Autorização:** D-E0012-16 (90 × 20).
+
+## 14/09/2026 · SPEC-EXTRA-001.2 · o teto da classe conversa é duplo (frases E caracteres) — ESSENCIAL
+**Problema:** a §8.2 só contava frases; o defeito de 10/09 (760 chars em 3 frases) passaria. **Consequência:** `CHARS_POR_CLASSE[conversa]=450` (📊 p90 431). **Autorização:** D-E0012-13 (92 × 40).
+
+## 14/09/2026 · SPEC-EXTRA-001.2 · os nomes inventados saem do prompt de handoff — BLOCKER
+**Problema:** `prompts.py` ensinava "a Ana", "o Marcos", "o analista" em 3 das 5 formas de "passar para a equipe" — a "especialista" que não existia nascia ali, não de uma instrução ausente. **Consequência:** 4 formas sem nome; o nome real chega por `atendente_de_plantao`. **Autorização:** proposta §10 (executada como está).
+
+## 14/09/2026 · SPEC-EXTRA-001.2 · a fixture de âncoras vira recurso do produto — VALIOSA
+**Problema:** produto lia `tests/fixtures/…json` (juiz J9). **Consequência:** `app/resources/ancoras_de_pergunta_por_slot.json`; testes leem de lá. **Autorização:** D-E0012-20.
+
+## 14/09/2026 · SPEC-EXTRA-001.2 · sem migration para a divergência de dialeto do backfill — VALIOSA
+**Problema:** o backfill da M2 recusou LID por comprimento; `contraparte_de` recusa por sufixo (juiz J4). **Evidência:** 📊 0 linhas divergentes em produção. **Consequência:** docstring, sem M3. **Autorização:** D-E0012-18.
+
+## 14/09/2026 · SPEC-EXTRA-001.2 · a pessoa assina sem emoji no dossiê — VALIOSA
+**Problema:** `🤖 IA` e `👤 {nome}` — dois emojis apagavam a distinção. **Consequência:** `🤖 {agent_name}` no agente; a pessoa pelo nome. **Autorização:** proposta §10.5.

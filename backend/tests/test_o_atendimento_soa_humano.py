@@ -323,9 +323,14 @@ def teste_o_titulo_do_bloco_nao_colide_com_a_identidade_configuravel() -> None:
     com esse título faria aquele teste cair — e o defeito seria aqui."""
     print("\n[4] O bloco novo não sequestra o título da identidade configurável")
     sem_nome = PROMPTS.build_composite_prompt("Regras.", agent_role="attendance")
-    checar("SUA IDENTIDADE" not in sem_nome,
-           "sem nome configurado, nenhum bloco se chama 'SUA IDENTIDADE'",
-           "o atendente não inventa identidade — SPEC-017")
+    # §9.3 — migrado em 14/09/2026 pela SPEC-EXTRA-001.2 §10.2: sem nome o bloco NÃO some
+    # mais (o agente ficava sem identidade nenhuma); ele é "a assistente virtual da
+    # {corretora}" e continua NÃO inventando nome. A lição (não inventar) fica.
+    checar("SUA IDENTIDADE" in sem_nome and "assistente virtual" in sem_nome,
+           "sem nome configurado, o bloco existe e diz 'assistente virtual da corretora'",
+           "sem nome o agente não pode ficar sem identidade — EXTRA-001.2 §10.2")
+    checar("Saionara" not in sem_nome and "Você é **" not in sem_nome,
+           "e sem nome ele NÃO inventa um nome — SPEC-017")
     com_nome = PROMPTS.build_composite_prompt(
         "Regras.", agent_role="attendance", agent_display_name="Saionara",
         company_display_name="Resulta Seguros")
@@ -413,14 +418,20 @@ def teste_o_handoff_tem_cinco_formas_de_verdade() -> None:
     checar(bool(bloco), "o bloco de handoff existe")
 
     formas = re.findall(r'^\d+\.\s+"(.+?)"\s*$', bloco, re.M)
-    checar(len(formas) == 5, f"são cinco formas numeradas (achei {len(formas)})")
+    # §9.3 — migrado em 14/09/2026 pela SPEC-EXTRA-001.2 §10.3: eram 5 formas e 3 delas
+    # ENSINAVAM nomes inventados ("a Ana", "o Marcos", "o analista") — a "especialista" que
+    # não existia nascia aqui. Ficaram 4 formas SEM nome; o nome real chega pela linha
+    # dinâmica (`atendente_de_plantao`).
+    checar(len(formas) == 4, f"são quatro formas numeradas (achei {len(formas)})")
+    checar(not any(n in f for f in formas for n in ("Ana", "Marcos", "analista")),
+           "e nenhuma forma inventa um nome de pessoa")
     checar(len(set(formas)) == len(formas), "e nenhuma é cópia literal de outra")
 
-    if len(formas) == 5:
+    if len(formas) == 4:
         pior, quem = _mais_parecidas(formas)
         checar(pior <= TETO_DE_SEMELHANCA,
-               f"as cinco são diferentes de verdade (pior par: {pior:.2f})",
-               f"{quem} — cinco reescritas da mesma frase não são cinco formas")
+               f"as quatro são diferentes de verdade (pior par: {pior:.2f})",
+               f"{quem} — quatro reescritas da mesma frase não são quatro formas")
 
         # As DUAS promessas, em TODA forma: (a) já recebeu tudo e (b) não repete
         # nada. As listas abaixo são o VOCABULÁRIO das duas promessas, não a

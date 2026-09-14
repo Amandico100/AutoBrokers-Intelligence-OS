@@ -28,16 +28,20 @@ O ELO ................  "a resposta fragmenta PORQUE o debounce é por ociosidad
                         no acervo 6.213 rajadas ≥3 respondidas: 83% com 2+ mensagens de resposta) · B medido (message_buffer_service.py:158
                         `max(…, 8)`; mídia desvia em 3 pontos) · B CHEGA em A ✅ (buffer_processor._uma faz get_and_clear e a varredura
                         de 1 s abre o 2º turno na chave nova)
-FAIXA DE RELÓGIO .....  💭 6–9 h · real: em curso (início 14/09 ≈ 18:40 UTC)
-ORÇAMENTO ............  💭 ≤ 1 M de subagentes (laço curto) · gasto: em curso
+FAIXA DE RELÓGIO .....  💭 6–9 h · real: ≈ 8 h numa janela (14/09 18:40 → 15/09 ≈ 02:40 UTC), sem queda
+ORÇAMENTO ............  💭 ≤ 1 M de subagentes (laço curto) · 📊 gasto: ≈ 1,45 M (E 394k · C 253k · AB 294k · DF 289k · juiz 199k · lente 146k · conserto 317k) — acima do teto: 7 subagentes em vez de 5
 BLOCKER (o que é) ....  muda um byte do que o SEGURADO recebe, a atendente lê ou o banco guarda (protocolo §2)
 ```
 
 ### 🔴 As três perguntas que fecham o card
 ```
-① o PAINEL rodou?            (preenche no fim)
-② a AUDITORIA / juiz fresco? (preenche no fim)
-③ pendências por VALOR MARGINAL: (preenche no fim)
+① o PAINEL rodou?            SIM — laço curto: juiz fresco Opus (3 perguntas fixas + 10 achados, nota 62) ∥ lente do dado Opus
+                             (11 reconstruções sobre o acervo real, 88) → conserto único (9/9 com guarda vermelho)
+② a AUDITORIA / juiz fresco? SIM — 2 BLOCKERs (J1 janela 18 s padrão; J2 rajada perdida no turno vencido), 2 ALTOs, 5 MÉDIOS,
+                             1 BAIXO; os 9 de produto consertados; J10 virou pendência
+③ pendências por VALOR MARGINAL: 21 abertas (4 do E, 4 do C, 3 do AB, 3 do DF, 6 do conserto, 1 🧑 nome) — nenhuma muda um byte
+                             do que o segurado recebe HOJE; as 2 que mais valem: P-E0012-J11 (posse real da trava, canário) e
+                             P-E0012-D1 (memória com nome antigo)
 ```
 
 **Produto:** AutoBrokers Intelligence OS
@@ -47,8 +51,8 @@ BLOCKER (o que é) ....  muda um byte do que o SEGURADO recebe, a atendente lê 
 **Executor:** Fable 5.1 (orquestrador) · Opus 5 (builders, juiz fresco, lente do dado)
 **Início:** 14/09/2026
 **Commit inicial:** `47bc8e3` (a main depois da EXTRA-001.1)
-**Commit final:** (preenche no fim)
-**Estado final:** EM EXECUÇÃO
+**Commit final:** o commit que fecha este relatório (`docs(extra-001.2): fechamento`) — o hash da `main` está no §13 e em `ESTADO-DAS-SPECS.md`
+**Estado final:** ✅ **CONCLUÍDA COM RESSALVAS** — código na `main`; 2 migrations aplicadas; canário dos 8 casos e validação com as atendentes dependem do Implantar (🧑). **Nota do orquestrador: 85/100** — critério: 100 = os 12 itens da §23 no ar E provados no canário vivo; desconto por canário não rodado (−8), pela decisão de 94 que o painel derrubou (a janela; −4) e pelas 3 pendências que o código só desaconselha (memória, corrida do espelho, posse real; −3)
 
 ---
 
@@ -229,15 +233,64 @@ Não verificado pelo juiz: banco (só leitura sem MCP), canário, se o DF roda h
 
 Não reconstruível: a posse real da trava (só o canário); agente × humano no outbound (`direction='out'` não distingue → "92 chars é o que a humana faz" é INFERÊNCIA forte, ≥98% humano); sub-3 s (granularidade de 1 s do `wa_timestamp`).
 
-### 7.3 Conserto único (Builder Opus 5)
-(preenche ao fechar)
+### 7.3 Conserto único (Builder Opus 5 · 📊 ≈230k tokens · 1h20 · commit `d24eaa6`) — 9 de 9 achados de produto consertados, cada um com guarda que fica vermelho
 
-### 7.4 Suíte inteira
-(preenche ao fechar)
+| # | arquivo | o que mudou | guarda / mutação |
+|---|---|---|---|
+| J1 | `message_buffer_service.janela_de_espera` (+ docstring 55,8% / 72,4%) | 18 s exige `termina_em_conectivo`; sem pontuação = **8 s**; dado curto 3 s. 📊 Corpus recontado pelo motor: itens que pediam 18 s **37 (60,7%) → 1 (1,6%)**; espera média do último item **11,0 s → 7,0 s**; rajadas em 1 turno 17 → 12 (`turnos_esperados` regravado no jsonl; INDICE com o preço declarado) | G2b (9 frases pelo motor + contagem do corpus) · M-AB10 |
+| J2 | `webhook._renovar_o_turno` (antes de gerar e antes de enviar) · `message_buffer_service.devolver_itens_ao_buffer` | `renovar_turno` ganhou chamador (2×/turno); posse perdida **devolve os itens ao buffer** (marca `reentregue`) em vez de `return` seco; `turno_perdido` só log | G5c · M-AB11 (não devolve) · M-AB12 (não renova) |
+| J3 | `o_fim_do_atendimento.pergunta_delicada` · `classe_do_tamanho` | palavra inteira (`\b`, sem acento) **e na mesma frase interrogativa** | GD8j · M-D8i |
+| J4 | `webhook._conversa_da_contraparte` + 23505 no insert · `espelho_chat` · docstring de `contraparte_de` | 23505 → relê pela chave do índice nos DOIS resolvedores; a divergência SQL × Python declarada (📊 0 divergentes; sem M3) | GE2f · M-E2b |
+| J5 | `bloco_de_quem_fala` + `confirmar_apresentacao_enviada` · `attendance_ficha.identidade_vazia` · webhook passo 9 | a montagem só anota `apresentacao_pendente_*`; `apresentado_em` só depois de `send_message` True **e** se o texto enviado se apresenta (D-E0012-21: 92 × marcar em `agent_node` 70) | GD8g · M-D8f |
+| J6 | `MOTIVO_TURNO_PERDIDO`, `_TOKENS_INTERNOS`, `frase_do_silencio` | `turno_perdido` fora do feed; classe própria com frase humana se entrar por outro caminho; entrada morta `sem corretora` removida | GE3g · M-E3z |
+| J7 | `payload_do_pipeline` / `gravar_mensagem_do_pipeline` · `espelho_chat` | 📊 o espelho GRAVA inbound (`deve_espelhar` não filtra direção; 2 chamadores) na MESMA conversa → payload grava `wa_message_ids` (todos) e `wa_message_id` = primeiro; espelho **e** pipeline consultam `payload->wa_message_ids` antes de gravar | GE1f · M-E1d · M-E1e |
+| J8 | `nodes.py` (`ja_regenerou`, `mesma_mensagem_com_texto`) | UMA regeneração por turno entre os fiscais; `response_metadata`/`usage_metadata`/`id` preservados | GD8i · M-D8h |
+| J9 | `git mv tests/fixtures/… → app/resources/ancoras_de_pergunta_por_slot.json` | produto e testes leem de `app/resources/` (`COPY . .`, sem `.dockerignore`) | asserções em G7 |
+| juiz | `linha_da_apresentacao` + `_nome_ja_diz_a_corretora` | nome que já contém a corretora → "Aqui é a {nome}, assistente virtual." | GD8h · M-D8g |
+
+📊 Saída real: os 10 guardas **82 · 23 · 30 · 27 · 35 · 54 · 11 · 25 · 74 · 33 = 394 verdes, 0 vermelhas**; mutações **56 vermelhas, 0 verdes**; controles `test_midia_e_concorrencia_do_webhook` rc=0 · `test_a_maquina_de_lavar_vai_ate_o_fim` 112 · espelho ×2 rc=0 · `test_o_atendimento_termina_e_o_produto_sabe` 52 · `test_a_ultima_palavra_humana_manda` 26 · `test_a_janela_esta_ligada_nos_portoes` 7 · `test_higiene_de_plataforma` rc=0. Conferido pelo orquestrador (saída real): 394 verdes; mutações amostradas 12 + 5 + 10 vermelhas; 85 passed no pytest dos 3 controles. ⚠️ **A linha de controle do G2 morreu com o J1** (sobre este corpus a adaptativa e uma fixa de 8 s dão os mesmos 20 turnos) e foi substituída pelo estado de ANTES do J1 (18 s, erra 5 rajadas) + controle por item (≥4 itens diferem) → P-E0012-J1. Pendências do conserto: P-E0012-J1, J2, J5, J7, J10, J11 (PENDENCIAS.md).
+
+### 7.4 Suíte inteira (árvore parada, `pytest tests -q -rfE`, 📊 saída real)
+
+```
+24 failed, 1114 passed, 34 xfailed, 1 xpassed, 45 warnings, 48 errors in 1290.46s (0:21:30)
+```
+
+Triagem, uma a uma, isolada e contra a base `47bc8e3` (extraída por `git archive` + `.env`):
+
+| falha | causa | destino |
+|---|---|---|
+| 48 ERROR `test_098_builder_b_unit` | interferência de ordem da suíte (P-088-MUT): **80 passed** isolado | artefato conhecido |
+| 13 `test_todos_os_guardas_script_rodam[...]` + `a_arvore_ficou_limpa` | idem: 6 dos 12 scripts passam isolados; `ontologia`, `sem_corredor_de_vidro`, `spec016×3`, `spec073` rc=0 | artefato conhecido |
+| `test_o_numero_de_teste_e_conversa_nova::test_excecao_fala_mesmo_assumida` | 🔴 **verdade vencida** pelo BLOCO E (a exceção NÃO fura o takeover — era o "robô por cima da atendente") | migrado sob §9.3: assumida → cala; PAR: a exceção continua pulando a janela · **2 passed** |
+| `test_a_atendente_fala_e_o_robo_cala` [h] | verdade vencida: "o script SABE que o CHECK ainda recusa `fantasma_lid`" — M1 aplicada | migrado: o script sabe que o CHECK aceita (6 motivos) · rc=0 |
+| `test_o_atendimento_soa_humano` [4] [8] · `test_spec017_identity` (2) | verdade vencida pelo DF: sem nome o bloco de identidade EXISTE ("assistente virtual da corretora") e as 5 formas de handoff viraram 4 sem nome inventado | migrados: a lição (não inventar nome) fica · rc=0 ×2 |
+| `test_o_protocolo_tem_policia` [7] | o card do relatório tinha "preenche no fim" | passa com este fechamento (conferido abaixo) |
+| `test_a_atendente_aperta_o_botao_e_so_o_botao` · `a_central_diz_a_verdade` · `a_janela_esta_ligada_nos_portoes` · `a_resposta_chega_inteira` · `o_corpus_nao_vaza_pii` · `o_sinistro_deixa_rastro` · `toda_linha_tem_origem` · `todo_silencio_tem_motivo` | passam isolados (9 · 1 · 7 · 1 · 20 · 1 · 1 · 1) | artefato de suíte |
+| `test_o_caso_se_explica_sozinho` [M1p] · `test_nenhuma_mutacao_foi_commitada` [2] (`route.ts` que não existe no commit) · `test_observador_silencio` ("decidir e gravar são blocos separados") · `test_spec031_finalize_v2` (`app.atendimento` não existe) | **falham igual na base `47bc8e3`** | pré-existentes, fora desta SPEC |
+
+**0 falhas da SPEC** depois da triagem. Frontend: `npm run test:rotas-montam` → 301 rotas ordenadas; `tsc --noEmit` 0 erros.
 
 ## 8. Canário (depois do Implantar)
 
+**Estado: NÃO TESTADO** — depende do Implantar de `smith-api` e `smith-web` (🧑). Roteiro pronto: `docs/canon/ROTEIRO-CANARIO-EXTRA-001.2.md` (8 casos da §16: rajada 5+foto → 1 turno; dado curto ~3 s; frase inacabada 15 s → 1 turno; mensagem durante o turno; presença só no caso 5 com `PRESENCA_DIGITANDO_LIGADA=true`; reencontro sem reapresentação; troca de nome + recusa; espelho com TESTE-B). Os casos 5 (calada → nenhuma presença) e 8 são as linhas de controle. Validação com as atendentes: `ROTEIRO-VALIDACAO-EXTRA-001.2-ATENDENTES.md` (8 perguntas). Nada foi ligado: `companies.agent_enabled` continua false em 5/5; `PRESENCA_DIGITANDO_LIGADA` nasce desligada.
+
+### 8.1 aprovado no canário técnico — (vazio até o Implantar)
+### 8.2 validado pela atendente — (vazio)
+
 ## 9. O que ficou fora e por quê
+
+| item | por quê | onde mora |
+|---|---|---|
+| o nome do agente da Resulta | caixa do Founder (D-PILOTO-12); a SPEC entregou o mecanismo | P-E0012-D3 🧑 |
+| papel `attendant` × `member` | decisão 🧑 (P-PILOTO-16); a regra (2) do plantão usa `member` | D-E0012-02 |
+| plantão (regra 1 de `atendente_de_plantao`) | parâmetro pronto e testado; a 001.3 liga | BLOCO DF |
+| filtrar a MEMÓRIA por assunto | apagaria fatos de apólice; o prompt desaconselha | P-E0012-D1 |
+| migration M3 para o dialeto do backfill | 📊 0 linhas divergentes | D-E0012-18 |
+| `provider_message_id` atravessar a fachada | fora da superfície; a resposta da IA fica fora do dedupe durável | P-E0012-02 |
+| unificar `ROTULOS` × `_COMO_PERGUNTAR` | segundo vocabulário achado no BLOCO C; G6 fica vermelho se divergirem | P-E0012-C2 |
+| âncora de bloco para os 12 slots de endereço | 16 slots sem âncora | P-E0012-C3 |
+| modelos de dossiê | são da 001.3; aqui só a assinatura | §10.5 |
 
 ## 10. Decisões tomadas com nota
 
@@ -266,6 +319,20 @@ Não reconstruível: a posse real da trava (só o canário); agente × humano no
 
 ## 11. Riscos remanescentes
 
+1. **A posse real da trava não foi medida** (só `response_time_ms`); com mídia no turno + 1 regeneração o turno pode passar de 90 s e depender das renovações (3). O canário mede; P-E0012-J11.
+2. **Latência sentida:** mesmo com o J1, dado curto 3 s e frase 8 s são espera ANTES de gerar; o piloto 001.7 é quem decide se 8 s incomoda.
+3. **A corrida espelho × pipeline** não duplica mais, mas pode perder o texto combinado (P-E0012-J7).
+4. **A memória** pode trazer nome de assunto antigo (P-E0012-D1).
+5. **Todo inbound passa pelo buffer agora** — o corredor da seguradora herda a janela (a 001.4 decide se o humano da seguradora merece janela própria).
+6. **`display_name` do blueprint** ("AutoBrokers da {corretora}"): a apresentação não duplica mais, mas o nome de fato é caixa 🧑.
+7. **Env novas** têm default; se o EasyPanel definir `PRESENCA_DIGITANDO_LIGADA=true` antes do canário, a presença sai sem ter sido vista.
+
 ## 12. Rollback
+
+- **Código:** `git revert` dos commits da SPEC na `main` (de `0fdda09` a este fechamento) — nenhum passo destrutivo no código; as 7 env novas podem ficar (têm default) ou ser removidas.
+- **M1 (`20260914_07`):** o ROLLBACK escrito RECUSA reverter enquanto houver linhas com `fantasma_lid` (📊 175) — reverter deixaria 175 `closed` sem motivo válido. Se preciso: `UPDATE conversations SET resolucao_motivo='expirou' WHERE resolucao_motivo='fantasma_lid'` (perde a distinção) e depois o ROLLBACK do arquivo.
+- **M2 (`20260914_08`):** `DROP INDEX IF EXISTS uq_conversations_contraparte_aberta;` — a coluna `contraparte` fica (expand-first, nada a lê de forma obrigatória).
+- **Dados:** as 175 fantasmas fechadas e as 2 pausas copiadas ficam (nenhuma mensagem apagada); reabrir seria `status='open'` por `resolucao_motivo='fantasma_lid'`, não recomendado.
+- **Redis:** `DEL` das chaves `whatsapp_turno:*` órfãs se um rollback de código deixar trava aberta (TTL 90 s as apaga sozinho).
 
 ## 13. Entrega (`git push`, saída colada)

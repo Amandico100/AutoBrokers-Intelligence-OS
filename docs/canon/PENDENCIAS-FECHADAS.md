@@ -904,3 +904,12 @@ exatamente o corredor do `work_run e5279497`, a única travessia ponta a ponta.
 
 ✅ **FECHADA em 14/09/2026 pela SPEC-EXTRA-001.1 BLOCO E:** o harness dos 4 scripts (`test_infocap_policy_output_guard`, `test_spec016_policy_intelligence`, `test_spec016_1_answer_quality`, `test_spec016_e2e_stub`) carrega o módulo real `honestidade_do_handoff` antes de `nodes.py`; os 4 RODAM e estão verdes (📊 14 · 92 · 51 · 21). Duas verdades vencidas migradas sob CLAUDE.md §9.3 (o registry agora RECUSA adaptador incompleto; listar apólice deixou de ser ordem incondicional). Mesma classe de conserto aplicada em `test_infocap_contract_capture` e `test_spec017_attendance_unleashed` (`app.providers.__path__` real).
 
+---
+
+# SPEC-EXTRA-001.2 · O agente lê tudo antes de falar (14/09/2026)
+
+## P-PILOTO-13 · 174 conversas-fantasma LID e o CHECK de `resolucao_motivo`
+✅ **FECHADA em 14/09/2026:** M1 `20260914_07_spec_extra001_2_check_fantasma_lid.sql` (CHECK aceita `fantasma_lid`; VERIFY: motivo fora da lista RECUSADO 23514, `fantasma_lid` ACEITO) e `migrar_conversas_fantasma_lid.py --vivo` (📊 2 pausas copiadas · 175 fantasmas fechadas · 0 falhas · VERIFY 0). M2 `20260914_08` (`conversations.contraparte` + `uq_conversations_contraparte_aberta`) impede a fantasma nº 176 (VERIFY: 2ª aberta RECUSADA 23505; outra corretora ACEITA). Guarda: `test_uma_conversa_por_contraparte.py` (35) e `test_o_atendimento_termina_e_o_produto_sabe.py` (6 motivos).
+
+## P-PILOTO-15 · pausa não protege conversa com `resolvido_em` preenchido
+✅ **FECHADA em 14/09/2026 (opção b′, D-E0012-03):** `pausar_ia` protege quando o takeover (`claimed_at`) é DEPOIS do encerramento (`resolvido_em`); nenhum leitor de `resolvido_em` (📊 12) muda. Guarda: `test_todo_silencio_tem_motivo.py` (conversa reaberta com atendente dentro → protegida; exceção de janela NÃO fura o takeover). O pedido de humano sem timestamp ficou em P-E0012-03.

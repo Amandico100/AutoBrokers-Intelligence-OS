@@ -1810,3 +1810,27 @@ O Founder, ao mandar executar a 096: *"as pendências você decide, com nota 0�
 | **D-E0016-15** | cada Q do canário tem identidade de segurado própria; Q2/Q3 mantêm o RECIBO do Q1 para medirem a reserva, não a janela | (único caminho que faz Q5 provar a allowlist) | juiz fresco B2 |
 | **D-E0016-16** | a Allianz só devolve `failed` por credencial quando NÃO há 2+ sinais de dashboard na tela | `failed` só com `hits < 2` (85) · deixar (50) | juiz fresco P5: um toast com "acesso negado" num dashboard logado abriria o breaker e mandaria trocar uma senha certa |
 | **D-E0016-17** | a migration 04 redige `output_preview` (a coluna irmã que a 03 não olhou), sem rollback, pela mesma justificativa da 03 | aplicar (95) · deixar (5: PII na tela hoje) | lente do dado A-1 |
+
+### Decisões da SPEC-EXTRA-001.2 (14/09/2026, tomadas pela execução com nota 0–100 — regra do Founder de 13/09; a proposta foi executada COMO ESTÁ, D-PILOTO-20, laço curto)
+
+| ID | Decisão | Opções e notas | Onde |
+|---|---|---|---|
+| **D-E0012-01** | `TURNO_TTL_SEGUNDOS`=90, 3 renovações (📊 p90 18 s · máx 53 s de `response_time_ms` — tempo do modelo; a posse real só o canário mede, P-E0012-J11) | 90 **85** · 60 **55** · 180 **40** | relatório §1.2 premissa 5 |
+| **D-E0012-02** | `atendente_de_plantao` regra (2) = exatamente um `member` ativo não-owner (📊 não existe papel `attendant`) | member **80** · criar `attendant` agora **25** (P-PILOTO-16 é 🧑) | BLOCO DF |
+| **D-E0012-03** | P-PILOTO-15 pela opção b′: a pausa protege quando `claimed_at > resolvido_em` | b′ **88** · limpar `resolvido_em` **35** · ingênua **40** | BLOCO E |
+| **D-E0012-04/05** | `CAMPOS_DE_CONTROLE={dados_confirmados}`; `confirmados[slot]={valor, origem, em}` com leitura tolerante | **90** / **92** | BLOCO C |
+| **D-E0012-06** | o índice único da M2 só entra com 0 duplicatas abertas (havia 0); nunca fechamento em lote | **92** · fechar a mais antiga **20** | M2 |
+| **D-E0012-07** | o feed do silêncio é escrito dentro de `a_ia_deve_calar`, memo por classe/dia | **85** | BLOCO E |
+| **D-E0012-08** | escopo vazio na trava de turno → recusa fail-closed (nunca chave global) | **92** · chave global **30** | BLOCO AB |
+| **D-E0012-09** | visão/transcrição rodam dentro do turno | **90** · no recebimento **55** | BLOCO AB |
+| **D-E0012-10 → 16** | janela 3·8·18 (nota 94) REVISTA depois do painel: 18 s SÓ com conectivo; sem pontuação = 8 s | conectivo-só **90** · 18 para tudo **20** · 15 para tudo **50** | J1 + lente |
+| **D-E0012-11/12** | re-planejamento antes de gravar (teto 2); sem `delay` no `/send/text` | **88** / **85** | BLOCO AB |
+| **D-E0012-13** | teto de tamanho DUPLO: 3 frases E 450 chars (📊 p90 431) | **92** · só frases **40** | BLOCO DF |
+| **D-E0012-14** | a recusa de nome colidente mora no `PATCH` do Next (quem grava `attendant_name`) | **85** · FastAPI **30** (P-E0012-D4) | BLOCO DF |
+| **D-E0012-15** | o bloco de memória não é filtrado por assunto; o prompt desaconselha (P-E0012-D1) | **70** · suprimir memória **45** | BLOCO DF |
+| **D-E0012-17** | posse perdida antes do envio devolve os itens ao buffer; `renovar_turno` antes de gerar/regenerar/enviar | **92** · `return` seco **0** | conserto J2 |
+| **D-E0012-18** | J4 sem migration M3 (📊 0 linhas divergentes); 23505 relido nos dois resolvedores | **90** · M3 no-op **20** | conserto J4 |
+| **D-E0012-19** | uma regeneração por turno entre os fiscais; metadados preservados | **90** · encadear **30** | conserto J8 |
+| **D-E0012-20** | `ancoras_de_pergunta_por_slot.json` mora em `app/resources/` | **92** | conserto J9 |
+| **D-E0012-21** | `apresentado_em` só depois do envio confirmado e se o texto enviado se apresenta | **92** · marcar em `agent_node` **70** | conserto J5 |
+| 🧑 **caixa** | o nome do agente da Resulta (D-PILOTO-12); `PRESENCA_DIGITANDO_LIGADA=true` depois do canário; papel `attendant` (P-PILOTO-16) | — | Founder |

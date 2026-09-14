@@ -44,13 +44,17 @@ def run():
     check("attendance com nome: proibicao de nomes internos", "nomes internos" in p.lower())
 
     p2 = prompts.build_composite_prompt("Regras.", agent_role="attendance")
-    check("attendance sem nome: sem bloco de identidade (nao inventa nome)", "SUA IDENTIDADE" not in p2)
+    # §9.3 — migrado em 14/09/2026 (SPEC-EXTRA-001.2 §10.2): sem nome o bloco EXISTE como
+    # "assistente virtual da corretora" e continua sem inventar nome.
+    check("attendance sem nome: bloco presente como 'assistente virtual' (nao inventa nome)",
+          "SUA IDENTIDADE" in p2 and "assistente virtual" in p2 and "Saionara" not in p2)
 
     p3 = prompts.build_composite_prompt("Regras.", agent_role="core", agent_display_name="Saionara")
     check("core: identidade de atendente NAO se aplica", "SUA IDENTIDADE" not in p3)
 
     p4 = prompts.build_composite_prompt("Regras.", agent_role="attendance", agent_display_name="  ")
-    check("nome vazio/espacos tratado como ausente", "SUA IDENTIDADE" not in p4)
+    check("nome vazio/espacos tratado como ausente (vira 'assistente virtual', sem nome)",
+          "assistente virtual" in p4 and "Você é **" not in p4)
 
     print(f"\n== Resumo: {PASS} passaram, {FAIL} falharam ==")
     if FAILURES:

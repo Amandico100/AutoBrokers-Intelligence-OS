@@ -700,9 +700,14 @@ def teste_o_plano_da_migracao_reconhece_a_fantasma():
            "CONTROLE — duas candidatas NÃO são gravadas",
            "um par errado mostra a uma pessoa o atendimento de outra")
 
-    checar(mig.MOTIVO not in mig.MOTIVOS_ACEITOS_PELO_BANCO,
-           "o script SABE que o CHECK do banco ainda recusa `fantasma_lid`",
-           "e por isso o --vivo fica bloqueado até a migration do valor")
+    # §9.3 — migrado em 14/09/2026 (SPEC-EXTRA-001.2 M1 `20260914_07`): o CHECK passou a
+    # aceitar `fantasma_lid` e o --vivo rodou (📊 175 fechadas, 2 pausas copiadas). A lição
+    # que fica: o script declara a lista que o banco aceita, e o motivo dele TEM de estar nela.
+    checar(mig.MOTIVO in mig.MOTIVOS_ACEITOS_PELO_BANCO,
+           "o script SABE que o CHECK do banco aceita `fantasma_lid` (M1 da EXTRA-001.2)",
+           "sem isso o --vivo se recusa a rodar — e as 175 fantasmas ficariam abertas")
+    checar("fantasma_lid" in mig.MOTIVOS_ACEITOS_PELO_BANCO and len(mig.MOTIVOS_ACEITOS_PELO_BANCO) == 6,
+           "CONTROLE — a lista do script é a do CHECK de hoje (6 motivos)")
 
 
 def main() -> int:

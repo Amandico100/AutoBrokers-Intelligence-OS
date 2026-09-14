@@ -10549,16 +10549,21 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 📊 `problemas_de_lingua` aplicada só às cartas e à novidade ao cliente (`test_o_caso_se_explica_sozinho.py:1268,1275,1928`). U2 (08/09) cobre `build_handoff_dossier`; falta `_montar_dossie`. **Dono:** 🤖.
 
 ## P-PILOTO-13 · 174 conversas-fantasma LID e o CHECK de `resolucao_motivo`
+✅ **FECHADA em 14/09/2026 pela SPEC-EXTRA-001.2 BLOCO E:** M1 `20260914_07` (CHECK com `fantasma_lid`) aplicada; `--vivo`: 2 pausas copiadas · 175 fantasmas fechadas · VERIFY 0; M2 `20260914_08` (`contraparte` + índice único parcial) impede a nº 176. Movida para `PENDENCIAS-FECHADAS.md`.
+
 📊 09/09: `migrar_conversas_fantasma_lid.py` (plano) achou 174 conversas com `user_phone` de LID (106 AutoFleet, 68 Resulta), 10 com pausa humana presa; o `--vivo` está bloqueado por `ck_conversations_resolucao_motivo` (lista fechada, sem `fantasma_lid`). **Destrava:** migration (APPLY/VERIFY/ROLLBACK, `MIGRATIONS-AUTHORITY.md`) acrescentando o valor, depois `--vivo`. Daqui para a frente nenhuma fantasma nasce (identidade única do evento, commit `8dae4d4`). **Dono:** 🤖.
 
 ## P-PILOTO-14 · o rastro de sinistro (`claims_shadow`) sai mudo sem sombra
 📊 `claims_shadow.registrar_evento` devolve `False` antes do INSERT quando não há `work_run` (`work_events.work_run_id` NOT NULL); `claims.handoff_pedido` nunca gravou. O handoff hoje grava em `agent_activities`. **Destrava:** decisão de arquitetura — sombra abre no pedido de humano, ou `work_events` aceita evento sem run. **Dono:** 🤖.
 
 ## P-PILOTO-15 · pausa não protege conversa com `resolvido_em` preenchido
+✅ **FECHADA em 14/09/2026 pela SPEC-EXTRA-001.2 BLOCO E (opção b′, D-E0012-03):** a pausa protege quando `claimed_at > resolvido_em`; `test_todo_silencio_tem_motivo` (54) cobre conversa reaberta com atendente dentro. O pedido de humano sem timestamp ficou em P-E0012-03. Movida para `PENDENCIAS-FECHADAS.md`.
+
 `pausar_ia` devolve False quando `resolvido_em` está preenchido e a pausa não limpa o campo; conversa encerrada e reaberta pelo segurado com intervenção humana não fica protegida. **Dono:** 🤖.
 
 ## P-PILOTO-16 · o papel `attendant` ficou redundante com `member`
 Desde 09/09 `member` liga/desliga o agente. Decidir se `attendant` some (quem o tem continua funcionando). **Dono:** 🧑 decisão · 🤖.
+⚠️ **CONTINUA (14/09/2026, SPEC-EXTRA-001.2 confirmou):** 📊 não existe papel `attendant` em `company_members` (só `admin_company`/`member`); `atendente_de_plantao` usa `member` (D-E0012-02). A decisão de criar o papel segue 🧑.
 ⚠️ **CONTINUA (re-justificada em 14/09/2026 pela SPEC-EXTRA-001.1):** a proposta §15 manda registrar e não fechar — é decisão 🧑 (`attendant` × `member`), fora da superfície de apólice; a SPEC não a tocou.
 
 ## P-PILOTO-19 · InfoCap da Resulta: duas conexões arquivadas (uma com credencial inválida) além da ativa; `/parcelas`, `/comissoes`, `/financeiro` respondem 403
@@ -10624,6 +10629,48 @@ A janela ganhou `.gte(updated_at, corte)` no conserto; `_obrigacoes_reais` (EXTR
 ## SPEC-EXTRA-001.2 — O agente lê tudo antes de falar · conserto único (14/09/2026)
 
 > As pendências que o **juiz fresco** e a **lente do dado** deixaram abertas depois do conserto único. Os nove achados de produto (J1–J9) foram corrigidos com guarda vermelho; o que está aqui é o que **não** coube nele.
+
+## P-E0012-01 · `conversations.human_handoff_reason` guarda narrativa livre do sinistro em claro
+📊 14/09: 6 de 879 preenchidas com detalhe de acidente/terceiros/orientação jurídica — campo sem redação que a tela lê como "motivo". **Destrava:** redigir na escrita (mesma régua de PII do `output_preview` da 001.6) ou trocar por motivo fechado + nota. **Dono:** 🤖. **Custo de esquecer:** PII de segurado em claro num campo lido pela tela e pelo feed.
+
+## P-E0012-02 · a resposta da IA fica fora do dedupe durável
+`whatsapp_service.send_message` devolve `bool` e fatia em balões — o `provider_message_id` não atravessa a fachada; a linha da IA é gravada ANTES do envio, sem chave. A rede continua `e_a_nossa_propria_voz` + `_eco_do_dashboard`. **Destrava:** a fachada devolver os ids e o escritor único gravá-los. **Dono:** 🤖.
+
+## P-E0012-03 · HUMAN_REQUESTED depois do encerramento não tem timestamp
+`conversations` não tem `human_handoff_at`; P-PILOTO-15 fechou pelo takeover (`claimed_at > resolvido_em`), não pelo pedido de humano. **Destrava:** coluna ou reaproveitar `agent_activities`. **Dono:** 🤖. **Custo:** segurado que pede uma pessoa numa conversa encerrada e reaberta não pausa a IA.
+
+## P-E0012-04 · `fantasma_lid` não soma em `terminaram` nem em `morreram`
+`o_fim_do_atendimento` conta o motivo em `por_motivo` e em nenhum dos dois lados da pergunta da sexta-feira — correto, mas 175 linhas ficam num balde sem nome no relatório da semana. **Dono:** 🤖.
+
+## P-E0012-C1 · a ficha não viaja no `state` (o fiscal paga +1 select por resposta)
+`graph._build_initial_state` lê a ficha e não a guarda em `state["ficha_atendimento"]`; os 3 fiscais de `agent_node` releem. **Destrava:** guardar no state (mesma raiz de P-DF-02, fundida aqui). **Dono:** 🤖.
+
+## P-E0012-C2 · dois vocabulários de pergunta (`ROTULOS` × `corridor_playbooks._COMO_PERGUNTAR`)
+📊 ~60 redações no segundo; a docstring de `ROTULOS` ("o ÚNICO") era falsa. G6 (`test_todo_slot_do_corredor_tem_ficha`) fica vermelho se divergirem. **Destrava:** unificar num vocabulário só. **Dono:** 🤖.
+
+## P-E0012-C3 · 16 slots sem âncora de pergunta (22% do vocabulário) — 12 são pedaços de endereço
+`destino_*`/`local_*` (rua, número, bairro, cidade, CEP, UF), `rodovia`, `veiculo_descricao`, `veiculo_situacoes`, `ocupantes_particularidade` são perguntados EM BLOCO e o fiscal da pergunta repetida não os vê. **Destrava:** âncora de bloco por grupo de slots. **Dono:** 🤖. **Custo:** a pergunta em bloco repetida é a que o segurado mais nota.
+
+## P-E0012-C4 · o gerador da fixture de âncoras ficou no scratchpad
+`app/resources/ancoras_de_pergunta_por_slot.json` é reconferido contra o motor vivo pelo G7 (entrada velha fica vermelha), mas o gerador não está versionado. **Dono:** 🤖.
+
+## P-E0012-AB1 · rota legada `/webhook/z-api` continua viva e cai em `sem-integracao`
+Enquanto existir, há um caminho cujo escopo é `sem-integracao` e que, por desenho (fail-closed, D-E0012-08), NÃO responde — e sem `company_id` não deixa linha no feed (P-E0012-J10 é o mesmo sintoma). **Destrava:** matar a rota ou dar-lhe integração. **Dono:** 🤖.
+
+## P-E0012-AB2 · o item de mídia guarda a URL do storage no Redis por ≤ 60 s
+Nenhum segredo, mas é URL de bucket. **Destrava:** conferir no canário que o bucket é privado. **Dono:** 🤖 (canário).
+
+## P-E0012-AB3 · `renovar_turno` e `mesclar_o_que_chegou` não têm métrica no feed
+O re-planejamento só loga; a renovação também. **Destrava:** contador em `log_activity` técnico. **Dono:** 🤖.
+
+## P-E0012-D1 · o bloco de MEMÓRIA pode carregar nome de assunto anterior
+`=== 🧠 MEMÓRIA ===` (`graph.py`, `MemoryService` por `user_id`) não é filtrado por assunto; o prompt DESACONSELHA nomes vindos dela (bloco "QUEM FALA" é o último do `dynamic_context`), o código não fecha. **Destrava:** marcar PII no `MemoryService` ou filtrar por `assunto_id`. **Dono:** 🤖. **Custo:** o nome de 22 dias atrás volta por uma porta que o código só desaconselha.
+
+## P-E0012-D3 · o nome do agente da Resulta (caixa do Founder)
+O mecanismo está pronto (apresentação, recusa de colisão, assinatura); o nome não foi escolhido pela execução (D-PILOTO-12). **Dono:** 🧑.
+
+## P-E0012-D4 · o FastAPI tem um caminho de escrita de config que não passa pela recusa de nome
+`agent_config.py` hoje não grava `attendant_name`; se um dia gravar, a trava (que mora no `PATCH` do Next) não o cobre. **Destrava:** trava também no backend ou fechar o caminho. **Dono:** 🤖.
 
 ## P-E0012-J1 · o corpus não consegue separar a janela adaptativa de uma fixa de 8 s
 📊 14/09, depois de J1: sobre as 20 rajadas versionadas, a janela adaptativa e uma **fixa de 8 s** produzem os **mesmos 20 números de turno** — os únicos itens em que discordam são os 5 de dado curto (3 s) e o 1 de conectivo (18 s), e nenhum cai numa fronteira de turno. A linha de controle do guarda passou a comparar com o **estado de antes de J1** (18 s), que difere em 5 rajadas. **Destrava:** um corpus com rajadas que terminem em conectivo e em dado curto na fronteira — medido sobre o acervo, nunca escrito à mão (CLAUDE.md §9.4). **Dono:** 🤖. **Custa se esquecer:** a adaptativa vira uma fixa de 8 s na prática e ninguém percebe, porque nenhum guarda consegue ficar vermelho por isso.
