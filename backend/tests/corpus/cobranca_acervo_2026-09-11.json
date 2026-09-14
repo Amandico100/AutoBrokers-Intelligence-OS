@@ -1,0 +1,17 @@
+{
+  "_origem": "SPEC-EXTRA-001.6 BLOCO 0 (13/09/2026). Forma ANONIMIZADA dos 7 itens que a rotina de cobranca da Resulta consolidou em 10/09 e em 11/09 (os dois dias trouxeram os MESMOS 7 itens). Medido em routine_runs.output_full, secao 'Clientes encontrados', com md5 sobre nome e documento — nenhum valor real atravessou para este arquivo.",
+  "_medicao": "select dia, md5(nome), md5(doc), doc<>'?', length(digits(doc)), vcto, valor, tem_fone from ... (a consulta esta no relatorio da SPEC, BLOCO 0, premissa 15)",
+  "_forma": "4 segurados distintos; um deles (B) tem 4 parcelas com o MESMO documento (CNPJ, 14 digitos); um (D) veio SEM documento ('?') e sem telefone; dois (A, D) sem telefone. 6 de 7 itens com documento = 86%.",
+  "_portal": "💭 o relatorio da execucao NAO imprime o portal por item; os portais abaixo sao ILUSTRATIVOS, escolhidos para que as 4 parcelas de B fiquem na mesma seguradora (e o que a tela de parcelas de uma seguradora devolve) e para que exista um par de portais distintos entre segurados.",
+  "_whatsapp": "telefones sinteticos na faixa 5500900000001+ (DDD 00 nao existe no plano de numeracao brasileiro).",
+  "company_id": "aaaaaaaa-0000-0000-0000-00000000a1fa",
+  "itens": [
+    {"cliente_nome": "Segurado A Exemplo", "cpf_cnpj": "00000000000191", "recibo": "A-0001", "portal": "hdi_corretor", "vencimento": "2026-09-08", "valor": 1587.53, "whatsapp": "", "contact_status": "nao encontrado", "numero_parcela": "2/10", "numero_apolice": "APOL-A"},
+    {"cliente_nome": "Segurado B Exemplo Ltda", "cpf_cnpj": "00000000000272", "recibo": "B-0001", "portal": "tokiomarine_corretor", "vencimento": "2026-09-03", "valor": 733.13, "whatsapp": "5500900000002", "contact_status": "confirmado", "numero_parcela": "3/12", "numero_apolice": "APOL-B1"},
+    {"cliente_nome": "Segurado B Exemplo Ltda", "cpf_cnpj": "00000000000272", "recibo": "B-0002", "portal": "tokiomarine_corretor", "vencimento": "2026-09-03", "valor": 684.05, "whatsapp": "5500900000002", "contact_status": "confirmado", "numero_parcela": "3/12", "numero_apolice": "APOL-B2"},
+    {"cliente_nome": "Segurado B Exemplo Ltda", "cpf_cnpj": "00000000000272", "recibo": "B-0003", "portal": "tokiomarine_corretor", "vencimento": "2026-09-03", "valor": 643.77, "whatsapp": "5500900000002", "contact_status": "confirmado", "numero_parcela": "3/12", "numero_apolice": "APOL-B3"},
+    {"cliente_nome": "Segurado B Exemplo Ltda", "cpf_cnpj": "00000000000272", "recibo": "B-0004", "portal": "tokiomarine_corretor", "vencimento": "2026-09-03", "valor": 676.31, "whatsapp": "5500900000002", "contact_status": "confirmado", "numero_parcela": "3/12", "numero_apolice": "APOL-B4"},
+    {"cliente_nome": "Segurado C Exemplo", "cpf_cnpj": "00000000000353", "recibo": "C-0001", "portal": "yelum_corretor", "vencimento": "2026-09-08", "valor": 1672.62, "whatsapp": "5500900000003", "contact_status": "confirmado", "numero_parcela": "5/12", "numero_apolice": "APOL-C"},
+    {"cliente_nome": "Segurado D Exemplo", "cpf_cnpj": "", "recibo": "D-0001", "portal": "hdi_corretor", "vencimento": "2026-09-06", "valor": 80.08, "whatsapp": "", "contact_status": "nao encontrado", "numero_parcela": "1/12", "numero_apolice": "APOL-D"}
+  ]
+}

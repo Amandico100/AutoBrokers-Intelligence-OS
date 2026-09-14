@@ -1,0 +1,12 @@
+mapfre
+Seja bem-vindo ao Portal MAPFRE Negócios
+Acesse com seus dados
+Autenticação inválida!
+Número do CPF *
+<cpf>
+Senha *
+•••••••••
+Esqueci minha senha / Desbloquear usuário
+Primeiro Acesso
+Entrar
+Lembrar meus dados
