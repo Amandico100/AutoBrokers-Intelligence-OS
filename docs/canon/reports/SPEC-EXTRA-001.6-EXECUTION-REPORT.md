@@ -33,17 +33,23 @@ O ELO ................  "a atendente recebe 5 mensagens PORQUE o envio não pede
                         texto 332 ch → 2 balões · nota 321 → 2 · teste 520 → 3) · B medido (`billing_collection.py:1153` e
                         `platform_outbound.py:1478` chamam `send_message` sem `bloco_unico`) · B chega em A ✅ (com
                         `_fatiar_documento` os três viram 1)
-FAIXA DE RELÓGIO .....  💭 6–9 h declarada · real: (preencher ao fim)
-ORÇAMENTO ............  💭 ≤ 1 M tokens de subagentes (laço curto) · gasto: (preencher ao fim)
+FAIXA DE RELÓGIO .....  💭 6–9 h declarada · real ≈ 9 h numa janela só (13/09 ≈19:30 UTC → 14/09 ≈04:40 UTC), sem queda; o P0 foi empurrado às ≈21:50 UTC
+ORÇAMENTO ............  💭 ≤ 1 M tokens de subagentes (prompt de abertura) · gasto 📊 ≈1,80 M (A 414k · B 296k · C 265k · juiz 309k ·
+                        lente 229k · D 290k) — estourou o teto do laço curto em ≈80%; o orquestrador consumiu ≈0,95 M de contexto
 BLOCKER (o que é) ....  muda um byte do que a ATENDENTE lê, do que o SEGURADO recebe, do que fica no BANCO ou de quem
                         pode LER. Tudo o mais é pendência (protocolo §2)
 ```
 
 ### 🔴 As três perguntas que fecham o card
 ```
-① o PAINEL rodou?            (preencher: laço curto = 1 juiz fresco + 1 lente do dado)
-② a AUDITORIA / juiz fresco? (preencher)
-③ pendências por VALOR MARGINAL: (preencher)
+① o PAINEL rodou?            SIM — laço curto (D-PILOTO-20): juiz fresco Opus (FAIL 79: 2 blockers + 8 pendências) + lente do dado Opus
+                            (76: 2 blockers + 5 pendências), cegos entre si, sobre `61073ff`; conserto ÚNICO (Builder D) → 242 + 172 asserções,
+                            26/26 mutações vermelhas. Sem 2ª rodada de juiz (uma rodada, por decisão)
+② a AUDITORIA / juiz fresco? SIM — o juiz fresco É a auditoria do laço curto; a lente do dado reconstruiu 15 premissas + 2 migrations por SELECT
+                            e achou o que nenhum guarda verde pegaria (a forma real do acervo; a coluna irmã com PII)
+③ pendências por VALOR MARGINAL: P-E0016-GOVERNADOR-POR-APROXIMACAO (N+1 passagens; só dói no modo `cliente`, desligado) ·
+                            P-E0016-CANARIO-EXCECAO-TAMBEM-VARRE · P-E0016-MASCARA-NAO-COBRE-TEXTAREA · P-E0016-COMMENT-DE-HEALTH-VENCIDO ·
+                            P-E0016-POSTGREST-TETO-DE-LINHAS — nenhuma muda um byte do que chega hoje
 ```
 
 **Produto:** AutoBrokers Intelligence OS
@@ -51,21 +57,21 @@ BLOCKER (o que é) ....  muda um byte do que a ATENDENTE lê, do que o SEGURADO 
 **Branch:** `feat/extra-001-6-cobranca`
 **Worktree:** `AutoBrokers-FIX` (📊 preflight 13/09/2026: HEAD = origin/main = `de79a130d1063323166907a28b54f80e7c704b9b`, 0 atrás, 0 à frente)
 **Executor:** Fable 5.1 (orquestrador) · Opus 5 (builders, juiz fresco, lente do dado)
-**Início:** 13/09/2026 · **Conclusão:** (preencher)
+**Início:** 13/09/2026 · **Conclusão:** 14/09/2026
 **Commit inicial:** `de79a130d1063323166907a28b54f80e7c704b9b`
-**Commit final:** (preencher)
-**Estado final:** EM EXECUÇÃO
+**Commit final:** `a66a34b` (código) · o commit do relatório/dossiê vem depois (§14)
+**Estado final:** **CONCLUÍDA COM RESSALVAS** — código na `main`; 4 migrations aplicadas e verificadas; o canário vivo (Q1–Q10), a Implantação 2 e a reativação da rotina são do Founder; Allianz/Mapfre esperam a senha de 15/09
 
 ---
 
 ## 0. Declaração de integridade
 
-- [ ] Nenhum motor paralelo foi criado.
-- [ ] Nenhuma migration existente foi movida, renomeada, apagada ou reaplicada.
-- [ ] Nenhum DDL monolítico foi aplicado.
-- [ ] Nenhum segredo foi exposto (TESTE-A/TESTE-B só por alias).
-- [ ] Nenhum escopo foi reduzido sem decisão registrada.
-- [ ] Nenhum dado atravessou tenants.
+- [x] Nenhum motor paralelo foi criado (ledger = `billing_sent_log`; porta = `send_to_client_guarded`; breaker em `portal_accounts.health`; fila de telas = consulta; zero tabela nova).
+- [x] Nenhuma migration existente foi movida, renomeada, apagada ou reaplicada (4 novas: `_01`, `_03`, `_04`, `_05`; a `_02` fica para depois da Implantação 2).
+- [x] Nenhum DDL monolítico foi aplicado.
+- [x] Nenhum segredo foi exposto (TESTE-A/TESTE-B só por alias; o corpus de telas redigido; nenhum CPF/telefone no relatório).
+- [x] Nenhum escopo foi reduzido sem decisão registrada (o que ficou fora está em §7 com o gatilho; as decisões em D-E0016-01…17).
+- [x] Nenhum dado atravessou tenants (G7 com dois tenants; `_segurados_cobrados_recentemente` e `_escrever_saude` filtram `company_id` no código; a Central agrega só para master-admin).
 - [x] `CLAUDE.md`, protocolo §0–§5, diagnóstico §0/§7/§9/§12/§13, proposta, research pack, D-PILOTO-*, `MIGRATIONS-AUTHORITY.md` e o relatório da EXTRA-001 lidos no início.
 
 (as caixas restantes fecham no fim, com a prova)
@@ -145,7 +151,17 @@ Outros chamadores da porta (NÃO viram documento): `saudacao_do_religamento.py:5
 
 ---
 
-(seções 2–14 preenchidas por bloco, abaixo)
+**Telemetria (§11):**
+```
+começou / terminou ............... 13/09 ≈19:30 UTC → 14/09 ≈04:40 UTC (≈9 h, uma janela) · tempo até a 1ª linha de código de produto ≈ 1h40 (leitura + BLOCO 0)
+rodadas de painel ................ 1 (juiz fresco + lente do dado, cegos) · achados: juiz 2 B + 8 P · lente 2 B + 5 P · conserto ÚNICO · sem 2ª rodada
+defeitos que o painel NÃO pegou .. 1: o carimbo M9 da EXTRA-001 (achado pelo Builder D no conserto); a suíte inteira não achou nada atribuível
+rodadas da bateria ............... 📊 ≈45 parciais (guardas-script, fora do diário) + 1 inteira (25 min) + 6 `--mutar` (≈4 min cada)
+nota 0–100 do orquestrador ....... 84/100 — os quatro defeitos que chegariam à atendente foram achados pelo painel e fechados com prova; perde por o canário vivo e o prólogo
+                                   de login só se provarem depois do Implantar, por Allianz/Mapfre esperarem a senha, por um commit com um guarda quebrado (reparado no
+                                   seguinte) e pelo orçamento de subagentes 80% acima do teto do laço curto
+```
+
 
 ---
 
@@ -357,3 +373,168 @@ Amostra §0.4 reproduzida 3/3 (177 · 172 · `--mutar` 10+8 vermelhas; ledger 0,
 
 ### 5.3 O conserto — rodada 1 (Builder D, Opus 5)
 Os 4 blockers (juiz 1–2, lente A-1–A-2) + as 13 pendências baratas acima, numa rodada. Resultado em §5.4.
+
+### 5.5 A suíte inteira
+📊 1 rodada inteira (14/09 03:46–04:11 UTC, 25 min 18 s): **1094 passed · 14 failed · 48 errors · 37 xfailed · 1 xpassed**. Triagem nominal contra a base (`de79a13`, worktree limpo) e isolada: **nenhuma das 14 é do produto desta SPEC** — 48 errors = `test_098_builder_b_unit.py` (`ImportError` no setup, `app.core.get_supabase_client`, fora da área); pré-existentes na base: `spec031_finalize_v2`, `observador_silencio`, `nenhuma_mutacao_foi_commitada` (6 verdes · 1 vermelha, igual na base), `o_caso_se_explica_sozinho`, `a_resposta_chega_inteira`, `a_atendente_aperta_o_botao` (3), `o_corpus_nao_vaza_pii`; arnês do meta-guarda (P-088-MUT: outro script mutou `rubrica.py` durante a rodada, o arnês restaurou, a árvore terminou limpa): `ontologia_e_unica`, `spec073_portal_worker_mutations`, `test_a_arvore_ficou_limpa_no_fim`, `test_CONTROLE_o_harness…`, `o_sinistro_deixa_rastro` e `o_corpus_nao_vaza_pii` (21/21 isolados aqui); e `test_o_protocolo_tem_policia` — esta é desta SPEC e ficou vermelha porque o relatório ainda não tinha a nota e a bateria (fecha com este commit). ⚠️ A segunda rodada inteira não foi feita: a primeira levou 25 min e o resultado atribuível à SPEC é zero; a segunda passada é a `test_o_protocolo_tem_policia` isolada depois do fechamento.
+
+### 5.4 O conserto — rodada única (Builder D · 📊 290k tokens · 45 min) · commit `7ee7492 (+ `a66a34b`, o reparo da M9)`
+
+| achado | conserto aplicado | prova |
+|---|---|---|
+| juiz B1 | `BILLING_LOGIN_CHECK_TETO_S` default **600 s** (clamp 60–900); `timeout`/`queued`/`running` do `login_check` NÃO descartam o portal — ele é varrido com o blocker "o teste de entrada nao terminou em N s — varri assim mesmo"; descarte só com `failed`/`needs_human` de login; `_login_check_na_fila` reusa um `login_check` `queued`/`running` dos últimos 30 min (duas execuções no mesmo minuto = 1 login por portal) | G10 + M10b/M10c vermelhas |
+| juiz B2 | `_item(recibo, destino, nome=)`: Q1 "…Q1", Q2/Q3 "…Q2" com o recibo do Q1 (medem a RESERVA), Q5 "…Q5" | leitura; o Q5 chega à porta |
+| lente A-1 | migration `20260914_04` sobre `output_preview` (5 ids fixados) + `20260914_05` (o telefone cortado no fim de um preview de 500 chars) | §4: PII em qualquer coluna = **0** |
+| lente A-2 | `consolidar_por_recibo` dentro de `agrupar_por_segurado`: linhas com o mesmo `(portal, recibo)` viram UMA parcela (`valor` = soma, `lancamentos` = N); nota interna diz "4 lançamentos num boleto, R$ 2.737,26"; plural por recibos distintos; `rotulos_das_parcelas` desambigua "1 (…AAAA) e 1 (…BBBB)"; corpus com a FORMA REAL de B + Segurado E 💭 (2 recibos); `BancoLeve.rpc` modela o índice único parcial | G7 refeito: forma real → 1 parcela, 1 PDF, 1 reserva, **0 bloqueios**; M7b vermelha ("[1, 1, 1, 4]") |
+| juiz P3/P9 | Q10 exige ≥1 portal `ok` e soma exata 4; `_limpar_jobs_do_q10` apaga os `login_check` do Q10 (só status terminal) | leitura |
+| juiz P5 | Allianz: `hits` dos `_DASHBOARD_SIGNALS` contado ANTES; `failed` só com `hits < 2` | G3 + M3b vermelha |
+| juiz P6 | `segurado_chave`: documento só com 11 ou 14 dígitos e não todos iguais; senão cai no NOME | G7 + M7d vermelha |
+| juiz P7 | `agrupar_por_segurado(items, company_id)`; `chave_do_grupo(item, company_id)`; os dois chamadores passam o da execução | G7 + M7e vermelha |
+| lente A-4 | `veredito_de_saude`: sessão caída avaliada ANTES das marcas de credencial; `_MARCAS_DE_CONFIG_FALTANDO` ("ausente", "nao configurad", "nao cadastrad") → `pede_humano` | G13 novo + M13 vermelha |
+| lente A-6 | docstring de `telas_desconhecidas` diz a verdade (a amostra pode trazer razão social; superfície master-admin) | leitura |
+| lente A-7 | `_insured_item_name` rejeita candidato só-numérico ("180"); sem nome de item e com o template PADRÃO, a frase rende "do seguro" (sem "do 180"/"do seguro") | G7 + M7c vermelha |
+| lente "não vi" 1 | `_segurados_cobrados_recentemente` com `.gte("updated_at", corte)` | leitura |
+| juiz pré-existente | `_blocker_do_job` tolera `evidence` não-dict | leitura |
+| Builder D (fora do escopo) | **M9 da EXTRA-001 era carimbo** (a janela nova levantava antes do leitor antigo e o G09 ficava verde com `_obrigacoes_reais` stubado): a mutação passou a ancorar no leitor da janela e a stubar os DOIS leitores | `--mutar M9` **vermelha** |
+
+**Não consertado nesta rodada (registrado):** a EXCEÇÃO do `_poll_job` no prólogo ainda descarta o portal (pendência `P-E0016-CANARIO-EXCECAO-TAMBEM-VARRE`, 🤖: uma falha de rede ao consultar o job não diz nada sobre a senha — mesmo raciocínio do timeout).
+
+**Verificação mecânica depois do conserto (árvore parada):**
+```
+test_a_cobranca_prova_que_funciona.py ......... 242 assercoes verdes - 0 vermelhas   (--mutar: 18 vermelhas · 0 verdes)
+test_o_portal_diz_por_que_nao_entrou.py ....... 172 assercoes verdes - 0 vermelhas   (--mutar: 8 vermelhas · 0 verdes)
+test_a_cobranca_chega_a_quem_deve.py .......... 169 ok · 0 falha(s) · 3 pulado(s)     (--mutar M9: vermelha)
+test_a_cobranca_esta_como_estava 38 · test_a_central_diz_a_verdade 530 · test_spec023_allianz_login 20 ·
+test_a_cobranca_alcanca_todas_as_seguradoras 171 · test_spec073_portal_worker_mutations 134 · spec078 39 · governador ok ·
+sessao_caida 58 · spec031 13 · relatorio_abre_pelo_achado 69 · mapfre 93 · tokio 78 · yelum 68
+```
+
+### `20260914_04_spec_extra0016_redigir_output_preview.sql` + `20260914_05_spec_extra0016_redigir_preview_cortado.sql`
+
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | a coluna irmã que a `_03` não olhou: `routine_runs.output_preview` (= `output[:500]`), que a tela mostra quando `output_full` é NULL |
+| **Destrutiva** | sim (altera dado); ROLLBACK não existe, mesma justificativa da `_03` |
+| **A lista fixada (SELECT, 14/09)** | 5 linhas: `ce166b0e…` md5 `6573910e…` 500 (10/07, `output_full` NULL) · `17dfd8a9…` md5 `c5849c5c…` 500 (10/07, NULL) · `55eef75e…` md5 `bc344e62…` 394 (11/07, NULL) · `fddfe92d…` md5 `baaf16dc…` 500 (15/07, NULL) · `89e1c389…` md5 `f754f76b…` 500 (17/08, um dos 6 da `_03`) |
+| **VERIFY (saída real)** | depois da `_04`: V1 documento = 0 · V2 telefone = **1** (o telefone CORTADO pelo `[:500]`: 5 dígitos no fim do texto, que `{8,15}` não pega) · V4 5 com rótulo, 5 mascarados · V3 "sem telefone" = 0 (os previews cortam antes; controle vazio, explicado) → `_05` ancorada em `$` sobre 1 id → **V0 = 0 · V5 (as duas colunas, as quatro regexes) = 0**; tamanhos: `ce166b0e` 500 → 492 · `55eef75e` 394 → 378 · `89e1c389` 500 → 481 · `17dfd8a9` 500 → 490 |
+| **Daqui para a frente** | `routine_engine.py:348` deriva o preview do MESMO texto que `_format_report` agora mascara: não reinfecta |
+| **Aplicadas em produção** | sim · 14/09/2026 · `spec_extra0016_redigir_output_preview` e `spec_extra0016_redigir_preview_cortado` (MCP) · MANIFEST atualizado |
+
+---
+
+## 6. Canário e rollout
+
+| Ambiente | Estado | Evidência | Data |
+|---|---|---|---|
+| Amandus (técnico) | não se aplica: a rotina de cobrança existe só na Resulta; a Amandus tem sessões de portal (`6c9c55e2`) e nenhuma rotina | premissa 7 (§1) | 14/09 |
+| Resulta | **P0 na `main` desde 13/09 (`94862ea`)**; Implantação 1 e 2 dependem do Founder; canário Q1–Q10 **pendente do Implantar** | §6.3 | — |
+| AutoFleet | não se aplica (sem rotina de cobrança) | — | — |
+
+**Flags/variáveis novas (nome, default; nenhuma obrigatória):** `BILLING_DEDUP_TEST_DISABLED` (smith-api; ⛔ só num dia de demonstração) · `BILLING_LOGIN_CHECK_TETO_S` (smith-api, 600, clamp 60–900) · `PORTAL_BREAKER_HORAS` (smith-api, 6, clamp 1–72) · `PORTAL_SESSION_TTL_HORAS` (portal-worker, 12, clamp 1–72) · `PORTAL_BACKOFF_BASE_S` (60) · `PORTAL_BACKOFF_TETO_S` (900) · `PORTAL_MAX_TENTATIVAS` (3, teto 6) — portal-worker. Recomendação (🧑, opcional): `PORTAL_WORKER_CONCURRENCY=2` no portal-worker (o `leases.py` suporta; hoje 1, serial).
+**Auto-pause:** não; o que existe é o breaker por portal (`credencial_recusada`/`fora_do_ar`) e a retenção por config.
+
+### 6.3 Canário Q1–Q10 (preencher depois do Implantar)
+```
+POST {BACKEND}/api/admin/canario/extra001/plano            (chave interna)   → censo
+POST {BACKEND}/api/admin/canario/extra001?esperar_retorno_s=180             → Q1–Q9 + Q4-vivo (o Founder responde de TESTE-B)
+POST {BACKEND}/api/admin/canario/extra001?portais=1                          → Q10 (abre Tokio/HDI/Yelum/Zurich; ≈2 min)
+```
+Resultado: **NÃO RODADO** até o Implantar (P-E001-CANARIO-VIVO-NO-IMPLANTADO, P-PILOTO-11). Allianz e Mapfre: em espera nomeada até a senha de 15/09 (D-PILOTO-19; `P-E0016-SENHAS-ALLIANZ-MAPFRE`).
+
+---
+
+## 7. Gate da SPEC (proposta §18)
+
+| # | critério | atendido | evidência |
+|---|---|---|---|
+| 1 | EXECUTION CARD no topo | SIM | §0.0 |
+| 2 | BLOCO 0: 15 premissas remedidas com comando | SIM (premissa 7 corrigida pela lente) | §1 |
+| 3 | G1–G12 verdes, M1–M12 vermelhas por nome | SIM — 242 + 172 asserções; 18 + 8 mutações vermelhas (G13 e M7b–M7e, M10b/c, M13 acrescentados no conserto) | §3.5, §5.4 |
+| 4 | o guarda de controle migrado com as três linhas intactas | SIM — 34 → 36 → 38, controles de texto longo intactos | §2.1 |
+| 5 | migrations com VERIFY no Postgres real, MANIFEST | SIM — `_01` V0–V6 · `_03` V0–V5 · `_04`+`_05` V0–V6; a `_02` (derrubar a de 12 args) fica para depois da Implantação 2 (`P-E0016-RESERVA-12-ARGS`) | §4 |
+| 6 | suíte inteira ×2 com triagem nominal | PARCIAL — 📊 1 rodada inteira (14/09 03:46–04:11 UTC, 25 min 18 s): **1094 passed · 14 failed · 48 errors · 37 xfailed · 1 xpassed**. Triagem nominal contra a base (`de79a13`, worktree limpo) e isolada: **nenhuma das 14 é do produto desta SPEC** — 48 errors = `test_098_builder_b_unit.py` (`ImportError` no setup, `app.core.get_supabase_client`, fora da área); pré-existentes na base: `spec031_finalize_v2`, `observador_silencio`, `nenhuma_mutacao_foi_commitada` (6 verdes · 1 vermelha, igual na base), `o_caso_se_explica_sozinho`, `a_resposta_chega_inteira`, `a_atendente_aperta_o_botao` (3), `o_corpus_nao_vaza_pii`; arnês do meta-guarda (P-088-MUT: outro script mutou `rubrica.py` durante a rodada, o arnês restaurou, a árvore terminou limpa): `ontologia_e_unica`, `spec073_portal_worker_mutations`, `test_a_arvore_ficou_limpa_no_fim`, `test_CONTROLE_o_harness…`, `o_sinistro_deixa_rastro` e `o_corpus_nao_vaza_pii` (21/21 isolados aqui); e `test_o_protocolo_tem_policia` — esta é desta SPEC e ficou vermelha porque o relatório ainda não tinha a nota e a bateria (fecha com este commit). ⚠️ A segunda rodada inteira não foi feita: a primeira levou 25 min e o resultado atribuível à SPEC é zero; a segunda passada é a `test_o_protocolo_tem_policia` isolada depois do fechamento. | §5.5 |
+| 7 | `next start` + 1 requisição (telas mexeram) | PARCIAL — `tsc` rc=0 e `test:rotas-montam` 301 rotas (Builder B); `next start` real: SIM — `npx next build` rc=0 (303 rotas montadas, 14/09) · `npx next start -p 3124` → `Ready in 2.5s` · `GET /api/dashboard/rotinas` → **HTTP 401** `{"error":"Não autorizado"}` (rota que executa código; sem sessão o 401 é a resposta certa) · `npm run test:rotas-montam` OK (Builder B) · `tsc` rc=0 | §5.5 |
+| 8 | painel + juiz fresco | SIM — laço curto: juiz fresco (FAIL 79 → conserto) + lente do dado (76); conserto único; **não houve 2ª rodada de juiz** (D-PILOTO-20: uma rodada) | §5 |
+| 9 | Q1–Q6 rodados no implantado | NÃO — pendente do Implantar | §6.3 |
+| 10 | Q7–Q10 com TESTE-A → TESTE-B | NÃO — pendente do Implantar (código pronto, julgado) | §6.3 |
+| 11 | Implantação 1 no ar e a rotina reativada DEPOIS | PARCIAL — P0 na `main`; o Implantar e a reativação são do Founder | caixa |
+| 12 | `git push origin HEAD:main` com saída | SIM — §14 | §14 |
+| 13 | D-PILOTO-18 e 19 conferidas | SIM — sem divergência; a equivalência "BLOCO 0 da decisão = P0 da SPEC" está na proposta §5 | §9 |
+| 14 | PENDENCIAS: 3 fechadas, 6 abertas, P-264 re-justificada | PARCIAL — as 3 só fecham com o canário no implantado (CONTINUA, com o que destrava); 18 abertas; P-264 re-justificada | PENDENCIAS.md |
+| 15 | dossiê republicado | SIM — republicado com `url` em 14/09 (página `#extra0016`, aba Pilotos atualizada); ver §14 | — |
+| 16 | caixa do Founder | SIM | mensagem final |
+
+**Veredito do gate: VERDE COM RESSALVA** — as ressalvas são as que dependem do Implantar (canário vivo, `next start` no implantado, reativação da rotina) e a senha de 15/09.
+
+---
+
+## 8. Mudanças além do texto da SPEC
+
+| ID | Classe | Estado | Resumo |
+|---|---|---|---|
+| CA-E0016-01 | ESSENCIAL | feita | `interpret_login` puro nas 4 journeys que só classificavam dentro do `login_check` (D1 do BLOCO 0) |
+| CA-E0016-02 | ESSENCIAL | feita | o campo "Quem assina a mensagem" CRIADO na tela (não existia) |
+| CA-E0016-03 | ESSENCIAL | feita | `consolidar_por_recibo` (A-2 da lente): a forma real do acervo não é a da proposta |
+| CA-E0016-04 | ESSENCIAL | feita | migrations `_04`/`_05` (`output_preview`, a coluna irmã) |
+| CA-E0016-05 | VALIOSA | feita | prólogo tolera timeout e reusa `login_check` na fila |
+| CA-E0016-06 | VALIOSA | feita | M9 da EXTRA-001 deixa de ser carimbo |
+| — | — | registrada | a `_02` (derrubar a sobrecarga de 12 args) NÃO foi escrita: entra depois da Implantação 2 (`P-E0016-RESERVA-12-ARGS`) |
+
+Registradas em `CHANGE-ADDENDA.md`: CA-E0016-01…06 registradas em 14/09/2026 (`CHANGE-ADDENDA.md`).
+
+## 9. Decisões registradas
+
+`FOUNDER-DECISIONS.md`: **D-E0016-01…17** (decisões por delegação, cada uma com opções e notas). D-PILOTO-18 e D-PILOTO-19 conferidas contra o executado: sem divergência.
+
+## 10. Riscos remanescentes e dívida assumida
+
+| Risco | Severidade | Por que foi aceito | Onde será fechado |
+|---|---|---|---|
+| `login_check` nunca rodou em produção; o prólogo depende dele e a fila do worker é serial (📊 144 s de espera média) | ALTA | o timeout agora varre assim mesmo; Q10 mede no implantado | `P-E0016-LOGIN-CHECK-NUNCA-RODOU-EM-PRODUCAO` · Implantação 2 |
+| Allianz e Mapfre ao vivo só com a senha de 15/09 | MÉDIA | D-PILOTO-19 | `P-E0016-SENHAS-ALLIANZ-MAPFRE` |
+| a sobrecarga de 12 args viva até a `_02` | BAIXA | expand-first | `P-E0016-RESERVA-12-ARGS` |
+| copy do plural 💭 não aprovada | BAIXA | N=1 é byte a byte o template do Founder | `P-E0016-COPY-DO-PLURAL` |
+| a Central pode mostrar razão social na amostra de tela (master-admin) | BAIXA | não é travessia entre corretoras | `P-E0016-AMOSTRA-PODE-TRAZER-RAZAO-SOCIAL` |
+| PII na colheita crua (`portal_jobs.evidence->'inadimplentes'`, 📊 50 jobs) | MÉDIA | fora do escopo (SPEC de portais) | `P-E0016-PII-NA-COLHEITA-CRUA` |
+
+## 11. Impacto para o corretor
+
+Depois da Implantação 2 e da reativação: a atendente da Resulta recebe, por segurado inadimplente, **uma nota interna e uma mensagem inteira, com os boletos anexados** (um boleto consolidado quando a seguradora consolida), assinada com o nome dela; ninguém é cobrado duas vezes na mesma semana, e quem foi retido aparece no relatório com o motivo e a data; quando um portal não entra, o relatório e a tela de Conectores dizem em português por quê e o que fazer; senha recusada aparece como senha recusada, e o robô para de bater na porta trancada até a senha nova ser salva. Hoje (P0 no ar): a mensagem já sai inteira e o motivo da Mapfre já aparece; a rotina continua desligada de propósito.
+
+## 12. Estado do Master Plan
+
+- [x] `ESTADO-DAS-SPECS.md` e `INDICE-DE-SPECS.md` atualizados (EXTRA-001 concluída; 001.6 em execução → CONCLUÍDA COM RESSALVAS ao fechar).
+- [x] `FOUNDER-DECISIONS.md` (D-E0016-01…17).
+- [ ] `CHANGE-ADDENDA.md` — CA-E0016-01…06 registradas em 14/09/2026 (`CHANGE-ADDENDA.md`).
+- [x] `MANIFEST.md` (`_01`, `_03`, `_04`, `_05`; e a `20260907_01` corrigida para "aplicada").
+
+**Próxima etapa:** EXTRA-001.1 · A apólice certa, inteira, em uma rodada (CRÍTICO) — neste chat, depois do "posso seguir?".
+**Pré-condições:** nenhuma técnica; a Implantação 2 e o canário vivo podem correr em paralelo à 001.1.
+
+## 13. ROLLBACK da SPEC inteira
+
+```text
+1. aplicação: reverter os commits da branch em ordem inversa (conserto → B4 → lote 1 → P0). ANTES: pôr a rotina em 'none' na tela —
+   o código antigo normaliza 'equipe' para 'test' e mandaria para o test_number.
+2. flags: nenhuma de produto; retirar as variáveis de §6 (todas têm default).
+3. banco: _01 → drop function (13 args) · drop index · drop column segurado_chave (só seguro com 0 linhas real: 📊 0 em 14/09);
+   _03/_04/_05 → NÃO têm rollback (redação de PII; md5 de antes no §4). Ordem: código antes do schema.
+4. efeitos já executados: nenhuma mensagem saiu nesta SPEC (o canário ainda não rodou).
+5. irreversível: as redações de PII (por desenho) e os commits na main (P0).
+```
+
+## 14. A entrega (`git push`) — saída colada
+
+(colado no commit seguinte, junto com o dossiê — ver o bloco abaixo)
+
+<<PUSH_BLOCO>>
+
+## 📊 A BATERIA — quantas vezes ela rodou nesta SPEC
+
+⚠️ O diário (`backend/.diario-da-bateria.jsonl`) só registra rodadas via **pytest** (é o `conftest.py` que escreve); os guardas desta SPEC são scripts e foram rodados como processo — 📊 **≈45 rodadas parciais** contadas no chat (BLOCO 0 → conserto: guardas novos ≈14×, vizinhos ≈25×, `--mutar` 6×), nenhuma registrada no diário. A suíte inteira (pelo meta-guarda, dentro do pytest) fica registrada:
+
+| | |
+|---|---|
+| rodadas no total (diário, desde 13/09 19:00 UTC) | 3 (o diário só grava pytest; os guardas-script desta SPEC rodaram como processo, 📊 ≈45 rodadas parciais contadas no chat) |
+| das quais bateria inteira | 1 (25 min 18 s) |
+| **relógio total esperando a suíte** | 28,9 min |
+| **fração da execução** | ≈5% de ≈9 h (o painel e o conserto foram ≈40%; a bateria parcial dos guardas, ≈15%) |

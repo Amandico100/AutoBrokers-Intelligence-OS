@@ -242,7 +242,7 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
     a resposta do cliente chega ao atendimento com o caso certo e fica registrada mesmo com o agente desligado, toda falha vira pendência visível;
     modo teste de 17/08, observador, QR e sessões NÃO mudam. Canário só TESTE-A → TESTE-B. SPEC `specs/SPEC-EXTRA-001-operacao-dos-pilotos.md` ·
     relatório `reports/SPEC-EXTRA-001-EXECUTION-REPORT.md` · proposta e research pack em `specs-propostas/` (sanitizados).
-▶   SPEC-EXTRA-001.6 · A cobrança prova que funciona — EM EXECUÇÃO 13–14/09/2026 (CRÍTICO, laço curto D-PILOTO-20, primeira da
+✅   SPEC-EXTRA-001.6 · A cobrança prova que funciona — CONCLUÍDA COM RESSALVAS em 14/09/2026 (na main; canário vivo depois do Implantar) (CRÍTICO, laço curto D-PILOTO-20, primeira da
     família EXTRA-001.x; diagnóstico dos pilotos §9 e §13.7): P0 na main (`94862ea`), B1–B4 na branch, migrations 01 e 03 aplicadas.
     Proposta = SPEC (`specs-propostas/SPEC-EXTRA-001.6-a-cobranca-prova-que-funciona.md`) · relatório `reports/SPEC-EXTRA-001.6-EXECUTION-REPORT.md`.
     Ordem seguinte (D-PILOTO-20 / diagnóstico §13.7): 001.1 → 001.2 → 001.3 → 001.4 → 001.7 → 001.10 → 001.5 → 001.0 → (001.8, 001.9).

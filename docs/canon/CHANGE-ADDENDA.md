@@ -3856,3 +3856,21 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 
 ## 07/09/2026 · SPEC-EXTRA-001 · dois guardas vizinhos migraram o fato — VALIOSA
 `scripts/rotina-mora-no-auxiliar.test.mjs` ("exatamente test e none" → "exatamente test, none, equipe e cliente"; a negativa `live`/`approval` continua) e `backend/tests/test_spec023_cobranca.py` ("env + live permite" → "live é legado retido; nenhum env o promove"). CLAUDE.md §9.3: a lição migra em vez de morrer.
+
+## 14/09/2026 · SPEC-EXTRA-001.6 · `interpret_login` puro nas 4 journeys que só classificavam dentro do `login_check` — ESSENCIAL
+**Problema:** a proposta (P0.3, G3) manda rodar `interpret_login` das 6 journeys sobre os prints reais; só Allianz e HDI o tinham (Mapfre, Tokio, Yelum e Zurich classificavam dentro do `login_check` assíncrono). **Evidência:** `grep -n "def interpret_login" backend/portal_worker/journeys/*.py` em `de79a13`. **Consequência:** os MESMOS `if` movidos para `interpret_login(page_text, url) -> JourneyResult | None` em cada uma; `login_check` os chama. **Autorização:** D-E0016-01 (85 × 55 × 40).
+
+## 14/09/2026 · SPEC-EXTRA-001.6 · o campo "Quem assina a mensagem" CRIADO na tela — ESSENCIAL
+**Problema:** a proposta dizia "o campo ganha rótulo humano"; o campo não existia em `PainelDeRotinas.tsx` e o config da rotina não tinha a chave. **Consequência:** campo criado (`attendant_name`), com a explicação de que nos modos reais a rotina fica retida sem ele; a Implantação 1 passa a incluir o smith-web. **Autorização:** D-E0016-02 (95 × 20).
+
+## 14/09/2026 · SPEC-EXTRA-001.6 · `consolidar_por_recibo` antes de reservar — ESSENCIAL
+**Problema:** 📊 a lente do dado mediu em `portal_jobs.evidence->'inadimplentes'` que as "4 parcelas do mesmo CNPJ" da Tokio são 4 linhas com o MESMO recibo/apólice/parcela e UM boleto consolidado; o laço por grupos da proposta reservaria 1 e produziria 3 bloqueios falsos por execução. **Consequência:** linhas com o mesmo `(portal, recibo)` viram uma parcela (`valor` = soma, `lancamentos` = N) dentro de `agrupar_por_segurado`; a nota diz "N lançamentos num boleto"; o corpus ganhou a forma real e um caso 💭 de N recibos. **Autorização:** D-E0016-14 (90 × 25).
+
+## 14/09/2026 · SPEC-EXTRA-001.6 · migrations `_04` e `_05`: `output_preview`, a coluna irmã — ESSENCIAL
+**Problema:** a migration `_03` da proposta redigiu `output_full`; `routine_runs.output_preview` (= `output[:500]`) carregava a mesma PII em 5 execuções, 4 delas com `output_full` NULL — é o preview que a tela mostra. **Consequência:** `_04` (5 ids fixados) + `_05` (o telefone cortado pelo `[:500]`, ancorado em `$`); VERIFY: PII em qualquer coluna = 0. Sem rollback, pela justificativa da `_03`. **Autorização:** D-E0016-17 (95 × 5).
+
+## 14/09/2026 · SPEC-EXTRA-001.6 · o prólogo de login tolera o timeout e reusa o `login_check` na fila — VALIOSA
+**Problema:** a proposta (B3.1) previa "teto 💭 120 s" e "portais com outro veredito não abrem job"; 📊 a fila real do worker espera 144 s em média (511 s máx.), serial por padrão — o teto estourava e 5 de 6 portais ficavam sem varredura (juiz fresco, blocker 1). **Consequência:** teto 600 s (clamp 60–900); no timeout o portal é varrido com blocker; descarte só com `failed`/`needs_human`; `login_check` `queued`/`running` dos últimos 30 min é reusado. **Autorização:** D-E0016-13 (88 × 55 × 30).
+
+## 14/09/2026 · SPEC-EXTRA-001.6 · a mutação M9 da EXTRA-001 deixa de ser carimbo — VALIOSA
+**Problema:** com o segundo leitor do ledger (a janela de N dias), o stub de `_obrigacoes_reais` já não fazia o G09 da EXTRA-001 ficar vermelho (o leitor da janela levantava antes). **Consequência:** a mutação ancora no leitor da janela e stuba os dois; `--mutar M9` vermelha de novo. **Autorização:** CLAUDE.md §9.3 (um guarda que não consegue falhar não guarda nada).
