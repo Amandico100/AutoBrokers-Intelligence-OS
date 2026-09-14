@@ -1,0 +1,688 @@
+{
+  "_leia_me": "As formas com que o agente pergunta cada slot. GERADO pelo motor (corridor_playbooks._PLAYBOOKS) mais as escritas, que carregam o texto do produto de onde sairam. Os padroes sao aplicados sobre corridor_playbooks._norm(texto) com IGNORECASE|DOTALL — o MESMO dialeto de match_ura_step (CLAUDE.md §9.4). Slot sem forma declarada vale 'sem_ancora' e o guarda conta quantos sao.",
+  "_gerado_por": "scripts do BLOCO C da SPEC-EXTRA-001.2",
+  "_totais": {
+    "slots": 72,
+    "com_ancora": 56,
+    "sem_ancora": 16
+  },
+  "sem_ancora": [
+    "destino_bairro",
+    "destino_cep",
+    "destino_cidade",
+    "destino_numero",
+    "destino_rua",
+    "destino_uf",
+    "local_bairro",
+    "local_cep",
+    "local_cidade",
+    "local_numero",
+    "local_rua",
+    "local_uf",
+    "ocupantes_particularidade",
+    "rodovia",
+    "veiculo_descricao",
+    "veiculo_situacoes"
+  ],
+  "slots": {
+    "agua_escorrendo": [
+      {
+        "padrao": "a (?:agua|água) ainda (?:esta|está) escorrendo",
+        "origem": "tool",
+        "fonte_texto": "[residencial encanador] A água ainda está escorrendo agora?"
+      }
+    ],
+    "alavanca_travada_opcao": [
+      {
+        "padrao": "a alavanca est[áa] travada",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "alavanca_travada"
+      }
+    ],
+    "aparelho_idade": [
+      {
+        "padrao": "h(?:a|á) quantos anos o aparelho foi fabricado",
+        "origem": "como_perguntar",
+        "fonte_texto": "há quantos anos o aparelho foi fabricado"
+      }
+    ],
+    "aparelho_marca": [
+      {
+        "padrao": "^\\s*qual a marca\\s*\\??\\s*$|qual a marca do (?:aparelho|equipamento)",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "aparelho_marca"
+      }
+    ],
+    "aparelho_marca_modelo": [
+      {
+        "padrao": "a marca e o modelo do aparelho",
+        "origem": "como_perguntar",
+        "fonte_texto": "a marca e o modelo do aparelho"
+      }
+    ],
+    "aparelho_modelo": [
+      {
+        "padrao": "e o modelo completo|qual o modelo",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "aparelho_modelo"
+      }
+    ],
+    "ar_condicionado_btus": [
+      {
+        "padrao": "e qual a pot[êe]ncia",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "ar_condicionado_btus"
+      }
+    ],
+    "ar_condicionado_tipo": [
+      {
+        "padrao": "qual o modelo \\(janela ou split\\)",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "ar_condicionado_tipo"
+      }
+    ],
+    "bateria_tipo_opcao": [
+      {
+        "padrao": "entendi\\. o que voc[êe] precisa",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "bateria_submenu"
+      },
+      {
+        "padrao": "entendi\\. o que voc[êe] precisa\\?[\\s\\S]{0,40}recarga de bateria",
+        "origem": "corredor",
+        "playbook": "azul-auto-whatsapp@v1",
+        "passo": "bateria_submenu"
+      }
+    ],
+    "caixa_litros_opcao": [
+      {
+        "padrao": "quantos litros tem cada caixa d.?[áa]gua",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "caixa_dagua_litros"
+      }
+    ],
+    "caixas_dagua_quantidade_opcao": [
+      {
+        "padrao": "quantas caixas d.?[áa]gua precisam do servi[çc]o",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "caixa_dagua_quantas"
+      }
+    ],
+    "cambio_opcao": [
+      {
+        "padrao": "qual [ée] o tipo de c[âa]mbio",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "tipo_cambio"
+      }
+    ],
+    "chave_tipo_opcao": [
+      {
+        "padrao": "qual [ée] o tipo da chave",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "chave_tipo"
+      }
+    ],
+    "chaveiro_alvo_opcao": [
+      {
+        "padrao": "voc[êe] precisa do chaveiro para o qu[êe]",
+        "origem": "corredor",
+        "playbook": "porto-residencial-whatsapp@v1",
+        "passo": "chaveiro_submenu"
+      }
+    ],
+    "chaveiro_necessidade_opcao": [
+      {
+        "padrao": "o que voc[êe] precisa\\?[\\s\\S]{0,60}abrir a porta",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "chaveiro_necessidade"
+      }
+    ],
+    "chaveiro_porta_opcao": [
+      {
+        "padrao": "em qual destas op[çc][õo]es est[áa] localizado o problema",
+        "origem": "corredor",
+        "playbook": "hdi-residencial-whatsapp@v1",
+        "passo": "chaveiro_porta_do_problema"
+      }
+    ],
+    "data_agendamento": [
+      {
+        "padrao": "para que dia (?:ele |voc(?:e|ê) )?quer o agendamento",
+        "origem": "como_perguntar",
+        "fonte_texto": "para que dia ele quer o agendamento"
+      }
+    ],
+    "destino_bairro": "sem_ancora",
+    "destino_cep": "sem_ancora",
+    "destino_cidade": "sem_ancora",
+    "destino_numero": "sem_ancora",
+    "destino_rua": "sem_ancora",
+    "destino_uf": "sem_ancora",
+    "eletrodomestico_opcao": [
+      {
+        "padrao": "selecione o eletrodom[ée]stico que precisa de conserto",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "menu_aparelho"
+      },
+      {
+        "padrao": "qual desses itens precisa de reparo",
+        "origem": "corredor",
+        "playbook": "hdi-residencial-whatsapp@v1",
+        "passo": "menu_item_linha_branca"
+      }
+    ],
+    "email_segurado": [
+      {
+        "padrao": "endere[çc]o onde est[áa] o pet",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "pet_endereco_e_email"
+      }
+    ],
+    "encanador_instalacao_opcao": [
+      {
+        "padrao": "o que precisa de instala[çc][ãa]o\\?",
+        "origem": "corredor",
+        "playbook": "porto-residencial-whatsapp@v1",
+        "passo": "encanador_instalacao"
+      }
+    ],
+    "encanador_tipo_opcao": [
+      {
+        "padrao": "para qual tipo de servi[çc]o\\?[\\s\\S]{0,120}desentupimento",
+        "origem": "corredor",
+        "playbook": "porto-residencial-whatsapp@v1",
+        "passo": "encanador_submenu"
+      }
+    ],
+    "endereco_numero": [
+      {
+        "padrao": "(?:informe|confirme) o n[úu]mero da resid[êe]ncia",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "numero_residencia"
+      }
+    ],
+    "equipamentos_troca_opcao": [
+      {
+        "padrao": "equipamentos para troca \\(chave de roda",
+        "origem": "corredor",
+        "playbook": "allianz-auto-whatsapp@v1",
+        "passo": "equipamentos_troca"
+      }
+    ],
+    "estepe_situacao": [
+      {
+        "padrao": "voc[êe] possui um estepe",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "pneu_estepe"
+      },
+      {
+        "padrao": "possui estepe, macaco e chave de rodas",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "tem_estepe"
+      }
+    ],
+    "fechadura_tipo_opcao": [
+      {
+        "padrao": "qual tipo de fechadura precisa de reparo",
+        "origem": "corredor",
+        "playbook": "porto-residencial-whatsapp@v1",
+        "passo": "chaveiro_tipo_fechadura"
+      }
+    ],
+    "ferramentas_no_veiculo": [
+      {
+        "padrao": "possui chave de roda e macaco",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "pneu_chave_macaco"
+      }
+    ],
+    "geladeira_medicacao_opcao": [
+      {
+        "padrao": "geladeira [ée] usada para arma",
+        "origem": "corredor",
+        "playbook": "hdi-residencial-whatsapp@v1",
+        "passo": "geladeira_medicacao"
+      }
+    ],
+    "idade_aparelho_opcao": [
+      {
+        "padrao": "qual a idade de fabrica[çc][ãa]o do aparelho",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "idade_de_fabricacao"
+      }
+    ],
+    "local_atual": [
+      {
+        "padrao": "endere[çc]o onde est[áa] o pet",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "pet_endereco_e_email"
+      },
+      {
+        "padrao": "digite o endere[çc]o completo do local",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "endereco_livre"
+      },
+      {
+        "padrao": "para informar o endere[çc]o onde o ve[íi]culo est[áa],? \\*?escolha apenas uma",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "endereco_direto_2026"
+      },
+      {
+        "padrao": "digite o endere[çc]o completo do local, desta forma",
+        "origem": "corredor",
+        "playbook": "azul-auto-whatsapp@v1",
+        "passo": "endereco_livre_azul"
+      },
+      {
+        "padrao": "compartilhe sua localiza[çc][ãa]o fixa ou me diga o endere[çc]o",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "endereco_livre"
+      }
+    ],
+    "local_bairro": "sem_ancora",
+    "local_cep": "sem_ancora",
+    "local_cidade": "sem_ancora",
+    "local_destino": [
+      {
+        "padrao": "^por favor, digite o endere[çc]o completo\\. coloque assim",
+        "origem": "corredor",
+        "playbook": "azul-auto-whatsapp@v1",
+        "passo": "endereco_destino_livre_2025"
+      }
+    ],
+    "local_numero": "sem_ancora",
+    "local_rua": "sem_ancora",
+    "local_seguro": [
+      {
+        "padrao": "voc[êe] est[áa] em um lugar seguro\\?|o ve[íi]culo est[áa] em um local seguro",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "lugar_seguro"
+      },
+      {
+        "padrao": "voc[êe] est[áa] em um lugar seguro",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "lugar_seguro_zurich"
+      }
+    ],
+    "local_situacao": [
+      {
+        "padrao": "como (?:e|é) o lugar onde (?:ele |voc(?:e|ê) )?(?:esta|está)",
+        "origem": "como_perguntar",
+        "fonte_texto": "como é o lugar onde ele está — seguro, escuro, ou com pouca gente passando"
+      }
+    ],
+    "local_uf": "sem_ancora",
+    "ocupantes_particularidade": "sem_ancora",
+    "pane_opcao": [
+      {
+        "padrao": "o que houve\\?[\\s\\S]{0,12}1\\W{0,4}problema de bateria",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "o_que_houve_panes"
+      }
+    ],
+    "periodo_preferido": [
+      {
+        "padrao": "o per(?:i|í)odo preferido",
+        "origem": "como_perguntar",
+        "fonte_texto": "o período preferido — manhã (9h-13h) ou tarde (13h-18h)"
+      }
+    ],
+    "pessoa_no_local": [
+      {
+        "padrao": "qual [ée] o nome de quem estar[áa] (?:no local|na resid[êe]ncia)",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "nome_no_local"
+      },
+      {
+        "padrao": "qual [ée] o nome da pessoa que est[áa] no local",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "nome_pessoa_local"
+      },
+      {
+        "padrao": "qual [ée] o nome de quem est[áa](?:r[áa])? no local",
+        "origem": "corredor",
+        "playbook": "azul-auto-whatsapp@v1",
+        "passo": "nome_no_local"
+      },
+      {
+        "padrao": "nome da pessoa respons[áa]vel por acompanhar o t[ée]cnico|nome da pessoa que estar[áa] na resid[êe]ncia para receber o t[ée]cnico|qual [ée] o nome da pessoa que est[áa] no local",
+        "origem": "corredor",
+        "playbook": "hdi-residencial-whatsapp@v1",
+        "passo": "nome_pessoa_local"
+      }
+    ],
+    "pet_idade": [
+      {
+        "padrao": "^qual a idade\\s*\\?",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "pet_idade"
+      }
+    ],
+    "pet_nome": [
+      {
+        "padrao": "qual o nome do pet",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "pet_nome"
+      }
+    ],
+    "pet_raca": [
+      {
+        "padrao": "^qual ra[çc]a\\s*\\?",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "pet_raca"
+      }
+    ],
+    "pneus_danificados_opcao": [
+      {
+        "padrao": "mais de 1 pneu est[áa] danificado",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "mais_de_um_pneu"
+      }
+    ],
+    "ponto_referencia": [
+      {
+        "padrao": "um ponto de refer(?:e|ê)ncia",
+        "origem": "como_perguntar",
+        "fonte_texto": "um ponto de referencia proximo"
+      }
+    ],
+    "problema_descricao": [
+      {
+        "padrao": "descreva em suas palavras",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "descreva_situacao"
+      },
+      {
+        "padrao": "(?:me )?explique em poucas palavras o que voc[êe] precisa",
+        "origem": "corredor",
+        "playbook": "porto-residencial-whatsapp@v1",
+        "passo": "descrever_necessidade"
+      }
+    ],
+    "qual_seguro_opcao": [
+      {
+        "padrao": "qual seguro deseja utilizar\\?[\\s\\S]{0,60}\\*?1\\s*-\\s*resid[êe]ncial",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "menu_qual_seguro_tres_opcoes"
+      }
+    ],
+    "quando": [
+      {
+        "padrao": "precisa agora ou prefere agendar",
+        "origem": "como_perguntar",
+        "fonte_texto": "se precisa agora ou prefere agendar"
+      }
+    ],
+    "risco_confirmado_registro_fechado": [
+      {
+        "padrao": "o registro de (?:agua|água) j(?:a|á) foi fechado",
+        "origem": "tool",
+        "fonte_texto": "[residencial encanador] O registro de água já foi fechado? 🔴 Pergunte de verdade: com o registro aberto o dano cresce enquanto o prestador não chega."
+      }
+    ],
+    "risco_confirmado_sem_fumaca": [
+      {
+        "padrao": "(?:fumaca|fumaça)|fa(?:i|í)sca|cheiro de queimado",
+        "origem": "tool",
+        "fonte_texto": "[residencial elétrica] 'sim' se NÃO há fumaça/faísca/cheiro de queimado"
+      }
+    ],
+    "rodovia": "sem_ancora",
+    "taxi_passageiros": [
+      {
+        "padrao": "para quantos passageiros",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "transporte_passageiros"
+      }
+    ],
+    "telefone_contato": [
+      {
+        "padrao": "informe \\*?o n[úu]mero de celular completo\\*? com ddd",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "informar_telefone"
+      },
+      {
+        "padrao": "informe um\\s*[\\s\\S]{0,3}n[úu]mero de celular",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "informar_celular"
+      },
+      {
+        "padrao": "esse telefone n[ãa]o [ée] v[áa]lido",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "telefone_invalido"
+      },
+      {
+        "padrao": "n[úu]mero de (?:celular|telefone)\\*? com ddd da pessoa que est[áa] no local",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "telefone_local"
+      },
+      {
+        "padrao": "o telefone informado n[ãa]o [ée] v[áa]lido",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "telefone_invalido_familia"
+      },
+      {
+        "padrao": "informe um n[úu]mero de contato\\. digite no formato|informe um \\*?n[úu]mero de celular\\*? com ddd|e qual [ée] o n[úu]mero de quem est[áa] no local",
+        "origem": "corredor",
+        "playbook": "azul-auto-whatsapp@v1",
+        "passo": "telefone_contato"
+      },
+      {
+        "padrao": "confirmar? pra n[óo]s o seu \\*?n[úu]mero de telefone",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "telefone"
+      }
+    ],
+    "tipo_imovel": [
+      {
+        "padrao": "(?:e|é) casa, apartamento ou condom(?:i|í)nio",
+        "origem": "como_perguntar",
+        "fonte_texto": "se é casa, apartamento ou condomínio"
+      }
+    ],
+    "titular_cpf": [
+      {
+        "padrao": "digite o \\*?cpf\\*? ou \\*?cnpj\\*?",
+        "origem": "corredor",
+        "playbook": "allianz-residencial-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "digite o \\*?cpf\\*? ou \\*?cnpj\\*? do\\(a\\)? titular",
+        "origem": "corredor",
+        "playbook": "allianz-auto-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "(?:informe|digite) o (?:seu )?\\*?cpf ou cnpj\\*?",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "^desculpe, n[ãa]o entendi a sua resposta[\\s\\S]{0,60}cpf ou cnpj v[áa]lido",
+        "origem": "corredor",
+        "playbook": "porto-auto-whatsapp@v1",
+        "passo": "cpf_invalido"
+      },
+      {
+        "padrao": "informe \\*?apenas um dos dados|informe \\*?um dos dados abaixo|informe somente o \\*?cpf ou cnpj\\*? do t[íi]tular",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "identificacao_dado"
+      },
+      {
+        "padrao": "digite o cpf/cnpj do titular do seguro|me informe o cpf/cnpj para come[çc]armos",
+        "origem": "corredor",
+        "playbook": "tokio-auto-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "informe o \\*?cpf ou cnpj\\*? do\\(a\\)? segurad",
+        "origem": "corredor",
+        "playbook": "azul-auto-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "digite somente os n[úu]meros do \\*?cpf\\*? ou \\*?cnpj\\*?",
+        "origem": "corredor",
+        "playbook": "bradesco-auto-whatsapp@v1",
+        "passo": "cpf_fallback"
+      },
+      {
+        "padrao": "informe o \\*?cpf\\*? ou \\*?cnpj do titular",
+        "origem": "corredor",
+        "playbook": "mapfre-auto-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "qual o seu \\*?cpf/?cnpj",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "pedir_cpf"
+      },
+      {
+        "padrao": "informe somente o \\*?cpf ou cnpj\\*? do t[íi]tular|informe \\*?apenas um dos dados|informe \\*?um dos dados abaixo|informe o \\*?cpf ou cnpj\\*? que deseja atendimento|informe o cpf do segurado",
+        "origem": "corredor",
+        "playbook": "hdi-residencial-whatsapp@v1",
+        "passo": "identificacao_dado"
+      }
+    ],
+    "titular_nascimento": [
+      {
+        "padrao": "data de nascimento da pessoa titular",
+        "origem": "corredor",
+        "playbook": "mapfre-auto-whatsapp@v1",
+        "passo": "nascimento"
+      }
+    ],
+    "titular_nome": [
+      {
+        "padrao": "o nome do titular",
+        "origem": "como_perguntar",
+        "fonte_texto": "o nome do titular"
+      }
+    ],
+    "vazamento_local": [
+      {
+        "padrao": "(?:qual desses itens est[áa] com vazamento|e onde [ée] o vazamento)",
+        "origem": "corredor",
+        "playbook": "hdi-residencial-whatsapp@v1",
+        "passo": "detalhe_do_vazamento"
+      }
+    ],
+    "veiculo_cor": [
+      {
+        "padrao": "a cor do ve(?:i|í)culo",
+        "origem": "como_perguntar",
+        "fonte_texto": "a cor do veículo"
+      }
+    ],
+    "veiculo_descricao": "sem_ancora",
+    "veiculo_em_garagem": [
+      {
+        "padrao": "(?:esta|está) numa garagem ou estacionamento",
+        "origem": "como_perguntar",
+        "fonte_texto": "se o carro está numa garagem ou estacionamento, ou parado na rua"
+      }
+    ],
+    "veiculo_nivel_rua": [
+      {
+        "padrao": "(?:esta|está) no subsolo, acima do n(?:i|í)vel da rua",
+        "origem": "como_perguntar",
+        "fonte_texto": "se o carro está no subsolo, acima do nível da rua ou no nível dela — e se há espaço para o guincho manobrar"
+      }
+    ],
+    "veiculo_placa": [
+      {
+        "padrao": "preciso da \\*?placa\\*? do ve[íi]culo",
+        "origem": "corredor",
+        "playbook": "allianz-auto-whatsapp@v1",
+        "passo": "pedir_placa"
+      },
+      {
+        "padrao": "qual a placa do ve[íi]culo",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "informar_placa"
+      },
+      {
+        "padrao": "para dar in[íi]cio ao seu atendimento digite a placa",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "abertura_pede_placa"
+      },
+      {
+        "padrao": "n[ãa]o encontrei este cnpj em nosso sistema",
+        "origem": "corredor",
+        "playbook": "hdi-auto-whatsapp@v1",
+        "passo": "cnpj_nao_encontrado"
+      },
+      {
+        "padrao": "informa a \\*?placa do ve[íi]culo",
+        "origem": "corredor",
+        "playbook": "bradesco-auto-whatsapp@v1",
+        "passo": "informar_placa"
+      },
+      {
+        "padrao": "n[ãa]o encontrei esta placa no meu sistema",
+        "origem": "corredor",
+        "playbook": "bradesco-auto-whatsapp@v1",
+        "passo": "placa_nao_encontrada"
+      },
+      {
+        "padrao": "informe o n[úu]mero da \\*?placa do seu ve[íi]culo",
+        "origem": "corredor",
+        "playbook": "mapfre-auto-whatsapp@v1",
+        "passo": "informar_placa"
+      },
+      {
+        "padrao": "qual a \\*?placa do ve[íi]culo",
+        "origem": "corredor",
+        "playbook": "zurich-auto-whatsapp@v1",
+        "passo": "pedir_placa"
+      }
+    ],
+    "veiculo_situacoes": "sem_ancora"
+  }
+}

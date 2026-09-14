@@ -521,6 +521,105 @@ INSTRUÇÕES IMPORTANTES:
 from langchain_core.runnables import RunnableConfig
 
 
+#: Papéis que falam com o SEGURADO. O copiloto interno do corretor não tem
+#: ficha de atendimento — fiscalizá-lo custaria uma leitura por turno e não
+#: protegeria ninguém. Mesma condição de `graph._build_initial_state`.
+_PAPEIS_DE_ATENDIMENTO = ("attendance", "insured_external")
+
+
+def _valor_da_ficha(ficha: dict, slot: str) -> str:
+    """O que o cliente respondeu para aquele slot — para dizer ao modelo."""
+    from app.services.attendance_ficha import valor_de
+
+    return str(valor_de(((ficha or {}).get("confirmados") or {}).get(slot)) or "")
+
+
+async def _ficha_do_turno(state: dict) -> dict:
+    """A ficha deste atendimento — a que o turno já carregou, ou o banco.
+
+    ⚠️ O `_build_initial_state` já leu a ficha para montar o prompt. Quando ela
+    viaja no state, o fiscal não paga uma segunda leitura; quando não viaja,
+    ele lê — e uma falha de leitura devolve ficha vazia, que só faz o fiscal
+    ficar calado. Nunca derruba o turno.
+    """
+    pronta = state.get("ficha_atendimento")
+    if isinstance(pronta, dict) and pronta:
+        return pronta
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.attendance_ficha import carregar, ficha_vazia
+
+        company_id = str(state.get("company_id") or "")
+        session_id = str(state.get("session_id") or "")
+        if not (company_id and session_id):
+            return ficha_vazia()
+        cli = get_supabase_client()
+        return await carregar(getattr(cli, "client", cli), company_id, session_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[PERGUNTA REPETIDA] ficha indisponível (%s)", type(exc).__name__)
+        return {}
+
+
+async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar):
+    """O fiscal da pergunta repetida. UMA regeneração — e depois ENVIA.
+
+    SPEC-EXTRA-001.2 §7.3. Terceira instância do mesmo padrão que o produto já
+    tem (o fiscal do InfoCap e o da transferência, logo acima): determinístico,
+    DEPOIS do modelo, e só reescreve quando a resposta extrapola o que o caso
+    autoriza. ⛔ Nenhum motor novo.
+
+    🔴 **Nunca trava a resposta.** Se o modelo insistir, a mensagem SAI assim
+    mesmo e o defeito vira linha no feed: travar o segurado para proteger uma
+    regra de estilo trocaria um defeito silencioso por um barulhento
+    (CLAUDE.md §9.5).
+
+    Devolve `(texto_final, slots_que_persistiram)`.
+    """
+    from app.services.attendance_ficha import slots_reperguntados
+
+    papel = str((state.get("agent_data") or {}).get("agent_role") or "").lower()
+    if papel and papel not in _PAPEIS_DE_ATENDIMENTO:
+        return texto, []
+
+    ficha = await _ficha_do_turno(state)
+    corredor = str((ficha or {}).get("servico") or "")
+    repetidos = slots_reperguntados(texto, ficha, corredor=corredor)
+    if not repetidos:
+        return texto, []
+
+    logger.warning("[PERGUNTA REPETIDA] a resposta volta a perguntar %s — "
+                   "regenerando UMA vez", repetidos)
+    novo = ""
+    try:
+        novo = await regenerar(repetidos, ficha)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[PERGUNTA REPETIDA] regeneração falhou (%s) — segue a "
+                     "resposta original", type(exc).__name__)
+
+    ainda = slots_reperguntados(novo, ficha, corredor=corredor) if novo else repetidos
+    final = novo or texto
+    if not ainda:
+        return final, []
+
+    # Persistiu: envia, e o feed fica com o registro do defeito.
+    try:
+        from app.services.activity_log import log_activity
+        from app.services.attendance_ficha import rotulo
+
+        company_id = str(state.get("company_id") or "")
+        if company_id:
+            nomes = ", ".join(rotulo(s) for s in ainda)
+            await log_activity(
+                company_id, "qualidade",
+                "Pergunta repetida na conversa (pergunta_repetida)",
+                "A resposta voltou a perguntar o que o cliente já tinha "
+                "respondido: %s. Slots: %s. A mensagem foi enviada assim mesmo."
+                % (nomes, ", ".join(ainda)))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[PERGUNTA REPETIDA] feed indisponível: %s", type(exc).__name__)
+    return final, ainda
+
+
 async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
                      llm_base=None, tools_base=None, cutover_ctx=None) -> dict:
     """
@@ -788,6 +887,39 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
             if guarded_final:
                 guarded_final = _honesto
 
+    # 🔴 O FISCAL DA PERGUNTA REPETIDA — SPEC-EXTRA-001.2 §7.3.
+    #
+    # 📊 10/09: a ficha tinha `agua_escorrendo` respondido ("não, fechei o
+    # registro") e a atendente perguntou pela TERCEIRA vez. O bloco do prompt
+    # já dizia "não pergunte de novo" — prosa no prompt não conserta prosa do
+    # modelo (mesma lição do fiscal da transferência, logo acima).
+    if not has_tool_calls:
+        _texto_gerado = extract_text_from_content(getattr(response, "content", "") or "")
+
+        async def _regenerar(_slots, _ficha):
+            from app.services.attendance_ficha import rotulo
+
+            _lista = "\n".join("  · %s: %s" % (rotulo(s), _valor_da_ficha(_ficha, s))
+                               for s in _slots)
+            _aviso = SystemMessage(content=(
+                "⛔ A resposta que você acabou de escrever PERGUNTA DE NOVO o "
+                "que o cliente já respondeu nesta conversa:\n" + _lista +
+                "\n\nReescreva a resposta USANDO esses dados como verdade já "
+                "confirmada. Não peça confirmação deles e não os mencione como "
+                "dúvida. Siga do ponto em que o atendimento parou."))
+            _resp = await llm_with_tools.ainvoke(llm_messages + [_aviso], config=config)
+            return extract_text_from_content(getattr(_resp, "content", "") or "")
+
+        _final, _persistiu = await _resposta_sem_pergunta_repetida(
+            _texto_gerado, state, regenerar=_regenerar)
+        if _final and _final.strip() != (_texto_gerado or "").strip():
+            response = AIMessage(content=_final)
+            if guarded_final:
+                guarded_final = _final
+        if _persistiu:
+            logger.error("[Agent Node] 🛡️ resposta ainda repergunta %s — enviada "
+                         "assim mesmo e registrada no feed", _persistiu)
+
     result_update = {
         "messages": [response],
         "rag_chunks": state.get("rag_chunks", []),
@@ -904,19 +1036,25 @@ class _RegistroInerte:
 
 
 
-# Campos que a tool de acionamento declara e que valem como dado do caso.
-# Só entram aqui os que o CLIENTE confirmou ou que a InfoCap resolveu — nada de
-# campo de controle interno.
-_SLOTS_DA_FICHA = (
-    "titular_cpf", "titular_nome", "telefone_contato",
-    "veiculo_placa", "local_atual", "local_destino",
-    "endereco_numero", "problema_descricao", "periodo_preferido",
-    "risco_confirmado_sem_fumaca", "aparelho_marca_modelo", "aparelho_idade",
-    # 🔴 Os três do FORMULÁRIO NATIVO — SPEC-084.2 C2. Sem eles a resposta do
-    #    cliente vive um turno só e a atendente repergunta, que é exatamente o
-    #    defeito que a ficha existe para não ter.
-    "veiculo_em_garagem", "veiculo_nivel_rua", "local_situacao",
-)
+# 🔴 A LISTA ESCRITA À MÃO MORREU — SPEC-EXTRA-001.2 BLOCO C (§7.1).
+#
+# Aqui havia uma tupla literal de **15** nomes. `ROTULOS` tinha 35 e os 14
+# corredores exigiam 54 — 📊 medido pelo motor em 14/09/2026. `agua_escorrendo`
+# não estava em nenhuma das duas listas, e o segurado do encanador ouviu a mesma
+# pergunta pela terceira vez. Duas listas escritas à mão divergem no dia em que
+# alguém acrescenta um slot num lado só; estas já tinham divergido.
+#
+# Quem responde agora é `attendance_ficha.slots_do_atendimento()`, DERIVADO de
+# `ROTULOS ∪ required_slots dos corredores − CAMPOS_DE_CONTROLE`.
+
+#: Slots que, quando a InfoCap já resolveu a apólice deste caso, vieram do
+#: SISTEMA DE GESTÃO e não da boca do segurado.
+#:
+#: 📊 `infocap_tool.py:455` e `:1025` — *"para apólice AUTO, placa/veículo vêm
+#: da fonte; o atendente NUNCA pede placa ao cliente"*. O CPF fica de fora de
+#: propósito: é POR ELE que a consulta acha a apólice, então quem o disse foi o
+#: cliente. Sem contexto de InfoCap no turno, tudo é do cliente.
+_DO_SISTEMA_DE_GESTAO = ("veiculo_placa", "veiculo_descricao")
 
 
 async def _gravar_ficha_do_turno(state: dict, tool_name: str,
@@ -930,7 +1068,14 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
     a exceção subir custaria a resposta ao segurado.
     """
     from app.core.database import get_supabase_client
-    from app.services.attendance_ficha import FASE_COM_HUMANO, gravar
+    from app.services.attendance_ficha import (
+        FASE_COM_HUMANO,
+        ORIGEM_CLIENTE,
+        ORIGEM_SISTEMA_DE_GESTAO,
+        confirmacao,
+        gravar,
+        slots_do_atendimento,
+    )
 
     company_id = str(state.get("company_id") or "")
     session_id = str(state.get("session_id") or "")
@@ -943,8 +1088,19 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
         # Devolvido a uma pessoa. A fase trava aqui: só um humano tira daqui.
         novidades["fase"] = FASE_COM_HUMANO
     else:
-        confirmados = {k: tool_args.get(k) for k in _SLOTS_DA_FICHA
-                       if tool_args.get(k) not in (None, "")}
+        # Cada confirmação carrega a ORIGEM: o bloco do prompt diz ao modelo o
+        # que ele NÃO pode perguntar de novo (o cliente disse) e o que ele pode
+        # só CONFIRMAR numa frase (veio do sistema de gestão).
+        tem_infocap = bool(state.get("infocap_policy_context"))
+        confirmados = {}
+        for chave in slots_do_atendimento():
+            valor = tool_args.get(chave)
+            if valor in (None, ""):
+                continue
+            origem = (ORIGEM_SISTEMA_DE_GESTAO
+                      if tem_infocap and chave in _DO_SISTEMA_DE_GESTAO
+                      else ORIGEM_CLIENTE)
+            confirmados[chave] = confirmacao(valor, origem)
         if confirmados:
             novidades["confirmados"] = confirmados
         for origem, destino in (("insurer_key", "seguradora"),

@@ -201,10 +201,63 @@ def teste_o_bloco_diz_o_que_falta_e_o_que_nao_perguntar():
 def teste_a_ficha_esta_ligada_no_turno():
     print("\n[S5] A ficha é lida na entrada e escrita na saída do turno")
     graph = _sem_comentario(_ler("backend", "app", "agents", "graph.py"))
-    checar("from app.services.attendance_ficha import bloco_para_o_prompt, carregar" in graph,
-           "graph.py carrega a ficha")
-    checar('dynamic_context += f"\\n\\n{_bloco_ficha}"' in graph,
-           "e injeta no contexto do turno")
+    # 🔴 PROMOVIDO em 14/09/2026 (SPEC-EXTRA-001.2 §7.2). Aqui se afirmava a
+    # STRING do `import` e a STRING do `+=`. Isso prova que as linhas estão
+    # ESCRITAS, não que a ficha CHEGA ao prompt — o defeito do CLAUDE.md §9.4,
+    # e o mesmo que deixou este arquivo verde com o chat inteiro caindo.
+    #
+    # Agora: (1) o MOTOR monta o bloco a partir de uma ficha e dos obrigatórios
+    # que o MOTOR dos corredores devolve; (2) por AST, o valor que entra em
+    # `dynamic_context` é o resultado de `bloco_para_o_prompt` — que sobrevive a
+    # renomear variável, reformatar a linha ou trocar a f-string.
+    import ast as _ast_ficha
+    import importlib as _il
+
+    _backend = os.path.join(RAIZ, "backend")
+    if _backend not in sys.path:
+        sys.path.insert(0, _backend)
+    _fic = _il.import_module("app.services.attendance_ficha")
+    _gr = _il.import_module("app.agents.graph")
+
+    _ficha_viva = _fic.fundir(_fic.ficha_vazia(), {
+        "ramo": "auto", "servico": "guincho", "seguradora": "allianz",
+        "confirmados": {"titular_cpf": "00000000191"},   # ⛔ sintético
+    }, [])
+    _obrig_vivos = _gr._slots_obrigatorios_do_caso(_ficha_viva)
+    checar(bool(_obrig_vivos),
+           "o motor dos corredores diz o que ESTE caso exige",
+           "sem obrigatórios o bloco não teria o que cobrar")
+    _bloco_vivo = _fic.bloco_para_o_prompt(_ficha_viva, _obrig_vivos)
+    checar("00000000191" in _bloco_vivo and "não pergunte de novo" in _bloco_vivo,
+           "e o bloco montado por ele traz o que já foi confirmado")
+
+    _arv_g = _ast_ficha.parse(graph)
+    _fn_g = next(n for n in _ast_ficha.walk(_arv_g)
+                 if isinstance(n, (_ast_ficha.FunctionDef, _ast_ficha.AsyncFunctionDef))
+                 and n.name == "_build_initial_state")
+    # de qual variável sai o bloco da ficha
+    _nomes_do_bloco = {
+        alvo.id
+        for n in _ast_ficha.walk(_fn_g)
+        if isinstance(n, _ast_ficha.Assign)
+        and isinstance(n.value, _ast_ficha.Call)
+        and getattr(n.value.func, "id", "") == "bloco_para_o_prompt"
+        for alvo in n.targets if isinstance(alvo, _ast_ficha.Name)
+    }
+    checar(bool(_nomes_do_bloco),
+           "graph.py CHAMA bloco_para_o_prompt dentro de _build_initial_state",
+           "import escrito não é ficha injetada")
+    _injetado = any(
+        isinstance(n, _ast_ficha.AugAssign)
+        and isinstance(n.target, _ast_ficha.Name)
+        and n.target.id == "dynamic_context"
+        and any(isinstance(x, _ast_ficha.Name) and x.id in _nomes_do_bloco
+                for x in _ast_ficha.walk(n.value))
+        for n in _ast_ficha.walk(_fn_g)
+    )
+    checar(_injetado,
+           "e o resultado dele entra no contexto que vai ao modelo",
+           "montar o bloco e não injetá-lo é a ficha existir e não chegar")
     # 🔴 ESTE CHECK FOI O DEFEITO. Ele afirmava a linha COMO TEXTO — e a linha
     # usava `_agent_role`, que é local de OUTRA função. Virava NameError em toda
     # chamada de `_build_initial_state`: o chat inteiro caía, para todo papel, e

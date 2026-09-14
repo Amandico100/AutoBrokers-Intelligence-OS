@@ -111,7 +111,82 @@ ROTULOS = {
     "veiculo_situacoes": "condições do veículo (rebaixado, blindado, travado…)",
     "local_situacao": "como é o local (seguro, escuro, pouco movimento)",
     "ocupantes_particularidade": "se há criança, idoso ou PcD no local",
+    # ------------------------------------------------------------------ #
+    # 🔴 O QUE OS CORREDORES EXIGEM E O VOCABULÁRIO NÃO CONHECIA
+    # ------------------------------------------------------------------ #
+    #
+    # 📊 14/09/2026, medido pelo MOTOR (`slots_do_atendimento()` sobre
+    # `corridor_playbooks._PLAYBOOKS`): os 14 playbooks exigem **54**
+    # `required_slots` distintos, e **37** não tinham rótulo aqui. Entre eles
+    # `agua_escorrendo` — o slot que o encanador de 10/09 respondeu e ouviu a
+    # mesma pergunta pela terceira vez.
+    #
+    # ⚠️ A redação é a do CLIENTE, não a da URA, e sai de
+    # `corridor_playbooks._COMO_PERGUNTAR` (a mesma frase, em forma de rótulo).
+    # ⛔ Slot de corredor sem rótulo aqui deixa `test_todo_slot_do_corredor_
+    #    tem_ficha` VERMELHO — é a trava que impede as duas listas de divergir
+    #    outra vez.
+    "agua_escorrendo": "se a água ainda está escorrendo",
+    "vazamento_local": "onde é o vazamento",
+    "risco_confirmado_registro_fechado": "se o registro de água já foi fechado",
+    "tipo_imovel": "se é casa, apartamento ou condomínio",
+    "qual_seguro_opcao": "de que seguro ele fala (residencial, condomínio ou empresarial)",
+    "caixas_dagua_quantidade_opcao": "quantas caixas d’água precisam do serviço",
+    "caixa_litros_opcao": "quantos litros tem cada caixa d’água",
+    "chaveiro_necessidade_opcao": "se é abrir a porta, fazer a cópia, ou as duas",
+    "chaveiro_alvo_opcao": "se é a porta da casa, o portão ou um cômodo",
+    "chaveiro_porta_opcao": "se a porta é a principal ou uma interna",
+    "chave_tipo_opcao": "o tipo da chave (simples, tetra, as duas ou eletrônica)",
+    "fechadura_tipo_opcao": "que tipo de fechadura é",
+    "encanador_tipo_opcao": "o que está vazando, com as palavras dele",
+    "encanador_instalacao_opcao": "se é reparo do que quebrou ou instalação nova",
+    "eletrodomestico_opcao": "qual é o aparelho (geladeira, fogão, máquina de lavar…)",
+    "geladeira_medicacao_opcao": "se a geladeira guarda medicamento",
+    "aparelho_marca": "a marca do aparelho",
+    "aparelho_modelo": "o modelo ou a descrição do aparelho",
+    "idade_aparelho_opcao": "a idade do aparelho (mais de 10 anos a seguradora recusa)",
+    "ar_condicionado_tipo": "se o ar é de janela ou split",
+    "ar_condicionado_btus": "a potência do ar em BTUs",
+    "data_agendamento": "para que dia ele quer o agendamento",
+    "email_segurado": "o e-mail do segurado",
+    "pet_nome": "o nome do animal",
+    "pet_raca": "a raça do animal",
+    "pet_idade": "a idade do animal",
+    "titular_nascimento": "a data de nascimento do titular",
+    "local_seguro": "se ele está num lugar seguro para esperar",
+    "estepe_situacao": "se o estepe está cheio e em condições de uso",
+    "ferramentas_no_veiculo": "se macaco e chave de roda estão no carro",
+    "equipamentos_troca_opcao": "se tem macaco, chave de roda e estepe",
+    "pneus_danificados_opcao": "quantos pneus estão danificados",
+    "pane_opcao": "o que o carro fez, com as palavras dele",
+    "cambio_opcao": "se o câmbio é manual ou automático",
+    "alavanca_travada_opcao": "se a alavanca do câmbio está travada",
+    "bateria_tipo_opcao": "se é recarga ou bateria nova",
+    "taxi_passageiros": "quantas pessoas vão no táxi",
 }
+
+#: Campos que a tool declara e que **não são dado do cliente** — lista fechada,
+#: e cada um com o motivo escrito.
+#:
+#: 🔴 `dados_confirmados` é a marca de que o modelo MOSTROU os dados ao cliente
+#: e ele confirmou (`insurer_dispatch_tool.py:254`). Deixá-lo virar slot faria
+#: a ficha guardar `dados_confirmados: True` como se fosse uma resposta do
+#: segurado, e o bloco do prompt diria ao modelo "não pergunte de novo" sobre
+#: um campo de controle. Ele já tem destino próprio: vira `apolice_confirmada`.
+CAMPOS_DE_CONTROLE = frozenset({
+    "dados_confirmados",
+})
+
+# ---- de onde veio cada confirmação ---------------------------------------- #
+#
+# 💭 Um dado que veio do cadastro pode precisar de confirmação; um dado que o
+# segurado disse **não pode ser perguntado de novo, nunca**. Sem origem, o
+# modelo trata os dois igual — e foi assim que ele pediu confirmação de placa
+# que a InfoCap já tinha resolvido.
+ORIGEM_CLIENTE = "cliente"
+ORIGEM_SISTEMA_DE_GESTAO = "sistema_de_gestao"
+ORIGEM_CORREDOR = "corredor"
+ORIGEM_DESCONHECIDA = "desconhecida"
 
 _VAZIOS = ("", "none", "null", "nao informado", "não informado", "n/a", "-")
 
@@ -160,7 +235,11 @@ def derivar_fase(ficha: Dict[str, Any], obrigatorios: Optional[List[str]] = None
         return FASE_ACIONADO
 
     confirmados = ficha.get("confirmados") or {}
-    faltando = [s for s in (obrigatorios or []) if not _tem_valor(confirmados.get(s))]
+    # `valor_de` porque a confirmação pode vir embrulhada com a origem; sem ele
+    # um `{"valor": "", …}` contaria como preenchido e a fase pularia para
+    # "pronto para acionar" com o campo vazio.
+    faltando = [s for s in (obrigatorios or [])
+                if not _tem_valor(valor_de(confirmados.get(s)))]
 
     if obrigatorios and not faltando and ficha.get("apolice_confirmada"):
         return FASE_PRONTO
@@ -215,6 +294,73 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
     return nova
 
 
+def _slots_dos_corredores() -> set:
+    """Todo `required_slots` declarado pelos playbooks — lido do MOTOR.
+
+    ⛔ Não é regex sobre o fonte de `corridor_playbooks`. Metade dos
+    subserviços só existe depois que o módulo importa (`_ativar_subservico`,
+    `_resid_slots`, o overlay que acrescenta `tipo_imovel`): ler o arquivo
+    veria uma lista menor do que a que roda. 📊 14/09/2026 — pelo motor: **54**
+    slots distintos; por AST do fonte: 20. CLAUDE.md §9.4.
+
+    Falha de importação devolve conjunto vazio: sem corredor, a ficha continua
+    valendo pelo `ROTULOS`, e o atendimento não cai por causa do vocabulário.
+    """
+    try:
+        from app.services.corridor_playbooks import _PLAYBOOKS
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[FICHA] corredores indisponíveis (%s) — vocabulário só "
+                       "com ROTULOS", type(exc).__name__)
+        return set()
+
+    saida: set = set()
+    for playbook in _PLAYBOOKS.values():
+        for cfg in (playbook.get("subservices") or {}).values():
+            saida.update(str(s) for s in (cfg.get("required_slots") or []))
+    return saida
+
+
+def slots_do_atendimento() -> frozenset:
+    """Todo slot que o produto pode coletar do segurado. DERIVADO, nunca à mão.
+
+        ROTULOS  ∪  os `required_slots` de todos os corredores
+        menos    CAMPOS_DE_CONTROLE
+
+    🔴 Era uma **tupla literal de 15 nomes** em `nodes._SLOTS_DA_FICHA`, ao lado
+    de um `ROTULOS` de 35 e de corredores que exigiam outros 37. Duas listas
+    escritas à mão divergem no dia em que alguém acrescenta um slot num lado só
+    — e já tinham divergido: `agua_escorrendo` não estava em nenhuma das duas, e
+    o segurado ouviu a mesma pergunta três vezes.
+    """
+    base = set(ROTULOS) | _slots_dos_corredores()
+    return frozenset(base - CAMPOS_DE_CONTROLE)
+
+
+def valor_de(confirmado: Any) -> Any:
+    """O valor de uma confirmação, venha ela na forma nova ou na antiga.
+
+    A forma nova é `{"valor": …, "origem": …, "em": …}`. A antiga é o valor
+    cru. ⚠️ Toda leitura passa por aqui: uma ficha gravada ontem não pode
+    aparecer para a URA como `{'valor': 'ABC1D23', …}`.
+    """
+    if isinstance(confirmado, dict) and "valor" in confirmado:
+        return confirmado.get("valor")
+    return confirmado
+
+
+def origem_de(confirmado: Any) -> str:
+    """Quem confirmou. Ficha antiga não mente: devolve `desconhecida`."""
+    if isinstance(confirmado, dict) and confirmado.get("origem"):
+        return str(confirmado["origem"])
+    return ORIGEM_DESCONHECIDA
+
+
+def confirmacao(valor: Any, origem: str = ORIGEM_CLIENTE) -> Dict[str, Any]:
+    """Monta a confirmação com origem e carimbo de hora."""
+    return {"valor": valor, "origem": str(origem or ORIGEM_DESCONHECIDA),
+            "em": datetime.now(timezone.utc).isoformat()}
+
+
 def rotulo(slot: str) -> str:
     """O nome humano do slot. Slot sem rótulo devolve o próprio nome — nunca
     um nome bonito inventado, que esconderia um campo que ninguém batizou."""
@@ -241,10 +387,16 @@ def dados_conhecidos(ficha: Optional[Dict[str, Any]] = None,
     **O caso vence a ficha.** `extras` (os slots do acionamento em curso) entra
     por cima: se o corretor corrigiu o endereço ao abrir o acionamento, é o
     endereço corrigido que vai para a URA, não o que a ficha guardou antes.
+
+    🔴 **E o valor é desembrulhado aqui.** Desde a SPEC-EXTRA-001.2 uma
+    confirmação pode ser `{"valor": …, "origem": …}`. Sem `valor_de`, a URA da
+    seguradora receberia `{'valor': 'ABC1D23', 'origem': 'cliente'}` como se
+    fosse a placa — um dado errado dito à seguradora, não um bug de tela.
     """
     saida: Dict[str, Any] = {}
     for fonte in ((ficha or {}).get("confirmados") or {}, extras or {}):
-        for chave, valor in fonte.items():
+        for chave, bruto in fonte.items():
+            valor = valor_de(bruto)
             if _tem_valor(valor):
                 saida[str(chave)] = valor if isinstance(valor, (list, tuple)) else str(valor).strip()
     return saida
@@ -270,12 +422,27 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
         linhas.append(f"Caso: {cabeca}")
     linhas.append(f"Fase: {ficha.get('fase')}")
 
-    if confirmados:
-        linhas.append("JÁ CONFIRMADO com o cliente — **não pergunte de novo**:")
-        for chave, valor in confirmados.items():
-            linhas.append(f"  · {ROTULOS.get(chave, chave)}: {valor}")
+    # 🔴 A ORIGEM SEPARA AS DUAS LISTAS — e é a diferença entre um dado que não
+    # pode ser perguntado outra vez e um que pode ser lido de volta em uma
+    # frase. O que veio do sistema de gestão (placa, veículo, nome da apólice)
+    # o atendente CONFIRMA; o que o segurado disse, ele NÃO repete.
+    do_cliente = [(k, v) for k, v in confirmados.items()
+                  if origem_de(v) != ORIGEM_SISTEMA_DE_GESTAO]
+    do_sistema = [(k, v) for k, v in confirmados.items()
+                  if origem_de(v) == ORIGEM_SISTEMA_DE_GESTAO]
 
-    faltando = [s for s in (obrigatorios or []) if not _tem_valor(confirmados.get(s))]
+    if do_cliente:
+        linhas.append("JÁ CONFIRMADO com o cliente — **não pergunte de novo**:")
+        for chave, bruto in do_cliente:
+            linhas.append(f"  · {ROTULOS.get(chave, chave)}: {valor_de(bruto)}")
+    if do_sistema:
+        linhas.append("Veio do sistema de gestão — pode confirmar com uma "
+                      "frase, sem perguntar do zero:")
+        for chave, bruto in do_sistema:
+            linhas.append(f"  · {ROTULOS.get(chave, chave)}: {valor_de(bruto)}")
+
+    faltando = [s for s in (obrigatorios or [])
+                if not _tem_valor(valor_de(confirmados.get(s)))]
     if faltando:
         linhas.append("AINDA FALTA para poder acionar:")
         for s in faltando:
@@ -289,6 +456,125 @@ def bloco_para_o_prompt(ficha: Dict[str, Any],
     linhas.append("Se um dado acima estiver errado, o cliente vai corrigir. "
                   "Até lá, trate como verdade e siga do ponto em que parou.")
     return "\n".join(linhas)
+
+
+# --------------------------------------------------------------------- #
+# O guarda de pergunta repetida — puro, e sobre o texto do PRODUTO
+# --------------------------------------------------------------------- #
+#
+# 📊 10/09/2026: a ficha já tinha `agua_escorrendo` respondido pelo segurado
+# ("não, fechei o registro") e a atendente perguntou a mesma coisa pela
+# TERCEIRA vez. O bloco existia, era injetado — e estava vazio para aquele
+# slot, porque o escritor não o conhecia (§0.3 da SPEC-EXTRA-001.2).
+#
+# ⚠️ As âncoras vêm de `tests/fixtures/ancoras_de_pergunta_por_slot.json`:
+# arquivo DECLARADO e revisável, gerado do motor dos corredores mais as formas
+# escritas, cada uma carregando o texto do produto de onde saiu. Slot sem forma
+# declarada fica em `sem_ancora` — e o guarda G7 imprime quantos são. ⛔ Âncora
+# nunca vem da imaginação (CLAUDE.md §9.4).
+_ANCORAS_ARQUIVO = "ancoras_de_pergunta_por_slot.json"
+_ANCORAS_CACHE: Optional[Dict[str, Any]] = None
+
+
+def _ler_ancoras() -> Dict[str, Any]:
+    import json
+    import os
+
+    raiz = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    caminho = os.path.join(raiz, "tests", "fixtures", _ANCORAS_ARQUIVO)
+    try:
+        with open(caminho, encoding="utf-8") as fh:
+            dados = json.load(fh)
+        slots = dados.get("slots") or {}
+        saida = {k: v for k, v in slots.items() if isinstance(v, list) and v}
+        logger.info("[FICHA] âncoras de pergunta: %d slots com forma declarada, "
+                    "%d sem", len(saida), len(slots) - len(saida))
+        return saida
+    except Exception as exc:  # noqa: BLE001
+        # Sem o arquivo o fiscal fica cego — e diz isso alto. Nunca derruba o
+        # turno: a resposta ao segurado vale mais que a régua de estilo.
+        logger.error("[FICHA] âncoras de pergunta não carregaram (%s) — o fiscal "
+                     "de pergunta repetida fica DESLIGADO", type(exc).__name__)
+        return {}
+
+
+def ancoras_de_pergunta() -> Dict[str, Any]:
+    """As formas com que o agente pergunta cada slot. Lido uma vez por processo."""
+    global _ANCORAS_CACHE
+    if _ANCORAS_CACHE is None:
+        _ANCORAS_CACHE = _ler_ancoras()
+    return _ANCORAS_CACHE
+
+
+def _slots_do_corredor(corredor: str) -> Optional[set]:
+    """Os slots que ESTE corredor pode exigir — ou `None` se não o conhecemos.
+
+    Serve para não acusar repetição com a âncora de outro ofício: *"qual a
+    marca do aparelho"* é pergunta de eletrodoméstico, e não tem o que fazer
+    numa conversa de encanador (CLAUDE.md §9.5, pergunta C).
+    """
+    nome = str(corredor or "").strip().lower()
+    if not nome:
+        return None
+    try:
+        from app.services.corridor_playbooks import _PLAYBOOKS, canonical_subservice
+        alvo = canonical_subservice(nome) or nome
+        saida: set = set()
+        for playbook in _PLAYBOOKS.values():
+            for sub, cfg in (playbook.get("subservices") or {}).items():
+                if str(sub).lower() == alvo:
+                    saida.update(str(s) for s in (cfg.get("required_slots") or []))
+        return saida or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def slots_reperguntados(resposta: str, ficha: Dict[str, Any], *,
+                        corredor: str = "") -> List[str]:
+    """Quais slots JÁ CONFIRMADOS PELO CLIENTE a resposta volta a perguntar. PURA.
+
+    ⚠️ **O dialeto é o do motor** (CLAUDE.md §9.4): as âncoras dos corredores
+    foram escritas para `corridor_playbooks._norm` — sem acento, sem o `*` do
+    negrito — e aplicadas com `IGNORECASE|DOTALL`, exatamente como
+    `match_ura_step` as aplica. Rodá-las sobre o texto cru perderia metade do
+    acervo, em silêncio.
+
+    Só acusa o que tem origem `cliente`: o que veio do sistema de gestão **pode**
+    ser confirmado numa frase — e cobrar isso como defeito ensinaria o modelo a
+    acionar com dado que ninguém conferiu.
+    """
+    import re
+
+    texto = str(resposta or "")
+    confirmados = (ficha or {}).get("confirmados") or {}
+    if not texto.strip() or not confirmados:
+        return []
+    try:
+        from app.services.corridor_playbooks import _norm
+    except Exception:  # noqa: BLE001
+        return []
+
+    alvo = _norm(texto)
+    escopo = _slots_do_corredor(corredor)
+    mapa = ancoras_de_pergunta()
+
+    achados: List[str] = []
+    for slot, bruto in confirmados.items():
+        if origem_de(bruto) != ORIGEM_CLIENTE or not _tem_valor(valor_de(bruto)):
+            continue
+        if escopo is not None and slot not in escopo:
+            continue
+        for entrada in (mapa.get(slot) or []):
+            padrao = (entrada or {}).get("padrao")
+            if not padrao:
+                continue
+            try:
+                if re.search(padrao, alvo, re.IGNORECASE | re.DOTALL):
+                    achados.append(slot)
+                    break
+            except re.error:
+                continue
+    return achados
 
 
 # --------------------------------------------------------------------- #
