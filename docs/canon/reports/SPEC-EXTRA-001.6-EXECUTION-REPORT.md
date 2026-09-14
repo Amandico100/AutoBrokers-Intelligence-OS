@@ -3,41 +3,28 @@
 ## 0.0 🔴 O EXECUTION CARD (protocolo §0.2)
 
 ```
-OUTCOME ..............  a rotina de cobrança roda em `equipe`: a atendente recebe 1 mensagem INTEIRA por segurado com N
-                        boletos, nunca a mesma parcela duas vezes, nunca o mesmo segurado 2× em 7 dias; cada portal diz em
-                        português por que não entrou; credencial recusada é classe própria, chega ao dono e o robô para de
-                        bater na porta trancada
-RISCO ................  6 = ALCANCE 2 (em `equipe` quem recebe é a atendente) + REVERSIBILIDADE 3 (mensagem sai do prédio)
-                        + FREQUÊNCIA 1 (toda semana)
-SUPERFÍCIE ...........  2 — vários comportamentos em lugares LISTADOS: billing_collection · platform_outbound ·
-                        whatsapp_service · portal_worker/worker · 6 journeys · app/api/portal · PainelDeRotinas ·
-                        conectores/portais · central-agentes
-PISO APLICADO ........  §3.2 "qualquer coisa que ENVIE" + migration que altera ESTRUTURA (coluna + índice + função) → CRÍTICO
-NÍVEL ................  CRÍTICO · laço curto (D-PILOTO-20 / diagnóstico §13.7): builders Opus · 1 juiz fresco Opus com
-                        canário vivo + 1 lente do DADO · sem aquecimento, sem painel de 3, sem red team
-UNIDADES .............  B0 medir · P0 a mensagem chega inteira (implantável no 1º dia) · B1 ninguém é cobrado 2× ·
-                        B2 a sessão morre e alguém sabe · B3 o portal é vigiado antes da rotina · B4 a prova tem leitor ·
-                        B5 canário vivo + docs
-COESÃO ...............  P0+B1 = billing_collection (hub, UM dono por vez) · B2+B3 = portal_worker + app/api/portal ·
-                        B4 = worker (texto da tela) + billing_collection (PII) — serial depois de B1
-PARALELISMO REAL .....  B1 (backend/app/services) ∥ B2+B3 (backend/portal_worker) — arquivos disjuntos; ≤ 3 agentes
-TIME .................  orquestrador Fable (mede, monta, registra) · builders Opus 5 esforço máximo · juiz fresco Opus 5 ·
-                        lente do dado Opus 5
-REFERÊNCIA ...........  interna: `tests/test_a_cobranca_esta_como_estava.py` (CONTROLE, a migrar §12.3) ·
-                        `tests/test_a_cobranca_chega_a_quem_deve.py` (162 asserções da EXTRA-001) ·
-                        `supabase/migrations/20260907_01_*.sql` · corpus `tests/corpus/telas_reais_de_portal/`
-                        externa: proposta §13 (Playwright auth/locators · Microsoft Circuit Breaker · AWS jitter ·
-                        PostgreSQL partial indexes) — reaproveitadas, não reabertas (D-PILOTO-14: pesquisa só em padrão novo)
-GATES ................  G1–G12 com M1–M12 vermelhas · canário Q1–Q6 herdado + Q7–Q10 · suíte inteira · `git push` com saída
-O ELO ................  "a atendente recebe 5 mensagens PORQUE o envio não pede bloco único" — A medido (📊 13/09, motor:
-                        texto 332 ch → 2 balões · nota 321 → 2 · teste 520 → 3) · B medido (`billing_collection.py:1153` e
-                        `platform_outbound.py:1478` chamam `send_message` sem `bloco_unico`) · B chega em A ✅ (com
-                        `_fatiar_documento` os três viram 1)
-FAIXA DE RELÓGIO .....  💭 6–9 h declarada · real ≈ 9 h numa janela só (13/09 ≈19:30 UTC → 14/09 ≈04:40 UTC), sem queda; o P0 foi empurrado às ≈21:50 UTC
-ORÇAMENTO ............  💭 ≤ 1 M tokens de subagentes (prompt de abertura) · gasto 📊 ≈1,80 M (A 414k · B 296k · C 265k · juiz 309k ·
-                        lente 229k · D 290k) — estourou o teto do laço curto em ≈80%; o orquestrador consumiu ≈0,95 M de contexto
-BLOCKER (o que é) ....  muda um byte do que a ATENDENTE lê, do que o SEGURADO recebe, do que fica no BANCO ou de quem
-                        pode LER. Tudo o mais é pendência (protocolo §2)
+OUTCOME ..............  a rotina roda em `equipe`: 1 mensagem INTEIRA por segurado com N boletos (lançamentos do mesmo recibo
+                        consolidados), nunca a mesma parcela 2×, nunca o mesmo segurado 2× em 7 dias; cada portal diz em
+                        português por que não entrou; credencial recusada é classe própria e o robô para de bater na porta
+RISCO ................  6 = ALCANCE 2 (em `equipe` quem recebe é a atendente) + REVERSIBILIDADE 3 (sai do prédio) + FREQUÊNCIA 1
+SUPERFÍCIE ...........  2 — vários comportamentos em lugares LISTADOS: billing_collection · platform_outbound · whatsapp_service ·
+                        portal_worker/worker · 6 journeys · app/api/portal · PainelDeRotinas · conectores/portais · central-agentes
+PISO APLICADO ........  §3.2 "qualquer coisa que ENVIE" + migration que altera ESTRUTURA e DADO → CRÍTICO
+NÍVEL ................  CRÍTICO · laço curto (D-PILOTO-20): builders Opus · juiz fresco Opus com 3 perguntas adversariais · lente do DADO
+UNIDADES .............  B0 medir · P0 implantável no 1º dia · B1 ninguém é cobrado 2× · B2 a sessão morre e alguém sabe ·
+                        B3 o portal é vigiado antes da rotina · B4 a prova tem leitor · B5 canário + docs
+COESÃO ...............  P0+B1 = billing_collection (hub, UM dono por vez) · B2+B3 = portal_worker + app/api/portal · B4 serial depois
+PARALELISMO REAL .....  B1 ∥ B2+B3 (arquivos disjuntos), depois B4; ≤ 3 agentes ao mesmo tempo
+TIME .................  orquestrador Fable · builders Opus 5 (A, B, C, D) · juiz fresco Opus 5 · lente do dado Opus 5
+REFERÊNCIA ...........  interna: `test_a_cobranca_esta_como_estava.py` (CONTROLE) · `test_a_cobranca_chega_a_quem_deve.py` ·
+                        migration `20260907_01` · corpus `tests/corpus/telas_reais_de_portal/` (6 telas reais transcritas)
+                        externa: proposta §13 (Playwright auth · Circuit Breaker · AWS jitter · índices parciais) — reaproveitadas
+GATES ................  G1–G13 com mutações (26/26 vermelhas) · canário Q1–Q10 (depois do Implantar) · suíte inteira · `git push`
+O ELO ................  "5 mensagens PORQUE o envio não pede bloco único" — A medido (📊 texto 332 ch → 2 balões · nota 321 → 2 ·
+                        teste 520 → 3) · B medido (`send_message` sem `bloco_unico` em :1153 e :1478) · B chega em A ✅ (→ 1, 1, 1)
+FAIXA DE RELÓGIO .....  💭 6–9 h declarada · real ≈ 9 h numa janela (13/09 ≈19:30 → 14/09 ≈04:40 UTC), sem queda; P0 empurrado às ≈21:50
+ORÇAMENTO ............  💭 ≤ 1 M de subagentes · gasto 📊 ≈1,80 M (A 414k · B 296k · C 265k · juiz 309k · lente 229k · D 290k): +80%
+BLOCKER (o que é) ....  muda um byte do que a ATENDENTE lê, o SEGURADO recebe, o BANCO guarda ou quem pode LER (protocolo §2)
 ```
 
 ### 🔴 As três perguntas que fecham o card
@@ -59,7 +46,7 @@ BLOCKER (o que é) ....  muda um byte do que a ATENDENTE lê, do que o SEGURADO 
 **Executor:** Fable 5.1 (orquestrador) · Opus 5 (builders, juiz fresco, lente do dado)
 **Início:** 13/09/2026 · **Conclusão:** 14/09/2026
 **Commit inicial:** `de79a130d1063323166907a28b54f80e7c704b9b`
-**Commit final:** `a66a34b` (código) · o commit do relatório/dossiê vem depois (§14)
+**Commit final:** `a66a34b` (código) · `3ffe549` (relatório) · o commit deste bloco (dossiê + §14)
 **Estado final:** **CONCLUÍDA COM RESSALVAS** — código na `main`; 4 migrations aplicadas e verificadas; o canário vivo (Q1–Q10), a Implantação 2 e a reativação da rotina são do Founder; Allianz/Mapfre esperam a senha de 15/09
 
 ---
@@ -526,7 +513,19 @@ Depois da Implantação 2 e da reativação: a atendente da Resulta recebe, por 
 
 (colado no commit seguinte, junto com o dossiê — ver o bloco abaixo)
 
-<<PUSH_BLOCO>>
+```
+$ git fetch -q origin main
+atras: 0 · a frente: 5
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   94862ea..3ffe549  HEAD -> main
+origin/main = 3ffe549 · a frente depois: 0
+```
+Commits empurrados (14/09/2026 ≈04:45 UTC): `6f1249f` (lote 1: B1+B2+B3) · `61073ff` (B4 + canário Q7–Q10) · `7ee7492` (conserto único) · `a66a34b` (M9) · `3ffe549` (relatório, addenda, índices). O P0 (`fe970d9`, `94862ea`) já estava na `main` desde 13/09 ≈21:50 UTC.
+
+**Dossiê:** republicado com `url` em 14/09/2026 — https://claude.ai/code/artifact/afe1510d-f31c-4d13-9441-aa920ad2b868 (versão 20; página `#extra0016`, placar, caixa do Founder, aba Pilotos "001.6 feita"); a cópia em `docs/canon/reports/dossies/dossies-autobrokers.html` acompanha.
+
+O commit deste bloco (o card compactado para a janela de 3.000 caracteres do guarda-polícia, a saída do push acima e o dossiê) é o **commit final** da SPEC; a saída do segundo push fica na mensagem final ao Founder.
 
 ## 📊 A BATERIA — quantas vezes ela rodou nesta SPEC
 
