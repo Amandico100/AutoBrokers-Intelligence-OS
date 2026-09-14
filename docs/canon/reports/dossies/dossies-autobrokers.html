@@ -151,7 +151,7 @@ ul.tight li{margin:5px 0}
     <a href="#extra0011" data-p="extra0011">EXTRA-001.1 · A apólice certa, inteira, em uma rodada<small>CRÍTICO · laço curto · 14/09</small><span class="chip ok">87</span></a>
     <a href="#extra0012" data-p="extra0012">EXTRA-001.2 · O agente lê tudo antes de falar<small>CRÍTICO · laço curto · 14–15/09</small><span class="chip ok">85</span></a>
     <div class="grp eyebrow">Pilotos · o que os testes ensinaram</div>
-    <a href="#pilotos" data-p="pilotos">Diagnóstico e plano EXTRA-001.x<small>09–13/09 · 7 laudos · 11 blocos · 001.6 e 001.1 feitas</small><span class="chip info">em curso</span></a>
+    <a href="#pilotos" data-p="pilotos">Diagnóstico e plano EXTRA-001.x<small>09–13/09 · 7 laudos · 11 blocos · 001.6, 001.1 e 001.2 feitas</small><span class="chip info">em curso</span></a>
     <div class="grp eyebrow">Método</div>
     <a href="#proto" data-p="proto">Protocolo AAA v11.2<small>de 72 para o que é hoje</small><span class="chip info">v11.2</span></a>
     <div class="grp eyebrow">Fila</div>
@@ -168,9 +168,9 @@ ul.tight li{margin:5px 0}
       <div class="eyebrow">AutoBrokers Intelligence OS · dossiês de execução</div>
       <h1>O que foi feito, o que está no ar, o que só você decide</h1>
       <p class="lede">Uma página por SPEC. Cada dossiê diz como era antes, o que ficou, os números medidos, a nota que o orquestrador deu e por quê, o que ficou pendente e com quem. Atualizado a cada SPEC fechada.</p>
-      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>07d512d</b></span><span>orquestrador <b>Fable 5.1</b> · subagentes <b>Opus 5</b></span><span>atualizado <b>14/09/2026</b></span></div>
+      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>9e0c4d9</b></span><span>orquestrador <b>Fable 5.1</b> · subagentes <b>Opus 5</b></span><span>atualizado <b>15/09/2026</b></span></div>
     </div>
-    <div class="gauge"><div class="eyebrow">Leva 088→098</div><div class="big">9<small> no ar</small></div><div class="bar"><i style="width:92%"></i></div><div class="sub">088, 093-B, 094, 094.1, 095, 096, 097, 097.1 e <b>098</b> na main · 091 absorvida · <b>EXTRA-001 na main</b> · <b>EXTRA-001.6 na main</b> · <b>EXTRA-001.1 na main</b> (a apólice certa, inteira, em uma rodada; canário dos 7 casos depois do Implantar) · 099→114 pausadas · próxima: EXTRA-001.2 (o agente lê tudo antes de falar)</div></div>
+    <div class="gauge"><div class="eyebrow">Leva 088→098</div><div class="big">9<small> no ar</small></div><div class="bar"><i style="width:92%"></i></div><div class="sub">088, 093-B, 094, 094.1, 095, 096, 097, 097.1 e <b>098</b> na main · 091 absorvida · <b>EXTRA-001 na main</b> · <b>EXTRA-001.6 na main</b> · <b>EXTRA-001.1 na main</b> · <b>EXTRA-001.2 na main</b> (o agente lê tudo antes de falar; canário dos 8 casos depois do Implantar) · 099→114 pausadas · próxima: EXTRA-001.3 (o grupo só recebe o que importa)</div></div>
   </div>
 
   <h2>Placar</h2>
@@ -210,6 +210,7 @@ ul.tight li{margin:5px 0}
   <h2>🧑 Sua caixa · o que só você decide ou executa</h2>
   <div class="grid2">
     <div class="card"><h3>Ações físicas</h3><ul class="tight">
+      <li><b>EXTRA-001.2 (15/09):</b> Implantar <b>smith-api → smith-web</b> (migrations <code>20260914_07/_08</code> já aplicadas; 7 variáveis novas, todas opcionais). Depois: o canário dos 8 casos (<code>ROTEIRO-CANARIO-EXTRA-001.2.md</code>, TESTE-A/TESTE-B; <code>PRESENCA_DIGITANDO_LIGADA=true</code> só no caso 5) e me avisar; escolher o <b>nome do agente da Resulta</b>; o roteiro com as atendentes; decidir se o "digitando…" fica ligado.</li>
       <li><b>EXTRA-001.1 (14/09):</b> Implantar <b>smith-api → smith-web</b> (migration <code>20260914_06</code> já aplicada; nenhuma variável nova). Depois: os 7 casos do canário (<code>ROTEIRO-CANARIO-EXTRA-001.1.md</code>: 5 no chat do painel da Resulta, 1 pelo TESTE-A, 1 de controle) e me avisar para eu registrar; o roteiro com a atendente; pedir à InfoCap o perfil de <code>/parcelas</code>; apagar as 3 conexões InfoCap arquivadas da Resulta.</li>
       <li><b>EXTRA-001.6 (14/09):</b> Implantar <b>smith-api → portal-worker → smith-web</b> (4 migrations já aplicadas); na tela do Auxiliar de cobrança da Resulta: "Quem assina a mensagem", modo Encaminhar, WhatsApp da equipe = TESTE-B, 7 dias; me avisar para eu rodar o canário Q1–Q10; só então reativar a rotina. Segunda: senhas novas da Allianz e da Mapfre em Conectores &gt; Portais.</li>
       <li><b>Implantar</b> smith-api e smith-web: 088, 093-B, 094, 094.1 e <b>095</b> estão na main (<code>e0c8838</code>). Zero migration na 095.</li>
