@@ -73,10 +73,24 @@ FECHADO_POR_HUMANO = "fechado_por_humano"
 #: 🔴 Venceu sem resposta. É o motivo que separa *"terminou"* de *"morreu
 #: esperando"* — sem ele, os dois são o mesmo estado para o banco.
 EXPIROU = "expirou"
+#: 🔴 A conversa-FANTASMA de `@lid`: uma linha cujo `user_phone` é um
+#: identificador interno do WhatsApp, sem telefone — que **ninguém consegue
+#: abrir e para a qual ninguém consegue responder**.
+#:
+#: 📊 175 delas em 13/09/2026, 100% abertas (`migrar_conversas_fantasma_lid.py`).
+#: ⛔ Isto **não** é o encerramento em lote que a D-PILOTO-02 proíbe: aquela
+#: decisão fala das 467 conversas REAIS da AutoFleet, que o agente deve
+#: continuar respondendo. Conjuntos diferentes, e o dry-run do script imprime a
+#: contagem dos dois para provar que não se misturam.
+#:
+#: ⚠️ O valor tem de existir aqui **e** no CHECK do banco (migration
+#: `20260914_07`): sem ele aqui, `marcar_fim` levanta `ValueError`; sem ele lá,
+#: o banco recusa o UPDATE. Metade do conserto é conserto nenhum.
+FANTASMA_LID = "fantasma_lid"
 
 MOTIVOS: Tuple[str, ...] = (
     ACIONAMENTO_CONCLUIDO, ENCAMINHADO, RESOLVIDO_PELO_SEGURADO,
-    FECHADO_POR_HUMANO, EXPIROU,
+    FECHADO_POR_HUMANO, EXPIROU, FANTASMA_LID,
 )
 
 #: 📊 Os desfechos de SUCESSO. `expirou` não está aqui, e é esse o ponto: um
@@ -341,6 +355,38 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
 HUMAN_REQUESTED = "HUMAN_REQUESTED"
 
 
+def _momento(valor: Any):
+    """`datetime` com fuso a partir de um ISO-8601 do PostgREST, ou `None`.
+
+    ⚠️ Ilegível devolve `None` de propósito: quem chama decide o lado seguro, e
+    aqui adivinhar formato seria inventar uma ordem entre dois instantes.
+    """
+    from datetime import datetime, timezone
+
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        quando = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
+
+
+def _assumida_depois_do_desfecho(claimed_at: Any, resolvido_em: Any) -> bool:
+    """Alguém assumiu a conversa **depois** de ela ter sido encerrada? — PURA.
+
+    🔴 É a pergunta de P-PILOTO-15, e ela é estritamente `>`: assumir e encerrar
+    no mesmo instante é o fluxo normal (a atendente conduz e fecha), e ali a
+    pausa morre com o desfecho, como em 05/09/2026.
+    """
+    inicio = _momento(claimed_at)
+    fim = _momento(resolvido_em)
+    if inicio is None or fim is None:
+        return False
+    return inicio > fim
+
+
 def pausar_ia(conversa: Any) -> bool:
     """A IA tem de ficar calada nesta conversa? — **PURA**, e é UMA só.
 
@@ -379,17 +425,50 @@ def pausar_ia(conversa: Any) -> bool:
     ⛔ **A alternativa era o `close` apagar `claimed_by`** — e ela custa a
     autoria que a R2 existe para guardar (`conversas/[id]/route.ts:268-271`). O
     dado fica; o que expira é o SILÊNCIO.
+
+    ---------------------------------------------------------------------------
+    🔴 **E A EXCEÇÃO DA EXCEÇÃO — P-PILOTO-15, 14/09/2026**
+
+    Se alguém assumiu a conversa **depois** do desfecho (`claimed_at` posterior
+    a `resolvido_em`), o atendimento recomeçou e há de novo quem calar. Sem esta
+    terceira regra, a conversa encerrada em setembro e reaberta pelo segurado em
+    novembro fica desprotegida **exatamente** quando a atendente está dentro
+    dela — e o robô fala por cima de uma pessoa.
     """
     linha = conversa or {}
     try:
         status = str(linha.get("status") or "").strip()
         dono = linha.get("claimed_by")
         desfecho = linha.get("resolvido_em")
+        assumida_em = linha.get("claimed_at")
     except AttributeError:                       # não é dicionário: não pausa
         return False
     if str(desfecho or "").strip():
-        # 🔴 O atendimento TERMINOU. Não há mais quem calar.
-        return False
+        # 🔴 O atendimento TERMINOU. Não há mais quem calar — **a não ser que
+        #    alguém tenha assumido DEPOIS do desfecho** (P-PILOTO-15).
+        #
+        # 📊 O defeito, escrito na pendência: *"`pausar_ia` devolve False quando
+        # `resolvido_em` está preenchido e a pausa não limpa o campo; conversa
+        # encerrada e reaberta pelo segurado com intervenção humana não fica
+        # protegida"*. O segurado volta em novembro numa conversa encerrada em
+        # setembro, a atendente ASSUME, e o robô fala por cima dela.
+        #
+        # ⚠️ **A alternativa era a pausa LIMPAR `resolvido_em`** — e ela custa
+        # caro: 📊 12 leitores do campo (`atendimentos/ficha/[id]/route.ts:384`
+        # desenha o FIM na linha do tempo; `:515`/`:519` decidem `pode_assumir`
+        # e `pode_encerrar`; `acompanhamento.py:522`; `attendance_ficha.py:151`;
+        # `saudacao_do_religamento.py:97`; `o_fim_do_atendimento` usa
+        # `.is_("resolvido_em","null")` como IDEMPOTÊNCIA de `marcar_fim`).
+        # Apagar o campo apagaria o fato de que o atendimento terminou — e
+        # `pausar_ia` é **pura**: ela não escreve, e não deve passar a escrever.
+        #
+        # 🔴 A comparação é de TEXTO ISO-8601 em UTC, e é ela mesma: os dois
+        # campos são `timestamptz` serializados pelo PostgREST no mesmo formato.
+        # ⚠️ Ilegível ou ausente → cai no comportamento de sempre (False), que é
+        # o que não reintroduz o "calado para sempre" medido em 05/09/2026.
+        if not _assumida_depois_do_desfecho(assumida_em, desfecho):
+            return False
+        return bool(str(dono or "").strip())
     if status.upper() == HUMAN_REQUESTED:
         return True
     return bool(str(dono or "").strip())
@@ -1327,36 +1406,81 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
     """A porta inteira: `(calar, motivo)` — **e nunca levanta**.
 
     ```
-    ① reivindicada / HUMAN_REQUESTED   `pausar_ia`, o helper de sempre (§5)
-    ② palavra humana há menos de N     a regra nova do plano §2
+    ① sem `company_id`                 fail-closed: não se fala sem saber de quem é
+    ② reivindicada / HUMAN_REQUESTED   `pausar_ia`, o helper de sempre (§5)
+    ③ telefone de TESTE na lista       pula SÓ a regra ④, nunca o ②
+    ④ palavra humana há menos de N     a janela
     ```
 
-    🔴 A ordem é a ordem do DANO, como em `pode_falar_com_o_cliente`: quem já
-    está com a conversa no teclado vem primeiro, e nesse caso nem se paga a
-    consulta.
+    🔴 **A ORDEM MUDOU EM 14/09/2026, e a antiga era um defeito de produto.**
+
+    📊 Até aqui a lista de exceções (`JANELA_SILENCIO_EXCECOES`) era consultada
+    **antes** de `pausar_ia` — logo, um telefone na lista neutralizava
+    `claimed_by` e `HUMAN_REQUESTED`: **o robô falava por cima da atendente**. O
+    comentário do env já admitia a intenção ("nem a janela nem a pausa o calam"),
+    o docstring desta função descrevia dois passos e **omitia a exceção**, e 📊
+    `grep -rn JANELA_SILENCIO_EXCECOES` devolvia 2 linhas, ambas dentro deste
+    próprio motor: **nenhum teste**.
+
+    ⚠️ A exceção continua existindo e continua servindo ao piloto — ela só
+    deixou de valer para o takeover. Um número de teste é para testar o agente,
+    não para atropelar quem está atendendo.
+
+    🔴 **E TODA SAÍDA COM SILÊNCIO ESCREVE NO FEED, aqui.** Esta é a ÚNICA
+    função que decide calar, e por isso é o único lugar onde "todo silêncio tem
+    motivo" pode ser garantido — em vez de depender de cada chamador lembrar.
+    📊 Medido em 13/09/2026: **8.574 silêncios no meio de conversa** (26,0% dos
+    turnos de cliente) e **6 motivos** escritos no banco inteiro.
+    `anotar_silencio_no_feed` nunca levanta e dedupe por conversa/motivo/dia.
 
     ⛔ **Falha de leitura CALA** (fail-closed). Não saber quem escreveu por
     último não é permissão para falar.
     """
+    # ⚠️ Em `try` próprio: esta função promete **nunca levantar**, e uma linha
+    # ilegível vinda do banco não pode derrubar o portão do silêncio logo na
+    # primeira instrução — é justamente o caso que termina em fail-closed.
+    try:
+        conversa_id = str((conversa or {}).get("id") or "")
+    except Exception:  # noqa: BLE001
+        conversa_id = ""
+
+    async def _calar(motivo: str):
+        await anotar_silencio_no_feed(company_id=str(company_id or ""),
+                                      conversation_id=conversa_id, motivo=motivo,
+                                      agora=agora)
+        return True, motivo
+
     if not str(company_id or "").strip():
+        # ⛔ Sem corretora não há feed onde escrever (o `log_activity` é por
+        #    `company_id`). O motivo continua voltando ao chamador.
         return True, "sem corretora: o agente não fala sem saber de quem é a conversa"
-    if telefone_e_excecao_da_janela((conversa or {}).get("user_phone")):
-        logger.info("[JANELA] telefone de teste na lista de exceções: tratado como conversa nova")
-        return False, ""
 
     try:
         if pausar_ia(conversa or {}):
             dono = str((conversa or {}).get("claimed_by_name") or "").strip()
             if str((conversa or {}).get("claimed_by") or "").strip():
-                return True, ("%s assumiu esta conversa; o agente só volta pelo "
-                              "botão \"Devolver ao agente\""
-                              % (dono or "Uma pessoa da corretora"))
-            return True, ("o segurado pediu para falar com uma pessoa; o agente "
-                          "fica em silêncio até alguém devolver a conversa")
+                return await _calar(
+                    "%s assumiu esta conversa; o agente só volta pelo "
+                    "botão \"Devolver ao agente\"" % (dono or "Uma pessoa da corretora"))
+            return await _calar(
+                "o segurado pediu para falar com uma pessoa; o agente "
+                "fica em silêncio até alguém devolver a conversa")
     except Exception as erro:  # noqa: BLE001
         logger.warning("[JANELA] `pausar_ia` indisponível (%s) — calando",
                        type(erro).__name__)
-        return True, "não consegui saber se alguém assumiu a conversa"
+        return await _calar("não consegui saber se alguém assumiu a conversa")
+
+    if telefone_e_excecao_da_janela((conversa or {}).get("user_phone")):
+        # 🔴 DEPOIS do takeover, e a NÃO-calada também vira linha no feed.
+        #
+        # ⚠️ Sem ela, a Regina vê o robô falando numa conversa que ela pausou e
+        # não tem como saber por quê. 💭 A frase é frase, não código — quem lê é
+        # ela, e a tela não traduz nada (§12.1).
+        logger.info("[JANELA] telefone de teste na lista de exceções: tratado como conversa nova")
+        await anotar_silencio_no_feed(
+            company_id=str(company_id), conversation_id=conversa_id,
+            motivo=MOTIVO_EXCECAO_DE_TESTE, agora=agora)
+        return False, ""
 
     dias = janela_de_silencio_dias(companhia) if n_dias is None else int(n_dias)
     if dias <= 0:
@@ -1365,16 +1489,19 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
         #    ficar vermelha (CLAUDE.md §9.3).
         return False, ""
 
-    linhas, erro = await janela_de_mensagens(db, str((conversa or {}).get("id") or ""))
+    linhas, erro = await janela_de_mensagens(db, conversa_id)
     if erro == "sem_conversa":
         # ⚠️ Sem `id` não há como consultar. Não é falha do mundo: é chamador
         #    sem conversa, e aí a regra (2) simplesmente não se aplica.
         return False, ""
     if erro:
-        return True, "não consegui ler o histórico desta conversa"
+        return await _calar("não consegui ler o histórico desta conversa")
 
-    return silenciar_por_palavra_humana(
+    calar, motivo = silenciar_por_palavra_humana(
         ultima_humana=ultima_palavra_humana(linhas), agora=agora, n_dias=dias)
+    if calar:
+        return await _calar(motivo)
+    return False, ""
 
 
 # ---------------------------------------------------------------------------
@@ -1397,7 +1524,51 @@ _SILENCIO_JA_ANOTADO: Dict[str, bool] = {}
 _TETO_DO_MEMO = 5000
 
 
-def _chave_do_dia(company_id: str, conversation_id: str, agora=None) -> str:
+#: 💭 A frase da NÃO-calada por exceção de telefone. Ela não é um silêncio — é o
+#: contrário — e por isso tem título próprio no feed.
+MOTIVO_EXCECAO_DE_TESTE = ("número de teste: o agente respondeu mesmo com a "
+                           "conversa pausada")
+
+#: 🔴 As CLASSES de silêncio. Elas existem por dois motivos, e nenhum é
+#: "traduzir para a tela":
+#:
+#:   1. a chave do memo diário precisa de um valor ESTÁVEL. A frase do takeover
+#:      carrega `claimed_by_name` — NOME DE PESSOA — e usá-la na chave colocaria
+#:      PII numa estrutura de processo, além de gerar uma chave nova a cada
+#:      troca de atendente.
+#:   2. um guarda precisa poder afirmar "os cinco motivos produziram cinco
+#:      linhas" sem reimplementar as frases (CLAUDE.md §9.4).
+#:
+#: ⚠️ A frase continua sendo o que vai para o feed. A classe nunca aparece para
+#: a Regina.
+_CLASSES_POR_INICIO = (
+    ("sem corretora", "sem_corretora"),
+    ("o segurado pediu para falar com uma pessoa", "pedido_de_pessoa"),
+    ("não consegui saber se alguém assumiu", "falha_ao_ler_o_takeover"),
+    ("não consegui ler o histórico", "falha_ao_ler_o_historico"),
+    (MOTIVO_EXCECAO_DE_TESTE, "excecao_de_teste"),
+    (_PREFIXO_DA_JANELA, "janela"),
+)
+
+
+def classe_do_silencio(motivo: Any) -> str:
+    """A classe estável deste motivo — **PURA**.
+
+    Tudo que não casa com um começo conhecido é `takeover`: a frase do takeover
+    **começa pelo nome de quem assumiu**, então ela não tem prefixo fixo, e ser
+    o padrão é o que impede um nome de pessoa de virar chave.
+    """
+    texto = str(motivo or "").strip()
+    if not texto:
+        return "sem_motivo"
+    for inicio, classe in _CLASSES_POR_INICIO:
+        if texto.startswith(inicio):
+            return classe
+    return "takeover"
+
+
+def _chave_do_dia(company_id: str, conversation_id: str, motivo: Any = "",
+                  agora=None) -> str:
     from datetime import datetime, timezone
 
     agora = agora or datetime.now(timezone.utc)
@@ -1405,37 +1576,54 @@ def _chave_do_dia(company_id: str, conversation_id: str, agora=None) -> str:
         dia = agora.astimezone(FUSO_DA_CORRETORA).strftime("%Y-%m-%d")
     except Exception:  # noqa: BLE001
         dia = agora.astimezone(timezone.utc).strftime("%Y-%m-%d")
-    return "%s:%s:%s" % (company_id, conversation_id, dia)
+    return "%s:%s:%s:%s" % (company_id, conversation_id,
+                            classe_do_silencio(motivo), dia)
 
 
 async def anotar_silencio_no_feed(*, company_id: str, conversation_id: str,
                                   motivo: str, agora=None) -> bool:
     """A linha do silêncio no feed. `True` se ESCREVEU. **Nunca levanta.**
 
-    🔴 Só o silêncio da JANELA vira linha. ⛔ Conversa reivindicada já tem o seu
-    próprio registro (o takeover escreve na ficha): anotar de novo aqui encheria
-    o feed de uma linha por mensagem do segurado enquanto a atendente conduz.
+    🔴 **O FILTRO `if not foi_a_janela(motivo): return False` SAIU EM
+    14/09/2026.** Ele deixava de fora tudo que a Regina mais precisa ver:
+
+    ```
+    o silêncio por takeover / HUMAN_REQUESTED    (era "já tem registro na ficha")
+    o silêncio por falta de corretora
+    as DUAS falhas fail-closed                   ("não consegui ler…")
+    a NÃO-calada por exceção de telefone         (só um `logger.info`)
+    ```
+
+    📊 Medido em 13/09/2026: **8.574 silêncios no meio de conversa** (26,0% dos
+    32.935 turnos de cliente; 27,7% desde 01/09) contra **6** motivos escritos no
+    banco inteiro — e `conversation_logs` tem 566 linhas, **todas
+    `status='success'`**: uma resposta que nunca saiu não deixava linha nenhuma.
+
+    ⚠️ O argumento antigo ("encheria o feed") continua respeitado, e agora por
+    construção: **uma linha por conversa, por CLASSE de motivo, por dia**.
+
+    ⛔ **A frase nunca carrega narrativa do segurado** (CLAUDE.md §7). Ela diz a
+    razão do silêncio; o relato do sinistro não entra em feed, log nem artifact.
     """
-    if not foi_a_janela(motivo):
-        return False
     empresa = str(company_id or "").strip()
     conversa = str(conversation_id or "").strip()
-    if not empresa or not conversa:
+    if not empresa or not conversa or not str(motivo or "").strip():
         return False
 
-    chave = _chave_do_dia(empresa, conversa, agora)
+    chave = _chave_do_dia(empresa, conversa, motivo, agora)
     if chave in _SILENCIO_JA_ANOTADO:
         return False
     if len(_SILENCIO_JA_ANOTADO) >= _TETO_DO_MEMO:
         _SILENCIO_JA_ANOTADO.clear()
     _SILENCIO_JA_ANOTADO[chave] = True
 
+    e_excecao = classe_do_silencio(motivo) == "excecao_de_teste"
+    titulo = ("O agente respondeu mesmo com a conversa pausada" if e_excecao
+              else "O agente ficou em silêncio nesta conversa")
     try:
         from app.services.activity_log import log_activity
 
-        await log_activity(empresa, "atendimentos",
-                           "O agente ficou em silêncio nesta conversa",
-                           str(motivo or ""))
+        await log_activity(empresa, "atendimentos", titulo, str(motivo or ""))
         return True
     except Exception as erro:  # noqa: BLE001
         logger.debug("[JANELA] feed não anotado (%s)", type(erro).__name__)

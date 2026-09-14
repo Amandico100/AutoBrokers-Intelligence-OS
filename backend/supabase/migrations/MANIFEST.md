@@ -295,3 +295,21 @@ têm 11 dígitos seguidos em `input_summary`; a amostra das 40 últimas de
 é `invocation_recorder.resumo_da_entrada`, e o guarda
 `test_a_ferramenta_do_turno_deixa_rastro.py` fica **vermelho** se alguém gravar
 `tool_args` cru.
+
+
+## SPEC-EXTRA-001.2 — BLOCO E (14/09/2026)
+
+### As duas migrations de DDL — 🔴 **PENDENTES DE APLICAÇÃO**
+
+> ⚠️ O builder E **não aplica**. Os arquivos trazem APPLY / VERIFY executável /
+> ROLLBACK escritos ANTES; quem aplica é o orquestrador, e cola a saída real do
+> VERIFY nesta tabela e no relatório da SPEC.
+>
+> 🔴 **A ORDEM É:** deploy do código (os escritores já preenchem `contraparte`)
+> → `20260914_08` blocos (a)+(b) → **consulta D0 de duplicatas** → só com D0 = 0
+> o bloco (c), o índice → `20260914_07` → `migrar_conversas_fantasma_lid.py --vivo`.
+
+| versão | arquivo | classe | o que faz | VERIFY |
+|---|---|---|---|---|
+| `spec_extra0012_check_fantasma_lid` | `20260914_07_spec_extra001_2_check_fantasma_lid.sql` | **PENDENTE** | SPEC-EXTRA-001.2 E2 (M1): `ck_conversations_resolucao_motivo` passa de 5 para **6** valores, ganhando `fantasma_lid` — DROP + ADD do CHECK (a constraint EXISTE desde a `20260826_04:96`; `ADD` com o mesmo nome daria 42710). É o que destrava `migrar_conversas_fantasma_lid.py --vivo` e **P-PILOTO-13**. 📊 Dry-run de 14/09/2026: **175** conversas-fantasma · 175 ABERTAS · 69 Resulta + 106 AutoFleet · **10** com pausa humana presa · **2** com par real ainda aberto · 166 sem par · 1.884 mensagens do lado fantasma — ⛔ nenhuma mensagem é apagada. 🔴 **Não é o encerramento em lote da D-PILOTO-02**: aquela fala das 467 conversas REAIS e abertas da AutoFleet; estas 175 têm um identificador interno do WhatsApp no lugar do telefone e **ninguém consegue abri-las**. O valor gêmeo no produto é `o_fim_do_atendimento.FANTASMA_LID` (sem ele, `marcar_fim` levanta `ValueError`). **Expand-first** (a lista só cresce), **não destrutiva** (nenhuma linha é tocada) | V1 `pg_get_constraintdef` contém `fantasma_lid` · V2 adversarial em `BEGIN…ROLLBACK` (motivo fora da lista → `check_violation`; `fantasma_lid` → aceito) · V3 `count(*)=0` antes do `--vivo`, 175 depois · V4 o VERIFY do próprio script (0 conversas abertas com telefone de forma inválida). **ROLLBACK RECUSA reverter** se alguma linha já usar `fantasma_lid` — reverter apagaria a razão pela qual 175 conversas foram fechadas, e deixaria 175 `closed` sem motivo, violando `ck_conversations_resolucao_coerente` | ⏳ a rodar |
+| `spec_extra0012_contraparte_unica` | `20260914_08_spec_extra001_2_contraparte_unica.sql` | **PENDENTE** | SPEC-EXTRA-001.2 E2 (M2): `conversations.contraparte text` (a chave única da pessoa do outro lado) + **backfill em SQL puro** sobre `user_phone` + **índice único parcial** `uq_conversations_contraparte_aberta (company_id, contraparte) WHERE channel='whatsapp' AND agent_id IS NULL AND status <> 'closed' AND contraparte IS NOT NULL`. 📊 Nada no schema impedia a próxima fantasma: `conversations_session_id_key` é UNIQUE mas o `@lid` gera `session_id` DIFERENTE — a fantasma nascia **legalmente**; `idx_conversations_company_user_channel` **não** é UNIQUE e `user_phone` não tinha índice nem constraint. 🔴 O backfill repete a regra de `identidade_do_evento.contraparte_de` no **dialeto do Postgres** (CLAUDE.md §9.4): recusa dígitos vazios e recusa `length >= 13 AND left(...,2) <> '55'` — ⛔ `@lid` vira **NULL**, porque o telefone real vem do `key.remoteJidAlt` do EVENTO, que o banco não tem. 📊 879 linhas em 14/09/2026 → sem `CONCURRENTLY`. **Expand-first**, **não destrutiva**; ROLLBACK derruba só o índice, a coluna FICA | **D0 ANTES do índice**: `group by (company_id, contraparte) having count(*) > 1` sobre as abertas → **tem de ser 0**; D0 > 0 ⇒ 🔴 o índice **não entra**, as duplicatas viram lista no relatório (⛔ sem a coluna `contraparte`, que é telefone) e nada é fechado em lote · V1 coluna + `indexdef` com as 4 cláusulas · **V1b com CONTROLE**: `fantasmas_sem_chave > 0` (eram 175) — se der 0, a cláusula de recusa não rodou e os LIDs entraram como telefone · V2 duplicatas = 0 · V3 adversarial: 2ª conversa aberta da mesma contraparte → `unique_violation` · **V4 o PAR**: a MESMA contraparte em OUTRA corretora → **aceita** (isolar não é bloquear, CLAUDE.md §7) · V5 conversa fechada não bloqueia a nova | ⏳ a rodar |

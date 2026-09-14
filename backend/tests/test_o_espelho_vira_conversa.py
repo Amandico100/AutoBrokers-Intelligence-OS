@@ -297,7 +297,12 @@ _COLUNAS_REAIS = {
         "unread_count", "agent_name", "status_color", "user_name",
         "user_avatar", "user_phone", "last_message_at", "agent_id",
         "human_handoff_reason", "claimed_by", "claimed_by_name", "claimed_at",
-        "ficha_atendimento", "resolvido_em", "resolucao_motivo"},
+        "ficha_atendimento", "resolvido_em", "resolucao_motivo",
+        # migration 20260914_08 (SPEC-EXTRA-001.2 E2) — a chave ÚNICA da
+        # contraparte, escrita pelos DOIS resolvedores de conversa. ⚠️ Ela entra
+        # aqui junto com a migration, e não antes: este dublê existe para
+        # recusar o que o banco real recusa.
+        "contraparte"},
     # migration 20260813_01 — a marca d'agua do sync incremental.
     "espelho_sync_cursor": {"company_id", "last_created_at", "last_id",
                             "updated_at"},
@@ -430,6 +435,27 @@ def _carregar_espelho():
             if _pkg not in sys.modules:
                 sys.modules[_pkg] = types.ModuleType(_pkg)
         _spec_cat.loader.exec_module(_cat)
+
+
+    # 🔴 `identidade_do_evento` entra REAL (SPEC-EXTRA-001.2 E2).
+    #
+    # ⚠️ O espelho passou a resolver a conversa pela CONTRAPARTE, e a chave sai
+    # de `contraparte_de` — a mesma funcao que o pipeline do webhook usa. Dublar
+    # aqui seria testar a minha suposicao sobre a normalizacao de `@lid`, que e
+    # exatamente o defeito documentado no dube de `integration_service`.
+    #
+    # O modulo e PURO: nao importa nada de `app`. Carrega-lo custa nada.
+    if "app.services.whatsapp.identidade_do_evento" not in sys.modules:
+        for _pkg in ("app", "app.services", "app.services.whatsapp"):
+            if _pkg not in sys.modules:
+                sys.modules[_pkg] = types.ModuleType(_pkg)
+        _cam_id = os.path.join(RAIZ, "backend", "app", "services", "whatsapp",
+                               "identidade_do_evento.py")
+        _spec_id = importlib.util.spec_from_file_location(
+            "app.services.whatsapp.identidade_do_evento", _cam_id)
+        _id = importlib.util.module_from_spec(_spec_id)
+        sys.modules["app.services.whatsapp.identidade_do_evento"] = _id
+        _spec_id.loader.exec_module(_id)
 
     caminho = os.path.join(RAIZ, "backend", "app", "services", "atlas", "espelho_chat.py")
     spec = importlib.util.spec_from_file_location(nome, caminho)

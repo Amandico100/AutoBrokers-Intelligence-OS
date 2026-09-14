@@ -267,6 +267,25 @@ def _carregar_espelho():
         sys.modules["app.services.atlas.canais_observados"] = _mod
         _sp.loader.exec_module(_mod)
 
+
+    # 🔴 `identidade_do_evento` entra REAL (SPEC-EXTRA-001.2 E2).
+    #
+    # ⚠️ O espelho passou a resolver a conversa pela CONTRAPARTE, e a chave sai
+    # de `contraparte_de` — a mesma funcao que o pipeline do webhook usa. Dublar
+    # aqui seria testar a minha suposicao sobre a normalizacao de `@lid`. O
+    # modulo e PURO: nao importa nada de `app`.
+    if "app.services.whatsapp.identidade_do_evento" not in sys.modules:
+        for _pkg in ("app", "app.services", "app.services.whatsapp"):
+            if _pkg not in sys.modules:
+                sys.modules[_pkg] = types.ModuleType(_pkg)
+        _cam_id = os.path.join(RAIZ, "backend", "app", "services", "whatsapp",
+                               "identidade_do_evento.py")
+        _sp_id = importlib.util.spec_from_file_location(
+            "app.services.whatsapp.identidade_do_evento", _cam_id)
+        _id = importlib.util.module_from_spec(_sp_id)
+        sys.modules["app.services.whatsapp.identidade_do_evento"] = _id
+        _sp_id.loader.exec_module(_id)
+
     caminho = os.path.join(RAIZ, "backend", "app", "services", "atlas", "espelho_chat.py")
     spec = importlib.util.spec_from_file_location(nome, caminho)
     modulo = importlib.util.module_from_spec(spec)

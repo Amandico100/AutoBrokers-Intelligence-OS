@@ -159,6 +159,65 @@ def nome_do_documento(texto: Any, payload_dict: Optional[dict] = None) -> Option
     return None
 
 
+def payload_do_pipeline(wa_message_id: Optional[str], direcao: str) -> dict:
+    """O `payload` das linhas que o PIPELINE do agente grava em `messages`.
+
+    🔴 **Por que ele existe (SPEC-EXTRA-001.2 BLOCO E1).** O índice único parcial
+    `messages_espelho_sem_duplicata_uidx` existe desde 06/08/2026 sobre
+    `(conversation_id, payload->>'wa_message_id')` — e as linhas do pipeline
+    nasciam **sem `payload`**, logo fora do índice. 📊 Em 14/09/2026,
+    33.348 de 34.682 linhas (96,2%) tinham a chave: as que faltavam eram
+    justamente estas.
+
+    ⚠️ **A forma é a MESMA do espelho** (`espelho_chat.py:_inserir_mensagem`),
+    de propósito: duas grafias da mesma chave seriam duas chaves.
+
+    ⛔ **Sem id, a chave não é inventada** — a entrada sai do dicionário e a
+    linha fica fora do índice, declaradamente. Um `wa_message_id` falso faria
+    duas mensagens diferentes colidirem, que é pior que nenhuma dedupe.
+    """
+    chave = str(wa_message_id or "").strip()
+    saida = {"origem": "agente", "direcao": str(direcao or "")}
+    if chave:
+        saida["wa_message_id"] = chave
+    return saida
+
+
+def e_duplicata_do_banco(erro: Any) -> bool:
+    """O banco disse *"esta mensagem já está aqui"*? — **PURA**.
+
+    `23505` é o índice único parcial funcionando, não uma falha. A mesma
+    leitura que `espelho_chat.py:571-579` faz desde 13/08/2026.
+    """
+    texto = str(erro or "")
+    return "23505" in texto or "duplicate key" in texto.lower()
+
+
+async def gravar_mensagem_do_pipeline(
+    supabase_client, *, dados: dict, wa_message_id: Optional[str], direcao: str,
+) -> str:
+    """Grava UMA linha em `messages` e deixa o BANCO responder se ela já estava.
+
+    Devolve `"gravada"` ou `"ja_estava"`; **nunca levanta** por duplicata —
+    ⚠️ qualquer outro erro sobe, porque banco fora do ar não é dedupe.
+
+    🔴 É o ÚNICO escritor de `messages` do pipeline: os dois inserts
+    (mensagem do segurado e resposta da IA) passam por aqui, e é isso que faz a
+    chave existir nos dois lados sem duas grafias.
+    """
+    linha = dict(dados or {})
+    linha["payload"] = payload_do_pipeline(wa_message_id, direcao)
+    try:
+        await asyncio.to_thread(
+            lambda: supabase_client.table("messages").insert(linha).execute()
+        )
+    except Exception as erro:  # noqa: BLE001
+        if e_duplicata_do_banco(erro):
+            return "ja_estava"
+        raise
+    return "gravada"
+
+
 async def get_or_create_conversation(
     supabase_client,
     company_id: str,
@@ -170,6 +229,38 @@ async def get_or_create_conversation(
     agent_id: Optional[str] = None,
 ) -> str:
     try:
+        # 🔴 A CONTRAPARTE — a chave que faz a fantasma nº 176 não nascer.
+        #
+        # 📊 13/09/2026: 175 conversas-fantasma de `@lid`, 100% abertas, 10 com
+        # pausa de atendente presa. O `session_id` UNIQUE não as impedia — o
+        # `@lid` gera um `session_id` diferente e a fantasma nasce legalmente.
+        #
+        # ⚠️ A busca por contraparte vem ANTES da busca por `user_id` porque é
+        # ela que atravessa as duas resoluções (esta e a do espelho). `user_id`
+        # continua valendo como segunda tentativa: conversa antiga, criada antes
+        # do backfill, ainda não tem `contraparte`.
+        from app.services.whatsapp.identidade_do_evento import contraparte_de
+
+        contraparte = contraparte_de(payload.phone)
+        conversa_por_contraparte = None
+        if contraparte:
+            busca = (
+                supabase_client.table("conversations")
+                .select("id, unread_count")
+                .eq("company_id", company_id)
+                .eq("contraparte", contraparte)
+                .eq("channel", channel)
+                .neq("status", "closed")
+            )
+            if agent_id:
+                busca = busca.eq("agent_id", agent_id)
+            else:
+                busca = busca.is_("agent_id", "null")
+            achado = await asyncio.to_thread(lambda: busca.limit(1).execute())
+            linhas = getattr(achado, "data", None) or []
+            if linhas:
+                conversa_por_contraparte = linhas[0]
+
         # Tentar encontrar conversa existente
         query = (
             supabase_client.table("conversations")
@@ -185,13 +276,17 @@ async def get_or_create_conversation(
             query = query.is_("agent_id", "null")
 
         # Non-blocking DB call
-        response = await asyncio.to_thread(lambda: query.limit(1).execute())
+        if conversa_por_contraparte is not None:
+            existentes = [conversa_por_contraparte]
+        else:
+            response = await asyncio.to_thread(lambda: query.limit(1).execute())
+            existentes = getattr(response, "data", None) or []
 
         # CORREÇÃO: Data em formato ISO UTC
         current_time_iso = datetime.now(timezone.utc).isoformat()
 
-        if response.data and len(response.data) > 0:
-            conv = response.data[0]
+        if existentes:
+            conv = existentes[0]
             conversation_id = conv["id"]
             current_unread = conv.get("unread_count") or 0
 
@@ -215,6 +310,11 @@ async def get_or_create_conversation(
             "agent_id": agent_id,
             "user_name": payload.senderName or "Usuário WhatsApp",
             "user_phone": payload.phone,
+            # 🔴 A chave única da contraparte (SPEC-EXTRA-001.2 E2). `None`
+            # quando o telefone não é telefone (um `@lid` cru): o índice único
+            # parcial ignora NULL, então a linha nasce sem bloquear ninguém —
+            # e sem ser reusada como se fosse alguém.
+            "contraparte": contraparte or None,
             "channel": channel,
             "agent_name": "AutoBrokers",
             "status": "open",
@@ -755,7 +855,7 @@ async def process_whatsapp_message_background(
 
             check_status = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("id, status, claimed_by, claimed_by_name, resolvido_em")  # 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou
+                .select("id, status, claimed_by, claimed_by_name, claimed_at, resolvido_em")  # 🔴 P0-1 (097): sem resolvido_em, pausar_ia não sabe que o atendimento acabou; `claimed_at` é P-PILOTO-15 (takeover DEPOIS do encerramento protege a conversa reaberta)
                 .eq("company_id", company_id)
                 .eq("session_id", session_id)
                 .limit(1)
@@ -958,10 +1058,14 @@ async def process_whatsapp_message_background(
                 "audio_url": final_audio_url,
                 "image_url": final_image_url,
             }
-            await asyncio.to_thread(
-                lambda: supabase.client.table("messages").insert(user_message_data).execute()
-            )
-            logger.info("[MESSAGES] User message saved.")
+            # 🔴 SPEC-EXTRA-001.2 E1 — a linha do segurado ENTRA no índice único.
+            # `payload.messageId` é o id global do WhatsApp, o mesmo que o
+            # dedupe do Redis usa (:1425) e o mesmo que o espelho grava. A
+            # reentrega da Meta deixa de virar segunda linha e segunda leitura.
+            _desfecho = await gravar_mensagem_do_pipeline(
+                supabase.client, dados=user_message_data,
+                wa_message_id=payload.messageId, direcao="in")
+            logger.info("[MESSAGES] User message saved (%s).", _desfecho)
         except Exception as e:
             logger.error(f"[MESSAGES] Failed to save user msg: {e}")
 
@@ -1246,7 +1350,7 @@ async def process_whatsapp_message_background(
 
             _estado_agora = await asyncio.to_thread(
                 lambda: supabase.client.table("conversations")
-                .select("id, status, claimed_by, claimed_by_name, resolvido_em")
+                .select("id, status, claimed_by, claimed_by_name, claimed_at, resolvido_em")
                 .eq("company_id", company_id)
                 .eq("id", conversation_id)
                 .limit(1)
@@ -1291,13 +1395,27 @@ async def process_whatsapp_message_background(
 
         # 8. Salvar Resposta IA
         try:
-            await asyncio.to_thread(
-                lambda: supabase.client.table("messages").insert({
-                    "conversation_id": conversation_id,
-                    "role": "assistant",
-                    "content": ai_response,
-                }).execute()
-            )
+            # 🔴 A LINHA VEM ANTES DO ENVIO, e é de propósito: se o envio
+            # falhar, a resposta que o modelo escreveu não se perde do registro.
+            #
+            # ⛔ E ELA FICA SEM `wa_message_id` HOJE — declarado, não escondido.
+            # 📊 Medido em 14/09/2026: `whatsapp_service.send_message` devolve
+            # **`bool`** (`whatsapp_service.py:131`), não `SendResult`, e fatia o
+            # texto em BALÕES — um envio produz N ids, não um. O id do provider
+            # existe (`SendResult.provider_message_id`, `models.py:242`;
+            # `evolution_go.py:425` o preenche) mas não atravessa a fachada.
+            # Enquanto não atravessar, a rede de segurança continua sendo
+            # `e_a_nossa_propria_voz` (:1951-1953) e `_eco_do_dashboard`
+            # (`espelho_chat.py:433-459`) — P-E0012-02.
+            #
+            # 🔴 O que muda já: a linha passa pelo MESMO escritor do segurado,
+            # com `origem` e `direcao`. No dia em que a fachada devolver o id,
+            # é um argumento — não um segundo caminho de escrita.
+            await gravar_mensagem_do_pipeline(
+                supabase.client,
+                dados={"conversation_id": conversation_id,
+                       "role": "assistant", "content": ai_response},
+                wa_message_id=None, direcao="out")
             # LOG SANITIZADO
             logger.info("[WEBHOOK BACKGROUND] Agent response generated")
         except Exception as e:

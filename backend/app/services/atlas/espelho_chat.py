@@ -499,10 +499,32 @@ async def _espelhar_com_desfecho(*, company_id: str, counterparty: str, texto: s
         if not usuario:
             return None, "sem_usuario"
 
-        linhas = (cliente.table("conversations").select("id, status")
-                  .eq("company_id", empresa).eq("user_id", usuario)
-                  .eq("channel", "whatsapp").is_("agent_id", "null")
-                  .limit(1).execute().data or [])
+        # 🔴 A MESMA CHAVE DO PIPELINE (SPEC-EXTRA-001.2 E2).
+        #
+        # 📊 Havia DUAS resoluções de conversa: esta (por `user_id`) e a de
+        # `webhook.get_or_create_conversation`. Nenhuma chave em comum → 175
+        # conversas-fantasma medidas em 13/09/2026, 10 delas com pausa de
+        # atendente presa numa linha que ninguém abre.
+        #
+        # ⚠️ A busca por contraparte vem ANTES da busca por `user_id`, e a por
+        # `user_id` FICA: conversa criada antes do backfill ainda tem
+        # `contraparte` NULL, e perdê-la aqui criaria a fantasma que esta
+        # mudança existe para matar.
+        from app.services.whatsapp.identidade_do_evento import contraparte_de
+
+        contraparte = contraparte_de(telefone)
+        linhas = []
+        if contraparte:
+            linhas = (cliente.table("conversations").select("id, status")
+                      .eq("company_id", empresa).eq("contraparte", contraparte)
+                      .eq("channel", "whatsapp").is_("agent_id", "null")
+                      .neq("status", "closed")
+                      .limit(1).execute().data or [])
+        if not linhas:
+            linhas = (cliente.table("conversations").select("id, status")
+                      .eq("company_id", empresa).eq("user_id", usuario)
+                      .eq("channel", "whatsapp").is_("agent_id", "null")
+                      .limit(1).execute().data or [])
         nasceu = not linhas
         if linhas:
             conversa_id = linhas[0]["id"]
@@ -527,6 +549,9 @@ async def _espelhar_com_desfecho(*, company_id: str, counterparty: str, texto: s
                 # O que continua mascarado é outra coisa: telefone em LOG, em
                 # resposta de API do admin, em relatório (CLAUDE.md §13.3).
                 "user_name": nome or telefone,
+                # 🔴 A chave única da contraparte (E2). NULL quando o "telefone"
+                # não é telefone — o índice único parcial ignora NULL.
+                "contraparte": contraparte or None,
                 "session_id": session_id_do_chat(empresa, telefone),
                 # 'open', nunca HUMAN_REQUESTED: aquele estado significa "uma
                 # pessoa PEDIU para assumir" e alimenta o vigia de handoff.

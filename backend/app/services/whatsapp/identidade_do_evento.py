@@ -115,5 +115,48 @@ def telefone_do_evento(key: Optional[Dict[str, Any]],
     return digitos if _parece_telefone(digitos) else ""
 
 
-__all__ = ["telefone_do_evento", "jid_alternativo", "SUFIXOS_DE_LINHA",
-           "DIGITOS_DE_TELEFONE_BR"]
+def contraparte_de(valor: Any, alternativo: Any = None) -> str:
+    """A CHAVE de conversa desta contraparte — **PURA**, e é UMA só.
+
+    🔴 **Por que ela existe (SPEC-EXTRA-001.2 BLOCO E2).** Havia DUAS resoluções
+    de conversa — `webhook.get_or_create_conversation` e
+    `espelho_chat._espelhar_com_desfecho` — e nenhuma chave em comum. 📊 O
+    resultado, medido em 13/09/2026: **175 conversas-fantasma**, 100% abertas,
+    das quais 10 guardam pausa de atendente que ninguém consegue abrir. O
+    `session_id` UNIQUE não impede a próxima: o `@lid` gera um `session_id`
+    diferente, e a fantasma nasce **legalmente**.
+
+    Esta função é a chave única. Ela **não** normaliza nada de novo: delega a
+    `telefone_do_evento`, que é o motor de sempre (CLAUDE.md §5).
+
+    ```
+    "5511900000001"                      → "5511900000001"
+    "5511900000001@s.whatsapp.net"       → "5511900000001"
+    "123456789012345@lid" + alternativo  → o telefone do alternativo
+    "123456789012345@lid" sem alternativo→ ""     ⛔ nunca inventar telefone
+    "123456789012345"  (LID já gravado)  → ""     a fantasma não ganha chave
+    ```
+
+    ⚠️ **`""` é resposta, não falha.** Quem grava escreve `NULL` na coluna, e o
+    índice único parcial ignora `NULL` — a fantasma antiga continua existindo e
+    não bloqueia ninguém. O que ela perde é o direito de ser reusada como se
+    fosse alguém.
+
+    🔴 **A MESMA regra vive no SQL do backfill** (`20260914_08`), e por isso ela
+    está escrita aqui em UMA linha de forma — `_parece_telefone`. Padrão medido
+    num motor e aplicado noutro é padrão sobre outra coisa (CLAUDE.md §9.4):
+    o SQL repete `length(...) >= 13 AND left(...,2) <> '55'` porque é isto, e
+    só isto, que esta função recusa.
+    """
+    texto = str(valor or "").strip()
+    if not texto:
+        return ""
+    if "@" in texto:
+        return telefone_do_evento({"remoteJid": texto,
+                                   "remoteJidAlt": str(alternativo or "")})
+    digitos = _digitos(texto)
+    return digitos if _parece_telefone(digitos) else ""
+
+
+__all__ = ["telefone_do_evento", "jid_alternativo", "contraparte_de",
+           "SUFIXOS_DE_LINHA", "DIGITOS_DE_TELEFONE_BR"]

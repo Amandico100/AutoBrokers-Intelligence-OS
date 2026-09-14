@@ -68,16 +68,22 @@ LOTE = 1000
 #: O motivo que esta migração escreve.
 MOTIVO = "fantasma_lid"
 
-#: 🔴 A LISTA FECHADA DO BANCO — `ck_conversations_resolucao_motivo`, migration
-#: `20260826_04_spec086_blocoA_a_conversa_tem_fim.sql:97`.
+#: 🔴 A LISTA FECHADA DO BANCO — `ck_conversations_resolucao_motivo`.
 #:
-#: ⛔ `fantasma_lid` **não está nela**, e é por isso que este script recusa o
-#: `--vivo` até a migration do valor novo ser aplicada. Descobrir isso por um
-#: `23514` no meio de trinta UPDATEs seria descobrir tarde: os primeiros já
-#: teriam gravado, e o rollback nasceria pela metade.
+#: 📊 Nasceu com 5 valores (`20260826_04_spec086_blocoA_a_conversa_tem_fim.sql:97`)
+#: e ganhou o sexto na `20260914_07_spec_extra001_2_check_fantasma_lid.sql`
+#: (SPEC-EXTRA-001.2 E2). ⚠️ **O `--vivo` só é seguro DEPOIS daquela migration
+#: aplicada** — a ordem é do orquestrador, e o dry-run imprime o lembrete com o
+#: VERIFY. Descobrir por um `23514` no meio de trinta UPDATEs seria descobrir
+#: tarde: os primeiros já teriam gravado, e o rollback nasceria pela metade.
+#:
+#: ⛔ Esta tupla é a lista do BANCO, não a do produto. Ela é igual à
+#: `o_fim_do_atendimento.MOTIVOS` de propósito, e as duas mudam JUNTAS com o
+#: CHECK — três lugares, uma verdade (o guarda G11 confere os dois do lado do
+#: produto; o VERIFY V1 da migration confere o do banco).
 MOTIVOS_ACEITOS_PELO_BANCO = (
     "acionamento_concluido", "encaminhado", "resolvido_pelo_segurado",
-    "fechado_por_humano", "expirou",
+    "fechado_por_humano", "expirou", "fantasma_lid",
 )
 
 #: Um celular BR completo tem 13 dígitos (`55` + DDD + 9). Um LID observado em
@@ -271,6 +277,13 @@ def rodar(company_id: str = "", escrever: bool = False) -> int:
         p("     enquanto este script nao rodar com --vivo).")
 
     if not escrever:
+        p("")
+        p("PRE-REQUISITO do --vivo: a migration")
+        p("  backend/supabase/migrations/20260914_07_spec_extra001_2_check_fantasma_lid.sql")
+        p("  TEM de estar aplicada. VERIFY (read-only):")
+        p("    select pg_get_constraintdef(oid) from pg_constraint")
+        p("     where conname = 'ck_conversations_resolucao_motivo';")
+        p("    -- tem de conter '%s'" % MOTIVO)
         p("")
         p("PLANO: NADA foi gravado. Rode com `--vivo` para aplicar.")
         p("VERIFY depois do --vivo (esperado ZERO):")
