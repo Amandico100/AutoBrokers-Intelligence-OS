@@ -1,0 +1,25 @@
+{
+ "_doc": "As 7 perguntas REAIS do chat `core` do painel da corretora piloto que produziram as 7 respostas com lista de apolices (31 linhas de opcao) entre 09 e 11/09/2026. SO as perguntas: CPF/CNPJ virou [CPF]/[CNPJ], nome de pessoa/empresa virou [NOME]; nenhuma resposta, nenhum numero de apolice, nenhum nome. Fonte: `messages` (role=user imediatamente anterior a cada resposta assistant que casou `mais de uma apolice|qual delas|responda com o numero`), consulta de 14/09/2026 (SPEC-EXTRA-001.1 BLOCO 0 §4.4). Divergencia com a proposta: 3 das 7 sao de 09/09 e 4 de 10/09 (a proposta dizia '7 de 10/09').",
+ "medido_em": "2026-09-14",
+ "janela": "2026-09-09 a 2026-09-11",
+ "acervo": {
+  "respostas_com_lista": 7,
+  "linhas_de_opcao": 31,
+  "linhas_com_fim_de_vigencia_passado": 24,
+  "linhas_vigentes": 7,
+  "respostas_que_perguntaram_qual": 7,
+  "respostas_com_a_unica_vigente_em_1_rodada": 0
+ },
+ "perguntas": [
+  {"id": "q1", "dia": "2026-09-09", "texto": "[CPF]", "contexto": "conversa de sinistro; o corretor mandou so o CPF", "ramo_esperado": null, "apolices_no_acervo": {"total": 4, "vigentes": 1, "vencidas": 2, "canceladas": 1}},
+  {"id": "q2", "dia": "2026-09-09", "texto": "Sim! Fazendo o favor!\n[CPF]", "contexto": "pedido de franquia e isencao de uma apolice de auto; 2 apolices de auto listadas, 1 delas com fim de vigencia passado", "ramo_esperado": "auto", "apolices_no_acervo": {"total": 2, "vigentes": 1, "vencidas": 1, "canceladas": 0}},
+  {"id": "q3", "dia": "2026-09-09", "texto": "ver se esse segurado tem direito a carro reserva em caso de pane [NOME]", "contexto": "busca por nome; 3 apolices de auto, 1 vigente", "ramo_esperado": "auto", "apolices_no_acervo": {"total": 3, "vigentes": 1, "vencidas": 2, "canceladas": 0}},
+  {"id": "q4", "dia": "2026-09-10", "texto": "qual cobertura o segurado [CNPJ] tem na apolice?", "contexto": "empresa com 11 apolices de vida em grupo; a fonte devolveu 10 (truncamento); 1 vigente", "ramo_esperado": null, "apolices_no_acervo": {"total": 11, "vigentes": 1, "vencidas": 10, "canceladas": 0}},
+  {"id": "q5", "dia": "2026-09-10", "texto": "veja a apolice do segurado [CNPJ] quero saber as franquias das coberturas contratadas", "contexto": "condominio com 6 apolices de condominio, 1 vigente (a Allianz do golden)", "ramo_esperado": "condominio", "apolices_no_acervo": {"total": 6, "vigentes": 1, "vencidas": 5, "canceladas": 0}},
+  {"id": "q6", "dia": "2026-09-10", "texto": "Preciso de informações de coberturas completas da apolice residencial com cpf [CPF]", "contexto": "pessoa com 6 apolices (3 residenciais HDI, vida, 2 viagem); 2 vigentes de ramos diferentes (residencial e vida); a pergunta diz o ramo", "ramo_esperado": "resi", "apolices_no_acervo": {"total": 6, "vigentes": 2, "vencidas": 4, "canceladas": 0}},
+  {"id": "q7", "dia": "2026-09-10", "texto": "QUERO SABER QUAIS SAO AS COBERTURAS DETALHADAS DA APOLICE DA [NOME]. RESIDENCIAL DA HDI... [CPF]... QUERO TODDOS OS ITENS DA APOLICE DETALHADOS", "contexto": "mesma pessoa da q6; a pergunta nomeia seguradora e ramo", "ramo_esperado": "resi", "apolices_no_acervo": {"total": 6, "vigentes": 2, "vencidas": 4, "canceladas": 0}}
+ ],
+ "controle": [
+  {"id": "c1", "texto": "quantos clientes eu tenho?", "contexto": "pergunta que NAO e de apolice: o documento oficial nao pode ser lido (CLAUDE.md §9.2, linha de controle)"}
+ ]
+}

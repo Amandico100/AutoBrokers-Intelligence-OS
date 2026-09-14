@@ -1,0 +1,726 @@
+{
+ "_doc": "Golden da EXTRA-001.1, montado PELA PORTA (conector implantado, consulta em memoria) em 14/09/2026 e persistido so com os campos que o teste compara: rotulos, valores em R$, franquia, contagens, datas de vigencia. NAO contem nome, CPF/CNPJ, numero de apolice, endereco, referencia tecnica ou hash. As duas apolices sao as do caso de referencia do diagnostico de 12/09 (HDI residencial e Allianz condominio da corretora piloto). 'cadastro_sistema_de_gestao' = o que /itens e /documento devolvem; 'documento_oficial' = as linhas da tabela do PDF, transcritas do texto extraido.",
+ "medido_em": "2026-09-14",
+ "apolices": {
+  "hdi_residencial": {
+   "apelido": "hdi_residencial",
+   "ramo_humano": "Residencial",
+   "seguradora_abrev": "HDI",
+   "ramo_abrev": "RESI",
+   "vigencia": {
+    "inicio": "07/05/2026",
+    "fim": "07/05/2027"
+   },
+   "status_cru_do_fornecedor": "Recebido e não entregue ao cliente",
+   "cancelado": false,
+   "cadastro_sistema_de_gestao": {
+    "fonte": "infocap:/itens.garantias",
+    "garantias": [
+     {
+      "garantia": "INCÊNDIO",
+      "impseg": 133000.0,
+      "premio": 0.0,
+      "franquia": "10.00%-350,00"
+     },
+     {
+      "garantia": "ROUBO",
+      "impseg": 3000.0,
+      "premio": 12.78,
+      "franquia": null
+     },
+     {
+      "garantia": "EQUIPAMENTOS ELETRÔNICOS",
+      "impseg": 3000.0,
+      "premio": 12.78,
+      "franquia": null
+     },
+     {
+      "garantia": "VIDROS",
+      "impseg": 3000.0,
+      "premio": 12.78,
+      "franquia": "10.00%-150,00"
+     },
+     {
+      "garantia": "RESP. CIVIL FAMILIAR",
+      "impseg": 3000.0,
+      "premio": 12.78,
+      "franquia": null
+     },
+     {
+      "garantia": "DANOS ELÉTRICOS",
+      "impseg": 3000.0,
+      "premio": 19.17,
+      "franquia": "10.00%-550,00"
+     }
+    ],
+    "soma_dos_premios": 70.29,
+    "premio_liquido": 306.6,
+    "premio_total": 329.23,
+    "iof": 22.63,
+    "numero_de_parcelas": 4,
+    "forma_pag_do_cabecalho": "Boleto Bancário",
+    "parcelas": [
+     {
+      "numero": 1,
+      "vencimento": "14/05/2026",
+      "valor": 8231.0,
+      "quitada_em": "14/05/2026",
+      "forma_de_pagamento": "Cartão de Crédito"
+     },
+     {
+      "numero": 2,
+      "vencimento": "13/06/2026",
+      "valor": 8231.0,
+      "quitada_em": "13/06/2026",
+      "forma_de_pagamento": "Cartão de Crédito"
+     },
+     {
+      "numero": 3,
+      "vencimento": "13/07/2026",
+      "valor": 8231.0,
+      "quitada_em": "13/07/2026",
+      "forma_de_pagamento": "Cartão de Crédito"
+     },
+     {
+      "numero": 4,
+      "vencimento": "12/08/2026",
+      "valor": 823.0,
+      "quitada_em": "12/08/2026",
+      "forma_de_pagamento": "Cartão de Crédito"
+     }
+    ],
+    "tabela_itens_presente": true,
+    "objeto_do_risco": [
+     {
+      "item_number": 1,
+      "kind": "RESIDENCIA HABITUAL APARTAMENTO"
+     }
+    ]
+   },
+   "documento_oficial": {
+    "paginas": 6,
+    "parser": "direct_text",
+    "linhas_de_cobertura": [
+     {
+      "rotulo": "Incendio",
+      "lmi": 133000.0,
+      "premio": 45.64,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Responsabilidade Civil Familiar",
+      "lmi": 3000.0,
+      "premio": 11.5,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Danos Eletricos",
+      "lmi": 3000.0,
+      "premio": 17.25,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Quebra de Vidros",
+      "lmi": 3000.0,
+      "premio": 11.5,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Ruptura de Tubulacoes",
+      "lmi": 5000.0,
+      "premio": 19.88,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Roubo e Furto de Bens",
+      "lmi": 3000.0,
+      "premio": 11.5,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Vendaval",
+      "lmi": 5000.0,
+      "premio": 47.36,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Equip. Eletronicos/Eletrodomesticos",
+      "lmi": 3000.0,
+      "premio": 11.5,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Clausula Especifica de Valor Novo",
+      "lmi": 0.0,
+      "premio": 4.53,
+      "franquia_texto": null
+     },
+     {
+      "rotulo": "Coberturas de Assistencias Essenciais",
+      "lmi": 0.0,
+      "premio": 125.94,
+      "franquia_texto": null
+     }
+    ],
+    "soma_dos_premios_das_linhas": 306.6,
+    "franquias_em_prosa": [
+     {
+      "pct": 10,
+      "minimo": 350.0,
+      "texto": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 350,00 para Queda de Raio."
+     },
+     {
+      "pct": 10,
+      "minimo": 600.0,
+      "texto": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 600,00"
+     },
+     {
+      "pct": 10,
+      "minimo": 150.0,
+      "texto": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 150,00"
+     },
+     {
+      "pct": 15,
+      "minimo": 800.0,
+      "texto": "15% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 800,00"
+     },
+     {
+      "pct": 10,
+      "minimo": 650.0,
+      "texto": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 650,00"
+     },
+     {
+      "pct": 10,
+      "minimo": 300.0,
+      "texto": "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 300,00 por equipamento"
+     }
+    ],
+    "parcelas": [
+     {
+      "numero": 1,
+      "vencimento": "14/05/2026",
+      "valor": 82.31,
+      "situacao": "Em trânsito",
+      "forma_de_pagamento": "Cartão de Crédito"
+     },
+     {
+      "numero": 2,
+      "vencimento": "13/06/2026",
+      "valor": 82.31,
+      "situacao": "Em trânsito",
+      "forma_de_pagamento": "Cartão de Crédito"
+     },
+     {
+      "numero": 3,
+      "vencimento": "13/07/2026",
+      "valor": 82.31,
+      "situacao": "Em trânsito",
+      "forma_de_pagamento": "Cartão de Crédito"
+     },
+     {
+      "numero": 4,
+      "vencimento": "12/08/2026",
+      "valor": 82.29,
+      "situacao": "Em trânsito",
+      "forma_de_pagamento": "Cartão de Crédito"
+     }
+    ],
+    "cabecalho": [
+     "Prêmio Líquido :R$ 306,60",
+     "Adicional de parcelamento : R$ 0,00",
+     "Custo de Apólice : R$ 0,00",
+     "I.O.F. :R$ 22,63",
+     "Prêmio Total :R$ 329,23",
+     "Parcela: 82,30   Forma de Pagamento: 4 x",
+     "LMG - Limite máximo de garantia da apolice ( R$ 136.000,00 )"
+    ],
+    "evidence_items_por_tipo_hoje": {
+     "premium": 2,
+     "installment": 1,
+     "assistance_plan": 1,
+     "coverage": 1,
+     "lmi": 1,
+     "clause": 3,
+     "exclusion": 1,
+     "assistance": 1
+    }
+   }
+  },
+  "allianz_condominio": {
+   "apelido": "allianz_condominio",
+   "ramo_humano": "Condomínio",
+   "seguradora_abrev": "ALLI",
+   "ramo_abrev": "COND",
+   "vigencia": {
+    "inicio": "25/08/2026",
+    "fim": "25/08/2027"
+   },
+   "status_cru_do_fornecedor": "Recebido e não entregue ao cliente",
+   "cancelado": false,
+   "cadastro_sistema_de_gestao": {
+    "fonte": "infocap:/itens.garantias",
+    "garantias": [
+     {
+      "garantia": "INCÊNDIO/RAIO/EXPLOSÃO",
+      "impseg": 82000000.0,
+      "premio": 2671.11,
+      "franquia": null
+     },
+     {
+      "garantia": "DANOS ELÉTRICOS",
+      "impseg": 100000.0,
+      "premio": 4803.67,
+      "franquia": "20 - R$ 4.000,00"
+     },
+     {
+      "garantia": "DESPESAS FIXAS",
+      "impseg": 50000.0,
+      "premio": 8.57,
+      "franquia": null
+     },
+     {
+      "garantia": "DESMORONAMENTO",
+      "impseg": 100000.0,
+      "premio": 119.18,
+      "franquia": "20 - R$ 3.000,00"
+     },
+     {
+      "garantia": "IMPACTO DE VEICULOS",
+      "impseg": 40000.0,
+      "premio": 39.12,
+      "franquia": "15 - R$ 1.000,00"
+     },
+     {
+      "garantia": "INCENDIO DE BENS CONDOMIN",
+      "impseg": 2000000.0,
+      "premio": 307.3,
+      "franquia": null
+     },
+     {
+      "garantia": "QUEBRA DE VIDROS",
+      "impseg": 70000.0,
+      "premio": 2318.11,
+      "franquia": "10 - R$ 500,00"
+     },
+     {
+      "garantia": "DANOS MORAIS",
+      "impseg": 50000.0,
+      "premio": 61.56,
+      "franquia": null
+     },
+     {
+      "garantia": "RC PORTOES",
+      "impseg": 30000.0,
+      "premio": 789.8,
+      "franquia": "10 - R$ 1.500,00"
+     },
+     {
+      "garantia": "RESP.CIVIL COND",
+      "impseg": 400000.0,
+      "premio": 729.39,
+      "franquia": null
+     },
+     {
+      "garantia": "RESP. CIVIL SIND. DE CON.",
+      "impseg": 400000.0,
+      "premio": 205.61,
+      "franquia": null
+     },
+     {
+      "garantia": "ROUBO DE BENS",
+      "impseg": 25000.0,
+      "premio": 189.59,
+      "franquia": "10 - R$ 200,00"
+     },
+     {
+      "garantia": "TUMULTOS",
+      "impseg": 25000.0,
+      "premio": 38.55,
+      "franquia": null
+     },
+     {
+      "garantia": "VENDAVAL/CICL/TORNADO/GRA",
+      "impseg": 340000.0,
+      "premio": 5691.46,
+      "franquia": "20 - R$ 2.500,00"
+     },
+     {
+      "garantia": "ASSITENCIA 24HS",
+      "impseg": 0.0,
+      "premio": 0.0,
+      "franquia": null
+     }
+    ],
+    "soma_dos_premios": 17973.02,
+    "premio_liquido": 24960.6,
+    "premio_total": 26802.69,
+    "iof": 1842.09,
+    "numero_de_parcelas": 6,
+    "forma_pag_do_cabecalho": "Boleto Bancário",
+    "parcelas": [
+     {
+      "numero": 1,
+      "vencimento": "04/09/2026",
+      "valor": 446712.0,
+      "quitada_em": null,
+      "forma_de_pagamento": "Boleto Bancário"
+     },
+     {
+      "numero": 2,
+      "vencimento": "20/10/2026",
+      "valor": 446711.0,
+      "quitada_em": null,
+      "forma_de_pagamento": "Boleto Bancário"
+     },
+     {
+      "numero": 3,
+      "vencimento": "20/11/2026",
+      "valor": 446711.0,
+      "quitada_em": null,
+      "forma_de_pagamento": "Boleto Bancário"
+     },
+     {
+      "numero": 4,
+      "vencimento": "20/12/2026",
+      "valor": 446711.0,
+      "quitada_em": null,
+      "forma_de_pagamento": "Boleto Bancário"
+     },
+     {
+      "numero": 5,
+      "vencimento": "20/01/2027",
+      "valor": 446711.0,
+      "quitada_em": null,
+      "forma_de_pagamento": "Boleto Bancário"
+     },
+     {
+      "numero": 6,
+      "vencimento": "20/02/2027",
+      "valor": 446713.0,
+      "quitada_em": null,
+      "forma_de_pagamento": "Boleto Bancário"
+     }
+    ],
+    "tabela_itens_presente": true,
+    "objeto_do_risco": [
+     {
+      "item_number": 1
+     }
+    ]
+   },
+   "documento_oficial": {
+    "paginas": 5,
+    "parser": "direct_text",
+    "linhas_de_cobertura": [
+     {
+      "rotulo": "Básica Simples",
+      "lmi": 82000000.0,
+      "premio": 2671.09,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Alagamento",
+      "lmi": 150000.0,
+      "premio": 1482.43,
+      "franquia_texto": "20 4.000,00"
+     },
+     {
+      "rotulo": "Danos Elétricos",
+      "lmi": 100000.0,
+      "premio": 4803.68,
+      "franquia_texto": "20 4.000,00"
+     },
+     {
+      "rotulo": "Desmoronamento",
+      "lmi": 100000.0,
+      "premio": 119.16,
+      "franquia_texto": "20 3.000,00"
+     },
+     {
+      "rotulo": "Despesas Fixas",
+      "lmi": 50000.0,
+      "premio": 8.58,
+      "franquia_texto": "- 168 Hrs"
+     },
+     {
+      "rotulo": "Impacto de Veículos",
+      "lmi": 40000.0,
+      "premio": 39.12,
+      "franquia_texto": "15 1.000,00"
+     },
+     {
+      "rotulo": "Incêndio de Bens de Condôminos",
+      "lmi": 2000000.0,
+      "premio": 307.26,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Perda/Pagamento Aluguel p/Condôminos",
+      "lmi": 500000.0,
+      "premio": 104.64,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Quebra de Vidros/Anúncios Luminosos",
+      "lmi": 70000.0,
+      "premio": 2318.11,
+      "franquia_texto": "10 500,00"
+     },
+     {
+      "rotulo": "RC Portões Automáticos",
+      "lmi": 30000.0,
+      "premio": 789.78,
+      "franquia_texto": "10 1.500,00"
+     },
+     {
+      "rotulo": "RC Danos Morais",
+      "lmi": 50000.0,
+      "premio": 61.56,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "RC Guarda Veículos - Compreensiva",
+      "lmi": 150000.0,
+      "premio": 1354.45,
+      "franquia_texto": "10 1.500,00"
+     },
+     {
+      "rotulo": "RC Condomínio",
+      "lmi": 400000.0,
+      "premio": 729.42,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "RC Síndico",
+      "lmi": 400000.0,
+      "premio": 205.62,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Roubo de Bens de Condôminos",
+      "lmi": 35000.0,
+      "premio": 119.94,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Roubo/Furto Qualificado de Bens",
+      "lmi": 25000.0,
+      "premio": 189.6,
+      "franquia_texto": "10 200,00"
+     },
+     {
+      "rotulo": "Tumultos, Greves, Lock-Outs",
+      "lmi": 25000.0,
+      "premio": 38.52,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Ruptura de Tanques e Tubulações",
+      "lmi": 200000.0,
+      "premio": 3832.16,
+      "franquia_texto": "20 2.500,00"
+     },
+     {
+      "rotulo": "Vendaval / Ciclone / Tornado / Granizo",
+      "lmi": 340000.0,
+      "premio": 5691.45,
+      "franquia_texto": "20 2.500,00"
+     },
+     {
+      "rotulo": "Gastos com Defesa",
+      "lmi": 40000.0,
+      "premio": 70.15,
+      "franquia_texto": "- Sem Franquia"
+     },
+     {
+      "rotulo": "Assistência 24h",
+      "lmi": null,
+      "premio": 23.88,
+      "franquia_texto": "- Sem Franquia"
+     }
+    ],
+    "soma_dos_premios_das_linhas": 24960.6,
+    "franquias_em_prosa": [],
+    "parcelas": [],
+    "cabecalho": [
+     "Limite Máximo de Garantia da Apólice: R$84.050.000,00 Versão da tabela: 35/60.01",
+     "Prêmio Líquido R$ 24.960,60",
+     "Prêmio Líquido: R$ 24.960,60 Taxa mensal juros: 0,00%",
+     "Custo da Apólice: R$ 0,00 IOF: R$1.842,09 Valor juros: R$ 0,00",
+     "Total a Pagar: R$ 26.802,69",
+     "Prêmio Líquido -Valor aserpago para agarantia dorisco, calculado para avigência integral da"
+    ],
+    "evidence_items_por_tipo_hoje": {
+     "policy_limit": 1,
+     "clause": 12,
+     "coverage": 2,
+     "coverage_row": 1,
+     "premium": 2,
+     "exclusion": 1,
+     "assistance_plan": 1
+    }
+   }
+  }
+ },
+ "listagens": {
+  "_doc": "As listagens de /cliente_ligacoes dos tres clientes reais que produziram as 31 linhas de opcao (09-11/09): so seguradora, ramo, vigencia e cancelamento; numero e nome nunca.",
+  "pessoa_hdi": {
+   "documents_count": 6,
+   "matches_devolvidos": 1,
+   "status": "found",
+   "apolices": [
+    {
+     "seguradora_abrev": "HDI",
+     "ramo_abrev": "RESI",
+     "inicio": "07/05/2026",
+     "fim": "07/05/2027",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "Recebido e não entregue ao cliente"
+    }
+   ],
+   "_nota": "consulta com numero humano: 1 match; documents_count e a contagem cheia (6)"
+  },
+  "condominio_allianz": {
+   "documents_count": 6,
+   "matches_devolvidos": 6,
+   "status": "ambiguous_policy",
+   "apolices": [
+    {
+     "seguradora_abrev": "ALLI",
+     "ramo_abrev": "COND",
+     "inicio": "25/08/2026",
+     "fim": "25/08/2027",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "TMAR",
+     "ramo_abrev": "COND",
+     "inicio": "25/08/2025",
+     "fim": "25/08/2026",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "TMAR",
+     "ramo_abrev": "COND",
+     "inicio": "25/08/2024",
+     "fim": "25/08/2025",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "TMAR",
+     "ramo_abrev": "COND",
+     "inicio": "25/08/2023",
+     "fim": "25/08/2024",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "CHUB",
+     "ramo_abrev": "COND",
+     "inicio": "25/08/2022",
+     "fim": "25/08/2023",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "CHUB",
+     "ramo_abrev": "COND",
+     "inicio": "25/08/2021",
+     "fim": "25/08/2022",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    }
+   ]
+  },
+  "empresa_11_apolices": {
+   "documents_count": 11,
+   "matches_devolvidos": 10,
+   "status": "ambiguous_policy",
+   "apolices": [
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2026",
+     "fim": "01/02/2027",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2025",
+     "fim": "01/02/2026",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2024",
+     "fim": "01/02/2025",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2023",
+     "fim": "01/02/2024",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2022",
+     "fim": "01/02/2023",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2021",
+     "fim": "01/02/2022",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2020",
+     "fim": "01/02/2021",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "METL",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/02/2019",
+     "fim": "01/02/2020",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "ITAU",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/03/2018",
+     "fim": "01/03/2019",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    },
+    {
+     "seguradora_abrev": "ITAU",
+     "ramo_abrev": "VGRP",
+     "inicio": "01/03/2017",
+     "fim": "01/03/2018",
+     "cancelado": false,
+     "status_cru_do_fornecedor": "ativo"
+    }
+   ]
+  }
+ }
+}
