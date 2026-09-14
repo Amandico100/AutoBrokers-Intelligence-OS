@@ -72,8 +72,15 @@ class AgentConfigRequest(BaseModel):
     llm_temperature: float = Field(
         default=0.7, ge=0.0, le=2.0, description="Temperatura (0.0 a 2.0)"
     )
+    # 🔴 8192, e não 2000 (SPEC-EXTRA-001.1, BLOCO E · P-PILOTO-17).
+    # 📊 09/09/2026: 10 de 95 chamadas do chat da Resulta bateram o teto do
+    # banco EXATO e a resposta chegou cortada no meio de uma palavra. O piso de
+    # `llm_factory.piso_de_saida` conserta o COMPORTAMENTO; este default
+    # conserta o DADO — a corretora que salvar a configuração sem mexer no
+    # campo grava 8192, não 2000 (CLAUDE.md §12.1: o número errado reinfecta
+    # todo leitor seguinte).
     llm_max_tokens: int = Field(
-        default=2000, ge=100, le=100000, description="Máximo de tokens"
+        default=8192, ge=100, le=100000, description="Máximo de tokens"
     )
     llm_top_p: float = Field(
         default=1.0, ge=0.0, le=1.0, description="Top P (0.0 a 1.0)"
@@ -130,7 +137,8 @@ class AgentConfigResponse(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_temperature: float = 0.7
-    llm_max_tokens: int = 2000
+    # 🔴 8192 — mesma razão do request acima (SPEC-EXTRA-001.1, BLOCO E).
+    llm_max_tokens: int = 8192
     llm_top_p: float = 1.0
     llm_top_k: int = 40
     llm_frequency_penalty: float = 0.0
@@ -278,7 +286,11 @@ async def get_agent_config(company_id: str):
         )
 
         max_tokens = company.get("llm_max_tokens")
-        max_tokens = int(max_tokens) if max_tokens is not None else 2000
+        # 🔴 8192 — o fallback da TELA da corretora (SPEC-EXTRA-001.1, BLOCO E).
+        # ⚠️ Quando a coluna TEM valor, é o valor da coluna que aparece: esta
+        # tela mostra o que está gravado, e é por isso que a migration
+        # `20260914_06` existe. Consertar só a tela esconderia o dado errado.
+        max_tokens = int(max_tokens) if max_tokens is not None else 8192
 
         top_k = company.get("llm_top_k")
         top_k = int(top_k) if top_k is not None else 40

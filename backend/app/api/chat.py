@@ -33,6 +33,12 @@ from app.api.chat_eventos import (
     pecas_do_turno,
 )
 
+# P-PILOTO-18 — a ligação entre o turno e a invocação de ferramenta.
+# ⛔ Este módulo NÃO é um segundo registro de tool call: quem grava continua
+# sendo o `RegistroDeInvocacao` chamado pelo nó de tool. Daqui só vêm a marca do
+# turno em voo e o FORMATO da chave — um formato, um lugar.
+from app.services.skills.invocation_recorder import chave_de_rastro, marcar_turno
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -1101,6 +1107,14 @@ async def chat_stream(
     # Artifact Hub vai encontrar quando publicar no meio do turno.
     pecas_do_turno.set([])
 
+    # 🔴 E a MESMA cópia de contexto carrega QUAL TURNO está em voo, para o nó
+    # de tool poder escrever isso no `trace_id` da invocação (P-PILOTO-18).
+    # ⛔ Não é um segundo registro de tool call: a escrita continua sendo uma só
+    # (`nodes.py:1057 → RegistroDeInvocacao → gateway.py:294`). O que se
+    # acrescenta é a CHAVE que permite a junção, e ela é montada por
+    # `chave_de_rastro` — a mesma função dos dois lados (CLAUDE.md §5 e §9.4).
+    marcar_turno(client_request_id)
+
     async def _gerar(fila_de_saida: "asyncio.Queue") -> None:
         comeco = time.monotonic()
         ttft_ms = None
@@ -1218,6 +1232,47 @@ async def chat_stream(
                 for chave, valor in (desfecho or {}).items():
                     if valor is not None:
                         dados_do_turno[chave] = valor
+
+                # 🔴 QUE FERRAMENTAS ESTE TURNO CHAMOU — P-PILOTO-18, reescrita.
+                #
+                # ⛔ UMA ESCRITA, DOIS LEITORES. Quem grava `tool_invocations` é
+                # o nó de tool, e continua sendo o único. Aqui só se LÊ de volta,
+                # pela chave que o próprio turno montou. 📊 `stages` (acima) diz
+                # que o agente PAROU para consultar algo; `tool_calls` diz o QUÊ,
+                # se deu certo, quanto demorou e com que erro — e `stages` não
+                # sabe nada disso.
+                #
+                # ⚠️ Falhar aqui NUNCA derruba o turno: a resposta do corretor
+                # vale mais que a contabilidade dela. Sem as tool calls, o turno
+                # grava sem a chave (nunca com `[]` mentindo "não chamou nada").
+                chave_de_juncao = chave_de_rastro(chat_request.sessionId,
+                                                  client_request_id)
+                if chave_de_juncao and estagios:
+                    try:
+                        invocadas = (
+                            await db.client.table("tool_invocations")
+                            # 🔴 `company_id` PRIMEIRO e SEMPRE: o backend usa
+                            # service role, e RLS sem filtro no código não
+                            # protege nada (CLAUDE.md §7).
+                            .select("capability_key, status, latency_ms, error_code, started_at")
+                            .eq("company_id", str(chat_request.companyId))
+                            .eq("trace_id", chave_de_juncao)
+                            .order("started_at")
+                            .limit(50)
+                            .execute()
+                        ).data or []
+                        if invocadas:
+                            dados_do_turno["tool_calls"] = [
+                                {"capability_key": linha.get("capability_key"),
+                                 "status": linha.get("status"),
+                                 "latency_ms": linha.get("latency_ms"),
+                                 "error_code": linha.get("error_code")}
+                                for linha in invocadas
+                            ]
+                    except BaseException as sem_juncao:  # noqa: BLE001
+                        logger.warning(
+                            "[STREAM] tool_calls nao lidas no turno %s: %s",
+                            (client_request_id or "-")[:8], type(sem_juncao).__name__)
                 if estado == "interrupted":
                     # E11 — quem parou fica escrito ao lado do parcial.
                     dados_do_turno["stopped_by"] = PARADAS.get(chave_do_turno)

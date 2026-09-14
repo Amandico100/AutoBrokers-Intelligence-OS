@@ -288,6 +288,13 @@ def _load_nodes():
     messages.SystemMessage = _Msg
     messages.ToolMessage = _Msg
     sys.modules["langchain_core.messages"] = messages
+    # P-PILOTO-20 (14/09/2026): sem esta linha o arquivo morre em
+    # ModuleNotFoundError: app.agents.honestidade_do_handoff -- o stub de
+    # app.agents nasce com __path__ = [] e o import real de nodes.py:30 nao
+    # acha o arquivo. O modulo REAL so importa logging/re/typing: carrega
+    # limpo. Um guarda que nao roda nao guarda (CLAUDE.md 9.3).
+    _load_file_module("app.agents.honestidade_do_handoff",
+                      "app/agents/honestidade_do_handoff.py")
     return _load_file_module("app.agents.nodes", "app/agents/nodes.py")
 
 

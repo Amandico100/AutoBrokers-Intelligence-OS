@@ -185,3 +185,113 @@ Sem elas, o LOTE 1 (Porto) guardaria o contrato **sem saber de que versão veio*
 sem o PDF original, e as cartas nasceriam órfãs de origem — repetindo em 2026 o
 defeito que hoje deixa 12 de 13 documentos revogados no índice sem ninguém
 perceber.
+
+---
+
+## SPEC-EXTRA-001.1 — BLOCO E (14/09/2026)
+
+### A migration de DADO
+
+| versão | arquivo | classe | o que faz | VERIFY |
+|---|---|---|---|---|
+| `spec_extra0011_llm_max_tokens` | `20260914_06_spec_extra0011_llm_max_tokens.sql` | **APLICADA** em 14/09/2026 (`spec_extra0011_llm_max_tokens`, MCP; RLS da tabela de backup ligado numa 2ª passada da mesma migration, depois do advisor) | SPEC-EXTRA-001.1 BLOCO E (P-PILOTO-17): migration de **DADO**, não de DDL. `UPDATE public.agents SET llm_max_tokens = 8192` nos papéis `core`/`attendance` que estavam abaixo disso, com a tabela de backup `agents_llm_max_tokens_backup_extra0011` guardando o valor ANTERIOR **por `agent_id`** (é a única fonte do ROLLBACK, e ela NÃO é apagada por ele). Nenhuma coluna criada, alterada ou removida; nenhum `DEFAULT` de schema tocado. **Expand-first** (a rede nasce antes do UPDATE) e **idempotente** (`on conflict (agent_id) do nothing` — sem ele, a 2ª passada transformaria a rede numa cópia do estado novo e o ROLLBACK passaria a "restaurar" 8192 em silêncio) | V0–V5 escritos, **pendente de execução** |
+
+**📊 O manifesto que esta migration exige é o INVENTÁRIO das linhas afetadas —
+antes e depois** (MIGRATIONS-AUTHORITY §5 vale integralmente para alteração de
+*schema*; esta não altera schema). Medido em 13/09 e reconferido em 14/09/2026
+(`select agent_role, llm_max_tokens, count(*) from public.agents group by 1,2
+order by 1,2`), **sem PII — só papel, valor e contagem**:
+
+```
+ANTES     (attendance, 1200, 1)  (attendance, 2000, 3)
+          (core,       1200, 3)  (core,       2000, 1)      = 8 agentes
+DEPOIS    (attendance, 8192, 4)  (core,       8192, 4)      = 8 agentes   <- o esperado do V1
+```
+
+📊 **VERIFY real (14/09/2026, depois do APPLY):**
+
+```
+V0 antes   (attendance,1200,1) (attendance,2000,3) (core,1200,3) (core,2000,1) · alvos = 8 · backup não existia
+V1         (attendance, 8192, 4)  (core, 8192, 4)
+V2         linhas_guardadas = 8 · ja_era_8192 = 0
+V3         (1200, 4)  (2000, 4)
+V4         NENHUMA LINHA (só core/attendance na base)
+V5         companies: (2000, 5)  — intacta
+G-MIG 2    APPLY rodado 2× → linhas_guardadas 8 · ja_era_8192 0 · em_8192 8 (idempotente)
+G-MIG 3    ROLLBACK exercitado em produção (produto pausado): (1200→1200, 4) (2000→2000, 4), um a um por agent_id;
+           APPLY reaplicado → V1/V2/V3 iguais aos de cima. A tabela de backup NÃO foi apagada.
+Advisor    security depois do 1º APPLY: +1 ERROR `rls_disabled_in_public` na tabela de backup → RLS ligado
+           (relrowsecurity = true); os demais achados são os pré-existentes (122 INFO, 2 views definer, 3 funções).
+```
+
+⚠️ **Se a contagem do dia do APPLY não bater com o ANTES, pare.** Alguém mexeu
+entre a medição e a aplicação, e o inventário acima deixou de ser o inventário
+real — o ROLLBACK por `agent_id` continua correto, mas este quadro mentiria.
+
+⚠️ **`companies.llm_max_tokens` NÃO entra** (decisão **D-E0011-01**, nota 70 ×
+55). 📊 14/09: `2000` em **5 de 5** corretoras, com 2 leitores —
+`llm_factory.py:102` (fallback de **qualquer** papel, inclusive `auxiliary` e
+`subagent`, que mantêm teto baixo de propósito) e `agent_config.py:288` (a
+tela). Subi-la elevaria o teto de auxiliar e subagente sem mudar um byte do que
+chega a alguém. **O V5 é o controle que reprova o gate se algum `8192` aparecer
+em `companies`.**
+
+⚠️ **Os `DEFAULT 2000` de DDL não são tocados** — `schema_completo.sql:454`
+(agents) e `:581` (companies). São `ALTER` de estrutura, exigem manifesto
+completo e seriam uma **segunda** migration, nunca um `ALTER` pendurado nesta.
+Ficam registrados como **`P-E0011-DEFAULT-DDL-2000`**. Os defaults de **código**
+— que são os que de fato escrevem hoje — foram a 8192 no mesmo commit:
+`backend/app/api/agent_config.py:82/:133/:288`, `backend/app/models/agent.py:19`
+e `app/api/admin/sandbox/bootstrap-tenant/route.ts:106` (este era **1200**).
+
+### `tool_invocations` — a DDL que nunca entrou no histórico
+
+| tabela | classe | por quê |
+|---|---|---|
+| `public.tool_invocations` | **`NÃO RASTREADA`** (sem arquivo e sem versão; a estrutura **existe** em produção) | 📊 `20260816_02_spec075_portal_job_lineage_priority.sql:147` registra, com todas as letras, que *"a DDL de `tool_invocations` não está rastreada no repositório"*; `20260727_04_indices_read_models_061.sql:24` diz "JA EXISTIA" ao criar índice sobre ela. 📊 Em 14/09/2026 a tabela tem **277 linhas** (140 desde 09/09) e o chat grava nela por `nodes.py:1057 → invocation_recorder → gateway.py:294` |
+
+🔴 **Esta entrada é DOCUMENTAL: nenhuma DDL nova é escrita, e é proibido
+"aplicar" qualquer coisa por causa dela** (MIGRATIONS-AUTHORITY §3.3 e §8.2). O
+que ela faz é responder "este objeto já existe?" — que é a pergunta deste
+arquivo. A reconciliação completa continua sendo trabalho da SPEC-054 Bloco B.
+
+📊 **DDL real, lida do catálogo do Postgres em 14/09/2026** (BLOCO 0 §1.2,
+premissa 12 — `information_schema.columns`, `pg_constraint`, `pg_indexes`):
+
+```
+colunas   id uuid PK · company_id uuid NOT NULL FK companies ON DELETE CASCADE
+          work_run_id uuid · work_step_id uuid · work_attempt_id uuid
+          skill_release_id uuid FK skill_releases ON DELETE SET NULL
+          tool_release_id  uuid FK tool_releases  ON DELETE RESTRICT
+          capability_key text · agent_id uuid · user_id uuid · connection_id uuid
+          invocation_key text · status text · input_fingerprint text
+          input_summary jsonb · output_summary jsonb · provider_reference text
+          approval_request_id uuid
+          work_effect_id uuid FK work_effects ON DELETE SET NULL
+          started_at timestamptz · finished_at timestamptz · latency_ms integer
+          cost_amount numeric · currency text · error_code text · trace_id text
+          created_at timestamptz
+travas    UNIQUE (company_id, invocation_key)  `uq_tool_invocations_key`
+          CHECK status IN (running, succeeded, failed, denied, skipped, waiting_approval)
+índices   idx_tool_invocations_company        (company_id, started_at DESC)
+          idx_tool_invocations_negadas        (company_id, started_at DESC) WHERE status='denied'
+          idx_tool_invocations_run            (work_run_id)
+          idx_tool_invocations_tool           (tool_release_id, status)
+          ix_tool_invocations_company_recente (company_id, created_at DESC)
+```
+
+⚠️ **E o que a SPEC-EXTRA-001.1 fez nela SEM DDL:** a ligação com o turno do
+chat passa a viver em **`trace_id`**, que já existia e 📊 **não tinha nenhum
+leitor** em 14/09 (`grep -rn "trace_id" backend/app --include=*.py` → 6
+ocorrências, todas de ESCRITA). O formato passou de `session_id` para
+`"<session_id>|<client_request_id>"`. **Coluna que já existe, escritor que já
+existe, zero DDL** — e por isso esta SPEC continua tendo **uma única
+migration**, a de dado (GATE G-MIG item 5).
+
+⛔ **`input_summary` continua sem argumento cru.** 📊 14/09: das 277 linhas, **0**
+têm 11 dígitos seguidos em `input_summary`; a amostra das 40 últimas de
+`operational.infocap.policy_lookup.read` guarda só as CHAVES (`document`,
+`user_query`, `policy_number`, `document_evidence_requested`). Quem garante isso
+é `invocation_recorder.resumo_da_entrada`, e o guarda
+`test_a_ferramenta_do_turno_deixa_rastro.py` fica **vermelho** se alguém gravar
+`tool_args` cru.

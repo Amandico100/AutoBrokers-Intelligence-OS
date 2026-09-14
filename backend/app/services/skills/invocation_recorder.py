@@ -39,9 +39,86 @@ import hashlib
 import json
 import logging
 import time
+from contextvars import ContextVar
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# ===========================================================================
+# A LIGAÇÃO COM O TURNO — P-PILOTO-18, reescrita
+#
+# 🔴 A PENDÊNCIA ESTAVA VENCIDA. Ela dizia "o chat não registra que ferramenta
+# o agente chamou … sem `tool_invocations`". 📊 Conferido em 14/09/2026: a
+# tabela existe, tem 277 linhas (140 desde 09/09) e o chat grava nela desde
+# `nodes.py:1057`. Escrever a SPEC pela pendência teria criado uma SEGUNDA
+# gravação de tool call ao lado da que existe — motor paralelo (CLAUDE.md §5).
+#
+# O que faltava era a JUNÇÃO: `messages.payload.turn` conhece o
+# `client_request_id`; `tool_invocations` conhecia só o `session_id`. Quem
+# perguntasse "que ferramentas ESTE turno chamou?" não tinha por onde.
+#
+# 🔴 A ESCOLHA DA CHAVE, com nota (protocolo §9). Notas do builder E, 14/09:
+#
+#   (a) `trace_id = "<session_id>|<client_request_id>"`          nota 88  ← ESCOLHIDA
+#       coluna que JÁ existe, escritor que JÁ existe, ZERO DDL — e por isso
+#       esta SPEC continua com UMA migration só (a de dado). 📊 `grep -rn
+#       "trace_id" backend/app --include=*.py` em 14/09 devolve 6 linhas,
+#       TODAS de escrita: não há leitor para quebrar. A sessão continua
+#       legível (prefixo), e o turno vira sufixo exato.
+#   (b) `trace_id = client_request_id` quando existir, senão `session_id`
+#                                                                nota 62
+#       a mesma coluna passa a guardar DUAS coisas sem marcador — quem lesse
+#       não saberia qual das duas tem na mão (CLAUDE.md §12.1).
+#   (c) chave nova dentro de `input_summary` (jsonb)             nota 55
+#       `input_summary` é o resumo REDIGIDO dos ARGUMENTOS. Meter roteamento
+#       ali é um nome que mente, e a consulta por jsonb é mais cara que por
+#       uma coluna text já indexada por `(company_id, started_at)`.
+#
+# ⚠️ Por que ContextVar e não uma chave no estado do grafo: `AgentState` é um
+# `TypedDict` e o `StateGraph` monta os canais a partir das ANOTAÇÕES dele —
+# uma chave não declarada é descartada. Declará-la criaria um canal novo no
+# checkpointer (que é banco) para carregar um id de request. O ContextVar é o
+# mesmo padrão que o `/chat/stream` já usa para as peças do turno
+# (`pecas_do_turno`, `app/api/chat.py`): a task COPIA o contexto no
+# `create_task`, e o nó de tool roda dentro dela.
+# ===========================================================================
+
+#: O turno em voo neste contexto async. `None` fora de um turno de chat (uma
+#: Rotina, um Work Run, o worker) — e aí o rastro é só a sessão, como era.
+TURNO_EM_CURSO: ContextVar[Optional[str]] = ContextVar(
+    "autobrokers_turno_em_curso", default=None)
+
+
+def marcar_turno(client_request_id: Optional[str]):
+    """Declara qual turno está em voo. Devolve o token para `reset`, se quiser."""
+    valor = str(client_request_id).strip() if client_request_id else None
+    return TURNO_EM_CURSO.set(valor or None)
+
+
+def turno_em_curso() -> Optional[str]:
+    """O turno em voo, ou `None`. Nunca levanta."""
+    try:
+        return TURNO_EM_CURSO.get()
+    except LookupError:  # pragma: no cover — só se o default sumir
+        return None
+
+
+def chave_de_rastro(session_id: Any, turno: Optional[str] = None) -> Optional[str]:
+    """O `trace_id` que liga a invocação ao TURNO — um formato só, num lugar só.
+
+    🔴 Quem GRAVA (`nodes._abrir_registro_de_invocacao`) e quem LÊ (o
+    `/chat/stream`, ao montar `payload.turn.tool_calls`) chamam ESTA função. Duas
+    montagens do mesmo formato escritas separado divergem, e a junção volta
+    vazia sem ninguém ver — exatamente o defeito que o CLAUDE.md §9.4 descreve.
+    """
+    if turno is None:
+        turno = turno_em_curso()
+    sessao = str(session_id or "").strip()
+    marca = str(turno or "").strip()
+    if marca:
+        return "%s|%s" % (sessao, marca)
+    return sessao or None
 
 # Cache de processo: tool_key -> (tool_release_id, capability_key) ou None.
 # O catálogo muda por deploy/publicação, não por turno de conversa. Consultar o

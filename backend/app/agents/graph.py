@@ -6,6 +6,7 @@ Monta o StateGraph com os nós e arestas.
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 from functools import partial
 from typing import Any, Dict, Optional
@@ -953,6 +954,140 @@ async def _conduta_do_caso(supabase_client, mensagem: str) -> str:
     return bloco
 
 
+# ===========================================================================
+# O BLOCO RECUPERADO — teto declarado, e a pergunta DEPOIS dele
+#
+# 📊 O DEFEITO (laudos I1/I2, 09 e 10/09/2026): nos DOIS maiores turnos do
+# acervo (120 e 128 chunks; 135k e 163k tokens de entrada) o agente respondeu
+# *"ainda não recebi uma pergunta sua"*. 📊 Conferido em 14/09 sobre `4e80a3d`:
+# `rag_prefetch_content = rag_result.get("content") or ""` entrava CRU — sem
+# corte, sem contagem — no `dynamic_context`, e `composite_prompt =
+# static_prompt + dynamic_context` virava o SystemMessage do turno.
+#
+# ⚠️ A pergunta JÁ era a última MENSAGEM (`HumanMessage` depois do
+# `SystemMessage`, adiante nesta mesma função). O que faltava era ela aparecer
+# depois do bloco DENTRO do prompt de sistema — que é onde moram os 160k.
+#
+# 🔴 A REFERÊNCIA EXTERNA (protocolo §7.3) · Liu et al., TACL 2023, "Lost in
+# the Middle: How Language Models Use Long Contexts"
+# (https://arxiv.org/abs/2307.03172, reaberta em 14/09/2026):
+#   "Performance is often highest when relevant information occurs at the
+#   beginning or end of the input context, and significantly degrades when
+#   models must access relevant information in the middle of long contexts,
+#   even for explicitly long-context models."
+# O que MODELAMOS, um ponto só: **posição**. A pergunta é repetida DEPOIS do
+# bloco, que é o fim do contexto.
+# ⛔ O que REJEITAMOS: concluir "contexto grande é ruim" e cortar o RAG. O
+# paper mede POSIÇÃO, não volume — o teto abaixo existe para o custo e para o
+# extremo patológico, não para consertar a posição.
+# ===========================================================================
+
+#: 🔴 O SEPARADOR NÃO É INVENTADO AQUI. Ele é o mesmo que
+#: `SearchService.smart_search` usa para juntar os trechos — a linha
+#: `final_content = "(quebra)(quebra)---(quebra)(quebra)".join(content_parts)`
+#: em `app/services/search_service.py:985`, conferida em 14/09/2026. Cortar por
+#: ele é cortar por TRECHO INTEIRO. Um separador diferente daquele cortaria no
+#: meio de uma cobertura — e o §9.4 do CLAUDE.md é exatamente sobre isso:
+#: padrão medido com um motor e aplicado com outro é padrão sobre outra coisa.
+SEPARADOR_DE_TRECHOS = "\n\n---\n\n"
+
+#: O teto do bloco recuperado, em CARACTERES.
+#:
+#: 📊 Por que 60.000, e o que ele custa (decisão do builder E, 14/09/2026):
+#:   💭 60.000 chars ≈ 15.000 tokens (≈4 chars/token em português).
+#:   📊 os dois piores turnos do acervo tinham 135k e 163k tokens de ENTRADA;
+#:      o teto derruba o pior caso em ~10x e deixa o resto do orçamento para o
+#:      prompt estático, a memória, a ficha e o histórico.
+#:   📊 o bloco de cobertura item a item que a 001.1 precisa preservar (golden
+#:      HDI = 10 linhas; Allianz condomínio = 21) cabe em poucos milhares de
+#:      chars: 60.000 preserva DEZENAS deles.
+#: Notas das alternativas consideradas (protocolo §9): 60.000 = 86 · 120.000 =
+#: 70 (mantém metade da massa no meio do contexto, que é o defeito medido) ·
+#: 20.000 = 55 (cortaria bloco de cobertura legítimo).
+#:
+#: ⚠️ O teto é lido do ambiente para poder ser afrouxado sem deploy, mas o
+#: DEFAULT é a regra: quem não configura nada recebe 60.000.
+TETO_DO_CONTEXTO_RECUPERADO_CHARS = int(
+    os.getenv("TETO_DO_CONTEXTO_RECUPERADO_CHARS", "60000"))
+
+
+def montar_bloco_recuperado(conteudo, pergunta, teto=None):
+    """Monta o bloco do contexto recuperado com TETO e com a PERGUNTA no fim.
+
+    Devolve `(texto, meta)`.
+
+    `meta` = `{"trechos_recuperados", "trechos_no_bloco", "chars_antes",
+    "chars_depois"}` — é o que vai ao `payload.turn` para o PRÓXIMO laudo poder
+    medir. 📊 D3 do BLOCO 0 (14/09): os tamanhos dos dois turnos grandes NÃO
+    são reconstruíveis pelo banco hoje; vieram de laudos sobre log.
+
+    🔴 DUAS REGRAS QUE NÃO PODEM CAIR:
+    1. o corte é por TRECHO INTEIRO — nunca no meio de um;
+    2. o que ficou de fora é DITO, dentro do próprio bloco, com os números.
+       ⛔ `conteudo[:N]` silencioso lê-se, do outro lado, como "isto é tudo o
+       que havia".
+
+    ⚠️ Se o PRIMEIRO trecho sozinho já estoura o teto, ele entra inteiro assim
+    mesmo: um bloco vazio seria pior que um bloco grande, e cortá-lo pela
+    metade quebraria a regra 1.
+    """
+    conteudo = conteudo or ""
+    if not conteudo.strip():
+        return "", {"trechos_recuperados": 0, "trechos_no_bloco": 0,
+                    "chars_antes": 0, "chars_depois": 0}
+
+    if teto is None:
+        teto = TETO_DO_CONTEXTO_RECUPERADO_CHARS
+
+    trechos = conteudo.split(SEPARADOR_DE_TRECHOS)
+    total = len(trechos)
+    chars_antes = len(conteudo)
+
+    escolhidos = []
+    tamanho = 0
+    for trecho in trechos:
+        custo = len(trecho) + (len(SEPARADOR_DE_TRECHOS) if escolhidos else 0)
+        if escolhidos and tamanho + custo > teto:
+            break
+        escolhidos.append(trecho)
+        tamanho += custo
+
+    corpo = SEPARADOR_DE_TRECHOS.join(escolhidos)
+    de_fora = total - len(escolhidos)
+
+    partes = ["\n\n=== 📚 CONTEXTO RECUPERADO DA BASE DE CONHECIMENTO ===\n"]
+    if de_fora > 0:
+        partes.append(
+            "(mostrando os %d trechos mais relevantes de %d — os outros %d "
+            "ficaram de fora por TAMANHO, nao por irrelevancia)\n"
+            % (len(escolhidos), total, de_fora))
+    partes.append(corpo)
+    partes.append("\n=== FIM DO CONTEXTO RECUPERADO ===\n\n")
+    partes.append(
+        "INSTRUÇÕES SOBRE O CONTEXTO RECUPERADO:\n"
+        "- Se a resposta estiver no contexto recuperado, responda com base nele.\n"
+        "- Não diga que não encontrou se o contexto recuperado contém a resposta.\n"
+        "- Use a informação recuperada com precisão.\n"
+        "- Não invente informações fora do contexto quando a pergunta for sobre "
+        "base/documento/procedimento interno.")
+
+    # 🔴 A PERGUNTA, DEPOIS DO BLOCO — o ponto modelado de Liu et al. 2023.
+    # Só quando HÁ bloco: sem contexto recuperado não há meio onde se perder, e
+    # repetir a pergunta de graça só gastaria tokens.
+    if (pergunta or "").strip():
+        partes.append(
+            "\n\nPERGUNTA ATUAL DO USUÁRIO (repetida porque o bloco acima é "
+            "longo):\n%s" % pergunta.strip())
+
+    texto = "".join(partes)
+    return texto, {
+        "trechos_recuperados": total,
+        "trechos_no_bloco": len(escolhidos),
+        "chars_antes": chars_antes,
+        "chars_depois": len(corpo),
+    }
+
+
 async def _build_initial_state(
     user_message: str,
     company_id: str,
@@ -1391,18 +1526,22 @@ async def _build_initial_state(
     except Exception as e:  # noqa: BLE001 — prefetch nunca pode quebrar o chat
         logger.warning(f"[RAG Prefetch] erro ignorado: {type(e).__name__}")
 
+    # 🔴 O bloco recuperado tem TETO DECLARADO e a pergunta vem DEPOIS dele.
+    # A montagem é `montar_bloco_recuperado` (função pura, acima nesta mesma
+    # unidade): o guarda `test_a_pergunta_sobrevive_ao_bloco.py` chama o MESMO
+    # motor, e não uma cópia da regra (CLAUDE.md §9.4).
+    rag_bloco_meta = {"trechos_recuperados": 0, "trechos_no_bloco": 0,
+                      "chars_antes": 0, "chars_depois": 0}
     if rag_prefetch_content:
-        dynamic_context += (
-            "\n\n=== 📚 CONTEXTO RECUPERADO DA BASE DE CONHECIMENTO ===\n"
-            f"{rag_prefetch_content}\n"
-            "=== FIM DO CONTEXTO RECUPERADO ===\n\n"
-            "INSTRUÇÕES SOBRE O CONTEXTO RECUPERADO:\n"
-            "- Se a resposta estiver no contexto recuperado, responda com base nele.\n"
-            "- Não diga que não encontrou se o contexto recuperado contém a resposta.\n"
-            "- Use a informação recuperada com precisão.\n"
-            "- Não invente informações fora do contexto quando a pergunta for sobre "
-            "base/documento/procedimento interno."
-        )
+        _bloco_rag, rag_bloco_meta = montar_bloco_recuperado(
+            rag_prefetch_content, user_message)
+        dynamic_context += _bloco_rag
+        if rag_bloco_meta["trechos_no_bloco"] < rag_bloco_meta["trechos_recuperados"]:
+            logger.warning(
+                "[RAG Prefetch] bloco no teto: %d de %d trechos (%d -> %d chars, teto=%d)",
+                rag_bloco_meta["trechos_no_bloco"], rag_bloco_meta["trechos_recuperados"],
+                rag_bloco_meta["chars_antes"], rag_bloco_meta["chars_depois"],
+                TETO_DO_CONTEXTO_RECUPERADO_CHARS)
 
     # === AUXILIARY AWARENESS (42A7) ===
     # Só para o Core e quando a mensagem indica intenção sobre auxiliares/automação.
@@ -1528,6 +1667,12 @@ async def _build_initial_state(
         "dynamic_context": dynamic_context,  # 🔥 NEW: Parte dinâmica
         "rag_context": rag_prefetch_content,
         "rag_chunks": rag_prefetch_chunks,
+        # 🔴 NÃO entra no `AgentState` (o StateGraph descartaria a chave: os
+        # canais nascem das anotações do TypedDict). Fica no dict que
+        # `_build_initial_state` devolve, e quem o lê é o PROJETOR, na mesma
+        # função — é assim que a medida chega ao `payload.turn` sem um segundo
+        # caminho de RAG (CLAUDE.md §5).
+        "rag_bloco": rag_bloco_meta,
         "rag_search_time_ms": rag_prefetch_time_ms,
         "search_strategy": rag_prefetch_strategy,
         "retrieval_score": rag_prefetch_score,
@@ -2231,8 +2376,22 @@ async def stream_agent_eventos(
     # 🔴 O TURNO DIZ POR QUE PAROU — §12.1: fato medido, não inferência.
     # Quem grava (`/chat/stream`) põe isto no `payload` da mensagem. Sem esta
     # linha, o diagnóstico do próximo corte volta a ser cruzar duas tabelas.
+    #
+    # 🔴 E DIZ TAMBÉM DE QUE TAMANHO ERA O BLOCO RECUPERADO (D3 do BLOCO 0):
+    # 📊 14/09/2026 — os dois turnos que responderam "ainda não recebi uma
+    # pergunta sua" NÃO são reconstruíveis pelo banco (`payload.turn.stages`
+    # vazio, `usage` ausente, e não há tabela de chunks no Postgres: o índice é
+    # o Qdrant). Sem estas duas chaves, o próximo laudo volta a depender de log.
+    # ⚠️ `None` quando `_build_initial_state` não rodou (o projetor exercitado
+    # por grafo dublado): chave ausente é honesta, `0` inventaria medição.
+    _meta_rag = (initial_state or {}).get("rag_bloco") if isinstance(initial_state, dict) else None
     item = _ev("final", finish_reason=motivo, usage=uso, continuations=voltas,
-               truncated=bool(_cortou(motivo)))
+               truncated=bool(_cortou(motivo)),
+               rag_chunks=(_meta_rag or {}).get("trechos_recuperados") if _meta_rag else None,
+               rag_chars=({"antes": _meta_rag["chars_antes"],
+                           "depois": _meta_rag["chars_depois"],
+                           "trechos_no_bloco": _meta_rag["trechos_no_bloco"]}
+                          if _meta_rag else None))
     if item:
         yield item
 

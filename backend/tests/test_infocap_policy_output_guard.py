@@ -67,9 +67,30 @@ def _load_nodes_module():
     messages.ToolMessage = _Msg
     sys.modules["langchain_core.messages"] = messages
 
+    # 🔴 P-PILOTO-20 (14/09/2026) — POR QUE ESTAS QUATRO LINHAS EXISTEM.
+    # Desde 23/08 este guarda morria em `ModuleNotFoundError: No module named
+    # 'app.agents.honestidade_do_handoff'`: o stub de `app.agents` acima nasce
+    # com `__path__ = []`, então o import real de `nodes.py:30` não acha o
+    # arquivo. ⚠️ NÃO é regressão de produto — `honestidade_do_handoff` só
+    # importa `logging`/`re`/`typing`, e o módulo REAL carrega sem nada de fora.
+    # Um guarda que não roda não guarda: ele ficava mudo, e mudo lê-se como
+    # verde (CLAUDE.md §9.3).
+    _carregar_real("app.agents.honestidade_do_handoff",
+                   "app/agents/honestidade_do_handoff.py")
+
     path = ROOT / "app" / "agents" / "nodes.py"
     spec = importlib.util.spec_from_file_location("app.agents.nodes", path)
     mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _carregar_real(nome_pontilhado, caminho_relativo):
+    """Carrega o módulo REAL por caminho e o registra em `sys.modules`."""
+    caminho = ROOT / caminho_relativo
+    spec = importlib.util.spec_from_file_location(nome_pontilhado, caminho)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[nome_pontilhado] = mod
     spec.loader.exec_module(mod)
     return mod
 

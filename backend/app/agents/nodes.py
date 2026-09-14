@@ -789,30 +789,80 @@ def _abrir_registro_de_invocacao(state: AgentState, *, tool_name: str,
     uma forma só. Se a auditoria estiver indisponível — sem cliente, sem
     empresa, import quebrado — a ferramenta roda igual: perder o registro é
     ruim, perder o trabalho do corretor é pior.
+
+    🔴 O `trace_id` LIGA A INVOCAÇÃO AO TURNO (P-PILOTO-18, reescrita). Ele
+    deixa de ser só o `session_id` e passa a ser `"<session_id>|<turno>"`,
+    montado por `chave_de_rastro` — a MESMA função que o `/chat/stream` usa
+    para ler de volta. ⛔ Uma segunda montagem do formato, escrita em outro
+    arquivo, divergiria e a junção voltaria vazia sem ninguém ver.
+    ⚠️ Fora de um turno de chat (Rotina, Work Run, worker) o turno é `None` e o
+    rastro continua sendo a sessão, exatamente como era.
     """
     try:
         from app.core.database import get_supabase_client
-        from app.services.skills.invocation_recorder import RegistroDeInvocacao
+        from app.services.skills.invocation_recorder import (
+            RegistroDeInvocacao, chave_de_rastro,
+        )
 
         company_id = state.get("company_id")
         if not company_id:
             agente = state.get("agent_data") or {}
             company_id = agente.get("company_id")
         if not company_id:
-            return _RegistroInerte()
+            return _RegistroInerte(motivo="sem_company_id")
 
         return RegistroDeInvocacao(
             get_supabase_client(), company_id=str(company_id),
             nome_da_tool=str(tool_name), argumentos=tool_args or {},
-            trace_id=str(state.get("session_id") or "") or None)
+            trace_id=chave_de_rastro(state.get("session_id")))
     except Exception as exc:  # noqa: BLE001
         logger.warning("[Tool Node] registro de invocação indisponível: %s",
                        type(exc).__name__)
-        return _RegistroInerte()
+        return _RegistroInerte(motivo=type(exc).__name__)
+
+
+#: 🔴 QUANTAS VEZES A AUDITORIA FICOU MUDA — P-PILOTO-18, o 2º item.
+#:
+#: O `_RegistroInerte` está CERTO como desenho: perder o registro é melhor que
+#: perder o trabalho do corretor. Ele estava ERRADO sem contador — engolir em
+#: silêncio é como `tool_invocations` ficou em ZERO com o produto em uso, e
+#: ninguém soube (SPEC-061, Bloco 0). Um número que ninguém mede é um número
+#: que ninguém conserta.
+#:
+#: ⚠️ É contador de PROCESSO (some no restart), não métrica de produto: serve
+#: ao guarda e ao log. Quem quiser série temporal lê o `warning`.
+_REGISTROS_INERTES = 0
+_MOTIVOS_INERTES: Dict[str, int] = {}
+
+
+def registros_inertes() -> int:
+    """Quantas invocações rodaram SEM auditoria neste processo."""
+    return _REGISTROS_INERTES
+
+
+def motivos_inertes() -> Dict[str, int]:
+    """Por que elas ficaram mudas — `{motivo: quantas}`."""
+    return dict(_MOTIVOS_INERTES)
+
+
+def zerar_registros_inertes() -> None:
+    """Só para o guarda: cada caso começa do zero."""
+    global _REGISTROS_INERTES
+    _REGISTROS_INERTES = 0
+    _MOTIVOS_INERTES.clear()
 
 
 class _RegistroInerte:
-    """Nulo com a mesma forma. Nunca falha, nunca grava."""
+    """Nulo com a mesma forma. Nunca falha, nunca grava — e SE CONTA."""
+
+    def __init__(self, motivo: str = "desconhecido"):
+        global _REGISTROS_INERTES
+        _REGISTROS_INERTES += 1
+        _MOTIVOS_INERTES[motivo] = _MOTIVOS_INERTES.get(motivo, 0) + 1
+        self.motivo = motivo
+        logger.warning(
+            "[Tool Node] invocação SEM auditoria (motivo=%s; %d neste processo)",
+            motivo, _REGISTROS_INERTES)
 
     def __enter__(self):
         return self

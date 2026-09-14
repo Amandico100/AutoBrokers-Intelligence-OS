@@ -103,7 +103,12 @@ export async function POST(request: NextRequest) {
       llm_provider: 'openai',
       llm_model: 'gpt-4o-mini',
       llm_temperature: 0.4,
-      llm_max_tokens: 1200,
+      // 🔴 8192, e não 1200 (SPEC-EXTRA-001.1, BLOCO E · P-PILOTO-17).
+      // 📊 09/09/2026: 1200 é EXATAMENTE o número que cortou 10 de 95
+      // respostas do chat da Resulta no meio de uma palavra. O tenant de
+      // sandbox nascia com ele — e sandbox é onde se prova que o produto
+      // funciona.
+      llm_max_tokens: 8192,
       llm_top_p: 1,
       llm_top_k: 40,
       llm_frequency_penalty: 0,

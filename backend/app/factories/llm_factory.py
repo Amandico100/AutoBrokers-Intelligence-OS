@@ -32,7 +32,25 @@ logger = logging.getLogger(__name__)
 PISO_DE_SAIDA_DA_CONVERSA = int(os.getenv("PISO_DE_SAIDA_DA_CONVERSA", "8192"))
 
 #: Papéis que falam com gente e por isso têm piso.
-PAPEIS_QUE_CONVERSAM = ("", "core", "attendance")
+#:
+#: 🔴 `insured_external` ENTROU EM 14/09/2026 (SPEC-EXTRA-001.1, BLOCO E).
+#: É o papel de quem fala com o SEGURADO (GLOSSARIO). Ele nasceu FORA desta
+#: tupla e ninguém percebeu, porque:
+#:   📊 medido em 13 e 14/09/2026 — `select agent_role, count(*) from agents
+#:      group by 1` devolve 4 `core` + 4 `attendance` e **ZERO**
+#:      `insured_external`. Não há vítima medida: nenhum segurado foi cortado
+#:      por isto.
+#: ⚠️ Classificação honesta (protocolo §2): ESSENCIAL LATENTE, não blocker. O
+#: defeito acontece no dia em que a primeira corretora instalar um agente
+#: desse papel — ele nasceria com o teto do banco (📊 hoje 1200 ou 2000) e a
+#: resposta ao segurado sairia cortada, como saíram 10 das 95 do corretor em
+#: 10/09. O guarda que impede a palavra de sumir de novo é
+#: `test_quem_fala_com_o_segurado_tambem_tem_piso.py` (M-E2).
+#:
+#: ⛔ O que continua FORA, de propósito: `auxiliary` e `subagent`. Eles
+#: devolvem um campo ou um JSON curto; elevar o teto deles só aumentaria custo
+#: sem mudar um byte do que chega a alguém.
+PAPEIS_QUE_CONVERSAM = ("", "core", "attendance", "insured_external")
 
 
 def piso_de_saida(agent_role, max_tokens):

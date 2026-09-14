@@ -16,7 +16,10 @@ class AgentBase(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    llm_max_tokens: int = Field(default=2000, ge=100)
+    # 🔴 8192 (SPEC-EXTRA-001.1, BLOCO E · P-PILOTO-17): o agente novo nasce
+    # com teto de conversa, não com o número de 2000 que cortou 10 de 95
+    # respostas da Resulta em 09/09/2026.
+    llm_max_tokens: int = Field(default=8192, ge=100)
     llm_top_p: float = Field(default=1.0, ge=0.0, le=1.0)
     llm_top_k: int = Field(default=40, ge=1)
     llm_frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0)

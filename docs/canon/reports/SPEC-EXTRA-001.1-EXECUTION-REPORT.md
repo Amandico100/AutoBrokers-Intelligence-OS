@@ -167,11 +167,39 @@ A allowlist tem 3 linhas — no limite que a proposta fixa para "a fronteira est
 
 ## 2. BLOCO A — a porta (preenche ao fechar o bloco)
 
-## 3. BLOCO E — contexto, tokens, rastro, harness (preenche ao fechar o bloco)
+## 3. BLOCO E — contexto, tokens, rastro, harness (Builder E · Opus 5 · 📊 302k tokens · ≈3 h com uma queda de sessão por 429 no meio, retomado no mesmo contexto)
 
-## 4. BLOCOS B, C, D (preenche ao fechar cada bloco)
+| entrega | o que mudou | prova |
+|---|---|---|
+| E.1 a pergunta sobrevive ao bloco | `graph.py`: `TETO_DO_CONTEXTO_RECUPERADO_CHARS` (env, default **60.000** chars ≈ 💭 15k tokens; nota 86 × 120k 70 × 20k 55), corte por TRECHO inteiro (separador `"
+
+---
+
+"` que `search_service.py:985` usa), excedente DITO ("mostrando os N trechos mais relevantes de M"), pergunta repetida DEPOIS do bloco dentro do prompt de sistema; função pura `montar_bloco_recuperado`; `rag_chunks`/`rag_chars` no evento `final` → `payload.turn` (D3: o próximo laudo mede) | `test_a_pergunta_sobrevive_ao_bloco.py` **53/53** · mutações M1 (pergunta removida) M2 (`[:N]` silencioso) M3 (chamador concatena cru) → **3/3 vermelhas** |
+| E.2 P-PILOTO-17 | migration `20260914_06_spec_extra0011_llm_max_tokens.sql` (backup por `agent_id`, ON CONFLICT DO NOTHING, ROLLBACK exato; RLS na tabela de backup); defaults de código → 8192 em `agent_config.py:82/:133/:288`, `models/agent.py:19`, `app/api/admin/sandbox/bootstrap-tenant/route.ts:106` (era 1200) | §5: V0–V5 colados; APPLY 2×; ROLLBACK exercitado e reaplicado; `npm run test:rotas-montam` → "A TABELA DE ROTAS MONTA" |
+| E.3 piso do segurado | `PAPEIS_QUE_CONVERSAM += insured_external` (📊 0 instâncias hoje — latente) | `test_quem_fala_com_o_segurado_tambem_tem_piso.py` **21/21** · 3/3 mutações vermelhas · `test_a_resposta_chega_inteira` 26/26 continua verde |
+| E.4 P-PILOTO-18 reescrita e fechada | `trace_id = "<session_id>|<client_request_id>"` (nota 88 × `client_request_id` puro 62 × chave em `input_summary` 55; 📊 6 ocorrências de `trace_id` em `backend/app`, todas de ESCRITA — nenhum leitor para quebrar; zero DDL); ContextVar `TURNO_EM_CURSO` marcado ANTES do `create_task` (`chat.py:1116`); `payload.turn.tool_calls` derivado por SELECT em `tool_invocations` (uma escrita, dois leitores; falha do SELECT nunca derruba o turno); `_RegistroInerte` com motivo + contador observável; MANIFEST: `tool_invocations` como NÃO RASTREADA com a DDL real | `test_a_ferramenta_do_turno_deixa_rastro.py` **45/45** (gate de bloco, fora do teto de 12) · 4/4 mutações vermelhas (trace sem a chave; `tool_args` cru; inerte sem contar) |
+| E.5 P-PILOTO-20 fechada | harness dos 4 scripts carrega o módulo real `honestidade_do_handoff` antes de `nodes.py` | 📊 os 4 RODAM: `test_infocap_policy_output_guard` **14/14 verde** · `test_spec016_policy_intelligence` 76 ok / 6 falhas POR REGRA · `test_spec016_1_answer_quality` 49 / 2 · `test_spec016_e2e_stub` crash por regra — as falhas são da superfície de A/B/C/D (`fonte é infocap_structured`, `registry resolve provider`, `provider tem lookup e detail`, `facts documentais`, módulos `infocap_policy_provider`/`pdf_only_policy_provider`): VERMELHO ESPERADO que fecha com o BLOCO A e o BLOCO D (§2/§4) |
+
+Pendências novas do bloco: **P-E0011-DEFAULT-DDL-2000** (🤖; `schema_completo.sql:454/:581` — DDL, segunda migration; custo: um INSERT fora dos modelos Python nasce com 2000, o piso segura o comportamento) · **P-E0011-REDACAO-POR-SUBSTRING** (🤖; `_CAMPOS_SENSIVEIS` casa por substring e `document_evidence_requested` sai `[omitido]` — over-redação, erro para o lado certo; custo: auditabilidade). Verificado pelo orquestrador (árvore parada): 53 + 21 + 45 verdes, 10/10 mutações vermelhas, 14/14 do guarda antigo.
 
 ## 5. Migrations (APPLY / VERIFY / ROLLBACK)
+
+### `20260914_06_spec_extra0011_llm_max_tokens.sql` — migration de DADO (a única desta SPEC)
+
+| Campo | Conteúdo |
+|---|---|
+| **Objetivo** | `agents.llm_max_tokens` deixa de mentir (P-PILOTO-17): 8 linhas → 8192, com backup por `agent_id` |
+| **Destrutiva** | não; expand-first (backup nasce antes); idempotente |
+| **V0 antes do APPLY (14/09)** | (attendance,1200,1) (attendance,2000,3) (core,1200,3) (core,2000,1) · alvos 8 · backup não existia — bateu com a medição |
+| **VERIFY (saída real)** | V1 (attendance,8192,4) (core,8192,4) · V2 linhas_guardadas 8, ja_era_8192 0 · V3 (1200,4) (2000,4) · V4 nenhuma linha · V5 companies (2000,5) intacta |
+| **G-MIG 2 (APPLY 2×)** | linhas_guardadas 8 · ja_era_8192 0 · em_8192 8 |
+| **G-MIG 3 (ROLLBACK exercitado)** | em produção, com o produto pausado: (1200→1200, 4) (2000→2000, 4) por `agent_id`; reaplicado → V1/V2/V3 iguais; a tabela de backup permanece |
+| **Advisors** | security antes: 122 INFO + 2 ERROR (views) + 6 WARN pré-existentes; depois do 1º APPLY: **+1 ERROR** `rls_disabled_in_public` na tabela de backup → `enable row level security` (2ª passada da mesma migration; `relrowsecurity = true`); arquivo emendado para o APPLY já nascer assim |
+| **Aplicada em produção** | sim · 14/09/2026 · `spec_extra0011_llm_max_tokens` (MCP) · MANIFEST atualizado com o inventário antes/depois |
+| **`companies.llm_max_tokens`** | NÃO tocada (D-E0011-01) — V5 é o controle |
+
+## 4. BLOCOS B, C, D (preenche ao fechar cada bloco)
 
 ## 6. Painel: juiz fresco + lente do dado · conserto · suíte
 
