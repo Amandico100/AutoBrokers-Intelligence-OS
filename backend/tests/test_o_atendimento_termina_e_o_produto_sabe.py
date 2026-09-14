@@ -76,6 +76,11 @@ MIG_A = (RAIZ / "supabase" / "migrations"
          / "20260826_04_spec086_blocoA_a_conversa_tem_fim.sql")
 MIG_B = (RAIZ / "supabase" / "migrations"
          / "20260826_05_spec086_blocoB_work_waits.sql")
+# SPEC-EXTRA-001.2 M1 (14/09/2026): o CHECK ganhou `fantasma_lid`. A lista fechada
+# de valores passa a ser lida da migration que a DEFINE por ultimo — a que esta
+# aplicada no banco — e nao da primeira (CLAUDE.md §9.3: verdade vencida migra).
+MIG_CHECK = (RAIZ / "supabase" / "migrations"
+             / "20260914_07_spec_extra001_2_check_fantasma_lid.sql")
 VIGIA_PY = RAIZ / "app" / "tasks" / "handoff_watchdog.py"
 ROTEADOR_PY = RAIZ / "app" / "services" / "dispatch_router.py"
 MOTOR_PY = RAIZ / "app" / "services" / "insurer_dispatch_service.py"
@@ -258,7 +263,7 @@ def test_CONTROLE_o_modulo_carregou():
     assert callable(FIM.marcar_fim)
     assert callable(FIM.abrir_espera)
     assert callable(FIM.contar_desfechos)
-    assert len(FIM.MOTIVOS) == 5
+    assert len(FIM.MOTIVOS) == 6  # 5 da SPEC-086 + `fantasma_lid` (EXTRA-001.2 M1)
     assert FIM.KINDS == ("esperando_cliente", "esperando_seguradora", "esperando_humano")
 
 
@@ -357,8 +362,9 @@ def test_MOTIVO_FORA_DA_LISTA_nao_chega_ao_banco():
 
 
 def test_a_migration_LISTA_os_valores_do_CHECK():
-    """🔴 Exigência do protocolo. E os cinco valores estão escritos no APPLY."""
-    sql = MIG_A.read_text(encoding="utf-8")
+    """🔴 Exigência do protocolo. E os seis valores estão escritos no APPLY da
+    migration que define o CHECK hoje (M1 da EXTRA-001.2)."""
+    sql = MIG_CHECK.read_text(encoding="utf-8")
     codigo = _so_o_codigo_sql(sql)
     assert "resolucao_motivo IN (" in codigo
     for valor in FIM.MOTIVOS:
@@ -958,7 +964,7 @@ def test_a_LISTA_DE_SUCESSO_e_a_MESMA_no_Python_no_TS_e_no_BANCO():
     """
     # 🔄 E14 — a projeção da 097 quando ela existir; a rota enquanto não.
     _de_onde, rota = _fonte_dos_contadores()
-    sql = _so_o_codigo_sql(MIG_A.read_text(encoding="utf-8"))
+    sql = _so_o_codigo_sql(MIG_CHECK.read_text(encoding="utf-8"))
 
     # o TS conta como sucesso exatamente os quatro do Python
     bloco = rota.split("const SUCESSO = new Set([", 1)[1].split("]);", 1)[0]
