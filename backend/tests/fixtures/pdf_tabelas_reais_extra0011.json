@@ -1,0 +1,89 @@
+{
+ "_doc": "As linhas CRUAS da tabela de coberturas, das franquias em prosa, das parcelas e do cabecalho financeiro dos dois PDFs reais do golden da EXTRA-001.1, como o extrator `direct_text` do `policy_document_evidence_service` as entrega (14/09/2026). Selecionadas por forma (rotulo + valores), nunca por conteudo de pessoa: nenhuma linha com nome, documento, endereco, numero de apolice ou telefone. E sobre ESTE texto que o parser de linhas do BLOCO D tem de funcionar — 📊 hoje `_COVERAGE_ROW_RE` le 0 linhas na HDI (sem `R$`) e 1 na Allianz (e e 'Premio Liquido').",
+ "medido_em": "2026-09-14",
+ "hdi_residencial": {
+  "paginas": 6,
+  "parser": "direct_text",
+  "layout": "rotulo  LMI   premio (sem R$); franquias em prosa em linhas separadas, na ordem das coberturas com franquia; parcelas 'NN dd/mm/aaaa R$ valor situacao forma'",
+  "linhas": [
+   "Prêmio Líquido :R$ 306,60",
+   "Adicional de parcelamento : R$ 0,00",
+   "Custo de Apólice : R$ 0,00",
+   "I.O.F. :R$ 22,63",
+   "Prêmio Total :R$ 329,23",
+   "01 14/05/2026 R$ 82,31 Em trânsito   Cartão de Crédito",
+   "02 13/06/2026 R$ 82,31 Em trânsito   Cartão de Crédito",
+   "03 13/07/2026 R$ 82,31 Em trânsito   Cartão de Crédito",
+   "04 12/08/2026 R$ 82,29 Em trânsito   Cartão de Crédito",
+   "Parcela: 82,30   Forma de Pagamento: 4 x",
+   "LMG - Limite máximo de garantia da apolice ( R$ 136.000,00 )",
+   "Incendio 133.000,00   45,64",
+   "Responsabilidade Civil Familiar 3.000,00   11,50",
+   "Danos Eletricos 3.000,00   17,25",
+   "Quebra de Vidros 3.000,00   11,50",
+   "Ruptura de Tubulacoes 5.000,00   19,88",
+   "Roubo e Furto de Bens 3.000,00   11,50",
+   "Vendaval 5.000,00   47,36",
+   "Equip. Eletronicos/Eletrodomesticos 3.000,00   11,50",
+   "Clausula Especifica de Valor Novo 0,00   4,53",
+   "Coberturas de Assistencias Essenciais 0,00   125,94",
+   "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 350,00 para Queda de Raio.",
+   "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 600,00",
+   "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 150,00",
+   "15% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 800,00",
+   "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 650,00",
+   "10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 300,00 por equipamento"
+  ],
+  "esperado": {
+   "coberturas": 10,
+   "soma_dos_premios": 306.6,
+   "franquias_em_prosa": 6,
+   "parcelas": 4,
+   "forma_de_pagamento_das_parcelas": "Cartão de Crédito"
+  }
+ },
+ "allianz_condominio": {
+  "paginas": 5,
+  "parser": "direct_text",
+  "layout": "rotulo R$ LMI R$ premio franquia, onde franquia e '<pct> <minimo>' | '- Sem Franquia' | '- <n> Hrs'; a linha 'Assistência 24h R$ 23,88 - Sem Franquia' nao tem LMI; 'Prêmio Líquido R$ …' NAO e cobertura",
+  "linhas": [
+   "Limite Máximo de Garantia da Apólice: R$84.050.000,00 Versão da tabela: 35/60.01",
+   "Básica Simples R$ 82.000.000,00 R$ 2.671,09 - Sem Franquia",
+   "Alagamento R$ 150.000,00 R$ 1.482,43 20 4.000,00",
+   "Danos Elétricos R$ 100.000,00 R$ 4.803,68 20 4.000,00",
+   "Desmoronamento R$ 100.000,00 R$ 119,16 20 3.000,00",
+   "Despesas Fixas R$ 50.000,00 R$ 8,58 - 168 Hrs",
+   "Impacto de Veículos R$ 40.000,00 R$ 39,12 15 1.000,00",
+   "Incêndio de Bens de Condôminos R$ 2.000.000,00 R$ 307,26 - Sem Franquia",
+   "Perda/Pagamento Aluguel p/Condôminos R$ 500.000,00 R$ 104,64 - Sem Franquia",
+   "Quebra de Vidros/Anúncios Luminosos R$ 70.000,00 R$ 2.318,11 10 500,00",
+   "RC Portões Automáticos R$ 30.000,00 R$ 789,78 10 1.500,00",
+   "RC Danos Morais R$ 50.000,00 R$ 61,56 - Sem Franquia",
+   "RC Guarda Veículos - Compreensiva R$ 150.000,00 R$ 1.354,45 10 1.500,00",
+   "RC Condomínio R$ 400.000,00 R$ 729,42 - Sem Franquia",
+   "RC Síndico R$ 400.000,00 R$ 205,62 - Sem Franquia",
+   "Roubo de Bens de Condôminos R$ 35.000,00 R$ 119,94 - Sem Franquia",
+   "Roubo/Furto Qualificado de Bens R$ 25.000,00 R$ 189,60 10 200,00",
+   "Tumultos, Greves, Lock-Outs R$ 25.000,00 R$ 38,52 - Sem Franquia",
+   "Ruptura de Tanques e Tubulações R$ 200.000,00 R$ 3.832,16 20 2.500,00",
+   "Vendaval / Ciclone / Tornado / Granizo R$ 340.000,00 R$ 5.691,45 20 2.500,00",
+   "Gastos com Defesa R$ 40.000,00 R$ 70,15 - Sem Franquia",
+   "Assistência 24h R$ 23,88 - Sem Franquia",
+   "Prêmio Líquido R$ 24.960,60",
+   "Prêmio Líquido: R$ 24.960,60 Taxa mensal juros: 0,00%",
+   "Custo da Apólice: R$ 0,00 IOF: R$1.842,09 Valor juros: R$ 0,00",
+   "Total a Pagar: R$ 26.802,69",
+   "Prêmio Líquido -Valor aserpago para agarantia dorisco, calculado para avigência integral da"
+  ],
+  "esperado": {
+   "coberturas": 21,
+   "soma_dos_premios": 24960.6,
+   "linhas_que_nao_sao_cobertura": [
+    "Prêmio Líquido",
+    "Total a Pagar",
+    "Custo da Apólice",
+    "Limite Máximo de Garantia da Apólice"
+   ]
+  }
+ }
+}
