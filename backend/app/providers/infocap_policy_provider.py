@@ -25,25 +25,27 @@ deles — `app/services/billing_collection.py:1205-1212` — é da **EXTRA-001.6
 que corre em paralelo**. `InfocapPolicyDataProvider` continua importável como
 alias (o nome antigo).
 
-## O que o conector NÃO deixa atravessar hoje, e é preciso dizer
+## Os quatro campos que ninguém lia — e por onde eles passam agora
 
-📊 Medido em 14/09/2026 — `_safe_envelope_summary` (`infocap_connector.py:3460-
-3483`) guarda do envelope apenas os **NOMES das chaves**, nunca os valores:
+📊 Até 14/09/2026, `_safe_envelope_summary` (`infocap_connector.py`) guardava do
+envelope apenas os **NOMES das chaves** (`{"type": "array", "count": N,
+"sample_keys": [...]}`), e por isso `tabela_itens` (o nome do plano),
+`sit_renovacao_txt`, `sit_sinistro_txt` e `itens[].observacoes` (a franquia em
+prosa) **não chegavam ao pack**: do `tabela_itens` sobrava só o booleano
+`unknown_table_field_present`.
 
-```python
-summary[key] = {"type": "array", "count": len(value), "sample_keys": [...]}
+🔴 **BLOCO D (§8.2):** o `_build_evidence_pack` passou a carregá-los com VALOR:
+
+```
+pack["provider_signals"]           sit_renovacao_txt · sit_sinistro_txt · tabela_itens
+pack["coverage_sections"][].item_observacoes   a franquia em PROSA, por cobertura
+pack["risk_objects"][].observacoes             o texto livre do item de risco
 ```
 
-Consequência: `tabela_itens` (o nome do plano), `sit_renovacao_txt`,
-`sit_sinistro_txt` e `itens[].observacoes` **não chegam ao pack** — do
-`tabela_itens` sobra só o booleano `unknown_table_field_present`. O leitor
-deles existe aqui e funciona (os guardas do BLOCO A o exercitam sobre o
-documento cru real do golden); o que falta é o conector **carregar os valores**
-no pack. O patch exato está no relatório do BLOCO A, e é do BLOCO D, que já
-reescreve `_build_evidence_pack` para os dois layouts de tabela.
-
-Sem os valores, o adaptador não inventa: o plano sai
-`estado="nao_sabemos_ainda"` com o nome `INDISPONIVEL`, que é a verdade.
+⚠️ O `evidence_envelope` continua sendo um resumo de **FORMA** — é para isso que
+ele existe. Quem lê os valores é `_sinal_do_provedor`, aqui, e mais ninguém.
+⛔ E nenhum deles decide: `sit_renovacao_txt` é SINAL; quem classifica vigência
+é `classificar_vigencia(inicio, fim, cancelado, hoje)`, por DATA.
 """
 
 from __future__ import annotations
@@ -65,6 +67,7 @@ from app.providers.policy_data_provider import (
     Cobertura,
     DocumentoOficial,
     Indisponivel,
+    ItemDeRisco,
     LinhaDeCoberturaDoDocumento,
     ListaDeApolices,
     Parcela,
@@ -76,6 +79,11 @@ from app.providers.policy_data_provider import (
     Sinal,
     Vigencia,
     SITUACOES_OCULTAS,
+    # ⚠️ Privados da PORTA, importados de propósito: são o casamento de rótulo e
+    #    a comparação de franquia que `reconciliar` usa. Reescrevê-los aqui
+    #    seria um segundo motor para a mesma regra (CLAUDE.md §5).
+    _chave_de_casamento,
+    _franquia_comparavel,
     classificar_vigencia,
     data_de,
     dinheiro,
@@ -241,6 +249,27 @@ def _premio_liquido_do_pack(pack: Dict[str, Any]) -> Optional[CampoComOrigem[Any
     return _campo(valor, SISTEMA_DE_GESTAO, provider_field=liquido.get("provider_field"))
 
 
+def _sinal_do_provedor(pack: Dict[str, Any], documento_cru: Optional[Dict[str, Any]],
+                       campo: str) -> Optional[str]:
+    """O texto cru do fornecedor, do `documento` OU do pack. `None` se não vier.
+
+    🔴 SPEC-EXTRA-001.1 BLOCO D: até 14/09/2026 estes campos existiam na fonte e
+    morriam no conector (`_safe_envelope_summary` guardava só os NOMES das
+    chaves). Agora o `_build_evidence_pack` os carrega em `provider_signals`, e
+    este é o ÚNICO lugar fora do conector que sabe como eles se chamam.
+    """
+    if isinstance(documento_cru, dict):
+        do_documento = str(documento_cru.get(campo) or "").strip()
+        if do_documento:
+            return do_documento
+    sinais = pack.get("provider_signals")
+    if isinstance(sinais, dict):
+        do_pack = str(sinais.get(campo) or "").strip()
+        if do_pack:
+            return do_pack
+    return None
+
+
 def _plano_do_pack(pack: Dict[str, Any], documento_cru: Optional[Dict[str, Any]]) -> Optional[PlanoDeAssistencia]:
     """`tabela_itens` → nome do plano. Nome sem serviços = `nao_sabemos_ainda`.
 
@@ -250,9 +279,7 @@ def _plano_do_pack(pack: Dict[str, Any], documento_cru: Optional[Dict[str, Any]]
     tem", e `""` diria "tem um plano sem nome". As três leituras são
     diferentes, e só uma é verdade.
     """
-    nome = None
-    if isinstance(documento_cru, dict):
-        nome = str(documento_cru.get("tabela_itens") or "").strip() or None
+    nome = _sinal_do_provedor(pack, documento_cru, "tabela_itens")
     if nome is None and not pack.get("unknown_table_field_present"):
         return None
     return PlanoDeAssistencia(
@@ -264,14 +291,13 @@ def _plano_do_pack(pack: Dict[str, Any], documento_cru: Optional[Dict[str, Any]]
 def _sinais_do_pack(pack: Dict[str, Any], documento_cru: Optional[Dict[str, Any]]) -> List[Sinal]:
     """Sinais que o corretor precisa VER — inclusive o do cabeçalho que mente."""
     sinais: List[Sinal] = []
-    cru = documento_cru if isinstance(documento_cru, dict) else {}
 
-    renovacao = str(cru.get("sit_renovacao_txt") or "").strip()
+    renovacao = _sinal_do_provedor(pack, documento_cru, "sit_renovacao_txt")
     if renovacao:
         # ⚠️ SINAL, nunca veredito de vigência: quem decide vigência é
         # `classificar_vigencia(inicio, fim, cancelado, hoje)`, por DATA.
         sinais.append(Sinal("situacao_de_renovacao", {"texto": renovacao}))
-    sinistro = str(cru.get("sit_sinistro_txt") or "").strip()
+    sinistro = _sinal_do_provedor(pack, documento_cru, "sit_sinistro_txt")
     if sinistro:
         sinais.append(Sinal("situacao_de_sinistro", {"texto": sinistro}))
 
@@ -292,18 +318,44 @@ def _sinais_do_pack(pack: Dict[str, Any], documento_cru: Optional[Dict[str, Any]
             "nas_parcelas": das_parcelas,
         }))
 
+    # 🔴 As franquias em prosa do PDF que NÃO têm dono (BLOCO D). O corretor as
+    # vê; o sistema não as adivinha. 📊 Na HDI real sobram 3 de 6 — a tabela do
+    # PDF não diz quais coberturas têm franquia, e o cadastro só conhece 3.
+    prosas = [str(e.get("text") or "").strip()
+              for e in _estruturados(pack, "deductible_prose")
+              if str(e.get("text") or "").strip()]
+    if prosas:
+        lidas = _linhas_e_plano_do_documento(pack)
+        _casadas, sobras = _franquias_em_prosa_do_documento(
+            pack, lidas[0] if lidas is not None else ())
+        if sobras:
+            sinais.append(Sinal("franquia_em_prosa_sem_dono", {
+                "quantidade": len(sobras),
+                "textos": sobras,
+                "motivo": ("o documento não diz a qual cobertura cada franquia "
+                           "pertence, e o cadastro só conhece as que já foram casadas"),
+            }))
+
     if pack.get("cancelled"):
         sinais.append(Sinal("apolice_cancelada", {}))
     return sinais
 
 
-def _franquias_em_prosa(itens_crus: Optional[Sequence[Any]]) -> Dict[str, str]:
+def _franquias_em_prosa(
+    itens_crus: Optional[Sequence[Any]], pack: Optional[Dict[str, Any]] = None
+) -> Dict[str, str]:
     """`itens[].observacoes` → a prosa de franquia, por rótulo, quando vier.
 
     📊 O campo existe na fonte e ninguém o lia (§8.2): é ele que carrega
     *"15% dos prejuízos, mínimo R$ 600"*. Aqui a prosa é o VALOR da franquia,
     não um comentário — por isso `Cobertura.franquia` é
     `CampoComOrigem[Dinheiro | str]`.
+
+    🔴 BLOCO D: em produção `itens_crus` não existe — só o conector vê o
+    `/itens`. Por isso a prosa passa a viajar NO PACK, em
+    `coverage_sections[].item_observacoes`, e este leitor aceita as duas
+    entradas. ⚠️ A prosa só vira franquia quando a cobertura NÃO tem valor
+    (`apolice_do_pack`): ela é o último recurso, não o preferido.
     """
     saida: Dict[str, str] = {}
     for item in itens_crus or []:
@@ -315,6 +367,13 @@ def _franquias_em_prosa(itens_crus: Optional[Sequence[Any]]) -> Dict[str, str]:
         for garantia in item.get("garantias") or []:
             if isinstance(garantia, dict) and garantia.get("garantia"):
                 saida.setdefault(normalizar_rotulo(garantia.get("garantia")), prosa)
+    for secao in (pack or {}).get("coverage_sections") or []:
+        if not isinstance(secao, dict):
+            continue
+        prosa = str(secao.get("item_observacoes") or "").strip()
+        rotulo = str(secao.get("label") or "").strip()
+        if prosa and rotulo:
+            saida.setdefault(normalizar_rotulo(rotulo), prosa)
     return saida
 
 
@@ -335,7 +394,7 @@ def apolice_do_pack(
     ref = str(apolice_ref or pack.get("policy_locator_ref") or "").strip()
     coberturas = _coberturas_do_pack(pack)
 
-    prosa = _franquias_em_prosa(itens_crus)
+    prosa = _franquias_em_prosa(itens_crus, pack)
     if prosa:
         coberturas = tuple(
             c if c.franquia.tem_valor or c.rotulo_normalizado not in prosa
@@ -363,8 +422,34 @@ def apolice_do_pack(
         plano_de_assistencia=_plano_do_pack(pack, documento_cru),
         sinais=tuple(_sinais_do_pack(pack, documento_cru)),
         documento=_referencia_do_documento(pack),
+        item_de_risco=_item_de_risco_do_pack(pack),
         provider_key=PROVIDER_KEY,
     )
+
+
+def _item_de_risco_do_pack(pack: Dict[str, Any]) -> Optional[ItemDeRisco]:
+    """`risk_objects[0]` → `ItemDeRisco`. É o que vai substituir `vehicle()`.
+
+    ⚠️ Só o PRIMEIRO item: a apólice de vários itens (frota) é outra conversa, e
+    inventar "o item" de uma frota seria pior que não ter campo nenhum.
+    """
+    for bruto in pack.get("risk_objects") or []:
+        if not isinstance(bruto, dict):
+            continue
+        def campo(chave: str, provider_field: str):
+            valor = bruto.get(chave)
+            return (_campo(valor, SISTEMA_DE_GESTAO, provider_field=provider_field)
+                    if str(valor or "").strip() else None)
+        numero = bruto.get("item_number")
+        return ItemDeRisco(
+            item=int(numero) if isinstance(numero, int) else None,
+            descricao=campo("kind", "tipo_imovel"),
+            placa=campo("plate", "placa"),
+            cidade=campo("city", "cidade"),
+            estado=campo("state", "estado"),
+            observacoes=campo("observacoes", "observacoes"),
+        )
+    return None
 
 
 def _referencia_do_documento(pack: Dict[str, Any]) -> Optional[ReferenciaDeDocumento]:
@@ -385,21 +470,158 @@ def _referencia_do_documento(pack: Dict[str, Any]) -> Optional[ReferenciaDeDocum
 _TIPOS_DE_LINHA = {"coverage_row", "assistance_plan"}
 
 
+def _estruturados(pack: Dict[str, Any], tipo: str) -> List[Dict[str, Any]]:
+    """Os `structured` de um `kind`, na ORDEM em que o extrator os produziu."""
+    evidencia = pack.get("official_policy_document_evidence")
+    if not isinstance(evidencia, dict):
+        return []
+    saida: List[Dict[str, Any]] = []
+    for item in evidencia.get("evidence_items") or []:
+        if not isinstance(item, dict):
+            continue
+        estruturado = item.get("structured")
+        if isinstance(estruturado, dict) and str(estruturado.get("kind") or "") == tipo:
+            saida.append({**estruturado, "_pagina": item.get("page_number")})
+    return saida
+
+
+def _franquias_em_prosa_do_documento(
+    pack: Dict[str, Any], linhas: Sequence[LinhaDeCoberturaDoDocumento]
+) -> Tuple[Dict[int, str], List[str]]:
+    """As franquias em PROSA do PDF, casadas com as linhas — e as SOBRAS.
+
+    🔴 A regra, escrita e falsificável (SPEC-EXTRA-001.1 BLOCO D):
+
+    ```
+    a i-ésima prosa casa com a i-ésima linha do documento
+    cujo CADASTRO declara ter franquia — e só com essa.
+    ```
+
+    ⚠️ **Por que ancorada no cadastro, e não na ordem pura das coberturas:** a
+    tabela da HDI **não tem coluna de franquia**; as 6 prosas vêm soltas, "na
+    ordem das coberturas com franquia" (layout declarado em
+    `tests/fixtures/pdf_tabelas_reais_extra0011.json`) — e nada no PDF diz
+    QUAIS coberturas têm franquia. O cadastro diz, para as que ele conhece.
+
+    📊 A âncora é falsificável, e duas das três associações CONFIRMAM o
+    cadastro: Incêndio → mínimo R$ 350,00 = cadastro `10.00%-350,00`; Quebra de
+    Vidros → R$ 150,00 = cadastro `10.00%-150,00`. A terceira DIVERGE: Danos
+    Elétricos → R$ 600,00 x cadastro `10.00%-550,00` — que é exatamente a
+    divergência que a apólice real tem, e que o corretor precisa ver inteira.
+    Se a regra estivesse errada, as duas confirmações não existiriam.
+
+    ⛔ **As prosas que sobram NÃO são adivinhadas.** Elas viram o sinal
+    `franquia_em_prosa_sem_dono`, que o corretor lê. 📊 Na HDI real sobram 3 de
+    6: atribuí-las por ordem daria a franquia de uma cobertura a outra — e uma
+    franquia errada é um número que o corretor repete ao segurado.
+    """
+    prosas = [
+        str(e.get("text") or "").strip()
+        for e in _estruturados(pack, "deductible_prose")
+        if str(e.get("text") or "").strip()
+    ]
+    if not prosas:
+        return {}, []
+    # ⚠️ `_chave_de_casamento` e `_franquia_comparavel` são os da PORTA, de
+    #    propósito: reimplementá-los aqui seria um segundo motor de casamento
+    #    de rótulo e um segundo de comparação de franquia (CLAUDE.md §5).
+    do_cadastro = set()
+    for secao in pack.get("coverage_sections") or []:
+        if not isinstance(secao, dict) or not str(secao.get("label") or "").strip():
+            continue
+        comparavel = _franquia_comparavel(secao.get("deductible"))
+        if comparavel is not None and comparavel != "sem_franquia":
+            do_cadastro.add(_chave_de_casamento(secao.get("label")))
+    alvos = [
+        i for i, linha in enumerate(linhas)
+        if not linha.franquia_texto and _chave_de_casamento(linha.rotulo) in do_cadastro
+    ]
+    casadas = {posicao: prosas[i] for i, posicao in enumerate(alvos) if i < len(prosas)}
+    return casadas, list(prosas[len(alvos):])
+
+
+def _parcelas_do_documento(pack: Dict[str, Any]) -> Tuple[Parcela, ...]:
+    """As `installment_row` do PDF → `Parcela` com origem `documento_oficial`.
+
+    🔴 Elas não vencem (parcela é do sistema de gestão, §5.5) — servem para a
+    DIVERGÊNCIA aparecer: 📊 o cadastro da HDI já trouxe `82,31` depois da
+    correção do montador, e é este par que prova, a cada leitura, que os dois
+    lados continuam de acordo.
+    """
+    saida: List[Parcela] = []
+    for e in _estruturados(pack, "installment_row"):
+        try:
+            numero = int(str(e.get("number") or "").strip())
+        except (TypeError, ValueError):
+            continue
+        pagina = e.get("_pagina") if isinstance(e.get("_pagina"), int) else None
+        saida.append(Parcela(
+            numero=numero,
+            vencimento=_campo(data_de(e.get("due_date")), DOCUMENTO_OFICIAL, pagina=pagina),
+            valor=_campo(dinheiro(e.get("amount")), DOCUMENTO_OFICIAL, pagina=pagina),
+            forma_de_pagamento=_campo(e.get("payment_method"), DOCUMENTO_OFICIAL, pagina=pagina),
+        ))
+    return tuple(saida)
+
+
 def apolice_documental_do_pack(pack: Dict[str, Any]) -> Optional[ApoliceDocumental]:
     """`official_policy_document_evidence` → `ApoliceDocumental`. `None` se vazio.
 
-    🔴 **Hoje isto devolve `None` nas duas apólices reais, e está certo que
-    devolva.** 📊 Medido no BLOCO 0 (D4): `_COVERAGE_ROW_RE` exige `R$` e a
-    tabela da HDI escreve `<rótulo> <LMI>   <prêmio>` sem `R$` — resultado: **0**
-    `coverage_row` na HDI e **1** na Allianz, e a única é *"Prêmio Líquido"*,
-    uma linha de prêmio lida como cobertura. Quem ensina o extrator a ler os
-    dois layouts reais é o **BLOCO D**
-    (`backend/tests/fixtures/pdf_tabelas_reais_extra0011.json` tem o texto cru).
+    📊 **Medido em 14/09/2026 sobre as linhas reais dos dois PDFs** (BLOCO D,
+    `tests/fixtures/pdf_tabelas_reais_extra0011.json`), depois que o extrator
+    aprendeu os dois layouts (divergência D4, decisão D-E0011-02):
 
-    ⚠️ Devolver `None` é a resposta honesta: `ApoliceDocumental(linhas=())`
-    diria "o documento não tem coberturas", e `reconciliar` trataria as 6
-    linhas do cadastro como a apólice inteira. Ausência de LEITURA não é
-    ausência de COBERTURA.
+    ```
+    HDI      10 coverage_row (Σ R$ 306,60) · 6 deductible_prose · 4 installment_row
+    Allianz  20 coverage_row + 1 assistance_plan (Σ R$ 24.960,60) · 0 linha de prêmio
+    ```
+
+    ⚠️ Sem linha nenhuma, devolve `None` — e isso continua sendo a resposta
+    honesta: `ApoliceDocumental(linhas=())` diria "o documento não tem
+    coberturas", e `reconciliar` trataria as 6 linhas do cadastro como a
+    apólice inteira. **Ausência de LEITURA não é ausência de COBERTURA.**
+
+    🔴 O `assistance_plan` COM PREÇO entra nas duas pontas: vira o plano E vira
+    uma linha de cobertura. 📊 A `Assistência 24h` da Allianz custa R$ 23,88 no
+    PDF e R$ 0,00 no cadastro — descartá-la como "só plano" apagaria a
+    divergência e tiraria R$ 23,88 da soma que fecha com o prêmio líquido.
+    """
+    lidas = _linhas_e_plano_do_documento(pack)
+    if lidas is None:
+        return None
+    linhas, plano = list(lidas[0]), lidas[1]
+
+    # 🔴 As franquias em PROSA (a tabela da HDI não tem coluna de franquia).
+    casadas, _sobras = _franquias_em_prosa_do_documento(pack, linhas)
+    if casadas:
+        linhas = [
+            linha if i not in casadas else LinhaDeCoberturaDoDocumento(
+                rotulo=linha.rotulo, limite=linha.limite, premio=linha.premio,
+                franquia_texto=casadas[i], pagina=linha.pagina,
+            )
+            for i, linha in enumerate(linhas)
+        ]
+
+    parcelas = _parcelas_do_documento(pack)
+    if not linhas and plano is None and not parcelas:
+        return None
+    return ApoliceDocumental(
+        linhas=tuple(linhas),
+        plano_de_assistencia=plano,
+        parcelas=parcelas,
+        referencia=_referencia_do_documento(pack),
+    )
+
+
+def _linhas_e_plano_do_documento(
+    pack: Dict[str, Any],
+) -> Optional[Tuple[List[LinhaDeCoberturaDoDocumento], Optional[PlanoDeAssistencia]]]:
+    """As linhas CRUAS do documento, antes das franquias em prosa.
+
+    ⚠️ Existe separada porque o sinal `franquia_em_prosa_sem_dono` precisa
+    perguntar quais linhas **ainda não têm** franquia. Perguntar isso à apólice
+    documental já montada devolveria "nenhuma" — e o sinal diria que todas as
+    prosas sobraram, inclusive as que já tinham dono.
     """
     evidencia = pack.get("official_policy_document_evidence")
     if not isinstance(evidencia, dict):
@@ -430,18 +652,22 @@ def apolice_documental_do_pack(pack: Dict[str, Any]) -> Optional[ApoliceDocument
             ))
         else:  # assistance_plan
             nome = str(estruturado.get("plan") or "").strip()
-            if nome:
-                plano = PlanoDeAssistencia(
-                    nome=_campo(nome, DOCUMENTO_OFICIAL, pagina=pagina),
-                    estado="contratado",
-                )
-    if not linhas and plano is None:
-        return None
-    return ApoliceDocumental(
-        linhas=tuple(linhas),
-        plano_de_assistencia=plano,
-        referencia=_referencia_do_documento(pack),
-    )
+            if not nome:
+                continue
+            plano = PlanoDeAssistencia(
+                nome=_campo(nome, DOCUMENTO_OFICIAL, pagina=pagina),
+                estado="contratado",
+            )
+            preco = dinheiro(estruturado.get("premium"))
+            if not isinstance(preco, Indisponivel):
+                linhas.append(LinhaDeCoberturaDoDocumento(
+                    rotulo=nome,
+                    premio=preco,
+                    franquia_texto=(str(estruturado.get("participation")).strip()
+                                    if estruturado.get("participation") else None),
+                    pagina=pagina,
+                ))
+    return linhas, plano
 
 
 def _apolice_na_lista(bruta: Dict[str, Any], hoje: Optional[date] = None) -> Optional[ApoliceNaLista]:

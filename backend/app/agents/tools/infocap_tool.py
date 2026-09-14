@@ -238,8 +238,46 @@ class InfocapLookupInput(BaseModel):
     )
     document_evidence_requested: Optional[bool] = Field(
         default=None,
-        description="Use true quando a pergunta pedir cobertura, franquia, LMI, clausula, exclusao ou assistencia.",
+        # 🔴 §8.1: o campo continua no esquema porque modelos antigos e chamadas
+        # em curso ainda o enviam — mas ele NAO decide mais nada. O documento
+        # oficial e lido sempre que esta ferramenta e chamada. Uma descricao que
+        # continuasse dizendo "use true quando..." ensinaria o modelo a achar
+        # que existe um caso em que o PDF nao e lido (CLAUDE.md §12.1).
+        description="Ignorado: o documento oficial da apolice e sempre lido nesta consulta.",
     )
+
+
+#: 🔴 SPEC-EXTRA-001.1 §8.1 — O DOCUMENTO OFICIAL É LIDO SEMPRE.
+#:
+#: ```
+#: a pergunta é SOBRE APÓLICE?  →  o documento oficial é lido. Ponto.
+#: ```
+#:
+#: E "sobre apólice" é decidido pelo **DESTINO DA CHAMADA**, não pelo texto: se
+#: esta ferramenta foi chamada, a pergunta é de apólice. 📊 Medido em 14/09/2026:
+#: o gatilho anterior era `policy_document_evidence_requested(user_query)`, uma
+#: lista de palavras sobre a última mensagem — e *"[CPF]"* (q1 do corpus) e
+#: *"qual cobertura o segurado [CNPJ] tem na apolice?"* (q4) **não casavam**,
+#: então o PDF não era lido justamente nas perguntas que dependem dele.
+#:
+#: ⚠️ `policy_document_evidence_requested(question, explicit=False)` CONTINUA
+#: existindo e continua sendo por palavra: outros chamadores (que não são a
+#: tool de apólice) dependem dela. O que muda é que a tool passa `explicit`.
+#:
+#: 📊 O que torna isto barato, MEDIDO e não suposto: o documento fica guardado
+#: no `DocumentService` por `corretora + locator`, e a segunda leitura da mesma
+#: apólice NÃO baixa o PDF de novo —
+#: `tests/test_infocap_official_policy_evidence_pipeline.py:201-202` afirma
+#: *"cache miss busca PDF uma vez"* e *"cache hit nao faz novo fetch"*, as duas
+#: com `fetcher.calls == 1`.
+#: ⚠️ E o cache é DURÁVEL, não de 180 s: os 180 s são do `/itens` no Redis
+#: (`infocap_connector.py`, `_fetch_policy_items`) — outra coisa.
+#:
+#: 🔴 A LINHA DE CONTROLE (CLAUDE.md §9.2) mora fora daqui: *"quantos clientes
+#: eu tenho?"* não chama esta ferramenta, e por isso não lê documento nenhum.
+#: `test_o_documento_e_lido_sempre_que_a_pergunta_e_de_apolice.py` mede as duas
+#: pontas — 7 de 7 pela tool, 0 de 1 no controle.
+_LER_SEMPRE_O_DOCUMENTO = True
 
 
 def _internal_key() -> Optional[str]:
@@ -347,7 +385,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     company_id=self.company_id,
                     policy_ref=str(policy_ref),
                     user_query=user_query,
-                    document_evidence_requested=bool(document_evidence_requested),
+                    document_evidence_requested=_LER_SEMPRE_O_DOCUMENTO,
                     force_document_evidence_refresh=bool(force_document_evidence_refresh),
                     unmasked=self._unmasked,
                     db=db,
@@ -363,7 +401,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 name=name or None,
                 policy_number=policy_number or None,
                 user_query=user_query,
-                document_evidence_requested=bool(document_evidence_requested),
+                document_evidence_requested=_LER_SEMPRE_O_DOCUMENTO,
                 force_document_evidence_refresh=bool(force_document_evidence_refresh),
                 unmasked=self._unmasked,
                 db=db,
@@ -389,7 +427,7 @@ class InfocapPolicyLookupTool(BaseTool):
                         name=name or None,
                         policy_number=picked,
                         user_query=user_query,
-                        document_evidence_requested=bool(document_evidence_requested),
+                        document_evidence_requested=_LER_SEMPRE_O_DOCUMENTO,
                         force_document_evidence_refresh=bool(force_document_evidence_refresh),
                         unmasked=self._unmasked,
                         db=db,
@@ -561,7 +599,9 @@ class InfocapPolicyLookupTool(BaseTool):
         (porta provider.vehicle — a mesma do portal de vidros). Best-effort."""
         try:
             selected = result.get("selected") or result.get("policy") or {}
-            if _match_product_kind(selected) != "auto" or not hasattr(provider, "vehicle"):
+            # 🔴 §5.1.1: o `hasattr(provider, "vehicle")` SAIU. `vehicle` esta
+            # no `Protocol` (depreciado) e o registry RECUSA adaptador sem ele.
+            if _match_product_kind(selected) != "auto":
                 return
             doc = str(document or result.get("client_document") or "").strip()
             number = str(selected.get("policy_number") or selected.get("numapo") or "").strip()

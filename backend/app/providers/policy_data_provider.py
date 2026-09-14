@@ -52,12 +52,13 @@ em paralelo**. Tirar `lookup`/`detail`/`vehicle` agora quebraria a cobrança de
 uma SPEC irmã em execução.
 
 🔴 E o outro lado do mesmo defeito: `vehicle` **nunca esteve** no `Protocol` —
-só na implementação concreta. 📊 Por isso existem 4 `hasattr(provider,
+só na implementação concreta. 📊 Por isso EXISTIAM 4 `hasattr(provider,
 "vehicle")` em produção: um adaptador novo que esquecesse o método não
 quebrava, respondia *"Fonte de veículos indisponível"* — e o atendente pedia a
 placa ao cliente. **Falha silenciosa que chega ao segurado.**
 `register_policy_data_provider` agora **RECUSA** adaptador incompleto, com a
-lista dos membros que faltam.
+lista dos membros que faltam, e os 4 `hasattr` saíram no BLOCO D (📊 `grep -rn
+"hasattr(provider" backend/app` → 0 em código; conte você).
 
 Rodar o guarda:
     PYTHONIOENCODING=utf-8 python tests/test_a_porta_nao_vaza_o_fornecedor.py
@@ -618,6 +619,32 @@ class RamoCanonico:
 
 
 @dataclass(frozen=True)
+class ItemDeRisco:
+    """O que está segurado: o objeto do risco, com origem por campo.
+
+    🔴 **Existe para que `provider.vehicle(...)` possa morrer.** (§5.1.1, itens
+    3–6.) 📊 Medido em 14/09/2026: quatro pontos de produção chamavam
+    `provider.vehicle(...)` atrás de um `hasattr` — `infocap_tool`,
+    `portal_tool`, `insurer_dispatch_tool` e `vehicle_tool`. O `hasattr` saiu no
+    BLOCO D (o `Protocol` e o registry passaram a ser o contrato de verdade); a
+    CHAMADA continua, porque migrá-la atravessaria os caminhos de acionamento
+    (SPEC-017) e vidros (SPEC-025), que estão fora da superfície testada desta
+    SPEC.
+
+    ⚠️ Este campo já é preenchido pelo adaptador InfoCap. Quem o consome em vez
+    de `vehicle()` é a **P-E0011-VEHICLE-VIA-DETALHAR** — e é por ele existir
+    preenchido que a migração será uma troca de leitor, não uma peça nova.
+    """
+
+    item: Optional[int] = None
+    descricao: Optional[CampoComOrigem[Any]] = None
+    placa: Optional[CampoComOrigem[Any]] = None
+    cidade: Optional[CampoComOrigem[Any]] = None
+    estado: Optional[CampoComOrigem[Any]] = None
+    observacoes: Optional[CampoComOrigem[Any]] = None
+
+
+@dataclass(frozen=True)
 class Apolice:
     """A apólice como a casa a entende. **Nunca o dicionário do fornecedor.**"""
 
@@ -632,6 +659,7 @@ class Apolice:
     plano_de_assistencia: Optional[PlanoDeAssistencia] = None
     sinais: Tuple[Sinal, ...] = ()
     documento: Optional[ReferenciaDeDocumento] = None
+    item_de_risco: Optional[ItemDeRisco] = None
     provider_key: str = ""
 
     def sinal(self, codigo: str) -> Optional[Sinal]:

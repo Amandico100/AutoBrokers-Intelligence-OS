@@ -344,7 +344,8 @@ class PortalActionTool(BaseTool):
 
             key = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
             provider = get_policy_data_provider("infocap")
-            if provider is None or not hasattr(provider, "vehicle") or not key:
+            # 🔴 SPEC-EXTRA-001.1 §5.1.1: `hasattr` nao e contrato — o registry e.
+            if provider is None or not key:
                 return {"ok": False, "status": "provider_unavailable"}
             db = await create_async_supabase_client()
             return await provider.vehicle(

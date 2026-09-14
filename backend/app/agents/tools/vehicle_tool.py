@@ -55,7 +55,13 @@ class VehicleLookupTool(BaseTool):
             from app.providers.policy_data_provider import get_policy_data_provider
 
             provider = get_policy_data_provider("infocap")
-            if not provider or not hasattr(provider, "vehicle"):
+            # 🔴 SPEC-EXTRA-001.1 §5.1.1: o `hasattr` SAIU. 📊 Ele era o contrato
+            # de verdade: um adaptador que esquecesse `vehicle` nao quebrava —
+            # respondia "Fonte de veiculos indisponivel", e o atendente PEDIA A
+            # PLACA AO CLIENTE, que e o que esta tool existe para impedir. Hoje
+            # `vehicle` esta no Protocol e `register_policy_data_provider`
+            # RECUSA, nomeando o membro que falta, o adaptador que nao o tem.
+            if not provider:
                 return {"content": "Fonte de veículos indisponível.", "found": False}
             key = os.getenv("BACKEND_INTERNAL_API_KEY") or os.getenv("ADMIN_API_KEY")
             doc = "".join(ch for ch in str(document or "") if ch.isdigit())

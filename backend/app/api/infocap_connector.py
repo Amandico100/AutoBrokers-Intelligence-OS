@@ -3293,14 +3293,34 @@ def _deductible_text(item: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+#: 🔴 SPEC-EXTRA-001.1 §8.2 — o texto do fornecedor que ATRAVESSA a fronteira
+#: com valor (e não só com o nome da chave) sai redigido e com teto. `observacoes`
+#: é campo LIVRE da fonte: é ele que carrega *"15% dos prejuízos, mínimo R$ 600"*
+#: — e é também onde um operador pode ter digitado um documento.
+_RE_CPF_CNPJ_LIVRE = re.compile(
+    r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b|\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b")
+
+
+def _texto_de_provedor(valor: Any, limite: int = 400) -> Optional[str]:
+    """Texto livre da fonte, sem documento e com teto. Vazio → `None`."""
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    texto = _RE_CPF_CNPJ_LIVRE.sub("[documento-redigido]", texto)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto[:limite] or None
+
+
 def _flatten_item_garantias(items: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for item in items or []:
         if not isinstance(item, dict):
             continue
+        observacoes = _texto_de_provedor(item.get("observacoes"))
         for garantia in item.get("garantias") or []:
             if isinstance(garantia, dict):
-                out.append({**garantia, "_item": item.get("item")})
+                out.append({**garantia, "_item": item.get("item"),
+                            "_observacoes": observacoes})
     return out
 
 
@@ -3318,6 +3338,11 @@ def _normalize_coverage_items(items: Optional[List[Dict[str, Any]]]) -> List[Dic
             "deductible": _deductible_text(garantia),
             "rate": garantia.get("taxa") or None,
             "item_number": garantia.get("_item"),
+            # 🔴 SPEC-EXTRA-001.1 §8.2: a PROSA da franquia viaja com a
+            # cobertura. Sem ela, uma garantia cujo `franquia` vem vazio chega
+            # ao corretor como "franquia indisponível" enquanto o campo
+            # `observacoes` do item dizia "15% dos prejuízos, mínimo R$ 600".
+            "item_observacoes": garantia.get("_observacoes"),
             "source_field": "garantia",
             "amount_source_field": "impseg",
             "source": "infocap:/itens.garantias",
@@ -3341,6 +3366,9 @@ def _risk_object_from_items(items: Optional[List[Dict[str, Any]]], unmasked: boo
             "city": _first_str(item, ["cidade"]),
             "state": _first_str(item, ["estado"]),
             "clauses": _first_str(item, ["clausulas"]),
+            # §8.2: o campo que ninguém lia. É texto do fornecedor, redigido e
+            # com teto (`_texto_de_provedor`) — nunca o dict cru.
+            "observacoes": _texto_de_provedor(item.get("observacoes")),
         }
         if unmasked:
             entry["address"] = _first_str(item, ["endereco"])
@@ -4055,6 +4083,26 @@ def _build_evidence_pack(
         "official_document_source_available": official_doc_available,
         "document_evidence_required": document_evidence_required,
         "installments": _normalize_installments(doc),
+        # 🔴 SPEC-EXTRA-001.1 §8.2 (divergência D-A-b do BLOCO A): os campos que
+        # a fonte devolve e ninguém lia. 📊 Medido em 14/09/2026:
+        # `_safe_envelope_summary` guarda do envelope apenas os NOMES das chaves
+        # (`{"type": "array", "count": N, "sample_keys": [...]}`), então
+        # `tabela_itens`, `sit_renovacao_txt` e `sit_sinistro_txt` existiam no
+        # `/documento` e NÃO chegavam ao pack — do `tabela_itens` sobrava o
+        # booleano `unknown_table_field_present` ("existe um plano, não sei
+        # qual"). ⚠️ Eles entram AQUI, com valor e com nome de sinal, e não no
+        # `evidence_envelope`: aquele é um resumo de FORMA, e continua sendo.
+        # ⛔ Nenhum deles decide nada: `sit_renovacao_txt` é SINAL, e quem
+        # classifica vigência é `classificar_vigencia(inicio, fim, cancelado)`.
+        "provider_signals": {
+            chave: valor
+            for chave, valor in (
+                ("sit_renovacao_txt", _texto_de_provedor(doc.get("sit_renovacao_txt"), 200)),
+                ("sit_sinistro_txt", _texto_de_provedor(doc.get("sit_sinistro_txt"), 200)),
+                ("tabela_itens", _texto_de_provedor(doc.get("tabela_itens"), 120)),
+            )
+            if valor
+        },
         "infocap_financial_fields": _infocap_financial_fields(doc),
         "evidence_envelope": _safe_envelope_summary({
             **(envelope if isinstance(envelope, dict) else {}),

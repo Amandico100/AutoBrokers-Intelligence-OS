@@ -43,6 +43,12 @@ MAX_EVIDENCE_TEXT_CHARS = 700
 # o regex previu; o TEXTO da apólice responde o que ele perguntar. O limite é de
 # contexto, não de política: uma apólice residencial tem ~4 páginas.
 MAX_DOCUMENT_TEXT_CHARS = 60_000
+#: 🔴 O teto de itens de evidência. Era **40** até 14/09/2026, escolhido quando
+#: o extrator lia 10 linhas por apólice. 📊 SPEC-EXTRA-001.1 BLOCO D: a Allianz
+#: condomínio real produz **22** itens estruturados e a HDI **20** — e os
+#: fragmentos de cláusula/exclusão vinham DEPOIS, no mesmo teto. Com 40, uma
+#: apólice de 21 coberturas perdia trecho de cláusula em silêncio.
+MAX_EVIDENCE_ITEMS = 60
 
 _INTENT_TERMS = (
     "cobertura",
@@ -254,6 +260,151 @@ _SERVICE_TERM_RE = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# SPEC-EXTRA-001.1 BLOCO D — AS DUAS TABELAS REAIS (divergência D4 do BLOCO 0,
+# decisão D-E0011-02)
+# ---------------------------------------------------------------------------
+#
+# 📊 Medido em 14/09/2026 sobre `tests/fixtures/pdf_tabelas_reais_extra0011.json`
+# (as linhas CRUAS dos dois PDFs reais, como o extrator `direct_text` as
+# entrega): o parser anterior — `_COVERAGE_ROW_RE`, que EXIGE `R$` — produzia
+# **0** `coverage_row` no PDF da HDI e **1** no da Allianz. E a única da Allianz
+# era *"Prêmio Líquido"*: uma linha de PRÊMIO DA APÓLICE lida como cobertura.
+#
+# ```
+# HDI      Incendio 133.000,00   45,64                 <- sem `R$`, 2+ espaços
+# Allianz  Alagamento R$ 150.000,00 R$ 1.482,43 20 4.000,00
+# Allianz  Despesas Fixas R$ 50.000,00 R$ 8,58 - 168 Hrs      <- CARÊNCIA
+# Allianz  Assistência 24h R$ 23,88 - Sem Franquia            <- UMA coluna
+# ```
+#
+# 🔴 A regra que separa cobertura de plano é o NÚMERO DE COLUNAS DE DINHEIRO,
+# não a palavra "assistência" no rótulo: a HDI tem
+# `Coberturas de Assistencias Essenciais 0,00   125,94` — duas colunas, LMI e
+# prêmio — e ela É uma cobertura (é a linha de R$ 125,94 que paga o
+# eletricista que o atendente promete ao segurado). A Allianz tem
+# `Assistência 24h R$ 23,88` — uma coluna, o preço do PLANO.
+_VALOR_BR = r"\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}"
+
+#: Allianz: `<rótulo> R$ <LMI> R$ <prêmio> [<franquia>]`.
+_LINHA_COM_RS_RE = re.compile(
+    r"^(?P<label>.*?[A-Za-zÀ-ÿ].*?)\s+R\$\s*(?P<lmi>" + _VALOR_BR + r")"
+    r"\s+R\$\s*(?P<premium>" + _VALOR_BR + r")\s*(?P<deductible>.*)$"
+)
+
+#: Allianz: `<rótulo> R$ <valor> [<franquia>]` — UMA coluna de dinheiro.
+_LINHA_UM_VALOR_RE = re.compile(
+    r"^(?P<label>.*?[A-Za-zÀ-ÿ].*?)\s*:?\s*R\$\s*(?P<premium>" + _VALOR_BR + r")"
+    r"\s*(?P<deductible>.*)$"
+)
+
+#: HDI: `<rótulo> <LMI>   <prêmio>` — sem `R$`, separados por 2+ espaços.
+#: ⚠️ Os 2+ espaços são a COLUNA: sem eles, "Parcela: 82,30 Forma de Pagamento"
+#: viraria cobertura. O layout está declarado na fixture, não deduzido.
+_LINHA_SEM_RS_RE = re.compile(
+    r"^(?P<label>.*?[A-Za-zÀ-ÿ].*?)\s+(?P<lmi>" + _VALOR_BR + r")"
+    r"\s{2,}(?P<premium>" + _VALOR_BR + r")\s*$"
+)
+
+#: HDI: `01 14/05/2026 R$ 82,31 Em trânsito   Cartão de Crédito`.
+#: 🔴 É daqui que sai a FORMA DE PAGAMENTO verdadeira (§8.3): o `forma_pag` do
+#: cabeçalho da HDI diz "Boleto Bancário" e as 4 parcelas dizem "Cartão".
+_PARCELA_RE = re.compile(
+    r"^(?P<numero>\d{1,3})\s+(?P<vencimento>\d{2}/\d{2}/\d{4})\s+R\$\s*"
+    r"(?P<valor>" + _VALOR_BR + r")\s*(?P<resto>.*)$"
+)
+
+#: HDI: `10% Sobre os Prejuizos Indenizaveis, com o Minimo de R$ 600,00`.
+#: A tabela da HDI não tem coluna de franquia — ela vem em PROSA, em linhas
+#: separadas. Sem isto, `itens[].observacoes` e esta prosa são as duas únicas
+#: fontes de franquia da apólice, e nenhuma das duas chegava ao corretor.
+_FRANQUIA_EM_PROSA_RE = re.compile(
+    r"^(?P<pct>\d{1,3}(?:[.,]\d{1,2})?)\s*%\s+.*?m[íi]nimo\s+de\s+R\$\s*"
+    r"(?P<minimo>" + _VALOR_BR + r")",
+    re.IGNORECASE,
+)
+
+#: 🔴 OS RÓTULOS QUE NUNCA SÃO COBERTURA — lista DECLARADA, com o motivo ao
+#: lado de cada um (CLAUDE.md §9.5: uma constante que escolhe entre
+#: alternativas de conteúdo precisa dizer POR QUE está certa). ⛔ Não é regex
+#: escondido: é para ser lido e contestado.
+_ROTULOS_QUE_NAO_SAO_COBERTURA: Tuple[Tuple[str, str], ...] = (
+    ("premio liquido", "é a SOMA dos prêmios das coberturas, não uma cobertura"),
+    ("premio total", "é o líquido + IOF + custos"),
+    ("total a pagar", "é o financeiro da apólice"),
+    ("custo da apolice", "é taxa de emissão (grafia Allianz)"),
+    ("custo de apolice", "é taxa de emissão (grafia HDI)"),
+    ("limite maximo de garantia", "é o teto da APÓLICE (LMG), não de uma cobertura"),
+    ("i o f", "é imposto — a pontuação da HDI vira espaço na normalização"),
+    ("iof", "é imposto"),
+    ("adicional de parcelamento", "é juro de fracionamento"),
+    ("cotacao", "é documento anterior à apólice"),
+    ("taxa mensal juros", "é financeiro"),
+    ("valor juros", "é financeiro"),
+)
+
+
+def _rotulo_limpo(bruto: Any) -> str:
+    return re.sub(r"\s+", " ", str(bruto or "")).strip(" -:·*•")
+
+
+def _rotulo_chave(rotulo: Any) -> str:
+    texto = _strip_accents(rotulo or "")
+    texto = re.sub(r"[^0-9a-z]+", " ", texto)
+    return " ".join(texto.split())
+
+
+def rotulo_nao_e_cobertura(rotulo: Any) -> Optional[str]:
+    """O MOTIVO pelo qual este rótulo nunca é cobertura — ou `None`.
+
+    📊 É o que impede *"Prêmio Líquido R$ 24.960,60"* de virar a única
+    "cobertura" da Allianz, como acontecia até 14/09/2026.
+    """
+    chave = _rotulo_chave(rotulo)
+    if not chave:
+        return "linha sem rótulo legível"
+    cercado = " %s " % chave
+    for termo, motivo in _ROTULOS_QUE_NAO_SAO_COBERTURA:
+        if chave == termo or (" %s " % termo) in cercado:
+            return motivo
+    return None
+
+
+def _linha_de_tabela(line: str) -> Optional[Dict[str, Any]]:
+    """Uma linha da tabela de coberturas, nos DOIS layouts reais. `None` se não for."""
+    texto = str(line or "")
+    com_rs = _LINHA_COM_RS_RE.match(texto)
+    if com_rs:
+        return {
+            "label": _rotulo_limpo(com_rs.group("label")),
+            "lmi": "R$ " + com_rs.group("lmi"),
+            "premium": "R$ " + com_rs.group("premium"),
+            "deductible": re.sub(r"\s+", " ", com_rs.group("deductible") or "").strip(),
+            "layout": "rs_lmi_premio",
+        }
+    if "R$" not in texto:
+        sem_rs = _LINHA_SEM_RS_RE.match(texto)
+        if not sem_rs:
+            return None
+        return {
+            "label": _rotulo_limpo(sem_rs.group("label")),
+            "lmi": "R$ " + sem_rs.group("lmi"),
+            "premium": "R$ " + sem_rs.group("premium"),
+            "deductible": "",
+            "layout": "lmi_premio_sem_rs",
+        }
+    um_valor = _LINHA_UM_VALOR_RE.match(texto)
+    if not um_valor:
+        return None
+    return {
+        "label": _rotulo_limpo(um_valor.group("label")),
+        "lmi": None,
+        "premium": "R$ " + um_valor.group("premium"),
+        "deductible": re.sub(r"\s+", " ", um_valor.group("deductible") or "").strip(),
+        "layout": "so_premio",
+    }
+
+
 def is_boilerplate_fragment(fragment: str) -> bool:
     """Frase institucional/glossário/cabeçalho: nunca evidência (SPEC-016.1 D2)."""
     text = str(fragment or "").strip()
@@ -322,10 +473,89 @@ def _parse_structured_page_items(page_number: int, content: str) -> List[Dict[st
                 })
                 continue
 
+        # --- SPEC-EXTRA-001.1 BLOCO D: as parcelas do PDF -------------------
+        parcela = _PARCELA_RE.match(line)
+        if parcela:
+            resto = re.split(r"\s{2,}", (parcela.group("resto") or "").strip())
+            situacao = (resto[0] if resto else "").strip()
+            forma = (resto[1] if len(resto) > 1 else "").strip()
+            items.append({
+                "page_number": page_number,
+                "evidence_type": "installment",
+                "evidence_text": _redact_short_text(line),
+                "structured": {
+                    "kind": "installment_row",
+                    "number": int(parcela.group("numero")),
+                    "due_date": parcela.group("vencimento"),
+                    "amount": "R$ " + parcela.group("valor"),
+                    "status": situacao or None,
+                    "payment_method": forma or None,
+                },
+            })
+            continue
+
+        # --- as franquias em PROSA (a HDI não tem coluna de franquia) -------
+        prosa = _FRANQUIA_EM_PROSA_RE.match(line)
+        if prosa and not is_boilerplate_fragment(line):
+            items.append({
+                "page_number": page_number,
+                "evidence_type": "deductible",
+                "evidence_text": _redact_short_text(line),
+                "structured": {
+                    "kind": "deductible_prose",
+                    "text": re.sub(r"\s+", " ", line).strip(),
+                    "percent": prosa.group("pct"),
+                    "minimum": "R$ " + prosa.group("minimo"),
+                },
+            })
+            continue
+
+        # --- a tabela de coberturas, nos DOIS layouts reais -----------------
+        tabela = _linha_de_tabela(line)
+        if tabela and not is_boilerplate_fragment(line):
+            rotulo = tabela["label"]
+            if rotulo_nao_e_cobertura(rotulo):
+                continue
+            if len(rotulo) >= 4 and any(ch.isalpha() for ch in rotulo):
+                if tabela["lmi"] is not None:
+                    # DUAS colunas de dinheiro → é cobertura, mesmo que o
+                    # rótulo diga "assistência" (HDI: R$ 125,94).
+                    items.append({
+                        "page_number": page_number,
+                        "evidence_type": "coverage",
+                        "evidence_text": _redact_short_text(line),
+                        "structured": {
+                            "kind": "coverage_row",
+                            "label": rotulo,
+                            "lmi": tabela["lmi"],
+                            "premium": tabela["premium"],
+                            "participation": tabela["deductible"] or None,
+                            "layout": tabela["layout"],
+                        },
+                    })
+                    continue
+                if "assistencia" in _strip_accents(rotulo):
+                    # UMA coluna + rótulo de assistência → é o PLANO, e o valor
+                    # é o PREÇO dele (Allianz: R$ 23,88).
+                    items.append({
+                        "page_number": page_number,
+                        "evidence_type": "assistance",
+                        "evidence_text": _redact_short_text(line),
+                        "structured": {
+                            "kind": "assistance_plan",
+                            "plan": rotulo,
+                            "premium": tabela["premium"],
+                            "participation": tabela["deductible"] or None,
+                        },
+                    })
+                    continue
+
         row = _COVERAGE_ROW_RE.match(line)
         if row and not is_boilerplate_fragment(line):
             label = re.sub(r"\s+", " ", row.group("label")).strip(" -:·*")
             if len(label) < 4 or not any(ch.isalpha() for ch in label):
+                continue
+            if rotulo_nao_e_cobertura(label):
                 continue
             if "assistencia" in _strip_accents(label):
                 # Linha da tabela "Assistência 24h <plano> R$ <preço do plano>"
@@ -419,13 +649,23 @@ def extract_policy_document_evidence(
             "conflict_status": "none",
         }
 
+    paginas: List[Tuple[int, str]] = []
     for page in pages or []:
         try:
             page_number = int(page.get("page_number") or 0) or 1
         except (TypeError, ValueError):
             page_number = 1
-        content = page.get("content") or page.get("text") or ""
+        paginas.append((page_number, page.get("content") or page.get("text") or ""))
 
+    # 🔴 SPEC-EXTRA-001.1 BLOCO D: os ESTRUTURADOS de TODAS as páginas antes de
+    # qualquer fragmento. 📊 A tabela de coberturas da Allianz mora na página 2;
+    # com a ordem anterior (estruturados e fragmentos página a página), 12
+    # fragmentos de cláusula da página 1 podiam consumir o teto ANTES de a
+    # tabela ser lida — e o corretor receberia a apólice sem coberturas, em
+    # silêncio. O teto subiu de 40 para `MAX_EVIDENCE_ITEMS` porque a apólice
+    # real da Allianz já produz 22 itens estruturados (20 coberturas + plano +
+    # LMG) e a da HDI, 20 (10 + 6 franquias em prosa + 4 parcelas).
+    for page_number, content in paginas:
         # SPEC-016.1 D3: itens estruturados PRIMEIRO (tabela/plano/serviços/LMGA).
         for structured_item in _parse_structured_page_items(page_number, content):
             snippet = structured_item["evidence_text"]
@@ -448,9 +688,10 @@ def extract_policy_document_evidence(
             item = _base_item(page_number, evidence_type, snippet)
             item["structured"] = structured_item.get("structured") or {}
             evidence.append(item)
-            if len(evidence) >= 40:
+            if len(evidence) >= MAX_EVIDENCE_ITEMS:
                 return evidence
 
+    for page_number, content in paginas:
         for fragment in _split_page_fragments(content):
             types_found = _classify_fragment(fragment)
             if not types_found:
@@ -462,7 +703,7 @@ def extract_policy_document_evidence(
                     continue
                 seen.add(key)
                 evidence.append(_base_item(page_number, evidence_type, snippet))
-            if len(evidence) >= 40:
+            if len(evidence) >= MAX_EVIDENCE_ITEMS:
                 return evidence
     return evidence
 

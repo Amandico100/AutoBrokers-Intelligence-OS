@@ -230,10 +230,11 @@ SUPERFICIE_DE_APOLICE = (AGENTES, COMPOSER, PROMPTS)
 ESPERADO_ATE = {
     ("import", "backend/app/agents/tools/infocap_tool.py"): "BLOCO B/C",
     ("campo", "backend/app/agents/tools/infocap_tool.py"): "BLOCO C",
-    ("hasattr", "backend/app/agents/tools/infocap_tool.py"): "BLOCO D",
-    ("hasattr", "backend/app/agents/tools/insurer_dispatch_tool.py"): "BLOCO D",
-    ("hasattr", "backend/app/agents/tools/portal_tool.py"): "BLOCO D",
-    ("hasattr", "backend/app/agents/tools/vehicle_tool.py"): "BLOCO D",
+    # ⚠️ As 4 linhas `("hasattr", …)` SAÍRAM em 14/09/2026, com o BLOCO D: os
+    #    quatro `hasattr(provider, "vehicle")` foram removidos do produto e o
+    #    G1d ficou verde. Mantê-las aqui seria guardar verdade vencida
+    #    (CLAUDE.md §9.3) — e a mutação M-A1d continua provando que o detector
+    #    fica VERMELHO se um `hasattr` novo aparecer.
 }
 
 

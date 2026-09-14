@@ -386,12 +386,95 @@ def gate_GC2e():
           [l[:50] for l in linhas_de_cobertura(briefing_cliente)])
 
 
+# ===========================================================================
+# [GC2f] PONTA A PONTA — o MESMO 10 e 21, agora SEM injecao (BLOCO D)
+# ===========================================================================
+TABELAS_REAIS = os.path.join(FIXTURES, "pdf_tabelas_reais_extra0011.json")
+
+
+def _evidencia_pelo_extrator(apelido):
+    """As linhas CRUAS do PDF -> `evidence_items`, pelo EXTRATOR DE PRODUCAO.
+
+    🔴 A diferenca para `_evidencia_documental` (acima) e a unica que importa:
+    la as linhas do PDF sao ENTREGUES ao motor ja estruturadas, porque em
+    14/09/2026 o extrator nao sabia ler as duas tabelas reais (divergencia D4).
+    Aqui quem as estrutura e `extract_policy_document_evidence`, sobre o TEXTO.
+    """
+    from app.services.policy_document_evidence_service import (
+        extract_policy_document_evidence,
+    )
+
+    with io.open(TABELAS_REAIS, encoding="utf-8") as fh:
+        fixture = json.load(fh)[apelido]
+    itens = extract_policy_document_evidence(
+        [{"page_number": 1, "content": "\n".join(fixture["linhas"])}],
+        question="quais sao as coberturas dessa apolice?",
+        document_id="doc-de-teste",
+        company_id="tenant-de-teste",
+        # ⛔ SINTETICO: o locator real nunca entra num arquivo de teste.
+        policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "999001"},
+        content_hash="hash-de-teste",
+    )
+    return itens, fixture
+
+
+def gate_GC2f():
+    _p("\n[GC2f] PONTA A PONTA -- o mesmo 10 e 21 saindo do TEXTO do PDF, sem injecao")
+    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool
+    from app.services.policy_answer_composer import compose_policy_answer_with_meta
+
+    esperado = {"hdi_residencial": 10, "allianz_condominio": 21}
+    for apelido, quantas in esperado.items():
+        pack, dados = pack_do_golden(apelido, com_documento=False)
+        itens, fixture = _evidencia_pelo_extrator(apelido)
+        pack["official_policy_document_evidence"] = {
+            "evidence_items": itens,
+            "page_count": fixture["paginas"],
+            "extraction_mode": fixture["parser"],
+        }
+        resultado = {
+            "ok": True, "status": "found",
+            "selected": {
+                "policy_number": "900000000000001",   # ⛔ sintetico
+                "insurer_key": dados["seguradora_abrev"],
+                "product": dados["ramo_abrev"],
+                "valid_from": dados["vigencia"]["inicio"],
+                "valid_to": dados["vigencia"]["fim"],
+                "policy_status": dados["status_cru_do_fornecedor"],
+            },
+            "policy_evidence_pack": pack,
+            "auto_selected_reason": "única apólice vigente do cliente",
+        }
+        pergunta = "quais sao as coberturas dessa apolice?"
+        meta = compose_policy_answer_with_meta(question=pergunta, result=resultado)
+        briefing = InfocapPolicyLookupTool._build_llm_briefing(
+            resultado, meta, pergunta, client_facing=False)
+        linhas = linhas_de_cobertura(briefing)
+        medir("%s_linhas_pelo_extrator" % apelido.split("_")[0], len(linhas))
+        check("[GC2f] %s: %d linhas no briefing, lidas do TEXTO do PDF"
+              % (apelido, quantas), len(linhas) == quantas, [l[:50] for l in linhas])
+        check("[GC2f] %s: TODA linha continua carregando origem" % apelido,
+              linhas and all(" — origem: " in l for l in linhas),
+              [l for l in linhas if " — origem: " not in l])
+        do_documento = [l for l in linhas if "documento oficial da apolice" in l]
+        check("[GC2f] %s: e ha linha com origem DOCUMENTO (o PDF foi mesmo lido)"
+              % apelido, bool(do_documento), len(do_documento))
+
+    # 🔴 A linha que nunca pode aparecer: "Premio Liquido" e o TOTAL, nao uma
+    #    cobertura. 📊 Em 14/09/2026 ela era a UNICA `coverage_row` da Allianz.
+    itens, _f = _evidencia_pelo_extrator("allianz_condominio")
+    rotulos = [str((i.get("structured") or {}).get("label") or "") for i in itens]
+    check("[GC2f] 🔴 'Premio Liquido' nao esta entre as coberturas lidas",
+          not any("quido" in r for r in rotulos), [r for r in rotulos if "quido" in r])
+
+
 GATES = {
     "GC2a": gate_GC2a,
     "GC2b": gate_GC2b,
     "GC2c": gate_GC2c,
     "GC2d": gate_GC2d,
     "GC2e": gate_GC2e,
+    "GC2f": gate_GC2f,
 }
 
 
@@ -427,6 +510,14 @@ MUTACOES = [
      "        for divergencia in cobertura.divergencias:",
      "        for divergencia in ():",
      "GC2b"),
+    # 🔴 M-C2i (BLOCO D): o extrator volta a exigir `R$` na linha da tabela — o
+    #    estado de 14/09/2026, em que a HDI produzia ZERO `coverage_row`. O
+    #    [GC2f] fica vermelho; os gates que INJETAM as linhas continuam verdes,
+    #    e e por isso que o bloco ponta a ponta precisou existir.
+    ("M-C2i", "app/services/policy_document_evidence_service.py",
+     '    if "R$" not in texto:',
+     '    if "R$" not in texto and False:',
+     "GC2f"),
 ]
 
 
