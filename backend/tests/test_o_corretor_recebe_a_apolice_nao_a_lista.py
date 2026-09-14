@@ -557,12 +557,146 @@ def gate_GC1e():
               for s in ("LIBE", "ITAU", "PORT")))
 
 
+# ===========================================================================
+# [GC1f] A SITUACAO — quem decide vigencia e a DATA, e o briefing DIZ isso
+# ===========================================================================
+#
+# 🔴 O defeito, medido em 14/09/2026: a linha `apolice_selecionada` do briefing
+# terminava em `situacao: {policy_status}` — o status CRU do fornecedor, com o
+# rotulo `situacao`, colado na mesma linha da vigencia.
+#
+# 📊 **2 de 2** apolices do golden e **6 de 6** linhas da listagem real
+# `pessoa_hdi` trazem `status_cru_do_fornecedor = "Recebido e nao entregue ao
+# cliente"` — um estado de ENTREGA DE DOCUMENTO, que nada diz sobre vigencia. As
+# duas apolices do golden estao VIGENTES.
+#
+# ⚠️ O bloco do SEGURADO tinha a instrucao 6 ("situacao interna da fonte NAO
+# interessa ao cliente"), que neutralizava isso na conversa do WhatsApp. O bloco
+# do CORRETOR nao tinha nada — e e o corretor quem liga para a seguradora.
+def _json_do_golden():
+    with io.open(os.path.join(TESTES, "fixtures", "golden_apolices_extra0011.json"),
+                 encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def gate_GC1f():
+    _p("\n[GC1f] SITUACAO -- `vigencia_por_data` no lugar do status cru do fornecedor")
+    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool
+    from app.providers.policy_data_provider import classificar_vigencia
+
+    STATUS_DE_ENTREGA = "Recebido e não entregue ao cliente"
+
+    # 📊 A MEDIDA, sobre o golden real: as 2 apolices e a linha da listagem
+    #    `pessoa_hdi` trazem esta string, e as 2 estao VIGENTES por data.
+    golden = _json_do_golden()
+    das_apolices = {v["status_cru_do_fornecedor"] for v in golden["apolices"].values()}
+    da_listagem = {a["status_cru_do_fornecedor"]
+                   for a in golden["listagens"]["pessoa_hdi"]["apolices"]}
+    check("[GC1f] 📊 2 de 2 apolices do golden trazem o status de ENTREGA",
+          das_apolices == {STATUS_DE_ENTREGA} and len(golden["apolices"]) == 2,
+          (sorted(das_apolices), len(golden["apolices"])))
+    check("[GC1f] 📊 e a listagem real `pessoa_hdi` tambem",
+          da_listagem == {STATUS_DE_ENTREGA}, sorted(da_listagem))
+    check("[GC1f] 📊 e as duas estao VIGENTES por DATA (o status nao diz isso)",
+          all(classificar_vigencia(v["vigencia"]["inicio"], v["vigencia"]["fim"],
+                                   False).situacao == "VIGENTE"
+              for v in golden["apolices"].values()),
+          [(k, v["vigencia"]) for k, v in golden["apolices"].items()])
+
+    # ⚠️ A LISTAGEM que roda pela tool: a COMPOSICAO e sintetica (a `pessoa_hdi`
+    #    real vem com `status = "found"`, e nesse caminho a fonte ja isolou a
+    #    apolice), mas a STRING do fornecedor e a MEDIDA acima, byte a byte.
+    caso = {
+        "documents_count": 3, "matches_devolvidos": 3, "status": "ambiguous_policy",
+        "apolices": [
+            {"seguradora_abrev": "HDI", "ramo_abrev": "RESI",
+             "inicio": "07/05/2026", "fim": "07/05/2027", "cancelado": False,
+             "status_cru_do_fornecedor": STATUS_DE_ENTREGA},
+            {"seguradora_abrev": "HDI", "ramo_abrev": "RESI",
+             "inicio": "07/05/2024", "fim": "07/05/2025", "cancelado": False,
+             "status_cru_do_fornecedor": STATUS_DE_ENTREGA},
+            {"seguradora_abrev": "HDI", "ramo_abrev": "RESI",
+             "inicio": "07/05/2023", "fim": "07/05/2024", "cancelado": False,
+             "status_cru_do_fornecedor": STATUS_DE_ENTREGA},
+        ],
+    }
+    saida, _ch = chamar_a_tool(caso, papel="core",
+                               user_query="me manda as coberturas dessa apolice")
+    briefing = str(saida.get("content") or "")
+    dado = saida.get("data") or {}
+    selecionada = dado.get("selected") or dado.get("policy") or {}
+    linhas = [l for l in bloco_de_dados(briefing).split("\n")
+              if l.startswith("apolice_selecionada:")]
+    if not check("[GC1f] o briefing tem UMA linha `apolice_selecionada`",
+                 len(linhas) == 1, bloco_de_dados(briefing)[:400]):
+        return
+    linha = linhas[0]
+
+    check("[GC1f] 🔴 a linha NAO carrega `situacao: Recebido…` (o status de entrega)",
+          "situacao: " not in linha and "Recebido" not in linha, linha)
+    esperada = classificar_vigencia(selecionada.get("valid_from"),
+                                    selecionada.get("valid_to"),
+                                    selecionada.get("cancelled"))
+    check("[GC1f] 🔴 e ela diz `vigencia_por_data: %s`, pela MESMA regra da porta"
+          % esperada.situacao,
+          ("vigencia_por_data: %s" % esperada.situacao) in linha, linha)
+    check("[GC1f] a apolice desta listagem esta VIGENTE por data",
+          esperada.situacao == "VIGENTE", esperada.situacao)
+
+    # ⚠️ O status do fornecedor NAO some — ele deixa de se chamar "situacao".
+    administrativas = [l for l in bloco_de_dados(briefing).split("\n")
+                       if l.startswith("situacao_administrativa_no_sistema_de_gestao:")]
+    check("[GC1f] o status do fornecedor CONTINUA no briefing, com o nome certo",
+          len(administrativas) == 1 and STATUS_DE_ENTREGA in administrativas[0],
+          administrativas)
+    check("[GC1f] e com a trava escrita ao lado (nao decide vigencia, nao vai ao cliente)",
+          administrativas and "NAO decide vigencia" in administrativas[0]
+          and "NAO se repassa ao cliente" in administrativas[0],
+          administrativas)
+
+    # 🔴 O PAR QUE DA DIREITO A CONCLUSAO: a MESMA linha, com as MESMAS palavras
+    #    do fornecedor e datas PASSADAS, tem de dizer VENCIDA. Sem ele,
+    #    "VIGENTE" tanto pode ser a data quanto uma constante escrita no codigo.
+    def _linha_do_briefing(valid_from, valid_to, cancelled=False):
+        resultado = {
+            "ok": True, "status": "found",
+            "selected": {
+                "policy_number": "900000000000001",   # ⛔ sintetico
+                "insurer_key": "HDI", "product": "RESI",
+                "valid_from": valid_from, "valid_to": valid_to,
+                "cancelled": cancelled,
+                "policy_status": STATUS_DE_ENTREGA,
+            },
+            "policy_evidence_pack": {},
+        }
+        texto = InfocapPolicyLookupTool._build_llm_briefing(
+            resultado, {}, "quais sao as coberturas?", client_facing=False)
+        return [l for l in texto.split("\n") if l.startswith("apolice_selecionada:")][0]
+
+    vencida = _linha_do_briefing("01/01/2019", "01/01/2020")
+    check("[GC1f] 🔴 PAR: as MESMAS palavras do fornecedor, datas de 2019/2020 "
+          "-> `vigencia_por_data: VENCIDA`",
+          "vigencia_por_data: VENCIDA" in vencida, vencida)
+    futura = _linha_do_briefing("01/01/2099", "01/01/2100")
+    check("[GC1f] PAR: datas de 2099 -> `vigencia_por_data: FUTURA`",
+          "vigencia_por_data: FUTURA" in futura, futura)
+    cancelada = _linha_do_briefing("01/01/2026", "01/01/2027", cancelled=True)
+    check("[GC1f] PAR: `cancelled` -> `vigencia_por_data: CANCELADA`",
+          "vigencia_por_data: CANCELADA" in cancelada, cancelada)
+    check("[GC1f] e em NENHUMA delas o status do fornecedor entra como `situacao:`",
+          all("situacao: " not in l for l in (vencida, futura, cancelada)),
+          (vencida, futura, cancelada))
+    medir("status_cru_como_situacao_no_briefing",
+          sum(1 for l in (linha, vencida, futura, cancelada) if "situacao: " in l))
+
+
 GATES = {
     "GC1a": gate_GC1a,
     "GC1b": gate_GC1b,
     "GC1c": gate_GC1c,
     "GC1d": gate_GC1d,
     "GC1e": gate_GC1e,
+    "GC1f": gate_GC1f,
 }
 
 
@@ -600,6 +734,15 @@ MUTACOES = [
      "- Seja transparente: deixe claro quando algo for recomendação",
      "- Chame `infocap_policy_lookup` quando precisar. Seja transparente: deixe claro quando algo for recomendação",
      "GC1d", "verde"),
+    # 🔴 M-C1f: o status CRU do fornecedor volta a linha da apolice, com o rotulo
+    #        `situacao` — 📊 "Recebido e nao entregue ao cliente" em 2 de 2
+    #        apolices do golden, as duas VIGENTES.
+    ("M-C1f", "app/agents/tools/infocap_tool.py",
+     '                f"vigencia_por_data: {vigencia.situacao} "\n'
+     '                f"({selected.get(\'valid_from\') or \'-\'} a {selected.get(\'valid_to\') or \'-\'})"',
+     '                f"vigencia {selected.get(\'valid_from\') or \'-\'} a '
+     '{selected.get(\'valid_to\') or \'-\'} — situacao: {selected.get(\'policy_status\') or \'-\'}"',
+     "GC1f", "vermelho"),
     # M-C1e: a linha `yelum` sai do CATALOGO -> a frase do briefing some.
     #        🔴 E o elo: prova que a frase vem do ARQUIVO, e nao de um dict no codigo.
     ("M-C1e", "../docs/canon/providers/susep/seguradora-coenti.json",

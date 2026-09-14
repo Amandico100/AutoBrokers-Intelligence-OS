@@ -468,6 +468,236 @@ def gate_GC2f():
           not any("quido" in r for r in rotulos), [r for r in rotulos if "quido" in r])
 
 
+# ===========================================================================
+# [GC2g] O CAMINHO DA PRODUCAO — o corte da ENTREGA, nao o da extracao
+# ===========================================================================
+#
+# 🔴 POR QUE ESTE BLOCO PRECISOU EXISTIR. O [GC2f] acima chama
+# `extract_policy_document_evidence` DIRETO e monta o pack a mao — e por isso
+# ele nunca tocou em `_result`, que e quem ENTREGA. 📊 Medido em 14/09/2026:
+# o extrator produz **26** itens na HDI e **25** na Allianz, e
+# `policy_document_evidence_service.py:1040` entregava `evidence[:20]` com
+# `evidence_count` anunciando o total. Pelo caminho da PRODUCAO a Allianz
+# perdia os itens 20 e 21 — `coverage_row "Gastos com Defesa"` (R$ 70,15) e
+# `assistance_plan "Assistencia 24h"` — e chegava ao corretor com **20**
+# coberturas em vez de 21, em silencio.
+#
+# ⛔ SEM REDE, SEM BANCO, SEM MINIO: o `DocumentService` e o `fetcher` sao
+# dubles em memoria (o mesmo molde de
+# `test_infocap_official_policy_evidence_pipeline.py`). O que NAO se dubla e o
+# servico: e `get_policy_document_evidence_service()`, o singleton de producao.
+class _DocumentoDublado:
+    """O `DocumentService` em memoria — guarda o que a producao guardaria."""
+
+    def __init__(self, paginas):
+        self.paginas = paginas
+        self.registros = []
+        self.guardados = 0
+
+    def find_official_policy_document(self, company_id, policy_locator_hash,
+                                      content_hash=None, connection_id=""):
+        """A MESMA regra de `DocumentService.find_official_policy_document`.
+
+        ⚠️ E ela e a regra INTEIRA, nao a metade: o `like('<prefixo>%')` **e** o
+        descarte, quando nao ha conexao declarada, dos nomes que carregam uma
+        (o `-` a mais depois do prefixo base). Um duble com so metade da regra
+        deixaria o guarda verde sobre um produto que erra.
+        """
+        from app.services.policy_document_evidence_service import (
+            policy_document_filename_prefix,
+        )
+        base = "infocap-policy-%s-" % policy_locator_hash
+        prefixo = policy_document_filename_prefix(policy_locator_hash, connection_id)
+        for registro in reversed(self.registros):
+            if registro["company_id"] != company_id:
+                continue
+            nome = str(registro["file_name"])
+            if not nome.startswith(prefixo):
+                continue
+            if not str(connection_id or "").strip() and "-" in nome[len(base):]:
+                continue
+            return registro
+        return None
+
+    def store_official_policy_document(self, *, file_data, filename, company_id,
+                                       file_size, content_type, policy_metadata,
+                                       agent_id=None):
+        self.guardados += 1
+        doc_id = "doc-%d" % self.guardados
+        self.registros.append({
+            "id": doc_id, "company_id": company_id, "file_name": filename,
+            "content_hash": policy_metadata["content_hash"],
+            "policy_locator_hash": policy_metadata["policy_locator_hash"],
+            "metadata": policy_metadata,
+        })
+        return doc_id, list(self.paginas)
+
+    def load_raw_pages(self, document_id, company_id):
+        return list(self.paginas)
+
+
+class _IngestaoDublada:
+    def process_document(self, document_id, company_id, strategy="page", agent_id=None):
+        return True
+
+
+def _evidencia_pela_producao(apelido, *, connection_id="conexao-de-fixture"):
+    """`ensure_official_policy_evidence` — o caminho que o conector chama."""
+    import asyncio
+
+    from app.services.policy_document_evidence_service import (
+        get_policy_document_evidence_service,
+    )
+
+    with io.open(TABELAS_REAIS, encoding="utf-8") as fh:
+        fixture = json.load(fh)[apelido]
+    paginas = [{"page_number": 1, "content": "\n".join(fixture["linhas"])}]
+
+    async def _fetcher(candidato):
+        return {"ok": True, "status": "retrieved",
+                # ⛔ Bytes sinteticos: o PDF real nunca entra num arquivo de teste.
+                "body": b"%PDF-1.4\nfixture\n%%EOF",
+                "content_type": "application/pdf",
+                "source_kind": "policy_pdf", "source_transport": "signed_url_fetch"}
+
+    servico = get_policy_document_evidence_service()
+    doc_antigo, ing_antiga = servico.document_service, servico.ingestion_service
+    servico.document_service = _DocumentoDublado(paginas)
+    servico.ingestion_service = _IngestaoDublada()
+    try:
+        return asyncio.run(servico.ensure_official_policy_evidence(
+            company_id="tenant-de-teste",
+            # ⛔ SINTETICO: o locator real nunca entra num arquivo de teste.
+            policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "999001"},
+            official_document_candidate={"url": "https://exemplo.invalido/a.pdf",
+                                         "source_kind": "policy_pdf"},
+            question="quais sao as coberturas dessa apolice?",
+            fetcher=_fetcher,
+            connection_id=connection_id,
+        )), fixture
+    finally:
+        servico.document_service = doc_antigo
+        servico.ingestion_service = ing_antiga
+
+
+def gate_GC2g():
+    _p("\n[GC2g] PRODUCAO -- o que `ensure_official_policy_evidence` ENTREGA")
+    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool
+    from app.services.policy_answer_composer import compose_policy_answer_with_meta
+
+    esperado = {"hdi_residencial": 10, "allianz_condominio": 21}
+    for apelido, quantas in esperado.items():
+        evidencia, fixture = _evidencia_pela_producao(apelido)
+        entregues = evidencia.get("evidence_items") or []
+        contados = int(evidencia.get("evidence_count") or 0)
+        medir("%s_itens_entregues_pela_producao" % apelido.split("_")[0], len(entregues))
+        # 🔴 A assercao que pega o corte silencioso: o que se ANUNCIA e o que se
+        #    ENTREGA tem de ser o mesmo numero.
+        check("[GC2g] %s: `evidence_count` (%d) == itens ENTREGUES (%d)"
+              % (apelido, contados, len(entregues)),
+              contados == len(entregues) and contados > 0,
+              "count=%d entregues=%d" % (contados, len(entregues)))
+
+        pack, dados = pack_do_golden(apelido, com_documento=False)
+        pack["official_policy_document_evidence"] = {
+            "evidence_items": entregues,
+            "page_count": evidencia.get("page_count"),
+            "extraction_mode": fixture["parser"],
+        }
+        resultado = {
+            "ok": True, "status": "found",
+            "selected": {
+                "policy_number": "900000000000001",   # ⛔ sintetico
+                "insurer_key": dados["seguradora_abrev"],
+                "product": dados["ramo_abrev"],
+                "valid_from": dados["vigencia"]["inicio"],
+                "valid_to": dados["vigencia"]["fim"],
+                "policy_status": dados["status_cru_do_fornecedor"],
+            },
+            "policy_evidence_pack": pack,
+            "auto_selected_reason": "única apólice vigente do cliente",
+        }
+        pergunta = "quais sao as coberturas dessa apolice?"
+        meta = compose_policy_answer_with_meta(question=pergunta, result=resultado)
+        briefing = InfocapPolicyLookupTool._build_llm_briefing(
+            resultado, meta, pergunta, client_facing=False)
+        linhas = linhas_de_cobertura(briefing)
+        medir("%s_linhas_pela_producao" % apelido.split("_")[0], len(linhas))
+        check("[GC2g] 🔴 %s: %d linhas de cobertura no briefing PELO CAMINHO DA "
+              "PRODUCAO" % (apelido, quantas), len(linhas) == quantas,
+              [l[:50] for l in linhas])
+
+    # 🔴 As duas linhas que o corte de 20 comia na Allianz, pelo NOME.
+    evidencia, _f = _evidencia_pela_producao("allianz_condominio")
+    entregues = evidencia.get("evidence_items") or []
+    rotulos = [str((i.get("structured") or {}).get("label")
+                   or (i.get("structured") or {}).get("plan") or "")
+               for i in entregues]
+    check("[GC2g] 🔴 'Gastos com Defesa' (o item 21) chega ao pack",
+          any("Gastos com Defesa" in r for r in rotulos), rotulos[-6:])
+    check("[GC2g] 🔴 o plano de assistencia (o item 22) tambem chega",
+          any("kind") and any((i.get("structured") or {}).get("kind") == "assistance_plan"
+                              for i in entregues),
+          [(i.get("structured") or {}).get("kind") for i in entregues[-4:]])
+
+    # 🔴 O PAR DE CONTROLE: o corte EXISTE, e ele e o teto declarado. Um teto
+    #    que nunca corta nao prova que o numero certo esta escrito.
+    from app.services.policy_document_evidence_service import MAX_EVIDENCE_ITEMS
+
+    check("[GC2g] PAR: o teto e `MAX_EVIDENCE_ITEMS` (%d) e ele e MAIOR que o "
+          "que a apolice real produz" % MAX_EVIDENCE_ITEMS,
+          MAX_EVIDENCE_ITEMS >= 60 and MAX_EVIDENCE_ITEMS > len(entregues),
+          (MAX_EVIDENCE_ITEMS, len(entregues)))
+
+    # 🔴 E A CONEXAO DECIDE O HIT (o conserto F.2, medido pelo MOTOR).
+    #    A segunda leitura da MESMA conexao e cache; a de OUTRA conexao nao.
+    from app.services.policy_document_evidence_service import (
+        get_policy_document_evidence_service,
+    )
+    import asyncio
+
+    servico = get_policy_document_evidence_service()
+    doc_antigo, ing_antiga = servico.document_service, servico.ingestion_service
+    with io.open(TABELAS_REAIS, encoding="utf-8") as fh:
+        fixture = json.load(fh)["hdi_residencial"]
+    paginas = [{"page_number": 1, "content": "\n".join(fixture["linhas"])}]
+    dublê = _DocumentoDublado(paginas)
+    viagens = {"n": 0}
+
+    async def _fetcher(candidato):
+        viagens["n"] += 1
+        return {"ok": True, "status": "retrieved", "body": b"%PDF-1.4\nfixture\n%%EOF",
+                "content_type": "application/pdf", "source_kind": "policy_pdf",
+                "source_transport": "signed_url_fetch"}
+
+    def _ler(conexao):
+        return asyncio.run(servico.ensure_official_policy_evidence(
+            company_id="tenant-de-teste",
+            policy_locator={"provider": "infocap", "codfil": "1", "nosnum": "999001"},
+            official_document_candidate={"url": "https://exemplo.invalido/a.pdf",
+                                         "source_kind": "policy_pdf"},
+            question="quais sao as coberturas dessa apolice?",
+            fetcher=_fetcher, connection_id=conexao))
+
+    servico.document_service = dublê
+    servico.ingestion_service = _IngestaoDublada()
+    try:
+        a1 = _ler("conexao-A")
+        a2 = _ler("conexao-A")
+        b1 = _ler("conexao-B")
+    finally:
+        servico.document_service = doc_antigo
+        servico.ingestion_service = ing_antiga
+    medir("viagens_a_fonte_por_conexao", viagens["n"])
+    check("[GC2g] a MESMA conexao le do cache (`hit`, sem nova viagem)",
+          a1.get("cache_status") == "miss" and a2.get("cache_status") == "hit",
+          (a1.get("cache_status"), a2.get("cache_status")))
+    check("[GC2g] 🔴 a conexao B NAO recebe o documento guardado pela conexao A",
+          b1.get("cache_status") == "miss", b1.get("cache_status"))
+    check("[GC2g] e foram 2 viagens a fonte (A e B), nao 1", viagens["n"] == 2,
+          viagens["n"])
+
+
 GATES = {
     "GC2a": gate_GC2a,
     "GC2b": gate_GC2b,
@@ -475,6 +705,7 @@ GATES = {
     "GC2d": gate_GC2d,
     "GC2e": gate_GC2e,
     "GC2f": gate_GC2f,
+    "GC2g": gate_GC2g,
 }
 
 
@@ -518,6 +749,20 @@ MUTACOES = [
      '    if "R$" not in texto:',
      '    if "R$" not in texto and False:',
      "GC2f"),
+    # 🔴 M-C2j: o corte da ENTREGA volta a ser 20 enquanto o extrator le 60.
+    #    📊 E o estado de 14/09/2026: a Allianz cai de 21 para 20 coberturas e
+    #    `evidence_count` continua dizendo 25. O [GC2f] NAO pega (ele monta o
+    #    pack a mao); e por isso que o [GC2g] precisou existir.
+    ("M-C2j", "app/services/policy_document_evidence_service.py",
+     '            "evidence_items": evidence[:MAX_EVIDENCE_ITEMS],',
+     '            "evidence_items": evidence[:20],',
+     "GC2g"),
+    # 🔴 M-C2k: o nome guardado volta a nao carregar a conexao — e a leitura da
+    #    conexao B recebe o documento que a conexao A baixou.
+    ("M-C2k", "app/services/policy_document_evidence_service.py",
+     '    return f"{base}c{_short_hash(conexao, 12)}-"',
+     "    return base",
+     "GC2g"),
 ]
 
 

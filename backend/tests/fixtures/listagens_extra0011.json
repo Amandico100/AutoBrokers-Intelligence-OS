@@ -117,6 +117,34 @@
       "apolices": [
         {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2026", "fim": "07/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
       ]
+    },
+    "so_uma_futura": {
+      "_porque": "A apolice que AINDA NAO COMECOU. O 'hoje' das assercoes e 14/09/2026 e ela vale de 01/12/2026 a 01/12/2027. Ate 14/09/2026 `escolher_apolice` a escolhia e `_motivo_da_escolha` dizia 'unica apolice VIGENTE do cliente' — prometendo cobertura que ainda nao existe.",
+      "documents_count": 1,
+      "matches_devolvidos": 1,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "01/12/2026", "fim": "01/12/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "so_uma_sem_fim_de_vigencia": {
+      "_porque": "A fonte nao devolveu `fimvig`: `classificar_vigencia` diz DESCONHECIDA, e DESCONHECIDA nao e 'vigente'. Ela continua sendo a apolice do cliente — o que muda e a frase que o corretor le.",
+      "documents_count": 1,
+      "matches_devolvidos": 1,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "01/01/2026", "fim": "", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "uma_vigente_e_uma_futura": {
+      "_porque": "O PAR: havendo VIGENTE, a FUTURA nao entra nas opcoes nem no `found` — mas o motivo DIZ que ela existe. As duas sao do MESMO ramo de proposito: se a futura entrasse, viraria `ambiguous_policy` e o corretor voltaria a receber a pergunta que a SPEC existe para eliminar.",
+      "documents_count": 2,
+      "matches_devolvidos": 2,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2026", "fim": "07/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "RESI", "inicio": "01/12/2026", "fim": "01/12/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
     }
   }
 }

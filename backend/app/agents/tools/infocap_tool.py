@@ -287,7 +287,7 @@ def _internal_key() -> Optional[str]:
 class InfocapPolicyLookupTool(BaseTool):
     name: str = "infocap_policy_lookup"
     description: str = (
-        "Apolices da propria corretora na InfoCap: dados do segurado e do risco, COBERTURAS ITEM A ITEM "
+        "Apolices da propria corretora no sistema de gestao dela: dados do segurado e do risco, COBERTURAS ITEM A ITEM "
         "com limite/LMI, FRANQUIA e PREMIO de cada uma, premio total, vigencia, parcelas/boletos e, "
         "quando a fonte entrega o PDF da apolice, o TEXTO do documento oficial para o que nao e estruturado. "
         "Busque por CPF/CNPJ, nome do segurado, numero da apolice ou policy_ref. "
@@ -357,7 +357,7 @@ class InfocapPolicyLookupTool(BaseTool):
             return {"content": "Informe CPF/CNPJ, nome do cliente, numero da apolice, ou um policy_ref para detalhar a apolice.", "found": False}
         key = _internal_key()
         if not key:
-            return {"content": "Consulta InfoCap indisponivel: configuracao interna ausente.", "found": False}
+            return {"content": "Consulta ao sistema de gestao da corretora indisponivel: configuracao interna ausente.", "found": False}
         try:
             from app.core.database import create_async_supabase_client
 
@@ -435,6 +435,18 @@ class InfocapPolicyLookupTool(BaseTool):
                     )
                 if escolha is not None:
                     self._anotar_a_escolha(result, escolha)
+            elif policy_number and str(result.get("status") or "") == "policy_number_ambiguous":
+                # 🔴 A PORTA POR ONDE A VENCIDA AINDA VIRAVA OPCAO. O ramo acima
+                # so roda quando o corretor NAO informou numero — e
+                # `policy_number_ambiguous` so acontece quando ele informou. 📊
+                # Ate 14/09/2026 os `matches` deste status iam CRUS do conector
+                # para o briefing, com `policy_status` do fornecedor, e o guarda
+                # de `nodes.py` obrigava a listar todos: uma apolice vencida ha
+                # anos voltava a ser oferecida como opcao.
+                result = await self._desempatar_pelo_numero(
+                    provider, result, user_query=user_query, db=db, key=key,
+                    force_refresh=bool(force_document_evidence_refresh),
+                )
             # ⚠️ `policies_all` e a lista INTEIRA que a DECISAO usou (§6.1). Ela
             # ja fez o trabalho dela: deixa-la no `data` so engordaria o que
             # chega ao modelo — com a v2 desligada, `nodes.py` serializa o `data`
@@ -451,7 +463,7 @@ class InfocapPolicyLookupTool(BaseTool):
             return {"content": content, "data": result, "found": bool(result.get("ok")), "policy_response_contract": contract}
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
-            return {"content": "Nao consegui consultar a InfoCap agora. Tente novamente em instantes.", "found": False, "error": type(e).__name__}
+            return {"content": "Nao consegui consultar o sistema de gestao da corretora agora. Tente novamente em instantes.", "found": False, "error": type(e).__name__}
 
     def _run(
         self,
@@ -463,7 +475,7 @@ class InfocapPolicyLookupTool(BaseTool):
         user_query: Optional[str] = None,
         force_document_evidence_refresh: bool = False,
     ) -> Dict[str, Any]:
-        return {"content": "Consulta InfoCap deve ser executada de forma assincrona.", "found": False}
+        return {"content": "Consulta ao sistema de gestao da corretora deve ser executada de forma assincrona.", "found": False}
 
     async def _escolher_pela_porta(
         self,
@@ -524,6 +536,70 @@ class InfocapPolicyLookupTool(BaseTool):
             # pergunta em vez de virar chute.
             return None, escolha
         return None, escolha
+
+    async def _desempatar_pelo_numero(
+        self, provider, result: Dict[str, Any], *,
+        user_query: Optional[str], db, key: str, force_refresh: bool,
+    ) -> Dict[str, Any]:
+        """O número humano casou com mais de uma apólice — e a VENCIDA sai.
+
+        🔴 A regra é a MESMA de `ambiguous_policy`: `classificar_vigencia` +
+        `escolher_apolice`, na porta. A tool não classifica e não escolhe.
+
+        ⚠️ Aqui o desempate NÃO pode ser "chame de novo com o número": o número
+        é justamente o que está ambíguo. Quem isola a apólice é a REFERÊNCIA
+        opaca (`apolice_ref`), pelo `detail` — o mesmo caminho que a tool já usa
+        quando o modelo devolve um `policy_ref`.
+
+        ⛔ E quando não sobra nenhuma vigente, o status **não** vira
+        `sem_vigente`: a frase da §6.2 diz *"deste cliente"*, e esta lista é a
+        das apólices com o mesmo NÚMERO, não a do cliente. O que muda é a
+        situação impressa, que passa a ser a da DATA.
+        """
+        from app.providers.policy_data_provider import escolher_apolice, opcoes_em_texto
+        from app.services.policy_answer_composer import humanize_insurer, humanize_product
+
+        try:
+            lista = await provider.listar_apolices(
+                company_id=self.company_id, cliente_ref="",
+                incluir_vencidas=True, db=db, internal_key=key,
+                resposta_do_lookup=result,
+            )
+        except Exception as e:  # noqa: BLE001 — a porta nunca derruba a consulta
+            logger.warning("[InfocapPolicyLookupTool] desempate pelo numero indisponivel: %s",
+                           type(e).__name__)
+            return result
+        if not lista.itens:
+            return result
+
+        escolha = escolher_apolice(
+            lista, ramo=self._ramo_do_pedido(user_query, lista),
+            humanizar_seguradora=humanize_insurer, humanizar_ramo=humanize_product,
+        )
+        if escolha.status == "found" and escolha.apolice is not None and escolha.apolice.apolice_ref:
+            det = await provider.detail(
+                company_id=self.company_id,
+                policy_ref=str(escolha.apolice.apolice_ref),
+                user_query=user_query,
+                document_evidence_requested=_LER_SEMPRE_O_DOCUMENTO,
+                force_document_evidence_refresh=force_refresh,
+                unmasked=self._unmasked, db=db, internal_key=key,
+            )
+            if isinstance(det, dict) and det.get("ok"):
+                det["auto_selected_reason"] = escolha.auto_selected_reason or (
+                    "o número informado aparece em mais de uma apólice, e esta é a única "
+                    "que está valendo hoje")
+                return det
+
+        # Não deu para escolher UMA: as opções continuam, mas JÁ CLASSIFICADAS.
+        refs = {a.apolice_ref for a in (escolha.opcoes or lista.itens)}
+        crus = [m for m in (result.get("policies_all") or result.get("matches") or [])
+                if isinstance(m, dict)]
+        filtradas = [m for m in crus if str(m.get("policy_locator_ref") or "") in refs]
+        if filtradas:
+            result["matches"] = filtradas
+        result["opcoes_vigentes_em_texto"] = opcoes_em_texto(escolha.opcoes or lista.itens)
+        return result
 
     def _ramo_do_pedido(self, user_query: Optional[str], lista) -> Optional[str]:
         """A família de ramo do pedido: ① explícito ③ as 3 últimas humanas
@@ -682,15 +758,36 @@ class InfocapPolicyLookupTool(BaseTool):
             # 🔴 O numero humano vem da PORTA (`numero_humano_de`): ela e que sabe
             # quais chaves o carregam e que "0"/"000"/vazio NAO sao numero. A tool
             # nomeava o campo do fornecedor aqui ate 14/09/2026 (G1b da fronteira).
-            from app.providers.policy_data_provider import numero_humano_de
+            from app.providers.policy_data_provider import classificar_vigencia, numero_humano_de
 
             number = numero_humano_de(selected, ausente="nao retornado")
             insurer = humanize_insurer(selected.get("insurer_key"))
             product = humanize_product(selected.get("product"))
+            # 🔴 QUEM DECIDE VIGENCIA E A DATA, e o briefing tem de DIZER isso.
+            # Ate 14/09/2026 esta linha imprimia `situacao: {policy_status}` cru
+            # — e 📊 as 2 de 2 apolices do golden trazem
+            # `policy_status = "Recebido e nao entregue ao cliente"`, as DUAS
+            # VIGENTES. O modelo recebia um estado de ENTREGA DE DOCUMENTO com o
+            # rotulo `situacao`, na mesma linha da vigencia; a instrucao 6 do
+            # bloco do SEGURADO neutralizava isso, a do CORRETOR nao existia.
+            vigencia = classificar_vigencia(
+                selected.get("valid_from"), selected.get("valid_to"), selected.get("cancelled"))
             lines.append(
                 f"apolice_selecionada: {number} — {insurer or '-'} {product or ''} — "
-                f"vigencia {selected.get('valid_from') or '-'} a {selected.get('valid_to') or '-'} — situacao: {selected.get('policy_status') or '-'}"
+                f"vigencia_por_data: {vigencia.situacao} "
+                f"({selected.get('valid_from') or '-'} a {selected.get('valid_to') or '-'})"
             )
+            # ⚠️ O status do fornecedor nao SOME — ele deixa de se chamar
+            # "situacao" e passa a vir rotulado pelo que ele e, com a trava
+            # escrita ao lado (CLAUDE.md §12.1: nome que mente sobre o conteudo
+            # se conserta no NOME, nao no texto em volta).
+            administrativo = str(selected.get("policy_status") or "").strip()
+            if administrativo:
+                lines.append(
+                    f"situacao_administrativa_no_sistema_de_gestao: {administrativo} "
+                    "(estado de cadastro/entrega do documento na corretora; NAO decide vigencia "
+                    "e NAO se repassa ao cliente)"
+                )
             familia = _linha_da_familia_de_acionamento(selected.get("insurer_key"))
             if familia:
                 lines.append(familia)
@@ -730,6 +827,10 @@ class InfocapPolicyLookupTool(BaseTool):
                                type(e).__name__)
         coberturas = tuple(getattr(apolice, "coberturas", ()) or ())
         sections = [s for s in (pack.get("coverage_sections") or []) if isinstance(s, dict)]
+        # 🔴 Os sinais que JA tem linha propria neste briefing. A secao
+        # `avisos_da_apolice` (abaixo) rende todos os OUTROS: repetir o mesmo
+        # aviso duas vezes ensina o corretor a nao ler nenhum.
+        ja_ditos: set = set()
         if coberturas:
             lines.append(
                 f"coberturas_item_a_item ({len(coberturas)} contratadas, reconciliadas entre o "
@@ -740,6 +841,7 @@ class InfocapPolicyLookupTool(BaseTool):
             aviso = _linha_do_cadastro_incompleto(apolice)
             if aviso:
                 lines.append(aviso)
+                ja_ditos.add("cadastro_incompleto")
         elif sections:
             # Caminho de seguranca: a reconciliacao falhou, mas a cobertura existe.
             # Ela NUNCA some da resposta — some a origem, e o modelo e avisado.
@@ -755,7 +857,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 suffix = " — " + " · ".join(b for b in bits if b) if any(bits) else ""
                 lines.append(f"- {section.get('label')}{suffix}")
         if apolice is not None:
-            from app.providers.policy_data_provider import Indisponivel
+            from app.providers.policy_data_provider import Indisponivel, frase_do_sinal
 
             forma = apolice.forma_de_pagamento
             if not isinstance(forma, Indisponivel) and str(forma).strip():
@@ -766,6 +868,7 @@ class InfocapPolicyLookupTool(BaseTool):
                         " — o cabecalho do cadastro diz %s; a das parcelas e a que vale"
                         % (cabecalho.detalhe or {}).get("no_cabecalho", "outra coisa")
                     )
+                    ja_ditos.add("cabecalho_divergente")
                 lines.append(linha_forma)
             plano = apolice.plano_de_assistencia
             if plano is not None and plano.nome.tem_valor:
@@ -775,6 +878,28 @@ class InfocapPolicyLookupTool(BaseTool):
                        " (a fonte deu o NOME do plano, nao a lista de servicos: nao prometa servico "
                        "que nao esteja escrito acima)" if plano.estado == "nao_sabemos_ainda" else "")
                 )
+            # 🔴 TODOS os sinais da apolice, em prosa. 📊 Medido em 14/09/2026:
+            # 3 dos 5 sinais que a porta escreve (`rotulo_ambiguo`,
+            # `franquia_em_prosa_sem_dono`, `situacao_de_renovacao`) NAO tinham
+            # leitor nenhum — eram gravados no modelo e morriam ali. A pendencia
+            # `P-E0011-FRANQUIA-EM-PROSA-SEM-DONO` afirmava que o corretor via o
+            # sinal das 3 franquias sem dono da HDI; ele nunca viu.
+            #
+            # ⚠️ A traducao mora na PORTA (`frase_do_sinal`), nao aqui: o
+            # proximo adaptador precisa produzir a MESMA frase. Sinal sem
+            # traducao NAO some — cai na frase generica com o proprio codigo.
+            avisos = [
+                frase_do_sinal(sinal)
+                for sinal in (getattr(apolice, "sinais", ()) or ())
+                if sinal.codigo not in ja_ditos
+            ]
+            if avisos:
+                lines.append(
+                    "avisos_da_apolice (o que o sistema de gestao e o documento nao fecham "
+                    "entre si; diga ao corretor o que for relevante para a pergunta dele, "
+                    "com estas palavras — nunca invente causa nem minimize):"
+                )
+                lines.extend("- %s" % aviso for aviso in avisos)
         premium_summary = pack.get("premium_summary") or {}
         if premium_summary:
             money = [
@@ -865,7 +990,11 @@ class InfocapPolicyLookupTool(BaseTool):
                 "apolices_com_o_mesmo_numero (o numero informado apareceu em mais de uma apolice; "
                 "peca seguradora, ramo ou vigencia para desempatar):"
             )
-            lines.extend(opcoes_em_texto(matches).split("\n")[1:])
+            # 🔴 O texto JA CLASSIFICADO pela porta vence o cru. Sem ele, a
+            # situacao impressa e o `policy_status` do fornecedor — 📊 "ativo"
+            # em apolice vencida ha anos — e o corretor escolhe a errada.
+            das_opcoes = str(data.get("opcoes_vigentes_em_texto") or "").strip()
+            lines.extend((das_opcoes or opcoes_em_texto(matches)).split("\n")[1:])
         limitations = pack.get("limitations") or []
         if limitations:
             lines.append("limitacoes_da_fonte: " + "; ".join(str(item) for item in limitations[:3]))
@@ -1035,18 +1164,18 @@ class InfocapPolicyLookupTool(BaseTool):
         if not d.get("ok"):
             st = d.get("status")
             if st in ("blocked_not_configured", "blocked_missing_credentials"):
-                return "A InfoCap nao esta totalmente configurada para a sua corretora."
+                return "O sistema de gestao da sua corretora nao esta totalmente configurado."
             if st == "ambiguous_connection":
-                return "Ha mais de uma conexao InfoCap elegivel. E necessario limpar as conexoes duplicadas antes da consulta."
+                return "Ha mais de uma conexao elegivel com o sistema de gestao da corretora. E necessario limpar as conexoes duplicadas antes da consulta."
             if st == "source_limited":
-                return "A InfoCap localizou o pedido, mas ainda faltou resolver a apolice em uma opcao unica do catalogo. Informe CPF/nome do segurado ou o numero humano da apolice para eu resolver o detalhe com seguranca."
+                return "O sistema de gestao da corretora localizou o pedido, mas ainda faltou resolver a apolice em uma opcao unica do catalogo. Informe CPF/nome do segurado ou o numero humano da apolice para eu resolver o detalhe com seguranca."
             if st == "identity_mismatch":
                 return "A identidade da apolice nao foi confirmada. Por seguranca, nao vou exibir detalhes nem consultar documento desta apolice."
             if st == "policy_number_not_found":
-                return "Nao localizei apolice com esse numero humano na InfoCap."
+                return "Nao localizei apolice com esse numero humano no sistema de gestao da corretora."
             if st == "policy_number_ambiguous":
                 return "Esse numero humano apareceu em mais de uma apolice. Preciso de seguradora, ramo, vigencia ou cliente para escolher com seguranca."
-            return "Nao consegui obter os detalhes dessa apolice na InfoCap agora."
+            return "Nao consegui obter os detalhes dessa apolice no sistema de gestao da corretora agora."
         pack = d.get("policy_evidence_pack") or {}
         secs = pack.get("coverage_sections") or []
         # 🔴 O número humano vem da PORTA. Até 14/09/2026 esta linha importava
@@ -1057,7 +1186,7 @@ class InfocapPolicyLookupTool(BaseTool):
         num = numero_humano_de(pack)
         titular = pack.get("holder_name") or pack.get("holder_name_masked") or "-"
         lines = [
-            "Detalhes da apolice (InfoCap):",
+            "Detalhes da apolice (sistema de gestao da corretora):",
             f"- Seguradora: {pack.get('insurer_detected') or '-'} - Produto: {pack.get('product_detected') or '-'}",
             f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {_doc}" if (_doc := InfocapPolicyLookupTool._doc_para_o_publico(pack.get("document"), unmasked)) else ""),
             f"- Situacao: {pack.get('policy_status') or '-'} - Vigencia: {pack.get('valid_from') or '-'} a {pack.get('valid_to') or '-'}",
@@ -1075,7 +1204,7 @@ class InfocapPolicyLookupTool(BaseTool):
         elif pack.get("document_evidence_ready"):
             lines.extend(InfocapPolicyLookupTool._document_evidence_lines(pack))
         else:
-            lines.append("- A InfoCap confirmou a apolice e os dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta.")
+            lines.append("- O sistema de gestao da corretora confirmou a apolice e os dados operacionais, mas nao retornou itens estruturados de cobertura nesta consulta.")
             if pack.get("official_document_source_available"):
                 lines.append("- Ha fonte documental oficial disponivel, mas ela ainda nao foi processada nesta consulta.")
         if pack.get("limitations"):
@@ -1106,7 +1235,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 else "situacao de vigencia nao confirmada"
             )
             lines = [
-                "Apolice localizada na InfoCap:",
+                "Apolice localizada no sistema de gestao da corretora:",
                 f"- Seguradora: {sel.get('insurer_key') or '-'} - Produto: {sel.get('product') or '-'}",
                 f"- Numero da apolice: {num} - Titular: {titular}" + (f" - CPF/CNPJ: {_docp}" if (_docp := InfocapPolicyLookupTool._doc_para_o_publico(doc, unmasked)) else ""),
                 f"- Situacao: {sel.get('policy_status') or '-'} ({active_text}) - Vigencia: {sel.get('valid_from') or '-'} a {sel.get('valid_to') or '-'}",
@@ -1115,7 +1244,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 if pack.get("document_evidence_ready"):
                     lines.extend(InfocapPolicyLookupTool._document_evidence_lines(pack))
                 else:
-                    lines.append("- A InfoCap confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura, franquia ou assistencia nesta consulta. Nao vou concluir cobertura sem essa evidencia.")
+                    lines.append("- O sistema de gestao da corretora confirmou a apolice e seus dados operacionais, mas nao retornou itens estruturados de cobertura, franquia ou assistencia nesta consulta. Nao vou concluir cobertura sem essa evidencia.")
                     if pack.get("official_document_source_available"):
                         lines.append("- Existe uma fonte documental oficial disponivel; ela ainda nao foi processada nesta consulta.")
             return "\n".join(lines) + cli
@@ -1127,19 +1256,25 @@ class InfocapPolicyLookupTool(BaseTool):
         if status in ("multiple_matches", "ambiguous_customer", "ambiguous_policy", "policy_number_ambiguous"):
             from app.providers.policy_data_provider import opcoes_em_texto
 
-            options = opcoes_em_texto(r.get("matches") or [])
+            # 🔴 O texto JA CLASSIFICADO pela porta vence o cru — tambem aqui. Este
+            # e o caminho de FALLBACK (flag v2 desligada), e ele chega ao corretor
+            # do mesmo jeito. 📊 Sem isto a coluna `Status` imprimia o
+            # `policy_status` do fornecedor: "ativo" numa apolice vencida ha anos,
+            # e "Recebido e nao entregue ao cliente" numa vigente.
+            options = (str(r.get("opcoes_vigentes_em_texto") or "").strip()
+                       or opcoes_em_texto(r.get("matches") or []))
             base = "Encontrei mais de uma apolice/cliente para esse termo. Escolha pelo numero humano da apolice antes de detalhar."
             return (base + ("\n" + options if options else "") + cli).strip()
         if status == "identity_mismatch":
             return "A identidade da apolice nao foi confirmada. Por seguranca, nao vou exibir detalhes, cobertura, parcelas ou documento dessa consulta."
         if status == "policy_number_not_found":
-            return "Nao localizei apolice com esse numero humano na InfoCap."
+            return "Nao localizei apolice com esse numero humano no sistema de gestao da corretora."
         if status in ("not_found", "client_found"):
-            return ("Cliente localizado, mas sem apolice/documento vinculado retornado." + cli) if status == "client_found" else "Nao localizei cliente/apolice para esse termo na InfoCap."
+            return ("Cliente localizado, mas sem apolice/documento vinculado retornado." + cli) if status == "client_found" else "Nao localizei cliente/apolice para esse termo no sistema de gestao da corretora."
         if status == "source_limited":
-            return "A InfoCap respondeu, mas nao retornou dados suficientes para selecionar uma apolice unica. Refine com CPF, nome completo ou numero humano da apolice."
+            return "O sistema de gestao da corretora respondeu, mas nao retornou dados suficientes para selecionar uma apolice unica. Refine com CPF, nome completo ou numero humano da apolice."
         if status in ("blocked_not_configured", "blocked_missing_credentials"):
-            return "A InfoCap nao esta totalmente configurada para a sua corretora: credencial/base ausente."
+            return "O sistema de gestao da corretora nao esta totalmente configurado: credencial/base ausente."
         if status == "ambiguous_connection":
-            return "Ha mais de uma conexao InfoCap elegivel. E necessario limpar as conexoes duplicadas antes da consulta."
-        return "Nao foi possivel concluir a consulta na InfoCap agora."
+            return "Ha mais de uma conexao elegivel com o sistema de gestao da corretora. E necessario limpar as conexoes duplicadas antes da consulta."
+        return "Nao foi possivel concluir a consulta ao sistema de gestao da corretora agora."

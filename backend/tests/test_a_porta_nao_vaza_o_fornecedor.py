@@ -72,6 +72,7 @@ MAIN = os.path.join(APP, "main.py")
 PROMPTS = os.path.join(APP, "core", "prompts.py")
 AGENTES = os.path.join(APP, "agents")
 COMPOSER = os.path.join(APP, "services", "policy_answer_composer.py")
+FERRAMENTA = os.path.join(AGENTES, "tools", "infocap_tool.py")
 
 if RAIZ not in sys.path:
     sys.path.insert(0, RAIZ)
@@ -399,6 +400,42 @@ def gate_G1c():
     else:
         check("[G1c] `core/prompts.py` nao nomeia o fornecedor em prosa", True)
 
+    # 🔴 E A FERRAMENTA, que e o outro texto que chega ao modelo TODO TURNO.
+    # 📊 Medido em 14/09/2026, antes do conserto: **23** linhas com `InfoCap` em
+    # `app/agents/tools/infocap_tool.py` — entre elas a `description` da tool
+    # (que entra no esquema de toda chamada) e as 14 frases de `_summarize` /
+    # `_summarize_detail`, o texto de fallback que o corretor le quando a flag
+    # v2 esta desligada. Depois: **4**, todas em docstring ou comentario.
+    #
+    # ⚠️ O detector le CODIGO: `sem_prosa` apaga docstring e comentario
+    # preservando a linha. A ALLOWLIST ESCRITA e, de propósito, esta:
+    #
+    #   `name: str = "infocap_policy_lookup"`   o IDENTIFICADOR registrado da
+    #                                           ferramenta — muda noutra SPEC
+    #   `provider_key: str = "infocap"`         a chave do adaptador na porta
+    #   `logger.*`                              log nao chega a ninguem de fora
+    #
+    # 🔴 E as tres saem de graca: o detector e SENSIVEL A CAIXA, e as tres sao
+    # minusculas. A allowlist por linha esta VAZIA, e e por isso.
+    linhas_da_tool = [
+        (i, linha.strip())
+        for i, linha in enumerate(sem_prosa(ler(FERRAMENTA)).split("\n"), 1)
+        if RE_INFOCAP_PROSA.search(linha) and "logger." not in linha
+    ]
+    medir("infocap_em_prosa_na_ferramenta", len(linhas_da_tool))
+    check("[G1c] 🔴 `agents/tools/infocap_tool.py` nao nomeia o fornecedor em "
+          "prosa que chega ao modelo (description, content, resumos)",
+          not linhas_da_tool,
+          [(i, t[:90]) for i, t in linhas_da_tool])
+    # 🔴 PAR: o detector CONSEGUE achar no MESMO arquivo. Sem isto, "0 linhas"
+    #    tanto pode ser limpeza quanto `sem_prosa` engolindo o arquivo inteiro.
+    check("[G1c] PAR-C: o detector acha `InfoCap` numa linha de codigo da tool",
+          bool(RE_INFOCAP_PROSA.search(
+              sem_prosa('        description: str = "Apolices na InfoCap"\n'))))
+    check("[G1c] PAR-D: e `sem_prosa` nao apagou o arquivo (ha codigo de sobra)",
+          len([l for l in sem_prosa(ler(FERRAMENTA)).split("\n") if l.strip()]) > 400,
+          len([l for l in sem_prosa(ler(FERRAMENTA)).split("\n") if l.strip()]))
+
 
 # ===========================================================================
 # [G1d] CONTRATO — nenhum `hasattr(provider` decide contrato
@@ -604,6 +641,19 @@ MUTACOES = [
      "TOOL_MUTADA = 'chame infocap_policy_lookup'\nCORE_BASE_PROMPT",
      "G1c", "infocap_em_prosa", "igual"),
     # M-A1d: o `hasattr` como contrato volta, num arquivo hoje limpo.
+    # 🔴 M-A1e: a `description` da tool volta a nomear o fornecedor. Ela entra no
+    #        esquema de TODO turno — e o modelo repete o nome ao corretor.
+    ("M-A1e", "app/agents/tools/infocap_tool.py",
+     '        "Apolices da propria corretora no sistema de gestao dela: dados do segurado',
+     '        "Apolices da propria corretora na InfoCap: dados do segurado',
+     "G1c", "infocap_em_prosa_na_ferramenta", "sobe"),
+    # 🔴 M-A1f: o PAR de controle do arquivo novo — o identificador em MINUSCULA
+    #        entra e a medida NAO se mexe.
+    ("M-A1f", "app/agents/tools/infocap_tool.py",
+     '    name: str = "infocap_policy_lookup"',
+     '    name: str = "infocap_policy_lookup"  # infocap, infocap, infocap\n'
+     '    _mutacao: str = "chame infocap_policy_lookup no provider infocap"',
+     "G1c", "infocap_em_prosa_na_ferramenta", "igual"),
     ("M-A1d", "app/services/policy_answer_composer.py",
      "def _structured_assistance_labels(",
      "def _tem_veiculo(provider):\n"

@@ -69,14 +69,37 @@ _CONNECT = socket.socket.connect
 _CONNECT_EX = socket.socket.connect_ex
 
 
-def _proibir(self, *a, **k):  # noqa: ANN001
+#: ⚠️ O `asyncio` do Windows (`ProactorEventLoop`) abre um `socketpair()` de
+#: LOOPBACK so para poder acordar a si mesmo. Bloquear ISSO nao bloqueia a
+#: fonte: derruba o interpretador antes de o guarda medir qualquer coisa — e foi
+#: o que aconteceu em 14/09/2026 no primeiro `asyncio.run` deste arreio. O que a
+#: trava existe para impedir e uma viagem para FORA, e essa continua impossivel.
+#: (A MESMA excecao ja estava escrita em `test_vencida_nunca_vira_opcao.py`.)
+_LOOPBACK = {"127.0.0.1", "::1", "localhost", "0.0.0.0", ""}
+
+
+def _e_local(endereco):
+    alvo = endereco[0] if isinstance(endereco, (tuple, list)) and endereco else endereco
+    return str(alvo) in _LOOPBACK
+
+
+def _proibir(self, endereco=None, *a, **k):  # noqa: ANN001
+    if _e_local(endereco):
+        return _CONNECT(self, endereco, *a, **k)
     raise RuntimeError("SPEC-EXTRA-001.1: este guarda roda com SEM_REDE=1. "
-                       "Destino pedido: %r" % (a[0] if a else None,))
+                       "Destino pedido: %r" % (endereco,))
+
+
+def _proibir_ex(self, endereco=None, *a, **k):  # noqa: ANN001
+    if _e_local(endereco):
+        return _CONNECT_EX(self, endereco, *a, **k)
+    raise RuntimeError("SPEC-EXTRA-001.1: este guarda roda com SEM_REDE=1. "
+                       "Destino pedido: %r" % (endereco,))
 
 
 def _bloquear_a_rede():
     socket.socket.connect = _proibir       # type: ignore[assignment]
-    socket.socket.connect_ex = _proibir    # type: ignore[assignment]
+    socket.socket.connect_ex = _proibir_ex  # type: ignore[assignment]
 
 
 def _devolver_a_rede():

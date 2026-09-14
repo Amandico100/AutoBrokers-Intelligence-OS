@@ -708,8 +708,43 @@ def extract_policy_document_evidence(
     return evidence
 
 
-def _safe_filename(policy_locator: Dict[str, Any], content_hash: str) -> str:
-    return f"infocap-policy-{policy_locator_hash(policy_locator)}-{str(content_hash or '')[:16]}.pdf"
+def policy_document_filename_prefix(locator_hash: str, connection_id: str = "") -> str:
+    """O PREFIXO do nome do arquivo guardado — a chave que DECIDE o hit.
+
+    🔴 Ele existe porque `policy_document_cache_key` (acima) **não decidia
+    nada**: a chave com `connection_id` era só um campo do resultado, enquanto
+    o hit era resolvido por `find_official_policy_document(company, locator)`,
+    sem conexão. 📊 Medido em 14/09/2026: `document_service.py:159` procura por
+    `like("file_name", "infocap-policy-<locator>-%")` — o nome do arquivo é o
+    único discriminador DURÁVEL que existe hoje (o `insert` de
+    `store_official_policy_document` não grava `metadata`, e não há coluna
+    `connection_id` na tabela `documents`). Sem DDL, é aqui que a conexão entra.
+
+    ```
+    sem conexão   infocap-policy-<locator>-<conteudo16>.pdf          (forma antiga)
+    com conexão   infocap-policy-<locator>-c<conexao12>-<conteudo16>.pdf
+    ```
+
+    ⚠️ Expand-first (CLAUDE.md §8): a forma antiga continua válida e continua
+    sendo encontrada por quem não declara conexão. E as duas se distinguem sem
+    ambiguidade — o resto do nome, depois do prefixo base, tem um `-` a mais
+    **só** na forma com conexão.
+
+    🔴 A regra mora AQUI e em lugar nenhum mais: `document_service` a importa
+    para montar o `like`. Duas cópias da mesma composição de nome seriam um
+    segundo motor (CLAUDE.md §5) — e a que envelhecesse produziria miss
+    permanente, em silêncio.
+    """
+    base = f"infocap-policy-{locator_hash}-"
+    conexao = str(connection_id or "").strip()
+    if not conexao:
+        return base
+    return f"{base}c{_short_hash(conexao, 12)}-"
+
+
+def _safe_filename(policy_locator: Dict[str, Any], content_hash: str, connection_id: str = "") -> str:
+    prefixo = policy_document_filename_prefix(policy_locator_hash(policy_locator), connection_id)
+    return f"{prefixo}{str(content_hash or '')[:16]}.pdf"
 
 
 def _sanitize_pipeline_output(value: Any) -> Any:
@@ -833,6 +868,32 @@ class PolicyDocumentEvidenceService:
         self.ingestion_service = get_ingestion_service()
         return self.ingestion_service
 
+    @staticmethod
+    def _buscar_documento_guardado(
+        doc_service: Any,
+        company_id: str,
+        locator_hash: str,
+        connection_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """O documento já guardado **desta corretora E desta conexão**.
+
+        ⚠️ Leitor antigo (dublê de teste ou serviço ainda não atualizado) não
+        conhece `connection_id`. Quando há conexão declarada, um hit dele
+        poderia ser de OUTRA conexão — então ele vira MISS, e o PDF é buscado
+        de novo. O erro custa uma leitura; o acerto silencioso custaria o
+        documento errado na mão do corretor.
+        """
+        try:
+            return doc_service.find_official_policy_document(
+                company_id, locator_hash, connection_id=connection_id)
+        except TypeError:
+            if str(connection_id or "").strip():
+                logger.warning(
+                    "[PolicyDocumentEvidence] leitor de documento sem `connection_id`: "
+                    "cache ignorado para nao devolver o documento de outra conexao")
+                return None
+            return doc_service.find_official_policy_document(company_id, locator_hash)
+
     async def ensure_official_policy_evidence(
         self,
         *,
@@ -853,7 +914,14 @@ class PolicyDocumentEvidenceService:
         doc_service = self._document_service()
 
         if not force_refresh and hasattr(doc_service, "find_official_policy_document"):
-            cached = doc_service.find_official_policy_document(company_id, locator_hash)
+            # 🔴 A CONEXÃO DECIDE O HIT, não só a chave escrita no resultado.
+            # Até 14/09/2026 esta linha era `find_official_policy_document(
+            # company_id, locator_hash)` — e a conexão B da MESMA corretora
+            # recebia o PDF que a conexão A tinha baixado. `policy_document_
+            # cache_key` já carregava a conexão, mas ela não chegava aqui:
+            # dois lugares, uma regra só de fachada (protocolo §0.3, o elo).
+            cached = self._buscar_documento_guardado(
+                doc_service, company_id, locator_hash, connection_id)
             if cached:
                 pages = doc_service.load_raw_pages(cached.get("id"), company_id) if hasattr(doc_service, "load_raw_pages") else []
                 content_hash = cached.get("content_hash") or (cached.get("metadata") or {}).get("content_hash") or ""
@@ -912,7 +980,9 @@ class PolicyDocumentEvidenceService:
             )
         body_bytes = bytes(body)
         content_hash = hashlib.sha256(body_bytes).hexdigest()
-        filename = _safe_filename(policy_locator, content_hash)
+        # 🔴 O nome carrega a CONEXÃO: é por ele que o hit da leitura seguinte
+        # vai distinguir a conexão A da B dentro da mesma corretora.
+        filename = _safe_filename(policy_locator, content_hash, connection_id)
         metadata = {
             "provider": OFFICIAL_POLICY_PROVIDER,
             "document_type": OFFICIAL_POLICY_DOCUMENT_TYPE,
@@ -1037,7 +1107,26 @@ class PolicyDocumentEvidenceService:
             "page_count": page_count,
             "parser_used": parser_used,
             "extraction_confidence": confidence,
-            "evidence_items": evidence[:20],
+            # 🔴 O corte da ENTREGA e o MESMO da extracao. Ate 14/09/2026 aqui
+            # estava `evidence[:20]` enquanto o extrator lia ate
+            # `MAX_EVIDENCE_ITEMS` (60) — e `evidence_count` anunciava o total.
+            # 📊 Medido em 14/09/2026 sobre `pdf_tabelas_reais_extra0011.json`
+            # (`extract_policy_document_evidence` sobre as linhas reais): HDI
+            # **26** itens, Allianz **25**. Pelo caminho da producao a Allianz
+            # perdia os itens de indice 20 e 21 — `coverage_row "Gastos com
+            # Defesa"` e `assistance_plan "Assistencia 24h"` — e a apolice
+            # chegava ao corretor com **20** coberturas em vez de 21, em
+            # silencio. Dois tetos diferentes para a mesma lista e um corte que
+            # ninguem le: o teto e UM, e ele esta declarado em `MAX_EVIDENCE_ITEMS`.
+            #
+            # ⚠️ A ORDEM e o que torna o teto seguro, e ela ja e a de producao
+            # (`extract_policy_document_evidence`, BLOCO D): TODOS os
+            # estruturados (`coverage_row`, `assistance_plan`, `deductible_prose`,
+            # `installment_row`, `policy_limit`) de TODAS as paginas antes de
+            # qualquer fragmento de clausula. 📊 Medido no mesmo dia: o primeiro
+            # fragmento aparece no indice **20** (HDI) e **22** (Allianz) — isto
+            # e, nenhum estruturado vem depois de um fragmento.
+            "evidence_items": evidence[:MAX_EVIDENCE_ITEMS],
             "evidence_count": len(evidence),
             # 🔴 O TEXTO da apolice, nao so os trechos que o regex previu: e o
             # que responde "cobertura X esta contratada?" quando a pergunta nao

@@ -332,12 +332,100 @@ def gate_GB2e():
           (escolha_par.status, len(escolha_par.opcoes)))
 
 
+# ===========================================================================
+# [GB2f] A PALAVRA "VIGENTE" — ela so vale para quem ESTA vigente
+# ===========================================================================
+#
+# 🔴 O defeito, medido em 14/09/2026: `SITUACOES_OCULTAS` esconde VENCIDA e
+# CANCELADA, e so. FUTURA e DESCONHECIDA ficavam ELEGIVEIS, e
+# `_motivo_da_escolha` escrevia *"unica apolice VIGENTE do cliente"* sobre as
+# duas — uma apolice que comeca em dezembro era anunciada como valendo hoje.
+#
+# ```
+# so FUTURA          -> found, e o motivo diz QUANDO comeca (nunca "vigente")
+# so DESCONHECIDA    -> found, e o motivo diz que falta o fim da vigencia
+# VIGENTE + FUTURA   -> found NA VIGENTE; a futura e DITA, nao oferecida
+# ```
+#
+# ⚠️ E a terceira linha e a que importa para o produto: se a futura entrasse nas
+# opcoes, um cliente com uma apolice valendo e uma renovacao ja emitida do MESMO
+# ramo receberia *"qual delas?"* — a pergunta que a SPEC existe para eliminar.
+def gate_GB2f():
+    _p("\n[GB2f] VIGENTE -- a palavra so aparece para quem esta vigente")
+    casos = casos_sinteticos()
+
+    futura = escolher(casos["so_uma_futura"], ramo=None)
+    check("[GB2f] so uma FUTURA -> `found` (ela e a apolice do cliente)",
+          futura.status == "found" and futura.apolice is not None,
+          (futura.status, len(futura.opcoes)))
+    check("[GB2f] e ela E classificada FUTURA pela DATA",
+          futura.apolice is not None and futura.apolice.vigencia.situacao == "FUTURA",
+          futura.apolice.vigencia.situacao if futura.apolice else None)
+    motivo_futura = futura.auto_selected_reason or ""
+    check("[GB2f] 🔴 o motivo NAO chama de vigente",
+          "vigente" not in motivo_futura.lower(), motivo_futura)
+    check("[GB2f] e DIZ quando ela comeca a valer",
+          "começa a valer em 01/12/2026" in motivo_futura, motivo_futura)
+    check("[GB2f] o motivo da futura passa na regua de lingua",
+          not problemas_no_motivo(motivo_futura),
+          problemas_no_motivo(motivo_futura))
+
+    sem_fim = escolher(casos["so_uma_sem_fim_de_vigencia"], ramo=None)
+    check("[GB2f] so uma SEM fim de vigencia -> `found`",
+          sem_fim.status == "found" and sem_fim.apolice is not None,
+          (sem_fim.status, len(sem_fim.opcoes)))
+    check("[GB2f] e ela e DESCONHECIDA (a fonte nao deu o fim)",
+          sem_fim.apolice is not None
+          and sem_fim.apolice.vigencia.situacao == "DESCONHECIDA",
+          sem_fim.apolice.vigencia.situacao if sem_fim.apolice else None)
+    motivo_sem_fim = sem_fim.auto_selected_reason or ""
+    check("[GB2f] 🔴 o motivo NAO chama de vigente",
+          "vigente" not in motivo_sem_fim.lower().replace("fim da vigência", ""),
+          motivo_sem_fim)
+    check("[GB2f] e DIZ que falta o fim da vigencia",
+          "não informa o fim da vigência" in motivo_sem_fim, motivo_sem_fim)
+
+    # 🔴 O PAR QUE DECIDE: havendo VIGENTE, a futura sai das opcoes.
+    par = escolher(casos["uma_vigente_e_uma_futura"], ramo=None)
+    check("[GB2f] 🔴 1 VIGENTE + 1 FUTURA do mesmo ramo -> `found`, nao pergunta",
+          par.status == "found" and not par.opcoes,
+          (par.status, len(par.opcoes)))
+    check("[GB2f] e a escolhida e a VIGENTE (a HDI de 07/05/2026)",
+          par.apolice is not None and par.apolice.apolice_ref == "infocap:1:N1"
+          and par.apolice.vigencia.situacao == "VIGENTE",
+          (par.apolice.apolice_ref, par.apolice.vigencia.situacao) if par.apolice else None)
+    motivo_par = par.auto_selected_reason or ""
+    check("[GB2f] 🔴 e a futura NAO some: o motivo diz que ela existe",
+          "há 1 apólice que começa em 01/12/2026" in motivo_par, motivo_par)
+    check("[GB2f] a futura NAO e contada como historico (ela nao e passado)",
+          par.historico_oculto == 0 and "ocultada" not in motivo_par,
+          (par.historico_oculto, motivo_par))
+    check("[GB2f] o motivo do par passa na regua de lingua",
+          not problemas_no_motivo(motivo_par), problemas_no_motivo(motivo_par))
+
+    # 🔴 O PAR DE CONTROLE: a MESMA superficie com as DUAS vigentes PERGUNTA.
+    #    Sem ele, "nao perguntou" tanto pode ser a regra nova quanto a lista
+    #    estar chegando com uma apolice so.
+    controle = dict(casos["uma_vigente_e_uma_futura"])
+    controle["apolices"] = [
+        casos["uma_vigente_e_uma_futura"]["apolices"][0],
+        dict(casos["uma_vigente_e_uma_futura"]["apolices"][1],
+             inicio="01/01/2026", fim="01/01/2027"),
+    ]
+    par_controle = escolher(controle, ramo=None)
+    check("[GB2f] PAR-CONTROLE: as MESMAS duas, ambas VIGENTES -> pergunta",
+          par_controle.status == "ambiguous_policy" and len(par_controle.opcoes) == 2,
+          (par_controle.status, len(par_controle.opcoes)))
+    medir("futura_oferecida_como_opcao", len(par.opcoes))
+
+
 GATES = {
     "GB2a": gate_GB2a,
     "GB2b": gate_GB2b,
     "GB2c": gate_GB2c,
     "GB2d": gate_GB2d,
     "GB2e": gate_GB2e,
+    "GB2f": gate_GB2f,
 }
 
 
@@ -357,12 +445,26 @@ MUTACOES = [
     #        o corretor volta a nao ter como contestar a apolice escolhida.
     ("M-B2c", "app/providers/policy_data_provider.py",
      "            auto_selected_reason=_motivo_da_escolha(\n"
-     "                escolhida, elegiveis=elegiveis, ocultas=ocultas,\n"
+     "                escolhida, elegiveis=pool, ocultas=ocultas,\n"
      "                historico_oculto=historico_oculto, familia_pedida=familia_pedida,\n"
      "                humanizar_seguradora=humanizar_seguradora, humanizar_ramo=humanizar_ramo,\n"
+     "                adiadas=adiadas,\n"
      "            ),",
      "            auto_selected_reason=None,",
      "GB2d"),
+    # 🔴 M-B2f: a FUTURA volta a ser elegivel mesmo havendo VIGENTE — e o cliente
+    #        com uma apolice valendo e a renovacao ja emitida do mesmo ramo volta
+    #        a receber "qual delas?".
+    ("M-B2f", "app/providers/policy_data_provider.py",
+     "    pool = vigentes if vigentes else elegiveis",
+     "    pool = elegiveis",
+     "GB2f"),
+    # 🔴 M-B2g: a palavra "vigente" volta a ser dita sobre qualquer elegivel — e a
+    #        apolice que comeca em dezembro e anunciada como valendo hoje.
+    ("M-B2g", "app/providers/policy_data_provider.py",
+     '    vigente = escolhida.vigencia.situacao == "VIGENTE"',
+     "    vigente = True",
+     "GB2f"),
     # M-B2d: `ultima_vigente` passa a ser a PRIMEIRA vencida da lista em vez da
     #        de fim mais recente -> a frase da §6.2 cita a apolice errada.
     ("M-B2d", "app/providers/policy_data_provider.py",

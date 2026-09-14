@@ -1245,8 +1245,20 @@ async def chat_stream(
                 # ⚠️ Falhar aqui NUNCA derruba o turno: a resposta do corretor
                 # vale mais que a contabilidade dela. Sem as tool calls, o turno
                 # grava sem a chave (nunca com `[]` mentindo "não chamou nada").
-                chave_de_juncao = chave_de_rastro(chat_request.sessionId,
-                                                  client_request_id)
+                #
+                # 🔴 E A JUNCAO SO EXISTE SE HOUVER TURNO. Ate 14/09/2026 esta
+                # chave era montada mesmo sem `client_request_id` — e sem ele
+                # `chave_de_rastro` devolvia a SESSAO PURA, que e o que o no de
+                # tool grava fora de turno. O `.eq("trace_id", chave)` colhia
+                # entao as ferramentas de OUTROS momentos da mesma sessao e as
+                # gravava como "as deste turno". Sem turno nao se mente: o campo
+                # fica AUSENTE, com o motivo escrito ao lado.
+                chave_de_juncao = (
+                    chave_de_rastro(chat_request.sessionId, client_request_id)
+                    if client_request_id else None
+                )
+                if not client_request_id:
+                    dados_do_turno["tool_calls_ausentes"] = "sem client_request_id"
                 if chave_de_juncao and estagios:
                     try:
                         invocadas = (

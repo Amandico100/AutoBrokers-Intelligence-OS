@@ -57,11 +57,23 @@ class FakeDocumentService:
         self.raw_pages = {}
         self.upload_count = 0
 
-    def find_official_policy_document(self, company_id, policy_locator_hash, content_hash=None):
+    def find_official_policy_document(self, company_id, policy_locator_hash,
+                                      content_hash=None, connection_id=""):
+        # SPEC-EXTRA-001.1 (14/09/2026): a conexao passou a DECIDIR o hit, e o
+        # discriminador durável e o PREFIXO do nome do arquivo — a mesma regra
+        # que `DocumentService` aplica no `like()`. O duble a usa em vez de
+        # reimplementar a composicao do nome.
+        base = f"infocap-policy-{policy_locator_hash}-"
+        prefix = mod.policy_document_filename_prefix(policy_locator_hash, connection_id)
         for record in reversed(self.records):
             if record["company_id"] != company_id:
                 continue
             if record["policy_locator_hash"] != policy_locator_hash:
+                continue
+            name = str(record.get("file_name") or "")
+            if not name.startswith(prefix):
+                continue
+            if not str(connection_id or "").strip() and "-" in name[len(base):]:
                 continue
             if content_hash and record["content_hash"] != content_hash:
                 continue

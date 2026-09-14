@@ -161,15 +161,27 @@ class DocumentService:
         company_id: str,
         policy_locator_hash: str,
         content_hash: Optional[str] = None,
+        connection_id: str = "",
     ) -> Optional[dict]:
         """
         Locate a cached official policy PDF without exposing PolicyLocator values.
 
         Uses the existing documents table and a safe generated filename:
         infocap-policy-{policy_locator_hash}-{content_hash_prefix}.pdf
+        e, quando a conexao e declarada,
+        infocap-policy-{policy_locator_hash}-c{connection_hash}-{content_hash_prefix}.pdf
+
+        🔴 SPEC-EXTRA-001.1 (conserto de 14/09/2026): `connection_id` entrou
+        porque a corretora piloto tem 4 conexoes InfoCap e a leitura pela
+        conexao B devolvia o PDF baixado pela conexao A. A composicao do nome
+        mora em `policy_document_filename_prefix` — uma copia dela aqui seria
+        um segundo motor (CLAUDE.md §5).
         """
         try:
-            prefix = f"infocap-policy-{policy_locator_hash}-"
+            from .policy_document_evidence_service import policy_document_filename_prefix
+
+            base = f"infocap-policy-{policy_locator_hash}-"
+            prefix = policy_document_filename_prefix(policy_locator_hash, connection_id)
             query = (
                 self.supabase.table("documents")
                 .select("*")
@@ -180,6 +192,14 @@ class DocumentService:
             )
             result = query.limit(10).execute()
             rows = result.data if result and result.data else []
+            if not str(connection_id or "").strip():
+                # ⚠️ Sem conexao declarada o prefixo e o BASE, e ele tambem casa
+                # os arquivos de OUTRAS conexoes. O que os separa e o `-` extra
+                # que so a forma com conexao tem depois do base.
+                rows = [
+                    row for row in rows
+                    if "-" not in str(row.get("file_name") or "").removeprefix(base)
+                ]
             if content_hash:
                 rows = [
                     row for row in rows

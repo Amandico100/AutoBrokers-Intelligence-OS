@@ -263,13 +263,24 @@ def gate_G1():
 
     # --- PAR DE CONTROLE: FORA de um turno de chat (Rotina, worker) ---------
     # 🔴 Sem este par, [G1] passaria com um codigo que grudasse "|None" em tudo.
+    #
+    # ⚠️ O FATO MUDOU EM 14/09/2026, e a assercao mudou com ele (CLAUDE.md 9.3).
+    # Ate aqui este par afirmava *"fora de turno o rastro e SO a sessao"* — e era
+    # verdade, e era o DEFEITO: a sessao pura e exatamente a chave que a leitura
+    # do `/chat/stream` montava num turno sem `client_request_id`, e o
+    # `.eq("trace_id", chave)` colhia estas linhas como se fossem as do turno.
+    # A licao migra em vez de morrer: o que se exige agora e que a forma de fora
+    # de turno seja DISTINGUIVEL — e que ela nao seja a sessao pura.
     banco2 = _banco_do_escritor()
     _invocar_de_verdade(banco2, company_id=company, session_id=sessao,
                         turno=None, args={"user_query": "x"})
     linha2 = banco2.dados["tool_invocations"][0]
-    check("[G1] CONTROLE: fora de turno, o rastro e SO a sessao (como era)",
-          linha2.get("trace_id") == sessao,
+    check("[G1] CONTROLE: fora de turno, o rastro e `<sessao>|-` (nunca a sessao pura)",
+          linha2.get("trace_id") == "%s|%s" % (sessao, rec.MARCA_SEM_TURNO)
+          and linha2.get("trace_id") != sessao,
           "gravado=%r" % linha2.get("trace_id"))
+    check("[G1] CONTROLE: a sessao continua legivel no prefixo",
+          str(linha2.get("trace_id") or "").startswith(sessao))
     check("[G1] CONTROLE: e as duas formas CONSEGUEM ser diferentes",
           linha2.get("trace_id") != linha.get("trace_id"))
 
@@ -294,8 +305,11 @@ def _rodar_turno(arreio, chat_mod, banco, *, sessao, crid, eventos):
             app = arreio._montar_app_d(chat_mod, banco)
             corpo = {"chatInput": "detalhe a apolice", "sessionId": sessao,
                      "companyId": arreio.CO_ALFA_D, "agentId": arreio.AGENTE_D,
-                     "client_request_id": crid,
                      "assistantMessageId": str(uuid.uuid4())}
+            # ⚠️ `crid=None` e um turno REAL sem `client_request_id` (o campo e
+            # opcional em `/chat/stream`): e o caso que o PAR DE CONTROLE 4 mede.
+            if crid is not None:
+                corpo["client_request_id"] = crid
             t = httpx.ASGITransport(app=app)
             async with httpx.AsyncClient(transport=t, base_url="http://t",
                                          timeout=30) as c:
@@ -303,6 +317,31 @@ def _rodar_turno(arreio, chat_mod, banco, *, sessao, crid, eventos):
                              headers={"X-Internal-Key": arreio.CHAVE_INTERNA_D})
         gravadas = [m for m in banco.dados["messages"] if m.get("role") == "assistant"]
         return ((gravadas[0].get("payload") or {}).get("turn") or {}) if gravadas else {}
+
+    return asyncio.run(_ida())
+
+
+def _postar_turno_sem_crid(arreio, chat_mod, banco, *, sessao):
+    """O `/chat/stream` do PAINEL sem `client_request_id` — devolve o status.
+
+    ⚠️ `_rodar_turno` nao serve aqui: ele le a mensagem gravada, e o ponto
+    deste caso e que NAO se grava nada.
+    """
+    import httpx
+
+    async def _ida():
+        with arreio._TrocaModulosD(arreio._montar_stubs_d(banco)):
+            arreio.EVENTOS_DO_GRAFO_D[:] = [arreio._delta_d("resposta")]
+            app = arreio._montar_app_d(chat_mod, banco)
+            corpo = {"chatInput": "detalhe a apolice", "sessionId": sessao,
+                     "companyId": arreio.CO_ALFA_D, "agentId": arreio.AGENTE_D,
+                     "assistantMessageId": str(uuid.uuid4())}
+            t = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=t, base_url="http://t",
+                                         timeout=30) as c:
+                r = await c.post("/chat/stream", json=corpo,
+                                 headers={"X-Internal-Key": arreio.CHAVE_INTERNA_D})
+                return r.status_code
 
     return asyncio.run(_ida())
 
@@ -394,6 +433,57 @@ def gate_G2():
             eventos=[arreio._delta_d("resposta sem ferramenta")])
         check("[G2] CONTROLE: turno sem ferramenta nao grava `tool_calls: []`",
               "tool_calls" not in turno4, "turn=%r" % (turno4,))
+
+        # --- PAR DE CONTROLE 4: A SESSAO INTEIRA NAO VIRA "ESTE TURNO" ------
+        #
+        # 🔴 O que o juiz de 14/09/2026 apontou: `chave_de_rastro(sessao, None)`
+        # devolvia **a sessao pura**, e e exatamente isso que o no de tool grava
+        # FORA de turno. Se a leitura do `/chat/stream` montasse a chave sem
+        # `client_request_id`, o `.eq("trace_id", chave)` colheria a sessao
+        # inteira e a gravaria como "as ferramentas deste turno".
+        #
+        # 📊 MEDIDO no mesmo dia, e e o elo (protocolo §0.3): a leitura roda
+        # SO no modo painel (`chat.py` retorna `StreamingResponse` do widget
+        # antes de `_gerar`), e o painel **recusa com 400** um turno sem
+        # `client_request_id`. Isto e, hoje a metade da LEITURA nao tem como ser
+        # alcancada — o que estava errado de verdade era a metade da ESCRITA (a
+        # chave indistinguivel), guardada no [G1].
+        #
+        # Este par guarda as duas coisas que SAO alcancaveis:
+        #   a) a recusa do painel — a trava que torna o resto inalcancavel;
+        #   b) que ela e medida no MOTOR, nao lida no texto.
+        # ⚠️ A trava escrita ao lado da juncao (`if client_request_id`) e
+        # profundidade: ela existe para o dia em que alguem tornar o campo
+        # opcional no painel, e nao tem como ficar vermelha enquanto o 400 valer.
+        # ⚠️ `chave_de_rastro(s, None)` consulta o TURNO EM VOO. Aqui nao ha
+        # turno em voo — e o `marcar_turno(None)` e o que torna isso um fato do
+        # teste, e nao uma sobra de contexto de um turno anterior.
+        rec.marcar_turno(None)
+        chave_fora = rec.chave_de_rastro(sessao, None)
+        check("[G2] CONTROLE: fora de turno a chave e `<sessao>|-`, nao a sessao",
+              chave_fora == "%s|%s" % (sessao, rec.MARCA_SEM_TURNO)
+              and chave_fora != sessao, "chave=%r" % (chave_fora,))
+        banco5 = arreio._banco_padrao_d(conversas=[])
+        banco5.dados["tool_invocations"] = [dict(invocacao, trace_id=chave_fora)]
+        codigo = _postar_turno_sem_crid(arreio, chat_mod, banco5, sessao=sessao)
+        check("[G2] 🔴 o painel RECUSA um turno sem `client_request_id` (400)",
+              codigo == 400, "status=%r" % (codigo,))
+        gravadas = [m for m in banco5.dados["messages"] if m.get("role") == "assistant"]
+        check("[G2] e nada foi gravado — a invocacao de fora de turno nao virou "
+              "`tool_calls` de ninguem", not gravadas, "msgs=%d" % len(gravadas))
+        # 🔴 O PAR do par: com `client_request_id`, a MESMA montagem ACHA.
+        # Sem isto, "nao achou" tanto pode ser a trava quanto o arreio quebrado.
+        banco6 = arreio._banco_padrao_d(conversas=[])
+        crid6 = str(uuid.uuid4())
+        banco6.dados["tool_invocations"] = [
+            dict(invocacao, trace_id=rec.chave_de_rastro(sessao, crid6))]
+        turno6 = _rodar_turno(
+            arreio, chat_mod, banco6, sessao=sessao, crid=crid6,
+            eventos=[{"kind": "tool_start", "name": TOOL},
+                     arreio._delta_d("resposta"),
+                     {"kind": "tool_end", "name": TOOL}])
+        check("[G2] CONTROLE: o MESMO arreio, COM turno, acha a invocacao",
+              bool(turno6.get("tool_calls")), "turn=%r" % (turno6,))
     finally:
         if chave_antiga is None:
             os.environ.pop("ADMIN_API_KEY", None)
@@ -587,6 +677,19 @@ MUTACOES = [
      "        _REGISTROS_INERTES += 1",
      "        _REGISTROS_INERTES += 0",
      "G4"),
+    # 🔴 M4: o painel deixa de exigir `client_request_id` -- e a trava que hoje
+    #    torna a juncao sem turno inalcancavel. Sem ela, um turno sem turno
+    #    passa a rodar, e so a trava escrita ao lado da juncao o segura.
+    ("M4", "app/api/chat.py",
+     '    if modo == "painel" and not client_request_id:',
+     '    if False and modo == "painel" and not client_request_id:',
+     "G2"),
+    # 🔴 M5: o rastro de fora de turno volta a ser a SESSAO PURA -- a metade da
+    #    escrita do mesmo defeito.
+    ("M5", "app/services/skills/invocation_recorder.py",
+     '    return "%s|%s" % (sessao, marca or MARCA_SEM_TURNO)',
+     '    return ("%s|%s" % (sessao, marca)) if marca else sessao',
+     "G1"),
 ]
 
 

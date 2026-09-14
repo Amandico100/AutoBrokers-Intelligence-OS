@@ -534,6 +534,87 @@ class Sinal:
     detalhe: Dict[str, Any] = field(default_factory=dict)
 
 
+def frase_do_sinal(sinal: Sinal) -> str:
+    """Um `Sinal` → a frase que o corretor LÊ. 💭 copy — nunca citável como fato.
+
+    🔴 Ela existe porque **escrever o sinal não era mostrá-lo**. 📊 Medido em
+    14/09/2026: dos 5 sinais que a porta produz, só `cadastro_incompleto` e
+    `cabecalho_divergente` chegavam ao briefing; `rotulo_ambiguo`,
+    `franquia_em_prosa_sem_dono` e `situacao_de_renovacao` eram escritos e
+    ninguém os lia — e a pendência `P-E0011-FRANQUIA-EM-PROSA-SEM-DONO` afirmava
+    *"o corretor VÊ o sinal"*.
+
+    🔴 Mora na PORTA, não no adaptador: `Sinal` é do modelo canônico, e o
+    próximo adaptador (Agger, Quiver) tem de produzir a MESMA frase. Uma
+    segunda cópia da tradução seria um segundo motor (CLAUDE.md §5).
+
+    ⛔ Nenhuma frase nomeia fornecedor: o que o corretor lê é *"o sistema de
+    gestão"* e *"o documento oficial"* (§3.2 da fronteira).
+
+    ⚠️ Código desconhecido **não some**: ele vira uma frase genérica com o
+    próprio código em palavras — um aviso que ninguém traduziu ainda é melhor
+    do que um aviso que ninguém vê.
+    """
+    detalhe = dict(sinal.detalhe or {})
+    codigo = str(sinal.codigo or "").strip()
+
+    if codigo == "franquia_em_prosa_sem_dono":
+        textos = [str(t).strip() for t in (detalhe.get("textos") or []) if str(t).strip()]
+        quantas = int(detalhe.get("quantidade") or len(textos))
+        return (
+            "o documento oficial lista %d franquia%s que o sistema de gestão não associa a "
+            "nenhuma cobertura: %s. Confirme na seguradora antes de afirmar que uma cobertura "
+            "não tem franquia."
+            % (quantas, "" if quantas == 1 else "s", "; ".join(textos) or "sem texto legível")
+        )
+    if codigo == "rotulo_ambiguo":
+        candidatos = [str(c).strip() for c in (detalhe.get("candidatos") or []) if str(c).strip()]
+        return (
+            "a cobertura «%s» do cadastro casa com mais de uma linha do documento oficial (%s) "
+            "e o sistema não consegue dizer qual é qual: diga as duas e não escolha por conta."
+            % (detalhe.get("rotulo") or "sem rótulo", ", ".join(candidatos) or "sem candidatas")
+        )
+    if codigo == "situacao_de_renovacao":
+        return (
+            "o sistema de gestão marca a renovação desta apólice como «%s». É um estado do "
+            "CADASTRO: ele não decide vigência — quem decide é a data, já dita acima."
+            % (str(detalhe.get("texto") or "").strip() or "sem texto")
+        )
+    if codigo == "situacao_de_sinistro":
+        return (
+            "o sistema de gestão registra «%s» na situação de sinistro desta apólice."
+            % (str(detalhe.get("texto") or "").strip() or "sem texto")
+        )
+    if codigo == "cabecalho_divergente":
+        nas_parcelas = [str(f).strip() for f in (detalhe.get("nas_parcelas") or []) if str(f).strip()]
+        return (
+            "o cabeçalho do cadastro e as parcelas discordam sobre %s: no cabeçalho «%s», "
+            "nas parcelas «%s». A das parcelas é a que vale."
+            % (detalhe.get("campo") or "um campo",
+               detalhe.get("no_cabecalho") or "sem valor",
+               ", ".join(nas_parcelas) or "sem valor")
+        )
+    if codigo == "cadastro_incompleto":
+        return (
+            "a soma das coberturas do cadastro não fecha com o prêmio líquido: faltam %s (%s%%) "
+            "em %d cobertura%s cadastrada%s. As coberturas já reconciliadas acima é que valem."
+            % (reais(detalhe.get("diferenca_reais")), str(detalhe.get("diferenca_pct") or "-"),
+               int(detalhe.get("coberturas_do_cadastro") or 0),
+               "" if int(detalhe.get("coberturas_do_cadastro") or 0) == 1 else "s",
+               "" if int(detalhe.get("coberturas_do_cadastro") or 0) == 1 else "s")
+        )
+    if codigo == "apolice_cancelada":
+        return "o sistema de gestão marca esta apólice como CANCELADA."
+    if codigo == "status_do_fornecedor":
+        return (
+            "o sistema de gestão marca esta apólice como «%s». É um estado do CADASTRO; "
+            "a vigência é a da data." % (str(detalhe.get("texto") or "").strip() or "sem texto")
+        )
+    # ⚠️ O desconhecido, em palavras — nunca `snake_case` no texto do produto.
+    return "o sistema de gestão registrou o aviso «%s» sobre esta apólice." % (
+        codigo.replace("_", " ") or "sem código")
+
+
 @dataclass(frozen=True)
 class ReferenciaDeDocumento:
     """O documento, por REFERÊNCIA. ⛔ O texto do PDF nunca entra no modelo."""
@@ -1091,6 +1172,25 @@ def opcoes_em_texto(matches: Any, *, include_internal_ref: bool = False) -> str:
 #: "vencida" sobre ela seria mentir para o corretor.
 SITUACOES_OCULTAS = ("VENCIDA", "CANCELADA")
 
+#: 🔴 O que NÃO é histórico e também **NÃO é vigente**. Até 14/09/2026 estas
+#: duas situações eram simplesmente elegíveis, e `_motivo_da_escolha` escrevia
+#: *"única apólice vigente do cliente"* sobre elas — uma apólice que **começa
+#: mês que vem** era anunciada ao corretor como valendo hoje, e uma apólice sem
+#: fim de vigência na fonte, idem. As duas frases chegam ao corretor; a segunda
+#: chega ao segurado pelo atendimento.
+#:
+#: ```
+#: há VIGENTE      ->  FUTURA e DESCONHECIDA ficam FORA das opções e do `found`,
+#:                     e o motivo DIZ que elas existem (não somem)
+#: não há VIGENTE  ->  elas continuam elegíveis — a FUTURA é a apólice que VAI
+#:                     valer, e a DESCONHECIDA é a única que o cliente tem —
+#:                     mas a palavra "vigente" não aparece no motivo
+#: ```
+#:
+#: ⚠️ Elas continuam fora de `SITUACOES_OCULTAS`: não entram em
+#: `historico_oculto`, porque histórico é o que já passou.
+SITUACOES_QUE_NAO_SAO_VIGENTES = ("FUTURA", "DESCONHECIDA")
+
 #: As famílias de ramo que a conversa consegue nomear. ⛔ Não é catálogo de
 #: seguradora nem de ramo SUSEP (esse é `susep_ses_provider`): é o AGRUPAMENTO
 #: que responde "a apólice do carro" quando a fonte diz `AUTO`, `AUTOM` ou
@@ -1200,24 +1300,54 @@ def _motivo_da_escolha(
     familia_pedida: Optional[str],
     humanizar_seguradora: Any,
     humanizar_ramo: Any,
+    adiadas: Sequence[ApoliceNaLista] = (),
 ) -> str:
     """O texto que vai ao corretor. 💭 copy — legível, sem código, sem chave.
 
     🔴 Ele precisa passar na régua de língua que já existe
     (`problemas_de_lingua`): nada de `snake_case`, nada de `chave@versao`.
+
+    🔴 **A palavra "vigente" só aparece quando a apólice É vigente.** Ela é a
+    única palavra do motivo que o corretor repete ao segurado — e dizê-la sobre
+    uma apólice que começa mês que vem é prometer cobertura que não existe.
     """
     ramo = _nome_do_ramo(escolhida, humanizar_ramo)
     familia_da_escolhida = familia_de_ramo(escolhida.ramo)
+    vigente = escolhida.vigencia.situacao == "VIGENTE"
     if familia_pedida and familia_da_escolhida != familia_pedida:
         pedido = NOME_DA_FAMILIA.get(familia_pedida, familia_pedida)
-        base = ("única apólice vigente do cliente, e ela é de %s — não há apólice "
-                "vigente de %s no sistema de gestão" % (ramo, pedido))
+        base = ("única apólice %sdo cliente, e ela é de %s — não há apólice "
+                "vigente de %s no sistema de gestão"
+                % ("vigente " if vigente else "", ramo, pedido))
     elif familia_pedida:
-        base = "única apólice vigente de %s" % ramo
+        base = ("única apólice vigente de %s" % ramo) if vigente else \
+               ("única apólice do cliente, de %s" % ramo)
     elif len(elegiveis) == 1:
-        base = "única apólice vigente do cliente, de %s" % ramo
+        base = ("única apólice vigente do cliente, de %s" % ramo) if vigente else \
+               ("única apólice do cliente, de %s" % ramo)
     else:
-        base = "apólice vigente de %s" % ramo
+        base = ("apólice vigente de %s" % ramo) if vigente else \
+               ("apólice do cliente, de %s" % ramo)
+
+    # 🔴 A situação, dita em português, quando ela NÃO é "vigente". 💭 copy.
+    if escolhida.vigencia.situacao == "FUTURA":
+        base += "; começa a valer em %s" % _dia_br(escolhida.vigencia.inicio)
+    elif escolhida.vigencia.situacao == "DESCONHECIDA":
+        base += "; o sistema de gestão não informa o fim da vigência"
+
+    # ⚠️ As que existem e NÃO entraram: elas não são histórico, então não podem
+    # ser contadas como "ocultadas" — mas sumir com elas em silêncio é o mesmo
+    # defeito da §6.1 com outro nome.
+    futuras = [a for a in adiadas if a.vigencia.situacao == "FUTURA"]
+    sem_data = [a for a in adiadas if a.vigencia.situacao == "DESCONHECIDA"]
+    if len(futuras) == 1:
+        base += "; há 1 apólice que começa em %s" % _dia_br(futuras[0].vigencia.inicio)
+    elif futuras:
+        base += "; há %d apólices que ainda vão começar a valer" % len(futuras)
+    if len(sem_data) == 1:
+        base += "; há 1 apólice sem fim de vigência no sistema de gestão"
+    elif sem_data:
+        base += "; há %d apólices sem fim de vigência no sistema de gestão" % len(sem_data)
 
     # 🔴 A cauda conta `historico_oculto`, NUNCA só as vencidas que a resposta
     # trouxe. 📊 A empresa de 11 apólices devolve 10 linhas, 9 delas vencidas:
@@ -1274,6 +1404,8 @@ def escolher_apolice(
 
     ```
     sobrou 1 vigente                    ->  found + auto_selected_reason + historico_oculto
+    1 vigente + 1 futura                ->  found NA VIGENTE; a futura é DITA, não oferecida
+    0 vigente, só futura/sem data       ->  found nela, e o motivo NÃO diz "vigente"
     0 vigente e N vencidas              ->  sem_vigente + ultima_vigente + a frase da §6.2
     2+ do MESMO ramo                    ->  ambiguous_policy com as opções JÁ FILTRADAS
     2+ de ramos DIFERENTES, com ramo    ->  aplica o ramo e recomeça
@@ -1326,14 +1458,26 @@ def escolher_apolice(
             frase_sem_vigente=_frase_sem_vigente(ultima, humanizar_seguradora=humanizar_seguradora),
         )
 
+    # 🔴 A VIGENTE VENCE A FUTURA. Havendo apólice vigente, a que ainda vai
+    # começar (ou a que a fonte não datou) não entra na escolha nem nas opções:
+    # ela seria oferecida ao corretor como se valesse hoje. Não havendo
+    # vigente, elas continuam elegíveis — é o que o cliente tem — e o motivo
+    # diz a verdade sobre cada uma (`_motivo_da_escolha`).
+    vigentes = tuple(a for a in elegiveis if a.vigencia.situacao == "VIGENTE")
+    adiadas: Tuple[ApoliceNaLista, ...] = ()
+    if vigentes:
+        adiadas = tuple(a for a in elegiveis
+                        if a.vigencia.situacao in SITUACOES_QUE_NAO_SAO_VIGENTES)
+    pool = vigentes if vigentes else elegiveis
+
     familia_pedida = familia_de_ramo(ramo)
-    candidatas = elegiveis
+    candidatas = pool
     if ramo is not None:
         if familia_pedida:
-            do_ramo = tuple(a for a in elegiveis if familia_de_ramo(a.ramo) == familia_pedida)
+            do_ramo = tuple(a for a in pool if familia_de_ramo(a.ramo) == familia_pedida)
         else:
             alvo = normalizar_rotulo(ramo.abreviatura if isinstance(ramo, RamoCanonico) else ramo)
-            do_ramo = tuple(a for a in elegiveis if normalizar_rotulo(a.ramo.abreviatura) == alvo)
+            do_ramo = tuple(a for a in pool if normalizar_rotulo(a.ramo.abreviatura) == alvo)
         # ⚠️ Ramo que não casa com NENHUMA vigente não elimina a resposta: ele
         # deixa de filtrar, e o motivo passa a DIZER que não há vigente daquele
         # ramo. Filtrar até zero responderia "não há apólice vigente" a um
@@ -1347,9 +1491,10 @@ def escolher_apolice(
             status="found",
             apolice=escolhida,
             auto_selected_reason=_motivo_da_escolha(
-                escolhida, elegiveis=elegiveis, ocultas=ocultas,
+                escolhida, elegiveis=pool, ocultas=ocultas,
                 historico_oculto=historico_oculto, familia_pedida=familia_pedida,
                 humanizar_seguradora=humanizar_seguradora, humanizar_ramo=humanizar_ramo,
+                adiadas=adiadas,
             ),
             historico_oculto=historico_oculto,
         )

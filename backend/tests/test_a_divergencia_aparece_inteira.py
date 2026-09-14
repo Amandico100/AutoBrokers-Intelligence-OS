@@ -523,6 +523,162 @@ def gate_GD2f():
           briefing[briefing.find("coberturas_item_a_item"):][:220])
 
 
+# ===========================================================================
+# [GD2g] OS AVISOS — escrever o sinal nao era MOSTRAR o sinal
+# ===========================================================================
+#
+# 🔴 📊 Medido em 14/09/2026: a porta escreve 5 sinais e o briefing lia **2**.
+# `rotulo_ambiguo`, `franquia_em_prosa_sem_dono` e `situacao_de_renovacao` eram
+# gravados no modelo e morriam ali — nenhum leitor, em lugar nenhum. E a
+# pendencia `P-E0011-FRANQUIA-EM-PROSA-SEM-DONO` afirmava, com todas as letras,
+# *"o corretor VE o sinal"*: ele nunca viu.
+#
+# ⚠️ E o que ja tinha linha PROPRIA continua com ela, e nao entra duas vezes:
+# `cadastro_incompleto` (`aviso_sobre_o_cadastro`) e `cabecalho_divergente`
+# (dentro de `forma_de_pagamento`). Um corretor que le o mesmo aviso duas vezes
+# aprende a nao ler nenhum.
+def _briefing_de(pack, dados):
+    from app.agents.tools.infocap_tool import InfocapPolicyLookupTool
+    from app.services.policy_answer_composer import compose_policy_answer_with_meta
+
+    pergunta = "quais sao as coberturas dessa apolice?"
+    resultado = {
+        "ok": True, "status": "found",
+        "selected": {
+            "policy_number": "900000000000001",   # ⛔ sintetico
+            "insurer_key": dados["seguradora_abrev"], "product": dados["ramo_abrev"],
+            "valid_from": dados["vigencia"]["inicio"], "valid_to": dados["vigencia"]["fim"],
+            "policy_status": dados["status_cru_do_fornecedor"],
+        },
+        "policy_evidence_pack": pack,
+        "auto_selected_reason": "única apólice vigente do cliente",
+    }
+    meta = compose_policy_answer_with_meta(question=pergunta, result=resultado)
+    return InfocapPolicyLookupTool._build_llm_briefing(
+        resultado, meta, pergunta, client_facing=False)
+
+
+def _bloco_de_avisos(briefing):
+    """As linhas `- …` da secao `avisos_da_apolice` (vazio quando nao existe)."""
+    texto = str(briefing or "")
+    inicio = texto.find("avisos_da_apolice")
+    if inicio < 0:
+        return []
+    linhas = []
+    for linha in texto[inicio:].split("\n")[1:]:
+        if linha.startswith("- "):
+            linhas.append(linha)
+        else:
+            break
+    return linhas
+
+
+def gate_GD2g():
+    _p("\n[GD2g] OS AVISOS -- os 5 sinais da porta chegam ao corretor, em prosa")
+    from app.providers.policy_data_provider import Sinal, frase_do_sinal
+
+    # ① A HDI real, pelo motor: as 3 franquias sem dono CHEGAM ao briefing.
+    apolice, pack, dados = apolice_do_caminho_inteiro("hdi_residencial")
+    codigos = [s.codigo for s in apolice.sinais]
+    medir("sinais_na_apolice_hdi", len(codigos))
+    check("[GD2g] 📊 a HDI real acende 4 sinais na porta",
+          set(codigos) == {"situacao_de_renovacao", "cabecalho_divergente",
+                           "franquia_em_prosa_sem_dono", "cadastro_incompleto"},
+          codigos)
+
+    briefing = _briefing_de(pack, dados)
+    avisos = _bloco_de_avisos(briefing)
+    medir("avisos_no_briefing_hdi", len(avisos))
+    if not check("[GD2g] 🔴 o briefing TEM a secao `avisos_da_apolice`", bool(avisos),
+                 briefing[:500]):
+        return
+    texto_dos_avisos = "\n".join(avisos)
+    check("[GD2g] 🔴 e ela traz as 3 franquias que o cadastro nao tem dono para",
+          "3 franquias" in texto_dos_avisos
+          and "R$ 800,00" in texto_dos_avisos
+          and "R$ 650,00" in texto_dos_avisos
+          and "R$ 300,00" in texto_dos_avisos, texto_dos_avisos)
+    check("[GD2g] e ela DIZ o que fazer com isso (confirmar na seguradora)",
+          "Confirme na seguradora" in texto_dos_avisos, texto_dos_avisos)
+    check("[GD2g] 🔴 `situacao_de_renovacao` tambem chega — e DIZ que nao decide vigencia",
+          "não decide vigência" in texto_dos_avisos, texto_dos_avisos)
+
+    # ⚠️ E o que ja tem linha propria NAO se repete.
+    check("[GD2g] `cadastro_incompleto` continua na linha propria dele, e so nela",
+          "aviso_sobre_o_cadastro:" in briefing
+          and not any("prêmio líquido na soma" in a for a in avisos),
+          avisos)
+    check("[GD2g] `cabecalho_divergente` idem (dentro de `forma_de_pagamento`)",
+          "o cabecalho do cadastro diz" in briefing
+          and not any("cabeçalho do cadastro e as parcelas discordam" in a for a in avisos),
+          avisos)
+
+    # ⛔ Nenhum aviso nomeia o fornecedor nem carrega codigo em `snake_case`.
+    check("[GD2g] ⛔ nenhum aviso nomeia o fornecedor",
+          "InfoCap" not in texto_dos_avisos, texto_dos_avisos)
+    check("[GD2g] ⛔ e nenhum imprime o codigo cru do sinal",
+          not any("_" in a.split("«")[0] for a in avisos), avisos)
+
+    # ② A SONDA: `rotulo_ambiguo` — 1 linha de cadastro, 2 candidatas do MESMO
+    #    grupo e SEM limite para desempatar. 📊 Nenhuma das duas apolices reais
+    #    produz este sinal; sem a sonda ele nunca seria exercitado.
+    sonda_pack = dict(pack)
+    sonda_pack["coverage_sections"] = [
+        {"label": "VIDROS", "amount": None, "deductible": None, "premium": "R$ 11,50"},
+    ]
+    sonda_pack["official_policy_document_evidence"] = {
+        "evidence_items": [
+            {"page_number": 1, "evidence_type": "coverage",
+             "structured": {"kind": "coverage_row", "label": "Vidros",
+                            "lmi": None, "premium": "R$ 11,50"}},
+            {"page_number": 1, "evidence_type": "coverage",
+             "structured": {"kind": "coverage_row", "label": "Vidros",
+                            "lmi": None, "premium": "R$ 47,36"}},
+        ],
+        "page_count": 1, "extraction_mode": "direct_text",
+    }
+    from app.providers.infocap_policy_provider import apolice_reconciliada_do_pack
+
+    da_sonda = apolice_reconciliada_do_pack(sonda_pack)
+    ambiguo = da_sonda.sinal("rotulo_ambiguo")
+    check("[GD2g] 🔴 SONDA: 2 candidatas do mesmo grupo sem limite -> `rotulo_ambiguo`",
+          ambiguo is not None, [s.codigo for s in da_sonda.sinais])
+    avisos_da_sonda = _bloco_de_avisos(_briefing_de(sonda_pack, dados))
+    check("[GD2g] 🔴 e ele CHEGA ao briefing, com o rotulo e as candidatas",
+          any("VIDROS" in a and "Vidros" in a and "não escolha por conta" in a
+              for a in avisos_da_sonda), avisos_da_sonda)
+
+    # 🔴 O PAR DE CONTROLE: uma apolice SEM sinal nenhum nao ganha a secao.
+    #    Sem ele, "a secao apareceu" tanto poderia ser o sinal quanto a secao
+    #    ser incondicional.
+    controle_pack = dict(sonda_pack)
+    controle_pack["official_policy_document_evidence"] = {
+        "evidence_items": [
+            {"page_number": 1, "evidence_type": "coverage",
+             "structured": {"kind": "coverage_row", "label": "Vidros",
+                            "lmi": "R$ 5.000,00", "premium": "R$ 11,50"}},
+        ],
+        "page_count": 1, "extraction_mode": "direct_text",
+    }
+    controle_pack["premium_summary"] = {}
+    controle_pack["installments"] = []
+    # ⚠️ `provider_signals` e de onde vem `situacao_de_renovacao`: a apolice de
+    #    CONTROLE e uma em que a fonte nao mandou nenhum desses campos.
+    controle_pack["provider_signals"] = {}
+    de_controle = apolice_reconciliada_do_pack(controle_pack)
+    check("[GD2g] PAR-CONTROLE: a apolice de controle nao acende sinal nenhum",
+          not de_controle.sinais, [s.codigo for s in de_controle.sinais])
+    check("[GD2g] PAR-CONTROLE: e o briefing dela NAO tem `avisos_da_apolice`",
+          not _bloco_de_avisos(_briefing_de(controle_pack, dados)),
+          _bloco_de_avisos(_briefing_de(controle_pack, dados)))
+
+    # 🔴 O sinal DESCONHECIDO nao some: ele vira frase generica, em palavras.
+    generica = frase_do_sinal(Sinal("um_sinal_que_ninguem_traduziu", {}))
+    check("[GD2g] sinal sem traducao vira frase generica, sem `snake_case`",
+          "um sinal que ninguem traduziu" in generica and "_" not in generica,
+          generica)
+
+
 GATES = {
     "GD2a": gate_GD2a,
     "GD2b": gate_GD2b,
@@ -530,6 +686,7 @@ GATES = {
     "GD2d": gate_GD2d,
     "GD2e": gate_GD2e,
     "GD2f": gate_GD2f,
+    "GD2g": gate_GD2g,
 }
 
 
@@ -559,6 +716,22 @@ MUTACOES = [
      '    chave = _rotulo_chave(rotulo)\n    if not chave:',
      "    return None\n    chave = _rotulo_chave(rotulo)\n    if not chave:",
      "GD2a"),
+    # 🔴 (f) a secao `avisos_da_apolice` sai do briefing -> os 3 sinais sem linha
+    #     propria voltam a ser escritos e nao lidos. 📊 E o estado de 14/09/2026.
+    ("M-D2f", "app/agents/tools/infocap_tool.py",
+     "            avisos = [\n"
+     "                frase_do_sinal(sinal)\n"
+     "                for sinal in (getattr(apolice, \"sinais\", ()) or ())\n"
+     "                if sinal.codigo not in ja_ditos\n"
+     "            ]",
+     "            avisos = []",
+     "GD2g"),
+    # 🔴 (g) a traducao some e o codigo cru vai ao modelo -> `snake_case` no
+    #     texto do produto, e um aviso que o corretor nao entende.
+    ("M-D2g", "app/providers/policy_data_provider.py",
+     '    if codigo == "franquia_em_prosa_sem_dono":',
+     '    if False:',
+     "GD2g"),
     # (e) o extrator volta a exigir `R$` -> a HDI perde as 10 linhas de uma vez.
     ("M-D2e", "app/services/policy_document_evidence_service.py",
      '    if "R$" not in texto:',

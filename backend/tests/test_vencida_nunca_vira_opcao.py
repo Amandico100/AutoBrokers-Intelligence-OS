@@ -407,11 +407,151 @@ def gate_GB1d():
           caps.de("listar_apolices") == "SUPORTADA", caps.de("listar_apolices"))
 
 
+# ===========================================================================
+# [GB1e] O NUMERO HUMANO — `policy_number_ambiguous` tambem passa pela escolha
+# ===========================================================================
+#
+# 🔴 A PORTA POR ONDE A VENCIDA AINDA VIRAVA OPCAO, medida em 14/09/2026:
+# `infocap_tool._arun` so mandava a resposta para a porta quando **nao** havia
+# `policy_number` — e `policy_number_ambiguous` so acontece quando o corretor
+# INFORMOU um numero. Os `matches` iam crus do conector para o briefing, com o
+# `policy_status` do fornecedor, e o guarda de `nodes.py` obrigava a listar
+# todos: uma apolice vencida ha anos voltava a ser oferecida como opcao.
+#
+# ⚠️ Aqui o desempate NAO pode ser "chame de novo com o numero" — o numero e
+# justamente o que esta ambiguo. Quem isola a apolice e a REFERENCIA opaca, pelo
+# `detail`. Por isso o duble tem DUAS pontas: `lookup` e `detail`.
+def _stub_do_banco():
+    """`create_async_supabase_client` dublado — a tool nao abre conexao aqui."""
+    import types
+
+    try:
+        import app.core.database as banco
+    except Exception:  # noqa: BLE001
+        banco = types.ModuleType("app.core.database")
+        sys.modules["app.core.database"] = banco
+
+    async def _sem_banco(*a, **k):
+        return None
+
+    banco.create_async_supabase_client = _sem_banco   # type: ignore[attr-defined]
+    if not hasattr(banco, "get_supabase_client"):
+        banco.get_supabase_client = lambda *a, **k: None   # type: ignore[attr-defined]
+
+
+def _chamar_com_numero(caso, numero):
+    """A tool REAL, com `policy_number` e a fonte devolvendo `policy_number_ambiguous`."""
+    from app.agents.tools import infocap_tool as tool_mod
+    from app.providers import policy_data_provider as porta
+    from app.providers.infocap_policy_provider import InfoCapProvider
+
+    _stub_do_banco()
+    # ⚠️ A tool recusa antes de tudo sem chave interna. ⛔ Sintetica, e sem rede.
+    os.environ.setdefault("BACKEND_INTERNAL_API_KEY", "chave-de-teste-sem-rede")
+    # 🔴 O caminho de PRODUCAO e o briefing da v2. Com a flag desligada a tool
+    #    cai no resumo legado — outro texto, outro guarda. Aqui se mede o que o
+    #    corretor recebe hoje.
+    os.environ["POLICY_INTELLIGENCE_V2"] = "true"
+    bruto = resposta_do_conector(caso)
+    bruto["status"] = "policy_number_ambiguous"
+    # 🔴 O numero humano e o MESMO nas duas linhas: e o que produz o status.
+    for linha in bruto["matches"] + bruto["policies_all"]:
+        linha["policy_number"] = numero
+
+    provider = InfoCapProvider()
+    chamadas = {"lookup": [], "detail": []}
+
+    async def _lookup(**kw):
+        chamadas["lookup"].append(kw.get("policy_number"))
+        return dict(bruto)
+
+    async def _detail(**kw):
+        ref = kw.get("policy_ref")
+        chamadas["detail"].append(ref)
+        escolhida = next((m for m in bruto["policies_all"]
+                          if m["policy_locator_ref"] == ref), None)
+        if escolhida is None:
+            return {"ok": False, "status": "policy_number_not_found"}
+        return {
+            "ok": True, "status": "found",
+            "documents_count": bruto["documents_count"],
+            "selected": dict(escolhida), "matches": [dict(escolhida)],
+            "policy_evidence_pack": {
+                "coverage_sections": [{"label": "Cobertura de teste", "amount": "R$ 1.000,00"}],
+                "policy_status": escolhida["policy_status"],
+                "valid_from": escolhida["valid_from"], "valid_to": escolhida["valid_to"],
+            },
+        }
+
+    async def _vehicle(**kw):
+        return {"ok": False}
+
+    provider.lookup = _lookup      # type: ignore[method-assign]
+    provider.detail = _detail      # type: ignore[method-assign]
+    provider.vehicle = _vehicle    # type: ignore[method-assign]
+
+    original = porta.get_policy_data_provider
+    porta.get_policy_data_provider = lambda *a, **k: provider   # type: ignore[assignment]
+    try:
+        ferramenta = tool_mod.InfocapPolicyLookupTool(
+            company_id="tenant-de-teste", agent_role="core")
+        saida = asyncio.run(ferramenta._arun(
+            document="[CPF]", policy_number=numero,
+            user_query="me manda a apolice %s" % numero))
+    finally:
+        porta.get_policy_data_provider = original   # type: ignore[assignment]
+    return saida, chamadas
+
+
+def gate_GB1e():
+    _p("\n[GB1e] O NUMERO -- `policy_number_ambiguous` passa pela escolha da porta")
+    casos = casos_sinteticos()
+
+    # ① 1 vigente + 1 vencida com o MESMO numero humano -> a vigente, sozinha.
+    uma_e_uma = casos["uma_vencida_marcada_ativa"]
+    saida, chamadas = _chamar_com_numero(uma_e_uma, "AP-IGUAL")
+    dado = saida.get("data") or {}
+    briefing = str(saida.get("content") or "")
+    check("[GB1e] 🔴 1 vigente + 1 vencida com o mesmo numero -> `found`, nao lista",
+          str(dado.get("status") or "") == "found", (dado.get("status"), chamadas))
+    check("[GB1e] e a escolhida e a VIGENTE por DATA (a segunda linha)",
+          (dado.get("selected") or {}).get("policy_locator_ref") == "infocap:1:N2",
+          (dado.get("selected") or {}).get("policy_locator_ref"))
+    check("[GB1e] o desempate foi pela REFERENCIA opaca, nao pelo numero",
+          chamadas["detail"] == ["infocap:1:N2"], chamadas)
+    check("[GB1e] e a resposta DIZ por que e aquela",
+          bool(str(dado.get("auto_selected_reason") or "").strip()),
+          dado.get("auto_selected_reason"))
+    check("[GB1e] a vencida NAO aparece no briefing como opcao",
+          "apolices_com_o_mesmo_numero" not in briefing, briefing[:400])
+    medir("vencidas_oferecidas_por_numero_ambiguo",
+          0 if "apolices_com_o_mesmo_numero" not in briefing else 1)
+
+    # ② O PAR: 2 VIGENTES com o mesmo numero -> a pergunta e LEGITIMA.
+    duas = casos["duas_auto_vigentes"]
+    saida2, chamadas2 = _chamar_com_numero(duas, "AP-IGUAL")
+    dado2 = saida2.get("data") or {}
+    briefing2 = str(saida2.get("content") or "")
+    check("[GB1e] PAR: 2 VIGENTES com o mesmo numero -> continua ambiguo",
+          str(dado2.get("status") or "") == "policy_number_ambiguous",
+          (dado2.get("status"), chamadas2))
+    check("[GB1e] PAR: e as DUAS entram nas opcoes",
+          len(dado2.get("matches") or []) == 2,
+          [(m.get("policy_locator_ref"), m.get("valid_to"))
+           for m in (dado2.get("matches") or [])])
+    check("[GB1e] PAR: o briefing lista as duas, pelo texto JA CLASSIFICADO da porta",
+          "apolices_com_o_mesmo_numero" in briefing2
+          and "Status: VIGENTE" in briefing2, briefing2[:700])
+    check("[GB1e] PAR: e nenhuma linha impressa carrega o status cru do fornecedor",
+          "Status: ativo" not in briefing2, briefing2[:700])
+
+
 GATES = {
     "GB1a": gate_GB1a,
     "GB1b": gate_GB1b,
     "GB1c": gate_GB1c,
     "GB1d": gate_GB1d,
+    "GB1e": gate_GB1e,
 }
 
 
@@ -437,6 +577,13 @@ MUTACOES = [
      '    total = int(bruto.get("documents_count") or len(lidas))',
      "    total = len(lidas)",
      "GB1a"),
+    # 🔴 M-B1e: a escolha volta a rodar SO quando nao ha `policy_number` — e
+    #        `policy_number_ambiguous` so acontece quando HA. E a porta por onde
+    #        a vencida continuava virando opcao depois de toda a SPEC.
+    ("M-B1e", "app/agents/tools/infocap_tool.py",
+     '            elif policy_number and str(result.get("status") or "") == "policy_number_ambiguous":',
+     '            elif False:',
+     "GB1e"),
     # M-B1d: `policy_status` volta a decidir a vigencia -> a apolice "ativo" de
     #        2021 vira resposta.
     ("M-B1d", "app/providers/policy_data_provider.py",

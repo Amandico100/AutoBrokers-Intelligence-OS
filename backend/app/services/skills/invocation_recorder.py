@@ -104,6 +104,19 @@ def turno_em_curso() -> Optional[str]:
         return None
 
 
+#: 🔴 A marca do que foi invocado FORA de um turno de chat (Rotina, Work Run,
+#: worker, ou um turno que não trouxe `client_request_id`).
+#:
+#: Ela existe porque `chave_de_rastro(sessao, None)` devolvia **a sessão pura** —
+#: e a sessão pura é um PREFIXO de nada e um IGUAL de tudo: a leitura do
+#: `/chat/stream`, num turno sem `client_request_id`, montava a mesma chave e o
+#: `.eq("trace_id", chave)` colhia as invocações de QUALQUER outro momento
+#: daquela sessão, apresentando-as como "as ferramentas deste turno".
+#: 📊 Medido em 14/09/2026: `chave_de_rastro(s, None) == s` e
+#: `_abrir_registro_de_invocacao` grava exatamente isso fora de turno.
+MARCA_SEM_TURNO = "-"
+
+
 def chave_de_rastro(session_id: Any, turno: Optional[str] = None) -> Optional[str]:
     """O `trace_id` que liga a invocação ao TURNO — um formato só, num lugar só.
 
@@ -111,14 +124,24 @@ def chave_de_rastro(session_id: Any, turno: Optional[str] = None) -> Optional[st
     `/chat/stream`, ao montar `payload.turn.tool_calls`) chamam ESTA função. Duas
     montagens do mesmo formato escritas separado divergem, e a junção volta
     vazia sem ninguém ver — exatamente o defeito que o CLAUDE.md §9.4 descreve.
+
+    ```
+    com turno   "<sessao>|<client_request_id>"   a chave de UM turno
+    sem turno   "<sessao>|-"                     DISTINGUIVEL, e nunca igual a nenhuma
+    ```
+
+    ⚠️ A chave sem turno **não é chave de leitura de turno nenhum**: quem lê o
+    turno só monta a chave quando tem `client_request_id` (`chat.py`). O `|-`
+    existe para que, mesmo se alguém a montasse, ela não casasse com a de um
+    turno real.
     """
     if turno is None:
         turno = turno_em_curso()
     sessao = str(session_id or "").strip()
     marca = str(turno or "").strip()
-    if marca:
-        return "%s|%s" % (sessao, marca)
-    return sessao or None
+    if not sessao:
+        return None
+    return "%s|%s" % (sessao, marca or MARCA_SEM_TURNO)
 
 # Cache de processo: tool_key -> (tool_release_id, capability_key) ou None.
 # O catálogo muda por deploy/publicação, não por turno de conversa. Consultar o
