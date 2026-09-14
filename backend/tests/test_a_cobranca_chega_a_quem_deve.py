@@ -226,17 +226,9 @@ MUTACOES = [
      #    `_obrigacoes_reais` fica DEPOIS da definicao original no arquivo, entao
      #    e ele que vence.
      "def _segurados_cobrados_recentemente(",
-     "def _segurados_cobrados_recentemente(*a, **k):  # _MUTADO_E001_M9
-"
-     "    return {}
-
-
-def _obrigacoes_reais(*a, **k):  # _MUTADO_E001_M9
-"
-     "    return {}
-
-
-def _segurados_cobrados_recentemente_original(",
+     "def _segurados_cobrados_recentemente(*a, **k):  # _MUTADO_E001_M9\n"
+     "    return {}\n\n\ndef _obrigacoes_reais(*a, **k):  # _MUTADO_E001_M9\n"
+     "    return {}\n\n\ndef _segurados_cobrados_recentemente_original(",
      "M9"),
     # ---- G10 · `incerto` nunca e reclamado ----------------------------------
     ("app/services/billing_collection.py",
