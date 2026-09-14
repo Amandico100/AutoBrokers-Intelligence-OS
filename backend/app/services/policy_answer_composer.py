@@ -286,31 +286,54 @@ def _parse_br_date(value: Any):
     return None
 
 
-def _real_vigencia(match: Dict[str, Any]) -> str:
+#: A tradução entre a porta e o vocabulário desta função. 🔴 `DESCONHECIDA`
+#: (sem datas na fonte) continua caindo em "vigente" porque é o que esta função
+#: sempre fez: aqui "vigente" significa *"não está PROVADO que venceu"*, e virar
+#: "vencida" por falta de data esconderia a apólice do corretor.
+_SITUACAO_PARA_VIGENCIA = {
+    "CANCELADA": "cancelada", "VENCIDA": "vencida", "FUTURA": "futura",
+    "VIGENTE": "vigente", "DESCONHECIDA": "vigente",
+}
+
+
+def _real_vigencia(match: Dict[str, Any], hoje=None) -> str:
     """Vigência REAL calculada pelas datas — a fonte marca 'ativo' até em
-    apólice vencida há anos (bug visto no teste do founder 2026-07-10)."""
-    from datetime import date
+    apólice vencida há anos (bug visto no teste do founder 2026-07-10).
+
+    🔴 SPEC-EXTRA-001.1 BLOCO B: a REGRA sempre esteve certa; o LUGAR é que
+    estava errado — ela rodava aqui, depois de o conector já ter respondido
+    `ambiguous_policy`, e só para quem chegava ao compositor. Agora ela mora na
+    porta (`classificar_vigencia`), e esta função **delega**. Duas cópias da
+    mesma regra divergiriam, e é o defeito nº 1 deste projeto (CLAUDE.md §5).
+    """
+    from app.providers.policy_data_provider import classificar_vigencia
 
     status = str(match.get("policy_status") or "").strip().lower()
-    if "cancel" in status:
-        return "cancelada"
-    end = _parse_br_date(match.get("valid_to"))
-    start = _parse_br_date(match.get("valid_from"))
-    today = date.today()
-    if end and end < today:
-        return "vencida"
-    if start and start > today:
-        return "futura"
-    return "vigente"
+    cancelado = "cancel" in status or bool(match.get("cancelled"))
+    vigencia = classificar_vigencia(
+        match.get("valid_from"), match.get("valid_to"), cancelado, hoje=hoje
+    )
+    return _SITUACAO_PARA_VIGENCIA.get(vigencia.situacao, "vigente")
 
 
-def _compose_options(matches: List[Dict[str, Any]]) -> str:
+def _compose_options(matches: List[Dict[str, Any]], hoje=None, historico_oculto=None) -> str:
     # Vigência real primeiro; vencidas/canceladas NUNCA aparecem como opção
     # quando existe apólice vigente (só confundem o cliente).
-    enriched = [(m, _real_vigencia(m)) for m in matches]
+    #
+    # ⚠️ Desde o BLOCO B as `matches` que chegam aqui já vêm FILTRADAS pela porta
+    # (só vigentes, só do ramo). A conta local daria `hidden = 0` e a frase "há N
+    # no histórico" sumiria — por isso `historico_oculto`, quando a porta o
+    # informa, VENCE a conta local: ele conhece as apólices que a resposta nem
+    # chegou a trazer (truncamento da fonte incluído).
+    enriched = [(m, _real_vigencia(m, hoje)) for m in matches]
     vigentes = [(m, v) for m, v in enriched if v in ("vigente", "futura")]
     shown = vigentes if vigentes else enriched
     hidden = len(enriched) - len(shown)
+    if historico_oculto is not None:
+        try:
+            hidden = max(hidden, int(historico_oculto))
+        except (TypeError, ValueError):
+            pass
 
     if len(shown) == 1:
         m, vig = shown[0]
@@ -365,7 +388,8 @@ def compose_policy_answer_with_meta(*, question: str, result: Dict[str, Any]) ->
     if status in ("multiple_matches", "ambiguous_customer"):
         return _plain("Encontrei mais de um cliente possível para esse termo. Me confirme o CPF ou o nome completo para eu seguir com segurança.")
     if status in ("ambiguous_policy", "policy_number_ambiguous"):
-        text = _compose_options(result.get("matches") or [])
+        text = _compose_options(result.get("matches") or [],
+                                historico_oculto=result.get("historico_oculto"))
         client = _client_line(result)
         return _plain(text + (f"\n{client}" if client else ""))
     if status in ("blocked_not_configured", "blocked_missing_credentials"):

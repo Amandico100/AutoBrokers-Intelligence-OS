@@ -47,9 +47,15 @@ def _load(dotted, rel):
     return mod
 
 
-for name in ("app", "app.services", "app.agents", "app.agents.tools"):
+for name in ("app", "app.services", "app.agents", "app.agents.tools", "app.providers"):
     module = sys.modules.setdefault(name, types.ModuleType(name))
     module.__path__ = []
+# SPEC-EXTRA-001.1 BLOCO B: `app.providers` com `__path__` REAL — `_real_vigencia`
+# e o `_summarize` da tool passaram a DELEGAR para a porta (uma regra, um lugar),
+# e com `__path__ = []` o import morre em ModuleNotFoundError. Guarda que nao
+# roda nao guarda (CLAUDE.md 9.3).
+sys.modules["app.providers"].__path__ = [str(ROOT / "app" / "providers")]
+sys.modules["app.providers"].__package__ = "app.providers"
 
 _load("app.services.policy_facts", "app/services/policy_facts.py")
 _load("app.services.assistance_policy", "app/services/assistance_policy.py")

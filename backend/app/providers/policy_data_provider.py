@@ -130,6 +130,20 @@ __all__ = [
     "grupo_de_rotulo",
     "mapa_de_rotulos",
     "classificar_vigencia",
+    # a escolha (BLOCO B) — vigência e ramo decididos NA PORTA
+    "SITUACOES_OCULTAS",
+    "FAMILIAS_DE_RAMO",
+    "NOME_DA_FAMILIA",
+    "familia_de_ramo",
+    "StatusDaEscolha",
+    "Escolha",
+    "escolher_apolice",
+    "NUMERO_NAO_RETORNADO",
+    "NUMEROS_QUE_NAO_SAO_NUMERO",
+    "normalizar_numero_humano",
+    "numero_humano_valido",
+    "numero_humano_de",
+    "opcoes_em_texto",
     "reconciliar",
     "TOLERANCIA_DE_PREMIO",
     # contrato e registry
@@ -922,6 +936,401 @@ def _verdadeiro(valor: Any) -> bool:
     if valor is None:
         return False
     return str(valor).strip().lower() in _TRUTHY
+
+
+# ===========================================================================
+# O NÚMERO HUMANO — uma regra, no lugar onde ela pertence (BLOCO B)
+# ===========================================================================
+#
+# 📊 Medido em 14/09/2026: `infocap_tool.py:582` e `:622` importavam
+# `_display_policy_number` de `app/api/infocap_connector.py` — 2 dos 3 imports
+# que deixavam o G1a de `test_a_porta_nao_vaza_o_fornecedor.py` vermelho. A
+# regra não é do fornecedor: "este número serve para o corretor dizer em voz
+# alta?" vale para Agger, Quiver ou qualquer outro. Ela sobe para a porta, e o
+# conector passa a DELEGAR — nunca a ter uma segunda cópia (CLAUDE.md §5).
+#
+#: O que a fonte manda quando NÃO tem número, e que nunca pode virar resposta.
+NUMEROS_QUE_NAO_SAO_NUMERO = {"", "0", "00", "000", "0000", "null", "none", "n/a", "na", "-"}
+
+#: 🔴 Frase NEUTRA de propósito: a porta não nomeia fornecedor. O conector
+#: passa a sua própria frase por `ausente=` e continua dizendo "InfoCap".
+NUMERO_NAO_RETORNADO = "numero nao retornado pela fonte"
+
+_RE_SO_ALFANUMERICO = re.compile(r"[^0-9A-Za-z]")
+
+#: As chaves em que o número humano pode vir, na ordem de preferência.
+CHAVES_DE_NUMERO_HUMANO = ("policy_number", "numapo", "masked_policy_number")
+
+
+def normalizar_numero_humano(valor: Any) -> str:
+    """`"31.252/0261-1492"` → `"3125202611492"`. Só para COMPARAR, nunca exibir."""
+    return _RE_SO_ALFANUMERICO.sub("", str(valor or "")).upper()
+
+
+def numero_humano_valido(valor: Any) -> bool:
+    """`"0"`, `"null"`, `"000"` e vazio NÃO são número de apólice.
+
+    ⚠️ `set(normalizado) == {"0"}` pega `"00000"` — a fonte devolve zeros de
+    preenchimento, e um "0" lido como número faz o corretor ditar um zero ao
+    segurado.
+    """
+    cru = str(valor or "").strip()
+    if cru.lower() in NUMEROS_QUE_NAO_SAO_NUMERO:
+        return False
+    normalizado = normalizar_numero_humano(cru)
+    if not normalizado:
+        return False
+    if normalizado.isdigit() and set(normalizado) == {"0"}:
+        return False
+    return True
+
+
+def numero_humano_de(record: Any, *, ausente: str = NUMERO_NAO_RETORNADO) -> str:
+    """O número que se diz em voz alta — ou a frase que assume a ausência.
+
+    Aceita `ApoliceNaLista`, `Apolice` ou o dicionário sanitizado do adaptador,
+    porque os três atravessam esta função nos dois lados da fronteira.
+    """
+    if isinstance(record, (ApoliceNaLista, Apolice)):
+        valor: Any = record.numero_humano
+    elif isinstance(record, dict):
+        valor = next((record.get(c) for c in CHAVES_DE_NUMERO_HUMANO if record.get(c)), None)
+    else:
+        valor = getattr(record, "numero_humano", None)
+    return str(valor).strip() if numero_humano_valido(valor) else ausente
+
+
+def opcoes_em_texto(matches: Any, *, include_internal_ref: bool = False) -> str:
+    """As opções de apólice em texto, numeradas. **Uma só implementação.**
+
+    📊 `infocap_tool.py:650` importava `_format_policy_options_for_summary` do
+    conector — o terceiro import do G1a. A formatação de uma LISTA DE ESCOLHA
+    não é tradução de fornecedor: é a pergunta que o produto faz. Ela sobe, e o
+    conector delega.
+
+    ⚠️ O corte em 10 aqui é de TEXTO (teto de prompt), nunca de decisão: quem
+    decide é `escolher_apolice`, que lê a lista inteira (proposta §6.1).
+    """
+    linhas = ["Opcoes de apolice encontradas:"]
+    for indice, bruto in enumerate(list(matches or [])[:10], start=1):
+        situacao: str
+        if isinstance(bruto, ApoliceNaLista):
+            ref = bruto.apolice_ref or "-"
+            num = numero_humano_de(bruto, ausente=NUMERO_NAO_RETORNADO)
+            seguradora = bruto.seguradora.nome_listado or "-"
+            ramo = bruto.ramo.nome_humano or bruto.ramo.abreviatura or "-"
+            de = bruto.vigencia.inicio.strftime("%d/%m/%Y") if bruto.vigencia.inicio else "-"
+            ate = bruto.vigencia.fim.strftime("%d/%m/%Y") if bruto.vigencia.fim else "-"
+            situacao = str(bruto.vigencia.situacao)
+        elif isinstance(bruto, dict):
+            ref = bruto.get("policy_locator_ref") or bruto.get("policy_ref") or "-"
+            num = numero_humano_de(bruto, ausente=NUMERO_NAO_RETORNADO)
+            seguradora = bruto.get("insurer_key") or "-"
+            ramo = bruto.get("product") or "-"
+            de = bruto.get("valid_from") or "-"
+            ate = bruto.get("valid_to") or "-"
+            situacao = bruto.get("policy_status") or "-"
+        else:
+            continue
+        linha = (
+            "%d. Seguradora: %s; Produto/ramo: %s; Vigencia: %s a %s; Status: %s; Numero: %s"
+            % (indice, seguradora, ramo, de, ate, situacao, num)
+        )
+        if include_internal_ref:
+            linha += "; policy_ref interno: %s" % ref
+        linhas.append(linha)
+    return "\n".join(linhas)
+
+
+# ===========================================================================
+# A ESCOLHA — ela acontece na PORTA, e DIZ POR QUÊ (proposta §6.1/§6.2)
+# ===========================================================================
+#
+# 🔴 CLAUDE.md §9.5: "uma constante que escolhe entre alternativas de conteúdo
+# precisa dizer POR QUE está certa, escrito ao lado dela". Aqui a alternativa é
+# uma APÓLICE, e o "ao lado dela" é `auto_selected_reason` — texto humano, que
+# o corretor lê e consegue contestar.
+#
+# ⚠️ A regra já existia e já estava CERTA: `policy_answer_composer.py:279-300`
+# calcula vigência pela DATA desde 10/07/2026, porque 📊 a fonte marca "ativo"
+# em apólice vencida há anos. O que estava errado era o LUGAR: ela rodava no
+# compositor, depois de o conector já ter devolvido `ambiguous_policy` — tarde
+# demais, e só para quem chegava lá. Agora o compositor DELEGA para cá.
+
+#: 🔴 As situações que a listagem NÃO mostra como opção. `FUTURA` e
+#: `DESCONHECIDA` ficam de fora desta lista de propósito: uma apólice que ainda
+#: vai começar, ou cuja data a fonte não devolveu, **não é histórico** — dizer
+#: "vencida" sobre ela seria mentir para o corretor.
+SITUACOES_OCULTAS = ("VENCIDA", "CANCELADA")
+
+#: As famílias de ramo que a conversa consegue nomear. ⛔ Não é catálogo de
+#: seguradora nem de ramo SUSEP (esse é `susep_ses_provider`): é o AGRUPAMENTO
+#: que responde "a apólice do carro" quando a fonte diz `AUTO`, `AUTOM` ou
+#: `AUTOMOVEL`. Cada linha é uma abreviatura VISTA no acervo ou o nome humano
+#: correspondente; nada é derivado por prefixo (📊 SPEC-094.1: `SURA` casa
+#: dentro de `ASSURANCE` — casamento parcial produz catálogo errado).
+FAMILIAS_DE_RAMO: Dict[str, Tuple[str, ...]] = {
+    "auto": ("auto", "autom", "automovel", "automoveis", "auto frota", "frota", "rcfv", "carro"),
+    "resi": ("resi", "resid", "residencial", "residencia", "casa"),
+    "cond": ("cond", "condominio", "condominios"),
+    "vida": ("vida", "vind", "vgrp", "vida individual", "vida em grupo", "vidaind"),
+    "viag": ("viag", "viagem"),
+    "empr": ("empr", "empresarial", "empresa"),
+    "saud": ("saud", "saude"),
+}
+
+_FAMILIA_POR_ABREVIATURA: Dict[str, str] = {
+    normalizar_rotulo(sinonimo): familia
+    for familia, sinonimos in FAMILIAS_DE_RAMO.items()
+    for sinonimo in sinonimos
+}
+
+#: O nome que se diz ao corretor, por família. 💭 copy — nunca citável como fato.
+NOME_DA_FAMILIA: Dict[str, str] = {
+    "auto": "auto", "resi": "residencial", "cond": "condomínio",
+    "vida": "vida", "viag": "viagem", "empr": "empresarial", "saud": "saúde",
+}
+
+
+def familia_de_ramo(ramo: Any) -> Optional[str]:
+    """`RamoCanonico("VIND")` / `"residencial"` → `"vida"` / `"resi"`.
+
+    `None` quando a abreviatura não está no agrupamento — e `None` significa
+    *"não sei"*, nunca *"não é"*: quem chama trata como ausência de sinal.
+    """
+    if ramo is None:
+        return None
+    if isinstance(ramo, RamoCanonico):
+        candidatos = [ramo.abreviatura, ramo.nome_humano]
+    else:
+        candidatos = [ramo]
+    for candidato in candidatos:
+        chave = normalizar_rotulo(candidato)
+        if chave and chave in _FAMILIA_POR_ABREVIATURA:
+            return _FAMILIA_POR_ABREVIATURA[chave]
+    return None
+
+
+StatusDaEscolha = Literal["found", "sem_vigente", "ambiguous_policy", "nenhuma"]
+
+
+@dataclass(frozen=True)
+class Escolha:
+    """O resultado da escolha — e o PORQUÊ dela, em português.
+
+    ```
+    found             uma apólice. `apolice` preenchida, `auto_selected_reason` diz por quê
+    ambiguous_policy  2+ do MESMO ramo. `opcoes` JÁ FILTRADAS: só vigentes, só do ramo
+    sem_vigente       havia apólices, nenhuma vigente. `frase_sem_vigente` é a resposta
+    nenhuma           a fonte não devolveu apólice alguma
+    ```
+
+    🔴 `opcoes` nunca contém vencida ou cancelada. É a regra inteira desta
+    unidade: *vencida nunca vira opção*.
+    """
+
+    status: StatusDaEscolha
+    apolice: Optional[ApoliceNaLista] = None
+    opcoes: Tuple[ApoliceNaLista, ...] = ()
+    auto_selected_reason: Optional[str] = None
+    historico_oculto: int = 0
+    ultima_vigente: Optional[ApoliceNaLista] = None
+    frase_sem_vigente: Optional[str] = None
+
+
+def _dia_br(valor: Optional[date]) -> str:
+    return valor.strftime("%d/%m/%Y") if isinstance(valor, date) else "data não informada"
+
+
+def _nome_do_ramo(apolice: ApoliceNaLista, humanizar_ramo: Any = None) -> str:
+    familia = familia_de_ramo(apolice.ramo)
+    if familia:
+        return NOME_DA_FAMILIA.get(familia, familia)
+    if callable(humanizar_ramo):
+        rotulo = str(humanizar_ramo(apolice.ramo.abreviatura) or "").strip()
+        if rotulo and rotulo.upper() != UNKNOWN:
+            return rotulo.lower()
+    bruto = apolice.ramo.nome_humano or apolice.ramo.abreviatura or ""
+    return bruto.lower() if bruto and bruto != UNKNOWN else "seguro"
+
+
+def _nome_da_seguradora(apolice: ApoliceNaLista, humanizar_seguradora: Any = None) -> str:
+    bruto = apolice.seguradora.nome_listado or apolice.seguradora.chave or ""
+    if callable(humanizar_seguradora):
+        rotulo = str(humanizar_seguradora(bruto) or "").strip()
+        if rotulo:
+            return rotulo
+    return bruto or "seguradora não informada"
+
+
+def _motivo_da_escolha(
+    escolhida: ApoliceNaLista,
+    *,
+    elegiveis: Sequence[ApoliceNaLista],
+    ocultas: Sequence[ApoliceNaLista],
+    historico_oculto: int,
+    familia_pedida: Optional[str],
+    humanizar_seguradora: Any,
+    humanizar_ramo: Any,
+) -> str:
+    """O texto que vai ao corretor. 💭 copy — legível, sem código, sem chave.
+
+    🔴 Ele precisa passar na régua de língua que já existe
+    (`problemas_de_lingua`): nada de `snake_case`, nada de `chave@versao`.
+    """
+    ramo = _nome_do_ramo(escolhida, humanizar_ramo)
+    familia_da_escolhida = familia_de_ramo(escolhida.ramo)
+    if familia_pedida and familia_da_escolhida != familia_pedida:
+        pedido = NOME_DA_FAMILIA.get(familia_pedida, familia_pedida)
+        base = ("única apólice vigente do cliente, e ela é de %s — não há apólice "
+                "vigente de %s no sistema de gestão" % (ramo, pedido))
+    elif familia_pedida:
+        base = "única apólice vigente de %s" % ramo
+    elif len(elegiveis) == 1:
+        base = "única apólice vigente do cliente, de %s" % ramo
+    else:
+        base = "apólice vigente de %s" % ramo
+
+    # 🔴 A cauda conta `historico_oculto`, NUNCA só as vencidas que a resposta
+    # trouxe. 📊 A empresa de 11 apólices devolve 10 linhas, 9 delas vencidas:
+    # dizer "9 vencidas ocultadas" esconderia a 11ª, que é justamente a que o
+    # truncamento comeu. O número honesto é 10.
+    vencidas = [a for a in ocultas if a.vigencia.situacao == "VENCIDA"]
+    canceladas = [a for a in ocultas if a.vigencia.situacao == "CANCELADA"]
+    if historico_oculto <= 0:
+        return base
+    if historico_oculto == 1 and len(vencidas) == 1:
+        return base + "; a %s venceu em %s" % (
+            _nome_da_seguradora(vencidas[0], humanizar_seguradora),
+            _dia_br(vencidas[0].vigencia.fim))
+    if historico_oculto == 1 and len(canceladas) == 1:
+        return base + "; a %s foi cancelada" % _nome_da_seguradora(canceladas[0], humanizar_seguradora)
+    return base + "; %d apólice%s antiga%s ocultada%s" % (
+        historico_oculto,
+        "" if historico_oculto == 1 else "s",
+        "" if historico_oculto == 1 else "s",
+        "" if historico_oculto == 1 else "s",
+    )
+
+
+def _frase_sem_vigente(
+    ultima: Optional[ApoliceNaLista], *, humanizar_seguradora: Any = None
+) -> str:
+    """💭 A resposta da §6.2, palavra por palavra do diagnóstico §3.
+
+    ⛔ Ela **não** é "não encontrei". O cliente TEM histórico, e esconder isso
+    faz o corretor achar que a busca falhou — e refazer a busca.
+    """
+    fim = ("Hoje não há nenhuma apólice vigente deste cliente no sistema de gestão. "
+           "Quer que eu liste o histórico?")
+    if ultima is None:
+        return "Este cliente tem apólices no sistema de gestão, mas nenhuma vigente hoje. " + \
+               "Quer que eu liste o histórico?"
+    return "A última apólice vigente foi a %s, da %s, que valeu até %s. %s" % (
+        numero_humano_de(ultima, ausente="sem número na fonte"),
+        _nome_da_seguradora(ultima, humanizar_seguradora),
+        _dia_br(ultima.vigencia.fim),
+        fim,
+    )
+
+
+def escolher_apolice(
+    lista: ListaDeApolices,
+    *,
+    ramo: Any = None,
+    hoje: Optional[date] = None,
+    humanizar_seguradora: Any = None,
+    humanizar_ramo: Any = None,
+) -> Escolha:
+    """A apólice certa, ou a pergunta certa — e sempre o porquê (proposta §6.1).
+
+    ```
+    sobrou 1 vigente                    ->  found + auto_selected_reason + historico_oculto
+    0 vigente e N vencidas              ->  sem_vigente + ultima_vigente + a frase da §6.2
+    2+ do MESMO ramo                    ->  ambiguous_policy com as opções JÁ FILTRADAS
+    2+ de ramos DIFERENTES, com ramo    ->  aplica o ramo e recomeça
+    2+ de ramos DIFERENTES, sem ramo    ->  ambiguous_policy (pergunta UMA vez)
+    ```
+
+    🔴 **`hoje` é parâmetro** e desce para a classificação, como em
+    `classificar_vigencia`: a data da corretora não é a data do servidor.
+
+    ⚠️ A lista tem de vir com as VENCIDAS dentro (`incluir_vencidas=True`), ou
+    `ultima_vigente` não tem como existir e a frase da §6.2 sai sem a data. A
+    função filtra; ela não pede à fonte que filtre por ela.
+
+    📊 `lista.total` é `documents_count` — a contagem CHEIA da fonte, não
+    `len(matches)`. É o que impede "a única vigente está na posição 11" de
+    virar "o cliente não tem apólice vigente" (proposta §6.1, emenda 2).
+    """
+    itens = tuple(lista.itens or ())
+    total = int(lista.total or len(itens))
+
+    # 🔴 A reclassificação com o `hoje` recebido. Sem ela, uma lista montada com
+    # o "hoje" do servidor decidiria com a data errada — e a escolha é do
+    # produto, não do relógio de quem montou a lista.
+    if hoje is not None:
+        itens = tuple(
+            replace(a, vigencia=classificar_vigencia(
+                a.vigencia.inicio, a.vigencia.fim,
+                a.vigencia.situacao == "CANCELADA", hoje=hoje))
+            for a in itens
+        )
+
+    elegiveis = tuple(a for a in itens if a.vigencia.situacao not in SITUACOES_OCULTAS)
+    ocultas = tuple(a for a in itens if a.vigencia.situacao in SITUACOES_OCULTAS)
+    # 🔴 `total - elegíveis`, nunca `total - len(itens)`: o truncamento da fonte
+    # e as vencidas são a MESMA coisa para quem pergunta — apólice que existe e
+    # não está na resposta. Uma conta que ignorasse o truncamento diria
+    # "3 ocultadas" quando são 14 (proposta §6.1).
+    historico_oculto = max(0, total - len(elegiveis))
+
+    if not itens and total <= 0:
+        return Escolha(status="nenhuma", historico_oculto=0)
+
+    if not elegiveis:
+        vencidas = [a for a in ocultas if a.vigencia.fim is not None]
+        ultima = max(vencidas, key=lambda a: a.vigencia.fim) if vencidas else None  # type: ignore[arg-type,return-value]
+        return Escolha(
+            status="sem_vigente",
+            historico_oculto=historico_oculto,
+            ultima_vigente=ultima,
+            frase_sem_vigente=_frase_sem_vigente(ultima, humanizar_seguradora=humanizar_seguradora),
+        )
+
+    familia_pedida = familia_de_ramo(ramo)
+    candidatas = elegiveis
+    if ramo is not None:
+        if familia_pedida:
+            do_ramo = tuple(a for a in elegiveis if familia_de_ramo(a.ramo) == familia_pedida)
+        else:
+            alvo = normalizar_rotulo(ramo.abreviatura if isinstance(ramo, RamoCanonico) else ramo)
+            do_ramo = tuple(a for a in elegiveis if normalizar_rotulo(a.ramo.abreviatura) == alvo)
+        # ⚠️ Ramo que não casa com NENHUMA vigente não elimina a resposta: ele
+        # deixa de filtrar, e o motivo passa a DIZER que não há vigente daquele
+        # ramo. Filtrar até zero responderia "não há apólice vigente" a um
+        # cliente que tem — a mentira que a §6.2 existe para impedir.
+        if do_ramo:
+            candidatas = do_ramo
+
+    if len(candidatas) == 1:
+        escolhida = candidatas[0]
+        return Escolha(
+            status="found",
+            apolice=escolhida,
+            auto_selected_reason=_motivo_da_escolha(
+                escolhida, elegiveis=elegiveis, ocultas=ocultas,
+                historico_oculto=historico_oculto, familia_pedida=familia_pedida,
+                humanizar_seguradora=humanizar_seguradora, humanizar_ramo=humanizar_ramo,
+            ),
+            historico_oculto=historico_oculto,
+        )
+
+    return Escolha(
+        status="ambiguous_policy",
+        opcoes=candidatas,
+        historico_oculto=historico_oculto,
+    )
 
 
 # ===========================================================================

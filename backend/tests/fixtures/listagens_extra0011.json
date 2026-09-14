@@ -1,0 +1,122 @@
+{
+  "_doc": "Listagens SINTETICAS para os guardas M-B1/M-B2/M-B3 da SPEC-EXTRA-001.1 BLOCO B. Cada caso existe porque o acervo REAL (golden_apolices_extra0011.json chave `listagens`, 3 clientes) nao cobre a combinacao: o golden tem 3 clientes com UMA vigente cada, e a regra 'so pergunta com duas do MESMO ramo' precisa de pares com veredito oposto (CLAUDE.md 9.5). Nenhum valor aqui veio de cliente real: seguradora e ramo sao abreviaturas do catalogo, as datas sao construidas em torno de 14/09/2026, e NAO ha numero de apolice real, CPF, nome nem placa. Os numeros humanos sao rotulos ('AP-1'), como manda a trava do pacote.",
+  "medido_em": "2026-09-14",
+  "hoje_das_asserções": "2026-09-14",
+  "casos": {
+    "q6_pessoa_6_apolices": {
+      "_porque": "A pergunta q6/q7 do corpus real: pessoa com 6 apolices, 2 VIGENTES de ramos DIFERENTES (residencial e vida). 📊 O golden `listagens.pessoa_hdi` guardou so 1 match (a consulta foi por numero humano), entao a listagem de 6 e reconstruida aqui com as contagens que o corpus registra (total 6, vigentes 2, vencidas 4).",
+      "documents_count": 6,
+      "matches_devolvidos": 6,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2026", "fim": "07/05/2027", "cancelado": false, "status_cru_do_fornecedor": "Recebido e nao entregue ao cliente"},
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2025", "fim": "07/05/2026", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2024", "fim": "07/05/2025", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "METL", "ramo_abrev": "VIND", "inicio": "01/03/2026", "fim": "01/03/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "VIAG", "inicio": "10/01/2025", "fim": "20/01/2025", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "VIAG", "inicio": "10/07/2024", "fim": "20/07/2024", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "doze_com_a_vigente_na_11": {
+      "_porque": "🔴 O caso que a proposta 6.1 nomeia: a fonte trunca em 10 e a UNICA vigente esta na posicao 11. Ler `matches` em vez da lista inteira faria a porta responder 'nenhuma apolice vigente' — MENTINDO. O caso real (11/10) esta no golden `empresa_11_apolices`; este e o mesmo defeito levado um passo alem, com a vigente FORA do corte.",
+      "documents_count": 12,
+      "matches_devolvidos": 10,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "METL", "ramo_abrev": "VGRP", "inicio": "01/02/2018", "fim": "01/02/2019", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "METL", "ramo_abrev": "VGRP", "inicio": "01/02/2017", "fim": "01/02/2018", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "METL", "ramo_abrev": "VGRP", "inicio": "01/02/2016", "fim": "01/02/2017", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "METL", "ramo_abrev": "VGRP", "inicio": "01/02/2015", "fim": "01/02/2016", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "METL", "ramo_abrev": "VGRP", "inicio": "01/02/2014", "fim": "01/02/2015", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ITAU", "ramo_abrev": "VGRP", "inicio": "01/02/2013", "fim": "01/02/2014", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ITAU", "ramo_abrev": "VGRP", "inicio": "01/02/2012", "fim": "01/02/2013", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ITAU", "ramo_abrev": "VGRP", "inicio": "01/02/2011", "fim": "01/02/2012", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ITAU", "ramo_abrev": "VGRP", "inicio": "01/02/2010", "fim": "01/02/2011", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ITAU", "ramo_abrev": "VGRP", "inicio": "01/02/2009", "fim": "01/02/2010", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "VGRP", "inicio": "01/02/2026", "fim": "01/02/2027", "cancelado": false, "status_cru_do_fornecedor": "Recebido e nao entregue ao cliente"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "VGRP", "inicio": "01/02/2008", "fim": "01/02/2009", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "duas_auto_vigentes": {
+      "_porque": "A metade que PERGUNTA do par de controle da 6.1 GATE B item 2: duas vigentes do MESMO ramo — a unica situacao em que perguntar e legitimo.",
+      "documents_count": 2,
+      "matches_devolvidos": 2,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "04/05/2026", "fim": "04/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "AUTO", "inicio": "10/01/2026", "fim": "10/01/2027", "cancelado": false, "status_cru_do_fornecedor": "Recebido e nao entregue ao cliente"}
+      ]
+    },
+    "uma_auto_uma_resi": {
+      "_porque": "A metade que NAO PERGUNTA do mesmo par: 1 auto + 1 residencial, ambas vigentes. Com ramo deduzido -> escolhe; sem ramo nenhum -> pergunta UMA vez. Mesma superficie, veredito oposto.",
+      "documents_count": 2,
+      "matches_devolvidos": 2,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "04/05/2026", "fim": "04/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2026", "fim": "07/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "duas_auto_mais_uma_resi_vencida": {
+      "_porque": "As opcoes ambiguas tem de vir JA FILTRADAS: 2 opcoes, nunca 3. A residencial VENCIDA nao e opcao — e a regra inteira desta unidade.",
+      "documents_count": 3,
+      "matches_devolvidos": 3,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "04/05/2026", "fim": "04/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "AUTO", "inicio": "10/01/2026", "fim": "10/01/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2024", "fim": "07/05/2025", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "sem_vigente_tres_vencidas": {
+      "_porque": "A 6.2: nenhuma vigente. A resposta NAO e 'nao encontrei' — e a ultima vigente, com a seguradora e a data, mais o convite a ver o historico. A `ultima_vigente` e a de FIM mais recente (a Allianz de 14/08/2026), nao a primeira da lista nem a de inicio mais recente.",
+      "documents_count": 3,
+      "matches_devolvidos": 3,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "01/01/2020", "fim": "01/01/2021", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "AUTO", "inicio": "14/08/2025", "fim": "14/08/2026", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "01/06/2024", "fim": "01/06/2025", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "uma_vencida_marcada_ativa": {
+      "_porque": "🔴 O `policy_status` do fornecedor NUNCA decide. Esta apolice diz 'ativo' e venceu em 01/01/2021. Se o status decidisse, ela viraria a resposta. 📊 A fonte marca 'ativo' em apolice vencida ha anos (docstring de `_real_vigencia`, bug do teste do founder 2026-07-10).",
+      "documents_count": 2,
+      "matches_devolvidos": 2,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "01/01/2020", "fim": "01/01/2021", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "04/05/2026", "fim": "04/05/2027", "cancelado": false, "status_cru_do_fornecedor": "cancelado nao, so um texto qualquer"}
+      ]
+    },
+    "uma_cancelada_e_uma_vigente": {
+      "_porque": "Cancelada tambem nunca e opcao, e ela e contada no historico oculto — o par de `uma_vencida_marcada_ativa` do lado do cancelamento.",
+      "documents_count": 2,
+      "matches_devolvidos": 2,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "AUTO", "inicio": "01/01/2026", "fim": "01/01/2027", "cancelado": true, "status_cru_do_fornecedor": "cancelado"},
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "04/05/2026", "fim": "04/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "uma_auto_uma_cond": {
+      "_porque": "O desempate pela CONTAGEM DE VIGENTES, e o unico caso em que ele muda o veredito: 'chaveiro' sinaliza auto e residencial; o cliente tem uma AUTO e uma de CONDOMINIO vigentes. So a familia `auto` esta entre as sinalizadas E tem vigente -> escolhe a auto. Sem o desempate, a porta veria 2 vigentes de ramos diferentes sem ramo pedido e perguntaria sem necessidade.",
+      "documents_count": 2,
+      "matches_devolvidos": 2,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "PORT", "ramo_abrev": "AUTO", "inicio": "04/05/2026", "fim": "04/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"},
+        {"seguradora_abrev": "ALLI", "ramo_abrev": "COND", "inicio": "25/08/2026", "fim": "25/08/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    },
+    "so_resi_vigente": {
+      "_porque": "O pedido e de AUTO e o cliente so tem residencial vigente. A porta responde `found` com a UNICA vigente e o motivo DIZ que nao ha apolice vigente de auto — o corretor le a razao e consegue contestar. Filtrar ate zero responderia 'nao ha apolice vigente' a um cliente que tem.",
+      "documents_count": 1,
+      "matches_devolvidos": 1,
+      "status": "ambiguous_policy",
+      "apolices": [
+        {"seguradora_abrev": "HDI", "ramo_abrev": "RESI", "inicio": "07/05/2026", "fim": "07/05/2027", "cancelado": false, "status_cru_do_fornecedor": "ativo"}
+      ]
+    }
+  }
+}

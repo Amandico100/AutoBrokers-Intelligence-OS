@@ -75,9 +75,11 @@ from app.providers.policy_data_provider import (
     SeguradoraCanonica,
     Sinal,
     Vigencia,
+    SITUACOES_OCULTAS,
     classificar_vigencia,
     data_de,
     dinheiro,
+    familia_de_ramo,
     normalizar_rotulo,
     reconciliar,
 )
@@ -485,17 +487,16 @@ class InfoCapProvider:
         que o `/documento` já traz no pack, e **declara** que é parcial — quem
         chama não pode ler lista vazia como "não deve nada".
 
-        ⚠️ `listar_apolices` = **PARCIAL**, e o motivo é o truncamento:
-        `infocap_connector.py:1105` e `:1326` devolvem `matches` cortado em
-        **10**. 📊 O caso real existe: a empresa da pergunta q4 tem
-        `documents_count` **11** e `matches` **10**. `ListaDeApolices.total` traz
-        `documents_count` e `historico_oculto` traz a diferença — a lista diz
-        que está incompleta em vez de fingir que acabou. Fechar o truncamento é
-        do BLOCO B (o patch está no relatório).
+        🔴 `listar_apolices` passou a **SUPORTADA** no BLOCO B: o conector expõe
+        `policies_all` (a lista inteira, sem corte) ao lado de `matches` (o
+        recorte de TEXTO, teto de prompt), e `linhas_cruas_da_listagem` lê a
+        primeira. 📊 O caso que obrigou a emenda é real: a empresa da pergunta
+        q4 tem `documents_count` **11** e `matches` **10** — a única VIGENTE
+        podia estar na 11ª, e a porta responderia "nenhuma vigente" MENTINDO.
         """
         por_operacao: Dict[str, Capacidade] = {
             "buscar_cliente": "SUPORTADA",
-            "listar_apolices": "PARCIAL",
+            "listar_apolices": "SUPORTADA",
             "detalhar_apolice": "SUPORTADA",
             "documento_oficial": "PARCIAL",
             "parcelas_em_aberto": "PARCIAL",
@@ -504,7 +505,7 @@ class InfoCapProvider:
             provider_key=self.provider_key,
             por_operacao=por_operacao,
             notas={
-                "listar_apolices": "matches truncado em 10 pela fonte; `total` e `historico_oculto` dizem o tamanho real (BLOCO B fecha)",
+                "listar_apolices": "le a lista inteira (`policies_all`); `matches` continua truncado em 10 para o TEXTO, nunca para decidir",
                 "documento_oficial": "o extrator de linhas nao le os dois layouts reais de tabela (D4; BLOCO D)",
                 "parcelas_em_aberto": "P-PILOTO-19: /parcelas responde 403; as parcelas vem do /documento",
             },
@@ -551,10 +552,18 @@ class InfoCapProvider:
         hoje: Optional[date] = None,
         db: Any = None,
         internal_key: Optional[str] = None,
+        resposta_do_lookup: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> ListaDeApolices:
-        """A lista CLASSIFICADA. ⚠️ A ESCOLHA (found/ambiguous) é do BLOCO B."""
-        bruto = await self.lookup(
+        """A lista CLASSIFICADA por DATA. A ESCOLHA é `escolher_apolice`.
+
+        ⚠️ `resposta_do_lookup` não é vazamento de fornecedor: é a MESMA
+        resposta devolvida ao adaptador que a produziu. 📊 Sem ele o caminho do
+        chat faria **duas** chamadas idênticas à fonte por pergunta (uma para o
+        pack, outra para a lista) — o corretor pagaria a latência duas vezes
+        para ler o mesmo JSON.
+        """
+        bruto = resposta_do_lookup if isinstance(resposta_do_lookup, dict) else await self.lookup(
             company_id=company_id, document=cliente_ref,
             db=db, internal_key=internal_key,
         )
@@ -779,6 +788,29 @@ def _resultado_de_busca(bruto: Any, provider_key: str) -> ResultadoDeBusca:
     )
 
 
+#: 🔴 A lista INTEIRA vem aqui; `matches` é o recorte de TEXTO (teto de prompt).
+#: `infocap_connector.py` passou a devolver as duas (SPEC-EXTRA-001.1 §6.1).
+CHAVE_DA_LISTA_INTEIRA = "policies_all"
+
+
+def linhas_cruas_da_listagem(bruto: Any) -> List[Dict[str, Any]]:
+    """As apólices da resposta do `lookup`, **sem truncamento**.
+
+    📊 Medido em 14/09/2026: `infocap_connector.py` devolve `matches` cortado em
+    10 (`policies[:10]`) e `documents_count` cheio. A empresa da pergunta q4 do
+    acervo tem `documents_count` **11** e `matches` **10** — a única VIGENTE
+    podia estar na 11ª posição, e a porta concluiria *"nenhuma vigente"*.
+    Desde o BLOCO B o conector expõe também `policies_all`; esta função prefere
+    a lista inteira e cai em `matches` só quando ela não existe (respostas
+    gravadas antes da emenda, e o `found`, que já vem com uma só).
+    """
+    if not isinstance(bruto, dict):
+        return []
+    inteira = bruto.get(CHAVE_DA_LISTA_INTEIRA)
+    fonte = inteira if isinstance(inteira, list) and inteira else (bruto.get("matches") or [])
+    return [m for m in fonte if isinstance(m, dict)]
+
+
 def lista_de_apolices_do_lookup(
     bruto: Any,
     *,
@@ -790,29 +822,45 @@ def lista_de_apolices_do_lookup(
 ) -> ListaDeApolices:
     """A resposta do `lookup` → `ListaDeApolices` CLASSIFICADA por vigência.
 
-    🔴 **A lista sabe que está truncada, e diz.** 📊 `documents_count` é a
-    contagem cheia da fonte; `matches` vem cortado em 10
-    (`infocap_connector.py:1105`, `:1326`). `historico_oculto` é a diferença —
-    e é o número que impede "a única vigente está na posição 11" de virar "o
-    cliente não tem apólice vigente".
+    🔴 **Lê a lista INTEIRA, e classifica cada apólice pela DATA.** O
+    `policy_status` do fornecedor entra como sinal e nunca como veredito
+    (`classificar_vigencia`).
+
+    🔴 **`historico_oculto` deriva de `documents_count`**, nunca de
+    `len(matches)` — é a única fonte que conhece o tamanho real. E ele conta o
+    que a resposta NÃO mostra: as vencidas/canceladas filtradas **mais** o que
+    a fonte truncou. 📊 Para a empresa de 11 apólices com 1 vigente ele dá
+    **10**, e não 1 (que era a conta do truncamento sozinho).
     """
     if not isinstance(bruto, dict):
         return ListaDeApolices(provider_key=provider_key)
-    brutas = [m for m in (bruto.get("matches") or []) if isinstance(m, dict)]
-    itens = [a for a in (_apolice_na_lista(m, hoje=hoje) for m in brutas) if a is not None]
-    total = int(bruto.get("documents_count") or len(itens))
-    oculto = max(0, total - len(itens))
+    brutas = linhas_cruas_da_listagem(bruto)
+    lidas = [a for a in (_apolice_na_lista(m, hoje=hoje) for m in brutas) if a is not None]
+    total = int(bruto.get("documents_count") or len(lidas))
 
-    if ramo is not None and ramo.abreviatura:
-        alvo = normalizar_rotulo(ramo.abreviatura)
-        itens = [a for a in itens if normalizar_rotulo(a.ramo.abreviatura) == alvo]
-    if not incluir_vencidas:
-        itens = [a for a in itens if a.vigencia.situacao not in ("VENCIDA", "CANCELADA")]
+    # A conta do oculto é feita ANTES do filtro de ramo: apólice de outro ramo
+    # não é "histórico", é outra pergunta. Só vigência e truncamento ocultam.
+    elegiveis = [a for a in lidas if a.vigencia.situacao not in SITUACOES_OCULTAS]
+    oculto = max(0, total - (len(lidas) if incluir_vencidas else len(elegiveis)))
+
+    itens = lidas if incluir_vencidas else elegiveis
+    if ramo is not None:
+        familia = familia_de_ramo(ramo)
+        if familia:
+            itens = [a for a in itens if familia_de_ramo(a.ramo) == familia]
+        else:
+            alvo = normalizar_rotulo(ramo.abreviatura if isinstance(ramo, RamoCanonico) else ramo)
+            itens = [a for a in itens if normalizar_rotulo(a.ramo.abreviatura) == alvo]
 
     sinais: List[Sinal] = []
-    if oculto:
+    truncadas = max(0, total - len(lidas))
+    if truncadas:
         sinais.append(Sinal("lista_truncada_pela_fonte", {
-            "total": total, "devolvidas": len(brutas), "historico_oculto": oculto,
+            "total": total, "devolvidas": len(brutas), "nao_devolvidas": truncadas,
+        }))
+    if oculto:
+        sinais.append(Sinal("historico_oculto", {
+            "total": total, "mostradas": len(itens), "historico_oculto": oculto,
         }))
     return ListaDeApolices(
         itens=tuple(itens),

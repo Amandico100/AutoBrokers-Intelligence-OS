@@ -47,9 +47,19 @@ def _load_file_module(dotted_name, relative_path):
 
 
 def _bootstrap():
-    for name in ("app", "app.core", "app.services", "app.agents"):
+    for name in ("app", "app.core", "app.services", "app.agents", "app.providers"):
         module = sys.modules.setdefault(name, types.ModuleType(name))
         module.__path__ = []
+    # SPEC-EXTRA-001.1 BLOCO B: `app.providers` ganha o `__path__` REAL — o mesmo
+    # conserto de harness que o `test_spec016_e2e_stub` já tinha. Desde que
+    # `_real_vigencia` DELEGA a classificação de vigência para
+    # `policy_data_provider.classificar_vigencia` (uma regra, um lugar), o
+    # compositor precisa conseguir importar a porta. Com `__path__ = []` o import
+    # morre em `ModuleNotFoundError: No module named 'app.providers'` — e um
+    # guarda que não roda não guarda (CLAUDE.md §9.3).
+    providers = sys.modules["app.providers"]
+    providers.__path__ = [str(ROOT / "app" / "providers")]
+    providers.__package__ = "app.providers"
     _load_file_module("app.core.feature_flags", "app/core/feature_flags.py")
     evidence = _load_file_module("app.services.policy_document_evidence_service", "app/services/policy_document_evidence_service.py")
     facts = _load_file_module("app.services.policy_facts", "app/services/policy_facts.py")

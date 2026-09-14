@@ -23,22 +23,82 @@ _CLIENT_FACING_ROLES = ("attendance", "insured_external")
 
 # Intenção de ramo deduzida do pedido do cliente (para escolher a apólice certa
 # sem perguntar: serviço de CARRO nunca é atendido por apólice de celular/vida).
+#
+# 🔴 SPEC-EXTRA-001.1 BLOCO B §6.3: `chaveiro` está nos DOIS regex. 📊 Medido em
+# 14/09/2026, antes desta mudança: `"preciso de um chaveiro, fiquei trancado
+# fora de casa"` devolvia **"auto"** — porque a função testava AUTO primeiro e
+# RETORNAVA na primeira condição que casasse. Chaveiro de casa é residencial;
+# chaveiro de carro é auto; a palavra sozinha **não decide**.
 _AUTO_INTENT_RE = re.compile(
     r"guincho|reboque|bateria|pneu|chaveiro|socorro|pane|\bcarro\b|ve[íi]culo|moto\b|estepe|motor", re.IGNORECASE
 )
 _RESI_INTENT_RE = re.compile(
-    r"resid[êe]nc|\bcasa\b|apartamento|encanador|eletricista|vazamento|telhado|fechadura da porta|eletrodom[ée]stic",
+    r"resid[êe]nc|\bcasa\b|apartamento|encanador|eletricista|vazamento|telhado|fechadura da porta"
+    r"|eletrodom[ée]stic|chaveiro",
     re.IGNORECASE,
 )
+_COND_INTENT_RE = re.compile(r"condom[íi]nio|s[íi]ndico|[áa]rea comum", re.IGNORECASE)
+_VIDA_INTENT_RE = re.compile(r"seguro de vida|ap[óo]lice de vida|vida em grupo|\bvida\b", re.IGNORECASE)
+
+#: A ordem é ESTÁVEL de propósito: duas famílias sinalizadas produzem sempre o
+#: mesmo par, e o desempate é explícito — nunca "a primeira que casou".
+_RAMOS_SINALIZADOS = (
+    ("auto", _AUTO_INTENT_RE),
+    ("resi", _RESI_INTENT_RE),
+    ("cond", _COND_INTENT_RE),
+    ("vida", _VIDA_INTENT_RE),
+)
+
+#: O DESEMPATE por contexto. ⚠️ Estes regex não repetem as palavras de serviço:
+#: eles dizem ONDE o problema está. "chaveiro" + "fora de casa" é residencial;
+#: "chaveiro" + "chave do carro" é auto.
+_CONTEXTO_DE_RAMO = {
+    "auto": re.compile(r"\bcarro\b|ve[íi]culo|autom[óo]vel|\bmoto\b|na estrada|na rodovia|garagem|placa\b", re.IGNORECASE),
+    "resi": re.compile(r"porta de casa|fora de casa|em casa|minha casa|de casa|apartamento|resid[êe]nc", re.IGNORECASE),
+    "cond": re.compile(r"condom[íi]nio|s[íi]ndico|[áa]rea comum", re.IGNORECASE),
+    "vida": re.compile(r"seguro de vida|ap[óo]lice de vida|vida em grupo", re.IGNORECASE),
+}
+
+
+def _ramos_sinalizados(query: Optional[str]) -> tuple:
+    """TODAS as famílias de ramo que o pedido sinaliza — não a primeira.
+
+    🔴 Devolver a primeira é o defeito: acrescentar `chaveiro` ao regex de resi
+    sem mudar isto não mudaria nada, porque AUTO é testado antes (proposta §6.3,
+    a armadilha que o M-B3 existe para pegar).
+    """
+    texto = str(query or "")
+    return tuple(familia for familia, regex in _RAMOS_SINALIZADOS if regex.search(texto))
+
+
+def _desempatar_pelo_contexto(query: Optional[str], familias) -> Optional[str]:
+    """Entre as famílias sinalizadas, a que o CONTEXTO da frase confirma.
+
+    `None` quando nenhuma ou mais de uma se confirma — e `None` aqui significa
+    *"ainda não sei"*, o que manda a decisão para a contagem de vigentes e, se
+    nem ela resolver, para uma pergunta feita UMA vez.
+    """
+    texto = str(query or "")
+    confirmadas = [f for f in familias
+                   if f in _CONTEXTO_DE_RAMO and _CONTEXTO_DE_RAMO[f].search(texto)]
+    return confirmadas[0] if len(confirmadas) == 1 else None
 
 
 def _product_hint_from_query(query: Optional[str]) -> Optional[str]:
-    text = str(query or "")
-    if _AUTO_INTENT_RE.search(text):
-        return "auto"
-    if _RESI_INTENT_RE.search(text):
-        return "resi"
-    return None
+    """A família de ramo do pedido, já DESEMPATADA — ou `None`.
+
+    ⛔ Não retorna mais na primeira condição que casa (proposta §6.3).
+    """
+    familias = _ramos_sinalizados(query)
+    if not familias:
+        return None
+    if len(familias) == 1:
+        return familias[0]
+    return _desempatar_pelo_contexto(query, familias)
+
+
+#: Os status em que a fonte NÃO isolou uma apólice — e em que a porta decide.
+_STATUS_SEM_ESCOLHA = ("ambiguous_policy", "policy_number_ambiguous", "multiple_matches")
 
 
 def _match_product_kind(match: Dict[str, Any]) -> Optional[str]:
@@ -137,6 +197,7 @@ class InfocapPolicyLookupTool(BaseTool):
         document_evidence_requested: Optional[bool] = None,
         user_query: Optional[str] = None,
         force_document_evidence_refresh: bool = False,
+        selected_policy_number: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not document and not name and not policy_number and not policy_ref:
             return {"content": "Informe CPF/CNPJ, nome do cliente, numero da apolice, ou um policy_ref para detalhar a apolice.", "found": False}
@@ -192,40 +253,39 @@ class InfocapPolicyLookupTool(BaseTool):
                 db=db,
                 internal_key=key,
             )
-            # ATENDIMENTO (cliente final): quando o pedido deixa claro o ramo
-            # (guincho => AUTO) e existe exatamente UMA apólice vigente desse
-            # ramo, seleciona SOZINHO — nunca oferecer apólice de celular/vida
-            # para problema de carro (incidente 2026-07-11).
-            if (
-                self._client_facing
-                and str(result.get("status") or "") in ("ambiguous_policy", "policy_number_ambiguous", "multiple_matches")
-            ):
-                hint = _product_hint_from_query(user_query)
-                if hint:
-                    from app.services.policy_answer_composer import _real_vigencia
-
-                    matches = [m for m in (result.get("matches") or []) if isinstance(m, dict)]
-                    cands = [
-                        m for m in matches
-                        if _real_vigencia(m) == "vigente" and _match_product_kind(m) == hint
-                    ]
-                    numbers = {str(m.get("policy_number") or m.get("numapo") or "").strip() for m in cands}
-                    numbers.discard("")
-                    if len(numbers) == 1:
-                        picked = numbers.pop()
-                        logger.info("[InfocapPolicyLookupTool] atendimento: apólice %s auto-selecionada pelo ramo do pedido", picked[:6] + "***")
-                        result = await provider.lookup(
-                            company_id=self.company_id,
-                            document=document or None,
-                            name=name or None,
-                            policy_number=picked,
-                            user_query=user_query,
-                            document_evidence_requested=bool(document_evidence_requested),
-                            force_document_evidence_refresh=bool(force_document_evidence_refresh),
-                            unmasked=self._unmasked,
-                            db=db,
-                            internal_key=key,
-                        )
+            # 🔴 A ESCOLHA acontece na PORTA, e vale para TODOS OS PAPÉIS.
+            # `self._client_facing` saiu daqui de propósito (SPEC-EXTRA-001.1
+            # §6.3, correção 1): o que muda entre o Chat Principal e o
+            # atendimento é a REDAÇÃO da resposta, nunca QUAL apólice é a certa.
+            # 📊 Era por isso que o corretor recebia a lista e o segurado não.
+            if not policy_number and str(result.get("status") or "") in _STATUS_SEM_ESCOLHA:
+                picked, escolha = await self._escolher_pela_porta(
+                    provider, result,
+                    cliente_ref=(document or name or ""),
+                    user_query=user_query,
+                    selected_policy_number=selected_policy_number,
+                    db=db, key=key,
+                )
+                if picked:
+                    result = await provider.lookup(
+                        company_id=self.company_id,
+                        document=document or None,
+                        name=name or None,
+                        policy_number=picked,
+                        user_query=user_query,
+                        document_evidence_requested=bool(document_evidence_requested),
+                        force_document_evidence_refresh=bool(force_document_evidence_refresh),
+                        unmasked=self._unmasked,
+                        db=db,
+                        internal_key=key,
+                    )
+                if escolha is not None:
+                    self._anotar_a_escolha(result, escolha)
+            # ⚠️ `policies_all` e a lista INTEIRA que a DECISAO usou (§6.1). Ela
+            # ja fez o trabalho dela: deixa-la no `data` so engordaria o que
+            # chega ao modelo — com a v2 desligada, `nodes.py` serializa o `data`
+            # inteiro — e duplicaria `matches` linha por linha.
+            result.pop("policies_all", None)
             # FICHA do atendimento: para apólice AUTO, placa/veículo/contato vêm
             # da fonte (o atendente NUNCA pede placa ao cliente). Vale para TODOS
             # os papéis — o Chat Principal (corretor) também precisa desses dados
@@ -250,6 +310,128 @@ class InfocapPolicyLookupTool(BaseTool):
         force_document_evidence_refresh: bool = False,
     ) -> Dict[str, Any]:
         return {"content": "Consulta InfoCap deve ser executada de forma assincrona.", "found": False}
+
+    async def _escolher_pela_porta(
+        self,
+        provider,
+        result: Dict[str, Any],
+        *,
+        cliente_ref: str,
+        user_query: Optional[str],
+        selected_policy_number: Optional[str],
+        db,
+        key: str,
+    ):
+        """A lista INTEIRA pela porta → `escolher_apolice` → (numero, Escolha).
+
+        🔴 A tool **não** classifica vigência e **não** escolhe: ela só chama.
+        A regra é `classificar_vigencia` + `escolher_apolice`, em
+        `app/providers/policy_data_provider.py` (CLAUDE.md §5 — motor paralelo
+        é proibido).
+
+        ⚠️ `resposta_do_lookup=result` evita a SEGUNDA viagem à fonte: o
+        adaptador recebe de volta a resposta que ele mesmo produziu.
+        """
+        from app.providers.policy_data_provider import escolher_apolice, numero_humano_de
+        from app.services.policy_answer_composer import humanize_insurer, humanize_product
+
+        lista = await provider.listar_apolices(
+            company_id=self.company_id,
+            cliente_ref=cliente_ref,
+            incluir_vencidas=True,          # a escolha PRECISA ver as vencidas (§6.2)
+            db=db, internal_key=key,
+            resposta_do_lookup=result,
+        )
+        if not lista.itens and lista.total <= 0:
+            return None, None
+
+        # ② A FICHA do atendimento vence a dedução: se o caso já confirmou uma
+        #    apólice e ela continua na lista, é ela — sem perguntar de novo.
+        da_ficha = str(selected_policy_number or "").strip()
+        if da_ficha:
+            for item in lista.itens:
+                if numero_humano_de(item, ausente="") == da_ficha:
+                    return da_ficha, None
+
+        ramo = self._ramo_do_pedido(user_query, lista)
+        escolha = escolher_apolice(
+            lista, ramo=ramo,
+            humanizar_seguradora=humanize_insurer, humanizar_ramo=humanize_product,
+        )
+        if escolha.status == "found" and escolha.apolice is not None:
+            numero = numero_humano_de(escolha.apolice, ausente="")
+            if numero:
+                logger.info(
+                    "[InfocapPolicyLookupTool] apolice %s auto-selecionada pela porta (papel=%s)",
+                    numero[:6] + "***", self.agent_role,
+                )
+                return numero, escolha
+            # Sem número humano não há como repedir o detalhe: a escolha vira
+            # pergunta em vez de virar chute.
+            return None, escolha
+        return None, escolha
+
+    def _ramo_do_pedido(self, user_query: Optional[str], lista) -> Optional[str]:
+        """A família de ramo do pedido: ① explícito ③ as 3 últimas humanas
+        ④ o serviço — e o desempate pelo número de VIGENTES por ramo.
+
+        📊 `"chaveiro"` sozinho, num cliente com 1 auto e 1 residencial
+        vigentes, não tem como ser resolvido por texto: aí — e só aí — se
+        pergunta, UMA vez (proposta §6.3).
+        """
+        from app.providers.policy_data_provider import familia_de_ramo
+
+        familias = _ramos_sinalizados(user_query)
+        if not familias:
+            return None
+        if len(familias) == 1:
+            return familias[0]
+        pelo_contexto = _desempatar_pelo_contexto(user_query, familias)
+        if pelo_contexto:
+            return pelo_contexto
+        # Desempate final: quantas VIGENTES o cliente tem de cada família?
+        com_vigente = [
+            f for f in familias
+            if any(familia_de_ramo(a.ramo) == f for a in lista.vigentes)
+        ]
+        return com_vigente[0] if len(com_vigente) == 1 else None
+
+    @staticmethod
+    def _anotar_a_escolha(result: Dict[str, Any], escolha) -> None:
+        """O que a porta decidiu entra no `data` — e por isso no briefing.
+
+        🔴 `historico_oculto` é o que torna a ocultação HONESTA: o corretor vê
+        que existe histórico e sabe pedir. Esconder sem dizer é o defeito que a
+        §6.1 fecha.
+        """
+        from app.providers.policy_data_provider import numero_humano_de
+
+        result["historico_oculto"] = int(getattr(escolha, "historico_oculto", 0) or 0)
+        if escolha.status == "found" and escolha.auto_selected_reason:
+            result["auto_selected_reason"] = escolha.auto_selected_reason
+        if escolha.status == "sem_vigente":
+            # ⛔ A resposta NÃO é "não encontrei" (§6.2): o cliente TEM
+            # histórico, e dizer que não há nada faz o corretor refazer a busca.
+            result["status"] = "sem_vigente"
+            result["ok"] = False
+            result["matches"] = []
+            result["frase_sem_vigente"] = escolha.frase_sem_vigente
+            if escolha.ultima_vigente is not None:
+                ultima = escolha.ultima_vigente
+                result["ultima_vigente"] = {
+                    "policy_number": numero_humano_de(ultima, ausente=""),
+                    "insurer_key": ultima.seguradora.nome_listado,
+                    "product": ultima.ramo.abreviatura,
+                    "valid_to": ultima.vigencia.fim.strftime("%d/%m/%Y") if ultima.vigencia.fim else None,
+                }
+        elif escolha.status == "ambiguous_policy":
+            # 🔴 As opções JÁ FILTRADAS: só vigentes, só do ramo quando houver.
+            # Vencida nunca vira opção.
+            refs = {a.apolice_ref for a in escolha.opcoes}
+            crus = [m for m in (result.get("policies_all") or result.get("matches") or [])
+                    if isinstance(m, dict)]
+            filtradas = [m for m in crus if str(m.get("policy_locator_ref") or "") in refs]
+            result["matches"] = filtradas or result.get("matches") or []
 
     async def _enrich_vehicle(self, result: Dict[str, Any], provider, document: Optional[str], db, key: str) -> None:
         """FICHA do atendimento: anexa placa/veículo da apólice AUTO selecionada
@@ -287,6 +469,13 @@ class InfocapPolicyLookupTool(BaseTool):
         do composer vira o rascunho seguro do contrato (fallback do guard).
 
         Retorna (content_para_llm, assistance_policy, rendered_fallback)."""
+        # 🔴 §6.2: sem apólice vigente, a resposta é a frase da porta — nunca
+        # "não encontrei" e nunca uma lista de opções vazia. O compositor não
+        # conhece este estado (ele é novo), então o curto-circuito vem ANTES
+        # dele, e o mesmo texto vira `content` e `rendered`.
+        frase = str((data or {}).get("frase_sem_vigente") or "").strip()
+        if frase:
+            return frase, None, frase
         try:
             from app.core.feature_flags import policy_intelligence_v2_enabled
 
@@ -333,6 +522,18 @@ class InfocapPolicyLookupTool(BaseTool):
             lines.append(
                 f"apolice_selecionada: {number} — {insurer or '-'} {product or ''} — "
                 f"vigencia {selected.get('valid_from') or '-'} a {selected.get('valid_to') or '-'} — situacao: {selected.get('policy_status') or '-'}"
+            )
+        # 🔴 §6.1: a escolha DIZ POR QUÊ. O motivo é texto humano, escrito pela
+        # porta, e ele vai para o modelo junto com a apólice — é o que permite
+        # ao corretor contestar a escolha em vez de descobri-la por acaso.
+        motivo = str(data.get("auto_selected_reason") or "").strip()
+        if motivo:
+            lines.append(f"apolice_escolhida_porque: {motivo}")
+        oculto = int(data.get("historico_oculto") or 0)
+        if oculto:
+            lines.append(
+                f"historico_oculto: {oculto} (apolices antigas do cliente que NAO entraram nesta resposta; "
+                "diga que existem se o corretor perguntar, e nunca as apresente como opcao)"
             )
         # COBERTURAS ITEM A ITEM — o que o corretor pede e o que a fonte entrega
         # em `/itens.garantias`: nome, limite (LMI), franquia e premio de CADA
@@ -523,7 +724,16 @@ class InfocapPolicyLookupTool(BaseTool):
             "provider": "infocap",
             "result_kind": status,
             "coverage_evidence_status": pack.get("coverage_evidence_status") or (data.get("coverage_evidence") or {}).get("coverage_evidence_status"),
-            "policy_options": data.get("matches") or [],
+            # 🔴 SÓ quando a porta devolveu `ambiguous_policy` (2+ VIGENTES do
+            # MESMO ramo). Nos demais casos a lista vem VAZIA, e o guarda de
+            # `nodes.py` não tem o que exigir: ele continua impedindo o modelo de
+            # ESCONDER uma opção legítima, e para de OBRIGAR a listagem quando a
+            # apólice já está escolhida (proposta §7.3).
+            "policy_options": (
+                (data.get("matches") or [])
+                if status in ("ambiguous_policy", "policy_number_ambiguous")
+                else []
+            ),
             "selected_policy": data.get("selected") or data.get("policy") or {},
             "source_limitation": data.get("message") or "; ".join(data.get("blockers") or []),
             "next_allowed_action": (
@@ -579,9 +789,12 @@ class InfocapPolicyLookupTool(BaseTool):
             return "Nao consegui obter os detalhes dessa apolice na InfoCap agora."
         pack = d.get("policy_evidence_pack") or {}
         secs = pack.get("coverage_sections") or []
-        from app.api.infocap_connector import _display_policy_number
+        # 🔴 O número humano vem da PORTA. Até 14/09/2026 esta linha importava
+        # `_display_policy_number` de `app/api/infocap_connector` — um dos 3
+        # imports que quebravam a fronteira (G1a).
+        from app.providers.policy_data_provider import numero_humano_de
 
-        num = _display_policy_number(pack)
+        num = numero_humano_de(pack)
         titular = pack.get("holder_name") or pack.get("holder_name_masked") or "-"
         lines = [
             "Detalhes da apolice (InfoCap):",
@@ -619,9 +832,9 @@ class InfocapPolicyLookupTool(BaseTool):
         if r.get("ok") and status == "found":
             sel = r.get("selected") or {}
             pack = r.get("policy_evidence_pack") or {}
-            from app.api.infocap_connector import _display_policy_number
+            from app.providers.policy_data_provider import numero_humano_de
 
-            num = _display_policy_number(sel)
+            num = numero_humano_de(sel)
             titular = sel.get("holder_name") or sel.get("holder_name_masked") or "-"
             doc = sel.get("document") or r.get("client_document")
             active_now = sel.get("active_now")
@@ -646,10 +859,15 @@ class InfocapPolicyLookupTool(BaseTool):
                     if pack.get("official_document_source_available"):
                         lines.append("- Existe uma fonte documental oficial disponivel; ela ainda nao foi processada nesta consulta.")
             return "\n".join(lines) + cli
+        if status == "sem_vigente":
+            return str(r.get("frase_sem_vigente") or "").strip() or (
+                "Este cliente tem apolices no sistema de gestao, mas nenhuma vigente hoje. "
+                "Quer que eu liste o historico?"
+            )
         if status in ("multiple_matches", "ambiguous_customer", "ambiguous_policy", "policy_number_ambiguous"):
-            from app.api.infocap_connector import _format_policy_options_for_summary
+            from app.providers.policy_data_provider import opcoes_em_texto
 
-            options = _format_policy_options_for_summary(r.get("matches") or [])
+            options = opcoes_em_texto(r.get("matches") or [])
             base = "Encontrei mais de uma apolice/cliente para esse termo. Escolha pelo numero humano da apolice antes de detalhar."
             return (base + ("\n" + options if options else "") + cli).strip()
         if status == "identity_mismatch":

@@ -204,6 +204,9 @@ def _mask_tail(value: Optional[str], keep: int = 2) -> Optional[str]:
     return f"****{d[-keep:]}"
 
 
+#: ⚠️ A lista canônica mora na porta (`NUMEROS_QUE_NAO_SAO_NUMERO`). Este nome
+#: continua aqui porque módulos antigos o importam; ele é a MESMA lista, não uma
+#: segunda (SPEC-EXTRA-001.1 BLOCO B).
 _INVALID_POLICY_NUMBER_VALUES = {"", "0", "00", "000", "0000", "null", "none", "n/a", "na", "-"}
 
 
@@ -212,15 +215,14 @@ def _normalize_policy_identifier(value: Optional[str]) -> str:
 
 
 def _is_valid_policy_number(value: Optional[str]) -> bool:
-    raw = str(value or "").strip()
-    if raw.lower() in _INVALID_POLICY_NUMBER_VALUES:
-        return False
-    normalized = _normalize_policy_identifier(raw)
-    if not normalized:
-        return False
-    if normalized.isdigit() and set(normalized) == {"0"}:
-        return False
-    return True
+    """DELEGA para `policy_data_provider.numero_humano_valido` (BLOCO B).
+
+    A regra é IDÊNTICA à que subiu para a porta; mantê-la duas vezes garantiria
+    que um dia elas divergissem (CLAUDE.md §5).
+    """
+    from app.providers.policy_data_provider import numero_humano_valido
+
+    return numero_humano_valido(value)
 
 
 def _first_valid_policy_number(record: Dict[str, Any], keys: List[str]) -> Optional[str]:
@@ -389,8 +391,17 @@ def _identity_audit_summary(
 
 
 def _display_policy_number(record: Dict[str, Any]) -> str:
-    value = record.get("policy_number") or record.get("numapo") or record.get("masked_policy_number")
-    return str(value).strip() if _is_valid_policy_number(str(value or "")) else "numero nao retornado pela InfoCap"
+    """DELEGA para a porta (SPEC-EXTRA-001.1 BLOCO B).
+
+    🔴 A regra "este número serve para dizer em voz alta?" não é do fornecedor:
+    vale para Agger, Quiver ou qualquer outro. Ela mora em
+    `policy_data_provider.numero_humano_de`, e este wrapper existe só para
+    manter a frase que nomeia a InfoCap e os chamadores antigos. **Uma
+    implementação, dois usuários** — não duas cópias (CLAUDE.md §5).
+    """
+    from app.providers.policy_data_provider import numero_humano_de
+
+    return numero_humano_de(record, ausente="numero nao retornado pela InfoCap")
 
 
 def _mask_name(name: Optional[str]) -> Optional[str]:
@@ -779,23 +790,16 @@ def _connection_block_response(
 
 
 def _format_policy_options_for_summary(matches: List[Dict[str, Any]], *, include_internal_ref: bool = False) -> str:
-    lines = ["Opcoes de apolice encontradas:"]
-    for index, match in enumerate((matches or [])[:10], start=1):
-        ref = match.get("policy_locator_ref") or match.get("policy_ref") or "-"
-        num = _display_policy_number(match)
-        insurer = match.get("insurer_key") or "-"
-        product = match.get("product") or "-"
-        valid_from = match.get("valid_from") or "-"
-        valid_to = match.get("valid_to") or "-"
-        status = match.get("policy_status") or "-"
-        line = (
-            f"{index}. Seguradora: {insurer}; Produto/ramo: {product}; Vigencia: {valid_from} a {valid_to}; "
-            f"Status: {status}; Numero: {num}"
-        )
-        if include_internal_ref:
-            line += f"; policy_ref interno: {ref}"
-        lines.append(line)
-    return "\n".join(lines)
+    """DELEGA para a porta (SPEC-EXTRA-001.1 BLOCO B).
+
+    📊 `infocap_tool.py:650` importava esta função do conector — o terceiro dos
+    3 imports que deixavam o G1a vermelho. A formatação de uma lista de ESCOLHA
+    é a pergunta que o produto faz, não tradução de fornecedor: ela subiu para
+    `policy_data_provider.opcoes_em_texto` e aqui ficou o wrapper.
+    """
+    from app.providers.policy_data_provider import opcoes_em_texto
+
+    return opcoes_em_texto(matches, include_internal_ref=include_internal_ref)
 
 
 def _sanitize_match(record: Dict[str, Any], unmasked: bool = False) -> Dict[str, Any]:
@@ -1103,6 +1107,11 @@ async def infocap_lookup(
                         "documents_count": len(docs),
                         "matched_by": "policy_number",
                         "matches": [p for p in policies[:10]],
+                        # 🔴 SPEC-EXTRA-001.1 §6.1 emenda 1: a lista INTEIRA, sem
+                        # corte, para quem DECIDE. `matches` continua com 10 —
+                        # ele é o texto que vai ao modelo (teto de prompt), e
+                        # quem já o lê não muda de comportamento.
+                        "policies_all": list(policies),
                         "requires_human": True,
                         "blockers": ["multiple_policy_number_matches"],
                         "notes": ["Numero de apolice encontrou mais de um documento; escolha pela seguradora, ramo, vigencia ou numero."],
@@ -1326,6 +1335,14 @@ async def infocap_lookup(
                     "matched_by": matched_by,
                     **client_flags,
                     "matches": [p for p in policies[:10]],
+                    # 🔴 SPEC-EXTRA-001.1 §6.1 emenda 1. 📊 O caso é real: a
+                    # empresa da pergunta q4 do acervo tem `documents_count` 11 e
+                    # `matches` 10 — a única VIGENTE podia estar na 11ª, e a
+                    # porta concluiria "nenhuma vigente" MENTINDO. Duas linhas
+                    # aqui, e a decisão passa a ler a lista inteira; filtrar
+                    # vigência ANTES do corte teria posto a decisão de vigência
+                    # dentro do conector, que é o lugar errado (nota 80 x 20).
+                    "policies_all": list(policies),
                     "requires_human": True,
                     "blockers": ["multiple_policies"],
                     "notes": ["Cliente possui multiplas apolices; e necessario escolher por seguradora, ramo, vigencia, numero ou policy_ref."],

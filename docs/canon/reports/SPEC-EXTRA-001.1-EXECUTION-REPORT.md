@@ -210,7 +210,23 @@ Pendências novas do bloco: **P-E0011-DEFAULT-DDL-2000** (🤖; `schema_completo
 | **Aplicada em produção** | sim · 14/09/2026 · `spec_extra0011_llm_max_tokens` (MCP) · MANIFEST atualizado com o inventário antes/depois |
 | **`companies.llm_max_tokens`** | NÃO tocada (D-E0011-01) — V5 é o controle |
 
-## 4. BLOCOS B, C, D (preenche ao fechar cada bloco)
+## 4. BLOCOS B, C, D
+
+### 4.1 BLOCO B — vigência e ramo na porta (Builder B · Opus 5 · 📊 381k tokens · ≈3 h)
+
+| entrega | o que mudou | prova |
+|---|---|---|
+| B.1 a lista inteira | conector expõe `policies_all` ao lado de `matches[:10]` intacto (D-B-01: (b) 85 × (a) 25); `InfoCapProvider.listar_apolices` lê a lista inteira, classifica por `classificar_vigencia`, `historico_oculto = documents_count − elegíveis`, `capacidades().listar_apolices` PARCIAL → **SUPORTADA**; `resposta_do_lookup` evita a 2ª chamada à fonte (D-B-03: 88 × 35) | `test_vencida_nunca_vira_opcao.py` **40/40**: 📊 0 vencidas nas 3 listagens reais; caso real 11/10 e caso sintético 12 com a vigente na 11ª → encontrada; 4/4 mutações vermelhas (filtro desligado; `[:10]`) |
+| B.2 a escolha na porta | `escolher_apolice(lista, *, ramo, hoje)` → `Escolha` (found / sem_vigente / ambiguous_policy / nenhuma; `auto_selected_reason` humano; `historico_oculto`; `ultima_vigente`; `frase_sem_vigente` da §6.2); famílias de ramo (`familia_de_ramo`); ramo pedido sem vigente NÃO filtra até zero e o motivo diz (D-B-07: 85 × 10); régua `problemas_de_lingua` com a cláusula de "próxima ação" desligada para fragmento, com par (D-B-08) | `test_so_pergunta_com_duas_do_mesmo_ramo.py` **32/32**: 1 auto + 1 resi → não pergunta; 2 auto → pergunta com 2 vigentes; vencida no meio fora; 0 vigentes → `sem_vigente` com data; `found_com_motivo` 25/25; `policy_status` "ativo" não vira vigente; 5/5 mutações vermelhas |
+| B.3 a tool | auto-seleção para TODOS os papéis (`_client_facing` fora da condição); ramo por ① explícito ② ficha (`selected_policy_number` viaja) ③ 3 últimas humanas ④ serviço; `chaveiro` nos dois regex + `_desempatar_pelo_contexto` (📊 "trancado fora de casa" → `resi`; "chave do carro" → `auto`); os 3 imports do conector saíram (número humano e formatação de opções moram na porta; o conector DELEGA); `policy_options` só em ambiguous; briefing com `apolice_escolhida_porque` e `historico_oculto`; `sem_vigente` é status novo que curto-circuita o compositor (D-B-06: 85 × 40 — com `matches` vazio o guarda de :273 devolveria "qual delas?", a mentira da §6.2); o DETALHE continua vindo do `lookup` depreciado com `policy_number` (D-B-02: 90 × `detalhar_apolice` 20 — 📊 compositor e briefing consomem o `policy_evidence_pack` de ~40 chaves que só o conector monta; migra com o briefing, no C/D) | `test_o_ramo_sai_da_conversa_nao_da_ultima_frase.py` **51/51**: 9/9 frases com o ramo certo; 4 papéis com janela de 3; 3 papéis auto-selecionam; 5/5 mutações vermelhas (`_product_hint` na 1ª condição; `_client_facing` de volta; janela só attendance) |
+| B.4 `nodes.py:1004–1020` | a janela das 3 últimas humanas vale para todos os papéis | idem |
+| B.5 compositor | `_real_vigencia` delega a `classificar_vigencia`; `_compose_options` recebe `historico_oculto` (a frase "há N no histórico" volta a ser verdadeira) | `test_a_apolice_responde_item_por_item` 31/31 · spec016 92/51/21 · output_guard 14 · attendance_unleashed 26 · A: 37/34/28 · `mypy` 2 arquivos sem erro |
+
+Fronteira depois do B: `importadores_fora_da_fronteira = 0` (G1a VERDE); restam **6** VERMELHO ESPERADO: G1b `infocap_tool.py:121,:670` (C) · G1c `prompts.py` 7 linhas (C) · G1d 4 `hasattr` (D). Divergências: D-B-a (a chave `pessoa_hdi` do golden veio da consulta por número — 1 match; a composição 6/2 vigentes foi reconstruída em `listagens_extra0011.json`); D-B-b (📊 5 das 7 perguntas fecham pela lista; q6/q7 fecham pelo ramo explícito); D-B-d `_parse_br_date` órfã → **P-E0011-PARSE-BR-DATE-ORFAO**; D-B-g a trava `SEM_REDE` precisa liberar loopback no Windows (`ProactorEventLoop`); D-B-h editar produto durante `--mutar` desfaz a edição (árvore parada). Conferido pelo orquestrador: 40 + 32 + 51 verdes; 14/14 mutações vermelhas; todos os guardas anteriores verdes.
+
+### 4.2 BLOCO C — (preenche ao fechar)
+
+### 4.3 BLOCO D — (preenche ao fechar)
 
 ## 6. Painel: juiz fresco + lente do dado · conserto · suíte
 

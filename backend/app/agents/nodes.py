@@ -1052,20 +1052,32 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         allowed_http_tools = state.get("allowed_http_tools", [])
                         tool_args = {**tool_args, "allowed_tools": allowed_http_tools}
                     elif tool_name == "infocap_policy_lookup":
-                        # ATENDIMENTO: o pedido real ("preciso de guincho") costuma
-                        # vir ANTES do CPF — enviar só a última mensagem escondia a
-                        # intenção e a tool não conseguia escolher a apólice AUTO
-                        # sozinha (incidente 2026-07-12: picker com opções inventadas).
-                        _role = str((agent_data or {}).get("agent_role") or "").lower()
-                        _query_for_tool = current_user_query
-                        if _role in ("attendance", "insured_external"):
-                            _recent_humans = [
-                                extract_text_from_content(getattr(m, "content", ""))
-                                for m in messages
-                                if isinstance(m, HumanMessage) or (hasattr(m, "type") and getattr(m, "type", "") == "human")
-                            ]
-                            _query_for_tool = " | ".join([t for t in _recent_humans[-3:] if t])
-                        tool_args = {**tool_args, "user_query": _query_for_tool}
+                        # O pedido real ("preciso de guincho") costuma vir ANTES do
+                        # CPF — enviar só a última mensagem escondia a intenção e a
+                        # tool não conseguia escolher a apólice AUTO sozinha
+                        # (incidente 2026-07-12: picker com opções inventadas).
+                        #
+                        # 🔴 SPEC-EXTRA-001.1 §6.3: a janela das 3 últimas humanas
+                        # passou a valer para TODOS OS PAPÉIS. 📊 Medido em
+                        # 14/09/2026: a condição era `if _role in ("attendance",
+                        # "insured_external")`, e fora dela `_query_for_tool` era a
+                        # ÚLTIMA humana. Era por isso que, no Chat Principal
+                        # (`core`), "meu carro quebrou" duas mensagens antes do CPF
+                        # não chegava à tool — e a pergunta "só o CPF" ficava sem
+                        # ramo nenhum. O conserto é ESTENDER a condição; a janela
+                        # não é reescrita.
+                        _recent_humans = [
+                            extract_text_from_content(getattr(m, "content", ""))
+                            for m in messages
+                            if isinstance(m, HumanMessage) or (hasattr(m, "type") and getattr(m, "type", "") == "human")
+                        ]
+                        _query_for_tool = " | ".join([t for t in _recent_humans[-3:] if t]) or current_user_query
+                        # ② A FICHA do atendimento: a apólice já confirmada no caso
+                        #    vence a dedução por texto — e impede a segunda pergunta.
+                        _ficha = state.get("infocap_policy_context")
+                        _ja_escolhida = str((_ficha or {}).get("selected_policy_number") or "").strip()
+                        tool_args = {**tool_args, "user_query": _query_for_tool,
+                                     "selected_policy_number": _ja_escolhida or None}
                     elif tool_name == "insurer_dispatch":
                         # SPEC-017 live-path: telefone do cliente vem da sessão
                         # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
