@@ -5,12 +5,12 @@
 ```
 OUTCOME ..............  rajada de 5 mensagens + foto → UMA resposta (no máximo duas, e a segunda é continuação), sem
                         pergunta repetida, sem cumprimento no meio, com a identidade certa e o nome que a corretora escolheu
-RISCO ................  8 = ALCANCE 3 (o SEGURADO) + REVERSIBILIDADE 3 (a mensagem SAI DO PRÉDIO; migration que altera ESTRUTURA
-                        e TRAVA) + FREQUÊNCIA 2 (todo atendimento) — recontado: fica 8
+RISCO ................  8 = ALCANCE 3 (o SEGURADO) + REVERSIBILIDADE 3 (a mensagem SAI DO PRÉDIO; migration de ESTRUTURA e TRAVA)
+                        + FREQUÊNCIA 2 (todo atendimento) — recontado: 8
 SUPERFÍCIE ...........  3 — 📊 os 3 desvios de mídia confirmados (webhook.py:1452, :1637, :2228) + o provider da presença é OUTRO
                         arquivo do que a proposta previa (Evolution GO, não o Node) — "não consigo apontar todos" continua 3
-PISO APLICADO ........  §3.2 três vezes: envia mensagem (e presença), migration que altera estrutura e trava, company_id na chave de
-                        trava nova → CRÍTICO independente da conta
+PISO APLICADO ........  §3.2 três vezes: envia mensagem (e presença), migration de estrutura e trava, company_id na chave nova
+                        → CRÍTICO independente da conta
 NÍVEL ................  CRÍTICO · laço curto (D-PILOTO-20; dossiê §7 "análise de qualidade AAA × laço curto"): builders Opus ·
                         juiz fresco Opus + 3 perguntas adversariais · lente do DADO. Sem aquecimento, sem 3 lentes, sem red team
 UNIDADES .............  B0 medir · E migrations M1/M2 + uma conversa por contraparte + dedupe do pipeline + ordem do silêncio + feed ·
@@ -20,14 +20,13 @@ COESÃO ...............  A e B são UMA unidade (message_buffer_service + buffer
                         o_fim_do_atendimento.py). Hubs com dono único: webhook.py · graph.py · o_fim_do_atendimento.py · buffer_processor.py
 PARALELISMO REAL .....  onda 1: E ∥ C (arquivos disjuntos) · onda 2: AB · onda 3: DF. ≤ 2 builders ao mesmo tempo
 TIME .................  orquestrador Fable · builders Opus 5 (E, C, AB, DF) · juiz fresco Opus 5 · lente do dado Opus 5 · conserto único
-REFERÊNCIA ...........  interna: test_midia_e_concorrencia_do_webhook.py (linha de CONTROLE da trava) · test_a_ultima_palavra_humana_manda.py
-                        (reencontro) · test_a_maquina_de_lavar_vai_ate_o_fim.py. externa: as 7 de §20 (Redis SET/locks · Meta typing ·
-                        Evolution presence · Meta/Evolution webhooks · Stripe · "janela adaptativa não tem fonte")
+REFERÊNCIA ...........  interna: test_midia_e_concorrencia_do_webhook.py (CONTROLE da trava) · test_a_ultima_palavra_humana_manda.py ·
+                        test_a_maquina_de_lavar_vai_ate_o_fim.py. externa: as 7 de §20 (Redis locks · Meta typing · Evolution presence ·
+                        webhooks · Stripe · "janela adaptativa não tem fonte")
 GATES ................  G0 (G1c · G6 · G7 vermelhos hoje) + G1–G12 com mutação vermelha + M1/M2 VERIFY + canário + suíte + push
-O ELO ................  "a resposta fragmenta PORQUE o debounce é por ociosidade": A medido (4 de 4 rajadas do piloto fragmentaram; 📊
-                        no acervo 6.213 rajadas ≥3 respondidas: 83% com 2+ mensagens de resposta) · B medido (message_buffer_service.py:158
-                        `max(…, 8)`; mídia desvia em 3 pontos) · B CHEGA em A ✅ (buffer_processor._uma faz get_and_clear e a varredura
-                        de 1 s abre o 2º turno na chave nova)
+O ELO ................  "a resposta fragmenta PORQUE o debounce é por ociosidade": A medido (4/4 rajadas do piloto; 📊 acervo: 83%
+                        das 6.213 rajadas ≥3 com 2+ respostas) · B medido (`max(…, 8)` em message_buffer_service.py:158; mídia desvia
+                        em 3 pontos) · B CHEGA em A ✅ (_uma faz get_and_clear; a varredura de 1 s abre o 2º turno na chave nova)
 FAIXA DE RELÓGIO .....  💭 6–9 h · real: ≈ 8 h numa janela (14/09 18:40 → 15/09 ≈ 02:40 UTC), sem queda
 ORÇAMENTO ............  💭 ≤ 1 M de subagentes (laço curto) · 📊 gasto: ≈ 1,45 M (E 394k · C 253k · AB 294k · DF 289k · juiz 199k · lente 146k · conserto 317k) — acima do teto: 7 subagentes em vez de 5
 BLOCKER (o que é) ....  muda um byte do que o SEGURADO recebe, a atendente lê ou o banco guarda (protocolo §2)
