@@ -90,7 +90,14 @@ export function AgentConfigClient({ agentKey }: { agentKey: 'autobrokers' | 'eve
       body: JSON.stringify({ variables: vars, overrides: overridesPayload }),
     });
     const j = await r.json().catch(() => ({}));
-    if (j?.ok) { setNotice('Alterações salvas.'); await load(); }
+    if (j?.ok) {
+      // 🔴 SPEC-EXTRA-001.2 §10.5 — o legado colidente AVISA e deixa salvar.
+      setNotice(j.aviso_nome ? `Salvo. ⚠️ ${j.aviso_nome}` : 'Alterações salvas.');
+      await load();
+    }
+    // 🔴 §10.5 — a recusa vem do SERVIDOR, e a tela mostra a FRASE dele, não um
+    // código de erro. Quem lê precisa saber POR QUE o nome não serve.
+    else if (j?.error === 'nome_colide_com_a_equipe') setNotice(j.message || 'Esse nome já é de alguém da sua equipe.');
     else { setNotice('Não foi possível salvar.'); if (Array.isArray(j?.errors)) setErrors(j.errors); else setNotice(`Falha: ${j?.error || r.status}`); }
     setBusy(false);
   };

@@ -165,14 +165,13 @@ Depois do acionamento você pergunta se chegou ("Sr. João, o guincho já foi? D
 - Ofereça benefícios que a apólice/seguradora der (ex.: Porto oferece táxi após o guincho) — cuidar é FAZER, não falar.
 - SINISTRO (colisão/roubo/incêndio): você faz o INÍCIO com calma e empatia — o que houve, quando, onde, se há vítimas (vítimas = orientar emergência primeiro), se envolveu terceiros, e peça fotos se possível. Depois passe para a equipe de sinistros (bloco abaixo) e, ao acionar o humano, entregue o dossiê completo.
 
-### 🙋 PASSAR PARA A EQUIPE (cinco formas — varie, nunca repita a mesma)
+### 🙋 PASSAR PARA A EQUIPE (quatro formas — varie, nunca repita a mesma)
 Toda vez que o caso sai da sua mão, a mensagem diz DUAS coisas: **(a)** quem vai atender já recebeu tudo, e **(b)** o cliente NÃO vai precisar repetir nada. Escolha UMA destas formas e alterne entre elas:
-1. "Vou pedir para a Ana seguir daqui e te retornar — ela já vai com tudo o que você me contou, não precisa repetir nada."
+1. "Vou pedir para a nossa equipe seguir daqui e te retornar — ela já vai com tudo o que você me contou, não precisa repetir nada."
 2. "Essa parte é com a nossa equipe de sinistro. Já mandei o seu caso completo pra eles; você não vai ter que contar de novo."
-3. "Vou te passar o contato da Ana, essa parte é com ela. Ela já está com o histórico daqui inteiro, não vai te perguntar nada duas vezes."
-4. "Já encaminhei ao analista com tudo o que a gente levantou. Assim que ele me der um retorno eu te aviso aqui mesmo — sem recomeçar do zero."
-5. "Quem cuida disso é o Marcos, e ele já recebeu a nossa conversa. Ele te chama por aqui; nada do que você falou se perdeu."
-- Diga o NOME de quem vai atender sempre que souber. Não sabe? "nossa equipe de sinistro/assistência" — nunca "o setor".
+3. "Já encaminhei o caso com tudo o que a gente levantou. Assim que tiver retorno eu te aviso aqui mesmo — sem recomeçar do zero."
+4. "Quem cuida disso é a nossa equipe, e ela já recebeu a nossa conversa. Te chamam por aqui; nada do que você falou se perdeu."
+- 🔴 O NOME de quem vai atender é dito a você, a cada turno, na linha QUEM VAI ATENDER. ⛔ **NUNCA invente um nome** e ⛔ **NUNCA use o SEU nome** — você não passa o caso para você mesmo. Sem nome na linha: "nossa equipe de sinistro/assistência" — nunca "o setor".
 - **PROIBIDO o vocabulário de URA:** "vou te transferir", "encaminhando para o setor responsável", "você será atendido em breve", "aguarde na linha", "sua solicitação foi encaminhada", "protocolo de atendimento gerado com sucesso". Isso é máquina falando.
 
 ### 👁️ IMAGENS E DOCUMENTOS (você VÊ e LÊ)
@@ -350,16 +349,33 @@ def build_composite_prompt(
     role_norm = (agent_role or "").strip().lower()
     display_name = (agent_display_name or "").strip()
     company_name = (company_display_name or "").strip()
-    if role_norm in ("attendance", "insured_external") and display_name:
+    # 🔴 SPEC-EXTRA-001.2 §8.1/§10.2 — O `SEMPRE` SAIU DAQUI.
+    #
+    # 📊 Este bloco é ESTÁTICO e CACHEADO, e vem PRIMEIRO no prompt. Ele dizia
+    # "sempre-se-apresente … na primeira mensagem", enquanto o bloco DINÂMICO
+    # do reencontro dizia `continue de onde parou, sem se reapresentar`. O
+    # modelo leu "primeira mensagem" como "a primeira MINHA" e cumprimentou na
+    # 30ª mensagem de um sinistro com vítima (10/09/2026).
+    #
+    # ⚠️ **Quem decide se há apresentação agora é `deve_se_apresentar`**
+    # (`o_fim_do_atendimento`, puro) e a linha entra no bloco DINÂMICO. Aqui
+    # fica só quem você é — um fato, não um gatilho.
+    #
+    # ⚠️ E o bloco NÃO SOME MAIS quando o nome está vazio (§10.2): sem nome o
+    # agente ficava sem identidade nenhuma. Sem nome ele é "a assistente
+    # virtual da {corretora}" — ⛔ nunca "da sua corretora".
+    if role_norm in ("attendance", "insured_external"):
         _empresa = f" da **{company_name}**" if company_name else " da corretora"
-        _exemplo = f"\"Boa tarde! Sou a {display_name}, da {company_name or 'corretora'}. Em que posso te ajudar?\""
+        _quem = (f"Você é **{display_name}**, atendente{_empresa}."
+                 if display_name
+                 else f"Você é a assistente virtual{_empresa}.")
         base_prompt = base_prompt.strip() + f"""
 
-### 🪪 SUA IDENTIDADE (padrão de apresentação)
-- Você é **{display_name}**, atendente{_empresa}.
-- SEMPRE se apresente com nome E corretora na primeira mensagem: {_exemplo}
+### 🪪 SUA IDENTIDADE
+- {_quem}
 - NUNCA diga "da sua corretora" — diga o NOME da corretora.
-- NUNCA cite nomes internos da plataforma, de blueprints ou de sistemas ao cliente."""
+- NUNCA cite nomes internos da plataforma, de blueprints ou de sistemas ao cliente.
+- Quando (e se) você deve se apresentar é dito a cada turno na linha APRESENTAÇÃO. Fora dela, não se apresente e não cumprimente."""
 
     # SPEC-098 R5 — A CORRETORA, para TODOS os papéis, logo depois da identidade.
     # O Core precisa dela tanto quanto o atendimento: um copiloto que não sabe

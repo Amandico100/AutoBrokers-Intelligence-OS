@@ -10,11 +10,58 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   getBlueprintByRole, computeAgentConfigUpdate, resetAgentConfigUpdate, sanitizeAgentConfigForDashboard,
-  validateTenantAgentInput,
+  validateTenantAgentInput, TENANT_AGENT_CONFIG_NS,
   type AgentRole, type TenantAgentConfigInput,
 } from '@/lib/admin/agent-blueprints-canonical';
+import { getTeam } from '@/lib/admin/tenant-overview-store';
 import { problemasDoUpdate, conferirPromptGravado } from '@/lib/admin/provision-tenant';
 import { decidirTransicaoDoToggle } from '@/lib/admin/toggle-transicao';
+
+// 🔴 SPEC-EXTRA-001.2 §10.5 — O NOME DA ASSISTENTE NÃO PODE SER O DE ALGUÉM DA
+// EQUIPE, e quem recusa é o SERVIDOR.
+//
+// ⛔ Validação só no cliente não é validação: a rota é chamada por PATCH e um
+// `curl` passaria por cima da tela. A comparação é NORMALIZADA (sem acento,
+// sem caixa, sem espaço duplo), pelo nome completo E pelo primeiro nome —
+// "Amanda" bate com "Amanda Silva", e no grupo e no dossiê ninguém saberia
+// quem falou.
+//
+// 🔴 §7: a lista de membros vem SEMPRE da mesma corretora (`getTeam` filtra por
+// `company_id`). Um membro da corretora B jamais bloqueia o nome da A.
+//
+// 📊 14/09/2026: **0** colisões hoje (10 membros ativos em 3 corretoras) — a
+// trava nasce guardando o futuro. ⚠️ E legado colidente só AVISA: quebrar o
+// save de quem já está em produção não é conserto.
+/** Os diacríticos que o `NFKD` separa da letra. Escrito por CÓDIGO, nunca com
+ *  o caractere combinante solto no fonte — ele é invisível num diff. */
+const DIACRITICOS = new RegExp('[\\u0300-\\u036f]', 'g');
+
+export function nomeNormalizado(nome: string | null | undefined): string {
+  return String(nome ?? '')
+    .normalize('NFKD').replace(DIACRITICOS, '')
+    .toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+export function colisaoComAEquipe(
+  nomeDoAgente: string | null | undefined,
+  membros: Array<{ name?: string | null }>,
+): string | null {
+  const alvo = nomeNormalizado(nomeDoAgente);
+  if (!alvo) return null;
+  const primeiroAlvo = alvo.split(' ')[0];
+  for (const m of membros ?? []) {
+    const norm = nomeNormalizado(m?.name);
+    if (!norm) continue;
+    if (norm === alvo || norm.split(' ')[0] === primeiroAlvo) return String(m.name);
+  }
+  return null;
+}
+
+/** 💭 A frase que a tela mostra. Ela diz o CUSTO, não só a regra. */
+export function fraseDeNomeColidente(membro: string): string {
+  return `Esse nome já é de alguém da sua equipe (${membro}). Escolha outro para a `
+    + 'assistente — senão, no grupo e nos dossiês, ninguém vai saber quem falou.';
+}
 
 export type AgentKey = 'autobrokers' | 'even';
 export function roleForKey(key: string): AgentRole | null {
@@ -56,6 +103,29 @@ export async function patchTenantAgentConfig(supabase: SupabaseClient, companyId
   const v = validateTenantAgentInput(bp, input);
   if (!v.ok) return { ok: false as const, error: 'validation_failed', errors: v.errors };
 
+  // 🔴 §10.5 — A RECUSA DO NOME COLIDENTE, NO SERVIDOR, ANTES DA ESCRITA.
+  //
+  // ⚠️ Só quando o nome MUDA: o legado colidente (se existir) avisa e deixa a
+  // corretora salvar as outras coisas.
+  const nomePedido = String((v.clean.variables ?? {}).attendant_name ?? '').trim();
+  const nomeAtual = String(
+    ((agent.context_package as any)?.[TENANT_AGENT_CONFIG_NS]?.variables ?? {}).attendant_name ?? '',
+  ).trim();
+  let avisoDeNome: string | null = null;
+  if (nomePedido) {
+    const { members } = await getTeam(supabase, companyId);
+    const colide = colisaoComAEquipe(nomePedido, members ?? []);
+    if (colide) {
+      if (nomeNormalizado(nomePedido) !== nomeNormalizado(nomeAtual)) {
+        return {
+          ok: false as const, error: 'nome_colide_com_a_equipe',
+          membro: colide, message: fraseDeNomeColidente(colide),
+        };
+      }
+      avisoDeNome = fraseDeNomeColidente(colide);   // legado: avisa, não bloqueia
+    }
+  }
+
   const upd = computeAgentConfigUpdate(bp, name, agent.context_package, v.clean);
 
   // O PORTÃO, antes da escrita. Uma personalização que se resolve para nada
@@ -73,7 +143,11 @@ export async function patchTenantAgentConfig(supabase: SupabaseClient, companyId
   const conferido = await conferirPromptGravado(supabase, companyId, agent.id, 'patch_tenant_agent_config');
   if (!conferido.ok) return { ok: false as const, error: conferido.reason ?? 'prompt_vazio_apos_escrita' };
 
-  return { ok: true as const, rejected: upd.rejected, config: sanitizeAgentConfigForDashboard(bp, name, upd.context_package) };
+  return {
+    ok: true as const, rejected: upd.rejected,
+    aviso_nome: avisoDeNome,
+    config: sanitizeAgentConfigForDashboard(bp, name, upd.context_package),
+  };
 }
 
 /**

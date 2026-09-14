@@ -620,6 +620,73 @@ async def _resposta_sem_pergunta_repetida(texto: str, state: dict, *, regenerar)
     return final, ainda
 
 
+async def _resposta_no_tamanho_da_classe(texto: str, state: dict, *, regenerar):
+    """O fiscal do TAMANHO. UMA regeneração — e depois ENVIA.
+
+    SPEC-EXTRA-001.2 §8.2. Quarta instância do mesmo padrão dos fiscais acima
+    (InfoCap, transferência, pergunta repetida): determinístico, DEPOIS do
+    modelo, e só reescreve quando a resposta sai da classe que o caso autoriza.
+    ⛔ Nenhum motor novo: a régua é `classe_do_tamanho`, pura, em
+    `o_fim_do_atendimento`.
+
+    📊 As regras JÁ estavam escritas em `prompts.py` ("1 a 3 frases", "máximo 4
+    itens", a exceção documental) — e o piloto de 10/09 mediu **760
+    caracteres** numa conversa comum. Prosa no prompt não conserta prosa do
+    modelo.
+
+    ⚠️ **`lista_documental` nunca estoura** (teto 0): meia lista de documentos
+    é pior que lista nenhuma. ⛔ E balão não é a régua — `balloons.py` fatia
+    para humanizar; o que se mede aqui é UM TURNO.
+
+    🔴 **Nunca trava a resposta.** Persistiu, a mensagem SAI assim mesmo e o
+    defeito vira linha no feed (CLAUDE.md §9.5).
+
+    Devolve `(texto_final, classe_que_persistiu_ou_vazio)`.
+    """
+    from app.services.o_fim_do_atendimento import fora_da_classe, regua_do_tamanho
+
+    papel = str((state.get("agent_data") or {}).get("agent_role") or "").lower()
+    if papel and papel not in _PAPEIS_DE_ATENDIMENTO:
+        return texto, ""
+
+    estourou, classe, unidades, teto = fora_da_classe(texto or "")
+    if not estourou:
+        return texto, ""
+
+    logger.warning("[TAMANHO] resposta fora da classe %s (%d unidades, teto %d; "
+                   "%d chars) — regenerando UMA vez", classe, unidades, teto,
+                   len((texto or "").strip()))
+    novo = ""
+    try:
+        novo = await regenerar(regua_do_tamanho(classe))
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[TAMANHO] regeneração falhou (%s) — segue a resposta "
+                     "original", type(exc).__name__)
+
+    if novo:
+        ainda, classe2, unidades2, teto2 = fora_da_classe(novo)
+    else:
+        ainda, classe2, unidades2, teto2 = True, classe, unidades, teto
+    final = novo or texto
+    if not ainda:
+        return final, ""
+
+    try:
+        from app.services.activity_log import log_activity
+
+        company_id = str(state.get("company_id") or "")
+        if company_id:
+            await log_activity(
+                company_id, "qualidade",
+                "Resposta longa demais na conversa (tamanho_fora_da_classe)",
+                "A resposta ficou fora da classe `%s` (%d de no máximo %d) "
+                "mesmo depois de uma reescrita. A mensagem foi enviada assim "
+                "mesmo." % (classe2, unidades2, teto2))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[TAMANHO] feed indisponível: %s", type(exc).__name__)
+    return final, classe2
+
+
 async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
                      llm_base=None, tools_base=None, cutover_ctx=None) -> dict:
     """
@@ -919,6 +986,34 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         if _persistiu:
             logger.error("[Agent Node] 🛡️ resposta ainda repergunta %s — enviada "
                          "assim mesmo e registrada no feed", _persistiu)
+
+    # 🔴 O FISCAL DO TAMANHO — SPEC-EXTRA-001.2 §8.2.
+    #
+    # ⚠️ Ele roda POR ÚLTIMO, e é de propósito: a regeneração do fiscal da
+    # pergunta repetida produz um texto NOVO, e é esse texto que vai ao
+    # segurado. Medir o tamanho antes dela mediria uma resposta que não sai.
+    if not has_tool_calls:
+        _texto_atual = extract_text_from_content(getattr(response, "content", "") or "")
+
+        async def _encurtar(_regua):
+            _aviso = SystemMessage(content=(
+                "⛔ A resposta que você acabou de escrever está FORA do tamanho "
+                "que este momento do atendimento permite.\n" + _regua +
+                "\n\nReescreva a MESMA resposta dentro dessa régua, sem perder "
+                "nenhuma informação que o cliente precisa para agir. Corte "
+                "explicação, não conteúdo."))
+            _resp = await llm_with_tools.ainvoke(llm_messages + [_aviso], config=config)
+            return extract_text_from_content(getattr(_resp, "content", "") or "")
+
+        _curto, _classe_fora = await _resposta_no_tamanho_da_classe(
+            _texto_atual, state, regenerar=_encurtar)
+        if _curto and _curto.strip() != (_texto_atual or "").strip():
+            response = AIMessage(content=_curto)
+            if guarded_final:
+                guarded_final = _curto
+        if _classe_fora:
+            logger.error("[Agent Node] 🛡️ resposta ainda fora da classe %s — "
+                         "enviada assim mesmo e registrada no feed", _classe_fora)
 
     result_update = {
         "messages": [response],

@@ -204,6 +204,53 @@ def _tem_valor(v: Any) -> bool:
     return bool(s) and s.lower() not in _VAZIOS
 
 
+# ---- a identidade da THREAD (SPEC-EXTRA-001.2 §8.3) ----------------------- #
+#
+# 🔴 **O defeito, medido:** em 10/09/2026 o agente abriu um caso chamando o
+# cliente pelo nome de OUTRA pessoa, de 22 dias atrás. A thread do WhatsApp é
+# por TELEFONE e nunca reinicia — a ficha é aditiva de propósito (é o conserto
+# da pergunta repetida), e a ficha aditiva carrega o nome para sempre.
+#
+# ⛔ **Sem coluna nova e sem tabela nova** (CLAUDE.md §5): a identidade mora
+# dentro da ficha, que já é uma coluna JSON.
+#
+#   {"assunto_id": …, "titular_nome": …, "apresentado_em": …,
+#    "nome_da_apresentacao": …}
+#
+# 🔴 E o nome do segurado entra no prompt **só** daqui. É o que impede o nome
+# de 22 dias atrás de reaparecer.
+
+#: Os slots que PERTENCEM ao assunto, não ao telefone. ⚠️ O nome do titular é o
+#: único hoje: placa, CPF e apólice são do contrato, e o contrato não muda
+#: porque um caso fechou. 📊 Um `titular_nome` de 22 dias atrás num sinistro
+#: novo é a diferença entre "sr. Fulano" e o nome de quem realmente escreveu.
+SLOTS_DA_IDENTIDADE = frozenset({"titular_nome"})
+
+
+def identidade_vazia() -> Dict[str, Any]:
+    return {"assunto_id": "", "titular_nome": "", "apresentado_em": "",
+            "nome_da_apresentacao": ""}
+
+
+def identidade_de(ficha: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """A identidade desta thread, sempre completa. **PURA.**"""
+    base = identidade_vazia()
+    bruta = (ficha or {}).get("identidade")
+    if isinstance(bruta, dict):
+        for chave in base:
+            if bruta.get(chave):
+                base[chave] = str(bruta[chave])
+    return base
+
+
+def titular_do_prompt(ficha: Optional[Dict[str, Any]] = None) -> str:
+    """O nome com que o agente trata o segurado NESTE assunto — ou `""`.
+
+    ⛔ Nunca de memória, nunca de RAG, nunca do histórico (§8.3).
+    """
+    return identidade_de(ficha).get("titular_nome") or ""
+
+
 def ficha_vazia() -> Dict[str, Any]:
     return {
         "fase": FASE_INTAKE,
@@ -213,6 +260,7 @@ def ficha_vazia() -> Dict[str, Any]:
         "acionamento": {},
         "atualizada_em": None,
         "historico": [],
+        "identidade": identidade_vazia(),
     }
 
 
@@ -263,6 +311,30 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
     nova.setdefault("historico", [])
     fase_antes = nova.get("fase")
 
+    # 🔴 A ÚNICA EXCEÇÃO À ADITIVIDADE — e ela existe por um defeito medido.
+    #
+    # 📊 10/09/2026: o agente chamou o cliente pelo nome de outra pessoa, de 22
+    # dias atrás. A ficha aditiva é o conserto da pergunta repetida; ela é
+    # TAMBÉM o que carrega o nome errado para sempre. ⚠️ Quando o ASSUNTO muda
+    # (o motor do reencontro é quem sabe: `o_fim_do_atendimento._ASSUNTO_NOVO`),
+    # a identidade é **REESCRITA, nunca herdada** — e os slots que pertencem ao
+    # assunto (não ao telefone) saem junto. ⛔ Sem a segunda metade, o nome
+    # antigo voltaria por `confirmados` e o conserto seria de fachada.
+    nova_ident = novidades.get("identidade")
+    if isinstance(nova_ident, dict) and nova_ident:
+        antes = identidade_de(nova)
+        depois = {**identidade_vazia(), **{k: str(v or "")
+                                           for k, v in nova_ident.items()
+                                           if k in identidade_vazia()}}
+        if depois.get("assunto_id") and depois["assunto_id"] != antes.get("assunto_id"):
+            nova["identidade"] = depois
+            nova["confirmados"] = {k: v for k, v in (nova["confirmados"] or {}).items()
+                                   if k not in SLOTS_DA_IDENTIDADE}
+        else:
+            # Mesmo assunto: a identidade se completa (o nome que o cliente
+            # acabou de dizer, a hora em que a apresentação aconteceu).
+            nova["identidade"] = {**antes, **{k: v for k, v in depois.items() if v}}
+
     for campo in ("ramo", "servico", "seguradora"):
         if _tem_valor(novidades.get(campo)):
             nova[campo] = str(novidades[campo]).strip().lower()
@@ -270,6 +342,15 @@ def fundir(ficha: Dict[str, Any], novidades: Dict[str, Any],
     for chave, valor in (novidades.get("confirmados") or {}).items():
         if _tem_valor(valor):
             nova["confirmados"][chave] = valor
+
+    # O nome que o segurado disse NESTE assunto é a identidade dele aqui. ⚠️ O
+    # espelho é de mão única: `confirmados` alimenta a identidade, nunca o
+    # contrário — senão o nome apagado no assunto novo voltaria pela porta dos
+    # fundos.
+    _titular = valor_de((nova.get("confirmados") or {}).get("titular_nome"))
+    if _tem_valor(_titular):
+        nova["identidade"] = {**identidade_de(nova),
+                              "titular_nome": str(_titular).strip()}
 
     if novidades.get("apolice_confirmada") is True:
         nova["apolice_confirmada"] = True          # confirmação não se desfaz sozinha

@@ -596,8 +596,16 @@ def _hora_de_brasilia(bruto: Any) -> str:
         return texto[11:16] if len(texto) >= 16 else "--:--"
 
 
-def _linha_da_conversa(m: Dict[str, Any]) -> str:
+def _linha_da_conversa(m: Dict[str, Any], agent_name: str = "") -> str:
     """Uma linha da conversa, com hora e AUTOR DE VERDADE.
+
+    🔴 SPEC-EXTRA-001.2 §10.6 — **O AGENTE ASSINA `🤖 {nome}`; A PESSOA ASSINA
+    PELO NOME, SEM EMOJI.** ⛔ Nunca o contrário.
+
+    ⚠️ O dossiê dizia `🤖 IA` e `👤 {nome}`. Os dois emojis juntos apagavam
+    exatamente a distinção que o dossiê existe para mostrar: quem lê no grupo
+    vê dois ícones e precisa decorar qual é qual. O robô é o que tem ícone; a
+    pessoa é a que tem nome.
 
     🔴 O dossiê antigo chamava todo `role='assistant'` de "*Agente*" — mas a
     rota do dashboard grava a resposta HUMANA com o mesmo `role`, marcada só
@@ -621,14 +629,40 @@ def _linha_da_conversa(m: Dict[str, Any]) -> str:
     if str(m.get("role")) == "user":
         autor = "Cliente"
     elif origem == "dashboard":
-        autor = f"👤 {str(payload.get('autor') or 'atendente')}"
+        autor = str(payload.get("autor") or "atendente")
     elif origem == "espelho":
-        autor = "👤 celular"
+        autor = "celular da corretora"
     else:
-        autor = "🤖 IA"
+        autor = "🤖 %s" % (str(agent_name or "").strip() or "assistente virtual")
 
     texto = str(m.get("content") or "").strip().replace("\n", " ")
     return f"{hora} {autor}  {texto[:160]}"
+
+
+def _nome_do_agente(supabase_client, company_id: str) -> str:
+    """O nome que a corretora escolheu para a assistente. `""` no escuro.
+
+    🔴 §7: filtrado por `company_id`. ⚠️ Best-effort — um dossiê que chega sem
+    o nome continua melhor que um dossiê que não chega.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa or supabase_client is None:
+        return ""
+    try:
+        res = (supabase_client.table("agents")
+               .select("name, agent_role, is_active")
+               .eq("company_id", empresa).eq("is_active", True)
+               .limit(10).execute())
+        linhas = list(res.data or [])
+        for papel in ("attendance", "insured_external"):
+            for linha in linhas:
+                if str(linha.get("agent_role") or "").lower() == papel:
+                    return str(linha.get("name") or "").strip()
+        return str((linhas[0] if linhas else {}).get("name") or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HumanHandoff] nome do agente indisponível (%s)",
+                       type(exc).__name__)
+        return ""
 
 
 def _link_da_conversa(conversa: Dict[str, Any]) -> str:
@@ -789,9 +823,11 @@ class HumanHandoffTool(BaseTool):
                     .order("created_at", desc=True)
                     .limit(_MSGS_NO_DOSSIE).execute().data or [])
             if msgs:
+                _nome_ia = _nome_do_agente(self.supabase_client,
+                                           str(conversa.get("company_id") or ""))
                 linhas.append(f"*CONVERSA* _(últimas {len(msgs)})_")
                 for m in reversed(msgs):
-                    linhas.append(_linha_da_conversa(m))
+                    linhas.append(_linha_da_conversa(m, _nome_ia))
         except Exception as exc:  # noqa: BLE001
             # Dossiê sem histórico continua melhor que silêncio — mas quem lê
             # precisa saber que está entrando às cegas.
@@ -903,9 +939,11 @@ class HumanHandoffTool(BaseTool):
                     .order("created_at", desc=True)
                     .limit(_MSGS_NO_DOSSIE).execute().data or [])
             if msgs:
+                _nome_ia = _nome_do_agente(self.supabase_client,
+                                           str(conversa.get("company_id") or ""))
                 linhas.append(f"*CONVERSA* _(últimas {len(msgs)})_")
                 for m in reversed(msgs):
-                    linhas.append(_linha_da_conversa(m))
+                    linhas.append(_linha_da_conversa(m, _nome_ia))
         except Exception as exc:  # noqa: BLE001
             logger.warning("[HumanHandoff] histórico indisponível (%s)", type(exc).__name__)
             linhas.append("_(não consegui carregar o histórico — você entra sem ele)_")

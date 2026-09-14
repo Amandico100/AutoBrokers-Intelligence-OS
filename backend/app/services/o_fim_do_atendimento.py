@@ -1748,3 +1748,515 @@ async def bloco_do_reencontro(db, *, company_id: str, conversation_id: str = "",
         #    esta dica, que é exatamente o comportamento de antes de 09/09.
         return ""
     return contexto_do_reencontro(linhas, agora=agora, n_dias=n_dias)
+
+
+# ===========================================================================
+# 🔴 A APRESENTAÇÃO SAI DO MODELO — SPEC-EXTRA-001.2 §8.1
+# ===========================================================================
+#
+# 📊 O conflito, medido em 13/09/2026: `prompts.py` (bloco ESTÁTICO, cacheado)
+# dizia `- SEMPRE se apresente com nome E corretora na primeira mensagem`, e o
+# `_RELIGAMENTO` acima (bloco DINÂMICO) dizia `Continue de onde parou, sem se
+# reapresentar`. Duas instruções, dois blocos, e a estática vem PRIMEIRO no
+# prompt. O modelo leu "primeira mensagem" como "primeira MINHA" e cumprimentou
+# na 30ª mensagem de um sinistro com vítima.
+#
+# ⚠️ Trocar o texto do prompt não é conserto (AAA §3). A decisão vira CÓDIGO
+# puro aqui, e o prompt recebe só o resultado — UMA linha.
+
+#: Os três modos. `""` é o mais comum, e é o certo: no meio de um atendimento
+#: não há nada a dizer sobre quem é você.
+MODO_PRIMEIRA = "primeira"
+MODO_MUDOU_DE_NOME = "mudou_de_nome"
+MODO_CALADO = ""
+
+
+def nome_normalizado(nome: Any) -> str:
+    """O nome sem acento, sem caixa e sem espaço duplo. **PURA.**
+
+    ⚠️ É a mesma régua em três lugares: comparar o nome do agente com o de um
+    membro da equipe (§10.5), decidir se o nome MUDOU (§10.4) e casar a
+    assinatura do dossiê. Três réguas diferentes dariam três respostas para a
+    mesma pergunta.
+    """
+    import unicodedata
+
+    texto = str(nome or "").strip().lower()
+    if not texto:
+        return ""
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.split())
+
+
+def deve_se_apresentar(*, assunto_novo: bool, apresentado_neste_assunto: bool,
+                       nome_atual: str, nome_da_apresentacao: str) -> Tuple[bool, str]:
+    """`(apresenta?, modo)` — **PURA**. modo em `{"", "primeira", "mudou_de_nome"}`.
+
+    A ordem das três perguntas é o contrato inteiro:
+
+    1. **assunto novo vence tudo.** A identidade da thread é reescrita (§8.3):
+       quem se apresentou no caso de 22 dias atrás não se apresentou NESTE.
+    2. **já se apresentou neste assunto -> cala.** Inclusive se o nome mudou no
+       meio (§10.4): trocar de pessoa no meio de um acionamento é pior que
+       manter o nome antigo até o assunto fechar.
+    3. **o nome mudou desde a última apresentação -> diz isso UMA vez.**
+    """
+    novo = bool(assunto_novo)
+    ja = bool(apresentado_neste_assunto) and not novo
+    if ja:
+        return False, MODO_CALADO
+
+    atual = nome_normalizado(nome_atual)
+    antes = nome_normalizado(nome_da_apresentacao)
+    if antes and atual and antes != atual:
+        return True, MODO_MUDOU_DE_NOME
+    return True, MODO_PRIMEIRA
+
+
+def _corretora_no_texto(corretora: Any) -> str:
+    """*"da Resulta"* ou *"da corretora"*. ⛔ **NUNCA "da sua corretora"** — a
+    regra já estava escrita em `prompts.py` e o agente a quebrava."""
+    nome = str(corretora or "").strip()
+    return "da %s" % nome if nome else "da corretora"
+
+
+def linha_da_apresentacao(modo: str, *, agent_name: str = "",
+                          corretora: str = "", nome_anterior: str = "") -> str:
+    """A ÚNICA linha que o bloco dinâmico recebe sobre apresentação. **PURA.**
+
+    💭 A copy é ilustrativa (o tom final vem do Jeito de atender da corretora);
+    o que é contrato é **quantas vezes** ela aparece.
+
+    ⚠️ Nome vazio -> *"a assistente virtual da {corretora}"*. Antes desta SPEC o
+    bloco de identidade inteiro sumia quando o nome estava em branco, e o
+    agente ficava sem identidade nenhuma (§10.2).
+    """
+    empresa = _corretora_no_texto(corretora)
+    nome = str(agent_name or "").strip()
+    if modo == MODO_CALADO:
+        return ("APRESENTAÇÃO: ⛔ NÃO se apresente e NÃO cumprimente — você já "
+                "está nesta conversa. Continue de onde parou.")
+    if modo == MODO_MUDOU_DE_NOME:
+        antes = str(nome_anterior or "").strip()
+        quem = nome or "a assistente virtual"
+        return ("APRESENTAÇÃO: você mudou de nome desde a última vez. Diga isso "
+                "UMA vez, assim: \"Oi! Aqui é a %s, %s — antes eu me "
+                "apresentava como %s.\" Depois siga direto para o que ele "
+                "precisa." % (quem, empresa, antes or "outro nome"))
+    if nome:
+        exemplo = ("\"Oi! Aqui é a %s, assistente virtual %s. Como posso "
+                   "ajudar?\"" % (nome, empresa))
+    else:
+        exemplo = ("\"Oi! Aqui é a assistente virtual %s. Como posso ajudar?\""
+                   % empresa)
+    return ("APRESENTAÇÃO: apresente-se agora, UMA vez, assim: %s — e só. "
+            "Não repita isso em nenhuma mensagem seguinte deste atendimento."
+            % exemplo)
+
+
+# ===========================================================================
+# 🔴 A HIERARQUIA DE TAMANHO — SPEC-EXTRA-001.2 §8.2
+# ===========================================================================
+#
+# 📊 As regras JÁ existem em `prompts.py` ("frases CURTAS (1 a 3 por
+# mensagem)", "máximo 4 itens", a exceção documental) — e o piloto de 10/09
+# mediu mensagens de **760 caracteres**. Prosa no prompt não conserta prosa do
+# modelo: é preciso MEDIR a resposta e devolvê-la ao modelo com a régua.
+#
+# 📊 A régua humana, medida no acervo (14/09, 6.213 rajadas >=3 respondidas):
+# mediana **92 caracteres** por bloco de resposta, 1 a 2 mensagens.
+#
+# ⚠️ ⛔ Balões NÃO são a régua. `whatsapp/balloons.py` (300/500/4) fatia a
+# resposta para ela parecer gente — é HUMANIZAÇÃO. "Uma resposta por rajada" é
+# UM TURNO, nunca um balão; contar balões mediria a coisa errada.
+
+CLASSE_CONVERSA = "conversa"
+CLASSE_BLOCO = "bloco_de_ate_4"
+CLASSE_LISTA_DOCUMENTAL = "lista_documental"
+CLASSE_AVISAR = "avisar"
+
+#: `0` = **sem teto**, e é a exceção DECLARADA: meia lista de documentos é pior
+#: que lista nenhuma — o cliente vai ao órgão e volta sem o papel certo.
+TETO_POR_CLASSE = {
+    CLASSE_CONVERSA: 3,
+    CLASSE_BLOCO: 4,
+    CLASSE_LISTA_DOCUMENTAL: 0,
+    CLASSE_AVISAR: 1,
+}
+
+#: 💭 O vocabulário do assunto DELICADO. ⚠️ Ele não decide sozinho: só conta
+#: quando a resposta PERGUNTA (tem `?`). "Que bom que ninguém se feriu" é
+#: acolhimento, não interrogatório.
+_PALAVRAS_DELICADAS = (
+    "vítima", "vitima", "ferido", "ferida", "feriu", "machucou", "machucado",
+    "óbito", "obito", "faleceu", "morte", "morreu", "ambulância", "ambulancia",
+    "socorro médico", "socorro medico", "hospital", "culpa", "culpado",
+    "embriaguez", "alcool", "álcool",
+)
+
+#: 💭 O vocabulário DOCUMENTAL. A lista de documentos é instrução, não pergunta
+#: — e tem tamanho próprio (`prompts.py`, a exceção documental).
+_PALAVRAS_DOCUMENTAIS = (
+    "documento", "documentos", "cnh", "rg", "cpf", "crlv",
+    "boletim de ocorrência", "boletim de ocorrencia", "b.o.", "comprovante",
+    "nota fiscal", "laudo", "procuração", "procuracao", "certidão", "certidao",
+    "foto", "fotos", "orçamento", "orcamento", "chave reserva", "apólice",
+    "apolice", "extrato",
+)
+
+_ITEM = re.compile(r"^\s*(?:\d{1,2}\s*[\).\-:]|[-*•·]|[a-z]\))\s+",
+                   re.MULTILINE)
+_ITEM_EM_LINHA = re.compile(r"(?<!\d)(\d{1,2})\s*\)\s+")
+_FIM_DE_FRASE = re.compile(r"[.!?…]+(?:\s|$)|\n+")
+
+
+def _contar_itens(texto: str) -> int:
+    """Quantos itens enumerados a resposta tem — em linha ou em lista.
+
+    ⚠️ O produto ENSINA o bloco numerado em UMA linha corrida ("me confirma: 1)
+    o endereço 2) pra onde levar 3) quem estará com o carro"). Contar só início
+    de linha veria 0 itens exatamente no formato que a régua existe para medir.
+    """
+    em_linha = len(_ITEM_EM_LINHA.findall(texto or ""))
+    em_lista = len(_ITEM.findall(texto or ""))
+    return max(em_linha, em_lista)
+
+
+def _contar_frases(texto: str) -> int:
+    limpo = str(texto or "").strip()
+    if not limpo:
+        return 0
+    pedacos = [p.strip() for p in _FIM_DE_FRASE.split(limpo) if p and p.strip()]
+    return max(1, len(pedacos))
+
+
+def classe_do_tamanho(resposta: str, *, contexto: str = "") -> Tuple[str, int, int]:
+    """`(classe, n_unidades, n_chars)` — **PURA**.
+
+    `n_unidades` é o que o teto daquela classe conta: **itens** em
+    `bloco_de_ate_4`, **frases** nas outras. Medir frase num bloco numerado
+    reprovaria justamente o formato que o produto ensina.
+
+    A ordem das perguntas é o contrato:
+
+    1. **pergunta delicada?** (vítima, ferimento, culpa) -> `avisar`, teto **1**.
+       ⛔ Ela nunca entra em bloco — vai sozinha, com calma.
+    2. **lista documental?** -> `lista_documental`, **sem teto** (a exceção
+       declarada).
+    3. **bloco numerado?** -> `bloco_de_ate_4`, teto **4**.
+    4. o resto é `conversa`, teto **3** frases.
+    """
+    texto = str(resposta or "")
+    n_chars = len(texto.strip())
+    baixo = texto.lower()
+    pista = str(contexto or "").strip().lower()
+    itens = _contar_itens(texto)
+    frases = _contar_frases(texto)
+
+    delicada = "?" in texto and any(p in baixo for p in _PALAVRAS_DELICADAS)
+    if delicada or pista == CLASSE_AVISAR:
+        return CLASSE_AVISAR, frases, n_chars
+
+    documental = (pista == CLASSE_LISTA_DOCUMENTAL
+                  or (itens >= 3 and any(p in baixo for p in _PALAVRAS_DOCUMENTAIS)))
+    if documental:
+        return CLASSE_LISTA_DOCUMENTAL, itens or frases, n_chars
+
+    if itens >= 2 or pista == CLASSE_BLOCO:
+        return CLASSE_BLOCO, itens, n_chars
+
+    return CLASSE_CONVERSA, frases, n_chars
+
+
+#: 🔴 O TETO DE CARACTERES — e ele existe porque o guarda o exigiu.
+#:
+#: 📊 O defeito de 10/09 tinha **760 caracteres** e apenas TRÊS frases: um
+#: monólogo de três períodos longos passa inteiro por um teto de frases. Contar
+#: só frase mediria pontuação, não textão.
+#:
+#: 📊 O número sai do acervo (14/09, 6.213 rajadas ≥3 respondidas): a resposta
+#: humana tem mediana **92** caracteres e **p90 432**. O teto é 450 — o p90
+#: arredondado: acima disso a mensagem já não é o que uma pessoa manda.
+#: ⚠️ `0` = sem teto de caracteres (a lista documental e o bloco numerado, que
+#: têm teto próprio de ITENS).
+CHARS_POR_CLASSE = {
+    CLASSE_CONVERSA: 450,
+    CLASSE_BLOCO: 0,
+    CLASSE_LISTA_DOCUMENTAL: 0,
+    CLASSE_AVISAR: 300,
+}
+
+
+def fora_da_classe(resposta: str, *, contexto: str = "") -> Tuple[bool, str, int, int]:
+    """`(estourou?, classe, n_unidades, teto)` — **PURA**.
+
+    ⚠️ Teto `0` é sem teto: `lista_documental` **nunca** estoura. É a diferença
+    entre uma régua e uma mordaça.
+
+    🔴 Duas perguntas, não uma: **quantas unidades** (frases ou itens) e
+    **quantos caracteres**. Cada uma pega o que a outra não pega — o textão de
+    três períodos passa na primeira e só a segunda o vê.
+    """
+    classe, unidades, n_chars = classe_do_tamanho(resposta, contexto=contexto)
+    teto = TETO_POR_CLASSE.get(classe, 0)
+    teto_chars = CHARS_POR_CLASSE.get(classe, 0)
+    if teto > 0 and unidades > teto:
+        return True, classe, unidades, teto
+    if teto_chars > 0 and n_chars > teto_chars:
+        return True, classe, unidades, teto
+    return False, classe, unidades, teto
+
+
+def regua_do_tamanho(classe: str) -> str:
+    """A régua EXPLÍCITA que volta ao modelo na regeneração. **PURA.**
+
+    ⛔ Regenerar sem dizer o que estourou é torcer para o modelo adivinhar — o
+    mesmo erro que o fiscal da pergunta repetida já não comete.
+    """
+    if classe == CLASSE_AVISAR:
+        return ("Esta é uma pergunta DELICADA: ela vai SOZINHA, em UMA frase, "
+                "com calma e sem mais nada junto.")
+    if classe == CLASSE_BLOCO:
+        return ("Você está pedindo dados em bloco: no MÁXIMO 4 itens "
+                "numerados, com o porquê no fim.")
+    return ("Esta é uma mensagem de conversa: no MÁXIMO 3 frases curtas e no "
+            "máximo 450 caracteres. Nada de textão — 📊 a resposta humana "
+            "mediana tem 92 caracteres.")
+
+
+# ===========================================================================
+# 🔴 "ESPECIALISTA" NOMEIA A ATENDENTE REAL, NUNCA O AGENTE — §10.3
+# ===========================================================================
+#
+# 📊 O piloto mostrou o agente prometendo "vou passar para a especialista" sem
+# dizer quem — e `prompts.py` ENSINAVA nomes inventados ("a Ana", "o Marcos",
+# "o analista"). ⛔ Um nome que não existe na corretora é pior que nenhum: o
+# segurado pergunta pela Ana e ninguém sabe quem é.
+#
+# ⚠️ **Não existe papel `attendant`** em `company_members` (📊 14/09: só
+# `admin_company` e `member`) — P-PILOTO-16, decisão D-E0012-02. A regra (1),
+# o PLANTÃO com horário, é do card Equipe e pertence à EXTRA-001.3 (D-PILOTO-09).
+
+def atendente_de_plantao(company_id: str,
+                         membros: Optional[List[Dict[str, Any]]] = None,
+                         *, plantao: Optional[str] = None) -> Optional[str]:
+    """O nome da pessoa a quem o agente vai passar o caso, ou `None`. **PURA.**
+
+    Regra determinística, **declarada e nesta ordem**:
+
+    1. plantão marcado, se existir -> é ela. ⚠️ Hoje o conceito de plantão não
+       existe no produto (EXTRA-001.3): o parâmetro fica declarado e `None`.
+    2. **exatamente um** `member` ativo não-owner na corretora -> é ela.
+    3. qualquer outro caso (nenhum, ou mais de um) -> `None`.
+
+    🔴 `None` NÃO vira nome inventado, e ⛔ **nunca** o nome do agente: o agente
+    prometendo passar o caso para si mesmo é o defeito que esta função existe
+    para tornar impossível.
+    """
+    if not str(company_id or "").strip():
+        return None
+
+    de_plantao = str(plantao or "").strip()
+    if de_plantao:
+        return de_plantao
+
+    candidatos: List[str] = []
+    for m in membros or ():
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("company_id") or company_id) != str(company_id):
+            continue                                   # 🔴 §7: nunca outra corretora
+        if str(m.get("status") or "active").strip().lower() != "active":
+            continue
+        if m.get("is_owner"):
+            continue
+        if str(m.get("role") or "").strip().lower() != "member":
+            continue
+        nome = str(m.get("name") or m.get("first_name") or "").strip()
+        if nome:
+            candidatos.append(nome)
+
+    return candidatos[0] if len(candidatos) == 1 else None
+
+
+#: 💭 As duas copies. ⛔ Nenhuma das duas contém o nome do AGENTE.
+_COM_NOME = ("Vou passar seu caso para a %s, da nossa equipe. Ela te responde "
+             "por aqui.")
+_SEM_NOME = ("Vou passar seu caso para a nossa equipe. Uma pessoa te responde "
+             "por aqui.")
+
+
+def linha_de_quem_vai_atender(nome: Optional[str]) -> str:
+    """A linha do prompt sobre QUEM recebe o caso. **PURA.**
+
+    ⚠️ Ela substitui os nomes inventados que o prompt estático ensinava.
+    """
+    quem = str(nome or "").strip()
+    if quem:
+        return ("QUEM VAI ATENDER quando o caso sair da sua mão: **%s**. Diga o "
+                "nome dela, assim: \"%s\"" % (quem, _COM_NOME % quem))
+    return ("QUEM VAI ATENDER quando o caso sair da sua mão: ⛔ você NÃO sabe o "
+            "nome. Não invente um, e NUNCA use o seu próprio nome. Diga assim: "
+            "\"%s\"" % _SEM_NOME)
+
+
+def colisao_com_a_equipe(nome_do_agente: str,
+                         membros: Optional[List[Dict[str, Any]]] = None) -> Optional[str]:
+    """O nome do membro com quem o nome do agente colide, ou `None`. **PURA.**
+
+    📊 14/09: **0** colisões hoje nas 3 corretoras (10 membros ativos) — a
+    validação nasce guardando o futuro.
+
+    ⚠️ Compara o nome COMPLETO e o PRIMEIRO nome, normalizados. "Amanda" bate
+    com "Amanda Silva": no grupo e no dossiê ninguém saberia quem falou.
+    ⛔ E só membros da MESMA corretora (CLAUDE.md §7) — quem filtra é o chamador,
+    que é quem tem a consulta com `company_id`.
+    """
+    alvo = nome_normalizado(nome_do_agente)
+    if not alvo:
+        return None
+    primeiro_alvo = alvo.split(" ")[0]
+    for m in membros or ():
+        if not isinstance(m, dict):
+            continue
+        if str(m.get("status") or "active").strip().lower() != "active":
+            continue
+        nome = str(m.get("name") or "").strip()
+        if not nome:
+            continue
+        norm = nome_normalizado(nome)
+        if not norm:
+            continue
+        if norm == alvo or norm.split(" ")[0] == primeiro_alvo:
+            return nome
+    return None
+
+
+async def nome_de_quem_vai_atender(db, company_id: str) -> Optional[str]:
+    """O nome da atendente real desta corretora, indo buscar a equipe.
+
+    **Nunca levanta**, `None` no escuro — e `None` é uma resposta legítima
+    (§10.3): a copy sem nome existe justamente para isso.
+
+    🔴 §7: `company_members` é filtrado por `company_id` na consulta, e o nome
+    vem de `users_v2` só para os `user_id` daquela corretora.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return None
+    try:
+        cli = _cliente(db)
+        vinculos = await _executar(cli.table("company_members")
+                                   .select("user_id, role, is_owner, status")
+                                   .eq("company_id", empresa)
+                                   .eq("status", "active").limit(200))
+        linhas = list(vinculos.data or [])
+        if not linhas:
+            return None
+        ids = [str(v.get("user_id")) for v in linhas if v.get("user_id")]
+        if not ids:
+            return None
+        pessoas = await _executar(cli.table("users_v2")
+                                  .select("id, first_name, last_name")
+                                  .in_("id", ids).limit(200))
+        por_id = {str(p.get("id")): p for p in (pessoas.data or [])}
+        membros = []
+        for v in linhas:
+            p = por_id.get(str(v.get("user_id"))) or {}
+            nome = " ".join(x for x in (p.get("first_name"), p.get("last_name"))
+                            if x).strip()
+            membros.append({"company_id": empresa, "status": "active",
+                            "role": v.get("role"), "is_owner": v.get("is_owner"),
+                            "name": nome})
+        return atendente_de_plantao(empresa, membros)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[QUEM ATENDE] equipe indisponível (%s)",
+                       type(erro).__name__)
+        return None
+
+
+async def membros_da_corretora(db, company_id: str) -> List[Dict[str, Any]]:
+    """A equipe ATIVA desta corretora, com o nome montado. `[]` no escuro.
+
+    ⚠️ É a lista que `colisao_com_a_equipe` compara com o nome do agente.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return []
+    try:
+        cli = _cliente(db)
+        vinculos = await _executar(cli.table("company_members")
+                                   .select("user_id, role, is_owner, status")
+                                   .eq("company_id", empresa)
+                                   .eq("status", "active").limit(500))
+        linhas = list(vinculos.data or [])
+        ids = [str(v.get("user_id")) for v in linhas if v.get("user_id")]
+        if not ids:
+            return []
+        pessoas = await _executar(cli.table("users_v2")
+                                  .select("id, first_name, last_name")
+                                  .in_("id", ids).limit(500))
+        saida = []
+        for p in (pessoas.data or []):
+            nome = " ".join(x for x in (p.get("first_name"), p.get("last_name"))
+                            if x).strip()
+            if nome:
+                saida.append({"company_id": empresa, "status": "active",
+                              "name": nome})
+        return saida
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[EQUIPE] indisponível (%s)", type(erro).__name__)
+        return []
+
+
+# ===========================================================================
+# 🔴 A IDENTIDADE DA THREAD ENTRA NO PROMPT — e é UMA linha de cada coisa
+# ===========================================================================
+
+def bloco_de_quem_fala(*, assunto_novo: bool, identidade: Dict[str, Any],
+                       agent_name: str, corretora: str,
+                       quem_vai_atender: Optional[str] = None,
+                       agora=None) -> Tuple[str, Dict[str, Any]]:
+    """`(bloco_do_prompt, identidade_nova)` — **PURA**.
+
+    Três linhas, nunca mais: quem fala (APRESENTAÇÃO), como chamar o segurado
+    (TRATAMENTO) e quem recebe o caso (QUEM VAI ATENDER).
+
+    🔴 A linha de TRATAMENTO vem por último de propósito: ela é a ÚNICA
+    autoridade sobre o nome do segurado, e o bloco de MEMÓRIA — que pode
+    carregar o nome de um caso antigo — vem antes no prompt.
+    """
+    from datetime import datetime, timezone
+
+    agora = agora or datetime.now(timezone.utc)
+    ident = dict(identidade or {})
+    apresentado = bool(ident.get("apresentado_em"))
+
+    apresenta, modo = deve_se_apresentar(
+        assunto_novo=assunto_novo, apresentado_neste_assunto=apresentado,
+        nome_atual=agent_name,
+        nome_da_apresentacao=str(ident.get("nome_da_apresentacao") or ""))
+
+    linhas = [linha_da_apresentacao(
+        modo if apresenta else MODO_CALADO, agent_name=agent_name,
+        corretora=corretora,
+        nome_anterior=str(ident.get("nome_da_apresentacao") or ""))]
+
+    titular = str(ident.get("titular_nome") or "").strip()
+    if titular:
+        linhas.append("TRATAMENTO: chame o segurado de **%s** — é o nome DESTE "
+                      "atendimento." % titular)
+    else:
+        linhas.append("TRATAMENTO: ⛔ você NÃO sabe o nome de quem está falando "
+                      "neste atendimento. Não use nenhum nome que apareça na "
+                      "memória, no histórico ou em documentos antigos — "
+                      "pergunte, ou fale sem nome.")
+
+    linhas.append(linha_de_quem_vai_atender(quem_vai_atender))
+
+    if apresenta:
+        ident["apresentado_em"] = agora.isoformat()
+        ident["nome_da_apresentacao"] = str(agent_name or "").strip()
+
+    return "=== 🪪 QUEM FALA NESTE TURNO ===\n" + "\n".join(linhas), ident

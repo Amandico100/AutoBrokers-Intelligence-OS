@@ -568,6 +568,86 @@ def test_pausar_ia_continua_sendo_o_helper_unico_e_intocado():
     assert F.pausar_ia(None) is False
 
 
+# ===========================================================================
+# 7. A APRESENTACAO ANDA COLADA NO REENCONTRO — SPEC-EXTRA-001.2 §8.1
+# ===========================================================================
+#
+# 📊 09/09/2026: o robô cumprimentou na 30ª mensagem de um sinistro com vítima.
+# Quem sabe se o assunto é novo é ESTE motor; quem decide se há apresentação é
+# `deve_se_apresentar`. Os dois precisam concordar — e é isso que se prova aqui,
+# nunca um regex sobre o texto do bloco.
+
+
+def _identidade(assunto="a1", apresentado=False, nome=""):
+    return {"assunto_id": assunto,
+            "titular_nome": "",
+            "apresentado_em": "2026-09-09T10:00:00+00:00" if apresentado else "",
+            "nome_da_apresentacao": nome}
+
+
+def test_assunto_novo_no_motor_do_reencontro_pede_apresentacao():
+    """🔴 Os 3 meses de silêncio produzem ASSUNTO NOVO — e assunto novo pede
+    uma apresentação, mesmo que a thread já tenha uma identidade velha."""
+    bloco = asyncio.run(F.bloco_do_reencontro(
+        _DB(CENARIO_DOS_3_MESES), company_id=EMPRESA, session_id="sessao-x",
+        agora=AGORA, n_dias=N))
+    assert "ASSUNTO NOVO" in bloco
+
+    # É exatamente o que o `graph` calcula a partir deste bloco.
+    assunto_novo = "ASSUNTO NOVO" in bloco
+    apresenta, modo = F.deve_se_apresentar(
+        assunto_novo=assunto_novo, apresentado_neste_assunto=True,
+        nome_atual="Aurora", nome_da_apresentacao="Aurora")
+    assert apresenta and modo == "primeira"
+
+    quem, _ = F.bloco_de_quem_fala(
+        assunto_novo=assunto_novo, identidade=_identidade(apresentado=True,
+                                                          nome="Aurora"),
+        agent_name="Aurora", corretora="Alfa Corretora")
+    assert "apresente-se agora" in quem.lower()
+
+
+def test_religamento_no_motor_do_reencontro_manda_calar_a_apresentacao():
+    """⚠️ **A LINHA DE CONTROLE.** A conversa em andamento produz RELIGAMENTO —
+    e religamento NÃO pede apresentação. Sem este par, um motor que sempre
+    manda se apresentar passaria no teste de cima."""
+    bloco = asyncio.run(F.bloco_do_reencontro(
+        _DB(CENARIO_DA_REGINA), company_id=EMPRESA, session_id="sessao-x",
+        agora=AGORA, n_dias=N))
+    assert "ASSUNTO NOVO" not in bloco
+
+    apresenta, modo = F.deve_se_apresentar(
+        assunto_novo=("ASSUNTO NOVO" in bloco), apresentado_neste_assunto=True,
+        nome_atual="Aurora", nome_da_apresentacao="Aurora")
+    assert (not apresenta) and modo == ""
+
+    quem, ident = F.bloco_de_quem_fala(
+        assunto_novo=False, identidade=_identidade(apresentado=True,
+                                                   nome="Aurora"),
+        agent_name="Aurora", corretora="Alfa Corretora")
+    assert "NÃO se apresente" in quem
+    # ⛔ E nada é reescrito quando ele cala.
+    assert ident["nome_da_apresentacao"] == "Aurora"
+
+
+def test_o_bloco_do_reencontro_e_o_de_quem_fala_nao_se_contradizem():
+    """🔴 O defeito de 09/09 era literalmente DOIS BLOCOS DISCORDANDO.
+
+    O `_RELIGAMENTO` diz "sem se reapresentar"; o bloco de quem fala diz "NÃO
+    se apresente". ⛔ Nunca um mandando e o outro proibindo.
+    """
+    religamento = asyncio.run(F.bloco_do_reencontro(
+        _DB(CENARIO_DA_REGINA), company_id=EMPRESA, session_id="sessao-x",
+        agora=AGORA, n_dias=N))
+    quem, _ = F.bloco_de_quem_fala(
+        assunto_novo=False, identidade=_identidade(apresentado=True,
+                                                   nome="Aurora"),
+        agent_name="Aurora", corretora="Alfa Corretora")
+    manda_apresentar = "apresente-se agora" in (religamento + quem).lower()
+    proibe = "NÃO se apresente" in quem or "sem se reapresentar" in religamento
+    assert proibe and not manda_apresentar
+
+
 if __name__ == "__main__":  # pragma: no cover
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     raise SystemExit(pytest.main([__file__, "-v"]))

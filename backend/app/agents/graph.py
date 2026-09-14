@@ -1595,11 +1595,51 @@ async def _build_initial_state(
         # Passou disso, o CPF que o cliente deu no começo sumia — e o código
         # registra que isso JÁ aconteceu em produção. Num sinistro real, isso é
         # pedir o CPF de novo a quem acabou de bater o carro.
+        # 🔴 SPEC-EXTRA-001.2 §8.3 — O REENCONTRO VEM ANTES DA FICHA, e é por
+        #    causa do nome de 22 dias atrás.
+        #
+        # 📊 10/09/2026: o agente abriu um caso chamando o cliente pelo nome de
+        # OUTRA pessoa. Quem sabe que o assunto é novo é o motor do reencontro;
+        # quem carrega o nome velho é a ficha, que é aditiva de propósito. Se a
+        # ficha for montada ANTES de o assunto novo ser conhecido, o bloco do
+        # prompt já saiu com o nome errado — e reescrever a identidade depois
+        # não desfaz o que já está no prompt.
+        _bloco_reencontro = ""
         try:
-            from app.services.attendance_ficha import bloco_para_o_prompt, carregar
+            from app.services.o_fim_do_atendimento import bloco_do_reencontro
 
-            _cli = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+            _bloco_reencontro = await bloco_do_reencontro(
+                supabase_client, company_id=str(company_id),
+                session_id=str(session_id or ""))
+        except Exception as e:  # noqa: BLE001 — nunca derruba o turno
+            logger.warning("[REENCONTRO] não injetado (%s)", type(e).__name__)
+
+        _cli = supabase_client.client if hasattr(supabase_client, "client") else supabase_client
+        _ficha, _ident, _assunto_novo, _obrig = {}, {}, False, []
+        try:
+            from app.services.attendance_ficha import (bloco_para_o_prompt,
+                                                       carregar, fundir,
+                                                       identidade_de)
+
             _ficha = await carregar(_cli, str(company_id), str(session_id or ""))
+
+            # --- a identidade da thread, fixada a cada ASSUNTO NOVO ---------
+            #
+            # ⛔ Sem coluna nova e sem tabela nova (§5): ela mora na ficha.
+            _ident = identidade_de(_ficha)
+            _assunto_novo = ("ASSUNTO NOVO" in (_bloco_reencontro or "")
+                             or not _ident.get("assunto_id"))
+            if _assunto_novo:
+                import uuid as _uuid
+
+                # 🔴 REESCRITA, nunca herdada — e `fundir` derruba junto os
+                #    slots que pertencem ao assunto (o nome do titular).
+                _ident = {"assunto_id": _uuid.uuid4().hex, "titular_nome": "",
+                          "apresentado_em": "", "nome_da_apresentacao": ""}
+                _ficha = fundir(_ficha, {"identidade": _ident},
+                                _slots_obrigatorios_do_caso(_ficha))
+                _ident = identidade_de(_ficha)
+
             _obrig = _slots_obrigatorios_do_caso(_ficha)
             _bloco_ficha = bloco_para_o_prompt(_ficha, _obrig)
             if _bloco_ficha:
@@ -1637,18 +1677,41 @@ async def _build_initial_state(
         # `a_ia_deve_calar`, no gate de entrada. Este bloco só diz em que ponto
         # da conversa ele está. ⛔ E o motor é UM só (`o_fim_do_atendimento`):
         # nada de uma segunda régua de janela aqui dentro (§5).
-        try:
-            from app.services.o_fim_do_atendimento import bloco_do_reencontro
+        if _bloco_reencontro:
+            dynamic_context += f"\n\n{_bloco_reencontro}"
+            logger.info("[REENCONTRO] bloco injetado (%d chars)",
+                        len(_bloco_reencontro))
 
-            _bloco_reencontro = await bloco_do_reencontro(
-                supabase_client, company_id=str(company_id),
-                session_id=str(session_id or ""))
-            if _bloco_reencontro:
-                dynamic_context += f"\n\n{_bloco_reencontro}"
-                logger.info("[REENCONTRO] bloco injetado (%d chars)",
-                            len(_bloco_reencontro))
+        # --- D/F · QUEM FALA, COMO CHAMA E QUEM RECEBE O CASO -------------
+        #
+        # 🔴 SPEC-EXTRA-001.2 §8.1/§8.3/§10.3. A decisão de se apresentar saiu
+        # do modelo: ela é `deve_se_apresentar`, pura, e o prompt recebe UMA
+        # linha. ⚠️ Este bloco é o ÚLTIMO do `dynamic_context` de propósito —
+        # a linha de TRATAMENTO é a única autoridade sobre o nome do segurado,
+        # e o bloco de MEMÓRIA (que pode carregar o nome de um caso antigo)
+        # vem antes.
+        try:
+            from app.services.attendance_ficha import gravar as _gravar_ficha
+            from app.services.o_fim_do_atendimento import (
+                bloco_de_quem_fala, nome_de_quem_vai_atender)
+
+            _quem_atende = await nome_de_quem_vai_atender(
+                supabase_client, str(company_id))
+            _bloco_quem_fala, _ident_nova = bloco_de_quem_fala(
+                assunto_novo=bool(_assunto_novo), identidade=_ident or {},
+                agent_name=_agent_display_name,
+                corretora=_company_display_name,
+                quem_vai_atender=_quem_atende)
+            dynamic_context += f"\n\n{_bloco_quem_fala}"
+
+            # ⚠️ Melhor-esforço, como a ficha: falhar em gravar a identidade
+            #    não pode calar o atendimento. O pior caso é o agente se
+            #    apresentar uma segunda vez — que era o comportamento de antes.
+            if _ident_nova != (_ident or {}):
+                await _gravar_ficha(_cli, str(company_id), str(session_id or ""),
+                                    {"identidade": _ident_nova}, _obrig)
         except Exception as e:  # noqa: BLE001 — nunca derruba o turno
-            logger.warning("[REENCONTRO] não injetado (%s)", type(e).__name__)
+            logger.warning("[QUEM FALA] bloco não injetado (%s)", type(e).__name__)
 
     # Prompt completo para uso geral
     composite_prompt = static_prompt + dynamic_context
