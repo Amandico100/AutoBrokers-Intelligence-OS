@@ -559,6 +559,10 @@ export default function PainelDeRotinas({
   ).replace(/\{[a-z_]+\}/g, '');
   const billingMaxBoletos = Number(billingConfig?.max_boletos_por_execucao || 10);
   const billingTestNumber = String(billingConfig?.test_number || '');
+  // 🔴 SPEC-EXTRA-001.6 P0.4 — quem assina a mensagem. 📊 10/09: o campo não
+  // existia na tela, o config não tinha a chave, e o segurado leria "Aqui é a
+  // nossa equipe, da Resulta". Nos modos reais o motor RETÉM a rotina sem ele.
+  const billingAttendantName = String(billingConfig?.attendant_name || '');
   const setBillingConfig = (patch: Record<string, unknown>) => {
     setForm({
       ...form,
@@ -1183,6 +1187,26 @@ export default function PainelDeRotinas({
                           amanhã de onde parou.
                         </p>
                       </div>
+                    </div>
+                    {/* 🔴 SPEC-EXTRA-001.6 P0.4 — o nome que o segurado vai ler.
+                        Sem ele, em Encaminhar/Enviar a rotina fica RETIDA (o motor
+                        recusa — não é só a tela). Em Teste o default continua
+                        "nossa equipe", porque o destino é a própria corretora. */}
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                        Quem assina a mensagem
+                      </label>
+                      <input
+                        value={billingAttendantName}
+                        onChange={(e) => setBillingConfig({ attendant_name: e.target.value })}
+                        placeholder="o primeiro nome de quem atende"
+                        className="w-full rounded-md border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                      />
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        É o nome que o segurado vai ler: <em>"Aqui é a {billingAttendantName || '…'}, da sua corretora"</em>.
+                        Use o nome de quem atende. Nos modos <strong>Encaminhar</strong> e{' '}
+                        <strong>Enviar ao cliente</strong>, sem este nome nada sai.
+                      </p>
                     </div>
                     {billingSendMode === 'test' && (
                       <div>

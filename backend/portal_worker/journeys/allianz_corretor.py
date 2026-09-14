@@ -664,6 +664,16 @@ _FAIL = (
     "login invalido",
     "dados incorretos",
     "nao autorizado",
+    # 📊 13/09/2026 — SPEC-EXTRA-001.6 P0.3. Lidas no print REAL do job de 11/09
+    # (`portal-evidence/{job}/00-desfecho-needs-human.jpg`; transcrito em
+    # `tests/corpus/telas_reais_de_portal/allianz_corretor-needs_human-20260911.txt`).
+    # A frase da tela é "Acesso negado — Por favor, valide os dados introduzidos."
+    # `_norm` tira acento e maiúscula ANTES da comparação, então é assim que ela
+    # se escreve aqui (CLAUDE.md §9.4: o padrão no dialeto do motor). Sem estas
+    # duas linhas, a Allianz devolveu "tela pos-login nao reconhecida" 34 vezes
+    # desde 18/08 para uma senha recusada — e ninguém trocou a senha.
+    "acesso negado",
+    "valide os dados",
 )
 
 _HITL = (

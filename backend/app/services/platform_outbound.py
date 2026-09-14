@@ -97,6 +97,7 @@ fria falha fechada. Mensagem quente não passa por aqui e continua saindo.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -1436,6 +1437,60 @@ async def _enfileirar(company_id: str, phone: str, text: str, kind: str, summary
         return False
 
 
+#: Mensagens que são DOCUMENTO e não fala. Documento vai inteiro — SPEC-EXTRA-001.6 P0.1.
+#:
+#: 🔴 Por que `kind` e não um parâmetro novo: a entrada da fila Redis carrega
+#: `kind` e NÃO carregaria uma flag nova (P-E001-FILA-SEM-AUTORIZACAO-DE-AUXILIAR
+#: mede exatamente isso). Um parâmetro se perderia no replay e a mensagem
+#: voltaria a sair picotada — sem ninguém ver.
+#:
+#: 📊 Medido em 13/09/2026 com o motor (`split_whatsapp_balloons` sobre o texto que
+#: `build_customer_message` monta): texto ao cliente 332 ch → 2 balões, nota
+#: interna 321 ch → 2, mensagem de teste 520 ch → 3. Em `equipe` o segurado
+#: gerava 5 mensagens na atendente (nota 2 + texto 2 + PDF). Com
+#: `_fatiar_documento`, os três viram 1.
+#:
+#: ⛔ NÃO ligar `bloco_unico` para todo mundo: `saudacao_do_religamento.py` e
+#: `dispatch_followup.py` chamam a mesma porta e falam com o SEGURADO como gente.
+MENSAGENS_QUE_SAO_DOCUMENTO = frozenset({
+    "billing_equipe",        # o texto final que a atendente repassa
+    "billing_equipe_nota",   # a nota interna
+    "billing_cliente",       # o texto ao segurado, quando o modo cliente for ligado
+})
+
+
+def e_documento(kind: str) -> bool:
+    """A decisão "isto é documento, não é conversa" mora AQUI, e só aqui."""
+    return str(kind or "") in MENSAGENS_QUE_SAO_DOCUMENTO
+
+
+#: Como cada componente da cobrança é CONTADO em `platform_sends` — SPEC-EXTRA-001.6 P0.5.
+#:
+#: 🔴 UMA LINHA POR COMPONENTE que o canal recebeu, com `kind` próprio. Nem por
+#: balão (depois de P0.1 o texto é 1 balão por construção), nem por coluna nova
+#: (exigiria migration, e o P0 existe para ser implantável sem uma).
+#:
+#: 📊 10 e 11/09/2026: a rotina gravou 7 linhas/dia e o canal recebeu ≈28 — o
+#: governador subestimou 4×, e o PDF nunca foi contado em lugar nenhum.
+#:
+#: `billing` (o texto que a pessoa lê) fica com o nome de sempre, porque o modo
+#: teste já grava assim (`_registrar_no_governador`) e os dois modos têm de
+#: contar do mesmo jeito. `billing_nota` e `billing_doc` são COMPONENTES: o
+#: leitor humano (`context_note_for`) os ignora, para "a cobrança" ocupar UMA
+#: das 3 linhas de contexto do cliente, e não as três.
+KIND_DE_CONTAGEM = {
+    "billing_equipe": "billing",
+    "billing_cliente": "billing",
+    "billing_equipe_nota": "billing_nota",
+}
+KIND_DO_DOCUMENTO_DA_COBRANCA = "billing_doc"
+KINDS_DE_COMPONENTE = frozenset({"billing_nota", KIND_DO_DOCUMENTO_DA_COBRANCA})
+
+
+def kind_de_contagem(kind: str) -> str:
+    return KIND_DE_CONTAGEM.get(str(kind or ""), str(kind or ""))
+
+
 async def _entregar_agora(company_id: str, phone: str, text: str,
                           kind: str, summary: str, *,
                           integration: Optional[Dict[str, Any]] = None,
@@ -1475,8 +1530,14 @@ async def _entregar_agora(company_id: str, phone: str, text: str,
         destino = _digits(phone)
         texto = str(text or "")
         if texto.strip():
-            ok = await asyncio.to_thread(get_whatsapp_service().send_message,
-                                         destino, texto, integration)
+            # SPEC-EXTRA-001.6 P0.1 — documento vai INTEIRO; conversa continua em
+            # balões. ⚠️ O kwarg só viaja quando é documento: a chamada de conversa
+            # continua `send_message(destino, texto, integration)`, letra por
+            # letra — é o CONTROLE que os guardas vizinhos (078, governador) medem.
+            como = {"bloco_unico": True} if e_documento(kind) else {}
+            ok = await asyncio.to_thread(
+                functools.partial(get_whatsapp_service().send_message,
+                                  destino, texto, integration, **como))
         else:
             # Nada a dizer nesta passagem: o texto já foi aceito antes.
             ok = True
@@ -1489,9 +1550,15 @@ async def _entregar_agora(company_id: str, phone: str, text: str,
             else:
                 doc_ok = bool(await asyncio.to_thread(
                     get_whatsapp_service().send_document, destino, url, nome, integration))
+                if doc_ok and e_documento(kind):
+                    # SPEC-EXTRA-001.6 P0.5 — o PDF passa a ser CONTADO: uma linha
+                    # por documento que o canal aceitou. Antes, invisível.
+                    await record_platform_send(company_id, phone, KIND_DO_DOCUMENTO_DA_COBRANCA,
+                                               f"boleto anexado ({nome})"[:120])
 
         if ok and texto.strip():
-            await record_platform_send(company_id, phone, kind, summary or texto[:120])
+            await record_platform_send(company_id, phone, kind_de_contagem(kind),
+                                       summary or texto[:120])
 
         estado = _estado_do_envio(kind=kind, texto_ok=bool(ok),
                                   previa_doc=bool(isinstance(documento, dict)
@@ -1673,7 +1740,12 @@ async def context_note_for(company_id: str, phone: str) -> Optional[str]:
                     .select("phone, kind, summary, sent_at").eq("company_id", str(company_id))
                     .gte("sent_at", since).order("sent_at", desc=True).limit(30).execute().data or [])
 
-        hits = [x for x in await asyncio.to_thread(_q) if _digits(x.get("phone")) in variants]
+        hits = [x for x in await asyncio.to_thread(_q)
+                if _digits(x.get("phone")) in variants
+                # SPEC-EXTRA-001.6 P0.5 — a nota interna e cada PDF são COMPONENTES
+                # da mesma cobrança. Sem este filtro a MESMA cobrança ocuparia as 3
+                # linhas de contexto e o agente perderia o contexto real do cliente.
+                and str(x.get("kind") or "") not in KINDS_DE_COMPONENTE]
         if not hits:
             return None
         parts = []

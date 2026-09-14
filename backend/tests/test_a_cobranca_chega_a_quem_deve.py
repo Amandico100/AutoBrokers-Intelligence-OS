@@ -1305,8 +1305,14 @@ def bloco_G02():
         return
 
     for modo in ("test", "none", "equipe", "cliente"):
+        # 🔴 SPEC-EXTRA-001.6 P0.4 (13/09/2026): nos modos REAIS, sem o nome de
+        #    quem assina a rotina fica RETIDA -- o segurado nao pode ler "Aqui e
+        #    a nossa equipe". A retencao e provada em G4 de
+        #    `test_a_cobranca_prova_que_funciona.py`; aqui o config carrega o
+        #    nome, porque o que este gate mede e "o modo TEM motor".
         cfg = normalize({"kind": "billing_collection", "send_mode": modo,
-                         "team_number": TEL_EQUIPE, "confirmacao_cliente": True})
+                         "team_number": TEL_EQUIPE, "confirmacao_cliente": True,
+                         "attendant_name": "a equipe"})
         certo(cfg.get("send_mode") == modo,
               "[G02] `%s` sobrevive ao normalize (tem motor)" % modo,
               "virou %r" % cfg.get("send_mode"))
@@ -2378,7 +2384,11 @@ def bloco_G20():
               "⚠️ Nao e `xfail`: na corrida NORMAL este bloco roda inteiro e pode "
               "ficar vermelho")
         return
-    for arquivo, esperado in (("tests/test_a_cobranca_esta_como_estava.py", 34),
+    # 📊 34 -> 36 em 13/09/2026 (SPEC-EXTRA-001.6 §12.3): as duas assercoes que
+    #    mediam uma constante escrita no teste (292 ch, que o produto nao envia)
+    #    viraram seis, sobre o texto que o MOTOR monta e os baloes que o canal
+    #    recebe. Nao e "atualizado": e a licao migrando (CLAUDE.md §9.3).
+    for arquivo, esperado in (("tests/test_a_cobranca_esta_como_estava.py", 36),
                               ("tests/test_spec078_bloco_a_seguranca.py", 39),
                               ("tests/test_governador_de_envio.py", None)):
         caminho = os.path.join(RAIZ, arquivo)

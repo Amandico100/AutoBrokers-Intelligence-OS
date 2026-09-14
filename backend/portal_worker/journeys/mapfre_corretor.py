@@ -505,6 +505,29 @@ async def _escolher_no_modal(page, indice: int, casa) -> Tuple[bool, List[str]]:
     return True, rotulos
 
 
+def interpret_login(page_text: str, url: str = "") -> "JourneyResult | None":
+    """O que o TEXTO da tela pós-login diz — sem navegador, sem credencial.
+
+    SPEC-EXTRA-001.6 P0.3 (BLOCO 0, divergência D1): esta classificação vivia
+    dentro do `login_check` assíncrono e por isso o guarda G3 não conseguia
+    rodá-la sobre o corpus de telas reais (`tests/corpus/telas_reais_de_portal/`).
+    São os MESMOS `if` de antes, movidos; `login_check` os chama.
+
+    Devolve `None` quando o texto sozinho não decide — aí quem decide é o DOM
+    (o modal da corretora), como sempre foi.
+    """
+    texto = _norm(page_text)
+    if "autenticacao invalida" in texto or "usuario ou senha" in texto:
+        return JourneyResult(status="failed",
+                             message="a MAPFRE recusou a credencial (autenticacao invalida)")
+    # a tela de login sempre tem o link "Desbloquear usuário"; só conta como
+    # bloqueio se vier a palavra "bloqueado".
+    if "bloquead" in texto:
+        return JourneyResult(status="needs_human",
+                             message="a MAPFRE indicou usuario bloqueado")
+    return None
+
+
 async def login_check(page, params: Dict[str, Any],
                       evidence: Dict[str, Any]) -> JourneyResult:
     usuario = _digits(params.get("username"))
@@ -581,16 +604,9 @@ async def login_check(page, params: Dict[str, Any],
         pass
     await page.wait_for_timeout(4000)
 
-    texto = _norm(await _texto(page))
-    if "autenticacao invalida" in texto or "usuario ou senha" in texto:
-        return JourneyResult(status="failed",
-                             message="a MAPFRE recusou a credencial (autenticacao invalida)")
-    if "bloquead" in texto or "desbloquear usuario" in texto and "seja bem-vindo" in texto:
-        # a tela de login sempre tem o link "Desbloquear usuário"; só conta como
-        # bloqueio se vier junto com a palavra bloqueado.
-        if "bloquead" in texto:
-            return JourneyResult(status="needs_human",
-                                 message="a MAPFRE indicou usuario bloqueado")
+    veredito_do_texto = interpret_login(await _texto(page))
+    if veredito_do_texto is not None:
+        return veredito_do_texto
 
     # ---- 🔴 O MODAL DA CORRETORA: o gate cross-tenant na tela ----
     try:

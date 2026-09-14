@@ -31,6 +31,7 @@ existia e o que torna "parar no meio" seguro.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import re
@@ -481,6 +482,18 @@ def normalize_billing_config(config: Optional[Dict[str, Any]], delivery: Optiona
         send_mode = MODO_RETIDO
         retido_motivo = ("modo Enviar ao cliente sem a confirmação da corretora: "
                          "confirme na tela do Auxiliar antes de ligar")
+    elif send_mode in MODOS_REAIS and not str(
+            raw.get("attendant_name") or raw.get("nome_atendente") or "").strip():
+        # SPEC-EXTRA-001.6 P0.4 — RETER, não default. 📊 A frase que o Founder leu
+        # em 10/09 — "Aqui é a nossa equipe, da Resulta" — foi reproduzida
+        # literalmente pelo motor em 13/09 com `attendant_name=''`. O default
+        # "nossa equipe" (abaixo) continua valendo para `test`/`none`, onde o
+        # destino é a própria corretora e nada vaza; num modo real ele é o
+        # segurado lendo que ninguém assina.
+        send_mode = MODO_RETIDO
+        retido_motivo = ("sem o nome de quem assina a mensagem: preencha 'Quem assina "
+                         "a mensagem' na tela do Auxiliar — o segurado não pode receber "
+                         "'Aqui é a nossa equipe'")
 
     test_number = _digits(raw.get("test_number") or delivery.get("number") or "")
     return {
@@ -1150,7 +1163,11 @@ async def _send_test_messages(
             "ok": False,
         }
         try:
-            ok = await asyncio.to_thread(get_whatsapp_service().send_message, number, text, integration)
+            # SPEC-EXTRA-001.6 P0.1 — a simulação é DOCUMENTO: vai inteira, como o
+            # que a atendente vai receber em `equipe`. 📊 13/09: 520 ch → 3 balões.
+            ok = await asyncio.to_thread(
+                functools.partial(get_whatsapp_service().send_message,
+                                  number, text, integration, bloco_unico=True))
             entry["ok"] = bool(ok)
         except Exception as e:  # noqa: BLE001
             entry["error"] = type(e).__name__
@@ -1172,6 +1189,10 @@ async def _send_test_messages(
                 integration,
             )
             entry["document_sent"] = bool(doc_ok)
+            if doc_ok:
+                # SPEC-EXTRA-001.6 P0.5 — o PDF é contado como componente, igual
+                # ao caminho real (`_entregar_agora`): uma linha `billing_doc`.
+                await _registrar_documento_no_governador(company_id, number, item)
             if not doc_ok:
                 try:
                     link_ok = await asyncio.to_thread(
@@ -1264,6 +1285,23 @@ async def _registrar_no_governador(company_id: str, number: str,
         # Best-effort: perder o registro nao pode derrubar a rotina. Mas ele
         # subestima o contador, e subestimar teto e o lado perigoso — por isso
         # o espacamento (que vive no Redis, nao aqui) continua valendo.
+        pass
+
+
+async def _registrar_documento_no_governador(company_id: str, number: str,
+                                             item: Dict[str, Any]) -> None:
+    """Anota o PDF em `platform_sends` — SPEC-EXTRA-001.6 P0.5.
+
+    📊 10–11/09/2026: 7 linhas/dia gravadas, ≈28 mensagens recebidas pelo canal.
+    O PDF era metade da diferença e não era contado em lugar nenhum.
+    """
+    try:
+        from app.services.platform_outbound import (KIND_DO_DOCUMENTO_DA_COBRANCA,
+                                                    record_platform_send)
+
+        await record_platform_send(str(company_id), number, KIND_DO_DOCUMENTO_DA_COBRANCA,
+                                   f"boleto anexado ({boleto_document_name(item)})"[:120])
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -2267,6 +2305,28 @@ def purgar_evidencias_antigas(supabase, *, dias: Optional[int] = None,
     return resultado
 
 
+def _blocker_do_job(job: Dict[str, Any]) -> str:
+    """O que o relatório diz sobre um portal que NÃO terminou `done`.
+
+    SPEC-EXTRA-001.6 P0.2 — o motivo do portal aparece, inclusive no `failed`.
+
+    🔴 `evidence.message` PRIMEIRO, e `error` como segunda opção. 📊 13/09/2026:
+    `error` é NULL em 100% dos jobs de cobrança da história — o worker o limpa
+    ao finalizar (`portal_worker/worker.py:944`) — e `evidence.message` está
+    preenchido em 100% deles. A Mapfre já escrevia *"a MAPFRE recusou a
+    credencial (autenticacao invalida)"* e a linha do relatório lia `error`.
+    Manter `error` como fallback preserva o caso do requeue.
+    """
+    status = str((job or {}).get("status") or "")
+    portal = (job or {}).get("portal_key")
+    motivo = ((job or {}).get("evidence") or {}).get("message") or (job or {}).get("error")
+    if status == "needs_human":
+        return f"portal {portal}: precisa de humano ({motivo or 'revisao'})"
+    if status in {"failed", "timeout"}:
+        return f"portal {portal}: {status} — {motivo or 'sem motivo registrado'}"
+    return ""
+
+
 async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], *,
                                              work_run_id: Optional[str] = None) -> str:
     """A execução da rotina de cobrança.
@@ -2324,11 +2384,9 @@ async def execute_billing_collection_routine(supabase, routine: Dict[str, Any], 
         jobs.append(await _poll_job(client, job_id, int(cfg["poll_timeout_seconds"])))
 
     for job in jobs:
-        status = str(job.get("status") or "")
-        if status == "needs_human":
-            blockers.append(f"portal {job.get('portal_key')}: precisa de humano ({(job.get('evidence') or {}).get('message') or 'revisao'})")
-        if status in {"failed", "timeout"}:
-            blockers.append(f"portal {job.get('portal_key')}: {status} {job.get('error') or ''}".strip())
+        linha = _blocker_do_job(job)
+        if linha:
+            blockers.append(linha)
 
     items: List[Dict[str, Any]] = []
     boletos: List[Dict[str, Any]] = []

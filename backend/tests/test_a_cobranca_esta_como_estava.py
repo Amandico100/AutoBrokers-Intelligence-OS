@@ -122,58 +122,82 @@ check("e o default dele e False -- omitir = comportamento antigo",
       len(assinatura.args.kw_defaults) == 1
       and getattr(assinatura.args.kw_defaults[0], "value", None) is False)
 
-# A prova de comportamento, e nao so de assinatura: com `bloco_unico=False`
-# o texto tem de virar EXATAMENTE os mesmos baloes de antes.
-ns: dict = {}
-exec(FONTE_WS[FONTE_WS.index("_TETO_DE_UMA_MENSAGEM = "):
-              FONTE_WS.index("class WhatsappService:")], ns)  # noqa: S102
-_fatiar = ns["_fatiar_documento"]
-
-# 📊 A mensagem REAL que a Cobranca manda ao inadimplente
-# (`billing_collection.py`, MENSAGEM_PADRAO reconstruida).
-MSG_DA_COBRANCA = (
-    "Olá, tudo bem? Aqui é da Resulta Seguros.\n\n"
-    "Identificamos que a parcela do seu seguro venceu e ainda não consta o "
-    "pagamento. Desta forma, a seguradora gerou um novo boleto para pagamento "
-    "pra você, com a data atualizada.\n\n"
-    "Segue o boleto abaixo.\n\n"
-    "Qualquer dúvida é só falar com a gente por aqui."
-)
-
-antigo = BAL.split_whatsapp_balloons(MSG_DA_COBRANCA) or [MSG_DA_COBRANCA]
-
-
-def caminho_de_hoje(texto, bloco_unico=False):
-    """A MESMA decisao que `send_message` toma, extraida do arquivo."""
-    return _fatiar(texto) if bloco_unico else (
-        BAL.split_whatsapp_balloons(texto) or [str(texto or "")])
-
-
-check("a mensagem da Cobranca vira os MESMOS baloes de antes",
-      caminho_de_hoje(MSG_DA_COBRANCA) == antigo,
-      f"{len(caminho_de_hoje(MSG_DA_COBRANCA))} vs {len(antigo)}")
-
-# 📊 A mensagem real tem 292 caracteres -- abaixo do alvo de 300 da
-# humanizacao. Ela ja saia num balao so, e continua saindo num balao so.
-check("o inadimplente recebe UMA mensagem, como sempre recebeu",
-      len(caminho_de_hoje(MSG_DA_COBRANCA)) == 1,
-      len(caminho_de_hoje(MSG_DA_COBRANCA)))
-
-# 🔴 CONTROLE -- os dois caminhos precisam CONSEGUIR ser diferentes. Se
-# `_fatiar_documento` e a humanizacao devolvessem sempre a mesma coisa, as
-# assercoes acima nao provariam que a Cobranca ficou no caminho antigo.
+# A prova de comportamento, e nao so de assinatura -- MIGRADA em 13/09/2026
+# (SPEC-EXTRA-001.6 §12.3; CLAUDE.md §9.3 e §9.4).
 #
-# Nao da para provar isso com a mensagem da Cobranca: ela e curta demais, e os
-# dois caminhos coincidem nela -- que e exatamente por que ela esta a salvo.
-# Entao o controle usa um texto longo, onde os caminhos divergem de verdade.
+# 📊 Este bloco afirmava "o inadimplente recebe UMA mensagem, como sempre
+# recebeu" medindo uma constante de 292 caracteres ESCRITA AQUI DENTRO, que o
+# produto nao envia. O texto que o produto MONTA tem 332 caracteres e virava 2
+# baloes -- o guarda estava verde e a atendente recebia picotado. E o helper
+# `caminho_de_hoje` reimplementava o `if bloco_unico` do produto: provava que o
+# fatiador funciona, nao que alguem o usa.
+#
+# Agora: o texto vem do MOTOR (`build_customer_message` sobre o template
+# padrao), a decisao vem do PRODUTO (`e_documento(kind)`, em `platform_outbound`)
+# e os baloes sao CONTADOS por um provider duble no seam REAL de `send_message`.
+import app.services.platform_outbound as _PO
+import app.services.whatsapp.registry as _REG
+import app.services.whatsapp.voz_propria as _VP
+import app.services.whatsapp_service as _WS
+
+
+class _Res:
+    ok = True
+    success = True
+
+
+class _Provider:
+    def __init__(self):
+        self.textos = []
+
+    def send_text(self, to_number, text):
+        self.textos.append(str(text))
+        return _Res()
+
+
+_duble = _Provider()
+_REG.resolve_provider = lambda integration: _duble
+_VP.registrar_nossa_fala = lambda *a, **k: None
+_WS._dormir = lambda *a, **k: None
+_INTEG = {"provider": "evolution-go", "company_id": "aaaaaaaa-0000-0000-0000-00000000a1fa"}
+_ITEM = {"cliente_nome": "Segurado Exemplo", "numero_parcela": "3/12", "vencimento": "2026-09-03",
+         "valor": 733.13, "numero_apolice": "APOL-B1", "portal": "tokiomarine_corretor",
+         "recibo": "B-0001"}
+_CFG = BILL.normalize_billing_config({"send_mode": "equipe", "team_number": "5500900000009",
+                                      "attendant_name": "Atendente Alfa",
+                                      "brokerage_name": "Corretora Alfa"})
+# 📊 A mensagem REAL que a Cobranca manda -- montada pelo motor, nao copiada.
+MSG_DA_COBRANCA = BILL.build_customer_message(_ITEM, BILL.DEFAULT_MESSAGE_TEMPLATE, _CFG)
+
+
+def baloes_que_o_canal_recebe(texto, **kw):
+    """`send_message` REAL; o duble conta o que o Evolution receberia."""
+    _duble.textos.clear()
+    _WS.WhatsappService().send_message("5500900000009", texto, _INTEG, **kw)
+    return list(_duble.textos)
+
+
+check("a Cobranca e DOCUMENTO para o produto (`e_documento('billing_equipe')`)",
+      _PO.e_documento("billing_equipe") is True)
+check("a mensagem REAL da Cobranca (%d ch) chega ao canal em UM balao pelo caminho de documento"
+      % len(MSG_DA_COBRANCA),
+      len(baloes_que_o_canal_recebe(MSG_DA_COBRANCA,
+                                    bloco_unico=_PO.e_documento("billing_equipe"))) == 1)
+check("  ... e chega inteira",
+      baloes_que_o_canal_recebe(MSG_DA_COBRANCA, bloco_unico=True) == [MSG_DA_COBRANCA])
+
+# 🔴 CONTROLE -- os dois caminhos precisam CONSEGUIR ser diferentes, e o
+# proprio texto da Cobranca ja e a prova: como conversa, ele parte em dois.
+check("CONTROLE: a MESMA mensagem, como conversa (`bloco_unico=False`), parte em 2+",
+      len(baloes_que_o_canal_recebe(MSG_DA_COBRANCA)) >= 2,
+      len(baloes_que_o_canal_recebe(MSG_DA_COBRANCA)))
 TEXTO_LONGO = (NL * 2).join([f"Paragrafo numero {i} " + "palavra " * 12
                              for i in range(6)])
 check("CONTROLE: com texto longo, os dois caminhos DIVERGEM",
-      caminho_de_hoje(TEXTO_LONGO) != caminho_de_hoje(TEXTO_LONGO, bloco_unico=True),
-      f"humanizado={len(caminho_de_hoje(TEXTO_LONGO))} "
-      f"documento={len(caminho_de_hoje(TEXTO_LONGO, bloco_unico=True))}")
+      baloes_que_o_canal_recebe(TEXTO_LONGO)
+      != baloes_que_o_canal_recebe(TEXTO_LONGO, bloco_unico=True))
 check("CONTROLE: e a humanizacao e a que parte em varios",
-      len(caminho_de_hoje(TEXTO_LONGO)) > 1)
+      len(baloes_que_o_canal_recebe(TEXTO_LONGO)) > 1)
 
 check("`send_document` (o PDF do boleto) nao foi tocado",
       "def send_document" in FONTE_WS

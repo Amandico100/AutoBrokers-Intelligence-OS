@@ -391,6 +391,22 @@ async def _dentro_do_portal(page) -> bool:
         return False
 
 
+def interpret_login(page_text: str, url: str = "") -> "JourneyResult | None":
+    """O que o TEXTO da tela pós-login diz — sem navegador, sem credencial.
+
+    SPEC-EXTRA-001.6 P0.3 (divergência D1 do BLOCO 0): os MESMOS `if` que viviam
+    dentro de `login_check`, movidos para o guarda G3 poder rodá-los sobre o
+    corpus de telas reais. `None` = o texto não decide (o portal logado é
+    reconhecido por `_dentro_do_portal`, antes de chegar aqui).
+    """
+    texto = _norm(page_text)
+    if "senha" in texto and ("incorret" in texto or "invalid" in texto):
+        return JourneyResult(status="failed", message="credenciais rejeitadas pelo portal Yelum")
+    if "captcha" in texto:
+        return JourneyResult(status="needs_human", message="portal Yelum pediu CAPTCHA/2FA")
+    return None
+
+
 async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) -> JourneyResult:
     usuario = str(params.get("username") or "").strip()
     senha = str(params.get("password") or "")
@@ -450,11 +466,9 @@ async def login_check(page, params: Dict[str, Any], evidence: Dict[str, Any]) ->
 
     if await _dentro_do_portal(page):
         return JourneyResult(status="done", captured={"logged_in": True, "portal": "yelum_corretor"})
-    texto = _norm(await _texto(page))
-    if "senha" in texto and ("incorret" in texto or "invalid" in texto):
-        return JourneyResult(status="failed", message="credenciais rejeitadas pelo portal Yelum")
-    if "captcha" in texto:
-        return JourneyResult(status="needs_human", message="portal Yelum pediu CAPTCHA/2FA")
+    veredito_do_texto = interpret_login(await _texto(page))
+    if veredito_do_texto is not None:
+        return veredito_do_texto
     return JourneyResult(status="needs_human", message="tela pos-login Yelum nao reconhecida")
 
 

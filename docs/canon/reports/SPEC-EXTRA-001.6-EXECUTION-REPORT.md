@@ -146,3 +146,61 @@ Outros chamadores da porta (NÃO viram documento): `saudacao_do_religamento.py:5
 ---
 
 (seções 2–14 preenchidas por bloco, abaixo)
+
+---
+
+## 2. BLOCO P0 — a mensagem chega inteira e a falha fala português (implantável no 1º dia)
+
+> É o "BLOCO 0" da D-PILOTO-18: a condição de reativar a rotina. Não depende das senhas novas.
+
+### 2.1 O que entrou, por contrato da proposta §5
+
+| contrato | estado | onde | evidência |
+|---|---|---|---|
+| P0.1 `bloco_unico` decidido por `kind` | CONCLUÍDA | `platform_outbound.py`: `MENSAGENS_QUE_SAO_DOCUMENTO`, `e_documento`, `_entregar_agora` passa `bloco_unico=True` **só** quando é documento (a chamada de conversa continua `send_message(destino, texto, integration)`, letra por letra — é o que os guardas 078 e governador medem); `billing_collection.py` `_send_test_messages` passa `bloco_unico=True` | G1: 17 asserções; M1 vermelha |
+| P0.2 o motivo do portal aparece | CONCLUÍDA | `billing_collection.py`: nova função pura `_blocker_do_job(job)` (evidence.message → error → "sem motivo registrado"), chamada no laço do relatório | G2: 6 asserções sobre a linha REAL da Mapfre; M2 vermelha |
+| P0.3 a Allianz para de mentir | CONCLUÍDA | `allianz_corretor.py:_FAIL` + `"acesso negado"`, `"valide os dados"` (dialeto do `_norm`); `test_spec023_allianz_login.py` lê o corpus real e mantém a frase inventada como controle | G3: 32 asserções, 6 journeys × 6 telas reais; M3 vermelha |
+| P0.3 (divergência D1) `interpret_login` puro nas 4 journeys que não tinham | CONCLUÍDA | `mapfre_corretor.py`, `tokio_corretor.py`, `yelum_corretor.py`, `zurich_corretor.py`: os MESMOS `if` movidos para `interpret_login(page_text, url) -> JourneyResult | None`; `login_check` os chama | testes das 4 journeys continuam verdes (93 · 78 · 68 · Zurich pré-existente, ver §2.3) |
+| P0.4 sem o nome de quem assina, a rotina não sai | CONCLUÍDA | `normalize_billing_config`: `elif send_mode in MODOS_REAIS and not attendant_name → MODO_RETIDO` com motivo em português; default "nossa equipe" continua só em `test`/`none`; **campo novo** "Quem assina a mensagem" em `PainelDeRotinas.tsx` (divergência D2: não existia) | G4: 9 asserções; M4 vermelha; `tsc --noEmit` (§2.2) |
+| P0.5 o governador conta o que o canal recebeu | CONCLUÍDA | `platform_outbound.py`: `KIND_DE_CONTAGEM` (`billing_equipe`/`billing_cliente` → `billing`; `billing_equipe_nota` → `billing_nota`), `KIND_DO_DOCUMENTO_DA_COBRANCA = "billing_doc"` gravado depois do `send_document` aceito, nos DOIS caminhos (`_registrar_documento_no_governador` no modo teste); `context_note_for` ignora `KINDS_DE_COMPONENTE` | G5: 7 asserções; M5 vermelha |
+| §12.3 o guarda de controle migra | CONCLUÍDA | `test_a_cobranca_esta_como_estava.py`: a constante de 292 ch e o helper `caminho_de_hoje` saíram; o texto vem de `build_customer_message`, a decisão de `e_documento`, os balões contados por dublê no seam real de `send_message`; 34 → **36** asserções (o G20 da EXTRA-001 recebeu o novo número com a lição escrita) | 36/36 |
+
+### 2.2 Testes rodados (saída real, 13/09/2026)
+
+```
+$ PYTHONIOENCODING=utf-8 python tests/test_a_cobranca_prova_que_funciona.py
+  [G1] 17 ok · [G2] 6 ok · [G3] 32 ok · [G4] 9 ok · [G5] 7 ok
+  69 assercoes verdes - 0 vermelhas
+
+$ python tests/test_a_cobranca_prova_que_funciona.py --mutar
+  [ok] M1 deixa G1 VERMELHO: [FALHOU] `e_documento('billing_cliente')`
+  [ok] M2 deixa G2 VERMELHO: [FALHOU] a linha do relatorio traz o motivo REAL da Mapfre  portal mapfre_corretor: failed — sem motivo registrado
+  [ok] M3 deixa G3 VERMELHO: [FALHOU] allianz_corretor-needs_human-20260911.txt -> a propria journey diz `failed` ...  tela pos-login Allianz nao re
+  [ok] M4 deixa G4 VERMELHO: [FALHOU] `equipe` sem nome -> `retido_legado` (nada sai)  equipe
+  [ok] M5 deixa G5 VERMELHO: [FALHOU] nota -> `billing_nota`; texto -> `billing`; PDF -> `billing_doc`  ['billing_nota', 'billing', 'billing']
+  PLACAR DAS MUTACOES: 5 vermelhas · 0 verdes          (árvore restaurada por cópia: `git status` só com os arquivos do P0)
+
+$ python tests/test_a_cobranca_esta_como_estava.py        36 assercoes verdes - 0 vermelhas   (era 34)
+$ python tests/test_a_cobranca_chega_a_quem_deve.py       verde (G02 migrado: o config `equipe` do gate carrega `attendant_name`; G20 espera 36)
+$ python tests/test_spec023_allianz_login.py              20 ok / 0 fail   (era 19: +1 sobre a tela REAL)
+$ python tests/test_spec078_bloco_a_seguranca.py          39 verdes · 0 vermelhas
+$ python tests/test_governador_de_envio.py                verde
+$ python tests/test_mapfre_cobranca.py                    93 verdes · python tests/test_tokio_cobranca.py 78 · test_yelum_cobranca.py 68
+$ python tests/test_spec031_allianz_fixes.py              13 passaram
+$ npx tsc --noEmit                                        rc=0 (13/09/2026)
+```
+
+⚠️ **M3 remove as DUAS frases**, não só `"acesso negado"` como a proposta §11 escreveu: tirar só uma deixaria a outra casar e o guarda continuaria verde — mutação que não muda comportamento não mede.
+
+### 2.3 Triagem nominal contra a base (`de79a13`, worktree limpo `../AutoBrokers-FIX-base-0016`)
+
+| falha | na base? | veredito |
+|---|---|---|
+| `test_zurich_cobranca.py:123` `IndexError: list index out of range` (`atrasados[0]`) | **SIM, igual** | pré-existente, não é desta SPEC (provavelmente dependente da data do fixture); vai para PENDENCIAS |
+| `test_spec078` 3 vermelhas · `test_governador_de_envio` `TypeError` | não | **minha**, corrigida: os dublês de `send_message` desses testes não aceitam `bloco_unico`; o kwarg agora só viaja quando é documento |
+| `chega_a_quem_deve` `[CTL] platform_outbound chama o canal em no maximo 2 lugares — achou 3` | não | **minha**, corrigida: uma chamada única com kwargs condicionais |
+
+### 2.4 O que o P0 NÃO fecha (e fica para os blocos seguintes ou para o Implantar)
+
+- gate P0 ⑤ da proposta (rotina da Resulta em `test` no IMPLANTADO → 1 balão por texto, `platform_sends` por componente): só depois do Implantar; entra no canário (B5).
+- dedup em `test` continua desligada por padrão (é o B1.1); por isso `test_a_cobranca_esta_como_estava.py:212` ainda afirma o padrão antigo — migra no B1.

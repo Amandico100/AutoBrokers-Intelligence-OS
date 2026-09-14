@@ -111,8 +111,16 @@ def run():
     check("Allianz dashboard -> done", ok.status == "done", ok)
     check("Allianz dashboard captura logged_in", ok.captured.get("logged_in") is True, ok.captured)
 
+    # 🔴 SPEC-EXTRA-001.6 P0.3 (13/09/2026): a frase abaixo era INVENTADA e o teste
+    #    a consagrava como se fosse a tela. A tela real, lida no print do job de
+    #    11/09, diz "Acesso negado / Por favor, valide os dados introduzidos." --
+    #    e caia em "tela pos-login nao reconhecida" 34 vezes desde 18/08. O acervo
+    #    manda; a frase inventada fica como CONTROLE de compatibilidade.
+    _corpus = ROOT / "tests" / "corpus" / "telas_reais_de_portal" / "allianz_corretor-needs_human-20260911.txt"
+    real = interpret_login(_corpus.read_text(encoding="utf-8"))
+    check("Allianz credencial rejeitada (tela REAL de 11/09) -> failed", real.status == "failed", real)
     bad = interpret_login("Usuario ou senha invalida")
-    check("Allianz credencial rejeitada -> failed", bad.status == "failed", bad)
+    check("CONTROLE: a frase antiga ainda -> failed", bad.status == "failed", bad)
 
     hitl = interpret_login("Informe o codigo de verificacao enviado para seu e-mail")
     check("Allianz codigo/2FA -> needs_human", hitl.status == "needs_human", hitl)
