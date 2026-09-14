@@ -142,7 +142,18 @@ Testes existentes migrados sob §9.3: `test_o_espelho_vira_conversa`, `test_quem
 
 Divergências: D6 (54/37); D7 🔴 existe um SEGUNDO vocabulário (`corridor_playbooks._COMO_PERGUNTAR`, ~60 redações) — a docstring de `ROTULOS` ("o ÚNICO") era falsa; G6 é a trava que fica vermelha se divergirem → **P-E0012-C2**. Os 3 escritores da coluna são donos de chaves disjuntas (confirmado). Conferido pelo orquestrador: 11 + 21 verdes; 6/6 mutações; `test_o_atendimento_tem_memoria` (promovido para o motor) e `test_a_maquina_de_lavar_vai_ate_o_fim` (112) verdes.
 
-## 4. BLOCO AB — (preenche ao fechar)
+## 4. BLOCO AB — a trava de turno, a janela por conteúdo, a mídia no buffer e o "digitando" (Builder AB · Opus 5 · commit `56d8bb3`)
+
+| entrega | o que mudou | prova |
+|---|---|---|
+| A.1 trava de turno | `whatsapp_turno:{escopo}:{phone}` por `SET NX EX` com token `uuid4`; `renovar_turno`/`fechar_turno` por Lua CAS (só o dono solta); `TURNO_TTL_SEGUNDOS=90` (📊 p90 18 s · max 53 s — BLOCO 0), `TURNO_RENOVACOES_MAX=3`; o turno abre ANTES do `get_and_clear` em `processar_buffers_prontos_uma` e fecha no `finally`; escopo vazio → recusa fail-closed (D-E0012-08); reconferência de posse (`ainda_sou_o_dono`) antes de cada envio | `test_uma_rajada_um_turno.py` **60/60**: 2 processadores sobre a mesma rajada → 1 turno; rajada de 5 pelo corpus real → 1 resposta; TTL vence no meio → o segundo não envia; 9/9 mutações vermelhas (inclui `max(settings.BUFFER` de volta) |
+| A.2 janela por conteúdo | `tracos_da_mensagem` (dado curto · frase completa · frase inacabada · identificador placa/CPF) → `janela_de_espera` 3 · 8 · 18 s, `TETO_DA_RAJADA_SEGUNDOS=25`; o teto só DESCE (uma frase completa depois de uma inacabada encurta a espera, nunca alonga); o piso `max(settings.BUFFER_*, 8)` morreu — 📊 `grep "max(settings.BUFFER"` no produto = **0** (as 2 ocorrências restantes são o alvo da mutação no guarda) | idem; corpus: 📊 sobre as **400** rajadas do acervo (892 itens): pontuação final **235**, conectivo no fim **22**, dado curto **60**; a janela adaptativa fragmentaria **203** rajadas × a fixa de 8 s **273** (📊 lida no scratchpad, script `gerar_corpus_de_rajadas.py`) |
+| B.1 mídia no buffer | os 3 desvios de mídia do webhook morreram (`grep 'type": "media"'` = **0**); `_item_do_inbound` põe imagem/áudio/documento como item tipado no buffer v2 (`itens`, leitura tolerante ao v1); visão/transcrição rodam DENTRO do turno (`_midia_do_turno`), não no recebimento | `test_a_midia_entra_no_buffer.py` **23/23**: 10 imagens em 20 s → 1 turno, 1 resposta; imagem + legenda + texto → um só contexto; 5/5 mutações vermelhas |
+| B.2 re-planejamento | o que chegou durante o turno é mesclado ANTES de gravar e gerar (`mesclar_o_que_chegou`, `REPLANEJAMENTOS_MAX=2`); passado o teto, o resto fica para o próximo turno | idem |
+| B.3 presença | `send_presence` na fachada e no `EvolutionGoProvider` (`POST /message/presence`, teto 25 000 ms — 📊 rota confirmada no swagger do fork, D1); só DEPOIS do portão de silêncio (`a_ia_deve_calar`) e atrás de `PRESENCA_DIGITANDO_LIGADA` (default **false** — 🧑 liga depois do canário); sem `delay` no `/send/text` | `test_digitando_so_quando_vai_falar.py` **30/30**: calada → nenhuma presença; ligada e vai falar → 1 presença antes do texto; provider sem `presence` → nada; 5/5 mutações vermelhas |
+| corpus | `tests/corpus/rajadas_reais.jsonl` — **20** rajadas reais SÓ com traços (tipo, tamanho, gap, traços; 📊 0 acertos de PII no scan: A **11** · B **9**, **6** com mídia, **17** viram 1 turno na simulação) + `rajadas_reais.INDICE.md` | leitura + os 3 guardas replicam sobre ele |
+
+Env novas (7, nomes; valores de exemplo em `.env.example`): `TURNO_TTL_SEGUNDOS`, `TURNO_RENOVACOES_MAX`, `JANELA_DADO_CURTO_SEGUNDOS`, `JANELA_FRASE_COMPLETA_SEGUNDOS`, `JANELA_FRASE_INACABADA_SEGUNDOS`, `PRESENCA_DIGITANDO_LIGADA`, `REPLANEJAMENTOS_MAX` — nenhuma obrigatória (todas com default no `config.py`). Conferido pelo orquestrador (saída real): 60 + 23 + 30 verdes; controles `test_midia_e_concorrencia_do_webhook` rc=0, `test_a_maquina_de_lavar_vai_ate_o_fim` 112, `test_uma_entrega_uma_linha_um_turno` 18, `test_todo_silencio_tem_motivo` 48, `test_higiene_de_plataforma` rc=0; 19/19 mutações vermelhas. 🔴 O arnês de mutação decodifica em utf-8 (lição do E).
 
 ## 5. BLOCO DF — (preenche ao fechar)
 
@@ -184,6 +195,11 @@ Divergências: D6 (54/37); D7 🔴 existe um SEGUNDO vocabulário (`corridor_pla
 | **D-E0012-04** | `CAMPOS_DE_CONTROLE = {dados_confirmados}` — o único campo da tool que não é fala do cliente | **90** | Builder C |
 | **D-E0012-05** | `confirmados[slot]` vira `{valor, origem, em}` com leitura tolerante ao valor cru; origem `sistema_de_gestao` só para placa/veículo com contexto InfoCap; CPF fica `cliente` | **92** · valor cru + mapa paralelo de origem **40** | Builder C |
 | **D-E0012-06** | o índice único da M2 só entra com D0 = 0 duplicatas abertas (havia 0); duplicatas viram lista no relatório, nunca fechamento em lote | **92** · fechar a mais antiga **20** (D-PILOTO-02) | Builder E |
+| **D-E0012-08** | escopo vazio na trava de turno → RECUSA (fail-closed) em vez de chave global `whatsapp_turno::phone` | recusar **92** · chave global **30** (duas corretoras com o mesmo telefone disputariam um turno) | Builder AB |
+| **D-E0012-09** | visão e transcrição rodam dentro do TURNO, não no recebimento | no turno **90** (a legenda que chega 2 s depois entra no mesmo contexto) · no recebimento **55** (mais cedo, mas responde a meia rajada) | Builder AB |
+| **D-E0012-10** | janela 3 · 8 · 18 s com teto 25 confirmada (📊 adaptativa fragmenta 203 × fixa 273 sobre 400 rajadas); o teto só desce | **94** · fixa 8 s **60** · fixa 25 s **45** (lenta em toda conversa curta) | Builder AB |
+| **D-E0012-11** | re-planejamento ANTES de gravar e gerar (teto 2) | **88** · re-gerar depois da geração **50** (custo dobrado) · ignorar o que chegou **20** (volta o "uma por uma") | Builder AB |
+| **D-E0012-12** | sem `delay` no `/send/text`; a presença é chamada explícita e só depois do portão de silêncio | **85** · `delay` no send **60** (o GO simularia "digitando" mesmo quando o portão manda calar) | Builder AB |
 | **D-E0012-07** | o feed do silêncio é escrito DENTRO de `a_ia_deve_calar`, memo por CLASSE (não pela frase, que carrega nome) | **85** | Builder E |
 
 ## 11. Riscos remanescentes
