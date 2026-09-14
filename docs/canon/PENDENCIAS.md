@@ -10654,3 +10654,30 @@ Depois que `_real_vigencia` passou a delegar a `classificar_vigencia` da porta. 
 
 ## P-E0011-CONEXOES-ARQUIVADAS-DA-RESULTA · 3 conexões InfoCap `archived` (1 com credencial inválida) ao lado da ativa
 📊 14/09 (`tenant_connections ⋈ connector_templates`). O resolver nunca escolhe `archived` (guarda), mas a tela de conectores mostra as quatro. **Destrava:** 🧑 apagar as 3 arquivadas em Conectores (ou 🤖 por migration de dado com manifesto). **Dono:** 🧑. **Custo de esquecer:** confusão na tela; e a chave de cache agora carrega `connection_id` — trocar a ativa invalida o cache como deve.
+
+## P-E0011-ACERVO-ESTRUTURAL-10 · o acervo do defeito é maior que as 7 respostas do marcador lexical
+📊 Lente do dado, 14/09: com marcador ESTRUTURAL (≥2 linhas com duas datas na mesma linha), 09–11/09 tem **10 respostas, 49 linhas, 36 com fim de vigência passado**; 3 listaram vencidas sem as palavras do regex e uma respondia a pergunta de cobertura/franquia que não pedia lista. **Destrava:** extrair as 3 perguntas extras (só as perguntas, `[CPF]`/`[NOME]`) para o corpus e ampliar M-C1 para 10 de 10. **Dono:** 🤖 (EXTRA-001.7, piloto medido). **Custo de esquecer:** o guarda de regressão herda um recorte que subestima o alcance do defeito.
+
+## P-E0011-DESEMPATE-POR-LMI-INERTE · `_desempatar_por_lmi` exige o 1º token normalizado comum
+📊 Juiz fresco: "VIDROS" × "Quebra de Vidros" nunca compartilham o 1º token; sonda com 1 linha de cadastro + 2 candidatas do mesmo grupo → 3 linhas de cobertura e `rotulo_ambiguo` aceso (falha seguro). **Destrava:** o desempate por LMI vale dentro do MESMO grupo declarado, sem exigir o token. **Dono:** 🤖 (EXTRA-001.5). **Custo de esquecer:** cobertura duplicada na resposta quando o PDF tem duas linhas do mesmo grupo — o corretor vê o aviso, mas a lista vem com uma a mais.
+
+## P-E0011-TETO-RAG-MEDIR-COM-MODELO · o teto de 60.000 chars mantém 12 de 128 trechos no turno do tamanho medido
+📊 Juiz fresco: `chars_antes 637.049 → chars_depois 59.717`, 9,4% sobrevive; as duas regras da §9.1 (pergunta no fim; excedente dito) estão cumpridas, mas nada mede que a RESPOSTA continua certa — não há LLM no laço. **Destrava:** medir com o modelo, no canário do caso 5 (turno grande real), a resposta com o teto em 60k × 120k; ajustar `TETO_DO_CONTEXTO_RECUPERADO_CHARS` pelo número. **Dono:** 🤖 (EXTRA-001.7). **Custo de esquecer:** trocar "sepultou a pergunta" por "descartou o trecho certo" sem ninguém medir.
+
+## P-E0011-EXTRATOR-PAGINA-UNICA · o extrator perde uma linha quando o documento vem numa página só
+📊 Lente do dado: texto real da HDI em 6 páginas → 10 `coverage_row`; o mesmo texto numa página só → 9 (some "Equip. Eletronicos/Eletrodomesticos"). Produção passa páginas reais (`direct_text`); o fallback docling ou qualquer parser que devolva página única entra por esse caminho. **Destrava:** guarda com o mesmo texto nas duas segmentações → 10 e 10; corrigir o teto por página/estruturados. **Dono:** 🤖. **Custo de esquecer:** uma cobertura some em silêncio quando o parser muda.
+
+## P-E0011-CONTENT-HASH-COLISAO · o cache documental decide por `content_hash` sem conferir o texto
+📊 Lente do dado: com o mesmo `content_hash` e textos diferentes, a evidência devolvida foi a do outro texto. Em produção o hash vem dos bytes do PDF; não morde hoje. **Destrava:** guardar o tamanho/página junto do hash e recusar hit com texto de tamanho diferente. **Dono:** 🤖. **Custo de esquecer:** uma faca sem guarda no cache.
+
+## P-E0011-PISO-DE-PII-105 · o auditor de PII do repositório dá 105 identificadores em 150 arquivos (base 📊 89 de 23/08)
+📊 Lente do dado: nenhum dos 53 arquivos desta SPEC (só sentinelas declaradas); a linha de base do auditor está velha e não serve como controle. **Destrava:** remedir e reescrever a base no `auditar_pii_no_codigo.py`; triar os 16 novos. **Dono:** 🤖. **Custo de esquecer:** o número deixa de detectar vazamento novo porque já não bate com nada.
+
+## P-E0011-CAPACIDADES-POR-TENANT · `capacidades()` é síncrona e por provider; a porta da 094 é async e por `company_id`
+📊 Juiz fresco: duas corretoras com perfis InfoCap diferentes (P-PILOTO-19: `/parcelas` 403 numa, talvez 200 noutra) não podem ser distinguidas. **Destrava:** `capacidades(*, company_id)` async, medindo o perfil na conexão (censo, como a 094.1). **Dono:** 🤖 (SPEC-101). **Custo de esquecer:** a fábrica de conectores nasce sem saber o que cada corretora pode.
+
+## P-E0011-EXCECOES-DE-FRONTEIRA · a porta não declara exceções; `parcelas_em_aberto` devolve `[]` em falha
+📊 Juiz fresco: a 094 tem `FalhaDoProvider`/`RecusaDeContaCompartilhada`; aqui "vazio" é a ambiguidade que a porta existe para matar. **Destrava:** `FalhaDoProvider` na porta e `Indisponivel`/`Sinal` em vez de lista vazia. **Dono:** 🤖 (SPEC-101). **Custo de esquecer:** "não há parcelas" e "a fonte caiu" chegam iguais ao corretor.
+
+## P-E0011-PORTA-EM-UM-ARQUIVO · contrato + modelo + `reconciliar` + registry em `policy_data_provider.py` (1.908 linhas)
+Decisão D-E0011-07 (mesmo arquivo 95 × módulo 40, por "nenhum diretório novo" da §19.1). 📊 Juiz fresco: a 094 tem 216 linhas de contrato com o modelo fora. **Destrava:** separar `modelo_de_apolice.py` (dataclasses) e `reconciliacao.py` no MESMO diretório `providers/` quando o terceiro adaptador entrar. **Dono:** 🤖 (SPEC-101 / EXTRA-002). **Custo de esquecer:** o arquivo-hub vira o gargalo de todo adaptador novo.

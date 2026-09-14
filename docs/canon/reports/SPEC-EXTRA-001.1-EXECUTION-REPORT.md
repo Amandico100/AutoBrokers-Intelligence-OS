@@ -257,6 +257,44 @@ npx next start -p 3111           GET /api/dashboard/rotinas → HTTP 401 · POST
 
 ## 6. Painel: juiz fresco + lente do dado · conserto · suíte
 
+### 6.1 Juiz fresco (Opus 5, cego; sobre `5f84bd9`; 📊 347k tokens · ≈2h20) — **PASS · 67/100**
+Critério do juiz: 100 = 17 itens de §19 ✅ e 0 blockers; BLOCKER −15 · ESSENCIAL −5 · VALIOSA −2 · item ❌ −3; item 14 (canário) pendente do Founder não desconta. Placar: **20 guardas verdes** (os 14 novos rodados 2×, os 4 de P-PILOTO-20, bf963b0, contract_capture) · **61 mutações com o efeito declarado / 0 erradas** (59 vermelhas + 2 pares de controle verdes de propósito); o arreio assevera a restauração. VERIFY da migration reconferido pelo juiz no banco. 3 perguntas adversariais: ① vazio/nulo 14/14 sem exceção (limites de data: vence hoje VIGENTE · venceu ontem VENCIDA · começa hoje VIGENTE · começa amanhã FUTURA · sem fim DESCONHECIDA) · ② duas corretoras: ContextVar não vaza; chaves separam tenant E conexão · ③ mesma mensagem 2×: mesma `Escolha`, `reconciliar` idempotente; `invocation_key` não idempotente por desenho declarado (📊 0 duplicadas em 277). §19: 12 ✅ · 4 ⚠️ (5: Allianz 21 por decisão; 12/13: provados em fixture; 16: §6–§12 vazios na hora do julgamento) · 1 ❌ (15: nada empurrado — correto, o push é o último passo do laço).
+
+| # | achado | classe | destino |
+|---|---|---|---|
+| ① | `policy_document_cache_key` com `connection_id` não DECIDE o hit (`find_official_policy_document(company_id, locator_hash)`); G4d comparava a string | ESSENCIAL | conserto F.2 |
+| ② | `escolher_apolice` chama FUTURA e DESCONHECIDA de "única apólice vigente" (📊 latente: 0 casos nas 35 linhas das listagens) | ESSENCIAL | conserto F.3 |
+| ③ | o briefing do corretor imprime `situacao: Recebido e não entregue ao cliente` (status de entrega do fornecedor) na linha da apólice — 📊 2 de 2 do golden | ESSENCIAL | conserto F.4 |
+| ④ | `rotulo_ambiguo`, `franquia_em_prosa_sem_dono`, `situacao_de_renovacao` são escritos e ninguém lê; a pendência dizia "o corretor VÊ" | ESSENCIAL | conserto F.5 |
+| ⑤ | `chave_de_rastro(sessão, None) == sessão`: fora do painel a junção colheria a sessão inteira | VALIOSA | conserto F.7 |
+| ⑥ | `policy_number_ambiguous` ainda entrega vencida como opção (filtro só em `ambiguous_policy`) | VALIOSA | conserto F.6 |
+| ⑦ | `_desempatar_por_lmi` exige 1º token comum: inerte para "VIDROS" × "Quebra de Vidros" (falha seguro: acende sinal) | VALIOSA | **P-E0011-DESEMPATE-POR-LMI-INERTE** |
+| ⑧ | 23 "InfoCap" em strings de `infocap_tool.py` que vão ao modelo (description, `_summarize`) | VALIOSA | conserto F.8 |
+| ⑨ | teto de 60k mantém 12 de 128 trechos (9,4%) no turno do tamanho medido; nada mede a resposta do modelo | VALIOSA | **P-E0011-TETO-RAG-MEDIR-COM-MODELO** |
+| ⑩ | MANIFEST mentiu por 2 commits ("pendente de execução"); árvore andou durante o julgamento (só docs) | FUTURA | corrigido em `fe1a649` |
+
+Contra a referência da 094: no padrão em registro/recusa, `capacidades()` e teste estrutural+grep+fixture; FORA em (a) `capacidades()` síncrona por provider (a 094 é async por `company_id`), (b) sem exceções de fronteira (`parcelas_em_aberto` devolve `[]` em falha), (c) contrato + modelo + reconciliar + registry num arquivo de 1.908 linhas → **P-E0011-CAPACIDADES-POR-TENANT**, **P-E0011-EXCECOES-DE-FRONTEIRA**, **P-E0011-PORTA-EM-UM-ARQUIVO**. Referências externas reabertas em 14/09: 5 de 5 (ressalva: a frase da ACL sobre "regra de negócio na camada" aparece sob "might not be suitable", não como regra geral).
+
+### 6.2 Lente do dado (Opus 5, cega; 📊 210k tokens · ≈55 min; 21 SELECT, 5 chamadas à porta implantada, 9 execuções do motor novo sobre texto real) — **80/100**
+Critério: 100 = toda afirmação 📊 reconstruída igual; divergência sem explicação −5; PII −20; blocker −15. **Zero PII** nos 53 arquivos do diff, fixtures, corpus, relatório e `tool_invocations` (277/277 sem valor). 📊 Reconstruído IGUAL sobre dado vivo: acervo 7/31/24 (reconcilia byte a byte; e 6 das 7 tinham UMA vigente e perguntaram); 2 turnos "não recebi" (117 s / 86 s); `agents` 8/8 8192, backup 8 (4×1200 + 4×2000, `capturado_em` idêntico = prova do `on conflict`), RLS true, `companies` 2000×5, migration `20260914072141`; `tool_invocations` 277, 0 com 11/14 dígitos, `trace_id` sem `|` (deploy não aconteceu); golden HDI 6/70,29/306,60/`10.00%-550,00`/4×Cartão×Boleto/6 páginas e Allianz 15/17.973,02/24.960,60/5 páginas/6×boleto; empresa 11/10; `pdf_tabelas_reais` 27 de 27 linhas verbatim; 7 perguntas idênticas (razão 1,000 em 5; 0,85–0,97 nas 2 com `[NOME]`); contagens por cliente exatas; backup 8 de 8 `agent_id` existentes. **O ELO (dado vivo de hoje no motor novo):** HDI 31 itens → 10 coberturas com origem, Σ 306,60 = preliq, `cadastro_incompleto` R$ 236,31 / 77,07%, `cabecalho_divergente` Boleto × Cartão, Danos Elétricos 19,17 × 17,25 e 550 × 600 AS DUAS, 3 franquias sem dono; Allianz 39 itens → 21, R$ 6.987,58 / 27,99%, "Prêmio Líquido" fora.
+
+| # | achado | classe | destino |
+|---|---|---|---|
+| 1 | 🔴 `evidence[:20]` em `policy_document_evidence_service.py:1040`: a produção entrega 20 dos 39 itens da Allianz → **20 coberturas em vez de 21** (some "Gastos com Defesa" R$ 70,15); GC2f montava o pack à mão | **BLOCKER** | conserto F.1 |
+| 2 | MANIFEST dizia "pendente de execução" com a migration aplicada | ESSENCIAL | corrigido em `fe1a649` |
+| 3 | acervo com marcador estrutural = 10 respostas / 49 linhas / 36 vencidas (as 7 lexicais são subconjunto) | ESSENCIAL | D11 + **P-E0011-ACERVO-ESTRUTURAL-10** |
+| 4 | o extrator perde "Equip. Eletronicos" quando o documento vem numa página só (fallback docling) — produção passa páginas reais | VALIOSA | **P-E0011-EXTRATOR-PAGINA-UNICA** |
+| 5 | `stages` dos 2 turnos não é `[]` (rótulos de etapa) | VALIOSA | corrigido (premissa 16) |
+| 6 | tabela de backup: RLS true e 0 policies (só service role lê) | VALIOSA | escrito no MANIFEST |
+| 7 | versão aplicada `20260914072141` ≠ nome do arquivo | VALIOSA | escrito no MANIFEST |
+| 8 | cache documental keyable por colisão de `content_hash` (hash vem dos bytes do PDF; não morde hoje) | FUTURA | **P-E0011-CONTENT-HASH-COLISAO** |
+| 9 | `policy_status` "ativo" nas 22 apólices dos 3 clientes, inclusive as de 2017 — o ELO do card medido no vivo | FUTURA | — |
+| 10 | piso de PII do repositório: 📊 105 identificadores / 150 arquivos (base 89 de 23/08); nenhum desta SPEC | FUTURA | **P-E0011-PISO-DE-PII-105** |
+
+### 6.3 Conserto único (Builder F) — (preenche ao fechar)
+
+### 6.4 A suíte inteira — (preenche ao fechar)
+
 ## 7. Canário (depois do Implantar)
 
 ## 8. O que ficou fora e por quê
