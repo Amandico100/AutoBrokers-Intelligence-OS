@@ -24,16 +24,21 @@ O ELO ................  "a resposta vem errada PORQUE a porta é um cano": A med
                         de vigência passado) · B medido (`lookup()` devolve o dict do fornecedor; `ambiguous_policy` por contagem pura em
                         `infocap_connector.py:1316`) · B CHEGA em A ✅ (o briefing `:405` imprime `matches` cru com `policy_status` "ativo"
                         em apólice vencida — 📊 golden: 3 residenciais HDI todas "ativo", só 1 vigente)
-FAIXA DE RELÓGIO .....  💭 8–12 h declarada · real: em curso (início 14/09 ≈ 06:10 UTC)
-ORÇAMENTO ............  💭 ≤ 1 M de subagentes (teto do laço curto) · gasto: em curso
+FAIXA DE RELÓGIO .....  💭 8–12 h declarada · real ≈15 h (14/09, uma janela; duas quedas por limite de sessão retomadas no mesmo contexto)
+ORÇAMENTO ............  💭 ≤ 1 M de subagentes (teto do laço curto) · gasto 📊 ≈2,9 M (A 446k · E 302k · B 381k · C 344k · D 364k · juiz 347k · lente 210k · F 465k): +190% — 5 blocos, 2 lentes e 1 conserto para uma proposta de 106 KB; o teto era de 1 SPEC média, não desta
 BLOCKER (o que é) ....  muda um byte do que o CORRETOR lê, o SEGURADO recebe ou o BANCO guarda (protocolo §2)
 ```
 
 ### 🔴 As três perguntas que fecham o card
 ```
-① o PAINEL rodou?            (preenche no fim) laço curto: juiz fresco + lente do dado
-② a AUDITORIA / juiz fresco? (preenche no fim)
-③ pendências por VALOR MARGINAL: (preenche no fim)
+① o PAINEL rodou?            SIM — laço curto (D-PILOTO-20): juiz fresco Opus (PASS 67: 0 blocker, 4 ESSENCIAL, 5 VALIOSA, 61/61 mutações
+                            reais) + lente do dado Opus (80: 1 BLOCKER que nenhum guarda via — a entrega cortava em 20; o ELO reconstruído
+                            sobre o dado vivo), cegos entre si, sobre `5f84bd9`; conserto ÚNICO (Builder F: 8 achados, 44 mutações)
+② a AUDITORIA / juiz fresco? SIM — o juiz fresco É a auditoria do laço curto; a lente reconstruiu 9 frentes (29 afirmações 📊) e reconferiu o
+                            VERIFY da migration; o juiz reconferiu o banco e reabriu as 5 referências externas
+③ pendências por VALOR MARGINAL: P-E0011-DESEMPATE-POR-LMI-INERTE (falha seguro) · P-E0011-EXTRATOR-PAGINA-UNICA (produção passa páginas reais) ·
+                            P-E0011-CONTENT-HASH-COLISAO (o hash vem dos bytes) · P-E0011-OPCOES-EM-TEXTO-SOBRE-DICT (chamadores já preferem
+                            o texto classificado) — nenhuma muda um byte do que chega hoje
 ```
 
 **Produto:** AutoBrokers Intelligence OS
@@ -43,19 +48,19 @@ BLOCKER (o que é) ....  muda um byte do que o CORRETOR lê, o SEGURADO recebe o
 **Executor:** Fable 5.1 (orquestrador) · Opus 5 (builders, juiz fresco, lente do dado)
 **Início:** 14/09/2026
 **Commit inicial:** `cff20efbfd320f0624d1914fb9c9f743a6807a4f`
-**Commit final:** (preenche no fim)
-**Estado final:** EM EXECUÇÃO
+**Commit final:** `3320cee` (código + relatório; o commit do dossiê vem depois)
+**Estado final:** **CONCLUÍDA COM RESSALVAS** — código na `main`; migration aplicada e provada; 14 guardas novos + 1 canônico, 105 mutações com efeito; o canário vivo dos 7 casos e a validação com a atendente dependem do Implantar (P-E0011-CANARIO-VIVO-NO-IMPLANTADO)
 
 ---
 
 ## 0. Declaração de integridade
 
 - [x] Nenhum motor paralelo foi criado: a porta é `backend/app/providers/policy_data_provider.py` (a que existe desde a SPEC-016 E5); nenhum `backend/app/services/policy_provider/`; nenhum segundo catálogo (a chave é `docs/canon/providers/susep/*.json` via `susep_ses_provider.coenti_de/cogrupo_de`); nenhum segundo caminho de leitura documental (`policy_document_evidence_service`); nenhum segundo registro de tool call (`tool_invocations` via `RegistroDeInvocacao`).
-- [ ] Nenhuma migration existente foi movida, renomeada, apagada ou reaplicada.
+- [x] Nenhuma migration existente foi movida, renomeada, apagada ou reaplicada (1 nova, de dado: `20260914_06`; a tabela de backup permanece).
 - [x] Nenhum DDL monolítico foi aplicado.
 - [x] Nenhum segredo foi exposto (TESTE-A/TESTE-B só por alias; o golden persistido sem nome, documento, número de apólice ou referência técnica; o corpus de perguntas com `[CPF]`/`[CNPJ]`/`[NOME]`).
-- [ ] Nenhum escopo foi reduzido sem decisão registrada.
-- [ ] Nenhum dado atravessou tenants.
+- [x] Nenhum escopo foi reduzido sem decisão registrada (o que ficou fora está em §8 com o gatilho; as decisões em D-E0011-00…18; os addenda classificados).
+- [x] Nenhum dado atravessou tenants (M-A4 com dois tenants reais em fixture; `company_id` no código em todas as operações da porta; chaves de cache com tenant E conexão; juiz ② e lente confirmam).
 - [x] `CLAUDE.md`, protocolo §0–§3/§5/§7.3, proposta inteira, research pack §1/§3.3/§6–§9, D-PILOTO-08/11/14/16/20, `MIGRATIONS-AUTHORITY.md` §1–§3, diagnóstico §1.1–§1.3, MODELO de abertura e prompt individual §6 lidos no início.
 
 ## 0.1 O PROTOCOLO AAA — as duas contas, a referência e o laço
@@ -70,7 +75,7 @@ BLOCKER (o que é) ....  muda um byte do que o CORRETOR lê, o SEGURADO recebe o
 
 **Referência que o juiz abre:** `backend/app/providers/brokerage_analytics_provider.py` (porta que passou no gate da 094) e `backend/tests/test_o_pulso_360_nao_pertence_a_infocap.py` (o molde: asserção estrutural + `grep` no texto + comportamento com fixture de 4 conexões).
 
-**Telemetria (5 linhas, preenche no fim):** tokens do orquestrador · tokens dos subagentes · relógio · rodadas de bateria · nº de guardas/mutações.
+**Telemetria (5 linhas):** 📊 orquestrador ≈ 1,1 M tokens de contexto acumulado (uma janela, duas retomadas) · subagentes ≈ 2,9 M (8 agentes Opus 5, ≤ 2 ao mesmo tempo) · relógio ≈15 h · bateria inteira **1 rodada** (+ os guardas-script rodados 2× pelo juiz e 3× pelo orquestrador) · **14 guardas novos + 1 canônico, 105 mutações com o efeito declarado (61 no julgamento + 44 no conserto), 0 carimbo**.
 
 ---
 
@@ -306,11 +311,38 @@ Critério: 100 = toda afirmação 📊 reconstruída igual; divergência sem exp
 
 📊 Depois do conserto (orquestrador, árvore parada): 14 guardas novos **0 vermelhas** (37 · 34 · 28 · 23 · 49 · 47 · 51 · 100 · 50 · 27 · 64 · 53 · 21 · 50); os 4 de P-PILOTO-20 (14 · 92 · 51 · 21), bf963b0 31, contract_capture 108, evidence_pipeline 46, attendance_unleashed 27; **44 mutações dos guardas tocados, 0 erradas** (7 + 7 conferidas pelo orquestrador); `mypy` sem erro; nenhum `.bak`. Pendências novas: **P-E0011-JUNCAO-SEM-TURNO-INALCANCAVEL**, **P-E0011-CACHE-DOCUMENTAL-SEM-CONEXAO-REAPROVEITAVEL**, **P-E0011-OPCOES-EM-TEXTO-SOBRE-DICT**. Não consertado nesta rodada (registrado): juiz ⑦ (desempate por LMI), ⑨ (teto 12/128 sem modelo); lente 4 (página única), 8 (colisão de hash).
 
-### 6.4 A suíte inteira — (preenche ao fechar)
+### 6.4 A suíte inteira
+📊 1 rodada inteira (14/09, árvore parada em `3320cee`, `python -m pytest tests -q`): **1107 passed · 18 failed · 48 errors · 34 xfailed · 1 xpassed (24 min 49 s)**. Triagem nominal contra a linha de base (001.6 §5.5 sobre `cff20ef`: 1094 passed · 14 failed · 48 errors): nenhuma das 18 é do produto desta SPEC. 48 errors = `test_098_builder_b_unit.py` (ImportError no setup, fora da área, idêntico à base); pré-existentes na base: `a_resposta_chega_inteira`, `o_caso_se_explica_sozinho`, `a_atendente_aperta_o_botao`, `o_corpus_nao_vaza_pii`; arnês do meta-guarda (P-088-MUT — a sessão terminou com `rubrica.py` mutado por outro script e o arnês restaurou: `test_a_arvore_ficou_limpa_no_fim`, e os 9 scripts que rodaram sobre a árvore mutada: `nenhuma_mutacao_foi_commitada`, `observador_silencio`, `ontologia_e_unica`, `sem_corredor_de_vidro`, `spec031_finalize_v2`, `spec073_portal_worker_mutations` e os 3 `spec016_*`), mais `o_sinistro_deixa_rastro`, `a_central_diz_a_verdade` e `toda_linha_tem_origem` — 📊 os 3 `spec016` (92 · 51 · 21), `toda_linha` (37), `a_central`, `o_sinistro` e `a_arvore_ficou_limpa` **passam isolados** (4 passed em 29,6 s); `test_o_protocolo_tem_policia` é desta SPEC e ficou vermelha porque o relatório ainda não tinha a nota e a bateria (fecha com este commit). ⚠️ A 2ª rodada inteira não foi feita: a 1ª levou 25 min e o resultado atribuível à SPEC é zero.
 
 ## 7. Canário (depois do Implantar)
 
+| Ambiente | Estado | Evidência | Data |
+|---|---|---|---|
+| Amandus (técnico) | não se aplica: o chat de apólice roda na corretora com InfoCap conectada (Resulta); a Amandus compartilha a conta (F-094-07) | — | — |
+| Resulta | **pendente do Implantar** (`smith-api` + `smith-web`); os 7 casos estão em `docs/canon/ROTEIRO-CANARIO-EXTRA-001.1.md` (caso 7 = linha de controle) | P-E0011-CANARIO-VIVO-NO-IMPLANTADO | — |
+| AutoFleet | não se aplica nesta SPEC (sem pergunta de apólice no acervo) | — | — |
+
+**Flags/variáveis novas (nome, default; nenhuma obrigatória):** `TETO_DO_CONTEXTO_RECUPERADO_CHARS` (smith-api, 60000). **Auto-pause:** não se aplica.
+
+### 7.1 Os 7 casos (preencher depois do Implantar, por alias e contagem)
+| # | caso | resultado |
+|---|---|---|
+| 1–7 | ver o roteiro | pendente |
+
+### 7.2 Validado pela atendente
+Roteiro em `docs/canon/ROTEIRO-VALIDACAO-EXTRA-001.1-ATENDENTES.md`; estado: **não testado**.
+
 ## 8. O que ficou fora e por quê
+
+| frente | por quê | gatilho de retorno |
+|---|---|---|
+| migrar os 4 chamadores de `vehicle()` para `detalhar_apolice().item_de_risco` | tocaria acionamento (017) e vidros (025) fora da superfície testada; o `hasattr` saiu e o modelo já tem `ItemDeRisco` (D-E0011-13) | P-E0011-VEHICLE-VIA-DETALHAR (SPEC-101 / 001.10) |
+| migrar `detail` → `detalhar_apolice` no caminho do detalhe | o compositor e o briefing consomem o `policy_evidence_pack` que só o conector monta (D-E0011-10) | SPEC-101 |
+| `companies.llm_max_tokens` e os `DEFAULT 2000` de DDL | decisão D-E0011-01; DDL exige segunda migration com manifesto | P-E0011-DEFAULT-DDL-2000 |
+| renomear a tool `infocap_policy_lookup` | cutover de catálogo de outra SPEC; o identificador nunca chega ao usuário | P-E0011-CUTOVER-DO-NOME-DA-TOOL |
+| base de produtos / planos de assistência | é a 001.5 inteira; a 001.1 deixa a chave e o `PlanoDeAssistencia` com `nao_sabemos_ainda` | EXTRA-001.5 |
+| medir a resposta do modelo com o teto do RAG | não há LLM no laço; o canário do caso 5 mede | P-E0011-TETO-RAG-MEDIR-COM-MODELO |
+| o canário vivo e a validação com a atendente | dependem do Implantar (Founder) | P-E0011-CANARIO-VIVO-NO-IMPLANTADO |
 
 ## 9. Decisões tomadas com nota (regra do Founder: escolher, anotar, avisar no fim)
 
@@ -319,10 +351,39 @@ Critério: 100 = toda afirmação 📊 reconstruída igual; divergência sem exp
 | **D-E0011-01** | `companies.llm_max_tokens` NÃO sobe na migration | deixar **70** · subir para 8192 **55** | 📊 é o fallback da `llm_factory` para TODOS os papéis; o piso só cobre quem conversa de propósito — subir mudaria auxiliar/subagente |
 | **D-E0011-02** | o extrator documental ganha os dois layouts reais (HDI sem `R$`; Allianz com franquia "pct valor") — ESSENCIAL fora do texto da proposta | fazer no BLOCO D **90** · registrar como pendência **30** (o golden 10/21 seria impossível e o outcome "inteira" não se cumpre) | D4 |
 | **D-E0011-03** | golden reconciliado da Allianz = 21 (PDF), não 15 (cadastro); o controle de M-A3 é fixture sintética | 21 **95** · manter 15 **10** (seria afirmar que a apólice está inteira com 6 coberturas a menos) | D5 |
-| **D-E0011-04** | M-E1 usa turno sintético ≥ 128 chunks (tamanho declarado) e o BLOCO E passa a gravar o tamanho do bloco RAG no turno | sintético **80** · esperar o próximo turno grande real **20** | D3 |
+| **D-E0011-04** | M-E1 usa turno sintético ≥ 128 chunks (tamanho declarado) e o BLOCO E passa a gravar o tamanho do bloco RAG no turno | sintético **80** × esperar o próximo turno grande real **20** | D3 |
+| **D-E0011-05…15** | as decisões dos builders A–E (teto 60k; `trace_id` composto; Decimal/mesmo arquivo/`Indisponivel` próprio/sem `policy_catalog.py`; casamento por grupo declarado; `policies_all`; detalhe pelo `lookup`; briefing da `Apolice` reconciliada; famílias no catálogo; `vehicle` depreciado fica; franquia ancorada no cadastro; RLS no backup) | notas em `FOUNDER-DECISIONS.md` | §2–§4 |
+| **D-E0011-16** (conserto) | o cache documental decide o hit pela CONEXÃO no nome do arquivo (`documents` não tem coluna nem `metadata`; zero DDL); leitor antigo com conexão declarada = MISS | nome do arquivo **85** × coluna nova (DDL) **35** × ignorar a conexão **0** | juiz ① |
+| **D-E0011-17** (conserto) | FUTURA e DESCONHECIDA só são elegíveis quando não há VIGENTE; havendo, saem das opções mas o motivo as cita; nunca entram no histórico oculto | **90** × tratar como vigente **0** × ocultar em silêncio **30** | juiz ② |
+| **D-E0011-18** (conserto) | o status administrativo do fornecedor FICA no briefing, em linha própria com a trava ("não decide vigência; não se repassa ao cliente"); a vigência impressa é por data | linha própria **85** × apagar **50** (perderia o sinal de "não entregue ao cliente" que a corretora usa) | juiz ③ |
 
 ## 10. Riscos remanescentes
+- 🔴 **O canário vivo não rodou** (Implantar pendente): tudo o que é 📊 nesta SPEC foi provado sobre o acervo real EM MEMÓRIA e sobre o dado vivo pela porta implantada (lente), não pela resposta de um modelo na produção. O caso 7 (controle) e o caso 5 (turno grande) são os que podem surpreender.
+- ⚠️ **Primeira leitura depois do Implantar baixa os PDFs de novo** (cache documental por conexão — P-E0011-CACHE-DOCUMENTAL-SEM-CONEXAO-REAPROVEITAVEL): latência a mais uma vez por apólice, nada apagado.
+- ⚠️ **O teto de 60k chars no bloco recuperado** descarta 116 de 128 trechos no turno do tamanho medido; é o comportamento declarado, mas a qualidade da resposta com 12 trechos só o canário mede.
+- ⚠️ **3 franquias em prosa da HDI sem dono** chegam ao corretor como aviso; a resposta certa depende de a seguradora declarar qual cobertura carrega cada franquia (001.5).
+- ⚠️ **`vehicle` continua no contrato, depreciado**: todo adaptador novo tem de implementá-lo até a SPEC-101 migrar os 4 chamadores.
+- 💭 **Flag `POLICY_INTELLIGENCE_V2`**: o briefing reconciliado roda sob a flag v2 (já ligada em produção — `test_a_apolice_responde_item_por_item` cobre); com a flag desligada o fallback `_summarize` mostra a lista clássica com situação por data (F.6).
 
 ## 11. Rollback
+- **Código:** `git revert` do intervalo `4e80a3d..` + hash final é compatível — a porta é aditiva (os 3 depreciados continuam), os 8 pontos de chamada antigos continuam funcionando, o conector só ganhou `policies_all`/`provider_signals`/`connection_id` (chaves e parâmetros novos). Reverter só o BLOCO C/D devolve a lista e o gatilho por palavra-chave sem quebrar A/B/E.
+- **Migration `20260914_06`:** ROLLBACK escrito no arquivo e **exercitado em produção em 14/09** (8 valores voltaram um a um por `agent_id`); a tabela `agents_llm_max_tokens_backup_extra0011` NÃO se apaga. ⚠️ O piso de 8192 do `llm_factory` (commit `312939f`) não se reverte junto.
+- **Cache documental:** os nomes antigos continuam válidos para quem não declara conexão; nada foi apagado.
+- **Prompts:** as 7 prosas "InfoCap" e a frase de vigência do `CORE_BASE_PROMPT` são texto; reverter é editar o arquivo.
 
 ## 12. Entrega (`git push`, saída colada)
+
+```
+$ git rev-list --count HEAD..origin/main   → 0
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   cff20ef..3320cee  HEAD -> main
+```
+
+**Serviços a implantar (Founder):** `smith-api` (porta, tool, grafo, prompts, extrator, chat) e `smith-web` (o default de tokens do tenant de sandbox). Ordem: `smith-api` → `smith-web`. **Variáveis novas:** nenhuma obrigatória (`TETO_DO_CONTEXTO_RECUPERADO_CHARS` opcional, default 60000). **Migration:** já aplicada. **Depois do Implantar:** os 7 casos do canário (`ROTEIRO-CANARIO-EXTRA-001.1.md`).
+
+## 13. Nota do orquestrador — **87/100**
+
+Critério (o mesmo da 001.6): 100 = os 17 itens de §19 com evidência, painel verde depois do conserto, orçamento e relógio dentro da faixa, canário vivo feito. Descontos: **−5** canário vivo pendente do Implantar (§19.14; não é do executor, mas a SPEC não está provada em produção) · **−4** orçamento 📊 ≈2,9 M contra o teto de 1 M e relógio ≈15 h contra 8–12 h · **−2** duas VALIOSAS do juiz abertas (desempate por LMI; teto do RAG sem medida de modelo) · **−2** duas VALIOSAS/FUTURAS da lente abertas (página única; colisão de hash). Sem desconto pelo que fechou: 0 blockers restantes; 105 mutações com efeito; o ELO reconstruído sobre o dado vivo; migration aplicada, verificada e revertida de prova; nenhum motor paralelo; nenhuma PII.
+
+**A pergunta que o Founder faz (§19):** *quando eu perguntar pela apólice de um cliente, eu recebo a apólice certa, inteira, de uma vez — e consigo ver de onde veio cada número?* — 📊 Pelo motor sobre as 7 perguntas reais: sim, 7 de 7 em uma rodada, com o porquê; HDI 10 e Allianz 21 coberturas com origem por linha e a divergência dita. **Em produção: depois do Implantar.**
