@@ -299,6 +299,22 @@ async def o_grupo_pode_saber(db, *, company_id: str, conversation_id: str = "",
     # ---- 3 e 4 precisam da conversa e das mensagens -----------------------
     try:
         linha = conversa if isinstance(conversa, dict) else None
+        # 🔴 A LINHA RECEBIDA PODE SER PARCIAL — juiz fresco, 16/09/2026.
+        #
+        # 📊 `varrer_esperas_vencidas` (`handoff_watchdog.py:562-564`) seleciona
+        # `id, company_id, session_id, user_name, user_phone,
+        # human_handoff_reason` — **sem nenhuma coluna de claim** — e passa essa
+        # linha adiante. Confiar nela fazia a pergunta 3 devolver `False` por
+        # ausência de dado, não por ausência de dono:
+        #
+        #     linha do BANCO (claim de 30 min)  → (False, "Regina assumiu…")
+        #     a MESMA conversa, linha de :562   → (True, "")   ← o grupo era avisado
+        #
+        # ⚠️ É o defeito do §0.3 em miniatura: o dado existia e quem perguntou
+        # não o tinha na mão. O teste é pela CHAVE, não pelo valor — `None` é uma
+        # resposta legítima ("ninguém assumiu"); a chave ausente é ignorância.
+        if linha is not None and "claimed_by" not in linha:
+            linha = None
         if linha is None:
             linha = await _ler_a_conversa(db, empresa, conversa_id)
         if linha is None:
@@ -370,8 +386,30 @@ def _assumida_com_claim_fresco(conversa: Dict[str, Any], agora) -> Tuple[bool, s
     🔴 `claimed_at` ilegível AVISA, não cala. Data que não dá para ler é dúvida,
     e a regra do módulo é "na dúvida, avisa" — senão uma data ausente calaria a
     conversa para sempre, que é o furo que este bloco existe para fechar.
+
+    🔴 **`claimed_by` OU `claimed_by_name` — lente do dado, 16/09/2026.**
+
+    📊 Medido em produção: `claimed_by` está preenchido em **1 linha de 938**, e
+    em **0 das 259** conversas em `HUMAN_REQUESTED`. `claimed_by_name` está em
+    **259 de 259**, e 63 delas têm `claimed_at` nas últimas 6 horas.
+
+    A causa é "quem É o escritor HOJE" (§0.3): o escritor que acontece de
+    verdade é `atlas/espelho_chat.py:761-764` — a atendente respondendo pelo
+    celular — e ele grava `status` + `claimed_by_name` + `claimed_at`, **nunca**
+    `claimed_by`. O botão *Assumir* do painel, que preenche `claimed_by`, rodou
+    uma vez na história da base.
+
+    ⚠️ Exigir só `claimed_by` fazia esta pergunta ser **inerte**: sempre `False`.
+    Hoje o efeito era absorvido pela pergunta 4 — mas **por coincidência de
+    escritor, não por desenho**. Numa corretora com `janela_silencio_humano_dias
+    = 0` (valor legítimo e documentado) a pergunta 4 desliga, a 3 continuaria
+    calada, e o grupo voltaria a receber tudo por cima de quem está atendendo.
+
+    ⛔ `saudacao_do_religamento.py:104` já testava os dois. A guarda nova é que
+    tinha ficado de fora.
     """
-    if not str(conversa.get("claimed_by") or "").strip():
+    if not (str(conversa.get("claimed_by") or "").strip()
+            or str(conversa.get("claimed_by_name") or "").strip()):
         return False, ""
     quando = conversa.get("claimed_at")
     if not quando:

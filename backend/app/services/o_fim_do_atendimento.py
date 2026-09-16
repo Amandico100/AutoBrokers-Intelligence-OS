@@ -1525,9 +1525,21 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
 
     # 🔴 SPEC-EXTRA-001.3 BLOCO B — 1º DOS QUATRO EFEITOS: **nunca responde**.
     #
-    # Entra ANTES de tudo o mais porque um número da própria casa não é cliente:
-    # não há takeover a respeitar, não há janela a contar, não há caso. É a
-    # única pergunta cuja resposta torna as outras irrelevantes.
+    # Entra antes do takeover e da janela porque um número da própria casa não é
+    # cliente: não há dono a respeitar, não há prazo a contar, não há caso.
+    #
+    # ⚠️ **MAS DEPOIS DA EXCEÇÃO DE TESTE** — juiz fresco, 16/09/2026. 📊 Oito
+    # conversas dos últimos 30 dias são de telefones de MEMBROS da própria
+    # corretora. Se a lista vencesse a exceção, quem testa o agente pelo próprio
+    # celular — que é exatamente como o canário desta SPEC roda — perderia o
+    # agente no primeiro "oi", e o teste pareceria confirmar a regra quando na
+    # verdade tinha desligado o produto.
+    #
+    # 🔴 A exceção de teste é a corretora dizendo *"este número eu quero que
+    # seja atendido"*. Ela vence a inferência de que ele é da casa.
+    if telefone_e_excecao_da_janela((conversa or {}).get("user_phone")):
+        logger.info("[JANELA] telefone de teste: a lista de números da casa não se aplica")
+        return False, ""
     #
     # ⛔ Falha de leitura NÃO cala aqui (o helper devolve conjunto vazio): tratar
     # um segurado de verdade como "número da casa" por causa de uma leitura ruim

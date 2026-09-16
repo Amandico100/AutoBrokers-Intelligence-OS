@@ -101,6 +101,24 @@ conversas = acervo["conversas"]
 certo(len(conversas) >= 50,
       "o corpus do acervo tem %d conversas elegiveis (📊 16/09/2026)" % len(conversas))
 
+# 🔴 O CORPUS NÃO PODE CARREGAR TEXTO DE SEGURADO — juiz fresco, 16/09/2026.
+#
+# Ele leu 1220 mensagens `role=user` e 19 sequências de 11 dígitos no `content`
+# e levantou vazamento de PII. ⚠️ Era falso positivo — o `content` é
+# `h:<sha256[:16]>` e os dígitos são do hexadecimal — mas o juiz estava certo
+# no que importa: **nada no arquivo dizia isso**, e ninguém deve ter de
+# reconstruir a garantia lendo o gerador. Agora o arquivo se declara, e esta
+# asserção fecha a porta: se alguém regenerar o corpus com texto cru, o guarda
+# fica vermelho antes de o arquivo entrar no commit.
+_FORA_DO_FORMATO = [m for c in conversas for m in c["mensagens"]
+                    if not (str(m.get("content") or "").startswith("h:")
+                            or str(m.get("content") or "").startswith("#nota"))]
+certo(not _FORA_DO_FORMATO,
+      "⛔ NENHUMA das %d mensagens do corpus tem texto cru — %d fora do formato"
+      % (sum(len(c["mensagens"]) for c in conversas), len(_FORA_DO_FORMATO)))
+certo("REDACAO" in acervo,
+      "e o arquivo DIZ que é redigido, em vez de exigir que se confie nele")
+
 AGORA = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
 N = janela_de_silencio_dias()
 certo(N == 7, "a janela padrao da plataforma e %d dias (a MESMA do atendimento)" % N)
@@ -261,6 +279,34 @@ pode, porque = rodar(o_grupo_pode_saber(
 certo(pode is False and "Regina" in porque,
       "pergunta 3: claim fresco cala, e o motivo diz quem assumiu")
 
+# 🔴 O PAR DE B1 — juiz fresco, 16/09/2026. `varrer_esperas_vencidas` passa uma
+# linha SEM as colunas de claim (`handoff_watchdog.py:562-564`), e confiar nela
+# fazia a pergunta 3 devolver False por ausência de DADO, não de dono. A guarda
+# tem de perceber a chave ausente e ir ao banco.
+_parcial = {"id": CONVERSA, "company_id": EMPRESA_X, "user_phone": "5547999990001",
+            "user_name": "", "session_id": "", "human_handoff_reason": ""}
+banco_claim_parcial = BancoDeMentira(
+    conversas=[_assumida], mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
+pode, porque = rodar(o_grupo_pode_saber(
+    banco_claim_parcial, company_id=EMPRESA_X, conversation_id=CONVERSA,
+    tipo=TIPO_ESPERA_VENCIDA, agora=AGORA, conversa=_parcial))
+certo(pode is False and "Regina" in porque,
+      "🔴 linha PARCIAL (sem `claimed_by`) → a guarda LÊ o banco e cala")
+
+# 🔴 E o par da lente do dado: o escritor REAL (`espelho_chat`) grava
+# `claimed_by_name` + `claimed_at` e NUNCA `claimed_by`. 📊 `claimed_by` está
+# preenchido em 0 das 259 conversas `HUMAN_REQUESTED` em produção.
+_so_nome = dict(_conversa_limpa, claimed_by=None, claimed_by_name="Saionara",
+                claimed_at=(AGORA - timedelta(minutes=20)).isoformat())
+banco_so_nome = BancoDeMentira(
+    conversas=[_so_nome], mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
+pode, porque = rodar(o_grupo_pode_saber(
+    banco_so_nome, company_id=EMPRESA_X, conversation_id=CONVERSA,
+    tipo=TIPO_PEDIDO_DE_AJUDA, agora=AGORA))
+certo(pode is False and "Saionara" in porque,
+      "🔴 `claimed_by` VAZIO e `claimed_by_name` preenchido também cala — é o "
+      "único escritor que acontece em produção")
+
 _velho = dict(_assumida, claimed_at=(AGORA - timedelta(hours=9)).isoformat())
 banco_velho = BancoDeMentira(conversas=[_velho],
                              mensagens=[m for m in _msgs_com_humano if not m.get("payload")])
@@ -322,6 +368,8 @@ ISENTOS = {
         "e o dono do resolvedor; os dois pontos dele ja usam a porta",
     "app/main.py":
         "so CONTA corretoras sem destino no /health — nao envia nada",
+    "app/api/porteiro_do_agente.py":
+        "so PERGUNTA 'posso ligar?' — grep send_message|enviar_ao_grupo = 0",
 }
 GATILHOS = ("resolver_destino_de_suporte", "_support_contact",
             "human_support_destinations")

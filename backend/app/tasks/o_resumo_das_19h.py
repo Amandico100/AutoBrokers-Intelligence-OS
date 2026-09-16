@@ -5,8 +5,13 @@ APScheduler que `buffer_processor` já registra, no padrão de
 `relatorio_semanal_check` (`buffer_processor.py:294-300`): intervalo curto +
 checagem interna de *"já é hora / já saiu hoje"*.
 
-🔴 **As 19h são LOCAIS da corretora** — `platform_outbound.fuso_da_corretora`.
-Uma corretora em Manaus recebe às 19h de Manaus.
+⚠️ **As 19h são locais — do FUSO DA PLATAFORMA, não de cada corretora.**
+`fuso_da_corretora()` sem argumento lê `AGENT_OS_TENANT_TIMEZONE`, e hoje não
+existe coluna de fuso por corretora. 🔴 Escrito assim de propósito: a versão
+anterior deste parágrafo prometia *"uma corretora em Manaus recebe às 19h de
+Manaus"* e o código não fazia isso. **Promessa que o código não cumpre é pior
+que limitação declarada** — foi o juiz fresco que pegou. Quando a coluna
+existir, é aqui que ela entra (pendência `P-E0013-05`).
 
 ⛔ **Dia sem movimento não manda mensagem dizendo que não houve nada.**
 
@@ -74,6 +79,18 @@ async def _ja_saiu_hoje(empresa: str, dia: str) -> bool:
         return False
 
 
+async def _devolver_o_dia(empresa: str, dia: str) -> None:
+    """Libera o marcador do dia quando o resumo reservado não saiu."""
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        await r.delete(_CHAVE_DO_DIA.format(empresa=empresa, dia=dia))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RESUMO 19h] não consegui devolver o dia (%s)",
+                       type(exc).__name__)
+
+
 async def check_resumo_das_19h() -> int:
     """Uma passada. Devolve quantos resumos saíram. ⛔ Nunca levanta."""
     if not resumo_ligado():
@@ -130,6 +147,13 @@ async def check_resumo_das_19h() -> int:
                 enviados += 1
                 logger.info("[RESUMO 19h] empresa=%s | %s", empresa, contagens)
             else:
+                # 🔴 DEVOLVE A VEZ — juiz fresco, 16/09/2026. O marcador do dia
+                # é reservado ANTES do envio (é o que impede o `>=` de mandar
+                # duas vezes na mesma noite); se o envio NÃO saiu, mantê-lo
+                # custa o dia inteiro de números por uma falha de destino ou de
+                # canal. É a mesma escolha de `_devolver_a_vez` no vigia:
+                # reserva que não virou aviso tem de ser devolvida.
+                await _devolver_o_dia(empresa, dia)
                 logger.error("[RESUMO 19h] ❌ empresa=%s NÃO recebeu o resumo: %s",
                              empresa, saida.get("motivo"))
         except Exception as exc:  # noqa: BLE001

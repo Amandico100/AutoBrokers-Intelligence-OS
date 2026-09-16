@@ -178,6 +178,55 @@ certo(link_do_whatsapp("") == "" and link_do_whatsapp("abc") == "",
 
 print()
 print("=" * 70)
+print("  G-D1b — o classificador do motivo lê PALAVRA, não substring")
+print("=" * 70)
+
+# 🔴 O PAR QUE O JUIZ FRESCO PEDIU — 16/09/2026. `classificar_o_motivo` fazia
+# `alvo in texto`, e "ura" ⊂ "segURAdora". ⚠️ Não é cosmético: `motivo_classe`
+# decide o DENOMINADOR da eficiência que a corretora lê às 19h.
+import importlib.util as _il2  # noqa: E402
+
+_sp = _il2.spec_from_file_location(
+    "_hh_classificador",
+    os.path.join(_RAIZ, "app", "agents", "tools", "human_handoff.py"))
+_hh = _il2.module_from_spec(_sp)
+try:
+    _sp.loader.exec_module(_hh)
+except Exception as _e:  # noqa: BLE001 — só a função pura interessa
+    pass
+classificar = getattr(_hh, "classificar_o_motivo", None)
+certo(callable(classificar), "o escritor de `motivo_classe` existe e é chamável")
+
+PARES = [
+    # (motivo, classe esperada, por quê)
+    ("a seguradora não respondeu", "desconhecido",
+     '🔴 "ura" ⊂ segURAdora — o defeito que o juiz pegou'),
+    ("cuidado com o valor da fatura", "regra",
+     '"valor" solto continua sendo alçada — é a palavra, não o acaso'),
+    ("sentinela esgotou o tempo limite", "incapacidade",
+     '🔴 "tempo limite" (expressão) ganha de "limite" (palavra solta)'),
+    ("procura de vaga no estacionamento", "desconhecido",
+     '"procura" não contém a palavra ura'),
+    # CONTROLE — os casos de verdade continuam classificados
+    ("Travou na URA e a recuperação automática esgotou", "incapacidade",
+     "CONTROLE: o motivo REAL do Vigia continua incapacidade"),
+    ("o segurado tem vítima no local", "regra",
+     "CONTROLE: vítima continua regra"),
+    ("cliente_pediu_humano", "regra",
+     "CONTROLE: a chave técnica continua classificada"),
+    ("faltou um dado que o segurado não tinha", "incapacidade",
+     "CONTROLE: dado faltante continua incapacidade"),
+]
+for motivo, esperada, porque in PARES:
+    classe, chave = classificar(motivo)
+    certo(classe == esperada,
+          "%-58s → %s/%s   %s" % (repr(motivo)[:56], classe, chave, porque))
+
+certo(classificar("")[0] == "desconhecido" and classificar(None)[0] == "desconhecido",
+      "⛔ e no escuro é `desconhecido` — nunca `regra`, que daria ~100% sem medir")
+
+print()
+print("=" * 70)
 print("  G-D2 — a eficiência das 19h diz a verdade")
 print("=" * 70)
 

@@ -1,4 +1,11 @@
 {
+ "REDACAO": {
+  "nenhum texto de segurado esta aqui": "o campo content de TODA mensagem e `h:<sha256[:16]>` ou o literal `#nota `",
+  "por que o hash e nao vazio": "a regra do motor (`e_eco_do_agente`) COMPARA textos entre si; o hash preserva a igualdade e descarta o conteudo",
+  "o que fica": "role · created_at · payload.origem · o hash do texto",
+  "o que NAO fica": "texto, telefone, nome, CPF, id de conversa (so um hash de 12), id de corretora (apelido)",
+  "o guarda confere": "test_o_grupo_so_fala_de_quem_precisa.py, secao G-A1"
+ },
  "gerado_em": "2026-09-16",
  "fonte": "producao (read-only)",
  "regra": "HUMAN_REQUESTED com a ultima palavra do segurado",

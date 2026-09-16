@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any, ClassVar, Dict, Optional, Type
 
 from langchain_core.tools import BaseTool
@@ -230,17 +231,46 @@ def classificar_o_motivo(motivo: Optional[str]) -> tuple:
     com vítima que TAMBÉM menciona a URA é, antes de tudo, um caso de regra —
     e classificá-lo como incapacidade colocaria no denominador da eficiência um
     caso em que o agente fez exatamente o que devia.
+
+    🔴 **POR PALAVRA INTEIRA (`\\b`), e não por substring** — juiz fresco,
+    16/09/2026. O docstring já prometia "a busca é por PALAVRA" e o código fazia
+    `alvo in texto`. 📊 O que isso classificava errado:
+
+    ```
+    'a seguradora não respondeu'                  → incapacidade/ura_travou   ("ura" ⊂ segURAdora)
+    'falar da apólice com a seguradora'           → incapacidade/ura_travou
+    'sentinela esgotou o tempo limite'            → regra/valor_acima_do_limite
+    'cuidado com o valor'                         → regra
+    ```
+
+    ⚠️ Não é cosmético: `motivo_classe` decide o DENOMINADOR da eficiência das
+    19h, e um `regra` a mais tira um caso da conta que a corretora lê.
+
+    ⚠️ E as EXPRESSÕES de duas palavras são conferidas antes das soltas: *"tempo
+    limite"* é incapacidade; *"limite"* sozinho é alçada.
     """
     texto = _sem_acento_minusculo(_motivo_em_portugues(motivo))
     if not texto.strip():
         return CLASSE_DESCONHECIDA, CLASSE_DESCONHECIDA
-    for tabela, classe in ((_MOTIVOS_DE_REGRA, CLASSE_REGRA),
-                           (_MOTIVOS_DE_INCAPACIDADE, CLASSE_INCAPACIDADE)):
-        for chave, palavras in tabela.items():
-            for p in palavras:
-                alvo = _sem_acento_minusculo(p)
-                if alvo in texto:
-                    return classe, chave
+
+    #: Duas passadas. Na 1ª só as EXPRESSÕES (duas palavras ou mais), com
+    #: INCAPACIDADE na frente — "tempo limite" tem de ganhar de "limite". Na 2ª
+    #: as palavras soltas, com REGRA na frente, como a SPEC manda.
+    passadas = (
+        (True, ((_MOTIVOS_DE_INCAPACIDADE, CLASSE_INCAPACIDADE),
+                (_MOTIVOS_DE_REGRA, CLASSE_REGRA))),
+        (False, ((_MOTIVOS_DE_REGRA, CLASSE_REGRA),
+                 (_MOTIVOS_DE_INCAPACIDADE, CLASSE_INCAPACIDADE))),
+    )
+    for so_compostas, tabelas in passadas:
+        for tabela, classe in tabelas:
+            for chave, palavras in tabela.items():
+                for p in palavras:
+                    alvo = _sem_acento_minusculo(p)
+                    if so_compostas != (" " in alvo or "_" in alvo):
+                        continue
+                    if re.search(r"\b%s\b" % re.escape(alvo), texto):
+                        return classe, chave
     return CLASSE_DESCONHECIDA, CLASSE_DESCONHECIDA
 
 
@@ -914,8 +944,15 @@ class HumanHandoffTool(BaseTool):
         # estava errada para quem está de pé, com o cliente esperando.
         #
         # ⚠️ O contra-argumento do `telefone_curto` — o dossiê fica no histórico
-        # do grupo para sempre — continua válido em OUTRO lugar: por isso os
-        # modelos não levam o texto das mensagens, e só o 🆘 leva CPF.
+        # do grupo para sempre — continua válido em OUTRO lugar: por isso
+        # NENHUM dos quatro modelos leva o texto das mensagens.
+        #
+        # 🔴 CPF/CNPJ está no 🆘 **e** no 🚨 — §8.1 e §8.2 da SPEC pedem os dois,
+        # porque é o que permite achar a apólice sem sair da mensagem. ⚠️ Uma
+        # versão anterior deste comentário dizia *"só o 🆘 leva CPF"* e
+        # contradizia `_montar_sinistro`, oito linhas abaixo. Comentário que
+        # mente sobre o código encerra a investigação seguinte. A decisão sobre
+        # PII no histórico do grupo é do Founder e está escrita na caixa dele.
         #
         # 🔄 Gatilho de retorno: se uma corretora pedir o link de volta, ele
         # volta como PREFERÊNCIA do destino (`human_support_destinations.metadata`),
