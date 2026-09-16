@@ -299,6 +299,20 @@ def start_buffer_scheduler():
             id="relatorio_semanal_check",
             max_instances=1,
         )
+        # 🔴 SPEC-EXTRA-001.3 BLOCO D.4 — O RESUMO DAS 19h.
+        #
+        # ⛔ NENHUM SCHEDULER NOVO: entra como mais um job DESTE agendador, no
+        # padrão do relatório de sábado logo acima — intervalo curto + checagem
+        # interna de "já é hora / já saiu hoje". As 19h são LOCAIS da corretora.
+        from app.tasks.o_resumo_das_19h import check_resumo_das_19h
+
+        scheduler.add_job(
+            check_resumo_das_19h,
+            "interval",
+            seconds=1800,
+            id="resumo_das_19h",
+            max_instances=1,
+        )
         # SENTINELA DE ROTAS (SPEC-038/039 F1): tece TODAS as seguradoras e
         # detecta mudança de menu — 1x/dia (marcador Redis). Dá vida própria ao
         # Atlas: os mapas se atualizam sozinhos e o drift é detectado.

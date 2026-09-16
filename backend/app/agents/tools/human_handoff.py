@@ -901,32 +901,31 @@ class HumanHandoffTool(BaseTool):
         # O QUE FAZER — a primeira coisa que ela lê de verdade.
         linhas += ["", "*👉 O QUE FAZER*", _o_que_fazer(conversa, motivo)]
 
-        # A CONVERSA — com autor de verdade.
-        linhas += ["", _TRACO]
-        try:
-            msgs = (self.supabase_client.table("messages")
-                    .select("role, content, created_at, payload")
-                    .eq("conversation_id", conversa["id"])
-                    .order("created_at", desc=True)
-                    .limit(_MSGS_NO_DOSSIE).execute().data or [])
-            if msgs:
-                _nome_ia = _nome_do_agente(self.supabase_client,
-                                           str(conversa.get("company_id") or ""))
-                linhas.append(f"*CONVERSA* _(últimas {len(msgs)})_")
-                for m in reversed(msgs):
-                    linhas.append(_linha_da_conversa(m, _nome_ia))
-        except Exception as exc:  # noqa: BLE001
-            # Dossiê sem histórico continua melhor que silêncio — mas quem lê
-            # precisa saber que está entrando às cegas.
-            logger.warning("[HumanHandoff] histórico indisponível (%s)", type(exc).__name__)
-            linhas.append("_(não consegui carregar o histórico — você entra sem ele)_")
-
-        # O LINK e o estado. `claimed_by_name` existe justamente para evitar
-        # que duas atendentes corram para a mesma conversa.
+        # 🔴 SPEC-EXTRA-001.3 §8.0 — DUAS DECISÕES DA SPEC-071 REVERTIDAS, e é
+        # reversão deliberada, não esquecimento.
+        #
+        # 📊 **As últimas mensagens saem.** No piloto, o dossiê com histórico
+        # virou 4 balões e a atendente lia o último — que é o menos importante.
+        # O *O QUE ACONTECEU* acima entrega o mesmo em três linhas.
+        #
+        # 📊 **O link do painel sai, e o WhatsApp do segurado entra.** §1.5
+        # causa 3 do diagnóstico: no celular, o número clicável custa UM TOQUE e
+        # o painel custa uma página. O piloto provou que a decisão de 14/08
+        # estava errada para quem está de pé, com o cliente esperando.
+        #
+        # ⚠️ O contra-argumento do `telefone_curto` — o dossiê fica no histórico
+        # do grupo para sempre — continua válido em OUTRO lugar: por isso os
+        # modelos não levam o texto das mensagens, e só o 🆘 leva CPF.
+        #
+        # 🔄 Gatilho de retorno: se uma corretora pedir o link de volta, ele
+        # volta como PREFERÊNCIA do destino (`human_support_destinations.metadata`),
+        # nunca como padrão.
         linhas += [_TRACO]
-        link = _link_da_conversa(conversa)
-        if link:
-            linhas.append(f"▶ {link}")
+        from app.services.os_modelos_do_grupo import link_do_whatsapp
+
+        _wa = link_do_whatsapp(conversa.get("user_phone"))
+        if _wa:
+            linhas.append(f"*WhatsApp do segurado:* {_wa}")
         linhas.append(_quem_assumiu(conversa))
         return "\n".join(linhas)
 
@@ -1042,6 +1041,39 @@ class HumanHandoffTool(BaseTool):
         linhas.append(_quem_assumiu(conversa))
         return "\n".join(linhas)
 
+    def _montar_sinistro(self, conversa: dict, motivo: str) -> str:
+        """🚨 NOVO SINISTRO — SPEC-EXTRA-001.3 §8.2.
+
+        ⚠️ Reaproveita as MESMAS peças do dossiê (`_narrativa`, `_o_que_falta`,
+        `_linha_da_apolice`): elas já leem a ficha e já falam português. O que
+        muda é a FORMA — e a forma é o contrato.
+
+        🔴 *Pontos de atenção* recebe HOJE o que a ficha sabe que FALTA, e diz
+        que é isso. ⛔ Não se inventa checklist clínico sem fonte: o conteúdo por
+        tipo (colisão, roubo, incêndio, empresarial, condomínio) vem da base de
+        produtos, na EXTRA-001.5. O LUGAR já está reservado.
+        """
+        from app.services.o_fim_do_atendimento import instante_br
+        from app.services.os_modelos_do_grupo import modelo_novo_sinistro
+
+        ficha = conversa.get("ficha") if isinstance(conversa.get("ficha"), dict) else {}
+        nome = str(conversa.get("user_name") or "").strip()
+        if nome and nome.isdigit():
+            nome = ""
+        return modelo_novo_sinistro(
+            tipo=str(ficha.get("tipo_de_sinistro") or ficha.get("servico") or "").strip(),
+            segurado=nome or "segurado não identificado",
+            documento=str(ficha.get("cpf") or ficha.get("cnpj") or "").strip(),
+            apolice=(_linha_da_apolice(conversa) or "").replace("*", "").strip(),
+            # ⚠️ `instante_br` é o MESMO formatador que a atendente já lê na
+            #    ficha e nas esperas — nada de `created_at[11:16]` em UTC cru,
+            #    que foi o `00:00 num caso das 21h` de 18/08.
+            quando=instante_br(conversa.get("last_message_at")
+                               or conversa.get("created_at")),
+            resumo=_narrativa(conversa, motivo),
+            pontos_de_atencao=_o_que_falta(conversa),
+            telefone=conversa.get("user_phone"))
+
     async def _avisar_suporte(self, company_id: str, conversa: Dict[str, Any],
                               motivo: str, *, tipo: str = "",
                               dedup: bool = False) -> Dict[str, Any]:
@@ -1061,11 +1093,32 @@ class HumanHandoffTool(BaseTool):
         Deduplicar duas vezes calaria o segundo tipo de aviso da conversa.
         """
         from app.services.o_grupo_so_o_que_importa import (
-            TIPO_PEDIDO_DE_AJUDA, enviar_ao_grupo,
+            TIPO_PEDIDO_DE_AJUDA, TIPO_SINISTRO, enviar_ao_grupo,
         )
 
+        # 🔴 SPEC-EXTRA-001.3 BLOCO D.2 — SINISTRO TEM MODELO PRÓPRIO, e passa
+        # pela guarda SEMPRE: é notícia de negócio, não lembrete de fila.
+        #
+        # ⛔ O detector é o MESMO `claims_shadow.detectar_sinistro` que o `_arun`
+        # já usa (:1195-1204). Dois classificadores para a mesma pergunta são
+        # dois classificadores para manter, e o segundo envelhece calado
+        # (CLAUDE.md §5).
         _tipo = tipo or TIPO_PEDIDO_DE_AJUDA
-        texto = await asyncio.to_thread(self._montar_dossie, conversa, motivo)
+        if not tipo:
+            try:
+                from app.services.claims_shadow import detectar_sinistro
+
+                if detectar_sinistro(motivo)[0]:
+                    _tipo = TIPO_SINISTRO
+            except Exception as exc:  # noqa: BLE001
+                # Não saber classificar não pode calar o pedido de ajuda.
+                logger.warning("[HumanHandoff] detector de sinistro mudo (%s)",
+                               type(exc).__name__)
+
+        if _tipo == TIPO_SINISTRO:
+            texto = await asyncio.to_thread(self._montar_sinistro, conversa, motivo)
+        else:
+            texto = await asyncio.to_thread(self._montar_dossie, conversa, motivo)
         classe, chave = classificar_o_motivo(motivo)
         saida = await enviar_ao_grupo(
             self.supabase_client, company_id=str(company_id), tipo=_tipo,

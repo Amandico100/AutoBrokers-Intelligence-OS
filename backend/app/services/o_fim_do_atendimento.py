@@ -344,7 +344,75 @@ async def marcar_fim(db, *, company_id: str, motivo: str,
 
     logger.info("[FIM] atendimento encerrado motivo=%s episodio=%s conversa=%s",
                 motivo, bool(marcou_episodio), bool(marcou_conversa))
+
+    # 🔴 SPEC-EXTRA-001.3 BLOCO D.3 — ✅ ATENDIMENTO CONCLUÍDO.
+    #
+    # O fechamento é uma das QUATRO coisas que o grupo recebe, e ele sai daqui
+    # porque este é o ÚNICO escritor do desfecho — mandar de outro lugar seria
+    # inventar um segundo momento de "acabou".
+    #
+    # ⛔ **Dúvida respondida NÃO manda nada.** Ela vira número no resumo das
+    # 19h; se a conclusão saísse para toda conversa encerrada, o modelo ✅
+    # viraria o novo ruído — exatamente o que esta SPEC existe para matar.
+    #
+    # ⚠️ Best-effort e por fora do retorno, como a limpeza das esperas: a
+    # marca de fim vale mais que o aviso.
+    if conversa and motivo in DESFECHOS_QUE_O_GRUPO_OUVE:
+        try:
+            await _contar_a_conclusao(db, empresa, str(conversa), motivo)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[FIM] conclusão não anunciada (%s)", type(erro).__name__)
+
     return True, motivo
+
+
+#: 🔴 Quais desfechos o grupo OUVE. ⛔ `resolvido_pelo_segurado` e
+#: `expirou` ficam de fora: o primeiro é a dúvida que se resolveu sozinha, o
+#: segundo é a ausência de desfecho. Nenhum dos dois é trabalho entregue.
+DESFECHOS_QUE_O_GRUPO_OUVE = (ACIONAMENTO_CONCLUIDO, FECHADO_POR_HUMANO)
+
+
+async def _contar_a_conclusao(db, company_id: str, conversation_id: str,
+                              motivo: str) -> None:
+    """Monta o ✅ e manda pela PORTA ÚNICA. ⛔ Nunca levanta."""
+    from app.services.o_grupo_so_o_que_importa import TIPO_CONCLUSAO, enviar_ao_grupo
+    from app.services.os_modelos_do_grupo import modelo_atendimento_concluido
+
+    linha = None
+    try:
+        achado = await _executar(_cliente(db).table("conversations")
+                                 .select("id, user_name, user_phone, created_at, "
+                                         "resolvido_em, claimed_by_name")
+                                 .eq("company_id", company_id)      # 🔴 §7
+                                 .eq("id", conversation_id).limit(1))
+        linhas = achado.data or []
+        linha = linhas[0] if linhas else None
+    except Exception:  # noqa: BLE001
+        linha = None
+    linha = linha or {}
+
+    minutos = None
+    inicio, fim = _momento(linha.get("created_at")), _momento(linha.get("resolvido_em"))
+    if inicio and fim and fim >= inicio:
+        minutos = int((fim - inicio).total_seconds() // 60)
+
+    nome = str(linha.get("user_name") or "").strip()
+    if nome and nome.isdigit():     # ⚠️ sem `pushName`, o nome nasce = ao número
+        nome = ""
+
+    texto = modelo_atendimento_concluido(
+        segurado=nome or "segurado",
+        servico="",
+        minutos=minutos,
+        por_humano=(str(linha.get("claimed_by_name") or "").strip()
+                    if motivo == FECHADO_POR_HUMANO else ""))
+
+    await enviar_ao_grupo(
+        db, company_id=company_id, tipo=TIPO_CONCLUSAO, texto=texto,
+        conversation_id=conversation_id,
+        telefone=str(linha.get("user_phone") or ""),
+        resumo="conclusão — %s" % motivo, motivo=motivo,
+        motivo_classe="conclusao")
 
 
 # =============================================================================
