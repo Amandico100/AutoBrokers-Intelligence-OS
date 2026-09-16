@@ -326,8 +326,11 @@ app.include_router(corridors_router, tags=["Corridors"])
 
 # === Attendance Media (audio transcription — 42M0) ===
 from app.api.attendance_media import router as attendance_media_router
+# 🔴 SPEC-EXTRA-001.3 BLOCO F — o porteiro de LIGAR o agente.
+from app.api.porteiro_do_agente import router as porteiro_do_agente_router
 
 app.include_router(attendance_media_router, tags=["Attendance Media"])
+app.include_router(porteiro_do_agente_router)
 
 # === Portais (SPEC-020): registro global + credenciais por corretora (cifradas) ===
 from app.api.portal import router as portal_router

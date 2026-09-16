@@ -159,10 +159,14 @@ def rodar_handoff(empresa, sessao, motivo="", com_destino=True):
     async def _cliente_async():
         return async_banco
 
-    async def _sem_marcador(conversa_id, horas):
+    # ⚠️ `**kw` desde 16/09/2026: a SPEC-EXTRA-001.3 §7.5 acrescentou
+    # `company_id` e `tipo` à chave do marcador. O dublê aceita o que vier —
+    # o marcador do Redis não é o alvo DESTE guarda, e um dublê que trave na
+    # assinatura transforma toda evolução de contrato em falso vermelho.
+    async def _sem_marcador(conversa_id, horas, **kw):
         return False        # a vez é sua — o marcador do Redis não é o alvo aqui
 
-    async def _devolve(conversa_id):
+    async def _devolve(conversa_id, **kw):
         return None
 
     def _sync_client():

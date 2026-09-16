@@ -153,13 +153,26 @@ with open(os.path.join(RAIZ, "app/agents/tools/human_handoff.py"), encoding="utf
 # a string aparece tambem no COMENTARIO que explica o conserto. Sexta assercao
 # desta SPEC a passar pelo motivo errado. Agora exige uma chamada real a
 # `send_message` dentro de `_avisar_suporte` com esse argumento em True.
+#
+# 🔴 MIGRADA EM 16/09/2026 — SPEC-EXTRA-001.3. A funcao que chama `send_message`
+# deixou de ser `_avisar_suporte` e passou a ser `enviar_ao_grupo`, a PORTA por
+# onde os 11 pontos de envio ao grupo agora saem. 📊 O motivo: o conserto de
+# 18/08 tinha sido aplicado num caminho so — `bloco_unico` estava em 1 dos 11.
+#
+# ⚠️ CLAUDE.md §9.3: a assercao segue exatamente a mesma (uma CHAMADA real, na
+# arvore, com o argumento em True) e a linha de CONTROLE abaixo continua
+# provando que o detector nao casa comentario. So o nome da funcao mudou — e
+# agora ela cobre os 11 caminhos em vez de um.
+_DONO_DO_ENVIO = ("_avisar_suporte", "enviar_ao_grupo")
+
+
 def _pede_bloco_unico(fonte: str) -> bool:
     import ast
 
     for no in ast.walk(ast.parse(fonte)):
         if not isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if no.name != "_avisar_suporte":
+        if no.name not in _DONO_DO_ENVIO:
             continue
         for x in ast.walk(no):
             if not isinstance(x, ast.Call):
@@ -172,7 +185,13 @@ def _pede_bloco_unico(fonte: str) -> bool:
     return False
 
 
-check("`_avisar_suporte` pede bloco unico na CHAMADA", _pede_bloco_unico(fonte_h))
+with open(os.path.join(RAIZ, "app/services/o_grupo_so_o_que_importa.py"),
+          encoding="utf-8") as fh:
+    fonte_porta = fh.read()
+check("a PORTA de envio ao grupo pede bloco unico na CHAMADA",
+      _pede_bloco_unico(fonte_porta))
+check("e `_avisar_suporte` chega nela (nao envia por fora)",
+      "enviar_ao_grupo" in fonte_h)
 _SEM_O_ARGUMENTO = chr(10).join([
     "async def _avisar_suporte(self):",
     "    # bloco_unico=True",

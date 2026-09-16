@@ -13,6 +13,7 @@ import {
   serializeDestination,
   tenantConnectionBelongsToCompany,
 } from '@/lib/attendance/support-destinations';
+import { porteiroDeConfiguracao, registrarNaAuditoria } from '@/lib/admin/porteiro-de-configuracao';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,14 +24,15 @@ export const dynamic = 'force-dynamic';
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ destinationId: string }> }) {
   try {
     const { destinationId } = await params;
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-
+    // 🔴 SPEC-EXTRA-001.3 BLOCO G — papel, origem e auditoria.
+    //
+    // ⚠️ `companyIdDoSeletor` devolve `string | null`: a rota NÃO TINHA o papel
+    // disponível nem se quisesse conferi-lo. Por isso o conserto é TROCAR o
+    // resolvedor, não acrescentar um `if`.
+    const porteiro = await porteiroDeConfiguracao(request);
+    if (porteiro instanceof NextResponse) return porteiro;
     const supabaseAdmin = getAdminClient();
-    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
-    const companyId = await companyIdDoSeletor();
-    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
+    const companyId = porteiro.companyId;
 
     const { data: existing, error: findErr } = await supabaseAdmin
       .from('human_support_destinations')
@@ -94,6 +96,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!data) return NextResponse.json({ error: 'Destino não encontrado' }, { status: 404 });
 
     console.log(`[SUPPORT DESTINATIONS] updated: id=${destinationId}`);
+    await registrarNaAuditoria(porteiro, {
+      evento: 'support_destination.write', acao: 'update',
+      metadata: { destination_id: destinationId,
+                  campos: Object.keys(fields || {}).sort() },
+    });
     return NextResponse.json({ destination: serializeDestination(data) });
   } catch (error: any) {
     console.error('[SUPPORT DESTINATIONS] PATCH error:', error?.message);
@@ -108,14 +115,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ destinationId: string }> }) {
   try {
     const { destinationId } = await params;
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-
+    // 🔴 SPEC-EXTRA-001.3 BLOCO G — papel, origem e auditoria.
+    //
+    // ⚠️ `companyIdDoSeletor` devolve `string | null`: a rota NÃO TINHA o papel
+    // disponível nem se quisesse conferi-lo. Por isso o conserto é TROCAR o
+    // resolvedor, não acrescentar um `if`.
+    const porteiro = await porteiroDeConfiguracao(request);
+    if (porteiro instanceof NextResponse) return porteiro;
     const supabaseAdmin = getAdminClient();
-    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
-    const companyId = await companyIdDoSeletor();
-    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
+    const companyId = porteiro.companyId;
 
     const { data, error } = await supabaseAdmin
       .from('human_support_destinations')
@@ -132,6 +140,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!data) return NextResponse.json({ error: 'Destino não encontrado' }, { status: 404 });
 
     console.log(`[SUPPORT DESTINATIONS] disabled: id=${destinationId}`);
+    // 🔴 Esta é a mais grave das seis: DESATIVAR o destino deixa a corretora
+    // sem para onde mandar handoff — e era o que um `member` comum conseguia.
+    await registrarNaAuditoria(porteiro, {
+      evento: 'support_destination.write', acao: 'disable',
+      metadata: { destination_id: destinationId },
+    });
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error('[SUPPORT DESTINATIONS] DELETE error:', error?.message);

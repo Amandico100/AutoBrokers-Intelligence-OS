@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { BackendUrlError, getBackendUrl } from '@/lib/backend-url';
 import { getSupabaseAdmin, resolveSessionCompany } from '@/lib/vault/server';
 
+import { porteiroDeConfiguracao, registrarNaAuditoria } from '@/lib/admin/porteiro-de-configuracao';
+
 export const dynamic = 'force-dynamic';
 
 const BACKEND_TIMEOUT_MS = 20_000;
@@ -234,8 +236,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await resolveSessionCompany();
-  if (!ctx) return NextResponse.json({ detail: 'unauthorized' }, { status: 401 });
+  // 🔴 SPEC-EXTRA-001.3 BLOCO G — SEIS ações num `body.action`, e uma delas
+  // DESCONECTA o WhatsApp da corretora. Um `member` comum conseguia.
+  //
+  // ⚠️ O GET continua com `resolveSessionCompany`: ler o status do próprio
+  // canal não é privilégio administrativo, e restringi-lo cegaria a tela de
+  // quem só confere se o número está no ar.
+  //
+  // 💭 Alternativa medida: usar `ATTENDANCE_TOGGLE_ROLES` (que inclui
+  // `attendant` e `member`) quando a ação for `disconnect`/`retry` — nota 70;
+  // `write:true` em todas — nota 85, porque destino de suporte e conexão de
+  // canal são CONFIGURAÇÃO de corretora, não operação de atendimento.
+  const porteiro = await porteiroDeConfiguracao(req);
+  if (porteiro instanceof NextResponse) return porteiro;
+  const ctx = { userId: porteiro.userId, companyId: porteiro.companyId };
   const key = internalKey();
   if (!key) return NextResponse.json({ detail: 'internal_key_not_configured' }, { status: 500 });
 
@@ -243,6 +257,11 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const action = String(body.action || 'pairing');
   const attemptId = typeof body.attempt_id === 'string' ? body.attempt_id : '';
+  // ⛔ A auditoria guarda QUAL ação e QUEM — nunca o número, nunca o QR.
+  await registrarNaAuditoria(porteiro, {
+    evento: 'whatsapp_channel.write', acao: action,
+    metadata: { correlation_id: correlation },
+  });
   const alertNumber = typeof body.alert_number === 'string' ? body.alert_number.replace(/\D/g, '') : '';
 
   if (alertNumber && (alertNumber.length < 10 || alertNumber.length > 15)) {

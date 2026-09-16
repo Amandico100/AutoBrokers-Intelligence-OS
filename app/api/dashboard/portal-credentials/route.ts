@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveSessionCompany } from '@/lib/vault/server';
+// 🔴 SPEC-EXTRA-001.3 BLOCO G — as MUTACOES passam pelo porteiro; o GET
+// continua com `resolveSessionCompany`, porque LER a propria configuracao
+// nao e privilegio administrativo e restringir a leitura quebraria a tela
+// de quem so confere.
+import { porteiroDeConfiguracao, registrarNaAuditoria } from '@/lib/admin/porteiro-de-configuracao';
 import { getBackendUrl } from '@/lib/backend-url';
 
 export const dynamic = 'force-dynamic';
@@ -56,8 +61,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await resolveSessionCompany();
-  if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const porteiro = await porteiroDeConfiguracao(req);
+  if (porteiro instanceof NextResponse) return porteiro;
+  const ctx = { companyId: porteiro.companyId, userId: porteiro.userId };
   const body = await req.json().catch(() => ({}));
   const base = getBackendUrl();
   const res = await fetch(`${base}/api/portal/credentials`, {
@@ -72,12 +78,19 @@ export async function POST(req: NextRequest) {
       company_id: ctx.companyId,
     }),
   });
+  await registrarNaAuditoria(porteiro, {
+    evento: 'portal_credential.write', acao: 'upsert',
+    status: res.ok ? 'ok' : 'erro',
+    // ⛔ nunca a senha, nunca o usuario: so O QUE mudou e em qual portal.
+    metadata: { portal_key: String(body.portal_key || ''), tem_senha: Boolean(body.password) },
+  });
   return NextResponse.json(await res.json().catch(() => ({})), { status: res.status });
 }
 
 export async function DELETE(req: NextRequest) {
-  const ctx = await resolveSessionCompany();
-  if (!ctx) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  const porteiro = await porteiroDeConfiguracao(req);
+  if (porteiro instanceof NextResponse) return porteiro;
+  const ctx = { companyId: porteiro.companyId, userId: porteiro.userId };
   const portalKey = req.nextUrl.searchParams.get('portal_key') || '';
   const label = req.nextUrl.searchParams.get('account_label') || 'principal';
   const base = getBackendUrl();
@@ -85,5 +98,10 @@ export async function DELETE(req: NextRequest) {
     `${base}/api/portal/credentials?company_id=${encodeURIComponent(ctx.companyId)}&portal_key=${encodeURIComponent(portalKey)}&account_label=${encodeURIComponent(label)}`,
     { method: 'DELETE', headers: backendHeaders() },
   );
+  await registrarNaAuditoria(porteiro, {
+    evento: 'portal_credential.write', acao: 'delete',
+    status: res.ok ? 'ok' : 'erro',
+    metadata: { portal_key: portalKey, account_label: label },
+  });
   return NextResponse.json(await res.json().catch(() => ({})), { status: res.status });
 }

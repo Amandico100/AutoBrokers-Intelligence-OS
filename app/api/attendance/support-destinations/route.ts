@@ -13,6 +13,7 @@ import {
   serializeDestination,
   tenantConnectionBelongsToCompany,
 } from '@/lib/attendance/support-destinations';
+import { porteiroDeConfiguracao, registrarNaAuditoria } from '@/lib/admin/porteiro-de-configuracao';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,14 +72,15 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
-    if (!session.userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-
+    // 🔴 SPEC-EXTRA-001.3 BLOCO G — papel, origem e auditoria.
+    //
+    // ⚠️ `companyIdDoSeletor` devolve `string | null`: a rota NÃO TINHA o papel
+    // disponível nem se quisesse conferi-lo. Por isso o conserto é TROCAR o
+    // resolvedor, não acrescentar um `if`.
+    const porteiro = await porteiroDeConfiguracao(request);
+    if (porteiro instanceof NextResponse) return porteiro;
     const supabaseAdmin = getAdminClient();
-    // A corretora do SELETOR (SPEC-098). Vínculo caiu → 403, nunca a primária.
-    const companyId = await companyIdDoSeletor();
-    if (!companyId) return NextResponse.json({ error: SEM_CORRETORA_NA_SESSAO }, { status: 403 });
+    const companyId = porteiro.companyId;
 
     let body: Record<string, any> = {};
     try {
@@ -126,6 +128,12 @@ export async function POST(request: NextRequest) {
     console.log(
       `[SUPPORT DESTINATIONS] created: id=${data.id} type=${data.destination_type} provider=${data.channel_provider}`,
     );
+    // ⛔ A auditoria nunca leva `destination_ref` cru — só o TIPO e o id.
+    await registrarNaAuditoria(porteiro, {
+      evento: 'support_destination.write', acao: 'create',
+      metadata: { destination_id: data.id, destination_type: data.destination_type,
+                  is_primary: Boolean(data.is_primary) },
+    });
     return NextResponse.json({ destination: serializeDestination(data) }, { status: 201 });
   } catch (error: any) {
     console.error('[SUPPORT DESTINATIONS] POST error:', error?.message);

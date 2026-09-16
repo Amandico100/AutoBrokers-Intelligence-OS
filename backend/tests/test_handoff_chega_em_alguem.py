@@ -269,8 +269,26 @@ def teste_o_humano_e_avisado_com_contexto():
     print("\n[B3] O humano é avisado, e com o caso na mão")
     fonte = _ler("backend", "app", "agents", "tools", "human_handoff.py")
     checar("_avisar_suporte" in fonte, "existe um caminho de aviso")
-    checar("get_whatsapp_service" in fonte, "que de fato ENVIA",
-           "a versão antiga não tinha um único import de envio")
+    # 🔴 ASSERCAO MIGRADA — SPEC-EXTRA-001.3, 16/09/2026.
+    #
+    # Ela exigia `get_whatsapp_service` DENTRO de `human_handoff.py`, e a razao
+    # era boa: 📊 a versao antiga nao tinha um unico import de envio — o caminho
+    # de aviso existia e nao enviava nada.
+    #
+    # O ENVIO MUDOU DE CASA. Agora os 11 pontos saem por UMA porta,
+    # `o_grupo_so_o_que_importa.enviar_ao_grupo`, que e onde a guarda, o
+    # `bloco_unico`, o marcador e a contagem moram. `_avisar_suporte` virou
+    # adaptador: ele MONTA o dossie e chama a porta.
+    #
+    # ⚠️ CLAUDE.md §9.3: o fato mudou, o teste muda com ele, e a licao MIGRA em
+    # vez de morrer — continua sendo "prove que este caminho de fato ENVIA",
+    # agora perguntando aos dois elos. Exigir o import antigo aqui so ensinaria
+    # a equipe a ignorar o guarda.
+    porta = _ler("backend", "app", "services", "o_grupo_so_o_que_importa.py")
+    checar("enviar_ao_grupo" in fonte, "que chega na PORTA de envio",
+           "sem isso o caminho de aviso volta a nao enviar nada")
+    checar("get_whatsapp_service" in porta, "e a porta de fato ENVIA",
+           "a porta sem import de envio seria o mesmo defeito, uma casa adiante")
     checar("_montar_dossie" in fonte, "existe um dossiê")
     # 🔴 ASSERCAO ATUALIZADA — SPEC-085 BLOCO B, 24/08/2026.
     #
@@ -308,8 +326,14 @@ def teste_destino_compartilhado_e_recusado():
            "não conseguir PROVAR exclusividade também recusa",
            "fail-closed: dúvida não é permissão para enviar CPF")
 
-    tool = _ler("backend", "app", "agents", "tools", "human_handoff.py")
-    checar('alvo.get("recusa")' in tool, "a ferramenta respeita a recusa do resolvedor")
+    # 🔴 MIGRADA JUNTO — SPEC-EXTRA-001.3, 16/09/2026. Quem consulta o
+    # resolvedor (e portanto quem respeita a RECUSA de destino compartilhado)
+    # passou a ser a porta unica, para os 11 pontos de uma vez. A pergunta e a
+    # mesma; o arquivo em que ela se responde e outro.
+    porta = _ler("backend", "app", "services", "o_grupo_so_o_que_importa.py")
+    checar('achado.get("recusa")' in porta,
+           "a porta respeita a recusa do resolvedor",
+           "recusa ignorada = dossie com CPF do segurado no grupo da outra corretora")
 
 
 def teste_o_resolvedor_le_a_tabela_que_a_ui_grava():

@@ -8,6 +8,7 @@ import { getTenantAgentConfig, patchTenantAgentConfig, roleForKey, setTenantAgen
 import { ativarTodosOsCorredores } from '@/lib/admin/tenant-corridor-store';
 import { previaDaSaudacao } from '@/lib/admin/saudacao-religamento';
 import { registrarBotaoDoAgente } from '@/lib/admin/historico-do-botao';
+import { porteiroDeLigarOAgente } from '@/lib/admin/porteiro-de-ligar-o-agente';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ag
       return NextResponse.json(
         { ok: false, error: 'is_active_precisa_ser_booleano' }, { status: 400 });
     }
+    // 🔴 SPEC-EXTRA-001.3 BLOCO F — O PORTEIRO DE LIGAR.
+    //
+    // 📊 09/09/2026, primeiro dia de piloto real: a AutoFleet passou o dia
+    // com o agente LIGADO e zero destinos de suporte. A ferramenta de handoff
+    // rodou 5 vezes, recusou mentir, e ninguém foi avisado. A única checagem
+    // que existia era POSTERIOR e passiva, no `/health`.
+    //
+    // ⚠️ SÓ NO LIGAR. Desligar nunca é bloqueado: uma trava que impede
+    // desligar é um produto que não obedece, e o botão de desligar é a saída
+    // de emergência da atendente.
+    //
+    // ⛔ A decisão NÃO mora aqui: quem responde é o backend, pelo MESMO
+    // `resolver_destino_de_suporte` por onde o handoff sai. Uma consulta
+    // parecida nesta camada decidiria uma coisa e o handoff faria outra.
+    if (body.is_active === true && role === 'attendance') {
+      const porteiro = await porteiroDeLigarOAgente(auth.ctx.companyId);
+      if (!porteiro.pode) {
+        return NextResponse.json(
+          { ok: false, error: porteiro.motivo, falta: porteiro.falta }, { status: 400 });
+      }
+    }
+
     const toggled = await setTenantAgentActive(
       auth.supabase, auth.ctx.companyId, role, body.is_active);
     if (!toggled.ok) return NextResponse.json(toggled, { status: 400 });

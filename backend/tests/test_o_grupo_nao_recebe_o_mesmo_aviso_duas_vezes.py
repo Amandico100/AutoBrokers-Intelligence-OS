@@ -228,6 +228,17 @@ for _ in range(3):
                                           company_id="emp-1"))
 certo(len(avisos) == 1, "cinco pedidos seguidos = UM aviso, nao cinco")
 
+# 🔴 A CHAVE MUDOU EM 16/09/2026 — SPEC-EXTRA-001.3 §7.5, e o TESTE MUDA COM
+# ELA. Era `handoff_realerta:<conversa>`; passou a levar a CORRETORA e o TIPO,
+# porque 📊 no 10/09 sairam 3 dossies sobre a mesma conversa em 21 minutos
+# (a sessao de acionamento reabriu 3 vezes) e porque um sinistro nao pode ser
+# calado por um pedido de ajuda. As assercoes de COMPORTAMENTO abaixo nao
+# mudaram uma virgula — so o nome da chave que elas inspecionam.
+#
+# ⚠️ CLAUDE.md §9.3: teste que guarda verdade vencida e pior que teste nenhum.
+# A licao migra em vez de morrer.
+_CHAVE_DE_HOJE = "grupo_envio:emp-1:conv-1234-5678:pedido_de_ajuda"
+
 print()
 print("=" * 68)
 print("  3. A TRAVA NAO E MORDACA: conversa que voltou volta a avisar")
@@ -240,7 +251,7 @@ r3 = rodar(ferramenta(banco, avisos)._arun(reason="problema novo",
                                            session_id="ses-1", company_id="emp-1"))
 certo(len(avisos) == 2, "🔴 conversa que voltou da equipe AVISA de novo")
 certo(r3 == SUCESSO_DO_HANDOFF, "e devolve SUCESSO, nao o estado de repetido")
-certo("handoff_realerta:conv-1234-5678" in redis.chaves,
+certo(_CHAVE_DE_HOJE in redis.chaves,
       "CONTROLE: o marcador existia e ainda assim avisou "
       "(a decisao NAO e so o marcador)")
 
@@ -266,7 +277,7 @@ def ferramenta_que_falha(banco):
 
 rodar(ferramenta_que_falha(banco2)._arun(reason="x", session_id="ses-1",
                                          company_id="emp-1"))
-certo("handoff_realerta:conv-1234-5678" not in redis2.chaves,
+certo(_CHAVE_DE_HOJE not in redis2.chaves,
       "🔴 falha no envio DEVOLVE o marcador (o Vigia nao fica mudo)")
 certo(redis2.mortes == 1, "e devolveu exatamente uma vez")
 
@@ -275,7 +286,7 @@ redis3 = RedisDeMentira()
 com_redis(redis3)
 banco3 = SupabaseFake(status="open")
 rodar(ferramenta(banco3, [])._arun(reason="x", session_id="ses-1", company_id="emp-1"))
-certo("handoff_realerta:conv-1234-5678" in redis3.chaves,
+certo(_CHAVE_DE_HOJE in redis3.chaves,
       "CONTROLE: aviso que DEU certo mantem a reserva")
 certo(redis3.mortes == 0, "e nao devolve nada")
 
