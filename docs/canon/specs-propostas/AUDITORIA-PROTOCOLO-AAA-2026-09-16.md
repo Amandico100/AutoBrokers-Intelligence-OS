@@ -9,7 +9,7 @@
 > **Fonte primária de todos os números 📊 desta auditoria:** os transcritos reais do Claude
 > Code em `~/.claude/projects/c--Users-amand-Projetos-AUTOBROKERS-RESULTA-AutoBrokers-FIX/`
 > (arquivo `.jsonl` da sessão + `<sessão>/subagents/agent-*.jsonl`), lidos pelo script
-> [`AAA-FAST-medir-execucao.py`](AAA-FAST-medir-execucao.py), cruzados com `git log` e com os
+> `backend/scripts/medir_execucao_claude_code.py`, cruzados com `git log` e com os
 > relatórios em `docs/canon/reports/`. Nenhum número abaixo veio de memória ou de relatório
 > sem ter sido reproduzido no transcrito.
 
@@ -272,7 +272,7 @@ commita, escreve um handoff de ≤ 20 linhas no relatório e a próxima fatia co
    rodada.
 4. **Status line com contexto** (`/statusline`): o executor tem a regra escrita de conferir o contexto
    em cada gate; passou de 300 k → fecha a fatia. Isso é disciplina de prompt; o item 5 é a rede.
-5. **Medição pós-execução obrigatória:** [`AAA-FAST-medir-execucao.py`](AAA-FAST-medir-execucao.py)
+5. **Medição pós-execução obrigatória:** `backend/scripts/medir_execucao_claude_code.py`
    roda sobre a sessão e cola no relatório as 8 linhas (turnos, contexto de pico, ctx-tokens,
    saída, US$, relógio por fase, agentes, achados por mecanismo). **Relatório sem essas linhas =
    SPEC aberta** (mesma regra do card hoje).
@@ -380,7 +380,7 @@ lista de ataques do red team. O que não volta: rodada 3, painel homogêneo, aqu
 |---|---|
 | [`PROTOCOLO-AAA-FAST-PROPOSTA.md`](PROTOCOLO-AAA-FAST-PROPOSTA.md) | o protocolo, 10 KB, no formato do v11.2 (só regras; o porquê está aqui) |
 | [`PROMPT-EXECUCAO-AAA-FAST-MODELO.md`](PROMPT-EXECUCAO-AAA-FAST-MODELO.md) | o prompt único de abertura (≤ 6 KB), com o bloco [SPEC] a trocar |
-| [`AAA-FAST-medir-execucao.py`](AAA-FAST-medir-execucao.py) | a telemetria que produziu o §2, para colar no relatório de cada SPEC |
+| `backend/scripts/medir_execucao_claude_code.py` | a telemetria que produziu o §2, para colar no relatório de cada SPEC |
 | este arquivo | a auditoria e a evidência |
 
 ---

@@ -658,3 +658,25 @@ perda pequena no CRÍTICO (uma lente a menos; a do DADO fica). O que NÃO se cor
 **Regra nova que decide sozinha:** estourou o orçamento → menos LENTES, nunca menos MUTAÇÃO. E a sessão de 5h começa pelo laço
 mais longo (o builder serial), para não morrer no meio dele.
 📊 Tamanho do protocolo: 21.867 → 22.498 bytes (teto 22.528).
+
+
+---
+
+# 📊 16/09/2026 — A MEDIÇÃO QUE PRODUZIU A v12 (AAA FAST)
+
+> Auditoria inteira: `specs-propostas/AUDITORIA-PROTOCOLO-AAA-2026-09-16.md`. Fonte: os transcritos reais do
+> Claude Code (`~/.claude/projects/…/<sessão>.jsonl` + `subagents/`), lidos por `backend/scripts/medir_execucao_claude_code.py`.
+
+```
+RELÓGIO REAL (transcrito + git)     001.6 = 4h48 · 001.1 = 9h16 · 001.2 = 5h03    (os relatórios diziam 9 · 15 · 8 h)
+"TOKENS DE SUBAGENTES"              era o CONTEXTO FINAL por agente (o Agent map), não o consumo. Consumo = turnos × contexto
+CUSTO API-EQUIV. DOS SUBAGENTES     laço curto: 001.6 US$ 80 · 001.1 205 · 001.2 114  ·  AAA completo: 095 74 · 096 93 · 098 167
+                                    → o laço curto NÃO reduziu custo; reduziu relógio
+ORQUESTRADOR FABLE (3 SPECs)        347 turnos · contexto de pico 963 k · 170 M tokens de contexto · US$ 137 · zero linha de produto
+O JUIZ FRESCO (001.2)               33 turnos · 11 min · US$ 3,3 → os 2 blockers reais da SPEC
+ONDE O RELÓGIO VAI (001.2)          BLOCO 0 4 % · BUILD 42 % · juiz+lente 4 % · conserto 19 % · FECHAMENTO documental 28 %
+SAÍDA (thinking + texto)            ≈ 6 % do gasto → effort não é alavanca de custo; turno é
+```
+
+**Regras que nasceram daqui:** sessão nova por SPEC sem orquestrador (§10) · um escritor (§4) · juiz Fable em CRÍTICO (§3.1)
+· tetos em turnos e contexto por env + hook (§10) · fatias (§5.2) · escalação por gatilho (§8) · relatório ≤ 15 KB · telemetria pelo script (§11).

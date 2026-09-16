@@ -128,7 +128,7 @@ ul.tight li{margin:5px 0}
 
 <div class="app">
 <nav class="rail" aria-label="SPECs">
-  <div class="brand"><b>Dossiês</b><span>AutoBrokers · leva 088→096</span></div>
+  <div class="brand"><b>Dossiês</b><span>AutoBrokers · 088→EXTRA-001.x</span></div>
   <div class="nav" id="nav">
     <a href="#home" data-p="home">Visão geral<small>placar, linha do tempo, sua caixa</small><span class="chip acc">03/09</span></a>
     <div class="grp eyebrow">Feitas</div>
@@ -153,7 +153,9 @@ ul.tight li{margin:5px 0}
     <div class="grp eyebrow">Pilotos · o que os testes ensinaram</div>
     <a href="#pilotos" data-p="pilotos">Diagnóstico e plano EXTRA-001.x<small>09–13/09 · 7 laudos · 11 blocos · 001.6, 001.1 e 001.2 feitas</small><span class="chip info">em curso</span></a>
     <div class="grp eyebrow">Método</div>
-    <a href="#proto" data-p="proto">Protocolo AAA v11.2<small>de 72 para o que é hoje</small><span class="chip info">v11.2</span></a>
+    <a href="#v12" data-p="v12">Protocolo v12 · AAA FAST<small>em vigor desde 16/09 · um escritor, um juiz, um relógio</small><span class="chip acc">v12</span></a>
+    <a href="#ab" data-p="ab">A/B do protocolo · 001.3 × 001.4<small>a medir · regra de decisão escrita antes</small><span class="chip warn">a medir</span></a>
+    <a href="#proto" data-p="proto">Protocolo AAA v11.2 (histórico)<small>de 72 a v11.2 · hoje é modo de ESCALAÇÃO</small><span class="chip">v11.2</span></a>
     <div class="grp eyebrow">Fila</div>
     <a href="#fila" data-p="fila">Decisão do ritmo · fila<small>3 sugestões com nota · 094.1, 095…098</small><span class="chip crit">decidir</span></a>
   </div>
@@ -168,9 +170,9 @@ ul.tight li{margin:5px 0}
       <div class="eyebrow">AutoBrokers Intelligence OS · dossiês de execução</div>
       <h1>O que foi feito, o que está no ar, o que só você decide</h1>
       <p class="lede">Uma página por SPEC. Cada dossiê diz como era antes, o que ficou, os números medidos, a nota que o orquestrador deu e por quê, o que ficou pendente e com quem. Atualizado a cada SPEC fechada.</p>
-      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>9e0c4d9</b></span><span>orquestrador <b>Fable 5.1</b> · subagentes <b>Opus 5</b></span><span>atualizado <b>15/09/2026</b></span></div>
+      <div class="meta"><span>árvore <b>AutoBrokers-FIX</b></span><span>main em <b>9e0c4d9</b></span><span>protocolo <b>v12 · AAA FAST</b></span><span>executor <b>Opus 5</b> (sessão nova) · juiz <b>Fable 5.1</b></span><span>atualizado <b>16/09/2026</b></span></div>
     </div>
-    <div class="gauge"><div class="eyebrow">Leva 088→098</div><div class="big">9<small> no ar</small></div><div class="bar"><i style="width:92%"></i></div><div class="sub">088, 093-B, 094, 094.1, 095, 096, 097, 097.1 e <b>098</b> na main · 091 absorvida · <b>EXTRA-001 na main</b> · <b>EXTRA-001.6 na main</b> · <b>EXTRA-001.1 na main</b> · <b>EXTRA-001.2 na main</b> (o agente lê tudo antes de falar; canário dos 8 casos depois do Implantar) · 099→114 pausadas · próxima: EXTRA-001.3 (o grupo só recebe o que importa)</div></div>
+    <div class="gauge"><div class="eyebrow">Leva 088→098</div><div class="big">9<small> no ar</small></div><div class="bar"><i style="width:92%"></i></div><div class="sub">088, 093-B, 094, 094.1, 095, 096, 097, 097.1 e <b>098</b> na main · 091 absorvida · <b>EXTRA-001 na main</b> · <b>EXTRA-001.6 na main</b> · <b>EXTRA-001.1 na main</b> · <b>EXTRA-001.2 na main</b> (o agente lê tudo antes de falar; canário dos 8 casos depois do Implantar) · 099→114 pausadas · <b>16/09: protocolo v12 (AAA FAST) em vigor</b> · próxima: EXTRA-001.3 (o grupo só recebe o que importa), <b>experimento A do A/B</b></div></div>
   </div>
 
   <h2>Placar</h2>
@@ -191,7 +193,8 @@ ul.tight li{margin:5px 0}
     <tr><td><a href="#extra0011">EXTRA-001.1</a></td><td>A apólice certa, inteira, em uma rodada: a porta PolicyDataProvider deixa de ser um cano (modelo nosso com origem por campo, 2 adaptadores, reconciliação cadastro × PDF com divergência dita e contador de prêmio); a escolha mora na porta e diz por quê (vencida nunca vira opção; só pergunta com 2 vigentes do mesmo ramo; vale para corretor e segurado); o PDF é lido sempre e o extrator lê as tabelas reais (HDI 10, Allianz 21); o corretor recebe a apólice, não a lista; teto no contexto recuperado; tokens certos no banco; tool call ligada ao turno; 4 guardas mudos de volta</td><td>CRÍTICO · laço curto</td><td class="n">8–12h → ≈15h numa janela</td><td class="n">87</td><td><span class="chip ok">na main 07d512d</span> · <span class="chip warn">canário 7 casos depois do Implantar</span></td></tr>
     <tr><td><a href="#extra0012">EXTRA-001.2</a></td><td>O agente lê tudo antes de falar: uma rajada de mensagens e fotos vira UM turno (trava por conversa, janela que escuta o conteúdo, mídia no buffer, re-planejamento), a ficha sabe o que já foi respondido e o agente não repete pergunta, se apresenta uma vez só, responde no tamanho de gente (3 frases e 450 caracteres), uma conversa por contraparte (175 fantasmas fechadas), todo silêncio com motivo no feed, o nome do agente nunca confunde com a equipe</td><td>CRÍTICO · laço curto</td><td class="n">6–9h → ≈8h numa janela</td><td class="n">85</td><td><span class="chip ok">na main fc75193</span> · <span class="chip warn">canário dos 8 casos depois do Implantar</span></td></tr>
     <tr><td><a href="#pilotos">Pilotos</a></td><td>Diagnóstico dos pilotos de 09–11/09 (1h53 de agente ligado, 0 protocolos, cobrança em modo teste) e o plano em 11 blocos EXTRA-001.0…001.10 (v2 de 13/09, com a parte cortada da mensagem, 3 laudos novos e as decisões D-PILOTO-08…14): apólice certa com porta agnóstica de sistema de gestão · agente lê tudo antes de falar · grupo só recebe o que importa · corredor não trava e o humano da seguradora é atendido · base de produtos com 3 níveis de assistência · cobrança provada (as duas senhas recusadas) · piloto medido · portal de vidros ponta a ponta · isolamento · painel · retroativa</td><td>diagnóstico</td><td class="n">—</td><td class="n">48 · 49</td><td><span class="chip warn">4 decisões abertas · pronto para virar SPECs</span></td></tr>
-    <tr><td><a href="#proto">Protocolo</a></td><td>v10 → v11 → v11.1 → v11.2 no mesmo dia, cada passo medido</td><td>—</td><td class="n">≈3h no total</td><td class="n">72 → ~88</td><td><span class="chip ok">opção B em vigor</span></td></tr>
+    <tr><td><a href="#v12">Protocolo v12</a></td><td><b>AAA FAST:</b> um executor Opus 5 em sessão nova, provas mecânicas, um juiz fresco (Fable em CRÍTICO), um conserto, entrega. AAA completo vira escalação por gatilho. Tetos em turnos e contexto, por env e hook</td><td>—</td><td class="n">auditoria 16/09</td><td class="n">89 alvo</td><td><span class="chip acc">em vigor desde 16/09</span> · <span class="chip warn">A/B a medir</span></td></tr>
+    <tr><td><a href="#proto">Protocolo v11.2</a></td><td>v10 → v11 → v11.1 → v11.2, cada passo medido; hoje é o modo de ESCALAÇÃO</td><td>—</td><td class="n">≈3h no total</td><td class="n">72 → ~88</td><td><span class="chip">histórico</span></td></tr>
   </table></div>
   <div class="legend"><span>📊 medido, com fonte</span><span>💭 estimativa ou exemplo</span><span>🧑 decisão sua</span><span>🤖 execução</span></div>
 
@@ -210,6 +213,7 @@ ul.tight li{margin:5px 0}
   <h2>🧑 Sua caixa · o que só você decide ou executa</h2>
   <div class="grid2">
     <div class="card"><h3>Ações físicas</h3><ul class="tight">
+      <li><b>Protocolo v12 (16/09):</b> abrir um chat <b>novo</b> do Claude Code em <code>AutoBrokers-FIX</code>, modelo <b>Opus 5</b>, effort <b>xhigh</b>, e colar inteiro <code>docs/canon/PROMPT-EXECUCAO-EXTRA-001.3-PREENCHIDO.md</code>. O executor lança o juiz Fable sozinho. Ao terminar, me trazer a mensagem final aqui para a auditoria do A/B (D-PROTO-03). Depois, o mesmo com a 001.4 (effort <b>max</b>).</li>
       <li><b>EXTRA-001.2 (15/09):</b> Implantar <b>smith-api → smith-web</b> (migrations <code>20260914_07/_08</code> já aplicadas; 7 variáveis novas, todas opcionais). Depois: o canário dos 8 casos (<code>ROTEIRO-CANARIO-EXTRA-001.2.md</code>, TESTE-A/TESTE-B; <code>PRESENCA_DIGITANDO_LIGADA=true</code> só no caso 5) e me avisar; escolher o <b>nome do agente da Resulta</b>; o roteiro com as atendentes; decidir se o "digitando…" fica ligado.</li>
       <li><b>EXTRA-001.1 (14/09):</b> Implantar <b>smith-api → smith-web</b> (migration <code>20260914_06</code> já aplicada; nenhuma variável nova). Depois: os 7 casos do canário (<code>ROTEIRO-CANARIO-EXTRA-001.1.md</code>: 5 no chat do painel da Resulta, 1 pelo TESTE-A, 1 de controle) e me avisar para eu registrar; o roteiro com a atendente; pedir à InfoCap o perfil de <code>/parcelas</code>; apagar as 3 conexões InfoCap arquivadas da Resulta.</li>
       <li><b>EXTRA-001.6 (14/09):</b> Implantar <b>smith-api → portal-worker → smith-web</b> (4 migrations já aplicadas); na tela do Auxiliar de cobrança da Resulta: "Quem assina a mensagem", modo Encaminhar, WhatsApp da equipe = TESTE-B, 7 dias; me avisar para eu rodar o canário Q1–Q10; só então reativar a rotina. Segunda: senhas novas da Allianz e da Mapfre em Conectores &gt; Portais.</li>
@@ -227,11 +231,11 @@ ul.tight li{margin:5px 0}
     </ul></div>
   </div>
 
-  <h2>O método em uma frase por SPEC</h2>
+  <h2>O método em uma frase por SPEC · v12 AAA FAST</h2>
   <div class="grid3">
-    <div class="card flat"><div class="eyebrow">antes de codar</div><p>Investigador remede a proposta contra o código e o banco. Um executor em aquecimento lê a SPEC e responde 10–16 perguntas medindo — algumas com resposta óbvia e errada. A SPEC muda com o que volta.</p></div>
-    <div class="card flat"><div class="eyebrow">enquanto coda</div><p>Um desenhista escreve o guarda antes do builder. Cada gate tem mutação: o teste precisa ficar vermelho quando o defeito é reintroduzido. Builders paralelos só onde a escrita não se cruza.</p></div>
-    <div class="card flat"><div class="eyebrow">depois</div><p>Painel de juízes cegos entre si sobre o diff e o dado real. Conserto único. Um juiz fresco confirma e audita. Suíte inteira com a árvore parada. Push com a saída colada no relatório.</p></div>
+    <div class="card flat"><div class="eyebrow">antes de codar</div><p>Uma sessão nova de Opus 5 por SPEC. O executor lê CLAUDE.md, o protocolo e a proposta (§0 e as unidades), preenche o card em 12 linhas e remede só as 5–10 premissas que mudariam o desenho, com o comando ao lado. Depois lê da linha 1 cada arquivo que vai tocar.</p></div>
+    <div class="card flat"><div class="eyebrow">enquanto coda</div><p>Um único escritor, fatia por fatia, commit por fatia. Cada guarda novo nasce vermelho e fica verde. Nenhum builder paralelo, nenhum orquestrador: o custo é turno × contexto, e o hook do harness bloqueia o 5º agente.</p></div>
+    <div class="card flat"><div class="eyebrow">depois</div><p>Um juiz fresco read-only (Fable 5.1 em CRÍTICO) sobre o diff, com a lista de ataques. Conserto único pelo executor. Lente do dado, confirmação e red team só por gatilho. Suíte inteira em 2º plano, push com a saída colada, telemetria pelo script.</p></div>
   </div>
   <div class="foot">Fontes: <code>docs/canon/reports/SPEC-088-EXECUTION-REPORT.md</code> · <code>SPEC-093-B-EXECUTION-REPORT.md</code> · <code>RELATORIO-CONSOLIDADO-DA-LEVA-088-096.md</code> · <code>PROTOCOLO-AAA-EVIDENCIAS.md</code>. Números com 📊 têm o comando ou a consulta no relatório da SPEC.</div>
 </section>
@@ -1407,7 +1411,105 @@ ul.tight li{margin:5px 0}
   <div class="foot">Fontes: <code>docs/canon/DIAGNOSTICO-PILOTOS-E-PLANO-EXTRA-2026-09-12.md</code> (os quatro laudos resumidos, com <code>arquivo:linha</code>) · banco de produção em 12–13/09/2026, só leitura, só contagens e últimos dígitos · código em <code>b1e18f8</code>; laudos I5 (vidros: HAR/HTML/bundle/.docx em docs/intake, PII mascarada), I6 (cobrança: prints de desfecho em portal-evidence), I7 (humano na URA: observed_events, work_events, motor rodado sobre o texto real). Os textos dos modelos de dossiê são 💭 copy proposta.</div>
 </section>
 
+<!-- ============================ PROTOCOLO v12 · AAA FAST ============================ -->
+<section class="page" id="p-v12">
+  <div class="head">
+    <div>
+      <div class="eyebrow">Método · protocolo v12 · em vigor desde 16/09/2026 (D-PROTO-01)</div>
+      <h1>AAA FAST — um escritor, um juiz, um relógio</h1>
+      <p class="lede">Uma auditoria sobre os transcritos reais do Claude Code mostrou que o custo de cada SPEC não estava no painel de juízes (4–7 % do relógio, e quem acha os blockers), mas no orquestrador de 960 k de contexto, nos agentes de 350+ turnos, no fechamento documental e nas propostas de 100 KB. O v12 tira o que era caro e mantém o que era barato e provado.</p>
+      <div class="meta"><span>canônico <b>docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md</b></span><span>prompt <b>docs/canon/PROMPT-EXECUCAO-AAA-FAST.md</b></span><span>auditoria <b>specs-propostas/AUDITORIA-PROTOCOLO-AAA-2026-09-16.md</b></span><span>guarda <b>test_o_protocolo_tem_policia.py</b> verde</span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">nota (alvo, até o A/B)</div><div class="big">89<small>/100</small></div><div class="bar"><i style="width:89%"></i></div><div class="sub">AAA completo como padrão 48 · laço curto real 52 · Opus sozinho sem juiz 74 · proposta do ChatGPT 83. A primeira medição real sai na 001.3.</div></div>
+  </div>
+
+  <h2>O que a medição mostrou · 📊 transcritos, não relatórios</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v">4h48 · 9h16 · 5h03</div><div class="l">relógio REAL de 001.6 · 001.1 · 001.2 (os relatórios diziam 9 · 15 · 8 h: fuso local misturado com UTC)</div></div>
+    <div class="kpi"><div class="v">US$ 80 · 205 · 114</div><div class="l">custo API-equivalente dos subagentes no laço curto, contra 74 · 93 · 167 sob AAA completo (095 · 096 · 098): o laço curto não cortou custo</div></div>
+    <div class="kpi"><div class="v">963 k</div><div class="l">contexto de pico do orquestrador Fable que executou as 3 SPECs: 347 turnos, 170 M tokens de contexto, ≈ metade do custo, zero linha de produto</div></div>
+    <div class="kpi"><div class="v">11 min · US$ 3</div><div class="l">o juiz fresco da 001.2 (33 turnos) achou os 2 blockers reais. O mecanismo mais barato do laço é o que mais acha</div></div>
+  </div>
+  <div class="callout warn"><b>"Tokens de subagentes" era a grandeza errada.</b> O número que o Agent map do Claude Code mostra por agente é o <b>contexto final</b>, não o consumo. O consumo é turnos × contexto: um agente de 357 turnos com 290 k de contexto processou 102 M tokens (US$ 55), não "394 k". Por isso o v12 mede turnos e contexto, pelo script <code>backend/scripts/medir_execucao_claude_code.py</code>.</div>
+
+  <h2>O laço · seis passos, uma volta</h2>
+  <div class="tw"><table>
+    <tr><th>#</th><th>passo</th><th>quem</th><th>teto</th></tr>
+    <tr><td class="n">①</td><td><b>Card + BLOCO 0 mínimo:</b> 12 linhas; 5–10 premissas cuja falsidade mudaria o desenho, comando ao lado</td><td>executor</td><td class="n">≤ 15 min</td></tr>
+    <tr><td class="n">②</td><td><b>Build:</b> um escritor, fatia por fatia, commit por fatia; guarda novo nasce vermelho e fica verde</td><td>executor</td><td class="n">60–90 min</td></tr>
+    <tr><td class="n">③</td><td><b>Prova mecânica:</b> compile/tsc, guardas da superfície, mutação só dos guardas novos, rotas-montam + next start se tocou app/</td><td>máquina</td><td class="n">10–15 min</td></tr>
+    <tr><td class="n">④</td><td><b>Juiz fresco:</b> subagente read-only, contexto limpo; recebe card, diff, gates e a lista de ataques; até 10 achados com prova</td><td>Fable 5.1 (CRÍTICO) · Opus 5 (PADRÃO)</td><td class="n">10–15 min</td></tr>
+    <tr><td class="n">⑤</td><td><b>Conserto único:</b> o executor conserta tudo junto e reroda só o afetado; confirmação curta só se houve blocker em envio/tenant/migration</td><td>executor</td><td class="n">≤ 25 min</td></tr>
+    <tr><td class="n">⑥</td><td><b>Entrega:</b> suíte inteira em 2º plano, relatório ≤ 15 KB, push com a saída colada, telemetria pelo script</td><td>executor</td><td class="n">≤ 20 min</td></tr>
+  </table></div>
+
+  <h2>Quem faz o quê, por nível</h2>
+  <div class="tw"><table>
+    <tr><th>nível</th><th>quando</th><th>executor</th><th>juiz</th><th>relógio</th><th>agentes além do executor</th></tr>
+    <tr><td>LEVE</td><td>risco 0–1 e superfície 0–1</td><td>Opus 5 medium/high</td><td>nenhum (só provas mecânicas)</td><td class="n">≤ 40 min</td><td class="n">0</td></tr>
+    <tr><td>PADRÃO</td><td>risco 2–5 ou superfície 2</td><td>Opus 5 high</td><td>Opus 5 fresco</td><td class="n">≤ 75 min</td><td class="n">1</td></tr>
+    <tr><td>CRÍTICO</td><td>risco 6+, superfície 3 ou piso (envia, migration de dado, tenant)</td><td>Opus 5 xhigh (max só em unidade de raciocínio)</td><td>Fable 5.1 fresco · + confirmação e lente do dado por gatilho</td><td class="n">≤ 2h30 · ou 2 fatias ≤ 1h15</td><td class="n">2</td></tr>
+  </table></div>
+
+  <h2>Os tetos, e como se aplicam de verdade</h2>
+  <ul class="tight">
+    <li><b>Turnos e contexto</b> do executor: ≤ 250 turnos e ≤ 300 k de contexto por fatia em CRÍTICO. Passou: fecha a fatia verde, commita, handoff de 20 linhas, sessão nova.</li>
+    <li><b>Env do Claude Code</b> (<code>.claude/settings.json</code>): no máximo 2 agentes ao mesmo tempo, nenhum agente cria outro.</li>
+    <li><b>Hook do harness</b> (<code>.claude/hooks/teto-de-agentes.py</code>): o 5º agente da sessão é bloqueado. A resposta a "estourou" nunca é "mais um agente".</li>
+    <li><b>Relógio:</b> a 1,5× a faixa do card sem blocker aberto, o executor para de construir e entrega o que está verde.</li>
+    <li><b>Telemetria obrigatória:</b> 8 linhas do script no fim do relatório. Sem elas, SPEC aberta.</li>
+    <li><b>Effort não é alavanca de custo:</b> a saída (pensar + escrever) foi ≈ 6 % do gasto. Por isso o executor roda em xhigh sem medo; o que custa é turno.</li>
+  </ul>
+
+  <h2>Escalação · só por gatilho escrito no card</h2>
+  <div class="tw"><table>
+    <tr><th>peça</th><th>entra quando</th></tr>
+    <tr><td>lente do dado</td><td>o outcome é número, dataset ou relatório que a corretora lê · migration que altera dado · a SPEC afirma percentuais do acervo</td></tr>
+    <tr><td>confirmação pós-conserto (≤ 20 turnos)</td><td>o juiz achou blocker em código que envia, filtra <code>company_id</code> ou grava por migration</td></tr>
+    <tr><td>red team dedicado (Fable)</td><td>autenticação, cross-tenant, dinheiro, ação irreversível a terceiro</td></tr>
+    <tr><td>segundo juiz (família diferente)</td><td>o primeiro reprovou com ≥ 2 blockers materiais e a SPEC envia ou toca tenant</td></tr>
+    <tr><td>AAA completo (v11.2)</td><td>incidente P0/P1 · mudança ampla de arquitetura · migration destrutiva · "é mais importante do que parece" · o juiz reprovou duas vezes</td></tr>
+  </table></div>
+  <div class="callout ok"><b>O que fica da v11.2, intacto:</b> o card, o elo, a regra do comando, o teste do produto, as duas contas e o piso, a forma do juiz, a referência inspecionável, a licença de autonomia, "atividade não é progresso". São regras de qualidade e custam zero turno.</div>
+  <div class="foot">Decisões D-PROTO-01…06 em <code>FOUNDER-DECISIONS.md</code>. Evidências em <code>PROTOCOLO-AAA-EVIDENCIAS.md</code> (16/09). Fontes externas: Anthropic (prompting do Opus 5, effort, advisor, best practices do Claude Code), Cognition (22/04/2026), arXiv 2605.29800 e 2603.16244, Fowler (harness engineering).</div>
+</section>
+
+<!-- ============================ A/B DO PROTOCOLO ============================ -->
+<section class="page" id="p-ab">
+  <div class="head">
+    <div>
+      <div class="eyebrow">A/B do protocolo · D-PROTO-02 · regra de decisão escrita antes de rodar</div>
+      <h1>001.3 × 001.4 × uma PADRÃO — o v12 fica se medir o que promete</h1>
+      <p class="lede">Três SPECs sob o AAA FAST, comparadas com as três do laço curto já medidas. Nenhuma opinião entra na conta: relógio, turnos, contexto, custo, agentes e blockers por mecanismo saem do script sobre o transcrito; a qualidade sai do juiz e do canário do Founder.</p>
+      <div class="meta"><span>linha de base <b>001.6 · 001.1 · 001.2</b> (laço curto)</span><span>auditoria do Fable depois de cada uma <b>D-PROTO-03</b></span></div>
+    </div>
+    <div class="gauge"><div class="eyebrow">estado</div><div class="big">0<small> de 3</small></div><div class="bar"><i style="width:2%"></i></div><div class="sub">001.3 pronta para colar · 001.4 pronta para colar · a PADRÃO (001.5 ou 001.7) depois</div></div>
+  </div>
+
+  <h2>A linha de base · 📊 medida nos transcritos</h2>
+  <div class="tw"><table>
+    <tr><th>SPEC</th><th>protocolo</th><th>relógio real</th><th>agentes</th><th>maior agente</th><th>custo API-equiv. (subagentes)</th><th>blockers: juiz · lente</th><th>nota</th></tr>
+    <tr><td>001.6</td><td>laço curto</td><td class="n">4h48</td><td class="n">6</td><td class="n">164 turnos</td><td class="n">US$ 80</td><td class="n">2 · 2</td><td class="n">84</td></tr>
+    <tr><td>001.1</td><td>laço curto</td><td class="n">9h16</td><td class="n">8</td><td class="n">395 turnos (US$ 71)</td><td class="n">US$ 205</td><td class="n">0 · 1</td><td class="n">87</td></tr>
+    <tr><td>001.2</td><td>laço curto</td><td class="n">5h03</td><td class="n">7</td><td class="n">357 turnos (US$ 55)</td><td class="n">US$ 114</td><td class="n">2 · 0</td><td class="n">85</td></tr>
+  </table></div>
+  <p style="color:var(--muted);font-size:13px;margin-top:8px">Mais o orquestrador Fable da sessão que rodou as três: 347 turnos · 963 k de contexto · US$ 137. Preços: Opus 5 = 5 / 6,25 / 0,50 / 25 US$ por milhão (input · cache-write · cache-read · saída); Fable 5.1 = 10 / 12,5 / 0,25 / 50.</p>
+
+  <h2>Os três experimentos</h2>
+  <div class="tw"><table>
+    <tr><th>SPEC</th><th>marcha</th><th>executor</th><th>juiz</th><th>gatilhos</th><th>relógio</th><th>turnos · contexto</th><th>US$</th><th>agentes</th><th>blockers juiz · lente · canário</th><th>nota</th></tr>
+    <tr><td><b>001.3</b> o grupo só recebe o que importa</td><td>CRÍTICO · 2 fatias</td><td>Opus 5 <b>xhigh</b></td><td>Fable 5.1</td><td>lente do dado SIM · red team NÃO</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">—</td></tr>
+    <tr><td><b>001.4</b> o corredor não trava sozinho</td><td>CRÍTICO · 2 fatias</td><td>Opus 5 <b>max</b></td><td>Fable 5.1</td><td>lente do dado SIM · red team NÃO</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">—</td></tr>
+    <tr><td><b>001.5 ou 001.7</b></td><td>PADRÃO</td><td>Opus 5 high</td><td>Opus 5</td><td>nenhum</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">a medir</td><td class="n">—</td></tr>
+  </table></div>
+
+  <div class="callout"><b>A regra de decisão (escrita antes):</b> o v12 fica como padrão se, nas três, o custo ficar ≤ 50 % da linha de base por marcha, o relógio ≤ 2h30 em CRÍTICO (ou 2 fatias ≤ 1h15), os defeitos no canário do Founder ≤ os da base, e o juiz não reprovar duas vezes. Se o canário falhar numa SPEC de envio, a lente do dado e a confirmação entram no padrão CRÍTICO (não o AAA inteiro). Se o custo falhar com o canário ok, baixa-se o teto de turnos; nunca se sobe o de agentes.</div>
+  <div class="callout ok"><b>O que o Fable audita depois de cada uma (D-PROTO-03):</b> roda o script sobre a sessão, lê o relatório, reproduz 3 números e 3 trechos do diff, compara com a base e preenche esta tabela. Read-only, ≤ 30 min, sem subagente. Não substitui o canário do Founder, o único juiz que não mente.</div>
+  <div class="foot">Prompts prontos para colar: <code>docs/canon/PROMPT-EXECUCAO-EXTRA-001.3-PREENCHIDO.md</code> · <code>docs/canon/PROMPT-EXECUCAO-EXTRA-001.4-PREENCHIDO.md</code>. Script: <code>backend/scripts/medir_execucao_claude_code.py --sessao atual</code>.</div>
+</section>
+
 <section class="page" id="p-proto">
+  <div class="callout warn"><b>Histórico.</b> A v11.2 foi superada em 16/09/2026 pelo <a href="#v12">protocolo v12 · AAA FAST</a> (D-PROTO-01). O laço completo descrito aqui continua existindo como modo de <b>escalação</b>, por gatilho.</div>
   <div class="head">
     <div>
       <div class="eyebrow">PROTOCOLO AUTOBROKERS AAA · v11.2 · 03/09/2026</div>

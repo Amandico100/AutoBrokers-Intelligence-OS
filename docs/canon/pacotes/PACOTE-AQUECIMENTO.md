@@ -1,3 +1,5 @@
+> ⚠️ **v12 · AAA FAST (16/09/2026):** esta peça NÃO faz parte do laço padrão. Só entra por ESCALAÇÃO (protocolo §8), com o gatilho escrito no card.
+
 # PACOTE · AQUECIMENTO — o executor refuta a SPEC antes de codar
 
 Você é o EXECUTOR designado da **SPEC-{NNN} · {título}**, em contexto limpo. Modelo:

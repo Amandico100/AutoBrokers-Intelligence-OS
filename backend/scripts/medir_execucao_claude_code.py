@@ -7,9 +7,9 @@ Lê os transcritos reais do Claude Code (a sessão + os subagentes) e imprime, p
 turnos · contexto de pico · tokens de contexto processados (input + cache-write + cache-read) ·
 saída · custo API-equivalente (US$) · relógio. E, por sessão, a linha do tempo em blocos de 30 min.
 
-  python docs/canon/specs-propostas/AAA-FAST-medir-execucao.py --sessao atual
-  python docs/canon/specs-propostas/AAA-FAST-medir-execucao.py --sessao a4546c6b --linha-do-tempo
-  python docs/canon/specs-propostas/AAA-FAST-medir-execucao.py --listar
+  python backend/scripts/medir_execucao_claude_code.py --sessao atual
+  python backend/scripts/medir_execucao_claude_code.py --sessao a4546c6b --linha-do-tempo
+  python backend/scripts/medir_execucao_claude_code.py --listar
 
 O número que o "Agent map" do Claude Code mostra por agente é o CONTEXTO FINAL, não o consumo.
 Foi essa confusão que produziu "1,45 M / 2,9 M tokens" nos relatórios das EXTRA-001.x.

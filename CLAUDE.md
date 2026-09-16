@@ -41,8 +41,9 @@ Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora ex
 ```
 🔴 NENHUMA execução de SPEC começa sem o EXECUTION CARD do protocolo §0.2.
 🔴 NENHUM relatório de SPEC fecha sem ele. Relatório sem card = SPEC aberta.
-🔴 TODO pacote entregue a um subagente carrega o protocolo §0–§3, §5 e §7.3
-   (v11, 03/09/2026). Os pacotes-modelo estão em `docs/canon/pacotes/`.
+🔴 O EXECUTOR lê o protocolo inteiro UMA vez. TODO pacote entregue a um subagente (juiz,
+   lente, investigador) carrega §0–§3, §5 e §7.3 (v12 · AAA FAST, 16/09/2026). Os pacotes-modelo
+   estão em `docs/canon/pacotes/`; o prompt do executor é `docs/canon/PROMPT-EXECUCAO-AAA-FAST.md`.
 ```
 
 📊 **Por que isto virou regra em 30/08/2026:** uma auditoria mediu que o painel de
@@ -114,7 +115,7 @@ escrita; e entrega escrita é `git push`, com a saída dele colada no relatório
 
 ```text
 CLAUDE.md (processo)
-→ PROTOCOLO-AUTOBROKERS-AAA (como se julga e quando se para)
+→ PROTOCOLO-AUTOBROKERS-AAA v12 · AAA FAST (como se executa, se julga e quando se para)
 → SPEC-052 (cérebro: conhecimento, memória, contexto, aprendizagem)
 → SPEC-053 (Work OS: harness, contratos, fronteiras)
 → 054 schema/segurança · 055 Work Runs/HITL · 056 Skills/Tools
@@ -177,7 +178,9 @@ Proibido sem manifesto aprovado: mover, renomear, apagar ou reaplicar migration 
 - Uma **SPEC** tem: uma branch, um relatório final e um gate final.
 - Gates internos são **automáticos**: aplicar → VERIFY → testes → verde → avançar.
 - **Não** pedir aprovação manual do Founder entre todos os blocos.
-- Pasta única `AutoBrokers-Opus-Exec`; uma branch por SPEC/pacote; recomendada uma sessão nova por SPEC.
+- A árvore é a que o preflight prova em dia com a `origin/main` (hoje `AutoBrokers-FIX`); uma branch por SPEC.
+- 🔴 **Uma SESSÃO NOVA por SPEC (ou por fatia), executor Opus 5, sob o AAA FAST** (protocolo v12 §10). Nenhuma
+  sessão executa duas SPECs. O Fable decide, audita e escreve protocolo em outro chat, antes e depois.
 
 ### 9.1 Build verde **não** é prova de que a aplicação sobe
 

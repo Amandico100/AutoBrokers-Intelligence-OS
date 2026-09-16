@@ -1,48 +1,43 @@
 # PROTOCOLO AUTOBROKERS AAA
 
-> **Como se monta e se governa uma equipe de agentes no AutoBrokers.**
-> Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar e
-> autorizar a entrega**, e **quando parar**.
+> **Como se executa, se julga e se autoriza a entrega de uma SPEC no AutoBrokers.**
+> Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar, entregar e parar**.
 >
-> **v11.2 · 03/09/2026** · vale para toda SPEC, conversão, execução, ideia,
-> incidente e agente. Só regras. O porquê de cada uma, com as medições, está em
-> [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
+> **v12 · AAA FAST · 16/09/2026** · vale para toda SPEC, execução, ideia, incidente e
+> agente. Só regras. O porquê, com as medições: [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
 ---
 
 ## 0. A REGRA DE UMA LINHA
 
-> ## Nada entra como pronto sem sobreviver a uma cadeia independente de provas.
+> ## Quem escreve é um só. Quem julga não viu escrever. Quem estoura o relógio não chama mais ninguém.
 > ## E nada trava o projeto por um defeito que não muda o produto.
 
 ## 0.1 ⛔ ESTE PROTOCOLO É LEI, E ELE SE CARREGA SOZINHO
 
 ```
-1. TODO pacote entregue a um agente carrega este protocolo: §0 a §3, §5, §7.3.
-   Sem ele, o agente NÃO COMEÇA. Ele pede.
-2. TODO relatório de execução ABRE com o EXECUTION CARD (§0.2).
-   Relatório sem card = SPEC aberta.
-3. Quem monta o pacote responde pelo item 1. Não é falha do executor.
-4. O guarda `backend/tests/test_o_protocolo_tem_policia.py` confere 1 e 2
-   por máquina, sobre os RELATÓRIOS e os PACOTES, não só sobre este texto.
+1. O EXECUTOR lê este protocolo UMA vez. TODO pacote a subagente (juiz, lente, investigador)
+   carrega §0–§3, §5 e §7.3. Sem ele, o agente NÃO COMEÇA.
+2. TODO relatório ABRE com o EXECUTION CARD (§0.2) e FECHA com a telemetria (§11). Sem eles = SPEC aberta.
+3. O guarda `backend/tests/test_o_protocolo_tem_policia.py` confere 1 e 2 por máquina, sobre os OBJETOS.
 ```
 
-## 0.2 🔴 O EXECUTION CARD — antes de escrever código
+## 0.2 🔴 O EXECUTION CARD — antes de escrever código, em 12 linhas
 
 ```
 OUTCOME ..............  o que muda para quem usa
 RISCO ................  0–8   (§3)
 SUPERFÍCIE ...........  0–3   (§3)
 PISO APLICADO ........  qual, e por quê (§3.2)
-NÍVEL ................  LEVE · PADRÃO · CRÍTICO (§3.1)
-UNIDADES .............  quantas, e quais
+NÍVEL ................  LEVE · PADRÃO · CRÍTICO (§3.1) · executor e effort · juiz (nenhum · Opus · Fable)
+UNIDADES .............  quantas, quais, e as FATIAS (§5.2)
 COESÃO ...............  o que fica JUNTO e por quê (§3.4)
-PARALELISMO REAL .....  escritores simultâneos — ou "nenhum"
-TIME .................  os papéis que o nível pediu (§4)
+PARALELISMO REAL .....  "nenhum" — a escrita é de um só (§4)
+TIME .................  executor · juiz · peças de ESCALAÇÃO com o GATILHO que as chamou (§8)
 REFERÊNCIA ...........  o artefato que o juiz vai ABRIR (§7.1) + a EXTERNA (§7.3)
 GATES ................  o que precisa ficar verde
 O ELO ................  a afirmação-título liga A a B? então MEDIU O ELO (§0.3)
-FAIXA DE RELÓGIO .....  ex.: 1–2h  · faixa, nunca promessa (§9.2)
+FAIXA DE RELÓGIO .....  faixa, nunca promessa (§9.2) · e os TETOS de turno e contexto (§10)
 ```
 
 ## 0.3 🔴 O ELO — duas medições certas não fazem uma causa certa
@@ -52,11 +47,11 @@ a afirmação é da forma "A acontece PORQUE B"?
    medi A?  ·  medi B?  ·  🔴 medi que B CHEGA em A?   ← o passo que ninguém dá
 ```
 
-| forma | como se pega |
-|---|---|
-| **código morto** — há um `return`/`if` acima da linha culpada | rode o caminho, ou leia da linha 1 da função até ela |
-| **meia regra** — a regra é `A E B` e só `A` foi contado | conte cada cláusula separada |
-| **fonte de ontem** — quem escreve mudou de tabela | pergunte "quem É o escritor HOJE" |
+```
+código morto (um return/if acima da linha culpada) → rode o caminho, ou leia da linha 1 da função até ela
+meia regra (a regra é A E B, só A foi contado)     → conte cada cláusula separada
+fonte de ontem (quem escreve mudou de tabela)      → pergunte "quem É o escritor HOJE"
+```
 
 ## 0.4 🔴 A REGRA DO COMANDO — afirmar por leitura o que só um comando decide é defeito
 
@@ -65,7 +60,6 @@ todo número sobre código ou banco vem com o COMANDO ao lado, na mesma linha ou
    linhas, contagens, datas de criação → wc · grep -c · git log --diff-filter=A
    "existe" / "é o escritor" / "está no finally" → mostre a linha e as 3 acima dela
 🔴 mudou um número, caminho ou faixa? `grep` do valor ANTIGO no arquivo inteiro. Sobrevivente = defeito
-🔴 contador que envelheceu duas vezes sai da prosa e vira o COMANDO que o produz ("conte você")
 🔴 o juiz REPRODUZ por amostra: 3 números ao acaso por artefato. Um errado reprova a amostra inteira
 ```
 
@@ -74,24 +68,22 @@ todo número sobre código ou banco vem com o COMANDO ao lado, na mesma linha ou
 ## 1. 🔴 A DIETA — o agente recebe um PACOTE, nunca o canon
 
 ```
-🔴 ESTE PROTOCOLO (§0–§3, §5, §7.3) — o PRIMEIRO item
-+ o contrato da unidade (o que muda, o que não pode mudar)
-+ os arquivos, por caminho, e as interfaces que ela toca
+🔴 ESTE PROTOCOLO (§0–§3, §5, §7.3) — o PRIMEIRO item de todo pacote a subagente
++ o card (§0.2) e o contrato da SPEC (o que muda, o que não pode mudar)
++ o DIFF, os comandos dos gates e a LISTA DE ATAQUES (§6) — para o juiz
 + as regras invioláveis PERTINENTES, por número (CLAUDE.md §)
 + a REFERÊNCIA interna (§7.1) e a EXTERNA (§7.3) que o juiz vai abrir
-+ os gates, e a mutação que prova que cada gate consegue ficar vermelho
 + as pendências POR NÚMERO — nunca o PENDENCIAS.md inteiro
 + o MODELO do agente (§10)
 ```
 
 ```
 ⛔ nenhum pacote manda "leia o protocolo INTEIRO"
-⛔ nenhum documento novo entra no bootstrap sem que outro saia ou encolha
-🔴 este documento inteiro cabe em 22 KB; o núcleo §0–§5 em 11 KB. O guarda mede.
+⛔ o EXECUTOR lê da proposta o §0 e as UNIDADES que vai construir; research pack e apêndices só quando citados
+🔴 proposta ≤ 40 KB · relatório ≤ 15 KB · este documento ≤ 22 KB. O guarda mede.
 ```
 
-Os pacotes-modelo estão em [`docs/canon/pacotes/`](pacotes/): builder, juiz,
-aquecimento, pesquisador, auditor externo. **Use-os. Não reescreva de memória.**
+Pacotes-modelo em [`docs/canon/pacotes/`](pacotes/); prompt do executor em [`PROMPT-EXECUCAO-AAA-FAST.md`](PROMPT-EXECUCAO-AAA-FAST.md). **Use-os.**
 
 ---
 
@@ -116,7 +108,7 @@ NÃO  →  PENDÊNCIA. Registra, e SEGUE.  "isto é pequeno" não é argumento.
 
 ## 3. DUAS CONTAS, UM NÍVEL
 
-🔴 **O RISCO diz SE precisa de juiz. A SUPERFÍCIE diz DE QUANTAS lentes.**
+🔴 **O RISCO diz SE precisa de juiz. A SUPERFÍCIE diz de que MODELO e quantas peças de escalação.**
 
 ```
 ALCANCE          ninguém 0  ·  a corretora 2  ·  o SEGURADO 3
@@ -133,24 +125,22 @@ SUPERFÍCIE  0  uma decisão, num lugar que EU SEI APONTAR
 ```
 
 ```
-NÃO SEI ONDE PEGA            → é SUPERFÍCIE (mais lentes)
-NÃO SEI SE O MODELO OBEDECE  → é PROVA: mostre o modelo fazendo. Mais gente não ajuda
-UNIDADE = a menor coisa que dá para ENTREGAR e PROVAR sozinha. O lote paga UMA
-passada de enquadramento; a SUPERFÍCIE 3 do lote não se herda pelas unidades.
+NÃO SEI ONDE PEGA → SUPERFÍCIE (investigador read-only, consulta da §8) · NÃO SEI SE O MODELO OBEDECE → PROVA
+UNIDADE = a menor coisa que dá para ENTREGAR e PROVAR sozinha. FATIA = o que cabe numa sessão (§5.2)
 ```
 
 ### 3.1 O NÍVEL — a tabela inteira cabe em três linhas
 
-| nível | quando | o ritual |
-|---|---|---|
-| **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | builder faz · verificador mecânico · UM juiz fresco só se SUPERFÍCIE 1 |
-| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | investigador se SUP ≥ 2 · builder · verificador · **painel de 2 lentes** (verdade+regressão · produto+DADO) · confirmação MECÂNICA (guardas + mutações rerodadas) |
-| **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | + desenhista da prova antes do código · **painel de 3 lentes** · **red team** · integrador se 3+ unidades · **UM juiz fresco que confirma o conserto E audita o dado** (§6.1) |
+| nível | quando | executor | juiz fresco (§6) | rodadas |
+|---|---|---|---|---|
+| **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | Opus 5 `medium`/`high` | nenhum (só o verificador mecânico) | 0 |
+| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | Opus 5 `high` | **Opus 5** | 1 |
+| **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | Opus 5 `xhigh` (`max` só em unidade de raciocínio) | **Fable 5.1** · + confirmação e lente por gatilho (§8) | 1 (+1 curta) |
 
 ```
 ⚠️ se o rótulo e a soma discordarem, a soma vence
-⛔ LEVE dispensa o JUIZ. Nunca o verificador mecânico (passo ② da §5)
-🔴 painel maior que 5 lentes nunca. Rodada de painel além de 3 nunca (§5)
+⛔ LEVE dispensa o JUIZ. Nunca o verificador mecânico (passo ③ da §5)
+🔴 effort NÃO é alavanca de custo (a saída é ≈6 % do gasto). Baixa-se turno e contexto (§10)
 ```
 
 ### 3.2 🔴 O PISO — por EFEITO, nunca por tipo de arquivo
@@ -162,7 +152,7 @@ CRÍTICO no mínimo, independente da conta:
    ⚠️ só o COMMENT é isento. Índice e GRANT disparam
  · autenticação, sessão, ou o filtro `company_id`
  · ler de uma corretora e escrever noutra
-🧑 a exceção do Founder: "isto é mais importante do que parece" → CRÍTICO. Não existe a contrária
+🧑 "isto é mais importante do que parece" → CRÍTICO ou ESCALAÇÃO (§8). Não existe a contrária
 ```
 
 ### 3.3 A conta vale para MUDANÇA, não para INVESTIGAÇÃO
@@ -172,83 +162,77 @@ CONSULTA PONTUAL  "onde está X?" · "o que faz Y?"        → dispensado
 VARREDURA         "isto funcionou?" · "serve para nós?"  → MODO INVESTIGAÇÃO (§8)
 ```
 
-### 3.4 A COESÃO — decide se dá para paralelizar ESCRITA
+### 3.4 A COESÃO — decide o que fica junto na mesma FATIA
 
 ```
-1. as unidades tocam a MESMA interface, tipo ou contrato?     → juntas
-2. alguma REDEFINE algo que a outra consome?                  → juntas
-3. o conjunto de arquivos de cada uma é realmente disjunto?   → se não, juntas
-ARQUIVO-HUB → UM dono por vez, sempre.  Se mapear custar mais que fazer, não mapeie.
+tocam a MESMA interface, tipo ou contrato? uma REDEFINE o que a outra consome? mesmo ARQUIVO-HUB? → juntas
 ```
 
 ---
 
-## 4. OS PAPÉIS — só existem os que o nível pediu
+## 4. OS PAPÉIS — dois por padrão; o resto por gatilho
 
 ```
-🎯 ORQUESTRADOR   faz as contas, monta o time, controla o laço, REGISTRA. É Fable.
-🔍 INVESTIGADOR   lê e mede antes de qualquer edição. 🔴 não escreve
-📐 DESENHISTA     escreve os testes e as mutações. 🔴 quem faz a prova não faz a resposta
-🔧 BUILDER        implementa. 🔴 a escrita é de UM SÓ por unidade
+🔧 EXECUTOR       Opus 5, SESSÃO NOVA por SPEC ou fatia. Lê, mede, escreve TODO o código, prova,
+                  chama o juiz, conserta, entrega, REGISTRA. 🔴 a escrita é dele só
+⚖️ JUIZ FRESCO    subagente read-only, contexto limpo, que não viu escrever (§6)
 ⚙️ VERIFICADOR    passo mecânico do laço, não papel convocado
-⚖️ JUÍZES         um por LENTE, cegos entre si, contexto fresco, read-only
-🗡️ RED TEAM       missão: FAZER QUEBRAR
-🧩 INTEGRADOR     3+ unidades no mesmo lote
-🏁 JUIZ FINAL     contexto limpo, olha o sistema, não o diff
-🌐 PESQUISADOR    abre as referências externas e diz o que modelar (§7.3)
+🔍 INVESTIGADOR   Sonnet 5, read-only, no máximo UM, só para varredura grande e realmente paralela
+— por GATILHO (§8) —  🔬 LENTE DO DADO (reconstrói o outcome por SELECT) · 🗡️ RED TEAM (Fable 5.1, missão:
+QUEBRAR) · 🏁 CONFIRMAÇÃO (juiz novo, ≤ 20 turnos, só o diff do conserto)
+🎯 FABLE          o co-líder: decide, audita e escreve protocolo em OUTRO chat. Nunca turno a turno
 ```
 
-**O verificador mecânico**, na ordem: `py_compile`/`tsc` · testes do bloco ·
-lint · migrations pelo VERIFY (o ledger mente; confere o OBJETO no banco) ·
-regressão. 🔴 Mexeu em `app/`, `middleware.ts`, `next.config.js` ou env:
-`npm run test:rotas-montam` + `next start` + UMA requisição a `/api/…`.
+**O verificador mecânico**, na ordem: `py_compile`/`tsc` · testes do bloco · lint · migrations pelo
+VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em `app/`, `middleware.ts`,
+`next.config.js` ou env: `npm run test:rotas-montam` + `next start` + UMA requisição a `/api/…`.
 
-> **Todo subagente reporta o que vir FORA do próprio escopo.**
+```
+⛔ DELEGAÇÃO: não delegue o que termina em poucas chamadas · nem a verificação do PRÓPRIO trabalho ·
+   nenhum builder A/B/C/D · nenhum orquestrador.  Todo subagente reporta o que vir FORA do escopo
+```
 
 ---
 
-## 5. O LAÇO — um painel, e ele julga CÓDIGO
+## 5. O LAÇO — seis passos, uma volta
 
 ```
-① BLOCO 0: o executor REMEDE o que a SPEC afirma. O número dele vence
-② o builder entrega
-③ o VERIFICADOR MECÂNICO roda  →  FAIL volta direto, não vai a juiz
-④ O PAINEL: N lentes DE UMA VEZ, cegas entre si, contexto limpo, sobre o DIFF,
-   o teste rodando e o banco. 🔴 Outcome é NÚMERO ou DATASET? uma lente o
-   RECONSTRÓI sobre o acervo real (SELECT) e pergunta se ele diz a verdade
-⑤ o ORQUESTRADOR funde e aplica o TESTE DO PRODUTO a CADA achado
-⑥ conserta TUDO junto
-⑦ UM JUIZ NOVO confirma — porque CONSERTO CRIA DEFEITO
+① CARD + BLOCO 0 MÍNIMO   ≤ 15 min · 5–10 premissas cuja falsidade mudaria o DESENHO, comando ao lado (§0.4)
+② BUILD                   UM escritor, fatia por fatia, commit por fatia (arquivo por arquivo, nunca -A).
+                          Guarda novo nasce VERMELHO e fica VERDE (linha de controle)
+③ VERIFICADOR MECÂNICO    §4 · mutação dos guardas NOVOS, uma vez  →  FAIL volta ao ②, nunca ao juiz
+④ JUIZ FRESCO             uma passada sobre o diff acumulado, o teste rodando e o banco (§6).
+                          🔴 outcome é NÚMERO ou DATASET? a LENTE DO DADO entra pelo gatilho (§8)
+⑤ CONSERTO ÚNICO          o EXECUTOR aplica o TESTE DO PRODUTO a cada achado, conserta TUDO junto,
+                          reroda SÓ os gates afetados. Achado não consertado vira pendência escrita
+⑥ ENTREGA                 suíte inteira UMA vez em 2º plano, triada por DIFF · relatório ≤ 15 KB · push com a
+                          saída colada · telemetria (§11). Dossiê FORA do caminho crítico
 ```
 
 ### 5.1 O JUIZ JULGA CÓDIGO
 ```
-⛔ NÃO se monta painel de juiz sobre uma SPEC nem sobre documento
-✅ o painel roda sobre o diff, o teste rodando, o banco
+⛔ NÃO se monta juiz sobre uma SPEC nem sobre documento
+✅ o juiz roda sobre o diff, o teste rodando, o banco
 ```
 
-### 5.2 Quem julga a SPEC é o AQUECIMENTO DO EXECUTOR
+### 5.2 As FATIAS — uma SPEC grande, uma sessão de cada vez
 ```
-o executor (Opus, contexto limpo) recebe a SPEC + 10–15 perguntas:
-  várias com resposta óbvia E ERRADA, medidas de propósito
-  DUAS afirmam algo FALSO com todas as letras, assinadas por quem manda
-  uma pede "liste o que você NÃO entendeu" — "entendi tudo" reprova
-  uma pede "ache um defeito real que a SPEC não aponta"
-o orquestrador corrige a SPEC com o que voltou, e libera. UMA rodada.
+≥ 3 unidades ou > 40 KB → FATIAS INTERNAS: mesma SPEC, branch e relatório. fatia = ② → ③ → commit.
+O juiz roda UMA vez, no fim. Contexto passou de 300 k (§10)? fecha a fatia verde, commita, handoff
+≤ 20 linhas no relatório, próxima fatia em SESSÃO NOVA. ⛔ nunca "continuar" com 600 k de contexto
 ```
 
 ### 5.3 Nunca a mesma lente duas vezes
 ```
-⛔ JUIZ RETOMADO É PROIBIDO. Ele julga a resolução dos próprios achados e dá nota alta falsa
+⛔ JUIZ RETOMADO É PROIBIDO: julga os próprios achados e dá nota alta falsa
+⛔ segunda rodada só pelo gatilho da §8. Rodadas extras compram falsos positivos
 ```
 
 ### As portas
 ```
-✅ o painel libera
-📋 sobraram só pendências  →  registra e entrega
-🛑 3 rodadas de painel     →  CLASSIFICA: é uma das oito do CLAUDE.md §10?
+✅ o juiz libera, ou só sobraram pendências  →  registra e entrega
+🛑 reprovou DUAS vezes com blocker material  →  ESCALAÇÃO (§8); é uma das oito do CLAUDE.md §10?
       SIM → para e registra   ·   NÃO → entrega o que passou e AVANÇA
-≥60% dos achados da rodada N são os da N−1?  →  confira A ÁRVORE antes de culpar a lente
 ⛔ NUNCA: afrouxar a régua · alterar teste para passar · declarar pronto por cansaço
 🔴 lista de casos fixados carrega PARES: mesma superfície, veredito oposto
 ```
@@ -258,27 +242,24 @@ o orquestrador corrige a SPEC com o que voltou, e libera. UMA rodada.
 ## 6. O JUIZ
 
 ```
-RECEBE   a SPEC · o contrato · a referência · O ARTEFATO REAL
-NUNCA    a narrativa do builder · o esforço · "está funcionando" · o resumo
-Presuma FAIL até existir evidência de PASS. Cite arquivo, linha, comando, saída ou
-consulta em CADA conclusão. Reproduza 3 números da SPEC por amostra (§0.4).
-🔴 Se estiver bom, diga que está bom. Juiz que precisa achar defeito para se
-   justificar É o defeito que este protocolo existe para matar.
-FORMA: VEREDITO · BLOCKERS (com o teste do produto) · PENDÊNCIAS · EVIDÊNCIA ·
-       MAIOR LACUNA · PRÓXIMA AÇÃO · CONFIANÇA e o que ficou por medir
-⚖️ o juiz CLASSIFICA · 🎯 o orquestrador REGISTRA e decide
-🔴 rebaixou um blocker? a discordância vai ESCRITA. Não se rebaixa segurança,
-   isolamento, P0/P1 do CLAUDE.md §10
-🔴 PRESCRIÇÃO NÃO É MEDIÇÃO: o juiz entrega a medição junto com o achado; o
-   executor reproduz antes de aplicar e devolve com o número se não bater
+RECEBE   o card · o contrato da SPEC · o DIFF · os comandos dos gates · a referência · a LISTA DE ATAQUES
+NUNCA    a narrativa do executor · o esforço · "está funcionando" · o resumo
+ATAQUES  dado vazio/nulo · duas corretoras ao mesmo tempo (company_id) · a mesma mensagem 2× (idempotência) ·
+         dois processos ao mesmo tempo · rollback da migration · o produto CHAMA este caminho? (rode-o) ·
+         regressão direta do diff · efeito externo (mensagem, portal, dinheiro)
+Presuma FAIL até existir evidência de PASS. Cite arquivo, linha, comando, saída ou consulta em CADA
+conclusão. Reproduza 3 números por amostra (§0.4). Não reroda todas as mutações.
+🔴 Se estiver bom, diga que está bom. Juiz que precisa achar defeito para se justificar É o defeito
+FORMA: VEREDITO · BLOCKERS (com o teste do produto) · PENDÊNCIAS · EVIDÊNCIA · MAIOR LACUNA ·
+       PRÓXIMA AÇÃO · CONFIANÇA e o que ficou por medir · NOTA
+⚖️ o juiz CLASSIFICA · 🔧 o executor REGISTRA e decide. Rebaixou um blocker? a discordância vai
+   ESCRITA. Não se rebaixa segurança, isolamento, P0/P1 do CLAUDE.md §10
+🔴 PRESCRIÇÃO NÃO É MEDIÇÃO: o achado vem com a medição; o executor reproduz antes de aplicar
 ```
 
-### 6.1 CONFIRMAÇÃO + AUDITORIA — um agente, depois do conserto, só no CRÍTICO
+### 6.1 CONFIRMAÇÃO — depois do conserto, só por gatilho (§8)
 ```
-contexto NOVO, que não viu a execução · recebe §0 da SPEC, o diff do conserto, o código pronto, a referência
-⛔ não recebe o relatório do executor nem "por que foi difícil"
-missão dupla: "o conserto criou defeito?" E "reconstrua o OUTCOME sobre o dado real e ache o que
-ninguém achou". Uma passada. 📊 eram dois agentes (≈450 mil tokens) lendo o mesmo diff
+juiz NOVO do mesmo modelo, ≤ 20 turnos, SÓ o diff do conserto. Missão única: "o conserto criou defeito?"
 ```
 
 ---
@@ -288,7 +269,7 @@ ninguém achou". Uma passada. 📊 eram dois agentes (≈450 mil tokens) lendo o
 ```
 1. INSPECIONÁVEL   o juiz ABRE, RODA ou MEDE. Se só imagina, é adjetivo
 2. UM PONTO        "como o Linear faz o estado vazio", nunca "no nível do Linear"
-3. A INTERNA VENCE A EXTERNA — a MEDIANA do que passou no gate, nunca o outlier
+3. A INTERNA VENCE A EXTERNA — a MEDIANA do que passou no gate
 4. UMA POR DIMENSÃO, com NOME e CAMINHO
 🔴 sem referência inspecionável, a dimensão é "NÃO AVALIADA" — nunca "aprovada"
 ```
@@ -297,7 +278,7 @@ ninguém achou". Uma passada. 📊 eram dois agentes (≈450 mil tokens) lendo o
 
 | dimensão | referência, por caminho | como o juiz compara |
 |---|---|---|
-| **UI / design** | `docs/canon/DS-001-design-brief.md` §5 | item a item contra ChatGPT · Claude · Routines · Connectors |
+| **UI / design** | `docs/canon/DS-001-design-brief.md` §5 | item a item contra ChatGPT · Claude |
 | **multi-tenant** | `CLAUDE.md` §7 + teste com **dois tenants reais** | o filtro no código, não a RLS |
 | **migration** | `docs/canon/MIGRATIONS-AUTHORITY.md` | APPLY · VERIFY · ROLLBACK escritos ANTES |
 | **um guarda serve?** | `CLAUDE.md` §9.3 + linha de controle | prove que ele CONSEGUE ficar vermelho |
@@ -314,43 +295,46 @@ de UI · arquivo OpenAPI · alvo de latência (SLO) · OWASP aplicado a um julga
 Nessas dimensões o veredito é "não avaliada".
 
 ### 7.2 Referência OBSERVADA registra o que foi feito, não o que se deve fazer
-Toda tela de identidade, dinheiro ou escolha-entre-existente-e-novo exige julgamento
-humano; copiar a maioria das conversas reais abriria o chamado no CPF errado.
+Identidade, dinheiro e escolha-entre-existente-e-novo exigem julgamento humano.
 
 ### 7.3 🔴 A REFERÊNCIA EXTERNA — como a pesquisa entra numa SPEC
 
 ```
-🔴 toda SPEC convertida tem a seção "O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS"
+🔴 toda SPEC tem a seção "O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS"
    com 3 a 7 referências externas, cada uma em quatro linhas:
-      URL · o que ela faz · o que MODELAMOS dela (um ponto) · o que REJEITAMOS e por quê
-   e uma linha por referência dizendo COMO O JUIZ INSPECIONA (abre a doc, roda o exemplo, compara a tela)
-🔴 a fonte primária é o RESEARCH-PACK da proposta. O PESQUISADOR (§4) reabre cada
-   referência escolhida: envelheceu? há melhor? A data da reabertura vai na SPEC
+      URL · o que ela faz · o que MODELAMOS dela (um ponto) · o que REJEITAMOS e por quê · COMO O JUIZ INSPECIONA
+🔴 a fonte é a PROPOSTA. Na execução NÃO se pesquisa de novo; o juiz reabre o que a unidade cita
 🔴 "o padrão do mercado" não é referência. Repositório, doc oficial, tela, paper: é
-⛔ referência externa nunca vira autoridade: Smith, Work OS, Tool Gateway, Skill
-   Registry, Artifact Hub continuam únicos (CLAUDE.md §5). Modela-se o PADRÃO
+⛔ referência externa nunca vira autoridade: as peças do CLAUDE.md §5 continuam únicas. Modela-se o PADRÃO
 🔴 o guarda conta: SPEC ≥ 088 sem 3 URLs externas na seção não fecha
 ```
 
 ---
 
-## 8. OS MODOS
+## 8. OS MODOS — e a ESCALAÇÃO
 
 | modo | a conta governa? | elenco mínimo |
 |---|---|---|
-| 🧭 **INVESTIGAÇÃO** · ideia, auditoria, medição | ❌ (§3.3) | medidor · cético da medida · juiz do risco. Teto 4 frentes. SAÍDA: o estado · o que está quebrado · o que destrava · **o que ficou por medir** |
-| 📝 **CONVERSÃO** · proposta vira SPEC | ✅ do trabalho que ela manda fazer | investigador (mede hoje) · pesquisador (§7.3) · o orquestrador escreve · **aquecimento (§5.2) no lugar do painel**. Nunca painel sobre a SPEC |
-| 🔨 **EXECUÇÃO** | ✅ por unidade | pelo nível (§3.1). Escrita de UM SÓ. Integração SERIAL, regressão depois de cada merge |
-| 🤖 **AGENTE** · Central, auto-evolução | ✅ + três travas | teto de voltas contado · teto de custo declarado · o que ele muda é reversível e registrado |
-| 🚨 **INCIDENTE** | ❌ | quem conserta · quem observa o EFEITO numa rota que executa código. Conserto reversível por construção. Juiz ADIADO ao post-mortem |
-| 📦 **LOTE LOCAL** · destilação, garimpo, varredura em volume | ❌ | trabalho que custaria API roda num chat dedicado do Claude Code, com o mesmo código do produto (nunca motor paralelo), escrevendo nas mesmas tabelas, e o relatório diz quantas linhas entraram e por qual escritor |
+| 🧭 **INVESTIGAÇÃO** · ideia, auditoria, medição | ❌ (§3.3) | medidor · cético · juiz do risco. Teto 4 frentes. SAÍDA: estado · quebrado · o que destrava · **o que ficou por medir** |
+| 🔨 **EXECUÇÃO** | ✅ por unidade | AAA FAST: executor + juiz pelo nível (§3.1). Escrita de UM SÓ. Fatias em série |
+| 🤖 **AGENTE** · Central, auto-evolução | ✅ + três travas | teto de voltas · teto de custo · o que muda é reversível e registrado |
+| 🚨 **INCIDENTE** | ❌ | quem conserta · quem observa o EFEITO numa rota que executa código. Juiz ADIADO |
+| 📦 **LOTE LOCAL** · garimpo em volume | ❌ | chat dedicado, mesmo código do produto, mesmas tabelas |
+
+**ESCALAÇÃO — só por gatilho escrito no card ou na caixa do Founder:**
+
+| peça | entra quando (qualquer um) |
+|---|---|
+| **lente do dado** | outcome é NÚMERO, DATASET ou relatório que a corretora lê · migration que ALTERA DADO · a SPEC afirma percentuais do acervo |
+| **confirmação (§6.1)** | o juiz achou ≥ 1 BLOCKER em código que ENVIA, filtra `company_id` ou grava por migration |
+| **red team dedicado** | autenticação/sessão · cross-tenant · dinheiro · ação irreversível a terceiro |
+| **consulta ao Fable antes do BUILD** (≤ 15 turnos) | decisão de arquitetura em aberto (SUPERFÍCIE 3 real) |
+| **segundo juiz** (família diferente) | o primeiro reprovou com ≥ 2 blockers materiais E a SPEC envia ou toca tenant |
+| **AAA COMPLETO** (painel de 3 lentes + red team + lente + confirmação) | incidente P0/P1 · mudança ampla de arquitetura · migration DESTRUTIVA · o Founder disse "é mais importante do que parece" · o juiz reprovou DUAS vezes com blocker material |
 
 ```
-📝 CONVERSÃO — o que a SPEC pronta TEM:
-   card da conversão (§0.2) · BLOCO 0 que manda remedir · §7.3 com as referências ·
-   todo número com comando (§0.4) · todo bloco com gate e mutação · O QUE SAIU da
-   proposta, com o gatilho que a faz voltar · pendências · caixa do Founder
-⛔ converter e executar em seguida. Nunca converter o que não vai executar nesta leva
+⛔ nunca entram: aquecimento de perguntas · conversão · pesquisador · integrador · builders paralelos · orquestrador
+🔴 nenhuma peça entra no laço PADRÃO sem blocker EXCLUSIVO medido em 2 SPECs, registrado em EVIDENCIAS
 ```
 
 ---
@@ -373,14 +357,12 @@ Só para se os três derem SIM e o próximo bloco for IMPOSSÍVEL, não incômod
                              errado · Core · aceite não provado · regressão · falha real
 ⛔ NÃO MATERIAL — pendência  estilo · micro-refactor · nome · abstração · doc que
                              ninguém precisa · dívida sem efeito hoje · gosto do juiz
-🧑 2h → 93 sem defeito material  VENCE  24h → 95 de polimento
-   6h → 99 fechando risco no Core VENCE  2h → 85 com fragilidade estrutural
+🧑 2h → 93 sem defeito material VENCE 24h → 95 de polimento · 6h → 99 fechando risco no Core VENCE 2h → 85 frágil
 ```
 
 ### 9.2 A FAIXA DE RELÓGIO
-Estourou a faixa do card? Não para. Responde por escrito **POR QUE CONTINUAR**: o que
-falta · que risco fecha · que gate fecha · que evidência falta. Resposta "dá para
-melhorar mais" → pendência.
+**1,5× a faixa** do card sem blocker aberto? Para de construir, entrega a fatia verde, registra o
+que resta. ⛔ **A resposta a "estourou" NUNCA é "mais um agente".** "Dá para melhorar" → pendência.
 
 ### 9.3 ATIVIDADE NÃO É PROGRESSO
 ```
@@ -391,68 +373,55 @@ mudou de estado · patch feito e desfeito · a discussão cresce e o artefato n�
 ```
 
 ### 📋 A CAIXA DO FOUNDER
-Seção do relatório que o executor vai acrescentando. Cada item: o que é · o que faz ·
-o que custa esquecer · bloqueia? (quase sempre NÃO). Nunca se para para entregar uma linha dela.
+Seção do relatório. Cada item: o que é · o que faz · o que custa esquecer · bloqueia? (quase sempre
+NÃO). Nunca se para para entregar uma linha dela.
 
 ---
 
-## 10. 🔴 A MECÂNICA — mesmo trabalho, metade do relógio
+## 10. 🔴 A MECÂNICA — o custo é turno × contexto
 
 ```
-MODELO      🎯 orquestrador = Fable 5.1. JULGA e CONSTRÓI = Opus 5 (builder, juiz, pesquisador,
-            aquecimento, red team). MECÂNICO = Sonnet 5 (verificador, rerodar guardas e
-            mutações, preencher relatório, grep de PII). ⛔ não trocar no meio da sessão
-ORÇAMENTO   linha do card: PADRÃO ≤ 1,5 M tokens de subagentes · CRÍTICO ≤ 2,5 M. 📊 03/09: uma
-            CRÍTICO gastou ≈3 M e a janela de 5h acabou 2×. Estourou → menos LENTES, nunca menos MUTAÇÃO
-JUIZ RECEBE §0 + o BLOCO julgado + o diff + os comandos. Nunca a SPEC inteira nem o censo
-CONVERSÃO   investigador interno e pesquisador externo = UM agente
-PAINEL      UM ÚNICO agent type, variando só o PROMPT · roda no diretório principal, sem
-            worktree · em PARALELO, de uma vez · `subagentPromptCacheTtl: "1h"`
-            ⚠️ juiz que MUTA arquivo para provar guarda faz cópia e restaura; e o
-            orquestrador NÃO roda a suíte inteira enquanto um juiz muta
-FORK        só para auxiliares do executor. ⛔ nunca para juiz
-BATERIA     a suíte INTEIRA roda no gate de cada bloco e no fim: 2 a 4 vezes por
-            SPEC, nunca a cada commit. Parciais (um arquivo, um teste) à vontade.
-            🔴 o relatório traz a contagem (diário do conftest)
-MUTAÇÃO     roda em WORKTREE PRÓPRIO ou com lock exclusivo · restaura por CÓPIA,
-            nunca `git checkout` · xfail nunca num guarda que lança processo
-COMMIT      arquivo por arquivo · cada conserto salvo COMPLETO antes do seguinte
-            (uma interrupção não pode deixar módulo quebrado). ⛔ nunca `git add -A`
-ENTREGA     `git push origin HEAD:main` com a saída colada no relatório. Depois o
-            Founder clica Implantar. Commit local não é entrega.
-```
-
-```
-⛔ onde a velocidade NÃO está: builders paralelos que escrevem · agent teams para
-   orquestrar · um "modo rápido" a mais · painel maior que 5
+SESSÃO      UMA NOVA por SPEC (ou fatia), contexto nascendo vazio. CLAUDE.md + memória do projeto + BLOCO 0
+            são o aquecimento. ⛔ nenhuma sessão executa duas SPECs
+MODELO      🔧 executor = Opus 5 (LEVE medium/high · PADRÃO high · CRÍTICO xhigh) · ⚖️ juiz = Opus 5 em PADRÃO,
+            Fable 5.1 em CRÍTICO · 🔍 investigador = Sonnet 5 · 🗡️ red team = Fable 5.1. ⛔ não trocar no meio
+TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
+            (passou, fecha a fatia §5.2) · agentes além do executor 0 · 1 · 2 (+1 por gatilho §8) · relógio ≤ 40 min ·
+            75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
+APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
+            hook PreToolUse[Agent] bloqueia o 5º agente (`.claude/hooks/teto-de-agentes.py`) · status line com o
+            contexto, conferida em CADA gate · o script da §11 fecha a conta
+JUIZ RECEBE o card + o diff + os comandos + a lista de ataques. Nunca a SPEC inteira nem o censo
+CACHE       `subagentPromptCacheTtl: "1h"` · juiz no diretório principal · FORK nunca para juiz
+BATERIA     a suíte INTEIRA roda UMA vez por SPEC, em 2º plano, triada por DIFF contra a linha de base
+            versionada. Parciais à vontade. 🔴 o relatório traz a contagem (diário do conftest)
+MUTAÇÃO     só nos guardas NOVOS, uma vez · WORKTREE PRÓPRIO ou lock · restaura por CÓPIA · xfail nunca em guarda com processo
+COMMIT      arquivo por arquivo · cada fatia salva COMPLETA antes da seguinte. ⛔ nunca `git add -A`
+ENTREGA     `git push origin HEAD:main` com a saída colada. Depois o Founder clica Implantar
 ```
 
 ---
 
-## 11. A TELEMETRIA — cinco linhas, no §0.1 do relatório
+## 11. A TELEMETRIA — oito linhas, no fim do relatório, pelo script
 
 ```
-começou / terminou · tempo até a PRIMEIRA linha de código de produto
-rodadas de painel e achados por lente (quantos foram ÚNICOS)
-defeitos que o painel NÃO pegou e quem pegou
-rodadas da bateria: inteiras · parciais · minutos esperando
-nota 0–100 do orquestrador para a execução, com a justificativa em uma linha
+python backend/scripts/medir_execucao_claude_code.py --sessao atual
+relógio total e por fase ①–⑥ · turnos e contexto de pico por agente · tokens de contexto e saída ·
+US$ API-equivalente por agente e total · nº de agentes · achados por mecanismo (executor · prova
+mecânica · juiz · lente · canário), com EXCLUSIVO em cada blocker · rodadas da bateria · nota 0–100
+do executor (critério em 1 linha) e do juiz
 ```
-
----
 
 ## 12. QUANDO NÃO SE APLICA
 
 ```
-❌ nível LEVE com SUPERFÍCIE 0 — faz e pronto (o verificador mecânico ainda roda)
-❌ consulta pontual (§3.3)
-❌ não substitui o CLAUDE.md: as regras invioláveis vencem
-❌ não substitui a SPEC: ela diz O QUE, este diz COMO
-❌ não é para ser lido inteiro toda vez. §0–§3, §5 e §7.3 resolvem 90%
+❌ nível LEVE com SUPERFÍCIE 0 — faz e pronto (o verificador mecânico ainda roda) · consulta pontual (§3.3)
+❌ não substitui o CLAUDE.md (as regras invioláveis vencem) nem a SPEC (ela diz O QUE, este diz COMO)
+❌ subagente não lê inteiro: §0–§3, §5 e §7.3 resolvem 90%
 ```
 
 ## 13. QUEM DECIDE
 
-**O orquestrador, sozinho, sempre.** O Founder nunca precisa pedir. Se precisar, o
-protocolo falhou. Quando uma regra daqui errar duas vezes seguidas, muda-se o número e
-registra-se por quê em [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
+**O executor, sozinho, sempre.** O Founder nunca precisa pedir.
+Regra que errar duas vezes seguidas muda de número, com o porquê em
+[`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md) — e nunca acrescenta papel; troca um por outro.

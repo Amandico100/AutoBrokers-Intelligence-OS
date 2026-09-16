@@ -951,3 +951,5 @@ obrigatório; (4) **001.9 (rotas do painel) e 001.8 (isolamento) ficam para depo
 (nota "mover agora" 34) e 001.8 não tem, até hoje, uma medição de contenção real (1h53 de uso em três dias); se o
 piloto de 001.7 mostrar uma corretora atrasando outra, 001.8 sobe; (5) 001.0 fica, mas por último e em LEVE.
 Ordem de execução: **001.6-P0 → 001.1 → 001.2 → 001.3 → 001.4 → 001.6 → 001.7 → 001.10 → 001.5 → 001.0 → (001.8, 001.9)**.
+
+> ⚠️ **§13.7 SUPERADO em 16/09/2026 (D-PROTO-01).** 📊 O laço curto rodou em 001.6, 001.1 e 001.2 e NÃO reduziu o custo (US$ 80–205 API-equivalente por SPEC, contra 74–167 sob AAA completo); reduziu só o relógio (4h48–9h16). O teto de "1 M tokens" media o contexto final dos agentes, não o consumo. A partir da 001.3 vale o **AAA FAST (protocolo v12)**. Auditoria: `specs-propostas/AUDITORIA-PROTOCOLO-AAA-2026-09-16.md`. A ordem de execução acima continua.

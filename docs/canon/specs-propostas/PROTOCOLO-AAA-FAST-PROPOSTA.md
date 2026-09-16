@@ -1,3 +1,5 @@
+> ✅ **PROMOVIDO em 16/09/2026 (D-PROTO-01)** → `docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md` v12. Este arquivo fica como registro da proposta; o canônico é o outro.
+
 # PROTOCOLO AUTOBROKERS AAA — v12 · AAA FAST (PROPOSTA)
 
 > **Um escritor, um juiz, um relógio.** Proposta de 16/09/2026; substitui o laço da v11.2 §3.1–§5 e

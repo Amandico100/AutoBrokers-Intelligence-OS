@@ -1,3 +1,5 @@
+> ⛔ **SUPERADO em 16/09/2026 (D-PROTO-01).** O prompt de execução vigente é `docs/canon/PROMPT-EXECUCAO-AAA-FAST.md` (protocolo v12 · AAA FAST). Este arquivo fica como registro do laço curto.
+
 # PROMPT DE ABERTURA — modelo único da família EXTRA-001.x (laço curto, 13/09/2026)
 
 > Cole este texto inteiro num chat novo do Fable, trocando só o bloco **[SPEC]** no fim.

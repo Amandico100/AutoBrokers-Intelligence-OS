@@ -1,6 +1,7 @@
 # Pacotes-modelo — o que um subagente recebe
 
-> Protocolo AAA v11 §1: o agente recebe um PACOTE, nunca o canon. Estes cinco são os
+> Protocolo AAA **v12 · AAA FAST** §1: o agente recebe um PACOTE, nunca o canon. No laço padrão só o
+> **PACOTE-JUIZ** é despachado (pelo executor); os outros quatro entram por ESCALAÇÃO (§8). Estes cinco são os
 > pacotes vivos. O orquestrador copia o modelo, preenche os `{campos}` e despacha.
 > Todo subagente roda em **Opus 5** (§10). O guarda `test_o_protocolo_tem_policia.py`
 > bloco [9] confere que cada pacote carrega o protocolo e, quando executa, o card.

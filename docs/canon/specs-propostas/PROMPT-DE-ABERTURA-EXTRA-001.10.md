@@ -1,3 +1,5 @@
+> ⚠️ **16/09/2026 (D-PROTO-01): este prompt NÃO se executa como está.** O rito aqui descrito (orquestrador Fable, investigador, pesquisador, aquecimento, 3 lentes, red team) foi superado pelo **AAA FAST (protocolo v12)**. Use `docs/canon/PROMPT-EXECUCAO-AAA-FAST.md`, e deste arquivo só as seções §1 (arquivos), §2 (autorizações) e §3 (estado herdado). Prompt preenchido: `docs/canon/PROMPT-EXECUCAO-EXTRA-001.10-PREENCHIDO.md` (se existir).
+
 # PROMPT DE ABERTURA — EXTRA-001.10 · O portal de vidros de ponta a ponta
 
 > **Para o Founder:** cole o texto **inteiro** abaixo num chat novo do Fable.

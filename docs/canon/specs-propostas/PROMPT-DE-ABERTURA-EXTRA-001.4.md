@@ -1,3 +1,5 @@
+> ⚠️ **16/09/2026 (D-PROTO-01): este prompt NÃO se executa como está.** O rito aqui descrito (orquestrador Fable, investigador, pesquisador, aquecimento, 3 lentes, red team) foi superado pelo **AAA FAST (protocolo v12)**. Use `docs/canon/PROMPT-EXECUCAO-AAA-FAST.md`, e deste arquivo só as seções §1 (arquivos), §2 (autorizações) e §3 (estado herdado). Prompt preenchido: `docs/canon/PROMPT-EXECUCAO-EXTRA-001.4-PREENCHIDO.md` (se existir).
+
 # PROMPT DE ABERTURA — SPEC-EXTRA-001.4 · O corredor não trava sozinho
 
 > **Cole este documento inteiro num chat NOVO do Claude Code Fable**, aberto na árvore atualizada do AutoBrokers. Os dois números de teste **não** estão aqui: eles ficam na configuração privada, e neste texto aparecem só como **TESTE-A** e **TESTE-B**. O Founder informa os valores reais em mensagem privada, ou eles já estão na allowlist configurada.

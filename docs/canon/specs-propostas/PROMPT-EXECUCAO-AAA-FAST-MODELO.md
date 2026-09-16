@@ -1,3 +1,5 @@
+> ✅ **PROMOVIDO em 16/09/2026** → `docs/canon/PROMPT-EXECUCAO-AAA-FAST.md`. Use o canônico.
+
 # PROMPT DE EXECUÇÃO — AAA FAST (modelo único, proposta de 16/09/2026)
 
 > Cole este texto inteiro num chat **NOVO** do Claude Code, modelo **Opus 5**, effort conforme o bloco

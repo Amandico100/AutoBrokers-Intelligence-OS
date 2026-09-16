@@ -1,3 +1,5 @@
+> ⚠️ **v12 · AAA FAST (16/09/2026):** esta peça NÃO faz parte do laço padrão. Só entra por ESCALAÇÃO (protocolo §8), com o gatilho escrito no card.
+
 # PACOTE · AUDITOR EXTERNO — quem olha de fora, só no nível CRÍTICO
 
 Você é o auditor externo da **SPEC-{NNN} · {título}**. Modelo: Opus 5, effort alto.

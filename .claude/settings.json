@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "PROTOCOLO-AUTOBROKERS-AAA.md §10 — A MECÂNICA.",
+    "",
+    "subagentPromptCacheTtl: todo subagente, teammate, fork e workflow cai no",
+    "balde 'everything else', que recebe 5 MINUTOS de cache, enquanto a conversa",
+    "principal recebe 1 hora. Num ciclo de horas com painel de juízes, TODA rodada",
+    "depois da primeira nascia fria e reprocessava o prefixo inteiro.",
+    "",
+    "As outras três regras da §10 não são configuração, são disciplina, e ficam",
+    "registradas aqui para quem vier:",
+    "  · UM ÚNICO agent type para todo o painel, variando só o prompt — dois",
+    "    agentes só compartilham prefixo com o MESMO modelo, effort, agent type,",
+    "    tools, schema e diretório;",
+    "  · o painel roda no DIRETÓRIO PRINCIPAL: o cache é escopado por diretório,",
+    "    e isso inclui worktrees. Juiz é read-only, não há escrita para isolar;",
+    "  · FORK para os auxiliares do executor (herda o cache do pai); NUNCA para",
+    "    juiz, que veria tudo o que o executor pensou.",
+    "",
+    "E não trocar model nem effort no meio da sessão: os dois fazem parte da",
+    "chave de cache.",
+    "",
+    "v12 · AAA FAST (16/09/2026) — PROTOCOLO §10, os tetos que o harness aplica:",
+    "  · env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 e ..._SPAWN_DEPTH=1: no máximo dois agentes",
+    "    ao mesmo tempo, e nenhum agente cria outro (Anthropic, doc de prompting do Opus 5);",
+    "  · hook PreToolUse[Agent] (.claude/hooks/teto-de-agentes.py): bloqueia o 5º agente da",
+    "    sessão. O executor tem direito a juiz + lente + confirmação + investigador. O 5º é",
+    "    o sintoma de 'estourou, vou chamar mais gente'. AAA_FAST_TETO_DE_AGENTES sobe o teto.",
+    "  · o comando usa $CLAUDE_PROJECT_DIR: o cwd da sessão muda (cd backend) e um caminho relativo quebrava o hook — e hook quebrado BLOQUEIA o Agent."
+  ],
+  "subagentPromptCacheTtl": "1h",
+  "env": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "2",
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/teto-de-agentes.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

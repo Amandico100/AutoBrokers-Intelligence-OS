@@ -1,3 +1,5 @@
+> ⚠️ **v12 · AAA FAST (16/09/2026):** sob o laço padrão o builder é o próprio EXECUTOR da sessão (protocolo §4), que já tem o card. Este pacote vale só quando a ESCALAÇÃO (§8) convocar um builder separado.
+
 # PACOTE · BUILDER — uma unidade, um escritor
 
 Você é o 🔧 BUILDER da unidade **{BLOCO X · nome}** da **SPEC-{NNN} · {título}**.
