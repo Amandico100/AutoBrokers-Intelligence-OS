@@ -211,7 +211,13 @@ def a_varredura_reusa_o_que_existe() -> None:
     hh = (RAIZ / "app/agents/tools/human_handoff.py").read_text(encoding="utf-8")
     checar("_avisar_suporte" in vig,
            "reusa `_avisar_suporte` — que resolve destino e monta o dossie")
-    checar("resolver_destino_de_suporte" in hh,
+    # ⚠️ MIGRADA EM 16/09/2026 — SPEC-EXTRA-001.3. A resolução de destino saiu
+    # de `human_handoff` e foi para a PORTA ÚNICA por onde os 11 pontos de envio
+    # ao grupo passam. A pergunta é a mesma — *"o destino sai do resolvedor
+    # canônico?"* — e a resposta agora se dá um arquivo adiante (CLAUDE.md §9.3:
+    # o fato muda, o teste muda com ele, e a lição MIGRA).
+    porta = (RAIZ / "app/services/o_grupo_so_o_que_importa.py").read_text(encoding="utf-8")
+    checar("enviar_ao_grupo" in hh and "resolver_destino_de_suporte" in porta,
            "e o destino sai do resolvedor canonico, que recusa destino compartilhado",
            "o dossie leva CPF do segurado (CLAUDE.md §7)")
     # Nenhum caminho de envio proprio: se a varredura montasse o WhatsApp na
@@ -263,8 +269,15 @@ def a_varredura_nao_vira_metralhadora() -> None:
     #
     # Ancorar num vizinho e ancorar em algo que nao e o alvo. Agora o corte e
     # estrutural: acaba onde a funcao acaba.
+    # ⚠️ MIGRADA EM 16/09/2026 — SPEC-EXTRA-001.3 §7.5. A chave do marcador
+    # passou a ser `(corretora, conversa, tipo)` e a ÚNICA implementação mora em
+    # `o_grupo_so_o_que_importa.reivindicar_o_envio`; `reivindicar_o_aviso`
+    # ficou como a assinatura que os chamadores antigos já usam e delega.
+    # A afirmação é a MESMA — o `except` do marcador devolve `False`, e por isso
+    # Redis fora do ar AVISA em vez de calar. Só mudou o arquivo onde ela vive.
     import re as _re
-    i = marc.index("async def reivindicar_o_aviso")
+    marc = (RAIZ / "app/services/o_grupo_so_o_que_importa.py").read_text(encoding="utf-8")
+    i = marc.index("async def reivindicar_o_envio")
     _prox = _re.search(r"\n(?:async )?def ", marc[i + 10:])
     corpo = marc[i:i + 10 + _prox.start()] if _prox else marc[i:]
     checar("return False" in corpo.split("except")[-1],

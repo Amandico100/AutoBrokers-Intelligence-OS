@@ -193,7 +193,26 @@ def _bootstrap():
         return "120363@g.us"
 
     dr._support_contact = _support_contact
+
+    # 🔴 SPEC-EXTRA-001.3: a porta única resolve o destino pelo resolvedor
+    # CANÔNICO (o mesmo que recusa destino compartilhado entre corretoras), e
+    # não mais por `_support_contact` direto. O dublê devolve o mesmo contato.
+    async def _resolver_destino_de_suporte(company_id):
+        return {"destino": await _support_contact(company_id), "fonte": "duble",
+                "recusa": None}
+
+    dr.resolver_destino_de_suporte = _resolver_destino_de_suporte
     sys.modules["app.services.dispatch_router"] = dr
+
+    # E a contagem em `platform_sends` — o alerta ao grupo passou a ser contado.
+    po = types.ModuleType("app.services.platform_outbound")
+
+    async def _record_platform_send(company_id, phone, kind, summary):
+        store.setdefault("platform_sends", []).append(
+            {"company_id": company_id, "kind": kind})
+
+    po.record_platform_send = _record_platform_send
+    sys.modules["app.services.platform_outbound"] = po
 
     integ = types.ModuleType("app.services.integration_service")
 
@@ -207,8 +226,15 @@ def _bootstrap():
     was = types.ModuleType("app.services.whatsapp_service")
 
     class _WA:
-        def send_message(self, contact, text, integration):
-            sent_alerts.append({"contact": contact, "text": text})
+        # ⚠️ `bloco_unico` ACRESCENTADO EM 16/09/2026 — SPEC-EXTRA-001.3. O alerta
+        # de qualidade passou a sair pela PORTA ÚNICA do grupo, que manda
+        # `bloco_unico=True` (o que vai ao grupo é DOCUMENTO, não conversa). Um
+        # dublê que trave na assinatura transforma evolução de contrato em falso
+        # vermelho — e a afirmação deste guarda ("o alerta CHEGA ao canal de
+        # suporte") continua exatamente a mesma.
+        def send_message(self, contact, text, integration, *, bloco_unico=False):
+            sent_alerts.append({"contact": contact, "text": text,
+                                "bloco_unico": bloco_unico})
 
     was.get_whatsapp_service = lambda: _WA()
     sys.modules["app.services.whatsapp_service"] = was
@@ -229,6 +255,15 @@ def _bootstrap():
     dist_stub._load_group_summaries_sync = lambda ramo, servico, limit=30: [
         {"resumo_conduta": ["acolheu", "coletou"], "score": 85}]
     sys.modules["app.services.attendance_distiller"] = dist_stub
+
+    # 🔴 SPEC-EXTRA-001.3: o alerta de qualidade sai pela PORTA ÚNICA do grupo.
+    # Ela é carregada de verdade (não dublada) porque é ELA que este guarda
+    # precisa exercitar: sem isto o `import` falha e o `except` do sentinela
+    # transforma "a porta não existe" em "o alerta falhou" — que é o mesmo
+    # silêncio que a SPEC-040 existe para impedir.
+    _load("app.services.o_fim_do_atendimento", "app/services/o_fim_do_atendimento.py")
+    _load("app.services.o_grupo_so_o_que_importa",
+          "app/services/o_grupo_so_o_que_importa.py")
 
     council = _load("app.services.agent_council", "app/services/agent_council.py")
     gate = _load("app.services.playbook_gate", "app/services/playbook_gate.py")

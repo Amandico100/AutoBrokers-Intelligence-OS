@@ -90,6 +90,7 @@ class _Tabela:
     def __init__(self, banco, nome):
         self.banco, self.nome = banco, nome
         self._eq, self._gte, self._contar = [], [], False
+        self._in = []
 
     def select(self, *_a, **kw):
         self._contar = kw.get("count") == "exact"
@@ -110,6 +111,19 @@ class _Tabela:
     def neq(self, *_a):
         return self
 
+    # 🔴 ACRESCENTADO EM 16/09/2026 — SPEC-EXTRA-001.3 BLOCO E.
+    #
+    # `_historico_sync` passou a filtrar `.in_("kind", KINDS_QUE_CONTAM_NA_COTA_
+    # DO_SEGURADO)` nas TRÊS leituras, para que mensagem interna (grupo, nota à
+    # atendente) pare de consumir a cota do SEGURADO e de amadurecer o canal.
+    #
+    # ⚠️ O dublê HONRA o filtro, em vez de ignorá-lo. Um dublê que aceitasse
+    # `.in_()` e devolvesse tudo faria este guarda passar sobre um governador
+    # que não filtra nada — e aí ele estaria provando o contrário do que afirma.
+    def in_(self, col, valores):
+        self._in.append((col, [str(v) for v in valores]))
+        return self
+
     def order(self, col, desc=False):
         self._ordem = (col, desc)
         return self
@@ -125,6 +139,8 @@ class _Tabela:
             linhas = [r for r in linhas if str(r.get(col)) == str(val)]
         for col, val in self._gte:
             linhas = [r for r in linhas if str(r.get(col) or "") >= str(val)]
+        for col, valores in self._in:
+            linhas = [r for r in linhas if str(r.get(col) or "") in valores]
         ordem = getattr(self, "_ordem", None)
         if ordem:
             linhas.sort(key=lambda r: str(r.get(ordem[0]) or ""), reverse=bool(ordem[1]))

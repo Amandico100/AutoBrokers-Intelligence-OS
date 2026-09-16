@@ -10773,3 +10773,18 @@ Decisão D-E0011-07 (mesmo arquivo 95 × módulo 40, por "nenhum diretório novo
 
 ## P-E0013-04 · o canário vivo da EXTRA-001.3 depende do Implantar
 Os 8 casos da §14 da proposta (incluindo o **par de controle**: conversa sem humano tem de CHEGAR) exigem o grupo de canário no tenant de teste e o deploy de `smith-api` + `web`. **Destrava:** 🧑 Founder. **Custo de esquecer:** "0 mensagens ao grupo" seria lido como "a guarda funcionou" — e num sistema com `agent_enabled` false em 5 de 5 isso prova nada (CLAUDE.md §9.3).
+
+## P-E0013-05 · o resumo das 19h usa o fuso da PLATAFORMA, não o de cada corretora
+`fuso_da_corretora()` sem argumento lê `AGENT_OS_TENANT_TIMEZONE`, e não existe coluna de fuso por corretora. A docstring do job prometia "19h de Manaus" e o código não fazia isso — promessa que o código não cumpre é pior que limitação declarada (juiz fresco, 16/09). **Destrava:** coluna de fuso em `companies` (ou em `acionamento_profile`) e o argumento no `astimezone`. **Dono:** 🤖. **Custo de esquecer:** uma corretora fora de Brasília recebe o resumo na hora errada e ninguém entende por quê.
+
+## P-E0013-06 · as migrations 20260916_01 e _02 não têm linha em `schema_migrations`
+📊 16/09: os OBJETOS estão no banco e o VERIFY passou, mas a versão mais nova em `supabase_migrations.schema_migrations` é `20260914190639`. É o descompasso que o `MIGRATIONS-AUTHORITY.md` §4 documenta e que o protocolo prevê ("o ledger mente; confere o OBJETO"). **Destrava:** registrar as duas versões, ou a decisão de que este projeto não usa o ledger. **Dono:** 🤖. **Custo de esquecer:** um `db push` futuro tenta reaplicar e falha no meio.
+
+## P-E0013-07 · `suporte_indisponivel="envio_falhou"` quando a guarda CALOU de propósito
+📊 `dispatch_router.py:3336-3340`: o `_enviar` da porta devolve `False` também quando a guarda calou, e a sessão grava `envio_falhou` — a tela de acionamentos travados diria "falha de envio" para um caso em que a equipe JÁ está na conversa. Hoje sem consumidor no painel (grep em `app/dashboard` → 0). **Destrava:** estado próprio `calado`. **Dono:** 🤖.
+
+## P-E0013-08 · o isolamento entre duas corretoras foi LIDO, não provado contra dois tenants reais
+Os guardas provam §7 com dublê que respeita `company_id` (G-A1b, G-B2, G-C3) e o filtro está no código em `numeros_da_casa:175,189` e `_ler_a_conversa:354`. 🔬 A lente marcou confiança **50** nessa dimensão: ninguém rodou contra Resulta e AutoFleet ao vivo. **Destrava:** o canário, com as duas corretoras. **Dono:** 🤖 + 🧑 (o canário é do Founder).
+
+## P-E0013-09 · guardas antigos deixam a mutação na árvore
+📊 16/09: `test_a_arvore_ficou_limpa_no_fim` e `test_nenhuma_mutacao_foi_commitada` falham **na base e na minha árvore**. O juiz fresco reproduziu: depois da bateria sobrou `# _MUTADO_RASTRO_M2` em `human_handoff.py` e `# MUTACAO` em `scripts/rubrica.py`. **Destrava:** os harnesses desses guardas restaurarem por cópia, como o protocolo §10 manda. **Dono:** 🤖. **Custo de esquecer:** uma mutação vai para a `main` num commit distraído — e o guarda que existe para impedir isso é o que está quebrado.

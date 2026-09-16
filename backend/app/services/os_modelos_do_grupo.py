@@ -304,22 +304,36 @@ async def contagens_do_dia(db, company_id: str, inicio_utc: datetime,
     de bater com os `grupo.calado` do dia. Um resumo em que ela não bate é um
     defeito, e o guarda G-D2 mede isso.
     """
-    from app.services.o_fim_do_atendimento import _cliente, _executar
+    from app.services.o_fim_do_atendimento import _cliente
 
     c: Dict[str, int] = {
         "acionamentos_entregues": 0, "sinistros_com_dossie": 0,
         "ajudas_incapacidade": 0, "ajudas_regra": 0, "ajudas_desconhecidas": 0,
         "duvidas": 0, "ja_com_a_equipe": 0, "calados_pela_janela": 0,
-        "vigia_ura": 0, "vigia_prazo": 0, "calados_total": 0,
+        "vigia_ura": 0, "vigia_prazo": 0, "calados_total": 0, "truncou": 0,
     }
+    # 🔴 PAGINADO, NÃO `.limit(5000)` — guarda `test_ninguem_pede_mais_de_mil_
+    # linhas_de_novo`, 16/09/2026. O PostgREST devolve no máximo **1000** linhas
+    # por resposta: um `.limit(5000)` num dia movimentado perderia eventos **em
+    # silêncio**, e o resumo das 19h publicaria um número menor que a verdade
+    # com cara de medição. É exatamente o defeito que esta SPEC existe para não
+    # cometer (CLAUDE.md §12.1).
+    #
+    # ⚠️ E `truncou` viaja junto: quem mostra número para gente PRECISA saber
+    # que a leitura parou no teto.
     try:
-        achado = await _executar(_cliente(db).table("work_events")
-                                 .select("event_type, payload_redacted, created_at")
-                                 .eq("company_id", str(company_id))   # 🔴 §7
-                                 .gte("created_at", inicio_utc.isoformat())
-                                 .lt("created_at", fim_utc.isoformat())
-                                 .limit(5000))
-        linhas = achado.data or []
+        from app.leitura_completa import ler_paginado_async
+
+        def _consulta():
+            return (_cliente(db).table("work_events")
+                    .select("id, event_type, payload_redacted, created_at")
+                    .eq("company_id", str(company_id))   # 🔴 §7
+                    .gte("created_at", inicio_utc.isoformat())
+                    .lt("created_at", fim_utc.isoformat()))
+
+        linhas, truncou = await ler_paginado_async(
+            _consulta, chave_unica="id", rotulo="resumo das 19h")
+        c["truncou"] = 1 if truncou else 0
     except Exception as exc:  # noqa: BLE001
         logger.warning("[RESUMO 19h] diário ilegível (%s)", type(exc).__name__)
         return c

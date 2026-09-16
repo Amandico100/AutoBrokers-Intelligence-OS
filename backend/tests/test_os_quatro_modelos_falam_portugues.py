@@ -291,8 +291,12 @@ AGORA = datetime(2026, 9, 16, 22, 0, tzinfo=timezone.utc)
 EMPRESA = "11111111-1111-1111-1111-111111111111"
 
 
+_SEQ = [0]
+
+
 def _ev(evento, **carga):
-    return {"event_type": evento, "payload_redacted": carga,
+    _SEQ[0] += 1
+    return {"id": _SEQ[0], "event_type": evento, "payload_redacted": carga,
             "created_at": (AGORA - timedelta(hours=2)).isoformat()}
 
 
@@ -313,8 +317,17 @@ LINHAS = [
 
 
 class _Q:
+    """⚠️ O dublê PAGINA, porque a leitura real pagina.
+
+    🔴 `contagens_do_dia` deixou de usar `.limit(5000)` — o PostgREST devolve
+    no máximo 1000 por resposta, e um dia movimentado perderia eventos em
+    silêncio, publicando um número menor que a verdade com cara de medição. Ela
+    usa `ler_paginado_async`, que manda `.order(...).range(...)` e faz `await`
+    no `execute()`. Um dublê que ignorasse isso provaria outra coisa.
+    """
+
     def __init__(self, t):
-        self.t = t
+        self.t, self.faixa = t, None
 
     def select(self, *_a, **_k):
         return self
@@ -331,8 +344,18 @@ class _Q:
     def limit(self, *_a, **_k):
         return self
 
-    def execute(self):
-        return types.SimpleNamespace(data=LINHAS if self.t == "work_events" else [])
+    def order(self, *_a, **_k):
+        return self
+
+    def range(self, inicio, fim):
+        self.faixa = (int(inicio), int(fim))
+        return self
+
+    async def execute(self):
+        linhas = LINHAS if self.t == "work_events" else []
+        if self.faixa:
+            linhas = linhas[self.faixa[0]:self.faixa[1] + 1]
+        return types.SimpleNamespace(data=linhas)
 
 
 c = rodar(contagens_do_dia(types.SimpleNamespace(table=lambda n: _Q(n)),
@@ -349,6 +372,9 @@ certo(c["calados_total"] == 3 and (c["ja_com_a_equipe"] + c["calados_pela_janela
       "e o `repetido` não vira linha do resumo (é a mesma notícia, não um silêncio novo)")
 certo(c["vigia_ura"] == 1 and c["vigia_prazo"] == 1,
       "os achados do Vigia viram as linhas ⏱️ em vez de mensagem na hora")
+certo(c.get("truncou") == 0,
+      "🔴 e a leitura NÃO truncou — quem mostra número para gente precisa saber "
+      "quando parou no teto (`ler_paginado_async`, não `.limit(5000)`)")
 
 texto = modelo_resumo_do_dia("16/09", c)
 certo("🤝 1 conversa que a equipe já conduzia" in texto
