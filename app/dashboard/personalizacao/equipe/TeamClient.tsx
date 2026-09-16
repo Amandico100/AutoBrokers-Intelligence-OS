@@ -8,6 +8,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
 
+// 🔴 SPEC-EXTRA-001.3 BLOCO B — D-PILOTO-09: a lista de números da casa
+// mora AQUI, no card Equipe, e não em card próprio.
+import { NumerosDaCasa } from './NumerosDaCasa';
+
 type Member = {
   user_id: string; name: string; first_name: string; last_name: string;
   email: string | null; phone: string | null; role: string; role_label: string;
@@ -254,6 +258,8 @@ export function TeamClient() {
           </div>
         </div>
       )}
+
+      <NumerosDaCasa />
     </div>
   );
 }

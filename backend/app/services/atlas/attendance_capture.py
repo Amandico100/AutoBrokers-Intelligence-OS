@@ -182,6 +182,35 @@ async def capture_client_message(integration: dict, counterparty: str,
             "wa_timestamp": wa_ts,
             "source": "live",
         }
+
+        # 🔴 SPEC-EXTRA-001.3 BLOCO B — 4º DOS QUATRO EFEITOS: a captura é
+        # **MARCADA**, não descartada.
+        #
+        # 📊 O que existia era o JSONB `alert_target.internal_numbers`: nenhuma
+        # rota o populava (16/09: **0** integrações com a lista preenchida),
+        # `whatsapp_channel.py:1124` sobrescrevia o objeto inteiro apagando as
+        # três chaves, e o único efeito era o Observador DESCARTAR o evento.
+        #
+        # ⚠️ Descartar perde o dado. Marcar rotula: a conversa da equipe com a
+        # própria equipe continua no acervo, identificada, e fora do que alimenta
+        # o histórico de atendimento (`history_ingest.py:302` filtra `source =
+        # 'live'`). ⛔ Nenhuma migration nova para isso — `source` já existe e já
+        # é o campo que diz DE ONDE veio a linha.
+        try:
+            from app.services.o_grupo_so_o_que_importa import (
+                e_numero_da_casa, numeros_da_casa,
+            )
+            from app.core.database import get_supabase_client
+
+            _empresa = record["company_id"]
+            if _empresa and e_numero_da_casa(
+                    await numeros_da_casa(get_supabase_client(), _empresa), counterparty):
+                record["source"] = "live_interno"
+                logger.info("[ESPELHO ATENDIMENTO] capturado e MARCADO como interno")
+        except Exception as exc:  # noqa: BLE001 — marcar nunca invalida a captura
+            logger.warning("[ESPELHO ATENDIMENTO] números da casa ilíveis (%s)",
+                           type(exc).__name__)
+
         if media_meta:
             media_meta.update({
                 "message_id": record["message_id"],

@@ -1523,6 +1523,27 @@ async def a_ia_deve_calar(db, *, company_id: str, conversa: Any,
         #    `company_id`). O motivo continua voltando ao chamador.
         return True, "sem corretora: o agente não fala sem saber de quem é a conversa"
 
+    # 🔴 SPEC-EXTRA-001.3 BLOCO B — 1º DOS QUATRO EFEITOS: **nunca responde**.
+    #
+    # Entra ANTES de tudo o mais porque um número da própria casa não é cliente:
+    # não há takeover a respeitar, não há janela a contar, não há caso. É a
+    # única pergunta cuja resposta torna as outras irrelevantes.
+    #
+    # ⛔ Falha de leitura NÃO cala aqui (o helper devolve conjunto vazio): tratar
+    # um segurado de verdade como "número da casa" por causa de uma leitura ruim
+    # seria calar o atendimento, que é o defeito grave deste arquivo inteiro.
+    try:
+        from app.services.o_grupo_so_o_que_importa import (
+            e_numero_da_casa, numeros_da_casa,
+        )
+
+        _fone = (conversa or {}).get("user_phone")
+        if _fone and e_numero_da_casa(await numeros_da_casa(db, str(company_id)), _fone):
+            return await _calar(MOTIVO_NUMERO_DA_CASA)
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[JANELA] números da casa ilegíveis (%s) — sigo",
+                       type(erro).__name__)
+
     try:
         if pausar_ia(conversa or {}):
             dono = str((conversa or {}).get("claimed_by_name") or "").strip()
@@ -1594,6 +1615,12 @@ _TETO_DO_MEMO = 5000
 
 #: 💭 A frase da NÃO-calada por exceção de telefone. Ela não é um silêncio — é o
 #: contrário — e por isso tem título próprio no feed.
+#: 🔴 SPEC-EXTRA-001.3 BLOCO B — o motivo do 1º efeito, e ele é FRASE.
+#: ⚠️ A Regina lê isto no feed; `numero_interno` obrigaria a tela a traduzir, e
+#: a tradução é onde o texto envelhece longe do código que o produz (§12.1).
+MOTIVO_NUMERO_DA_CASA = ("é um número da própria corretora: o agente nunca "
+                         "responde, nunca abre caso e nunca fala dele no grupo")
+
 MOTIVO_EXCECAO_DE_TESTE = ("número de teste: o agente respondeu mesmo com a "
                            "conversa pausada")
 
@@ -1628,6 +1655,10 @@ _CLASSES_POR_INICIO = (
     ("não consegui saber se alguém assumiu", "falha_ao_ler_o_takeover"),
     ("não consegui ler o histórico", "falha_ao_ler_o_historico"),
     (MOTIVO_EXCECAO_DE_TESTE, "excecao_de_teste"),
+    # 🔴 SPEC-EXTRA-001.3 BLOCO B — sem esta linha o silêncio do número da
+    #    casa cairia na classe genérica, e a Regina não saberia distinguir
+    #    "o agente calou porque eu falei" de "é o fixo da loja".
+    (MOTIVO_NUMERO_DA_CASA, "numero_da_casa"),
     (_PREFIXO_DA_JANELA, "janela"),
 )
 

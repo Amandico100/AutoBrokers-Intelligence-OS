@@ -51,6 +51,7 @@
 // EXECUTA sobre dublês — e `backend/tests/test_o_clique_da_atendente_nao_apaga_da_fila.py`,
 // que roda o mesmo arnês por `--fila-json`.
 
+import { carregarNumerosDaCasa, ehNumeroDaCasa } from '@/lib/atendimento/numeros-da-casa';
 import { getSupabaseAdmin } from '@/lib/vault/server';
 import { type Stage, zeroCountsByStage } from '@/lib/attendance/dispatch-states';
 
@@ -684,6 +685,23 @@ export async function projetarCasos(
       cursor: null,
       has_more: false,
     };
+  }
+
+  // 🔴 SPEC-EXTRA-001.3 BLOCO B — 2º DOS QUATRO EFEITOS: **nunca entra na Fila**.
+  //
+  // O fixo da loja, o comercial e o celular do sócio que não usa o painel não
+  // são casos: são a própria corretora conversando consigo mesma. Eles somem
+  // daqui e o contador da Fila para de contá-los.
+  //
+  // ⛔ Conjunto vazio no escuro — uma leitura ruim NUNCA some com o caso de um
+  // segurado de verdade.
+  const numerosDaCasa = await carregarNumerosDaCasa(supabase, companyId);
+  if (numerosDaCasa.size) {
+    const antes = conversas.length;
+    conversas = conversas.filter((c) => !ehNumeroDaCasa(numerosDaCasa, (c as any).user_phone));
+    if (conversas.length !== antes) {
+      console.log(`[CASOS] ${antes - conversas.length} conversa(s) de número da casa fora da Fila`);
+    }
   }
 
   const conversaPorId = new Map(conversas.map((c) => [String(c.id), c]));

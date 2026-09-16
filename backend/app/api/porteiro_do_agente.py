@@ -119,6 +119,22 @@ async def pode_ligar_o_atendimento(company_id: str) -> Dict[str, Any]:
     return {"pode": True, "motivo": "", "falta": ""}
 
 
+@router.post("/esquecer-numeros-da-casa")
+async def esquecer_numeros(company_id: str = Query(..., min_length=1),
+                           _: bool = Depends(require_internal_key)) -> Dict[str, Any]:
+    """O painel avisa que a lista mudou; o cache de 60 s cai na hora.
+
+    ⚠️ O cache existe pelo CUSTO (a lista é lida em caminho quente, todo
+    inbound), nunca pela correção. Sem esta rota a corretora cadastraria o fixo
+    da loja e veria o agente respondendo a ele por mais um minuto — e um minuto
+    é o suficiente para a pessoa achar que não funcionou.
+    """
+    from app.services.o_grupo_so_o_que_importa import esquecer_os_numeros_da_casa
+
+    await esquecer_os_numeros_da_casa(company_id)
+    return {"ok": True}
+
+
 @router.get("/pode-ligar")
 async def pode_ligar(company_id: str = Query(..., min_length=1),
                      _: bool = Depends(require_internal_key)) -> Dict[str, Any]:
