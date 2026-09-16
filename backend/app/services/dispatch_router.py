@@ -179,26 +179,28 @@ async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo
     #
     # `resolver_destino_de_suporte` também estava no lugar errado: ela é uma
     # função DESTE módulo (linha ~953), não um método do integration_service.
+    # 🔴 SPEC-EXTRA-001.3 — 2º dos 11 pontos, agora pela PORTA ÚNICA.
+    #
+    # ⚠️ O `destino.get("number")` abaixo estava ERRADO desde sempre:
+    # `resolver_destino_de_suporte` devolve `{"destino", "fonte", "recusa"}` —
+    # `number` não existe nesse dicionário, e o `if not alvo: return` fazia
+    # este aviso sair calado TODA vez. A porta única resolve o destino ela
+    # mesma, então o defeito morre junto com as três linhas.
     try:
         from app.core.database import get_supabase_client
-        from app.services.integration_service import get_integration_service
-        from app.services.whatsapp_service import get_whatsapp_service
+        from app.services.o_grupo_so_o_que_importa import TIPO_VIGIA, enviar_ao_grupo
 
-        destino = await resolver_destino_de_suporte(company_id)
-        if not destino:
-            return
-        alvo = destino.get("number") if isinstance(destino, dict) else destino
-        if not alvo:
-            return
-
-        servico = get_integration_service(get_supabase_client().client)
-        integ = servico.get_platform_whatsapp_integration(company_id)
-        if not integ:
-            return
         aviso = ("⚠️ O aviso de protocolo NÃO chegou ao segurado.\n"
                  f"Caso: {session.get('case_id')}\n"
                  f"Telefone: {session.get('client_phone')}\n\n{resumo}")
-        get_whatsapp_service().send_message(str(alvo), aviso, integ)
+        await enviar_ao_grupo(
+            get_supabase_client(), company_id=str(company_id), tipo=TIPO_VIGIA,
+            texto=aviso,
+            conversation_id=str(session.get("mirror_conversation_id") or ""),
+            telefone=str(session.get("client_phone") or ""),
+            resumo="aviso de protocolo nao chegou — caso %s"
+                   % str(session.get("case_id") or "")[:8],
+            motivo="aviso_nao_chegou")
     except Exception:  # noqa: BLE001
         logger.warning("[DISPATCH ROUTER] alerta de falha de aviso nao saiu")
 
@@ -2412,7 +2414,7 @@ async def _support_contact(company_id: str) -> str:
 
 
 async def entregar_dossie_uma_vez(session: Dict[str, Any], dossier: str,
-                                  enviar) -> bool:
+                                  enviar, *, company_id: str = "") -> bool:
     """O dossiê passa pelo MARCADOR e pelo TETO — SPEC-085 BLOCO B.
 
     🔴 UMA implementação, usada pelas DUAS cadeias. O `dispatch_watchdog`
@@ -2465,7 +2467,12 @@ async def entregar_dossie_uma_vez(session: Dict[str, Any], dossier: str,
                      type(exc).__name__)
         return bool(await enviar(dossier))
 
-    if await reivindicar_o_aviso(conversa_id, HORAS_ENTRE_AVISOS_PADRAO):
+    # 🔴 SPEC-EXTRA-001.3 §7.5 — a chave do marcador passa a levar a
+    #    CORRETORA e o TIPO. Sem `company_id` a chave continua sendo a da
+    #    conversa, que já é única na base — nunca uma chave global.
+    _empresa = str(company_id or session.get("company_id") or "")
+    if await reivindicar_o_aviso(conversa_id, HORAS_ENTRE_AVISOS_PADRAO,
+                                 company_id=_empresa):
         # 🔴 DEVOLVE `True`, E A CORREÇÃO É SOBRE O QUE O SEGURADO OUVE.
         #
         # Devolvia `session["dossier_sent"]`, que numa sessão NOVA é `False`. O
@@ -2506,7 +2513,7 @@ async def entregar_dossie_uma_vez(session: Dict[str, Any], dossier: str,
     if not saiu:
         # Reserva que não virou aviso tem de ser devolvida, senão uma falha de
         # envio silencia o grupo pelas seis horas inteiras do marcador.
-        await devolver_a_vez(conversa_id)
+        await devolver_a_vez(conversa_id, company_id=_empresa)
     return saiu
 
 
@@ -3298,19 +3305,33 @@ async def try_route_insurer_inbound(
                 # seis horas, mandava um segundo dossiê ao grupo.
                 tentou = {"chamado": False, "ok": False}
 
+                # 🔴 SPEC-EXTRA-001.3 — 3º dos 11 pontos, pela PORTA ÚNICA.
+                #
+                # ⚠️ `send_to_client` é o transporte do SEGURADO e não conhece
+                # `bloco_unico`: por aqui o dossiê chegava PICOTADO ao grupo.
+                # 📊 429 caracteres viram 4 balões (136 · 16 · 69 · 201) e a
+                # atendente lê o último, que é o menos importante.
                 async def _enviar(texto: str) -> bool:
+                    from app.services.o_grupo_so_o_que_importa import (
+                        TIPO_PEDIDO_DE_AJUDA, enviar_ao_grupo,
+                    )
+
                     tentou["chamado"] = True
-                    try:
-                        send_to_client(support, texto)
-                        tentou["ok"] = True
-                        return True
-                    except Exception as e:  # noqa: BLE001
-                        logger.error("[DISPATCH ROUTER] dossier send failed: %s",
-                                     type(e).__name__)
-                        return False
+                    saida = await enviar_ao_grupo(
+                        get_supabase_client(), company_id=str(company_id),
+                        tipo=TIPO_PEDIDO_DE_AJUDA, texto=texto, destino=support,
+                        conversation_id=str(session.get("mirror_conversation_id") or ""),
+                        telefone=str(session.get("client_phone") or ""),
+                        dedup=False,
+                        resumo="pedido de ajuda — caso %s"
+                               % str(session.get("case_id") or "")[:8],
+                        motivo=str(reason or ""))
+                    tentou["ok"] = bool(saida.get("enviado"))
+                    return bool(saida.get("enviado") or saida.get("calado"))
 
                 saiu = await entregar_dossie_uma_vez(
-                    session, build_handoff_dossier(session, reason), _enviar)
+                    session, build_handoff_dossier(session, reason), _enviar,
+                    company_id=str(company_id))
                 session["dossier_sent"] = bool(saiu)
                 if tentou["chamado"] and not tentou["ok"]:
                     # ⚠️ Montado e NÃO saiu. Isso não é "sem destino" — é falha

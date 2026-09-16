@@ -265,29 +265,27 @@ async def avisar_suporte_humano(client, company_id: str, texto: str, rotulo: str
     if suprimir:
         logger.info("[COBRANCA] aviso ao grupo humano SUPRIMIDO (canario): %s", rotulo)
         return False
+    # 🔴 SPEC-EXTRA-001.3 BLOCO E — este bloco ERA a SEGUNDA implementação
+    # do resolvedor de destino: lia `human_support_destinations` direto e
+    # PULAVA a recusa de destino compartilhado entre corretoras
+    # (`_destino_e_compartilhado`, `dispatch_router.py:2259`). 📊 P-PILOTO-10 é
+    # a prova histórica de que isso acontece de verdade: o grupo da AutoFleet
+    # ficou cadastrado dentro da Resulta. Cobrança leva PARCELA e nome de
+    # segurado — mandar para o grupo da outra corretora é vazamento (§7).
+    #
+    # ⚠️ A cobrança é sobre PARCELA, não sobre conversa: entra sem
+    # `conversation_id` e cai só na pergunta 2 da guarda (número da casa).
     try:
-        def _destino():
-            res = (client.table("human_support_destinations")
-                   .select("destination_type, destination_ref, is_primary, priority_order")
-                   .eq("company_id", str(company_id)).eq("is_active", True)
-                   .order("is_primary", desc=True).order("priority_order")
-                   .limit(1).execute())
-            return (res.data or [None])[0]
-
-        destino = await asyncio.to_thread(_destino)
-        if not destino or not destino.get("destination_ref"):
-            return False
+        from app.services.o_grupo_so_o_que_importa import TIPO_COBRANCA, enviar_ao_grupo
 
         integration = await asyncio.to_thread(_find_whatsapp_integration, client, str(company_id))
         if not integration:
             return False
-
-        from app.services.whatsapp_service import get_whatsapp_service
-
-        ok = await asyncio.to_thread(
-            get_whatsapp_service().send_message,
-            str(destino["destination_ref"]), texto, integration)
-        return bool(ok)
+        saida = await enviar_ao_grupo(
+            client, company_id=str(company_id), tipo=TIPO_COBRANCA, texto=texto,
+            integration=integration, dedup=False,
+            resumo=str(rotulo or "aviso de cobrança")[:200], motivo="cobranca")
+        return bool(saida.get("enviado"))
     except Exception:  # noqa: BLE001
         # Aviso e efeito colateral da colheita, nao a colheita. Perder o aviso
         # e ruim; derrubar o job por causa dele e pior.

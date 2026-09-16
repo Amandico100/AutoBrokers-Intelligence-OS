@@ -602,19 +602,79 @@ async def _tentar_gate(company_id: str, intervalo_s: int) -> Tuple[bool, int]:
     return False, faltam
 
 
+#: 🔴 OS `kind` QUE CONTAM NA COTA DO SEGURADO — SPEC-EXTRA-001.3 BLOCO E.
+#:
+#: 📊 O achado, medido em 13/09 e reproduzido em 16/09/2026: `_historico_sync`
+#: fazia TRÊS leituras de `platform_sends` **sem filtro de `kind`**, e as três
+#: alimentam coisas diferentes:
+#:
+#:   `recentes`   → a cota da HORA e do DIA
+#:   `primeiro`   → `dias_de_uso`   ─┐
+#:   `total_res`  → `total`         ─┴→ `maturidade_do_canal` (:424) → `teto_do_dia`
+#:
+#: As duas consequências, e a segunda é pior:
+#:
+#:   1. cada mensagem INTERNA consome a cota de mensagens ao SEGURADO. Num dia
+#:      movimentado o resumo das 19h e os pedidos de ajuda empurram o governador
+#:      ao teto e o produto PARA DE FALAR COM CLIENTES — e o motivo seria invisível.
+#:   2. um canal que NUNCA falou com um segurado "amadurece" com mensagens
+#:      internas e SOBE o teto diário. É o contrário exato do que
+#:      `maturidade_do_canal` existe para provar: um número ganharia reputação
+#:      de veterano contando conversas consigo mesmo.
+#:
+#: 🔴 **É uma ALLOWLIST, não um prefixo.** ⛔ `kind NOT LIKE 'grupo_%'` seria
+#: frágil: `billing_nota` — a nota interna à atendente, da EXTRA-001.6 — não
+#: começa com `grupo_` e passaria a consumir a cota do segurado do mesmo jeito.
+#: 📊 A 001.6 mede o efeito: 7 parcelas de 5 segurados viram 17 linhas aqui.
+#:
+#: 🔴 **O padrão é NÃO CONTAR**, para que todo `kind` interno futuro nasça
+#: seguro. A contrapartida é o guarda `G-E1`, que exige que TODO `kind` escrito
+#: pelo produto esteja nesta lista ou em `KINDS_INTERNOS` — um `kind` novo que
+#: fale com o segurado e não entre aqui deixa o teste vermelho.
+KINDS_QUE_CONTAM_NA_COTA_DO_SEGURADO = frozenset({
+    "billing",                   # o texto da cobrança que a pessoa lê
+    "billing_doc",               # o PDF que acompanha a cobrança
+    "acionamento_protocolo",     # o protocolo, ao segurado
+    "acionamento_followup",      # o follow-up do pós-acionamento
+    "acionamento_encerramento",  # o encerramento do caso
+    "acionamento_encaminhamento",
+})
+
+#: O contrapeso da allowlist: o que sabidamente NÃO fala com o segurado.
+#: ⛔ Não é usado para decidir nada — a decisão é a allowlist. Existe para o
+#: guarda poder afirmar que nenhum `kind` do produto ficou fora das DUAS listas.
+KINDS_INTERNOS = frozenset({
+    "billing_nota",              # a nota à atendente (EXTRA-001.6)
+    "grupo_pedido_de_ajuda", "grupo_sinistro", "grupo_conclusao",
+    "grupo_resumo_diario", "grupo_espera_vencida", "grupo_vigia",
+    "grupo_queda_de_canal", "grupo_cobranca",
+})
+
+
+def conta_na_cota_do_segurado(kind: str) -> bool:
+    """A decisão "isto consome a cota do segurado" mora AQUI, e só aqui."""
+    return str(kind or "") in KINDS_QUE_CONTAM_NA_COTA_DO_SEGURADO
+
+
 def _historico_sync(company_id: str) -> Tuple[list, list, int]:
     from app.core.database import get_supabase_client
 
     db = get_supabase_client()
     desde = (_agora() - timedelta(hours=26)).isoformat()
+    # 🔴 AS TRÊS LEITURAS filtram pela allowlist. Tirar o filtro de QUALQUER uma
+    #    é defeito — e a de `total_res` só aparece pela maturidade, que é a que
+    #    ninguém olha (guarda G-E1).
+    contam = sorted(KINDS_QUE_CONTAM_NA_COTA_DO_SEGURADO)
     recentes = (db.client.table("platform_sends").select("sent_at")
-                .eq("company_id", str(company_id)).gte("sent_at", desde)
+                .eq("company_id", str(company_id)).in_("kind", contam)
+                .gte("sent_at", desde)
                 .order("sent_at", desc=True).limit(1000).execute().data or [])
     primeiro = (db.client.table("platform_sends").select("sent_at")
-                .eq("company_id", str(company_id))
+                .eq("company_id", str(company_id)).in_("kind", contam)
                 .order("sent_at", desc=False).limit(1).execute().data or [])
     total_res = (db.client.table("platform_sends").select("id", count="exact")
-                 .eq("company_id", str(company_id)).limit(1).execute())
+                 .eq("company_id", str(company_id)).in_("kind", contam)
+                 .limit(1).execute())
     return recentes, primeiro, int(getattr(total_res, "count", 0) or 0)
 
 

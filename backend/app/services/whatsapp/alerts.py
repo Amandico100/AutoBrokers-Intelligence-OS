@@ -83,7 +83,19 @@ def _alert_destination(integration: Dict[str, Any]) -> Optional[str]:
         return number
 
     company_id = str(integration.get("company_id") or "")
+
+    # 🔴 SPEC-EXTRA-001.3 §7.4 — O DONO ANTES DO GRUPO.
+    #
+    # 📊 10/09, 17:50:39: *"WhatsApp de atendimento desconectado"* foi a 4ª
+    # das 7 mensagens que o grupo recebeu em 75,7 minutos. ⚠️ Um canal caído
+    # é assunto de QUEM RESPONDE pela corretora — não da fila de atendimento.
+    # O grupo continua sendo o último degrau, e quando ele é usado a mensagem
+    # DIZ POR QUÊ (ver `send_disconnect_alert`): um aviso de canal caído que
+    # não chega a ninguém é pior que um aviso no grupo errado.
     if company_id:
+        dono = _telefone_do_dono(company_id)
+        if dono:
+            return dono
         try:
             from app.services.dispatch_router import _support_contact
 
@@ -95,6 +107,49 @@ def _alert_destination(integration: Dict[str, Any]) -> Optional[str]:
 
     fallback = os.getenv("PLATFORM_ALERT_FALLBACK_NUMBER", "").strip()
     return fallback or None
+
+
+def _telefone_do_dono(company_id: str) -> str:
+    """O telefone do membro `is_owner` desta corretora. `""` no escuro.
+
+    ⛔ Nunca levanta: o aviso de canal caído não pode morrer por causa de
+    uma leitura de cadastro.
+    """
+    try:
+        from app.core.database import get_supabase_client
+
+        db = get_supabase_client().client
+        vinculo = (db.table("company_members").select("user_id")
+                   .eq("company_id", str(company_id))       # 🔴 CLAUDE.md §7
+                   .eq("status", "active").eq("is_owner", True)
+                   .limit(1).execute().data or [])
+        if not vinculo:
+            return ""
+        pessoa = (db.table("users_v2").select("phone")
+                  .eq("id", str(vinculo[0].get("user_id")))
+                  .limit(1).execute().data or [])
+        return str((pessoa[0] if pessoa else {}).get("phone") or "").strip()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[WA ALERT] dono nao lido: {type(e).__name__}")
+        return ""
+
+
+def destino_e_o_grupo(integration: Dict[str, Any], destino: str) -> bool:
+    """O alerta está indo para o GRUPO por falta de responsável cadastrado?
+
+    🔴 É esta pergunta que decide se a frase que EXPLICA entra na mensagem.
+    Sem ela, o passo 3 vira permanente — e o passo 3 é obrigatório, não é
+    preguiça (§7.4).
+    """
+    alvo = str(destino or "").strip()
+    if not alvo:
+        return False
+    explicito = _alert_target_dict(integration)
+    if str(explicito.get("number") or explicito.get("group") or "").strip() == alvo:
+        return False
+    if _telefone_do_dono(str(integration.get("company_id") or "")) == alvo:
+        return False
+    return alvo.endswith("@g.us") or "-" in alvo
 
 
 async def alerta_de_plataforma(titulo: str, corpo: str, *,
@@ -233,6 +288,11 @@ def send_disconnect_alert(integration: Dict[str, Any], state: str) -> bool:
         )
 
         number = _alert_destination(integration)
+        if number and destino_e_o_grupo(integration, number):
+            # 🔴 A frase que impede o passo 3 de virar permanente (§7.4).
+            text += ("\n\n_(Este aviso veio para o grupo porque não há um "
+                     "responsável cadastrado — cadastre em Personalização → "
+                     "Equipe.)_")
         sender = _sender_integration(integration) if number else None
         if not number or not sender:
             reason = "sem destino de alerta configurado" if not number else "sem canal disponível para enviar"

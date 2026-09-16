@@ -82,13 +82,15 @@ def analyze_regressions(rows: List[Dict[str, Any]], now: datetime,
 async def _alert(company_id: str, finding: Dict[str, Any]) -> None:
     """Alerta pelo MESMO canal do Vigia (grupo/número de suporte da corretora)."""
     try:
-        from app.services.dispatch_router import _support_contact
+        # 🔴 SPEC-EXTRA-001.3 — 6º dos 11 pontos. Tipo `vigia` e SEM
+        # conversa: a guarda deixa passar (§5.2 — é sobre a CORRETORA, não
+        # sobre um caso), mas o envio passa a ser contado e sai em UM balão.
+        from app.core.database import get_supabase_client
         from app.services.integration_service import get_integration_service
-        from app.services.whatsapp_service import get_whatsapp_service
+        from app.services.o_grupo_so_o_que_importa import TIPO_VIGIA, enviar_ao_grupo
 
-        contact = await _support_contact(company_id)
         integration = get_integration_service().get_platform_whatsapp_integration(company_id)
-        if not contact or not integration:
+        if not integration:
             logger.warning(f"[REGRESSAO] sem canal de alerta p/ company {company_id}")
             return
         flags = ", ".join(finding.get("top_flags") or []) or "sem padrão dominante"
@@ -97,7 +99,10 @@ async def _alert(company_id: str, finding: Dict[str, Any]) -> None:
                 f"nas últimas 24h ({finding['samples']} conversas).\n"
                 f"Padrões mais comuns: {flags}.\n"
                 "Verificando a causa — nenhuma mudança nova será aplicada até estabilizar.")
-        get_whatsapp_service().send_message(contact, text, integration)
+        await enviar_ao_grupo(
+            get_supabase_client(), company_id=str(company_id), tipo=TIPO_VIGIA,
+            texto=text, integration=integration, dedup=False,
+            resumo="qualidade em queda", motivo="qualidade_em_queda")
     except Exception as e:  # noqa: BLE001
         logger.error(f"[REGRESSAO] alerta falhou: {type(e).__name__}")
 

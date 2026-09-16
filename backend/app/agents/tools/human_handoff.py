@@ -68,7 +68,17 @@ logger = logging.getLogger(__name__)
 #
 # O Vigia importa daqui. A direção já existe: ele importa `HumanHandoffTool`
 # deste módulo desde que foi escrito.
-_CHAVE_DO_MARCADOR = "handoff_realerta:{}"
+# 🔴 SPEC-EXTRA-001.3 §7.5 — A CHAVE MUDOU; O MECANISMO, NÃO.
+#
+# 📊 10/09/2026: saíram 3 dossiês sobre a MESMA conversa em 21 minutos (17:14,
+# 17:21, 17:35) porque a sessão de acionamento reabriu três vezes e o marcador
+# de "já entreguei" vivia na SESSÃO. A unidade certa é a CONVERSA, e o tipo de
+# aviso entra na chave para que um sinistro não cale um pedido de ajuda.
+#
+# ⛔ Nada de tabela de dedup nova e nada de segundo marcador: as funções abaixo
+# DELEGAM para `o_grupo_so_o_que_importa`, que é o módulo leve que o agendador
+# também usa (importar daqui arrastaria `langgraph` para dentro do scheduler).
+_CHAVE_DO_MARCADOR = "handoff_realerta:{}"   # 🔴 histórico — ver `_chave` do módulo novo
 HORAS_ENTRE_AVISOS_PADRAO = 6
 
 
@@ -157,6 +167,83 @@ def _motivo_em_portugues(motivo: Optional[str]) -> str:
     return texto[:_LIMITE_DO_MOTIVO]
 
 
+# ===========================================================================
+# 🔴 O ESCRITOR DE `motivo_classe` — SPEC-EXTRA-001.3 BLOCO D
+# ===========================================================================
+#
+# 📊 Medido em 16/09/2026, antes de escrever: `grep -rn "motivo_classe"
+# backend/app` → **0**; `human_handoff_reason` preenchido em **2 de 254**
+# conversas `HUMAN_REQUESTED`, e as duas em prosa livre. O campo não existia e
+# não tinha escritor designado. A conta das 19h depende dele.
+#
+# ⚠️ **E um motivo desconhecido NÃO cai em `regra`.** Se caísse, hoje — com
+# zero escritores — TODO pedido de ajuda sairia do denominador e a eficiência
+# das 19h daria ~100% sem medir nada. `desconhecido` fica fora do numerador E
+# do denominador, com LINHA PRÓPRIA no resumo (SPEC §8.1).
+#
+# 🔴 A busca é por PALAVRA, sobre o texto sem acento e em minúsculas — o
+# `reason` chega em prosa do modelo, não em chave. ⛔ Nada de `in` sobre a
+# string crua: "vitima" dentro de "revitimizacao" não é vítima.
+
+#: `incapacidade` — o agente NÃO CONSEGUIU. Entra no denominador da eficiência.
+_MOTIVOS_DE_INCAPACIDADE = {
+    "ura_travou": ("ura", "travou", "travei", "menu", "nao consegui", "não consegui",
+                   "formulario_incompleto", "formulario", "opcao", "tentei"),
+    "dado_faltante": ("falta", "faltou", "faltando", "nao tenho", "não tenho",
+                      "sem o dado", "nao sei", "não sei", "dado"),
+    "sentinela_esgotou": ("sentinela", "esgotou", "recuperacao", "recuperação",
+                          "stall", "tempo limite", "timeout"),
+}
+
+#: `regra` — o agente PODIA, mas o produto manda passar. 🔴 Fica FORA do
+#: denominador: contar contra puniria o agente por obedecer (D-PILOTO-13).
+_MOTIVOS_DE_REGRA = {
+    "vitima": ("vitima", "vitimas", "vítima", "vítimas", "ferido", "feridos",
+               "machucado", "ambulancia", "ambulância"),
+    "cliente_pediu_humano": ("pediu humano", "pediu atendente", "pediu pessoa",
+                             "quer falar com", "falar com alguem", "falar com alguém",
+                             "cliente_pediu_humano", "pediu para falar"),
+    "valor_acima_do_limite": ("valor", "limite", "alcada", "alçada", "aprovacao",
+                              "aprovação"),
+    "fora_do_escopo": ("fora do escopo", "nao atendo", "não atendo", "nao e comigo",
+                       "não é comigo", "assunto novo"),
+    "segurado_irritado": ("irritado", "nervoso", "reclamacao", "reclamação",
+                          "insatisfeito", "xingou", "bravo"),
+}
+
+CLASSE_INCAPACIDADE = "incapacidade"
+CLASSE_REGRA = "regra"
+CLASSE_DESCONHECIDA = "desconhecido"
+
+
+def _sem_acento_minusculo(texto: str) -> str:
+    import unicodedata
+
+    plano = unicodedata.normalize("NFKD", str(texto or ""))
+    return "".join(c for c in plano if not unicodedata.combining(c)).lower()
+
+
+def classificar_o_motivo(motivo: Optional[str]) -> tuple:
+    """`(classe, chave)` — **PURA**. `('desconhecido', 'desconhecido')` no escuro.
+
+    🔴 A ordem importa: `regra` é conferida ANTES de `incapacidade`. Um pedido
+    com vítima que TAMBÉM menciona a URA é, antes de tudo, um caso de regra —
+    e classificá-lo como incapacidade colocaria no denominador da eficiência um
+    caso em que o agente fez exatamente o que devia.
+    """
+    texto = _sem_acento_minusculo(_motivo_em_portugues(motivo))
+    if not texto.strip():
+        return CLASSE_DESCONHECIDA, CLASSE_DESCONHECIDA
+    for tabela, classe in ((_MOTIVOS_DE_REGRA, CLASSE_REGRA),
+                           (_MOTIVOS_DE_INCAPACIDADE, CLASSE_INCAPACIDADE)):
+        for chave, palavras in tabela.items():
+            for p in palavras:
+                alvo = _sem_acento_minusculo(p)
+                if alvo in texto:
+                    return classe, chave
+    return CLASSE_DESCONHECIDA, CLASSE_DESCONHECIDA
+
+
 async def registrar_o_desfecho_do_handoff(company_id: str, evento: str,
                                           motivo: str, conversa_id: str = "") -> None:
     """UMA linha durável em `agent_activities` para o desfecho do handoff.
@@ -183,7 +270,8 @@ async def registrar_o_desfecho_do_handoff(company_id: str, evento: str,
                      evento, type(exc).__name__)
 
 
-async def reivindicar_o_aviso(conversa_id: str, horas: int) -> bool:
+async def reivindicar_o_aviso(conversa_id: str, horas: int, *,
+                              company_id: str = "", tipo: str = "") -> bool:
     """Alguém já avisou o grupo sobre esta conversa nas últimas `horas`?
 
     `True` = já avisaram, **fique quieto**. `False` = a vez é sua, e este
@@ -192,18 +280,18 @@ async def reivindicar_o_aviso(conversa_id: str, horas: int) -> bool:
 
     🔴 Redis fora do ar devolve `False`: **avisar demais é melhor que calar.**
     O defeito grave é o silêncio; a repetição é só incômodo.
-    """
-    try:
-        from app.core.redis import get_async_redis_client
 
-        r = await get_async_redis_client()
-        gravou = await r.set(_CHAVE_DO_MARCADOR.format(conversa_id), "1",
-                             ex=max(1, int(horas)) * 3600, nx=True)
-        return not gravou
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[Handoff] marcador indisponível (%s) — vai avisar",
-                       type(exc).__name__)
-        return False
+    🔴 SPEC-EXTRA-001.3 §7.5 — a chave é `(corretora, conversa, tipo)`. UMA
+    implementação, em `o_grupo_so_o_que_importa`; aqui ficou só a assinatura
+    que os chamadores antigos já usam.
+    """
+    from app.services.o_grupo_so_o_que_importa import (
+        TIPO_PEDIDO_DE_AJUDA, reivindicar_o_envio,
+    )
+
+    return await reivindicar_o_envio(company_id, conversa_id,
+                                     tipo or TIPO_PEDIDO_DE_AJUDA,
+                                     max(1, int(horas or 1)) * 3600)
 
 
 #: Quantas vezes o Vigia lembra a equipe da MESMA conversa antes de parar.
@@ -239,7 +327,8 @@ async def contar_lembrete(conversa_id: str) -> int:
         return 0
 
 
-async def devolver_a_vez(conversa_id: str) -> None:
+async def devolver_a_vez(conversa_id: str, *, company_id: str = "",
+                         tipo: str = "") -> None:
     """Libera o marcador. Chamado quando o aviso RESERVADO não saiu.
 
     🔴 Sem isto, uma falha de envio silenciaria o grupo pelas horas inteiras
@@ -247,14 +336,12 @@ async def devolver_a_vez(conversa_id: str) -> None:
     não virou aviso tem de ser devolvida — é o mesmo princípio de "flag que
     mente é pior que flag ausente", aplicado a uma reserva.
     """
-    try:
-        from app.core.redis import get_async_redis_client
+    from app.services.o_grupo_so_o_que_importa import (
+        TIPO_PEDIDO_DE_AJUDA, devolver_a_vez_do_grupo,
+    )
 
-        r = await get_async_redis_client()
-        await r.delete(_CHAVE_DO_MARCADOR.format(conversa_id))
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[Handoff] não consegui devolver o marcador (%s)",
-                       type(exc).__name__)
+    await devolver_a_vez_do_grupo(company_id, conversa_id,
+                                  tipo or TIPO_PEDIDO_DE_AJUDA)
 
 # Quantas mensagens vão no dossiê. Suficiente para o humano entrar sabendo,
 # curto o bastante para caber num WhatsApp sem virar parede de texto.
@@ -956,48 +1043,42 @@ class HumanHandoffTool(BaseTool):
         return "\n".join(linhas)
 
     async def _avisar_suporte(self, company_id: str, conversa: Dict[str, Any],
-                              motivo: str) -> Dict[str, Any]:
-        """Envia o dossiê. Devolve o que aconteceu — sem arredondar."""
-        from app.services.dispatch_router import resolver_destino_de_suporte
+                              motivo: str, *, tipo: str = "",
+                              dedup: bool = False) -> Dict[str, Any]:
+        """Envia o dossiê. Devolve o que aconteceu — sem arredondar.
 
-        alvo = await resolver_destino_de_suporte(company_id)
-        if alvo.get("recusa"):
-            return {"avisado": False, "motivo": alvo["recusa"]}
-        destino = alvo.get("destino") or ""
-        if not destino:
-            return {"avisado": False,
-                    "motivo": "a corretora não tem destino de suporte humano configurado"}
+        🔴 SPEC-EXTRA-001.3 — este método PASSOU A SER UM ADAPTADOR.
 
-        try:
-            from app.services.integration_service import get_integration_service
-            from app.services.whatsapp_service import get_whatsapp_service
+        A resolução de destino, o `bloco_unico`, o `asyncio.to_thread` e o
+        registro em `platform_sends`/`work_events` mudaram-se para
+        `o_grupo_so_o_que_importa.enviar_ao_grupo`, que é a porta única por
+        onde os 11 pontos de envio ao grupo passam a sair. O que ficou aqui é
+        o que só este caminho sabe: **montar o dossiê**.
 
-            integ = await asyncio.to_thread(
-                get_integration_service(self.supabase_client).get_whatsapp_integration,
-                company_id)
-            if not integ:
-                return {"avisado": False,
-                        "motivo": "a corretora não tem canal de WhatsApp conectado para avisar"}
+        ⚠️ `dedup=False` por padrão porque os três chamadores deste método
+        (`_arun`, `varrer_handoffs_parados`, `varrer_esperas_vencidas`) já
+        reservaram a vez em `reivindicar_o_aviso` — e o marcador é o mesmo.
+        Deduplicar duas vezes calaria o segundo tipo de aviso da conversa.
+        """
+        from app.services.o_grupo_so_o_que_importa import (
+            TIPO_PEDIDO_DE_AJUDA, enviar_ao_grupo,
+        )
 
-            # 🔴 `bloco_unico=True` -- o dossie e DOCUMENTO, nao conversa.
-            # Sem isto ele passava pela humanizacao da atendente e chegava
-            # picotado em cinco baloes (grupo TESTE SUPORTE HUMANO, 18/08).
-            #
-            # 🔴 E em THREAD: `_montar_dossie` lê `messages` do Supabase e
-            # `send_message` faz HTTP, os dois síncronos. Direto no event loop
-            # isso trava o FastAPI por alguns segundos a cada transferência.
-            def _montar_e_enviar():
-                get_whatsapp_service().send_message(
-                    destino, self._montar_dossie(conversa, motivo), integ,
-                    bloco_unico=True)
-
-            await asyncio.to_thread(_montar_e_enviar)
-            logger.info("[HumanHandoff] dossiê enviado | empresa=%s | fonte=%s",
-                        company_id, alvo.get("fonte"))
-            return {"avisado": True, "motivo": ""}
-        except Exception as exc:  # noqa: BLE001
-            logger.error("[HumanHandoff] falha ao avisar o suporte (%s)", type(exc).__name__)
-            return {"avisado": False, "motivo": f"falha no envio ({type(exc).__name__})"}
+        _tipo = tipo or TIPO_PEDIDO_DE_AJUDA
+        texto = await asyncio.to_thread(self._montar_dossie, conversa, motivo)
+        classe, chave = classificar_o_motivo(motivo)
+        saida = await enviar_ao_grupo(
+            self.supabase_client, company_id=str(company_id), tipo=_tipo,
+            texto=texto, conversation_id=str(conversa.get("id") or ""),
+            telefone=str(conversa.get("user_phone") or ""),
+            conversa=conversa, dedup=dedup,
+            resumo="%s — conversa %s" % (_tipo, str(conversa.get("id") or "")[:8]),
+            motivo=chave, motivo_classe=classe)
+        if saida["enviado"]:
+            logger.info("[HumanHandoff] dossiê enviado | empresa=%s | tipo=%s",
+                        company_id, _tipo)
+        return {"avisado": bool(saida["enviado"]), "motivo": saida["motivo"],
+                "calado": bool(saida["calado"])}
 
     # ------------------------------------------------------------------ #
     # execução
@@ -1210,7 +1291,8 @@ class HumanHandoffTool(BaseTool):
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("[SOMBRA] handoff não registrado (%s)", type(exc).__name__)
-        avisado_ha_pouco = await reivindicar_o_aviso(conversa_id, horas)
+        avisado_ha_pouco = await reivindicar_o_aviso(
+            conversa_id, horas, company_id=str(company_id))
 
         if avisado_ha_pouco and ja_estava_com_a_equipe:
             logger.info("[HumanHandoff] conversa %s JÁ estava com a equipe e já "
@@ -1226,7 +1308,7 @@ class HumanHandoffTool(BaseTool):
 
         # Reservou e não avisou: devolve a vez, senão o Vigia fica mudo pelas
         # horas inteiras do marcador justamente no caso em que ninguém soube.
-        await devolver_a_vez(conversa_id)
+        await devolver_a_vez(conversa_id, company_id=str(company_id))
 
         # Marcou mas não avisou: a conversa aparece na Fila do painel, então
         # alguém PODE ver — só não foi empurrado. A resposta diz a verdade sem

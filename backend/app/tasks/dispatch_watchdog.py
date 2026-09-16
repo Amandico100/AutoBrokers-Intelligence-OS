@@ -232,13 +232,17 @@ async def _entregar_dossie_com_marcador(company_id: str, session: Dict[str, Any]
     """
     from app.services.dispatch_router import entregar_dossie_uma_vez
 
+    from app.services.o_grupo_so_o_que_importa import TIPO_PEDIDO_DE_AJUDA
+
     async def _enviar(texto: str) -> bool:
         # `_support_alert` já engole a própria exceção e devolve SE saiu — é
         # exatamente o contrato que a seam pede.
         return await _support_alert(company_id, texto, wa, integration,
-                                    session=session)
+                                    session=session, tipo=TIPO_PEDIDO_DE_AJUDA,
+                                    motivo=str(session.get("reason") or ""))
 
-    return await entregar_dossie_uma_vez(session, dossier, _enviar)
+    return await entregar_dossie_uma_vez(session, dossier, _enviar,
+                                         company_id=str(company_id or ""))
 
 
 async def _avisar_o_segurado(session: Dict[str, Any], wa, integration) -> bool:
@@ -268,7 +272,8 @@ async def _avisar_o_segurado(session: Dict[str, Any], wa, integration) -> bool:
 
 
 async def _support_alert(company_id: str, text: str, wa, integration,
-                         session: Optional[Dict[str, Any]] = None) -> bool:
+                         session: Optional[Dict[str, Any]] = None,
+                         *, tipo: str = "", motivo: str = "") -> bool:
     """Avisa o suporte. Devolve SE o aviso saiu — não presume que saiu.
 
     🔴 Devolvia `None` e engolia tudo. Quem chamava gravava `dossier_sent=True`
@@ -312,11 +317,61 @@ async def _support_alert(company_id: str, text: str, wa, integration,
                 "para a empresa %s — o aviso NAO foi entregue: %s",
                 company_id, text[:120])
             return False
-        wa.send_message(contact, text, integration)
-        return True
+        # 🔴 SPEC-EXTRA-001.3 — a PORTA ÚNICA. A guarda, o `bloco_unico`, a
+        #    deduplicação por (corretora, conversa, tipo) e a contagem em
+        #    `platform_sends`/`work_events` moram lá dentro. ⛔ `wa.send_message`
+        #    direto aqui era o 4º dos 11 caminhos que ninguém contava.
+        #
+        # ⚠️ `dedup=False`: quem manda dossiê já passou por
+        #    `entregar_dossie_uma_vez`, e os achados do Vigia já têm as flags
+        #    `wd_*` (uma vez por sessão). Deduplicar de novo calaria o segundo
+        #    tipo de aviso da mesma conversa.
+        from app.services.o_grupo_so_o_que_importa import TIPO_VIGIA, enviar_ao_grupo
+
+        _conversa = str((session or {}).get("mirror_conversation_id") or "")
+        saida = await enviar_ao_grupo(
+            _db_do_vigia(), company_id=company_id, tipo=tipo or TIPO_VIGIA,
+            texto=text, conversation_id=_conversa,
+            telefone=str((session or {}).get("client_phone") or ""),
+            integration=integration, destino=contact, dedup=False,
+            resumo="%s — caso %s" % (tipo or TIPO_VIGIA,
+                                     str((session or {}).get("case_id") or "")[:8]),
+            motivo=motivo)
+        if saida.get("calado") and session is not None:
+            session["grupo_calado_porque"] = saida.get("motivo") or ""
+        return bool(saida.get("enviado"))
     except Exception as e:  # noqa: BLE001
         logger.error("[VIGIA] ❌ alerta falhou (%s) — NAO entregue", type(e).__name__)
         return False
+
+
+def _db_do_vigia():
+    """O cliente do Supabase que a porta única usa para ler e para contar."""
+    from app.core.database import get_supabase_client
+
+    return get_supabase_client()
+
+
+#: 🔴 SPEC-EXTRA-001.3 §7.3 — os achados do Vigia viram EVENTO CONTÁVEL.
+#:
+#: ⚠️ Eles não somem: o resumo das 19h os lê daqui e os publica como
+#: 💭 *"⏱️ 2 acionamentos ficaram esperando a URA e 1 passou do prazo da
+#: sessão."* Nada é perdido; é ADIADO para uma linha (CLAUDE.md §11.1).
+EVENTO_VIGIA = "vigia.%s"
+
+
+async def _anotar_vigia(company_id: str, finding: str, session: Dict[str, Any],
+                        label: str) -> None:
+    """Uma linha contável por achado do Vigia. ⛔ Nunca levanta, nunca leva PII."""
+    from app.services.o_grupo_so_o_que_importa import anotar_no_diario
+
+    await anotar_no_diario(
+        _db_do_vigia(), str(company_id or ""), EVENTO_VIGIA % str(finding or "?"),
+        "O vigia viu um acionamento fora do esperado.",
+        {"achado": str(finding or ""), "corredor": str(label or "")[:60],
+         "estado": str(session.get("state") or "")[:40],
+         "conversa": str(session.get("mirror_conversation_id") or "")[:8]},
+        severidade="warning")
 
 
 async def _sentinela_recover(
@@ -565,13 +620,11 @@ async def check_dispatch_watchdog() -> int:
                 await _sentinela_recover(company_id, insurer_phone, session, wa, integration)
             elif finding == "ura_silent":
                 session["wd_ura_silent"] = True
-                await _support_alert(
-                    company_id,
-                    f"⚠️ VIGIA: a URA ({label}) está calada há {URA_SILENT_ALERT_S // 60}min+ após "
-                    f"nossa resposta (caso {case}). Pode ter rejeitado em silêncio. "
-                    f"Última nossa: \"{str((_last_entry(session) or {}).get('text') or '')[:160]}\"",
-                    wa, integration, session=session,
-                )
+                # 🔴 SPEC-EXTRA-001.3 §7.3 — NÃO vai mais ao grupo em tempo
+                #    real: vira evento contável e LINHA do resumo das 19h.
+                #    📊 No 10/09 avisos assim eram parte das 7 mensagens
+                #    sobre UMA conversa, em 75,7 minutos.
+                await _anotar_vigia(company_id, finding, session, label)
             elif finding == "human_silent_nudge":
                 session["wd_human_nudge"] = True
                 try:
@@ -584,28 +637,24 @@ async def check_dispatch_watchdog() -> int:
                     logger.error(f"[VIGIA] cutucada falhou: {type(e).__name__}")
             elif finding == "human_silent_alert":
                 session["wd_human_alert"] = True
-                await _support_alert(
-                    company_id,
-                    f"⚠️ VIGIA: atendente humano da seguradora ({label}) sem responder há 20min+ "
-                    f"(caso {case}). Vale um olhar humano.",
-                    wa, integration, session=session,
-                )
+                await _anotar_vigia(company_id, finding, session, label)
             elif finding == "never_started":
                 session["wd_never_started"] = True
+                # ⚠️ A EXCEÇÃO ESCRITA da §7.3, e ela não é esquecimento:
+                #    `never_started` significa *"o acionamento não começou"* —
+                #    é o único dos quatro em que NINGUÉM está trabalhando e o
+                #    segurado espera do zero. 💭 Nota de mandar os quatro ao
+                #    resumo: 72; com esta exceção: 88.
+                await _anotar_vigia(company_id, finding, session, label)
                 await _support_alert(
                     company_id,
                     f"🚨 VIGIA: acionamento do caso {case} ({label}) foi criado e NÃO começou "
                     f"em {NEVER_STARTED_S // 60}min (estado: {session.get('state')}). Verificar.",
-                    wa, integration, session=session,
+                    wa, integration, session=session, motivo="never_started",
                 )
             elif finding == "deadline":
                 session["wd_deadline"] = True
-                await _support_alert(
-                    company_id,
-                    f"⏰ VIGIA: acionamento do caso {case} ({label}) está há 45min+ sem desfecho "
-                    f"(estado: {session.get('state')}). Transcript no dashboard (Acionamento).",
-                    wa, integration, session=session,
-                )
+                await _anotar_vigia(company_id, finding, session, label)
             await save_active_dispatch(company_id, insurer_phone, session)
             actions += 1
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler

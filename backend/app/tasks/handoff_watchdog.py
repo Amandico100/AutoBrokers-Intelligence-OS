@@ -68,16 +68,19 @@ def _env_int(nome: str, padrao: int, minimo: int = 1) -> int:
     return _impl(nome, padrao, minimo)
 
 
-async def _ja_avisado_recentemente(conversa_id: str, horas: int) -> bool:
+async def _ja_avisado_recentemente(conversa_id: str, horas: int, *,
+                                   company_id: str = "", tipo: str = "") -> bool:
     from app.agents.tools.human_handoff import reivindicar_o_aviso
 
-    return await reivindicar_o_aviso(conversa_id, horas)
+    return await reivindicar_o_aviso(conversa_id, horas,
+                                     company_id=company_id, tipo=tipo)
 
 
-async def _devolver_a_vez(conversa_id: str) -> None:
+async def _devolver_a_vez(conversa_id: str, *, company_id: str = "",
+                          tipo: str = "") -> None:
     from app.agents.tools.human_handoff import devolver_a_vez
 
-    await devolver_a_vez(conversa_id)
+    await devolver_a_vez(conversa_id, company_id=company_id, tipo=tipo)
 
 
 async def _contar_lembrete(conversa_id: str) -> int:
@@ -290,7 +293,8 @@ async def varrer_handoffs_parados() -> None:
                 "(ou sem data de claim legível) — o dono não voltou. empresa=%s",
                 realerta_h, company_id)
 
-        if await _ja_avisado_recentemente(conversa_id, realerta_h):
+        if await _ja_avisado_recentemente(conversa_id, realerta_h,
+                                          company_id=company_id):
             continue
 
         # 🔴 O TETO — e ele avisa que vai calar, em vez de sumir.
@@ -369,11 +373,11 @@ async def varrer_handoffs_parados() -> None:
                 # e o aviso não saiu; manter a reserva calaria a próxima
                 # varredura pelas horas inteiras do marcador, justamente no
                 # caso em que ninguém ficou sabendo.
-                await _devolver_a_vez(conversa_id)
+                await _devolver_a_vez(conversa_id, company_id=company_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("[HandoffWatchdog] falha ao re-alertar (%s) | empresa=%s",
                          type(exc).__name__, company_id)
-            await _devolver_a_vez(conversa_id)
+            await _devolver_a_vez(conversa_id, company_id=company_id)
 
 # =============================================================================
 # 🔴 SPEC-086 BLOCO C — A ESPERA VENCIDA ACORDA ALGUÉM
@@ -428,6 +432,9 @@ EVENTO_ESPERA_VENCIDA = "espera.vencida"
 #: para uma tabela nova (§5).
 EVENTO_HANDOFF_REALERTADO = "handoff.realertado"
 EVENTO_HANDOFF_NO_TETO = "handoff.teto_de_lembretes"
+#: 🔴 SPEC-EXTRA-001.3 §7.2 — o 2º e o 3º aviso da MESMA espera. Eles
+#: não vão ao grupo; viram linha do resumo das 19h.
+EVENTO_ESPERA_REPETIDA = "espera.vencida.repetida"
 
 #: Como o alerta descreve o que se esperava. ⛔ Sem nome de pessoa.
 #: Como se diz cada kind **para a EQUIPE**. ⚠️ 🔴 A fonte dos kinds é
@@ -480,7 +487,8 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
     handoff. Uma exceção aqui não derruba o agendador — mas derrubar o job em
     silêncio é exatamente como a espera volta a apodrecer.
     """
-    resumo = {"vencidas": 0, "avisadas": 0, "expiradas": 0, "erros": 0}
+    resumo = {"vencidas": 0, "avisadas": 0, "expiradas": 0, "erros": 0,
+              "caladas": 0}
     try:
         from app.core.database import create_async_supabase_client
         # ⚠️ Só o teto de avisos é lido aqui: quem escreve status e quem decide
@@ -563,16 +571,52 @@ async def varrer_esperas_vencidas() -> Dict[str, int]:
                     r = _ROTULO_DO_KIND.get(str(w.get("kind") or ""), "alguém")
                     if r not in rotulos:
                         rotulos.append(r)
-                texto = (f"⏳ ESPERA VENCIDA — esperava {' e '.join(rotulos)} e o "
-                         f"prazo passou. (aviso {avisos} de {AVISOS_ATE_EXPIRAR})")
-                aviso = await HumanHandoffTool(db)._avisar_suporte(
-                    empresa, linhas[0], texto)
-                if aviso.get("avisado"):
-                    resumo["avisadas"] += 1
+                # 🔴 SPEC-EXTRA-001.3 §7.2 — UM AVISO AO GRUPO POR VENCIMENTO.
+                #
+                # 📊 10/09/2026: saíram 3 avisos idênticos em 20 minutos
+                # (18:09:58, 18:19:58, 18:29:59) sobre a MESMA espera, porque o
+                # job roda a cada 10 min e `AVISOS_ATE_EXPIRAR` é 3.
+                #
+                # ⚠️ Os avisos 2 e 3 NÃO SOMEM: viram linha do resumo das 19h
+                # (*"2 esperas venceram e ninguém respondeu"*). ⛔ E
+                # `AVISOS_ATE_EXPIRAR` CONTINUA 3 para o ciclo interno de
+                # expiração: quem corta o contador quebra
+                # `deve_expirar_a_conversa` (`o_fim_do_atendimento.py:949`) e a
+                # conversa NUNCA expira. O que muda é quantos CHEGAM ao grupo.
+                from app.services.o_grupo_so_o_que_importa import (
+                    TIPO_ESPERA_VENCIDA, anotar_no_diario,
+                )
+
+                # ⛔ NADA DE `continue` AQUI. Abaixo deste bloco vêm ②b (a
+                # mensagem honesta ao segurado) e ③ (`_contar_o_aviso`, que é
+                # quem incrementa `avisos` e faz a conversa EXPIRAR). Pular o
+                # laço para "não mandar ao grupo" calaria o segurado e deixaria
+                # a conversa presa para sempre — trocar um excesso de aviso por
+                # um silêncio é trocar um defeito por um pior (:241).
+                if avisos > 1:
+                    await anotar_no_diario(
+                        db, empresa, EVENTO_ESPERA_REPETIDA,
+                        "Uma espera continuou vencida e ninguém respondeu.",
+                        {"aviso": int(avisos), "de": int(AVISOS_ATE_EXPIRAR),
+                         "conversa": str(conversa_id)[:8],
+                         "rotulos": list(rotulos)[:3]},
+                        severidade="warning")
+                    logger.info("[EsperaWatchdog] aviso %d de %d fica para o "
+                                "resumo das 19h — o grupo já soube",
+                                avisos, AVISOS_ATE_EXPIRAR)
                 else:
-                    logger.error("[EsperaWatchdog] ❌ espera vencida e o suporte "
-                                 "NÃO foi avisado | empresa=%s | motivo=%s",
-                                 empresa, aviso.get("motivo"))
+                    texto = (f"⏳ ESPERA VENCIDA — esperava {' e '.join(rotulos)} "
+                             f"e o prazo passou.")
+                    aviso = await HumanHandoffTool(db)._avisar_suporte(
+                        empresa, linhas[0], texto, tipo=TIPO_ESPERA_VENCIDA)
+                    if aviso.get("avisado"):
+                        resumo["avisadas"] += 1
+                    elif aviso.get("calado"):
+                        resumo["caladas"] = int(resumo.get("caladas") or 0) + 1
+                    else:
+                        logger.error("[EsperaWatchdog] ❌ espera vencida e o suporte "
+                                     "NÃO foi avisado | empresa=%s | motivo=%s",
+                                     empresa, aviso.get("motivo"))
         except Exception as exc:  # noqa: BLE001
             logger.error("[EsperaWatchdog] falha ao avisar (%s) | empresa=%s",
                          type(exc).__name__, empresa)
