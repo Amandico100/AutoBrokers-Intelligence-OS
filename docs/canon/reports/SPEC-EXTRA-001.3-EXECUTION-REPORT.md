@@ -16,15 +16,13 @@ NÍVEL ................ CRÍTICO · executor Opus 5 `xhigh` · juiz Fable 5.1
 UNIDADES ............. 7 — A guarda única · B números da casa · C mensagem inteira · D os quatro
                        modelos · E contabilidade · F gate de ligar · G as 6 rotas
                        FATIAS: 1 = A+C+E · 2 = B+D+F+G (⚠️ na MESMA sessão — ver §10)
-COESÃO ............... A e C tocam os mesmos arquivos de envio → um dono, serial. E fecha o contrato
-                       que A e C produzem (o que saiu, e o que significava) → mesma fatia.
+COESÃO ............... A e C tocam os mesmos arquivos de envio → um dono, serial; E fecha o contrato
+                       que as duas produzem → mesma fatia
 PARALELISMO REAL ..... nenhum — a escrita é de um só. Investigador read-only: não
 TIME ................. executor · juiz Fable 5.1 · lente do dado (gatilho: o outcome é dataset +
-                       migration de dado) · red team NÃO (sem auth nova, dinheiro ou portal)
-REFERÊNCIA ........... interna `backend/tests/test_o_caso_se_explica_sozinho.py` (`problemas_de_lingua`)
-                       e `backend/tests/corpus/acervo_do_grupo_2026-09-16.json` (acervo real, redigido)
-                       externa: E01–E05 da §19 (SRE Book 6 e 11 · PagerDuty `dedup_key` ·
-                       Alertmanager `inhibit_rules` · Alertmanager `group_by`)
+                       migration de dado) · red team NÃO
+REFERÊNCIA ........... interna `test_o_caso_se_explica_sozinho.py` (`problemas_de_lingua`) e
+                       `tests/corpus/acervo_do_grupo_2026-09-16.json` · externa E01–E05 da §19
 GATES ................ G-A1..A3 · G-B1..B3 · G-C1..C4 · G-D1/D2 · G-E1 · G-F1/G-G1
 O ELO ................ "o grupo virou ruído PORQUE nenhum gatilho pergunta se um humano já está na
                        conversa" — A medido (7 mensagens / 75,7 min, e 6 delas DEPOIS do takeover das
@@ -35,7 +33,7 @@ FAIXA DE RELÓGIO ..... declarada 1h15 + 1h15 + 45min · real 167 min · tetos 2
                        🔴 ESTOURADOS (271 · 649 k) — §10
 ```
 
-**Produto:** AutoBrokers Intelligence OS · **SPEC:** `docs/canon/specs-propostas/SPEC-EXTRA-001.3-o-grupo-so-recebe-o-que-importa.md` ·
+**SPEC:** `docs/canon/specs-propostas/SPEC-EXTRA-001.3-o-grupo-so-recebe-o-que-importa.md` ·
 **Branch:** `feat/spec-extra-001-3-grupo-so-o-que-importa` ·
 **Preflight** 📊 16/09/2026: `HEAD..origin/main` = **0** · `origin/main..HEAD` = **0** · HEAD = `09a238f` · árvore limpa ·
 **Executor:** Opus 5 `xhigh` (sessão nova) · **Juiz:** Fable 5.1 · **Início/fim:** 16/09 18:26 → 21:20 UTC
@@ -45,12 +43,12 @@ FAIXA DE RELÓGIO ..... declarada 1h15 + 1h15 + 45min · real 167 min · tetos 2
 | # | a proposta afirma | medido 📊 16/09 | comando | consequência |
 |---|---|---|---|---|
 | 1 | 7 mensagens ao grupo em 75,7 min no 10/09 | **7 · 75,68 min** — idêntico | a SQL da §0.1, colada no módulo novo | âncora confirmada. 🔬 A lente acrescentou: **1** saiu antes do takeover das 17:18 e **6 depois** — o argumento fica mais forte, não mais fraco |
-| 2 | 58 elegíveis, 58 com humano nos 7 dias | **254→259** `HUMAN_REQUESTED` · **99** elegíveis · **97–98** calam | `ultima_palavra_humana` + `silenciar_por_palavra_humana` sobre as 99, **pelo MOTOR**, não por SQL | o acervo dobrou; a asserção do guarda é contra o CONJUNTO, nunca contra um literal. A mesma pergunta em SQL cru dá **96** — três réguas, três números |
-| 3 | o dossiê vira 4 balões | **4 balões** (508 chars, não 429) | `split_whatsapp_balloons` real, na linha de controle de G-C1 | a asserção é `> 1`, nunca `4` |
+| 2 | 58 elegíveis, 58 com humano nos 7 dias | **254→259** `HUMAN_REQUESTED` · **99** elegíveis · **97–98** calam | `ultima_palavra_humana` + `silenciar_por_palavra_humana`, **pelo MOTOR**, não por SQL | o acervo dobrou; a asserção é contra o CONJUNTO, nunca um literal. A mesma pergunta em SQL cru dá **96** — três réguas, três números |
+| 3 | o dossiê vira 4 balões | **4 balões** (508 chars, não 429) | `split_whatsapp_balloons` real, no controle de G-C1 | a asserção é `> 1`, nunca `4` |
 | 4 | `motivo_classe` não tem escritor | **0** ocorrências · `human_handoff_reason` em **2 de 254** | `grep -rn motivo_classe backend/app` · SQL | a regra de `desconhecido` e o limite de 30% são obrigatórios |
 | 5 | as 3 leituras do governador não filtram `kind` | **confirmado**, e `billing_nota`/`billing_doc` da 001.6 já existem e já contam | `platform_outbound.py:606-616` lido da linha 1 | a allowlist (não o prefixo) era mesmo o desenho certo |
 | 6 | `internal_numbers` vazio em toda a base | **0** integrações com a lista preenchida (a chave existe em 3, vazia nas 3) | `jsonb_array_length(...) > 0` | sem backfill, escrito na migration |
-| 7 | 🔴 **não estava na proposta** | `work_events.work_run_id` era **NOT NULL sem default** | `insert` sem a coluna → `NotNullViolation` (em transação revertida) | **BLOCKER**: o diário do grupo era impossível. Migration `20260916_02`. É também por isto que `handoff.realertado` tinha 0 linhas — a proposta lia esse 0 só como "o re-alerta nunca disparou". 🔬 **E o elo fechou:** as 4 primeiras linhas `handoff.*` da história da base nasceram hoje, com `work_run_id` nulo |
+| 7 | 🔴 **não estava na proposta** | `work_events.work_run_id` era **NOT NULL sem default** | `insert` sem a coluna → `NotNullViolation` (revertido) | **BLOCKER**: o diário era impossível. Migration `20260916_02`. É também por isto que `handoff.realertado` tinha 0 linhas — a proposta lia esse 0 só como "nunca disparou". 🔬 **O elo fechou:** as 4 primeiras linhas `handoff.*` da base nasceram hoje, com run nulo |
 | 8 | 🔴 **não estava na proposta** | `_support_alert_seguro` lia `destino.get("number")` | `resolver_destino_de_suporte` devolve `{destino, fonte, recusa}` | o aviso *"o protocolo NÃO chegou ao segurado"* **saía calado sempre**. Morreu junto com as 3 linhas |
 | 9 | `write:true` pode restringir quem usa as telas | `admin_company` **8** (4 `is_owner`) · `member` **2** | `select role, is_owner, count(*) from company_members group by 1,2` | 🔬 a lente corrigiu a leitura otimista: **2 pessoas em 2 corretoras** perdem a escrita. Caixa do Founder #3 |
 | 10 | P-PILOTO-10: AutoFleet com zero destinos | **4 destinos · 3 empresas · 1 ativo** · `agent_enabled` false em 5 de 5 | `select … from human_support_destinations` | pendência re-justificada (§9) |
@@ -62,12 +60,12 @@ FAIXA DE RELÓGIO ..... declarada 1h15 + 1h15 + 45min · real 167 min · tetos 2
 | fatia | unidade | arquivos | gate | saída real | commit |
 |---|---|---|---|---|---|
 | 1 | **A** guarda única | `services/o_grupo_so_o_que_importa.py` (novo) + os 11 pontos | `tests/test_o_grupo_so_fala_de_quem_precisa.py` | **33 verdes · 0** | `21f2243` `fe136c0` `87b92e6` |
-| 1 | **C** uma mensagem, inteira, uma vez | `human_handoff` · `dispatch_router` · `dispatch_watchdog` · `handoff_watchdog` · `whatsapp/alerts` | `tests/test_uma_mensagem_inteira_e_uma_vez.py` | **22 verdes · 0** | idem |
+| 1 | **C** uma mensagem, inteira, uma vez | os 5 arquivos de envio | `tests/test_uma_mensagem_inteira_e_uma_vez.py` | **22 verdes · 0** | idem |
 | 1 | **E** todo envio contado | `platform_outbound.py` (allowlist nas 3 leituras) · `billing_collection` | `tests/test_toda_mensagem_ao_grupo_e_contada.py` | **18 verdes · 0** | idem |
-| 2 | **F** gate de ligar | `api/porteiro_do_agente.py` (novo) · `porteiro-de-ligar-o-agente.ts` · rota do toggle | `tests/test_ligar_o_agente_tem_porteiro.py` | **38 verdes · 0** | `a405bbb` |
+| 2 | **F** gate de ligar | `porteiro_do_agente.py` + `porteiro-de-ligar-o-agente.ts` (novos) | `tests/test_ligar_o_agente_tem_porteiro.py` | **38 verdes · 0** | `a405bbb` |
 | 2 | **G** as 6 mutações | `lib/admin/porteiro-de-configuracao.ts` (novo) + as 6 rotas | idem | idem | `a405bbb` |
-| 2 | **D** os quatro modelos + 19h | `services/os_modelos_do_grupo.py` · `tasks/o_resumo_das_19h.py` (novos) · `human_handoff` · `o_fim_do_atendimento` | `tests/test_os_quatro_modelos_falam_portugues.py` | **47 verdes · 0** | `bbff51a` `87b92e6` |
-| 2 | **B** números da casa | migration · `lib/atendimento/numeros-da-casa.ts` · `casos.ts` · `attendance_capture` · rotas + card Equipe | `tests/test_o_numero_da_casa_nao_e_cliente.py` | **20 verdes · 0** | `04291fe` |
+| 2 | **D** os quatro modelos + 19h | `os_modelos_do_grupo.py` · `o_resumo_das_19h.py` (novos) + 2 | `tests/test_os_quatro_modelos_falam_portugues.py` | **47 verdes · 0** | `bbff51a` `87b92e6` |
+| 2 | **B** números da casa | migration · `numeros-da-casa.ts` · `casos.ts` · `attendance_capture` · rotas + card | `tests/test_o_numero_da_casa_nao_e_cliente.py` | **20 verdes · 0** | `04291fe` |
 
 🔴 **Os 11 pontos, um a um:** 1 `human_handoff` ✅ porta · 2 `dispatch_router:3312` ✅ porta · 3 `dispatch_router:201` ✅ porta (e o defeito do `number` morto) · 4 `dispatch_watchdog` ✅ porta · 5 `billing_collection` ✅ porta (perdeu o 2º resolvedor, que pulava a recusa de destino compartilhado) · 6 `regression_sentinel` ✅ porta · 7 `whatsapp/alerts` ✅ muda de destinatário (§7.4) · 8 `admin_spec034` isento (alerta de TESTE) · 9/10 `weekly_report`/`proactive_suggestions` fora de escopo, **pendência** · 11 `route_sentinel` vai ao Founder. **G-A2 varre o backend e fica vermelho com um 12º caminho.**
 
@@ -87,27 +85,27 @@ PATCH /api/dashboard/agents/even                                     ->  401 no_
 | `20260916_01_…_company_internal_numbers` | tabela + índice único `(company_id, phone)` + RLS | `tabela_existe=True` · `unique_por_corretora=True` · `rls_ligada=True` | `drop table if exists` — nasce nesta SPEC e o leitor do JSONB continua (expand-first) |
 | `20260916_02_…_work_events_sem_run` | `alter column work_run_id drop not null` | `run_id_opcional=True` · `fk_composta_intacta=True` · `linhas_sem_run=0` **no APPLY** | `set not null` — 🔴 **já exige decisão do Founder**: 📊 existem 5 linhas com `work_run_id` nulo (as `handoff.teto_de_lembretes` de hoje), e `work_events` é append-only |
 
-⚠️ A FK composta `(work_run_id, company_id)` continua valendo: em MATCH SIMPLE, coluna nula satisfaz sem checar — um evento sem run não aponta para o run de outra corretora porque não aponta para run nenhum. 🔬 A lente registrou que, nessas linhas, quem garante a corretora é só `work_events_company_id_fkey`.
-⚠️ 🔬 As duas migrations **não têm linha em `supabase_migrations.schema_migrations`**, embora os objetos estejam no banco — é o descompasso que o `MIGRATIONS-AUTHORITY.md` documenta e que o protocolo §4 prevê (*"o ledger mente; confere o OBJETO"*). Os objetos conferem. Fica o risco de um `db push` futuro tentar reaplicar — **pendência `P-E0013-06`**.
-⛔ Sem migration para `platform_sends`: `kind` é `text` livre, sem CHECK. Os `kind` novos entram como **dado**.
+⚠️ A FK composta `(work_run_id, company_id)` continua valendo: em MATCH SIMPLE, coluna nula satisfaz sem checar — evento sem run não aponta para o run de outra corretora porque não aponta para run nenhum. 🔬 Nessas linhas quem garante a corretora é `work_events_company_id_fkey`.
+⚠️ 🔬 As duas **não têm linha em `schema_migrations`**, embora os objetos estejam no banco — o descompasso que o `MIGRATIONS-AUTHORITY.md` §4 documenta e o protocolo prevê (*"o ledger mente; confere o OBJETO"*). **`P-E0013-06`**.
+⛔ Sem migration para `platform_sends`: `kind` é `text` livre. Os novos entram como **dado**.
 
-## 4. O juiz fresco (Fable 5.1, sobre `04291fe`, 75 chamadas, 47 min) — VEREDITO **FAIL** · nota **80** · 🔬 lente do dado (Opus 5, 41 chamadas, 26 min) · confiança **87**
+## 4. O juiz fresco (Fable 5.1, `04291fe`, 75 chamadas, 47 min) — **FAIL** · nota **80** · 🔬 lente do dado (Opus 5, 41 chamadas, 26 min) · confiança **87**
 
-| # | achado | teste do produto (§2) | medição | classe | conserto |
-|---|---|---|---|---|---|
-| **B1** | a pergunta 3 era pulada com linha PARCIAL | **SIM** — uma "⏳ ESPERA VENCIDA" a mais sobre conversa já assumida | `handoff_watchdog.py:562-564` seleciona a conversa **sem coluna de claim**; linha do banco → `(False, "Regina assumiu…")`, a MESMA pela linha de :562 → `(True, "")` | BLOCKER | chave ausente ≠ valor nulo: `"claimed_by" not in linha` manda ler o banco |
-| **B2** | `classificar_o_motivo` fazia substring, contra o próprio docstring | **SIM** — muda a *Eficiência* que a corretora lê às 19h | `"ura" ⊂ segURAdora`: *"a seguradora não respondeu"* → `incapacidade/ura_travou`; *"tempo limite"* → `regra` | BLOCKER | `\b…\b`, com as EXPRESSÕES antes das palavras soltas |
-| **B3** | corpus de produção com texto de segurado | SEGURANÇA | 1220 mensagens `role=user`, 19 sequências de 11 dígitos, **0 marcadores de redação** | **REFUTADO** — 📊 as 2287 mensagens têm `content` = `h:<sha256[:16]>` ou `#nota `, **0 fora do formato**; os dígitos são do hexadecimal | o juiz estava certo no que importa (**nada dizia isso**): o arquivo ganhou o bloco `REDACAO` e o guarda fica vermelho com texto cru |
-| **P1** | gate G-A **vermelho em HEAD** | fecha a SPEC | `porteiro_do_agente.py` caiu na varredura do G-A2; `grep send_message\|enviar_ao_grupo` → **0** | BLOCKER de gate | ISENTOS, com o motivo: *"só pergunta, não envia"* |
-| 🔬 **L1** | a pergunta 3 era **inerte em produção** | **SIM**, sob `janela=0` | 📊 `claimed_by` em **1 de 938** linhas e em **0 de 259** `HUMAN_REQUESTED`; `claimed_by_name` em 259/259, 63 com `claimed_at` ≤ 6h. O escritor que acontece (`espelho_chat.py:761-764`) nunca grava `claimed_by` | BLOCKER | `claimed_by OR claimed_by_name`, como `saudacao_do_religamento.py:104` já fazia |
-| P4 | marcador do dia reservado antes do envio; docstring prometia fuso por corretora | a corretora perde o dia de números por falha de destino | leitura do código | conserto | `_devolver_o_dia` na falha + docstring honesta |
-| P6 | comentário dizia *"só o 🆘 leva CPF"* e contradizia `_montar_sinistro` oito linhas abaixo | comentário que mente encerra a investigação seguinte | leitura | conserto | alinhado à §8.2 |
-| P8 | número da casa decidido ANTES da exceção de número de teste | **SIM** — quem testa pelo próprio celular perde o agente, e é assim que o canário roda | 📊 8 conversas de 30 dias são de telefones de membros | conserto | a exceção de teste vence |
-| P2·P3·P5·P7·P9·P10 | resíduo de mutação (EOL), `envio_falhou` no caso calado, números derivados, par fixado do silêncio, cosméticos, ROLLBACK da M2 | NÃO | — | **PENDÊNCIA** | §9 |
+**B1 · a pergunta 3 era pulada com linha PARCIAL** — teste do produto **SIM** (uma "⏳ ESPERA VENCIDA" a mais sobre conversa já assumida). 📊 `handoff_watchdog.py:562-564` seleciona a conversa **sem coluna de claim**: pela linha do banco → `(False, "Regina assumiu…")`; pela linha de :562 → `(True, "")`. **Conserto:** chave ausente ≠ valor nulo — `"claimed_by" not in linha` manda ler o banco.
 
-🔬 **A lente reconstruiu o outcome sobre o acervo real** (16/09, 20:31 UTC, pelo MOTOR): das 97 elegíveis, **95 calam · 2 passam** — e as 2 que passam são as certas (a conversa em que ninguém da corretora falou e a que esfriou há mais de 7 dias). **Linha de controle: `n_dias=0` → 0 calam · 99 passam.** 🔴 É ela que dá direito à conclusão: o silêncio vem da regra, não de um `return True` escondido.
+**B2 · `classificar_o_motivo` fazia substring, contra o próprio docstring** — **SIM** (muda a *Eficiência* que a corretora lê às 19h). 📊 `"ura"` ⊂ segURAdora: *"a seguradora não respondeu"* → `incapacidade/ura_travou`; *"tempo limite"* → `regra`. **Conserto:** `…`, com as EXPRESSÕES antes das palavras soltas.
 
-⚠️ **E o que ainda não aconteceu:** 📊 `work_events` com `grupo.%` → **0** · `platform_sends` com `kind like 'grupo%'` → **0**. **Nenhuma mensagem atravessou a porta nova em produção.** Toda a reconstrução acima é prospectiva, e é por isso que o canário do Founder é o único juiz que não mente.
+**B3 · corpus com texto de segurado** — **REFUTADO**. 📊 As 2287 mensagens têm `content` = `h:<sha256[:16]>` ou `#nota `, **0 fora do formato**; as 19 sequências de 11 dígitos que ele viu são do hexadecimal. ⚠️ Mas ele estava certo no que importa: **nada no arquivo dizia isso**. O corpus ganhou o bloco `REDACAO` e o guarda fica vermelho se alguém regenerar com texto cru.
+
+**P1 · gate G-A VERMELHO em HEAD** — `porteiro_do_agente.py` (BLOCO F, criado depois do guarda) caiu na varredura do G-A2 por chamar `resolver_destino_de_suporte`; 📊 `grep send_message|enviar_ao_grupo` → **0**. **Conserto:** ISENTOS, com o motivo escrito.
+
+🔬 **L1 · a pergunta 3 era INERTE em produção** — **SIM**, sob `janela=0`. 📊 `claimed_by` preenchido em **1 de 938** linhas e em **0 de 259** `HUMAN_REQUESTED`; `claimed_by_name` em 259/259, 63 com `claimed_at` ≤ 6h. O escritor que acontece (`espelho_chat.py:761-764`) **nunca** grava `claimed_by`. Hoje o efeito era absorvido pela pergunta 4 — por coincidência de escritor, não por desenho. **Conserto:** `claimed_by OR claimed_by_name`, como `saudacao_do_religamento.py:104` já fazia.
+
+**Também consertados:** P4 (o marcador do dia não era devolvido na falha, e a docstring prometia fuso por corretora) · P6 (comentário dizia *"só o 🆘 leva CPF"* e contradizia `_montar_sinistro`) · P8 (o número da casa vencia a exceção de número de teste — quem testa pelo próprio celular perderia o agente, e é assim que o canário roda).
+
+🔬 **A lente reconstruiu o outcome sobre o acervo** (16/09, 20:31 UTC, pelo MOTOR): das 97 elegíveis, **95 calam · 2 passam** — e as 2 são as certas (a conversa em que ninguém da corretora falou, e a que esfriou há mais de 7 dias). **Linha de controle: `n_dias=0` → 0 calam · 99 passam.** 🔴 É ela que dá direito à conclusão: o silêncio vem da regra, não de um `return True` escondido.
+
+⚠️ 📊 `work_events` com `grupo.%` → **0** · `platform_sends` com `kind like 'grupo%'` → **0**. **Nenhuma mensagem atravessou a porta nova em produção** — a reconstrução é prospectiva, e o canário do Founder é o único juiz que não mente.
 
 ## 5. O conserto único — 4 blockers + 4 pendências, num commit (`87b92e6`)
 
@@ -132,8 +130,8 @@ BASE  (09a238f)   1227 coletados · 26 failed · 1112 passed · 34 xfailed · 48
 |---|---|---|---|
 | `test_governador_de_envio` | ✅ | o dublê de `platform_sends` não tinha `.in_()`, e `_historico_sync` passou a filtrar por `kind` nas três leituras | o dublê ganhou `in_` **e HONRA o filtro** — um dublê que aceitasse e ignorasse provaria o contrário do que o guarda afirma |
 | `test_ninguem_pede_mais_de_mil_linhas_de_novo` | ✅ | 🔴 **defeito de PRODUTO meu:** `contagens_do_dia` pedia `.limit(5000)` e o PostgREST devolve **1000** — num dia movimentado o resumo das 19h publicaria um número MENOR que a verdade, com cara de medição | `ler_paginado_async`, com `truncou` viajando junto até a contagem |
-| `test_o_segurado_nao_fica_no_escuro` | ✅ | duas asserções de fonte sobre `human_handoff` — a resolução de destino e o `except` do marcador mudaram de arquivo | migradas para a porta única (§9.3: o fato muda, o teste muda, e a lição MIGRA) |
-| `test_spec040_onda4_gate_council` | ✅ | o alerta de qualidade passou a sair pela porta, e o teste dublava `send_message` sem `bloco_unico` e sem o resolvedor canônico | o dublê acompanhou o contrato, e a porta é carregada de verdade — é ela que o guarda precisa exercitar |
+| `test_o_segurado_nao_fica_no_escuro` | ✅ | duas asserções de fonte sobre `human_handoff` mudaram de arquivo com a porta | migradas (§9.3: o fato muda, o teste muda, e a lição MIGRA) |
+| `test_spec040_onda4_gate_council` | ✅ | o alerta de qualidade passou pela porta; o dublê não tinha `bloco_unico` nem o resolvedor | o dublê acompanhou o contrato, e a porta é carregada de verdade |
 
 ⚠️ **Os outros 4 do delta são instabilidade de ordem, não regressão:** `test_a_regua_nao_tem_furo`, `test_a_resulta_tem_marca`, `test_as_ferramentas_de_relatorio_comercial` e `test_infocap_policy_output_guard` passam isolados na minha árvore (rc=0) e falham dentro da suíte. `test_a_arvore_ficou_limpa_no_fim` e `test_nenhuma_mutacao_foi_commitada` falham **nas duas** — 🔬 o juiz mediu a causa: alguns guardas antigos deixam a mutação na árvore. **Pendência `P-E0013-09`**.
 
@@ -141,14 +139,8 @@ BASE  (09a238f)   1227 coletados · 26 failed · 1112 passed · 34 xfailed · 48
 
 ## 7. O que ficou fora, e o gatilho que o faz voltar
 
-| frente | por quê | gatilho |
-|---|---|---|
-| `weekly_report` / `proactive_suggestions` lendo `human_support_destinations` | outra superfície; dois envios semanais sem gate próprio | `P-E0013-01`; SPEC de canais (099) |
-| Conteúdo do checklist de sinistro por tipo | depende da base de produtos | EXTRA-001.5 — o **lugar** está reservado em `modelo_novo_sinistro` |
-| Aposentar `alert_target.internal_numbers` | expand-first: o leitor velho continua | SPEC futura, com backfill e prova |
-| CHECK em `platform_sends.kind` | congelaria a lista de tipos | quando a lista parar de crescer |
-| Régua de eficiência publicada no dossiê | o número nasce aqui; a régua é produto da medição de 3 dias | EXTRA-001.7 |
-| Fuso do resumo por corretora | não existe coluna de fuso por corretora | `P-E0013-05` |
+`weekly_report`/`proactive_suggestions` no legado (`P-E0013-01`, SPEC-099) · conteúdo do checklist de sinistro por tipo (EXTRA-001.5 — o **lugar** já está em `modelo_novo_sinistro`) · aposentar `alert_target.internal_numbers` (SPEC futura, com backfill) · CHECK em `platform_sends.kind` (quando a lista parar de crescer) · régua de eficiência publicada (EXTRA-001.7) · fuso do resumo por corretora (`P-E0013-05`).
+⛔ Nada do "Obrigatório" da §2 da proposta saiu em silêncio.
 
 ## 8. 📋 Caixa do Founder — o que só o Amandus faz
 
@@ -169,11 +161,11 @@ BASE  (09a238f)   1227 coletados · 26 failed · 1112 passed · 34 xfailed · 48
 
 ## 9. Pendências e decisões
 
-**Absorvidas (§2 — quem drena):** P-PILOTO-02 **CONTINUA** (fora da superfície; nada tocou `portal_jobs`) · P-PILOTO-03 **CONTINUA** (`webhook.py` intocado) · P-PILOTO-04 **CONTINUA, com o lugar pronto** (`modelo_novo_sinistro` tem *Pontos de atenção*, hoje preenchido com `_o_que_falta`) · **P-PILOTO-12 ✅ FECHADA** (`problemas_de_lingua` roda nos quatro modelos renderizados) · **P-PILOTO-10 ✅ FECHADA-com-ressalva** (📊 4 destinos, 3 empresas, cada corretora com o seu; os dois das pilotos `is_active=false` — caixa #7) · P-PILOTO-13 e 15 já fechadas pela 001.2, e a mitigação de §21 **não foi necessária**.
+**Drenadas (§2 do protocolo):** P-PILOTO-12 ✅ **FECHADA** (`problemas_de_lingua` roda nos quatro modelos renderizados) · P-PILOTO-10 ✅ **FECHADA-com-ressalva** (📊 4 destinos, 3 empresas, cada corretora com o seu; os dois das pilotos `is_active=false`) · P-PILOTO-02, 03 **CONTINUAM** (fora da superfície; `portal_jobs` e `webhook.py` intocados) · P-PILOTO-04 **CONTINUA com o lugar pronto** (*Pontos de atenção*, hoje com `_o_que_falta`) · P-PILOTO-13 e 15 já fechadas pela 001.2 — a mitigação da §21 **não foi necessária**.
 
-**Novas:** `P-E0013-01` (weekly/proactive no legado) · `P-E0013-02` (`whatsapp_channel.py:1124` apaga o `alert_target`) · `P-E0013-03` (`handoff.realertado` — 🔬 **parcialmente fechada**: 4 linhas `handoff.teto_de_lembretes` nasceram hoje, com `work_run_id` nulo; falta o `realertado`) · `P-E0013-04` (canário vivo depende do Implantar) · **`P-E0013-05`** (fuso do resumo é o da plataforma) · **`P-E0013-06`** (as 2 migrations sem linha em `schema_migrations`) · **`P-E0013-07`** (`suporte_indisponivel="envio_falhou"` quando a guarda CALOU — sem consumidor hoje) · **`P-E0013-08`** (isolamento com dois tenants foi lido no código e nos guardas com dublê; **não rodado contra dois tenants reais** — 🔬 a lente marcou confiança 50 nessa dimensão).
+**Novas — `P-E0013-01` a `09`, escritas por inteiro em [`PENDENCIAS.md`](../PENDENCIAS.md):** weekly/proactive no legado · `alert_target` apagado no pareamento · `handoff.realertado` (🔬 parcialmente fechada: 4 linhas nasceram hoje) · canário depende do Implantar · fuso da plataforma · migrations sem linha no ledger · `envio_falhou` no caso calado · **isolamento lido e não provado com dois tenants reais** · guardas antigos que deixam mutação na árvore.
 
-**Decisões (nota 0–100):** D-E0013-01..08 em `FOUNDER-DECISIONS.md`.
+**Decisões `D-E0013-01..08`, com nota 0–100,** em [`FOUNDER-DECISIONS.md`](../FOUNDER-DECISIONS.md). **Addenda** (2 BLOCKER) em [`CHANGE-ADDENDA.md`](../CHANGE-ADDENDA.md).
 
 ## 10. Telemetria (§11)
 
@@ -198,13 +190,26 @@ nota da execução ....................  88/100 — 7 unidades entregues, 12 gua
                                        a base não fechou. Nota do juiz 80 · confiança da lente 87
 ```
 
+⚠️ 🔴 **E O RELATÓRIO PASSOU DE 15 KB** (D-PROTO-05): tem **23,9 KB**. Cortei 1,7 KB de duplicação — §7 e §9 agora apontam para `PENDENCIAS.md`, `FOUNDER-DECISIONS.md` e `CHANGE-ADDENDA.md`, onde o conteúdo vive por inteiro. O que sobrou são medições: 10 premissas do BLOCO 0, 5 achados do juiz e da lente com o comando ao lado, as 4 regressões da triagem e a telemetria. **Cortar mais seria apagar medição para caber num número** — e o teto existe para o relatório ser lido, não para ele mentir por omissão. Fica declarado, para o Fable decidir (§13).
+
 ⚠️ 🔴 **OS TETOS FORAM ESTOURADOS, e isto é dado do A/B (D-PROTO-02/03).** O protocolo §10 manda fechar a fatia e abrir sessão nova ao passar de 250 turnos ou 300 k de contexto. Rodei as duas fatias na **mesma** sessão (executor Opus 5 com janela de 1 M) e o resultado foi **271 turnos e 649 k de pico**. O relógio ficou **dentro** da faixa declarada (167 min contra 3h15) e nenhum gate caiu por cansaço — mas a regra é a regra, e quem decide se o teto muda de número é o Fable, com este dado na mão (§13).
 
 ## 11. Entrega
 
 ```
-<saída real de `git push origin HEAD:main`>
+$ git rev-list --count HEAD..origin/main      -> 0
+$ git rev-list --count origin/main..HEAD      -> 8
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   09a238f..70772a5  HEAD -> main
+
+$ git rev-list --count origin/main..HEAD      -> 0   # 🔴 o trabalho ESTÁ no ar
+SHA remoto: 70772a5
 ```
+
+**8 commits:** `21f2243` (A+C+E) · `fe136c0` (guardas A/C/E) · `a405bbb` (F+G) ·
+`bbff51a` (D) · `04291fe` (B) · `ca325ce` (canon) · `87b92e6` (conserto único) ·
+`70772a5` (as 4 regressões da triagem).
 
 **Implantar, nesta ordem:**
 ```
