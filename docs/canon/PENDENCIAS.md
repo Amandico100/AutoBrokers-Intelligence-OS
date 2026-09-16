@@ -10761,3 +10761,15 @@ Decisão D-E0011-07 (mesmo arquivo 95 × módulo 40, por "nenhum diretório novo
 
 ## P-E0011-OPCOES-EM-TEXTO-SOBRE-DICT · `opcoes_em_texto(matches)` ainda imprime `policy_status` cru quando recebe dict
 📊 14/09: a função aceita `ApoliceNaLista` (situação por DATA) e `dict` (`policy_status` do fornecedor). Os chamadores do caminho de apólice já preferem `opcoes_vigentes_em_texto`, mas a função continua capaz de imprimir "ativo" numa vencida. **Destrava:** 🤖 exigir `ApoliceNaLista` e classificar na entrada. **Dono:** 🤖. **Custo de esquecer:** o próximo chamador reintroduz o defeito de 09–11/09 sem tocar em nada que os guardas olhem.
+
+## P-E0013-01 · `weekly_report` e `proactive_suggestions` ignoram `human_support_destinations`
+📊 16/09: `weekly_report.py:91` e `proactive_suggestions.py:183` leem só o legado `acionamento_profile.suporte_humano_whatsapp`; os outros 9 pontos de envio ao grupo passaram a sair pela porta única da EXTRA-001.3. **Destrava:** apontar os dois para `resolver_destino_de_suporte` (a porta já aceita `conversation_id=""`). **Dono:** 🤖. **Custo de esquecer:** a corretora que só cadastrou pela tela nova não recebe os dois envios semanais — e ninguém descobre, porque eles falham calados.
+
+## P-E0013-02 · `whatsapp_channel.py:1124` apaga o `alert_target` inteiro
+📊 16/09: `update({"alert_target": target})` com `{"number": …}` sobrescreve o objeto e leva junto `observer_scope`, `observer_exclusions` e `internal_numbers`. Hoje o custo é zero (📊 0 integrações com `internal_numbers` preenchido), e por isso a EXTRA-001.3 pôde criar a tabela nova sem backfill. **Destrava:** merge em vez de sobrescrita. **Dono:** 🤖. **Custo de esquecer:** a corretora que cadastrar exclusões pelo caminho velho as perde no próximo pareamento.
+
+## P-E0013-03 · `handoff.realertado` ainda não tem prova de que nasce
+📊 Até 16/09 `work_events` tinha **0 linhas** com `event_type like 'handoff%'` — e a causa não era só "o re-alerta nunca disparou": `work_run_id` era `NOT NULL` sem default, então `_anotar_no_diario` levantava `NotNullViolation` dentro de um `except` que engolia. A migration `20260916_02` removeu a trava. **Destrava:** o canário, com uma conversa parada e o vigia rodando — a primeira linha que nascer fecha esta pendência. **Dono:** 🤖. **Custo de esquecer:** o resumo das 19h continua contando sobre um diário que ninguém provou que escreve.
+
+## P-E0013-04 · o canário vivo da EXTRA-001.3 depende do Implantar
+Os 8 casos da §14 da proposta (incluindo o **par de controle**: conversa sem humano tem de CHEGAR) exigem o grupo de canário no tenant de teste e o deploy de `smith-api` + `web`. **Destrava:** 🧑 Founder. **Custo de esquecer:** "0 mensagens ao grupo" seria lido como "a guarda funcionou" — e num sistema com `agent_enabled` false em 5 de 5 isso prova nada (CLAUDE.md §9.3).

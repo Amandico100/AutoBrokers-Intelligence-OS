@@ -3913,3 +3913,15 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 
 ## 14/09/2026 · SPEC-EXTRA-001.2 · a pessoa assina sem emoji no dossiê — VALIOSA
 **Problema:** `🤖 IA` e `👤 {nome}` — dois emojis apagavam a distinção. **Consequência:** `🤖 {agent_name}` no agente; a pessoa pelo nome. **Autorização:** proposta §10.5.
+
+## 16/09/2026 · SPEC-EXTRA-001.3 · segunda migration: `work_events.work_run_id` deixa de ser obrigatório — BLOCKER
+**Problema:** a §13 da proposta previa UMA migration. 📊 Medido antes de codar: um `insert` em `work_events` sem `work_run_id` levanta `NotNullViolation` — e `_anotar_no_diario` (`handoff_watchdog.py:446`) nunca passou a coluna, engolindo a exceção. **Evidência:** `insert ... values (<empresa>,'teste.b0',…)` → `NotNullViolation`, em transação revertida; `select count(*) from work_events where event_type like 'handoff%'` → 0. **Consequência:** sem a migration, o outcome *"todo envio ao grupo fica contado"* é impossível por construção e o resumo das 19h leria uma tabela que ninguém consegue preencher. `20260916_02`, expand-first, com ROLLBACK escrito. **Autorização:** D-E0013-01 (nota 88 × diário em `agent_activities` 55 × `work_run` sintético 35).
+
+## 16/09/2026 · SPEC-EXTRA-001.3 · o aviso "o protocolo NÃO chegou ao segurado" saía calado — BLOCKER
+**Problema:** `dispatch_router._support_alert_seguro` lia `destino.get("number")`, chave que `resolver_destino_de_suporte` nunca devolve (`{destino, fonte, recusa}`) — o `if not alvo: return` fazia o aviso sair calado SEMPRE. **Consequência:** o caminho passou pela porta única e as três linhas morreram junto. **Autorização:** achado do BLOCO 0; conserto dentro da unidade A.
+
+## 16/09/2026 · SPEC-EXTRA-001.3 · a marca da captura interna vai em `source`, sem migration — VALIOSA
+**Problema:** o 4º efeito (§6.4) pede captura MARCADA e `observed_events` não tem coluna para isso. **Consequência:** `source = "live_interno"` — a coluna já existe e já diz DE ONDE veio a linha; `history_ingest.py:302` filtra `source='live'`, então o evento interno também para de alimentar o histórico de atendimento. **Autorização:** D-E0013-02 (80 × coluna nova 70 × continuar descartando 20).
+
+## 16/09/2026 · SPEC-EXTRA-001.3 · o casador de telefone ganha uma porta em TypeScript — ESSENCIAL
+**Problema:** o 2º efeito (fora da Fila) roda em `projetarCasos`, que é Node e não pode chamar Python a cada abertura do painel. **Consequência:** `lib/atendimento/numeros-da-casa.ts` é uma PORTA declarada da autoridade Python, e o guarda `G-B3` roda os dois casadores sobre a MESMA tabela de 9 casos exigindo resultado idêntico (CLAUDE.md §9.4). Sem `node`, o guarda REPROVA a dimensão em vez de fingir que mediu. **Autorização:** D-E0013-03 (80 × chamar Python na Fila 30 × duplicar sem guarda 40).
