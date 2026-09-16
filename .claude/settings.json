@@ -26,7 +26,8 @@
     "  · hook PreToolUse[Agent] (.claude/hooks/teto-de-agentes.py): bloqueia o 5º agente da",
     "    sessão. O executor tem direito a juiz + lente + confirmação + investigador. O 5º é",
     "    o sintoma de 'estourou, vou chamar mais gente'. AAA_FAST_TETO_DE_AGENTES sobe o teto.",
-    "  · o comando usa $CLAUDE_PROJECT_DIR: o cwd da sessão muda (cd backend) e um caminho relativo quebrava o hook — e hook quebrado BLOQUEIA o Agent."
+    "  · o comando usa $CLAUDE_PROJECT_DIR: o cwd da sessão muda (cd backend) e um caminho relativo quebrava o hook — e hook quebrado BLOQUEIA o Agent.",
+    "  · hook PreToolUse[Edit|Write] (.claude/hooks/teto-de-contexto.py): acima de 300 k de contexto, AVISA a cada edição para fechar a fatia (não bloqueia). Na EXTRA-001.3 a regra escrita não bastou: 649 k na mesma sessão."
   ],
   "subagentPromptCacheTtl": "1h",
   "env": {
@@ -41,6 +42,16 @@
           {
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/teto-de-agentes.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/teto-de-contexto.py\"",
             "timeout": 10
           }
         ]

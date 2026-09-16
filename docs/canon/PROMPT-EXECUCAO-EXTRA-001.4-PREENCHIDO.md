@@ -110,10 +110,15 @@ GATILHOS      lente do dado: SIM (o 0-bis produz a linha de base sobre o acervo;
               a régua do corredor com `backend/scripts/medir_rota.py --com-espelho` e confere que o número da SPEC bate) ·
               red team: NÃO · consulta Fable antes: NÃO · confirmação pós-conserto: SIM se o juiz achar blocker em envio
 FAIXA         fatia 1 ≤ 1h15 · fatia 2 ≤ 1h15 · juiz + lente + conserto + entrega ≤ 45 min  (tetos: 250 turnos e 300 k por fatia)
+🔴 FATIA 2 EM SESSÃO NOVA, SEM EXCEÇÃO (D-PROTO-07): ao fechar a fatia 1 (commit + handoff §12 do relatório), PARE e
+              diga ao Founder "fatia 1 fechada, abra a sessão da fatia 2". 📊 Na 001.3 as duas fatias na mesma sessão
+              chegaram a 726 k de contexto e a segunda custou o dobro. O hook do harness avisa acima de 300 k.
+              A suíte inteira roda UMA vez, depois do conserto, sozinha (não em paralelo com o juiz: 57 min contra 24)
 BASE          <hash do origin/main — preencha no preflight>
-DEPENDE DE    — (paralela à 001.3). Colisão declarada e resolvida na proposta §18: a guarda única `o_grupo_pode_saber` é
-              UMA só; a 001.3 executa primeiro e a CRIA — a 001.4 a CHAMA e acrescenta a sua causa. Se a 001.3 ainda não
-              estiver na main, registre no card e crie a guarda você (a 001.3 então a chamará)
+DEPENDE DE    EXTRA-001.3 está na main (`c82bfe8`, 16/09). A guarda única EXISTE: `backend/app/services/
+              o_grupo_so_o_que_importa.py::o_grupo_pode_saber(db, *, company_id, conversation_id, ...)`. Esta SPEC a
+              CHAMA e acrescenta a sua causa (proposta §18) — nunca cria outra. Os 11 pontos de envio já passam pela
+              porta única; o que você entregar de envio passa por ela também
 PENDÊNCIAS    P-PILOTO-05 · P-PILOTO-06 (absorvidas)
 SÓ O FOUNDER  parear número de teste e abrir a conversa com a URA (§1.5); Implantar; validação com Saionara e Regina (§13)
 A/B           experimento B: Opus 5 max + juiz Fable. Ao fim, cole as 8 linhas do script no relatório e avise o Founder
