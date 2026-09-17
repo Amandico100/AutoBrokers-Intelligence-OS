@@ -10785,6 +10785,12 @@ Os 8 casos da §14 da proposta (incluindo o **par de controle**: conversa sem hu
 ## P-E0013-07 · `suporte_indisponivel="envio_falhou"` quando a guarda CALOU de propósito
 📊 `dispatch_router.py:3336-3340`: o `_enviar` da porta devolve `False` também quando a guarda calou, e a sessão grava `envio_falhou` — a tela de acionamentos travados diria "falha de envio" para um caso em que a equipe JÁ está na conversa. Hoje sem consumidor no painel (grep em `app/dashboard` → 0). **Destrava:** estado próprio `calado`. **Dono:** 🤖.
 
+## P-E0014-20 · `fronteira_em` é escrito pelo ANÚNCIO do robô, então o "um instante" ainda sai para a FILA
+📊 17/09 (juiz fresco, P2): `uma_pessoa_da_seguradora_esta_falando` lê `humano_falou_em` **ou** `fronteira_em`; e `fronteira_em` é gravado pela TRANSFERÊNCIA ("vou transferir seu atendimento"), que quem diz é o robô — a pessoa ainda não chegou. Resultado: o holding sai para a fila. **Dano baixo** (a fila tolera texto; o dano que a regra evita é o texto solto num MENU, e menu não tem `fronteira_em`), e por isso ficou registrado em vez de consertado no acabamento. **Destrava:** decidir se a fila conta como "pessoa a caminho" — se não, o critério fica só `humano_falou_em`. **Dono:** 🤖. **Custo de esquecer:** uma linha nossa numa fila que ninguém lê.
+
+## P-E0014-21 · o guarda de dois tenants prova com ids reais, mas a LINHA vem de dublê
+📊 17/09: `company_internal_numbers` tem **0 linhas** em produção, então `test_os_numeros_da_casa_nao_atravessam_corretoras` compara dois `company_id` REAIS lidos de `companies` mas com a linha de X vinda de um dublê de banco (o teste declara o limite no cabeçalho). **Destrava:** o canário, com um número cadastrado de verdade numa corretora. **Dono:** 🤖 + 🧑 (o cadastro é do Founder). **Custo de esquecer:** a prova continua sendo do CÓDIGO, não do dado.
+
 ## P-E0014-18 · a apólice não viaja na sessão de acionamento
 📊 17/09: `new_dispatch_session` recebe só `slots`; `policy_facts` e `PolicyDataProvider` não escrevem nada na sessão. O `o_cerebro_ja_sabe` (acabamento 001.3/001.4) lê a apólice **pelo que ela já deixou na ficha** (`origem_das_teclas[...] == "apolice"`), e por isso a fonte `apolice` pode vir vazia. **Destrava:** levar os fatos da apólice localizada para a sessão (ou um leitor por `case_id`), sem segunda verdade. **Dono:** 🤖. **Custo de esquecer:** o Cérebro pergunta ao segurado o que a apólice já diz.
 

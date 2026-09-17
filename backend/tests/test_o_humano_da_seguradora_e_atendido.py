@@ -540,6 +540,9 @@ async def _cerebro_com_llm_falso(company_id, session, *, slot, rotulo, tela, llm
 
 R.o_cerebro_ja_sabe = _cerebro_com_llm_falso
 # a conversa do segurado, do banco (SELECT com `company_id` — CLAUDE.md §7)
+from app.services.o_fim_do_atendimento import _variantes_do_telefone  # noqa: E402
+
+_VARIANTES_DO_SEGURADO = sorted(_variantes_do_telefone("5548988887777"))
 CONVERSA = ["Boa tarde, preciso de um encanador",
             "o ponto de referencia e em frente a padaria Sao Jorge",
             "obrigado"]
@@ -555,11 +558,20 @@ class _ConsultaLendo(_Consulta):
         self.eqs[campo] = valor
         return self
 
+    def in_(self, campo, valores):
+        self.eqs["_in_" + campo] = list(valores)
+        return self
+
     async def execute(self):
         if self.tabela == "conversations":
             FILTROS.append(dict(self.eqs))
+            # 🔴 P1: a conversa só aparece se o telefone for procurado em TODAS
+            #    as formas — aqui ela está gravada com o LID de 15 dígitos.
+            formas = set(self.eqs.get("_in_user_phone") or [])
+            achou = bool(formas & set(_VARIANTES_DO_SEGURADO))
             return types.SimpleNamespace(
-                data=[{"id": "conv-do-segurado"}] if self.eqs.get("company_id") == EMPRESA else [])
+                data=[{"id": "conv-do-segurado"}]
+                if (self.eqs.get("company_id") == EMPRESA and achou) else [])
         if self.tabela == "messages":
             return types.SimpleNamespace(
                 data=[{"role": "user", "content": t} for t in reversed(CONVERSA)])
@@ -723,6 +735,196 @@ checar(WA == [(URA, "em frente a padaria")] and len(_tardio) == 1
        "🔴 CONTROLE do par: com o acionamento de pé, a resposta tardia é LEVADA à "
        "seguradora e o rastro diz `retomada=levada`", f"{WA} {_tardio}"[:160])
 R.o_cerebro_ja_sabe = _real_cerebro
+
+print()
+print("=" * 74)
+print("[S1-A] O JUIZ B1 — a atendente assume ENQUANTO o Cérebro pensa")
+print("=" * 74)
+# 📊 O juiz mediu: `o_cerebro_ja_sabe` espera até 20 s pelo modelo; sem reler o
+#    Redis, o roteador mandava o valor à URA por cima dela E regravava a sessão
+#    velha, apagando a assunção (`state=ura, humano_assumiu=False`).
+REDIS.d.clear()
+ENVIADAS.clear()
+WA.clear()
+LLM_ATUAL[0] = _LLM("em frente a padaria Sao Jorge")
+_real_fontes = R.fontes_do_que_ja_existe
+
+
+async def _cerebro_lento_com_ela_assumindo(company_id, session, *, slot, rotulo, tela, llm=None):
+    """O modelo demora; NO MEIO disso a atendente fala DUAS vezes."""
+    await R.note_manual_outbound(EMPRESA, URA, "1", foi_humano=True)
+    await R.note_manual_outbound(EMPRESA, URA, "deixa comigo", foi_humano=True)
+    return await _real_cerebro(company_id, session, slot=slot, rotulo=rotulo,
+                               tela=tela, llm=LLM_ATUAL[0])
+
+
+R.o_cerebro_ja_sabe = _cerebro_lento_com_ela_assumindo
+s = sessao("ura")
+s["slots"].pop(SLOT, None)
+rodar(R.save_active_dispatch(EMPRESA, URA, s))
+rodar_inbound(PEDE, provider=_nao_sei)
+s = rodar(R.load_active_dispatch(EMPRESA, URA))
+checar(D.humano_assumiu(s) and s["state"] == "needs_human",
+       "🔴 B1: a sessão gravada CONTINUA em `humano_assumiu` — a gravação stale "
+       "não apagou a assunção dela", f"{s.get('state')}/{s.get('reason')}")
+checar(not any(x == "em frente a padaria Sao Jorge" for x in ENVIADAS)
+       and s["slots"].get(SLOT) is None,
+       "🔴 B1: o valor do Cérebro NÃO foi à URA por cima dela", str(ENVIADAS)[:120])
+checar(not any(isinstance(x, tuple) for x in ENVIADAS),
+       "🔴 B1: e o segurado também não foi incomodado")
+R.o_cerebro_ja_sabe = _cerebro_com_llm_falso
+# CONTROLE do par: sem ela entrando, o MESMO caminho responde à URA.
+REDIS.d.clear()
+ENVIADAS.clear()
+LLM_ATUAL[0] = _LLM("em frente a padaria Sao Jorge")
+s = _rodar_d3("ura")
+checar("em frente a padaria Sao Jorge" in ENVIADAS and not D.humano_assumiu(s),
+       "🔴 CONTROLE do par: sem a atendente, o Cérebro responde a URA normalmente",
+       str(ENVIADAS)[:120])
+
+print()
+print("=" * 74)
+print("[S2] O JUIZ B2 — a prova de origem casa TOKEN INTEIRO, numa LINHA SÓ")
+print("=" * 74)
+# 📊 O juiz mediu: com `substring`, "10" passava dentro de `endereco_numero: 100`,
+#    "20"/"21" dentro de "2021", "35" dentro de "350", "999" dentro do telefone,
+#    e "casa as" colando o fim de um campo ao começo do outro.
+FONTES_DO_JUIZ = [("ficha", "endereco_numero: 100\nproblema_descricao: vazamento na casa\n"
+                            "as_horas: 14"),
+                  ("conversa", "moro aqui desde 2021\no condominio tem 350 unidades\n"
+                               "meu bloco e o numero 3063")]
+for fragmento in ("10", "20", "21", "35", "999", "casa as"):
+    checar(R.valor_tem_origem(fragmento, FONTES_DO_JUIZ) is None,
+           f"🔴 B2: {fragmento!r} é RECUSADO (não é token inteiro de uma linha só)",
+           str(R.valor_tem_origem(fragmento, FONTES_DO_JUIZ)))
+checar(R.valor_tem_origem("3063", FONTES_DO_JUIZ) == "conversa",
+       "🔴 CONTROLE do par: '3063', que É um token de 'numero 3063', é ACEITO",
+       str(R.valor_tem_origem("3063", FONTES_DO_JUIZ)))
+checar(R.valor_tem_origem("100", FONTES_DO_JUIZ) == "ficha"
+       and R.valor_tem_origem("vazamento na casa", FONTES_DO_JUIZ) == "ficha",
+       "🔴 CONTROLE: o valor inteiro e a frase de UMA linha continuam aceitos")
+# e os campos que nunca são resposta de URA saem da fonte
+_s = sessao("ura")
+_s["slots"].update({"titular_cpf": "11122233344", "telefone_contato": "48999998888",
+                    "endereco_numero": "100"})
+_fontes = rodar(_real_fontes(EMPRESA, _s))
+_texto_da_ficha = "\n".join(t for o, t in _fontes if o == "ficha")
+checar("11122233344" not in _texto_da_ficha and "48999998888" not in _texto_da_ficha
+       and "endereco_numero: 100" in _texto_da_ficha,
+       "🔴 B2: CPF e telefone saem das FONTES; o número do endereço fica",
+       _texto_da_ficha[:120])
+
+print()
+print("=" * 74)
+print("[S3] O JUIZ B3 — a URA fecha em 103 s, o segurado responde em 150 s")
+print("=" * 74)
+# 📊 O prazo do segurado é 60 × 3 = 180 s; a Allianz fecha por inatividade em
+#    ≈ 103 s. O caminho NORMAL é a URA fechar ANTES da resposta.
+_s = sessao("human_phase", esperando_do_segurado={
+    "slot": SLOT, "rotulo": "o ponto de referência", "client_phone": "5548988887777",
+    "ate": (AGORA() + timedelta(seconds=77)).isoformat(), "holdings": 0},
+    perguntado_ao_segurado=[SLOT])
+_s = D.handle_insurer_message(_s, FALTA_DE_CONTATO)
+checar(_s["reason"] == "insurer_closed"
+       and (_s.get("espera_vencida") or {}).get("slot") == SLOT
+       and not _s.get("esperando_do_segurado"),
+       "🔴 B3: a URA fechou com pergunta no ar → a espera vira `espera_vencida` "
+       "(antes ela era apagada e a resposta ficava órfã)", str(_s.get("espera_vencida"))[:90])
+# a retomada leva o que não pode se perder
+REDIS.d.clear()
+ENVIADAS.clear()
+WA.clear()
+_s["retry_count"] = 0
+_s.pop("captured", None)
+rodar(R.save_active_dispatch(EMPRESA, URA, _s))
+_novas = []
+_real_start = R.start_live_dispatch
+
+
+async def _start_falso(**kw):
+    nova = sessao("ura")
+    nova["slots"] = dict(kw.get("slots") or {})
+    nova["slots"].pop(SLOT, None)
+    _novas.append(nova)
+    return {"ok": True, "session": nova}
+
+
+R.start_live_dispatch = _start_falso
+rodar_inbound(PESSOA)      # uma pessoa fala → o roteador tenta a retomada
+R.start_live_dispatch = _real_start
+_nova = rodar(R.load_active_dispatch(EMPRESA, URA))
+checar(bool(_novas) and SLOT in (_nova.get("perguntado_ao_segurado") or []),
+       "🔴 B3: a URA reaberta já sabe que esse dado FOI perguntado — o segurado "
+       "nunca recebe a mesma pergunta duas vezes",
+       str(_nova.get("perguntado_ao_segurado")))
+checar((_nova.get("espera_vencida") or {}).get("slot") == SLOT
+       and (_nova.get("espera_vencida") or {}).get("de_acionamento_anterior"),
+       "🔴 B3: e a espera viaja com ela, marcada como de um acionamento anterior",
+       str(_nova.get("espera_vencida"))[:90])
+# a resposta que chega 50 s depois entra no SLOT da retomada
+WA.clear()
+EVENTOS.clear()
+rodar(R._indexar_pergunta(EMPRESA, "5548988887777", URA, 600))
+checar(rodar(R.responder_pergunta_do_acionamento(EMPRESA, "5548988887777",
+                                                 "em frente a padaria Sao Jorge",
+                                                 send_to_client=cliente)),
+       "🔴 B3: a resposta tardia é reconhecida pela sessão REABERTA")
+_nova = rodar(R.load_active_dispatch(EMPRESA, URA))
+_rastro_tardio = [e for e in EVENTOS if e["event_type"] == "pergunta_ao_segurado.respondida_tarde"]
+checar(_nova["slots"].get(SLOT) == "em frente a padaria Sao Jorge" and WA == [],
+       "🔴 B3: o dado entra no SLOT e NÃO é jogado numa tela que não o pediu",
+       f"{_nova['slots'].get(SLOT)!r} {WA}")
+checar(len(_rastro_tardio) == 1
+       and _rastro_tardio[0]["payload_redacted"].get("retomada") == "no_slot",
+       "🔴 B3: e o rastro diz qual dos caminhos foi (`retomada=no_slot`)",
+       str(_rastro_tardio)[:140])
+# 🔴 0 PERGUNTAS REPETIDAS: mesmo forçando o gatilho, a pergunta não sai de novo
+ENVIADAS.clear()
+checar(not rodar(R.perguntar_ao_segurado(EMPRESA, _nova, insurer_phone=URA, slot=SLOT,
+                                         rotulo="o ponto de referência",
+                                         send_to_client=cliente, send_to_insurer=ura))
+       and ENVIADAS == [],
+       "🔴 B3: 0 perguntas repetidas — o mesmo slot não se pergunta duas vezes",
+       str(ENVIADAS)[:100])
+
+print()
+print("=" * 74)
+print("[S4] AS PENDÊNCIAS BARATAS — P1 (formas do número) · P3 (fala reentregue)")
+print("=" * 74)
+# P1: 📊 ~100 conversas com LID de 15 dígitos e 66 com 13 ficavam invisíveis
+FILTROS.clear()
+_s = sessao("ura")
+_s["client_phone"] = "5548988887777"
+rodar(_real_fontes(EMPRESA, _s))
+_ins = [f for f in FILTROS if f.get("_in_user_phone")]
+checar(_ins and len(_ins[0]["_in_user_phone"]) > 1,
+       "🔴 P1: a conversa do segurado é buscada por TODAS as formas do número, "
+       "não por uma só", str(_ins)[:140])
+# P3: a MESMA fala entregue 2× pelo canal não vira assunção silenciosa
+REDIS.d.clear()
+s = sessao("ura")
+rodar(R.save_active_dispatch(EMPRESA, URA, s))
+rodar(R.note_manual_outbound(EMPRESA, URA, "1", foi_humano=True, message_id="EVO-1"))
+rodar(R.note_manual_outbound(EMPRESA, URA, "1", foi_humano=True, message_id="EVO-1"))
+s = rodar(R.load_active_dispatch(EMPRESA, URA))
+checar(not D.humano_assumiu(s) and D.pausa_humana_aberta(s),
+       "🔴 P3: a MESMA mensagem reentregue pelo canal NÃO assume o acionamento",
+       f"{s.get('state')}/{s.get('reason')}")
+# 🔴 CONTROLE do par: DUAS falas de verdade (ids distintos) assumem
+rodar(R.note_manual_outbound(EMPRESA, URA, "deixa comigo", foi_humano=True, message_id="EVO-2"))
+s = rodar(R.load_active_dispatch(EMPRESA, URA))
+checar(D.humano_assumiu(s),
+       "🔴 CONTROLE do par: duas falas DIFERENTES continuam assumindo",
+       f"{s.get('state')}/{s.get('reason')}")
+# P5: o Vigia preserva TAMBÉM o motivo de antes
+_velha = sessao("ura")
+_fresca = sessao("needs_human", reason=D.HUMANO_ASSUMIU,
+                 estado_antes_do_humano="needs_human",
+                 motivo_antes_do_humano="sentinela_stall")
+W._preservar_a_atendente(_velha, _fresca)
+checar(_velha.get("motivo_antes_do_humano") == "sentinela_stall",
+       "🔴 P5: o Vigia preserva `motivo_antes_do_humano` — sem ele o atalho AGENTE "
+       "devolvia a sessão travada SEM o motivo", str(_velha.get("motivo_antes_do_humano")))
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")

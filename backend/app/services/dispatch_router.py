@@ -2692,9 +2692,35 @@ async def _start_next_in_queue(
 ASSUMIDO_POR_HUMANO = "assumido_por_humano"
 
 
+#: 🔄 Quanto tempo a mesma fala manual continua sendo "a mesma" (P3).
+_JANELA_DA_FALA_REPETIDA_S = 15 * 60
+_CHAVE_DA_FALA = "fala_manual:{empresa}:{fone}:{msg}"
+
+
+async def _fala_inedita(company_id: str, insurer_phone: str, message_id: str) -> bool:
+    """Esta fala manual é NOVA? ⚠️ Redis mudo devolve `True`: sem conseguir ler,
+    o comportamento é o de sempre — bloquear por falha de infra seria calar a
+    atendente de verdade."""
+    chave = _CHAVE_DA_FALA.format(empresa=str(company_id or ""),
+                                  fone=_digits(insurer_phone),
+                                  msg=str(message_id)[:80])
+    try:
+        redis = await _redis()
+        if redis is None:
+            if chave in _memory_store:
+                return False
+            _memory_store[chave] = "1"
+            return True
+        return bool(await redis.set(chave, "1", ex=_JANELA_DA_FALA_REPETIDA_S, nx=True))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[MANUAL] dedupe da fala não conferido (%s)", type(e).__name__)
+        return True
+
+
 async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
                                *, canal: str = "whatsapp",
-                               foi_humano: bool = True) -> bool:
+                               foi_humano: bool = True,
+                               message_id: str = "") -> bool:
     """Uma pessoa da corretora falou com a seguradora — e agora o produto SABE.
 
     Registra no transcript a mensagem MANUAL (humano clicou/digitou direto na
@@ -2761,6 +2787,17 @@ async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
         # O espelho continua completo — era o que a função já fazia bem. O que
         # não acontece é a assunção: ninguém assumiu coisa nenhuma.
         await save_active_dispatch(company_id, insurer_phone, session)
+        return True
+
+    # 🔴 A MESMA FALA ENTREGUE DUAS VEZES NÃO É A SEGUNDA FALA — juiz, P3 (17/09).
+    #
+    # 📊 A Evolution NÃO deduplica por `messageId` (só a Z-API o faz,
+    # `webhook.py:1938`). Com a regra nova, uma reentrega do webhook faria a
+    # atendente "falar duas vezes" sozinha — e o robô sairia do acionamento em
+    # silêncio, sem que ninguém tivesse pedido. ⚠️ Mesma trava do inbound: Redis
+    # `SET NX` com TTL curto; Redis mudo NÃO bloqueia (o de sempre acontece).
+    if message_id and not await _fala_inedita(company_id, insurer_phone, message_id):
+        logger.info("[MANUAL] a mesma fala chegou de novo pelo canal — ignorada")
         return True
 
     # (1) A MARCA. Ela viaja na sessão até o próximo checkpoint, e é o que impede
@@ -3190,19 +3227,50 @@ def _chave_de_origem(texto: Any) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", _norm(texto)).split())
 
 
+#: 🔴 O que NUNCA é resposta de uma tela de URA, e por isso não vale como fonte.
+#: A URA pergunta CPF e telefone com passo mapeado (`responder_da_ficha` os
+#: responde antes de o Cérebro existir). Deixá-los na fonte só cria dígito para
+#: um valor inventado casar por acaso — juiz fresco, B2 (17/09).
+_CAMPOS_FORA_DA_FONTE = ("cpf", "cnpj", "documento", "rg", "telefone", "fone",
+                         "celular", "whatsapp", "senha", "token", "email")
+
+
+def _campo_vale_como_fonte(chave: Any) -> bool:
+    nome = _chave_de_origem(chave).replace(" ", "_")
+    return not any(marca in nome for marca in _CAMPOS_FORA_DA_FONTE)
+
+
 def valor_tem_origem(valor: Any, fontes: List) -> Optional[str]:
     """🔴 A PROVA DE ORIGEM. Devolve a origem (`ficha` · `apolice` · `conversa`)
     em que o valor aparece LITERALMENTE, ou `None`.
 
     ⛔ Sem isto, um modelo que "deduz" o ponto de referência de um endereço
     manda a dedução dele para a seguradora como se fosse o que o segurado disse.
+
+    🔴 **Duas travas, e as duas nasceram de medição** (juiz fresco, B2, 17/09):
+
+    ```
+    TOKEN INTEIRO   `substring` aceitava "10" dentro de `endereco_numero: 100`,
+                    "20"/"21" dentro de "2021", "35" dentro de "350" e "999"
+                    dentro de um telefone. O casamento é por sequência de
+                    TOKENS, então "10" só casa um token "10".
+    UMA LINHA SÓ    a fonte era achatada num texto único, e "casa as" casava
+                    colando o fim de um campo ao começo do outro. Cada linha da
+                    ficha e cada mensagem da conversa é uma ILHA.
+    ```
     """
     alvo = _chave_de_origem(valor)
     if len(alvo) < 2:
         return None
+    pedaco = alvo.split()
+    if not pedaco:
+        return None
+    n = len(pedaco)
     for origem, texto in fontes or ():
-        if alvo in _chave_de_origem(texto):
-            return str(origem)
+        for linha in str(texto or "").splitlines():
+            fonte = _chave_de_origem(linha).split()
+            if any(fonte[i:i + n] == pedaco for i in range(len(fonte) - n + 1)):
+                return str(origem)
     return None
 
 
@@ -3225,6 +3293,8 @@ async def fontes_do_que_ja_existe(company_id: str, session: Dict[str, Any]) -> L
     for chave, valor in itens.items():
         if valor in (None, "", []):
             continue
+        if not _campo_vale_como_fonte(chave):
+            continue    # 🔴 B2: CPF, telefone e documento nunca são resposta de URA
         linha = "%s: %s" % (chave, valor)
         if str(origem_das_teclas.get(chave) or "") == "apolice":
             da_apolice.append(linha)
@@ -3246,6 +3316,12 @@ async def _texto_da_conversa_do_segurado(company_id: str, session: Dict[str, Any
     🔴 ⛔ NÃO é `mirror_conversation_id`: essa é a conversa com a SEGURADORA (o
     Espelho). A do segurado se acha pelo telefone dele, sempre com o
     `company_id` no filtro (CLAUDE.md §7).
+
+    🔴 **E por TODAS as formas do número** — juiz fresco, P1 (17/09). Uma
+    igualdade só (`eq("user_phone", digitos)`) deixava invisíveis 📊 ~100
+    conversas gravadas com LID de 15 dígitos e 66 com 13: o Cérebro não via a
+    conversa, não achava nada, e o segurado recebia a pergunta óbvia. A
+    autoridade das formas é a MESMA de todo o resto (`_variantes_do_telefone`).
     """
     fone = _digits(session.get("client_phone"))
     empresa = str(company_id or "").strip()
@@ -3254,16 +3330,17 @@ async def _texto_da_conversa_do_segurado(company_id: str, session: Dict[str, Any
     try:
         from app.core.database import get_supabase_client
         from app.services.o_fim_do_atendimento import (
-            _cliente, _executar, janela_de_mensagens,
+            _cliente, _executar, _variantes_do_telefone, janela_de_mensagens,
         )
 
         db = get_supabase_client()
+        formas = sorted(_variantes_do_telefone(fone) or {fone})
         achado = await _executar(_cliente(db).table("conversations")
                                  .select("id")
                                  .eq("company_id", empresa)      # 🔴 CLAUDE.md §7
                                  .eq("channel", "whatsapp")
-                                 .eq("user_phone", fone)
-                                 .limit(1))
+                                 .in_("user_phone", formas)
+                                 .limit(5))
         linhas = getattr(achado, "data", None) or []
         if not linhas:
             return ""
@@ -3422,12 +3499,19 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
     """① pergunta pelo canal do CLIENTE · ② "um instante" à SEGURADORA, SÓ SE
     houver uma PESSOA do outro lado · ③ a espera, na sessão.
 
-    🔴 Com ROBÔ (`state == "ura"`) NADA sai à seguradora: a URA não lê "um
-    instante", e o texto solto costuma cair como resposta errada num menu. Quem
-    cobre a inatividade dela é a REENTRADA do corredor (`pode_reentrar_em_fase_humana`
-    + `reentrou_de`): se a URA encerrar enquanto o segurado pensa, a sessão vai a
-    `insurer_closed` e a resposta que chegar depois entra pela porta da resposta
-    TARDIA (`responder_pergunta_do_acionamento`), que reabre ou entrega a uma pessoa.
+    🔴 Com ROBÔ nada sai à seguradora: a URA não lê "um instante", e o texto
+    solto costuma cair como resposta errada num menu. ⚠️ "Há uma pessoa" NÃO é
+    `state == "human_phase"` (o motor promove qualquer tela sem âncora de URA) —
+    é `uma_pessoa_da_seguradora_esta_falando`.
+
+    🔴 ⚠️ E A INATIVIDADE DA URA NÃO FICA COBERTA — juiz fresco, B3 (17/09).
+    📊 O prazo do segurado é 60 × 3 = 180 s e a Allianz fecha em ≈ 103 s: o
+    caminho NORMAL é a URA fechar antes da resposta. O que se garante é que nada
+    se perde: `handle_insurer_message` guarda a espera em `espera_vencida`, a
+    retomada carrega `perguntado_ao_segurado` (ninguém pergunta duas vezes) e a
+    resposta tardia entra no SLOT do acionamento reaberto
+    (`responder_pergunta_do_acionamento`, `retomada="no_slot"`). Sem retomada
+    possível, o caso vai a uma pessoa com o dossiê pela porta única da 001.3.
 
     Devolve se perguntou. ⛔ Nunca pergunta duas vezes o mesmo dado no acionamento.
     """
@@ -3526,7 +3610,13 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     from app.services.whatsapp_service import get_whatsapp_service
 
     # 🔴 O QUE DÁ PARA FAZER COM ELA, e o rastro diz qual foi:
-    #    `levada`   — o acionamento continua de pé: a resposta vai à seguradora.
+    #    `levada`   — o MESMO acionamento continua de pé: a resposta vai à
+    #                 seguradora, que é quem está esperando por ela.
+    #    `no_slot`  — a URA fechou e o corredor REABRIU (juiz fresco, B3): a
+    #                 conversa nova está noutra tela, e jogar o valor nela seria
+    #                 responder a pergunta errada. O dado entra no SLOT e o
+    #                 motor o usa quando a tela pedir — e o segurado não é
+    #                 perguntado de novo (`perguntado_ao_segurado` veio junto).
     #    `guardada` — o caso já é de uma pessoa (o dossiê saiu): a resposta fica
     #                 na ficha e no rastro, e NÃO se reabre uma URA por conta
     #                 própria. ⛔ O corredor só sabe REENTRAR quando alguém da
@@ -3535,7 +3625,13 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     #                 que `pode_retomar` existe para impedir.
     #                 (pendência P-E0014-19)
     de_pe = str((session or {}).get("state") or "") in ("ura", "human_phase")
-    retomada = "levada" if de_pe else "guardada"
+    de_outro_acionamento = bool(espera.get("de_acionamento_anterior"))
+    if not de_pe:
+        retomada = "guardada"
+    elif de_outro_acionamento:
+        retomada = "no_slot"
+    else:
+        retomada = "levada"
     vivo = ao_vivo(session)
     if vivo and retomada == "levada":
         integration = _canal_da_conversa(get_integration_service(), empresa, session)
@@ -3566,15 +3662,21 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
                       "pergunta_ao_segurado.respondida_tarde" if tardia
                       else "pergunta_ao_segurado.respondida",
                       ("O segurado respondeu e a resposta foi levada à seguradora."
-                       if retomada == "levada"
-                       else "O segurado respondeu depois do prazo; a resposta ficou "
-                            "na ficha do caso, que já está com uma pessoa."),
+                       if retomada == "levada" else
+                       "O segurado respondeu depois de a seguradora encerrar; o dado "
+                       "entrou na ficha e o acionamento reaberto vai usá-lo."
+                       if retomada == "no_slot" else
+                       "O segurado respondeu depois do prazo; a resposta ficou "
+                       "na ficha do caso, que já está com uma pessoa."),
                       {"slot": slot, "retomada": retomada, "tardia": bool(tardia)})
     if vivo:
         try:
             send_to_client(from_phone,
                            "Obrigado! Já passei essa informação para a seguradora. 🙂"
                            if retomada == "levada" else
+                           "Obrigado! Já anotei essa informação e vou usar com a "
+                           "seguradora. 🙂"
+                           if retomada == "no_slot" else
                            "Obrigado! Já anotei essa informação — alguém da nossa "
                            "equipe está cuidando do seu caso. 🙂")
         except Exception:  # noqa: BLE001
@@ -3769,6 +3871,19 @@ async def try_route_insurer_inbound(
             _valor, _origem = await o_cerebro_ja_sabe(
                 company_id, session, slot=_slot_falta, rotulo=_rotulo,
                 tela=_tela_que_pede)
+            # 🔴 RELER DEPOIS DE PENSAR — juiz fresco, B1 (17/09). O Cérebro
+            #    espera até 20 s pelo modelo. Se a atendente falou DUAS vezes
+            #    nesse intervalo, a sessão gravada já está em `humano_assumiu` — e
+            #    seguir daqui mandaria a tecla por cima dela E regravaria a
+            #    sessão velha, APAGANDO a assunção. ⚠️ A releitura vem ANTES de
+            #    qualquer envio e de qualquer gravação, como nos outros dois
+            #    pontos lentos do roteador (o Cérebro da fase humana e o retry).
+            _dela_cerebro = await _a_atendente_entrou(company_id, from_phone, session,
+                                                     _entradas_antes)
+            if _dela_cerebro is not None:
+                await _gravar_a_sessao_dela(company_id, from_phone, _dela_cerebro,
+                                            _entradas_antes)
+                return True
             if _valor:
                 responder_a_ura_com_o_que_ja_existia(
                     session, _valor, slot=_slot_falta, origem=_origem,
@@ -4177,6 +4292,22 @@ async def try_route_insurer_inbound(
             )
             if retry.get("ok"):
                 retry["session"]["retry_count"] = int(session.get("retry_count") or 1)
+                # 🔴 O QUE A RETOMADA TEM DE LEVAR — juiz fresco, B3 (17/09).
+                #    A URA reabre do zero com os MESMOS slots, e sem isto duas
+                #    coisas quebravam: o segurado recebia a MESMA pergunta de
+                #    novo (`perguntado_ao_segurado` começava vazio) e a resposta
+                #    dele, que chegava depois do fechamento, não achava dona
+                #    (`espera_vencida` ficava na sessão velha, que foi limpa).
+                #    ⚠️ `de_acionamento_anterior` diz a quem receber a resposta
+                #    que ela vai para o SLOT e não para a URA: a tela de agora
+                #    pode ser outra, e o motor responde quando ela pedir.
+                _ja_perguntados = list(session.get("perguntado_ao_segurado") or [])
+                if _ja_perguntados:
+                    retry["session"]["perguntado_ao_segurado"] = _ja_perguntados
+                _pendente = session.get("espera_vencida") or session.get("esperando_do_segurado")
+                if _pendente:
+                    retry["session"]["espera_vencida"] = dict(
+                        _pendente, de_acionamento_anterior=True)
                 await save_active_dispatch(company_id, from_phone, retry["session"])
                 logger.info(f"[DISPATCH ROUTER] insurer_closed -> auto-retry iniciado case={session.get('case_id')}")
                 return True

@@ -121,7 +121,10 @@ def _preservar_a_atendente(session: Dict[str, Any], fresca: Optional[Dict[str, A
     from app.services.insurer_dispatch_service import humano_assumiu, pausa_humana_aberta
 
     if humano_assumiu(fresca):
-        for campo in ("state", "reason", "estado_antes_do_humano", "pausa_humana"):
+        # 🔴 `motivo_antes_do_humano` entra aqui — juiz fresco, P5 (17/09). Sem
+        #    ele, o atalho AGENTE devolvia a sessão travada SEM o motivo dela.
+        for campo in ("state", "reason", "estado_antes_do_humano",
+                      "motivo_antes_do_humano", "pausa_humana"):
             if campo in fresca:
                 session[campo] = fresca[campo]
         session["silencio_deliberado_ate"] = None

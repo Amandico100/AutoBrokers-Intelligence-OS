@@ -2614,6 +2614,9 @@ async def _handle_evolution_like_inbound(
                     await note_manual_outbound(
                         str(integration.get("company_id") or ""), str(normalized["phone"]), str(normalized["text"]),
                         foi_humano=not _fomos_nos,
+                        # 🔴 P3 (17/09): a Evolution NÃO deduplica — sem o id, uma
+                        #    reentrega viraria "a 2ª fala" e tiraria o robô do ar.
+                        message_id=str(normalized.get("message_id") or ""),
                     )
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[WEBHOOK EVOLUTION] manual outbound note failed: {type(e).__name__}")

@@ -3184,6 +3184,19 @@ def handle_insurer_message(
         if espera:
             # D3 — "a seguradora encerrou enquanto eu esperava o segurado": o
             # dossiê diz exatamente isso (`falta_para_a_ura` é o que ele lê).
+            #
+            # 🔴 E A ESPERA NÃO MORRE AQUI — juiz fresco, B3 (17/09). 📊 O prazo
+            #    do segurado é 60 × 3 = 180 s e a Allianz fecha por inatividade em
+            #    ≈ 103 s: o caminho NORMAL é a URA fechar ANTES de ele responder.
+            #    O `pop` sozinho apagava o único registro de que havia pergunta
+            #    no ar, e a resposta que chegava 50 s depois não achava dona.
+            #    `espera_vencida` é a MESMA estrutura que o prazo vencido usa
+            #    (`dispatch_watchdog._segurar_ou_desistir`), e quem a lê é
+            #    `responder_pergunta_do_acionamento`.
+            espera = dict(espera)
+            espera["vencida_em"] = _now()
+            espera["vencida_por"] = "insurer_closed"
+            session["espera_vencida"] = espera
             session["falta_para_a_ura"] = {
                 "campo": "pergunta_ao_segurado", "slot": espera.get("slot"),
                 "rotulo": (f"{espera.get('rotulo') or espera.get('slot')} — a seguradora "
