@@ -2769,67 +2769,65 @@ async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
     session["canal_do_destrave"] = str(canal or "whatsapp")[:40]
     session["assumido_por_humano_em"] = _agora().isoformat()
 
-    # (0) 🔴 SPEC-EXTRA-001.4 C — A PAUSA DE 60 s (D-PILOTO-10).
+    # (0) 🔴 A JANELA DE 15 s — 1 FALA ESPERA, 2 FALAS ASSUMEM (Founder, 17/09).
     #
     # 📊 10/09, 17:18:12 ela digitou "1"; 17:18:14 e :16 o corredor digitou de
-    # novo. Esta função fazia três escritas e NENHUM bloqueio. Agora ela abre (ou
-    # renova, no máximo 2 vezes) a pausa, que cala o motor, o Cérebro, o Vigia e
-    # o grupo. ⚠️ `foi_humano=False` saiu acima: o eco da nossa voz não pausa.
+    # novo. Esta função fazia três escritas e NENHUM bloqueio. Agora a 1ª fala
+    # abre a janela, que cala o motor, o Cérebro, o Vigia e o grupo; a 2ª fala
+    # DENTRO dela ASSUME o acionamento. ⚠️ `foi_humano=False` saiu acima: o eco
+    # da nossa voz não pausa.
+    #
+    # ⛔ NADA SAI POR CAUSA DISTO — nem ao grupo, nem ao destino de suporte, nem
+    #    ao segurado. A atendente não recebe aviso, não decora palavra e não
+    #    responde nada: o gesto que assume é o gesto que ela já faz.
     #
     # E ela já respondeu a tela que estava pendente: o Cérebro não a responde de
-    # novo quando a pausa acabar.
-    evento_da_pausa = _motor().abrir_ou_renovar_pausa(session, canal=canal)
+    # novo quando a janela acabar.
+    evento_da_pausa = _motor().uma_fala_da_atendente(session, canal=canal)
     espera_cancelada = None
-    if evento_da_pausa in ("aberta", "renovada"):
+    if evento_da_pausa in ("aberta", "assumiu"):
         session.pop("pending_insurer_messages", None)
         session.pop("falta_para_a_ura", None)
         # D3 — ela respondeu a seguradora: a pergunta ao segurado deixa de valer.
         espera_cancelada = session.pop("esperando_do_segurado", None)
-    avisar_grupo = (evento_da_pausa == "aberta"
-                    and not (session.get("pausa_humana") or {}).get("avisou_grupo"))
-    if avisar_grupo:
-        # ⚠️ Marcado ANTES de enviar e gravado junto com a pausa: uma segunda
-        # gravação depois do envio pisaria na tela que a URA manda nesse meio-tempo.
-        session["pausa_humana"]["avisou_grupo"] = True
     await save_active_dispatch(company_id, insurer_phone, session)
     await _registrar_assuncao_humana(company_id, session, canal=canal)
-    if evento_da_pausa in ("aberta", "renovada", "esgotada"):
-        await _depois_da_pausa(company_id, session, evento_da_pausa, avisar_grupo)
+    if evento_da_pausa in ("aberta", "assumiu"):
+        await _depois_da_pausa(company_id, session, evento_da_pausa)
     if espera_cancelada:
         await _indexar_pergunta(company_id, str(espera_cancelada.get("client_phone") or ""),
                                 insurer_phone, 1, apagar=True)
     return True
 
 
-async def _depois_da_pausa(company_id: str, session: Dict[str, Any], evento: str,
-                           avisar_grupo: bool) -> None:
-    """O índice da pausa, o aviso ao grupo e o rastro. ⛔ Nunca levanta."""
-    import asyncio
+async def _depois_da_pausa(company_id: str, session: Dict[str, Any], evento: str) -> None:
+    """O índice da janela e o rastro. ⛔ Nunca levanta. ⛔ NENHUM envio.
 
-    from app.core.database import get_supabase_client
+    🔴 O índice que cala o grupo segue o CICLO da janela: entra na 1ª fala (e
+    expira sozinho junto com ela) e SAI quando ela assume — a partir daí quem
+    cala o grupo é o próprio `humano_assumiu`, e um índice órfão calaria a
+    conversa por 15 s depois de o acionamento já ter saído das nossas mãos.
+    """
     from app.services.o_grupo_so_o_que_importa import (
-        TIPO_PAUSA_HUMANA, alvos_da_pausa, enviar_ao_grupo, marcar_pausa_humana,
+        alvos_da_pausa, desmarcar_pausa_humana, marcar_pausa_humana,
     )
 
-    motor = _motor()
+    alvos = alvos_da_pausa(session.get("mirror_conversation_id"),
+                           session.get("client_phone"))
     try:
-        restante = int(max(0.0, -_idade_segundos((session.get("pausa_humana") or {}).get("ate"))))
-        await marcar_pausa_humana(
-            company_id, alvos_da_pausa(session.get("mirror_conversation_id"),
-                                       session.get("client_phone")), restante + 5)
-        if avisar_grupo:
-            texto = aviso_da_pausa_humana(session, motor.PAUSA_HUMANA_S)
-            await asyncio.wait_for(enviar_ao_grupo(
-                get_supabase_client(), company_id=str(company_id), tipo=TIPO_PAUSA_HUMANA,
-                texto=texto, conversation_id=str(session.get("mirror_conversation_id") or ""),
-                telefone=str(session.get("client_phone") or ""), sessao=session,
-                resumo="pausa humana — caso %s" % str(session.get("case_id") or "")[:8],
-                motivo="pausa_humana"), timeout=15)
-        await _anotar_ato(company_id, session, "pausa_humana.%s" % evento,
-                          "Uma pessoa da equipe falou com a seguradora; o agente esperou.",
-                          {"renovacoes": int((session.get("pausa_humana") or {}).get("renovacoes") or 0)})
+        if evento == "assumiu":
+            await desmarcar_pausa_humana(company_id, alvos)
+        else:
+            restante = int(max(0.0, -_idade_segundos((session.get("pausa_humana") or {}).get("ate"))))
+            await marcar_pausa_humana(company_id, alvos, restante + 5)
+        await _anotar_ato(
+            company_id, session, "pausa_humana.%s" % evento,
+            ("Uma pessoa da equipe assumiu a conversa com a seguradora; o agente saiu."
+             if evento == "assumiu"
+             else "Uma pessoa da equipe falou com a seguradora; o agente esperou."),
+            {"janela_s": int(_motor().PAUSA_HUMANA_S)})
     except Exception as e:  # noqa: BLE001
-        logger.warning("[PAUSA HUMANA] efeitos da pausa incompletos (%s)", type(e).__name__)
+        logger.warning("[PAUSA HUMANA] efeitos da janela incompletos (%s)", type(e).__name__)
 
 
 async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
@@ -2852,17 +2850,6 @@ async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
         logger.warning("[RETOMADA] aviso ao grupo não saiu (%s)", type(e).__name__)
 
 
-def aviso_da_pausa_humana(session: Dict[str, Any], segundos: int) -> str:
-    """💭 Copy (proposta §7.3, régua de língua da 001.3): uma mensagem, sem jargão."""
-    from app.services.dispatch_mirror import insurer_label_from_ref
-
-    seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
-    return (f"👋 Vi que alguém da equipe entrou na conversa com a {seguradora} "
-            f"(caso {str(session.get('case_id') or '')[:8]}). Vou esperar {int(segundos)} "
-            "segundos sem responder à seguradora.\n"
-            "Responda AGENTE para eu seguir agora, ou EU CUIDO para eu sair deste acionamento.")
-
-
 async def _anotar_ato(company_id: str, session: Dict[str, Any], tipo: str,
                       mensagem: str, carga: Optional[Dict[str, Any]] = None) -> None:
     """Uma linha na linha do tempo do run — o mesmo `_evento`, best-effort."""
@@ -2878,7 +2865,7 @@ async def _anotar_ato(company_id: str, session: Dict[str, Any], tipo: str,
 
 async def _a_atendente_entrou(company_id: str, insurer_phone: str, session: Dict[str, Any],
                               entradas_antes: int) -> Optional[Dict[str, Any]]:
-    """A sessão DELA, se a atendente abriu a pausa (ou disse EU CUIDO) depois da nossa
+    """A sessão DELA, se a atendente abriu a janela (ou assumiu) depois da nossa
     leitura — com as telas que chegaram neste turno acrescentadas. `None` = siga.
 
     ⚠️ Leitura pura do Redis (`_ler_do_redis`): `load_active_dispatch` agenda a
@@ -2952,8 +2939,19 @@ async def _sessoes_da_corretora(company_id: str) -> List[tuple]:
 
 
 # ===========================================================================
-# 🔴 SPEC-EXTRA-001.4 C · AS PALAVRAS DA EQUIPE — AGENTE e EU CUIDO
+# ⚠️ ATALHO OPCIONAL — as palavras AGENTE e EU CUIDO
 # ===========================================================================
+#
+# 🔴 DECISÃO DO FOUNDER (17/09/2026): A ATENDENTE NÃO PRECISA DESTAS PALAVRAS.
+#
+# Quem decide é o gesto que ela já faz (`uma_fala_da_atendente`): 1 fala e o
+# robô espera; 2 falas dentro da janela e ele sai do acionamento. ⛔ NENHUM
+# texto do produto — mensagem, dossiê, tela ou resumo — pede, ensina ou cita
+# estas palavras. Elas continuam aqui porque já existem, custam uma comparação
+# de string e servem a quem as conhece:
+#
+#     AGENTE     devolve ao robô um acionamento assumido, dentro de 30 min
+#     EU CUIDO   faz o mesmo que a 2ª fala: tira o robô deste acionamento
 #
 # ⚠️ 📊 17/09: toda instância é criada com `ignoreGroups: True`
 # (`pairing_orchestrator.py`, `whatsapp_channel.py`, `admin_atlas.py`) — a mensagem
@@ -2963,16 +2961,17 @@ async def _sessoes_da_corretora(company_id: str) -> List[tuple]:
 # (`numeros_da_casa`, EXTRA-001.3), no privado da corretora.
 PALAVRA_AGENTE = "agente"
 PALAVRA_EU_CUIDO = "eu cuido"
-#: Até quanto tempo depois de a pausa abrir o EU CUIDO ainda vale (o corredor já
-#: pode ter retomado — a atendente continua podendo tirá-lo do acionamento).
+#: Até quanto tempo depois de a janela abrir as palavras ainda valem (o corredor
+#: já pode ter retomado — a atendente continua podendo tirá-lo do acionamento).
 _JANELA_DA_PALAVRA_S = 30 * 60
 
 
 def palavra_da_equipe(texto: Any) -> Optional[str]:
     """`agente` · `eu cuido` · `None`. A mensagem tem de SER a palavra.
 
-    ⛔ Nunca "contém": o próprio aviso da pausa traz as duas palavras, e o eco
-    dele no grupo não pode ser lido como resposta.
+    ⛔ Nunca "contém": uma frase QUALQUER que mencione as duas palavras não pode
+    virar comando. 📊 O aviso que as citava saiu do produto em 17/09 — a regra
+    do `in` ficou, porque o eco de qualquer texto continua sendo possível.
     """
     limpo = re.sub(r"[^a-z ]+", " ", _norm(texto))
     limpo = " ".join(limpo.split())
@@ -3038,8 +3037,8 @@ async def ler_palavra_da_equipe(company_id: str, texto: Any, *, remetente: str =
     if palavra == PALAVRA_AGENTE:
         motor.fechar_pausa(sessao, "agente", agora)
         if motor.humano_assumiu(sessao):
-            sessao["state"] = str(sessao.pop("estado_antes_de_eu_cuido", "") or "ura")
-            motivo_antes = str(sessao.pop("motivo_antes_de_eu_cuido", "") or "")
+            sessao["state"] = str(sessao.pop("estado_antes_do_humano", "") or "ura")
+            motivo_antes = str(sessao.pop("motivo_antes_do_humano", "") or "")
             if sessao["state"] == "needs_human" and motivo_antes:
                 sessao["reason"] = motivo_antes     # travada antes, travada depois — com o motivo
             else:
@@ -3050,8 +3049,8 @@ async def ler_palavra_da_equipe(company_id: str, texto: Any, *, remetente: str =
         resultado = "agente"
     else:
         motor.fechar_pausa(sessao, "eu_cuido", agora)
-        sessao["estado_antes_de_eu_cuido"] = str(sessao.get("state") or "")
-        sessao["motivo_antes_de_eu_cuido"] = str(sessao.get("reason") or "")
+        sessao["estado_antes_do_humano"] = str(sessao.get("state") or "")
+        sessao["motivo_antes_do_humano"] = str(sessao.get("reason") or "")
         sessao["state"] = "needs_human"
         sessao["reason"] = motor.HUMANO_ASSUMIU
         sessao["silencio_deliberado_ate"] = None
@@ -3774,7 +3773,7 @@ async def try_route_insurer_inbound(
         return True
 
     if state == "needs_human" and motor.humano_assumiu(session):
-        # 🔴 SPEC-EXTRA-001.4 C — EU CUIDO: "nada mais sai". Sem retomada, sem
+        # 🔴 A ATENDENTE ASSUMIU: "nada mais sai". Sem retomada, sem
         #    dossiê, sem aviso ao segurado — a atendente está com o caso. Quando a
         #    URA encerra, o número da seguradora é liberado para a fila.
         if session.get("seguradora_encerrou"):

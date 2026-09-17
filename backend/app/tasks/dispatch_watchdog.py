@@ -112,16 +112,16 @@ def _pausa_aberta(session: Dict[str, Any]) -> bool:
 
 #: 🔴 SPEC-EXTRA-001.4 C — o que o Vigia NÃO pode apagar ao gravar a sessão que
 #: leu antes de uma chamada lenta (o Cérebro do Sentinela leva segundos): a
-#: pausa que a atendente abriu nesse meio-tempo, e o EU CUIDO.
+#: janela que a atendente abriu nesse meio-tempo, e a assunção dela.
 def _preservar_a_atendente(session: Dict[str, Any], fresca: Optional[Dict[str, Any]]) -> bool:
-    """Copia para `session` a pausa/EU CUIDO gravados depois da leitura. Devolve
+    """Copia para `session` a janela/assunção gravadas depois da leitura. Devolve
     se a atendente está na conversa AGORA (então nada nosso deve sair)."""
     if not fresca:
         return False
     from app.services.insurer_dispatch_service import humano_assumiu, pausa_humana_aberta
 
     if humano_assumiu(fresca):
-        for campo in ("state", "reason", "estado_antes_de_eu_cuido", "pausa_humana"):
+        for campo in ("state", "reason", "estado_antes_do_humano", "pausa_humana"):
             if campo in fresca:
                 session[campo] = fresca[campo]
         session["silencio_deliberado_ate"] = None
@@ -161,8 +161,8 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
 
     # 🔴 SPEC-EXTRA-001.4 C — A ATENDENTE ESTÁ NA CONVERSA: nenhum achado. Pela
     #    PAUSA, e não só pelo `silencio_deliberado_ate` que ela escreve: duas
-    #    defesas, porque uma renovação que esquecesse o campo deixaria o Sentinela
-    #    falar por cima dela depois dos primeiros 60 s.
+    #    defesas, porque uma escrita que esquecesse o campo deixaria o Sentinela
+    #    falar por cima dela assim que os 15 s da janela passassem.
     if _pausa_aberta(session):
         return None
 
@@ -889,7 +889,7 @@ async def check_dispatch_watchdog() -> int:
             # 🔴 SPEC-EXTRA-001.4 D6 — O VIGIA DEIXA RASTRO. 📊 `agente="vigia"` não
             #    tinha um único chamador, apesar de `DESTRAVADORES` já o prever.
             await _ato_do_vigia(company_id, session, finding)
-            # 🔴 C — a sessão foi lida no começo da volta; a pausa/EU CUIDO gravados
+            # 🔴 C — a sessão foi lida no começo da volta; a janela/assunção gravadas
             #    depois disso NÃO são apagados por esta gravação.
             try:
                 from app.services.dispatch_router import _ler_do_redis

@@ -448,15 +448,29 @@ def rotulo_do_ramo_da_apolice(valor: Any) -> Optional[str]:
 
 
 # ===========================================================================
-# 🔴 SPEC-EXTRA-001.4 BLOCO C · A ATENDENTE DA CORRETORA NA URA — o estado, PURO
+# 🔴 A ATENDENTE DA CORRETORA NA URA — o estado, PURO
 # ===========================================================================
 #
 # 📊 10/09, 17:18:12: a atendente da corretora digitou "1" à mão; às 17:18:14 e
-# :16 o corredor digitou de novo. D-PILOTO-10 (opção C): pausa de 60 s, renovada
-# a cada envio real dela à seguradora, no máximo 2 renovações; AGENTE retoma já;
-# EU CUIDO tira o agente do acionamento. O estado mora na SESSÃO (Redis, com a
-# chave composta por corretora) e é lido por quem fala: o motor, o roteador, o
-# Vigia (pelo `silencio_deliberado_ate` que ele já honra) e a guarda do grupo.
+# :16 o corredor digitou de novo. `note_manual_outbound` fazia três escritas e
+# NENHUM bloqueio.
+#
+# 🔴 DECISÃO DO FOUNDER (17/09/2026) — A ATENDENTE NÃO APRENDE PALAVRA NENHUMA.
+#
+#     1 fala dela    o robô espera `PAUSA_HUMANA_S` (15 s) e segue de onde parou
+#     2 falas dentro desses 15 s  ela assumiu: o robô sai do acionamento, EM
+#                    SILÊNCIO — nenhuma mensagem a ela, ao grupo ou ao segurado
+#
+# ⚠️ A regra anterior (pausa de 60 s renovável 2×, com um aviso ao grupo pedindo
+# AGENTE ou EU CUIDO) exigia que a atendente decorasse duas palavras e recebesse
+# uma mensagem por acionamento para lembrá-las. Ela SAIU: nada mais é enviado
+# quando a pausa abre, e o gesto que assume é o gesto que ela já faz — falar de
+# novo. As palavras continuam funcionando como ATALHO OPCIONAL
+# (`dispatch_router.ler_palavra_da_equipe`), e nenhum texto do produto as pede.
+#
+# O estado mora na SESSÃO (Redis, com a chave composta por corretora) e é lido
+# por quem fala: o motor, o roteador, o Vigia (pelo `silencio_deliberado_ate`
+# que ele já honra) e a guarda do grupo.
 def _env_int(nome: str, padrao: int) -> int:
     try:
         return max(0, int(os.getenv(nome) or padrao))
@@ -464,10 +478,12 @@ def _env_int(nome: str, padrao: int) -> int:
         return padrao
 
 
-#: `PAUSA_HUMANA_S=0` desliga o bloco C inteiro sem tocar em código (proposta §14).
-PAUSA_HUMANA_S = _env_int("PAUSA_HUMANA_S", 60)
-PAUSA_HUMANA_MAX_RENOVACOES = _env_int("PAUSA_HUMANA_MAX_RENOVACOES", 2)
-#: `reason` de quem disse EU CUIDO. ⛔ NÃO é reentrável (bloco D).
+#: A JANELA. 1 fala abre; a 2ª fala DENTRO dela é a assunção (Founder, 17/09).
+#: `PAUSA_HUMANA_S=0` desliga a pausa e a assunção sem tocar em código (§14).
+#: ⚠️ 15 s, e não 60: a janela agora é o tempo de a atendente digitar a segunda
+#: mensagem, não o tempo de ela ler um aviso e responder uma palavra.
+PAUSA_HUMANA_S = _env_int("PAUSA_HUMANA_S", 15)
+#: `reason` de quem assumiu a conversa com a seguradora. ⛔ NÃO é reentrável.
 HUMANO_ASSUMIU = "humano_assumiu"
 
 
@@ -492,30 +508,37 @@ def humano_assumiu(session: Dict[str, Any]) -> bool:
     return session.get("state") == "needs_human" and session.get("reason") == HUMANO_ASSUMIU
 
 
-def abrir_ou_renovar_pausa(session: Dict[str, Any], *, canal: str = "whatsapp",
-                           agora: Optional[datetime] = None) -> str:
-    """`aberta` · `renovada` · `esgotada` (3ª fala: não renova) · `desligada`.
+def uma_fala_da_atendente(session: Dict[str, Any], *, canal: str = "whatsapp",
+                          agora: Optional[datetime] = None) -> str:
+    """A fala manual dela chegou. `aberta` · `assumiu` · `desligada`. PURA.
+
+    🔴 `aberta` — é a 1ª fala: o robô espera `PAUSA_HUMANA_S` e segue.
+    🔴 `assumiu` — é a 2ª fala DENTRO da janela: ela está conduzindo. A sessão
+       vai a `needs_human`/`HUMANO_ASSUMIU` e o robô sai deste acionamento.
+       ⛔ EM SILÊNCIO: quem chama NÃO envia nada a ninguém por causa disto.
 
     ⚠️ Escreve `silencio_deliberado_ate` junto — é o campo que o Vigia JÁ honra
     (`dispatch_watchdog.diagnose`). Nenhum relógio novo.
+
+    ⛔ Não existe mais "renovação": a 2ª fala não estende a espera, ELA ASSUME.
     """
     if PAUSA_HUMANA_S <= 0:
         return "desligada"
     agora = agora or datetime.now(timezone.utc)
-    ate = (agora + _timedelta_s(PAUSA_HUMANA_S)).isoformat()
-    pausa = dict(session.get("pausa_humana") or {})
     if pausa_humana_aberta(session, agora):
-        if int(pausa.get("renovacoes") or 0) >= PAUSA_HUMANA_MAX_RENOVACOES:
-            pausa["esgotada_em"] = agora.isoformat()
-            session["pausa_humana"] = pausa
-            return "esgotada"
-        pausa["renovacoes"] = int(pausa.get("renovacoes") or 0) + 1
-        pausa["ate"] = ate
-        session["pausa_humana"] = pausa
-        session["silencio_deliberado_ate"] = ate
-        return "renovada"
-    session["pausa_humana"] = {"ate": ate, "renovacoes": 0, "aberta_em": agora.isoformat(),
-                               "avisou_grupo": False, "canal": str(canal or "whatsapp")[:40]}
+        # A 2ª fala dentro da janela: ela assumiu. O estado de antes fica
+        # guardado para o atalho AGENTE poder devolver o caso ao robô.
+        session["estado_antes_do_humano"] = str(session.get("state") or "")
+        session["motivo_antes_do_humano"] = str(session.get("reason") or "")
+        fechar_pausa(session, "assumiu", agora)
+        session["state"] = "needs_human"
+        session["reason"] = HUMANO_ASSUMIU
+        session["silencio_deliberado_ate"] = None
+        session.pop("esperando_do_segurado", None)
+        return "assumiu"
+    ate = (agora + _timedelta_s(PAUSA_HUMANA_S)).isoformat()
+    session["pausa_humana"] = {"ate": ate, "aberta_em": agora.isoformat(),
+                               "canal": str(canal or "whatsapp")[:40]}
     session["pausas_humanas"] = int(session.get("pausas_humanas") or 0) + 1
     session["silencio_deliberado_ate"] = ate
     return "aberta"
@@ -523,7 +546,7 @@ def abrir_ou_renovar_pausa(session: Dict[str, Any], *, canal: str = "whatsapp",
 
 def fechar_pausa(session: Dict[str, Any], por: str,
                  agora: Optional[datetime] = None) -> bool:
-    """Fecha a pausa (`agente` · `eu_cuido`). Devolve se ela estava aberta."""
+    """Fecha a pausa (`assumiu` · `agente` · `eu_cuido`). Devolve se estava aberta."""
     pausa = dict(session.get("pausa_humana") or {})
     if not pausa:
         return False
@@ -3069,7 +3092,7 @@ def handle_insurer_message(
         {"direction": "in", "text": str(insurer_message)[:2000], "at": _now()}
     )
 
-    # 🔴 SPEC-EXTRA-001.4 C — EU CUIDO: o agente SAIU deste acionamento. Só se
+    # 🔴 A ATENDENTE ASSUMIU: o agente SAIU deste acionamento. Só se
     #    registra (o espelho continua completo). Nada responde, nada captura para
     #    avisar o segurado — quem fala agora é a atendente. O encerramento da URA
     #    só é anotado, para o roteador liberar o número da seguradora.
@@ -4150,7 +4173,7 @@ _MOTIVOS_EM_PORTUGUES = {
     "tecla_ambigua": "a resposta coletada serve para mais de uma opção do menu da "
                      "seguradora — escolha a opção certa na conversa com ela",
     # --- SPEC-EXTRA-001.4 C/D ------------------------------------------------
-    HUMANO_ASSUMIU: "uma pessoa da equipe disse EU CUIDO e assumiu a conversa com a seguradora",
+    HUMANO_ASSUMIU: "uma pessoa da equipe está conduzindo a conversa com a seguradora",
     "segurado_nao_respondeu": "a seguradora pediu um dado que só o segurado sabe, "
                               "e ele não respondeu a tempo",
     # --- a seguradora pediu gente / outro caminho ----------------------

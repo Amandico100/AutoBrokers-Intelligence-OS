@@ -1,17 +1,24 @@
 # -*- coding: utf-8 -*-
-"""🔴 GC-1 + GC-2 + GC-3 + GT (SPEC-EXTRA-001.4 C) · A ATENDENTE NA URA CALA O ROBÔ.
+"""🔴 GC-1 + GC-2 + GC-3 + GT · A ATENDENTE NA URA CALA O ROBÔ — SEM APRENDER PALAVRA.
 
 📊 10/09/2026, sessão Allianz `432614de`: às 17:18:12 a atendente da corretora
 digitou "1" à mão na conversa com a URA; às 17:18:14 e :16 o corredor digitou de
 novo. `note_manual_outbound` fazia três escritas e NENHUM bloqueio.
 
-GC-1  a fala dela abre a pausa: o motor não responde, o Cérebro não redige, o Vigia
-      não chama o Sentinela — e o eco da nossa voz (`foi_humano=False`) NÃO pausa.
-GC-2  a pausa tem teto (D-PILOTO-10: 2 renovações); vencida, o corredor retoma.
-GC-3  com a pausa aberta, todo aviso ao grupo do acionamento cala na guarda ÚNICA
+🔴 **A REGRA MUDOU EM 17/09/2026 (Founder), e o guarda mudou com ela**
+(CLAUDE.md §9.3: o fato mudou, o teste muda, a lição migra):
+
+```
+ANTES   1ª fala abre 60 s, renovável 2×; um AVISO ao grupo pede AGENTE ou EU CUIDO
+AGORA   1ª fala abre 15 s e NADA SAI;  2ª fala dentro dos 15 s = ela assumiu, em silêncio
+```
+
+GC-1  a 1ª fala abre a janela: o motor não responde, o Cérebro não redige, o Vigia
+      não chama o Sentinela — e NADA sai a ninguém. O eco da nossa voz não pausa.
+GC-2  a 2ª fala DENTRO da janela assume (0 envios); depois dela, é uma janela nova.
+GC-3  com a janela aberta, todo aviso ao grupo do acionamento cala na guarda ÚNICA
       (`o_grupo_pode_saber`, da 001.3) — e todo ponto de envio passa a sessão.
-      AGENTE retoma; EU CUIDO tira o agente do acionamento, e nada mais sai.
-GT    duas corretoras, mesma seguradora, mesma tela: a pausa de uma não cala a outra.
+GT    duas corretoras, mesma seguradora, mesma tela: a janela de uma não cala a outra.
 
 ⛔ Nada sai da máquina: WhatsApp, banco, Redis, espelho e grupo são dublês.
 """
@@ -85,15 +92,44 @@ async def _redis_falso():
     return REDIS
 
 
-async def _sem_banco():
-    return None
+import types  # noqa: E402
+
+EVENTOS = []
+
+
+class _Consulta:
+    def __init__(self, tabela):
+        self.tabela, self.linha = tabela, None
+
+    def insert(self, linha):
+        self.linha = linha
+        return self
+
+    def __getattr__(self, _nome):
+        return lambda *a, **k: self
+
+    async def execute(self):
+        if self.tabela == "work_events" and self.linha:
+            EVENTOS.append(self.linha)
+        return types.SimpleNamespace(data=[])
+
+
+class _Banco:
+    class client:  # noqa: N801
+        @staticmethod
+        def table(nome):
+            return _Consulta(nome)
+
+
+async def _banco_falso():
+    return _Banco()
 
 
 import app.core.redis as _core_redis  # noqa: E402
 
 _core_redis.get_async_redis_client = _redis_falso
 R._redis = _redis_falso
-R._db = _sem_banco
+R._db = _banco_falso
 GRUPO = []
 
 
@@ -149,7 +185,7 @@ def nova_sessao(empresa):
         case_id=f"gc-{empresa}", company_id=empresa, playbook_ref=REF, subservice="encanador",
         slots={"titular_cpf": "11122233344", "endereco_numero": "100",
                "telefone_contato": "48999998888", "ramo_da_apolice": "resi"})
-    s.update({"state": "ura", "client_phone": "5548988887777",
+    s.update({"state": "ura", "client_phone": "5548988887777", "work_run_id": "run-gc",
               "mirror_conversation_id": f"conv-{empresa}"})
     return s
 
@@ -188,26 +224,34 @@ def envelhecer(sessao, segundos):
 
 
 print("=" * 74)
-print("[GC-1] A FALA DA ATENDENTE ABRE A PAUSA — e o eco da nossa voz não")
+print("[GC-1] A 1ª FALA ABRE A JANELA DE 15 s — E NADA SAI A NINGUÉM")
 print("=" * 74)
 checar(bool(TELA), "📊 a tela real do menu 'Qual seguro' está no corpus")
+checar(D.PAUSA_HUMANA_S == 15,
+       "🔴 a janela é de 15 s (Founder, 17/09) — não de 60", str(D.PAUSA_HUMANA_S))
+checar(not hasattr(D, "PAUSA_HUMANA_MAX_RENOVACOES") and not hasattr(D, "abrir_ou_renovar_pausa"),
+       "🔴 a RENOVAÇÃO morreu com o nome: nem a constante nem a função sobreviveram")
+checar(not hasattr(R, "aviso_da_pausa_humana"),
+       "🔴 o aviso que pedia AGENTE / EU CUIDO não existe mais no produto")
 REDIS.d.clear()
+GRUPO.clear()
+ENVIADAS.clear()
+EVENTOS.clear()
 s = nova_sessao(A)
 rodar(R.save_active_dispatch(A, URA, s))
 rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
 s = rodar(R.load_active_dispatch(A, URA))
-checar(D.pausa_humana_aberta(s), "note_manual_outbound(foi_humano=True) abriu a pausa")
+checar(D.pausa_humana_aberta(s), "a 1ª fala manual abriu a janela")
 checar(bool(s.get("silencio_deliberado_ate")), "e escreveu `silencio_deliberado_ate`, que o Vigia já honra")
-checar([g["tipo"] for g in GRUPO] == [G.TIPO_PAUSA_HUMANA] and GRUPO[0]["pode"],
-       "o grupo recebeu UM aviso — o da pausa, o único que passa por ela", str(GRUPO))
-checar("AGENTE" in GRUPO[0]["texto"] and "EU CUIDO" in GRUPO[0]["texto"]
-       and "60 segundos" in GRUPO[0]["texto"], "o aviso diz 60 s, AGENTE e EU CUIDO")
-ENVIADAS.clear()
+checar(GRUPO == [] and ENVIADAS == [],
+       "🔴 (a) NADA SAI: nem ao grupo, nem ao destino de suporte, nem ao segurado",
+       f"grupo={GRUPO} enviadas={ENVIADAS}")
+checar(not D.humano_assumiu(s), "com UMA fala, ninguém assumiu — o robô só espera")
 rodar(R.try_route_insurer_inbound(company_id=A, from_phone=URA, text=TELA,
                                   send_to_insurer=_para_ura, send_to_client=_para_cliente,
                                   human_reply_provider=_cerebro))
 s = rodar(R.load_active_dispatch(A, URA))
-checar(saidas_do_robo(s) == [], "🔴 com a pausa aberta, a tela real do menu NÃO recebe tecla",
+checar(saidas_do_robo(s) == [], "🔴 com a janela aberta, a tela real do menu NÃO recebe tecla",
        str(saidas_do_robo(s)))
 # o Cérebro, na fase humana, com tela pendente: também não redige.
 s["state"] = "human_phase"
@@ -218,10 +262,16 @@ rodar(R.try_route_insurer_inbound(company_id=A, from_phone=URA, text="Pode me co
                                   human_reply_provider=_cerebro))
 s = rodar(R.load_active_dispatch(A, URA))
 checar("CEREBRO_CHAMADO" not in ENVIADAS and saidas_do_robo(s) == [],
-       "🔴 com a pausa aberta, o Cérebro NÃO é chamado na fase humana", str(ENVIADAS))
-envelhecer(s, 45)
-checar(W.diagnose(s) is None, "🔴 45 s depois, o Vigia NÃO chama o Sentinela (hoje: 30 s)",
-       str(W.diagnose(s)))
+       "🔴 com a janela aberta, o Cérebro NÃO é chamado na fase humana", str(ENVIADAS))
+envelhecer(s, 10)
+checar(W.diagnose(s) is None, "🔴 10 s depois, o Vigia NÃO chama o Sentinela", str(W.diagnose(s)))
+# (a) AOS 15 s, O ROBÔ VOLTA A LER A TELA ATUAL — o Vigia age no próximo ciclo.
+s["pausa_humana"]["ate"] = s["silencio_deliberado_ate"] = (
+    datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+s["transcript"].append({"direction": "in", "text": TELA, "at": datetime.now(timezone.utc).isoformat()})
+envelhecer(s, 35)
+checar(not D.pausa_humana_aberta(s) and W.diagnose(s) == "stall_unanswered",
+       "🔴 (a) vencida a janela, o robô continua lendo a TELA ATUAL (o Vigia age)", str(W.diagnose(s)))
 # CONTROLE: o eco da nossa própria voz não pausa nada.
 REDIS.d.clear()
 GRUPO.clear()
@@ -232,47 +282,77 @@ s2 = rodar(R.load_active_dispatch(A, URA))
 s2["transcript"].append({"direction": "in", "text": TELA, "at": datetime.now(timezone.utc).isoformat()})
 envelhecer(s2, 45)
 checar(not D.pausa_humana_aberta(s2) and W.diagnose(s2) == "stall_unanswered" and not GRUPO,
-       "🔴 CONTROLE: `foi_humano=False` não abre pausa — o Vigia age em 45 s e o grupo não ouve nada",
+       "🔴 CONTROLE: `foi_humano=False` não abre janela — o Vigia age e o grupo não ouve nada",
        f"pausa={D.pausa_humana_aberta(s2)} diag={W.diagnose(s2)} grupo={GRUPO}")
+# CONTROLE (d): `PAUSA_HUMANA_S=0` desliga tudo — a janela E a assunção.
+_s = D.PAUSA_HUMANA_S
+D.PAUSA_HUMANA_S = 0
+_desligada = nova_sessao(A)
+_e1 = D.uma_fala_da_atendente(_desligada)
+_e2 = D.uma_fala_da_atendente(_desligada)
+D.PAUSA_HUMANA_S = _s
+checar(_e1 == _e2 == "desligada" and not D.pausa_humana_aberta(_desligada)
+       and not D.humano_assumiu(_desligada),
+       "🔴 (d) CONTROLE: `PAUSA_HUMANA_S=0` desliga a janela E a assunção", f"{_e1} {_e2}")
 
 print()
 print("=" * 74)
-print("[GC-2] A PAUSA TEM TETO: 2 renovações (D-PILOTO-10); vencida, o corredor retoma")
+print("[GC-2] A 2ª FALA DENTRO DA JANELA ASSUME — em silêncio, e o robô sai")
 print("=" * 74)
 REDIS.d.clear()
 GRUPO.clear()
+ENVIADAS.clear()
+EVENTOS.clear()
 s = nova_sessao(A)
 rodar(R.save_active_dispatch(A, URA, s))
-eventos = []
-for _ in range(4):
-    s = rodar(R.load_active_dispatch(A, URA))
-    antes = dict(s.get("pausa_humana") or {})
-    rodar(R.note_manual_outbound(A, URA, "texto dela", foi_humano=True))
-    depois = rodar(R.load_active_dispatch(A, URA))["pausa_humana"]
-    eventos.append((depois.get("renovacoes"), depois.get("ate") != antes.get("ate"),
-                    bool(depois.get("esgotada_em"))))
-checar([e[0] for e in eventos] == [0, 1, 2, 2], "abre · renova · renova · e a 4ª fala NÃO renova",
-       str(eventos))
-checar(eventos[3][1] is False and eventos[3][2], "a 4ª fala não mexe no prazo e marca `esgotada_em`",
-       str(eventos[3]))
-checar(len(GRUPO) == 1, "o grupo ouviu UMA vez em toda a pausa", str(len(GRUPO)))
+rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
+rodar(R.note_manual_outbound(A, URA, "vou eu mesma falar com eles", foi_humano=True))
 s = rodar(R.load_active_dispatch(A, URA))
-checar(s.get("silencio_deliberado_ate") == s["pausa_humana"]["ate"],
-       "🔴 a RENOVAÇÃO também move o silêncio que o Vigia lê", f"{s.get('silencio_deliberado_ate')} × {s['pausa_humana']['ate']}")
-_velho = dict(s, silencio_deliberado_ate=(datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat())
-_velho["transcript"] = s["transcript"] + [{"direction": "in", "text": TELA,
-                                           "at": (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()}]
-checar(W.diagnose(_velho) is None, "🔴 e o Vigia respeita a PAUSA mesmo com o silêncio vencido (duas defesas)",
-       str(W.diagnose(_velho)))
-s["pausa_humana"]["ate"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
-s["silencio_deliberado_ate"] = s["pausa_humana"]["ate"]
-s["transcript"].append({"direction": "in", "text": TELA, "at": datetime.now(timezone.utc).isoformat()})
-envelhecer(s, 35)
-checar(not D.pausa_humana_aberta(s) and W.diagnose(s) == "stall_unanswered",
-       "vencida a pausa, o corredor retoma lendo a tela atual (o Vigia age)", str(W.diagnose(s)))
-checar(not D.pode_retomar({**s, "state": "needs_human", "reason": "insurer_closed",
-                           "pausa_humana": {"ate": (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()}}),
-       "🔴 com a pausa aberta, a retomada automática NÃO reabre o acionamento por cima dela")
+checar(D.humano_assumiu(s) and s["state"] == "needs_human" and s["reason"] == D.HUMANO_ASSUMIU,
+       "🔴 (b) 2 falas em 15 s → `needs_human` / `HUMANO_ASSUMIU`", f"{s['state']}/{s.get('reason')}")
+checar(GRUPO == [] and ENVIADAS == [] and saidas_do_robo(s) == [],
+       "🔴 (b) EM SILÊNCIO: 0 envios ao grupo, ao suporte, ao segurado e à seguradora",
+       f"grupo={GRUPO} enviadas={ENVIADAS} robo={saidas_do_robo(s)}")
+checar(any(e["event_type"] == "pausa_humana.assumiu" for e in EVENTOS),
+       "🔴 (b) e o rastro grava `pausa_humana.assumiu` em `work_events`",
+       str([e["event_type"] for e in EVENTOS]))
+checar(not REDIS.d.get(G._CHAVE_DA_PAUSA.format(empresa=A, alvo="conv-%s" % A)),
+       "🔴 o índice da janela SAI quando ela assume (quem cala o grupo agora é `humano_assumiu`)")
+checar(W.diagnose(s) is None, "🔴 (b) o Vigia fica calado (needs_human é terminal para ele)",
+       str(W.diagnose(s)))
+ENVIADAS.clear()
+rodar(R.try_route_insurer_inbound(company_id=A, from_phone=URA, text=TELA,
+                                  send_to_insurer=_para_ura, send_to_client=_para_cliente,
+                                  human_reply_provider=_cerebro))
+s = rodar(R.load_active_dispatch(A, URA))
+checar(ENVIADAS == [] and GRUPO == [] and saidas_do_robo(s) == [],
+       "🔴 (b) depois disso nada sai: nem tecla, nem Cérebro, nem dossiê, nem aviso",
+       f"{ENVIADAS} {GRUPO} {saidas_do_robo(s)}")
+checar(not D.motivo_reentravel(s["reason"]),
+       "🔴 e o robô NÃO retoma sozinho: uma pessoa da seguradora não reabre")
+checar(not D.pode_retomar({**nova_sessao(A), "state": "needs_human", "reason": "insurer_closed",
+                           "pausa_humana": {"ate": (datetime.now(timezone.utc)
+                                                    + timedelta(seconds=30)).isoformat()}}),
+       "🔴 com a janela aberta, a retomada automática NÃO reabre o acionamento por cima dela")
+# (c) A 2ª FALA **DEPOIS** DOS 15 s É UMA NOVA 1ª FALA — o PAR do (b).
+REDIS.d.clear()
+GRUPO.clear()
+ENVIADAS.clear()
+s = nova_sessao(A)
+rodar(R.save_active_dispatch(A, URA, s))
+rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
+s = rodar(R.load_active_dispatch(A, URA))
+_primeira = s["pausa_humana"]["ate"]
+s["pausa_humana"]["ate"] = s["silencio_deliberado_ate"] = (
+    datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+rodar(R.save_active_dispatch(A, URA, s))
+rodar(R.note_manual_outbound(A, URA, "2", foi_humano=True))
+s = rodar(R.load_active_dispatch(A, URA))
+checar(not D.humano_assumiu(s) and D.pausa_humana_aberta(s)
+       and s["pausa_humana"]["ate"] != _primeira and int(s.get("pausas_humanas") or 0) == 2,
+       "🔴 (c) a 2ª fala DEPOIS dos 15 s é uma janela NOVA, não uma assunção",
+       f"assumiu={D.humano_assumiu(s)} aberta={D.pausa_humana_aberta(s)} n={s.get('pausas_humanas')}")
+checar(GRUPO == [] and ENVIADAS == [], "🔴 (c) e também nessa janela nova nada sai")
 
 print()
 print("=" * 74)
@@ -305,7 +385,30 @@ acao = rodar(W._sentinela_recover(A, URA, velha, _WaVigia(), {"id": "canal"}))
 checar(acao == "pausa_humana" and ENVIOS_WA == [],
        "🔴 o Sentinela relê a sessão e NÃO envia por cima dela", f"{acao} {ENVIOS_WA}")
 checar(D.pausa_humana_aberta(velha) and int(velha.get("sentinela_attempts") or 0) == 0,
-       "a cópia do Vigia herda a pausa (a gravação não a apaga) e a tentativa não é gasta")
+       "a cópia do Vigia herda a janela (a gravação não a apaga) e a tentativa não é gasta")
+# 🔴 E O MESMO COM A ASSUNÇÃO — o leitor de `humano_assumiu` no Vigia. Sem esta
+#    linha, o guarda ficava VERDE com o Vigia ignorando quem assumiu (mutação M4).
+REDIS.d.clear()
+velha2 = nova_sessao(A)
+velha2["transcript"].append({"direction": "in", "text": TELA,
+                             "at": (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()})
+rodar(R.save_active_dispatch(A, URA, velha2))
+velha2 = rodar(R.load_active_dispatch(A, URA))          # o Vigia leu ANTES
+
+
+async def _cerebro_lento_que_assume(company_id, session, texto):
+    await R.note_manual_outbound(A, URA, "1", foi_humano=True)
+    await R.note_manual_outbound(A, URA, "deixa comigo", foi_humano=True)   # a 2ª: assumiu
+    return "1"
+
+
+W._adaptive_reply = _cerebro_lento_que_assume
+ENVIOS_WA.clear()
+acao2 = rodar(W._sentinela_recover(A, URA, velha2, _WaVigia(), {"id": "canal"}))
+checar(acao2 == "pausa_humana" and ENVIOS_WA == [] and D.humano_assumiu(velha2)
+       and velha2.get("silencio_deliberado_ate") is None,
+       "🔴 ela ASSUMIU enquanto o Cérebro pensava: o Sentinela NÃO envia e a cópia "
+       "dele fica com `needs_human`/`humano_assumiu`", f"{acao2} {ENVIOS_WA} {velha2.get('state')}")
 
 print()
 print("=" * 74)
@@ -338,7 +441,7 @@ for provider, rotulo in ((_cerebro_sem_corrida, "controle"), (_cerebro_com_corri
                str(saidas_do_robo(s)))
     else:
         checar(saidas_do_robo(s) == [] and D.pausa_humana_aberta(s),
-               "🔴 com ela entrando no meio, nada nosso sai e a pausa fica gravada", str(saidas_do_robo(s)))
+               "🔴 com ela entrando no meio, nada nosso sai e a janela fica gravada", str(saidas_do_robo(s)))
         checar(any(t.get("manual") for t in s["transcript"])
                and any(t.get("text") == "Pode confirmar o bairro?" for t in s["transcript"]),
                "a fala dela E a tela deste turno ficam no registro")
@@ -351,20 +454,18 @@ for provider, rotulo in ((_cerebro_sem_corrida, "controle"), (_cerebro_com_corri
             datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
         s["transcript"][-1]["at"] = (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()
         checar(W.diagnose(s) != "stall_unanswered",
-               "vencida a pausa, o Vigia NÃO vê a tela que ela respondeu como pendente", str(W.diagnose(s)))
+               "vencida a janela, o Vigia NÃO vê a tela que ela respondeu como pendente", str(W.diagnose(s)))
 R.guard_human_phase_reply = _guarda_real
 
 print()
 print("=" * 74)
-print("[GC-3] COM A PAUSA ABERTA, O GRUPO CALA — pela guarda ÚNICA, em todo ponto de envio")
+print("[GC-3] COM A JANELA ABERTA, O GRUPO CALA — pela guarda ÚNICA, em todo ponto de envio")
 print("=" * 74)
 aberta = nova_sessao(A)
-D.abrir_ou_renovar_pausa(aberta)
+D.uma_fala_da_atendente(aberta)
 for tipo in (G.TIPO_PEDIDO_DE_AJUDA, G.TIPO_VIGIA, G.TIPO_RETOMADA, G.TIPO_ESPERA_VENCIDA):
     pode, porque = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=tipo, sessao=aberta))
-    checar(not pode and porque == G.MOTIVO_PAUSA_HUMANA, f"`{tipo}` cala com a pausa aberta", porque)
-pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_PAUSA_HUMANA, sessao=aberta))
-checar(pode, "o aviso DA PRÓPRIA pausa passa")
+    checar(not pode and porque == G.MOTIVO_PAUSA_HUMANA, f"`{tipo}` cala com a janela aberta", porque)
 pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_SINISTRO, sessao=aberta))
 checar(pode, "sinistro continua isento (a regra da 001.3 não muda)")
 # a espera.vencida não tem a sessão: o índice por telefone a cala.
@@ -373,10 +474,10 @@ rodar(G.marcar_pausa_humana(A, G.alvos_da_pausa("conv-a", "5548988887777"), 60))
 pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_ESPERA_VENCIDA,
                                      telefone="48 98888-7777"))
 checar(not pode, "a `espera.vencida` (só com o telefone, noutra forma) cala pelo índice")
-# 🔴 CONTROLE: pausa FECHADA não cala nada.
-D.fechar_pausa(aberta, "agente")
+# 🔴 CONTROLE: janela FECHADA não cala nada.
+D.fechar_pausa(aberta, "assumiu")
 pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=A, tipo=G.TIPO_PEDIDO_DE_AJUDA, sessao=aberta))
-checar(pode, "🔴 CONTROLE: com a pausa fechada, o pedido de ajuda passa")
+checar(pode, "🔴 CONTROLE: com a janela fechada, o pedido de ajuda passa")
 # todo ponto de envio do acionamento entrega a SESSÃO à guarda (AST — o guarda diz qual).
 sem_sessao = []
 for arq in ("app/services/dispatch_router.py", "app/tasks/dispatch_watchdog.py"):
@@ -386,15 +487,29 @@ for arq in ("app/services/dispatch_router.py", "app/tasks/dispatch_watchdog.py")
                 and not any(k.arg == "sessao" for k in no.keywords)):
             sem_sessao.append(f"{arq}:{no.lineno}")
 checar(not sem_sessao, "🔴 todo `enviar_ao_grupo` do acionamento passa `sessao=`", str(sem_sessao))
+# 🔴 E O AVISO DA PAUSA NÃO VOLTA PELA PORTA DOS FUNDOS: nenhum ponto do produto
+#    manda `tipo=TIPO_PAUSA_HUMANA` ao grupo.
+manda_pausa = []
+for arq in ("app/services/dispatch_router.py", "app/tasks/dispatch_watchdog.py",
+            "app/api/webhook.py"):
+    arvore = ast.parse(open(os.path.join(RAIZ, arq), encoding="utf-8").read())
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Call) and getattr(no.func, "id", getattr(no.func, "attr", "")) == "enviar_ao_grupo":
+            for k in no.keywords:
+                if k.arg == "tipo" and "PAUSA_HUMANA" in ast.dump(k.value):
+                    manda_pausa.append(f"{arq}:{no.lineno}")
+checar(not manda_pausa,
+       "🔴 NENHUM ponto do produto manda um aviso de pausa ao grupo", str(manda_pausa))
 
 print()
 print("=" * 74)
-print("[GC-3b] AGENTE retoma · EU CUIDO tira o agente — e nada mais sai")
+print("[GC-3b] O ATALHO OPCIONAL continua funcionando — e ninguém precisa dele")
 print("=" * 74)
 checar(R.palavra_da_equipe("EU CUIDO!") == "eu cuido" and R.palavra_da_equipe(" agente ") == "agente",
        "as duas palavras são lidas com pontuação e caixa")
-checar(R.palavra_da_equipe(R.aviso_da_pausa_humana(nova_sessao(A), 60)) is None,
-       "🔴 o próprio aviso (que CONTÉM as duas palavras) não é lido como resposta")
+checar(R.palavra_da_equipe("Responda AGENTE para eu seguir, ou EU CUIDO para eu sair") is None,
+       "🔴 a LIÇÃO MIGRA (§9.3): uma frase que CONTÉM as duas palavras não é comando "
+       "— o aviso que as citava morreu, o `in` que o barrava não")
 REDIS.d.clear()
 s = nova_sessao(A)
 rodar(R.save_active_dispatch(A, URA, s))
@@ -405,42 +520,30 @@ checar(rodar(R.ler_palavra_da_equipe(A, "AGENTE", chat="120363000000000000@g.us"
        "AGENTE no grupo de suporte é aplicada")
 s = rodar(R.load_active_dispatch(A, URA))
 checar(not D.pausa_humana_aberta(s) and s.get("silencio_deliberado_ate") is None,
-       "AGENTE fecha a pausa na hora")
+       "AGENTE fecha a janela na hora")
 rodar(R.note_manual_outbound(A, URA, "2", foi_humano=True))
 checar(rodar(R.ler_palavra_da_equipe(A, "eu cuido", remetente="48 90000-0001")) == "eu_cuido",
        "EU CUIDO de um número da casa, no privado, é aplicada")
 s = rodar(R.load_active_dispatch(A, URA))
-checar(s["state"] == "needs_human" and s["reason"] == D.HUMANO_ASSUMIU, "EU CUIDO → needs_human/humano_assumiu")
-ENVIADAS.clear()
-GRUPO.clear()
-rodar(R.try_route_insurer_inbound(company_id=A, from_phone=URA, text=TELA,
-                                  send_to_insurer=_para_ura, send_to_client=_para_cliente,
-                                  human_reply_provider=_cerebro))
-rodar(R.try_route_insurer_inbound(company_id=A, from_phone=URA,
-                                  text="Olá, meu nome é Fulana e darei continuidade em seu atendimento",
-                                  send_to_insurer=_para_ura, send_to_client=_para_cliente,
-                                  human_reply_provider=_cerebro))
-s = rodar(R.load_active_dispatch(A, URA))
-checar(ENVIADAS == [] and GRUPO == [] and saidas_do_robo(s) == [],
-       "🔴 depois do EU CUIDO nada sai: nem tecla, nem Cérebro, nem dossiê, nem aviso",
-       f"{ENVIADAS} {GRUPO} {saidas_do_robo(s)}")
-checar(s["state"] == "needs_human" and not D.motivo_reentravel(s["reason"]),
-       "🔴 e EU CUIDO NÃO é reentrável: uma pessoa da seguradora não reabre", s["state"])
-checar(W.diagnose(s) is None, "o Vigia também não age (needs_human é terminal para ele)")
+checar(s["state"] == "needs_human" and s["reason"] == D.HUMANO_ASSUMIU,
+       "EU CUIDO faz o MESMO que a 2ª fala: needs_human/humano_assumiu")
 checar(rodar(R.ler_palavra_da_equipe(A, "agente", remetente="5548900000001")) == "agente"
        and rodar(R.load_active_dispatch(A, URA))["state"] == "ura",
-       "AGENTE depois de EU CUIDO devolve o acionamento ao agente")
+       "AGENTE devolve ao robô um acionamento assumido")
 # travada antes, travada depois — COM o motivo (juiz fresco, P7)
 REDIS.d.clear()
 s = nova_sessao(A)
 s.update({"state": "needs_human", "reason": "sentinela_stall"})
 rodar(R.save_active_dispatch(A, URA, s))
 rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
-rodar(R.ler_palavra_da_equipe(A, "EU CUIDO", remetente="5548900000001"))
+rodar(R.note_manual_outbound(A, URA, "2", foi_humano=True))   # a 2ª fala assume
+s = rodar(R.load_active_dispatch(A, URA))
+checar(D.humano_assumiu(s), "a 2ª fala assume mesmo uma sessão JÁ travada")
 rodar(R.ler_palavra_da_equipe(A, "AGENTE", remetente="5548900000001"))
 s = rodar(R.load_active_dispatch(A, URA))
 checar(s["state"] == "needs_human" and s.get("reason") == "sentinela_stall",
-       "AGENTE devolve a sessão travada com o MOTIVO dela (reentrável de novo)", f"{s['state']} {s.get('reason')}")
+       "AGENTE devolve a sessão travada com o MOTIVO dela (reentrável de novo)",
+       f"{s['state']} {s.get('reason')}")
 
 print()
 print("=" * 74)
@@ -459,7 +562,7 @@ except Exception as e:  # noqa: BLE001
     erro = f"{type(e).__name__}: {e}"
 s = rodar(R.load_active_dispatch(B, URA))
 checar(not erro and [g["tipo"] for g in GRUPO] == [G.TIPO_PEDIDO_DE_AJUDA] and s.get("dossier_sent"),
-       "needs_human sem pausa: o pedido de ajuda chega à porta única e o dossiê é marcado", erro or str(GRUPO))
+       "needs_human sem janela: o pedido de ajuda chega à porta única e o dossiê é marcado", erro or str(GRUPO))
 
 print()
 print("=" * 74)
@@ -473,20 +576,20 @@ rodar(R.save_active_dispatch(A, URA, sa))
 rodar(R.save_active_dispatch(B, URA, sb))
 rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
 sa, sb = rodar(R.load_active_dispatch(A, URA)), rodar(R.load_active_dispatch(B, URA))
-checar(D.pausa_humana_aberta(sa) and not D.pausa_humana_aberta(sb), "a pausa de A não existe em B")
+checar(D.pausa_humana_aberta(sa) and not D.pausa_humana_aberta(sb), "a janela de A não existe em B")
 rodar(R.try_route_insurer_inbound(company_id=B, from_phone=URA, text=TELA, send_to_insurer=_para_ura,
                                   send_to_client=_para_cliente))
 checar(saidas_do_robo(rodar(R.load_active_dispatch(B, URA))) == ["1"],
-       "🔴 CONTROLE: B, sem pausa, responde a MESMA tela com a tecla do ramo (\"1\")",
+       "🔴 CONTROLE: B, sem janela, responde a MESMA tela com a tecla do ramo (\"1\")",
        str(saidas_do_robo(rodar(R.load_active_dispatch(B, URA)))))
 pode, _ = rodar(G.o_grupo_pode_saber(None, company_id=B, tipo=G.TIPO_PEDIDO_DE_AJUDA,
                                      conversation_id="conv-igual", telefone="5548988887777", sessao=sb))
-checar(pode, "o índice da pausa de A (mesma conversa, mesmo telefone) NÃO cala o grupo de B")
-checar(rodar(R.ler_palavra_da_equipe(B, "EU CUIDO", remetente="5548900000001")) is None
-       and rodar(R.load_active_dispatch(A, URA))["state"] == "ura",
-       "EU CUIDO em B não encontra a pausa de A e não mexe nela")
-sb = rodar(R.load_active_dispatch(B, URA))
-checar("pausa_humana" not in sb and not sb.get("menu_pendente", {}).get("nossa_resposta") == "texto dela",
+checar(pode, "o índice da janela de A (mesma conversa, mesmo telefone) NÃO cala o grupo de B")
+rodar(R.note_manual_outbound(A, URA, "2", foi_humano=True))     # A assume
+sa, sb = rodar(R.load_active_dispatch(A, URA)), rodar(R.load_active_dispatch(B, URA))
+checar(D.humano_assumiu(sa) and not D.humano_assumiu(sb),
+       "🔴 a ASSUNÇÃO de A não assume o acionamento de B")
+checar("pausa_humana" not in sb and sb.get("state") != "needs_human",
        "nada da sessão de A aparece na de B")
 
 print()
