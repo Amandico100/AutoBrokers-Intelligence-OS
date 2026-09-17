@@ -3,7 +3,7 @@
 > **Como se executa, se julga e se autoriza a entrega de uma SPEC no AutoBrokers.**
 > Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar, entregar e parar**.
 >
-> **v12.1 · AAA FAST · 17/09/2026** · vale para toda SPEC, execução, ideia, incidente e
+> **v12.2 · AAA FAST · 17/09/2026** · vale para toda SPEC, execução, ideia, incidente e
 > agente. Só regras. O porquê, com as medições: [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
 ---
@@ -97,7 +97,7 @@ Se eu consertar isto, muda UM BYTE do que chega:
    ao BANCO         dado gravado, estado, integridade
    à SEGURANÇA      acesso, isolamento, vazamento
 
-SIM  →  BLOCKER. Conserta, e o laço continua.
+SIM  →  BLOCKER. Conserta; o laço continua.
 NÃO  →  PENDÊNCIA. Registra, e SEGUE. "é pequeno" não é argumento.
 ```
 
@@ -112,9 +112,8 @@ NÃO  →  PENDÊNCIA. Registra, e SEGUE. "é pequeno" não é argumento.
 
 ```
 ALCANCE          ninguém 0  ·  a corretora 2  ·  o SEGURADO 3
-REVERSIBILIDADE  o que FICA depois de desfazer o gesto:
-                 nada 0  ·  dado/estrutura/estado 2  ·  saiu do prédio (mensagem,
-                 chamado, portal, dinheiro) 3     ⚠️ a linha do ledger não conta
+REVERSIBILIDADE  o que FICA depois de desfazer: nada 0 · dado/estrutura/estado 2 · saiu do prédio (mensagem,
+                 chamado, portal, dinheiro) 3   ⚠️ a linha do ledger não conta
 FREQUÊNCIA       raramente 0  ·  toda semana 1  ·  TODO atendimento 2
 RISCO = soma (0–8)
 
@@ -131,10 +130,10 @@ UNIDADE = a menor coisa que dá para ENTREGAR e PROVAR sozinha. FATIA = o que ca
 
 ### 3.1 O NÍVEL — a tabela inteira cabe em três linhas
 
-| nível | quando | executor | juiz fresco (§6) | rodadas |
+| nível | quando | quem ESCREVE | juiz fresco (§6) | rodadas |
 |---|---|---|---|---|
-| **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | Opus 5 `medium`/`high` | nenhum (só o verificador mecânico) | 0 |
-| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | Opus 5 `high` | **Opus 5** | 1 |
+| **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | Opus 5 `high` | nenhum (só o verificador mecânico) | 0 |
+| **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | Opus 5 `xhigh` | **Fable 5.1** | 1 |
 | **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | Opus 5 `xhigh` | **Fable 5.1** · + confirmação e lente por gatilho (§8) | 1 (+1 curta) |
 
 ```
@@ -158,8 +157,7 @@ CRÍTICO no mínimo, independente da conta:
 ### 3.3 A conta vale para MUDANÇA, não para INVESTIGAÇÃO
 
 ```
-CONSULTA PONTUAL  "onde está X?" · "o que faz Y?"        → dispensado
-VARREDURA         "isto funcionou?" · "serve para nós?"  → MODO INVESTIGAÇÃO (§8)
+CONSULTA PONTUAL "onde está X?" → dispensado · VARREDURA "isto funcionou?" → MODO INVESTIGAÇÃO (§8)
 ```
 
 ### 3.4 A COESÃO — decide o que fica junto na mesma FATIA
@@ -173,18 +171,19 @@ tocam a MESMA interface, tipo ou contrato? uma REDEFINE o que a outra consome? m
 ## 4. OS PAPÉIS — dois por padrão; o resto por gatilho
 
 ```
-🔧 EXECUTOR       Opus 5, SESSÃO NOVA por SPEC ou fatia. Lê, mede, escreve TODO o código, prova,
-                  chama o juiz, conserta, entrega, REGISTRA. 🔴 a escrita é dele só
+🎯 GERENTE        Fable 5.1 no chat de decisão: card, BLOCO 0, pacotes, provas, juiz, conserto, entrega,
+                  REGISTRA. Lê a FICHA, nunca a proposta inteira
+🔧 BUILDER        Opus 5 xhigh, subagente FRESCO, um por fatia, sequencial. 🔴 a escrita é dele só
 ⚖️ JUIZ FRESCO    subagente read-only, contexto limpo, que não viu escrever (§6)
 ⚙️ VERIFICADOR    passo mecânico do laço, não papel convocado
-🔍 INVESTIGADOR   Sonnet 5, read-only, no máximo UM, só para varredura grande e paralela
+🔍 INVESTIGADOR   Sonnet 5, read-only, no máximo UM
 — por GATILHO (§8) —  🔬 LENTE DO DADO (reconstrói o outcome por SELECT) · 🗡️ RED TEAM (Fable 5.1, missão:
 QUEBRAR) · 🏁 CONFIRMAÇÃO (juiz novo, ≤ 20 turnos, só o diff do conserto)
 🎯 FABLE          decide, audita e escreve protocolo em OUTRO chat. Nunca turno a turno
 ```
 
 **O verificador mecânico**, na ordem: `py_compile`/`tsc` · testes do bloco · lint · migrations pelo
-VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em `app/`, `middleware.ts`,
+VERIFY (confere o OBJETO) · regressão dirigida. 🔴 Mexeu em `app/`, `middleware.ts`,
 `next.config.js` ou env: `npm run test:rotas-montam` + `next start` + UMA requisição a `/api/…`.
 
 ```
@@ -202,7 +201,7 @@ VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em 
                           Guarda novo nasce VERMELHO e fica VERDE (linha de controle)
 ③ VERIFICADOR MECÂNICO    §4 · mutação dos guardas NOVOS, uma vez  →  FAIL volta ao ②, nunca ao juiz
 ④ JUIZ FRESCO             uma passada sobre o diff acumulado, o teste rodando e o banco (§6).
-                          🔴 outcome é NÚMERO ou DATASET? a LENTE DO DADO entra pelo gatilho (§8)
+                          🔴 outcome é NÚMERO/DATASET? lente do dado por gatilho (§8)
 ⑤ CONSERTO ÚNICO          o EXECUTOR aplica o TESTE DO PRODUTO a cada achado, conserta TUDO junto,
                           reroda SÓ os gates afetados. Achado não consertado vira pendência escrita
 ⑥ ENTREGA                 suíte inteira UMA vez em 2º plano, triada por DIFF · relatório ≤ 15 KB · push com a
@@ -215,25 +214,26 @@ VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em 
 ✅ o juiz roda sobre o diff, o teste rodando, o banco
 ```
 
-### 5.2 As FATIAS — uma SPEC grande, UMA sessão, e o builder fresco a partir da 2ª fatia
+### 5.2 As FATIAS — uma SPEC grande, UM chat, um builder fresco por fatia
 ```
-≥ 3 unidades ou > 40 KB → FATIAS INTERNAS: mesma SPEC, branch, relatório e SESSÃO. fatia = ② → ③ → commit.
-O executor constrói a fatia 1. Da fatia 2 em diante, DELEGA a construção a UM builder subagente
-fresco (Opus 5 xhigh, sequencial) com o pacote (card · unidades · arquivos · handoff · gates). O executor fica como gerente: provas, juiz, conserto. O juiz roda UMA vez, no fim.
+≥ 3 unidades ou > 40 KB → FATIAS INTERNAS: mesma SPEC, branch, relatório e CHAT. fatia = ② → ③ → commit.
+O gerente delega CADA fatia a UM builder subagente fresco (Opus 5 xhigh, sequencial) com o pacote (card ·
+unidades · arquivos · handoff · gates); conserto = o MESMO builder retomado (contexto quente). O gerente roda
+as provas e chama o juiz UMA vez, no fim. Chat Opus solo (sem gerente): só LEVE/PADRÃO.
 ⛔ nunca sessão nova por fatia nem Founder trocando de chat · nunca dois builders ao mesmo tempo
+🔴 o gerente encadeia 2–3 SPECs no MESMO chat enquanto o contexto dele ficar ≤ 600 k
 ```
 
 ### 5.3 Nunca a mesma lente duas vezes
 ```
 ⛔ JUIZ RETOMADO É PROIBIDO: julga os próprios achados e dá nota alta falsa
-⛔ segunda rodada só pelo gatilho da §8. Rodadas extras compram falsos positivos
+⛔ 2ª rodada só por gatilho (§8): rodadas extras compram falsos positivos
 ```
 
 ### As portas
 ```
 ✅ o juiz libera, ou só sobraram pendências  →  registra e entrega
-🛑 reprovou DUAS vezes com blocker material  →  ESCALAÇÃO (§8); é uma das oito do CLAUDE.md §10?
-      SIM → para e registra   ·   NÃO → entrega o que passou e AVANÇA
+🛑 reprovou DUAS vezes com blocker material → ESCALAÇÃO (§8); uma das oito do CLAUDE.md §10? SIM para; NÃO avança
 ⛔ NUNCA: afrouxar a régua · alterar teste para passar · pronto por cansaço
 🔴 lista de casos fixados carrega PARES: mesma superfície, veredito oposto
 ```
@@ -248,8 +248,7 @@ NUNCA    a narrativa do executor · o esforço · "está funcionando" · o resum
 ATAQUES  dado vazio/nulo · duas corretoras ao mesmo tempo (company_id) · a mesma mensagem 2× (idempotência) ·
          dois processos ao mesmo tempo · rollback da migration · o produto CHAMA este caminho? (rode-o) ·
          regressão direta do diff · efeito externo (mensagem, portal, dinheiro)
-Presuma FAIL até existir evidência de PASS. Cite arquivo, linha, comando, saída ou consulta em CADA
-conclusão. Reproduza 3 números por amostra (§0.4). Não reroda todas as mutações.
+Presuma FAIL até existir evidência de PASS. Cite arquivo, linha, comando, saída ou consulta em CADA conclusão. Reproduza 3 números por amostra (§0.4). Não reroda todas as mutações.
 🔴 Se estiver bom, diga que está bom. Juiz que precisa achar defeito para se justificar É o defeito
 FORMA: VEREDITO · BLOCKERS (com o teste do produto) · PENDÊNCIAS · EVIDÊNCIA · MAIOR LACUNA ·
        PRÓXIMA AÇÃO · CONFIANÇA e o que ficou por medir · NOTA
@@ -318,7 +317,7 @@ Identidade, dinheiro e escolha-entre-existente-e-novo exigem julgamento humano.
 |---|---|---|
 | 🧭 **INVESTIGAÇÃO** · ideia, auditoria, medição | ❌ (§3.3) | medidor · cético · juiz do risco. Teto 4 frentes. SAÍDA: estado · quebrado · o que destrava · **o que ficou por medir** |
 | 🔨 **EXECUÇÃO** | ✅ por unidade | AAA FAST: executor + juiz pelo nível (§3.1). Escrita de UM SÓ. Fatias em série |
-| 🤖 **AGENTE** · Central, auto-evolução | ✅ + três travas | teto de voltas · teto de custo · o que muda é reversível e registrado |
+| 🤖 **AGENTE** · Central, auto-evolução | ✅ + três travas | teto de voltas · teto de custo · mudança reversível e registrada |
 | 🚨 **INCIDENTE** | ❌ | quem conserta · quem observa o EFEITO numa rota que executa código. Juiz ADIADO |
 | 📦 **LOTE LOCAL** · garimpo em volume | ❌ | chat dedicado, mesmo código do produto, mesmas tabelas |
 
@@ -347,9 +346,9 @@ Identidade, dinheiro e escolha-entre-existente-e-novo exigem julgamento humano.
 ② Uma das oito do CLAUDE.md §10?    NÃO → não é motivo de parada
 ③ Precisa da MÃO do Founder?        SIM → CAIXA DO FOUNDER, e SEGUE
 Só para se os três derem SIM e o próximo bloco for IMPOSSÍVEL, não incômodo.
-🔴 dúvida entre caminhos: dê nota 0–100 a cada um, escolha o maior, registre, siga
+🔴 dúvida entre caminhos: nota 0–100 a cada um, o maior vence, registre, siga
 🔴 travou 30 min? escolha o mais conservador, anote na caixa, siga
-≤30 min E ≤2 arquivos E sem decisão a tomar → conserta e anota. Fora disso → pendência
+≤30 min E ≤2 arquivos E sem decisão → conserta e anota; fora disso, pendência
 ```
 
 ### 9.1 O VALOR MARGINAL
@@ -382,15 +381,15 @@ NÃO). Nunca se para para entregar uma linha dela.
 ## 10. 🔴 A MECÂNICA — o custo é turno × contexto
 
 ```
-SESSÃO      UMA por SPEC, do card ao push, contexto nascendo vazio. CLAUDE.md + memória + a FICHA da SPEC +
-            BLOCO 0 são o aquecimento. ⛔ nenhuma sessão executa duas SPECs · ⛔ nenhuma SPEC em duas sessões
-MODELO      🔧 executor = Opus 5 (LEVE medium/high · PADRÃO high · CRÍTICO xhigh) · ⚖️ juiz = Opus 5 em PADRÃO,
-            Fable 5.1 em CRÍTICO · 🔍 investigador = Sonnet 5 · 🗡️ red team = Fable 5.1. ⛔ não trocar no meio
+SESSÃO      o GERENTE vive num chat; cada SPEC inteira nele (card → push); 2–3 SPECs por chat enquanto o
+            gerente ficar ≤ 600 k (📊 cache read do Fable = US$ 0,25/M, metade do Opus). ⛔ nenhuma SPEC em duas sessões
+MODELO      🎯 gerente = Fable 5.1 · 🔧 builder = Opus 5 xhigh (max só a pedido do Founder) · ⚖️ juiz = Fable 5.1
+            sempre que houver juiz · 🔍 investigador = Sonnet 5 · 🗡️ red team = Fable 5.1. ⛔ não trocar no meio
 TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
-            (passou, a próxima fatia vai ao builder §5.2) · agentes além do executor 0 · 1 · 2 + builders (§5.2) · relógio ≤ 40 min ·
+            (passou → builder novo, §5.2) · agentes por SPEC ≤ 6 (builders + juiz + gatilhos) · relógio ≤ 40 min ·
             75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
 APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
-            hook bloqueia o 8º agente (`.claude/hooks/teto-de-agentes.py`) · status line conferida em CADA gate ·
+            hook bloqueia o 13º agente (`.claude/hooks/teto-de-agentes.py`; ≤ 6 por SPEC) · status line conferida em CADA gate ·
             o script da §11 fecha a conta
 JUIZ RECEBE o card + o diff + os comandos + a lista de ataques. Nunca a SPEC inteira nem o censo
 CACHE       `subagentPromptCacheTtl: "1h"` · juiz no diretório principal, nunca FORK

@@ -23,7 +23,7 @@
     "v12 · AAA FAST (16/09/2026) — PROTOCOLO §10, os tetos que o harness aplica:",
     "  · env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 e ..._SPAWN_DEPTH=1: no máximo dois agentes",
     "    ao mesmo tempo, e nenhum agente cria outro (Anthropic, doc de prompting do Opus 5);",
-    "  · hook PreToolUse[Agent] (.claude/hooks/teto-de-agentes.py): bloqueia o 8º agente da",
+    "  · hook PreToolUse[Agent] (.claude/hooks/teto-de-agentes.py): bloqueia o 13º agente da",
     "    sessão. O executor tem direito a juiz + lente + confirmação + investigador. O 5º é",
     "    o sintoma de 'estourou, vou chamar mais gente'. AAA_FAST_TETO_DE_AGENTES sobe o teto.",
     "  · o comando usa $CLAUDE_PROJECT_DIR: o cwd da sessão muda (cd backend) e um caminho relativo quebrava o hook — e hook quebrado BLOQUEIA o Agent.",

@@ -1,7 +1,7 @@
-# PROMPT DO GERENTE — EXTRA-001.5 · AAA FAST (protocolo v12.2) · PREENCHIDO em 17/09/2026
+# PROMPT DO GERENTE — AAA FAST (modelo único · protocolo v12.2 · 17/09/2026)
 
 > Cole este texto inteiro num chat **NOVO** do Claude Code, modelo **Fable 5.1**, effort **high**, aberto na
-> árvore `AutoBrokers-FIX`. Nada a trocar: o bloco [SPEC] já está preenchido. O mesmo chat encadeia 2–3 SPECs: para a
+> árvore `AutoBrokers-FIX`. Troque só o bloco **[SPEC]** no fim. O mesmo chat encadeia 2–3 SPECs: para a
 > seguinte, cole só um bloco [SPEC] novo. Prevalece sobre os
 > prompts individuais já escritos (use deles só §1 arquivos, §2 autorizações, §3 estado herdado).
 > Substitui `specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.x-MODELO.md` (laço curto, superado).
@@ -99,76 +99,21 @@ física do Founder · mudança material de escopo · custo extraordinário · fa
 
 ---
 
-## [SPEC] · preenchido em 17/09/2026 (experimento C do A/B, D-PROTO-02)
+## [SPEC]  ← troque este bloco
 
 ```
-SPEC          EXTRA-001.5 — O agente sabe o que cada plano cobre
-FICHA         docs/canon/FICHA-EXTRA-001.5.md  (15 KB) — 🔴 LEIA ESTA, e no LUGAR da proposta inteira
-              (protocolo v12.1 §1 · D-PROTO-08). Ela traz o card proposto, as premissas do BLOCO 0 com o
-              comando, as 5 unidades com arquivo/gate/mutação, as migrations, o canário e a caixa do Founder
-PROPOSTA      docs/canon/specs-propostas/SPEC-EXTRA-001.5-o-agente-sabe-o-que-cada-plano-cobre.md
-              seções a ler POR UNIDADE, quando for construí-la — nunca inteira:
-                §0.3–§0.5 (as 4 correções e a divergência de marcha) · §1 (autorização de testes) · §4 (BLOCO 0)
-                §5 unidade A · §6 unidade B · §7 unidade C · §8 unidade D · §9 unidade E
-                §10 (os 12 guardas + o canônico) · §11 (as duas migrations) · §12 (canário) · §13 (entrega)
-                §14 (as 3 referências externas — o juiz reabre) · §16 (lista de conclusão)
-              RESEARCH-PACK `…-RESEARCH-PACK.md`: SÓ §2 (as consultas M1–M7) e §4 (os greps do BLOCO 0)
-PROMPT ANTIGO docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.5.md  · só §1 (arquivos), §2 (autorizações), §3 (estado herdado)
-UNIDADES      5 — A a chave canônica e as duas tabelas (`insurer_assistance_plans` + `…_services`, com fonte
-              obrigatória pelo BANCO) · B a Skill `cobertura_e_assistencia` (os cinco estados, com origem) ·
-              C as três ondas de coleta (extrair · verificar · PUBLICAR por gente) · D a tela de Conhecimento
-              (cobertura + fila de curadoria) · E a medição e a `origem` no turno
-              FATIAS (pela coesão do card): fatia 1 = A sozinha (é o arquivo-hub: chave + as duas migrations;
-              B e C consomem o contrato dela) · fatia 2 = B + E (tocam o MESMO turno: a resposta e o que ela
-              grava em `tool_invocations`) · fatia 3 = C + D (tocam a MESMA fila de curadoria: quem propõe a
-              linha e quem a publica). O juiz roda UMA vez, no fim
-MARCHA        PADRÃO — RISCO 7 · SUPERFÍCIE 2 · piso §3.2 em UM ponto (a migration que alarga o CHECK de
-              `doc_kind` numa tabela viva, §11.2).
-              🔴 A conta dá CRÍTICO e a marcha fixada é PADRÃO — pelo diagnóstico §13.4 ("PADRÃO = 1 lente +
-              juiz fresco + canário (001.5)") e por D-PROTO-02. A divergência NÃO se silencia: o BLOCO 0
-              recalcula, escreve a divergência no card e aplica o piso em dois pontos — a migration de §11.2
-              (manifesto, transação única, rollback com guarda de contagem) e TODO texto que chega ao segurado
-              (§6.2: a frase que diz "não" carrega documento e página)
-BUILDER       Opus 5 · effort xhigh (subagente fresco por fatia, chamado pelo gerente)
-JUIZ          fable (decisão do Founder de 17/09: Fable em toda execução)
-GATILHOS      lente do dado: **SIM** — o §8 do protocolo manda-a entrar quando "o outcome é NÚMERO, DATASET ou
-              relatório que a corretora lê", quando há "migration que ALTERA DADO" e quando "a SPEC afirma
-              percentuais do acervo". Os três batem aqui: o outcome É a base de planos (um dataset que a tela
-              de §8 mostra e o corretor lê), a migration de §11.2 mexe na trava de uma tabela viva, e §0.1/§9
-              afirmam números do acervo (8 de 61 · 6 com a chave casando · 83,86 % do prêmio). A lente
-              reconstrói por SELECT as três contagens de §9 (CG na base ≠ plano publicado ≠ seguradora que a
-              corretora usa) e confere as linhas publicadas contra documento e página ·
-              red team: **NÃO** — não há autenticação, sessão, cross-tenant, dinheiro nem ação irreversível a
-              terceiro; a base é global e só de leitura pelo produto ·
-              consulta ao Fable antes do BUILD: **NÃO** — não há decisão de arquitetura em aberto; a forma
-              (compositor consulta a base, nota 90) e "duas tabelas, não uma" já estão decididas na proposta ·
-              confirmação (§6.1): SIM se o juiz achar blocker no código que grava por migration ou no texto
-              que chega ao segurado
-FAIXA         PADRÃO ≤ 75 min por fatia (fatia 1 · fatia 2 · fatia 3) · juiz + lente + conserto + entrega
-              ≤ 45 min. Tetos por fatia: 160 turnos e 250 k de contexto (§10)
-🔴 UMA SESSÃO, DO CARD AO PUSH (D-PROTO-08 · v12.1 §5.2): você constrói a **fatia 1**; da **fatia 2** em diante
-              DELEGA a construção a UM builder subagente fresco (Opus 5 xhigh, sequencial, escreve sozinho),
-              com o pacote: card · unidades · arquivos · handoff · gates. Você fica como gerente: roda as
-              provas, chama o juiz, conserta, entrega. ⛔ nunca sessão nova por fatia (📊 a 001.4 em 3 chats
-              custou o mesmo que o laço curto) · ⛔ nunca dois builders ao mesmo tempo. A suíte inteira roda
-              UMA vez, depois do conserto, sozinha
-BASE          <hash do origin/main — preencha no preflight>
-DEPENDE DE    tudo o que esta SPEC consome já está na `main`: EXTRA-001.3 (`c82bfe8`, 16/09) e EXTRA-001.4
-              (`ff2518a`, 16/09). A porta da apólice da EXTRA-001.1 EXISTE —
-              `backend/app/providers/policy_data_provider.py` — e a 001.5 **consome, não edita** (dois
-              escritores no mesmo arquivo é o que o §3.4 proíbe). A chave canônica EXISTE —
-              `backend/app/services/corridor_playbooks.py::normalize_insurer_key(insurer, para=…)` (linha
-              8236) — e esta SPEC a CHAMA com `para="conhecimento"`, nunca cria a terceira (CLAUDE.md §5)
-PENDÊNCIAS    P-PILOTO-04 (fecha só a parte de conhecimento → veredito **PARCIAL**, com a prova) ·
-              P-PILOTO-20 (📊 já FECHADA pela 001.1 — `PENDENCIAS-FECHADAS.md`; confirme numa linha e siga).
-              Entradas novas obrigatórias, cada uma com o que destrava · de quem é · o que custa esquecer:
-              o corpus não carrega página · `insurer_key` inconsistente em 14 tabelas · 3 valores de `doc_kind`
-              sem escritor · `normative_documents` e `normative_document_versions` são classe SEM_ARQUIVO
-SÓ O FOUNDER  🔴 revisar e publicar as primeiras linhas da fila de curadoria (ou indicar quem revisa) — é a
-              única dependência humana, e ela bloqueia o canário completo; colar as perguntas dos casos 1–5 e 7
-              no chat `core` da Resulta; mandar a mensagem do caso 6 pelo aparelho TESTE-A; clicar Implantar
-              (`smith-api` **e** `smith-web`); conduzir a validação com Saionara e Regina
-A/B           experimento C: modo GERENTE (Fable no chat + builder Opus xhigh + juiz Fable), 3 fatias, um chat
-              relatório e avise o Founder — o Fable audita depois e compara com a 001.3 (xhigh + Fable) e a
-              001.4 (max + Fable), pelos critérios de D-PROTO-02
+SPEC          EXTRA-001.<N> — <título>
+PROPOSTA      docs/canon/specs-propostas/SPEC-EXTRA-001.<N>-<slug>.md   · seções a ler: <lista>
+PROMPT ANTIGO docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.<N>.md   · só §1, §2, §3
+UNIDADES      <lista, na ordem; e as FATIAS: "fatia 1 = A+B · fatia 2 = C+D">
+MARCHA        LEVE | PADRÃO | CRÍTICO           (pela conta do protocolo §3; o piso §3.2 vence)
+BUILDER       Opus 5 · effort xhigh (max só se o Founder pedir)
+JUIZ          fable                                (LEVE: só provas mecânicas)
+GATILHOS      lente do dado: <sim/não + motivo> · red team: <sim/não + motivo> · consulta Fable antes: <sim/não>
+FAIXA         <ex.: fatia 1 ≤ 1h15 · fatia 2 ≤ 1h15 · juiz + conserto + entrega ≤ 45 min>
+BASE          <hash do origin/main no início — preencha no preflight>
+DEPENDE DE    <SPECs que precisam estar na main; "—" se nenhuma>
+PENDÊNCIAS    <P-… por número, só as que esta SPEC toca>
+SÓ O FOUNDER  <senhas, Implantar, capturas, números>
+A/B           <experimento e o que se mede — ou "—">
 ```
