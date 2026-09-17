@@ -309,6 +309,43 @@ checar(D.pausa_humana_aberta(velha) and int(velha.get("sentinela_attempts") or 0
 
 print()
 print("=" * 74)
+print("[GC-2c] A CORRIDA NO ROTEADOR (juiz fresco, B1): ela entra enquanto o Cérebro redige")
+print("=" * 74)
+_guarda_real = R.guard_human_phase_reply
+R.guard_human_phase_reply = lambda reply, session, insurer_message=None: {"ok": True, "reply": reply}
+
+
+async def _cerebro_com_corrida(sessao, tela):
+    await R.note_manual_outbound(A, URA, "Centro", foi_humano=True)
+    return "Centro"
+
+
+async def _cerebro_sem_corrida(sessao, tela):
+    return "Centro"
+
+
+for provider, rotulo in ((_cerebro_sem_corrida, "controle"), (_cerebro_com_corrida, "corrida")):
+    REDIS.d.clear()
+    s = nova_sessao(A)
+    s.update({"state": "human_phase", "pending_insurer_messages": ["Qual o bairro?"]})
+    rodar(R.save_active_dispatch(A, URA, s))
+    rodar(R.try_route_insurer_inbound(company_id=A, from_phone=URA, text="Pode confirmar o bairro?",
+                                      send_to_insurer=_para_ura, send_to_client=_para_cliente,
+                                      human_reply_provider=provider))
+    s = rodar(R.load_active_dispatch(A, URA))
+    if rotulo == "controle":
+        checar(saidas_do_robo(s) == ["Centro"], "🔴 CONTROLE: sem ela, o Cérebro responde a tela",
+               str(saidas_do_robo(s)))
+    else:
+        checar(saidas_do_robo(s) == [] and D.pausa_humana_aberta(s),
+               "🔴 com ela entrando no meio, nada nosso sai e a pausa fica gravada", str(saidas_do_robo(s)))
+        checar(any(t.get("manual") for t in s["transcript"])
+               and any(t.get("text") == "Pode confirmar o bairro?" for t in s["transcript"]),
+               "a fala dela E a tela deste turno ficam no registro")
+R.guard_human_phase_reply = _guarda_real
+
+print()
+print("=" * 74)
 print("[GC-3] COM A PAUSA ABERTA, O GRUPO CALA — pela guarda ÚNICA, em todo ponto de envio")
 print("=" * 74)
 aberta = nova_sessao(A)
@@ -383,6 +420,17 @@ checar(W.diagnose(s) is None, "o Vigia também não age (needs_human é terminal
 checar(rodar(R.ler_palavra_da_equipe(A, "agente", remetente="5548900000001")) == "agente"
        and rodar(R.load_active_dispatch(A, URA))["state"] == "ura",
        "AGENTE depois de EU CUIDO devolve o acionamento ao agente")
+# travada antes, travada depois — COM o motivo (juiz fresco, P7)
+REDIS.d.clear()
+s = nova_sessao(A)
+s.update({"state": "needs_human", "reason": "sentinela_stall"})
+rodar(R.save_active_dispatch(A, URA, s))
+rodar(R.note_manual_outbound(A, URA, "1", foi_humano=True))
+rodar(R.ler_palavra_da_equipe(A, "EU CUIDO", remetente="5548900000001"))
+rodar(R.ler_palavra_da_equipe(A, "AGENTE", remetente="5548900000001"))
+s = rodar(R.load_active_dispatch(A, URA))
+checar(s["state"] == "needs_human" and s.get("reason") == "sentinela_stall",
+       "AGENTE devolve a sessão travada com o MOTIVO dela (reentrável de novo)", f"{s['state']} {s.get('reason')}")
 
 print()
 print("=" * 74)

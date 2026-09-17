@@ -2876,6 +2876,29 @@ async def _anotar_ato(company_id: str, session: Dict[str, Any], tipo: str,
                   payload={**(carga or {}), "rota": str(session.get("playbook_ref") or "")[:180]})
 
 
+async def _a_atendente_entrou(company_id: str, insurer_phone: str, session: Dict[str, Any],
+                              entradas_antes: int) -> Optional[Dict[str, Any]]:
+    """A sessão DELA, se a atendente abriu a pausa (ou disse EU CUIDO) depois da nossa
+    leitura — com as telas que chegaram neste turno acrescentadas. `None` = siga.
+
+    ⚠️ Leitura pura do Redis (`_ler_do_redis`): `load_active_dispatch` agenda a
+    reconciliação de órfãos quando não acha sessão, e isto roda no caminho quente.
+    """
+    motor = _motor()
+    try:
+        fresca = await _ler_do_redis(company_id, insurer_phone)
+    except Exception as e:  # noqa: BLE001 — sem reler, segue como sempre seguiu
+        logger.warning("[DISPATCH ROUTER] sessão não relida depois do Cérebro (%s)", type(e).__name__)
+        return None
+    if not fresca or not (motor.pausa_humana_aberta(fresca) or motor.humano_assumiu(fresca)):
+        return None
+    novas = [t for t in (session.get("transcript") or [])[entradas_antes:]
+             if isinstance(t, dict) and t.get("direction") == "in"]
+    fresca.setdefault("transcript", []).extend(novas)
+    logger.info("[DISPATCH ROUTER] a atendente entrou enquanto o Cérebro pensava — nada nosso sai")
+    return fresca
+
+
 async def _sessoes_da_corretora(company_id: str) -> List[tuple]:
     """`[(insurer_phone, session)]` desta corretora — pela chave COMPOSTA (§7)."""
     empresa = str(company_id or "").strip()
@@ -2992,7 +3015,11 @@ async def ler_palavra_da_equipe(company_id: str, texto: Any, *, remetente: str =
         motor.fechar_pausa(sessao, "agente", agora)
         if motor.humano_assumiu(sessao):
             sessao["state"] = str(sessao.pop("estado_antes_de_eu_cuido", "") or "ura")
-            sessao.pop("reason", None)
+            motivo_antes = str(sessao.pop("motivo_antes_de_eu_cuido", "") or "")
+            if sessao["state"] == "needs_human" and motivo_antes:
+                sessao["reason"] = motivo_antes     # travada antes, travada depois — com o motivo
+            else:
+                sessao.pop("reason", None)
         # A tela que chegou durante a pausa é respondida pelo Vigia no próximo
         # ciclo (≤ 20 s), lendo a TELA ATUAL — nenhum relógio novo.
         sessao["silencio_deliberado_ate"] = None
@@ -3000,6 +3027,7 @@ async def ler_palavra_da_equipe(company_id: str, texto: Any, *, remetente: str =
     else:
         motor.fechar_pausa(sessao, "eu_cuido", agora)
         sessao["estado_antes_de_eu_cuido"] = str(sessao.get("state") or "")
+        sessao["motivo_antes_de_eu_cuido"] = str(sessao.get("reason") or "")
         sessao["state"] = "needs_human"
         sessao["reason"] = motor.HUMANO_ASSUMIU
         sessao["silencio_deliberado_ate"] = None
@@ -3043,6 +3071,29 @@ def _env_pergunta() -> tuple:
 
 
 HOLDING_A_SEGURADORA = "Um instante, por favor — estou confirmando essa informação com o segurado."
+
+
+def ao_vivo(session: Dict[str, Any]) -> bool:
+    """O MESMO portão de `_emit`: sessão nascida ao vivo E o ambiente liberado.
+    Em ensaio, a pergunta, o "um instante" e a resposta são registrados e NÃO saem."""
+    return bool(session.get("live")) and _motor().dispatch_live_enabled()
+
+#: 💭 Agradecimento e confirmação soltos — a lista é curta de propósito: o que não
+#: está aqui é tratado como resposta (o segurado sabe o que perguntamos).
+_SO_CONFIRMACAO = frozenset({
+    "ok", "okay", "oks", "blz", "beleza", "certo", "ta", "ta bom", "ta certo", "obrigado",
+    "obrigada", "obg", "valeu", "vlw", "grato", "grata", "entendi", "aguardo", "joia",
+})
+
+
+def e_resposta_de_conteudo(texto: Any) -> bool:
+    """A mensagem do segurado TRAZ o dado? (não é só "ok", nem marcador de mídia)"""
+    bruto = str(texto or "").strip()
+    if not bruto or bruto.startswith("[") or bruto.rstrip().endswith("?"):
+        # "[mídia…]" é marcador; "como assim?" é o segurado PERGUNTANDO (juiz, P5).
+        return False
+    limpo = " ".join(re.sub(r"[^a-z0-9 ]+", " ", _norm(bruto)).split())
+    return bool(limpo) and limpo not in _SO_CONFIRMACAO
 
 
 def pergunta_para_o_segurado(session: Dict[str, Any], rotulo: str) -> str:
@@ -3089,24 +3140,27 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
         return False
     intervalo, _maximo = _env_pergunta()
     pergunta = pergunta_para_o_segurado(session, rotulo)
-    try:
-        send_to_client(cliente, pergunta)
-    except Exception as e:  # noqa: BLE001
-        logger.error("[PERGUNTA] a pergunta ao segurado NÃO saiu (%s)", type(e).__name__)
-        return False
-    await _registrar_fala_ao_cliente(company_id, cliente, "acionamento_pergunta", pergunta)
+    vivo = ao_vivo(session)
+    if vivo:
+        try:
+            send_to_client(cliente, pergunta)
+        except Exception as e:  # noqa: BLE001
+            logger.error("[PERGUNTA] a pergunta ao segurado NÃO saiu (%s)", type(e).__name__)
+            return False
+        await _registrar_fala_ao_cliente(company_id, cliente, "acionamento_pergunta", pergunta)
     agora = _agora()
-    try:
-        send_to_insurer(HOLDING_A_SEGURADORA)
-        holding_ok = True
-    except Exception as e:  # noqa: BLE001
-        logger.error("[PERGUNTA] o 'um instante' à seguradora NÃO saiu (%s)", type(e).__name__)
-        holding_ok = False
+    holding_ok = not vivo
+    if vivo:
+        try:
+            send_to_insurer(HOLDING_A_SEGURADORA)
+            holding_ok = True
+        except Exception as e:  # noqa: BLE001
+            logger.error("[PERGUNTA] o 'um instante' à seguradora NÃO saiu (%s)", type(e).__name__)
     transcript = session.setdefault("transcript", [])
     transcript.append({"direction": "out", "text": f"[AO CLIENTE] {pergunta}",
-                       "at": agora.isoformat(), "step": "pergunta_ao_segurado"})
+                       "at": agora.isoformat(), "step": "pergunta_ao_segurado", "dry_run": not vivo})
     if holding_ok:
-        transcript.append({"direction": "out", "text": HOLDING_A_SEGURADORA,
+        transcript.append({"direction": "out", "text": HOLDING_A_SEGURADORA, "dry_run": not vivo,
                            "at": agora.isoformat(), "step": "segurando_a_seguradora"})
     ate = (agora + timedelta(seconds=intervalo)).isoformat()
     session["esperando_do_segurado"] = {
@@ -3137,6 +3191,11 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     empresa = str(company_id or "").strip()
     if not resposta or not empresa or not str(from_phone or "").strip():
         return False
+    # ⛔ "ok", "obrigado" ou o marcador de uma mídia não baixada NÃO são a resposta:
+    #    levá-los à seguradora como "ponto de referência" é pior do que esperar.
+    #    Eles seguem o caminho normal (o agente responde) e a espera continua.
+    if not e_resposta_de_conteudo(resposta):
+        return False
     insurer_phone = ""
     try:
         from app.services.o_fim_do_atendimento import _variantes_do_telefone
@@ -3162,32 +3221,37 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     from app.services.integration_service import get_integration_service
     from app.services.whatsapp_service import get_whatsapp_service
 
-    integration = _canal_da_conversa(get_integration_service(), empresa, session)
-    if integration is None:
-        logger.error("[PERGUNTA] sem canal para levar a resposta à seguradora")
-        return False
-    try:
-        get_whatsapp_service().send_message(insurer_phone, resposta[:600], integration)
-    except Exception as e:  # noqa: BLE001
-        logger.error("[PERGUNTA] a resposta do segurado NÃO chegou à seguradora (%s)",
-                     type(e).__name__)
-        return False
+    vivo = ao_vivo(session)
+    if vivo:
+        integration = _canal_da_conversa(get_integration_service(), empresa, session)
+        if integration is None:
+            logger.error("[PERGUNTA] sem canal para levar a resposta à seguradora")
+            return False
+        try:
+            get_whatsapp_service().send_message(insurer_phone, resposta[:600], integration)
+        except Exception as e:  # noqa: BLE001
+            logger.error("[PERGUNTA] a resposta do segurado NÃO chegou à seguradora (%s)",
+                         type(e).__name__)
+            return False
     slot = str(espera.get("slot") or "")
     if slot:
         session.setdefault("slots", {})[slot] = resposta[:300]
     session.setdefault("transcript", []).append(
         {"direction": "out", "text": resposta[:600], "at": _agora().isoformat(),
-         "via": "segurado", "step": "resposta_do_segurado"})
+         "via": "segurado", "step": "resposta_do_segurado", "dry_run": not vivo})
     session.pop("esperando_do_segurado", None)
+    # O dado chegou: um dossiê depois disto não pode dizer que ele falta (juiz, P2).
+    session.pop("falta_para_a_ura", None)
     session["silencio_deliberado_ate"] = None
     await save_active_dispatch(empresa, insurer_phone, session)
     await _indexar_pergunta(empresa, from_phone, insurer_phone, 1, apagar=True)
     await _anotar_ato(empresa, session, "pergunta_ao_segurado.respondida",
                       "O segurado respondeu e a resposta foi levada à seguradora.", {"slot": slot})
-    try:
-        send_to_client(from_phone, "Obrigado! Já passei essa informação para a seguradora. 🙂")
-    except Exception:  # noqa: BLE001
-        pass
+    if vivo:
+        try:
+            send_to_client(from_phone, "Obrigado! Já passei essa informação para a seguradora. 🙂")
+        except Exception:  # noqa: BLE001
+            pass
     return True
 
 
@@ -3322,6 +3386,7 @@ async def try_route_insurer_inbound(
         await save_active_dispatch(company_id, from_phone, session)
         return True
 
+    _entradas_antes = len(session.get("transcript") or [])
     _saidas_antes = sum(1 for t in (session.get("transcript") or [])
                         if isinstance(t, dict) and t.get("direction") == "out")
     session = handle_insurer_message(session, text, sender=send_to_insurer,
@@ -3390,6 +3455,13 @@ async def try_route_insurer_inbound(
             draft = await human_reply_provider(session, tela)
         except Exception as e:  # noqa: BLE001 — provider nunca derruba o roteador
             logger.error(f"[DISPATCH ROUTER] human reply provider error: {type(e).__name__}")
+        # 🔴 SPEC-EXTRA-001.4 C — RELER DEPOIS DE PENSAR (juiz fresco, B1). O Cérebro
+        #    levou segundos; se a atendente entrou na conversa nesse meio-tempo, nada
+        #    nosso sai e a sessão DELA (pausa e a fala dela) é a que fica gravada.
+        _dela = await _a_atendente_entrou(company_id, from_phone, session, _entradas_antes)
+        if _dela is not None:
+            await save_active_dispatch(company_id, from_phone, _dela)
+            return True
         # O guarda julga a MESMA tela que o modelo leu. Se recebesse só a última
         # bolha, um "aguarde" solto passaria por tela que não pede nada e o
         # silêncio seria aprovado — com a pergunta duas linhas acima.
@@ -3499,6 +3571,10 @@ async def try_route_insurer_inbound(
                     logger.error("[DISPATCH ROUTER] retentativa falhou: %s",
                                  type(e).__name__)
                     draft2 = None
+                _dela = await _a_atendente_entrou(company_id, from_phone, session, _entradas_antes)
+                if _dela is not None:
+                    await save_active_dispatch(company_id, from_phone, _dela)
+                    return True
                 v2 = guard_human_phase_reply(str(draft2 or ""), session,
                                              insurer_message=tela)
                 if v2.get("ok"):

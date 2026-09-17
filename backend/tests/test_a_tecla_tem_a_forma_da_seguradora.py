@@ -356,6 +356,8 @@ _PASSO = next(p for p in _PB_RES["ura_steps"] if p.get("step") == "menu_qual_seg
 for ramo, palavra, esperado in (
         ("resi", "", "1"), ("cond", "", "2"), ("empr", "", "3"),
         ("condomínio", "", "2"),            # o que o modelo escreve vira a família
+        ("apartamento", "", "1"),           # o nome humano que o agente pergunta (juiz, P4)
+        ("loja", "", "3"),
         ("cond", "residência", "2"),        # 🔴 a apólice VENCE a palavra da atendente
         ("auto", "", ""),                   # ramo que não é desta tela: nada sai
         ("", "", "")):                      # sem ramo: a tela vai a uma pessoa

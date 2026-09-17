@@ -1199,11 +1199,15 @@ SITUACOES_QUE_NAO_SAO_VIGENTES = ("FUTURA", "DESCONHECIDA")
 #: dentro de `ASSURANCE` — casamento parcial produz catálogo errado).
 FAMILIAS_DE_RAMO: Dict[str, Tuple[str, ...]] = {
     "auto": ("auto", "autom", "automovel", "automoveis", "auto frota", "frota", "rcfv", "carro"),
-    "resi": ("resi", "resid", "residencial", "residencia", "casa"),
+    # 🔴 SPEC-EXTRA-001.4 — "apartamento/apto" e "comercial/loja/escritório" são os
+    #    NOMES HUMANOS que o agente de atendimento pede junto com a apólice
+    #    (`_COMO_PERGUNTAR["qual_seguro_opcao"]`): sem eles o ramo dito pelo cliente
+    #    se perdia e a pergunta se repetia (juiz fresco da 001.4).
+    "resi": ("resi", "resid", "residencial", "residencia", "casa", "apartamento", "apto"),
     "cond": ("cond", "condominio", "condominios"),
     "vida": ("vida", "vind", "vgrp", "vida individual", "vida em grupo", "vidaind"),
     "viag": ("viag", "viagem"),
-    "empr": ("empr", "empresarial", "empresa"),
+    "empr": ("empr", "empresarial", "empresa", "comercial", "loja", "escritorio"),
     "saud": ("saud", "saude"),
 }
 

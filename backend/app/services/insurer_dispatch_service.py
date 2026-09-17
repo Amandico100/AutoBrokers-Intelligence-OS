@@ -549,11 +549,11 @@ def _timedelta_s(segundos: float):
 #: Casadas sobre `_norm_text`. 📊 A regex inline de 10/07 cobria as 6 primeiras;
 #: as outras, medidas em `observed_events` (17/09, `direction='in'`), casavam 0.
 #: ⛔ PARECEM e NÃO SÃO (ficam de fora, medido): bradesco "vou encerrar seu
-#: atendimento em ## minutos" (11 ev — é AVISO) · "digitar sair para encerrar"
-#: (mapfre 19, porto 9 — é INSTRUÇÃO) · hdi "por falta de contato, sua conversa
-#: foi colocada em ESPERA" (1 — não encerrou).
+#: atendimento em ## minutos" (11 ev, mais 5 com "# minutos" — é AVISO) · mapfre
+#: "digitar sair para encerrar" (19) e porto "…digitar sair." (9) — é INSTRUÇÃO · hdi
+#: "por falta de contato, sua conversa foi colocada em ESPERA" (1 — não encerrou) · e o
+#: futuro condicional "será encerrada se você não responder" (51, logo abaixo).
 ENCERRAMENTO_DA_SEGURADORA: Tuple[str, ...] = (
-    r"conversa ser[áa] encerrada",
     r"estamos encerrando (?:esta|a) conversa",
     r"tempo m[áa]ximo de espera.*excedid",
     r"encerrad[ao] por (?:inatividade|falta de intera)",
@@ -565,16 +565,33 @@ ENCERRAMENTO_DA_SEGURADORA: Tuple[str, ...] = (
     r"vou precisar encerrar a conversa",
     # 📊 zurich 9 — "já que você não está mais aqui, vou encerrar nosso atendimento"
     r"vou encerrar nosso atendimento",
-    # 📊 porto 40 — "vou encerrar a conversa. quando precisar, é só chamar"
-    r"vou encerrar a conversa\.? quando precisar",
+    # 📊 porto 45 ev / 30 sess · azul 8 (juiz e lente, 17/09; a 1ª contagem dizia 40) — "vou
+    #    encerrar a conversa. quando precisar, é só chamar" (e a quebra de linha no lugar do espaço)
+    r"vou encerrar a conversa\.?\s+quando precisar",
     # 📊 porto 7 — "não conseguimos localizar seu cpf, por isso, vamos encerrar esse atendimento"
     r"vamos encerrar esse atendimento",
 )
 _ENCERRAMENTO_RE = re.compile("|".join(ENCERRAMENTO_DA_SEGURADORA), re.IGNORECASE)
 
+#: 🔴 "SERÁ encerrada" é FUTURO — e quase sempre é AVISO (lente do dado, 17/09).
+#: 📊 54 eventos `in`: 51 condicionais ("se você não responder", "após ## minutos",
+#: "automaticamente" — hdi 26 · yelum 22 · mapfre 2 · porto 1), e a seguradora CONTINUOU
+#: falando (mediana de 54 telas depois). Estava na regex inline desde 10/07 e derrubava
+#: hdi/yelum/mapfre nas primeiras telas. Só o futuro SECO encerra (yelum "por isso, esta
+#: conversa será encerrada" 2 · mapfre 1). 📊 Com a separação, `seguradora_encerrou` marca
+#: 183 eventos `in` (eram 232): porto 60 · allianz 41 · yelum 36 · hdi 22 · azul 11 ·
+#: zurich 9 · alfa 3 · mapfre 1.
+_ENCERRAMENTO_FUTURO_RE = re.compile(r"conversa ser[áa] encerrada", re.IGNORECASE)
+_AVISO_CONDICIONAL_RE = re.compile(
+    r"se (?:voce )?nao (?:responder|houver|interagir)|caso (?:voce )?nao|automaticamente"
+    r"|em alguns minutos|(?:apos|depois de) (?:[\d#]+ )?minutos|sem resposta", re.IGNORECASE)
+
 
 def seguradora_encerrou(texto: str) -> bool:
-    return bool(_ENCERRAMENTO_RE.search(_norm_text(texto)))
+    t = _norm_text(texto)
+    if _ENCERRAMENTO_RE.search(t):
+        return True
+    return bool(_ENCERRAMENTO_FUTURO_RE.search(t)) and not _AVISO_CONDICIONAL_RE.search(t)
 
 
 # ===========================================================================
@@ -2707,8 +2724,8 @@ def _conferir_antes_de_confirmar(session: Dict[str, Any], playbook: Dict[str, An
 # `render_reply` — e a URA respondeu "Opção inválida." às 14:13:07 e às 14:18:09.
 # A atendente da corretora digitou o "1" à mão.
 #
-# 📊 E não era um slot só: dos 52 `*_opcao` que os 805 passos exigem, 29 não têm
-# derivação (AST, 17/09). Esta camada conserta os 29 de uma vez porque não
+# 📊 E não era um slot só: dos 52 `*_opcao` que os 805 passos exigiam, 29 não tinham
+# derivação (AST, 17/09, antes de a fatia 2 tirar o `complemento` morto da porto-auto: 804). Esta camada conserta os 29 de uma vez porque não
 # depende de alguém lembrar de escrever a derivação: ela LÊ A TELA.
 #
 # ⛔ Nenhum parser novo (CLAUDE.md §5): o menu é lido por
@@ -3615,9 +3632,10 @@ def handle_insurer_message(
     # operadora real faz — colar o pedido completo para o analista).
     # 🔴 SPEC-EXTRA-001.4 D2 — UMA FONTE SÓ: a tabela MEDIDA, com o controle
     #    negativo do robô. A regex inline que vivia aqui morreu: 📊 17/09, por
-    #    sessão, as duas marcavam as mesmas 178 sessões humanas, e a inline ainda
-    #    casava 77 telas do ROBÔ. Duas listas para o mesmo fato é como a sessão
-    #    reentra pela tabela e fica muda pela inline.
+    #    sessão, as duas marcavam as mesmas 178 sessões humanas (e o 1º disparo no
+    #    mesmo evento); na zona da URA a inline casava 77 telas, das quais a tabela
+    #    recusa 51 (o robô). Duas listas para o mesmo fato é como a sessão reentra
+    #    pela tabela e fica muda pela inline.
     if (
         session.get("state") == "human_phase"
         and not session.get("summary_sent")

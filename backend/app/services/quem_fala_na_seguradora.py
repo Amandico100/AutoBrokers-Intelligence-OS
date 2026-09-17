@@ -205,10 +205,13 @@ APRESENTACAO_HUMANA = [
     #    `avi[sou o s]eu sinistro` — um falso positivo silencioso na yelum.
     # 🔴 E `(?!o segurado|o terceiro|...)`: 📊 `botao 1: sou o segurado` é rótulo
     #    de MENU. A apresentação humana traz um NOME, não um papel.
-    r"(meu nome (e|eh)|me chamo)\s+[a-z]{3,}",
+    # 🔴 SPEC-EXTRA-001.4 (lente do dado): o `_` do itálico do WhatsApp sobrevive ao
+    #    `_norm` — "meu nome é _{NOME}_" (📊 yelum, 2 sessões) não casava `[a-z]{3,}`.
+    r"(meu nome (e|eh)|me chamo)\s+_?[a-z]{3,}",
     r"\bsou (o|a)\s+(?!segurad|terceir|responsav|condutor|proprietari|titular|cliente)[a-z]{3,}\s+"
     r"(e (vou|irei|darei)|,)",
-    r"darei continuidade (em|no) seu atendimento|dar (sequencia|continuidade) (em|no) seu atendimento",
+    # 🔴 SPEC-EXTRA-001.4 (lente do dado): "darei continuidade AO seu atendimento" (📊 porto, 1 sessão).
+    r"darei continuidade (em|no|ao) seu atendimento|dar (sequencia|continuidade) (em|no|ao) seu atendimento",
     r"irei realizar seu atendimento|prestarei seu atendimento|vou atender sua demanda",
     r"seja bem.?vindo ?\(a\)? ao atendimento",
     r"estou assumindo|assumindo seu atendimento",
@@ -557,9 +560,12 @@ def uma_pessoa_se_apresentou(seguradora: str, texto: str) -> bool:
     """Alguém da seguradora se apresentou — e não é o robô (D2).
 
     📊 17/09, 19.023 eventos `in`: na zona humana, esta função e a regex inline
-    que ela substitui no resumo do caso marcam AS MESMAS sessões nas 7
+    que ela substitui no resumo do caso marcam AS MESMAS 178 sessões nas 7
     seguradoras com humano (allianz 113 · porto 19 · yelum 17 · mapfre 13 ·
-    hdi 12 · azul 2 · bradesco 2) — e na zona da URA a inline casava 77 telas
-    do robô (youse 39 · zurich 13 · mapfre 10…), que esta função recusa.
+    hdi 12 · azul 2 · bradesco 2). Na zona da URA (sessão sem fronteira) a inline
+    casava 77 telas: esta função recusa 51 (o robô) e marcava 26 pessoas (youse
+    23…). A lente do dado achou 3 sessões que só a inline pegava (o `_` do itálico;
+    "continuidade AO"): com as duas brechas fechadas, 📊 30 eventos (yelum +3,
+    porto +1), e a zona humana segue com as mesmas 178 sessões.
     """
     return tem_apresentacao_humana(seguradora, norm_para_classificar(texto))

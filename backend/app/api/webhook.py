@@ -1018,8 +1018,11 @@ async def process_whatsapp_message_background(
                                  if str(m or "").strip())
             if not _texto_in and payload.text and payload.text.message:
                 _texto_in = str(payload.text.message)
-            if _texto_in and await ler_palavra_da_equipe(
-                    str(company_id), _texto_in, remetente=str(payload.phone or "")):
+            # ⚠️ Só a palavra APLICADA encerra o turno; `ambigua` (dois acionamentos
+            #    em pausa) segue o caminho normal em vez de sumir sem rastro.
+            _palavra = await ler_palavra_da_equipe(
+                str(company_id), _texto_in, remetente=str(payload.phone or "")) if _texto_in else None
+            if _palavra in ("agente", "eu_cuido"):
                 logger.info("[WEBHOOK] palavra da equipe aplicada ao acionamento")
                 return
 

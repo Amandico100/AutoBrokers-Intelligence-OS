@@ -204,9 +204,10 @@ def rodar_inbound(texto, provider=None):
 RES = telas("allianz-residencial")
 AUTO = telas("allianz-auto")
 # ⚠️ O corpus guarda só a zona da URA (a fala humana fica fora dele, por desenho).
-# 📊 A apresentação vem do BANCO, 17/09: a redação mais frequente da Allianz (8
-#    eventos), com o nome trocado por um fictício — nenhum dado pessoal no teste.
-PESSOA = "Boa tarde, meu nome é Fulana da assistência 24 horas e estou aqui para te ajudar!"
+# 📊 A apresentação vem do BANCO, 17/09 (lente do dado): a redação mais frequente da
+#    Allianz — "(boa tarde|bom dia), meu nome é {NOME} sou da assistência 24 horas e estou
+#    aqui para te ajudar!" (233 dos 239 eventos marcados) —, com um nome fictício.
+PESSOA = "Boa tarde, meu nome é Fulana sou da assistência 24 horas e estou aqui para te ajudar!"
 TRANSFERENCIA = next(t for t in RES + AUTO if QF.e_transferencia_para_pessoa("allianz", t))
 ROBO = next(t for t in RES + AUTO if QF.e_o_robo_se_apresentando(t))
 
@@ -269,6 +270,10 @@ for texto in ("Seja bem-vindo(a) ao atendimento da Allianz, estou assumindo seu 
 for motivo in ("insurer_closed", D.HUMANO_ASSUMIU, "handoff_trigger:sinistro"):
     checar(not D.pode_reentrar_em_fase_humana(sessao("needs_human", reason=motivo), PESSOA, "allianz"),
            f"`{motivo}` NÃO reentra")
+for texto, seg in (("Olá, meu nome é _Fulana_ e vou iniciar seu atendimento", "yelum"),
+                  ("Boa tarde! Darei continuidade ao seu atendimento", "porto")):
+    checar(D.pode_reentrar_em_fase_humana(sessao("needs_human", reason="sentinela_stall"), texto, seg),
+           f"a pessoa que só a regex antiga pegava ({seg}) reabre a sessão (lente)")
 checar(QF.e_transferencia_para_pessoa("allianz", "vou transferir seu caso para um espe­cialista"),
        "🔴 o dialeto: o soft hyphen do acervo não esconde a transferência (a MESMA normalização da régua)")
 
@@ -280,6 +285,19 @@ print("=" * 74)
 FALTA_DE_CONTATO = ("Olá! Este canal é exclusivo para atendimento emergencial. Por falta de "
                     "contato, estou encerrando o nosso atendimento. Fique tranquilo!")
 checar(D.seguradora_encerrou(FALTA_DE_CONTATO), "a frase do 10/09 ('por falta de contato') é encerramento")
+checar(D.seguradora_encerrou("Vou encerrar a conversa." + chr(10) + "Quando precisar, é só chamar de novo 👋"),
+       "a porto que quebra a linha antes do 'quando precisar' também encerra (lente)")
+# 🔴 O FUTURO CONDICIONAL É AVISO (lente do dado): 📊 51 eventos, a conversa seguiu.
+avisos_futuros = [t for nome in ("hdi-auto", "hdi-residencial", "yelum-auto", "yelum-residencial", "mapfre-auto")
+                  for t in telas(nome) if "sera encerrada" in D._norm_text(t)
+                  and "por isso, esta conversa sera encerrada" not in D._norm_text(t)]
+checar(len(avisos_futuros) >= 10 and not any(D.seguradora_encerrou(t) for t in avisos_futuros),
+       f"🔴 as {len(avisos_futuros)} telas do corpus com 'será encerrada' condicional NÃO encerram",
+       str([t[:60] for t in avisos_futuros if D.seguradora_encerrou(t)][:2]))
+_s = D.handle_insurer_message(sessao("ura"), avisos_futuros[0]) if avisos_futuros else {}
+checar(_s.get("reason") != "insurer_closed", "🔴 e o motor NÃO fecha a sessão numa delas", str(_s.get("reason")))
+checar(D.seguradora_encerrou("Sua resposta não corresponde a nossa pergunta. Por isso, esta conversa será encerrada."),
+       "o futuro SECO (yelum) continua sendo encerramento")
 todas = [t for nome in ("porto-auto", "porto-residencial", "azul-auto", "zurich-auto") for t in telas(nome)]
 fechos = [t for t in todas if "precisar encerrar a conversa" in D._norm_text(t)
           or "vou encerrar nosso atendimento" in D._norm_text(t)]
@@ -372,6 +390,18 @@ PEDE = next((t for t in RES if CP.match_ura_step(_PB, t, subservice="encanador")
              and CP._COMO_PERGUNTAR.get(str(D.responder_da_ficha(_PB, t, {}).get("slot") or ""))), "")
 SLOT = str(D.responder_da_ficha(_PB, PEDE, {}).get("slot") or "")
 checar(bool(PEDE), "📊 o corpus tem uma tela que pede um dado fora da ficha", SLOT)
+# 🔴 EM ENSAIO (o portão de `_emit` fechado), a pergunta é registrada e NÃO sai (juiz, P6).
+REDIS.d.clear()
+ENVIADAS.clear()
+s = sessao("human_phase")
+s["slots"].pop(SLOT, None)
+rodar(R.save_active_dispatch(EMPRESA, URA, s))
+rodar_inbound(PEDE, provider=_nao_sei)
+s = rodar(R.load_active_dispatch(EMPRESA, URA))
+checar(ENVIADAS == [] and any(t.get("step") == "pergunta_ao_segurado" and t.get("dry_run") for t in saidas(s)),
+       "🔴 em ensaio, a pergunta fica no registro (dry_run) e nada sai", str(ENVIADAS)[:80])
+# daqui em diante, AO VIVO — os remetentes são todos dublês.
+os.environ["INSURER_DISPATCH_LIVE"] = "true"
 REDIS.d.clear()
 ENVIADAS.clear()
 s = sessao("human_phase")
@@ -388,12 +418,18 @@ checar(not rodar(R.responder_pergunta_do_acionamento(EMPRESA, "5548911112222", "
                                                      send_to_client=cliente)),
        "🔴 CONTROLE: a mensagem de OUTRO telefone não é a resposta")
 WA.clear()
+for solto in ("Ok!", "obrigada 🙏", "Como assim?",
+              "[Cliente enviou uma mídia que não consegui baixar — peça para reenviar]"):
+    checar(not rodar(R.responder_pergunta_do_acionamento(EMPRESA, "5548988887777", solto, send_to_client=cliente))
+           and WA == [], f"🔴 {solto[:20]!r} não é levado à seguradora como resposta")
+WA.clear()
 checar(rodar(R.responder_pergunta_do_acionamento(EMPRESA, "48 98888-7777", "perto da padaria",
                                                  send_to_client=cliente)),
        "④ a resposta do segurado (noutra forma do número) é reconhecida")
 s = rodar(R.load_active_dispatch(EMPRESA, URA))
 checar(WA == [(URA, "perto da padaria")] and s["slots"].get(SLOT) == "perto da padaria"
-       and not s.get("esperando_do_segurado"), "e VOLTOU: a seguradora recebeu, o slot foi preenchido, a espera fechou",
+       and not s.get("esperando_do_segurado") and not s.get("falta_para_a_ura"),
+       "e VOLTOU: a seguradora recebeu, o slot foi preenchido, a espera e a 'falta' fecharam",
        str(WA))
 # prazo vencido: segura até o teto e, esgotado, uma pessoa com o que falta.
 s = sessao("human_phase", esperando_do_segurado={"slot": SLOT, "rotulo": "o dado", "client_phone": "5548988887777",

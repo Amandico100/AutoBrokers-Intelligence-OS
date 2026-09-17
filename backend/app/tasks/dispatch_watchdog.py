@@ -712,7 +712,9 @@ async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
                                session: Dict[str, Any], wa, integration) -> str:
     """D3 — o segurado não respondeu a tempo: "um instante" à seguradora (até o
     teto) e, esgotado, uma pessoa com o dossiê dizendo exatamente o que falta."""
-    from app.services.dispatch_router import HOLDING_A_SEGURADORA, _env_pergunta, _indexar_pergunta
+    from app.services.dispatch_router import (
+        HOLDING_A_SEGURADORA, _env_pergunta, _indexar_pergunta, ao_vivo,
+    )
 
     espera = dict(session.get("esperando_do_segurado") or {})
     intervalo, maximo = _env_pergunta()
@@ -722,6 +724,12 @@ async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
         espera["ate"] = datetime.fromtimestamp(agora.timestamp() + intervalo, timezone.utc).isoformat()
         session["esperando_do_segurado"] = espera
         session["silencio_deliberado_ate"] = espera["ate"]
+        if not ao_vivo(session):
+            # Ensaio: o mesmo portão de `_emit` — registra e não fala.
+            session.setdefault("transcript", []).append(
+                {"direction": "out", "text": HOLDING_A_SEGURADORA, "at": agora.isoformat(),
+                 "via": "vigia", "step": "segurando_a_seguradora", "dry_run": True})
+            return "segurou"
         if integration is None:
             logger.error("[VIGIA] 'um instante' NÃO saiu: sem canal de saída")
             return "sem_canal"
