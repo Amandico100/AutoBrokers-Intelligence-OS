@@ -10524,9 +10524,11 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 
 ## P-PILOTO-05 · formulário nativo da Porto e da Azul não tem schema
 📊 `native_flows` só em HDI e Yelum auto (`corridor_playbooks.py:2982, 3010`). Porto e Azul: "sem schema recuperável; só um acionamento ao vivo produz um" (relatório da 092). **Destrava:** o primeiro acionamento real observado nessas duas; até lá a tela de formulário vai a handoff com dossiê. **Dono:** 🧑 coleta + 🤖 schema.
+**`CONTINUA` (EXTRA-001.4, 17/09):** a SPEC não produziu o insumo — o canário da coleta dirigida depende do Implantar e do número de teste pareado (caixa do Founder).
 
 ## P-PILOTO-06 · corpus, régua, inventário e roteiro de coleta precisam ser regenerados após cada dia de piloto
 📊 corpus de 23/08; 18 sessões novas não medidas; `INVENTARIO-DE-ROTAS.md` de 24/08 com denominador anterior à 089 (P-089-C); `medir_rota.py:~569` ainda imprime "🧑 acesso ao Espelho" (vencida: o leitor existe, falta vocabulário). **Destrava:** `gerar_corpus_de_telas.py --todas` → `medir_rota.py --todas --com-espelho --formato markdown` → `roteiro_de_coleta.py`; trocar a frase. **Dono:** 🤖, rotina de fim de dia durante os pilotos.
+**`CONTINUA` (EXTRA-001.4, 17/09):** feitos — corpus regenerado com setembro (📊 4.470 telas, 0 sujas), `LINHA-DE-BASE-DE-ROTAS.json` commitada (73 rotas; `--comparar-com` exit 0 na fatia 1 e na fatia 2) e a frase trocada (📊 `grep -c "acesso ao Espelho"` = 0). Faltam o inventário `--formato markdown` e o roteiro (rodam mutações sobre o produto; ficaram para depois do Implantar) e a rotina automática de fim de dia.
 
 ## P-PILOTO-07 · portal de vidros: passo 7 de verdade e fotos
 📊 `adaptive.py:1152-1163` para no protocolo e só recomenda loja/domicílio; `vidros_apifirst.py:33` "Não escolhe loja. Não agenda."; zero linhas para anexo de fotos (desenho atual: repassar o link de vistoria). **Destrava:** HAR + vídeo/prints dos acionamentos manuais da Regina em `docs/intake/MATERIAIS/PORTAL VIDROS/` → `portal_factory.py lab har/api-infer` → jornada até o agendamento; decidir fotos (nossas × link). **Dono:** 🧑 material + 🤖.
@@ -10788,3 +10790,53 @@ Os guardas provam §7 com dublê que respeita `company_id` (G-A1b, G-B2, G-C3) e
 
 ## P-E0013-09 · guardas antigos deixam a mutação na árvore
 📊 16/09: `test_a_arvore_ficou_limpa_no_fim` e `test_nenhuma_mutacao_foi_commitada` falham **na base e na minha árvore**. O juiz fresco reproduziu: depois da bateria sobrou `# _MUTADO_RASTRO_M2` em `human_handoff.py` e `# MUTACAO` em `scripts/rubrica.py`. **Destrava:** os harnesses desses guardas restaurarem por cópia, como o protocolo §10 manda. **Dono:** 🤖. **Custo de esquecer:** uma mutação vai para a `main` num commit distraído — e o guarda que existe para impedir isso é o que está quebrado.
+
+## P-E0014-01 · o classificador de ramo do corpus põe sessões residenciais no arquivo auto
+📊 17/09: `padroes_de_ramo.classificar_ramo` lê o 1º `out` depois do cardápio, e as respostas do corredor não entram em `observed_events`; a sessão `432614de` (residencial, 10/09) está em `allianz-auto.jsonl`. **Destrava:** o nível 1 ignorar `out` que segue outro menu — e regenerar corpus + linha de base juntos (mudar só o classificador muda a régua no meio de uma SPEC). **Dono:** 🤖. **Custo de esquecer:** a régua do residencial não vê justamente as sessões que erraram.
+
+## P-E0014-02 · `test_spec017_dispatch`: três checagens antigas que o `IndexError` escondia
+"aberto por padrão", plano esperado com 16 passos (hoje 42) e `import app.atendimento` sob pacote falso. 📊 vermelhas na base `f7b23d7` e no HEAD. **Destrava:** atualizar a fixture (CLAUDE.md §9.3). **Dono:** 🤖.
+
+## P-E0014-03 · `test_golden_do_eletricista`: 2 vermelhos anteriores
+"pergunta de risco em português" e "nenhum passo com lacuna" (o plano de ensaio lista passos condicionais com `[PENDENTE:]`). **Dono:** 🤖.
+
+## P-E0014-04 · `test_spec031_auto_dispatch`: fixture sem `local_seguro` (obrigatório desde 21–23/08). **Dono:** 🤖.
+
+## P-E0014-05 · `build_dry_run_plan` mostra a palavra no passo do menu numerado
+Ele não lê tela; só apresentação (a tecla que sai é a do motor, lida na tela). **Dono:** 🤖.
+
+## P-E0014-06 · o canal NÃO entrega mensagem de grupo — AGENTE/EU CUIDO digitados no grupo não chegam
+📊 17/09: toda instância é criada com `"ignoreGroups": True` (`pairing_orchestrator.py:923/944`, `whatsapp_channel.py:279/307`, `admin_atlas.py:451`). O leitor do grupo existe (`webhook.py`, ramo `skip`) e fica mudo até o canal entregar grupos. Hoje a palavra vale do **número de suporte** e de **número da casa** no privado. **Destrava:** 🧑 decidir entre ligar grupos na instância (medir antes o volume: todo grupo do número da corretora passa a bater no webhook, limitado a 240/min) ou botões AGENTE/EU CUIDO na Fila. **Custo de esquecer:** a atendente que responde no grupo não é ouvida; a pausa ainda vence sozinha em 60 s (máx. 3 falas), e depois disso o robô volta.
+
+## P-E0014-07 · AGENTE/EU CUIDO com dois acionamentos em pausa na mesma corretora
+Hoje o leitor devolve `ambigua` e não aplica nada (não adivinha). **Destrava:** casar pela mensagem citada (o aviso da pausa) ou pelo número do caso na palavra. **Dono:** 🤖.
+
+## P-E0014-08 · a ficha do atendimento só mostra "o que falta" com ramo, serviço e seguradora
+📊 17/09: `conversations.ficha_atendimento->>'ramo'` preenchido em **1 de 942**; `graph.py::_slots_obrigatorios_do_caso` devolve vazio sem os três. **Destrava:** gravar ramo/serviço/seguradora na ficha quando a apólice é localizada, não só na chamada de acionamento. **Dono:** 🤖. **Custo de esquecer:** o agente não sabe o que falta perguntar até a véspera do acionamento.
+
+## P-E0014-09 · o ramo fino da apólice só existe ao vivo na InfoCap
+`Apolice.ramo` é recalculado a cada consulta (`infocap_policy_provider.py:415/690`); `attendance_sessions.ramo` 0 de 14.145. Corretora sem sistema de gestão depende da pergunta junto com a apólice. **Destrava:** porta `PolicyDataProvider` para os outros adaptadores (D-PILOTO-11/16). **Dono:** 🤖.
+
+## P-E0014-10 · `tokio-condominio.jsonl` é arquivo antigo do corpus
+O gerador hoje o marca `FORA_DE_ESCOPO:condominio`; o `INDICE.md` cita 15 de 16. Junta-se a `tokio-residencial` sem rota na régua (📊 59 telas, 6 sessões). **Destrava:** decidir rota tokio residencial/condomínio ou retirar o arquivo com manifesto. **Dono:** 🤖.
+
+## P-E0014-11 · resposta CONSTANTE com rótulo num menu numerado depende do reparo
+`resolver_tecla` converte só `reply: "{slot}"`; uma constante como "Novo serviço" numa variante numerada sai como palavra e é consertada pelo reparo (1 recusa a mais). **Destrava:** medir no acervo quantas constantes-rótulo caem em tela numerada antes de estender a camada 1. **Dono:** 🤖.
+
+## P-E0014-12 · o gancho do grupo cobre Evolution/Evolution GO, não a Z-API
+O leitor no privado está no caminho comum (buffer); o do grupo está em `_handle_evolution_like_inbound`. **Dono:** 🤖.
+
+## P-E0014-13 · a resposta do segurado à pergunta da seguradora vai sem conferência de forma
+`responder_pergunta_do_acionamento` leva o texto do segurado à URA; hoje só filtra agradecimento, marcador de mídia e pergunta ("?"). Uma frase fora do assunto dentro da janela (📊 até 6 min) vira o dado. **Destrava:** conferir a forma por slot (CEP, número, referência) antes de levar. **Dono:** 🤖. **Custo de esquecer:** a URA recebe um dado errado com cara de certo.
+
+## P-E0014-14 · a régua não vê o VALOR da resposta, só se o passo casou
+📊 lente do dado, 17/09: devolver à porto-auto o `complemento` que respondia sempre "não tem" deixa `medir_rota --comparar-com` em exit 0 (as duas âncoras casam as mesmas 5 telas); e `--comparar-com` retorna antes de usar `--com-espelho`/`--todas` (`medir_rota.py:443`). O guarda que pega o defeito é a asserção de homônimos em `test_a_regua_nao_tem_furo.py`. **Destrava:** comparar também a resposta por tela. **Dono:** 🤖.
+
+## P-E0014-15 · os avisos do roteador ao segurado não consultam a janela de silêncio do atendimento
+Protocolo, encaminhamento, handoff e agora a pergunta da D3 saem por `send_to_client` sem `a_ia_deve_calar` — se uma atendente estiver conversando com o segurado naquele minuto, são duas vozes. A sessão do acionamento não guarda a conversa do segurado. **Destrava:** guardar o id da conversa do segurado na sessão e consultar a janela. **Dono:** 🤖.
+
+## P-E0014-16 · o Sentinela, a cutucada e os avisos do roteador não obedecem o portão `live`
+O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_live_enabled()`; a D3 passou a consultar (`ao_vivo`), os envios antigos não. **Destrava:** o mesmo `ao_vivo` nos envios antigos, com guarda. **Dono:** 🤖. **Custo de esquecer:** em ensaio, o Sentinela fala de verdade com a seguradora.
+
+## P-E0014-17 · a âncora de protocolo "O.S." tem um RETROCESSO literal e nunca casa
+📊 17/09: `corridor_playbooks.py:170` (e o comentário de `:153`) contém o caractere `0x08` onde deveria haver `\b` — `r"<BS>o\.?s\.?#?(?=\d)"` — já na base `f7b23d7`. A captura de protocolo no formato "O.S. 12345" está morta desde que a linha nasceu. **Destrava:** medir no acervo o que `\bo\.?s\.?#?(?=\d)` passa a capturar (e o controle de falso protocolo) antes de trocar o caractere. **Dono:** 🤖. **Custo de esquecer:** protocolo "O.S." não vira aviso ao segurado.

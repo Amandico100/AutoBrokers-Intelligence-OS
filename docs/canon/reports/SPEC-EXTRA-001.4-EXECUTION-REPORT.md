@@ -8,13 +8,15 @@
 ```
 OUTCOME ..............  menu numerado recebe NÚMERO lendo a tela real; "opção inválida" é reparada pelo motor
                         antes do Sentinela, uma vez por tela; humano da corretora na URA pausa o robô 60 s;
-                        humano da seguradora é atendido mesmo com a sessão em needs_human; encerramento reconhecido
+                        humano da seguradora é atendido mesmo com a sessão em needs_human; encerramento reconhecido;
+                        a tela "qual seguro" responde pelo RAMO DA APÓLICE (🧑 decisão do Founder, 17/09)
 RISCO ................  8   alcance SEGURADO 3 + "saiu do prédio" 3 (mensagem à URA) + TODO atendimento 2
 SUPERFÍCIE ...........  2   vários comportamentos, lugares listados (proposta §3.2) e reconferidos por grep
 PISO APLICADO ........  §3.2 "qualquer coisa que ENVIE" — a resposta à URA sai do prédio
 NÍVEL ................  CRÍTICO · executor Opus 5 max (experimento B) · juiz Fable 5.1
 UNIDADES .............  6 — fatia 1: 0-bis (acervo e linha de base) · A (regra B, tecla) · B (regra A, reparo)
                         fatia 2 (sessão nova): C (humano da corretora) · D (humano da seguradora) · E (adjacentes)
+                        + F (o ramo da apólice vira a tecla — decisão do Founder de 17/09, entrou na fatia 2)
 COESÃO ...............  A+B: o hub `insurer_dispatch_service.py` — `resolver_tecla` grava o `menu_pendente` que o
                         reparo lê; e o contador do Sentinela. C+D+E: `dispatch_router.py` + `dispatch_watchdog.py`.
                         0-bis ANTES do código: a linha de base tem de ser medida sobre o motor SEM a mudança
@@ -40,30 +42,33 @@ FAIXA DE RELÓGIO .....  declarada fatia 1 ≤ 1h15 · fatia 2 ≤ 1h15 · juiz+
 
 ## 1. BLOCO 0 — as premissas que mudariam o desenho (📊 17/09, de dentro de `backend/`, utf-8)
 
-| # | a proposta afirma | medido 📊 | comando | consequência |
+📊 (1) `parse_options` no menu real: cru **3** · `_norm` **3** · `_NUMERADA` sozinha **0** (`C.parse_options`/`C._NUMERADA.finditer`
+nas 15 telas "3 - Empresarial") → a camada 1 usa `parse_options`, nunca a regex · (2) `*_opcao` **52** usados · **23** derivados ·
+**29** órfãos (AST, 805 passos) · (3) `o_grupo_pode_saber` **existe** (`grep -rn "def o_grupo_pode_saber"`) · (4) slot vazio
+"fica calado": **falso** desde 19/08, tela reversível vai ao Cérebro → D-E0014-01 · (5) a recusa **não** repete o menu (2 bolhas,
+`observed_events` de `432614de`) · (6) recusas de menu: allianz **26 ev/14 sess** · porto **15** · mapfre **7** · azul 2 · bradesco 3 ·
+hdi 2 · tokio 1 (`direction='in'`, `group by`) · (7) `sentinela_attempts` por sessão, nunca zerado (`grep -rn`) · (8) `agente.*`
+**0** de 48.972 e sem CHECK em `event_type` (`pg_constraint`) → **sem migration** · (9) "falta de contato" **10** ev, **0** casam
+(Postgres `~*`) · (10) "Isso pode levar alguns instantes" existe no banco (3×, 10/09): é fila · (11) "vou precisar encerrar a
+conversa" porto 6/azul 1 não casava · (12) `observed_events` **32.817**, **1.048** em setembro (`count(*)`).
+
+**Triagem nominal (item 9)** — `python tests/<arquivo>.py` na base `f7b23d7` e em `cffaa0e` (07/09, antes das 5 entregas sem SPEC): 📊 os 4 vermelhos já o eram em 07/09 — nenhum é regressão de 08–10/09. `test_spec017_dispatch` (IndexError em `qual_seguro_opcao`) era **defeito desta SPEC** e ficou com só os 3 pontos antigos (P-E0014-02); `test_spec031_auto_dispatch` é fixture vencida (P-E0014-04); `test_o_corredor_conhece_a_tela_que_esta_na_frente` e `test_spec034_onda1` (import quebrado no próprio teste) são **anteriores** (vermelhos na base e em 07/09); a triagem por diff da bateria (§6) diz se esta SPEC os mudou.
+
+### 1-bis. BLOCO 0 da fatia 2 (sessão nova, 📊 17/09, preflight `HEAD..origin/main` = 0 · HEAD `ecf91e2` · base `f7b23d7`)
+
+| # | premissa (handoff · proposta) | medido 📊 | comando | consequência |
 |---|---|---|---|---|
-| 1 | `parse_options` no menu real: cru → 0 · normalizado → 3 | **cru 3 · `_norm` 3 · `_NUMERADA` sozinho 0** — `parse_options` já chama `_sem_negrito` (cartographer.py:196, :376) | `C.parse_options(t)` · `C._NUMERADA.finditer(t)` sobre as 15 telas "3 - Empresarial" do corpus | a camada 1 chama `parse_options`, NUNCA a regex; GA-3 afirma `_NUMERADA`=0 × `parse_options`=3 |
-| 2 | 52 usados · 23 derivados · 29 órfãos | **52 · 23 · 29** (805 passos, 14 corredores); derivado sem dono: 0 | AST do RESEARCH-PACK §4 ① | a camada 1 é o conserto dos 29 |
-| 3 | `o_grupo_pode_saber` existe? | **existe** — `o_grupo_so_o_que_importa.py:247` | `grep -rn "def o_grupo_pode_saber" backend/app/` | fatia 2 CHAMA e acrescenta a causa `pausa_humana` |
-| 4 | slot `*_opcao` vazio "fica CALADO" hoje | **falso desde 19/08**: tela reversível → o Cérebro assume (`insurer_dispatch_service.py:2775-2793`) | leitura de `handle_insurer_message` da linha 1 (2439-2936) | **D-E0014-01**: vazio NÃO vira `needs_human` geral |
-| 5 | a recusa repete o menu | **não repete**: "Opção inválida." + "Vamos tentar novamente." em 2 bolhas (sessão `432614de`, 14:13:07/08 e 14:18:09/10 BRT) | `observed_events` por `session_id`, texto mascarado | o reparo lê o `menu_pendente`, não a tela atual |
-| 6 | frases de recusa de menu | allianz "Opção inválida." **26 ev/14 sess** · porto 6 redações (**15 ev**) · mapfre 3 (**7**) · azul 2 · bradesco 3 · hdi 2 · tokio 1 | `observed_events`, `direction='in'`, regex de recusa, `group by` | `RECUSA_DE_MENU` nasce desta tabela |
-| 7 | `sentinela_attempts` por sessão, nunca zerado | **confirmado**; as linhas mudaram: leitura :387/:391, incrementos :430 :439 :444 :474 | `grep -rn sentinela_attempts backend/app/` | GB-2 |
-| 8 | `agente.*` = 0; CHECK em `event_type`? | **0 de 48.972**; CHECK só em `actor_type` e `severity` | `pg_constraint` de `work_events` | **sem migration** nesta SPEC |
-| 9 | "falta de contato" 10 ev, 0 casam | **10 · 0** (Postgres `~*`); o controle em Python roda no corpus regenerado | consulta da proposta §8.5 | fatia 2 (D5) |
-| 10 | "Isso pode levar alguns instantes" não existe | **existe no banco** (10/09, 3×) — a proposta mediu só o corpus de agosto | linha do tempo `432614de` | fatia 2: é fila (`AVISO_DE_ESPERA`), não transferência |
-| 11 | — (achado novo) | "Ainda não consegui entender e **vou precisar encerrar a conversa**" — porto 6 ev/4 sess, azul 1 — **não casa** `insurer_closed` | mesma consulta do item 6 | fatia 2 (D5): segunda frase de encerramento |
-| 12 | banco | `observed_events` **32.817** · máx 2026-09-16 18:00 · **1.048** em setembro | `count(*)`, `max(wa_timestamp)` | o 0-bis traz setembro |
-
-**Triagem nominal (item 9 da proposta)** — `python tests/<arquivo>.py`, na head `f7b23d7` e num worktree de 07/09 (`cffaa0e`, antes das 5 entregas sem SPEC). 📊 **Os 4 já eram vermelhos em 07/09 — nenhum é regressão de 08–10/09:**
-
-| teste | head | 07/09 | veredito |
-|---|---|---|---|
-| `test_spec017_dispatch.py` | exit 1 — `sessão pronta: ['qual_seguro_opcao']` → `preparing` → IndexError :158 | exit 1 (mesmo `IndexError`) | `qual_seguro_opcao` entrou em `required_slots` em 21–22/08 (`e2dfd5c`, `4dc6ab0`) sem derivação: **defeito desta SPEC (A)** |
-| `test_spec031_auto_dispatch.py` | exit 1 — `missing_slots: ['local_seguro']` | exit 1 (mesmo `local_seguro`) | `local_seguro` obrigatório desde 21–23/08 (`1132f6e`…`4430647`): fixture vencida, fora do escopo |
-| `test_o_corredor_conhece_a_tela_que_esta_na_frente.py` | exit 1 — 2 falhas | exit 1 | vermelho antes de 08/09: **não é regressão das entregas sem SPEC**; fatia 2 (E) diz se é desta SPEC |
-| `test_spec034_onda1.py` | exit 1 — `ModuleNotFoundError` | exit 1 (mesmo erro) | vermelho antes de 08/09: import quebrado no próprio teste; fatia 2 (E) |
-| `test_spec038_sentinela.py` · `test_a_tecla_tem_a_forma_da_seguradora.py` | exit 0 · exit 0 (`12 assercoes verdes`, com o defeito vivo) | — | o retrato do problema |
+| 1 | a fala manual da atendente chega a `note_manual_outbound` | chega com o agente ligado (`observer_intake.py:820-829`; ramo `fromMe` do webhook) | leitura da linha 1 + `grep` | C mora no roteador |
+| 2 | AGENTE/EU CUIDO "lidos na entrada do grupo" | 🔴 toda instância nasce com `ignoreGroups: True` (3 lugares) e o grupo é `skip` na normalização | `grep -rn ignoreGroups app/` | D-E0014-08 · P-E0014-06 |
+| 3 | os 9 gatilhos de grupo (§7.3) | a 001.3 os reduziu a 4 (pedido de ajuda, aviso de protocolo, `never_started`, dossiê do Sentinela) | leitura | GC-3 + AST de `sessao=` |
+| 4 | `agente.*`=0 porque falta `work_run_id` | **falso** (`travamento.assumido` de 10/09 gravou com o run): só o ACERTO gravava; 📊 6 runs, 3 `sentinela_stall`; `agente.%` **0** de 49.038 | SELECT em `work_events`/`work_runs` | D6 grava todo desfecho |
+| 5 | a regex inline do resumo × a tabela | 📊 19.023 ev `in`: na zona HUMANO, **as mesmas sessões** (allianz 113 · porto 19 · yelum 17 · mapfre 13 · hdi 12 · azul 2 · bradesco 2); na zona URA a inline casa **77**; dialeto: **43** ev mudam | script `zonas()` × `_norm` | uma fonte só |
+| 6 | "falta de contato" 10 ev | allianz 9 é encerramento; a hdi (1) é "colocada em ESPERA". Mais 4 redações de encerramento não reconhecidas: porto 6 + azul 3, zurich 9, porto 40, porto 7; e avisos que NÃO encerram: bradesco 11, mapfre 19, porto 9 | `norm_para_classificar` sobre `observed_events` | `ENCERRAMENTO_DA_SEGURADORA` |
+| 7 | 🧑 o ramo da apólice | só ao vivo na InfoCap (`Apolice.ramo`); ficha **1 de 942**; a ferramenta não o recebia | investigador read-only + SELECT | D-E0014-07 |
+| 8 | `test_spec038_sentinela` guarda o Sentinela | é o **Sentinela de Rotas** (drift) e chama o motor dele | leitura | D-E0014-15 |
+| 9 | homônimos | hdi-residencial: 5 pares com resposta **idêntica**; porto-auto `complemento`: "não tem" (índice 11) × `{local_complemento}` (39) | motor (`_PLAYBOOKS`) | D-E0014-12 |
+| 10 | — (achado) | 🔴 `pyflakes` sobre `f7b23d7`: `dispatch_router.py:3321: undefined name 'get_supabase_client'` (desde `21f2243`) → o dossiê do roteador derrubava o bloco `needs_human` | `python -m pyflakes` | BLOCKER, consertado |
+| 11 | a apresentação humana está no corpus | **0**: o corpus guarda só a zona URA; a redação mais frequente da allianz no banco tem **8** ev | script | GD usa a estrutura com nome fictício |
 
 ## 2. As unidades entregues, por fatia
 
@@ -74,58 +79,82 @@ FAIXA DE RELÓGIO .....  declarada fatia 1 ≤ 1h15 · fatia 2 ≤ 1h15 · juiz+
 | 1b | A | `insurer_dispatch_service.py` (`resolver_tecla`, `opcoes_numeradas`, derivação do ramo, `origem_das_teclas`) · 2 fixtures vencidas | GA-1 `test_a_tecla_tem_a_forma_da_seguradora.py` · GA-2/3 `test_o_menu_numerado_recebe_numero.py` | **22/0 · 22/0** — na base: 17/**5** · `AttributeError` | ver §11 |
 | 1b | B | `insurer_dispatch_service.py` (reparo, `menu_pendente`, prompt) · `dispatch_watchdog.py` (por tela) | GB `test_a_opcao_invalida_e_reparada.py` | **25/0** — na 1ª rodada pegou `RecursionError` no Sentinela (um `replace_all` meu), consertado | ver §11 |
 | 1b | GR | — | `medir_rota.py --todas --com-espelho --comparar-com …LINHA-DE-BASE…` | **exit 0**: nenhuma rota perdeu respondidas · nenhum passo sem confirmação | — |
+| 2 | F 🧑 ramo | `nodes.py` (a família do ramo da apólice selecionada → `ramo_da_apolice`) · `insurer_dispatch_tool.py` · `attendance_ficha.py` · `corridor_playbooks._COMO_PERGUNTAR` · hub (`rotulo_do_ramo_da_apolice`) | GA-1 | **25/0**: `resi/cond/empr` → **1/2/3** pelo motor, lendo a tela real; o ramo vence a palavra da atendente; o relato não decide | `ff74680` |
+| 2 | C | hub (pausa pura) · roteador (`note_manual_outbound`, `ler_palavra_da_equipe`) · guarda única (causa `pausa_humana` + índice) · Vigia · webhook | GC + GT `test_a_atendente_na_ura_cala_o_robo.py` | **44/0** | `ff74680` · `7346cdc` |
+| 2 | D | `quem_fala_na_seguradora.py` (tabelas, 📊 44.700 classificações idênticas às do script) · hub (encerramento, reentrada, âncora positiva, resumo) · roteador (pergunta ao segurado, rastro) · Vigia (dois relógios, holding, rastro, releitura) | GD + D3 `test_o_humano_da_seguradora_e_atendido.py` | **45/0** | idem |
+| 2 | E | `corridor_playbooks.py` (porto sem o `complemento` morto; azul pelo rótulo) · `medir_rota.py` (📊 `grep -c "acesso ao Espelho"` = **0**) · homônimos na régua | `test_a_regua_nao_tem_furo.py` · `test_o_corpus_nao_vaza_pii.py` | verde · exit 0 | `ff74680` |
+| 2 | GR | — | a mesma régua sobre `7346cdc` | **exit 0** (📊 5 s): nenhuma rota perdeu respondidas · nenhum passo sem confirmação | — |
 
-**Gate 0-bis, item a item:** ① a sessão `432614de` ESTÁ no corpus pelo ID (**13 telas**), mas em `allianz-auto.jsonl`:
-📊 `padroes_de_ramo.classificar_ramo` → `auto | nivel-1-resposta` — ele toma o 1º `out` depois do cardápio, e as respostas do
-corredor não entram em `observed_events`; o "1" da atendente no menu do RAMO virou "Automóvel" (P-E0014-01). Os guardas a leem
-pelo ID. ② "falta de contato" no corpus: **0** — limitação nomeada, fica para a fatia 2 (D5) medir sobre o texto do banco.
-③ máx `2026-09-14` ✓ · ④ linha de base commitada, 📊 **73 rotas** ✓ · ⑤ `INDICE.md` cita **15 de 16**: `tokio-condominio.jsonl` é arquivo antigo que o gerador hoje marca `FORA_DE_ESCOPO:condominio` (junta-se à pendência tokio da proposta §4.1) · ⑥ `--comparar-com` exit 0 ✓. **Bateria parcial** (os 52 testes que leem o corpus, antes × depois): 📊 2 regressões, AS DUAS causadas pelo corpus novo (confirmado com o código antigo): três `notes` com contagem vencida (`desfecho_protocolo_alfa` 10→25 · `escolher_endereco_da_lista` 17→35 · `servico_aberto_ver_ou_abrir` 6→10, redações distintas recontadas no ACERVO do banco) → recontadas → `test_a_regua_nao_tem_furo` 52/0 · `test_o_passo_compartilhado…` 10/0. Restam os 2 vermelhos de antes (`test_a_cobranca_chega_a_quem_deve`; `test_o_protocolo_tem_policia` — só "sem a nota 0–100" deste relatório: SPEC aberta até a entrega).
+**Mutações da fatia 2** (cópia conferida byte a byte): 📊 **20/20 vermelhas** — C (abertura/renovação sem silêncio, sem teto, eco pausa, dossiê sem `sessao=`, motor/EU CUIDO respondendo, `_key` sem corretora, import do dossiê, Vigia sem a pausa, Sentinela sem releitura) · D (controle do robô na regra e na tabela, `insurer_closed` reentrável, relógios fundidos, sem "falta de contato", Cérebro sem rastro, regex inline, pergunta desligada) · E (`complemento` morto). ⚠️ Três ficaram verdes na 1ª rodada e mostraram furos, fechados em `7346cdc` (o Vigia só lia o silêncio; a regra e a tabela se mascaravam).
+**Guardas novos:** 📊 `ls backend/tests/test_*.py | wc -l` = **376** na base → **380** (fatia 1: 2 · fatia 2: 2 · teto 12).
 
-**Mutações dos guardas novos** (uma vez, worktree próprio, restauração por cópia conferida com `cmp`):
+**Gate 0-bis:** ① a sessão `432614de` está no corpus pelo ID (📊 13 telas), mas em `allianz-auto.jsonl` (o classificador lê o 1º `out` depois do cardápio — P-E0014-01) · ② "falta de contato" no corpus: 0 (a frase é de setembro; a D5 mediu no banco) · ③ máx `2026-09-14` · ④ linha de base commitada, 📊 73 rotas · ⑤ `INDICE.md` 15 de 16 (P-E0014-10) · ⑥ `--comparar-com` exit 0. Bateria parcial (52 testes do corpus): 📊 2 regressões, as duas do corpus novo — três `notes` recontados (10→25 · 17→35 · 6→10).
 
-| mutação | guarda | resultado |
-|---|---|---|
-| M-A1 `resolver_tecla` devolve a palavra crua | GA-2 | 🔴 19/3 |
-| M-A2 a camada 1 lê com `_NUMERADA` crua | GA-2/3 | 🔴 11/11 |
-| M-A3 palpite ligado | GA-3 | 🔴 20/2 |
-| M-A4 derivação do eletricista apagada | GA-1 | 🔴 21/1, nomeando o slot |
-| M-B1 sem ④ · M-B2 contagem por SESSÃO · M-B3 o reparo reenvia a palavra · M-B4 prompt sem o bloco | GB | 🔴 24/1 · 21/4 · 21/4 · 23/2 |
-| M-B3b sem ③ (só ela) | GB | ⚠️ **verde, por construção**: o casador do Atlas apaga dígitos (dígito nunca casa rótulo) e ④ também bloqueia — ③ é defesa em profundidade, registrada |
+**Mutações da fatia 1** (worktree próprio, cópia conferida com `cmp`): 📊 M-A1 palavra crua 🔴19/3 · M-A2 `_NUMERADA` crua 🔴11/11 · M-A3 palpite 🔴20/2 · M-A4 sem a derivação do eletricista 🔴21/1 · M-B1…B4 🔴 · M-B3b sem ③ ⚠️ verde por construção (dígito nunca casa rótulo; ④ também bloqueia). Guardas: 376 → 378 na fatia 1.
 
-**Guardas novos:** 📊 `ls backend/tests/test_*.py | wc -l` = 376 → **378** (GA-2+GA-3 fundidos · GB-1+GB-2+GB-3 fundidos · GA-1 dentro do guarda existente).
-
-🔴 **A fatia 1 fechou no BLOCO 0, pelo teto de contexto** (§10 · D-PROTO-07): 📊 o hook `teto-de-contexto.py` mediu
-**300 k antes da primeira linha de produto**. Leitura integral pedida pelo Founder (proposta 112 KB ≈ 51 k tokens + research
-pack + protocolo) somada ao raciocínio em effort `max`. Nenhum código de produto foi escrito. A fatia 1b (0-bis + A + B)
-abre em sessão nova, com o handoff do §12.
-
-⚠️ **O comando do 0-bis na proposta §4.1 não regenera:** 📊 `gerar_corpus_de_telas.py --todas --auditar-pii` levou 2,8 s
-e só auditou (`auditoria de PII: 4279 linhas, 0 sujas`), porque `--auditar-pii` retorna antes de gerar
-(`gerar_corpus_de_telas.py:495`). A ordem certa é `--todas` e depois `--auditar-pii`.
+🔴 A fatia 1a fechou no BLOCO 0 pelo teto de contexto (📊 300 k antes da 1ª linha de produto); a 1b rodou na mesma sessão por ordem do Founder (D-E0014-04). ⚠️ `gerar_corpus_de_telas.py --todas --auditar-pii` não regenera (`--auditar-pii` retorna antes, `:495`): a ordem certa é `--todas` e depois `--auditar-pii`.
 
 ## 3. Migrations — nenhuma (BLOCO 0 item 8: `work_events.event_type` não tem CHECK)
 
-## 4. O juiz fresco — roda uma vez, no fim da fatia 2
+## 4. O juiz fresco (Fable 5.1, sobre `7346cdc`, 73 chamadas, 20 min) — VEREDITO **FAIL** · nota **84**
 
-## 5. O conserto único
+| # | achado | teste do produto | medição (do juiz) | classe | conserto |
+|---|---|---|---|---|---|
+| B1 | o Cérebro do roteador não relia a sessão entre pensar e falar | a URA recebe tecla por cima da atendente; a gravação apaga a pausa e a fala dela | corrida com dublês: com ela no meio, saída `['Centro']` e `pausa_humana=null`; controle sem ela, `[]` | **BLOCKER** · EXCLUSIVO do juiz | `_a_atendente_entrou` depois de cada chamada |
+| P1 | 📊 "805" → 804; "porto 40" → 45 | comentário | contagem | pendência | corrigido |
+| P2 | a resposta do segurado não apaga `falta_para_a_ura` | dossiê diria "falta X" já respondido | leitura `build_handoff_dossier` | blocker (byte à corretora) | corrigido |
+| P3 | `ambigua` engolida pelo webhook | a palavra da equipe some sem rastro | `webhook.py` | blocker | corrigido |
+| P4 | `apartamento/loja/comercial` sem família | a pergunta do ramo volta | `familia_de_ramo` | blocker | sinônimos na autoridade |
+| P5 | resposta vai verbatim à URA | "como assim?" viraria referência | leitura | pendência + filtro mínimo (`?`) | P-E0014-13 |
+| P6 | a D3 não obedecia o portão `live` de `_emit` | em ensaio, a pergunta sairia de verdade | leitura | blocker | `ao_vivo` nos 4 envios |
+| P7 | AGENTE depois de EU CUIDO perdia o motivo | sessão travada sem motivo não reentra | leitura | blocker (banco) | corrigido |
 
-## 6. A bateria
+**Lente do dado** (Opus 5, cega, 26 min) — **nota do dado 70**, confiança 90. BATEM: GR exit 0 (e acusa a âncora do tronco
+quebrada) · agente.% 0 de 49.071 · 6 runs, 3 `sentinela_stall` · 43 ev de dialeto · as mesmas 178 sessões humanas, 1º disparo no
+mesmo evento · tabelas idênticas (190.230 classificações no banco, 0 diferentes) · ficha 1/942 · ramo → 1/2/3 em 21/21 telas.
+NÃO BATEM: **L1** 🔴 `conversa ser[áa] encerrada` marcava **51 avisos condicionais** (hdi 26 · yelum 22 · mapfre 2 · porto 1; a
+conversa seguia) — anterior à SPEC, EXCLUSIVO · **L2** 🔴 3 sessões humanas que só a regex antiga pegava (itálico; "continuidade
+AO") — nasce da SPEC, EXCLUSIVO · comentários (77 do robô eram 26 pessoas; porto 45 + azul 8; a allianz diz "sou da", 233/239).
+Limite: a régua não vê o VALOR da resposta (P-E0014-14).
+
+## 5. O conserto único (`a583a0a`) — B1, P2–P7, L1, L2 e os comentários
+
+B1 → `_a_atendente_entrou` (Redis puro) depois das DUAS chamadas ao Cérebro. L1 → o futuro "será encerrada" só encerra se não for condicional: 📊 **183** encerramentos marcados (eram 232), as **16** telas condicionais do corpus não encerram e o motor não fecha a sessão. L2 → `_?` antes do nome e `(em|no|ao)`: 📊 a zona humana segue com as mesmas **178** sessões; as 3 recuperadas estão na zona URA (sem fronteira; 30 ev, eram 26). **Gates rerodados:** GA-1 27/0 · GA-2/3 22/0 · GB 25/0 · GC 48/0 · GD 56/0 · PII e GR exit 0 · guardas do `fromMe` exit 0. **Mutações do conserto:** 📊 **8/8 vermelhas**. Total da fatia 2: **30 mutações, 30 vermelhas** (20 do build · 5 do juiz · 3 da lente · 2 da confirmação).
+**Confirmação** (§6.1, disparada por B1 em código que envia; Fable 5.1, 31 chamadas, 14 min, nota **84**): conserto CONFIRMADO nos 8 ataques e **1 defeito residual**: a tela do turno entrava DEPOIS da fala dela → vencida a pausa, o Sentinela a responderia de novo. Consertado em `22aa479` (grava com espelho e reordena no Redis) + o infinitivo "dar continuidade ao" recusa instrução do robô (📊 zona humana 178, zona URA 30). 📊 **2/2 mutações vermelhas**; GC **50/0** · GD **57/0**. Sem 2ª confirmação: o teto de agentes da sessão foi atingido (hook, 4 de 4).
+
+## 6. A bateria — 📊 1 rodada inteira no HEAD (+ 1 na base, como linha de base) · triagem por DIFF
+
+Mesmo ambiente nos dois lados (worktree com `.env`): base `f7b23d7` **376 arquivos · 331 verdes · 45 vermelhos · 1.859 s** ·
+HEAD `22aa479` **380 · 329 · 51 · 1.742 s**. Os 4 guardas novos: verdes. **Verde→vermelho: 6**, e a triagem nominal:
+`test_a_atendente_sabe_conduzir_um_acionamento` e `test_a_cobertura_tem_lastro_no_acervo` (o rótulo novo do ramo levou o bloco
+de conhecimento a 📊 7.195 de 7.000; a base estava em 6.997 → rótulo curto, **6.990**) · `test_ninguem_fala_com_o_segurado_sem_o_agente_ligado`
+(o "um instante" do Vigia, nomeado como isenção, com o motivo do Sentinela) · `test_o_contrato_alcanca_o_portao` (`ramo_da_apolice`
+nomeado como metacampo) · `test_o_sinistro_deixa_rastro` (a fatia 1 consertou o golden — 14→2 problemas, `gold_007` não explode:
+a linha de base migrou, §9.3) · `test_o_protocolo_tem_policia` (esperava a nota deste relatório). Os 5 consertados em `4476891`
+e rerodados: exit 0. **Vermelho→verde: 0** na suíte (o golden melhorou por dentro, 14→2, e segue vermelho pelos 2 antigos). Os
+45 vermelhos dos dois lados são anteriores (P-E0014-02/03/04 entre eles).
 
 ## 7. O que ficou fora, e o gatilho que o faz voltar
 
+AGENTE/EU CUIDO digitados **no grupo** (o canal não entrega grupos → P-E0014-06, 🧑) · inventário `--formato markdown` e roteiro
+(mutam o produto; depois do Implantar → P-PILOTO-06) · o classificador de ramo do corpus (P-E0014-01) · derivar os 28 órfãos à mão
+(a camada 1 cobre) · canário vivo (🧑 número de teste + Implantar, §8).
+
 ## 8. 📋 Caixa do Founder
+
+| item | o que faz | custo de esquecer | bloqueia? |
+|---|---|---|---|
+| **Implantar** o serviço do atendimento/dispatch (o que roda `buffer_processor` e o Vigia) | põe a pausa, a reentrada, o encerramento, a pergunta ao segurado, o ramo da apólice e o conserto do dossiê no ar | 📊 desde 16/09 o dossiê do roteador não sai (NameError) | não |
+| **Decidir o canal do grupo** (P-E0014-06) | ligar grupos na instância (medir volume: 240/min) **ou** botões AGENTE/EU CUIDO na Fila | a atendente que responde no grupo não é ouvida; hoje vale o privado do número de suporte e dos números da casa | não |
+| **Canário** (§12 da proposta) com TESTE-A/TESTE-B | 1 coleta dirigida até a confirmação e RECUSA · a pausa (digitar à mão) · AGENTE e EU CUIDO pelo número de suporte · uma tela que pede dado fora da ficha · `select event_type, count(*) from work_events where event_type like 'agente.%'` sai de 0 | "testado" continua sendo só suíte | não |
+| Validação com Saionara e Regina (§13) | copy da pausa, 60 s, pergunta ao segurado, "retomei" | aceite só se recebido | não |
+| variáveis novas (todas com padrão) | `PAUSA_HUMANA_S`=60 · `PAUSA_HUMANA_MAX_RENOVACOES`=2 · `REENTRADA_FASE_HUMANA`=1 · `FILA_ALERTA_S`=1200 · `PERGUNTA_AO_SEGURADO_HOLDING_S`=60 · `…_HOLDINGS`=2 · `MAX_TENTATIVAS_POR_TELA`=2 · `…_NA_SESSAO`=6; desligar: `PAUSA_HUMANA_S=0`, `REENTRADA_FASE_HUMANA=0` | — | não |
 
 ## 9. Pendências e decisões
 
-| ID | decisão | opções e notas |
-|---|---|---|
-| **D-E0014-01** | slot `*_opcao` VAZIO numa tela reversível continua indo ao Cérebro (desenho de 19/08), agora com as opções numeradas da tela no prompt; `needs_human` só para a tecla que decide o RAMO (`ramo_indeterminado`) e para `sem_chute`. Palavra que casa 0 opções segue a mesma regra; 2+ → `tecla_ambigua` | Cérebro + opções **88** · `needs_human/slot_opcao_sem_derivacao` geral, como a proposta §5.2 regra 3 **35** (reintroduz o travamento de 19/08 em 29 slots — o oposto do outcome) · `needs_human` reentrável **40** |
-| **D-E0014-02** | `MAX_TENTATIVAS_POR_TELA = 2` · `MAX_TENTATIVAS_NA_SESSAO = 6` (env, com default). 📊 telas órfãs que pedem algo, distintas por sessão, no corpus de 17/09: 71 sessões · p50 **2** · p90 **12** · máx 62; **61/71 (86 %) ≤ 6** — a cauda é conversa humana longa, que deve ir a uma pessoa | 6 **85** · 12 (p90) **70** (o dobro de chamadas ao Cérebro em sessão que já vai mal) · 2 por sessão, o de hoje, **30** (é o defeito de 10/09) |
-| **D-E0014-03** | teto de guardas: fundir GA-2+GA-3 e GB-1+GB-2+GB-3; GA-1 dentro do guarda existente — fatia 1 cria **2** arquivos | fundir **88** · 13 arquivos com addenda **55** |
-| **D-E0014-04** | 🧑 **o Founder decidiu (17/09) rodar a fatia 1b nesta mesma sessão**, "para aproveitar o contexto", contra a regra de sessão nova (D-PROTO-07). Contexto da 1b: ~300 → ~530 k. A fatia 2 volta a sessão nova | decisão do Founder — registrada para a auditoria do A/B |
-| **D-E0014-05** | o hub carrega `cartographer` e `atlas.weaver` pelo CAMINHO quando o pacote `app.services` foi montado à mão — 📊 75 testes fazem isso e `test_spec017` quebrou na 1ª rodada; é o mesmo arquivo, nunca uma cópia do parser | carregador **82** · import tardio com `except` que desliga a camada 1 em silêncio **30** · pré-carregar nos 75 testes **40** |
+D-E0014-01…05 (fatia 1) e D-E0014-06…16 (fatia 2): `FOUNDER-DECISIONS.md`, fim do arquivo.
 
-**Pendências novas (numa passada na entrega, fatia 2):** **P-E0014-01** 🤖 o classificador de ramo lê o 1º `out` depois do cardápio e as
+**Registradas na entrega** — `PENDENCIAS.md`: P-E0014-01…16 · P-PILOTO-05 e P-PILOTO-06 `CONTINUA` (com o que destrava) · `FOUNDER-DECISIONS.md`: D-E0014-06…16 (fatia 2) · `CHANGE-ADDENDA.md`: 4 entradas (1 BLOCKER, 2 ESSENCIAIS, 1 VALIOSA). As da fatia 1: **P-E0014-01** 🤖 o classificador de ramo lê o 1º `out` depois do cardápio e as
 respostas do corredor não estão em `observed_events` → sessões residenciais com resposta manual vão para o arquivo auto (📊 `432614de`);
 destrava: nível 1 ignora `out` que segue outro menu; custo: a régua do residencial não vê justamente as sessões que erraram ·
 **P-E0014-02** 🤖 `test_spec017`: além do defeito desta SPEC (agora verde), 3 checks pré-existentes que o `IndexError` escondia — "aberto
@@ -135,30 +164,35 @@ por padrão", plano esperado com 16 passos (hoje 42), `import app.atendimento` s
 `local_seguro` (obrigatório desde 21–23/08) · **P-E0014-05** 🤖 `build_dry_run_plan` mostra a palavra crua no passo do menu numerado
 (ele não lê tela; só apresentação).
 
-## 10. Telemetria (§11)
-
-## 11. Entrega
-
-## 12. Handoff — fatia 2 (C + D + E, juiz, entrega), SESSÃO NOVA, mesmo prompt
+## 10. Telemetria (§11) — `python backend/scripts/medir_execucao_claude_code.py --sessao atual` (📊 17/09 05:14 UTC)
 
 ```
-1  Fatia 1 VERDE e commitada (§2). NÃO remeça o §1. Da proposta leia SÓ §7 (C), §8 (D), §9 (E), as linhas GC/GD/GT
-   do §10, §12 (canário), §14 (entrega), §19. Pack: não. Base do juiz: `f7b23d7..HEAD`.
-2  C · `note_manual_outbound` (dispatch_router.py, ~:2687) abre `pausa_humana` e escreve `silencio_deliberado_ate`
-   (o Vigia já honra, dispatch_watchdog.py:~121). `foi_humano=False` não abre. A guarda EXISTE:
-   `o_grupo_pode_saber` (o_grupo_so_o_que_importa.py:247) — acrescentar a causa `pausa_humana`, nunca outra guarda.
-   Os 9 gatilhos da proposta §7.3: RECONFIRA por grep — a 001.3 moveu os envios para `enviar_ao_grupo`.
-3  D · encerramento: regex inline "Seguradora ENCERROU" em `handle_insurer_message` + "falta de contato" (📊 10 ev,
-   0 casam) + "vou precisar encerrar a conversa" (§1 item 11). "Isso pode levar alguns instantes" é FILA (item 10).
-   Reentrada: o Vigia olha o ESTADO (`_TERMINAL_STATES`); o resumo usa regex inline (~:3350) → `APRESENTACAO_HUMANA`.
-4  D6 · `agente.*` = 0 de 48.972 (item 8). Medir a causa: `registrar_ato_do_agente` devolve False sem `work_run_id`
-   (dispatch_router.py ~:1011) — e a 001.3 tornou `work_events.work_run_id` NULLável (D-E0013-01).
-5  B já grava `menu_pendente`/`ultima_resposta_recusada`/`tentativas_por_tela` na sessão: a pausa (C) e a reentrada (D)
-   não podem apagá-los. `registrar_menu_pendente` roda em todo `_emit` — o eco humano (C) NÃO passa por `_emit`.
-6  E · P-E0014-01 (classificador de ramo) · homônimos (porto `complemento`, hdi 5 pares) · azul `menu_atendimento` →
-   "Novo serviço" (a camada 1 converte) · `medir_rota.py` "acesso ao Espelho" · INVENTÁRIO (`--formato markdown` roda 12
-   mutações: não edite produto enquanto roda) · roteiro · `test_spec038` chamar o motor · P-E0014-02..05.
-7  Guardas: 378 hoje (teto 12 na SPEC → sobram 10 para C/D/E+GT). GT mora em GC-3.
-8  Fim: juiz Fable + lente do dado (`medir_rota.py --todas --com-espelho --comparar-com docs/canon/reports/LINHA-DE-BASE-DE-ROTAS.json`,
-   hoje exit 0) → conserto → suíte inteira UMA vez, sozinha → PENDENCIAS/DECISIONS/ADDENDA numa passada → push.
+relógio total · por fase ①–⑥ ........  ~2h50 (02:37→05:27 UTC) · ① leitura+BLOCO 0 23 min · ② build 39 · ③ mutações+GR 15
+                                        · ④ juiz+lente 27 · ⑤ conserto+confirmação 29 · ⑥ bateria 29 + triagem e entrega 21
+turnos · contexto de pico ...........  executor 249 · 882 k · investigador 73 · 199 k · juiz 18 · 273 k · lente 57 · 242 k
+                                        · confirmação 14 · 163 k  (🧑 D-E0014-06: fatia 2 inteira na sessão, por ordem do Founder)
+ctx-tokens · saída ..................  166,9 M · 0,41 M  (executor 143,0 M · 396 k)
+US$ API-equivalente .................  executor 86,30 · investigador 2,57 · juiz 4,04 · lente 6,14 · confirmação 2,17 · total 101,23
+agentes além do executor ............  4 (hook: 4 de 4)
+achados por mecanismo ...............  executor: dossiê sem import (BLOCKER, EXCLUSIVO) · canal sem grupos · causa do agente.* ·
+                                        prova mecânica: 3 mutações verdes → 2 furos reais + 1 guarda que não falhava (EXCLUSIVOS) ·
+                                        juiz: B1 (EXCLUSIVO) + 5 pendências que mudavam byte · lente: L1, L2 (EXCLUSIVOS) + 6 números ·
+                                        confirmação: 1 residual (EXCLUSIVO) · bateria: 5 regressões minhas (EXCLUSIVAS) · canário: não rodou
+rodadas da bateria ..................  inteiras 1 (HEAD) + 1 (base, linha de base) · parciais: os guardas da SPEC e os 129 dirigidos
+nota da execução ....................  85/100 — critério: todo o outcome no código, provado pelo motor sobre o acervo com 30
+                                        mutações vermelhas e 8 defeitos de produto achados fora do build e fechados; −5 o grupo
+                                        não chega (canal), −5 canário não rodado, −5 teto de contexto · nota do juiz 84/100
 ```
+
+## 11. Entrega — push e o que Implantar
+
+⏳ push (saída colada logo abaixo). **Implantar:** o serviço do atendimento/dispatch (o que roda `buffer_processor` e o Vigia) —
+um só; nenhuma migration; nenhum arquivo de `app/`/`middleware`/`next.config` do painel (rotas-montam não se aplica; o
+backend foi provado por import de todos os módulos tocados, sem subir o servidor com o `.env` de produção, que ligaria o Vigia).
+Variáveis novas: §8. **Nenhum motor paralelo** (CLAUDE.md §5): a guarda do grupo é a da 001.3 (causa nova), as tabelas de quem
+fala mudaram de casa (o script as importa), a espera é a sessão + o Vigia, o registro é `_evento`, o ramo é
+`familia_de_ramo`, o parser é `cartographer.parse_options`.
+
+## 12. Handoff
+
+Sem próxima fatia: a fatia 2 fechou a SPEC. O handoff da fatia 1 foi cumprido item a item (§1-bis, §2, §7).

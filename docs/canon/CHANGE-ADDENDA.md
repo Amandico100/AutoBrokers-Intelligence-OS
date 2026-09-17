@@ -3925,3 +3925,15 @@ push para a `main` passa a ser `git push origin <sha-de-docs>:main` quando a bra
 
 ## 16/09/2026 · SPEC-EXTRA-001.3 · o casador de telefone ganha uma porta em TypeScript — ESSENCIAL
 **Problema:** o 2º efeito (fora da Fila) roda em `projetarCasos`, que é Node e não pode chamar Python a cada abertura do painel. **Consequência:** `lib/atendimento/numeros-da-casa.ts` é uma PORTA declarada da autoridade Python, e o guarda `G-B3` roda os dois casadores sobre a MESMA tabela de 9 casos exigindo resultado idêntico (CLAUDE.md §9.4). Sem `node`, o guarda REPROVA a dimensão em vez de fingir que mediu. **Autorização:** D-E0013-03 (80 × chamar Python na Fila 30 × duplicar sem guarda 40).
+
+## 17/09/2026 · SPEC-EXTRA-001.4 · o dossiê do roteador não saía desde a 001.3 — BLOCKER
+**Problema:** `try_route_insurer_inbound` chamava `get_supabase_client()` sem importá-lo (📊 `pyflakes` sobre `f7b23d7`: `dispatch_router.py:3321: undefined name`), desde `21f2243`. **Evidência:** o `await enviar(dossier)` de `entregar_dossie_uma_vez` não é protegido; o `NameError` derrubava o bloco `needs_human` inteiro — sem dossiê, sem aviso ao segurado, sem gravar a sessão — e o `try` do webhook o engolia. **Consequência:** import local no `_enviar`; o guarda GC-3c exercita o caminho e fica vermelho sem o import (mutação M-F). **Autorização:** licença de autonomia §9 (≤ 30 min, 1 arquivo, sem decisão).
+
+## 17/09/2026 · SPEC-EXTRA-001.4 · a tecla "qual seguro" sai do ramo da apólice — ESSENCIAL
+**Problema:** a proposta derivava `qual_seguro_opcao` do relato; o Founder decidiu (17/09) que ela vem do RAMO DA APÓLICE, sem pergunta extra. **Evidência:** 📊 o ramo fino só existe ao vivo na InfoCap; `ficha_atendimento->>'ramo'` 1/942. **Consequência:** a família do ramo viaja `infocap` → `nodes._safe_infocap_policy_context` → `insurer_dispatch` (`ramo_da_apolice`) → `new_dispatch_session`, que grava o rótulo lido na tela; a descrição da ferramenta e os dois rótulos de pergunta mandam perguntar o ramo JUNTO com a apólice. **Autorização:** decisão do Founder (D-E0014-07).
+
+## 17/09/2026 · SPEC-EXTRA-001.4 · AGENTE/EU CUIDO lidos também no privado — ESSENCIAL
+**Problema:** a proposta lê as palavras "na entrada do grupo"; 📊 as instâncias nascem com `ignoreGroups: True`, então o grupo não chega ao webhook. **Consequência:** o leitor aceita o número de suporte e os números da casa no privado, além do grupo (quando o canal o entregar). **Autorização:** D-E0014-08; a escolha do canal fica na caixa do Founder (P-E0014-06).
+
+## 17/09/2026 · SPEC-EXTRA-001.4 · `agente.*` grava todo ato, não só o acerto — VALIOSA
+**Problema:** 📊 0 linhas `agente.*` em 49.038 eventos; a causa medida é que o registro só existia no ACERTO do Cérebro e no ENVIO bem-sucedido do Sentinela, e os 3 acionamentos travados da base não tiveram nenhum. **Consequência:** recusa, silêncio, tentativa sem resposta, escada esgotada e cada achado do Vigia viram linha. **Autorização:** proposta §8.6 (D6).
