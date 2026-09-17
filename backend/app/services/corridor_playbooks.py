@@ -9662,8 +9662,9 @@ _COMO_PERGUNTAR = {
     "pet_raca": "a raça do animal",
     "pet_idade": "a idade do animal",
     # 🔴 Decisão do Founder (17/09): o RAMO DA APÓLICE, junto com a apólice.
-    "qual_seguro_opcao": ("se o seguro é da casa/apartamento, do condomínio ou da "
-                          "empresa (o ramo da apólice)"),
+    #    ⚠️ Curto de propósito: este rótulo entra no bloco de conhecimento, que tem teto
+    #    de 7.000 caracteres (📊 a base estava em 6.997). A frase longa mora na ficha.
+    "qual_seguro_opcao": "a apólice: de casa, condomínio ou empresa",
     "caixas_dagua_quantidade_opcao": "quantas caixas d’água tem no imóvel",
     "caixa_litros_opcao": "quantos litros tem a caixa d’água",
     # ⚠️ Estas quatro eram slot OBRIGATÓRIO **sem redação nenhuma**: o

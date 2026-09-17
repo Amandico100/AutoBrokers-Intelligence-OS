@@ -128,6 +128,10 @@ ISENTOS = {
         "responde à URA da SEGURADORA quando ela ficou esperando por nós",
     "dispatch_watchdog.py::check_dispatch_watchdog":
         "cutuca o humano da SEGURADORA e alerta a EQUIPE da corretora",
+    # SPEC-EXTRA-001.4 D3 — decisão consciente, com o motivo:
+    "dispatch_watchdog.py::_segurar_ou_desistir":
+        "o 'um instante' vai à SEGURADORA e o aviso de handoff ao segurado CONTINUA um "
+        "acionamento em curso (a pergunta que ele não respondeu) — a mesma razão do Sentinela",
 }
 
 

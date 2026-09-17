@@ -227,6 +227,10 @@ _NAO_SE_COBRA_NO_PORTAO = {
     #    agora. Default honesto e sobrescrevível é o desenho certo — o errado
     #    seria default honesto e inalcançável.
     "quando",
+    # ⚠️ SPEC-EXTRA-001.4 — `ramo_da_apolice` é METACAMPO: ele PREENCHE
+    #    `qual_seguro_opcao` (decisão do Founder, 17/09). O portão cobra a tecla;
+    #    o ramo é como ela chega sem pergunta extra.
+    "ramo_da_apolice",
 }
 sobrando = sorted(CAMPOS - todos_cobrados - _NAO_SE_COBRA_NO_PORTAO)
 certo(not sobrando,

@@ -1785,8 +1785,12 @@ def bloco_8_agent_tasks():
 # (P-093B-GOLD, e e um carimbo pela CLAUDE.md §9.4). Rodar por subprocesso e a unica
 # forma de medir o que eles realmente afirmam.
 LINHA_DE_BASE_MAQUINA_OK = 112
-LINHA_DE_BASE_GOLD_PROBLEMAS = 14
-LINHA_DE_BASE_GOLD_EXPLODIU = 1
+# 📊 17/09/2026 — A LIÇÃO MIGRA (CLAUDE.md §9.3): a EXTRA-001.4 (fatia 1) consertou o
+#    `gold_007` (a sessão nascia `preparing` por `qual_seguro_opcao` sem origem) e o
+#    golden caiu de 14 para 2 problemas. O guarda passa a exigir o estado NOVO: um
+#    caso que volte a explodir é regressão, não linha de base.
+LINHA_DE_BASE_GOLD_PROBLEMAS = 2
+LINHA_DE_BASE_GOLD_EXPLODIU = 0
 
 
 def _rodar_guarda(nome, segundos=180):
@@ -1844,7 +1848,7 @@ def bloco_9_regressao():
     certo(m is not None, "achei a contagem de problemas do golden na saida")
     explodiu = re.findall(r"^\s*X\s+(\S+) EXPLODIU", saida, flags=re.M)
     certo(len(explodiu) == LINHA_DE_BASE_GOLD_EXPLODIU,
-          "golden: exatamente %d caso EXPLODIU (linha de base 📊 03/09/2026)"
+          "golden: exatamente %d caso EXPLODIU (linha de base 📊 17/09/2026)"
           % LINHA_DE_BASE_GOLD_EXPLODIU,
           "explodiram %r. 0 = alguem consertou (atualize a linha de base). "
           "2+ = REGRESSAO, e a sombra e a suspeita." % explodiu)
@@ -1854,7 +1858,7 @@ def bloco_9_regressao():
     if m:
         problemas = int(m.group(1))
         certo(problemas <= LINHA_DE_BASE_GOLD_PROBLEMAS,
-              "golden: %d problema(s) (linha de base 📊 %d em 03/09/2026)"
+              "golden: %d problema(s) (linha de base 📊 %d em 17/09/2026)"
               % (problemas, LINHA_DE_BASE_GOLD_PROBLEMAS),
               "subiu de %d para %d -- a sombra acrescentou vermelho ao atendimento"
               % (LINHA_DE_BASE_GOLD_PROBLEMAS, problemas))
