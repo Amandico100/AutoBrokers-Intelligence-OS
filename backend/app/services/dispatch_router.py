@@ -198,6 +198,7 @@ async def _support_alert_seguro(company_id: str, session: Dict[str, Any], resumo
             texto=aviso,
             conversation_id=str(session.get("mirror_conversation_id") or ""),
             telefone=str(session.get("client_phone") or ""),
+            sessao=session,
             resumo="aviso de protocolo nao chegou — caso %s"
                    % str(session.get("case_id") or "")[:8],
             motivo="aviso_nao_chegou")
@@ -2767,8 +2768,426 @@ async def note_manual_outbound(company_id: str, insurer_phone: str, text: str,
     session["destravado_por"] = "humano"
     session["canal_do_destrave"] = str(canal or "whatsapp")[:40]
     session["assumido_por_humano_em"] = _agora().isoformat()
+
+    # (0) 🔴 SPEC-EXTRA-001.4 C — A PAUSA DE 60 s (D-PILOTO-10).
+    #
+    # 📊 10/09, 17:18:12 ela digitou "1"; 17:18:14 e :16 o corredor digitou de
+    # novo. Esta função fazia três escritas e NENHUM bloqueio. Agora ela abre (ou
+    # renova, no máximo 2 vezes) a pausa, que cala o motor, o Cérebro, o Vigia e
+    # o grupo. ⚠️ `foi_humano=False` saiu acima: o eco da nossa voz não pausa.
+    #
+    # E ela já respondeu a tela que estava pendente: o Cérebro não a responde de
+    # novo quando a pausa acabar.
+    evento_da_pausa = _motor().abrir_ou_renovar_pausa(session, canal=canal)
+    espera_cancelada = None
+    if evento_da_pausa in ("aberta", "renovada"):
+        session.pop("pending_insurer_messages", None)
+        session.pop("falta_para_a_ura", None)
+        # D3 — ela respondeu a seguradora: a pergunta ao segurado deixa de valer.
+        espera_cancelada = session.pop("esperando_do_segurado", None)
+    avisar_grupo = (evento_da_pausa == "aberta"
+                    and not (session.get("pausa_humana") or {}).get("avisou_grupo"))
+    if avisar_grupo:
+        # ⚠️ Marcado ANTES de enviar e gravado junto com a pausa: uma segunda
+        # gravação depois do envio pisaria na tela que a URA manda nesse meio-tempo.
+        session["pausa_humana"]["avisou_grupo"] = True
     await save_active_dispatch(company_id, insurer_phone, session)
     await _registrar_assuncao_humana(company_id, session, canal=canal)
+    if evento_da_pausa in ("aberta", "renovada", "esgotada"):
+        await _depois_da_pausa(company_id, session, evento_da_pausa, avisar_grupo)
+    if espera_cancelada:
+        await _indexar_pergunta(company_id, str(espera_cancelada.get("client_phone") or ""),
+                                insurer_phone, 1, apagar=True)
+    return True
+
+
+async def _depois_da_pausa(company_id: str, session: Dict[str, Any], evento: str,
+                           avisar_grupo: bool) -> None:
+    """O índice da pausa, o aviso ao grupo e o rastro. ⛔ Nunca levanta."""
+    import asyncio
+
+    from app.core.database import get_supabase_client
+    from app.services.o_grupo_so_o_que_importa import (
+        TIPO_PAUSA_HUMANA, alvos_da_pausa, enviar_ao_grupo, marcar_pausa_humana,
+    )
+
+    motor = _motor()
+    try:
+        restante = int(max(0.0, -_idade_segundos((session.get("pausa_humana") or {}).get("ate"))))
+        await marcar_pausa_humana(
+            company_id, alvos_da_pausa(session.get("mirror_conversation_id"),
+                                       session.get("client_phone")), restante + 5)
+        if avisar_grupo:
+            texto = aviso_da_pausa_humana(session, motor.PAUSA_HUMANA_S)
+            await asyncio.wait_for(enviar_ao_grupo(
+                get_supabase_client(), company_id=str(company_id), tipo=TIPO_PAUSA_HUMANA,
+                texto=texto, conversation_id=str(session.get("mirror_conversation_id") or ""),
+                telefone=str(session.get("client_phone") or ""), sessao=session,
+                resumo="pausa humana — caso %s" % str(session.get("case_id") or "")[:8],
+                motivo="pausa_humana"), timeout=15)
+        await _anotar_ato(company_id, session, "pausa_humana.%s" % evento,
+                          "Uma pessoa da equipe falou com a seguradora; o agente esperou.",
+                          {"renovacoes": int((session.get("pausa_humana") or {}).get("renovacoes") or 0)})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PAUSA HUMANA] efeitos da pausa incompletos (%s)", type(e).__name__)
+
+
+async def _avisar_retomada(company_id: str, session: Dict[str, Any]) -> None:
+    """D2 — "a seguradora respondeu, retomei", pela porta única. ⛔ Nunca levanta."""
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.dispatch_mirror import insurer_label_from_ref
+        from app.services.o_grupo_so_o_que_importa import TIPO_RETOMADA, enviar_ao_grupo
+
+        seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
+        caso = str(session.get("case_id") or "")[:8]
+        await enviar_ao_grupo(
+            get_supabase_client(), company_id=str(company_id), tipo=TIPO_RETOMADA,
+            texto=(f"↩️ A {seguradora} respondeu no caso {caso}. Retomei o atendimento "
+                   "— aviso quando tiver o protocolo."),
+            conversation_id=str(session.get("mirror_conversation_id") or ""),
+            telefone=str(session.get("client_phone") or ""), sessao=session,
+            resumo="retomada — caso %s" % caso, motivo="retomada")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[RETOMADA] aviso ao grupo não saiu (%s)", type(e).__name__)
+
+
+def aviso_da_pausa_humana(session: Dict[str, Any], segundos: int) -> str:
+    """💭 Copy (proposta §7.3, régua de língua da 001.3): uma mensagem, sem jargão."""
+    from app.services.dispatch_mirror import insurer_label_from_ref
+
+    seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
+    return (f"👋 Vi que alguém da equipe entrou na conversa com a {seguradora} "
+            f"(caso {str(session.get('case_id') or '')[:8]}). Vou esperar {int(segundos)} "
+            "segundos sem responder à seguradora.\n"
+            "Responda AGENTE para eu seguir agora, ou EU CUIDO para eu sair deste acionamento.")
+
+
+async def _anotar_ato(company_id: str, session: Dict[str, Any], tipo: str,
+                      mensagem: str, carga: Optional[Dict[str, Any]] = None) -> None:
+    """Uma linha na linha do tempo do run — o mesmo `_evento`, best-effort."""
+    run_id = str(session.get("work_run_id") or "")
+    if not run_id or not company_id:
+        return
+    db = await _db()
+    if db is None:
+        return
+    await _evento(db, str(company_id), run_id, tipo, mensagem,
+                  payload={**(carga or {}), "rota": str(session.get("playbook_ref") or "")[:180]})
+
+
+async def _sessoes_da_corretora(company_id: str) -> List[tuple]:
+    """`[(insurer_phone, session)]` desta corretora — pela chave COMPOSTA (§7)."""
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return []
+    prefixo = f"dispatch:active:{empresa}:"
+    achadas: List[tuple] = []
+    redis = await _redis()
+    if redis is not None:
+        async for chave in redis.scan_iter(match=prefixo + "*"):
+            k = chave.decode() if isinstance(chave, (bytes, bytearray)) else str(chave)
+            bruto = await redis.get(k)
+            if not bruto:
+                continue
+            try:
+                achadas.append((k[len(prefixo):], json.loads(bruto)))
+            except Exception:  # noqa: BLE001
+                continue
+        return achadas
+    for k, bruto in list(_memory_store.items()):
+        if isinstance(k, str) and k.startswith(prefixo) and not k.endswith(":list"):
+            try:
+                achadas.append((k[len(prefixo):], json.loads(bruto) if isinstance(bruto, str) else dict(bruto)))
+            except Exception:  # noqa: BLE001
+                continue
+    return achadas
+
+
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 C · AS PALAVRAS DA EQUIPE — AGENTE e EU CUIDO
+# ===========================================================================
+#
+# ⚠️ 📊 17/09: toda instância é criada com `ignoreGroups: True`
+# (`pairing_orchestrator.py`, `whatsapp_channel.py`, `admin_atlas.py`) — a mensagem
+# digitada NO GRUPO não chega ao webhook enquanto o canal estiver assim. Por isso
+# a palavra vale de dois lugares: do chat de suporte da corretora (o grupo, quando
+# o canal entregar grupos; ou o número de suporte) e do número de alguém da equipe
+# (`numeros_da_casa`, EXTRA-001.3), no privado da corretora.
+PALAVRA_AGENTE = "agente"
+PALAVRA_EU_CUIDO = "eu cuido"
+#: Até quanto tempo depois de a pausa abrir o EU CUIDO ainda vale (o corredor já
+#: pode ter retomado — a atendente continua podendo tirá-lo do acionamento).
+_JANELA_DA_PALAVRA_S = 30 * 60
+
+
+def palavra_da_equipe(texto: Any) -> Optional[str]:
+    """`agente` · `eu cuido` · `None`. A mensagem tem de SER a palavra.
+
+    ⛔ Nunca "contém": o próprio aviso da pausa traz as duas palavras, e o eco
+    dele no grupo não pode ser lido como resposta.
+    """
+    limpo = re.sub(r"[^a-z ]+", " ", _norm(texto))
+    limpo = " ".join(limpo.split())
+    if limpo in (PALAVRA_AGENTE, PALAVRA_EU_CUIDO):
+        return limpo
+    return None
+
+
+async def _e_da_equipe(company_id: str, remetente: str, chat: str, eh_grupo: bool) -> bool:
+    try:
+        alvo = await resolver_destino_de_suporte(company_id)
+        destino = str(alvo.get("destino") or "").strip().lower()
+        if eh_grupo:
+            return bool(destino) and destino == str(chat or "").strip().lower()
+        if destino and not destino.endswith("@g.us") and _digits(destino) == _digits(remetente):
+            return True
+        from app.core.database import get_supabase_client
+        from app.services.o_grupo_so_o_que_importa import e_numero_da_casa, numeros_da_casa
+
+        return e_numero_da_casa(await numeros_da_casa(get_supabase_client(), company_id), remetente)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PALAVRA DA EQUIPE] remetente não conferido (%s) — ignorada",
+                       type(e).__name__)
+        return False
+
+
+async def ler_palavra_da_equipe(company_id: str, texto: Any, *, remetente: str = "",
+                                chat: str = "", eh_grupo: bool = False) -> Optional[str]:
+    """Aplica AGENTE / EU CUIDO ao acionamento EM PAUSA desta corretora.
+
+    Devolve `agente` · `eu_cuido` (aplicada) · `ambigua` (2+ acionamentos) · `None`.
+    🔴 Só uma sessão elegível recebe a palavra: com duas, não se adivinha qual.
+    """
+    palavra = palavra_da_equipe(texto)
+    empresa = str(company_id or "").strip()
+    if not palavra or not empresa:
+        return None
+    if not await _e_da_equipe(empresa, remetente, chat, eh_grupo):
+        return None
+    motor = _motor()
+    agora = _agora()
+    candidatas = []
+    for fone, sessao in await _sessoes_da_corretora(empresa):
+        pausa = sessao.get("pausa_humana") or {}
+        aberta_ha = _idade_segundos(pausa.get("aberta_em"))
+        recente = 0 <= aberta_ha <= _JANELA_DA_PALAVRA_S
+        if palavra == PALAVRA_AGENTE:
+            ok = motor.pausa_humana_aberta(sessao, agora) or (motor.humano_assumiu(sessao) and recente)
+        else:
+            ok = recente and not motor.humano_assumiu(sessao) and sessao.get("state") in (
+                "ura", "human_phase", "needs_human")
+        if ok:
+            candidatas.append((fone, sessao))
+    if len(candidatas) != 1:
+        if candidatas:
+            logger.warning("[PALAVRA DA EQUIPE] %r com %d acionamentos em pausa — "
+                           "não adivinho qual", palavra, len(candidatas))
+            return "ambigua"
+        return None
+    fone, sessao = candidatas[0]
+    from app.services.o_grupo_so_o_que_importa import alvos_da_pausa, desmarcar_pausa_humana
+
+    if palavra == PALAVRA_AGENTE:
+        motor.fechar_pausa(sessao, "agente", agora)
+        if motor.humano_assumiu(sessao):
+            sessao["state"] = str(sessao.pop("estado_antes_de_eu_cuido", "") or "ura")
+            sessao.pop("reason", None)
+        # A tela que chegou durante a pausa é respondida pelo Vigia no próximo
+        # ciclo (≤ 20 s), lendo a TELA ATUAL — nenhum relógio novo.
+        sessao["silencio_deliberado_ate"] = None
+        resultado = "agente"
+    else:
+        motor.fechar_pausa(sessao, "eu_cuido", agora)
+        sessao["estado_antes_de_eu_cuido"] = str(sessao.get("state") or "")
+        sessao["state"] = "needs_human"
+        sessao["reason"] = motor.HUMANO_ASSUMIU
+        sessao["silencio_deliberado_ate"] = None
+        sessao.pop("esperando_do_segurado", None)
+        resultado = "eu_cuido"
+    await save_active_dispatch(empresa, fone, sessao)
+    await desmarcar_pausa_humana(empresa, alvos_da_pausa(sessao.get("mirror_conversation_id"),
+                                                        sessao.get("client_phone")))
+    await _anotar_ato(empresa, sessao, f"pausa_humana.{resultado}",
+                      "A equipe respondeu AGENTE: o agente seguiu." if resultado == "agente"
+                      else "A equipe respondeu EU CUIDO: o agente saiu deste acionamento.",
+                      {"canal": "grupo" if eh_grupo else "privado"})
+    logger.info("[PALAVRA DA EQUIPE] %s aplicada ao caso %s", resultado,
+                str(sessao.get("case_id") or "")[:8])
+    return resultado
+
+
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 D3 · PERGUNTAR AO SEGURADO E VOLTAR
+# ===========================================================================
+#
+# 📊 10/09: a URA pediu PONTO DE REFERÊNCIA — só o segurado sabe — e o Cérebro
+# respondeu NAO_SEI duas vezes, corretamente; a sessão morreu por não haver
+# caminho. As 7 chamadas de `send_to_client` do roteador eram todas AVISOS.
+#
+# ⚠️ A espera mora na SESSÃO e o prazo é do VIGIA, que já varre a cada 20 s
+# (proposta §3.1: `work_waits` só se o leitor existir — o leitor de `work_waits`
+# é a `espera.vencida`, que avisaria o GRUPO sobre uma espera interna do acionamento).
+#: 📊 O intervalo do "um instante" à seguradora: a Allianz encerra por inatividade
+#: com 103 s no pior caso do acervo (56 encerramentos); a atendente do 10/09
+#: encerrou 158 s depois de se apresentar. 60 s + o ciclo de 20 s do Vigia = 80 s.
+PERGUNTA_HOLDING_S = 60
+PERGUNTA_HOLDINGS_MAX = 2
+_CHAVE_DA_PERGUNTA = "dispatch:pergunta:{empresa}:{fone}"
+
+
+def _env_pergunta() -> tuple:
+    motor = _motor()
+    return (motor._env_int("PERGUNTA_AO_SEGURADO_HOLDING_S", PERGUNTA_HOLDING_S) or PERGUNTA_HOLDING_S,
+            motor._env_int("PERGUNTA_AO_SEGURADO_HOLDINGS", PERGUNTA_HOLDINGS_MAX))
+
+
+HOLDING_A_SEGURADORA = "Um instante, por favor — estou confirmando essa informação com o segurado."
+
+
+def pergunta_para_o_segurado(session: Dict[str, Any], rotulo: str) -> str:
+    """💭 Copy — a régua de língua da 001.3: uma frase, sem jargão, com o porquê."""
+    from app.services.dispatch_mirror import insurer_label_from_ref
+
+    seguradora = insurer_label_from_ref(str(session.get("playbook_ref") or ""))
+    return (f"Só mais uma informação que a {seguradora} pediu para seguir com o seu "
+            f"atendimento: me diga {str(rotulo or 'o dado pedido').strip()}.")
+
+
+async def _indexar_pergunta(company_id: str, client_phone: str, insurer_phone: str,
+                            segundos: int, apagar: bool = False) -> None:
+    try:
+        from app.services.o_fim_do_atendimento import _variantes_do_telefone
+
+        redis = await _redis()
+        for v in _variantes_do_telefone(client_phone) or {_digits(client_phone)}:
+            chave = _CHAVE_DA_PERGUNTA.format(empresa=company_id, fone=v)
+            if redis is None:
+                if apagar:
+                    _memory_store.pop(chave, None)
+                else:
+                    _memory_store[chave] = _digits(insurer_phone)
+            elif apagar:
+                await redis.delete(chave)
+            else:
+                await redis.set(chave, _digits(insurer_phone), ex=max(1, int(segundos)))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PERGUNTA] índice não gravado (%s)", type(e).__name__)
+
+
+async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
+                                insurer_phone: str, slot: str, rotulo: str,
+                                send_to_client: Callable[[str, str], Any],
+                                send_to_insurer: Callable[[str], Any]) -> bool:
+    """① pergunta pelo canal do CLIENTE · ② "um instante" à SEGURADORA (é o envio
+    que reinicia o relógio de inatividade dela) · ③ a espera, na sessão.
+
+    Devolve se perguntou. ⛔ Nunca pergunta duas vezes o mesmo dado no acionamento.
+    """
+    cliente = str(session.get("client_phone") or "").strip()
+    if not cliente or not slot or slot in (session.get("perguntado_ao_segurado") or []):
+        return False
+    intervalo, _maximo = _env_pergunta()
+    pergunta = pergunta_para_o_segurado(session, rotulo)
+    try:
+        send_to_client(cliente, pergunta)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PERGUNTA] a pergunta ao segurado NÃO saiu (%s)", type(e).__name__)
+        return False
+    await _registrar_fala_ao_cliente(company_id, cliente, "acionamento_pergunta", pergunta)
+    agora = _agora()
+    try:
+        send_to_insurer(HOLDING_A_SEGURADORA)
+        holding_ok = True
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PERGUNTA] o 'um instante' à seguradora NÃO saiu (%s)", type(e).__name__)
+        holding_ok = False
+    transcript = session.setdefault("transcript", [])
+    transcript.append({"direction": "out", "text": f"[AO CLIENTE] {pergunta}",
+                       "at": agora.isoformat(), "step": "pergunta_ao_segurado"})
+    if holding_ok:
+        transcript.append({"direction": "out", "text": HOLDING_A_SEGURADORA,
+                           "at": agora.isoformat(), "step": "segurando_a_seguradora"})
+    ate = (agora + timedelta(seconds=intervalo)).isoformat()
+    session["esperando_do_segurado"] = {
+        "slot": slot, "rotulo": str(rotulo or "")[:120], "client_phone": _digits(cliente),
+        "pedido_em": agora.isoformat(), "ate": ate, "holdings": 0,
+        "tela": _motor().tela_respondida(session)[-300:],
+    }
+    session["perguntado_ao_segurado"] = list(session.get("perguntado_ao_segurado") or []) + [slot]
+    session["silencio_deliberado_ate"] = ate
+    session.pop("pending_insurer_messages", None)
+    await _indexar_pergunta(company_id, cliente, insurer_phone,
+                            intervalo * (_maximo + 2) + 120)
+    await _anotar_ato(company_id, session, "pergunta_ao_segurado.enviada",
+                      "A seguradora pediu um dado que só o segurado sabe; perguntei a ele.",
+                      {"slot": slot})
+    return True
+
+
+async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, texto: Any,
+                                            *, send_to_client: Callable[[str, str], Any]) -> bool:
+    """A RESPOSTA do segurado volta para a seguradora — a reentrada da D3.
+
+    ⚠️ Chega pelo caminho do ATENDIMENTO (webhook), não por um handler novo: o
+    índice diz de qual acionamento é a pergunta, pela chave composta (§7).
+    Devolve `True` quando a mensagem ERA a resposta (o agente não a responde).
+    """
+    resposta = str(texto or "").strip()
+    empresa = str(company_id or "").strip()
+    if not resposta or not empresa or not str(from_phone or "").strip():
+        return False
+    insurer_phone = ""
+    try:
+        from app.services.o_fim_do_atendimento import _variantes_do_telefone
+
+        redis = await _redis()
+        for v in _variantes_do_telefone(from_phone) or {_digits(from_phone)}:
+            chave = _CHAVE_DA_PERGUNTA.format(empresa=empresa, fone=v)
+            bruto = (await redis.get(chave)) if redis is not None else _memory_store.get(chave)
+            if bruto:
+                insurer_phone = bruto.decode() if isinstance(bruto, (bytes, bytearray)) else str(bruto)
+                break
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[PERGUNTA] índice ilegível (%s)", type(e).__name__)
+        return False
+    if not insurer_phone:
+        return False
+    session = await load_active_dispatch(empresa, insurer_phone)
+    espera = (session or {}).get("esperando_do_segurado") or {}
+    if not espera or not (_digits(from_phone) and espera.get("client_phone")
+                          and (_digits(from_phone)[-8:] == str(espera["client_phone"])[-8:])):
+        return False
+    from app.tasks.dispatch_watchdog import _canal_da_conversa
+    from app.services.integration_service import get_integration_service
+    from app.services.whatsapp_service import get_whatsapp_service
+
+    integration = _canal_da_conversa(get_integration_service(), empresa, session)
+    if integration is None:
+        logger.error("[PERGUNTA] sem canal para levar a resposta à seguradora")
+        return False
+    try:
+        get_whatsapp_service().send_message(insurer_phone, resposta[:600], integration)
+    except Exception as e:  # noqa: BLE001
+        logger.error("[PERGUNTA] a resposta do segurado NÃO chegou à seguradora (%s)",
+                     type(e).__name__)
+        return False
+    slot = str(espera.get("slot") or "")
+    if slot:
+        session.setdefault("slots", {})[slot] = resposta[:300]
+    session.setdefault("transcript", []).append(
+        {"direction": "out", "text": resposta[:600], "at": _agora().isoformat(),
+         "via": "segurado", "step": "resposta_do_segurado"})
+    session.pop("esperando_do_segurado", None)
+    session["silencio_deliberado_ate"] = None
+    await save_active_dispatch(empresa, insurer_phone, session)
+    await _indexar_pergunta(empresa, from_phone, insurer_phone, 1, apagar=True)
+    await _anotar_ato(empresa, session, "pergunta_ao_segurado.respondida",
+                      "O segurado respondeu e a resposta foi levada à seguradora.", {"slot": slot})
+    try:
+        send_to_client(from_phone, "Obrigado! Já passei essa informação para a seguradora. 🙂")
+    except Exception:  # noqa: BLE001
+        pass
     return True
 
 
@@ -2920,6 +3339,38 @@ async def try_route_insurer_inbound(
     # tela do próximo turno.
     _ja_respondeu = sum(1 for t in (session.get("transcript") or [])
                         if isinstance(t, dict) and t.get("direction") == "out") > _saidas_antes
+    motor = _motor()
+    _em_pausa = motor.pausa_humana_aberta(session)
+
+    # 🔴 SPEC-EXTRA-001.4 D2 — REENTROU: o rastro, e a linha ao grupo SÓ se ele
+    #    já tinha recebido o pedido de ajuda (a sessão decidiu em `avisar_retomada`).
+    if session.pop("avisar_retomada", None) is not None:
+        await registrar_ato_do_agente(
+            company_id, session, agente="cerebro",
+            mensagem="Uma pessoa da seguradora reabriu o acionamento travado; retomei.",
+            payload={"reentrada": True, "de": str(session.get("reentrou_de") or "")[:60]})
+        if session.get("dossier_sent"):
+            await _avisar_retomada(company_id, session)
+
+    # 🔴 SPEC-EXTRA-001.4 D3 — A TELA PEDE UM DADO QUE SÓ O SEGURADO SABE.
+    #    `falta_para_a_ura` é o gatilho (`responder_da_ficha` já provou que a ficha
+    #    não tem o dado). ⛔ Tecla de menu (`*_opcao`) não se pergunta ao segurado:
+    #    quem a responde é o motor (e a do ramo vem da apólice, decisão do Founder).
+    _falta = session.get("falta_para_a_ura") or {}
+    _slot_falta = str(_falta.get("slot") or "")
+    if (state in ("human_phase", "ura") and _slot_falta and "," not in _slot_falta
+            and not _slot_falta.endswith("_opcao") and not ainda_vem_mais
+            and not _ja_respondeu and not _em_pausa
+            and not session.get("esperando_do_segurado")):
+        from app.services.corridor_playbooks import _COMO_PERGUNTAR
+
+        _rotulo = _COMO_PERGUNTAR.get(_slot_falta)
+        if _rotulo and await perguntar_ao_segurado(
+                company_id, session, insurer_phone=from_phone, slot=_slot_falta,
+                rotulo=_rotulo, send_to_client=send_to_client,
+                send_to_insurer=send_to_insurer):
+            await save_active_dispatch(company_id, from_phone, session)
+            return True
 
     # Fase humana: LLM redige, guard fiscaliza, falha repetida pausa (fail-closed).
     #
@@ -2927,9 +3378,12 @@ async def try_route_insurer_inbound(
     # terminou, a mensagem apenas se acumula. Deliberar sobre meia tela era
     # responder à bolha errada em 2 de 3 turnos, e ainda gastava duas respostas
     # numa pergunta só (ver `_tela_do_turno`).
+    # 🔴 SPEC-EXTRA-001.4 C — `not _em_pausa`: com a atendente na conversa, o
+    #    Cérebro não redige. D3 — nem enquanto se espera o segurado.
     if (state == "human_phase" and human_reply_provider is not None
             and session.get("pending_insurer_messages")
-            and not ainda_vem_mais and not _ja_respondeu):
+            and not ainda_vem_mais and not _ja_respondeu and not _em_pausa
+            and not session.get("esperando_do_segurado")):
         tela = _tela_do_turno(session, text)
         draft = None
         try:
@@ -2995,6 +3449,11 @@ async def try_route_insurer_inbound(
             ).isoformat()
             logger.info("[DISPATCH ROUTER] silencio deliberado (%d seguidos) — "
                         "a tela nao pedia nada", quietos)
+            # 🔴 D6 — o silêncio também é ato do Cérebro (desempenho = tudo o que ele fez).
+            await registrar_ato_do_agente(
+                company_id, session, agente="cerebro",
+                mensagem="O Cérebro leu a tela e ficou em silêncio: ela não pedia nada.",
+                payload={"desfecho": "silencio", "seguidos": quietos})
             if quietos >= 3:
                 session["silencios_seguidos"] = 0
                 session["silencio_deliberado_ate"] = None
@@ -3087,6 +3546,17 @@ async def try_route_insurer_inbound(
                     session["state"] = "needs_human"
                     session["reason"] = f"human_phase_guard:{verdict['reason']}"
                     state = "needs_human"
+            # 🔴 SPEC-EXTRA-001.4 D6 — A CAUSA DAS 0 LINHAS `agente.*`, medida em 17/09:
+            #    o registro só existia no ACERTO. 📊 Dos 6 acionamentos da base, 3
+            #    terminaram em `sentinela_stall` sem um acerto sequer — nenhuma linha.
+            #    Desempenho que só conta acertos não é desempenho.
+            await registrar_ato_do_agente(
+                company_id, session, agente="cerebro",
+                mensagem="O Cérebro redigiu uma resposta e o guarda a recusou.",
+                payload={"desfecho": "recusado",
+                         "motivo": str(verdict.get("reason") or "")[:80],
+                         "recusas_seguidas": int(session.get("human_phase_guard_fails") or 0),
+                         "virou_pessoa": state == "needs_human"})
 
     if state == "test_aborted":
         # Modo TESTE: fluxo executado até a confirmação final e CANCELADO — nada
@@ -3203,6 +3673,18 @@ async def try_route_insurer_inbound(
         await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
         return True
 
+    if state == "needs_human" and motor.humano_assumiu(session):
+        # 🔴 SPEC-EXTRA-001.4 C — EU CUIDO: "nada mais sai". Sem retomada, sem
+        #    dossiê, sem aviso ao segurado — a atendente está com o caso. Quando a
+        #    URA encerra, o número da seguradora é liberado para a fila.
+        if session.get("seguradora_encerrou"):
+            await save_active_dispatch(company_id, from_phone, session)
+            await clear_active_dispatch(company_id, from_phone)
+            await _start_next_in_queue(company_id, from_phone, send_to_insurer, send_to_client)
+        else:
+            await save_active_dispatch(company_id, from_phone, session)
+        return True
+
     if state == "needs_human":
         reason = str(session.get("reason") or "")
         # RETOMADA AUTOMÁTICA: a URA derrubou a conversa (timeout/erro) e o fluxo
@@ -3312,6 +3794,11 @@ async def try_route_insurer_inbound(
                 # 📊 429 caracteres viram 4 balões (136 · 16 · 69 · 201) e a
                 # atendente lê o último, que é o menos importante.
                 async def _enviar(texto: str) -> bool:
+                    # 🔴 SPEC-EXTRA-001.4 — o import que faltava. 📊 Desde 16/09
+                    #    (`21f2243`) `get_supabase_client` não existia neste escopo:
+                    #    o NameError subia de `entregar_dossie_uma_vez` e derrubava o
+                    #    bloco inteiro — sem dossiê, sem aviso ao segurado, sem gravar.
+                    from app.core.database import get_supabase_client
                     from app.services.o_grupo_so_o_que_importa import (
                         TIPO_PEDIDO_DE_AJUDA, enviar_ao_grupo,
                     )
@@ -3322,6 +3809,7 @@ async def try_route_insurer_inbound(
                         tipo=TIPO_PEDIDO_DE_AJUDA, texto=texto, destino=support,
                         conversation_id=str(session.get("mirror_conversation_id") or ""),
                         telefone=str(session.get("client_phone") or ""),
+                        sessao=session,
                         dedup=False,
                         resumo="pedido de ajuda — caso %s"
                                % str(session.get("case_id") or "")[:8],

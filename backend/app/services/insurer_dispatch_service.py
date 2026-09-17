@@ -401,6 +401,233 @@ def _anotar_origem(origem: Dict[str, str], slots: dict, rotulo: str) -> None:
         origem[k] = rotulo
 
 
+# ===========================================================================
+# 🔴 DECISÃO DO FOUNDER, 17/09/2026 — "QUAL SEGURO DESEJA UTILIZAR?" SAI DO
+#    RAMO DA APÓLICE. Nunca de uma pergunta extra ao segurado, nunca do relato.
+# ===========================================================================
+#
+# 📊 Onde o ramo mora (investigação de 17/09): o ramo FINO (residencial ×
+# condomínio × empresarial) só existe na apólice do sistema de gestão —
+# `Apolice.ramo` (`app/providers/policy_data_provider.py`), lido ao vivo da
+# InfoCap. No nosso banco, `conversations.ficha_atendimento->>'ramo'` tem valor
+# em 1 de 942 conversas, e é o ramo do CORREDOR (auto × residencial).
+#
+# O caminho: a apólice localizada leva a família do ramo até a ferramenta de
+# acionamento (`nodes.py`, `ramo_da_apolice`); sem apólice localizada, o agente
+# de atendimento pergunta o ramo JUNTO com a apólice. Sem ramo nenhum, a tela
+# vai a uma pessoa — é a trava de segurança, não o caminho.
+#
+#: As três opções da tela "Qual seguro deseja utilizar?" (📊 corpus de 17/09:
+#: "*1 - Residencial:* … *2 - Condomínio:* … *3 - Empresarial:* …"), pela FAMÍLIA
+#: do ramo (`policy_data_provider.FAMILIAS_DE_RAMO`).
+#: 🔴 O valor é o RÓTULO, não o dígito, e isso é o que o torna certo (CLAUDE.md
+#: §9.5): `resolver_tecla` o converte no número LENDO A TELA REAL. Se a
+#: seguradora trocar a ordem do menu, a tecla acompanha; um "2" escrito aqui não.
+_ROTULO_DO_RAMO = {"resi": "Residencial", "cond": "Condomínio", "empr": "Empresarial"}
+
+
+def _familia_de_ramo(valor: Any) -> Optional[str]:
+    """A família do ramo (`resi`, `cond`, `empr`, `auto`…) — pela autoridade do
+    produto, `policy_data_provider.familia_de_ramo`. ⛔ Nenhuma lista de sinônimos
+    aqui: duas listas para o mesmo fato é onde elas divergem."""
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    if texto in _ROTULO_DO_RAMO:
+        return texto
+    provedor = _modulo_do_produto(
+        "app.providers.policy_data_provider",
+        ("app.providers.policy_data_provider",
+         os.path.join("..", "providers", "policy_data_provider.py")))
+    return provedor.familia_de_ramo(texto)
+
+
+def rotulo_do_ramo_da_apolice(valor: Any) -> Optional[str]:
+    """O rótulo da tela "Qual seguro deseja utilizar?" para o ramo da apólice, ou `None`."""
+    return _ROTULO_DO_RAMO.get(_familia_de_ramo(valor) or "")
+
+
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 BLOCO C · A ATENDENTE DA CORRETORA NA URA — o estado, PURO
+# ===========================================================================
+#
+# 📊 10/09, 17:18:12: a atendente da corretora digitou "1" à mão; às 17:18:14 e
+# :16 o corredor digitou de novo. D-PILOTO-10 (opção C): pausa de 60 s, renovada
+# a cada envio real dela à seguradora, no máximo 2 renovações; AGENTE retoma já;
+# EU CUIDO tira o agente do acionamento. O estado mora na SESSÃO (Redis, com a
+# chave composta por corretora) e é lido por quem fala: o motor, o roteador, o
+# Vigia (pelo `silencio_deliberado_ate` que ele já honra) e a guarda do grupo.
+def _env_int(nome: str, padrao: int) -> int:
+    try:
+        return max(0, int(os.getenv(nome) or padrao))
+    except ValueError:
+        return padrao
+
+
+#: `PAUSA_HUMANA_S=0` desliga o bloco C inteiro sem tocar em código (proposta §14).
+PAUSA_HUMANA_S = _env_int("PAUSA_HUMANA_S", 60)
+PAUSA_HUMANA_MAX_RENOVACOES = _env_int("PAUSA_HUMANA_MAX_RENOVACOES", 2)
+#: `reason` de quem disse EU CUIDO. ⛔ NÃO é reentrável (bloco D).
+HUMANO_ASSUMIU = "humano_assumiu"
+
+
+def _instante(ts: Any) -> Optional[datetime]:
+    try:
+        quando = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return quando if quando.tzinfo else quando.replace(tzinfo=timezone.utc)
+
+
+def pausa_humana_aberta(session: Dict[str, Any], agora: Optional[datetime] = None) -> bool:
+    """A atendente da corretora está na conversa com a seguradora AGORA?"""
+    pausa = session.get("pausa_humana") or {}
+    if not pausa or pausa.get("fechada_por"):
+        return False
+    ate = _instante(pausa.get("ate"))
+    return bool(ate and (agora or datetime.now(timezone.utc)) < ate)
+
+
+def humano_assumiu(session: Dict[str, Any]) -> bool:
+    return session.get("state") == "needs_human" and session.get("reason") == HUMANO_ASSUMIU
+
+
+def abrir_ou_renovar_pausa(session: Dict[str, Any], *, canal: str = "whatsapp",
+                           agora: Optional[datetime] = None) -> str:
+    """`aberta` · `renovada` · `esgotada` (3ª fala: não renova) · `desligada`.
+
+    ⚠️ Escreve `silencio_deliberado_ate` junto — é o campo que o Vigia JÁ honra
+    (`dispatch_watchdog.diagnose`). Nenhum relógio novo.
+    """
+    if PAUSA_HUMANA_S <= 0:
+        return "desligada"
+    agora = agora or datetime.now(timezone.utc)
+    ate = (agora + _timedelta_s(PAUSA_HUMANA_S)).isoformat()
+    pausa = dict(session.get("pausa_humana") or {})
+    if pausa_humana_aberta(session, agora):
+        if int(pausa.get("renovacoes") or 0) >= PAUSA_HUMANA_MAX_RENOVACOES:
+            pausa["esgotada_em"] = agora.isoformat()
+            session["pausa_humana"] = pausa
+            return "esgotada"
+        pausa["renovacoes"] = int(pausa.get("renovacoes") or 0) + 1
+        pausa["ate"] = ate
+        session["pausa_humana"] = pausa
+        session["silencio_deliberado_ate"] = ate
+        return "renovada"
+    session["pausa_humana"] = {"ate": ate, "renovacoes": 0, "aberta_em": agora.isoformat(),
+                               "avisou_grupo": False, "canal": str(canal or "whatsapp")[:40]}
+    session["pausas_humanas"] = int(session.get("pausas_humanas") or 0) + 1
+    session["silencio_deliberado_ate"] = ate
+    return "aberta"
+
+
+def fechar_pausa(session: Dict[str, Any], por: str,
+                 agora: Optional[datetime] = None) -> bool:
+    """Fecha a pausa (`agente` · `eu_cuido`). Devolve se ela estava aberta."""
+    pausa = dict(session.get("pausa_humana") or {})
+    if not pausa:
+        return False
+    aberta = pausa_humana_aberta(session, agora)
+    pausa["fechada_por"] = str(por)[:20]
+    pausa["fechada_em"] = (agora or datetime.now(timezone.utc)).isoformat()
+    session["pausa_humana"] = pausa
+    if session.get("silencio_deliberado_ate") == pausa.get("ate"):
+        session["silencio_deliberado_ate"] = None
+    return aberta
+
+
+def _timedelta_s(segundos: float):
+    from datetime import timedelta
+
+    return timedelta(seconds=float(segundos))
+
+
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 BLOCO D5 · "ENCERRADA É ENCERRADA" — as redações MEDIDAS
+# ===========================================================================
+#
+#: Casadas sobre `_norm_text`. 📊 A regex inline de 10/07 cobria as 6 primeiras;
+#: as outras, medidas em `observed_events` (17/09, `direction='in'`), casavam 0.
+#: ⛔ PARECEM e NÃO SÃO (ficam de fora, medido): bradesco "vou encerrar seu
+#: atendimento em ## minutos" (11 ev — é AVISO) · "digitar sair para encerrar"
+#: (mapfre 19, porto 9 — é INSTRUÇÃO) · hdi "por falta de contato, sua conversa
+#: foi colocada em ESPERA" (1 — não encerrou).
+ENCERRAMENTO_DA_SEGURADORA: Tuple[str, ...] = (
+    r"conversa ser[áa] encerrada",
+    r"estamos encerrando (?:esta|a) conversa",
+    r"tempo m[áa]ximo de espera.*excedid",
+    r"encerrad[ao] por (?:inatividade|falta de intera)",
+    r"falta de intera[çc][ãa]o esta conversa foi encerrada",
+    r"conversa foi encerrada",
+    # 📊 allianz 9 ev / 6 sess (até 10/09) — a frase do 10/09, 17:38:18
+    r"por falta de contato,? estou encerrando",
+    # 📊 porto 6 · azul 3 — "ainda não consegui entender (…) vou precisar encerrar a conversa"
+    r"vou precisar encerrar a conversa",
+    # 📊 zurich 9 — "já que você não está mais aqui, vou encerrar nosso atendimento"
+    r"vou encerrar nosso atendimento",
+    # 📊 porto 40 — "vou encerrar a conversa. quando precisar, é só chamar"
+    r"vou encerrar a conversa\.? quando precisar",
+    # 📊 porto 7 — "não conseguimos localizar seu cpf, por isso, vamos encerrar esse atendimento"
+    r"vamos encerrar esse atendimento",
+)
+_ENCERRAMENTO_RE = re.compile("|".join(ENCERRAMENTO_DA_SEGURADORA), re.IGNORECASE)
+
+
+def seguradora_encerrou(texto: str) -> bool:
+    return bool(_ENCERRAMENTO_RE.search(_norm_text(texto)))
+
+
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 BLOCO D2 · `needs_human` DEIXA DE SER SURDO
+# ===========================================================================
+#
+# 📊 10/09, 17:35:40: a atendente da Allianz se apresentou com a sessão em
+# `needs_human` e o motor produziu ZERO eventos — o resumo do caso estava pronto.
+# A sessão travou, mas a conversa estava viva.
+#: A sessão travou, mas a conversa está viva: uma pessoa da seguradora a reabre.
+REENTRAVEIS = frozenset({"sentinela_stall", "slot_opcao_sem_derivacao", "tecla_ambigua",
+                         "ramo_indeterminado", "segurado_nao_respondeu", "loop_guard"})
+#: A conversa acabou, ou alguém assumiu. ⛔ Nada reabre — nem o resumo, nem o Vigia.
+#: (Qualquer motivo fora das duas listas também NÃO reentra: a porta é por lista.)
+NAO_REENTRAVEIS = frozenset({"insurer_closed", "test_aborted", HUMANO_ASSUMIU,
+                             "encaminhado", "resolvido"})
+
+
+def reentrada_ligada() -> bool:
+    """`REENTRADA_FASE_HUMANA=0` desliga a reentrada sem tocar em código (§14)."""
+    return os.getenv("REENTRADA_FASE_HUMANA", "1").strip() != "0"
+
+
+def _quem_fala():
+    """As tabelas MEDIDAS de quem fala na seguradora — uma fonte, dois consumidores."""
+    return _modulo_do_produto(
+        "app.services.quem_fala_na_seguradora",
+        ("app.services.quem_fala_na_seguradora", "quem_fala_na_seguradora.py"))
+
+
+def motivo_reentravel(reason: Any) -> bool:
+    motivo = str(reason or "")
+    if motivo in NAO_REENTRAVEIS:
+        return False
+    return motivo in REENTRAVEIS or motivo.startswith("human_phase_guard:")
+
+
+def pode_reentrar_em_fase_humana(session: Dict[str, Any], tela: str, seguradora: str) -> bool:
+    """`needs_human` reentrável E uma pessoa da seguradora falou E não é o robô.
+
+    🔴 O controle negativo é obrigatório: 📊 sem ele, "me chamo|sou a" marca 123 de
+    140 sessões da allianz — o robô se apresenta MAIS que a gente.
+    """
+    if session.get("state") != "needs_human" or not reentrada_ligada():
+        return False
+    if not motivo_reentravel(session.get("reason")):
+        return False
+    qf = _quem_fala()
+    if qf.e_o_robo_se_apresentando(tela):
+        return False
+    return qf.e_transferencia_para_pessoa(seguradora, tela) or qf.uma_pessoa_se_apresentou(seguradora, tela)
+
+
 def _derivar_teclas_do_caso(slots: dict) -> None:
     """Traduz o que o segurado disse para as teclas que a URA espera.
 
@@ -419,24 +646,11 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
                                 "descricao", "servico_texto")))
 
     # ---- "Qual seguro deseja utilizar?" (allianz residencial) --------
-    # 📊 A tela real (corpus, 17/09): "*1 - Residencial:* Para sua casa ou
-    #    apartamento individual / *2 - Condomínio:* Para áreas comuns e estrutura
-    #    do condomínio / *3 - Empresarial:* Para proteger seu negócio".
-    #
-    # 🔴 SPEC-EXTRA-001.4 — A EXCEÇÃO À REGRA DO DEFAULT DESTA FUNÇÃO, deliberada
-    #    (CLAUDE.md §9.5): esta tecla não NAVEGA, ela escolhe o RAMO DA APÓLICE.
-    #    📊 A SPEC-083 tirou daqui a constante "1", que mandava condomínio para a
-    #    apólice residencial. Sem UM casamento só no relato, o slot fica vazio e a
-    #    tela vai a uma pessoa (`resolver_tecla` → `ramo_indeterminado`).
-    #    ⚠️ "casa" E "condomínio" no mesmo relato é o caso comum de quem MORA em
-    #    condomínio — e é exatamente o que não se decide por palavra.
-    if not str(slots.get("qual_seguro_opcao") or "").strip():
-        residencial = bool(re.search(r"\b(?:residencia|residencial|casa|apartamento|ape)\b", texto))
-        condominio = bool(re.search(r"\b(?:condominio|area comum|areas comuns|sindico|sindica)\b", texto))
-        empresarial = bool(re.search(
-            r"\b(?:empresa|empresarial|comercial|comercio|loja|escritorio|negocio)\b", texto))
-        if residencial + condominio + empresarial == 1:
-            slots["qual_seguro_opcao"] = "1" if residencial else ("2" if condominio else "3")
+    # ⛔ NÃO SE DEDUZ DO RELATO. 🔴 Decisão do Founder, 17/09/2026: a tecla vem do
+    #    RAMO DA APÓLICE (`rotulo_do_ramo_da_apolice`, em `new_dispatch_session`).
+    #    Esta tecla não NAVEGA, ela escolhe a apólice — e "casa" e "condomínio" no
+    #    mesmo relato é o caso comum de quem MORA em condomínio. Sem ramo, o slot
+    #    fica vazio e a tela vai a uma pessoa (`resolver_tecla` → `ramo_indeterminado`).
 
     # ---- "O que aconteceu?" (eletricista) ----------------------------
     # 📊 A tela real: "1 - Casa inteira ou parcial sem energia
@@ -1076,6 +1290,12 @@ def new_dispatch_session(
     # A sessão dizia que estava pronta, e não estava.
     sub = (playbook.get("subservices") or {}).get(canonical_subservice(subservice), {})
     merged_slots = dict(slots or {})
+    # 🔴 DECISÃO DO FOUNDER (17/09) — o ramo da apólice VENCE qualquer palavra que
+    #    alguém tenha passado nesta tecla: é a apólice que a URA vai abrir. E entra
+    #    ANTES do cálculo do que falta: com o ramo conhecido, ninguém pergunta.
+    rotulo_do_ramo = rotulo_do_ramo_da_apolice(merged_slots.get("ramo_da_apolice"))
+    if rotulo_do_ramo:
+        merged_slots["qual_seguro_opcao"] = rotulo_do_ramo
     # TODA opção de menu declarada no subserviço vira slot — pelo SUFIXO, não
     # pelo nome. Era `tipo_servico_opcao` escrito à mão, um campo só.
     #
@@ -1092,6 +1312,8 @@ def new_dispatch_session(
     #    origem no transcript: "a atendente disse 'residência'" e "a derivação
     #    leu o relato" são erros diferentes, e o dossiê precisa dizer qual foi.
     origem_das_teclas = {k: "atendente" for k in _teclas_preenchidas(merged_slots)}
+    if rotulo_do_ramo:
+        origem_das_teclas["qual_seguro_opcao"] = "apolice"
     for chave, valor in (sub or {}).items():
         if chave.endswith("_opcao") and valor and not merged_slots.get(chave):
             merged_slots[chave] = valor
@@ -2830,6 +3052,15 @@ def handle_insurer_message(
         {"direction": "in", "text": str(insurer_message)[:2000], "at": _now()}
     )
 
+    # 🔴 SPEC-EXTRA-001.4 C — EU CUIDO: o agente SAIU deste acionamento. Só se
+    #    registra (o espelho continua completo). Nada responde, nada captura para
+    #    avisar o segurado — quem fala agora é a atendente. O encerramento da URA
+    #    só é anotado, para o roteador liberar o número da seguradora.
+    if humano_assumiu(session):
+        if seguradora_encerrou(insurer_message):
+            session["seguradora_encerrou"] = True
+        return session
+
     # O `flow_token` chega JUNTO da mensagem que abre o formulário e não volta
     # mais. Guardar aqui, antes de qualquer decisão, é o que garante que ele
     # exista quando a resposta estiver pronta — inclusive se o formulário só for
@@ -2904,15 +3135,44 @@ def handle_insurer_message(
 
     # Seguradora ENCERROU a conversa (timeout/resposta inválida): parar de falar
     # e liberar a corretora para reabrir (visto no teste Yelum 2026-07-10).
-    if re.search(
-        r"conversa ser[áa] encerrada|estamos encerrando (?:esta|a) conversa|"
-        r"tempo m[áa]ximo de espera.*excedid|encerrad[ao] por (?:inatividade|falta de intera)|"
-        r"falta de intera[çc][ãa]o esta conversa foi encerrada|conversa foi encerrada",
-        _norm_text(insurer_message),
-        re.IGNORECASE,
-    ):
+    # 🔴 SPEC-EXTRA-001.4 D5 — pela lista MEDIDA (`ENCERRAMENTO_DA_SEGURADORA`):
+    #    📊 a de 10/09 ("por falta de contato, estou encerrando") casava 0 de 10.
+    if seguradora_encerrou(insurer_message):
         session["state"] = "needs_human"
         session["reason"] = "insurer_closed"
+        espera = session.pop("esperando_do_segurado", None)
+        if espera:
+            # D3 — "a seguradora encerrou enquanto eu esperava o segurado": o
+            # dossiê diz exatamente isso (`falta_para_a_ura` é o que ele lê).
+            session["falta_para_a_ura"] = {
+                "campo": "pergunta_ao_segurado", "slot": espera.get("slot"),
+                "rotulo": (f"{espera.get('rotulo') or espera.get('slot')} — a seguradora "
+                           "encerrou enquanto eu esperava o segurado responder")}
+        return session
+
+    seguradora = _quem_fala().seguradora_do_corredor(playbook)
+
+    # 🔴 SPEC-EXTRA-001.4 D2 — UMA PESSOA DA SEGURADORA REABRE A SESSÃO TRAVADA.
+    #    Vem DEPOIS do encerramento (encerrada é encerrada) e antes de tudo que
+    #    responde: a partir daqui a tela é de fase humana, e o resumo do caso sai
+    #    uma vez lá embaixo (`summary_sent` não é limpo aqui).
+    if pode_reentrar_em_fase_humana(session, insurer_message, seguradora):
+        session["reentrou_de"] = str(session.get("reason") or "")
+        session["state"] = "human_phase"
+        session["reentradas"] = int(session.get("reentradas") or 0) + 1
+        session["human_phase_guard_fails"] = 0
+        session.setdefault("fila_desde", _now())
+        # A linha "a seguradora respondeu, retomei" só corrige quem JÁ recebeu o
+        # pedido de ajuda — sem dossiê antes, é ruído (EXTRA-001.3).
+        session["avisar_retomada"] = bool(session.get("dossier_sent"))
+        logger.info("[DISPATCH] 🔁 uma pessoa da seguradora reabriu a sessão (%s)",
+                    session["reentrou_de"])
+
+    # 🔴 SPEC-EXTRA-001.4 C — A ATENDENTE DA CORRETORA ESTÁ NA CONVERSA: o motor
+    #    OBSERVA (protocolo, encaminhamento e encerramento já foram lidos acima)
+    #    e NÃO responde. Sem isto o corredor digitava por cima dela (10/09 17:18).
+    if pausa_humana_aberta(session):
+        logger.info("[DISPATCH] ⏸️ pausa humana aberta — a tela foi registrada, sem resposta")
         return session
 
     # FREIO DE FINALIZAÇÃO (founder 2026-07-11): existe SÓ para o modo TESTE.
@@ -3008,11 +3268,38 @@ def handle_insurer_message(
         logger.info("[DISPATCH] reparo determinístico: %s", reparo["motivo"])
         return session
 
+    # 🔴 SPEC-EXTRA-001.4 D1 · D4 — A ÂNCORA POSITIVA E A FILA.
+    #    A URA ANUNCIOU a transferência (`FRONTEIRAS`, por seguradora) → fase
+    #    humana, e o relógio da FILA começa (absoluto, desde a entrada). Um aviso
+    #    de fila ("você está na fila…") é da mesma família: não pede resposta.
+    #    ⚠️ A entrada é MARCADA no transcript (`aviso`): é assim que o Vigia sabe
+    #    que esta tela não é uma pergunta sem resposta e não chama o Sentinela.
+    qf = _quem_fala()
+    transferencia = qf.e_transferencia_para_pessoa(seguradora, insurer_message)
+    aviso_de_fila = (not transferencia) and qf.e_aviso_de_fila(insurer_message)
+    if transferencia or (aviso_de_fila and session.get("state") in ("ura", "human_phase")):
+        if session.get("state") == "ura":
+            session["state"] = "human_phase"
+        session.setdefault("fila_desde", _now())
+        if transferencia:
+            session.setdefault("fronteira_em", _now())
+        elif session.get("fila_avisada_em") is None and not session.get("humano_falou_em"):
+            # A URA CONFIRMOU a fila: o prazo absoluto renova UMA vez.
+            session["fila_avisada_em"] = _now()
+        session["transcript"][-1]["aviso"] = "transferencia" if transferencia else "fila"
+        return session
+
     step = match_ura_step(playbook, insurer_message, subservice=session.get("subservice"))
     if step:
         # Passo "noop": mensagem informativa (fila, aguarde, "ainda não
         # identificamos") — reconhecer e NÃO responder nada.
         if step.get("noop"):
+            # 🔴 D1: o passo pode DECLARAR que entra na fase humana.
+            if step.get("enters_human_phase") and session.get("state") == "ura":
+                session["state"] = "human_phase"
+                session.setdefault("fila_desde", _now())
+                session.setdefault("fronteira_em", _now())
+                session["transcript"][-1]["aviso"] = "transferencia"
             return session
         # reply_repeat: na 2ª+ vez que o MESMO passo aparecer, responder diferente
         # (ex.: menu raiz da Porto — 1ª vez re-identifica o cliente, 2ª segue).
@@ -3312,19 +3599,30 @@ def handle_insurer_message(
     # Sem âncora de URA: fase humana da seguradora.
     if session.get("state") == "ura":
         session["state"] = "human_phase"
+        session.setdefault("fila_desde", _now())
+    # 🔴 SPEC-EXTRA-001.4 D2/D4 — UMA PESSOA FALOU: o relógio deixa de ser o da
+    #    FILA (absoluto) e passa a ser o do HUMANO SUMIDO (deslizante). Depois da
+    #    fronteira positiva, toda fala que não é aviso de fila é de uma pessoa
+    #    (`zonas_do_acervo.zonas`); antes dela, só a apresentação prova.
+    apresentou = qf.uma_pessoa_se_apresentou(seguradora, insurer_message)
+    if session.get("state") == "human_phase" and (apresentou or session.get("fronteira_em")):
+        session.setdefault("humano_falou_em", _now())
+        # Cada fala da pessoa é um HEARTBEAT: o lembrete e o alerta rearmam.
+        session.pop("wd_human_nudge", None)
+        session.pop("wd_human_alert", None)
     # ANALISTA humano assumiu ("me chamo X, como posso ajudar?"): apresentar o
     # resumo estruturado do caso UMA vez, deterministicamente (é o que a
     # operadora real faz — colar o pedido completo para o analista).
+    # 🔴 SPEC-EXTRA-001.4 D2 — UMA FONTE SÓ: a tabela MEDIDA, com o controle
+    #    negativo do robô. A regex inline que vivia aqui morreu: 📊 17/09, por
+    #    sessão, as duas marcavam as mesmas 178 sessões humanas, e a inline ainda
+    #    casava 77 telas do ROBÔ. Duas listas para o mesmo fato é como a sessão
+    #    reentra pela tabela e fica muda pela inline.
     if (
         session.get("state") == "human_phase"
         and not session.get("summary_sent")
         and playbook.get("opening_template")
-        and re.search(
-            r"me chamo |meu nome [ée] |como posso (?:te )?ajudar|darei? (?:continuidade|prosseguimento)|"
-            r"prosseguirei com o atendimento|irei realizar seu atendimento|vou te ajudar",
-            _norm_text(insurer_message),
-            re.IGNORECASE,
-        )
+        and apresentou
     ):
         summary = render_opening_message(playbook, session.get("subservice") or "", session.get("slots") or {})
         session["summary_sent"] = True
@@ -3833,6 +4131,10 @@ _MOTIVOS_EM_PORTUGUES = {
                           "o número certo na conversa com a seguradora",
     "tecla_ambigua": "a resposta coletada serve para mais de uma opção do menu da "
                      "seguradora — escolha a opção certa na conversa com ela",
+    # --- SPEC-EXTRA-001.4 C/D ------------------------------------------------
+    HUMANO_ASSUMIU: "uma pessoa da equipe disse EU CUIDO e assumiu a conversa com a seguradora",
+    "segurado_nao_respondeu": "a seguradora pediu um dado que só o segurado sabe, "
+                              "e ele não respondeu a tempo",
     # --- a seguradora pediu gente / outro caminho ----------------------
     "handoff_trigger": "a própria seguradora pediu para falar com uma pessoa",
     "encaminhado": "a seguradora não abre este chamado por aqui e mandou seguir "
@@ -4410,6 +4712,10 @@ def pode_retomar(session: Dict[str, Any]) -> bool:
     if politica_de_retomada(str(session.get("reason") or "")) != RETOMA:
         return False
     if int(session.get("retry_count") or 0) != 0:
+        return False
+    # 🔴 SPEC-EXTRA-001.4 C — 4º freio: com uma pessoa da corretora na conversa
+    #    (pausa aberta), reabrir o acionamento é o robô falando por cima dela.
+    if pausa_humana_aberta(session):
         return False
     return not (session.get("captured") or {}).get("protocol")
 

@@ -566,7 +566,8 @@ def _o_que_destrava(n: RB.Nota) -> str:
         elif "deterministico" in i.nome:
             pend.append("🤖 subir o determinismo acima de 85%")
         elif "apelidos" in i.nome:
-            pend.append("🧑 acesso ao Espelho para conferir os apelidos")
+            # SPEC-EXTRA-001.4 E — o leitor do Espelho existe; falta o vocabulário (P-PILOTO-06).
+            pend.append("🤖 conferir os apelidos pelo leitor do Espelho")
         elif "expectativa" in i.nome or "regras" in i.nome:
             pend.append("🤖 escrever as regras que a URA diz ao segurado")
     return " · ".join(dict.fromkeys(pend)) or "nada"

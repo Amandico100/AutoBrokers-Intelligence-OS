@@ -307,9 +307,19 @@ class InsurerDispatchInput(BaseModel):
         "três juntos numa tela só)"))
 
     # --- Residencial: qual seguro ---
+    # 🔴 Decisão do Founder, 17/09/2026: a tela "Qual seguro deseja utilizar?"
+    # (residencial · condomínio · empresarial) é respondida pelo RAMO DA APÓLICE.
+    # Quando a apólice foi localizada no sistema, o ramo chega sozinho
+    # (`nodes.py`); o modelo só o informa quando a apólice NÃO foi localizada.
+    ramo_da_apolice: Optional[str] = Field(default=None, description=(
+        "[residencial] RAMO DA APÓLICE do caso: residencial | condominio | empresarial. "
+        "Se a apólice foi localizada no sistema, NÃO preencha (o sistema já sabe). "
+        "Se não foi, pergunte JUNTO com o pedido da apólice/CPF, na primeira conversa "
+        "(ex.: 'o seguro é da sua casa/apartamento, do condomínio ou da empresa?'). "
+        "Nunca faça uma pergunta separada sobre 'qual seguro deseja utilizar'."))
     qual_seguro_opcao: Optional[str] = Field(default=None, description=(
-        "[residencial] De qual seguro o cliente fala — o da RESIDÊNCIA. "
-        "A URA abre por esta pergunta antes de qualquer serviço."))
+        "[residencial] NÃO pergunte e NÃO preencha: o motor responde esta tela "
+        "pelo `ramo_da_apolice`."))
     tipo_imovel: Optional[str] = Field(default=None, description=(
         "[residencial] Casa, apartamento ou condomínio"))
 
@@ -710,6 +720,17 @@ class InsurerDispatchTool(BaseTool):
             if k not in ("subservice", "session_id", "insurer_key", "line_kind", "dados_confirmados")
             and v not in (None, "")
         }
+        # 🔴 O ramo viaja como FAMÍLIA (`resi`/`cond`/`empr`), pela autoridade do
+        #    produto. O que não se reconhece não vira tecla: sai do caso, e a tela
+        #    vai a uma pessoa em vez de receber um chute.
+        if "ramo_da_apolice" in slots:
+            from app.providers.policy_data_provider import familia_de_ramo
+
+            familia = familia_de_ramo(slots["ramo_da_apolice"])
+            if familia:
+                slots["ramo_da_apolice"] = familia
+            else:
+                slots.pop("ramo_da_apolice")
         return subservice, slots
 
     def _run(self, **kwargs) -> dict:

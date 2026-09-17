@@ -61,6 +61,12 @@ TIPO_VIGIA = "vigia"
 TIPO_RESUMO_DIARIO = "resumo_diario"
 TIPO_QUEDA_DE_CANAL = "queda_de_canal"
 TIPO_COBRANCA = "cobranca"
+#: 🔴 SPEC-EXTRA-001.4 C — o aviso "vi que você entrou na conversa com a
+#: seguradora". É o ÚNICO que sai com a pausa aberta: ele é SOBRE a pausa.
+TIPO_PAUSA_HUMANA = "pausa_humana"
+#: 🔴 SPEC-EXTRA-001.4 D2 — "a seguradora respondeu, retomei". Só depois de um
+#: pedido de ajuda (quem chama confere `dossier_sent`).
+TIPO_RETOMADA = "retomada"
 
 #: 🔴 O que a guarda **não** cala, e o porquê está escrito na SPEC §5.3.
 #:
@@ -94,7 +100,86 @@ JANELA_DE_DEDUP_S = {
     TIPO_RESUMO_DIARIO: _UM_DIA,
     TIPO_QUEDA_DE_CANAL: 6 * 3600,
     TIPO_COBRANCA: _UM_DIA,
+    # 💭 30 min: a atendente que entra e sai da conversa várias vezes não vira
+    #    uma mensagem por entrada (a sessão também marca `avisou_grupo` por pausa).
+    TIPO_PAUSA_HUMANA: 30 * 60,
+    TIPO_RETOMADA: 6 * 3600,
 }
+
+MOTIVO_PAUSA_HUMANA = "uma pessoa da equipe está na conversa com a seguradora agora"
+_CHAVE_DA_PAUSA = "pausa_humana:{empresa}:{alvo}"
+
+
+async def marcar_pausa_humana(company_id: str, alvos, segundos: int) -> None:
+    """Índice TRANSITÓRIO da pausa humana, por conversa e por telefone (§6: Redis).
+
+    ⚠️ A autoridade é a SESSÃO do acionamento (`session["pausa_humana"]`); este
+    índice existe para quem NÃO tem a sessão na mão (a `espera.vencida`, que só
+    conhece a conversa e o telefone do segurado). Expira sozinho com a pausa.
+    """
+    empresa = str(company_id or "").strip()
+    if not empresa or int(segundos or 0) <= 0:
+        return
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        for alvo in {str(a).strip() for a in (alvos or ()) if str(a or "").strip()}:
+            await r.set(_CHAVE_DA_PAUSA.format(empresa=empresa, alvo=alvo), "1",
+                        ex=max(1, int(segundos)))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[GRUPO] índice da pausa humana não gravado (%s)", type(exc).__name__)
+
+
+async def desmarcar_pausa_humana(company_id: str, alvos) -> None:
+    empresa = str(company_id or "").strip()
+    if not empresa:
+        return
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        for alvo in {str(a).strip() for a in (alvos or ()) if str(a or "").strip()}:
+            await r.delete(_CHAVE_DA_PAUSA.format(empresa=empresa, alvo=alvo))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[GRUPO] índice da pausa humana não apagado (%s)", type(exc).__name__)
+
+
+def alvos_da_pausa(conversation_id: Any = "", telefone: Any = "") -> Set[str]:
+    """As chaves do índice: `conv:<id>` e `tel:<variante>` para cada forma do número."""
+    alvos = {"conv:%s" % str(conversation_id).strip()} if str(conversation_id or "").strip() else set()
+    if str(telefone or "").strip():
+        alvos |= {"tel:%s" % v for v in _variantes(telefone)}
+    return alvos
+
+
+async def _pausa_humana_na_conversa(empresa: str, sessao: Any, conversa_id: str,
+                                    fone: str) -> bool:
+    """A causa `pausa_humana` — pela SESSÃO quando ela veio, senão pelo índice.
+
+    ⛔ Fail-open, como o resto da guarda: sem conseguir ler, NÃO cala."""
+    if isinstance(sessao, dict):
+        try:
+            from app.services.insurer_dispatch_service import pausa_humana_aberta
+
+            if pausa_humana_aberta(sessao):
+                return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[GRUPO] pausa ilegível na sessão (%s)", type(exc).__name__)
+    alvos = alvos_da_pausa(conversa_id, fone)
+    if not alvos:
+        return False
+    try:
+        from app.core.redis import get_async_redis_client
+
+        r = await get_async_redis_client()
+        for alvo in alvos:
+            if await r.get(_CHAVE_DA_PAUSA.format(empresa=empresa, alvo=alvo)):
+                return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[GRUPO] índice da pausa ilegível (%s) — vou deixar avisar",
+                       type(exc).__name__)
+    return False
 
 #: Os eventos contáveis deste módulo. ⛔ Nenhuma tabela de métrica nova.
 EVENTO_GRUPO_ENVIADO = "grupo.enviado"
@@ -247,7 +332,8 @@ async def esquecer_os_numeros_da_casa(company_id: str) -> None:
 async def o_grupo_pode_saber(db, *, company_id: str, conversation_id: str = "",
                              telefone: str = "", tipo: str,
                              companhia: Any = None, agora=None,
-                             conversa: Any = None) -> Tuple[bool, str]:
+                             conversa: Any = None,
+                             sessao: Any = None) -> Tuple[bool, str]:
     """`(pode_falar, motivo_em_português)`.
 
     As quatro perguntas, **nesta ordem**, e cada uma DELEGANDO:
@@ -281,6 +367,14 @@ async def o_grupo_pode_saber(db, *, company_id: str, conversation_id: str = "",
 
     conversa_id = str(conversation_id or "").strip()
     fone = str(telefone or "").strip()
+
+    # ---- 1-bis. 🔴 SPEC-EXTRA-001.4 C — a atendente está na URA AGORA? ------
+    #    A causa que a 001.4 acrescenta (proposta §7.3: quem executa depois
+    #    CHAMA a guarda e acrescenta a sua causa). Só o aviso da própria pausa
+    #    passa: ele é sobre ela.
+    if str(tipo or "") != TIPO_PAUSA_HUMANA and await _pausa_humana_na_conversa(
+            empresa, sessao, conversa_id, fone):
+        return False, MOTIVO_PAUSA_HUMANA
 
     # ---- 2. a contraparte é número da casa? -------------------------------
     if fone:
@@ -551,7 +645,7 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
                           motivo_classe: str = "", integration: Any = None,
                           destino: str = "", dedup: bool = True,
                           janela_s: Optional[int] = None,
-                          agora=None) -> Dict[str, Any]:
+                          agora=None, sessao: Any = None) -> Dict[str, Any]:
     """O ÚNICO caminho de uma mensagem para o grupo da corretora.
 
     ```
@@ -574,7 +668,8 @@ async def enviar_ao_grupo(db, *, company_id: str, tipo: str, texto: str,
     # ---- ① a guarda -------------------------------------------------------
     pode, porque = await o_grupo_pode_saber(
         db, company_id=empresa, conversation_id=conversa_id, telefone=telefone,
-        tipo=tipo, companhia=companhia, agora=agora, conversa=conversa)
+        tipo=tipo, companhia=companhia, agora=agora, conversa=conversa,
+        sessao=sessao)
     if not pode:
         resposta.update({"calado": True, "motivo": porque})
         await anotar_no_diario(

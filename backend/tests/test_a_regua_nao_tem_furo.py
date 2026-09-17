@@ -790,6 +790,48 @@ certo(sum(rp.orfas_inocuas for rp in _com_flow.values()) > 0,
 
 print()
 print("=" * 74)
+print("[E] 🔴 SPEC-EXTRA-001.4 · NENHUM CORREDOR TEM DOIS PASSOS COM O MESMO NOME")
+print("=" * 74)
+# 📊 17/09: `match_ura_step` devolve o PRIMEIRO passo que casa, e a concatenação
+#    corpo + tronco produzia homônimos. Na porto-auto, `complemento` do corpo
+#    ("não tem") sombreava o do tronco (`{local_complemento}`) — o segurado com
+#    complemento recebia "não tem". Homônimo só com a MESMA resposta, declarado.
+_HOMONIMOS_DECLARADOS = {
+    # 📊 hdi-residencial herda os passos da yelum-residencial (concatenação); os
+    #    5 pares têm resposta IDÊNTICA nas duas cópias — ruído, não defeito.
+    ("hdi-residencial-whatsapp@v1", n): "mesma resposta nas duas cópias (herança da yelum)"
+    for n in ("quando_agora", "identificacao_dado", "desambiguacao_veiculo_ou_residencial",
+              "menu_servico_residencial", "servico_ja_aberto")
+}
+
+
+def _homonimos(playbooks):
+    fora = []
+    for ref, pb in sorted(playbooks.items()):
+        vistos = {}
+        for p in pb.get("ura_steps") or []:
+            vistos.setdefault(p.get("step"), []).append(str(p.get("reply")))
+        for nome, respostas in vistos.items():
+            if len(respostas) < 2:
+                continue
+            if (ref, nome) in _HOMONIMOS_DECLARADOS and len(set(respostas)) == 1:
+                continue
+            fora.append((ref, nome, respostas))
+    return fora
+
+
+_HOM = _homonimos(CP._PLAYBOOKS)
+certo(not _HOM, "nenhum passo homônimo fora da lista declarada (e os declarados respondem igual)",
+      str(_HOM[:4]))
+# 🔴 CONTROLE: o laço CONSEGUE acusar — um homônimo de resposta DIFERENTE é nomeado.
+_falso = {"x": {"ura_steps": [{"step": "complemento", "reply": "não tem"},
+                              {"step": "complemento", "reply": "{local_complemento}"}]}}
+certo(_homonimos(_falso) == [("x", "complemento", ["não tem", "{local_complemento}"])],
+      "🔴 CONTROLE: com o `complemento` duplicado de volta, o laço o nomeia",
+      str(_homonimos(_falso)))
+
+print()
+print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")
 print("=" * 74)
 sys.exit(1 if FAIL else 0)

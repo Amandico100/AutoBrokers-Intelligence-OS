@@ -2291,8 +2291,12 @@ PORTO_AUTO_WHATSAPP_V1 = _auto_playbook(
         {"step": "menu_quando", "anchor": r"para quando voc[êe] precisa que esse servi[çc]o",
          "reply": "{menu_quando_opcao}", "requires": ["menu_quando_opcao"],
          "notes": "botões: Tenho urgência / Agendar. A frase 'confirmada somente após a finalização' é COLETA."},
-        {"step": "complemento", "anchor": r"digite ent[ãa]o um \*?complemento", "reply": "não tem",
-         "notes": "complemento do endereço; sem complemento = 'não tem'"},
+        # 🔴 SPEC-EXTRA-001.4 E — o passo `complemento` que morava AQUI saiu.
+        #    Ele respondia "não tem" SEMPRE, e por vir antes de `_PORTO_TRONCO` na
+        #    concatenação, sombreava o passo homônimo que lê `{local_complemento}`
+        #    do caso (📊 índices 11 × 39; `match_ura_step` devolve o primeiro). O
+        #    segurado com "apto 42" recebia "não tem". Agora quem responde é o do
+        #    tronco: com complemento no caso, ele; sem, a própria tela pede "não tem".
         {"step": "ponto_referencia",
          "anchor": r"(?:o local tem|pode me informar) algum \*?ponto de refer[êe]ncia",
          "reply": "{ponto_referencia}",
@@ -3266,10 +3270,15 @@ AZUL_AUTO_WHATSAPP_V1 = _auto_playbook(
                   "caminho é Outra cor, que abre texto livre (`cor_texto`)."},
         {"step": "cor_texto", "anchor": r"escreva qual a cor", "reply": "{veiculo_cor}",
          "notes": "default 'não sei'"},
-        {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "1",
+        # 🔴 SPEC-EXTRA-001.4 E — pelo RÓTULO, como a Porto (mesma âncora, `:2250`).
+        #    Era "1": uma aposta na POSIÇÃO numa tela em que, numa das variantes, a
+        #    opção 1 é "Cancelar serviço". Se a variante numerada voltar e recusar a
+        #    palavra, o reparo do motor (`reparar_opcao_invalida`) manda o dígito do
+        #    rótulo lendo o menu que ela mesma mostrou.
+        {"step": "menu_atendimento", "anchor": r"de que atendimento voc[êe] precisa", "reply": "Novo serviço",
         "constante_justificada": (
-            "📊 'Novo serviço' entre acompanhar/cancelar/consultar. O corredor existe para ABRIR — acompanhar e cancelar são outros trabalhos, e 'Cancelar serviço' é a opção 1 em uma das variantes: tecla errada aqui CANCELA um serviço já aberto."),
-         "notes": "1-Novo serviço"},
+            "📊 'Novo serviço' entre acompanhar/cancelar/consultar. O corredor existe para ABRIR — acompanhar e cancelar são outros trabalhos. Responde-se pelo RÓTULO porque 'Cancelar serviço' é a opção 1 em uma das variantes: apostar na posição CANCELA um serviço já aberto."),
+         "notes": "Novo serviço (rótulo; a variante numerada tem 0 ocorrências desde 26/12/2025)"},
         # ⚠️ 🔴 A ÂNCORA SÓ CASAVA O MENU NUMERADO, E ELE MORREU.
         #    📊 Medido em 23/08/2026: a variante numerada tem ZERO ocorrências
         #    desde 26/12/2025; a viva é LISTA — "O que você precisa? Guincho
@@ -9652,7 +9661,9 @@ _COMO_PERGUNTAR = {
     "pet_nome": "o nome do animal",
     "pet_raca": "a raça do animal",
     "pet_idade": "a idade do animal",
-    "qual_seguro_opcao": "de que seguro ele fala — o da residência",
+    # 🔴 Decisão do Founder (17/09): o RAMO DA APÓLICE, junto com a apólice.
+    "qual_seguro_opcao": ("se o seguro é da casa/apartamento, do condomínio ou da "
+                          "empresa (o ramo da apólice)"),
     "caixas_dagua_quantidade_opcao": "quantas caixas d’água tem no imóvel",
     "caixa_litros_opcao": "quantos litros tem a caixa d’água",
     # ⚠️ Estas quatro eram slot OBRIGATÓRIO **sem redação nenhuma**: o

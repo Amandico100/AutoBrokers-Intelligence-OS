@@ -1004,6 +1004,36 @@ async def process_whatsapp_message_background(
         except Exception as e:  # noqa: BLE001 — roteador nunca derruba o fluxo normal
             logger.error(f"[WEBHOOK] dispatch router error: {type(e).__name__}")
 
+        # 🔴 SPEC-EXTRA-001.4 C · D3 — duas mensagens que NÃO são para o agente:
+        #    ① AGENTE / EU CUIDO de alguém da equipe (o número de suporte ou um
+        #       número da casa), sobre o acionamento em pausa;
+        #    ② a RESPOSTA do segurado a uma pergunta que a seguradora fez.
+        #    Custo no caminho comum: um teste de texto (①) e um GET no Redis (②).
+        try:
+            from app.services.dispatch_router import (
+                ler_palavra_da_equipe, responder_pergunta_do_acionamento,
+            )
+
+            _texto_in = " ".join(str(m or "").strip() for m in (buffered_messages or [])
+                                 if str(m or "").strip())
+            if not _texto_in and payload.text and payload.text.message:
+                _texto_in = str(payload.text.message)
+            if _texto_in and await ler_palavra_da_equipe(
+                    str(company_id), _texto_in, remetente=str(payload.phone or "")):
+                logger.info("[WEBHOOK] palavra da equipe aplicada ao acionamento")
+                return
+
+            def _ao_cliente(fone: str, texto_out: str) -> None:
+                whatsapp_service.send_message(fone, texto_out, integration)
+
+            if _texto_in and await responder_pergunta_do_acionamento(
+                    str(company_id), str(payload.phone or ""), _texto_in,
+                    send_to_client=_ao_cliente):
+                logger.info("[WEBHOOK] resposta do segurado levada à seguradora")
+                return
+        except Exception as e:  # noqa: BLE001 — nunca derruba o fluxo normal
+            logger.error(f"[WEBHOOK] palavra/pergunta do acionamento: {type(e).__name__}")
+
         # S17 — Piloto em número pessoal: allowlist de teste (env
         # ATTENDANT_INBOUND_ALLOWLIST). Fora da lista = ignorado em silêncio
         # (não cria usuário/conversa, não responde). Vazia = produção normal.
@@ -2368,6 +2398,23 @@ async def _handle_evolution_like_inbound(
 
     normalized = normalize_evolution_inbound(body)
     if normalized["skip"]:
+        # 🔴 SPEC-EXTRA-001.4 C — AGENTE / EU CUIDO digitado NO GRUPO de suporte.
+        #    ⚠️ Só chega quando o canal entrega grupos (📊 17/09: instâncias são
+        #    criadas com `ignoreGroups: True`). A palavra tem de SER a mensagem e o
+        #    grupo tem de ser o destino de suporte da corretora (`_e_da_equipe`).
+        #    ⚠️ `from_me` também: a atendente pode responder do próprio WhatsApp da
+        #    corretora, e aí o evento chega marcado `from_me` antes de `group`.
+        _chave_msg = ((body.get("data") or {}).get("key") or {}) if isinstance(body, dict) else {}
+        if (normalized.get("text") and str(_chave_msg.get("remoteJid") or "").endswith("@g.us")
+                and normalized.get("skip_reason") in ("group", "from_me")):
+            try:
+                from app.services.dispatch_router import ler_palavra_da_equipe
+
+                await ler_palavra_da_equipe(
+                    str(integration.get("company_id") or ""), normalized.get("text"),
+                    chat=str(_chave_msg.get("remoteJid") or ""), eh_grupo=True)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[WEBHOOK] palavra do grupo não lida (%s)", type(e).__name__)
         # Mensagem MANUAL da própria corretora (fromMe) numa conversa com
         # dispatch ATIVO: registra no espelho (humano copilotando a URA).
         if normalized.get("skip_reason") == "from_me" and normalized.get("phone"):

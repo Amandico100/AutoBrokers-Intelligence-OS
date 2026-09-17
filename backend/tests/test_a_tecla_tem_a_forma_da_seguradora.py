@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import ast
 import collections
+import json
 import os
 import re
 import sys
@@ -318,17 +319,21 @@ def sem_origem(derivados, inline, declaradas):
 
 
 INLINE = inline_do_motor()
-certo(INLINE == {"servico_opcao", "telefone_adicionar_opcao"},
-      "📊 o motor preenche por conta própria exatamente as duas teclas inline",
+certo(INLINE == {"servico_opcao", "telefone_adicionar_opcao", "qual_seguro_opcao"},
+      "📊 o motor preenche por conta própria exatamente as duas teclas inline + a do "
+      "RAMO DA APÓLICE (decisão do Founder, 17/09)",
       f"{sorted(INLINE)}")
 ORFAS = sem_origem(set(VALORES), INLINE, DA_ATENDENTE)
 for ref, passo, slot in ORFAS[:8]:
     print(f"        🔴 {ref} · passo `{passo}` exige `{slot}` e nada o preenche")
 certo(not ORFAS, "🔴 toda tecla exigida por um passo tem origem (derivação · inline · "
       "subserviço · atendente declarada)", f"{len(ORFAS)} passo(s) sem origem")
-certo("qual_seguro_opcao" in VALORES,
-      "🔴 `qual_seguro_opcao` — a tecla do 10/09 — passou a ter derivação",
-      f"derivadas: {len(VALORES)}")
+# 🔴 A LIÇÃO MIGRA (CLAUDE.md §9.3): na fatia 1 a tecla do 10/09 ganhou derivação
+#    pelo RELATO; em 17/09 o Founder decidiu que ela vem do RAMO DA APÓLICE. O que
+#    se afirma agora é a origem nova — e que o relato deixou de decidir o ramo.
+certo("qual_seguro_opcao" in INLINE and "qual_seguro_opcao" not in VALORES,
+      "🔴 `qual_seguro_opcao` — a tecla do 10/09 — tem origem: o ramo da apólice, "
+      "e NÃO o relato", f"inline={'qual_seguro_opcao' in INLINE} derivada={'qual_seguro_opcao' in VALORES}")
 # 🔴 CONTROLE: o laço CONSEGUE acusar — sem a derivação do eletricista, ele nomeia.
 _sem_eletrico = {k: v for k, v in VALORES.items() if k != "problema_eletrico_opcao"}
 _acusa = sem_origem(set(_sem_eletrico), INLINE, DA_ATENDENTE)
@@ -339,17 +344,34 @@ certo(any(s == "problema_eletrico_opcao" for _, _, s in _acusa),
 _velhas = sorted(k for k in DA_ATENDENTE if k[1] in VALORES or k[1] in INLINE)
 certo(not _velhas, "a lista da atendente não declara tecla que já tem derivação", f"{_velhas}")
 
-# 🔴 E a DERIVAÇÃO nova, pelo MOTOR (§9.4): o ramo só sai com UM casamento.
-for relato, esperado in (
-        ("vazamento no banheiro da minha casa", "1"),
-        ("infiltração na área comum do prédio", "2"),
-        ("a porta da minha loja não fecha", "3"),
-        ("moro num condomínio e a casa está sem luz", None),   # dois ramos: ninguém chuta
-        ("tomadas da cozinha sem energia", None)):              # nenhum: a atendente pergunta
-    d = {"problema_descricao": relato}
-    IDS._derivar_teclas_do_caso(d)
-    certo(d.get("qual_seguro_opcao") == esperado,
-          f"qual_seguro_opcao <- {relato[:38]!r} = {esperado!r}", f"veio {d.get('qual_seguro_opcao')!r}")
+# 🔴 E A ORIGEM NOVA, PELO MOTOR (§9.4) — decisão do Founder, 17/09/2026: o ramo
+#    da apólice vira a tecla LENDO A TELA REAL do corpus; o relato não decide nada.
+_TELA_QUAL_SEGURO = next(
+    json.loads(l)["text"] for l in open(os.path.join(RAIZ, "tests", "corpus", "telas_reais",
+                                                     "allianz-residencial.jsonl"), encoding="utf-8")
+    if "3 - empresarial" in CP._norm(json.loads(l)["text"])
+    and "qual seguro deseja utilizar" in CP._norm(json.loads(l)["text"]))
+_PB_RES = CP.get_playbook("allianz-residencial-whatsapp@v1")
+_PASSO = next(p for p in _PB_RES["ura_steps"] if p.get("step") == "menu_qual_seguro_tres_opcoes")
+for ramo, palavra, esperado in (
+        ("resi", "", "1"), ("cond", "", "2"), ("empr", "", "3"),
+        ("condomínio", "", "2"),            # o que o modelo escreve vira a família
+        ("cond", "residência", "2"),        # 🔴 a apólice VENCE a palavra da atendente
+        ("auto", "", ""),                   # ramo que não é desta tela: nada sai
+        ("", "", "")):                      # sem ramo: a tela vai a uma pessoa
+    s = IDS.new_dispatch_session(
+        case_id="ga1", company_id="c", playbook_ref="allianz-residencial-whatsapp@v1",
+        subservice="encanador", slots={k: v for k, v in (("ramo_da_apolice", ramo),
+                                                         ("qual_seguro_opcao", palavra)) if v})
+    tecla = IDS.resolver_tecla(_PB_RES, _PASSO, s, _TELA_QUAL_SEGURO)
+    certo(tecla["valor"] == esperado and (esperado or tecla["reason"] == "ramo_indeterminado"),
+          f"ramo {ramo!r} + palavra {palavra!r} → tecla {esperado or 'nenhuma (pessoa)'!r}",
+          f"veio {tecla['valor']!r} {tecla['origem']} {tecla['reason']}")
+# 🔴 CONTROLE: o relato que a fatia 1 lia ("minha casa") não preenche mais a tecla.
+d = {"problema_descricao": "vazamento no banheiro da minha casa"}
+IDS._derivar_teclas_do_caso(d)
+certo(not d.get("qual_seguro_opcao"), "🔴 CONTROLE: o relato não decide o ramo da apólice",
+      f"veio {d.get('qual_seguro_opcao')!r}")
 
 print()
 print("=" * 74)

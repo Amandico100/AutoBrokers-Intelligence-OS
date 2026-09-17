@@ -130,7 +130,10 @@ ROTULOS = {
     "vazamento_local": "onde é o vazamento",
     "risco_confirmado_registro_fechado": "se o registro de água já foi fechado",
     "tipo_imovel": "se é casa, apartamento ou condomínio",
-    "qual_seguro_opcao": "de que seguro ele fala (residencial, condomínio ou empresarial)",
+    # 🔴 Decisão do Founder (17/09): é o RAMO DA APÓLICE, perguntado JUNTO com a
+    #    apólice — e só quando o sistema não a localizou. Nunca uma pergunta à parte.
+    "qual_seguro_opcao": ("o ramo da apólice: se o seguro é da casa/apartamento, do "
+                          "condomínio ou da empresa (junto com a apólice)"),
     "caixas_dagua_quantidade_opcao": "quantas caixas d’água precisam do serviço",
     "caixa_litros_opcao": "quantos litros tem cada caixa d’água",
     "chaveiro_necessidade_opcao": "se é abrir a porta, fazer a cópia, ou as duas",

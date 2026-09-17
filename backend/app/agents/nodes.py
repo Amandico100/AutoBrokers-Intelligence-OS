@@ -210,6 +210,18 @@ def _safe_infocap_policy_context(data: Dict[str, Any]) -> Optional[Dict[str, Any
             selected_number = str(selected.get("policy_number") or selected.get("numapo") or "").strip()
             if selected_number and selected_number.lower() not in {"0", "none", "null", "-"}:
                 context["selected_policy_number"] = selected_number
+                # 🔴 Decisão do Founder (17/09): a FAMÍLIA do ramo da apólice
+                #    (`resi`/`cond`/`empr`/`auto`…) segue com ela — é o que responde
+                #    "Qual seguro deseja utilizar?" sem perguntar ao segurado.
+                #    ⚠️ Categoria, não dado pessoal: o produto cru não sai daqui.
+                try:
+                    from app.providers.policy_data_provider import familia_de_ramo
+
+                    familia = familia_de_ramo(selected.get("product"))
+                except Exception:  # noqa: BLE001
+                    familia = None
+                if familia:
+                    context["selected_policy_ramo"] = familia
     return context
 
 
@@ -232,6 +244,8 @@ def _merge_infocap_policy_context(
     if same_client and prev_selected and prev_selected in (new.get("policy_numbers") or []):
         merged = dict(new)
         merged["selected_policy_number"] = prev_selected
+        if prev.get("selected_policy_ramo"):
+            merged["selected_policy_ramo"] = prev["selected_policy_ramo"]
         return merged
     return new
 
@@ -1263,6 +1277,23 @@ async def _gravar_ficha_do_turno(state: dict, tool_name: str,
                       if tem_infocap and chave in _DO_SISTEMA_DE_GESTAO
                       else ORIGEM_CLIENTE)
             confirmados[chave] = confirmacao(valor, origem)
+        # 🔴 Decisão do Founder (17/09): com o RAMO DA APÓLICE conhecido, a tecla
+        #    "qual seguro" está resolvida — a ficha diz isso ao modelo, para ele
+        #    não perguntar de novo. A origem é o sistema quando o ramo veio dele.
+        _ramo = tool_args.get("ramo_da_apolice")
+        if _ramo and "qual_seguro_opcao" in slots_do_atendimento():
+            try:
+                from app.providers.policy_data_provider import NOME_DA_FAMILIA, familia_de_ramo
+
+                _familia = familia_de_ramo(_ramo)
+                _do_sistema = _familia and _familia == str(
+                    (state.get("infocap_policy_context") or {}).get("selected_policy_ramo") or "")
+                if _familia in ("resi", "cond", "empr"):
+                    confirmados["qual_seguro_opcao"] = confirmacao(
+                        NOME_DA_FAMILIA[_familia],
+                        ORIGEM_SISTEMA_DE_GESTAO if _do_sistema else ORIGEM_CLIENTE)
+            except Exception:  # noqa: BLE001 — a ficha nunca derruba o turno
+                pass
         if confirmados:
             novidades["confirmados"] = confirmados
         for origem, destino in (("insurer_key", "seguradora"),
@@ -1423,6 +1454,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         # SPEC-017 live-path: telefone do cliente vem da sessão
                         # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
                         tool_args = {**tool_args, "session_id": str(state.get("session_id") or "")}
+                        # 🔴 Decisão do Founder (17/09): o RAMO DA APÓLICE localizada
+                        #    vence o que o modelo tenha escrito — o sistema de gestão
+                        #    é a fonte de verdade do ramo (D-PILOTO-11).
+                        _ramo_do_sistema = str((state.get("infocap_policy_context") or {})
+                                               .get("selected_policy_ramo") or "").strip()
+                        if _ramo_do_sistema:
+                            tool_args = {**tool_args, "ramo_da_apolice": _ramo_do_sistema}
                     elif tool_name == "portal_action":
                         # SPEC-020: telefone do segurado vem da sessão WhatsApp
                         # (ack imediato "tô abrindo agora" antes do portal rodar).

@@ -57,6 +57,19 @@ def _int_env(nome: str, padrao: int) -> int:
 # recusado, reentra e recomeça a contagem para sempre — o laço infinito educado.
 MAX_TENTATIVAS_POR_TELA = _int_env("MAX_TENTATIVAS_POR_TELA", 2)
 MAX_TENTATIVAS_NA_SESSAO = _int_env("MAX_TENTATIVAS_NA_SESSAO", 6)
+
+# 🔴 SPEC-EXTRA-001.4 D4 · DOIS RELÓGIOS NA FASE HUMANA (AWS Step Functions:
+#    `TimeoutSeconds` × `HeartbeatSeconds`).
+#
+#    FILA          absoluto desde a entrada em `human_phase`, sem ninguém ter falado.
+#                  ⛔ NENHUMA cutucada: não há ninguém do outro lado para cutucar.
+#                  📊 Allianz, 114 transferências: 59 % chegam em < 10 s · mediana
+#                  3 s · p90 10,5 min · máx 49 min — 20 min cobre o p90 com folga.
+#                  A URA CONFIRMOU a fila ("você está na fila…")? o prazo dobra, uma vez.
+#    PESSOA SUMIDA deslizante, só depois de `humano_falou_em`: HUMAN_NUDGE_S e
+#                  HUMAN_ALERT_S, como sempre. Cada fala dela é um heartbeat.
+#    🔴 INVARIANTE (a mesma da AWS): heartbeat < timeout. Um guarda a afirma.
+FILA_ALERTA_S = _int_env("FILA_ALERTA_S", 1200)
 #: Nome antigo, mantido para quem o importa: hoje é o teto POR TELA.
 MAX_SENTINELA_ATTEMPTS = MAX_TENTATIVAS_POR_TELA
 
@@ -108,6 +121,12 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
     age = _age_s(last.get("at"))
     direction = str(last.get("direction") or "")
 
+    # 🔴 SPEC-EXTRA-001.4 D3 — ESPERANDO O SEGURADO: o prazo é do Vigia, e ele
+    #    vem ANTES do silêncio deliberado (que a própria pergunta escreveu).
+    espera = session.get("esperando_do_segurado") or {}
+    if espera and state in ("ura", "human_phase"):
+        return "segurado_sem_resposta" if _age_s(espera.get("ate")) >= 0 else None
+
     # SILÊNCIO DELIBERADO NÃO É TRAVA — e o Vigia falava por cima dele.
     #
     # 📊 Achado em 05/08/2026, e era defeito VIVO, não risco de proposta.
@@ -144,13 +163,25 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
         if direction == "out" and age > URA_SILENT_ALERT_S and not session.get("wd_ura_silent"):
             return "ura_silent"
     elif state == "human_phase":
-        if direction == "in" and age > URA_UNANSWERED_S:
+        # 🔴 D1/D4: a tela de transferência e o aviso de fila chegam `in` e NÃO
+        #    pedem resposta (o motor os marcou). Sem isto, o Sentinela respondia a
+        #    "vou transferir seu caso" 30 s depois — e esgotava a tela à toa.
+        aviso = direction == "in" and bool(last.get("aviso"))
+        if direction == "in" and not aviso and age > URA_UNANSWERED_S:
             return "stall_unanswered"
-        if direction == "out":
-            if age > HUMAN_ALERT_S and not session.get("wd_human_alert"):
-                return "human_silent_alert"
-            if age > HUMAN_NUDGE_S and not session.get("wd_human_nudge"):
-                return "human_silent_nudge"
+        if session.get("humano_falou_em"):
+            # PESSOA SUMIDA — deslizante: a idade é a da ÚLTIMA entrada.
+            if direction == "out" or aviso:
+                if age > HUMAN_ALERT_S and not session.get("wd_human_alert"):
+                    return "human_silent_alert"
+                if age > HUMAN_NUDGE_S and not session.get("wd_human_nudge"):
+                    return "human_silent_nudge"
+        else:
+            # FILA — absoluta desde a entrada. ⛔ Nenhuma cutucada aqui.
+            fila = _age_s(session.get("fila_desde")) if session.get("fila_desde") else age
+            teto = FILA_ALERTA_S * (2 if session.get("fila_avisada_em") else 1)
+            if fila > teto and not session.get("wd_fila_longa"):
+                return "fila_longa"
 
     if started_age > SESSION_DEADLINE_S and not session.get("wd_deadline"):
         return "deadline"
@@ -359,7 +390,9 @@ async def _support_alert(company_id: str, text: str, wa, integration,
             integration=integration, destino=contact, dedup=False,
             resumo="%s — caso %s" % (tipo or TIPO_VIGIA,
                                      str((session or {}).get("case_id") or "")[:8]),
-            motivo=motivo)
+            motivo=motivo,
+            # 🔴 SPEC-EXTRA-001.4 C — a guarda vê a PAUSA HUMANA desta sessão.
+            sessao=session)
         if saida.get("calado") and session is not None:
             session["grupo_calado_porque"] = saida.get("motivo") or ""
         return bool(saida.get("enviado"))
@@ -512,8 +545,15 @@ async def _sentinela_recover(
                         f"case={session.get('case_id')}")
             return "recovered"
         _consumir()  # tentativa consumida mesmo sem envio
+        # 🔴 SPEC-EXTRA-001.4 D6 — a tentativa que NÃO saiu também é ato do Sentinela.
+        #    ⚠️ E ela segue caindo no handoff logo abaixo, como sempre caiu.
+        await _ato_do_sentinela(company_id, session, "sem_resposta_aprovada",
+                                {"tentativa": attempts + 1, "tentativa_na_tela": na_tela + 1,
+                                 "motivo": str((verdict or {}).get("reason") or "")[:80]})
 
     # Esgotou a escada → handoff com dossiê + alerta. Nunca fica em silêncio.
+    await _ato_do_sentinela(company_id, session, "esgotou",
+                            {"tentativas": attempts, "tentativas_na_tela": na_tela})
     session["state"] = "needs_human"
     session["reason"] = "sentinela_stall"
     dossier = build_handoff_dossier(session, reason="Travou na URA e a recuperação automática esgotou")
@@ -576,6 +616,92 @@ async def _sentinela_recover(
         pass
     logger.warning(f"[SENTINELA] escada esgotada → needs_human case={session.get('case_id')}")
     return "handoff"
+
+
+_FALA_DO_VIGIA = {
+    "stall_unanswered": "A seguradora mandou uma tela e ninguém respondeu em 30 s; chamei o Sentinela.",
+    "ura_silent": "Respondemos e a seguradora ficou calada por 2 minutos.",
+    "human_silent_nudge": "A pessoa da seguradora sumiu por 10 minutos; mandei um lembrete educado.",
+    "human_silent_alert": "A pessoa da seguradora sumiu por 20 minutos.",
+    "never_started": "O acionamento foi criado e não começou em 5 minutos.",
+    "deadline": "O acionamento passou do prazo da sessão.",
+    "fila_longa": "O caso está na fila da seguradora há mais tempo que o normal.",
+    "segurado_sem_resposta": "O segurado ainda não respondeu à pergunta da seguradora.",
+}
+
+
+async def _ato_do_sentinela(company_id: str, session: Dict[str, Any], desfecho: str,
+                            carga: Dict[str, Any]) -> None:
+    try:
+        from app.services.dispatch_router import registrar_ato_do_agente
+
+        await registrar_ato_do_agente(
+            company_id, session, agente="sentinela",
+            mensagem=("O Sentinela tentou responder à seguradora e não teve uma resposta aprovada."
+                      if desfecho != "esgotou" else
+                      "O Sentinela esgotou as tentativas; o caso vai para uma pessoa."),
+            payload={"desfecho": desfecho, **carga})
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[SENTINELA] ato não registrado (%s)", type(e).__name__)
+
+
+async def _ato_do_vigia(company_id: str, session: Dict[str, Any], finding: str) -> None:
+    try:
+        from app.services.dispatch_router import registrar_ato_do_agente
+
+        await registrar_ato_do_agente(
+            company_id, session, agente="vigia",
+            mensagem=_FALA_DO_VIGIA.get(finding, "O Vigia viu um acionamento fora do esperado."),
+            payload={"achado": str(finding or "")[:40],
+                     "estado": str(session.get("state") or "")[:40]})
+    except Exception as e:  # noqa: BLE001 — registro nunca derruba o Vigia
+        logger.warning("[VIGIA] ato não registrado (%s)", type(e).__name__)
+
+
+async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
+                               session: Dict[str, Any], wa, integration) -> str:
+    """D3 — o segurado não respondeu a tempo: "um instante" à seguradora (até o
+    teto) e, esgotado, uma pessoa com o dossiê dizendo exatamente o que falta."""
+    from app.services.dispatch_router import HOLDING_A_SEGURADORA, _env_pergunta, _indexar_pergunta
+
+    espera = dict(session.get("esperando_do_segurado") or {})
+    intervalo, maximo = _env_pergunta()
+    agora = datetime.now(timezone.utc)
+    if int(espera.get("holdings") or 0) < maximo:
+        espera["holdings"] = int(espera.get("holdings") or 0) + 1
+        espera["ate"] = datetime.fromtimestamp(agora.timestamp() + intervalo, timezone.utc).isoformat()
+        session["esperando_do_segurado"] = espera
+        session["silencio_deliberado_ate"] = espera["ate"]
+        if integration is None:
+            logger.error("[VIGIA] 'um instante' NÃO saiu: sem canal de saída")
+            return "sem_canal"
+        try:
+            wa.send_message(insurer_phone, HOLDING_A_SEGURADORA, integration)
+        except Exception as e:  # noqa: BLE001
+            logger.error("[VIGIA] 'um instante' falhou (%s)", type(e).__name__)
+            return "envio_falhou"
+        session.setdefault("transcript", []).append(
+            {"direction": "out", "text": HOLDING_A_SEGURADORA, "at": agora.isoformat(),
+             "via": "vigia", "step": "segurando_a_seguradora"})
+        return "segurou"
+    # Esgotou: a pergunta vira handoff — e o dossiê diz o que falta.
+    session.pop("esperando_do_segurado", None)
+    session["silencio_deliberado_ate"] = None
+    session["state"] = "needs_human"
+    session["reason"] = "segurado_nao_respondeu"
+    session["falta_para_a_ura"] = {
+        "campo": "pergunta_ao_segurado", "slot": espera.get("slot"),
+        "rotulo": f"{espera.get('rotulo') or espera.get('slot')} — perguntei ao segurado e ele não respondeu a tempo",
+    }
+    await _indexar_pergunta(company_id, str(espera.get("client_phone") or ""), insurer_phone, 1,
+                            apagar=True)
+    from app.services.insurer_dispatch_service import build_handoff_dossier
+
+    dossier = build_handoff_dossier(session, reason="O segurado não respondeu a pergunta da seguradora")
+    session["dossier_sent"] = await _entregar_dossie_com_marcador(
+        company_id, session, dossier, wa, integration)
+    await _avisar_o_segurado(session, wa, integration)
+    return "desistiu"
 
 
 async def _adaptive_reply(company_id: str, session: Dict[str, Any], insurer_text: str) -> Optional[str]:
@@ -695,6 +821,16 @@ async def check_dispatch_watchdog() -> int:
             elif finding == "deadline":
                 session["wd_deadline"] = True
                 await _anotar_vigia(company_id, finding, session, label)
+            elif finding == "fila_longa":
+                # 🔴 D4 — a fila passou do prazo: vira evento contável e linha do
+                #    resumo (a mesma escolha da 001.3 para `human_silent_alert`).
+                session["wd_fila_longa"] = True
+                await _anotar_vigia(company_id, finding, session, label)
+            elif finding == "segurado_sem_resposta":
+                await _segurar_ou_desistir(company_id, insurer_phone, session, wa, integration)
+            # 🔴 SPEC-EXTRA-001.4 D6 — O VIGIA DEIXA RASTRO. 📊 `agente="vigia"` não
+            #    tinha um único chamador, apesar de `DESTRAVADORES` já o prever.
+            await _ato_do_vigia(company_id, session, finding)
             await save_active_dispatch(company_id, insurer_phone, session)
             actions += 1
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
