@@ -913,3 +913,21 @@ exatamente o corredor do `work_run e5279497`, a única travessia ponta a ponta.
 
 ## P-PILOTO-15 · pausa não protege conversa com `resolvido_em` preenchido
 ✅ **FECHADA em 14/09/2026 (opção b′, D-E0012-03):** `pausar_ia` protege quando o takeover (`claimed_at`) é DEPOIS do encerramento (`resolvido_em`); nenhum leitor de `resolvido_em` (📊 12) muda. Guarda: `test_todo_silencio_tem_motivo.py` (conversa reaberta com atendente dentro → protegida; exceção de janela NÃO fura o takeover). O pedido de humano sem timestamp ficou em P-E0012-03.
+
+
+## P-E0013-08 · ✅ o isolamento entre duas corretoras foi PROVADO com dois tenants reais
+
+### ✅ 17/09/2026 — FECHADA pelo acabamento 001.3/001.4 (T3)
+
+`backend/tests/test_os_numeros_da_casa_nao_atravessam_corretoras.py` — 📊 **19 asserções verdes**, dois `company_id` **lidos da tabela `companies`** (5 corretoras no banco em 17/09; só `id` e contagens saem do banco, nenhum telefone, nome ou CPF). O que ele prova, com as funções REAIS e um dublê de banco que respeita `company_id`:
+
+```
+G2  um número cadastrado em X NÃO é "da casa" em Y · toda consulta a
+    `company_internal_numbers` leva `company_id` no filtro do CÓDIGO
+G3  `o_grupo_pode_saber`, com a MESMA conversa-molde, cala em X e passa em Y
+G4  a rota do painel nunca lê `company_id` do corpo (GET/POST/DELETE)
+```
+
+Mutações vermelhas: **M11** (o filtro `company_id` some da leitura da tabela) e **M12** (a guarda ignora os números da casa).
+
+⚠️ **O que ficou por provar, e está dito:** `company_internal_numbers` tinha **0 linhas** em 17/09, então nenhum número real foi comparado — a linha de X vem do dublê; e a prova do G4 é ESTRUTURAL (a rota é TypeScript e não há harness de TS aqui), com o controle que a mostra vermelha. O canário com Resulta e AutoFleet ao vivo continua sendo do Founder.

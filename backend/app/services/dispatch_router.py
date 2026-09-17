@@ -3215,7 +3215,7 @@ async def fontes_do_que_ja_existe(company_id: str, session: Dict[str, Any]) -> L
     ⚠️ 📊 BLOCO 0, 17/09: a sessão de acionamento **não carrega a apólice** —
     `new_dispatch_session` recebe só `slots`. O que a apólice localizou já está
     NA FICHA, marcado em `origem_das_teclas`; é por aí que ela entra aqui, e é
-    por isso que a fonte `apolice` pode vir vazia (P-E0014-APOLICE-NA-SESSAO).
+    por isso que a fonte `apolice` pode vir vazia (P-E0014-18).
     """
     fontes = []
     origem_das_teclas = session.get("origem_das_teclas") or {}
@@ -3533,7 +3533,7 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     #                 seguradora fala (`pode_reentrar_em_fase_humana`); reabrir
     #                 do nosso lado é abrir um SEGUNDO acionamento, e isso é o
     #                 que `pode_retomar` existe para impedir.
-    #                 (pendência P-E0014-RETOMADA-DA-RESPOSTA-TARDIA)
+    #                 (pendência P-E0014-19)
     de_pe = str((session or {}).get("state") or "") in ("ura", "human_phase")
     retomada = "levada" if de_pe else "guardada"
     vivo = ao_vivo(session)
