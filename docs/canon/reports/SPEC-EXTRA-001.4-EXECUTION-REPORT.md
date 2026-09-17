@@ -186,7 +186,13 @@ nota da execução ....................  85/100 — critério: todo o outcome no
 
 ## 11. Entrega — push e o que Implantar
 
-⏳ push (saída colada logo abaixo). **Implantar:** o serviço do atendimento/dispatch (o que roda `buffer_processor` e o Vigia) —
+📊 17/09 ~05:35 UTC, `git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main`:
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   f7b23d7..f442965  HEAD -> main
+origin/main = f442965 = HEAD local · origin/main..HEAD = 0
+```
+(este parágrafo sobe num commit de documentação logo depois, com o mesmo comando). **Implantar:** o serviço do atendimento/dispatch (o que roda `buffer_processor` e o Vigia) —
 um só; nenhuma migration; nenhum arquivo de `app/`/`middleware`/`next.config` do painel (rotas-montam não se aplica; o
 backend foi provado por import de todos os módulos tocados, sem subir o servidor com o `.env` de produção, que ligaria o Vigia).
 Variáveis novas: §8. **Nenhum motor paralelo** (CLAUDE.md §5): a guarda do grupo é a da 001.3 (causa nova), as tabelas de quem
