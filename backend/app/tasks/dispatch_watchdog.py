@@ -710,20 +710,33 @@ async def _ato_do_vigia(company_id: str, session: Dict[str, Any], finding: str) 
 
 async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
                                session: Dict[str, Any], wa, integration) -> str:
-    """D3 — o segurado não respondeu a tempo: "um instante" à seguradora (até o
-    teto) e, esgotado, uma pessoa com o dossiê dizendo exatamente o que falta."""
+    """D3 — o segurado não respondeu a tempo.
+
+    🔴 COM PESSOA: "um instante" à seguradora, até o teto. COM ROBÔ: NADA sai —
+    o relógio corre igual, em silêncio (Founder, 17/09). Esgotado, uma pessoa
+    recebe o caso com o dossiê dizendo exatamente o que falta, e a resposta
+    TARDIA do segurado continua tendo para onde ir.
+    """
     from app.services.dispatch_router import (
         HOLDING_A_SEGURADORA, _env_pergunta, _indexar_pergunta, ao_vivo,
+        uma_pessoa_da_seguradora_esta_falando,
     )
 
     espera = dict(session.get("esperando_do_segurado") or {})
     intervalo, maximo = _env_pergunta()
     agora = datetime.now(timezone.utc)
+    com_pessoa = uma_pessoa_da_seguradora_esta_falando(session)
     if int(espera.get("holdings") or 0) < maximo:
         espera["holdings"] = int(espera.get("holdings") or 0) + 1
         espera["ate"] = datetime.fromtimestamp(agora.timestamp() + intervalo, timezone.utc).isoformat()
         session["esperando_do_segurado"] = espera
         session["silencio_deliberado_ate"] = espera["ate"]
+        if not com_pessoa:
+            # 🔴 ROBÔ do outro lado: o relógio do segurado continua correndo e
+            #    NADA sai. "Um instante" numa URA costuma cair como resposta
+            #    errada num menu — e quem cobre a inatividade dela é a
+            #    reentrada/reabertura do corredor, não este envio.
+            return "esperou_calado"
         if not ao_vivo(session):
             # Ensaio: o mesmo portão de `_emit` — registra e não fala.
             session.setdefault("transcript", []).append(
@@ -743,19 +756,29 @@ async def _segurar_ou_desistir(company_id: str, insurer_phone: str,
              "via": "vigia", "step": "segurando_a_seguradora"})
         return "segurou"
     # Esgotou: a pergunta vira handoff — e o dossiê diz o que falta.
+    #
+    # 🔴 A RESPOSTA TARDIA NÃO SE PERDE. A espera sai de `esperando_do_segurado`
+    #    (senão o Vigia a diagnosticaria para sempre) e entra em
+    #    `espera_vencida`, com o índice VIVO por mais uma janela inteira. Quando
+    #    o segurado responder, `responder_pergunta_do_acionamento` acha os dois
+    #    e decide o que dá para fazer — retomar ou entregar a quem já tem o caso.
+    rotulo = str(espera.get("rotulo") or espera.get("slot") or "o dado pedido")
     session.pop("esperando_do_segurado", None)
+    espera["vencida_em"] = agora.isoformat()
+    session["espera_vencida"] = espera
     session["silencio_deliberado_ate"] = None
     session["state"] = "needs_human"
     session["reason"] = "segurado_nao_respondeu"
     session["falta_para_a_ura"] = {
         "campo": "pergunta_ao_segurado", "slot": espera.get("slot"),
-        "rotulo": f"{espera.get('rotulo') or espera.get('slot')} — perguntei ao segurado e ele não respondeu a tempo",
+        "rotulo": f"{rotulo} — perguntei ao segurado e ele não respondeu a tempo",
     }
-    await _indexar_pergunta(company_id, str(espera.get("client_phone") or ""), insurer_phone, 1,
-                            apagar=True)
+    await _indexar_pergunta(company_id, str(espera.get("client_phone") or ""), insurer_phone,
+                            intervalo * (maximo + 2) + 3600)
     from app.services.insurer_dispatch_service import build_handoff_dossier
 
-    dossier = build_handoff_dossier(session, reason="O segurado não respondeu a pergunta da seguradora")
+    dossier = build_handoff_dossier(
+        session, reason=f"O segurado não respondeu {rotulo}")
     session["dossier_sent"] = await _entregar_dossie_com_marcador(
         company_id, session, dossier, wa, integration)
     await _avisar_o_segurado(session, wa, integration)

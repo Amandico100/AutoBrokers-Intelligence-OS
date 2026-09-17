@@ -395,7 +395,7 @@ checar(bool(PEDE), "📊 o corpus tem uma tela que pede um dado fora da ficha", 
 # 🔴 EM ENSAIO (o portão de `_emit` fechado), a pergunta é registrada e NÃO sai (juiz, P6).
 REDIS.d.clear()
 ENVIADAS.clear()
-s = sessao("human_phase")
+s = sessao("human_phase", humano_falou_em=AGORA().isoformat())
 s["slots"].pop(SLOT, None)
 rodar(R.save_active_dispatch(EMPRESA, URA, s))
 rodar_inbound(PEDE, provider=_nao_sei)
@@ -406,7 +406,7 @@ checar(ENVIADAS == [] and any(t.get("step") == "pergunta_ao_segurado" and t.get(
 os.environ["INSURER_DISPATCH_LIVE"] = "true"
 REDIS.d.clear()
 ENVIADAS.clear()
-s = sessao("human_phase")
+s = sessao("human_phase", humano_falou_em=AGORA().isoformat())
 s["slots"].pop(SLOT, None)
 rodar(R.save_active_dispatch(EMPRESA, URA, s))
 rodar_inbound(PEDE, provider=_nao_sei)
@@ -434,7 +434,8 @@ checar(WA == [(URA, "perto da padaria")] and s["slots"].get(SLOT) == "perto da p
        "e VOLTOU: a seguradora recebeu, o slot foi preenchido, a espera e a 'falta' fecharam",
        str(WA))
 # prazo vencido: segura até o teto e, esgotado, uma pessoa com o que falta.
-s = sessao("human_phase", esperando_do_segurado={"slot": SLOT, "rotulo": "o dado", "client_phone": "5548988887777",
+s = sessao("human_phase", humano_falou_em=AGORA().isoformat(),
+                   esperando_do_segurado={"slot": SLOT, "rotulo": "o dado", "client_phone": "5548988887777",
                                                    "ate": (AGORA() - timedelta(seconds=1)).isoformat(), "holdings": 0})
 s["transcript"].append({"direction": "out", "text": "x", "at": AGORA().isoformat()})
 desfechos = []
@@ -447,20 +448,281 @@ checar(desfechos == ["segurou", "segurou", "desistiu"], "segura · segura · e d
 checar(s["state"] == "needs_human" and s["reason"] == "segurado_nao_respondeu"
        and "não respondeu" in s["falta_para_a_ura"]["rotulo"], "o dossiê diz exatamente o que falta")
 checar(D.motivo_reentravel("segurado_nao_respondeu"), "e a seguradora que voltar a falar reabre o caso")
-s = sessao("human_phase", esperando_do_segurado={"slot": SLOT, "rotulo": "o dado", "client_phone": "5548988887777",
+s = sessao("human_phase", humano_falou_em=AGORA().isoformat(),
+                   esperando_do_segurado={"slot": SLOT, "rotulo": "o dado", "client_phone": "5548988887777",
                                                    "ate": (AGORA() + timedelta(seconds=50)).isoformat(), "holdings": 0})
 s = D.handle_insurer_message(s, FALTA_DE_CONTATO)
 checar(s["reason"] == "insurer_closed" and "encerrou enquanto eu esperava" in s["falta_para_a_ura"]["rotulo"],
        "a seguradora encerrou antes: para tudo, e o dossiê diz isso")
 REDIS.d.clear()
 ENVIADAS.clear()
-s = sessao("human_phase")
+s = sessao("human_phase", humano_falou_em=AGORA().isoformat())
 s["slots"].pop(SLOT, None)
 s["falta_para_a_ura"] = {"slot": "qual_seguro_opcao", "campo": "x", "rotulo": "x"}
 rodar(R.save_active_dispatch(EMPRESA, URA, s))
 rodar_inbound("Pode aguardar um momento?")
 checar(not any(isinstance(x, tuple) for x in ENVIADAS), "🔴 CONTROLE: tecla de menu (`*_opcao`) NUNCA vira pergunta ao segurado")
 
+
+print()
+print("=" * 74)
+print("[D3-B] O 'UM INSTANTE' SÓ COM PESSOA — com robô, NADA sai à seguradora")
+print("=" * 74)
+# 🔴 O PAR. A MESMA tela, o MESMO slot, a MESMA pergunta ao segurado — muda só
+#    quem está do outro lado. Com robô (`ura`) o holding é um texto solto num
+#    menu; com pessoa (`human_phase`) é o que segura os 103 s da Allianz.
+os.environ["INSURER_DISPATCH_LIVE"] = "true"
+# 📊 17/09: `state == "human_phase"` NÃO distingue os dois — o motor promove
+#    QUALQUER tela sem âncora de URA. Quem prova que há gente é `humano_falou_em`.
+for estado, marca, holdings_esperados in (("robô", {}, 0),
+                                          ("pessoa", {"humano_falou_em": AGORA().isoformat()}, 1)):
+    REDIS.d.clear()
+    ENVIADAS.clear()
+    s = sessao("ura", **marca)
+    s["slots"].pop(SLOT, None)
+    rodar(R.save_active_dispatch(EMPRESA, URA, s))
+    rodar_inbound(PEDE, provider=_nao_sei)
+    s = rodar(R.load_active_dispatch(EMPRESA, URA))
+    _holdings = [x for x in ENVIADAS if x == R.HOLDING_A_SEGURADORA]
+    _ao_segurado = [x for x in ENVIADAS if isinstance(x, tuple)]
+    checar(len(_holdings) == holdings_esperados,
+           f"🔴 `{estado}`: {holdings_esperados} 'um instante' à seguradora",
+           f"{len(_holdings)} — {ENVIADAS}")
+    checar(len(_ao_segurado) == 1 and (s.get("esperando_do_segurado") or {}).get("slot") == SLOT,
+           f"🔴 CONTROLE do par: em `{estado}` a pergunta ao segurado sai igual, "
+           "e a espera fica na sessão", str(_ao_segurado)[:100])
+# e o Vigia segue a mesma regra: com robô ele espera CALADO
+for estado, marca, desfecho in (("robô", {}, "esperou_calado"),
+                                ("pessoa", {"humano_falou_em": AGORA().isoformat()}, "segurou")):
+    WA.clear()
+    s = sessao("human_phase",
+                   esperando_do_segurado={
+        "slot": SLOT, "rotulo": "o dado", "client_phone": "5548988887777",
+        "ate": (AGORA() - timedelta(seconds=1)).isoformat(), "holdings": 0}, **marca)
+    s["transcript"].append({"direction": "out", "text": "x", "at": AGORA().isoformat()})
+    checar(rodar(W._segurar_ou_desistir(EMPRESA, URA, s, _Wa(), {"id": "x"})) == desfecho
+           and len(WA) == (0 if desfecho == "esperou_calado" else 1),
+           f"🔴 o Vigia em `{estado}`: {desfecho} — {0 if desfecho == 'esperou_calado' else 1} envio",
+           str(WA))
+    checar(R._idade_segundos(s["esperando_do_segurado"]["ate"]) < 0,
+           f"🔴 e o relógio do segurado corre IGUAL em `{estado}` (o prazo foi estendido)")
+
+print()
+print("=" * 74)
+print("[D3-C] O CÉREBRO ANTES DO SEGURADO — e a PROVA DE ORIGEM")
+print("=" * 74)
+
+
+class _Resposta:
+    def __init__(self, texto):
+        self.content = texto
+
+
+class _LLM:
+    def __init__(self, texto):
+        self.texto, self.chamadas = texto, 0
+
+    async def ainvoke(self, msgs):
+        self.chamadas += 1
+        self.pedido = "\n".join(str(getattr(m, "content", "")) for m in msgs)
+        return _Resposta(self.texto)
+
+
+_real_cerebro = R.o_cerebro_ja_sabe
+LLM_ATUAL = [None]
+
+
+async def _cerebro_com_llm_falso(company_id, session, *, slot, rotulo, tela, llm=None):
+    """🔴 O MOTOR é o de verdade (fontes + prova de origem); só o MODELO é dublê."""
+    return await _real_cerebro(company_id, session, slot=slot, rotulo=rotulo,
+                              tela=tela, llm=LLM_ATUAL[0])
+
+
+R.o_cerebro_ja_sabe = _cerebro_com_llm_falso
+# a conversa do segurado, do banco (SELECT com `company_id` — CLAUDE.md §7)
+CONVERSA = ["Boa tarde, preciso de um encanador",
+            "o ponto de referencia e em frente a padaria Sao Jorge",
+            "obrigado"]
+FILTROS = []
+
+
+class _ConsultaLendo(_Consulta):
+    def __init__(self, tabela):
+        super().__init__(tabela)
+        self.eqs = {}
+
+    def eq(self, campo, valor):
+        self.eqs[campo] = valor
+        return self
+
+    async def execute(self):
+        if self.tabela == "conversations":
+            FILTROS.append(dict(self.eqs))
+            return types.SimpleNamespace(
+                data=[{"id": "conv-do-segurado"}] if self.eqs.get("company_id") == EMPRESA else [])
+        if self.tabela == "messages":
+            return types.SimpleNamespace(
+                data=[{"role": "user", "content": t} for t in reversed(CONVERSA)])
+        return await super().execute()
+
+
+class _BancoLendo:
+    class client:  # noqa: N801
+        @staticmethod
+        def table(nome):
+            return _ConsultaLendo(nome)
+
+
+_core_db.get_supabase_client = lambda: _BancoLendo()
+
+
+def _rodar_d3(estado="human_phase"):
+    REDIS.d.clear()
+    ENVIADAS.clear()
+    EVENTOS.clear()
+    FILTROS.clear()
+    s = sessao(estado)
+    s["slots"].pop(SLOT, None)
+    rodar(R.save_active_dispatch(EMPRESA, URA, s))
+    rodar_inbound(PEDE, provider=_nao_sei)
+    return rodar(R.load_active_dispatch(EMPRESA, URA))
+
+
+# ① o Cérebro ACHA o valor na conversa → 0 perguntas ao segurado, origem gravada
+LLM_ATUAL[0] = _LLM("em frente a padaria Sao Jorge")
+s = _rodar_d3()
+checar(not any(isinstance(x, tuple) for x in ENVIADAS)
+       and not s.get("esperando_do_segurado"),
+       "🔴 o Cérebro achou: ZERO perguntas ao segurado", str(ENVIADAS)[:120])
+checar(s["slots"].get(SLOT) == "em frente a padaria Sao Jorge"
+       and str(s.get("origem_das_teclas", {}).get(SLOT) or "").startswith("cerebro:"),
+       "🔴 o valor foi para a seguradora E a ORIGEM ficou gravada",
+       str(s.get("origem_das_teclas", {}).get(SLOT)))
+checar(s["slots"].get(SLOT) in ENVIADAS, "② a resposta saiu à seguradora", str(ENVIADAS)[:120])
+checar(any(f.get("company_id") == EMPRESA for f in FILTROS),
+       "🔴 CLAUDE.md §7: a conversa do segurado é lida COM `company_id` no filtro", str(FILTROS))
+checar(any(e["event_type"] == "acionamento.dado_faltou"
+           and e["payload_redacted"].get("origem_da_resposta") == "cerebro" for e in EVENTOS),
+       "③ o rastro diz `origem_da_resposta=cerebro`",
+       str([(e["event_type"], e["payload_redacted"].get("origem_da_resposta")) for e in EVENTOS]))
+_rastro = next(e for e in EVENTOS if e["event_type"] == "acionamento.dado_faltou")
+checar(set(_rastro["payload_redacted"]) >= {"rota", "tela", "slot", "origem_da_resposta",
+                                            "ja_perguntado_antes_do_acionamento"}
+       and len(_rastro["payload_redacted"]["tela"]) <= 300
+       and _rastro["payload_redacted"]["slot"] == SLOT
+       and s["slots"][SLOT] not in json.dumps(_rastro["payload_redacted"], ensure_ascii=False),
+       "🔴 o rastro tem os cinco campos, a tela cabe em 300 e o VALOR não entra nele",
+       str(sorted(_rastro["payload_redacted"])))
+# ② o Cérebro NÃO acha → 1 pergunta ao segurado (o PAR do ①)
+LLM_ATUAL[0] = _LLM("NAO_SEI")
+s = _rodar_d3()
+checar(len([x for x in ENVIADAS if isinstance(x, tuple)]) == 1
+       and (s.get("esperando_do_segurado") or {}).get("slot") == SLOT,
+       "🔴 CONTROLE: o Cérebro não achou → UMA pergunta ao segurado", str(ENVIADAS)[:120])
+checar(any(e["event_type"] == "acionamento.dado_faltou"
+           and e["payload_redacted"].get("origem_da_resposta") == "segurado" for e in EVENTOS),
+       "e o rastro diz `origem_da_resposta=segurado`")
+# ③ valor que NÃO está em fonte nenhuma → RECUSADO (a trava contra inventar)
+LLM_ATUAL[0] = _LLM("ao lado do posto de gasolina Ipiranga")
+s = _rodar_d3()
+checar(len([x for x in ENVIADAS if isinstance(x, tuple)]) == 1
+       and s["slots"].get(SLOT) is None
+       and "posto de gasolina" not in str(ENVIADAS),
+       "🔴 PROVA DE ORIGEM: valor que não está em fonte nenhuma é RECUSADO — e o "
+       "segurado é perguntado", str(ENVIADAS)[:140])
+# ④ a função pura, nos dois sentidos
+_fontes = [("ficha", "titular_cpf: 111 | endereco_numero: 100"),
+           ("conversa", "o ponto de referencia e em frente a padaria Sao Jorge")]
+checar(R.valor_tem_origem("Padaria São Jorge", _fontes) == "conversa"
+       and R.valor_tem_origem("100", _fontes) == "ficha"
+       and R.valor_tem_origem("posto Ipiranga", _fontes) is None
+       and R.valor_tem_origem("a", _fontes) is None,
+       "🔴 `valor_tem_origem` acha com acento e pontuação diferentes, e recusa o que não está lá")
+# ⑤ CONTROLE: desligado por env, o Cérebro não é nem consultado
+os.environ["CEREBRO_ANTES_DO_SEGURADO"] = "0"
+LLM_ATUAL[0] = _LLM("em frente a padaria Sao Jorge")
+s = _rodar_d3()
+checar(LLM_ATUAL[0].chamadas == 0 and len([x for x in ENVIADAS if isinstance(x, tuple)]) == 1,
+       "🔴 CONTROLE: `CEREBRO_ANTES_DO_SEGURADO=0` volta ao comportamento de antes",
+       f"chamadas={LLM_ATUAL[0].chamadas}")
+os.environ.pop("CEREBRO_ANTES_DO_SEGURADO")
+
+print()
+print("=" * 74)
+print("[D3-D] NINGUÉM FICA NO VÁCUO — e a resposta tardia não se perde")
+print("=" * 74)
+LLM_ATUAL[0] = _LLM("NAO_SEI")
+REDIS.d.clear()
+GRUPO.clear()
+EVENTOS.clear()
+WA.clear()
+_dossies = []
+
+
+async def _dossie_pela_porta(company_id, session, dossier, wa, integration):
+    """A PORTA ÚNICA da 001.3 é a real: o dossiê passa por `o_grupo_pode_saber`."""
+    pode, _ = await G.o_grupo_pode_saber(None, company_id=company_id,
+                                         tipo=G.TIPO_PEDIDO_DE_AJUDA, sessao=session)
+    _dossies.append({"pode": pode, "texto": dossier})
+    return pode
+
+
+W._entregar_dossie_com_marcador = _dossie_pela_porta
+s = sessao("human_phase", humano_falou_em=AGORA().isoformat(),
+                   esperando_do_segurado={
+    "slot": SLOT, "rotulo": "o ponto de referência", "client_phone": "5548988887777",
+    "ate": (AGORA() - timedelta(seconds=1)).isoformat(), "holdings": 0})
+s["transcript"].append({"direction": "out", "text": "x", "at": AGORA().isoformat()})
+desfechos = []
+for _ in range(3):
+    desfechos.append(rodar(W._segurar_ou_desistir(EMPRESA, URA, s, _Wa(), {"id": "x"})))
+    if s.get("esperando_do_segurado"):
+        s["esperando_do_segurado"]["ate"] = (AGORA() - timedelta(seconds=1)).isoformat()
+checar(desfechos == ["segurou", "segurou", "desistiu"], "segura · segura · e desiste (teto 2)",
+       str(desfechos))
+checar(s["state"] == "needs_human" and s["reason"] == "segurado_nao_respondeu",
+       "esgotado o prazo, a sessão vai a `needs_human`")
+checar(len(_dossies) == 1 and _dossies[0]["pode"]
+       and "não respondeu o ponto de referência" in _dossies[0]["texto"],
+       "🔴 o dossiê sai pela PORTA ÚNICA da 001.3 e diz, em português, o que faltou",
+       str(_dossies)[:160])
+checar((s.get("espera_vencida") or {}).get("slot") == SLOT and not s.get("esperando_do_segurado"),
+       "🔴 a espera vencida FICA na sessão — é o que impede a resposta tardia de se perder")
+# a resposta TARDIA chega depois do handoff
+rodar(R.save_active_dispatch(EMPRESA, URA, s))
+rodar(R._indexar_pergunta(EMPRESA, "5548988887777", URA, 600))
+EVENTOS.clear()
+WA.clear()
+ENVIADAS.clear()
+checar(rodar(R.responder_pergunta_do_acionamento(EMPRESA, "5548988887777",
+                                                 "em frente a padaria Sao Jorge",
+                                                 send_to_client=cliente)),
+       "🔴 a resposta que chega DEPOIS do prazo é reconhecida (não se perde)")
+s = rodar(R.load_active_dispatch(EMPRESA, URA))
+_tardio = [e for e in EVENTOS if e["event_type"] == "pergunta_ao_segurado.respondida_tarde"]
+checar(s["slots"].get(SLOT) == "em frente a padaria Sao Jorge" and not s.get("espera_vencida"),
+       "o dado entrou na ficha do caso e a espera vencida fechou")
+checar(len(_tardio) == 1 and _tardio[0]["payload_redacted"].get("retomada") == "guardada"
+       and WA == [],
+       "🔴 e o RASTRO diz o que aconteceu (`retomada=guardada`): o caso já é de uma "
+       "pessoa, e nada foi mandado à seguradora por cima dela", str(_tardio)[:160])
+# 🔴 CONTROLE: com o acionamento AINDA DE PÉ, a mesma porta LEVA a resposta
+REDIS.d.clear()
+EVENTOS.clear()
+WA.clear()
+s = sessao("human_phase", espera_vencida={
+    "slot": SLOT, "rotulo": "o ponto de referência", "client_phone": "5548988887777",
+    "ate": (AGORA() - timedelta(seconds=90)).isoformat(), "holdings": 2})
+rodar(R.save_active_dispatch(EMPRESA, URA, s))
+rodar(R._indexar_pergunta(EMPRESA, "5548988887777", URA, 600))
+rodar(R.responder_pergunta_do_acionamento(EMPRESA, "5548988887777", "em frente a padaria",
+                                          send_to_client=cliente))
+_tardio = [e for e in EVENTOS if e["event_type"] == "pergunta_ao_segurado.respondida_tarde"]
+checar(WA == [(URA, "em frente a padaria")] and len(_tardio) == 1
+       and _tardio[0]["payload_redacted"].get("retomada") == "levada",
+       "🔴 CONTROLE do par: com o acionamento de pé, a resposta tardia é LEVADA à "
+       "seguradora e o rastro diz `retomada=levada`", f"{WA} {_tardio}"[:160])
+R.o_cerebro_ja_sabe = _real_cerebro
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")

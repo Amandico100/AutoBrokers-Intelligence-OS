@@ -3082,6 +3082,12 @@ async def ler_palavra_da_equipe(company_id: str, texto: Any, *, remetente: str =
 #: 📊 O intervalo do "um instante" à seguradora: a Allianz encerra por inatividade
 #: com 103 s no pior caso do acervo (56 encerramentos); a atendente do 10/09
 #: encerrou 158 s depois de se apresentar. 60 s + o ciclo de 20 s do Vigia = 80 s.
+#: 🔴 ⚠️ O "um instante" SÓ sai quando há uma PESSOA do outro lado. COM ROBÔ a
+#: inatividade NÃO é coberta por envio nenhum: se a URA fechar enquanto o segurado
+#: pensa, `seguradora_encerrou` marca `insurer_closed` e a resposta que chegar
+#: depois entra pela porta da resposta TARDIA, que reabre o acionamento pela
+#: reentrada do corredor ou entrega o caso a uma pessoa. O relógio total do
+#: segurado é o MESMO com robô e com pessoa: PERGUNTA_HOLDING_S × (MAX + 1).
 PERGUNTA_HOLDING_S = 60
 PERGUNTA_HOLDINGS_MAX = 2
 _CHAVE_DA_PERGUNTA = "dispatch:pergunta:{empresa}:{fone}"
@@ -3149,12 +3155,279 @@ async def _indexar_pergunta(company_id: str, client_phone: str, insurer_phone: s
         logger.warning("[PERGUNTA] índice não gravado (%s)", type(e).__name__)
 
 
+# ===========================================================================
+# 🔴 O CÉREBRO ANTES DO SEGURADO — nunca perguntar o que já está escrito
+# ===========================================================================
+#
+# 🔴 DECISÃO DO FOUNDER (17/09/2026): antes de incomodar o segurado, o Cérebro
+# tenta responder SÓ com o que JÁ EXISTE — a ficha, o que a apólice escreveu na
+# ficha e o texto da conversa com ele. A pergunta ao segurado é o ÚLTIMO recurso.
+#
+# 📊 BLOCO 0, 17/09: `human_reply_provider` só é chamado com `state ==
+# "human_phase"` (`dispatch_router.py`, dois pontos de chamada) e `_adaptive_reply`
+# só pelo Sentinela, depois de 30 s de silêncio. **Nenhum dos dois era consultado
+# para um slot que falta no estado `ura`** — a tela caía direto em
+# `perguntar_ao_segurado`. Esta é a chamada que faltava, e é UMA.
+#
+# ⛔ A TRAVA QUE IMPEDE INVENTAR: só se aceita um valor que apareça
+# LITERALMENTE numa das fontes (substring, depois de normalizar). O modelo aqui
+# não redige: ele LOCALIZA. E a origem do que ele achou fica gravada.
+#
+# ⚠️ `CEREBRO_ANTES_DO_SEGURADO=0` desliga a consulta sem tocar em código: o
+# comportamento volta a ser o de antes (pergunta direto ao segurado).
+_TETO_DA_FONTE = 2000
+_TETO_DAS_MENSAGENS = 40
+
+
+def cerebro_antes_do_segurado_ligado() -> bool:
+    import os as _os
+
+    return str(_os.getenv("CEREBRO_ANTES_DO_SEGURADO", "1")).strip() != "0"
+
+
+def _chave_de_origem(texto: Any) -> str:
+    """Normaliza para COMPARAR: sem acento, minúsculo, sem pontuação, 1 espaço."""
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", _norm(texto)).split())
+
+
+def valor_tem_origem(valor: Any, fontes: List) -> Optional[str]:
+    """🔴 A PROVA DE ORIGEM. Devolve a origem (`ficha` · `apolice` · `conversa`)
+    em que o valor aparece LITERALMENTE, ou `None`.
+
+    ⛔ Sem isto, um modelo que "deduz" o ponto de referência de um endereço
+    manda a dedução dele para a seguradora como se fosse o que o segurado disse.
+    """
+    alvo = _chave_de_origem(valor)
+    if len(alvo) < 2:
+        return None
+    for origem, texto in fontes or ():
+        if alvo in _chave_de_origem(texto):
+            return str(origem)
+    return None
+
+
+async def fontes_do_que_ja_existe(company_id: str, session: Dict[str, Any]) -> List:
+    """`[(origem, texto)]` — a ficha, a apólice e a conversa com o segurado.
+
+    ⛔ Nunca levanta: fonte ilegível simplesmente não entra (e aí o Cérebro não
+    acha nada nela, que é o comportamento seguro).
+
+    ⚠️ 📊 BLOCO 0, 17/09: a sessão de acionamento **não carrega a apólice** —
+    `new_dispatch_session` recebe só `slots`. O que a apólice localizou já está
+    NA FICHA, marcado em `origem_das_teclas`; é por aí que ela entra aqui, e é
+    por isso que a fonte `apolice` pode vir vazia (P-E0014-APOLICE-NA-SESSAO).
+    """
+    fontes = []
+    origem_das_teclas = session.get("origem_das_teclas") or {}
+    da_ficha, da_apolice = [], []
+    itens = dict(session.get("slots") or {})
+    itens.update({k: v for k, v in (session.get("captured") or {}).items()})
+    for chave, valor in itens.items():
+        if valor in (None, "", []):
+            continue
+        linha = "%s: %s" % (chave, valor)
+        if str(origem_das_teclas.get(chave) or "") == "apolice":
+            da_apolice.append(linha)
+        else:
+            da_ficha.append(linha)
+    if da_ficha:
+        fontes.append(("ficha", "\n".join(da_ficha)[:_TETO_DA_FONTE]))
+    if da_apolice:
+        fontes.append(("apolice", "\n".join(da_apolice)[:_TETO_DA_FONTE]))
+    conversa = await _texto_da_conversa_do_segurado(company_id, session)
+    if conversa:
+        fontes.append(("conversa", conversa))
+    return fontes
+
+
+async def _texto_da_conversa_do_segurado(company_id: str, session: Dict[str, Any]) -> str:
+    """O que o segurado JÁ ESCREVEU, da conversa dele com a corretora.
+
+    🔴 ⛔ NÃO é `mirror_conversation_id`: essa é a conversa com a SEGURADORA (o
+    Espelho). A do segurado se acha pelo telefone dele, sempre com o
+    `company_id` no filtro (CLAUDE.md §7).
+    """
+    fone = _digits(session.get("client_phone"))
+    empresa = str(company_id or "").strip()
+    if not fone or not empresa:
+        return ""
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.o_fim_do_atendimento import (
+            _cliente, _executar, janela_de_mensagens,
+        )
+
+        db = get_supabase_client()
+        achado = await _executar(_cliente(db).table("conversations")
+                                 .select("id")
+                                 .eq("company_id", empresa)      # 🔴 CLAUDE.md §7
+                                 .eq("channel", "whatsapp")
+                                 .eq("user_phone", fone)
+                                 .limit(1))
+        linhas = getattr(achado, "data", None) or []
+        if not linhas:
+            return ""
+        mensagens, erro = await janela_de_mensagens(db, str(linhas[0].get("id") or ""),
+                                                    teto=_TETO_DAS_MENSAGENS)
+        if erro:
+            return ""
+        texto = "\n".join(str(m.get("content") or "")[:400]
+                          for m in reversed(mensagens) if m.get("content"))
+        return texto[:_TETO_DA_FONTE]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[CEREBRO ANTES] conversa do segurado ilegível (%s)", type(e).__name__)
+        return ""
+
+
+_INSTRUCAO_DO_LOCALIZADOR = (
+    "Voce LOCALIZA um dado que ja existe. Voce NAO deduz, NAO calcula e NAO "
+    "inventa.\n"
+    "Responda APENAS com o trecho EXATO, copiado de uma das fontes, que "
+    "responde ao que a seguradora pediu.\n"
+    "Se o dado nao estiver LITERALMENTE escrito em nenhuma fonte, responda "
+    "exatamente NAO_SEI.\n"
+    "Nao explique, nao comente, nao use aspas."
+)
+
+
+async def o_cerebro_ja_sabe(company_id: str, session: Dict[str, Any], *, slot: str,
+                            rotulo: str, tela: str, llm=None):
+    """`(valor, origem)` ou `(None, "")`. UMA chamada ao modelo do produto.
+
+    ⛔ Nunca levanta e nunca bloqueia: qualquer falha devolve `(None, "")` e o
+    caminho volta a ser perguntar ao segurado.
+    """
+    if not cerebro_antes_do_segurado_ligado() or not slot:
+        return None, ""
+    fontes = await fontes_do_que_ja_existe(company_id, session)
+    if not fontes:
+        return None, ""
+    try:
+        import asyncio
+        import os as _os
+
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        if llm is None:
+            from app.core.utils import get_api_key_for_provider
+            from app.factories.llm_factory import LLMFactory
+
+            provedor = _os.getenv("DISPATCH_LLM_PROVIDER") or "openai"
+            modelo = _os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o"
+            llm = LLMFactory.create_llm(
+                company_config={}, agent_data={"llm_provider": provedor, "llm_model": modelo},
+                api_key=get_api_key_for_provider(provedor, modelo),
+                company_id=str(company_id), agent_id=None)
+        corpo = "\n\n".join("### fonte: %s\n%s" % (o, t) for o, t in fontes)
+        pedido = ("A seguradora mostrou esta tela:\n%s\n\nO que falta e: %s\n\n"
+                  "FONTES (o unico lugar de onde a resposta pode sair):\n%s"
+                  % (str(tela or "")[:1200], str(rotulo or slot)[:200], corpo))
+        resposta = await asyncio.wait_for(
+            llm.ainvoke([SystemMessage(content=_INSTRUCAO_DO_LOCALIZADOR),
+                         HumanMessage(content=pedido)]), timeout=20)
+        bruto = str(getattr(resposta, "content", resposta) or "").strip()
+    except Exception as e:  # noqa: BLE001 — o Cérebro nunca derruba o corredor
+        logger.warning("[CEREBRO ANTES] consulta não concluída (%s)", type(e).__name__)
+        return None, ""
+    if not bruto or _chave_de_origem(bruto) in ("nao sei", "naosei", ""):
+        return None, ""
+    origem = valor_tem_origem(bruto, fontes)
+    if not origem:
+        # 🔴 A TRAVA. O modelo respondeu algo que não está escrito em lugar
+        #    nenhum — é invenção, e invenção vai para a seguradora como fato.
+        logger.warning("[CEREBRO ANTES] valor sem origem nas fontes — recusado (slot=%s)", slot)
+        return None, ""
+    return bruto[:300], origem
+
+
+def responder_a_ura_com_o_que_ja_existia(session: Dict[str, Any], valor: str, *, slot: str,
+                                         origem: str, send_to_insurer) -> bool:
+    """O Cérebro achou o dado numa fonte que já existia: responde a URA com ele.
+
+    ⛔ O segurado NÃO é incomodado, e a ORIGEM fica gravada — sem ela ninguém
+    consegue conferir depois de onde saiu o que a seguradora recebeu.
+    """
+    vivo = ao_vivo(session)
+    if vivo:
+        try:
+            send_to_insurer(str(valor)[:600])
+        except Exception as e:  # noqa: BLE001
+            logger.error("[CEREBRO ANTES] a resposta NÃO saiu à seguradora (%s)", type(e).__name__)
+            return False
+    session.setdefault("slots", {})[slot] = str(valor)[:300]
+    session.setdefault("origem_das_teclas", {})[slot] = "cerebro:%s" % str(origem)[:20]
+    session.setdefault("transcript", []).append(
+        {"direction": "out", "text": str(valor)[:600], "at": _agora().isoformat(),
+         "step": "o_cerebro_ja_sabia", "origem": str(origem)[:20], "dry_run": not vivo})
+    session.pop("falta_para_a_ura", None)
+    session.pop("pending_insurer_messages", None)
+    return True
+
+
+def _ja_se_pergunta_antes_do_acionamento(session: Dict[str, Any], slot: str) -> bool:
+    """O slot já está na lista do que se pergunta ANTES do acionamento?
+
+    🔴 É `required_slots` do subserviço — a MESMA lista que
+    `missing_slots_for_subservice` varre. ⛔ Nenhuma segunda lista.
+    """
+    try:
+        from app.services.corridor_playbooks import get_playbook
+
+        playbook = get_playbook(str(session.get("playbook_ref") or "")) or {}
+        sub = (playbook.get("subservices") or {}).get(
+            str(session.get("subservice") or ""), {})
+        return str(slot) in set(sub.get("required_slots") or [])
+    except Exception:  # noqa: BLE001
+        return False
+
+
+async def _rastro_do_dado_que_faltou(company_id: str, session: Dict[str, Any], *,
+                                     slot: str, tela: str, origem_da_resposta: str) -> None:
+    """🔴 A SEMENTE DO APRENDIZADO DO CORREDOR — uma linha por dado que faltou.
+
+    ⛔ Sem PII: a tela é o texto da SEGURADORA, o slot é o NOME do campo, e o
+    valor achado NÃO entra. Uma SPEC futura agrega isto por rota e decide quais
+    slots passam a ser perguntados antes do acionamento; aqui só se garante que
+    o dado existe para ser agregado.
+    """
+    await _anotar_ato(
+        company_id, session, "acionamento.dado_faltou",
+        "A seguradora pediu um dado que a ficha não tinha.",
+        {"tela": str(tela or "")[:300], "slot": str(slot)[:80],
+         "origem_da_resposta": str(origem_da_resposta)[:20],
+         "ja_perguntado_antes_do_acionamento":
+             _ja_se_pergunta_antes_do_acionamento(session, slot)})
+
+
+def uma_pessoa_da_seguradora_esta_falando(session: Dict[str, Any]) -> bool:
+    """🔴 O "um instante" só sai quando há GENTE do outro lado.
+
+    📊 17/09, medido: `state == "human_phase"` NÃO prova que há gente. A
+    última linha de `handle_insurer_message` promove QUALQUER tela sem âncora de
+    URA a `human_phase` ("Sem âncora de URA", `insurer_dispatch_service.py`) — e
+    a tela que pede um dado fora da ficha é exatamente uma dessas. Um guarda que
+    lesse o ESTADO mandaria "um instante" para o robô, que é o defeito.
+
+    🔴 O que prova é o que o HUB escreve quando alguém fala: `humano_falou_em`
+    (por `uma_pessoa_se_apresentou`) ou `fronteira_em` (a transferência medida).
+    ⛔ Nada é classificado de novo aqui.
+    """
+    return bool(session.get("humano_falou_em") or session.get("fronteira_em"))
+
+
 async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
                                 insurer_phone: str, slot: str, rotulo: str,
                                 send_to_client: Callable[[str, str], Any],
                                 send_to_insurer: Callable[[str], Any]) -> bool:
-    """① pergunta pelo canal do CLIENTE · ② "um instante" à SEGURADORA (é o envio
-    que reinicia o relógio de inatividade dela) · ③ a espera, na sessão.
+    """① pergunta pelo canal do CLIENTE · ② "um instante" à SEGURADORA, SÓ SE
+    houver uma PESSOA do outro lado · ③ a espera, na sessão.
+
+    🔴 Com ROBÔ (`state == "ura"`) NADA sai à seguradora: a URA não lê "um
+    instante", e o texto solto costuma cair como resposta errada num menu. Quem
+    cobre a inatividade dela é a REENTRADA do corredor (`pode_reentrar_em_fase_humana`
+    + `reentrou_de`): se a URA encerrar enquanto o segurado pensa, a sessão vai a
+    `insurer_closed` e a resposta que chegar depois entra pela porta da resposta
+    TARDIA (`responder_pergunta_do_acionamento`), que reabre ou entrega a uma pessoa.
 
     Devolve se perguntou. ⛔ Nunca pergunta duas vezes o mesmo dado no acionamento.
     """
@@ -3172,8 +3445,10 @@ async def perguntar_ao_segurado(company_id: str, session: Dict[str, Any], *,
             return False
         await _registrar_fala_ao_cliente(company_id, cliente, "acionamento_pergunta", pergunta)
     agora = _agora()
-    holding_ok = not vivo
-    if vivo:
+    # 🔴 O "um instante" SÓ COM PESSOA (Founder, 17/09). Com robô, nada sai.
+    com_pessoa = uma_pessoa_da_seguradora_esta_falando(session)
+    holding_ok = com_pessoa and not vivo
+    if vivo and com_pessoa:
         try:
             send_to_insurer(HOLDING_A_SEGURADORA)
             holding_ok = True
@@ -3236,7 +3511,13 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     if not insurer_phone:
         return False
     session = await load_active_dispatch(empresa, insurer_phone)
+    # 🔴 A RESPOSTA TARDIA NUNCA SE PERDE (Founder, 17/09). Duas esperas, uma
+    #    porta: a que está no prazo (`esperando_do_segurado`) e a que venceu e já
+    #    virou handoff (`espera_vencida`, escrita por `_segurar_ou_desistir`).
     espera = (session or {}).get("esperando_do_segurado") or {}
+    tardia = not espera
+    if tardia:
+        espera = (session or {}).get("espera_vencida") or {}
     if not espera or not (_digits(from_phone) and espera.get("client_phone")
                           and (_digits(from_phone)[-8:] == str(espera["client_phone"])[-8:])):
         return False
@@ -3244,8 +3525,19 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     from app.services.integration_service import get_integration_service
     from app.services.whatsapp_service import get_whatsapp_service
 
+    # 🔴 O QUE DÁ PARA FAZER COM ELA, e o rastro diz qual foi:
+    #    `levada`   — o acionamento continua de pé: a resposta vai à seguradora.
+    #    `guardada` — o caso já é de uma pessoa (o dossiê saiu): a resposta fica
+    #                 na ficha e no rastro, e NÃO se reabre uma URA por conta
+    #                 própria. ⛔ O corredor só sabe REENTRAR quando alguém da
+    #                 seguradora fala (`pode_reentrar_em_fase_humana`); reabrir
+    #                 do nosso lado é abrir um SEGUNDO acionamento, e isso é o
+    #                 que `pode_retomar` existe para impedir.
+    #                 (pendência P-E0014-RETOMADA-DA-RESPOSTA-TARDIA)
+    de_pe = str((session or {}).get("state") or "") in ("ura", "human_phase")
+    retomada = "levada" if de_pe else "guardada"
     vivo = ao_vivo(session)
-    if vivo:
+    if vivo and retomada == "levada":
         integration = _canal_da_conversa(get_integration_service(), empresa, session)
         if integration is None:
             logger.error("[PERGUNTA] sem canal para levar a resposta à seguradora")
@@ -3260,19 +3552,31 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     if slot:
         session.setdefault("slots", {})[slot] = resposta[:300]
     session.setdefault("transcript", []).append(
-        {"direction": "out", "text": resposta[:600], "at": _agora().isoformat(),
-         "via": "segurado", "step": "resposta_do_segurado", "dry_run": not vivo})
+        {"direction": "out" if retomada == "levada" else "note", "text": resposta[:600],
+         "at": _agora().isoformat(), "via": "segurado", "dry_run": not vivo,
+         "step": "resposta_do_segurado" if retomada == "levada" else "resposta_tardia_do_segurado"})
     session.pop("esperando_do_segurado", None)
+    session.pop("espera_vencida", None)
     # O dado chegou: um dossiê depois disto não pode dizer que ele falta (juiz, P2).
     session.pop("falta_para_a_ura", None)
     session["silencio_deliberado_ate"] = None
     await save_active_dispatch(empresa, insurer_phone, session)
     await _indexar_pergunta(empresa, from_phone, insurer_phone, 1, apagar=True)
-    await _anotar_ato(empresa, session, "pergunta_ao_segurado.respondida",
-                      "O segurado respondeu e a resposta foi levada à seguradora.", {"slot": slot})
+    await _anotar_ato(empresa, session,
+                      "pergunta_ao_segurado.respondida_tarde" if tardia
+                      else "pergunta_ao_segurado.respondida",
+                      ("O segurado respondeu e a resposta foi levada à seguradora."
+                       if retomada == "levada"
+                       else "O segurado respondeu depois do prazo; a resposta ficou "
+                            "na ficha do caso, que já está com uma pessoa."),
+                      {"slot": slot, "retomada": retomada, "tardia": bool(tardia)})
     if vivo:
         try:
-            send_to_client(from_phone, "Obrigado! Já passei essa informação para a seguradora. 🙂")
+            send_to_client(from_phone,
+                           "Obrigado! Já passei essa informação para a seguradora. 🙂"
+                           if retomada == "levada" else
+                           "Obrigado! Já anotei essa informação — alguém da nossa "
+                           "equipe está cuidando do seu caso. 🙂")
         except Exception:  # noqa: BLE001
             pass
     return True
@@ -3440,10 +3744,17 @@ async def try_route_insurer_inbound(
         if session.get("dossier_sent"):
             await _avisar_retomada(company_id, session)
 
-    # 🔴 SPEC-EXTRA-001.4 D3 — A TELA PEDE UM DADO QUE SÓ O SEGURADO SABE.
+    # 🔴 D3 — A TELA PEDE UM DADO QUE A FICHA NÃO TEM.
     #    `falta_para_a_ura` é o gatilho (`responder_da_ficha` já provou que a ficha
     #    não tem o dado). ⛔ Tecla de menu (`*_opcao`) não se pergunta ao segurado:
     #    quem a responde é o motor (e a do ramo vem da apólice, decisão do Founder).
+    #
+    # 🔴 A ORDEM, e ela é a regra (Founder, 17/09): ① o CÉREBRO tenta com o que
+    #    JÁ EXISTE — ficha, apólice e a conversa com o segurado —, e só ② se ele
+    #    não achar é que o segurado é incomodado. ③ Em qualquer um dos casos o
+    #    que faltou vira rastro (`acionamento.dado_faltou`), que é a semente do
+    #    aprendizado do corredor: uma SPEC futura agrega isso por rota e põe o
+    #    slot na lista do que se pergunta ANTES do acionamento.
     _falta = session.get("falta_para_a_ura") or {}
     _slot_falta = str(_falta.get("slot") or "")
     if (state in ("human_phase", "ura") and _slot_falta and "," not in _slot_falta
@@ -3453,12 +3764,30 @@ async def try_route_insurer_inbound(
         from app.services.corridor_playbooks import _COMO_PERGUNTAR
 
         _rotulo = _COMO_PERGUNTAR.get(_slot_falta)
-        if _rotulo and await perguntar_ao_segurado(
+        if _rotulo:
+            _tela_que_pede = _tela_do_turno(session, text)
+            _valor, _origem = await o_cerebro_ja_sabe(
+                company_id, session, slot=_slot_falta, rotulo=_rotulo,
+                tela=_tela_que_pede)
+            if _valor:
+                responder_a_ura_com_o_que_ja_existia(
+                    session, _valor, slot=_slot_falta, origem=_origem,
+                    send_to_insurer=send_to_insurer)
+                await _rastro_do_dado_que_faltou(
+                    company_id, session, slot=_slot_falta, tela=_tela_que_pede,
+                    origem_da_resposta="cerebro")
+                await save_active_dispatch(company_id, from_phone, session)
+                return True
+            _perguntou = await perguntar_ao_segurado(
                 company_id, session, insurer_phone=from_phone, slot=_slot_falta,
                 rotulo=_rotulo, send_to_client=send_to_client,
-                send_to_insurer=send_to_insurer):
-            await save_active_dispatch(company_id, from_phone, session)
-            return True
+                send_to_insurer=send_to_insurer)
+            await _rastro_do_dado_que_faltou(
+                company_id, session, slot=_slot_falta, tela=_tela_que_pede,
+                origem_da_resposta="segurado" if _perguntou else "ninguem")
+            if _perguntou:
+                await save_active_dispatch(company_id, from_phone, session)
+                return True
 
     # Fase humana: LLM redige, guard fiscaliza, falha repetida pausa (fail-closed).
     #
