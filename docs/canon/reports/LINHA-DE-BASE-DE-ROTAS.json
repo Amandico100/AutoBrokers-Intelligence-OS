@@ -1,0 +1,371 @@
+{
+ "commit": "acb6814",
+ "gerado_em": "2026-09-17T00:52:26.436072+00:00",
+ "rotas": {
+  "alfa x auto x bateria": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "alfa x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "alfa x auto x guincho": {
+   "respondidas": 61,
+   "orfas_funcionais": 0,
+   "telas": 86
+  },
+  "alfa x auto x pneu": {
+   "respondidas": 16,
+   "orfas_funcionais": 0,
+   "telas": 23
+  },
+  "allianz x auto x bateria": {
+   "respondidas": 41,
+   "orfas_funcionais": 0,
+   "telas": 79
+  },
+  "allianz x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "allianz x auto x guincho": {
+   "respondidas": 99,
+   "orfas_funcionais": 0,
+   "telas": 149
+  },
+  "allianz x auto x pneu": {
+   "respondidas": 59,
+   "orfas_funcionais": 0,
+   "telas": 85
+  },
+  "allianz x residencial x ar_condicionado": {
+   "respondidas": 56,
+   "orfas_funcionais": 0,
+   "telas": 70
+  },
+  "allianz x residencial x chaveiro": {
+   "respondidas": 34,
+   "orfas_funcionais": 0,
+   "telas": 50
+  },
+  "allianz x residencial x consulta_veterinaria": {
+   "respondidas": 23,
+   "orfas_funcionais": 0,
+   "telas": 35
+  },
+  "allianz x residencial x desentupimento": {
+   "respondidas": 40,
+   "orfas_funcionais": 0,
+   "telas": 49
+  },
+  "allianz x residencial x eletricista": {
+   "respondidas": 60,
+   "orfas_funcionais": 0,
+   "telas": 87
+  },
+  "allianz x residencial x eletrodomesticos": {
+   "respondidas": 29,
+   "orfas_funcionais": 0,
+   "telas": 39
+  },
+  "allianz x residencial x encanador": {
+   "respondidas": 77,
+   "orfas_funcionais": 4,
+   "telas": 117
+  },
+  "allianz x residencial x limpeza_caixa_dagua": {
+   "respondidas": 62,
+   "orfas_funcionais": 0,
+   "telas": 80
+  },
+  "allianz x residencial x maquina_de_lavar": {
+   "respondidas": 85,
+   "orfas_funcionais": 1,
+   "telas": 112
+  },
+  "azul x auto x bateria": {
+   "respondidas": 47,
+   "orfas_funcionais": 0,
+   "telas": 90
+  },
+  "azul x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "azul x auto x guincho": {
+   "respondidas": 99,
+   "orfas_funcionais": 0,
+   "telas": 198
+  },
+  "azul x auto x pneu": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "azul x auto x tecnico": {
+   "respondidas": 19,
+   "orfas_funcionais": 0,
+   "telas": 33
+  },
+  "bradesco x auto x bateria": {
+   "respondidas": 26,
+   "orfas_funcionais": 0,
+   "telas": 36
+  },
+  "bradesco x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "bradesco x auto x guincho": {
+   "respondidas": 76,
+   "orfas_funcionais": 0,
+   "telas": 89
+  },
+  "bradesco x auto x pneu": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "hdi x auto x bateria": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "hdi x auto x chaveiro": {
+   "respondidas": 17,
+   "orfas_funcionais": 0,
+   "telas": 26
+  },
+  "hdi x auto x guincho": {
+   "respondidas": 131,
+   "orfas_funcionais": 0,
+   "telas": 213
+  },
+  "hdi x auto x pneu": {
+   "respondidas": 27,
+   "orfas_funcionais": 0,
+   "telas": 44
+  },
+  "hdi x auto x socorro_mecanico": {
+   "respondidas": 21,
+   "orfas_funcionais": 0,
+   "telas": 38
+  },
+  "hdi x residencial x chaveiro": {
+   "respondidas": 16,
+   "orfas_funcionais": 0,
+   "telas": 26
+  },
+  "hdi x residencial x desentupimento": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "hdi x residencial x eletricista": {
+   "respondidas": 65,
+   "orfas_funcionais": 3,
+   "telas": 109
+  },
+  "hdi x residencial x eletrodomesticos": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "hdi x residencial x encanador": {
+   "respondidas": 17,
+   "orfas_funcionais": 0,
+   "telas": 29
+  },
+  "mapfre x auto x bateria": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "mapfre x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "mapfre x auto x guincho": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "mapfre x auto x pneu": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "porto x auto x bateria": {
+   "respondidas": 74,
+   "orfas_funcionais": 0,
+   "telas": 140
+  },
+  "porto x auto x bateria_nova": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "porto x auto x chaveiro": {
+   "respondidas": 17,
+   "orfas_funcionais": 0,
+   "telas": 34
+  },
+  "porto x auto x guincho": {
+   "respondidas": 101,
+   "orfas_funcionais": 1,
+   "telas": 209
+  },
+  "porto x auto x pneu": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "porto x auto x taxi": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "porto x auto x tecnico": {
+   "respondidas": 39,
+   "orfas_funcionais": 0,
+   "telas": 76
+  },
+  "porto x auto x vidros": {
+   "respondidas": 11,
+   "orfas_funcionais": 0,
+   "telas": 20
+  },
+  "porto x residencial x chaveiro": {
+   "respondidas": 21,
+   "orfas_funcionais": 0,
+   "telas": 37
+  },
+  "porto x residencial x desentupimento": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "porto x residencial x eletricista": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "porto x residencial x eletrodomesticos": {
+   "respondidas": 11,
+   "orfas_funcionais": 0,
+   "telas": 15
+  },
+  "porto x residencial x encanador": {
+   "respondidas": 58,
+   "orfas_funcionais": 0,
+   "telas": 114
+  },
+  "tokio x auto x bateria": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "tokio x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "tokio x auto x guincho": {
+   "respondidas": 9,
+   "orfas_funcionais": 0,
+   "telas": 27
+  },
+  "tokio x auto x pneu": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "yelum x auto x bateria": {
+   "respondidas": 16,
+   "orfas_funcionais": 0,
+   "telas": 22
+  },
+  "yelum x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "yelum x auto x guincho": {
+   "respondidas": 107,
+   "orfas_funcionais": 1,
+   "telas": 197
+  },
+  "yelum x auto x pneu": {
+   "respondidas": 50,
+   "orfas_funcionais": 0,
+   "telas": 82
+  },
+  "yelum x auto x socorro_mecanico": {
+   "respondidas": 100,
+   "orfas_funcionais": 0,
+   "telas": 179
+  },
+  "yelum x residencial x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "yelum x residencial x desentupimento": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "yelum x residencial x eletricista": {
+   "respondidas": 38,
+   "orfas_funcionais": 0,
+   "telas": 69
+  },
+  "yelum x residencial x eletrodomesticos": {
+   "respondidas": 11,
+   "orfas_funcionais": 0,
+   "telas": 17
+  },
+  "yelum x residencial x encanador": {
+   "respondidas": 38,
+   "orfas_funcionais": 0,
+   "telas": 76
+  },
+  "zurich x auto x bateria": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "zurich x auto x chaveiro": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "zurich x auto x guincho": {
+   "respondidas": 19,
+   "orfas_funcionais": 0,
+   "telas": 36
+  },
+  "zurich x auto x pneu": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "zurich x auto x socorro_mecanico": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  },
+  "zurich x auto x vidros": {
+   "respondidas": 0,
+   "orfas_funcionais": 0,
+   "telas": 0
+  }
+ }
+}
