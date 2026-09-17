@@ -3,11 +3,11 @@
 """PROTOCOLO AAA v12 §10 — o teto de agentes por sessão, aplicado pelo harness.
 
 Hook PreToolUse[Agent] do Claude Code. Conta as chamadas da ferramenta Agent na sessão
-e BLOQUEIA a partir da (TETO+1)-ésima. O executor do AAA FAST tem direito a: 1 juiz +
-1 lente do dado (gatilho) + 1 confirmação (gatilho) + 1 investigador read-only = 4.
-O 5º pedido é o sintoma de "estourou, vou chamar mais gente" — e é isso que o v12 proíbe.
+e BLOQUEIA a partir da (TETO+1)-ésima. O executor do AAA FAST tem direito a: até 3 builders
+(fatias ≥ 2) + 1 juiz + 1 lente (gatilho) + 1 confirmação (gatilho) + 1 investigador = 7.
+O 8º pedido é o sintoma de "estourou, vou chamar mais gente" — e é isso que o v12 proíbe.
 
-Ajuste por variável de ambiente: AAA_FAST_TETO_DE_AGENTES (padrão 4).
+Ajuste por variável de ambiente: AAA_FAST_TETO_DE_AGENTES (padrão 7).
 Este script nunca pode derrubar a sessão: qualquer erro interno → exit 0 (deixa passar).
 """
 import json
@@ -24,7 +24,7 @@ def main():
     if dados.get("tool_name") != "Agent":
         return 0
     try:
-        teto = int(os.environ.get("AAA_FAST_TETO_DE_AGENTES", "4"))
+        teto = int(os.environ.get("AAA_FAST_TETO_DE_AGENTES", "7"))
         sessao = str(dados.get("session_id") or "sem-id").replace("/", "_")
         arquivo = os.path.join(tempfile.gettempdir(), "aaa-fast-agentes-%s.txt" % sessao)
         n = 0

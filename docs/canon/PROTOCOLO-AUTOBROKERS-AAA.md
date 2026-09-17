@@ -3,7 +3,7 @@
 > **Como se executa, se julga e se autoriza a entrega de uma SPEC no AutoBrokers.**
 > Não diz **o que** construir (isso é a SPEC). Diz **como construir, julgar, entregar e parar**.
 >
-> **v12 · AAA FAST · 16/09/2026** · vale para toda SPEC, execução, ideia, incidente e
+> **v12.1 · AAA FAST · 17/09/2026** · vale para toda SPEC, execução, ideia, incidente e
 > agente. Só regras. O porquê, com as medições: [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md).
 
 ---
@@ -19,7 +19,7 @@
 1. O EXECUTOR lê este protocolo UMA vez. TODO pacote a subagente (juiz, lente, investigador)
    carrega §0–§3, §5 e §7.3. Sem ele, o agente NÃO COMEÇA.
 2. TODO relatório ABRE com o EXECUTION CARD (§0.2) e FECHA com a telemetria (§11). Sem eles = SPEC aberta.
-3. O guarda `backend/tests/test_o_protocolo_tem_policia.py` confere 1 e 2 por máquina, sobre os OBJETOS.
+3. O guarda `backend/tests/test_o_protocolo_tem_policia.py` confere 1 e 2 por máquina.
 ```
 
 ## 0.2 🔴 O EXECUTION CARD — antes de escrever código, em 12 linhas
@@ -33,11 +33,11 @@ NÍVEL ................  LEVE · PADRÃO · CRÍTICO (§3.1) · executor e effor
 UNIDADES .............  quantas, quais, e as FATIAS (§5.2)
 COESÃO ...............  o que fica JUNTO e por quê (§3.4)
 PARALELISMO REAL .....  "nenhum" — a escrita é de um só (§4)
-TIME .................  executor · juiz · peças de ESCALAÇÃO com o GATILHO que as chamou (§8)
+TIME .................  executor · juiz · peças de ESCALAÇÃO e o GATILHO (§8)
 REFERÊNCIA ...........  o artefato que o juiz vai ABRIR (§7.1) + a EXTERNA (§7.3)
 GATES ................  o que precisa ficar verde
 O ELO ................  a afirmação-título liga A a B? então MEDIU O ELO (§0.3)
-FAIXA DE RELÓGIO .....  faixa, nunca promessa (§9.2) · e os TETOS de turno e contexto (§10)
+FAIXA DE RELÓGIO .....  faixa, nunca promessa (§9.2) · tetos de turno e contexto (§10)
 ```
 
 ## 0.3 🔴 O ELO — duas medições certas não fazem uma causa certa
@@ -57,7 +57,7 @@ fonte de ontem (quem escreve mudou de tabela)      → pergunte "quem É o escri
 
 ```
 todo número sobre código ou banco vem com o COMANDO ao lado, na mesma linha ou na seguinte
-   linhas, contagens, datas de criação → wc · grep -c · git log --diff-filter=A
+   linhas, contagens, datas → wc · grep -c · git log --diff-filter=A
    "existe" / "é o escritor" / "está no finally" → mostre a linha e as 3 acima dela
 🔴 mudou um número, caminho ou faixa? `grep` do valor ANTIGO no arquivo inteiro. Sobrevivente = defeito
 🔴 o juiz REPRODUZ por amostra: 3 números ao acaso por artefato. Um errado reprova a amostra inteira
@@ -79,11 +79,11 @@ todo número sobre código ou banco vem com o COMANDO ao lado, na mesma linha ou
 
 ```
 ⛔ nenhum pacote manda "leia o protocolo INTEIRO"
-⛔ o EXECUTOR lê da proposta o §0 e as UNIDADES que vai construir; research pack e apêndices só quando citados
+⛔ o EXECUTOR lê a FICHA da SPEC (≤ 15 KB) e a proposta só por unidade; research pack só quando citado
 🔴 proposta ≤ 40 KB · relatório ≤ 15 KB · este documento ≤ 22 KB. O guarda mede.
 ```
 
-Pacotes-modelo em [`docs/canon/pacotes/`](pacotes/); prompt do executor em [`PROMPT-EXECUCAO-AAA-FAST.md`](PROMPT-EXECUCAO-AAA-FAST.md). **Use-os.**
+Pacotes-modelo em [`docs/canon/pacotes/`](pacotes/); prompt do executor em [`PROMPT-EXECUCAO-AAA-FAST.md`](PROMPT-EXECUCAO-AAA-FAST.md).
 
 ---
 
@@ -98,10 +98,10 @@ Se eu consertar isto, muda UM BYTE do que chega:
    à SEGURANÇA      acesso, isolamento, vazamento
 
 SIM  →  BLOCKER. Conserta, e o laço continua.
-NÃO  →  PENDÊNCIA. Registra, e SEGUE.  "isto é pequeno" não é argumento.
+NÃO  →  PENDÊNCIA. Registra, e SEGUE. "é pequeno" não é argumento.
 ```
 
-**Quem drena:** toda SPEC que começa fecha ou re-justifica as pendências que toca:
+**Quem drena:** toda SPEC fecha ou re-justifica as pendências que toca:
 `FECHADA` (com a prova) · `CONTINUA` (com o que destrava) · `MORREU`.
 
 ---
@@ -125,7 +125,7 @@ SUPERFÍCIE  0  uma decisão, num lugar que EU SEI APONTAR
 ```
 
 ```
-NÃO SEI ONDE PEGA → SUPERFÍCIE (investigador read-only, consulta da §8) · NÃO SEI SE O MODELO OBEDECE → PROVA
+NÃO SEI ONDE PEGA → SUPERFÍCIE (investigador read-only) · NÃO SEI SE O MODELO OBEDECE → PROVA
 UNIDADE = a menor coisa que dá para ENTREGAR e PROVAR sozinha. FATIA = o que cabe numa sessão (§5.2)
 ```
 
@@ -135,10 +135,10 @@ UNIDADE = a menor coisa que dá para ENTREGAR e PROVAR sozinha. FATIA = o que ca
 |---|---|---|---|---|
 | **LEVE** | RISCO 0–1 e SUPERFÍCIE 0–1 | Opus 5 `medium`/`high` | nenhum (só o verificador mecânico) | 0 |
 | **PADRÃO** | RISCO 2–5, ou SUPERFÍCIE 2 | Opus 5 `high` | **Opus 5** | 1 |
-| **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | Opus 5 `xhigh` (`max` só em unidade de raciocínio) | **Fable 5.1** · + confirmação e lente por gatilho (§8) | 1 (+1 curta) |
+| **CRÍTICO** | RISCO 6+, ou SUPERFÍCIE 3, ou o piso da §3.2 | Opus 5 `xhigh` | **Fable 5.1** · + confirmação e lente por gatilho (§8) | 1 (+1 curta) |
 
 ```
-⚠️ se o rótulo e a soma discordarem, a soma vence
+⚠️ rótulo e soma discordam? a soma vence
 ⛔ LEVE dispensa o JUIZ. Nunca o verificador mecânico (passo ③ da §5)
 🔴 effort NÃO é alavanca de custo (a saída é ≈6 % do gasto). Baixa-se turno e contexto (§10)
 ```
@@ -152,7 +152,7 @@ CRÍTICO no mínimo, independente da conta:
    ⚠️ só o COMMENT é isento. Índice e GRANT disparam
  · autenticação, sessão, ou o filtro `company_id`
  · ler de uma corretora e escrever noutra
-🧑 "isto é mais importante do que parece" → CRÍTICO ou ESCALAÇÃO (§8). Não existe a contrária
+🧑 "isto é mais importante do que parece" → CRÍTICO ou ESCALAÇÃO (§8). Sem a contrária
 ```
 
 ### 3.3 A conta vale para MUDANÇA, não para INVESTIGAÇÃO
@@ -177,10 +177,10 @@ tocam a MESMA interface, tipo ou contrato? uma REDEFINE o que a outra consome? m
                   chama o juiz, conserta, entrega, REGISTRA. 🔴 a escrita é dele só
 ⚖️ JUIZ FRESCO    subagente read-only, contexto limpo, que não viu escrever (§6)
 ⚙️ VERIFICADOR    passo mecânico do laço, não papel convocado
-🔍 INVESTIGADOR   Sonnet 5, read-only, no máximo UM, só para varredura grande e realmente paralela
+🔍 INVESTIGADOR   Sonnet 5, read-only, no máximo UM, só para varredura grande e paralela
 — por GATILHO (§8) —  🔬 LENTE DO DADO (reconstrói o outcome por SELECT) · 🗡️ RED TEAM (Fable 5.1, missão:
 QUEBRAR) · 🏁 CONFIRMAÇÃO (juiz novo, ≤ 20 turnos, só o diff do conserto)
-🎯 FABLE          o co-líder: decide, audita e escreve protocolo em OUTRO chat. Nunca turno a turno
+🎯 FABLE          decide, audita e escreve protocolo em OUTRO chat. Nunca turno a turno
 ```
 
 **O verificador mecânico**, na ordem: `py_compile`/`tsc` · testes do bloco · lint · migrations pelo
@@ -197,7 +197,7 @@ VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em 
 ## 5. O LAÇO — seis passos, uma volta
 
 ```
-① CARD + BLOCO 0 MÍNIMO   ≤ 15 min · 5–10 premissas cuja falsidade mudaria o DESENHO, comando ao lado (§0.4)
+① CARD + BLOCO 0 MÍNIMO   ≤ 15 min · 5–10 premissas que mudariam o DESENHO, comando ao lado (§0.4)
 ② BUILD                   UM escritor, fatia por fatia, commit por fatia (arquivo por arquivo, nunca -A).
                           Guarda novo nasce VERMELHO e fica VERDE (linha de controle)
 ③ VERIFICADOR MECÂNICO    §4 · mutação dos guardas NOVOS, uma vez  →  FAIL volta ao ②, nunca ao juiz
@@ -206,7 +206,7 @@ VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em 
 ⑤ CONSERTO ÚNICO          o EXECUTOR aplica o TESTE DO PRODUTO a cada achado, conserta TUDO junto,
                           reroda SÓ os gates afetados. Achado não consertado vira pendência escrita
 ⑥ ENTREGA                 suíte inteira UMA vez em 2º plano, triada por DIFF · relatório ≤ 15 KB · push com a
-                          saída colada · telemetria (§11). Dossiê FORA do caminho crítico
+                          saída colada · telemetria (§11). Dossiê fora do caminho
 ```
 
 ### 5.1 O JUIZ JULGA CÓDIGO
@@ -215,11 +215,12 @@ VERIFY (o ledger mente; confere o OBJETO) · regressão dirigida. 🔴 Mexeu em 
 ✅ o juiz roda sobre o diff, o teste rodando, o banco
 ```
 
-### 5.2 As FATIAS — uma SPEC grande, uma sessão de cada vez
+### 5.2 As FATIAS — uma SPEC grande, UMA sessão, e o builder fresco a partir da 2ª fatia
 ```
-≥ 3 unidades ou > 40 KB → FATIAS INTERNAS: mesma SPEC, branch e relatório. fatia = ② → ③ → commit.
-O juiz roda UMA vez, no fim. Contexto passou de 300 k (§10)? fecha a fatia verde, commita, handoff
-≤ 20 linhas no relatório, próxima fatia em SESSÃO NOVA. ⛔ nunca "continuar" com 600 k de contexto
+≥ 3 unidades ou > 40 KB → FATIAS INTERNAS: mesma SPEC, branch, relatório e SESSÃO. fatia = ② → ③ → commit.
+O executor constrói a fatia 1. Da fatia 2 em diante, DELEGA a construção a UM builder subagente
+fresco (Opus 5 xhigh, sequencial) com o pacote (card · unidades · arquivos · handoff · gates). O executor fica como gerente: provas, juiz, conserto. O juiz roda UMA vez, no fim.
+⛔ nunca sessão nova por fatia nem Founder trocando de chat · nunca dois builders ao mesmo tempo
 ```
 
 ### 5.3 Nunca a mesma lente duas vezes
@@ -233,7 +234,7 @@ O juiz roda UMA vez, no fim. Contexto passou de 300 k (§10)? fecha a fatia verd
 ✅ o juiz libera, ou só sobraram pendências  →  registra e entrega
 🛑 reprovou DUAS vezes com blocker material  →  ESCALAÇÃO (§8); é uma das oito do CLAUDE.md §10?
       SIM → para e registra   ·   NÃO → entrega o que passou e AVANÇA
-⛔ NUNCA: afrouxar a régua · alterar teste para passar · declarar pronto por cansaço
+⛔ NUNCA: afrouxar a régua · alterar teste para passar · pronto por cansaço
 🔴 lista de casos fixados carrega PARES: mesma superfície, veredito oposto
 ```
 
@@ -283,7 +284,7 @@ juiz NOVO do mesmo modelo, ≤ 20 turnos, SÓ o diff do conserto. Missão única
 | **migration** | `docs/canon/MIGRATIONS-AUTHORITY.md` | APPLY · VERIFY · ROLLBACK escritos ANTES |
 | **um guarda serve?** | `CLAUDE.md` §9.3 + linha de controle | prove que ele CONSEGUE ficar vermelho |
 | **o build sobe?** | `CLAUDE.md` §9.1 | `next start` + uma requisição a `/api/…` |
-| **o número é medido?** | `CLAUDE.md` §12.1 + §0.4 daqui | 📊 tem comando e data · 💭 nunca é citável |
+| **o número é medido?** | `CLAUDE.md` §12.1 + §0.4 daqui | 📊 tem comando e data · 💭 não é citável |
 | **corredor / rota** | `backend/scripts/medir_rota.py --com-espelho` | número contra número |
 | **rota de referência** | `allianz/auto/guincho` | a rota nova chega perto? |
 | **atendimento ponta a ponta** | `backend/tests/test_a_maquina_de_lavar_vai_ate_o_fim.py` | a sessão real, turno a turno |
@@ -328,7 +329,7 @@ Identidade, dinheiro e escolha-entre-existente-e-novo exigem julgamento humano.
 | **lente do dado** | outcome é NÚMERO, DATASET ou relatório que a corretora lê · migration que ALTERA DADO · a SPEC afirma percentuais do acervo |
 | **confirmação (§6.1)** | o juiz achou ≥ 1 BLOCKER em código que ENVIA, filtra `company_id` ou grava por migration |
 | **red team dedicado** | autenticação/sessão · cross-tenant · dinheiro · ação irreversível a terceiro |
-| **consulta ao Fable antes do BUILD** (≤ 15 turnos) | decisão de arquitetura em aberto (SUPERFÍCIE 3 real) |
+| **consulta ao Fable antes do BUILD** (≤ 15 turnos) | decisão de arquitetura em aberto |
 | **segundo juiz** (família diferente) | o primeiro reprovou com ≥ 2 blockers materiais E a SPEC envia ou toca tenant |
 | **AAA COMPLETO** (painel de 3 lentes + red team + lente + confirmação) | incidente P0/P1 · mudança ampla de arquitetura · migration DESTRUTIVA · o Founder disse "é mais importante do que parece" · o juiz reprovou DUAS vezes com blocker material |
 
@@ -381,18 +382,18 @@ NÃO). Nunca se para para entregar uma linha dela.
 ## 10. 🔴 A MECÂNICA — o custo é turno × contexto
 
 ```
-SESSÃO      UMA NOVA por SPEC (ou fatia), contexto nascendo vazio. CLAUDE.md + memória do projeto + BLOCO 0
-            são o aquecimento. ⛔ nenhuma sessão executa duas SPECs
+SESSÃO      UMA por SPEC, do card ao push, contexto nascendo vazio. CLAUDE.md + memória + a FICHA da SPEC +
+            BLOCO 0 são o aquecimento. ⛔ nenhuma sessão executa duas SPECs · ⛔ nenhuma SPEC em duas sessões
 MODELO      🔧 executor = Opus 5 (LEVE medium/high · PADRÃO high · CRÍTICO xhigh) · ⚖️ juiz = Opus 5 em PADRÃO,
             Fable 5.1 em CRÍTICO · 🔍 investigador = Sonnet 5 · 🗡️ red team = Fable 5.1. ⛔ não trocar no meio
 TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
-            (passou, fecha a fatia §5.2) · agentes além do executor 0 · 1 · 2 (+1 por gatilho §8) · relógio ≤ 40 min ·
+            (passou, a próxima fatia vai ao builder §5.2) · agentes além do executor 0 · 1 · 2 + builders (§5.2) · relógio ≤ 40 min ·
             75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
 APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
-            hook PreToolUse[Agent] bloqueia o 5º agente (`.claude/hooks/teto-de-agentes.py`) · status line com o
-            contexto, conferida em CADA gate · o script da §11 fecha a conta
+            hook bloqueia o 8º agente (`.claude/hooks/teto-de-agentes.py`) · status line conferida em CADA gate ·
+            o script da §11 fecha a conta
 JUIZ RECEBE o card + o diff + os comandos + a lista de ataques. Nunca a SPEC inteira nem o censo
-CACHE       `subagentPromptCacheTtl: "1h"` · juiz no diretório principal · FORK nunca para juiz
+CACHE       `subagentPromptCacheTtl: "1h"` · juiz no diretório principal, nunca FORK
 BATERIA     a suíte INTEIRA roda UMA vez por SPEC, em 2º plano, triada por DIFF contra a linha de base
             versionada. Parciais à vontade. 🔴 o relatório traz a contagem (diário do conftest)
 MUTAÇÃO     só nos guardas NOVOS, uma vez · WORKTREE PRÓPRIO ou lock · restaura por CÓPIA · xfail nunca em guarda com processo
@@ -423,5 +424,4 @@ do executor (critério em 1 linha) e do juiz
 ## 13. QUEM DECIDE
 
 **O executor, sozinho, sempre.** O Founder nunca precisa pedir.
-Regra que errar duas vezes seguidas muda de número, com o porquê em
-[`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md) — e nunca acrescenta papel; troca um por outro.
+Regra que errar duas vezes muda de número, com o porquê em [`PROTOCOLO-AAA-EVIDENCIAS.md`](PROTOCOLO-AAA-EVIDENCIAS.md); nunca acrescenta papel.

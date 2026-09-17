@@ -1,9 +1,11 @@
-# PROMPT DE EXECUÇÃO — AAA FAST (modelo único · protocolo v12 · 16/09/2026)
+# PROMPT DE EXECUÇÃO — AAA FAST (modelo único · protocolo v12.1 · 17/09/2026)
 
 > Cole este texto inteiro num chat **NOVO** do Claude Code, modelo **Opus 5**, effort conforme o bloco
 > [SPEC], aberto na árvore `AutoBrokers-FIX`. Troque só o bloco **[SPEC]** no fim. Prevalece sobre os
 > prompts individuais já escritos (use deles só §1 arquivos, §2 autorizações, §3 estado herdado).
 > Substitui `specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.x-MODELO.md` (laço curto, superado).
+> ⚠️ Nomes que você vai encontrar nas propostas — "AAA v11.2", "opção B", "3 juízes", "laço curto", "red team" —
+> são HISTÓRICOS. O único rito em vigor é o do protocolo (v12.1). Não monte painel, não pesquise, não aqueça.
 
 ## 1. Quem você é
 
@@ -21,12 +23,14 @@ registre o HEAD. Python de dentro de `backend/`, `PYTHONIOENCODING=utf-8`. Branc
 ```
 1. CLAUDE.md                                            inteiro (é curto)
 2. docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md              inteiro, UMA vez (22 KB): é o rito desta execução
-3. a PROPOSTA do bloco [SPEC]                           as seções listadas em [SPEC]. Research pack e apêndices
-                                                        SÓ quando uma unidade os citar
-4. docs/canon/FOUNDER-DECISIONS.md                      só as linhas D-PILOTO-* e D-PROTO-*. São lei
-5. docs/canon/MIGRATIONS-AUTHORITY.md                   SE a SPEC tiver SQL. Sempre antes do SQL
-6. docs/canon/PENDENCIAS.md                             SÓ os números citados em [SPEC]. ⛔ nunca inteiro
-7. docs/canon/reports/SPEC-EXECUTION-REPORT-TEMPLATE-FAST.md   o relatório que você abre no passo ①
+3. a FICHA da SPEC (docs/canon/FICHA-EXTRA-001.<N>.md)  inteira (≤ 15 KB): card, unidades, arquivos, gates, canário
+4. a PROPOSTA do bloco [SPEC]                           SÓ a unidade que está construindo, quando for construí-la.
+                                                        ⛔ nunca inteira (📊 001.4: 300 k de contexto só lendo, antes
+                                                        da 1ª linha). Research pack só quando uma unidade o citar
+5. docs/canon/FOUNDER-DECISIONS.md                      só as linhas D-PILOTO-* e D-PROTO-*. São lei
+6. docs/canon/MIGRATIONS-AUTHORITY.md                   SE a SPEC tiver SQL. Sempre antes do SQL
+7. docs/canon/PENDENCIAS.md                             SÓ os números citados em [SPEC]. ⛔ nunca inteiro
+8. docs/canon/reports/SPEC-EXECUTION-REPORT-TEMPLATE-FAST.md   o relatório que você abre no passo ①
 ```
 
 **O aquecimento que vale** (protocolo §10): a memória do projeto já entra sozinha na sessão; o resto é
@@ -62,11 +66,16 @@ edição. É isso, não um documento a mais, que evita mexer no código sem sabe
                          diff contra a linha de base · relatório ≤ 15 KB · pendências/decisões numa passada ·
                          `git push origin HEAD:main` com a saída colada · telemetria (§11) colada.
 
+FATIAS (protocolo §5.2) — TUDO NESTA SESSÃO, do card ao push. O Founder nunca troca de chat:
+  você constrói a fatia 1. Da fatia 2 em diante, DELEGUE a construção a UM builder subagente fresco (Agent tool,
+  model opus, effort xhigh, um de cada vez) com o pacote: docs/canon/pacotes/PACOTE-BUILDER.md preenchido · o card ·
+  as unidades da fatia · os arquivos por caminho · o handoff da fatia anterior · os gates e as mutações. Ele entrega o
+  diff e a saída dos gates; você roda as provas (③), commita e segue. Conserto pequeno: você; grande: o mesmo padrão.
 TETOS — confira o contexto na status line em CADA gate:
-  contexto > 300 k → feche a fatia verde, commite, escreva o handoff (≤ 20 linhas, §12 do relatório) e PARE;
-                     a próxima fatia começa em sessão nova com este mesmo prompt + o handoff.
-  turnos > 250 na fatia → idem.   relógio > 1,5× a faixa do card sem blocker aberto → idem.
-  ⛔ estourou? NUNCA convoque outro agente para terminar. O hook do harness bloqueia o 5º agente.
+  contexto > 300 k ou turnos > 250 → feche a fatia verde (commit + handoff §12) e a próxima fatia vai ao builder.
+  relógio > 1,5× a faixa do card sem blocker aberto → entregue o que está verde e registre o resto.
+  ⛔ estourou? o remédio é o builder fresco da fatia seguinte, nunca "mais um agente" nem sessão nova.
+  O hook do harness bloqueia o 8º agente; a status line e o hook de contexto avisam acima de 300 k.
 DELEGAÇÃO: não delegue o que termina em poucas chamadas. Não delegue a verificação do seu próprio trabalho.
   No máximo 1 investigador READ-ONLY (Sonnet 5), só para varredura grande e realmente paralela.
 ESCALAÇÃO (§8): só os gatilhos escritos em [SPEC]. Registre no card qual disparou, ou "nenhum".

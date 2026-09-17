@@ -179,8 +179,10 @@ Proibido sem manifesto aprovado: mover, renomear, apagar ou reaplicar migration 
 - Gates internos são **automáticos**: aplicar → VERIFY → testes → verde → avançar.
 - **Não** pedir aprovação manual do Founder entre todos os blocos.
 - A árvore é a que o preflight prova em dia com a `origin/main` (hoje `AutoBrokers-FIX`); uma branch por SPEC.
-- 🔴 **Uma SESSÃO NOVA por SPEC (ou por fatia), executor Opus 5, sob o AAA FAST** (protocolo v12 §10). Nenhuma
-  sessão executa duas SPECs. O Fable decide, audita e escreve protocolo em outro chat, antes e depois.
+- 🔴 **Uma SESSÃO por SPEC, do card ao push, executor Opus 5, sob o AAA FAST** (protocolo v12.1 §5.2/§10). Nenhuma
+  sessão executa duas SPECs; nenhuma SPEC em duas sessões — fatia ≥ 2 vai a um builder subagente fresco. O Fable
+  decide, audita e escreve protocolo em outro chat. ⚠️ "v11.2", "opção B", "laço curto", "3 juízes" nas propostas
+  são nomes históricos: o rito é só o do protocolo.
 
 ### 9.1 Build verde **não** é prova de que a aplicação sobe
 

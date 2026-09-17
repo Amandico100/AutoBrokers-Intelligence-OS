@@ -1,3 +1,5 @@
+> ⚠️ **17/09/2026:** esta proposta cita "AAA v11.2", "opção B", "3 juízes", "red team", "laço curto". São nomes históricos. O **rito em vigor é o do `docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md` (v12.1 · AAA FAST)**, e o executor lê primeiro a FICHA da SPEC (`docs/canon/FICHA-EXTRA-001.5.md`, se existir) e esta proposta só por unidade.
+
 # SPEC-EXTRA-001.5 — O AGENTE SABE O QUE CADA PLANO COBRE
 ## Três níveis de assistência por seguradora, numa base com fonte e página por linha
 

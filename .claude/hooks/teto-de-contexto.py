@@ -5,8 +5,8 @@
 Hook PreToolUse[Edit|Write|MultiEdit|NotebookEdit]. Lê o fim do transcrito da própria sessão
 (~/.claude/projects/<projeto>/<session_id>.jsonl), pega o contexto do último turno
 (input + cache_write + cache_read) e, acima do teto, injeta um aviso no contexto do modelo
-a CADA edição: "feche a fatia, commite, handoff, sessão nova". Não bloqueia (bloquear a
-edição impediria o próprio handoff); avisa. 📊 Na EXTRA-001.3 a regra escrita não bastou:
+a CADA edição: "feche a fatia, commite, handoff, sessão nova". Não bloqueia; avisa: da fatia seguinte em diante,
+quem escreve é um builder subagente fresco (v12.1 §5.2). 📊 Na EXTRA-001.3 a regra escrita não bastou:
 o executor seguiu até 649 k na mesma sessão e a segunda fatia custou ≈ o dobro.
 
 Ajuste: AAA_FAST_TETO_DE_CONTEXTO (padrão 300000). Qualquer erro interno → exit 0.
@@ -58,9 +58,9 @@ def main():
                 "hookEventName": "PreToolUse",
                 "additionalContext": (
                     "🔴 PROTOCOLO AAA v12 §5.2/§10: o contexto desta sessão está em %dk (teto %dk). "
-                    "Feche a FATIA verde: commite o que está pronto, escreva o handoff (≤ 20 linhas, §12 do "
-                    "relatório) e PARE — a próxima fatia começa em sessão nova com o mesmo prompt + o handoff. "
-                    "Não convoque agentes para terminar." % (ctx // 1000, teto // 1000)),
+                    "Feche a FATIA verde (commit + handoff ≤ 20 linhas no §12 do relatório) e DELEGUE a próxima fatia "
+                    "a UM builder subagente fresco (Opus 5 xhigh) com o pacote: card, unidades, arquivos, handoff, "
+                    "gates. Você continua nesta sessão como gerente: provas, juiz, conserto. Nunca sessão nova." % (ctx // 1000, teto // 1000)),
             }}))
         return 0
     except Exception:
