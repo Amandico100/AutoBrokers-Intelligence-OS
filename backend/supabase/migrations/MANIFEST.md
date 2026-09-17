@@ -313,3 +313,59 @@ têm 11 dígitos seguidos em `input_summary`; a amostra das 40 últimas de
 |---|---|---|---|---|
 | `spec_extra0012_check_fantasma_lid` | `20260914_07_spec_extra001_2_check_fantasma_lid.sql` | **PENDENTE** | SPEC-EXTRA-001.2 E2 (M1): `ck_conversations_resolucao_motivo` passa de 5 para **6** valores, ganhando `fantasma_lid` — DROP + ADD do CHECK (a constraint EXISTE desde a `20260826_04:96`; `ADD` com o mesmo nome daria 42710). É o que destrava `migrar_conversas_fantasma_lid.py --vivo` e **P-PILOTO-13**. 📊 Dry-run de 14/09/2026: **175** conversas-fantasma · 175 ABERTAS · 69 Resulta + 106 AutoFleet · **10** com pausa humana presa · **2** com par real ainda aberto · 166 sem par · 1.884 mensagens do lado fantasma — ⛔ nenhuma mensagem é apagada. 🔴 **Não é o encerramento em lote da D-PILOTO-02**: aquela fala das 467 conversas REAIS e abertas da AutoFleet; estas 175 têm um identificador interno do WhatsApp no lugar do telefone e **ninguém consegue abri-las**. O valor gêmeo no produto é `o_fim_do_atendimento.FANTASMA_LID` (sem ele, `marcar_fim` levanta `ValueError`). **Expand-first** (a lista só cresce), **não destrutiva** (nenhuma linha é tocada) | V1 `pg_get_constraintdef` contém `fantasma_lid` · V2 adversarial em `BEGIN…ROLLBACK` (motivo fora da lista → `check_violation`; `fantasma_lid` → aceito) · V3 `count(*)=0` antes do `--vivo`, 175 depois · V4 o VERIFY do próprio script (0 conversas abertas com telefone de forma inválida). **ROLLBACK RECUSA reverter** se alguma linha já usar `fantasma_lid` — reverter apagaria a razão pela qual 175 conversas foram fechadas, e deixaria 175 `closed` sem motivo, violando `ck_conversations_resolucao_coerente` | ⏳ a rodar |
 | `spec_extra0012_contraparte_unica` | `20260914_08_spec_extra001_2_contraparte_unica.sql` | **PENDENTE** | SPEC-EXTRA-001.2 E2 (M2): `conversations.contraparte text` (a chave única da pessoa do outro lado) + **backfill em SQL puro** sobre `user_phone` + **índice único parcial** `uq_conversations_contraparte_aberta (company_id, contraparte) WHERE channel='whatsapp' AND agent_id IS NULL AND status <> 'closed' AND contraparte IS NOT NULL`. 📊 Nada no schema impedia a próxima fantasma: `conversations_session_id_key` é UNIQUE mas o `@lid` gera `session_id` DIFERENTE — a fantasma nascia **legalmente**; `idx_conversations_company_user_channel` **não** é UNIQUE e `user_phone` não tinha índice nem constraint. 🔴 O backfill repete a regra de `identidade_do_evento.contraparte_de` no **dialeto do Postgres** (CLAUDE.md §9.4): recusa dígitos vazios e recusa `length >= 13 AND left(...,2) <> '55'` — ⛔ `@lid` vira **NULL**, porque o telefone real vem do `key.remoteJidAlt` do EVENTO, que o banco não tem. 📊 879 linhas em 14/09/2026 → sem `CONCURRENTLY`. **Expand-first**, **não destrutiva**; ROLLBACK derruba só o índice, a coluna FICA | **D0 ANTES do índice**: `group by (company_id, contraparte) having count(*) > 1` sobre as abertas → **tem de ser 0**; D0 > 0 ⇒ 🔴 o índice **não entra**, as duplicatas viram lista no relatório (⛔ sem a coluna `contraparte`, que é telefone) e nada é fechado em lote · V1 coluna + `indexdef` com as 4 cláusulas · **V1b com CONTROLE**: `fantasmas_sem_chave > 0` (eram 175) — se der 0, a cláusula de recusa não rodou e os LIDs entraram como telefone · V2 duplicatas = 0 · V3 adversarial: 2ª conversa aberta da mesma contraparte → `unique_violation` · **V4 o PAR**: a MESMA contraparte em OUTRA corretora → **aceita** (isolar não é bloquear, CLAUDE.md §7) · V5 conversa fechada não bloqueia a nova | ⏳ a rodar |
+
+
+## SPEC-EXTRA-001.5 — BLOCO A (17/09/2026) · **APLICADAS**
+
+> 🔴 Aplicadas em produção em 17/09/2026 pelo builder da fatia 1, com APPLY /
+> VERIFY / ROLLBACK escritos **antes** de rodar, APPLY **duas vezes** com o
+> mesmo resultado e ROLLBACK **exercitado** dentro de uma transação desfeita
+> (o APPLY não foi desfeito). A saída real está no relatório da SPEC §3.
+
+| versão / arquivo | sha256[0:16] | classe | o que faz | VERIFY (saída real) |
+|---|---|---|---|---|
+| `20260917_01_extra0015_assistance_plans.sql` | `4ACA9616B113D487` | **APLICADA** | Cria `insurer_assistance_plans` e `insurer_assistance_services` — a base **GLOBAL** (D-PILOTO-01, **zero** `company_id`) do que cada plano de assistência cobre, com **fonte obrigatória pelo banco**: `servico_tem_fonte` (documento + `pagina >= 1` + `trecho_hash` de 64 hex), `servico_publicado_foi_revisado` (nada vira `publicado` sem `revisado_por`+`revisado_em`) e `limite_tem_unidade`. Os irmãos no plano: `plano_tem_fonte` e `plano_publicado_foi_revisado`. Dois UNIQUE no plano (`uq_iap_plano`, `uq_iap_nivel` — dois planos no mesmo nível é erro) e `uq_ias_servico`. FK `documento_id → normative_documents` **ON DELETE RESTRICT** nas duas (apagar o documento não pode deixar afirmação órfã); `plano_id` **ON DELETE CASCADE**. 3 índices de §11.1. RLS **ligada, zero policy** — 📊 o padrão medido das 4 tabelas globais já vivas (`normative_documents`, `normative_document_versions`, `portals`, `ura_maps`). **Aditiva · expand-first · não destrutiva** | V1 os 3 CHECKs presentes · V2 colunas `company_id\|user_id\|owner_user_id` = **0** (V2b CONTROLE: a mesma consulta acha **2** em `tool_invocations`) · V3/V4/V5 UNIQUEs, FKs e índices conferidos contra o catálogo · **V6 adversarial em `BEGIN…ROLLBACK`, 6 recusas + 2 controles**: `documento_id` NULL → `NotNullViolation` · `pagina=0` → `servico_tem_fonte` · publicado sem revisor → `servico_publicado_foi_revisado` · `limite_valor` sem unidade → `limite_tem_unidade` · `trecho_hash` de 63 → `servico_tem_fonte` · `pagina` NULL → `NotNullViolation` · nível duplicado → `uq_iap_nivel`; **CONTROLE:** a linha completa é **aceita**, e publicado **com** revisor é **aceito** · ROLLBACK exercitado (DROP das duas, tabelas somem, `ROLLBACK` e voltam) · estado final: 0 linhas ✅ |
+| `20260917_02_extra0015_doc_kind_manual.sql` | `D577F14B68E3CC9E` | **APLICADA** | 🔴 **PISO CRÍTICO (protocolo §3.2)**: altera uma TRAVA de tabela **viva** (194 linhas) e **SEM_ARQUIVO**. `normative_documents_doc_kind_check` passa de **9 para 10** valores, ganhando `manual_de_assistencia` — o documento que diz o que cada plano cobre. **Manifesto no cabeçalho do arquivo**, com o `pg_get_constraintdef` atual colado, os 3 valores em uso e a declaração de que nenhuma linha perde validade. **Transação única** (`begin; drop; add; commit;`): fora dela a tabela ficaria sem trava entre o DROP e o ADD, com escritor ativo (o corpus reconfere sozinho). **Expand-first** (o CHECK novo é superconjunto do antigo) · **não destrutiva** | V1 `tem_o_valor_novo` = **t** · V2 os **9 antigos continuam todos** (faltando: nenhum) · **V3 CONTROLE do manifesto**: `condicoes_gerais 184 · manual_do_segurado 5 · circular_susep 5` = 194, igual ao medido antes — não bateu ⇒ PARE · **V4 adversarial com PAR**: `doc_kind='manual_de_assistencia'` → **aceita**; `doc_kind='chute'` → `CheckViolation` (sem o par, a 1ª só provaria que a constraint sumiu) · **ROLLBACK exercitado COM a guarda de contagem**: `count(*) where doc_kind='manual_de_assistencia'` = 0 ⇒ seguro; revertido, o valor novo volta a ser **recusado**; desfeito o teste, a trava nova continua · **atomicidade provada**: DROP + um ADD impossível na mesma transação ⇒ `ROLLBACK` e a trava **continua no lugar** |
+
+> ⚠️ **Nenhuma das duas registra versão em `supabase_migrations.schema_migrations`.** 📊 Medido em 17/09/2026: a última versão rastreada é `20260914190639`, e as migrations `20260916_01` e `20260916_02` (aplicadas em 16/09) **não estão lá**; `rg -n "schema_migrations" backend/supabase/migrations/*.sql` → **nenhuma migration do repositório faz esse INSERT**. Fazer diferente aqui criaria um histórico que só estas duas seguem. **Este MANIFEST é o registro** — é exatamente o que o `MIGRATIONS-AUTHORITY.md §5` diz que ele é.
+
+### `normative_documents` — **NÃO RASTREADA**, e o DDL real, lido do catálogo
+
+> 📊 17/09/2026, `pg_constraint` + `information_schema.columns` no banco de
+> produção. A tabela **não tem arquivo** no repositório: o DDL só existe em
+> `docs/canon/sql/reconstruidas/20260725215808_spec057_h1_normative_corpus.sql`,
+> marcado **PROIBIDO APLICAR**. Quem precisar do CHECK real lê daqui ou do
+> catálogo — nunca daquele arquivo.
+
+```
+travas    normative_documents_pkey                      PRIMARY KEY (id)
+          normative_documents_url_uk                    UNIQUE (source_url)
+          normative_documents_doc_kind_check            CHECK doc_kind IN (condicoes_gerais,
+                                                          condicoes_especiais, condicoes_particulares,
+                                                          manual_do_segurado, nota_tecnica, circular_susep,
+                                                          tabela_coberturas, glossario, regulamento,
+                                                          manual_de_assistencia)   <- 10 desde 17/09/2026
+          normative_documents_status_check              CHECK status IN (discovered, fetching, ingested,
+                                                          superseded, unreachable, rejected)
+          normative_documents_check_interval_days_check CHECK (check_interval_days BETWEEN 1 AND 365)
+          normative_ingested_has_hash                   CHECK (status <> 'ingested'
+                                                          OR (content_hash IS NOT NULL AND chunk_count > 0))
+          normative_vigencia_coerente                   CHECK (effective_until IS NULL
+                                                          OR effective_from IS NULL
+                                                          OR effective_until >= effective_from)
+          🔴 ZERO foreign keys — `approved_by uuid` é solto, sem FK para `users_v2`
+colunas   id uuid PK · insurer_key text NN · insurer_name text NN · product_line text NN
+          doc_kind text NN · susep_process text · title text NN · source_url text NN
+          version_label text · effective_from date · effective_until date · status text NN
+          content_hash text · byte_size int · chunk_count int NN · qdrant_collection text
+          check_interval_days int NN · last_checked_at/next_check_at/last_change_at timestamptz
+          fetch_error text · fetch_attempts int NN · approved_at timestamptz · approved_by uuid
+          notes text · created_at timestamptz NN · updated_at timestamptz NN
+RLS       ligada · **zero policies** (leitura só por service role)
+```
+
+⚠️ **Por que `revisado_por` das tabelas novas também fica sem FK:** `approved_by`
+acima é o precedente da casa, e a razão é dupla — as duas tabelas novas são
+**globais** e `users_v2` é **por corretora**. Uma FK daqui para lá penduraria a
+base global na vida de um usuário de UMA corretora: com `RESTRICT`, apagar esse
+usuário travaria; com `CASCADE`, apagaria linha curada que serve todas.
