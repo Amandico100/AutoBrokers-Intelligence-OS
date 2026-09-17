@@ -925,6 +925,70 @@ W._preservar_a_atendente(_velha, _fresca)
 checar(_velha.get("motivo_antes_do_humano") == "sentinela_stall",
        "🔴 P5: o Vigia preserva `motivo_antes_do_humano` — sem ele o atalho AGENTE "
        "devolvia a sessão travada SEM o motivo", str(_velha.get("motivo_antes_do_humano")))
+
+print()
+print("=" * 74)
+print("[S5] A CONFIRMAÇÃO D1 — a URA reaberta JÁ está na tela que pede o dado")
+print("=" * 74)
+# 📊 Cenário medido pela confirmação: a URA reabre (retry único) e chega à MESMA
+#    tela ANTES de o segurado responder. `perguntar_ao_segurado` devolve False
+#    (o slot já está em `perguntado_ao_segurado`), ninguém responde a tela,
+#    `falta_para_a_ura` é apagado, a URA fecha por inatividade e o retry já foi
+#    queimado — o caso cai em pessoa. Antes do B3 esse timing FUNCIONAVA.
+_ESPERA_ANTERIOR = {"slot": SLOT, "rotulo": "o ponto de referência",
+                    "client_phone": "5548988887777", "holdings": 2,
+                    "de_acionamento_anterior": True}
+for rotulo, falta, esperado, envios in (
+        ("na tela do slot", {"campo": "x", "slot": SLOT, "rotulo": "x"}, "levada", 1),
+        ("noutra tela", {"campo": "x", "slot": "outro_slot", "rotulo": "x"}, "no_slot", 0)):
+    REDIS.d.clear()
+    WA.clear()
+    EVENTOS.clear()
+    s = sessao("ura", espera_vencida=dict(_ESPERA_ANTERIOR),
+               perguntado_ao_segurado=[SLOT], falta_para_a_ura=dict(falta))
+    s["slots"].pop(SLOT, None)
+    rodar(R.save_active_dispatch(EMPRESA, URA, s))
+    rodar(R._indexar_pergunta(EMPRESA, "5548988887777", URA, 600))
+    rodar(R.responder_pergunta_do_acionamento(EMPRESA, "5548988887777",
+                                              "em frente a padaria Sao Jorge",
+                                              send_to_client=cliente))
+    s = rodar(R.load_active_dispatch(EMPRESA, URA))
+    _t = [e for e in EVENTOS if e["event_type"] == "pergunta_ao_segurado.respondida_tarde"]
+    checar(len(WA) == envios and len(_t) == 1
+           and _t[0]["payload_redacted"].get("retomada") == esperado,
+           f"🔴 D1 ({rotulo}): {envios} envio(s) à seguradora · `retomada={esperado}`",
+           f"WA={WA} rastro={[e['payload_redacted'].get('retomada') for e in _t]}")
+    checar(s["slots"].get(SLOT) == "em frente a padaria Sao Jorge",
+           f"🔴 D1 ({rotulo}): o dado entra no SLOT nos DOIS casos")
+    if envios:
+        checar(WA == [(URA, "em frente a padaria Sao Jorge")],
+               "🔴 D1 (a): o que saiu foi o VALOR, e uma vez só", str(WA))
+# 🔴 (b) e quando a tela do slot chegar depois, o motor responde DA FICHA
+_pergunta_do_slot = next(
+    (t for t in RES
+     if str(D.responder_da_ficha(_PB, t, {"ramo_da_apolice": "resi"}).get("slot") or "") == SLOT),
+    "")
+_s = sessao("ura")
+_s["slots"][SLOT] = "em frente a padaria Sao Jorge"
+_resp = D.responder_da_ficha(_PB, _pergunta_do_slot, _s["slots"])
+checar(bool(_pergunta_do_slot) and _resp.get("resposta") == "em frente a padaria Sao Jorge",
+       "🔴 D1 (b): com o slot preenchido, a ficha responde a tela sozinha — o "
+       "`no_slot` não perde o dado", f"{_resp.get('motivo')}/{_resp.get('resposta')!r}")
+
+print()
+print("=" * 74)
+print("[S6] A CONFIRMAÇÃO P-a — o campo sai da fonte por TOKEN, não por substring")
+print("=" * 74)
+# 📊 Com `in`, `fone` excluía `interfone` e `rg` excluía `orgao_emissor`, `cargo`,
+#    `largura` e `energia` — campos que SÃO resposta legítima de tela de URA.
+for campo in ("interfone", "cargo", "energia", "largura", "orgao_emissor",
+              "endereco_numero", "problema_descricao"):
+    checar(R._campo_vale_como_fonte(campo),
+           f"🔴 P-a: `{campo}` CONTINUA valendo como fonte")
+for campo in ("cpf", "telefone_contato", "email_segurado", "titular_cpf", "rg",
+              "documento_do_titular", "senha"):
+    checar(not R._campo_vale_como_fonte(campo),
+           f"🔴 P-a: `{campo}` SAI da fonte (nunca é resposta de tela de URA)")
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")

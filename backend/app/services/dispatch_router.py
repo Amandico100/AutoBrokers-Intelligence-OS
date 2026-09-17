@@ -3236,8 +3236,13 @@ _CAMPOS_FORA_DA_FONTE = ("cpf", "cnpj", "documento", "rg", "telefone", "fone",
 
 
 def _campo_vale_como_fonte(chave: Any) -> bool:
-    nome = _chave_de_origem(chave).replace(" ", "_")
-    return not any(marca in nome for marca in _CAMPOS_FORA_DA_FONTE)
+    """🔴 Por TOKEN, nunca por substring — confirmação, P-a (17/09).
+
+    📊 Com `in`, `fone` excluia `interfone` e `rg` excluia `orgao_emissor`,
+    `cargo`, `largura` e `energia` — campos que SÃO resposta legítima de tela.
+    """
+    partes = set(_chave_de_origem(chave).split())
+    return not (partes & set(_CAMPOS_FORA_DA_FONTE))
 
 
 def valor_tem_origem(valor: Any, fontes: List) -> Optional[str]:
@@ -3618,17 +3623,28 @@ async def responder_pergunta_do_acionamento(company_id: str, from_phone: str, te
     #                 motor o usa quando a tela pedir — e o segurado não é
     #                 perguntado de novo (`perguntado_ao_segurado` veio junto).
     #    `guardada` — o caso já é de uma pessoa (o dossiê saiu): a resposta fica
-    #                 na ficha e no rastro, e NÃO se reabre uma URA por conta
-    #                 própria. ⛔ O corredor só sabe REENTRAR quando alguém da
-    #                 seguradora fala (`pode_reentrar_em_fase_humana`); reabrir
-    #                 do nosso lado é abrir um SEGUNDO acionamento, e isso é o
-    #                 que `pode_retomar` existe para impedir.
-    #                 (pendência P-E0014-19)
+    #    `no_slot`  — a URA fechou e o corredor REABRIU (juiz fresco, B3): a
+    #                 conversa nova está NOUTRA tela, e jogar o valor nela seria
+    #                 responder a pergunta errada. O dado entra no SLOT e o
+    #                 motor o usa quando a tela pedir — e o segurado não é
+    #                 perguntado de novo (`perguntado_ao_segurado` veio junto).
+    #                 🔴 ⚠️ MAS se a URA reaberta JÁ ESTÁ na tela que pede esse
+    #                 dado, `no_slot` é um desperdício caro — confirmação, D1
+    #                 (17/09): aí ninguém responde a tela (a pergunta não se
+    #                 repete), `falta_para_a_ura` é apagado logo abaixo, a URA
+    #                 fecha por inatividade e o retry Único já foi queimado: o
+    #                 caso cai em pessoa. Nessa tela a resposta é `levada`,
+    #                 exatamente como uma resposta no prazo — e vai ao slot.
     de_pe = str((session or {}).get("state") or "") in ("ura", "human_phase")
     de_outro_acionamento = bool(espera.get("de_acionamento_anterior"))
+    # 🔴 D1: a tela DE AGORA pede justamente este dado?
+    _falta_agora = str(((session or {}).get("falta_para_a_ura") or {}).get("slot") or "")
+    na_tela_do_slot = (str((session or {}).get("state") or "") == "ura"
+                       and bool(_falta_agora)
+                       and _falta_agora == str(espera.get("slot") or ""))
     if not de_pe:
         retomada = "guardada"
-    elif de_outro_acionamento:
+    elif de_outro_acionamento and not na_tela_do_slot:
         retomada = "no_slot"
     else:
         retomada = "levada"
