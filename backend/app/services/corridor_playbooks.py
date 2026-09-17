@@ -6339,8 +6339,10 @@ _ALFA_ALLIANZ_FAMILIA = [
      #    A note dizia "3 telas / 3 sessões" — verdade na alfa, e só nela. O
      #    passo é da FAMÍLIA, então a allianz o carrega também, e lá são 7.
      #    📊 Recontado em 23/08/2026: alfa 3 · allianz 7 = 10 telas distintas.
-     "notes": "📊 10 telas / 10 sessões nos DOIS corredores da família "
-              "(alfa 3 · allianz 7). `_ANCORA_DE_PROTOCOLO` já captura os "
+     "notes": "📊 25 telas / 36 sessões nos DOIS corredores da família "
+              "(redações distintas no acervo allianz+alfa, recontadas em 17/09 "
+              "pela EXTRA-001.4 com o setembro dos pilotos; em 22/08 eram 10/10). "
+              "`_ANCORA_DE_PROTOCOLO` já captura os "
               "três da alfa (50274607, 51314713, 52675121); o passo é só para "
               "o motor não responder."},
     # ══════════════════════════════════════════════════════════════════════
@@ -6454,7 +6456,7 @@ _ALLIANZ_RESID_TRONCO = [
     {"step": "escolher_endereco_da_lista",
      "anchor": r"^\*?1\s*-\*?\s[\s\S]{0,180}\*?2\s*-\*?\s*voltar[\s\S]{0,24}\*?3\s*-\*?\s*sair",
      "reply": "1", "fallback_adaptive": True,
-     "notes": "📊 17 telas / 34 sessões — a maior família órfã do corredor. '1' é o "
+     "notes": "📊 35 telas / 76 sessões (redações distintas no acervo, recontadas em 17/09 pela EXTRA-001.4; eram 17/34) — a maior família órfã do corredor. '1' é o "
               "endereço da apólice. ⚠️ Se o caso trouxer outro endereço, o adaptativo "
               "assume: escolher às cegas manda o prestador para a casa errada."},
 
@@ -7695,7 +7697,7 @@ _ALLIANZ_RESID_FOLHAS = [
          "📊 4 telas / 4 sessões. 1-ver o chamado ANTIGO · 2-Abrir um novo "
          "atendimento. O corredor só roda quando a corretora pediu um acionamento "
          "NOVO; '1' o deixaria preso no detalhe de um chamado que já existe."),
-     "notes": "📊 6 telas / 4 sessões. ⚠️ Dizia 4 telas até 22/08/2026: o recount do eixo B, na unidade certa, achou 6 redacoes distintas. O numero de SESSOES estava certo."},
+     "notes": "📊 10 telas / 21 sessões (acervo recontado em 17/09 pela EXTRA-001.4; eram 6/4). ⚠️ Dizia 4 telas até 22/08/2026: o recount do eixo B, na unidade certa, achou 6 redacoes distintas. O numero de SESSOES estava certo."},
 
     # ---- o galho do ELETRICISTA ------------------------------------------
     {"step": "energia_da_vizinhanca",

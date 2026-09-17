@@ -233,6 +233,126 @@ certo(d.get("pneus_furados_opcao") == "2",
 
 print()
 print("=" * 74)
+print("[5] 🔴 GA-1 (EXTRA-001.4) · O LAÇO INVERTIDO: toda tecla EXIGIDA tem origem")
+print("=" * 74)
+# 📊 O laço de cima parte das teclas DERIVADAS — ausência de tecla não é forma
+#    errada, é forma nenhuma, e ele não a via: `qual_seguro_opcao` mandou
+#    "residência" ao menu da Allianz em 10/09 com este guarda verde. Aqui o laço
+#    parte dos PASSOS, corredor por corredor.
+#
+# ⚠️ As teclas que só a ATENDENTE preenche ficam declaradas, com o motivo. A
+#    cobertura delas em runtime é `resolver_tecla`: palavra vira dígito lendo a
+#    tela, e vazio vai ao Cérebro com as opções (ou a uma pessoa, se decide o
+#    ramo). Tecla nova sem origem e fora da lista = VERMELHO, com o nome dela.
+_ATENDENTE = ("coletada pela atendente; a camada 1 converte a palavra lendo a tela "
+              "e, vazia, a tela vai ao Cérebro com as opções numeradas")
+DA_ATENDENTE = {
+    ("zurich-auto", "alavanca_travada_opcao"): _ATENDENTE,
+    ("zurich-auto", "cambio_opcao"): _ATENDENTE,
+    ("zurich-auto", "pane_opcao"): _ATENDENTE,
+    ("zurich-auto", "pneus_danificados_opcao"): _ATENDENTE,
+    ("mapfre-auto", "assunto_opcao"): _ATENDENTE,
+    ("allianz-residencial", "caixa_litros_opcao"): _ATENDENTE,
+    ("allianz-residencial", "caixas_dagua_quantidade_opcao"): _ATENDENTE,
+    ("allianz-residencial", "chave_tipo_opcao"): "required_slots do chaveiro: " + _ATENDENTE,
+    ("allianz-residencial", "chaveiro_necessidade_opcao"): "required_slots do chaveiro: " + _ATENDENTE,
+    ("allianz-residencial", "endereco_opcao"): _ATENDENTE,
+    ("allianz-residencial", "idade_aparelho_opcao"): "required_slots do eletrodoméstico: " + _ATENDENTE,
+    ("porto-residencial", "chaveiro_alvo_opcao"): _ATENDENTE,
+    ("porto-residencial", "encanador_instalacao_opcao"): _ATENDENTE,
+    ("porto-residencial", "encanador_tipo_opcao"): _ATENDENTE,
+    ("porto-residencial", "fechadura_tipo_opcao"): _ATENDENTE,
+    ("porto-residencial", "horario_opcao"): "lista de horários da URA: " + _ATENDENTE,
+    ("azul-auto", "periodo_opcao"): _ATENDENTE,
+    ("alfa-auto", "equipamentos_troca_opcao"): _ATENDENTE,
+    ("allianz-auto", "equipamentos_troca_opcao"): _ATENDENTE,
+}
+for _ref in ("hdi-residencial", "yelum-residencial"):
+    for _slot in ("chaveiro_porta_opcao", "eletrodomestico_opcao", "geladeira_medicacao_opcao"):
+        DA_ATENDENTE[(_ref, _slot)] = _ATENDENTE
+for _ref in ("azul-auto", "hdi-auto", "hdi-residencial", "porto-auto",
+             "porto-residencial", "yelum-auto", "yelum-residencial"):
+    DA_ATENDENTE[(_ref, "veiculo_opcao")] = ("a lista de veículos da apólice; " + _ATENDENTE)
+
+
+def inline_do_motor():
+    """As teclas que `new_dispatch_session` preenche por conta própria (AST)."""
+    arvore = ast.parse(open(os.path.join(RAIZ, "app", "services",
+                                         "insurer_dispatch_service.py"), encoding="utf-8").read())
+    fora = set()
+    for no in ast.walk(arvore):
+        if not (isinstance(no, ast.FunctionDef) and no.name == "new_dispatch_session"):
+            continue
+        for f in ast.walk(no):
+            alvo = None
+            if isinstance(f, ast.Assign):
+                for t in f.targets:
+                    if (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+                            and t.value.id == "merged_slots" and isinstance(t.slice, ast.Constant)):
+                        alvo = t.slice.value
+            elif (isinstance(f, ast.Call) and isinstance(f.func, ast.Attribute)
+                  and f.func.attr == "setdefault" and isinstance(f.func.value, ast.Name)
+                  and f.func.value.id == "merged_slots" and f.args
+                  and isinstance(f.args[0], ast.Constant)):
+                alvo = f.args[0].value
+            if alvo and str(alvo).endswith("_opcao"):
+                fora.add(str(alvo))
+    return fora
+
+
+def sem_origem(derivados, inline, declaradas):
+    fora = []
+    for ref, pb in sorted(CP._PLAYBOOKS.items()):
+        curto = ref.split("-whatsapp")[0]
+        const = {k for sub in (pb.get("subservices") or {}).values() if isinstance(sub, dict)
+                 for k, v in sub.items() if k.endswith("_opcao") and v}
+        for p in pb.get("ura_steps") or []:
+            exig = set(re.findall(r"\{(\w+_opcao)\}", str(p.get("reply") or "")))
+            exig |= {r for r in (p.get("requires") or []) if r.endswith("_opcao")}
+            for slot in sorted(exig):
+                if (slot in derivados or slot in inline or slot in const
+                        or (curto, slot) in declaradas):
+                    continue
+                fora.append((curto, p.get("step"), slot))
+    return fora
+
+
+INLINE = inline_do_motor()
+certo(INLINE == {"servico_opcao", "telefone_adicionar_opcao"},
+      "📊 o motor preenche por conta própria exatamente as duas teclas inline",
+      f"{sorted(INLINE)}")
+ORFAS = sem_origem(set(VALORES), INLINE, DA_ATENDENTE)
+for ref, passo, slot in ORFAS[:8]:
+    print(f"        🔴 {ref} · passo `{passo}` exige `{slot}` e nada o preenche")
+certo(not ORFAS, "🔴 toda tecla exigida por um passo tem origem (derivação · inline · "
+      "subserviço · atendente declarada)", f"{len(ORFAS)} passo(s) sem origem")
+certo("qual_seguro_opcao" in VALORES,
+      "🔴 `qual_seguro_opcao` — a tecla do 10/09 — passou a ter derivação",
+      f"derivadas: {len(VALORES)}")
+# 🔴 CONTROLE: o laço CONSEGUE acusar — sem a derivação do eletricista, ele nomeia.
+_sem_eletrico = {k: v for k, v in VALORES.items() if k != "problema_eletrico_opcao"}
+_acusa = sem_origem(set(_sem_eletrico), INLINE, DA_ATENDENTE)
+certo(any(s == "problema_eletrico_opcao" for _, _, s in _acusa),
+      "🔴 CONTROLE: sem a derivação de `problema_eletrico_opcao`, o laço a NOMEIA",
+      f"acusou {sorted({s for _, _, s in _acusa})[:4]}")
+# ⚠️ E a declaração não pode envelhecer: tecla declarada que ganhou origem sai da lista.
+_velhas = sorted(k for k in DA_ATENDENTE if k[1] in VALORES or k[1] in INLINE)
+certo(not _velhas, "a lista da atendente não declara tecla que já tem derivação", f"{_velhas}")
+
+# 🔴 E a DERIVAÇÃO nova, pelo MOTOR (§9.4): o ramo só sai com UM casamento.
+for relato, esperado in (
+        ("vazamento no banheiro da minha casa", "1"),
+        ("infiltração na área comum do prédio", "2"),
+        ("a porta da minha loja não fecha", "3"),
+        ("moro num condomínio e a casa está sem luz", None),   # dois ramos: ninguém chuta
+        ("tomadas da cozinha sem energia", None)):              # nenhum: a atendente pergunta
+    d = {"problema_descricao": relato}
+    IDS._derivar_teclas_do_caso(d)
+    certo(d.get("qual_seguro_opcao") == esperado,
+          f"qual_seguro_opcao <- {relato[:38]!r} = {esperado!r}", f"veio {d.get('qual_seguro_opcao')!r}")
+
+print()
+print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")
 print("=" * 74)
 sys.exit(1 if FAIL else 0)

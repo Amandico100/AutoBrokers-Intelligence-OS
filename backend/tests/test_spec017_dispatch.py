@@ -72,12 +72,26 @@ SLOTS = {
     "problema_descricao": "Tomadas da cozinha sem energia, sem cheiro de queimado",
     "periodo_preferido": "tarde",
     "risco_confirmado_sem_fumaca": "sim",
+    # SPEC-083 (21/08) tornou a tecla do RAMO obrigatória, e a fixture ficou para
+    # trás — o teste estava vermelho desde então (triagem da EXTRA-001.4). Vem
+    # como a atendente coleta: a PALAVRA; o motor a converte lendo a tela.
+    "qual_seguro_opcao": "residencial",
 }
+
+# SPEC-083 (21/08): o chaveiro exige as duas teclas — a fixture ficou para trás.
+SLOTS_CHAVEIRO = {**SLOTS, "chaveiro_necessidade_opcao": "abrir a porta",
+                  "chave_tipo_opcao": "simples"}
 
 # Frases REAIS do robô Allianz (conversa minerada; sem PII).
 URA = {
     "menu1": "Olá! Sou a *assistente virtual da Allianz*. Este é um canal exclusivo de serviços emergenciais. Você precisa de Assistência 24h para qual seguro?",
-    "menu2": "Para continuarmos qual o seguro que deseja utilizar?",
+    # EXTRA-001.4: a redação ATUAL do menu de ramo, do corpus (15+ sessões). A
+    # antiga ("Para continuarmos qual o seguro…") não casa mais o passo desde a
+    # SPEC-083, e o "1" esperado aqui só sai lendo a tela real.
+    "menu2": ("Qual seguro deseja utilizar?\n\n"
+              "*1 - Residencial:* Para sua casa ou apartamento individual\n"
+              "*2 - Condomínio:* Para áreas comuns e estrutura do condomínio\n"
+              "*3 - Empresarial:* Para proteger seu negócio"),
     "cpf": "Certo! Por favor digite o *CPF* ou *CNPJ* do(a) titular da apólice ou pressione *9* para voltar",
     "endereco": "Por favor, confirme o endereço para atendimento:",
     "numero": "Agora, me informe o número da residência.",
@@ -147,7 +161,7 @@ def run():
     check("P4: retorno ao cliente tem protocolo+senha+regra 18 anos", msg and "46078656" in msg and "8888" in msg and "maior de 18" in low, msg)
 
     # Fail-safe: mensagem desconhecida na URA -> human_phase sem resposta às cegas.
-    s2 = dispatch.new_dispatch_session(case_id="c2", company_id="co", playbook_ref=REF, subservice="chaveiro", slots=SLOTS)
+    s2 = dispatch.new_dispatch_session(case_id="c2", company_id="co", playbook_ref=REF, subservice="chaveiro", slots=SLOTS_CHAVEIRO)
     s2 = dispatch.start_dispatch(s2)
     s2 = dispatch.handle_insurer_message(s2, "Boa tarde, meu nome é Laercio, sou da assistência 24 horas!")
     check("P4: analista humano -> resumo mastigado enviado 1x (fluxo real 01/04/2026)",
@@ -173,7 +187,7 @@ def run():
     # Gate aberto (env) -> sender é chamado de verdade.
     os.environ["INSURER_DISPATCH_LIVE"] = "true"
     try:
-        s4 = dispatch.new_dispatch_session(case_id="c4", company_id="co", playbook_ref=REF, subservice="chaveiro", slots=SLOTS)
+        s4 = dispatch.new_dispatch_session(case_id="c4", company_id="co", playbook_ref=REF, subservice="chaveiro", slots=SLOTS_CHAVEIRO)
         real_sent = []
         s4 = dispatch.start_dispatch(s4, sender=real_sent.append)
         check("P4: gate aberto envia via sender", real_sent == ["Olá"] and not s4["transcript"][-1]["dry_run"], real_sent)
@@ -243,7 +257,7 @@ def run():
                   monitored is not None and monitored.get("state") == "monitoring", monitored and monitored.get("state"))
 
             # needs_human: cliente recebe aviso humano e sessão pausa.
-            s2 = dispatch.new_dispatch_session(case_id="cH", company_id="co-R", playbook_ref=REF, subservice="chaveiro", slots=SLOTS)
+            s2 = dispatch.new_dispatch_session(case_id="cH", company_id="co-R", playbook_ref=REF, subservice="chaveiro", slots=SLOTS_CHAVEIRO)
             s2["client_phone"] = "5548911112222"
             s2 = dispatch.start_dispatch(s2, sender=lambda t: None)
             await router.save_active_dispatch("co-R", "551140901444", s2)

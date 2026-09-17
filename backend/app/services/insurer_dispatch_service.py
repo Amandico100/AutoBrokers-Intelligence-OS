@@ -21,7 +21,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypedDict
 
 from app.services.corridor_playbooks import (
     _COMO_PERGUNTAR,
@@ -391,6 +391,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _teclas_preenchidas(slots: dict) -> set:
+    return {k for k, v in slots.items() if k.endswith("_opcao") and str(v or "").strip()}
+
+
+def _anotar_origem(origem: Dict[str, str], slots: dict, rotulo: str) -> None:
+    """Marca com `rotulo` as teclas que ESTE passo da montagem preencheu."""
+    for k in _teclas_preenchidas(slots) - set(origem):
+        origem[k] = rotulo
+
+
 def _derivar_teclas_do_caso(slots: dict) -> None:
     """Traduz o que o segurado disse para as teclas que a URA espera.
 
@@ -407,6 +417,26 @@ def _derivar_teclas_do_caso(slots: dict) -> None:
     texto = _norm(" ".join(str(slots.get(c) or "") for c in
                                ("problema_descricao", "problema_relato",
                                 "descricao", "servico_texto")))
+
+    # ---- "Qual seguro deseja utilizar?" (allianz residencial) --------
+    # 📊 A tela real (corpus, 17/09): "*1 - Residencial:* Para sua casa ou
+    #    apartamento individual / *2 - Condomínio:* Para áreas comuns e estrutura
+    #    do condomínio / *3 - Empresarial:* Para proteger seu negócio".
+    #
+    # 🔴 SPEC-EXTRA-001.4 — A EXCEÇÃO À REGRA DO DEFAULT DESTA FUNÇÃO, deliberada
+    #    (CLAUDE.md §9.5): esta tecla não NAVEGA, ela escolhe o RAMO DA APÓLICE.
+    #    📊 A SPEC-083 tirou daqui a constante "1", que mandava condomínio para a
+    #    apólice residencial. Sem UM casamento só no relato, o slot fica vazio e a
+    #    tela vai a uma pessoa (`resolver_tecla` → `ramo_indeterminado`).
+    #    ⚠️ "casa" E "condomínio" no mesmo relato é o caso comum de quem MORA em
+    #    condomínio — e é exatamente o que não se decide por palavra.
+    if not str(slots.get("qual_seguro_opcao") or "").strip():
+        residencial = bool(re.search(r"\b(?:residencia|residencial|casa|apartamento|ape)\b", texto))
+        condominio = bool(re.search(r"\b(?:condominio|area comum|areas comuns|sindico|sindica)\b", texto))
+        empresarial = bool(re.search(
+            r"\b(?:empresa|empresarial|comercial|comercio|loja|escritorio|negocio)\b", texto))
+        if residencial + condominio + empresarial == 1:
+            slots["qual_seguro_opcao"] = "1" if residencial else ("2" if condominio else "3")
 
     # ---- "O que aconteceu?" (eletricista) ----------------------------
     # 📊 A tela real: "1 - Casa inteira ou parcial sem energia
@@ -1058,12 +1088,18 @@ def new_dispatch_session(
     # O sufixo `_opcao` já é a regra em `missing_slots_for_subservice` ("o que o
     # MOTOR preenche não se cobra do cliente") e em `_slots_com_padrao_do_motor`.
     # Ler a mesma regra aqui é o que faz a tecla nova nascer ligada.
+    # 🔴 SPEC-EXTRA-001.4 A — DE ONDE VEIO CADA TECLA. `resolver_tecla` escreve a
+    #    origem no transcript: "a atendente disse 'residência'" e "a derivação
+    #    leu o relato" são erros diferentes, e o dossiê precisa dizer qual foi.
+    origem_das_teclas = {k: "atendente" for k in _teclas_preenchidas(merged_slots)}
     for chave, valor in (sub or {}).items():
         if chave.endswith("_opcao") and valor and not merged_slots.get(chave):
             merged_slots[chave] = valor
+    _anotar_origem(origem_das_teclas, merged_slots, "subservico")
     # Default seguro: sem telefone extra => usa o registrado (opção 2).
     if not str(merged_slots.get("telefone_adicionar_opcao") or "").strip():
         merged_slots["telefone_adicionar_opcao"] = "1" if merged_slots.get("telefone_contato") else "2"
+    _anotar_origem(origem_das_teclas, merged_slots, "inline")
 
     # 🔴 AS TECLAS QUE SAEM DO QUE O SEGURADO JÁ DISSE — SPEC-082, 18/08/2026.
     #
@@ -1082,6 +1118,7 @@ def new_dispatch_session(
     # segurado já contou: ele descreve com as palavras dele, e o corredor
     # converte para a tecla da seguradora. É o trabalho do corredor.
     _derivar_teclas_do_caso(merged_slots)
+    _anotar_origem(origem_das_teclas, merged_slots, "derivacao")
 
     # Os campos que o MOTOR preencheu, e que o cliente nunca confirmou.
     # Ver o comentário logo abaixo, no bloco AUTO.
@@ -1093,6 +1130,7 @@ def new_dispatch_session(
         if menu_value:
             merged_slots.setdefault("servico_opcao", menu_value)
             merged_slots.setdefault("servico_texto", menu_value)
+            _anotar_origem(origem_das_teclas, merged_slots, "inline")
         # O QUE O MOTOR PREENCHE NÃO É O QUE O CLIENTE DISSE.
         #
         # 📊 Achado em 05/08/2026. Estes `setdefault` existem para a URA não
@@ -1178,6 +1216,7 @@ def new_dispatch_session(
         # prompt marca cada um, para o agente nunca afirmar a uma pessoa de
         # verdade um dado que ninguém disse.
         "slots_padrao": sorted(_slots_padrao),
+        "origem_das_teclas": origem_das_teclas,
         "state": "preparing" if missing else "ready_to_send",
         "missing_slots": missing,
         "transcript": [],  # [{direction, text, at, dry_run}]
@@ -2436,6 +2475,330 @@ def _conferir_antes_de_confirmar(session: Dict[str, Any], playbook: Dict[str, An
     return None
 
 
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 BLOCO A · A REGRA B — NENHUM SLOT `*_opcao` CHEGA CRU À URA
+# ===========================================================================
+#
+# 📊 10/09/2026, sessão Allianz `432614de`: o menu "Qual seguro deseja utilizar?
+# *1 - Residencial:* … *2 - Condomínio:* … *3 - Empresarial:* …" recebeu
+# "residência" — o valor que a atendente coletou, interpolado CRU por
+# `render_reply` — e a URA respondeu "Opção inválida." às 14:13:07 e às 14:18:09.
+# A atendente da corretora digitou o "1" à mão.
+#
+# 📊 E não era um slot só: dos 52 `*_opcao` que os 805 passos exigem, 29 não têm
+# derivação (AST, 17/09). Esta camada conserta os 29 de uma vez porque não
+# depende de alguém lembrar de escrever a derivação: ela LÊ A TELA.
+#
+# ⛔ Nenhum parser novo (CLAUDE.md §5): o menu é lido por
+# `cartographer.parse_options` e o rótulo é casado por `atlas.weaver.labels_match`.
+
+
+class Tecla(TypedDict):
+    valor: str              # o que vai para a URA ("" quando nada sai)
+    origem: str             # atendente · subservico · inline · derivacao · menu_lido
+    rotulo: Optional[str]   # o rótulo casado, quando origem == "menu_lido"
+    motivo: str             # por que ESTE valor está certo — ou por que nada sai
+    destino: str            # "ura" (envia) · "cerebro" (tela reversível) · "humano"
+    slot: str
+    reason: str             # quando destino == "humano"
+
+
+_SLOT_OPCAO_RE = re.compile(r"^\{(\w+_opcao)\}$")
+
+#: 🔴 AS TECLAS QUE DECIDEM O RAMO DA APÓLICE — sem default e sem Cérebro.
+#:
+#: Navegar (`Continuar`, `Voltar`) e DECIDIR (`Residencial` × `Condomínio`) têm a
+#: mesma forma no código e resultados opostos na vida do segurado (CLAUDE.md §9.5).
+#: 📊 A SPEC-083 tirou desta tela a constante "1", que mandava condomínio para a
+#: apólice residencial. Chutar aqui — por regra ou por modelo — reabre aquele
+#: defeito: sem certeza, a tela vai a uma pessoa (`ramo_indeterminado`).
+_TECLAS_QUE_DECIDEM_O_RAMO = frozenset({"qual_seguro_opcao"})
+
+
+def _modulo_do_produto(nome: str, *arquivos: Tuple[str, str]):
+    """`import_module(nome)` — e, se o pacote `app.services` foi montado à mão,
+    carrega os ARQUIVOS pelo caminho: o mesmo código, nunca uma cópia.
+
+    📊 75 testes carregam este hub isolado, com `app.services.__path__ = []`; ali
+    todo import tardio de módulo não pré-carregado quebra (`test_spec017_dispatch`
+    acusou na primeira rodada). `ura_map_service`, `cartographer` e `atlas.weaver`
+    só importam a biblioteca padrão no topo, então o carregamento é seguro.
+    """
+    import importlib
+    import importlib.util
+    import sys
+
+    try:
+        return importlib.import_module(nome)
+    except ImportError:
+        base = os.path.dirname(os.path.abspath(__file__))
+        mod = None
+        for dotted, relativo in arquivos:
+            mod = sys.modules.get(dotted)
+            if mod is None:
+                spec = importlib.util.spec_from_file_location(dotted, os.path.join(base, relativo))
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[dotted] = mod
+                spec.loader.exec_module(mod)
+        return mod
+
+
+def _cartographer():
+    return _modulo_do_produto(
+        "app.services.cartographer",
+        ("app.services.ura_map_service", "ura_map_service.py"),
+        ("app.services.cartographer", "cartographer.py"))
+
+
+def _weaver():
+    return _modulo_do_produto(
+        "app.services.atlas.weaver",
+        ("app.services.atlas.weaver", os.path.join("atlas", "weaver.py")))
+
+
+def opcoes_numeradas(tela: str) -> List[Tuple[str, str]]:
+    """`[(dígito, rótulo)]` do menu NUMERADO da tela, ou `[]`.
+
+    🔴 Pelo `parse_options`, NUNCA pela regex `_NUMERADA` direto: 📊 no menu real
+    da Allianz (`*1 - Residencial:*`, o negrito ANTES do dígito) a regex sozinha
+    acha 0 opções e `parse_options` acha 3, porque ele tira o negrito primeiro
+    (`cartographer._sem_negrito`). É o §9.4 do CLAUDE.md: o texto que o parser
+    recebe decide o número.
+
+    ⛔ O ramo de PALPITE do parser (listas nuas) fica fora: só entra rótulo que
+    traz o número. Botão da Evolution também — botão se escolhe pelo rótulo, e a
+    palavra sai inteira.
+    """
+    carto = _cartographer()
+    vistos: Dict[str, str] = {}
+    for label in carto.parse_options(str(tela or "")):
+        numero = carto.numero_da_opcao(label)
+        if numero is None:
+            continue
+        rotulo = re.sub(r"^\s*\d{1,2}\s*[-–.)\]]\s*", "", label).strip()
+        vistos.setdefault(numero.lstrip("0") or "0", rotulo)
+    return list(vistos.items()) if len(vistos) >= 2 else []
+
+
+def _casar_rotulo(valor: str, opcoes: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """As opções cujo rótulo é o `valor`: igualdade primeiro, depois o casador do Atlas."""
+    w = _weaver()
+    alvo = w._norm_label(valor)
+    if not alvo:
+        return []
+    exatas = [(d, r) for d, r in opcoes if w._norm_label(r) == alvo]
+    if exatas:
+        return exatas
+    return [(d, r) for d, r in opcoes if w.labels_match(f"{d} - {r}", valor)]
+
+
+def resolver_tecla(playbook: Dict[str, Any], step: Dict[str, Any],
+                   session: Dict[str, Any], tela: str) -> Optional[Tecla]:
+    """A tecla que o passo manda à URA, conferida contra a TELA REAL.
+
+    `None` = o passo não responde com uma tecla `{*_opcao}` (nada a conferir).
+    📊 Os 93 passos que interpolam uma tecla têm `reply` igual a `{slot}` (17/09).
+
+      1.  valor já é dígito                      → sai como está
+      2a. tela numerada e o valor casa UM rótulo → sai o DÍGITO dele (menu_lido)
+      2b. casa 2+ rótulos                        → humano (`tecla_ambigua`)
+          casa nenhum                            → Cérebro, com as opções da tela
+      2c. a tela não é menu numerado             → a palavra sai inteira (a porto)
+      3.  valor vazio                            → Cérebro (tela reversível)
+      ⚠️  a tecla que decide o RAMO nunca vai ao Cérebro: humano (`ramo_indeterminado`)
+
+    ⚠️ Divergência registrada (D-E0014-01): a proposta §5.2 manda o valor vazio a
+    `needs_human`. 📊 Desde 19/08 a tela reversível sem dado vai ao Cérebro (ver
+    `handle_insurer_message`), e voltar a parar ali reabriria o travamento de 2min22
+    em 29 teclas. O Cérebro agora recebe as opções numeradas (`build_human_phase_messages`).
+    """
+    m = _SLOT_OPCAO_RE.match(str(step.get("reply") or "").strip())
+    if not m:
+        return None
+    slot = m.group(1)
+    valor = str((session.get("slots") or {}).get(slot) or "").strip()
+    origem = str((session.get("origem_das_teclas") or {}).get(slot) or "atendente")
+    base: Tecla = {"valor": "", "origem": origem, "rotulo": None, "motivo": "",
+                   "destino": "ura", "slot": slot, "reason": ""}
+
+    def _sem_tecla(motivo: str) -> Tecla:
+        if slot in _TECLAS_QUE_DECIDEM_O_RAMO:
+            return {**base, "destino": "humano", "reason": "ramo_indeterminado", "motivo": motivo}
+        return {**base, "destino": "cerebro", "motivo": motivo}
+
+    if not valor:
+        return _sem_tecla(f"`{slot}` está vazio")
+    if re.fullmatch(r"\d{1,2}", valor):
+        return {**base, "valor": valor, "motivo": f"`{slot}` já é o dígito da opção ({origem})"}
+    opcoes = opcoes_numeradas(tela)
+    if not opcoes:
+        return {**base, "valor": valor,
+                "motivo": "a tela não é menu numerado: a palavra sai inteira"}
+    casadas = _casar_rotulo(valor, opcoes)
+    if len(casadas) == 1:
+        digito, rotulo = casadas[0]
+        return {**base, "valor": digito, "origem": "menu_lido", "rotulo": rotulo,
+                "motivo": f"{valor!r} ({origem}) é a opção {digito} ({rotulo!r}) desta tela"}
+    lista = ", ".join(f"{d} - {r}" for d, r in (casadas or opcoes))
+    if len(casadas) >= 2:
+        return {**base, "destino": "humano", "reason": "tecla_ambigua",
+                "motivo": f"{valor!r} casa {len(casadas)} opções desta tela: {lista}"}
+    return _sem_tecla(f"{valor!r} não é nenhuma das opções desta tela: {lista}")
+
+
+def _tecla_para_humano(session: Dict[str, Any], step_name: str, tecla: Tecla) -> Dict[str, Any]:
+    session["state"] = "needs_human"
+    session["reason"] = tecla["reason"]
+    session["missing_slots"] = [tecla["slot"]]
+    session["motivo_legivel"] = {
+        "campo": step_name, "slot": tecla["slot"],
+        "rotulo": (f"{_COMO_PERGUNTAR.get(tecla['slot'], tecla['slot'].replace('_', ' '))}"
+                   f" — {tecla['motivo']}"),
+    }
+    session["ultimo_passo_sem_dado"] = {"step": step_name, "faltou": [tecla["slot"]],
+                                        "notes": tecla["motivo"]}
+    logger.warning("[DISPATCH] 🔴 passo %r: %s — %s", step_name, tecla["reason"], tecla["motivo"])
+    return session
+
+
+# ===========================================================================
+# 🔴 SPEC-EXTRA-001.4 BLOCO B · A REGRA A — "OPÇÃO INVÁLIDA" É REPARADA PELO MOTOR
+# ===========================================================================
+#
+# 📊 Na sessão de 10/09 a recusa chegou em DUAS bolhas — "Opção inválida." e
+# "Vamos tentar novamente." — e a URA NÃO repetiu o menu. Quem repara precisa
+# lembrar do menu que foi respondido: é o `menu_pendente`, gravado a cada saída.
+#
+#: As recusas de menu, MEDIDAS em `observed_events` (17/09, `direction='in'`),
+#: casadas sobre `_norm` (sem acento, sem `*`, minúsculas).
+RECUSA_DE_MENU: Tuple[str, ...] = (
+    # 📊 allianz "Opção inválida." 26 ev / 14 sess · porto "Opção inválida, vamos tentar de novo?" 3 / 3
+    r"\bopcao invalida\b",
+    # 📊 porto 11 ev em 5 redações ("Não entendi (a) sua resposta. Por favor, *escolha* /
+    #    *digite o número* / responda com / *selecionando* uma das opções") · azul 3 · mapfre 1
+    r"\bnao entendi (?:a )?sua resposta\b",
+    # 📊 porto "Não consegui entender sua resposta. Por favor, escolha uma das opções" 2 · hdi 1
+    r"\bnao consegui entender (?:a )?sua resposta\b",
+    # 📊 mapfre "não consegui identificar a opção escolhida" 5 / 4 · "…a sua escolha" 1
+    r"\bnao consegui identificar (?:a )?(?:sua )?(?:opcao escolhida|escolha)\b",
+    # 📊 bradesco "Não entendi! … Escolha uma das opções" 1 · tokio "Não entendi, selecione uma
+    #    opção abaixo!" 2 · hdi "Não entendi. Lembre-se que … selecionar o botão" 1
+    r"\bnao entendi\b[^\n]{0,80}?\b(?:escolh|selecion)",
+    # 📊 bradesco "Ainda não entendi... você prefere …" 1
+    r"\bainda nao entendi\b",
+)
+_RECUSA_RE = re.compile("|".join(RECUSA_DE_MENU), re.IGNORECASE)
+#: ⛔ Parece recusa e é ENCERRAMENTO ou PESQUISA — reparar ali é digitar numa conversa
+#: que acabou. 📊 porto 6 / azul 1: "Ainda não consegui entender e vou precisar encerrar
+#: a conversa." · porto 4 / azul 1: "Não entendi o que você digitou. … Avaliar atendimento"
+_RECUSA_QUE_NAO_E_DE_MENU = re.compile(r"encerrar a conversa|encerrando|avaliar atendimento",
+                                       re.IGNORECASE)
+
+
+class MenuPendente(TypedDict):
+    tela_id: str                 # hash do texto normalizado da tela respondida
+    opcoes: List[List[str]]      # [[dígito, rótulo]] — de `opcoes_numeradas`
+    nossa_resposta: str          # o que mandamos
+    em: str
+
+
+def detectar_recusa_de_menu(tela: str) -> bool:
+    t = _norm_text(tela)
+    return bool(_RECUSA_RE.search(t)) and not _RECUSA_QUE_NAO_E_DE_MENU.search(t)
+
+
+def id_da_tela(tela: str) -> str:
+    """Identidade de uma tela: hash do texto NORMALIZADO, espaços colapsados."""
+    import hashlib
+
+    t = re.sub(r"\s+", " ", _norm_text(tela)).strip()
+    return hashlib.sha1(t.encode("utf-8")).hexdigest()[:12]
+
+
+def tela_respondida(session: Dict[str, Any]) -> str:
+    """As bolhas da seguradora desde a nossa última saída — a tela que se responde."""
+    bolhas: List[str] = []
+    for t in reversed(session.get("transcript") or []):
+        if not isinstance(t, dict):
+            continue
+        if t.get("direction") == "out":
+            break
+        if t.get("direction") == "in":
+            bolhas.append(str(t.get("text") or ""))
+    return "\n".join(reversed(bolhas))
+
+
+def registrar_menu_pendente(session: Dict[str, Any], resposta: str,
+                            tela: Optional[str] = None) -> None:
+    """Chamado a CADA saída nossa à URA (`_emit` e o Sentinela), ANTES de ela
+    entrar no transcript. Tela numerada → guarda o menu e a resposta; tela sem
+    menu → apaga o pendente: um menu velho nunca pode ser reparado depois que a
+    conversa andou. E a recusa anterior deixa de valer — acabamos de responder."""
+    tela = tela_respondida(session) if tela is None else tela
+    session.pop("ultima_resposta_recusada", None)
+    opcoes = opcoes_numeradas(tela)
+    if not opcoes:
+        session.pop("menu_pendente", None)
+        return
+    session["menu_pendente"] = {"tela_id": id_da_tela(tela),
+                                "opcoes": [list(o) for o in opcoes],
+                                "nossa_resposta": str(resposta or "").strip()[:80],
+                                "em": _now()}
+
+
+def _ultima_saida(session: Dict[str, Any]) -> str:
+    for t in reversed(session.get("transcript") or []):
+        if isinstance(t, dict) and t.get("direction") == "out":
+            return str(t.get("text") or "").strip()
+    return ""
+
+
+def reparar_opcao_invalida(session: Dict[str, Any], playbook: Dict[str, Any],
+                           tela: str) -> Optional[Tecla]:
+    """O dígito que conserta uma resposta recusada, ou `None`.
+
+    As quatro condições, todas obrigatórias (proposta §6.2), cada uma contada:
+      ① a tela casa `RECUSA_DE_MENU`
+      ② existe `menu_pendente` com ≥ 2 opções numeradas — e ele é o da ÚLTIMA saída
+      ③ a resposta pendente NÃO é dígito — um dígito recusado nunca é reenviado
+      ④ esta tela ainda não foi reparada (`reparos_por_tela`)
+    E o casamento tem de ser ÚNICO: sem ele, não se inventa dígito.
+
+    ⚠️ Toda recusa detectada vira `ultima_resposta_recusada`, reparada ou não —
+    é o que o Cérebro e o Sentinela leem no prompt (GB-3).
+    """
+    if not detectar_recusa_de_menu(tela):                                   # ①
+        return None
+    pendente = session.get("menu_pendente") or {}
+    ultima = _ultima_saida(session)
+    session["ultima_resposta_recusada"] = {
+        "nossa_resposta": ultima[:80],
+        "tela": re.sub(r"\s+", " ", str(tela or ""))[:200],
+        "em": _now(),
+    }
+    opcoes = [(str(d), str(r)) for d, r in (pendente.get("opcoes") or [])]
+    resposta = str(pendente.get("nossa_resposta") or "").strip()
+    if len(opcoes) < 2 or resposta != ultima[:80]:                          # ②
+        return None
+    if not resposta or re.fullmatch(r"\d{1,2}", resposta):                  # ③
+        return None
+    atuais = opcoes_numeradas(tela)
+    if atuais and sorted(r.lower() for _, r in atuais) != sorted(r.lower() for _, r in opcoes):
+        return None   # a tela da recusa trouxe OUTRO menu: quem responde é o passo dela
+    tid = str(pendente.get("tela_id") or "")
+    reparos = session.setdefault("reparos_por_tela", {})
+    if int(reparos.get(tid) or 0) >= 1:                                     # ④
+        return None
+    casadas = _casar_rotulo(resposta, opcoes)
+    if len(casadas) != 1:
+        return None
+    reparos[tid] = int(reparos.get(tid) or 0) + 1
+    digito, rotulo = casadas[0]
+    return {"valor": digito, "origem": "menu_lido", "rotulo": rotulo,
+            "motivo": f"a URA recusou {resposta!r}; {resposta!r} é a opção {digito} ({rotulo!r})",
+            "destino": "ura", "slot": "", "reason": ""}
+
+
 def handle_insurer_message(
     session: Dict[str, Any],
     insurer_message: str,
@@ -2623,6 +2986,28 @@ def handle_insurer_message(
         if pelo_formulario is not None:
             return pelo_formulario
 
+    # 🔴 SPEC-EXTRA-001.4 B — O REPARO VEM ANTES DO PASSO, DA FASE HUMANA E DO SENTINELA.
+    #
+    # Ordem deliberada, e ela não se inverte: o reparo é DETERMINÍSTICO e sabe o
+    # que foi recusado (`menu_pendente`); o Sentinela é caro (chama o Cérebro) e
+    # gasta tentativa. 📊 Em 10/09 a recusa não repetia o menu e nenhum passo a
+    # casava: ela ia à fase humana, o Vigia esperava 30 s e o Sentinela respondia
+    # às cegas — duas vezes, esgotando a rede da sessão inteira às 14:14.
+    reparo = reparar_opcao_invalida(session, playbook, insurer_message)
+    if reparo is not None:
+        pendente = dict(session.get("menu_pendente") or {})
+        estado = session.get("state") if session.get("state") in ("ura", "human_phase") else "ura"
+        session = _emit(session, reparo["valor"], sender=sender, next_state=estado,
+                        step="reparo_opcao_invalida")
+        session["transcript"][-1]["tecla"] = {"origem": reparo["origem"],
+                                              "rotulo": reparo["rotulo"],
+                                              "reparou": pendente.get("nossa_resposta")}
+        # O menu continua pendente — agora com o DÍGITO como resposta: se a URA
+        # recusar também o dígito, a condição ③ impede reenviá-lo.
+        session["menu_pendente"] = {**pendente, "nossa_resposta": reparo["valor"], "em": _now()}
+        logger.info("[DISPATCH] reparo determinístico: %s", reparo["motivo"])
+        return session
+
     step = match_ura_step(playbook, insurer_message, subservice=session.get("subservice"))
     if step:
         # Passo "noop": mensagem informativa (fila, aguarde, "ainda não
@@ -2655,6 +3040,19 @@ def handle_insurer_message(
         rendered = render_reply(effective, session.get("slots") or {})
         if step.get("dynamic") == "vehicle_by_plate" and not (rendered.get("reply") or "").strip():
             rendered = {"ok": False, "missing": ["veiculo_opcao"], "reply": None}
+        # 🔴 SPEC-EXTRA-001.4 A — A TECLA É CONFERIDA CONTRA A TELA ANTES DE SAIR.
+        #    `render_reply` interpola o slot CRU; é aqui que "residência" virava
+        #    a resposta a um menu que só aceita "1", "2" ou "3".
+        tecla = resolver_tecla(playbook, effective, session, insurer_message)
+        nota_da_tecla = ""
+        if tecla is not None:
+            if tecla["destino"] == "humano":
+                return _tecla_para_humano(session, step_name, tecla)
+            if tecla["destino"] == "ura":
+                rendered = {"ok": True, "missing": [], "reply": tecla["valor"]}
+            else:
+                rendered = {"ok": False, "missing": [tecla["slot"]], "reply": None}
+                nota_da_tecla = tecla["motivo"]
         if not rendered["ok"]:
             # ==============================================================
             # 🔴 A TELA CONHECIDA COM DADO FALTANDO — 19/08/2026
@@ -2785,7 +3183,8 @@ def handle_insurer_message(
                 session["ultimo_passo_sem_dado"] = {
                     "step": step_name,
                     "faltou": list(rendered["missing"]),
-                    "notes": str(step.get("notes") or ""),
+                    "notes": " · ".join(x for x in (str(step.get("notes") or ""),
+                                                    nota_da_tecla) if x),
                 }
                 logger.info(
                     "[DISPATCH] passo %r sem %s — REVERSÍVEL, o cérebro assume "
@@ -2810,7 +3209,12 @@ def handle_insurer_message(
                 session["reason"] = "loop_guard"
                 return session
             step_counts[step_name] = int(step_counts.get(step_name) or 0) + 1
-            return _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
+            session = _emit(session, rendered["reply"], sender=sender, next_state="ura", step=step_name)
+            if tecla is not None:
+                session["transcript"][-1]["tecla"] = {"slot": tecla["slot"],
+                                                      "origem": tecla["origem"],
+                                                      "rotulo": tecla["rotulo"]}
+            return session
 
     # FORMULÁRIO NATIVO — A SEGUNDA CHAMADA, e ela cobre o que a primeira não vê.
     #
@@ -3232,9 +3636,31 @@ def build_human_phase_messages(session: Dict[str, Any], insurer_message: str,
               "Se realmente não der para deduzir, responda NAO_SEI."
         )
 
+    # 🔴 SPEC-EXTRA-001.4 B · GB-3 — O CÉREBRO SABE QUE FOI RECUSADO, E VÊ OS NÚMEROS.
+    #
+    # 📊 Em 10/09 nada no prompt dizia "a sua última resposta foi recusada": o
+    # modelo via "Opção inválida." solto e não sabia a que respondia. E diante de
+    # um menu numerado, o que a URA aceita é o NÚMERO — a palavra foi o defeito.
+    recusada = session.get("ultima_resposta_recusada") or {}
+    opcoes_menu = opcoes_numeradas(insurer_message)
+    if not opcoes_menu and recusada:
+        opcoes_menu = [(str(d), str(r)) for d, r in
+                       ((session.get("menu_pendente") or {}).get("opcoes") or [])]
+    bloco_menu = ""
+    if recusada.get("nossa_resposta"):
+        bloco_menu += (
+            "\n\n🔴 A SUA ÚLTIMA RESPOSTA FOI RECUSADA (ultima_resposta_recusada): "
+            f"respondemos `{recusada['nossa_resposta']}` e a seguradora disse que não "
+            "entendeu. NÃO repita essa resposta.")
+    if opcoes_menu:
+        bloco_menu += (
+            "\n\nOPÇÕES NUMERADAS DO MENU (tela_com_menu_pendente) — responda SÓ com o "
+            "NÚMERO da opção coerente com o caso:\n"
+            + "\n".join(f"{d} - {r}" for d, r in opcoes_menu))
+
     user = (
         f"Dados do caso (únicos números permitidos):\n{fatos}{guia_ura}"
-        f"{ajuda_do_passo}"
+        f"{ajuda_do_passo}{bloco_menu}"
         f"{contexto_pendente}{contexto_historico}\n\n"
         # "TELA", não "mensagem". A seguradora manda o aviso numa bolha, o menu
         # na outra e a pergunta na terceira — e o que chega aqui é a rajada
@@ -3401,6 +3827,12 @@ _MOTIVOS_EM_PORTUGUES = {
                            "está ligado e nada foi aberto de verdade",
     "reconciliacao_boot": "o acionamento estava aberto quando o sistema reiniciou",
     "handoff": "o acionamento parou e precisa de uma pessoa",
+    # --- SPEC-EXTRA-001.4 A: a tecla conferida contra a tela ------------
+    "ramo_indeterminado": "a seguradora perguntou qual seguro usar (residencial, "
+                          "condomínio ou empresarial) e o caso não diz — responda "
+                          "o número certo na conversa com a seguradora",
+    "tecla_ambigua": "a resposta coletada serve para mais de uma opção do menu da "
+                     "seguradora — escolha a opção certa na conversa com ela",
     # --- a seguradora pediu gente / outro caminho ----------------------
     "handoff_trigger": "a própria seguradora pediu para falar com uma pessoa",
     "encaminhado": "a seguradora não abre este chamado por aqui e mandou seguir "
@@ -4103,6 +4535,9 @@ def _emit(
 ) -> Dict[str, Any]:
     """Registra a mensagem de saída; envia SÓ se o gate estiver aberto."""
     live = bool(session.get("live")) and dispatch_live_enabled()
+    # 🔴 SPEC-EXTRA-001.4 B — toda saída grava o menu que ela respondeu, ANTES de
+    #    entrar no transcript (a tela respondida são as bolhas desde a última saída).
+    registrar_menu_pendente(session, str(text))
     entry = {"direction": "out", "text": str(text), "at": _now(), "dry_run": not live}
     if step:
         entry["step"] = step

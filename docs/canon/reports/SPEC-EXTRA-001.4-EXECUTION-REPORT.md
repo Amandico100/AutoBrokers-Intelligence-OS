@@ -69,7 +69,30 @@ FAIXA DE RELÓGIO .....  declarada fatia 1 ≤ 1h15 · fatia 2 ≤ 1h15 · juiz+
 
 | fatia | unidade | arquivos | gate (comando) | saída real | commit |
 |---|---|---|---|---|---|
-| 1a | BLOCO 0 | este relatório | §1 | 12 premissas remedidas; 1 decisão (D-E0014-01) | este commit |
+| 1a | BLOCO 0 | este relatório | §1 | 12 premissas remedidas; 1 decisão (D-E0014-01) | `acb6814` |
+| 1b | 0-bis | corpus (12 de 16 arquivos mudaram) · `INDICE.md` · `LINHA-DE-BASE-DE-ROTAS.json` | `gerar_corpus_de_telas.py --todas` · `--auditar-pii` · `test_o_corpus_nao_vaza_pii.py` · `medir_rota.py --salvar-linha-de-base` e `--comparar-com` (controle) | 📊 39 s · **4.470 telas, 0 sujas** · guarda exit 0 · máx `2026-09-14` · controle **exit 0** | ver §11 |
+| 1b | A | `insurer_dispatch_service.py` (`resolver_tecla`, `opcoes_numeradas`, derivação do ramo, `origem_das_teclas`) · 2 fixtures vencidas | GA-1 `test_a_tecla_tem_a_forma_da_seguradora.py` · GA-2/3 `test_o_menu_numerado_recebe_numero.py` | **22/0 · 22/0** — na base: 17/**5** · `AttributeError` | ver §11 |
+| 1b | B | `insurer_dispatch_service.py` (reparo, `menu_pendente`, prompt) · `dispatch_watchdog.py` (por tela) | GB `test_a_opcao_invalida_e_reparada.py` | **25/0** — na 1ª rodada pegou `RecursionError` no Sentinela (um `replace_all` meu), consertado | ver §11 |
+| 1b | GR | — | `medir_rota.py --todas --com-espelho --comparar-com …LINHA-DE-BASE…` | **exit 0**: nenhuma rota perdeu respondidas · nenhum passo sem confirmação | — |
+
+**Gate 0-bis, item a item:** ① a sessão `432614de` ESTÁ no corpus pelo ID (**13 telas**), mas em `allianz-auto.jsonl`:
+📊 `padroes_de_ramo.classificar_ramo` → `auto | nivel-1-resposta` — ele toma o 1º `out` depois do cardápio, e as respostas do
+corredor não entram em `observed_events`; o "1" da atendente no menu do RAMO virou "Automóvel" (P-E0014-01). Os guardas a leem
+pelo ID. ② "falta de contato" no corpus: **0** — limitação nomeada, fica para a fatia 2 (D5) medir sobre o texto do banco.
+③ máx `2026-09-14` ✓ · ④ linha de base commitada, 📊 **73 rotas** ✓ · ⑤ `INDICE.md` cita **15 de 16**: `tokio-condominio.jsonl` é arquivo antigo que o gerador hoje marca `FORA_DE_ESCOPO:condominio` (junta-se à pendência tokio da proposta §4.1) · ⑥ `--comparar-com` exit 0 ✓. **Bateria parcial** (os 52 testes que leem o corpus, antes × depois): 📊 2 regressões, AS DUAS causadas pelo corpus novo (confirmado com o código antigo): três `notes` com contagem vencida (`desfecho_protocolo_alfa` 10→25 · `escolher_endereco_da_lista` 17→35 · `servico_aberto_ver_ou_abrir` 6→10, redações distintas recontadas no ACERVO do banco) → recontadas → `test_a_regua_nao_tem_furo` 52/0 · `test_o_passo_compartilhado…` 10/0. Restam os 2 vermelhos de antes (`test_a_cobranca_chega_a_quem_deve`; `test_o_protocolo_tem_policia` — só "sem a nota 0–100" deste relatório: SPEC aberta até a entrega).
+
+**Mutações dos guardas novos** (uma vez, worktree próprio, restauração por cópia conferida com `cmp`):
+
+| mutação | guarda | resultado |
+|---|---|---|
+| M-A1 `resolver_tecla` devolve a palavra crua | GA-2 | 🔴 19/3 |
+| M-A2 a camada 1 lê com `_NUMERADA` crua | GA-2/3 | 🔴 11/11 |
+| M-A3 palpite ligado | GA-3 | 🔴 20/2 |
+| M-A4 derivação do eletricista apagada | GA-1 | 🔴 21/1, nomeando o slot |
+| M-B1 sem ④ · M-B2 contagem por SESSÃO · M-B3 o reparo reenvia a palavra · M-B4 prompt sem o bloco | GB | 🔴 24/1 · 21/4 · 21/4 · 23/2 |
+| M-B3b sem ③ (só ela) | GB | ⚠️ **verde, por construção**: o casador do Atlas apaga dígitos (dígito nunca casa rótulo) e ④ também bloqueia — ③ é defesa em profundidade, registrada |
+
+**Guardas novos:** 📊 `ls backend/tests/test_*.py | wc -l` = 376 → **378** (GA-2+GA-3 fundidos · GB-1+GB-2+GB-3 fundidos · GA-1 dentro do guarda existente).
 
 🔴 **A fatia 1 fechou no BLOCO 0, pelo teto de contexto** (§10 · D-PROTO-07): 📊 o hook `teto-de-contexto.py` mediu
 **300 k antes da primeira linha de produto**. Leitura integral pedida pelo Founder (proposta 112 KB ≈ 51 k tokens + research
@@ -96,35 +119,46 @@ e só auditou (`auditoria de PII: 4279 linhas, 0 sujas`), porque `--auditar-pii`
 
 | ID | decisão | opções e notas |
 |---|---|---|
-| **D-E0014-01** | slot `*_opcao` VAZIO numa tela reversível continua indo ao Cérebro (desenho de 19/08), agora com as opções numeradas da tela no prompt; `needs_human` só para a tecla que decide o RAMO (`ramo_indeterminado`) e para `sem_chute` | Cérebro + opções **88** · `needs_human/slot_opcao_sem_derivacao` geral, como a proposta §5.2 regra 3 **35** (reintroduz o travamento de 19/08 em 29 slots — o oposto do outcome) · `needs_human` reentrável **40** |
+| **D-E0014-01** | slot `*_opcao` VAZIO numa tela reversível continua indo ao Cérebro (desenho de 19/08), agora com as opções numeradas da tela no prompt; `needs_human` só para a tecla que decide o RAMO (`ramo_indeterminado`) e para `sem_chute`. Palavra que casa 0 opções segue a mesma regra; 2+ → `tecla_ambigua` | Cérebro + opções **88** · `needs_human/slot_opcao_sem_derivacao` geral, como a proposta §5.2 regra 3 **35** (reintroduz o travamento de 19/08 em 29 slots — o oposto do outcome) · `needs_human` reentrável **40** |
+| **D-E0014-02** | `MAX_TENTATIVAS_POR_TELA = 2` · `MAX_TENTATIVAS_NA_SESSAO = 6` (env, com default). 📊 telas órfãs que pedem algo, distintas por sessão, no corpus de 17/09: 71 sessões · p50 **2** · p90 **12** · máx 62; **61/71 (86 %) ≤ 6** — a cauda é conversa humana longa, que deve ir a uma pessoa | 6 **85** · 12 (p90) **70** (o dobro de chamadas ao Cérebro em sessão que já vai mal) · 2 por sessão, o de hoje, **30** (é o defeito de 10/09) |
+| **D-E0014-03** | teto de guardas: fundir GA-2+GA-3 e GB-1+GB-2+GB-3; GA-1 dentro do guarda existente — fatia 1 cria **2** arquivos | fundir **88** · 13 arquivos com addenda **55** |
+| **D-E0014-04** | 🧑 **o Founder decidiu (17/09) rodar a fatia 1b nesta mesma sessão**, "para aproveitar o contexto", contra a regra de sessão nova (D-PROTO-07). Contexto da 1b: ~300 → ~530 k. A fatia 2 volta a sessão nova | decisão do Founder — registrada para a auditoria do A/B |
+| **D-E0014-05** | o hub carrega `cartographer` e `atlas.weaver` pelo CAMINHO quando o pacote `app.services` foi montado à mão — 📊 75 testes fazem isso e `test_spec017` quebrou na 1ª rodada; é o mesmo arquivo, nunca uma cópia do parser | carregador **82** · import tardio com `except` que desliga a camada 1 em silêncio **30** · pré-carregar nos 75 testes **40** |
+
+**Pendências novas (numa passada na entrega, fatia 2):** **P-E0014-01** 🤖 o classificador de ramo lê o 1º `out` depois do cardápio e as
+respostas do corredor não estão em `observed_events` → sessões residenciais com resposta manual vão para o arquivo auto (📊 `432614de`);
+destrava: nível 1 ignora `out` que segue outro menu; custo: a régua do residencial não vê justamente as sessões que erraram ·
+**P-E0014-02** 🤖 `test_spec017`: além do defeito desta SPEC (agora verde), 3 checks pré-existentes que o `IndexError` escondia — "aberto
+por padrão", plano esperado com 16 passos (hoje 42), `import app.atendimento` sob pacote falso · **P-E0014-03** 🤖 `test_golden_do_eletricista`:
+14 → 2 vermelhos; sobram "pergunta de risco em português" e "nenhum passo com lacuna" — o plano de ensaio lista passos condicionais com
+`[PENDENTE:]` (`cnpj_condominio`, `uf_do_local`, `escolher_entre_dois_enderecos`) · **P-E0014-04** 🤖 `test_spec031`: fixture sem
+`local_seguro` (obrigatório desde 21–23/08) · **P-E0014-05** 🤖 `build_dry_run_plan` mostra a palavra crua no passo do menu numerado
+(ele não lê tela; só apresentação).
 
 ## 10. Telemetria (§11)
 
 ## 11. Entrega
 
-## 12. Handoff — fatia 1b (0-bis + A + B), sessão nova, mesmo prompt
+## 12. Handoff — fatia 2 (C + D + E, juiz, entrega), SESSÃO NOVA, mesmo prompt
 
 ```
-1  NÃO remeça o §1 (vale até o HEAD mudar). Da proposta leia SÓ §4.1, §5, §6 e as linhas GA/GB do §10. Pack: não.
-2  0-bis: `gerar_corpus_de_telas.py --todas` (SEM --auditar-pii) → `--auditar-pii` → `tests/test_o_corpus_nao_vaza_pii.py`
-   → `432614de` em allianz-residencial.jsonl + "falta de contato" no corpus → `medir_rota.py --todas --com-espelho
-   --salvar-linha-de-base docs/canon/reports/LINHA-DE-BASE-DE-ROTAS.json` ANTES de tocar o motor (não roda mutação;
-   o `--formato markdown` roda 12 e fica para a fatia 2) → commit do corpus + INDICE + linha de base.
-3  A · onde: ramo `rendered ok` (insurer_dispatch_service.py:2805-2813) chama `resolver_tecla` se o reply interpola
-   `{*_opcao}`. Opções = `cartographer.parse_options(tela)` filtradas por `numero_da_opcao` (palpite fora). Casamento =
-   `atlas.weaver.labels_match` (📊 "residência" casa só "1 - Residencial"). 1 → dígito, origem menu_lido · 2+ →
-   needs_human/tecla_ambigua · 0 → ramo do Cérebro (`falta_para_a_ura`, :2775), D-E0014-01 · sem menu → a palavra (porto).
-4  A · `qual_seguro_opcao` decide o RAMO: vazio ou sem casamento → needs_human/ramo_indeterminado (§9.5, escrito ao lado).
-   Camada 2 no topo de `_derivar_teclas_do_caso` (:394): só se vazio, por fronteira de palavra; casa E condomínio = nada.
-5  A · prova de produto: `test_spec017_dispatch.py` (hoje exit 1 por `qual_seguro_opcao`) fica verde pela derivação.
-6  B · `menu_pendente` gravado em `_emit` (:4096) a partir da última bolha `in`, e no envio do Sentinela
-   (dispatch_watchdog.py:444). Reparo ANTES de `match_ura_step` (:2626). A recusa real NÃO repete o menu (§1 item 5):
-   as opções vêm do pendente. `RECUSA_DE_MENU` = tabela do §1 item 6 sobre `_norm`, sem "encerrar a conversa".
-7  B · `tentativas_por_tela[hash do _norm]` + `sentinela_attempts` como teto de sessão, nos 4 incrementos
-   (:430 :439 :444 :474). `MAX_TENTATIVAS_NA_SESSAO` sai do replay (telas órfãs funcionais distintas por sessão).
-   `test_spec034_onda1.py:239` codifica o teto por sessão: muda junto (CLAUDE.md §9.3).
-8  B · `build_human_phase_messages` (bloco `ajuda_do_passo`, ~:3218) ganha `ultima_resposta_recusada` e
-   `tela_com_menu_pendente`. O roteador chama o motor POR BOLHA (dispatch_router.py:2908): teste com as DUAS bolhas.
-9  Fatia 2 herda os itens 3, 9, 10 e 11 do §1. Guardas novos: `ls backend/tests/test_*.py | wc -l` = 📊 376 antes.
-10 Triagem de 07/09 FEITA (§1): os 4 vermelhos são anteriores a 08/09. 017 é desta SPEC (A); 031, 034 e "conhece a tela" → fatia 2 (E).
+1  Fatia 1 VERDE e commitada (§2). NÃO remeça o §1. Da proposta leia SÓ §7 (C), §8 (D), §9 (E), as linhas GC/GD/GT
+   do §10, §12 (canário), §14 (entrega), §19. Pack: não. Base do juiz: `f7b23d7..HEAD`.
+2  C · `note_manual_outbound` (dispatch_router.py, ~:2687) abre `pausa_humana` e escreve `silencio_deliberado_ate`
+   (o Vigia já honra, dispatch_watchdog.py:~121). `foi_humano=False` não abre. A guarda EXISTE:
+   `o_grupo_pode_saber` (o_grupo_so_o_que_importa.py:247) — acrescentar a causa `pausa_humana`, nunca outra guarda.
+   Os 9 gatilhos da proposta §7.3: RECONFIRA por grep — a 001.3 moveu os envios para `enviar_ao_grupo`.
+3  D · encerramento: regex inline "Seguradora ENCERROU" em `handle_insurer_message` + "falta de contato" (📊 10 ev,
+   0 casam) + "vou precisar encerrar a conversa" (§1 item 11). "Isso pode levar alguns instantes" é FILA (item 10).
+   Reentrada: o Vigia olha o ESTADO (`_TERMINAL_STATES`); o resumo usa regex inline (~:3350) → `APRESENTACAO_HUMANA`.
+4  D6 · `agente.*` = 0 de 48.972 (item 8). Medir a causa: `registrar_ato_do_agente` devolve False sem `work_run_id`
+   (dispatch_router.py ~:1011) — e a 001.3 tornou `work_events.work_run_id` NULLável (D-E0013-01).
+5  B já grava `menu_pendente`/`ultima_resposta_recusada`/`tentativas_por_tela` na sessão: a pausa (C) e a reentrada (D)
+   não podem apagá-los. `registrar_menu_pendente` roda em todo `_emit` — o eco humano (C) NÃO passa por `_emit`.
+6  E · P-E0014-01 (classificador de ramo) · homônimos (porto `complemento`, hdi 5 pares) · azul `menu_atendimento` →
+   "Novo serviço" (a camada 1 converte) · `medir_rota.py` "acesso ao Espelho" · INVENTÁRIO (`--formato markdown` roda 12
+   mutações: não edite produto enquanto roda) · roteiro · `test_spec038` chamar o motor · P-E0014-02..05.
+7  Guardas: 378 hoje (teto 12 na SPEC → sobram 10 para C/D/E+GT). GT mora em GC-3.
+8  Fim: juiz Fable + lente do dado (`medir_rota.py --todas --com-espelho --comparar-com docs/canon/reports/LINHA-DE-BASE-DE-ROTAS.json`,
+   hoje exit 0) → conserto → suíte inteira UMA vez, sozinha → PENDENCIAS/DECISIONS/ADDENDA numa passada → push.
 ```

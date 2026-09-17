@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -35,7 +36,29 @@ HUMAN_NUDGE_S = 600
 HUMAN_ALERT_S = 1200
 NEVER_STARTED_S = 300
 SESSION_DEADLINE_S = 45 * 60
-MAX_SENTINELA_ATTEMPTS = 2
+
+
+def _int_env(nome: str, padrao: int) -> int:
+    try:
+        return max(1, int(os.getenv(nome) or padrao))
+    except ValueError:
+        return padrao
+
+
+# 🔴 SPEC-EXTRA-001.4 B · AS TENTATIVAS SÃO POR TELA, COM TETO DE SESSÃO.
+#
+# 📊 `sentinela_attempts` era contado por SESSÃO e nunca zerado: em 10/09 as duas
+# tentativas foram gastas às 14:14 na tela do menu, e o resto da sessão correu sem
+# rede. A URA clássica resolveu isto há 25 anos — VoiceXML 1.0 §11.2: os contadores
+# de cada menu são zerados quando o menu é re-entrado.
+#
+# ⚠️ E o teto de sessão continua existindo, pelo `gen_statem` do Erlang: repetir o
+# mesmo estado não cancela o state timeout. Sem teto, o corredor conserta, é
+# recusado, reentra e recomeça a contagem para sempre — o laço infinito educado.
+MAX_TENTATIVAS_POR_TELA = _int_env("MAX_TENTATIVAS_POR_TELA", 2)
+MAX_TENTATIVAS_NA_SESSAO = _int_env("MAX_TENTATIVAS_NA_SESSAO", 6)
+#: Nome antigo, mantido para quem o importa: hoje é o teto POR TELA.
+MAX_SENTINELA_ATTEMPTS = MAX_TENTATIVAS_POR_TELA
 
 HUMAN_NUDGE_TEXT = "Oi! Seguimos por aqui no aguardo, tá bom? 🙂"
 
@@ -382,13 +405,24 @@ async def _sentinela_recover(
     from app.services.insurer_dispatch_service import (
         build_handoff_dossier,
         guard_human_phase_reply,
+        id_da_tela,
+        registrar_menu_pendente,
+        tela_respondida,
     )
 
-    attempts = int(session.get("sentinela_attempts") or 0)
+    attempts = int(session.get("sentinela_attempts") or 0)   # o total da SESSÃO
     last = _last_entry(session) or {}
     insurer_text = str(last.get("text") or "")
+    tela = tela_respondida(session) or insurer_text
+    tela_id = id_da_tela(tela)
+    por_tela = session.setdefault("tentativas_por_tela", {})
+    na_tela = int(por_tela.get(tela_id) or 0)
 
-    if attempts < MAX_SENTINELA_ATTEMPTS:
+    def _consumir() -> None:
+        session["sentinela_attempts"] = attempts + 1
+        por_tela[tela_id] = na_tela + 1
+
+    if na_tela < MAX_TENTATIVAS_POR_TELA and attempts < MAX_TENTATIVAS_NA_SESSAO:
         reply = await _adaptive_reply(company_id, session, insurer_text)
 
         # 🔴 O GUARDA PRECISA VER A TELA — 18/08/2026.
@@ -427,7 +461,7 @@ async def _sentinela_recover(
                     "resposta %r NÃO foi enviada. A corretora não tem "
                     "integração de plataforma ativa (só o observador, que por "
                     "regra não envia).", company_id, reply[:40])
-                session["sentinela_attempts"] = attempts + 1
+                _consumir()
                 session["ultimo_erro_de_envio"] = "sem_canal_de_saida"
                 return "sem_canal"
             try:
@@ -436,12 +470,15 @@ async def _sentinela_recover(
                 # 📊 Antes: `logger.error` e seguia devolvendo "recovered".
                 logger.error("[SENTINELA] ❌ envio falhou (%s) — a resposta %r "
                              "NAO foi para a seguradora", type(e).__name__, reply[:40])
-                session["sentinela_attempts"] = attempts + 1
+                _consumir()
                 session["ultimo_erro_de_envio"] = type(e).__name__
                 return "envio_falhou"
 
             # Só agora é verdade.
-            session["sentinela_attempts"] = attempts + 1
+            _consumir()
+            # 🔴 SPEC-EXTRA-001.4 B — a resposta do Sentinela também é reparável:
+            #    grava o menu que ela respondeu, antes de entrar no transcript.
+            registrar_menu_pendente(session, reply, tela=tela)
             session.setdefault("transcript", []).append(
                 {"direction": "out", "text": reply, "at": datetime.now(timezone.utc).isoformat(),
                  "via": "sentinela"}
@@ -465,13 +502,16 @@ async def _sentinela_recover(
                     mensagem=("O Sentinela respondeu à seguradora depois de um "
                               "silêncio e recuperou o acionamento."),
                     payload={"tentativa": attempts + 1,
-                             "teto": MAX_SENTINELA_ATTEMPTS})
+                             "teto": MAX_TENTATIVAS_NA_SESSAO,
+                             "tentativa_na_tela": na_tela + 1,
+                             "teto_por_tela": MAX_TENTATIVAS_POR_TELA})
             except Exception as e:  # noqa: BLE001 — registro nunca derruba recuperação
                 logger.warning("[SENTINELA] ato não registrado (%s)", type(e).__name__)
-            logger.info(f"[SENTINELA] recuperação {attempts + 1}/{MAX_SENTINELA_ATTEMPTS} "
+            logger.info(f"[SENTINELA] recuperação {na_tela + 1}/{MAX_TENTATIVAS_POR_TELA} na tela, "
+                        f"{attempts + 1}/{MAX_TENTATIVAS_NA_SESSAO} na sessão "
                         f"case={session.get('case_id')}")
             return "recovered"
-        session["sentinela_attempts"] = attempts + 1  # tentativa consumida mesmo sem envio
+        _consumir()  # tentativa consumida mesmo sem envio
 
     # Esgotou a escada → handoff com dossiê + alerta. Nunca fica em silêncio.
     session["state"] = "needs_human"

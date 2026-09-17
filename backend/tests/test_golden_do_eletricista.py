@@ -205,6 +205,9 @@ SLOTS_COMPLETOS = {
     "problema_descricao": "Tomadas da cozinha sem energia, sem cheiro de queimado",
     "periodo_preferido": "tarde",
     "risco_confirmado_sem_fumaca": "sim",
+    # SPEC-083 (21/08) tornou a tecla do RAMO obrigatória e o golden ficou
+    # vermelho desde então (triagem da EXTRA-001.4). A atendente coleta a PALAVRA.
+    "qual_seguro_opcao": "residencial",
 }
 
 
@@ -300,8 +303,12 @@ def gold_001_sem_luz_na_cozinha():
            "é o slot que separa 'sem luz na cozinha' de 'a casa está pegando fogo'")
     checar({"titular_cpf", "endereco_numero"} <= faltam,
            "apólice (CPF do titular) e endereço também são exigidos")
+    # SPEC-083 (21/08): a tecla do RAMO passou a ser obrigatória, e "tomadas da
+    # cozinha" não diz se o seguro é residencial, de condomínio ou de empresa —
+    # a derivação da EXTRA-001.4 não chuta o ramo, então a atendente pergunta.
     checar(faltam == {"titular_cpf", "endereco_numero", "telefone_contato",
-                      "periodo_preferido", "risco_confirmado_sem_fumaca"},
+                      "periodo_preferido", "risco_confirmado_sem_fumaca",
+                      "qual_seguro_opcao"},
            "e a lista é exatamente essa — nem a mais, nem a menos", str(sorted(faltam)))
     checar("fumaça/faísca/cheiro de queimado" in r["content"],
            "a pergunta de risco chega ao atendente em português, não como nome de slot")
