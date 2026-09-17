@@ -101,6 +101,38 @@ def _last_entry(session: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return transcript[-1] if transcript else None
 
 
+def _pausa_aberta(session: Dict[str, Any]) -> bool:
+    """A regra da pausa é UMA, e mora no motor (`pausa_humana_aberta`)."""
+    if not session.get("pausa_humana"):
+        return False
+    from app.services.insurer_dispatch_service import pausa_humana_aberta
+
+    return pausa_humana_aberta(session)
+
+
+#: 🔴 SPEC-EXTRA-001.4 C — o que o Vigia NÃO pode apagar ao gravar a sessão que
+#: leu antes de uma chamada lenta (o Cérebro do Sentinela leva segundos): a
+#: pausa que a atendente abriu nesse meio-tempo, e o EU CUIDO.
+def _preservar_a_atendente(session: Dict[str, Any], fresca: Optional[Dict[str, Any]]) -> bool:
+    """Copia para `session` a pausa/EU CUIDO gravados depois da leitura. Devolve
+    se a atendente está na conversa AGORA (então nada nosso deve sair)."""
+    if not fresca:
+        return False
+    from app.services.insurer_dispatch_service import humano_assumiu, pausa_humana_aberta
+
+    if humano_assumiu(fresca):
+        for campo in ("state", "reason", "estado_antes_de_eu_cuido", "pausa_humana"):
+            if campo in fresca:
+                session[campo] = fresca[campo]
+        session["silencio_deliberado_ate"] = None
+        return True
+    if pausa_humana_aberta(fresca):
+        session["pausa_humana"] = fresca["pausa_humana"]
+        session["silencio_deliberado_ate"] = fresca.get("silencio_deliberado_ate")
+        return True
+    return False
+
+
 def diagnose(session: Dict[str, Any]) -> Optional[str]:
     """Classifica a situação de UMA sessão (puro, testável). Retorna:
     'stall_unanswered' | 'ura_silent' | 'human_silent_nudge' | 'human_silent_alert'
@@ -126,6 +158,13 @@ def diagnose(session: Dict[str, Any]) -> Optional[str]:
     espera = session.get("esperando_do_segurado") or {}
     if espera and state in ("ura", "human_phase"):
         return "segurado_sem_resposta" if _age_s(espera.get("ate")) >= 0 else None
+
+    # 🔴 SPEC-EXTRA-001.4 C — A ATENDENTE ESTÁ NA CONVERSA: nenhum achado. Pela
+    #    PAUSA, e não só pelo `silencio_deliberado_ate` que ela escreve: duas
+    #    defesas, porque uma renovação que esquecesse o campo deixaria o Sentinela
+    #    falar por cima dela depois dos primeiros 60 s.
+    if _pausa_aberta(session):
+        return None
 
     # SILÊNCIO DELIBERADO NÃO É TRAVA — e o Vigia falava por cima dele.
     #
@@ -487,6 +526,17 @@ async def _sentinela_recover(
             # eram verdade.
             #
             # Transcript é registro do que ACONTECEU, não do que se pretendia.
+            # 🔴 SPEC-EXTRA-001.4 C — RELER ANTES DE FALAR. O Cérebro levou
+            #    segundos; se a atendente entrou na conversa nesse meio-tempo, a
+            #    resposta NÃO sai (e a tentativa não é gasta: ninguém errou).
+            try:
+                from app.services.dispatch_router import _ler_do_redis
+
+                if _preservar_a_atendente(session, await _ler_do_redis(company_id, insurer_phone)):
+                    logger.info("[SENTINELA] a atendente entrou na conversa — a resposta não sai")
+                    return "pausa_humana"
+            except Exception as e:  # noqa: BLE001 — sem reler, segue como sempre seguiu
+                logger.warning("[SENTINELA] sessão não relida antes do envio (%s)", type(e).__name__)
             if integration is None:
                 # Falhar ALTO. Antes isto era indistinguível de sucesso.
                 logger.error(
@@ -831,6 +881,14 @@ async def check_dispatch_watchdog() -> int:
             # 🔴 SPEC-EXTRA-001.4 D6 — O VIGIA DEIXA RASTRO. 📊 `agente="vigia"` não
             #    tinha um único chamador, apesar de `DESTRAVADORES` já o prever.
             await _ato_do_vigia(company_id, session, finding)
+            # 🔴 C — a sessão foi lida no começo da volta; a pausa/EU CUIDO gravados
+            #    depois disso NÃO são apagados por esta gravação.
+            try:
+                from app.services.dispatch_router import _ler_do_redis
+
+                _preservar_a_atendente(session, await _ler_do_redis(company_id, insurer_phone))
+            except Exception:  # noqa: BLE001
+                pass
             await save_active_dispatch(company_id, insurer_phone, session)
             actions += 1
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler

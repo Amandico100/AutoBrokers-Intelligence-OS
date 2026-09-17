@@ -246,6 +246,18 @@ s = rodar(R.load_active_dispatch(EMPRESA, URA))
 checar(s["state"] != "human_phase" and GRUPO == []
        and not [t for t in saidas(s) if t.get("step") == "resumo_analista"],
        "🔴 CONTROLE: pelo roteador, o robô se apresentando não reabre, não resume, não avisa", s["state"])
+# 🔴 o robô que ANUNCIA a transferência na mesma mensagem (porto: a tabela negativa
+#    da porto não traz o robô) também não reabre — o controle é da regra, não da tabela.
+checar(not D.pode_reentrar_em_fase_humana(
+    sessao("needs_human", reason="sentinela_stall"),
+    "Olá! Sou a assistente virtual da Porto. Vou transferir seu atendimento.", "porto"),
+    "🔴 CONTROLE: 'sou a assistente virtual' + 'vou transferir' (porto) NÃO reabre")
+# 🔴 e na fase humana, o robô se apresentando não dispara o resumo.
+REDIS.d.clear()
+rodar(R.save_active_dispatch(EMPRESA, URA, sessao("human_phase")))
+rodar_inbound(ROBO_SE_APRESENTA)
+checar(not [t for t in saidas(rodar(R.load_active_dispatch(EMPRESA, URA))) if t.get("step") == "resumo_analista"],
+       "🔴 CONTROLE: na fase humana, o robô se apresentando NÃO recebe o resumo do caso")
 # a fonte é UMA: a tabela casa o que a regex inline antiga não casaria.
 for texto in ("Seja bem-vindo(a) ao atendimento da Allianz, estou assumindo seu atendimento.",):
     REDIS.d.clear()

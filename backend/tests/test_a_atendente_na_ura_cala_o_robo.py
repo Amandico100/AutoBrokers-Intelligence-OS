@@ -257,6 +257,13 @@ checar(eventos[3][1] is False and eventos[3][2], "a 4ª fala não mexe no prazo 
        str(eventos[3]))
 checar(len(GRUPO) == 1, "o grupo ouviu UMA vez em toda a pausa", str(len(GRUPO)))
 s = rodar(R.load_active_dispatch(A, URA))
+checar(s.get("silencio_deliberado_ate") == s["pausa_humana"]["ate"],
+       "🔴 a RENOVAÇÃO também move o silêncio que o Vigia lê", f"{s.get('silencio_deliberado_ate')} × {s['pausa_humana']['ate']}")
+_velho = dict(s, silencio_deliberado_ate=(datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat())
+_velho["transcript"] = s["transcript"] + [{"direction": "in", "text": TELA,
+                                           "at": (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()}]
+checar(W.diagnose(_velho) is None, "🔴 e o Vigia respeita a PAUSA mesmo com o silêncio vencido (duas defesas)",
+       str(W.diagnose(_velho)))
 s["pausa_humana"]["ate"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
 s["silencio_deliberado_ate"] = s["pausa_humana"]["ate"]
 s["transcript"].append({"direction": "in", "text": TELA, "at": datetime.now(timezone.utc).isoformat()})
@@ -266,6 +273,39 @@ checar(not D.pausa_humana_aberta(s) and W.diagnose(s) == "stall_unanswered",
 checar(not D.pode_retomar({**s, "state": "needs_human", "reason": "insurer_closed",
                            "pausa_humana": {"ate": (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat()}}),
        "🔴 com a pausa aberta, a retomada automática NÃO reabre o acionamento por cima dela")
+
+print()
+print("=" * 74)
+print("[GC-2b] A CORRIDA: ela entra enquanto o Cérebro do Sentinela pensa")
+print("=" * 74)
+REDIS.d.clear()
+velha = nova_sessao(A)
+velha["transcript"].append({"direction": "in", "text": TELA,
+                            "at": (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()})
+rodar(R.save_active_dispatch(A, URA, velha))
+velha = rodar(R.load_active_dispatch(A, URA))          # o Vigia leu ANTES
+
+
+async def _cerebro_lento(company_id, session, texto):
+    # enquanto "pensa", a atendente fala com a seguradora
+    await R.note_manual_outbound(A, URA, "1", foi_humano=True)
+    return "1"
+
+
+W._adaptive_reply = _cerebro_lento
+ENVIOS_WA = []
+
+
+class _WaVigia:
+    def send_message(self, fone, texto, integ=None, **k):
+        ENVIOS_WA.append(texto)
+
+
+acao = rodar(W._sentinela_recover(A, URA, velha, _WaVigia(), {"id": "canal"}))
+checar(acao == "pausa_humana" and ENVIOS_WA == [],
+       "🔴 o Sentinela relê a sessão e NÃO envia por cima dela", f"{acao} {ENVIOS_WA}")
+checar(D.pausa_humana_aberta(velha) and int(velha.get("sentinela_attempts") or 0) == 0,
+       "a cópia do Vigia herda a pausa (a gravação não a apaga) e a tentativa não é gasta")
 
 print()
 print("=" * 74)
