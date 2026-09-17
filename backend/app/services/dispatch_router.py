@@ -2892,11 +2892,35 @@ async def _a_atendente_entrou(company_id: str, insurer_phone: str, session: Dict
         return None
     if not fresca or not (motor.pausa_humana_aberta(fresca) or motor.humano_assumiu(fresca)):
         return None
-    novas = [t for t in (session.get("transcript") or [])[entradas_antes:]
+    novas = [dict(t, _deste_turno=True) for t in (session.get("transcript") or [])[entradas_antes:]
              if isinstance(t, dict) and t.get("direction") == "in"]
     fresca.setdefault("transcript", []).extend(novas)
     logger.info("[DISPATCH ROUTER] a atendente entrou enquanto o Cérebro pensava — nada nosso sai")
     return fresca
+
+
+async def _gravar_a_sessao_dela(company_id: str, insurer_phone: str,
+                               dela: Dict[str, Any], entradas_antes: int) -> None:
+    """Grava a sessão da atendente com a tela deste turno NO LUGAR CERTO.
+
+    🔴 Confirmação pós-conserto (17/09): anexada no fim, a tela ficava DEPOIS da
+    fala dela — e, vencida a pausa, o Vigia a via sem resposta e o Sentinela
+    respondia de novo o que ela já tinha respondido. A ordem é tela → fala dela.
+    ⚠️ Duas gravações, de propósito: a primeira (com espelho) leva a tela ao
+    Espelho uma vez; a segunda só reordena no Redis, sem espelhar de novo.
+    """
+    await save_active_dispatch(company_id, insurer_phone, dela)
+    transcript = dela.get("transcript") or []
+    k = sum(1 for t in reversed(transcript) if isinstance(t, dict) and t.get("_deste_turno"))
+    if k:
+        novas = transcript[-k:]
+        for t in novas:
+            t.pop("_deste_turno", None)
+        del transcript[-k:]
+        pos = max(0, min(int(entradas_antes), len(transcript)))
+        transcript[pos:pos] = novas
+        dela["mirror_idx"] = len(transcript)
+        await _gravar_no_redis(company_id, insurer_phone, dela)
 
 
 async def _sessoes_da_corretora(company_id: str) -> List[tuple]:
@@ -3460,7 +3484,7 @@ async def try_route_insurer_inbound(
         #    nosso sai e a sessão DELA (pausa e a fala dela) é a que fica gravada.
         _dela = await _a_atendente_entrou(company_id, from_phone, session, _entradas_antes)
         if _dela is not None:
-            await save_active_dispatch(company_id, from_phone, _dela)
+            await _gravar_a_sessao_dela(company_id, from_phone, _dela, _entradas_antes)
             return True
         # O guarda julga a MESMA tela que o modelo leu. Se recebesse só a última
         # bolha, um "aguarde" solto passaria por tela que não pede nada e o
@@ -3573,7 +3597,7 @@ async def try_route_insurer_inbound(
                     draft2 = None
                 _dela = await _a_atendente_entrou(company_id, from_phone, session, _entradas_antes)
                 if _dela is not None:
-                    await save_active_dispatch(company_id, from_phone, _dela)
+                    await _gravar_a_sessao_dela(company_id, from_phone, _dela, _entradas_antes)
                     return True
                 v2 = guard_human_phase_reply(str(draft2 or ""), session,
                                              insurer_message=tela)

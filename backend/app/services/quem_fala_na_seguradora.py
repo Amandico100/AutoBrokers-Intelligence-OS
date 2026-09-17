@@ -211,7 +211,11 @@ APRESENTACAO_HUMANA = [
     r"\bsou (o|a)\s+(?!segurad|terceir|responsav|condutor|proprietari|titular|cliente)[a-z]{3,}\s+"
     r"(e (vou|irei|darei)|,)",
     # 🔴 SPEC-EXTRA-001.4 (lente do dado): "darei continuidade AO seu atendimento" (📊 porto, 1 sessão).
-    r"darei continuidade (em|no|ao) seu atendimento|dar (sequencia|continuidade) (em|no|ao) seu atendimento",
+    #    ⚠️ "para dar continuidade AO seu atendimento, DIGITE o CPF" seria o robô (confirmação
+    #    pós-conserto; 📊 0 ocorrências): o infinitivo com "ao" vale só quando não vem uma
+    #    instrução logo depois — 📊 o caso humano medido (yelum, 1 ev) continua casando.
+    r"darei continuidade (em|no|ao) seu atendimento|dar (sequencia|continuidade) (em|no) seu atendimento"
+    r"|dar (sequencia|continuidade) ao seu atendimento(?![^.]{0,40}\b(digite|informe|selecione|escolha|clique|envie))",
     r"irei realizar seu atendimento|prestarei seu atendimento|vou atender sua demanda",
     r"seja bem.?vindo ?\(a\)? ao atendimento",
     r"estou assumindo|assumindo seu atendimento",

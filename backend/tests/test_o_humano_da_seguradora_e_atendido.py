@@ -274,6 +274,8 @@ for texto, seg in (("Olá, meu nome é _Fulana_ e vou iniciar seu atendimento", 
                   ("Boa tarde! Darei continuidade ao seu atendimento", "porto")):
     checar(D.pode_reentrar_em_fase_humana(sessao("needs_human", reason="sentinela_stall"), texto, seg),
            f"a pessoa que só a regex antiga pegava ({seg}) reabre a sessão (lente)")
+checar(not QF.uma_pessoa_se_apresentou("porto", "Para dar continuidade ao seu atendimento, digite o CPF do titular."),
+       "🔴 CONTROLE: 'para DAR continuidade AO seu atendimento, digite…' é o robô (confirmação)")
 checar(QF.e_transferencia_para_pessoa("allianz", "vou transferir seu caso para um espe­cialista"),
        "🔴 o dialeto: o soft hyphen do acervo não esconde a transferência (a MESMA normalização da régua)")
 

@@ -342,6 +342,16 @@ for provider, rotulo in ((_cerebro_sem_corrida, "controle"), (_cerebro_com_corri
         checar(any(t.get("manual") for t in s["transcript"])
                and any(t.get("text") == "Pode confirmar o bairro?" for t in s["transcript"]),
                "a fala dela E a tela deste turno ficam no registro")
+        _ordem = [(t.get("direction"), bool(t.get("manual"))) for t in s["transcript"][-2:]]
+        checar(_ordem == [("in", False), ("out", True)] and D.tela_respondida(s) == ""
+               and not any("_deste_turno" in t for t in s["transcript"]),
+               "🔴 e na ORDEM certa — tela, depois a fala dela: o Sentinela não a responde de novo "
+               "(confirmação pós-conserto)", str(_ordem))
+        s["pausa_humana"]["ate"] = s["silencio_deliberado_ate"] = (
+            datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        s["transcript"][-1]["at"] = (datetime.now(timezone.utc) - timedelta(seconds=40)).isoformat()
+        checar(W.diagnose(s) != "stall_unanswered",
+               "vencida a pausa, o Vigia NÃO vê a tela que ela respondeu como pendente", str(W.diagnose(s)))
 R.guard_human_phase_reply = _guarda_real
 
 print()
