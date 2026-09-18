@@ -245,6 +245,49 @@ try:
 except B.RevisorObrigatorio:
     checar(True, "e publicar SEM revisor continua recusado antes do banco")
 
+print("\n[5] §7.4 — o documento MUDOU: as linhas publicadas voltam para a fila")
+db5 = _banco_com_o_documento()
+pid = db5.plano(insurer_key="porto", ramo="auto", produto="Auto Total", plano="Essencial",
+                nivel=1, documento_id=DOC)
+sid = db5.servico(pid, "guincho", "sim", documento_id=DOC)
+for linha in db5.tabelas["insurer_assistance_services"]:
+    linha["revisado_por"] = "amandus"
+antes = [l["curadoria"] for l in db5.tabelas["insurer_assistance_services"]]
+# 🔴 pelo MOTOR do corpus — a mesma funcao que a ingestao chama quando o
+# `content_hash` muda. Chamar `derrubar_para_proposto` direto mediria a base;
+# chamar esta mede o ELO, que e o que a mutacao (d) ataca.
+from app.services.knowledge.insurance_corpus import devolver_linhas_a_fila  # noqa: E402
+n = devolver_linhas_a_fila(DOC, db5, motivo="content_hash mudou")
+servico = db5.tabelas["insurer_assistance_services"][0]
+plano = db5.tabelas["insurer_assistance_plans"][0]
+checar(antes == ["publicado"] and servico["curadoria"] == "proposto"
+       and plano["curadoria"] == "proposto",
+       "🔴 publicado -> proposto quando o documento muda (plano e servico)",
+       f"antes={antes} depois={servico['curadoria']}/{plano['curadoria']} {n}")
+checar(len(db5.tabelas["insurer_assistance_services"]) == 1
+       and str(sid) == str(servico["id"]),
+       "🔴 a linha NAO foi apagada — o trecho e a pagina ja conferidos continuam la")
+checar("content_hash mudou" in str(servico.get("condicao") or ""),
+       "e o MOTIVO ficou escrito na linha, para quem for revisar",
+       repr(servico.get("condicao")))
+checar(str(servico.get("revisado_por")) == "amandus",
+       "⚠️ e o revisor anterior e PRESERVADO — e ele que deve ser chamado para reconferir")
+
+print("\n[6] e o gancho esta LIGADO no ponto onde o hash e comparado")
+corpus = open(os.path.join(RAIZ, "app", "services", "knowledge", "insurance_corpus.py"),
+              encoding="utf-8").read()
+pos_hash = corpus.find("novo_hash = _hash(texto)")
+pos_queda = corpus.find("devolver_linhas_a_fila(", pos_hash if pos_hash >= 0 else 0)
+pos_susep = corpus.find("susep = doc.get(", pos_hash if pos_hash >= 0 else 0)
+checar(pos_hash >= 0 and pos_queda > pos_hash and pos_queda < pos_susep,
+       "🔴 `devolver_linhas_a_fila` e chamada DEPOIS da comparacao de hash e "
+       "ANTES de a ingestao seguir",
+       f"hash@{pos_hash} queda@{pos_queda} susep@{pos_susep}")
+# 🔴 CONTROLE: a varredura CONSEGUE acusar a ausencia.
+_sem = corpus.replace("devolver_linhas_a_fila(", "nada_a_fazer(")
+checar(_sem.find("devolver_linhas_a_fila(", pos_hash) == -1,
+       "🔴 CONTROLE: sem a chamada, a varredura FICA VERMELHA")
+
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")
