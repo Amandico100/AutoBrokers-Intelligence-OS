@@ -70,6 +70,30 @@ def extrair_susep(texto: str) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 
+def devolver_linhas_a_fila(documento_id: str, db, motivo: str = "content_hash mudou") -> dict:
+    """SPEC-EXTRA-001.5 §7.4 — o documento mudou, a curadoria dele volta à fila.
+
+    🔴 É uma função NOMEADA, e não quatro linhas soltas dentro da ingestão, por
+    um motivo de guarda: um teste consegue CHAMÁ-LA e medir o que ela faz. Uma
+    asserção que só lesse o código provaria que a linha existe, não que ela
+    funciona — e um `if False:` em volta dela ficaria verde (CLAUDE.md §9.4).
+
+    ⚠️ A curadoria nunca derruba a ingestão: qualquer falha aqui é registrada e
+    engolida. Perder a re-ingestão de uma condição geral por causa da fila seria
+    trocar um problema de revisão por um problema de acervo.
+    """
+    try:
+        from .assistance_plans_base import derrubar_para_proposto
+
+        return derrubar_para_proposto(documento_id, motivo=motivo, db=db)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[corpus] nao consegui devolver as linhas de assistencia a fila: %s",
+            type(exc).__name__,
+        )
+        return {"planos": 0, "servicos": 0}
+
+
 def extrair_vigencia(texto: str) -> Optional[str]:
     """Procura uma data de vigência declarada no próprio documento."""
     padroes = [
@@ -1450,17 +1474,7 @@ class InsuranceCorpusService:
         # publicado faria o agente citar uma página de uma versão que não
         # existe mais. Guarda: GATE C ⑤ / mutação (d).
         if doc.get("content_hash"):
-            try:
-                from .assistance_plans_base import derrubar_para_proposto
-
-                derrubar_para_proposto(
-                    documento_id, motivo="content_hash mudou", db=self.db
-                )
-            except Exception as exc:  # noqa: BLE001 — a curadoria nunca derruba a ingestão
-                logger.warning(
-                    "[corpus] nao consegui devolver as linhas de assistencia a fila: %s",
-                    type(exc).__name__,
-                )
+            devolver_linhas_a_fila(documento_id, self.db, motivo="content_hash mudou")
 
         susep = doc.get("susep_process") or extrair_susep(texto)
         vig = self._vigencia_da_versao(doc, texto, vigencia_susep)
