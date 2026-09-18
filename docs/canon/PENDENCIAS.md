@@ -10522,6 +10522,8 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 ## P-PILOTO-04 · sinistro, empresarial e condomínio sem checklist — o agente precisa fazer a primeira parte e entregar mastigado (Founder, 08/09)
 📊 Sinistro é uma linha de prompt (`prompts.py:165`); empresarial e condomínio só existem como teclas dentro do corredor residencial; `ficha.faltando` nunca é populado para eles. **Destrava:** checklist estruturado por tipo (colisão, roubo, incêndio, empresarial, condomínio) no desenho de `conhecimento_de_assistencia`, escritor de `ficha.faltando`, entradas em `_TITULOS`, teste de língua no dossiê. **Dono:** 🤖.
 
+**`PARCIAL` (EXTRA-001.5, 18/09):** a parte de CONHECIMENTO fecha — o agente responde cobertura/assistência pela base de planos com documento e página (`services/skills/cobertura_e_assistencia.py`; 13 guardas, `tests/test_a_resposta_traz_documento_e_pagina.py` sobre 30 perguntas reais). `ficha.faltando`, `_TITULOS` e o dossiê de sinistro continuam na 001.3.
+
 ## P-PILOTO-05 · formulário nativo da Porto e da Azul não tem schema
 📊 `native_flows` só em HDI e Yelum auto (`corridor_playbooks.py:2982, 3010`). Porto e Azul: "sem schema recuperável; só um acionamento ao vivo produz um" (relatório da 092). **Destrava:** o primeiro acionamento real observado nessas duas; até lá a tela de formulário vai a handoff com dossiê. **Dono:** 🧑 coleta + 🤖 schema.
 **`CONTINUA` (EXTRA-001.4, 17/09):** a SPEC não produziu o insumo — o canário da coleta dirigida depende do Implantar e do número de teste pareado (caixa do Founder).
@@ -10855,3 +10857,33 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E0014-17 · a âncora de protocolo "O.S." tem um RETROCESSO literal e nunca casa
 📊 17/09: `corridor_playbooks.py:170` (e o comentário de `:153`) contém o caractere `0x08` onde deveria haver `\b` — `r"<BS>o\.?s\.?#?(?=\d)"` — já na base `f7b23d7`. A captura de protocolo no formato "O.S. 12345" está morta desde que a linha nasceu. **Destrava:** medir no acervo o que `\bo\.?s\.?#?(?=\d)` passa a capturar (e o controle de falso protocolo) antes de trocar o caractere. **Dono:** 🤖. **Custo de esquecer:** protocolo "O.S." não vira aviso ao segurado.
+
+## P-E0015-01 · o corpus normativo não carrega página — a página vem só do PDF arquivado
+📊 18/09: nenhuma coluna de página em `normative_documents`/`normative_document_versions` (`information_schema.columns`); o `\f` morre em `limpar()` (`insurance_corpus.py:367`); o chunk é por seção. A 001.5 lê a página da FONTE ARQUIVADA (`storage_ref`, 173/206 versões; 33 sem fonte). **Destrava:** chunker com página (42.091 pedaços) OU re-arquivar as 33 fontes faltantes. **Dono:** 🤖. **Custo de esquecer:** documento sem `storage_ref` nunca entra na base de planos.
+
+## P-E0015-02 · `insurer_key` inconsistente em 14 tabelas, sem constraint
+📊 `pg_constraint ilike '%insurer_key%'` → nenhuma; `portals`→`tokio_marine`, `normative_documents`→`tokio`. A base nova grava já normalizado (`normalize_insurer_key(…, para="conhecimento")`); as 14 tabelas antigas não. **Destrava:** migração medida tabela a tabela, com o `para=` certo. **Dono:** 🤖. **Custo de esquecer:** cada leitor novo repete a conciliação no ponto de uso.
+
+## P-E0015-03 · 6 dos 10 valores de `doc_kind` nunca foram escritos
+📊 CHECK com 10 valores (incl. `manual_de_assistencia`, novo); em uso 3 (`condicoes_gerais 184 · manual_do_segurado 5 · circular_susep 5`); o classificador produz 6 (`insurance_corpus.py:976-983`). **Destrava:** escritor para `manual_de_assistencia` (onda 3) e poda ou dono para os outros. **Dono:** 🤖. **Custo de esquecer:** CHECK maior que o vocabulário real; a onda 3 grava manuais como `manual_do_segurado`.
+
+## P-E0015-04 · `normative_documents` e `normative_document_versions` são classe SEM_ARQUIVO
+📊 `MANIFEST.md` registra o DDL real do catálogo (7 constraints) desde a 001.5; o único arquivo é `docs/canon/sql/reconstruidas/…spec057_h1…` (PROIBIDO APLICAR); `approved_by uuid` sem FK; zero FKs na tabela. **Destrava:** baseline gerado do banco vivo (SPEC-054 §6). **Dono:** 🤖. **Custo de esquecer:** toda migration futura nessas tabelas nasce de manifesto manual.
+
+## P-E0015-05 · o gancho comercial não nomeia a atendente do card Equipe
+📊 `infocap_tool.py:789` chama o composer sem `atendente=`; sai "nossa equipe pode avaliar". `whatsapp_channel` resolve `agent_id`, não pessoa. D-PILOTO-12 exige a atendente real; canário ④ da 001.5. **Destrava:** fonte única "atendente humana da corretora" (card Equipe) exposta a `infocap_tool`. **Dono:** 🤖. **Custo de esquecer:** o gancho não passa o caso a ninguém nomeado.
+
+## P-E0015-06 · `POLICY_INTELLIGENCE_V2` e `TOOL_GATEWAY_MODE` no ambiente de produção não medidos
+📊 `feature_flags.py:24-30`: `POLICY_INTELLIGENCE_V2` ausente = desligado, e é o caminho onde a Skill roda; `TOOL_GATEWAY_MODE` default `off` (a release `insurance.cobertura_e_assistencia 1.0.0` fica inerte até ligar). Nenhuma das duas está no `.env` local. **Destrava:** 🧑 conferir no EasyPanel (`smith-api`) antes do canário; ligar `POLICY_INTELLIGENCE_V2=true` se estiver ausente. **Dono:** 🧑. **Custo de esquecer:** o canário mede o composer antigo e conclui errado.
+
+## P-E0015-07 · o filtro `doc_kind` no Qdrant não foi medido ao vivo
+📊 `doc_kind` entrou em `_INDICES_DE_PAYLOAD` e `search_similar` ganhou o parâmetro (dois braços), mas a coleção `autobrokers_global` é inalcançável da máquina de execução (sem credencial no `.env`); `verificar_indices(GLOBAL_COLLECTION)` vai reportar `doc_kind` em `faltando` até o índice ser criado. **Destrava:** rodar a garantia de índices num ambiente com acesso; medir "zero `manual_do_segurado` com o filtro". **Dono:** 🤖 (com acesso). **Custo de esquecer:** o RAG global segue sem filtrar por tipo de documento.
+
+## P-E0015-08 · a onda 1 deixou 8 linhas em `rascunho` e um buraco de nível
+📊 18/09: 33 planos + 73 serviços `proposto`; 5 planos + 8 serviços `rascunho` (4 nomes-lista > 60 chars, 1 duplicata por caixa, 3 `alagamento = nao` que eram exclusão de risco de outra cobertura); bradesco/auto com níveis [1,3] recusado por não contíguo. **Destrava:** próxima rodada do extrator (`assistance_plans_extractor --aplicar`) com a regra nova de exclusão e a página do nível 2. **Dono:** 🤖. **Custo de esquecer:** a fila do Founder mostra menos do que a CG diz.
+
+## P-E0015-09 · a suíte inteira carrega 48 erros de contaminação de ordem
+📊 linha de base 17/09 (`python -m pytest tests -q`): 35 failed · 48 errors, todos os 48 em `test_098_builder_b_unit.py` (isolado: **80 passed**); 3 falhas de ordem (`test_a_cobertura_continua_inteira`, `test_a_divergencia_aparece_inteira`, `teste_o_reranker_se_comporta_nos_dois_estados`) idênticas na árvore pristina; e o guarda-script do corredor da Porto falhou só na bateria concorrente (isolado: 16 verdes, exit 0). ⚠️ `test_o_protocolo_tem_policia` aparecia vermelho na linha de base **porque o relatório da própria 001.5 estava aberto e sem o card completo**; com o relatório fechado ele voltou a **73 ok, 0 falhas** (📊 18/09). **Destrava:** isolar o estado global que contamina (`conftest`/módulo compartilhado). **Dono:** 🤖. **Custo de esquecer:** toda SPEC lê 48 erros que não são dela e aprende a ignorar a bateria.
+
+## P-E0015-10 · verdades vencidas em docstring e falsos positivos do varredor de PII
+📊 `acervo_arquivo.py:5` afirma "`storage_ref` em 0 de 29"; hoje 173/206 (§9.3). `redaction_service`: sha256 cai em `[TELEFONE]` (run de 10 dígitos) e "sinistro <palavra>" em `sinistro [NUMERO]` — M-A4 contorna, o serviço não foi tocado. **Destrava:** corrigir o docstring; decidir no `redaction_service` (dono próprio). **Dono:** 🤖. **Custo de esquecer:** o varredor acusa hash como telefone e alguém "conserta" removendo o hash.
