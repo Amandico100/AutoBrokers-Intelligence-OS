@@ -219,7 +219,14 @@ rodadas da bateria: 1 inteira (2225 s) + parciais por fatia · nota da execucao 
 
 ## 11. Entrega
 
-PUSH_SAIDA
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   3563b0e..b24ede5  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0                                  <- o trabalho está no ar (CLAUDE.md §2)
+```
+📊 **56 commits**, de `3563b0e` (base) a `b24ede5` (na `origin/main` em 18/09). ENTREGAR NÃO É COMMITAR: é empurrar — e está empurrado.
 
 📊 **Gate final pelo gerente sobre a árvore empurrada:** `py_compile` OK · **13/13 guardas exit 0**
 (M-A1 20 · M-A2 25 · M-A3 15 · M-A4 16 · M-B1 21 · M-B2 17 · M-B3 11 · M-B4 25 · M-B5 27 · M-C1 39 · M-C2 9 ·
