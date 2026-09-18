@@ -354,6 +354,7 @@ def identificar_plano(
     nome_no_sistema: Optional[str] = None,
     planos_publicados: Optional[List[Dict[str, Any]]] = None,
     documento_da_condicao: Optional[str] = None,
+    data_emissao: Any = None,
     db: Any = None,
 ) -> Dict[str, Any]:
     """Qual dos planos PUBLICADOS desta seguradora é o do segurado?
@@ -380,7 +381,8 @@ def identificar_plano(
     """
     candidatos = planos_publicados
     if candidatos is None:
-        candidatos = BASE.planos_publicados(insurer_key, ramo, produto, db=db)
+        candidatos = BASE.planos_publicados(insurer_key, ramo, produto,
+                                            data_emissao=data_emissao, db=db)
     nada = {"plano": None, "nivel": None, "estado": "nao_sabemos_ainda",
             "origem": "nenhuma", "documento_id": None, "pagina": None}
     if not candidatos:
@@ -415,9 +417,16 @@ def identificar_plano(
         casaram = [p for p in candidatos if _pertence(str(p.get("plano") or ""), texto)]
         if not casaram:
             continue
-        vencedor = sorted(
-            casaram, key=lambda p: len(BASE._norm_texto(p.get("plano"))), reverse=True
-        )[0]
+        if len(casaram) > 1:
+            # 🔴 DOIS NOMES NA MESMA APÓLICE NÃO SÃO UM VENCEDOR.
+            # 📊 *"...plano Essencial contratado. Conheça também o Completo."* —
+            # o nome mais LONGO vencia, e o segurado do Essencial passava a
+            # receber a cobertura do Completo. Texto ambíguo é lacuna, não
+            # empate: quem desempata é a pessoa, não o comprimento da string.
+            logger.info("[cobertura] %s planos nomeados no mesmo texto: nao escolho",
+                        len(casaram))
+            return dict(nada, motivo="dois_planos_no_texto")
+        vencedor = casaram[0]
         return {
             "plano": vencedor.get("plano"),
             "nivel": vencedor.get("nivel"),
@@ -427,6 +436,36 @@ def identificar_plano(
             "documento_id": vencedor.get("documento_id"),
             "pagina": vencedor.get("pagina"),
         }
+
+    # 🔴 O PLANO ÚNICO DA CONDIÇÃO GERAL — decisão do gerente (nota 85), escrita.
+    #
+    # 📊 18/09/2026: **25 dos 38** planos propostos pela onda 1 chamam-se
+    # "Plano único", porque a condição geral não nomeia pacote nenhum — ela
+    # descreve UMA assistência. Exigir o nome no texto da apólice faz esses 25
+    # nunca casarem, e a base publicada continua invisível ao segurado.
+    #
+    # A regra é fechada em três travas, e é a conjunção delas que a torna
+    # segura — nenhuma sozinha bastaria:
+    #   ① existe EXATAMENTE UM plano publicado para (seguradora, ramo, produto)
+    #      vigente na emissão — com dois, escolher seria adivinhar;
+    #   ② a condição geral daquele contrato foi encontrada pelo PROCESSO SUSEP
+    #      impresso na própria apólice (onda 2) — não por semelhança;
+    #   ③ o plano publicado veio DAQUELE documento.
+    #
+    # Falhando qualquer uma: `nao_sabemos_ainda`. É o que M-B4 continua guardando.
+    if documento_da_condicao and len(candidatos) == 1:
+        unico = candidatos[0]
+        if str(unico.get("documento_id")) == str(documento_da_condicao):
+            return {
+                "plano": unico.get("plano"),
+                "nivel": unico.get("nivel"),
+                "estado": "contratado",
+                "origem": "plano_unico_da_condicao_geral",
+                "confianca": "media",
+                "plano_id": unico.get("id"),
+                "documento_id": unico.get("documento_id"),
+                "pagina": unico.get("pagina"),
+            }
     return nada
 
 
@@ -509,7 +548,12 @@ def responder_cobertura(
     #       tenha a confirmação; a Skill não a passa.
     #    Por isso a identificação só roda com EVIDÊNCIA DO DOCUMENTO na mão — e,
     #    sem ela, a base nem chega a ser consultada.
-    _tem_documento = bool(apolice.get("fatos")) or bool(apolice.get("texto_do_documento"))
+    #    ⚠️ "Evidência do documento" inclui o ELO SUSEP: quando a condição geral
+    #    deste contrato foi encontrada pelo processo impresso na apólice, o
+    #    documento falou — mesmo que não nomeie pacote nenhum (o caso dos 25
+    #    "Plano único").
+    _tem_documento = (bool(apolice.get("fatos")) or bool(apolice.get("texto_do_documento"))
+                      or bool(apolice.get("documento_da_condicao")))
     if ramo and estado_do_plano == "nao_sabemos_ainda" and _tem_documento:
         try:
             achado = identificar_plano(
@@ -517,6 +561,7 @@ def responder_cobertura(
                 fatos_da_apolice=apolice.get("fatos"),
                 texto_do_documento=apolice.get("texto_do_documento"),
                 documento_da_condicao=apolice.get("documento_da_condicao"),
+                data_emissao=apolice.get("data_emissao"),
                 db=db,
             )
         except Exception as exc:  # noqa: BLE001 — identificar nunca derruba a resposta
@@ -527,6 +572,16 @@ def responder_cobertura(
             logger.info("[cobertura] plano identificado pela origem %s", achado.get("origem"))
 
     if estado_do_plano != "contratado" or not plano or not ramo:
+        # 🔴 sem plano identificado NÃO é o fim: a regra governada da casa
+        # responde pelos três serviços residenciais, marcada como genérica
+        # (§6.4). Sem isto o fallback é inalcançável — 📊 a porta devolve
+        # `nao_sabemos_ainda` em 100 % dos casos reais, e a função acabava aqui.
+        if permitir_fallback:
+            generico = _fallback_residencial(
+                servico=servico, tipo=tipo, apolice=apolice,
+                insurer_key=insurer_key, seguradora=seguradora)
+            if generico is not None:
+                return generico
         return _sem_saber("plano_nao_identificado", insurer_key, seguradora)
 
     # ③ a base. Exceção aqui é FALHA, nunca resposta.
@@ -606,19 +661,54 @@ def responder_cobertura(
                          pagina=p.get("pagina"), gancho=gancho),
         )
 
-    # ⑤ o FALLBACK, com marca — e só para os TRÊS serviços que ele conhece.
-    if permitir_fallback and _SERVICO_DO_FALLBACK.get(servico) \
-            and bool(apolice.get("residencial")) and bool(apolice.get("assistencia_confirmada")):
-        from ..assistance_policy import RULE_ID, RULE_VERSION
-
-        return VereditoDeCobertura(
-            estado="coberto", servico=servico, tipo=tipo, insurer_key=insurer_key,
-            seguradora=seguradora, ramo=ramo, produto=produto, plano=plano, nivel=nivel,
-            origem="regra_generica", confianca="baixa",
-            motivo="%s v%s" % (RULE_ID, RULE_VERSION),
-            texto=_texto("coberto", servico=servico, seguradora=seguradora, plano=plano,
-                         pagina=None, generica=True),
-        )
+    # ⑤ o FALLBACK, com marca. ⛔ UM lugar decide (CLAUDE.md §5): é a MESMA
+    #    função que responde quando o plano não foi identificado.
+    if permitir_fallback:
+        generico = _fallback_residencial(
+            servico=servico, tipo=tipo, apolice=apolice,
+            insurer_key=insurer_key, seguradora=seguradora)
+        if generico is not None:
+            return generico
 
     # ⑥ 🔴 e para TODO o resto: não sabemos ainda. Nunca "sim".
     return _sem_saber("sem_linha_publicada", insurer_key, seguradora)
+
+
+def _fallback_residencial(
+    *, servico: str, tipo: Optional[str], apolice: Dict[str, Any],
+    insurer_key: Optional[str], seguradora: Optional[str],
+) -> Optional[VereditoDeCobertura]:
+    """§6.4 — a regra antiga responde, MARCADA, mesmo sem plano identificado.
+
+    🔴 POR QUE ESTE CAMINHO ESTAVA MORTO
+    ====================================
+    📊 18/09/2026: o fallback só era alcançado depois da trava do plano, e a
+    porta devolve `nao_sabemos_ainda` em 100 % dos casos reais — a função
+    encerrava antes. A apólice residencial com assistência confirmada ouvia
+    *"ainda não sei se tem eletricista"*, sendo que a regra governada da casa
+    afirma que tem, e afirmava antes desta SPEC existir. A 001.5 tinha tirado
+    uma resposta certa do ar.
+
+    ⚠️ **Um vencedor só** (M-B5): a base vem SEMPRE primeiro. Esta função só é
+    chamada quando não há linha publicada que responda — nunca em paralelo.
+
+    A marca é o que o mantém honesto: `origem='regra_generica'`,
+    `confianca='baixa'`, e o texto diz que é padrão de mercado e **não o
+    contrato dele**. Fora dos três serviços, `None` — é aí que o "sim" errado de
+    `assistance_policy.py` morre.
+    """
+    if not _SERVICO_DO_FALLBACK.get(servico):
+        return None
+    if not (bool(apolice.get("residencial")) and bool(apolice.get("assistencia_confirmada"))):
+        return None
+    from ..assistance_policy import RULE_ID, RULE_VERSION
+
+    return VereditoDeCobertura(
+        estado="coberto", servico=servico, tipo=tipo, insurer_key=insurer_key,
+        seguradora=seguradora, ramo=str(apolice.get("ramo") or "") or None,
+        produto=apolice.get("produto"), plano=None, nivel=None,
+        origem="regra_generica", confianca="baixa",
+        motivo="%s v%s" % (RULE_ID, RULE_VERSION),
+        texto=_texto("coberto", servico=servico, seguradora=seguradora, plano=None,
+                     pagina=None, generica=True),
+    )
