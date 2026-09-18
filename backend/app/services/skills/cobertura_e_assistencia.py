@@ -519,6 +519,15 @@ def responder_cobertura(
                          plano=plano, pagina=None),
         )
 
+    # ⓪ 🔴 DATA DE EMISSÃO ILEGÍVEL É LACUNA, NÃO "HOJE".
+    #    📊 18/09: `"maio de 2023"` respondia com o plano vigente HOJE, com toda
+    #    a confiança. Data que existe e não se entende é exatamente o caso em que
+    #    NÃO se pode escolher a vigência — e escolher é o defeito.
+    _data = apolice.get("data_emissao")
+    if _data not in (None, "") and BASE._como_data(_data) is None:
+        logger.info("[cobertura] data de emissao ilegivel: nao afirmo vigencia")
+        return _sem_saber("data_de_emissao_ilegivel")
+
     # ① a seguradora. Desconhecida NÃO é "não cobre": é lacuna de base.
     try:
         insurer_key = BASE.chave_de_conhecimento(apolice.get("insurer"))
@@ -581,7 +590,7 @@ def responder_cobertura(
         if permitir_fallback:
             generico = _fallback_residencial(
                 servico=servico, tipo=tipo, apolice=apolice,
-                insurer_key=insurer_key, seguradora=seguradora)
+                insurer_key=insurer_key, seguradora=seguradora, db=db)
             if generico is not None:
                 return generico
         return _sem_saber("plano_nao_identificado", insurer_key, seguradora)
@@ -674,7 +683,7 @@ def responder_cobertura(
     if permitir_fallback:
         generico = _fallback_residencial(
             servico=servico, tipo=tipo, apolice=apolice,
-            insurer_key=insurer_key, seguradora=seguradora)
+            insurer_key=insurer_key, seguradora=seguradora, db=db)
         if generico is not None:
             return generico
 
@@ -684,7 +693,7 @@ def responder_cobertura(
 
 def _fallback_residencial(
     *, servico: str, tipo: Optional[str], apolice: Dict[str, Any],
-    insurer_key: Optional[str], seguradora: Optional[str],
+    insurer_key: Optional[str], seguradora: Optional[str], db: Any = None,
 ) -> Optional[VereditoDeCobertura]:
     """§6.4 — a regra antiga responde, MARCADA, mesmo sem plano identificado.
 
@@ -709,6 +718,31 @@ def _fallback_residencial(
         return None
     if not (bool(apolice.get("residencial")) and bool(apolice.get("assistencia_confirmada"))):
         return None
+
+    # 🔴 A BASE VEM ANTES — SEMPRE. Medido pela confirmação em 18/09/2026:
+    # com a linha PUBLICADA `eletricista = nao` (porto/residencial), o plano
+    # identificado dava "No plano dele, não…" e o plano NÃO identificado dava
+    # "pelo padrão de mercado costuma estar incluído". A mesma seguradora, o
+    # mesmo serviço, duas respostas opostas — e a errada é a que o segurado
+    # ouviria justamente quando sabemos MENOS sobre o contrato dele.
+    #
+    # Havendo linha publicada para este serviço nesta seguradora/ramo/produto
+    # (em QUALQUER plano), o fallback cala: quem responde é a base, e sem plano
+    # identificado a resposta honesta é `nao_sabemos_ainda`.
+    try:
+        if BASE.existe_linha_publicada(
+            str(insurer_key or ""), str(apolice.get("ramo") or ""), servico,
+            apolice.get("produto"), data_emissao=apolice.get("data_emissao"), db=db,
+        ):
+            logger.info("[cobertura] base publicada existe: o fallback generico cala")
+            return None
+    except Exception as exc:  # noqa: BLE001
+        # ⚠️ Base fora do ar: o fallback TAMBÉM cala. Responder "costuma estar
+        # incluído" sem poder conferir seria usar uma queda de infraestrutura
+        # como licença para afirmar mais do que se sabe.
+        logger.warning("[cobertura] base indisponivel no fallback: %s", type(exc).__name__)
+        return None
+
     from ..assistance_policy import RULE_ID, RULE_VERSION
 
     return VereditoDeCobertura(
