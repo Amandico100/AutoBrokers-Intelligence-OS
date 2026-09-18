@@ -382,7 +382,7 @@ def _compose_options(matches: List[Dict[str, Any]], hoje=None, historico_oculto=
 
 
 def _apolice_para_a_skill(result: Dict[str, Any], pack: Dict[str, Any],
-                          facts: List[Dict[str, Any]]) -> Dict[str, Any]:
+                          facts: List[Dict[str, Any]], db: Any = None) -> Dict[str, Any]:
     """O que a Skill precisa saber da apólice — nada além, e nada inventado.
 
     🔴 O `plano` vem de `PlanoDeAssistencia` da PORTA (001.1,
@@ -438,6 +438,35 @@ def _apolice_para_a_skill(result: Dict[str, Any], pack: Dict[str, Any],
         except (TypeError, ValueError):
             pass
 
+    # 🔴 O QUE A UNIDADE C ACRESCENTA — e por que cada campo está aqui.
+    #
+    # `texto_do_documento` e `fatos`: é do PDF OFICIAL da apólice que sai o nome
+    # do plano contratado (`policy_document_evidence_service.py:230-318` já
+    # extrai o bloco de assistência). Sem eles a Skill não tem como identificar
+    # plano nenhum, e 📊 100 % das respostas continuariam `nao_sabemos_ainda`.
+    #
+    # `data_emissao` e `documento_da_condicao`: a condição geral que rege ESTE
+    # contrato é a vigente NA EMISSÃO, não a de hoje (§7.2). Quem resolve isso é
+    # `assistance_plans_susep_link`, pelo processo SUSEP impresso na própria
+    # apólice — e é ele que amarra os planos publicados ao documento certo.
+    documento = pack.get("official_policy_document_evidence") or {}
+    texto_do_documento = str(documento.get("document_text") or "")
+    data_emissao = selected.get("valid_from") or pack.get("valid_from")
+
+    susep, documento_da_condicao = None, None
+    if texto_do_documento:
+        try:
+            from app.services.knowledge.assistance_plans_susep_link import (
+                condicao_geral_da_apolice,
+            )
+
+            condicao = condicao_geral_da_apolice(texto_do_documento, data_emissao, db=db)
+            if condicao is not None:
+                susep = condicao.susep_process
+                documento_da_condicao = condicao.documento_id
+        except Exception as exc:  # noqa: BLE001 — o elo nunca derruba o compositor
+            logger.info("[composer] elo SUSEP indisponível: %s", type(exc).__name__)
+
     return {
         "insurer": selected.get("insurer_key") or pack.get("insurer_detected"),
         "ramo": pack.get("line_kind_detected") or selected.get("product") or pack.get("product_detected"),
@@ -447,6 +476,11 @@ def _apolice_para_a_skill(result: Dict[str, Any], pack: Dict[str, Any],
         "estado_do_plano": estado,
         "residencial": _is_residential_para_fallback(pack),
         "assistencia_confirmada": has_confirmed_assistance(facts),
+        "fatos": facts,
+        "texto_do_documento": texto_do_documento,
+        "data_emissao": str(data_emissao) if data_emissao else None,
+        "susep_process": susep,
+        "documento_da_condicao": documento_da_condicao,
     }
 
 
@@ -536,7 +570,7 @@ def compose_policy_answer_with_meta(
 
         veredito = responder_cobertura(
             pergunta=question_text,
-            apolice=_apolice_para_a_skill(result, pack, facts),
+            apolice=_apolice_para_a_skill(result, pack, facts, db=db),
             db=db, atendente=atendente,
         )
     except Exception as exc:  # noqa: BLE001 — a Skill nunca derruba o compositor
