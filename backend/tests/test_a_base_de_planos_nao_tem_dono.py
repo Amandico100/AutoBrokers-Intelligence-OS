@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import re
 import sys
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -168,7 +169,10 @@ if len(empresas) == 2:
 
 # -------------------------------------------------------------------------
 print("\n[4] o varredor de PII da casa sobre as colunas de texto: ZERO")
-from app.services.intelligence.redaction_service import contem_pii  # noqa: E402
+from app.services.intelligence.redaction_service import (  # noqa: E402
+    PADROES_PII,
+    contem_pii,
+)
 
 # 🔴 CONTROLE do varredor, ANTES de usá-lo: ele CONSEGUE acusar.
 checar(contem_pii("meu cpf e 123.456.789-09"),
@@ -181,6 +185,39 @@ COLS_TEXTO = {
                                  "susep_process", "content_hash"),
     "insurer_assistance_services": ("servico", "limite_texto", "condicao", "trecho_hash"),
 }
+
+#: 🔴 ATUALIZADO EM 18/09/2026, quando a onda 1 encheu a base (CLAUDE.md §9.3).
+#: Com a tabela vazia, este bloco varria só as duas linhas-molde do próprio
+#: guarda. Com 36 planos e 81 serviços reais de condições gerais, o varredor da
+#: casa acusou DUAS coisas — e nenhuma é PII:
+#:
+#:   📊 `trecho_hash` — um sha256 tem runs de 10 dígitos e cai no padrão
+#:      `[TELEFONE]`. Um hash é irreversível: não há pessoa ali por construção.
+#:   📊 `condicao` — *"...em decorrência de **sinistro coberto** pelas..."* cai no
+#:      padrão `sinistro [NUMERO]`, que casa "sinistro" + qualquer palavra.
+#:
+#: A lição MIGRA em vez de morrer:
+#:   ① o `trecho_hash` passa a ser conferido pela FORMA (64 hex), que é uma trava
+#:      MAIS forte — ela pega o defeito real, que é alguém gravar o trecho cru no
+#:      lugar do hash;
+#:   ② as colunas de texto continuam varridas pelo varredor da casa, e um acerto
+#:      dele só conta quando o casamento tem DÍGITO ou é e-mail — que é o que
+#:      separa "CPF, telefone, cartão, CEP, placa, e-mail" de "a palavra
+#:      sinistro seguida de um adjetivo".
+#: O controle do CPF continua verde, então o varredor continua CONSEGUINDO acusar.
+_SEM_DIGITO_NAO_E_PII = re.compile(r"\d")
+
+
+def _pii_de_verdade(valor: str) -> bool:
+    if not contem_pii(valor):
+        return False
+    for padrao, marca in PADROES_PII:
+        m = padrao.search(valor)
+        if not m:
+            continue
+        if marca == "[EMAIL]" or _SEM_DIGITO_NAO_E_PII.search(m.group(0)):
+            return True
+    return False
 with psycopg.connect(DSN, prepare_threshold=None) as conn, conn.cursor() as cur:
     cur.execute("select count(*) from insurer_assistance_plans")
     antes_p = cur.fetchone()[0]
@@ -204,14 +241,27 @@ with psycopg.connect(DSN, prepare_threshold=None) as conn, conn.cursor() as cur:
         (plano, doc, "a" * 64),
     )
 
-    sujas = []
+    sujas, hashes_torto = [], []
     for tabela, colunas in COLS_TEXTO.items():
         cur.execute(f"select {', '.join(colunas)} from {tabela}")
         for linha in cur.fetchall():
             for col, valor in zip(colunas, linha):
-                if valor and contem_pii(str(valor)):
+                if not valor:
+                    continue
+                if col == "trecho_hash":
+                    # ① a trava da FORMA: 64 hex. Mais forte que o varredor aqui.
+                    if not re.fullmatch(r"[0-9a-f]{64}", str(valor)):
+                        hashes_torto.append(f"{tabela}.{col}")
+                    continue
+                if _pii_de_verdade(str(valor)):
                     sujas.append(f"{tabela}.{col}")
-    checar(not sujas, "🔴 varredor de PII sobre TODAS as colunas de texto = 0", repr(sujas))
+    checar(not sujas, "🔴 varredor de PII sobre TODAS as colunas de texto = 0", repr(sujas[:5]))
+    checar(not hashes_torto,
+           "🔴 e todo `trecho_hash` é sha256 (64 hex) — o trecho CRU nunca foi gravado",
+           repr(hashes_torto[:5]))
+    checar(_pii_de_verdade("meu cpf e 123.456.789-09")
+           and not _pii_de_verdade("em decorrencia de sinistro coberto pelas garantias"),
+           "🔴 CONTROLE do filtro novo: ele acusa o CPF e NÃO acusa 'sinistro coberto'")
     checar(True, "     (varridas as linhas-molde + o que houver na base)")
     conn.rollback()
 
