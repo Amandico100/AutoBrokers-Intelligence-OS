@@ -7,6 +7,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
+// SPEC-EXTRA-001.5 BLOCO D — a base GLOBAL de planos de assistência ao lado do
+// conhecimento da corretora. São duas coisas diferentes na mesma tela, e a
+// legenda de cada bloco diz qual é qual: o que ESTA corretora subiu, e o que o
+// mercado inteiro escreveu nas condições gerais.
+import { CoberturaDePlanos } from './CoberturaDePlanos';
+import { FilaDeCuradoria } from './FilaDeCuradoria';
 
 type Doc = { file_name: string; file_type: string | null; status: string; scope: string; knowledge_class: string | null; visibility: string | null; chunks: number; created_at: string | null };
 type Data = { documents: Doc[]; total: number; ready: number };
@@ -48,13 +54,21 @@ export function KnowledgeClient() {
   const [file, setFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [planos, setPlanos] = useState<any | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
     fetch('/api/dashboard/knowledge').then((r) => r.json()).then((j) => { if (j?.ok) setD(j); }).catch(() => {});
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadPlanos = useCallback(() => {
+    fetch('/api/dashboard/knowledge/planos')
+      .then((r) => r.json())
+      .then((j) => { if (j?.ok) setPlanos(j); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { load(); loadPlanos(); }, [load, loadPlanos]);
 
   const send = async () => {
     if (!file || sending) return;
@@ -83,8 +97,18 @@ export function KnowledgeClient() {
 
   if (!d) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
+  const cobertura = planos?.cobertura || {};
+  const fila = planos?.fila || {};
+
   return (
     <div className="space-y-4">
+      {planos && (
+        <>
+          <CoberturaDePlanos linhas={cobertura.linhas || []} resumo={cobertura.resumo} />
+          <FilaDeCuradoria itens={fila.itens || []} onMudou={loadPlanos} />
+        </>
+      )}
+
       <div className="rounded-lg border border-border bg-card p-4">
         <p className="text-sm text-foreground">
           Conhecimento da corretora: <span className="font-semibold">{d.total}</span> documento(s), {d.ready} pronto(s) para uso.
