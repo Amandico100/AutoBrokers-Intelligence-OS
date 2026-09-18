@@ -110,17 +110,41 @@ def main() -> int:
     print(f"   fonte: {CENSO.relative_to(RAIZ.parent)} (`placar_das_siglas`)")
     print(f"   medido com: {placar.get('medido_com')}")
 
-    canonicas = sorted({
-        str(v.get("canonica")) for v in siglas.values()
-        if isinstance(v, dict) and v.get("canonica")
-    })
+    # 🔴 O CRUZAMENTO PASSA PELA MESMA NORMALIZAÇÃO DOS DOIS LADOS.
+    #
+    # 📊 18/09/2026: sem isto, o cruzamento dava 6/2/8 onde o certo é 7/1/7.
+    # O censo guarda `tokio_marine` e `seguros_unimed`; a base guarda `tokio` e
+    # `unimed`. Comparar as duas grafias faz a Tokio aparecer como "carteira sem
+    # CG" — e ela é a seguradora cujo documento já está no acervo. É o defeito
+    # de dialeto de CLAUDE.md §9.4, aqui num painel: o número sai errado sem
+    # nenhum erro aparecer.
+    canonicas = set()
+    nao_normalizadas = []
+    for v in siglas.values():
+        if not (isinstance(v, dict) and v.get("canonica")):
+            continue
+        bruta = str(v["canonica"])
+        try:
+            canonicas.add(BASE.chave_de_conhecimento(bruta))
+        except BASE.SeguradoraDesconhecida:
+            nao_normalizadas.append(bruta)
+    canonicas = sorted(canonicas)
+    if nao_normalizadas:
+        print(f"   ⚠️ {len(nao_normalizadas)} canônica(s) do censo que a base não "
+              f"reconhece: {sorted(set(nao_normalizadas))}")
     print(f"   📊 {len(canonicas)} chave(s) canônica(s) distinta(s) por trás das "
           f"{len(siglas)} siglas")
 
     # ------------------------------------------------------------- o cruzamento
     print("\n" + "-" * 78)
     print("🔴 O CRUZAMENTO — e por que as três NÃO se somam")
-    cg = set(lista_cg)
+    # e o mesmo dialeto do outro lado: `lista_cg` vem do banco, cru.
+    cg = set()
+    for bruta in lista_cg:
+        try:
+            cg.add(BASE.chave_de_conhecimento(bruta))
+        except BASE.SeguradoraDesconhecida:
+            continue
     carteira = set(canonicas)
     plano = set(seguradoras_com_plano)
     print(f"   CG ∩ carteira ......... {len(cg & carteira):>3}  {sorted(cg & carteira)}")
