@@ -60,6 +60,9 @@ TRECHO_BOM = "O guincho esta incluido ate 200 km por evento, sem carencia."
 TRECHO_INVENTADO = "O guincho e ilimitado em todo o territorio nacional."
 
 DOC = "11111111-1111-1111-1111-111111111111"
+#: 🔴 o revisor e o ID do usuario autenticado (uuid), nunca um rotulo livre:
+#: `revisado_por="robo"` passaria pelo CHECK do banco, que so exige nao nulo.
+REVISOR = "11111111-2222-3333-4444-555555555555"
 
 
 def _pdf_de_duas_paginas() -> bytes:
@@ -123,8 +126,12 @@ class ModeloDuplo:
 
 def _banco_com_o_documento() -> BaseEmMemoria:
     db = BaseEmMemoria()
+    # 🔴 `effective_from` é obrigatório desde 18/09: a vigência do PLANO é a da
+    # VERSÃO do documento, e sem ela o extrator PULA o documento em vez de
+    # inventar `date.today()` (que duplicaria a base a cada rodada).
     db.tabelas["normative_document_versions"] = [
-        {"document_id": DOC, "version": 1, "storage_ref": "acervo/x.pdf"}
+        {"document_id": DOC, "version": 1, "storage_ref": "acervo/x.pdf",
+         "effective_from": "2019-06-01"}
     ]
     return db
 
@@ -233,7 +240,7 @@ checar(any("publicar_servico(" in l for l in _mutada.splitlines()[-3:]),
 
 print("\n[4] 🔴 CONTROLE do duplo: com uma PESSOA, a MESMA base publica")
 alvo = [l for l in servicos if str(l.get("curadoria")) == "proposto"][0]
-B.publicar_servico(str(alvo["id"]), "amandus@resulta", db=db)
+B.publicar_servico(str(alvo["id"]), REVISOR, db=db)
 depois = [l for l in db.tabelas["insurer_assistance_services"] if str(l["id"]) == str(alvo["id"])][0]
 checar(str(depois.get("curadoria")) == "publicado" and depois.get("revisado_por")
        and depois.get("revisado_em"),
@@ -245,13 +252,56 @@ try:
 except B.RevisorObrigatorio:
     checar(True, "e publicar SEM revisor continua recusado antes do banco")
 
+print("\n[4b] 🔴 PUBLICAR UMA LINHA PUBLICA O PLANO DELA — senão o segurado não ouve")
+# 📊 18/09/2026: a leitura que chega ao segurado parte do PLANO
+# (`planos_publicados` -> `buscar_servico`). Um serviço `publicado` pendurado num
+# plano `proposto` é INVISÍVEL: o Founder publicava dez linhas pela tela e o
+# segurado continuava ouvindo "ainda não sei" — trabalho feito que não aparece.
+db4 = BaseEmMemoria()
+pid4 = db4.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Essencial",
+                 nivel=1, curadoria="proposto")
+sid4 = db4.servico(pid4, "guincho", "sim", curadoria="proposto")
+antes4 = B.buscar_servico("hdi", "auto", "Auto Total", "Essencial", "guincho", db=db4)
+checar(antes4 is None, "   (antes de publicar, a base não responde — controle do par)")
+B.publicar_servico(sid4, REVISOR, db=db4)
+plano4 = db4.tabelas["insurer_assistance_plans"][0]
+checar(str(plano4.get("curadoria")) == "publicado" and plano4.get("revisado_por") == REVISOR,
+       "🔴 publicar o serviço publicou o PLANO pai, com o MESMO revisor",
+       f"{plano4.get('curadoria')} / {plano4.get('revisado_por')}")
+checar(B.buscar_servico("hdi", "auto", "Auto Total", "Essencial", "guincho", db=db4) is not None,
+       "🔴 e AGORA `buscar_servico` acha — é isto que chega ao segurado")
+
+# 🔴 CONTROLE do par: serviço publicado com o plano ainda `proposto` (gravado
+#    direto no duplo, sem passar pelo módulo) continua INVISÍVEL.
+db4b = BaseEmMemoria()
+pid4b = db4b.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Essencial",
+                   nivel=1, curadoria="proposto")
+db4b.servico(pid4b, "guincho", "sim", curadoria="publicado")
+checar(B.buscar_servico("hdi", "auto", "Auto Total", "Essencial", "guincho", db=db4b) is None,
+       "🔴 CONTROLE: serviço `publicado` sob plano `proposto` NÃO responde")
+try:
+    B.publicar_servico(sid4, REVISOR, db=db4)  # já publicado: idempotente
+    checar(True, "republicar a mesma linha é idempotente (não levanta)")
+except Exception as exc:  # noqa: BLE001
+    checar(False, "republicar levantou", repr(exc))
+db4c = BaseEmMemoria()
+pid4c = db4c.plano(insurer_key="hdi", ramo="auto", produto="Auto", plano="X", nivel=1,
+                   curadoria="proposto")
+sid4c = db4c.servico(pid4c, "guincho", "sim", curadoria="rejeitado")
+try:
+    B.publicar_servico(sid4c, REVISOR, db=db4c)
+    checar(False, "publicar a partir de `rejeitado` tinha de levantar")
+except B.BaseDePlanosRecusa as exc:
+    checar("proposto" in str(exc),
+           "🔴 e não se publica a partir de `rejeitado` — desfazer recusa é outro ato")
+
 print("\n[5] §7.4 — o documento MUDOU: as linhas publicadas voltam para a fila")
 db5 = _banco_com_o_documento()
 pid = db5.plano(insurer_key="porto", ramo="auto", produto="Auto Total", plano="Essencial",
                 nivel=1, documento_id=DOC)
 sid = db5.servico(pid, "guincho", "sim", documento_id=DOC)
 for linha in db5.tabelas["insurer_assistance_services"]:
-    linha["revisado_por"] = "amandus"
+    linha["revisado_por"] = REVISOR
 antes = [l["curadoria"] for l in db5.tabelas["insurer_assistance_services"]]
 # 🔴 pelo MOTOR do corpus — a mesma funcao que a ingestao chama quando o
 # `content_hash` muda. Chamar `derrubar_para_proposto` direto mediria a base;
@@ -270,7 +320,7 @@ checar(len(db5.tabelas["insurer_assistance_services"]) == 1
 checar("content_hash mudou" in str(servico.get("condicao") or ""),
        "e o MOTIVO ficou escrito na linha, para quem for revisar",
        repr(servico.get("condicao")))
-checar(str(servico.get("revisado_por")) == "amandus",
+checar(str(servico.get("revisado_por")) == REVISOR,
        "⚠️ e o revisor anterior e PRESERVADO — e ele que deve ser chamado para reconferir")
 
 print("\n[6] e o gancho esta LIGADO no ponto onde o hash e comparado")
@@ -287,6 +337,67 @@ checar(pos_hash >= 0 and pos_queda > pos_hash and pos_queda < pos_susep,
 _sem = corpus.replace("devolver_linhas_a_fila(", "nada_a_fazer(")
 checar(_sem.find("devolver_linhas_a_fila(", pos_hash) == -1,
        "🔴 CONTROLE: sem a chamada, a varredura FICA VERMELHA")
+
+print("\n[7] a VIGÊNCIA do plano é a do DOCUMENTO, nunca a de hoje")
+# 📊 18/09/2026: a onda gravou `date.today()` em 38 de 38 planos. A vigência entra
+# nas chaves únicas: rodar amanhã DUPLICARIA a base inteira.
+db7 = _banco_com_o_documento()
+db7.tabelas["normative_document_versions"][0]["effective_from"] = "2021-03-01"
+# 🔴 CONTROLE do bloco: documento SEM vigencia nenhuma nao propoe nada — em vez
+# de inventar a data de hoje, que e o defeito que se esta consertando.
+db_sem = _banco_com_o_documento()
+db_sem.tabelas["normative_document_versions"][0].pop("effective_from", None)
+r_sem = X.processar_documento(
+    {"id": DOC, "insurer_key": "porto", "product_line": "auto", "title": "X",
+     "content_hash": "abc"},
+    aplicar=True, llm=ModeloDuplo(), db=db_sem, minio=MinioDuplo(_pdf_de_duas_paginas()))
+checar(r_sem.motivo == "documento_sem_vigencia"
+       and not db_sem.tabelas.get("insurer_assistance_plans"),
+       "🔴 CONTROLE: documento sem vigencia NAO propoe nada (nada de `date.today()`)",
+       r_sem.motivo)
+doc7 = {"id": DOC, "insurer_key": "porto", "product_line": "auto",
+        "title": "Auto Total.pdf", "content_hash": "abc", "susep_process": None}
+X.processar_documento(doc7, aplicar=True, llm=ModeloDuplo(), db=db7,
+                      minio=MinioDuplo(_pdf_de_duas_paginas()))
+vigencias = {str(p.get("vigencia_inicio")) for p in db7.tabelas["insurer_assistance_plans"]}
+checar(vigencias == {"2021-03-01"},
+       "🔴 a vigência é a `effective_from` da versão do documento",
+       repr(vigencias))
+import datetime as _dt  # noqa: E402
+checar(_dt.date.today().isoformat() not in vigencias,
+       "🔴 CONTROLE: e NÃO é a data de hoje (era isso que duplicava a base)",
+       _dt.date.today().isoformat())
+
+print("\n[8] `produto` e `plano` normalizados — senão o gancho nunca acha o superior")
+checar(X.produto_canonico("Bradesco Seguro Residencial CC-RESIDENCIAL POP.pdf")
+       == "Bradesco Seguro Residencial",
+       "nome de ARQUIVO vira nome de produto legível")
+checar(X.produto_canonico("Mapfre condominio") == X.produto_canonico("Mapfre Condominio"),
+       "🔴 'Mapfre condominio' e 'Mapfre Condominio' viram UM produto — duas caixas "
+       "eram dois produtos, cada um com um nível 1, e o gancho não achava o superior")
+checar(X.nome_de_plano_valido("Essencial") == "Essencial",
+       "um nome de plano continua sendo um nome de plano")
+checar(X.nome_de_plano_valido("Cobertura Basica + Vendaval + Danos Eletricos + Roubo") is None
+       and X.nome_de_plano_valido("x" * 70) is None,
+       "🔴 e a LISTA de coberturas não é nome de plano (📊 4 dos 38 eram)")
+
+print("\n[9] exclusão de risco dentro de OUTRA cobertura NÃO vira 'nao' do serviço")
+# 📊 2 de 6 linhas da amostra: a cláusula de riscos excluídos da cobertura de
+# Vendaval/Granizo virou `alagamento = nao` do plano inteiro — e o segurado com
+# direito desistiria de acionar.
+db9 = _banco_com_o_documento()
+minio9 = MinioDuplo(_pdf_de_duas_paginas())
+excl = {"servico": "alagamento", "coberto": "nao", "pagina": 1, "produto": "P", "plano": "Y",
+        "trecho": "Riscos excluidos: inundacao decorrente de transbordamento de rios."}
+checar(X.verificar(excl, insurer="porto", documento_id=DOC, niveis_por_produto={},
+                   db=db9, minio=minio9) == "exclusao_de_risco_nao_e_nao_do_servico",
+       "🔴 cláusula de exclusão de risco com `coberto=nao` é REPROVADA")
+# 🔴 CONTROLE: a negação DO SERVIÇO continua passando por esta regra.
+nega = {"servico": "alagamento", "coberto": "nao", "pagina": 1, "produto": "P", "plano": "Y",
+        "trecho": "Este plano nao inclui cobertura para alagamento em nenhuma hipotese."}
+checar(X.verificar(nega, insurer="porto", documento_id=DOC, niveis_por_produto={},
+                   db=db9, minio=minio9) != "exclusao_de_risco_nao_e_nao_do_servico",
+       "🔴 CONTROLE: a negação DO SERVIÇO não é barrada por esta regra")
 
 print()
 print("=" * 74)

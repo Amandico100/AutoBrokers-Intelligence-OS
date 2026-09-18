@@ -86,9 +86,17 @@ checar(B.cobertura_por_seguradora_e_ramo(db=db3) == {},
        "🔴 plano e serviços `proposto` contam ZERO — senão o painel cresceria "
        "sozinho a cada rodada da onda 1",
        repr(B.cobertura_por_seguradora_e_ramo(db=db3)))
-B.publicar_plano(p, "amandus", db=db3)
+# 🔴 o revisor e o ID do usuario autenticado (uuid), nunca um rotulo livre:
+# um `revisado_por="robo"` passaria pelo CHECK do banco, que so exige nao nulo.
+REVISOR = "11111111-2222-3333-4444-555555555555"
+B.publicar_plano(p, REVISOR, db=db3)
 for linha in db3.tabelas["insurer_assistance_services"]:
-    B.publicar_servico(linha["id"], "amandus", db=db3)
+    B.publicar_servico(linha["id"], REVISOR, db=db3)
+try:
+    B.publicar_plano(p, "amandus", db=db3)
+    checar(False, "publicar com rotulo livre tinha de levantar")
+except B.RevisorObrigatorio as exc:
+    checar("uuid" in str(exc), "🔴 CONTROLE: `revisado_por='amandus'` e RECUSADO (nao e um id)")
 checar(len(B.cobertura_por_seguradora_e_ramo(db=db3)) == 1,
        "   e depois de UMA PESSOA publicar, a mesma base conta 1 (controle)",
        repr(B.cobertura_por_seguradora_e_ramo(db=db3)))

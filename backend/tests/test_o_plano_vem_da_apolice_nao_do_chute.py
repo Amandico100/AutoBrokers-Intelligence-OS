@@ -127,6 +127,95 @@ checar(v_desc is not None and v_desc.insurer_key is None,
        "e nenhuma chave canônica é afirmada para ela",
        repr(getattr(v_desc, "insurer_key", "?")))
 
+print("\n[5] 🔴 O PLANO ÚNICO DA CONDIÇÃO GERAL — e as três travas que o seguram")
+# 📊 18/09/2026: **25 dos 38** planos propostos chamam-se "Plano único", porque a
+# condição geral não nomeia pacote nenhum. Exigir o nome no texto da apólice faz
+# esses 25 nunca casarem — a base publicada fica invisível ao segurado.
+# A regra só vale com as TRÊS travas juntas, e é isso que este bloco mede.
+from app.services.skills.cobertura_e_assistencia import identificar_plano  # noqa: E402
+
+DOCCG = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+db5 = BaseEmMemoria()
+p5 = db5.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Plano único",
+               nivel=1, documento_id=DOCCG)
+achado = identificar_plano(insurer_key="hdi", ramo="auto", produto="Auto Total",
+                           texto_do_documento="APOLICE AUTO sem nome de pacote",
+                           documento_da_condicao=DOCCG, db=db5)
+checar(achado.get("estado") == "contratado"
+       and achado.get("origem") == "plano_unico_da_condicao_geral",
+       "🔴 UM plano publicado + condição geral casada pelo SUSEP -> contratado, "
+       "com a origem dizendo por quê", repr(achado))
+
+# 🔴 CONTROLE ①: o MESMO plano, mas o SUSEP não casou -> não sabemos.
+sem_susep = identificar_plano(insurer_key="hdi", ramo="auto", produto="Auto Total",
+                              texto_do_documento="APOLICE AUTO sem nome de pacote",
+                              documento_da_condicao=None, db=db5)
+checar(sem_susep.get("estado") == "nao_sabemos_ainda",
+       "🔴 CONTROLE: um plano só, mas SEM o elo SUSEP -> `nao_sabemos_ainda`",
+       repr(sem_susep))
+
+# 🔴 CONTROLE ②: dois planos publicados, mesmo com o SUSEP casado -> não sabemos.
+db5.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Premium",
+          nivel=2, documento_id=DOCCG)
+dois = identificar_plano(insurer_key="hdi", ramo="auto", produto="Auto Total",
+                         texto_do_documento="APOLICE AUTO sem nome de pacote",
+                         documento_da_condicao=DOCCG, db=db5)
+checar(dois.get("estado") == "nao_sabemos_ainda",
+       "🔴 CONTROLE: com DOIS planos publicados, escolher seria adivinhar -> não escolhe",
+       repr(dois))
+
+# 🔴 CONTROLE ③: um plano só e SUSEP casado, mas de OUTRO documento.
+db6 = BaseEmMemoria()
+db6.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Plano único",
+          nivel=1, documento_id="ffffffff-0000-0000-0000-000000000000")
+outro = identificar_plano(insurer_key="hdi", ramo="auto", produto="Auto Total",
+                          texto_do_documento="APOLICE AUTO", documento_da_condicao=DOCCG,
+                          db=db6)
+checar(outro.get("estado") == "nao_sabemos_ainda",
+       "🔴 CONTROLE: o plano publicado veio de OUTRO documento -> não sabemos")
+
+print("\n[6] DOIS planos NOMEADOS no mesmo texto não são um vencedor")
+# 📊 "...plano Essencial contratado. Conheça também o Completo." — o nome mais
+# LONGO vencia, e o segurado do Essencial recebia a cobertura do Completo.
+db7 = BaseEmMemoria()
+db7.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Essencial", nivel=1)
+db7.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="Auto Completo", nivel=2)
+um = identificar_plano(insurer_key="hdi", ramo="auto", produto="Auto Total",
+                       texto_do_documento="Assistencia 24h - plano Essencial", db=db7)
+checar(um.get("estado") == "contratado" and um.get("plano") == "Essencial",
+       "UM nome no texto -> contratado, e é aquele", repr(um))
+ambiguo = identificar_plano(
+    insurer_key="hdi", ramo="auto", produto="Auto Total",
+    texto_do_documento="plano Essencial contratado. Conheca tambem o Auto Completo.",
+    db=db7)
+checar(ambiguo.get("estado") == "nao_sabemos_ainda",
+       "🔴 DOIS nomes no mesmo texto -> `nao_sabemos_ainda` (texto ambíguo é lacuna, "
+       "não empate)", repr(ambiguo))
+
+print("\n[7] o FALLBACK residencial responde SEM plano identificado (§6.4)")
+# 📊 18/09/2026: o fallback só era alcançado depois da trava do plano, e a porta
+# devolve `nao_sabemos_ainda` em 100 % dos casos reais — o caminho estava MORTO,
+# e a 001.5 tinha tirado do ar uma resposta que a casa já dava.
+apolice_res = {"insurer": "HDI", "ramo": "residencial", "produto": "Residencial",
+               "estado_do_plano": "nao_sabemos_ainda", "residencial": True,
+               "assistencia_confirmada": True}
+v_eletricista = responder_cobertura(pergunta="a assistencia cobre eletricista?",
+                                    apolice=apolice_res, db=BaseEmMemoria())
+checar(v_eletricista is not None and v_eletricista.estado == "coberto"
+       and v_eletricista.origem == "regra_generica" and v_eletricista.plano is None,
+       "🔴 eletricista, sem plano identificado -> `coberto` MARCADO como genérico",
+       repr(getattr(v_eletricista, "origem", None)))
+checar(v_eletricista is not None and "padr" in v_eletricista.texto.lower()
+       and "nao" not in v_eletricista.texto[:6].lower(),
+       "e o texto diz que é padrão de mercado, não o contrato dele",
+       v_eletricista.texto[:120])
+# 🔴 CONTROLE: fora dos TRÊS serviços, o fallback NÃO responde.
+v_reserva = responder_cobertura(pergunta="a assistencia cobre carro reserva?",
+                                apolice=apolice_res, db=BaseEmMemoria())
+checar(v_reserva is not None and v_reserva.estado == "nao_sabemos_ainda",
+       "🔴 CONTROLE: carro reserva (fora dos três) -> `nao_sabemos_ainda`, nunca 'sim'",
+       repr(v_reserva.estado))
+
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")

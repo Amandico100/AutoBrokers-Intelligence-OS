@@ -43,6 +43,7 @@ outro nome.
 from __future__ import annotations
 
 import json
+import re
 import os
 import sys
 
@@ -254,9 +255,23 @@ sujo = varredura_de_pii({"pergunta": "o CPF 529.982.247-25 tem carro reserva?"})
 checar(bool(sujo),
        "🔴 CONTROLE: com a pergunta CRUA no resumo, o varredor fica VERMELHO",
        repr([(a.tipo, a.caminho) for a in sujo[:3]]))
-checar("529" not in json.dumps(resumo, ensure_ascii=False),
-       "🔴 e o CPF da pergunta não aparece em lugar nenhum do registro",
-       json.dumps(resumo, ensure_ascii=False)[:160])
+# 🔴 O CPF INTEIRO, não os três primeiros dígitos.
+#
+# 📊 18/09/2026: esta linha procurava `"529"` — e o `documento_id` do duplo é um
+# `uuid4()`, que contém "529" por acaso em ~1 rodada de cada 5. O guarda ficava
+# vermelho sem nenhum defeito, e um guarda que falha sozinho ensina a ignorar
+# guarda (CLAUDE.md §9.3). O que se quer afirmar é que o CPF não vazou — então é
+# o CPF que se procura, com e sem pontuação.
+_CPF = "529.982.247-25"
+_bruto = json.dumps(resumo, ensure_ascii=False)
+checar(_CPF not in _bruto and _CPF.replace(".", "").replace("-", "") not in _bruto
+       and not re.search(r"\d{3}\.?\d{3}\.?\d{3}-?\d{2}", _bruto),
+       "🔴 e o CPF da pergunta não aparece em lugar nenhum do registro "
+       "(nem formatado, nem em 11 dígitos)",
+       _bruto[:160])
+# 🔴 CONTROLE: a mesma busca ACHA o CPF quando ele está lá.
+checar(_CPF in json.dumps({"pergunta": "o CPF %s tem carro reserva?" % _CPF}),
+       "🔴 CONTROLE: a busca CONSEGUE achar o CPF quando ele existe no dicionário")
 
 print()
 print("=" * 74)
