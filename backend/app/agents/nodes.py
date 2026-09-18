@@ -263,7 +263,28 @@ def _normalize_money_amount(value: Any) -> str:
 #: isto para separar "o plano dele NÃO tem carro reserva" de um texto que
 #: menciona carro reserva e não nega nada — o "sim" silencioso de CLAUDE.md
 #: §9.5, que não trava e chega ao cliente.
-_NEGATIVA_RE = re.compile(r"\bn[ãa]o\b|\bnenhum[ao]?\b|\bsem\b|\bfora\b|\bexclu", re.IGNORECASE)
+#
+# 🔴 18/09/2026 — A NEGAÇÃO PRECISA SER *DO SERVIÇO*, NÃO QUALQUER "SEM".
+#
+# 📊 A versão anterior era `\bnão\b|\bnenhum\b|\bsem\b|\bfora\b|\bexclu`. A frase
+#
+#     "Tem carro reserva, sem custo adicional."
+#
+# atravessava o guarda: `\bsem\b` casa em "sem custo", e o guarda concluía que a
+# resposta negava — quando ela AFIRMA o oposto do que a base publicada diz. É o
+# "sim" silencioso de CLAUDE.md §9.5 passando pela porta do próprio guarda que
+# existe para pegá-lo. Uma negação avulsa ("sem custo", "fora do horário
+# comercial", "sem franquia") é qualificação da cobertura, não a recusa dela.
+_NEGATIVA_RE = re.compile(
+    r"\bn[ãa]o\s+(?:tem|t[êe]m|inclui|inclu[íi]d|cobre|cobert|possui|contempla|"
+    r"h[áa]|dispon|oferece|est[áa]\s+(?:inclu|contratad|cobert))|"
+    r"\bsem\s+(?:direito|cobertura|o\s+servi[çc]o|esse\s+servi[çc]o|"
+    r"este\s+servi[çc]o|assist[êe]ncia)|"
+    r"\bn[ãa]o\s+(?:faz|fazem)\s+parte|\bfora\s+d[oa]\s+(?:plano|cobertura|contrato)|"
+    r"\bnenhum[ao]?\s+(?:cobertura|assist[êe]ncia|servi[çc]o)|"
+    r"\bexclu[íi]d[oa]s?\s+(?:d[oa]|deste|desse)|\bn[ãa]o\s+est[áa]\s+(?:inclu|contratad)",
+    re.IGNORECASE,
+)
 
 
 def _normalizar_para_guarda(valor: Any) -> str:
