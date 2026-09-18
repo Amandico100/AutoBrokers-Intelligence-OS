@@ -14,6 +14,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from typing import Any, Dict, Literal, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -258,6 +259,24 @@ def _normalize_money_amount(value: Any) -> str:
     return text.strip(",")
 
 
+#: A negação, em português de gente. 🔴 O guarda de `assistencia_da_base` usa
+#: isto para separar "o plano dele NÃO tem carro reserva" de um texto que
+#: menciona carro reserva e não nega nada — o "sim" silencioso de CLAUDE.md
+#: §9.5, que não trava e chega ao cliente.
+_NEGATIVA_RE = re.compile(r"\bn[ãa]o\b|\bnenhum[ao]?\b|\bsem\b|\bfora\b|\bexclu", re.IGNORECASE)
+
+
+def _normalizar_para_guarda(valor: Any) -> str:
+    """Minúsculas sem acento — a MESMA dos dois lados da comparação.
+
+    ⚠️ CLAUDE.md §9.4 (dialeto): comparar "hidráulica" da base com "hidraulica"
+    do texto daria zero casamento em silêncio, e o guarda ficaria verde por não
+    enxergar nada. Normalizar UM lado só é o mesmo defeito.
+    """
+    bruto = unicodedata.normalize("NFKD", str(valor or ""))
+    return "".join(c for c in bruto if not unicodedata.combining(c)).lower().strip()
+
+
 def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
     """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries."""
     if not isinstance(contract, dict) or contract.get("provider") != "infocap":
@@ -341,9 +360,38 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
             return rendered  # página inventada
     if "source_limited" in required and "erro" in lower:
         return rendered
+    if "assistencia_da_base" in required:
+        # 🔴 SPEC-EXTRA-001.5 §6.4 — O GUARDA MUDOU DE REGRA, NÃO MORREU.
+        #
+        # Com a base de planos no ar, exigir "eletricista + chaveiro +
+        # encanador" de TODA resposta de assistência passou a ser errado: a
+        # resposta certa sobre carro reserva numa apólice de AUTO não tem
+        # encanador nenhum. O que o guarda passa a exigir é o que a BASE
+        # afirmou sobre ESTA apólice — nem mais, nem menos.
+        #
+        # ⚠️ Quem apagar este bloco "porque a base substituiu a regra" reabre o
+        # defeito que ele fechou: a LLM reescrevendo por cima do veredito
+        # determinístico e devolvendo ao segurado um "sim" que o contrato dele
+        # não dá. Guarda M-B5.
+        da_base = contract.get("assistencia_da_base")
+        if isinstance(da_base, list) and da_base:
+            for item in da_base:
+                if not isinstance(item, dict):
+                    continue
+                rotulo = _normalizar_para_guarda(item.get("rotulo") or item.get("servico"))
+                if not rotulo or rotulo not in _normalizar_para_guarda(candidate):
+                    return rendered  # omitiu um serviço que a base nomeou
+                if str(item.get("coberto")) == "nao" and not _NEGATIVA_RE.search(candidate):
+                    # A base disse NÃO e o texto não nega em lugar nenhum: é o
+                    # "sim" silencioso de §9.5, que não trava e chega ao cliente.
+                    return rendered
     if "assistance_policy_applied" in required:
         # SPEC-016 E4b: política de assistência aplicada → a resposta final não
         # pode omitir os serviços padrão garantidos pela política governada.
+        #
+        # ⚠️ Continua VALENDO — é a regra do FALLBACK (§6.4): quando quem
+        # respondeu foi `assistance_policy.py`, e não a base, os três serviços
+        # são o que se afirmou, e é o que a resposta tem de citar.
         services_present = (
             "eletricista" in lower
             and "chaveiro" in lower
