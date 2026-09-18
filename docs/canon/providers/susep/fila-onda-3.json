@@ -1,0 +1,190 @@
+{
+  "_doc": "SPEC-EXTRA-001.5 · onda 3 (§7.3). A FILA das seguradoras da carteira que ainda nao tem condicao geral no corpus, ou cuja sigla nao foi conciliada. 🔴 E uma fila para o Founder destilar ao longo dos dias — NADA foi baixado ao escreve-la.",
+  "medido_em": "2026-09-17",
+  "criterio_de_ordem": "a CARTEIRA, medida — nunca o alfabeto. A ordem das 12 siglas e a de `placar_das_siglas.siglas_da_carteira_sem_coenti` de `seguradora-coenti.json`, que foi construida sobre a carteira viva de 2025 da corretora piloto, 3.861 linhas, soma de `pretot` por sigla e cobre 83.86% do premio. As canonicas sem CG vem depois, porque a sigla sem conciliacao bloqueia TODA a carteira daquela seguradora, e a canonica sem CG bloqueia so o conhecimento.",
+  "premio_pct_por_sigla": "null de proposito: 📊 `placar_das_siglas` publica a cobertura AGREGADA (83.86% do premio) e a LISTA ordenada, nao o percentual por sigla. Inventar um numero por sigla aqui seria numero ilustrativo passando por medido (CLAUDE.md §12.1). A ordem, essa, e medida.",
+  "achado": "📊 2026-09-17: `seguradora-coenti.json` guarda a canonica `tokio_marine` para a sigla da Tokio; `chave_de_conhecimento` normaliza para `tokio`, que TEM condicao geral no corpus. Sem normalizar antes de comparar, a Tokio entraria nesta fila ja atendida. A fila foi montada com a chave normalizada.",
+  "seguradoras_com_cg_hoje": [
+    "allianz",
+    "azul",
+    "bradesco",
+    "hdi",
+    "mapfre",
+    "porto",
+    "tokio",
+    "yelum"
+  ],
+  "fila": [
+    {
+      "sigla": "MAP",
+      "nome_no_sistema_de_gestao": "MAPFRE CAPITALIZACAO",
+      "chave_canonica": null,
+      "ordem_na_carteira": 1,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "AXA",
+      "nome_no_sistema_de_gestao": "AXA SEGURADORA",
+      "chave_canonica": null,
+      "ordem_na_carteira": 2,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "MAG",
+      "nome_no_sistema_de_gestao": "MAG - MONGERAL",
+      "chave_canonica": null,
+      "ordem_na_carteira": 3,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "JUNT",
+      "nome_no_sistema_de_gestao": "JUNTO SEGURADORA S.A.",
+      "chave_canonica": null,
+      "ordem_na_carteira": 4,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "AIG",
+      "nome_no_sistema_de_gestao": "AIG SEGURADORA",
+      "chave_canonica": null,
+      "ordem_na_carteira": 5,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "ESSO",
+      "nome_no_sistema_de_gestao": "ESSOR SEGUROS S.A.",
+      "chave_canonica": null,
+      "ordem_na_carteira": 6,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "ITAU",
+      "nome_no_sistema_de_gestao": "ITAU SEGUROS S/A",
+      "chave_canonica": null,
+      "ordem_na_carteira": 7,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "BERK",
+      "nome_no_sistema_de_gestao": "BERKLEY INTERNATIONAL BRASIL",
+      "chave_canonica": null,
+      "ordem_na_carteira": 8,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "CHUB",
+      "nome_no_sistema_de_gestao": "CHUBB DO",
+      "chave_canonica": null,
+      "ordem_na_carteira": 9,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "FATO",
+      "nome_no_sistema_de_gestao": "FATOR SEGURADORA",
+      "chave_canonica": null,
+      "ordem_na_carteira": 10,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "JNS",
+      "nome_no_sistema_de_gestao": "JNS SEGUROS",
+      "chave_canonica": null,
+      "ordem_na_carteira": 11,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": "MITS",
+      "nome_no_sistema_de_gestao": "MITSUI SEGURADORA",
+      "chave_canonica": null,
+      "ordem_na_carteira": 12,
+      "premio_pct": null,
+      "o_que_falta": "conciliar sigla",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "alfa",
+      "ordem_na_carteira": 13,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "sompo",
+      "ordem_na_carteira": 14,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "suhai",
+      "ordem_na_carteira": 15,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "sulamerica",
+      "ordem_na_carteira": 16,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "sura",
+      "ordem_na_carteira": 17,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "unimed",
+      "ordem_na_carteira": 18,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    },
+    {
+      "sigla": null,
+      "nome_no_sistema_de_gestao": null,
+      "chave_canonica": "zurich",
+      "ordem_na_carteira": 19,
+      "premio_pct": null,
+      "o_que_falta": "CG no corpus",
+      "como_baixar": "insurance_corpus._buscar (REP2)"
+    }
+  ]
+}

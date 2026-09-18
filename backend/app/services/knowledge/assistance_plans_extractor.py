@@ -472,9 +472,31 @@ def processar_documento(
             logger.warning("[onda1] plano recusado pelo contrato: %s", type(exc).__name__)
             resumo.recusar("plano_recusado_pelo_contrato")
             return None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[onda1] plano recusado pelo banco: %s", type(exc).__name__)
+            resumo.recusar("plano_recusado_pelo_banco:%s" % type(exc).__name__)
+            return None
         planos_criados[chave] = str(linha.get("id"))
         resumo.planos_propostos += 1
         return planos_criados[chave]
+
+    # 🔴 UMA LINHA POR (plano, serviço) — o banco tem `uq_ias_servico` e recusa a
+    # segunda. 📊 A primeira rodada em produção morreu exatamente aqui: o mesmo
+    # serviço aparece em páginas diferentes do mesmo PDF (a tabela e o texto que
+    # a explica), e as duas propostas são legítimas. Fica a de MAIOR confiança —
+    # e, no empate, a primeira, que é a página mais densa (a tabela).
+    _ordem = {"alta": 0, "media": 1, "baixa": 2}
+    aprovadas = sorted(aprovadas, key=lambda x: _ordem.get(str(x.get("confianca")), 1))
+    vistos = set()
+    unicas = []
+    for p in aprovadas:
+        chave = (str(p.get("produto") or ""), str(p.get("plano") or ""), str(p.get("servico")))
+        if chave in vistos:
+            resumo.recusar("servico_repetido_no_plano")
+            continue
+        vistos.add(chave)
+        unicas.append(p)
+    aprovadas = unicas
 
     for p in aprovadas:
         pid = _plano_id(p)
@@ -496,6 +518,12 @@ def processar_documento(
         except BASE.BaseDePlanosRecusa as exc:
             logger.warning("[onda1] servico recusado pelo contrato: %s", type(exc).__name__)
             resumo.recusar("servico_recusado_pelo_contrato")
+        except Exception as exc:  # noqa: BLE001
+            # 🔴 O BANCO também recusa (é a segunda trava, de propósito). Uma
+            # recusa dele é uma linha perdida, não uma onda perdida: sem este
+            # ramo, o primeiro `uq_ias_servico` matava os 49 documentos.
+            logger.warning("[onda1] servico recusado pelo banco: %s", type(exc).__name__)
+            resumo.recusar("servico_recusado_pelo_banco:%s" % type(exc).__name__)
 
     # As reprovadas que o contrato ainda aceita viram linha e caem para
     # `rascunho` COM o motivo — para a pessoa ver o que o modelo tentou.
@@ -514,8 +542,8 @@ def processar_documento(
             )
             BASE.para_rascunho(str(linha.get("id")), motivo, db=cliente)
             resumo.rascunhos += 1
-        except BASE.BaseDePlanosRecusa:
-            resumo.recusar("rascunho_recusado_pelo_contrato")
+        except Exception as exc:  # noqa: BLE001
+            resumo.recusar("rascunho_recusado:%s" % type(exc).__name__)
     return resumo
 
 
