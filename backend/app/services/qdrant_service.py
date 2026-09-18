@@ -93,6 +93,13 @@ _INDICES_DE_PAYLOAD = (
     ("curation_status", PayloadSchemaType.KEYWORD),  # só curadoria publicada
     ("namespace", PayloadSchemaType.KEYWORD),        # SPEC-070 §6 — contrato × carta
     ("insurer_key", PayloadSchemaType.KEYWORD),      # a regra de uma não vale pela outra
+    # 🔴 SPEC-EXTRA-001.5 §6.5: condição geral ≠ manual do segurado. 📊 194
+    # pontos classificados hoje (184 condicoes_gerais · 5 manual_do_segurado ·
+    # 5 circular_susep) e NENHUM leitor filtrava por isso. O índice entra ANTES
+    # da primeira ingestão nova de propósito — a documentação primária do
+    # Qdrant é explícita: *"For best results, create payload indexes before
+    # ingesting data"*.
+    ("doc_kind", PayloadSchemaType.KEYWORD),         # SPEC-EXTRA-001.5 §6.5
     ("faceta", PayloadSchemaType.KEYWORD),           # SPEC-070 §5.1
     ("temas", PayloadSchemaType.KEYWORD),            # SPEC-072 §Bloco 1 — P-177
     ("vigente", _BOOL),                              # SPEC-070 §6 — documento revogado sai
@@ -572,6 +579,51 @@ class QdrantService:
             IsEmptyCondition(is_empty=PayloadField(key="faceta")),
         ])
 
+    def _filtro_de_doc_kind(self, doc_kind: Optional[Any]):
+        """"Deste tipo **OU** sem tipo" — SPEC-EXTRA-001.5 §6.5.
+
+        Devolve um `Filter` para o `must`, ou `None` quando a pergunta não pede
+        tipo nenhum (aí tudo responde, como sempre foi).
+
+        POR QUE ISTO EXISTE
+        ===================
+        📊 17/09/2026: `doc_kind` tem CHECK com 9 valores, escritor desde
+        `insurance_corpus.py:1125-1171` e **3 valores em uso** — 184 pedaços de
+        `condicoes_gerais`, 5 de `manual_do_segurado`, 5 de `circular_susep`. O
+        que faltava era o índice e o LEITOR: não havia como pedir *"só a
+        condição geral"*, e a resposta sobre o que o plano cobre podia sair do
+        manual de boas-vindas.
+
+        POR QUE OS DOIS BRAÇOS — a mesma lição de `_filtro_de_seguradora`
+        ================================================================
+        📊 O acervo global tem dezenas de milhares de pontos (cartas, conversa,
+        canon) e só 194 têm `doc_kind`. Um `must` puro apagaria TODO o resto do
+        índice de uma vez. O braço `IsEmptyCondition` é o que impede isso.
+
+        DEGRADAÇÃO SEGURA
+        =================
+        Sem `IsEmptyCondition` no cliente, o filtro INTEIRO é abandonado — nunca
+        vira um braço só. Voltar ao comportamento antigo é ruim e conhecido; um
+        braço só seria novo, pior e silencioso.
+        """
+        pedidos = []
+        if isinstance(doc_kind, (list, tuple, set)):
+            pedidos = [str(d).strip().lower() for d in doc_kind if str(d or "").strip()]
+        elif str(doc_kind or "").strip():
+            pedidos = [str(doc_kind).strip().lower()]
+        if not pedidos:
+            return None
+        if IsEmptyCondition is None or PayloadField is None:
+            logger.warning(
+                "[Qdrant] cliente sem IsEmptyCondition — filtro de doc_kind "
+                "NÃO aplicado (o que não tem tipo não pode sumir)"
+            )
+            return None
+        return Filter(should=[
+            FieldCondition(key="doc_kind", match=MatchAny(any=pedidos)),
+            IsEmptyCondition(is_empty=PayloadField(key="doc_kind")),
+        ])
+
     def _filtro_de_temas(self, temas: Optional[Any]):
         """"Com este tema **OU** sem tema" — SPEC-072 Bloco 1, fecha a P-177.
 
@@ -661,6 +713,9 @@ class QdrantService:
         # Assunto do atendimento (SPEC-072 Bloco 1 / P-177) — str ou lista. Ver
         # `_filtro_de_temas`: "com este tema OU sem tema".
         temas: Optional[Any] = None,
+        # Que TIPO de documento normativo (SPEC-EXTRA-001.5 §6.5) — str ou
+        # lista. Ver `_filtro_de_doc_kind`: "deste tipo OU sem tipo".
+        doc_kind: Optional[Any] = None,
         score_threshold: float = 0.0,
         sparse_embedding: Optional[Any] = None,
         collection_name: Optional[str] = None,
@@ -805,6 +860,15 @@ class QdrantService:
             if filtro_temas is not None:
                 must_conditions.append(filtro_temas)
 
+            # 🔴 O TIPO DE DOCUMENTO — SPEC-EXTRA-001.5 §6.5.
+            #
+            # Quem responde "o que o seu plano cobre" tem de ler a CONDIÇÃO
+            # GERAL, não o manual do segurado nem a circular da SUSEP. Os três
+            # falam de cobertura, e o BM25 não sabe distinguir.
+            filtro_doc_kind = self._filtro_de_doc_kind(doc_kind)
+            if filtro_doc_kind is not None:
+                must_conditions.append(filtro_doc_kind)
+
             if must_conditions or should_conditions or must_not_conditions:
                 query_filter = Filter(
                     must=must_conditions or None,
@@ -904,6 +968,23 @@ class QdrantService:
                     # devolveria o problema inteiro.
                     "namespace": result.payload.get("namespace"),
                 }
+                # 🔴 A PROCEDÊNCIA VOLTA — SPEC-EXTRA-001.5 §6.5 ①.
+                #
+                # 📊 Os campos abaixo JÁ estavam no payload (gravados por
+                # `insurance_corpus.py:1125-1171`) e o item devolvido tinha 8
+                # chaves, nenhuma delas de origem: quem recebia o trecho não
+                # tinha como dizer DE QUEM é a regra nem de que documento ela
+                # saiu. Responder cobertura sem poder citar a fonte é
+                # exatamente o que esta SPEC existe para matar.
+                #
+                # ⚠️ ADITIVO: a chave só entra quando existe no payload, então
+                # nenhum leitor perde nada e nenhum ganha `None` onde antes não
+                # havia chave.
+                for _chave in ("insurer_key", "doc_kind", "susep_process",
+                               "effective_from", "vigente", "unit_id",
+                               "parent_id", "faceta"):
+                    if _chave in result.payload:
+                        item[_chave] = result.payload.get(_chave)
                 if dense_score is not None:
                     item["dense_score"] = float(dense_score)
                 results.append(item)
