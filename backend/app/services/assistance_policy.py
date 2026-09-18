@@ -1,9 +1,28 @@
 """Política governada de assistência residencial (SPEC-016 E3).
 
-residential_24h_standard_v1 — regra de negócio do Founder, versionada em código
-(migração para tabela `platform_policies` com overrides por seguradora/produto/
-plano/corretora está prevista para quando o primeiro override existir; ver
-FABLE_RECOVERY_PROGRAM.md D7).
+🔴 DESDE A SPEC-EXTRA-001.5 ESTE MÓDULO É **FALLBACK**, e está marcado como tal.
+
+*"A migração para tabela `platform_policies` com overrides por seguradora/
+produto/plano/corretora está prevista para quando o primeiro override
+existir"*, dizia o cabeçalho abaixo. **O primeiro override é a SPEC-EXTRA-001.5**
+(§6.4): a base `insurer_assistance_plans`/`insurer_assistance_services`.
+
+A ordem passa a ser:
+
+```
+1. a BASE, por `services/skills/cobertura_e_assistencia.py`   -> origem='base'
+2. só se NÃO houver linha publicada, E a apólice for residencial com
+   assistência confirmada, E o serviço for um dos TRÊS daqui
+   -> esta regra, MARCADA `origem='regra_generica'`, `confianca='baixa'`,
+      e o texto diz que é padrão de MERCADO, não o contrato dele
+```
+
+⛔ Este arquivo **não é apagado** e **não ganha serviço novo**. Serviço novo vai
+para a base, com documento e página. 📊 O que ele conhece são três
+(`STANDARD_SERVICES`), e foi exatamente por responder "sim" a um quarto — carro
+reserva, 94 mensagens medidas no acervo — que a 001.5 existe.
+
+residential_24h_standard_v1 — regra de negócio do Founder, versionada em código.
 
 Módulo PURO (sem I/O, sem LLM). A LLM nunca decide a regra — apenas redige
 sobre o resultado. Toda aplicação gera trace auditável.
@@ -18,7 +37,7 @@ Ramo/produto sozinho NUNCA dispara a política (G37/G72).
 from __future__ import annotations
 
 import unicodedata
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.services.policy_facts import has_confirmed_assistance
 
@@ -117,11 +136,28 @@ def apply_residential_assistance_policy(
     }
 
 
-def policy_rule_facts(policy_result: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Facts derivados da política aplicada (source=policy_rule), para o compositor."""
+def policy_rule_facts(policy_result: Dict[str, Any],
+                      pack: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Facts derivados da política aplicada (source=policy_rule), para o compositor.
+
+    `pack` é opcional e serve para AMARRAR o fact à apólice (ver dentro)."""
     if not isinstance(policy_result, dict) or not policy_result.get("applied"):
         return []
+    # 🔴 SPEC-EXTRA-001.5 §6.4: o fact da regra PERDIA o vínculo com a apólice.
+    #
+    # 📊 Até 17/09/2026 esta linha era `locator_hash = None`, fixo. Todo fact
+    # derivado da política nascia órfão: nenhuma das telas ou consultas que
+    # agrupam facts por `policy_locator_hash` conseguia dizer de QUAL apólice a
+    # afirmação "tem eletricista" tinha saído. ⚠️ Um fact sem dono é
+    # indistinguível de um fact de outra pessoa.
+    #
+    # O `pack` chega opcional para não quebrar chamador nenhum: sem ele o
+    # comportamento é o de antes (None), e é o dono do pack que liga o vínculo.
     locator_hash = None
+    if isinstance(pack, dict) and pack:
+        from app.services.policy_facts import _locator_hash
+
+        locator_hash = _locator_hash(pack)
     facts: List[Dict[str, Any]] = []
     for service in policy_result.get("services") or []:
         facts.append(
