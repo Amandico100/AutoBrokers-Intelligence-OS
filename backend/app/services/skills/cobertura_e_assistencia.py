@@ -297,7 +297,7 @@ def _seguradora_legivel(insurer_key: Optional[str], cru: Any) -> str:
 
 def _plano_superior_que_cobre(
     *, insurer_key: str, ramo: str, produto: Optional[str], nivel: Optional[int],
-    servico: str, db: Any, atendente: Optional[str],
+    servico: str, db: Any, atendente: Optional[str], data_emissao: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """O gancho de §6.3 — e a trava dele.
 
@@ -309,12 +309,14 @@ def _plano_superior_que_cobre(
     if nivel is None:
         return None
     superiores = [
-        p for p in BASE.planos_publicados(insurer_key, ramo, produto, db=db)
+        p for p in BASE.planos_publicados(insurer_key, ramo, produto,
+                                          data_emissao=data_emissao, db=db)
         if int(p.get("nivel") or 0) > int(nivel)
     ]
     for plano in sorted(superiores, key=lambda p: int(p.get("nivel") or 0)):
         linha = BASE.buscar_servico(
-            insurer_key, ramo, str(plano.get("produto")), str(plano.get("plano")), servico, db=db
+            insurer_key, ramo, str(plano.get("produto")), str(plano.get("plano")), servico,
+            data_emissao=data_emissao, db=db
         )
         if linha and str(linha.get("coberto")) == "sim":
             return {
@@ -586,7 +588,10 @@ def responder_cobertura(
 
     # ③ a base. Exceção aqui é FALHA, nunca resposta.
     try:
-        linha = BASE.buscar_servico(insurer_key, ramo, str(produto or ""), plano, servico, db=db)
+        # 🔴 a data de emissão viaja até a leitura: a apólice de 2023 é regida
+        # pelo plano vigente em 2023, não pelo que está na tabela hoje (§7.2).
+        linha = BASE.buscar_servico(insurer_key, ramo, str(produto or ""), plano, servico,
+                                    data_emissao=apolice.get("data_emissao"), db=db)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cobertura] base indisponível: %s", type(exc).__name__)
         return VereditoDeCobertura(
@@ -604,7 +609,8 @@ def responder_cobertura(
             try:
                 gancho = _plano_superior_que_cobre(
                     insurer_key=insurer_key, ramo=ramo, produto=produto, nivel=nivel,
-                    servico=servico, db=db, atendente=atendente)
+                    servico=servico, db=db, atendente=atendente,
+                    data_emissao=apolice.get("data_emissao"))
             except Exception as exc:  # noqa: BLE001 — o gancho nunca derruba a resposta
                 logger.info("[cobertura] gancho indisponível: %s", type(exc).__name__)
         estado = {"sim": "coberto", "nao": "nao_coberto",
@@ -629,12 +635,14 @@ def responder_cobertura(
     # ④ sem linha no plano contratado. Um plano SUPERIOR cobre? -> nao_contratado.
     try:
         contratado = [
-            p for p in BASE.planos_publicados(insurer_key, ramo, produto, db=db)
+            p for p in BASE.planos_publicados(insurer_key, ramo, produto,
+                                              data_emissao=apolice.get("data_emissao"), db=db)
             if str(p.get("plano")) == plano
         ]
         gancho = _plano_superior_que_cobre(
             insurer_key=insurer_key, ramo=ramo, produto=produto, nivel=nivel,
-            servico=servico, db=db, atendente=atendente)
+            servico=servico, db=db, atendente=atendente,
+            data_emissao=apolice.get("data_emissao"))
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cobertura] base indisponível (plano superior): %s", type(exc).__name__)
         return VereditoDeCobertura(
