@@ -744,7 +744,21 @@ def publicar_servico(servico_id: str, revisado_por: Any, *, db: Any = None) -> D
     if not atual:
         raise BaseDePlanosRecusa("serviço %r não existe" % str(servico_id))
     estado = str(atual[0].get("curadoria") or "")
-    if estado not in ("proposto", "publicado"):
+    if estado == "publicado":
+        # 🔴 RE-PUBLICAR SOBRESCREVERIA QUEM REVISOU.
+        #
+        # 📊 18/09/2026: o código aceitava `publicado` e o patch trocava
+        # `revisado_por`/`revisado_em` — dois cliques na fila e a linha passava a
+        # dizer que foi a segunda pessoa quem a leu. `revisado_por` é a prova de
+        # proveniência desta base (§14, PROV-O): ele responde *"quem respondeu
+        # por 'guincho até 200 km'?"*, e essa resposta não pode mudar sozinha.
+        raise BaseDePlanosRecusa(
+            "esta linha já está publicada (revisada por %s em %s). Republicar "
+            "trocaria quem respondeu por ela; para revisá-la de novo, o caminho é "
+            "derrubá-la para `proposto`."
+            % (atual[0].get("revisado_por"), str(atual[0].get("revisado_em"))[:10])
+        )
+    if estado != "proposto":
         raise BaseDePlanosRecusa(
             "só se publica a partir de `proposto`; esta linha está %r. "
             "Desfazer uma recusa é outro ato, e ele passa por quem recusou." % estado
@@ -856,8 +870,52 @@ def planos_publicados(
     if produto:
         q = q.eq("produto", str(produto))
     linhas = (q.order("nivel").execute()).data or []
+
+    # 🔴 DATA ILEGÍVEL NÃO É "HOJE" — é DESCONHECIDA.
+    #
+    # 📊 18/09/2026: `_como_data("maio de 2023") or date.today()` fazia uma data
+    # que o parser não entende degradar, em silêncio, para a condição de HOJE — e
+    # o agente respondia sobre uma apólice de 2023 com o plano atual, com toda a
+    # confiança. É o defeito que a abertura de `insurance_corpus.py` descreve.
+    # Data AUSENTE continua valendo os planos vigentes hoje: aí não há o que
+    # errar, ninguém afirmou uma data.
+    if data_emissao not in (None, "") and _como_data(data_emissao) is None:
+        logger.info("[base-planos] data de emissao ilegivel: nao respondo por vigencia")
+        return []
+
     quando = _como_data(data_emissao) or date.today()
     return [p for p in linhas if vigente_em(p, quando)]
+
+
+def existe_linha_publicada(
+    insurer_key: str, ramo: str, servico: str, produto: Optional[str] = None, *,
+    data_emissao: Any = None, db: Any = None,
+) -> bool:
+    """Há QUALQUER linha publicada deste serviço nesta seguradora/ramo/produto?
+
+    🔴 É a pergunta que autoriza (ou proíbe) o fallback genérico. Quando a base
+    **já sabe** o que aquela seguradora diz sobre eletricista, responder *"pelo
+    padrão de mercado costuma estar incluído"* é trocar o contrato pela média do
+    mercado — e a linha publicada pode dizer exatamente o contrário.
+
+    ⚠️ Em QUALQUER plano, de propósito: a pergunta não é *"o plano dele tem"*
+    (isso é `buscar_servico`), é *"nós temos o que essa seguradora diz"*.
+    """
+    cliente = _db(db)
+    planos = planos_publicados(insurer_key, ramo, produto,
+                               data_emissao=data_emissao, db=cliente)
+    if not planos:
+        return False
+    achadas = (
+        cliente.table(TABELA_SERVICOS)
+        .select("id")
+        .in_("plano_id", [str(p["id"]) for p in planos])
+        .eq("servico", str(servico))
+        .eq("curadoria", "publicado")
+        .limit(1)
+        .execute()
+    ).data or []
+    return bool(achadas)
 
 
 def buscar_servico(
