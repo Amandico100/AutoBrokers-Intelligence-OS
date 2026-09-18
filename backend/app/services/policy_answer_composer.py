@@ -17,9 +17,12 @@ o output guard existente continua sendo o mecanismo de imposição.
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from app.services.assistance_policy import apply_residential_assistance_policy, policy_rule_facts
 # ⚠️ `fonte_canonica` e a metade LEITORA da renomeacao expand-first da
@@ -36,6 +39,22 @@ from app.services.policy_facts import (
 
 _INVALID_NUMBERS = {"", "0", "none", "null", "-"}
 
+# 🔴 SPEC-EXTRA-001.5 §0.3 — O ELO, medido em 17/09/2026 sobre este arquivo:
+#
+#   "ele tem carro reserva?"             -> NÃO casa este regex. A pergunta nem
+#                                           entra no ramo de assistência, e a
+#                                           resposta é o resumo da apólice.
+#   "a assistência cobre carro reserva?" -> casa, e responde
+#                                           "Sim — ... eletricista, chaveiro,
+#                                           hidráulica/encanador."
+#
+# O segundo é o defeito de PRODUTO: um "sim" a um serviço que a regra não
+# conhece. 📊 94 mensagens do acervo perguntam por carro reserva.
+#
+# ⚠️ O regex FICA — ele é a porta de "tem assistência 24h?", que não nomeia
+# serviço nenhum e continua caindo no caminho antigo. O que muda é que ele
+# deixou de ser a ÚNICA porta: `servico_canonico` (o vocabulário versionado)
+# abre a dela, e quem responde daí é a Skill.
 _ASSIST_INTENT_RE = re.compile(
     r"assist[êe]ncia|eletricista|chaveiro|encanador|hidr[áa]ulic|24\s*h", re.IGNORECASE
 )
@@ -362,20 +381,113 @@ def _compose_options(matches: List[Dict[str, Any]], hoje=None, historico_oculto=
     return "\n".join(lines)
 
 
+def _apolice_para_a_skill(result: Dict[str, Any], pack: Dict[str, Any],
+                          facts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """O que a Skill precisa saber da apólice — nada além, e nada inventado.
+
+    🔴 O `plano` vem de `PlanoDeAssistencia` da PORTA (001.1,
+    `policy_data_provider.py:491-507`), com o `EstadoDoPlano` que ela já
+    calculou. A Skill NÃO deduz plano; sem plano identificado ela responde
+    `nao_sabemos_ainda` (M-B4), e é por isso que o `estado_do_plano` viaja
+    junto: sem ele, "nome do plano presente" seria lido como "plano
+    contratado", que é exatamente o que a porta se recusa a afirmar.
+
+    ⚠️ A reconciliação pode não estar disponível (📊 hoje
+    `apolice_documental_do_pack` devolve `None` em produção). Isso deixa o plano
+    desconhecido — que é `nao_sabemos_ainda`, não falha.
+    """
+    selected = result.get("selected") or result.get("policy") or {}
+    plano, nivel, estado = None, None, "nao_sabemos_ainda"
+    try:
+        from app.providers.infocap_policy_provider import apolice_reconciliada_do_pack
+
+        apolice = apolice_reconciliada_do_pack(pack)
+        do_plano = getattr(apolice, "plano_de_assistencia", None)
+        if do_plano is not None:
+            estado = str(getattr(do_plano, "estado", "nao_sabemos_ainda"))
+            nome = getattr(do_plano, "nome", None)
+            if nome is not None and getattr(nome, "tem_valor", False):
+                plano = str(nome.valor)
+            campo_nivel = getattr(do_plano, "nivel", None)
+            if campo_nivel is not None and getattr(campo_nivel, "tem_valor", False):
+                try:
+                    nivel = int(campo_nivel.valor)
+                except (TypeError, ValueError):
+                    nivel = None
+    except Exception as exc:  # noqa: BLE001 — a porta nunca derruba o compositor
+        logger.info("[composer] plano de assistência indisponível: %s", type(exc).__name__)
+
+    # 🔴 A VAGA QUE O BLOCO C PREENCHE — e por que ela existe já.
+    #
+    # 📊 17/09/2026: `_plano_do_pack` (`infocap_policy_provider.py:273-287`)
+    # devolve SEMPRE `estado="nao_sabemos_ainda"`, porque `tabela_itens` dá o
+    # NOME do plano e nada mais. Ou seja: hoje, em produção, toda pergunta de
+    # cobertura cai em `nao_sabemos_ainda` — e isso está CERTO, é o que a base
+    # vazia autoriza dizer.
+    #
+    # `pack["assistance_plan"]` é onde a identificação do plano entra quando
+    # ela existir (BLOCO C: SUSEP da apólice → condição geral → plano). ⚠️ Hoje
+    # NINGUÉM escreve esta chave em produção; ela é lida aqui para que o dia em
+    # que alguém escrever não exija mexer no caminho vivo de novo.
+    do_pack = pack.get("assistance_plan")
+    if isinstance(do_pack, dict):
+        plano = str(do_pack.get("plano") or "").strip() or plano
+        estado = str(do_pack.get("estado") or estado)
+        try:
+            nivel = int(do_pack["nivel"]) if do_pack.get("nivel") is not None else nivel
+        except (TypeError, ValueError):
+            pass
+
+    return {
+        "insurer": selected.get("insurer_key") or pack.get("insurer_detected"),
+        "ramo": pack.get("line_kind_detected") or selected.get("product") or pack.get("product_detected"),
+        "produto": selected.get("product") or pack.get("product_detected"),
+        "plano": plano,
+        "nivel": nivel,
+        "estado_do_plano": estado,
+        "residencial": _is_residential_para_fallback(pack),
+        "assistencia_confirmada": has_confirmed_assistance(facts),
+    }
+
+
+def _is_residential_para_fallback(pack: Dict[str, Any]) -> bool:
+    """Delega ao dono da regra. ⛔ Uma segunda cópia divergiria (CLAUDE.md §5)."""
+    from app.services.assistance_policy import _is_residential
+
+    return bool(_is_residential(pack))
+
+
 def compose_policy_answer(*, question: str, result: Dict[str, Any]) -> str:
     """Compõe a resposta operacional humana para o resultado canônico."""
     return compose_policy_answer_with_meta(question=question, result=result)["text"]
 
 
-def compose_policy_answer_with_meta(*, question: str, result: Dict[str, Any]) -> Dict[str, Any]:
+def compose_policy_answer_with_meta(
+    *, question: str, result: Dict[str, Any],
+    db: Any = None, atendente: Optional[str] = None,
+) -> Dict[str, Any]:
     """Como compose_policy_answer, mas retorna também os metadados da política
-    de assistência para o Policy Response Contract da tool (E4b)."""
+    de assistência para o Policy Response Contract da tool (E4b).
+
+    🔴 SPEC-EXTRA-001.5 BLOCO B: é aqui, e SÓ aqui, que a base de planos entra
+    no caminho vivo (§6, forma 90). Nenhuma tool nova é registrada em
+    `graph.py`: a pergunta de cobertura já chega por `InfocapPolicyLookupTool`,
+    e uma segunda porta para a mesma pergunta seria motor paralelo no chamador
+    — o lugar onde ele não aparece no diff da tabela.
+
+    🔴 **UM VENCEDOR SÓ** (M-B5): quando a base responde, o retorno traz
+    `cobertura` + `assistencia_da_base` e `assistance_policy` fica `None`;
+    quando o fallback responde, é o inverso. Nunca os dois — dois vencedores
+    dariam ao guard de `nodes.py` duas regras contraditórias sobre o mesmo
+    texto.
+    """
     result = result if isinstance(result, dict) else {}
     status = str(result.get("status") or "").strip()
     question_text = str(question or "")
 
     def _plain(text: str) -> Dict[str, Any]:
-        return {"text": text, "assistance_policy": None}
+        return {"text": text, "assistance_policy": None,
+                "cobertura": None, "assistencia_da_base": None}
 
     if status == "identity_mismatch":
         return _plain(
@@ -408,9 +520,44 @@ def compose_policy_answer_with_meta(*, question: str, result: Dict[str, Any]) ->
     pack = result.get("policy_evidence_pack") or {}
     facts = extract_policy_facts(pack)
     policy_result = apply_residential_assistance_policy(pack, facts)
-    facts = facts + policy_rule_facts(policy_result)
+    # 🔴 001.5 §6.4: o `pack` vai junto para o fact da regra deixar de nascer
+    # órfão (`policy_locator_hash = None` fixo até 17/09/2026).
+    facts = facts + policy_rule_facts(policy_result, pack)
 
-    if _ASSIST_INTENT_RE.search(question_text):
+    # 🔴 A BASE DE PLANOS — SPEC-EXTRA-001.5 BLOCO B.
+    #
+    # A porta é o VOCABULÁRIO (`servico_canonico`), não o regex: é ele que faz
+    # "tem carro reserva?", "cobre granizo?" e "quantos km de guincho?" serem a
+    # mesma pergunta para o sistema. Serviço não identificado → `None`, e o
+    # fluxo antigo segue exatamente como era.
+    veredito = None
+    try:
+        from app.services.skills.cobertura_e_assistencia import responder_cobertura
+
+        veredito = responder_cobertura(
+            pergunta=question_text,
+            apolice=_apolice_para_a_skill(result, pack, facts),
+            db=db, atendente=atendente,
+        )
+    except Exception as exc:  # noqa: BLE001 — a Skill nunca derruba o compositor
+        logger.warning("[composer] Skill de cobertura indisponível: %s", type(exc).__name__)
+
+    if veredito is not None:
+        body = veredito.texto
+        if veredito.origem == "regra_generica" and policy_result.get("statement"):
+            # O fallback respondeu: a frase dele vai junto, porque é ela que o
+            # contrato exige na resposta final (`assistance_policy_applied`).
+            body = body + "\n" + str(policy_result["statement"])
+        # ⚠️ Cobertura (granizo, alagamento) e assistência caem na mesma Skill,
+        # mas a cobertura tem uma SEGUNDA fonte que a assistência não tem: as
+        # coberturas estruturadas da apólice. Quando a base ainda não sabe, o
+        # que já se sabia continua sendo dito — a lacuna da base não pode
+        # apagar o que a fonte da corretora já entregava.
+        if veredito.estado == "nao_sabemos_ainda" and veredito.tipo == "cobertura":
+            extra = _compose_coverage_answer(pack, facts)
+            if extra and any(f.get("fact_type") == "coverage" for f in facts):
+                body = body + "\n\n" + extra
+    elif _ASSIST_INTENT_RE.search(question_text):
         body = _compose_assistance_answer(result, pack, facts, policy_result)
     elif _COVERAGE_INTENT_RE.search(question_text):
         body = _compose_coverage_answer(pack, facts)
@@ -437,8 +584,27 @@ def compose_policy_answer_with_meta(*, question: str, result: Dict[str, Any]) ->
     if body:
         header_line = summary.splitlines()[0] if summary else ""
         parts = [body, f"_{header_line}_" if header_line else None, None]
+    # 🔴 UM VENCEDOR SÓ — M-B5.
+    #
+    # `assistance_policy` é o que faz o contrato exigir "eletricista + chaveiro
+    # + encanador" na resposta final (`infocap_tool.py:1097` → `nodes.py:344`).
+    # Deixá-lo ligado quando a BASE respondeu faria o guard anular a resposta
+    # certa sobre carro reserva por não conter a palavra "encanador" — que é
+    # precisamente o defeito que §6.4 manda evitar.
+    cobertura = veredito.para_registro() if veredito is not None else None
+    da_base = None
+    if veredito is not None and veredito.origem == "base":
+        da_base = list(veredito.servicos_da_base)
+        policy_result = None
+    elif veredito is not None and veredito.origem == "nenhuma":
+        # A Skill respondeu "não sabemos ainda" ou "não consegui abrir": o
+        # fallback NÃO respondeu, então não pode exigir nada do texto.
+        policy_result = None
+
     return {
         "text": "\n\n".join(p for p in parts if p),
         "assistance_policy": policy_result,
+        "cobertura": cobertura,
+        "assistencia_da_base": da_base,
         "facts": facts,
     }
