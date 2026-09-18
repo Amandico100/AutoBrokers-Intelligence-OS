@@ -124,9 +124,35 @@ def cobertura() -> Dict[str, Any]:
     }
 
 
+def _termos_do_servico(servico: str) -> List[str]:
+    """Os sinônimos daquele serviço — para a tela GRIFAR na página.
+
+    ⚠️ Vêm do vocabulário versionado, não de uma lista escrita aqui: duas listas
+    de sinônimos divergiriam, e a tela passaria a grifar uma coisa e o extrator a
+    procurar outra (CLAUDE.md §9.4).
+    """
+    item = BASE.vocabulario_de_servicos().get("servicos", {}).get(str(servico or "")) or {}
+    termos = [str(servico or "").replace("_", " ")] + list(item.get("sinonimos") or [])
+    return sorted({t for t in termos if len(t) >= 4}, key=len, reverse=True)
+
+
 @router.get("/fila", dependencies=[Depends(require_internal_key)])
 def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
-    """A fila da LINHA, com o trecho lido do PDF arquivado NA HORA."""
+    """A fila da LINHA, com a PÁGINA lida do PDF arquivado NA HORA.
+
+    🔴 POR QUE NÃO SE RECONFERE O `trecho_hash` AQUI
+    ================================================
+    A base guarda o **hash** do trecho, nunca o trecho. Hash é de mão única: sem
+    o texto original não há como recalcular nada — hashear a página inteira dá
+    outro valor, sempre. 📊 18/09/2026 a tela mostrava `trecho_confere: false`
+    em **100 %** da fila por causa disso, e um selo que está sempre vermelho
+    ensina a pessoa a ignorá-lo: é pior que selo nenhum.
+
+    Quem conferiu foi o **verificador**, no momento da proposta, quando ainda
+    tinha o trecho na mão (`conferir_pagina`). O que a tela mostra agora é o
+    texto REAL da página, com os termos do serviço destacados, para a pessoa
+    julgar com os próprios olhos — que é o ato que esta fila existe para colher.
+    """
     cliente = _db()
     itens = BASE.fila_de_curadoria(limite=int(limite), db=cliente)
 
@@ -151,17 +177,22 @@ def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
         doc_id, pagina = str(i.get("documento_id")), i.get("pagina")
         texto = (textos.get(doc_id) or {}).get(int(pagina)) if pagina else None
         if texto:
-            # A página inteira é longa demais para a tela; o recorte é generoso
-            # e a pessoa ainda pode abrir o documento. ⚠️ O que se mostra é o
-            # texto REAL da página, não o que o modelo disse que leu.
-            i["trecho_da_fonte"] = str(texto)[:1200]
-            i["trecho_confere"] = (
-                BASE.hash_do_trecho(texto) == str(i.get("trecho_hash"))
-                or BASE.normalizar_trecho(str(i.get("trecho_hash") or "")) == ""
-            )
+            # 🔴 A PÁGINA INTEIRA, não um recorte. 📊 18/09/2026: 5 das 6 páginas
+            # da amostra têm 1.8 k–4.3 k caracteres, e o corte em 1.200 escondia
+            # justamente o fim da tabela de limites — a pessoa aprovava o que
+            # coube na tela.
+            i["texto_da_pagina"] = str(texto)
+            i["termos_do_servico"] = _termos_do_servico(str(i.get("servico") or ""))
+            # ⚠️ `conferido_na_proposta` vem do VERIFICADOR, que era o único a ter
+            # o trecho na mão. A linha só chega a `proposto` depois de
+            # `conferir_pagina` bater o trecho com ESTA página (as que falharam
+            # estão em `rascunho`) — por isso `proposto`/`publicado` significa
+            # conferido.
+            i["conferido_na_proposta"] = str(i.get("curadoria")) in ("proposto", "publicado")
         else:
-            i["trecho_da_fonte"] = None
-            i["trecho_confere"] = None
+            i["texto_da_pagina"] = None
+            i["termos_do_servico"] = []
+            i["conferido_na_proposta"] = None
             i["motivo_da_fonte"] = motivos.get(doc_id, "fonte_indisponivel")
     return {"ok": True, "itens": itens, "total": len(itens)}
 
