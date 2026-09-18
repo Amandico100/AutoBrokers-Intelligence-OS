@@ -19,7 +19,7 @@ type Item = {
   plano_curadoria: string; servico: string; coberto: string; limite_valor: number | null; limite_unidade: string | null;
   limite_texto: string | null; carencia_dias: number | null; condicao: string | null;
   pagina: number | null; plano_pagina: number | null; vigencia_inicio: string | null;
-  texto_da_pagina: string | null; termos_do_servico: string[]; conferido_na_proposta: boolean | null;
+  texto_da_pagina: string | null; termos_do_servico: string[];
   motivo_da_fonte?: string;
 };
 
