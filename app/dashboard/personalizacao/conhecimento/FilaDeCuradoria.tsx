@@ -16,11 +16,28 @@ import { humanizarRamo, humanizarSeguradora } from './CoberturaDePlanos';
 
 type Item = {
   id: string; insurer_key: string; ramo: string; produto: string; plano: string; nivel: number;
-  servico: string; coberto: string; limite_valor: number | null; limite_unidade: string | null;
+  plano_curadoria: string; servico: string; coberto: string; limite_valor: number | null; limite_unidade: string | null;
   limite_texto: string | null; carencia_dias: number | null; condicao: string | null;
-  pagina: number | null; trecho_da_fonte: string | null; trecho_confere: boolean | null;
+  pagina: number | null; plano_pagina: number | null; vigencia_inicio: string | null;
+  texto_da_pagina: string | null; termos_do_servico: string[]; conferido_na_proposta: boolean | null;
   motivo_da_fonte?: string;
 };
+
+/** Grifa na página os termos do serviço — para o olho achar a frase sem ler
+ *  tudo. 🔴 Os termos vêm do vocabulário versionado (o endpoint os manda);
+ *  escrever uma segunda lista aqui faria a tela grifar uma coisa e o extrator
+ *  procurar outra. */
+function comTermosGrifados(texto: string, termos: string[]) {
+  const limpos = (termos || []).filter((t) => t && t.length >= 4)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!limpos.length) return texto;
+  const partes = texto.split(new RegExp(`(${limpos.join('|')})`, 'gi'));
+  return partes.map((p, i) => (
+    limpos.some((t) => new RegExp(`^${t}$`, 'i').test(p))
+      ? <mark key={i} className="bg-amber-200/60 text-foreground">{p}</mark>
+      : <span key={i}>{p}</span>
+  ));
+}
 
 const SERVICO: Record<string, string> = {
   guincho: 'guincho', carro_reserva: 'carro reserva', chaveiro: 'chaveiro',
@@ -97,7 +114,18 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
             <p className="text-xs text-muted-foreground">
               {humanizarSeguradora(i.insurer_key)} · {humanizarRamo(i.ramo)} · {i.produto}
               {i.plano ? ` · plano ${i.plano}` : ''}{i.nivel ? ` (nível ${i.nivel})` : ''}
+              {i.plano_pagina ? ` · plano na p. ${i.plano_pagina}` : ''}
             </p>
+            {/* 🔴 Aprovar esta linha também libera o PLANO acima dela — sem o
+                plano liberado, nada do que se aprova chega ao cliente. Quem
+                clica precisa saber que está aprovando os dois. */}
+            {i.plano_curadoria === 'proposto' && (
+              <p className="text-[10px] text-amber-600">
+                Ao aprovar, o plano <strong>{i.plano}</strong>
+                {i.nivel ? ` (nível ${i.nivel})` : ''} também passa a valer
+                {i.plano_pagina ? ` — está na página ${i.plano_pagina} do documento` : ''}.
+              </p>
+            )}
             <p className="text-sm text-foreground">{oQueFoiProposto(i)}</p>
             {i.condicao && <p className="text-[11px] text-muted-foreground">Condição: {i.condicao}</p>}
 
@@ -105,9 +133,9 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
               <p className="text-[10px] uppercase tracking-wide text-faint">
                 {i.pagina ? `Condições gerais · página ${i.pagina}` : 'Sem página registrada'}
               </p>
-              {i.trecho_da_fonte ? (
-                <p className="mt-1 whitespace-pre-line text-[11px] leading-snug text-muted-foreground">
-                  {i.trecho_da_fonte}
+              {i.texto_da_pagina ? (
+                <p className="mt-1 max-h-64 overflow-y-auto whitespace-pre-line text-[11px] leading-snug text-muted-foreground">
+                  {comTermosGrifados(i.texto_da_pagina, i.termos_do_servico)}
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-amber-600">
@@ -120,7 +148,7 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => agir(i.id, 'publicar')}
-                disabled={ocupado === i.id || !i.trecho_da_fonte}
+                disabled={ocupado === i.id || !i.texto_da_pagina}
                 className="h-7 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40"
               >
                 Confere — pode usar
