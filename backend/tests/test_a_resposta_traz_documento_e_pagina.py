@@ -227,6 +227,37 @@ checar(bool(db_prova.chamadas_de_tabela),
        "sem isto, o [3] ficaria verde mesmo com a Skill desligada",
        repr(db_prova.chamadas_de_tabela[:3]))
 
+print("\n[5] BLOCO E — a mesma fonte chega ao REGISTRO, e sem PII")
+from app.services.skills.invocation_recorder import _resumo_da_saida  # noqa: E402
+from app.services.portals.replay import varredura_de_pii  # noqa: E402
+
+meta_reg = compose_policy_answer_with_meta(
+    question="o CPF 529.982.247-25 tem carro reserva?",
+    result=_result(_pack("auto", "Auto Perfil", "Essencial", 1)), db=db)
+retorno_da_tool = {"content": meta_reg["text"], "data": {}, "found": True,
+                   "cobertura": meta_reg.get("cobertura")}
+resumo = _resumo_da_saida(retorno_da_tool)
+origem = resumo.get("cobertura") or {}
+checar(origem.get("estado") == "nao_coberto" and origem.get("insurer_key") == "hdi",
+       "🔴 o registro carrega o ESTADO e a seguradora canônica", repr(origem))
+checar(origem.get("documento_id") and origem.get("pagina")
+       and origem.get("documento") == "presente",
+       "🔴 e o documento e a página — o documento como PRESENÇA, nunca conteúdo",
+       repr(origem))
+achados = varredura_de_pii(resumo)
+checar(not achados,
+       "🔴 varredor de PII sobre o `input_summary`/saída do registro: ZERO achados",
+       repr([(a.tipo, a.caminho) for a in achados[:3]]))
+# 🔴 CONTROLE: o varredor CONSEGUE acusar. A pergunta CRUA, com o mesmo CPF
+#    fictício, deixa-o vermelho — é assim que se sabe que o verde acima vale.
+sujo = varredura_de_pii({"pergunta": "o CPF 529.982.247-25 tem carro reserva?"})
+checar(bool(sujo),
+       "🔴 CONTROLE: com a pergunta CRUA no resumo, o varredor fica VERMELHO",
+       repr([(a.tipo, a.caminho) for a in sujo[:3]]))
+checar("529" not in json.dumps(resumo, ensure_ascii=False),
+       "🔴 e o CPF da pergunta não aparece em lugar nenhum do registro",
+       json.dumps(resumo, ensure_ascii=False)[:160])
+
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")
