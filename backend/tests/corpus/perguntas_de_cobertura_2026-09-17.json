@@ -1,0 +1,220 @@
+{
+  "_sobre": "As perguntas REAIS do acervo que o BLOCO B responde. SÓ o texto do segurado/corretor, com a PII removida pelo redator da casa (curadoria_cartas.veredito_de_pii) e conferida por varredura_de_pii + regex.",
+  "_procedencia": {
+    "fonte": "public.messages (produção), role='user', content like '%?%'",
+    "data": "2026-09-17",
+    "filtro": "role='user' + contém '?' + 10..220 caracteres + fora as linhas de URA (digite/tecle/botão N/*N -*/http). ⚠️ O BLOCO 0 avisou e a medição confirmou: texto da PRÓPRIA seguradora chega com role='user' (o WhatsApp de entrada), e por isso o filtro de URA existe.",
+    "medido": {
+      "mensagens_totais": 38830,
+      "com_interrogacao": 5410,
+      "perguntas_por_servico_unicas": {
+        "vidros": 39,
+        "guincho": 24,
+        "carro_reserva": 23,
+        "granizo": 7,
+        "encanador": 4,
+        "eletricista": 4,
+        "chaveiro": 3,
+        "taxi": 3,
+        "bateria": 1
+      },
+      "servicos_com_ZERO_pergunta": [
+        "borracheiro",
+        "pane_seca",
+        "troca_de_pneu",
+        "hospedagem",
+        "alagamento",
+        "chaveiro_residencial"
+      ]
+    },
+    "por_que_as_categorias_nao_tem_5_cada": "🔴 O acervo não tem 5 perguntas de chaveiro. Tem 3, e uma delas é o menu da URA. Inventar duas para fechar a conta seria trocar acervo por imaginação (CLAUDE.md §9.4). As 30 são reais: a categoria escassa fica com 3 e as abundantes cedem as duas vagas — e a escassez fica escrita aqui, porque ela é um achado: ninguém pergunta de borracheiro, pane seca, troca de pneu, hospedagem nem alagamento no WhatsApp."
+  },
+  "versao": 1,
+  "atualizado_em": "2026-09-17",
+  "perguntas": [
+    {
+      "categoria": "carro_reserva",
+      "pergunta": "O carro reserva que a seguradora oferece tem seguro ? Qual a franquia",
+      "servico_esperado": "carro_reserva",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "carro_reserva",
+      "pergunta": "Bom dia {NOME} tudo bem ? Deixa te perguntar tem direito aquele carro reserva 7 dias ?",
+      "servico_esperado": "carro_reserva",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "carro_reserva",
+      "pergunta": "É sobre carro reserva, aqui na apólice diz 35 dias??",
+      "servico_esperado": "carro_reserva",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "carro_reserva",
+      "pergunta": "Vão cobrar o custo do carro reserva de quem bateu?",
+      "servico_esperado": "carro_reserva",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "carro_reserva",
+      "pergunta": "E outra coisa, quando consigo pegar carro reserva?",
+      "servico_esperado": "carro_reserva",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "carro_reserva",
+      "pergunta": "Preciso carro reserva. Como fazer?",
+      "servico_esperado": "carro_reserva",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "granizo",
+      "pergunta": "a allianz para granizo tem cobertura? tem que contratar algo diferente?",
+      "servico_esperado": "granizo",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "granizo",
+      "pergunta": "a cobertura de pequenos reparos cobre chuva de granizo em quais seguradoroas? todas? só algumas? se forem so algumas, em quais?",
+      "servico_esperado": "granizo",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "granizo",
+      "pergunta": "Como funciona com relação ao seguro residencial, essa chuva de granizo?",
+      "servico_esperado": "granizo",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "granizo",
+      "pergunta": "Sabes me dizer se a Tokio Marine paga serviço de \" martelinho dd ouro\" , considerando que granizo exige esse tipo de serviço de lataria?",
+      "servico_esperado": "granizo",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "granizo",
+      "pergunta": "Boa tarde {NOME}, Me chamo {NOME} e no último domingo tive meu carro atingido pela chuva de granizo. Gostaria de acionar o seguro. Quais dados precisa?",
+      "servico_esperado": "granizo",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "chaveiro_e_taxi",
+      "pergunta": "A APOLICE {CARTAO} Tem chaveiro?”, “Tem franquia?",
+      "servico_esperado": "chaveiro",
+      "pii_mascarada_pelo_redator": [
+        "{CARTAO}"
+      ]
+    },
+    {
+      "categoria": "chaveiro_e_taxi",
+      "pergunta": "ESSA APOLICE {CARTAO} TEM CHAVEIRO?",
+      "servico_esperado": "chaveiro",
+      "pii_mascarada_pelo_redator": [
+        "{CARTAO}"
+      ]
+    },
+    {
+      "categoria": "chaveiro_e_taxi",
+      "pergunta": "Consigo um táxi ou Uber algo do tipo? Estou 5 min de casa",
+      "servico_esperado": "taxi",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "vidros",
+      "pergunta": "Uma dúvida: Temos 3 retro escavadeiras. Sabe dizer se o seguro dos equipamentos cobre a troca do parabrisa?",
+      "servico_esperado": "vidros",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "vidros",
+      "pergunta": "Ele ja pode trocar o vidro?",
+      "servico_esperado": "vidros",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "vidros",
+      "pergunta": "Mas neste caso eles usam o vidro original com o logo da marca?",
+      "servico_esperado": "vidros",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "vidros",
+      "pergunta": "Consegues chamar ela pra abrir um reparo no parabrisa?",
+      "servico_esperado": "vidros",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "vidros",
+      "pergunta": "Se está ok a parte do farol tbm?",
+      "servico_esperado": "vidros",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "vidros",
+      "pergunta": "Consegues chamar ela?! Precisa trocar lanterna traseira! Ela disse que são as duas traseiras que estão quebradas",
+      "servico_esperado": "vidros",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "guincho",
+      "pergunta": "E esse guincho é cober pelo seguro ou vou pagar?",
+      "servico_esperado": "guincho",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "guincho",
+      "pergunta": "qual o caminho do guincho na Porto?",
+      "servico_esperado": "guincho",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "guincho",
+      "pergunta": "mas a oficina vai ta aberta pra pedir guincho hoje?",
+      "servico_esperado": "guincho",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "guincho",
+      "pergunta": "que numero chama guincho porto???",
+      "servico_esperado": "guincho",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "guincho",
+      "pergunta": "Poderia me informar o destino completo do guincho?",
+      "servico_esperado": "guincho",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "residencia",
+      "pergunta": "Ela tem eletricista?",
+      "servico_esperado": "eletricista",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "residencia",
+      "pergunta": "Ela cobre eletricista?",
+      "servico_esperado": "eletricista",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "residencia",
+      "pergunta": "Tem encanador? Eu estou com problemas aqui",
+      "servico_esperado": "encanador",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "residencia",
+      "pergunta": "viu se sabe me dizer se na assistência básica auto da Yelum tem assistência pra casa, tipo encanador ?",
+      "servico_esperado": "encanador",
+      "pii_mascarada_pelo_redator": []
+    },
+    {
+      "categoria": "residencia",
+      "pergunta": "Qual o caminho para utilizar o encanador , do seguro ? Podes me orientar ?",
+      "servico_esperado": "encanador",
+      "pii_mascarada_pelo_redator": []
+    }
+  ]
+}
