@@ -355,6 +355,36 @@ class _Nomeada:
         self.name = nome
 
 
+#: 🔴 SPEC-EXTRA-001.5 BLOCO E — A PROCEDÊNCIA DA RESPOSTA DE COBERTURA.
+#:
+#: A lista é FECHADA de propósito. Copiar o dict inteiro que vier na chave
+#: `cobertura` transformaria este resumo num campo livre: bastaria alguém
+#: acrescentar `pergunta` ou `cliente` ao veredito para o CPF do segurado
+#: passar a ser gravado em `tool_invocations` sem ninguém ver. 📊 Hoje são
+#: 289 linhas e ZERO CPF cru (17/09/2026), e é assim que continua.
+#:
+#: ⚠️ `documento` já vem como presença (`"presente"`/`"ausente"`) de
+#: `VereditoDeCobertura.para_registro()`; o `documento_id` é um UUID interno,
+#: não é dado de pessoa, e é o que liga a resposta à condição geral citada.
+_CAMPOS_DA_ORIGEM = (
+    "estado", "servico", "tipo", "insurer_key", "ramo", "produto", "plano",
+    "nivel", "plano_id", "documento_id", "pagina", "documento", "origem",
+    "confianca", "gancho",
+)
+
+
+def _origem_da_cobertura(cobertura: Any) -> Optional[dict]:
+    """Só os campos da lista fechada, e só escalares. Nada mais entra."""
+    if not isinstance(cobertura, dict) or not cobertura.get("estado"):
+        return None
+    fora = {}
+    for chave in _CAMPOS_DA_ORIGEM:
+        valor = cobertura.get(chave)
+        if valor is None or isinstance(valor, (str, int, float, bool)):
+            fora[chave] = valor
+    return fora
+
+
 def _resumo_da_saida(resultado: Any) -> dict:
     """Tamanho e forma da saída — nunca o conteúdo.
 
@@ -368,8 +398,12 @@ def _resumo_da_saida(resultado: Any) -> dict:
         return {"tipo": "texto", "tamanho": len(resultado),
                 "vazio": not resultado.strip()}
     if isinstance(resultado, dict):
-        return {"tipo": "objeto", "campos": sorted(resultado.keys())[:20],
-                "ok": bool(resultado.get("ok", True))}
+        resumo = {"tipo": "objeto", "campos": sorted(resultado.keys())[:20],
+                  "ok": bool(resultado.get("ok", True))}
+        origem = _origem_da_cobertura(resultado.get("cobertura"))
+        if origem:
+            resumo["cobertura"] = origem
+        return resumo
     if isinstance(resultado, (list, tuple)):
         return {"tipo": "lista", "itens": len(resultado)}
     return {"tipo": type(resultado).__name__}
