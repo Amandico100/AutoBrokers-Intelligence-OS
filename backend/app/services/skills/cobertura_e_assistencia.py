@@ -66,6 +66,7 @@ quando não há. Nunca os dois.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
@@ -328,6 +329,107 @@ def _plano_superior_que_cobre(
     return None
 
 
+def _pertence(nome: str, texto: str) -> bool:
+    """O nome do plano aparece no texto, por PALAVRA INTEIRA.
+
+    🔴 Substring foi descartada com medição e o motivo está em
+    `assistance_plans_base.servico_canonico`: é o defeito que fundiu
+    `"caixa seguradora"` em `axa`. Aqui, um plano chamado `"Ouro"` casaria
+    dentro de `"Ouropreto"`, e o segurado receberia a cobertura de outro plano.
+    """
+    alvo = BASE._norm_texto(texto)
+    termo = BASE._norm_texto(nome)
+    if not alvo or len(termo) < 3:
+        return False
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(termo)}(?![a-z0-9])", alvo))
+
+
+def identificar_plano(
+    *,
+    insurer_key: str,
+    ramo: str,
+    produto: Optional[str] = None,
+    fatos_da_apolice: Optional[List[Dict[str, Any]]] = None,
+    texto_do_documento: Optional[str] = None,
+    nome_no_sistema: Optional[str] = None,
+    planos_publicados: Optional[List[Dict[str, Any]]] = None,
+    documento_da_condicao: Optional[str] = None,
+    db: Any = None,
+) -> Dict[str, Any]:
+    """Qual dos planos PUBLICADOS desta seguradora é o do segurado?
+
+    🔴 A pergunta é fechada de propósito: os candidatos são **os planos que a
+    base publicou**, e a resposta é o nome de um deles ou nada. O contrário —
+    ler um nome do PDF e criar um plano com ele — inventaria cobertura para um
+    plano que ninguém curou.
+
+    Três origens, nesta ordem, e cada uma diz de onde veio:
+
+    ```
+    documento_oficial   o bloco de assistência que o PDF da apólice traz
+                        (policy_document_evidence_service.py:230-318)
+    documento_oficial   o texto integral da apólice, quando o bloco não nomeia
+    sistema_de_gestao   `tabela_itens` — 📊 traz o NOME do plano e nada mais
+                        (policy_data_provider.py:498)
+    ```
+
+    🔴 Nenhuma casou → `estado="nao_sabemos_ainda"`. **Nunca** o nível 1 porque
+    é o mais comum, nunca "o padrão da seguradora" (M-B4). E o nome mais LONGO
+    vence, porque `"Completo"` e `"Auto Completo"` coexistem em catálogo e o
+    curto casa dentro do longo.
+    """
+    candidatos = planos_publicados
+    if candidatos is None:
+        candidatos = BASE.planos_publicados(insurer_key, ramo, produto, db=db)
+    nada = {"plano": None, "nivel": None, "estado": "nao_sabemos_ainda",
+            "origem": "nenhuma", "documento_id": None, "pagina": None}
+    if not candidatos:
+        return nada
+
+    # 🔴 A CONDIÇÃO GERAL DESTE CONTRATO, quando a onda 2 a encontrou pelo
+    # processo SUSEP impresso na apólice. Havendo planos publicados a partir
+    # DAQUELE documento, são só eles os candidatos: um plano homônimo de outro
+    # produto registrado da mesma seguradora responderia a cobertura errada.
+    # ⚠️ Nenhum plano daquele documento → os candidatos continuam sendo todos, e
+    # a `origem` continua dizendo de onde veio o casamento. Reduzir a zero aqui
+    # transformaria "ainda não curamos aquele documento" em "não sabemos nada".
+    if documento_da_condicao:
+        do_documento = [p for p in candidatos
+                        if str(p.get("documento_id")) == str(documento_da_condicao)]
+        if do_documento:
+            candidatos = do_documento
+
+    do_bloco = " \n".join(
+        str(f.get("label") or "")
+        for f in (fatos_da_apolice or [])
+        if isinstance(f, dict) and f.get("fact_type") == "assistance"
+    )
+    fontes = (
+        ("documento_oficial", do_bloco),
+        ("documento_oficial", str(texto_do_documento or "")),
+        ("sistema_de_gestao", str(nome_no_sistema or "")),
+    )
+    for origem, texto in fontes:
+        if not str(texto or "").strip():
+            continue
+        casaram = [p for p in candidatos if _pertence(str(p.get("plano") or ""), texto)]
+        if not casaram:
+            continue
+        vencedor = sorted(
+            casaram, key=lambda p: len(BASE._norm_texto(p.get("plano"))), reverse=True
+        )[0]
+        return {
+            "plano": vencedor.get("plano"),
+            "nivel": vencedor.get("nivel"),
+            "estado": "contratado",
+            "origem": origem,
+            "plano_id": vencedor.get("id"),
+            "documento_id": vencedor.get("documento_id"),
+            "pagina": vencedor.get("pagina"),
+        }
+    return nada
+
+
 def responder_cobertura(
     *,
     pergunta: Any,
@@ -388,6 +490,42 @@ def responder_cobertura(
     # ② 🔴 M-B4: o plano vem da APÓLICE. Sem plano identificado, acaba aqui —
     #    e acaba ANTES de qualquer consulta, para não haver tentação de
     #    "pegar o de nível 1, que é o mais comum".
+    #
+    #    ⚠️ Antes de desistir, a Skill tenta IDENTIFICAR o plano contratado
+    #    contra os planos PUBLICADOS (unidade C, item 4). 📊 Sem isto,
+    #    `_plano_do_pack` devolve `nao_sabemos_ainda` em 100 % dos casos reais e
+    #    a base publicada nunca é alcançada. A identificação não inventa plano:
+    #    ou o nome de um plano publicado está escrito na apólice, ou não está.
+    #
+    #    🔴 E DUAS TRAVAS QUE O M-B4 IMPÕE, e que valem mais que a conveniência:
+    #    ① `nao_contratado` **não** é reaberto — a porta não está em dúvida ali,
+    #       ela sabe que o plano não foi contratado; reabrir seria trocar um
+    #       "não" fundamentado por um casamento de nome.
+    #    ② o nome que vem do SISTEMA DE GESTÃO (`tabela_itens`) sozinho **não**
+    #       identifica. 📊 É exatamente o caso que a porta marca
+    #       `nao_sabemos_ainda` COM o nome presente (`policy_data_provider.py:498`:
+    #       o campo traz o nome e nada mais — sem vigência, sem confirmação de
+    #       contratação). `identificar_plano` aceita essa origem para quem já
+    #       tenha a confirmação; a Skill não a passa.
+    #    Por isso a identificação só roda com EVIDÊNCIA DO DOCUMENTO na mão — e,
+    #    sem ela, a base nem chega a ser consultada.
+    _tem_documento = bool(apolice.get("fatos")) or bool(apolice.get("texto_do_documento"))
+    if ramo and estado_do_plano == "nao_sabemos_ainda" and _tem_documento:
+        try:
+            achado = identificar_plano(
+                insurer_key=insurer_key, ramo=ramo, produto=produto,
+                fatos_da_apolice=apolice.get("fatos"),
+                texto_do_documento=apolice.get("texto_do_documento"),
+                documento_da_condicao=apolice.get("documento_da_condicao"),
+                db=db,
+            )
+        except Exception as exc:  # noqa: BLE001 — identificar nunca derruba a resposta
+            logger.info("[cobertura] identificacao indisponivel: %s", type(exc).__name__)
+            achado = {"estado": "nao_sabemos_ainda"}
+        if achado.get("estado") == "contratado":
+            plano, nivel, estado_do_plano = achado["plano"], achado.get("nivel"), "contratado"
+            logger.info("[cobertura] plano identificado pela origem %s", achado.get("origem"))
+
     if estado_do_plano != "contratado" or not plano or not ramo:
         return _sem_saber("plano_nao_identificado", insurer_key, seguradora)
 
