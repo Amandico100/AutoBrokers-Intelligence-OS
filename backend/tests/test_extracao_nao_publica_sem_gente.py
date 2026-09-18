@@ -279,11 +279,23 @@ pid4b = db4b.plano(insurer_key="hdi", ramo="auto", produto="Auto Total", plano="
 db4b.servico(pid4b, "guincho", "sim", curadoria="publicado")
 checar(B.buscar_servico("hdi", "auto", "Auto Total", "Essencial", "guincho", db=db4b) is None,
        "🔴 CONTROLE: serviço `publicado` sob plano `proposto` NÃO responde")
+# 🔴 REPUBLICAR É RECUSADO — senão o segundo clique troca QUEM revisou.
+# 📊 18/09: o patch sobrescrevia `revisado_por`/`revisado_em`, e a linha passava a
+# dizer que foi a segunda pessoa quem a leu. É a prova de proveniência da base.
+_antes_revisor = [l for l in db4.tabelas["insurer_assistance_services"]
+                  if str(l["id"]) == str(sid4)][0].get("revisado_por")
 try:
-    B.publicar_servico(sid4, REVISOR, db=db4)  # já publicado: idempotente
-    checar(True, "republicar a mesma linha é idempotente (não levanta)")
-except Exception as exc:  # noqa: BLE001
-    checar(False, "republicar levantou", repr(exc))
+    B.publicar_servico(sid4, "99999999-9999-9999-9999-999999999999", db=db4)
+    checar(False, "republicar uma linha já publicada tinha de levantar")
+except B.BaseDePlanosRecusa as exc:
+    checar("já está publicada" in str(exc),
+           "🔴 republicar uma linha já publicada é RECUSADO, com o motivo escrito",
+           str(exc)[:110])
+_depois_revisor = [l for l in db4.tabelas["insurer_assistance_services"]
+                   if str(l["id"]) == str(sid4)][0].get("revisado_por")
+checar(_antes_revisor == _depois_revisor == REVISOR,
+       "🔴 e quem revisou continua sendo quem revisou (nada foi sobrescrito)",
+       f"{_antes_revisor} -> {_depois_revisor}")
 db4c = BaseEmMemoria()
 pid4c = db4c.plano(insurer_key="hdi", ramo="auto", produto="Auto", plano="X", nivel=1,
                    curadoria="proposto")

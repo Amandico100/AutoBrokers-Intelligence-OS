@@ -184,6 +184,56 @@ checar('if "assistance_policy_applied" in required:' in NODES,
 checar('if "assistencia_da_base" in required:' in NODES,
        "e o bloco novo da base está lá, ao lado dele")
 
+print("\n[5] 🔴 O FALLBACK CALA QUANDO A BASE JÁ SABE — um vencedor só, de novo")
+# 📊 Medido pela confirmação em 18/09/2026, com a linha PUBLICADA
+# `eletricista = nao` (porto/residencial):
+#   plano identificado      -> "No plano dele, não..."          (base)      ✅
+#   plano NÃO identificado  -> "costuma estar incluído"          (genérica)  ❌
+# A mesma seguradora, o mesmo serviço, duas respostas OPOSTAS — e a errada saía
+# justamente quando se sabe MENOS sobre o contrato do segurado.
+from app.services.skills.cobertura_e_assistencia import (  # noqa: E402
+    responder_cobertura,
+)
+from base_de_planos_em_memoria import BaseEmMemoria as _Base  # noqa: E402
+
+def _base_que_diz_nao():
+    d = _Base()
+    pid = d.plano(insurer_key="porto", ramo="residencial", produto="Residencial",
+                  plano="Essencial", nivel=1)
+    d.servico(pid, "eletricista", "nao")
+    return d
+
+_residencial = {"insurer": "Porto", "ramo": "residencial", "produto": "Residencial",
+                "residencial": True, "assistencia_confirmada": True}
+
+v_sem_plano = responder_cobertura(
+    pergunta="a assistencia cobre eletricista?", db=_base_que_diz_nao(),
+    apolice=dict(_residencial, estado_do_plano="nao_sabemos_ainda"))
+checar(v_sem_plano is not None and v_sem_plano.estado == "nao_sabemos_ainda"
+       and v_sem_plano.origem != "regra_generica",
+       "🔴 com linha PUBLICADA e plano não identificado -> `nao_sabemos_ainda`, "
+       "NUNCA o 'costuma estar incluído'",
+       f"{getattr(v_sem_plano, 'estado', None)} / {getattr(v_sem_plano, 'origem', None)}")
+
+# 🔴 CONTROLE ①: sem NENHUMA linha publicada, o fallback continua respondendo.
+v_generico = responder_cobertura(
+    pergunta="a assistencia cobre eletricista?", db=_Base(),
+    apolice=dict(_residencial, estado_do_plano="nao_sabemos_ainda"))
+checar(v_generico is not None and v_generico.estado == "coberto"
+       and v_generico.origem == "regra_generica",
+       "🔴 CONTROLE: base VAZIA para o produto -> a regra genérica responde, marcada",
+       f"{getattr(v_generico, 'estado', None)} / {getattr(v_generico, 'origem', None)}")
+
+# 🔴 CONTROLE ②: com o plano identificado, quem responde é a BASE.
+v_base = responder_cobertura(
+    pergunta="a assistencia cobre eletricista?", db=_base_que_diz_nao(),
+    apolice=dict(_residencial, estado_do_plano="contratado", plano="Essencial", nivel=1))
+checar(v_base is not None and v_base.estado == "nao_coberto" and v_base.origem == "base",
+       "🔴 CONTROLE: plano identificado -> `nao_coberto` pela BASE, com fonte",
+       f"{getattr(v_base, 'estado', None)} / {getattr(v_base, 'origem', None)}")
+checar(len({getattr(v_sem_plano, "origem", None), getattr(v_generico, "origem", None)}) == 2,
+       "🔴 e os dois caminhos CONSEGUEM ser diferentes — o par tem poder de separar")
+
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")

@@ -136,6 +136,47 @@ checar(sem_consulta.chamadas_de_tabela == [],
        "🔴 e ela não encostou na base — zero consultas",
        repr(sem_consulta.chamadas_de_tabela))
 
+print("\n[4] 🔴 DATA DE EMISSÃO ILEGÍVEL É LACUNA — nunca 'a condição de hoje'")
+# 📊 18/09/2026: `"maio de 2023"` não é entendido pelo parser e degradava, em
+# silêncio, para `date.today()` — o agente respondia sobre uma apólice de 2023
+# com o plano vigente HOJE, com toda a confiança. É o defeito que a abertura de
+# `insurance_corpus.py` descreve palavra por palavra.
+from base_de_planos_em_memoria import BaseEmMemoria as _BaseD  # noqa: E402
+
+def _base_com_plano_vigente():
+    d = _BaseD()
+    pid = d.plano(insurer_key="hdi", ramo="auto", produto="Auto Total",
+                  plano="Essencial", nivel=1)
+    d.tabelas["insurer_assistance_plans"][0]["vigencia_inicio"] = "2015-01-01"
+    d.servico(pid, "guincho", "sim", limite_valor=200, limite_unidade="km")
+    return d
+
+_apolice = {"insurer": "HDI", "ramo": "auto", "produto": "Auto Total",
+            "estado_do_plano": "contratado", "plano": "Essencial", "nivel": 1}
+
+v_ilegivel = responder_cobertura(pergunta="quantos km de guincho?",
+                                 apolice=dict(_apolice, data_emissao="maio de 2023"),
+                                 db=_base_com_plano_vigente())
+checar(v_ilegivel is not None and v_ilegivel.estado == "nao_sabemos_ainda",
+       "🔴 data presente e ILEGÍVEL -> `nao_sabemos_ainda` (não a condição de hoje)",
+       f"{getattr(v_ilegivel, 'estado', None)} / {getattr(v_ilegivel, 'motivo', None)}")
+
+# 🔴 CONTROLE ①: as formas que o parser entende continuam respondendo.
+for forma in ("2023-05-10", "10/05/2023"):
+    v_ok = responder_cobertura(pergunta="quantos km de guincho?",
+                               apolice=dict(_apolice, data_emissao=forma),
+                               db=_base_com_plano_vigente())
+    checar(v_ok is not None and v_ok.estado == "coberto",
+           f"🔴 CONTROLE: `{forma}` continua respondendo pela base",
+           f"{getattr(v_ok, 'estado', None)}")
+
+# 🔴 CONTROLE ②: SEM data, vale o plano vigente hoje — ninguém afirmou nada.
+v_sem_data = responder_cobertura(pergunta="quantos km de guincho?", apolice=dict(_apolice),
+                                 db=_base_com_plano_vigente())
+checar(v_sem_data is not None and v_sem_data.estado == "coberto",
+       "🔴 CONTROLE: SEM data de emissão, vale o vigente hoje (não há o que errar)",
+       f"{getattr(v_sem_data, 'estado', None)}")
+
 print()
 print("=" * 74)
 print(f"  {OK} assercoes verdes - {FAIL} vermelhas")
