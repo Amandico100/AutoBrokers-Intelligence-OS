@@ -95,12 +95,95 @@ COBERTURAS = ("sim", "nao", "condicionado")
 CONFIANCAS = ("alta", "media", "baixa")
 UNIDADES = ("km", "dias", "acionamentos_ano", "reais", "unidades")
 
+#: O caminho RELATIVO do vocabulário dentro do repositório. Um só, para o
+#: resolvedor e para a mensagem de erro não poderem divergir.
+_RELATIVO_DO_VOCABULARIO = ("docs", "canon", "providers", "susep",
+                            "servicos-de-assistencia.json")
+
+
+class VocabularioNaoEncontrado(Exception):
+    """O JSON do vocabulário não está em lugar nenhum dos caminhos procurados.
+
+    ⚠️ Não herda de `BaseDePlanosRecusa` de propósito: recusa é *"a linha está
+    errada"*; isto é *"a instalação está incompleta"*. Quem trata recusa
+    devolvendo "não sabemos ainda" ao segurado esconderia uma árvore quebrada
+    atrás de uma lacuna de curadoria.
+
+    🔴 A mensagem LISTA os caminhos tentados. 📊 17/09/2026 a bateria de mutação
+    da fatia 2 copiou **só `backend/`** para a cópia, e
+    `Path(__file__).parents[4]` apontava para fora dela — o módulo quebrava com
+    `FileNotFoundError` num caminho que ninguém reconhecia como "faltou o
+    `docs/`". Um erro que não diz onde procurou obriga quem lê a reconstruir a
+    aritmética de `parents[n]` de cabeça.
+    """
+
+
+def _candidatos_do_vocabulario() -> List[Path]:
+    """Os caminhos procurados, na ordem — sem I/O.
+
+    ① `AUTOBROKERS_REPO_ROOT` (se o ambiente declarar a raiz);
+    ② **subindo** a árvore a partir deste arquivo até achar `docs/canon`;
+    ③ o caminho histórico `parents[4]`, que continua valendo na árvore normal.
+
+    ⚠️ Subir procurando `docs/canon` (e não contar `parents[n]`) é o que faz o
+    módulo funcionar de qualquer `cwd` e sobreviver a mover a pasta um nível.
+    """
+    import os
+
+    fora: List[Path] = []
+    declarada = os.environ.get("AUTOBROKERS_REPO_ROOT")
+    if declarada:
+        fora.append(Path(declarada).joinpath(*_RELATIVO_DO_VOCABULARIO))
+    aqui = Path(__file__).resolve()
+    for pai in aqui.parents:
+        if (pai / "docs" / "canon").is_dir():
+            fora.append(pai.joinpath(*_RELATIVO_DO_VOCABULARIO))
+            break
+    historico = aqui.parents[4].joinpath(*_RELATIVO_DO_VOCABULARIO) \
+        if len(aqui.parents) > 4 else None
+    if historico is not None and historico not in fora:
+        fora.append(historico)
+    return fora
+
+
+def caminho_do_vocabulario() -> Path:
+    """O primeiro candidato que EXISTE. Nenhum existe → erro com a lista."""
+    candidatos = _candidatos_do_vocabulario()
+    for caminho in candidatos:
+        if caminho.is_file():
+            return caminho
+    raise VocabularioNaoEncontrado(
+        "o vocabulário de serviços (%s) não está em nenhum destes caminhos: %s"
+        % ("/".join(_RELATIVO_DO_VOCABULARIO), [str(c) for c in candidatos])
+    )
+
+
+class _CaminhoDoVocabulario:
+    """O que `ARQUIVO_DE_SERVICOS` era — um `Path` — mas resolvido na hora.
+
+    ⚠️ Mantido como objeto (e não como função) porque o módulo já publica
+    `ARQUIVO_DE_SERVICOS.name` na mensagem de `propor_servico`, e um guarda da
+    fatia 1 depende dela. Trocar por função quebraria o chamador para consertar
+    o resolvedor — o remendo ao lado que CLAUDE.md §5 proíbe.
+    """
+
+    @property
+    def name(self) -> str:
+        return _RELATIVO_DO_VOCABULARIO[-1]
+
+    def __fspath__(self) -> str:
+        return str(caminho_do_vocabulario())
+
+    def __str__(self) -> str:  # pragma: no cover - conveniência de log
+        return str(caminho_do_vocabulario())
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return "<vocabulario %s>" % self.name
+
+
 #: O vocabulário de `servico`. Dado versionado, revisável, diffável — nunca
 #: regex escondido no código (§5.2 da SPEC).
-ARQUIVO_DE_SERVICOS = (
-    Path(__file__).resolve().parents[4]
-    / "docs" / "canon" / "providers" / "susep" / "servicos-de-assistencia.json"
-)
+ARQUIVO_DE_SERVICOS = _CaminhoDoVocabulario()
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +286,7 @@ def vocabulario_de_servicos() -> Dict[str, Any]:
     """
     global _VOCABULARIO
     if _VOCABULARIO is None:
-        with open(ARQUIVO_DE_SERVICOS, "r", encoding="utf-8") as fh:
+        with open(caminho_do_vocabulario(), "r", encoding="utf-8") as fh:
             _VOCABULARIO = json.load(fh)
     return _VOCABULARIO
 
@@ -278,6 +361,111 @@ class ConferenciaDePagina:
         return self.ok
 
 
+def bytes_da_fonte(
+    documento_id: str,
+    *,
+    versao: Optional[int] = None,
+    db: Any = None,
+    minio: Any = None,
+) -> Tuple[Optional[bytes], str]:
+    """Os bytes do PDF arquivado, ou `(None, motivo)`. **Um só caminho.**
+
+    🔴 CLAUDE.md §5: `conferir_pagina` (conferência) e `texto_das_paginas`
+    (leitura, para o extrator e para a tela) pedem a fonte por AQUI. Duas
+    funções baixando o original por conta própria acabariam divergindo na
+    escolha da versão — e a conferência passaria a conferir um PDF diferente do
+    que a pessoa lê na tela.
+    """
+    db = db if db is not None else _db()
+    consulta = (
+        db.table("normative_document_versions")
+        .select("version, storage_ref")
+        .eq("document_id", str(documento_id))
+    )
+    if versao is not None:
+        consulta = consulta.eq("version", int(versao))
+    linhas = (consulta.order("version", desc=True).limit(1).execute()).data or []
+    if not linhas:
+        return None, "documento_sem_versao"
+    if not linhas[0].get("storage_ref"):
+        # 🔴 explícito: 📊 33 das 206 versões não têm fonte arquivada (17/09).
+        return None, "fonte_ausente"
+
+    from . import acervo_arquivo as AA
+
+    if minio is None:
+        try:
+            from ..minio_service import get_minio_service
+
+            minio = get_minio_service()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[base-planos] MinIO indisponivel: %s", type(exc).__name__)
+            return None, "minio_indisponivel"
+
+    caminho = AA.caminho(str(documento_id), int(linhas[0]["version"]), AA.ORIGINAL)
+    try:
+        return minio.download_file(caminho).read(), "ok"
+    except Exception as exc:  # noqa: BLE001
+        logger.info("[base-planos] original ausente (%s): %s", caminho, type(exc).__name__)
+        return None, "fonte_ausente"
+
+
+@dataclass(frozen=True)
+class PaginasDoDocumento:
+    """O texto das páginas pedidas. `motivo` explica o vazio, sempre."""
+
+    ok: bool
+    motivo: str
+    total: int = 0
+    paginas: Dict[int, str] = None  # type: ignore[assignment]
+
+    def texto(self, pagina: int) -> Optional[str]:
+        return (self.paginas or {}).get(int(pagina))
+
+
+def texto_das_paginas(
+    documento_id: str,
+    paginas: Optional[List[int]] = None,
+    *,
+    versao: Optional[int] = None,
+    db: Any = None,
+    minio: Any = None,
+    corpo: Optional[bytes] = None,
+) -> PaginasDoDocumento:
+    """Lê o PDF arquivado e devolve `{pagina: texto}` — 1-based.
+
+    `paginas=None` lê o documento inteiro (é o que a onda 1 precisa para achar
+    as páginas com termos do vocabulário). `corpo` permite reusar bytes já
+    baixados, para não bater no MinIO uma vez por página.
+
+    ⛔ Nenhum segundo leitor de PDF: é o mesmo `fitz` de
+    `insurance_corpus.extrair_texto_de_pdf` e de `conferir_pagina`.
+    """
+    if corpo is None:
+        corpo, motivo = bytes_da_fonte(documento_id, versao=versao, db=db, minio=minio)
+        if corpo is None:
+            return PaginasDoDocumento(False, motivo, 0, {})
+    try:
+        import fitz
+    except Exception:  # noqa: BLE001
+        return PaginasDoDocumento(False, "sem_extrator_de_pdf", 0, {})
+    doc = None
+    try:
+        doc = fitz.open(stream=corpo, filetype="pdf")
+        total = doc.page_count
+        alvo = [int(p) for p in (paginas if paginas is not None else range(1, total + 1))]
+        fora = {p: doc[p - 1].get_text("text") for p in alvo if 1 <= p <= total}
+        return PaginasDoDocumento(True, "ok", total, fora)
+    except Exception as exc:  # noqa: BLE001
+        return PaginasDoDocumento(False, "pdf_ilegivel:%s" % type(exc).__name__, 0, {})
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def conferir_pagina(
     documento_id: str,
     pagina: int,
@@ -313,38 +501,9 @@ def conferir_pagina(
     if pagina < 1:
         return ConferenciaDePagina(False, "pagina_inexistente", pagina)
 
-    db = db if db is not None else _db()
-    consulta = (
-        db.table("normative_document_versions")
-        .select("version, storage_ref")
-        .eq("document_id", str(documento_id))
-    )
-    if versao is not None:
-        consulta = consulta.eq("version", int(versao))
-    linhas = (consulta.order("version", desc=True).limit(1).execute()).data or []
-    if not linhas:
-        return ConferenciaDePagina(False, "documento_sem_versao")
-    if not linhas[0].get("storage_ref"):
-        # 🔴 explícito: 📊 33 das 206 versões não têm fonte arquivada (17/09).
-        return ConferenciaDePagina(False, "fonte_ausente")
-
-    from . import acervo_arquivo as AA
-
-    if minio is None:
-        try:
-            from ..minio_service import get_minio_service
-
-            minio = get_minio_service()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[base-planos] MinIO indisponivel: %s", type(exc).__name__)
-            return ConferenciaDePagina(False, "minio_indisponivel")
-
-    caminho = AA.caminho(str(documento_id), int(linhas[0]["version"]), AA.ORIGINAL)
-    try:
-        corpo = minio.download_file(caminho).read()
-    except Exception as exc:  # noqa: BLE001
-        logger.info("[base-planos] original ausente (%s): %s", caminho, type(exc).__name__)
-        return ConferenciaDePagina(False, "fonte_ausente")
+    corpo, motivo = bytes_da_fonte(documento_id, versao=versao, db=db, minio=minio)
+    if corpo is None:
+        return ConferenciaDePagina(False, motivo)
 
     try:
         import fitz  # o MESMO de insurance_corpus.extrair_texto_de_pdf
@@ -665,3 +824,178 @@ def cobertura_por_seguradora_e_ramo(*, db: Any = None) -> Dict[Tuple[str, str], 
             if chave:
                 fora[chave]["servicos_publicados"] += 1
     return fora
+
+
+# ---------------------------------------------------------------------------
+# Manutenção — §7.4: o documento mudou, a linha volta para a fila
+# ---------------------------------------------------------------------------
+def derrubar_para_proposto(
+    documento_id: str, motivo: str = "content_hash mudou", *, db: Any = None
+) -> Dict[str, int]:
+    """As linhas `publicado` daquele documento voltam a `proposto`, com o motivo.
+
+    🔴 **Não apaga e não deixa publicado em silêncio** (SPEC §7.4). A resposta de
+    ontem pode ter sido certa e a de hoje já não ser: a linha continua existindo
+    (com o trecho e a página que a originaram), mas sai do caminho que chega ao
+    segurado até que uma pessoa a revise de novo.
+
+    🔴 `revisado_por`/`revisado_em` são **preservados**, e o motivo é gravado em
+    `condicao` com o prefixo `[revisar]`. A escolha está escrita porque a
+    alternativa (limpar o revisor) apagaria a informação de quem tinha aprovado
+    a linha — que é justamente quem deve ser chamado para reconferir. E o CHECK
+    `servico_publicado_foi_revisado` só vale para `curadoria='publicado'`, de
+    modo que manter o revisor numa linha `proposto` não fere trava nenhuma.
+
+    Devolve `{"planos": n, "servicos": n}` — contagem, nunca conteúdo.
+    """
+    cliente = _db(db)
+    carimbo = "[revisar %s] %s" % (_agora()[:10], str(motivo or "").strip())
+    fora = {"planos": 0, "servicos": 0}
+
+    planos = (
+        cliente.table(TABELA_PLANOS)
+        .select("id")
+        .eq("documento_id", str(documento_id))
+        .eq("curadoria", "publicado")
+        .execute()
+    ).data or []
+    for p in planos:
+        cliente.table(TABELA_PLANOS).update(
+            {"curadoria": "proposto", "updated_at": _agora()}
+        ).eq("id", str(p["id"])).execute()
+        fora["planos"] += 1
+
+    servicos = (
+        cliente.table(TABELA_SERVICOS)
+        .select("id, condicao")
+        .eq("documento_id", str(documento_id))
+        .eq("curadoria", "publicado")
+        .execute()
+    ).data or []
+    for s in servicos:
+        antiga = str(s.get("condicao") or "").strip()
+        cliente.table(TABELA_SERVICOS).update(
+            {
+                "curadoria": "proposto",
+                "condicao": (carimbo + (" | " + antiga if antiga else "")),
+                "updated_at": _agora(),
+            }
+        ).eq("id", str(s["id"])).execute()
+        fora["servicos"] += 1
+
+    if fora["planos"] or fora["servicos"]:
+        logger.info(
+            "[base-planos] documento %s mudou: %s plano(s) e %s servico(s) voltaram para a fila (%s)",
+            documento_id, fora["planos"], fora["servicos"], motivo,
+        )
+    return fora
+
+
+# ---------------------------------------------------------------------------
+# A fila de curadoria — o que a tela da unidade D mostra
+# ---------------------------------------------------------------------------
+def fila_de_curadoria(
+    *, limite: int = 50, curadorias: Tuple[str, ...] = ("proposto",), db: Any = None
+) -> List[Dict[str, Any]]:
+    """As linhas de serviço à espera de gente, com o plano delas junto.
+
+    ⛔ **Não devolve o trecho.** O trecho não é gravado (a base guarda só o
+    `trecho_hash`): quem quiser mostrá-lo lê a fonte arquivada na hora, pelo
+    mesmo `conferir_pagina`/`texto_da_pagina` — é o que garante que o que a
+    pessoa lê na tela é o que está no PDF, e não uma cópia que envelheceu.
+    """
+    cliente = _db(db)
+    linhas: List[Dict[str, Any]] = []
+    for estado in curadorias:
+        linhas += (
+            cliente.table(TABELA_SERVICOS)
+            .select("*")
+            .eq("curadoria", str(estado))
+            .limit(int(limite))
+            .execute()
+        ).data or []
+    if not linhas:
+        return []
+
+    ids = {str(l.get("plano_id")) for l in linhas if l.get("plano_id")}
+    planos = (
+        cliente.table(TABELA_PLANOS).select("*").in_("id", list(ids)).execute()
+    ).data or [] if ids else []
+    por_id = {str(p["id"]): p for p in planos}
+
+    fora: List[Dict[str, Any]] = []
+    for l in linhas[: int(limite)]:
+        p = por_id.get(str(l.get("plano_id"))) or {}
+        fora.append({
+            "id": l.get("id"),
+            "insurer_key": p.get("insurer_key"),
+            "ramo": p.get("ramo"),
+            "produto": p.get("produto"),
+            "plano": p.get("plano"),
+            "nivel": p.get("nivel"),
+            "servico": l.get("servico"),
+            "coberto": l.get("coberto"),
+            "limite_valor": l.get("limite_valor"),
+            "limite_unidade": l.get("limite_unidade"),
+            "limite_texto": l.get("limite_texto"),
+            "carencia_dias": l.get("carencia_dias"),
+            "condicao": l.get("condicao"),
+            "confianca": l.get("confianca"),
+            "curadoria": l.get("curadoria"),
+            "documento_id": l.get("documento_id"),
+            "pagina": l.get("pagina"),
+            "trecho_hash": l.get("trecho_hash"),
+        })
+    return fora
+
+
+def rejeitar_servico(
+    servico_id: str, revisado_por: Any, motivo: str, *, db: Any = None
+) -> Dict[str, Any]:
+    """Rejeita uma linha. 🔴 Exige revisor E motivo.
+
+    ⚠️ Rejeitar sem motivo produz uma fila que ninguém consegue aprender a
+    melhorar: o extrator continua propondo o mesmo erro, e a pessoa continua
+    recusando à mão, para sempre.
+    """
+    if not revisado_por:
+        raise RevisorObrigatorio("rejeitar sem `revisado_por`")
+    if not str(motivo or "").strip():
+        raise BaseDePlanosRecusa(
+            "rejeitar sem motivo: a fila só melhora se o erro ficar escrito"
+        )
+    antiga = (
+        _db(db).table(TABELA_SERVICOS).select("condicao").eq("id", str(servico_id))
+        .limit(1).execute()
+    ).data or []
+    anterior = str((antiga[0] if antiga else {}).get("condicao") or "").strip()
+    patch = {
+        "curadoria": "rejeitado",
+        "revisado_por": str(revisado_por),
+        "revisado_em": _agora(),
+        "condicao": "[rejeitado] %s" % str(motivo).strip()
+                    + (" | " + anterior if anterior else ""),
+        "updated_at": _agora(),
+    }
+    r = _db(db).table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
+    return (r.data or [{}])[0]
+
+
+def para_rascunho(
+    servico_id: str, motivo: str, *, db: Any = None
+) -> Dict[str, Any]:
+    """O VERIFICADOR reprova: a linha vai para `rascunho` COM o motivo.
+
+    🔴 Este é o único movimento de estado que a máquina faz, e ele é **para
+    baixo**. Subir é ato humano (`publicar_servico`) — SPEC §7.1: *"o
+    verificador não é o revisor: ele só reprova, nunca aprova"*.
+    """
+    if not str(motivo or "").strip():
+        raise BaseDePlanosRecusa("reprovar sem motivo não ensina nada a ninguém")
+    patch = {
+        "curadoria": "rascunho",
+        "condicao": "[reprovado] %s" % str(motivo).strip(),
+        "updated_at": _agora(),
+    }
+    r = _db(db).table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
+    return (r.data or [{}])[0]
