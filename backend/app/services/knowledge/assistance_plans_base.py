@@ -688,30 +688,100 @@ def propor_servico(
     return (r.data or [{}])[0]
 
 
-def publicar_servico(servico_id: str, revisado_por: Any, *, db: Any = None) -> Dict[str, Any]:
-    """Publica uma linha. 🔴 Sem revisor, recusa ANTES do banco — e o banco recusa de novo."""
-    if not revisado_por:
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _exigir_revisor(revisado_por: Any, acao: str) -> str:
+    """O revisor é uma PESSOA do sistema, e a prova disso é o formato do id.
+
+    🔴 Aceitar qualquer string aqui faz `revisado_por='robo'` (ou `'system'`, ou
+    a string vazia depois de um `str(None)`) passar pelo CHECK do banco, que só
+    exige *não nulo*. O nome que fica gravado é a única resposta à pergunta
+    *"quem respondeu por 'guincho até 200 km'?"* — e ele tem de apontar para
+    alguém que exista.
+    """
+    bruto = str(revisado_por or "").strip()
+    if not bruto:
         raise RevisorObrigatorio(
-            "publicar sem `revisado_por` é o que esta base existe para impedir: "
-            "aprovar o PDF não é aprovar 'guincho até 200 km'"
+            "%s sem `revisado_por` é o que esta base existe para impedir: "
+            "aprovar o PDF não é aprovar 'guincho até 200 km'" % acao
         )
+    if not _UUID_RE.match(bruto):
+        raise RevisorObrigatorio(
+            "`revisado_por` precisa ser o id do usuário autenticado (uuid), veio %r — "
+            "um rótulo livre não aponta para pessoa nenhuma" % bruto
+        )
+    return bruto
+
+
+def publicar_servico(servico_id: str, revisado_por: Any, *, db: Any = None) -> Dict[str, Any]:
+    """Publica uma linha **e o plano dela**. 🔴 Sem revisor, recusa antes do banco.
+
+    🔴 POR QUE O PLANO VAI JUNTO — e por que isso não é publicar sem gente
+    ===================================================================
+    A leitura que chega ao segurado (`planos_publicados` → `buscar_servico`)
+    parte do PLANO: um serviço `publicado` pendurado num plano `proposto` é
+    invisível. O Founder publicava dez linhas pela tela e o segurado continuava
+    ouvindo *"ainda não sei"* — o pior desfecho possível, porque o trabalho foi
+    feito e não apareceu, e ninguém tem como descobrir por quê.
+
+    ⚠️ A pessoa que publica a linha **leu o plano**: a fila mostra seguradora,
+    ramo, produto, plano, nível e a página do plano ao lado do serviço
+    (`fila_de_curadoria`). Publicar o plano pai carrega o MESMO `revisado_por` e
+    o MESMO `revisado_em` — é o mesmo ato humano, não um segundo ato automático.
+
+    🔴 E só se publica a partir de `proposto`: uma linha `rejeitado` ou
+    `rascunho` foi recusada por alguém ou pelo verificador, e republicá-la por um
+    clique desfaria a recusa sem que ninguém revisse o motivo.
+    """
+    revisor = _exigir_revisor(revisado_por, "publicar")
+    cliente = _db(db)
+
+    atual = (
+        cliente.table(TABELA_SERVICOS).select("*").eq("id", str(servico_id))
+        .limit(1).execute()
+    ).data or []
+    if not atual:
+        raise BaseDePlanosRecusa("serviço %r não existe" % str(servico_id))
+    estado = str(atual[0].get("curadoria") or "")
+    if estado not in ("proposto", "publicado"):
+        raise BaseDePlanosRecusa(
+            "só se publica a partir de `proposto`; esta linha está %r. "
+            "Desfazer uma recusa é outro ato, e ele passa por quem recusou." % estado
+        )
+
+    carimbo = _agora()
     patch = {
         "curadoria": "publicado",
-        "revisado_por": str(revisado_por),
-        "revisado_em": _agora(),
-        "updated_at": _agora(),
+        "revisado_por": revisor,
+        "revisado_em": carimbo,
+        "updated_at": carimbo,
     }
-    r = _db(db).table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
+    r = cliente.table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
+
+    plano_id = atual[0].get("plano_id")
+    if plano_id:
+        pai = (
+            cliente.table(TABELA_PLANOS).select("id, curadoria").eq("id", str(plano_id))
+            .limit(1).execute()
+        ).data or []
+        if pai and str(pai[0].get("curadoria")) == "proposto":
+            cliente.table(TABELA_PLANOS).update({
+                "curadoria": "publicado",
+                "revisado_por": revisor,
+                "revisado_em": carimbo,
+                "updated_at": carimbo,
+            }).eq("id", str(plano_id)).execute()
+            logger.info("[base-planos] plano %s publicado junto com o servico", plano_id)
     return (r.data or [{}])[0]
 
 
 def publicar_plano(plano_id: str, revisado_por: Any, *, db: Any = None) -> Dict[str, Any]:
     """O irmão de `publicar_servico`, para o plano."""
-    if not revisado_por:
-        raise RevisorObrigatorio("publicar plano sem `revisado_por`")
+    revisor = _exigir_revisor(revisado_por, "publicar plano")
     patch = {
         "curadoria": "publicado",
-        "revisado_por": str(revisado_por),
+        "revisado_por": revisor,
         "revisado_em": _agora(),
         "updated_at": _agora(),
     }
@@ -722,10 +792,59 @@ def publicar_plano(plano_id: str, revisado_por: Any, *, db: Any = None) -> Dict[
 # ---------------------------------------------------------------------------
 # Leitura — só o que está PUBLICADO chega ao segurado
 # ---------------------------------------------------------------------------
+def _como_data(valor: Any) -> Optional[date]:
+    """`date`, `datetime`, ISO ou `dd/mm/aaaa`. Não adivinha o resto."""
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    bruto = str(valor).strip()
+    if "/" in bruto:
+        partes = bruto.split("/")
+        if len(partes) == 3 and len(partes[2]) == 4:
+            try:
+                return date(int(partes[2]), int(partes[1]), int(partes[0]))
+            except ValueError:
+                return None
+        return None
+    try:
+        return datetime.fromisoformat(bruto[:10]).date()
+    except ValueError:
+        return None
+
+
+def vigente_em(plano: Dict[str, Any], quando: Optional[date]) -> bool:
+    """O plano valia naquela data? `vigencia_fim` nulo = ainda vale.
+
+    🔴 A regra é a MESMA do elo SUSEP (`assistance_plans_susep_link`):
+    `inicio <= data < fim`. Duas regras de vigência no mesmo produto dariam
+    respostas diferentes para a mesma apólice conforme o caminho — e a que
+    chegasse ao segurado seria a do acaso.
+    """
+    if quando is None:
+        return True
+    inicio = _como_data(plano.get("vigencia_inicio"))
+    fim = _como_data(plano.get("vigencia_fim"))
+    if inicio is not None and quando < inicio:
+        return False
+    if fim is not None and quando >= fim:
+        return False
+    return True
+
+
 def planos_publicados(
-    insurer_key: str, ramo: str, produto: Optional[str] = None, *, db: Any = None
+    insurer_key: str, ramo: str, produto: Optional[str] = None, *,
+    data_emissao: Any = None, db: Any = None,
 ) -> List[Dict[str, Any]]:
-    """Os planos publicados, **ordenados por `nivel`** (1 = o mais básico)."""
+    """Os planos publicados, **ordenados por `nivel`** (1 = o mais básico).
+
+    `data_emissao` filtra pela vigência do plano — a apólice de 2023 é regida
+    pela condição de 2023 (§7.2). Sem data, valem os vigentes **hoje**: um plano
+    já substituído não pode responder por um contrato novo só porque continua na
+    tabela.
+    """
     q = (
         _db(db)
         .table(TABELA_PLANOS)
@@ -736,7 +855,9 @@ def planos_publicados(
     )
     if produto:
         q = q.eq("produto", str(produto))
-    return (q.order("nivel").execute()).data or []
+    linhas = (q.order("nivel").execute()).data or []
+    quando = _como_data(data_emissao) or date.today()
+    return [p for p in linhas if vigente_em(p, quando)]
 
 
 def buscar_servico(
@@ -746,19 +867,30 @@ def buscar_servico(
     plano: str,
     servico: str,
     *,
+    data_emissao: Any = None,
     db: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """A linha publicada deste serviço, neste plano — ou `None`.
 
     🔴 `None` significa *"não sabemos ainda"*, nunca *"não cobre"*. Quem
     transforma `None` em texto é a unidade B, e o guarda M-B1 prova a diferença.
+
+    🔴 E `None` TAMBÉM quando sobra mais de um plano com o mesmo nome vigente na
+    data: `planos[0]` escolhia por ordem de nível, isto é, por acaso. Duas
+    vigências do mesmo plano dizem coisas diferentes sobre o mesmo serviço, e
+    responder a do acaso é o pior dos dois mundos — parece certeza.
     """
     cliente = _db(db)
     planos = [
         p
-        for p in planos_publicados(insurer_key, ramo, produto, db=cliente)
+        for p in planos_publicados(insurer_key, ramo, produto,
+                                   data_emissao=data_emissao, db=cliente)
         if str(p.get("plano")) == str(plano)
     ]
+    if len(planos) > 1:
+        logger.info("[base-planos] %s planos homonimos vigentes: nao escolho por acaso",
+                    len(planos))
+        return None
     if not planos:
         return None
     r = (
@@ -933,6 +1065,12 @@ def fila_de_curadoria(
             "produto": p.get("produto"),
             "plano": p.get("plano"),
             "nivel": p.get("nivel"),
+            # 🔴 o PLANO aparece na linha porque publicar o serviço publica o
+            # plano pai (`publicar_servico`): quem clica precisa ter lido os dois.
+            "plano_id": p.get("id"),
+            "plano_curadoria": p.get("curadoria"),
+            "plano_pagina": p.get("pagina"),
+            "vigencia_inicio": p.get("vigencia_inicio"),
             "servico": l.get("servico"),
             "coberto": l.get("coberto"),
             "limite_valor": l.get("limite_valor"),
@@ -958,8 +1096,7 @@ def rejeitar_servico(
     melhorar: o extrator continua propondo o mesmo erro, e a pessoa continua
     recusando à mão, para sempre.
     """
-    if not revisado_por:
-        raise RevisorObrigatorio("rejeitar sem `revisado_por`")
+    revisor = _exigir_revisor(revisado_por, "rejeitar")
     if not str(motivo or "").strip():
         raise BaseDePlanosRecusa(
             "rejeitar sem motivo: a fila só melhora se o erro ficar escrito"
@@ -971,7 +1108,7 @@ def rejeitar_servico(
     anterior = str((antiga[0] if antiga else {}).get("condicao") or "").strip()
     patch = {
         "curadoria": "rejeitado",
-        "revisado_por": str(revisado_por),
+        "revisado_por": revisor,
         "revisado_em": _agora(),
         "condicao": "[rejeitado] %s" % str(motivo).strip()
                     + (" | " + anterior if anterior else ""),
@@ -998,4 +1135,83 @@ def para_rascunho(
         "updated_at": _agora(),
     }
     r = _db(db).table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
+    return (r.data or [{}])[0]
+
+
+def corrigir_vigencia_do_plano(
+    plano_id: str, vigencia_inicio: Any, *, motivo: str = "", db: Any = None
+) -> Dict[str, Any]:
+    """Conserta a `vigencia_inicio` de um plano — **só em `proposto`**.
+
+    🔴 POR QUE ISTO EXISTE, E POR QUE SÓ EM `proposto`
+    ==================================================
+    📊 18/09/2026: a onda 1 gravou `vigencia_inicio = date.today()` em **38 de
+    38** planos. A vigência entra nas chaves únicas: rodar a onda no dia seguinte
+    não atualizaria nada — **duplicaria a base inteira**, com duas vigências
+    dizendo a mesma coisa sobre o mesmo produto, e a leitura teria de escolher
+    uma por acaso (que é o que `buscar_servico` agora se recusa a fazer).
+
+    ⛔ Em linha `publicado`, mudar a vigência mudaria a resposta que já foi
+    revisada por uma pessoa, sem que ela soubesse. Se for preciso, o caminho é o
+    de sempre: `derrubar_para_proposto` e nova revisão.
+    """
+    cliente = _db(db)
+    atual = (
+        cliente.table(TABELA_PLANOS).select("id, curadoria, vigencia_inicio")
+        .eq("id", str(plano_id)).limit(1).execute()
+    ).data or []
+    if not atual:
+        raise BaseDePlanosRecusa("plano %r não existe" % str(plano_id))
+    if str(atual[0].get("curadoria")) != "proposto":
+        raise BaseDePlanosRecusa(
+            "vigência só se corrige em `proposto`; este plano está %r — em "
+            "`publicado` isso mudaria, sem aviso, uma resposta já revisada"
+            % atual[0].get("curadoria")
+        )
+    nova = _como_data(vigencia_inicio)
+    if nova is None:
+        raise BaseDePlanosRecusa("vigencia_inicio inválida: %r" % (vigencia_inicio,))
+    patch = {"vigencia_inicio": nova.isoformat(), "updated_at": _agora()}
+    r = cliente.table(TABELA_PLANOS).update(patch).eq("id", str(plano_id)).execute()
+    logger.info("[base-planos] vigencia do plano %s corrigida (%s)", plano_id, motivo or "-")
+    return (r.data or [{}])[0]
+
+
+def renomear_plano_proposto(
+    plano_id: str, *, produto: Optional[str] = None, plano: Optional[str] = None,
+    db: Any = None,
+) -> Dict[str, Any]:
+    """Normaliza `produto`/`plano` de uma linha **`proposto`**.
+
+    📊 A onda 1 gravou `produto` com nome de arquivo ("… CC-RESIDENCIAL POP.pdf")
+    e com caixas diferentes para a mesma coisa ('Mapfre condominio' ×
+    'Mapfre Condominio'). Duas caixas do mesmo produto são dois produtos para a
+    chave — e o gancho *"existe um plano acima do seu"* nunca acha o superior,
+    porque ele está no "outro" produto.
+    """
+    cliente = _db(db)
+    atual = (
+        cliente.table(TABELA_PLANOS).select("id, curadoria").eq("id", str(plano_id))
+        .limit(1).execute()
+    ).data or []
+    if not atual:
+        raise BaseDePlanosRecusa("plano %r não existe" % str(plano_id))
+    if str(atual[0].get("curadoria")) != "proposto":
+        raise BaseDePlanosRecusa("renomear só em `proposto`, está %r" % atual[0].get("curadoria"))
+    patch: Dict[str, Any] = {"updated_at": _agora()}
+    if produto:
+        patch["produto"] = str(produto)
+    if plano:
+        patch["plano"] = str(plano)
+    r = cliente.table(TABELA_PLANOS).update(patch).eq("id", str(plano_id)).execute()
+    return (r.data or [{}])[0]
+
+
+def plano_para_rascunho(plano_id: str, motivo: str, *, db: Any = None) -> Dict[str, Any]:
+    """O irmão de `para_rascunho`, para o PLANO. Só desce; nunca sobe."""
+    if not str(motivo or "").strip():
+        raise BaseDePlanosRecusa("reprovar plano sem motivo não ensina nada a ninguém")
+    patch = {"curadoria": "rascunho", "updated_at": _agora()}
+    r = _db(db).table(TABELA_PLANOS).update(patch).eq("id", str(plano_id)).execute()
+    logger.info("[base-planos] plano %s -> rascunho: %s", plano_id, motivo)
     return (r.data or [{}])[0]
