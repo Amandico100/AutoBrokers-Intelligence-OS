@@ -59,6 +59,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -102,6 +103,11 @@ Regras:
 - `limite_valor` só com `limite_unidade`. Sem unidade, deixe os dois nulos e
   escreva o limite em `limite_texto`.
 - Nada nesta página sobre assistência/cobertura → {"linhas": []}.
+- `coberto: "nao"` SÓ quando a página nega o serviço/cobertura EM SI ("não há
+  cobertura para alagamento", "este plano não inclui carro reserva"). Uma
+  EXCLUSÃO DE RISCO dentro de OUTRA cobertura ("riscos excluídos: inundação por
+  transbordamento de rios", numa cláusula de Vendaval/Granizo) NÃO é um "não" do
+  serviço: é `coberto: "condicionado"`, com a cláusula copiada em `condicao`.
 """
 
 _PLANO_PADRAO = "Plano único"
@@ -238,6 +244,97 @@ def propostas_da_pagina(
 
 
 # ---------------------------------------------------------------------------
+# Normalização de `produto` e `plano` — a chave da base depende deles
+# ---------------------------------------------------------------------------
+#: Extensões que o título do documento carrega e que NÃO são nome de produto.
+_EXTENSOES = (".pdf", ".docx", ".doc", ".txt", ".html", ".htm")
+
+#: Teto do nome do plano. 📊 18/09/2026: 4 dos 38 planos propostos passavam de 60
+#: caracteres porque o modelo copiou a LISTA de coberturas como se fosse o nome
+#: do pacote ("Cobertura Basica + Vendaval + Danos Eletricos + ...").
+TETO_DO_NOME_DO_PLANO = 60
+
+
+def produto_canonico(bruto, ramo=""):
+    """O nome do produto, limpo — e sempre na MESMA caixa.
+
+    📊 18/09/2026, o que a onda 1 gravou, e por que cada pedaço existe aqui:
+      · "Bradesco Seguro Residencial CC-RESIDENCIAL POP.pdf" — nome de ARQUIVO;
+      · 'Mapfre condominio' × 'Mapfre Condominio' — a MESMA coisa, duas chaves.
+
+    A segunda é a pior. A chave da base inclui o produto, então as duas caixas
+    viram dois produtos, cada um com um plano de nível 1 — e o gancho *"existe um
+    plano acima do seu"* **nunca** acha o superior, porque ele mora no "outro"
+    produto. O defeito é silencioso: a resposta sai completa, só falta a oferta.
+    """
+    texto = str(bruto or "").strip()
+    baixo = texto.lower()
+    for ext in _EXTENSOES:
+        if baixo.endswith(ext):
+            texto = texto[: -len(ext)]
+            break
+    # o resto do nome de arquivo ("CC-RESIDENCIAL POP") sai junto
+    texto = re.sub(r"\s*[-_]?\b(?:CC|CG|CP)[-_][A-Z0-9 _-]+$", "", texto)
+    texto = re.sub(r"[_-]+", " ", texto)
+    texto = re.sub(r"\s+", " ", texto).strip(" .-")
+    if not texto:
+        texto = str(ramo or "Produto")
+    palavras = []
+    for w in texto.split(" "):
+        palavras.append(w if (w.isupper() and len(w) <= 4) else w.capitalize())
+    return " ".join(palavras)[:120]
+
+
+def nome_de_plano_valido(bruto):
+    """O nome do plano, ou `None` quando o que veio não é nome de plano.
+
+    🔴 `None` é uma RECUSA, não um default: trocar por "Plano único" esconderia
+    que o modelo não achou pacote nenhum naquela página, e a linha entraria na
+    fila como se alguém tivesse lido um nome.
+    """
+    texto = re.sub(r"\s+", " ", str(bruto or "")).strip(" .-")
+    if not texto:
+        return None
+    if len(texto) > TETO_DO_NOME_DO_PLANO:
+        return None
+    if texto.count("+") >= 2 or texto.count(",") >= 2 or texto.count(";") >= 1:
+        return None
+    return texto
+
+
+def vigencia_do_documento(documento_id, doc, db):
+    """A vigência do PLANO é a da VERSÃO do documento — nunca `date.today()`.
+
+    🔴 📊 18/09/2026: a onda gravou `date.today()` em **38 de 38** planos. A
+    vigência entra nas chaves únicas da base: rodar a onda amanhã não atualizaria
+    nada — criaria uma segunda base inteira, com duas vigências dizendo a mesma
+    coisa sobre o mesmo produto. E a apólice de 2023 passaria a ser respondida
+    por um plano que "começou a valer" no dia em que o extrator rodou.
+
+    Fontes, na ordem e todas medidas: `normative_document_versions.effective_from`
+    (📊 26 de 27 preenchidos) → `normative_documents.effective_from` →
+    `created_at`. Nenhuma delas → `None`, e o documento é PULADO: o contrato da
+    fatia 1 exige vigência, e inventá-la é o defeito que se está consertando.
+    """
+    try:
+        versoes = (
+            db.table("normative_document_versions")
+            .select("version, effective_from")
+            .eq("document_id", str(documento_id))
+            .execute()
+        ).data or []
+    except Exception:  # noqa: BLE001
+        versoes = []
+    for v in sorted(versoes, key=lambda x: int(x.get("version") or 0), reverse=True):
+        if v.get("effective_from"):
+            return str(v["effective_from"])[:10]
+    for campo in ("effective_from", "created_at"):
+        if doc.get(campo):
+            return str(doc[campo])[:10]
+    return None
+
+
+# ---------------------------------------------------------------------------
 # O VERIFICADOR — máquina, sem LLM, e só para baixo
 # ---------------------------------------------------------------------------
 @dataclass
@@ -248,6 +345,21 @@ class Reprovacao:
     insere: bool = False
 
 
+#: A FORMA da cláusula de exclusão de risco — "riscos excluídos", "não estão
+#: cobertos os danos decorrentes de…". Ela fala do RISCO dentro de uma cobertura.
+_E_EXCLUSAO_DE_RISCO = re.compile(
+    r"risco[s]?\s+excluid|exclus[õo]e?s|n[ãa]o\s+est[ãa]o\s+cobert|"
+    r"n[ãa]o\s+(?:ser[ãa]o\s+)?indeniza|excetuad|ressalvad",
+    re.IGNORECASE,
+)
+
+#: E a FORMA de negar o serviço EM SI — que é o único "não" que a base aceita.
+_NEGA_O_SERVICO = re.compile(
+    r"n[ãa]o\s+(?:h[áa]|possui|inclui|cobre|contempla|disp[õo]e|oferece)|"
+    r"servi[çc]o\s+n[ãa]o\s+(?:dispon|inclu|cobert)|sem\s+(?:direito|cobertura)\s+a",
+    re.IGNORECASE,
+)
+
 #: Os motivos, com destino. `insere=True` = a linha entra e cai para `rascunho`.
 MOTIVOS = {
     "sem_trecho": Reprovacao("o modelo não copiou o trecho da página"),
@@ -256,6 +368,10 @@ MOTIVOS = {
     "limite_sem_unidade": Reprovacao("limite com valor e sem unidade"),
     "seguradora_desconhecida": Reprovacao("seguradora fora das chaves canônicas"),
     "nivel_duplicado": Reprovacao("dois planos com o mesmo nível no produto"),
+    "nome_de_plano_invalido": Reprovacao("o 'plano' era uma lista de coberturas"),
+    "nivel_nao_contiguo": Reprovacao("nível pula um número no produto"),
+    "exclusao_de_risco_nao_e_nao_do_servico": Reprovacao(
+        "exclusão de risco dentro de outra cobertura virou 'nao' do serviço", insere=True),
     "pagina_inexistente": Reprovacao("página não existe no PDF arquivado", insere=True),
     "trecho_nao_esta_na_pagina": Reprovacao("o trecho não está NAQUELA página", insere=True),
 }
@@ -280,6 +396,19 @@ def verificar(
     trecho = str(proposta.get("trecho") or "").strip()
     if len(trecho) < 12:
         return "sem_trecho"
+    # 🔴 "NÃO" SECO TIRADO DE UMA CLÁUSULA DE EXCLUSÃO É UM "NÃO" ERRADO.
+    #
+    # 📊 18/09/2026, 2 de 6 linhas da amostra: a cláusula *"riscos excluídos:
+    # inundação decorrente de transbordamento de rios"*, que está DENTRO da
+    # cobertura de Vendaval/Granizo, virou `alagamento = nao` do plano inteiro.
+    # O segurado com cobertura de alagamento por outra causa ouviria "não cobre"
+    # — o pior erro desta SPEC, porque ele desiste de acionar um direito que tem.
+    #
+    # A recusa é do VERIFICADOR (máquina) e não só da instrução ao modelo: a
+    # instrução pede, o verificador garante.
+    if str(proposta.get("coberto")) == "nao" and _E_EXCLUSAO_DE_RISCO.search(trecho) \
+            and not _NEGA_O_SERVICO.search(trecho):
+        return "exclusao_de_risco_nao_e_nao_do_servico"
     if str(proposta.get("servico") or "") not in BASE.servicos_declarados():
         return "servico_fora_do_vocabulario"
     if str(proposta.get("coberto") or "") not in BASE.COBERTURAS:
@@ -293,8 +422,10 @@ def verificar(
     except BASE.SeguradoraDesconhecida:
         return "seguradora_desconhecida"
 
-    produto = str(proposta.get("produto") or "").strip()
-    plano = str(proposta.get("plano") or _PLANO_PADRAO).strip()
+    produto = produto_canonico(proposta.get("produto"))
+    plano = nome_de_plano_valido(proposta.get("plano") or _PLANO_PADRAO)
+    if plano is None:
+        return "nome_de_plano_invalido"
     try:
         nivel = int(proposta.get("nivel") or 1)
     except (TypeError, ValueError):
@@ -302,6 +433,15 @@ def verificar(
     dono = niveis_por_produto.setdefault(produto, {}).get(nivel)
     if dono is not None and dono != plano:
         return "nivel_duplicado"
+    # 🔴 NÍVEIS CONTÍGUOS — e a escolha é RECUSAR, não renumerar.
+    # 📊 bradesco/auto saiu com [1, 3] e sem o 2. Renumerar mudaria em silêncio o
+    # que a condição geral diz sobre a ordem dos pacotes, e é o nível que decide
+    # quem é "o plano acima do seu" na oferta comercial. Um buraco na numeração é
+    # sinal de que uma página não foi lida — isso a pessoa precisa ver, não que
+    # alguém tenha fechado o buraco por ela.
+    ja = sorted(niveis_por_produto.get(produto, {}))
+    if ja and nivel > max(ja) + 1:
+        return "nivel_nao_contiguo"
 
     conferencia = BASE.conferir_pagina(
         documento_id, proposta.get("pagina"), trecho=trecho, db=db, minio=minio
@@ -449,9 +589,15 @@ def processar_documento(
 
     planos_criados: Dict[Tuple[str, str], str] = {}
 
+    vigencia = vigencia_do_documento(resumo.documento_id, doc, cliente)
+    if vigencia is None:
+        resumo.motivo = "documento_sem_vigencia"
+        return resumo
+
     def _plano_id(p: Dict[str, Any]) -> Optional[str]:
-        produto = str(p.get("produto") or produto_padrao).strip() or produto_padrao
-        nome = str(p.get("plano") or _PLANO_PADRAO).strip() or _PLANO_PADRAO
+        produto = produto_canonico(p.get("produto") or produto_padrao,
+                                   doc.get("product_line"))
+        nome = nome_de_plano_valido(p.get("plano") or _PLANO_PADRAO) or _PLANO_PADRAO
         chave = (produto, nome)
         if chave in planos_criados:
             return planos_criados[chave]
@@ -461,7 +607,7 @@ def processar_documento(
                 ramo=str(doc.get("product_line") or ""),
                 produto=produto, plano=nome,
                 nivel=int(p.get("nivel") or 1),
-                vigencia_inicio=date.today(),
+                vigencia_inicio=vigencia,
                 documento_id=resumo.documento_id, pagina=int(p["pagina"]),
                 content_hash=str(doc.get("content_hash") or ""),
                 confianca=str(p.get("confianca") or "media")
