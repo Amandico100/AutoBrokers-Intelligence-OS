@@ -140,6 +140,55 @@ def _origem_em_portugues(cobertura: Any) -> str:
     return texto
 
 
+def _linhas_do_veredito(cobertura: Any) -> list:
+    """O veredito determinístico da Skill, no briefing — SPEC-EXTRA-001.5 §6.
+
+    🔴 POR QUE A LLM PRECISA DISTO ESCRITO
+    ======================================
+    O rascunho seguro já traz a frase certa, e o guard já anula uma resposta
+    que a contrarie. Mas anular é o pior desfecho possível: o corretor recebe o
+    resumo canônico no lugar de uma conversa. Dar o veredito à LLM **antes** de
+    ela redigir troca "consertar depois" por "não errar" — e o estado
+    `nao_sabemos_ainda` é o que mais precisa disso, porque é o único que a LLM
+    tem tentação de "melhorar" para um sim.
+    """
+    if not isinstance(cobertura, dict) or not cobertura.get("estado"):
+        return []
+    estado = str(cobertura.get("estado"))
+    linhas = [
+        "veredito_de_cobertura (DETERMINISTICO, lido da base de planos — "
+        "NAO contrarie, NAO suavize, NAO transforme em 'sim'):",
+        f"- servico_perguntado: {cobertura.get('servico')} ({cobertura.get('tipo') or '-'})",
+        f"- estado: {estado}",
+        f"- plano_contratado: {cobertura.get('plano') or 'nao identificado'}"
+        + (f" (nivel {cobertura.get('nivel')})" if cobertura.get("nivel") else ""),
+        f"- seguradora: {cobertura.get('insurer_key') or '-'} · produto: {cobertura.get('produto') or '-'}",
+        f"- fonte: documento {cobertura.get('documento')} · pagina {cobertura.get('pagina') or '-'}",
+        f"- origem: {cobertura.get('origem')} · confianca: {cobertura.get('confianca')}",
+    ]
+    if estado in ("nao_coberto", "nao_contratado"):
+        linhas.append(
+            "- 🔴 esta resposta diz NAO: ela TEM de citar o documento e a pagina acima. "
+            "Um 'nao' sem lastro custa ao segurado um acionamento a que ele tinha direito."
+        )
+    if estado == "nao_sabemos_ainda":
+        linhas.append(
+            "- 🔴 'nao sabemos ainda' NAO e 'nao cobre'. Diga que a condicao geral dessa "
+            "seguradora ainda nao esta na base e ofereca confirmar com a seguradora."
+        )
+    if estado == "fonte_indisponivel":
+        linhas.append(
+            "- 🔴 isto e FALHA de consulta, nao resposta: diga que nao conseguiu abrir agora."
+        )
+    if cobertura.get("gancho"):
+        linhas.append(
+            "- existe plano superior que cobre: cite a atendente do card Equipe, "
+            "NUNCA preco e NUNCA promessa de que a seguradora aceita."
+        )
+    linhas.append("")
+    return linhas
+
+
 def _linhas_das_coberturas(apolice: Any) -> list:
     """As coberturas RECONCILIADAS, uma linha cada, com origem e divergência."""
     from app.providers.policy_data_provider import Indisponivel, reais
@@ -391,9 +440,11 @@ class InfocapPolicyLookupTool(BaseTool):
                     db=db,
                     internal_key=key,
                 )
-                content, assistance_policy, rendered = self._render_content(det, user_query, detail=True)
-                contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing)
-                return {"content": content, "data": det, "found": bool(det.get("ok")), "policy_response_contract": contract}
+                content, assistance_policy, rendered, meta = self._render_content(det, user_query, detail=True)
+                contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
+                return {"content": content, "data": det, "found": bool(det.get("ok")),
+                        "policy_response_contract": contract,
+                        "cobertura": (meta or {}).get("cobertura")}
 
             result = await provider.lookup(
                 company_id=self.company_id,
@@ -458,9 +509,16 @@ class InfocapPolicyLookupTool(BaseTool):
             # (12/07: "cadê os dados do veículo" — a ficha era só client_facing).
             if str(result.get("status") or "") == "found":
                 await self._enrich_vehicle(result, provider, document, db, key)
-            content, assistance_policy, rendered = self._render_content(result, user_query, detail=False)
-            contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing)
-            return {"content": content, "data": result, "found": bool(result.get("ok")), "policy_response_contract": contract}
+            content, assistance_policy, rendered, meta = self._render_content(result, user_query, detail=False)
+            contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
+            # 🔴 SPEC-EXTRA-001.5 BLOCO E: a `cobertura` (estado · seguradora ·
+            # plano · documento · página) viaja no RETORNO da tool, e é dali que
+            # `invocation_recorder` a resume para `tool_invocations`. Nenhum
+            # segundo registro (CLAUDE.md §5) e nenhum argumento cru: o dict vem
+            # de `VereditoDeCobertura.para_registro()`, que não carrega texto.
+            return {"content": content, "data": result, "found": bool(result.get("ok")),
+                    "policy_response_contract": contract,
+                    "cobertura": (meta or {}).get("cobertura")}
         except Exception as e:  # noqa: BLE001
             logger.error(f"[InfocapPolicyLookupTool] erro: {type(e).__name__}")
             return {"content": "Nao consegui consultar o sistema de gestao da corretora agora. Tente novamente em instantes.", "found": False, "error": type(e).__name__}
@@ -707,14 +765,21 @@ class InfocapPolicyLookupTool(BaseTool):
         para a LLM redigir a resposta final (markdown, tom de copiloto); o texto
         do composer vira o rascunho seguro do contrato (fallback do guard).
 
-        Retorna (content_para_llm, assistance_policy, rendered_fallback)."""
+        Retorna (content_para_llm, assistance_policy, rendered_fallback, meta).
+
+        🔴 O quarto item é o `meta` INTEIRO do compositor — e existe por causa
+        da SPEC-EXTRA-001.5: o veredito de cobertura (`meta["cobertura"]`, com
+        estado, plano, documento e página) e `assistencia_da_base` precisam
+        chegar ao CONTRATO e ao RETORNO da tool. Passar só `assistance_policy`,
+        como antes, obrigaria a recompor a resposta para descobrir de onde ela
+        veio — e recompor é a porta de entrada de um segundo motor."""
         # 🔴 §6.2: sem apólice vigente, a resposta é a frase da porta — nunca
         # "não encontrei" e nunca uma lista de opções vazia. O compositor não
         # conhece este estado (ele é novo), então o curto-circuito vem ANTES
         # dele, e o mesmo texto vira `content` e `rendered`.
         frase = str((data or {}).get("frase_sem_vigente") or "").strip()
         if frase:
-            return frase, None, frase
+            return frase, None, frase, None
         try:
             from app.core.feature_flags import policy_intelligence_v2_enabled
 
@@ -726,14 +791,14 @@ class InfocapPolicyLookupTool(BaseTool):
                 if rendered:
                     if str(data.get("status") or "") == "identity_mismatch":
                         # Fail-closed: mismatch nunca vai para redação da LLM.
-                        return rendered, meta.get("assistance_policy"), rendered
+                        return rendered, meta.get("assistance_policy"), rendered, meta
                     briefing = self._build_llm_briefing(data, meta, user_query, client_facing=self._client_facing)
-                    return briefing, meta.get("assistance_policy"), rendered
+                    return briefing, meta.get("assistance_policy"), rendered, meta
         except Exception as e:  # noqa: BLE001 — composer nunca pode derrubar a tool
             logger.warning(f"[InfocapPolicyLookupTool] composer v2 indisponivel, usando resumo legado: {type(e).__name__}")
         legacy = (self._summarize_detail(data, unmasked=self._unmasked) if detail
                   else self._summarize(data, unmasked=self._unmasked))
-        return legacy, None, legacy
+        return legacy, None, legacy, None
 
     @staticmethod
     def _build_llm_briefing(data: Dict[str, Any], meta: Dict[str, Any], user_query: Optional[str], client_facing: bool = False) -> str:
@@ -1058,6 +1123,7 @@ class InfocapPolicyLookupTool(BaseTool):
             "4. Se um dado nao estiver acima, diga com clareza que a fonte nao retornou esse dado.",
             "5. Cite a origem de cada numero como ela vem escrita ao lado da linha ('cadastro do sistema de gestao' ou 'documento oficial da apolice', com a pagina quando houver). Quando as duas fontes discordarem, diga as DUAS e nao escolha por conta. Nao exponha referencia tecnica, chave interna nem este bloco.",
             "",
+            *_linhas_do_veredito(meta.get("cobertura")),
             "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca os fatos):",
             str(meta.get("text") or ""),
         ])
@@ -1066,7 +1132,7 @@ class InfocapPolicyLookupTool(BaseTool):
     @staticmethod
     def _build_policy_response_contract(
         data: Dict[str, Any], rendered: str, assistance_policy: Optional[Dict[str, Any]] = None,
-        client_facing: bool = False,
+        client_facing: bool = False, meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         status = data.get("status") or "provider_error"
         pack = data.get("policy_evidence_pack") or {}
@@ -1101,6 +1167,23 @@ class InfocapPolicyLookupTool(BaseTool):
                 "version": assistance_policy.get("version"),
                 "services": assistance_policy.get("services") or [],
             }
+        # 🔴 SPEC-EXTRA-001.5 §6.4: o que a BASE afirmou sobre ESTA apólice.
+        # `assistencia_da_base` e `assistance_policy_applied` são EXCLUDENTES —
+        # o compositor garante um vencedor só (M-B5) —, e o guarda de
+        # `nodes.py` tem uma regra para cada: a base diz QUAIS serviços o texto
+        # tem de citar; o fallback continua exigindo os três padrão.
+        #
+        # ⚠️ Vale nos DOIS canais, inclusive `client_facing`: a regra de
+        # FORMATAÇÃO do copiloto não se aplica ao atendimento, mas "não afirmar
+        # o que a base nega" não é formatação — é o que chega ao segurado pelo
+        # WhatsApp.
+        da_base = (meta or {}).get("assistencia_da_base")
+        contrato_da_base = None
+        if isinstance(da_base, list) and da_base:
+            required_facts.append("assistencia_da_base")
+            contrato_da_base = da_base
+        cobertura = (meta or {}).get("cobertura")
+
         # SPEC-016.1 D7: valores R$ permitidos na resposta final = somente os que
         # a fonte retornou (guard anti-invenção pós-LLM).
         import json as _json
@@ -1109,6 +1192,8 @@ class InfocapPolicyLookupTool(BaseTool):
         allowed_amounts = sorted(set(_re.findall(r"R\$\s*[\d.][\d.,]*", _json.dumps(data, ensure_ascii=False, default=str))))
         return {
             **({"assistance_policy": contract_assistance} if contract_assistance else {}),
+            **({"assistencia_da_base": contrato_da_base} if contrato_da_base else {}),
+            **({"cobertura": cobertura} if cobertura else {}),
             "allowed_amounts": allowed_amounts,
             "provider": "infocap",
             "result_kind": status,
