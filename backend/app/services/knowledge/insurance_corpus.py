@@ -1437,6 +1437,31 @@ class InsuranceCorpusService:
             # contagem antiga faria o resumo contar de novo o que ja estava la.
             return {"ok": True, "mudou": False, "primeira": False, "chunks": 0}
 
+        # 🔴 SPEC-EXTRA-001.5 §7.4 — O DOCUMENTO MUDOU: AS LINHAS VOLTAM À FILA.
+        #
+        # Daqui para baixo, `content_hash` é NOVO (o caso "igual" já retornou
+        # acima). As linhas de plano/serviço publicadas a partir DESTE documento
+        # foram revisadas por uma pessoa contra a versão ANTERIOR — a resposta
+        # de ontem pode ter sido certa e a de hoje já não ser. Elas caem para
+        # `proposto` com o motivo e voltam para a fila de curadoria.
+        #
+        # ⛔ Não são apagadas e não continuam publicadas em silêncio: apagar
+        # perderia o trecho e a página que a pessoa já conferiu; manter
+        # publicado faria o agente citar uma página de uma versão que não
+        # existe mais. Guarda: GATE C ⑤ / mutação (d).
+        if doc.get("content_hash"):
+            try:
+                from .assistance_plans_base import derrubar_para_proposto
+
+                derrubar_para_proposto(
+                    documento_id, motivo="content_hash mudou", db=self.db
+                )
+            except Exception as exc:  # noqa: BLE001 — a curadoria nunca derruba a ingestão
+                logger.warning(
+                    "[corpus] nao consegui devolver as linhas de assistencia a fila: %s",
+                    type(exc).__name__,
+                )
+
         susep = doc.get("susep_process") or extrair_susep(texto)
         vig = self._vigencia_da_versao(doc, texto, vigencia_susep)
         vigencia = vig["effective_from"]
