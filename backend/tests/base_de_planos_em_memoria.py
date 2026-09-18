@@ -75,8 +75,45 @@ class _Tabela(_Consulta):
     def insert(self, linha: Dict[str, Any]) -> _Consulta:
         nova = dict(linha)
         nova.setdefault("id", str(uuid.uuid4()))
+        for chave in self._banco.unicidade.get(self._nome, ()):  # o que o banco recusa
+            assinatura = tuple(str(nova.get(c)) for c in chave)
+            existentes = self._banco.tabelas.setdefault(self._nome, [])
+            if any(tuple(str(l.get(c)) for c in chave) == assinatura for l in existentes):
+                raise ValueError(
+                    "unicidade violada em %s%s" % (self._nome, list(chave))
+                )
         self._banco.tabelas.setdefault(self._nome, []).append(nova)
         return _Consulta([nova])
+
+    def update(self, patch: Dict[str, Any]) -> "_Atualizacao":
+        """🔴 A ESCRITA DE ESTADO passa por aqui — e o duplo continua BURRO.
+
+        Ele aplica o patch que o módulo mandou, sem opinião sobre `curadoria`.
+        É isso que permite a um guarda afirmar *"nada chegou a `publicado`"*:
+        se o duplo se recusasse a publicar, a afirmação seria dele, não do
+        código medido.
+        """
+        return _Atualizacao(self._banco, self._nome, dict(patch))
+
+
+class _Atualizacao:
+    """`update(...).eq("id", x).execute()` — o formato do cliente Supabase."""
+
+    def __init__(self, banco: "BaseEmMemoria", nome: str, patch: Dict[str, Any]) -> None:
+        self._banco, self._nome, self._patch = banco, nome, patch
+        self._filtros: List = []
+
+    def eq(self, coluna: str, valor: Any) -> "_Atualizacao":
+        self._filtros.append((coluna, str(valor)))
+        return self
+
+    def execute(self) -> _Resposta:
+        tocadas = []
+        for linha in self._banco.tabelas.setdefault(self._nome, []):
+            if all(str(linha.get(c)) == v for c, v in self._filtros):
+                linha.update(self._patch)
+                tocadas.append(linha)
+        return _Resposta(tocadas)
 
 
 class BaseEmMemoria:
@@ -90,6 +127,13 @@ class BaseEmMemoria:
     def __init__(self) -> None:
         self.tabelas: Dict[str, List[Dict[str, Any]]] = {}
         self.chamadas_de_tabela: List[str] = []
+        #: 📊 O banco tem `uq_ias_servico (plano_id, servico)` e a primeira
+        #: rodada da onda 1 em produção morreu nele. O duplo passa a recusar a
+        #: mesma coisa: um duplo mais permissivo que o banco faz o guarda ficar
+        #: verde sobre um caminho que quebra em produção.
+        self.unicidade: Dict[str, tuple] = {
+            "insurer_assistance_services": (("plano_id", "servico"),),
+        }
 
     # o atributo que `_db()` de `assistance_plans_base` procura
     @property
