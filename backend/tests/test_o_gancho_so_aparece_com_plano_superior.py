@@ -76,6 +76,12 @@ checar("Completo" in v1.texto and "7 dias" in v1.texto,
        "e o texto diz o que o plano acima teria", v1.texto)
 
 print("\n[PAR B] 🔴 CONTROLE: o MESMO serviço, no nível MÁXIMO -> SEM gancho")
+# 🔴 O plano de BAIXO cobre guincho e o de CIMA nao. E proposital: se o
+# filtro "nivel > o contratado" for afrouxado, o motor acha o BASICO e
+# oferece como "plano acima" a alguem que ja esta no topo. Sem esta linha a
+# mutacao (d) passaria despercebida — foi o que aconteceu na 1a rodada.
+db.servico(BASICO, "guincho", "sim", documento_id="doc-porto", pagina=29,
+           limite_valor=200, limite_unidade="km")
 db.servico(TOPO, "guincho", "nao", documento_id="doc-porto", pagina=30)
 v2 = responder_cobertura(pergunta="tem guincho?", apolice=apolice("Completo", 2), db=db,
                          atendente="Regina")
