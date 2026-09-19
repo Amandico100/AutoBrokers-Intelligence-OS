@@ -27,6 +27,19 @@ function backend(): { url: string; key: string } | null {
   return { url, key };
 }
 
+// 🔴 SPEC-EXTRA-001.5.1 (D2) — `r.ok` É O QUE FALTAVA, E CUSTOU O PRODUTO.
+//
+// 📊 18–19/09/2026: `/api/assistance-plans/fila` respondia **500** em produção.
+// Esta função fazia `return await r.json()` sem olhar o status, e o `catch`
+// devolvia `{ok:false, error}` — um objeto SEM `itens`. Lá na frente,
+// `fila.itens || []` transformava os dois casos numa lista vazia, e a tela
+// escrevia "Nada esperando revisão" com o contador do topo dizendo 60.
+//
+// ⚠️ A tela mentindo é pior que a tela quebrada: quem lê "nada esperando"
+// fecha a aba e vai embora; quem lê "não consegui carregar" chama alguém.
+//
+// ⛔ O CORPO DO ERRO NÃO VIAJA. Só o status. Um 500 de FastAPI pode trazer
+// traceback, e traceback em tela é vazamento (CLAUDE.md §7, §13.3).
 async function chamar(caminho: string, init?: RequestInit) {
   const b = backend();
   if (!b) return { ok: false, error: 'indisponivel' };
@@ -39,7 +52,12 @@ async function chamar(caminho: string, init?: RequestInit) {
       },
       cache: 'no-store',
     });
-    return await r.json();
+    if (!r.ok) return { ok: false, status: r.status, error: 'servico_com_erro' };
+    const j = await r.json().catch(() => null);
+    if (!j || typeof j !== 'object') {
+      return { ok: false, status: r.status, error: 'resposta_ilegivel' };
+    }
+    return j;
   } catch {
     return { ok: false, error: 'indisponivel' };
   }
