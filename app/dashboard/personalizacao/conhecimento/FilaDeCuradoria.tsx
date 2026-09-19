@@ -10,6 +10,23 @@
 // ⚠️ Publicar exige ler; rejeitar exige MOTIVO — uma fila em que se recusa sem
 // dizer por quê é uma fila que nunca melhora: o extrator repete o mesmo erro e a
 // pessoa recusa à mão, para sempre.
+//
+// 🔴 SPEC-EXTRA-001.5.1 (D2, D3, D9) — TRÊS ESTADOS, NÃO DOIS.
+//
+// Até 19/09/2026 havia dois: lista, e "Nada esperando revisão". Falha de rede,
+// backend em 500 e fila genuinamente vazia caíam todos no segundo — e 📊 o
+// backend respondia 500 desde que a 001.5 subiu. A tela dizia "nada esperando"
+// para 73 linhas esperando.
+//
+// ```
+// ERRO    "Não consegui carregar a fila agora: <motivo>" + tentar de novo
+// VAZIO   "Nada esperando revisão"  <- SÓ quando a chamada deu certo e veio 0
+// LISTA   "Esperando sua revisão — mostrando N de M"
+// ```
+//
+// E o botão que morre por falta da página (D9) agora diz POR QUÊ e oferece
+// tentar de novo: 📊 `disabled={… || !i.texto_da_pagina}` virava um botão cinza
+// sem explicação sempre que o MinIO falhava.
 
 import { useState } from 'react';
 import { humanizarRamo, humanizarSeguradora } from './CoberturaDePlanos';
@@ -22,6 +39,37 @@ type Item = {
   texto_da_pagina: string | null; termos_do_servico: string[];
   motivo_da_fonte?: string;
 };
+
+/** O que a rota devolve. 🔴 `ok` é obrigatório: é ele que separa "deu erro" de
+ *  "está vazia" — as duas coisas que a tela confundia. `total` é a base inteira;
+ *  `mostrando` é o que coube nesta página. */
+type Fila = {
+  ok?: boolean; itens?: Item[]; total?: number; mostrando?: number; limite?: number;
+  error?: string; status?: number;
+};
+
+/** O motivo em português, sem nome de tabela, coluna nem código HTTP solto.
+ *  ⚠️ O corpo do erro do backend NUNCA chega aqui (pode ter traceback): o que
+ *  viaja é um código curto, e é aqui que ele vira frase de gente. */
+function motivoHumano(f: Fila): string {
+  if (f.error === 'indisponivel') return 'o serviço de conhecimento não respondeu';
+  if (f.error === 'resposta_ilegivel') return 'o serviço respondeu algo que não consegui ler';
+  if (f.error === 'servico_com_erro') return 'o serviço de conhecimento respondeu com erro';
+  return 'não consegui falar com o serviço de conhecimento';
+}
+
+/** Por que a página não veio — para o botão cinza parar de ser um mistério. */
+function motivoDaFonte(codigo?: string): string {
+  if (codigo === 'fonte_ausente') return 'o documento original não está arquivado';
+  if (codigo === 'documento_sem_versao') return 'este documento não tem versão arquivada';
+  if (codigo === 'minio_indisponivel') return 'o arquivo do documento não respondeu agora';
+  if (codigo === 'sem_extrator_de_pdf') return 'não consigo abrir PDF neste servidor';
+  if (codigo === 'sem_pagina_registrada') return 'esta linha não registrou a página';
+  if (codigo === 'pagina_fora_do_documento') return 'a página indicada não existe no documento';
+  if (codigo === 'pagina_ilegivel') return 'a página indicada não é um número que eu entenda';
+  if (codigo && codigo.startsWith('pdf_ilegivel')) return 'o PDF não abriu';
+  return 'não consegui abrir o documento agora';
+}
 
 /** Grifa na página os termos do serviço — para o olho achar a frase sem ler
  *  tudo. 🔴 Os termos vêm do vocabulário versionado (o endpoint os manda);
@@ -56,7 +104,8 @@ function oQueFoiProposto(i: Item): string {
   return base + (limite ? ` — ${limite}` : '') + (i.carencia_dias ? ` (carência de ${i.carencia_dias} dias)` : '');
 }
 
-export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: () => void }) {
+export function FilaDeCuradoria({ fila, onMudou }: { fila: Fila; onMudou: () => void }) {
+  const itens: Item[] = Array.isArray(fila?.itens) ? fila.itens : [];
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [erro, setErro] = useState<string | null>(null);
@@ -85,6 +134,29 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
     }
   };
 
+  // ① ERRO — a chamada não deu certo. ⛔ NUNCA cair no estado vazio por aqui.
+  if (fila?.ok !== true) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-4">
+        <p className="text-sm font-medium text-foreground">
+          Não consegui carregar a fila agora: {motivoHumano(fila || {})}.
+        </p>
+        <p className="mt-1 text-[11px] text-faint">
+          Isso não quer dizer que não haja nada esperando revisão — quer dizer que não deu para
+          perguntar neste momento.
+        </p>
+        <button
+          type="button"
+          onClick={onMudou}
+          className="mt-2 h-7 rounded-md border border-border px-3 text-xs text-foreground"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    );
+  }
+
+  // ② VAZIO honesto — a chamada deu certo e não veio nada.
   if (!itens.length) {
     return (
       <div className="rounded-lg border border-border bg-card p-4">
@@ -97,10 +169,17 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
     );
   }
 
+  // ③ LISTA — e o cabeçalho diz quanto do todo está na tela (D3).
+  const total = typeof fila.total === 'number' ? fila.total : itens.length;
+  const mostrando = typeof fila.mostrando === 'number' ? fila.mostrando : itens.length;
+
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div>
-        <p className="text-sm font-medium text-foreground">Esperando sua revisão ({itens.length})</p>
+        <p className="text-sm font-medium text-foreground">
+          Esperando sua revisão{' '}
+          {total > mostrando ? `— mostrando ${mostrando} de ${total}` : `(${total})`}
+        </p>
         <p className="mt-1 text-[11px] text-faint">
           Nada disto chega a um cliente antes de você aprovar. A frase abaixo foi lida agora do
           documento — confira se ela diz o que a linha afirma.
@@ -139,8 +218,9 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
                 </p>
               ) : (
                 <p className="mt-1 text-[11px] text-amber-600">
-                  Não consegui abrir o documento agora para mostrar a frase. Isso não quer dizer que
-                  a linha esteja errada — quer dizer que não dá para conferir neste momento.
+                  Não dá para mostrar a frase: {motivoDaFonte(i.motivo_da_fonte)}. Isso não quer
+                  dizer que a linha esteja errada — quer dizer que não dá para conferir neste
+                  momento.
                 </p>
               )}
             </div>
@@ -153,6 +233,22 @@ export function FilaDeCuradoria({ itens, onMudou }: { itens: Item[]; onMudou: ()
               >
                 Confere — pode usar
               </button>
+              {/* 🔴 D9 — o botão cinza EXPLICA. Um botão que não clica e não diz
+                  por quê ensina a pessoa a desconfiar da tela inteira; e o que
+                  falta aqui costuma ser passageiro (o arquivo não respondeu),
+                  então "tentar de novo" é a ação certa, não "desista". */}
+              {!i.texto_da_pagina && (
+                <span className="text-[11px] text-amber-600">
+                  Só dá para aprovar depois de ler a página — {motivoDaFonte(i.motivo_da_fonte)}.
+                  <button
+                    type="button"
+                    onClick={onMudou}
+                    className="ml-2 underline underline-offset-2"
+                  >
+                    Tentar de novo
+                  </button>
+                </span>
+              )}
               <input
                 value={motivos[i.id] || ''}
                 onChange={(e) => setMotivos((m) => ({ ...m, [i.id]: e.target.value }))}
