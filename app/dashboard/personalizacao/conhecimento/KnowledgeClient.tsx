@@ -97,15 +97,41 @@ export function KnowledgeClient() {
 
   if (!d) return <p className="text-sm text-muted-foreground">Carregando…</p>;
 
+  // 🔴 SPEC-EXTRA-001.5.1 (D2) — `cobertura.ok` e `fila.ok`, não `|| []`.
+  //
+  // Até 19/09/2026 esta linha era `fila.itens || []`: uma chamada que falhou e
+  // uma fila realmente vazia viravam A MESMA COISA, e a tela dizia "Nada
+  // esperando revisão" enquanto o backend devolvia 500. O erro agora viaja
+  // inteiro até o componente, que tem um estado próprio para ele.
   const cobertura = planos?.cobertura || {};
   const fila = planos?.fila || {};
+  const coberturaOk = cobertura?.ok === true;
 
   return (
     <div className="space-y-4">
       {planos && (
         <>
-          <CoberturaDePlanos linhas={cobertura.linhas || []} resumo={cobertura.resumo} />
-          <FilaDeCuradoria itens={fila.itens || []} onMudou={loadPlanos} />
+          {coberturaOk ? (
+            <CoberturaDePlanos linhas={cobertura.linhas || []} resumo={cobertura.resumo} />
+          ) : (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <p className="text-sm font-medium text-foreground">
+                Não consegui carregar o que as apólices cobrem agora.
+              </p>
+              <p className="mt-1 text-[11px] text-faint">
+                Isso não quer dizer que a base esteja vazia — quer dizer que não deu para
+                consultá-la neste momento.
+              </p>
+              <button
+                type="button"
+                onClick={loadPlanos}
+                className="mt-2 h-7 rounded-md border border-border px-3 text-xs text-foreground"
+              >
+                Tentar de novo
+              </button>
+            </div>
+          )}
+          <FilaDeCuradoria fila={fila} onMudou={loadPlanos} />
         </>
       )}
 
