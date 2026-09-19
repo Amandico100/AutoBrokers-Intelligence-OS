@@ -287,6 +287,15 @@ _NEGATIVA_RE = re.compile(
 )
 
 
+#: 🔴 As tools que MUDAM ALGUMA COISA FORA do produto. Se uma delas rodou
+#: depois da consulta de apolice, a resposta do turno e sobre a ACAO, e nenhum
+#: rascunho de cobertura pode tomar o lugar dela (RODADA 2, N1 item 4).
+_TOOLS_DE_ACAO = frozenset({
+    "insurer_dispatch", "portal_action", "request_human_agent",
+    "create_routine", "manage_routine",
+})
+
+
 def _normalizar_para_guarda(valor: Any) -> str:
     """Minúsculas sem acento — a MESMA dos dois lados da comparação.
 
@@ -438,6 +447,18 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
                 if str(item.get("coberto")) == "nao" and not _NEGATIVA_RE.search(candidate):
                     # A base disse NÃO e o texto não nega em lugar nenhum: é o
                     # "sim" silencioso de §9.5, que não trava e chega ao cliente.
+                    return rendered
+                if str(item.get("coberto")) in ("sim", "condicionado") and _NEGATIVA_RE.search(candidate):
+                    # 🔴 RODADA 2 — O ESPELHO DA REGRA ACIMA, e ele faltava.
+                    #
+                    # 📊 Medido em 19/09/2026: com a base dizendo `sim` para
+                    # guincho, o candidato "Não, seu plano não tem guincho"
+                    # PASSAVA — o guarda só olhava a direção `nao`. Com 23 linhas
+                    # publicadas isso deixa de ser teórico: é o segurado ouvindo
+                    # que não tem direito ao que ele tem.
+                    #
+                    # ⚠️ A régua é a MESMA (`_NEGATIVA_RE` + o serviço nomeado),
+                    # invertida — nenhum classificador novo (CLAUDE.md §5).
                     return rendered
     if "assistance_policy_applied" in required:
         # SPEC-016 E4b: política de assistência aplicada → a resposta final não
@@ -1450,6 +1471,8 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     policy_response_contract = None
     policy_final_response = None
     infocap_policy_context = None
+    #: A ordem das tools NESTE turno (RODADA 2, N1 item 4).
+    _ordem_do_turno: list = []
 
     # Extrair agent_id do state
     agent_data = state.get("agent_data")
@@ -1563,7 +1586,12 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         #    sem dizer qual.
                         tool_args = {**tool_args, "user_query": _query_for_tool,
                                      "selected_policy_number": _ja_escolhida or None,
-                                     "session_id": str(state.get("session_id") or "")}
+                                     "session_id": str(state.get("session_id") or ""),
+                                     # 🔴 RODADA 2 (N1): a ULTIMA humana, separada
+                                     #    da janela. A janela acha a APOLICE; a
+                                     #    intencao (perguntou x pediu) tem de ser
+                                     #    lida so do que o cliente acabou de dizer.
+                                     "mensagem_atual": str(current_user_query or "")}
                     elif tool_name == "insurer_dispatch":
                         # SPEC-017 live-path: telefone do cliente vem da sessão
                         # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
@@ -1651,6 +1679,10 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                             )
                         registro.ok(result)
                     tools_used.append(tool_name)
+                    # 🔴 RODADA 2 (N1, item 4): a ORDEM deste turno. `tools_used`
+                    #    vem do state e carrega turnos anteriores; o que decide
+                    #    se uma acao rodou DEPOIS do contrato e esta lista.
+                    _ordem_do_turno.append(tool_name)
 
                     # SPEC-063 Bloco S — o turno deixa MEMÓRIA.
                     #
@@ -1767,6 +1799,34 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     # Persist internal_steps se houve delegação
     if internal_steps:
         return_dict["internal_steps"] = internal_steps
+
+    # 🔴 RODADA 2 (N1, item 4) — A FLAG NAO SOBREVIVE AO QUE VEIO DEPOIS.
+    #
+    # 📊 O contrato fica no estado ate o fim do turno. Se o acionamento rodou
+    # DEPOIS da consulta de apolice, "Pronto! O guincho foi solicitado" tambem
+    # era trocado pelo rascunho "vou confirmar e te respondo" — o cliente ouvia
+    # que nada tinha sido feito, e o guincho ja estava a caminho.
+    #
+    # ⚠️ Com a porta de intencao isto quase some (um PEDIDO nao liga a flag).
+    # Esta linha fecha o resto: a flag e CONSUMIDA quando uma tool de ACAO
+    # aparece depois de `infocap_policy_lookup` na ordem deste turno. O resto do
+    # contrato (allowed_amounts, identity_mismatch, assistencia_da_base) FICA.
+    if isinstance(policy_response_contract, dict) and _ordem_do_turno:
+        try:
+            _pos = _ordem_do_turno.index("infocap_policy_lookup")
+            _depois = set(_ordem_do_turno[_pos + 1:])
+        except ValueError:
+            _depois = set()
+        if _depois & _TOOLS_DE_ACAO:
+            _fatos = [f for f in (policy_response_contract.get("required_facts") or [])
+                      if f != "encerrar_com_o_rascunho"]
+            if len(_fatos) != len(policy_response_contract.get("required_facts") or []):
+                logger.info("[Tool Node] contrato: `encerrar_com_o_rascunho` "
+                            "consumido — uma acao rodou depois da consulta")
+                policy_response_contract = dict(policy_response_contract,
+                                                required_facts=_fatos)
+                policy_final_response = _guard_infocap_policy_final_response(
+                    str(policy_final_response or ""), policy_response_contract)
 
     if policy_response_contract and policy_final_response:
         return_dict["policy_response_contract"] = policy_response_contract
