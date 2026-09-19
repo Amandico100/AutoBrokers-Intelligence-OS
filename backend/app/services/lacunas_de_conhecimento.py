@@ -106,7 +106,10 @@ def fingerprint_da_lacuna(cobertura: Dict[str, Any]) -> str:
     procedência, não dono. Nenhuma leitura desta tabela filtra por ele.
     """
     partes = "|".join([
-        "cobertura",
+        # ⚠️ A INTENÇÃO entra no fingerprint: "pediram e não temos linha" e
+        # "perguntaram e não temos linha" são duas contagens que o painel lê de
+        # formas diferentes. Somá-las esconderia a urgente dentro da outra.
+        "cobertura:%s" % str(cobertura.get("intencao") or "pergunta"),
         str(cobertura.get("insurer_key") or "?"),
         str(cobertura.get("ramo") or "?"),
         str(cobertura.get("produto") or "?"),
@@ -144,7 +147,14 @@ def descricao_da_lacuna(cobertura: Dict[str, Any]) -> str:
         "data_de_emissao_ilegivel": "a data de emissão da apólice não foi lida",
         "dois_planos_no_texto": "a apólice nomeia dois planos e nenhum vence",
     }.get(motivo, "não há linha publicada na base para esse serviço")
-    return "Cobertura de %s · %s · %s · %s: %s" % (servico, quem, ramo, produto, porque)
+    # 🔴 RODADA 2 (N1-b): o painel precisa saber se o cliente PERGUNTOU ou
+    # PEDIU. São duas prioridades de curadoria diferentes — "dez pessoas pediram
+    # guincho na HDI e não temos linha" é mais urgente que dez dúvidas — e
+    # escrever "perguntou" quando ele pediu é uma frase falsa num painel de
+    # decisão.
+    o_que_houve = ("Pedido de %s" if str(cobertura.get("intencao") or "pergunta")
+                   == "pedido" else "Cobertura de %s") % servico
+    return "%s · %s · %s · %s: %s" % (o_que_houve, quem, ramo, produto, porque)
 
 
 def _texto_do_aviso(cobertura: Dict[str, Any], pergunta_redigida: str,
@@ -260,15 +270,43 @@ async def _gravar(db: Any, *, company_id: str, fp: str, descricao: str,
     return {"gravou": True, "nova": True, "id": dados[0].get("id"), "vezes": 1}
 
 
-async def _devolver_a_vez(company_id: str, fp: str) -> None:
+def chave_do_marcador(fp: str, conversation_id: str = "") -> str:
+    """A chave do teto de aviso. **PURA.**
+
+    🔴 **D-E00151-03 — A PROMESSA TEM DONO** (decisão do gerente, 19/09/2026).
+
+    O teto da emenda E1 era *1 aviso por lacuna por corretora por dia*. 📊 O
+    efeito: o SEGUNDO segurado do dia com a mesma dúvida ouvia *"assim que eu
+    tiver a confirmação, te respondo"* e **ninguém era avisado**. Promessa sem
+    dono é pior que resposta seca — o cliente fica esperando alguém que não
+    existe.
+
+    A chave passa a incluir a CONVERSA quando ela existe: *1 aviso por lacuna
+    por CONVERSA por dia*. O mesmo cliente perguntando de novo não repete o 🆘;
+    outro cliente, a quem também se prometeu, gera o aviso dele.
+
+    ⚠️ E a inundação continua limitada — não pelo relógio, mas pelo número de
+    pessoas a quem o produto PROMETEU uma resposta. Cada uma delas precisa de um
+    humano; é essa a conta (88 × manter o E1 puro 60).
+
+    ⛔ Sem conversa (não deveria acontecer no canal do segurado depois do B2), a
+    chave volta a ser a antiga — por corretora.
+    """
+    conversa = str(conversation_id or "").strip()
+    return ("lacuna:%s:%s" % (fp, conversa)) if conversa else ("lacuna:%s" % fp)
+
+
+async def _devolver_a_vez(company_id: str, fp: str,
+                          conversation_id: str = "") -> None:
     """Libera o marcador de 24 h desta lacuna. **Nunca levanta** (CONSERTO B3)."""
     try:
         from app.services.o_grupo_so_o_que_importa import (
             TIPO_PEDIDO_DE_AJUDA, devolver_a_vez_do_grupo,
         )
 
-        await devolver_a_vez_do_grupo(company_id, "lacuna:%s" % fp,
-                                      TIPO_PEDIDO_DE_AJUDA)
+        await devolver_a_vez_do_grupo(
+            company_id, chave_do_marcador(fp, conversation_id),
+            TIPO_PEDIDO_DE_AJUDA)
     except Exception as exc:  # noqa: BLE001
         logger.error("[LACUNA] marcador não devolvido (%s) — esta lacuna fica "
                      "muda por 24 h", type(exc).__name__)
@@ -321,6 +359,21 @@ async def registrar_lacuna(
         resposta["motivo"] = resposta["motivo"] or "canal_do_corretor_nao_avisa"
         return resposta
 
+    if str(cob.get("intencao") or "pergunta") != "pergunta":
+        # 🔴 RODADA 2 (N1-b) — UM PEDIDO NÃO INTERROMPE NINGUÉM.
+        #
+        # 📊 "preciso de guincho" faz `servico_canonico` devolver `guincho`, e
+        # com 0 linhas publicadas o veredito é `nao_sabemos_ainda`. O 🆘 saía
+        # dizendo *"O cliente perguntou: preciso de guincho"* e *"Eu não afirmei
+        # nada: disse que ia confirmar"* — as duas frases FALSAS: ele não
+        # perguntou, e o agente não prometeu confirmação nenhuma.
+        #
+        # ⚠️ A lacuna CONTINUA gravada (acima): "dez clientes pediram guincho na
+        # HDI e não temos linha" é a informação mais útil do painel. O que não
+        # acontece é a interrupção.
+        resposta["motivo"] = resposta["motivo"] or "pedido_de_servico_nao_avisa"
+        return resposta
+
     try:
         from app.services.o_grupo_so_o_que_importa import (
             TIPO_PEDIDO_DE_AJUDA, reivindicar_o_envio,
@@ -330,7 +383,8 @@ async def registrar_lacuna(
         # 001.3), só que a chave é a LACUNA, não a conversa: a mesma falta,
         # perguntada por dois segurados da mesma corretora no mesmo dia, avisa
         # UMA vez. ⚠️ `reivindicar_o_envio` devolve True quando JÁ avisaram.
-        if await reivindicar_o_envio(company_id, "lacuna:%s" % fp,
+        if await reivindicar_o_envio(company_id,
+                                     chave_do_marcador(fp, conversation_id),
                                      TIPO_PEDIDO_DE_AJUDA, JANELA_DO_AVISO_S):
             resposta["motivo"] = "ja_avisei_esta_lacuna_hoje"
             return resposta
@@ -364,9 +418,9 @@ async def registrar_lacuna(
             # o ruído que a 001.3 matou. `enviado=False` sem `calado` é FALHA, e
             # falha não consome a cota do dia. É a mesma devolução que a própria
             # porta faz com o marcador DELA (`o_grupo_so_o_que_importa.py:~700`).
-            await _devolver_a_vez(company_id, fp)
+            await _devolver_a_vez(company_id, fp, conversation_id)
     except Exception as exc:  # noqa: BLE001
         logger.error("[LACUNA] aviso não saiu (%s)", type(exc).__name__)
         resposta["motivo"] = "erro_ao_avisar:%s" % type(exc).__name__
-        await _devolver_a_vez(company_id, fp)
+        await _devolver_a_vez(company_id, fp, conversation_id)
     return resposta
