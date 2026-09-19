@@ -226,8 +226,22 @@ checar(any(str(l.get("curadoria")) == "proposto" for l in servicos),
        "as aprovadas ficaram `proposto` — a fila que a pessoa vai revisar",
        f"{[l.get('curadoria') for l in servicos]}")
 rascunhos = [l for l in servicos if str(l.get("curadoria")) == "rascunho"]
-checar(bool(rascunhos) and all("[reprovado]" in str(l.get("condicao") or "") for l in rascunhos),
+# 🔴 A LIÇÃO MIGROU, O FATO MUDOU (CLAUDE.md §9.3). Até 19/09/2026 o motivo da
+# reprovação era escrito em `condicao` com o prefixo `[reprovado] ` — e era isso
+# que esta linha conferia. 📊 Mas `condicao` é a condição CONTRATUAL da
+# cobertura ("danos causados por acidente de origem externa…", linha fe94f9a5),
+# e o motivo a APAGAVA. A SPEC-EXTRA-001.5.1 (D8) deu ao motivo uma coluna
+# própria, `motivo_do_rascunho`. O que este guarda afirma continua sendo o
+# mesmo — *reprovar sem motivo escrito não acontece* —, só que agora no campo
+# que não mente sobre o que guarda (CLAUDE.md §12.1).
+checar(bool(rascunhos) and all(str(l.get("motivo_do_rascunho") or "").strip()
+                               for l in rascunhos),
        "🔴 as reprovadas que o contrato aceita ficaram `rascunho` COM o motivo escrito",
+       f"{[l.get('motivo_do_rascunho') for l in rascunhos]}")
+checar(bool(rascunhos) and not any("[reprovado]" in str(l.get("condicao") or "")
+                                   for l in rascunhos),
+       "⚠️ e o motivo NÃO foi escrito por cima da `condicao` contratual — era "
+       "assim até 19/09/2026, e a frase do documento sumia sem cópia",
        f"{[l.get('condicao') for l in rascunhos]}")
 checar(all(not l.get("revisado_por") for l in servicos),
        "nenhuma linha saiu da máquina com revisor — revisor é pessoa",
