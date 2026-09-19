@@ -113,6 +113,86 @@ def rotulo_do_servico(servico: str) -> str:
     return _ROTULO.get(str(servico or ""), str(servico or "").replace("_", " "))
 
 
+#: 🔴 SPEC-EXTRA-001.5.1 · RODADA 2 (N1) — PERGUNTAR NÃO É PEDIR.
+#:
+#: 📊 O defeito que isto fecha, medido pelo juiz da confirmação em 19/09/2026:
+#: `servico_canonico("preciso de guincho")` devolve `guincho` — a Skill nunca
+#: teve porta de INTENÇÃO. Com 0 linhas publicadas, todo serviço de AUTO caía em
+#: `nao_sabemos_ainda`, o contrato ganhava `encerrar_com_o_rascunho` e o guarda
+#: trocava *"Achei a sua apólice, está ativa. Me passa o endereço…"* por
+#: *"Não quero te passar informação errada… te respondo."* — **6 de 11** frases
+#: de acionamento reais. O cliente com o carro parado ficava sem guincho.
+#:
+#: ⚠️ A pergunta é sobre a MENSAGEM ATUAL, não sobre a janela de três: *"tem
+#: guincho?"* no turno N contaminaria *"então manda um"* no turno N+1.
+_PERGUNTA_DE_COBERTURA_RE = re.compile(
+    r"(?<![a-zà-ú])("
+    r"cobre|cobertura|coberto|coberta|inclui|inclu[ií]d[oa]|incluso|"
+    r"tem\s+direito|direito\s+a|posso\s+usar|posso\s+acionar|"
+    r"(meu|minha|no\s+meu|na\s+minha)\s+(plano|seguro|ap[óo]lice|contrato)|"
+    r"(tenho|tem|teria|temos)\s+(direito|cobertura|assist[êe]ncia|)"
+    r")(?![a-zà-ú])", re.IGNORECASE)
+
+#: ⛔ O PEDIDO EXPLÍCITO: o cliente ESTÁ MANDANDO fazer. Vence a forma de
+#: pergunta — 📊 *"Consegues chamar ela?!"* tem interrogação e é um pedido.
+_PEDIDO_DE_SERVICO_RE = re.compile(
+    r"(?<![a-zà-ú])("
+    r"preciso|precisava|quero|queria|gostaria|manda|mandar|envia|enviar|"
+    r"solicita|solicitar|chama|chamar|chamo|aciona|acionar|pede|pedir|"
+    r"me\s+ajuda|socorro|urgente|estou\s+parad|to\s+parad|tô\s+parad|"
+    r"abrir\s+um|abre\s+um"
+    r")(?![a-zà-ú])", re.IGNORECASE)
+
+#: ⚠️ O EVENTO — "quebrou", "furou", "bateu". Ele é mais fraco que o pedido
+#: explícito: 📊 *"Vão cobrar o custo do carro reserva de quem bateu?"* narra um
+#: evento e **pergunta**. Por isso o evento só decide quando não há interrogação.
+_EVENTO_RE = re.compile(
+    r"(?<![a-zà-ú])("
+    r"quebrou|furou|bateu|bati|batida|n[ãa]o\s+liga|n[ãa]o\s+pega|morreu|"
+    r"fiquei\s+sem|alagou|enchente|tranqu(ei|ou)|perdi\s+a\s+chave|pane\s+seca"
+    r")(?![a-zà-ú])", re.IGNORECASE)
+
+#: A forma interrogativa, para o caso em que nenhum verbo denuncia a intenção.
+_FORMA_DE_PERGUNTA_RE = re.compile(r"\?|^\s*(ser[áa]|qual|quais|quanto)",
+                                   re.IGNORECASE)
+
+
+def e_pergunta_de_cobertura(texto: Any) -> bool:
+    """A mensagem PERGUNTA sobre cobertura, ou PEDE um serviço? **PURA.**
+
+    ```
+    "tem carro reserva?"                  -> True   (pergunta)
+    "meu seguro cobre guincho"            -> True   (pergunta, sem "?")
+    "preciso de guincho"                  -> False  (pedido)
+    "meu carro quebrou, manda um reboque" -> False  (pedido)
+    "preciso de guincho, meu seguro cobre?" -> True (mista: conta como pergunta)
+    ```
+
+    🔴 **A ordem das travas importa.** Um PEDIDO puro nunca é pergunta, mesmo
+    que nomeie o serviço; uma mensagem que traz as DUAS coisas é pergunta,
+    porque a dúvida sobre cobertura precisa de resposta antes do acionamento —
+    e porque errar para o lado de "é pergunta" custa uma frase a mais, enquanto
+    errar para o lado de "é pedido" custa o veredito.
+
+    ⚠️ Quem decide o que fazer com isto é o compositor e a tool; esta função não
+    sabe canal, não sabe estado e não toca em nada.
+    """
+    bruto = str(texto or "").strip()
+    if not bruto:
+        return False
+    if _PERGUNTA_DE_COBERTURA_RE.search(bruto):
+        # 🔴 Mista (pergunta + pedido) conta como PERGUNTA — ver docstring.
+        return True
+    if _PEDIDO_DE_SERVICO_RE.search(bruto):
+        return False
+    if _EVENTO_RE.search(bruto) and not _FORMA_DE_PERGUNTA_RE.search(bruto):
+        # Narrou o que aconteceu e não perguntou nada: é pedido de socorro.
+        return False
+    # Nem um nem outro: só a FORMA decide. "tem guincho?" cai aqui quando
+    # "tem" vem sem complemento — e é pergunta.
+    return bool(_FORMA_DE_PERGUNTA_RE.search(bruto))
+
+
 class FonteIndisponivel(Exception):
     """A base não respondeu. Não é 'não cobre' e não é 'não sabemos ainda'."""
 
@@ -790,8 +870,14 @@ def responder_cobertura(
             insurer_key=insurer_key, seguradora=quem, ramo=ramo or None,
             produto=produto, plano=plano, nivel=nivel, origem="nenhuma",
             confianca="baixa", motivo=motivo, atendente=atendente,
+            # 🔴 RODADA 2 (P9-corretor): `motivo=` FALTAVA AQUI, e por isso as
+            # quatro frases novas de `_texto_ao_corretor` eram CÓDIGO MORTO.
+            # 📊 Com `motivo='plano_nao_identificado'` saía, mesmo assim,
+            # "Ainda não tenho as condições da HDI … na base" — que manda o
+            # corretor cobrar uma destilação quando o problema é outro.
             texto=_texto("nao_sabemos_ainda", servico=servico, seguradora=quem,
-                         plano=plano, pagina=None),
+                         plano=plano, pagina=None, motivo=motivo,
+                         atendente=atendente),
         )
 
     # ⓪ 🔴 DATA DE EMISSÃO ILEGÍVEL É LACUNA, NÃO "HOJE".
