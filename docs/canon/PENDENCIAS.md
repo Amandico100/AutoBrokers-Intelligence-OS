@@ -10887,3 +10887,34 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E0015-10 · verdades vencidas em docstring e falsos positivos do varredor de PII
 📊 `acervo_arquivo.py:5` afirma "`storage_ref` em 0 de 29"; hoje 173/206 (§9.3). `redaction_service`: sha256 cai em `[TELEFONE]` (run de 10 dígitos) e "sinistro <palavra>" em `sinistro [NUMERO]` — M-A4 contorna, o serviço não foi tocado. **Destrava:** corrigir o docstring; decidir no `redaction_service` (dono próprio). **Dono:** 🤖. **Custo de esquecer:** o varredor acusa hash como telefone e alguém "conserta" removendo o hash.
+
+## P-E00151-01 · 40 das 81 linhas extraídas estão ERRADAS e esperam um extrator v2
+📊 19/09 (leitor Opus read-only, 27 documentos do MinIO, 3.052 páginas, 135 conferidas contra a página): **25 PUBLICAR · 40 CORRIGIR · 16 RECUSAR · 0 não consegui** (`docs/canon/reports/SPEC-EXTRA-001.5-LINHAS-CONFERIDAS.{md,json}`). Os padrões de erro do extrator, cada um com exemplo no arquivo: risco citado DENTRO de outra cobertura virou cobertura do plano · planos reais do documento apagados num "Plano único" (📊 o manual Bradesco Auto tem **9** planos de assistência) · pane confundida com pane seca · número de tabela lido sem a coluna · **nome do arquivo virando nome do produto** ("Seguro Residencial Conteudo_V1.2"). **Destrava:** um extrator v2 que leia a cláusula de planos ANTES de atribuir serviços, e reextraia as 40. **Dono:** 🤖. **Custo de esquecer:** 40 linhas erradas ficam na fila para sempre, e quem publicar sem conferir publica erro com carimbo de gente.
+
+## P-E00151-02 · a resposta de cobertura roda com `db=None` e monta o próprio cliente síncrono
+📊 `compose_policy_answer_with_meta` recebe `db=None` em produção: `infocap_tool` tem cliente **async** e `assistance_plans_base._db` devolveria o async, cujo `.execute()` é corrotina — a Skill responderia `fonte_indisponivel` em 100 % dos casos. Hoje o módulo monta sozinho o cliente síncrono e funciona. **Não há guarda sobre isso.** **Destrava:** um guarda que prove o caminho com os dois clientes, ou um adaptador único. **Dono:** 🤖. **Custo de esquecer:** alguém "organiza" o código passando o `db` do tool e desliga a base inteira em silêncio — o defeito-raiz desta SPEC outra vez.
+
+## P-E00151-03 · a pergunta MISTA perde o outro assunto
+📊 A cadeia do compositor é `if veredito … elif _INSTALLMENT_INTENT_RE`, e o `elif` nunca roda quando há veredito: *"tem táxi? e quantas parcelas faltam?"* devolve só a parte de cobertura. Por isso a flag `encerrar_com_o_rascunho` não liga na mista (decisão da rodada 2, 88 × 55). **Destrava:** o compositor responder as duas partes. **Dono:** 🤖. **Custo de esquecer:** o cliente pergunta duas coisas e recebe uma.
+
+## P-E00151-04 · o espelho da negação tem recall 6/9
+📊 Juiz da rodada 3, 9 sondas: passam intactos *"Não. O guincho fica de fora."*, *"Infelizmente não! Guincho só no plano superior."*, *"Guincho? Você não tem."* — a negação mora na frase vizinha ou é frase nua. Duas tentativas de olhar a vizinha trocavam nuances verdadeiras (3 falsos positivos). **Destrava:** medir sobre respostas reais do modelo, não sobre sondas. **Dono:** 🤖. **Custo de esquecer:** com a base dizendo "sim", uma negação do modelo chega ao segurado em 1 de 3 formas.
+
+## P-E00151-05 · o corpus de PEDIDOS do guarda da porta é inventado, não medido
+📊 As 30 perguntas vêm do acervo real (`tests/corpus/perguntas_de_cobertura_2026-09-17.json`); os 22 pedidos são frases dos juízes. A porta de intenção decide se um acionamento é interrompido — é a peça que mais custou nesta SPEC (4 rodadas). **Destrava:** extrair de 20 a 40 mensagens reais que precederam um acionamento, redigidas. **Dono:** 🤖. **Custo de esquecer:** a matriz de confusão mede a imaginação de três modelos, não o WhatsApp.
+
+## P-E00151-06 · `vidros` residencial é COBERTURA, não assistência
+📊 15 linhas usam a chave `vidros`: 7 residencial, 6 auto, 2 condomínio. O `ramos` do vocabulário foi corrigido, mas `tipo` continua `assistencia` porque **é lido** e virá-lo mudaria o caminho de AUTO. Quebra de vidros residencial precisa de chave própria. **Destrava:** chave nova no vocabulário + reextração das 7. **Dono:** 🤖. **Custo de esquecer:** a resposta trata uma cobertura contratada como serviço de assistência 24h.
+
+## P-E00151-07 · três serviços ficam presos sob plano pai em `rascunho`
+📊 19/09, por SELECT: mapfre/residencial/vidros e mapfre/condominio/vidros (o "plano" é na verdade uma COBERTURA, e a forma canônica já está ocupada por `uq_iap_nivel`) e tokio/auto/guincho (nome do pai com 106 caracteres > 60). Nenhum é curável por promoção. **Recomendação do builder, aceita:** deixar em `rascunho` e reextrair na próxima onda — promover o de condomínio poria o produto em duas caixas. **Dono:** 🤖. **Custo de esquecer:** três linhas conferidas e corretas nunca chegam ao cliente.
+
+## P-E00151-08 · o curador precisa de DUAS sessões, e `revisado_por` mistura dois cadastros
+📊 O BFF de planos pede sessão de corretora no GET e sessão de administrador da plataforma na escrita. E `revisado_por` recebe `admin_users.id` pela tela e `users_v2.id` pelo lote (📊 o uuid do lote existe em `users_v2` e **não** em `admin_users`). **Destrava:** uma fonte só de identidade do revisor. **Dono:** 🤖. **Custo de esquecer:** a auditoria de quem publicou aponta para dois cadastros diferentes.
+
+## P-E00151-09 · nome de pessoa real dentro de dado global de corredor
+📊 `corridor_playbooks.py:4319` guarda, no campo `notes` de um passo, a frase de uma tela: *"Saionara você é a pessoa que está local para acompanhar o serviço?"*. O `notes` entra no **prompt interno** que decide a resposta quando o corredor empaca (`insurer_dispatch_service.py:3984`). **Destrava:** redigir o nome no playbook. **Dono:** 🤖. **Custo de esquecer:** o nome de uma atendente da Resulta é contexto global e pode reaparecer numa resposta gerada para outra corretora.
+
+## P-E00151-10 · o acervo tem duas versões mal rotuladas, e a base herdou
+📊 Mapfre Auto declarada v34.0 quando o PDF é v41; Mapfre Residencial declarada v2.9 quando o PDF é 3.2. **Destrava:** conferir a versão na capa ao ingerir. **Dono:** 🤖. **Custo de esquecer:** a resposta cita a página certa de um documento vencido.
+
