@@ -283,8 +283,12 @@ def _arquivo_de_papeis(slug: str) -> str:
     from app.comercial import cbim
     from app.comercial import manifesto
 
-    return os.path.join(manifesto.DIRETORIO_DO_CENSO, cbim.PROVIDER_PILOTO,
-                        "producer-roles.%s.json" % (slug or "").strip().lower())
+    # 🔴 SPEC-EXTRA-001.5.1 (A-ter): pelo RESOLVEDOR, não por `join` direto — o
+    # mapa mora no PACOTE (`backend/app/data/providers/`), e o `docs/` fica como
+    # segundo lugar para quem tiver uma árvore antiga. 📊 Na cópia que reproduz
+    # o contêiner, o caminho antigo nem existia.
+    return manifesto.caminho_do_censo(
+        cbim.PROVIDER_PILOTO, "producer-roles.%s.json" % (slug or "").strip().lower())
 
 
 def mapa_de_papeis(slug: str) -> Dict[str, str]:

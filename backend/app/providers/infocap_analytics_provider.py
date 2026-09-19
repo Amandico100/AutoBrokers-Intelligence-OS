@@ -109,13 +109,15 @@ PROVIDER_KEY = "infocap"
 #: Onde o censo do BLOCO 0 mora. É arquivo versionado de propósito: o mesmo
 #: mecanismo do mapa de produtor, e o mesmo motivo — 📊 a única coluna `jsonb`
 #: de `companies` é `acionamento_profile`, que é outra coisa.
-_CENSO = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))),
-    "docs", "canon", "providers", "infocap")
-#: ⚠️ Quem LÊ o censo é `app/comercial/manifesto.py` (BLOCO C). Este caminho
-#: fica aqui só como referência de onde o arquivo mora — o adapter não abre JSON.
-_MANIFESTO_JSON = os.path.join(_CENSO, "infocap-capability-manifest.json")
+#: ⚠️ Quem LÊ o censo é `app/comercial/manifesto.py` (BLOCO C). Estes nomes
+#: ficam aqui só como REFERÊNCIA de onde o arquivo mora — o adapter não abre
+#: JSON. 🔴 SPEC-EXTRA-001.5.1 (A-ter): eles apontavam para `docs/canon/...`,
+#: que não viaja na imagem; agora perguntam ao resolvedor, para que a referência
+#: não minta sobre o lugar de verdade.
+def _caminho_do_manifesto() -> str:
+    from app.comercial.manifesto import caminho_do_censo
+
+    return caminho_do_censo(PROVIDER_KEY, "%s-capability-manifest.json" % PROVIDER_KEY)
 
 
 # ==========================================================================
