@@ -299,7 +299,26 @@ def _normalizar_para_guarda(valor: Any) -> str:
 
 
 def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
-    """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries."""
+    """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries.
+
+    🔴 SPEC-EXTRA-001.5.1 (C2) — ESTA FUNÇÃO CONTINUA SEM SABER O CANAL, E É
+    POR ISSO QUE ELA PASSOU A ESTAR CERTA.
+    ==========================================================================
+    Até 19/09/2026 ela devolvia `rendered_safe_answer` quando a LLM fugia do
+    veredito — e `rendered` era SEMPRE o texto do corretor. No WhatsApp, o
+    segurado recebia *"No plano **dele**, não… (Condições gerais da HDI, p.
+    23.)"*, e o defeito era invisível: o guarda tinha feito o trabalho dele.
+
+    ⚠️ A correção NÃO foi ensinar canal a este guarda. Foi fazer o CONTRATO
+    chegar já com o texto do canal certo (`infocap_tool._render_content` →
+    `compose_policy_answer_with_meta(client_facing=…)`). Um `if client_facing`
+    aqui seria a MESMA regra em dois lugares, e o segundo envelheceria sozinho.
+
+    ⛔ E o que este guarda exige NÃO muda entre canais: `assistencia_da_base`
+    (nomear os serviços que a base nomeou) e `_NEGATIVA_RE` (negar quando a base
+    nega) valem no WhatsApp exatamente como no chat — "não afirmar o que a base
+    nega" não é formatação.
+    """
     if not isinstance(contract, dict) or contract.get("provider") != "infocap":
         return candidate_text or ""
     rendered = str(contract.get("rendered_safe_answer") or "").strip()

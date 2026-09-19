@@ -36,10 +36,10 @@
     "vidros": {
       "tipo": "assistencia",
       "rotulo": "Vidros",
-      "ramos": ["auto"],
+      "ramos": ["auto", "residencial", "condominio"],
       "sinonimos": ["vidro", "vidros", "parabrisa", "para brisa", "para-brisa", "vidro trincado", "vidro quebrado", "retrovisor", "farol", "lanterna"],
       "pergunta_tipica": "quebrou o parabrisa, cobre?",
-      "_nota": "📊 93 perguntas. ⚠️ `retrovisor`/`farol`/`lanterna` entram aqui porque a cobertura comercial e vendida junta ('vidros, farois, lanternas e retrovisores') — se a apolice separar, a linha da base separa, e o `condicao` diz qual."
+      "_nota": "📊 93 perguntas. 🔴 `ramos` corrigido em 19/09/2026 (EXTRA-001.5.1, unidade C): a base tem 15 linhas de `vidros` e 9 delas NAO sao de auto — 7 residencial e 2 condominio (SELECT por ramo, 19/09). `ramos` nao e lido por codigo nenhum hoje; e uma DECLARACAO, e declaracao falsa manda o proximo leitor procurar o dado no lugar errado. ⚠️ `tipo` continua `assistencia` de proposito: ele E lido (`tipo_do_servico` decide se a resposta soma as coberturas estruturadas da apolice) e vira-lo mudaria o caminho de AUTO, onde vidros e assistencia de verdade. Quebra de vidros RESIDENCIAL e cobertura e merece chave propria — pendencia P-001.5.1-VIDROS-RESIDENCIAL. ⚠️ `retrovisor`/`farol`/`lanterna` entram aqui porque a cobertura comercial e vendida junta ('vidros, farois, lanternas e retrovisores') — se a apolice separar, a linha da base separa, e o `condicao` diz qual."
     },
     "eletricista": {
       "tipo": "assistencia",
