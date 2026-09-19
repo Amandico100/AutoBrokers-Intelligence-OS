@@ -26,7 +26,8 @@ conexão convidaria o próximo a ganhar também.
 **284 candidatos** e `SURA` devolveu **130** (casa dentro de "ASSURANCE"). O
 desempate que funcionou foi *prêmio de auto > 0 no trimestre* — uma medição, não
 uma regra de string. Por isso o mapa é um arquivo revisado por gente
-(`docs/canon/providers/susep/seguradora-coenti.json`), com os candidatos
+(`backend/app/data/seguradora-coenti.json` — dentro do pacote desde a
+SPEC-EXTRA-001.5.1; em `docs/` sobrou um ponteiro), com os candidatos
 avaliados ao lado de cada escolha.
 
 ## 🔴 O elo que FECHOU em 04/09/2026 — P-094.1-SIGLA-SEGURADORA
@@ -97,16 +98,93 @@ UNKNOWN = "UNKNOWN"
 PREFIXO = "susep/ses"
 CHAVE_DO_MANIFESTO = f"{PREFIXO}/manifest.json"
 
+#: 🔴 ONDE OS CATÁLOGOS MORAM — DENTRO DO PACOTE (SPEC-EXTRA-001.5.1, A-bis/E3).
+#:
+#: `backend/app/data/`. É `app/`, logo é **código**, logo entra no `COPY . .` do
+#: `backend/Dockerfile`. 📊 19/09/2026, na cópia que reproduz o contêiner (só
+#: `backend/`): os três mapas vinham **vazios** com `[SES] mapa … ausente
+#: (FileNotFoundError)`, e `familia_de_acionamento("itau")` devolvia `UNKNOWN` em
+#: vez de `porto` — no **caminho vivo do acionamento** (`infocap_tool.py:856`),
+#: sem 500 e sem erro. É o mesmo defeito que desligou a Skill de cobertura (D1):
+#: dado de runtime morando em `docs/`, que não viaja na imagem.
+#:
+#: ⚠️ O de `docs/canon/providers/susep/` continua existindo como **PONTEIRO** de
+#: cinco linhas — mesma decisão da fatia 1 (ponteiro 88 × cópia com guarda 72):
+#: uma fonte só, divergência impossível em vez de detectável depois.
+_NO_PACOTE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "data")
+
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
-CAMINHO_DO_MAPA = os.path.join(_RAIZ, "docs", "canon", "providers", "susep",
-                               "seguradora-coenti.json")
+
+#: O caminho histórico, a partir da raiz do REPOSITÓRIO. Continua sendo
+#: procurado (uma árvore antiga ainda pode ter o dado ali), mas só DEPOIS do
+#: pacote: deixar o `docs/` na frente faria a árvore de desenvolvimento ler um
+#: arquivo e produção outro — a cegueira do CLAUDE.md §9.1, uma casa adiante.
+_NO_DOCS = os.path.join(_RAIZ, "docs", "canon", "providers", "susep")
+
+
+def _catalogo(nome: str) -> str:
+    """O primeiro caminho que EXISTE, o do pacote primeiro. Nenhum → o do pacote.
+
+    ⚠️ Devolver o do pacote quando nenhum existe é de propósito: é ele que tem de
+    existir, e é o nome dele que a mensagem de erro precisa citar.
+    """
+    for pasta in (_NO_PACOTE, _NO_DOCS):
+        caminho = os.path.join(pasta, nome)
+        if os.path.isfile(caminho):
+            return caminho
+    return os.path.join(_NO_PACOTE, nome)
+
+
+CAMINHO_DO_MAPA = _catalogo("seguradora-coenti.json")
 #: 🔴 SPEC-094.1, rodada 3. O SEGUNDO mapa versionado: `ramo da corretora ->
 #: grupo de ramo da SUSEP`. Ele é irmão do primeiro e existe pela mesma razão —
 #: 📊 comparar a Porto de TODOS os ramos (0,507244) com uma carteira de auto
 #: (0,580149) erra por 7,3 p.p. num número de negociação de reajuste.
-CAMINHO_DO_MAPA_DE_RAMOS = os.path.join(
-    _RAIZ, "docs", "canon", "providers", "susep", "ramo-cogrupo.json")
+CAMINHO_DO_MAPA_DE_RAMOS = _catalogo("ramo-cogrupo.json")
+
+
+def _secao_do_catalogo(caminho: str, secao: str) -> Dict[str, Any]:
+    """A seção pedida do catálogo — ou `{}`, **gritando em ERROR**.
+
+    🔴 POR QUE ERROR, E POR QUE NÃO UMA EXCEÇÃO (SPEC-EXTRA-001.5.1, A-bis)
+    ======================================================================
+    Era `logger.warning("… ausente")` e um `{}` — e um mapa vazio NÃO quebra
+    nada: `familia_de_acionamento` só passa a devolver `UNKNOWN` para todo mundo,
+    `cogrupo_de` idem. 📊 Em produção isso durou desde que o arquivo existe, sem
+    500 e sem ninguém ver. **Degradar em silêncio é o defeito**, e a diferença
+    entre `WARNING` e `ERROR` é a diferença entre uma linha que ninguém procura e
+    uma que o alerta pega.
+
+    ⛔ E NÃO se levanta exceção: este módulo é lido no caminho vivo do
+    acionamento (`infocap_tool.py:856`). Derrubar o atendimento porque um
+    catálogo de análise sumiu trocaria um defeito silencioso por um pior.
+    A resposta continua sendo `UNKNOWN` — o que muda é que ela grita.
+
+    ⚠️ Um PONTEIRO (o arquivo de `docs/`, que hoje só diz onde o dado mora) cai
+    aqui como "seção vazia" e recebe o mesmo tratamento: nunca é carregado como
+    se fosse catálogo.
+    """
+    try:
+        with io.open(caminho, encoding="utf-8") as f:
+            bruto = json.load(f)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "[SES] catálogo AUSENTE: seção %r de %s (%s). Procurado em %s e em %s. "
+            "Sem ele, familia_de_acionamento/coenti_de/cogrupo_de respondem "
+            "UNKNOWN para TUDO — e isso não levanta erro em lugar nenhum.",
+            secao, os.path.basename(caminho), type(exc).__name__, _NO_PACOTE, _NO_DOCS)
+        return {}
+    dados = dict((bruto.get(secao) or {}) if isinstance(bruto, dict) else {})
+    if not dados:
+        logger.error(
+            "[SES] catálogo SEM DADO: %s existe mas a seção %r está vazia ou "
+            "ausente (é um ponteiro? o dado mora em %s). Recusado: um mapa vazio "
+            "faria UNKNOWN para TUDO, em silêncio.",
+            caminho, secao, _NO_PACOTE)
+        return {}
+    return dados
 
 
 class FalhaDoCenso(RuntimeError):
@@ -137,13 +215,7 @@ def mapa_de_seguradoras(caminho: str = "") -> Dict[str, Any]:
         with io.open(caminho, encoding="utf-8") as f:
             return dict(json.load(f).get("seguradoras") or {})
     if _MAPA_EM_MEMORIA is None:
-        try:
-            with io.open(CAMINHO_DO_MAPA, encoding="utf-8") as f:
-                _MAPA_EM_MEMORIA = dict(json.load(f).get("seguradoras") or {})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[SES] mapa de seguradoras ausente (%s)",
-                           type(exc).__name__)
-            _MAPA_EM_MEMORIA = {}
+        _MAPA_EM_MEMORIA = _secao_do_catalogo(CAMINHO_DO_MAPA, "seguradoras")
     return _MAPA_EM_MEMORIA
 
 
@@ -171,13 +243,7 @@ def mapa_de_siglas(caminho: str = "") -> Dict[str, Any]:
         with io.open(caminho, encoding="utf-8") as f:
             return dict(json.load(f).get("siglas") or {})
     if _SIGLAS_EM_MEMORIA is None:
-        try:
-            with io.open(CAMINHO_DO_MAPA, encoding="utf-8") as f:
-                _SIGLAS_EM_MEMORIA = dict(json.load(f).get("siglas") or {})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[SES] mapa de siglas ausente (%s)",
-                           type(exc).__name__)
-            _SIGLAS_EM_MEMORIA = {}
+        _SIGLAS_EM_MEMORIA = _secao_do_catalogo(CAMINHO_DO_MAPA, "siglas")
     return _SIGLAS_EM_MEMORIA
 
 
@@ -208,13 +274,7 @@ def mapa_de_ramos(caminho: str = "") -> Dict[str, Any]:
         with io.open(caminho, encoding="utf-8") as f:
             return dict(json.load(f).get("ramos") or {})
     if _RAMOS_EM_MEMORIA is None:
-        try:
-            with io.open(CAMINHO_DO_MAPA_DE_RAMOS, encoding="utf-8") as f:
-                _RAMOS_EM_MEMORIA = dict(json.load(f).get("ramos") or {})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[SES] mapa de ramos ausente (%s)",
-                           type(exc).__name__)
-            _RAMOS_EM_MEMORIA = {}
+        _RAMOS_EM_MEMORIA = _secao_do_catalogo(CAMINHO_DO_MAPA_DE_RAMOS, "ramos")
     return _RAMOS_EM_MEMORIA
 
 
@@ -240,13 +300,8 @@ def mapa_de_familias_de_acionamento(caminho: str = "") -> Dict[str, Any]:
         with io.open(caminho, encoding="utf-8") as f:
             return dict(json.load(f).get("familias_de_acionamento") or {})
     if _FAMILIAS_EM_MEMORIA is None:
-        try:
-            with io.open(CAMINHO_DO_MAPA, encoding="utf-8") as f:
-                _FAMILIAS_EM_MEMORIA = dict(json.load(f).get("familias_de_acionamento") or {})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[SES] familias de acionamento ausentes (%s)",
-                           type(exc).__name__)
-            _FAMILIAS_EM_MEMORIA = {}
+        _FAMILIAS_EM_MEMORIA = _secao_do_catalogo(
+            CAMINHO_DO_MAPA, "familias_de_acionamento")
     return _FAMILIAS_EM_MEMORIA
 
 
@@ -293,13 +348,8 @@ def familia_de_acionamento(nome_ou_sigla: Any, *,
 def nomes_dos_grupos(caminho: str = "") -> Dict[str, str]:
     """`{"05": "Automovel", ...}` — 📊 os 22 grupos de `ses_gruposramos.csv`."""
     alvo = caminho or CAMINHO_DO_MAPA_DE_RAMOS
-    try:
-        with io.open(alvo, encoding="utf-8") as f:
-            return {str(k): str(v) for k, v in
-                    (json.load(f).get("grupos_ses") or {}).items()}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[SES] nomes de grupo ausentes (%s)", type(exc).__name__)
-        return {}
+    return {str(k): str(v) for k, v in
+            _secao_do_catalogo(alvo, "grupos_ses").items()}
 
 
 def cogrupo_de(ramo: Any, *, mapa: Optional[Dict[str, Any]] = None) -> str:
