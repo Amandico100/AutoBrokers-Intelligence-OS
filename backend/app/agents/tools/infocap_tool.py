@@ -140,9 +140,14 @@ def _origem_em_portugues(cobertura: Any) -> str:
     return texto
 
 
-#: 🔴 O separador da JANELA das 3 últimas humanas — o MESMO de `nodes.py:1649`.
-#: ⚠️ Escrito aqui como constante para que mudá-lo num lugar e esquecer no outro
-#: vire erro de import, não uma varredura silenciosa que não fatia nada.
+#: 🔴 O separador da JANELA das 3 últimas humanas.
+#:
+#: ⚠️ RODADA 5 (pendência 6): ele é IMPORTADO por `nodes.py:1711`, que monta
+#: a janela. 📊 Antes, o comentário prometia que mudá-lo num lugar e esquecer
+#: no outro viraria "erro de import" — e `nodes.py` não o importava: as duas
+#: pontas eram literais independentes, e a promessa era falsa. Agora o
+#: acoplamento existe de verdade: quem junta e quem fatia leem a MESMA
+#: constante, e mudá-la muda os dois lados de uma vez.
 SEPARADOR_DA_JANELA = " | "
 
 #: 🔴 Os estados em que a LLM NAO tem o que acrescentar (CONSERTO B1 ii).
@@ -971,7 +976,8 @@ class InfocapPolicyLookupTool(BaseTool):
         que a flag cobre.
 
         🔴 **A JANELA SE VARRE DO MAIS NOVO PARA O MAIS VELHO** (B-N2). Ela é um
-        BLOCO de até três humanas juntadas por `" | "` (`nodes.py:1649`), e
+        BLOCO de até três humanas juntadas por `SEPARADOR_DA_JANELA`
+        (`nodes.py:1711`), e
         `_COBERTURA_FORTE_RE` é a primeira trava — então a pergunta do turno
         N-2 vencia o pedido do turno N-1:
 
@@ -986,7 +992,7 @@ class InfocapPolicyLookupTool(BaseTool):
         vale é: a janela entra SÓ quando a mensagem atual não decide, e nela
         manda a mensagem mais NOVA que decide.
 
-        📊 O fluxo real do produto (a injeção em `nodes.py:1630`, incidente
+        📊 O fluxo real do produto (a janela em `nodes.py:1692-1711`, incidente
         12/07): o cliente pergunta, o agente pede o CPF, e a tool roda **no
         turno do CPF**.
         """
@@ -1070,7 +1076,12 @@ class InfocapPolicyLookupTool(BaseTool):
                 meta = compose_policy_answer_with_meta(
                     question=str(user_query or ""), result=data,
                     atendente=atendente, client_facing=self._client_facing,
-                    pergunta_de_cobertura=_intencao["pergunta"])
+                    pergunta_de_cobertura=_intencao["pergunta"],
+                    # 🔴 RODADA 5 (B-N3): a MESMA mensagem que decidiu a
+                    #    intenção escolhe o SERVIÇO do veredito. Sem isto, o
+                    #    compositor pegava o primeiro serviço da janela — o da
+                    #    mensagem mais VELHA.
+                    fonte_da_intencao=_intencao.get("fonte"))
                 if isinstance(meta, dict):
                     meta["so_de_cobertura"] = _intencao["so_de_cobertura"]
                     meta["fonte_da_intencao"] = _intencao.get("fonte") or ""

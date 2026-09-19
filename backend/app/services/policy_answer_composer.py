@@ -521,6 +521,7 @@ def compose_policy_answer_with_meta(
     *, question: str, result: Dict[str, Any],
     db: Any = None, atendente: Optional[str] = None,
     client_facing: bool = False, pergunta_de_cobertura: bool = True,
+    fonte_da_intencao: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Como compose_policy_answer, mas retorna também os metadados da política
     de assistência para o Policy Response Contract da tool (E4b).
@@ -618,8 +619,43 @@ def compose_policy_answer_with_meta(
     try:
         from app.services.skills.cobertura_e_assistencia import responder_cobertura
 
+        # 🔴 RODADA 5 (B-N3) — QUEM ESCOLHE O SERVIÇO TEM DE SER A MESMA
+        # MENSAGEM QUE ESCOLHEU A INTENÇÃO.
+        #
+        # 📊 Medido pelo juiz final em 19/09/2026. `question_text` é a JANELA
+        # das três últimas humanas, e `servico_canonico` pega o PRIMEIRO que
+        # casa — ou seja, a mensagem mais VELHA:
+        #
+        #     janela "cobre vidro trincado? | meu plano cobre guincho? | <doc>"
+        #        fonte da intenção .. "meu plano cobre guincho?"
+        #        veredito/lacuna .... servico='vidros'        <- a mais velha
+        #        AO CORRETOR ........ "…nem que tem nem que não tem vidros."
+        #
+        # Dois bytes errados hoje: o copiloto nomeia o serviço errado, e a
+        # lacuna grava `vidros` em `capability_gaps` — a fila que decide o que
+        # se destila depois.
+        #
+        # 🔴 O FALLBACK NÃO É OPCIONAL. Um pedido sem nome de serviço
+        # ("preciso de ajuda, estou parado") tem `fonte` sem serviço
+        # reconhecível; sem cair de volta na janela, a Skill calaria INTEIRA e
+        # o produto voltaria ao "sim" de tabela que a 001.5 matou.
+        #
+        # ⛔ E só o VEREDITO muda de fonte: parcelas e franquia continuam lendo
+        # a janela — elas respondem sobre a apólice, não sobre um serviço.
+        pergunta_para_a_skill = question_text
+        _fonte = str(fonte_da_intencao or "").strip()
+        if _fonte:
+            try:
+                from app.services.knowledge.assistance_plans_base import (
+                    servico_canonico,
+                )
+
+                if servico_canonico(_fonte):
+                    pergunta_para_a_skill = _fonte
+            except Exception:  # noqa: BLE001 — sem vocabulário, fica a janela
+                pass
         veredito = responder_cobertura(
-            pergunta=question_text,
+            pergunta=pergunta_para_a_skill,
             apolice=_apolice_para_a_skill(result, pack, facts, db=db),
             db=db, atendente=atendente,
         )
