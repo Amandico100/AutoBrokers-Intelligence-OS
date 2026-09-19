@@ -85,6 +85,8 @@ AUTO = db.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
 db.servico(AUTO, "carro_reserva", "nao", documento_id="doc-hdi-auto", pagina=23)
 db.servico(AUTO, "guincho", "sim", documento_id="doc-hdi-auto", pagina=25,
            limite_valor=200, limite_unidade="km")
+db.servico(AUTO, "vidros", "condicionado", documento_id="doc-hdi-auto", pagina=26,
+           condicao="so com a cobertura de vidros contratada")
 
 
 def _pack():
@@ -119,13 +121,18 @@ _db_original = BASE._db
 BASE._db = lambda supabase_client=None: db
 
 
-def _fio(pergunta, *, cliente: bool):
-    """`(briefing, contrato, rendered)` — o caminho REAL da tool, sem rede."""
+def _fio(pergunta, *, cliente: bool, mensagem=None):
+    """`(briefing, contrato, rendered)` — o caminho REAL da tool, sem rede.
+
+    ⚠️ `mensagem` é a ÚLTIMA humana (RODADA 2). Sem ela, a tool cai na janela —
+    que é o que acontecia antes de a porta de intenção existir.
+    """
     tool = InfocapPolicyLookupTool(
         company_id="11111111-1111-1111-1111-111111111111",
         agent_role=("attendance" if cliente else "core"))
     conteudo, politica, rendered, meta = tool._render_content(
-        _result(), pergunta, detail=False, atendente=None)
+        _result(), pergunta, detail=False, atendente=None,
+        mensagem_atual=(mensagem if mensagem is not None else pergunta))
     contrato = tool._build_policy_response_contract(
         _result(), rendered, politica, client_facing=cliente, meta=meta)
     return conteudo, contrato, rendered, meta
@@ -251,15 +258,34 @@ TELEFONE = "11987654321"
 
 
 class _TabelaMinima:
-    """`capability_gaps` + `conversations` em memória. ⛔ Nada em produção."""
+    """`capability_gaps` + `conversations` em memória. ⛔ Nada em produção.
+
+    🔴 RODADA 2 (carimbo J5 do juiz): este duplo **RESPEITA os filtros**. Antes
+    o `eq()` devolvia `self` e ignorava tudo — e por isso a mutação "tirar o
+    `.eq(company_id, …)` de `_a_conversa_deste_atendimento`" ficava VERDE. Um
+    duplo que ignora o filtro não consegue provar o §7 do CLAUDE.md: ele prova
+    que a consulta foi feita, nunca que ela foi feita para a corretora certa.
+    """
+
+    #: 📊 Duas corretoras com o MESMO `session_id` — é a colisão que o filtro
+    #: por `company_id` existe para impedir.
+    CONVERSAS = {
+        ("11111111-1111-1111-1111-111111111111", "whatsapp:5511987654321:x"):
+            {"id": CONVERSA, "user_phone": TELEFONE},
+        ("99999999-9999-9999-9999-999999999999", "whatsapp:5511987654321:x"):
+            {"id": "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb",
+             "user_phone": "11900000000"},
+    }
 
     def __init__(self, conversa_assumida=False):
         self.gaps = []
         self.conversa_assumida = conversa_assumida
         self.alvo = None
+        self.filtros = {}
 
     def table(self, nome):
         self.alvo = nome
+        self.filtros = {}
         return self
 
     def select(self, *_a, **_k):
@@ -273,7 +299,8 @@ class _TabelaMinima:
         self._carga, self._acao = carga, "update"
         return self
 
-    def eq(self, *_a, **_k):
+    def eq(self, campo, valor):
+        self.filtros[str(campo)] = str(valor)
         return self
 
     def limit(self, _n):
@@ -284,7 +311,11 @@ class _TabelaMinima:
             pass
         r = R()
         if self.alvo == "conversations":
-            r.data = [{"id": CONVERSA, "user_phone": TELEFONE}]
+            # 🔴 O filtro é APLICADO: sem `company_id`, nada casa.
+            chave = (self.filtros.get("company_id"),
+                     self.filtros.get("session_id"))
+            achada = self.CONVERSAS.get(chave)
+            r.data = [achada] if achada else []
             return r
         if getattr(self, "_acao", "") == "insert":
             linha = dict(self._carga, id="gap-1", frequency_count=1)
@@ -335,8 +366,12 @@ ASSUMIDA = dict(LIVRE, claimed_by="user-1", claimed_by_name="a atendente",
                 claimed_at=datetime.now(timezone.utc).isoformat())
 
 
-def _rodar_a_tool(conversa_no_banco, *, com_sessao=True):
-    """Pelo MÉTODO DA TOOL — `_lacuna_vira_tarefa`, não pelo serviço."""
+def _rodar_a_tool(conversa_no_banco, *, com_sessao=True, pergunta=True):
+    """Pelo MÉTODO DA TOOL — `_lacuna_vira_tarefa`, não pelo serviço.
+
+    ⚠️ RODADA 2: o `meta` do duplo carrega `pergunta_de_cobertura`, como o real
+    — é ele que decide se alguém é interrompido.
+    """
     tool = InfocapPolicyLookupTool(company_id=EMPRESA, agent_role="attendance")
     banco = _TabelaMinima()
     porta = _PortaFiel(conversa_no_banco)
@@ -354,8 +389,13 @@ def _rodar_a_tool(conversa_no_banco, *, com_sessao=True):
         G.reivindicar_o_envio = _marcador
         G.enviar_ao_grupo = porta
         asyncio.run(tool._lacuna_vira_tarefa(
-            banco, {"cobertura": COBERTURA}, "tem carro reserva?",
-            "whatsapp:5511987654321:x" if com_sessao else None))
+            banco,
+            {"cobertura": dict(COBERTURA,
+                               intencao=("pergunta" if pergunta else "pedido")),
+             "pergunta_de_cobertura": pergunta},
+            "tem carro reserva?",
+            "whatsapp:5511987654321:x" if com_sessao else None,
+            "tem carro reserva?" if pergunta else "preciso de carro reserva"))
     finally:
         G.reivindicar_o_envio, G.enviar_ao_grupo = antes_m, antes_e
     return banco, porta
@@ -438,6 +478,294 @@ checar(re.search(r"p\.\s*\d|Condi[çc][õo]es gerais|(?<![a-z])dele(?![a-z])",
                  str(rendered_ok2)) is None,
        "🔴 CONTROLE: restaurada, a resposta do WhatsApp volta a ser limpa",
        str(rendered_ok2)[:200])
+
+# ---------------------------------------------------------------------------
+print("\n[7] 🔴 RODADA 2 · N1 — PERGUNTAR NÃO É PEDIR, e o acionamento não cala")
+from app.services.skills.cobertura_e_assistencia import (  # noqa: E402
+    e_pergunta_de_cobertura as INTENCAO,
+)
+
+#: 📊 As 11 frases de acionamento que o juiz da confirmação usou.
+ACIONAMENTO = [
+    "preciso de guincho",
+    "meu pneu furou, preciso de socorro",
+    "a bateria do carro morreu, manda alguem",
+    "perdi a chave do carro, preciso de chaveiro",
+    "quebrou o vidro do meu carro, quero acionar",
+    "meu carro deu pane seca, estou parado na estrada",
+    "preciso de um reboque agora",
+    "meu carro nao liga",
+    "bati o carro, o que faco",
+    "minha casa alagou com a enchente",
+    "preciso de assistencia",
+]
+#: O candidato LEGÍTIMO que o atendente escreveria no meio de um acionamento.
+PROXIMO_PASSO = ("Achei a sua apólice, está ativa. Me passa o endereço com um "
+                 "ponto de referência que eu já abro o chamado?")
+
+_viraram_pergunta = [t for t in ACIONAMENTO if INTENCAO(t)]
+checar(not _viraram_pergunta,
+       "🔴 as 11 frases de acionamento dão 0/11 como pergunta de cobertura "
+       "(a porta é PURA, lida da mensagem ATUAL)", repr(_viraram_pergunta))
+
+# ⚠️ A base deste bloco reproduz PRODUÇÃO: **0 linhas publicadas** para
+#    estes serviços — é onde o juiz mediu 6/11. Com linha publicada o estado
+#    é DECIDIDO e a regra da 001.5 continua valendo (o texto tem de nomear o
+#    serviço); esse outro caso está medido em [7b].
+_base_vazia = BaseEmMemoria()
+_base_vazia.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
+                  plano="Essencial", nivel=1, documento_id="doc-hdi-auto",
+                  pagina=9)
+BASE._db = lambda supabase_client=None: _base_vazia
+_substituidas = []
+for _frase in ACIONAMENTO:
+    _b, _contrato, _r, _m = _fio(_frase, cliente=True, mensagem=_frase)
+    if GUARDA(PROXIMO_PASSO, _contrato).strip() != PROXIMO_PASSO:
+        _substituidas.append(_frase)
+checar(not _substituidas,
+       "🔴 e pelo FIO INTEIRO: 0 de 11 respostas do atendente são substituídas "
+       "(📊 antes da RODADA 2: 6 de 11 — guincho, pneu, bateria, chaveiro, "
+       "vidro, pane seca)", repr(_substituidas))
+
+print("\n      🔴 CONTROLE do [7]: a PERGUNTA continua sendo anulada")
+_b, _contrato_p, _rendered_p, _m = _fio("tem guincho?", cliente=True,
+                                        mensagem="tem guincho?")
+checar(GUARDA(MENTIRA, _contrato_p).strip() == str(_rendered_p).strip(),
+       "🔴 CONTROLE: 'tem guincho?' + candidato mentiroso -> ANULADO",
+       GUARDA(MENTIRA, _contrato_p)[:120])
+checar(GUARDA(PROXIMO_PASSO, _fio("preciso de guincho", cliente=True,
+                                  mensagem="preciso de guincho")[1]).strip()
+       == PROXIMO_PASSO,
+       "🔴 e 'preciso de guincho' + próximo passo legítimo -> INTACTA")
+
+print("\n      🔴 o TURNO N não contamina o TURNO N+1")
+# A janela da tool são as 3 últimas humanas; a INTENÇÃO é só da atual.
+_b, _contrato_n1, _r, _m = _fio("tem guincho? | então manda um",
+                                cliente=True, mensagem="então manda um")
+checar(GUARDA(PROXIMO_PASSO, _contrato_n1).strip() == PROXIMO_PASSO,
+       "🔴 janela com a pergunta do turno N, mensagem atual = pedido -> o "
+       "pedido PASSA", GUARDA(PROXIMO_PASSO, _contrato_n1)[:120])
+
+print("\n      [7b] com o serviço PUBLICADO o estado é DECIDIDO, e a regra "
+      "da 001.5 continua valendo")
+BASE._db = lambda supabase_client=None: db
+_b, _contrato_dec, _rendered_dec, _m = _fio("preciso de guincho", cliente=True,
+                                            mensagem="preciso de guincho")
+checar("encerrar_com_o_rascunho" not in (_contrato_dec.get("required_facts") or []),
+       "🔴 num PEDIDO a flag NÃO liga nem com o serviço publicado",
+       repr(_contrato_dec.get("required_facts")))
+checar("assistencia_da_base" in (_contrato_dec.get("required_facts") or []),
+       "⚠️ mas `assistencia_da_base` CONTINUA (a base decidiu: é o valor da "
+       "001.5) — o texto final tem de nomear o serviço",
+       repr(_contrato_dec.get("required_facts")))
+_passo_que_nomeia = ("O seu guincho está incluído. Me passa o endereço com um "
+                     "ponto de referência que eu já abro o chamado?")
+checar(GUARDA(_passo_que_nomeia, _contrato_dec).strip() == _passo_que_nomeia,
+       "🔴 e um próximo passo que NOMEIA o serviço passa inteiro — o "
+       "acionamento segue", GUARDA(_passo_que_nomeia, _contrato_dec)[:120])
+BASE._db = lambda supabase_client=None: _base_vazia
+
+print("\n      🔴 as 30 perguntas REAIS do corpus")
+import json as _json  # noqa: E402
+
+with open(os.path.join(RAIZ, "tests", "corpus",
+                       "perguntas_de_cobertura_2026-09-17.json"),
+          encoding="utf-8") as _fh:
+    _CORPUS = _json.load(_fh)["perguntas"]
+_como_pergunta = [p["pergunta"] for p in _CORPUS if INTENCAO(p["pergunta"])]
+#: ⚠️ NÃO são 30/30, e a diferença é MEDIDA, não tolerância: 📊 6 das 30 são
+#: PEDIDOS ou perguntas sobre outro assunto ("que numero chama guincho porto???",
+#: "Consegues chamar ela?!", "Preciso carro reserva. Como fazer?"). Para elas o
+#: comportamento seguro é exatamente o que a porta dá: NÃO calar o atendente.
+#: O veredito continua sendo produzido para as 30 (`test_a_resposta_traz_
+#: documento_e_pagina`, 17 verdes) — o que a porta governa é só a flag, o
+#: rascunho no briefing e o 🆘.
+print("      📊 corpus classificado como PERGUNTA: %d/%d"
+      % (len(_como_pergunta), len(_CORPUS)))
+checar(len(_como_pergunta) >= 24,
+       "🔴 pelo menos 24 das 30 do corpus continuam sendo PERGUNTA",
+       repr([p["pergunta"][:50] for p in _CORPUS
+             if not INTENCAO(p["pergunta"])]))
+checar(len(_como_pergunta) < len(_CORPUS),
+       "⚠️ e a porta SEPARA de verdade — se desse 30/30 ela não estaria "
+       "olhando a intenção", str(len(_como_pergunta)))
+
+print("\n      🔴 a MISTA não encerra: a flag não liga")
+_b, _contrato_mista, _r, _m = _fio(
+    "tem taxi? e quantas parcelas faltam?", cliente=False,
+    mensagem="tem taxi? e quantas parcelas faltam?")
+checar("encerrar_com_o_rascunho" not in (_contrato_mista.get("required_facts") or []),
+       "🔴 mista (cobertura + parcelas) NÃO liga a flag — o `rendered` da mista "
+       "não carrega as parcelas, e encerrar com ele apagaria a metade verdadeira",
+       repr(_contrato_mista.get("required_facts")))
+_resposta_mista = "Sobre táxi eu confirmo. E faltam 3 parcelas."
+checar(GUARDA(_resposta_mista, _contrato_mista).strip() == _resposta_mista,
+       "e a resposta com as DUAS partes sobrevive", GUARDA(_resposta_mista, _contrato_mista)[:120])
+
+print("\n      🔴 MUTAÇÃO do [7]: a porta de intenção sempre-True")
+import app.services.skills.cobertura_e_assistencia as SKI  # noqa: E402
+
+_porta_original = SKI.e_pergunta_de_cobertura
+try:
+    SKI.e_pergunta_de_cobertura = lambda _t: True
+    _mut = [f for f in ACIONAMENTO
+            if GUARDA(PROXIMO_PASSO, _fio(f, cliente=True, mensagem=f)[1]).strip()
+            != PROXIMO_PASSO]
+    checar(len(_mut) >= 5,
+           "🔴 MUTAÇÃO: com a porta sempre-True, %d das 11 respostas do "
+           "atendente voltam a ser SUBSTITUÍDAS — era o blocker N1" % len(_mut),
+           repr(_mut[:3]))
+finally:
+    SKI.e_pergunta_de_cobertura = _porta_original
+
+# ---------------------------------------------------------------------------
+BASE._db = lambda supabase_client=None: db
+
+print("\n[8] 🔴 RODADA 2 — o PEDIDO grava a lacuna e NÃO interrompe ninguém")
+banco_ped, porta_ped = _rodar_a_tool(LIVRE, pergunta=False)
+checar(len(banco_ped.gaps) == 1,
+       "🔴 o pedido GRAVA a lacuna (a frequência é boa para o painel)",
+       repr(len(banco_ped.gaps)))
+checar(len(porta_ped.avisos) == 0,
+       "🔴 e NÃO manda 🆘 nenhum — o texto diria que o cliente PERGUNTOU sobre "
+       "cobertura, o que é falso", repr(porta_ped.avisos))
+_descricao = str((banco_ped.gaps or [{}])[0].get("description_redacted"))
+checar(_descricao.startswith("Pedido de"),
+       "🔴 e a descrição no painel diz PEDIDO, não 'Cobertura de'", _descricao)
+
+# ---------------------------------------------------------------------------
+print("\n[9] 🔴 RODADA 2 · J5 — o filtro `company_id` na leitura da conversa")
+_original_conversa = InfocapPolicyLookupTool._a_conversa_deste_atendimento
+try:
+    async def _sem_o_filtro(self, db, session_id):
+        """A mutação J5: a leitura sem `.eq("company_id", …)`."""
+        from app.services.o_fim_do_atendimento import _cliente, _executar
+
+        achado = await _executar(_cliente(db).table("conversations")
+                                 .select("id, user_phone")
+                                 .eq("session_id", str(session_id or ""))
+                                 .limit(1))
+        linha = (list(getattr(achado, "data", None) or [{}]) or [{}])[0] or {}
+        return {"conversation_id": str(linha.get("id") or ""),
+                "telefone": str(linha.get("user_phone") or "")}
+
+    InfocapPolicyLookupTool._a_conversa_deste_atendimento = _sem_o_filtro
+    _banco_j5, _porta_j5 = _rodar_a_tool(LIVRE)
+    _conversa_j5 = (_porta_j5.avisos[0].get("conversation_id")
+                    if _porta_j5.avisos else "")
+    checar(_conversa_j5 != CONVERSA,
+           "🔴 MUTAÇÃO J5: sem o `.eq(company_id, …)` a conversa NÃO é achada — "
+           "o duplo respeita filtros, e a mutação fica VERMELHA",
+           repr(_conversa_j5))
+finally:
+    InfocapPolicyLookupTool._a_conversa_deste_atendimento = _original_conversa
+
+_banco_ok, _porta_ok = _rodar_a_tool(LIVRE)
+checar(_porta_ok.avisos and _porta_ok.avisos[0].get("conversation_id") == CONVERSA,
+       "🔴 CONTROLE: restaurado o filtro, a conversa CERTA volta",
+       repr(_porta_ok.avisos[0].get("conversation_id") if _porta_ok.avisos else None))
+
+# ---------------------------------------------------------------------------
+print("\n[10] 🔴 RODADA 2 · J6 — a injeção do `session_id` em `nodes.py`")
+import ast as _ast  # noqa: E402
+
+_fonte_nodes = open(os.path.join(RAIZ, "app", "agents", "nodes.py"),
+                    encoding="utf-8").read()
+_sem_comentario = "\n".join(l.split("#")[0] for l in _fonte_nodes.splitlines())
+for _campo in ('"session_id": str(state.get("session_id")',
+               '"mensagem_atual": str(current_user_query'):
+    checar(_campo in _sem_comentario,
+           "🔴 `nodes.py` INJETA %s a partir do ESTADO (não de um comentário)"
+           % _campo.split(":")[0], _campo)
+checar('"mensagem_atual"' in _sem_comentario
+       and _sem_comentario.index('"mensagem_atual"')
+       > _sem_comentario.index("infocap_policy_lookup"),
+       "e a injeção está no ramo de `infocap_policy_lookup`")
+_mutado_j6 = _sem_comentario.replace('"session_id": str(state.get("session_id") or "")', "")
+checar('"session_id": str(state.get("session_id") or "")' not in _mutado_j6,
+       "🔴 MUTAÇÃO J6: removida a injeção, esta asserção falharia — o guarda "
+       "mede a LINHA, não a intenção")
+
+# ---------------------------------------------------------------------------
+print("\n[11] 🔴 RODADA 2 · N1 item 4 — a flag não sobrevive a uma AÇÃO posterior")
+# 📊 O contrato fica no estado até o fim do turno (`nodes.py:1450` zera só a
+# variável local). Se `insurer_dispatch` rodou DEPOIS da consulta, "Pronto! O
+# guincho foi solicitado" também era trocado pelo rascunho — o cliente ouvia que
+# nada tinha sido feito, com o guincho já a caminho.
+import app.agents.nodes as NODES  # noqa: E402
+
+_b, _contrato_acao, _rendered_acao, _m = _fio("tem taxi?", cliente=True,
+                                              mensagem="tem taxi?")
+checar("encerrar_com_o_rascunho" in (_contrato_acao.get("required_facts") or []),
+       "a flag está no contrato (é o caso em que ela deve estar)",
+       repr(_contrato_acao.get("required_facts")))
+
+DEPOIS_DA_ACAO = "Pronto! O guincho foi solicitado, previsão de 40 minutos."
+checar(GUARDA(DEPOIS_DA_ACAO, _contrato_acao).strip() != DEPOIS_DA_ACAO,
+       "🔴 CONTROLE: com a flag de pé, a resposta da AÇÃO seria trocada",
+       GUARDA(DEPOIS_DA_ACAO, _contrato_acao)[:100])
+
+#: O consumo é o MESMO código de `nodes.py`: os fatos menos a flag.
+_consumido = dict(_contrato_acao, required_facts=[
+    f for f in (_contrato_acao.get("required_facts") or [])
+    if f != "encerrar_com_o_rascunho"])
+checar(GUARDA(DEPOIS_DA_ACAO, _consumido).strip() == DEPOIS_DA_ACAO,
+       "🔴 consumida a flag, a resposta da AÇÃO passa INTACTA",
+       GUARDA(DEPOIS_DA_ACAO, _consumido)[:100])
+checar("insurer_dispatch" in NODES._TOOLS_DE_ACAO
+       and "request_human_agent" in NODES._TOOLS_DE_ACAO
+       and "portal_action" in NODES._TOOLS_DE_ACAO,
+       "🔴 e `nodes._TOOLS_DE_ACAO` nomeia as tools que disparam o consumo",
+       repr(sorted(NODES._TOOLS_DE_ACAO)))
+_fonte_do_no = open(os.path.join(RAIZ, "app", "agents", "nodes.py"),
+                    encoding="utf-8").read()
+_sem_comment = "\n".join(l.split("#")[0] for l in _fonte_do_no.splitlines())
+checar("_TOOLS_DE_ACAO" in _sem_comment and "_ordem_do_turno" in _sem_comment
+       and "encerrar_com_o_rascunho" in _sem_comment,
+       "🔴 e o consumo está no CÓDIGO do nó (ordem do turno + a lista), não "
+       "num comentário")
+
+# ---------------------------------------------------------------------------
+print("\n[12] 🔴 RODADA 2 — a LLM não pode NEGAR o que a base AFIRMOU")
+# 📊 Medido em 19/09/2026: com a base dizendo `sim` para guincho, o candidato
+# "Não, seu plano não tem guincho" PASSAVA — o guarda só olhava a direção `nao`.
+# Com 23 linhas publicadas hoje, é o segurado ouvindo que não tem o que tem.
+BASE._db = lambda supabase_client=None: db
+for _rotulo, _pergunta, _mentira in (
+        ("coberto", "tem guincho?",
+         "Não, o seu plano não tem guincho. Infelizmente não dá pra acionar."),
+        ("condicionado", "cobre vidro trincado?",
+         "Não, vidros não está coberto no seu plano.")):
+    _b, _contrato_m, _rendered_m, _meta_m = _fio(_pergunta, cliente=True,
+                                                 mensagem=_pergunta)
+    checar((_meta_m.get("cobertura") or {}).get("estado") == _rotulo,
+           f"`{_rotulo}`: o motor produziu o estado",
+           repr((_meta_m.get("cobertura") or {}).get("estado")))
+    _saiu = GUARDA(_mentira, _contrato_m)
+    checar(_saiu.strip() == str(_rendered_m).strip(),
+           f"🔴 `{_rotulo}`: a NEGAÇÃO da LLM é anulada (antes PASSAVA)",
+           _saiu[:120])
+    _verdade = ("Tem sim! O seu plano inclui guincho — 200 km. Quer que eu "
+                "solicite?" if _rotulo == "coberto"
+                else "Tem sim: vidros, com uma condição do seu contrato.")
+    checar(GUARDA(_verdade, _contrato_m).strip() == _verdade,
+           f"🔴 CONTROLE `{_rotulo}`: a resposta VERDADEIRA passa inteira",
+           GUARDA(_verdade, _contrato_m)[:120])
+
+print("\n      🔴 MUTAÇÃO do [12]: a regra invertida removida")
+_negativa_original = NODES._NEGATIVA_RE
+try:
+    import re as _re2
+    NODES._NEGATIVA_RE = _re2.compile(r"(?!x)x")  # nunca casa
+    _b, _contrato_mut, _r, _m = _fio("tem guincho?", cliente=True,
+                                     mensagem="tem guincho?")
+    _mentira_g = "Não, o seu plano não tem guincho."
+    checar(GUARDA(_mentira_g, _contrato_mut).strip() == _mentira_g,
+           "🔴 MUTAÇÃO: sem `_NEGATIVA_RE`, a negação volta a PASSAR",
+           GUARDA(_mentira_g, _contrato_mut)[:100])
+finally:
+    NODES._NEGATIVA_RE = _negativa_original
+BASE._db = lambda supabase_client=None: _base_vazia
 
 BASE._db = _db_original
 sys.exit(_fechar())

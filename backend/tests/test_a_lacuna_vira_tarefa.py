@@ -621,4 +621,100 @@ checar(not r_outro.get("gravou")
        "🔴 CONTROLE: `connection refused` NÃO é tratado como corrida — o ramo "
        "novo não engole falha de verdade", repr(r_outro))
 
+# ---------------------------------------------------------------------------
+print("\n[11] 🔴 RODADA 2 · D-E00151-03 — A PROMESSA TEM DONO")
+# 📊 O teto da E1 era 1 aviso por lacuna por CORRETORA por dia: o SEGUNDO
+# segurado do dia com a mesma dúvida ouvia "assim que eu tiver a confirmação, te
+# respondo" e NINGUÉM era avisado. Promessa sem dono é pior que resposta seca.
+CONVERSA_A = "aaaaaaaa-0000-4000-8000-000000000001"
+CONVERSA_B = "bbbbbbbb-0000-4000-8000-000000000002"
+
+
+def _registrar_na_conversa(db, marcador, porta, conversa):
+    import app.services.o_grupo_so_o_que_importa as G
+
+    antes = G.reivindicar_o_envio
+    try:
+        G.reivindicar_o_envio = marcador
+        return _rodar(L.registrar_lacuna(
+            db=db, company_id=EMPRESA_A, canal="segurado", cobertura=COBERTURA,
+            pergunta=PERGUNTA, conversation_id=conversa, enviar=porta))
+    finally:
+        G.reivindicar_o_envio = antes
+
+
+db_dono = _TabelaDeLacunas()
+marc_dono, porta_dono = _Marcador(), _PortaDoGrupo()
+_registrar_na_conversa(db_dono, marc_dono, porta_dono, CONVERSA_A)
+_registrar_na_conversa(db_dono, marc_dono, porta_dono, CONVERSA_B)
+checar(len(porta_dono.avisos) == 2,
+       "🔴 DOIS clientes diferentes, a MESMA lacuna → DOIS avisos: cada um a "
+       "quem se prometeu resposta tem um humano atrás", repr(len(porta_dono.avisos)))
+_registrar_na_conversa(db_dono, marc_dono, porta_dono, CONVERSA_A)
+checar(len(porta_dono.avisos) == 2,
+       "🔴 e o MESMO cliente perguntando de novo NÃO repete o 🆘",
+       repr(len(porta_dono.avisos)))
+checar(len(db_dono.linhas) == 1 and db_dono.linhas[0].get("frequency_count") == 3,
+       "⚠️ e a lacuna continua sendo UMA, com peso 3",
+       repr([(l.get("frequency_count")) for l in db_dono.linhas]))
+checar(L.chave_do_marcador("abc", CONVERSA_A) != L.chave_do_marcador("abc", CONVERSA_B)
+       and L.chave_do_marcador("abc", "") == "lacuna:abc",
+       "🔴 CONTROLE: a chave separa por conversa, e SEM conversa volta à antiga",
+       L.chave_do_marcador("abc", CONVERSA_A))
+
+print("\n      🔴 MUTAÇÃO de D-E00151-03: a chave sem a conversa")
+_chave_original = L.chave_do_marcador
+try:
+    L.chave_do_marcador = lambda fp, conversation_id="": "lacuna:%s" % fp
+    db_mut2 = _TabelaDeLacunas()
+    marc_mut2, porta_mut2 = _Marcador(), _PortaDoGrupo()
+    _registrar_na_conversa(db_mut2, marc_mut2, porta_mut2, CONVERSA_A)
+    _registrar_na_conversa(db_mut2, marc_mut2, porta_mut2, CONVERSA_B)
+    checar(len(porta_mut2.avisos) == 1,
+           "🔴 MUTAÇÃO: com a chave antiga, o SEGUNDO cliente fica sem humano — "
+           "a promessa volta a não ter dono", repr(len(porta_mut2.avisos)))
+finally:
+    L.chave_do_marcador = _chave_original
+
+# ---------------------------------------------------------------------------
+print("\n[12] 🔴 RODADA 2 · J4 — o ramo de EXCEÇÃO também devolve o marcador")
+# 📊 Carimbo do juiz da confirmação: o `except` da devolução não tinha guarda.
+# Uma porta que LEVANTA (não devolve `enviado=False`) queimava o marcador do dia.
+
+
+class _PortaQueLevanta:
+    def __init__(self):
+        self.tentativas = 0
+
+    async def __call__(self, _db, **kw):
+        self.tentativas += 1
+        raise RuntimeError("a porta explodiu")
+
+
+db_j4 = _TabelaDeLacunas()
+marc_j4, porta_j4 = _MarcadorQueDevolve(), _PortaQueLevanta()
+r_j4 = _registrar_com_devolucao(db_j4, marc_j4, porta_j4)
+checar(porta_j4.tentativas == 1 and not r_j4.get("avisou"),
+       "a porta LEVANTOU e o serviço não derrubou a resposta", repr(r_j4))
+checar(marc_j4.devolvidas == 1,
+       "🔴 e o marcador foi DEVOLVIDO pelo ramo de EXCEÇÃO", repr(marc_j4.devolvidas))
+
+print("\n      🔴 MUTAÇÃO de J4: o `except` sem a devolução")
+_dev_original = L._devolver_a_vez
+try:
+    _chamadas_dev = {"n": 0}
+
+    async def _conta_e_nao_devolve(*a, **k):
+        _chamadas_dev["n"] += 1
+
+    L._devolver_a_vez = _conta_e_nao_devolve
+    db_j4b = _TabelaDeLacunas()
+    marc_j4b = _MarcadorQueDevolve()
+    _registrar_com_devolucao(db_j4b, marc_j4b, _PortaQueLevanta())
+    checar(marc_j4b.devolvidas == 0 and _chamadas_dev["n"] >= 1,
+           "🔴 MUTAÇÃO: sem a devolução real, o marcador fica de pé depois de "
+           "uma exceção — a lacuna cala por 24 h", repr(marc_j4b.devolvidas))
+finally:
+    L._devolver_a_vez = _dev_original
+
 sys.exit(_fechar())

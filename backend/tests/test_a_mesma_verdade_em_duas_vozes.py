@@ -510,4 +510,76 @@ checar(not CITACAO.search(_de_volta) and bool(EQUIPE.search(_de_volta))
        "🔴 CONTROLE: restauradas as quatro, o texto do segurado volta ao certo",
        _de_volta)
 
+# ---------------------------------------------------------------------------
+print("\n[11] 🔴 RODADA 2 · P9-corretor — o MOTIVO chega ao TEXTO do corretor")
+# 📊 Carimbo do juiz da confirmação: `_sem_saber` chamava `_texto(...)` SEM
+# `motivo=`, e as quatro frases novas eram CÓDIGO MORTO — com
+# `plano_nao_identificado` saía, mesmo assim, "Ainda não tenho as condições da
+# HDI … na base", que manda o corretor cobrar uma destilação quando o problema é
+# outro. ⚠️ Medido PELO MOTOR (`responder_cobertura`), não por `_texto` direto.
+from app.services.skills.cobertura_e_assistencia import (  # noqa: E402
+    responder_cobertura,
+)
+
+_APOLICE_BASE = {"insurer": "hdi", "ramo": "auto", "produto": "Auto Perfil"}
+PARES_DE_MOTIVO = [
+    ("plano_nao_identificado",
+     dict(_APOLICE_BASE, estado_do_plano="nao_sabemos_ainda"),
+     "não consegui identificar qual plano"),
+    ("data_de_emissao_ilegivel",
+     dict(_APOLICE_BASE, data_emissao="maio de 2023",
+          plano="Essencial", nivel=1, estado_do_plano="contratado"),
+     "não consegui ler a data de emissão"),
+    ("seguradora_desconhecida",
+     dict(_APOLICE_BASE, insurer="seguradora-que-nao-existe-no-censo"),
+     "ainda não está no meu censo"),
+]
+_textos_por_motivo = {}
+for _motivo_esperado, _apolice, _frase in PARES_DE_MOTIVO:
+    _v = responder_cobertura(pergunta="tem taxi?", apolice=_apolice, db=db,
+                             atendente=None, permitir_fallback=False)
+    checar(_v is not None and _v.motivo == _motivo_esperado,
+           f"o motor produziu `motivo={_motivo_esperado}`",
+           repr(getattr(_v, "motivo", None)))
+    _texto_cor = (_v.texto if _v else "").lower()
+    _textos_por_motivo[_motivo_esperado] = _texto_cor
+    checar(_frase in _texto_cor,
+           f"🔴 e o texto AO CORRETOR diz o motivo real ({_frase!r})",
+           (_v.texto if _v else "")[:160])
+    checar("na base" not in _texto_cor.split("\n")[0],
+           "🔴 e NÃO abre com 'não tenho as condições … na base' — que é o "
+           "conserto de outro problema", (_v.texto if _v else "")[:160])
+
+_distintos = len(set(t.split("\n")[0] for t in _textos_por_motivo.values()))
+checar(_distintos == len(PARES_DE_MOTIVO),
+       "🔴 CONTROLE: os %d motivos dão %d primeiras linhas DIFERENTES — as "
+       "frases não são decorativas" % (len(PARES_DE_MOTIVO), _distintos),
+       repr(sorted(t.split("\n")[0][:60] for t in _textos_por_motivo.values())))
+
+_sem_motivo_conhecido = responder_cobertura(
+    pergunta="tem taxi?",
+    apolice=dict(_APOLICE_BASE, plano="Essencial", nivel=1,
+                 estado_do_plano="contratado"),
+    db=db, atendente=None, permitir_fallback=False)
+checar(_sem_motivo_conhecido is not None
+       and "na base" in (_sem_motivo_conhecido.texto or "").lower(),
+       "🔴 CONTROLE: `sem_linha_publicada` CONTINUA dizendo 'na base' — é o "
+       "motivo em que essa frase é a verdadeira",
+       (_sem_motivo_conhecido.texto if _sem_motivo_conhecido else "")[:160])
+
+print("\n      🔴 MUTAÇÃO do [11]: `_sem_saber` sem `motivo=`")
+_texto_original_r2 = SK._texto
+try:
+    SK._texto = lambda *a, **k: _texto_original_r2(*a, **{**k, "motivo": None})
+    _v_mut = responder_cobertura(
+        pergunta="tem taxi?",
+        apolice=dict(_APOLICE_BASE, estado_do_plano="nao_sabemos_ainda"),
+        db=db, atendente=None, permitir_fallback=False)
+    checar("na base" in (_v_mut.texto if _v_mut else "").lower(),
+           "🔴 MUTAÇÃO: sem o `motivo`, o corretor volta a ouvir 'não tenho as "
+           "condições … na base' — as 4 frases viram código morto",
+           (_v_mut.texto if _v_mut else "")[:160])
+finally:
+    SK._texto = _texto_original_r2
+
 sys.exit(_fechar())
