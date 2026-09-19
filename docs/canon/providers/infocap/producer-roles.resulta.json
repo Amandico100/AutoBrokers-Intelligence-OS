@@ -1,42 +1,8 @@
 {
-  "$comment": [
-    "SPEC-094 BLOCO F — o MAPA DE PRODUTOR, curado por gente.",
-    "",
-    "Por que ele existe: a fonte devolve um rotulo de papel (EXECUTIVO,",
-    "FECHADOR, INDICADOR) que descreve FUNCAO COMERCIAL, e nao VINCULO.",
-    "Chamar de 'funcionario' quem a fonte chamou de EXECUTIVO e uma afirmacao",
-    "trabalhista inventada pelo software, sobre uma pessoa, num documento que",
-    "circula. Enquanto ninguem preencher este arquivo, todo produtor sai como",
-    "`unknown` e o Artifact escreve 'papel nao mapeado' — que e a verdade.",
-    "",
-    "🔴 ESTE ARQUIVO NASCE COM ZERO ENTRADAS, DE PROPOSITO. Ele declara a",
-    "FORMA, nao o conteudo: `producers` vazio e o estado correto ate a",
-    "corretora dizer quem e quem. Pendencia P-094-MAPA-PRODUTOR.",
-    "",
-    "⛔ E o `label` e dado de pessoa. Quando ele for preenchido, o arquivo",
-    "passa a carregar nome de produtor — e por isso ele NUNCA e lido pelo",
-    "chat, so pelo Artifact do tenant. O que viaja no pacote que vai ao",
-    "modelo e o `producer_ref` opaco (sha256(company_id|label)[:16]).",
-    "",
-    "actor_type aceita exatamente: employee | partner | indicator | channel |",
-    "unknown. Qualquer outro valor e ignorado e vira `unknown`.",
-    "",
-    "role_source e o rotulo CRU que a fonte devolveu. Ele e procedencia, e",
-    "NUNCA decide o actor_type — e a mutacao M3 do guarda existe para provar",
-    "que a decisao nao vaza para ca."
-  ],
-  "spec": "094",
-  "company_slug": "resulta",
-  "provider_key": "infocap",
-  "schema_version": 1,
-  "default_actor_type": "unknown",
-  "actor_types": ["employee", "partner", "indicator", "channel", "unknown"],
-  "producers": [],
-  "exemplo_da_forma": {
-    "label": "<o rotulo exato como a fonte o devolve>",
-    "actor_type": "partner",
-    "role_source": "<o rotulo de papel que a fonte devolveu, se houver>",
-    "curado_por": "<quem decidiu>",
-    "curado_em": "<AAAA-MM-DD>"
-  }
+  "_mora_agora_em": "backend/app/data/providers/infocap/producer-roles.resulta.json",
+  "_mudou_de_lugar_em": "2026-09-19",
+  "_edite_la_nunca_aqui": "Este arquivo e um PONTEIRO. O censo do provider e lido em RUNTIME por backend/app/comercial/manifesto.py (e, pelo mapa de produtor, por backend/app/agents/tools/executive_intelligence.py). Ele precisa estar DENTRO do pacote: o backend/Dockerfile e `WORKDIR /app` + `COPY . .` de dentro de backend/, e docs/ NAO entra na imagem. 📊 19/09/2026, medido na copia que reproduz o conteiner: os.path.isdir(DIRETORIO_DO_CENSO) = False e carregar_manifesto('infocap') devolvia 0 capacidades (na arvore: 19), com ilegivel='' — tudo respondia UNKNOWN, sem erro, sem 500 e sem ninguem ver.",
+  "_por_que_ponteiro_e_nao_copia": "Uma copia aqui + um guarda de igualdade so GRITA depois que alguem editou um lado e esqueceu o outro. O ponteiro torna a divergencia impossivel — CLAUDE.md §5: consolidar e migrar antes de duplicar. E a mesma decisao das fatias 1 (vocabulario) e 2 (catalogos SUSEP).",
+  "_o_que_acontece_se_alguem_ler_este_arquivo_como_dado": "manifesto._ler_json RECUSA um censo sem a chave `capabilities`, gritando em ERROR — nunca carrega um manifesto vazio em silencio.",
+  "_o_que_ficou_aqui": "O CENSO NARRADO (INFOCAP-CORPAPI-CENSUS-v2.md), o dicionario de campos e os controles-ouro continuam em docs/: nenhum codigo os abre em runtime."
 }
