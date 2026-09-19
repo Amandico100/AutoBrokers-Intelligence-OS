@@ -132,6 +132,10 @@ def descricao_da_lacuna(cobertura: Dict[str, Any]) -> str:
     quem = str(cobertura.get("insurer_key") or "seguradora não identificada")
     ramo = str(cobertura.get("ramo") or "ramo não identificado")
     produto = str(cobertura.get("produto") or "produto não identificado")
+    # 🔴 CONSERTO B4: `motivo` só chega aqui desde 19/09/2026 — `para_registro()`
+    # não o carregava, e as cinco frases abaixo eram CÓDIGO MORTO em produção.
+    # 📊 `plano_nao_identificado` e `sem_linha_publicada` gravavam a MESMA frase,
+    # e o painel mandava curar o que podia já estar curado.
     motivo = str(cobertura.get("motivo") or "")
     porque = {
         "plano_nao_identificado": "o plano contratado não foi identificado na apólice",
@@ -144,8 +148,14 @@ def descricao_da_lacuna(cobertura: Dict[str, Any]) -> str:
 
 
 def _texto_do_aviso(cobertura: Dict[str, Any], pergunta_redigida: str,
-                    vezes: int) -> str:
+                    telefone: str = "") -> str:
     """O 🆘 da lacuna — a MESMA família de mensagem, o tamanho de um aviso.
+
+    ⛔ **E ele NÃO diz quantas vezes já perguntaram** (CONSERTO P4). O
+    `frequency_count` é GLOBAL por conteúdo: *"já perguntaram isto 2 vezes"* no
+    grupo da corretora B pode estar contando a pergunta de um segurado da
+    corretora A. Informação de outra corretora não atravessa (CLAUDE.md §7), e
+    o número certo já vive no painel da plataforma, que é de quem pode vê-lo.
 
     ⚠️ **Por que não `human_handoff._montar_dossie`:** ele é montado a partir de
     uma linha de `conversations` e de um motivo de handoff, e uma lacuna não tem
@@ -153,7 +163,9 @@ def _texto_do_aviso(cobertura: Dict[str, Any], pergunta_redigida: str,
     criar um segundo caminho com cara de primeiro. O que se reusa aqui é o que
     de fato é comum: o TIPO da mensagem, a porta e o traço do modelo.
     """
-    from app.services.os_modelos_do_grupo import _TRACO, _juntar, _linha
+    from app.services.os_modelos_do_grupo import (
+        _TRACO, _juntar, _linha, link_do_whatsapp,
+    )
 
     servico = str(cobertura.get("servico") or "")
     try:
@@ -175,8 +187,11 @@ def _texto_do_aviso(cobertura: Dict[str, Any], pergunta_redigida: str,
         "*👉 O QUE FAZER*",
         "Confirme com a seguradora e responda ao cliente. Eu não afirmei nada: "
         "disse que ia confirmar.",
-        _TRACO,
-        _linha("Já perguntaram isto", "%d vez(es)" % max(1, int(vezes or 1))),
+        # 🔴 CONSERTO B2 — *"responda ao cliente"* sem dizer QUAL cliente é um
+        # pedido que não dá para atender. O link é o MESMO de `human_handoff.
+        # _montar_dossie` (`link_do_whatsapp`), pelo mesmo motivo medido no
+        # piloto: no celular o número clicável custa UM TOQUE.
+        _linha("WhatsApp do segurado", link_do_whatsapp(telefone)),
     ])
 
 
@@ -201,18 +216,62 @@ async def _gravar(db: Any, *, company_id: str, fp: str, descricao: str,
         }).eq("id", atual["id"]))
         return {"gravou": True, "nova": False, "id": atual["id"], "vezes": vezes}
 
-    novo = await _executar(cli.table("capability_gaps").insert({
-        # ⚠️ PROCEDÊNCIA, não dono: a primeira corretora que esbarrou na falta.
-        "company_id": str(company_id or "") or None,
-        "gap_type": TIPO_DA_LACUNA,
-        "capability_key": CAPABILITY_DE_COBERTURA,
-        "provider": provider,
-        "description_redacted": descricao,
-        "fingerprint": fp,
-        "status": "open",
-    }))
+    try:
+        novo = await _executar(cli.table("capability_gaps").insert({
+            # ⚠️ PROCEDÊNCIA, não dono: a primeira corretora que esbarrou na falta.
+            "company_id": str(company_id or "") or None,
+            "gap_type": TIPO_DA_LACUNA,
+            "capability_key": CAPABILITY_DE_COBERTURA,
+            "provider": provider,
+            "description_redacted": descricao,
+            "fingerprint": fp,
+            "status": "open",
+        }))
+    except Exception as exc:  # noqa: BLE001
+        # 🔴 CONSERTO P3 — A CORRIDA. Dois workers perguntam ao mesmo tempo, os
+        # dois leem "não existe", os dois inserem: um ganha e o outro toma
+        # `capability_gaps_fingerprint_uk`. Sem este ramo, o perdedor virava
+        # `erro_ao_gravar` e a frequência ficava em 1 — a lacuna perguntada duas
+        # vezes contava uma, que é exatamente o número que o painel usa para
+        # priorizar.
+        #
+        # ⚠️ Relê e incrementa em vez de `ON CONFLICT`: o cliente aqui é o
+        # PostgREST, que não expõe `ON CONFLICT ... DO UPDATE` com incremento.
+        # A releitura é barata (índice único) e acontece só na corrida.
+        if "fingerprint" not in str(exc).lower() and "duplicate" not in str(exc).lower():
+            raise
+        logger.info("[LACUNA] corrida no fingerprint — releio e incremento")
+        de_novo = await _executar(cli.table("capability_gaps")
+                                  .select("id, frequency_count")
+                                  .eq("fingerprint", fp).limit(1))
+        linhas2 = list(getattr(de_novo, "data", None) or [])
+        if not linhas2:
+            raise
+        atual2 = linhas2[0]
+        vezes2 = int(atual2.get("frequency_count") or 1) + 1
+        from datetime import datetime as _dt, timezone as _tz
+
+        await _executar(cli.table("capability_gaps").update({
+            "frequency_count": vezes2,
+            "last_seen_at": _dt.now(_tz.utc).isoformat(),
+        }).eq("id", atual2["id"]))
+        return {"gravou": True, "nova": False, "id": atual2["id"], "vezes": vezes2}
     dados = list(getattr(novo, "data", None) or [{}])
     return {"gravou": True, "nova": True, "id": dados[0].get("id"), "vezes": 1}
+
+
+async def _devolver_a_vez(company_id: str, fp: str) -> None:
+    """Libera o marcador de 24 h desta lacuna. **Nunca levanta** (CONSERTO B3)."""
+    try:
+        from app.services.o_grupo_so_o_que_importa import (
+            TIPO_PEDIDO_DE_AJUDA, devolver_a_vez_do_grupo,
+        )
+
+        await devolver_a_vez_do_grupo(company_id, "lacuna:%s" % fp,
+                                      TIPO_PEDIDO_DE_AJUDA)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[LACUNA] marcador não devolvido (%s) — esta lacuna fica "
+                     "muda por 24 h", type(exc).__name__)
 
 
 async def registrar_lacuna(
@@ -277,8 +336,7 @@ async def registrar_lacuna(
             return resposta
 
         pergunta_redigida = _redigir(pergunta)
-        texto = _texto_do_aviso(cob, pergunta_redigida,
-                                int(resposta.get("vezes") or 1))
+        texto = _texto_do_aviso(cob, pergunta_redigida, str(telefone or ""))
         porta = enviar
         if porta is None:
             from app.services.o_grupo_so_o_que_importa import enviar_ao_grupo
@@ -292,7 +350,23 @@ async def registrar_lacuna(
         saida = saida if isinstance(saida, dict) else {}
         resposta["avisou"] = bool(saida.get("enviado"))
         resposta["motivo"] = str(saida.get("motivo") or "") or resposta["motivo"]
+        if not saida.get("enviado") and not saida.get("calado"):
+            # 🔴 CONSERTO B3 — O MARCADOR NÃO PODE QUEIMAR NUMA FALHA DE ENVIO.
+            #
+            # 📊 Medido pelo juiz em 19/09/2026, com a porta devolvendo
+            # `enviado=False (Timeout)`: a 1ª pergunta não avisava (o envio
+            # falhou) e a 2ª respondia `ja_avisei_esta_lacuna_hoje` — o marcador
+            # já estava de pé. O dia inteiro fechava com **zero** avisos, e o
+            # sintoma era indistinguível de "ninguém perguntou".
+            #
+            # ⚠️ A distinção importa: `calado=True` é a guarda funcionando (o
+            # humano já está na conversa) e o marcador FICA — avisar de novo seria
+            # o ruído que a 001.3 matou. `enviado=False` sem `calado` é FALHA, e
+            # falha não consome a cota do dia. É a mesma devolução que a própria
+            # porta faz com o marcador DELA (`o_grupo_so_o_que_importa.py:~700`).
+            await _devolver_a_vez(company_id, fp)
     except Exception as exc:  # noqa: BLE001
         logger.error("[LACUNA] aviso não saiu (%s)", type(exc).__name__)
         resposta["motivo"] = "erro_ao_avisar:%s" % type(exc).__name__
+        await _devolver_a_vez(company_id, fp)
     return resposta
