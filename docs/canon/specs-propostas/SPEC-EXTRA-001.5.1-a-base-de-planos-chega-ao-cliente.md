@@ -282,3 +282,16 @@ cegueira que deixou a 001.5 passar por juiz e confirmação com o produto deslig
 7. O isolamento entre corretoras está provado por guarda, com duas corretoras reais.
 8. Um guarda prova que a resposta não abre arquivo nenhum.
 9. Relatório com card, telemetria e a divergência de marcha escrita; push com a saída colada.
+
+---
+
+## 10. Emendas da revisão (Fable, 19/09/2026) — a proposta vale COM estas
+
+| # | emenda | motivo medido |
+|---|---|---|
+| E1 | **Unidade D:** o aviso ao grupo sai no máximo **1× por lacuna (fingerprint) por corretora por dia**, e **só quando a pergunta veio do segurado** (WhatsApp). No chat do corretor a lacuna é gravada mas não avisa o grupo: o corretor já está lendo a resposta | sem teto, toda pergunta sem resposta vira 🆘 no grupo — é o ruído que a 001.3 acabou de matar |
+| E2 | **Unidade B:** a publicação das linhas acontece **nesta execução**: um leitor read-only confere as 81 linhas contra a página (`LINHAS-CONFERIDAS.json`), o script de lote publica só as `PUBLICAR`, com o Founder como revisor | o Founder autorizou em 19/09; sem isso o produto continua mudo |
+| E3 | **Unidade A-bis (fatia 2):** os três catálogos SUSEP (`seguradora-coenti.json`, `ramo-cogrupo.json` e o de siglas) saem de `docs/` para `backend/app/data/`, com o guarda do contêiner estendido a eles | 📊 `susep_ses_provider.py:100-109` lê por `parents[4]`; na cópia do contêiner os mapas vêm vazios e `familia_de_acionamento` devolve `UNKNOWN` no caminho vivo |
+| E4 | `TOOL_GATEWAY_MODE` em produção é `shadow` (não `off`): a release da Skill continua inerte; nada muda na proposta | lido no ambiente do `smith-api` |
+| E5 | O guarda do contêiner roda o subprocesso com env mínimo dummy (o `settings` do pydantic exige variáveis) | reproduzido em 19/09: a cópia sem `.env` falha antes de chegar ao vocabulário |
+| E6 | A regra "todo gate de produção roda na cópia que reproduz o contêiner" entra no pacote do JUIZ com estas palavras: *"prove na cópia sem `docs/`, não na árvore"* | foi a cegueira da 001.5 |
