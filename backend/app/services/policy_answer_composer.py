@@ -499,6 +499,7 @@ def compose_policy_answer(*, question: str, result: Dict[str, Any]) -> str:
 def compose_policy_answer_with_meta(
     *, question: str, result: Dict[str, Any],
     db: Any = None, atendente: Optional[str] = None,
+    client_facing: bool = False,
 ) -> Dict[str, Any]:
     """Como compose_policy_answer, mas retorna também os metadados da política
     de assistência para o Policy Response Contract da tool (E4b).
@@ -509,6 +510,17 @@ def compose_policy_answer_with_meta(
     e uma segunda porta para a mesma pergunta seria motor paralelo no chamador
     — o lugar onde ele não aparece no diff da tabela.
 
+    🔴 SPEC-EXTRA-001.5.1 (D10) — **`client_facing` DIZ PARA QUEM SE FALA.**
+    O veredito é UM; o texto é DOIS. `client_facing=True` (o atendente no
+    WhatsApp) leva `texto_para_o_segurado`; `False` (o copiloto do corretor)
+    leva o texto com a fonte. ⛔ A Skill continua PURA: ela não sabe por onde a
+    resposta sai — ela devolve os dois e quem escolhe é este módulo, que é o
+    único lugar onde o canal e o veredito estão na mesma mão.
+
+    ⚠️ E os DOIS viajam no `meta` (`texto_para_o_corretor`,
+    `texto_para_o_segurado`): o que não foi escolhido serve para AUDITORIA e
+    para o guarda — nunca para envio.
+
     🔴 **UM VENCEDOR SÓ** (M-B5): quando a base responde, o retorno traz
     `cobertura` + `assistencia_da_base` e `assistance_policy` fica `None`;
     quando o fallback responde, é o inverso. Nunca os dois — dois vencedores
@@ -518,10 +530,13 @@ def compose_policy_answer_with_meta(
     result = result if isinstance(result, dict) else {}
     status = str(result.get("status") or "").strip()
     question_text = str(question or "")
+    para_o_cliente = bool(client_facing)
 
     def _plain(text: str) -> Dict[str, Any]:
         return {"text": text, "assistance_policy": None,
-                "cobertura": None, "assistencia_da_base": None}
+                "cobertura": None, "assistencia_da_base": None,
+                "texto_para_o_corretor": None, "texto_para_o_segurado": None,
+                "client_facing": para_o_cliente}
 
     if status == "identity_mismatch":
         return _plain(
@@ -577,8 +592,10 @@ def compose_policy_answer_with_meta(
         logger.warning("[composer] Skill de cobertura indisponível: %s", type(exc).__name__)
 
     if veredito is not None:
-        body = veredito.texto
-        if veredito.origem == "regra_generica" and policy_result.get("statement"):
+        # 🔴 O CANAL ESCOLHE O TEXTO — e é a ÚNICA coisa que ele escolhe. O
+        # veredito, o estado, a origem e a página são os mesmos nos dois lados.
+        body = veredito.texto_para_o_segurado if para_o_cliente else veredito.texto
+        if (not para_o_cliente) and veredito.origem == "regra_generica" and policy_result.get("statement"):
             # O fallback respondeu: a frase dele vai junto, porque é ela que o
             # contrato exige na resposta final (`assistance_policy_applied`).
             body = body + "\n" + str(policy_result["statement"])
@@ -587,7 +604,10 @@ def compose_policy_answer_with_meta(
         # coberturas estruturadas da apólice. Quando a base ainda não sabe, o
         # que já se sabia continua sendo dito — a lacuna da base não pode
         # apagar o que a fonte da corretora já entregava.
-        if veredito.estado == "nao_sabemos_ainda" and veredito.tipo == "cobertura":
+        # ⛔ E a lista estruturada NÃO entra no canal do segurado: ela cita
+        #    "documento oficial, página N", que é exatamente o que o §5-C proíbe
+        #    de chegar ao WhatsApp. No copiloto do corretor ela continua entrando.
+        if (not para_o_cliente) and veredito.estado == "nao_sabemos_ainda" and veredito.tipo == "cobertura":
             extra = _compose_coverage_answer(pack, facts)
             if extra and any(f.get("fact_type") == "coverage" for f in facts):
                 body = body + "\n\n" + extra
@@ -618,6 +638,19 @@ def compose_policy_answer_with_meta(
     if body:
         header_line = summary.splitlines()[0] if summary else ""
         parts = [body, f"_{header_line}_" if header_line else None, None]
+    if para_o_cliente and veredito is not None and body:
+        # 🔴 No WhatsApp, o VEREDITO É A MENSAGEM — SPEC-EXTRA-001.5.1 (C1).
+        #
+        # 📊 19/09/2026, medido por este mesmo guarda: com a linha de contexto
+        # colada no fim, a resposta ao segurado ia a **4 frases e 190
+        # caracteres** e voltava a dizer "apólice 1234567890 — Auto Perfil
+        # (HDI)". O teto da 001.2 é 3 frases e 450 caracteres, e a palavra
+        # "apólice" é jargão de cozinha no meio de uma conversa de WhatsApp.
+        #
+        # ⚠️ A linha de contexto FICA para o corretor: lá ela responde "de qual
+        # apólice você está falando?", que é uma pergunta que o corretor faz e
+        # o segurado não.
+        parts = [body, None, None]
     # 🔴 UM VENCEDOR SÓ — M-B5.
     #
     # `assistance_policy` é o que faz o contrato exigir "eletricista + chaveiro
@@ -641,4 +674,12 @@ def compose_policy_answer_with_meta(
         "cobertura": cobertura,
         "assistencia_da_base": da_base,
         "facts": facts,
+        # ⚠️ AUDITORIA, nunca envio: os DOIS textos viajam, e o `client_facing`
+        # diz qual deles virou `text`. É com eles que o guarda prova que a
+        # mesma verdade foi dita de duas formas — e é com eles que se confere,
+        # depois de um incidente, o que o segurado leu.
+        "texto_para_o_corretor": (veredito.texto if veredito is not None else None),
+        "texto_para_o_segurado": (veredito.texto_para_o_segurado
+                                  if veredito is not None else None),
+        "client_facing": para_o_cliente,
     }
