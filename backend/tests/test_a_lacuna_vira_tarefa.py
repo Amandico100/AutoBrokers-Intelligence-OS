@@ -563,4 +563,62 @@ checar(L.descricao_da_lacuna(_sem_motivo) == _d1,
        "🔴 MUTAÇÃO: sem `motivo`, o caso do PLANO volta a gravar a frase do "
        "caso da BASE — as duas viram uma", repr(L.descricao_da_lacuna(_sem_motivo)))
 
+
+# ---------------------------------------------------------------------------
+print("\n[10] 🔴 P3 — A CORRIDA: dois workers, uma linha, frequência 2")
+# 📊 Dois workers perguntam ao mesmo tempo, os dois leem "não existe", os dois
+# inserem: um ganha e o outro toma `capability_gaps_fingerprint_uk`. Sem o ramo
+# de releitura, o perdedor virava `erro_ao_gravar` e a frequência ficava em 1 —
+# e 1 é exatamente o número que o painel usa para priorizar.
+
+
+class _TabelaComCorrida(_TabelaDeLacunas):
+    """O `insert` da PRIMEIRA vez perde a corrida: a linha já está lá.
+
+    ⚠️ O duplo levanta a violação com a MENSAGEM real do Postgres — é ela que o
+    serviço usa para distinguir a corrida de um erro qualquer.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.corridas = 0
+
+    def _executar(self, consulta):
+        if consulta.acao == "insert" and self.corridas == 0:
+            self.corridas += 1
+            # o OUTRO worker gravou primeiro, entre o `select` e o `insert`
+            linha = dict(consulta.carga, id="gap-do-outro-worker",
+                         frequency_count=1)
+            self.linhas.append(linha)
+            raise RuntimeError('duplicate key value violates unique constraint '
+                               '"capability_gaps_fingerprint_uk"')
+        return super()._executar(consulta)
+
+
+db_p3 = _TabelaComCorrida()
+r_p3 = _registrar(db_p3, _Marcador(), _PortaDoGrupo(), canal="segurado")
+checar(db_p3.corridas == 1, "a corrida ACONTECEU no duplo", repr(db_p3.corridas))
+checar(r_p3.get("gravou") and not str(r_p3.get("motivo", "")).startswith("erro"),
+       "🔴 o perdedor da corrida NÃO vira `erro_ao_gravar`", repr(r_p3))
+checar(len(db_p3.linhas) == 1 and db_p3.linhas[0].get("frequency_count") == 2,
+       "🔴 UMA linha, com `frequency_count=2` — as duas perguntas contam",
+       repr([(l.get("id"), l.get("frequency_count")) for l in db_p3.linhas]))
+
+print("      🔴 CONTROLE do [10]: erro que NÃO é corrida continua sendo erro")
+
+
+class _TabelaComOutroErro(_TabelaDeLacunas):
+    def _executar(self, consulta):
+        if consulta.acao == "insert":
+            raise RuntimeError("connection refused")
+        return super()._executar(consulta)
+
+
+r_outro = _registrar(_TabelaComOutroErro(), _Marcador(), _PortaDoGrupo(),
+                     canal="segurado")
+checar(not r_outro.get("gravou")
+       and str(r_outro.get("motivo", "")).startswith("erro_ao_gravar"),
+       "🔴 CONTROLE: `connection refused` NÃO é tratado como corrida — o ramo "
+       "novo não engole falha de verdade", repr(r_outro))
+
 sys.exit(_fechar())
