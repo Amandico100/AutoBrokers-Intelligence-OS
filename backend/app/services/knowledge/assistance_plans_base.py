@@ -1474,6 +1474,53 @@ def para_rascunho(
     return (r.data or [{}])[0]
 
 
+def devolver_servico_a_proposto(
+    servico_id: str, motivo: str, *, db: Any = None
+) -> Dict[str, Any]:
+    """Uma linha em `rascunho` volta para a FILA. ⛔ Não é publicar.
+
+    🔴 POR QUE ESTE IRMÃO PRECISOU EXISTIR (SPEC-EXTRA-001.5.1, D7)
+    ===============================================================
+    `para_rascunho` era uma porta de mão única: o verificador desce a linha e
+    **não havia escritor que a trouxesse de volta**. 📊 19/09/2026 isso deixou de
+    ser teórico — 4 linhas `proposto` estavam sob planos `rascunho`, e a saída
+    "manda as 4 para `rascunho` por coerência" trancaria ali, para sempre, duas
+    linhas que o leitor tinha conferido palavra por palavra contra a página.
+
+    ⚠️ `proposto` é a FILA, não a aprovação: quem sobe para `publicado` continua
+    sendo `publicar_servico`, com revisor e com o plano pai junto. Devolver à
+    fila é pedir que uma pessoa olhe de novo — o oposto de decidir por ela.
+
+    ⛔ Só de `rascunho`. De `rejeitado` não: alguém recusou com nome e motivo, e
+    desfazer isso por chamada de função apagaria a recusa sem ninguém revê-la.
+    """
+    if not str(motivo or "").strip():
+        raise BaseDePlanosRecusa(
+            "devolver à fila sem motivo esconde por que a linha saiu do rascunho")
+    cliente = _db(db)
+    atual = (
+        cliente.table(TABELA_SERVICOS).select("id, curadoria")
+        .eq("id", str(servico_id)).limit(1).execute()
+    ).data or []
+    if not atual:
+        raise BaseDePlanosRecusa("serviço %r não existe" % str(servico_id))
+    estado = str(atual[0].get("curadoria") or "")
+    if estado != "rascunho":
+        raise BaseDePlanosRecusa(
+            "só se devolve à fila a partir de `rascunho`; esta linha está %r" % estado)
+    patch = {
+        "curadoria": "proposto",
+        # O motivo do rascunho some porque ele deixou de ser verdade. O porquê
+        # da volta fica no log, que é onde ele é útil: a linha volta a ser uma
+        # proposta como as outras, sem carimbo de julgamento anterior.
+        "motivo_do_rascunho": None,
+        "updated_at": _agora(),
+    }
+    r = cliente.table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
+    logger.info("[base-planos] servico %s devolvido a proposto: %s", servico_id, motivo)
+    return (r.data or [{}])[0]
+
+
 def corrigir_vigencia_do_plano(
     plano_id: str, vigencia_inicio: Any, *, motivo: str = "", db: Any = None
 ) -> Dict[str, Any]:

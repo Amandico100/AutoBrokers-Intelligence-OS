@@ -391,4 +391,38 @@ finally:
 
     shutil.rmtree(_pasta, ignore_errors=True)
 
+# ---------------------------------------------------------------------------
+print("\n[9] 🔴 `rascunho` não é porta de mão única (D7)")
+# 📊 19/09/2026: 4 linhas `proposto` estavam sob planos `rascunho`. Mandá-las
+# para `rascunho` "por coerência" trancaria ali, para sempre, duas linhas que o
+# leitor tinha conferido palavra por palavra — porque `para_rascunho` não tinha
+# inverso. Este bloco prova que a volta existe, e que ela NÃO é publicar.
+db6, ids6 = base_com_tres_linhas()
+BASE.para_rascunho(ids6["publicar"], "o plano pai foi recusado", db=db6)
+estado6 = {str(l["id"]): l for l in db6.tabelas["insurer_assistance_services"]}
+checar(estado6[ids6["publicar"]]["curadoria"] == "rascunho",
+       "a linha desceu para `rascunho` com motivo",
+       repr(estado6[ids6["publicar"]].get("motivo_do_rascunho")))
+BASE.devolver_servico_a_proposto(ids6["publicar"], "o plano pai foi consertado", db=db6)
+checar(estado6[ids6["publicar"]]["curadoria"] == "proposto",
+       "🔴 e VOLTA para a fila (`proposto`) — a porta abre nos dois sentidos",
+       estado6[ids6["publicar"]]["curadoria"])
+checar(not estado6[ids6["publicar"]].get("motivo_do_rascunho"),
+       "e o motivo do rascunho some, porque deixou de ser verdade",
+       repr(estado6[ids6["publicar"]].get("motivo_do_rascunho")))
+try:
+    BASE.devolver_servico_a_proposto(ids6["recusar"], "sem passar por rascunho", db=db6)
+    recusou6, detalhe6 = False, "devolveu uma linha que estava em `proposto`"
+except BASE.BaseDePlanosRecusa as exc:
+    recusou6, detalhe6 = True, str(exc)[:140]
+checar(recusou6,
+       "🔴 CONTROLE: só se devolve a partir de `rascunho` — a função não é um "
+       "atalho para mexer em qualquer estado", detalhe6)
+try:
+    BASE.devolver_servico_a_proposto(ids6["publicar"], "", db=db6)
+    exigiu6, detalhe6 = False, "aceitou motivo vazio"
+except BASE.BaseDePlanosRecusa as exc:
+    exigiu6, detalhe6 = True, str(exc)[:140]
+checar(exigiu6, "e exige motivo, como o irmão que desce", detalhe6)
+
 sys.exit(_fechar())
