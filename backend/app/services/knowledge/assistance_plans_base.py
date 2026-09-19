@@ -95,8 +95,36 @@ COBERTURAS = ("sim", "nao", "condicionado")
 CONFIANCAS = ("alta", "media", "baixa")
 UNIDADES = ("km", "dias", "acionamentos_ano", "reais", "unidades")
 
-#: O caminho RELATIVO do vocabulário dentro do repositório. Um só, para o
-#: resolvedor e para a mensagem de erro não poderem divergir.
+#: 🔴 ONDE O VOCABULÁRIO MORA — DENTRO DO PACOTE (SPEC-EXTRA-001.5.1, D1).
+#:
+#: `backend/app/data/servicos-de-assistencia.json`. É `app/`, logo é **código**,
+#: logo entra no `COPY . .` do `backend/Dockerfile`. É o conserto do defeito que
+#: manteve a Skill de cobertura DESLIGADA em produção, em silêncio, desde a
+#: 001.5 (📊 19/09: `/fila` → 500; o compositor logando
+#: `Skill de cobertura indisponível` e caindo no caminho antigo).
+#:
+#: ⚠️ Um só valor, para o resolvedor e a mensagem de erro não divergirem.
+_NO_PACOTE = ("data", "servicos-de-assistencia.json")
+
+#: O caminho RELATIVO do vocabulário a partir da RAIZ DO REPOSITÓRIO — onde o
+#: arquivo morava até 19/09/2026. Continua sendo procurado (uma árvore antiga,
+#: ou um checkout parcial, ainda pode tê-lo ali), mas hoje o de `docs/` é um
+#: **ponteiro** de cinco linhas, não o dado.
+#:
+#: 🔴 PONTEIRO × CÓPIA — a decisão, com nota (protocolo §9)
+#: ```
+#: PONTEIRO no `docs/`, dado só no pacote ........ 88   escolhido
+#:     uma fonte só (CLAUDE.md §5: consolidar, não duplicar); divergência
+#:     IMPOSSÍVEL, não "detectável depois"; custo: quem lê o canon dá um pulo
+#: CÓPIA nos dois + guarda de igualdade byte a byte  72
+#:     o canon continua lendo o dado direto; mas são DOIS arquivos para editar,
+#:     e o guarda só grita DEPOIS que alguém editou um e esqueceu o outro —
+#:     é alarme, não impedimento
+#: ```
+#: E a porta que a escolha fecha: se um dia o resolvedor pegar o ponteiro por
+#: engano, `vocabulario_de_servicos` **recusa** (não há chave `servicos`), em vez
+#: de carregar um vocabulário vazio que faria `servico_canonico` devolver `None`
+#: para tudo — o mesmo silêncio que esta SPEC existe para matar.
 _RELATIVO_DO_VOCABULARIO = ("docs", "canon", "providers", "susep",
                             "servicos-de-assistencia.json")
 
@@ -121,16 +149,27 @@ class VocabularioNaoEncontrado(Exception):
 def _candidatos_do_vocabulario() -> List[Path]:
     """Os caminhos procurados, na ordem — sem I/O.
 
+    🔴 ⓪ **DENTRO DO PACOTE**, `app/data/` — o único que existe na IMAGEM.
     ① `AUTOBROKERS_REPO_ROOT` (se o ambiente declarar a raiz);
     ② **subindo** a árvore a partir deste arquivo até achar `docs/canon`;
     ③ o caminho histórico `parents[4]`, que continua valendo na árvore normal.
 
     ⚠️ Subir procurando `docs/canon` (e não contar `parents[n]`) é o que faz o
     módulo funcionar de qualquer `cwd` e sobreviver a mover a pasta um nível.
+
+    🔴 **⓪ VEM PRIMEIRO, E A ORDEM É O CONSERTO.** ①②③ apontam todos para fora
+    da imagem (📊 19/09/2026: `backend/Dockerfile` é `WORKDIR /app` + `COPY . .`
+    de dentro de `backend/`; `/health` publica `code_files: 396`, que é o número
+    de `.py` em `backend/app` — `docs/` não está lá). Deixar ⓪ por último faria a
+    árvore de desenvolvimento continuar lendo o `docs/`, e o guarda do contêiner
+    passaria a medir uma coisa e produção a rodar outra: a cegueira do §9.1, de
+    novo, uma casa adiante.
     """
     import os
 
     fora: List[Path] = []
+    # ⓪ `parents[2]` a partir de `app/services/knowledge/` é `app/`.
+    fora.append(Path(__file__).resolve().parents[2].joinpath(*_NO_PACOTE))
     declarada = os.environ.get("AUTOBROKERS_REPO_ROOT")
     if declarada:
         fora.append(Path(declarada).joinpath(*_RELATIVO_DO_VOCABULARIO))
@@ -153,8 +192,10 @@ def caminho_do_vocabulario() -> Path:
         if caminho.is_file():
             return caminho
     raise VocabularioNaoEncontrado(
-        "o vocabulário de serviços (%s) não está em nenhum destes caminhos: %s"
-        % ("/".join(_RELATIVO_DO_VOCABULARIO), [str(c) for c in candidatos])
+        "o vocabulário de serviços (%s; mora em backend/%s) não está em nenhum "
+        "destes caminhos: %s"
+        % ("/".join(_RELATIVO_DO_VOCABULARIO), "app/" + "/".join(_NO_PACOTE),
+           [str(c) for c in candidatos])
     )
 
 
@@ -286,8 +327,24 @@ def vocabulario_de_servicos() -> Dict[str, Any]:
     """
     global _VOCABULARIO
     if _VOCABULARIO is None:
-        with open(caminho_do_vocabulario(), "r", encoding="utf-8") as fh:
-            _VOCABULARIO = json.load(fh)
+        caminho = caminho_do_vocabulario()
+        with open(caminho, "r", encoding="utf-8") as fh:
+            carregado = json.load(fh)
+        # 🔴 VOCABULÁRIO VAZIO É INSTALAÇÃO INCOMPLETA, NÃO VOCABULÁRIO.
+        #
+        # Desde 19/09 o arquivo de `docs/` é um PONTEIRO (sem a chave
+        # `servicos`). Se o resolvedor pegasse o ponteiro por engano, o dict
+        # viria vazio e `servico_canonico` devolveria `None` para TODA pergunta
+        # — a Skill desligada de novo, e desta vez sem nem uma exceção no log.
+        # Um arquivo que existe e não tem serviços é a mesma classe de problema
+        # que arquivo nenhum, e recebe o mesmo erro, que LISTA onde procurou.
+        if not (carregado.get("servicos") or {}):
+            raise VocabularioNaoEncontrado(
+                "o arquivo %s existe mas não declara nenhum serviço "
+                "(sem a chave `servicos`) — o vocabulário mora em backend/%s"
+                % (caminho, "app/" + "/".join(_NO_PACOTE))
+            )
+        _VOCABULARIO = carregado
     return _VOCABULARIO
 
 
