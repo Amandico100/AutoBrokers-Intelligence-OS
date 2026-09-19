@@ -370,6 +370,15 @@ _CAMPOS_DA_ORIGEM = (
     "estado", "servico", "tipo", "insurer_key", "ramo", "produto", "plano",
     "nivel", "plano_id", "documento_id", "pagina", "documento", "origem",
     "confianca", "gancho",
+    # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B4 — POR QUE a Skill nao soube responder.
+    #
+    # ⛔ E ele entra porque e ENUM DE CODIGO, nao argumento: os valores sao
+    # escritos na propria Skill (`plano_nao_identificado`, `sem_linha_publicada`,
+    # `seguradora_desconhecida`, `data_de_emissao_ilegivel`,
+    # `dois_planos_no_texto`) ou um `type(exc).__name__`. Nenhum vem do texto do
+    # corretor nem da apolice — que e a linha que esta lista existe para nao
+    # deixar ninguem cruzar.
+    "motivo",
 )
 
 
