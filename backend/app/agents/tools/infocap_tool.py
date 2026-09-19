@@ -140,6 +140,11 @@ def _origem_em_portugues(cobertura: Any) -> str:
     return texto
 
 
+#: 🔴 O separador da JANELA das 3 últimas humanas — o MESMO de `nodes.py:1649`.
+#: ⚠️ Escrito aqui como constante para que mudá-lo num lugar e esquecer no outro
+#: vire erro de import, não uma varredura silenciosa que não fatia nada.
+SEPARADOR_DA_JANELA = " | "
+
 #: 🔴 Os estados em que a LLM NAO tem o que acrescentar (CONSERTO B1 ii).
 #:
 #: `nao_sabemos_ainda` = nao existe linha publicada; `fonte_indisponivel` = a
@@ -929,7 +934,13 @@ class InfocapPolicyLookupTool(BaseTool):
                 # PERGUNTOU sobre cobertura — o que e falso. A lacuna continua
                 # sendo GRAVADA (a frequencia de "pediu guincho na HDI e nao
                 # temos linha" e informacao boa), mas ninguem e interrompido.
-                pergunta=(mensagem_atual or user_query),
+                #
+                # 🔴 RODADA 4 (B-N1): a mensagem que vai ao 🆘 e a MESMA que
+                # decidiu a intencao. 📊 Antes era `mensagem_atual or
+                # user_query`, e no turno do documento o aviso saia "O cliente
+                # perguntou: [CPF]" — sem PII, e sem serventia.
+                pergunta=((meta or {}).get("fonte_da_intencao")
+                          or mensagem_atual or user_query),
                 conversation_id=_da_conversa.get("conversation_id") or "",
                 telefone=_da_conversa.get("telefone") or "")
         except Exception as exc:  # noqa: BLE001
@@ -939,12 +950,45 @@ class InfocapPolicyLookupTool(BaseTool):
     @staticmethod
     def _a_intencao_da_mensagem(mensagem_atual: Optional[str],
                                 user_query: Optional[str]) -> Dict[str, bool]:
-        """`{"pergunta": bool, "so_de_cobertura": bool}` — a porta da RODADA 2.
+        """`{"pergunta", "so_de_cobertura", "fonte"}` — a porta de intenção.
 
-        🔴 A leitura e da MENSAGEM ATUAL. `user_query` (a janela de tres humanas)
-        entra so como ultimo recurso, quando o sistema nao mandou a atual: ela
-        existe para a tool ACHAR a apolice, e usa-la aqui faria uma pergunta de
-        cobertura do turno anterior calar o acionamento do turno seguinte.
+        🔴 **UMA FONTE SÓ, E ELA VIAJA** (RODADA 4, B-N1). A intenção, o
+        reconhecimento do serviço e o texto que vai ao 🆘 saem todos da MESMA
+        mensagem. 📊 Medido pelo juiz final: a rodada 3 moveu a INTENÇÃO para a
+        janela quando a atual é indeterminada, mas deixou `texto` na atual —
+        então `so_de_cobertura` ficava `False` no turno do documento, e como a
+        flag o exige (`_build_policy_response_contract`), a fiscalização
+        desligava:
+
+        ```
+        "meu plano cobre taxi? | 12345678900", atual="12345678900"
+           pergunta=True · so_de_cobertura=False · required_facts=[]
+           "Sim! Seu plano tem taxi sim, pode acionar."      -> CHEGAVA INTACTO
+        ```
+
+        ⚠️ E isso é **100 % do tráfego de hoje**: sem linha publicada, toda
+        pergunta de cobertura cai em `nao_sabemos_ainda` — um dos dois estados
+        que a flag cobre.
+
+        🔴 **A JANELA SE VARRE DO MAIS NOVO PARA O MAIS VELHO** (B-N2). Ela é um
+        BLOCO de até três humanas juntadas por `" | "` (`nodes.py:1649`), e
+        `_COBERTURA_FORTE_RE` é a primeira trava — então a pergunta do turno
+        N-2 vencia o pedido do turno N-1:
+
+        ```
+        "meu plano cobre guincho? | preciso de guincho, estou parado | 12345678900"
+           pergunta=True -> o próximo passo do acionamento era TROCADO
+        ```
+
+        ⛔ **A docstring anterior dizia o OPOSTO do código** (§9.3): afirmava que
+        usar a janela faria a pergunta do turno anterior calar o acionamento do
+        turno seguinte — e era exatamente o que o código passou a fazer. O que
+        vale é: a janela entra SÓ quando a mensagem atual não decide, e nela
+        manda a mensagem mais NOVA que decide.
+
+        📊 O fluxo real do produto (a injeção em `nodes.py:1630`, incidente
+        12/07): o cliente pergunta, o agente pede o CPF, e a tool roda **no
+        turno do CPF**.
         """
         from app.services.knowledge.assistance_plans_base import (  # noqa: PLC0415
             servico_canonico,
@@ -958,25 +1002,22 @@ class InfocapPolicyLookupTool(BaseTool):
 
         atual = str(mensagem_atual or "").strip()
         janela = str(user_query or "")
-        # 🔴 RODADA 3 (B1) — O TURNO DO CPF NÃO DESLIGA A FISCALIZAÇÃO.
-        #
-        # 📊 O fluxo real do produto (documentado em `nodes.py:1576-1590`,
-        # incidente 12/07) é: o cliente pergunta, o agente pede o CPF, e a tool
-        # roda **no turno do CPF**. Medido pelo juiz da rodada 3:
-        #     "tem guincho? | 12345678900"       -> pergunta=False, required_facts=[]
-        #     "Sim, tem esse serviço sim!"       -> CHEGAVA INTACTO
-        # A garantia da 001.5 (M-B5) tinha passado a valer só quando a pergunta
-        # é literalmente a última mensagem.
-        #
-        # ⛔ Ausência de sinal NUNCA é pedido: `indeterminada` cai na JANELA,
-        # que é onde a pergunta original está.
         intencao = intencao_da_mensagem(atual)
+        fonte = atual
         if intencao == INDETERMINADA:
-            intencao = intencao_da_mensagem(janela)
+            # ⛔ Ausência de sinal NUNCA é pedido: cai na janela — e nela manda
+            #    a mais NOVA que decide, nunca a mais velha.
+            for parte in reversed([t.strip() for t in janela.split(SEPARADOR_DA_JANELA)
+                                   if t.strip()]):
+                achada = intencao_da_mensagem(parte)
+                if achada != INDETERMINADA:
+                    intencao, fonte = achada, parte
+                    break
+            else:
+                fonte = janela or atual
         pergunta = bool(intencao == PERGUNTA)
-        texto = atual or janela
         try:
-            reconhece = bool(servico_canonico(texto))
+            reconhece = bool(servico_canonico(fonte))
         except Exception:  # noqa: BLE001 — sem vocabulario, trata como pedido
             reconhece = False
         return {
@@ -984,7 +1025,11 @@ class InfocapPolicyLookupTool(BaseTool):
             # ⛔ "SO de cobertura" exclui a MISTA: ver
             # `outro_assunto_na_mesma_mensagem`.
             "so_de_cobertura": bool(pergunta and reconhece
-                                    and not outro_assunto_na_mesma_mensagem(texto)),
+                                    and not outro_assunto_na_mesma_mensagem(fonte)),
+            # 🔴 A MESMA mensagem que decidiu a intenção é a que vai ao 🆘.
+            # 📊 Antes, o aviso saía "O cliente perguntou: [CPF]" — redigido,
+            # sem PII, e inútil para quem tem de responder.
+            "fonte": fonte,
         }
 
     def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool,
@@ -1028,6 +1073,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     pergunta_de_cobertura=_intencao["pergunta"])
                 if isinstance(meta, dict):
                     meta["so_de_cobertura"] = _intencao["so_de_cobertura"]
+                    meta["fonte_da_intencao"] = _intencao.get("fonte") or ""
                 rendered = str(meta.get("text") or "")
                 if rendered:
                     if str(data.get("status") or "") == "identity_mismatch":
