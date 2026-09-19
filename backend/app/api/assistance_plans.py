@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """A tela de Conhecimento pergunta à base de planos — SPEC-EXTRA-001.5 · BLOCO D.
 
-Três perguntas, e só três:
+Quatro perguntas, e só quatro:
 
 ```
 GET  /api/assistance-plans/cobertura   o que a base cobre, por seguradora × ramo
-GET  /api/assistance-plans/fila        o que espera gente, com o TRECHO e a PÁGINA
+GET  /api/assistance-plans/fila        o que espera gente — SEM abrir PDF nenhum
+GET  /api/assistance-plans/pagina      a página de UMA linha, quando a pessoa a abre
 POST /api/assistance-plans/curadoria   publicar (com revisor) ou rejeitar (com motivo)
 ```
+
+🔴 A PÁGINA SAIU DA FILA (SPEC-EXTRA-001.5.1, D5). 📊 A fila baixava 24 PDFs em
+série para mostrar a primeira linha: 65,3 s em produção. Quem revisa abre uma
+linha de cada vez — e é ela, e só ela, que o `/pagina` vai buscar.
 
 🔴 A BASE É GLOBAL — E POR ISSO NÃO HÁ `company_id` AQUI
 ========================================================
@@ -153,7 +158,22 @@ def _termos_do_servico(servico: str) -> List[str]:
 
 @router.get("/fila", dependencies=[Depends(require_internal_key)])
 def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
-    """A fila da LINHA, com a PÁGINA lida do PDF arquivado NA HORA.
+    """A fila da LINHA. ⛔ **Não abre PDF nenhum** (SPEC-EXTRA-001.5.1, D5).
+
+    🔴 O QUE MUDOU, E QUANTO CUSTAVA
+    ================================
+    ```
+    📊 65,3 s   em produção, 19/09/2026 — 24 PDFs do MinIO baixados em série
+    📊 22,5 s   desta máquina contra o MinIO de produção, no mesmo dia
+    📊  1,0 s   depois — a consulta, e mais nada
+    ```
+    A página de cada linha passa a ser buscada **quando a pessoa abre aquela
+    linha**, por `GET /pagina?servico_id=…`. Quem revisa abre uma linha de cada
+    vez: montar as sessenta antes de mostrar a primeira era pagar, toda vez, por
+    cinquenta e nove que ninguém ia ler naquele minuto.
+
+    ⚠️ `termos_do_servico` CONTINUA aqui: ele sai do vocabulário em memória, não
+    do PDF, e é o que a tela usa para grifar assim que o texto chega.
 
     🔴 POR QUE NÃO SE RECONFERE O `trecho_hash` AQUI
     ================================================
@@ -162,72 +182,24 @@ def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
     outro valor, sempre. 📊 18/09/2026 a tela mostrava `trecho_confere: false`
     em **100 %** da fila por causa disso, e um selo que está sempre vermelho
     ensina a pessoa a ignorá-lo: é pior que selo nenhum.
-
-    Quem conferiu foi o **verificador**, no momento da proposta, quando ainda
-    tinha o trecho na mão (`conferir_pagina`). O que a tela mostra agora é o
-    texto REAL da página, com os termos do serviço destacados, para a pessoa
-    julgar com os próprios olhos — que é o ato que esta fila existe para colher.
     """
     cliente = _db()
     itens = BASE.fila_de_curadoria(limite=int(limite), db=cliente)
-
-    # Uma leitura por DOCUMENTO, não por item: 📊 um documento do acervo tem 207
-    # páginas e baixá-lo uma vez por linha seria o mesmo arquivo dez vezes.
-    por_documento: Dict[str, List[int]] = {}
     for i in itens:
-        if i.get("documento_id") and i.get("pagina"):
-            por_documento.setdefault(str(i["documento_id"]), []).append(int(i["pagina"]))
-    textos: Dict[str, Dict[int, str]] = {}
-    motivos: Dict[str, str] = {}
-    for doc_id, paginas in por_documento.items():
-        try:
-            lidas = BASE.texto_das_paginas(doc_id, sorted(set(paginas)), db=cliente)
-            textos[doc_id] = lidas.paginas or {}
-            motivos[doc_id] = lidas.motivo
-        except Exception as exc:  # noqa: BLE001 — a fila abre mesmo sem o PDF
-            logger.warning("[planos] fonte indisponivel: %s", type(exc).__name__)
-            motivos[doc_id] = "fonte_indisponivel"
-
-    for i in itens:
-        doc_id, pagina = str(i.get("documento_id")), i.get("pagina")
-        # 🔴 UMA LINHA QUE FALHA NÃO DERRUBA A FILA (SPEC-EXTRA-001.5.1).
-        #
-        # A leitura do DOCUMENTO já era protegida; a montagem da LINHA não era.
-        # `int(pagina)` sobre um valor estranho, ou um texto que não é texto,
-        # estouravam aqui e devolviam 500 para a fila inteira — 59 linhas
-        # perfeitas somem por causa de uma. Quem revisa prefere 59 linhas e uma
-        # explicando o próprio buraco.
-        try:
-            texto = (textos.get(doc_id) or {}).get(int(pagina)) if pagina else None
-        except (TypeError, ValueError) as exc:  # página ilegível na linha
-            logger.warning("[planos] pagina ilegivel na linha: %s", type(exc).__name__)
-            texto = None
-            motivos.setdefault(doc_id, "pagina_ilegivel")
-        if texto:
-            # 🔴 A PÁGINA INTEIRA, não um recorte. 📊 18/09/2026: 5 das 6 páginas
-            # da amostra têm 1.8 k–4.3 k caracteres, e o corte em 1.200 escondia
-            # justamente o fim da tabela de limites — a pessoa aprovava o que
-            # coube na tela.
-            i["texto_da_pagina"] = str(texto)
-            i["termos_do_servico"] = _termos_do_servico(str(i.get("servico") or ""))
-            # ⚠️ `conferido_na_proposta` vem do VERIFICADOR, que era o único a ter
-            # o trecho na mão. A linha só chega a `proposto` depois de
-            # `conferir_pagina` bater o trecho com ESTA página (as que falharam
-            # estão em `rascunho`) — por isso `proposto`/`publicado` significa
-            # conferido.
-            i["conferido_na_proposta"] = str(i.get("curadoria")) in ("proposto", "publicado")
-        else:
-            i["texto_da_pagina"] = None
-            i["termos_do_servico"] = []
-            i["conferido_na_proposta"] = None
-            # ⚠️ O motivo é da LINHA, não do documento. Quando o documento abriu
-            # ("ok") e mesmo assim esta página não veio, dizer "ok" seria o pior
-            # dos mundos: a tela mostraria o botão cinza com a legenda de
-            # sucesso. Cada caso tem o seu nome, e a tela os traduz.
-            motivo = motivos.get(doc_id) or "fonte_indisponivel"
-            if motivo == "ok":
-                motivo = "sem_pagina_registrada" if not pagina else "pagina_fora_do_documento"
-            i["motivo_da_fonte"] = motivo
+        i["termos_do_servico"] = _termos_do_servico(str(i.get("servico") or ""))
+        # ⚠️ `conferido_na_proposta` vem do VERIFICADOR, que era o único a ter o
+        # trecho na mão. A linha só chega a `proposto` depois de
+        # `conferir_pagina` bater o trecho com aquela página (as que falharam
+        # estão em `rascunho`) — por isso `proposto`/`publicado` significa
+        # conferido, e isso não depende de abrir o PDF agora.
+        i["conferido_na_proposta"] = str(i.get("curadoria")) in ("proposto", "publicado")
+        # 🔴 D7 — a linha DIZ que não dá para publicá-la, e por quê.
+        # `publicar_servico` só sobe o plano pai a partir de `proposto`: uma
+        # linha sob plano `rascunho` é um clique que falha, e 📊 havia 4 delas.
+        pai = str(i.get("plano_curadoria") or "")
+        i["pode_publicar"] = pai == "proposto"
+        i["motivo_de_nao_publicar"] = None if i["pode_publicar"] else (
+            "plano_pai_%s" % (pai or "ausente"))
     return {
         "ok": True,
         "itens": itens,
@@ -238,6 +210,35 @@ def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
         "mostrando": len(itens),
         "limite": int(limite),
     }
+
+
+@router.get("/pagina", dependencies=[Depends(require_internal_key)])
+def pagina(servico_id: str = Query(..., min_length=1)) -> Dict[str, Any]:
+    """A página daquela linha, lida do PDF arquivado NA HORA — sob demanda.
+
+    🔴 O TRECHO É LIDO DA FONTE, NUNCA GRAVADO
+    ==========================================
+    A base guarda o `trecho_hash`, não o trecho. Quem cura lê a frase **do PDF
+    arquivado**, pelo mesmo `texto_das_paginas` que o verificador usa. Guardar
+    uma cópia do trecho pareceria mais rápido e criaria a pior das telas: a que
+    mostra à pessoa um texto que o documento já não tem, e colhe a assinatura
+    dela nisso.
+
+    ⚠️ `ok: false` **não é erro de servidor**: é *"não consegui abrir agora"*,
+    com o motivo dizendo qual dos casos é. A tela traduz cada um e oferece
+    tentar de novo (D9) — 200 com motivo, nunca 500 com traceback.
+    """
+    lida = BASE.pagina_da_linha(str(servico_id), db=_db())
+    return {
+        "ok": bool(lida.ok),
+        "servico_id": str(servico_id),
+        "texto_da_pagina": lida.texto,
+        "pagina": lida.pagina,
+        "total_de_paginas": lida.total_de_paginas,
+        "termos_do_servico": _termos_do_servico(str(lida.servico or "")),
+        "motivo_da_fonte": lida.motivo,
+    }
+
 
 
 @router.post("/curadoria", dependencies=[Depends(require_internal_key)])
