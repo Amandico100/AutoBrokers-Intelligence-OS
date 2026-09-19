@@ -214,7 +214,14 @@ function Oportunidades({ dados }: { dados: any }) {
                     )}
                     {l.provider && (
                       <span className="text-[11px] text-muted-foreground">
-                        seguradora {l.provider}
+                        {/* 🔴 P7: `provider` guarda coisas diferentes conforme a
+                            lacuna — na de cobertura é a SEGURADORA; nas da
+                            Factory é o provedor técnico. Rotular tudo de
+                            "seguradora" faria a tela mentir sobre metade das
+                            linhas. */}
+                        {l.capability_key === 'insurance.cobertura_e_assistencia'
+                          ? `seguradora ${l.provider}`
+                          : `via ${l.provider}`}
                       </span>
                     )}
                   </div>
