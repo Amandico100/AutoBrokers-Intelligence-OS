@@ -290,6 +290,9 @@ _NEGATIVA_RE = re.compile(
 #: 🔴 As tools que MUDAM ALGUMA COISA FORA do produto. Se uma delas rodou
 #: depois da consulta de apolice, a resposta do turno e sobre a ACAO, e nenhum
 #: rascunho de cobertura pode tomar o lugar dela (RODADA 2, N1 item 4).
+#: As réguas que uma AÇÃO posterior consome (RODADA 3, B3).
+_REGUAS_DE_COBERTURA = frozenset({"encerrar_com_o_rascunho", "assistencia_da_base"})
+
 _TOOLS_DE_ACAO = frozenset({
     "insurer_dispatch", "portal_action", "request_human_agent",
     "create_routine", "manage_routine",
@@ -309,6 +312,44 @@ def _normalizar_para_guarda(valor: Any) -> str:
 
 #: O fim de frase, para o espelho da negação (FECHO DA RODADA 2).
 _FIM_DE_FRASE_RE = re.compile(r"[.!?\n]+")
+
+
+def _consumir_regua_apos_acao(contrato: Any, tools_usadas: Any) -> Any:
+    """Consome as réguas de cobertura quando uma tool de AÇÃO rodou depois.
+
+    🔴 RODADA 3 (B3) — POR ESTADO, NUNCA POR CHAMADA.
+    ==============================================
+    📊 O grafo é `agent ⇄ tools` (`graph.py:683-695`): `infocap_policy_lookup` e
+    `insurer_dispatch` caem em **invocações diferentes** do `tool_node`. A
+    versão anterior olhava uma lista LOCAL da invocação, então na segunda
+    passada não havia o que comparar — e o contrato sobrevive no `state`. O
+    resultado medido: *"Pronto! Já acionei a assistência, o prestador chega em
+    40 minutos."* era TROCADO por *"Tem sim… Quer que eu já solicite?"*, e o
+    cliente entendia que nada tinha sido feito.
+
+    O mecanismo é um SNAPSHOT: o contrato guarda, ao nascer, as tools que já
+    tinham rodado no turno. Em qualquer ponto posterior — mesma invocação ou a
+    seguinte — basta comparar com `tools_used` do estado.
+
+    ⚠️ Comparação por CONTAGEM, não por conjunto: `insurer_dispatch` pode ter
+    rodado antes e de novo depois, e um `set` esconderia a segunda.
+    """
+    if not isinstance(contrato, dict):
+        return contrato
+    fatos = list(contrato.get("required_facts") or [])
+    if not (set(fatos) & _REGUAS_DE_COBERTURA):
+        return contrato
+    from collections import Counter  # noqa: PLC0415
+
+    antes = Counter(str(t) for t in (contrato.get("tools_ja_usadas") or []))
+    agora = Counter(str(t) for t in (tools_usadas or []))
+    novas = agora - antes
+    if not (set(novas) & _TOOLS_DE_ACAO):
+        return contrato
+    logger.info("[Contrato] réguas de cobertura consumidas — uma ação rodou "
+                "depois da consulta de apólice")
+    return dict(contrato,
+                required_facts=[f for f in fatos if f not in _REGUAS_DE_COBERTURA])
 
 
 def _nega_o_servico(candidato: str, rotulo: str) -> bool:
@@ -1158,6 +1199,11 @@ async def agent_node(state: AgentState, config: RunnableConfig, llm_with_tools,
         and contract.get("provider") == "infocap"
         and not has_tool_calls
     ):
+        # 🔴 RODADA 3 (B3): é AQUI que a segunda passada acontece — a consulta
+        #    rodou numa invocação, o acionamento noutra, e o contrato veio do
+        #    `state`. Sem esta linha, "Pronto! Já acionei a assistência" era
+        #    trocado pelo veredito de cobertura.
+        contract = _consumir_regua_apos_acao(contract, state.get("tools_used") or [])
         candidate = extract_text_from_content(getattr(response, "content", "") or "")
         guarded = _guard_infocap_policy_final_response(candidate, contract)
         if guarded and guarded.strip() != (candidate or "").strip():
@@ -1505,8 +1551,6 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     policy_response_contract = None
     policy_final_response = None
     infocap_policy_context = None
-    #: A ordem das tools NESTE turno (RODADA 2, N1 item 4).
-    _ordem_do_turno: list = []
 
     # Extrair agent_id do state
     agent_data = state.get("agent_data")
@@ -1713,10 +1757,6 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                             )
                         registro.ok(result)
                     tools_used.append(tool_name)
-                    # 🔴 RODADA 2 (N1, item 4): a ORDEM deste turno. `tools_used`
-                    #    vem do state e carrega turnos anteriores; o que decide
-                    #    se uma acao rodou DEPOIS do contrato e esta lista.
-                    _ordem_do_turno.append(tool_name)
 
                     # SPEC-063 Bloco S — o turno deixa MEMÓRIA.
                     #
@@ -1768,6 +1808,13 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         if isinstance(result, dict):
                             policy_response_contract = result.get("policy_response_contract")
                             if isinstance(policy_response_contract, dict):
+                                # 🔴 RODADA 3 (B3): o SNAPSHOT das tools do
+                                # turno, no instante em que o contrato nasce.
+                                # É o que permite decidir por ESTADO, na
+                                # invocação seguinte do grafo.
+                                policy_response_contract = dict(
+                                    policy_response_contract,
+                                    tools_ja_usadas=[str(t) for t in tools_used])
                                 policy_final_response = _guard_infocap_policy_final_response(
                                     str(result.get("content") or ""),
                                     policy_response_contract,
@@ -1834,40 +1881,17 @@ async def tool_node(state: AgentState, tools: list) -> dict:
     if internal_steps:
         return_dict["internal_steps"] = internal_steps
 
-    # 🔴 RODADA 2 (N1, item 4) — A FLAG NAO SOBREVIVE AO QUE VEIO DEPOIS.
-    #
-    # 📊 O contrato fica no estado ate o fim do turno. Se o acionamento rodou
-    # DEPOIS da consulta de apolice, "Pronto! O guincho foi solicitado" tambem
-    # era trocado pelo rascunho "vou confirmar e te respondo" — o cliente ouvia
-    # que nada tinha sido feito, e o guincho ja estava a caminho.
-    #
-    # ⚠️ Com a porta de intencao isto quase some (um PEDIDO nao liga a flag).
-    # Esta linha fecha o resto: a flag e CONSUMIDA quando uma tool de ACAO
-    # aparece depois de `infocap_policy_lookup` na ordem deste turno. O resto do
-    # contrato (allowed_amounts, identity_mismatch, assistencia_da_base) FICA.
-    if isinstance(policy_response_contract, dict) and _ordem_do_turno:
-        try:
-            _pos = _ordem_do_turno.index("infocap_policy_lookup")
-            _depois = set(_ordem_do_turno[_pos + 1:])
-        except ValueError:
-            _depois = set()
-        if _depois & _TOOLS_DE_ACAO:
-            # 🔴 FECHO DA RODADA 2: `assistencia_da_base` sai JUNTO com a flag.
-            # 📊 Depois de `insurer_dispatch`, *"Pronto! Já acionei a
-            # assistência, o prestador chega em 40 min"* não diz a palavra
-            # "guincho" — e era trocado por *"Quer que eu já solicite?"*. A
-            # resposta do turno é sobre a AÇÃO; nenhuma régua de cobertura pode
-            # tomar o lugar dela.
-            _CONSUMIDOS = {"encerrar_com_o_rascunho", "assistencia_da_base"}
-            _fatos = [f for f in (policy_response_contract.get("required_facts") or [])
-                      if f not in _CONSUMIDOS]
-            if len(_fatos) != len(policy_response_contract.get("required_facts") or []):
-                logger.info("[Tool Node] contrato: `encerrar_com_o_rascunho` "
-                            "consumido — uma acao rodou depois da consulta")
-                policy_response_contract = dict(policy_response_contract,
-                                                required_facts=_fatos)
-                policy_final_response = _guard_infocap_policy_final_response(
-                    str(policy_final_response or ""), policy_response_contract)
+    # 🔴 RODADA 3 (B3): o consumo é por ESTADO — ver `_consumir_regua_apos_acao`.
+    #    Aqui ele cobre a MESMA invocação (a ação que rodou depois da consulta
+    #    no mesmo `tool_node`); a invocação SEGUINTE é coberta no `agent_node`,
+    #    onde o guarda pós-LLM é aplicado.
+    if isinstance(policy_response_contract, dict):
+        _antes = policy_response_contract
+        policy_response_contract = _consumir_regua_apos_acao(
+            policy_response_contract, tools_used)
+        if policy_response_contract is not _antes:
+            policy_final_response = _guard_infocap_policy_final_response(
+                str(policy_final_response or ""), policy_response_contract)
 
     if policy_response_contract and policy_final_response:
         return_dict["policy_response_contract"] = policy_response_contract
