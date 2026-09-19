@@ -140,6 +140,14 @@ def _origem_em_portugues(cobertura: Any) -> str:
     return texto
 
 
+#: 🔴 Os estados em que a LLM NAO tem o que acrescentar (CONSERTO B1 ii).
+#:
+#: `nao_sabemos_ainda` = nao existe linha publicada; `fonte_indisponivel` = a
+#: consulta falhou. Nos dois, tudo o que e VERDADE ja esta no rascunho seguro, e
+#: o unico grau de liberdade que sobra para o modelo e inventar.
+_ESTADOS_QUE_ENCERRAM = ("nao_sabemos_ainda", "fonte_indisponivel")
+
+
 def _linhas_do_veredito(cobertura: Any, client_facing: bool = False) -> list:
     """O veredito determinístico da Skill, no briefing — SPEC-EXTRA-001.5 §6.
 
@@ -313,6 +321,14 @@ class InfocapLookupInput(BaseModel):
         # OPACA de proposito: quem a monta e a porta (`parse_policy_locator_ref`).
         description="Referencia tecnica opaca da apolice, devolvida pela consulta anterior. Repasse-a como veio; nunca a construa nem a exiba.",
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        # 🔴 SPEC-EXTRA-001.5.1 (B2): PREENCHIDO PELO SISTEMA, nunca pelo modelo.
+        # `nodes.py` o injeta a partir do estado do graph, como ja faz com
+        # `insurer_dispatch` e `request_human_agent`. Esta descricao e TEXTO QUE
+        # CHEGA AO MODELO: ela existe para ele NAO tentar preencher.
+        description="Ignorado: preenchido automaticamente pelo sistema. Nunca informe este campo.",
+    )
     document_evidence_requested: Optional[bool] = Field(
         default=None,
         # 🔴 §8.1: o campo continua no esquema porque modelos antigos e chamadas
@@ -464,6 +480,7 @@ class InfocapPolicyLookupTool(BaseTool):
         user_query: Optional[str] = None,
         force_document_evidence_refresh: bool = False,
         selected_policy_number: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not document and not name and not policy_number and not policy_ref:
             return {"content": "Informe CPF/CNPJ, nome do cliente, numero da apolice, ou um policy_ref para detalhar a apolice.", "found": False}
@@ -507,7 +524,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     det, user_query, detail=True,
                     atendente=await self._quem_cuida(db, user_query))
                 contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
-                await self._lacuna_vira_tarefa(db, meta, user_query)
+                await self._lacuna_vira_tarefa(db, meta, user_query, session_id)
                 return {"content": content, "data": det, "found": bool(det.get("ok")),
                         "policy_response_contract": contract,
                         "cobertura": (meta or {}).get("cobertura")}
@@ -579,7 +596,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 result, user_query, detail=False,
                 atendente=await self._quem_cuida(db, user_query))
             contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
-            await self._lacuna_vira_tarefa(db, meta, user_query)
+            await self._lacuna_vira_tarefa(db, meta, user_query, session_id)
             # 🔴 SPEC-EXTRA-001.5 BLOCO E: a `cobertura` (estado · seguradora ·
             # plano · documento · página) viaja no RETORNO da tool, e é dali que
             # `invocation_recorder` a resume para `tool_invocations`. Nenhum
@@ -830,8 +847,42 @@ class InfocapPolicyLookupTool(BaseTool):
             logger.warning(f"[InfocapPolicyLookupTool] vehicle enrich falhou: {type(e).__name__}")
 
 
+    async def _a_conversa_deste_atendimento(self, db: Any,
+                                            session_id: Optional[str]) -> Dict[str, Any]:
+        """`{"conversation_id", "telefone"}` desta sessao — `{}` no escuro.
+
+        🔴 SPEC-EXTRA-001.5.1 (B2). ⛔ Nenhuma consulta nova inventada: e a MESMA
+        leitura de `conversations` por (`company_id`, `session_id`) que
+        `human_handoff.py:1211-1217` ja faz — os dois filtros, nunca so o
+        `session_id` (CLAUDE.md §7).
+
+        ⛔ O telefone NAO e logado e NAO entra em `capability_gaps`. Ele vai
+        apenas para a porta do grupo, que precisa dele para a pergunta 2 da
+        guarda ("a contraparte e numero da casa?") e para o link do modelo 🆘 —
+        exatamente como os outros avisos da 001.3.
+        """
+        sessao = str(session_id or "").strip()
+        if not sessao or not self.company_id:
+            return {}
+        try:
+            from app.services.o_fim_do_atendimento import _cliente, _executar
+
+            achado = await _executar(_cliente(db).table("conversations")
+                                     .select("id, user_phone")
+                                     .eq("company_id", self.company_id)  # 🔴 §7
+                                     .eq("session_id", sessao)
+                                     .limit(1))
+            linha = (list(getattr(achado, "data", None) or [{}]) or [{}])[0] or {}
+            return {"conversation_id": str(linha.get("id") or ""),
+                    "telefone": str(linha.get("user_phone") or "")}
+        except Exception as exc:  # noqa: BLE001 — a conversa nunca derruba a consulta
+            logger.warning("[InfocapPolicyLookupTool] conversa nao lida: %s",
+                           type(exc).__name__)
+            return {}
+
     async def _lacuna_vira_tarefa(self, db: Any, meta: Optional[Dict[str, Any]],
-                                  user_query: Optional[str]) -> None:
+                                  user_query: Optional[str],
+                                  session_id: Optional[str] = None) -> None:
         """O que a Skill NÃO soube responder vira tarefa — SPEC-EXTRA-001.5.1 (D12).
 
         🔴 O chamador é a TOOL, não a Skill nem o compositor, e por um motivo:
@@ -844,13 +895,24 @@ class InfocapPolicyLookupTool(BaseTool):
         este `try` é o cinto de segurança do import.
         """
         try:
-            from app.services.lacunas_de_conhecimento import registrar_lacuna
+            from app.services.lacunas_de_conhecimento import (
+                ESTADOS_QUE_VIRAM_LACUNA as _ESTADOS_QUE_VIRAM_LACUNA,
+                registrar_lacuna,
+            )
 
+            # ⚠️ A conversa só é buscada quando HÁ lacuna: um `select` a mais
+            #    por consulta de apólice seria caro e inútil nos outros estados.
+            _da_conversa = {}
+            _estado = str(((meta or {}).get("cobertura") or {}).get("estado") or "")
+            if _estado in _ESTADOS_QUE_VIRAM_LACUNA:
+                _da_conversa = await self._a_conversa_deste_atendimento(db, session_id)
             await registrar_lacuna(
                 db=db, company_id=self.company_id,
                 canal=("segurado" if self._client_facing else "corretor"),
                 cobertura=(meta or {}).get("cobertura"),
-                pergunta=user_query)
+                pergunta=user_query,
+                conversation_id=_da_conversa.get("conversation_id") or "",
+                telefone=_da_conversa.get("telefone") or "")
         except Exception as exc:  # noqa: BLE001
             logger.warning("[InfocapPolicyLookupTool] lacuna nao registrada: %s",
                            type(exc).__name__)
@@ -1215,6 +1277,29 @@ class InfocapPolicyLookupTool(BaseTool):
                 "7. NUNCA invente valor, cobertura, servico ou prazo. Valores em R$: apenas os listados acima.",
                 "8. Ao final da leitura, responda ao cliente APENAS o proximo passo natural da conversa (ex.: confirmar que a apolice esta ativa e perguntar o que falta para acionar).",
             ])
+            # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B1 — O VEREDITO TAMBEM VAI PARA O
+            # WHATSAPP, E ELE ESTAVA FICANDO DE FORA.
+            #
+            # 📊 19/09/2026, medido pelo juiz na copia so de `backend/`: este
+            # `return` acontecia ANTES de `_linhas_do_veredito` e do RASCUNHO
+            # SEGURO, que so eram anexados no ramo do corretor, 30 linhas abaixo.
+            # Efeito em cadeia, nos SEIS estados: a LLM do atendimento nunca via
+            # o veredito deterministico, os `if client_facing` de dentro de
+            # `_linhas_do_veredito` eram CODIGO MORTO, e a linha de
+            # `ATTENDANCE_BASE_PROMPT` que fala em `veredito_de_cobertura` nunca
+            # disparava — a chave nao existia no briefing daquele canal.
+            #
+            # ⚠️ A ORDEM importa: o veredito vem DEPOIS do "COMO USAR" de
+            # proposito, para ser a ultima coisa que o modelo le antes de
+            # redigir. E o rascunho que vai aqui e o do CANAL (`meta["text"]` ja
+            # e o texto do segurado quando `client_facing=True`).
+            lines.extend([
+                "",
+                *_linhas_do_veredito(meta.get("cobertura"), client_facing=True),
+                "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca os "
+                "fatos; ele ja esta na voz do cliente):",
+                str(meta.get("text") or ""),
+            ])
             return "\n".join(lines)
 
         lines.extend([
@@ -1281,6 +1366,26 @@ class InfocapPolicyLookupTool(BaseTool):
         # FORMATAÇÃO do copiloto não se aplica ao atendimento, mas "não afirmar
         # o que a base nega" não é formatação — é o que chega ao segurado pelo
         # WhatsApp.
+        # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B1 (ii) — QUANDO A LLM NAO TEM NADA
+        # VERDADEIRO A ACRESCENTAR, ELA NAO ESCREVE.
+        #
+        # 📊 Medido pelo juiz: em `nao_sabemos_ainda` e `fonte_indisponivel` o
+        # contrato saia com `required_facts=[]` e `assistencia_da_base` vazio —
+        # nao havia UMA condicao no guarda de `nodes.py` que pegasse o
+        # candidato. Um "Sim! tem esse servico sim" passava CRU para o segurado.
+        # Com 0 linhas publicadas na base, esses dois estados sao quase TODA
+        # pergunta de cobertura.
+        #
+        # ⚠️ E o dano nao para no cliente: a lacuna manda um 🆘 dizendo "eu nao
+        # afirmei nada" — que passaria a ser mentira.
+        #
+        # ⛔ Nao e censura de canal: a regra e CHANNEL-BLIND e vale igual para o
+        # corretor. Nos dois casos o rascunho JA diz a verdade inteira (e o do
+        # canal certo), e qualquer coisa que a LLM acrescente e invencao.
+        cobertura_do_meta = (meta or {}).get("cobertura") or {}
+        if str(cobertura_do_meta.get("estado") or "") in _ESTADOS_QUE_ENCERRAM:
+            required_facts.append("encerrar_com_o_rascunho")
+
         da_base = (meta or {}).get("assistencia_da_base")
         contrato_da_base = None
         if isinstance(da_base, list) and da_base:
