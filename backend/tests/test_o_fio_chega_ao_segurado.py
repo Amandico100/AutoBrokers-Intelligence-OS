@@ -367,7 +367,8 @@ ASSUMIDA = dict(LIVRE, claimed_by="user-1", claimed_by_name="a atendente",
                 claimed_at=datetime.now(timezone.utc).isoformat())
 
 
-def _rodar_a_tool(conversa_no_banco, *, com_sessao=True, pergunta=True):
+def _rodar_a_tool(conversa_no_banco, *, com_sessao=True, pergunta=True,
+                  fonte=None):
     """Pelo MÉTODO DA TOOL — `_lacuna_vira_tarefa`, não pelo serviço.
 
     ⚠️ RODADA 2: o `meta` do duplo carrega `pergunta_de_cobertura`, como o real
@@ -393,7 +394,9 @@ def _rodar_a_tool(conversa_no_banco, *, com_sessao=True, pergunta=True):
             banco,
             {"cobertura": dict(COBERTURA,
                                intencao=("pergunta" if pergunta else "pedido")),
-             "pergunta_de_cobertura": pergunta},
+             "pergunta_de_cobertura": pergunta,
+             # 🔴 RODADA 4 (B-N1): a MESMA fonte que decidiu a intenção.
+             "fonte_da_intencao": fonte or ""},
             "tem carro reserva?",
             "whatsapp:5511987654321:x" if com_sessao else None,
             "tem carro reserva?" if pergunta else "preciso de carro reserva"))
@@ -1047,6 +1050,260 @@ _brief_ok, _c_o, _r_o, _m_o = _fio("preciso de guincho", cliente=True,
 checar("NAO prometa o servico" not in _brief_ok,
        "🔴 CONTROLE: quando a base AFIRMA, o aviso NÃO aparece",
        _brief_ok[-200:])
+BASE._db = lambda supabase_client=None: db
+
+# ---------------------------------------------------------------------------
+print("\n[16] 🔴 RODADA 4 · B-N1 — UMA FONTE SÓ: a intenção, o serviço e o 🆘")
+# 📊 Medido pelo juiz final: a rodada 3 moveu a INTENÇÃO para a janela, mas
+# deixou `texto` (e portanto `so_de_cobertura`) na mensagem atual. Como a flag
+# exige `so_de_cobertura`, a fiscalização ficava desligada no turno do documento:
+#     "meu plano cobre taxi? | 12345678900", atual="12345678900"
+#        pergunta=True · so_de_cobertura=False · required_facts=[]
+#        "Sim! Seu plano tem taxi sim, pode acionar."   -> CHEGAVA INTACTO
+# 🔴 E isso é 100 % do tráfego: sem linha publicada, toda pergunta de cobertura
+#    cai em `nao_sabemos_ainda` — um dos dois estados que a flag cobre.
+BASE._db = lambda supabase_client=None: _base_vazia
+MENTIRA_LISA = "Sim! Seu plano tem taxi sim, pode acionar."
+
+for _doc in (CPF_FICTICIO, "ok", "ABC1D23"):
+    _janela = "meu plano cobre taxi? | %s" % _doc
+    _b, _c_doc, _r_doc, _m_doc = _fio(_janela, cliente=True, mensagem=_doc)
+    checar((_m_doc.get("cobertura") or {}).get("estado") == "nao_sabemos_ainda",
+           f"turno do documento {_doc!r}: o estado é `nao_sabemos_ainda` "
+           "(100 % do tráfego de hoje)",
+           repr((_m_doc.get("cobertura") or {}).get("estado")))
+    checar(_m_doc.get("so_de_cobertura") is True,
+           f"🔴 {_doc!r}: `so_de_cobertura` veio da MESMA mensagem que decidiu "
+           "a intenção", repr(_m_doc.get("so_de_cobertura")))
+    checar("encerrar_com_o_rascunho" in (_c_doc.get("required_facts") or []),
+           f"🔴 {_doc!r}: a flag LIGA no turno do documento",
+           repr(_c_doc.get("required_facts")))
+    checar(GUARDA(MENTIRA_LISA, _c_doc).strip() == str(_r_doc).strip(),
+           f"🔴 {_doc!r}: a mentira é ANULADA e sai o rascunho honesto",
+           GUARDA(MENTIRA_LISA, _c_doc)[:120])
+
+print("      e `fonte_indisponivel` no turno do documento fecha igual")
+
+
+class _BaseQueQuebra2(BaseEmMemoria):
+    def table(self, nome):  # noqa: D102
+        raise RuntimeError("base fora do ar")
+
+
+BASE._db = lambda supabase_client=None: _BaseQueQuebra2()
+_b, _c_fi, _r_fi, _m_fi = _fio("meu plano cobre taxi? | %s" % CPF_FICTICIO,
+                               cliente=True, mensagem=CPF_FICTICIO)
+checar((_m_fi.get("cobertura") or {}).get("estado") == "fonte_indisponivel"
+       and "encerrar_com_o_rascunho" in (_c_fi.get("required_facts") or [])
+       and GUARDA(MENTIRA_LISA, _c_fi).strip() == str(_r_fi).strip(),
+       "🔴 `fonte_indisponivel` no turno do documento: a flag liga e a mentira "
+       "é anulada", repr(_c_fi.get("required_facts")))
+BASE._db = lambda supabase_client=None: _base_vazia
+
+print("\n      🔴 MUTAÇÃO de B-N1: `texto` voltando à mensagem atual")
+#: ⚠️ Pelo `__dict__`, para guardar o DESCRITOR (`staticmethod`). Restaurar a
+#: funcao crua a transformaria em metodo de instancia, e ela passaria a
+#: receber `self` — o `except` do `_render_content` engoliria o TypeError e o
+#: bloco seguinte mediria o caminho LEGADO sem saber (CLAUDE.md §9.1).
+_intencao_original_r4 = InfocapPolicyLookupTool.__dict__["_a_intencao_da_mensagem"]
+try:
+    @staticmethod
+    def _com_texto_na_atual(mensagem_atual, user_query):
+        """A mutação: a intenção vem da janela, o serviço vem da atual."""
+        from app.services.knowledge.assistance_plans_base import servico_canonico
+        from app.services.skills.cobertura_e_assistencia import (
+            INDETERMINADA, PERGUNTA, intencao_da_mensagem,
+        )
+        atual = str(mensagem_atual or "").strip()
+        janela = str(user_query or "")
+        intencao = intencao_da_mensagem(atual)
+        if intencao == INDETERMINADA:
+            intencao = intencao_da_mensagem(janela)
+        texto = atual or janela          # <- o defeito medido
+        try:
+            reconhece = bool(servico_canonico(texto))
+        except Exception:  # noqa: BLE001
+            reconhece = False
+        return {"pergunta": intencao == PERGUNTA,
+                "so_de_cobertura": bool(intencao == PERGUNTA and reconhece),
+                "fonte": texto}
+
+    InfocapPolicyLookupTool._a_intencao_da_mensagem = _com_texto_na_atual
+    _b, _c_mut4, _r_mut4, _m_mut4 = _fio(
+        "meu plano cobre taxi? | %s" % CPF_FICTICIO, cliente=True,
+        mensagem=CPF_FICTICIO)
+    checar(GUARDA(MENTIRA_LISA, _c_mut4).strip() == MENTIRA_LISA,
+           "🔴 MUTAÇÃO B-N1: com `texto` na atual, a mentira volta a CHEGAR "
+           "INTACTA ao segurado", GUARDA(MENTIRA_LISA, _c_mut4)[:120])
+finally:
+    InfocapPolicyLookupTool._a_intencao_da_mensagem = _intencao_original_r4
+
+# ---------------------------------------------------------------------------
+print("\n[17] 🔴 RODADA 4 · B-N2 — a janela é um BLOCO, e manda a MAIS NOVA")
+# 📊 `user_query` são as 3 últimas humanas juntadas por " | " (`nodes.py:1649`),
+# e `_COBERTURA_FORTE_RE` é a primeira trava — a pergunta do turno N-2 vencia o
+# pedido do turno N-1:
+#   "meu plano cobre guincho? | preciso de guincho, estou parado | 12345678900"
+#      pergunta=True -> "Achei a sua apólice… Me passa o endereço?" era TROCADO
+BASE._db = lambda supabase_client=None: db
+PASSO_LEGITIMO = ("Achei a sua apólice, está ativa. Me passa o endereço onde o "
+                  "carro está?")
+_janela_pedido = ("meu plano cobre guincho? | preciso de guincho, estou parado"
+                  " | %s" % CPF_FICTICIO)
+_b, _c_bn2, _r_bn2, _m_bn2 = _fio(_janela_pedido, cliente=True,
+                                  mensagem=CPF_FICTICIO)
+checar(_m_bn2.get("pergunta_de_cobertura") is False,
+       "🔴 janela `pergunta | pedido | documento`: o PEDIDO (mais novo) vence",
+       repr(_m_bn2.get("pergunta_de_cobertura")))
+checar(GUARDA(PASSO_LEGITIMO, _c_bn2).strip() == PASSO_LEGITIMO,
+       "🔴 e o próximo passo do acionamento passa INTACTO",
+       GUARDA(PASSO_LEGITIMO, _c_bn2)[:120])
+
+_janela_pergunta = ("preciso de guincho, estou parado | meu plano cobre carro "
+                    "reserva? | %s" % CPF_FICTICIO)
+_b, _c_bn2b, _r_bn2b, _m_bn2b = _fio(_janela_pergunta, cliente=True,
+                                     mensagem=CPF_FICTICIO)
+checar(_m_bn2b.get("pergunta_de_cobertura") is True,
+       "🔴 janela `pedido | pergunta | documento`: a PERGUNTA (mais nova) vence",
+       repr(_m_bn2b.get("pergunta_de_cobertura")))
+MENTIRA_CR = "Sim! Seu plano tem carro reserva por 7 dias, pode contar com isso."
+checar(GUARDA(MENTIRA_CR, _c_bn2b).strip() != MENTIRA_CR,
+       "🔴 e a mentira sobre a cobertura é ANULADA",
+       GUARDA(MENTIRA_CR, _c_bn2b)[:120])
+
+print("\n      🔴 MUTAÇÃO de B-N2: a janela varrida do mais VELHO")
+try:
+    @staticmethod
+    def _varre_do_velho(mensagem_atual, user_query):
+        from app.services.knowledge.assistance_plans_base import servico_canonico
+        from app.services.skills.cobertura_e_assistencia import (
+            INDETERMINADA, PERGUNTA, intencao_da_mensagem,
+        )
+        from app.agents.tools.infocap_tool import SEPARADOR_DA_JANELA
+        atual = str(mensagem_atual or "").strip()
+        janela = str(user_query or "")
+        intencao = intencao_da_mensagem(atual)
+        fonte = atual
+        if intencao == INDETERMINADA:
+            for parte in [t.strip() for t in janela.split(SEPARADOR_DA_JANELA)
+                          if t.strip()]:            # <- SEM `reversed`
+                achada = intencao_da_mensagem(parte)
+                if achada != INDETERMINADA:
+                    intencao, fonte = achada, parte
+                    break
+        try:
+            reconhece = bool(servico_canonico(fonte))
+        except Exception:  # noqa: BLE001
+            reconhece = False
+        return {"pergunta": intencao == PERGUNTA,
+                "so_de_cobertura": bool(intencao == PERGUNTA and reconhece),
+                "fonte": fonte}
+
+    InfocapPolicyLookupTool._a_intencao_da_mensagem = _varre_do_velho
+    _b, _c_mv, _r_mv, _m_mv = _fio(_janela_pedido, cliente=True,
+                                   mensagem=CPF_FICTICIO)
+    checar(_m_mv.get("pergunta_de_cobertura") is True
+           and GUARDA(PASSO_LEGITIMO, _c_mv).strip() != PASSO_LEGITIMO,
+           "🔴 MUTAÇÃO B-N2: varrendo do mais VELHO, a pergunta do turno N-2 "
+           "volta a trocar o próximo passo do acionamento",
+           GUARDA(PASSO_LEGITIMO, _c_mv)[:120])
+finally:
+    InfocapPolicyLookupTool._a_intencao_da_mensagem = _intencao_original_r4
+
+print("\n      🔴 o 🆘 carrega a PERGUNTA, não o documento")
+_banco_doc, _porta_doc = _rodar_a_tool(LIVRE, fonte="meu plano cobre taxi?")
+_texto_doc = str(_porta_doc.avisos[0].get("texto") if _porta_doc.avisos else "")
+checar("cobre taxi" in _texto_doc.lower(),
+       "🔴 o aviso traz a PERGUNTA do cliente", _texto_doc[:220])
+checar(CPF_FICTICIO not in _texto_doc,
+       "⛔ e não traz o documento", _texto_doc[:220])
+
+# ---------------------------------------------------------------------------
+print("\n[18] 🔴 RODADA 4 · P4 — `condicionado` não vira um 'sim' liso")
+# 📊 Medido no banco em 19/09/2026: das 25 linhas marcadas PUBLICAR e ainda em
+# `proposto`, **17 são `condicionado`** e 8 são `sim`. A maioria do que o
+# produto passa a saber HOJE é condicionada — e o juiz mediu que
+# "Sim! Seu plano tem vidros" passava inteiro, com a condição sumindo.
+BASE._db = lambda supabase_client=None: db
+_b, _c_cond, _r_cond, _m_cond = _fio("cobre vidro trincado?", cliente=True,
+                                     mensagem="cobre vidro trincado?")
+checar((_m_cond.get("cobertura") or {}).get("estado") == "condicionado",
+       "a base diz `condicionado`",
+       repr((_m_cond.get("cobertura") or {}).get("estado")))
+SIM_LISO = "Sim! Seu plano tem vidros, pode acionar."
+checar(GUARDA(SIM_LISO, _c_cond).strip() != SIM_LISO,
+       "🔴 o 'sim' LISO é ANULADO — a condição não pode sumir",
+       GUARDA(SIM_LISO, _c_cond)[:140])
+checar("condi" in GUARDA(SIM_LISO, _c_cond).lower(),
+       "🔴 e o que sai é o texto do canal, COM a condição",
+       GUARDA(SIM_LISO, _c_cond)[:160])
+COM_CONDICAO = ("Tem sim: vidros, desde que a cobertura adicional esteja "
+                "contratada.")
+checar(GUARDA(COM_CONDICAO, _c_cond).strip() == COM_CONDICAO,
+       "🔴 CONTROLE: a resposta que DIZ a condição passa INTACTA",
+       GUARDA(COM_CONDICAO, _c_cond)[:140])
+for _forma in ("Tem vidros, somente para o para-brisa.",
+               "Você tem vidros caso tenha contratado o adicional.",
+               "Tem sim: vidros — mediante contratação da cobertura adicional."):
+    checar(GUARDA(_forma, _c_cond).strip() == _forma,
+           "🔴 CONTROLE: %r passa" % _forma[:44], GUARDA(_forma, _c_cond)[:120])
+
+print("      🔴 CONTROLE do [18]: com a base dizendo `sim`, o 'sim' liso PASSA")
+_b, _c_sim, _r_sim, _m_sim = _fio("tem guincho?", cliente=True,
+                                  mensagem="tem guincho?")
+SIM_LISO_OK = "Sim! Seu plano tem guincho, pode acionar."
+checar((_m_sim.get("cobertura") or {}).get("estado") == "coberto"
+       and GUARDA(SIM_LISO_OK, _c_sim).strip() == SIM_LISO_OK,
+       "🔴 CONTROLE: `coberto` + 'sim' liso -> INTACTO (não é defeito quando a "
+       "base afirma liso)", GUARDA(SIM_LISO_OK, _c_sim)[:120])
+checar(not NODES._afirma_sem_condicao("Tem vidros. Se precisar, é só chamar.",
+                                      "vidros") is False,
+       "⚠️ e o 'se' avulso na frase SEGUINTE não salva o 'sim' liso — a marca "
+       "tem de estar na frase do serviço")
+
+print("\n      🔴 MUTAÇÃO do [18]: a regra desligada")
+_afirma_original = NODES._afirma_sem_condicao
+try:
+    NODES._afirma_sem_condicao = lambda c, r: False
+    checar(GUARDA(SIM_LISO, _c_cond).strip() == SIM_LISO,
+           "🔴 MUTAÇÃO: sem a regra, o 'sim' liso volta a PASSAR — e 17 das 25 "
+           "linhas que entram hoje são `condicionado`",
+           GUARDA(SIM_LISO, _c_cond)[:120])
+finally:
+    NODES._afirma_sem_condicao = _afirma_original
+
+# ---------------------------------------------------------------------------
+print("\n[19] 🔴 RODADA 4 · P1 — o par que SÓ OS STEMS resolvem")
+# 🔴 O crédito estava no lugar errado (§12.1): 📊 o juiz final rodou a porta de
+# `421b2c7` sobre as 22 frases e mediu **1/22**, não 10/22; revertendo os stems
+# a matriz sai IDÊNTICA. O ganho veio da separação FORTE × FRACA e da ORDEM.
+# ⚠️ Mas os stems resolvem o que a ordem não alcança — e estes dois pares são
+# a prova, medidos pelo juiz como perdidos sem eles.
+SO_OS_STEMS = ("mandam um borracheiro?", "solicito o guincho")
+for _frase in SO_OS_STEMS:
+    checar(intencao_da_mensagem(_frase) == PEDIDO,
+           "🔴 %r -> PEDIDO (só o stem resolve)" % _frase,
+           intencao_da_mensagem(_frase))
+
+print("      🔴 MUTAÇÃO do [19]: os stems revertidos ao texto da rodada 2")
+_pedido_original = SKI2._PEDIDO_DE_SERVICO_RE
+try:
+    import re as _re4
+    SKI2._PEDIDO_DE_SERVICO_RE = _re4.compile(
+        r"(?<![a-zà-ú])("
+        r"preciso|precisava|quero|queria|gostaria|manda|mandar|envia|enviar|"
+        r"solicita|solicitar|chama|chamar|chamo|aciona|acionar|pede|pedir|"
+        r"me\s+ajuda|socorro|urgente|estou\s+parad|to\s+parad|tô\s+parad|"
+        r"abrir\s+um|abre\s+um"
+        r")(?![a-zà-ú])", _re4.IGNORECASE)
+    _perdidos = [f for f in SO_OS_STEMS
+                 if SKI2.intencao_da_mensagem(f) != PEDIDO]
+    checar(len(_perdidos) == len(SO_OS_STEMS),
+           "🔴 MUTAÇÃO: com as formas FIXAS, os %d pares voltam a ser perdidos "
+           "— os stems passam a ser MEDIDOS" % len(SO_OS_STEMS),
+           repr(_perdidos))
+finally:
+    SKI2._PEDIDO_DE_SERVICO_RE = _pedido_original
 BASE._db = lambda supabase_client=None: db
 
 BASE._db = _db_original
