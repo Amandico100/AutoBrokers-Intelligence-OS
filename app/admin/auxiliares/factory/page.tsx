@@ -38,6 +38,23 @@ const ROTULO_LACUNA: Record<string, string> = {
   unsupported_workflow: 'Fluxo não suportado',
 };
 
+// 🔴 SPEC-EXTRA-001.5.1 (D4) — A LACUNA DE COBERTURA APARECE AQUI, E SEM TELA NOVA.
+//
+// Quando o agente não sabe se o plano cobre alguma coisa, a resposta honesta sai
+// e `services/lacunas_de_conhecimento.py` grava a falta em `capability_gaps`,
+// com `capability_key='insurance.cobertura_e_assistencia'` e a seguradora em
+// `provider`. Esta lista JÁ é ordenada por `frequency_count desc`, JÁ exige
+// master admin (`/api/admin/factory` → `requireMasterAdmin`) e JÁ mostra 1ª/
+// última vez — construir um segundo painel de lacunas seria motor paralelo
+// (CLAUDE.md §5). O que faltava era só o NOME: `insurance.cobertura_e_
+// assistencia` não diz nada a quem decide o que destilar primeiro.
+//
+// ⚠️ O mecanismo aceita outras `capability_key` sem mudança: acrescente a linha
+// no mapa abaixo e a lacuna nova ganha nome na mesma tela.
+const ROTULO_CAPABILITY: Record<string, string> = {
+  'insurance.cobertura_e_assistencia': 'O agente não soube dizer o que o plano cobre',
+};
+
 const ROTULO_PADRAO: Record<string, string> = {
   one_shot_work_run: 'Trabalho único',
   saved_routine: 'Rotina',
@@ -159,7 +176,9 @@ function Oportunidades({ dados }: { dados: any }) {
           <h2 className="text-sm font-semibold text-foreground">O que ainda não fazemos</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Ordenado por quantas vezes foi pedido. A mesma falta pedida cem vezes é
-            uma lacuna com peso cem — não cem itens de backlog.
+            uma lacuna com peso cem — não cem itens de backlog. Entram aqui também
+            as perguntas de cobertura que os agentes não souberam responder: é esta
+            lista que diz qual seguradora vale a pena estudar primeiro.
           </p>
         </div>
         {lacunas.length === 0 ? (
@@ -185,10 +204,18 @@ function Oportunidades({ dados }: { dados: any }) {
                       {ROTULO_LACUNA[l.gap_type] || l.gap_type}
                     </span>
                     {l.capability_key && (
-                      <code className="text-[11px] text-muted-foreground">{l.capability_key}</code>
+                      ROTULO_CAPABILITY[l.capability_key] ? (
+                        <span className="text-[11px] font-medium text-foreground">
+                          {ROTULO_CAPABILITY[l.capability_key]}
+                        </span>
+                      ) : (
+                        <code className="text-[11px] text-muted-foreground">{l.capability_key}</code>
+                      )
                     )}
                     {l.provider && (
-                      <span className="text-[11px] text-muted-foreground">via {l.provider}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        seguradora {l.provider}
+                      </span>
                     )}
                   </div>
                   <p className="mt-1.5 text-sm text-foreground">{l.description_redacted}</p>
