@@ -41,7 +41,12 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(".env")
 
-CENSO = RAIZ.parent / "docs" / "canon" / "providers" / "susep" / "seguradora-coenti.json"
+# 🔴 SPEC-EXTRA-001.5.1 (A-bis): o catálogo mora DENTRO do pacote, e quem
+# diz onde é o resolvedor do provider — nunca um `parents[n]` escrito aqui.
+# Um segundo caminho próprio volta a ler `docs/`, que não existe na imagem.
+from app.providers.susep_ses_provider import CAMINHO_DO_MAPA  # noqa: E402
+
+CENSO = Path(CAMINHO_DO_MAPA)
 
 SQL_CG = (
     "select count(distinct insurer_key) from normative_documents "

@@ -61,8 +61,11 @@ TESTES = os.path.join(RAIZ, "tests")
 HARNESS = os.path.join(TESTES, "test_o_ramo_sai_da_conversa_nao_da_ultima_frase.py")
 CORPUS = os.path.join(TESTES, "corpus", "perguntas_do_chat", "2026-09-09_10.json")
 PROMPTS = os.path.join(RAIZ, "app", "core", "prompts.py")
+# 🔴 SPEC-EXTRA-001.5.1 (A-bis): o catálogo saiu de `docs/` (fora da imagem)
+# para `backend/app/data/`. 📊 Na cópia que reproduz o contêiner ele vinha vazio
+# e `familia_de_acionamento("itau")` devolvia UNKNOWN no caminho vivo.
 CATALOGO = os.path.normpath(os.path.join(
-    RAIZ, "..", "docs", "canon", "providers", "susep", "seguradora-coenti.json"))
+    RAIZ, "app", "data", "seguradora-coenti.json"))
 
 if RAIZ not in sys.path:
     sys.path.insert(0, RAIZ)
@@ -745,7 +748,7 @@ MUTACOES = [
      "GC1f", "vermelho"),
     # M-C1e: a linha `yelum` sai do CATALOGO -> a frase do briefing some.
     #        🔴 E o elo: prova que a frase vem do ARQUIVO, e nao de um dict no codigo.
-    ("M-C1e", "../docs/canon/providers/susep/seguradora-coenti.json",
+    ("M-C1e", "app/data/seguradora-coenti.json",
      '    "yelum": {\n      "nomes_no_sistema_de_gestao": [\n        "LIBE",',
      '    "yelum_desligada_pela_mutacao": {\n      "nomes_no_sistema_de_gestao": [\n        "ZZZZ",',
      "GC1e", "vermelho"),
