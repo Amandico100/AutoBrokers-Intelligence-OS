@@ -324,15 +324,37 @@ _FIM_DE_FRASE_RE = re.compile(r"[.!?\n]+")
 #: Tornado e Granizo"*. É o "sim silencioso" do CLAUDE.md §9.5 — na linha que a
 #: corretora está publicando hoje.
 _CONDICAO_RE = re.compile(
+    # 🔴 RODADA 5 (pendência 3) — OS MARCADORES SOLTOS EXIGEM CONSTRUÇÃO.
+    #
+    # 📊 Medido pelo juiz final: 5 de 8 "sim liso" realistas ESCAPAVAM porque
+    # `se`, `caso` e `apenas` apareciam em sentido NÃO condicional —
+    # *"é só SE dirigir a uma oficina"*, *"pode SE tranquilizar"*,
+    # *"APENAS me confirme o endereço"*, *"CASO queira eu já abro o chamado"*.
+    # Um marcador que casa em qualquer frase não guarda nada.
     r"(?<![a-zà-ú])("
-    r"se|caso|desde\s+que|somente|apenas|exceto|salvo|"
-    # ⚠️ A palavra CONDIÇÃO, nua, também é marca — 📊 achado pelo próprio par
-    # de controle deste guarda: "Tem sim: vidros, com uma condição do seu
-    # contrato." era anulada por não casar a forma `com A condição`.
+    r"se\s+contratad\w*|se\s+(?:o\s+|a\s+)?adicional|se\s+\w+\s+constar|"
+    r"caso\s+(?:tenha|tenham|haja|exista|esteja|estejam|possua|conste)\w*|"
+    r"caso\s+\w+\s+contratad\w*|"
+    # ⚠️ `somente` / `apenas` / `só` passam a exigir o que vem DEPOIS: a
+    # preposição que liga à restrição, ou um `se` de condição de verdade.
+    # 🔴 O CONTROLE que o juiz fixou vive aqui: *"Tem vidros, somente para o
+    # para-brisa."* continua passando, por `somente\s+para`.
+    r"(?:somente|apenas|s[óo])\s+(?:se\s+(?:contratad\w*|tiver|houver|"
+    r"estiver|constar|for|fosse|o\s|a\s)|para|no|na|em|com|at[ée]|quando|"
+    r"mediante|dentro|nos\s+casos)|"
+    # E estes ficam NUS, porque não têm outro sentido numa frase de cobertura.
+    r"desde\s+que|exceto|salvo|"
+    r"com\s+a\s+condi[çc][ãa]o|sob\s+a\s+condi[çc][ãa]o|"
     r"condi[çc][ãa]o|condi[çc][õo]es|mediante|"
-    r"contratad|constar|constante|depende|sujeit|"
-    r"inclu[íi]d[oa]s?\s+n[ao]\s+ap[óo]lice|desde\s+j[áa]\s+que"
-    r")(?![a-zà-ú])", re.IGNORECASE)
+    # 🔴 RODADA 5 (pendência 2): STEMS, não formas fixas. 📊 O `(?![a-zà-ú])`
+    # final matava TODA flexão — `contratada`, `contratados`, `sujeita`,
+    # `dependendo`, `constantes` eram alternativas MORTAS, e
+    # *"Tem vidros, sujeito a contratação do adicional."* era ANULADA. É a
+    # mesma forma que `_PEDIDO_DE_SERVICO_RE` já usa.
+    r"contratad\w*|contrata[çc][ãa]o|constar|constante\w*|depend\w*|sujeit\w*|"
+    r"inclu[íi]d[oa]s?\s+n[ao]\s+ap[óo]lice|limitad\w*|at[ée]\s+(?:r\$|\d)"
+    r")",
+    re.IGNORECASE)
 
 
 def _afirma_sem_condicao(candidato: str, rotulo: str) -> bool:
@@ -1708,7 +1730,14 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                             for m in messages
                             if isinstance(m, HumanMessage) or (hasattr(m, "type") and getattr(m, "type", "") == "human")
                         ]
-                        _query_for_tool = " | ".join([t for t in _recent_humans[-3:] if t]) or current_user_query
+                        # 🔴 RODADA 5 (pendência 6): o separador vem da tool,
+                        #    que é quem FATIA a janela de volta. Duas literais
+                        #    independentes em pontas opostas é o tipo de coisa
+                        #    que só se descobre quebrada quando uma muda.
+                        from .tools.infocap_tool import SEPARADOR_DA_JANELA
+
+                        _query_for_tool = SEPARADOR_DA_JANELA.join(
+                            [t for t in _recent_humans[-3:] if t]) or current_user_query
                         # ② A FICHA do atendimento: a apólice já confirmada no caso
                         #    vence a dedução por texto — e impede a segunda pergunta.
                         _ficha = state.get("infocap_policy_context")
