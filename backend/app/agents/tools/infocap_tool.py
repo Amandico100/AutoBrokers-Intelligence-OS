@@ -140,7 +140,7 @@ def _origem_em_portugues(cobertura: Any) -> str:
     return texto
 
 
-def _linhas_do_veredito(cobertura: Any) -> list:
+def _linhas_do_veredito(cobertura: Any, client_facing: bool = False) -> list:
     """O veredito determinístico da Skill, no briefing — SPEC-EXTRA-001.5 §6.
 
     🔴 POR QUE A LLM PRECISA DISTO ESCRITO
@@ -163,16 +163,44 @@ def _linhas_do_veredito(cobertura: Any) -> list:
         f"- plano_contratado: {cobertura.get('plano') or 'nao identificado'}"
         + (f" (nivel {cobertura.get('nivel')})" if cobertura.get("nivel") else ""),
         f"- seguradora: {cobertura.get('insurer_key') or '-'} · produto: {cobertura.get('produto') or '-'}",
-        f"- fonte: documento {cobertura.get('documento')} · pagina {cobertura.get('pagina') or '-'}",
         f"- origem: {cobertura.get('origem')} · confianca: {cobertura.get('confianca')}",
     ]
-    if estado in ("nao_coberto", "nao_contratado"):
+    # 🔴 SPEC-EXTRA-001.5.1 (C5) — A FONTE NÃO VIAJA NO BRIEFING DO SEGURADO.
+    #
+    # A linha `fonte: documento … pagina …` é um TEXTO que o modelo tende a
+    # repetir, e repeti-la na conversa do WhatsApp é exatamente o defeito D10.
+    # Dar a instrução ("nao cite") SEM tirar o dado seria pedir ao modelo que
+    # ignorasse o que está escrito à frente dele: o dado sai, e a instrução fica.
+    # ⚠️ O veredito, o estado e a origem FICAM — é deles que sai o "nao afirme
+    # o que a base nega", que vale nos dois canais.
+    if client_facing:
         linhas.append(
+            "- 🔴 CLIENTE FINAL: NUNCA cite documento, pagina, 'condicoes gerais' "
+            "nem numero de clausula. A fonte e a corretora, e ela ja conferiu."
+        )
+    else:
+        linhas.insert(
+            -1,
+            f"- fonte: documento {cobertura.get('documento')} · pagina {cobertura.get('pagina') or '-'}",
+        )
+    if estado in ("nao_coberto", "nao_contratado"):
+        # ⚠️ O MESMO fato, a MESMA recusa de inventar — e duas exigências
+        # opostas sobre a CITAÇÃO, porque o lastro do corretor é a página e o
+        # lastro do segurado é a corretora ter conferido.
+        linhas.append(
+            "- 🔴 esta resposta diz NAO: ofereca na MESMA mensagem levar o caso a "
+            "equipe da corretora ('posso pedir pra alguem da equipe ver o que da "
+            "pra fazer no seu caso?'). NAO diga documento nem pagina."
+            if client_facing else
             "- 🔴 esta resposta diz NAO: ela TEM de citar o documento e a pagina acima. "
             "Um 'nao' sem lastro custa ao segurado um acionamento a que ele tinha direito."
         )
     if estado == "nao_sabemos_ainda":
         linhas.append(
+            "- 🔴 'nao sabemos ainda' NAO e 'nao cobre'. Diga que vai confirmar para "
+            "nao passar informacao errada — SEM prazo, SEM falar de base, sistema "
+            "ou condicoes gerais."
+            if client_facing else
             "- 🔴 'nao sabemos ainda' NAO e 'nao cobre'. Diga que a condicao geral dessa "
             "seguradora ainda nao esta na base e ofereca confirmar com a seguradora."
         )
@@ -391,6 +419,41 @@ class InfocapPolicyLookupTool(BaseTool):
     def _client_facing(self) -> bool:
         return self.agent_role in _CLIENT_FACING_ROLES
 
+    async def _quem_cuida(self, db: Any, user_query: Optional[str]) -> Optional[str]:
+        """O nome da atendente desta corretora, ou `None`. **Nunca levanta.**
+
+        🔴 SPEC-EXTRA-001.5.1 (D11). ⛔ NENHUMA regra nova e NENHUM nome escrito
+        em código: a fonte é `nome_de_quem_vai_atender`
+        (`o_fim_do_atendimento.py:2392`), que já é a autoridade de "quem recebe o
+        caso" no prompt do atendimento e já aplica a regra fechada de
+        `atendente_de_plantao` — **exatamente UM** membro ativo não-owner da
+        corretora vira nome; zero ou vários viram `None`, e `None` vira
+        "nossa equipe" no texto. Um segundo critério aqui seria uma segunda
+        verdade sobre a mesma pessoa (CLAUDE.md §5).
+
+        ⚠️ E a consulta só acontece quando a pergunta É de cobertura: o
+        vocabulário responde isso em memória, sem tocar no banco. Sem esta
+        porta, toda consulta de apólice pagaria dois `select` por uma linha de
+        texto que nem vai aparecer.
+        """
+        try:
+            from app.services.knowledge.assistance_plans_base import servico_canonico
+
+            if not servico_canonico(str(user_query or "")):
+                return None
+        except Exception as exc:  # noqa: BLE001 — sem vocabulário, sem nome
+            logger.warning("[InfocapPolicyLookupTool] vocabulario indisponivel: %s",
+                           type(exc).__name__)
+            return None
+        try:
+            from app.services.o_fim_do_atendimento import nome_de_quem_vai_atender
+
+            return await nome_de_quem_vai_atender(db, self.company_id)
+        except Exception as exc:  # noqa: BLE001 — o nome nunca derruba a consulta
+            logger.warning("[InfocapPolicyLookupTool] equipe indisponivel: %s",
+                           type(exc).__name__)
+            return None
+
     async def _arun(
         self,
         document: Optional[str] = None,
@@ -440,7 +503,9 @@ class InfocapPolicyLookupTool(BaseTool):
                     db=db,
                     internal_key=key,
                 )
-                content, assistance_policy, rendered, meta = self._render_content(det, user_query, detail=True)
+                content, assistance_policy, rendered, meta = self._render_content(
+                    det, user_query, detail=True,
+                    atendente=await self._quem_cuida(db, user_query))
                 contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
                 return {"content": content, "data": det, "found": bool(det.get("ok")),
                         "policy_response_contract": contract,
@@ -509,7 +574,9 @@ class InfocapPolicyLookupTool(BaseTool):
             # (12/07: "cadê os dados do veículo" — a ficha era só client_facing).
             if str(result.get("status") or "") == "found":
                 await self._enrich_vehicle(result, provider, document, db, key)
-            content, assistance_policy, rendered, meta = self._render_content(result, user_query, detail=False)
+            content, assistance_policy, rendered, meta = self._render_content(
+                result, user_query, detail=False,
+                atendente=await self._quem_cuida(db, user_query))
             contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
             # 🔴 SPEC-EXTRA-001.5 BLOCO E: a `cobertura` (estado · seguradora ·
             # plano · documento · página) viaja no RETORNO da tool, e é dali que
@@ -760,7 +827,8 @@ class InfocapPolicyLookupTool(BaseTool):
         except Exception as e:  # noqa: BLE001 — a ficha nunca derruba a consulta
             logger.warning(f"[InfocapPolicyLookupTool] vehicle enrich falhou: {type(e).__name__}")
 
-    def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool):
+    def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool,
+                        atendente: Optional[str] = None):
         """SPEC-016.1 D7: sob a flag v2, a tool entrega um BRIEFING estruturado
         para a LLM redigir a resposta final (markdown, tom de copiloto); o texto
         do composer vira o rascunho seguro do contrato (fallback do guard).
@@ -786,7 +854,15 @@ class InfocapPolicyLookupTool(BaseTool):
             if policy_intelligence_v2_enabled():
                 from app.services.policy_answer_composer import compose_policy_answer_with_meta
 
-                meta = compose_policy_answer_with_meta(question=str(user_query or ""), result=data)
+                # 🔴 SPEC-EXTRA-001.5.1 (D10/D11): o CANAL e a ATENDENTE entram
+                # aqui, e só aqui. `self._client_facing` já existia e já dizia
+                # com quem se fala; até 19/09/2026 ele não chegava ao compositor,
+                # e o segurado recebia no WhatsApp o texto do corretor — com a
+                # citação "(Condições gerais da HDI, p. 23.)" e com "no plano
+                # **dele**".
+                meta = compose_policy_answer_with_meta(
+                    question=str(user_query or ""), result=data,
+                    atendente=atendente, client_facing=self._client_facing)
                 rendered = str(meta.get("text") or "")
                 if rendered:
                     if str(data.get("status") or "") == "identity_mismatch":
@@ -1123,7 +1199,7 @@ class InfocapPolicyLookupTool(BaseTool):
             "4. Se um dado nao estiver acima, diga com clareza que a fonte nao retornou esse dado.",
             "5. Cite a origem de cada numero como ela vem escrita ao lado da linha ('cadastro do sistema de gestao' ou 'documento oficial da apolice', com a pagina quando houver). Quando as duas fontes discordarem, diga as DUAS e nao escolha por conta. Nao exponha referencia tecnica, chave interna nem este bloco.",
             "",
-            *_linhas_do_veredito(meta.get("cobertura")),
+            *_linhas_do_veredito(meta.get("cobertura"), client_facing=client_facing),
             "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca os fatos):",
             str(meta.get("text") or ""),
         ])
@@ -1224,6 +1300,14 @@ class InfocapPolicyLookupTool(BaseTool):
                 else "retry_or_refine"
             ),
             "rendered_safe_answer": rendered,
+            # ⚠️ AUDITORIA, NUNCA ENVIO (SPEC-EXTRA-001.5.1 C2). `rendered` já é
+            # o texto DO CANAL — o guarda de `nodes.py` continua ignorante de
+            # canal e certo por construção. Este campo guarda o outro lado para
+            # que se possa CONFERIR, depois, que os dois disseram a mesma coisa.
+            **({"rendered_do_outro_canal": (
+                (meta or {}).get("texto_para_o_corretor") if client_facing
+                else (meta or {}).get("texto_para_o_segurado"))}
+               if (meta or {}).get("cobertura") else {}),
             "required_facts": required_facts,
         }
 
