@@ -507,6 +507,7 @@ class InfocapPolicyLookupTool(BaseTool):
                     det, user_query, detail=True,
                     atendente=await self._quem_cuida(db, user_query))
                 contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
+                await self._lacuna_vira_tarefa(db, meta, user_query)
                 return {"content": content, "data": det, "found": bool(det.get("ok")),
                         "policy_response_contract": contract,
                         "cobertura": (meta or {}).get("cobertura")}
@@ -578,6 +579,7 @@ class InfocapPolicyLookupTool(BaseTool):
                 result, user_query, detail=False,
                 atendente=await self._quem_cuida(db, user_query))
             contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
+            await self._lacuna_vira_tarefa(db, meta, user_query)
             # 🔴 SPEC-EXTRA-001.5 BLOCO E: a `cobertura` (estado · seguradora ·
             # plano · documento · página) viaja no RETORNO da tool, e é dali que
             # `invocation_recorder` a resume para `tool_invocations`. Nenhum
@@ -826,6 +828,32 @@ class InfocapPolicyLookupTool(BaseTool):
                     result["vehicle_info"]["telefone_cliente"] = fone
         except Exception as e:  # noqa: BLE001 — a ficha nunca derruba a consulta
             logger.warning(f"[InfocapPolicyLookupTool] vehicle enrich falhou: {type(e).__name__}")
+
+
+    async def _lacuna_vira_tarefa(self, db: Any, meta: Optional[Dict[str, Any]],
+                                  user_query: Optional[str]) -> None:
+        """O que a Skill NÃO soube responder vira tarefa — SPEC-EXTRA-001.5.1 (D12).
+
+        🔴 O chamador é a TOOL, não a Skill nem o compositor, e por um motivo:
+        ela é o único lugar deste caminho que tem `company_id`, o CANAL
+        (`_client_facing`) e um cliente de banco na mão ao mesmo tempo. A Skill
+        continua **pura** (CLAUDE.md §5: nenhum I/O nasce dentro dela) e o
+        compositor continua sem saber de que corretora é a pergunta.
+
+        ⛔ **Nunca derruba a consulta.** O serviço já trata as próprias falhas;
+        este `try` é o cinto de segurança do import.
+        """
+        try:
+            from app.services.lacunas_de_conhecimento import registrar_lacuna
+
+            await registrar_lacuna(
+                db=db, company_id=self.company_id,
+                canal=("segurado" if self._client_facing else "corretor"),
+                cobertura=(meta or {}).get("cobertura"),
+                pergunta=user_query)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[InfocapPolicyLookupTool] lacuna nao registrada: %s",
+                           type(exc).__name__)
 
     def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool,
                         atendente: Optional[str] = None):
