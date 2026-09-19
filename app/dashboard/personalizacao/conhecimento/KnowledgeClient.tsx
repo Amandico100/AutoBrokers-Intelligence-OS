@@ -106,6 +106,14 @@ export function KnowledgeClient() {
   const cobertura = planos?.cobertura || {};
   const fila = planos?.fila || {};
   const coberturaOk = cobertura?.ok === true;
+  // 🔴 SPEC-EXTRA-001.5.1 (E19) — quem CURA é a AutoBrokers, não a corretora.
+  //
+  // A base de planos é de todas (D-PILOTO-01): deixar um admin de uma corretora
+  // publicar "o Essencial da HDI não inclui vidros" era dar a ela a palavra
+  // final sobre o contrato das outras. A fila some daqui — ela é ferramenta de
+  // quem cura — e fica a frase que explica por que não há botão. ⚠️ A tela NÃO
+  // esconde o conhecimento: a cobertura continua visível, em leitura.
+  const podeCurar = planos?.curadoria_permitida === true;
 
   return (
     <div className="space-y-4">
@@ -131,7 +139,16 @@ export function KnowledgeClient() {
               </button>
             </div>
           )}
-          <FilaDeCuradoria fila={fila} onMudou={loadPlanos} />
+          {podeCurar ? (
+            <FilaDeCuradoria fila={fila} onMudou={loadPlanos} />
+          ) : (
+            <p className="rounded-lg border border-border bg-card px-4 py-3 text-[11px] text-faint">
+              {planos?.aviso ||
+                'Este conhecimento é de todas as corretoras e é mantido pela AutoBrokers.'}{' '}
+              Você lê aqui o que cada plano cobre; quem publica e corrige é a equipe da
+              AutoBrokers, para que a mesma resposta valha para todo mundo.
+            </p>
+          )}
         </>
       )}
 

@@ -7,11 +7,28 @@
 // corretora: dois usuários de corretoras diferentes leem a mesma resposta, e é
 // isso que o GATE D prova.
 //
-// Publicar/rejeitar exige papel administrativo (`write: true`, o mesmo critério
-// dos vizinhos) e grava como revisor o usuário da SESSÃO — nunca um id vindo do
-// corpo: é o nome de quem responde por "guincho até 200 km".
+// 🔴 SPEC-EXTRA-001.5.1 (E19) — CURADORIA É DE ADMINISTRADOR DA PLATAFORMA.
+//
+// Até 19/09/2026 publicar/rejeitar exigia `write: true` — papel administrativo
+// DA CORRETORA. Dito de outro modo: um admin de UMA corretora publicava a
+// afirmação "o Essencial da HDI não inclui vidros" para TODAS as outras, e
+// respondia por ela sem saber. A base é global (D-PILOTO-01); quem publica nela
+// tem de ser global também.
+//
+// ⚠️ A corretora comum NÃO perde a leitura: ela continua vendo o que as apólices
+// cobrem, em modo leitura, com a frase que diz de onde aquilo vem. O que ela
+// deixa de ver é a FILA — que é ferramenta de quem cura, não informação de quem
+// consulta — e o que ela deixa de poder é escrever.
+//
+// O revisor gravado continua vindo da SESSÃO, nunca do corpo: é o nome de quem
+// responde por "guincho até 200 km".
 import { NextRequest, NextResponse } from 'next/server';
-import { assertSameOrigin, requireCompanyMember } from '@/lib/admin/admin-auth';
+import { assertSameOrigin, requireCompanyMember, requireMasterAdmin } from '@/lib/admin/admin-auth';
+
+//: A frase, em português de gente, que explica por que esta parte da tela não
+//: tem botão. ⚠️ Ela é do PRODUTO, não do teste: o guarda a lê daqui.
+const AVISO_DE_LEITURA =
+  'Este conhecimento é de todas as corretoras e é mantido pela AutoBrokers.';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +84,11 @@ export async function GET(req: NextRequest) {
   const auth = await requireCompanyMember({ write: false });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
+  // 🔴 E19: a FILA e a PÁGINA do documento são ferramenta de curadoria — só
+  // administrador da plataforma. A COBERTURA é leitura, e é de todos.
+  const curador = await requireMasterAdmin();
+  const podeCurar = curador.ok === true;
+
   // 🔴 SPEC-EXTRA-001.5.1 (D5) — A PÁGINA VEM SOB DEMANDA, NA MESMA SESSÃO.
   //
   // 📊 A fila baixava 24 PDFs em série para montar a tela: 65,3 s em produção.
@@ -75,6 +97,9 @@ export async function GET(req: NextRequest) {
   // — uma rota nova só para a página teria de repetir a sessão, a origem e a
   // chave interna, e é assim que uma delas acaba esquecida.
   const servicoId = (req.nextUrl.searchParams.get('servico_id') || '').trim();
+  if (servicoId && !podeCurar) {
+    return NextResponse.json({ ok: false, error: 'master_required' }, { status: 403 });
+  }
   if (servicoId) {
     // ⛔ O id é repassado por `URLSearchParams`, nunca concatenado: um id com
     // `&` ou `?` viraria outro parâmetro na chamada ao backend.
@@ -85,15 +110,26 @@ export async function GET(req: NextRequest) {
 
   const [cobertura, fila] = await Promise.all([
     chamar('/api/assistance-plans/cobertura'),
-    chamar('/api/assistance-plans/fila'),
+    // ⛔ Sem papel de plataforma a fila nem é PEDIDA: devolvê-la e esconder no
+    // front deixaria o dado trafegar para quem não pode agir sobre ele.
+    podeCurar ? chamar('/api/assistance-plans/fila') : Promise.resolve(null),
   ]);
-  return NextResponse.json({ ok: true, cobertura, fila });
+  return NextResponse.json({
+    ok: true,
+    cobertura,
+    fila,
+    curadoria_permitida: podeCurar,
+    aviso: AVISO_DE_LEITURA,
+  });
 }
 
 export async function POST(req: NextRequest) {
   const mesmaOrigem = assertSameOrigin(req);
   if (mesmaOrigem) return NextResponse.json(mesmaOrigem, { status: mesmaOrigem.status });
-  const auth = await requireCompanyMember({ write: true });
+  // 🔴 E19: PUBLICAR e REJEITAR são atos de PLATAFORMA. Era `requireCompanyMember
+  // ({ write: true })` — papel da própria corretora — e isso dava a uma
+  // corretora o poder de publicar o que vale para todas.
+  const auth = await requireMasterAdmin();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const corpo = await req.json().catch(() => ({}));
@@ -103,7 +139,7 @@ export async function POST(req: NextRequest) {
       id: corpo?.id,
       acao: corpo?.acao,
       motivo: corpo?.motivo,
-      revisado_por: auth.ctx.userId, // 🔴 da SESSÃO, nunca do corpo
+      revisado_por: auth.ctx.adminId, // 🔴 da SESSÃO de plataforma, nunca do corpo
     }),
   });
   return NextResponse.json(out);
