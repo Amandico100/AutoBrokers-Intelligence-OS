@@ -121,8 +121,16 @@ def _ambiente_do_conteiner() -> dict:
 
 
 def _rodar_na_copia(copia: str, programa: str) -> str:
+    # ⚠️ `encoding="utf-8"` explícito, e não o padrão da máquina: 📊 19/09/2026,
+    # no Windows, `text=True` sozinho decodifica a saída em cp1252 e a linha
+    # `catálogo AUSENTE` chega aqui como `catÃ¡logo AUSENTE`. Um guarda que
+    # procura a frase que o motor escreveu ficaria vermelho pelo motivo errado
+    # — e a tentação seguinte seria afrouxar a asserção para ASCII, que é
+    # deixar de medir a mensagem real (CLAUDE.md §9.4: o dialeto da ferramenta
+    # muda o que o padrão casa).
     r = subprocess.run([sys.executable, "-c", programa], capture_output=True,
-                       text=True, cwd=copia, env=_ambiente_do_conteiner())
+                       text=True, encoding="utf-8", errors="replace",
+                       cwd=copia, env=_ambiente_do_conteiner())
     saida = (r.stdout or "").strip()
     if not saida:
         saida = "SEM STDOUT | " + (r.stderr or "")[-1200:]
@@ -319,5 +327,119 @@ try:
            "a recusa acima é pelo conteúdo, não pelo caminho")
 finally:
     shutil.rmtree(_vazio, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+print("\n[6] 🔴 A-bis — os CATÁLOGOS SUSEP também viajam na imagem")
+# SPEC-EXTRA-001.5.1, unidade A-bis (emenda E3). O MESMO defeito do vocabulário,
+# um andar adiante e SEM 500 nenhum para denunciá-lo:
+#
+# 📊 19/09/2026, nesta mesma cópia, com o código de `2b26bab`:
+#     WARNING [SES] mapa de seguradoras ausente (FileNotFoundError)
+#     WARNING [SES] mapa de siglas ausente (FileNotFoundError)
+#     WARNING [SES] mapa de ramos ausente (FileNotFoundError)
+#     seguradoras=0 siglas=0 ramos=0
+#     ITAU: UNKNOWN          <- devia ser `porto`
+#
+# `familia_de_acionamento` está no CAMINHO VIVO do acionamento
+# (`infocap_tool.py:856` → `_linha_da_familia_de_acionamento`): com o mapa vazio,
+# o corretor deixa de ler *"Itaú aciona pelo corredor da Porto"* e ninguém vê
+# erro nenhum — nem 500, nem exceção, nem linha vermelha. Degrada em silêncio, e
+# é por isso que este guarda não pergunta "importou?", pergunta o VALOR.
+CATALOGOS = ("seguradora-coenti.json", "ramo-cogrupo.json")
+
+PROGRAMA_DOS_CATALOGOS = (
+    "import logging, sys\n"
+    # O log vai para a SAÍDA PADRÃO de propósito, como no ELO acima: a linha
+    # `[SES] catálogo AUSENTE` é a única denúncia que existe, e um guarda que
+    # não a lê não prova que ela aparece quando tem de aparecer.
+    "logging.basicConfig(stream=sys.stdout, level=logging.WARNING, force=True)\n"
+    "from app.providers.susep_ses_provider import (familia_de_acionamento,\n"
+    "    mapa_de_seguradoras, mapa_de_siglas, mapa_de_ramos)\n"
+    "print('MAPAS: seguradoras=%d siglas=%d ramos=%d' % (len(mapa_de_seguradoras()),\n"
+    "      len(mapa_de_siglas()), len(mapa_de_ramos())))\n"
+    "print('ITAU:', familia_de_acionamento('itau'))\n"
+)
+
+for _nome in CATALOGOS:
+    _v = subprocess.run(["git", "ls-files", "--", "backend/app/data/" + _nome],
+                        capture_output=True, text=True, cwd=REPO)
+    checar(bool((_v.stdout or "").strip()),
+           "🔴 `git ls-files backend/app/data/%s` devolve o arquivo" % _nome,
+           repr((_v.stdout or "").strip() or (_v.stderr or "")[-200:]))
+
+_copia2 = tempfile.mkdtemp(prefix="imagem_com_catalogos_")
+try:
+    shutil.copytree(os.path.join(RAIZ, "app"), os.path.join(_copia2, "app"),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    saida_cat = _rodar_na_copia(_copia2, PROGRAMA_DOS_CATALOGOS)
+    linhas_cat = [l.strip() for l in saida_cat.splitlines()]
+    mapas = next((l for l in linhas_cat if l.startswith("MAPAS:")), "")
+    numeros = {}
+    for parte in mapas.replace("MAPAS:", "").split():
+        if "=" in parte:
+            chave, valor = parte.split("=", 1)
+            numeros[chave] = int(valor) if valor.isdigit() else -1
+    checar(all(numeros.get(c, 0) > 0 for c in ("seguradoras", "siglas", "ramos")),
+           "🔴 na cópia SEM `docs/`, os TRÊS mapas SES têm entradas > 0 "
+           "(antes: seguradoras=0 siglas=0 ramos=0)",
+           mapas or saida_cat[-300:])
+    checar(any(l == "ITAU: porto" for l in linhas_cat),
+           "🔴 O ELO do A-bis: `familia_de_acionamento('itau')` → `porto` na "
+           "árvore do contêiner (antes devolvia `UNKNOWN`, sem erro nenhum)",
+           (linhas_cat[-1] if linhas_cat else "")[:200])
+    checar("[SES]" not in saida_cat,
+           "e NENHUMA linha `[SES] … ausente` sobra no log",
+           saida_cat[-300:])
+
+    print("\n[7] 🔴 CONTROLE do A-bis — o catálogo apagado do pacote")
+    # ⚠️ Mutado na CÓPIA e restaurado por CÓPIA (protocolo §10). A árvore de
+    # trabalho não é tocada em momento nenhum deste bloco.
+    _alvo2 = os.path.join(_copia2, "app", "data", "seguradora-coenti.json")
+    _guardado2 = _alvo2 + ".guardado"
+    checar(os.path.isfile(_alvo2),
+           "o catálogo de seguradoras está na cópia (há o que apagar)", _alvo2)
+    if os.path.isfile(_alvo2):
+        shutil.copy2(_alvo2, _guardado2)
+        os.remove(_alvo2)
+        saida_sem_cat = _rodar_na_copia(_copia2, PROGRAMA_DOS_CATALOGOS)
+        checar("ITAU: UNKNOWN" in saida_sem_cat,
+               "🔴 CONTROLE: sem o JSON no pacote, `itau` volta a `UNKNOWN` — "
+               "este guarda CONSEGUE ficar vermelho",
+               saida_sem_cat[-300:])
+        checar("catálogo AUSENTE" in saida_sem_cat and "ERROR" in saida_sem_cat,
+               "🔴 e a falta GRITA em ERROR nomeando a seção — era `WARNING` com "
+               "mapa vazio, que é como isso durou sem ninguém ver",
+               saida_sem_cat[-400:])
+        shutil.copy2(_guardado2, _alvo2)
+
+    print("\n[8] o PONTEIRO de `docs/` nunca é carregado como catálogo")
+    # A mesma porta que o [5] fecha para o vocabulário: se um dia o resolvedor
+    # pegar o ponteiro, a seção vem vazia — e vazio tem de gritar, nunca virar
+    # um silencioso "nenhuma seguradora casou".
+    _ponteiro = os.path.join(_copia2, "ponteiro.json")
+    with open(_ponteiro, "w", encoding="utf-8") as fh:
+        json.dump({"_mora_agora_em": "backend/app/data/seguradora-coenti.json"}, fh)
+    _prog_ponteiro = (
+        "import logging, sys\n"
+        "logging.basicConfig(stream=sys.stdout, level=logging.WARNING, force=True)\n"
+        "from app.providers import susep_ses_provider as S\n"
+        "print('SECAO:', len(S._secao_do_catalogo(%r, 'seguradoras')))\n" % _ponteiro
+    )
+    saida_ponteiro = _rodar_na_copia(_copia2, _prog_ponteiro)
+    checar("SECAO: 0" in saida_ponteiro and "SEM DADO" in saida_ponteiro,
+           "🔴 um ponteiro (arquivo sem a seção) é recusado com ERROR `catálogo "
+           "SEM DADO` — nunca carregado vazio em silêncio",
+           saida_ponteiro[-300:])
+    _prog_controle = (
+        "from app.providers import susep_ses_provider as S\n"
+        "print('SECAO:', len(S._secao_do_catalogo(S.CAMINHO_DO_MAPA, 'seguradoras')))\n"
+    )
+    saida_controle = _rodar_na_copia(_copia2, _prog_controle)
+    checar("SECAO:" in saida_controle and "SECAO: 0" not in saida_controle,
+           "🔴 CONTROLE: o MESMO leitor, no catálogo de verdade, CARREGA — a "
+           "recusa acima é pelo CONTEÚDO, não pelo leitor",
+           saida_controle[-200:])
+finally:
+    shutil.rmtree(_copia2, ignore_errors=True)
 
 sys.exit(_fechar())
