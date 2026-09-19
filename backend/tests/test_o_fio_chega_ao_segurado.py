@@ -640,9 +640,12 @@ checar(GUARDA(DEPOIS_DE_ACIONAR, _consumido_acao).strip() == DEPOIS_DE_ACIONAR,
 _fonte_no = open(os.path.join(RAIZ, "app", "agents", "nodes.py"),
                  encoding="utf-8").read()
 _sem_com = "\n".join(l.split("#")[0] for l in _fonte_no.splitlines())
-checar('"assistencia_da_base"' in _sem_com.split("_CONSUMIDOS")[1][:200],
-       "🔴 e o consumo está no CÓDIGO do nó (`_CONSUMIDOS`), não num "
-       "comentário")
+# 🔴 A LIÇÃO MIGROU (CLAUDE.md §9.3): na RODADA 3 o consumo deixou de ser um
+# conjunto local (`_CONSUMIDOS`) e virou `_REGUAS_DE_COBERTURA` +
+# `_consumir_regua_apos_acao`, chamado nos DOIS pontos do grafo. O bloco [11]
+# mede isso pelo caminho real.
+checar('"assistencia_da_base"' in _sem_com.split("_REGUAS_DE_COBERTURA")[1][:220],
+       "🔴 e as duas réguas estão no CÓDIGO do nó, não num comentário")
 
 BASE._db = lambda supabase_client=None: _base_vazia
 
@@ -686,9 +689,13 @@ checar(GUARDA(_resposta_mista, _contrato_mista).strip() == _resposta_mista,
 print("\n      🔴 MUTAÇÃO do [7]: a porta de intenção sempre-True")
 import app.services.skills.cobertura_e_assistencia as SKI  # noqa: E402
 
-_porta_original = SKI.e_pergunta_de_cobertura
+# 🔴 A LIÇÃO MIGROU (CLAUDE.md §9.3): quem a tool chama desde a RODADA 3 e
+# `intencao_da_mensagem` (tres saidas), nao `e_pergunta_de_cobertura`. Mutar a
+# funcao que ninguem chama mais faria este bloco passar por vacuo — foi o que
+# aconteceu no primeiro re-run.
+_porta_original = SKI.intencao_da_mensagem
 try:
-    SKI.e_pergunta_de_cobertura = lambda _t: True
+    SKI.intencao_da_mensagem = lambda _t: "pergunta"
     _mut = [f for f in ACIONAMENTO
             if GUARDA(PROXIMO_PASSO, _fio(f, cliente=True, mensagem=f)[1]).strip()
             != PROXIMO_PASSO]
@@ -697,7 +704,7 @@ try:
            "atendente voltam a ser SUBSTITUÍDAS — era o blocker N1" % len(_mut),
            repr(_mut[:3]))
 finally:
-    SKI.e_pergunta_de_cobertura = _porta_original
+    SKI.intencao_da_mensagem = _porta_original
 
 # ---------------------------------------------------------------------------
 BASE._db = lambda supabase_client=None: db
@@ -768,44 +775,83 @@ checar('"session_id": str(state.get("session_id") or "")' not in _mutado_j6,
        "mede a LINHA, não a intenção")
 
 # ---------------------------------------------------------------------------
-print("\n[11] 🔴 RODADA 2 · N1 item 4 — a flag não sobrevive a uma AÇÃO posterior")
-# 📊 O contrato fica no estado até o fim do turno (`nodes.py:1450` zera só a
-# variável local). Se `insurer_dispatch` rodou DEPOIS da consulta, "Pronto! O
-# guincho foi solicitado" também era trocado pelo rascunho — o cliente ouvia que
-# nada tinha sido feito, com o guincho já a caminho.
-
+print("\n[11] 🔴 RODADA 3 · B3 — o consumo é por ESTADO, pelo CAMINHO REAL do nó")
+# 📊 Carimbo M4 do juiz: a mutação "consumo REMOVIDO" ficava VERDE, porque este
+# bloco montava o contrato consumido À MÃO. E o defeito real era outro: o grafo
+# é `agent ⇄ tools`, a consulta e o acionamento caem em INVOCAÇÕES diferentes, e
+# a versão por chamada não via a segunda. Medido: "Pronto! Já acionei a
+# assistência, o prestador chega em 40 minutos." → TROCADO.
 _b, _contrato_acao, _rendered_acao, _m = _fio("tem taxi?", cliente=True,
                                               mensagem="tem taxi?")
 checar("encerrar_com_o_rascunho" in (_contrato_acao.get("required_facts") or []),
        "a flag está no contrato (é o caso em que ela deve estar)",
        repr(_contrato_acao.get("required_facts")))
+checar(isinstance(_contrato_acao.get("tools_ja_usadas"), list)
+       or _contrato_acao.get("tools_ja_usadas") is None,
+       "o contrato nasce sem snapshot (quem o põe é o nó)",
+       repr(_contrato_acao.get("tools_ja_usadas")))
 
-DEPOIS_DA_ACAO = "Pronto! O guincho foi solicitado, previsão de 40 minutos."
-checar(GUARDA(DEPOIS_DA_ACAO, _contrato_acao).strip() != DEPOIS_DA_ACAO,
-       "🔴 CONTROLE: com a flag de pé, a resposta da AÇÃO seria trocada",
-       GUARDA(DEPOIS_DA_ACAO, _contrato_acao)[:100])
+DEPOIS_DA_ACAO = "Pronto! Já acionei a assistência, o prestador chega em 40 minutos."
 
-#: O consumo é o MESMO código de `nodes.py`: os fatos menos a flag.
-_consumido = dict(_contrato_acao, required_facts=[
-    f for f in (_contrato_acao.get("required_facts") or [])
-    if f != "encerrar_com_o_rascunho"])
-checar(GUARDA(DEPOIS_DA_ACAO, _consumido).strip() == DEPOIS_DA_ACAO,
-       "🔴 consumida a flag, a resposta da AÇÃO passa INTACTA",
-       GUARDA(DEPOIS_DA_ACAO, _consumido)[:100])
-checar("insurer_dispatch" in NODES._TOOLS_DE_ACAO
-       and "request_human_agent" in NODES._TOOLS_DE_ACAO
-       and "portal_action" in NODES._TOOLS_DE_ACAO,
-       "🔴 e `nodes._TOOLS_DE_ACAO` nomeia as tools que disparam o consumo",
-       repr(sorted(NODES._TOOLS_DE_ACAO)))
+#: 🔴 O SNAPSHOT, como o `tool_node` o escreve: as tools do turno no instante em
+#: que o contrato nasceu.
+_com_snapshot = dict(_contrato_acao,
+                     tools_ja_usadas=["infocap_policy_lookup"])
+checar(NODES._consumir_regua_apos_acao(_com_snapshot,
+                                       ["infocap_policy_lookup"])
+       is _com_snapshot,
+       "🔴 sem ação nova, o contrato NÃO é tocado (é o mesmo objeto)")
+checar(GUARDA(DEPOIS_DA_ACAO, _com_snapshot).strip() != DEPOIS_DA_ACAO,
+       "🔴 CONTROLE: com a régua de pé, a resposta da AÇÃO seria trocada",
+       GUARDA(DEPOIS_DA_ACAO, _com_snapshot)[:100])
+
+#: A SEGUNDA invocação do grafo: `tools_used` do ESTADO já tem o acionamento.
+_apos = NODES._consumir_regua_apos_acao(
+    _com_snapshot, ["infocap_policy_lookup", "insurer_dispatch"])
+checar("encerrar_com_o_rascunho" not in (_apos.get("required_facts") or [])
+       and "assistencia_da_base" not in (_apos.get("required_facts") or []),
+       "🔴 com `insurer_dispatch` no estado, AS DUAS réguas são consumidas",
+       repr(_apos.get("required_facts")))
+checar(GUARDA(DEPOIS_DA_ACAO, _apos).strip() == DEPOIS_DA_ACAO,
+       "🔴 e 'Pronto! Já acionei a assistência' passa INTACTO na 2ª invocação",
+       GUARDA(DEPOIS_DA_ACAO, _apos)[:100])
+
+#: ⚠️ A CONTAGEM, não o conjunto: a ação que já tinha rodado ANTES não consome.
+_ja_tinha = dict(_contrato_acao,
+                 tools_ja_usadas=["insurer_dispatch", "infocap_policy_lookup"])
+checar(NODES._consumir_regua_apos_acao(
+           _ja_tinha, ["insurer_dispatch", "infocap_policy_lookup"]) is _ja_tinha,
+       "🔴 CONTROLE: ação que rodou ANTES da consulta não consome nada")
+checar("encerrar_com_o_rascunho" not in (NODES._consumir_regua_apos_acao(
+           _ja_tinha, ["insurer_dispatch", "infocap_policy_lookup",
+                       "insurer_dispatch"]).get("required_facts") or []),
+       "🔴 mas a MESMA ação rodando DE NOVO depois consome — por contagem, "
+       "não por conjunto")
+
+print("\n      🔴 MUTAÇÃO M4 (a do juiz): o consumo REMOVIDO")
+_consumo_original = NODES._consumir_regua_apos_acao
+try:
+    NODES._consumir_regua_apos_acao = lambda contrato, tools_usadas: contrato
+    _mut = NODES._consumir_regua_apos_acao(
+        _com_snapshot, ["infocap_policy_lookup", "insurer_dispatch"])
+    checar(GUARDA(DEPOIS_DA_ACAO, _mut).strip() != DEPOIS_DA_ACAO,
+           "🔴 MUTAÇÃO M4: sem o consumo, 'Pronto! Já acionei' volta a ser "
+           "TROCADO — este guarda CONSEGUE ficar vermelho",
+           GUARDA(DEPOIS_DA_ACAO, _mut)[:100])
+finally:
+    NODES._consumir_regua_apos_acao = _consumo_original
+
 _fonte_do_no = open(os.path.join(RAIZ, "app", "agents", "nodes.py"),
                     encoding="utf-8").read()
 _sem_comment = "\n".join(l.split("#")[0] for l in _fonte_do_no.splitlines())
-checar("_TOOLS_DE_ACAO" in _sem_comment and "_ordem_do_turno" in _sem_comment
-       and "encerrar_com_o_rascunho" in _sem_comment,
-       "🔴 e o consumo está no CÓDIGO do nó (ordem do turno + a lista), não "
-       "num comentário")
+checar(_sem_comment.count("_consumir_regua_apos_acao(") >= 3,
+       "🔴 e o nó CHAMA o consumo nos DOIS pontos (tool_node e agent_node)",
+       str(_sem_comment.count("_consumir_regua_apos_acao(")))
+checar("tools_ja_usadas=[str(t) for t in tools_used]" in _sem_comment,
+       "🔴 e o SNAPSHOT é escrito quando o contrato nasce")
+checar("_consumir_regua_apos_acao(contract, state.get(" in _sem_comment,
+       "🔴 e o guarda pós-LLM consome a partir do ESTADO — é a 2ª invocação")
 
-# ---------------------------------------------------------------------------
 print("\n[12] 🔴 RODADA 2 — a LLM não pode NEGAR o que a base AFIRMOU")
 # 📊 Medido em 19/09/2026: com a base dizendo `sim` para guincho, o candidato
 # "Não, seu plano não tem guincho" PASSAVA — o guarda só olhava a direção `nao`.
@@ -846,6 +892,162 @@ try:
 finally:
     NODES._NEGATIVA_RE = _negativa_original
 BASE._db = lambda supabase_client=None: _base_vazia
+
+# ---------------------------------------------------------------------------
+print("\n[13] 🔴 RODADA 3 · B1 — O TURNO DO CPF NÃO DESLIGA A FISCALIZAÇÃO")
+# 📊 O fluxo real (documentado em `nodes.py:1576-1590`, incidente 12/07): o
+# cliente pergunta, o agente pede o CPF, e a tool roda NO TURNO DO CPF. Medido
+# pelo juiz da rodada 3, com duas saídas só na porta:
+#     "tem guincho? | 12345678900"       -> required_facts=[]
+#     "Sim, tem esse serviço sim!"       -> CHEGAVA INTACTO
+# 🔴 E este bloco é também o carimbo M9: em TODO caso aqui a janela é DIFERENTE
+#    da mensagem atual — sem isso, a tese central da rodada 2 não era medida.
+from app.services.skills.cobertura_e_assistencia import (  # noqa: E402
+    INDETERMINADA, PEDIDO, PERGUNTA, intencao_da_mensagem,
+)
+
+BASE._db = lambda supabase_client=None: db
+CPF_FICTICIO = "12345678900"   # 💭 fictício, não pertence a ninguém
+
+print("      ① pergunta no turno N, CPF no turno N+1 -> FISCALIZA como pergunta")
+_b, _c_cpf, _r_cpf, _m_cpf = _fio("tem carro reserva? | %s" % CPF_FICTICIO,
+                                  cliente=True, mensagem=CPF_FICTICIO)
+checar(_m_cpf.get("pergunta_de_cobertura") is True,
+       "🔴 a intenção veio da JANELA (a mensagem atual é indeterminada)",
+       repr(_m_cpf.get("pergunta_de_cobertura")))
+checar("assistencia_da_base" in (_c_cpf.get("required_facts") or []),
+       "🔴 e a régua da 001.5 (M-B5) CONTINUA fiscalizando no turno do CPF",
+       repr(_c_cpf.get("required_facts")))
+MENTIRA_CPF = "Sim! Seu plano tem carro reserva por 7 dias, pode contar com isso."
+checar(GUARDA(MENTIRA_CPF, _c_cpf).strip() != MENTIRA_CPF,
+       "🔴 e a MENTIRA (a base diz NÃO) é anulada — era o blocker B1",
+       GUARDA(MENTIRA_CPF, _c_cpf)[:120])
+
+print("      ② pedido no turno N, CPF no turno N+1 -> segue PEDIDO")
+_b, _c_ped, _r_ped, _m_ped = _fio("preciso de guincho | %s" % CPF_FICTICIO,
+                                  cliente=True, mensagem=CPF_FICTICIO)
+checar(_m_ped.get("pergunta_de_cobertura") is False,
+       "🔴 a janela diz PEDIDO, e o turno do CPF herda o pedido",
+       repr(_m_ped.get("pergunta_de_cobertura")))
+PASSO_DO_ACIONAMENTO = ("Achei a sua apólice, está ativa. Me passa o endereço "
+                        "onde o carro está?")
+checar(GUARDA(PASSO_DO_ACIONAMENTO, _c_ped).strip() == PASSO_DO_ACIONAMENTO,
+       "🔴 e o próximo passo do acionamento passa INTACTO",
+       GUARDA(PASSO_DO_ACIONAMENTO, _c_ped)[:120])
+
+print("      ③ mensagem atual ausente -> a JANELA decide (comportamento antigo)")
+for _vazia in (None, "", "   "):
+    _b, _c_v, _r_v, _m_v = _fio("tem carro reserva?", cliente=True,
+                                mensagem=_vazia)
+    checar(_m_v.get("pergunta_de_cobertura") is True,
+           "🔴 mensagem atual %r -> a janela decide" % _vazia,
+           repr(_m_v.get("pergunta_de_cobertura")))
+
+print("      ④ a porta tem TRÊS saídas, e ausência de sinal nunca é pedido")
+for _sinal in (CPF_FICTICIO, "ABC1D23", "ok", "pode ser", "apolice 998877"):
+    checar(intencao_da_mensagem(_sinal) == INDETERMINADA,
+           "🔴 %r -> indeterminada" % _sinal, intencao_da_mensagem(_sinal))
+
+print("\n      🔴 MUTAÇÃO de B1: indeterminada -> pedido")
+import app.services.skills.cobertura_e_assistencia as SKI2  # noqa: E402
+
+_intencao_original = SKI2.intencao_da_mensagem
+try:
+    SKI2.intencao_da_mensagem = lambda t: (
+        PEDIDO if _intencao_original(t) == INDETERMINADA else _intencao_original(t))
+    _b, _c_mut, _r_mut, _m_mut = _fio("tem carro reserva? | %s" % CPF_FICTICIO,
+                                      cliente=True, mensagem=CPF_FICTICIO)
+    checar(GUARDA(MENTIRA_CPF, _c_mut).strip() == MENTIRA_CPF,
+           "🔴 MUTAÇÃO: com indeterminada→pedido, a mentira volta a CHEGAR "
+           "INTACTA ao segurado — era o blocker B1",
+           GUARDA(MENTIRA_CPF, _c_mut)[:120])
+finally:
+    SKI2.intencao_da_mensagem = _intencao_original
+
+print("\n      🔴 MUTAÇÃO M9 (a do juiz): `mensagem_atual` IGNORADA")
+# 📊 Ela ficava VERDE porque nos testes a mensagem ERA a janela. Aqui a janela é
+#    DIFERENTE, e a mutação muda o veredito.
+#: ⚠️ A janela tem de ser classificada como PERGUNTA sozinha — senão a mutação
+#: não muda nada e o guarda passaria por vácuo.
+JANELA_QUE_PERGUNTA = "tem carro reserva? | %s" % CPF_FICTICIO
+checar(intencao_da_mensagem(JANELA_QUE_PERGUNTA) == PERGUNTA,
+       "🔴 CONTROLE da M9: a JANELA, sozinha, e PERGUNTA",
+       intencao_da_mensagem(JANELA_QUE_PERGUNTA))
+_b, _c_m9, _r_m9, _m_m9 = _fio(JANELA_QUE_PERGUNTA, cliente=True,
+                               mensagem="preciso de um reboque agora")
+checar(_m_m9.get("pergunta_de_cobertura") is False,
+       "🔴 mensagem atual = PEDIDO vence a janela que traz a pergunta",
+       repr(_m_m9.get("pergunta_de_cobertura")))
+_b, _c_m9b, _r_m9b, _m_m9b = _fio(JANELA_QUE_PERGUNTA,
+                                  cliente=True, mensagem=None)
+checar(_m_m9b.get("pergunta_de_cobertura") is True,
+       "🔴 MUTAÇÃO M9: ignorando a mensagem atual (= cair na janela), o mesmo "
+       "turno vira PERGUNTA — a tese da rodada 2 passa a ser medida",
+       repr(_m_m9b.get("pergunta_de_cobertura")))
+
+# ---------------------------------------------------------------------------
+print("\n[14] 🔴 RODADA 3 · B2 — A MATRIZ DE CONFUSÃO DA PORTA")
+# 🔴 ORIGEM DO CORPUS, declarada (CLAUDE.md §9.4): as 30 PERGUNTAS vêm do acervo
+# real (`tests/corpus/perguntas_de_cobertura_2026-09-17.json`, já usado pelo
+# guarda M-B2). Os 22 PEDIDOS são as 11 frases do juiz da rodada 2 + 11 formas
+# que o juiz da rodada 3 mediu como perdidas ("consegue", "podem", "tem como",
+# "dá pra", "ajudar", "mandem"). ⛔ Ler o acervo de mensagens de entrada custaria
+# mais que o teto desta rodada; a origem fica DECLARADA aqui, e a pendência
+# P-001.5.1-CORPUS-DE-PEDIDOS-DO-ACERVO pede a medição sobre conversas reais.
+PEDIDOS_MEDIDOS = ACIONAMENTO + [
+    "consegue mandar um guincho?",
+    "voces podem mandar o reboque ate a oficina?",
+    "tem como chamar um chaveiro aqui em casa?",
+    "da pra mandar alguem hoje ainda?",
+    "quero acionar meu seguro, preciso de guincho",
+    "me ajudar com o guincho por favor",
+    "preciso que mandem um borracheiro",
+    "pode chamar o guincho pra mim?",
+    "gostaria de solicitar carro reserva",
+    "socorro, meu carro parou na rodovia",
+    "abrir um chamado de vidro",
+]
+_erro_caro = [t for t in PEDIDOS_MEDIDOS
+              if intencao_da_mensagem(t) == PERGUNTA]
+_erro_barato = [p["pergunta"] for p in _CORPUS
+                if intencao_da_mensagem(p["pergunta"]) != PERGUNTA]
+print("      📊 MATRIZ: erro CARO (pedido→pergunta) %d/%d · erro BARATO "
+      "(pergunta→outro) %d/%d"
+      % (len(_erro_caro), len(PEDIDOS_MEDIDOS), len(_erro_barato), len(_CORPUS)))
+checar(not _erro_caro,
+       "🔴 erro CARO = 0/%d (📊 antes da RODADA 3: 10/22, e 9 deles tinham a "
+       "resposta do atendente substituída)" % len(PEDIDOS_MEDIDOS),
+       repr(_erro_caro))
+checar(len(_erro_barato) <= 6,
+       "🔴 erro BARATO <= 6/%d — são perguntas de PROCEDIMENTO ('que numero "
+       "chama guincho?'), em que o fiscal de cobertura não é o ponto"
+       % len(_CORPUS),
+       repr([t[:55] for t in _erro_barato]))
+checar(len(_erro_barato) > 0,
+       "⚠️ e ele NÃO é zero — uma porta que classificasse tudo como pergunta "
+       "não estaria olhando a intenção")
+
+print("\n[15] 🔴 RODADA 3 — o PEDIDO que a base NEGA avisa o modelo")
+_base_nega = BaseEmMemoria()
+_P = _base_nega.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
+                      plano="Essencial", nivel=1, documento_id="d", pagina=9)
+_base_nega.servico(_P, "carro_reserva", "nao", documento_id="d", pagina=23)
+_base_nega.servico(_P, "guincho", "sim", documento_id="d", pagina=25)
+BASE._db = lambda supabase_client=None: _base_nega
+_brief_nega, _c_n, _r_n, _m_n = _fio("preciso de carro reserva", cliente=True,
+                                     mensagem="preciso de carro reserva")
+checar((_m_n.get("cobertura") or {}).get("estado") == "nao_coberto",
+       "a base NEGA o serviço pedido",
+       repr((_m_n.get("cobertura") or {}).get("estado")))
+checar("NAO prometa o servico" in _brief_nega,
+       "🔴 e o briefing do PEDIDO manda NÃO prometer e deixar a equipe "
+       "confirmar — a mitigação do 'pedido sem fiscal'", _brief_nega[-260:])
+_brief_ok, _c_o, _r_o, _m_o = _fio("preciso de guincho", cliente=True,
+                                   mensagem="preciso de guincho")
+checar("NAO prometa o servico" not in _brief_ok,
+       "🔴 CONTROLE: quando a base AFIRMA, o aviso NÃO aparece",
+       _brief_ok[-200:])
+BASE._db = lambda supabase_client=None: db
 
 BASE._db = _db_original
 sys.exit(_fechar())
