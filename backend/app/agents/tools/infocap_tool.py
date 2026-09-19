@@ -1469,8 +1469,31 @@ class InfocapPolicyLookupTool(BaseTool):
         da_base = (meta or {}).get("assistencia_da_base")
         contrato_da_base = None
         if isinstance(da_base, list) and da_base:
-            required_facts.append("assistencia_da_base")
+            # 🔴 FECHO DA RODADA 2 — NO PEDIDO, O VEREDITO INFORMA; NÃO FISCALIZA.
+            #
+            # 📊 Medido em 19/09/2026 (`nodes.py:426-463`): num PEDIDO de um
+            # serviço publicado como `coberto`, o próximo passo legítimo
+            # *"Achei a sua apólice, está ativa. Me passa o endereço onde o
+            # carro está?"* NÃO nomeia o serviço -> `return rendered`, e o
+            # segurado que PEDIU guincho recebia *"Tem sim: o seu plano inclui
+            # guincho. Quer que eu já solicite pra você?"*. Um turno perdido no
+            # momento mais aflito — e, depois do acionamento, *"Pronto! Já
+            # acionei a assistência"* virava *"Quer que eu já solicite?"*: o
+            # cliente entende que NADA foi feito.
+            #
+            # ⛔ Quem decide o acionamento é a SEGURADORA. Uma linha de tabela
+            # extraída de PDF não pode trocar o próximo passo de um atendimento
+            # em curso. No PEDIDO o veredito continua no briefing (a LLM o lê e
+            # não inventa) e a lacuna continua sendo gravada em silêncio — o que
+            # sai é a FISCALIZAÇÃO do texto final.
+            #
+            # ⚠️ Na PERGUNTA nada muda: ali a régua da 001.5 (M-B5) é o produto.
+            # E fiscalizar só a direção `nao` no pedido seria pior: "preciso de
+            # carro reserva" com `nao_coberto` viraria uma recusa do atendente
+            # com base numa extração (92 × 60).
             contrato_da_base = da_base
+            if (meta or {}).get("pergunta_de_cobertura", True):
+                required_facts.append("assistencia_da_base")
         cobertura = (meta or {}).get("cobertura")
 
         # SPEC-016.1 D7: valores R$ permitidos na resposta final = somente os que
