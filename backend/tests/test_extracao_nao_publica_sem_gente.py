@@ -136,7 +136,7 @@ def _banco_com_o_documento() -> BaseEmMemoria:
     return db
 
 
-print("\n[0] o vocabulário se acha sozinho — e, sem `docs/`, o erro DIZ onde procurou")
+print("\n[0] o vocabulário se acha sozinho — e, sem ele, o erro DIZ onde procurou")
 checar(B.caminho_do_vocabulario().is_file() and len(B.servicos_declarados()) > 0,
        "o vocabulário resolve nesta árvore (e tem serviços declarados)",
        str(B.caminho_do_vocabulario()))
@@ -165,12 +165,22 @@ try:
                         cwd=_copia)
     saida = (_r.stdout or "").strip() or ("SEM STDOUT | " + (_r.stderr or "")[-1500:])
     # ⚠️ O que se exige é o ERRO CERTO com o caminho ESCRITO — não um caminho em
-    # particular. 📊 De uma cópia só de `backend/`, `parents[4]` cai no diretório
-    # temporário do sistema, e é exatamente essa a informação que faltava a quem
-    # lia `FileNotFoundError` e tinha de refazer a aritmética de `parents[n]`.
+    # particular. `parents[4]` cai no diretório temporário do sistema, e é
+    # exatamente essa a informação que faltava a quem lia `FileNotFoundError` e
+    # tinha de refazer a aritmética de `parents[n]`.
+    #
+    # 🔴 O RÓTULO MUDOU EM 19/09/2026, E A LIÇÃO MIGROU (CLAUDE.md §9.3).
+    # Ele dizia *"numa cópia só de `backend/`"*. Desde a SPEC-EXTRA-001.5.1 isso
+    # deixou de ser verdade — e é justamente o conserto: o vocabulário mora em
+    # `backend/app/data/`, então uma cópia de `backend/` **acha** o arquivo (é o
+    # que `test_o_vocabulario_viaja_na_imagem.py` exige). Esta cópia aqui tem UM
+    # arquivo só, sem `app/data/`, e o que ela continua provando — a mensagem que
+    # NOMEIA onde procurou — segue valendo. Manter a afirmação vencida só
+    # ensinaria a ignorar teste.
     checar(saida.startswith("ERRO:") and "servicos-de-assistencia.json" in saida
            and ("/" in saida or "\\" in saida),
-           "🔴 numa cópia só de `backend/`, o erro NOMEIA os caminhos procurados",
+           "🔴 numa cópia SEM o vocabulário (nem no pacote, nem em `docs/`), o "
+           "erro NOMEIA os caminhos procurados",
            saida[:300])
 finally:
     shutil.rmtree(_copia, ignore_errors=True)
