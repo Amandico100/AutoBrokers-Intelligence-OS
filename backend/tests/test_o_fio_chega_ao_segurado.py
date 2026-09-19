@@ -54,6 +54,7 @@ from base_de_planos_em_memoria import BaseEmMemoria  # noqa: E402
 from app.agents.nodes import _guard_infocap_policy_final_response as GUARDA  # noqa: E402
 from app.agents.tools.infocap_tool import InfocapPolicyLookupTool  # noqa: E402
 from app.agents.tools import infocap_tool as TOOL  # noqa: E402
+import app.agents.nodes as NODES  # noqa: E402
 
 OK = FAIL = 0
 
@@ -554,15 +555,95 @@ _b, _contrato_dec, _rendered_dec, _m = _fio("preciso de guincho", cliente=True,
 checar("encerrar_com_o_rascunho" not in (_contrato_dec.get("required_facts") or []),
        "🔴 num PEDIDO a flag NÃO liga nem com o serviço publicado",
        repr(_contrato_dec.get("required_facts")))
-checar("assistencia_da_base" in (_contrato_dec.get("required_facts") or []),
-       "⚠️ mas `assistencia_da_base` CONTINUA (a base decidiu: é o valor da "
-       "001.5) — o texto final tem de nomear o serviço",
-       repr(_contrato_dec.get("required_facts")))
+# 🔴 A LIÇÃO MIGROU (CLAUDE.md §9.3): esta linha afirmava que, num PEDIDO,
+# `assistencia_da_base` FISCALIZAVA o texto final. Era verdade até 19/09/2026 —
+# e era o defeito. O que ela virou está quatro linhas abaixo.
 _passo_que_nomeia = ("O seu guincho está incluído. Me passa o endereço com um "
                      "ponto de referência que eu já abro o chamado?")
 checar(GUARDA(_passo_que_nomeia, _contrato_dec).strip() == _passo_que_nomeia,
        "🔴 e um próximo passo que NOMEIA o serviço passa inteiro — o "
        "acionamento segue", GUARDA(_passo_que_nomeia, _contrato_dec)[:120])
+
+# 🔴 FECHO DA RODADA 2 — NO PEDIDO O VEREDITO INFORMA, NÃO FISCALIZA.
+#
+# 📊 Medido em 19/09/2026, ANTES desta mudança: com `assistencia_da_base`
+# em `required_facts` num PEDIDO, o próximo passo legítimo que NÃO nomeia o
+# serviço era trocado pelo veredito — um turno perdido no momento mais
+# aflito — e, depois do acionamento, "Pronto! Já acionei a assistência"
+# virava "Quer que eu já solicite?".
+checar("assistencia_da_base" not in (_contrato_dec.get("required_facts") or []),
+       "🔴 no PEDIDO, `assistencia_da_base` NÃO entra em `required_facts`",
+       repr(_contrato_dec.get("required_facts")))
+checar(bool(_contrato_dec.get("assistencia_da_base")),
+       "⚠️ mas o veredito CONTINUA no contrato — ele informa, só não fiscaliza",
+       repr(_contrato_dec.get("assistencia_da_base")))
+PASSO_SEM_O_NOME = ("Achei a sua apólice, está ativa. Me passa o endereço onde "
+                    "o carro está?")
+checar(GUARDA(PASSO_SEM_O_NOME, _contrato_dec).strip() == PASSO_SEM_O_NOME,
+       "🔴 e o próximo passo SEM o nome do serviço passa INTACTO",
+       GUARDA(PASSO_SEM_O_NOME, _contrato_dec)[:140])
+DEPOIS_DE_ACIONAR = ("Pronto! Já acionei a assistência, o prestador chega em "
+                     "40 min.")
+checar(GUARDA(DEPOIS_DE_ACIONAR, _contrato_dec).strip() == DEPOIS_DE_ACIONAR,
+       "🔴 e 'Pronto! Já acionei a assistência' (sem a palavra guincho) "
+       "passa INTACTO", GUARDA(DEPOIS_DE_ACIONAR, _contrato_dec)[:140])
+
+print("\n      🔴 CONTROLE do [7b]: na PERGUNTA a régua da 001.5 continua viva")
+_b, _contrato_perg, _rendered_perg, _m = _fio("tem guincho?", cliente=True,
+                                              mensagem="tem guincho?")
+checar("assistencia_da_base" in (_contrato_perg.get("required_facts") or []),
+       "🔴 CONTROLE: na PERGUNTA `assistencia_da_base` FISCALIZA (M-B5)",
+       repr(_contrato_perg.get("required_facts")))
+checar(GUARDA(PASSO_SEM_O_NOME, _contrato_perg).strip() != PASSO_SEM_O_NOME,
+       "🔴 CONTROLE: e um candidato que OMITE o serviço é anulado",
+       GUARDA(PASSO_SEM_O_NOME, _contrato_perg)[:120])
+
+print("      🔴 e o espelho olha a FRASE que nomeia o serviço")
+COM_OUTRA_NEGACAO = "Tem guincho sim! E você não tem parcelas em atraso."
+checar(GUARDA(COM_OUTRA_NEGACAO, _contrato_perg).strip() == COM_OUTRA_NEGACAO,
+       "🔴 'E você não tem parcelas em atraso' NÃO anula a resposta certa "
+       "(📊 `_NEGATIVA_RE` casava 'não tem' ali e trocava o texto inteiro)",
+       GUARDA(COM_OUTRA_NEGACAO, _contrato_perg)[:140])
+NEGA_O_SERVICO = "Não, seu plano não tem guincho."
+checar(GUARDA(NEGA_O_SERVICO, _contrato_perg).strip() != NEGA_O_SERVICO,
+       "🔴 CONTROLE: mas a negação NA FRASE DO SERVIÇO continua anulada",
+       GUARDA(NEGA_O_SERVICO, _contrato_perg)[:120])
+
+print("      🔴 AS DUAS MUTAÇÕES do fecho")
+_fatos_mut = dict(_contrato_dec,
+                  required_facts=list(_contrato_dec.get("required_facts") or [])
+                  + ["assistencia_da_base"])
+checar(GUARDA(PASSO_SEM_O_NOME, _fatos_mut).strip() != PASSO_SEM_O_NOME,
+       "🔴 MUTAÇÃO (a): o pedido voltando a FISCALIZAR troca o próximo "
+       "passo do atendente", GUARDA(PASSO_SEM_O_NOME, _fatos_mut)[:120])
+checar(GUARDA(DEPOIS_DE_ACIONAR, _fatos_mut).strip() != DEPOIS_DE_ACIONAR,
+       "🔴 MUTAÇÃO (a'): e troca também o 'Pronto! Já acionei'",
+       GUARDA(DEPOIS_DE_ACIONAR, _fatos_mut)[:120])
+_nega_original = NODES._nega_o_servico
+try:
+    NODES._nega_o_servico = lambda c, r: bool(NODES._NEGATIVA_RE.search(str(c or "")))
+    checar(GUARDA(COM_OUTRA_NEGACAO, _contrato_perg).strip() != COM_OUTRA_NEGACAO,
+           "🔴 MUTAÇÃO (b): o espelho no candidato INTEIRO anula a resposta "
+           "certa por causa das parcelas",
+           GUARDA(COM_OUTRA_NEGACAO, _contrato_perg)[:120])
+finally:
+    NODES._nega_o_servico = _nega_original
+
+# ⚠️ A ação posterior consome `assistencia_da_base` JUNTO com a flag.
+_consumido_acao = dict(_contrato_perg, required_facts=[
+    f for f in (_contrato_perg.get("required_facts") or [])
+    if f not in ("encerrar_com_o_rascunho", "assistencia_da_base")])
+checar(GUARDA(DEPOIS_DE_ACIONAR, _consumido_acao).strip() == DEPOIS_DE_ACIONAR,
+       "🔴 e depois de uma AÇÃO nem a PERGUNTA fiscaliza — a resposta do "
+       "turno é sobre o que foi feito",
+       GUARDA(DEPOIS_DE_ACIONAR, _consumido_acao)[:120])
+_fonte_no = open(os.path.join(RAIZ, "app", "agents", "nodes.py"),
+                 encoding="utf-8").read()
+_sem_com = "\n".join(l.split("#")[0] for l in _fonte_no.splitlines())
+checar('"assistencia_da_base"' in _sem_com.split("_CONSUMIDOS")[1][:200],
+       "🔴 e o consumo está no CÓDIGO do nó (`_CONSUMIDOS`), não num "
+       "comentário")
+
 BASE._db = lambda supabase_client=None: _base_vazia
 
 print("\n      🔴 as 30 perguntas REAIS do corpus")
@@ -692,7 +773,6 @@ print("\n[11] 🔴 RODADA 2 · N1 item 4 — a flag não sobrevive a uma AÇÃO 
 # variável local). Se `insurer_dispatch` rodou DEPOIS da consulta, "Pronto! O
 # guincho foi solicitado" também era trocado pelo rascunho — o cliente ouvia que
 # nada tinha sido feito, com o guincho já a caminho.
-import app.agents.nodes as NODES  # noqa: E402
 
 _b, _contrato_acao, _rendered_acao, _m = _fio("tem taxi?", cliente=True,
                                               mensagem="tem taxi?")
