@@ -313,6 +313,56 @@ def _normalizar_para_guarda(valor: Any) -> str:
 #: O fim de frase, para o espelho da negação (FECHO DA RODADA 2).
 _FIM_DE_FRASE_RE = re.compile(r"[.!?\n]+")
 
+#: 🔴 RODADA 4 (P4) — A MARCA DE QUE A COBERTURA TEM CONDIÇÃO.
+#:
+#: 📊 Medido no banco em 19/09/2026, nas 25 linhas marcadas PUBLICAR e ainda em
+#: `proposto`: **17 são `condicionado`** e 8 são `sim`. A maioria absoluta do
+#: que o produto passa a saber é condicionada — e o juiz mediu que, com a base
+#: dizendo `condicionado`, *"Sim! Seu plano tem vidros"* passava INTEIRO: a
+#: condição sumia e o segurado ouvia um "sim" liso sobre uma cobertura que só
+#: vale *"se contratada a cobertura adicional de Vendaval, Furacão, Ciclone,
+#: Tornado e Granizo"*. É o "sim silencioso" do CLAUDE.md §9.5 — na linha que a
+#: corretora está publicando hoje.
+_CONDICAO_RE = re.compile(
+    r"(?<![a-zà-ú])("
+    r"se|caso|desde\s+que|somente|apenas|exceto|salvo|"
+    # ⚠️ A palavra CONDIÇÃO, nua, também é marca — 📊 achado pelo próprio par
+    # de controle deste guarda: "Tem sim: vidros, com uma condição do seu
+    # contrato." era anulada por não casar a forma `com A condição`.
+    r"condi[çc][ãa]o|condi[çc][õo]es|mediante|"
+    r"contratad|constar|constante|depende|sujeit|"
+    r"inclu[íi]d[oa]s?\s+n[ao]\s+ap[óo]lice|desde\s+j[áa]\s+que"
+    r")(?![a-zà-ú])", re.IGNORECASE)
+
+
+def _afirma_sem_condicao(candidato: str, rotulo: str) -> bool:
+    """A frase que nomeia o serviço AFIRMA ele **sem nenhuma marca de condição**?
+
+    🔴 RODADA 4 (P4). A régua é a MESMA do espelho (`_nega_o_servico`): a frase
+    que fala do serviço é a que conta. Aqui a pergunta é a inversa — a base
+    disse `condicionado`, e o texto final não pode dizer um "sim" liso.
+
+    ⚠️ **A marca tem de estar NA FRASE DO SERVIÇO**, e é isso que evita o falso
+    positivo do "se" avulso: *"Tem vidros. Se precisar, é só chamar."* tem um
+    "se", mas ele mora na frase seguinte e não qualifica a cobertura.
+
+    ⛔ `False` quando o serviço não é nomeado em frase nenhuma: a omissão já é
+    pega pela regra de cima (`rotulo not in candidate` → `rendered`), e repetir
+    o veredito aqui só duplicaria a decisão.
+    """
+    alvo = _normalizar_para_guarda(rotulo)
+    if not alvo:
+        return False
+    for frase in _FIM_DE_FRASE_RE.split(str(candidato or "")):
+        if alvo not in _normalizar_para_guarda(frase):
+            continue
+        if _NEGATIVA_RE.search(frase):
+            # A frase NEGA o serviço — quem trata disso é o espelho.
+            continue
+        if not _CONDICAO_RE.search(frase):
+            return True
+    return False
+
 
 def _consumir_regua_apos_acao(contrato: Any, tools_usadas: Any) -> Any:
     """Consome as réguas de cobertura quando uma tool de AÇÃO rodou depois.
@@ -517,6 +567,18 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
                 if str(item.get("coberto")) == "nao" and not _NEGATIVA_RE.search(candidate):
                     # A base disse NÃO e o texto não nega em lugar nenhum: é o
                     # "sim" silencioso de §9.5, que não trava e chega ao cliente.
+                    return rendered
+                if (str(item.get("coberto")) == "condicionado"
+                        and _afirma_sem_condicao(candidate, rotulo)):
+                    # 🔴 RODADA 4 (P4) — O "SIM" LISO SOBRE UMA COBERTURA
+                    # CONDICIONADA.
+                    #
+                    # 📊 17 das 25 linhas que entram em produção hoje são
+                    # `condicionado`. Com a base dizendo isso, *"Sim! Seu plano
+                    # tem vidros, pode acionar."* passava inteiro — e o segurado
+                    # acionava uma cobertura que talvez não tenha contratado.
+                    # O `rendered` do canal JÁ traz a condição; o que faltava era
+                    # impedir a LLM de reescrevê-la para fora.
                     return rendered
                 if (str(item.get("coberto")) in ("sim", "condicionado")
                         and _nega_o_servico(candidate, rotulo)):
