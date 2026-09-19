@@ -112,14 +112,18 @@ def cobertura() -> Dict[str, Any]:
                 "estado": "sem_linha_publicada",
             })
 
-    fila = BASE.fila_de_curadoria(limite=TETO_DA_FILA, db=cliente)
     return {
         "ok": True,
         "linhas": linhas,
         "resumo": {
             "seguradora_ramo_com_plano_publicado": len(por_chave),
             "seguradoras_com_condicao_geral": len(com_cg),
-            "itens_na_fila": len(fila),
+            # 🔴 D3: a BASE, não a página. 📊 19/09/2026 esta linha era
+            # `len(BASE.fila_de_curadoria(limite=TETO_DA_FILA))` — um `count(*)`
+            # escrito com o teto da página, que devolvia 60 quando havia 73
+            # linhas esperando. Além de mentir, montava a fila inteira (com o
+            # JOIN dos planos) só para medir o comprimento dela.
+            "itens_na_fila": BASE.contar_fila(db=cliente),
         },
     }
 
@@ -130,8 +134,19 @@ def _termos_do_servico(servico: str) -> List[str]:
     ⚠️ Vêm do vocabulário versionado, não de uma lista escrita aqui: duas listas
     de sinônimos divergiriam, e a tela passaria a grifar uma coisa e o extrator a
     procurar outra (CLAUDE.md §9.4).
+
+    🔴 ERA ESTA LINHA QUE DEVOLVIA 500. 📊 19/09/2026: o vocabulário morava em
+    `docs/`, que não entra na imagem — `vocabulario_de_servicos()` levantava
+    `VocabularioNaoEncontrado` e a fila inteira caía. A causa está consertada
+    (o arquivo agora viaja no pacote, `app/data/`), e o grifo passa a ser o que
+    sempre deveria ter sido: um **enfeite**. Se um dia o vocabulário sumir de
+    novo, a pessoa perde o destaque amarelo — não a fila.
     """
-    item = BASE.vocabulario_de_servicos().get("servicos", {}).get(str(servico or "")) or {}
+    try:
+        item = BASE.vocabulario_de_servicos().get("servicos", {}).get(str(servico or "")) or {}
+    except BASE.VocabularioNaoEncontrado as exc:
+        logger.warning("[planos] vocabulario indisponivel para grifar: %s", exc)
+        return []
     termos = [str(servico or "").replace("_", " ")] + list(item.get("sinonimos") or [])
     return sorted({t for t in termos if len(t) >= 4}, key=len, reverse=True)
 
@@ -175,7 +190,19 @@ def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
 
     for i in itens:
         doc_id, pagina = str(i.get("documento_id")), i.get("pagina")
-        texto = (textos.get(doc_id) or {}).get(int(pagina)) if pagina else None
+        # 🔴 UMA LINHA QUE FALHA NÃO DERRUBA A FILA (SPEC-EXTRA-001.5.1).
+        #
+        # A leitura do DOCUMENTO já era protegida; a montagem da LINHA não era.
+        # `int(pagina)` sobre um valor estranho, ou um texto que não é texto,
+        # estouravam aqui e devolviam 500 para a fila inteira — 59 linhas
+        # perfeitas somem por causa de uma. Quem revisa prefere 59 linhas e uma
+        # explicando o próprio buraco.
+        try:
+            texto = (textos.get(doc_id) or {}).get(int(pagina)) if pagina else None
+        except (TypeError, ValueError) as exc:  # página ilegível na linha
+            logger.warning("[planos] pagina ilegivel na linha: %s", type(exc).__name__)
+            texto = None
+            motivos.setdefault(doc_id, "pagina_ilegivel")
         if texto:
             # 🔴 A PÁGINA INTEIRA, não um recorte. 📊 18/09/2026: 5 das 6 páginas
             # da amostra têm 1.8 k–4.3 k caracteres, e o corte em 1.200 escondia
@@ -193,8 +220,24 @@ def fila(limite: int = Query(TETO_DA_FILA, ge=1, le=200)) -> Dict[str, Any]:
             i["texto_da_pagina"] = None
             i["termos_do_servico"] = []
             i["conferido_na_proposta"] = None
-            i["motivo_da_fonte"] = motivos.get(doc_id, "fonte_indisponivel")
-    return {"ok": True, "itens": itens, "total": len(itens)}
+            # ⚠️ O motivo é da LINHA, não do documento. Quando o documento abriu
+            # ("ok") e mesmo assim esta página não veio, dizer "ok" seria o pior
+            # dos mundos: a tela mostraria o botão cinza com a legenda de
+            # sucesso. Cada caso tem o seu nome, e a tela os traduz.
+            motivo = motivos.get(doc_id) or "fonte_indisponivel"
+            if motivo == "ok":
+                motivo = "sem_pagina_registrada" if not pagina else "pagina_fora_do_documento"
+            i["motivo_da_fonte"] = motivo
+    return {
+        "ok": True,
+        "itens": itens,
+        # 🔴 `total` é a BASE; `mostrando` é esta página. 📊 Até 19/09/2026
+        # `total` era `len(itens)` — o mesmo número duas vezes, com nomes
+        # diferentes, e a tela não tinha como dizer "mostrando 60 de 73".
+        "total": BASE.contar_fila(db=cliente),
+        "mostrando": len(itens),
+        "limite": int(limite),
+    }
 
 
 @router.post("/curadoria", dependencies=[Depends(require_internal_key)])
