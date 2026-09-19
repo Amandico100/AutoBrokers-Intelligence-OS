@@ -53,6 +53,7 @@ ao vocabulário, e o guarda ficaria vermelho pelo motivo errado.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -441,5 +442,230 @@ try:
            saida_controle[-200:])
 finally:
     shutil.rmtree(_copia2, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+print("\n[9] 🔴 A-ter — o CENSO DO PROVIDER também viaja na imagem")
+# SPEC-EXTRA-001.5.1, unidade A-ter. A TERCEIRA reincidência do mesmo defeito na
+# mesma SPEC, e a mais silenciosa das três:
+#
+# 📊 19/09/2026, nesta mesma cópia, com o código de `b1b9038`:
+#     DIR: <tmp>\docs\canon\providers      ISDIR: False
+#     ILEGIVEL: ''                          <- nem fail-closed: vazio
+#     CAPS: 0                               <- na árvore: 19
+#
+# `carregar_manifesto("infocap")` devolvia um manifesto VAZIO, e manifesto vazio
+# responde `UNKNOWN` a TODA capacidade, com a evidência "capacidade fora do
+# censo: não verificada" — indistinguível, para quem lê o relatório do Pulso
+# 360, de "medimos e não sabemos". Sem 500, sem exceção, sem linha vermelha.
+CENSO = ("infocap-capability-manifest.json", "infocap-schema-fingerprints.json",
+         "producer-roles.resulta.json")
+
+PROGRAMA_DO_CENSO = (
+    "import logging, os, sys\n"
+    "logging.basicConfig(stream=sys.stdout, level=logging.WARNING, force=True)\n"
+    "from app.comercial import manifesto\n"
+    "from app.agents.tools import executive_intelligence as EI\n"
+    "manifesto.esquecer_censo()\n"
+    "m = manifesto.carregar_manifesto('infocap')\n"
+    "print('DIR_EXISTE:', os.path.isdir(manifesto.DIRETORIO_DO_CENSO))\n"
+    "print('CAPS:', len(m.capacidades))\n"
+    "print('FINGERPRINTS:', len(m.fingerprints_do_censo))\n"
+    "print('MAPA_EXISTE:', os.path.isfile(EI._arquivo_de_papeis('resulta')))\n"
+)
+
+for _nome in CENSO:
+    _v = subprocess.run(
+        ["git", "ls-files", "--", "backend/app/data/providers/infocap/" + _nome],
+        capture_output=True, text=True, cwd=REPO)
+    checar(bool((_v.stdout or "").strip()),
+           "🔴 `git ls-files backend/app/data/providers/infocap/%s` devolve o "
+           "arquivo" % _nome,
+           repr((_v.stdout or "").strip() or (_v.stderr or "")[-200:]))
+
+_copia3 = tempfile.mkdtemp(prefix="imagem_com_censo_")
+try:
+    shutil.copytree(os.path.join(RAIZ, "app"), os.path.join(_copia3, "app"),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    saida_censo = _rodar_na_copia(_copia3, PROGRAMA_DO_CENSO)
+    linhas_censo = [l.strip() for l in saida_censo.splitlines()]
+
+    def _numero(prefixo):
+        for l in linhas_censo:
+            if l.startswith(prefixo):
+                bruto = l[len(prefixo):].strip()
+                return int(bruto) if bruto.isdigit() else -1
+        return -1
+
+    checar("DIR_EXISTE: True" in linhas_censo,
+           "🔴 na cópia SEM `docs/`, o diretório do censo EXISTE "
+           "(antes: `ISDIR: False`)", saida_censo[-300:])
+    checar(_numero("CAPS:") == 19,
+           "🔴 O ELO do A-ter: `carregar_manifesto('infocap')` devolve 19 "
+           "capacidades na árvore do contêiner (antes devolvia 0, em silêncio)",
+           saida_censo[-300:])
+    checar(_numero("FINGERPRINTS:") > 0,
+           "e os fingerprints de rota também chegam — é deles que sai o drift",
+           saida_censo[-300:])
+    checar("MAPA_EXISTE: True" in linhas_censo,
+           "🔴 e o mapa de produtor (`producer-roles.resulta.json`) é ENCONTRADO "
+           "pelo resolvedor — antes o caminho nem existia", saida_censo[-300:])
+    checar("[CENSO]" not in saida_censo,
+           "e NENHUMA linha `[CENSO] … AUSENTE` sobra no log", saida_censo[-300:])
+
+    print("\n[9b] 🔴 CONTROLE do A-ter — o censo apagado do pacote")
+    # ⚠️ Mutado na CÓPIA e restaurado por cópia (protocolo §10).
+    _alvo3 = os.path.join(_copia3, "app", "data", "providers", "infocap",
+                          "infocap-capability-manifest.json")
+    checar(os.path.isfile(_alvo3),
+           "o manifesto do censo está na cópia (há o que apagar)", _alvo3)
+    if os.path.isfile(_alvo3):
+        _guardado3 = _alvo3 + ".guardado"
+        shutil.copy2(_alvo3, _guardado3)
+        os.remove(_alvo3)
+        saida_sem_censo = _rodar_na_copia(_copia3, PROGRAMA_DO_CENSO)
+        checar("CAPS: 0" in saida_sem_censo,
+               "🔴 CONTROLE: sem o JSON no pacote, as capacidades voltam a ZERO "
+               "— este guarda CONSEGUE ficar vermelho", saida_sem_censo[-300:])
+        checar("arquivo AUSENTE" in saida_sem_censo and "ERROR" in saida_sem_censo,
+               "🔴 e a falta GRITA em ERROR nomeando o arquivo — era um "
+               "`return {}` mudo, que é como isso durou sem ninguém ver",
+               saida_sem_censo[-400:])
+        shutil.copy2(_guardado3, _alvo3)
+
+    print("\n[9c] o PONTEIRO de `docs/` nunca é carregado como censo")
+    _ponteiro3 = os.path.join(_copia3, "censo_ponteiro.json")
+    with open(_ponteiro3, "w", encoding="utf-8") as fh:
+        json.dump({"_mora_agora_em": "backend/app/data/providers/infocap/"}, fh)
+    _prog_ponteiro3 = (
+        "import logging, sys\n"
+        "logging.basicConfig(stream=sys.stdout, level=logging.WARNING, force=True)\n"
+        "from app.comercial import manifesto\n"
+        "d = manifesto._ler_json(%r, secao='capabilities')\n"
+        "print('SECAO:', len(d.get('capabilities') or {}))\n" % _ponteiro3
+    )
+    saida_p3 = _rodar_na_copia(_copia3, _prog_ponteiro3)
+    checar("SECAO: 0" in saida_p3 and "SEM DADO" in saida_p3,
+           "🔴 um ponteiro (arquivo sem `capabilities`) é recusado com ERROR "
+           "`arquivo SEM DADO` — nunca carregado vazio em silêncio",
+           saida_p3[-300:])
+    _prog_controle3 = (
+        "from app.comercial import manifesto\n"
+        "c = manifesto.caminho_do_censo('infocap', 'infocap-capability-manifest.json')\n"
+        "d = manifesto._ler_json(c, secao='capabilities')\n"
+        "print('SECAO:', len(d.get('capabilities') or {}))\n"
+    )
+    saida_c3 = _rodar_na_copia(_copia3, _prog_controle3)
+    checar("SECAO:" in saida_c3 and "SECAO: 0" not in saida_c3,
+           "🔴 CONTROLE: o MESMO leitor, no censo de verdade, CARREGA — a "
+           "recusa acima é pelo CONTEÚDO, não pelo leitor", saida_c3[-200:])
+finally:
+    shutil.rmtree(_copia3, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+print("\n[10] 🔴 O GUARDA GENÉRICO — para que não exista uma QUARTA reincidência")
+# 📊 Três vezes na MESMA SPEC, e sempre o mesmo defeito: dado de RUNTIME morando
+# em `docs/`, que não entra na imagem.
+#
+#     fatia 1   `servicos-de-assistencia.json`   a Skill de cobertura desligada
+#     fatia 2   os catálogos SUSEP               `familia_de_acionamento` -> UNKNOWN
+#     fatia 3   o censo do provider              19 capacidades -> 0
+#
+# Os blocos [1]-[9] guardam esses TRÊS arquivos pelo nome. Este guarda a FORMA:
+# qualquer código de `backend/app/` que **construa ou abra** um caminho com
+# `docs/canon`, ou que suba a árvore para fora de `backend/` (`parents[>=3]`,
+# `dirname` aninhado 4+ vezes), tem de estar na lista de exceções NOMEADA abaixo.
+#
+# ⚠️ A leitura é por AST, não por `grep`: comentário e docstring **não contam**,
+# só CHAMADA — e a chamada tem de ser de construção de caminho
+# (`os.path.join`, `Path`, `open`, `json.load`, `read_text`/`read_bytes`).
+# 📊 Sem esse recorte, o varredor acusava dois falsos positivos
+# (`comercial/metricas/promover.py:134` e `services/work/metric_proposal.py:323`),
+# que citam `docs/canon` dentro de uma MENSAGEM de erro — texto, não caminho.
+#
+# 🔴 A lista abaixo é de EXCEÇÕES JUSTIFICADAS, e as três são a MESMA: o dado
+# mora no pacote e o `docs/` ficou como SEGUNDO lugar, para uma árvore antiga.
+EXCECOES_DO_DOCS = {
+    "app/services/knowledge/assistance_plans_base.py":
+        "fatia 1: o vocabulário mora em `app/data/`; `docs/` é o 2º candidato",
+    "app/providers/susep_ses_provider.py":
+        "fatia 2: os catálogos SUSEP moram em `app/data/`; `docs/` é o 2º lugar",
+    "app/comercial/manifesto.py":
+        "fatia 3 (A-ter): o censo mora em `app/data/providers/`; `docs/` é o 2º",
+}
+_CONSTRUTORES_DE_CAMINHO = {"join", "Path", "open", "load", "read_text", "read_bytes"}
+
+
+def _nome_do_call(no):
+    alvo = no.func
+    if isinstance(alvo, ast.Attribute):
+        return alvo.attr
+    if isinstance(alvo, ast.Name):
+        return alvo.id
+    return ""
+
+
+def _varrer_o_pacote():
+    """`{arquivo relativo: [(motivo, linha)]}` — só CHAMADAS, nunca texto."""
+    fora = {}
+    base = os.path.join(RAIZ, "app")
+    for pasta, _dirs, arquivos in os.walk(base):
+        if "__pycache__" in pasta:
+            continue
+        for nome in arquivos:
+            if not nome.endswith(".py"):
+                continue
+            caminho = os.path.join(pasta, nome)
+            rel = os.path.relpath(caminho, RAIZ).replace(os.sep, "/")
+            try:
+                with open(caminho, encoding="utf-8") as fh:
+                    arvore = ast.parse(fh.read())
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+            for no in ast.walk(arvore):
+                if isinstance(no, ast.Call):
+                    chamada = _nome_do_call(no)
+                    if chamada in _CONSTRUTORES_DE_CAMINHO:
+                        textos = [a.value.lower() for a in ast.walk(no)
+                                  if isinstance(a, ast.Constant)
+                                  and isinstance(a.value, str)]
+                        if (("docs" in textos and "canon" in textos)
+                                or any("docs/canon" in t or "docs\\canon" in t
+                                       for t in textos)):
+                            fora.setdefault(rel, []).append(("docs/canon", no.lineno))
+                    if chamada == "dirname":
+                        profundidade, atual = 1, no
+                        while (atual.args and isinstance(atual.args[0], ast.Call)
+                               and _nome_do_call(atual.args[0]) == "dirname"):
+                            profundidade += 1
+                            atual = atual.args[0]
+                        if profundidade >= 4:
+                            fora.setdefault(rel, []).append(
+                                ("dirname x%d" % profundidade, no.lineno))
+                if (isinstance(no, ast.Subscript)
+                        and isinstance(no.value, ast.Attribute)
+                        and no.value.attr == "parents"):
+                    indice = no.slice
+                    if (isinstance(indice, ast.Constant)
+                            and isinstance(indice.value, int) and indice.value >= 3):
+                        fora.setdefault(rel, []).append(
+                            ("parents[%d]" % indice.value, no.lineno))
+    return fora
+
+
+_fora_da_imagem = _varrer_o_pacote()
+_nao_declarados = {k: v for k, v in _fora_da_imagem.items()
+                   if k not in EXCECOES_DO_DOCS}
+checar(not _nao_declarados,
+       "🔴 nenhum código de `backend/app/` sai do pacote para buscar dado sem "
+       "estar na lista de exceções (%d na lista)" % len(EXCECOES_DO_DOCS),
+       repr(sorted(_nao_declarados.items()))[:600])
+checar(len(_fora_da_imagem) == len(EXCECOES_DO_DOCS),
+       "🔴 CONTROLE: o varredor ACHA os %d fallbacks conhecidos — ele não "
+       "passou por vácuo" % len(EXCECOES_DO_DOCS),
+       repr(sorted(_fora_da_imagem)))
+_orfas = [k for k in EXCECOES_DO_DOCS if k not in _fora_da_imagem]
+checar(not _orfas,
+       "e nenhuma exceção sobrou na lista depois que o código mudou — "
+       "exceção órfã ensina a confiar numa lista vencida", repr(_orfas))
 
 sys.exit(_fechar())
