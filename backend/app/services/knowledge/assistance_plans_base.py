@@ -1141,6 +1141,39 @@ def derrubar_para_proposto(
 # ---------------------------------------------------------------------------
 # A fila de curadoria — o que a tela da unidade D mostra
 # ---------------------------------------------------------------------------
+def contar_fila(
+    *, curadorias: Tuple[str, ...] = ("proposto",), db: Any = None
+) -> int:
+    """Quantas linhas de serviço esperam gente — a BASE INTEIRA, não a página.
+
+    🔴 SPEC-EXTRA-001.5.1 (D3). O contador da tela vinha de
+    `len(fila_de_curadoria(limite=60))`, que é **o tamanho da página**. 📊 19/09:
+    a base tinha **73** serviços em `proposto` e o teto da página era 60 — a
+    corretora via "60 linhas esperando revisão" e nunca ficava sabendo das
+    outras 13. Um contador que conta a própria página não é contador: é o
+    `limite` escrito por extenso.
+
+    ⚠️ `count="exact"` faz o POSTGRES contar. Trazer as linhas e medir o
+    comprimento traria a base inteira pela rede só para descartá-la — e, com o
+    `limit` embutido no cliente, voltaria a contar a página.
+    """
+    cliente = _db(db)
+    total = 0
+    for estado in curadorias:
+        r = (
+            cliente.table(TABELA_SERVICOS)
+            .select("id", count="exact")
+            .eq("curadoria", str(estado))
+            .execute()
+        )
+        n = getattr(r, "count", None)
+        # O duplo em memória dos guardas não conta por fora; cair para o
+        # comprimento é correto ali (o duplo devolve tudo) e nunca é o caminho
+        # de produção — onde `count` sempre vem preenchido.
+        total += int(n) if n is not None else len(getattr(r, "data", None) or [])
+    return total
+
+
 def fila_de_curadoria(
     *, limite: int = 50, curadorias: Tuple[str, ...] = ("proposto",), db: Any = None
 ) -> List[Dict[str, Any]]:
@@ -1150,6 +1183,24 @@ def fila_de_curadoria(
     `trecho_hash`): quem quiser mostrá-lo lê a fonte arquivada na hora, pelo
     mesmo `conferir_pagina`/`texto_da_pagina` — é o que garante que o que a
     pessoa lê na tela é o que está no PDF, e não uma cópia que envelheceu.
+
+    🔴 A ORDEM É ESTÁVEL, E EM DOIS NÍVEIS (SPEC-EXTRA-001.5.1, D4)
+    ==============================================================
+    Sem `ORDER BY`, o Postgres pode devolver as linhas em qualquer ordem — e com
+    `LIMIT 60` sobre 73 linhas isso decide **quais 13 ficam de fora**, a cada
+    abertura da tela. Quem cura revisa uma fila que se reembaralha debaixo dele,
+    e uma linha pode nunca aparecer.
+
+    ```
+    no BANCO    ORDER BY plano_id, servico, id  ← decide QUAIS linhas entram na página
+    na MEMÓRIA  insurer_key, ramo, produto, plano, nivel, servico, id  ← decide a LEITURA
+    ```
+
+    ⚠️ Os dois níveis existem porque `insurer_key`, `ramo`, `produto` e `plano`
+    moram na tabela de **planos**, não na de serviços: pedi-los ao banco nesta
+    consulta seria um join que a leitura por `plano_id` já resolve depois. O que
+    o banco precisa garantir é só que a página seja **sempre a mesma**; a ordem
+    bonita é da tela.
     """
     cliente = _db(db)
     linhas: List[Dict[str, Any]] = []
@@ -1158,6 +1209,9 @@ def fila_de_curadoria(
             cliente.table(TABELA_SERVICOS)
             .select("*")
             .eq("curadoria", str(estado))
+            .order("plano_id")
+            .order("servico")
+            .order("id")
             .limit(int(limite))
             .execute()
         ).data or []
@@ -1199,6 +1253,17 @@ def fila_de_curadoria(
             "pagina": l.get("pagina"),
             "trecho_hash": l.get("trecho_hash"),
         })
+
+    def _chave(linha: Dict[str, Any]) -> Tuple:
+        # `None` vira string vazia: comparar `None` com `str` estoura em Python 3,
+        # e uma fila que quebra porque um plano não tem produto é pior que uma
+        # fila em que essa linha aparece primeiro.
+        return tuple(str(linha.get(c) or "") for c in
+                     ("insurer_key", "ramo", "produto", "plano")) + \
+               (int(linha.get("nivel") or 0),) + \
+               (str(linha.get("servico") or ""), str(linha.get("id") or ""))
+
+    fora.sort(key=_chave)
     return fora
 
 
