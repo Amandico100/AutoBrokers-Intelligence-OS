@@ -79,7 +79,10 @@ import hashlib
 import json
 import logging
 import re
+import threading
+import time
 import unicodedata
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -521,6 +524,141 @@ def texto_das_paginas(
                 doc.close()
             except Exception:  # noqa: BLE001
                 pass
+
+
+#: Quanto tempo o texto já extraído de um documento fica de pé, em segundos.
+#: 💭 Cinco minutos é a ordem de grandeza de uma sessão de curadoria: quem abre
+#: dez linhas do mesmo documento abre as dez dentro dessa janela.
+TTL_DO_CACHE_DE_PAGINAS = 300
+
+#: Quantos DOCUMENTOS cabem no cache ao mesmo tempo. 📊 O acervo tem 24
+#: documentos com linha na fila e o maior tem 207 páginas; 💭 o texto de um
+#: documento desses ocupa a ordem de centenas de KB, então seis é o teto que
+#: mantém isto em poucos MB por processo.
+TETO_DO_CACHE_DE_PAGINAS = 6
+
+#: `{(documento_id, versao): (carimbo, PaginasDoDocumento)}`, em ordem de uso.
+#: ⚠️ Vive no PROCESSO. Com mais de um worker, cada um tem o seu — o que custa
+#: é uma leitura a mais do MinIO, nunca uma resposta diferente: a chave carrega
+#: a VERSÃO do documento, então versão nova é entrada nova, nunca a antiga
+#: servida por engano.
+_PAGINAS_EM_CACHE: "OrderedDict[Tuple[str, Any], Tuple[float, PaginasDoDocumento]]" = OrderedDict()
+_TRAVA_DO_CACHE = threading.Lock()
+
+
+def esquecer_paginas_em_cache() -> int:
+    """Esvazia o cache de páginas. Devolve quantas entradas caíram.
+
+    Existe para os guardas: um teste que precise provar que a leitura FOI feita
+    não pode depender do que uma chamada anterior deixou guardado.
+    """
+    with _TRAVA_DO_CACHE:
+        n = len(_PAGINAS_EM_CACHE)
+        _PAGINAS_EM_CACHE.clear()
+    return n
+
+
+def _paginas_do_documento_em_cache(
+    documento_id: str, *, versao: Optional[int] = None, db: Any = None,
+    minio: Any = None,
+) -> PaginasDoDocumento:
+    """`texto_das_paginas` do documento INTEIRO, guardado por alguns minutos.
+
+    ⛔ **Nenhum segundo leitor de PDF** (CLAUDE.md §5): quem abre o arquivo
+    continua sendo `texto_das_paginas`, que continua sendo o `fitz` de
+    `insurance_corpus`. O que existe aqui é memória, não motor.
+
+    🔴 POR QUE O DOCUMENTO INTEIRO, E NÃO A PÁGINA PEDIDA
+    =====================================================
+    Abrir o PDF custa o download; extrair as outras páginas depois de tê-lo em
+    memória é barato. Guardar só a página pedida faria a segunda linha do mesmo
+    documento **baixar o arquivo de novo** — 📊 e a fila tem 24 documentos para
+    73 linhas, ou seja, a maioria das aberturas é a segunda linha de um
+    documento que já foi baixado.
+    """
+    chave = (str(documento_id), versao)
+    agora = time.time()
+    with _TRAVA_DO_CACHE:
+        guardado = _PAGINAS_EM_CACHE.get(chave)
+        if guardado and (agora - guardado[0]) < TTL_DO_CACHE_DE_PAGINAS:
+            _PAGINAS_EM_CACHE.move_to_end(chave)
+            return guardado[1]
+        if guardado:
+            _PAGINAS_EM_CACHE.pop(chave, None)
+
+    lidas = texto_das_paginas(documento_id, None, versao=versao, db=db, minio=minio)
+
+    # ⚠️ Só se guarda o que DEU CERTO. Guardar `fonte_indisponivel` por cinco
+    # minutos transformaria uma falha passageira do MinIO em cinco minutos de
+    # botão cinza, e o "tentar de novo" da tela (D9) não teria como funcionar.
+    if lidas.ok:
+        with _TRAVA_DO_CACHE:
+            _PAGINAS_EM_CACHE[chave] = (agora, lidas)
+            _PAGINAS_EM_CACHE.move_to_end(chave)
+            while len(_PAGINAS_EM_CACHE) > TETO_DO_CACHE_DE_PAGINAS:
+                _PAGINAS_EM_CACHE.popitem(last=False)
+    return lidas
+
+
+@dataclass(frozen=True)
+class PaginaDaLinha:
+    """A página daquela linha da fila, lida na hora. `motivo` explica o vazio."""
+
+    ok: bool
+    motivo: str
+    servico: Optional[str] = None
+    documento_id: Optional[str] = None
+    pagina: Optional[int] = None
+    total_de_paginas: Optional[int] = None
+    texto: Optional[str] = None
+
+
+def pagina_da_linha(servico_id: str, *, db: Any = None, minio: Any = None) -> PaginaDaLinha:
+    """O texto da página de UMA linha da fila — o que a tela pede ao abri-la.
+
+    🔴 POR QUE ISTO EXISTE (SPEC-EXTRA-001.5.1, D5)
+    ===============================================
+    A fila montava a página de **todas** as linhas antes de devolver qualquer
+    uma: 📊 65,3 s em produção, 22,5 s desta máquina em 19/09/2026 — 24 PDFs
+    baixados do MinIO em série para uma pessoa que vai ler a primeira linha. E
+    quem revisa abre uma linha de cada vez, sempre.
+
+    ⚠️ O trecho continua **não sendo gravado**: esta função lê a fonte
+    arquivada na hora, pelo mesmo caminho de sempre. O que muda é QUANDO.
+    """
+    cliente = _db(db)
+    linhas = (
+        cliente.table(TABELA_SERVICOS)
+        .select("id, servico, documento_id, pagina, curadoria")
+        .eq("id", str(servico_id)).limit(1).execute()
+    ).data or []
+    if not linhas:
+        return PaginaDaLinha(False, "linha_inexistente")
+    linha = linhas[0]
+    documento_id, pagina = linha.get("documento_id"), linha.get("pagina")
+    servico = str(linha.get("servico") or "") or None
+    if not documento_id:
+        return PaginaDaLinha(False, "sem_documento_registrado", servico)
+    try:
+        numero = int(pagina)
+    except (TypeError, ValueError):
+        # ⚠️ Cada vazio com o seu nome: "a linha não registrou a página" não é
+        # "o documento não abriu", e a tela diz coisas diferentes para os dois.
+        return PaginaDaLinha(False, "sem_pagina_registrada" if not pagina
+                             else "pagina_ilegivel", servico, str(documento_id))
+
+    lidas = _paginas_do_documento_em_cache(str(documento_id), db=cliente, minio=minio)
+    if not lidas.ok:
+        return PaginaDaLinha(False, lidas.motivo, servico, str(documento_id), numero)
+    texto = lidas.texto(numero)
+    if not texto:
+        return PaginaDaLinha(False, "pagina_fora_do_documento", servico,
+                             str(documento_id), numero, lidas.total)
+    # 🔴 A PÁGINA INTEIRA, não um recorte. 📊 18/09/2026: 5 das 6 páginas da
+    # amostra têm 1,8 k–4,3 k caracteres, e o corte em 1.200 escondia justamente
+    # o fim da tabela de limites — a pessoa aprovava o que coube na tela.
+    return PaginaDaLinha(True, "ok", servico, str(documento_id), numero,
+                         lidas.total, str(texto))
 
 
 def conferir_pagina(
@@ -1238,6 +1376,14 @@ def fila_de_curadoria(
             # plano pai (`publicar_servico`): quem clica precisa ter lido os dois.
             "plano_id": p.get("id"),
             "plano_curadoria": p.get("curadoria"),
+            # 🔴 D7/D8 — POR QUE O MOTIVO DO PLANO VIAJA NA LINHA DO SERVIÇO.
+            #
+            # 📊 19/09/2026: 4 linhas `proposto` estavam penduradas em planos
+            # `rascunho`, e `publicar_servico` só sobe o plano pai a partir de
+            # `proposto`. Na tela elas eram indistinguíveis das outras 69 — a
+            # pessoa lia, conferia, clicava, e o clique falhava. Com o motivo do
+            # pai ao lado, a tela consegue dizer por que aquela linha não sobe.
+            "plano_motivo_do_rascunho": p.get("motivo_do_rascunho"),
             "plano_pagina": p.get("pagina"),
             "vigencia_inicio": p.get("vigencia_inicio"),
             "servico": l.get("servico"),
@@ -1247,6 +1393,7 @@ def fila_de_curadoria(
             "limite_texto": l.get("limite_texto"),
             "carencia_dias": l.get("carencia_dias"),
             "condicao": l.get("condicao"),
+            "motivo_do_rascunho": l.get("motivo_do_rascunho"),
             "confianca": l.get("confianca"),
             "curadoria": l.get("curadoria"),
             "documento_id": l.get("documento_id"),
@@ -1309,9 +1456,18 @@ def para_rascunho(
     """
     if not str(motivo or "").strip():
         raise BaseDePlanosRecusa("reprovar sem motivo não ensina nada a ninguém")
+    # 🔴 O MOTIVO TEM COLUNA PRÓPRIA, E `condicao` SOBREVIVE (D8, 19/09/2026).
+    #
+    # Até aqui o patch era `"condicao": "[reprovado] <motivo>"` — e `condicao` é
+    # a condição CONTRATUAL da cobertura. 📊 A linha `fe94f9a5` guarda *"danos
+    # causados por acidente de origem externa, desde que façam parte do projeto
+    # original do condomínio"*: reprovar a linha apagava essa frase, sem cópia,
+    # e quem fosse reextrair perderia o que o documento dizia. Campo cujo nome
+    # mente sobre o que guarda é o defeito do CLAUDE.md §12.1 — conserta-se o
+    # CAMPO, não o texto.
     patch = {
         "curadoria": "rascunho",
-        "condicao": "[reprovado] %s" % str(motivo).strip(),
+        "motivo_do_rascunho": str(motivo).strip(),
         "updated_at": _agora(),
     }
     r = _db(db).table(TABELA_SERVICOS).update(patch).eq("id", str(servico_id)).execute()
@@ -1388,10 +1544,24 @@ def renomear_plano_proposto(
 
 
 def plano_para_rascunho(plano_id: str, motivo: str, *, db: Any = None) -> Dict[str, Any]:
-    """O irmão de `para_rascunho`, para o PLANO. Só desce; nunca sobe."""
+    """O irmão de `para_rascunho`, para o PLANO. Só desce; nunca sobe.
+
+    🔴 O MOTIVO É GRAVADO, NÃO LOGADO (SPEC-EXTRA-001.5.1, D8)
+    ==========================================================
+    📊 19/09/2026: os 5 planos em `rascunho` não tinham motivo em lugar nenhum —
+    esta função exigia o motivo, conferia que ele não estava vazio… e o passava
+    só para `logger.info`. O log do processo que os recusou não existe mais, e o
+    revisor que abrisse a base encontraria cinco planos recusados por ninguém
+    sabe o quê. **Exigir um motivo e jogá-lo fora é pior que não exigir**: dá a
+    impressão de que a informação foi guardada.
+    """
     if not str(motivo or "").strip():
         raise BaseDePlanosRecusa("reprovar plano sem motivo não ensina nada a ninguém")
-    patch = {"curadoria": "rascunho", "updated_at": _agora()}
+    patch = {
+        "curadoria": "rascunho",
+        "motivo_do_rascunho": str(motivo).strip(),
+        "updated_at": _agora(),
+    }
     r = _db(db).table(TABELA_PLANOS).update(patch).eq("id", str(plano_id)).execute()
     logger.info("[base-planos] plano %s -> rascunho: %s", plano_id, motivo)
     return (r.data or [{}])[0]
