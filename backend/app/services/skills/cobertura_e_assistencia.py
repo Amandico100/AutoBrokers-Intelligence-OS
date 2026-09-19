@@ -141,10 +141,18 @@ _COBERTURA_FRACA_RE = re.compile(
 #: ⛔ O PEDIDO EXPLÍCITO: o cliente ESTÁ MANDANDO fazer. Vence a forma de
 #: pergunta e o possessivo fraco.
 #:
-#: 📊 RODADA 3 (B2), medido em 22 pedidos reais: com formas FIXAS a porta
-#: perdia **10 de 22** — "manda" não casava *mandam*, "me ajuda" não casava
-#: *ajudar*, e faltavam "consegue", "podem", "tem como", "dá pra". Por isso
-#: STEMS (`mand\w*`), e não palavras inteiras.
+#: 🔴 RODADA 4 (P1) — O CRÉDITO ESTAVA NO LUGAR ERRADO, E ISSO É DEFEITO
+#: (CLAUDE.md §12.1: número com dono errado reinfecta todo leitor seguinte).
+#:
+#: 📊 O juiz final rodou a porta de `421b2c7` sobre estas 22 frases: **1/22**,
+#: não 10/22 — o "10/22" era a medição de OUTRO juiz sobre OUTRAS frases. E
+#: revertendo este bloco ao texto da rodada 2 a matriz sai IDÊNTICA (0/22 ·
+#: 6/30). **O ganho veio da separação cobertura FORTE × FRACA e da ORDEM
+#: (verbo de pedido antes do possessivo)**, não dos stems.
+#:
+#: ⚠️ Os stems FICAM porque resolvem casos que a ordem não alcança — 📊 o juiz
+#: mediu *"mandam um borracheiro?"* e *"solicito o guincho"* como perdidos sem
+#: eles —, e agora há um par no guarda que só eles resolvem.
 _PEDIDO_DE_SERVICO_RE = re.compile(
     r"(?<![a-zà-ú])("
     r"precis\w*|quer[oi]\w*|queria|gostaria|mand\w*|envi\w*|solicit\w*|"
