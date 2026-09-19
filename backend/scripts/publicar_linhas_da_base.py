@@ -411,7 +411,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("⛔ não consegui ler %r: %s" % (args.conferidas, type(exc).__name__))
         return 2
 
-    revisor = args.revisor.strip() or str(conferidas.get("revisor_sugerido") or "").strip()
+    # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO P1 — O FALLBACK CONTRADIZIA O `--help`.
+    #
+    # A docstring e o `--help` dizem, nestas palavras: *"--aplicar sem --revisor
+    # -> RECUSA, antes de tocar no banco"*. E a linha era
+    # `args.revisor or conferidas["revisor_sugerido"]`: um uuid que veio DENTRO
+    # DO ARQUIVO de conferência publicava 81 linhas em nome de alguém que não
+    # digitou nada. 📊 Quem responde por "guincho até 200 km" tem de ter
+    # ESCRITO o próprio id na linha de comando.
+    #
+    # ⚠️ `revisor_sugerido` continua no JSON e continua útil: ele é a SUGESTÃO
+    # que o operador copia. O que ele deixou de ser é o valor PADRÃO.
+    revisor = args.revisor.strip()
+    if args.aplicar and not revisor:
+        sugerido = str(conferidas.get("revisor_sugerido") or "").strip()
+        print("⛔ --aplicar exige --revisor <uuid>. Nada foi tocado no banco.")
+        if sugerido:
+            print("   O arquivo de conferência SUGERE %s — copie-o para o comando "
+                  "se for você quem responde por estas linhas." % sugerido)
+        return 2
     try:
         relatorio = executar(
             conferidas,
