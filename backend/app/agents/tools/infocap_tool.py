@@ -321,6 +321,14 @@ class InfocapLookupInput(BaseModel):
         # OPACA de proposito: quem a monta e a porta (`parse_policy_locator_ref`).
         description="Referencia tecnica opaca da apolice, devolvida pela consulta anterior. Repasse-a como veio; nunca a construa nem a exiba.",
     )
+    mensagem_atual: Optional[str] = Field(
+        default=None,
+        # 🔴 RODADA 2 (N1): PREENCHIDO PELO SISTEMA. E a ULTIMA mensagem humana
+        # — nao a janela de tres de `user_query`. A janela existe para a tool
+        # ACHAR a apolice certa; a intencao tem de ser lida so do que o cliente
+        # acabou de dizer, senao "tem guincho?" no turno N decide o turno N+1.
+        description="Ignorado: preenchido automaticamente pelo sistema. Nunca informe este campo.",
+    )
     session_id: Optional[str] = Field(
         default=None,
         # 🔴 SPEC-EXTRA-001.5.1 (B2): PREENCHIDO PELO SISTEMA, nunca pelo modelo.
@@ -481,6 +489,7 @@ class InfocapPolicyLookupTool(BaseTool):
         force_document_evidence_refresh: bool = False,
         selected_policy_number: Optional[str] = None,
         session_id: Optional[str] = None,
+        mensagem_atual: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not document and not name and not policy_number and not policy_ref:
             return {"content": "Informe CPF/CNPJ, nome do cliente, numero da apolice, ou um policy_ref para detalhar a apolice.", "found": False}
@@ -522,9 +531,11 @@ class InfocapPolicyLookupTool(BaseTool):
                 )
                 content, assistance_policy, rendered, meta = self._render_content(
                     det, user_query, detail=True,
-                    atendente=await self._quem_cuida(db, user_query))
+                    atendente=await self._quem_cuida(db, user_query),
+                    mensagem_atual=mensagem_atual)
                 contract = self._build_policy_response_contract(det, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
-                await self._lacuna_vira_tarefa(db, meta, user_query, session_id)
+                await self._lacuna_vira_tarefa(db, meta, user_query, session_id,
+                                           mensagem_atual)
                 return {"content": content, "data": det, "found": bool(det.get("ok")),
                         "policy_response_contract": contract,
                         "cobertura": (meta or {}).get("cobertura")}
@@ -594,9 +605,11 @@ class InfocapPolicyLookupTool(BaseTool):
                 await self._enrich_vehicle(result, provider, document, db, key)
             content, assistance_policy, rendered, meta = self._render_content(
                 result, user_query, detail=False,
-                atendente=await self._quem_cuida(db, user_query))
+                atendente=await self._quem_cuida(db, user_query),
+                mensagem_atual=mensagem_atual)
             contract = self._build_policy_response_contract(result, rendered, assistance_policy, client_facing=self._client_facing, meta=meta)
-            await self._lacuna_vira_tarefa(db, meta, user_query, session_id)
+            await self._lacuna_vira_tarefa(db, meta, user_query, session_id,
+                                           mensagem_atual)
             # 🔴 SPEC-EXTRA-001.5 BLOCO E: a `cobertura` (estado · seguradora ·
             # plano · documento · página) viaja no RETORNO da tool, e é dali que
             # `invocation_recorder` a resume para `tool_invocations`. Nenhum
@@ -882,7 +895,8 @@ class InfocapPolicyLookupTool(BaseTool):
 
     async def _lacuna_vira_tarefa(self, db: Any, meta: Optional[Dict[str, Any]],
                                   user_query: Optional[str],
-                                  session_id: Optional[str] = None) -> None:
+                                  session_id: Optional[str] = None,
+                                  mensagem_atual: Optional[str] = None) -> None:
         """O que a Skill NÃO soube responder vira tarefa — SPEC-EXTRA-001.5.1 (D12).
 
         🔴 O chamador é a TOOL, não a Skill nem o compositor, e por um motivo:
@@ -904,21 +918,61 @@ class InfocapPolicyLookupTool(BaseTool):
             #    por consulta de apólice seria caro e inútil nos outros estados.
             _da_conversa = {}
             _estado = str(((meta or {}).get("cobertura") or {}).get("estado") or "")
-            if _estado in _ESTADOS_QUE_VIRAM_LACUNA:
+            _foi_pergunta = bool((meta or {}).get("pergunta_de_cobertura"))
+            if _estado in _ESTADOS_QUE_VIRAM_LACUNA and _foi_pergunta:
                 _da_conversa = await self._a_conversa_deste_atendimento(db, session_id)
             await registrar_lacuna(
                 db=db, company_id=self.company_id,
                 canal=("segurado" if self._client_facing else "corretor"),
                 cobertura=(meta or {}).get("cobertura"),
-                pergunta=user_query,
+                # ⛔ RODADA 2 (N1-b): num PEDIDO, o 🆘 diria que o cliente
+                # PERGUNTOU sobre cobertura — o que e falso. A lacuna continua
+                # sendo GRAVADA (a frequencia de "pediu guincho na HDI e nao
+                # temos linha" e informacao boa), mas ninguem e interrompido.
+                pergunta=(mensagem_atual or user_query),
                 conversation_id=_da_conversa.get("conversation_id") or "",
                 telefone=_da_conversa.get("telefone") or "")
         except Exception as exc:  # noqa: BLE001
             logger.warning("[InfocapPolicyLookupTool] lacuna nao registrada: %s",
                            type(exc).__name__)
 
+    @staticmethod
+    def _a_intencao_da_mensagem(mensagem_atual: Optional[str],
+                                user_query: Optional[str]) -> Dict[str, bool]:
+        """`{"pergunta": bool, "so_de_cobertura": bool}` — a porta da RODADA 2.
+
+        🔴 A leitura e da MENSAGEM ATUAL. `user_query` (a janela de tres humanas)
+        entra so como ultimo recurso, quando o sistema nao mandou a atual: ela
+        existe para a tool ACHAR a apolice, e usa-la aqui faria uma pergunta de
+        cobertura do turno anterior calar o acionamento do turno seguinte.
+        """
+        from app.services.knowledge.assistance_plans_base import (  # noqa: PLC0415
+            servico_canonico,
+        )
+        from app.services.policy_answer_composer import (  # noqa: PLC0415
+            outro_assunto_na_mesma_mensagem,
+        )
+        from app.services.skills.cobertura_e_assistencia import (  # noqa: PLC0415
+            e_pergunta_de_cobertura,
+        )
+
+        texto = str(mensagem_atual or "").strip() or str(user_query or "")
+        pergunta = bool(e_pergunta_de_cobertura(texto))
+        try:
+            reconhece = bool(servico_canonico(texto))
+        except Exception:  # noqa: BLE001 — sem vocabulario, trata como pedido
+            reconhece = False
+        return {
+            "pergunta": pergunta,
+            # ⛔ "SO de cobertura" exclui a MISTA: ver
+            # `outro_assunto_na_mesma_mensagem`.
+            "so_de_cobertura": bool(pergunta and reconhece
+                                    and not outro_assunto_na_mesma_mensagem(texto)),
+        }
+
     def _render_content(self, data: Dict[str, Any], user_query: Optional[str], detail: bool,
-                        atendente: Optional[str] = None):
+                        atendente: Optional[str] = None,
+                        mensagem_atual: Optional[str] = None):
         """SPEC-016.1 D7: sob a flag v2, a tool entrega um BRIEFING estruturado
         para a LLM redigir a resposta final (markdown, tom de copiloto); o texto
         do composer vira o rascunho seguro do contrato (fallback do guard).
@@ -950,9 +1004,13 @@ class InfocapPolicyLookupTool(BaseTool):
                 # e o segurado recebia no WhatsApp o texto do corretor — com a
                 # citação "(Condições gerais da HDI, p. 23.)" e com "no plano
                 # **dele**".
+                _intencao = self._a_intencao_da_mensagem(mensagem_atual, user_query)
                 meta = compose_policy_answer_with_meta(
                     question=str(user_query or ""), result=data,
-                    atendente=atendente, client_facing=self._client_facing)
+                    atendente=atendente, client_facing=self._client_facing,
+                    pergunta_de_cobertura=_intencao["pergunta"])
+                if isinstance(meta, dict):
+                    meta["so_de_cobertura"] = _intencao["so_de_cobertura"]
                 rendered = str(meta.get("text") or "")
                 if rendered:
                     if str(data.get("status") or "") == "identity_mismatch":
@@ -1293,13 +1351,26 @@ class InfocapPolicyLookupTool(BaseTool):
             # proposito, para ser a ultima coisa que o modelo le antes de
             # redigir. E o rascunho que vai aqui e o do CANAL (`meta["text"]` ja
             # e o texto do segurado quando `client_facing=True`).
+            # 🔴 RODADA 2 (N1-a): num PEDIDO sem decisao da base, o rascunho e
+            # "vou confirmar e te respondo" — e o modelo pode SEGUI-LO e travar o
+            # acionamento mesmo sem a flag. Ele sai; o veredito continua (nos
+            # quatro estados decididos ele e o que impede o "sim" errado).
+            _so_registra = bool(meta.get("so_registra_a_lacuna"))
             lines.extend([
                 "",
                 *_linhas_do_veredito(meta.get("cobertura"), client_facing=True),
-                "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca os "
-                "fatos; ele ja esta na voz do cliente):",
-                str(meta.get("text") or ""),
             ])
+            if not _so_registra:
+                lines.extend([
+                    "RASCUNHO SEGURO DE REFERENCIA (pode melhorar a redacao, nunca "
+                    "os fatos; ele ja esta na voz do cliente):",
+                    str(meta.get("text") or ""),
+                ])
+            else:
+                lines.append(
+                    "- 🔴 o cliente PEDIU este servico, nao perguntou se tem "
+                    "cobertura: NAO responda sobre cobertura, SIGA o atendimento."
+                )
             return "\n".join(lines)
 
         lines.extend([
@@ -1383,7 +1454,16 @@ class InfocapPolicyLookupTool(BaseTool):
         # corretor. Nos dois casos o rascunho JA diz a verdade inteira (e o do
         # canal certo), e qualquer coisa que a LLM acrescente e invencao.
         cobertura_do_meta = (meta or {}).get("cobertura") or {}
-        if str(cobertura_do_meta.get("estado") or "") in _ESTADOS_QUE_ENCERRAM:
+        # 🔴 RODADA 2 (N1) — DUAS TRAVAS NOVAS, e cada uma fechou um defeito:
+        #   ⛔ `so_de_cobertura` FALSO -> nao liga. 📊 Sem isto, 6 de 11 frases
+        #      de acionamento reais tinham a resposta do atendente substituida
+        #      por "Nao quero te passar informacao errada… te respondo".
+        #   ⛔ MISTA ("tem taxi? e quantas parcelas faltam?") -> nao liga: o
+        #      `rendered` da mista NAO carrega as parcelas (a cadeia do
+        #      compositor e `if veredito … elif parcelas`), e encerrar com ele
+        #      apagaria a metade verdadeira.
+        if (str(cobertura_do_meta.get("estado") or "") in _ESTADOS_QUE_ENCERRAM
+                and (meta or {}).get("so_de_cobertura")):
             required_facts.append("encerrar_com_o_rascunho")
 
         da_base = (meta or {}).get("assistencia_da_base")
