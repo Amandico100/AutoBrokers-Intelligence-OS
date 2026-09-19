@@ -953,11 +953,28 @@ class InfocapPolicyLookupTool(BaseTool):
             outro_assunto_na_mesma_mensagem,
         )
         from app.services.skills.cobertura_e_assistencia import (  # noqa: PLC0415
-            e_pergunta_de_cobertura,
+            INDETERMINADA, PERGUNTA, intencao_da_mensagem,
         )
 
-        texto = str(mensagem_atual or "").strip() or str(user_query or "")
-        pergunta = bool(e_pergunta_de_cobertura(texto))
+        atual = str(mensagem_atual or "").strip()
+        janela = str(user_query or "")
+        # 🔴 RODADA 3 (B1) — O TURNO DO CPF NÃO DESLIGA A FISCALIZAÇÃO.
+        #
+        # 📊 O fluxo real do produto (documentado em `nodes.py:1576-1590`,
+        # incidente 12/07) é: o cliente pergunta, o agente pede o CPF, e a tool
+        # roda **no turno do CPF**. Medido pelo juiz da rodada 3:
+        #     "tem guincho? | 12345678900"       -> pergunta=False, required_facts=[]
+        #     "Sim, tem esse serviço sim!"       -> CHEGAVA INTACTO
+        # A garantia da 001.5 (M-B5) tinha passado a valer só quando a pergunta
+        # é literalmente a última mensagem.
+        #
+        # ⛔ Ausência de sinal NUNCA é pedido: `indeterminada` cai na JANELA,
+        # que é onde a pergunta original está.
+        intencao = intencao_da_mensagem(atual)
+        if intencao == INDETERMINADA:
+            intencao = intencao_da_mensagem(janela)
+        pergunta = bool(intencao == PERGUNTA)
+        texto = atual or janela
         try:
             reconhece = bool(servico_canonico(texto))
         except Exception:  # noqa: BLE001 — sem vocabulario, trata como pedido
@@ -1371,6 +1388,22 @@ class InfocapPolicyLookupTool(BaseTool):
                     "- 🔴 o cliente PEDIU este servico, nao perguntou se tem "
                     "cobertura: NAO responda sobre cobertura, SIGA o atendimento."
                 )
+            # 🔴 RODADA 3 — A MITIGAÇÃO DO PEDIDO QUE A BASE NEGA.
+            #
+            # No PEDIDO o veredito informa e não fiscaliza (decisão do gerente,
+            # 92 × 60: quem decide o acionamento é a seguradora). Mas quando a
+            # base diz `nao` para o serviço PEDIDO, o modelo precisa ouvir isso
+            # com todas as letras — senão promete o que pode não sair.
+            if not (meta or {}).get("pergunta_de_cobertura", True):
+                _estado_pedido = str(((meta or {}).get("cobertura") or {})
+                                     .get("estado") or "")
+                if _estado_pedido in ("nao_coberto", "nao_contratado"):
+                    lines.append(
+                        "- 🔴 a base diz que ESTE servico NAO esta no plano dele: "
+                        "NAO prometa o servico e NAO diga que vai abrir. Siga o "
+                        "atendimento e diga que a equipe da corretora confirma "
+                        "com a seguradora antes."
+                    )
             return "\n".join(lines)
 
         lines.extend([
