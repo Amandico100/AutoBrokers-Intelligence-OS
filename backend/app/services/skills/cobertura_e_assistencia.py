@@ -115,37 +115,53 @@ def rotulo_do_servico(servico: str) -> str:
 
 #: 🔴 SPEC-EXTRA-001.5.1 · RODADA 2 (N1) — PERGUNTAR NÃO É PEDIR.
 #:
-#: 📊 O defeito que isto fecha, medido pelo juiz da confirmação em 19/09/2026:
-#: `servico_canonico("preciso de guincho")` devolve `guincho` — a Skill nunca
-#: teve porta de INTENÇÃO. Com 0 linhas publicadas, todo serviço de AUTO caía em
-#: `nao_sabemos_ainda`, o contrato ganhava `encerrar_com_o_rascunho` e o guarda
-#: trocava *"Achei a sua apólice, está ativa. Me passa o endereço…"* por
-#: *"Não quero te passar informação errada… te respondo."* — **6 de 11** frases
-#: de acionamento reais. O cliente com o carro parado ficava sem guincho.
-#:
-#: ⚠️ A pergunta é sobre a MENSAGEM ATUAL, não sobre a janela de três: *"tem
-#: guincho?"* no turno N contaminaria *"então manda um"* no turno N+1.
-_PERGUNTA_DE_COBERTURA_RE = re.compile(
+#: 📊 O defeito que isto fecha: `servico_canonico("preciso de guincho")` devolve
+#: `guincho` — a Skill nunca teve porta de INTENÇÃO. Com 0 linhas publicadas,
+#: todo serviço de AUTO caía em `nao_sabemos_ainda`, o contrato ganhava
+#: `encerrar_com_o_rascunho` e o guarda trocava *"Achei a sua apólice, está
+#: ativa. Me passa o endereço…"* por *"Não quero te passar informação errada…"*
+#: — **6 de 11** frases de acionamento reais.
+
+#: A COBERTURA FORTE: o cliente está perguntando pelo DIREITO, sem ambiguidade.
+_COBERTURA_FORTE_RE = re.compile(
     r"(?<![a-zà-ú])("
     r"cobre|cobertura|coberto|coberta|inclui|inclu[ií]d[oa]|incluso|"
-    r"tem\s+direito|direito\s+a|posso\s+usar|posso\s+acionar|"
-    r"(meu|minha|no\s+meu|na\s+minha)\s+(plano|seguro|ap[óo]lice|contrato)|"
-    r"(tenho|tem|teria|temos)\s+(direito|cobertura|assist[êe]ncia|)"
+    r"tem\s+direito|tenho\s+direito|direito\s+a|posso\s+usar|posso\s+acionar|"
+    r"est[áa]\s+inclu|entra\s+no\s+(?:meu\s+)?(?:plano|seguro)"
     r")(?![a-zà-ú])", re.IGNORECASE)
+
+#: ⚠️ A COBERTURA FRACA: o possessivo sozinho. 📊 RODADA 3 (B2): ele capturava
+#: *"quero acionar meu seguro, preciso de guincho"* — um PEDIDO — porque era
+#: testado antes do verbo. Agora ele perde para o pedido explícito, que é o que
+#: a docstring sempre prometeu.
+_COBERTURA_FRACA_RE = re.compile(
+    r"(?<![a-zà-ú])((?:no\s+|na\s+)?(?:meu|minha)\s+"
+    r"(?:plano|seguro|ap[óo]lice|contrato))(?![a-zà-ú])", re.IGNORECASE)
 
 #: ⛔ O PEDIDO EXPLÍCITO: o cliente ESTÁ MANDANDO fazer. Vence a forma de
-#: pergunta — 📊 *"Consegues chamar ela?!"* tem interrogação e é um pedido.
+#: pergunta e o possessivo fraco.
+#:
+#: 📊 RODADA 3 (B2), medido em 22 pedidos reais: com formas FIXAS a porta
+#: perdia **10 de 22** — "manda" não casava *mandam*, "me ajuda" não casava
+#: *ajudar*, e faltavam "consegue", "podem", "tem como", "dá pra". Por isso
+#: STEMS (`mand\w*`), e não palavras inteiras.
 _PEDIDO_DE_SERVICO_RE = re.compile(
     r"(?<![a-zà-ú])("
-    r"preciso|precisava|quero|queria|gostaria|manda|mandar|envia|enviar|"
-    r"solicita|solicitar|chama|chamar|chamo|aciona|acionar|pede|pedir|"
-    r"me\s+ajuda|socorro|urgente|estou\s+parad|to\s+parad|tô\s+parad|"
-    r"abrir\s+um|abre\s+um"
+    r"precis\w*|quer[oi]\w*|queria|gostaria|mand\w*|envi\w*|solicit\w*|"
+    r"cham\w*|acion\w*|ped(?:e|ir|em|imos)\w*|ajud\w*|consegu\w*|"
+    # ⛔ `pod\w*` FICOU DE FORA, e é medição: 📊 "Ele já **pode** trocar o
+    # vidro?", "**Poderia** me informar o destino do guincho?" e "**Podes** me
+    # orientar?" são PERGUNTAS de procedimento, e o modal as pegava todas. Os
+    # pedidos reais que usam "pode" trazem outro verbo junto ("pode **chamar**
+    # o guincho", "vocês **podem mandar** o reboque") e continuam casando.
+    r"socorro|urgente|"
+    r"estou\s+parad\w*|to\s+parad\w*|tô\s+parad\w*|"
+    r"abrir?\s+um|abre\s+um|tem\s+como|d[áa]\s+pra|da\s+pra"
     r")(?![a-zà-ú])", re.IGNORECASE)
 
-#: ⚠️ O EVENTO — "quebrou", "furou", "bateu". Ele é mais fraco que o pedido
-#: explícito: 📊 *"Vão cobrar o custo do carro reserva de quem bateu?"* narra um
-#: evento e **pergunta**. Por isso o evento só decide quando não há interrogação.
+#: ⚠️ O EVENTO — "quebrou", "furou", "bateu". Mais fraco que o pedido explícito:
+#: 📊 *"Vão cobrar o custo do carro reserva de quem bateu?"* narra um evento e
+#: **pergunta**. Por isso o evento só decide quando não há interrogação.
 _EVENTO_RE = re.compile(
     r"(?<![a-zà-ú])("
     r"quebrou|furou|bateu|bati|batida|n[ãa]o\s+liga|n[ãa]o\s+pega|morreu|"
@@ -156,41 +172,77 @@ _EVENTO_RE = re.compile(
 _FORMA_DE_PERGUNTA_RE = re.compile(r"\?|^\s*(ser[áa]|qual|quais|quanto)",
                                    re.IGNORECASE)
 
+#: ⛔ A CONFIRMAÇÃO NUA. Casamento ANCORADO (a mensagem inteira), de propósito:
+#: "pode ser" é confirmação; "pode ser que eu precise de guincho" não é.
+_CONFIRMACAO_RE = re.compile(
+    r"^(sim|s|ok|okay|claro|isso|certo|correto|beleza|blz|aham|uhum|"
+    r"pode\s+ser|pode\s+sim|t[áa]\s+bom|tudo\s+bem|por\s+favor|"
+    r"obrigad[oa]|vlw|valeu|bom\s+dia|boa\s+tarde|boa\s+noite)"
+    r"[\s!.,🌀-🫿]*$", re.IGNORECASE)
 
-def e_pergunta_de_cobertura(texto: Any) -> bool:
-    """A mensagem PERGUNTA sobre cobertura, ou PEDE um serviço? **PURA.**
+PERGUNTA = "pergunta"
+PEDIDO = "pedido"
+INDETERMINADA = "indeterminada"
+
+
+def intencao_da_mensagem(texto: Any) -> str:
+    """`"pergunta"` · `"pedido"` · `"indeterminada"`. **PURA.**
 
     ```
-    "tem carro reserva?"                  -> True   (pergunta)
-    "meu seguro cobre guincho"            -> True   (pergunta, sem "?")
-    "preciso de guincho"                  -> False  (pedido)
-    "meu carro quebrou, manda um reboque" -> False  (pedido)
-    "preciso de guincho, meu seguro cobre?" -> True (mista: conta como pergunta)
+    "tem carro reserva?"                    -> pergunta
+    "meu seguro cobre guincho"              -> pergunta
+    "preciso de guincho"                    -> pedido
+    "quero acionar meu seguro, manda guincho" -> pedido  (o verbo vence)
+    "12345678900"                           -> indeterminada
+    "ok, pode ser"                          -> indeterminada
     ```
 
-    🔴 **A ordem das travas importa.** Um PEDIDO puro nunca é pergunta, mesmo
-    que nomeie o serviço; uma mensagem que traz as DUAS coisas é pergunta,
-    porque a dúvida sobre cobertura precisa de resposta antes do acionamento —
-    e porque errar para o lado de "é pergunta" custa uma frase a mais, enquanto
-    errar para o lado de "é pedido" custa o veredito.
+    🔴 **A TERCEIRA SAÍDA É O CONSERTO DA RODADA 3 (B1).** O fluxo real do
+    produto — documentado em `nodes.py:1576-1590`, incidente 12/07 — é: o
+    cliente pergunta, o agente pede o CPF, e a tool roda **no turno do CPF**.
+    📊 Com duas saídas só, `"12345678900"` era classificado como PEDIDO por
+    ausência de sinal, e a fiscalização inteira da 001.5 (M-B5) desligava:
+    *"Sim! Seu plano tem carro reserva por 7 dias"*, com a base dizendo NÃO,
+    chegava INTACTO ao segurado.
 
-    ⚠️ Quem decide o que fazer com isto é o compositor e a tool; esta função não
-    sabe canal, não sabe estado e não toca em nada.
+    ⛔ **Ausência de sinal nunca é PEDIDO.** Quem recebe `indeterminada`
+    classifica pela JANELA das últimas humanas — é lá que a pergunta original
+    está. Assumir pedido é desligar um guarda por silêncio.
+
+    ⚠️ A ORDEM das travas é a régua, e cada linha dela saiu de uma medição.
     """
     bruto = str(texto or "").strip()
     if not bruto:
-        return False
-    if _PERGUNTA_DE_COBERTURA_RE.search(bruto):
-        # 🔴 Mista (pergunta + pedido) conta como PERGUNTA — ver docstring.
-        return True
+        return INDETERMINADA
+    if _CONFIRMACAO_RE.match(bruto):
+        # 🔴 "ok", "pode ser", "sim" — o cliente está CONFIRMANDO o turno
+        # anterior, e a intenção mora lá. 📊 Sem esta linha, "pode ser" casava
+        # `pod(?:e)` e virava PEDIDO: um "sim" desligava a fiscalização.
+        return INDETERMINADA
+    if _COBERTURA_FORTE_RE.search(bruto):
+        # Mista (cobertura forte + pedido) conta como PERGUNTA: a dúvida sobre
+        # o direito precisa de resposta antes do acionamento.
+        return PERGUNTA
     if _PEDIDO_DE_SERVICO_RE.search(bruto):
-        return False
-    if _EVENTO_RE.search(bruto) and not _FORMA_DE_PERGUNTA_RE.search(bruto):
-        # Narrou o que aconteceu e não perguntou nada: é pedido de socorro.
-        return False
-    # Nem um nem outro: só a FORMA decide. "tem guincho?" cai aqui quando
-    # "tem" vem sem complemento — e é pergunta.
-    return bool(_FORMA_DE_PERGUNTA_RE.search(bruto))
+        # 🔴 B2: o verbo de pedido vence o possessivo fraco e a interrogação.
+        return PEDIDO
+    if _COBERTURA_FRACA_RE.search(bruto):
+        return PERGUNTA
+    if _EVENTO_RE.search(bruto):
+        return PEDIDO if not _FORMA_DE_PERGUNTA_RE.search(bruto) else PERGUNTA
+    if _FORMA_DE_PERGUNTA_RE.search(bruto):
+        return PERGUNTA
+    return INDETERMINADA
+
+
+def e_pergunta_de_cobertura(texto: Any) -> bool:
+    """`True` só quando a mensagem PERGUNTA. ⛔ `indeterminada` NÃO é pergunta.
+
+    ⚠️ Mantida porque é a forma que os guardas e o compositor leem. Quem precisa
+    distinguir "não perguntou" de "não deu para saber" usa
+    `intencao_da_mensagem`.
+    """
+    return intencao_da_mensagem(texto) == PERGUNTA
 
 
 class FonteIndisponivel(Exception):
