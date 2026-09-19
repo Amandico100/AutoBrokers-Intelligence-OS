@@ -29,7 +29,8 @@ O QUE ESTE GUARDA MEDE — PELO MOTOR, NUNCA PELA FRASE
 [5] `nao_sabemos_ainda` != `fonte_indisponivel` nos DOIS canais (M-B1 continua)
 [6] o guarda de `nodes.py` com contrato de cliente devolve o texto do SEGURADO
 [7] nenhum nome próprio escrito em código — sem fonte, é "nossa equipe"
-[8] 🔴 AS QUATRO MUTAÇÕES, em cópia do módulo, restauradas por cópia
+[9] 🔴 B5 — a voz do segurado contra o DADO REAL da base (SELECT no acervo)
+[10] 🔴 AS QUATRO MUTAÇÕES, em cópia do módulo, restauradas por cópia
 ```
 
 ⚠️ **Linha de controle em cada bloco.** Um guarda que só afirma o que o texto
@@ -306,7 +307,152 @@ checar(ATENDENTE not in str(meta_anonima.get("text") or ""),
        str(meta_anonima.get("text") or ""))
 
 # ---------------------------------------------------------------------------
-print("\n[8] 🔴 AS QUATRO MUTAÇÕES — o guarda CONSEGUE ficar vermelho")
+
+# ---------------------------------------------------------------------------
+print("\n[9] 🔴 B5 — a VOZ DO SEGURADO contra o DADO REAL da base")
+# 📊 O juiz mediu em 19/09/2026, e o gate acima NÃO pegava: ele usa uma fixture
+# de 41 caracteres ("só com a cobertura de vidros contratada"), e a base real é
+# outra coisa. Das 25 linhas conferidas como PUBLICAR, 1 estourava 450
+# caracteres (495), 1 trazia citação e 3 falavam do "segurado" em terceira
+# pessoa; nas 72 em `proposto`, 2 > 450 (a maior com 575), 2 com citação, 7 em
+# terceira pessoa e 3 com jargão.
+#
+# 🔴 O ACERVO VEM DO BANCO, NÃO DA IMAGINAÇÃO (CLAUDE.md §9.4). O SELECT lê
+# SÓ os campos de texto da LINHA (`condicao`, `limite_texto`) — dado de produto
+# curado, não de pessoa. ⛔ Nenhuma coluna de segurado é tocada.
+_DSN = os.environ.get("SUPABASE_DB_URL")
+if not _DSN:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(os.path.join(RAIZ, ".env"))
+        _DSN = os.environ.get("SUPABASE_DB_URL")
+    except Exception:  # noqa: BLE001
+        _DSN = None
+
+_linhas_reais = []
+if _DSN:
+    try:
+        import psycopg
+
+        with psycopg.connect(_DSN, autocommit=True,
+                             prepare_threshold=None) as _c, _c.cursor() as _cur:
+            _cur.execute(
+                "select servico, coberto, condicao, limite_texto, limite_valor, "
+                "limite_unidade, curadoria from insurer_assistance_services "
+                "where curadoria in ('proposto','publicado')")
+            _linhas_reais = list(_cur.fetchall())
+    except Exception as _exc:  # noqa: BLE001
+        print("      \U0001F7E1 banco indisponível (%s) — o bloco [9] usa só o "
+              "acervo embutido" % type(_exc).__name__)
+
+#: 💭 Se o banco não responder, o guarda ainda mede — com as FORMAS que o juiz
+#: descreveu. ⚠️ São ilustrativas: servem para o guarda não virar no-op, nunca
+#: para substituir a medição.
+_MOLDES = [
+    ("vidros", "condicionado",
+     "Cobertura válida somente se o segurado houver contratado a garantia "
+     "adicional de vidros, faróis, lanternas e retrovisores, conforme item 4.2 "
+     "das Condições Gerais, p. 23, observado o limite de dois acionamentos por "
+     "vigência e a franquia prevista na apólice, sendo certo que o segurado "
+     "deverá arcar com a diferença quando o valor exceder o limite máximo "
+     "indenizável contratado para a referida garantia.", None, None, None, "molde"),
+    ("guincho", "condicionado", "o segurado deve acionar a central antes",
+     None, None, None, "molde"),
+    ("carro_reserva", "condicionado", "só com a franquia paga", None, None, None,
+     "molde"),
+]
+_acervo = _linhas_reais + _MOLDES
+print("      📊 acervo medido: %d linha(s) reais + %d molde(s)"
+      % (len(_linhas_reais), len(_MOLDES)))
+
+_REGUA_CITACAO = re.compile(
+    r"(p\.\s*\d|p[áa]g|p[áa]gina|condi[çc][õo]es gerais|cl[áa]usula|documento)",
+    re.IGNORECASE)
+_REGUA_TERCEIRA = re.compile(
+    r"(?<![a-zà-ú])(segurad[oa]|del[ae]s?)(?![a-zà-ú])", re.IGNORECASE)
+_REGUA_COZINHA = re.compile(
+    r"(?<![a-zà-ú])(base|sistema|fonte|extrator|ap[óo]lice)(?![a-zà-ú])",
+    re.IGNORECASE)
+
+
+def _frases_do_texto(t):
+    return len([p for p in re.split(r"[.!?]+", str(t or "")) if p.strip()])
+
+
+_violacoes = []
+for _linha_real in _acervo:
+    (_servico, _coberto, _condicao, _limite_texto, _limite_valor,
+     _limite_unidade, _cur) = _linha_real
+    _estado = {"sim": "coberto", "nao": "nao_coberto",
+               "condicionado": "condicionado"}.get(str(_coberto or ""), "coberto")
+    _limite = SK._limite_em_palavras({"limite_texto": _limite_texto,
+                                      "limite_valor": _limite_valor,
+                                      "limite_unidade": _limite_unidade})
+    # 🔴 PELO MOTOR, e pelo canal do SEGURADO.
+    _texto_real = SK._texto(_estado, servico=str(_servico or "guincho"),
+                            seguradora="HDI", plano="Essencial", pagina=23,
+                            limite=_limite, condicao=_condicao,
+                            atendente=None, para=SK.SEGURADO)
+    _porques = []
+    if len(_texto_real) > 450:
+        _porques.append("%d caracteres" % len(_texto_real))
+    if _frases_do_texto(_texto_real) > 3:
+        _porques.append("%d frases" % _frases_do_texto(_texto_real))
+    if _REGUA_CITACAO.search(_texto_real):
+        _porques.append("citação %r" % _REGUA_CITACAO.search(_texto_real).group(0))
+    if _REGUA_TERCEIRA.search(_texto_real):
+        _porques.append("3ª pessoa %r" % _REGUA_TERCEIRA.search(_texto_real).group(0))
+    if _REGUA_COZINHA.search(_texto_real):
+        _porques.append("cozinha %r" % _REGUA_COZINHA.search(_texto_real).group(0))
+    if _porques:
+        _violacoes.append((str(_servico), _cur, " · ".join(_porques),
+                           _texto_real[:120]))
+
+checar(not _violacoes,
+       "🔴 as %d linhas do acervo passam pela régua do segurado, PELO MOTOR"
+       % len(_acervo),
+       "\n        ".join("%s [%s] %s → %r" % v for v in _violacoes[:4]))
+
+print("\n      🔴 CONTROLE do [9]: a régua CONSEGUE reprovar, e a fixture curta "
+      "continua inteira")
+_bruto = SK._texto("condicionado", servico="vidros", seguradora="HDI",
+                   plano="Essencial", pagina=23,
+                   condicao=_MOLDES[0][2], atendente=None, para=SK.SEGURADO)
+checar("Cobertura válida somente se o segurado" not in _bruto,
+       "🔴 CONTROLE: a condição de 495 caracteres NÃO sai crua ao segurado",
+       _bruto[:160])
+checar("algumas condições do seu contrato" in _bruto and "nossa equipe" in _bruto,
+       "e vira a frase genérica HONESTA, com quem confirma", _bruto)
+_curto = SK._texto("condicionado", servico="vidros", seguradora="HDI",
+                   plano="Essencial", pagina=23,
+                   condicao="só com a cobertura de vidros contratada",
+                   atendente=None, para=SK.SEGURADO)
+checar("só com a cobertura de vidros contratada" in _curto,
+       "🔴 CONTROLE: a condição CURTA e limpa continua saindo INTEIRA — a régua "
+       "não é uma mordaça", _curto)
+_ao_corretor = SK._texto("condicionado", servico="vidros", seguradora="HDI",
+                         plano="Essencial", pagina=23, condicao=_MOLDES[0][2],
+                         para=SK.CORRETOR)
+checar("Cobertura válida somente se o segurado" in _ao_corretor,
+       "🔴 e o CORRETOR continua recebendo a condição INTEIRA — é ele quem "
+       "precisa do texto contratual", _ao_corretor[:160])
+
+print("\n      🔴 MUTAÇÃO do [9]: a régua desligada")
+_regua_original = SK.condicao_que_o_cliente_entende
+try:
+    SK.condicao_que_o_cliente_entende = lambda c: (str(c or "").strip() or None)
+    _mutado = SK._texto("condicionado", servico="vidros", seguradora="HDI",
+                        plano="Essencial", pagina=23, condicao=_MOLDES[0][2],
+                        atendente=None, para=SK.SEGURADO)
+    checar(len(_mutado) > 450 and bool(_REGUA_CITACAO.search(_mutado)),
+           "🔴 MUTAÇÃO: sem a régua, a condição real estoura o teto E leva "
+           "citação ao WhatsApp (%d caracteres)" % len(_mutado), _mutado[:160])
+finally:
+    SK.condicao_que_o_cliente_entende = _regua_original
+
+# ---------------------------------------------------------------------------
+print("\n[10] 🔴 AS QUATRO MUTAÇÕES — o guarda CONSEGUE ficar vermelho")
 # ⚠️ Mutadas em CÓPIA do módulo carregado (`SK`), restauradas por cópia do
 # objeto original (protocolo §10). A ÁRVORE não é tocada em momento nenhum.
 _originais = {

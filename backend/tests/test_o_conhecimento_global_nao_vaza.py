@@ -126,8 +126,19 @@ except ImportError:
     sys.exit(_fechar())
 
 with psycopg.connect(DSN, autocommit=True, prepare_threshold=None) as c, c.cursor() as cur:
-    cur.execute("select id from companies order by id limit 2")
+    # 🔴 CONSERTO P5 — AS DUAS CORRETORAS TÊM DE TER DOCUMENTO.
+    #
+    # 📊 `order by id limit 2` pegava um par 17 + 0, e "os conjuntos não se
+    # cruzam" com um conjunto VAZIO é verdade por vácuo. O par certo é o das
+    # corretoras que de fato têm acervo privado — é ali que o vazamento
+    # aconteceria. 📊 19/09/2026: 17 · 2 · 1 nas três corretoras.
+    cur.execute("select company_id, count(*) as n from documents "
+                "group by company_id having count(*) > 0 "
+                "order by n desc limit 2")
     empresas = [str(r[0]) for r in cur.fetchall()]
+    if len(empresas) < 2:
+        cur.execute("select id from companies order by id limit 2")
+        empresas = [str(r[0]) for r in cur.fetchall()]
     checar(len(empresas) == 2 and empresas[0] != empresas[1],
            "duas corretoras REAIS lidas do banco (só os ids)",
            " · ".join(_curto(e) for e in empresas))
@@ -177,9 +188,9 @@ with psycopg.connect(DSN, autocommit=True, prepare_threshold=None) as c, c.curso
         das_duas = cur.fetchone()[0]
         checar(de_a + de_z == das_duas,
                f"🔴 os conjuntos NÃO se cruzam: {de_a} + {de_z} = {das_duas}")
-        checar(de_a + de_z > 0,
-               "🔴 CONTROLE: há documentos de verdade nessas corretoras — a "
-               "linha acima não passou por vácuo", f"{de_a} · {de_z}")
+        checar(de_a > 0 and de_z > 0,
+               "🔴 CONTROLE: as DUAS têm acervo privado — a linha acima não "
+               "passou por vácuo com um conjunto vazio", f"{de_a} · {de_z}")
 
     # ---------------------------------------------------------------------
     print("\n[5] 🔴 a base de planos responde a MESMA coisa para as duas (E18-i)")

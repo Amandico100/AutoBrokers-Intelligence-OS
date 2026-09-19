@@ -425,4 +425,68 @@ except BASE.BaseDePlanosRecusa as exc:
     exigiu6, detalhe6 = True, str(exc)[:140]
 checar(exigiu6, "e exige motivo, como o irmão que desce", detalhe6)
 
+# ---------------------------------------------------------------------------
+print("\n[9] 🔴 CONSERTO P1 — `--aplicar` sem `--revisor` RECUSA, e o `--help` "
+      "passa a dizer a verdade")
+# 📊 O juiz mediu em 19/09/2026: a docstring e o `--help` dizem, nestas
+# palavras, *"--aplicar sem --revisor -> RECUSA, antes de tocar no banco"* — e
+# `main()` fazia `args.revisor or conferidas["revisor_sugerido"]`. Um uuid
+# escrito DENTRO do arquivo de conferência publicava 81 linhas em nome de
+# alguém que não digitou nada.
+#
+# ⚠️ Este bloco chama `main(argv)` — não `executar()`. O defeito não estava no
+# motor (ele já levantava `RevisorObrigatorio`); estava no CHAMADOR, que nunca
+# o deixava chegar lá. Guarda que mede o motor não teria visto (CLAUDE.md §9.4).
+_PASTA_TEMP = tempfile.mkdtemp(prefix="conferidas_p1_")
+_com_sugerido = os.path.join(_PASTA_TEMP, "conferidas_com_sugerido.json")
+# ⚠️ O arquivo precisa ser VÁLIDO (o carregador recusa `linhas: []` antes de
+#    chegar ao revisor): a forma é a mesma de `conferencia()` acima.
+with io.open(_com_sugerido, "w", encoding="utf-8") as _fh:
+    json.dump({"revisor_sugerido": REVISOR,
+               "linhas": [{"servico_id": "00000000-0000-4000-8000-000000000001",
+                           "plano_id": "00000000-0000-4000-8000-000000000002",
+                           "veredito": "PUBLICAR"}]}, _fh)
+
+_tocou = {"executar": 0}
+_executar_original = LOTE.executar
+try:
+    def _nunca_deveria_rodar(*a, **k):
+        # ⛔ NÃO chama o original: o `main()` roda sem `db=`, e chamar através
+        #    tocaria o banco de PRODUÇÃO. O que se mede é se `main()` CHEGOU
+        #    aqui — não o que `executar` faria.
+        _tocou["executar"] += 1
+        return {"aplicar": bool(k.get("aplicar")),
+                "revisor": k.get("revisor") or "",
+                "por_seguradora_ramo": {}, "publicadas": 0, "derrubadas": 0,
+                "puladas": 0, "pulos": {}, "para_corrigir": [], "erros": [],
+                "verify": {"publicado_sem_revisor": 0}}
+
+    LOTE.executar = _nunca_deveria_rodar
+    _codigo = LOTE.main(["--conferidas", _com_sugerido, "--aplicar"])
+    checar(_codigo != 0,
+           "🔴 `--aplicar` SEM `--revisor` devolve código de erro (%r)" % _codigo,
+           repr(_codigo))
+    checar(_tocou["executar"] == 0,
+           "🔴 e NADA foi executado — a recusa é ANTES de tocar no banco, "
+           "como o `--help` promete", repr(_tocou))
+
+    _codigo_ok = LOTE.main(["--conferidas", _com_sugerido, "--aplicar",
+                            "--revisor", REVISOR])
+    checar(_tocou["executar"] == 1,
+           "🔴 CONTROLE: COM `--revisor` na linha de comando, ele executa — a "
+           "recusa é pela FALTA do argumento, não uma trava geral", repr(_tocou))
+    checar(_codigo_ok == 0, "e termina em 0", repr(_codigo_ok))
+
+    _codigo_seco = LOTE.main(["--conferidas", _com_sugerido])
+    checar(_codigo_seco == 0 and _tocou["executar"] == 2,
+           "🔴 CONTROLE: o ENSAIO (`--dry-run`, o padrão) continua rodando "
+           "sem `--revisor` — quem não escreve não precisa de dono", repr(_tocou))
+finally:
+    LOTE.executar = _executar_original
+
+_ajuda = LOTE.__doc__ or ""
+checar("--aplicar sem --revisor" in _ajuda and "RECUSA" in _ajuda,
+       "🔴 e a docstring continua prometendo a recusa — agora ela é verdade",
+       _ajuda[:200])
+
 sys.exit(_fechar())

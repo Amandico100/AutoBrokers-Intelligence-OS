@@ -70,21 +70,43 @@ def _fechar() -> int:
 
 
 class ContadorDeLeituras:
-    """Os DOIS leitores da fonte, substituídos e contados.
+    """Os DOIS leitores da fonte — **e `open()` inteiro** (CONSERTO P6).
 
-    🔴 Os dois, e não só um: `texto_das_paginas` é quem a fila chama, e
+    🔴 Os dois leitores, e não só um: `texto_das_paginas` é quem a fila chama, e
     `bytes_da_fonte` é quem baixa do MinIO. Contar só o primeiro deixaria passar
     um caminho novo que fosse direto ao segundo. (Vem da fatia 2,
     `test_a_fila_abre_rapido_e_o_lote_publica_com_revisor.py:82`.)
+
+    🔴 **E `builtins.open` também.** 📊 O juiz mutou a Skill para abrir um
+    arquivo com `open()` DENTRO da resposta e este guarda ficou VERDE: ele
+    contava as duas funções NOMEADAS, e o nome do arquivo dizia "não abre
+    arquivo". Substituir dois nomes prova que aqueles dois não foram chamados —
+    não prova que nada foi aberto. Agora a porta é a linguagem, não a lista.
+
+    ⚠️ **A exceção nomeada, e uma só:** o VOCABULÁRIO de serviços
+    (`servicos-de-assistencia.json`) e os catálogos SUSEP são lidos UMA vez e
+    ficam em cache de processo. Para que a exceção não vire um buraco, o cache é
+    AQUECIDO antes da medição (`_aquecer_o_cache`) e qualquer leitura deles
+    DURANTE a resposta continua sendo contada.
     """
 
     def __init__(self):
         self.chamadas = []
         self._antes = {}
+        self._open = None
 
     def __enter__(self):
+        import builtins
+
         self._antes = {"texto_das_paginas": BASE.texto_das_paginas,
                        "bytes_da_fonte": BASE.bytes_da_fonte}
+        self._open = builtins.open
+
+        def _open_contado(arquivo, *a, **k):
+            self.chamadas.append(("open", str(arquivo)[-60:]))
+            return self._open(arquivo, *a, **k)
+
+        builtins.open = _open_contado
 
         def texto_das_paginas(documento_id, paginas=None, **kw):
             self.chamadas.append(("texto_das_paginas", str(documento_id)))
@@ -100,10 +122,25 @@ class ContadorDeLeituras:
         return self
 
     def __exit__(self, *a):
+        import builtins
+
+        if self._open is not None:
+            builtins.open = self._open
         for nome, valor in self._antes.items():
             setattr(BASE, nome, valor)
         BASE.esquecer_paginas_em_cache()
         return False
+
+
+def _aquecer_o_cache():
+    """Lê o vocabulário UMA vez, ANTES de medir — a exceção nomeada do P6.
+
+    ⛔ Sem isto, a primeira pergunta abriria o JSON do vocabulário e o guarda
+    ficaria vermelho pelo motivo errado (CLAUDE.md §9.3). Com isto, qualquer
+    `open()` durante a resposta é um `open()` que não devia existir.
+    """
+    BASE.servico_canonico("tem carro reserva?")
+    BASE.servico_canonico("tem guincho?")
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +203,7 @@ def _result(pack):
 
 def _rodar_as_trinta(cliente: bool):
     vereditos = 0
+    _aquecer_o_cache()
     with ContadorDeLeituras() as contador:
         for item in PERGUNTAS:
             ramo, produto, plano, nivel = RAMO_DA_CATEGORIA[item["categoria"]]
@@ -240,5 +278,36 @@ chamadas_de_volta, _ = _rodar_as_trinta(cliente=False)
 checar(chamadas_de_volta == [],
        "🔴 CONTROLE: restaurada, a resposta volta a ZERO leituras",
        repr(chamadas_de_volta[:3]))
+
+# ---------------------------------------------------------------------------
+print("\n[5] 🔴 CONSERTO P6 — a MUTAÇÃO DO JUIZ: `open()` cru dentro da Skill")
+# 📊 Ela ficou VERDE em 19/09/2026: o guarda contava `texto_das_paginas` e
+# `bytes_da_fonte` pelo NOME, e um `open()` direto passava por baixo dos dois.
+_texto_original = SK._texto_ao_segurado
+_arquivo_qualquer = os.path.join(RAIZ, "app", "data",
+                                 "servicos-de-assistencia.json")
+
+
+def _texto_que_abre_arquivo(*a, **k):
+    """A mutação do juiz: a Skill lê um arquivo no meio da resposta."""
+    with open(_arquivo_qualquer, encoding="utf-8") as fh:
+        fh.read(10)
+    return _texto_original(*a, **k)
+
+
+try:
+    SK._texto_ao_segurado = _texto_que_abre_arquivo
+    chamadas_open, _ = _rodar_as_trinta(cliente=True)
+    checar(any(c[0] == "open" for c in chamadas_open),
+           "🔴 MUTAÇÃO DO JUIZ: agora o contador ACUSA o `open()` cru "
+           f"({len(chamadas_open)} chamada(s)) — a porta é a LINGUAGEM, não a "
+           "lista de nomes", repr(chamadas_open[:3]))
+finally:
+    SK._texto_ao_segurado = _texto_original
+
+chamadas_limpas, _ = _rodar_as_trinta(cliente=True)
+checar(chamadas_limpas == [],
+       "🔴 CONTROLE: restaurada, a resposta volta a ZERO — nem leitor nomeado, "
+       "nem `open()`", repr(chamadas_limpas[:3]))
 
 sys.exit(_fechar())

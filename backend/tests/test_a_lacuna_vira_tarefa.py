@@ -385,4 +385,182 @@ checar(len(db9.linhas) == 1 and db9.linhas[0].get("frequency_count") == 3
        repr([len(db9.linhas), db9.linhas[0].get("frequency_count"),
              len(porta9.avisos)]))
 
+
+# ---------------------------------------------------------------------------
+print("\n[8] 🔴 B3 — o marcador de 24 h NÃO queima quando o envio FALHA")
+# 📊 Medido pelo juiz em 19/09/2026, com a porta devolvendo `enviado=False
+# (Timeout)`: a 1ª pergunta não avisava e a 2ª respondia
+# `ja_avisei_esta_lacuna_hoje` — o marcador já estava de pé. O dia fechava com
+# ZERO avisos, e o sintoma era igual ao de "ninguém perguntou".
+
+
+class _PortaQueFalha:
+    """A porta que NÃO envia e NÃO cala — é FALHA, não guarda."""
+
+    def __init__(self, falhas=1):
+        self.tentativas = 0
+        self.falhas = falhas
+        self.avisos = []
+
+    async def __call__(self, _db, **kw):
+        self.tentativas += 1
+        if self.tentativas <= self.falhas:
+            return {"enviado": False, "calado": False, "motivo": "Timeout"}
+        self.avisos.append(kw)
+        return {"enviado": True, "calado": False, "motivo": "", "destino_ok": True}
+
+
+class _MarcadorQueDevolve(_Marcador):
+    """O duplo do Redis COM `devolver_a_vez_do_grupo` — como o real."""
+
+    def __init__(self):
+        super().__init__()
+        self.devolvidas = 0
+
+    async def devolver(self, company_id, conversation_id, tipo):
+        self.devolvidas += 1
+        self.chaves.discard((str(company_id), str(conversation_id), str(tipo)))
+
+
+def _registrar_com_devolucao(db, marcador, porta, *, canal="segurado"):
+    import app.services.o_grupo_so_o_que_importa as G
+
+    antes_m, antes_d = G.reivindicar_o_envio, G.devolver_a_vez_do_grupo
+    try:
+        G.reivindicar_o_envio = marcador
+        G.devolver_a_vez_do_grupo = marcador.devolver
+        return _rodar(L.registrar_lacuna(
+            db=db, company_id=EMPRESA_A, canal=canal, cobertura=COBERTURA,
+            pergunta=PERGUNTA, enviar=porta))
+    finally:
+        G.reivindicar_o_envio, G.devolver_a_vez_do_grupo = antes_m, antes_d
+
+
+db_b3 = _TabelaDeLacunas()
+marcador_b3, porta_b3 = _MarcadorQueDevolve(), _PortaQueFalha(falhas=1)
+r_falha = _registrar_com_devolucao(db_b3, marcador_b3, porta_b3)
+checar(not r_falha.get("avisou") and marcador_b3.devolvidas == 1,
+       "🔴 o envio falhou e o marcador foi DEVOLVIDO", repr(r_falha))
+r_depois = _registrar_com_devolucao(db_b3, marcador_b3, porta_b3)
+checar(r_depois.get("avisou") and len(porta_b3.avisos) == 1,
+       "🔴 e a PERGUNTA SEGUINTE avisa — o dia não fecha mudo por um timeout",
+       repr(r_depois))
+r_terceira = _registrar_com_devolucao(db_b3, marcador_b3, porta_b3)
+checar(not r_terceira.get("avisou") and len(porta_b3.avisos) == 1,
+       "🔴 CONTROLE: depois de um envio BEM-SUCEDIDO o teto volta a valer — a "
+       "devolução é só da falha", repr(r_terceira))
+
+print("\n      🔴 CONTROLE de B3: `calado=True` (a guarda agiu) NÃO devolve")
+db_b3b = _TabelaDeLacunas()
+marcador_b3b = _MarcadorQueDevolve()
+
+
+class _PortaQueCala:
+    async def __call__(self, _db, **kw):
+        return {"enviado": False, "calado": True,
+                "motivo": "a conversa já tem gente"}
+
+
+_registrar_com_devolucao(db_b3b, marcador_b3b, _PortaQueCala())
+checar(marcador_b3b.devolvidas == 0,
+       "🔴 CONTROLE: calar por guarda é a guarda FUNCIONANDO — o marcador fica "
+       "de pé, senão o ruído que a 001.3 matou volta", repr(marcador_b3b.devolvidas))
+
+print("\n      🔴 MUTAÇÃO de B3: sem a devolução, o dia fecha mudo")
+_devolver_original = L._devolver_a_vez
+try:
+    async def _nao_devolve(*_a, **_k):
+        return None
+
+    L._devolver_a_vez = _nao_devolve
+    db_mut = _TabelaDeLacunas()
+    marcador_mut, porta_mut = _MarcadorQueDevolve(), _PortaQueFalha(falhas=1)
+    _registrar_com_devolucao(db_mut, marcador_mut, porta_mut)
+    r_mut2 = _registrar_com_devolucao(db_mut, marcador_mut, porta_mut)
+    checar(len(porta_mut.avisos) == 0
+           and r_mut2.get("motivo") == "ja_avisei_esta_lacuna_hoje",
+           "🔴 MUTAÇÃO: sem devolver o marcador, a 2ª pergunta cala e o dia "
+           "fecha com ZERO avisos — era o estado de 19/09", repr(r_mut2))
+finally:
+    L._devolver_a_vez = _devolver_original
+
+# ---------------------------------------------------------------------------
+print("\n[9] 🔴 B4 — o MOTIVO chega, e o gate passa a comer o que o MOTOR cozinha")
+# 🔴 CLAUDE.md §9.4: até 19/09 este arquivo alimentava `registrar_lacuna` com um
+# dict escrito À MÃO que JÁ tinha `motivo` — e `para_registro()` não tinha.
+# 📊 O guarda provava a frase e não provava que alguém a alcançava: em
+# produção, `plano_nao_identificado` e `sem_linha_publicada` gravavam a MESMA
+# frase, e o painel mandava curar o que podia já estar curado.
+os.environ["POLICY_INTELLIGENCE_V2"] = "true"
+sys.path.insert(0, os.path.join(RAIZ, "tests"))
+from base_de_planos_em_memoria import BaseEmMemoria  # noqa: E402
+
+from app.services.policy_answer_composer import (  # noqa: E402
+    compose_policy_answer_with_meta,
+)
+
+_base = BaseEmMemoria()
+_PLANO = _base.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
+                     plano="Essencial", nivel=1, documento_id="doc", pagina=9)
+_base.servico(_PLANO, "guincho", "sim", documento_id="doc", pagina=25)
+
+
+def _meta_do_motor(pergunta, *, com_plano: bool):
+    pack = {
+        "source": "infocap", "insurer_detected": "hdi",
+        "product_detected": "Auto Perfil", "line_kind_detected": "auto",
+        "policy_status": "ativa", "active_now": True,
+        "valid_from": "2026-01-01", "valid_to": "2027-01-01",
+        "coverage_sections": [], "structured_coverage_available": True,
+        "structured_coverage_absent": False, "installments": [], "limitations": [],
+    }
+    if com_plano:
+        pack["assistance_plan"] = {"plano": "Essencial", "nivel": 1,
+                                   "estado": "contratado"}
+    resultado = {"ok": True, "status": "found",
+                 "selected": {"insurer_key": "hdi", "product": "Auto Perfil",
+                              "policy_number": "1", "numapo": "1",
+                              "policy_status": "ativa", "active_now": True,
+                              "valid_from": "2026-01-01", "valid_to": "2027-01-01"},
+                 "policy_evidence_pack": pack}
+    return compose_policy_answer_with_meta(question=pergunta, result=resultado,
+                                           db=_base, client_facing=True)
+
+
+_sem_linha = (_meta_do_motor("tem taxi?", com_plano=True).get("cobertura") or {})
+_sem_plano = (_meta_do_motor("tem taxi?", com_plano=False).get("cobertura") or {})
+checar(_sem_linha.get("motivo") == "sem_linha_publicada",
+       "🔴 `para_registro()` do MOTOR carrega `motivo='sem_linha_publicada'`",
+       repr(_sem_linha.get("motivo")))
+checar(_sem_plano.get("motivo") == "plano_nao_identificado",
+       "🔴 e `motivo='plano_nao_identificado'` no outro caso",
+       repr(_sem_plano.get("motivo")))
+_d1 = L.descricao_da_lacuna(_sem_linha)
+_d2 = L.descricao_da_lacuna(_sem_plano)
+checar(_d1 != _d2,
+       "🔴 e as DUAS descrições são DIFERENTES — o painel deixa de mandar curar "
+       "o que já está curado", f"{_d1!r}\n        {_d2!r}")
+checar("não há linha publicada" in _d1 and "plano contratado não foi identificado" in _d2,
+       "e cada uma diz o conserto CERTO", f"{_d1!r}\n        {_d2!r}")
+
+#: 🔴 E a lista fechada do registro aceita o campo — senão ele morreria a um
+#: passo do banco (`invocation_recorder._CAMPOS_DA_ORIGEM`).
+from app.services.skills import invocation_recorder as IR  # noqa: E402
+
+checar("motivo" in IR._CAMPOS_DA_ORIGEM,
+       "🔴 `_CAMPOS_DA_ORIGEM` aceita `motivo` (enum de código, nunca PII)",
+       repr(IR._CAMPOS_DA_ORIGEM))
+_origem = IR._origem_da_cobertura(_sem_plano)
+checar((_origem or {}).get("motivo") == "plano_nao_identificado",
+       "e ele atravessa o resumo de `tool_invocations`", repr(_origem))
+_varredor = PII.search(str(_origem))
+checar(not _varredor, "⛔ e o resumo continua sem PII", repr(_origem)[:200])
+
+print("\n      🔴 MUTAÇÃO de B4: `para_registro` sem `motivo`")
+_sem_motivo = dict(_sem_plano)
+_sem_motivo.pop("motivo", None)
+checar(L.descricao_da_lacuna(_sem_motivo) == _d1,
+       "🔴 MUTAÇÃO: sem `motivo`, o caso do PLANO volta a gravar a frase do "
+       "caso da BASE — as duas viram uma", repr(L.descricao_da_lacuna(_sem_motivo)))
+
 sys.exit(_fechar())
