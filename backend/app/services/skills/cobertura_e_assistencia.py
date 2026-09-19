@@ -215,6 +215,20 @@ class VereditoDeCobertura:
             "origem": self.origem,
             "confianca": self.confianca,
             "gancho": bool(self.gancho),
+            # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B4 — O MOTIVO É PROCEDÊNCIA.
+            #
+            # 📊 Sem ele, `plano_nao_identificado` e `sem_linha_publicada`
+            # gravavam a MESMA frase em `capability_gaps`, e o painel mandava
+            # destilar uma condição geral que podia já estar destilada — o
+            # problema era outro (o plano não foi reconhecido na apólice).
+            #
+            # ⛔ Não é PII e não é argumento cru: é um ENUM DE CÓDIGO, escrito
+            # nesta Skill (`plano_nao_identificado`, `sem_linha_publicada`,
+            # `seguradora_desconhecida`, `data_de_emissao_ilegivel`,
+            # `dois_planos_no_texto`, `coberto_fora_do_vocabulario:<valor>`) ou
+            # o `type(exc).__name__` de uma falha. Nenhum deles vem do texto do
+            # corretor nem da apólice.
+            "motivo": self.motivo,
         }
 
 
@@ -341,10 +355,38 @@ def _texto_ao_corretor(estado: str, *, servico: str, seguradora: Optional[str],
             "Não é um 'não' — é uma falha minha de consulta. Tento de novo em instantes.",
         )
     if estado == "nao_sabemos_ainda":
+        # 🔴 CONSERTO P9 — O MOTIVO REAL, E NÃO SEMPRE "FALTA NA BASE".
+        #
+        # 📊 São motivos diferentes com consertos diferentes:
+        # `plano_nao_identificado` é lacuna de LEITURA DA APÓLICE (a base pode
+        # estar completa); `sem_linha_publicada` é lacuna de CURADORIA. Dizer
+        # sempre a segunda mandava o corretor cobrar uma destilação que talvez
+        # já existisse — e escondia a pergunta que resolveria o caso dele.
+        # ⛔ Nenhum dado da apólice entra na frase: só o enum interno.
+        abre = {
+            "plano_nao_identificado":
+                "**Não consegui identificar qual plano da %s está na apólice.**" % quem,
+            "dois_planos_no_texto":
+                "**A apólice cita mais de um plano da %s, e não vou escolher por "
+                "conta.**" % quem,
+            "data_de_emissao_ilegivel":
+                "**Não consegui ler a data de emissão da apólice**, e sem ela não "
+                "sei qual vigência do plano vale.",
+            "seguradora_desconhecida":
+                "**Essa seguradora ainda não está no meu censo.**",
+        }.get(str(motivo or ""),
+              "**Ainda não tenho as condições da %s para esse produto na base.**" % quem)
+        fecha = {
+            "plano_nao_identificado":
+                "Me diz o nome do plano que está na apólice e eu respondo na hora.",
+            "dois_planos_no_texto":
+                "Me confirma qual deles é o contratado e eu respondo na hora.",
+        }.get(str(motivo or ""),
+              "Posso confirmar com a seguradora — quer que eu abra?")
         return _juntar(
-            "**Ainda não tenho as condições da %s para esse produto na base.**" % quem,
+            abre,
             "Então não vou afirmar nem que tem nem que não tem %s." % rot,
-            "Posso confirmar com a seguradora — quer que eu abra?",
+            fecha,
         )
     if estado == "coberto":
         if generica:
@@ -373,6 +415,50 @@ def _texto_ao_corretor(estado: str, *, servico: str, seguradora: Optional[str],
                        % (plano or "plano contratado", rot),
                        fonte, _frase_do_gancho(gancho))
     return "Não consegui classificar a resposta (%s)." % (motivo or estado)
+
+
+#: 🔴 CONSERTO B5 — O ORÇAMENTO DA FRASE DO SEGURADO.
+#:
+#: O teto da 001.2 é 3 frases e 450 caracteres para a MENSAGEM inteira. A frase
+#: de condição gasta ~95 caracteres de moldura ("Tem sim, com uma condição: …
+#: Se for o seu caso, eu já abro o atendimento pra você."), então o que sobra
+#: para o texto curado é o resto. 📊 Medido em 19/09/2026 sobre as linhas reais
+#: da base: das 25 conferidas como PUBLICAR, **1** estourava 450 (495
+#: caracteres), **1** trazia citação e **3** falavam do "segurado" em terceira
+#: pessoa; nas 72 em `proposto`, **2** > 450 (a maior com 575), **2** com
+#: citação, **7** em terceira pessoa e **3** com palavra de cozinha.
+TETO_DA_CONDICAO_AO_SEGURADO = 220
+
+#: ⛔ O que NUNCA pode atravessar do dado curado para a conversa: a citação (o
+#: segurado não tem o PDF), a terceira pessoa (o texto da base fala SOBRE ele) e
+#: o jargão de quem constrói o produto.
+_CONDICAO_IMPRESTAVEL = re.compile(
+    r"(p\.\s*\d|p[áa]g|cl[áa]usula|condi[çc][õo]es gerais|documento|ap[óo]lice"
+    r"|segurad[oa]|(?<![a-zà-ú])del[ae]s?(?![a-zà-ú])|(?<![a-zà-ú])base(?![a-zà-ú])"
+    r"|sistema|extrator|item\s+\d+|anexo)",
+    re.IGNORECASE)
+
+
+def condicao_que_o_cliente_entende(condicao: Optional[str]) -> Optional[str]:
+    """A condição curada, se ela couber na conversa — senão `None`.
+
+    🔴 **A régua não julga o dado, julga se ele cabe NESTA voz.** A condição
+    inteira continua indo ao CORRETOR, sempre: é ele quem precisa do texto
+    contratual. Ao segurado, uma condição longa, com citação, em terceira pessoa
+    ou com jargão vira uma frase genérica HONESTA — que diz que existe condição
+    e oferece quem confirma —, nunca um "tem sim" seco.
+
+    ⚠️ `None` aqui não significa "não tem condição": significa *"esta condição
+    não se diz assim"*. Quem trata isso é `_texto_ao_segurado`.
+    """
+    texto = str(condicao or "").strip().rstrip(".")
+    if not texto:
+        return None
+    if len(texto) > TETO_DA_CONDICAO_AO_SEGURADO:
+        return None
+    if _CONDICAO_IMPRESTAVEL.search(texto):
+        return None
+    return texto
 
 
 def _texto_ao_segurado(estado: str, *, servico: str, limite: str = "",
@@ -405,7 +491,15 @@ def _texto_ao_segurado(estado: str, *, servico: str, limite: str = "",
     if estado == FALHA:
         # 🔴 M-B1 par 2 no canal do segurado: a falha de consulta continua tendo
         # texto PRÓPRIO, diferente de "ainda não sabemos".
-        return "Tive um probleminha pra verificar isso aqui agora. Já tento de novo e te falo."
+        #
+        # ⛔ CONSERTO P9 — PROMESSA SEM DONO. O texto dizia *"Já tento de novo e
+        # te falo"*, e **não existe retentativa**: nenhum agendamento, nenhuma
+        # fila, ninguém. Uma frase que o produto não cumpre é pior que a falha
+        # que ela esconde. O que existe de verdade é o cliente poder perguntar
+        # de novo e a equipe poder assumir.
+        return ("Tive um probleminha pra verificar isso agora. Pode me perguntar "
+                "de novo daqui a pouquinho? Se preferir, peço pra %s te ajudar."
+                % quem)
     if estado == "nao_sabemos_ainda":
         return ("Não quero te passar informação errada, então vou confirmar isso "
                 "certinho com %s. Assim que eu tiver a confirmação, te respondo." % quem)
@@ -414,15 +508,21 @@ def _texto_ao_segurado(estado: str, *, servico: str, limite: str = "",
             return ("Na assistência 24h residencial, %s costuma estar incluído. "
                     "Vou confirmar no seu contrato pra te dar certeza." % rot)
         corpo = "Tem sim: o seu plano inclui %s" % rot
-        if limite:
-            corpo += " — %s" % limite
+        # ⚠️ CONSERTO B5: o `limite` vem do mesmo dado curado que a `condicao` e
+        #    passa pela MESMA régua — um `limite_texto` longo ou com citação
+        #    estoura a mensagem exatamente do mesmo jeito.
+        curto = condicao_que_o_cliente_entende(limite)
+        if curto:
+            corpo += " — %s" % curto
         return corpo + ". Quer que eu já solicite pra você?"
     if estado == "condicionado":
-        cond = str(condicao or "").strip().rstrip(".")
+        # 🔴 CONSERTO B5: a condição CURADA só entra quando cabe nesta voz.
+        cond = condicao_que_o_cliente_entende(condicao)
         if cond:
             return ("Tem sim, com uma condição: %s. Se for o seu caso, eu já abro "
                     "o atendimento pra você." % cond)
-        return "Tem sim, com uma condição. Me confirma uma coisa e eu já abro o atendimento?"
+        return ("Tem sim, mas com algumas condições do seu contrato. Quer que %s "
+                "confirme se vale pro seu caso?" % quem)
     if estado in ("nao_coberto", "nao_contratado"):
         abre = "No seu plano, não entra %s." % rot
         if gancho and gancho.get("plano_superior"):
