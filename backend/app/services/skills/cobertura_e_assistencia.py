@@ -124,11 +124,26 @@ class VereditoDeCobertura:
     ⚠️ §14 da proposta (Citations da API Anthropic): a citação é **campo
     estruturado** — `documento_id` + `pagina` —, não prosa dentro do texto. O
     texto é montado A PARTIR deles; a tela, o registro e o guarda leem os campos.
+
+    🔴 SPEC-EXTRA-001.5.1 (D10) — **DOIS TEXTOS, UM VEREDITO**
+    ==========================================================
+    `texto` continua sendo o do CORRETOR (nenhum leitor de hoje muda de lugar);
+    `texto_para_o_segurado` é o mesmo veredito na conversa do WhatsApp.
+
+    ⛔ E ele **não é opcional**: `__post_init__` o monta quando não vier pronto,
+    a partir dos MESMOS campos. 📊 O defeito que isso fecha é de construção: há
+    seis lugares nesta Skill que criam um veredito, e bastaria UM esquecer o
+    segundo texto para a citação e o "dele" voltarem ao WhatsApp em silêncio.
+    Regra que depende de seis chamadores lembrarem não é regra.
     """
 
     estado: str
     servico: str
     texto: str
+    texto_para_o_segurado: str = ""
+    #: Quem cuida do caso na corretora (card Equipe). `None` → "nossa equipe".
+    #: ⛔ Nunca o nome do agente (D-PILOTO-12), nunca um nome inventado.
+    atendente: Optional[str] = None
     tipo: Optional[str] = None
     insurer_key: Optional[str] = None
     seguradora: Optional[str] = None
@@ -149,6 +164,28 @@ class VereditoDeCobertura:
     confianca: str = "baixa"
     motivo: Optional[str] = None
     servicos_da_base: List[Dict[str, Any]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """O texto do SEGURADO nasce junto com o do corretor, ou não nasce.
+
+        🔴 Um veredito sem `texto_para_o_segurado` seria um veredito que, no
+        WhatsApp, cai no texto do corretor — com citação e com "dele". Montá-lo
+        aqui, dos mesmos campos, torna esse estado impossível de existir.
+        """
+        if self.texto_para_o_segurado:
+            return
+        limite = _limite_em_palavras({
+            "limite_texto": self.limite_texto,
+            "limite_valor": self.limite_valor,
+            "limite_unidade": self.limite_unidade,
+        })
+        object.__setattr__(self, "texto_para_o_segurado", _texto(
+            self.estado, servico=self.servico, seguradora=self.seguradora,
+            plano=self.plano, pagina=self.pagina, limite=limite,
+            condicao=self.condicao, gancho=self.gancho,
+            generica=(self.origem == "regra_generica"), motivo=self.motivo,
+            atendente=self.atendente or (self.gancho or {}).get("atendente"),
+            para=SEGURADO))
 
     @property
     def tem_fonte(self) -> bool:
@@ -184,17 +221,49 @@ class VereditoDeCobertura:
 # ---------------------------------------------------------------------------
 # O texto — e a regra de §6.2 que nenhuma frase de "não" escapa
 # ---------------------------------------------------------------------------
+#: 🔴 OS DOIS CANAIS — SPEC-EXTRA-001.5.1, unidade C (D10).
+#:
+#: A MESMA verdade, DUAS vozes. `corretor` é o copiloto interno: markdown,
+#: veredito em negrito, limite em linha própria e **a fonte sempre** (documento
+#: e página). `segurado` é o WhatsApp: segunda pessoa, frases curtas, **zero
+#: citação** — a fonte é a corretora, e quem lê não abre condições gerais.
+#:
+#: ⚠️ A citação continua EXISTINDO como campo (`documento_id` + `pagina`) nos
+#: dois canais: o canal decide se ela é MOSTRADA, nunca se ela existe (§14 da
+#: 001.5, Citations da API Anthropic). O registro, a tela e o guarda leem o
+#: campo; só o texto do corretor a imprime.
+CORRETOR = "corretor"
+SEGURADO = "segurado"
+CANAIS = (CORRETOR, SEGURADO)
+
+
 def _citacao(seguradora: Optional[str], pagina: Optional[int]) -> str:
     """*"(Condições gerais da HDI, p. 23.)"* — o lastro, sempre no mesmo formato.
 
     🔴 Sem página não há citação, e sem citação **não se diz "não"**. Por isso
     esta função devolve vazio em vez de inventar "(condições gerais)": uma
     citação sem página é indistinguível, para quem lê, de uma com página.
+
+    ⛔ **Só no canal do corretor.** `_linha_da_fonte` é a forma que o markdown
+    usa; as duas nascem daqui para que a REGRA ("sem página, sem citação") tenha
+    um dono só.
     """
     if not pagina:
         return ""
     quem = str(seguradora or "").strip()
     return " (Condições gerais da %s, p. %s.)" % (quem, pagina) if quem else " (Condições gerais, p. %s.)" % pagina
+
+
+def _linha_da_fonte(seguradora: Optional[str], pagina: Optional[int]) -> str:
+    """A citação como LINHA PRÓPRIA do markdown do corretor, ou vazio.
+
+    📊 O guarda `test_a_resposta_traz_documento_e_pagina.py` procura `"p. N"` no
+    texto que o motor devolve: o formato da página não muda, só o lugar dela.
+    """
+    cita = _citacao(seguradora, pagina).strip()
+    if not cita:
+        return ""
+    return "Fonte: " + cita.strip("()").rstrip(".") + "."
 
 
 def _limite_em_palavras(linha: Dict[str, Any]) -> str:
@@ -214,69 +283,175 @@ def _limite_em_palavras(linha: Dict[str, Any]) -> str:
     return "%s %s" % (numero, legivel)
 
 
+def quem_cuida(atendente: Optional[str]) -> str:
+    """O nome da atendente da corretora, ou *"nossa equipe"*.
+
+    🔴 D-PILOTO-12: quem cuida do caso é uma PESSOA do card Equipe — nunca o
+    agente, que é um nome escolhido pela corretora e não pode avaliar nada.
+    ⛔ E **nenhum nome próprio mora aqui**: sem fonte, o texto é "nossa equipe".
+    A fonte única é `nome_de_quem_vai_atender` (`o_fim_do_atendimento.py:2392`),
+    que já aplica a regra "exatamente UM membro ativo não-owner → é ela".
+    """
+    return str(atendente or "").strip() or "nossa equipe"
+
+
 def _frase_do_gancho(gancho: Optional[Dict[str, Any]]) -> str:
+    """O gancho na voz do CORRETOR — uma linha, sem preço e sem promessa.
+
+    📊 19/09/2026, achado pelo guarda das duas vozes: a linha do plano superior
+    **sem limite publicado** saía *"O plano acima (Completo) tem — <a atendente> pode
+    avaliar…"*. O travessão ficava órfão porque a frase era `"tem%s"` e o `%s`
+    vinha vazio. Não travava nada, e chegava ao corretor assim mesmo — é o
+    "responde errado em silêncio" do CLAUDE.md §9.5, em miniatura.
+    """
     if not gancho:
         return ""
-    quem = str(gancho.get("atendente") or "").strip()
-    # 🔴 D-PILOTO-12: quem cuida do caso é a ATENDENTE do card Equipe. Sem nome,
-    # "nossa equipe" — nunca o nome do agente, que é escolha da corretora e não
-    # é uma pessoa que possa orçar nada.
-    pessoa = quem or "nossa equipe"
     limite = str(gancho.get("limite") or "").strip()
+    tem = ("tem %s" % limite) if limite else "inclui esse serviço"
     return (
-        " O plano acima (%s) tem%s — %s pode avaliar a troca na renovação."
-        % (gancho.get("plano_superior"), (" %s" % limite) if limite else "", pessoa)
+        "O plano acima (%s) %s — %s pode avaliar a troca na renovação."
+        % (gancho.get("plano_superior"), tem, quem_cuida(gancho.get("atendente")))
     )
+
+
+def _texto_ao_corretor(estado: str, *, servico: str, seguradora: Optional[str],
+                       plano: Optional[str], pagina: Optional[int], limite: str = "",
+                       condicao: Optional[str] = None,
+                       gancho: Optional[Dict[str, Any]] = None,
+                       generica: bool = False, motivo: Optional[str] = None) -> str:
+    """O copiloto interno: veredito em negrito, um fato por linha, fonte SEMPRE.
+
+    ⚠️ As FRASES são as mesmas que a 001.5 fixou (os guardas M-B1/M-B3 as leem
+    por dentro); o que a 001.5.1 acrescenta é a FORMA — negrito no veredito,
+    limite/condição/fonte/gancho em linhas próprias. Trocar a frase quebraria
+    um guarda que mede a verdade; trocar a forma não.
+    """
+    rot = rotulo_do_servico(servico)
+    quem = str(seguradora or "a seguradora").strip()
+    fonte = _linha_da_fonte(seguradora, pagina)
+
+    def _juntar(*linhas: str) -> str:
+        return "\n".join(l for l in linhas if l)
+
+    if estado == FALHA:
+        # 🔴 TEXTO PRÓPRIO — M-B1 par 2. Nem "não cobre", nem "não sabemos": não
+        # OLHAMOS. Quem lê precisa saber que a informação existe e não chegou.
+        return _juntar(
+            "**Não consegui abrir a apólice agora para conferir %s.**" % rot,
+            "Não é um 'não' — é uma falha minha de consulta. Tento de novo em instantes.",
+        )
+    if estado == "nao_sabemos_ainda":
+        return _juntar(
+            "**Ainda não tenho as condições da %s para esse produto na base.**" % quem,
+            "Então não vou afirmar nem que tem nem que não tem %s." % rot,
+            "Posso confirmar com a seguradora — quer que eu abra?",
+        )
+    if estado == "coberto":
+        if generica:
+            return _juntar(
+                "**Pelo padrão de mercado de assistência 24h residencial, %s costuma "
+                "estar incluído.**" % rot,
+                "⚠️ Isso é o padrão, não o contrato dele: ainda não tenho as condições "
+                "gerais da %s na base para confirmar limite e carência." % quem,
+            )
+        return _juntar("**Tem sim: %s.**" % rot,
+                       ("Limite: %s." % limite) if limite else "",
+                       fonte)
+    if estado == "condicionado":
+        cond = str(condicao or "").strip().rstrip(".")
+        return _juntar("**Tem, mas com condição: %s.**" % rot,
+                       ("Condição: %s." % cond) if cond else "",
+                       ("Limite: %s." % limite) if limite else "",
+                       fonte)
+    if estado == "nao_coberto":
+        # 🔴 §6.2: toda frase que diz "não" carrega documento e página.
+        return _juntar("**No plano dele, não: o %s da %s não inclui %s.**"
+                       % (plano or "plano contratado", quem, rot),
+                       fonte, _frase_do_gancho(gancho))
+    if estado == "nao_contratado":
+        return _juntar("**O plano dele é o %s, que não inclui %s.**"
+                       % (plano or "plano contratado", rot),
+                       fonte, _frase_do_gancho(gancho))
+    return "Não consegui classificar a resposta (%s)." % (motivo or estado)
+
+
+def _texto_ao_segurado(estado: str, *, servico: str, limite: str = "",
+                       condicao: Optional[str] = None,
+                       gancho: Optional[Dict[str, Any]] = None,
+                       generica: bool = False,
+                       atendente: Optional[str] = None) -> str:
+    """A MESMA verdade, na conversa do WhatsApp.
+
+    🔴 AS QUATRO TRAVAS DESTE TEXTO, e cada uma existe por um defeito medido:
+
+    ```
+    ZERO citacao      "(Condições gerais da HDI, p. 23)" não significa nada para
+                      quem não tem o PDF — e transfere para o segurado a prova
+                      que é da corretora
+    ZERO "dele/dela"  o texto do copiloto fala SOBRE o segurado; aqui fala COM ele
+    ZERO cozinha      base · sistema · fonte · consulta · extrator · plano publicado
+    o "nao" nunca     §14 da proposta, OPÇÃO 1 do Founder: quando a base diz que
+    termina em "nao"  não cobre, o caminho da equipe vai NA MESMA mensagem
+    ```
+
+    ⚠️ E **nenhum prazo**: *"te respondo ainda hoje"* é uma promessa que o
+    produto não controla — quem responde é uma pessoa, e o agente não sabe a
+    agenda dela. Prometer prazo é a forma mais barata de perder um cliente que
+    até então estava sendo bem atendido.
+    """
+    rot = rotulo_do_servico(servico)
+    quem = quem_cuida(atendente)
+
+    if estado == FALHA:
+        # 🔴 M-B1 par 2 no canal do segurado: a falha de consulta continua tendo
+        # texto PRÓPRIO, diferente de "ainda não sabemos".
+        return "Tive um probleminha pra verificar isso aqui agora. Já tento de novo e te falo."
+    if estado == "nao_sabemos_ainda":
+        return ("Não quero te passar informação errada, então vou confirmar isso "
+                "certinho com %s. Assim que eu tiver a confirmação, te respondo." % quem)
+    if estado == "coberto":
+        if generica:
+            return ("Na assistência 24h residencial, %s costuma estar incluído. "
+                    "Vou confirmar no seu contrato pra te dar certeza." % rot)
+        corpo = "Tem sim: o seu plano inclui %s" % rot
+        if limite:
+            corpo += " — %s" % limite
+        return corpo + ". Quer que eu já solicite pra você?"
+    if estado == "condicionado":
+        cond = str(condicao or "").strip().rstrip(".")
+        if cond:
+            return ("Tem sim, com uma condição: %s. Se for o seu caso, eu já abro "
+                    "o atendimento pra você." % cond)
+        return "Tem sim, com uma condição. Me confirma uma coisa e eu já abro o atendimento?"
+    if estado in ("nao_coberto", "nao_contratado"):
+        abre = "No seu plano, não entra %s." % rot
+        if gancho and gancho.get("plano_superior"):
+            # ⛔ Sem preço e sem prometer que a seguradora aceita: o gancho
+            # OFERECE uma conversa, nunca uma troca (M-B3).
+            return (abre + " Existe um plano acima que inclui — quer que %s te "
+                    "explique na renovação?" % quem)
+        return abre + " Posso pedir pra %s ver o que dá pra fazer no seu caso?" % quem
+    return "Não consegui confirmar isso agora. Vou verificar e já te falo."
 
 
 def _texto(estado: str, *, servico: str, seguradora: Optional[str], plano: Optional[str],
            pagina: Optional[int], limite: str = "", condicao: Optional[str] = None,
            gancho: Optional[Dict[str, Any]] = None, generica: bool = False,
-           motivo: Optional[str] = None) -> str:
-    rot = rotulo_do_servico(servico)
-    quem = str(seguradora or "a seguradora").strip()
-    cita = _citacao(seguradora, pagina)
+           motivo: Optional[str] = None, atendente: Optional[str] = None,
+           para: str = CORRETOR) -> str:
+    """UM veredito, DOIS textos — e `para` é a única coisa que muda entre eles.
 
-    if estado == FALHA:
-        # 🔴 TEXTO PRÓPRIO — M-B1 par 2. Nem "não cobre", nem "não sabemos": não
-        # OLHAMOS. Quem lê precisa saber que a informação existe e não chegou.
-        return (
-            "Não consegui abrir a apólice agora para conferir %s. "
-            "Não é um 'não' — é uma falha minha de consulta. Tento de novo em instantes."
-            % rot
-        )
-    if estado == "nao_sabemos_ainda":
-        return (
-            "Ainda não tenho as condições da %s para esse produto na base, "
-            "então não vou afirmar nem que tem nem que não tem %s. "
-            "Posso confirmar com a seguradora — quer que eu abra?" % (quem, rot)
-        )
-    if estado == "coberto":
-        if generica:
-            return (
-                "Pelo padrão de mercado de assistência 24h residencial, %s costuma estar incluído. "
-                "⚠️ Isso é o padrão, não o contrato dele: ainda não tenho as condições gerais da %s "
-                "na base para confirmar limite e carência." % (rot, quem)
-            )
-        corpo = "Tem sim: %s" % rot
-        if limite:
-            corpo += " — %s" % limite
-        return corpo + "." + cita
-    if estado == "condicionado":
-        corpo = "Tem, mas com condição: %s" % rot
-        if condicao:
-            corpo += " — %s" % str(condicao).strip().rstrip(".")
-        if limite:
-            corpo += " (%s)" % limite
-        return corpo + "." + cita
-    if estado == "nao_coberto":
-        # 🔴 §6.2: toda frase que diz "não" carrega documento e página.
-        return ("No plano dele, não. O %s da %s não inclui %s."
-                % (plano or "plano contratado", quem, rot)) + cita + _frase_do_gancho(gancho)
-    if estado == "nao_contratado":
-        return ("O plano dele é o %s, que não inclui %s."
-                % (plano or "plano contratado", rot)) + cita + _frase_do_gancho(gancho)
-    return "Não consegui classificar a resposta (%s)." % (motivo or estado)
+    ⛔ A Skill continua **pura**: ela não sabe por onde a resposta sai. Quem diz
+    `para=` é o compositor, que recebe o canal da tool (`client_facing`).
+    """
+    if str(para or CORRETOR) == SEGURADO:
+        return _texto_ao_segurado(estado, servico=servico, limite=limite,
+                                  condicao=condicao, gancho=gancho,
+                                  generica=generica, atendente=atendente)
+    return _texto_ao_corretor(estado, servico=servico, seguradora=seguradora,
+                              plano=plano, pagina=pagina, limite=limite,
+                              condicao=condicao, gancho=gancho, generica=generica,
+                              motivo=motivo)
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +689,7 @@ def responder_cobertura(
             estado="nao_sabemos_ainda", servico=servico, tipo=tipo,
             insurer_key=insurer_key, seguradora=quem, ramo=ramo or None,
             produto=produto, plano=plano, nivel=nivel, origem="nenhuma",
-            confianca="baixa", motivo=motivo,
+            confianca="baixa", motivo=motivo, atendente=atendente,
             texto=_texto("nao_sabemos_ainda", servico=servico, seguradora=quem,
                          plano=plano, pagina=None),
         )
@@ -590,7 +765,8 @@ def responder_cobertura(
         if permitir_fallback:
             generico = _fallback_residencial(
                 servico=servico, tipo=tipo, apolice=apolice,
-                insurer_key=insurer_key, seguradora=seguradora, db=db)
+                insurer_key=insurer_key, seguradora=seguradora, db=db,
+                atendente=atendente)
             if generico is not None:
                 return generico
         return _sem_saber("plano_nao_identificado", insurer_key, seguradora)
@@ -607,6 +783,7 @@ def responder_cobertura(
             estado=FALHA, servico=servico, tipo=tipo, insurer_key=insurer_key,
             seguradora=seguradora, ramo=ramo, produto=produto, plano=plano, nivel=nivel,
             origem="nenhuma", confianca="baixa", motivo=type(exc).__name__,
+            atendente=atendente,
             texto=_texto(FALHA, servico=servico, seguradora=seguradora, plano=plano, pagina=None),
         )
 
@@ -634,6 +811,7 @@ def responder_cobertura(
             limite_unidade=linha.get("limite_unidade"), limite_texto=linha.get("limite_texto"),
             carencia_dias=linha.get("carencia_dias"), condicao=linha.get("condicao"),
             gancho=gancho, origem="base", confianca=str(linha.get("confianca") or "media"),
+            atendente=atendente,
             servicos_da_base=[{"servico": servico, "rotulo": rotulo_do_servico(servico),
                                "coberto": coberto}],
             texto=_texto(estado, servico=servico, seguradora=seguradora, plano=plano,
@@ -658,6 +836,7 @@ def responder_cobertura(
             estado=FALHA, servico=servico, tipo=tipo, insurer_key=insurer_key,
             seguradora=seguradora, ramo=ramo, produto=produto, plano=plano, nivel=nivel,
             origem="nenhuma", confianca="baixa", motivo=type(exc).__name__,
+            atendente=atendente,
             texto=_texto(FALHA, servico=servico, seguradora=seguradora, plano=plano, pagina=None),
         )
 
@@ -671,7 +850,7 @@ def responder_cobertura(
             seguradora=seguradora, ramo=ramo, produto=produto, plano=plano,
             nivel=int(p.get("nivel") or 0) if p.get("nivel") is not None else nivel,
             plano_id=p.get("id"), documento_id=p.get("documento_id"), pagina=p.get("pagina"),
-            gancho=gancho, origem="base", confianca="media",
+            gancho=gancho, origem="base", confianca="media", atendente=atendente,
             servicos_da_base=[{"servico": servico, "rotulo": rotulo_do_servico(servico),
                                "coberto": "nao"}],
             texto=_texto("nao_contratado", servico=servico, seguradora=seguradora, plano=plano,
@@ -683,7 +862,8 @@ def responder_cobertura(
     if permitir_fallback:
         generico = _fallback_residencial(
             servico=servico, tipo=tipo, apolice=apolice,
-            insurer_key=insurer_key, seguradora=seguradora, db=db)
+            insurer_key=insurer_key, seguradora=seguradora, db=db,
+            atendente=atendente)
         if generico is not None:
             return generico
 
@@ -694,6 +874,7 @@ def responder_cobertura(
 def _fallback_residencial(
     *, servico: str, tipo: Optional[str], apolice: Dict[str, Any],
     insurer_key: Optional[str], seguradora: Optional[str], db: Any = None,
+    atendente: Optional[str] = None,
 ) -> Optional[VereditoDeCobertura]:
     """§6.4 — a regra antiga responde, MARCADA, mesmo sem plano identificado.
 
@@ -749,7 +930,7 @@ def _fallback_residencial(
         estado="coberto", servico=servico, tipo=tipo, insurer_key=insurer_key,
         seguradora=seguradora, ramo=str(apolice.get("ramo") or "") or None,
         produto=apolice.get("produto"), plano=None, nivel=None,
-        origem="regra_generica", confianca="baixa",
+        origem="regra_generica", confianca="baixa", atendente=atendente,
         motivo="%s v%s" % (RULE_ID, RULE_VERSION),
         texto=_texto("coberto", servico=servico, seguradora=seguradora, plano=None,
                      pagina=None, generica=True),
