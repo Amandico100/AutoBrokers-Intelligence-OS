@@ -307,6 +307,35 @@ def _normalizar_para_guarda(valor: Any) -> str:
     return "".join(c for c in bruto if not unicodedata.combining(c)).lower().strip()
 
 
+#: O fim de frase, para o espelho da negação (FECHO DA RODADA 2).
+_FIM_DE_FRASE_RE = re.compile(r"[.!?\n]+")
+
+
+def _nega_o_servico(candidato: str, rotulo: str) -> bool:
+    """A negação está NA FRASE que nomeia o serviço? — **PURA.**
+
+    🔴 📊 `_NEGATIVA_RE` casa "não tem" em *"você não tem parcelas em atraso"*.
+    Perguntada a cobertura de guincho com a base dizendo `sim`, a resposta
+    *"Tem guincho sim! E você não tem parcelas em atraso."* era trocada inteira
+    — o guarda via uma negação que não era sobre o serviço.
+
+    ⛔ Isto vale SÓ para o espelho (`sim`/`condicionado`). A direção `nao` — a
+    regra da 001.5, guardada por M-B5 — **fica como está**: lá a pergunta é
+    *"este texto nega em ALGUM lugar?"*, e restringi-la à frase do serviço
+    trocaria respostas legítimas como *"Carro reserva. Não está incluído no seu
+    plano."*, em que a negação mora na frase seguinte. Apertar uma régua que
+    protege o segurado, num ponto que nenhuma medição pediu, é o tipo de
+    mudança que só se descobre errada em produção.
+    """
+    alvo = _normalizar_para_guarda(rotulo)
+    if not alvo:
+        return False
+    for frase in _FIM_DE_FRASE_RE.split(str(candidato or "")):
+        if alvo in _normalizar_para_guarda(frase) and _NEGATIVA_RE.search(frase):
+            return True
+    return False
+
+
 def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional[Dict[str, Any]]) -> str:
     """R1B.2: InfoCap policy answers are operational contracts, not free-form summaries.
 
@@ -448,7 +477,8 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
                     # A base disse NÃO e o texto não nega em lugar nenhum: é o
                     # "sim" silencioso de §9.5, que não trava e chega ao cliente.
                     return rendered
-                if str(item.get("coberto")) in ("sim", "condicionado") and _NEGATIVA_RE.search(candidate):
+                if (str(item.get("coberto")) in ("sim", "condicionado")
+                        and _nega_o_servico(candidate, rotulo)):
                     # 🔴 RODADA 2 — O ESPELHO DA REGRA ACIMA, e ele faltava.
                     #
                     # 📊 Medido em 19/09/2026: com a base dizendo `sim` para
@@ -457,8 +487,12 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
                     # publicadas isso deixa de ser teórico: é o segurado ouvindo
                     # que não tem direito ao que ele tem.
                     #
-                    # ⚠️ A régua é a MESMA (`_NEGATIVA_RE` + o serviço nomeado),
-                    # invertida — nenhum classificador novo (CLAUDE.md §5).
+                    # 🔴 FECHO DA RODADA 2 — E ELE OLHA A FRASE, NÃO O TEXTO.
+                    # 📊 `_NEGATIVA_RE` casa "não tem" em *"você não tem
+                    # parcelas em atraso"*: uma resposta CERTA sobre guincho que
+                    # trouxesse essa frase ao lado era trocada inteira, à toa.
+                    # A negação só conta quando está NA FRASE que nomeia o
+                    # serviço — é lá que ela fala dele.
                     return rendered
     if "assistance_policy_applied" in required:
         # SPEC-016 E4b: política de assistência aplicada → a resposta final não
@@ -1818,8 +1852,15 @@ async def tool_node(state: AgentState, tools: list) -> dict:
         except ValueError:
             _depois = set()
         if _depois & _TOOLS_DE_ACAO:
+            # 🔴 FECHO DA RODADA 2: `assistencia_da_base` sai JUNTO com a flag.
+            # 📊 Depois de `insurer_dispatch`, *"Pronto! Já acionei a
+            # assistência, o prestador chega em 40 min"* não diz a palavra
+            # "guincho" — e era trocado por *"Quer que eu já solicite?"*. A
+            # resposta do turno é sobre a AÇÃO; nenhuma régua de cobertura pode
+            # tomar o lugar dela.
+            _CONSUMIDOS = {"encerrar_com_o_rascunho", "assistencia_da_base"}
             _fatos = [f for f in (policy_response_contract.get("required_facts") or [])
-                      if f != "encerrar_com_o_rascunho"]
+                      if f not in _CONSUMIDOS]
             if len(_fatos) != len(policy_response_contract.get("required_facts") or []):
                 logger.info("[Tool Node] contrato: `encerrar_com_o_rascunho` "
                             "consumido — uma acao rodou depois da consulta")
