@@ -63,9 +63,26 @@ async function chamar(caminho: string, init?: RequestInit) {
   }
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   const auth = await requireCompanyMember({ write: false });
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+
+  // 🔴 SPEC-EXTRA-001.5.1 (D5) — A PÁGINA VEM SOB DEMANDA, NA MESMA SESSÃO.
+  //
+  // 📊 A fila baixava 24 PDFs em série para montar a tela: 65,3 s em produção.
+  // Agora ela devolve só as linhas, e a página de UMA linha é pedida quando a
+  // pessoa abre aquela linha. É a MESMA rota e a MESMA autorização das vizinhas
+  // — uma rota nova só para a página teria de repetir a sessão, a origem e a
+  // chave interna, e é assim que uma delas acaba esquecida.
+  const servicoId = (req.nextUrl.searchParams.get('servico_id') || '').trim();
+  if (servicoId) {
+    // ⛔ O id é repassado por `URLSearchParams`, nunca concatenado: um id com
+    // `&` ou `?` viraria outro parâmetro na chamada ao backend.
+    const q = new URLSearchParams({ servico_id: servicoId }).toString();
+    const pagina = await chamar(`/api/assistance-plans/pagina?${q}`);
+    return NextResponse.json(pagina);
+  }
+
   const [cobertura, fila] = await Promise.all([
     chamar('/api/assistance-plans/cobertura'),
     chamar('/api/assistance-plans/fila'),

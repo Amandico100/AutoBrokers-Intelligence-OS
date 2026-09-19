@@ -24,9 +24,17 @@
 // LISTA   "Esperando sua revisão — mostrando N de M"
 // ```
 //
-// E o botão que morre por falta da página (D9) agora diz POR QUÊ e oferece
-// tentar de novo: 📊 `disabled={… || !i.texto_da_pagina}` virava um botão cinza
-// sem explicação sempre que o MinIO falhava.
+// 🔴 SPEC-EXTRA-001.5.1 (D5) — A PÁGINA CHEGA QUANDO A LINHA ABRE.
+//
+// 📊 A fila vinha com o texto das 60 páginas dentro dela, e montar isso custava
+// 65,3 s em produção (24 PDFs baixados do MinIO em série) para mostrar a
+// primeira linha. Agora a lista chega em segundos e cada linha busca a SUA
+// página quando a pessoa a abre — que é como ela revisa: uma de cada vez.
+//
+// ⚠️ E a regra que NÃO mudou: só se aprova depois de ler a página. O botão
+// continua travado enquanto o texto não estiver na tela (D9 explica por quê
+// quando ele não vem), e agora também quando o PLANO PAI está em `rascunho`
+// (D7): 📊 4 das 73 linhas estavam nesse caso, e o clique falhava calado.
 
 import { useState } from 'react';
 import { humanizarRamo, humanizarSeguradora } from './CoberturaDePlanos';
@@ -36,8 +44,13 @@ type Item = {
   plano_curadoria: string; servico: string; coberto: string; limite_valor: number | null; limite_unidade: string | null;
   limite_texto: string | null; carencia_dias: number | null; condicao: string | null;
   pagina: number | null; plano_pagina: number | null; vigencia_inicio: string | null;
-  texto_da_pagina: string | null; termos_do_servico: string[];
-  motivo_da_fonte?: string;
+  termos_do_servico?: string[];
+  /** 🔴 D7 — a fila diz se a linha PODE ser publicada, e por que não. */
+  pode_publicar?: boolean;
+  motivo_de_nao_publicar?: string | null;
+  /** 🔴 D8 — o motivo do rascunho, gravado no banco desde 19/09/2026. */
+  motivo_do_rascunho?: string | null;
+  plano_motivo_do_rascunho?: string | null;
 };
 
 /** O que a rota devolve. 🔴 `ok` é obrigatório: é ele que separa "deu erro" de
@@ -46,6 +59,21 @@ type Item = {
 type Fila = {
   ok?: boolean; itens?: Item[]; total?: number; mostrando?: number; limite?: number;
   error?: string; status?: number;
+};
+
+/** A página de UMA linha, buscada quando ela abre. `carregando` é um estado de
+ *  verdade, e não a ausência dos outros: sem ele a linha recém-aberta fica
+ *  idêntica a uma linha cuja página não veio, e a pessoa lê "não consegui"
+ *  enquanto o servidor ainda está respondendo. */
+type Pagina = {
+  carregando?: boolean;
+  ok?: boolean;
+  texto_da_pagina?: string | null;
+  pagina?: number | null;
+  total_de_paginas?: number | null;
+  termos_do_servico?: string[];
+  motivo_da_fonte?: string;
+  error?: string;
 };
 
 /** O motivo em português, sem nome de tabela, coluna nem código HTTP solto.
@@ -65,10 +93,27 @@ function motivoDaFonte(codigo?: string): string {
   if (codigo === 'minio_indisponivel') return 'o arquivo do documento não respondeu agora';
   if (codigo === 'sem_extrator_de_pdf') return 'não consigo abrir PDF neste servidor';
   if (codigo === 'sem_pagina_registrada') return 'esta linha não registrou a página';
+  if (codigo === 'sem_documento_registrado') return 'esta linha não registrou o documento';
   if (codigo === 'pagina_fora_do_documento') return 'a página indicada não existe no documento';
   if (codigo === 'pagina_ilegivel') return 'a página indicada não é um número que eu entenda';
+  if (codigo === 'linha_inexistente') return 'esta linha não está mais na base';
   if (codigo && codigo.startsWith('pdf_ilegivel')) return 'o PDF não abriu';
+  if (codigo === 'indisponivel' || codigo === 'servico_com_erro' || codigo === 'resposta_ilegivel') {
+    return 'o serviço de conhecimento não respondeu agora';
+  }
   return 'não consegui abrir o documento agora';
+}
+
+/** 🔴 D7 — por que esta linha não pode subir. O texto diz o que FAZER, porque
+ *  a alternativa (um botão cinza) faz a pessoa clicar de novo, achar que a tela
+ *  está quebrada, e ir embora. */
+function motivoDeNaoPublicar(codigo?: string | null, motivoDoPlano?: string | null): string {
+  const base = codigo === 'plano_pai_rascunho'
+    ? 'o plano acima desta linha foi recusado, e publicar a linha sem o plano não faria o assistente responder nada'
+    : codigo === 'plano_pai_ausente'
+      ? 'esta linha não aponta para nenhum plano'
+      : 'o plano acima desta linha ainda não está pronto para valer';
+  return motivoDoPlano ? `${base} — motivo: ${motivoDoPlano}` : base;
 }
 
 /** Grifa na página os termos do serviço — para o olho achar a frase sem ler
@@ -109,6 +154,33 @@ export function FilaDeCuradoria({ fila, onMudou }: { fila: Fila; onMudou: () => 
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [erro, setErro] = useState<string | null>(null);
+  const [abertas, setAbertas] = useState<Record<string, boolean>>({});
+  const [paginas, setPaginas] = useState<Record<string, Pagina>>({});
+
+  /** Busca a página DAQUELA linha. ⚠️ Uma chamada por linha aberta, e o
+   *  resultado fica guardado: reabrir a mesma linha não pede de novo. */
+  const buscarPagina = async (id: string) => {
+    setPaginas((p) => ({ ...p, [id]: { carregando: true } }));
+    try {
+      const r = await fetch(`/api/dashboard/knowledge/planos?servico_id=${encodeURIComponent(id)}`, {
+        cache: 'no-store',
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || typeof j !== 'object') {
+        setPaginas((p) => ({ ...p, [id]: { ok: false, motivo_da_fonte: 'indisponivel' } }));
+        return;
+      }
+      setPaginas((p) => ({ ...p, [id]: { ...j, carregando: false } }));
+    } catch {
+      setPaginas((p) => ({ ...p, [id]: { ok: false, motivo_da_fonte: 'indisponivel' } }));
+    }
+  };
+
+  const alternar = (id: string) => {
+    const vaiAbrir = !abertas[id];
+    setAbertas((a) => ({ ...a, [id]: vaiAbrir }));
+    if (vaiAbrir && !paginas[id]) void buscarPagina(id);
+  };
 
   const agir = async (id: string, acao: 'publicar' | 'rejeitar') => {
     if (ocupado) return;
@@ -181,90 +253,130 @@ export function FilaDeCuradoria({ fila, onMudou }: { fila: Fila; onMudou: () => 
           {total > mostrando ? `— mostrando ${mostrando} de ${total}` : `(${total})`}
         </p>
         <p className="mt-1 text-[11px] text-faint">
-          Nada disto chega a um cliente antes de você aprovar. A frase abaixo foi lida agora do
-          documento — confira se ela diz o que a linha afirma.
+          Nada disto chega a um cliente antes de você aprovar. Abra a linha para ler a página do
+          documento — ela é lida na hora — e confira se ela diz o que a linha afirma.
         </p>
       </div>
       {erro && <p className="text-[11px] text-red-600">{erro}</p>}
 
       <div className="divide-y divide-border">
-        {itens.map((i) => (
-          <div key={i.id} className="py-3 space-y-2">
-            <p className="text-xs text-muted-foreground">
-              {humanizarSeguradora(i.insurer_key)} · {humanizarRamo(i.ramo)} · {i.produto}
-              {i.plano ? ` · plano ${i.plano}` : ''}{i.nivel ? ` (nível ${i.nivel})` : ''}
-              {i.plano_pagina ? ` · plano na p. ${i.plano_pagina}` : ''}
-            </p>
-            {/* 🔴 Aprovar esta linha também libera o PLANO acima dela — sem o
-                plano liberado, nada do que se aprova chega ao cliente. Quem
-                clica precisa saber que está aprovando os dois. */}
-            {i.plano_curadoria === 'proposto' && (
-              <p className="text-[10px] text-amber-600">
-                Ao aprovar, o plano <strong>{i.plano}</strong>
-                {i.nivel ? ` (nível ${i.nivel})` : ''} também passa a valer
-                {i.plano_pagina ? ` — está na página ${i.plano_pagina} do documento` : ''}.
+        {itens.map((i) => {
+          const pag = paginas[i.id];
+          const aberta = !!abertas[i.id];
+          const leu = pag?.ok === true && !!pag.texto_da_pagina;
+          // 🔴 A fila mais antiga não mandava `pode_publicar`. `!== false`
+          // mantém a tela funcionando contra um backend anterior, em vez de
+          // travar todos os botões por causa de um campo que não veio.
+          const podePublicar = i.pode_publicar !== false;
+          return (
+            <div key={i.id} className="py-3 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {humanizarSeguradora(i.insurer_key)} · {humanizarRamo(i.ramo)} · {i.produto}
+                {i.plano ? ` · plano ${i.plano}` : ''}{i.nivel ? ` (nível ${i.nivel})` : ''}
+                {i.plano_pagina ? ` · plano na p. ${i.plano_pagina}` : ''}
               </p>
-            )}
-            <p className="text-sm text-foreground">{oQueFoiProposto(i)}</p>
-            {i.condicao && <p className="text-[11px] text-muted-foreground">Condição: {i.condicao}</p>}
-
-            <div className="rounded-md border border-border bg-background p-2">
-              <p className="text-[10px] uppercase tracking-wide text-faint">
-                {i.pagina ? `Condições gerais · página ${i.pagina}` : 'Sem página registrada'}
-              </p>
-              {i.texto_da_pagina ? (
-                <p className="mt-1 max-h-64 overflow-y-auto whitespace-pre-line text-[11px] leading-snug text-muted-foreground">
-                  {comTermosGrifados(i.texto_da_pagina, i.termos_do_servico)}
-                </p>
-              ) : (
-                <p className="mt-1 text-[11px] text-amber-600">
-                  Não dá para mostrar a frase: {motivoDaFonte(i.motivo_da_fonte)}. Isso não quer
-                  dizer que a linha esteja errada — quer dizer que não dá para conferir neste
-                  momento.
+              {/* 🔴 Aprovar esta linha também libera o PLANO acima dela — sem o
+                  plano liberado, nada do que se aprova chega ao cliente. Quem
+                  clica precisa saber que está aprovando os dois. */}
+              {podePublicar && i.plano_curadoria === 'proposto' && (
+                <p className="text-[10px] text-amber-600">
+                  Ao aprovar, o plano <strong>{i.plano}</strong>
+                  {i.nivel ? ` (nível ${i.nivel})` : ''} também passa a valer
+                  {i.plano_pagina ? ` — está na página ${i.plano_pagina} do documento` : ''}.
                 </p>
               )}
-            </div>
+              {/* 🔴 D7 — a linha que não sobe diz POR QUE não sobe. 📊 Eram 4 de
+                  73, indistinguíveis das outras, e o clique falhava calado. */}
+              {!podePublicar && (
+                <p className="text-[10px] text-amber-600">
+                  Esta linha não pode ser publicada agora:{' '}
+                  {motivoDeNaoPublicar(i.motivo_de_nao_publicar, i.plano_motivo_do_rascunho)}.
+                </p>
+              )}
+              <p className="text-sm text-foreground">{oQueFoiProposto(i)}</p>
+              {i.condicao && <p className="text-[11px] text-muted-foreground">Condição: {i.condicao}</p>}
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => agir(i.id, 'publicar')}
-                disabled={ocupado === i.id || !i.texto_da_pagina}
-                className="h-7 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40"
-              >
-                Confere — pode usar
-              </button>
-              {/* 🔴 D9 — o botão cinza EXPLICA. Um botão que não clica e não diz
-                  por quê ensina a pessoa a desconfiar da tela inteira; e o que
-                  falta aqui costuma ser passageiro (o arquivo não respondeu),
-                  então "tentar de novo" é a ação certa, não "desista". */}
-              {!i.texto_da_pagina && (
-                <span className="text-[11px] text-amber-600">
-                  Só dá para aprovar depois de ler a página — {motivoDaFonte(i.motivo_da_fonte)}.
+              <div className="rounded-md border border-border bg-background p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[10px] uppercase tracking-wide text-faint">
+                    {i.pagina ? `Condições gerais · página ${i.pagina}` : 'Sem página registrada'}
+                  </p>
                   <button
                     type="button"
-                    onClick={onMudou}
-                    className="ml-2 underline underline-offset-2"
+                    onClick={() => alternar(i.id)}
+                    className="h-6 rounded-md border border-border px-2 text-[11px] text-foreground"
                   >
-                    Tentar de novo
+                    {aberta ? 'Ocultar a página' : 'Ler a página do documento'}
                   </button>
-                </span>
-              )}
-              <input
-                value={motivos[i.id] || ''}
-                onChange={(e) => setMotivos((m) => ({ ...m, [i.id]: e.target.value }))}
-                placeholder="motivo da recusa"
-                className="h-7 flex-1 min-w-[160px] rounded-md border border-border bg-background px-2 text-xs text-foreground"
-              />
-              <button
-                onClick={() => agir(i.id, 'rejeitar')}
-                disabled={ocupado === i.id}
-                className="h-7 rounded-md border border-border px-3 text-xs text-muted-foreground disabled:opacity-40"
-              >
-                Não confere
-              </button>
+                </div>
+
+                {aberta && pag?.carregando && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">carregando a página…</p>
+                )}
+                {aberta && !pag?.carregando && leu && (
+                  <p className="mt-1 max-h-64 overflow-y-auto whitespace-pre-line text-[11px] leading-snug text-muted-foreground">
+                    {comTermosGrifados(pag!.texto_da_pagina as string,
+                      pag!.termos_do_servico || i.termos_do_servico || [])}
+                  </p>
+                )}
+                {/* 🔴 D9 — a página que não vem EXPLICA, e oferece tentar de
+                    novo: o que falta aqui costuma ser passageiro (o arquivo não
+                    respondeu), então "desista" seria a mensagem errada. */}
+                {aberta && !pag?.carregando && pag && !leu && (
+                  <p className="mt-1 text-[11px] text-amber-600">
+                    Não dá para mostrar a frase: {motivoDaFonte(pag.motivo_da_fonte)}. Isso não
+                    quer dizer que a linha esteja errada — quer dizer que não dá para conferir
+                    neste momento.
+                    <button
+                      type="button"
+                      onClick={() => void buscarPagina(i.id)}
+                      className="ml-2 underline underline-offset-2"
+                    >
+                      Tentar de novo
+                    </button>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => agir(i.id, 'publicar')}
+                  disabled={ocupado === i.id || !leu || !podePublicar}
+                  className="h-7 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-40"
+                >
+                  Confere — pode usar
+                </button>
+                {/* ⚠️ O botão cinza nunca fica sem legenda: cada motivo tem a
+                    sua, e "leia a página primeiro" é diferente de "o plano pai
+                    foi recusado" — a primeira é uma ação, a segunda não é. */}
+                {!podePublicar ? (
+                  <span className="text-[11px] text-amber-600">
+                    Não dá para aprovar enquanto o plano acima estiver recusado.
+                  </span>
+                ) : !leu && (
+                  <span className="text-[11px] text-amber-600">
+                    {aberta && pag && !pag.carregando
+                      ? <>Só dá para aprovar depois de ler a página — {motivoDaFonte(pag.motivo_da_fonte)}.</>
+                      : 'Abra a página acima para poder aprovar.'}
+                  </span>
+                )}
+                <input
+                  value={motivos[i.id] || ''}
+                  onChange={(e) => setMotivos((m) => ({ ...m, [i.id]: e.target.value }))}
+                  placeholder="motivo da recusa"
+                  className="h-7 flex-1 min-w-[160px] rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                />
+                <button
+                  onClick={() => agir(i.id, 'rejeitar')}
+                  disabled={ocupado === i.id}
+                  className="h-7 rounded-md border border-border px-3 text-xs text-muted-foreground disabled:opacity-40"
+                >
+                  Não confere
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
