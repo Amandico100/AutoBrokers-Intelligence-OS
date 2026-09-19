@@ -333,6 +333,20 @@ def _guard_infocap_policy_final_response(candidate_text: str, contract: Optional
         return rendered
     if any(marker in lower for marker in _INFOCAP_GENERIC_ERROR_MARKERS):
         return rendered
+    if "encerrar_com_o_rascunho" in required:
+        # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B1 (ii) — UMA condição, channel-blind.
+        #
+        # O contrato marca este fato quando o veredito é `nao_sabemos_ainda` ou
+        # `fonte_indisponivel`: não há linha publicada, ou a consulta falhou.
+        # 📊 Medido pelo juiz em 19/09/2026: nesses dois estados o contrato saía
+        # com `required_facts=[]`, e um candidato "Sim, tem esse serviço sim"
+        # chegava INTEIRO ao segurado — o guarda não tinha o que conferir.
+        #
+        # ⚠️ Aqui não se compara texto, e é de propósito: qualquer régua ("o
+        # candidato diz que vai confirmar?") seria uma régua sobre prosa, e
+        # prosa tem infinitas formas de dizer "sim" por acidente. Tudo o que é
+        # VERDADE já está em `rendered` — e `rendered` é o texto do canal certo.
+        return rendered
     if "policy_options" in required:
         # SPEC-016.1 D7: a LLM pode formatar como quiser, mas TODOS os números
         # humanos das opções precisam aparecer na resposta (nunca omitir opção).
@@ -1536,8 +1550,20 @@ async def tool_node(state: AgentState, tools: list) -> dict:
                         #    vence a dedução por texto — e impede a segunda pergunta.
                         _ficha = state.get("infocap_policy_context")
                         _ja_escolhida = str((_ficha or {}).get("selected_policy_number") or "").strip()
+                        # 🔴 SPEC-EXTRA-001.5.1 · CONSERTO B2 — a CONVERSA viaja
+                        #    junto, pelo MESMO caminho de `insurer_dispatch`
+                        #    (abaixo) e de `request_human_agent` (acima): o
+                        #    `session_id` sai do ESTADO, nunca da LLM.
+                        #
+                        #    📊 Sem ele, o 🆘 da lacuna de cobertura saía sem
+                        #    conversa — e a guarda da 001.3 PULA as perguntas 3 e
+                        #    4 ("conversa assumida?", "humano falou há pouco?")
+                        #    quando não há conversa. O grupo era avisado por cima
+                        #    da atendente, e o aviso dizia "responda ao cliente"
+                        #    sem dizer qual.
                         tool_args = {**tool_args, "user_query": _query_for_tool,
-                                     "selected_policy_number": _ja_escolhida or None}
+                                     "selected_policy_number": _ja_escolhida or None,
+                                     "session_id": str(state.get("session_id") or "")}
                     elif tool_name == "insurer_dispatch":
                         # SPEC-017 live-path: telefone do cliente vem da sessão
                         # WhatsApp (whatsapp:{phone}:...) — nunca da LLM.
