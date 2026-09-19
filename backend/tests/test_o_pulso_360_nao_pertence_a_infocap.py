@@ -136,8 +136,20 @@ TESTE_FONTE = os.path.join(TESTES, "test_a_fonte_comercial_bate_com_a_infocap.py
 TESTE_CALCULOS = os.path.join(TESTES, "test_os_calculos_comerciais.py")
 TESTE_FERRAMENTAS = os.path.join(TESTES, "test_as_ferramentas_de_relatorio_comercial.py")
 
+# 🔴 SPEC-EXTRA-001.5.1 (A-ter) — A LIÇÃO MIGRA (CLAUDE.md §9.3).
+#
+# O manifesto de capacidades e os fingerprints de rota MUDARAM DE LUGAR em
+# 19/09/2026: são dado de RUNTIME e passaram a morar em
+# `backend/app/data/providers/infocap/`, porque `docs/` não entra na imagem do
+# backend. 📊 Na cópia que reproduz o contêiner, `carregar_manifesto("infocap")`
+# devolvia 0 capacidades (na árvore: 19), sem erro nenhum.
+#
+# ⚠️ O que FICOU em `docs/` é o que nenhum código abre em runtime: o censo
+# narrado, o dicionário de campos e os CONTROLES-OURO. Por isso são dois
+# caminhos, e não um: apontar os dois para o mesmo lugar faria um deles mentir.
 CENSO = os.path.join(REPO, "docs", "canon", "providers", "infocap")
-MANIFESTO = os.path.join(CENSO, "infocap-capability-manifest.json")
+CENSO_NO_PACOTE = os.path.join(APP, "data", "providers", "infocap")
+MANIFESTO = os.path.join(CENSO_NO_PACOTE, "infocap-capability-manifest.json")
 MAPA = os.path.join(REPO, "docs", "canon", "INFOCAP-CORPAPI-MAPA.md")
 
 if RAIZ not in sys.path:
@@ -1891,7 +1903,7 @@ def bloco_5_manifesto():
     # --- 🔴 M18, sobre o censo que JA existe --------------------------------
     if not os.path.exists(MANIFESTO):
         vermelho_ate(False, "[5] o manifesto do censo existe", "BLOCO 0",
-                     "docs/canon/providers/infocap/infocap-capability-manifest.json "
+                     "backend/app/data/providers/infocap/infocap-capability-manifest.json "
                      "ainda nao existe — esperado antes do BLOCO C")
     else:
         censo = json.loads(ler(MANIFESTO))

@@ -2,7 +2,7 @@
 """O manifesto de capacidade — SPEC-094 BLOCO C. **Ausente não é zero.**
 
 Peça pura: `dataclasses`, `json`, `os`, `typing`. Lê o **censo medido** do
-BLOCO 0 (`docs/canon/providers/infocap/`) e responde a UMA pergunta, antes de
+BLOCO 0 (`backend/app/data/providers/infocap/`) e responde a UMA pergunta, antes de
 qualquer cálculo:
 
 > **A fonte consegue entregar o dado de que esta métrica precisa?**
@@ -521,7 +521,7 @@ _CACHE: Dict[str, Tuple[Dict[str, Any], Dict[str, Any]]] = {}
 def carregar_manifesto(provider_key: str = "infocap",
                        diretorio: Optional[str] = None
                        ) -> ProviderCapabilityManifest:
-    """O manifesto do provider, do censo versionado em `docs/canon/providers/`.
+    """O manifesto do provider, do censo versionado em `app/data/providers/`.
 
     📊 Para a InfoCap, em 03/09/2026: 51 rotas medidas · SUPPORTED 9 · PARTIAL 6
     · UNKNOWN 3 · UNAVAILABLE 1.

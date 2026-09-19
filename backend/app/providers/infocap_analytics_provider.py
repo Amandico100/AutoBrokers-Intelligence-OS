@@ -1576,7 +1576,7 @@ class InfocapAnalyticsProvider:
     async def capabilities(self, *, company_id: str = "", **kw: Any) -> Dict[str, str]:
         """O que a InfoCap consegue entregar — do CENSO, não de palpite.
 
-        📊 `docs/canon/providers/infocap/infocap-capability-manifest.json`, 51
+        📊 `backend/app/data/providers/infocap/infocap-capability-manifest.json`, 51
         rotas medidas em 03/09/2026: SUPPORTED 9 · PARTIAL 6 · UNKNOWN 3 ·
         UNAVAILABLE 1. O BLOCO C põe um tipo em volta disto (drift, cobertura,
         `source_refs`); aqui devolve-se o mapa cru, que é o que o port promete.

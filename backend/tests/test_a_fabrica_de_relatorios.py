@@ -155,7 +155,10 @@ MIGRACOES = os.path.join(RAIZ, "supabase", "migrations")
 CANON = os.path.join(REPO, "docs", "canon")
 PROTOCOLO_MD = os.path.join(CANON, "COMO-NASCE-UM-RELATORIO.md")
 GUARDA_DO_PROTOCOLO = os.path.join(TESTES, "test_o_relatorio_nasce_pelo_protocolo.py")
-MANIFESTO_JSON = os.path.join(CANON, "providers", "infocap",
+# ⚠️ Mudou de lugar em 19/09/2026 (SPEC-EXTRA-001.5.1, A-ter): o manifesto é
+# dado de RUNTIME e passou a morar dentro do pacote, porque `docs/` não entra
+# na imagem do backend.
+MANIFESTO_JSON = os.path.join(APP, "data", "providers", "infocap",
                               "infocap-capability-manifest.json")
 
 if RAIZ not in sys.path:

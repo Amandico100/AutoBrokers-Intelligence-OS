@@ -161,7 +161,12 @@ _cascas()
 # 🔴 Eles vêm do ARQUIVO, e não de constantes copiadas para cá. Número medido
 # que alguém transcreve à mão envelhece na primeira remedição — e o teste
 # passaria a guardar a cópia, não a medição (CLAUDE.md §12.1).
+# ⚠️ DOIS caminhos desde 19/09/2026 (SPEC-EXTRA-001.5.1, A-ter): os
+# CONTROLES-OURO continuam em `docs/` (nenhum código os abre em runtime); os
+# FINGERPRINTS mudaram para dentro do pacote, porque `docs/` não viaja na
+# imagem do backend.
 CENSO = os.path.join(REPO, "docs", "canon", "providers", "infocap")
+CENSO_NO_PACOTE = os.path.join(RAIZ, "app", "data", "providers", "infocap")
 GOLDEN = json.load(io.open(os.path.join(CENSO, "infocap-golden-controls.json"),
                            encoding="utf-8"))
 #: 🔴 E a FORMA da linha crua também vem do censo, não da imaginação.
@@ -172,7 +177,8 @@ GOLDEN = json.load(io.open(os.path.join(CENSO, "infocap-golden-controls.json"),
 #: deste canário, e o comportamento estava certo: era a fixture que mentia
 #: sobre o formato (CLAUDE.md §9.4 — o dado do teste vem do acervo).
 FINGERPRINTS = json.load(io.open(
-    os.path.join(CENSO, "infocap-schema-fingerprints.json"), encoding="utf-8"))
+    os.path.join(CENSO_NO_PACOTE, "infocap-schema-fingerprints.json"),
+    encoding="utf-8"))
 
 
 def chaves_da_rota(rota):
