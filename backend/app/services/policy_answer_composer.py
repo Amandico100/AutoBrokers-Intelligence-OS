@@ -63,6 +63,27 @@ _DEDUCTIBLE_INTENT_RE = re.compile(r"franquia", re.IGNORECASE)
 _INSTALLMENT_INTENT_RE = re.compile(r"parcela", re.IGNORECASE)
 
 
+def outro_assunto_na_mesma_mensagem(texto) -> bool:
+    """A mensagem pergunta TAMBEM sobre parcela ou franquia? — **PURA.**
+
+    🔴 RODADA 2 (N1, item 3). 📊 Medido em 19/09/2026: numa pergunta MISTA
+    (*"tem táxi? e quantas parcelas faltam?"*) este compositor responde o
+    veredito e **perde as parcelas** — a cadeia é `if veredito … elif
+    _INSTALLMENT_INTENT_RE …`, e o `elif` nunca roda. Logo o `rendered` da mista
+    NÃO contém as duas partes, e encerrar a resposta com ele apagaria a metade
+    verdadeira.
+
+    ⛔ Por isso a flag `encerrar_com_o_rascunho` **não liga na mista**: o que
+    sobra ali é o mecanismo de sempre (`assistencia_da_base` + `_NEGATIVA_RE`
+    nos quatro estados decididos), que pega a mentira sobre cobertura sem apagar
+    o resto. A perda do outro assunto na mista é PENDÊNCIA ESCRITA
+    (P-001.5.1-MISTA-PERDE-O-OUTRO-ASSUNTO), não conserto desta rodada.
+    """
+    bruto = str(texto or "")
+    return bool(_INSTALLMENT_INTENT_RE.search(bruto)
+                or _DEDUCTIBLE_INTENT_RE.search(bruto))
+
+
 def _norm(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or ""))
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower()
@@ -499,7 +520,7 @@ def compose_policy_answer(*, question: str, result: Dict[str, Any]) -> str:
 def compose_policy_answer_with_meta(
     *, question: str, result: Dict[str, Any],
     db: Any = None, atendente: Optional[str] = None,
-    client_facing: bool = False,
+    client_facing: bool = False, pergunta_de_cobertura: bool = True,
 ) -> Dict[str, Any]:
     """Como compose_policy_answer, mas retorna também os metadados da política
     de assistência para o Policy Response Contract da tool (E4b).
@@ -531,12 +552,26 @@ def compose_policy_answer_with_meta(
     status = str(result.get("status") or "").strip()
     question_text = str(question or "")
     para_o_cliente = bool(client_facing)
+    # 🔴 RODADA 2 (N1) — PERGUNTAR NÃO É PEDIR, E O TEXTO MUDA COM ISSO.
+    #
+    # 📊 `servico_canonico("preciso de guincho")` devolve `guincho`: a Skill
+    # reconhece o SERVIÇO, não a intenção. Com 0 linhas publicadas, o cliente
+    # que pedia guincho recebia o veredito `nao_sabemos_ainda` — *"vou confirmar
+    # e te respondo"* — no lugar do próximo passo do acionamento.
+    #
+    # ⚠️ Só os DOIS estados sem decisão mudam. `coberto`, `condicionado`,
+    # `nao_coberto` e `nao_contratado` continuam entrando mesmo num pedido: ali
+    # a base DECIDIU, e "não afirmar o que a base nega" vale no acionamento
+    # exatamente como na pergunta (é o valor que a 001.5 entregou).
+    e_pergunta = bool(pergunta_de_cobertura)
 
     def _plain(text: str) -> Dict[str, Any]:
         return {"text": text, "assistance_policy": None,
                 "cobertura": None, "assistencia_da_base": None,
                 "texto_para_o_corretor": None, "texto_para_o_segurado": None,
-                "client_facing": para_o_cliente}
+                "client_facing": para_o_cliente,
+                "pergunta_de_cobertura": bool(pergunta_de_cobertura),
+                "so_registra_a_lacuna": False}
 
     if status == "identity_mismatch":
         return _plain(
@@ -591,7 +626,11 @@ def compose_policy_answer_with_meta(
     except Exception as exc:  # noqa: BLE001 — a Skill nunca derruba o compositor
         logger.warning("[composer] Skill de cobertura indisponível: %s", type(exc).__name__)
 
-    if veredito is not None:
+    #: `True` quando a Skill não decidiu E o cliente não perguntou: a lacuna é
+    #: GRAVADA, mas o texto do veredito não toma a resposta.
+    so_registra = (veredito is not None and not e_pergunta
+                   and str(veredito.estado) in ("nao_sabemos_ainda", "fonte_indisponivel"))
+    if veredito is not None and not so_registra:
         # 🔴 O CANAL ESCOLHE O TEXTO — e é a ÚNICA coisa que ele escolhe. O
         # veredito, o estado, a origem e a página são os mesmos nos dois lados.
         body = veredito.texto_para_o_segurado if para_o_cliente else veredito.texto
@@ -659,8 +698,18 @@ def compose_policy_answer_with_meta(
     # certa sobre carro reserva por não conter a palavra "encanador" — que é
     # precisamente o defeito que §6.4 manda evitar.
     cobertura = veredito.para_registro() if veredito is not None else None
+    if cobertura is not None:
+        # ⚠️ A INTENÇÃO viaja no registro, e ela existe para o texto da lacuna
+        # não MENTIR: "o cliente pediu este serviço e não temos linha" é outro
+        # fato — e outra prioridade de curadoria — que "o cliente perguntou".
+        cobertura["intencao"] = "pergunta" if e_pergunta else "pedido"
     da_base = None
-    if veredito is not None and veredito.origem == "base":
+    if veredito is not None and so_registra:
+        # ⛔ Pedido sem decisão da base: o veredito é REGISTRO, não resposta.
+        # `assistance_policy` fica como estava — é o comportamento anterior à
+        # 001.5 para um pedido de serviço, e é o que o atendente precisa.
+        pass
+    elif veredito is not None and veredito.origem == "base":
         da_base = list(veredito.servicos_da_base)
         policy_result = None
     elif veredito is not None and veredito.origem == "nenhuma":
@@ -682,4 +731,8 @@ def compose_policy_answer_with_meta(
         "texto_para_o_segurado": (veredito.texto_para_o_segurado
                                   if veredito is not None else None),
         "client_facing": para_o_cliente,
+        "pergunta_de_cobertura": e_pergunta,
+        #: 🔴 O contrato e o briefing leem ISTO para decidir se encerram e se
+        #: o rascunho "vou confirmar" pode ir ao cliente.
+        "so_registra_a_lacuna": bool(so_registra),
     }
