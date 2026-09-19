@@ -56,9 +56,12 @@ o número errado ter chegado ao dono. A comparação a cada leitura custa um
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
 # Os estados
@@ -106,9 +109,55 @@ SEM_FINGERPRINT = ("o censo não registrou o fingerprint de %s: não há como "
                    "afirmar que o schema desta rota continua o medido, e uma "
                    "métrica que depende dela fica bloqueada até remedir")
 
+#: 🔴 ONDE O CENSO MORA — DENTRO DO PACOTE (SPEC-EXTRA-001.5.1, unidade A-ter).
+#:
+#: `backend/app/data/providers/<provider>/`. É `app/`, logo é **código**, logo
+#: entra no `COPY . .` do `backend/Dockerfile`.
+#:
+#: 📊 19/09/2026, medido na cópia que reproduz o contêiner (só `backend/`):
+#: `os.path.isdir(DIRETORIO_DO_CENSO)` → **False**, e
+#: `carregar_manifesto("infocap")` devolvia **0 capacidades** — na árvore de
+#: desenvolvimento, **19**. E `ilegivel` vinha **vazio**: `_ler_json` devolvia
+#: `{}` para arquivo ausente, o manifesto nascia vazio e TODA capacidade
+#: respondia `UNKNOWN` com a evidência *"capacidade fora do censo: não
+#: verificada"*. Sem 500, sem exceção, sem linha vermelha.
+#:
+#: 🔴 É a TERCEIRA reincidência do mesmo defeito na mesma SPEC (vocabulário de
+#: serviços · catálogos SUSEP · censo do provider): **dado de runtime morando em
+#: `docs/`**. O bloco [10] do guarda do contêiner existe para que não haja uma
+#: quarta.
+#:
+#: ⚠️ O de `docs/canon/providers/infocap/` continua existindo como PONTEIRO, e o
+#: censo NARRADO (o `.md`), o dicionário de campos e os controles-ouro **ficam**
+#: lá: nenhum código os abre em runtime.
+_NO_PACOTE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "providers")
+
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
-DIRETORIO_DO_CENSO = os.path.join(_RAIZ, "docs", "canon", "providers")
+
+#: O caminho histórico, a partir da raiz do REPOSITÓRIO. Continua sendo
+#: procurado (uma árvore antiga ainda pode ter o dado ali), mas só DEPOIS do
+#: pacote: deixar o `docs/` na frente faria a árvore de desenvolvimento ler um
+#: arquivo e produção outro — a cegueira do CLAUDE.md §9.1, uma casa adiante.
+_NO_DOCS = os.path.join(_RAIZ, "docs", "canon", "providers")
+
+#: ⚠️ Mantido para quem compõe o caminho por fora (`executive_intelligence`
+#: monta o nome do mapa de produtor). Aponta para o PACOTE.
+DIRETORIO_DO_CENSO = _NO_PACOTE
+
+
+def caminho_do_censo(provider_key: str, nome: str) -> str:
+    """O primeiro caminho que EXISTE, o do pacote primeiro. Nenhum → o do pacote.
+
+    ⚠️ Devolver o do pacote quando nenhum existe é de propósito: é ele que tem
+    de existir, e é o nome dele que a mensagem de erro precisa citar.
+    """
+    for pasta in (_NO_PACOTE, _NO_DOCS):
+        caminho = os.path.join(pasta, str(provider_key or ""), str(nome or ""))
+        if os.path.isfile(caminho):
+            return caminho
+    return os.path.join(_NO_PACOTE, str(provider_key or ""), str(nome or ""))
 
 
 # --------------------------------------------------------------------------
@@ -392,15 +441,43 @@ class CensoIlegivel(RuntimeError):
     """
 
 
-def _ler_json(caminho: str) -> Dict[str, Any]:
+def _ler_json(caminho: str, *, secao: str = "") -> Dict[str, Any]:
+    """O JSON do censo — e a AUSÊNCIA dele **grita** (SPEC-EXTRA-001.5.1, A-ter).
+
+    🔴 POR QUE `ERROR`, E POR QUE NÃO UMA EXCEÇÃO
+    =============================================
+    Era um `return {}` mudo. Um censo vazio **não quebra nada**: o manifesto
+    nasce sem capacidade nenhuma e tudo passa a responder `UNKNOWN` com a
+    evidência *"capacidade fora do censo"* — que é indistinguível, para quem lê
+    o relatório, de "medimos e não sabemos". 📊 Em produção isso valia para as
+    **19** capacidades desde que a imagem existe.
+
+    ⛔ E NÃO se levanta exceção: `carregar_manifesto` é chamado no caminho do
+    Pulso 360, e derrubar um relatório porque um arquivo de censo sumiu trocaria
+    um defeito silencioso por um pior. A resposta continua sendo o manifesto
+    vazio — o que muda é que ela **grita**.
+
+    ⚠️ Um PONTEIRO (o arquivo de `docs/`, que hoje só diz onde o dado mora) cai
+    aqui como "seção ausente" e recebe o mesmo tratamento: nunca é carregado
+    como se fosse censo.
+    """
     if not os.path.exists(caminho):
+        logger.error(
+            "[CENSO] arquivo AUSENTE: %s. Sem ele, TODA capacidade responde "
+            "UNKNOWN e nenhuma métrica pode afirmar que a fonte entrega o dado.",
+            caminho)
         return {}
     try:
         with open(caminho, "r", encoding="utf-8") as f:
-            return json.load(f) or {}
+            bruto = json.load(f) or {}
     except (ValueError, OSError, UnicodeDecodeError) as exc:
         raise CensoIlegivel("%s: %s" % (os.path.basename(caminho),
                                         type(exc).__name__)) from exc
+    if secao and not (bruto.get(secao) or {}):
+        logger.error(
+            "[CENSO] arquivo SEM DADO: seção %r ausente em %s (é um ponteiro?). "
+            "Sem ela, TODA capacidade responde UNKNOWN.", secao, caminho)
+    return bruto
 
 
 def manifesto_de_dicionarios(provider_key: str, manifesto: Dict[str, Any],
@@ -455,13 +532,18 @@ def carregar_manifesto(provider_key: str = "infocap",
     """
     chave = f"{provider_key}|{diretorio or ''}"
     if chave not in _CACHE:
-        base = diretorio or os.path.join(DIRETORIO_DO_CENSO, provider_key)
+        def _arquivo(nome: str) -> str:
+            # ⚠️ `diretorio` explícito manda (é como os testes apontam para um
+            # censo sintético); sem ele, o resolvedor procura o PACOTE primeiro.
+            return os.path.join(diretorio, nome) if diretorio else caminho_do_censo(
+                provider_key, nome)
+
         try:
             _CACHE[chave] = (
-                _ler_json(os.path.join(
-                    base, f"{provider_key}-capability-manifest.json")),
-                _ler_json(os.path.join(
-                    base, f"{provider_key}-schema-fingerprints.json")),
+                _ler_json(_arquivo(f"{provider_key}-capability-manifest.json"),
+                          secao="capabilities"),
+                _ler_json(_arquivo(f"{provider_key}-schema-fingerprints.json"),
+                          secao="rotas"),
             )
         except CensoIlegivel as exc:
             # 🔴 FAIL-CLOSED, e NÃO em cache: o arquivo pode ser consertado, e
