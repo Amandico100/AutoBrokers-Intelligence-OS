@@ -206,7 +206,7 @@ def intencao_da_mensagem(texto: Any) -> str:
     ```
 
     🔴 **A TERCEIRA SAÍDA É O CONSERTO DA RODADA 3 (B1).** O fluxo real do
-    produto — documentado em `nodes.py:1576-1590`, incidente 12/07 — é: o
+    produto — a janela em `nodes.py:1692-1711`, incidente 12/07 — é: o
     cliente pergunta, o agente pede o CPF, e a tool roda **no turno do CPF**.
     📊 Com duas saídas só, `"12345678900"` era classificado como PEDIDO por
     ausência de sinal, e a fiscalização inteira da 001.5 (M-B5) desligava:

@@ -251,6 +251,7 @@ checar("Sim, tem esse serviço sim" not in _de_volta,
 # ---------------------------------------------------------------------------
 print("\n[4] 🔴 B2 — o 🆘 da lacuna carrega a CONVERSA, e a guarda da 001.3 roda")
 from app.services import lacunas_de_conhecimento as L  # noqa: E402
+from app.services import lacunas_de_conhecimento as L5  # noqa: E402
 import app.services.o_grupo_so_o_que_importa as G  # noqa: E402
 
 CONVERSA = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa"
@@ -898,7 +899,7 @@ BASE._db = lambda supabase_client=None: _base_vazia
 
 # ---------------------------------------------------------------------------
 print("\n[13] 🔴 RODADA 3 · B1 — O TURNO DO CPF NÃO DESLIGA A FISCALIZAÇÃO")
-# 📊 O fluxo real (documentado em `nodes.py:1576-1590`, incidente 12/07): o
+# 📊 O fluxo real (a janela em `nodes.py:1692-1711`, incidente 12/07): o
 # cliente pergunta, o agente pede o CPF, e a tool roda NO TURNO DO CPF. Medido
 # pelo juiz da rodada 3, com duas saídas só na porta:
 #     "tem guincho? | 12345678900"       -> required_facts=[]
@@ -1018,8 +1019,9 @@ print("      📊 MATRIZ: erro CARO (pedido→pergunta) %d/%d · erro BARATO "
       "(pergunta→outro) %d/%d"
       % (len(_erro_caro), len(PEDIDOS_MEDIDOS), len(_erro_barato), len(_CORPUS)))
 checar(not _erro_caro,
-       "🔴 erro CARO = 0/%d (📊 antes da RODADA 3: 10/22, e 9 deles tinham a "
-       "resposta do atendente substituída)" % len(PEDIDOS_MEDIDOS),
+       "🔴 erro CARO = 0/%d — ⚠️ o '10/22' que esta linha dizia era de "
+       "OUTRO juiz sobre OUTRAS frases: 📊 sobre ESTAS 22, a porta de "
+       "`421b2c7` errava 1" % len(PEDIDOS_MEDIDOS),
        repr(_erro_caro))
 checar(len(_erro_barato) <= 6,
        "🔴 erro BARATO <= 6/%d — são perguntas de PROCEDIMENTO ('que numero "
@@ -1140,7 +1142,8 @@ finally:
 
 # ---------------------------------------------------------------------------
 print("\n[17] 🔴 RODADA 4 · B-N2 — a janela é um BLOCO, e manda a MAIS NOVA")
-# 📊 `user_query` são as 3 últimas humanas juntadas por " | " (`nodes.py:1649`),
+# 📊 `user_query` são as 3 últimas humanas juntadas por `SEPARADOR_DA_JANELA`
+# (`nodes.py:1711`, que IMPORTA a constante da tool),
 # e `_COBERTURA_FORTE_RE` é a primeira trava — a pergunta do turno N-2 vencia o
 # pedido do turno N-1:
 #   "meu plano cobre guincho? | preciso de guincho, estou parado | 12345678900"
@@ -1304,6 +1307,164 @@ try:
            repr(_perdidos))
 finally:
     SKI2._PEDIDO_DE_SERVICO_RE = _pedido_original
+BASE._db = lambda supabase_client=None: db
+
+# ---------------------------------------------------------------------------
+print("\n[20] 🔴 RODADA 5 · B-N3 — quem escolhe o SERVIÇO é a mesma mensagem")
+# 📊 Medido pelo juiz final: `question=str(user_query)` levava a JANELA inteira
+# ao compositor, e `servico_canonico` pega o PRIMEIRO que casa — a mensagem
+# mais VELHA:
+#   janela "cobre vidro trincado? | meu plano cobre guincho? | <doc>"
+#      fonte da intenção .. "meu plano cobre guincho?"
+#      veredito/lacuna .... servico='vidros'
+#      AO CORRETOR ........ "…nem que tem nem que não tem vidros."
+BASE._db = lambda supabase_client=None: _base_vazia
+JANELA_DOIS_SERVICOS = ("cobre vidro trincado? | meu plano cobre guincho? | %s"
+                        % CPF_FICTICIO)
+_b, _c_bn3, _r_bn3, _m_bn3 = _fio(JANELA_DOIS_SERVICOS, cliente=False,
+                                  mensagem=CPF_FICTICIO)
+checar(_m_bn3.get("fonte_da_intencao") == "meu plano cobre guincho?",
+       "🔴 a fonte da intenção é a pergunta MAIS NOVA",
+       repr(_m_bn3.get("fonte_da_intencao")))
+checar((_m_bn3.get("cobertura") or {}).get("servico") == "guincho",
+       "🔴 e o SERVIÇO do veredito é o dela — não o `vidros` da mais velha",
+       repr((_m_bn3.get("cobertura") or {}).get("servico")))
+checar("guincho" in str(_m_bn3.get("text") or "")
+       and "vidros" not in str(_m_bn3.get("text") or ""),
+       "🔴 e o copiloto do corretor nomeia o serviço CERTO",
+       str(_m_bn3.get("text") or "")[:160])
+checar(L5.descricao_da_lacuna(_m_bn3.get("cobertura") or {}).lower()
+       .find("guincho") >= 0,
+       "🔴 e a lacuna grava `guincho` em `capability_gaps` — é essa fila que "
+       "decide o que se destila depois",
+       L5.descricao_da_lacuna(_m_bn3.get("cobertura") or {}))
+
+print("      🔴 CONTROLE do [20]: fonte SEM serviço reconhecível cai na janela")
+_b, _c_fb, _r_fb, _m_fb = _fio("cobre vidro trincado? | preciso de ajuda, estou parado",
+                               cliente=False, mensagem="preciso de ajuda, estou parado")
+checar((_m_fb.get("cobertura") or {}).get("servico") == "vidros",
+       "🔴 CONTROLE: sem serviço na fonte, o compositor volta à JANELA e a "
+       "Skill CONTINUA respondendo (sem o fallback ela calaria inteira)",
+       repr((_m_fb.get("cobertura") or {}).get("servico")))
+
+print("\n      🔴 AS DUAS MUTAÇÕES do [20]")
+import app.services.policy_answer_composer as COMP5  # noqa: E402
+
+_comp_original5 = COMP5.compose_policy_answer_with_meta
+try:
+    def _kwarg_ignorado(**kw):
+        kw.pop("fonte_da_intencao", None)
+        return _comp_original5(**kw)
+
+    COMP5.compose_policy_answer_with_meta = _kwarg_ignorado
+    _b, _c_mi, _r_mi, _m_mi = _fio(JANELA_DOIS_SERVICOS, cliente=False,
+                                   mensagem=CPF_FICTICIO)
+    checar((_m_mi.get("cobertura") or {}).get("servico") == "vidros",
+           "🔴 MUTAÇÃO: kwarg ignorado -> volta a escolher o serviço da "
+           "mensagem mais VELHA", repr((_m_mi.get("cobertura") or {}).get("servico")))
+finally:
+    COMP5.compose_policy_answer_with_meta = _comp_original5
+
+_canonico_original = None
+try:
+    from app.services.knowledge import assistance_plans_base as B5
+
+    _canonico_original = B5.servico_canonico
+
+    def _sem_fallback(**kw):
+        """A mutação: a fonte manda SEMPRE, sem cair de volta na janela."""
+        kw["question"] = str(kw.get("fonte_da_intencao") or kw.get("question") or "")
+        kw.pop("fonte_da_intencao", None)
+        return _comp_original5(**kw)
+
+    COMP5.compose_policy_answer_with_meta = _sem_fallback
+    _b, _c_sf, _r_sf, _m_sf = _fio(
+        "cobre vidro trincado? | preciso de ajuda, estou parado", cliente=False,
+        mensagem="preciso de ajuda, estou parado")
+    checar((_m_sf.get("cobertura") or {}) == {} or not _m_sf.get("cobertura"),
+           "🔴 MUTAÇÃO: sem o FALLBACK, um pedido sem nome de serviço cala a "
+           "Skill INTEIRA — o produto voltaria ao 'sim' de tabela",
+           repr(_m_sf.get("cobertura")))
+finally:
+    COMP5.compose_policy_answer_with_meta = _comp_original5
+
+# ---------------------------------------------------------------------------
+print("\n[21] 🔴 RODADA 5 · O ELO produtor→consumidor de `fonte_da_intencao`")
+# 📊 Carimbo do juiz: ele apagou `meta["fonte_da_intencao"] = …` NO PRODUTO e
+# este arquivo ficou 154/154 VERDE — o `_rodar_a_tool(fonte=…)` injetava a chave
+# à mão. É o §0.3 em miniatura: medir A, medir B, e não medir que B CHEGA em A.
+BASE._db = lambda supabase_client=None: _base_vazia
+_b, _c_elo, _r_elo, _m_elo = _fio("meu plano cobre taxi? | %s" % CPF_FICTICIO,
+                                  cliente=True, mensagem=CPF_FICTICIO)
+checar(_m_elo.get("fonte_da_intencao") == "meu plano cobre taxi?",
+       "🔴 é `_render_content` QUEM ESCREVE `meta['fonte_da_intencao']` — e ela "
+       "é a pergunta, não o documento",
+       repr(_m_elo.get("fonte_da_intencao")))
+
+print("      🔴 MUTAÇÃO do [21]: a linha apagada no produto")
+_render_original = InfocapPolicyLookupTool.__dict__["_render_content"]
+try:
+    def _sem_a_fonte(self, data, user_query, detail, atendente=None,
+                     mensagem_atual=None):
+        conteudo, pol, rendered, meta = _render_original(
+            self, data, user_query, detail, atendente, mensagem_atual)
+        if isinstance(meta, dict):
+            meta.pop("fonte_da_intencao", None)   # <- a linha que o juiz apagou
+        return conteudo, pol, rendered, meta
+
+    InfocapPolicyLookupTool._render_content = _sem_a_fonte
+    _b, _c_mm, _r_mm, _m_mm = _fio("meu plano cobre taxi? | %s" % CPF_FICTICIO,
+                                   cliente=True, mensagem=CPF_FICTICIO)
+    checar(not _m_mm.get("fonte_da_intencao"),
+           "🔴 MUTAÇÃO: sem a linha, a chave SOME do `meta` — e o 🆘 volta a "
+           "cair na `mensagem_atual` (o documento)",
+           repr(_m_mm.get("fonte_da_intencao")))
+finally:
+    InfocapPolicyLookupTool._render_content = _render_original
+
+# ---------------------------------------------------------------------------
+print("\n[22] 🔴 RODADA 5 · a régua da CONDIÇÃO, medida nos dois sentidos")
+# 🔴 Ela protege as 17 linhas `condicionado` que entram em produção hoje.
+SIM_LISOS = [
+    "Sim! Seu plano tem vidros, e so SE dirigir a uma oficina",
+    "Voce tem vidros, pode SE tranquilizar",
+    "Tem vidros sim, APENAS me confirme o endereco",
+    "Tem vidros sim, CASO queira eu ja abro o chamado",
+    "Sim! Seu plano tem vidros, pode acionar.",
+    "Voce tem vidros sim, e so chamar",
+    "Tem vidros sim, pode ficar tranquilo",
+    "Seu plano cobre vidros, sem problema",
+]
+CONDICOES_LEGITIMAS = [
+    "Tem vidros, somente para o para-brisa.",
+    "Tem sim: vidros, desde que a cobertura adicional esteja contratada.",
+    "Tem vidros, sujeito a contratacao do adicional.",
+    "Voce tem vidros caso tenha contratado o adicional.",
+    "Tem sim: vidros, com uma condicao do seu contrato.",
+    "Tem vidros, somente se contratada a cobertura adicional.",
+    "Tem vidros, dependendo da cobertura adicional contratada.",
+    "Tem sim: vidros - mediante contratacao da cobertura adicional.",
+    "Tem vidros, apenas no para-brisa dianteiro.",
+    "Tem vidros ate R$ 500 por evento.",
+]
+_escapam = [t for t in SIM_LISOS if not NODES._afirma_sem_condicao(t, "vidros")]
+_falsos = [t for t in CONDICOES_LEGITIMAS
+           if NODES._afirma_sem_condicao(t, "vidros")]
+print("      📊 MATRIZ: 'sim liso' anulados %d/%d · condições legítimas "
+      "preservadas %d/%d"
+      % (len(SIM_LISOS) - len(_escapam), len(SIM_LISOS),
+         len(CONDICOES_LEGITIMAS) - len(_falsos), len(CONDICOES_LEGITIMAS)))
+checar(not _escapam,
+       "🔴 os %d 'sim liso' são ANULADOS (📊 antes da RODADA 5, 5 de 8 "
+       "ESCAPAVAM por `se`/`caso`/`apenas` em sentido não condicional)"
+       % len(SIM_LISOS), repr(_escapam))
+checar(not _falsos,
+       "🔴 e as %d condições legítimas passam INTACTAS (📊 antes, "
+       "'sujeito a contratação' era anulada: `contratad` sem stem era "
+       "alternativa MORTA)" % len(CONDICOES_LEGITIMAS), repr(_falsos))
+checar(NODES._afirma_sem_condicao("Tem vidros. Se precisar, é só chamar.",
+                                  "vidros"),
+       "🔴 CONTROLE: a marca na frase SEGUINTE não salva o 'sim' liso")
 BASE._db = lambda supabase_client=None: db
 
 BASE._db = _db_original
