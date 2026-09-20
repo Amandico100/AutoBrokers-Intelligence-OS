@@ -70,10 +70,11 @@ P-E00152-01 🧑🔴 A chave da Anthropic do PRODUTO está sem crédito (📊 40
                QUALQUER extração nova. ⚠️ É a mesma chave do chat: provável causa do "Não consegui gerar a resposta" de 17/09.
 P-E00152-02 🤖 recall da âncora por texto 4/27. Com crédito: medir o caminho do modelo nos 27 e nos 5 controles (GATE A real).
 P-E00152-03 🤖 tabela lida célula a célula pelo `fitz` (HDI p.90): a coluna do limite morre na extração. Pede `page.find_tables()`.
-P-E00152-04 🤖 o conferente não olha `condicao` (4 linhas do gabarito; 1 dos 3 selos errados).
-P-E00152-05 🧑 2 selos errados exigem leitura humana (categoria de veículo × plano; pane mecânica × pane seca).
-P-E00152-06 🤖 as 39 linhas antigas não têm `trecho` gravado → nunca terão selo; só a reextração (depende de 01) resolve.
-P-E00152-07 🤖 `processar_documento` só é alcançável por CLI (não há API nem rotina) — declarado pelo red team.
+P-E00152-04 🤖🧑 o conferente não olha `condicao` (4 linhas do gabarito; 1 dos 3 selos errados); os outros 2 selos errados exigem
+               leitura humana (categoria de veículo × plano; pane mecânica × pane seca).
+P-E00152-05 🤖 as 39 linhas antigas não têm `trecho` gravado → nunca terão selo (só a reextração, que depende de 01, resolve);
+               e `processar_documento` só é alcançável por CLI (não há API nem rotina) — declarado pelo red team.
+P-E00152-06 🤖 3 falhas da bateria a triar: o xfail vencido P-226 do vidro (idêntico na base) e a rubrica ×2 (não medida na base) — §4.
 ```
 
 ## 6. Desvios declarados
