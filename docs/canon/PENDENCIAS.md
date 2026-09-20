@@ -10918,8 +10918,8 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 ## P-E00151-10 · o acervo tem duas versões mal rotuladas, e a base herdou
 📊 Mapfre Auto declarada v34.0 quando o PDF é v41; Mapfre Residencial declarada v2.9 quando o PDF é 3.2. **Destrava:** conferir a versão na capa ao ingerir. **Dono:** 🤖. **Custo de esquecer:** a resposta cita a página certa de um documento vencido.
 
-## P-E00152-01 · 🧑🔴 a chave Anthropic do PRODUTO está sem crédito
-📊 20/09/2026: `400 … credit balance is too low` na chamada do extrator. **Destrava:** a âncora por modelo (Bradesco Auto = 9 planos por código, HDI Auto), a reentrada das 40 CORRIGIR (P-E00151-01) e qualquer extração nova. **Dono:** 🧑 (Billing no console da Anthropic). **Custo de esquecer:** a base fica nas 23 linhas; e é a mesma chave do chat — provável causa do "Não consegui gerar a resposta" de 17/09.
+## P-E00152-01 · 🧑 a chave Anthropic do PRODUTO está sem crédito — **não bloqueia mais a base**
+📊 20/09/2026: `400 … credit balance is too low` na chamada do extrator. ⚠️ **Deixou de bloquear a base de planos:** o Founder decidiu não pôr crédito e a destilação passou a ser feita por LEITORES do plano Claude (P-E00152-12); 📊 a base fechou o dia com 492 serviços publicados sem uma única chamada de API de modelo. **Bloqueia só:** o extrator AUTOMÁTICO por API (âncora por modelo, reentrada das 40 CORRIGIR, extração nova sem agente) e — se for a mesma chave — o chat do produto. **Dono:** 🧑 (Billing no console da Anthropic). **Custo de esquecer:** documento novo só entra na base com agente lendo; e o "Não consegui gerar a resposta" de 17/09 pode ser isto.
 
 ## P-E00152-02 · o recall da âncora de planos por TEXTO é 4 de 27 documentos
 📊 20/09/2026, `localizar_ancora_de_planos(modelo=None)` nos 27 PDFs do MinIO: 4 com âncora, 0 falsas. **Destrava:** medir o caminho do MODELO (depende de P-E00152-01) e o GATE A real nos 5 controles. **Dono:** 🤖. **Custo de esquecer:** 23 documentos ficam na fila "cláusula de planos não localizada" e nada novo é proposto deles.
@@ -10935,4 +10935,22 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E00152-06 · três falhas da bateria a triar: o xfail vencido do vidro e a rubrica
 📊 20/09/2026: `test_todos_os_guardas_script_rodam[test_sem_corredor_de_vidro_nao_e_beco]` falha por `XPASS(strict) P-226` — idêntico na base `68b9dca` (o guarda passou a PASSAR e a marca de falha esperada ficou vencida: CLAUDE.md §9.3). `test_a_rubrica_e_honesta` (2 casos, linha 286) falha com a árvore parada; não importa nada da EXTRA-001.5.2, mas ❓ não foi medida na base. **Destrava:** tirar o `xfail` do P-226; rodar a rubrica em `68b9dca`. **Dono:** 🤖. **Custo de esquecer:** a linha de base vermelha cresce (34 → 37 → 42) e cada SPEC paga a triagem de novo.
+
+## P-E00152-07 · 🧑🔴 o nome do plano na apólice REAL casa com o nome na base?
+📊 20/09/2026: os 12 casos de ponta a ponta passaram o **nome exato** do plano. Em produção quem casa o nome é `identificar_plano`, lendo a apólice do segurado — e a base grava o nome como o documento escreve (ex.: `CLÁUSULA 37N – LIVRE ESCOLHA 500 KM` contra um `37N` na apólice). **Destrava:** o canário — 1 pergunta por seguradora com apólice real; onde vier "ainda não sei", anotar como a apólice escreve o nome. **Dono:** 🧑. **Custo de esquecer:** a base fica certa e **muda** — 492 serviços publicados que nunca chegam ao segurado.
+
+## P-E00152-08 · 8 linhas de táxi da Azul retidas na fila por limite incompleto
+📊 20/09/2026: as 8 linhas do serviço de táxi da Azul ficaram `proposto` porque falta o limite **fora do município** (R$ 1.000 em 37C/37H/37M/37N, R$ 2.000 em 37J/37K, R$ 5.000 em 37E/37G) e o total da vigência (R$ 200 / R$ 300). **Destrava:** completar os dois campos e publicar. **Dono:** 🤖. **Custo de esquecer:** a Azul responde sobre táxi pela metade, ou não responde.
+
+## P-E00152-09 · 🧑 documentos que faltam no acervo, e ramos não destilados
+📊 20/09/2026: **Mapfre auto** — o documento do acervo não descreve os serviços da Assistência 24h (falta o manual); a base tem 1 linha e responde "ainda não sei". **Allianz** — Moto, Caminhão e Frota não destilados (usam os mesmos nomes Plano 1/2/3 com limites diferentes, então não dá para herdar do automóvel). **Sem documento nenhum:** Zurich, Alfa e outras. **Destrava:** o Founder conseguir os manuais com as seguradoras. **Dono:** 🧑. **Custo de esquecer:** seguradoras da carteira em que o agente nunca sabe responder.
+
+## P-E00152-10 · os níveis dos planos onde o documento não sustenta a escada
+📊 20/09/2026: o Bradesco 118 ficou no nível 2 embora tenha 100 km como o 63; as motos ficaram sem nível. O gancho "o plano acima teria…" usa o nível — com a escada errada, ele sugere o plano errado. **Destrava:** revisar os níveis seguradora por seguradora e deixar sem nível o que o documento não ordena. **Dono:** 🤖. **Custo de esquecer:** oferta comercial errada na renovação, com a autoridade de um número.
+
+## P-E00152-11 · a Assistência 24h é cobertura ADICIONAL em HDI e Yelum
+📊 20/09/2026: nessas duas seguradoras a assistência não vem com a apólice — é contratada à parte. O compositor só pode afirmar o plano quando a **apólice o nomeia** (é o desenho atual de `identificar_plano`). **Destrava:** registrar isso como invariante e escrever o teste que o prova. **Dono:** 🤖. **Custo de esquecer:** prometer ao segurado um serviço que ele não contratou.
+
+## P-E00152-12 · o extrator automático por API continua fraco — aposentar ou consertar?
+📊 20/09/2026: recall da âncora por texto 4/27 e sem crédito na chave (P-E00152-01), enquanto a destilação por **leitores do plano** entregou 477 linhas conferidas em ≈ 2h20 e 0 descartadas pela máquina. **Destrava:** decidir se a destilação por agentes é o caminho oficial para documento novo (é o que D-E00152-01 registra) e se o extrator por API é aposentado, mantido como rascunho ou consertado. **Dono:** 🤖 (com decisão do 🧑 sobre gastar na API). **Custo de esquecer:** duas portas para a mesma coisa, e ninguém sabe qual roda quando chega documento novo.
 

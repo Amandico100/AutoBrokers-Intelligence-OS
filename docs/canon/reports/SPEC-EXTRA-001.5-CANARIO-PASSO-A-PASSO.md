@@ -43,8 +43,8 @@ Você vai ver **dois blocos novos**:
 
 | bloco | o que mostra | o que esperar hoje |
 |---|---|---|
-| **Cobertura dos planos** | seguradora × ramo, com quantos planos e serviços e de que documento vieram | 8 seguradoras, 17 combinações, todas ainda **não publicadas** |
-| **Fila de curadoria** | cada linha proposta, com o trecho da página ao lado | 📊 **73 serviços** e **33 planos** esperando revisão |
+| **Cobertura dos planos** | seguradora × ramo, com quantos planos e serviços e de que documento vieram | ~~8 seguradoras, 17 combinações, todas ainda **não publicadas**~~ → **desde 20/09: 8 seguradoras, 20 combinações, 108 planos e 492 serviços PUBLICADOS** |
+| **Fila de curadoria** | cada linha proposta, com o trecho da página ao lado | ~~📊 **73 serviços** e **33 planos** esperando revisão~~ → **desde 20/09: 8 linhas** (táxi da Azul) |
 
 🔴 **O que a tela NÃO pode mostrar:** nome de tabela, nome de coluna, SQL ou `insurer_key`. Se aparecer, é defeito —
 me avise.
@@ -55,7 +55,13 @@ HDI cobre no plano Essencial não muda conforme a corretora.
 
 ---
 
-## Passo 2 · 🔴 Publicar as primeiras linhas (15 min) — **é o passo que destrava tudo**
+## Passo 2 · ✅ **FEITO — não precisa mais fazer** (mantido como história)
+
+> Em 19/09 você publicou as primeiras 23 linhas. Em **20/09** a base inteira foi destilada e publicada
+> (📊 492 serviços, 108 planos, 8 seguradoras) — veja a seção **TESTE DA EXTRA-001.5.2** no fim deste
+> documento. **Não há mais fila para curar**, salvo 8 linhas de táxi da Azul que estão retidas de propósito.
+
+### ~~Publicar as primeiras linhas (15 min) — é o passo que destrava tudo~~
 
 Na **Fila de curadoria**, filtre por uma seguradora e um ramo onde você conheça o produto.
 💭 Sugestão: **HDI · residencial** (📊 2 planos e as linhas de serviço correspondentes).
@@ -143,3 +149,83 @@ docs/canon/providers/susep/fila-onda-3.json      19 seguradoras
 
 Quando a condição geral de uma delas entrar no acervo, o extrator roda sobre ela e as linhas aparecem na fila —
 **sem código novo**. É por isso que destilar mais seguradoras não era pré-requisito desta SPEC.
+
+---
+
+# TESTE DA EXTRA-001.5.2 — a base de planos responde
+
+> **Escrito em 20/09/2026.** É este o teste que vale hoje. Os passos 1 a 4 acima continuam válidos como
+> descrição das telas; o **Passo 2 (publicar) está feito** — 📊 a base saiu de 23 para **492 serviços
+> publicados, em 108 planos e 8 seguradoras**, destilados dos documentos por leitores e conferidos linha
+> a linha contra a página.
+
+## A · Implantar primeiro (5 min)
+
+No EasyPanel, clique **Implantar** em **smith-api**, **smith-worker** e **smith-web**. Isso sobe o vocabulário
+novo (a palavra *"vidraceiro"*), a tela da fila com o parecer e o extrator v2.
+
+⚠️ **A base já está no banco** — ela não depende do Implantar. O que depende é o vocabulário e as telas.
+`POLICY_INTELLIGENCE_V2` já está **true** no ambiente.
+
+## B · As perguntas, uma por seguradora (10 min)
+
+No chat `core` do painel e no WhatsApp do aparelho de teste, com **uma apólice real de cada seguradora**:
+
+```
+· "meu seguro cobre guincho? até quantos km?"
+· "tenho carro reserva?"
+· "cobre chaveiro?"
+· "cobre vidraceiro?"        (numa apólice RESIDENCIAL)
+```
+
+**O que esperar** — a resposta diz sim ou não, **com o limite** (km, diárias, R$ por evento). No chat do
+corretor vem também o **documento e a página**. No WhatsApp, a mesma verdade, sem citação.
+
+📊 O que a base responde hoje, para você comparar (medido contra a base real, passando o nome exato do plano):
+
+| seguradora · plano | pergunta | resposta esperada |
+|---|---|---|
+| Tokio auto · VIP | cobre chaveiro? | coberto, até R$ 200,00 por evento |
+| Yelum auto · Superior | tenho carro reserva? | coberto, 10 diárias |
+| Yelum auto · Essencial | tenho carro reserva? | **não** coberto — "Não se aplica para este Plano" |
+| Yelum auto · Básico | guincho até quantos km? | coberto, com as **duas** hipóteses (sinistro 300 km; pane, menor) |
+| HDI auto · VIP | cobre guincho? | coberto, sem limite de km em sinistro |
+| Bradesco auto · nº 43 | cobre guincho? | coberto, até 200 km |
+| Porto residencial · Conforto | cobre encanador? | coberto, R$ 150,00 por serviço |
+| Porto residencial · Veraneio Conforto | cobre vidraceiro? | **não** coberto |
+| Allianz residencial · Essencial | tem hospedagem? | **não** coberto |
+| Azul auto · cláusula 37N | cobre guincho? | coberto, 500 km, **reembolso com teto** |
+| Mapfre auto | cobre guincho? | **"ainda não sei"** — e está **certo**: o documento no acervo não descreve a assistência |
+
+## C · 🔴 O que anotar se vier "ainda não sei"
+
+Esta é a parte mais importante do teste. A base guarda o nome do plano **como o documento escreve**
+(ex.: `CLÁUSULA 37N – LIVRE ESCOLHA 500 KM`); a apólice do segurado pode escrever só `37N`. Quando os dois
+não casam, a resposta vira *"ainda não sei"* — honesta, **nunca errada**, mas inútil.
+
+```
+Se a apólice TEM plano e a resposta foi "ainda não sei":
+anote EXATAMENTE como o nome do plano aparece na apólice (copie e cole) + a seguradora.
+```
+
+Isso é a pendência **P-E00152-07**, e só apólice real mede. Mapfre auto é a exceção conhecida: ali o
+"ainda não sei" é a resposta correta, não um defeito.
+
+## D · A Fila de Curadoria (2 min)
+
+```
+Painel → Personalização → Conhecimento → Fila de curadoria
+```
+
+**Devem aparecer 8 linhas, e só elas:** táxi da Azul, retidas porque o limite fora do município está
+incompleto. Se aparecer **mais** que isso, me avise.
+
+## E · O que NÃO é defeito, na versão de 20/09
+
+```
+· Mapfre auto dizer "ainda não sei" ................... falta o manual da assistência no acervo
+· Allianz não responder por MOTO, CAMINHÃO ou FROTA ... só o AUTOMÓVEL foi destilado
+· Bradesco condomínio quase vazio ..................... os documentos de condomínio não têm assistência 24h
+· Zurich, Alfa e as outras sem nenhuma linha .......... não há documento no acervo
+· as 8 linhas de táxi da Azul na fila ................. retidas de propósito (P-E00152-08)
+```
