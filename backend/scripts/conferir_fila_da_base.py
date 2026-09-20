@@ -100,15 +100,24 @@ def _resumo(pareceres) -> None:
 
 
 def _gate_g(linhas, pareceres, gravou: bool) -> int:
-    """Quantas linhas `proposto` ficariam SEM veredito. O GATE G exige 0."""
+    """Quantas linhas `proposto` ficariam SEM veredito. O GATE G exige 0.
+
+    🔴 SEM VEREDITO ≠ `NAO_CONSEGUI`. `NAO_CONSEGUI` **é** um veredito: está
+    gravado, o CHECK do banco o aceita, e a fila o mostra ("não consegui
+    conferir: trecho"). Contá-lo como ausência faria o GATE G reprovar uma
+    linha que foi conferida e cujo resultado honesto é "não deu" — e empurraria
+    para o próximo a tentação de selar o que não se conferiu.
+    """
     propostas = [l for l in linhas if str(l.get("curadoria")) == "proposto"]
-    com_parecer = {str(p["linha"].get("id")) for p in pareceres
-                   if p["parecer"].veredito != CONF.NAO_CONSEGUI}
+    com_parecer = {str(p["linha"].get("id")) for p in pareceres}
     sem = [l for l in propostas if str(l.get("id")) not in com_parecer]
+    abstidas = [p for p in pareceres if p["parecer"].veredito == CONF.NAO_CONSEGUI]
     print("\n  GATE G (preparação)")
     print("    linhas em `proposto` .................... %d" % len(propostas))
     print("    sem veredito depois desta passada ...... %d%s"
           % (len(sem), "" if gravou else "   (ensaio: nada foi gravado)"))
+    print("    dessas, com veredito `NAO_CONSEGUI` .... %d   (é veredito, não "
+          "ausência)" % len(abstidas))
     for l in sem[:10]:
         print("      - %s  %s" % (str(l.get("id"))[:8], l.get("servico")))
     return len(sem)
@@ -168,26 +177,61 @@ def _medir_contra_o_gabarito(db=None, minio=None) -> int:
           % (len(linhas), len(faltaram)))
 
     paginas = _paginas_por_documento(linhas, minio=minio, db=cliente)
-    pares = [(l["_gabarito"], CONF.conferir_linha(l, paginas.get(
-        str(l.get("documento_id")), {}))) for l in linhas]
-    m = CONF.medir(pares)
 
-    print("\n  GATE F — concordancia com o leitor humano")
-    print("    LINHA  %d/%d = %.1f%%   (o gate: >= 80%%)"
-          % (m["linhas_concordantes"], m["linhas"],
-             100 * m["concordancia_de_linha"]))
-    print("    CAMPO  %d/%d = %.1f%%   (regua mais dura, reportada junto)"
-          % (m["campos_concordantes"], m["campos_comparaveis"],
-             100 * m["concordancia_de_campo"]))
-    print("\n  AS %d DISCORDANCIAS — listadas, nao escondidas (SPEC §3.F)"
-          % len(m["discordancias"]))
-    for d in m["discordancias"]:
+    def _rodada():
+        pares = [(l["_gabarito"], CONF.conferir_linha(l, paginas.get(
+            str(l.get("documento_id")), {}))) for l in linhas]
+        return pares, CONF.medir(pares)
+
+    # 🔴 OS TRÊS NÚMEROS LADO A LADO (juiz B3, 20/09/2026)
+    # ===================================================
+    # 📊 60 das 81 linhas dizem `Plano único`, e detectar esse PLACEHOLDER
+    # respondia por 21 pontos percentuais do gate. Mas o extrator v2 **nunca
+    # emite "Plano único"** — o número com a regra media um defeito do extrator
+    # velho, não o conferente. O GATE deste script é o número SEM a regra.
+    pares_com, com = _rodada()
+    anterior = CONF.REGRA_DO_PLACEHOLDER
+    try:
+        CONF.REGRA_DO_PLACEHOLDER = False
+        pares_sem, sem = _rodada()
+    finally:
+        CONF.REGRA_DO_PLACEHOLDER = anterior
+
+    placeholder = sum(1 for l in linhas
+                      if CONF._para_leitura(l.get("plano")) ==
+                      CONF._para_leitura(CONF._PLANO_PADRAO))
+    print("\n  GATE F — concordancia com o leitor humano de 19/09")
+    print("    %-34s %s" % ("", "LINHA            CAMPO"))
+    for rotulo, m in (("COM a regra do placeholder", com),
+                      ("SEM a regra  <- O GATE", sem)):
+        print("    %-30s %3d/%-3d = %5.1f%%   %3d/%-3d = %5.1f%%"
+              % (rotulo, m["linhas_concordantes"], m["linhas"],
+                 100 * m["concordancia_de_linha"], m["campos_concordantes"],
+                 m["campos_comparaveis"], 100 * m["concordancia_de_campo"]))
+    print("    📊 %d das %d linhas dizem %r — e o extrator v2 nunca o emite."
+          % (placeholder, len(linhas), CONF._PLANO_PADRAO))
+    print("       O numero da direita e o que vale para LINHA NOVA.")
+
+    # 🔴 A PRECISAO DO `CONFERE` — a metrica do produto.
+    # "Publicar sem abrir o PDF" so e seguro se o que recebe selo estiver certo.
+    # Errar para MENOS (nao selar o que estava certo) custa uma leitura; errar
+    # para MAIS (selar o que estava errado) publica erro com carimbo de gente.
+    for rotulo, pares in (("COM a regra", pares_com), ("SEM a regra", pares_sem)):
+        selados = [(g, p) for g, p in pares if p.veredito == CONF.CONFERE]
+        certas = [1 for g, _ in selados if g.get("veredito") == "PUBLICAR"]
+        print("    precisao do CONFERE (%s): %d de %d selados estavam certos%s"
+              % (rotulo, len(certas), len(selados),
+                 " = %.0f%%" % (100 * len(certas) / len(selados)) if selados else ""))
+
+    print("\n  AS %d DISCORDANCIAS DO NUMERO QUE VALE (SEM a regra) — "
+          "listadas, nao escondidas (SPEC §3.F)" % len(sem["discordancias"]))
+    for d in sem["discordancias"]:
         print("    %-9s %-14s p%-4s leitor=%-9s campo=%-9s conferente=%s"
               % (d["insurer_key"], d["servico"], d["pagina"], d["leitor"],
                  d["campo_do_leitor"] or "-", d["conferente"]))
         for motivo in d["motivos"][:2]:
             print("        · %s" % motivo[:110])
-    return 0 if m["concordancia_de_linha"] >= 0.80 else 1
+    return 0 if sem["concordancia_de_linha"] >= 0.80 else 1
 
 
 def main(argv=None) -> int:

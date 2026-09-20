@@ -71,6 +71,26 @@ OK, DIVERGE_CAMPO, NAO_AVALIADO = "ok", "diverge", "nao_avaliado"
 #: Os campos que o conferente olha. A ordem é a da leitura humana de 19/09.
 CAMPOS = ("pagina", "trecho", "coberto", "limite", "plano", "produto")
 
+#: 🔴 O INTERRUPTOR QUE TORNA O NÚMERO DO GATE HONESTO (juiz B3, 20/09/2026).
+#:
+#: 📊 O conferente marcava `plano: diverge` sempre que a linha dizia
+#: `Plano único` — e 60 das 81 linhas do gabarito dizem isso. O juiz mediu o
+#: contrafactual:
+#:
+#: ```
+#: COM a regra do placeholder ....  65/81 = 80,2 %   (o número que eu reportei)
+#: SEM a regra do placeholder ....  44/81 = 54,3 %   ABAIXO do sempre-DIVERGE (69,1 %)
+#: ```
+#:
+#: 🔴 E o extrator v2 **nunca emite "Plano único"**. Ou seja: o gate media uma
+#: regra que não vai existir no cano novo, e em linha nova o conferente valeria
+#: ~54 %. Um gate que passa por causa de um defeito do extrator antigo mede o
+#: defeito, não o conferente.
+#:
+#: Este interruptor existe para o `--gabarito` reportar os DOIS números lado a
+#: lado — e o GATE do script é o SEM a regra.
+REGRA_DO_PLACEHOLDER = True
+
 
 @dataclass(frozen=True)
 class Veredito:
@@ -247,6 +267,66 @@ def _numero_esta_na_pagina(numero: str, pagina: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 🔴 A RELAÇÃO — o que faltava, e o que custou o selo verde em erro
+# ---------------------------------------------------------------------------
+# 📊 20/09/2026, red team B2, em páginas REAIS (HDI Auto p.90, Tokio Auto p.24),
+# COM a âncora certa em mãos. Três linhas ERRADAS receberam `CONFERE` com os
+# seis campos `ok`:
+#
+#   ERRO 1  o limite da coluna VIP (R$ 150/450) atribuído ao plano Essencial
+#   ERRO 2  o trecho "Plano Completo: 3 (três) vezes…" atribuído ao plano VIP
+#   ERRO 3  `coberto=sim` numa página cujo CABEÇALHO diz "cobertura adicional"
+#
+# 🔴 A causa é uma só, e não é regex: o conferente perguntava de cada campo
+# SOZINHO — *"o plano existe na âncora?"*, *"o número existe na página?"* — e
+# nunca a pergunta que decide: **este trecho é DESTE plano?** Numa condição
+# geral, todo número de tabela e todo `sim` pertencem a uma COLUNA, e um campo
+# certo na coluna errada é uma promessa que a seguradora não honra.
+#
+# ⚠️ E o pior é que ele SELAVA: `CONFERE` é o carimbo que manda o Founder
+# publicar sem abrir o PDF. Errar calado é ruim; errar com carimbo é pior.
+
+#: Quantos caracteres ao redor do trecho contam como "a vizinhança imediata".
+#: 💭 Ordem de grandeza de um parágrafo e do cabeçalho logo acima dele.
+JANELA_DA_VIZINHANCA = 600
+
+#: E quanto ACIMA do trecho conta como "o cabeçalho da cláusula".
+JANELA_DO_CABECALHO = 900
+
+
+def _onde_esta(trecho: str, texto_da_pagina: str) -> Optional[int]:
+    """A posição do trecho no texto NORMALIZADO da página, ou `None`."""
+    alvo, pagina = _para_leitura(trecho), _para_leitura(texto_da_pagina)
+    if not alvo or not pagina:
+        return None
+    pos = pagina.find(alvo)
+    if pos >= 0:
+        return pos
+    if len(alvo) > TAMANHO_DO_PREFIXO:
+        pos = pagina.find(alvo[:TAMANHO_DO_PREFIXO])
+        if pos >= 0:
+            return pos
+    return None
+
+
+def _planos_citados(texto: str, ancora: List[str]) -> List[str]:
+    """Quais planos da âncora este texto NOMEIA.
+
+    ⚠️ Só nomes da âncora. Procurar "plano" seguido de palavra inventaria
+    planos que o documento não tem — e inventar âncora é a unidade A, que não é
+    deste módulo (CLAUDE.md §5).
+    """
+    leitura = _para_leitura(texto)
+    fora = []
+    for plano in ancora:
+        nome = _para_leitura(plano)
+        if len(nome) >= 3 and re.search(r"(?<![a-z0-9])%s(?![a-z0-9])"
+                                        % re.escape(nome), leitura):
+            fora.append(plano)
+    return fora
+
+
+# ---------------------------------------------------------------------------
 # O conferente
 # ---------------------------------------------------------------------------
 def conferir_linha(
@@ -290,14 +370,54 @@ def conferir_linha(
         return Veredito(DIVERGE, campos, motivos, numero)
     campos["pagina"] = OK
 
-    _conferir_trecho(linha, numero, texto, paginas, campos, motivos)
-    _conferir_coberto(linha, texto, campos, motivos)
-    _conferir_limite(linha, texto, campos, motivos)
-    _conferir_plano(linha, paginas, planos_da_ancora, campos, motivos)
-    _conferir_produto(linha, campos, motivos)
+    posicao = _onde_esta(str(linha.get("trecho") or ""), texto)
 
-    veredito = DIVERGE if DIVERGE_CAMPO in campos.values() else CONFERE
-    return Veredito(veredito, campos, motivos, numero)
+    _conferir_trecho(linha, numero, texto, paginas, campos, motivos)
+    _conferir_coberto(linha, texto, posicao, campos, motivos)
+    # ⚠️ A ORDEM IMPORTA: o limite é conferido ANTES do plano, porque é a
+    # conferência da RELAÇÃO (dentro de `_conferir_plano`) que pode REBAIXAR um
+    # limite `ok` para `nao_avaliado` — "o número existe, mas não sei de qual
+    # coluna". Invertê-la faria `_conferir_limite` reescrever o rebaixamento, e
+    # o ERRO 1 do red team voltaria em silêncio.
+    _conferir_limite(linha, texto, campos, motivos)
+    _conferir_plano(linha, paginas, texto, posicao, planos_da_ancora, campos, motivos)
+    _conferir_produto(linha, campos, motivos)
+    pendentes = _selar(linha, campos, motivos)
+
+    return Veredito(_veredito_de(campos, pendentes), campos, motivos, numero)
+
+
+#: 🔴 OS CAMPOS CRÍTICOS — os que decidem se a linha pode ser publicada sem que
+#: ninguém abra o PDF. `produto` fica de fora de propósito: um produto com nome
+#: feio não faz a seguradora negar o atendimento; um limite da coluna errada faz.
+CAMPOS_CRITICOS = ("trecho", "plano", "coberto", "limite")
+
+
+def _selar(linha, campos, motivos) -> None:
+    """🔴 A REGRA DO SELO: não se carimba o que não se conferiu.
+
+    📊 O red team B2 produziu `CONFERE` com `limite: nao_avaliado` — e `CONFERE`
+    é o carimbo que manda o Founder publicar sem abrir o PDF. Um campo que o
+    conferente não conseguiu avaliar **não é um campo aprovado**, e tratá-lo
+    como tal é a definição de erro com carimbo.
+
+    ⚠️ Isto REBAIXA linhas antigas: 📊 as 39 da fila não têm `trecho` gravado, e
+    todas passam a `NAO_CONSEGUI`. É o honesto — elas nunca foram conferidas.
+    """
+    tem_limite = linha.get("limite_valor") is not None or bool(
+        str(linha.get("limite_texto") or "").strip())
+    pendentes = [c for c in CAMPOS_CRITICOS
+                 if campos.get(c) == NAO_AVALIADO and (c != "limite" or tem_limite)]
+    if pendentes:
+        motivos.append("não consegui conferir: %s" % ", ".join(pendentes))
+    return pendentes
+
+
+def _veredito_de(campos, pendentes) -> str:
+    """`DIVERGE` vence; depois o selo; só então `CONFERE`."""
+    if DIVERGE_CAMPO in campos.values():
+        return DIVERGE
+    return NAO_CONSEGUI if pendentes else CONFERE
 
 
 def _conferir_trecho(linha, numero, texto, paginas, campos, motivos) -> None:
@@ -326,12 +446,40 @@ def _conferir_trecho(linha, numero, texto, paginas, campos, motivos) -> None:
         motivos.append("o trecho não está em nenhuma página do documento arquivado")
 
 
-def _conferir_coberto(linha, texto, campos, motivos) -> None:
-    """O `coberto` é do SERVIÇO, ou foi colhido da cláusula de outra cobertura?"""
+def _conferir_coberto(linha, texto, posicao, campos, motivos) -> None:
+    """O `coberto` é do SERVIÇO, ou foi colhido da cláusula de outra cobertura?
+
+    🔴 O DIALETO, MEDIDO (CLAUDE.md §9.4) — red team B2, 20/09/2026
+    ==============================================================
+    Os regexes vêm do verificador de escrita, que os aplica ao trecho **como o
+    modelo o escreveu**. Aqui eles são aplicados ao texto **como o `fitz` o
+    devolve** — e isso é outro dialeto:
+
+    ```
+    📊 "Riscos Excluídos: danos por inundação…"  (COM acento, o que o PDF tem)
+       `risco[s]?\\s+excluid`  ->  ZERO   o 'í' não é 'i'
+    📊 "Riscos Excluidos: danos por inundacao…"  (o gabarito, sem acento)
+       `risco[s]?\\s+excluid`  ->  casa
+    ```
+
+    O resultado era o pior possível: a MESMA frase, com o acento que o documento
+    de verdade tem, recebia `CONFERE`; sem acento, `DIVERGE`. **O padrão foi
+    medido num motor e aplicado em outro.** A régua é `_para_leitura` — a mesma
+    que casa o trecho —, e há guarda exigindo ZERO para o padrão cru sobre a
+    fixture acentuada.
+
+    🔴 E O CABEÇALHO DA CLÁUSULA MANDA (ERRO 3)
+    ===========================================
+    📊 Um `sim` numa página cujo TRECHO não diz nada de opcional, mas cujo
+    CABEÇALHO, logo acima, diz *"COBERTURA ADICIONAL"*, recebia `CONFERE`. O
+    escopo da cláusula é o que decide (§3.B da SPEC), e ele está **acima** do
+    trecho, não dentro dele.
+    """
     coberto = str(linha.get("coberto") or "")
     servico = str(linha.get("servico") or "")
     trecho = str(linha.get("trecho") or "").strip()
     base = trecho if len(trecho) >= 12 else texto
+    # ⚠️ NORMALIZADO, sempre: é o conserto do dialeto acima.
     leitura = _para_leitura(base)
     if not coberto:
         return
@@ -339,17 +487,25 @@ def _conferir_coberto(linha, texto, campos, motivos) -> None:
 
     # 1 · o "não" que é exclusão de risco DENTRO de outra cobertura (padrão 1).
     #     Os regexes são os do verificador de escrita: um parecer só por frase.
-    if coberto == "nao" and _E_EXCLUSAO_DE_RISCO.search(base) \
-            and not _NEGA_O_SERVICO.search(base):
+    if coberto == "nao" and _E_EXCLUSAO_DE_RISCO.search(leitura) \
+            and not _NEGA_O_SERVICO.search(leitura):
         campos["coberto"] = DIVERGE_CAMPO
         motivos.append("o 'nao' veio de uma cláusula de exclusão de risco, "
                        "não de uma recusa do serviço")
 
-    # 2 · o "sim" numa cobertura que só existe se contratada.
+    # 2 · o "sim" numa cobertura que só existe se contratada — no trecho…
     if coberto == "sim" and _E_OPCIONAL.search(leitura):
         campos["coberto"] = DIVERGE_CAMPO
         motivos.append("a página trata de cobertura adicional/opcional: "
                        "'sim' promete o que só existe se o cliente contratou")
+    # 2b · …e no CABEÇALHO logo acima dele.
+    elif coberto == "sim" and posicao is not None:
+        acima = _para_leitura(texto)[max(0, posicao - JANELA_DO_CABECALHO):posicao]
+        if _E_OPCIONAL.search(acima):
+            campos["coberto"] = DIVERGE_CAMPO
+            motivos.append("o cabeçalho da cláusula logo acima do trecho diz "
+                           "que a cobertura é adicional/opcional — 'sim' aqui "
+                           "promete o que só existe se o cliente contratou")
 
     # 3 · a frase saiu do cabeçalho de OUTRA cobertura numerada.
     for _numero, nome in _CABECALHO_DE_COBERTURA.findall(leitura):
@@ -386,15 +542,97 @@ def _conferir_limite(linha, texto, campos, motivos) -> None:
         motivos.append("o limite gravado é uma referência a outra cláusula, "
                        "não um limite: %r" % limite_texto[:60])
         return
+    trecho = str(linha.get("trecho") or "").strip()
+    do_trecho = set(_numeros_de(trecho)) if len(trecho) >= 12 else None
     for numero in _numeros_de(limite_texto) or _numeros_de(valor):
         if not _numero_esta_na_pagina(numero, leitura_pagina):
             campos["limite"] = DIVERGE_CAMPO
             motivos.append("o número %s do limite não está na página %s"
                            % (numero, linha.get("pagina")))
             break
+        # 🔴 ESTAR NA PÁGINA NÃO BASTA (red team B2, ERRO 1).
+        # 📊 A tabela da HDI (p.90) tem R$ 100, R$ 150 e R$ 200 na mesma página,
+        # em COLUNAS diferentes. Um número que existe na página mas NÃO no
+        # trecho que sustenta a linha pode ser da coluna de outro plano — e
+        # `ok` aqui é o selo verde em cima de um limite que não é do segurado.
+        if do_trecho is not None and numero not in do_trecho:
+            campos["limite"] = NAO_AVALIADO
+            motivos.append("o número %s está na página, mas não no trecho que "
+                           "sustenta a linha — pode ser da coluna de outro plano"
+                           % numero)
+            break
 
 
-def _conferir_plano(linha, paginas, planos_da_ancora, campos, motivos) -> None:
+def _conferir_a_relacao(linha, texto, posicao, ancora, campos, motivos) -> None:
+    """🔴 ESTE TRECHO É DESTE PLANO? — a pergunta que faltava (red team B2).
+
+    O plano estar na âncora só diz que ele **existe**. A pergunta que decide se
+    a linha pode ser publicada é se o TRECHO pertence à coluna daquele plano.
+
+    ```
+    📊 ERRO 2, Tokio Auto p.24, medido: o trecho "Plano Completo: 3 (três)
+       vezes…" gravado sob o plano VIP. A página tem as duas frases, uma embaixo
+       da outra. O trecho NOMEIA o plano — e não é o da linha.
+    📊 ERRO 1, HDI Auto p.90: o limite da coluna VIP (R$ 150/450) gravado sob o
+       Essencial. O `fitz` devolve a tabela CÉLULA POR CÉLULA — 'Pane Seca ' numa
+       linha, 'Até R$ 150,00 por evento e ' noutra — e a associação de LINHA da
+       tabela não sobrevive à extração.
+    ```
+
+    🔴 E é aí que o conferente tem de dizer **"não consegui"**, não "ok". Com
+    três planos na página e nada ligando o trecho a um deles, qualquer resposta
+    é chute — e um chute com selo verde é o defeito que esta rodada consertou.
+    """
+    plano = str(linha.get("plano") or "").strip()
+    trecho = str(linha.get("trecho") or "").strip()
+
+    # 1 · o TRECHO nomeia um plano? Então é ele que manda.
+    if len(trecho) >= 12:
+        no_trecho = _planos_citados(trecho, ancora)
+        if no_trecho:
+            if any(_para_leitura(p) == _para_leitura(plano) for p in no_trecho):
+                campos["plano"] = OK
+            else:
+                campos["plano"] = DIVERGE_CAMPO
+                motivos.append("o trecho é do plano %s, e a linha o gravou sob %r"
+                               % (" / ".join(no_trecho), plano))
+            return
+
+    # 2 · a vizinhança imediata do trecho na página.
+    leitura = _para_leitura(texto)
+    if posicao is not None:
+        janela = leitura[max(0, posicao - JANELA_DA_VIZINHANCA):
+                         posicao + JANELA_DA_VIZINHANCA]
+        perto = _planos_citados(janela, ancora)
+        if len(perto) == 1:
+            if _para_leitura(perto[0]) == _para_leitura(plano):
+                campos["plano"] = OK
+            else:
+                campos["plano"] = DIVERGE_CAMPO
+                motivos.append("ao redor do trecho a página só fala do plano %r,"
+                               " e a linha o gravou sob %r" % (perto[0], plano))
+            return
+
+    # 3 · a página inteira.
+    na_pagina = _planos_citados(texto, ancora)
+    if len(na_pagina) == 1 and _para_leitura(na_pagina[0]) == _para_leitura(plano):
+        campos["plano"] = OK
+        return
+    if len(na_pagina) >= 2:
+        motivos.append("a página fala de %d planos (%s) e nada liga o trecho ao "
+                       "plano %r desta linha — a coluna é um chute"
+                       % (len(na_pagina), ", ".join(na_pagina)[:80], plano))
+    else:
+        motivos.append("a página não nomeia o plano %r em lugar nenhum" % plano)
+    campos["plano"] = NAO_AVALIADO
+    # 🔴 E o limite cai junto: um número de tabela sem coluna conhecida não é um
+    # limite conferido. 📊 é exatamente o ERRO 1 (R$ 150 da coluna VIP).
+    if campos.get("limite") == OK:
+        campos["limite"] = NAO_AVALIADO
+
+
+def _conferir_plano(linha, paginas, texto, posicao, planos_da_ancora,
+                    campos, motivos) -> None:
     """O plano da linha existe na âncora — ou, sem âncora, foi lido do documento?
 
     🔴 `Plano único` é o PLACEHOLDER do extrator (`_PLANO_PADRAO`), não um nome
@@ -411,16 +649,16 @@ def _conferir_plano(linha, paginas, planos_da_ancora, campos, motivos) -> None:
 
     if planos_da_ancora:
         conhecidos = {_para_leitura(p) for p in planos_da_ancora if p}
-        if _para_leitura(plano) in conhecidos:
-            campos["plano"] = OK
-        else:
+        if _para_leitura(plano) not in conhecidos:
             campos["plano"] = DIVERGE_CAMPO
             motivos.append("o plano %r não está entre os que a cláusula de "
                            "planos enumera (%s)"
                            % (plano, ", ".join(sorted(planos_da_ancora))[:120]))
+            return
+        _conferir_a_relacao(linha, texto, posicao, planos_da_ancora, campos, motivos)
         return
 
-    if _para_leitura(plano) == _para_leitura(_PLANO_PADRAO):
+    if REGRA_DO_PLACEHOLDER and _para_leitura(plano) == _para_leitura(_PLANO_PADRAO):
         campos["plano"] = DIVERGE_CAMPO
         motivos.append("o nome do plano não foi lido do documento: %r é o "
                        "preenchimento padrão do extrator" % _PLANO_PADRAO)

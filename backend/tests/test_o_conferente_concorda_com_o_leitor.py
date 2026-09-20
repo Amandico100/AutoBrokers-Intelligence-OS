@@ -245,7 +245,175 @@ checar(C.conferir_linha(LINHA_CERTA, PAGINAS).campos["produto"] == C.OK,
        "(o guarda CONSEGUE aprovar — §9.3)")
 
 # ---------------------------------------------------------------------------
-print("\n[5] 🔴 CONTROLE DO GATE — um conferente burro TEM de reprovar")
+# 🔴 A RELAÇÃO — os três erros que o red team B2 selou de VERDE em 20/09/2026
+# ---------------------------------------------------------------------------
+print("\n[5] PAR — o trecho nomeia OUTRO plano da âncora (ERRO 2 do red team)")
+
+#: 📊 Tokio Marine Auto, p.24, texto REAL: as duas frases, uma embaixo da outra.
+TOKIO = {1: ("Limite de utilizacao\n"
+             "Plano Completo: 3 (três) vezes durante a vigência do seguro. \n"
+             "Plano VIP: 5 (cinco) vezes durante a vigência do seguro, quando se "
+             "tratar de pane. \n")}
+P_TOKIO = _lidas(_pdf_com(TOKIO))
+ANCORA_TOKIO = ["Completo", "VIP"]
+GUINCHO = {"servico": "guincho", "coberto": "sim", "pagina": 1,
+           "produto": "Tokio Marine Auto", "plano": "VIP",
+           "limite_valor": 3, "limite_unidade": "acionamentos_ano",
+           "limite_texto": "3 (três) vezes durante a vigência",
+           "trecho": "Plano Completo: 3 (três) vezes durante a vigência do seguro."}
+v = C.conferir_linha(GUINCHO, P_TOKIO, ANCORA_TOKIO)
+checar(v.veredito != C.CONFERE and v.campos["plano"] == C.DIVERGE_CAMPO,
+       "📊 ERRO 2: o trecho diz 'Plano Completo' e a linha o gravou sob 'VIP' "
+       "-> `plano` diverge. Antes disto: CONFERE com os 6 campos `ok`",
+       f"{v.veredito} {v.campos} {v.motivos}")
+checar(any("Completo" in m for m in v.motivos),
+       "e o motivo NOMEIA o plano de quem o trecho é", str(v.motivos))
+
+v = C.conferir_linha(dict(GUINCHO, plano="Completo"), P_TOKIO, ANCORA_TOKIO)
+checar(v.veredito == C.CONFERE and v.campos["plano"] == C.OK,
+       "🔴 CONTROLE OPOSTO: a MESMA superfície com o plano CERTO -> CONFERE "
+       "(o guarda consegue aprovar — §9.3)", f"{v.veredito} {v.campos}")
+
+# ---------------------------------------------------------------------------
+print("\n[6] PAR — o número da coluna de OUTRO plano (ERRO 1 do red team)")
+
+#: 📊 HDI Auto, p.90: o `fitz` devolve a tabela CÉLULA POR CÉLULA. A associação
+#: de LINHA da tabela — qual valor é de qual coluna — não sobrevive à extração.
+HDI = {1: ("Coberturas Essencial Especial VIP\n"
+           "Pane Seca \n"
+           "Até R$ 100,00 por evento e \n"
+           "R$ 200,00 por Vigência \n"
+           "Até R$ 150,00 por evento e \n"
+           "R$ 450,00 por Vigência \n")}
+P_HDI = _lidas(_pdf_com(HDI))
+ANCORA_HDI = ["Essencial", "Especial", "VIP"]
+PANE = {"servico": "pane_seca", "coberto": "sim", "pagina": 1,
+        "produto": "HDI Auto Básico", "plano": "Essencial",
+        "limite_valor": 150, "limite_unidade": "reais",
+        "limite_texto": "Até R$ 150,00 por evento e R$ 450,00 por Vigência",
+        "trecho": "Até R$ 150,00 por evento e R$ 450,00 por Vigência"}
+v = C.conferir_linha(PANE, P_HDI, ANCORA_HDI)
+checar(v.veredito != C.CONFERE,
+       "📊 ERRO 1: o limite da coluna VIP (R$150/450) gravado sob o Essencial "
+       "-> NÃO recebe o selo. Antes disto: CONFERE com os 6 campos `ok`",
+       f"{v.veredito} {v.campos} {v.motivos}")
+checar(v.campos["plano"] == C.NAO_AVALIADO and v.veredito == C.NAO_CONSEGUI,
+       "🔴 e a resposta honesta é NAO_CONSEGUI, não DIVERGE: com 3 planos na "
+       "página e nada ligando o trecho a um deles, a coluna é um CHUTE — e "
+       "acusar um chute é tão errado quanto aprová-lo",
+       f"{v.veredito} {v.campos}")
+checar(any("não consegui conferir" in m for m in v.motivos),
+       "e o motivo é humano: 'não consegui conferir: …'", str(v.motivos))
+
+#: 🔴 CONTROLE OPOSTO: a mesma pergunta onde a página SÓ fala de um plano.
+UM_PLANO = {1: ("Plano Essencial — Assistência 24h\n"
+                "Pane Seca: Até R$ 100,00 por evento e R$ 200,00 por Vigência.\n")}
+P_UM = _lidas(_pdf_com(UM_PLANO))
+v = C.conferir_linha({"servico": "pane_seca", "coberto": "sim", "pagina": 1,
+                      "produto": "HDI Auto Básico", "plano": "Essencial",
+                      "limite_valor": 100, "limite_unidade": "reais",
+                      "limite_texto": "Até R$ 100,00 por evento e R$ 200,00 por Vigência",
+                      "trecho": "Pane Seca: Até R$ 100,00 por evento e R$ 200,00 por Vigência"},
+                     P_UM, ANCORA_HDI)
+checar(v.veredito == C.CONFERE and v.campos["limite"] == C.OK,
+       "🔴 CONTROLE: um plano só na página e o número DENTRO do trecho -> "
+       "CONFERE com o limite `ok`", f"{v.veredito} {v.campos} {v.motivos}")
+
+v = C.conferir_linha({"servico": "pane_seca", "coberto": "sim", "pagina": 1,
+                      "produto": "HDI Auto Básico", "plano": "Essencial",
+                      "limite_valor": 200, "limite_unidade": "reais",
+                      "limite_texto": "R$ 200,00 por evento",
+                      "trecho": "Pane Seca: Até R$ 100,00 por evento"},
+                     P_UM, ANCORA_HDI)
+checar(v.campos["limite"] == C.NAO_AVALIADO and v.veredito == C.NAO_CONSEGUI,
+       "e o número que está na PÁGINA mas não no TRECHO -> `nao_avaliado`: "
+       "pode ser a célula de outra coluna", f"{v.campos} {v.motivos}")
+
+# ---------------------------------------------------------------------------
+print("\n[7] PAR — o CABEÇALHO da cláusula acima do trecho (ERRO 3 do red team)")
+FRASE = ("Estão cobertos os danos materiais causados aos vidros do imóvel "
+         "segurado, instalados em caráter permanente.")
+COM_CABECALHO = {1: ("Plano Essencial\nCOBERTURA ADICIONAL — Quebra de Vidros\n"
+                     "Trata-se de coberturas adicionais e opcionais.\n\n" + FRASE)}
+SEM_CABECALHO = {1: ("Plano Essencial\nCOBERTURA BÁSICA — Incêndio, Raio e Explosão\n"
+                     "Esta cobertura integra o pacote contratado.\n\n" + FRASE)}
+VIDROS = {"servico": "vidros_residencial", "coberto": "sim", "pagina": 1,
+          "produto": "Residencial", "plano": "Essencial", "trecho": FRASE}
+v = C.conferir_linha(VIDROS, _lidas(_pdf_com(COM_CABECALHO)), ["Essencial"])
+checar(v.campos["coberto"] == C.DIVERGE_CAMPO and v.veredito == C.DIVERGE,
+       "📊 ERRO 3: o TRECHO não diz nada de opcional, mas o CABEÇALHO logo "
+       "acima diz — `coberto` diverge. Antes disto: CONFERE",
+       f"{v.veredito} {v.campos} {v.motivos}")
+v = C.conferir_linha(VIDROS, _lidas(_pdf_com(SEM_CABECALHO)), ["Essencial"])
+checar(v.campos["coberto"] == C.OK and v.veredito == C.CONFERE,
+       "🔴 CONTROLE OPOSTO: a MESMA frase sob um cabeçalho de cobertura BÁSICA "
+       "-> `coberto` ok e CONFERE (senão o guarda seria um carimbo de 'não')",
+       f"{v.veredito} {v.campos} {v.motivos}")
+
+# ---------------------------------------------------------------------------
+print("\n[8] PAR — o DIALETO do acento, medido no motor que o aplica (§9.4)")
+EXCLUSAO_COM = ("Riscos Excluídos: danos por inundação ou alagamento decorrente "
+                "de transbordamento de rios")
+EXCLUSAO_SEM = ("Riscos Excluidos: danos por inundacao ou alagamento decorrente "
+                "de transbordamento de rios")
+for rotulo, frase in (("COM acento (o que o fitz devolve)", EXCLUSAO_COM),
+                      ("SEM acento (o que o gabarito guardou)", EXCLUSAO_SEM)):
+    pag = _lidas(_pdf_com({1: "COBERTURA ADICIONAL\nVendaval, Furacão, Ciclone, "
+                              "Tornado e Granizo\n" + frase}))
+    v = C.conferir_linha({"servico": "alagamento", "coberto": "nao", "pagina": 1,
+                          "produto": "Allianz Residência", "plano": "Essencial",
+                          "trecho": frase}, pag, ["Essencial"])
+    checar(v.campos["coberto"] == C.DIVERGE_CAMPO,
+           "a exclusão de risco é pega %s" % rotulo,
+           f"{v.veredito} {v.campos} {v.motivos}")
+
+import re as _re  # noqa: E402
+import app.services.knowledge.assistance_plans_extractor as EXT  # noqa: E402
+
+#: 🔴 A MEDIÇÃO QUE PROVA O DIALETO, e por que ela virou uma LITERAL.
+#:
+#: 📊 20/09/2026, o padrão em produção era `risco[s]?\s+excluid`. Sobre a frase
+#: ACENTUADA que o `fitz` devolve ele dá **ZERO** — 'í' não é 'i' — e era isso
+#: que fazia a MESMA frase receber CONFERE com acento e DIVERGE sem.
+#:
+#: ⚠️ Enquanto este teste era escrito, o Builder 1 corrigiu o padrão em
+#: produção para `exclu[ií]d`. CLAUDE.md §9.3: quando o fato muda, o teste muda
+#: com ele **e a lição migra em vez de morrer**. A forma histórica vira uma
+#: literal aqui — ela continua provando por que a régua `_para_leitura` existe,
+#: e continua conseguindo ficar vermelha.
+_PADRAO_HISTORICO = _re.compile(r"risco[s]?\s+excluid", _re.IGNORECASE)
+
+checar(_PADRAO_HISTORICO.search(EXCLUSAO_COM) is None,
+       "🔴 o padrão HISTÓRICO (`risco[s]?\\s+excluid`) dá ZERO sobre a frase "
+       "ACENTUADA — é a medição que obriga a régua a existir",
+       repr(EXCLUSAO_COM[:40]))
+checar(_PADRAO_HISTORICO.search(EXCLUSAO_SEM) is not None,
+       "🔴 CONTROLE: e casa sobre a frase SEM acento — o padrão não estava "
+       "quebrado, estava no dialeto errado")
+checar(_PADRAO_HISTORICO.search(C._para_leitura(EXCLUSAO_COM)) is not None,
+       "e, passando pela régua `_para_leitura`, o MESMO padrão histórico casa "
+       "nas duas — a régua é o conserto, não o padrão")
+checar(EXT._E_EXCLUSAO_DE_RISCO.search(C._para_leitura(EXCLUSAO_COM)) is not None
+       and EXT._E_EXCLUSAO_DE_RISCO.search(C._para_leitura(EXCLUSAO_SEM)) is not None,
+       "e o padrão de PRODUÇÃO, sob a régua, casa nos dois dialetos")
+
+# ---------------------------------------------------------------------------
+print("\n[9] PAR — a REGRA DO SELO: não se carimba o que não se conferiu")
+SEM_TRECHO = {"servico": "pane_seca", "coberto": "sim", "pagina": 1,
+              "produto": "HDI Auto Básico", "plano": "Essencial"}
+v = C.conferir_linha(SEM_TRECHO, P_UM, ANCORA_HDI)
+checar(v.veredito == C.NAO_CONSEGUI and v.campos["trecho"] == C.NAO_AVALIADO,
+       "📊 linha SEM trecho (as 39 da fila real são assim) -> NAO_CONSEGUI, "
+       "nunca CONFERE: ela nunca foi conferida contra página nenhuma",
+       f"{v.veredito} {v.campos}")
+checar(C.conferir_linha(dict(SEM_TRECHO, trecho="Pane Seca: Até R$ 100,00 por "
+                             "evento e R$ 200,00 por Vigência"),
+                        P_UM, ANCORA_HDI).veredito == C.CONFERE,
+       "🔴 CONTROLE OPOSTO: a MESMA linha COM o trecho -> CONFERE "
+       "(o selo existe, só não é de graça)")
+
+# ---------------------------------------------------------------------------
+print("\n[10] 🔴 CONTROLE DO GATE — um conferente burro TEM de reprovar")
 GAB = json.load(open(GABARITO, encoding="utf-8"))["linhas"]
 
 
@@ -279,7 +447,7 @@ checar(C.concorda_no_campo("condicao", C.Veredito(C.DIVERGE, {}, [], 1)) is None
        "(fora do denominador), nunca `False` (dentro, como erro)")
 
 # ---------------------------------------------------------------------------
-print("\n[6] 🔴 MUTAÇÃO — a régua da leitura é o que faz o fio funcionar")
+print("\n[11] 🔴 MUTAÇÃO — a régua da leitura é o que faz o fio funcionar")
 _guardada = C._para_leitura
 try:
     C._para_leitura = lambda t: B.normalizar_trecho(t).lower()  # sem tirar acento
