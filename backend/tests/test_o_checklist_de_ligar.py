@@ -85,6 +85,14 @@ def _com(**campos):
     return h
 
 
+def _sem_chave(chave):
+    """A captura real SEM uma chave — o `/health` de um backend mais velho."""
+    h = _health_tudo_aberto()
+    h["codigo"].pop(chave, None)
+    h.pop(chave, None)
+    return h
+
+
 def _sem_dict(chave, valor):
     """A captura real com UMA chave de topo trocada (a forma STRING)."""
     h = _health_tudo_aberto()
@@ -127,8 +135,11 @@ class Motores:
                           "recusa": None})
 
     def canal(self, cid):
+        # 📊 A forma REAL medida em 20/09/2026 nas duas corretoras do piloto:
+        # provider `evolution-go`, purpose `observer`, `connected`.
         return self._pad(self.canais, "canal:" + cid,
-                         [{"channel_status": "connected", "is_active": True}])
+                         [{"channel_status": "connected", "is_active": True,
+                           "provider": "evolution-go", "purpose": "observer"}])
 
     async def telefones_da_casa(self, cid):
         return self._pad(self.casa, "casa:" + cid, 8)
@@ -138,11 +149,11 @@ class Motores:
                          [{"id": "a1-" + cid, "is_active": False}])
 
 
-def rodar(**k):
+def rodar(modo=None, nomes=("Resulta Seguros", "AutoFleet"), **k):
     """Chama o script REAL e devolve `(saida, exit_code)`."""
     linhas = []
-    codigo = CHK.checklist(("Resulta Seguros", "AutoFleet"),
-                           motores=Motores(**k), digital=DIGITAL,
+    codigo = CHK.checklist(nomes, motores=Motores(**k), digital=DIGITAL,
+                           modo=modo or CHK.MODO_PILOTO,
                            escrever=linhas.append)
     return "\n".join(linhas), codigo
 
@@ -164,8 +175,9 @@ AS_SETE = [
     ("2 destino", dict(destinos={"destino:id-resulta":
                                  {"destino": "", "fonte": "", "recusa": None}}),
      "Não há para onde o agente pedir ajuda"),
-    ("3 canal",   dict(canais={"canal:id-resulta":
-                               [{"channel_status": "disconnected", "is_active": True}]}),
+    ("3 canal",   dict(canais={"canal:id-resulta": [
+        {"channel_status": "disconnected", "is_active": True,
+         "provider": "evolution-go", "purpose": "attendance"}]}),
      "não está conectado"),
     ("4 casa",    dict(casa={"casa:id-resulta": 0}),
      "Nenhum telefone da equipe"),
@@ -240,8 +252,9 @@ check("3: a contagem de telefones da casa PODE aparecer (e aparece)",
 # ===========================================================================
 print("\n[4] ISOLAMENTO — a trava de uma corretora nao vira a da outra")
 # ===========================================================================
-s, c = rodar(canais={"canal:id-resulta":
-                     [{"channel_status": "disconnected", "is_active": True}]})
+s, c = rodar(canais={"canal:id-resulta": [
+    {"channel_status": "disconnected", "is_active": True,
+     "provider": "evolution-go", "purpose": "attendance"}]})
 bloco_r = s.split("Resulta Seguros")[1].split("AutoFleet")[0]
 bloco_a = s.split("AutoFleet")[1]
 check("4: a Resulta aparece com o WhatsApp desconectado",
@@ -250,7 +263,8 @@ check("4: e a AutoFleet NAO herda a trava da Resulta",
       "não está conectado" not in bloco_a and "está conectado" in bloco_a, bloco_a)
 check("4 CONTROLE: invertendo o dublê, quem trava e a AutoFleet",
       "não está conectado" in rodar(canais={"canal:id-autofleet": [
-          {"channel_status": "close", "is_active": True}]})[0]
+          {"channel_status": "close", "is_active": True,
+           "provider": "evolution-go", "purpose": "attendance"}]})[0]
       .split("AutoFleet")[1])
 
 # ===========================================================================
@@ -276,6 +290,100 @@ check("6: o script ainda expoe conferir() e SERVICOS, intactos",
       and CHK.SERVICOS[0][0] == "portal-worker")
 check("6: e o /health do checklist e o MESMO do smith-api",
       CHK.SAUDE_DA_API == CHK.SERVICOS[1][1], CHK.SAUDE_DA_API)
+
+# ===========================================================================
+print("\n[8] A ALLOWLIST DE ENTRADA — e ela depende do MODO da rodada")
+# ===========================================================================
+# 🔴 B5 do red team: `allowlist_ativa` nunca era lido. Com a allowlist ativa no
+# piloto real o produto descarta todo segurado fora da lista — e o piloto de 3
+# dias mediria SILÊNCIO. ⚠️ A MESMA configuração é o que se QUER num canário.
+_ATIVA = dict(allowlist_ativa=True, allowlist_tamanho=1)
+_VAZIA = dict(allowlist_ativa=False, allowlist_tamanho=0)
+
+s, c = rodar(health=_com(**_ATIVA))
+check("8: PILOTO com allowlist ativa -> NAO PODE LIGAR e exit 1",
+      c == 1 and "NAO PODE LIGAR" in s, (c, s[-200:]))
+check("8: e a frase diz o que acontece com o segurado, em lingua de gente",
+      "todos os outros segurados seriam ignorados" in s
+      and "Só 1 número(s)" in s, s[:900])
+check("8 CONTROLE: o MESMO /health com a lista vazia libera",
+      rodar(health=_com(**_VAZIA))[1] == 0)
+
+s, c = rodar(modo=CHK.MODO_CANARIO, health=_com(**_ATIVA))
+check("8: CANARIO com allowlist ativa -> PODE LIGAR", c == 0, (c, s[-200:]))
+s, c = rodar(modo=CHK.MODO_CANARIO, health=_com(**_VAZIA))
+check("8: CANARIO com a lista VAZIA reprova (o contrario do piloto)",
+      c == 1 and "seria atendido no meio do teste" in s, (c, s[-400:]))
+check("8 O PAR, LADO A LADO: a mesma configuracao, vereditos OPOSTOS por modo",
+      rodar(health=_com(**_ATIVA))[1] == 1
+      and rodar(modo=CHK.MODO_CANARIO, health=_com(**_ATIVA))[1] == 0)
+
+# ⛔ fail-open medido pelo red team: `None` e o caminho de ERRO de main.py:754
+for rotulo, h in (("None (caminho de erro do /health)",
+                   _com(allowlist_ativa=None, allowlist_tamanho=None)),
+                  ("chave ausente (backend velho)", _sem_chave("allowlist_ativa"))):
+    for modo in (CHK.MODO_PILOTO, CHK.MODO_CANARIO):
+        s, c = rodar(modo=modo, health=h)
+        check(f"8: allowlist {rotulo} -> NAO CONFERIDA, reprova em {modo}",
+              c == 1 and "Não deu para saber quem consegue falar" in s, (c, s[:600]))
+check("8: ⛔ a saida nunca mostra um numero da allowlist, so a CONTAGEM",
+      not _TEL.search(rodar(health=_com(allowlist_ativa=True,
+                                        allowlist_tamanho=3))[0]))
+
+# ===========================================================================
+print("\n[9] OS OUTROS ACHADOS DO RED TEAM")
+# ===========================================================================
+# (a) peça que NAO SE ANUNCIA nao e peça saudavel
+for peca in ("redis", "qdrant", "storage", "database_async"):
+    s, c = rodar(health=_sem_chave(peca))
+    check(f"9a: /health sem a chave {peca} -> NAO CONFERIDA, nao ABERTA",
+          c == 1 and "não contou nada sobre" in s and peca in s, (c, s[:400]))
+
+# (b) valor que nao e o saudavel, mesmo sem a palavra "error"
+for valor in ("unavailable: timeout", "degraded", "reconnecting"):
+    s, c = rodar(health=_sem_dict("database_async", valor))
+    check(f"9b: database_async={valor!r} REPROVA (sem a palavra 'error')",
+          c == 1 and "alguma peça dele está com problema" in s, (c, s[:400]))
+check("9b CONTROLE: e o valor saudavel da captura REAL continua passando",
+      HEALTH_REAL.get("database_async") == CHK.BANCO_SAUDAVEL and rodar()[1] == 0,
+      HEALTH_REAL.get("database_async"))
+
+# (c) /health que nao e um objeto legivel: frase de gente, nunca AttributeError
+for rotulo, corpo in (("lista", [1, 2, 3]), ("HTML de erro 500", "<html>502</html>"),
+                      ("numero", 500)):
+    try:
+        s, c = rodar(health=corpo)
+        ok = c == 1 and "não de um jeito que eu consiga ler" in s
+    except Exception as e:  # noqa: BLE001
+        s, ok = f"{type(e).__name__}: {e}", False
+    check(f"9c: /health como {rotulo} -> frase legivel e NAO PODE", ok, s[:300])
+h = _health_tudo_aberto(); h["codigo"] = "indisponivel"
+s, c = rodar(health=h)
+check("9c: `codigo` vindo como STRING nao derruba o checklist",
+      c == 1 and "NAO PODE LIGAR" in s, (c, s[:300]))
+
+# (d) integracao ativa que NAO e de WhatsApp nao responde pela trava do WhatsApp
+s, c = rodar(canais={"canal:id-resulta": [
+    {"channel_status": None, "is_active": True, "provider": "hubspot"},
+    {"channel_status": "disconnected", "is_active": True,
+     "provider": "evolution-go", "purpose": "attendance"}]})
+check("9d: com o WhatsApp desconectado, outro conector NAO salva a trava",
+      c == 1 and "não está conectado" in s, (c, s[:700]))
+s, c = rodar(canais={"canal:id-resulta": [
+    {"channel_status": None, "is_active": True, "provider": "hubspot"}]})
+check("9d: so conector desconhecido -> NAO CONFERIDA, nunca ABERTA",
+      c == 1 and "Não deu para conferir se o WhatsApp" in s, (c, s[:700]))
+check("9d CONTROLE: o NULL de um provedor de WhatsApp CONTINUA valendo como vivo",
+      rodar(canais={"canal:id-resulta": [
+          {"channel_status": None, "is_active": True,
+           "provider": "evolution-go", "purpose": "attendance"}]})[1] == 0)
+
+# (e) corretora que nao existe: erro de USO (2), nao trava (1)
+s, c = rodar(nomes=("Resulta Seguros", "Corretora Que Nao Existe"))
+check("9e: corretora inexistente -> exit 2 com frase clara",
+      c == 2 and "Não encontrei esta(s) corretora(s) pelo nome" in s, (c, s[-300:]))
+check("9e CONTROLE: banco FORA do ar continua 1, nao 2 (sao coisas diferentes)",
+      rodar(explode={"empresas"})[1] == 1)
 
 # ===========================================================================
 print("\n[7] O SINAL NOVO DO /health — a FUNCAO DE VERDADE, com env de verdade")

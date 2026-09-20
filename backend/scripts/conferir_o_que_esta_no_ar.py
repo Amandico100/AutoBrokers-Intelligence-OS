@@ -144,6 +144,14 @@ def avaliar(fatos: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     travas: List[Dict[str, Any]] = []
     saude = fatos.get("health")
+    # 🔴 UM `/health` QUE NÃO É UM OBJETO NÃO PODE DERRUBAR O CHECKLIST.
+    # 📊 Achado [B-?] do red team: um 500 com HTML, uma lista, ou `codigo`
+    # vindo como string faziam `avaliar` levantar `AttributeError` — e um
+    # checklist que EXPLODE não diz nem "pode" nem "não pode". A frase tem de
+    # ser legível, e o veredito tem de ser NÃO PODE.
+    ilegivel = saude is not None and not isinstance(saude, dict)
+
+    ruins, ausentes = _infra(saude if isinstance(saude, dict) else {})
 
     # ---- ① o que está no ar é o que está no repositório --------------------
     if saude is None:
@@ -151,12 +159,25 @@ def avaliar(fatos: Dict[str, Any]) -> List[Dict[str, Any]]:
             "no_ar", FECHADA,
             "O sistema não respondeu. Enquanto ele não responder, não há como "
             "ligar nada (GET /health)."))
-    elif str(saude.get("status") or "").lower() != "healthy" or _componentes_ruins(saude):
+    elif ilegivel:
+        travas.append(_trava(
+            "no_ar", FECHADA,
+            "O sistema respondeu, mas não de um jeito que eu consiga ler. "
+            "Pode ser uma página de erro no lugar da resposta (GET /health)."))
+    elif str(saude.get("status") or "").lower() != "healthy" or ruins:
         travas.append(_trava(
             "no_ar", FECHADA,
             "O sistema respondeu, mas alguma peça dele está com problema: "
-            + ", ".join(_componentes_ruins(saude) or ["status diferente de ok"])
+            + ", ".join(ruins or ["o próprio sistema se declarou fora do ar"])
             + " (/health)."))
+    elif ausentes:
+        # ⛔ NUNCA FAIL-OPEN. 📊 Achado do red team: um `/health` sem as chaves
+        # `redis`/`qdrant`/`storage` passava como ABERTO — "não veio" virava
+        # "está bem". Peça que não se anuncia é peça que não foi conferida.
+        travas.append(_trava(
+            "no_ar", NAO_CONFERIDA,
+            "O sistema respondeu, mas não contou nada sobre: "
+            + ", ".join(ausentes) + " (/health)."))
     elif fatos.get("digital_bate") is None:
         travas.append(_trava(
             "no_ar", NAO_CONFERIDA,
@@ -172,8 +193,14 @@ def avaliar(fatos: Dict[str, Any]) -> List[Dict[str, Any]]:
             "no_ar", ABERTA,
             "O sistema está no ar e rodando o código do seu repositório."))
 
-    # ---- ⑤ quem escapa do silêncio, e quem pode escrever para o produto ----
+    # ---- ⑤ quem escapa do silêncio da janela --------------------------------
     travas.append(_avaliar_excecoes(saude))
+
+    # ---- ⑤b quem consegue escrever PARA o produto ---------------------------
+    # 🔴 Era uma promessa que o código não cumpria: o comentário dizia "e quem
+    # pode escrever para o produto" e `allowlist_ativa` não era lido em lugar
+    # nenhum. Agora é uma trava com nome próprio, e ela depende do MODO.
+    travas.append(_avaliar_allowlist(saude, str(fatos.get("modo") or MODO_PILOTO)))
 
     # ---- ⑦ o ambiente não está travando o acionamento ----------------------
     travas.append(_avaliar_flags(saude))
@@ -184,34 +211,114 @@ def avaliar(fatos: Dict[str, Any]) -> List[Dict[str, Any]]:
     return travas
 
 
-def _componentes_ruins(saude: Dict[str, Any]) -> List[str]:
-    """Os componentes de infraestrutura que o `/health` diz estarem doentes.
+#: 📊 O valor SAUDÁVEL dos bancos, lido na captura real de 20/09/2026
+#: (`main.py:1007`/`:1017` escrevem exatamente isto). 🔴 A comparação é por
+#: IGUALDADE com ele, nunca por procurar a palavra "error": achado do red team
+#: — `database_async: "unavailable: timeout"` não tem "error" nem "disconnect"
+#: dentro, e passava como saudável. Nomear o que é BOM fecha a porta; tentar
+#: listar tudo que é ruim deixa sempre uma frase de fora.
+BANCO_SAUDAVEL = "connected"
 
-    🔴 ⚠️ **DUAS FORMAS, e ler só uma era fail-open.** 📊 Medido na captura de
-    20/09/2026 (`tests/corpus/piloto/health_real_2026-09-20.json`): os bancos
-    chegam como STRING (`"connected"` / `"error: …"`) e Redis, Qdrant e MinIO
-    chegam como DICIONÁRIO (`{"conectado": true, …}`). A primeira versão desta
-    função só procurava `"error"` dentro de uma string — com o Redis caído ela
-    olharia `str({'conectado': False, …})`, não acharia a palavra `error` e
-    diria "tudo bem".
 
-    ⚠️ E o `status` de topo NÃO cobre isso: `main.py:1048` só escreve
-    `"unhealthy"` quando o banco SÍNCRONO cai. Redis, Qdrant e MinIO podem
-    estar fora com o `/health` dizendo `healthy`.
+def _infra(saude: Dict[str, Any]) -> tuple:
+    """`(peças doentes, peças que não se anunciaram)` — nesta ordem.
+
+    ⛔ As duas listas são separadas de propósito: doente FECHA a trava, e
+    ausente deixa a trava NÃO CONFERIDA. Misturá-las seria dizer "está tudo
+    bem" para um `/health` que simplesmente não falou (fail-open), ou acusar
+    de defeito um backend que só é mais velho.
     """
-    ruins = []
+    ruins, ausentes = [], []
     for chave in ("database_sync", "database_async", "redis", "qdrant", "storage"):
-        valor = saude.get(chave)
-        if valor is None:
+        if chave not in saude or saude.get(chave) is None:
+            ausentes.append(chave)
             continue
+        valor = saude.get(chave)
         if isinstance(valor, dict):
             if valor.get("conectado") is not True:
                 ruins.append(chave)
-            continue
-        texto = str(valor).lower()
-        if texto and ("error" in texto or "disconnect" in texto):
+        elif str(valor).strip().lower() != BANCO_SAUDAVEL:
             ruins.append(chave)
-    return ruins
+    return ruins, ausentes
+
+
+# ⛔ `_componentes_ruins` foi ABSORVIDA por `_infra` (CLAUDE.md §5): duas
+# funções decidindo "esta peça está boa?" dariam vereditos diferentes no dia em
+# que só uma fosse consertada. A lição das DUAS FORMAS (string × dicionário)
+# mora agora no docstring de `_infra` e em `BANCO_SAUDAVEL`. 📊 Medido na
+# captura de 20/09/2026: os bancos chegam como STRING (`"connected"`) e Redis,
+# Qdrant e MinIO como DICIONÁRIO (`{"conectado": true, …}`). ⚠️ E o `status` de
+# topo não cobre nada disso: `main.py:1048` só escreve `"unhealthy"` quando o
+# banco SÍNCRONO cai.
+
+
+def _codigo(saude: Any) -> Dict[str, Any]:
+    """Os sinais do `/health`, e `{}` quando não há sinal LEGÍVEL.
+
+    ⛔ `(saude or {}).get("codigo") or {}` não bastava: `codigo` vindo como
+    STRING é truthy, e a próxima linha explodia num `AttributeError` dentro do
+    `in`. Um checklist que explode não diz nem "pode" nem "não pode".
+    """
+    if not isinstance(saude, dict):
+        return {}
+    bloco = saude.get("codigo")
+    return bloco if isinstance(bloco, dict) else {}
+
+
+#: 🔴 OS DOIS MODOS, e a decisão escrita ao lado deles.
+#:
+#: `ATTENDANT_INBOUND_ALLOWLIST` decide QUEM consegue escrever para o produto
+#: (`whatsapp/channel_security.py:61`): configurada, o agente só responde aos
+#: números listados e **descarta o resto em silêncio**. A mesma configuração é
+#: o oposto de certo nos dois momentos do piloto:
+#:
+#:   canário  o Founder quer falar SÓ com o número de teste. Allowlist vazia
+#:            aqui é o defeito: o produto responderia a segurado de verdade
+#:            numa rodada que era para ser de laboratório.
+#:   piloto   os segurados precisam chegar. Allowlist ativa aqui é o defeito:
+#:            📊 o piloto de 3 dias mediria SILÊNCIO e ninguém saberia por quê
+#:            — "ninguém escreveu" é indistinguível de um dia fraco.
+#:
+#: ⚠️ Por isso o modo é uma ESCOLHA declarada no comando, nunca um palpite do
+#: script: os dois estados são legítimos, e só quem roda sabe qual é a rodada.
+MODO_PILOTO = "piloto"
+MODO_CANARIO = "canario"
+
+
+def _avaliar_allowlist(saude: Optional[Dict[str, Any]], modo: str) -> Dict[str, Any]:
+    """Quem consegue escrever para o produto — e isso depende do MODO."""
+    codigo = _codigo(saude)
+    ativa = codigo.get("allowlist_ativa")
+    tamanho = codigo.get("allowlist_tamanho")
+    if "allowlist_ativa" not in codigo or ativa is None:
+        # ⛔ `None` é o caminho de ERRO de `main.py:754`. Fail-open aqui seria
+        # liberar o piloto sem saber se o produto está escutando alguém.
+        return _trava("allowlist", NAO_CONFERIDA,
+                      "Não deu para saber quem consegue falar com o agente "
+                      "(ATTENDANT_INBOUND_ALLOWLIST).")
+    quantos = int(tamanho) if isinstance(tamanho, int) else None
+
+    if modo == MODO_CANARIO:
+        if not ativa:
+            return _trava("allowlist", FECHADA,
+                          "Você pediu uma rodada de teste, mas qualquer pessoa "
+                          "consegue falar com o agente: um segurado de verdade "
+                          "seria atendido no meio do teste. Deixe só os números "
+                          "de teste na lista (ATTENDANT_INBOUND_ALLOWLIST).")
+        return _trava("allowlist", ABERTA,
+                      f"Rodada de teste: só {quantos if quantos is not None else 'os'} "
+                      "número(s) da lista falam com o agente "
+                      "(ATTENDANT_INBOUND_ALLOWLIST).")
+
+    if ativa:
+        return _trava("allowlist", FECHADA,
+                      f"Só {quantos if quantos is not None else 'alguns'} "
+                      "número(s) conseguem falar com o agente; todos os outros "
+                      "segurados seriam ignorados em silêncio. Esvazie a lista "
+                      "antes do piloto real (ATTENDANT_INBOUND_ALLOWLIST).")
+    return _trava("allowlist", ABERTA,
+                  "Qualquer segurado consegue falar com o agente — ninguém é "
+                  "descartado na entrada.")
 
 
 def _avaliar_excecoes(saude: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -220,7 +327,7 @@ def _avaliar_excecoes(saude: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     🔴 É a trava mais perigosa do piloto: um número de segurado nessa lista faz
     o agente falar por cima da atendente (`o_fim_do_atendimento.py:1440`).
     """
-    codigo = (saude or {}).get("codigo") or {}
+    codigo = _codigo(saude)
     if "excecoes_da_janela_tamanho" not in codigo:
         return _trava(
             "excecoes", NAO_CONFERIDA,
@@ -259,7 +366,7 @@ def _avaliar_flags(saude: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     mudo, e 📊 foi assim que 44 h (AutoFleet) e 68 h (Resulta) passaram sem
     ninguém notar. Fica na trava, com a frase do que ele realmente significa.
     """
-    codigo = (saude or {}).get("codigo") or {}
+    codigo = _codigo(saude)
     if not codigo:
         return _trava("flags", NAO_CONFERIDA,
                       "Não deu para conferir os interruptores do ambiente "
@@ -421,8 +528,10 @@ class MotoresReais:
         return await resolver_destino_de_suporte(company_id)
 
     def canal(self, company_id: str) -> List[Dict[str, Any]]:
+        # ⚠️ `provider` vem junto: sem ele, uma integração ativa que NÃO é de
+        # WhatsApp responderia pela trava do WhatsApp (achado do red team).
         return (self._db().client.table("integrations")
-                .select("channel_status, is_active")
+                .select("channel_status, is_active, provider, purpose")
                 .eq("company_id", company_id)      # 🔴 CLAUDE.md §7
                 .eq("is_active", True).limit(20).execute().data or [])
 
@@ -442,31 +551,46 @@ class MotoresReais:
                 .eq("agent_role", "attendance").limit(5).execute().data or [])
 
 
-async def coletar(nomes, motores=None, digital=None) -> Dict[str, Any]:
+#: 📊 Os provedores de WhatsApp vivos em `integrations`, medidos em 20/09/2026
+#: sobre 200 linhas: `evolution-go` (5), `evolution` (1), `z-api` (1) — e
+#: nenhum outro tipo de integração existe hoje na tabela. Os três nomes vêm do
+#: código que PAREIA o canal (`whatsapp/pairing_orchestrator.py:621`,
+#: `whatsapp/grupos.py:127`).
+PROVEDORES_DE_WHATSAPP = {"evolution-go", "evolution", "z-api"}
+
+
+async def coletar(nomes, motores=None, digital=None, modo=MODO_PILOTO) -> Dict[str, Any]:
     """Lê o mundo e devolve FATOS. Nunca levanta: o que não pôde ser lido vira
     `None`, e `None` reprova em `avaliar`."""
     from app.api.porteiro_do_agente import CANAL_FORA_DO_AR
 
     m = motores or MotoresReais()
-    fatos: Dict[str, Any] = {"health": None, "digital_bate": None, "corretoras": []}
+    fatos: Dict[str, Any] = {"health": None, "digital_bate": None,
+                             "corretoras": [], "modo": modo, "desconhecidas": []}
 
     fatos["health"] = m.ler_health()
-    if fatos["health"] is not None:
-        remoto = ((fatos["health"].get("codigo") or {}).get("code_fingerprint") or "")
+    if isinstance(fatos["health"], dict):
+        remoto = str(_codigo(fatos["health"]).get("code_fingerprint") or "")
         local = digital if digital is not None else impressao_do_diretorio(
             RAIZ / "backend/app")[0]
         fatos["digital_bate"] = (remoto == local) if remoto and remoto not in (
             "ausente", "indisponivel") else None
 
+    # ⚠️ DUAS COISAS DIFERENTES, e o código de saída as separa: a corretora que
+    # o banco respondeu NÃO TER (nome errado no comando → saída 2, erro de uso)
+    # e a corretora que não pôde ser lida (banco fora → saída 1, trava). Juntá-
+    # las mandaria o Founder caçar um nome errado durante uma indisponibilidade.
+    leu = True
     try:
         empresas = m.empresas(nomes)
     except Exception:  # noqa: BLE001
-        empresas = []
+        empresas, leu = [], False
     achadas = {e["nome"] for e in empresas}
     for nome in nomes:
         if nome not in achadas:
-            # Corretora que o banco não devolveu: TUDO não conferido.
             fatos["corretoras"].append({"nome": nome})
+            if leu:
+                fatos["desconhecidas"].append(nome)
 
     for e in empresas:
         c: Dict[str, Any] = {"nome": e["nome"]}
@@ -478,13 +602,27 @@ async def coletar(nomes, motores=None, digital=None) -> Dict[str, Any]:
             c["destino"] = None
         try:
             linhas = m.canal(e["id"])
+            # 🔴 SÓ AS LINHAS DE WHATSAPP. 📊 Achado do red team: o porteiro
+            # (`porteiro_do_agente.py:98`) aceita QUALQUER integração ativa, e
+            # uma linha ativa de outro tipo com `channel_status` nulo passaria
+            # pela assimetria do NULL e diria "WhatsApp conectado" com o
+            # WhatsApp `disconnected`. A assimetria do NULL continua — mas só
+            # vale para uma linha que É de WhatsApp.
+            wa = [l for l in linhas
+                  if str((l or {}).get("provider") or "").strip().lower()
+                  in PROVEDORES_DE_WHATSAPP]
             estados = {str((l or {}).get("channel_status") or "").strip().lower()
-                       for l in linhas}
+                       for l in wa}
             # ⚠️ A MESMA lista do porteiro, importada e não copiada. O vazio
             # conta como VIVO de propósito: `channel_status` nulo é canal
             # antigo, não canal caído (`porteiro_do_agente.py:110`).
-            c["canal"] = bool(linhas) and bool(
-                [x for x in estados if x not in CANAL_FORA_DO_AR])
+            if not wa and linhas:
+                # Há canal ativo, mas de um provedor que eu não reconheço como
+                # WhatsApp. ⛔ Não afirmo nem que está, nem que não está.
+                c["canal"] = None
+            else:
+                c["canal"] = bool(wa) and bool(
+                    [x for x in estados if x not in CANAL_FORA_DO_AR])
         except Exception:  # noqa: BLE001
             c["canal"] = None
         try:
@@ -538,11 +676,22 @@ def imprimir(travas: List[Dict[str, Any]], escrever: Callable[[str], None] = pri
     return pode
 
 
-def checklist(nomes, motores=None, digital=None,
+def checklist(nomes, motores=None, digital=None, modo=MODO_PILOTO,
               escrever: Callable[[str], None] = print) -> int:
-    """O FIO inteiro, em uma linha: mundo -> fatos -> travas -> texto -> saída."""
-    fatos = asyncio.run(coletar(nomes, motores=motores, digital=digital))
-    return 0 if imprimir(avaliar(fatos), escrever) else 1
+    """O FIO inteiro, em uma linha: mundo -> fatos -> travas -> texto -> saída.
+
+    `0` pode ligar · `1` alguma trava fecha (ou não pôde ser conferida) ·
+    `2` o comando pediu uma corretora que não existe — erro de uso, não trava.
+    """
+    fatos = asyncio.run(coletar(nomes, motores=motores, digital=digital, modo=modo))
+    pode = imprimir(avaliar(fatos), escrever)
+    if fatos.get("desconhecidas"):
+        escrever("")
+        escrever("Não encontrei esta(s) corretora(s) pelo nome: "
+                 + ", ".join(fatos["desconhecidas"])
+                 + ". Confira o nome e rode de novo.")
+        return 2
+    return 0 if pode else 1
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -551,12 +700,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--ligar", action="store_true",
                    help="dá para ligar o agente hoje?")
     p.add_argument("--corretora", action="append", default=None)
+    p.add_argument("--modo", choices=(MODO_PILOTO, MODO_CANARIO),
+                   default=MODO_PILOTO,
+                   help="piloto: os segurados precisam chegar (padrão) · "
+                        "canario: só os números de teste devem chegar")
     args = p.parse_args(argv if argv is not None else sys.argv[1:])
 
     if args.ligar:
         nomes = tuple(args.corretora or CORRETORAS_DO_PILOTO)
-        print("CHECKLIST DE LIGAR — nada aqui envia, liga ou escreve.")
-        return checklist(nomes)
+        print(f"CHECKLIST DE LIGAR ({args.modo}) — nada aqui envia, liga ou escreve.")
+        return checklist(nomes, modo=args.modo)
 
     # ⛔ O modo antigo (P-189) continua EXATAMENTE como era.
     alvo = args.servico
