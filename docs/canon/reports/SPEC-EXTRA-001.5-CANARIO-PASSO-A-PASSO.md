@@ -229,3 +229,87 @@ incompleto. Se aparecer **mais** que isso, me avise.
 · Zurich, Alfa e as outras sem nenhuma linha .......... não há documento no acervo
 · as 8 linhas de táxi da Azul na fila ................. retidas de propósito (P-E00152-08)
 ```
+
+---
+
+# O PILOTO MEDIDO — EXTRA-001.7 (3 dias com o agente ligado, e a régua no fim)
+
+> **Escrito em 20/09/2026.** Este é o roteiro que transforma as notas do diagnóstico (💭 atendimento 48 · chat 49, que
+> são palpite) em número medido. A máquina de medir está pronta; **os 3 dias são seus**.
+> Os dois comandos abaixo rodam no terminal, dentro de `backend/`. **Se preferir, peça no chat: "rode o checklist de
+> ligar" ou "rode a medição do piloto"** — eu rodo e te mostro a saída. Nenhum dos dois envia mensagem, liga agente
+> ou escreve no banco.
+
+## Passo P1 · Antes de ligar: o checklist (2 min)
+
+```
+cd backend
+python scripts/conferir_o_que_esta_no_ar.py --ligar
+```
+
+Ele responde **PODE LIGAR** ou **NÃO PODE LIGAR**, com uma linha por trava. 🔴 O que ele não consegue conferir
+conta como trava fechada — de propósito.
+
+📊 **O que ele disse em 20/09 (é o que você precisa resolver, nesta ordem):**
+
+| trava | o que fazer |
+|---|---|
+| **Não há para onde o agente pedir ajuda** (Resulta e AutoFleet) | 📊 os dois grupos de suporte estão **desativados desde 10/09**. Painel → Personalização → Suporte humano → reativar o grupo da equipe, **em cada corretora** (troque de corretora no topo antes). Confira que o grupo da AutoFleet está dentro da AutoFleet, não da Resulta |
+| **O sistema no ar está com um código diferente do repositório** | EasyPanel → **Implantar** em `smith-api`, `smith-worker`, `smith-web` |
+| **O sistema ainda não informa quem escapa do silêncio** | some sozinha depois do Implantar. Se depois dele aparecer "há N número(s) fora da lista de teste", tire esses números de `JANELA_SILENCIO_EXCECOES` — senão o agente fala por cima da atendente nessas conversas |
+
+**Quer fazer um ensaio só com o aparelho de teste antes?** Ponha o número de teste em `ATTENDANT_INBOUND_ALLOWLIST`,
+Implante, e rode com `--modo canario` (nesse modo a lista preenchida é o esperado). 🔴 **Antes do piloto de verdade,
+esvazie a lista** e rode sem `--modo`: com ela preenchida, todo segurado que não está na lista é ignorado em silêncio,
+e os 3 dias mediriam o vazio.
+
+**Só ligue com "PODE LIGAR" na tela.** Ligar = o botão **Ligar agente** do painel, em cada corretora.
+
+## Passo P2 · Os 3 dias
+
+Deixe o agente ligado **3 dias úteis inteiros** nas duas corretoras. Combine com a Saionara e a Regina:
+
+```
+· quando o agente errar, NÃO desligue — assuma a conversa pelo celular (isso o cala naquela conversa) e anote
+· no fim de cada dia, 5 minutos: escolham 10 conversas do dia e respondam, para cada uma:
+     ele soou como gente?  (sim / mais ou menos / não)
+     ele devia ter falado e calou, ou devia ter calado e falou?  (não / sim: qual)
+     a apólice que ele usou era a certa, de primeira?  (sim / precisou corrigir / errou)
+```
+
+⚠️ Essas três perguntas são a **única** fonte, hoje, de três das seis notas do atendimento — o produto ainda não
+grava isso sozinho (pendência P-E0017-03). Sem a folha, essas três saem "NÃO AVALIADA" mesmo depois do piloto.
+
+## Passo P3 · Toda manhã: a medição do dia anterior (1 min)
+
+```
+cd backend
+python scripts/medir_o_piloto.py --de <1º dia do piloto> --ate <ontem> --formato markdown
+```
+
+Sai uma tabela por corretora, dia a dia — conversas que o agente atendeu, rajadas juntadas, acionamentos com
+protocolo, handoffs entregues, avisos ao grupo por tipo, silêncios por motivo — e, embaixo, **a régua**: a nota
+0–100 de cada dimensão, com o critério escrito ao lado e o palpite antigo para comparar. **Nenhum nome, telefone,
+placa ou apólice aparece: só contagem.**
+
+**O que esperar, e o que NÃO é defeito:**
+
+```
+· "NÃO AVALIADA — amostra insuficiente (2 de 5)" ..... é honesto: com menos de 5 casos a nota seria chute
+· "NÃO MENSURÁVEL" antes de 14/09 .................... antes disso o produto não marcava quem escreveu a resposta
+· "NÃO LIDO" numa célula ............................. o banco falhou naquela leitura; rode de novo. Nunca vira zero
+· a nota do bloco só aparece com a maioria das dimensões avaliada — de propósito
+· pedir até HOJE dá número que muda a cada hora ...... para número firme, peça até ontem
+```
+
+**O que anotar quando não bater:** se a tabela disser 0 conversas atendidas num dia em que você VIU o agente
+responder, me diga o dia e a corretora (não precisa do nome do segurado). É o tipo de erro que esta SPEC já pegou
+uma vez antes de publicar — a primeira versão contava 1 de cada 4 conversas.
+
+## Passo P4 · O veredito (no 4º dia)
+
+Rode a medição dos 3 dias inteiros e me mande a saída (ou peça que eu rode). O piloto **passou** se, nas duas
+corretoras: nenhuma dimensão medida ficou abaixo do palpite antigo · "aciona" tem pelo menos 5 casos e nota ≥ 70 ·
+"sabe pedir ajuda" ≥ 90 (pedido de ajuda que ninguém recebe é o pior defeito possível) · e a folha da Saionara e da
+Regina não tem "errou a apólice" em mais de 1 de cada 10. 💭 Esses cortes são proposta minha; você decide se valem
+(decisão D-E0017-03).
