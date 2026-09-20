@@ -756,6 +756,44 @@ def _sinais_do_codigo() -> dict:
         sinais["allowlist_descartes"] = None
         sinais["finalize_abre_de_verdade"] = None
 
+    # 🔴 AS EXCEÇÕES DA JANELA DE SILÊNCIO — EXTRA-001.7, 20/09/2026.
+    #
+    # `JANELA_SILENCIO_EXCECOES` lista os telefones que a janela de N dias NÃO
+    # cala (`o_fim_do_atendimento.py:1440`). É a trava mais perigosa do piloto e
+    # a única que **não tinha onde ser olhada**: 📊 medido em 20/09/2026, o
+    # `/health` de produção devolvia 41 chaves em `codigo` e nenhuma sobre esta
+    # lista. Um número de SEGURADO esquecido aí faz o robô falar por cima da
+    # atendente, e de fora não há sintoma nenhum.
+    #
+    # ⛔ Duas CONTAGENS, nunca um dígito (`CLAUDE.md` §13.3). E o casador é o
+    # MOTOR (`_variantes_do_telefone`), não uma comparação de string local:
+    # a lista aceita com/sem `55` e com/sem o nono dígito, e uma segunda regra
+    # aqui daria um veredito diferente do que a janela aplica de verdade.
+    try:
+        from app.services.o_fim_do_atendimento import (
+            _ENV_EXCECOES_DA_JANELA, _variantes_do_telefone)
+
+        def _lista(nome: str) -> list:
+            return [x for x in str(os.getenv(nome, "") or "").split(",") if x.strip()]
+
+        _excecoes = _lista(_ENV_EXCECOES_DA_JANELA)
+        # O conjunto de números de TESTE conhecidos deste ambiente: a allowlist
+        # do canário e o destino B do canário. Uma exceção que não está em
+        # nenhum dos dois é, por definição, um número que ninguém declarou como
+        # de teste — e é isso que o Founder precisa ver antes de ligar.
+        _teste = set()
+        for _nome in ("BILLING_CANARIO_ALLOWLIST", "CANARIO_TESTE_B"):
+            for _item in _lista(_nome):
+                _teste |= _variantes_do_telefone(_item)
+        sinais["excecoes_da_janela_tamanho"] = len(_excecoes)
+        sinais["excecoes_da_janela_fora_do_teste"] = len(
+            [e for e in _excecoes if not (_variantes_do_telefone(e) & _teste)])
+    except Exception:  # noqa: BLE001
+        # ⚠️ AS DUAS, e `None` — não `0`. Zero é "conferi e está limpo"; a
+        # ausência de conferência não pode se passar por lista vazia.
+        sinais["excecoes_da_janela_tamanho"] = None
+        sinais["excecoes_da_janela_fora_do_teste"] = None
+
     # O template do briefing existe no catálogo? Sem ele, o artefato morre em
     # chave estrangeira e o briefing fica em `pending` sem ninguém saber.
     try:
