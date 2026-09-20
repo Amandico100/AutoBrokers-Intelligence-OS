@@ -97,20 +97,301 @@ Regras:
 - `servico` SÓ pode ser uma destas chaves: {servicos}
 - `trecho` é copiado LITERALMENTE da página (sem reescrever, sem cortar palavra).
   Se você não consegue copiar a frase, não proponha a linha.
-- `plano` é o nome do pacote/plano como a página o chama. Se a página não nomeia
-  plano nenhum, use "{plano_padrao}" e `nivel` 1.
-- `nivel`: 1 é o mais básico; números maiores são planos mais completos.
+- `plano` TEM de ser um dos planos da CLÁUSULA DE PLANOS abaixo, copiado
+  literalmente. A página fala de um serviço sem dizer de qual plano? Não proponha
+  a linha — o plano errado é pior do que linha nenhuma.
+- `nivel`: 1 é o mais básico; números maiores são planos mais completos, na ordem
+  em que a cláusula de planos os lista.
 - `limite_valor` só com `limite_unidade`. Sem unidade, deixe os dois nulos e
   escreva o limite em `limite_texto`.
+- o limite só vale com o ESCOPO que o cabeçalho da coluna/linha dá ("por evento",
+  "por vigência", "por dia", "utilizações"). Sem escopo legível NESTA página,
+  deixe `limite_valor` e `limite_unidade` nulos.
 - Nada nesta página sobre assistência/cobertura → {"linhas": []}.
 - `coberto: "nao"` SÓ quando a página nega o serviço/cobertura EM SI ("não há
   cobertura para alagamento", "este plano não inclui carro reserva"). Uma
   EXCLUSÃO DE RISCO dentro de OUTRA cobertura ("riscos excluídos: inundação por
   transbordamento de rios", numa cláusula de Vendaval/Granizo) NÃO é um "não" do
   serviço: é `coberto: "condicionado"`, com a cláusula copiada em `condicao`.
+
+CLÁUSULA DE PLANOS deste documento (a âncora, lida na primeira passada):
+{ancora}
 """
 
+#: 🔴 NÃO É MAIS UM FALLBACK. 📊 19/09/2026: 60 das 81 linhas propostas pela onda
+#: 1 nasceram em "Plano único" — e 48 delas foram CORRIGIR ou RECUSAR. O nome
+#: continua aqui só para os testes e scripts que o nomeiam ao contar o estrago;
+#: nenhum caminho deste módulo o usa para batizar plano nenhum (unidade A).
 _PLANO_PADRAO = "Plano único"
+
+
+# ---------------------------------------------------------------------------
+# A · A CLÁUSULA DE PLANOS É A ÂNCORA, E VEM PRIMEIRO
+# ---------------------------------------------------------------------------
+@dataclass
+class Ancora:
+    """A cláusula que ENUMERA os planos do documento. Sem ela não se propõe.
+
+    📊 19/09/2026, o que a ausência dela custou: o manual **Bradesco Auto tem 9
+    planos** (118, 108, 113, 112, 106, 21, 41, 15, 16) e virou um só; a HDI tem a
+    Cláusula 2 (Essencial/Especial 1/Especial 2/VIP); a Tokio tem Básico/
+    Completo/Vip no item 9.5.9. Os três viraram *"Plano único"*, e a linha
+    passava a dizer do plano de todo mundo o que valia só para um.
+    """
+
+    planos: List[str]
+    pagina: int
+    clausula: str
+    trecho: str
+
+
+#: "Plano Vip", "Plano Básico", "Plano nº 118". O nome tem de começar com
+#: maiúscula ou dígito — senão "plano contratado" e "plano de assistência"
+#: entrariam como nomes de plano.
+#
+# ⚠️ CLAUDE.md §9.4 (dialeto): `re.IGNORECASE` NÃO serve aqui — a palavra
+# "plano" precisa casar em qualquer caixa, mas o NOME tem de começar com
+# maiúscula ou dígito. Com a flag global, "plano contratado pelo segurado"
+# entraria como plano chamado "contratado".
+_NOME_DE_PLANO = re.compile(
+    r"\b[Pp][Ll][Aa][Nn][Oo]s?[ \t]+(?:n[ºo°][ \t]*)?"
+    r"((?:[A-ZÁÂÃÀÉÊÍÓÔÕÚÜÇ][\wÁÂÃÀÉÊÍÓÔÕÚÜÇáâãàéêíóôõúüç]{1,18}|\d{1,4})"
+    r"(?:[ \t]+(?:[A-ZÁÂÃÀÉÊÍÓÔÕÚÜÇ][\wÁÂÃÀÉÊÍÓÔÕÚÜÇáâãàéêíóôõúüç]{1,18}|\d{1,3}))?)",
+)
+# ⚠️ `[ \t]`, nunca `\s`: 📊 o título *"9.5.9.1 Plano Completo"* seguido da linha
+# *"Hospedagem: R$100,00…"* virava um plano chamado "Completo Hospedagem" — o
+# `\s` atravessa a quebra de linha, e o nome do plano nunca atravessa.
+
+#: Palavras que vêm depois de "plano" e NÃO são nome de plano.
+_NAO_E_NOME_DE_PLANO = frozenset((
+    "contratado", "contratada", "contratados", "escolhido", "segurado", "seguro",
+    "unico", "de", "do", "da", "dos", "das", "e", "ou", "em", "para", "com",
+    "sem", "que", "no", "na", "acima", "abaixo", "referido", "citado", "sera",
+    "tem", "inclui", "assistencia", "cobertura", "coberturas", "servicos",
+    "servico", "vigente", "atual", "anterior", "superior", "inferior", "o", "a",
+))
+
+#: O número da cláusula ("9.5.9.2", "Cláusula 2", "COBERTURA 03").
+_NUMERO_DE_CLAUSULA = re.compile(
+    r"(?m)^\s*(?:(?:cl[áa]usula|item)\s+)?((?:\d{1,3}\.){1,4}\d{0,3}|\d{1,3}\.)\s",
+    re.IGNORECASE,
+)
+_CLAUSULA_NOMEADA = re.compile(r"(?mi)^\s*(cl[áa]usula\s+\d{1,3}[ªo°]?)\b")
+
+
+def _nomes_de_plano_na_pagina(texto: str) -> List[str]:
+    """Os nomes de plano que a PÁGINA enumera, na ordem em que aparecem."""
+    vistos: List[str] = []
+    for m in _NOME_DE_PLANO.finditer(str(texto or "")):
+        nome = re.sub(r"\s+", " ", m.group(1)).strip(" .,:;-")
+        primeira = BASE._norm_texto(nome.split(" ")[0])
+        if primeira in _NAO_E_NOME_DE_PLANO or not nome:
+            continue
+        # "Plano Básico de Assistência" -> "Básico"; a segunda palavra só entra
+        # quando ela também parece nome ("Especial 1", "Vip Premium").
+        partes = nome.split(" ")
+        if len(partes) == 2 and BASE._norm_texto(partes[1]) in _NAO_E_NOME_DE_PLANO:
+            nome = partes[0]
+        if len(nome) < 2 or len(nome) > TETO_DO_NOME_DO_PLANO:
+            continue
+        if not any(BASE._norm_texto(nome) == BASE._norm_texto(v) for v in vistos):
+            vistos.append(nome)
+    return vistos
+
+
+def _clausula_antes_de(texto: str, posicao: int) -> str:
+    """O número da cláusula mais próxima ANTES daquela posição da página."""
+    antes = str(texto or "")[: max(0, int(posicao))]
+    numeros = list(_NUMERO_DE_CLAUSULA.finditer(antes))
+    if numeros:
+        return numeros[-1].group(1).strip(" .")
+    nomeadas = list(_CLAUSULA_NOMEADA.finditer(antes))
+    return nomeadas[-1].group(1).strip() if nomeadas else ""
+
+
+def paginas_candidatas_a_ancora(paginas: Dict[int, str], teto: int = 3) -> List[int]:
+    """As páginas que ENUMERAM planos — filtro TEXTUAL, antes de qualquer token.
+
+    ⚠️ CLAUDE.md §9.4 (custo): a âncora que precisa do modelo manda 3 páginas, não
+    207. O critério é quantos nomes DIFERENTES a página enumera: a cláusula de
+    planos cita todos, e a página que menciona "o plano contratado" de passagem
+    não cita nenhum.
+    """
+    placar: List[Tuple[int, int, int]] = []
+    for pagina, texto in (paginas or {}).items():
+        bruto = str(texto or "")
+        quantos = len(_nomes_de_plano_na_pagina(bruto))
+        mencoes = len(re.findall(r"(?i)\bplanos?\b", bruto))
+        # ⚠️ 2 menções, não 3: 📊 a Cláusula 2 da HDI ("Dos Produtos e Planos" +
+        # "conforme o plano de assistência contratado") tem exatamente DUAS, e é
+        # o caso em que o texto não resolve e o modelo precisa ver a página.
+        if quantos >= 2 or mencoes >= 2:
+            placar.append((quantos, mencoes, int(pagina)))
+    placar.sort(key=lambda x: (-x[0], -x[1], x[2]))
+    return [p for _, _, p in placar[: int(teto)]]
+
+
+_ANCORA_SISTEMA = """Você recebe páginas de uma condição geral de seguro e procura
+UMA coisa só: a cláusula que ENUMERA os planos/pacotes de assistência do
+documento (ex.: "Plano Básico, Plano Completo e Plano Vip", a tabela de níveis,
+a Cláusula 2 com Essencial/Especial 1/Especial 2/VIP, a lista de códigos 118,
+108, 113).
+
+Responda SOMENTE um JSON, sem cerca de código:
+{"planos": ["Básico", "Completo", "Vip"], "pagina": 27, "clausula": "9.5.9",
+ "trecho": "a frase LITERAL da página que enumera os planos"}
+
+Regras:
+- cada nome em `planos` é copiado LITERALMENTE da página `pagina`. Não traduza,
+  não complete, não acrescente plano que a página não nomeia.
+- `pagina` é uma das páginas mostradas.
+- nenhuma das páginas enumera planos → {"planos": []}.
+"""
+
+
+def localizar_ancora_de_planos(paginas: Dict[int, str], modelo: Any = None) -> Optional[Ancora]:
+    """A 1ª passada: a cláusula de planos do documento, ou `None`.
+
+    🔴 `None` é uma RECUSA, e o chamador NÃO propõe nada (unidade A da
+    SPEC-EXTRA-001.5.2). O antigo default *"Plano único"* é o que produziu 📊 60
+    das 81 linhas conferidas em 19/09/2026 — 48 delas erradas.
+
+    O texto vem primeiro e o modelo só entra quando o texto não resolve (custo):
+    📊 a cláusula da Tokio ("Plano Básico, Plano Completo, Plano Vip") e a lista
+    do Bradesco ("Plano nº 118") casam por regex; a Cláusula 2 da HDI
+    ("Essencial, Especial 1, Especial 2 e VIP", sem a palavra "plano" antes de
+    cada nome) não casa — e é para ela que o modelo existe.
+
+    ⚠️ E o que o modelo devolve passa por VERIFICAÇÃO DE MÁQUINA: cada nome tem
+    de existir LITERALMENTE na página que ele citou. Sem isso, a âncora inventada
+    seria pior do que a ausência dela — ela batizaria todas as linhas.
+    """
+    candidatas = paginas_candidatas_a_ancora(paginas or {})
+    for pagina in candidatas:
+        texto = str((paginas or {}).get(pagina) or "")
+        nomes = _nomes_de_plano_na_pagina(texto)
+        if len(nomes) >= 2:
+            m = _NOME_DE_PLANO.search(texto)
+            pos = m.start() if m else 0
+            linha = texto[max(0, texto.rfind("\n", 0, pos) + 1):]
+            return Ancora(
+                planos=nomes,
+                pagina=int(pagina),
+                clausula=_clausula_antes_de(texto, pos),
+                trecho=re.sub(r"\s+", " ", linha.split("\n")[0]).strip()[:400],
+            )
+    if modelo is None or not candidatas:
+        return None
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    corpo = "\n\n".join(
+        "=== Página %s ===\n%s" % (p, str((paginas or {}).get(p) or "")[:6000])
+        for p in candidatas
+    )
+    try:
+        resposta = modelo.invoke([SystemMessage(content=_ANCORA_SISTEMA),
+                                  HumanMessage(content=corpo)])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[onda1] ancora: chamada ao modelo falhou: %s", type(exc).__name__)
+        return None
+    dados = _json_da_resposta(_texto_da_resposta(resposta))
+    propostos = [str(x).strip() for x in (dados.get("planos") or []) if str(x).strip()]
+    try:
+        pagina = int(dados.get("pagina") or 0)
+    except (TypeError, ValueError):
+        pagina = 0
+    if pagina not in candidatas:
+        logger.warning("[onda1] ancora: o modelo citou pagina fora das candidatas")
+        return None
+    alvo = BASE._norm_texto((paginas or {}).get(pagina) or "")
+    # 🔴 A VERIFICAÇÃO DE MÁQUINA, nome a nome.
+    confirmados = [n for n in propostos if BASE._norm_texto(n) and BASE._norm_texto(n) in alvo]
+    if len(confirmados) < 2:
+        logger.warning("[onda1] ancora: %s nome(s) do modelo confirmados na pagina %s",
+                       len(confirmados), pagina)
+        return None
+    trecho = str(dados.get("trecho") or "").strip()
+    if trecho and BASE.normalizar_trecho(trecho) not in BASE.normalizar_trecho(
+            (paginas or {}).get(pagina) or ""):
+        trecho = ""
+    return Ancora(planos=confirmados, pagina=pagina,
+                  clausula=str(dados.get("clausula") or "").strip(), trecho=trecho[:400])
+
+
+def plano_da_ancora(bruto: Any, ancora: Optional[Ancora]) -> Optional[str]:
+    """O nome do plano da proposta, **como a âncora o escreve**, ou `None`.
+
+    Casa por normalização (`Plano Vip` ≡ `vip` ≡ `VIP`) e aceita o nome como
+    pedaço do nome da âncora (`Assistência 24 Horas - Plano Vip` → `Vip`), porque
+    o modelo copia o título inteiro da seção com frequência.
+    """
+    nome = nome_de_plano_valido(bruto)
+    if nome is None or ancora is None:
+        return None
+    alvo = BASE._norm_texto(nome)
+    for candidato in ancora.planos:
+        c = BASE._norm_texto(candidato)
+        if not c:
+            continue
+        if alvo == c or re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(c), alvo):
+            return candidato
+    return None
+
+
+def caminho_da_clausula(
+    texto_pagina: str, trecho: str, *, ancora: Optional[Ancora] = None,
+    plano: Optional[str] = None, servico: Optional[str] = None,
+) -> str:
+    """`"9.5.9.2 › Plano Vip › Carro Reserva"` — de onde a linha saiu.
+
+    Unidade B: a linha carrega o ESCOPO de onde a frase foi lida. É o que
+    permite ver, sem abrir o PDF, que um `alagamento = nao` saiu de dentro da
+    cláusula de Vendaval/Granizo — o padrão 1 dos cinco medidos.
+    """
+    texto = str(texto_pagina or "")
+    pos = texto.find(str(trecho or "")[:60]) if trecho else -1
+    if pos < 0:
+        alvo, agulha = BASE.normalizar_trecho(texto), BASE.normalizar_trecho(trecho)[:60]
+        pos = alvo.find(agulha) if agulha else -1
+        if pos >= 0:
+            texto = alvo
+    partes: List[str] = []
+    numero = _clausula_antes_de(texto, pos if pos >= 0 else len(texto))
+    if not numero and ancora is not None:
+        numero = ancora.clausula
+    if numero:
+        partes.append(numero)
+    if plano:
+        partes.append("Plano %s" % plano if not BASE._norm_texto(plano).startswith("plano")
+                      else str(plano))
+    titulo = titulo_da_secao(texto, pos)
+    if titulo:
+        partes.append(titulo)
+    elif servico:
+        partes.append(str(servico))
+    return " › ".join(partes)
+
+
+#: O TÍTULO da seção onde a frase está: "COBERTURA 03 - VENDAVAL…",
+#: "II. Carro Reserva", "10. COBERTURA ADICIONAL DE VENDAVAL, GRANIZO".
+_TITULO_DE_SECAO = re.compile(
+    r"(?m)^\s*(?:(?:(?:\d{1,3}\.){0,4}\d{0,3}|[IVXLC]{1,5})[.)]?\s+)?"
+    r"((?:COBERTURA|CL[ÁA]USULA|CONDI[ÇC][ÃA]O ESPECIAL|GARANTIA)[^\n]{0,90}"
+    r"|[A-ZÁÂÃÀÉÊÍÓÔÕÚÜÇ][^\n]{2,60})\s*$"
+)
+
+
+def titulo_da_secao(texto: str, posicao: int) -> str:
+    """O título da seção imediatamente ANTES daquela posição, ou string vazia."""
+    antes = str(texto or "")[: max(0, int(posicao))] if posicao and posicao > 0 else ""
+    if not antes:
+        return ""
+    titulos = list(_TITULO_DE_SECAO.finditer(antes))
+    if not titulos:
+        return ""
+    bruto = re.sub(r"\s+", " ", titulos[-1].group(1)).strip(" .:-")
+    return bruto[:90]
 
 
 # ---------------------------------------------------------------------------
@@ -212,17 +493,30 @@ def montar_modelo() -> Optional[Any]:
 
 
 def propostas_da_pagina(
-    texto: str, pagina: int, *, produto_padrao: str, llm: Any
+    texto: str, pagina: int, *, produto_padrao: str, llm: Any,
+    ancora: Optional[Ancora] = None,
 ) -> List[Dict[str, Any]]:
-    """Uma página → as linhas que o modelo PROPÕE. `llm=None` → nada."""
+    """Uma página → as linhas que o modelo PROPÕE. `llm=None` → nada.
+
+    🔴 A ÂNCORA VAI NO PROMPT (unidade A): sem a lista de planos à vista, o
+    modelo batiza a linha com o que a página tiver à mão — e foi assim que 📊 60
+    das 81 linhas nasceram em *"Plano único"*.
+    """
     if llm is None or not str(texto or "").strip():
         return []
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    if ancora is None:
+        texto_da_ancora = ("(nenhuma cláusula de planos foi localizada — NÃO proponha linha "
+                           "nenhuma)")
+    else:
+        texto_da_ancora = "planos: %s\ncláusula %s, página %s\n%s" % (
+            ", ".join(ancora.planos), ancora.clausula or "(sem número)",
+            ancora.pagina, ancora.trecho)
     # ⚠️ `.format` NÃO serve aqui: o prompt mostra um JSON de exemplo, e cada
     # chave dele seria lida como campo de formatação (`KeyError: '"linhas"'`).
     sistema = (_SISTEMA.replace("{servicos}", ", ".join(BASE.servicos_declarados()))
-                       .replace("{plano_padrao}", _PLANO_PADRAO))
+                       .replace("{ancora}", texto_da_ancora))
     usuario = (
         "Produto (como o documento se chama): %s\nPágina %s do documento.\n\n---\n%s\n---"
         % (produto_padrao, pagina, str(texto)[:12000])
@@ -283,6 +577,174 @@ def produto_canonico(bruto, ramo=""):
     for w in texto.split(" "):
         palavras.append(w if (w.isupper() and len(w) <= 4) else w.capitalize())
     return " ".join(palavras)[:120]
+
+
+# ---------------------------------------------------------------------------
+# C · NÚMERO DE TABELA VEM COM A COLUNA, OU NÃO VEM
+# ---------------------------------------------------------------------------
+#: O escopo que o cabeçalho da coluna/linha dá ao número. 📊 19/09/2026, as 4
+#: linhas de limite marcadas CORRIGIR erraram todas por aqui: "R$ 300,00" da HDI
+#: é *por evento*, e existe um segundo número, *por vigência*, na mesma célula.
+ESCOPOS_DE_LIMITE = {
+    "por_evento": r"por\s+(?:evento|sinistro|ocorr[êe]ncia|acionamento|pane)",
+    "por_vigencia": r"(?:por|na|durante\s+a|ao\s+ano\s+de)\s+vig[êe]ncia|por\s+ano|anual",
+    "por_dia": r"por\s+di[aá]ria|por\s+dia\b|di[áa]rias?\b",
+    "por_utilizacao": r"utiliza[çc][õo]es|interven[çc][õo]es|acionamentos\b|eventos\b",
+    "por_passageiro": r"por\s+passageiro",
+}
+_ESCOPOS_COMPILADOS = {k: re.compile(v, re.IGNORECASE) for k, v in ESCOPOS_DE_LIMITE.items()}
+
+#: Quantos caracteres ao redor do trecho ainda contam como "o cabeçalho da
+#: coluna". A tabela do PDF vira texto corrido, e o cabeçalho fica a uma ou duas
+#: linhas de distância — não a uma página.
+JANELA_DO_CABECALHO = 400
+
+
+def escopos_do_limite(texto_pagina: str, trecho: str) -> List[str]:
+    """Os escopos legíveis para o número: `["por_evento", "por_vigencia"]`.
+
+    Procura no TRECHO e, se lá não houver, na vizinhança dele na página — que é
+    onde o cabeçalho da coluna cai quando a tabela vira texto.
+    """
+    achados: List[str] = []
+    do_trecho = BASE.normalizar_trecho(trecho or "")
+    pagina = BASE.normalizar_trecho(texto_pagina or "")
+    pos = pagina.find(do_trecho[:60]) if do_trecho else -1
+    vizinhanca = do_trecho
+    if pos >= 0:
+        ini = max(0, pos - JANELA_DO_CABECALHO)
+        vizinhanca = pagina[ini: pos + len(do_trecho) + JANELA_DO_CABECALHO]
+    for nome, rx in _ESCOPOS_COMPILADOS.items():
+        if rx.search(do_trecho) or rx.search(vizinhanca):
+            achados.append(nome)
+    return achados
+
+
+def aplicar_escopo_do_limite(proposta: Dict[str, Any], texto_pagina: str) -> Dict[str, Any]:
+    """O limite fica **com o escopo**, ou fica VAZIO dizendo por quê (unidade C).
+
+    🔴 Apagar o número não é perder informação: *"R$ 300,00"* sem saber se é por
+    evento ou por vigência é um número que a pessoa vai repetir ao segurado como
+    se fosse o teto — e a HDI tem os DOIS, com valores diferentes.
+    """
+    p = dict(proposta or {})
+    if p.get("limite_valor") is None:
+        return p
+    achados = escopos_do_limite(texto_pagina, str(p.get("trecho") or ""))
+    if achados:
+        p["limite_escopo"] = achados
+        rotulos = ", ".join(a.replace("_", " ") for a in achados)
+        texto = str(p.get("limite_texto") or "").strip()
+        if rotulos.split(",")[0] not in BASE._norm_texto(texto):
+            p["limite_texto"] = ("%s (%s)" % (texto, rotulos)).strip() if texto else rotulos
+        return p
+    bruto = "%s %s" % (p.get("limite_valor"), p.get("limite_unidade") or "")
+    p["limite_texto"] = (
+        "não gravado: a página %s traz \"%s\" sem cabeçalho de coluna que diga o "
+        "escopo (por evento · por vigência · por dia · utilizações)"
+        % (p.get("pagina"), bruto.strip())
+    )
+    p["limite_valor"] = None
+    p["limite_unidade"] = None
+    p["limite_escopo"] = []
+    return p
+
+
+# ---------------------------------------------------------------------------
+# D · O PRODUTO E A VERSÃO VÊM DA CAPA
+# ---------------------------------------------------------------------------
+@dataclass
+class Capa:
+    """O que a PRIMEIRA página diz que o documento é. `None` = a capa não diz."""
+
+    produto: Optional[str] = None
+    versao: Optional[str] = None
+    origem: str = "capa"
+
+
+#: "Versão 3.2", "v41", "versao: 2.9", "Ed. 07/2023 - V1.2".
+#
+# ⚠️ o `_` antes do `V` é o caso REAL do acervo: 📊 `Seguro Residencial
+# Conteudo_V1.2`. `\bv` não casa depois de `_` (o underscore é caractere de
+# palavra), e era assim que a versão do cadastro passava batida.
+_VERSAO = re.compile(
+    r"(?i)(?:vers[ãa]o|ed\.?\s*v|\bv|_v)\s*[.:]?\s*(\d{1,3}(?:\.\d{1,3})?)\b")
+
+#: Linhas da capa que NÃO são nome de produto.
+_LIXO_DE_CAPA = re.compile(
+    r"(?i)^(?:condi[çc][õo]es\s+(?:gerais|contratuais)|processo\s+susep|susep|"
+    r"sumario|[íi]ndice|p[áa]gina\s*\d+|vers[ãa]o\b|www\.|\d+\s*$|cnpj|"
+    r"sac\b|ouvidoria)"
+)
+
+
+def capa_do_documento(paginas: Dict[int, str]) -> Capa:
+    """Produto e versão lidos da CAPA — nunca do nome do arquivo (unidade D).
+
+    📊 19/09/2026, 4 das 81 linhas gravaram nome de ARQUIVO como produto
+    (`Seguro Residencial Conteudo_V1.2`, um nome terminando em travessão solto), e
+    2 declararam uma versão que o PDF desmente (Mapfre Auto v34 sendo v41,
+    Mapfre Residencial v2.9 sendo 3.2).
+
+    A versão é procurada na primeira página e no RODAPÉ das últimas — que é onde
+    a condição geral costuma carimbá-la.
+    """
+    if not paginas:
+        return Capa()
+    numeros = sorted(int(p) for p in paginas)
+    primeira = str(paginas.get(numeros[0]) or "")
+    produto = None
+    for linha in [l.strip() for l in primeira.splitlines()]:
+        limpo = re.sub(r"\s+", " ", linha).strip(" .-—–|")
+        if len(limpo) < 6 or len(limpo) > 90 or _LIXO_DE_CAPA.match(limpo):
+            continue
+        if not re.search(r"[A-Za-zÁ-úÀ-ÿ]{3}", limpo):
+            continue
+        produto = _VERSAO.sub("", limpo).strip(" .-—–_|")
+        break
+    versao = None
+    rodapes = [primeira] + [str(paginas.get(n) or "")[-800:] for n in numeros[-3:]]
+    for fonte in rodapes:
+        m = _VERSAO.search(fonte)
+        if m:
+            versao = m.group(1)
+            break
+    return Capa(produto=produto or None, versao=versao)
+
+
+def versao_declarada(texto: Any) -> Optional[str]:
+    """A versão que o CADASTRO afirma (o título do documento), ou `None`."""
+    m = _VERSAO.search(str(texto or ""))
+    return m.group(1) if m else None
+
+
+def _mesma_versao(a: Optional[str], b: Optional[str]) -> bool:
+    def _n(v):
+        partes = [int(x) for x in str(v).split(".")] if v else []
+        while len(partes) < 2:
+            partes.append(0)
+        return tuple(partes[:2])
+
+    return bool(a) and bool(b) and _n(a) == _n(b)
+
+
+# ---------------------------------------------------------------------------
+# E · COBERTURA NÃO É ASSISTÊNCIA
+# ---------------------------------------------------------------------------
+#: 📊 19/09/2026: 15 linhas da base usam a chave `vidros` — 7 residencial, 6 auto
+#: e 2 condomínio. Quebra de vidros RESIDENCIAL é cobertura contratada (com
+#: prêmio adicional), não serviço de assistência 24 h; em AUTO é assistência de
+#: verdade. A mesma chave dizia as duas coisas (P-001.5.1-VIDROS-RESIDENCIAL).
+SERVICO_POR_RAMO = {
+    ("vidros", "residencial"): "vidros_residencial",
+    ("vidros", "condominio"): "vidros_residencial",
+}
+
+
+def servico_do_ramo(servico: Any, ramo: Any) -> str:
+    """A chave do serviço NESTE ramo. `vidros` residencial → `vidros_residencial`."""
+    chave = str(servico or "")
+    return SERVICO_POR_RAMO.get((chave, BASE._norm_texto(ramo).replace(" ", "_")), chave)
 
 
 def nome_de_plano_valido(bruto):
@@ -372,6 +834,14 @@ MOTIVOS = {
     "nivel_nao_contiguo": Reprovacao("nível pula um número no produto"),
     "exclusao_de_risco_nao_e_nao_do_servico": Reprovacao(
         "exclusão de risco dentro de outra cobertura virou 'nao' do serviço", insere=True),
+    # 🔴 `insere=False` de propósito: a linha sem plano da âncora **não tem onde
+    # existir** — o serviço pendura no plano, e criar um plano para marcá-lo
+    # reprovado seria recriar o "Plano único" pela porta dos fundos. Ela é
+    # CONTADA por motivo, como as recusas do contrato.
+    "plano_fora_da_ancora": Reprovacao(
+        "o plano proposto não está na cláusula de planos do documento"),
+    "nao_veio_de_clausula_de_outro_servico": Reprovacao(
+        "o 'nao' foi lido dentro da cláusula de OUTRO serviço/cobertura", insere=True),
     "pagina_inexistente": Reprovacao("página não existe no PDF arquivado", insere=True),
     "trecho_nao_esta_na_pagina": Reprovacao("o trecho não está NAQUELA página", insere=True),
 }
@@ -385,6 +855,8 @@ def verificar(
     niveis_por_produto: Dict[str, Dict[int, str]],
     db: Any = None,
     minio: Any = None,
+    ancora: Optional[Ancora] = None,
+    texto_da_pagina: str = "",
 ) -> Optional[str]:
     """`None` = passou. String = o motivo da reprovação. 🔴 NUNCA publica.
 
@@ -409,6 +881,27 @@ def verificar(
     if str(proposta.get("coberto")) == "nao" and _E_EXCLUSAO_DE_RISCO.search(trecho) \
             and not _NEGA_O_SERVICO.search(trecho):
         return "exclusao_de_risco_nao_e_nao_do_servico"
+    # 🔴 B · O ESCOPO DA CLÁUSULA MANDA NO VEREDITO — e ele é lido da PÁGINA.
+    #
+    # A regra acima pega a FORMA da frase ("riscos excluídos…"). Esta pega o
+    # LUGAR dela: um `nao` de `alagamento` lido de dentro de *"COBERTURA 03 —
+    # VENDAVAL, FURACÃO, CICLONE, TORNADO E GRANIZO"* fala do granizo, não do
+    # alagamento — e nenhuma palavra da frase denuncia isso. 📊 4 das 16 linhas
+    # RECUSADAS em 19/09/2026 eram exatamente esta classe.
+    if str(proposta.get("coberto")) == "nao" and texto_da_pagina:
+        titulo = titulo_da_secao(
+            texto_da_pagina,
+            BASE.normalizar_trecho(texto_da_pagina).find(BASE.normalizar_trecho(trecho)[:60]),
+        )
+        dono = BASE.servico_canonico(titulo) if titulo else None
+        meu = str(proposta.get("servico") or "")
+        # ⚠️ `vidros` e `vidros_residencial` são o MESMO dono (unidade E): o
+        # título da seção nunca traz o sufixo de ramo, e sem esta comparação por
+        # prefixo a linha residencial de vidros seria reprovada pela própria
+        # cláusula de onde ela saiu.
+        parecidos = bool(dono) and bool(meu) and (dono in meu or meu in dono)
+        if dono and meu and dono != meu and not parecidos:
+            return "nao_veio_de_clausula_de_outro_servico"
     if str(proposta.get("servico") or "") not in BASE.servicos_declarados():
         return "servico_fora_do_vocabulario"
     if str(proposta.get("coberto") or "") not in BASE.COBERTURAS:
@@ -423,9 +916,20 @@ def verificar(
         return "seguradora_desconhecida"
 
     produto = produto_canonico(proposta.get("produto"))
-    plano = nome_de_plano_valido(proposta.get("plano") or _PLANO_PADRAO)
-    if plano is None:
-        return "nome_de_plano_invalido"
+    # 🔴 A · O PLANO VEM DA ÂNCORA, e não do que a página deixou à mão.
+    # Sem âncora não se chega aqui pelo caminho do motor (`processar_documento`
+    # recusa antes); um chamador direto que não a passe continua com a regra
+    # antiga, que é a do nome válido.
+    if ancora is not None:
+        plano = plano_da_ancora(proposta.get("plano"), ancora)
+        if plano is None:
+            return ("nome_de_plano_invalido"
+                    if nome_de_plano_valido(proposta.get("plano")) is None
+                    else "plano_fora_da_ancora")
+    else:
+        plano = nome_de_plano_valido(proposta.get("plano"))
+        if plano is None:
+            return "nome_de_plano_invalido"
     try:
         nivel = int(proposta.get("nivel") or 1)
     except (TypeError, ValueError):
@@ -474,6 +978,13 @@ class ResumoDoDocumento:
     rascunhos: int = 0
     recusadas: Dict[str, int] = field(default_factory=dict)
     motivo: str = "ok"
+    #: 🔴 unidade A: a cláusula de planos localizada (ou `None`, e nada é proposto).
+    ancora: Optional[Ancora] = None
+    planos_da_ancora: int = 0
+    #: ⚠️ unidade D: divergência de versão é ALERTA, não silêncio.
+    alertas: List[str] = field(default_factory=list)
+    produto_da_capa: Optional[str] = None
+    versao_da_capa: Optional[str] = None
 
     def recusar(self, motivo: str) -> None:
         self.recusadas[motivo] = self.recusadas.get(motivo, 0) + 1
@@ -555,16 +1066,57 @@ def processar_documento(
         return resumo
     resumo.paginas_lidas = lidas.total
 
-    alvo = paginas_com_vocabulario(lidas.paginas or {})
-    resumo.paginas_ao_modelo = len(alvo)
-    produto_padrao = str(doc.get("title") or doc.get("product_line") or "Produto")
+    paginas = lidas.paginas or {}
 
+    # 🔴 D · A CAPA, ANTES DE TUDO: o produto é o que a PRIMEIRA PÁGINA diz, não o
+    # nome do arquivo (📊 4 das 81 linhas gravaram nome de arquivo como produto).
+    capa = capa_do_documento(paginas)
+    resumo.produto_da_capa = capa.produto
+    resumo.versao_da_capa = capa.versao
+    do_cadastro = versao_declarada(doc.get("title"))
+    if capa.versao and do_cadastro and not _mesma_versao(capa.versao, do_cadastro):
+        resumo.alertas.append(
+            "versao_da_capa_diverge_do_cadastro: capa=%s cadastro=%s"
+            % (capa.versao, do_cadastro))
+    produto_padrao = (capa.produto
+                      or str(doc.get("title") or doc.get("product_line") or "Produto"))
+
+    # 🔴 A · A PRIMEIRA PASSADA É A ÂNCORA. Sem ela, o documento NÃO vai ao
+    # modelo — e isso é economia além de correção: a página não lida não é paga.
+    ancora = localizar_ancora_de_planos(paginas, modelo=llm)
+    resumo.ancora = ancora
+    if ancora is None:
+        resumo.motivo = "clausula_de_planos_nao_localizada"
+        return resumo
+    resumo.planos_da_ancora = len(ancora.planos)
+    ordem_do_plano = {BASE._norm_texto(n): i + 1 for i, n in enumerate(ancora.planos)}
+
+    alvo = paginas_com_vocabulario(paginas)
+    resumo.paginas_ao_modelo = len(alvo)
+
+    ramo = str(doc.get("product_line") or "")
     propostas: List[Dict[str, Any]] = []
     for pagina in alvo:
-        propostas += propostas_da_pagina(
-            (lidas.paginas or {}).get(pagina, ""), pagina,
-            produto_padrao=produto_padrao, llm=llm,
-        )
+        texto_da_pagina = paginas.get(pagina, "")
+        for p in propostas_da_pagina(texto_da_pagina, pagina,
+                                     produto_padrao=produto_padrao, llm=llm, ancora=ancora):
+            # E · a chave do serviço depende do RAMO (vidros residencial é
+            # cobertura, vidros de auto é assistência).
+            p["servico"] = servico_do_ramo(p.get("servico"), ramo)
+            # C · o número só fica com o escopo que o cabeçalho der.
+            p = aplicar_escopo_do_limite(p, texto_da_pagina)
+            # A · o plano é o da âncora, escrito como a âncora o escreve; e o
+            # NÍVEL é a ordem dela, não o palpite do modelo.
+            da_ancora = plano_da_ancora(p.get("plano"), ancora)
+            if da_ancora:
+                p["plano"] = da_ancora
+                p["nivel"] = ordem_do_plano.get(BASE._norm_texto(da_ancora), p.get("nivel") or 1)
+            p["produto"] = p.get("produto") or produto_padrao
+            # B · e cada proposta carrega DE ONDE saiu.
+            p["caminho_da_clausula"] = caminho_da_clausula(
+                texto_da_pagina, str(p.get("trecho") or ""), ancora=ancora,
+                plano=p.get("plano"), servico=p.get("servico"))
+            propostas.append(p)
     resumo.propostas = len(propostas)
     if not propostas:
         return resumo
@@ -576,7 +1128,8 @@ def processar_documento(
         motivo = verificar(
             p, insurer=str(doc.get("insurer_key") or doc.get("insurer_name") or ""),
             documento_id=resumo.documento_id, niveis_por_produto=niveis,
-            db=cliente, minio=minio,
+            db=cliente, minio=minio, ancora=ancora,
+            texto_da_pagina=paginas.get(int(p.get("pagina") or 0), ""),
         )
         if motivo is None:
             aprovadas.append(p)
@@ -597,7 +1150,12 @@ def processar_documento(
     def _plano_id(p: Dict[str, Any]) -> Optional[str]:
         produto = produto_canonico(p.get("produto") or produto_padrao,
                                    doc.get("product_line"))
-        nome = nome_de_plano_valido(p.get("plano") or _PLANO_PADRAO) or _PLANO_PADRAO
+        # 🔴 sem `_PLANO_PADRAO` aqui: o plano é o da âncora, e a proposta que
+        # não casou com ela nem chega a este ponto (o verificador a reprovou).
+        nome = plano_da_ancora(p.get("plano"), ancora)
+        if nome is None:
+            resumo.recusar("plano_fora_da_ancora")
+            return None
         chave = (produto, nome)
         if chave in planos_criados:
             return planos_criados[chave]

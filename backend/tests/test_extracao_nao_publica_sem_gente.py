@@ -70,7 +70,14 @@ def _pdf_de_duas_paginas() -> bytes:
 
     doc = fitz.open()
     p1 = doc.new_page()
-    p1.insert_text((60, 90), "Condicoes gerais - Plano Essencial")
+    p1.insert_text((60, 90), "Condicoes gerais - Assistencia 24 Horas")
+    # 🔴 A CLÁUSULA DE PLANOS ENTROU AQUI EM 20/09/2026, E A LIÇÃO MIGROU
+    # (CLAUDE.md §9.3). Até a SPEC-EXTRA-001.5.2, um PDF sem cláusula de planos
+    # rendia linhas em *"Plano único"* — 📊 60 das 81 linhas conferidas em 19/09.
+    # Agora o extrator RECUSA o documento inteiro (unidade A), e um PDF de teste
+    # sem a cláusula mediria a recusa, não a publicação. O que este guarda
+    # afirma — *nada chega a `publicado` sem gente* — continua igual.
+    p1.insert_text((60, 105), "Este seguro e comercializado no Plano Essencial e no Plano Premium.")
     p1.insert_text((60, 120), TRECHO_BOM)
     p2 = doc.new_page()
     p2.insert_text((60, 90), "Definicoes e glossario.")
@@ -205,7 +212,11 @@ checar(motivos[3] == "limite_sem_unidade",
        "limite com valor e sem unidade -> `limite_sem_unidade`", repr(motivos[3]))
 checar(motivos[4] == "nivel_duplicado",
        "outro plano no MESMO nível do produto -> `nivel_duplicado`", repr(motivos[4]))
-checar(X.verificar({"servico": "guincho", "coberto": "sim", "trecho": TRECHO_BOM, "pagina": 99},
+# ⚠️ `plano` explícito desde 20/09/2026: sem ele, a proposta agora para antes,
+# em `nome_de_plano_invalido` — o default *"Plano único"* deixou de existir
+# (EXTRA-001.5.2, unidade A), e o que este caso mede é a PÁGINA, não o plano.
+checar(X.verificar({"servico": "guincho", "coberto": "sim", "trecho": TRECHO_BOM, "pagina": 99,
+                    "produto": "Auto Total", "plano": "Essencial"},
                    insurer="porto", documento_id=DOC, niveis_por_produto={},
                    db=db, minio=minio) == "pagina_inexistente",
        "🔴 página que não existe no PDF -> `pagina_inexistente` (o PDF tem 2)")

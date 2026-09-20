@@ -7,119 +7,287 @@
     "cobertura": "risco da APOLICE, nao da assistencia. Fica no vocabulario porque o segurado pergunta junto, e a resposta tem de dizer que e outra coisa."
   },
   "_medicao": "📊 Frequencia no acervo de perguntas reais (SPEC-EXTRA-001.5 §0.1, citada no pacote da fatia 1): guincho 121 · vidro 93 · carro reserva 81 · eletricista 36 · granizo 26 · chaveiro 24 · encanador 24 · reboque 18 · taxi 15 · hotel 4 · borracheiro 2. As chaves sem medicao ao lado (pane_seca, troca_de_pneu) vieram do contrato de subservicos ja publicado em corridor_playbooks.subservicos_por_linha, nao de contagem de perguntas.",
-  "versao": 1,
-  "atualizado_em": "2026-09-17",
+  "versao": 2,
+  "atualizado_em": "2026-09-20",
   "servicos": {
     "guincho": {
       "tipo": "assistencia",
       "rotulo": "Guincho / reboque",
-      "ramos": ["auto"],
-      "sinonimos": ["guincho", "reboque", "rebocar", "rebocador", "guinchar", "carro parado", "socorro mecanico", "socorro na estrada"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "guincho",
+        "reboque",
+        "rebocar",
+        "rebocador",
+        "guinchar",
+        "carro parado",
+        "socorro mecanico",
+        "socorro na estrada"
+      ],
       "pergunta_tipica": "quantos km de guincho eu tenho?",
       "_nota": "📊 121 perguntas — o servico mais perguntado do acervo. `reboque` (18) e a mesma coisa e tem chave PROPRIA no acervo de palavras, nao de servicos."
     },
     "carro_reserva": {
       "tipo": "assistencia",
       "rotulo": "Carro reserva",
-      "ramos": ["auto"],
-      "sinonimos": ["carro reserva", "veiculo reserva", "carro extra", "carro substituto", "carro de cortesia", "veiculo substituto", "carro enquanto conserta"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "carro reserva",
+        "veiculo reserva",
+        "carro extra",
+        "carro substituto",
+        "carro de cortesia",
+        "veiculo substituto",
+        "carro enquanto conserta"
+      ],
       "pergunta_tipica": "tenho carro reserva? por quantos dias?",
       "_nota": "📊 81 perguntas. 🔴 Era o caso do ELO da SPEC (§0.3 do relatorio): a pergunta nem casava a intencao de assistencia, e quando casava vinha 'Sim' com os 3 servicos residenciais fixos."
     },
     "chaveiro": {
       "tipo": "assistencia",
       "rotulo": "Chaveiro",
-      "ramos": ["auto", "residencial"],
-      "sinonimos": ["chaveiro", "chave trancada", "chave quebrada", "perdi a chave", "tranquei a chave", "abertura de porta", "perda de chave"],
+      "ramos": [
+        "auto",
+        "residencial"
+      ],
+      "sinonimos": [
+        "chaveiro",
+        "chave trancada",
+        "chave quebrada",
+        "perdi a chave",
+        "tranquei a chave",
+        "abertura de porta",
+        "perda de chave"
+      ],
       "pergunta_tipica": "tranquei a chave dentro do carro, tem chaveiro?"
     },
     "vidros": {
       "tipo": "assistencia",
       "rotulo": "Vidros",
-      "ramos": ["auto", "residencial", "condominio"],
-      "sinonimos": ["vidro", "vidros", "parabrisa", "para brisa", "para-brisa", "vidro trincado", "vidro quebrado", "retrovisor", "farol", "lanterna"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "vidro",
+        "vidros",
+        "parabrisa",
+        "para brisa",
+        "para-brisa",
+        "vidro trincado",
+        "vidro quebrado",
+        "retrovisor",
+        "farol",
+        "lanterna"
+      ],
       "pergunta_tipica": "quebrou o parabrisa, cobre?",
-      "_nota": "📊 93 perguntas. 🔴 `ramos` corrigido em 19/09/2026 (EXTRA-001.5.1, unidade C): a base tem 15 linhas de `vidros` e 9 delas NAO sao de auto — 7 residencial e 2 condominio (SELECT por ramo, 19/09). `ramos` nao e lido por codigo nenhum hoje; e uma DECLARACAO, e declaracao falsa manda o proximo leitor procurar o dado no lugar errado. ⚠️ `tipo` continua `assistencia` de proposito: ele E lido (`tipo_do_servico` decide se a resposta soma as coberturas estruturadas da apolice) e vira-lo mudaria o caminho de AUTO, onde vidros e assistencia de verdade. Quebra de vidros RESIDENCIAL e cobertura e merece chave propria — pendencia P-001.5.1-VIDROS-RESIDENCIAL. ⚠️ `retrovisor`/`farol`/`lanterna` entram aqui porque a cobertura comercial e vendida junta ('vidros, farois, lanternas e retrovisores') — se a apolice separar, a linha da base separa, e o `condicao` diz qual."
+      "_nota": "📊 93 perguntas. 🔴 `ramos` e `tipo` acertados em 20/09/2026 (EXTRA-001.5.2, unidade E): `vidros` e a ASSISTENCIA de AUTO — parabrisa, farol, lanterna, retrovisor. A quebra de vidro RESIDENCIAL/CONDOMINIO e outra coisa (cobertura contratada, com premio adicional) e ganhou chave propria, `vidros_residencial` — era a pendencia P-001.5.1-VIDROS-RESIDENCIAL, e 📊 9 das 15 linhas da base (7 residencial + 2 condominio) moravam aqui por engano. ⚠️ os sinonimos genericos (`vidro`, `vidros`) ficam NESTA chave de proposito: `servico_canonico` desempata pelo sinonimo mais LONGO e, no empate, pela chave maior em ordem alfabetica — deixar `vidro` nas duas faria toda pergunta de auto cair na residencial."
+    },
+    "vidros_residencial": {
+      "tipo": "cobertura",
+      "rotulo": "Quebra de vidros (residencial)",
+      "ramos": [
+        "residencial",
+        "condominio"
+      ],
+      "sinonimos": [
+        "vidro residencial",
+        "vidros residenciais",
+        "quebra de vidros",
+        "vidro da janela",
+        "vidro da porta",
+        "janela quebrada",
+        "box do banheiro",
+        "espelho quebrado",
+        "vitro"
+      ],
+      "pergunta_tipica": "quebrou o vidro da janela de casa, o seguro cobre?",
+      "_nota": "🔴 COBERTURA, nao assistencia 24h (EXTRA-001.5.2, unidade E): ela e contratada com premio adicional e paga indenizacao — nao existe prestador a acionar. 📊 20/09/2026: 9 das 15 linhas de `vidros` da base sao deste ramo (7 residencial, 2 condominio) e diziam 'assistencia' ao segurado. `tipo=cobertura` e LIDO por `tipo_do_servico`, e e ele que manda a resposta somar as coberturas estruturadas da apolice em vez de oferecer acionamento."
     },
     "eletricista": {
       "tipo": "assistencia",
       "rotulo": "Eletricista",
-      "ramos": ["residencial"],
-      "sinonimos": ["eletricista", "eletricista 24h", "curto circuito", "curto-circuito", "sem luz", "falta de energia", "tomada queimada", "disjuntor"],
+      "ramos": [
+        "residencial"
+      ],
+      "sinonimos": [
+        "eletricista",
+        "eletricista 24h",
+        "curto circuito",
+        "curto-circuito",
+        "sem luz",
+        "falta de energia",
+        "tomada queimada",
+        "disjuntor"
+      ],
       "pergunta_tipica": "ficou sem luz em casa, manda eletricista?"
     },
     "encanador": {
       "tipo": "assistencia",
       "rotulo": "Encanador / hidraulica",
-      "ramos": ["residencial"],
-      "sinonimos": ["encanador", "bombeiro hidraulico", "hidraulico", "vazamento", "cano estourado", "cano furado", "entupimento", "pia entupida", "esgoto"],
+      "ramos": [
+        "residencial"
+      ],
+      "sinonimos": [
+        "encanador",
+        "bombeiro hidraulico",
+        "hidraulico",
+        "vazamento",
+        "cano estourado",
+        "cano furado",
+        "entupimento",
+        "pia entupida",
+        "esgoto"
+      ],
       "pergunta_tipica": "estourou um cano, tem encanador?"
     },
     "hospedagem": {
       "tipo": "assistencia",
       "rotulo": "Hospedagem",
-      "ramos": ["auto", "residencial"],
-      "sinonimos": ["hotel", "hospedagem", "pousada", "estadia", "diaria de hotel", "onde ficar"],
+      "ramos": [
+        "auto",
+        "residencial"
+      ],
+      "sinonimos": [
+        "hotel",
+        "hospedagem",
+        "pousada",
+        "estadia",
+        "diaria de hotel",
+        "onde ficar"
+      ],
       "pergunta_tipica": "o carro quebrou longe, paga hotel?",
       "_nota": "📊 4 perguntas. A chave e `hospedagem` e nao `hotel` porque a condicao geral chama de hospedagem, e `hotel` e o sinonimo de quem pergunta."
     },
     "taxi": {
       "tipo": "assistencia",
       "rotulo": "Taxi / transporte alternativo",
-      "ramos": ["auto"],
-      "sinonimos": ["taxi", "uber", "transporte alternativo", "meio de transporte", "como vou voltar para casa", "aplicativo de transporte"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "taxi",
+        "uber",
+        "transporte alternativo",
+        "meio de transporte",
+        "como vou voltar para casa",
+        "aplicativo de transporte"
+      ],
       "pergunta_tipica": "tem taxi ate em casa depois do guincho?"
     },
     "borracheiro": {
       "tipo": "assistencia",
       "rotulo": "Borracheiro",
-      "ramos": ["auto"],
-      "sinonimos": ["borracheiro", "borracharia", "pneu furado", "pneu vazio", "furou o pneu"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "borracheiro",
+        "borracharia",
+        "pneu furado",
+        "pneu vazio",
+        "furou o pneu"
+      ],
       "pergunta_tipica": "furou o pneu na estrada, tem borracheiro?",
       "_nota": "⚠️ Distinto de `troca_de_pneu`: borracheiro CONSERTA o pneu; troca de pneu so poe o estepe. Varias condicoes gerais cobrem so a segunda."
     },
     "pane_seca": {
       "tipo": "assistencia",
       "rotulo": "Pane seca (falta de combustivel)",
-      "ramos": ["auto"],
-      "sinonimos": ["pane seca", "sem gasolina", "acabou a gasolina", "acabou o combustivel", "sem combustivel", "ficou sem alcool"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "pane seca",
+        "sem gasolina",
+        "acabou a gasolina",
+        "acabou o combustivel",
+        "sem combustivel",
+        "ficou sem alcool"
+      ],
       "pergunta_tipica": "acabou a gasolina, o seguro ajuda?"
     },
     "troca_de_pneu": {
       "tipo": "assistencia",
       "rotulo": "Troca de pneu (estepe)",
-      "ramos": ["auto"],
-      "sinonimos": ["troca de pneu", "trocar o pneu", "colocar o estepe", "estepe", "por o estepe"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "troca de pneu",
+        "trocar o pneu",
+        "colocar o estepe",
+        "estepe",
+        "por o estepe"
+      ],
       "pergunta_tipica": "furou e eu nao sei trocar, vem alguem?"
     },
     "chaveiro_residencial": {
       "tipo": "assistencia",
       "rotulo": "Chaveiro residencial",
-      "ramos": ["residencial"],
-      "sinonimos": ["chaveiro de casa", "porta de casa trancada", "fechadura quebrada", "arrombaram a fechadura", "perdi a chave de casa"],
+      "ramos": [
+        "residencial"
+      ],
+      "sinonimos": [
+        "chaveiro de casa",
+        "porta de casa trancada",
+        "fechadura quebrada",
+        "arrombaram a fechadura",
+        "perdi a chave de casa"
+      ],
       "pergunta_tipica": "quebrou a fechadura de casa, cobre?",
       "_nota": "⚠️ Chave separada de `chaveiro` de proposito: a mesma palavra em ramos diferentes tem limite, carencia e acionamento diferentes, e `unique (plano_id, servico)` obrigaria a escolher um so se fossem a mesma chave."
     },
     "bateria": {
       "tipo": "assistencia",
       "rotulo": "Carga de bateria",
-      "ramos": ["auto"],
-      "sinonimos": ["bateria", "bateria arriada", "bateria descarregada", "carro nao pega", "chupeta", "carga de bateria", "bateria nova"],
+      "ramos": [
+        "auto"
+      ],
+      "sinonimos": [
+        "bateria",
+        "bateria arriada",
+        "bateria descarregada",
+        "carro nao pega",
+        "chupeta",
+        "carga de bateria",
+        "bateria nova"
+      ],
       "pergunta_tipica": "a bateria arriou, alguem vem dar chupeta?"
     },
     "granizo": {
       "tipo": "cobertura",
       "rotulo": "Granizo",
-      "ramos": ["auto", "residencial"],
-      "sinonimos": ["granizo", "chuva de granizo", "pedra de gelo", "chuva de pedra"],
+      "ramos": [
+        "auto",
+        "residencial"
+      ],
+      "sinonimos": [
+        "granizo",
+        "chuva de granizo",
+        "pedra de gelo",
+        "chuva de pedra"
+      ],
       "pergunta_tipica": "caiu granizo no carro, o seguro cobre?",
       "_nota": "🔴 📊 26 perguntas, e NAO e assistencia: granizo e RISCO DA APOLICE (cobertura compreensiva), nao servico da assistencia 24h. Fica no vocabulario porque o segurado pergunta junto — e a resposta tem de dizer que isso se resolve por SINISTRO, nao por acionamento. Marcar como assistencia mandaria o segurado para a fila errada."
     },
     "alagamento": {
       "tipo": "cobertura",
       "rotulo": "Alagamento / enchente",
-      "ramos": ["auto", "residencial"],
-      "sinonimos": ["alagamento", "enchente", "inundacao", "agua entrou", "o carro afundou"],
+      "ramos": [
+        "auto",
+        "residencial"
+      ],
+      "sinonimos": [
+        "alagamento",
+        "enchente",
+        "inundacao",
+        "agua entrou",
+        "o carro afundou"
+      ],
       "pergunta_tipica": "o carro alagou, cobre?",
       "_nota": "Mesma familia do granizo: risco da apolice, nao servico de assistencia."
     }
