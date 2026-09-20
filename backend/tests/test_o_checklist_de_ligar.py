@@ -181,8 +181,11 @@ AS_SETE = [
      "não está conectado"),
     ("4 casa",    dict(casa={"casa:id-resulta": 0}),
      "Nenhum telefone da equipe"),
+    # ⚠️ A frase MUDOU em 20/09/2026, e o teste mudou com ela (CLAUDE.md §9.3):
+    # "1 número(s) que não são de teste escapam do silêncio" era verdadeiro e
+    # não dizia onde mexer. O que se afirma agora é o CONSERTO escrito na frase.
     ("5 excecoes", dict(health=_com(excecoes_da_janela_fora_do_teste=1)),
-     "escapam do silêncio"),
+     "em JANELA_SILENCIO_EXCECOES que não estão entre os números de teste"),
     ("6 agente",  dict(agentes={"agente:id-resulta": []}),
      "não tem agente de atendimento"),
     ("7 flags",   dict(health=_com(freio_de_emergencia_armado=True)),
@@ -448,6 +451,93 @@ finally:
             _os.environ.pop(k, None)
         else:
             _os.environ[k] = v
+
+# ===========================================================================
+print("\n[10] O AMBIENTE DE USO — o script tem de RODAR dentro do conteiner")
+# ===========================================================================
+# 🔴 O defeito que este guarda fecha (📊 reproduzido pelo Founder em 20/09/2026,
+# console do EasyPanel, `/app`): `python scripts/conferir_o_que_esta_no_ar.py
+# --ligar` morria em `ModuleNotFoundError: No module named 'portal_worker'`
+# ANTES de imprimir uma linha. Nenhum teste via isto, porque TODO teste roda da
+# árvore do repositório, onde `portal_worker/` existe.
+#
+# ⚠️ Por isso o gate não é uma asserção: é um SUBPROCESSO com o mundo do
+# contêiner montado — um `meta_path` que BLOQUEIA `portal_worker` e um `cwd`
+# que não é o repositório. A borda continua sendo a do teste (o mesmo dublê de
+# `/health` e de banco): nada de rede, nada de banco, nada de envio.
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+_SIMULA_O_CONTEINER = r'''
+import json, runpy, sys
+from pathlib import Path
+
+class BloqueiaPortalWorker:
+    """O `/app` da imagem do smith-api: `portal_worker` simplesmente nao existe."""
+    def find_spec(self, nome, caminho=None, alvo=None):
+        if nome == "portal_worker" or nome.startswith("portal_worker."):
+            raise ImportError("No module named 'portal_worker' (conteiner simulado)")
+        return None
+
+sys.meta_path.insert(0, BloqueiaPortalWorker())
+
+CAMINHO, CORPUS = sys.argv[1], sys.argv[2]
+saude = json.loads(Path(CORPUS).read_text(encoding="utf-8"))
+saude["codigo"]["excecoes_da_janela_tamanho"] = 2
+saude["codigo"]["excecoes_da_janela_fora_do_teste"] = 0
+
+# O modulo REAL, carregado como o interpretador o carregaria.
+MOD = runpy.run_path(CAMINHO, run_name="dentro_do_conteiner")
+print("IMPORTOU=1")
+print("NO_SERVICO=%d" % int(bool(MOD["dentro_do_servico"]())))
+
+class Motores:
+    def ler_health(self): return saude
+    def empresas(self, nomes):
+        return [{"id": "id-r", "nome": n} for n in nomes]
+    async def destino(self, cid):
+        return {"destino": "5547988087463", "fonte": "x", "recusa": None}
+    def canal(self, cid):
+        return [{"channel_status": "connected", "is_active": True,
+                 "provider": "evolution-go", "purpose": "observer"}]
+    async def telefones_da_casa(self, cid): return 8
+    def agente(self, cid): return [{"id": "a1", "is_active": False}]
+
+codigo = MOD["checklist"](("Resulta Seguros",), motores=Motores(), digital=None,
+                          modo=MOD["MODO_PILOTO"], escrever=print)
+print("EXIT=%d" % codigo)
+print("MODO_ANTIGO=%d" % MOD["main"]([]))
+'''
+
+with tempfile.TemporaryDirectory() as _longe:          # 🔴 cwd != repositorio
+    _r = subprocess.run(
+        [sys.executable, "-c", _SIMULA_O_CONTEINER,
+         str(ROOT / "scripts" / "conferir_o_que_esta_no_ar.py"),
+         str(ROOT / "tests" / "corpus" / "piloto" / "health_real_2026-09-20.json")],
+        cwd=_longe, capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=180,
+        env={**{k: v for k, v in __import__("os").environ.items()},
+             "PYTHONIOENCODING": "utf-8"})
+_saida_conteiner = (_r.stdout or "") + (_r.stderr or "")
+
+check("10: sem `portal_worker`, o script CARREGA (nenhum ImportError)",
+      "ModuleNotFoundError" not in _saida_conteiner
+      and "IMPORTOU=1" in _saida_conteiner, _saida_conteiner[-600:])
+check("10 CONTROLE: e o bloqueador REALMENTE escondia o modulo",
+      "NO_SERVICO=1" in _saida_conteiner, _saida_conteiner[-400:])
+check("10: `--ligar` imprime o VEREDITO la de dentro",
+      "PODE LIGAR" in _saida_conteiner and "EXIT=0" in _saida_conteiner,
+      _saida_conteiner[-800:])
+check("10: a trava da digital vira linha INFORMATIVA, e nao reprova",
+      "dentro do próprio serviço" in _saida_conteiner, _saida_conteiner[:900])
+check("10: o modo antigo recusa com frase de gente e saida 2, sem traceback",
+      "MODO_ANTIGO=2" in _saida_conteiner
+      and "rode-o da máquina de desenvolvimento" in _saida_conteiner,
+      _saida_conteiner[-600:])
+check("10 CONTROLE: aqui na arvore do repositorio NAO e conteiner",
+      CHK.dentro_do_servico() is False)
+check("10 CONTROLE: e na arvore a digital do app CONTINUA sendo calculavel",
+      CHK.impressao(CHK.PASTA_DO_APP)[0] is not None)
 
 print("\n" + "=" * 64)
 print(f"  {PASS} asserções verdes · {FAIL} vermelhas")

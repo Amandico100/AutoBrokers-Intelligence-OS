@@ -62,6 +62,7 @@ from scripts.medir_o_piloto import (  # noqa: E402
     TITULO_HANDOFF_FALHOU,
     TITULO_SILENCIO,
     em_markdown,
+    janela_padrao,
     limites_do_dia,
     medir,
     medir_o_dia,
@@ -712,13 +713,84 @@ def bloco_10_o_bloco_so_com_maioria():
           "CONTROLE: com 4 de 6 avaliadas a nota do bloco SAI (80)")
 
 
+_SIMULA_O_CONTEINER = r'''
+import runpy, sys
+from datetime import date
+
+class BloqueiaPortalWorker:
+    """O `/app` da imagem do smith-api: `portal_worker` nao existe la dentro."""
+    def find_spec(self, nome, caminho=None, alvo=None):
+        if nome == "portal_worker" or nome.startswith("portal_worker."):
+            raise ImportError("No module named 'portal_worker' (conteiner simulado)")
+        return None
+
+sys.meta_path.insert(0, BloqueiaPortalWorker())
+MOD = runpy.run_path(sys.argv[1], run_name="dentro_do_conteiner")
+print("IMPORTOU=1")
+HOJE = date(2026, 9, 20)
+print("PADRAO=%s..%s" % MOD["janela_padrao"](hoje=HOJE))
+print("DIAS3=%s..%s" % MOD["janela_padrao"](dias=3, hoje=HOJE))
+print("SO_DE=%s..%s" % MOD["janela_padrao"](date(2026, 9, 1), hoje=HOJE))
+'''
+
+
+def bloco_13_o_ambiente_do_conteiner():
+    """🔴 G-P13 — a medição tem de RODAR onde o Founder a roda.
+
+    📊 Em 20/09/2026 o script vizinho (`conferir_o_que_esta_no_ar.py`) morreu no
+    console do EasyPanel com `ModuleNotFoundError: portal_worker` — um import
+    que TODO teste via existir, porque todo teste roda da árvore do repositório.
+    Este guarda monta o mundo de lá: `portal_worker` bloqueado no `meta_path` e
+    `cwd` fora do repositório. ⛔ Só leitura: nada de banco, nada de rede.
+    """
+    print("\n[13] o ambiente de uso — o conteiner, simulado")
+    import subprocess
+    import tempfile
+    caminho = os.path.join(RAIZ, "scripts", "medir_o_piloto.py")
+    # 🔴 NO CONTÊINER AS VARIÁVEIS VÊM DO AMBIENTE, não de um arquivo. 📊 Sem
+    #    isto o gate falhava por um motivo FALSO: `app.core.config` lê o `.env`
+    #    pelo CWD, e com o cwd fora da árvore ele acusava `MINIO_ROOT_USER
+    #    Field required`. Lá dentro o EasyPanel exporta as variáveis; aqui,
+    #    quem as exporta é o `.env` da árvore, lido e passado por `env=`.
+    from dotenv import dotenv_values
+    ambiente = {**os.environ,
+                **{k: v for k, v in dotenv_values(
+                    os.path.join(RAIZ, ".env")).items() if v is not None},
+                "PYTHONIOENCODING": "utf-8"}
+    with tempfile.TemporaryDirectory() as longe:
+        r = subprocess.run([sys.executable, "-c", _SIMULA_O_CONTEINER, caminho],
+                           cwd=longe, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=180,
+                           env=ambiente)
+    saida = (r.stdout or "") + (r.stderr or "")
+    certo("ModuleNotFoundError" not in saida and "IMPORTOU=1" in saida,
+          "sem `portal_worker` e fora do repositório, o script CARREGA%s"
+          % ("" if "IMPORTOU=1" in saida else " → " + saida[-400:]))
+    # 🔴 A JANELA PADRÃO, calculada LÁ DENTRO, com o relógio FIXO.
+    certo("PADRAO=2026-09-13..2026-09-19" in saida,
+          "sem datas: os 7 dias FECHADOS, até ONTEM (13→19, com hoje=20)")
+    certo("DIAS3=2026-09-17..2026-09-19" in saida,
+          "--dias 3: 17→19, e nunca o dia de hoje")
+    certo("SO_DE=2026-09-01..2026-09-19" in saida,
+          "--de sozinho vai até ontem")
+    # CONTROLE: o relógio é REALMENTE injetado — outro hoje, outra janela.
+    certo(janela_padrao(hoje=date(2026, 9, 21)) == (date(2026, 9, 14),
+                                                    date(2026, 9, 20)),
+          "CONTROLE: com hoje=21 a janela anda um dia (14→20)")
+    certo(janela_padrao(date(2026, 9, 5), date(2026, 9, 6), 99,
+                        hoje=date(2026, 9, 20)) == (date(2026, 9, 5),
+                                                    date(2026, 9, 6)),
+          "CONTROLE: com as DUAS datas escritas, --dias não manda em nada")
+
+
 def test_o_piloto_e_medido():
     for bloco in (bloco_1_o_fio, bloco_2_reconciliacao,
                   bloco_3_o_silencio_vem_do_produto, bloco_4_zero_pii,
                   bloco_5_isolamento, bloco_6_nao_avaliada_dos_dois_lados,
                   bloco_7_menos_dado_nunca_melhora, bloco_8_o_dia_e_o_local,
                   bloco_9_antes_de_14_nao_e_zero, bloco_10_o_bloco_so_com_maioria,
-                  bloco_11_leitura_que_falha, bloco_12_o_chat_principal):
+                  bloco_11_leitura_que_falha, bloco_12_o_chat_principal,
+                  bloco_13_o_ambiente_do_conteiner):
         bloco()
     print("\n%s  %d verdes · %d vermelhas" % ("=" * 60, OK, FAIL))
     assert not FAIL, "guardas vermelhos: %s" % FALHAS

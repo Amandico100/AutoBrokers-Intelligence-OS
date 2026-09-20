@@ -7,9 +7,15 @@ diagnóstico — ou ``NÃO AVALIADA`` com o motivo escrito.
 
 ```
 cd backend
+PYTHONIOENCODING=utf-8 python scripts/medir_o_piloto.py          # últimos 7 dias FECHADOS
+PYTHONIOENCODING=utf-8 python scripts/medir_o_piloto.py --dias 3
 PYTHONIOENCODING=utf-8 python scripts/medir_o_piloto.py \
     --de 2026-09-08 --ate 2026-09-20 --formato markdown --saida ../docs/.../X.md
 ```
+
+⚠️ **Nenhuma data é obrigatória.** Sem `--de/--ate` a medição é dos últimos
+``DIAS_PADRAO`` dias **fechados**, até ONTEM no fuso da corretora — o dia de
+hoje ainda está correndo e mudaria de número a cada hora.
 
 🔴 **A MEDIÇÃO CHAMA O MOTOR** (CLAUDE.md §5 e §9.4). Nada aqui reconta o que o
 produto já conta:
@@ -1240,6 +1246,46 @@ def _dia(texto: str) -> date:
     return datetime.strptime(texto, "%Y-%m-%d").date()
 
 
+#: 🔴 QUANTOS DIAS, quando ninguém disse. 📊 O piloto do Founder é de dias
+#: fechados; 7 é a semana que ele compara com a anterior, e é o maior período
+#: que ainda cabe numa página lida de uma vez.
+DIAS_PADRAO = 7
+
+
+def hoje_da_plataforma(agora: Optional[datetime] = None) -> date:
+    """O DIA de hoje no fuso da corretora — o mesmo `fuso_da_corretora` do motor.
+
+    ⚠️ O relógio entra por parâmetro para que o guarda possa fixá-lo: um teste
+    que chamasse `datetime.now()` provaria uma coisa diferente a cada dia.
+    """
+    agora = agora or datetime.now(timezone.utc)
+    return agora.astimezone(fuso_da_corretora()).date()
+
+
+def janela_padrao(de: Optional[date] = None, ate: Optional[date] = None,
+                  dias: Optional[int] = None, *,
+                  hoje: Optional[date] = None) -> Tuple[date, date]:
+    """`(início, fim)` a partir do que o Founder digitou — ou não. **PURA.**
+
+    🔴 **Sem nada: os últimos DIAS_PADRAO (7) dias FECHADOS, até ONTEM.** O dia de hoje está
+    correndo e muda a cada hora — é o próprio aviso que `em_markdown` imprime.
+    Uma janela padrão que incluísse hoje entregaria, de graça, o número que a
+    página diz para não usar.
+
+    `--de` sozinho vai até ontem · `--ate` sozinho recua `dias` a partir dele.
+    """
+    hoje = hoje or hoje_da_plataforma()
+    ontem = hoje - timedelta(days=1)
+    n = max(1, int(dias or DIAS_PADRAO))
+    if de is not None and ate is not None:
+        return de, ate
+    if de is not None:
+        return de, ontem
+    if ate is not None:
+        return ate - timedelta(days=n - 1), ate
+    return ontem - timedelta(days=n - 1), ontem
+
+
 def sem_o_carimbo(texto: str) -> str:
     """O corpo comparável entre duas rodadas — sem a hora de geração.
 
@@ -1289,14 +1335,42 @@ async def _principal(args) -> int:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(description="📊 a medição diária do piloto")
-    p.add_argument("--de", required=True, help="AAAA-MM-DD (dia local da corretora)")
-    p.add_argument("--ate", required=True, help="AAAA-MM-DD, inclusive")
+    # 🔴 NENHUMA DATA É OBRIGATÓRIA. ⚠️ Pedir duas datas para ver o piloto é
+    # pedir que quem lê saiba de cor o dia de ontem no fuso certo — e o comando
+    # que ninguém consegue digitar é um comando que ninguém roda.
+    p.add_argument("--de", help="AAAA-MM-DD (dia local da corretora). Sem ele: "
+                                "os últimos %d dias fechados" % DIAS_PADRAO)
+    p.add_argument("--ate", help="AAAA-MM-DD, inclusive. Sem ele: ONTEM — o "
+                                 "dia de hoje ainda está correndo")
+    p.add_argument("--dias", type=int, default=None,
+                   help="quantos dias fechados, contando de trás para a frente "
+                        "(padrão %d)" % DIAS_PADRAO)
     p.add_argument("--corretora", action="append",
                    help="company_name; repetível. Padrão: %s"
                         % ", ".join(CORRETORAS_PADRAO))
     p.add_argument("--formato", choices=("json", "markdown"), default="markdown")
     p.add_argument("--saida", help="caminho do arquivo; sem ele, imprime")
     args = p.parse_args(list(argv) if argv is not None else None)
+
+    sem_datas = not (args.de or args.ate)
+    try:
+        inicio, fim = janela_padrao(_dia(args.de) if args.de else None,
+                                    _dia(args.ate) if args.ate else None,
+                                    args.dias)
+    except ValueError:
+        print("⛔ Data em formato que eu não entendo. Use AAAA-MM-DD, por "
+              "exemplo --de 2026-09-13 — ou não passe data nenhuma e eu meço "
+              "os últimos %d dias fechados." % DIAS_PADRAO)
+        return 2
+    if inicio > fim:
+        print("⛔ O começo (%s) é depois do fim (%s): não há período para medir."
+              % (inicio.isoformat(), fim.isoformat()))
+        return 2
+    args.de, args.ate = inicio.isoformat(), fim.isoformat()
+    if sem_datas:
+        print("📊 Sem datas no comando: medindo os %d dias fechados de %s a %s "
+              "(fuso da corretora, até ontem)."
+              % ((fim - inicio).days + 1, args.de, args.ate))
 
     from dotenv import load_dotenv
 

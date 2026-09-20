@@ -46,15 +46,74 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-RAIZ = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(RAIZ / "backend"))
-
-from portal_worker.impressao import impressao_do_diretorio  # noqa: E402
+#: 🔴 OS TRÊS CAMINHOS, e por que não há um só.
+#:
+#: 📊 Medido em 20/09/2026 no console do EasyPanel (contêiner do `smith-api`,
+#: cwd `/app`): lá dentro existem **apenas** `app/` e `scripts/`. Não há
+#: `portal_worker/`, não há `docs/`, não há `.git` — e `parents[2]` é `/`, que
+#: não é repositório nenhum. O `from portal_worker.impressao import …` de topo
+#: derrubava o `--ligar` com `ModuleNotFoundError` antes de imprimir uma linha.
+#:
+#: `BASE_DO_PROCESSO` é a única âncora que vale nos DOIS mundos: `backend/` no
+#: repositório, `/app` no contêiner. É dela que sai o `sys.path` (sem ele,
+#: `import app.…` falha no contêiner, porque o `sys.path[0]` é `scripts/`) e a
+#: pasta do código deste processo.
+AQUI = Path(__file__).resolve().parent            # .../scripts
+BASE_DO_PROCESSO = AQUI.parent                    # .../backend  ·  /app
+PASTA_DO_APP = BASE_DO_PROCESSO / "app"
+RAIZ = BASE_DO_PROCESSO.parent                    # o repositório — só no dev
+if str(BASE_DO_PROCESSO) not in sys.path:
+    sys.path.insert(0, str(BASE_DO_PROCESSO))
 
 try:  # o terminal do Founder é Windows; as frases têm acento.
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 except Exception:  # noqa: BLE001
     pass
+
+def _tem_portal_worker() -> bool:
+    """O módulo da digital é importável AQUI? ⛔ Sem levantar nada."""
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("portal_worker.impressao") is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def dentro_do_servico() -> bool:
+    """Estou rodando DENTRO da imagem que está no ar?
+
+    🔴 Duas perguntas, unidas por OU, porque cada uma sozinha erra: a imagem
+    pode ganhar a pasta um dia (e o módulo continuar sem importar), e um
+    ambiente de desenvolvimento pode ter a pasta sem tê-la no `sys.path`.
+    Nenhuma delas é verdadeira na árvore do repositório, e as duas são falsas
+    lá dentro — 📊 foi exatamente o que o console do EasyPanel mostrou.
+    """
+    return not _tem_portal_worker() or not (BASE_DO_PROCESSO / "portal_worker").is_dir()
+
+
+def impressao(pasta: Path):
+    """`(digital, quantos)` — ou `(None, 0)` quando não dá para calcular.
+
+    ⚠️ O import é TARDIO de propósito: ele é a única coisa deste script que não
+    existe dentro do contêiner, e um import de topo transforma "não dá para
+    conferir a digital" em "o comando inteiro não roda".
+
+    ⛔ E não há função equivalente dentro de `app/`: 📊 `grep -rn
+    code_fingerprint app` devolve só `app/main.py:528`, que importa **este
+    mesmo** `portal_worker.impressao` (e por isso publica `"indisponivel"` no
+    `/health` do contêiner). Escrever um segundo hasheador aqui criaria motor
+    paralelo (CLAUDE.md §5) — e duas digitais que discordam não conferem nada.
+    """
+    try:
+        from portal_worker.impressao import impressao_do_diretorio
+    except Exception:  # noqa: BLE001
+        return None, 0
+    try:
+        return impressao_do_diretorio(Path(pasta))
+    except Exception:  # noqa: BLE001
+        return None, 0
+
 
 BASE = "https://autobrokers-intelligence-os"
 SERVICOS = (
@@ -73,7 +132,11 @@ def _cavar(d: dict, caminho: tuple) -> dict:
 
 
 def conferir(nome: str, url: str, pasta: str, caminho: tuple) -> bool:
-    local, quantos = impressao_do_diretorio(RAIZ / pasta)
+    local, quantos = impressao(RAIZ / pasta)
+    if local is None:
+        print(f"\n{nome}")
+        print("  repositorio : NAO PUDE CALCULAR a digital de " + pasta)
+        return False
     print(f"\n{nome}")
     print(f"  repositorio : {local}  ({quantos} arquivos .py em {pasta})")
 
@@ -178,6 +241,13 @@ def avaliar(fatos: Dict[str, Any]) -> List[Dict[str, Any]]:
             "no_ar", NAO_CONFERIDA,
             "O sistema respondeu, mas não contou nada sobre: "
             + ", ".join(ausentes) + " (/health)."))
+    elif fatos.get("no_servico"):
+        # ⚠️ Linha INFORMATIVA, e ela não reprova: quem roda aqui dentro já está
+        # olhando para o código que está no ar (📊 o console do EasyPanel).
+        travas.append(_trava(
+            "no_ar", ABERTA,
+            "Você está rodando dentro do próprio serviço: o código conferido é "
+            "o que está no ar."))
     elif fatos.get("digital_bate") is None:
         travas.append(_trava(
             "no_ar", NAO_CONFERIDA,
@@ -343,9 +413,19 @@ def _avaliar_excecoes(saude: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if int(fora) > 0:
         return _trava(
             "excecoes", FECHADA,
-            f"{int(fora)} número(s) que não são de teste escapam do silêncio: "
-            "o agente pode responder por cima de quem está atendendo. Tire "
-            "esses números da lista (JANELA_SILENCIO_EXCECOES).")
+            # 🔴 A frase tem de dizer COMO RESOLVER sem mostrar o número
+            # (CLAUDE.md §13.3). 📊 Em 20/09/2026 ela dizia só "1 número(s) que
+            # não são de teste escapam do silêncio" — verdadeiro, e inútil: o
+            # Founder não tinha como saber onde mexer. Os dois envs abaixo são
+            # exatamente os que `main.py:785` soma para formar o conjunto de
+            # teste; escrever qualquer outro nome aqui mandaria mexer no lugar
+            # onde o produto não olha.
+            f"Há {int(fora)} número(s) em JANELA_SILENCIO_EXCECOES que não "
+            "estão entre os números de teste (BILLING_CANARIO_ALLOWLIST, "
+            "CANARIO_TESTE_B). Se for um celular de teste seu, acrescente-o a "
+            "BILLING_CANARIO_ALLOWLIST; se for de cliente ou de atendente, "
+            "tire-o de JANELA_SILENCIO_EXCECOES. Depois, Implantar o "
+            "smith-api.")
     quantos = int(total)
     if quantos == 0:
         return _trava("excecoes", ABERTA,
@@ -565,15 +645,20 @@ async def coletar(nomes, motores=None, digital=None, modo=MODO_PILOTO) -> Dict[s
     from app.api.porteiro_do_agente import CANAL_FORA_DO_AR
 
     m = motores or MotoresReais()
+    # 🔴 A TRAVA DA DIGITAL NÃO SE APLICA A QUEM RODA DENTRO DO SERVIÇO: o
+    # código que este processo carregou É o que está no ar. Compará-lo com "o
+    # repositório" seria comparar com uma pasta que não existe ali — e reprovar
+    # por isso é reprovar o piloto por um detalhe do lugar de onde se rodou.
+    no_servico = dentro_do_servico()
     fatos: Dict[str, Any] = {"health": None, "digital_bate": None,
-                             "corretoras": [], "modo": modo, "desconhecidas": []}
+                             "corretoras": [], "modo": modo, "desconhecidas": [],
+                             "no_servico": no_servico}
 
     fatos["health"] = m.ler_health()
-    if isinstance(fatos["health"], dict):
+    if isinstance(fatos["health"], dict) and not no_servico:
         remoto = str(_codigo(fatos["health"]).get("code_fingerprint") or "")
-        local = digital if digital is not None else impressao_do_diretorio(
-            RAIZ / "backend/app")[0]
-        fatos["digital_bate"] = (remoto == local) if remoto and remoto not in (
+        local = digital if digital is not None else impressao(PASTA_DO_APP)[0]
+        fatos["digital_bate"] = (remoto == local) if remoto and local and remoto not in (
             "ausente", "indisponivel") else None
 
     # ⚠️ DUAS COISAS DIFERENTES, e o código de saída as separa: a corretora que
@@ -711,7 +796,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"CHECKLIST DE LIGAR ({args.modo}) — nada aqui envia, liga ou escreve.")
         return checklist(nomes, modo=args.modo)
 
-    # ⛔ O modo antigo (P-189) continua EXATAMENTE como era.
+    # ⛔ O modo antigo (P-189) continua EXATAMENTE como era — e ele COMPARA com
+    # o repositório, que dentro do contêiner não existe. Frase legível e saída
+    # 2 (erro de uso), nunca um traceback.
+    if dentro_do_servico():
+        print("Este modo compara o que está no ar com o REPOSITÓRIO, e aqui "
+              "dentro não há repositório: rode-o da máquina de desenvolvimento. "
+              "Daqui de dentro, o que serve é: python "
+              "scripts/conferir_o_que_esta_no_ar.py --ligar")
+        return 2
+
     alvo = args.servico
     servicos = [s for s in SERVICOS if not alvo or s[0] == alvo]
     if not servicos:
