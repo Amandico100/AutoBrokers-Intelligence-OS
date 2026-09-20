@@ -51,6 +51,13 @@ type Item = {
   /** 🔴 D8 — o motivo do rascunho, gravado no banco desde 19/09/2026. */
   motivo_do_rascunho?: string | null;
   plano_motivo_do_rascunho?: string | null;
+  /** 🔴 EXTRA-001.5.2 (F) — o parecer automático contra a PÁGINA, escrito antes
+   *  de a linha chegar aqui. `null` = ainda não conferida (fila antiga). */
+  veredito_do_conferente?: 'CONFERE' | 'DIVERGE' | 'NAO_CONSEGUI' | null;
+  conferencia?: { campos?: Record<string, string>; motivos?: string[]; pagina?: number | null } | null;
+  conferido_em?: string | null;
+  /** 🔴 EXTRA-001.5.2 (B) — de qual cláusula a linha saiu. */
+  caminho_da_clausula?: string | null;
 };
 
 /** O que a rota devolve. 🔴 `ok` é obrigatório: é ele que separa "deu erro" de
@@ -147,6 +154,68 @@ function oQueFoiProposto(i: Item): string {
   if (i.coberto === 'nao') return `${nome}: NÃO está incluído`;
   const base = i.coberto === 'condicionado' ? `${nome}: incluído COM condição` : `${nome}: incluído`;
   return base + (limite ? ` — ${limite}` : '') + (i.carencia_dias ? ` (carência de ${i.carencia_dias} dias)` : '');
+}
+
+/** 🔴 EXTRA-001.5.2 (F) — O SELO DO CONFERENTE, EM LINGUAGEM DE GENTE.
+ *
+ * 📊 19/09/2026: conferir 81 linhas à mão custou abrir 27 PDFs e 3.052 páginas,
+ * e 58 delas ficaram paradas por isso. O selo é o que faz a curadoria caber num
+ * dia: a pessoa lê o parecer ao lado da linha e decide.
+ *
+ * ⚠️ `NÃO CONSEGUI` **não** é `DIVERGE`, e por isso tem selo próprio: "o PDF não
+ * abriu" e "a página não confirma" mandam a pessoa fazer coisas opostas. E o
+ * selo NUNCA decide: quem publica continua sendo gente, com revisor.
+ */
+const SELO: Record<string, { texto: string; classe: string; explica: string }> = {
+  CONFERE: {
+    texto: 'a página confirma',
+    classe: 'border-emerald-600/40 text-emerald-600',
+    explica: 'conferi esta linha contra a página do documento e ela bate',
+  },
+  DIVERGE: {
+    texto: 'a página não confirma',
+    classe: 'border-amber-600/40 text-amber-600',
+    explica: 'algo nesta linha não bate com a página — vale abrir antes de aprovar',
+  },
+  NAO_CONSEGUI: {
+    texto: 'não consegui conferir',
+    classe: 'border-border text-muted-foreground',
+    explica: 'não deu para conferir esta linha contra o documento — não é o mesmo que estar errada',
+  },
+};
+
+/** O campo do parecer em português. 🔴 `pagina`, `trecho`, `coberto`… são nomes
+ *  de coluna; quem cura não tem por que aprendê-los. */
+const CAMPO: Record<string, string> = {
+  pagina: 'página', trecho: 'trecho', coberto: 'está coberto?',
+  limite: 'limite', plano: 'plano', produto: 'produto',
+};
+
+function SeloDoConferente({ i }: { i: Item }) {
+  const selo = i.veredito_do_conferente ? SELO[i.veredito_do_conferente] : null;
+  if (!selo) return null;
+  const motivos = (i.conferencia?.motivos || []).filter(Boolean);
+  const divergentes = Object.entries(i.conferencia?.campos || {})
+    .filter(([, estado]) => estado === 'diverge')
+    .map(([campo]) => CAMPO[campo] || campo);
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-full border px-2 py-[1px] text-[10px] ${selo.classe}`}>
+          {selo.texto}
+        </span>
+        <span className="text-[10px] text-faint">{selo.explica}</span>
+      </div>
+      {divergentes.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Não bate em: {divergentes.join(', ')}.
+        </p>
+      )}
+      {motivos.map((m, n) => (
+        <p key={n} className="text-[11px] text-muted-foreground">· {m}</p>
+      ))}
+    </div>
+  );
 }
 
 export function FilaDeCuradoria({ fila, onMudou }: { fila: Fila; onMudou: () => void }) {
@@ -294,7 +363,15 @@ export function FilaDeCuradoria({ fila, onMudou }: { fila: Fila; onMudou: () => 
                 </p>
               )}
               <p className="text-sm text-foreground">{oQueFoiProposto(i)}</p>
+              {/* 🔴 EXTRA-001.5.2 (B) — de qual cláusula esta linha saiu. É o
+                  que mostra, sem abrir o PDF, que um "não" foi lido de dentro
+                  da cláusula de OUTRA cobertura. */}
+              {i.caminho_da_clausula && (
+                <p className="text-[11px] text-faint">Lido em: {i.caminho_da_clausula}</p>
+              )}
               {i.condicao && <p className="text-[11px] text-muted-foreground">Condição: {i.condicao}</p>}
+              {/* 🔴 EXTRA-001.5.2 (F) — o parecer automático, ao lado da linha. */}
+              <SeloDoConferente i={i} />
 
               <div className="rounded-md border border-border bg-background p-2">
                 <div className="flex flex-wrap items-center gap-2">

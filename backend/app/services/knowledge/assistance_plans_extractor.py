@@ -1010,6 +1010,47 @@ class _MinioComCache:
         return io.BytesIO(self._cache[caminho])
 
 
+def _anotar_o_parecer(
+    linha: Dict[str, Any], proposta: Dict[str, Any], paginas: Dict[int, str],
+    ancora: Optional[Ancora], db: Any, resumo: "ResumoDoDocumento",
+) -> None:
+    """A linha recém-escrita recebe o veredito do conferente (unidade F).
+
+    🔴 O CONFERENTE QUE QUEBRA NÃO DERRUBA A EXTRAÇÃO (P-F04). Uma exceção aqui
+    custaria a onda inteira por causa de um parecer — e o parecer é o acessório,
+    a linha é o trabalho. A falha vira `NAO_CONSEGUI` **com o motivo escrito**,
+    que é diferente de `DIVERGE`: "não consegui conferir" e "a página não
+    confirma" mandam a pessoa fazer coisas opostas.
+
+    ⚠️ O import é local de propósito: `assistance_plans_conferente` importa
+    ESTE módulo (reusa `_E_EXCLUSAO_DE_RISCO`/`_NEGA_O_SERVICO` em vez de
+    reescrevê-los, CLAUDE.md §5). Importá-lo no topo fecharia o ciclo.
+    """
+    servico_id = str((linha or {}).get("id") or "")
+    if not servico_id:
+        return
+    try:
+        from . import assistance_plans_conferente as CONF
+
+        # 🔴 o trecho vai no dicionário porque a BASE não o guarda (só o hash):
+        # é a única hora em que o conferente tem a frase e a página na mão.
+        parecer = CONF.conferir_linha(dict(proposta), paginas,
+                                      ancora.planos if ancora else None)
+        BASE.anotar_conferencia(servico_id, parecer.veredito, parecer.campos,
+                                parecer.motivos, parecer.pagina, db=db)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[onda1] conferente falhou na linha %s: %s",
+                       servico_id[:8], type(exc).__name__)
+        resumo.recusar("conferente_falhou:%s" % type(exc).__name__)
+        try:
+            BASE.anotar_conferencia(
+                servico_id, "NAO_CONSEGUI", {},
+                ["o conferente não conseguiu avaliar esta linha (%s)"
+                 % type(exc).__name__], proposta.get("pagina"), db=db)
+        except Exception:  # noqa: BLE001
+            logger.warning("[onda1] nem o NAO_CONSEGUI foi gravado em %s", servico_id[:8])
+
+
 def documentos_alvo(
     *, ramos: Tuple[str, ...] = RAMOS_PADRAO, documento_id: Optional[str] = None, db: Any = None
 ) -> List[Dict[str, Any]]:
@@ -1207,7 +1248,7 @@ def processar_documento(
         if not pid:
             continue
         try:
-            BASE.propor_servico(
+            linha = BASE.propor_servico(
                 plano_id=pid, servico=str(p["servico"]), coberto=str(p["coberto"]),
                 documento_id=resumo.documento_id, pagina=int(p["pagina"]),
                 trecho=str(p.get("trecho") or ""),
@@ -1216,8 +1257,10 @@ def processar_documento(
                 condicao=p.get("condicao"),
                 confianca=str(p.get("confianca") or "media")
                 if str(p.get("confianca") or "") in BASE.CONFIANCAS else "media",
+                caminho_da_clausula=p.get("caminho_da_clausula"),
                 db=cliente,
             )
+            _anotar_o_parecer(linha, p, paginas, ancora, cliente, resumo)
             resumo.servicos_propostos += 1
         except BASE.BaseDePlanosRecusa as exc:
             logger.warning("[onda1] servico recusado pelo contrato: %s", type(exc).__name__)
@@ -1242,8 +1285,13 @@ def processar_documento(
                 plano_id=pid, servico=str(p["servico"]), coberto=str(p["coberto"]),
                 documento_id=resumo.documento_id, pagina=int(p["pagina"]),
                 trecho=str(p.get("trecho") or ""), condicao=p.get("condicao"),
+                caminho_da_clausula=p.get("caminho_da_clausula"),
                 confianca="baixa", db=cliente,
             )
+            # 🔴 O RASCUNHO TAMBÉM É CONFERIDO. Ele é o que a pessoa abre para
+            # entender o que o modelo tentou; sem veredito, a linha reprovada é
+            # a única da fila sem parecer — e some do "0 sem veredito".
+            _anotar_o_parecer(linha, p, paginas, ancora, cliente, resumo)
             BASE.para_rascunho(str(linha.get("id")), motivo, db=cliente)
             resumo.rascunhos += 1
         except Exception as exc:  # noqa: BLE001

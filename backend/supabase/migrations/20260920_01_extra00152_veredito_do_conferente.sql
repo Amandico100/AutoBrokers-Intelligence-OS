@@ -66,7 +66,8 @@ begin;
 alter table public.insurer_assistance_services
   add column if not exists veredito_do_conferente text,
   add column if not exists conferencia            jsonb,
-  add column if not exists conferido_em           timestamptz;
+  add column if not exists conferido_em           timestamptz,
+  add column if not exists caminho_da_clausula    text;  -- unidade B: de qual clausula a linha saiu (ex.: "9.5.9.2 > Plano Vip > Carro Reserva"); ROLLBACK: drop column junto com as outras tres
 
 comment on column public.insurer_assistance_services.veredito_do_conferente is
   'CONFERE | DIVERGE | NAO_CONSEGUI — o parecer automatico contra a PAGINA do '

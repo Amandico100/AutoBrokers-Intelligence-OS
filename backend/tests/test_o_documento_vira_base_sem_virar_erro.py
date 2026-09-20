@@ -169,7 +169,14 @@ LINHAS_TOKIO = {
         # 🔴 o padrão 2 em pessoa: o modelo insiste num plano que o documento não tem
         {"produto": "Tokio Marine Auto", "plano": "Plano unico", "nivel": 1,
          "servico": "taxi", "coberto": "sim",
-         "trecho": "local do evento", "confianca": "baixa"}],
+         "trecho": "local do evento", "confianca": "baixa"},
+        # 🔴 e o trecho INVENTADO: existe plano, existe serviço, e a frase não
+        # está em página nenhuma do documento. Vira `rascunho` — e é a linha que
+        # o bloco [F] usa para exigir que até o rascunho carregue veredito.
+        {"produto": "Tokio Marine Auto", "plano": "Plano Completo", "nivel": 2,
+         "servico": "chaveiro", "coberto": "sim",
+         "trecho": "O chaveiro atende em todo o territorio nacional sem limite de acionamentos",
+         "confianca": "media"}],
 }
 DOC_TOKIO = {"id": DOC, "insurer_key": "tokio", "product_line": "auto",
              "title": "Tokio Auto CG V3.2.pdf", "content_hash": "h1", "susep_process": None}
@@ -467,6 +474,89 @@ chaves_e2 = [str(s.get("servico")) for s in (db_e2.tabelas.get("insurer_assistan
 checar(chaves_e2 == ["vidros"],
        "🔴 CONTROLE: o MESMO documento em AUTO grava `vidros` — o ramo é que decide",
        str(chaves_e2))
+
+# ============================================================================
+print("\n[F] A LINHA NASCE CONFERIDA — e o veredito CHEGA à fila")
+# 🔴 Unidade F: o que o leitor humano fez à mão em 19/09 (135 campos conferidos
+# contra a página) vira PASSO DO CANO. Sem isto, curar 81 linhas obriga o
+# Founder a abrir 27 PDFs — e foi por isso que 58 das linhas ficaram paradas.
+db_f = banco()
+r_f = X.processar_documento(DOC_TOKIO, aplicar=True, llm=ModeloDuplo(LINHAS_TOKIO),
+                            db=db_f, minio=MinioDuplo(pdf(TOKIO)))
+linhas_f = db_f.tabelas.get("insurer_assistance_services") or []
+propostas_f = [l for l in linhas_f if str(l.get("curadoria")) == "proposto"]
+rascunhos_f = [l for l in linhas_f if str(l.get("curadoria")) == "rascunho"]
+checar(bool(linhas_f) and all(str(l.get("veredito_do_conferente") or "")
+                              in ("CONFERE", "DIVERGE", "NAO_CONSEGUI") for l in linhas_f),
+       "🔴 TODA linha gravada sai com veredito do conferente — nenhuma sem parecer",
+       str([(l.get("servico"), l.get("veredito_do_conferente")) for l in linhas_f]))
+checar(all(isinstance(l.get("conferencia"), dict)
+           and "campos" in l["conferencia"] and "motivos" in l["conferencia"]
+           for l in linhas_f),
+       "e o parecer inteiro viaja junto (`campos` + `motivos`), não só o rótulo",
+       str([l.get("conferencia") for l in linhas_f][:1]))
+checar(all(str(l.get("caminho_da_clausula") or "").strip() for l in linhas_f),
+       "🔴 e cada linha diz de QUAL cláusula ela saiu (unidade B, gravado)",
+       str([l.get("caminho_da_clausula") for l in linhas_f]))
+checar(all(l.get("conferido_em") for l in linhas_f),
+       "e quando foi conferida")
+checar(any(str(l.get("veredito_do_conferente")) == "CONFERE" for l in propostas_f),
+       "🔴 CONTROLE: a linha boa (trecho na página, plano da âncora, número da "
+       "página) sai CONFERE — senão o selo seria sempre o mesmo",
+       str([(l.get("servico"), l.get("veredito_do_conferente")) for l in propostas_f]))
+checar(bool(rascunhos_f) and all(str(l.get("veredito_do_conferente") or "")
+                                 in ("CONFERE", "DIVERGE", "NAO_CONSEGUI")
+                                 for l in rascunhos_f),
+       "🔴 PAR: a linha do trecho INVENTADO não virou `proposto` — e o rascunho "
+       "dela também carrega veredito",
+       str([(l.get("servico"), l.get("curadoria"), l.get("veredito_do_conferente"))
+            for l in rascunhos_f]))
+checar(any(str(l.get("veredito_do_conferente")) == "DIVERGE" for l in rascunhos_f),
+       "🔴 e o veredito dela é DIVERGE: a página não sustenta a frase",
+       str([(l.get("servico"), l.get("veredito_do_conferente")) for l in rascunhos_f]))
+checar(all(str(l.get("curadoria")) != "publicado" for l in linhas_f),
+       "⛔ e o conferente NÃO publica nada — ele anota",
+       str({str(l.get("curadoria")) for l in linhas_f}))
+
+fila_f = B.fila_de_curadoria(limite=50, curadorias=("proposto", "rascunho"), db=db_f)
+checar(bool(fila_f) and all(
+    set(("veredito_do_conferente", "conferencia", "conferido_em",
+         "caminho_da_clausula")).issubset(item.keys()) for item in fila_f),
+       "🔴 e a FILA repassa as quatro chaves — é o que a tela mostra ao curador",
+       str(sorted(fila_f[0].keys())) if fila_f else "fila vazia")
+checar(any(item.get("veredito_do_conferente") for item in fila_f),
+       "🔴 CONTROLE: e o veredito chega PREENCHIDO na fila (não é chave vazia)",
+       str([(i.get("servico"), i.get("veredito_do_conferente")) for i in fila_f]))
+
+print("\n[F · CONTROLE] o conferente que quebra NÃO derruba a extração")
+# 🔴 P-F04: uma exceção no conferente não pode custar a onda inteira. A linha
+# nasce com NAO_CONSEGUI e o motivo escrito — que é diferente de DIVERGE.
+import app.services.knowledge.assistance_plans_conferente as CONF  # noqa: E402
+_bom = CONF.conferir_linha
+
+
+def _explode(*_a, **_k):
+    raise RuntimeError("o conferente quebrou")
+
+
+try:
+    CONF.conferir_linha = _explode
+    db_g = banco()
+    r_g = X.processar_documento(DOC_TOKIO, aplicar=True, llm=ModeloDuplo(LINHAS_TOKIO),
+                                db=db_g, minio=MinioDuplo(pdf(TOKIO)))
+    linhas_g = db_g.tabelas.get("insurer_assistance_services") or []
+    checar(bool(linhas_g) and r_g.servicos_propostos > 0,
+           "🔴 CONTROLE: com o conferente quebrado, a extração CONTINUA gravando",
+           f"{r_g.motivo} / {len(linhas_g)}")
+    checar(all(str(l.get("veredito_do_conferente")) == "NAO_CONSEGUI" for l in linhas_g),
+           "🔴 e as linhas saem NAO_CONSEGUI — não CONFERE por omissão nem DIVERGE",
+           str([l.get("veredito_do_conferente") for l in linhas_g]))
+    checar(all("conferente" in " ".join((l.get("conferencia") or {}).get("motivos") or [])
+               for l in linhas_g),
+           "e o motivo da falha fica escrito na linha",
+           str([(l.get("conferencia") or {}).get("motivos") for l in linhas_g][:1]))
+finally:
+    CONF.conferir_linha = _bom
 
 print()
 print("=" * 74)

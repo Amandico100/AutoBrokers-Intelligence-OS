@@ -839,6 +839,7 @@ def propor_servico(
     carencia_dias: Optional[int] = None,
     condicao: Optional[str] = None,
     confianca: str = "media",
+    caminho_da_clausula: Optional[str] = None,
     db: Any = None,
 ) -> Dict[str, Any]:
     """Propõe uma linha de serviço. 🔴 Nasce `proposto`, com FONTE obrigatória.
@@ -879,8 +880,66 @@ def propor_servico(
         "confianca": _so_valores("confianca", confianca, CONFIANCAS),
         "curadoria": "proposto",
     }
+    # 🔴 De QUAL cláusula a linha saiu (SPEC-EXTRA-001.5.2, unidade B) —
+    # "9.5.9.2 › Plano Vip › Carro Reserva". Só entra quando vem preenchido: a
+    # coluna é anulável, e escrever string vazia faria a fila mostrar um caminho
+    # que não existe. 📊 É o campo que denuncia, sem abrir o PDF, que um
+    # `alagamento = nao` foi lido de dentro da cláusula de Vendaval/Granizo.
+    if str(caminho_da_clausula or "").strip():
+        linha["caminho_da_clausula"] = str(caminho_da_clausula).strip()[:400]
     r = _db(db).table(TABELA_SERVICOS).insert(linha).execute()
     return (r.data or [{}])[0]
+
+
+#: Os três vereditos que o CHECK `servico_veredito_do_conferente_valido` aceita.
+#: ⚠️ A lista mora aqui porque é o contrato de ESCRITA que a conhece; o
+#: conferente tem as mesmas constantes do lado de quem JULGA. Duas listas, uma
+#: verdade — e um `_so_valores` entre elas, que é o que impede a divergência de
+#: virar um INSERT recusado pelo banco no meio da onda.
+VEREDITOS_DO_CONFERENTE = ("CONFERE", "DIVERGE", "NAO_CONSEGUI")
+
+
+def anotar_conferencia(
+    servico_id: str,
+    veredito: str,
+    campos: Optional[Dict[str, Any]] = None,
+    motivos: Optional[List[str]] = None,
+    pagina: Optional[int] = None,
+    *,
+    db: Any = None,
+) -> Dict[str, Any]:
+    """Escreve o parecer do conferente na linha. 🔴 **NUNCA toca `curadoria`.**
+
+    Unidade F da SPEC-EXTRA-001.5.2. Um escritor só, e os três campos juntos:
+    `veredito_do_conferente`, `conferencia` (o parecer inteiro) e `conferido_em`.
+
+    🔴 POR QUE O ESTADO DE CURADORIA NÃO ENTRA AQUI
+    ===============================================
+    O conferente é um PARECER, não uma decisão. Se esta função pudesse mandar
+    uma linha para `rascunho` (ou, pior, para `publicado`), o parecer automático
+    viraria curadoria automática — exatamente o que o CHECK
+    `servico_publicado_foi_revisado` existe para impedir. O curador lê o
+    veredito e decide; a máquina só escreve o que a página sustenta.
+
+    ⚠️ É REEXECUTÁVEL de propósito: reconferir sobrescreve os três campos
+    juntos. O parecer é derivado do documento — histórico dele seria histórico
+    de uma opinião, não de um fato.
+    """
+    alvo = str(servico_id or "").strip()
+    if not alvo:
+        raise BaseDePlanosRecusa("anotar_conferencia sem servico_id")
+    patch = {
+        "veredito_do_conferente": _so_valores(
+            "veredito_do_conferente", veredito, VEREDITOS_DO_CONFERENTE),
+        "conferencia": {
+            "campos": dict(campos or {}),
+            "motivos": [str(m) for m in (motivos or [])],
+            "pagina": int(pagina) if pagina is not None else None,
+        },
+        "conferido_em": _agora(),
+    }
+    r = (_db(db).table(TABELA_SERVICOS).update(patch).eq("id", alvo).execute())
+    return (r.data or [{}])[0] if getattr(r, "data", None) else {}
 
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
@@ -1399,6 +1458,14 @@ def fila_de_curadoria(
             "documento_id": l.get("documento_id"),
             "pagina": l.get("pagina"),
             "trecho_hash": l.get("trecho_hash"),
+            # 🔴 O VEREDITO VIAJA NA LINHA (SPEC-EXTRA-001.5.2, unidades B e F).
+            # É o que faz a curadoria caber num dia: 📊 conferir as 81 linhas à
+            # mão em 19/09 exigiu abrir 27 PDFs e 3.052 páginas. A fila mostra o
+            # parecer ao lado da linha; quem cura decide — a máquina não.
+            "veredito_do_conferente": l.get("veredito_do_conferente"),
+            "conferencia": l.get("conferencia"),
+            "conferido_em": l.get("conferido_em"),
+            "caminho_da_clausula": l.get("caminho_da_clausula"),
         })
 
     def _chave(linha: Dict[str, Any]) -> Tuple:
