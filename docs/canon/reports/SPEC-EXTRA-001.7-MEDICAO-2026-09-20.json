@@ -18,6 +18,7 @@
         },
         "chat_p90_ms": 27529,
         "chat_perguntas": 13,
+        "chat_sem_agente_identificado": 0,
         "conversas_com_agente": 0,
         "conversas_com_os_dois": 0,
         "conversas_mexidas": 577,
@@ -88,6 +89,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -184,6 +186,7 @@
             "por_estado": {
               "success": 13
             },
+            "sem_agente_identificado": 0,
             "tempos_ms": [
               7297,
               8183,
@@ -292,6 +295,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -386,6 +390,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -480,6 +485,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -574,6 +580,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -668,6 +675,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -762,6 +770,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -856,6 +865,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -950,6 +960,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -1044,6 +1055,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -1138,6 +1150,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -1354,6 +1367,7 @@
         },
         "chat_p90_ms": 40533,
         "chat_perguntas": 29,
+        "chat_sem_agente_identificado": 0,
         "conversas_com_agente": 0,
         "conversas_com_os_dois": 0,
         "conversas_mexidas": 350,
@@ -1426,6 +1440,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -1522,6 +1537,7 @@
             "por_estado": {
               "success": 6
             },
+            "sem_agente_identificado": 0,
             "tempos_ms": [
               8414,
               13055,
@@ -1628,6 +1644,7 @@
             "por_estado": {
               "success": 22
             },
+            "sem_agente_identificado": 0,
             "tempos_ms": [
               8109,
               9093,
@@ -1747,6 +1764,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -1841,6 +1859,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -1935,6 +1954,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -2029,6 +2049,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -2123,6 +2144,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -2217,6 +2239,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -2313,6 +2336,7 @@
             "por_estado": {
               "success": 1
             },
+            "sem_agente_identificado": 0,
             "tempos_ms": [
               44850
             ]
@@ -2409,6 +2433,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -2503,6 +2528,7 @@
             "de_outros_agentes": 0,
             "perguntas": 0,
             "por_estado": {},
+            "sem_agente_identificado": 0,
             "tempos_ms": []
           },
           "contagens_do_motor": {
@@ -2689,7 +2715,7 @@
             {
               "chave": "chat.velocidade",
               "criterio": "o MODELO responde antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0). ⚠️ é o tempo do modelo, não o relógio da pessoa: fila, busca e rede ficam de fora",
-              "fonte": "p90 de TODAS as 29 perguntas do chat principal no período (40533 ms)",
+              "fonte": "p90 de TODAS as 29 perguntas do chat principal no período (40533 ms). ⚠️ o p90 aqui é o elemento de índice round(0,9·(n−1)) da lista ordenada; o `percentile_disc` do Postgres usa outro índice e daria outro valor — 📊 na Resulta seriam 44.850 ms contra estes 40.533, e a nota é 0 pelos dois",
               "grampeou": false,
               "n": 29,
               "n_minimo": 20,
@@ -2705,5 +2731,5 @@
     }
   },
   "de": "2026-09-08",
-  "gerado_em": "20/09/2026 09:21 UTC"
+  "gerado_em": "20/09/2026 09:43 UTC"
 }

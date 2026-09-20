@@ -1,6 +1,6 @@
 # 📊 O piloto medido — 2026-09-08 a 2026-09-19
 
-> 📊 **Medido em 20/09/2026 09:19 UTC** · fonte: o banco de produção, só SELECT · gerado por:
+> 📊 **Medido em 20/09/2026 09:42 UTC** · fonte: o banco de produção, só SELECT · gerado por:
 > ```
 > cd backend && python scripts/medir_o_piloto.py --de 2026-09-08 --ate 2026-09-19 --formato markdown --saida ../docs/canon/reports/SPEC-EXTRA-001.7-MEDICAO-2026-09-20.md
 > ```
@@ -35,7 +35,7 @@
 
 📊 Rajadas juntadas no período: **0**. ⚠️ Só a FUSÃO deixa rastro durável; a janela de espera e o teto de mensagens moram no log e na memória rápida, e **não são mensuráveis** por aqui.
 
-📊 Perguntas ao chat principal no período: **29** (p90 do tempo do modelo: 40533 ms). ⚠️ Outras **9** linhas da mesma tabela são do atendimento no WhatsApp e dos subagentes — elas ficam FORA da nota do chat, e são publicadas aqui só como informação.
+📊 Perguntas ao chat principal no período: **29** (p90 do tempo do modelo: 40533 ms). ⚠️ Outras **9** linhas da mesma tabela são do atendimento no WhatsApp e dos subagentes, e **0** não trazem agente identificado — todas ficam FORA da nota do chat, e são publicadas aqui só como informação.
 
 📊 Apólices marcadas como confirmadas hoje: **0** — é INFORMAÇÃO, não nota: o produto não guarda em quantas rodadas isso aconteceu.
 
@@ -62,7 +62,7 @@
 | uma rodada | **NÃO AVALIADA** — sem escritor: nenhuma linha diz se a pergunta seguinte foi uma repetição da anterior | 💭 25 | a corretora recebe a resposta sem ter de repetir a pergunta | 0 (mínimo 0) |
 | completude | **NÃO AVALIADA** — não há fonte durável: julgar completude exige ler a resposta e compará-la com a pergunta — é trabalho de avaliador, não de SELECT | 💭 45 | a resposta traz tudo o que foi perguntado, e não metade | 0 (mínimo 0) |
 | confiabilidade | **NÃO AVALIADA** — a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das 29 perguntas do chat principal no período. Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma | 💭 80 | de cada 10 perguntas, em quantas o chat respondeu em vez de falhar | 29 (mínimo 0) |
-| velocidade | **0** | 💭 60 | o MODELO responde antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0). ⚠️ é o tempo do modelo, não o relógio da pessoa: fila, busca e rede ficam de fora | 29 casos (mínimo 20) · p90 de TODAS as 29 perguntas do chat principal no período (40533 ms) |
+| velocidade | **0** | 💭 60 | o MODELO responde antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0). ⚠️ é o tempo do modelo, não o relógio da pessoa: fila, busca e rede ficam de fora | 29 casos (mínimo 20) · p90 de TODAS as 29 perguntas do chat principal no período (40533 ms). ⚠️ o p90 aqui é o elemento de índice round(0,9·(n−1)) da lista ordenada; o `percentile_disc` do Postgres usa outro índice e daria outro valor — 📊 na Resulta seriam 44.850 ms contra estes 40.533, e a nota é 0 pelos dois |
 
 ## AutoFleet
 
@@ -93,7 +93,7 @@
 
 📊 Rajadas juntadas no período: **0**. ⚠️ Só a FUSÃO deixa rastro durável; a janela de espera e o teto de mensagens moram no log e na memória rápida, e **não são mensuráveis** por aqui.
 
-📊 Perguntas ao chat principal no período: **13** (p90 do tempo do modelo: 27529 ms). ⚠️ Outras **22** linhas da mesma tabela são do atendimento no WhatsApp e dos subagentes — elas ficam FORA da nota do chat, e são publicadas aqui só como informação.
+📊 Perguntas ao chat principal no período: **13** (p90 do tempo do modelo: 27529 ms). ⚠️ Outras **22** linhas da mesma tabela são do atendimento no WhatsApp e dos subagentes, e **0** não trazem agente identificado — todas ficam FORA da nota do chat, e são publicadas aqui só como informação.
 
 📊 Apólices marcadas como confirmadas hoje: **0** — é INFORMAÇÃO, não nota: o produto não guarda em quantas rodadas isso aconteceu.
 

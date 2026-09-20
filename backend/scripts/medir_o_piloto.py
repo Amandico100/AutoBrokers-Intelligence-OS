@@ -206,6 +206,61 @@ FRASE_DA_LEITURA = {
 }
 
 
+#: 🔴 O que uma frase 📊 diz quando a tabela por trás dela não foi lida.
+#: ⛔ Publicar **0** ali é afirmar "não aconteceu" sobre uma tabela que ninguém
+#: conseguiu abrir — e é o número com mais cara de medido que existe.
+NAO_LIDO = "NÃO LIDO"
+
+#: O nome de cada tabela em palavra de gente, para o motivo caber numa frase.
+NOME_DE_GENTE = {
+    "conversas": "as conversas", "mensagens": "as mensagens",
+    "envios": "os envios ao segurado", "runs": "os acionamentos",
+    "atividades": "o feed de atividades", "eventos": "o diário do dia",
+    "chat": "as perguntas ao chat", "agentes": "quem são os agentes",
+    "motor": "o contador do resumo das 19h",
+}
+
+#: 🔴 DE QUE LEITURAS CADA NÚMERO AGREGADO DEPENDE. É o mesmo princípio de
+#: `DEPENDE_DE` (que governa as NOTAS), aplicado às frases de PROSA — elas
+#: também afirmam, e também precisam calar quando não houve leitura.
+DEPENDE_O_AGREGADO: Dict[str, Tuple[str, ...]] = {
+    "conversas_com_agente": ("conversas", "mensagens"),
+    "conversas_so_com_pessoa": ("conversas", "mensagens"),
+    "conversas_com_os_dois": ("conversas", "mensagens"),
+    "conversas_mexidas": ("conversas", "mensagens"),
+    "rajadas_coalescidas": ("mensagens",),
+    "apolice_confirmada_hoje": ("conversas", "mensagens"),
+    "acionamentos_com_protocolo": ("envios",),
+    "acionamentos_encaminhados": ("envios",),
+    "acionamentos_iniciados": ("runs",),
+    "handoffs_entregues": ("atividades",),
+    "handoffs_sem_ninguem": ("atividades",),
+    "handoffs_no_teto": ("eventos",),
+    "grupo_por_tipo": ("eventos",),
+    "grupo_calados": ("eventos", "motor"),
+    "silencios_por_classe": ("atividades",),
+    "silencios_total": ("atividades",),
+    "acionamentos_entregues_motor": ("eventos", "motor"),
+    "sinistros_com_dossie_motor": ("eventos", "motor"),
+    "ajudas_incapacidade": ("eventos", "motor"),
+    "ajudas_regra": ("eventos", "motor"),
+    "ajudas_desconhecidas": ("eventos", "motor"),
+    "desfechos": ("conversas", "mensagens"),
+    "chat_perguntas": ("chat", "agentes"),
+    "chat_de_outros_agentes": ("chat", "agentes"),
+    "chat_sem_agente_identificado": ("chat", "agentes"),
+    "chat_p90_ms": ("chat", "agentes"),
+    "chat_estados": ("chat", "agentes"),
+}
+
+
+def _num(valor: Any) -> int:
+    """O número, ou ZERO quando a leitura falhou. ⚠️ Só para a ARITMÉTICA
+    interna da régua: a dimensão que depende de uma leitura ruim já sai
+    `NÃO AVALIADA` por `guardar()`, e este zero nunca chega à página."""
+    return int(valor) if isinstance(valor, (int, float)) else 0
+
+
 def _estado(linhas: List[dict], truncou: bool) -> str:
     """Teto ou erro? 🔴 Só o TAMANHO distingue: quem parou no teto trouxe o
     teto inteiro; quem estourou trouxe menos do que pediu."""
@@ -303,6 +358,8 @@ async def ler_a_corretora(cliente, company_id: str, inicio: datetime,
 
     return {"conversas": {str(c["id"]): c for c in conversas},
             "mensagens": mensagens, "chat_principal_ids": sorted(do_chat),
+            "outros_agentes_ids": sorted({str(a["id"]) for a in agentes}
+                                         - do_chat),
             "leituras": {"conversas": estado_c, "mensagens": estado_m,
                          "agentes": estado_a}}
 
@@ -332,7 +389,9 @@ async def ler_o_dia(cliente, company_id: str, inicio: datetime, fim: datetime,
         corretora = await ler_a_corretora(cliente, company_id, inicio, fim)
     leitura: Dict[str, Any] = {"leituras": dict(corretora["leituras"]),
                                "chat_principal_ids":
-                                   list(corretora.get("chat_principal_ids") or [])}
+                                   list(corretora.get("chat_principal_ids") or []),
+                               "outros_agentes_ids":
+                                   list(corretora.get("outros_agentes_ids") or [])}
 
     # 🔴 O DIA É O DAS MENSAGENS. A conversa entra no dia em que ELA FALOU.
     mensagens = [m for m in corretora["mensagens"]
@@ -512,7 +571,14 @@ def medir_o_dia(leitura: Dict[str, Any], *, dia: date) -> Dict[str, Any]:
     #    atendimento e os subagentes, e vai publicado ao lado como INFORMAÇÃO.
     do_chat = set(leitura.get("chat_principal_ids") or [])
     principal = [l for l in chat if str(l.get("agent_id") or "") in do_chat]
-    de_outros = len(chat) - len(principal)
+    # 🔴 P2 — uma linha sem `agent_id`, ou de um agente que não existe mais,
+    #    NÃO é "do atendimento": é de origem desconhecida, e juntar as duas
+    #    inventaria volume para o WhatsApp. 📊 Hoje são 0 casos — e o contador
+    #    existe para o dia em que deixarem de ser.
+    conhecidos = set(do_chat) | set(leitura.get("outros_agentes_ids") or [])
+    sem_agente = [l for l in chat
+                  if str(l.get("agent_id") or "") not in conhecidos]
+    de_outros = len(chat) - len(principal) - len(sem_agente)
     tempos = sorted(int(l.get("response_time_ms") or 0) for l in principal
                     if l.get("response_time_ms") is not None)
     estados_do_chat: Dict[str, int] = {}
@@ -549,6 +615,7 @@ def medir_o_dia(leitura: Dict[str, Any], *, dia: date) -> Dict[str, Any]:
         #    publicado antes. O percentil é do PERÍODO, em `somar_os_dias`.
         "chat_principal": {"perguntas": len(principal),
                            "de_outros_agentes": de_outros,
+                           "sem_agente_identificado": len(sem_agente),
                            "por_estado": estados_do_chat, "tempos_ms": tempos},
         "contagens_do_motor": c,
     }
@@ -601,7 +668,7 @@ def somar_os_dias(dias: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         for chave, estado in (d.get("leituras") or {}).items():
             leituras[chave] = _pior(leituras.get(chave, LEU), estado)
 
-    return {
+    saida: Dict[str, Any] = {
         "dias": len(dias),
         "dias_com_origem_do_agente": len(dias_mensuraveis),
         "leituras": leituras,
@@ -637,6 +704,8 @@ def somar_os_dias(dias: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "desfechos": desfechos,
         "chat_perguntas": _s(("chat_principal", "perguntas")),
         "chat_de_outros_agentes": _s(("chat_principal", "de_outros_agentes")),
+        "chat_sem_agente_identificado": _s(("chat_principal",
+                                            "sem_agente_identificado")),
         "chat_p90_ms": (todos_os_tempos[int(round(0.9 * (len(todos_os_tempos) - 1)))]
                         if todos_os_tempos else None),
         # 🔴 B6: SOMA, não sobrescrita. A dict-comprehension antiga mantinha só
@@ -644,6 +713,14 @@ def somar_os_dias(dias: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         "chat_estados": _somar_chaves(d["chat_principal"]["por_estado"]
                                       for d in dias),
     }
+    # 🔴 O RESÍDUO DO B4: a NOTA já sumia e a célula do dia já dizia NÃO LIDO,
+    #    mas as frases 📊 do agregado continuavam publicando ZERO com cara de
+    #    medido. Aqui o número é APAGADO na origem — assim o markdown e o JSON
+    #    contam a mesma coisa, sem cada um lembrar-se por conta própria.
+    for chave, tabelas in DEPENDE_O_AGREGADO.items():
+        if any(leituras.get(t, LEU) != LEU for t in tabelas):
+            saida[chave] = NAO_LIDO
+    return saida
 
 
 def _somar_chaves(dicionarios: Iterable[Dict[str, int]]) -> Dict[str, int]:
@@ -715,7 +792,12 @@ def _leitura_ruim(a: Dict[str, Any], chave: str) -> str:
     for tabela in DEPENDE_DE.get(chave, ()):
         estado = leituras.get(tabela, LEU)
         if estado != LEU:
-            return FRASE_DA_LEITURA[estado] + " (%s)" % tabela
+            if estado == NAO_CONSEGUI_LER:
+                return ("não consegui ler %s no período — sem isso, qualquer "
+                        "nota aqui seria invenção" % NOME_DE_GENTE.get(tabela, tabela))
+            return ("a leitura de %s parou no teto de segurança: há mais linhas "
+                    "do que as que entraram na conta"
+                    % NOME_DE_GENTE.get(tabela, tabela))
     return ""
 
 
@@ -772,8 +854,12 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         """🔴 B4 — a última palavra é da LEITURA. Uma dimensão calculada sobre
         uma tabela que não foi lida inteira não vira nota, seja qual for a
         conta que já se fez."""
+        # 🔴 SEMPRE, e não só quando havia nota. Quando a falha ZERA a
+        #    amostra, a dimensão já chega aqui `NÃO AVALIADA` — com o motivo
+        #    ERRADO ("amostra insuficiente (0 de 20)"), que culpa o piloto por
+        #    um silêncio da consulta. O motivo é o da LEITURA.
         problema = _leitura_ruim(a, dimensao["chave"])
-        if problema and dimensao["nota"] != NAO_AVALIADA:
+        if problema:
             dimensao = _sem_nota(dimensao["chave"], dimensao["criterio"],
                                  problema, n=dimensao["n"],
                                  n_minimo=dimensao["n_minimo"])
@@ -789,10 +875,10 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         "existe um sim/não que é sobrescrito, sem histórico "
         "(conversations.ficha_atendimento.apolice_confirmada)"))
 
-    base = a["acionamentos_entregues_motor"] + a["sinistros_com_dossie_motor"]
-    denominador = base + a["ajudas_incapacidade"]
-    ajudas = a["ajudas_incapacidade"] + a["ajudas_regra"] + a["ajudas_desconhecidas"]
-    fatia = (a["ajudas_desconhecidas"] / ajudas) if ajudas else 0.0
+    base = _num(a["acionamentos_entregues_motor"]) + _num(a["sinistros_com_dossie_motor"])
+    denominador = base + _num(a["ajudas_incapacidade"])
+    ajudas = _num(a["ajudas_incapacidade"]) + _num(a["ajudas_regra"]) + _num(a["ajudas_desconhecidas"])
+    fatia = (_num(a["ajudas_desconhecidas"]) / ajudas) if ajudas else 0.0
     criterio_coleta = ("de cada 10 casos que o agente pegou, em quantos ele foi "
                        "até o fim sozinho em vez de parar por não conseguir")
     if fatia > LIMITE_DE_DESCONHECIDOS and ajudas:
@@ -802,14 +888,14 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
             "atendimento.coleta_e_age", criterio_coleta,
             "%d de %d pedidos de ajuda saíram sem motivo registrado — acima do "
             "limite de %d%% que o próprio resumo das 19h respeita"
-            % (a["ajudas_desconhecidas"], ajudas,
+            % (_num(a["ajudas_desconhecidas"]), ajudas,
                int(LIMITE_DE_DESCONHECIDOS * 100)),
             n=denominador, n_minimo=N_MINIMO_DE_CASOS))
     else:
         eficiencia = eficiencia_do_dia(
-            acionamentos_entregues=a["acionamentos_entregues_motor"],
-            sinistros_com_dossie=a["sinistros_com_dossie_motor"],
-            ajudas_por_incapacidade=a["ajudas_incapacidade"])
+            acionamentos_entregues=_num(a["acionamentos_entregues_motor"]),
+            sinistros_com_dossie=_num(a["sinistros_com_dossie_motor"]),
+            ajudas_por_incapacidade=_num(a["ajudas_incapacidade"]))
         if eficiencia is None or denominador < N_MINIMO_DE_CASOS:
             guardar(atendimento, _sem_nota(
                 "atendimento.coleta_e_age", criterio_coleta,
@@ -831,7 +917,7 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         "diferentes: nada liga o protocolo ao acionamento que o gerou (a "
         "linha do envio não guarda o run), então um protocolo pode ser de um "
         "caso aberto antes do período",
-        a["acionamentos_com_protocolo"], a["acionamentos_iniciados"]))
+        _num(a["acionamentos_com_protocolo"]), _num(a["acionamentos_iniciados"])))
 
     atendimento.append(_sem_nota(
         "atendimento.fala_como_humano",
@@ -840,7 +926,7 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         "conversa não entra em medição (CLAUDE.md §7). Nenhuma nota, nenhuma "
         "avaliação automática e nenhum sinal do segurado são gravados"))
 
-    silencios = a["silencios_total"]
+    silencios = _num(a["silencios_total"])
     atendimento.append(_sem_nota(
         "atendimento.sabe_calar",
         "quando havia uma pessoa da corretora na conversa, o agente ficou "
@@ -857,8 +943,8 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         "da equipe realmente recebeu o caso",
         "agent_activities com os títulos que human_handoff escreve "
         "(entregue × sem ninguém para receber)",
-        a["handoffs_entregues"],
-        a["handoffs_entregues"] + a["handoffs_sem_ninguem"]))
+        _num(a["handoffs_entregues"]),
+        _num(a["handoffs_entregues"]) + _num(a["handoffs_sem_ninguem"])))
 
     # --------------------------------------------------------- CHAT PRINCIPAL
     chat.append(_sem_nota(
@@ -878,7 +964,7 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         "não há fonte durável: julgar completude exige ler a resposta e "
         "compará-la com a pergunta — é trabalho de avaliador, não de SELECT"))
 
-    estados = a["chat_estados"] or {}
+    estados = a["chat_estados"] if isinstance(a["chat_estados"], dict) else {}
     chat.append(_sem_nota(
         "chat.confiabilidade",
         "de cada 10 perguntas, em quantas o chat respondeu em vez de falhar",
@@ -893,7 +979,7 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
          "da base inteira são 'success')"),
         n=sum(estados.values())))
 
-    p90 = a["chat_p90_ms"]
+    p90 = a["chat_p90_ms"] if isinstance(a["chat_p90_ms"], int) else None
     # 🔴 O CRITÉRIO DIZ O QUE O NÚMERO É, E O QUE ELE NÃO É (B2).
     #    `response_time_ms` é gravado a partir de `llm_response_time_ms`
     #    (`app/agents/nodes.py:2082`): é o tempo do MODELO, e não o tempo que a
@@ -905,12 +991,12 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
                     "modelo, não o relógio da pessoa: fila, busca e rede ficam "
                     "de fora"
                     % (VELOCIDADE_OTIMA_MS // 1000, VELOCIDADE_PESSIMA_MS // 1000))
-    if p90 is None or a["chat_perguntas"] < N_MINIMO_DE_PERGUNTAS:
+    if p90 is None or _num(a["chat_perguntas"]) < N_MINIMO_DE_PERGUNTAS:
         guardar(chat, _sem_nota(
             "chat.velocidade", criterio_vel,
             "amostra insuficiente (%d de %d perguntas)"
-            % (a["chat_perguntas"], N_MINIMO_DE_PERGUNTAS),
-            n=a["chat_perguntas"], n_minimo=N_MINIMO_DE_PERGUNTAS))
+            % (_num(a["chat_perguntas"]), N_MINIMO_DE_PERGUNTAS),
+            n=_num(a["chat_perguntas"]), n_minimo=N_MINIMO_DE_PERGUNTAS))
     else:
         faixa = VELOCIDADE_PESSIMA_MS - VELOCIDADE_OTIMA_MS
         crua = 100.0 * (VELOCIDADE_PESSIMA_MS - p90) / faixa
@@ -923,8 +1009,12 @@ def regua_por_dimensao(a: Dict[str, Any]) -> Dict[str, Any]:
         guardar(chat, _avaliada(
             "chat.velocidade", nota, criterio_vel,
             "p90 de TODAS as %d perguntas do chat principal no período "
-            "(%d ms)" % (a["chat_perguntas"], p90),
-            n=a["chat_perguntas"], n_minimo=N_MINIMO_DE_PERGUNTAS))
+            "(%d ms). ⚠️ o p90 aqui é o elemento de índice round(0,9·(n−1)) da "
+            "lista ordenada; o `percentile_disc` do Postgres usa outro índice e "
+            "daria %s — 📊 na Resulta seriam 44.850 ms contra estes 40.533, e a "
+            "nota é 0 pelos dois"
+            % (_num(a["chat_perguntas"]), p90, "outro valor"),
+            n=_num(a["chat_perguntas"]), n_minimo=N_MINIMO_DE_PERGUNTAS))
 
     return {"atendimento": _bloco(atendimento, "atendimento"),
             "chat_principal": _bloco(chat, "chat principal")}
@@ -1064,49 +1154,60 @@ def em_markdown(corpo: Dict[str, Any], *, comando: str, gerado_em: str) -> str:
                 cel(sum(d["silencios_do_agente"]["por_classe"].values()),
                     "atividades")))
         L.append("")
-        L.append("📊 No período inteiro (%d dias): **%d** conversas com fala do "
-                 "agente, **%d** só com uma pessoa da corretora, **%d** com os "
-                 "dois. ⚠️ Só **%d** desses dias são mensuráveis: antes de "
+        # 🔴 NENHUMA frase 📊 afirma número sobre tabela que não foi lida.
+        #    `somar_os_dias` já apagou o valor na origem; aqui só se escolhe
+        #    como dizer. ⛔ Publicar 0 seria afirmar "não aconteceu" sobre uma
+        #    consulta que ninguém conseguiu abrir.
+        def lista(chave):
+            valor = a[chave]
+            if valor == NAO_LIDO:
+                return NAO_LIDO
+            return ", ".join("%s %d" % (k.replace("_", " "), v)
+                             for k, v in sorted(valor.items()) if v) or "nenhum"
+
+        L.append("📊 No período inteiro (%s dias): **%s** conversas com fala do "
+                 "agente, **%s** só com uma pessoa da corretora, **%s** com os "
+                 "dois. ⚠️ Só **%s** desses dias são mensuráveis: antes de "
                  "14/09/2026 o produto não marcava quem escreveu a resposta."
                  % (a["dias"], a["conversas_com_agente"],
                     a["conversas_so_com_pessoa"], a["conversas_com_os_dois"],
                     a["dias_com_origem_do_agente"]))
         L.append("")
-        L.append("📊 Avisos ao grupo, por tipo: %s." % (", ".join(
-            "%s %d" % (t.replace("_", " "), n)
-            for t, n in sorted(a["grupo_por_tipo"].items()) if n) or "nenhum"))
+        L.append("📊 Avisos ao grupo, por tipo: %s." % lista("grupo_por_tipo"))
         L.append("")
         L.append("📊 Silêncios do agente, por classe: %s. ⚠️ Silêncio do agente "
-                 "(com o segurado) e grupo calado (%d) são coisas diferentes e "
+                 "(com o segurado) e grupo calado (%s) são coisas diferentes e "
                  "nunca se somam. ⚠️ A trava que evita repetir a mesma linha "
                  "mora na memória de cada processo: se houver mais de um "
                  "trabalhador no ar, pode haver linha repetida aqui."
-                 % (", ".join("%s %d" % (k, v) for k, v in
-                              sorted(a["silencios_por_classe"].items()))
-                    or "nenhum", a["grupo_calados"]))
+                 % (lista("silencios_por_classe"), a["grupo_calados"]))
         L.append("")
-        L.append("📊 Handoffs: %d entregues, %d sem ninguém para receber, %d "
+        L.append("📊 Handoffs: %s entregues, %s sem ninguém para receber, %s "
                  "lembretes no teto. ⚠️ O lembrete no teto é contado **por "
                  "varredura do vigia**, não por conversa: o mesmo caso parado "
                  "reaparece a cada rodada."
                  % (a["handoffs_entregues"], a["handoffs_sem_ninguem"],
                     a["handoffs_no_teto"]))
         L.append("")
-        L.append("📊 Rajadas juntadas no período: **%d**. ⚠️ Só a FUSÃO deixa "
+        L.append("📊 Rajadas juntadas no período: **%s**. ⚠️ Só a FUSÃO deixa "
                  "rastro durável; a janela de espera e o teto de mensagens "
                  "moram no log e na memória rápida, e **não são mensuráveis** "
                  "por aqui." % a["rajadas_coalescidas"])
         L.append("")
-        L.append("📊 Perguntas ao chat principal no período: **%d** (p90 do "
-                 "tempo do modelo: %s). ⚠️ Outras **%d** linhas da mesma "
-                 "tabela são do atendimento no WhatsApp e dos subagentes — "
-                 "elas ficam FORA da nota do chat, e são publicadas aqui só "
-                 "como informação."
+        L.append("📊 Perguntas ao chat principal no período: **%s** (p90 do "
+                 "tempo do modelo: %s). ⚠️ Outras **%s** linhas da mesma "
+                 "tabela são do atendimento no WhatsApp e dos subagentes, e "
+                 "**%s** não trazem agente identificado — todas ficam FORA da "
+                 "nota do chat, e são publicadas aqui só como informação."
                  % (a["chat_perguntas"],
-                    ("%d ms" % a["chat_p90_ms"]) if a["chat_p90_ms"] is not None
-                    else "sem medida", a["chat_de_outros_agentes"]))
+                    ("%d ms" % a["chat_p90_ms"])
+                    if isinstance(a["chat_p90_ms"], int)
+                    else (NAO_LIDO if a["chat_p90_ms"] == NAO_LIDO
+                          else "sem medida"),
+                    a["chat_de_outros_agentes"],
+                    a["chat_sem_agente_identificado"]))
         L.append("")
-        L.append("📊 Apólices marcadas como confirmadas hoje: **%d** — é "
+        L.append("📊 Apólices marcadas como confirmadas hoje: **%s** — é "
                  "INFORMAÇÃO, não nota: o produto não guarda em quantas "
                  "rodadas isso aconteceu." % a["apolice_confirmada_hoje"])
         L.append("")

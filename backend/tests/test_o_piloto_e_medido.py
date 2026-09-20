@@ -548,6 +548,53 @@ def bloco_11_leitura_que_falha(_=None):
         medir_com(com(extras), nomes=[a]), comando="t", gerado_em="x"),
         "CONTROLE: com tudo lido, nenhuma célula diz NÃO LIDO")
 
+    # 🔴 O RESÍDUO DO B4: a nota sumia e a célula dizia NÃO LIDO, mas as
+    #    frases 📊 do agregado e o MOTIVO da dimensão continuavam publicando
+    #    ZERO com cara de medido — "amostra insuficiente (0 de 20)" culpa o
+    #    piloto por um silêncio da CONSULTA.
+    DEPENDENTES = {
+        "agents": (["chat_perguntas", "chat_de_outros_agentes", "chat_p90_ms"],
+                   ["Perguntas ao chat principal"], ["chat.velocidade"]),
+        "conversation_logs": (["chat_perguntas", "chat_p90_ms"],
+                              ["Perguntas ao chat principal"], ["chat.velocidade"]),
+        "agent_activities": (["handoffs_entregues", "handoffs_sem_ninguem",
+                              "silencios_total"],
+                             ["Handoffs:"], ["atendimento.sabe_pedir_ajuda"]),
+        "messages": (["conversas_com_agente", "conversas_so_com_pessoa"],
+                     ["No período inteiro"], []),
+        "conversations": (["conversas_com_agente", "conversas_so_com_pessoa"],
+                          ["No período inteiro"], []),
+    }
+    problemas = []
+    for tabela, (campos, frases, dims) in DEPENDENTES.items():
+        corpo = medir_com(com(extras), nomes=[a], quebrada=tabela)
+        bloco = _em(a, corpo)
+        for campo in campos:
+            if bloco["agregado"][campo] != "NÃO LIDO":
+                problemas.append("%s: campo %s = %r" % (tabela, campo,
+                                                        bloco["agregado"][campo]))
+        texto = em_markdown(corpo, comando="t", gerado_em="x")
+        for frase in frases:
+            linha = [l for l in texto.splitlines() if frase in l][0]
+            if "NÃO LIDO" not in linha:
+                problemas.append("%s: frase %r ainda traz número" % (tabela, frase))
+        for chave in dims:
+            b = "chat_principal" if chave.startswith("chat") else "atendimento"
+            fonte = _dim(bloco["regua"][b], chave)["fonte"]
+            if "não consegui ler" not in fonte and "parou no teto" not in fonte:
+                problemas.append("%s: motivo de %s é %r" % (tabela, chave,
+                                                            fonte[:40]))
+    certo(not problemas,
+          "🔴 com CADA tabela fora do ar, nenhum campo do JSON, nenhuma frase "
+          "📊 e nenhum motivo de dimensão traz número. Resíduos: %s"
+          % problemas[:3])
+    # CONTROLE: com tudo lido, a prosa traz os números de sempre.
+    ok = em_markdown(medir_com(com(extras), nomes=[a]), comando="t",
+                     gerado_em="x")
+    certo("Handoffs: 5 entregues, 5 sem ninguém" in ok,
+          "CONTROLE: com tudo lido a prosa diz 'Handoffs: 5 entregues, 5 sem "
+          "ninguém' — os números voltam")
+
 
 def bloco_12_o_chat_principal(_=None):
     print("\n12. 🔴 B2/B3/B6 — O CHAT PRINCIPAL, O P90 DO PERÍODO E A SOMA")
