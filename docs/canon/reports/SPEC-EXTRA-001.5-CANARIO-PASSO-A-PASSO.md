@@ -234,82 +234,138 @@ incompleto. Se aparecer **mais** que isso, me avise.
 
 # O PILOTO MEDIDO — EXTRA-001.7 (3 dias com o agente ligado, e a régua no fim)
 
-> **Escrito em 20/09/2026.** Este é o roteiro que transforma as notas do diagnóstico (💭 atendimento 48 · chat 49, que
-> são palpite) em número medido. A máquina de medir está pronta; **os 3 dias são seus**.
-> Os dois comandos abaixo rodam no terminal, dentro de `backend/`. **Se preferir, peça no chat: "rode o checklist de
-> ligar" ou "rode a medição do piloto"** — eu rodo e te mostro a saída. Nenhum dos dois envia mensagem, liga agente
-> ou escreve no banco.
+> **Reescrito em 20/09/2026.** Este é o roteiro que transforma as notas do diagnóstico (💭 atendimento 48 ·
+> chat 49, que são palpite) em número medido. A máquina de medir está pronta; **os 3 dias são seus**.
+> 🔴 **Você não precisa rodar nada no console.** O caminho recomendado é **pedir no chat** — eu rodo da
+> minha máquina contra a produção, só leitura: nada envia mensagem, liga agente ou escreve no banco.
+> A lista completa de tarefas, com tudo o mais, está em `docs/canon/TAREFAS-DO-FOUNDER.md`.
 
-## Passo P1 · Antes de ligar: o checklist (2 min)
+> ## 📖 Em linguagem de gente, antes de começar
+>
+> **"Ligar o agente"** é o botão **Ligar agente**, no painel, **em cada corretora**. É ele que faz o robô
+> **responder os segurados no WhatsApp**. Desligado, o sistema só **observa**: vê as conversas, guarda,
+> não fala. Ligar é o que dá início ao piloto — e é a única coisa que muda o que o segurado vê.
+>
+> **"Canário"** é um **ensaio com um único celular de teste**, antes de soltar para clientes reais. No
+> checklist, `--modo canario` quer dizer: *"nesta rodada, a lista de entrada estar preenchida só com o
+> número de teste é o esperado"*. No piloto de verdade é o contrário: a lista tem de estar **vazia**,
+> senão todo segurado fora dela é ignorado em silêncio e os 3 dias medem o nada.
+>
+> **"Quando o agente errar"** é no **atendimento**: resposta errada, ou fora de hora, a um segurado de
+> verdade. 🔴 **Não desligue o agente.** A atendente **responde pelo celular naquela conversa** — isso
+> cala o robô ali, só ali, na hora — e anota o que aconteceu. Isso **não** é erro da medição e não
+> invalida o piloto: é exatamente o que o piloto existe para contar.
+>
+> **Quando termina:** depois de **3 dias úteis completos** com o agente ligado. No **4º dia** sai o
+> veredito, de uma vez só, num chat novo (passo P4).
+
+## Passo P1 · Antes de ligar: o checklist
+
+Abra um chat e peça, com estas palavras:
 
 ```
-cd backend
-python scripts/conferir_o_que_esta_no_ar.py --ligar
+rode o checklist de ligar
 ```
 
-Ele responde **PODE LIGAR** ou **NÃO PODE LIGAR**, com uma linha por trava. 🔴 O que ele não consegue conferir
-conta como trava fechada — de propósito.
+Ele responde **PODE LIGAR** ou **NÃO PODE LIGAR**, com uma linha por trava. 🔴 O que ele não consegue
+conferir conta como trava fechada — de propósito.
 
 📊 **O que ele disse em 20/09 (é o que você precisa resolver, nesta ordem):**
 
 | trava | o que fazer |
 |---|---|
-| **Não há para onde o agente pedir ajuda** (Resulta e AutoFleet) | 📊 os dois grupos de suporte estão **desativados desde 10/09**. Painel → Personalização → Suporte humano → reativar o grupo da equipe, **em cada corretora** (troque de corretora no topo antes). Confira que o grupo da AutoFleet está dentro da AutoFleet, não da Resulta |
+| **Não há para onde o agente pedir ajuda** | 📊 os grupos de suporte das duas corretoras do piloto estão **desativados desde 10/09**. Painel → Personalização → Suporte humano → reativar o grupo da equipe, **em cada corretora** (troque de corretora no topo antes). Confira que o grupo de cada corretora está **dentro dela** |
 | **O sistema no ar está com um código diferente do repositório** | EasyPanel → **Implantar** em `smith-api`, `smith-worker`, `smith-web` |
-| **O sistema ainda não informa quem escapa do silêncio** | some sozinha depois do Implantar. Se depois dele aparecer "há N número(s) fora da lista de teste", tire esses números de `JANELA_SILENCIO_EXCECOES` — senão o agente fala por cima da atendente nessas conversas |
+| **O sistema ainda não informa quem escapa do silêncio** | some sozinha depois do Implantar. Se depois dele aparecer *"há N número(s) fora da lista de teste"*, tire esses números de `JANELA_SILENCIO_EXCECOES` — senão o agente fala por cima da atendente nessas conversas. 📊 em 20/09 havia **1** número nessa situação |
 
-**Quer fazer um ensaio só com o aparelho de teste antes?** Ponha o número de teste em `ATTENDANT_INBOUND_ALLOWLIST`,
-Implante, e rode com `--modo canario` (nesse modo a lista preenchida é o esperado). 🔴 **Antes do piloto de verdade,
-esvazie a lista** e rode sem `--modo`: com ela preenchida, todo segurado que não está na lista é ignorado em silêncio,
-e os 3 dias mediriam o vazio.
+**Alternativa, no console do `smith-api`:**
 
-**Só ligue com "PODE LIGAR" na tela.** Ligar = o botão **Ligar agente** do painel, em cada corretora.
+```bash
+python scripts/conferir_o_que_esta_no_ar.py --ligar
+```
+
+⚠️ 📊 Em 20/09 este comando **quebrou no console**, com `ModuleNotFoundError: 'portal_worker'`. O conserto foi feito em 20/09 e entra no ar com **um novo Implantar do smith-api**. Até lá, use o chat.
+
+**Quer fazer um ensaio só com o aparelho de teste antes?** Ponha o número de teste em
+`ATTENDANT_INBOUND_ALLOWLIST`, Implante, e peça *"rode o checklist de ligar em modo canário"* (no console,
+`--modo canario`) — nesse modo a lista preenchida é o esperado. 🔴 **Antes do piloto de verdade, esvazie a
+lista** e rode sem modo.
+
+**Só ligue com "PODE LIGAR" na tela.** Ligar = o botão **Ligar agente** do painel, em cada corretora do piloto.
 
 ## Passo P2 · Os 3 dias
 
-Deixe o agente ligado **3 dias úteis inteiros** nas duas corretoras. Combine com a Saionara e a Regina:
+Deixe o agente ligado **3 dias úteis inteiros**, em cada corretora do piloto. Combine com a equipe **uma
+coisa só**:
 
 ```
-· quando o agente errar, NÃO desligue — assuma a conversa pelo celular (isso o cala naquela conversa) e anote
-· no fim de cada dia, 5 minutos: escolham 10 conversas do dia e respondam, para cada uma:
-     ele soou como gente?  (sim / mais ou menos / não)
-     ele devia ter falado e calou, ou devia ter calado e falou?  (não / sim: qual)
-     a apólice que ele usou era a certa, de primeira?  (sim / precisou corrigir / errou)
+quando o agente errar, NÃO desligue: assuma a conversa pelo celular
+(isso o cala naquela conversa) e anote o que ele fez de errado
 ```
 
-⚠️ Essas três perguntas são a **única** fonte, hoje, de três das seis notas do atendimento — o produto ainda não
-grava isso sozinho (pendência P-E0017-03). Sem a folha, essas três saem "NÃO AVALIADA" mesmo depois do piloto.
+⚠️ **A folha diária acabou.** Antes, pedia-se à Saionara e à Regina que preenchessem, todo fim de dia, três
+perguntas sobre 10 conversas. Isso foi **substituído** (decisão **D-E0017-04**, opção C): no 4º dia, um
+**avaliador** — um agente do plano lendo as conversas, não a API do produto — lê uma **amostra** do piloto e
+dá as três notas que o produto ainda não grava sozinho (*fala como humano* · *sabe calar* · *apólice certa
+de primeira*), e o veredito sai junto. Ninguém preenche planilha durante o piloto.
 
-## Passo P3 · Toda manhã: a medição do dia anterior (1 min)
+## Passo P3 · Durante, se quiser acompanhar (opcional)
+
+Peça no chat, com as datas que interessam:
 
 ```
-cd backend
-python scripts/medir_o_piloto.py --de <1º dia do piloto> --ate <ontem> --formato markdown
+rode a medição do piloto de 01/10 a 02/10 e me mostre a tabela
 ```
 
-Sai uma tabela por corretora, dia a dia — conversas que o agente atendeu, rajadas juntadas, acionamentos com
-protocolo, handoffs entregues, avisos ao grupo por tipo, silêncios por motivo — e, embaixo, **a régua**: a nota
-0–100 de cada dimensão, com o critério escrito ao lado e o palpite antigo para comparar. **Nenhum nome, telefone,
-placa ou apólice aparece: só contagem.**
+Sai uma tabela por corretora, dia a dia — conversas que o agente atendeu, rajadas juntadas, acionamentos
+com protocolo, handoffs entregues, avisos ao grupo por tipo, silêncios por motivo — e embaixo **a régua**: a
+nota 0–100 de cada dimensão, com o critério escrito ao lado e o palpite antigo para comparar. 🔴 **Nenhum
+nome, telefone, placa ou apólice aparece: só contagem.**
 
 **O que esperar, e o que NÃO é defeito:**
 
 ```
 · "NÃO AVALIADA — amostra insuficiente (2 de 5)" ..... é honesto: com menos de 5 casos a nota seria chute
-· "NÃO MENSURÁVEL" antes de 14/09 .................... antes disso o produto não marcava quem escreveu a resposta
-· "NÃO LIDO" numa célula ............................. o banco falhou naquela leitura; rode de novo. Nunca vira zero
+· "NÃO MENSURÁVEL" antes de 14/09 .................... antes disso o produto não marcava quem escreveu
+· "NÃO LIDO" numa célula ............................. a leitura falhou; peça de novo. Nunca vira zero
 · a nota do bloco só aparece com a maioria das dimensões avaliada — de propósito
 · pedir até HOJE dá número que muda a cada hora ...... para número firme, peça até ontem
 ```
 
-**O que anotar quando não bater:** se a tabela disser 0 conversas atendidas num dia em que você VIU o agente
-responder, me diga o dia e a corretora (não precisa do nome do segurado). É o tipo de erro que esta SPEC já pegou
-uma vez antes de publicar — a primeira versão contava 1 de cada 4 conversas.
+**O que anotar quando não bater:** se a tabela disser 0 conversas atendidas num dia em que você **viu** o
+agente responder, me diga **o dia e a corretora** (não precisa do nome do segurado). É o tipo de erro que
+esta SPEC já pegou uma vez antes de publicar — a primeira versão contava 1 de cada 4 conversas.
+
+**Alternativa, no console do `smith-api`:**
+
+```bash
+python scripts/medir_o_piloto.py --de 2026-10-01 --ate 2026-10-02 --formato markdown
+```
+
+(troque as duas datas; a segunda é inclusive e deve ser um dia **fechado**. ⚠️ Em breve, sem argumento
+nenhum, ele passa a cobrir os **últimos 7 dias fechados** e nem isso será preciso.)
 
 ## Passo P4 · O veredito (no 4º dia)
 
-Rode a medição dos 3 dias inteiros e me mande a saída (ou peça que eu rode). O piloto **passou** se, nas duas
-corretoras: nenhuma dimensão medida ficou abaixo do palpite antigo · "aciona" tem pelo menos 5 casos e nota ≥ 70 ·
-"sabe pedir ajuda" ≥ 90 (pedido de ajuda que ninguém recebe é o pior defeito possível) · e a folha da Saionara e da
-Regina não tem "errou a apólice" em mais de 1 de cada 10. 💭 Esses cortes são proposta minha; você decide se valem
-(decisão D-E0017-03).
+Abra um **chat novo** e cole o prompt inteiro de:
+
+```
+docs/canon/PROMPT-VEREDITO-DO-PILOTO.md
+```
+
+Troque só as **duas datas** da primeira linha pelos 3 dias do piloto. Ele faz tudo sozinho: roda o
+checklist, roda a medição do período, monta a amostra de conversas, lê e dá as três notas que o produto não
+grava, e responde **PASSOU** ou **NÃO PASSOU** — por corretora, com o porquê. Nenhum dado pessoal sai.
+
+**Os cortes:**
+
+```
+· nada medido abaixo do palpite de 12/09
+· "aciona" .............. pelo menos 5 casos E nota ≥ 70
+· "sabe pedir ajuda" .... ≥ 90   (pedido de ajuda que ninguém recebe é o pior defeito possível)
+· apólice errada ........ no máximo 1 em cada 10 da amostra
+```
+
+💭 Esses cortes são proposta minha; você decide se valem (decisão **D-E0017-03**, ainda aberta). Dimensão
+que sair **NÃO AVALIADA** não reprova nem aprova: ela vira uma linha dizendo o que falta para ter resposta
+da próxima vez.
