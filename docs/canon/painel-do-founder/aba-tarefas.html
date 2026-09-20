@@ -1,0 +1,321 @@
+<div id="tab-tarefas" class="tab" hidden>
+
+<header class="top">
+  <span class="eyebrow">A lista única &middot; escrita em 20/09/2026 &middot; substitui todas as listas anteriores</span>
+  <h1>Suas tarefas — na ordem, para você trocar de tela o mínimo possível.</h1>
+  <p class="lede">Tudo o que saiu das nove "caixas do Founder", do roteiro de canário e das pendências abertas, juntado e sem repetição.
+  Cada tarefa diz <b>o que é</b>, <b>onde se faz</b>, <b>o comando pronto</b> (quando há) e <b>o que esperar</b>.
+  🔴 <b>Nada aqui exige terminal</b>, com uma exceção declarada (o bloco E, que é um comando no console do serviço).</p>
+  <div class="meta">
+    <span>painel <b>autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host</b></span>
+    <span><b>EasyPanel</b> = onde se clica Implantar e se editam as variáveis</span>
+    <span><b>smith-api</b> = o cérebro &middot; <b>smith-web</b> = as telas &middot; <b>portal-worker</b> = o robô de portal</span>
+    <span>⚠️ o <b>smith-worker</b> usa o mesmo bloco de variáveis do smith-api</span>
+  </div>
+</header>
+
+<div class="virada" style="border-left-color:var(--crit)">
+  <span class="eyebrow" style="color:var(--crit)">Se você só fizer três coisas hoje</span>
+  <h2>As 3 coisas de agora</h2>
+  <div class="niveis">
+    <div class="nv cr">
+      <span class="nvn">1 &middot; 🧑 2 min &middot; EasyPanel</span>
+      <h3>Resolver a única trava que sobrou</h3>
+      <p>📊 20/09: há <b>1 número em <code>JANELA_SILENCIO_EXCECOES</code></b> que <b>não está</b> entre os seus números de teste — conferido pelo
+      próprio motor do produto, que casa com e sem o <code>55</code> e com e sem o nono dígito, não por comparação de texto.</p>
+      <span class="nvv">1 número<span> · smith-api → Environment</span></span>
+      <em>🔴 <b>Se for um celular seu, de teste:</b> acrescente-o também a <code>BILLING_CANARIO_ALLOWLIST</code>.
+      <b>Se for de cliente ou de atendente:</b> tire-o da lista. Quem está nessa lista fica <b>fora da janela de silêncio</b> —
+      o robô fala por cima da atendente naquela conversa, e de fora não há sintoma nenhum.</em>
+    </div>
+    <div class="nv al">
+      <span class="nvn">2 &middot; 🧑 5 min &middot; EasyPanel</span>
+      <h3>Implantar o smith-api de novo</h3>
+      <p>O comando do checklist <b>quebrava no console</b> em 20/09 (<code>ModuleNotFoundError: portal_worker</code>, um módulo que não existe naquela imagem).
+      📊 O conserto está feito e só vale no ar depois do Implantar.</p>
+      <span class="nvv">1 clique<span> · smith-api</span></span>
+      <em>Sobe junto a variável corrigida do item 1 e a contagem das exceções do silêncio que o checklist precisa ler (P-E0017-02, P-E0017-11).</em>
+    </div>
+    <div class="nv ok">
+      <span class="nvn">3 &middot; 🧑 2 min &middot; chat novo</span>
+      <h3>Abrir o chat da EXTRA-001.10</h3>
+      <p>É a próxima SPEC: o portal de vidros do WhatsApp ao comprovante. <b>Não espere por captura nenhuma</b> — a parte de lataria fecha com o material que já existe.</p>
+      <span class="nvv">1 prompt<span> · copiar e colar</span></span>
+      <em>Abra um <b>chat novo</b> e cole o conteúdo inteiro de <code>docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md</code>.
+      O que providenciar antes está na aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>.</em>
+    </div>
+  </div>
+  <p class="note" style="margin-top:16px">⚠️ <b>E depois do 1 e do 2:</b> peça no chat <b>&ldquo;rode o checklist de ligar&rdquo;</b>. Ele deve vir <b>PODE LIGAR</b> —
+  as outras duas travas conhecidas (o destino de suporte e o Implantar) já foram fechadas por você.</p>
+</div>
+
+<section style="margin-top:8px">
+  <h2>0 · Antes de tudo — segurança e ambiente</h2>
+  <p class="sub">📊 Conferido em 20/09/2026 <b>pelo nome</b>, contra o seu arquivo de credenciais e contra o código que lê cada variável.
+  Nenhum valor foi lido, impresso ou guardado.</p>
+
+  <h3 style="margin:18px 0 8px">0.1 · As variáveis, todas numa sentada</h3>
+  <p class="sub">Faça as edições e <b>só então</b> clique Implantar, uma vez (tarefa 0.2).</p>
+  <div class="tblbox">
+    <table style="min-width:900px">
+      <thead><tr><th class="l">variável</th><th class="l">serviço</th><th class="l">está?</th><th class="l">o que fazer</th><th class="l">o que trava se esquecer</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b><code>JANELA_SILENCIO_EXCECOES</code></b></td><td class="ds">smith-api</td><td class="ds">⚠️ 2 itens, <b>1 não é de teste</b></td><td class="ds">🔴 <b>é a tarefa nº 1 desta lista</b> (caixa vermelha acima)</td><td class="ds">esse número fica <b>fora</b> da janela de silêncio: o robô fala por cima da atendente naquela conversa, e de fora não há sintoma nenhum</td></tr>
+        <tr><td class="ds"><b><code>ENVIRONMENT</code> × <code>ENV</code></b></td><td class="ds">smith-api</td><td class="ds">✅ as duas, com <b>valores diferentes</b></td><td class="ds">🔴 alinhe as duas para o mesmo valor de produção</td><td class="ds">o backend lê <code>ENV</code>, e só para o monitoramento de erros: com o valor errado, os erros do ar chegam etiquetados como se fossem de desenvolvimento e o custo sobe. <b>Nenhum comportamento do produto muda</b></td></tr>
+        <tr><td class="ds"><b><code>ATTENDANT_INBOUND_ALLOWLIST</code></b></td><td class="ds">smith-api</td><td class="ds">⚠️ existe e está <b>VAZIA</b></td><td class="ds"><b>vazia é o certo para o piloto de verdade.</b> Preencha <b>só</b> para o ensaio (blocos A/C), com o aparelho de teste — e esvazie antes dos 3 dias</td><td class="ds">preenchida no piloto = todo segurado fora da lista é <b>ignorado em silêncio</b>, e os 3 dias medem o vazio</td></tr>
+        <tr><td class="ds"><code>PRESENCA_DIGITANDO_LIGADA</code></td><td class="ds">smith-api</td><td class="ds">❌ ausente</td><td class="ds">ponha <code>true</code> <b>se quiser rodar o caso A.8</b></td><td class="ds">ausente = o "digitando…" nunca aparece, e o caso A.8 não tem como passar</td></tr>
+        <tr><td class="ds"><code>RESUMO_DIARIO_HORA</code> · <code>RESUMO_DIARIO_ATIVO</code></td><td class="ds">smith-api</td><td class="ds">❌ ausentes</td><td class="ds">opcionais. Ausentes = <b>19h</b> e <b>ligado</b></td><td class="ds">⚠️ a hora é a do fuso da <b>plataforma</b>, não a de cada corretora</td></tr>
+        <tr><td class="ds"><code>ADMIN_API_KEY</code></td><td class="ds">smith-api <b>e</b> smith-web</td><td class="ds">✅ nos dois</td><td class="ds">nada</td><td class="ds">é <b>esta</b> que vale como chave interna. Sem ela o painel inteiro dá 401</td></tr>
+        <tr><td class="ds"><code>POLICY_INTELLIGENCE_V2</code></td><td class="ds">smith-api</td><td class="ds">✅ ligada</td><td class="ds">nada. ⚠️ se um dia trocar, use <b><code>true</code></b>, nunca <code>sim</code> (P-E0017-08)</td><td class="ds">desligada = a base de planos não responde e qualquer teste mede o comportamento antigo</td></tr>
+        <tr><td class="ds"><code>INSURER_DISPATCH_LIVE</code> · <code>DISPATCH_FINALIZE_MODE</code></td><td class="ds">smith-api</td><td class="ds">✅ ligada &middot; <code>live</code></td><td class="ds">nada</td><td class="ds">são dois portões diferentes: um diz <b>"posso falar com a seguradora"</b>, o outro diz <b>"o chamado abre de verdade ou cancela no fim"</b></td></tr>
+        <tr><td class="ds"><code>DISPATCH_FINALIZE_MODE</code> + <code>DISPATCH_FINALIZE_LIVE_PLAYBOOKS</code></td><td class="ds">smith-api</td><td class="ds">🔴 corrigido em 20/09</td><td class="ds">com <code>live</code>, <b>todos</b> os corredores abrem chamado de verdade e a lista é ignorada. Para os seus testes: <code>DISPATCH_FINALIZE_MODE=test</code> e apague a lista. Para produção: <code>live</code></td><td class="ds">em <code>live</code>, um teste seu despacha prestador de verdade</td></tr>
+        <tr><td class="ds"><code>ACIONAMENTO_FREIO_DE_EMERGENCIA</code></td><td class="ds">smith-api</td><td class="ds">❌ ausente = freio solto</td><td class="ds">guarde o nome</td><td class="ds">é a sua <b>parada de emergência</b>: pôr <code>true</code> derruba todo acionamento numa linha. Num incidente, é isto que você digita</td></tr>
+        <tr><td class="ds"><code>PORTAL_REAL_ENABLED</code> · <code>PORTAL_EFEITO_MATERIAL_LIBERADO</code></td><td class="ds">portal-worker (e smith-api)</td><td class="ds">✅ ligadas</td><td class="ds">nada</td><td class="ds">desligadas, o portal não abre nada e o bloco E.3 falha inteiro</td></tr>
+        <tr><td class="ds"><code>GLOBAL_KILL_SWITCH</code></td><td class="ds">smith-web</td><td class="ds">⚠️ ligada</td><td class="ds">🔴 <b>deixe como está</b></td><td class="ds">hoje ela <b>não bloqueia o atendimento</b>: o único lugar que a lê é uma rota de diagnóstico. Ela <b>relata, não impede</b> — o nome promete mais do que ela faz</td></tr>
+        <tr><td class="ds"><code>BILLING_CANARIO_ALLOWLIST</code> · <code>CANARIO_TESTE_B</code></td><td class="ds">smith-api</td><td class="ds">✅ 2 itens &middot; 1 item</td><td class="ds">nada</td><td class="ds">sem elas, o canário da cobrança recusa com <b>409</b> e não manda nada — que é o comportamento certo</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <dl class="q2" style="margin-top:18px">
+    <dt>☐ 0.1.a</dt><dd>🔴 Resolver o item estranho de <code>JANELA_SILENCIO_EXCECOES</code> &middot; <b>001.7</b></dd>
+    <dt>☐ 0.1.b</dt><dd>Alinhar <code>ENV</code> e <code>ENVIRONMENT</code> &middot; <b>001.7</b></dd>
+    <dt>☐ 0.1.c</dt><dd>Acrescentar <code>PRESENCA_DIGITANDO_LIGADA=true</code>, se quiser o caso A.8 &middot; <b>001.2</b></dd>
+    <dt>☐ 0.1.d</dt><dd>Conferir que <code>ATTENDANT_INBOUND_ALLOWLIST</code> está <b>vazia</b> (e só preencher no ensaio) &middot; <b>001.2 / 001.7</b></dd>
+    <dt>☐ 0.2</dt><dd>🔴 <b>O Implantar único:</b> clicar Implantar em <b>smith-api</b>, <b>smith-worker</b> e <b>smith-web</b>, nesta ordem.
+    Cada um volta a verde em 2–5 min. É o único Implantar de toda esta lista: ele sobe, de uma vez, o chat da 001.1, a pausa e a reentrada da 001.4,
+    o vocabulário da 001.5.2, a fila com o selo do conferente, os quatro modelos do grupo e a contagem que o checklist precisa ler.
+    ⚠️ <b>Estar na <code>main</code> não é estar no ar.</b> Se algum serviço não voltar verde, copie as últimas 20 linhas do log.</dd>
+    <dt>☐ 0.3</dt><dd>Abrir o chat do painel e mandar um <b>"oi"</b>. Resposta em segundos = o Implantar pegou &middot; <b>001.1</b></dd>
+  </dl>
+
+  <h3 style="margin:26px 0 8px">0.4 · As chaves — quando conveniente, antes de existir cliente pagante</h3>
+  <dl class="q2">
+    <dt>☑ 0.4.a</dt><dd><b>já feito</b> — o arquivo de credenciais <b>não está mais dentro da pasta do projeto</b>. 📊 conferido em 20/09.
+    Mantenha-o fora. <b>Metade de P-PILOTO-09 fechada.</b></dd>
+    <dt>☐ 0.4.b</dt><dd><b>Rotacionar as chaves que já foram coladas em chat.</b> Não é urgência de hoje: é uma tarde de trabalho antes de existir cliente pagando.
+    A ordem é por <b>gravidade</b> — primeiro o que dá acesso a <b>todos os dados</b>, depois o que <b>gasta dinheiro</b>, depois o resto:
+    <b>(1)</b> as chaves do banco (a de serviço passa por cima de toda a separação entre corretoras); <b>(2)</b> as chaves do próprio painel;
+    <b>(3)</b> 🔴 as duas chaves de criptografia — <b>não troque sem falar comigo antes</b>: são elas que abrem as senhas de portal já guardadas;
+    <b>(4–6)</b> as de modelo (Anthropic, OpenAI, Google); <b>(7)</b> as senhas do InfoCap; <b>(8)</b> a do WhatsApp;
+    <b>(9–15)</b> Redis, armazenamento, telefonia, voz, automações, logins de terceiros. A tabela completa, com onde se troca cada uma,
+    está em <code>docs/canon/TAREFAS-DO-FOUNDER.md</code> §0.4.b.
+    <b>Depois de trocar qualquer uma: Implantar o serviço.</b></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>1 · Preparar o ensaio</h2>
+  <dl class="q2">
+    <dt>☑ 1.1</dt><dd><b>Grupo de suporte de cada corretora</b> — 📊 20/09: <b>ativo nas duas</b>, depois de você reativar. Estava desativado desde 10/09 (P-E0017-01, fechada).
+    ⚠️ Confira que o grupo da AutoFleet está <b>dentro</b> da AutoFleet: em 08/09 ele nasceu dentro da Resulta. O sinal de saúde do sistema <b>não</b> mostra esse defeito —
+    ele só olha corretora com o agente já ligado &middot; <b>001.3 / 001.7</b></dd>
+    <dt>☐ 1.2</dt><dd><b>Criar o grupo de canário</b> — um grupo de WhatsApp só com você — e cadastrá-lo como destino de suporte da corretora de ensaio
+    (painel → Personalização → Suporte humano) &middot; <b>001.3</b></dd>
+    <dt>☐ 1.3</dt><dd><b>Cadastrar o seu celular como "número da casa"</b> da corretora de ensaio. É o que prova, no caso B.3, que o agente <b>não responde</b> a quem é da casa &middot; <b>001.3</b></dd>
+    <dt>☐ 1.4</dt><dd><b>Parear o celular pessoal</b> como atendente (painel → conexão de WhatsApp → ler o QR).
+    🔴 <b>Antes de parear</b>, se for fazer o ensaio, ponha o aparelho de teste em <code>ATTENDANT_INBOUND_ALLOWLIST</code> — senão o teste mede o vazio.
+    Ao terminar tudo, <b>desparear</b> &middot; <b>001.2 / 001.4</b></dd>
+    <dt>☐ 1.5</dt><dd><b>Deixar o agente DESLIGADO</b> nas corretoras até o bloco A. Desligado, ele só observa &middot; <b>001.2</b></dd>
+    <dt>⚠️ 1.6</dt><dd><b>Onde o teste de apólice roda.</b> A InfoCap tem um bloqueio conhecido (F-094-07): duas corretoras descriptografam para a <b>mesma conta</b>,
+    e o adaptador recusa a segunda. Por isso os testes de <b>apólice</b> (bloco D) e de <b>cobrança</b> (bloco E) ficam na <b>Resulta</b>, só leitura ou envio ao seu número &middot; <b>001.1 / 001.6</b></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>2 · Bloco D — a apólice certa, no chat do painel <span style="color:var(--muted);font-size:14px">(001.1)</span></h2>
+  <p class="sub">Painel da <b>Resulta</b>, chat <code>core</code>, com a sua conta. <b>Nada sai por WhatsApp.</b>
+  Anote cada um como ✅ passou &middot; ⚠️ passou mas o texto ficou estranho &middot; ❌ falhou (cole a resposta).</p>
+  <dl class="q2">
+    <dt>☐ D.1</dt><dd>CPF do cliente que em 09/09 recebeu 4 apólices → <b>uma</b> rodada, <b>zero</b> vencidas, diz <b>por quê</b> é aquela e avisa que há histórico oculto</dd>
+    <dt>☐ D.2</dt><dd><i>"quais as coberturas da apólice residencial dele?"</i> (a HDI) → coberturas <b>com a origem por linha</b>, Assistências Essenciais com origem no documento, franquia certa</dd>
+    <dt>☐ D.3</dt><dd>CPF só com apólices vencidas → a frase de "sem vigente", <b>com a data</b></dd>
+    <dt>☐ D.4</dt><dd>CPF com duas vigentes do mesmo ramo → pergunta <b>uma vez</b>, mostrando as duas</dd>
+    <dt>☐ D.5</dt><dd>a pergunta que em 10/09 devolveu <i>"ainda não recebi uma pergunta sua"</i> → agora responde</dd>
+    <dt>☐ D.6</dt><dd>🔴 <b>controle:</b> <i>"quantos clientes eu tenho?"</i> → a ferramenta de apólice <b>não</b> é chamada</dd>
+    <dt>☐ D.7</dt><dd>o caso do residencial Allianz: prêmios, franquias, coberturas → <b>da vigente</b>, com origem por linha</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>3 · Bloco D2 — a base de planos responde <span style="color:var(--muted);font-size:14px">(001.5 e 001.5.2)</span></h2>
+  <p class="sub">📊 A base já está publicada: <b>492 serviços, 108 planos, 8 seguradoras</b>. Não há mais fila para curar.</p>
+  <dl class="q2">
+    <dt>☐ D2.0</dt><dd>Abrir <b>Painel → Personalização → Conhecimento</b>: o bloco <b>Cobertura dos planos</b> com 8 seguradoras e 20 combinações publicadas,
+    e a <b>Fila de curadoria</b> com <b>8 linhas e só elas</b> (táxi da Azul, retidas de propósito).
+    <b>Anote:</b> se aparecer nome de tabela, de coluna ou chave técnica na tela, é defeito. Se a fila tiver mais de 8 linhas, me avise</dd>
+    <dt>☐ D2.1</dt><dd>Trocar de corretora e voltar → os números têm de ser <b>os mesmos</b>, e a tela diz numa linha por quê (a base é global, de propósito)</dd>
+    <dt>☐ D2.2</dt><dd>Com <b>uma apólice real de cada seguradora</b>, pergunte no chat <b>e</b> no WhatsApp:
+    <i>"meu seguro cobre guincho? até quantos km?"</i> &middot; <i>"tenho carro reserva?"</i> &middot; <i>"cobre chaveiro?"</i> &middot; <i>"cobre vidraceiro?"</i> (num residencial).
+    <b>Espere:</b> sim ou não <b>com o limite</b> (km, diárias, R$ por evento). No chat vem também o documento e a página; no WhatsApp, a mesma verdade sem citação</dd>
+    <dt>☐ D2.3</dt><dd>🔴 <b>Se vier "ainda não sei"</b> numa apólice que <b>tem</b> plano: copie <b>exatamente como o nome do plano aparece na apólice</b>, mais a seguradora.
+    É a pendência P-E00152-07, e só apólice real mede.
+    <b>Não é defeito:</b> Mapfre auto dizer "ainda não sei" (falta o manual no acervo) &middot; Allianz não responder por moto/caminhão/frota &middot;
+    Bradesco condomínio quase vazio &middot; seguradora sem documento</dd>
+    <dt>☐ D2.4</dt><dd>🔴 <b>controle:</b> <i>"quantas parcelas faltam para o segurado tal?"</i> → responde sobre parcelas e <b>não</b> consulta a base de planos</dd>
+    <dt>☐ D2.5</dt><dd>A validação com a Saionara e a Regina (20 min), com estas três perguntas:
+    <i>"dá para conferir de onde veio a resposta? você abriria o documento na página citada?"</i> &middot;
+    <i>"'ainda não sabemos' soa honesto, ou soa que o sistema falhou?"</i> &middot;
+    <i>"o gancho do plano superior soa útil, ou soa empurrão de venda?"</i></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>4 · Bloco A — a conversa no WhatsApp <span style="color:var(--muted);font-size:14px">(001.2)</span></h2>
+  <p class="sub">WhatsApp do aparelho de teste escrevendo para a corretora de ensaio. <b>Pré-requisito:</b> ligar o agente <b>só</b> para o ensaio; ao fim do bloco, desligue de novo.</p>
+  <dl class="q2">
+    <dt>☐ A.1</dt><dd>cinco mensagens + 1 foto em 12 segundos → <b>um</b> turno, <b>uma</b> resposta, foto reconhecida</dd>
+    <dt>☐ A.2</dt><dd>mandar só o CPF → resposta em ~3 s</dd>
+    <dt>☐ A.3</dt><dd><i>"o carro parou na"</i> → esperar 15 s → <i>"marginal pinheiros"</i> → <b>um</b> turno</dd>
+    <dt>☐ A.4</dt><dd>mandar mensagem <b>enquanto</b> ele responde → nunca perde nem duplica</dd>
+    <dt>☐ A.5</dt><dd>encerrar, voltar dentro da janela, depois puxar assunto novo → <b>sem</b> reapresentação na janela; <b>uma</b> apresentação no assunto novo</dd>
+    <dt>☐ A.6</dt><dd>trocar o nome do agente no meio do assunto, e tentar um nome <b>igual ao de um membro</b> → nada muda no assunto em curso; o nome colidente é <b>recusado</b></dd>
+    <dt>☐ A.7</dt><dd>responder pelo <b>celular pareado</b>, como atendente → o agente <b>cala</b>, o silêncio aparece no feed <b>com o motivo</b>, e nada é gravado em dobro</dd>
+    <dt>☐ A.8</dt><dd>repetir o A.3 com <code>PRESENCA_DIGITANDO_LIGADA=true</code> → o "digitando…" <b>aparece e some</b>. ⚠️ sem a variável (0.1.c) este caso não tem como passar</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>5 · Bloco B — o grupo da equipe <span style="color:var(--muted);font-size:14px">(001.3)</span></h2>
+  <dl class="q2">
+    <dt>☐ B.1</dt><dd>conversa nova em que o agente <b>pede ajuda</b> → <b>um único</b> balão 🆘, com WhatsApp clicável</dd>
+    <dt>☐ B.2</dt><dd>responder pelo painel e provocar um novo alerta → <b>nada</b> chega ao grupo</dd>
+    <dt>☐ B.3</dt><dd>mandar mensagem do <b>número da casa</b> (1.3) → o agente <b>não responde</b>, nada entra na fila, nada vai ao grupo</dd>
+    <dt>☐ B.4</dt><dd>concluir um caso → ✅ curto no grupo</dd>
+    <dt>☐ B.5</dt><dd>esperar as <b>19h</b> → 📊 com números que <b>batem</b> com o que aconteceu no dia</dd>
+    <dt>☐ B.6</dt><dd>desativar o destino de suporte e tentar <b>ligar</b> o agente → recusa <b>com frase humana</b>; reativar → liga</dd>
+    <dt>☐ B.7</dt><dd>com um usuário <code>member</code>, tentar mexer em destino, credencial ou conexão → <b>403</b></dd>
+    <dt>☐ B.8</dt><dd>🔴 <b>controle:</b> conversa <b>sem</b> humano, com pedido de ajuda → o alerta <b>chega</b></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>6 · Bloco C — o acionamento ao vivo <span style="color:var(--muted);font-size:14px">(001.4)</span></h2>
+  <p class="sub">🔴 <b>Só na sessão do canário</b>, na corretora de ensaio. <code>INSURER_DISPATCH_LIVE</code> está <b>ligada</b>: o que sair daqui sai de verdade para a seguradora.</p>
+  <dl class="q2">
+    <dt>☐ C.1</dt><dd>abrir um acionamento numa seguradora de <b>menu numerado</b>, ir até a confirmação e <b>RECUSAR</b> → o menu recebe o número certo; as telas entram no acervo</dd>
+    <dt>☐ C.2</dt><dd>digitar <b>uma</b> vez à mão, pelo celular pareado, dentro da conversa com a URA → o robô <b>espera 15 s</b>, não manda nada ao grupo nem ao segurado, e <b>continua lendo</b></dd>
+    <dt>☐ C.3</dt><dd>digitar <b>duas</b> vezes em 15 s → o robô <b>sai em silêncio</b> e não volta</dd>
+    <dt>☐ C.4</dt><dd>forçar uma tela que peça um dado <b>fora da ficha</b> → nada sai à URA; a pergunta chega ao aparelho de teste; a resposta dele é usada; o histórico ganha <code>acionamento.dado_faltou</code></dd>
+    <dt>☐ C.5</dt><dd>ao fim do bloco, peça no chat: <i>"quantos eventos <code>agente.%</code> existem?"</i> → tem de <b>sair de zero</b></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>7 · Bloco E — a cobrança e os portais <span style="color:var(--muted);font-size:14px">(001.6)</span></h2>
+  <p class="sub">Painel da <b>Resulta</b> (tela) + <b>console do serviço <code>smith-api</code></b> (os dois comandos — <b>a única exceção ao "nada de terminal"</b>).
+  🔴 Todo envio vai só para o seu número: é o que <code>BILLING_CANARIO_ALLOWLIST</code> e <code>CANARIO_TESTE_B</code> garantem. Sem elas o comando recusa com <b>409</b> e não manda nada.</p>
+  <dl class="q2">
+    <dt>☐ E.1</dt><dd><b>Preencher a tela do Auxiliar de cobrança</b> (painel da Resulta → Rotinas): <b>"Quem assina"</b> (o nome que sai na mensagem) &middot; modo <b>Encaminhar</b> &middot;
+    WhatsApp da equipe = <b>o seu número</b> &middot; antecedência <b>7 dias</b>. ⚠️ Sem "Quem assina", o resto do bloco não vale</dd>
+    <dt>☐ E.2</dt><dd><b>Rodar o canário da cobrança.</b> No console do <code>smith-api</code>, cole exatamente:
+    <br><code>curl -X POST "https://autobrokers-intelligence-os-autobrokers-smith-api.golhpm.easypanel.host/api/admin/canario/extra001?esperar_retorno_s=180" -H "X-Internal-Key: $ADMIN_API_KEY"</code>
+    <br><b>O que esperar:</b> ele fica até 3 minutos esperando uma resposta sua no WhatsApp e devolve um JSON começando por <code>{"ok": true</code>.
+    No seu WhatsApp: <b>uma</b> mensagem por segurado, com N boletos juntos, <b>nunca a mesma parcela duas vezes</b>; a pergunta Q4 pede que você responda — responda.
+    <br><b>Se não bater:</b> <code>409 canário desarmado</code> = as variáveis não estão como deviam (veja 0.1). Duas mensagens para o mesmo segurado, ou a mesma parcela repetida: cole o texto</dd>
+    <dt>☐ E.3</dt><dd><b>Rodar a parte dos portais</b> (mesmo comando com <code>?portais=1</code>, leva ~2 min): Tokio, HDI, Yelum e Zurich <b>abrem</b>, e cada portal diz <b>em português</b>
+    por que não entrou, quando não entra. Allianz e Mapfre continuam esperando as senhas.
+    <b>Anote</b> qualquer mensagem de erro que não esteja em português de gente</dd>
+    <dt>☐ E.4</dt><dd><b>Só depois disto, reativar a rotina</b> de cobrança (painel da Resulta → Rotinas)</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>8 · O piloto de 3 dias <span style="color:var(--muted);font-size:14px">(001.7)</span></h2>
+  <div class="virada" style="border-left-color:var(--accent);margin-top:14px">
+    <span class="eyebrow" style="color:var(--accent)">📖 O piloto em linguagem de gente, antes de começar</span>
+    <h2>Quatro coisas para saber antes de clicar em Ligar agente</h2>
+    <dl class="q2" style="margin-top:14px">
+      <dt>ligar o agente</dt>
+      <dd>É o botão <b>Ligar agente</b>, no painel, <b>em cada corretora</b>. É ele que faz o robô <b>responder os segurados no WhatsApp</b>.
+      Com ele desligado, o sistema só <b>observa</b>: vê as conversas, guarda, não fala. Ligar é o que dá início ao piloto — e é
+      <b>a única coisa que muda o que o segurado vê</b>.</dd>
+
+      <dt>canário</dt>
+      <dd>É um <b>ensaio com um único celular de teste</b>, antes de soltar para clientes reais. No checklist, <code>--modo canario</code> quer dizer:
+      <i>"nesta rodada, a lista de entrada estar preenchida só com o número de teste é o esperado"</i>. 🔴 <b>No piloto de verdade é o contrário:</b>
+      a lista tem de estar <b>vazia</b>, senão todo segurado que não estiver nela é ignorado em silêncio e os 3 dias medem o nada.</dd>
+
+      <dt>quando o agente errar</dt>
+      <dd>É no <b>atendimento</b>: ele respondeu errado, ou respondeu fora de hora, a um segurado de verdade.
+      🔴 <b>Não desligue o agente.</b> A atendente <b>responde pelo celular naquela conversa</b> — isso cala o robô ali, só ali, na hora. Anote o que aconteceu.
+      Isso <b>não</b> é erro da medição e <b>não invalida o piloto</b>: é exatamente o tipo de coisa que o piloto existe para contar.</dd>
+
+      <dt>quando termina</dt>
+      <dd>Depois de <b>3 dias úteis completos</b> com o agente ligado. No <b>4º dia</b> sai o veredito — e é uma coisa só, num chat novo (passo P4).
+      🔴 <b>Você não precisa rodar nada no console:</b> o caminho recomendado é <b>pedir no chat</b>; eu rodo da minha máquina contra a produção,
+      <b>só leitura</b> — nada envia mensagem, liga agente ou escreve no banco.</dd>
+    </dl>
+  </div>
+
+  <dl class="q2" style="margin-top:22px">
+    <dt>☐ P1</dt><dd><b>Antes de ligar, o checklist.</b> Abra um chat e peça: <b>&ldquo;rode o checklist de ligar&rdquo;</b>.
+    <b>O que esperar:</b> <b>PODE LIGAR</b> ou <b>NÃO PODE LIGAR</b>, com uma linha por trava. 🔴 O que ele não consegue conferir conta como <b>trava fechada</b>, de propósito.
+    <b>As três travas conhecidas de 20/09 já são tarefas desta lista:</b> o destino de suporte (1.1, feita), o Implantar (0.2) e as exceções do silêncio (0.1.a).
+    <br><em>Alternativa, no console do <code>smith-api</code>:</em> <code>python scripts/conferir_o_que_esta_no_ar.py --ligar</code></dd>
+    <dt>☐ P1.b</dt><dd><b>Só com "PODE LIGAR" na tela</b>, clique <b>Ligar agente</b>, <b>em cada corretora do piloto</b></dd>
+    <dt>☐ P2</dt><dd><b>Os 3 dias.</b> Combine com a equipe <b>uma coisa só</b>:
+    <i>"quando o agente errar, NÃO desligue: assuma a conversa pelo celular (isso o cala ali) e anote o que ele fez de errado"</i>.
+    ⚠️ <b>Não há mais folha diária para preencher</b> (decisão D-E0017-04)</dd>
+    <dt>☐ P3</dt><dd><b>Durante, se quiser acompanhar</b> (opcional). No chat: <b>&ldquo;rode a medição do piloto e me mostre a tabela&rdquo;</b>.
+    Uma tabela por corretora, dia a dia — conversas atendidas, rajadas juntadas, acionamentos com protocolo, handoffs entregues, avisos ao grupo por tipo,
+    silêncios por motivo — e embaixo a régua, com a nota de cada dimensão e o critério ao lado. 🔴 <b>Nenhum nome, telefone, placa ou apólice aparece: só contagem.</b>
+    <br><em>Console:</em> <code>python scripts/medir_o_piloto.py</code> — <b>sem datas, cobre os últimos 7 dias fechados</b>.
+    <br><b>O que NÃO é defeito:</b> "NÃO AVALIADA — amostra insuficiente" (com menos de 5 casos a nota seria chute) &middot; "NÃO MENSURÁVEL" antes de 14/09 &middot;
+    "NÃO LIDO" numa célula (a leitura falhou; peça de novo — <b>nunca vira zero</b>) &middot; a nota do bloco só sair com a maioria das dimensões avaliada &middot;
+    pedir até HOJE dar número que muda a cada hora (peça até ontem).
+    <br><b>Anote se não bater:</b> se a tabela disser <b>0 conversas</b> num dia em que você <b>viu</b> o agente responder, me diga o dia e a corretora</dd>
+    <dt>☐ P4</dt><dd><b>O veredito, no 4º dia.</b> Abra um <b>chat novo</b> e cole o prompt inteiro de <code>docs/canon/PROMPT-VEREDITO-DO-PILOTO.md</code>
+    (troque só as duas datas da primeira linha). Ele roda o checklist, roda a medição dos 3 dias, <b>lê uma amostra das conversas</b> e dá as três notas que o produto
+    não grava (<i>fala como humano</i> &middot; <i>sabe calar</i> &middot; <i>apólice certa de primeira</i>), e responde <b>PASSOU</b> ou <b>NÃO PASSOU</b>, com o porquê.
+    Os cortes estão na aba <a href="#piloto" style="color:var(--accent)">O piloto</a></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>9 · Depois de tudo — desfazer o ensaio</h2>
+  <dl class="q2">
+    <dt>☐ 9.1</dt><dd>Desativar o destino do <b>grupo de canário</b>, deixando ativo o grupo <b>de verdade</b> da equipe</dd>
+    <dt>☐ 9.2</dt><dd>Apagar os <b>números da casa</b> que você cadastrou só para o teste</dd>
+    <dt>☐ 9.3</dt><dd><b>Desparear</b> o celular pessoal</dd>
+    <dt>☐ 9.4</dt><dd><b>Esvaziar</b> <code>ATTENDANT_INBOUND_ALLOWLIST</code>, se você a preencheu para o ensaio (e Implantar)</dd>
+    <dt>☐ 9.5</dt><dd>Cancelar as <b>intenções pendentes</b> que o ensaio deixou</dd>
+    <dt>☐ 9.6</dt><dd>Conferir que <b>nenhuma sessão de acionamento ficou ativa</b> — peça no chat: <i>"tem alguma sessão de acionamento aberta?"</i></dd>
+  </dl>
+</section>
+
+<section>
+  <h2>10 · Decisões suas em aberto</h2>
+  <p class="sub">Dez. Nenhuma trava o piloto; todas travam alguma coisa depois dele.</p>
+  <div class="tblbox">
+    <table style="min-width:820px">
+      <thead><tr><th class="l">#</th><th class="l">a decisão</th><th class="l">o que está em jogo</th></tr></thead>
+      <tbody>
+        <tr><td class="ds">1</td><td class="ds"><b>D-E0017-03</b> · os cortes do veredito do piloto</td><td class="ds">são os quatro números do P4. Até você decidir, a régua publica as notas e <b>não</b> publica o veredito</td></tr>
+        <tr><td class="ds">2</td><td class="ds"><b>D-E0017-04</b> · rodar o piloto com o avaliador por amostra?</td><td class="ds">📊 três das seis notas do atendimento não têm como ser gravadas pelo produto hoje. <b>Já resolvido pela via do avaliador</b> — falta você dizer se concorda, ou se prefere adiar ~1 dia para construir os escritores</td></tr>
+        <tr><td class="ds">3</td><td class="ds"><code>write:true</code> tira a escrita de 2 pessoas</td><td class="ds">📊 8 administradores e 2 <code>member</code>, em corretoras diferentes. Eles param de poder mexer em destino de suporte, credencial de portal e conexão de WhatsApp</td></tr>
+        <tr><td class="ds">4</td><td class="ds">CPF/CNPJ aparece no 🆘 e no 🚨</td><td class="ds">e fica no histórico do grupo para sempre. A SPEC pediu assim. É decisão de privacidade, não técnica</td></tr>
+        <tr><td class="ds">5</td><td class="ds">A hora do resumo diário</td><td class="ds">19h é o padrão. ⚠️ hoje é o fuso da <b>plataforma</b>, não o de cada corretora</td></tr>
+        <tr><td class="ds">6</td><td class="ds">Ler os quatro modelos de mensagem do grupo</td><td class="ds">💭 a copy é ilustrativa de propósito. Sem a sua leitura, a validação com a Saionara e a Regina não fecha</td></tr>
+        <tr><td class="ds">7</td><td class="ds">O canal do grupo (P-E0014-06)</td><td class="ds">ligar grupos na instância — 📊 240 mensagens/min a mais — <b>ou</b> botões AGENTE / EU CUIDO na Fila. Hoje a atendente que responde <b>no grupo</b> não é ouvida</td></tr>
+        <tr><td class="ds">8</td><td class="ds">O nome do agente da Resulta</td><td class="ds">a SPEC entregou o mecanismo; o nome é seu</td></tr>
+        <tr><td class="ds">9</td><td class="ds">As senhas de Allianz e Mapfre</td><td class="ds">sem elas o bloco E.3 continua com duas seguradoras de fora</td></tr>
+        <tr><td class="ds">10</td><td class="ds">Destilar as seguradoras que faltam</td><td class="ds">a ordem pelo prêmio da carteira está escrita (19 seguradoras). A base cresce <b>sem código novo</b>; hoje 8 respondem</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Apêndice · O que o produto ainda não sabe medir sozinho</h2>
+  <p class="sub">Não é tarefa sua — é para você saber o que <b>não</b> esperar do relatório do piloto.</p>
+  <dl class="q2">
+    <dt>P-E0017-03</dt><dd>três dimensões do atendimento não têm quem as grave: <i>apólice certa em 1 rodada</i>, <i>sabe calar</i> e <i>fala como humano</i>. Por isso existe o avaliador por amostra do P4</dd>
+    <dt>P-E0017-04</dt><dd>o chat principal grava "sucesso" em <b>100%</b> das linhas — a coluna não consegue discordar. <i>Confiabilidade</i> e <i>completude</i> do chat saem NÃO AVALIADA</dd>
+    <dt>P-E0017-05</dt><dd>o aviso de caso parado conta <b>varreduras</b>, não casos: o diário enche de ruído</dd>
+    <dt>P-E0017-06</dt><dd>o porteiro do botão "Ligar agente" <b>libera quando não consegue conferir</b>, e não avisa que não conferiu. O checklist do P1 <b>não</b> herda esse defeito — o botão, sim</dd>
+    <dt>P-E0017-07</dt><dd>num dia de banco instável, o resumo das 19h pode dizer "sem acionamentos hoje" em vez de "não consegui ler o dia"</dd>
+    <dt>P-E0017-08</dt><dd><code>POLICY_INTELLIGENCE_V2</code> é lida em dois lugares com listas diferentes: use <b><code>true</code></b></dd>
+  </dl>
+  <p class="note">Fonte desta aba: <code>docs/canon/TAREFAS-DO-FOUNDER.md</code> (20/09/2026), que continua sendo o original e tem a tabela completa das chaves.</p>
+</section>
+</div>

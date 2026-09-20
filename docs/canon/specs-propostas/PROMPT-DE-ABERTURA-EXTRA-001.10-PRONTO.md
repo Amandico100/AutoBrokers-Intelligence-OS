@@ -124,6 +124,29 @@ P2-1  a régua real do trincado (hoje há TRÊS: 10 cm em vidros_lanternas.py:33
 ⛔ NÃO ENTRA: uma linha sequer para `agendeseuservico.com` (Bradesco) — D-PILOTO-17 manda capturar antes de codar
 ```
 
+### 🔴 AS 38 SEGURADORAS SÃO A UNIDADE — POR DADO, NÃO POR LISTA ESCRITA À MÃO (acrescentado 20/09/2026)
+
+```
+🔴 P0-4 entrega AS 38, não três. O mapa de seguradora do portal é DADO MEDIDO DO PRÓPRIO PORTAL — a lista
+   completa que o portal publica (`vidros_api.py:93 EP_SEGURADORAS` e/ou o bundle roteado, com o comando e a
+   data colados) — e NUNCA uma tupla de slugs digitada por alguém. 📊 Hoje
+   `vidros_apifirst.py:102 SLUGS_DE_SEGURADORA` tem 3 entradas (PORTO, AZUL, ITAU) para um portal de 38/42.
+🔴 O que varia por seguradora tem de ficar ESCRITO, campo a campo, com evidência: slug/código na chamada ·
+   escolha de cobertura (📊 só PORTO sobrescreve o passo 1 — `vidros_api.py:223`) · itens cobertos e
+   motivos de dano (vêm da APÓLICE, não do código) · regra de negócio do preflight. O que for igual em
+   todas, prove que é igual — não presuma.
+⛔ Bradesco (`agendeseuservico.com`) continua FORA por D-PILOTO-17 e entra na tabela como "fora: outro portal".
+```
+**Gate extra, obrigatório para fechar:** **G11** — o relatório traz uma **TABELA FINAL seguradora × estado**, uma
+linha por seguradora da lista medida do portal, com exatamente um destes três valores e a evidência ao lado:
+`provado ao vivo` (houve acionamento/HAR real daquela seguradora) · `coberto por construção` (o mesmo caminho de
+dado, sem captura própria) · `fora: <motivo>`. Sem essa tabela a SPEC **não fecha**. ⛔ Nenhuma seguradora pode ser
+declarada `provado ao vivo` sem captura ou canário que a exerceu.
+
+### 🔴 A ORDEM: ESTA SPEC RODA **ANTES** DOS TESTES DO FOUNDER
+O Founder **não** testa antes. A única coisa que ele pode ter feito antes é a **captura do para-brisa** — e só se
+ele informar a pasta. Sem pasta informada, siga por lataria e trate para-brisa como 🟡 CANDIDATE.
+
 ### O FIO desta SPEC (escreva-o no card ANTES de construir)
 ```
 WhatsApp do segurado ("quebrou o para-brisa")

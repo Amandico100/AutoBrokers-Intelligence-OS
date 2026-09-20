@@ -1,0 +1,84 @@
+<div id="tab-pendencias" class="tab" hidden>
+
+<header class="top">
+  <span class="eyebrow">📊 estado de 20/09/2026 &middot; 269 pendências abertas, e as 9 que eu pararia para consertar</span>
+  <h1>O que está aberto e pesa.</h1>
+  <p class="lede">A régua é <b>o risco de não fazer</b>, não o esforço. <b>90 ou mais</b> significa uma coisa só:
+  pode <b>quebrar produção</b>, <b>vazar dado entre corretoras</b>, ou fazer o produto <b>responder errado a quem paga</b>.
+  📊 Duas destas nove caíram esta semana.</p>
+  <div class="meta">
+    <span>fonte <b>docs/canon/PENDENCIAS.md</b></span>
+    <span>a regra <b>D-FILA-01</b> (20/09)</span>
+    <span>🧑 = você &middot; 🤖 = execução</span>
+  </div>
+</header>
+
+<div class="virada" style="border-left-color:var(--accent)">
+  <span class="eyebrow" style="color:var(--accent)">D-FILA-01 &middot; a regra, em linguagem de gente</span>
+  <h2>Quando cada pendência é consertada — sem lista de faxina eterna</h2>
+  <dl class="q2" style="margin-top:14px">
+    <dt>1 · as graves de segurança</dt>
+    <dd>Pendência <b>≥ 90</b> que seja de <b>segurança ou de separação entre corretoras</b> entra na <b>EXTRA-001.8</b>. Não espera fila.</dd>
+    <dt>2 · a regra que evita faxina</dt>
+    <dd>🔴 <b>Toda SPEC drena as pendências dos arquivos que tocar.</b> Se o trabalho já vai abrir aquele arquivo, o conserto sai junto —
+    é quase de graça ali, e caríssimo depois.</dd>
+    <dt>3 · uma triagem só</dt>
+    <dd>Depois da 001.0/001.9 e <b>antes</b> da EXTRA-002: <b>uma</b> passada (um leitor, ~1 h) que fecha as já resolvidas, funde as repetidas,
+    e o que sobrar <b>≥ 80</b> vira um bloco de trabalho.</dd>
+    <dt>4 · o resto</dt>
+    <dd>Espera o fim da sequência principal (renovação, cotação). ⚠️ <b>Nada sai da lista sem estar feito ou sem uma decisão registrada.</b></dd>
+  </dl>
+  <p class="note" style="margin-top:14px">📊 <b>Onde estão as outras.</b> 43 pendências entre 70 e 89 — o produto já erra, mas raro ou contido.
+  ~215 abaixo de 68 — canários esperando o Implantar, higiene, comentário vencido. <b>A boa notícia:</b> quase todas as de 70–89
+  <b>cabem dentro de uma SPEC que já vai tocar aquele arquivo</b>.</p>
+</div>
+
+<section style="margin-top:8px">
+  <h2>As 9 que pesam — com o estado de hoje</h2>
+  <div class="tblbox">
+    <table style="min-width:900px">
+      <thead><tr><th>nota</th><th class="l">o que é</th><th class="l">o que custa esquecer</th><th class="l">estado em 20/09</th></tr></thead>
+      <tbody>
+        <tr><td class="dm"><b>94</b></td><td class="ds">O grupo de suporte da AutoFleet tinha sido cadastrado <b>dentro da Resulta</b></td><td class="ds">Um caso de segurado da AutoFleet cai no grupo da <b>outra corretora</b> — sem nada dar errado na tela</td><td class="ds">✅ <b>resolvida</b> 🧑 — 📊 destino ativo nas duas corretoras</td></tr>
+        <tr><td class="dm"><b>93</b></td><td class="ds">Nome de uma <b>atendente real</b> dentro de um dado global de corredor, que entra no texto interno do agente</td><td class="ds">Esse nome pode reaparecer numa resposta gerada para <b>outra corretora</b></td><td class="ds">→ vai na <b>EXTRA-001.8</b></td></tr>
+        <tr><td class="dm"><b>92</b></td><td class="ds">Três rotas <b>apagam ou alteram conexão por id, sem conferir de quem é</b></td><td class="ds">Uma corretora apaga a conexão de outra adivinhando um id</td><td class="ds">→ vai na <b>EXTRA-001.8</b></td></tr>
+        <tr><td class="dm"><b>92</b></td><td class="ds">A trava que impede o modelo de <b>negar o que a base afirma</b> pega <b>6 de 9</b> formas de dizer "não"</td><td class="ds">O segurado ouve <i>"você não tem guincho"</i> quando tem — e a base acabou de publicar 492 serviços</td><td class="ds">→ próxima SPEC de atendimento &middot; ❓ conferir se a 001.5.1/5.2 já cobriu</td></tr>
+        <tr><td class="dm"><b>91</b></td><td class="ds">O atendimento roda num <b>processo só</b>, sem isolamento por corretora</td><td class="ds">Uma corretora travada para <b>todas</b>. Você mesmo chamou de irreparável</td><td class="ds">→ <b>é o escopo da EXTRA-001.8</b></td></tr>
+        <tr><td class="dm"><b>90</b></td><td class="ds"><b>40 das 81 linhas</b> da base de planos estavam erradas</td><td class="ds">Quem publicasse sem conferir carimbaria erro como se fosse gente</td><td class="ds">✅ <b>resolvida pela 001.5.2</b> — 📊 492 serviços reescritos com o trecho literal conferido contra a página</td></tr>
+        <tr><td class="dm"><b>90</b></td><td class="ds">A resposta de cobertura <b>só funciona porque monta um cliente de banco próprio</b>, e não há guarda</td><td class="ds">Alguém "organiza" o código e a base inteira <b>cala em silêncio</b> — exatamente o que já aconteceu uma vez</td><td class="ds">🤖 <b>aberta</b></td></tr>
+        <tr><td class="dm"><b>90</b></td><td class="ds"><b>Arquivo de credenciais dentro da árvore do repositório</b></td><td class="ds">Um comando distraído publica tudo</td><td class="ds">📊 <b>movido para fora</b> ✅ — <b>falta a rotação das chaves</b> (tarefa 0.4.b)</td></tr>
+        <tr><td class="dm"><b>90</b></td><td class="ds">Faltaria a <b>chave interna</b> no contêiner do painel &middot; e o <b>"EU CUIDO" digitado no grupo não chega</b></td><td class="ds">Deploy verde e chat mudo &middot; a atendente assume e o robô volta a falar por cima dela em 60 s</td><td class="ds">📊 a chave <b>existe</b> nos dois serviços e o código a aceita ✅ &middot; o <b>"EU CUIDO" no grupo continua ABERTO</b> 🧑</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note" style="border-left-color:var(--crit)">❓ <b>A que depende de você.</b> Toda instância de WhatsApp nasce <b>ignorando grupos</b> —
+  então a palavra da atendente <b>dentro do grupo</b> não é ouvida; hoje ela só vale no privado do número de suporte e dos números da casa.
+  São duas saídas: <b>ligar grupos na instância</b> (📊 custa 240 mensagens/min a mais) ou <b>botões AGENTE / EU CUIDO na Fila</b> (recomendado).
+  É decisão sua, item 7 das decisões em aberto.</p>
+</section>
+
+<section>
+  <h2>As pendências da última SPEC — EXTRA-001.7</h2>
+  <p class="sub">Onze, deixadas em 20/09. As três primeiras são as que você resolve; o resto é execução.</p>
+  <div class="tblbox">
+    <table style="min-width:880px">
+      <thead><tr><th class="l">#</th><th>de quem</th><th class="l">o que é</th><th class="l">estado</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>P-E0017-01</b></td><td class="dm">🧑</td><td class="ds">Os destinos de alerta das duas corretoras estavam <b>desativados desde 10/09</b>. Ligar o agente faria todo pedido de ajuda sair para lugar nenhum</td><td class="ds">✅ <b>fechada</b> — 📊 ativo nas duas</td></tr>
+        <tr><td class="ds"><b>P-E0017-02</b></td><td class="dm">🧑</td><td class="ds">Implantar o smith-api para o checklist conseguir conferir as exceções do silêncio. Até lá, essa trava sai <b>NÃO CONFERIDA</b> — e o que não se confere, reprova</td><td class="ds">🔴 <b>tarefa nº 2 de agora</b></td></tr>
+        <tr><td class="ds"><b>P-E0017-11</b></td><td class="dm">🧑</td><td class="ds">O comando do checklist <b>quebrou no console</b> do EasyPanel (um módulo que não existe naquela imagem). Na máquina local passava</td><td class="ds">conserto feito; <b>exige o Implantar</b></td></tr>
+        <tr><td class="ds"><b>P-E0017-09</b></td><td class="dm">🧑</td><td class="ds">🔴 <b>Os 3 dias de piloto e o canário</b> — a metade da SPEC que só você faz. 📊 Zero conversas com fala do agente desde 14/09</td><td class="ds">aberta — é a aba <a href="#piloto" style="color:var(--accent)">O piloto</a></td></tr>
+        <tr><td class="ds"><b>P-E0017-03</b></td><td class="dm">🤖 🧑</td><td class="ds">Três das seis notas do atendimento <b>não têm quem as grave</b>: <i>apólice certa em 1 rodada</i> (existe um sim/não sobrescrito, sem histórico), <i>sabe calar</i> (o produto conta quantas vezes calou, nunca se era certo) e <i>fala como humano</i></td><td class="ds">resolvida <b>por amostra</b> no 4º dia (D-E0017-04); o conserto de fundo segue aberto</td></tr>
+        <tr><td class="ds"><b>P-E0017-04</b></td><td class="dm">🤖</td><td class="ds">O chat principal <b>não registra falha</b>: 📊 a coluna diz "sucesso" em <b>567 de 567</b> linhas — ela não consegue discordar. E nada liga a pergunta à apólice usada</td><td class="ds">aberta</td></tr>
+        <tr><td class="ds"><b>P-E0017-05</b></td><td class="dm">🤖</td><td class="ds">O aviso de caso parado conta <b>varreduras</b>, não casos: 📊 324 linhas em 5 dias, e ninguém sabe quantos casos estão parados</td><td class="ds">aberta</td></tr>
+        <tr><td class="ds"><b>P-E0017-06</b></td><td class="dm">🤖</td><td class="ds">O porteiro do botão "Ligar agente" <b>libera quando não consegue conferir</b> — resposta idêntica à de "está tudo certo". O checklist novo <b>não</b> herda isso; o botão, sim</td><td class="ds">aberta</td></tr>
+        <tr><td class="ds"><b>P-E0017-07</b></td><td class="dm">🤖</td><td class="ds">Num dia de banco instável, o resumo das 19h pode dizer <b>"sem acionamentos hoje"</b> em vez de "não consegui ler o dia" — um número falso com cara de medição, no grupo da corretora</td><td class="ds">aberta</td></tr>
+        <tr><td class="ds"><b>P-E0017-08</b></td><td class="dm">🤖</td><td class="ds"><code>POLICY_INTELLIGENCE_V2</code> é lida em <b>dois lugares com listas diferentes</b>: escrever <code>sim</code> liga numa e não na outra. Use <b><code>true</code></b></td><td class="ds">aberta</td></tr>
+        <tr><td class="ds"><b>P-E0017-10</b></td><td class="dm">🧑</td><td class="ds">Conectores do ambiente de desenvolvimento (Gmail, Drive, Notion, Calendar…) sem autorização; dois falharam ao conectar</td><td class="ds">📊 <b>nenhum fez falta</b> até aqui — para depois</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">🔴 <b>A regra que vale para todas.</b> Cada entrada diz <b>o que destrava</b>, <b>de quem é</b> e <b>o que custa esquecer</b>.
+  Deixar pronto e desligado é aceitável; deixar pronto e <b>não anotado</b>, não.</p>
+</section>
+</div>

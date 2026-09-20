@@ -1,0 +1,124 @@
+<div id="tab-piloto" class="tab" hidden>
+<div class="virada" style="border-left-color:var(--accent)">
+  <span class="eyebrow" style="color:var(--accent)">20/09/2026 &middot; 📊 medido no banco de produção &middot; EXTRA-001.7</span>
+  <h2>O piloto agora tem instrumento: um comando diz se dá para ligar, outro dá a nota</h2>
+  <p>As notas do diagnóstico de 12/09 — <b>atendimento 48, chat 49</b> — eram palpite de auditor. A partir de hoje existe
+  uma máquina que as mede: por dia, por corretora, só contando (nenhum nome, telefone, placa ou apólice aparece), com o
+  critério de cada nota escrito ao lado.</p>
+  <p style="margin-top:10px">🔴 <b>E ela não inventa.</b> Onde o banco não tem dado, a nota sai <b>&ldquo;NÃO AVALIADA&rdquo;</b> com o motivo —
+  nunca um número bonito. Hoje quase tudo sai assim, e está certo: <b>o agente está desligado nas duas corretoras desde
+  o teste de 10/09</b>. As notas de verdade nascem nos seus 3 dias de piloto.</p>
+  <p class="note" style="margin-top:14px">⚠️ <b>A primeira versão da medição estava errada, e foi pega antes de chegar a você.</b> Ela contava
+  <b>3</b> conversas num dia em que houve <b>53</b>, porque escolhia a conversa pela data errada. Dois revisores independentes
+  acharam isso e mais cinco defeitos; tudo foi consertado e conferido contra uma contagem feita por outro caminho.</p>
+</div>
+
+<div class="tiles">
+  <div class="tile cr"><b>1</b><em>trava fechada, e só ela, no checklist de 20/09 <b>depois do deploy</b>: um número em <code>JANELA_SILENCIO_EXCECOES</code> que não é de teste</em></div>
+  <div class="tile ok"><b>2 de 2</b><em>corretoras com o <b>grupo de suporte ATIVO</b> — estava desativado desde 10/09, e você reativou</em></div>
+  <div class="tile ok"><b>conectado</b><em>o <b>WhatsApp</b> das duas corretoras responde; os agentes estão <b>cadastrados e desligados</b>, como tem de ser antes de ligar</em></div>
+  <div class="tile al"><b>0</b><em>conversas com fala do <b>agente</b> desde 14/09 — por isso quase toda nota sai &ldquo;NÃO AVALIADA&rdquo;</em></div>
+  <div class="tile ok"><b>463</b><em>conversas conduzidas <b>só por gente</b> de 14 a 18/09 (Resulta 157 &middot; AutoFleet 306)</em></div>
+  <div class="tile al"><b>4 de 11</b><em>notas que o produto mede <b>sozinho</b> hoje. As outras 7 precisam de alguém lendo, ou de código novo</em></div>
+</div>
+
+<div class="virada" style="border-left-color:var(--crit)">
+  <span class="eyebrow" style="color:var(--crit)">A única coisa entre você e o piloto</span>
+  <h2>O checklist diz NÃO PODE LIGAR por uma trava só</h2>
+  <p class="lede" style="max-width:74ch">📊 20/09, depois do Implantar: <b>há 1 número em <code>JANELA_SILENCIO_EXCECOES</code> que não está entre os seus números de teste</b>.
+  Quem está nessa lista <b>fica de fora da janela de silêncio</b> — ou seja, o robô continua falando por cima da atendente naquela conversa, e de fora
+  <b>não há sintoma nenhum</b>: tudo parece normal.</p>
+  <p class="lede" style="max-width:74ch;margin-top:10px">🔴 <b>O que fazer, conforme de quem for o número:</b> se for um celular <b>seu, de teste</b> — acrescente-o também a
+  <code>BILLING_CANARIO_ALLOWLIST</code>, e aí ele passa a ser reconhecido como de teste. Se for de <b>cliente ou de atendente</b> — <b>tire-o da lista</b>.
+  Depois, <b>Implantar o smith-api</b> e rodar o checklist outra vez. O passo a passo está em <a href="#tarefas" style="color:var(--accent)">SUAS TAREFAS</a>, item 0.1.a.</p>
+  <p class="note" style="margin-top:14px">⚠️ O checklist <b>reprova o que não consegue conferir</b>, de propósito. Verde aqui não é elogio: é a única prova de que ligar o agente não vai deixar um pedido de ajuda sair para lugar nenhum.</p>
+</div>
+
+<section style="margin-top:8px">
+  <h2>O que você faz, em ordem</h2>
+  <p class="sub">🔴 <b>Você não precisa de terminal.</b> O caminho recomendado é <b>pedir no chat</b>: eu rodo da minha máquina contra a produção,
+  <b>só leitura</b> — nada envia mensagem, liga agente ou escreve no banco. Os comandos abaixo ficam só como alternativa, para o console do <code>smith-api</code>.</p>
+  <div class="cards">
+    <div class="card cr"><h3>1 &middot; Resolva a trava que sobrou</h3><span class="n">🧑 2 min &middot; P-E0017-11</span>
+      <p>O número estranho em <code>JANELA_SILENCIO_EXCECOES</code>: <b>acrescente à allowlist do canário</b> se for seu celular de teste,
+      <b>tire</b> se for de cliente ou de atendente. É a caixa vermelha aqui de cima.</p></div>
+    <div class="card al"><h3>2 &middot; Implantar o smith-api</h3><span class="n">🧑 5 min &middot; P-E0017-02</span>
+      <p>EasyPanel &rarr; <b>Implantar</b>. Sobe a variável corrigida <b>e</b> o conserto do comando do checklist, que em 20/09 quebrava no console
+      com <code>ModuleNotFoundError: portal_worker</code>.</p></div>
+    <div class="card ok"><h3>3 &middot; Peça o checklist no chat</h3><span class="n">2 min</span>
+      <p>No chat: <b>&ldquo;rode o checklist de ligar&rdquo;</b>. Uma linha por trava, em português. <b>Só ligue com PODE LIGAR na tela.</b><br>
+      <em>Console:</em> <code>python scripts/conferir_o_que_esta_no_ar.py --ligar</code></p></div>
+    <div class="card ok"><h3>4 &middot; Três dias com o agente ligado</h3><span class="n">🧑 + Saionara + Regina</span>
+      <p>Quando ele errar, <b>não desligue</b>: a atendente assume a conversa pelo celular (isso o cala ali, só ali) e anota o que aconteceu.
+      ⚠️ <b>Não há mais folha diária para ninguém preencher</b> — isso mudou (D-E0017-04).</p></div>
+    <div class="card ok"><h3>5 &middot; Se quiser acompanhar no meio</h3><span class="n">1 min &middot; opcional</span>
+      <p>No chat: <b>&ldquo;rode a medição do piloto e me mostre a tabela&rdquo;</b>.<br>
+      <em>Console:</em> <code>python scripts/medir_o_piloto.py</code> — <b>sem datas, ele cobre os últimos 7 dias fechados</b>.
+      Pedir até HOJE dá número que muda a cada hora; peça até ontem.</p></div>
+    <div class="card cr"><h3>6 &middot; No 4º dia, o veredito</h3><span class="n">🧑 abre um chat novo</span>
+      <p>Abra um <b>chat novo</b> e cole o conteúdo inteiro de <code>docs/canon/PROMPT-VEREDITO-DO-PILOTO.md</code> (troque só as duas datas da primeira linha).
+      Ele roda o checklist, roda a medição dos 3 dias, <b>lê uma amostra das conversas</b> e responde <b>PASSOU</b> ou <b>NÃO PASSOU</b>, com o porquê.</p></div>
+  </div>
+  <p class="note">📖 <b>O que mudou na folha das atendentes.</b> A versão anterior desta página pedia que a Saionara e a Regina preenchessem, todo fim de dia,
+  uma folha com três notas. Isso <b>saiu</b> (decisão <b>D-E0017-04</b>, opção C): no <b>4º dia</b>, um <b>avaliador lê uma amostra das conversas do piloto</b> e dá
+  as três notas que o produto não grava sozinho. Ninguém preenche planilha durante o piloto — e a nota fica mais confiável, porque quem avalia lê a conversa inteira
+  em vez de lembrar do dia.</p>
+</section>
+
+<section>
+  <h2>As 11 notas — o que o produto mede sozinho, e o que não mede</h2>
+  <p class="sub">São <b>seis</b> notas do <b>atendimento</b> (o WhatsApp com o segurado) e <b>cinco</b> do <b>chat principal</b> (o corretor no painel).
+  📊 Medido de 08 a 19/09/2026 nas duas corretoras. O palpite é o dos auditores de 12/09 e <b>não é citável como medição</b>.
+  Nota só sai com amostra mínima: com menos de 5 casos, qualquer número seria chute.</p>
+  <div class="tblbox">
+    <table style="min-width:760px">
+      <thead><tr><th class="l">Dimensão</th><th>💭 palpite</th><th class="l">📊 hoje</th><th class="l">Quem dá a nota — e por quê</th></tr></thead>
+      <tbody>
+        <tr><td class="un" colspan="4" style="padding-top:14px"><b>ATENDIMENTO</b> (WhatsApp com o segurado) &middot; 3 de 6 o produto mede sozinho</td></tr>
+        <tr><td class="un">coleta e age</td><td class="dm">40</td><td class="ds">NÃO AVALIADA &middot; 0 de 5 casos</td><td class="ds">✅ <b>o produto mede</b> — a mesma conta do resumo das 19h: casos levados até o fim &divide; casos em que parou por não conseguir</td></tr>
+        <tr><td class="un">aciona</td><td class="dm">25</td><td class="ds">NÃO AVALIADA &middot; Resulta 2 de 5 &middot; AutoFleet 0</td><td class="ds">✅ <b>o produto mede</b> — acionamentos abertos em que o segurado recebeu o protocolo</td></tr>
+        <tr><td class="un">sabe pedir ajuda</td><td class="dm">55</td><td class="ds">NÃO AVALIADA &middot; 0 de 5 casos</td><td class="ds">✅ <b>o produto mede</b> — pedidos de ajuda que alguém da equipe realmente recebeu</td></tr>
+        <tr><td class="un">apólice certa, de primeira</td><td class="dm">50</td><td class="ds">NÃO AVALIADA</td><td class="ds">🧑 <b>o avaliador do 4º dia.</b> O produto <b>não grava em quantas rodadas</b> fixou a apólice: existe um sim/não que é sobrescrito, sem histórico (P-E0017-03)</td></tr>
+        <tr><td class="un">sabe calar</td><td class="dm">45</td><td class="ds">NÃO AVALIADA</td><td class="ds">🧑 <b>o avaliador do 4º dia.</b> O produto conta <b>quantas vezes calou</b> — nunca <b>se calar era o certo</b>. São coisas diferentes e só quem lê a conversa sabe</td></tr>
+        <tr><td class="un">fala como humano</td><td class="dm">60</td><td class="ds">NÃO AVALIADA</td><td class="ds">🧑 <b>o avaliador do 4º dia.</b> Não há SELECT que responda &ldquo;soou como gente?&rdquo;. Exige alguém lendo</td></tr>
+        <tr><td class="un" colspan="4" style="padding-top:14px"><b>CHAT PRINCIPAL</b> (o corretor no painel) &middot; 1 de 5 o produto mede sozinho</td></tr>
+        <tr><td class="un">velocidade</td><td class="dm">60</td><td class="ds"><b>Resulta 0</b> (29 perguntas, 9 em 10 levam até 40 s) &middot; AutoFleet NÃO AVALIADA (13 de 20)</td><td class="ds">✅ <b>o produto mede</b> — tempo do modelo por resposta: até 5 s vale 100, a partir de 30 s vale 0. ⚠️ é o tempo do modelo, não o relógio de quem espera</td></tr>
+        <tr><td class="un">apólice certa</td><td class="dm">35</td><td class="ds">NÃO AVALIADA</td><td class="ds">🔴 <b>falta código</b>: nada liga a pergunta à apólice usada na resposta (P-E0017-04)</td></tr>
+        <tr><td class="un">uma rodada</td><td class="dm">25</td><td class="ds">NÃO AVALIADA</td><td class="ds">🔴 <b>falta código</b>: nada diz se a pergunta seguinte foi repetição da anterior</td></tr>
+        <tr><td class="un">confiabilidade</td><td class="dm">80</td><td class="ds">NÃO AVALIADA</td><td class="ds">🔴 <b>falta código</b>: o registro diz &ldquo;sucesso&rdquo; em <b>567 de 567</b> linhas — a coluna não consegue discordar, então resposta que falha não deixa rastro</td></tr>
+        <tr><td class="un">completude</td><td class="dm">45</td><td class="ds">NÃO AVALIADA</td><td class="ds">🧑 exige ler a resposta contra a pergunta. Nenhuma contagem responde isso</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">A nota do bloco (atendimento, chat) só aparece quando <b>a maioria</b> das dimensões dele foi avaliada — de propósito.
+  🔴 É por isso que existe o avaliador por amostra do 4º dia, e é por isso que <b>P-E0017-03</b> e <b>P-E0017-04</b> continuam abertas: enquanto o produto não gravar
+  essas quatro coisas, elas dependem de alguém ler.</p>
+</section>
+
+<section>
+  <h2>Os cortes do veredito — proposta minha, decisão sua</h2>
+  <p class="sub">💭 São estes os quatro números que o prompt do 4º dia usa para dizer PASSOU ou NÃO PASSOU. Até você decidir (<b>D-E0017-03</b>),
+  a régua publica as notas e <b>não</b> publica o veredito.</p>
+  <dl class="q2">
+    <dt>o piso</dt><dd>nada medido pode ficar <b>abaixo do palpite de 12/09</b>. Se o produto estiver pior do que os auditores chutaram, não passou.</dd>
+    <dt>aciona</dt><dd>pelo menos <b>5 casos</b> E nota <b>≥ 70</b>. Menos de 5 casos não é amostra, é anedota.</dd>
+    <dt>sabe pedir ajuda</dt><dd><b>≥ 90.</b> Pedido de ajuda que ninguém recebe é o pior defeito possível: o segurado fica esperando alguém que nunca soube dele.</dd>
+    <dt>apólice errada</dt><dd>no máximo <b>1 em cada 10</b>, pela leitura da amostra.</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>O que a máquina garante</h2>
+  <dl class="q2">
+    <dt>sem dado</dt><dd>sai &ldquo;NÃO AVALIADA&rdquo; com o motivo. Menos dado <b>nunca</b> melhora a nota — provado tirando linha por linha do banco de teste.</dd>
+    <dt>banco falhou</dt><dd>a célula vira &ldquo;NÃO LIDO&rdquo; e a nota que dependia dela some. Nunca vira zero com cara de medição.</dd>
+    <dt>privacidade</dt><dd>só contagem. Testado com nome, telefone, CPF e placa plantados no banco de teste: nada atravessa.</dd>
+    <dt>duas corretoras</dt><dd>uma não conta linha da outra. Conferido com a Resulta e a AutoFleet reais, juntas e separadas.</dd>
+    <dt>mesmo número</dt><dd>duas rodadas sobre dias fechados dão a mesma saída, byte a byte. Pedir até hoje dá número que ainda anda — a página avisa.</dd>
+    <dt>mesma conta</dt><dd>onde o resumo das 19h já conta, a medição usa a conta dele — a corretora e você leem o mesmo número.</dd>
+  </dl>
+  <p class="note">Relatório completo: <code>docs/canon/reports/SPEC-EXTRA-001.7-EXECUTION-REPORT.md</code> &middot; a medição de hoje:
+  <code>SPEC-EXTRA-001.7-MEDICAO-2026-09-20.md</code> &middot; o prompt do 4º dia: <code>docs/canon/PROMPT-VEREDITO-DO-PILOTO.md</code> &middot;
+  o roteiro: <code>SPEC-EXTRA-001.5-CANARIO-PASSO-A-PASSO.md</code>, seção &ldquo;O piloto medido&rdquo;.</p>
+</section>
+</div>

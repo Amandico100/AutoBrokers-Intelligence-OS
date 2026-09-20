@@ -1,0 +1,246 @@
+<div id="tab-historico" class="tab" hidden>
+<p class="note" style="border-left-color:var(--alerta);margin:0 0 22px"><b>Histórico de 08/09/2026.</b> Guardado inteiro porque explica por que o produto está como está — mas <b>as tarefas vigentes estão em <a href="#tarefas" style="color:var(--accent)">SUAS TAREFAS</a></b>. Muita coisa desta página já foi feita: o Implantar aconteceu, as travas foram abertas, a 001.1 → 001.7 foram executadas.</p>
+
+
+<header class="top">
+  <span class="eyebrow">Dúvidas respondidas &middot; auditoria de 08/09/2026 &middot; véspera dos testes com a Regina (AutoFleet) e a Saionara (Resulta)</span>
+  <h1>O produto está no ar. As travas foram abertas às 22h.</h1>
+  <p class="lede">Seis auditorias independentes leram o código, o banco e o <code>/health</code> de produção. <b>O código da main está implantado</b> (a impressão digital dos arquivos no ar bate com o repositório). Mas o <code>/health</code> mostra <b>quatro travas de segurança armadas</b> — o que era certo enquanto ninguém devia acionar, e é o que impede o teste de amanhã de acontecer. Esta aba diz, em ordem, o que você faz hoje, o que a Regina faz amanhã, o que eu preciso consertar, e responde cada pergunta sua.</p>
+  <div class="meta">
+    <span>main <b>cffaa0e</b> (07/09) &middot; no ar: <b>bate</b></span>
+    <span>banco <b>dcajcvlzcjbmyapmklil</b></span>
+    <span>📊 medido em <b>08/09/2026</b> · atualizado <b>22h30</b> depois do ajuste do EasyPanel</span>
+    <span>FATO = lido no código/banco &middot; INFERÊNCIA = dedução minha</span>
+  </div>
+</header>
+
+<div class="virada">
+  <span class="eyebrow" style="color:var(--accent)">✅ Feito às 22h — conferido no /health</span>
+  <h2>As quatro travas do smith-api estão abertas. Falta uma no portal-worker.</h2>
+  <p class="lede" style="max-width:74ch">📊 <code>/health</code> às 22h: <code>freio_de_emergencia_armado: false</code> · <code>allowlist_ativa: false</code> · <code>finalize_modo: "live"</code> · <code>acionamento_env_aberta: true</code>. O arquivo corrigido que você mandou confere: allowlist vazia, envio e finalização abertos, cartógrafo e simulação desligados, destino do alarme, os três valores novos e as duas variáveis do canário. <b>O que ainda falta:</b> no serviço <b>portal-worker</b>, <code>PORTAL_EFEITO_MATERIAL_LIBERADO</code> continua <code>false</code> — é lá que o robô decide se pode abrir o atendimento de vidro; mude para <code>true</code> e reimplante o worker (a mudança de código de hoje exige isso de qualquer forma). A tabela abaixo fica como registro do que estava fechado.</p>
+  <p class="lede" style="max-width:74ch">📊 <code>GET /health</code> do smith-api, 08/09/2026 às 20h: <code>allowlist_ativa: true (1 número)</code> · <code>freio_de_emergencia_armado: true</code> · <code>finalize_modo: "test"</code> · <code>acionamento_env_aberta: false</code>. O arquivo de credenciais que você deixou na pasta confirma três delas por escrito (<code>INSURER_DISPATCH_LIVE=false</code>, <code>DISPATCH_FINALIZE_MODE=test</code>, allowlist com 1 número) — ⚠️ e <b>não lista</b> <code>ACIONAMENTO_FREIO_DE_EMERGENCIA</code>, embora o <code>/health</code> a mostre armada: o painel tem algo que o arquivo não tem, ou o arquivo está desatualizado. Confira no painel. São interruptores que foram fechados de propósito nas SPECs 071 e 085 — <em>"não pode ser enviado nada até eu liberar"</em>, regra R1 sua de 14/08 — e que só você abre. Nenhum deles precisa de deploy.</p>
+  <div class="tblbox" style="margin-top:16px">
+    <table style="min-width:900px">
+      <thead><tr><th class="l">variável no smith-api</th><th class="l">hoje</th><th class="l">para amanhã</th><th class="l">o que ela faz</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><code>ATTENDANT_INBOUND_ALLOWLIST</code></td><td class="ds">1 número (de teste)</td><td class="ds"><b>vazia</b> (ou só os números combinados para a 1ª hora)</td><td class="ds">Preenchida, <b>todo cliente fora da lista é ignorado em silêncio</b>: não cria conversa, não responde, não registra. O sintoma é igual a "ninguém escreveu hoje". Antes de esvaziar, defina <code>ATLAS_ALERTA_DESTINO</code> com o seu celular — o alarme de mudança de menu da seguradora herdava o 1º número desta lista.</td></tr>
+        <tr><td class="ds"><code>ACIONAMENTO_FREIO_DE_EMERGENCIA</code></td><td class="ds">armado</td><td class="ds"><b>apagar</b></td><td class="ds">Fecha os dois corredores — URA de WhatsApp e portal de vidros — mesmo com o agente ligado. O agente conversa com o cliente e <b>não aciona ninguém</b>.</td></tr>
+        <tr><td class="ds"><code>INSURER_DISPATCH_LIVE</code></td><td class="ds">ausente = fechado</td><td class="ds"><b><code>true</code></b></td><td class="ds">"Podemos falar com a seguradora?" Desde 14/08 o padrão é fechado por construção. Sem <code>true</code> escrito, o corredor não manda uma mensagem à URA.</td></tr>
+        <tr><td class="ds"><code>DISPATCH_FINALIZE_MODE</code></td><td class="ds"><code>test</code> (só <code>allianz-residencial</code> liberado)</td><td class="ds"><b><code>live</code></b></td><td class="ds">"Podemos concluir o pedido?" Em <code>test</code> o corredor percorre a URA inteira e <b>cancela na confirmação final</b> — hoje só o residencial da Allianz concluiria. É o pior estado: o segurado ouve "estou acionando", a seguradora registra uma conversa, e ninguém vem.</td></tr>
+        <tr><td class="ds"><code>PORTAL_EFEITO_MATERIAL_LIBERADO</code> <em class="fx">smith-api <b>e</b> portal-worker</em></td><td class="ds"><code>false</code> nos dois</td><td class="ds"><b><code>true</code></b> nos dois, se o vidro vai operar</td><td class="ds">O robô do portal só executa jornadas que <b>criam fato no mundo</b> (abrir atendimento de vidro) com esta autorização. Sem ela, o job nasce barrado com motivo escrito. É a quinta trava, e só vale para o portal.</td></tr>
+        <tr><td class="ds"><code>CARTOGRAPHER_MODE</code></td><td class="ds"><code>1</code></td><td class="ds"><b><code>0</code></b></td><td class="ds">Modo de mapeamento da SPEC-034: com exploração ativa, o mapeador <b>consome</b> a mensagem da seguradora antes do corredor. Hoje não há exploração ativa, então não muda nada — mas é um interruptor de laboratório ligado em produção. Desligue.</td></tr>
+        <tr><td class="ds"><code>DRY_RUN</code></td><td class="ds"><code>true</code></td><td class="ds"><b><code>false</code></b></td><td class="ds">Só afeta uma busca antiga de integração (caminho Z-API, fora de uso). Risco baixo, mas "simular" ligado em produção é convite a confusão.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note" style="margin-top:14px">Depois de salvar as quatro, <b>reinicie o smith-api</b> e reabra o <code>/health</code>: tem de mostrar <code>freio_de_emergencia_armado: false</code>, <code>allowlist_ativa: false</code>, <code>finalize_modo: "live"</code>, <code>acionamento_env_aberta: true</code>. ⚠️ O quarto campo só diz a verdade depois de o freio ser solto. E confira que <b>não existem</b>: <code>AUTOBROKERS_CANARIO</code>, <code>DRY_RUN=True</code>, <code>SEM_REDE</code>, <code>GLOBAL_KILL_SWITCH</code>, <code>CARTOGRAPHER_MODE≠0</code>. Mantenha <code>BILLING_CANARIO_ALLOWLIST</code> e <code>CANARIO_TESTE_B</code> — só afetam o canário.</p>
+</div>
+
+<div class="tiles">
+  <div class="tile ok"><b>4/5</b><em>travas abertas às 22h. Falta <code>PORTAL_EFEITO_MATERIAL_LIBERADO=true</code> <b>no portal-worker</b></em></div>
+  <div class="tile cr"><b>3/3</b><em>agentes de atendimento <b>desligados</b> (AutoFleet, Resulta, Amandus). O botão do dashboard governa tudo: corredor, portal, vigia, follow-up</em></div>
+  <div class="tile cr"><b>0</b><em>grupos na AutoFleet: o "Suporte AutoFleet" criado às 21:48 <b>foi salvo dentro da Resulta</b>. Apague lá e recrie na AutoFleet</em></div>
+  <div class="tile al"><b>18</b><em>sessões novas com seguradoras desde 23/08 que <b>a régua ainda não viu</b>. O acervo grava sozinho; virar nota é tarefa minha</em></div>
+  <div class="tile al"><b>467</b><em>conversas da AutoFleet abertas <b>sem dono</b>. Ao ligar o agente, ele assume qualquer uma que receber mensagem</em></div>
+  <div class="tile ok"><b>bate</b><em>o código no ar é o da main (impressão digital de 382 arquivos). <b>Não falta implantar</b> o smith-api</em></div>
+</div>
+
+<section>
+  <h2>Suas tarefas — em ordem, sem simplificar</h2>
+  <p class="sub">Três blocos: o que você faz <b>hoje à noite</b>, o que acontece <b>amanhã com a Regina</b>, e o que fica para <b>a semana</b>. Cada item diz onde, o quê e como conferir. O que depende de decisão sua está marcado.</p>
+
+  <h3 style="margin:18px 0 8px">Hoje à noite — EasyPanel e dashboard (≈ 30 min)</h3>
+  <dl class="q2">
+    <dt>1 · variáveis ✅</dt>
+    <dd><b>Feito e conferido às 22h.</b> Resta só o <b>portal-worker</b>: <code>PORTAL_EFEITO_MATERIAL_LIBERADO=true</code> (hoje <code>false</code>) e reimplantar o serviço, porque o código do worker mudou hoje. Sobre o <code>GLOBAL_KILL_SWITCH=true</code> do <b>smith-web</b>: pode deixar. Ele só alimenta uma rota administrativa de "portões de produção" e o adaptador antigo de navegador do painel; não toca no atendimento pelo WhatsApp nem no portal, que roda no worker. Mudar para <code>false</code> não ajuda em nada amanhã. <b>Os 30 e os 90 minutos:</b> não são o destravamento do acionamento — esse é o Vigia/Sentinela/Cérebro, em segundos (30 s para detectar, ~1 min para destravar, ~2 min para o dossiê). <code>HANDOFF_ALERTA_MINUTOS=30</code> é outra coisa: quando um caso já foi <b>entregue a uma pessoa</b> e ninguém mexe nele por 30 minutos, o produto lembra o grupo de novo. <code>POS_ACIONAMENTO_ESPERA_MINUTOS=90</code> é o follow-up: quanto tempo depois do acionamento o agente pergunta ao segurado "o prestador chegou? deu tudo certo?". Hoje (U5) esse tempo passou a contar a partir do <b>horário combinado com o prestador</b> quando o agente o conhece, e a mensagem só sai <b>entre 8h e 19h</b>; o que cair fora fica para a manhã seguinte, como você pediu.</dd>
+    <dt>2 · grupo de suporte 🔴 refazer</dt>
+    <dd>📊 O grupo "Suporte AutoFleet" que você criou às 21:48 foi gravado <b>na Resulta Seguros</b> (você estava com a corretora Resulta selecionada no painel). Efeito duplo: a AutoFleet segue sem destino, e a Resulta agora tem dois grupos ativos e pode mandar dossiê ao grupo errado. <b>Faça:</b> no painel, ainda na Resulta, apague "Suporte AutoFleet"; troque a corretora para <b>AutoFleet</b>; cadastre o grupo de novo, marcando-o como <b>principal</b>. Confirmação: a linha aparece na tela de Suporte humano da AutoFleet, não da Resulta.</dd>
+    <dt>3 · cartas do pós-acionamento (agora GLOBAIS)</dt>
+    <dd>Sua decisão de hoje: conhecimento de atendimento é de todas as corretoras, não de uma. O publicador ganhou a opção <code>--global</code> (unidade U5). Rode <b>depois de reimplantar o smith-api</b>, no console dele: <code>cd /app</code> · <code>python scripts/publicar_cartas_0971.py --global</code> (só o plano) · <code>python scripts/publicar_cartas_0971.py --global --vivo</code>. A seção "Resultado" do plano no repositório diz se a recuperação do agente já lê o conhecimento global ou se isso virou pendência.</dd>
+    <dt>4 · cobrança da AutoFleet</dt>
+    <dd>Duas coisas faltam, e as duas são de tela: (a) na conexão da AutoFleet, ligar <b>"permite envio do Auxiliar"</b> — 📊 está desligado; sem isso a cobrança devolve "a corretora não tem canal autorizado" e nada sai; (b) <b>criar a rotina de cobrança</b> da AutoFleet — 📊 não existe nenhuma; a Resulta tem uma, desativada, em modo teste. Detalhes na pergunta 10 abaixo.</dd>
+    <dt>5 · o freio de mão da Regina</dt>
+    <dd>Combine com ela, por escrito, duas regras: (i) <b>responder pelo celular cala o robô naquele cliente até alguém liberar na tela</b> — não é "por 10 minutos", é até o fim; (ii) <code>#nota</code> no <b>início</b> da mensagem é anotação e não pausa — mas ⚠️ escrito no celular, chega ao segurado; só no chat do painel é interceptado. Recomendo: <b>anota no painel, intervém pelo celular</b>. <b>Em português:</b> o "painel" é o dashboard do AutoBrokers, aba <b>Atendimento → Conversas</b>; cada conversa tem uma caixa de texto embaixo, como um chat. Se a Regina escrever ali uma mensagem começando com <code>#nota</code> (ex.: "#nota cliente ligou, prefere manhã"), o texto fica guardado na conversa como anotação interna: <b>não vai ao segurado e não pausa o robô</b>. Se ela escrever ali <b>sem</b> o <code>#nota</code>, a mensagem vai ao segurado e ela assume o atendimento (o robô para). Se ela escrever <code>#nota</code> pelo <b>celular</b>, o texto chega ao segurado — por isso anotação é só no painel. Resumo para ela: <b>quer falar com o cliente e assumir → celular; quer só anotar → painel com #nota</b>.</dd>
+    <dt>6 · as 467 conversas ✅ decidido</dt>
+    <dd>Você tem razão e eu registrei (D-PILOTO-02): <b>não encerrar</b>. Encerrar não impede o segurado de escrever nem faz o agente calar; só tiraria o caso da Fila. Com as conversas como estão, o agente responde <b>lendo o histórico inteiro</b> que a Regina alimentou. E sim: se a Regina responder pelo celular numa conversa antiga, o robô fica mudo nela até alguém liberar na tela. É exatamente o que queremos.</dd>
+  </dl>
+
+  <h3 style="margin:26px 0 8px">Amanhã — a ordem de ligar (com a Regina ao lado)</h3>
+  <dl class="q2">
+    <dt>7 · conferir</dt>
+    <dd><code>python backend/scripts/conferir_o_que_esta_no_ar.py</code> tem de dizer <b>TODOS BATEM</b>. Reabra o <code>/health</code>: as quatro travas abertas, <code>storage/redis/qdrant conectado: true</code>, <code>vigia_do_portal: true</code>.</dd>
+    <dt>8 · ligar</dt>
+    <dd>Dashboard da AutoFleet → <b>Ligar agente</b> (agente "Maria Regina"). É o botão que governa tudo: corredor, portal, Vigia, Sentinela, Cérebro e follow-up estão condicionados a ele. Se a allowlist ficou com números combinados, mande uma mensagem de um <b>fora</b> da lista antiga para provar que ela saiu.</dd>
+    <dt>9 · o primeiro caso</dt>
+    <dd>Comece por <b>guincho</b>: é AAA nas cinco seguradoras (Allianz, HDI, Yelum, Porto, Azul) e serve de linha de controle para tudo o mais. Deixe a <b>Fila do painel aberta</b>: é onde aparece o handoff e o acionamento parado.</dd>
+    <dt>10 · volume</dt>
+    <dd>Não mais de <b>3–4 atendimentos simultâneos</b> por corretora no primeiro dia (pergunta 7 explica por quê). Se as respostas passarem de 30 s, é fila.</dd>
+    <dt>10b · o acionamento no portal de vidros pelo agente</dt>
+    <dd><b>Como provocar:</b> um segurado (ou um número de teste) pede parabrisa/lanterna pelo WhatsApp da AutoFleet com o agente ligado; o agente coleta CPF do titular, placa e data do dano e abre um <b>job no portal</b> (o vidro não vai pela URA). <b>Pré-condições:</b> agente ligado · no portal-worker <code>PORTAL_REAL_ENABLED=true</code> e <code>PORTAL_EFEITO_MATERIAL_LIBERADO=true</code> · portal-worker <b>reimplantado</b> com o código de hoje · <code>/health</code> do smith-api com <code>vidro_sem_corredor_vai_ao_portal: true</code> e <code>vigia_do_portal: true</code>. <b>Onde olhar, em ordem:</b> (1) <b>Personalização → Conectores → Portais → "Acionamentos no portal"</b> (novo hoje, U4): o job aparece como "Na fila" → "Em andamento" → "Concluído" ou "Precisa de uma pessoa", com o <b>número do atendimento</b> e o botão <b>Ver prova</b> (screenshot da tela do protocolo — hoje o robô passou a fotografar também o sucesso, U3); (2) <b>Conversas</b>: o agente diz ao segurado o número; (3) <b>Atividades</b>: se ficar 4 min na fila ou 8 min rodando, o vigia do portal escreve ali e avisa o grupo. <b>Como saber se "disse que fez" e não fez:</b> sem número de atendimento na prova, não foi feito; o número pode ser conferido em "Consultar atendimento" no próprio portal. <b>O que ele ainda não faz:</b> escolher loja e agendar (só recomenda por escrito) e anexar fotos (repassa o link de vistoria ao segurado). Os acionamentos de amanhã são o material para fechar isso (P-PILOTO-07).</dd>
+    <dt>11 · quando travar</dt>
+    <dd>Trava → destravou pelo Cérebro: <b>~35–60 s</b>. Trava → dossiê no grupo: <b>~70–120 s</b>. Se o grupo não receber nada em 3 minutos, o feed de Atividades vai dizer literalmente <em>"a equipe NÃO foi avisada e o segurado TAMBÉM NÃO — ligue para ele"</em>. A Regina liga.</dd>
+  </dl>
+
+  <h3 style="margin:26px 0 8px">A semana — a coleta dirigida (Regina e Saionara)</h3>
+  <dl class="q2">
+    <dt>12 · a lista</dt>
+    <dd>O roteiro já existe: <code>docs/canon/reports/ROTEIRO-DE-COLETA.md</code> (30 rotas). Prioridade AUTO para a Regina: <b>porto/pneu · porto/táxi · porto/bateria nova · yelum/chaveiro · azul/pneu · azul/chaveiro · allianz/chaveiro</b>. Depois eu regenero a lista com o que entrou.</dd>
+    <dt>13 · como coletar</dt>
+    <dd>Ela abre o WhatsApp pareado da AutoFleet, fala com a assistência 24h da seguradora e percorre o menu até o fim. <b>Não precisa do agente ligado</b>: o observador grava com o agente ligado ou desligado. <b>Duas rodadas na mesma sessão</b>: o serviço novo + o serviço de controle que o roteiro nomeia (ex.: táxi na Porto, e guincho na Porto logo depois). Sem o controle, uma coleta que falha não diz se a tecla não abre ou se o WhatsApp não respondeu hoje.</dd>
+    <dt>14 · o número certo</dt>
+    <dd>⚠️ Só vira acervo a conversa com um número de seguradora que está no cadastro. 📊 As cinco estão — mas HDI e Yelum têm três entradas cada, e <b>Allianz, Porto e Azul têm uma só</b>. Se a Regina cair em outro número (outro canal da mesma seguradora, atendimento ao corretor, um número que a URA mandou chamar), <b>a conversa é descartada na primeira linha, sem log</b> — foi assim que a Mapfre sumiu. <b>Antes do primeiro acionamento, confirme com ela o número exato que usa para Allianz, Porto e Azul</b> e me passe; se divergir do cadastro, é uma linha minha, em minutos, mas tem de ser antes. Conferência no fim do dia: se a seguradora não aparecer na contagem de eventos observados de 09/09, o número estava fora do cadastro.</dd>
+    <dt>15 · 🧑 decisão</dt>
+    <dd>"Acionamento fictício" não existe do lado da seguradora: <b>se a URA abrir o chamado, um prestador é despachado de verdade</b>. Você precisa decidir se a Regina cancela no fim (e como), e isso não está registrado em lugar nenhum. Registro em FOUNDER-DECISIONS assim que decidir.</dd>
+    <dt>16 · caso especial</dt>
+    <dd><b>hdi/chaveiro</b>: além da conversa, print dos botões da tela "Deseja continuar o atendimento para a placa X?" — o acervo guardou o texto e perdeu os rótulos dos botões.</dd>
+    <dt>17 · depois de coletar</dt>
+    <dd>Você me diz "coletamos X". Eu faço o resto: gero o corpus mascarado, rodo a régua com o Espelho, escrevo os passos das telas órfãs no corredor com teste que chama o motor, e regenero a tabela desta página. <b>Não há nada para você "ligar"</b>; a gravação já acontece.</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>As respostas, pergunta por pergunta</h2>
+  <p class="sub">Na ordem em que você perguntou. Cada uma separa o que foi <b>lido</b> do que foi <b>deduzido</b>.</p>
+
+  <div class="cards">
+    <div class="card al">
+      <h3>1 · O que é "🧑 coleta: +1 sessão desta rota"?</h3>
+      <span class="n">régua · itens de corpus</span>
+      <p><b>Sessão</b> é um bloco de conversa com a URA de uma seguradora, separado de outro por 2 horas de silêncio. A régua <b>não lê o banco</b>: lê um corpus versionado em git, gerado a partir do acervo. "+1 sessão" significa literalmente <em>alguém precisa acionar aquele serviço naquela seguradora mais uma vez</em>. Pode ser a Regina à mão ou o agente. Duas sessões distintas valem 2 pontos (separam "a URA é assim" de "aconteceu uma vez"); "a mais recente tem &lt;180 dias" vale outros 2 (a URA pode ter mudado). <b>Passo humano:</b> acionar. <b>Passo meu:</b> gerar o corpus e medir — 📊 há 18 sessões novas esperando isso desde 23/08. <b>Sua pergunta "por que os acionamentos diários da Regina não viram inteligência?":</b> eles <b>estão sendo gravados</b> (📊 acervo hoje: 561 sessões, com Yelum, Tokio e Bradesco de hoje mesmo). O que não acontece sozinho é a etapa seguinte: gerar o corpus, medir e escrever os passos — é trabalho de execução, e ficou parado desde 23/08 porque as SPECs seguintes trataram de outra coisa. Virou rotina de fim de dia durante os pilotos (P-PILOTO-06).</p>
+    </div>
+    <div class="card cr">
+      <h3>2 · O Espelho e os 4 pontos dos apelidos</h3>
+      <span class="n">a frase publicada estava errada</span>
+      <p>O Espelho é o <b>chat da corretora com o cliente</b> (não a URA). O item pergunta: as palavras que declaramos como sinônimo ("reboque", "estourou o pneu", "carro não pega") foram escritas por gente de verdade? <b>Você não precisa dar acesso a nada.</b> O leitor já existe, está ligado, tem as duas travas (filtro de corretora e exclusão da Amandus) e uma flag de medição. A frase "🧑 acesso ao Espelho" era da versão de 24/08 e o próprio código de hoje a chama de vencida. O que trava os 4 pontos é <b>vocabulário real</b>: o item exige três apelidos vivos por serviço, e há um texto de cliente por candidato. ⚠️ Limite estrutural: se a Regina atende pelo <b>celular</b>, a palavra do segurado não entra no Espelho — só entra o que passa pelo chat do painel ou pelo agente. Com o agente ligado amanhã, o Espelho começa a encher sozinho.</p>
+    </div>
+    <div class="card ok">
+      <h3>3 · "client_summary com dia + período", "ampliar handoff_triggers"</h3>
+      <span class="n">tarefas 🤖 — nenhuma é sua</span>
+      <p><b>client_summary</b>: a mensagem que o AutoBrokers manda ao segurado depois do protocolo tem de repetir o número <b>e</b> o dia <b>e</b> o período. 📊 Uma rota podia tirar 100 e dizer "Prontinho! Sua assistência foi aberta" sem data. <b>handoff_triggers</b>: as frases que fazem o corredor passar para humano têm de casar uma tela de verdade do acervo, não uma frase imaginada. <b>freio casa tela real</b>: o corredor reconhece a tela de confirmação — a última porta antes de mandar um prestador a um endereço. <b>rota percorrida até o fim</b>: existe no corpus uma conversa daquela rota que chegou ao protocolo (12 pontos — é o que mais pesa). Quando a coluna diz 🤖, a tarefa é minha e só precisa de você dizer "vai".</p>
+    </div>
+    <div class="card al">
+      <h3>4 · Aplicativos HDI, Yelum, Porto, Azul (formulário dentro do WhatsApp)</h3>
+      <span class="n">SPEC-092 · estado real</span>
+      <p><b>FATO:</b> o código existe só para <b>HDI e Yelum auto</b>. Porto e Azul: zero — "sem schema recuperável; só um acionamento ao vivo produz um". <b>Nunca foi testado contra uma seguradora</b>: a única prova ao vivo foi entre dois números nossos em 03/08. Se travar, fica gravado: o run com "formulário: envio falhou", a etapa, um evento de travamento e a linha no transcript. <b>Não fica gravado</b> o que foi enviado nem a resposta HTTP — vou instrumentar isso. 🔴 <b>Risco real amanhã (P-092-10):</b> o formulário não tem trava de laço; se a URA reapresentar a tela 8 vezes, ele responde 8 vezes = N prestadores confirmados. Atinge exatamente HDI e Yelum — <b>a trava entrou hoje (U2)</b>. <b>Porto e Azul:</b> não travam "no escuro". Quando a URA delas abrir um formulário, o corredor não sabe preenchê-lo e passa para humano com dossiê; a conversa fica gravada e <b>esse primeiro acionamento real é o que produz o schema</b> para eu construir o preenchimento (P-PILOTO-05). Não há como fazer antes: não existe uma única sessão da Porto ou da Azul com o formulário no acervo.</p>
+    </div>
+    <div class="card ok">
+      <h3>5 · Se a Regina fizer o acionamento manual, isso basta para montar o corredor?</h3>
+      <span class="n">rotas 44–73 · "coleta dirigida"</span>
+      <p><b>Sim.</b> A conversa dela com a URA pelo WhatsApp pareado entra no acervo inteira, tela a tela, <b>com o agente ligado ou desligado</b>. Não precisa ligar nada. O que precisa: (a) usar o número de assistência que está no cadastro (pergunta 14 acima); (b) percorrer até o fim — protocolo ou recusa; (c) a rodada de controle. Depois, você me pede e eu construo: corpus → régua → passos das telas órfãs no corredor → teste que chama o motor → mutação vermelha → tabela regenerada. Uma rota nova leva uma sessão de trabalho. ⚠️ Vidros na Porto <b>não</b> precisa de coleta: a URA manda um link em vez de protocolo, e a régua é que penaliza errado (P-084-52).</p>
+    </div>
+    <div class="card al">
+      <h3>6 · Vigia, Sentinela e Cérebro estão ligados? Quanto tempo?</h3>
+      <span class="n">SPEC-085 · números do código</span>
+      <p>São <b>um laço só</b>, a cada 20 s, dentro do próprio smith-api. <b>Vigia</b> avisa; <b>Sentinela</b> age (responde à URA quando a tela ficou sem resposta); <b>Cérebro</b> é a chamada de modelo que o Sentinela faz, com o Mapa da URA carregado. Tudo condicionado ao agente estar ligado. <b>Tempos:</b> tela sem resposta → detectado em 30–50 s → Cérebro tenta (até 2 vezes, 20 s entre elas) → destravou em <b>~35–60 s</b>, ou dossiê no grupo em <b>~70–120 s</b>. Prazo total de um acionamento: 45 min. <b>Ao cliente:</b> quando desiste, avisa o segurado e o grupo; se não há grupo, escreve no feed que ninguém foi avisado. 📊 Eles <b>nunca rodaram com tráfego real</b> (zero eventos de agente em produção) — amanhã é a primeira vez. <b>Portal de vidros: não atuam lá</b> (pergunta 9).</p>
+    </div>
+    <div class="card al">
+      <h3>7 · Imagem, documento, áudio, vídeo</h3>
+      <span class="n">o que o agente entende e o que aparece no painel</span>
+      <p><b>Imagem:</b> o agente <b>vê</b> (modelo de visão descreve a foto e entra no contexto). Fica no painel em Conversas e na gaveta "Documentos e fotos" da Ficha, por 7 dias (URL assinada). ⚠️ Foto acima de 5 MB é descartada em silêncio — foto de celular moderno passa disso. <b>PDF/DOCX:</b> o texto é <b>lido</b> e entra no contexto, mas <b>o arquivo não aparece na Ficha</b> — o ponteiro é descartado (vou corrigir). <b>Áudio:</b> transcrito por Whisper; aparece na Ficha. Se a transcrição falhar, o cliente recebe "Erro ao processar áudio." — frase de sistema, vou humanizar. <b>Vídeo e figurinha:</b> 🔴 <b>silêncio total</b> — não são tratados; cliente filmando o dano não recebe resposta. <b>Extração de CNH/placa da foto:</b> não existe no caminho vivo; o agente descreve, não preenche campo. <b>Casos/Kanban não mostram mídia</b>; só Conversas e Ficha.</p>
+    </div>
+    <div class="card cr">
+      <h3>8 · Ligar o agente com 10 atendimentos em andamento</h3>
+      <span class="n">o que acontece com as conversas da Regina</span>
+      <p>📊 A AutoFleet tem <b>467 conversas abertas sem dono</b>. Ao ligar: (a) nada acontece de imediato; (b) na <b>próxima mensagem</b> de qualquer segurado, o agente responde — inclusive nas que a Regina já estava atendendo; (c) ele <b>lê o histórico inteiro</b> daquela conversa (é a mesma conversa que ela alimentou), então sabe do que se trata; não sabe o que foi combinado fora do WhatsApp. (d) <b>Qualquer mensagem que a Regina mandar pelo celular naquela conversa pausa o robô ali, permanentemente</b>, até alguém liberar na tela — inclusive áudio, foto e localização. Só <code>#nota</code> no início não pausa. <b>Recomendação:</b> encerre em lote o que já acabou; ligue em janela combinada, fora do pico; a Regina intervém pelo celular nos casos que a incomodarem — é o freio de mão real — e a primeira hora fica com a allowlist só nos números combinados.</p>
+    </div>
+    <div class="card al">
+      <h3>9 · Quantos atendimentos simultâneos?</h3>
+      <span class="n">3 ao mesmo tempo? 10? 20?</span>
+      <p><b>FATO:</b> o atendimento roda num <b>único processo</b>, com um laço que trata as conversas prontas <b>uma após a outra</b>, e o envio ao WhatsApp bloqueia esse laço (~0,7 s por balão, até 30 s se a Evolution não responder). O modelo não tem timeout nem limite de tentativas. <b>Na prática, em português:</b> várias conversas <b>acontecem ao mesmo tempo</b>, sim — cada segurado tem a sua, elas nunca se misturam, e ninguém fica "bloqueado" esperando a outra acabar. O que era serial era o <b>servidor</b>: ele pensava uma resposta de cada vez, e cada resposta leva de 3 a 8 segundos. Com 4 conversas ativas, o quarto segurado esperava até uns 30 s pela resposta; com 10, até 90 s. E um envio ao WhatsApp que travasse (a Evolution demorando 30 s) parava esse pensar para <b>todas as corretoras</b>. <b>Hoje à noite (U1)</b> o envio saiu do caminho crítico e o servidor passou a pensar várias conversas em paralelo: 4 simultâneos por corretora ficam confortáveis. <b>O que continua verdadeiro e virou a pendência mais importante da semana (P-PILOTO-01):</b> é um processo só para todas as corretoras. A solução definitiva é isolamento por corretora (fila/worker por tenant, timeout no modelo, backpressure), com prova de que uma corretora travada não atrasa outra. Sua meta ficou registrada (D-PILOTO-07): ≥4 por corretora, zero interferência entre elas.</p>
+    </div>
+    <div class="card al">
+      <h3>10 · Credenciais e EasyPanel — o que o seu arquivo mostra</h3>
+      <span class="n">lido só pelos nomes; nenhum valor foi copiado para lugar nenhum</span>
+      <p>🔴 <b>Primeiro:</b> o arquivo está em <code>docs/canon/</code>, dentro do repositório. Não está versionado, mas um <code>git add</code> distraído o publica. <b>Mova-o para fora da pasta do projeto hoje.</b> <b>Não falta implantar:</b> a impressão digital dos 382 arquivos no ar bate com a main. <b>O que está certo:</b> Supabase, Redis, Qdrant, MinIO, chaves Anthropic/OpenAI, Evolution GO, chave do cofre do portal, URL do worker, os dez números de assistência das seguradoras, o Cérebro em <code>claude-opus-5</code>, <code>ENV=production</code>. <b>O que fecha o acionamento</b> está na tabela do topo. <b>O que falta no smith-api:</b> <code>ATLAS_ALERTA_DESTINO</code>, <code>HANDOFF_ALERTA_MINUTOS</code>, <code>POS_ACIONAMENTO_ESPERA_MINUTOS</code>, <code>SMITH_WEB_URL</code>, <code>BUFFER_DEBOUNCE_SECONDS</code> (o código força 8 s de qualquer jeito). <b>No smith-web:</b> <code>GLOBAL_KILL_SWITCH=true</code> — é um portão de "ação externa" da fase MVP do painel; INFERÊNCIA: não toca no atendimento pelo WhatsApp, mas confira se alguma tela do dashboard recusa ação por causa dele. ⚠️ <code>NEXT_PUBLIC_*</code> exigem <b>rebuild</b>, não restart. <b>No portal-worker:</b> <code>PORTAL_REAL_ENABLED=true</code> ✅, mas <code>PORTAL_EFEITO_MATERIAL_LIBERADO=false</code> — o vidro nasce barrado.</p>
+    </div>
+    <div class="card cr">
+      <h3>11 · Portal de vidros — o que existe e o que falta</h3>
+      <span class="n">estado real do robô do navegador</span>
+      <p>Um corredor só, público, sem login, para todas as seguradoras (a marca muda; o motor não). Ele vai até a tela dos <b>80% — "Confirme a peça danificada"</b> e para pedindo humano; com o agente ligado, confirma e chega ao <b>Nº do atendimento</b> (passo 7). 📊 Nunca foi exercido de verdade: 39 tentativas, todas da Resulta em julho, 33 pedindo humano, 1 concluída, <b>zero com protocolo</b>. A AutoFleet nunca rodou. <b>O que ele NÃO faz:</b> não escolhe loja nem domicílio, <b>não agenda</b> (só recomenda, por escrito, no resultado), <b>não anexa fotos</b> (zero linhas de código; o desenho atual é repassar o link de vistoria ao segurado, que manda as fotos ele mesmo). As duas telas que a Regina fotografou — agendamento com peça em estoque, anexo de fotos — <b>não estão cobertas</b>. E 🔴 hoje o robô só tira screenshot quando <b>falha</b>; quando dá certo, não fica imagem nenhuma da tela do protocolo.</p>
+    </div>
+    <div class="card cr">
+      <h3>12 · Como ter certeza de que o acionamento no portal foi feito?</h3>
+      <span class="n">visibilidade · hoje e o que recomendo</span>
+      <p><b>Hoje você não vê.</b> Fila, Casos e Ficha não leem a tabela do portal; a única tela que a lê é Personalização → Conectores → Portais, e só mostra os que <b>falharam</b>. O acionamento em curso, o concluído e o protocolo são invisíveis no painel. Por enquanto a única forma é uma consulta ao banco (eu deixo pronta). <b>Vigia do portal</b> existe e é bom: fila sem ninguém pegar em 4 min ou rodando sem terminar em 8 min → avisa o segurado e o grupo, uma vez só. Mas Sentinela e Cérebro <b>não atuam no portal</b>: uma tela desconhecida vira "precisa de humano" com o HTML guardado, e ninguém varre. <b>O que recomendo construir, nesta ordem:</b> (1) screenshot também no sucesso, tela inteira; (2) URL e título da tela em cada passo gravado; (3) o portal na Fila e na Ficha com fase "no portal da seguradora" e o protocolo visível; (4) a prova ao corretor = protocolo + screenshot da tela do protocolo + o que ficou pendente em português (peça, franquia, link de vistoria, loja recomendada).</p>
+    </div>
+    <div class="card ok">
+      <h3>13 · A Regina no portal à mão — HAR do F12? Outra forma?</h3>
+      <span class="n">o método com menos esforço dela e mais valor para o código</span>
+      <p><b>HAR + gravação de tela, nessa ordem.</b> O HAR já é cidadão de primeira classe no repositório: foi assim que os 34 endpoints do portal foram decifrados, e existe ferramenta pronta que lê o arquivo offline. O portal é uma casca sobre uma API, então o HAR é o registro <b>exato</b> de cada pedido — não uma aproximação. O vídeo cobre o que o HAR não desenha: a grade de agendamento e a tela de fotos. <b>Não</b> peça Playwright/codegen: exige instalar ferramenta e o seletor não sobrevive. O passo a passo está na seção seguinte. Onde depositar: <code>docs/intake/MATERIAIS/PORTAL VIDROS/…</code> — já está no <code>.gitignore</code> porque HAR carrega dado de segurado; nunca no MinIO nem commitado.</p>
+    </div>
+    <div class="card ok">
+      <h3>14 · Cobrança no mesmo WhatsApp — confunde?</h3>
+      <span class="n">SPEC-EXTRA-001 · convivência</span>
+      <p><b>Não confunde, por construção.</b> Quando um cliente responde a uma cobrança, o produto <b>só registra</b> (já paguei / não sou eu / não quero / segunda via / dúvida / outro) e a pendência aparece em Auxiliares → Cobrança → Pendências. <b>Ninguém responde automaticamente ao cliente</b> — isso é o esperado, não falha. Quem pode responder é o <b>agente de atendimento</b>, e ele recebe um bloco "cobrança em andamento" com regras ("não confirme pagamento; se for assistência, atenda normalmente"). Um "meu carro quebrou" de quem tem cobrança aberta vira atendimento normal; só gera um ruído de feed "cliente respondeu à cobrança: outro assunto". <b>Equipe e cliente</b> funcionam de ponta a ponta na main, com reserva atômica contra duplicidade. Para a AutoFleet: ligar "permite envio do Auxiliar" na conexão e criar a rotina (tarefa 4). O canário Q1–Q6 continua pendente de você adicionar as duas variáveis e eu rodar — a cobrança está "concluída com ressalvas" só por isso.</p>
+    </div>
+    <div class="card cr">
+      <h3>15 · Os dossiês estão claros? E sinistro, empresarial, condomínio?</h3>
+      <span class="n">dois dossiês, um deles vaza</span>
+      <p><b>Há dois dossiês.</b> O do <b>atendimento</b> (quem fala · o que quer · onde parou · falta · o que fazer · últimas 12 mensagens · link) está em linguagem humana e limpo. O do <b>corredor</b>, que dispara nos caminhos automáticos (Vigia, travamento), 🔴 <b>vaza tokens técnicos</b>: "Motivo: loop_guard", "- protocol: 123", "Serviço: maquina_de_lavar", e não tem link do caso. É o vazamento que a corretora vê no primeiro dia — prioridade 1 do meu plano. <b>Nenhum dos dois anexa as fotos do cliente</b> ao grupo. <b>Sinistro:</b> o roteiro é uma linha de prompt (o que houve, quando, onde, vítimas, terceiros, fotos) — sem variação por tipo, sem nada que fique vermelho se o modelo pular um item. <b>Empresarial e condomínio:</b> buraco total — caem no handoff genérico "confira o que o agente coletou". O que falta para "mastigado": checklist estruturado por tipo (colisão, roubo, incêndio, empresarial, condomínio) no mesmo desenho dos corredores. Está no plano; não é para amanhã.</p>
+    </div>
+    <div class="card al">
+      <h3>16 · O que fica gravado para consertarmos depois?</h3>
+      <span class="n">URA · portal · a garantia que você pediu</span>
+      <p><b>URA de WhatsApp:</b> sim, tela a tela — o texto cru de cada tela da seguradora e de cada resposta nossa fica na conversa-espelho, com carimbo de hora; o run, as etapas e os eventos guardam fase e resumo. Buracos: inbound da URA cortado em 2.000 caracteres; formulário nativo grava só "N campos respondidos"; a sessão viva mora no Redis (restart = acionamento em curso perdido). <b>Portal:</b> por passo grava só ação, alvo, 30 caracteres do valor e 80 do resultado — <b>sem URL, sem tela, sem hora</b>; screenshot só na falha. Suficiente para saber o que o robô tentou; <b>insuficiente</b> para saber o que ele via. Por isso o protocolo de registro da Regina abaixo e os itens 1–2 da pergunta 12 no plano. <b>Cobrança:</b> ledger completo por parcela, com estado por componente (texto/PDF).</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Protocolo de registro para a Regina — portal de vidros à mão</h2>
+  <p class="sub">Para que um acionamento manual dela vire passo de robô. Custo extra: <b>~3 minutos por acionamento</b>.</p>
+  <dl class="q2">
+    <dt>antes (30 s)</dt>
+    <dd>Chrome em <b>janela anônima</b> (Ctrl+Shift+N): sem extensão, sem e-mail, sem WhatsApp Web aberto. Iniciar <b>gravação de tela</b> (Win+G → gravar). <b>F12</b> → aba Network → marcar <b>Preserve log</b> ✅ (essencial: o portal muda de rota e o log se apaga) e <b>Disable cache</b> ✅. Só então digitar <code>abraseuatendimento.com.br</code>.</dd>
+    <dt>durante</dt>
+    <dd>Fazer o atendimento normal. <b>Falar em voz alta o porquê de cada escolha</b> ("lado do motorista porque ele disse que foi o vidro dele") — a razão vale mais que o clique. Nas telas que ninguém nunca viu, parar 3 segundos com a tela inteira visível: <b>passo 7</b> (nº do atendimento + lojas), <b>grade de agendamento</b> (peça em estoque) e <b>tela de anexo de fotos</b>. Se aparecer link de vistoria, deixar legível.</dd>
+    <dt>depois (1 min)</dt>
+    <dd>Parar a gravação. F12 → Network → botão direito → <b>Save all as HAR with content</b>. Depositar em <code>docs/intake/MATERIAIS/PORTAL VIDROS/&lt;SEGURADORA&gt;/2026-09-09-&lt;peça&gt;/</code>: <code>captura.har</code>, <code>tela.mp4</code>, <code>notas.txt</code> (3 linhas: seguradora, peça, o que deu estranho). Avisar no grupo: "HAR de &lt;seguradora&gt;/&lt;peça&gt; depositado".</dd>
+    <dt>nunca</dt>
+    <dd>Senha de portal de corretora (o de vidros <b>não pede login</b>; se precisou logar em algo, o arquivo tem cookie de sessão → descartar e refazer). Dois clientes na mesma captura. Commitar qualquer coisa dessa pasta.</dd>
+    <dt>o que eu faço</dt>
+    <dd><code>python backend/scripts/portal_factory.py lab har --arquivo captura.har</code> e <code>lab api-infer</code> — os endpoints, campos e a ordem transacional saem do arquivo; o vídeo me dá as telas do passo 7 e do agendamento que hoje não existem no código.</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>O meu plano de ajustes — proposta, não execução</h2>
+  <p class="sub"><b>Onde este plano vive no repositório:</b> <code>docs/canon/PLANO-PILOTOS-AJUSTES-2026-09-08.md</code> (o que foi feito hoje, o que ficou, decisões), pendências <code>P-PILOTO-01…12</code> em <code>docs/canon/PENDENCIAS.md</code> e decisões <code>D-PILOTO-01…07</code> em <code>docs/canon/FOUNDER-DECISIONS.md</code>. Se trocar de chat, é por aí que o próximo começa. Os itens 1–4 e o horário do follow-up e as cartas globais <b>foram executados hoje</b> (sem protocolo AAA, por sua decisão de tokens; builders Opus, eu como juiz); os demais são a semana.</p>
+  <div class="tblbox">
+    <table style="min-width:900px">
+      <thead><tr><th class="l">#</th><th class="l">o quê</th><th class="l">por quê agora</th><th class="l">quando</th></tr></thead>
+      <tbody>
+        <tr><td class="ds">1</td><td class="ds"><b>Humanizar o dossiê do corredor</b>: motivo em frase, rótulos nos dados capturados e nos campos do formulário, link do caso</td><td class="ds">É o dossiê que dispara automaticamente; "Motivo: loop_guard" na terceira linha é o que a corretora vê no primeiro travamento</td><td class="ds"><b>antes de amanhã</b></td></tr>
+        <tr><td class="ds">2</td><td class="ds"><b>Trava de laço no formulário nativo</b> (P-092-10)</td><td class="ds">HDI e Yelum são as seguradoras da Regina; 8 telas iguais = 8 confirmações = N prestadores</td><td class="ds"><b>antes de amanhã</b></td></tr>
+        <tr><td class="ds">3</td><td class="ds"><b>Portal: screenshot também no sucesso + URL e título da tela em cada passo</b></td><td class="ds">Sem isso um acionamento bem-sucedido não deixa imagem, e um que falha não diz que tela via. Duas linhas, sem mudar comportamento</td><td class="ds"><b>antes de amanhã</b></td></tr>
+        <tr><td class="ds">4</td><td class="ds"><b>Vídeo e figurinha</b>: responder "não consegui abrir o vídeo, pode mandar uma foto?" · humanizar "Erro ao processar áudio." · subir o teto de 5 MB ou recomprimir</td><td class="ds">Hoje é silêncio absoluto para quem filma o dano</td><td class="ds"><b>antes de amanhã</b></td></tr>
+        <tr><td class="ds">5</td><td class="ds"><b>Regenerar corpus e régua</b>: gerar corpus (18 sessões novas), medir com Espelho, regenerar inventário e roteiro de coleta, trocar a frase "🧑 acesso ao Espelho", republicar esta tabela</td><td class="ds">A tabela desta página é de 24/08, anterior à SPEC-089; as notas não são comparáveis (P-089-C). 📊 Uma medição fresca rodada hoje <b>offline</b> (sem banco: dois eixos não medidos) dá <b>72/76</b> para as 12 rotas AUTO prontas — guincho nas cinco seguradoras, bateria e pneu na maioria — e confirma as 8 rotas AUTO sem corpus</td><td class="ds">esta semana</td></tr>
+        <tr><td class="ds">6</td><td class="ds"><b>Instrumentar a falha do formulário</b>: gravar o que foi enviado, o id do formulário e a resposta HTTP</td><td class="ds">Se travar amanhã, hoje sobra só o nome da exceção, num campo que ninguém lê</td><td class="ds">esta semana</td></tr>
+        <tr><td class="ds">7</td><td class="ds"><b>Portal na Fila e na Ficha</b>: elo do job com a conversa/run, fase "no portal da seguradora", protocolo visível</td><td class="ds">É a resposta à sua pergunta 12; pré-requisito é preencher o elo que hoje fica vazio</td><td class="ds">esta semana</td></tr>
+        <tr><td class="ds">8</td><td class="ds"><b>Documento do cliente visível na Ficha</b> (guardar a URL do PDF)</td><td class="ds">O boletim de ocorrência some da vista da atendente</td><td class="ds">esta semana</td></tr>
+        <tr><td class="ds">9</td><td class="ds"><b>Checklist por tipo para sinistro, empresarial e condomínio</b> + campo "falta" preenchido</td><td class="ds">"Mastigado para o humano" hoje é o relato cru + transcrição</td><td class="ds">esta semana</td></tr>
+        <tr><td class="ds">10</td><td class="ds"><b>Teste de linguagem humana nos dois dossiês</b></td><td class="ds">A régua de língua existe e roda só nas cartas</td><td class="ds">junto com o 1</td></tr>
+        <tr><td class="ds">11</td><td class="ds"><b>Canário da cobrança Q1–Q6</b> no implantado + G25 concorrente</td><td class="ds">Fecha a "ressalva" da EXTRA-001; depende das duas variáveis suas</td><td class="ds">assim que você puser as variáveis</td></tr>
+        <tr><td class="ds">12</td><td class="ds"><b>Concorrência</b>: envio fora do laço principal, timeout no modelo, mais de um processo</td><td class="ds">Teto de 3–4 simultâneos; um envio travado congela tudo</td><td class="ds">semana seguinte</td></tr>
+        <tr><td class="ds">13</td><td class="ds"><b>Portal passo 7 de verdade</b>: escolher loja/domicílio, agendar; decidir fotos (nossas ou link de vistoria)</td><td class="ds">Maior lacuna funcional do vidro; depende do HAR e do vídeo da Regina</td><td class="ds">depois da coleta</td></tr>
+        <tr><td class="ds">14</td><td class="ds"><b>Estender a fila de aprendizado (tela cega) ao portal</b></td><td class="ds">Hoje só a URA aprende com tela desconhecida</td><td class="ds">depois</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3 style="margin:26px 0 8px">Resultado da execução de 08/09 (22h–01h)</h3>
+  <dl class="q2">
+    <dt>entregue</dt>
+    <dd>Sete unidades em 9 commits na <code>main</code>: U1 mídia e concorrência (10 testes novos, 7 mutações vermelhas) · U2 dossiê humano, trava de laço do formulário e falha instrumentada (16 novos + 100 relacionados, 12 mutações) · U3 prova do portal em todo desfecho (48 asserções, 10 mutações) · U4 tela "Acionamentos no portal" (tsc limpo, rotas montam) · U5 follow-up 8h–19h e cartas globais (24 novos + 156 relacionados, 8 mutações) · dois guardas antigos consertados por acusação legítima (família nova sem triagem; estado colado ao motivo) · um guarda do worker que estava vermelho por engano.</dd>
+    <dt>gates que rodei como juiz</dt>
+    <dd>Autorização de rotas (80/80) · a Central diz a verdade (530 ok) · o sinistro deixa rastro (249 ok) · a cobrança chega a quem deve (162 ok) · ninguém fala sem o agente ligado · quem fala primeiro cala o outro · o caso se explica sozinho (109 ok) · anotação da atendente — todos verdes em isolamento depois dos commits. A suíte inteira rodada em lote pelos builders <b>enquanto a árvore mudava</b> mostrou vermelhos de poluição entre testes, não de produto; não é prova, e está anotado.</dd>
+    <dt>o que você precisa fazer para isso chegar ao ar</dt>
+    <dd><b>Implantar</b>, nesta ordem: <b>smith-api</b> → <b>portal-worker</b> (com <code>PORTAL_EFEITO_MATERIAL_LIBERADO=true</code> no ambiente dele) → <b>smith-web</b>. Depois: conferir o <code>/health</code> de novo, rodar <code>publicar_cartas_0971.py --global --vivo</code> no console do smith-api (confira antes que <code>GLOBAL_KNOWLEDGE_COMPANY_ID</code> existe no ambiente dele), e refazer o grupo de suporte na AutoFleet.</dd>
+    <dt>ficou fora, com dono</dt>
+    <dd>Isolamento por corretora (P-PILOTO-01, a mais importante) · portal na Fila/Ficha (02) · PDF na Ficha (03) · checklist sinistro/empresarial/condomínio (04) · formulário Porto/Azul (05) · corpus e régua (06) · passo 7 e fotos do portal (07) · tela cega no portal (08) · canário da cobrança (11) · língua no dossiê do atendimento (12) · e três achados dos builders: supressão do follow-up por janela é perdida e não adiada; a frase do follow-up compara em UTC; o retorno do transporte do formulário ainda devolve só verdadeiro/falso.</dd>
+  </dl>
+  <p class="note" style="margin-top:14px">🧑 <b>Decisões que só você toma</b> (e que eu registro em FOUNDER-DECISIONS quando decidir): as 467 conversas abertas (encerrar em lote ou não) · cancelar ou não os chamados abertos na coleta dirigida · ligar o agente com o formulário da HDI/Yelum sem a trava de laço (ou esperar o item 2) · onde a Regina anota (painel × celular) · dar ou não o "vai" para os itens 1–4 antes de amanhã.</p>
+</section>
+
+<p class="note" style="margin-top:34px">Esta aba nasceu de seis auditorias read-only (corredores e coleta · resiliência e concorrência · mídia e dossiê · portal de vidros · cobrança · variáveis e deploy) rodadas em 08/09/2026 sobre <code>cffaa0e</code>, mais medições diretas no banco e no <code>/health</code>. Nenhum arquivo de produto foi alterado, nenhuma mensagem enviada, nenhuma escrita no banco. Onde uma auditoria contradisse outra, o código foi relido: a conexão "observadora" da AutoFleet <b>consegue</b> enviar a resposta ao cliente, o acionamento à seguradora, a resposta do Sentinela e o dossiê de handoff; o que ela <b>não</b> envia são os alertas do vigia do portal e um alerta de falha de aviso de protocolo — ambos só relevantes com o vidro rodando.</p>
+
+</div>

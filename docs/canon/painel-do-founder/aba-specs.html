@@ -1,0 +1,167 @@
+<div id="tab-specs" class="tab" hidden>
+
+<header class="top">
+  <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 20/09/2026</span>
+  <h1>As SPECs — uma frase de negócio por entrega, e a fila do que vem.</h1>
+  <p class="lede">Esta aba substitui o antigo painel de dossiês. Tudo o que lá era <i>"próximo passo"</i> e já aconteceu está marcado como <b>feito</b>;
+  o que continua verdadeiro foi mantido, com a data ao lado. 🔴 <b>A família EXTRA-001.x está fechada até a 001.7</b> — dez entregas, todas na <code>main</code>.</p>
+  <div class="meta">
+    <span>árvore <b>AutoBrokers-FIX</b></span>
+    <span>main <b>b3d88f1</b></span>
+    <span>protocolo <b>AAA v13 · O FIO</b> (em teste desde 20/09)</span>
+    <span>fonte <b>ESTADO-DAS-SPECS.md</b> · <b>INDICE-DE-SPECS.md</b> · os relatórios de cada SPEC</span>
+  </div>
+</header>
+
+<section style="margin-top:8px">
+  <h2>A família EXTRA-001.x — os pilotos</h2>
+  <p class="sub">A sequência que nasceu do diagnóstico dos pilotos de 12/09. Cada linha diz o que mudou <b>na sua operação</b>,
+  não no código. A nota é a da execução, de 0 a 100 — ela pune o que ficou por provar, não só o que quebrou.</p>
+  <div class="tblbox">
+    <table style="min-width:980px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou, em uma frase</th><th>data</th><th>nota</th><th class="l">o que ainda falta <b>de você</b></th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>EXTRA-001</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a operação dos pilotos</span></td>
+          <td class="ds">A cobrança chega a quem deve — equipe ou cliente —, a resposta do segurado cai no caso certo, e toda falha vira pendência visível em vez de sumir</td>
+          <td class="dm">07/09</td><td class="dm">87</td><td class="ds">✅ nada: o canário fecha junto com o da 001.6 (bloco E)</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.6</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a cobrança prova que funciona</span></td>
+          <td class="ds">Uma mensagem inteira por segurado com N boletos juntos, nunca a mesma parcela duas vezes, nunca o mesmo segurado duas vezes em 7 dias — e cada portal diz <b>em português</b> por que não entrou</td>
+          <td class="dm">14/09</td><td class="dm">84</td><td class="ds">🧑 o <b>bloco E</b> (canário + reativar a rotina) &middot; as senhas de <b>Allianz e Mapfre</b></td></tr>
+        <tr><td class="ds"><b>EXTRA-001.1</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a apólice certa, inteira</span></td>
+          <td class="ds">O corretor recebe <b>a apólice</b>, não uma lista: a vigente do ramo certo, na primeira rodada, com o PDF lido e reconciliado com o cadastro e a origem escrita ao lado de cada linha. Apólice vencida nunca vira opção</td>
+          <td class="dm">14/09</td><td class="dm">87</td><td class="ds">🧑 o <b>bloco D</b> (7 casos no chat) &middot; validar com a atendente</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.2</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o agente lê tudo antes de falar</span></td>
+          <td class="ds">Cinco mensagens e uma foto em doze segundos viram <b>uma</b> resposta, que viu a foto, não repete o que já foi dito, não cumprimenta no meio da conversa e cabe numa tela</td>
+          <td class="dm">15/09</td><td class="dm">85</td><td class="ds">🧑 o <b>bloco A</b> (8 casos) &middot; escolher o <b>nome do agente da Resulta</b> &middot; decidir se o "digitando…" fica ligado</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.3</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o grupo só recebe o que importa</span></td>
+          <td class="ds">O grupo da equipe recebe <b>quatro</b> tipos de mensagem e nada mais — e nunca sobre uma conversa que uma pessoa já está conduzindo. 📊 Um dia do piloto tinha 7 mensagens sobre um encanador, 6 delas <b>depois</b> de a atendente assumir</td>
+          <td class="dm">16/09</td><td class="dm">88</td><td class="ds">🧑 o <b>bloco B</b> (8 casos) &middot; decidir <code>write:true</code> &middot; ler os 4 modelos &middot; decidir se o CPF fica no histórico do grupo</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.4</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o corredor não trava sozinho</span></td>
+          <td class="ds">O robô responde o menu da seguradora com <b>número</b>, lendo a tela real; repara sozinho o "opção inválida"; cala por 60 s quando a atendente entra na conversa; e atende o humano da seguradora mesmo com a sessão travada</td>
+          <td class="dm">17/09</td><td class="dm">85</td><td class="ds">🧑 o <b>bloco C</b> (5 casos ao vivo) &middot; decidir o <b>canal das palavras da equipe</b> (botões na Fila, recomendado)</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.5</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o agente sabe o que cada plano cobre</span></td>
+          <td class="ds">Nasce a <b>base global de planos</b>: seguradora × ramo × plano × serviço, com <b>documento e página obrigatórios pelo banco</b>. O agente responde em cinco estados — tem &middot; não tem &middot; condicionado &middot; não contratado &middot; <b>ainda não sabemos</b> — e nunca chuta</td>
+          <td class="dm">18/09</td><td class="dm">86</td><td class="ds">✅ nada: a fila foi publicada pela 001.5.1 e pela 001.5.2</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.5.1</b><br><span class="mono" style="font-size:11px;color:var(--muted)">a base chega ao cliente</span></td>
+          <td class="ds">A base da SPEC anterior estava <b>desligada em produção, em silêncio</b>. Agora ela responde — e em <b>duas vozes</b>: o corretor recebe o documento e a página, o segurado no WhatsApp recebe a mesma verdade <b>sem citação nenhuma</b>, com o caminho da equipe quando o plano não cobre</td>
+          <td class="dm">19/09</td><td class="dm">88</td><td class="ds">🧑 o <b>bloco D2</b> com apólice real</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.5.2</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o documento vira base sem virar erro</span></td>
+          <td class="ds">📊 A base saiu de <b>23</b> para <b>492 serviços</b>, em <b>108 planos e 8 seguradoras</b> — cada linha com o trecho literal conferido contra a página, escrita por leitores e revisada por um segundo leitor. <b>Zero chamada de API de modelo</b></td>
+          <td class="dm">20/09</td><td class="dm">90</td><td class="ds">🧑 o <b>bloco D2.3</b>: o nome do plano da apólice casa com o da base? Só apólice real mede</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.7</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o piloto medido</span></td>
+          <td class="ds">Nasce o <b>instrumento</b>: um comando diz se dá para ligar o agente (7 travas, por corretora — e o que não consegue conferir <b>reprova</b>), outro dá a nota do piloto dia a dia, só contando, sem um nome sequer. 📊 Achou <b>7 defeitos materiais antes do push</b> — o pior: a medição contava <b>3</b> conversas num dia de <b>53</b></td>
+          <td class="dm">20/09</td><td class="dm">86</td><td class="ds">🔴 <b>os 3 dias de piloto são seus</b> (aba <a href="#piloto" style="color:var(--accent)">O piloto</a>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">📊 <b>Como ler a nota.</b> Ela não é "quanto do código funciona": é quanto da <b>entrega</b> ficou provado.
+  A 001.5.2 tirou 90 porque a base inteira foi reescrita e conferida linha a linha; a 001.6 tirou 84 porque o canário vivo
+  e o prólogo de login <b>só se provam depois do Implantar</b>. Perder ponto por "ainda não provado" é de propósito.</p>
+</section>
+
+<section>
+  <h2>A fila vigente — decidida em 20/09 (D-FILA-01)</h2>
+  <div class="tblbox">
+    <table style="min-width:860px">
+      <thead><tr><th class="l">ordem</th><th class="l">o quê</th><th class="l">por que aqui</th><th class="l">estado</th></tr></thead>
+      <tbody>
+        <tr><td class="dm">1</td><td class="ds"><b>EXTRA-001.10</b> · portal de vidros ponta a ponta</td><td class="ds">Tira a atendente do meio de um acionamento que já acontece hoje. A parte de <b>lataria</b> fecha com o material que já existe — não espera captura nenhuma</td><td class="ds"><b>🔴 é a próxima</b> — prompt pronto (aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>)</td></tr>
+        <tr><td class="dm">2</td><td class="ds"><b>EXTRA-001.8</b> · isolamento entre corretoras <b>+ 2 itens de segurança</b></td><td class="ds">Uma corretora travada não pode derrubar a vizinha. Antes de ligar a terceira corretora, não depois. Leva junto as duas pendências ≥ 90 de segurança</td><td class="ds">proposta escrita</td></tr>
+        <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
+        <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
+        <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>
+        <tr><td class="dm">6</td><td class="ds"><b>EXTRA-002</b> · investigação Agger</td><td class="ds">Provar se dá para <b>cotar e renovar pelo navegador</b>. É investigação, não entrega — e é onde a fila de produto começa</td><td class="ds">proposta a escrever em chat novo</td></tr>
+        <tr><td class="dm">7</td><td class="ds"><b>SPEC-099</b> · canais</td><td class="ds">Vários WhatsApp e e-mails, cada um com dono. Sai da pausa por dependência dos produtos</td><td class="ds">pausada, retomada aqui</td></tr>
+        <tr><td class="dm">8–12</td><td class="ds"><b>EXTRA-003</b> renovação → <b>004</b> cotação pelo chat → <b>005</b> reativação → <b>006</b> cross-sell → <b>007</b> site de captação</td><td class="ds">A fila de produto: o que faz a corretora <b>ganhar dinheiro</b>, depois que a operação estiver redonda. 📊 a <b>006</b> já depende só da 001.5, que está feita</td><td class="ds">uma linha cada</td></tr>
+        <tr><td class="dm">13–15</td><td class="ds"><b>EXTRA-008 · 009</b> Quiver e Segfy → <b>010</b> e-mail</td><td class="ds">Corretora que usa outro sistema de gestão entra sem projeto novo; o e-mail vira canal atendido como o WhatsApp</td><td class="ds">dependem da porta de conectores (101)</td></tr>
+        <tr><td class="dm">⏸</td><td class="ds"><b>SPEC-099 → 114</b> · a arquitetura</td><td class="ds"><b>Pausadas por você em 07/09</b>, numeração preservada, sem cancelar. Retomam por dependência comprovada. Três já ganharam dono novo: a <b>101</b> é a porta onde Agger/Quiver/Segfy encaixam, a <b>099</b> entra logo depois dos pilotos, a <b>114</b> é o portão que autoriza vender</td><td class="ds">pausadas</td></tr>
+        <tr><td class="dm">💡</td><td class="ds"><b>SPEC-115</b> · o placar e as medições no painel</td><td class="ds">Tirar estes números de uma página que alguém republica e pô-los <b>dentro do produto</b>, atualizados sozinhos. Ideia registrada em 20/09, depois da 114</td><td class="ds">💡 ideia, não é SPEC</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">⚠️ <b>Duas armadilhas de navegação, medidas.</b> (1) O <code>EXECUTION-MASTER-PLAN.md</code> para na SPEC-062 e está vencido —
+  quem manda hoje é o <code>INDICE-DE-SPECS.md</code>. (2) No masterplan antigo, 094 e 095 significam o contrário do que significam nas SPECs executadas.
+  Se alguém abrir o masterplan procurando a 094, vai achar outra coisa.</p>
+</section>
+
+<section>
+  <h2>Como as SPECs são executadas hoje</h2>
+  <p class="sub">O rito em oito linhas. É o <b>AAA v13</b>, em teste desde 20/09 por decisão <b>D-PROTO-12</b> — a evolução do AAA FAST que estava em vigor desde 16/09.</p>
+  <dl class="q2">
+    <dt>1 · o card</dt><dd>Antes de escrever uma linha: <b>doze linhas</b> que dizem o que a SPEC muda, para quem, e qual é o teste que prova. Mais <b>o FIO</b> — a cadeia exata do primeiro byte que entra ao último que sai para o cliente, com o nome de cada peça no caminho.</dd>
+    <dt>2 · medir antes</dt><dd>Cinco a dez <b>premissas cuja falsidade mudaria o desenho</b> são remedidas no banco e no código, com o comando ao lado. 📊 Quase toda SPEC acha aqui que a proposta supunha errado.</dd>
+    <dt>3 · um escritor</dt><dd>Um gerente no chat que <b>não escreve código</b>, delegando cada fatia a um builder fresco. Um commit por fatia. Cada teste novo <b>nasce vermelho</b> e fica verde — um teste que não consegue falhar não guarda nada.</dd>
+    <dt>4 · provas de máquina</dt><dd>Compila, os testes da área rodam, e cada teste novo é atacado com uma <b>mutação</b>: quebra-se o código de propósito para ver se ele acusa.</dd>
+    <dt>5 · o juiz e o red team, <b>lado a lado</b></dt><dd>Dois revisores frescos que <b>não escreveram nada</b>, ao mesmo tempo, sobre o mesmo trabalho. 🔴 Foi a mudança do v13: em fila, eles custavam 105 min; em paralelo, 35.</dd>
+    <dt>6 · um conserto só</dt><dd>Tudo junto, numa rodada. <b>Na terceira rodada o problema não é o código, é o card</b> — para-se e reescreve-se o FIO. É a trava que impede um dia inteiro de retrabalho.</dd>
+    <dt>7 · a bateria</dt><dd>Todos os testes do projeto, em segundo plano, triados <b>contra a linha de base</b> — porque o que já estava vermelho antes não é regressão desta SPEC.</dd>
+    <dt>8 · entregar é empurrar</dt><dd>Relatório, <code>git push</code> com a saída colada, e a telemetria medida por script. <b>Estar commitado não é estar entregue.</b></dd>
+  </dl>
+  <div class="tblbox" style="margin-top:20px">
+    <table style="min-width:760px">
+      <thead><tr><th class="l">📊 o que custa uma SPEC</th><th>relógio</th><th>custo</th><th class="l">o que o número diz</th></tr></thead>
+      <tbody>
+        <tr><td class="ds">média das <b>19 SPECs</b> anteriores (medido nos transcritos, 19/09)</td><td class="dm">≈4h42</td><td class="dm">US$ 146</td><td class="ds">📊 e a auditoria achou a causa: <b>construir custou 138 min, consertar custou 390</b>. O build nunca foi o problema — o retrabalho era</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.5.2</b> (1ª sob o núcleo do v13)</td><td class="dm">≈110 min</td><td class="dm">US$ 33</td><td class="ds">📊 juiz e red team em paralelo, <b>uma</b> rodada de julgamento</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.7</b> (2ª sob o v13)</td><td class="dm">151 min</td><td class="dm">≈US$ 47</td><td class="ds">📊 dois builders em paralelo → juiz 62 ‖ red team 58 → conserto único → confirmação 86</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">🔴 <b>E a qualidade não caiu — subiu.</b> 📊 Há medição do projeto: <b>com</b> os revisores, 47 achados e <b>22 defeitos de produto</b>;
+  <b>sem</b> eles, 19 achados e <b>zero</b> defeitos de produto. Os revisores custam ~4% do relógio e são o mecanismo que mais acha.
+  O que era caro era pô-los <b>em fila</b>, não existirem.</p>
+</section>
+
+<section>
+  <h2>O que veio antes — a leva 088 → 098</h2>
+  <p class="sub">⚠️ <b>Histórico de 03 a 07/09/2026.</b> Nove SPECs, todas na <code>main</code> e implantadas. Ficam aqui porque explicam de onde vêm as telas que você usa —
+  e porque cada uma deixou pendências que ainda aparecem na aba <a href="#pendencias" style="color:var(--accent)">Pendências</a>.</p>
+  <div class="tblbox">
+    <table style="min-width:900px">
+      <thead><tr><th class="l">SPEC</th><th class="l">o que entregou</th><th>data</th><th>nota</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>088</b></td><td class="ds"><b>A Central de Agentes parou de mentir de verde.</b> Ela mostrava 🟢 para trabalhadores que batiam o pulso sem produzir nada há dias. Agora cada um dos 18 declara <b>a fonte da própria produção</b>, e a tela diz cinco coisas em vez de uma</td><td class="dm">03/09</td><td class="dm">90</td></tr>
+        <tr><td class="ds"><b>091</b></td><td class="ds"><b>Absorvida.</b> A proposta pedia uma fábrica de protocolo; a medição mostrou que o problema era o protocolo ser <b>grande demais para ser lido</b> (864 KB por agente). Virou um documento de 22 KB com teto e um guarda que reprova quem não o segue</td><td class="dm">03/09</td><td class="dm">—</td></tr>
+        <tr><td class="ds"><b>093-B</b></td><td class="ds"><b>O sinistro deixa rastro.</b> Todo atendimento que fala de sinistro passa a existir como um registro de eventos — sem um byte de texto livre e <b>sem uma mensagem a mais para o segurado</b>. Zero tabela nova</td><td class="dm">03/09</td><td class="dm">88</td></tr>
+        <tr><td class="ds"><b>094</b></td><td class="ds"><b>O Pulso 360.</b> "Como estamos?" passa a ter resposta: 16 números versionados, cada um apontando para a conta que o produziu, e <b>dado que a fonte não expõe sai INDISPONÍVEL, nunca zero</b>. A InfoCap virou um adaptador — Quiver e Segfy entram pela mesma porta</td><td class="dm">03/09</td><td class="dm">84</td></tr>
+        <tr><td class="ds"><b>094.1</b></td><td class="ds"><b>A fábrica de relatórios.</b> 12 números novos (sinistros, funil, cancelamentos, cross-sell), o primeiro cruzamento com dado público de mercado, e o chat que <b>propõe</b> um relatório que não existe e espera a aprovação de uma pessoa</td><td class="dm">04/09</td><td class="dm">82</td></tr>
+        <tr><td class="ds"><b>095</b></td><td class="ds"><b>Relatórios que o corretor entende.</b> O título passa a ser <b>o achado</b>, não a contagem; 35 peças de teste saíram da sua biblioteca; o mesmo relatório pedido de novo vira <b>versão</b>, não peça nova; e a data do dado parou de mentir</td><td class="dm">04/09</td><td class="dm">84</td></tr>
+        <tr><td class="ds"><b>096</b></td><td class="ds"><b>O chat responde e continua.</b> 🔴 Fechou um buraco grave: <b>o navegador escolhia a corretora</b> — provado ao vivo, sem login. Depois: a pergunta é gravada pelo servidor, o Parar preserva o que já veio, e a conversa de 400 mensagens abre em menos de um segundo</td><td class="dm">05/09</td><td class="dm">86</td></tr>
+        <tr><td class="ds"><b>097</b></td><td class="ds"><b>A operação tem uma casa.</b> A Fila dizia que <b>584 atendimentos foram encerrados</b> e o banco dizia que ninguém encerrou nenhum — o desfecho era deduzido do relógio. Agora "encerrado" é escrito, o dono é uma coisa e o status é outra, e o caso é o <b>episódio</b>, não a conversa perpétua</td><td class="dm">05/09</td><td class="dm">93</td></tr>
+        <tr><td class="ds"><b>097.1</b></td><td class="ds"><b>O caso se explica sozinho.</b> Depois do acionamento, o que o cliente pergunta ("o guincho vem?") passa a ter resposta com <b>estado escrito</b>: de quem se espera, desde quando. 📊 Sobre o acervo real, o agente resolve 91% desses turnos por regra</td><td class="dm">06/09</td><td class="dm">93</td></tr>
+        <tr><td class="ds"><b>098</b></td><td class="ds"><b>Cada coisa sabe de quem é.</b> O site da corretora passa a ser <b>lido</b> e propõe a identidade inteira, inclusive o <b>jeito de atender</b>; a empresa selecionada vale em todo lugar; 15 rotas que respondiam sem chave passam a exigir; e run, peça e mensagem sabem quem pediu</td><td class="dm">06/09</td><td class="dm">91</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>O diagnóstico dos pilotos — de onde veio tudo isto</h2>
+  <p class="sub">⚠️ <b>Histórico de 09–13/09/2026.</b> Sete laudos, lidos sobre o banco de produção. É o documento que gerou a família EXTRA-001.x inteira.</p>
+  <div class="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:16px">
+    <div class="tile cr"><b>1h53</b><em>foi todo o tempo em que o agente ficou <b>ligado</b>, em três dias de piloto</em></div>
+    <div class="tile cr"><b>0</b><em>acionamentos concluídos pelo agente. O único real travou num menu e foi salvo à mão pela atendente</em></div>
+    <div class="tile cr"><b>5 de 5</b><em>segurados reais atendidos em conversas que a atendente <b>já conduzia</b> — antes de a janela de silêncio existir</em></div>
+    <div class="tile al"><b>48 · 49</b><em>as notas dos auditores para atendimento e chat. 💭 <b>palpite</b>, e é por isso que a 001.7 existe</em></div>
+  </div>
+  <p style="margin-top:18px">🔴 <b>A conclusão que mudou o plano:</b> os testes não mediram um produto ruim — mediram <b>cinco defeitos estruturais que impediram o produto de ser testado</b>.
+  O agente respondia por cima da atendente porque não havia janela de silêncio; listava apólices vencidas porque a ferramenta mandava "liste TODAS";
+  respondia mensagem a mensagem porque a pausa de 9 segundos abria um segundo turno; o grupo virava despejo porque nenhum gatilho perguntava "tem gente aqui?";
+  e o robô digitava a palavra "residência" num menu que pedia um dígito. Cada um virou uma SPEC da família 001.x — e todas foram executadas.</p>
+  <p class="note">📊 <b>O que já estava certo, e a medição registrou:</b> o português do agente é bom e empático; quando o handoff falhou, ele <b>não mentiu</b> (2 de 2);
+  pedir humano no sinistro foi a decisão certa; e nenhum vazamento entre corretoras apareceu nas 47 rotas varridas.</p>
+</section>
+
+<section>
+  <h2>Decisões antigas que continuam valendo</h2>
+  <dl class="q2">
+    <dt>F-094-07 · P1</dt><dd>A conexão da <b>Amandus</b> descriptografa para a <b>mesma conta da Resulta</b> (mesma carteira ao centavo). Até decidir se é a mesma corretora legal, o sistema recusa a segunda — e é por isso que os testes de apólice e de cobrança ficam na Resulta.</dd>
+    <dt>D-PILOTO-05</dt><dd><b>Nenhum acionamento sem demanda real.</b> Abrir um pedido no portal aciona uma loja de verdade. Nunca se inventa um acionamento para capturar tela.</dd>
+    <dt>D-PILOTO-08</dt><dd>A numeração <b>001.1 … 001.10</b> foi mantida, sem renumerar nada. É por isso que a 001.10 (vidros) é dos pilotos e não da fila de produto.</dd>
+    <dt>D-PILOTO-11</dt><dd><b>PDF para cobertura, sistema de gestão para parcela</b> — e nada preso a um fornecedor: seguradoras e ramos são catálogo <b>nosso</b>. Uma corretora que só tenha PDFs também é atendida.</dd>
+    <dt>D-PILOTO-17</dt><dd><b>Bradesco vidros:</b> captura antes de código. Nenhuma linha para o Bradesco antes de uma captura provar qual dos dois portais atende.</dd>
+    <dt>D-E001-08/09</dt><dd>A série <b>099→114</b> fica pausada; a ordem depois dos pilotos é Agger → canais → renovação → cotação.</dd>
+  </dl>
+  <p class="note">A lista completa e canônica está em <code>docs/canon/FOUNDER-DECISIONS.md</code>. Aqui ficam só as que ainda mudam alguma coisa hoje.</p>
+</section>
+</div>

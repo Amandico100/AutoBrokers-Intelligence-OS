@@ -1,0 +1,435 @@
+<div id="tab-corredores" class="tab" hidden>
+<p class="note" style="border-left-color:var(--alerta);margin:0 0 22px"><b>Histórico.</b> Esta aba é a foto de <b>24/08/2026</b>, atualizada em <b>08/09/2026</b>. As notas da tabela continuam sendo as de 24/08 e <b>não valem como medição de hoje</b>: a régua só volta a falar do presente quando for regenerada (pendência <b>P-PILOTO-06</b>). O que vale hoje está em <a href="#inicio" style="color:var(--accent)">INÍCIO</a> e em <a href="#tarefas" style="color:var(--accent)">SUAS TAREFAS</a>.</p>
+
+
+<header class="top">
+  <span class="eyebrow">Estado do acionamento &middot; medido em 24/08/2026 &middot; atualizado em 08/09/2026 &middot; ✅ integrado na main</span>
+  <h1>Os 19 corredores estão prontos.<br>E estão no ar desde 07/09.</h1>
+  <p class="lede">Duas auditorias independentes mediram o que a régua não mede. <b>Os corredores respondem 100% das telas — a régua está certa no que ela mede.</b> Mas o acionamento trava <b>antes</b> dele (a ferramenta não tem campo para o dado que o portão exige) e <b>depois</b> dele (o formulário dentro do WhatsApp). 🔴 Nenhum dos consertos é reescrever corredor.</p>
+  <div class="meta">
+    <span>repo <b>AutoBrokers-FIX</b></span>
+    <span>commit <b>d3c63b9</b></span>
+    <span>banco <b>dcajcvlzcjbmyapmklil</b></span>
+    <span>73 rotas &middot; 43 medidas &middot; média <b>88,4%</b></span>
+    <span>gerado por <b>medir_rota.py</b></span>
+    <span>✅ na <code>main</code> desde 07/09 (<b>cffaa0e</b>)</span>
+    <span>⚠️ notas de 24/08 — anteriores à SPEC-089, não comparáveis (P-089-C)</span>
+  </div>
+</header>
+
+<div class="virada" style="border-left-color:var(--accent)">
+  <span class="eyebrow" style="color:var(--accent)">O que mudou desde 24/08</span>
+  <h2>O conserto foi para a main. As travas de segurança continuam armadas.</h2>
+  <p class="lede" style="max-width:72ch">📊 Medido em 08/09/2026: <code>d3c63b9</code> e tudo o que esta página descreve estão em
+  <code>origin/main</code> (<code>cffaa0e</code>, 07/09), e a impressão digital do código no ar <b>bate</b> com o repositório.
+  Os três defeitos abaixo — o carro no km 42, a peça da geladeira, o SMS que ninguém manda — <b>estão consertados em produção</b>.</p>
+  <p class="lede" style="max-width:72ch; margin-top:10px">🔴 Mas o <code>/health</code> mostra <b>quatro travas armadas</b> (allowlist de entrada,
+  freio de emergência, envio à seguradora fechado, finalização em teste) e os <b>três agentes de atendimento desligados</b>.
+  Enquanto estiverem assim, nenhum corredor aciona ninguém — e nada disso exige deploy. <b>A aba
+  <a href="#tarefas" style="color:var(--accent)">SUAS TAREFAS</a> diz o que abrir, em que ordem, e responde cada pergunta sua.</b></p>
+  <p class="note" style="margin-top:15px">⚠️ <b>As notas da tabela abaixo são de 24/08.</b> A SPEC-089 mudou o denominador três vezes
+  depois disso e o acervo ganhou 18 sessões que a régua ainda não viu. Regerar a tabela é o item 5 do plano da outra aba.</p>
+</div>
+
+<div class="virada">
+  <span class="eyebrow" style="color:var(--accent)">O que as SPECs 083, 084 e 084.1 mudaram</span>
+  <h2>Antes e depois, medido pela mesma régua</h2>
+  <div class="antesdepois">
+    <div class="ad"><span class="adl">rotas que atendem sozinhas</span>
+      <span class="adv"><b class="ai">1</b><i>&rarr;</i><b class="af">19</b></span></div>
+    <div class="ad"><span class="adl">média das rotas medidas</span>
+      <span class="adv"><b class="ai">47,7%</b><i>&rarr;</i><b class="af">88,4%</b></span></div>
+    <div class="ad"><span class="adl">telas da URA sem resposta</span>
+      <span class="adv"><b class="ai">776</b><i>&rarr;</i><b class="af">~0</b></span></div>
+    <div class="ad"><span class="adl">respostas ERRADAS no produto</span>
+      <span class="adv"><b class="ai">110</b><i>&rarr;</i><b class="af">0</b></span></div>
+    <div class="ad"><span class="adl">serviços que a URA atende e o código recusava</span>
+      <span class="adv"><b class="ai">11</b><i>&rarr;</i><b class="af">0</b></span></div>
+    <div class="ad"><span class="adl">rotas sem uma conversa no acervo</span>
+      <span class="adv"><b class="ai">32</b><i>&rarr;</i><b class="af">30</b></span></div>
+  </div>
+  <p style="margin-top:18px">🔴 <b>E a régua ficou MAIS dura no caminho.</b> O denominador foi de 96 para
+  106 porque a execução descobriu itens que faltavam — entre eles a penalidade para
+  <b>constante que decide em nome do segurado</b>, que estava escrita na SPEC e
+  <b>não valia ponto nenhum</b>. <b>As notas subiram contra uma régua mais exigente.</b></p>
+  <p style="margin-top:11px">📊 E o trabalho pegou <b>dois defeitos que teriam ido a produção</b>: uma
+  <b>mutação de teste commitada dentro da régua</b> — que daria pontos de graça nas 73 rotas — e uma
+  <b>medição que escrevia no corredor</b>, deixando morta a âncora que a URA usa 180 vezes.
+  <b>Quem achou o primeiro foi um subagente analisando outra rota.</b></p>
+</div>
+
+<div class="regua" style="border-left-color:var(--crit)">
+  <div>
+    <span class="eyebrow" style="color:var(--crit)">O que a régua não media</span>
+    <h2 style="margin:6px 0 9px">O corredor acerta. O acionamento não sai.</h2>
+    <p>📊 Controle limpo, rodado no motor real: com <b>tudo que a ferramenta consegue carregar</b>,
+    as rotas devolvem <code>missing_data</code>. Com os slots que ela <b>não</b> carrega preenchidos
+    em memória, devolvem <code>ready_to_send</code>.</p>
+    <p style="margin-top:11px">🔴 <b>A causa tem nome:</b> a própria SPEC-084.1 acrescentou slots a
+    <code>required_slots</code> — e <b>não estendeu o contrato da ferramenta</b>. O portão exige um dado
+    que o formulário de entrada não tem campo para levar.</p>
+    <p style="margin-top:11px">✅ <b>E a boa notícia é o tamanho do conserto:</b> são <b>seis itens</b>,
+    nenhum deles reescrita de corredor. Os corredores respondem <b>100% das telas que pedem algo</b>.</p>
+  </div>
+  <div class="axes">
+    <div class="axrow ferida"><span class="nm2">A · a ferramenta não carrega</span><span class="tr"><i style="width:100%"></i></span><span class="vl">19 rotas</span></div>
+    <div class="axrow ferida"><span class="nm2">B · o formulário nativo</span><span class="tr"><i style="width:16%"></i></span><span class="vl">2 · hdi+yelum</span></div>
+    <div class="axrow ferida"><span class="nm2">C · serviço fora do contrato</span><span class="tr"><i style="width:16%"></i></span><span class="vl">2 · mecânico</span></div>
+    <div class="axrow ferida"><span class="nm2">D · 2º formulário não registrado</span><span class="tr"><i style="width:16%"></i></span><span class="vl">3 · yelum</span></div>
+    <div class="axrow"><span class="nm2">o corredor responde a tela</span><span class="tr"><i style="width:100%"></i></span><span class="vl">19/19 ✅</span></div>
+    <p class="note" style="margin-top:6px; font-size:12.2px">🔴 <b>A régua não olha nem antes nem
+    depois do corredor.</b> A tela que abre o formulário e trava o acionamento é classificada
+    <code>ÓRFÃ INÓCUA</code> — fora do denominador. Por isso &ldquo;zero órfãs&rdquo; convive com o furo.</p>
+  </div>
+</div>
+
+<div class="perfil">
+  <span class="eyebrow">O perfil das 73</span>
+  <svg viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" aria-label="Perfil de altitude das 73 rotas, da mais alta para a mais baixa">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.34"/>
+        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.03"/>
+      </linearGradient>
+    </defs>
+    <line x1="0" y1="27.4" x2="1000" y2="27.4" stroke="var(--line-2)" stroke-width="1" stroke-dasharray="3 4"/>
+    <polygon points="0,100 0.0,6.0 13.9,6.0 27.8,6.0 41.7,7.6 55.6,7.9 69.4,9.2 83.3,9.2 97.2,9.2 111.1,9.2 125.0,9.2 138.9,9.2 152.8,9.2 166.7,9.2 180.6,9.2 194.4,9.2 208.3,9.2 222.2,9.2 236.1,9.2 250.0,9.2 263.9,10.8 277.8,10.8 291.7,11.0 305.6,11.4 319.4,11.5 333.3,12.1 347.2,12.3 361.1,12.3 375.0,12.7 388.9,13.0 402.8,13.1 416.7,19.5 430.6,22.6 444.4,24.2 458.3,25.7 472.2,28.3 486.1,29.0 500.0,30.4 513.9,30.6 527.8,30.6 541.7,32.2 555.6,32.2 569.4,32.9 583.3,44.8 597.2,90.0 611.1,90.0 625.0,90.0 638.9,90.0 652.8,90.0 666.7,90.0 680.6,90.0 694.4,90.0 708.3,90.0 722.2,90.0 736.1,90.0 750.0,90.0 763.9,90.0 777.8,90.0 791.7,90.0 805.6,90.0 819.4,90.0 833.3,90.0 847.2,90.0 861.1,90.0 875.0,90.0 888.9,90.0 902.8,90.0 916.7,90.0 930.6,90.0 944.4,90.0 958.3,90.0 972.2,90.0 986.1,90.0 1000.0,90.0 1000,100" fill="url(#g)"/>
+    <polyline points="0.0,6.0 13.9,6.0 27.8,6.0 41.7,7.6 55.6,7.9 69.4,9.2 83.3,9.2 97.2,9.2 111.1,9.2 125.0,9.2 138.9,9.2 152.8,9.2 166.7,9.2 180.6,9.2 194.4,9.2 208.3,9.2 222.2,9.2 236.1,9.2 250.0,9.2 263.9,10.8 277.8,10.8 291.7,11.0 305.6,11.4 319.4,11.5 333.3,12.1 347.2,12.3 361.1,12.3 375.0,12.7 388.9,13.0 402.8,13.1 416.7,19.5 430.6,22.6 444.4,24.2 458.3,25.7 472.2,28.3 486.1,29.0 500.0,30.4 513.9,30.6 527.8,30.6 541.7,32.2 555.6,32.2 569.4,32.9 583.3,44.8 597.2,90.0 611.1,90.0 625.0,90.0 638.9,90.0 652.8,90.0 666.7,90.0 680.6,90.0 694.4,90.0 708.3,90.0 722.2,90.0 736.1,90.0 750.0,90.0 763.9,90.0 777.8,90.0 791.7,90.0 805.6,90.0 819.4,90.0 833.3,90.0 847.2,90.0 861.1,90.0 875.0,90.0 888.9,90.0 902.8,90.0 916.7,90.0 930.6,90.0 944.4,90.0 958.3,90.0 972.2,90.0 986.1,90.0 1000.0,90.0" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="152.8" cy="9.7" r="4" fill="var(--surface)" stroke="var(--crit)" stroke-width="2.5"/>
+  </svg>
+  <div class="cap">
+    <span>&larr; as 19 prontas&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span style="color:var(--crit)">&#9679;</span> a régua, 5ª posição</span>
+    <span>as 32 sem uma conversa no acervo &rarr;</span>
+  </div>
+</div>
+
+<div class="tiles">
+  <div class="tile cr"><b>0</b><em>rotas que acionam <b>hoje</b>, de ponta a ponta. 🔴 Eram 19 pela régua</em></div>
+  <div class="tile ok"><b>19</b><em>corredores <b>prontos</b> — respondem 100% das telas. Era 1</em></div>
+  <div class="tile ok"><b>6</b><em>consertos destravam as 19. 🔴 <b>Nenhum é reescrever corredor</b></em></div>
+  <div class="tile cr"><b>17</b><em>slots que o portão exige e a <b>ferramenta não tem campo</b> para levar</em></div>
+  <div class="tile ok"><b>88,4%</b><em>média das 43 medidas — 📊 era <b>47,7%</b>, contra régua mais frouxa</em></div>
+  <div class="tile cr"><b>30</b><em>rotas sem uma conversa no acervo. Só um acionamento real destrava</em></div>
+</div>
+
+<section style="margin-top:8px">
+  <h2>A tabela</h2>
+  <p class="sub">Da mais alta para a mais baixa. A cor é <b>altitude, não julgamento</b> — a regra do projeto
+  diz que uma rota em 60 com o bloqueio nomeado é entrega, e uma rota em 95 com furo invisível não é.
+  A coluna final é a demanda medida: quantas vezes um segurado <em>escolheu</em> aquele serviço no acervo.</p>
+
+  <div class="ctl">
+    <button class="chip" data-f="p:sim" aria-pressed="false">✅ prontas</button>
+    <button class="chip" data-f="p:talvez" aria-pressed="false">🟡 indefinidas</button>
+    <button class="chip" data-f="b:e5" aria-pressed="false">95%+</button>
+    <button class="chip" data-f="b:e4" aria-pressed="false">85&ndash;94%</button>
+    <button class="chip" data-f="b:e3" aria-pressed="false">70&ndash;84%</button>
+    <button class="chip" data-f="b:e2" aria-pressed="false">50&ndash;69%</button>
+    <button class="chip" data-f="b:e1" aria-pressed="false">abaixo de 50%</button>
+    <button class="chip" data-f="b:nm" aria-pressed="false">sem medida</button>
+    <input class="q" type="search" placeholder="allianz, guincho, resi…" aria-label="Filtrar rotas">
+    <span class="count" id="cnt">73 de 73</span>
+  </div>
+
+  <div class="tblbox">
+    <table>
+      <thead>
+        <tr>
+          <th title="Vai atender sozinha, de ponta a ponta?">Só</th>
+          <th class="l" colspan="2">Seguradora / ramo / serviço &middot; o que falta</th>
+          <th>Nota</th>
+          <th class="l" title="O que destrava esta rota">O que destrava &middot; 🧑 você / 🤖 execução</th>
+          <th title="Demanda medida: sessões em que o segurado ESCOLHEU este serviço">Dem</th>
+        </tr>
+      </thead>
+      <tbody id="tb">
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz residencial encanador aaa pronta prioridade"><td class="rk">1</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">encanador</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">nada — está no nível</em></td><td class="nt"><span class="nn">106</span><span class="dd">/106</span><span class="bar"><i style="width:100%"></i></span></td><td class="ds">nada</td><td class="dm">14</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="yelum auto socorro_mecanico aaa pronta prioridade"><td class="rk">2</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>yelum</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">socorro mecanico</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">nada — está no nível</em></td><td class="nt"><span class="nn">88</span><span class="dd">/88</span><span class="bar"><i style="width:100%"></i></span></td><td class="ds">nada</td><td class="dm">7</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="yelum residencial encanador aaa pronta"><td class="rk">3</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>yelum</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">encanador</b><em class="fx">nada — está no nível</em></td><td class="nt"><span class="nn">106</span><span class="dd">/106</span><span class="bar"><i style="width:100%"></i></span></td><td class="ds">nada</td><td class="dm">14</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="porto residencial encanador aaa pronta"><td class="rk">4</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>porto</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">encanador</b><em class="fx">a mais recente tem <180 dias</em></td><td class="nt"><span class="nn">104</span><span class="dd">/106</span><span class="bar"><i style="width:98%"></i></span></td><td class="ds">nada</td><td class="dm">14</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="hdi auto socorro_mecanico aaa pronta prioridade"><td class="rk">5</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>hdi</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">socorro mecanico</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">>=2 sessoes distintas</em></td><td class="nt"><span class="nn">86</span><span class="dd">/88</span><span class="bar"><i style="width:98%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota</td><td class="dm">7</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="alfa auto guincho aaa pronta"><td class="rk">6</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>alfa</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz auto bateria aaa pronta prioridade"><td class="rk">7</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">16</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz auto guincho aaa pronta prioridade"><td class="rk">8</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz auto pneu aaa pronta prioridade"><td class="rk">9</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">10</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz residencial chaveiro aaa pronta prioridade"><td class="rk">10</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">chaveiro</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">5</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz residencial eletricista aaa pronta prioridade"><td class="rk">11</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletricista</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">12</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="allianz residencial maquina_de_lavar aaa pronta prioridade"><td class="rk">12</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">maquina de lavar</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">0</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="azul auto bateria aaa pronta"><td class="rk">13</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>azul</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">16</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="azul auto guincho aaa pronta"><td class="rk">14</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>azul</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="hdi auto guincho aaa pronta prioridade"><td class="rk">15</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>hdi</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="porto auto bateria aaa pronta prioridade"><td class="rk">16</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">16</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="porto auto guincho aaa pronta prioridade"><td class="rk">17</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="yelum auto guincho aaa pronta prioridade"><td class="rk">18</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>yelum</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e5" data-b="e5" data-p="sim" data-q="yelum auto pneu aaa pronta prioridade"><td class="rk">19</td><td class="pr pr--sim" title="fecha o patamar · o corpus vai do "oi" ao protocolo">🅰️</td><td class="un"><b>yelum</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala</em></td><td class="nt"><span class="nn">102</span><span class="dd">/106</span><span class="bar"><i style="width:96%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">10</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="alfa auto pneu quase provável"><td class="rk">20</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>alfa</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas</em></td><td class="nt"><span class="nn">100</span><span class="dd">/106</span><span class="bar"><i style="width:94%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">10</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="porto auto chaveiro quase provável prioridade"><td class="rk">21</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas</em></td><td class="nt"><span class="nn">100</span><span class="dd">/106</span><span class="bar"><i style="width:94%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">5</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="porto auto tecnico quase provável prioridade"><td class="rk">22</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">tecnico</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala &middot; a mais recente tem <180 dias</em></td><td class="nt"><span class="nn">94</span><span class="dd">/100</span><span class="bar"><i style="width:94%"></i></span></td><td class="ds">🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">3</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="zurich auto guincho quase provável"><td class="rk">23</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>zurich</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas</em></td><td class="nt"><span class="nn">88</span><span class="dd">/94</span><span class="bar"><i style="width:94%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="allianz residencial ar_condicionado quase provável prioridade"><td class="rk">24</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">ar condicionado</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala &middot; o handoff casa >=1 tela REAL</em></td><td class="nt"><span class="nn">99</span><span class="dd">/106</span><span class="bar"><i style="width:93%"></i></span></td><td class="ds">🤖 ampliar handoff_triggers contra o corpus &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">2</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="allianz residencial limpeza_caixa_dagua quase provável prioridade"><td class="rk">25</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">limpeza caixa dagua</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala &middot; o handoff casa >=1 tela REAL</em></td><td class="nt"><span class="nn">89</span><span class="dd">/96</span><span class="bar"><i style="width:93%"></i></span></td><td class="ds">🤖 ampliar handoff_triggers contra o corpus &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">2</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="hdi auto pneu quase provável prioridade"><td class="rk">26</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>hdi</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas &middot; a mais recente te…</em></td><td class="nt"><span class="nn">98</span><span class="dd">/106</span><span class="bar"><i style="width:92%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">10</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="porto residencial chaveiro quase provável"><td class="rk">27</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>porto</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas &middot; a mais recente te…</em></td><td class="nt"><span class="nn">98</span><span class="dd">/106</span><span class="bar"><i style="width:92%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">5</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="azul auto tecnico quase provável"><td class="rk">28</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>azul</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">tecnico</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas &middot; a mais recente te…</em></td><td class="nt"><span class="nn">92</span><span class="dd">/100</span><span class="bar"><i style="width:92%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">3</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="allianz residencial consulta_veterinaria quase provável prioridade"><td class="rk">29</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">consulta veterinaria</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">apelidos do jeito que o cliente fala &middot; >=2 sessoes distintas &middot; a mais recente te…</em></td><td class="nt"><span class="nn">88</span><span class="dd">/96</span><span class="bar"><i style="width:92%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">0</td></tr>
+<tr class="r e4" data-b="e4" data-p="provavel" data-q="yelum residencial eletricista quase provável"><td class="rk">30</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>yelum</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletricista</b><em class="fx">apelidos do jeito que o cliente fala &middot; o handoff casa >=1 tela REAL &middot; a mais rec…</em></td><td class="nt"><span class="nn">97</span><span class="dd">/106</span><span class="bar"><i style="width:92%"></i></span></td><td class="ds">🤖 ampliar handoff_triggers contra o corpus &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">12</td></tr>
+<tr class="r e3" data-b="e3" data-p="provavel" data-q="hdi residencial encanador quase provável"><td class="rk">31</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>hdi</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">encanador</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o cliente recebe protocolo + dia + periodo</em></td><td class="nt"><span class="nn">89</span><span class="dd">/106</span><span class="bar"><i style="width:84%"></i></span></td><td class="ds">🤖 client_summary com dia + período</td><td class="dm">14</td></tr>
+<tr class="r e3" data-b="e3" data-p="provavel" data-q="bradesco auto guincho quase provável"><td class="rk">32</td><td class="pr pr--provavel" title="uma lacuna nomeada, e ela não é o desfecho">🟢</td><td class="un"><b>bradesco</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o cliente recebe protocolo + dia + periodo &middot; a…</em></td><td class="nt"><span class="nn">85</span><span class="dd">/106</span><span class="bar"><i style="width:80%"></i></span></td><td class="ds">🤖 client_summary com dia + período &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">72</td></tr>
+<tr class="r e3" data-b="e3" data-p="talvez" data-q="hdi auto chaveiro parcial indefinida prioridade"><td class="rk">33</td><td class="pr pr--talvez" title="o corpus não chega ao desfecho — não dá para afirmar">🟡</td><td class="un"><b>hdi</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o cliente recebe protocolo + dia + periodo &middot; a…</em></td><td class="nt"><span class="nn">83</span><span class="dd">/106</span><span class="bar"><i style="width:78%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período &middot…</td><td class="dm">5</td></tr>
+<tr class="r e3" data-b="e3" data-p="talvez" data-q="tokio auto guincho parcial indefinida"><td class="rk">34</td><td class="pr pr--talvez" title="o corpus não chega ao desfecho — não dá para afirmar">🟡</td><td class="un"><b>tokio</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b><em class="fx">o freio casa >=1 tela REAL &middot; o cliente recebe protocolo + dia + periodo &middot; apelid…</em></td><td class="nt"><span class="nn">72</span><span class="dd">/94</span><span class="bar"><i style="width:77%"></i></span></td><td class="ds">🤖 client_summary com dia + período &middot; 🤖 ampliar handoff_triggers contra o co…</td><td class="dm">72</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="porto residencial eletrodomesticos parcial não"><td class="rk">35</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletrodomesticos</b><em class="fx">o freio casa >=1 tela REAL &middot; o cliente recebe protocolo + dia + periodo &middot; apelid…</em></td><td class="nt"><span class="nn">69</span><span class="dd">/94</span><span class="bar"><i style="width:73%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período &middot…</td><td class="dm">0</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="allianz residencial eletrodomesticos parcial não prioridade"><td class="rk">36</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletrodomesticos</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">77</span><span class="dd">/106</span><span class="bar"><i style="width:73%"></i></span></td><td class="ds">🤖 client_summary com dia + período &middot; 🤖 medir com o Espelho · 🧑 vocabulário real do cliente</td><td class="dm">0</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="porto auto vidros parcial não prioridade"><td class="rk">37</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">vidros</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">71</span><span class="dd">/100</span><span class="bar"><i style="width:71%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período</td><td class="dm">0</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="bradesco auto bateria parcial não"><td class="rk">38</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>bradesco</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">75</span><span class="dd">/106</span><span class="bar"><i style="width:71%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período &middot…</td><td class="dm">16</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="yelum residencial eletrodomesticos parcial não"><td class="rk">39</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>yelum</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletrodomesticos</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">75</span><span class="dd">/106</span><span class="bar"><i style="width:71%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período &middot…</td><td class="dm">0</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="hdi residencial chaveiro parcial não"><td class="rk">40</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>hdi</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">73</span><span class="dd">/106</span><span class="bar"><i style="width:69%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período &middot…</td><td class="dm">5</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="yelum auto bateria parcial não prioridade"><td class="rk">41</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>yelum</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">73</span><span class="dd">/106</span><span class="bar"><i style="width:69%"></i></span></td><td class="ds">🧑 coleta: +1 sessão desta rota &middot; 🤖 client_summary com dia + período &middot…</td><td class="dm">16</td></tr>
+<tr class="r e2" data-b="e2" data-p="nao" data-q="allianz residencial desentupimento parcial não prioridade"><td class="rk">42</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>allianz</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">desentupimento</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela REAL &middot; o cliente recebe …</em></td><td class="nt"><span class="nn">72</span><span class="dd">/106</span><span class="bar"><i style="width:68%"></i></span></td><td class="ds">🤖 client_summary com dia + período &middot; 🤖 ampliar handoff_triggers contra o co…</td><td class="dm">1</td></tr>
+<tr class="r e1" data-b="e1" data-p="nao" data-q="hdi residencial eletricista esqueleto não"><td class="rk">43</td><td class="pr pr--nao" title="o corredor ainda não percorre a rota inteira">⚪</td><td class="un"><b>hdi</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletricista</b><em class="fx">zero orfas funcionais &middot; a ROTA foi percorrida ate o fim &middot; o freio casa >=1 tela …</em></td><td class="nt"><span class="nn">57</span><span class="dd">/106</span><span class="bar"><i style="width:54%"></i></span></td><td class="ds">🤖 mapear 3 tela(s) &middot; 🤖 client_summary com dia + período &middot; 🤖 medir com o Espelho…</td><td class="dm">12</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="mapfre auto guincho sem_corpus não"><td class="rk">44</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>mapfre</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">guincho</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">72</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="alfa auto bateria sem_corpus não"><td class="rk">45</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>alfa</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">16</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="hdi auto bateria sem_corpus não prioridade"><td class="rk">46</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>hdi</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">16</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="mapfre auto bateria sem_corpus não"><td class="rk">47</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>mapfre</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">16</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="tokio auto bateria sem_corpus não"><td class="rk">48</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>tokio</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">16</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="zurich auto bateria sem_corpus não"><td class="rk">49</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>zurich</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">16</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="porto residencial eletricista sem_corpus não"><td class="rk">50</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletricista</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">12</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="azul auto pneu sem_corpus não"><td class="rk">51</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>azul</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">10</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="bradesco auto pneu sem_corpus não"><td class="rk">52</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>bradesco</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">10</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="mapfre auto pneu sem_corpus não"><td class="rk">53</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>mapfre</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">10</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="porto auto pneu sem_corpus não prioridade"><td class="rk">54</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">10</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="tokio auto pneu sem_corpus não"><td class="rk">55</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>tokio</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">10</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="zurich auto pneu sem_corpus não"><td class="rk">56</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>zurich</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">pneu</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">10</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="zurich auto socorro_mecanico sem_corpus não"><td class="rk">57</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>zurich</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">socorro mecanico</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">7</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="alfa auto chaveiro sem_corpus não"><td class="rk">58</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>alfa</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="allianz auto chaveiro sem_corpus não prioridade"><td class="rk">59</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>allianz</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="azul auto chaveiro sem_corpus não"><td class="rk">60</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>azul</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="bradesco auto chaveiro sem_corpus não"><td class="rk">61</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>bradesco</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="mapfre auto chaveiro sem_corpus não"><td class="rk">62</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>mapfre</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="tokio auto chaveiro sem_corpus não"><td class="rk">63</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>tokio</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="yelum auto chaveiro sem_corpus não prioridade"><td class="rk">64</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>yelum</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="yelum residencial chaveiro sem_corpus não"><td class="rk">65</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>yelum</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="zurich auto chaveiro sem_corpus não"><td class="rk">66</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>zurich</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">chaveiro</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">5</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="hdi residencial desentupimento sem_corpus não"><td class="rk">67</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>hdi</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">desentupimento</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">1</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="porto auto taxi sem_corpus não prioridade"><td class="rk">68</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">taxi</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">1</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="porto residencial desentupimento sem_corpus não"><td class="rk">69</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">desentupimento</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">1</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="yelum residencial desentupimento sem_corpus não"><td class="rk">70</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>yelum</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">desentupimento</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">1</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="hdi residencial eletrodomesticos sem_corpus não"><td class="rk">71</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>hdi</b><span class="sl">/</span>resi<span class="sl">/</span><b class="sv">eletrodomesticos</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">0</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="porto auto bateria_nova sem_corpus não prioridade"><td class="rk">72</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>porto</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">bateria nova</b> <b style="color:var(--crit)">&#9679;</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">0</td></tr>
+<tr class="r nm" data-b="nm" data-p="nao" data-q="zurich auto vidros sem_corpus não"><td class="rk">73</td><td class="pr pr--nao" title="sem uma conversa no acervo — só um acionamento real destrava">⚪</td><td class="un"><b>zurich</b><span class="sl">/</span>auto<span class="sl">/</span><b class="sv">vidros</b><em class="fx">não há uma linha desta rota no corpus</em></td><td class="nt"><span class="nn nm">sem corpus</span></td><td class="ds">🧑 coleta dirigida: 1 acionamento observado desta rota</td><td class="dm">0</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="legend">
+    <span><b>Atende sozinha?</b></span>
+    <span style="color:var(--alerta)">🅰️ corredor pronto — 🔴 acionamento travado no contrato da ferramenta</span>
+    <span style="color:var(--accent);opacity:.72">🟢 provável — uma lacuna nomeada</span>
+    <span style="color:var(--alerta)">🟡 indefinida — o corpus não chega ao desfecho</span>
+    <span style="color:var(--faint)">⚪ ainda não</span>
+    <span style="width:100%"></span>
+    <span><b>Altitude</b></span>
+    <span><i class="sw" style="background:var(--e5)"></i>70+</span>
+    <span><i class="sw" style="background:var(--e4)"></i>60&ndash;69</span>
+    <span><i class="sw" style="background:var(--e3)"></i>50&ndash;59</span>
+    <span><i class="sw" style="background:var(--e2)"></i>40&ndash;49</span>
+    <span><i class="sw" style="background:var(--e1)"></i>&lt;40</span>
+    <span><i class="sw" style="background:var(--nmc)"></i>sem medida</span>
+    <span><b style="color:var(--crit)">&#9679;</b> prioridade do Founder</span>
+    <span>&middot;&nbsp; <b>sem medida</b> = zero sessões desta rota no corpus &nbsp;&middot;&nbsp; <b>não casa</b> = há corpus e o corredor não responde</span>
+  </div>
+</section>
+
+<section>
+  <h2>Sete passos casavam a tela e respondiam errado</h2>
+  <p class="sub">O achado mais caro do bloco, e o que nenhuma contagem de cobertura mostrava: estes passos
+  apareciam <b>verdes</b> em toda medição, porque a régua contava casamento, não acerto.</p>
+  <div class="cards">
+    <div class="card cr">
+      <h3>O corredor afirmava a idade do aparelho</h3>
+      <span class="n">allianz &middot; aviso_fora_da_garantia</span>
+      <p>Respondia <b>&ldquo;1&rdquo;</b> numa bolha onde 1 significa <em>&ldquo;Até 10 anos&rdquo;</em>. As regras já diziam
+      que o aparelho precisa ter até 10 anos — e a tela que <em>verifica</em> isso era respondida no
+      automático, sem ninguém perguntar ao segurado.</p>
+    </div>
+    <div class="card cr">
+      <h3>Todo condomínio virava apólice residencial</h3>
+      <span class="n">allianz &middot; menu_qual_seguro</span>
+      <p>Respondia <b>&ldquo;1&rdquo;</b> num menu de três opções onde <b>2 é Condomínio</b>. Não travava nada:
+      abria o chamado — e o chamado seria recusado no local, com o técnico já a caminho.</p>
+    </div>
+    <div class="card cr">
+      <h3>O protocolo entregue era o CEP do destino</h3>
+      <span class="n">bradesco &middot; âncora de protocolo</span>
+      <p>O padrão <code>o.s.</code> sem fronteira fez <b>39 capturas</b> no acervo e <b>zero corretas</b>.
+      O número que o segurado recebia como protocolo era o CEP para onde o guincho ia levar o carro.</p>
+    </div>
+    <div class="card cr">
+      <h3>Quatro rotas prometiam um número que não existe</h3>
+      <span class="n">tokio &middot; desfecho</span>
+      <p>A tokio só entrega <b>link</b>, nunca protocolo. E o carimbo de entrada do chat era colhido como
+      se fosse o número — em <b>7 de 7 sessões</b>.</p>
+    </div>
+    <div class="card cr">
+      <h3>A porta de entrada nunca abriu por passo</h3>
+      <span class="n">azul &middot; menu_inicial</span>
+      <p>O passo exigia a pergunta e a opção na <em>mesma</em> bolha. A URA da azul manda três.
+      Casava zero — e o cérebro adaptativo cobria, silenciosamente, desde sempre.</p>
+    </div>
+    <div class="card cr">
+      <h3>Vidros era encerrado com a legenda do menu</h3>
+      <span class="n">zurich &middot; vidros_orientacao</span>
+      <p>Casava o <em>cardápio</em> (8 mensagens, 7 de 15 sessões) e, com desfecho de encaminhamento,
+      fechava o caso entregando ao segurado o texto do menu como se fosse a resposta.</p>
+    </div>
+  </div>
+  <p class="note">⚠️ <b>E o limite que isso expõe:</b> o comparador de regressão conta <em>casamentos</em>,
+  não respostas certas. Nenhum dos sete aparece como ganho nele — foi exatamente isso que os escondeu.
+  Está registrado como pendência aberta.</p>
+</section>
+
+<section>
+  <h2>O Atlas, e por que ele não conflita com nada</h2>
+  <p class="sub">Você perguntou se o Atlas está certo, se foi reescrito, e se ele e os corredores dizem
+  coisas diferentes. A resposta curta: <b>o Atlas está vivo e correto — e ninguém o confrontou com os
+  corredores ainda.</b></p>
+  <dl class="q2">
+    <dt>o que ele é</dt>
+    <dd>O <b>mapa observado</b> da URA de cada seguradora, montado sozinho pelo Tecelão a partir das
+    conversas reais. Ele não é escrito à mão: é o retrato do que a URA <em>fez</em>.</dd>
+
+    <dt>como está hoje</dt>
+    <dd>📊 <b>10 mapas ativos</b>, todos atualizados entre 15 e 21/08/2026. O da Allianz tem 880&nbsp;KB e
+    foi atualizado <b>no dia do acionamento da Clarissa</b>. Nenhum está velho ou errado.</dd>
+
+    <dt>a diferença</dt>
+    <dd>O <b>Atlas</b> diz <em>&ldquo;a URA mandou estas telas&rdquo;</em>. O <b>corredor</b> diz
+    <em>&ldquo;quando vier esta tela, responda isto&rdquo;</em>. São camadas diferentes — o Atlas é o
+    território, o corredor é a rota sobre ele.</dd>
+
+    <dt>🔴 o que falta</dt>
+    <dd><b>Ninguém comparou os dois.</b> As 271 telas órfãs que sobraram são exatamente isto: telas que o
+    Atlas registrou e o corredor não responde. <b>O Atlas já sabe o que falta em cada corredor</b> — e
+    essa comparação nunca foi rodada como gate.</dd>
+  </dl>
+  <p class="note">📊 E há um risco registrado: se a tabela de marcas de corretora vier vazia em produção,
+  o Tecelão grava o Atlas <b>sem apagar nome de atendente e razão social</b>. O Atlas é um só e é de todas
+  as corretoras. Está como pendência aberta, com verificação imediata.</p>
+</section>
+
+<section>
+  <h2>O que trava, e de quem é</h2>
+  <p class="sub">Toda rota abaixo da régua carrega, no inventário, o que falta e o que destrava.
+  Estas quatro dependem de uma decisão ou de uma ação humana — o resto é execução.</p>
+  <dl class="q2">
+    <dt>mapfre &middot; 4 rotas</dt>
+    <dd><b>São dois bots diferentes</b>, e a tecla se chama <em>&ldquo;Assistência 24H&rdquo;</em> num e
+    <em>&ldquo;Assistência&rdquo;</em> no outro. Nenhuma das 13 sessões do acervo chegou a escolher.
+    <b>Um acionamento real destrava as quatro de uma vez.</b></dd>
+
+    <dt>porto &middot; chaveiro</dt>
+    <dd>Existe no acervo uma <b>sessão completa até o protocolo</b> — e o produto devolve
+    <code>False</code> para o serviço. O mesmo vale para táxi, técnico e bateria-nova da porto.
+    <b>Ligar é decisão de escopo, não de engenharia.</b></dd>
+
+    <dt>azul &middot; pneu e vidros</dt>
+    <dd>As teclas <b>morreram</b> quando a URA da azul migrou, em 07/04/2026. <code>vidros</code> foi
+    desligada (por isso 61 e não 62) e <code>pneu</code> vai a handoff. Falta saber onde elas entram
+    no menu novo.</dd>
+
+    <dt>telas que pedem dinheiro</dt>
+    <dd>As da azul e da zurich têm <b>botão de aceitar custo</b>. Foram todas para handoff:
+    aceitar cobrança em nome do segurado é <b>decisão comercial</b>, e o corredor não a toma.</dd>
+  </dl>
+  <p class="note">📊 As 28 rotas sem medida somam <b>359 sessões de demanda</b> represada. Elas não são
+  corredores ruins — são corredores que ninguém pode avaliar, porque não há um único acionamento
+  observado delas no acervo. O que destrava cada uma é sempre a mesma coisa: <b>um acionamento real.</b></p>
+</section>
+
+<section>
+  <h2>O plano — <span style="color:var(--accent)">as três primeiras fases já rodaram</span></h2>
+  <p class="sub">Está em <code>docs/canon/specs/SPEC-084.1-o-ensaio.md</code> — 1.222 linhas,
+  liberado pelo juiz em 91/100 depois de quatro rodadas. Cada rota passa pelas mesmas 14 estações.
+  ✅ <b>As SPECs 084, 084.1 e 084.2 estão executadas</b>; o que segue é o roteiro das ondas que
+  faltam, e ele vale como escrito.</p>
+  <dl class="q2">
+    <dt>FASE 0</dt>
+    <dd><b>A régua conserta a si mesma</b>, em commit que não toca playbook nenhum. Cinco consertos —
+    e um deles <b>subtrai de propósito</b>. 💭 ~70 min · o <b>JUIZ 0</b> libera, não o executor.</dd>
+
+    <dt>FASE 0.5</dt>
+    <dd><b>O leitor do Espelho</b>, para minerar os apelidos das conversas com o cliente.
+    ✅ <b>Já existe e está ligado</b> (flag <code>--com-espelho</code> da régua), com as duas travas não negociáveis:
+    filtro de corretora e <b>exclusão da Amandus</b>. 🔴 <b>Não há decisão nem acesso a dar.</b> O que falta para os 4 pontos
+    é <b>vocabulário real de cliente</b> — três apelidos vivos por serviço — e ele entra sozinho quando o agente atende;
+    o que a atendente digita no celular <b>não</b> entra.</dd>
+
+    <dt>FASE 1</dt>
+    <dd><b>A varredura de segurança nas 73</b>, antes de qualquer rota. Procura constante que
+    <em>decide</em> algo em nome do segurado — idade do aparelho, ramo da apólice, endereço.
+    💭 ~2 h · <b>nenhuma rota vai a teste ao vivo antes dela fechar</b>.</dd>
+
+    <dt>ONDA A</dt>
+    <dd><b>allianz × residencial, 9 rotas</b> — e a máquina de lavar primeiro de todas, porque é a
+    referência e o executor precisa dela fechada para ter contra o que comparar.</dd>
+
+    <dt>ONDAS B–E</dt>
+    <dd><b>allianz auto (4) · hdi auto (5) · yelum auto (5) · porto auto (8)</b>.
+    Com a ONDA A são as <b>31 prioritárias</b> — as que a Resulta e a AutoFleet mais acionam.</dd>
+
+    <dt>ONDA F</dt>
+    <dd>As 16 fora de A–E que pontuam — 🔴 e <b>15 das 16 são obrigatórias</b>: carregam as 59 telas
+    de dívida que nenhuma outra onda paga. <b>&ldquo;O resto&rdquo; deixou de ser resto.</b></dd>
+
+    <dt>ONDA G</dt>
+    <dd>As 26 restantes sem corpus. <b>Não recebem trabalho de rota</b> — recebem roteiro de coleta,
+    porque não há uma única conversa delas no acervo.</dd>
+  </dl>
+  <p class="note">🔴 <b>E o gate não é a nota.</b> É: <b>as 14 estações cumpridas</b> e o que ficou de
+  fora <b>nomeado, com o que destrava</b>. Uma rota em 51 com o bloqueio nomeado é entrega; uma rota
+  em 95 com furo invisível não é.</p>
+</section>
+
+<section style="margin-top:40px">
+  <span class="eyebrow">Novo em 24/08 &middot; <code>docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md</code></span>
+  <h2>E agora existe uma regra de como se monta equipe de agentes</h2>
+  <p class="sub">Ela responde três perguntas, e só três: <b>quantos agentes esta tarefa merece</b>,
+  <b>quem julga</b>, e <b>quando o laço para</b>. Entrou no <code>CLAUDE.md</code> como leitura
+  obrigatória de toda sessão — você nunca precisa pedir.</p>
+
+  <dl class="q2">
+    <dt>a regra que impede a trava</dt>
+    <dd><b>O teste do produto.</b> Antes de consertar qualquer achado: <em>isto muda um byte do
+    que chega ao segurado, à corretora, ao banco ou à segurança?</em> <b>Não → registra e
+    segue.</b> 🔴 Foi ela que impediu o próprio protocolo de travar julgando a si mesmo:
+    <b>seis achados do juiz viraram pendência por causa dela</b>.</dd>
+
+    <dt>a regra que impede o excesso</dt>
+    <dd><b>Duas contas, nunca uma.</b> O <b>RISCO</b> diz se precisa de juiz; a <b>SUPERFÍCIE</b>
+    diz de quantas pessoas. Uma palavra numa mensagem que vai ao segurado é risco máximo e
+    superfície zero — <b>dois papéis, e um deles lê a palavra</b>.</dd>
+
+    <dt>a regra que mais paga, e custa uma frase</dt>
+    <dd><b>Todo subagente reporta o que vir fora do próprio escopo.</b> 📊 A mutação de teste
+    commitada dentro da régua foi achada assim. Nesta semana, três vezes.</dd>
+  </dl>
+
+  <p class="note" style="margin-top:16px">🔴 <b>E ele foi julgado pelo próprio método, três
+  vezes, por três juízes — o terceiro sem ver os anteriores.</b> Reprovou nas três: <b>7, depois
+  5, depois 4</b> defeitos. O pior de todos era da v1: a conta mandava <b>nove agentes consertarem
+  um comentário de coluna</b> e liberava <b>117 commits em produção sem ninguém olhando</b>.
+  O segundo pior foi meu conserto do primeiro: ele isentava de revisão <b>a única migration de
+  vazamento entre corretoras do repositório</b>.</p>
+
+  <p class="note" style="margin-top:11px">⚠️ <b>E o laço parou sozinho, que era o teste.</b>
+  Bateu o teto de três voltas sem o juiz liberar — e a regra dele obriga classificar em vez de
+  insistir: <em>não é nenhuma das oito condições de parada do <code>CLAUDE.md</code>, então
+  entrega o que passou, registra o resto, e avança.</em> 🔴 <b>Um protocolo de qualidade que
+  não sabe parar é o defeito que ele existe para matar.</b></p>
+</section>
+
+<p class="note" style="margin-top:34px">
+Todos os números desta página saem de <code>medir_rota.py</code> rodando sobre o corpus versionado em
+<code>docs/canon/corpus/</code>, no commit <code>0f54761</code>, contra o acervo de 22/08/2026. 🔴 <b>As notas são as de hoje: o protocolo da SPEC-084.1 ainda não foi executado.</b>
+O acervo é vivo: os números têm a data de geração ao lado porque, sem ela, o alvo se move durante a execução.
+</p>
+
+</div>

@@ -1,0 +1,171 @@
+<div id="tab-vidros" class="tab" hidden>
+
+<header class="top">
+  <span class="eyebrow">EXTRA-001.10 &middot; a próxima SPEC &middot; 📊 medido em 20/09/2026 sobre a main em b3d88f1</span>
+  <h1>O portal de vidros, do WhatsApp ao comprovante.</h1>
+  <p class="lede">Hoje um segurado pede para-brisa e <b>uma pessoa</b> entra no portal, preenche dez telas e cola o link de vistoria à mão.
+  Esta SPEC tira a pessoa do meio de um acionamento que <b>já acontece todo dia</b> na Yelum e na Porto.
+  🔴 <b>E a resposta curta à sua pergunta: não, você não precisa esperar por captura nenhuma para começar.</b></p>
+  <div class="meta">
+    <span>prompt pronto <b>specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md</b></span>
+    <span>pré-requisitos <b>specs-propostas/PRE-REQUISITOS-EXTRA-001.10.md</b></span>
+    <span>cartão de captura <b>specs-propostas/GUIA-DE-CAPTURA-PORTAL-DE-VIDROS.md</b></span>
+    <span>acervo 📊 <b>365 arquivos, 208 MB</b></span>
+  </div>
+</header>
+
+<div class="virada" style="border-left-color:var(--accent)">
+  <span class="eyebrow" style="color:var(--accent)">Como abrir o chat — as duas linhas que interessam</span>
+  <h2>Abra um chat novo e cole o prompt pronto. Hoje.</h2>
+  <p class="lede" style="max-width:74ch">Abra um <b>chat novo</b> e cole o conteúdo inteiro de
+  <code>docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md</code>. Nada mais.</p>
+  <p class="lede" style="max-width:74ch;margin-top:10px">A execução começa por <b>lataria/martelinho</b>, que está medida de ponta a ponta e fecha com o material que já existe.
+  Se no meio do caminho aparecer uma demanda real de para-brisa, a captura entra e a SPEC fecha mais. Se não aparecer, ela fecha com
+  vidraçaria em 99% e o último clique <b>escrito, testado e desligado</b> — com o gatilho anotado para voltar.</p>
+  <p class="note" style="margin-top:15px">🔴 <b>E o que você NÃO deve fazer:</b> inventar um acionamento de para-brisa só para capturar.
+  Abrir um pedido no portal <b>aciona uma loja de verdade</b> (D-PILOTO-05). Só com demanda real de um segurado.</p>
+</div>
+
+<section style="margin-top:8px">
+  <h2>O que o robô faz hoje &times; o que falta</h2>
+  <p class="sub">📊 Medido no código e nas quatro capturas do acervo. Um corredor só, público, sem login, para todas as seguradoras do portal —
+  a marca muda, o motor não.</p>
+  <div class="tblbox">
+    <table style="min-width:840px">
+      <thead><tr><th class="l">o que</th><th class="l">hoje</th><th class="l">depois da 001.10</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>Abrir o atendimento</b></td><td class="ds">✅ vai até a tela dos 80% ("confirme a peça danificada") e, com o agente ligado, chega ao <b>nº do atendimento</b></td><td class="ds">igual, mas com o caminho de <b>lataria</b> como ramo próprio (multi-peça, sem loja nem agendamento)</td></tr>
+        <tr><td class="ds"><b>Gravar peça, causa e cidade</b></td><td class="ds">🔴 <b>não grava.</b> 📊 Zero chamadas do passo que salva isso: o robô documenta o passo e nunca o envia</td><td class="ds">grava — é o P0 da SPEC</td></tr>
+        <tr><td class="ds"><b>Solicitante e corretor</b></td><td class="ds">🔴 faltam, e são <b>obrigatórios</b> no portal</td><td class="ds">cadastrados</td></tr>
+        <tr><td class="ds"><b>A cidade do serviço</b></td><td class="ds">🔴 o agente usa o <b>endereço de casa</b>, que frequentemente está errado. 📊 A Regina pergunta a cidade em <b>8 de 8</b> atendimentos</td><td class="ds">o agente pergunta, e é o que vai ao portal</td></tr>
+        <tr><td class="ds"><b>O mapa das seguradoras</b></td><td class="ds">🔴 <b>3 no código</b>, e uma delas <b>nem existe</b> no portal</td><td class="ds">as <b>38</b> do portal, medidas</td></tr>
+        <tr><td class="ds"><b>Mostrar lojas, distâncias, dias e horários</b></td><td class="ds">só recomenda por escrito</td><td class="ds">mostra ao segurado (<b>sem clicar</b>)</td></tr>
+        <tr><td class="ds"><b>Perguntas por peça</b></td><td class="ds">"qual vidro foi?" em texto livre. Retrovisor, farol, lanterna, para-choque e vigia não têm pergunta própria</td><td class="ds">perguntas tiradas da <b>lista de peças da própria apólice</b> — só o que restringe o catálogo daquele contrato</td></tr>
+        <tr><td class="ds"><b>Tela que o robô não conhece</b></td><td class="ds">🔴 vira silêncio</td><td class="ds">vira um <b>aviso com o resumo do caso</b> para uma pessoa assumir</td></tr>
+        <tr><td class="ds"><b>O freio de segurança</b></td><td class="ds">⚠️ é <b>geral</b>: ligar libera todos os acionamentos em voo naquele robô</td><td class="ds">um freio <b>por acionamento</b> — construído <b>antes</b> do canário</td></tr>
+        <tr><td class="ds"><b>Confirmar loja, dia e hora</b></td><td class="ds">🟡 não faz</td><td class="ds">🟡 <b>escrito, testado e desligado</b> — 📊 em 4 capturas esse clique <b>nunca saiu</b>: a Regina cancelou antes, e uma vez a grade voltou vazia</td></tr>
+        <tr><td class="ds"><b>Anexar fotos e gerar o link de vistoria</b></td><td class="ds">🟡 repassa o link à mão</td><td class="ds">🟡 espera captura. 📊 <b>Zero</b> requisições de upload em todo o material que temos</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>Os pré-requisitos, em três grupos</h2>
+
+  <h3 style="margin:20px 0 8px">🔴 Obrigatório — sem isto o chat trava no meio</h3>
+  <dl class="q2">
+    <dt>1 · implantar</dt><dd>EasyPanel, nesta ordem: <code>smith-api</code> → <code>smith-worker</code> → <code>portal-worker</code> → <code>smith-web</code>.
+    <b>Por quê:</b> a SPEC termina com um acionamento real; se o robô do portal estiver rodando código velho, o teste prova a coisa errada.
+    Há uma implantação <b>pendente desde a 001.7</b>. <b>10 min.</b></dd>
+    <dt>2 · uma apólice Yelum</dt><dd>De <b>veículo seu</b>, ativa, com cobertura de <b>lataria/martelinho</b>. É o canário: o robô vai abrir um pedido <b>de verdade</b> nessa apólice, até o comprovante.
+    <b>Como conferir:</b> a Regina entra no portal, passo 1, com o CPF e a placa; se a apólice aparece e a peça de lataria está na lista, está bom. <b>Não precisa concluir</b> — parar no passo 1 não abre nada. <b>5 min.</b></dd>
+    <dt>3 · o CPF do titular</dt><dd>Por <b>variável de ambiente</b> no <code>portal-worker</code> — nunca no chat, nunca em arquivo do repositório.
+    O executor confere <b>presença/ausência</b>, jamais o valor. <b>2 min.</b></dd>
+    <dt>4 · as credenciais do portal</dt><dd>No cofre. Provavelmente já estão: os acionamentos anteriores funcionaram. O executor roda a conferência de login e reporta ✅/❌, sem mostrar segredo. <b>5 min.</b></dd>
+    <dt>5 · os números de teste</dt><dd>Já estão no ambiente; o executor confirma a presença. Nenhuma mensagem sai para pessoa real fora do canário. <b>2 min.</b></dd>
+    <dt>6 · quem cancela</dt><dd>🧑 <b>Sua decisão.</b> Se o pedido nascer e o robô morrer depois, <b>ninguém reexecuta</b> — e isso está certo. Cancelar é mão humana, pelo portal, e quem sabe fazer é a Regina.
+    Combine que ela fica disponível na janela do canário. <b>1 min.</b></dd>
+  </dl>
+
+  <h3 style="margin:26px 0 8px">🟡 Ajuda muito — acelera e melhora a nota, mas não trava</h3>
+  <dl class="q2">
+    <dt>7 · a captura nº 1</dt><dd>Para-brisa na Yelum <b>até o agendamento confirmado</b>. É a única coisa que destrava o último clique, as perguntas próprias do para-brisa
+    (sensor de chuva, faixa degradê, ADAS) e a régua certa do trincado — 📊 hoje o código usa "10 cm" e o portal escreve "maior que uma moeda de 1 real".
+    🔴 <b>Só com demanda real de um segurado.</b></dd>
+    <dt>8 · a Regina lendo</dt><dd>10 minutos para ler a conversa do canário. A máquina prova que o portal aceitou; só uma pessoa prova que a conversa <b>soou humana</b>.
+    Ela responde "eu mandaria essa mensagem" — ou aponta o que soou de robô.</dd>
+    <dt>9 · os grupos de suporte</dt><dd>✅ <b>já feito.</b> Estavam desativados desde 10/09; você reativou. Sem destino ativo, um pedido de ajuda vindo do portal não teria para onde ir — e "tela desconhecida vira pedido de ajuda" é um dos resultados desta SPEC.</dd>
+    <dt>10 · Allianz e Mapfre</dt><dd>As senhas renovadas. Não é desta SPEC, mas está aberto desde 18/08 e atrapalha toda medição de portal. <b>15 min.</b></dd>
+  </dl>
+
+  <h3 style="margin:26px 0 8px">⚪ Pode vir depois — não segure o chat por isto</h3>
+  <p class="sub">A mesma peça escolhendo <b>domicílio</b> &middot; uma apólice <b>com vistoria habilitada</b>, até o upload da foto &middot;
+  retrovisor, lanterna bipartida, farol e vigia (só o print da lista de peças aberta) &middot; "Consultar atendimento" e "Área do Segurado"
+  &middot; uma seguradora fora de Yelum e Porto &middot; <b>Bradesco</b> (🔴 D-PILOTO-17: captura antes de código, e primeiro num portal só)
+  &middot; lataria com mais de uma peça &middot; roda/pneu na Porto <b>com</b> cobertura.</p>
+</section>
+
+<section>
+  <h2>O cartão de captura — para a Regina, e você lê junto</h2>
+  <p class="sub">🔴 <b>Isto é de verdade.</b> Abrir um atendimento no portal aciona uma loja ou um prestador. <b>Não existe "modo teste".</b>
+  Em uma frase: <i>você já faz o acionamento todo dia — a única coisa nova é abrir o F12 antes de começar, salvar algumas telas, e no fim exportar um arquivo.</i></p>
+  <div class="cards">
+    <div class="card cr">
+      <h3>1 · ANTES de abrir o site</h3><span class="n">2 minutos — e é a parte que mais se erra</span>
+      <p><b>A ordem importa.</b> Se abrir o portal primeiro, o gravador perde o começo e a captura não serve.
+      (1) janela <b>anônima</b> — <code>Ctrl+Shift+N</code>, para não misturar sessão de outro dia; (2) <code>F12</code>; (3) aba <b>Network</b>;
+      (4) ✅ <b>Preserve log</b>; (5) ✅ <b>Disable cache</b> — sem estas duas, tudo some quando a página troca, e é justamente a troca de tela que interessa;
+      (6) ligar a <b>gravação de tela</b> (<code>Win+G</code>): o vídeo mostra <b>onde</b> você clicou, o arquivo mostra <b>o que</b> foi enviado — um só não explica a tela;
+      (7) <b>só agora</b> digitar o endereço. ⚠️ Não feche o F12 em nenhum momento.</p>
+    </div>
+    <div class="card al">
+      <h3>2 · DURANTE — três coisas, e só três</h3><span class="n">o porquê vale mais que o clique</span>
+      <p><b>(a) Fale em voz alta o porquê de cada escolha</b> — <i>"escolhi vidro de porta e não de janela porque o dele sobe e desce"</i>,
+      <i>"esta loja é a mais perto do trabalho dele, não de casa"</i>. É isso que ensina o robô a <b>decidir</b>; a tela sozinha só ensina a <b>preencher</b>.
+      <b>(b) Pare 3 segundos em cada tela</b>, e mais nas três que <b>nunca capturamos</b>: a lista de lojas com endereço e distância (99%);
+      a <b>grade de horários</b> — a mais importante de todas, nunca vimos um horário de verdade — mais o "Confirmar agendamento" antes e a tela depois;
+      e o anexo de fotos / vistoria. <b>(c)</b> Se aparecer o <b>link de vistoria</b>, deixe-o inteiro e legível num print.
+      <b>Regra de ouro:</b> não cancele, não desista e não feche a aba antes de a última tela carregar.</p>
+    </div>
+    <div class="card ok">
+      <h3>3 · DEPOIS — três arquivos, e acabou</h3><span class="n">1 minuto</span>
+      <p><b>(a)</b> No F12 → Network → botão direito → <b>"Save all as HAR with content"</b>. 🔴 Tem de ser <b>with content</b>:
+      sem isso o arquivo vem vazio por dentro. <b>Como saber que deu certo:</b> ele fica <b>grande, de 10 a 30 MB</b> — 📊 um de 200 KB foi salvo sem conteúdo e não serviu.
+      <b>(b)</b> Nas telas-chave, <code>Ctrl+S</code> → "Página da Web, completa" (guarde o arquivo <b>e</b> a pasta do lado).
+      <b>(c)</b> Um <code>notas.txt</code> de três linhas, escrito <b>na hora</b>: seguradora e peça; o que aconteceu e por que você escolheu o que escolheu; o que deu estranho.
+      Em dois dias ninguém lembra — e essa frase vale mais que o arquivo de 30 MB.</p>
+    </div>
+    <div class="card cr">
+      <h3>⛔ O que NUNCA fazer</h3><span class="n">cinco regras, todas com motivo</span>
+      <p><b>Nunca</b> use a senha do <b>portal de corretor</b> — é o portal do segurado, e só ele; se entrar logada em algo, avise: o arquivo guarda o crachá de entrada.
+      <b>Nunca</b> dois clientes na mesma captura — um acionamento, uma pasta.
+      <b>Nunca</b> suba no Git, mande por e-mail ou cole em chat qualquer arquivo dessa pasta: ela tem CPF, placa, nome e telefone. Ela fica <b>na máquina</b>.
+      <b>Nunca</b> edite o arquivo "para tirar os dados" — quem lê sabe mascarar, e um arquivo editado à mão perde o valor.
+      <b>Nunca</b> refaça um acionamento que já nasceu, "para capturar melhor": seriam dois pedidos no nome do mesmo segurado.</p>
+    </div>
+  </div>
+  <p class="note">📁 <b>Onde depositar:</b> dentro de <code>docs/intake/materiais/portal-vidros/&lt;SEGURADORA&gt;/&lt;PEÇA&gt; &lt;N&gt;/</code>,
+  seguindo o padrão que já existe. Nome de arquivo com <b>um número na frente, na ordem em que a tela apareceu</b>, e o resto em português mesmo.
+  <br>🆘 <b>Se algo der errado no meio:</b> o F12 fechou → reabra, remarque <i>Preserve log</i> e <b>anote em que tela</b> isso aconteceu &middot;
+  a página travou → <b>não recarregue às cegas</b>, tire print da tela travada primeiro (ela é dado) &middot;
+  você cancelou → ótimo, <b>capture a tela de cancelado também</b> &middot; esqueceu de gravar a tela → escreva o porquê de cada escolha com mais detalhe no <code>notas.txt</code>.</p>
+</section>
+
+<section>
+  <h2>O que o acervo já cobre — e o que não existe em lugar nenhum</h2>
+  <p class="sub">📊 Medido em 20/09/2026: <b>365 arquivos, 208 MB</b>.</p>
+  <div class="tblbox">
+    <table style="min-width:800px">
+      <thead><tr><th class="l">material</th><th>data</th><th class="l">até onde vai</th></tr></thead>
+      <tbody>
+        <tr><td class="ds"><b>Yelum — lataria/martelinho</b></td><td class="dm">09/09</td><td class="ds">🟢 <b>ponta a ponta</b>, do início ao comprovante. Esse ramo não tem escolha de loja nem agendamento — a seguradora indica</td></tr>
+        <tr><td class="ds"><b>Yelum — vidro de porta</b></td><td class="dm">14–15/08</td><td class="ds">🟡 <b>até um clique do fim</b>: lojas com distância e calendário apareceram; a grade de horários voltou vazia e a Regina cancelou</td></tr>
+        <tr><td class="ds"><b>Porto — lanterna e roda</b></td><td class="dm">15/08</td><td class="ds">🟡 incompletos de propósito; provam que <b>Porto e Yelum são o mesmo motor</b> e mostram o portal recusando por falta de cláusula</td></tr>
+        <tr><td class="ds"><b>As perguntas que a Regina faz</b></td><td class="dm">12/09</td><td class="ds">🟢 viram a lista de perguntas do agente, por tipo de dano</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note" style="border-left-color:var(--crit)">🔴 <b>O que NÃO existe em lugar nenhum</b> — e por isso está na lista de capturas:
+  o questionário do <b>para-brisa</b> (a peça mais comum; só temos vidro de porta e lanterna) &middot;
+  a grade de horários com <b>horário real</b> (📊 a única vez que apareceu, veio vazia) &middot;
+  o clique que <b>confirma</b> o agendamento (📊 nenhuma das 4 capturas chegou lá) &middot;
+  o subfluxo de <b>domicílio</b> inteiro &middot; o anexo de <b>fotos</b> e o link de vistoria (📊 zero requisições de upload) &middot;
+  qualquer coisa do <b>Bradesco</b> &middot; lataria com mais de uma peça &middot; <b>34 das 38</b> seguradoras do portal.</p>
+</section>
+
+<section>
+  <h2>Em uma folha: a sua sequência</h2>
+  <dl class="q2">
+    <dt>1</dt><dd>Implantar tudo no EasyPanel (10 min)</dd>
+    <dt>2</dt><dd>Rodar o checklist até dar <b>PODE LIGAR</b></dd>
+    <dt>3</dt><dd>✅ Grupos de suporte reativados nas duas corretoras — <b>feito</b></dd>
+    <dt>4</dt><dd>Confirmar com a Regina a apólice Yelum de lataria do seu veículo de teste (5 min)</dd>
+    <dt>5</dt><dd>Pôr o CPF do titular no ambiente do <code>portal-worker</code> (2 min)</dd>
+    <dt>6</dt><dd>Combinar com a Regina a janela do canário — e que ela cancela pelo portal se algo morrer no meio (1 min)</dd>
+    <dt>7</dt><dd>🔴 <b>Abrir o chat novo e colar o prompt</b></dd>
+    <dt>8</dt><dd>Em paralelo, <b>se e quando</b> aparecer um para-brisa de verdade: a captura nº 1, pelo cartão acima</dd>
+  </dl>
+  <p class="note">🔴 <b>Não espere o item 8 para fazer o item 7.</b></p>
+</section>
+</div>
