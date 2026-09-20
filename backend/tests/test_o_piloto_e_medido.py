@@ -145,11 +145,16 @@ class ClienteDeCorpus:
     """O banco, dublado NA BORDA. ⚠️ Ele não sabe nada de piloto: só serve
     linhas e aplica os mesmos filtros que o PostgREST aplicaria."""
 
-    def __init__(self, tabelas):
+    def __init__(self, tabelas, quebrada=None):
         self.tabelas = tabelas
-        self.filtros_vistos = []
+        #: 🔴 A tabela que FALHA. Ela existe porque `ler_paginado` devolve
+        #: `truncou=True` também quando a página estoura — e era por esse
+        #: caminho que uma nota SUBIA (B4).
+        self.quebrada = quebrada
 
     def table(self, nome):
+        if nome == self.quebrada:
+            raise RuntimeError("timeout simulado em %s" % nome)
         return _Consulta(self.tabelas.get(nome) or [])
 
 
@@ -174,8 +179,8 @@ def com(tabelas_extras=None, remover=None):
     return t
 
 
-def medir_com(tabelas, nomes=None, de=DE, ate=ATE):
-    cliente = ClienteDeCorpus(tabelas)
+def medir_com(tabelas, nomes=None, de=DE, ate=ATE, quebrada=None):
+    cliente = ClienteDeCorpus(tabelas, quebrada=quebrada)
     corretoras = [(n, EMPRESAS[n]) for n in (nomes or NOMES)]
     return rodar(medir(cliente, corretoras, de, ate))
 
@@ -238,6 +243,22 @@ def bloco_1_o_fio():
           "Resulta: nenhuma — e zero aqui é uma MEDIÇÃO, não ausência de leitura")
     certo(af["conversas_com_agente"] == 0 and re_["conversas_com_agente"] == 0,
           "nenhuma conversa com fala do agente: o agente estava desligado")
+    # 🔴 O NÚMERO FINAL de quem FALOU. Ele depende do discriminador do
+    #    motor (`e_origem_humana`): sem ele, "só com pessoa" vira ZERO e a
+    #    página diria que ninguém atendeu ninguém em dois dias inteiros.
+    certo([d["atendidas"]["so_com_pessoa"] for d in _em("AutoFleet", corpo)["dias"]]
+          == [60, 50] and
+          [d["atendidas"]["so_com_pessoa"] for d in
+           _em("Resulta Seguros", corpo)["dias"]] == [18, 35],
+          "conversas só com pessoa por dia: AutoFleet 60/50 · Resulta 18/35")
+    # 🔴 E o TOTAL de conversas que falaram no dia bate com a LENTE DO
+    #    DADO (SELECT independente, subindo de `messages`): 64/53 e 25/38.
+    certo([d["atendidas"]["conversas_mexidas"] for d in _em("AutoFleet", corpo)["dias"]]
+          == [64, 53] and
+          [d["atendidas"]["conversas_mexidas"] for d in
+           _em("Resulta Seguros", corpo)["dias"]] == [25, 38],
+          "conversas com mensagem no dia: AutoFleet 64/53 · Resulta 25/38 "
+          "(os mesmos números da lente do dado)")
     certo(re_["silencios_total"] == 0 and af["silencios_total"] == 0,
           "nenhum silêncio do agente em 17–18/09 — o único do acervo é de OUTRO "
           "dia, e a medição não o puxa para dentro da janela")
@@ -445,7 +466,142 @@ def bloco_7_menos_dado_nunca_melhora():
 
 
 def bloco_8_o_dia_e_o_local():
-    print("\n8. O DIA É O DIA LOCAL DA CORRETORA")
+    print("\n8. O DIA É O DIA LOCAL DA CORRETORA, E VEM DA MENSAGEM (B1)")
+    a0 = NOMES[0]
+    cid0 = EMPRESAS[a0]
+    # 🔴 B1 — a conversa entra no dia em que ELA FALOU, não no dia em que
+    #    alguém a tocou pela última vez. O `updated_at` daqui é D+2.
+    conversa = {"id": "c-b1", "company_id": cid0, "status": "open",
+                "resolucao_motivo": None, "resolvido_em": None,
+                "updated_at": "2026-09-20T12:00:00+00:00",
+                "ficha_atendimento": {"apolice_confirmada": False}}
+    fala = {"id": "m-b1", "conversation_id": "c-b1", "role": "assistant",
+            "payload": {"origem": ORIGEM_DO_AGENTE},
+            "created_at": "2026-09-18T12:00:00+00:00"}
+    t = com({"conversations": [conversa], "messages": [fala]})
+    dias = {d["dia"]: d for d in _em(a0, medir_com(t, nomes=[a0]))["dias"]}
+    certo(dias["2026-09-18"]["atendidas"]["com_agente"] == 1,
+          "🔴 conversa com mensagem em 18/09 e `updated_at` em 20/09 CONTA "
+          "no dia 18 — o dia é o da mensagem")
+    certo(dias["2026-09-17"]["atendidas"]["com_agente"] == 0,
+          "CONTROLE: e não aparece no dia 17, onde ela não falou")
+    # 🔴 E um dia FECHADO não se mexe quando alguém toca a conversa depois:
+    #    era isto que quebrava G2 (a mesma rodada dava outro número amanhã).
+    antes = _em(a0, medir_com(com(), nomes=[a0]))["agregado"]
+    futuro = com()
+    for c_ in futuro["conversations"]:
+        c_["updated_at"] = "2027-01-01T00:00:00+00:00"
+    depois = _em(a0, medir_com(futuro, nomes=[a0]))["agregado"]
+    certo(antes == depois,
+          "mover o `updated_at` de TODAS as conversas para 2027 não muda "
+          "NENHUM número de 17–18/09")
+    certo(antes["conversas_mexidas"] > 0,
+          "CONTROLE: e há conversas nesses dias (%d) — a igualdade acima não é "
+          "de dois zeros" % antes["conversas_mexidas"])
+
+
+def bloco_11_leitura_que_falha(_=None):
+    print("\n11. 🔴 B4 — TABELA QUE NÃO FOI LIDA NÃO VIRA NOTA (nem zero)")
+    a = NOMES[0]
+    cid = EMPRESAS[a]
+    extras = {"platform_sends": envios(cid, 5), "work_runs": runs(cid, 10),
+              "agent_activities": handoffs(cid, 5, 5)}
+    bom = _em(a, medir_com(com(extras), nomes=[a]))
+    certo(_dim(bom["regua"]["atendimento"], "atendimento.aciona")["nota"] == 50,
+          "com tudo lido: 5 protocolos de 10 acionamentos = 50")
+    # 🔴 O defeito medido: com `work_runs` fora do ar a conta virava 5/5 = 100.
+    for tabela, chave in (("work_runs", "atendimento.aciona"),
+                          ("platform_sends", "atendimento.aciona"),
+                          ("agent_activities", "atendimento.sabe_pedir_ajuda"),
+                          ("work_events", "atendimento.coleta_e_age"),
+                          ("conversation_logs", "chat.velocidade"),
+                          ("agents", "chat.velocidade")):
+        r = _em(a, medir_com(com(extras), nomes=[a], quebrada=tabela))["regua"]
+        bloco = ("chat_principal" if chave.startswith("chat") else "atendimento")
+        d = _dim(r[bloco], chave)
+        certo(d["nota"] == NAO_AVALIADA,
+              "`%s` fora do ar → `%s` sai NÃO AVALIADA, e não 100" % (tabela, chave))
+    # e nenhuma nota SOBE com a tabela quebrada
+    def notas(regua):
+        return {d["chave"]: d["nota"] for b in ("atendimento", "chat_principal")
+                for d in regua[b]["dimensoes"]}
+    antes = notas(bom["regua"])
+    for tabela in ("work_runs", "platform_sends", "agent_activities",
+                   "work_events", "conversation_logs", "agents", "conversations",
+                   "messages"):
+        depois = notas(_em(a, medir_com(com(extras), nomes=[a],
+                                        quebrada=tabela))["regua"])
+        subiu = [k for k, v in depois.items()
+                 if v != NAO_AVALIADA and antes.get(k) != NAO_AVALIADA
+                 and int(v) > int(antes[k])]
+        if subiu:
+            certo(False, "nota SUBIU com `%s` fora do ar: %s" % (tabela, subiu))
+            break
+    else:
+        certo(True, "🔴 nenhuma nota sobe quando QUALQUER das 8 tabelas falha")
+    # e a célula do dia diz NÃO LIDO, não 0
+    corpo = medir_com(com(extras), nomes=[a], quebrada="platform_sends")
+    md = em_markdown(corpo, comando="teste", gerado_em="18/09/2026")
+    certo("NÃO LIDO" in md and "não consegui ler" in md,
+          "a tabela do dia mostra NÃO LIDO e a página explica que não foi lida")
+    certo("NÃO LIDO" not in em_markdown(
+        medir_com(com(extras), nomes=[a]), comando="t", gerado_em="x"),
+        "CONTROLE: com tudo lido, nenhuma célula diz NÃO LIDO")
+
+
+def bloco_12_o_chat_principal(_=None):
+    print("\n12. 🔴 B2/B3/B6 — O CHAT PRINCIPAL, O P90 DO PERÍODO E A SOMA")
+    a = NOMES[0]
+    cid = EMPRESAS[a]
+    core = [x["id"] for x in CORPO["tabelas"]["agents"]
+            if x["company_id"] == cid and x["agent_role"] == "core"][0]
+    outro = [x["id"] for x in CORPO["tabelas"]["agents"]
+             if x["company_id"] == cid and x["agent_role"] != "core"][0]
+
+    def log(i, agente, ms, quando):
+        return {"id": "cl-%s-%d" % (agente[:4], i), "company_id": cid,
+                "agent_id": agente, "status": "success",
+                "response_time_ms": ms, "created_at": quando}
+
+    # 🔴 B3: 24 perguntas rápidas no dia 17 e UMA lenta no dia 18. O "p90 do
+    #    pior dia" antigo lia 31 s e dava 0; o p90 do PERÍODO lê a cauda real.
+    rapidas = ([log(i, core, 1000, "2026-09-17T13:00:00+00:00") for i in range(22)]
+               + [log(50 + i, core, 20000, "2026-09-17T13:00:00+00:00")
+                  for i in range(2)])
+    lenta = [log(99, core, 31000, "2026-09-18T13:00:00+00:00")]
+    do_outro = [log(i, outro, 60000, "2026-09-17T13:00:00+00:00") for i in range(30)]
+    r = _em(a, medir_com(com({"conversation_logs": rapidas + lenta + do_outro}),
+                         nomes=[a]))
+    vel = _dim(r["regua"]["chat_principal"], "chat.velocidade")
+    certo(r["agregado"]["chat_perguntas"] == 25,
+          "🔴 só as 25 perguntas do agente `core` contam (as 30 do atendimento "
+          "ficam de fora)")
+    certo(r["agregado"]["chat_de_outros_agentes"] == 30,
+          "e as outras 30 aparecem como INFORMAÇÃO, com nome próprio")
+    # 22×1s + 2×20s no dia 17 e 1×31s no dia 18.
+    #   p90 do PERÍODO = 20.000 ms   (o certo)
+    #   p90 do PIOR DIA = 31.000 ms  (o defeito antigo — um dia de 1 pergunta)
+    #   MÍNIMO          =  1.000 ms  (o outro jeito de errar)
+    certo(r["agregado"]["chat_p90_ms"] == 20000,
+          "🔴 p90 do PERÍODO = 20.000 ms — não os 31.000 do 'pior dia' "
+          "(1 pergunta) nem os 1.000 do mínimo")
+    certo(vel["nota"] == 40, "logo a nota é 40 (0 pelo pior dia, 100 pelo mínimo)")
+    certo("tempo do modelo" in vel["criterio"],
+          "e o critério diz que é o tempo do MODELO, não o relógio da pessoa")
+    # 🔴 B6: a soma dos estados atravessa os dias em vez de sobrescrever.
+    certo(r["agregado"]["chat_estados"] == {"success": 25},
+          "🔴 os estados do chat SOMAM os 2 dias (25), não sobrescrevem (1)")
+    # CONTROLE: com só o agente do atendimento, a dimensão cai de amostra.
+    so_outro = _em(a, medir_com(com({"conversation_logs": do_outro}),
+                                nomes=[a]))["regua"]
+    certo(_dim(so_outro["chat_principal"],
+               "chat.velocidade")["nota"] == NAO_AVALIADA,
+          "CONTROLE: 30 perguntas SÓ do atendimento = amostra 0 para o chat "
+          "principal → NÃO AVALIADA")
+
+
+def bloco_8b_o_dia_e_o_local():
+    print("\n8b. O DIA LOCAL")
     a = NOMES[0]
     cid = EMPRESAS[a]
     # 02:00 UTC de 18/09 é 23:00 de 17/09 em São Paulo.
@@ -514,7 +670,8 @@ def test_o_piloto_e_medido():
                   bloco_3_o_silencio_vem_do_produto, bloco_4_zero_pii,
                   bloco_5_isolamento, bloco_6_nao_avaliada_dos_dois_lados,
                   bloco_7_menos_dado_nunca_melhora, bloco_8_o_dia_e_o_local,
-                  bloco_9_antes_de_14_nao_e_zero, bloco_10_o_bloco_so_com_maioria):
+                  bloco_9_antes_de_14_nao_e_zero, bloco_10_o_bloco_so_com_maioria,
+                  bloco_11_leitura_que_falha, bloco_12_o_chat_principal):
         bloco()
     print("\n%s  %d verdes · %d vermelhas" % ("=" * 60, OK, FAIL))
     assert not FAIL, "guardas vermelhos: %s" % FALHAS

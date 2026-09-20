@@ -52,6 +52,9 @@ from scripts.medir_o_piloto import (  # noqa: E402
 
 DESTINO = os.path.join(RAIZ, "tests", "corpus", "piloto", "recorte.json")
 
+#: id real -> id anonimizado dos agentes (para `conversation_logs.agent_id`).
+POR_AGENTE: Dict[str, str] = {}
+
 #: 🔴 O motivo SINTÉTICO que representa cada classe. ⚠️ Ele não é invenção: é
 #: montado a partir das CONSTANTES do motor, e o teste prova que
 #: `classe_do_silencio(sintetico) == classe_real`. ⛔ A classe `takeover` é a
@@ -109,7 +112,7 @@ async def gerar(de: str, ate: str, corretoras: Sequence[str]) -> Dict[str, Any]:
     inicio, fim = de + "T00:00:00+00:00", ate + "T23:59:59+00:00"
     tabelas: Dict[str, List[dict]] = {k: [] for k in (
         "companies", "conversations", "messages", "platform_sends", "work_runs",
-        "agent_activities", "work_events", "conversation_logs")}
+        "agent_activities", "work_events", "conversation_logs", "agents")}
     silencios_esperados: List[Dict[str, str]] = []
 
     for nome in corretoras:
@@ -120,11 +123,22 @@ async def gerar(de: str, ate: str, corretoras: Sequence[str]) -> Dict[str, Any]:
         cid = str(linhas[0]["id"])
         tabelas["companies"].append({"id": anon(cid), "company_name": nome})
 
-        conversas = (await cliente.table("conversations")
-                     .select("id, status, resolucao_motivo, resolvido_em, "
-                             "updated_at, ficha_atendimento")
-                     .eq("company_id", cid).gte("updated_at", inicio)
-                     .lt("updated_at", fim).limit(400).execute()).data or []
+        # 🔴 TODAS as conversas da corretora, PAGINADAS — nunca as "tocadas
+        #    no período". ⛔ O recorte antigo repetia o viés do medidor
+        #    (`updated_at` dentro da janela) e o dublê concordava com o defeito
+        #    POR CONSTRUÇÃO: um teste assim prova a própria premissa (§9.4).
+        #    ⚠️ E sem `.limit()` fixo: um teto escrito à mão corta em silêncio.
+        conversas = []
+        while True:
+            lote = (await cliente.table("conversations")
+                    .select("id, status, resolucao_motivo, resolvido_em, "
+                            "updated_at, ficha_atendimento")
+                    .eq("company_id", cid).order("id")
+                    .range(len(conversas), len(conversas) + 999)
+                    .execute()).data or []
+            conversas.extend(lote)
+            if len(lote) < 1000:
+                break
         ids = []
         for c in conversas:
             ficha = c.get("ficha_atendimento")
@@ -165,10 +179,22 @@ async def gerar(de: str, ate: str, corretoras: Sequence[str]) -> Dict[str, Any]:
                     } if carga else None,
                 })
 
+        # 🔴 `agents` entra no dublê: sem ele não dá para separar o chat
+        #    principal do atendimento (B2), e a nota sairia sobre a mistura.
+        for a in ((await cliente.table("agents")
+                   .select("id, agent_role, is_subagent")
+                   .eq("company_id", cid).limit(200).execute()).data or []):
+            tabelas.setdefault("agents", []).append({
+                "id": anon(a["id"]), "company_id": anon(cid),
+                "agent_role": a.get("agent_role"),
+                "is_subagent": bool(a.get("is_subagent"))})
+            POR_AGENTE[str(a["id"])] = anon(a["id"])
+
         for tabela, colunas in (
                 ("platform_sends", "id, kind, created_at"),
                 ("work_runs", "id, runtime_kind, status, created_at"),
-                ("conversation_logs", "id, status, response_time_ms, created_at"),
+                ("conversation_logs",
+                 "id, status, response_time_ms, created_at, agent_id"),
         ):
             for r in ((await cliente.table(tabela).select(colunas)
                        .eq("company_id", cid).gte("created_at", inicio)
@@ -176,6 +202,8 @@ async def gerar(de: str, ate: str, corretoras: Sequence[str]) -> Dict[str, Any]:
                 r = dict(r)
                 r["id"] = anon(r["id"])
                 r["company_id"] = anon(cid)
+                if "agent_id" in r:
+                    r["agent_id"] = anon(r["agent_id"])
                 tabelas[tabela].append(r)
 
         for r in ((await cliente.table("work_events")

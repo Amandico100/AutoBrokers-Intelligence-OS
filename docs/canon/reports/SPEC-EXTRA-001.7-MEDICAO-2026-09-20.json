@@ -1,6 +1,6 @@
 {
-  "ate": "2026-09-20",
-  "comando": "cd backend && python scripts/medir_o_piloto.py --de 2026-09-08 --ate 2026-09-20 --formato json --saida ../docs/canon/reports/SPEC-EXTRA-001.7-MEDICAO-2026-09-20.json",
+  "ate": "2026-09-19",
+  "comando": "cd backend && python scripts/medir_o_piloto.py --de 2026-09-08 --ate 2026-09-19 --formato json --saida ../docs/canon/reports/SPEC-EXTRA-001.7-MEDICAO-2026-09-20.json",
   "corretoras": {
     "AutoFleet": {
       "agregado": {
@@ -12,25 +12,26 @@
         "ajudas_incapacidade": 0,
         "ajudas_regra": 0,
         "apolice_confirmada_hoje": 0,
+        "chat_de_outros_agentes": 22,
         "chat_estados": {
-          "success": 35
+          "success": 13
         },
-        "chat_p90_ms_pior_dia": 25995,
-        "chat_perguntas": 35,
+        "chat_p90_ms": 27529,
+        "chat_perguntas": 13,
         "conversas_com_agente": 0,
         "conversas_com_os_dois": 0,
-        "conversas_mexidas": 116,
-        "conversas_so_com_pessoa": 58,
+        "conversas_mexidas": 577,
+        "conversas_so_com_pessoa": 306,
         "desfechos": {
           "acionamento_concluido": 0,
           "encaminhado": 0,
           "expirou": 0,
-          "fantasma_lid": 4,
+          "fantasma_lid": 7,
           "fechado_por_humano": 0,
           "resolvido_pelo_segurado": 0
         },
-        "dias": 13,
-        "dias_com_origem_do_agente": 7,
+        "dias": 12,
+        "dias_com_origem_do_agente": 6,
         "grupo_calados": 7,
         "grupo_por_tipo": {
           "cobranca": 0,
@@ -45,8 +46,19 @@
           "vigia": 0
         },
         "handoffs_entregues": 0,
-        "handoffs_no_teto": 162,
+        "handoffs_no_teto": 150,
         "handoffs_sem_ninguem": 0,
+        "leituras": {
+          "agentes": "ok",
+          "atividades": "ok",
+          "chat": "ok",
+          "conversas": "ok",
+          "envios": "ok",
+          "eventos": "ok",
+          "mensagens": "ok",
+          "motor": "ok",
+          "runs": "ok"
+        },
         "rajadas_coalescidas": 0,
         "silencios_por_classe": {},
         "silencios_total": 0,
@@ -67,15 +79,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 18,
+            "conversas_mexidas": 79,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -116,6 +129,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -134,8 +158,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -150,17 +173,32 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 22,
+            "conversas_mexidas": 66,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": 25995,
-            "perguntas": 35,
+            "de_outros_agentes": 22,
+            "perguntas": 13,
             "por_estado": {
-              "success": 35
-            }
+              "success": 13
+            },
+            "tempos_ms": [
+              7297,
+              8183,
+              8939,
+              9341,
+              12693,
+              12902,
+              13174,
+              15596,
+              19748,
+              22345,
+              25995,
+              27529,
+              47165
+            ]
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -201,6 +239,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -209,7 +258,7 @@
               "acionamento_concluido": 0,
               "encaminhado": 0,
               "expirou": 0,
-              "fantasma_lid": 4,
+              "fantasma_lid": 5,
               "fechado_por_humano": 0,
               "resolvido_pelo_segurado": 0
             },
@@ -219,8 +268,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -235,15 +283,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 6,
+            "conversas_mexidas": 48,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -284,6 +333,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -302,8 +362,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -318,15 +377,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 9,
+            "conversas_mexidas": 52,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -367,6 +427,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -385,8 +456,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -401,15 +471,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 0,
+            "conversas_mexidas": 3,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -450,6 +521,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -468,8 +550,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -490,9 +571,10 @@
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -533,6 +615,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -551,8 +644,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -567,15 +659,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 18,
+            "conversas_mexidas": 70,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 16
+            "so_com_pessoa": 63
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -616,6 +709,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -634,8 +738,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -650,15 +753,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 13,
+            "conversas_mexidas": 71,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 12
+            "so_com_pessoa": 68
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -699,6 +803,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -717,8 +832,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -733,15 +847,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 15,
+            "conversas_mexidas": 69,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 15
+            "so_com_pessoa": 65
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -782,6 +897,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -800,8 +926,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -816,15 +941,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 12,
+            "conversas_mexidas": 64,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 12
+            "so_com_pessoa": 60
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -865,6 +991,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -873,7 +1010,7 @@
               "acionamento_concluido": 0,
               "encaminhado": 0,
               "expirou": 0,
-              "fantasma_lid": 0,
+              "fantasma_lid": 1,
               "fechado_por_humano": 0,
               "resolvido_pelo_segurado": 0
             },
@@ -883,8 +1020,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -899,15 +1035,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 3,
+            "conversas_mexidas": 53,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 3
+            "so_com_pessoa": 50
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -948,6 +1085,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -956,7 +1104,7 @@
               "acionamento_concluido": 0,
               "encaminhado": 0,
               "expirou": 0,
-              "fantasma_lid": 0,
+              "fantasma_lid": 1,
               "fechado_por_humano": 0,
               "resolvido_pelo_segurado": 0
             },
@@ -966,8 +1114,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -982,15 +1129,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 0,
+            "conversas_mexidas": 2,
             "mensuravel": true,
             "porque": "",
             "so_com_pessoa": 0
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1031,88 +1179,16 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
-          "rajadas_coalescidas": 0,
-          "resolveu_sozinho": {
-            "ajudas_sem_motivo": 0,
-            "ajudas_totais": 0,
-            "desfechos": {
-              "acionamento_concluido": 0,
-              "encaminhado": 0,
-              "expirou": 0,
-              "fantasma_lid": 0,
-              "fechado_por_humano": 0,
-              "resolvido_pelo_segurado": 0
-            },
-            "eficiencia_pct": null,
-            "publicavel": false
-          },
-          "silencios_do_agente": {
-            "por_classe": {},
-            "respondeu_por_excecao": 0
-          },
-          "truncou": false
-        },
-        {
-          "acionamentos": {
-            "com_protocolo": 0,
-            "encaminhados_sem_protocolo": 0,
-            "runs_por_status": {}
-          },
-          "apolice": {
-            "confirmada_hoje": 0,
-            "em_uma_rodada": "SEM ESCRITOR"
-          },
-          "atendidas": {
-            "com_agente": 0,
-            "com_os_dois": 0,
-            "conversas_mexidas": 0,
-            "mensuravel": true,
-            "porque": "",
-            "so_com_pessoa": 0
-          },
-          "chat_principal": {
-            "p90_ms": null,
-            "perguntas": 0,
-            "por_estado": {}
-          },
-          "contagens_do_motor": {
-            "acionamentos_entregues": 0,
-            "ajudas_desconhecidas": 0,
-            "ajudas_incapacidade": 0,
-            "ajudas_regra": 0,
-            "calados_pela_janela": 0,
-            "calados_total": 0,
-            "duvidas": 0,
-            "ja_com_a_equipe": 0,
-            "sinistros_com_dossie": 0,
-            "truncou": 0,
-            "vigia_prazo": 0,
-            "vigia_ura": 0
-          },
-          "dia": "2026-09-20",
-          "grupo": {
-            "calados": 0,
-            "calados_pela_janela": 0,
-            "de_tipo_desconhecido": 0,
-            "ja_com_a_equipe": 0,
-            "por_tipo": {
-              "cobranca": 0,
-              "conclusao": 0,
-              "espera_vencida": 0,
-              "pausa_humana": 0,
-              "pedido_de_ajuda": 0,
-              "queda_de_canal": 0,
-              "resumo_diario": 0,
-              "retomada": 0,
-              "sinistro": 0,
-              "vigia": 0
-            }
-          },
-          "handoffs": {
-            "entregues": 0,
-            "no_teto_de_lembretes": 12,
-            "relembrados": 0,
-            "sem_ninguem_para_receber": 0
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
           },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
@@ -1132,8 +1208,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         }
       ],
       "regua": {
@@ -1143,6 +1218,7 @@
               "chave": "atendimento.apolice_certa",
               "criterio": "de cada 10 atendimentos, em quantos o agente fixou a apólice certa logo na primeira tentativa",
               "fonte": "o produto ainda não grava em quantas rodadas a apólice foi fixada: só existe um sim/não que é sobrescrito, sem histórico (conversations.ficha_atendimento.apolice_confirmada)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -1152,6 +1228,7 @@
               "chave": "atendimento.coleta_e_age",
               "criterio": "de cada 10 casos que o agente pegou, em quantos ele foi até o fim sozinho em vez de parar por não conseguir",
               "fonte": "amostra insuficiente (0 de 5) — denominador zero não é 0%, é 'sem acionamentos no período'",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 5,
               "nota": "NÃO AVALIADA",
@@ -1161,6 +1238,7 @@
               "chave": "atendimento.aciona",
               "criterio": "de cada 10 acionamentos que o agente abriu, em quantos o segurado recebeu o protocolo no fim",
               "fonte": "amostra insuficiente (0 de 5)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 5,
               "nota": "NÃO AVALIADA",
@@ -1170,6 +1248,7 @@
               "chave": "atendimento.fala_como_humano",
               "criterio": "o segurado sentiu que falou com uma pessoa, e não com um robô",
               "fonte": "não há fonte durável: julgar isto exige LER a mensagem, e conteúdo de conversa não entra em medição (CLAUDE.md §7). Nenhuma nota, nenhuma avaliação automática e nenhum sinal do segurado são gravados",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -1179,6 +1258,7 @@
               "chave": "atendimento.sabe_calar",
               "criterio": "quando havia uma pessoa da corretora na conversa, o agente ficou quieto — e falou quando era a vez dele",
               "fonte": "o produto grava QUANTAS vezes o agente calou (0 no período, por classe) mas nunca se o silêncio era o certo: não existe registro de 'devia ter falado e não falou'. ⛔ Um período sem silêncio nenhum seria 100 por ausência de prova, e isso é proibido",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -1188,6 +1268,7 @@
               "chave": "atendimento.sabe_pedir_ajuda",
               "criterio": "de cada 10 vezes que o agente pediu ajuda humana, em quantas alguém da equipe realmente recebeu o caso",
               "fonte": "amostra insuficiente (0 de 5)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 5,
               "nota": "NÃO AVALIADA",
@@ -1204,6 +1285,7 @@
               "chave": "chat.apolice_certa",
               "criterio": "quando a corretora pergunta sobre uma apólice, o chat traz a apólice certa",
               "fonte": "sem escritor: nada liga a pergunta do chat à apólice que foi usada para responder (conversation_logs não grava a apólice)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -1213,6 +1295,7 @@
               "chave": "chat.uma_rodada",
               "criterio": "a corretora recebe a resposta sem ter de repetir a pergunta",
               "fonte": "sem escritor: nenhuma linha diz se a pergunta seguinte foi uma repetição da anterior",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -1222,6 +1305,7 @@
               "chave": "chat.completude",
               "criterio": "a resposta traz tudo o que foi perguntado, e não metade",
               "fonte": "não há fonte durável: julgar completude exige ler a resposta e compará-la com a pergunta — é trabalho de avaliador, não de SELECT",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -1230,25 +1314,27 @@
             {
               "chave": "chat.confiabilidade",
               "criterio": "de cada 10 perguntas, em quantas o chat respondeu em vez de falhar",
-              "fonte": "a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das linhas medidas (35). Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma",
-              "n": 35,
+              "fonte": "a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das 13 perguntas do chat principal no período. Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma",
+              "grampeou": false,
+              "n": 13,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
               "palpite_antigo": 80
             },
             {
               "chave": "chat.velocidade",
-              "criterio": "a resposta chega antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0)",
-              "fonte": "p90 do response_time_ms do pior dia do período (25995 ms)",
-              "n": 35,
+              "criterio": "o MODELO responde antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0). ⚠️ é o tempo do modelo, não o relógio da pessoa: fila, busca e rede ficam de fora",
+              "fonte": "amostra insuficiente (13 de 20 perguntas)",
+              "grampeou": false,
+              "n": 13,
               "n_minimo": 20,
-              "nota": 16,
+              "nota": "NÃO AVALIADA",
               "palpite_antigo": 60
             }
           ],
           "nome": "chat principal",
           "nota": "NÃO AVALIADA",
-          "porque": "1 de 5 dimensões têm fonte durável hoje — uma média sobre a minoria teria cara de nota do bloco inteiro"
+          "porque": "0 de 5 dimensões têm fonte durável hoje — uma média sobre a minoria teria cara de nota do bloco inteiro"
         }
       }
     },
@@ -1262,25 +1348,26 @@
         "ajudas_incapacidade": 0,
         "ajudas_regra": 0,
         "apolice_confirmada_hoje": 0,
+        "chat_de_outros_agentes": 9,
         "chat_estados": {
-          "success": 1
+          "success": 29
         },
-        "chat_p90_ms_pior_dia": 44850,
-        "chat_perguntas": 38,
+        "chat_p90_ms": 40533,
+        "chat_perguntas": 29,
         "conversas_com_agente": 0,
         "conversas_com_os_dois": 0,
-        "conversas_mexidas": 132,
-        "conversas_so_com_pessoa": 51,
+        "conversas_mexidas": 350,
+        "conversas_so_com_pessoa": 157,
         "desfechos": {
           "acionamento_concluido": 0,
           "encaminhado": 0,
-          "expirou": 0,
-          "fantasma_lid": 1,
+          "expirou": 1,
+          "fantasma_lid": 2,
           "fechado_por_humano": 0,
           "resolvido_pelo_segurado": 0
         },
-        "dias": 13,
-        "dias_com_origem_do_agente": 7,
+        "dias": 12,
+        "dias_com_origem_do_agente": 6,
         "grupo_calados": 0,
         "grupo_por_tipo": {
           "cobranca": 0,
@@ -1295,8 +1382,19 @@
           "vigia": 0
         },
         "handoffs_entregues": 0,
-        "handoffs_no_teto": 162,
+        "handoffs_no_teto": 151,
         "handoffs_sem_ninguem": 0,
+        "leituras": {
+          "agentes": "ok",
+          "atividades": "ok",
+          "chat": "ok",
+          "conversas": "ok",
+          "envios": "ok",
+          "eventos": "ok",
+          "mensagens": "ok",
+          "motor": "ok",
+          "runs": "ok"
+        },
         "rajadas_coalescidas": 0,
         "silencios_por_classe": {
           "janela": 1
@@ -1319,15 +1417,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 0,
+            "conversas_mexidas": 6,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1368,6 +1467,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1386,8 +1496,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1408,11 +1517,19 @@
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": 20943,
+            "de_outros_agentes": 0,
             "perguntas": 6,
             "por_estado": {
               "success": 6
-            }
+            },
+            "tempos_ms": [
+              8414,
+              13055,
+              14899,
+              18297,
+              20943,
+              22088
+            ]
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1453,6 +1570,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1471,8 +1599,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1490,17 +1617,41 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 59,
+            "conversas_mexidas": 122,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": 36124,
-            "perguntas": 31,
+            "de_outros_agentes": 9,
+            "perguntas": 22,
             "por_estado": {
-              "success": 31
-            }
+              "success": 22
+            },
+            "tempos_ms": [
+              8109,
+              9093,
+              10814,
+              11137,
+              11796,
+              13169,
+              13437,
+              13767,
+              14402,
+              14725,
+              14802,
+              18491,
+              19173,
+              25407,
+              26885,
+              27937,
+              29345,
+              32883,
+              36124,
+              40533,
+              51725,
+              53427
+            ]
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1541,6 +1692,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1548,8 +1710,8 @@
             "desfechos": {
               "acionamento_concluido": 0,
               "encaminhado": 0,
-              "expirou": 0,
-              "fantasma_lid": 1,
+              "expirou": 1,
+              "fantasma_lid": 2,
               "fechado_por_humano": 0,
               "resolvido_pelo_segurado": 0
             },
@@ -1561,8 +1723,7 @@
               "janela": 1
             },
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1577,15 +1738,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 12,
+            "conversas_mexidas": 42,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1626,6 +1788,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1644,8 +1817,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1660,15 +1832,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 0,
+            "conversas_mexidas": 1,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1709,6 +1882,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1727,8 +1911,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1743,15 +1926,16 @@
           "atendidas": {
             "com_agente": "NÃO MENSURÁVEL",
             "com_os_dois": "NÃO MENSURÁVEL",
-            "conversas_mexidas": 0,
+            "conversas_mexidas": 2,
             "mensuravel": false,
             "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
             "so_com_pessoa": "NÃO MENSURÁVEL"
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1792,6 +1976,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1810,8 +2005,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1826,15 +2020,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 9,
+            "conversas_mexidas": 35,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 9
+            "so_com_pessoa": 35
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1875,6 +2070,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1893,8 +2099,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1909,15 +2114,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 10,
+            "conversas_mexidas": 30,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 9
+            "so_com_pessoa": 27
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -1958,6 +2164,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -1976,8 +2193,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -1992,15 +2208,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 17,
+            "conversas_mexidas": 47,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 14
+            "so_com_pessoa": 42
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -2041,6 +2258,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -2059,8 +2287,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -2075,17 +2302,20 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 7,
+            "conversas_mexidas": 25,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 3
+            "so_com_pessoa": 18
           },
           "chat_principal": {
-            "p90_ms": 44850,
+            "de_outros_agentes": 0,
             "perguntas": 1,
             "por_estado": {
               "success": 1
-            }
+            },
+            "tempos_ms": [
+              44850
+            ]
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -2126,6 +2356,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -2144,8 +2385,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -2160,15 +2400,16 @@
           "atendidas": {
             "com_agente": 0,
             "com_os_dois": 0,
-            "conversas_mexidas": 16,
+            "conversas_mexidas": 38,
             "mensuravel": true,
             "porque": "",
-            "so_com_pessoa": 16
+            "so_com_pessoa": 35
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -2209,6 +2450,17 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
+          },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
             "ajudas_sem_motivo": 0,
@@ -2227,8 +2479,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         },
         {
           "acionamentos": {
@@ -2249,9 +2500,10 @@
             "so_com_pessoa": 0
           },
           "chat_principal": {
-            "p90_ms": null,
+            "de_outros_agentes": 0,
             "perguntas": 0,
-            "por_estado": {}
+            "por_estado": {},
+            "tempos_ms": []
           },
           "contagens_do_motor": {
             "acionamentos_entregues": 0,
@@ -2292,88 +2544,16 @@
             "relembrados": 0,
             "sem_ninguem_para_receber": 0
           },
-          "rajadas_coalescidas": 0,
-          "resolveu_sozinho": {
-            "ajudas_sem_motivo": 0,
-            "ajudas_totais": 0,
-            "desfechos": {
-              "acionamento_concluido": 0,
-              "encaminhado": 0,
-              "expirou": 0,
-              "fantasma_lid": 0,
-              "fechado_por_humano": 0,
-              "resolvido_pelo_segurado": 0
-            },
-            "eficiencia_pct": null,
-            "publicavel": false
-          },
-          "silencios_do_agente": {
-            "por_classe": {},
-            "respondeu_por_excecao": 0
-          },
-          "truncou": false
-        },
-        {
-          "acionamentos": {
-            "com_protocolo": 0,
-            "encaminhados_sem_protocolo": 0,
-            "runs_por_status": {}
-          },
-          "apolice": {
-            "confirmada_hoje": 0,
-            "em_uma_rodada": "SEM ESCRITOR"
-          },
-          "atendidas": {
-            "com_agente": 0,
-            "com_os_dois": 0,
-            "conversas_mexidas": 0,
-            "mensuravel": true,
-            "porque": "",
-            "so_com_pessoa": 0
-          },
-          "chat_principal": {
-            "p90_ms": null,
-            "perguntas": 0,
-            "por_estado": {}
-          },
-          "contagens_do_motor": {
-            "acionamentos_entregues": 0,
-            "ajudas_desconhecidas": 0,
-            "ajudas_incapacidade": 0,
-            "ajudas_regra": 0,
-            "calados_pela_janela": 0,
-            "calados_total": 0,
-            "duvidas": 0,
-            "ja_com_a_equipe": 0,
-            "sinistros_com_dossie": 0,
-            "truncou": 0,
-            "vigia_prazo": 0,
-            "vigia_ura": 0
-          },
-          "dia": "2026-09-20",
-          "grupo": {
-            "calados": 0,
-            "calados_pela_janela": 0,
-            "de_tipo_desconhecido": 0,
-            "ja_com_a_equipe": 0,
-            "por_tipo": {
-              "cobranca": 0,
-              "conclusao": 0,
-              "espera_vencida": 0,
-              "pausa_humana": 0,
-              "pedido_de_ajuda": 0,
-              "queda_de_canal": 0,
-              "resumo_diario": 0,
-              "retomada": 0,
-              "sinistro": 0,
-              "vigia": 0
-            }
-          },
-          "handoffs": {
-            "entregues": 0,
-            "no_teto_de_lembretes": 11,
-            "relembrados": 0,
-            "sem_ninguem_para_receber": 0
+          "leituras": {
+            "agentes": "ok",
+            "atividades": "ok",
+            "chat": "ok",
+            "conversas": "ok",
+            "envios": "ok",
+            "eventos": "ok",
+            "mensagens": "ok",
+            "motor": "ok",
+            "runs": "ok"
           },
           "rajadas_coalescidas": 0,
           "resolveu_sozinho": {
@@ -2393,8 +2573,7 @@
           "silencios_do_agente": {
             "por_classe": {},
             "respondeu_por_excecao": 0
-          },
-          "truncou": false
+          }
         }
       ],
       "regua": {
@@ -2404,6 +2583,7 @@
               "chave": "atendimento.apolice_certa",
               "criterio": "de cada 10 atendimentos, em quantos o agente fixou a apólice certa logo na primeira tentativa",
               "fonte": "o produto ainda não grava em quantas rodadas a apólice foi fixada: só existe um sim/não que é sobrescrito, sem histórico (conversations.ficha_atendimento.apolice_confirmada)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -2413,6 +2593,7 @@
               "chave": "atendimento.coleta_e_age",
               "criterio": "de cada 10 casos que o agente pegou, em quantos ele foi até o fim sozinho em vez de parar por não conseguir",
               "fonte": "amostra insuficiente (0 de 5) — denominador zero não é 0%, é 'sem acionamentos no período'",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 5,
               "nota": "NÃO AVALIADA",
@@ -2422,6 +2603,7 @@
               "chave": "atendimento.aciona",
               "criterio": "de cada 10 acionamentos que o agente abriu, em quantos o segurado recebeu o protocolo no fim",
               "fonte": "amostra insuficiente (2 de 5)",
+              "grampeou": false,
               "n": 2,
               "n_minimo": 5,
               "nota": "NÃO AVALIADA",
@@ -2431,6 +2613,7 @@
               "chave": "atendimento.fala_como_humano",
               "criterio": "o segurado sentiu que falou com uma pessoa, e não com um robô",
               "fonte": "não há fonte durável: julgar isto exige LER a mensagem, e conteúdo de conversa não entra em medição (CLAUDE.md §7). Nenhuma nota, nenhuma avaliação automática e nenhum sinal do segurado são gravados",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -2440,6 +2623,7 @@
               "chave": "atendimento.sabe_calar",
               "criterio": "quando havia uma pessoa da corretora na conversa, o agente ficou quieto — e falou quando era a vez dele",
               "fonte": "o produto grava QUANTAS vezes o agente calou (1 no período, por classe) mas nunca se o silêncio era o certo: não existe registro de 'devia ter falado e não falou'. ⛔ Um período sem silêncio nenhum seria 100 por ausência de prova, e isso é proibido",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -2449,6 +2633,7 @@
               "chave": "atendimento.sabe_pedir_ajuda",
               "criterio": "de cada 10 vezes que o agente pediu ajuda humana, em quantas alguém da equipe realmente recebeu o caso",
               "fonte": "amostra insuficiente (0 de 5)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 5,
               "nota": "NÃO AVALIADA",
@@ -2465,6 +2650,7 @@
               "chave": "chat.apolice_certa",
               "criterio": "quando a corretora pergunta sobre uma apólice, o chat traz a apólice certa",
               "fonte": "sem escritor: nada liga a pergunta do chat à apólice que foi usada para responder (conversation_logs não grava a apólice)",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -2474,6 +2660,7 @@
               "chave": "chat.uma_rodada",
               "criterio": "a corretora recebe a resposta sem ter de repetir a pergunta",
               "fonte": "sem escritor: nenhuma linha diz se a pergunta seguinte foi uma repetição da anterior",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -2483,6 +2670,7 @@
               "chave": "chat.completude",
               "criterio": "a resposta traz tudo o que foi perguntado, e não metade",
               "fonte": "não há fonte durável: julgar completude exige ler a resposta e compará-la com a pergunta — é trabalho de avaliador, não de SELECT",
+              "grampeou": false,
               "n": 0,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
@@ -2491,17 +2679,19 @@
             {
               "chave": "chat.confiabilidade",
               "criterio": "de cada 10 perguntas, em quantas o chat respondeu em vez de falhar",
-              "fonte": "a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das linhas medidas (1). Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma",
-              "n": 1,
+              "fonte": "a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das 29 perguntas do chat principal no período. Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma",
+              "grampeou": false,
+              "n": 29,
               "n_minimo": 0,
               "nota": "NÃO AVALIADA",
               "palpite_antigo": 80
             },
             {
               "chave": "chat.velocidade",
-              "criterio": "a resposta chega antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0)",
-              "fonte": "p90 do response_time_ms do pior dia do período (44850 ms)",
-              "n": 38,
+              "criterio": "o MODELO responde antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0). ⚠️ é o tempo do modelo, não o relógio da pessoa: fila, busca e rede ficam de fora",
+              "fonte": "p90 de TODAS as 29 perguntas do chat principal no período (40533 ms)",
+              "grampeou": false,
+              "n": 29,
               "n_minimo": 20,
               "nota": 0,
               "palpite_antigo": 60
@@ -2515,5 +2705,5 @@
     }
   },
   "de": "2026-09-08",
-  "gerado_em": "20/09/2026 08:21 UTC"
+  "gerado_em": "20/09/2026 09:21 UTC"
 }
