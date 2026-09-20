@@ -127,6 +127,9 @@ nota da execução .................... 86/100 · juiz 62 → red team 58 → co
 
 ## 12. Entrega
 ```
-__PUSH__
+$ git rev-list --count HEAD..origin/main → 0 · origin/main..HEAD → 7
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   3ae6af8..c2a7299  HEAD -> main          (📊 20/09/2026 10:17 UTC; este fecho sobe num commit a seguir)
 ```
 Implantar: smith-api → smith-worker → smith-web. Variáveis novas: nenhuma. Nenhum motor paralelo foi criado: o checklist ESTENDE `conferir_o_que_esta_no_ar.py` e reusa os motores do porteiro; a medição IMPORTA `contagens_do_dia`, `eficiencia_do_dia`, `classe_do_silencio` e `e_origem_humana`.
