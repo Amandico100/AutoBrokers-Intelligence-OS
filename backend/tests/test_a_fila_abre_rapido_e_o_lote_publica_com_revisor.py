@@ -489,4 +489,105 @@ checar("--aplicar sem --revisor" in _ajuda and "RECUSA" in _ajuda,
        "🔴 e a docstring continua prometendo a recusa — agora ela é verdade",
        _ajuda[:200])
 
+# ---------------------------------------------------------------------------
+print("\n[10] 🔴 DUAS LINHAS DO MESMO PLANO — o ensaio prometia 23, a "
+      "aplicacao entregou 17")
+# 📊 ACHADO NA PUBLICAÇÃO REAL, 19/09/2026, com o revisor do Founder:
+#     por que pulou: ja_em_publicado 17 · plano_pai_publicado 6 · …
+# A regra exigia o pai em `proposto`, e `publicar_servico` PUBLICA O PLANO
+# JUNTO — então, assim que a PRIMEIRA linha de um plano subia, o pai virava
+# `publicado` e a SEGUNDA linha do MESMO plano era pulada. A trava derrubava
+# exatamente o caso em que o plano já está válido.
+#
+# 🔴 E o motivo `plano_pai_publicado` LIA COMO SUCESSO no relatório, ao lado de
+# `ja_em_publicado` — seis linhas conferidas contra a página não chegaram ao
+# cliente e nada dizia que aquilo era perda.
+_db10 = BaseEmMemoria()
+_plano10 = _db10.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
+                       plano="Essencial", nivel=1, documento_id="doc-1",
+                       pagina=9, curadoria="proposto")
+_a10 = _db10.servico(_plano10, "guincho", "sim", documento_id="doc-1", pagina=25,
+                     curadoria="proposto")
+_b10 = _db10.servico(_plano10, "carro_reserva", "nao", documento_id="doc-1",
+                     pagina=23, curadoria="proposto")
+_conf10 = {"revisor_sugerido": REVISOR, "linhas": [
+    {"servico_id": _a10, "plano_id": _plano10, "veredito": "PUBLICAR"},
+    {"servico_id": _b10, "plano_id": _plano10, "veredito": "PUBLICAR"},
+]}
+_rel10 = LOTE.executar(_conf10, revisor=REVISOR, aplicar=True, db=_db10)
+checar(_rel10["publicadas"] == 2,
+       "🔴 AS DUAS linhas do mesmo plano publicam "
+       "(📊 antes: a segunda caia em `plano_pai_publicado`)",
+       "publicadas=%s pulos=%s" % (_rel10["publicadas"], _rel10["pulos"]))
+checar("plano_pai_publicado" not in (_rel10["pulos"] or {}),
+       "🔴 e `plano_pai_publicado` NAO aparece mais nos pulos",
+       repr(_rel10["pulos"]))
+_planos10 = _db10.tabelas["insurer_assistance_plans"]
+checar(len([q for q in _planos10 if q["curadoria"] == "publicado"]) == 1,
+       "🔴 e o plano sobe UMA vez so",
+       repr([(q["plano"], q["curadoria"]) for q in _planos10]))
+_serv10 = _db10.tabelas["insurer_assistance_services"]
+checar(all(q["curadoria"] == "publicado" for q in _serv10),
+       "🔴 e as duas linhas ficam `publicado`",
+       repr([(q["servico"], q["curadoria"]) for q in _serv10]))
+
+print("\n      🔴 CONTROLE: o ENSAIO e o APLICAR dao o MESMO numero")
+_db10b = BaseEmMemoria()
+_p10b = _db10b.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
+                     plano="Essencial", nivel=1, documento_id="doc-1",
+                     pagina=9, curadoria="proposto")
+_x = _db10b.servico(_p10b, "guincho", "sim", documento_id="doc-1", pagina=25,
+                    curadoria="proposto")
+_y = _db10b.servico(_p10b, "carro_reserva", "nao", documento_id="doc-1",
+                    pagina=23, curadoria="proposto")
+_conf10b = {"revisor_sugerido": REVISOR, "linhas": [
+    {"servico_id": _x, "plano_id": _p10b, "veredito": "PUBLICAR"},
+    {"servico_id": _y, "plano_id": _p10b, "veredito": "PUBLICAR"},
+]}
+_ensaio = LOTE.executar(_conf10b, revisor=REVISOR, aplicar=False, db=_db10b)
+_aplica = LOTE.executar(_conf10b, revisor=REVISOR, aplicar=True, db=_db10b)
+checar(_ensaio["publicadas"] == _aplica["publicadas"] == 2,
+       "🔴 CONTROLE: ensaio %s == aplicar %s — foi exatamente isto que "
+       "quebrou na publicacao real (23 x 17)"
+       % (_ensaio["publicadas"], _aplica["publicadas"]),
+       "ensaio=%s aplicar=%s" % (_ensaio["publicadas"], _aplica["publicadas"]))
+
+print("\n      🔴 CONTROLE: pai em `rascunho` PULA, e entra na lista de PERDA")
+_db10c = BaseEmMemoria()
+_p10c = _db10c.plano(insurer_key="hdi", ramo="auto", produto="Auto Perfil",
+                     plano="Preso", nivel=1, documento_id="doc-1", pagina=9,
+                     curadoria="rascunho")
+_z = _db10c.servico(_p10c, "guincho", "sim", documento_id="doc-1", pagina=25,
+                    curadoria="proposto")
+_rel10c = LOTE.executar(
+    {"revisor_sugerido": REVISOR,
+     "linhas": [{"servico_id": _z, "plano_id": _p10c, "veredito": "PUBLICAR"}]},
+    revisor=REVISOR, aplicar=True, db=_db10c)
+checar(_rel10c["publicadas"] == 0
+       and _rel10c["pulos"].get("plano_pai_rascunho") == 1,
+       "🔴 CONTROLE: pai em `rascunho` continua pulando",
+       repr(_rel10c["pulos"]))
+checar("plano_pai_rascunho" in LOTE.MOTIVOS_DE_PERDA,
+       "🔴 e ele esta na lista de PERDA — o relatorio diz que a linha NAO "
+       "chegou ao cliente, em vez de somar com a idempotencia",
+       repr(sorted(LOTE.MOTIVOS_DE_PERDA)))
+checar("ja_em_publicado" not in LOTE.MOTIVOS_DE_PERDA
+       and "ja_em_rascunho" not in LOTE.MOTIVOS_DE_PERDA,
+       "⚠️ e a IDEMPOTENCIA nao e perda — foi a mistura das duas que fez a "
+       "publicacao real ler como sucesso")
+
+print("\n      🔴 MUTACAO: voltar a exigir so `proposto`")
+_fonte_do_script = io.open(
+    os.path.join(RAIZ, "scripts", "publicar_linhas_da_base.py"),
+    encoding="utf-8").read()
+_sem_comentario10 = "\n".join(l.split("#")[0]
+                              for l in _fonte_do_script.splitlines())
+checar('not in ("proposto", "publicado")' in _sem_comentario10,
+       "🔴 a regra no CODIGO aceita os dois estados validos")
+_mutado10 = _sem_comentario10.replace('not in ("proposto", "publicado")',
+                                      '!= "proposto"')
+checar('not in ("proposto", "publicado")' not in _mutado10,
+       "🔴 MUTACAO: revertida para `!= \"proposto\"`, a segunda linha do "
+       "mesmo plano volta a ser pulada — e esta asercao falharia")
+
 sys.exit(_fechar())
