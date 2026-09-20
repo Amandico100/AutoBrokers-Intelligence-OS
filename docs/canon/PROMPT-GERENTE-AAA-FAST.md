@@ -1,3 +1,7 @@
+> ⛔ **SUPERADO em 20/09/2026 por D-PROTO-12 (AAA v13).** Não use este arquivo para abrir execução.
+> O molde vigente é `docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md`.
+> Fica aqui só como histórico do rito anterior.
+
 # PROMPT DO GERENTE — AAA FAST (modelo único · protocolo v12.2 · 17/09/2026)
 
 > Cole este texto inteiro num chat **NOVO** do Claude Code, modelo **Fable 5.1**, effort **high**, aberto na

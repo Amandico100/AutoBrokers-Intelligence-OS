@@ -10539,9 +10539,11 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 📊 `tela_cega` (SPEC-087) só é escrita pelo corredor de URA; o worker do navegador grava `debug_dom` num jsonb que ninguém varre. **Destrava:** estender a fila de aprendizado ao portal. **Dono:** 🤖.
 
 ## P-PILOTO-09 · credenciais dentro da árvore do repositório
+**PARCIAL (20/09)**: 📊 o arquivo de credenciais já está FORA da árvore do repositório; falta só a rotação das chaves que foram coladas no chat.
 📊 08/09: `docs/canon/CREDENCIAIS EASYPANEL.txt` (não versionado) dentro do repo; e os valores foram colados no chat. **Destrava:** mover o arquivo para fora da árvore; rotacionar as chaves coladas quando conveniente. **Dono:** 🧑. **Custo de esquecer:** um `git add` publica tudo.
 
 ## P-PILOTO-10 · o grupo de suporte da AutoFleet foi cadastrado na Resulta
+**PARCIAL (20/09)**: 📊 o checklist rodado depois do deploy mostra destino de suporte ATIVO nas DUAS corretoras do piloto — **FECHADA pelo Founder**.
 📊 08/09 21:48: `human_support_destinations` ganhou "Suporte AutoFleet" com `company_id` da **Resulta Seguros**; a AutoFleet segue com zero destinos. Efeito: handoff da AutoFleet não tem para onde ir e a Resulta pode mandar dossiê para o grupo errado. **Destrava:** apagar a linha na Resulta e recriar dentro da AutoFleet (trocar a corretora no dashboard antes), como principal. **Dono:** 🧑 hoje à noite.
 
 ## P-PILOTO-11 · canário Q1–Q6 da cobrança no implantado
@@ -10956,6 +10958,7 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 
 ## P-E0017-01 · 🧑🔴 os destinos de alerta da Resulta e da AutoFleet estão DESATIVADOS desde 10/09
+**PARCIAL (20/09)**: 📊 o checklist rodado depois do deploy mostra destino de suporte ATIVO nas DUAS corretoras do piloto — **FECHADA pelo Founder**.
 📊 20/09/2026 (`select is_active from human_support_destinations` por corretora, e o motor `resolver_destino_de_suporte` via `conferir_o_que_esta_no_ar.py --ligar`): as duas corretoras do piloto têm 1 destino cada, ambos `is_active=false` (última alteração 10/09). Ligar o agente hoje faria todo pedido de ajuda sair para lugar nenhum. ⚠️ O sinal do `/health` (`corretoras_ligadas_sem_destino_de_suporte = []`) NÃO mostra isso: ele só olha corretora com o agente JÁ ligado. **Destrava:** Painel → Personalização → Suporte humano: reativar (ou recadastrar) o grupo da equipe em cada corretora — conferindo P-PILOTO-10 (o grupo da AutoFleet tinha nascido dentro da Resulta). **Dono:** 🧑. **Custo de esquecer:** o piloto liga e o primeiro handoff some; é a trava nº 1 do checklist.
 
 ## P-E0017-02 · 🧑 Implantar o smith-api para o checklist conseguir conferir as exceções do silêncio
@@ -10981,3 +10984,9 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 
 ## P-E0017-09 · 🧑 os 3 dias de piloto e o canário da 001.5.2 — a metade da SPEC que só o Founder faz
 📊 20/09/2026: 0 conversas com fala do agente nas duas corretoras desde 14/09 (os 2 agentes de atendimento estão desligados) — todas as dimensões com fonte saíram "NÃO AVALIADA por amostra insuficiente", que é o resultado honesto. **Destrava:** o roteiro em `reports/SPEC-EXTRA-001.5-CANARIO-PASSO-A-PASSO.md` § "O PILOTO MEDIDO": checklist verde → ligar → 3 dias → medição diária → régua. **Dono:** 🧑. **Custo de esquecer:** as notas do §0 do diagnóstico continuam palpite, e a 001.7 fica sendo só um instrumento na gaveta.
+
+## P-E0017-10 · 🧑 conectores do ambiente de desenvolvimento sem autorização
+📊 20/09/2026: Gmail, Drive, Notion, Calendar, n8n, Firecrawl e os plugins de design pedem autorização e não foram conectados; GitHub e Playwright **falharam ao conectar**. **Destrava:** autorizar (ou remover) cada conector quando houver necessidade real. **Dono:** 🧑, **para depois das SPECs de serviço; nenhum fez falta** até aqui. **Custo de esquecer:** baixo hoje; vira ruído no começo de cada sessão.
+
+## P-E0017-11 · 🧑 o comando do checklist quebrou no console do EasyPanel
+📊 20/09/2026: rodado no contêiner, `conferir_o_que_esta_no_ar.py` parou com `ModuleNotFoundError` do módulo `portal_worker`, que não existe naquela imagem — na máquina local o mesmo comando passava. Conserto feito em 20/09; **exige clicar Implantar no smith-api** para valer no ar. **Destrava:** Implantar smith-api e rodar o checklist de novo pelo console. **Dono:** 🧑. **Custo de esquecer:** o Founder não consegue conferir sozinho se pode ligar o piloto — que é justamente o que o instrumento existe para responder.

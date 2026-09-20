@@ -8,58 +8,46 @@
 O **AutoBrokers.ai** é um SaaS multi-tenant verticalizado para corretoras de seguros. Não é um chatbot com ferramentas: é o **sistema operacional de trabalho da corretora**. Recebe um resultado desejado, monta o contexto correto, escolhe a Skill adequada, carrega só as ferramentas necessárias, executa em etapas duráveis, pede aprovação quando a ação é sensível, gera um Artifact profissional, entrega pelo canal escolhido e mede o resultado.
 
 ```text
-O corretor descreve o que precisa.
-O AutoBrokers transforma o pedido em trabalho governado.
-O sistema executa, comprova, entrega e acompanha o resultado.
+O corretor descreve o que precisa. O AutoBrokers transforma o pedido em trabalho
+governado, executa, comprova, entrega e acompanha o resultado.
 ```
 
-O corretor não compra ferramenta nem Skill. Compra **trabalho pronto, tempo recuperado e dinheiro**.
+O corretor não compra ferramenta nem Skill. Compra **trabalho pronto, tempo recuperado e dinheiro**. 🔴 E o produto é de **qualquer corretora** (§13.9), não das duas do piloto.
 
 Nome oficial do agente central: **AutoBrokers**. "Jarvys/Jarvis" é metáfora externa — nunca aparece em UI, código, tabela ou documentação canônica. **Smith** é o runtime técnico invisível, não é marca.
 
 ## 2. Bootstrap de sessão — 🔴 um NÚCLEO curto, e um ÍNDICE
 
-> ⚠️ **Isto era uma lista de leitura obrigatória de 13 documentos.** 📊 Medido em
-> 25/08/2026, ela somava **864.896 bytes (≈ 220 mil tokens)** por agente, por sessão —
-> e crescera **31% em quatro dias**. O `PENDENCIAS.md` sozinho era **54%** disso.
-> 🔴 **Um bootstrap grande demais para ser lido é um bootstrap que não é lido**, e
-> era o maior custo medido do projeto (`PROTOCOLO-AUTOBROKERS-AAA.md` §1).
+> ⚠️ Isto era uma lista obrigatória de 13 documentos. 📊 Em 25/08/2026 ela somava **864.896
+> bytes (≈ 220 mil tokens)** por agente, por sessão — e o `PENDENCIAS.md` era 54% disso.
+> 🔴 **Bootstrap grande demais para ser lido é bootstrap que não é lido.**
 
 ### 🔴 O NÚCLEO — leitura completa, sempre. ≈ 114 KB.
-
 ```
-1. este arquivo                                   as regras invioláveis
-2. docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md        como se monta equipe, quem julga,
-                                                  quando o laço para
-3. docs/canon/GLOSSARIO.md                        um termo, uma definição.
-                                                  Se dois documentos discordarem, vence
+1. este arquivo                             as regras invioláveis
+2. docs/canon/PROTOCOLO-AUTOBROKERS-AAA.md  como se executa, quem julga, quando o laço para
+3. docs/canon/GLOSSARIO.md                  um termo, uma definição — vence quem discordar dele
 4. a SPEC da etapa atual
 ```
 
 ### ⛔ E o protocolo é LEI — não é leitura recomendada
-
 ```
-🔴 NENHUMA execução de SPEC começa sem o EXECUTION CARD do protocolo §0.2.
-🔴 NENHUM relatório de SPEC fecha sem ele. Relatório sem card = SPEC aberta.
-🔴 O EXECUTOR lê o protocolo inteiro UMA vez. TODO pacote entregue a um subagente (juiz,
-   lente, investigador) carrega §0–§3, §5 e §7.3 (v12 · AAA FAST, 16/09/2026). Os pacotes-modelo
-   estão em `docs/canon/pacotes/`; o prompt do executor é `docs/canon/PROMPT-EXECUCAO-AAA-FAST.md`.
-```
-
-📊 **Por que isto virou regra em 30/08/2026:** uma auditoria mediu que o painel de
-juízes rodou em **2 de 6** SPECs — e a causa não foi desobediência. Os prompts das
-outras quatro **não carregavam o protocolo**, porque a §1 dele listava seis itens
-do pacote e **esquecia de si mesma**.
-
-```
-COM PAINEL    47 achados · 22 defeitos de PRODUTO
-SEM PAINEL    19 achados ·  0 defeitos de produto     3,7× menos
+🔴 NENHUMA execução começa sem o EXECUTION CARD (protocolo §0.2), e nenhum relatório fecha
+   sem ele. Relatório sem card = SPEC aberta.
+🔴 O EXECUTOR lê o protocolo inteiro UMA vez. TODO pacote entregue a um subagente (builder, juiz,
+   red team, lente) carrega §0–§3, §5 e §7.3 (**v13 · O FIO, 20/09/2026 — D-PROTO-12**). Os
+   pacotes-modelo estão em `docs/canon/pacotes/`; o molde de abertura é
+   `docs/canon/specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md`.
+⚠️ "v11", "v11.2", "opção B", "laço curto", "3 juízes", "AAA FAST sequencial" são nomes HISTÓRICOS.
+   O único rito em vigor é o do protocolo v13. Rito antigo = execução lenta; não se usa.
 ```
 
-⚠️ **O painel custa ~4% do relógio. A bateria de testes custa 50%.**
+📊 **Por que virou regra (30/08/2026):** o julgamento rodou em **2 de 6** SPECs, porque
+os prompts das outras quatro não carregavam o protocolo — a §1 dele esquecia de si mesma.
+**COM julgamento: 47 achados, 22 defeitos de PRODUTO. SEM: 19 achados, 0 defeitos** — 3,7×
+menos. ⚠️ Julgar custa ~4% do relógio; a bateria de testes custa 50%.
 
 ### O ÍNDICE — consulta quando a tarefa pedir, nunca "por via das dúvidas"
-
 | quando | abra |
 |---|---|
 | **antes de qualquer SQL** — obrigatório | [`MIGRATIONS-AUTHORITY.md`](docs/canon/MIGRATIONS-AUTHORITY.md) |
@@ -72,50 +60,47 @@ SEM PAINEL    19 achados ·  0 defeitos de produto     3,7× menos
 | portal, corredor ou Atlas | [`PORTAIS-E-CORREDORES.md`](docs/canon/PORTAIS-E-CORREDORES.md) · [`O-ATLAS-E-UM-SO-E-E-DE-TODAS.md`](docs/canon/O-ATLAS-E-UM-SO-E-E-DE-TODAS.md) |
 | arquitetura de fundo | **SPEC-052** (cérebro) · **SPEC-053** (Work OS) |
 | por que uma regra do protocolo existe | [`PROTOCOLO-AAA-EVIDENCIAS.md`](docs/canon/PROTOCOLO-AAA-EVIDENCIAS.md) |
+| **o que o Founder tem de fazer** | [`TAREFAS-DO-FOUNDER.md`](docs/canon/TAREFAS-DO-FOUNDER.md) |
+| a bateria mudou? | [`reports/BATERIA-LINHA-DE-BASE.txt`](docs/canon/reports/BATERIA-LINHA-DE-BASE.txt) |
+| o painel do Founder | [`painel-do-founder/`](docs/canon/painel-do-founder/) |
 | índice geral | [`README.md`](docs/canon/README.md) |
 
-🔴 **E a regra que impede a lista de voltar a crescer:** nenhum documento entra no
-NÚCLEO sem que outro saia ou encolha. **O ÍNDICE cresce à vontade; o NÚCLEO, não.**
-
-⚠️ **Quem delega tarefa a um agente entrega um PACOTE** — o contrato, os arquivos por
-caminho, as regras pertinentes por número, os gates — **nunca o canon** (§1 do protocolo).
+🔴 **A regra que impede a lista de crescer:** nenhum documento entra no NÚCLEO sem que outro
+saia ou encolha. O ÍNDICE cresce à vontade; o NÚCLEO, não. ⚠️ **Quem delega a um agente entrega
+um PACOTE** — contrato, arquivos por caminho, regras por número, gates — **nunca o canon**.
 
 Preflight, nesta ordem:
 
 ```bash
 git rev-list --count HEAD..origin/main   # 🔴 TEM DE SER 0 — estou em dia?
 git rev-list --count origin/main..HEAD   # ⚠️  o que AINDA NÃO SUBIU
-git branch --show-current
-git rev-parse HEAD                       # registrar no relatório
+git branch --show-current ; git rev-parse HEAD   # registrar no relatório
 git status --short                       # limpo ao iniciar
 ```
 
-🔴 **A árvore de trabalho é a que está em dia com a `origin/main`, e o preflight MEDE isso — não presume pelo nome da pasta.** ⚠️ 📊 Medido em 24/08/2026: `AutoBrokers-FIX` → **0 atrás** · `AutoBrokers-Opus-Exec` → **169 atrás**, último commit de 16/08. Este arquivo nomeava a segunda, e uma sessão que obedecesse começaria em SPECs, `PENDENCIAS` e código vencidos — que é como nasce motor paralelo (§5). **Contagem diferente de zero na primeira: pare e pergunte qual árvore usar.**
+🔴 **A árvore de trabalho é a que está em dia com a `origin/main`, e o preflight MEDE isso — não presume pelo nome da pasta.** 📊 Em 24/08/2026: `AutoBrokers-FIX` → **0 atrás** · `AutoBrokers-Opus-Exec` → **169 atrás**. Trabalhar na vencida começa em SPECs e código vencidos — é assim que nasce motor paralelo (§5). **Contagem diferente de zero na primeira: pare e pergunte qual árvore usar.**
 
-### ⛔ E A SEGUNDA CONTAGEM É A QUE JÁ CUSTOU UM DIA
+### ⛔ A SEGUNDA CONTAGEM JÁ CUSTOU UM DIA
 
-🔴 **`origin/main..HEAD` diz o que existe só nesta máquina.** Em 25/08/2026,
-**25 commits** — a SPEC-085 inteira, o protocolo v9 e a SPEC-092 — ficaram locais,
-e a branch **nem existia no remoto**. O EasyPanel constrói a `main`, então ele
-reimplantou **o mesmo commit quatro vezes seguidas**, e da tela não dá para ver que
-não havia nada novo: o histórico mostra sucesso verde toda vez.
+🔴 **`origin/main..HEAD` diz o que existe só nesta máquina.** 📊 Em 25/08/2026, **25 commits**
+ficaram locais e a branch nem existia no remoto. O EasyPanel constrói a `main`: ele reimplantou
+**o mesmo commit quatro vezes**, com histórico verde toda vez, e da tela não dá para ver.
 
 ```bash
-# 🔴 ENTREGAR NÃO É COMMITAR. É EMPURRAR.
-git rev-list --count origin/main..HEAD    # 0 = o trabalho está no ar
+# 🔴 ENTREGAR NÃO É COMMITAR. É EMPURRAR.  (0 = o trabalho está no ar)
+git rev-list --count origin/main..HEAD
 git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
 ```
 
-⚠️ **E quem pede o deploy entrega o COMANDO, nunca a tarefa.** *"faça o merge na
-main"* não é instrução — é um pedido para a outra pessoa adivinhar o comando. 🔴 **O
-§6.1 do protocolo diz que a SPEC não está concluída enquanto a entrega não estiver
-escrita; e entrega escrita é `git push`, com a saída dele colada no relatório.**
+⚠️ **Quem pede o deploy entrega o COMANDO, nunca a tarefa.** *"faça o merge na main"* não é
+instrução. 🔴 **A SPEC não está concluída enquanto a entrega não estiver escrita — e entrega
+escrita é `git push`, com a saída dele colada no relatório.**
 
 ## 3. Ordem de autoridade
 
 ```text
 CLAUDE.md (processo)
-→ PROTOCOLO-AUTOBROKERS-AAA v12 · AAA FAST (como se executa, se julga e quando se para)
+→ PROTOCOLO-AUTOBROKERS-AAA v13 · O FIO (como se executa, se julga e quando se para)
 → SPEC-052 (cérebro: conhecimento, memória, contexto, aprendizagem)
 → SPEC-053 (Work OS: harness, contratos, fronteiras)
 → 054 schema/segurança · 055 Work Runs/HITL · 056 Skills/Tools
@@ -179,10 +164,12 @@ Proibido sem manifesto aprovado: mover, renomear, apagar ou reaplicar migration 
 - Gates internos são **automáticos**: aplicar → VERIFY → testes → verde → avançar.
 - **Não** pedir aprovação manual do Founder entre todos os blocos.
 - A árvore é a que o preflight prova em dia com a `origin/main` (hoje `AutoBrokers-FIX`); uma branch por SPEC.
-- 🔴 **Cada SPEC inteira num só chat, sob o AAA FAST** (protocolo v12.2 §4/§5.2/§10): o GERENTE (Fable 5.1) faz card e
-  BLOCO 0, delega cada fatia a UM builder Opus 5 xhigh fresco, chama o juiz Fable fresco, fecha e empurra. Um gerente
-  encadeia 2–3 SPECs no mesmo chat (≤ 600 k). Nenhuma SPEC em duas sessões; o Founder nunca troca de chat no meio. ⚠️ "v11.2", "opção B", "laço curto", "3 juízes" nas propostas
-  são nomes históricos: o rito é só o do protocolo.
+- 🔴 **Cada SPEC inteira num só chat, sob o AAA v13** (protocolo §4/§5/§5.2/§10): o GERENTE (Fable 5.1) faz card,
+  **O FIO** e BLOCO 0, delega cada fatia a UM builder Opus 5 xhigh fresco — **em PARALELO quando os arquivos são
+  disjuntos, em série quando se cruzam** —, chama **o juiz Fable ‖ o red team Fable** (frescos, cegos um ao outro, UMA
+  vez), faz o conserto único, roda a bateria depois e empurra. Um gerente encadeia 2–3 SPECs no mesmo chat (≤ 600 k).
+  Nenhuma SPEC em duas sessões; o Founder nunca troca de chat no meio. ⚠️ "v11.2", "opção B", "laço curto", "3 juízes",
+  "AAA FAST sequencial" nas propostas são nomes históricos: o rito é só o do protocolo v13.
 
 ### 9.1 Build verde **não** é prova de que a aplicação sobe
 
@@ -401,6 +388,31 @@ guarda (`premio` que é parcela vencida), **conserte o campo** — não só o te
 O texto errado é o sintoma; o nome errado é a causa, e ela reinfecta todo leitor
 seguinte.
 
+### 12.2 🔴 A RESPOSTA FINAL AO FOUNDER — ela é o relatório, não o resumo
+
+> O Founder lê **só a última mensagem** do chat. Se ela vier curta, o trabalho inteiro
+> vira invisível: ele não abre o relatório no repositório, e não deveria precisar.
+
+**A última mensagem é um relatório completo, em linguagem de gente.** Sem jargão de
+protocolo (nada de "fatia", "gate verde", "blocker", "juiz ‖ red team"). Todo termo
+técnico inevitável é explicado **na primeira vez** que aparece, em meia linha.
+
+Ela tem, nesta ordem:
+
+```
+1. O QUE FOI FEITO          em frases inteiras: o que mudou para o corretor e para o segurado
+2. O QUE VOCÊ FAZ AGORA     passo a passo numerado, com o COMANDO PRONTO para colar —
+                            sem campo a preencher, sem "<seu-id-aqui>" — e o que ESPERAR NA TELA
+3. SE DER ERRADO            o erro provável, em português, e o que fazer com ele
+4. AS DECISÕES              cada uma com as opções e a nota 0–100. Diferença grande entre as
+                            notas = já vem decidida; ele só confirma se quiser
+5. O QUE FICOU FORA         e por quê, com o que custa esquecer
+6. A PRÓXIMA SPEC           o que é, e o texto exato para abrir o chat dela
+```
+
+⛔ **Sem teto de linhas.** Uma resposta longa e clara vence uma curta e elegante.
+🔴 Nunca "está tudo funcionando": cole o número, a contagem ou a saída do comando.
+
 ## 13. Regras finais
 
 1. Não alterar produção antes do preflight de infraestrutura (P1 pendente).
@@ -411,3 +423,8 @@ seguinte.
 6. Não inventar preço, plano, invoice ou cobrança fora da SPEC-062.
 7. Não presumir implementação só porque existe SPEC.
 8. Não fazer merge na `main` sem gate final da SPEC.
+9. 🔴 **O produto é para QUALQUER corretora, não para duas.** Nenhum nome de corretora
+   (nem de grupo, número, pasta ou atendente) entra como constante em código, teste,
+   script ou documento de operação — vem do banco, por `company_id`. Toda peça nova se
+   prova com **dois tenants reais**, e nenhum dado global de produto carrega nome de
+   cliente ou de funcionário. Piloto é amostra, nunca o desenho.

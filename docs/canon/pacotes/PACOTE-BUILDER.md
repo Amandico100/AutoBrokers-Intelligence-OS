@@ -1,4 +1,4 @@
-> ⚠️ **v12 · AAA FAST (16/09/2026):** sob o laço padrão o builder é o próprio EXECUTOR da sessão (protocolo §4), que já tem o card. Este pacote vale só quando a ESCALAÇÃO (§8) convocar um builder separado.
+> ✅ **v13 · D-PROTO-12 (20/09/2026):** sob o rito vigente o GERENTE delega CADA fatia a um builder subagente fresco com este pacote (protocolo §4/§5.2). Fatias de ARQUIVOS DISJUNTOS vão EM PARALELO; qualquer interseção de arquivos, em série.
 
 # PACOTE · BUILDER — uma unidade, um escritor
 
@@ -38,7 +38,7 @@ PENDÊNCIAS ...........  {P-… por número}
 FAIXA DE RELÓGIO .....  {…}
 ```
 
-## 🔴 O FIO (v13 · em teste, D-PROTO-10) — antes da primeira linha de produto
+## 🔴 O FIO (v13 · D-PROTO-12) — antes da primeira linha de produto
 ```
 O FIO ................  {a cadeia do 1º byte que entra ao último que sai, arquivo:função por elo — do card}
 O TESTE DO FIO .......  {caminho} — a sua PRIMEIRA entrega: UM teste que atravessa o fio INTEIRO carregando o MOTOR real
@@ -54,6 +54,10 @@ certo na unidade, nunca exercitado no fio real (`specs-propostas/AUDITORIA-AAA-E
 2. Teste antes do código quando houver guarda novo: prove que ele fica VERMELHO sem o
    conserto e VERDE com ele (linha de controle). Restaure por cópia, nunca `git checkout`.
 3. Implemente. Rode só os testes do bloco (parciais). A suíte inteira é do orquestrador.
+3b. 🔬 **LENTE DO DADO:** todo número que a sua unidade publica (tela, relatório, mensagem) é reconferido
+    por um caminho INDEPENDENTE do código que o produziu — SELECT próprio, contagem à mão — antes de você entregar.
+3c. 🖥️ **GATE DO AMBIENTE DE USO:** comando que o Founder vai rodar é provado COMO ele roda (dentro do
+    contêiner, com o mesmo entrypoint), não só na sua máquina.
 4. Toda tabela nova: `company_id` + RLS + FILTRO NO CÓDIGO + teste com DOIS tenants.
 5. Entregue: o diff resumido por arquivo · a saída dos testes do bloco · o BLOCO 0
    medido · **o que viu FORA do escopo** (obrigatório, §4) · o que ficou pendente.

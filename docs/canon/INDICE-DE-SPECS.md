@@ -251,10 +251,27 @@ medido era **14 + 2**. **Números de 18/08 citados como se fossem de hoje.**
 ✅   SPEC-EXTRA-001.6 · A cobrança prova que funciona — CONCLUÍDA COM RESSALVAS em 14/09/2026 (na main; canário vivo depois do Implantar) (CRÍTICO, laço curto D-PILOTO-20, primeira da
     família EXTRA-001.x; diagnóstico dos pilotos §9 e §13.7): P0 na main (`94862ea`), B1–B4 na branch, migrations 01 e 03 aplicadas.
     Proposta = SPEC (`specs-propostas/SPEC-EXTRA-001.6-a-cobranca-prova-que-funciona.md`) · relatório `reports/SPEC-EXTRA-001.6-EXECUTION-REPORT.md`.
-    Ordem seguinte (D-PILOTO-20 / diagnóstico §13.7): 001.1 → 001.2 → 001.3 → 001.4 → 001.7 → 001.10 → 001.5 → 001.0 → (001.8, 001.9).
+    ⚠️ Esta linha de ordem é HISTÓRICA (D-PILOTO-20): 001.1 a 001.7 já foram executadas. A ordem VIGENTE está abaixo.
     Depois dela, na ordem decidida pelo Founder (D-E001-09): EXTRA-002 · investigação Agger (proposta a escrever em chat novo) → 099 · canais
     após os pilotos (reconciliada com a 069) → EXTRA-003 renovação → EXTRA-004 cotação pelo chat → EXTRA-005 reativação → EXTRA-006 cross-sell →
     EXTRA-007 site de captação → EXTRA-008 Quiver → EXTRA-009 Segfy → EXTRA-010 assistente de e-mail.
+✅   SPEC-EXTRA-001.3 · O grupo só recebe o que importa — CONCLUÍDA 16/09/2026 (nota 88; `main` `70772a5`).
+✅   SPEC-EXTRA-001.4 · O corredor não trava sozinho — CONCLUÍDA 17/09/2026 (nota 85; `main` `ff2518a`).
+✅   SPEC-EXTRA-001.5 · O agente sabe o que cada plano cobre — CONCLUÍDA 18/09/2026 (nota 86; `main` `e0f51ee`;
+    onda 1 em produção: 33 planos + 73 serviços propostos). Relatório `reports/SPEC-EXTRA-001.5-EXECUTION-REPORT.md`.
+✅   SPEC-EXTRA-001.5.1 · A base de planos chega ao cliente — CONCLUÍDA 19/09/2026 (nota 88; `main` `333d506`;
+    📊 23 serviços e 17 planos PUBLICADOS, a base saiu de zero).
+✅   SPEC-EXTRA-001.5.2 · O documento vira base sem virar erro — CONCLUÍDA 20/09/2026 (nota 90; `main` `ec56813`;
+    📊 492 serviços em 108 planos e 8 seguradoras, escritos por leitores do plano, 0 chamada de API de modelo).
+✅   SPEC-EXTRA-001.7 · O piloto medido — CONCLUÍDA (instrumento) 20/09/2026 (nota 86; `main` `b3d88f1`;
+    📊 7 defeitos materiais achados antes do push). Os 3 dias de piloto são do Founder (P-E0017-09).
+💡   IDEIA · SPEC-115 · O Placar — as medições moram no painel (`specs-propostas/IDEIA-SPEC-115-PLACAR-E-MEDICOES-NO-PAINEL.md`)
+    — **ideia registrada, não é SPEC**; depois da 114, por decisão do Founder de 20/09.
+💡   IDEIA · bloco EXTRA-001.11 · pendências que pesam (`specs-propostas/IDEIA-BLOCO-EXTRA-001.11-PENDENCIAS-QUE-PESAM.md`)
+    — **ideia registrada, não é SPEC**; nasce da triagem de D-FILA-01, antes da EXTRA-002.
+🔜   ORDEM VIGENTE (20/09/2026, D-FILA-01): 001.10 (vidros) → 001.8 (isolamento entre corretoras, + as duas de
+    segurança da lista do Founder) → 001.9 → 001.0 → triagem de pendências (D-FILA-01) → EXTRA-002 Agger →
+    099 canais → EXTRA-003 renovação → EXTRA-004 cotação → EXTRA-005 reativação → EXTRA-006 cross-sell → …
 ⏸   o MASTERPLAN — SPEC-099 · Channel Fabric v2 → 114: PAUSADAS pelo Founder em 07/09/2026 (D-E001-08), numeração preservada, sem cancelar;
     retomam por dependência comprovada dos produtos. 094.2 onde o Founder decidir (F-094.1-03)
     (094.2 — comissão recebida e inadimplência pelo portal da seguradora — entra onde o Founder decidir: F-094.1-03)
