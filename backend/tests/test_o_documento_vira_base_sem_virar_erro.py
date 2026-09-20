@@ -399,8 +399,14 @@ MAPFRE = [
 ]
 paginas_d = B.texto_das_paginas(DOC, db=banco(), minio=MinioDuplo(pdf(MAPFRE))).paginas
 capa = X.capa_do_documento(paginas_d)
-checar(capa.produto and "Mapfre" in capa.produto and "V1.2" not in capa.produto,
-       "o produto é lido da CAPA — não do nome do arquivo", str(capa))
+# 🔴 A AFIRMAÇÃO MUDOU EM 20/09/2026 (CLAUDE.md §9.3): a capa real traz a
+# RAZÃO SOCIAL antes do produto, e o crivo novo prefere a linha que nomeia o
+# ramo. O que se exige continua sendo o mesmo — o produto vem da CAPA, nunca do
+# nome do arquivo —, só que agora ele é o produto, não a empresa.
+checar(capa.produto and "Residencial" in capa.produto.title()
+       and "V1.2" not in capa.produto and "S.A" not in capa.produto,
+       "o produto é lido da CAPA — não do nome do arquivo, nem a razão social",
+       str(capa))
 checar(capa.versao == "3.2", "e a versão também vem da capa/rodapé", str(capa.versao))
 checar(X.versao_declarada("Mapfre Residencial — Condições Contratuais V2.9") == "2.9",
        "a versão do CADASTRO é lida do título que o cadastro guarda")
@@ -439,16 +445,25 @@ checar(B.tipo_do_servico("vidros_residencial") == "cobertura"
        and B.tipo_do_servico("vidros") == "assistencia",
        "e o vocabulário sabe a diferença: uma é cobertura, a outra é assistência",
        f"{B.tipo_do_servico('vidros_residencial')} / {B.tipo_do_servico('vidros')}")
+# 🔴 O FATO MUDOU EM 20/09/2026, E A LIÇÃO MIGROU (CLAUDE.md §9.3). Esta linha
+# exigia que "quebrou o vidro da janela de casa" resolvesse para a chave NOVA.
+# 📊 O red team mediu o preço disso: os sinônimos que faziam isso capturavam
+# também "quebra de vidros no meu carro", e a Skill — que busca por chave EXATA
+# — passaria a dizer "ainda não sei" sobre as 6 linhas PUBLICADAS de `vidros`.
+# A chave nova NÃO é decidida pela frase do segurado: é decidida pelo RAMO DO
+# DOCUMENTO, no extrator. O que o guarda afirma agora é isso.
 checar(B.servico_canonico("quebrou o parabrisa") == "vidros"
-       and B.servico_canonico("quebrou o vidro da janela de casa") == "vidros_residencial",
-       "🔴 e a pergunta do segurado continua caindo na chave certa dos dois lados",
+       and B.servico_canonico("quebrou o vidro da janela de casa") == "vidros",
+       "🔴 NENHUMA pergunta resolve para a chave nova — quem decide é o ramo do "
+       "documento, não a frase (o bloco [B1] mede o estrago que isso evitou)",
        f"{B.servico_canonico('quebrou o parabrisa')} / "
        f"{B.servico_canonico('quebrou o vidro da janela de casa')}")
 
 # E pelo MOTOR, de ponta a ponta: o mesmo serviço, dois ramos, duas chaves.
 VIDROS = [
     ["Mapfre Seguros Gerais S.A.", "Condominio - Condicoes Gerais", "Versao 1.0"],
-    ["3. Planos", "Este seguro e comercializado no Plano Basico e no Plano Master.",
+    ["3. Dos Planos de Assistencia",
+     "Os servicos sao prestados conforme o plano contratado: Plano Basico e Plano Master.",
      "Quebra de Vidros",
      "mediante pagamento de Premio adicional, danos causados por acidente de origem externa"],
 ]
@@ -557,6 +572,209 @@ try:
            str([(l.get("conferencia") or {}).get("motivos") for l in linhas_g][:1]))
 finally:
     CONF.conferir_linha = _bom
+
+# ============================================================================
+# 🔴 OS PARES DO RED TEAM (rodada 1 de julgamento, 20/09/2026)
+# ============================================================================
+# A causa-raiz dos achados foi uma só: as fixtures acima são texto escrito à
+# mão. O motor nunca tinha visto PÁGINA REAL. Daqui para baixo, as afirmações
+# são sobre o ACERVO — `tests/corpus/condicoes_gerais/*.json`, gravado com
+# `BASE.texto_das_paginas` a partir do MinIO (condições gerais públicas, sem
+# PII: a gravação recusa página com CPF, telefone ou placa).
+import glob  # noqa: E402
+import json as _json  # noqa: E402
+import subprocess  # noqa: E402
+
+ACERVO = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "corpus", "condicoes_gerais")
+
+
+def paginas_do_acervo(nome):
+    with open(os.path.join(ACERVO, nome + ".json"), encoding="utf-8") as fh:
+        d = _json.load(fh)
+    return {int(k): v for k, v in d["paginas"].items()}
+
+
+print("\n[B1] A CHAVE NOVA NÃO PODE MUDAR NENHUMA RESPOSTA DE HOJE")
+# 🔴 O defeito medido: com sinônimos, `vidros_residencial` capturava pergunta de
+# AUTO ("quebra de vidros no meu carro"), e a Skill — que busca a linha por
+# chave EXATA — passaria a dizer "ainda não sei" sobre as 6 linhas PUBLICADAS
+# de `vidros` (3 auto, 2 residencial, 1 condomínio).
+PERGUNTAS = [
+    "quebra de vidros no meu carro", "espelho quebrado do retrovisor",
+    "janela quebrada do carro", "quebra de vidros cobre?", "quebrou o parabrisa",
+    "vidro trincado", "cobre vidro?", "quebrou o vidro da janela de casa",
+    "box do banheiro quebrou", "quebrou o farol", "trocaram minha lanterna",
+    "cobre vidros da sala?", "guincho ate quantos km", "carro reserva tem?",
+]
+_antes = subprocess.run(
+    ["git", "show", "e43aff3:backend/app/data/servicos-de-assistencia.json"],
+    capture_output=True, cwd=os.path.dirname(RAIZ))
+VOCAB_DE_ONTEM = _json.loads(_antes.stdout.decode("utf-8"))
+
+
+def _resolver_com(vocab):
+    B._VOCABULARIO = vocab
+    try:
+        return [B.servico_canonico(p) for p in PERGUNTAS]
+    finally:
+        B._VOCABULARIO = None
+
+
+ontem = _resolver_com(VOCAB_DE_ONTEM)
+hoje = _resolver_com(B.vocabulario_de_servicos())
+checar(ontem == hoje,
+       "🔴 as 14 perguntas resolvem EXATAMENTE como resolviam em `e43aff3` — "
+       "chave nova não muda resposta de segurado",
+       "\n        ".join("%s: ontem=%s hoje=%s" % (p, a, b)
+                         for p, a, b in zip(PERGUNTAS, ontem, hoje) if a != b))
+_DE_AUTO = ("quebra de vidros no meu carro", "espelho quebrado do retrovisor",
+            "quebrou o parabrisa", "quebrou o farol", "trocaram minha lanterna")
+checar(all(v == "vidros" for p, v in zip(PERGUNTAS, hoje) if p in _DE_AUTO),
+       "🔴 e toda pergunta de AUTO continua caindo em `vidros`, que é a chave "
+       "das 6 linhas publicadas",
+       str([(p, v) for p, v in zip(PERGUNTAS, hoje) if "carro" in p]))
+# 🔴 CONTROLE: o guarda CONSEGUE ficar vermelho — injetar o sinônimo de volta
+#    na chave nova quebra a igualdade. Sem isto ele seria carimbo.
+import copy  # noqa: E402
+_envenenado = copy.deepcopy(B.vocabulario_de_servicos())
+_envenenado["servicos"]["vidros_residencial"]["sinonimos"] = ["quebra de vidros"]
+checar(_resolver_com(_envenenado) != ontem,
+       "🔴 CONTROLE: com o sinônimo 'quebra de vidros' na chave nova, o guarda "
+       "FICA VERMELHO (é ele que pega a regressão)")
+
+print("\n[B-acento] O REGEX DE EXCLUSÃO LÊ O TEXTO COMO O `fitz` DEVOLVE")
+# 📊 20/09/2026, no acervo real: 785 linhas dizem "riscos excluídos" e **778 têm
+# acento**. O padrão antigo (`excluid`) casava 235 — a regra que impede o pior
+# erro da SPEC estava desligada em 3 de cada 4 páginas.
+COM_ACENTO = "Riscos Excluídos: danos por inundação ou alagamento decorrente de transbordamento"
+SEM_ACENTO = "Riscos Excluidos: danos por inundacao ou alagamento decorrente de transbordamento"
+checar(bool(X._E_EXCLUSAO_DE_RISCO.search(COM_ACENTO))
+       and bool(X._E_EXCLUSAO_DE_RISCO.search(SEM_ACENTO)),
+       "🔴 o padrão casa a cláusula COM acento e SEM acento (o par)")
+_ANTIGO = re.compile(r"risco[s]?\s+excluid|exclus[õo]e?s|n[ãa]o\s+est[ãa]o\s+cobert",
+                     re.IGNORECASE)
+checar(not _ANTIGO.search(COM_ACENTO),
+       "🔴 CONTROLE: o padrão ANTIGO dá ZERO na frase acentuada — é a medição "
+       "que prova que o conserto era necessário")
+
+print("\n[B2/B3] A ÂNCORA SOBRE PÁGINA REAL — o falso vira None, e a ordem é a certa")
+_mapfre = X.localizar_ancora_de_planos(paginas_do_acervo("mapfre-residencial"))
+checar(_mapfre is None,
+       "🔴 Mapfre Residencial p.35 (TABELA DE FRACIONAMENTO): antes fabricava "
+       "['ANUAL','BIANUAL','TRIANUAL'] — agora é None",
+       str(_mapfre))
+_yelum_auto = X.localizar_ancora_de_planos(paginas_do_acervo("yelum-auto"))
+checar(_yelum_auto is None,
+       "🔴 Yelum Auto p.4 (SUMÁRIO): antes fundia 'VIDROS SUPERIOR' em 'VIDROS' "
+       "e virava plano — agora é None",
+       str(_yelum_auto))
+_tokio = X.localizar_ancora_de_planos(paginas_do_acervo("tokio-residencial"))
+checar(_tokio is not None and _tokio.planos == ["Básico", "Especial", "VIP"],
+       "🔴 Tokio Residencial: a página cita VIP ANTES de Básico, e a âncora sai "
+       "na ordem do MENOR para o MAIOR (o nível não é a ordem da página)",
+       str(_tokio.planos if _tokio else None))
+checar(_tokio is not None and _tokio.ordem_confiavel,
+       "e a ordem é declarada confiável — veio da escala, não do PDF")
+checar(X.ordenar_planos(["VIP", "Básico", "Especial"])[0] == ["Básico", "Especial", "VIP"],
+       "🔴 CONTROLE do motor de ordem: ele REORDENA (não devolve a lista como veio)")
+checar(X.ordenar_planos(["Alfa", "Beta"]) == (["Alfa", "Beta"], False),
+       "🔴 CONTROLE: nomes fora da escala → `ordem_confiavel=False`, e quem "
+       "chama não inventa hierarquia")
+checar(not X._e_nome_de_plano_aceitavel("ANUAL")
+       and not X._e_nome_de_plano_aceitavel("VIDROS")
+       and X._e_nome_de_plano_aceitavel("Vip"),
+       "🔴 o crivo de lixo recusa periodicidade e nome de SERVIÇO, e aceita plano")
+
+print("\n[B3b] sem ordem confiável, o extrator NÃO propõe (a decisão escrita)")
+SEM_ORDEM = [
+    ["Seguradora X", "Seguro Auto - Condicoes Gerais"],
+    ["3. Dos Planos de Assistencia",
+     "Os servicos sao prestados conforme o plano contratado: Plano Alfa e Plano Beta.",
+     "Guincho: reboque do veiculo ate 100 km por evento"],
+]
+db_o = banco()
+r_o = X.processar_documento(
+    {"id": DOC, "insurer_key": "porto", "product_line": "auto", "title": "X",
+     "content_hash": "h6"},
+    aplicar=True, llm=ModeloDuplo({2: [{"produto": "Auto X", "plano": "Plano Alfa",
+                                        "servico": "guincho", "coberto": "sim",
+                                        "trecho": "Guincho: reboque do veiculo ate 100 km por evento",
+                                        "confianca": "alta"}]}),
+    db=db_o, minio=MinioDuplo(pdf(SEM_ORDEM)))
+checar(r_o.motivo == "ordem_dos_planos_nao_confiavel"
+       and not (db_o.tabelas.get("insurer_assistance_services") or []),
+       "🔴 planos fora da escala (Alfa/Beta) → NADA é proposto, e o motivo é "
+       "nomeado (nível inventado vira 'o plano acima do seu cobre')",
+       f"{r_o.motivo} / {len(db_o.tabelas.get('insurer_assistance_services') or [])}")
+checar(any("ordem confiável" in a for a in r_o.alertas),
+       "e o alerta diz quais planos foram vistos", str(r_o.alertas))
+
+print("\n[B4] a linha do plano ALTO não cai mais por causa da ORDEM das páginas")
+# 📊 red team: `recusadas={'nivel_nao_contiguo': 1}` — o serviço do Vip (nível 3)
+# chegava depois do Básico (nível 1) e a linha CERTA sumia sem virar rascunho.
+ORDEM = [
+    ["Seguradora X", "Seguro Auto - Condicoes Gerais"],
+    ["3. Dos Planos de Assistencia",
+     "Os servicos sao prestados conforme o plano contratado: Plano Basico, Plano Completo e Plano Vip."],
+    ["Plano Basico",
+     "Guincho: reboque do veiculo ate 100 km por evento, chaveiro e taxi"],
+    ["Plano Vip",
+     "Carro Reserva: 07 (sete) diarias de carro reserva por evento coberto"],
+]
+LINHAS_ORDEM = {
+    3: [{"produto": "Auto X", "plano": "Plano Basico", "servico": "guincho",
+         "coberto": "sim",
+         "trecho": "Guincho: reboque do veiculo ate 100 km por evento, chaveiro e taxi",
+         "confianca": "alta"}],
+    4: [{"produto": "Auto X", "plano": "Plano Vip", "servico": "carro_reserva",
+         "coberto": "sim",
+         "trecho": "Carro Reserva: 07 (sete) diarias de carro reserva por evento coberto",
+         "confianca": "alta"}],
+}
+db_n = banco()
+r_n = X.processar_documento(
+    {"id": DOC, "insurer_key": "porto", "product_line": "auto", "title": "Auto X",
+     "content_hash": "h7"},
+    aplicar=True, llm=ModeloDuplo(LINHAS_ORDEM), db=db_n, minio=MinioDuplo(pdf(ORDEM)))
+servicos_n = sorted(str(s.get("servico"))
+                    for s in (db_n.tabelas.get("insurer_assistance_services") or []))
+checar("nivel_nao_contiguo" not in r_n.recusadas and servicos_n == ["carro_reserva", "guincho"],
+       "🔴 as DUAS linhas entram — os níveis válidos são os da ÂNCORA, conhecidos "
+       "antes da primeira proposta",
+       f"{r_n.recusadas} / {servicos_n}")
+niveis_n = sorted((str(p.get("plano")), int(p.get("nivel")))
+                  for p in (db_n.tabelas.get("insurer_assistance_plans") or []))
+checar(niveis_n == [("Basico", 1), ("Vip", 3)],
+       "🔴 CONTROLE: e o nível de cada um é o da âncora (Basico=1, Vip=3), não a "
+       "ordem em que a página apareceu", str(niveis_n))
+
+print("\n[D2] a CAPA de aviso não vira produto — e data não vira versão")
+LIXO_NA_CAPA = [
+    ["Classificação: Uso Interno", "Seja bem-vindo!", "A partir de 01/07/26"],
+    ["3. Dos Planos de Assistencia",
+     "conforme o plano contratado: Plano Basico e Plano Completo."],
+]
+capa_lixo = X.capa_do_documento({1: "\n".join(LIXO_NA_CAPA[0])})
+checar(capa_lixo.produto is None,
+       "🔴 'Classificação: Uso Interno' / 'Seja bem-vindo!' / 'A partir de "
+       "01/07/26' NÃO viram nome de produto (eram 13 dos 27 documentos reais)",
+       str(capa_lixo))
+checar(capa_lixo.versao is None,
+       "🔴 e '01/07/26' não vira a versão 01 — data não é versão", str(capa_lixo.versao))
+capa_boa = X.capa_do_documento({1: "Mapfre Seguros\nSEGURO RESIDENCIAL\nVersão 3.2"})
+checar(capa_boa.produto and "RESIDENCIAL" in capa_boa.produto.upper()
+       and capa_boa.versao == "3.2",
+       "🔴 CONTROLE: a capa que DIZ o produto continua sendo lida (o crivo não "
+       "rejeita tudo)", str(capa_boa))
+db_c = banco()
+r_c = X.processar_documento(
+    {"id": DOC, "insurer_key": "porto", "product_line": "auto",
+     "title": "Porto Auto Cadastro", "content_hash": "h8"},
+    aplicar=False, llm=ModeloDuplo({}), db=db_c, minio=MinioDuplo(pdf(LIXO_NA_CAPA)))
+checar(any("produto_nao_veio_da_capa" in a for a in r_c.alertas),
+       "🔴 e o documento sem produto legível na capa REGISTRA o alerta e cai no "
+       "título do cadastro", str(r_c.alertas))
 
 print()
 print("=" * 74)

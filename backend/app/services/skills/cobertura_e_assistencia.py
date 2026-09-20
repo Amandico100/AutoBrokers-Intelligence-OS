@@ -96,6 +96,9 @@ _ROTULO = {
     "chaveiro": "chaveiro",
     "chaveiro_residencial": "chaveiro residencial",
     "vidros": "vidros",
+    # EXTRA-001.5.2 (E): a chave só é escolhida pelo RAMO do documento, no
+    # extrator — mas quando ela chega aqui, o segurado ouve o rótulo, não a chave.
+    "vidros_residencial": "quebra de vidros",
     "eletricista": "eletricista",
     "encanador": "encanador",
     "hospedagem": "hospedagem",

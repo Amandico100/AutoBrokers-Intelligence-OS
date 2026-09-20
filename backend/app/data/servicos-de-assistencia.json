@@ -7,7 +7,7 @@
     "cobertura": "risco da APOLICE, nao da assistencia. Fica no vocabulario porque o segurado pergunta junto, e a resposta tem de dizer que e outra coisa."
   },
   "_medicao": "📊 Frequencia no acervo de perguntas reais (SPEC-EXTRA-001.5 §0.1, citada no pacote da fatia 1): guincho 121 · vidro 93 · carro reserva 81 · eletricista 36 · granizo 26 · chaveiro 24 · encanador 24 · reboque 18 · taxi 15 · hotel 4 · borracheiro 2. As chaves sem medicao ao lado (pane_seca, troca_de_pneu) vieram do contrato de subservicos ja publicado em corridor_playbooks.subservicos_por_linha, nao de contagem de perguntas.",
-  "versao": 2,
+  "versao": 3,
   "atualizado_em": "2026-09-20",
   "servicos": {
     "guincho": {
@@ -69,7 +69,9 @@
       "tipo": "assistencia",
       "rotulo": "Vidros",
       "ramos": [
-        "auto"
+        "auto",
+        "residencial",
+        "condominio"
       ],
       "sinonimos": [
         "vidro",
@@ -84,7 +86,7 @@
         "lanterna"
       ],
       "pergunta_tipica": "quebrou o parabrisa, cobre?",
-      "_nota": "📊 93 perguntas. 🔴 `ramos` e `tipo` acertados em 20/09/2026 (EXTRA-001.5.2, unidade E): `vidros` e a ASSISTENCIA de AUTO — parabrisa, farol, lanterna, retrovisor. A quebra de vidro RESIDENCIAL/CONDOMINIO e outra coisa (cobertura contratada, com premio adicional) e ganhou chave propria, `vidros_residencial` — era a pendencia P-001.5.1-VIDROS-RESIDENCIAL, e 📊 9 das 15 linhas da base (7 residencial + 2 condominio) moravam aqui por engano. ⚠️ os sinonimos genericos (`vidro`, `vidros`) ficam NESTA chave de proposito: `servico_canonico` desempata pelo sinonimo mais LONGO e, no empate, pela chave maior em ordem alfabetica — deixar `vidro` nas duas faria toda pergunta de auto cair na residencial."
+      "_nota": "📊 93 perguntas. 🔴 `ramos` VOLTOU a listar os tres em 20/09/2026, depois que o red team mediu o estrago: a base tem 6 linhas PUBLICADAS com `servico='vidros'` (3 auto, 2 residencial, 1 condominio) e qualquer leitura que filtre por `ramos` esconderia metade delas. ⚠️ A distincao residencial/auto existe em `vidros_residencial`, mas ela e decidida pelo EXTRATOR (`servico_do_ramo`), pelo ramo do documento — NUNCA pelo texto da pergunta do segurado. Ver a nota de `vidros_residencial`."
     },
     "vidros_residencial": {
       "tipo": "cobertura",
@@ -93,19 +95,9 @@
         "residencial",
         "condominio"
       ],
-      "sinonimos": [
-        "vidro residencial",
-        "vidros residenciais",
-        "quebra de vidros",
-        "vidro da janela",
-        "vidro da porta",
-        "janela quebrada",
-        "box do banheiro",
-        "espelho quebrado",
-        "vitro"
-      ],
+      "sinonimos": [],
       "pergunta_tipica": "quebrou o vidro da janela de casa, o seguro cobre?",
-      "_nota": "🔴 COBERTURA, nao assistencia 24h (EXTRA-001.5.2, unidade E): ela e contratada com premio adicional e paga indenizacao — nao existe prestador a acionar. 📊 20/09/2026: 9 das 15 linhas de `vidros` da base sao deste ramo (7 residencial, 2 condominio) e diziam 'assistencia' ao segurado. `tipo=cobertura` e LIDO por `tipo_do_servico`, e e ele que manda a resposta somar as coberturas estruturadas da apolice em vez de oferecer acionamento."
+      "_nota": "🔴 COBERTURA, nao assistencia 24h (EXTRA-001.5.2, unidade E). ⛔ `sinonimos` e VAZIO DE PROPOSITO, e isto e o conserto de um defeito medido em 20/09/2026: com os sinonimos que esta chave tinha, `servico_canonico` passou a resolver \"quebra de vidros no meu carro\", \"espelho quebrado do retrovisor\" e \"janela quebrada do carro\" para ca — perguntas de AUTO. 📊 A Skill busca a linha por chave EXATA, e as 6 linhas publicadas de vidros sao todas `servico='vidros'`: o segurado passaria a ouvir 'ainda nao sei' sobre cobertura que a base JA responde. Uma chave nova nao pode mudar NENHUMA resposta de hoje. 🔴 Quem decide esta chave e so `servico_do_ramo` do extrator, pelo RAMO DO DOCUMENTO — que e um fato do documento, nao um palpite sobre a frase do segurado. `tipo=cobertura` e lido por `tipo_do_servico` e e o que faz a resposta somar as coberturas estruturadas da apolice em vez de oferecer acionamento."
     },
     "eletricista": {
       "tipo": "assistencia",

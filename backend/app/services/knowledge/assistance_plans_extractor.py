@@ -143,6 +143,14 @@ class Ancora:
     pagina: int
     clausula: str
     trecho: str
+    #: 🔴 A ORDEM É AFIRMAÇÃO, E ELA CHEGA AO SEGURADO. `nivel` é o que faz a
+    #: Skill dizer *"existe um plano acima do seu, e ele cobre"*. 📊 20/09/2026,
+    #: no acervo real: a Tokio Residencial cita **VIP, Básico e Especial** nesta
+    #: ordem de página — usar a ordem de aparição inverteria a hierarquia e o
+    #: gancho comercial ofereceria o plano de BAIXO como se fosse o de cima.
+    #: `False` = a ordem não é confiável, e o extrator NÃO propõe (§10: a fila
+    #: "cláusula não localizada" é destino melhor do que hierarquia inventada).
+    ordem_confiavel: bool = True
 
 
 #: "Plano Vip", "Plano Básico", "Plano nº 118". O nome tem de começar com
@@ -154,10 +162,13 @@ class Ancora:
 # maiúscula ou dígito. Com a flag global, "plano contratado pelo segurado"
 # entraria como plano chamado "contratado".
 _NOME_DE_PLANO = re.compile(
-    r"\b[Pp][Ll][Aa][Nn][Oo]s?[ \t]+(?:n[ºo°][ \t]*)?"
+    r"\b[Pp][Ll][Aa][Nn][Oo]s?[ \t]+(?:n[ºo°.][ \t]*)?"
     r"((?:[A-ZÁÂÃÀÉÊÍÓÔÕÚÜÇ][\wÁÂÃÀÉÊÍÓÔÕÚÜÇáâãàéêíóôõúüç]{1,18}|\d{1,4})"
-    r"(?:[ \t]+(?:[A-ZÁÂÃÀÉÊÍÓÔÕÚÜÇ][\wÁÂÃÀÉÊÍÓÔÕÚÜÇáâãàéêíóôõúüç]{1,18}|\d{1,3}))?)",
+    r"(?:[ \t]+(?:[A-ZÁÂÃÀÉÊÍÓÔÕÚÜÇ][\wÁÂÃÀÉÊÍÓÔÕÚÜÇáâãàéêíóôõúüç]{1,18}|\d{1,3})){0,2})",
 )
+# 📊 `{0,2}`: até TRÊS palavras. O acervo real tem "Premium Veraneio Conforto"
+# (Porto Residencial) e "Especial 1" (HDI) — com duas palavras, o primeiro era
+# cortado ao meio e virava um plano que não existe.
 # ⚠️ `[ \t]`, nunca `\s`: 📊 o título *"9.5.9.1 Plano Completo"* seguido da linha
 # *"Hospedagem: R$100,00…"* virava um plano chamado "Completo Hospedagem" — o
 # `\s` atravessa a quebra de linha, e o nome do plano nunca atravessa.
@@ -179,6 +190,72 @@ _NUMERO_DE_CLAUSULA = re.compile(
 _CLAUSULA_NOMEADA = re.compile(r"(?mi)^\s*(cl[áa]usula\s+\d{1,3}[ªo°]?)\b")
 
 
+#: 🔴 A PÁGINA PRECISA FALAR DE PLANOS DE ASSISTÊNCIA/COBERTURA — não bastam
+#: duas ocorrências da palavra "plano". 📊 20/09/2026, no acervo real: sem este
+#: contexto, a Mapfre Residencial FABRICAVA os planos `ANUAL/BIANUAL/TRIANUAL`
+#: a partir da **tabela de fracionamento do prêmio** (p. 35), e todas as linhas
+#: do documento nasceriam penduradas numa forma de pagamento.
+_CONTEXTO_DE_PLANOS = re.compile(
+    r"(?i)plano[s]?\s+de\s+(?:assist|servi|cobertur|prote)|assist[êe]ncia\s+24|"
+    r"dos\s+planos|tabela\s+de\s+planos|planos?\s+contratad|plano\s+escolhido|"
+    r"modalidade[s]?|conforme\s+o\s+plano|de\s+acordo\s+com\s+o\s+plano|"
+    r"plano\s+contratado|coberturas?\s+por\s+plano|n[íi]vel\s+de\s+cobertura"
+)
+
+#: ⛔ E A PÁGINA QUE FALA DE OUTRA COISA É RECUSADA, mesmo com contexto.
+#: Sumário/índice enumeram títulos (📊 Yelum Auto fundia "VIDROS SUPERIOR" em
+#: "VIDROS" a partir do SUMÁRIO); fracionamento/pagamento/vigência enumeram
+#: periodicidades.
+_CONTEXTO_PROIBIDO = re.compile(
+    r"(?i)^\s*(?:sum[áa]rio|[íi]ndice)\b|\bsum[áa]rio\b|"
+    r"fracionament|forma[s]?\s+de\s+pagament|pagamento\s+do\s+pr[êe]mio|"
+    r"parcelament|periodicidade|tabela\s+de\s+fracionament"
+)
+
+#: O sumário também se denuncia pela FORMA: linhas de pontilhado com o número da
+#: página no fim. 📊 3 ou mais numa página só existem em índice.
+_LINHA_DE_SUMARIO = re.compile(r"(?m)\.{4,}\s*\d{1,3}\s*$|\s\.\s\.\s\.")
+
+#: ⛔ Nomes que NUNCA são nome de plano de assistência. 📊 todos medidos no
+#: acervo real em 20/09/2026, cada um fabricando um "plano" inteiro.
+_NOME_LIXO = frozenset((
+    "anual", "bianual", "trianual", "mensal", "semestral", "trimestral",
+    "quadrimestral", "unico", "unica", "padrao", "basico e", "acima", "abaixo",
+    "escolhido", "contratado", "vigente", "anterior", "seguinte", "proximo",
+    "seguro", "seguros", "seguradora", "apolice", "cliente", "segurado",
+    "conforme", "descrito", "descritos", "previsto", "acordo", "tabela",
+    "clausula", "item", "pagina", "capitulo", "titulo", "sumario", "indice",
+))
+
+#: 🔴 A ESCALA CONHECIDA — a ÚNICA fonte de `nivel` que não é ordem de página.
+#: 📊 é o que conserta a Tokio Residencial (cita VIP antes de Básico) sem
+#: inventar nada: quem ordena é o significado dos nomes, não o PDF.
+ESCALA_DE_PLANOS = {
+    "basico": 10, "basica": 10, "essencial": 20, "simples": 10, "economico": 15,
+    "classico": 25, "standard": 25, "intermediario": 30, "especial": 35,
+    "conforto": 35, "completo": 40, "ampliado": 40, "total": 45, "plus": 45,
+    "super": 50, "superior": 50, "master": 55, "premium": 60, "exclusive": 65,
+    "vip": 70, "diamante": 75, "ouro": 60, "prata": 40, "bronze": 20,
+}
+
+
+def _e_nome_de_plano_aceitavel(nome: str) -> bool:
+    """O nome passa no crivo de LIXO? (unidade A, conserto de 20/09/2026)."""
+    limpo = BASE._norm_texto(nome)
+    if not limpo or limpo in _NOME_LIXO:
+        return False
+    if limpo.split(" ")[0] in _NOME_LIXO:
+        return False
+    # 🔴 Um NOME DE SERVIÇO não é nome de plano. 📊 "VIDROS" (Yelum Auto, do
+    # sumário) e "Guincho" viravam planos, e toda linha do documento ia parar
+    # num plano chamado como o serviço que ela descreve.
+    if BASE.servico_canonico(limpo) is not None:
+        return False
+    if re.fullmatch(r"\d{1,2}", limpo):  # "Plano 1" isolado é numeração, não nome
+        return False
+    return True
+
+
 def _nomes_de_plano_na_pagina(texto: str) -> List[str]:
     """Os nomes de plano que a PÁGINA enumera, na ordem em que aparecem."""
     vistos: List[str] = []
@@ -194,9 +271,60 @@ def _nomes_de_plano_na_pagina(texto: str) -> List[str]:
             nome = partes[0]
         if len(nome) < 2 or len(nome) > TETO_DO_NOME_DO_PLANO:
             continue
+        if not _e_nome_de_plano_aceitavel(nome):
+            continue
         if not any(BASE._norm_texto(nome) == BASE._norm_texto(v) for v in vistos):
             vistos.append(nome)
     return vistos
+
+
+def _e_pagina_de_clausula_de_planos(texto: str) -> bool:
+    """A página fala de PLANOS DE ASSISTÊNCIA — e não é sumário nem tabela de
+    pagamento (unidade A, conserto de 20/09/2026)."""
+    bruto = str(texto or "")
+    if not _CONTEXTO_DE_PLANOS.search(bruto):
+        return False
+    if _CONTEXTO_PROIBIDO.search(bruto):
+        return False
+    if len(_LINHA_DE_SUMARIO.findall(bruto)) >= 3:
+        return False
+    return True
+
+
+def ordenar_planos(nomes: List[str]) -> Tuple[List[str], bool]:
+    """Os planos na ordem do MENOR para o MAIOR, e se dá para confiar nela.
+
+    🔴 Três fontes, nesta ordem, e nenhuma delas é a ordem de aparição:
+      1. o número explícito no nome ("Especial 1" < "Especial 2");
+      2. a ESCALA conhecida (Básico < Completo < VIP);
+      3. nenhuma das duas → `False`, e quem chamou não propõe.
+
+    📊 20/09/2026: sem isto, a Tokio Residencial (VIP, Básico, Especial na
+    ordem da página) nasceria com o VIP no nível 1 — e `existe_plano_superior`
+    ofereceria o Básico a quem tem VIP, dizendo que ele cobre mais.
+    """
+    def _peso(nome: str) -> Optional[int]:
+        limpo = BASE._norm_texto(nome)
+        numero = re.search(r"\b(\d{1,2})\b", limpo)
+        base = None
+        for palavra in limpo.split(" "):
+            if palavra in ESCALA_DE_PLANOS:
+                base = ESCALA_DE_PLANOS[palavra]
+                break
+        if base is None and numero:
+            return 100 + int(numero.group(1))
+        if base is None:
+            return None
+        return base * 10 + (int(numero.group(1)) if numero else 0)
+
+    pesos = [(_peso(n), n) for n in nomes]
+    if any(p is None for p, _ in pesos):
+        return list(nomes), False
+    if len({p for p, _ in pesos}) != len(pesos):
+        # dois planos com o mesmo peso: a escala não os separa, e inventar o
+        # desempate pela página é exatamente o defeito que se está consertando.
+        return list(nomes), False
+    return [n for _, n in sorted(pesos)], True
 
 
 def _clausula_antes_de(texto: str, posicao: int) -> str:
@@ -220,6 +348,11 @@ def paginas_candidatas_a_ancora(paginas: Dict[int, str], teto: int = 3) -> List[
     placar: List[Tuple[int, int, int]] = []
     for pagina, texto in (paginas or {}).items():
         bruto = str(texto or "")
+        # 🔴 O CRIVO DE CONTEXTO VEM ANTES DA CONTAGEM (conserto de 20/09/2026):
+        # sumário, índice e tabela de fracionamento citam "plano" o tempo todo e
+        # não são cláusula de planos.
+        if not _e_pagina_de_clausula_de_planos(bruto):
+            continue
         quantos = len(_nomes_de_plano_na_pagina(bruto))
         mencoes = len(re.findall(r"(?i)\bplanos?\b", bruto))
         # ⚠️ 2 menções, não 3: 📊 a Cláusula 2 da HDI ("Dos Produtos e Planos" +
@@ -270,15 +403,27 @@ def localizar_ancora_de_planos(paginas: Dict[int, str], modelo: Any = None) -> O
     for pagina in candidatas:
         texto = str((paginas or {}).get(pagina) or "")
         nomes = _nomes_de_plano_na_pagina(texto)
+        # 🔴 A CLÁUSULA ATRAVESSA A VIRADA DE PÁGINA. 📊 20/09/2026, Yelum
+        # Residencial: 2 dos 4 planos estão na página seguinte, e a âncora de
+        # uma página só entregava metade da tabela — pior que nenhuma, porque
+        # as linhas dos outros dois planos seriam reprovadas como "fora da
+        # âncora" e o documento pareceria ter 2 planos.
+        seguinte = str((paginas or {}).get(int(pagina) + 1) or "")
+        if seguinte and _e_pagina_de_clausula_de_planos(seguinte):
+            for extra in _nomes_de_plano_na_pagina(seguinte):
+                if not any(BASE._norm_texto(extra) == BASE._norm_texto(n) for n in nomes):
+                    nomes.append(extra)
         if len(nomes) >= 2:
+            ordenados, confiavel = ordenar_planos(nomes)
             m = _NOME_DE_PLANO.search(texto)
             pos = m.start() if m else 0
             linha = texto[max(0, texto.rfind("\n", 0, pos) + 1):]
             return Ancora(
-                planos=nomes,
+                planos=ordenados,
                 pagina=int(pagina),
                 clausula=_clausula_antes_de(texto, pos),
                 trecho=re.sub(r"\s+", " ", linha.split("\n")[0]).strip()[:400],
+                ordem_confiavel=confiavel,
             )
     if modelo is None or not candidatas:
         return None
@@ -305,8 +450,12 @@ def localizar_ancora_de_planos(paginas: Dict[int, str], modelo: Any = None) -> O
         logger.warning("[onda1] ancora: o modelo citou pagina fora das candidatas")
         return None
     alvo = BASE._norm_texto((paginas or {}).get(pagina) or "")
-    # 🔴 A VERIFICAÇÃO DE MÁQUINA, nome a nome.
-    confirmados = [n for n in propostos if BASE._norm_texto(n) and BASE._norm_texto(n) in alvo]
+    # 🔴 A VERIFICAÇÃO DE MÁQUINA, nome a nome — e o MESMO crivo de lixo do
+    # caminho por texto: o modelo também devolve "ANUAL" quando a página que ele
+    # viu é uma tabela de fracionamento.
+    confirmados = [n for n in propostos
+                   if BASE._norm_texto(n) and BASE._norm_texto(n) in alvo
+                   and _e_nome_de_plano_aceitavel(n)]
     if len(confirmados) < 2:
         logger.warning("[onda1] ancora: %s nome(s) do modelo confirmados na pagina %s",
                        len(confirmados), pagina)
@@ -315,8 +464,10 @@ def localizar_ancora_de_planos(paginas: Dict[int, str], modelo: Any = None) -> O
     if trecho and BASE.normalizar_trecho(trecho) not in BASE.normalizar_trecho(
             (paginas or {}).get(pagina) or ""):
         trecho = ""
-    return Ancora(planos=confirmados, pagina=pagina,
-                  clausula=str(dados.get("clausula") or "").strip(), trecho=trecho[:400])
+    ordenados, confiavel = ordenar_planos(confirmados)
+    return Ancora(planos=ordenados, pagina=pagina,
+                  clausula=str(dados.get("clausula") or "").strip(), trecho=trecho[:400],
+                  ordem_confiavel=confiavel)
 
 
 def plano_da_ancora(bruto: Any, ancora: Optional[Ancora]) -> Optional[str]:
@@ -667,15 +818,44 @@ class Capa:
 # ⚠️ o `_` antes do `V` é o caso REAL do acervo: 📊 `Seguro Residencial
 # Conteudo_V1.2`. `\bv` não casa depois de `_` (o underscore é caractere de
 # palavra), e era assim que a versão do cadastro passava batida.
+#
+# 🔴 E O MARCADOR TEM DE SER EXPLÍCITO. 📊 20/09/2026, no acervo real: `\bv` +
+# número colhia "09", "08", "12", "01", "07" de **datas** ("v. 01/07/26"), e a
+# capa passava a "declarar" uma versão que era um mês. Ou vem a palavra
+# `versão`, ou vem `V` colado no número (`_V1.2`, `V2.9`) — e, nesse caso, com
+# ponto decimal ou colado a `_`, que é como o acervo escreve de verdade.
 _VERSAO = re.compile(
-    r"(?i)(?:vers[ãa]o|ed\.?\s*v|\bv|_v)\s*[.:]?\s*(\d{1,3}(?:\.\d{1,3})?)\b")
+    r"(?i)(?:vers[ãa]o|ed\.?\s*v)\s*[.:]?\s*(\d{1,3}(?:\.\d{1,3})?)(?![\d./-])"
+    r"|(?:_v|\bv)\.?\s?(\d{1,2}\.\d{1,2})(?![\d./-])")
+# ⚠️ o `(?![\d./-])` é o que separa versão de DATA: 📊 "versão 09/2025" e
+# "v. 01/07/26" davam as "versões" 09 e 01 no acervo real.
 
 #: Linhas da capa que NÃO são nome de produto.
 _LIXO_DE_CAPA = re.compile(
     r"(?i)^(?:condi[çc][õo]es\s+(?:gerais|contratuais)|processo\s+susep|susep|"
     r"sumario|[íi]ndice|p[áa]gina\s*\d+|vers[ãa]o\b|www\.|\d+\s*$|cnpj|"
-    r"sac\b|ouvidoria)"
+    r"sac\b|ouvidoria|classifica[çc][ãa]o|uso\s+interno|confidencial|"
+    r"seja\s+bem|bem[- ]vind|a\s+partir\s+de|v[áa]lido\s+a\s+partir|"
+    r"atualizado\s+em|\d{1,2}/\d{1,2}/\d{2,4}|.*\bltda\b|.*\bs[./]a\b)"
 )
+
+#: 🔴 O CRIVO POSITIVO DA CAPA (conserto de 20/09/2026). 📊 `capa_do_documento`
+#: devolvia lixo como produto em **13 dos 27** documentos reais —
+#: *"Classificação: Uso Interno"*, *"Seja bem-vindo!"*, *"A partir de 01/07/26"*,
+#: razão social com CNPJ —, e esse texto ia para o `produto` do plano E para o
+#: prompt do modelo. Agora a linha só é aceita se PARECER nome de produto de
+#: seguro; se nenhuma parecer, cai no título do CADASTRO e registra o alerta.
+_PARECE_PRODUTO = re.compile(
+    r"(?i)\bseguro[s]?\b|\bauto(?:m[óo]vel|m[óo]veis)?\b|\bresidencia|"
+    r"\bcondom[íi]nio|\bempresarial\b|\bassist[êe]ncia\b|\bbilhete\b|"
+    r"\bcompreensivo\b|\bfrota\b|\bpatrimonial\b|\bprotegido\b")
+
+def _versao_no_texto(texto: Any) -> Optional[str]:
+    """O número da versão, em qualquer um dos dois formatos do `_VERSAO`."""
+    m = _VERSAO.search(str(texto or ""))
+    if not m:
+        return None
+    return m.group(1) or m.group(2)
 
 
 def capa_do_documento(paginas: Dict[int, str]) -> Capa:
@@ -694,28 +874,41 @@ def capa_do_documento(paginas: Dict[int, str]) -> Capa:
     numeros = sorted(int(p) for p in paginas)
     primeira = str(paginas.get(numeros[0]) or "")
     produto = None
-    for linha in [l.strip() for l in primeira.splitlines()]:
+    candidatas_de_produto: List[Tuple[int, int, str]] = []
+    for ordem, linha in enumerate([l.strip() for l in primeira.splitlines()]):
         limpo = re.sub(r"\s+", " ", linha).strip(" .-—–|")
         if len(limpo) < 6 or len(limpo) > 90 or _LIXO_DE_CAPA.match(limpo):
             continue
         if not re.search(r"[A-Za-zÁ-úÀ-ÿ]{3}", limpo):
             continue
-        produto = _VERSAO.sub("", limpo).strip(" .-—–_|")
-        break
+        # 🔴 O CRIVO POSITIVO: não basta não ser lixo conhecido — tem de parecer
+        # nome de produto de seguro. Era isto que faltava nos 13 de 27.
+        if not _PARECE_PRODUTO.search(limpo):
+            continue
+        # ⚠️ A LINHA QUE NOMEIA O RAMO VENCE A QUE SÓ DIZ "Seguros". 📊 a capa
+        # real traz a razão social ("Mapfre Seguros Gerais") ANTES do produto
+        # ("SEGURO RESIDENCIAL DANOS AO CONTEÚDO"): a primeira que "parece
+        # produto" seria a empresa, e o plano nasceria com o nome dela.
+        peso = 2 if re.search(
+            r"(?i)auto|residencia|condom[íi]nio|empresarial|frota|patrimonial|vida",
+            limpo) else 1
+        candidatas_de_produto.append((-peso, ordem,
+                                      _VERSAO.sub("", limpo).strip(" .-—–_|")))
+    if candidatas_de_produto:
+        produto = sorted(candidatas_de_produto)[0][2]
     versao = None
     rodapes = [primeira] + [str(paginas.get(n) or "")[-800:] for n in numeros[-3:]]
     for fonte in rodapes:
-        m = _VERSAO.search(fonte)
-        if m:
-            versao = m.group(1)
+        achada = _versao_no_texto(fonte)
+        if achada:
+            versao = achada
             break
     return Capa(produto=produto or None, versao=versao)
 
 
 def versao_declarada(texto: Any) -> Optional[str]:
     """A versão que o CADASTRO afirma (o título do documento), ou `None`."""
-    m = _VERSAO.search(str(texto or ""))
-    return m.group(1) if m else None
+    return _versao_no_texto(texto)
 
 
 def _mesma_versao(a: Optional[str], b: Optional[str]) -> bool:
@@ -809,9 +1002,19 @@ class Reprovacao:
 
 #: A FORMA da cláusula de exclusão de risco — "riscos excluídos", "não estão
 #: cobertos os danos decorrentes de…". Ela fala do RISCO dentro de uma cobertura.
+#
+# 🔴 O ACENTO É O DIALETO (CLAUDE.md §9.4), E ELE CUSTOU 70 % DA REGRA.
+# 📊 20/09/2026, medido no acervo REAL (27 PDFs lidos pelo `fitz`): das **785**
+# linhas que dizem "riscos excluídos", **778 têm o acento** — e o padrão antigo,
+# escrito `excluid`, casava só **235**. A regra que impede o pior erro da SPEC
+# (a exclusão de OUTRA cobertura virando `nao` do plano) estava desligada em
+# três de cada quatro páginas, em silêncio. O texto é o que o `fitz` devolve:
+# acentuado. Todo vocábulo aqui aceita as duas formas.
 _E_EXCLUSAO_DE_RISCO = re.compile(
-    r"risco[s]?\s+excluid|exclus[õo]e?s|n[ãa]o\s+est[ãa]o\s+cobert|"
-    r"n[ãa]o\s+(?:ser[ãa]o\s+)?indeniza|excetuad|ressalvad",
+    r"risco[s]?\s+exclu[ií]d|exclus[õo]e?s|n[ãa]o\s+est[ãa]o\s+cobert|"
+    r"n[ãa]o\s+(?:ser[ãa]o\s+)?indeniza|excetuad|ressalvad|"
+    r"n[ãa]o\s+(?:s[ãa]o|est[ãa]o)\s+(?:cobert|garantid|indeniz)|"
+    r"exclu[ií]d[oa]s?\s+(?:d[ea]|est[ãa]o|os\s+)",
     re.IGNORECASE,
 )
 
@@ -934,6 +1137,22 @@ def verificar(
         nivel = int(proposta.get("nivel") or 1)
     except (TypeError, ValueError):
         nivel = 1
+    # 🔴 COM ÂNCORA, OS NÍVEIS VÁLIDOS SÃO OS DELA — conhecidos ANTES da
+    # primeira proposta. 📊 20/09/2026, medido pelo red team: as duas regras
+    # abaixo olhavam só os níveis JÁ VISTOS, então a linha do Vip (nível 3) que
+    # chegasse depois da do Básico (nível 1) caía em `nivel_nao_contiguo` — e
+    # com `insere=False` ela nem virava rascunho. A linha CERTA sumia por causa
+    # da ordem das páginas.
+    if ancora is not None:
+        niveis_por_produto.setdefault(produto, {})[nivel] = plano
+        conferencia = BASE.conferir_pagina(
+            documento_id, proposta.get("pagina"), trecho=trecho, db=db, minio=minio
+        )
+        if not conferencia.ok:
+            if conferencia.motivo in ("pagina_inexistente", "trecho_nao_esta_na_pagina"):
+                return conferencia.motivo
+            return "fonte_%s" % conferencia.motivo
+        return None
     dono = niveis_por_produto.setdefault(produto, {}).get(nivel)
     if dono is not None and dono != plano:
         return "nivel_duplicado"
@@ -1121,6 +1340,13 @@ def processar_documento(
             % (capa.versao, do_cadastro))
     produto_padrao = (capa.produto
                       or str(doc.get("title") or doc.get("product_line") or "Produto"))
+    if not capa.produto:
+        # ⚠️ A capa que não diz o produto é FATO, e vira alerta — não silêncio.
+        # 📊 13 dos 27 documentos reais têm capa de aviso ("Classificação: Uso
+        # Interno", "Seja bem-vindo!"): antes, esse texto virava o produto.
+        resumo.alertas.append(
+            "produto_nao_veio_da_capa: a primeira página não traz nome de "
+            "produto legível; usando o título do cadastro (%s)" % produto_padrao[:60])
 
     # 🔴 A · A PRIMEIRA PASSADA É A ÂNCORA. Sem ela, o documento NÃO vai ao
     # modelo — e isso é economia além de correção: a página não lida não é paga.
@@ -1128,6 +1354,20 @@ def processar_documento(
     resumo.ancora = ancora
     if ancora is None:
         resumo.motivo = "clausula_de_planos_nao_localizada"
+        return resumo
+    # 🔴 A DECISÃO, ESCRITA (conserto de 20/09/2026): sem ordem confiável, o
+    # documento NÃO é extraído. O contrato de `propor_plano` exige `nivel >= 1`
+    # e é o `nivel` que `existe_plano_superior` compara para dizer ao segurado
+    # *"existe um plano acima do seu"*. Não há como gravar "não sei a ordem":
+    # qualquer número que se escreva vira afirmação. Entre uma hierarquia
+    # inventada e a fila "cláusula não localizada", a fila é o destino certo —
+    # a linha pode ser refeita; a frase errada já chegou ao segurado.
+    if not ancora.ordem_confiavel:
+        resumo.motivo = "ordem_dos_planos_nao_confiavel"
+        resumo.alertas.append(
+            "planos localizados (%s), mas sem ordem confiável: o nível seria a "
+            "ordem de página, e é ele que decide 'o plano acima do seu'"
+            % ", ".join(ancora.planos))
         return resumo
     resumo.planos_da_ancora = len(ancora.planos)
     ordem_do_plano = {BASE._norm_texto(n): i + 1 for i, n in enumerate(ancora.planos)}

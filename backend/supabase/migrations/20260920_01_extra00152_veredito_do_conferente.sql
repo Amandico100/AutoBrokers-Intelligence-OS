@@ -1,8 +1,9 @@
 -- =============================================================
 -- SPEC-EXTRA-001.5.2 · unidade F — O VEREDITO DO CONFERENTE MORA NA LINHA
 --
--- APPLY:     acrescenta 3 colunas a `insurer_assistance_services`:
---            `veredito_do_conferente`, `conferencia` (jsonb) e `conferido_em`;
+-- APPLY:     acrescenta 4 colunas a `insurer_assistance_services`:
+--            `veredito_do_conferente`, `conferencia` (jsonb), `conferido_em` e
+--            `caminho_da_clausula` (unidade B: de qual clausula a linha saiu);
 --            e um indice parcial para a fila achar o que ainda nao tem veredito.
 --            Expand-first: nenhuma coluna existente muda, nenhuma linha e
 --            reescrita, nada vira NOT NULL. Rodar de novo nao faz nada.
@@ -13,9 +14,10 @@
 --             where table_schema='public'
 --               and table_name='insurer_assistance_services'
 --               and column_name in ('veredito_do_conferente','conferencia',
---                                   'conferido_em')
+--                                   'conferido_em','caminho_da_clausula')
 --             order by 1;
---            -- esperado: 3 linhas · conferencia=jsonb · is_nullable=YES em todas
+--            -- esperado: 4 linhas · conferencia=jsonb · caminho_da_clausula=text
+--            --           · is_nullable=YES em todas
 --
 --            -- 2) o CHECK so aceita os tres vereditos
 --            select conname from pg_constraint
@@ -33,9 +35,15 @@
 --            alter table public.insurer_assistance_services
 --              drop constraint if exists servico_veredito_do_conferente_valido;
 --            alter table public.insurer_assistance_services
+--              drop column if exists caminho_da_clausula,
 --              drop column if exists conferido_em,
 --              drop column if exists conferencia,
 --              drop column if exists veredito_do_conferente;
+--            -- 🔴 A QUARTA COLUNA ENTROU NO ROLLBACK EM 20/09/2026, depois que o
+--            -- red team leu o cabecalho: o APPLY ja criava `caminho_da_clausula`
+--            -- e o ROLLBACK a DEIXAVA no banco. Um rollback que nao desfaz o que
+--            -- o apply fez e pior que rollback nenhum — quem o roda acredita que
+--            -- voltou ao estado anterior.
 --
 -- =============================================================
 -- POR QUE UMA MIGRATION, E NAO UMA COLUNA QUE JA EXISTE

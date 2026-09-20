@@ -167,10 +167,15 @@ function oQueFoiProposto(i: Item): string {
  * selo NUNCA decide: quem publica continua sendo gente, com revisor.
  */
 const SELO: Record<string, { texto: string; classe: string; explica: string }> = {
+  // 🔴 O TEXTO MUDOU EM 20/09/2026, e o motivo é uma medição: 📊 nas 39 linhas
+  // da fila real, o campo `trecho` saiu `nao_avaliado` em **39 de 39** (a base
+  // guarda só o `trecho_hash`). O selo dizia "conferi esta linha contra a
+  // página e ela bate" — afirmando sobre o que ninguém conferiu. Um selo que
+  // promete mais do que mediu é pior que selo nenhum: ele faz publicar.
   CONFERE: {
-    texto: 'a página confirma',
+    texto: 'sem divergência',
     classe: 'border-emerald-600/40 text-emerald-600',
-    explica: 'conferi esta linha contra a página do documento e ela bate',
+    explica: 'não achei divergência no que consegui conferir',
   },
   DIVERGE: {
     texto: 'a página não confirma',
@@ -198,6 +203,12 @@ function SeloDoConferente({ i }: { i: Item }) {
   const divergentes = Object.entries(i.conferencia?.campos || {})
     .filter(([, estado]) => estado === 'diverge')
     .map(([campo]) => CAMPO[campo] || campo);
+  // 🔴 O QUE NÃO FOI CONFERIDO APARECE. 📊 39/39 linhas da fila real têm o
+  // `trecho` como `nao_avaliado` — quem lê precisa saber o que o selo NÃO
+  // cobre, senão "sem divergência" é lido como "está tudo certo".
+  const naoAvaliados = Object.entries(i.conferencia?.campos || {})
+    .filter(([, estado]) => estado === 'nao_avaliado')
+    .map(([campo]) => CAMPO[campo] || campo);
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-2">
@@ -209,6 +220,11 @@ function SeloDoConferente({ i }: { i: Item }) {
       {divergentes.length > 0 && (
         <p className="text-[11px] text-muted-foreground">
           Não bate em: {divergentes.join(', ')}.
+        </p>
+      )}
+      {naoAvaliados.length > 0 && (
+        <p className="text-[11px] text-faint">
+          Não consegui conferir: {naoAvaliados.join(', ')}.
         </p>
       )}
       {motivos.map((m, n) => (
