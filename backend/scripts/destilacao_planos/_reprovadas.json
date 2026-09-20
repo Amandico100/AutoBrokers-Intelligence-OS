@@ -1,0 +1,44 @@
+{
+ "reprovadas": [
+  {
+   "chave": "d02c6d27|CLÁUSULA 37C - GRATUITA 200 KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é até R$ 1.000,00 por evento (p.8). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 200,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 200,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): até R$ 1.000,00 por evento (p.8)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37H - GRATUITA 400 KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é até R$ 1.000,00 por evento (p.15). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 200,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 200,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): até R$ 1.000,00 por evento (p.15)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37M – REDE REFERENCIADA 500 KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é até R$ 1.000,00 por evento (p.111). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 200,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 200,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): até R$ 1.000,00 por evento (p.111)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37N – LIVRE ESCOLHA 500 KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é até R$ 1.000,00 por evento (p.118). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 200,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 200,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): até R$ 1.000,00 por evento (p.118)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37J - REDE REFERENCIADA 1000 KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é 1 passagem rodoviária ou aérea, classe econômica, até R$ 2.000,00 por evento (p.97). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 300,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 300,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): 1 passagem rodoviária ou aérea, classe econômica, até R$ 2.000,00 por evento (p.97)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37K - LIVRE ESCOLHA 1000 KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é 1 passagem rodoviária ou aérea, classe econômica, até R$ 2.000,00 por evento (p.104). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 300,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 300,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): 1 passagem rodoviária ou aérea, classe econômica, até R$ 2.000,00 por evento (p.104)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37E - REDE REFERENCIADA SEM LIMITE DE KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é 1 passagem rodoviária ou aérea, classe econômica, até R$ 5.000,00 por evento (p.83). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 300,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 300,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): 1 passagem rodoviária ou aérea, classe econômica, até R$ 5.000,00 por evento (p.83)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  },
+  {
+   "chave": "d02c6d27|CLÁUSULA 37G - LIVRE ESCOLHA SEM LIMITE DE KM|taxi",
+   "motivo": "Linha NOVA, e o limite que mais importa saiu genérico: 'fora do município: passagem rodoviária ou aérea, conforme a cláusula'. O documento dá o número, e ele varia 5x entre as cláusulas — aqui é 1 passagem rodoviária ou aérea, classe econômica, até R$ 5.000,00 por evento (p.90). Nas cláusulas 37C, 37H, 37M e 37N o texto nem fala em passagem: é 'até R$ 1.000,00 por evento'. O transporte fora do município é justamente o caso caro (quebrou longe de casa), e uma linha que diz 'conforme a cláusula' devolve a pergunta ao segurado. O limite DENTRO do município também ficou pela metade: R$ 300,00 na vigência, limitado a R$ 100,00 por evento.",
+   "correcao": "limite_texto='dentro do município: R$ 300,00 na vigência, limitado a R$ 100,00 por evento; fora do município (itens 2.1.2 e 2.1.3): 1 passagem rodoviária ou aérea, classe econômica, até R$ 5.000,00 por evento (p.90)'. O resto da linha está conferido e correto — o gate do item 2 (só depois de usar o reboque 1.4) e a perda do direito de quem opta pela hospedagem já entraram na condicao."
+  }
+ ]
+}

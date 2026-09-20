@@ -1,0 +1,51 @@
+{
+ "insurer_key": "allianz",
+ "rodada": "reconferencia 2026-09-20 (so alteradas/novas/removidas)",
+ "conferidas": 48,
+ "aprovadas": 48,
+ "reprovadas": [],
+ "faltantes": [
+  {
+   "doc8": "935c7fce",
+   "plano": "Plano 1 (produto Allianz Auto Moto)",
+   "servico": "chaveiro",
+   "pagina": 43,
+   "observacao": "Continua faltando, agora com o risco AVISADO: as 30 linhas de auto passaram a dizer na condicao que valem para o Allianz Auto Automóvel e que Moto/Caminhão/Frota usam os mesmos nomes de plano com limites próprios. O aviso protege quem lê a condição inteira, mas a p.43 diz 'Não possui este serviço' para Moto Plano 1 enquanto a base responde R$ 80/R$ 240 — a linha certa ainda não existe."
+  },
+  {
+   "doc8": "935c7fce",
+   "plano": "Plano 1 (produtos Allianz Auto Moto e Allianz Auto Caminhão)",
+   "servico": "troca_de_pneu",
+   "pagina": 42,
+   "observacao": "Mesma situação: a p.42 marca 'Não possui este serviço' para Moto Plano 1 e para o Caminhão nos três planos."
+  },
+  {
+   "doc8": "935c7fce",
+   "plano": "Plano 2 (produto Allianz Auto Caminhão)",
+   "servico": "guincho",
+   "pagina": 34,
+   "observacao": "O único caso do documento em que as duas hipóteses divergem: reboque após PANE = 400 km (p.34) e após ACIDENTE/roubo/furto = 1.000 km (p.37). Sem linha."
+  },
+  {
+   "doc8": "935c7fce",
+   "plano": "Plano Intermediário (Moto e Caminhão)",
+   "servico": "guincho",
+   "pagina": 34,
+   "observacao": "Nome de plano que só existe fora do Automóvel e não tem nenhuma linha: Moto 500 km; Caminhão 400 km após pane e 500 km após sinistro."
+  },
+  {
+   "doc8": "935c7fce",
+   "plano": "Plano 1/2/3 (produto Allianz Auto Frota, 5 categorias)",
+   "servico": "guincho",
+   "pagina": 32,
+   "observacao": "A Frota tem tabela própria por categoria (p.32, 34 e 35), com os mesmos nomes Plano 1/2/3 e zero linhas. Ex.: Frota Caminhão Plano 3 = 400 km após pane; Frota Semirreboque não tem transporte alternativo nem hospedagem (p.38 e p.39)."
+  },
+  {
+   "doc8": "935c7fce",
+   "plano": "Plano 1/2/3 (produto Allianz Auto Automóvel)",
+   "servico": "(reparo no local / mecânico)",
+   "pagina": 33,
+   "observacao": "Pendência de VOCABULÁRIO, não do leitor: 'Reparo no local' (R$ 35 por evento; R$ 105/R$ 140/R$ 175 por vigência) não tem chave entre os 16 serviços e é o primeiro atendimento, antes do guincho."
+  }
+ ]
+}

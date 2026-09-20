@@ -1,0 +1,106 @@
+{
+ "conta": {
+  "lidas": 4,
+  "proposto": 4,
+  "publicado": 4
+ },
+ "linhas": [
+  {
+   "chave": "819a6adc|ASSISTÊNCIA BÁSICA|chaveiro_residencial",
+   "insurer": "yelum",
+   "ramo": "residencial",
+   "produto": "Yelum Residência",
+   "plano": "ASSISTÊNCIA BÁSICA",
+   "servico": "chaveiro_residencial",
+   "coberto": "sim",
+   "pagina": 66,
+   "veredito": "CONFERE",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "ok",
+    "plano": "ok",
+    "produto": "ok"
+   },
+   "motivos": [],
+   "servico_id": "555afb51-38ac-431e-9c7e-e338c51bf941",
+   "estado": "publicado"
+  },
+  {
+   "chave": "819a6adc|ASSISTÊNCIA BÁSICA|encanador",
+   "insurer": "yelum",
+   "ramo": "residencial",
+   "produto": "Yelum Residência",
+   "plano": "ASSISTÊNCIA BÁSICA",
+   "servico": "encanador",
+   "coberto": "sim",
+   "pagina": 67,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA BÁSICA' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "48c992dd-a9b1-4273-8a97-27ea91c85d5e",
+   "estado": "publicado"
+  },
+  {
+   "chave": "819a6adc|ASSISTÊNCIA BÁSICA|eletricista",
+   "insurer": "yelum",
+   "ramo": "residencial",
+   "produto": "Yelum Residência",
+   "plano": "ASSISTÊNCIA BÁSICA",
+   "servico": "eletricista",
+   "coberto": "sim",
+   "pagina": 68,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA BÁSICA' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "3d841a53-4773-4183-9323-6f4532b5d14d",
+   "estado": "publicado"
+  },
+  {
+   "chave": "819a6adc|ASSISTÊNCIA BÁSICA|vidros",
+   "insurer": "yelum",
+   "ramo": "residencial",
+   "produto": "Yelum Residência",
+   "plano": "ASSISTÊNCIA BÁSICA",
+   "servico": "vidros",
+   "coberto": "sim",
+   "pagina": 69,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA BÁSICA' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "2bff9fc3-637b-4519-8a71-1b6f0972dd3d",
+   "estado": "publicado"
+  }
+ ]
+}

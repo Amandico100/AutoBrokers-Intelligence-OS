@@ -1,0 +1,39 @@
+{
+  "alteradas": [
+    "d66a5ead|Plano Completo|alagamento",
+    "d66a5ead|Plano VIP|alagamento",
+    "d66a5ead|Plano Completo|guincho",
+    "e8b7e0ae|Plano Básico|vidros_residencial -> vidros",
+    "e8b7e0ae|Plano Especial|vidros_residencial -> vidros",
+    "e8b7e0ae|Plano VIP|vidros_residencial -> vidros",
+    "eeabd8e3|Plano Básico|vidros_residencial -> vidros",
+    "eeabd8e3|Plano Completo|vidros_residencial -> vidros",
+    "b7c60de6|Plano Mais|vidros_residencial -> vidros",
+    "b7c60de6|Plano Super|vidros_residencial -> vidros",
+    "d66a5ead|Plano VIP|vidros_residencial",
+    "d24fa589|Completo + | Assistência Km Ilimitada|chaveiro",
+    "d24fa589|Porto Socorro Mais Pessoa Jurídica|chaveiro",
+    "baec29a0|Plano Conforto|vidros_residencial -> vidros",
+    "baec29a0|Plano Premium Conforto|vidros_residencial -> vidros",
+    "baec29a0|Plano Veraneio Conforto|vidros_residencial -> vidros",
+    "baec29a0|Plano Premium Veraneio Conforto|vidros_residencial -> vidros",
+    "baec29a0|Plano Exclusive|vidros_residencial -> vidros",
+    "baec29a0|Plano Premium Exclusive|vidros_residencial -> vidros"
+  ],
+  "novas": [
+    "d66a5ead|Plano VIP|chaveiro",
+    "d66a5ead|Plano VIP|troca_de_pneu",
+    "d66a5ead|Plano VIP|pane_seca",
+    "baec29a0|Plano Veraneio Exclusive|vidros",
+    "baec29a0|Planos Premium Veraneio Exclusive|vidros"
+  ],
+  "removidas": [
+    "e8b7e0ae|Plano Básico|granizo"
+  ],
+  "mantidas_com_discordancia": [
+    {
+      "chave": "d66a5ead|Plano VIP|vidros_residencial",
+      "prova": "Regra (5) aplicada em TODOS os documentos residenciais e de condomínio. Só esta linha ficou como vidros_residencial: ela é o vidraceiro do IMÓVEL dentro dos Reparos Residenciais de uma apólice de AUTO (p.37, alínea d: 'quebra de vidros de portas ou janelas externas'), e o mesmo Plano VIP já tem uma linha servico='vidros' que é a cláusula de vidros do VEÍCULO (p.17: 'Danos isolados a vidros exceto se contratada cobertura específica'). Renomear colidiria a chave (plano, servico) e diria ao motorista que o vidro do carro está coberto pela assistência — o oposto do que a p.17 afirma."
+    }
+  ]
+}

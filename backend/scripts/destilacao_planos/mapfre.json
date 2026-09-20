@@ -1,0 +1,127 @@
+{
+ "insurer_key": "mapfre",
+ "escrito_em": "2026-09-20",
+ "documentos": [
+  {
+   "documento_id": "1882c904-cabf-42ef-a9a6-9fe2d4663207",
+   "doc8": "1882c904",
+   "ramo": "auto",
+   "produto": "Mapfre Automóvel",
+   "versao": "Condições Contratuais v34.0",
+   "observacao": "O documento NÃO enumera planos de assistência e NÃO descreve os serviços: a Assistência 24h aparece só como uma garantia definida no glossário (p.5) e listada entre as coberturas. Por isso há um único plano, com o nome que o documento dá à garantia, e nenhuma linha de guincho, chaveiro, pane seca ou hospedagem — os limites desses serviços não estão neste documento. O que o documento detalha são coberturas SEPARADAS: Carro Reserva (cláusula 8, p.67–70) e Danos aos Vidros, esta em versões próprias (Básica, Blindados, Top, Top Plus e com Logomarca da Montadora) — nenhuma das duas foi pendurada no plano de assistência, porque não são serviços dele; ficam como coberturas adicionais do produto, a registrar com os limites das condições especiais de cada uma.",
+   "planos": [
+    {
+     "nome": "Assistência 24h",
+     "nivel": null,
+     "pagina": 5,
+     "trecho": "Assistência 24h \nGarante ao veículo segurado e a seus passageiros, desde que não excedam a capacidade oficial do \nveículo, assistência emergencial na ocorrência de eventos previstos. A assistência poderá ser estabelecida \npara eventos causados por veículo segurado indicado na apólice."
+    }
+   ],
+   "servicos": []
+  },
+  {
+   "documento_id": "fe5e0f6d-6fa5-4579-9d9a-b142c13a4442",
+   "doc8": "fe5e0f6d",
+   "ramo": "residencial",
+   "produto": "Seguro Proteção Residencial",
+   "versao": null,
+   "observacao": "O documento não enumera planos: há uma única 'ASSISTÊNCIA PERSONALIZADA' (item 5), com os serviços 5.1.1 a 5.1.10. O ponto que mais importa dizer ao segurado: encanador, eletricista, chaveiro e vidraceiro NÃO são serviços emergenciais aqui — eles aparecem apenas no 'Serviço de Conexão' (5.1.3), que é INDICAÇÃO de profissional, com o pagamento integral por conta do usuário. O que a assistência executa e paga são revisões e limpezas preventivas, 1 vez por ano cada.",
+   "planos": [
+    {
+     "nome": "Assistência Personalizada",
+     "nivel": null,
+     "pagina": 6,
+     "trecho": "5. \nASSISTÊNCIA PERSONALIZADA \n \nServiços à Residência segurada:"
+    }
+   ],
+   "servicos": [
+    {
+     "plano": "Assistência Personalizada",
+     "servico": "chaveiro_residencial",
+     "coberto": "nao",
+     "limite_valor": null,
+     "limite_unidade": null,
+     "limite_texto": "não é serviço pago: apenas indicação de profissional; o usuário paga integralmente o serviço e as peças",
+     "carencia_dias": null,
+     "condicao": "não é serviço emergencial neste seguro: o chaveiro consta apenas da lista do 'Serviço de Conexão' (5.1.3), que é indicação de profissional — o usuário paga integralmente o serviço e as peças",
+     "pagina": 6,
+     "trecho": "5.1.3.       SERVIÇO DE CONEXÃO: \nResumo de Serviços: Indicação de profissionais para casos que não se caracterizem \ncomo “emergência” com garantia de 3 meses pelos serviços prestados. Serviços \noferecidos: encanador, eletricista, chaveiro, serralheiro, vidraceiro, pedreiro, limpeza, \ncarpinteiro,",
+     "confianca": "alta"
+    },
+    {
+     "plano": "Assistência Personalizada",
+     "servico": "vidros",
+     "coberto": "nao",
+     "limite_valor": null,
+     "limite_unidade": null,
+     "limite_texto": "não é serviço pago: apenas indicação de profissional; o usuário paga integralmente o serviço e as peças",
+     "carencia_dias": null,
+     "condicao": "não é serviço emergencial neste seguro: o vidraceiro consta apenas da lista do 'Serviço de Conexão' (5.1.3), que é indicação de profissional — o usuário paga integralmente o serviço e as peças",
+     "pagina": 6,
+     "trecho": "5.1.3.       SERVIÇO DE CONEXÃO: \nResumo de Serviços: Indicação de profissionais para casos que não se caracterizem \ncomo “emergência” com garantia de 3 meses pelos serviços prestados. Serviços \noferecidos: encanador, eletricista, chaveiro, serralheiro, vidraceiro, pedreiro, limpeza, \ncarpinteiro,",
+     "confianca": "alta"
+    },
+    {
+     "plano": "Assistência Personalizada",
+     "servico": "eletricista",
+     "coberto": "condicionado",
+     "limite_valor": null,
+     "limite_unidade": null,
+     "limite_texto": "01 intervenção por ano – não acumulativa",
+     "carencia_dias": null,
+     "condicao": "só a REVISÃO da instalação elétrica (5.1.4): verifica pontos de iluminação, força e quadro de distribuição, e nenhum tipo de reparo está incluso; para reparo, só a indicação de profissional do 'Serviço de Conexão' (5.1.3), paga pelo usuário",
+     "pagina": 6,
+     "trecho": "5.1.4. REVISÃO NA INSTALAÇÃO ELÉTRICA: \nResumo de Serviços: Verificação de pontos de iluminação e força, além do quadro \nde distribuição interna. Não está incluso nenhum tipo de reparo. \n \nLimite dos Serviços: 01 intervenção por ano – não acumulativa.",
+     "confianca": "alta"
+    },
+    {
+     "plano": "Assistência Personalizada",
+     "servico": "encanador",
+     "coberto": "condicionado",
+     "limite_valor": null,
+     "limite_unidade": null,
+     "limite_texto": "01 intervenção por ano – não acumulativa",
+     "carencia_dias": null,
+     "condicao": "só a REVISÃO hidráulica (5.1.5): verifica torneiras, boia de caixa d'água acoplada, válvula de descarga, registros, sifões e flexíveis; o reparo não está incluso, e o caça-vazamentos (5.1.10) apenas aponta o vazamento",
+     "pagina": 7,
+     "trecho": "Resumo de Serviços: Verificação de torneiras, boia de caixa d’água acoplada, \nválvula de descarga, registros, sifões e flexíveis. \n \nLimite dos Serviços: 01 intervenção por ano – não acumulativa.",
+     "confianca": "alta"
+    }
+   ]
+  }
+ ],
+ "ignorados": [
+  {
+   "doc8": "f84c3862",
+   "motivo": "Mapfre Residencial – Condições Contratuais v2.9: não descreve assistência 24h nem planos de assistência; Quebra de Vidros e Alagamento aparecem como GARANTIAS ADICIONAIS da apólice (p.18, p.39), não como serviços de assistência. ⚠️ A tabela da p.35 é de FRACIONAMENTO do prêmio (anual/bianual/trianual) e não é plano — conferida e descartada de propósito"
+  },
+  {
+   "doc8": "5914c0cb",
+   "motivo": "Mapfre Seguro Residencial Conteúdo v1.2: não descreve assistência 24h nem planos; Quebra de Vidros, Espelhos e Aparelhos Sanitários (p.16) é garantia adicional da apólice, não serviço de assistência"
+  },
+  {
+   "doc8": "ea0ae586",
+   "motivo": "Mapfre cg-imob-residencial v2.5: condições gerais do residencial vinculado a financiamento imobiliário; nenhuma menção a assistência 24h, a planos de assistência ou a serviços (guincho, chaveiro, encanador, eletricista, vidraceiro)"
+  },
+  {
+   "doc8": "00d49766",
+   "motivo": "Mapfre Seguro Condomínio CG v2.3: não descreve assistência 24h nem planos de assistência; Alagamento (p.23), Quebra de Vidros (p.24) e Inundação (p.61) aparecem como garantias e riscos da apólice, não como serviços de assistência"
+  },
+  {
+   "doc8": "b67bb8c3",
+   "motivo": "Mapfre Seguro Garantia Mecânica: cobertura de reparo mecânico após a garantia de fábrica, sem assistência 24h própria"
+  },
+  {
+   "doc8": "5aa14c81",
+   "motivo": "Mapfre CG Seguro de Pneu v1.3: cobertura de dano a pneu, sem assistência 24h própria"
+  },
+  {
+   "doc8": "c2f224e6",
+   "motivo": "Mapfre Seguro Crédito Imobiliário Residencial CG v1.8: seguro prestamista de financiamento (morte, invalidez, danos físicos ao imóvel), sem assistência 24h"
+  },
+  {
+   "doc8": "46d26974",
+   "motivo": "Mapfre CG Carta Verde v4.0: responsabilidade civil para circulação no Mercosul, sem planos nem serviços de assistência 24h próprios"
+  }
+ ]
+}

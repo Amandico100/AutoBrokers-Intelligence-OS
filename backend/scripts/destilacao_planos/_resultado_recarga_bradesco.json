@@ -1,0 +1,131 @@
+{
+ "conta": {
+  "lidas": 5,
+  "proposto": 5,
+  "publicado": 5
+ },
+ "linhas": [
+  {
+   "chave": "fba57b04|ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM|guincho",
+   "insurer": "bradesco",
+   "ramo": "auto",
+   "produto": "Bradesco Seguro Auto",
+   "plano": "ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM",
+   "servico": "guincho",
+   "coberto": "sim",
+   "pagina": 37,
+   "veredito": "CONFERE",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "ok",
+    "plano": "ok",
+    "produto": "ok"
+   },
+   "motivos": [],
+   "servico_id": "22e782cb-6a6b-45c4-a225-69f5d7a812b0",
+   "estado": "publicado"
+  },
+  {
+   "chave": "fba57b04|ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM|chaveiro",
+   "insurer": "bradesco",
+   "ramo": "auto",
+   "produto": "Bradesco Seguro Auto",
+   "plano": "ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM",
+   "servico": "chaveiro",
+   "coberto": "sim",
+   "pagina": 19,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "d3ad71f1-a705-4ea3-a27b-80682ccd4e68",
+   "estado": "publicado"
+  },
+  {
+   "chave": "fba57b04|ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM|taxi",
+   "insurer": "bradesco",
+   "ramo": "auto",
+   "produto": "Bradesco Seguro Auto",
+   "plano": "ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM",
+   "servico": "taxi",
+   "coberto": "sim",
+   "pagina": 19,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "1cb32aea-d5fb-4ec8-9920-9ed031060669",
+   "estado": "publicado"
+  },
+  {
+   "chave": "fba57b04|ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM|troca_de_pneu",
+   "insurer": "bradesco",
+   "ramo": "auto",
+   "produto": "Bradesco Seguro Auto",
+   "plano": "ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM",
+   "servico": "troca_de_pneu",
+   "coberto": "sim",
+   "pagina": 20,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "dc4f8b4b-21c5-4664-a019-7b14e49e937e",
+   "estado": "publicado"
+  },
+  {
+   "chave": "fba57b04|ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM|hospedagem",
+   "insurer": "bradesco",
+   "ramo": "auto",
+   "produto": "Bradesco Seguro Auto",
+   "plano": "ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM",
+   "servico": "hospedagem",
+   "coberto": "sim",
+   "pagina": 20,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'ASSISTÊNCIA AUTO DIA E NOITE - Nº 43 - 200 KM' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "bb188fe4-a04b-4f99-a9ac-29c8f21ee851",
+   "estado": "publicado"
+  }
+ ]
+}

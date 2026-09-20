@@ -1,0 +1,133 @@
+{
+ "conta": {
+  "lidas": 5,
+  "proposto": 5,
+  "publicado": 5
+ },
+ "linhas": [
+  {
+   "chave": "8fbde7c5|Allianz Assistência Essencial|chaveiro_residencial",
+   "insurer": "allianz",
+   "ramo": "residencial",
+   "produto": "Allianz Residência",
+   "plano": "Allianz Assistência Essencial",
+   "servico": "chaveiro_residencial",
+   "coberto": "sim",
+   "pagina": 101,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'Allianz Assistência Essencial' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "705c5997-52d3-47bf-a216-de7b60bade51",
+   "estado": "publicado"
+  },
+  {
+   "chave": "8fbde7c5|Allianz Assistência Essencial|encanador",
+   "insurer": "allianz",
+   "ramo": "residencial",
+   "produto": "Allianz Residência",
+   "plano": "Allianz Assistência Essencial",
+   "servico": "encanador",
+   "coberto": "sim",
+   "pagina": 106,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "o número 200 está na página, mas não no trecho que sustenta a linha — pode ser da coluna de outro plano",
+    "a página não nomeia o plano 'Allianz Assistência Essencial' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "88217201-8bd0-40bf-ad94-15d421e95557",
+   "estado": "publicado"
+  },
+  {
+   "chave": "8fbde7c5|Allianz Assistência Essencial|eletricista",
+   "insurer": "allianz",
+   "ramo": "residencial",
+   "produto": "Allianz Residência",
+   "plano": "Allianz Assistência Essencial",
+   "servico": "eletricista",
+   "coberto": "sim",
+   "pagina": 106,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "o número 200 está na página, mas não no trecho que sustenta a linha — pode ser da coluna de outro plano",
+    "a página não nomeia o plano 'Allianz Assistência Essencial' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "54389042-4fa7-4362-8122-e8033d08033b",
+   "estado": "publicado"
+  },
+  {
+   "chave": "8fbde7c5|Allianz Assistência Essencial|vidros",
+   "insurer": "allianz",
+   "ramo": "residencial",
+   "produto": "Allianz Residência",
+   "plano": "Allianz Assistência Essencial",
+   "servico": "vidros",
+   "coberto": "sim",
+   "pagina": 108,
+   "veredito": "NAO_CONSEGUI",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "nao_avaliado",
+    "produto": "ok"
+   },
+   "motivos": [
+    "a página não nomeia o plano 'Allianz Assistência Essencial' em lugar nenhum",
+    "não consegui conferir: plano, limite"
+   ],
+   "servico_id": "92fa8444-b22a-4263-86b2-d57305a95f93",
+   "estado": "publicado"
+  },
+  {
+   "chave": "8fbde7c5|Allianz Assistência Essencial|hospedagem",
+   "insurer": "allianz",
+   "ramo": "residencial",
+   "produto": "Allianz Residência",
+   "plano": "Allianz Assistência Essencial",
+   "servico": "hospedagem",
+   "coberto": "nao",
+   "pagina": 100,
+   "veredito": "CONFERE",
+   "campos": {
+    "pagina": "ok",
+    "trecho": "ok",
+    "coberto": "ok",
+    "limite": "nao_avaliado",
+    "plano": "ok",
+    "produto": "ok"
+   },
+   "motivos": [],
+   "servico_id": "682f4496-1e09-4626-bfb7-9fb399ab738c",
+   "estado": "publicado"
+  }
+ ]
+}

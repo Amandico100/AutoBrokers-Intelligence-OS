@@ -24,7 +24,9 @@ def main():
     if dados.get("tool_name") != "Agent":
         return 0
     try:
-        teto = int(os.environ.get("AAA_FAST_TETO_DE_AGENTES", "12"))
+        # 24 por decisão do Founder em 20/09/2026 (EXTRA-001.5.2): o teto de 12 travou a confirmação e a destilação por
+        # agentes do plano. ⛔ Não "restaurar" para 12 no fechamento de SPEC: o teto baixo serializa, e serial é o que custa relógio.
+        teto = int(os.environ.get("AAA_FAST_TETO_DE_AGENTES", "24"))
         sessao = str(dados.get("session_id") or "sem-id").replace("/", "_")
         arquivo = os.path.join(tempfile.gettempdir(), "aaa-fast-agentes-%s.txt" % sessao)
         n = 0

@@ -83,7 +83,8 @@
         "vidro quebrado",
         "retrovisor",
         "farol",
-        "lanterna"
+        "lanterna",
+        "vidraceiro"
       ],
       "pergunta_tipica": "quebrou o parabrisa, cobre?",
       "_nota": "📊 93 perguntas. 🔴 `ramos` VOLTOU a listar os tres em 20/09/2026, depois que o red team mediu o estrago: a base tem 6 linhas PUBLICADAS com `servico='vidros'` (3 auto, 2 residencial, 1 condominio) e qualquer leitura que filtre por `ramos` esconderia metade delas. ⚠️ A distincao residencial/auto existe em `vidros_residencial`, mas ela e decidida pelo EXTRATOR (`servico_do_ramo`), pelo ramo do documento — NUNCA pelo texto da pergunta do segurado. Ver a nota de `vidros_residencial`."

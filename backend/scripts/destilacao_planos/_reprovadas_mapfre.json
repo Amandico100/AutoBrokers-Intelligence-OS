@@ -1,0 +1,39 @@
+{
+ "insurer_key": "mapfre",
+ "rodada": "reconferencia 2026-09-20 (so alteradas/removidas)",
+ "conferidas": 4,
+ "aprovadas": 4,
+ "reprovadas": [],
+ "decisao_pedida": {
+  "chave": "1882c904|Assistência 24h|(o plano em si)",
+  "veredito": "MANTER o plano, com duas condições registradas.",
+  "porque": "(1) FATO do documento: a p.5 nomeia a garantia 'Assistência 24h' do Mapfre Automóvel; apagar o plano apagaria esse fato. (2) MEDIDO no código: com zero serviços publicados e nenhum outro plano do mesmo produto, o passo 4 de app/services/skills/cobertura_e_assistencia.py não acha plano superior (gancho=None) e a resposta cai no passo 6, _sem_saber('sem_linha_publicada') — exatamente a mesma resposta que o segurado ouviria se o plano não existisse. Hoje o plano não piora nenhuma resposta e preserva um fato verdadeiro.",
+  "condicoes": [
+   "Enquanto este plano tiver ZERO serviços, nenhum outro plano pode ser publicado para mapfre/auto/Mapfre Automóvel: com dois planos, o passo 4 passa a responder 'nao_contratado' — 'seu plano não tem esse serviço' — apoiado num plano cujos serviços nunca foram lidos. Um NÃO construído sobre não-leitura é pior que 'ainda não sei'.",
+   "Fica em faltantes a coleta do manual/condições da Assistência 24h da Mapfre auto, que é onde moram guincho, chaveiro, pane seca e hospedagem."
+  ]
+ },
+ "faltantes": [
+  {
+   "doc8": "1882c904",
+   "plano": "Assistência 24h",
+   "servico": "guincho, chaveiro, pane_seca, troca_de_pneu, hospedagem, taxi",
+   "pagina": 5,
+   "observacao": "O documento define a garantia (p.5) e nunca descreve os serviços nem os limites. Falta COLETAR o manual/condições especiais da Assistência 24h da Mapfre Automóvel — sem ele o plano responde 'ainda não sei' a tudo."
+  },
+  {
+   "doc8": "1882c904",
+   "plano": "(coberturas separadas do produto)",
+   "servico": "carro_reserva, vidros",
+   "pagina": 67,
+   "observacao": "As 2 linhas foram removidas com razão (não são serviços da assistência), mas Carro Reserva (cláusula 8, p.67–70) e Danos aos Vidros (versões Básica, Blindados, Top, Top Plus e Logomarca) continuam sendo o que o segurado pergunta. Decidir o MESMO tratamento das três seguradoras: ou `condicionado` com a condição explicando que é cobertura à parte (como ficou na Allianz e na Azul), ou sem linha nas três."
+  },
+  {
+   "doc8": "fe5e0f6d",
+   "plano": "Assistência Personalizada",
+   "servico": "(lubrificação de fechaduras 5.1.6)",
+   "pagina": 7,
+   "observacao": "Sem chave no vocabulário. Não muda a resposta de chaveiro_residencial (que é 'não', e está certa: abrir porta é só indicação do Serviço de Conexão), mas é serviço executado 1x por ano e hoje some da base."
+  }
+ ]
+}

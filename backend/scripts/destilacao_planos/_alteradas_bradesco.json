@@ -1,0 +1,76 @@
+{
+ "alteradas": [
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 100 KM – Nº 41|chaveiro",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 200 KM – Nº 15|chaveiro",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 400 KM – Nº 16|chaveiro",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 100 KM – Nº 41|taxi",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 200 KM – Nº 15|taxi",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 400 KM – Nº 16|taxi",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 100 KM – Nº 41|troca_de_pneu",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 200 KM – Nº 15|troca_de_pneu",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 400 KM – Nº 16|troca_de_pneu",
+  "5d669df1|Assistência Residencial|vidros_residencial -> vidros",
+  "a349c976|ASSISTÊNCIA AUTO PRIME DIA E NOITE Nº 112 - 600 KM|* (6 linhas: confianca alta/media -> baixa; nivel 4 -> 1)",
+  "a349c976|ASSISTÊNCIA MOTO DIA E NOITE ASSOHONDA - Nº 21|* (4 linhas: confianca -> baixa)"
+ ],
+ "novas": [
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 100 KM – Nº 41|hospedagem",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 200 KM – Nº 15|hospedagem",
+  "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 400 KM – Nº 16|hospedagem",
+  "fba57b04|AUTO ASSISTÊNCIA TOTAL – Nº 118|guincho",
+  "fba57b04|AUTO ASSISTÊNCIA TOTAL – Nº 118|chaveiro",
+  "fba57b04|AUTO ASSISTÊNCIA TOTAL – Nº 118|taxi",
+  "fba57b04|AUTO ASSISTÊNCIA TOTAL – Nº 118|troca_de_pneu",
+  "fba57b04|AUTO ASSISTÊNCIA TOTAL – Nº 118|hospedagem",
+  "fba57b04|AUTO RESERVA BÁSICO|carro_reserva",
+  "fba57b04|AUTO RESERVA PLUS|carro_reserva",
+  "fba57b04|AUTO RESERVA PREMIUM|carro_reserva",
+  "fba57b04|VIDRO PROTEGIDO – Nº25|vidros",
+  "fba57b04|VIDRO PROTEGIDO – Nº25|granizo",
+  "fba57b04|VIDRO PROTEGIDO PLUS Nº 24|vidros",
+  "fba57b04|VIDRO PROTEGIDO PLUS Nº 24|granizo",
+  "fba57b04|VIDRO PROTEGIDO CARGA – Nº 83|vidros",
+  "fba57b04|VIDRO PROTEGIDO CARGA – Nº 83|granizo",
+  "fba57b04|REPARO DE VIDROS – Nº 98|vidros"
+ ],
+ "removidas": [
+  "a349c976|Assistência Residencial|chaveiro_residencial",
+  "a349c976|Assistência Residencial|encanador",
+  "a349c976|Assistência Residencial|eletricista",
+  "a349c976|Assistência Residencial|vidros_residencial",
+  "a349c976|Assistência Residencial|hospedagem",
+  "a349c976|Assistência Residencial| (PLANO removido do documento de ramo=auto)",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118|guincho",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118|pane_seca",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118|chaveiro",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118|taxi",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118|troca_de_pneu",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118|hospedagem",
+  "a349c976|AUTO ASSISTÊNCIA TOTAL – Nº 118| (PLANO reescrito a partir do fba57b04/2023)",
+  "a349c976|AUTO RESERVA 10 DIAS - Nº 101|carro_reserva",
+  "a349c976|AUTO RESERVA 15 DIAS - Nº 111|carro_reserva",
+  "a349c976|AUTO RESERVA 30 DIAS - Nº 61|carro_reserva",
+  "a349c976|AUTO RESERVA PLUS 10 DIAS - Nº 102|carro_reserva",
+  "a349c976|AUTO RESERVA PLUS 15 DIAS - Nº 115|carro_reserva",
+  "a349c976|AUTO RESERVA PLUS 30 DIAS - Nº 85|carro_reserva",
+  "a349c976|VIDRO PROTEGIDO – Nº25|vidros",
+  "a349c976|REPARO DE VIDROS – Nº 98|vidros",
+  "a349c976|VIDRO PROTEGIDO PLUS Nº 24|vidros",
+  "a349c976|VIDRO PROTEGIDO CARGA – Nº 83|vidros",
+  "a349c976| (12 PLANOS removidos: 118, os 6 AUTO RESERVA, os 4 VIDRO e o bloco Assistência Residencial)"
+ ],
+ "mantidas_com_discordancia": [
+  {
+   "chave": "fba57b04|ASSISTÊNCIA MOTO DIA E NOITE 100/200/400 KM|pane_seca (NÃO escrita)",
+   "prova": "A correção nº 5 pedia acrescentar Pane Seca aos planos 41/15/16 SE a cláusula garantir. Medido: a numeração de cláusulas de cada plano de moto vai 1 REBOQUE, 2 TÁXI, 3 CHAVEIRO, 4 MEIO DE TRANSPORTE ALTERNATIVO, 5 TRANSPORTE PARA RECUPERAÇÃO, 6 ENVIO DE ACOMPANHANTE, 7 RETORNO ANTECIPADO, 8 SOCORRO MECÂNICO, 9 TROCA DE PNEUS, 10 REMOÇÃO INTER HOSPITALAR, 11 HOSPEDAGEM, 12 RETORNO APÓS ALTA, 14 TRASLADO DE CORPO — pula o 13 e NÃO tem cláusula de pane seca. Busca por 'pane seca' e 'combustível' nas p. 98-112: ZERO ocorrências. A Pane Seca da tabela da p. 25 não tem cláusula que a sustente, então a linha não foi escrita (é a própria lição do item 1). Hospedagem, que TEM cláusula 11, foi acrescentada."
+  },
+  {
+   "chave": "fba57b04|AUTO ASSISTÊNCIA TOTAL – Nº 118|pane_seca (NÃO escrita)",
+   "prova": "O manual de 2015 dava pane seca ao 118 (item 4, p. 43). Na versão vigente de 2023 as 16 cláusulas do 118 (p. 25-30) não incluem pane seca, e a tabela de passeio (p. 19-23) também não lista Pane Seca. Como o plano foi reescrito pelo documento de 2023, a linha não existe mais — o que é uma DIFERENÇA de conteúdo entre as duas versões, registrada na observacao do documento."
+  },
+  {
+   "chave": "fba57b04|AUTO RESERVA BÁSICO/PLUS/PREMIUM|carro_reserva (limite_valor null)",
+   "prova": "Em 2015 cada plano trazia o número de diárias no nome (10/15/30). Em 2023 o documento diz só 'pelo período contratado' e 'A soma das diárias utilizadas ... não poderá exceder a quantidade máxima de diárias contratada e especificada na respectiva cláusula' (p. 125): o número está na apólice, não no documento. Por isso limite_valor/limite_unidade ficaram null e o limite foi para limite_texto, em vez de repetir os 10/15/30 de 2015."
+  }
+ ]
+}

@@ -248,6 +248,11 @@ with psycopg.connect(DSN, prepare_threshold=None) as conn, conn.cursor() as cur:
             for col, valor in zip(colunas, linha):
                 if not valor:
                     continue
+                if col == "content_hash" and re.fullmatch(r"[0-9a-f]{64}", str(valor)):
+                    # 📊 20/09/2026 (EXTRA-001.5.2): `content_hash` é o sha256 do DOCUMENTO e caiu no padrão de CPF em 5 planos
+                    # novos (11 dígitos seguidos dentro do hex) — o mesmo falso positivo que o `trecho_hash` já tinha medido.
+                    # Só é dispensado do varredor quando TEM a forma de sha256; qualquer outro conteúdo continua sendo varrido.
+                    continue
                 if col == "trecho_hash":
                     # ① a trava da FORMA: 64 hex. Mais forte que o varredor aqui.
                     if not re.fullmatch(r"[0-9a-f]{64}", str(valor)):
