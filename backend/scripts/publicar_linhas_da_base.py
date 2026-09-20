@@ -250,10 +250,24 @@ def executar(
             continue
 
         if veredito == "PUBLICAR":
-            # 🔴 O plano pai precisa estar em `proposto`: `publicar_servico` só
-            # o sobe a partir dali, e publicar a linha sem o plano é o pior
-            # desfecho — o trabalho é feito e o segurado continua sem resposta.
-            if str(plano.get("curadoria") or "") != "proposto":
+            # 🔴 O plano pai tem de estar VÁLIDO — `proposto` (e a publicação o
+            # sobe junto) ou JÁ `publicado`.
+            #
+            # 📊 ACHADO NA PUBLICAÇÃO REAL, 19/09/2026: o ensaio prometia 23 e
+            # a aplicação entregou **17**. A regra era `!= "proposto"`, e
+            # `publicar_servico` **publica o plano junto** — então, assim que a
+            # PRIMEIRA linha de um plano subia, o pai virava `publicado` e a
+            # SEGUNDA linha do MESMO plano era pulada por `plano_pai_publicado`.
+            # A trava derrubava exatamente o caso em que o plano já está válido.
+            # Seis linhas conferidas contra a página não chegaram ao cliente.
+            #
+            # ⚠️ E o módulo nunca precisou dela neste ramo:
+            # `assistance_plans_base.publicar_servico:970-983` só promove o pai
+            # `if curadoria == "proposto"` — um pai já `publicado` passa sem
+            # erro. A trava protege os estados RECUSADOS (`rascunho`,
+            # `rejeitado`, ausente), onde publicar a linha deixaria o trabalho
+            # feito e o segurado sem resposta. É só para eles que ela vale.
+            if str(plano.get("curadoria") or "") not in ("proposto", "publicado"):
                 _pular("plano_pai_%s" % (plano.get("curadoria") or "ausente"), chave)
                 continue
             if not aplicar:
@@ -319,6 +333,18 @@ def _verify(cliente: Any, BASE: Any) -> Dict[str, Any]:
     return fora
 
 
+#: 🔴 Os motivos que significam *"eu NÃO fiz o que você mandou"*.
+#:
+#: ⛔ `ja_em_publicado` e `ja_em_rascunho` NÃO estão aqui: eles são a
+#: idempotência encontrando o trabalho já feito. Misturar os dois foi o que fez
+#: a publicação real ler como sucesso com seis linhas perdidas dentro.
+MOTIVOS_DE_PERDA = frozenset({
+    "plano_pai_rascunho", "plano_pai_rejeitado", "plano_pai_ausente",
+    "recusado_pelo_modulo", "recusar_sem_motivo", "veredito_NAO_CONSEGUI",
+    "linha_nao_existe_mais", "sem_servico_id", "linha_ilegivel",
+})
+
+
 def imprimir(relatorio: Dict[str, Any]) -> None:
     """O relatório, em texto. ⛔ Sem PII: seguradora, ramo, serviço e contagem."""
     print("=" * 78)
@@ -341,6 +367,29 @@ def imprimir(relatorio: Dict[str, Any]) -> None:
         print("\n  por que pulou:")
         for motivo in sorted(relatorio["pulos"]):
             print("    %-40s %s" % (motivo, relatorio["pulos"][motivo]))
+
+    # 🔴 PERDA NÃO É IDEMPOTÊNCIA, E O RELATÓRIO PRECISA DIZER QUAL É QUAL.
+    #
+    # 📊 O defeito que isto fecha: na publicação real, `plano_pai_publicado`
+    # apareceu ao lado de `ja_em_publicado` na mesma lista — e LEU COMO
+    # SUCESSO. Seis linhas conferidas contra a página não chegaram ao cliente,
+    # e nada no texto dizia que aquilo era uma perda. Quem olhasse só o ensaio
+    # acreditaria em 23.
+    #
+    # ⚠️ `ja_em_publicado` e `ja_em_rascunho` são a segunda rodada encontrando
+    # o trabalho já feito — isso é o mecanismo funcionando. O que está abaixo é
+    # o contrário: linhas que o revisor mandou publicar e que NÃO publicaram.
+    perdidas = {m: n for m, n in (relatorio["pulos"] or {}).items()
+                if m in MOTIVOS_DE_PERDA or m.startswith("plano_pai_")
+                and m != "plano_pai_publicado"}
+    total_perdido = sum(perdidas.values())
+    print()
+    if total_perdido:
+        print("  🔴 %s linha(s) conferida(s) NÃO chegaram ao cliente:" % total_perdido)
+        for motivo in sorted(perdidas):
+            print("    %-40s %s" % (motivo, perdidas[motivo]))
+    else:
+        print("  ✅ 0 linhas conferidas ficaram pelo caminho.")
 
     if relatorio["para_corrigir"]:
         print("\n  ⚠️ para a PRÓXIMA rodada (o leitor pediu CORRIGIR — este script "
