@@ -10933,3 +10933,6 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 ## P-E00152-05 · as 39 linhas antigas da fila não têm `trecho` gravado, e `processar_documento` só roda por CLI
 **Destrava:** reextrair pela v2 (depende de P-E00152-01); decidir se a extração vira rotina/API. **Dono:** 🤖. **Custo de esquecer:** a fila antiga nunca terá selo.
 
+## P-E00152-06 · três falhas da bateria a triar: o xfail vencido do vidro e a rubrica
+📊 20/09/2026: `test_todos_os_guardas_script_rodam[test_sem_corredor_de_vidro_nao_e_beco]` falha por `XPASS(strict) P-226` — idêntico na base `68b9dca` (o guarda passou a PASSAR e a marca de falha esperada ficou vencida: CLAUDE.md §9.3). `test_a_rubrica_e_honesta` (2 casos, linha 286) falha com a árvore parada; não importa nada da EXTRA-001.5.2, mas ❓ não foi medida na base. **Destrava:** tirar o `xfail` do P-226; rodar a rubrica em `68b9dca`. **Dono:** 🤖. **Custo de esquecer:** a linha de base vermelha cresce (34 → 37 → 42) e cada SPEC paga a triagem de novo.
+

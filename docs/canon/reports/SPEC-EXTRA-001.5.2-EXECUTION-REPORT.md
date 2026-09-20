@@ -57,7 +57,11 @@ as fixtures são 7 páginas REAIS em `backend/tests/corpus/condicoes_gerais/` (s
 📊 `python -m pytest tests -q`: **42 failed · 1130 passed · 34 xfailed · 48 errors** em 2.985 s (linha de base da 001.5.1: 37 · 48).
 ⚠️ Rodou ENQUANTO os builders consertavam (o extrator ficou ≈10 min sem importar) — as 5 de diferença (`rubrica` ×2,
 `guardas_script[base_de_planos]`, `guardas_script[sem_corredor_de_vidro]`, `arvore_ficou_limpa`) foram retriadas dirigidas
-com a árvore parada: ver §7. Lição para o v13: a bateria parte **depois** do conserto, não durante.
+com a árvore parada (📊 20/09, 919 s): `guardas_script[base_de_planos]` ✅ passa · `arvore_ficou_limpa` = os builders editando ·
+`guardas_script[sem_corredor_de_vidro]` continua FAILED por `XPASS(strict) P-226` — 📊 **idêntico na base `68b9dca`** (medido em
+worktree descartável): pré-existente, é um xfail vencido a triar, não desta SPEC · `rubrica` ×2 continuam falhando: o arquivo e a
+régua não importam nada deste diff (`grep` vazio), mas ❓ **não foram medidas na base** (15 min por rodada) — registrado como
+P-E00152-06. Lição para o v13: a bateria parte **depois** do conserto, não durante.
 
 ## 5. O que ficou fora, e por quê → `PENDENCIAS.md`
 ```
