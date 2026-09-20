@@ -1,0 +1,2519 @@
+{
+  "ate": "2026-09-20",
+  "comando": "cd backend && python scripts/medir_o_piloto.py --de 2026-09-08 --ate 2026-09-20 --formato json --saida ../docs/canon/reports/SPEC-EXTRA-001.7-MEDICAO-2026-09-20.json",
+  "corretoras": {
+    "AutoFleet": {
+      "agregado": {
+        "acionamentos_com_protocolo": 0,
+        "acionamentos_encaminhados": 0,
+        "acionamentos_entregues_motor": 0,
+        "acionamentos_iniciados": 0,
+        "ajudas_desconhecidas": 0,
+        "ajudas_incapacidade": 0,
+        "ajudas_regra": 0,
+        "apolice_confirmada_hoje": 0,
+        "chat_estados": {
+          "success": 35
+        },
+        "chat_p90_ms_pior_dia": 25995,
+        "chat_perguntas": 35,
+        "conversas_com_agente": 0,
+        "conversas_com_os_dois": 0,
+        "conversas_mexidas": 116,
+        "conversas_so_com_pessoa": 58,
+        "desfechos": {
+          "acionamento_concluido": 0,
+          "encaminhado": 0,
+          "expirou": 0,
+          "fantasma_lid": 4,
+          "fechado_por_humano": 0,
+          "resolvido_pelo_segurado": 0
+        },
+        "dias": 13,
+        "dias_com_origem_do_agente": 7,
+        "grupo_calados": 7,
+        "grupo_por_tipo": {
+          "cobranca": 0,
+          "conclusao": 0,
+          "espera_vencida": 0,
+          "pausa_humana": 0,
+          "pedido_de_ajuda": 0,
+          "queda_de_canal": 0,
+          "resumo_diario": 0,
+          "retomada": 0,
+          "sinistro": 0,
+          "vigia": 0
+        },
+        "handoffs_entregues": 0,
+        "handoffs_no_teto": 162,
+        "handoffs_sem_ninguem": 0,
+        "rajadas_coalescidas": 0,
+        "silencios_por_classe": {},
+        "silencios_total": 0,
+        "sinistros_com_dossie_motor": 0,
+        "truncou": false
+      },
+      "dias": [
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 18,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-08",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 22,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": 25995,
+            "perguntas": 35,
+            "por_estado": {
+              "success": 35
+            }
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-09",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 4,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 6,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-10",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 9,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-11",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 0,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-12",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 0,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-13",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 18,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 16
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-14",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 13,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 12
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-15",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 15,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 15
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-16",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 14,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 12,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 12
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 3,
+            "calados_total": 3,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-17",
+          "grupo": {
+            "calados": 3,
+            "calados_pela_janela": 3,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 41,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 3,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 3
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 4,
+            "calados_total": 4,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-18",
+          "grupo": {
+            "calados": 4,
+            "calados_pela_janela": 4,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 47,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 0,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 0
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-19",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 48,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 0,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 0
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-20",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 12,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        }
+      ],
+      "regua": {
+        "atendimento": {
+          "dimensoes": [
+            {
+              "chave": "atendimento.apolice_certa",
+              "criterio": "de cada 10 atendimentos, em quantos o agente fixou a apólice certa logo na primeira tentativa",
+              "fonte": "o produto ainda não grava em quantas rodadas a apólice foi fixada: só existe um sim/não que é sobrescrito, sem histórico (conversations.ficha_atendimento.apolice_confirmada)",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 50
+            },
+            {
+              "chave": "atendimento.coleta_e_age",
+              "criterio": "de cada 10 casos que o agente pegou, em quantos ele foi até o fim sozinho em vez de parar por não conseguir",
+              "fonte": "amostra insuficiente (0 de 5) — denominador zero não é 0%, é 'sem acionamentos no período'",
+              "n": 0,
+              "n_minimo": 5,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 40
+            },
+            {
+              "chave": "atendimento.aciona",
+              "criterio": "de cada 10 acionamentos que o agente abriu, em quantos o segurado recebeu o protocolo no fim",
+              "fonte": "amostra insuficiente (0 de 5)",
+              "n": 0,
+              "n_minimo": 5,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 25
+            },
+            {
+              "chave": "atendimento.fala_como_humano",
+              "criterio": "o segurado sentiu que falou com uma pessoa, e não com um robô",
+              "fonte": "não há fonte durável: julgar isto exige LER a mensagem, e conteúdo de conversa não entra em medição (CLAUDE.md §7). Nenhuma nota, nenhuma avaliação automática e nenhum sinal do segurado são gravados",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 60
+            },
+            {
+              "chave": "atendimento.sabe_calar",
+              "criterio": "quando havia uma pessoa da corretora na conversa, o agente ficou quieto — e falou quando era a vez dele",
+              "fonte": "o produto grava QUANTAS vezes o agente calou (0 no período, por classe) mas nunca se o silêncio era o certo: não existe registro de 'devia ter falado e não falou'. ⛔ Um período sem silêncio nenhum seria 100 por ausência de prova, e isso é proibido",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 45
+            },
+            {
+              "chave": "atendimento.sabe_pedir_ajuda",
+              "criterio": "de cada 10 vezes que o agente pediu ajuda humana, em quantas alguém da equipe realmente recebeu o caso",
+              "fonte": "amostra insuficiente (0 de 5)",
+              "n": 0,
+              "n_minimo": 5,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 55
+            }
+          ],
+          "nome": "atendimento",
+          "nota": "NÃO AVALIADA",
+          "porque": "0 de 6 dimensões têm fonte durável hoje — uma média sobre a minoria teria cara de nota do bloco inteiro"
+        },
+        "chat_principal": {
+          "dimensoes": [
+            {
+              "chave": "chat.apolice_certa",
+              "criterio": "quando a corretora pergunta sobre uma apólice, o chat traz a apólice certa",
+              "fonte": "sem escritor: nada liga a pergunta do chat à apólice que foi usada para responder (conversation_logs não grava a apólice)",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 35
+            },
+            {
+              "chave": "chat.uma_rodada",
+              "criterio": "a corretora recebe a resposta sem ter de repetir a pergunta",
+              "fonte": "sem escritor: nenhuma linha diz se a pergunta seguinte foi uma repetição da anterior",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 25
+            },
+            {
+              "chave": "chat.completude",
+              "criterio": "a resposta traz tudo o que foi perguntado, e não metade",
+              "fonte": "não há fonte durável: julgar completude exige ler a resposta e compará-la com a pergunta — é trabalho de avaliador, não de SELECT",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 45
+            },
+            {
+              "chave": "chat.confiabilidade",
+              "criterio": "de cada 10 perguntas, em quantas o chat respondeu em vez de falhar",
+              "fonte": "a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das linhas medidas (35). Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma",
+              "n": 35,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 80
+            },
+            {
+              "chave": "chat.velocidade",
+              "criterio": "a resposta chega antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0)",
+              "fonte": "p90 do response_time_ms do pior dia do período (25995 ms)",
+              "n": 35,
+              "n_minimo": 20,
+              "nota": 16,
+              "palpite_antigo": 60
+            }
+          ],
+          "nome": "chat principal",
+          "nota": "NÃO AVALIADA",
+          "porque": "1 de 5 dimensões têm fonte durável hoje — uma média sobre a minoria teria cara de nota do bloco inteiro"
+        }
+      }
+    },
+    "Resulta Seguros": {
+      "agregado": {
+        "acionamentos_com_protocolo": 0,
+        "acionamentos_encaminhados": 0,
+        "acionamentos_entregues_motor": 0,
+        "acionamentos_iniciados": 2,
+        "ajudas_desconhecidas": 0,
+        "ajudas_incapacidade": 0,
+        "ajudas_regra": 0,
+        "apolice_confirmada_hoje": 0,
+        "chat_estados": {
+          "success": 1
+        },
+        "chat_p90_ms_pior_dia": 44850,
+        "chat_perguntas": 38,
+        "conversas_com_agente": 0,
+        "conversas_com_os_dois": 0,
+        "conversas_mexidas": 132,
+        "conversas_so_com_pessoa": 51,
+        "desfechos": {
+          "acionamento_concluido": 0,
+          "encaminhado": 0,
+          "expirou": 0,
+          "fantasma_lid": 1,
+          "fechado_por_humano": 0,
+          "resolvido_pelo_segurado": 0
+        },
+        "dias": 13,
+        "dias_com_origem_do_agente": 7,
+        "grupo_calados": 0,
+        "grupo_por_tipo": {
+          "cobranca": 0,
+          "conclusao": 0,
+          "espera_vencida": 0,
+          "pausa_humana": 0,
+          "pedido_de_ajuda": 0,
+          "queda_de_canal": 0,
+          "resumo_diario": 0,
+          "retomada": 0,
+          "sinistro": 0,
+          "vigia": 0
+        },
+        "handoffs_entregues": 0,
+        "handoffs_no_teto": 162,
+        "handoffs_sem_ninguem": 0,
+        "rajadas_coalescidas": 0,
+        "silencios_por_classe": {
+          "janela": 1
+        },
+        "silencios_total": 1,
+        "sinistros_com_dossie_motor": 0,
+        "truncou": false
+      },
+      "dias": [
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 0,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-08",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 2,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": 20943,
+            "perguntas": 6,
+            "por_estado": {
+              "success": 6
+            }
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-09",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {
+              "cancelled": 1,
+              "waiting_input": 1
+            }
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 59,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": 36124,
+            "perguntas": 31,
+            "por_estado": {
+              "success": 31
+            }
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-10",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 1,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {
+              "janela": 1
+            },
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 12,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-11",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 0,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-12",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": "NÃO MENSURÁVEL",
+            "com_os_dois": "NÃO MENSURÁVEL",
+            "conversas_mexidas": 0,
+            "mensuravel": false,
+            "porque": "antes de 14/09/2026 a resposta do agente era gravada sem marca de origem: não dá para separar robô de pessoa (EXTRA-001.2)",
+            "so_com_pessoa": "NÃO MENSURÁVEL"
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-13",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 9,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 9
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-14",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 10,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 9
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-15",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 0,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 17,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 14
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-16",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 19,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 7,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 3
+          },
+          "chat_principal": {
+            "p90_ms": 44850,
+            "perguntas": 1,
+            "por_estado": {
+              "success": 1
+            }
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-17",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 44,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 16,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 16
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-18",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 44,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 0,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 0
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-19",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 44,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        },
+        {
+          "acionamentos": {
+            "com_protocolo": 0,
+            "encaminhados_sem_protocolo": 0,
+            "runs_por_status": {}
+          },
+          "apolice": {
+            "confirmada_hoje": 0,
+            "em_uma_rodada": "SEM ESCRITOR"
+          },
+          "atendidas": {
+            "com_agente": 0,
+            "com_os_dois": 0,
+            "conversas_mexidas": 0,
+            "mensuravel": true,
+            "porque": "",
+            "so_com_pessoa": 0
+          },
+          "chat_principal": {
+            "p90_ms": null,
+            "perguntas": 0,
+            "por_estado": {}
+          },
+          "contagens_do_motor": {
+            "acionamentos_entregues": 0,
+            "ajudas_desconhecidas": 0,
+            "ajudas_incapacidade": 0,
+            "ajudas_regra": 0,
+            "calados_pela_janela": 0,
+            "calados_total": 0,
+            "duvidas": 0,
+            "ja_com_a_equipe": 0,
+            "sinistros_com_dossie": 0,
+            "truncou": 0,
+            "vigia_prazo": 0,
+            "vigia_ura": 0
+          },
+          "dia": "2026-09-20",
+          "grupo": {
+            "calados": 0,
+            "calados_pela_janela": 0,
+            "de_tipo_desconhecido": 0,
+            "ja_com_a_equipe": 0,
+            "por_tipo": {
+              "cobranca": 0,
+              "conclusao": 0,
+              "espera_vencida": 0,
+              "pausa_humana": 0,
+              "pedido_de_ajuda": 0,
+              "queda_de_canal": 0,
+              "resumo_diario": 0,
+              "retomada": 0,
+              "sinistro": 0,
+              "vigia": 0
+            }
+          },
+          "handoffs": {
+            "entregues": 0,
+            "no_teto_de_lembretes": 11,
+            "relembrados": 0,
+            "sem_ninguem_para_receber": 0
+          },
+          "rajadas_coalescidas": 0,
+          "resolveu_sozinho": {
+            "ajudas_sem_motivo": 0,
+            "ajudas_totais": 0,
+            "desfechos": {
+              "acionamento_concluido": 0,
+              "encaminhado": 0,
+              "expirou": 0,
+              "fantasma_lid": 0,
+              "fechado_por_humano": 0,
+              "resolvido_pelo_segurado": 0
+            },
+            "eficiencia_pct": null,
+            "publicavel": false
+          },
+          "silencios_do_agente": {
+            "por_classe": {},
+            "respondeu_por_excecao": 0
+          },
+          "truncou": false
+        }
+      ],
+      "regua": {
+        "atendimento": {
+          "dimensoes": [
+            {
+              "chave": "atendimento.apolice_certa",
+              "criterio": "de cada 10 atendimentos, em quantos o agente fixou a apólice certa logo na primeira tentativa",
+              "fonte": "o produto ainda não grava em quantas rodadas a apólice foi fixada: só existe um sim/não que é sobrescrito, sem histórico (conversations.ficha_atendimento.apolice_confirmada)",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 50
+            },
+            {
+              "chave": "atendimento.coleta_e_age",
+              "criterio": "de cada 10 casos que o agente pegou, em quantos ele foi até o fim sozinho em vez de parar por não conseguir",
+              "fonte": "amostra insuficiente (0 de 5) — denominador zero não é 0%, é 'sem acionamentos no período'",
+              "n": 0,
+              "n_minimo": 5,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 40
+            },
+            {
+              "chave": "atendimento.aciona",
+              "criterio": "de cada 10 acionamentos que o agente abriu, em quantos o segurado recebeu o protocolo no fim",
+              "fonte": "amostra insuficiente (2 de 5)",
+              "n": 2,
+              "n_minimo": 5,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 25
+            },
+            {
+              "chave": "atendimento.fala_como_humano",
+              "criterio": "o segurado sentiu que falou com uma pessoa, e não com um robô",
+              "fonte": "não há fonte durável: julgar isto exige LER a mensagem, e conteúdo de conversa não entra em medição (CLAUDE.md §7). Nenhuma nota, nenhuma avaliação automática e nenhum sinal do segurado são gravados",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 60
+            },
+            {
+              "chave": "atendimento.sabe_calar",
+              "criterio": "quando havia uma pessoa da corretora na conversa, o agente ficou quieto — e falou quando era a vez dele",
+              "fonte": "o produto grava QUANTAS vezes o agente calou (1 no período, por classe) mas nunca se o silêncio era o certo: não existe registro de 'devia ter falado e não falou'. ⛔ Um período sem silêncio nenhum seria 100 por ausência de prova, e isso é proibido",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 45
+            },
+            {
+              "chave": "atendimento.sabe_pedir_ajuda",
+              "criterio": "de cada 10 vezes que o agente pediu ajuda humana, em quantas alguém da equipe realmente recebeu o caso",
+              "fonte": "amostra insuficiente (0 de 5)",
+              "n": 0,
+              "n_minimo": 5,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 55
+            }
+          ],
+          "nome": "atendimento",
+          "nota": "NÃO AVALIADA",
+          "porque": "0 de 6 dimensões têm fonte durável hoje — uma média sobre a minoria teria cara de nota do bloco inteiro"
+        },
+        "chat_principal": {
+          "dimensoes": [
+            {
+              "chave": "chat.apolice_certa",
+              "criterio": "quando a corretora pergunta sobre uma apólice, o chat traz a apólice certa",
+              "fonte": "sem escritor: nada liga a pergunta do chat à apólice que foi usada para responder (conversation_logs não grava a apólice)",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 35
+            },
+            {
+              "chave": "chat.uma_rodada",
+              "criterio": "a corretora recebe a resposta sem ter de repetir a pergunta",
+              "fonte": "sem escritor: nenhuma linha diz se a pergunta seguinte foi uma repetição da anterior",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 25
+            },
+            {
+              "chave": "chat.completude",
+              "criterio": "a resposta traz tudo o que foi perguntado, e não metade",
+              "fonte": "não há fonte durável: julgar completude exige ler a resposta e compará-la com a pergunta — é trabalho de avaliador, não de SELECT",
+              "n": 0,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 45
+            },
+            {
+              "chave": "chat.confiabilidade",
+              "criterio": "de cada 10 perguntas, em quantas o chat respondeu em vez de falhar",
+              "fonte": "a única coluna disponível não consegue discordar: 📊 conversation_logs.status é 'success' em 100% das linhas medidas (1). Um guarda que não tem como falhar não guarda nada (CLAUDE.md §9.3) — e uma resposta que nunca saiu não deixa linha nenhuma",
+              "n": 1,
+              "n_minimo": 0,
+              "nota": "NÃO AVALIADA",
+              "palpite_antigo": 80
+            },
+            {
+              "chave": "chat.velocidade",
+              "criterio": "a resposta chega antes de a pessoa desistir de esperar (até 5s vale 100; a partir de 30s, 0)",
+              "fonte": "p90 do response_time_ms do pior dia do período (44850 ms)",
+              "n": 38,
+              "n_minimo": 20,
+              "nota": 0,
+              "palpite_antigo": 60
+            }
+          ],
+          "nome": "chat principal",
+          "nota": "NÃO AVALIADA",
+          "porque": "1 de 5 dimensões têm fonte durável hoje — uma média sobre a minoria teria cara de nota do bloco inteiro"
+        }
+      }
+    }
+  },
+  "de": "2026-09-08",
+  "gerado_em": "20/09/2026 08:21 UTC"
+}
