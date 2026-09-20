@@ -10918,3 +10918,18 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 ## P-E00151-10 · o acervo tem duas versões mal rotuladas, e a base herdou
 📊 Mapfre Auto declarada v34.0 quando o PDF é v41; Mapfre Residencial declarada v2.9 quando o PDF é 3.2. **Destrava:** conferir a versão na capa ao ingerir. **Dono:** 🤖. **Custo de esquecer:** a resposta cita a página certa de um documento vencido.
 
+## P-E00152-01 · 🧑🔴 a chave Anthropic do PRODUTO está sem crédito
+📊 20/09/2026: `400 … credit balance is too low` na chamada do extrator. **Destrava:** a âncora por modelo (Bradesco Auto = 9 planos por código, HDI Auto), a reentrada das 40 CORRIGIR (P-E00151-01) e qualquer extração nova. **Dono:** 🧑 (Billing no console da Anthropic). **Custo de esquecer:** a base fica nas 23 linhas; e é a mesma chave do chat — provável causa do "Não consegui gerar a resposta" de 17/09.
+
+## P-E00152-02 · o recall da âncora de planos por TEXTO é 4 de 27 documentos
+📊 20/09/2026, `localizar_ancora_de_planos(modelo=None)` nos 27 PDFs do MinIO: 4 com âncora, 0 falsas. **Destrava:** medir o caminho do MODELO (depende de P-E00152-01) e o GATE A real nos 5 controles. **Dono:** 🤖. **Custo de esquecer:** 23 documentos ficam na fila "cláusula de planos não localizada" e nada novo é proposto deles.
+
+## P-E00152-03 · tabela de limites lida célula a célula: a coluna morre na extração
+📊 HDI Auto p.90: o `fitz` devolve "Até R$ 100,00 por" / "Até R$ 150,00 por evento e" em linhas soltas. O conferente ABSTÉM. **Destrava:** `page.find_tables()`. **Dono:** 🤖. **Custo de esquecer:** limite nunca recebe selo em documento com tabela.
+
+## P-E00152-04 · o conferente não olha `condicao`; 2 selos errados exigem leitura humana
+📊 precisão do selo CONFERE = 9 de 12 (bradesco vidros p159 · mapfre granizo p46 · tokio pane_seca p26). **Dono:** 🤖 (`condicao`) e 🧑 (os 2 semânticos). **Custo de esquecer:** "publicar sem abrir o PDF" continua não sendo verdade — o selo autoriza só a NÃO abrir as que ele reprova.
+
+## P-E00152-05 · as 39 linhas antigas da fila não têm `trecho` gravado, e `processar_documento` só roda por CLI
+**Destrava:** reextrair pela v2 (depende de P-E00152-01); decidir se a extração vira rotina/API. **Dono:** 🤖. **Custo de esquecer:** a fila antiga nunca terá selo.
+
