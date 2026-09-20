@@ -159,3 +159,4 @@ backend/.diario-da-bateria.jsonl
 # do repositorio — o padrao exato da P-231. Ignorado para que o vazamento nunca
 # entre num commit por descuido.
 _fake_para_controle.py
+backend/.aaa-card.json

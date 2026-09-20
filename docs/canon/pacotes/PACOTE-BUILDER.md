@@ -38,6 +38,16 @@ PENDÊNCIAS ...........  {P-… por número}
 FAIXA DE RELÓGIO .....  {…}
 ```
 
+## 🔴 O FIO (v13 · em teste, D-PROTO-10) — antes da primeira linha de produto
+```
+O FIO ................  {a cadeia do 1º byte que entra ao último que sai, arquivo:função por elo — do card}
+O TESTE DO FIO .......  {caminho} — a sua PRIMEIRA entrega: UM teste que atravessa o fio INTEIRO carregando o MOTOR real
+                        (nunca reimplementando um elo; dublê só na borda externa: rede, modelo, storage). Ele nasce VERMELHO
+                        pelo motivo certo e fica VERDE com a unidade. Gate que mede só o pedaço que você tocou não é gate.
+```
+📊 Por quê: a classe de defeito que escapou de todos os juízes em 093-B, 094, 097, 097.1 e 001.5.1 é uma só — código
+certo na unidade, nunca exercitado no fio real (`specs-propostas/AUDITORIA-AAA-E-JEV-2026-09-19.md` PARTE A.5).
+
 ## Como trabalhar
 1. **BLOCO 0 primeiro:** remeça o que a SPEC afirma sobre estes arquivos e tabelas.
    Se o seu número for diferente, o seu vence. Escreva os dois lados.
