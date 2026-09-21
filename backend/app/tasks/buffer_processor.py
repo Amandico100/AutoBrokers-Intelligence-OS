@@ -123,6 +123,26 @@ _ADMISSAO = {
     "semaforos": {},           # (id(loop), limite) -> asyncio.Semaphore
     "pico_por_escopo": {},     # só para os guardas: maior ocupação já vista
     "pico_global": 0,
+    # 🔴 FATIA 6 — os dois mapas que a COSTURA precisa, e por que eles moram
+    # aqui e não dentro da varredura:
+    #
+    #   `motivo_da_chave`   por que esta chave NÃO foi servida da última vez.
+    #                       É o que transforma a conta global da varredura
+    #                       (`adiadas`) numa conta POR CORRETORA — e sem conta
+    #                       por corretora o aviso ao dono avisaria a corretora
+    #                       errada, com o número da fila da outra.
+    #   `esperando_desde`   o instante do PRIMEIRO adiamento por COTA daquela
+    #                       chave. ⚠️ A admissão é NÃO-bloqueante: a conversa
+    #                       adiada sai da varredura e volta numa POSTERIOR, e um
+    #                       marco criado dentro da varredura mediria só a última
+    #                       tentativa (~0 ms) — escondendo justamente a espera
+    #                       que esta SPEC existe para medir.
+    #
+    # ⛔ Os dois são PODADOS em `_fechar_a_conta` para o conjunto de quem ainda
+    # espera: dicionário que só cresce é vazamento de memória com nome bonito
+    # (a mesma regra de `_soltar_cota` e do cache de provedor).
+    "motivo_da_chave": {},     # chave -> "cota" | "turno" | "breaker" | "sem_escopo"
+    "esperando_desde": {},     # chave -> monotonic() do 1º adiamento por cota
 }
 
 
@@ -223,7 +243,27 @@ async def _renovar_vida(buffer_service, chave: str) -> None:
 
 
 async def _adiar(buffer_service, chave: str, motivo: str) -> None:
-    """A chave pronta que não foi servida AGORA continua existindo."""
+    """A chave pronta que não foi servida AGORA continua existindo.
+
+    🔴 **FATIA 6 — é aqui que a espera passa a ter DONO e RELÓGIO.** Todo
+    adiamento do varredor passa por esta função, com a chave e o motivo em mãos;
+    anotar aqui é o que evita repetir a contagem em quatro lugares (e é o que
+    mantém a conta por corretora e a conta global falando do mesmo fato).
+
+    ⚠️ O registro é no `_ADMISSAO` do MÓDULO — o mesmo estado por PROCESSO de
+    que `processar_buffers_prontos` se serve —, porque uma conversa adiada volta
+    numa varredura POSTERIOR e o relógio dela não pode nascer de novo a cada
+    volta.
+    """
+    from time import monotonic
+
+    alvo = str(chave)
+    _ADMISSAO["motivo_da_chave"][alvo] = str(motivo)
+    if motivo == "cota":
+        # `setdefault`: quem manda no relógio é o PRIMEIRO adiamento. Reescrever
+        # a cada volta zeraria a espera e ela nunca passaria de um segundo.
+        _ADMISSAO["esperando_desde"].setdefault(alvo, monotonic())
+
     fn = getattr(buffer_service, "adiar", None)
     if fn is None:
         return
@@ -443,9 +483,54 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
     função, e um nome novo tocado no caminho dele viraria `NameError` dentro do
     teste, não dentro do produto — que é onde se descobriria tarde.
     """
+    from time import monotonic
+
     recebidas = [str(c) for c in (chaves or []) if c]
     escopo_de = getattr(buffer_service, "escopo_da_chave", None)
     com_cota = escopo_de is not None
+    adiadas_por_escopo: dict = {}
+
+    def _relogio_da_fila(buffer, desde: float) -> dict:
+        """Quanto tempo esta conversa esperou — o contrato do §5.1 com o webhook.
+
+        ```
+        buffer_espera_ms   desde a PRIMEIRA mensagem da rajada (o `first_at` que
+                           `add_message` gravou) até agora
+        fila_cota_ms       desde o 1º adiamento por COTA desta conversa (ou,
+                           quando ela nunca foi adiada, desde a disputa de agora)
+        ```
+
+        🔴 **`None` nunca vira 0.** Zero é medição ("não esperou"); `None` é
+        "não sei" (buffer sem carimbo ou carimbo ilegível). Um p95 calculado
+        sobre zeros inventados mente para quem decide (CLAUDE.md §12.1).
+
+        ⚠️ O `datetime` sai do MÓDULO QUE ESCREVEU o `first_at`
+        (`message_buffer_service`, `datetime.now().isoformat()` — hora local,
+        SEM fuso) e não de um `datetime` importado aqui: medir com uma
+        ferramenta e gravar com outra é como se inventa um fuso que ninguém
+        escreveu (CLAUDE.md §9.4).
+
+        ⛔ **Medir nunca atrasa nem impede o atendimento**: qualquer erro aqui
+        devolve `{}` e a conversa segue sem relógio.
+        """
+        try:
+            from app.services.message_buffer_service import datetime as _quando
+
+            espera_ms = None
+            carimbo = str((buffer or {}).get("first_at") or "")
+            if carimbo:
+                try:
+                    espera_ms = max(0, int(
+                        (_quando.now() - _quando.fromisoformat(carimbo)
+                         ).total_seconds() * 1000))
+                except (TypeError, ValueError):
+                    espera_ms = None
+            return {"buffer_espera_ms": espera_ms,
+                    "fila_cota_ms": max(0, int((monotonic() - desde) * 1000))}
+        except Exception as erro:  # noqa: BLE001
+            logger.debug("[ISOLAMENTO] relogio da fila nao montado (%s)",
+                         type(erro).__name__)
+            return {}
 
     if com_cota:
         estado = _ADMISSAO
@@ -502,6 +587,10 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
     async def _uma(chave: str) -> bool:
         nonlocal timeouts, sumidas
         escopo = escopo_de(chave) if com_cota else ""
+        # O instante em que ESTA tentativa entrou na disputa pela cota. Vale
+        # como começo da espera só para a conversa que nunca foi adiada — para
+        # as outras, quem manda é `esperando_desde` (o 1º adiamento por cota).
+        entrou_na_disputa = monotonic()
 
         if com_cota:
             # ⛔ FAIL-CLOSED: sem corretora identificada não se processa às
@@ -621,6 +710,22 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                             extras["turno"] = turno
                             extras["chave_do_buffer"] = chave
                             extras["buffered_items"] = itens
+                            # 🔴 O MESMO critério dos três extras acima, e é de
+                            # propósito: eles só viajam quando o serviço de
+                            # buffer é o REAL (é o `abrir_turno` que produz o
+                            # `turno`). O dublê do guarda de paralelismo tem um
+                            # `processar` SEM `**kwargs` — um kwarg novo com
+                            # outro critério o quebraria, e o guarda é a LINHA
+                            # DE CONTROLE herdada da 001.2. Quem recebe do lado
+                            # real é `process_whatsapp_message_background`, que
+                            # já declara `relogio_da_fila` keyword-only.
+                            relogio = _relogio_da_fila(
+                                buffer,
+                                estado["esperando_desde"].get(
+                                    chave, entrou_na_disputa)
+                                if com_cota else entrou_na_disputa)
+                            if relogio:
+                                extras["relogio_da_fila"] = relogio
 
                         if com_cota:
                             atraso = _atraso_de_teste_ms(escopo)
@@ -663,6 +768,11 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                         if com_cota:
                             estado["servidas"][chave] = True
                             estado["aguardando"].pop(chave, None)
+                            # A espera acabou: o relógio e o motivo desta chave
+                            # morrem com ela (senão a próxima rajada do mesmo
+                            # segurado nasceria "esperando desde ontem").
+                            estado["esperando_desde"].pop(chave, None)
+                            estado["motivo_da_chave"].pop(chave, None)
                         return True
                     finally:
                         if turno is not None:
@@ -691,21 +801,32 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             processadas += 1
 
     if com_cota:
-        await _fechar_a_conta(buffer_service, estado, escopo_de, fila,
-                              adiadas, expiradas + sumidas, timeouts)
+        adiadas_por_escopo = await _fechar_a_conta(
+            buffer_service, estado, escopo_de, fila,
+            adiadas, expiradas + sumidas, timeouts) or {}
 
     return {"vistas": len(recebidas), "prontas": len(fila),
             "processadas": processadas, "adiadas": adiadas,
+            # 🔴 A MESMA conta de `adiadas`, agora com DONO — {escopo: {motivo:
+            # quantas}}. ⚠️ Chave sem escopo não tem dono a avisar e fica de
+            # fora; ela continua contada em `adiadas["sem_escopo"]`.
+            "adiadas_por_escopo": adiadas_por_escopo,
             "falhas": falhas, "timeouts": timeouts,
             "expiradas": expiradas + sumidas}
 
 
 async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
-                          adiadas, expiradas, timeouts) -> None:
+                          adiadas, expiradas, timeouts) -> dict:
     """Grava o que a Central de Agentes vai LER — UMA escrita por corretora.
 
     ⛔ Uma escrita por CHAVE seriam 200 idas ao Redis numa varredura de rajada,
     para um número que ninguém lê 200 vezes por segundo.
+
+    Devolve `{escopo: {motivo: quantas}}` — a MESMA fila que vira `em_espera`
+    nos contadores, repartida pelo motivo do último adiamento. 🔴 Vem daqui, e
+    não de contadores espalhados pelos quatro pontos de adiamento, para que o
+    número que o dono da corretora recebe no aviso e o número que a Central
+    mostra na tela sejam, por construção, o mesmo número.
     """
     pendentes = {}
     for chave in fila:
@@ -715,10 +836,26 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
     estado["aguardando"].update(pendentes)
 
     por_escopo = {}
-    for escopo in pendentes.values():
+    por_motivo: dict = {}
+    for chave, escopo in pendentes.items():
         por_escopo[escopo] = por_escopo.get(escopo, 0) + 1
+        motivo_da_chave = estado["motivo_da_chave"].get(chave)
+        if not motivo_da_chave:
+            # Sem motivo registrado não foi adiamento: foi falha ou teto de
+            # tempo, e esses têm contadores próprios (`falhas`, `timeouts`).
+            continue
+        dela = por_motivo.setdefault(escopo, {m: 0 for m in _MOTIVOS_DE_ESPERA})
+        dela[motivo_da_chave] = dela.get(motivo_da_chave, 0) + 1
     for escopo in estado["em_voo_por_escopo"]:
         por_escopo.setdefault(escopo, 0)
+
+    # ⛔ A PODA. Os dois mapas do `_ADMISSAO` ficam com quem AINDA espera —
+    # exatamente o conjunto de `aguardando`. Sem isto, dois dicionários
+    # cresceriam para sempre, uma entrada por conversa já respondida.
+    vivas = set(estado["aguardando"])
+    for mapa in (estado["motivo_da_chave"], estado["esperando_desde"]):
+        for velha in [c for c in mapa if c not in vivas]:
+            mapa.pop(velha, None)
 
     motivo = ""
     for nome in _MOTIVOS_DE_ESPERA:
@@ -728,7 +865,7 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
 
     registrar = getattr(buffer_service, "registrar_ocupacao", None)
     if registrar is None:
-        return
+        return por_motivo
     for escopo, em_espera in por_escopo.items():
         try:
             await registrar(
@@ -740,6 +877,132 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
             # ⛔ Contador nunca derruba atendimento.
             logger.warning("[ISOLAMENTO] contador não gravado (%s)",
                            type(erro).__name__)
+    return por_motivo
+
+
+# ===========================================================================
+# 🔴 A COSTURA COM O AVISO AO DONO (FATIA 6) — a fila tem dono, e ele fica
+# sabendo UMA vez
+# ===========================================================================
+#
+# ⛔ **O aviso nasce DESLIGADO** (`ISOLAMENTO_AVISO_AO_DONO` ausente = não
+# avisa) e a flag é o PRIMEIRO teste desta função, antes de qualquer ida ao
+# Redis ou ao banco: `check_buffers` roda a cada 1 s, e um custo por varredura
+# "só para descobrir que está desligado" seria um custo permanente cobrado de
+# quem nunca ligou nada.
+#
+# ⚠️ **Só `cota` e `breaker` contam como fila.** `turno` é o normal e rápido (a
+# trava de uma rajada que já está sendo respondida, medida em ms); avisar por
+# ele seria avisar do funcionamento — e 📊 é assim que o grupo da corretora
+# virou ruído (DIAGNÓSTICO §1.5).
+
+#: escopo -> (company_id|None, quando_vence). ⚠️ O negativo TAMBÉM é guardado,
+#: pelo mesmo motivo do cache de provedor: um escopo que não resolve viraria uma
+#: consulta ao banco por varredura, para sempre.
+_CORRETORA_POR_ESCOPO: dict = {}
+_CORRETORA_CACHE_PADRAO_S = 300
+
+#: Quem estava esperando na varredura anterior. É o que permite ZERAR o relógio
+#: da espera quando a fila de uma corretora esvazia — sem isso o "esperando há"
+#: nunca voltaria a zero e o aviso seguinte sairia no primeiro segundo de fila.
+_ESCOPOS_ESPERANDO: set = set()
+
+
+async def _corretora_do_escopo(escopo: str):
+    """`escopo` (id da integração) -> `company_id`. ⛔ Nunca levanta.
+
+    A fonte é a MESMA da Central (a tabela `integrations`, pelo serviço que já
+    existe) — reescrever a resolução aqui seria o motor paralelo do CLAUDE.md
+    §5, e as duas telas passariam a discordar sobre de quem é a fila.
+    """
+    import time as _time
+
+    agora = _time.monotonic()
+    guardado = _CORRETORA_POR_ESCOPO.get(escopo)
+    if guardado is not None and guardado[1] > agora:
+        return guardado[0]
+    if len(_CORRETORA_POR_ESCOPO) > 500:
+        for velha, (_c, vence) in list(_CORRETORA_POR_ESCOPO.items()):
+            if vence <= agora:
+                _CORRETORA_POR_ESCOPO.pop(velha, None)
+    empresa = None
+    try:
+        from app.core.database import get_supabase_client
+        from app.services.integration_service import get_integration_service
+
+        supabase = get_supabase_client()
+        integracao = await asyncio.to_thread(
+            get_integration_service(supabase.client).get_integration_by_id, escopo)
+        empresa = str((integracao or {}).get("company_id") or "") or None
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ISOLAMENTO] corretora do escopo nao resolvida (%s)",
+                       type(erro).__name__)
+    vida = _env_int("ISOLAMENTO_CORRETORA_CACHE_S", _CORRETORA_CACHE_PADRAO_S)
+    _CORRETORA_POR_ESCOPO[escopo] = (empresa, agora + vida)
+    return empresa
+
+
+async def avisar_os_donos_da_fila(resumo) -> int:
+    """Avisa o dono de cada corretora cuja fila está longa. ⛔ Nunca levanta.
+
+    Devolve quantos avisos saíram. As portas, nesta ordem — e a primeira não
+    custa nada:
+
+    ```
+    ① a flag                  ausente -> volta na hora, ZERO Redis, ZERO banco
+    ② quem está na fila       só `cota` e `breaker`, por ESCOPO
+    ③ há quanto tempo         `SET NX` no Redis: o 1º a ver manda no relógio
+    ④ de quem é a fila        `integrations`, com cache (nunca 1 SELECT/escopo/s)
+    ⑤ um por janela           a trava do módulo de aviso, que é de REDIS
+    ```
+    """
+    from app.services import aviso_de_fila_longa as aviso
+
+    # ① 🔴 A FLAG É O PRIMEIRO TESTE. Desligada, esta função custa uma leitura
+    # de variável de ambiente por varredura e mais nada.
+    if not aviso.aviso_ligado():
+        return 0
+
+    import time as _time
+
+    agora_s = _time.time()
+    limiar = aviso.limiar_de_espera_s()
+    alvos: dict = {}
+    esperando_agora = set()
+    for escopo, motivos in dict((resumo or {}).get("adiadas_por_escopo") or {}).items():
+        # ② `turno` fica de fora de propósito: ele não é fila, é a rajada sendo
+        # respondida agora.
+        na_fila = int((motivos or {}).get("cota") or 0) + \
+            int((motivos or {}).get("breaker") or 0)
+        if na_fila <= 0:
+            continue
+        esperando_agora.add(escopo)
+        # ③
+        await aviso.marcar_espera(escopo, agora_s=agora_s)
+        ha = await aviso.esperando_ha(escopo, agora_s=agora_s)
+        if ha is None or ha < limiar:
+            continue
+        # ④
+        empresa = await _corretora_do_escopo(escopo)
+        if not empresa:
+            continue
+        alvos[escopo] = (empresa, na_fila, ha)
+
+    # A fila desta corretora esvaziou: o relógio dela zera para a próxima vez.
+    for escopo in list(_ESCOPOS_ESPERANDO - esperando_agora):
+        await aviso.esquecer_espera(escopo)
+        _ESCOPOS_ESPERANDO.discard(escopo)
+    _ESCOPOS_ESPERANDO.update(esperando_agora)
+
+    if not alvos:
+        return 0
+    from app.core.database import get_supabase_client
+
+    # ⑤ A trava "um por janela" mora dentro de `avisar_dono_se_fila_longa`, e é
+    # de Redis: duas varreduras sobrepostas (max_instances=10) ou duas réplicas
+    # avisariam duas vezes sobre a mesma fila.
+    return await aviso.avisar_pelos_escopos(
+        get_supabase_client().client, resumo, alvos)
 
 
 async def check_buffers():
@@ -782,9 +1045,23 @@ async def check_buffers():
         # provedor existiria e não seria perguntado por ninguém — código vivo
         # sem chamador, que é a forma mais cara de não ter feito nada
         # (protocolo §0.3, O ELO). O guarda confere que elas estão aqui.
-        await processar_buffers_prontos(
+        resumo = await processar_buffers_prontos(
             chaves, buffer_service, process_whatsapp_message_background,
             barrados=provedores_barrados, provedor_de=provedor_do_escopo)
+
+        # 🔴 O AVISO VEM DEPOIS, E NO TRY DELE. Ele é EFEITO da varredura, nunca
+        # condição: um aviso que estoura não pode derrubar o job de 1 s que
+        # responde ao segurado — nem atrasar a varredura seguinte.
+        try:
+            await avisar_os_donos_da_fila(resumo)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[ISOLAMENTO] aviso ao dono nao saiu (%s)",
+                           type(erro).__name__)
+
+        # A conta da varredura volta para quem chamar. ⚠️ É por ela que o guarda
+        # do FIO prova que o aviso não engoliu a varredura: com o aviso
+        # explodindo FORA do try acima, esta linha nunca seria alcançada.
+        return resumo
 
     except Exception as e:
         logger.error(f"[BUFFER] ❌ Error in check_buffers: {e}", exc_info=True)

@@ -78,6 +78,18 @@ def aviso_ligado() -> bool:
     return str(os.getenv(FLAG_DO_AVISO, "")).strip().lower() in _LIGADO
 
 
+def limiar_de_espera_s() -> int:
+    """Quantos segundos de espera valem um aviso — **UMA grafia do número**.
+
+    🔴 Existe para o chamador (`buffer_processor.avisar_os_donos_da_fila`) poder
+    filtrar quem ainda nem chegou ao limiar SEM ir ao banco resolver de quem é a
+    fila — e sem reescrever o `60` do outro lado. Duas grafias do mesmo número é
+    como uma das duas nasce errada (CLAUDE.md §5); a porta ④ de
+    `avisar_dono_se_fila_longa` continua conferindo o limiar por conta própria.
+    """
+    return _env_int(ESPERA_MINIMA_S, _ESPERA_PADRAO_S)
+
+
 def texto_do_aviso(em_espera: int, em_execucao: Optional[int] = None) -> str:
     """A frase que vai ao grupo — **PURA**, para o guarda poder lê-la.
 
