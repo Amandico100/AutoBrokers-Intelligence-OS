@@ -42,6 +42,23 @@ router = APIRouter()
 
 
 
+# 🔴 SPEC-EXTRA-001.8 · FATIA 3 — A MESMA RESPOSTA PARA "NÃO É SUA" E "NÃO EXISTE".
+#
+# 📊 Medido por leitura em 21/09/2026: `_validate_agent_belongs_to_company`
+# devolve `False` NOS DOIS casos (agente inexistente e agente de outra
+# corretora), então a distinção nunca chegou a existir na prática — o que mudou
+# é que agora ela está **escrita**, num lugar só, e não pode ser desfeita por
+# descuido de quem mexer numa rota isolada.
+#
+# ⚠️ Era 403 ("Agente não pertence a esta empresa"): a frase CONTAVA a quem
+# perguntou que o id era de outra corretora. 404 não conta nada.
+NAO_EXISTE = "Não encontrado"
+
+
+def _nao_existe() -> HTTPException:
+    return HTTPException(status_code=404, detail=NAO_EXISTE)
+
+
 async def _validate_agent_belongs_to_company(agent_id: str, company_id: str) -> bool:
     """
     Valida que o agent_id pertence à company_id para evitar acesso indevido entre empresas.
@@ -146,7 +163,7 @@ async def enable_server_for_agent(
     """
     # Validação de segurança: agente deve pertencer à empresa
     if not await _validate_agent_belongs_to_company(agent_id, request.company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
     gateway = get_mcp_gateway()
     result = await gateway.enable_server_for_agent(
@@ -178,7 +195,7 @@ async def disable_server_for_agent(
     """Desabilita um MCP server para um agente."""
     # Validação de segurança: agente deve pertencer à empresa
     if not await _validate_agent_belongs_to_company(agent_id, company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
     gateway = get_mcp_gateway()
     result = await gateway.disable_server_for_agent(agent_id, mcp_server_id)
@@ -204,7 +221,7 @@ async def list_agent_mcp_tools(agent_id: str, company_id: str = Query(...)):
     aqui, então um corretor legítimo de A lia as tools do agente de B.
     """
     if not await _validate_agent_belongs_to_company(agent_id, company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
     gateway = get_mcp_gateway()
     tools = await gateway.get_agent_mcp_tools(agent_id)
@@ -235,7 +252,7 @@ async def toggle_mcp_tool(
     """Habilita/desabilita uma tool MCP específica."""
     # Validação de segurança: agente deve pertencer à empresa
     if not await _validate_agent_belongs_to_company(agent_id, company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
     try:
         supabase = get_supabase_client().client
@@ -306,12 +323,19 @@ async def get_oauth_url(
     OAuth para o agente de OUTRA corretora.
     """
     if not await _validate_agent_belongs_to_company(agent_id, company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
-    from ..services.mcp_oauth_service import get_mcp_oauth_service
+    from ..services.mcp_oauth_service import (
+        ConexaoNaoEncontrada,
+        get_mcp_oauth_service,
+    )
 
     oauth = get_mcp_oauth_service()
-    result = await oauth.get_authorization_url(provider, agent_id, mcp_server_id)
+    try:
+        result = await oauth.get_authorization_url(
+            provider, agent_id, mcp_server_id, company_id)
+    except ConexaoNaoEncontrada as e:
+        raise _nao_existe() from e
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -394,12 +418,18 @@ async def list_agent_connections(agent_id: str, company_id: str = Query(...)):
     devolvia as CONTAS CONECTADAS de qualquer agente de qualquer corretora.
     """
     if not await _validate_agent_belongs_to_company(agent_id, company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
-    from ..services.mcp_oauth_service import get_mcp_oauth_service
+    from ..services.mcp_oauth_service import (
+        ConexaoNaoEncontrada,
+        get_mcp_oauth_service,
+    )
 
     oauth = get_mcp_oauth_service()
-    connections = await oauth.get_agent_connections(agent_id)
+    try:
+        connections = await oauth.get_agent_connections(agent_id, company_id)
+    except ConexaoNaoEncontrada as e:
+        raise _nao_existe() from e
 
     return {"connections": connections}
 
@@ -414,12 +444,18 @@ async def disconnect_agent(
     """Desconecta um agente de um provider (remove tokens)."""
     # Validação de segurança: agente deve pertencer à empresa
     if not await _validate_agent_belongs_to_company(agent_id, company_id):
-        raise HTTPException(status_code=403, detail="Agente não pertence a esta empresa")
+        raise _nao_existe()
 
-    from ..services.mcp_oauth_service import get_mcp_oauth_service
+    from ..services.mcp_oauth_service import (
+        ConexaoNaoEncontrada,
+        get_mcp_oauth_service,
+    )
 
     oauth = get_mcp_oauth_service()
-    success = await oauth.disconnect_agent(agent_id, mcp_server_id)
+    try:
+        success = await oauth.disconnect_agent(agent_id, mcp_server_id, company_id)
+    except ConexaoNaoEncontrada as e:
+        raise _nao_existe() from e
 
     if not success:
         raise HTTPException(status_code=500, detail="Falha ao desconectar")
@@ -442,12 +478,18 @@ async def delete_connection(connection_id: str, company_id: str = Query(...)):
     não há tela nenhuma que diga por quê.
     """
     if not await _validate_connection_belongs_to_company(connection_id, company_id):
-        raise HTTPException(status_code=403, detail="Conexão não pertence a esta empresa")
+        raise _nao_existe()
 
-    from ..services.mcp_oauth_service import get_mcp_oauth_service
+    from ..services.mcp_oauth_service import (
+        ConexaoNaoEncontrada,
+        get_mcp_oauth_service,
+    )
 
     oauth = get_mcp_oauth_service()
-    success = await oauth.delete_connection(connection_id)
+    try:
+        success = await oauth.delete_connection(connection_id, company_id)
+    except ConexaoNaoEncontrada as e:
+        raise _nao_existe() from e
 
     if not success:
         raise HTTPException(status_code=500, detail="Falha ao remover conexão")

@@ -640,12 +640,22 @@ def test_g5bis_as_rotas_abertas_do_red_team_agora_sao_401(cliente_http, metodo, 
     assert _chamar(cliente_http, metodo, url).status_code == 401
 
 
-def test_g5bis_agente_de_outra_corretora_com_chave_boa_e_403(cliente_http, monkeypatch):
+def test_g5bis_agente_de_outra_corretora_com_chave_boa_e_404(cliente_http, monkeypatch):
     """Chave boa não é permissão para o agente alheio: a corretora ainda decide.
 
     🔴 Era o coração do B1: a proxy resolvia `company_id = A` (verdadeiro),
     carimbava a chave, e o backend não olhava a corretora nessas rotas — então
     saía a lista de contas conectadas da corretora B.
+
+    ⚠️ **ATUALIZADO em 21/09/2026 — SPEC-EXTRA-001.8 · FATIA 3** (CLAUDE.md §9.3:
+    quando o fato muda, o teste muda com ele e a lição MIGRA). A resposta deixou
+    de ser `403 "Agente não pertence a esta empresa"` e passou a ser `404`: a
+    frase antiga CONTAVA a quem perguntou que o id existia noutra corretora.
+    O que este teste guarda continua sendo o mesmo — *a rota pergunta de quem é
+    o agente antes de qualquer coisa* —, e a afirmação do par (o agente da
+    própria corretora PASSA) segue viva logo abaixo.
+    O guarda dos dois tenants ponta a ponta é
+    `tests/test_o_mcp_tem_cerca_de_corretora.py`.
     """
     from app.api import mcp as mod
 
@@ -659,14 +669,16 @@ def test_g5bis_agente_de_outra_corretora_com_chave_boa_e_403(cliente_http, monke
 
     r = _chamar(cliente_http, "GET",
                 "/api/mcp/agent/a-da-beta/connections?company_id=co-alfa", chave=CHAVE)
-    assert r.status_code == 403, r.text
+    assert r.status_code == 404, r.text
     assert vistos, "a rota nem chegou a perguntar de quem é o agente"
 
     # 🔴 O PAR: o agente da PRÓPRIA corretora continua passando — senão a cerca
     #    teria fechado a porta de quem podia entrar.
+    # ⚠️ A assinatura ganhou `company_id` na SPEC-EXTRA-001.8 · FATIA 3: a cerca
+    #    passou a morar DENTRO do serviço, colada na ação.
     class _Oauth:
         @staticmethod
-        async def get_agent_connections(_agent_id):
+        async def get_agent_connections(_agent_id, _company_id):
             return []
 
     import app.services.mcp_oauth_service as oauth_mod

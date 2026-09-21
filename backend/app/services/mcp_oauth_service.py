@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import secrets
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
@@ -21,6 +22,25 @@ import httpx
 from app.core.relogio_do_modelo import timeout_http
 
 logger = logging.getLogger(__name__)
+
+#: Quanto tempo um convite de OAuth (`state` assinado) continua valendo.
+#:
+#: 🔴 SPEC-EXTRA-001.8 · FATIA 3. 📊 Medido por leitura em 21/09/2026: o `state`
+#: era assinado (HMAC-SHA256) mas **não tinha instante nenhum dentro** — um
+#: convite gerado hoje continuava aceito daqui a um ano. Quinze minutos é mais
+#: que o dobro do que um OAuth humano leva (escolher a conta e clicar "permitir")
+#: e fecha a janela em que um link vazado ainda escreve no banco.
+STATE_VALIDADE_SEGUNDOS = 15 * 60
+
+
+class ConexaoNaoEncontrada(Exception):
+    """O agente ou a conexão pedida **não é desta corretora** — ou não existe.
+
+    🔴 UMA exceção para os dois casos, de propósito (CLAUDE.md §7). Quem chama
+    não consegue distinguir "é de outra corretora" de "nunca existiu", e por isso
+    não consegue usar a resposta para descobrir que ids existem lá fora.
+    """
+
 
 
 class MCPOAuthService:
@@ -117,15 +137,85 @@ class MCPOAuthService:
         return self.get_platform_credentials(provider) is not None
 
     # =========================================================================
+    # 🔴 A CERCA DE CORRETORA — COLADA NA AÇÃO (SPEC-EXTRA-001.8 · FATIA 3)
+    # =========================================================================
+    #
+    # 📊 Medido por leitura em 21/09/2026, neste arquivo, antes destes métodos:
+    #
+    #     delete_connection    `.delete().eq("id", connection_id)`      id PURO
+    #     disconnect_agent     `.update(...).eq("agent_id", agent_id)`  id PURO
+    #     get_agent_connections `.select(...).eq("agent_id", agent_id)` id PURO
+    #
+    # A única proteção era um pré-check NA ROTA (`app/api/mcp.py:45,62`), feito
+    # em dois saltos e **antes** da ação. Isso é checa-e-depois-age: entre a
+    # pergunta e o `DELETE` existe uma janela (TOCTOU), e — o que importa mais —
+    # qualquer chamador NOVO do serviço herdava zero proteção, porque a cerca
+    # não morava aqui.
+    #
+    # ⛔ `agent_mcp_connections` NÃO tem coluna `company_id`. 📊 Medido em
+    # `backend/supabase/migrations/schema_completo.sql:407-419` — 11 colunas:
+    # id · agent_id · mcp_server_id · access_token · refresh_token ·
+    # token_expires_at · scopes_granted · is_active · connected_at · created_at ·
+    # updated_at. Quem sabe de quem é a conexão é o AGENTE dela. Por isso a posse
+    # é confirmada em DOIS SALTOS e a ação seguinte carrega o agente CONFIRMADO
+    # no filtro — nunca o que veio de fora.
+
+    def _agente_da_corretora(self, agent_id: str, company_id: str) -> Optional[str]:
+        """O `agents.id` confirmado **desta** corretora, ou `None`.
+
+        ⛔ Erro de banco → `None`. Não conseguir provar a posse não é prová-la
+        (a mesma regra de `_validate_connection_belongs_to_company`).
+        """
+        if not agent_id or not company_id:
+            return None
+        try:
+            resultado = self.supabase.table("agents") \
+                .select("id") \
+                .eq("id", str(agent_id)) \
+                .eq("company_id", str(company_id)) \
+                .limit(1) \
+                .execute()
+            linhas = resultado.data or []
+            return str(linhas[0]["id"]) if linhas else None
+        except Exception as e:
+            logger.error(f"[MCP OAuth] posse do agente não conferida: {e}")
+            return None
+
+    def _agente_dono_da_conexao(self, connection_id: str, company_id: str) -> Optional[str]:
+        """O agente CONFIRMADO desta corretora que é dono da conexão, ou `None`."""
+        if not connection_id or not company_id:
+            return None
+        try:
+            resultado = self.supabase.table("agent_mcp_connections") \
+                .select("agent_id") \
+                .eq("id", str(connection_id)) \
+                .limit(1) \
+                .execute()
+            linhas = resultado.data or []
+        except Exception as e:
+            logger.error(f"[MCP OAuth] dono da conexão não conferido: {e}")
+            return None
+        if not linhas:
+            return None
+        return self._agente_da_corretora(str(linhas[0].get("agent_id") or ""), company_id)
+
+    # =========================================================================
     # CONEXÕES DO AGENTE (apenas tokens)
     # =========================================================================
 
-    async def get_agent_connections(self, agent_id: str) -> list:
-        """Lista conexões OAuth de um agente (tokens salvos)."""
+    async def get_agent_connections(self, agent_id: str, company_id: str) -> list:
+        """Lista conexões OAuth de um agente (tokens salvos).
+
+        🔴 `company_id` é OBRIGATÓRIO: agente de outra corretora levanta
+        `ConexaoNaoEncontrada`, a mesma resposta de agente que não existe.
+        """
+        agente = self._agente_da_corretora(agent_id, company_id)
+        if not agente:
+            raise ConexaoNaoEncontrada("agente não encontrado")
         try:
             result = self.supabase.table("agent_mcp_connections") \
                 .select("id, mcp_server_id, access_token, is_active, connected_at, mcp_servers(name, display_name, oauth_provider)") \
-                .eq("agent_id", agent_id) \
+                .eq("agent_id", agente) \
                 .execute()
 
             connections = []
@@ -155,12 +245,28 @@ class MCPOAuthService:
         provider: str,
         agent_id: str,
         mcp_server_id: str,
+        company_id: str,
     ) -> Dict[str, Any]:
         """
         Gera URL de autorização OAuth usando credenciais da PLATAFORMA.
+
+        🔴 SPEC-EXTRA-001.8 · FATIA 3: a corretora entra **dentro do `state`
+        assinado**. O callback é a única rota deste módulo sem chave interna
+        (o navegador do corretor chega nela vindo do Google/GitHub/Slack), então
+        a corretora precisa viajar por um caminho que ninguém de fora consegue
+        escrever — e a assinatura HMAC é esse caminho.
         """
         if provider not in self.provider_config:
             return {"error": f"Provider '{provider}' não suportado"}
+
+        if not company_id:
+            return {"error": "Corretora não informada"}
+
+        # 🔴 A posse é confirmada AQUI também, não só na rota: quem gera o
+        #    convite é quem assina, e assinar o agente alheio é o ataque.
+        agente = self._agente_da_corretora(agent_id, company_id)
+        if not agente:
+            raise ConexaoNaoEncontrada("agente não encontrado")
 
         # Buscar credenciais da PLATAFORMA
         creds = self.get_platform_credentials(provider)
@@ -171,7 +277,8 @@ class MCPOAuthService:
 
         # State para CSRF protection + dados
         state_data = {
-            "agent_id": agent_id,
+            "agent_id": agente,
+            "company_id": str(company_id),
             "mcp_server_id": mcp_server_id,
             "provider": provider,
             "nonce": secrets.token_urlsafe(16),
@@ -226,9 +333,28 @@ class MCPOAuthService:
 
         agent_id = state_data.get("agent_id")
         mcp_server_id = state_data.get("mcp_server_id")
+        company_id = state_data.get("company_id")
 
-        if not agent_id or not mcp_server_id:
+        if not agent_id or not mcp_server_id or not company_id:
             return {"success": False, "error": "State incompleto"}
+
+        # 🔴 O PROVIDER DO CAMINHO TEM DE SER O DO CONVITE — 21/09/2026.
+        #
+        # 📊 Medido por leitura: `provider` já ia dentro do state e **nunca era
+        # comparado** com o da URL. Um state legítimo de `google` reapresentado
+        # em `/oauth/callback/github` gravava um token de GitHub na linha do
+        # servidor do Google, com credenciais do GitHub — o dono acaba com uma
+        # conexão que diz uma coisa e guarda outra.
+        if str(state_data.get("provider") or "") != provider:
+            logger.warning("[MCP OAuth] provider do state não é o do callback")
+            return {"success": False, "error": "State inválido"}
+
+        # 🔴 E A CORRETORA AINDA TEM DE SER DONA DO AGENTE NA HORA DA ESCRITA.
+        #    O convite pode ter sido assinado minutos atrás; o que vale é agora.
+        #    ⛔ Erro de banco → recusa (não conseguir provar não é provar).
+        if not self._agente_da_corretora(str(agent_id), str(company_id)):
+            logger.warning("[MCP OAuth] agente do state não é mais desta corretora")
+            return {"success": False, "error": "State inválido"}
 
         # Buscar credenciais da PLATAFORMA
         creds = self.get_platform_credentials(provider)
@@ -435,8 +561,15 @@ class MCPOAuthService:
             logger.error(f"[MCP OAuth] Refresh error: {e}", exc_info=True)
             return None
 
-    async def disconnect_agent(self, agent_id: str, mcp_server_id: str) -> bool:
-        """Remove tokens de um agente (desconecta)."""
+    async def disconnect_agent(self, agent_id: str, mcp_server_id: str,
+                               company_id: str) -> bool:
+        """Remove tokens de um agente (desconecta).
+
+        🔴 `company_id` é OBRIGATÓRIO, e o filtro leva o agente CONFIRMADO.
+        """
+        agente = self._agente_da_corretora(agent_id, company_id)
+        if not agente:
+            raise ConexaoNaoEncontrada("agente não encontrado")
         try:
             self.supabase.table("agent_mcp_connections") \
                 .update({
@@ -446,7 +579,7 @@ class MCPOAuthService:
                     "is_active": False,
                     "updated_at": datetime.utcnow().isoformat(),
                 }) \
-                .eq("agent_id", agent_id) \
+                .eq("agent_id", agente) \
                 .eq("mcp_server_id", mcp_server_id) \
                 .execute()
             return True
@@ -454,12 +587,22 @@ class MCPOAuthService:
             logger.error(f"[MCP OAuth] Disconnect error: {e}")
             return False
 
-    async def delete_connection(self, connection_id: str) -> bool:
-        """Remove uma conexão completamente."""
+    async def delete_connection(self, connection_id: str, company_id: str) -> bool:
+        """Remove uma conexão completamente.
+
+        🔴 Escrita DESTRUTIVA: o `id` sozinho nunca basta. A posse é confirmada
+        aqui (dois saltos) e o `DELETE` sai com **os dois** filtros —
+        `id` E `agent_id` confirmado. Assim, mesmo que a conexão troque de dono
+        entre a pergunta e a ação (TOCTOU), o `DELETE` não pega nada.
+        """
+        agente = self._agente_dono_da_conexao(connection_id, company_id)
+        if not agente:
+            raise ConexaoNaoEncontrada("conexão não encontrada")
         try:
             self.supabase.table("agent_mcp_connections") \
                 .delete() \
                 .eq("id", connection_id) \
+                .eq("agent_id", agente) \
                 .execute()
             return True
         except Exception as e:
@@ -486,7 +629,14 @@ class MCPOAuthService:
                 "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             )
 
-        json_data = json.dumps(data, sort_keys=True)
+        # 🔴 O RELÓGIO DENTRO DA ASSINATURA (SPEC-EXTRA-001.8 · FATIA 3).
+        #    `iat` entra AQUI, e não em quem chama, para que nenhum state novo
+        #    consiga nascer sem instante. Ele vai dentro do que é assinado —
+        #    mexer nele invalida a assinatura.
+        assinado = dict(data)
+        assinado.setdefault("iat", int(time.time()))
+
+        json_data = json.dumps(assinado, sort_keys=True)
         encoded_data = base64.urlsafe_b64encode(json_data.encode()).decode()
 
         # Criar assinatura HMAC-SHA256
@@ -531,7 +681,26 @@ class MCPOAuthService:
 
             # Decodificar dados
             json_data = base64.urlsafe_b64decode(encoded_data.encode()).decode()
-            return json.loads(json_data)
+            dados = json.loads(json_data)
+            if not isinstance(dados, dict):
+                return None
+
+            # 🔴 O CONVITE VENCE (SPEC-EXTRA-001.8 · FATIA 3).
+            #
+            # ⛔ State SEM `iat` é recusado, nunca "aceito por compatibilidade":
+            # um state antigo é exatamente o que este relógio existe para barrar.
+            # O preço é uma janela de poucos minutos, no deploy, em que um OAuth
+            # já começado precisa ser reiniciado — ruidoso e de um clique.
+            nascido = dados.get("iat")
+            if not isinstance(nascido, int):
+                logger.warning("[MCP OAuth] state sem instante de emissão — recusado")
+                return None
+            idade = int(time.time()) - nascido
+            if idade < -60 or idade > STATE_VALIDADE_SEGUNDOS:
+                logger.warning("[MCP OAuth] state fora da validade (%ss) — recusado", idade)
+                return None
+
+            return dados
         except Exception as e:
             logger.error(f"[MCP OAuth] Erro ao decodificar state: {e}")
             return None
