@@ -64,9 +64,9 @@ todo número sobre código ou banco vem com o COMANDO ao lado, na mesma linha ou
 + a REFERÊNCIA interna (§7.1) e a EXTERNA (§7.3) · as pendências POR NÚMERO, nunca o PENDENCIAS.md inteiro
 ⛔ nenhum pacote manda "leia o protocolo INTEIRO" · o EXECUTOR lê a FICHA da SPEC (≤ 15 KB) e a proposta
    só por unidade; research pack só quando citado
-🔴 proposta ≤ 40 KB · relatório ≤ 15 KB · este documento ≤ 22 KB. O guarda mede.
+🔴 proposta ≤ 40 KB · relatório ≤ 15 KB (CRÍTICO ≤ 25) · este documento ≤ 22 KB. O guarda mede.
 ```
-Pacotes-modelo em [`docs/canon/pacotes/`](pacotes/); molde de abertura em `specs-propostas/PROMPT-DE-ABERTURA-EXTRA-001.10-PRONTO.md`.
+Pacotes-modelo em [`docs/canon/pacotes/`](pacotes/).
 
 ---
 
@@ -168,7 +168,8 @@ a orquestração. Todo subagente reporta o que vir FORA do escopo.
 ⑦ BATERIA                  DEPOIS do conserto, UMA vez em 2º plano, triada NOMINALMENTE contra
                            `docs/canon/reports/BATERIA-LINHA-DE-BASE.txt`
 ⑧ ENTREGA                  relatório ≤ 15 KB · push com a saída colada · telemetria (§11) · AGENTE ATUALIZADOR DE
-                           DOCUMENTOS (ESTADO · PENDENCIAS · DECISIONS · TAREFAS-DO-FOUNDER · painel) · a RESPOSTA
+                           DOCUMENTOS (ESTADO · PENDENCIAS · DECISIONS · TAREFAS-DO-FOUNDER · painel); achados
+                           conferidos contra os LAUDOS antes do commit · a RESPOSTA
                            FINAL é o relatório do Founder (CLAUDE.md §12.2)
 ```
 
@@ -177,8 +178,8 @@ a orquestração. Todo subagente reporta o que vir FORA do escopo.
 ≥ 3 unidades ou > 40 KB → FATIAS INTERNAS: mesma SPEC, branch, relatório e CHAT. fatia = ② → ③ → commit.
 O gerente delega CADA fatia a UM builder fresco (Opus 5 xhigh) com o pacote (card · unidades · arquivos ·
 handoff · gates); fatias de ARQUIVOS DISJUNTOS vão EM PARALELO, e o card lista os arquivos de cada uma.
-Conserto = o MESMO builder retomado. O gerente prova e chama juiz ‖ red team UMA vez, no fim.
-⛔ nunca sessão nova por fatia nem Founder trocando de chat · nunca dois builders no MESMO arquivo
+Conserto = o MESMO builder, ≤ 3 retomadas; depois, FRESCO com handoff. Fatias PARALELAS → UMA fatia de COSTURA
+(a saída REAL de uma é a entrada da outra). Juiz ‖ red team UMA vez, no fim.
 ```
 
 ### As portas
@@ -196,6 +197,7 @@ Conserto = o MESMO builder retomado. O gerente prova e chama juiz ‖ red team U
 ```
 RECEBE   o card · o contrato da SPEC · o DIFF · os comandos dos gates · a referência · a LISTA DE ATAQUES
 NUNCA    a narrativa do executor · o esforço · "está funcionando" · o resumo
+🔴 LAUDO inteiro em ARQUIVO; ao gerente volta o RESUMO (≤ 40 linhas). Código que alcança banco roda com DUBLÊ do cliente
 ATAQUES  dado vazio/nulo · duas corretoras ao mesmo tempo (company_id) · a mesma mensagem 2× (idempotência) ·
          dois processos ao mesmo tempo · rollback da migration · o produto CHAMA este caminho? (rode-o) ·
          regressão direta do diff · efeito externo (mensagem, portal, dinheiro)
@@ -334,14 +336,14 @@ NÃO). Nunca se para para entregar uma linha dela.
 
 ```
 SESSÃO      o GERENTE vive num chat; cada SPEC inteira nele (card → push); 2–3 SPECs por chat enquanto o
-            gerente ficar ≤ 600 k (📊 cache read do Fable = US$ 0,25/M, metade do Opus). ⛔ nenhuma SPEC em duas sessões
+            gerente ficar ≤ 600 k. ⛔ nenhuma SPEC em duas sessões
 MODELO      🎯 gerente = Fable 5.1 · 🔧 builder = Opus 5 xhigh (max só a pedido do Founder) · ⚖️ juiz = Fable 5.1
             sempre que houver juiz · 🔍 investigador = Sonnet 5 · 🗡️ red team = Fable 5.1. ⛔ não trocar no meio
 TETOS       LEVE · PADRÃO · CRÍTICO — turnos do executor ≤ 80 · 160 · 250 por fatia · contexto ≤ 200 · 250 · 300 k
-            (passou → builder novo, §5.2) · agentes por SPEC ≤ 6 (builders + juiz + gatilhos) · relógio ≤ 40 min ·
+            (passou → builder novo, §5.2) · agentes por sessão ≤ 24 · relógio ≤ 40 min ·
             75 min · 2h30 (fatia ≤ 1h15) · juiz ≤ 80 turnos e ≤ 250 k
 APLICAÇÃO   env CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=2 · CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 (.claude/settings.json) ·
-            hook bloqueia o 13º agente (`.claude/hooks/teto-de-agentes.py`; ≤ 6 por SPEC) · status line conferida em CADA gate ·
+            hook bloqueia o 25º agente (`.claude/hooks/teto-de-agentes.py`, D-PROTO-11) · status line conferida em CADA gate ·
             o script da §11 fecha a conta
 JUIZ RECEBE o card + o diff + os comandos + a lista de ataques. Nunca a SPEC inteira nem o censo
 CACHE       `subagentPromptCacheTtl: "1h"` · juiz no diretório principal, nunca FORK
@@ -369,7 +371,6 @@ do executor (critério em 1 linha) e do juiz
 ```
 ❌ nível LEVE com SUPERFÍCIE 0 — faz e pronto (o verificador mecânico ainda roda) · consulta pontual (§3.3)
 ❌ não substitui o CLAUDE.md (as invioláveis vencem) nem a SPEC (ela diz O QUE, este o COMO)
-❌ subagente não lê inteiro: §0–§3, §5 e §7.3 resolvem 90%
 ```
 
 ## 13. QUEM DECIDE

@@ -17,6 +17,9 @@ o TESTE DO FIO                              {caminho} — rode-o
 ⛔ NENHUMA mensagem sai. NENHUM agente é ligado. NENHUM portal. Banco: só SELECT.
 ⛔ NUNCA imprimir CPF, telefone, apólice, placa, nome de pessoa, senha ou token.
 ⛔ SOMENTE LEITURA. Rode testes DIRIGIDOS e consultas; não edite arquivo. ⛔ Nunca a suíte inteira.
+⛔ 🔴 ANTES de rodar QUALQUER código que alcance banco (teste, script, import de serviço): troque o cliente Supabase
+   por DUBLÊ no seu script. Consulta ao banco real é SÓ `SELECT` escrito por você, nunca o código do produto rodando
+   solto. 📊 EXTRA-001.10: um script de juiz alcançou o Supabase REAL com `company_id` falso (recusado; 0 linhas).
 ```
 
 ## A missão, nesta ordem
@@ -40,3 +43,12 @@ O QUE TENTEI ........ a lista dos ataques, inclusive os que não deram nada
 O ELO MAIS FRACO .... uma linha
 NOTA ................ 0–100
 ```
+
+## 🔴 Onde o laudo vai (v13.1 · 21/09/2026)
+```
+LAUDO COMPLETO ... grave em {caminho do laudo, FORA do repositório: o diretório temporário que o gerente indicar}
+AO GERENTE ....... devolva SÓ o RESUMO, ≤ 40 linhas: veredito · cada blocker em 2 linhas (arquivo:linha + o comando
+                   que o reproduz) · pendências em 1 linha cada · nota · confiança · o caminho do laudo
+```
+📊 Por quê: na EXTRA-001.10 os laudos voltaram inteiros e o gerente chegou a 410 k de contexto (teto 300 k).
+

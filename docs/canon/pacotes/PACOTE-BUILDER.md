@@ -62,3 +62,15 @@ certo na unidade, nunca exercitado no fio real (`specs-propostas/AUDITORIA-AAA-E
 5. Entregue: o diff resumido por arquivo · a saída dos testes do bloco · o BLOCO 0
    medido · **o que viu FORA do escopo** (obrigatório, §4) · o que ficou pendente.
 ⛔ Não narre "está funcionando". Cole a saída do comando.
+
+## 🔴 Três regras que a EXTRA-001.10 pagou para aprender (v13.1 · 21/09/2026)
+```
+RETOMADA ..... o mesmo builder é retomado no MÁXIMO 3 vezes. Na 4ª, o gerente abre um builder FRESCO com HANDOFF
+               (o que foi feito · o que falta · os comandos dos gates). 📊 001.10: um builder retomado chegou a 788 k
+               de contexto e a 65 % do custo da execução.
+COSTURA ...... houve fatias em PARALELO? depois delas roda UMA fatia de costura: um teste que atravessa a saída REAL
+               de uma fatia como entrada da outra. 📊 001.10: 7 quebras de costura que nenhum gate de unidade viu.
+ENTREGA ...... a mensagem final ao gerente é DENSA (≤ 120 linhas). Saída longa de teste vai para arquivo; cole as
+               linhas finais e o caminho. ⛔ Nunca commite nem declare conserto antes de VER o teste dele verde.
+```
+
