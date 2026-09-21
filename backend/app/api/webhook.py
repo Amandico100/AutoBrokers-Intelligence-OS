@@ -206,6 +206,144 @@ def payload_do_pipeline(wa_message_id: Optional[str], direcao: str,
     return saida
 
 
+# =============================================================================
+# SPEC-EXTRA-001.8 §5.1 — O RELÓGIO DO ATENDIMENTO
+# =============================================================================
+#
+# 📊 O achado que este bloco fecha (medido em 21/09/2026): o turno **é**
+# registrado, mas só no chat do painel. `chat.py:1218-1230` monta
+# `dados_do_turno` com `status`, `ttft_ms`, `total_ms`, `stages`, `artifacts`,
+# `error_code` (+ `attempt` em :941, + `finish_reason`/`usage`/`continuations`/
+# `truncated` em :1177-1181) e o grava em `messages.payload` (`chat.py:958-960`).
+# O caminho do WhatsApp — por onde o SEGURADO fala — não gravava nada disso, e
+# por isso "quanto tempo o segurado esperou" não tinha resposta.
+#
+# 🔴 UM VOCABULÁRIO, NÃO DOIS. Onde o chat diz `total_ms`, aqui é `total_ms`.
+#   · `stages`   MESMO NOME e MESMO TIPO do `chat.py:1122` (`estagios: List[str]`):
+#                lista de TEXTO. ⛔ A proposta escreveu `etapas`/`nome` de memória;
+#                o código venceu (CLAUDE.md §0.4).
+#   · `stage_ms` a chave NOVA, e ela é nova porque o fato é novo: o chat não mede
+#                duração POR etapa, o atendimento mede. Trocar o TIPO de `stages`
+#                para carregá-la seria a mesma chave significando outra coisa —
+#                o defeito que o §12.1 manda consertar no campo.
+#   · `status`   os valores do `chat.py` (`complete` · `failed`), nunca `completed`.
+#
+# ⛔ Este bloco NUNCA muda o que o segurado recebe nem atrasa o envio: medir é
+# `monotonic()`, gravar é DEPOIS do envio, e tudo dentro de `try/except`.
+
+#: As quatro etapas de um turno de atendimento, na ordem em que acontecem.
+#: ⚠️ As duas primeiras são medidas pelo PROCESSADOR (a rajada e a cota) e
+#: chegam por `relogio_da_fila`; as duas últimas são medidas aqui.
+ETAPAS_DO_ATENDIMENTO = ("buffer_espera", "fila_cota", "grafo", "envio")
+
+#: O `status` de um turno de atendimento. 📊 `complete` e `failed` são os
+#: valores que `chat.py` atribui a `estado` (:1123, :1185/:1198); `timeout` é o
+#: terceiro caso, que só o atendimento tem (o teto de tempo do §7.2).
+STATUS_COMPLETO = "complete"
+STATUS_FALHOU = "failed"
+STATUS_TIMEOUT = "timeout"
+
+
+def _ms_medido(valor: Any) -> Optional[int]:
+    """`int` quando houve medição, `None` quando não houve.
+
+    🔴 **ZERO É MEDIÇÃO; `None` É "NÃO MEDIDO".** Devolver 0 para o que não foi
+    medido é inventar um número — e um p95 calculado sobre zeros inventados
+    mente para quem decide (CLAUDE.md §12.1).
+    """
+    if valor is None or isinstance(valor, bool):
+        return None
+    try:
+        return max(0, int(valor))
+    except (TypeError, ValueError):
+        return None
+
+
+def montar_turno_do_atendimento(
+    *, status: str, total_ms: Any,
+    relogio_da_fila: Optional[dict] = None,
+    grafo_ms: Any = None, envio_ms: Any = None,
+    provedor: Optional[str] = None, modelo: Optional[str] = None,
+    finish_reason: Optional[str] = None, usage: Optional[dict] = None,
+) -> Dict[str, Any]:
+    """O `payload.turn` de um turno de atendimento — **PURA**.
+
+    Existe separada do caminho de envio de propósito: é ela que o guarda
+    `backend/tests/test_o_atendimento_tem_relogio.py` roda direto, e é ela que o
+    caminho real chama DEPOIS do envio. Nada aqui toca rede, banco ou relógio de
+    parede.
+
+    `relogio_da_fila` é o contrato com o processador
+    (`buffer_processor.processar_buffers_prontos`): `{"buffer_espera_ms": int,
+    "fila_cota_ms": int}`. Ausente → as duas etapas saem `None`.
+    """
+    da_fila = dict(relogio_da_fila or {})
+    medidos = {
+        "buffer_espera": _ms_medido(da_fila.get("buffer_espera_ms")),
+        "fila_cota": _ms_medido(da_fila.get("fila_cota_ms")),
+        "grafo": _ms_medido(grafo_ms),
+        "envio": _ms_medido(envio_ms),
+    }
+    turno: Dict[str, Any] = {
+        "status": str(status or ""),
+        "total_ms": _ms_medido(total_ms) or 0,
+        "stages": list(ETAPAS_DO_ATENDIMENTO),
+        "stage_ms": {nome: medidos[nome] for nome in ETAPAS_DO_ATENDIMENTO},
+    }
+    # ⚠️ A MESMA regra do `chat.py:1229-1231`: só o que de fato foi medido
+    # entra. Chave com `None` é ruído no `payload` e mente sobre ter havido
+    # medição.
+    for chave, valor in (("provedor", provedor), ("modelo", modelo),
+                         ("finish_reason", finish_reason), ("usage", usage)):
+        if valor is not None:
+            turno[chave] = valor
+    return turno
+
+
+async def gravar_o_relogio_do_turno(supabase_client, *, message_id: str,
+                                    conversation_id: str,
+                                    turno: Dict[str, Any]) -> bool:
+    """Acrescenta a chave `turn` ao `payload` que a linha JÁ tem — **nunca levanta**.
+
+    🔴 **ACRESCENTA, não substitui.** A linha do pipeline nasce com
+    `{"origem": "agente", "direcao": "out"}` (`payload_do_pipeline`, acima) e o
+    espelho lê `payload->>'wa_message_id'` para não duplicar no chat da
+    corretora. Trocar o dicionário por `{"turn": …}` apagaria a dedupe — por
+    isso o `payload` é LIDO e o `turn` entra ao lado.
+
+    🔴 **O FILTRO É DE CÓDIGO, E SÃO DUAS CLÁUSULAS.** `messages` não tem
+    `company_id` (a coluna vive em `conversations`), então a cerca da corretora
+    é o `conversation_id` — que veio de `integration["company_id"]`. O backend
+    usa service role: RLS sem filtro no código não protege nada (CLAUDE.md §7).
+
+    ⛔ **Falhar aqui não custa uma mensagem.** O relógio é para alguém olhar; a
+    resposta do segurado já saiu. Devolve `False` em silêncio.
+    """
+    alvo, conversa = str(message_id or "").strip(), str(conversation_id or "").strip()
+    if not alvo or not conversa:
+        return False
+    try:
+        atual = await asyncio.to_thread(
+            lambda: supabase_client.table("messages").select("payload")
+            .eq("id", alvo).eq("conversation_id", conversa).limit(1).execute()
+        )
+        linhas = getattr(atual, "data", None) or []
+        if not linhas:
+            return False
+        payload = dict(linhas[0].get("payload") or {})
+        payload["turn"] = turno
+        await asyncio.to_thread(
+            lambda: supabase_client.table("messages").update({"payload": payload})
+            .eq("id", alvo).eq("conversation_id", conversa).execute()
+        )
+        return True
+    except Exception as erro:  # noqa: BLE001
+        # ⛔ Só a CLASSE do erro: um texto de PostgREST pode carregar o conteúdo
+        # da linha, e a linha é a fala do agente com o segurado.
+        logger.warning("[RELOGIO] turno não registrado (%s)", type(erro).__name__)
+        return False
+
+
 def e_duplicata_do_banco(erro: Any) -> bool:
     """O banco disse *"esta mensagem já está aqui"*? — **PURA**.
 
@@ -775,8 +913,23 @@ async def process_whatsapp_message_background(
     *,
     turno=None, chave_do_buffer: str = "",
     buffered_items: Optional[list] = None,
+    relogio_da_fila: Optional[dict] = None,
 ):
-    """Processa mensagem WhatsApp em background (Evita bloqueio do Webhook)"""
+    """Processa mensagem WhatsApp em background (Evita bloqueio do Webhook)
+
+    `relogio_da_fila` (SPEC-EXTRA-001.8 §5.1) é o contrato OPCIONAL com o
+    processador de buffers: `{"buffer_espera_ms": int, "fila_cota_ms": int}`.
+    🔴 Default `None` e keyword-only de propósito — os chamadores de hoje
+    (`buffer_processor.py:752-786` e as rotas) continuam válidos sem tocar numa
+    linha, e sem ele o relógio grava as duas etapas da fila como `None` em vez
+    de inventar zero.
+    """
+    # ⚠️ `monotonic`, nunca `time()`: ajuste de relógio do servidor no meio do
+    # turno produziria duração negativa.
+    _comeco_do_turno = _tempo.monotonic()
+    _grafo_ms = None
+    _envio_ms = None
+    _id_da_resposta = ""
     # AS DUAS CONDIÇÕES DO FALLBACK — ver o `except` no fim desta função.
     #
     # Uma exceção no caminho da IA deixava o segurado em SILÊNCIO TOTAL: o
@@ -1599,6 +1752,7 @@ async def process_whatsapp_message_background(
         #    pela de baixo — P-E0012-J2.
         await _renovar_o_turno(turno, _renovacoes)
 
+        _comeco_do_grafo = _tempo.monotonic()
         ai_response, metrics = await langchain_service.process_message(
             user_message=message_for_ai,
             company_id=company_id,
@@ -1616,6 +1770,10 @@ async def process_whatsapp_message_background(
             # agente errado, e um id herdado não pode virar permissão de fala.
             required_role="attendance",
         )
+        # SPEC-EXTRA-001.8 §5.1 — a etapa `grafo`, fechada aqui e em lugar
+        # nenhum mais. ⚠️ Medida mesmo quando o turno acabar descartado logo
+        # abaixo: o tempo aconteceu, e é ele que diz por que a fila andou devagar.
+        _grafo_ms = int((_tempo.monotonic() - _comeco_do_grafo) * 1000)
 
         # =====================================================================
         # 🔴 A SEGUNDA PERGUNTA — E ELA É NA SAÍDA, NÃO NA ENTRADA (09/09/2026)
@@ -1775,14 +1933,26 @@ async def process_whatsapp_message_background(
             # 🔴 O que muda já: a linha passa pelo MESMO escritor do segurado,
             # com `origem` e `direcao`. No dia em que a fachada devolver o id,
             # é um argumento — não um segundo caminho de escrita.
+            # 🔴 O `id` NASCE AQUI, e é por isso que o relógio consegue voltar
+            # NESTA linha (SPEC-EXTRA-001.8 §5.1). O insert não devolve a linha
+            # gravada, e procurar "a última mensagem do agente desta conversa"
+            # depois do envio acertaria a linha errada quando duas rajadas se
+            # cruzassem. Um `uuid4` do nosso lado é determinístico e não custa
+            # consulta nenhuma — é o mesmo desenho do `assistantMessageId` do
+            # chat (`chat.py:942`).
+            _id_da_resposta = str(uuid4())
             await gravar_mensagem_do_pipeline(
                 supabase.client,
-                dados={"conversation_id": conversation_id,
+                dados={"id": _id_da_resposta,
+                       "conversation_id": conversation_id,
                        "role": "assistant", "content": ai_response},
                 wa_message_id=None, direcao="out")
             # LOG SANITIZADO
             logger.info("[WEBHOOK BACKGROUND] Agent response generated")
         except Exception as e:
+            # A linha não existe: o relógio não tem onde pousar, e não inventa
+            # uma segunda linha para carregá-lo (SPEC-EXTRA-001.8 §5.1 regra d).
+            _id_da_resposta = ""
             logger.error(f"[MESSAGES] Failed to save AI message: {e}")
 
         # 8.1 Atualizar preview
@@ -1821,10 +1991,12 @@ async def process_whatsapp_message_background(
         # ⚠️ `to_thread` não muda um argumento nem um retorno: o valor devolvido
         # é o mesmo `bool`, e a exceção sobe pelo mesmo caminho. O que muda é
         # que o loop continua atendendo os outros enquanto este envio acontece.
+        _comeco_do_envio = _tempo.monotonic()
         success = await asyncio.to_thread(
             whatsapp_service.send_message,
             to_number=payload.phone, text=ai_response, integration=integration,
         )
+        _envio_ms = int((_tempo.monotonic() - _comeco_do_envio) * 1000)
 
         # §6.4 regra 4: `paused` ao terminar, sempre.
         await _presenca(integration, payload.phone, "paused")
@@ -1861,6 +2033,43 @@ async def process_whatsapp_message_background(
                              type(_e_apres).__name__)
         else:
             logger.error("[WEBHOOK BACKGROUND] Failed to send WhatsApp message")
+
+        # =====================================================================
+        # 🔴 O RELÓGIO DO TURNO — DEPOIS DO ENVIO, E DENTRO DO SEU PRÓPRIO `try`
+        # =====================================================================
+        #
+        # ⛔ **Ele não pode custar uma mensagem, nem produzir uma segunda.** O
+        # `except` lá embaixo manda um "tive uma falha técnica" ao segurado
+        # quando `_resposta_ja_enviada` é False — e um envio que devolveu False
+        # deixa exatamente esse estado. Se o relógio levantasse aqui, o segurado
+        # receberia um pedido de desculpas por causa de uma CONTABILIDADE. Por
+        # isso o bloco engole tudo, inclusive o que `gravar_o_relogio_do_turno`
+        # já engoliria: quem chama não pode depender da boa educação de quem é
+        # chamado.
+        #
+        # ⚠️ `total_ms` cobre O QUE FOI MEDIDO: quando o processador entrega o
+        # relógio da fila, ele começa no instante em que a mensagem entrou no
+        # buffer; sem ele, começa na entrada desta função. Nunca menor que a
+        # soma das etapas medidas.
+        try:
+            _da_fila = dict(relogio_da_fila or {})
+            _antes_daqui = (_ms_medido(_da_fila.get("buffer_espera_ms")) or 0) + \
+                           (_ms_medido(_da_fila.get("fila_cota_ms")) or 0)
+            await gravar_o_relogio_do_turno(
+                supabase.client,
+                message_id=_id_da_resposta,
+                conversation_id=str(conversation_id or ""),
+                turno=montar_turno_do_atendimento(
+                    status=STATUS_COMPLETO if success else STATUS_FALHOU,
+                    total_ms=int((_tempo.monotonic() - _comeco_do_turno) * 1000)
+                    + _antes_daqui,
+                    relogio_da_fila=relogio_da_fila,
+                    grafo_ms=_grafo_ms, envio_ms=_envio_ms,
+                ),
+            )
+        except BaseException as _e_relogio:  # noqa: BLE001
+            logger.warning("[RELOGIO] turno não medido (%s)",
+                           type(_e_relogio).__name__)
 
     except Exception as e:
         logger.error(f"[WEBHOOK BACKGROUND] Critical Error: {str(e)}", exc_info=True)

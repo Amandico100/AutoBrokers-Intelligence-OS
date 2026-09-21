@@ -91,12 +91,41 @@ type Grupo = {
   agentes: Agente[];
 };
 
+// SPEC-EXTRA-001.8 §10 — o atendimento, por corretora.
+//
+// 🔴 Os campos de fila são `number | null` de propósito: `null` é "não consegui
+// ler agora", e NUNCA vira 0 na tela. Um zero inventado em "Mensagens perdidas"
+// responderia "não, você não perdeu nada" sem ter olhado.
+//
+// ⚠️ `expiradas_acumuladas` não se chama `_24h`: o contador só zera depois de
+// 24 h inteiras sem atendimento naquela corretora, e `janela.contadores` traz
+// essa frase pronta, do backend (CLAUDE.md §12.1).
+type AtendimentoDaCorretora = {
+  company_id: string | null;
+  nome: string;
+  sem_corretora: boolean;
+  integracoes: number | null;
+  em_execucao: number | null;
+  em_espera: number | null;
+  cota: number | null;
+  turnos_24h: number | null;
+  mediana_ms_24h: number | null;
+  p95_ms_24h: number | null;
+  ultimo_motivo_de_espera: string | null;
+  expiradas_acumuladas: number | null;
+  timeouts_acumulados: number | null;
+  breaker: Record<string, string> | null;
+  janela: { tempos?: string; contadores?: string } | null;
+  aviso: string | null;
+};
+
 type Status = {
   gerado_em: string | null;
   cache_s: number | null;
   grupos: Grupo[];
   nao_instrumentado: string[];
   sem_card_por_decisao: { workflow_key: string; motivo: string }[];
+  atendimento_por_corretora?: AtendimentoDaCorretora[];
 };
 
 type BlocoDeMemoria = { key: string; content: string; updated_at: string };
@@ -492,6 +521,160 @@ function CardAgente({ agente, grupoDoCard, agora, memoria, memAberta, aoAbrirMem
 // `scripts/central-de-agentes-mostra-o-trabalho.test.mjs` renderiza.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-EXTRA-001.8 §10 — ATENDIMENTO POR CORRETORA
+//
+// A seção responde, em português, as duas perguntas que a Central não
+// respondia: *"perdi alguma mensagem?"* e *"a corretora está sendo atendida
+// em quanto tempo?"*. ⛔ Nenhuma tela nova: é uma seção dentro desta página.
+//
+// 🔴 O destaque é "Mensagens perdidas". É o número que o Founder olha todo dia,
+// e por isso ele é o maior da linha — verde no zero, vermelho em qualquer outra
+// coisa, cinza quando não deu para ler (que NÃO é o mesmo que zero).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** O motivo técnico da espera, dito como se diz a uma pessoa. */
+const MOTIVO_EM_PORTUGUES: Record<string, string> = {
+  cota: 'limite de conversas ao mesmo tempo',
+  turno: 'outra resposta já estava em andamento nessa conversa',
+  breaker: 'aguardando o provedor de inteligência voltar',
+  sem_escopo: 'conversa sem canal de WhatsApp identificado',
+};
+
+function motivoHumano(bruto: string | null | undefined): string {
+  const chave = String(bruto || '').trim();
+  if (!chave) return '';
+  return MOTIVO_EM_PORTUGUES[chave] || semJargao(chave) || chave;
+}
+
+/** Milissegundos → o tempo como alguém fala: "4,2 s", "1 min 30 s". */
+function tempoHumano(ms: number | null | undefined): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1).replace('.', ',')} s`;
+  const min = Math.floor(s / 60);
+  const resto = Math.round(s - min * 60);
+  return resto ? `${min} min ${resto} s` : `${min} min`;
+}
+
+function LinhaDaCorretora({ c }: { c: AtendimentoDaCorretora }) {
+  const perdidas = c.expiradas_acumuladas;
+  const corPerdidas = perdidas == null ? CINZA_SEM_MEDIDA : perdidas > 0 ? '#E06B6B' : '#5BC08A';
+  const motivo = motivoHumano(c.ultimo_motivo_de_espera);
+  const titulo = c.sem_corretora
+    ? 'Um canal de WhatsApp que ainda não está ligado a nenhuma corretora'
+    : c.nome || 'Corretora sem nome cadastrado';
+
+  return (
+    <div style={{ ...S.card, borderColor: c.sem_corretora ? '#E06B6B55' : '#161D28' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14.5, fontWeight: 600 }}>{titulo}</span>
+        {c.integracoes != null && c.integracoes > 1 ? (
+          <span style={{ ...S.mono, fontSize: 10, color: '#5A6577' }}>
+            somando {c.integracoes} números de WhatsApp
+          </span>
+        ) : null}
+      </div>
+
+      {/* O número que responde "perdi alguma mensagem?" — em destaque, sozinho. */}
+      <div style={{ marginTop: 10, display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
+        <span style={{ ...S.mono, fontSize: 26, lineHeight: 1, color: corPerdidas }}>
+          {perdidas == null ? '—' : perdidas}
+        </span>
+        <span style={{ fontSize: 12.5, color: perdidas ? '#E06B6B' : '#7C8798' }}>
+          {perdidas == null
+            ? 'não consegui conferir se alguma mensagem se perdeu'
+            : perdidas > 0
+              ? 'mensagens que ficaram sem resposta — isto precisa de alguém'
+              : 'mensagens perdidas. Nenhuma ficou sem resposta.'}
+        </span>
+      </div>
+      {c.janela?.contadores ? (
+        <div style={{ ...S.mono, fontSize: 9.5, color: '#4A4F5A', marginTop: 4 }}>
+          contagem {c.janela.contadores}
+        </div>
+      ) : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 12, marginTop: 13 }}>
+        <Metrica rotulo="EM ATENDIMENTO AGORA">
+          <Numero v={c.em_execucao} />
+        </Metrica>
+        <Metrica rotulo="ESPERANDO A VEZ">
+          <Numero v={c.em_espera} />
+          {c.cota != null ? (
+            <span style={{ color: '#5A6577', fontSize: 10 }}> · atende {c.cota} por vez</span>
+          ) : null}
+        </Metrica>
+        <Metrica rotulo="TEMPO DE RESPOSTA TÍPICO">
+          {tempoHumano(c.mediana_ms_24h) || (
+            <span style={{ color: CINZA_SEM_MEDIDA, fontSize: 10.5 }}>sem respostas nas últimas 24 h</span>
+          )}
+        </Metrica>
+        <Metrica rotulo="OS 5% MAIS DEMORADOS">
+          {tempoHumano(c.p95_ms_24h) || (
+            <span style={{ color: CINZA_SEM_MEDIDA, fontSize: 10.5 }}>—</span>
+          )}
+        </Metrica>
+        <Metrica rotulo="RESPOSTAS EM 24 H">
+          <Numero v={c.turnos_24h} />
+        </Metrica>
+      </div>
+
+      {c.em_espera != null && c.em_espera > 0 && motivo ? (
+        <div style={{ fontSize: 12, color: '#C8A36A', marginTop: 11 }}>
+          Quem está esperando, espera por isto: {motivo}. Ninguém foi perdido — as conversas
+          são respondidas por ordem de chegada.
+        </div>
+      ) : null}
+
+      {c.timeouts_acumulados != null && c.timeouts_acumulados > 0 ? (
+        <div style={{ fontSize: 12, color: '#C8A36A', marginTop: 7 }}>
+          {c.timeouts_acumulados} resposta(s) demoraram demais e foram interrompidas pelo limite de tempo.
+        </div>
+      ) : null}
+
+      {c.aviso ? (
+        <div style={{ ...S.mono, fontSize: 10, color: '#C8A36A', marginTop: 9 }}>{c.aviso}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function AtendimentoPorCorretora({ status, carregando }: { status: Status | null; carregando: boolean }) {
+  const linhas = (status && status.atendimento_por_corretora) || [];
+  const medindo = status != null && status.atendimento_por_corretora === undefined;
+
+  return (
+    <div style={{ marginTop: 26 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 17, fontWeight: 620, letterSpacing: '-0.01em' }}>Atendimento por corretora</span>
+        <span style={{ fontSize: 12, color: '#7C8798' }}>
+          Quantas conversas cada corretora tem agora, quanto tempo as pessoas esperam — e se alguma
+          mensagem ficou sem resposta.
+        </span>
+      </div>
+
+      {medindo ? (
+        <div style={{ ...S.card, marginTop: 11, borderColor: '#E06B6B55', color: '#E06B6B', fontSize: 12.5 }}>
+          Esta medição ainda não chegou nesta versão do servidor. O que está acima continua valendo.
+        </div>
+      ) : linhas.length === 0 ? (
+        <div style={{ ...S.card, marginTop: 11, fontSize: 12.5, color: '#7C8798' }}>
+          {carregando
+            ? 'Medindo…'
+            : 'Nenhuma corretora teve conversa nas últimas 24 horas. Isto é silêncio, não defeito — mas se você esperava movimento, vale conferir os canais de WhatsApp.'}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 12, marginTop: 11 }}>
+          {linhas.map((c) => (
+            <LinhaDaCorretora key={c.company_id || '__sem_corretora__'} c={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Central({ status, memorias, carregando, erro }: {
   status: Status | null;
   memorias: Record<string, { blocks: BlocoDeMemoria[] }>;
@@ -550,6 +733,10 @@ function Central({ status, memorias, carregando, erro }: {
           A medição não devolveu nenhum grupo. Isto é um defeito da medição, não uma casa vazia.
         </div>
       ) : null}
+
+      {/* SPEC-EXTRA-001.8 §10 — vem ANTES dos grupos de agentes de propósito:
+          "perdi alguma mensagem?" é a pergunta mais urgente desta tela. */}
+      {!erro ? <AtendimentoPorCorretora status={status} carregando={carregando} /> : null}
 
       {grupos.map((g) => {
         const pior = piorEstadoDoGrupo(g);

@@ -1123,12 +1123,322 @@ def _montar(bruto: Dict[str, Any], pulsos: Dict[str, Dict[str, Any]]) -> Dict[st
     }
 
 
+# =========================================================================== #
+# SPEC-EXTRA-001.8 §10 (BLOCO F) — O ATENDIMENTO, POR CORRETORA
+# =========================================================================== #
+#
+# 📊 Hoje esta Central responde *"o agente X produziu?"*, nunca *"a corretora Y
+# foi atendida em quanto tempo?"*. Este bloco acrescenta a segunda pergunta ao
+# MESMO JSON da rota que já existe.
+#
+# ⛔ **A declaração da linha 25 deste arquivo continua valendo: zero migration,
+# zero tabela nova.** Tudo aqui sai do que já é escrito:
+#   · `em_execucao`/`em_espera`/`ultimo_motivo`/`expiradas`/`timeouts`
+#     do HASH `isolamento_escopo:{escopo}` (`message_buffer_service.py:87-97`)
+#   · `p95`/`mediana`/`turnos` de `messages.payload->'turn'->>'total_ms'`
+#     (`webhook.montar_turno_do_atendimento`, §5.1) cruzado com
+#     `conversations.company_id`
+#   · `breaker` de `relogio_do_modelo.estado_do_breaker`
+#   · a tradução escopo→corretora de `integrations(id, company_id)` — a MESMA
+#     fonte que `webhook.py:814-821` usa para resolver o tenant de uma mensagem
+#     (`integration_service.get_integration_by_id` → `integration["company_id"]`)
+#
+# 🔴 **O AGRUPAMENTO POR CORRETORA É NO CÓDIGO, e ele é o coração do gate.** O
+# backend usa service role: RLS sem filtro no código não protege nada
+# (CLAUDE.md §7). Os tempos de A e os de B nunca se somam, e é
+# `agrupar_turnos_por_corretora` — PURA, e por isso conferível — quem garante.
+#
+# ⛔ Nada de conteúdo de conversa atravessa: contagens, estados, ids e tempos.
+
+#: 24 h para os TEMPOS. ⚠️ Não vale para os contadores do Redis — ver `_JANELA`.
+_JANELA_DOS_TEMPOS_S = 24 * 3600
+
+#: Quantas páginas de 1.000 linhas por leitura. 📊 Folga sobre o volume de
+#: atendimento de um dia; estourar vira `aviso`, nunca um número menor com cara
+#: de verdade (a mesma regra de `_paginar`).
+_PAGINAS_MENSAGENS = 6
+_PAGINAS_CONVERSAS = 4
+
+#: 🔴 O NOME NÃO PODE MENTIR SOBRE O QUE GUARDA (CLAUDE.md §12.1).
+#:
+#: A proposta da SPEC chamava o campo de `expiradas_24h`. 📊 Ele NÃO é uma
+#: janela deslizante de 24 h: `registrar_ocupacao` faz `HINCRBY` e renova o TTL
+#: **a cada escrita** (`message_buffer_service.py:730-736`), então o acumulado
+#: só zera quando a corretora passa 24 h inteiras sem falar. Uma corretora ativa
+#: carrega o número desde sempre. O campo se chama `expiradas_acumuladas`, e o
+#: `janela` abaixo diz isso por escrito.
+_JANELA = {
+    "tempos": "as últimas 24 horas de respostas (contadas pela hora da mensagem)",
+    "contadores": ("acumulado desde a primeira mensagem — ele só volta a zero "
+                   "depois de 24 horas inteiras sem nenhum atendimento nesta "
+                   "corretora"),
+}
+
+#: A linha das integrações que não se conseguiu ligar a nenhuma corretora.
+#: ⛔ Elas NUNCA somem em silêncio: um escopo sem dono na tela é uma corretora
+#: cujo atendimento ninguém está vendo.
+SEM_CORRETORA = "__sem_corretora__"
+
+
+def percentil(valores: List[int], fracao: float) -> Optional[int]:
+    """O percentil por interpolação linear — **PURA**. Sem amostra, `None`.
+
+    ⛔ `None` não é 0: "nenhuma resposta nas últimas 24 h" e "respostas
+    instantâneas" são fatos opostos, e um zero no lugar do vazio faria a tela
+    dizer que a corretora mais lenta é a mais rápida.
+    """
+    limpos = sorted(int(v) for v in (valores or []) if v is not None)
+    if not limpos:
+        return None
+    if len(limpos) == 1:
+        return limpos[0]
+    pos = (len(limpos) - 1) * max(0.0, min(1.0, float(fracao)))
+    baixo = int(pos)
+    alto = min(baixo + 1, len(limpos) - 1)
+    peso = pos - baixo
+    return int(round(limpos[baixo] * (1 - peso) + limpos[alto] * peso))
+
+
+def agrupar_turnos_por_corretora(
+    mensagens: List[Dict[str, Any]], conversas: List[Dict[str, Any]],
+) -> Dict[str, List[int]]:
+    """`company_id` → os `total_ms` dos turnos DELA — **PURA**.
+
+    🔴 É aqui que uma corretora deixa de contaminar a outra. O `total_ms` de uma
+    mensagem só entra na lista da corretora cuja conversa a contém; mensagem de
+    conversa desconhecida é DESCARTADA, nunca atribuída a alguém.
+    """
+    empresa_da_conversa = {
+        str(c.get("id") or ""): str(c.get("company_id") or "")
+        for c in (conversas or []) if c.get("id") and c.get("company_id")
+    }
+    saida: Dict[str, List[int]] = {}
+    for linha in (mensagens or []):
+        empresa = empresa_da_conversa.get(str(linha.get("conversation_id") or ""))
+        if not empresa:
+            continue
+        turno = ((linha.get("payload") or {}).get("turn") or {})
+        bruto = turno.get("total_ms")
+        if bruto is None or isinstance(bruto, bool):
+            continue
+        try:
+            saida.setdefault(empresa, []).append(int(bruto))
+        except (TypeError, ValueError):
+            continue
+    return saida
+
+
+def _ler_atendimento_sincrono() -> Dict[str, Any]:
+    """Os SELECTs do bloco, numa thread só. ⛔ Só leitura, e nenhum texto."""
+    corte = (datetime.now(timezone.utc)
+             - timedelta(seconds=_JANELA_DOS_TEMPOS_S)).isoformat()
+
+    def _cliente():
+        from app.core.database import get_supabase_client
+
+        return get_supabase_client().client
+
+    cli = _seguro(_cliente, None)
+    if cli is None:
+        return {"indisponivel": True, "integracoes": [], "empresas": {},
+                "mensagens": [], "conversas": [], "truncado": False}
+
+    # ⚠️ O teto do servidor é 1.000 linhas e ele NÃO avisa
+    # (`test_ninguem_pede_mais_de_mil_linhas_de_novo.py`). Uma lista de
+    # integrações cortada em silêncio viraria corretora sem dono na tela — por
+    # isso o corte entra em `truncado`, e a tela diz que não viu tudo.
+    integracoes = _seguro(
+        lambda: cli.table("integrations").select("id, company_id")
+        .limit(_PAGINA).execute().data or [], [])
+    empresas_cortadas = len(integracoes) >= _PAGINA
+    empresas = {
+        str(c.get("id")): str(c.get("company_name") or "")
+        for c in _seguro(
+            lambda: cli.table("companies").select("id, company_name")
+            .limit(_PAGINA).execute().data or [], [])
+    }
+    # 🔴 UMA leitura para TODAS as corretoras, nunca uma por corretora: N+1
+    # contra produção dentro de uma rota que a tela recarrega a cada 20 s é
+    # exatamente o custo que o cache de 60 s existe para não pagar.
+    mensagens, estourou_m = _paginar(
+        lambda i, j: (cli.table("messages").select("conversation_id, payload")
+                      .eq("role", "assistant").gte("created_at", corte)
+                      .order("created_at", desc=True).range(i, j).execute().data or []),
+        _PAGINAS_MENSAGENS)
+    conversas, estourou_c = _paginar(
+        lambda i, j: (cli.table("conversations").select("id, company_id")
+                      .gte("last_message_at", corte)
+                      .order("last_message_at", desc=True).range(i, j).execute().data or []),
+        _PAGINAS_CONVERSAS)
+    return {"indisponivel": False, "integracoes": integracoes, "empresas": empresas,
+            "mensagens": mensagens, "conversas": conversas,
+            "truncado": bool(estourou_m or estourou_c or empresas_cortadas)}
+
+
+async def _contadores_por_escopo() -> Optional[Dict[str, Dict[str, Any]]]:
+    """Os HASHes `isolamento_escopo:*`. 🔴 `None` = Redis fora; `{}` = ninguém na fila.
+
+    A diferença importa: sem Redis a tela tem de dizer "não sei", e não "zero".
+    """
+    try:
+        from app.core.redis import get_async_redis_client
+        from app.services.message_buffer_service import CONTADORES_PREFIXO
+
+        redis = await get_async_redis_client()
+        saida: Dict[str, Dict[str, Any]] = {}
+        async for chave in redis.scan_iter(match=f"{CONTADORES_PREFIXO}:*"):
+            texto = chave.decode() if isinstance(chave, (bytes, bytearray)) else str(chave)
+            escopo = texto.split(":", 1)[1] if ":" in texto else ""
+            if not escopo:
+                continue
+            bruto = await redis.hgetall(texto)
+            saida[escopo] = {
+                (k.decode() if isinstance(k, (bytes, bytearray)) else str(k)):
+                (v.decode() if isinstance(v, (bytes, bytearray)) else v)
+                for k, v in dict(bruto or {}).items()
+            }
+        return saida
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[CENTRAL-001.8] contadores indisponíveis (%s)",
+                       type(erro).__name__)
+        return None
+
+
+async def _estado_dos_breakers() -> Optional[Dict[str, str]]:
+    """`{provedor: "fechado"|"aberto"|"meio_aberto"}` — `None` quando não dá para ler."""
+    try:
+        from app.core.relogio_do_modelo import PROVEDORES, estado_do_breaker
+
+        return {p: str((await estado_do_breaker(p)).get("estado") or "")
+                for p in PROVEDORES}
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[CENTRAL-001.8] breaker indisponível (%s)", type(erro).__name__)
+        return None
+
+
+def _cota_declarada() -> Optional[int]:
+    """A cota por corretora que o processador de fato aplica.
+
+    ⛔ O default NÃO é reescrito aqui. Duas grafias do mesmo número é como uma
+    das duas nasce errada (CLAUDE.md §5): o valor vem de
+    `buffer_processor._COTA_PADRAO`, e quando ele não puder ser lido o campo sai
+    `None` — "não medido" — em vez de um 4 inventado.
+    """
+    try:
+        from app.tasks.buffer_processor import _COTA_PADRAO, _env_int
+
+        return int(_env_int("WHATSAPP_COTA_POR_CORRETORA", _COTA_PADRAO))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _inteiro(bruto: Any) -> Optional[int]:
+    if bruto is None or isinstance(bruto, bool):
+        return None
+    try:
+        return int(bruto)
+    except (TypeError, ValueError):
+        return None
+
+
+def montar_atendimento_por_corretora(
+    *, bruto: Dict[str, Any], contadores: Optional[Dict[str, Dict[str, Any]]],
+    breaker: Optional[Dict[str, str]], cota: Optional[int],
+) -> List[Dict[str, Any]]:
+    """O bloco `atendimento_por_corretora` — **PURA** (recebe tudo já lido).
+
+    Ser pura é o que permite ao guarda montar duas corretoras sintéticas e
+    conferir cada número contra uma contagem feita à mão (CLAUDE.md §9.4).
+    """
+    empresa_da_integracao = {
+        str(i.get("id") or ""): str(i.get("company_id") or "")
+        for i in (bruto.get("integracoes") or []) if i.get("id")
+    }
+    nomes = dict(bruto.get("empresas") or {})
+    tempos = agrupar_turnos_por_corretora(
+        list(bruto.get("mensagens") or []), list(bruto.get("conversas") or []))
+
+    # ① os contadores do Redis, SOMADOS por corretora — uma corretora pode ter
+    #    várias integrações de WhatsApp, e a fila dela é a soma delas.
+    fila: Dict[str, Dict[str, Any]] = {}
+    sem_redis = contadores is None
+    for escopo, campos in dict(contadores or {}).items():
+        # ⛔ Integração desconhecida NÃO some: vira a linha `SEM_CORRETORA`.
+        empresa = empresa_da_integracao.get(escopo) or SEM_CORRETORA
+        alvo = fila.setdefault(empresa, {
+            "em_execucao": 0, "em_espera": 0, "expiradas": 0, "timeouts": 0,
+            "motivo": "", "motivo_em": "", "integracoes": 0,
+        })
+        alvo["integracoes"] += 1
+        for campo, chave in (("em_execucao", "em_execucao"), ("em_espera", "em_espera"),
+                             ("expiradas", "expiradas"), ("timeouts", "timeouts")):
+            alvo[campo] += _inteiro(campos.get(chave)) or 0
+        quando = str(campos.get("ultimo_motivo_em") or "")
+        if campos.get("ultimo_motivo") and quando >= alvo["motivo_em"]:
+            alvo["motivo"], alvo["motivo_em"] = str(campos["ultimo_motivo"]), quando
+
+    linhas: List[Dict[str, Any]] = []
+    for empresa in sorted(set(fila) | set(tempos)):
+        dela = fila.get(empresa) or {}
+        medidos = tempos.get(empresa) or []
+        aviso = ""
+        if sem_redis:
+            aviso = ("não consegui ler a fila de atendimento agora — os tempos "
+                     "abaixo continuam medidos")
+        elif bruto.get("truncado"):
+            aviso = "há mais respostas nas últimas 24 h do que coube nesta leitura"
+        linhas.append({
+            "company_id": None if empresa == SEM_CORRETORA else empresa,
+            "nome": (nomes.get(empresa) or "")
+                    if empresa != SEM_CORRETORA else "",
+            "sem_corretora": empresa == SEM_CORRETORA,
+            "integracoes": _inteiro(dela.get("integracoes")),
+            "em_execucao": None if sem_redis else _inteiro(dela.get("em_execucao")) or 0,
+            "em_espera": None if sem_redis else _inteiro(dela.get("em_espera")) or 0,
+            "cota": cota,
+            "turnos_24h": len(medidos),
+            "mediana_ms_24h": percentil(medidos, 0.5),
+            "p95_ms_24h": percentil(medidos, 0.95),
+            "ultimo_motivo_de_espera": None if sem_redis else (dela.get("motivo") or ""),
+            # 🔴 `acumuladas`, não `_24h` — ver `_JANELA` acima.
+            "expiradas_acumuladas": None if sem_redis else _inteiro(dela.get("expiradas")) or 0,
+            "timeouts_acumulados": None if sem_redis else _inteiro(dela.get("timeouts")) or 0,
+            "breaker": breaker,
+            "janela": _JANELA,
+            "aviso": aviso,
+        })
+    return linhas
+
+
+async def atendimento_por_corretora() -> List[Dict[str, Any]]:
+    """O bloco pronto para o JSON da rota. ⛔ Nunca levanta: a Central é a tela
+    que se abre quando alguma coisa está errada — ser a primeira a cair é o pior
+    comportamento possível."""
+    try:
+        bruto = await asyncio.to_thread(_ler_atendimento_sincrono)
+        return montar_atendimento_por_corretora(
+            bruto=bruto,
+            contadores=await _contadores_por_escopo(),
+            breaker=await _estado_dos_breakers(),
+            cota=_cota_declarada(),
+        )
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[CENTRAL-001.8] atendimento por corretora indisponível (%s)",
+                       type(erro).__name__)
+        return []
+
+
 async def calcular_estado() -> Dict[str, Any]:
     """O contrato da §4 da SPEC-088, calculado do zero (sem cache)."""
     pulsos_lista = await read_all()
     pulsos = {p["id"]: p for p in pulsos_lista}
     bruto = await asyncio.to_thread(_ler_tudo_sincrono)
-    return _montar(bruto, pulsos)
+    estado = _montar(bruto, pulsos)
+    # SPEC-EXTRA-001.8 §10 — o mesmo JSON, uma chave a mais. ⛔ Nenhuma rota
+    # nova: `admin_spec034.agents_status` continua sendo a única porta, e
+    # continua `require_master_admin`.
+    estado["atendimento_por_corretora"] = await atendimento_por_corretora()
+    return estado
 
 
 async def carregar_estado() -> Dict[str, Any]:
