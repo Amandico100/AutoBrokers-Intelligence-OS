@@ -70,21 +70,22 @@ Nada de SQL, DDL ou backfill: escreve em tabelas que já existem (`portal_jobs`,
 ⚖️ **Juiz Fable** sobre `a4bd3e7`: **REPROVA, 74**, 4 blockers · 🗡️ **Red team Fable** (cego, mesma base): **55**, 7 blockers ·
 🏁 **Confirmação** por juiz novo sobre `4e14a1f`: **LIBERA COM PENDÊNCIAS, 84**.
 
-| # | achado | teste do produto · classe | conserto |
+| # | quem achou | achado (📊 reproduzido pelo motor real) | conserto |
 |---|---|---|---|
-| J1 | a **causa** casava por semelhança e virava outra causa da lista | causa literal · BLOCKER | rigor antes da fronteira |
-| J2 | **cidade** sem UF casava com homônima de outro estado | cidade com UF · BLOCKER | sem UF, o pedido trava |
-| J3 | **perímetro** aceitava texto livre e degradava para "Não sabe" | enum `U`/`R` · BLOCKER | enum fechado; fora ⇒ parada |
-| J4 | `aceita_reparo` chegava em formatos diferentes nos dois lados | normalização · BLOCKER | normalizado num lugar só |
-| R1 | **peça** escolhida do catálogo sem conferir identidade | identidade · BLOCKER | só sai batendo |
-| R2 | falha depois da fronteira prometia continuação inexistente | texto da parada · BLOCKER | número primeiro, sem promessa |
-| R3 | job DOM de sucesso aprendia e perdia a marca de entrega | `_o_job_deu_certo` · BLOCKER | sucesso nunca aprende |
-| R4 | allowlist malformada **abria** em vez de barrar | mutação · BLOCKER | fail-closed: barra tudo |
-| R5 | endpoint fora do registro podia sair | `pode_sair` · BLOCKER | fail-closed + caminho normalizado |
-| R6 | agenda em ISO chegava ao segurado | formato · BLOCKER | `DD/MM` |
-| R7 | 26 paradas sem o número na frente | texto · BLOCKER | número primeiro |
-| 🔴 C1 | **criado pelo conserto**: nome de cidade mutilado ("Bom Jesus do Oeste") | 293 cidades, ida e volta · BLOCKER novo | 📊 6 falhas → 0; sigla de UF ≠ rodovia |
-| C2 | agenda/vistoria dependiam do modelo para avisar a equipe | vigia calado · ESSENCIAL | vigia alerta sem o modelo; agenda/vistoria não concluem o run ⇒ a Fila enxerga |
+| 1 | ⚖️ juiz — **EXCLUSIVO** | 🔴 **regressão em PRODUÇÃO com a flag desligada**: todo job DOM de sucesso entrava na fila de aprendizado e perdia a marca `entregue_ao_agente` ⇒ o Vigia mandava 2ª mensagem ao segurado | `_o_job_deu_certo`; a marca é fundida na evidence RELIDA |
+| 2 | ⚖️ juiz + 🗡️ red team | a **causa** era escolhida por "palavra distintiva": "quebra acidental" ⇒ `QUEBRA INTENCIONAL OU VOLUNTÁRIA`; "nao sei" ⇒ `VIDRO NÃO SOBE OU DESCE` | a passada morreu: causa literal ANTES da fronteira, igualdade depois |
+| 3 | ⚖️ juiz + 🗡️ red team | falha de `GET /atendimentos` ou de `PUT alterar-reparo` depois do protocolo terminava `done` com desfecho **inventado** ("está com o analista") | `parar()` ⇒ `desfecho_ilegivel` / `reparo_nao_gravado`, com o número |
+| 4 | ⚖️ juiz + 🗡️ red team | paradas depois do protocolo **prometiam continuação que não existe**, omitiam o número e o run ficava `completed` | 26 paradas com número primeiro e sem promessa; run só conclui com `done` |
+| 5 | 🗡️ red team — **EXCLUSIVO** | **peça**: "vidro lateral" ⇒ `LANTERNA … LATERAL LED` (a passada por família, código novo) | a identidade do ITEM tem de ser a família dita |
+| 6 | 🗡️ red team — **EXCLUSIVO** | **cidade**: "Curitiba" + UF assumida da apólice ⇒ `CURITIBANOS/SC` (continência) | UF escrita pelo segurado; só igualdade |
+| 7 | 🗡️ red team — **EXCLUSIVO** | **perímetro**: `br` casava por substring dentro de "queBRou" ⇒ gravava **Rodoviário** | enum fechado; vocabulário por palavra inteira, antes da fronteira |
+| 8 | 🗡️ red team — **EXCLUSIVO** | a mensagem de **agenda** imprimia um dicionário Python ao segurado (`{'mes': 8, 'dias': […]}`) — e o G1c estava verde por cima | `dias` = lista de `DD/MM`; a costura proíbe `{`, `[`, `None` na mensagem |
+| 9 | 🗡️ red team (pendências consertadas junto) | allowlist só com separadores **abria** · `pode_sair` sensível a maiúsculas/barra · flags de fraude ignoradas · `aceita_reparo` só entendia 6 palavras · o fio não guardava o tipo de telefone | fail-closed nos três primeiros; normalização antes da fronteira; o fio afirma `CELULAR SEGURADO` |
+| 🔴 10 | 🏁 confirmação — **EXCLUSIVO**, e **criado pelo conserto** | nome de cidade mutilado no meio: "Passo de Torres/SC" ⇒ `PASSO TORRES`, e o pedido abria antes de a igualdade falhar | 📊 293 cidades, ida e volta: 6 falhas → 0 |
+| 11 | 🏁 confirmação — **EXCLUSIVO** | `agenda`/`vistoria` terminavam `done`: a mensagem dizia "a equipe confirma" e **nada avisava a equipe** | o run não conclui (a Fila enxerga) e o Vigia alerta o suporte sem depender do modelo |
+
+⚠️ Antes do julgamento, a **costura** (teste do fio agente → journey → mensagem) já tinha achado **7 quebras** que nenhum gate de
+unidade via — entre elas o perímetro que virava `N` ("Não sabe") para "na cidade". 📊 Exclusivos: juiz 1 · red team 4 · confirmação 2.
 
 **Aberto na confirmação:** job DOM `done` sem número extraído ainda entra na fila de aprendizado (resíduo, §9).
 
@@ -204,8 +205,9 @@ ctx-tokens · saída .............. agentes 266,4 M · saída 0,28 M · executor
 US$ API-equivalente ............. builder A 106,04 · C 23,95 · leitores 3,37+4,20 · juiz 5,55 · red team 5,54 ·
                                   confirmação 2,17 · docs 0,73 · executor 12,63 → total US$ 164,17
 agentes além do executor ........ 8 de 24 (2 leitores · 2 builders · juiz · red team · confirmação · docs)
-achados por mecanismo ........... costura A↔C 7 (EXCLUSIVOS) · juiz 4 · red team 7 (R4–R7 EXCLUSIVOS) ·
-                                  confirmação 2 (C1 EXCLUSIVO, criado pelo conserto) · bateria 1 · canário: NÃO RODOU
+achados por mecanismo ........... costura A↔C 7 (EXCLUSIVOS) · juiz 4 (1 EXCLUSIVO: a regressão em produção) ·
+                                  red team 7 (4 EXCLUSIVOS: peça, cidade, perímetro, agenda) · 3 achados pelos DOIS ·
+                                  confirmação 2 (EXCLUSIVOS; 1 criado pelo conserto) · bateria 1 · canário: NÃO RODOU
 rodadas da bateria .............. 1 inteira · 0 parciais (2 retriagens dirigidas isoladas depois do conserto)
 nota da execução ................ 86/100 · juiz 74 → red team 55 → confirmação 84
 ```
