@@ -680,3 +680,46 @@ SAÍDA (thinking + texto)            ≈ 6 % do gasto → effort não é alavanc
 
 **Regras que nasceram daqui:** sessão nova por SPEC sem orquestrador (§10) · um escritor (§4) · juiz Fable em CRÍTICO (§3.1)
 · tetos em turnos e contexto por env + hook (§10) · fatias (§5.2) · escalação por gatilho (§8) · relatório ≤ 15 KB · telemetria pelo script (§11).
+
+---
+
+# 📊 21/09/2026 — v13.1 · D-PROTO-13: as cinco regras que a EXTRA-001.10 comprou, e a medição de cada uma
+
+> Commit `2f03c67`. Os pacotes-modelo estão em `docs/canon/pacotes/PACOTE-*.md`.
+> 📊 Depois da mudança: protocolo **21,94 KB**, núcleo **10,95 KB**, `test_o_protocolo_tem_policia.py` **78 ok,
+> 0 falhas**.
+
+```
+(a) TODO PACOTE CARREGA §0–§3, §5 e §7.3          📊 o contexto do GERENTE chegou a 410 k quando o pacote de
+    — e o pacote-modelo existe, pronto               subagente era montado à mão, a cada delegação
+(b) FATIA GRANDE VIRA FATIAS                      📊 um builder sozinho chegou a 788 k de contexto e respondeu
+    (teto por builder, não só por sessão)            por 65 % do custo da SPEC
+(c) A COSTURA É ENTREGA, NÃO SOBRA                📊 7 quebras reais entre o que um lado monta e o outro lê, que
+    (o teste que atravessa os dois lados)            NENHUM gate de unidade via
+(d) ⛔ SCRIPT DE JUIZ NUNCA TOCA O BANCO REAL      📊 um tocou, com company_id falso; só não estragou porque o
+                                                    banco recusou (SELECT depois: 0 linhas)
+(e) 🔴 A TABELA DE ACHADOS É RECONFERIDA CONTRA   📊 a da 001.10 saiu com AUTORIA ERRADA e um exemplo que
+    OS LAUDOS COMPLETOS, achado a achado             ninguém mediu — e o guarda automático passou VERDE, porque
+                                                    ele confere FORMA, não VERDADE
++ teto de 24 agentes por sessão (D-PROTO-11) · relatório de SPEC CRÍTICA ≤ 25 KB
+```
+
+**A evidência nova que a EXTRA-001.8 acrescenta — os blockers EXCLUSIVOS por mecanismo** (📊 21/09/2026,
+autoria reconferida contra os laudos completos, achado a achado):
+
+```
+⚖️ JUIZ ........... 1 exclusivo  · o teto REAL de instâncias do agendador era 10, não 24: com 3+ corretoras
+                                   carregadas a 4ª não era olhada, e ninguém renovava o TTL de quem esperava
+🗡️ RED TEAM ....... 2 exclusivos · a conta de "mensagem perdida" caía na corretora ERRADA numa corrida entre
+                                   varreduras sobrepostas · o corte do turno cancelava com CancelledError, que
+                                   não é Exception, e o aviso honesto ao segurado NÃO rodava
+🔧 CONSERTO ....... 1 exclusivo  · achado pelo próprio builder do conserto, ao fechar os outros
+🏁 CONFIRMAÇÃO .... 1 exclusivo  · um resíduo pré-existente do mesmo defeito, medido contra as duas versões
+os DOIS laudos .... 2 achados em comum (a conta global e a inequação 90×3 > 180), e mais 2 vistos pelos dois
+                    com classificação diferente: blocker no juiz, pendência no red team
+```
+
+🔴 **A leitura:** o juiz e o red team **não são redundantes** — 3 dos 8 blockers só existiram porque os dois
+rodaram, cegos um ao outro, e nenhum deles teria achado os do outro. E a maior lacuna foi de método, não de
+esforço: **nenhum guarda rodava o agendador REAL com turnos longos**, e por isso o achado exclusivo do juiz
+atravessou 9 guardas verdes — o CLAUDE.md §9.4 um andar acima (testou-se o motor, não quem o chama).

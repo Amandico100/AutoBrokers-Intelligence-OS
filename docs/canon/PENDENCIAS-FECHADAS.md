@@ -931,3 +931,20 @@ G4  a rota do painel nunca lê `company_id` do corpo (GET/POST/DELETE)
 Mutações vermelhas: **M11** (o filtro `company_id` some da leitura da tabela) e **M12** (a guarda ignora os números da casa).
 
 ⚠️ **O que ficou por provar, e está dito:** `company_internal_numbers` tinha **0 linhas** em 17/09, então nenhum número real foi comparado — a linha de X vem do dublê; e a prova do G4 é ESTRUTURAL (a rota é TypeScript e não há harness de TS aqui), com o controle que a mostra vermelha. O canário com Resulta e AutoFleet ao vivo continua sendo do Founder.
+
+---
+
+# SPEC-EXTRA-001.8 · Uma corretora não trava a outra (21/09/2026)
+
+> As duas pendências de isolamento que a **D-FILA-01** mandou para esta SPEC. O registro original fica
+> preservado abaixo de cada uma, em `PENDENCIAS.md`.
+
+## P-098-MCP-ROTAS-SEM-COMPANY · três rotas de `mcp.py` agem por id sem cerca de corretora
+Builder B (06/09): `DELETE /connections/{id}` (e duas irmãs) apagam/alteram conexão OAuth por id sem `.eq(company_id)`; a 098 pôs `require_internal_key` nelas (só o BFF chega), mas o BFF novo (`app/api/mcp/[...caminho]`) repassa a empresa da sessão e o backend não a confere na linha. **Destrava:** `.eq("company_id", …)` nas três + teste com dois tenants. **Dono:** 🤖 (101). **Custo de esquecer:** IDOR interno entre corretoras via id adivinhado, atrás da chave.
+
+✅ **FECHADA em 21/09/2026 pela SPEC-EXTRA-001.8 (fatia F3a, commit `d339aa5`):** a cerca de corretora passou para DENTRO do serviço MCP — ele confirma o agente da corretora e age com `id` + `agent_id`; id de outra corretora responde **404**, não 403. 📊 `test_o_mcp_tem_cerca_de_corretora.py` → **40 asserções verdes com dois tenants** e **6 mutações vermelhas** (entre elas, tirar `.eq("agent_id", …)` do `delete`). Resíduos viraram pendências próprias: P-E0018-12 (nonce do state OAuth nunca consumido) e P-E0018-13 (`get_agent_oauth_tokens` ainda age por `agent_id` puro). Movida para `PENDENCIAS-FECHADAS.md`.
+
+## P-E00151-09 · nome de pessoa real dentro de dado global de corredor
+📊 `corridor_playbooks.py:4319` guarda, no campo `notes` de um passo, a frase de uma tela: *"Saionara você é a pessoa que está local para acompanhar o serviço?"*. O `notes` entra no **prompt interno** que decide a resposta quando o corredor empaca (`insurer_dispatch_service.py:3984`). **Destrava:** redigir o nome no playbook. **Dono:** 🤖. **Custo de esquecer:** o nome de uma atendente da Resulta é contexto global e pode reaparecer numa resposta gerada para outra corretora.
+
+✅ **FECHADA em 21/09/2026 pela SPEC-EXTRA-001.8 (fatia F3b, commit `658debf`):** o nome de pessoa real saiu do dado GLOBAL de corredor — o campo que entra no prompt de TODAS as corretoras — e de 23 comentários do backend. 📊 censo de 24 ocorrências (1 em prompt + 23 em comentário) zerado no que é dado de produto; `test_nenhum_nome_de_gente_em_dado_global.py` verde, com nome próprio por **hash** e **0** ocorrências em `conduct_playbooks` (18 linhas) e `knowledge_cards` (18.715). **Resíduo:** o nome continua em fixtures de teste e no corpus → P-E0018-15. Movida para `PENDENCIAS-FECHADAS.md`.

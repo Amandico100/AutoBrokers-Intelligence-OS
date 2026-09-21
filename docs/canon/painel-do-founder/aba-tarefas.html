@@ -278,6 +278,32 @@
 </section>
 
 <section>
+  <h2>8.6 · Bloco G — uma corretora não trava a outra <span style="color:var(--muted);font-size:14px">(001.8)</span></h2>
+  <p class="sub">Cada corretora passa a ter <b>4 vagas próprias</b> de atendimento, em rodízio. Uma corretora com cinquenta mensagens de uma vez,
+  com o modelo lento ou com o portal travado <b>não atrasa mais a vizinha</b> — e nada se perde: o que não cabe agora espera e é respondido depois.
+  🔴 <b>Nada disso precisa de configuração:</b> tudo tem valor padrão no código, e Implantar já liga.</p>
+  <dl class="q2">
+    <dt>☐ G.1</dt><dd><b>Implantar</b>, nesta ordem: <code>smith-api</code> → <code>smith-web</code> (o portal-worker não muda).
+    <b>O que esperar:</b> os dois voltam verdes e o atendimento se comporta como antes — o que mudou só aparece sob carga</dd>
+    <dt>☐ G.2</dt><dd>Conferir o <code>/health</code> do <code>smith-api</code>: <b><code>scheduler</code> deve dizer <code>lider</code></b> e
+    <code>executor_threads</code> deve trazer um número (32 ou mais). É a única prova de que a parte nova está no ar</dd>
+    <dt>☐ G.3</dt><dd>Medir os núcleos do contêiner — no <b>console do smith-api</b>, cole:
+    <code>python -c "import os; print(os.cpu_count(), min(32,(os.cpu_count() or 1)+4))"</code>.
+    <b>O que esperar:</b> dois números. Se o segundo for menor que 32, não há nada a fazer: o produto já usa 32 como piso</dd>
+    <dt>☐ G.4</dt><dd>Olhar <b>"Mensagens perdidas"</b> por corretora na <b>Central de Agentes</b>. <b>O que esperar: zero.</b>
+    É a resposta diária a <i>"perdi alguma mensagem hoje?"</i> — e agora ela aparece na corretora certa (antes o número de uma podia cair na tela da outra)</dd>
+    <dt>☐ G.5</dt><dd>🔴 <b>O canário de isolamento</b> — é o que falta para esta entrega fechar. Precisa de <b>dois números de teste, cada um numa corretora
+    diferente</b> (na mesma corretora o ensaio não prova nada). São 6 casos, no relatório da 001.8 §6: medir uma conversa normal &middot; travar a segunda corretora
+    de propósito e medir a primeira ao mesmo tempo &middot; ver a corretora travada ser atendida, lenta mas atendida &middot; mandar 50 mensagens de uma vez e
+    conferir que nenhuma se perdeu &middot; derrubar o provedor da segunda e ver que a primeira não sente &middot; desligar tudo e conferir que o número voltou</dd>
+    <dt>☐ G.6</dt><dd>Decidir se cria um <b>serviço separado só para as tarefas automáticas</b>. É capacidade, não isolamento: o código já sai pronto e
+    nada quebra se você não criar</dd>
+    <dt>☐ G.7</dt><dd>🔴 <b>NÃO ligue o aviso ao dono da corretora</b> (<code>ISOLAMENTO_AVISO_AO_DONO</code>) ainda: hoje ele reserva a janela de 30 minutos
+    <b>antes</b> de tentar enviar, então um envio que falha queima a janela e você fica sem aviso. Ausente = não avisa, que é o certo por enquanto</dd>
+  </dl>
+</section>
+
+<section>
   <h2>9 · Depois de tudo — desfazer o ensaio</h2>
   <dl class="q2">
     <dt>☐ 9.1</dt><dd>Desativar o destino do <b>grupo de canário</b>, deixando ativo o grupo <b>de verdade</b> da equipe</dd>

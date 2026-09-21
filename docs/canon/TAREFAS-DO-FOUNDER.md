@@ -447,6 +447,55 @@ garantem; sem elas o comando recusa com **409** e não manda nada.
 
 ---
 
+## 8.6 · Bloco G — uma corretora não trava a outra (001.8)
+
+> **O que mudou:** o atendimento passou a dar **4 vagas por corretora**, em rodízio: uma corretora com cinquenta
+> mensagens de uma vez, com o modelo lento ou com o portal travado **não atrasa mais a vizinha**, e nada se
+> perde — o que não cabe agora espera e é respondido depois. O robô também ganhou **relógio** (nenhuma chamada ao
+> modelo passa de 90 s, nenhum atendimento passa de 300 s) e, quando o provedor de inteligência cai, as
+> conversas ficam **guardadas** em vez de virarem "tive uma falha técnica". E a Central de Agentes passou a
+> mostrar tudo isso **por corretora**.
+>
+> 🔴 **Nada disso precisa de configuração:** todas as chaves novas têm valor padrão no código. Implantar já liga.
+> A única coisa que nasce desligada é o **aviso ao dono da corretora** quando a fila cresce — e ela deve
+> continuar desligada por enquanto (tarefa G.7).
+
+- [ ] **G.1 Implantar**, nesta ordem: `smith-api` → `smith-web` (o `portal-worker` não muda).
+      **O que esperar:** os dois voltam verdes e o atendimento continua se comportando como antes — o que muda
+      só aparece sob carga. · **001.8**
+- [ ] **G.2 Conferir o `/health`** do `smith-api` (é a única prova de que a parte nova está no ar).
+      **O que esperar:** `scheduler` dizendo **`lider`** e `executor_threads` com um número (32 ou mais).
+      **Se vier `seguidor` ou `desligado`:** há outro processo com o agendador ligado, ou `SCHEDULER_ENABLED`
+      está `false`. · **001.8 · P-248**
+- [ ] **G.3 Medir os núcleos do contêiner** — no **console do `smith-api`**, cole exatamente:
+      ```
+      python -c "import os; print(os.cpu_count(), min(32,(os.cpu_count() or 1)+4))"
+      ```
+      **O que esperar:** dois números (núcleos e o tamanho que o Python usaria sozinho). Se o segundo for menor
+      que 32, não há nada a fazer — o produto já usa 32 como piso. É só para sabermos. · **001.8 · P-E0018-02**
+- [ ] **G.4 Olhar "Mensagens perdidas" na Central de Agentes**, por corretora (painel → Central de Agentes).
+      **O que esperar:** **zero**. É a resposta diária à pergunta *"perdi alguma mensagem hoje?"*, e agora ela
+      aparece na corretora certa — antes o número de uma corretora podia cair na tela da outra. · **001.8**
+- [ ] **G.5 🔴 O canário de isolamento** — é o que falta para esta entrega fechar. Precisa de **dois números de
+      teste, cada um numa corretora de teste diferente** (na mesma corretora o ensaio não prova nada). Os 6
+      casos estão no relatório `reports/SPEC-EXTRA-001.8-EXECUTION-REPORT.md` §6: medir uma conversa normal ·
+      travar a segunda corretora de propósito e medir a primeira ao mesmo tempo · ver a corretora travada ser
+      atendida, lenta mas atendida · mandar 50 mensagens de uma vez e conferir que nenhuma se perdeu · derrubar
+      o provedor da segunda corretora e ver que a primeira não sente · desligar tudo e conferir que o número
+      voltou ao normal. · **001.8 · P-E0018-01**
+- [ ] **G.6 Decidir se cria um serviço separado só para as tarefas automáticas** (mesma imagem, com
+      `SCHEDULER_ENABLED=true`, e a API passando a `false`). É **capacidade**, não isolamento: o código já sai
+      pronto e nada quebra se você não criar. · **001.8**
+- [ ] **G.7 🔴 NÃO ligue `ISOLAMENTO_AVISO_AO_DONO`** (o aviso ao dono quando a fila cresce) antes de a
+      pendência **P-E0018-09** ser consertada: hoje o aviso reserva a janela de 30 minutos **antes** de tentar
+      enviar, então um envio que falha queima a janela e o dono fica sem aviso nenhum. Ausente = não avisa, que é
+      o certo por enquanto. · **001.8 · P-E0018-09**
+
+**Bloqueia alguma coisa?** Só a G.5: sem o canário, o isolamento fica provado apenas por teste. As outras não
+bloqueiam nada.
+
+---
+
 ## 9 · Depois de tudo — desfazer o ensaio
 
 - [ ] **9.1** Desativar o destino do **grupo de canário** (painel → Personalização → Suporte humano) —

@@ -4,7 +4,7 @@
   <span class="eyebrow">O que foi feito, o que está no ar, o que só você decide &middot; 📊 atualizado em 20/09/2026</span>
   <h1>As SPECs — uma frase de negócio por entrega, e a fila do que vem.</h1>
   <p class="lede">Esta aba substitui o antigo painel de dossiês. Tudo o que lá era <i>"próximo passo"</i> e já aconteceu está marcado como <b>feito</b>;
-  o que continua verdadeiro foi mantido, com a data ao lado. 🔴 <b>A família EXTRA-001.x está fechada até a 001.10</b> — onze entregas, todas na <code>main</code>.</p>
+  o que continua verdadeiro foi mantido, com a data ao lado. 🔴 <b>A família EXTRA-001.x está fechada até a 001.8</b> — doze entregas, todas na <code>main</code>.</p>
   <div class="meta">
     <span>árvore <b>AutoBrokers-FIX</b></span>
     <span>main <b>b3d88f1</b></span>
@@ -54,6 +54,9 @@
         <tr><td class="ds"><b>EXTRA-001.10</b><br><span class="mono" style="font-size:11px;color:var(--muted)">o portal de vidros ponta a ponta</span></td>
           <td class="ds">O robô coleta <b>antes</b> o que o portal vai pedir, abre o pedido em <b>qualquer uma das 38 seguradoras</b> que o portal publica (antes eram 3, e nenhuma era a Yelum — 📊 o motor antigo escrevia <b>zero</b> nas capturas reais) e <b>lê o desfecho que o portal decidiu</b>, devolvendo número, franquia e próximo passo. 📊 <b>13 defeitos graves morreram antes do push</b>. Tudo atrás de uma chave que nasce <b>desligada</b></td>
           <td class="dm">21/09</td><td class="dm">86</td><td class="ds">🔴 <b>o canário é seu</b>, e as capturas (aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>)</td></tr>
+        <tr><td class="ds"><b>EXTRA-001.8</b><br><span class="mono" style="font-size:11px;color:var(--muted)">uma corretora não trava a outra</span></td>
+          <td class="ds">Cada corretora passa a ter <b>4 vagas próprias</b> de atendimento, em rodízio: uma corretora com cinquenta mensagens de uma vez, com o modelo lento ou com o portal travado <b>não atrasa mais a vizinha</b>, e nada se perde — o que não cabe agora espera e é respondido depois. O robô ganhou relógio (90 s por chamada, 300 s por atendimento) e, quando o provedor de inteligência cai, as conversas ficam <b>guardadas</b> em vez de virarem "tive uma falha técnica". 🔴 E a conta de <b>mensagem perdida</b> parou de cair na corretora errada. 📊 <b>8 defeitos graves mortos antes do push</b></td>
+          <td class="dm">21/09</td><td class="dm">—</td><td class="ds">🔴 <b>o canário é seu</b>: dois números de teste, em <b>duas corretoras diferentes</b> (aba <a href="#tarefas" style="color:var(--accent)">Suas tarefas</a>, bloco G)</td></tr>
       </tbody>
     </table>
   </div>
@@ -70,7 +73,7 @@
       <tbody>
         <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.10</b> · portal de vidros ponta a ponta</td><td class="ds">Tirou a pessoa do meio de um acionamento que já acontece hoje — até o desfecho que o portal decide</td><td class="ds"><b>✅ concluída 21/09, nota 86</b> (aba <a href="#vidros" style="color:var(--accent)">Portal de vidros</a>)</td></tr>
         <tr><td class="dm">1</td><td class="ds"><b>EXTRA-001.10.1</b> · a continuação</td><td class="ds">🔴 O acesso do robô ao pedido vive <b>só na memória</b>: toda parada depois de o pedido nascer termina em mão humana. É o que sobra de trabalho manual</td><td class="ds"><b>🔴 é a próxima</b> — depende de <b>uma resposta da atendente</b> ("dá para retomar pelo número?")</td></tr>
-        <tr><td class="dm">2</td><td class="ds"><b>EXTRA-001.8</b> · isolamento entre corretoras <b>+ 2 itens de segurança</b></td><td class="ds">Uma corretora travada não pode derrubar a vizinha. Antes de ligar a terceira corretora, não depois. Leva junto as duas pendências ≥ 90 de segurança</td><td class="ds">proposta escrita</td></tr>
+        <tr><td class="dm">✓</td><td class="ds"><b>EXTRA-001.8</b> · isolamento entre corretoras <b>+ 2 itens de segurança</b></td><td class="ds">Uma corretora travada não pode derrubar a vizinha — e as duas pendências ≥ 90 de segurança foram junto (cada coisa sabe de quem é; nome de pessoa fora do dado global)</td><td class="ds"><b>✅ executada 21/09</b> — falta o <b>canário</b>, que é seu</td></tr>
         <tr><td class="dm">3</td><td class="ds"><b>EXTRA-001.9</b> · o painel diz de quem é</td><td class="ds">Arruma as rotas de Personalização e tira o apelido antigo da tela. Dívida de tela, barata</td><td class="ds">só no diagnóstico</td></tr>
         <tr><td class="dm">4</td><td class="ds"><b>EXTRA-001.0</b> · a retroativa</td><td class="ds">Registra o que entrou na <code>main</code> em 08–10/09 sem SPEC. <b>Dívida de registro, não de código</b> — daqui a um mês ninguém lembra por que uma variável existe</td><td class="ds">proposta escrita</td></tr>
         <tr><td class="dm">5</td><td class="ds"><b>triagem de pendências</b></td><td class="ds">Uma passada só (≈1 h): fecha as resolvidas, funde duplicatas, e o que sobrar ≥ 80 vira um bloco. É a regra <b>D-FILA-01</b></td><td class="ds">💡 ideia registrada (001.11)</td></tr>

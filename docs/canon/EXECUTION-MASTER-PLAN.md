@@ -23,6 +23,20 @@
 
 ---
 
+## 🔴 Onde estamos hoje (21/09/2026) — a família EXTRA vem antes deste painel
+
+> ⚠️ O painel abaixo para na SPEC-062 e descreve a fundação. **O trabalho corrente é a família EXTRA-001.x**, e a
+> autoridade sobre ela é [`ESTADO-DAS-SPECS.md`](ESTADO-DAS-SPECS.md), que tem uma linha por SPEC com nota e
+> estado.
+
+```
+FEITAS      EXTRA-001 · 001.1 · 001.2 · 001.3 · 001.4 · 001.5 · 001.5.1 · 001.5.2 · 001.6 · 001.7 · 001.10
+            EXTRA-001.8 (uma corretora não trava a outra) — EXECUTADA em 21/09/2026, CANÁRIO PENDENTE 🧑
+A FILA      001.9  →  001.0  →  triagem de pendências (D-FILA-01)  →  EXTRA-002 (investigação Agger)
+            a EXTRA-001.10.1 (a continuação do portal de vidros) entra quando o Founder trouxer as capturas
+PAUSADO     a série 099 → 114, sem renumerar, desde 07/09
+```
+
 ## Painel de estado
 
 | # | Etapa | Branch | Estado | Commit inicial | Commit final | Relatório |

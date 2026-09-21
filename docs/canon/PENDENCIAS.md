@@ -5629,6 +5629,8 @@ está vendo.
 
 ---
 
+🔁 **EXTRA-001.8 (21/09/2026): CONTINUA — não tocada.** Continua dependendo de 🧑 definir `GLOBAL_KILL_SWITCH=false` no portal-worker. Esta SPEC não criou freio novo: `SCHEDULER_ENABLED` é sobre quem liga o agendador, não sobre parar acionamento.
+
 ## P-208 · 🟡 Nada no banco liga um Auxiliar ao modelo de Rotina dele
 
 **Aberta em:** 17/08/2026 · **Dono:** 🤖 execução
@@ -8185,6 +8187,8 @@ admitir `formulario_envio_falhou`, e teria dobrado a exposição.
   ou um `attempt` idempotente no `work_runs`.
 - **Custa se esquecer:** dois prestadores na porta de alguém.
 
+🔁 **EXTRA-001.8 (21/09/2026): CONTINUA — fora do fio desta SPEC.** A trava de turno por conversa (001.2) e a cota por corretora (001.8) vivem no caminho do BUFFER do WhatsApp; `try_route_insurer_inbound` é o caminho do corredor de seguradora e não foi tocado. **Dono:** 🤖.
+
 ## P-238 · 🔴 O Vigia inteiro morre sem Redis — e o produto CALA
 
 📊 Achado do red team. `check_dispatch_watchdog` começa em
@@ -8203,6 +8207,8 @@ defeito está **antes** deles.
   de `work_runs` com `unblock_state IS NULL` e fase em voo.
 - **Custa se esquecer:** uma queda de Redis vira silêncio total do acionamento,
   e nada no produto acusa.
+
+🔁 **EXTRA-001.8 (21/09/2026): CONTINUA, e foi AGRAVADA DE PROPÓSITO — declarado.** Com o lock de líder, **sem Redis os jobs que ENVIAM ficam fail-closed**, e o `dispatch_watchdog_check` está entre eles: numa queda de Redis o Vigia não roda em vez de rodar sem saber quem já foi avisado. O dano evitado (dois avisos ao mesmo grupo, que é o ruído que a 001.3 existe para matar) foi julgado maior que o silêncio do vigia numa queda de Redis. **Destrava:** a varredura ler a lista durável de `work_runs` em vez de `scan_iter` no Redis. **Dono:** 🤖. **Custo de esquecer:** numa queda longa de Redis ninguém é avisado, e agora por decisão escrita.
 
 ## P-239 · 🤖 O dossiê das cadeias novas chega picotado em balões
 
@@ -8798,6 +8804,8 @@ abrindo o painel do EasyPanel e lendo variável na mão — exatamente o que o
 bloco de sinais foi criado para eliminar.
 
 ---
+
+🔁 **EXTRA-001.8 (21/09/2026): CONTINUA, PARCIAL.** O `/health` ganhou **`scheduler`** (`lider` | `seguidor` | `desligado` | `desconhecido`) e **`executor_threads`** (commits `3707bc8`, `23560d1`). **Falta** `worker_ligado`: o estado do Smith Worker continua fora do `/health`. **Dono:** 🤖.
 
 ## P-249 · `work_effects` existe no banco, sem DDL no repositório e sem escritor
 
@@ -10264,6 +10272,8 @@ do Next tem `ADMIN_API_KEY`. **O que fazer:** confirmar no EasyPanel que smith-w
 worker → 404 e o turno segue até o fim (o parcial fica na tela; a resposta inteira é gravada). `payload.turn.stopped_by` deixa o sintoma visível.
 **Destrava:** registro em Redis (transporte, nunca verdade) quando houver 2+ réplicas. **Dono:** 🤖. 💭 2h.
 
+🔁 **EXTRA-001.8 (21/09/2026): CONTINUA — não tocada, e segue bloqueando `uvicorn --workers`/réplicas da API.** O que mudou a favor: esta SPEC deixou prontos o **lock de líder** (`lider_do_agendador.py`) e o `SCHEDULER_ENABLED`, que são pré-requisito para qualquer réplica não duplicar os 25 jobs do agendador. **Destrava:** registro do turno ativo em Redis quando houver 2+ réplicas. **Dono:** 🤖.
+
 ## P-096-REPLAY-AO-VIVO · reconectar não retoma o parcial AO VIVO — recarrega a conversa gravada
 Saiu da proposta com gatilho (SPEC §5): gravar até o fim (A.4) resolve o refresh; o replay por Redis (`after_sequence`) é para ver o texto
 escorrendo de novo depois de reconectar. **Volta quando** uma corretora reclamar de resposta longa (> 30 s) — medido. **Dono:** 🤖. 💭 4h.
@@ -10389,6 +10399,8 @@ A 098 criou `core/auth.py::require_internal_key` (14 rotas) e `_chaves_internas`
 ## P-098-MCP-ROTAS-SEM-COMPANY · três rotas de `mcp.py` agem por id sem cerca de corretora
 Builder B (06/09): `DELETE /connections/{id}` (e duas irmãs) apagam/alteram conexão OAuth por id sem `.eq(company_id)`; a 098 pôs `require_internal_key` nelas (só o BFF chega), mas o BFF novo (`app/api/mcp/[...caminho]`) repassa a empresa da sessão e o backend não a confere na linha. **Destrava:** `.eq("company_id", …)` nas três + teste com dois tenants. **Dono:** 🤖 (101). **Custo de esquecer:** IDOR interno entre corretoras via id adivinhado, atrás da chave.
 
+✅ **FECHADA em 21/09/2026 pela SPEC-EXTRA-001.8 (fatia F3a, commit `d339aa5`):** a cerca de corretora passou para DENTRO do serviço MCP — ele confirma o agente da corretora e age com `id` + `agent_id`; id de outra corretora responde **404**, não 403. 📊 `test_o_mcp_tem_cerca_de_corretora.py` → **40 asserções verdes com dois tenants** e **6 mutações vermelhas** (entre elas, tirar `.eq("agent_id", …)` do `delete`). Resíduos viraram pendências próprias: P-E0018-12 (nonce do state OAuth nunca consumido) e P-E0018-13 (`get_agent_oauth_tokens` ainda age por `agent_id` puro). Movida para `PENDENCIAS-FECHADAS.md`.
+
 ## P-098-FILA-SEM-EXPIRE · a fila do WhatsApp (`platform_queue:{company_id}`) é `rpush` sem TTL de Redis
 📊 `platform_outbound.py:817` sem `expire`; expiração só lógica (`_MAX_ATTEMPTS=12`×2h, `_MAX_ADIAMENTOS=200`) e só se o dreno rodar. A 098 pôs a revalidação do ator na porta; a entrada em si é eterna. **Destrava:** `expire` de 48h na chave + evento quando a entrada morrer por idade. **Dono:** 🤖 (099). **Custo de esquecer:** worker parado por dias entrega mensagem velha ao voltar.
 
@@ -10512,6 +10524,8 @@ Red team (07/09), pré-existente (`34424fa:billing_collection.py:1252`, "Cliente
 
 ## P-PILOTO-01 · concorrência e isolamento por corretora — 🔴 IMPORTANTE (Founder, 08/09/2026)
 📊 Medido 08/09: o atendimento roda em 1 processo uvicorn sem `--workers`; o buffer processava as conversas prontas em série; envio ao WhatsApp era síncrono dentro do event loop (`requests.post` timeout 30 s + `sleep 0.7`); LLM sem timeout/retry. Teto seguro estimado 3–4 simultâneos por corretora e uma corretora travada atrasava todas. Hoje (U1, 08/09) o envio saiu do laço e o buffer ficou paralelo com semáforo — alívio, não solução. **Destrava:** desenho + execução de isolamento por tenant (fila/worker por corretora ou processos múltiplos, timeout no modelo, backpressure, prova com duas corretoras e uma delas travada). **Alvo do Founder:** ≥4 atendimentos simultâneos por corretora e nenhuma interferência entre corretoras. **Dono:** 🤖. **Custo de esquecer:** com centenas de corretoras, um travamento em uma para todas — "irreparável para a AutoBrokers" (Founder).
+
+🔁 **EXTRA-001.8 (21/09/2026): CONTINUA — fechada no CÓDIGO, pendente do CANÁRIO.** Entregues e guardadas a cota de 4 por corretora, o rodízio determinístico, o teto por chamada (90 s) e por turno (300 s), a contrapressão que renova o TTL do buffer e o disjuntor por provedor de LLM (commits `37dcfc0`, `4c207c6`, `3707bc8`, `23560d1`, `477a0bc`; gates G1–G10 + G11 verdes, 📊 G3 10/10 com linha de controle ~200× acima do medido). **Destrava:** a prova em produção com DUAS corretoras de teste, uma travada de propósito — os 6 casos do relatório §6. ⛔ Não fechar sem o canário. **Dono:** 🧑 (canário) → 🤖. **Custo de esquecer:** o isolamento fica provado só por teste sintético.
 
 ## P-PILOTO-02 · o acionamento pelo portal não aparece na Fila nem na Ficha
 **`PARCIAL` (EXTRA-001.10, 21/09):** feitos o work_run do acionamento, o `agent_id`, o número durável e a **Ficha** mostrando o caso; agenda/vistoria/paradas não concluem o run, de propósito, para a Fila enxergar. **Falta o front da Fila** → P-E00110-C-03.
@@ -10920,6 +10934,8 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 ## P-E00151-09 · nome de pessoa real dentro de dado global de corredor
 📊 `corridor_playbooks.py:4319` guarda, no campo `notes` de um passo, a frase de uma tela: *"Saionara você é a pessoa que está local para acompanhar o serviço?"*. O `notes` entra no **prompt interno** que decide a resposta quando o corredor empaca (`insurer_dispatch_service.py:3984`). **Destrava:** redigir o nome no playbook. **Dono:** 🤖. **Custo de esquecer:** o nome de uma atendente da Resulta é contexto global e pode reaparecer numa resposta gerada para outra corretora.
 
+✅ **FECHADA em 21/09/2026 pela SPEC-EXTRA-001.8 (fatia F3b, commit `658debf`):** o nome de pessoa real saiu do dado GLOBAL de corredor — o campo que entra no prompt de TODAS as corretoras — e de 23 comentários do backend. 📊 censo de 24 ocorrências (1 em prompt + 23 em comentário) zerado no que é dado de produto; `test_nenhum_nome_de_gente_em_dado_global.py` verde, com nome próprio por **hash** e **0** ocorrências em `conduct_playbooks` (18 linhas) e `knowledge_cards` (18.715). **Resíduo:** o nome continua em fixtures de teste e no corpus → P-E0018-15. Movida para `PENDENCIAS-FECHADAS.md`.
+
 ## P-E00151-10 · o acervo tem duas versões mal rotuladas, e a base herdou
 📊 Mapfre Auto declarada v34.0 quando o PDF é v41; Mapfre Residencial declarada v2.9 quando o PDF é 3.2. **Destrava:** conferir a versão na capa ao ingerir. **Dono:** 🤖. **Custo de esquecer:** a resposta cita a página certa de um documento vencido.
 
@@ -11094,3 +11110,181 @@ O juiz da 001.4 mediu que só `_emit` consulta `session["live"] and dispatch_liv
 - **P-PILOTO-08 → `FECHADA no backend, com prova`:** a fila de aprendizado do portal existe e é escrita (`registrar_tela_cega(ramo="vidros")`), provada pelo gate G9 com dois tenants isolados, e job de sucesso nunca aprende. ⚠️ O **leitor** da fila continua não existindo — isso já era pendência própria, e não é desta.
 - **P-50 → `CONTINUA`:** a resolução por dado cobre as **38** seguradoras publicadas na abertura do pedido (gate G3), o que mata a lista fechada de 3 slugs. Mas **evidência de questionário** só existe para Yelum e Porto — é o que P-E00110-C-02 pede.
 - **P-PILOTO-09 → reforçada:** 📊 em 20/09 credenciais foram coladas no chat de novo. A rotação das chaves continua pendente e ficou mais urgente.
+
+---
+
+# SPEC-EXTRA-001.8 · Uma corretora não trava a outra (21/09/2026)
+
+> O que esta SPEC deixou por fazer. Cada entrada: 📊 o fato · **Destrava:** · **Dono:** 🧑 Founder ou 🤖 execução ·
+> **Custo de esquecer:**.
+
+## P-E0018-01 · 🔴 o CANÁRIO de isolamento não rodou
+📊 21/09/2026: os gates G1–G11 são todos sintéticos, sobre o motor real com dublê na borda; a prova em produção
+não aconteceu. **Destrava:** TESTE-A e TESTE-B pareados em **duas corretoras de teste distintas**, Implantar, e
+os 6 casos do relatório §6 (linha de base · a corretora travada de propósito · a doente atendida · rajada de 50
+com `expiradas` = 0 · disjuntor aberto sem a vizinha sentir · allowlist esvaziada e o número de volta). **Dono:**
+🧑. **Custo de esquecer:** o isolamento — que é o outcome da SPEC — fica provado só por teste sintético.
+
+## P-E0018-02 · o `cpu_count` do contêiner `smith-api` é desconhecido
+📊 21/09/2026: o BLOCO 0 não conseguiu medir (sem acesso ao contêiner implantado). **Destrava:** rodar no console
+do `smith-api` `python -c "import os; print(os.cpu_count(), min(32,(os.cpu_count() or 1)+4))"` e, se quiser,
+definir `EXECUTOR_THREADS`. **Dono:** 🧑. **Custo de esquecer:** baixo — o poço já nasce com piso de 32.
+
+## P-E0018-03 · 🔴 Redis fora ⇒ a mensagem do segurado NÃO é gravada em lugar nenhum
+📊 21/09/2026: `webhook.py::_buffer_or_dispatch_text` chama o buffer, e `core/redis.py` levanta quando o Redis
+está fora; a rota não tem `try` e devolve **500** ao provedor. A mensagem não entra no buffer nem no banco.
+**Destrava:** retenção fora do Redis, ou responder 200 e enfileirar de forma durável. **Dono:** 🤖. **Custo de
+esquecer:** numa queda de Redis a mensagem some **antes** de qualquer trava desta SPEC.
+
+## P-E0018-04 · 🔴 `get_async_redis_client` não memoriza a falha
+📊 21/09/2026 (`core/redis.py:47-70`): cada chamada paga até 5 s de `socket_timeout` quando o Redis está lento.
+**Destrava:** cache curto da falha, ou disjuntor no cliente. **Dono:** 🤖. **Custo de esquecer:** Redis lento
+vira "uma corretora trava a outra" numa camada que esta SPEC não tocou.
+
+## P-E0018-05 · o LLM de VISÃO nasce fora da fábrica
+📊 21/09/2026 (`langchain_service.py:277-289`, achado do red team P4): o modelo de visão do atendimento é criado
+fora da `LLMFactory` — sem teto, sem `max_retries` nosso e sem alimentar o disjuntor (o default do SDK é 600 s).
+**Destrava:** passar pela fábrica. **Dono:** 🤖. **Custo de esquecer:** foto com provedor lento só é cortada pelo
+teto de turno e não conta para o disjuntor.
+
+## P-E0018-06 · a varredura ESPERA os turnos dela
+📊 21/09/2026: `check_buffers` faz `gather` e só termina quando os turnos dela terminam; o desenho de escala é
+disparar os turnos como tarefas do módulo e retornar. **Destrava:** o redesenho, com gatilho — passar de ~10
+corretoras saturadas, ou `max_instances` (hoje 40) voltar a ser o teto efetivo. **Dono:** 🤖. **Custo de
+esquecer:** o teto de instâncias volta a mandar, como mandava com 10.
+
+## P-E0018-07 · o teto global bloqueante acumula esperadores-fantasma
+📊 21/09/2026 (red team P8): com mais de 24 turnos simultâneos (≥ 7 corretoras saturadas) a mesma chave acumula
+esperadores, cada um segurando vaga de cota. **Destrava:** marcar "já esperando o teto" no estado de admissão.
+**Dono:** 🤖. **Custo de esquecer:** come cota de quem espera.
+
+## P-E0018-08 · o líder não reconhece o próprio cadeado depois de um soluço do Redis
+📊 21/09/2026 (`lider_do_agendador.py:298-301, 343-348`; achado do juiz e do red team P7): `tentar_assumir` só
+renova se o estado interno ainda for LIDER, e um erro de Redis já o rebaixou. **Destrava:** fazer `GET` e
+comparar o token quando o `NX` falha. **Dono:** 🤖. **Custo de esquecer:** 40–80 s sem jobs de envio (auto-cura
+quando o TTL vence).
+
+## P-E0018-09 · 🔴 o aviso ao dono toma a janela ANTES do envio
+📊 21/09/2026 (`aviso_de_fila_longa.py`): a trava da janela de 30 min é tomada antes de enviar, então um envio
+que falha **queima a janela**; integração inativa não resolve `company_id`; `em_execucao` não chega ao texto; e
+os números 60 s / 30 min são 💭. **Destrava:** consertar isto **antes** de ligar `ISOLAMENTO_AVISO_AO_DONO`.
+**Dono:** 🤖, depois 🧑 liga. **Custo de esquecer:** ligar antes = o dono fica 30 min sem aviso num envio que
+falhou. Hoje não há efeito: a flag nasce ausente e ausente = não avisa.
+
+## P-E0018-10 · a presença "digitando…" não é ligada no adiamento por cota
+📊 21/09/2026: o contrato existe (`webhook.py::_presenca`, EXTRA-001.2 §6.4) e o gatilho não entrou.
+**Destrava:** chamar a presença no adiamento por cota. **Dono:** 🤖. **Custo de esquecer:** quem espera a cota
+não vê sinal de vida.
+
+## P-E0018-11 · `provedor` e `modelo` ausentes do `payload.turn`
+📊 21/09/2026: a fonte de métricas do turno não os traz. **Destrava:** acrescentá-los às métricas. **Dono:** 🤖.
+**Custo de esquecer:** o turno não diz qual provedor atendeu — e o disjuntor é por provedor.
+
+## P-E0018-12 · state OAuth: nonce gerado e nunca consumido
+📊 21/09/2026 (resíduo de P-098): o `state` é HMAC e confere provedor e dono, mas o nonce não é marcado como
+usado — há replay dentro da janela de 15 min. **Destrava:** gravar o nonce usado em Redis. **Dono:** 🤖. **Custo
+de esquecer:** um link vazado escreve conexão dentro da janela.
+
+## P-E0018-13 · 🔴 `get_agent_oauth_tokens` age por `agent_id` puro
+📊 21/09/2026: dois chamadores em `mcp_gateway_service.py:137,283` não passam `company_id`. É interno ao gateway
+(o agente já foi resolvido), mas é a **última porta sem cerca** do módulo. **Destrava:** passar `company_id`.
+**Dono:** 🤖. **Custo de esquecer:** a cerca do MCP fica com uma porta a menos do que o guarda S1 afirma.
+
+## P-E0018-14 · 🔴 `conduct_playbooks` é tabela GLOBAL sem `company_id`
+📊 21/09/2026: `attendance_distiller.py:1152` escreve nela a partir de conversas de UMA corretora, e a tabela é
+lida por todas (hoje 18 linhas, 0 nomes próprios depois de `658debf`). **Destrava:** `company_id` na tabela, ou
+redação obrigatória antes do insert. **Dono:** 🤖. **Custo de esquecer:** conversa de uma corretora vira
+conhecimento global das outras. **É candidata ≥ 90 pela D-FILA-01** — o tipo de pendência que a regra manda
+puxar para a SPEC seguinte de isolamento.
+
+## P-E0018-15 · nome próprio em fixtures de teste e no corpus
+📊 21/09/2026 (resíduo de P-E00151-09): 38 fixtures de teste e 3 linhas do corpus, mais o nome de uma segunda
+atendente em 9 comentários do backend e 5 do frontend. **Destrava:** troca por termo neutro e mover a âncora do
+gate N4. **Dono:** 🤖. **Custo de esquecer:** o nome volta para dado de produto por cópia.
+
+## P-E0018-16 · o SDK do Google repete credencial recusada
+📊 21/09/2026 (`langchain_google_genai/chat_models.py:176-205`): `Unauthenticated` é subclasse de
+`GoogleAPIError`, então o retry do SDK a repete. **Destrava:** wrapper ou upgrade. **Dono:** 🤖. **Custo de
+esquecer:** ~3 s de espera inútil por 401 (era ~63 s com o default 6, antes do teto desta SPEC).
+
+## P-E0018-17 · o juiz de evals NUNCA deu veredito
+📊 21/09/2026 (`app/services/evals/juiz_llm.py:119`): chama a fábrica com kwargs que não existem → `TypeError`
+engolido. **Destrava:** corrigir a chamada. **Dono:** 🤖. **Custo de esquecer:** uma peça de avaliação inteira é
+enfeite.
+
+## P-E0018-18 · três backoffs espalhados
+📊 21/09/2026: `channel_state.py:313`, `work/queue.py:221` e `relogio_do_modelo.espera_do_backoff` — este último
+**sem chamador**, declarado no próprio arquivo. **Destrava:** consolidar num só. **Dono:** 🤖. **Custo de
+esquecer:** três regras de espera, nenhuma genérica.
+
+## P-E0018-19 · `routine_scheduler_loop` fora do cadeado de líder
+📊 21/09/2026 (`main.py:107`, red team P9): é um 2º laço periódico fora do lock e do `SCHEDULER_ENABLED`; tem
+claim atômico próprio e **não** duplica trabalho. **Destrava:** entrar na mesma tabela de jobs. **Dono:** 🤖.
+**Custo de esquecer:** o título "só um agendador manda" fica impreciso.
+
+## P-E0018-20 · o resolver de provedor depende de um método privado
+📊 21/09/2026: a costura do disjuntor usa `_get_raw_agent`. **Destrava:** promover a função pública. **Dono:**
+🤖. **Custo de esquecer:** uma refatoração quebra a costura em silêncio — e o modo de falha é fail-open, o que
+transforma o disjuntor em enfeite.
+
+## P-E0018-21 · corte DURANTE o envio
+📊 21/09/2026 (red team P1): a thread do `send_message` não é cancelável, então os balões restantes saem **depois**
+de a trava de turno ser solta, `confirmar_apresentacao` é pulada e o log diz "nada foi dito". O conserto cobriu o
+corte **antes** do envio (o aviso honesto passa a sair); este caso é o corte **no meio**. **Destrava:** a mesma
+marca de "o envio começou" estendida ao log e à apresentação. **Dono:** 🤖. **Custo de esquecer:** resposta
+parcial sem registro fiel.
+
+## P-E0018-22 · duas falhas de teste PRÉ-EXISTENTES, provadas contra a base
+📊 21/09/2026: `test_o_nome_do_agente_nao_confunde.py` só falha **depois** de `test_corredor_residencial_yelum.py`
+(poluição entre testes) e `test_corredores_novos.py` dá `ModuleNotFoundError` em TELA CEGA. Nenhuma das duas é
+desta SPEC. **Destrava:** triagem própria contra `reports/BATERIA-LINHA-DE-BASE.txt`. **Dono:** 🤖. **Custo de
+esquecer:** falha antiga vira paisagem e esconde uma falha nova parecida.
+
+## P-E0018-23 · o rate limit do webhook é por IP
+📊 21/09/2026 (proposta §0.3, quinto elo declarado): todas as corretoras do mesmo provedor dividem o mesmo balde
+de entrada. **Destrava:** chave por escopo **depois** do auth. **Dono:** 🤖, com gatilho: uma corretora estourar
+o balde. **Custo de esquecer:** o isolamento existe da varredura para dentro, e não na porta.
+
+## P-E0018-24 · o envio protegido do aviso honesto não tem teto explícito
+📊 21/09/2026 (confirmação P1): o aviso sai por `send_message` síncrono com `requests` de 30 s; o pior caso de um
+balão curto é ≈ 61 s, e nesse tempo a vaga de cota e o teto global ficam presos. **Destrava:**
+`asyncio.wait_for(asyncio.shield(...), 20)`. **Dono:** 🤖. **Custo de esquecer:** com o provedor de WhatsApp
+fora, um turno cortado segura cota por até um minuto.
+
+## P-E0018-25 · o log "nem o aviso saiu" pode mentir
+📊 21/09/2026 (confirmação P2): num **segundo** cancelamento durante o `shield`, a thread ainda pode entregar a
+mensagem e o log afirma que nada saiu. **Destrava:** o log dizer "não sei se o envio saiu". **Dono:** 🤖.
+**Custo de esquecer:** investigar uma queixa com um log que afirma o contrário do que aconteceu.
+
+## P-E0018-26 · os tratadores de falha não reconferem a posse do turno
+📊 21/09/2026 (confirmação P3): nem o `except asyncio.CancelledError` nem o `except Exception` chamam
+`ainda_sou_o_dono`. Cenário raro (exige turno > 300 s que perdeu a trava aos 90 s): o segurado recebe a resposta
+do turno B e, depois, o aviso de falha do turno A. **Destrava:** reconferir a posse antes de falar. **Dono:** 🤖.
+**Custo de esquecer:** duas falas desencontradas na mesma conversa.
+
+## P-E0018-27 · a desigualdade `cota < LLM_BREAKER_FALHAS` não é guardada
+📊 21/09/2026 (confirmação P4): hoje só os defaults protegem — com cota 4 e 5 falhas em 60 s, uma corretora
+sozinha não consegue abrir o disjuntor, e é isso que impede uma corretora de fechar o provedor das outras. Subir
+`WHATSAPP_COTA_POR_CORRETORA` para 5 por variável de ambiente reabre a janela. **Destrava:** um teste que afirme
+a desigualdade. **Dono:** 🤖. **Custo de esquecer:** uma variável de ambiente reintroduz o defeito que a SPEC
+existe para matar.
+
+## P-E0018-28 · remedir o piso do G3
+📊 21/09/2026 (confirmação P5): o piso do X subiu de 0,050 s para 0,120 s porque o gate piscava no relógio do
+Windows. É o único afrouxamento do conserto, e está declarado. **Destrava:** remedir num ambiente estável e
+baixar o piso se der. **Dono:** 🤖. **Custo de esquecer:** o gate do outcome fica mais frouxo do que precisa.
+
+## P-E0018-29 · `_provedor_da_chave` é chamado 2× por chave
+📊 21/09/2026 (confirmação P6): acontece quando há provedor aberto **e** meio-aberto ao mesmo tempo; o cache de
+60 s cobre o custo. **Destrava:** resolver uma vez por chave. **Dono:** 🤖. **Custo de esquecer:** baixo — é
+custo, não correção.
+
+## P-E0018-30 · o arquivo que roda os guardas-script é instável sob carga — e o controle dele deixa mutação na árvore
+📊 21/09/2026 (bateria da EXTRA-001.8): em duas rodadas de `tests/test_todos_os_guardas_script_rodam.py` os nomes
+fora da linha de base foram DIFERENTES (1ª: 4 · 2ª: 3), e todos os guardas acusados passam sozinhos com rc=0
+(`test_o_vocabulario_viaja_na_imagem` · `test_as_ferramentas_de_relatorio_comercial` ·
+`test_infocap_policy_output_guard`). 🔴 Quando `test_CONTROLE_o_harness_CONSEGUE_restaurar_rubrica` falha no meio,
+a linha `# MUTACAO DE CONTROLE` FICA em `backend/scripts/rubrica.py` — foi achada na árvore depois da bateria e
+restaurada por cópia. **Destrava:** o controle restaurar em `finally`; achar o que os guardas-script disputam
+(arquivo mutado em comum, porta ou relógio). **Dono:** 🤖. **Custo de esquecer:** cada SPEC repaga a triagem
+de falhas que não são dela, e uma mutação de controle pode ser commitada por engano.
