@@ -250,7 +250,13 @@ já existe.
 ⚠️ A bateria rodou **depois** do conserto, como manda o rito.
 
 ```
-{PUSH}
+📊 21/09/2026 · antes: `git rev-list --count HEAD..origin/main` → 0 · `origin/main..HEAD` → 11
+```
+$ git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   bfa0a40..77c585d  HEAD -> main
+```
+depois: `git rev-list --count origin/main..HEAD` → 0. Este parágrafo entra num commit seguinte, empurrado pelo mesmo comando.
 ```
 
 ## 13. Telemetria (protocolo §11) — `python scripts/medir_execucao_claude_code.py --sessao atual`
