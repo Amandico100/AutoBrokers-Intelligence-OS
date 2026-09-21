@@ -279,10 +279,146 @@ def _atraso_de_teste_ms(company_id_ou_escopo: str) -> int:
     return _env_int("ISOLAMENTO_ATRASO_MS", 0, minimum=0)
 
 
+# ===========================================================================
+# 🔴 A COSTURA — o disjuntor pergunta ANTES de consumir o buffer (§7.4, §8)
+# ===========================================================================
+#
+# O RELÓGIO DO MODELO (`app/core/relogio_do_modelo.py`) abre um breaker por
+# PROVEDOR quando ele cai. Sem esta costura, o breaker aberto viraria SILÊNCIO:
+# o varredor consumiria o buffer (`get_and_clear` apaga a rajada do Redis), a
+# chamada ao modelo falharia na hora, e as cinco mensagens do segurado teriam
+# sumido — respondidas por ninguém. 🔴 §7.4: *"breaker aberto não vira
+# silêncio"*. Quem PERGUNTA é quem RETÉM.
+#
+# ⚠️ O PROBLEMA REAL, medido antes de desenhar (21/09/2026): o varredor só tem a
+# CHAVE (`whatsapp_buffer:{escopo}:{telefone}`, escopo = id da INTEGRAÇÃO), e
+# `provedor_configurado(company_config, agent_data)` precisa da configuração do
+# agente — que só é resolvida DENTRO de `process_whatsapp_message_background`
+# (`webhook.py:811-822` → `langchain_service.process_message(...,
+# required_role="attendance")`). Resolver isso por chave, a cada varredura de
+# 1 s, com 200 chaves adiadas, seriam 200 consultas por segundo ao banco.
+#
+# AS OPÇÕES, COM NOTA:
+#   (i)   resolver escopo→provedor com cache de 60 s, sempre           78
+#   (ii)  perguntar primeiro "ALGUM provedor está barrado?" e SÓ então
+#         resolver os escopos                                          **90**
+#   (iii) adiar só quando TODOS os provedores estão abertos            35
+#
+# (ii) vence porque o caso normal — nenhum breaker aberto — custa QUATRO GETs no
+# Redis por varredura e ZERO consulta ao banco, independentemente de haver 1 ou
+# 200 chaves. E porque (iii) é o defeito com outro nome: com o provedor de uma
+# corretora fora e o da outra de pé, (iii) não reteria ninguém, e a rajada da
+# primeira morreria na chamada.
+#
+# ⛔ AS REGRAS QUE NÃO SE NEGOCIAM:
+#   · Redis fora, breaker indisponível ou erro ao resolver → **NÃO adia**. Na
+#     dúvida, atende: um silêncio por engano custa a conversa inteira.
+#   · nenhuma PII em log — nem chave, nem telefone, nem nome de corretora.
+#   · o provedor sai da MESMA função que a fábrica usa (`provedor_configurado`)
+#     e o agente, da MESMA função do atendimento (`_get_raw_agent`, com
+#     `required_role="attendance"`). Reescrever a escolha de modelo aqui seria o
+#     motor paralelo do CLAUDE.md §5 — e a costura perguntaria pelo breaker de
+#     um provedor enquanto a chamada sairia por outro.
+
+#: escopo -> (provedor|None, quando_vence). ⚠️ O negativo TAMBÉM é guardado: sem
+#: isso, um escopo que não resolve viraria uma consulta por chave por varredura.
+_PROVEDOR_POR_ESCOPO: dict = {}
+_PROVEDOR_CACHE_PADRAO_S = 60
+_LANGCHAIN_PARA_RESOLVER: list = [None]
+
+
+async def provedores_barrados() -> set:
+    """Quais provedores estão com o disjuntor ABERTO agora. ⛔ Nunca levanta.
+
+    ⚠️ Usa `estado_do_breaker` (LEITURA) e **não** `provedor_disponivel`: este
+    consome a sonda do meio-aberto (`SET NX`), e a sonda é de quem vai CHAMAR o
+    modelo. Um varredor que gastasse a sonda deixaria a conversa retida sem
+    ninguém para testar se o provedor voltou.
+
+    Meio-aberto NÃO barra: é justamente o instante em que uma conversa precisa
+    passar para descobrir que o provedor voltou.
+    """
+    try:
+        from app.core.relogio_do_modelo import PROVEDORES, estado_do_breaker
+    except Exception:  # noqa: BLE001
+        return set()
+    barrados = set()
+    for provedor in PROVEDORES:
+        try:
+            estado = await estado_do_breaker(provedor)
+        except Exception as erro:  # noqa: BLE001
+            # ⛔ FAIL-OPEN: breaker indisponível nunca retém ninguém.
+            logger.debug("[ISOLAMENTO] breaker indisponivel (%s)",
+                         type(erro).__name__)
+            continue
+        if (estado or {}).get("estado") == "aberto":
+            barrados.add(provedor)
+    return barrados
+
+
+async def provedor_do_escopo(escopo: str):
+    """`escopo` (id da integração) -> o provedor que o atendimento VAI usar.
+
+    `None` quando não dá para saber — e `None` significa ATENDER, nunca reter.
+    """
+    from app.core.config import settings
+    from app.core.database import get_supabase_client
+    from app.core.relogio_do_modelo import provedor_configurado
+    from app.services.integration_service import get_integration_service
+
+    supabase = get_supabase_client()
+    integracao = await asyncio.to_thread(
+        get_integration_service(supabase.client).get_integration_by_id, escopo)
+    if not integracao:
+        return None
+    company_id = integracao.get("company_id")
+    if not company_id:
+        return None
+
+    servico = _LANGCHAIN_PARA_RESOLVER[0]
+    if servico is None:
+        from app.services.langchain_service import LangChainService
+        servico = LangChainService(settings.OPENAI_API_KEY, supabase)
+        _LANGCHAIN_PARA_RESOLVER[0] = servico
+
+    # ⛔ A MESMA função do atendimento, com o MESMO papel (`webhook.py:1617`).
+    agente = await servico._get_raw_agent(  # noqa: SLF001
+        str(company_id), integracao.get("agent_id"), required_role="attendance")
+    if not agente:
+        return None
+    return provedor_configurado(agente, agente)
+
+
+async def _provedor_da_chave(provedor_de, escopo: str):
+    """O provedor do escopo, com cache curto em memória. ⛔ Nunca levanta."""
+    import time as _time
+
+    agora = _time.monotonic()
+    guardado = _PROVEDOR_POR_ESCOPO.get(escopo)
+    if guardado is not None and guardado[1] > agora:
+        return guardado[0]
+    # Limpeza preguiçosa: cache sem poda é vazamento de memória com nome bonito.
+    if len(_PROVEDOR_POR_ESCOPO) > 500:
+        for chave_velha, (_p, vence) in list(_PROVEDOR_POR_ESCOPO.items()):
+            if vence <= agora:
+                _PROVEDOR_POR_ESCOPO.pop(chave_velha, None)
+    try:
+        provedor = await provedor_de(escopo)
+    except Exception as erro:  # noqa: BLE001
+        provedor = None
+        logger.warning("[ISOLAMENTO] provedor nao resolvido (%s) — atendendo",
+                       type(erro).__name__)
+    vida = _env_int("ISOLAMENTO_PROVEDOR_CACHE_S", _PROVEDOR_CACHE_PADRAO_S)
+    _PROVEDOR_POR_ESCOPO[escopo] = (provedor, agora + vida)
+    return provedor
+
+
 async def processar_buffers_prontos(chaves, buffer_service, processar,
                                     paralelismo: int = 0,
                                     cota_por_corretora: int = 0,
-                                    timeout_s: float = 0) -> dict:
+                                    timeout_s: float = 0,
+                                    barrados=None,
+                                    provedor_de=None) -> dict:
     """Processa as conversas prontas EM PARALELO, com teto — e com COTA.
 
     Recebe as peças por parâmetro (chaves, serviço, função de processamento)
@@ -345,6 +481,21 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
     if com_cota:
         fila = ordenar_em_rodizio(fila, escopo_de)
 
+    # 🔴 UMA pergunta por VARREDURA, não uma por chave: quatro GETs no Redis,
+    # com 1 ou com 200 chaves na fila. Conjunto vazio = nada muda para ninguém.
+    provedores_fora = set()
+    if com_cota and barrados is not None:
+        try:
+            provedores_fora = set(await barrados())
+        except Exception as erro:  # noqa: BLE001
+            # ⛔ FAIL-OPEN, e é a regra que não se negocia: na dúvida, atende.
+            provedores_fora = set()
+            logger.warning("[ISOLAMENTO] breaker nao consultado (%s) — atendendo",
+                           type(erro).__name__)
+    if provedores_fora:
+        logger.warning("[ISOLAMENTO] %d provedor(es) com disjuntor ABERTO — as "
+                       "conversas deles ficam guardadas", len(provedores_fora))
+
     timeouts = 0
     sumidas = 0
 
@@ -373,6 +524,29 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                 return False
 
         try:
+            # ================================================================
+            # 🔴 O DISJUNTOR PERGUNTA **ANTES** DE CONSUMIR O BUFFER
+            # ================================================================
+            #
+            # A ORDEM É A REGRA INTEIRA, pelo mesmo motivo da trava de turno
+            # logo abaixo: depois do `get_and_clear` a rajada já saiu do Redis,
+            # e descobrir ali que o provedor está fora custaria as mensagens do
+            # segurado. Aqui custa um segundo — o buffer fica, com a vida
+            # renovada por `adiar`, e a próxima varredura o reencontra.
+            #
+            # ⚠️ Dentro do `try`, e não antes dele, de propósito: é o `finally`
+            # lá embaixo que devolve a VAGA DE COTA desta corretora. Sair por
+            # cima do `try` deixaria a vaga presa até o processo reiniciar.
+            if com_cota and provedores_fora and provedor_de is not None:
+                provedor = await _provedor_da_chave(provedor_de, escopo)
+                if provedor and provedor in provedores_fora:
+                    adiadas["breaker"] += 1
+                    # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.
+                    logger.info("[ISOLAMENTO] conversa guardada: disjuntor "
+                                "aberto no provedor %s", provedor)
+                    await _adiar(buffer_service, chave, "breaker")
+                    return False
+
             if com_cota:
                 # 🔴 Renova a VIDA antes de esperar o teto global: quem espera
                 # não pode morrer de TTL enquanto espera (§8.1).
@@ -604,15 +778,107 @@ async def check_buffers():
         # a colheita de `expiradas` nunca rodava. A perda total de mensagens era
         # justamente o caso em que ninguém ficava sabendo. Varredura vazia custa
         # um `gather` de nada — e é ela que fecha a conta do que sumiu.
+        # 🔴 É AQUI QUE A COSTURA LIGA. Sem estas duas linhas o disjuntor por
+        # provedor existiria e não seria perguntado por ninguém — código vivo
+        # sem chamador, que é a forma mais cara de não ter feito nada
+        # (protocolo §0.3, O ELO). O guarda confere que elas estão aqui.
         await processar_buffers_prontos(
-            chaves, buffer_service, process_whatsapp_message_background)
+            chaves, buffer_service, process_whatsapp_message_background,
+            barrados=provedores_barrados, provedor_de=provedor_do_escopo)
 
     except Exception as e:
         logger.error(f"[BUFFER] ❌ Error in check_buffers: {e}", exc_info=True)
 
 
+# ===========================================================================
+# 🔴 QUEM MANDA NOS JOBS — o lock de líder (BLOCO E, §9.2)
+# ===========================================================================
+#
+# ⛔ NENHUM AGENDADOR NOVO. O `scheduler` continua sendo o único; o líder só
+# decide QUAIS jobs dele rodam NESTE processo.
+#
+# ⚖️ PAUSAR OU DESLIGAR, quando a liderança é perdida:
+#   `scheduler.pause_job(id)` / `resume_job(id)`   **93**
+#       📊 Medido em 21/09/2026 (apscheduler 3.11.3, Python 3.14): pausado, o
+#       job continua LISTADO em `get_jobs()` com `next_run_time=None`, e
+#       `resume_job` devolve um `next_run_time` novo. É o que permite ao guarda
+#       comparar a tabela de classificação com os jobs REALMENTE registrados —
+#       e é por job, que é o que a regra "decisão por JOB" exige.
+#   `scheduler.shutdown()` + `start()`             **22**
+#       📊 Medido no mesmo dia: `AsyncIOScheduler.shutdown` é decorado com
+#       `@run_in_event_loop` — ele NÃO para na hora, e `s.state` continua
+#       RUNNING logo depois; um `start()` em seguida levanta
+#       `SchedulerAlreadyRunningError`. Reiniciar o agendador para retomar a
+#       liderança seria, na melhor hipótese, uma corrida.
+#   `scheduler.pause()` (o agendador inteiro)      **40** — pararia também o
+#       `whatsapp_buffer_check`, e o produto calaria para TODAS as corretoras.
+_LIDER: list = [None]
+_TAREFA_DE_LIDERANCA: list = [None]
+
+
+def lider_do_agendador():
+    """O líder deste processo, ou `None` quando o agendador está desligado."""
+    return _LIDER[0]
+
+
+def estado_do_agendador() -> str:
+    """`"desligado"` · `"lider"` · `"seguidor"` — é o que o `/health` publica."""
+    from app.core.lider_do_agendador import DESLIGADO
+
+    lider = _LIDER[0]
+    if lider is None:
+        return DESLIGADO
+    return lider.estado
+
+
+def _aplicar_lideranca(lider) -> dict:
+    """Pausa o que este processo não pode rodar, retoma o que pode."""
+    rodando, parados = [], []
+    for job in list(scheduler.get_jobs()):
+        try:
+            if lider.deve_rodar(job.id):
+                if getattr(job, "next_run_time", None) is None:
+                    scheduler.resume_job(job.id)
+                rodando.append(job.id)
+            else:
+                if getattr(job, "next_run_time", None) is not None:
+                    scheduler.pause_job(job.id)
+                parados.append(job.id)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[AGENDADOR] job %s nao mudou de estado (%s)",
+                           job.id, type(erro).__name__)
+    logger.info("[AGENDADOR] %s: %d job(s) rodando, %d parado(s)",
+                lider.estado, len(rodando), len(parados))
+    return {"rodando": rodando, "parados": parados}
+
+
+async def parar_lideranca() -> None:
+    """Solta o cadeado no shutdown — pelo script literal, nunca `DEL` cego."""
+    tarefa = _TAREFA_DE_LIDERANCA[0]
+    _TAREFA_DE_LIDERANCA[0] = None
+    if tarefa is not None:
+        tarefa.cancel()
+        try:
+            await tarefa
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+    lider = _LIDER[0]
+    if lider is not None:
+        await lider.soltar()
+
+
 def start_buffer_scheduler():
     """Start the APScheduler for buffer processing."""
+    from app.core.lider_do_agendador import LiderDoAgendador, agendador_ligado
+
+    # 🔴 `SCHEDULER_ENABLED=false` → este processo NÃO registra job NENHUM. É o
+    # que permite, amanhã, um serviço `smith-jobs` separado com a MESMA imagem
+    # (§9.4): a API sobe só atendendo requisição.
+    if not agendador_ligado():
+        logger.warning("[BUFFER SCHEDULER] DESLIGADO por SCHEDULER_ENABLED — "
+                       "nenhum job periodico neste processo")
+        return
+
     if not scheduler.running:
         scheduler.add_job(
             check_buffers,
@@ -1057,13 +1323,43 @@ def start_buffer_scheduler():
         )
 
         scheduler.start()
+
+        # 🔴 A LIDERANÇA COMEÇA FECHADA. O processo nasce SEGUIDOR: tudo que
+        # ENVIA fica pausado até o cadeado provar que este processo manda. A
+        # janela entre `start()` e a primeira aquisição é de milissegundos — e
+        # se fosse o contrário, seria a janela em que duas réplicas avisariam o
+        # mesmo grupo de suporte.
+        lider = LiderDoAgendador()
+        _LIDER[0] = lider
+        _aplicar_lideranca(lider)
+
+        # ⚠️ O BOOT NUNCA ESPERA O REDIS. A aquisição vive numa tarefa: o
+        # `lifespan` segue, o `/health` responde, e a liderança chega quando
+        # chegar (teto de 2 s por ida ao Redis, nova tentativa a cada 20 s).
+        try:
+            laco = asyncio.get_running_loop()
+            _TAREFA_DE_LIDERANCA[0] = laco.create_task(
+                lider.laco(_aplicar_lideranca))
+        except RuntimeError:
+            # Sem event loop (script, teste): fica seguidor, e os jobs que
+            # ENVIAM ficam parados. Nunca é o caso do produto — `main.py` chama
+            # isto de dentro do `lifespan`, que é assíncrono.
+            logger.warning("[AGENDADOR] sem event loop — este processo fica "
+                           "SEGUIDOR e nao roda job de envio")
+
         logger.info("✅ [BUFFER SCHEDULER] Started (interval: 1s, max_instances: 10)")
     else:
         logger.warning("[BUFFER SCHEDULER] Already running")
 
 
 def shutdown_buffer_scheduler():
-    """Shutdown the APScheduler gracefully."""
+    """Shutdown the APScheduler gracefully.
+
+    ⚠️ Quem solta o cadeado de líder é `parar_lideranca()` (assíncrona), e
+    `main.py` a chama ANTES desta — soltar exige `await`, e um cadeado não
+    solto simplesmente vence em <= 60 s.
+    """
+    _LIDER[0] = None
     if scheduler.running:
         scheduler.shutdown(wait=True)
         logger.info("🛑 [BUFFER SCHEDULER] Stopped")

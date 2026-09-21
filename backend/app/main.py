@@ -76,13 +76,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] ⚠️ Pricing cache preload failed (will use fallback): {e}")
 
+    # 2.5 🔴 O POÇO DE THREADS DEIXA DE SER IMPLÍCITO — SPEC-EXTRA-001.8 §9.3.
+    #
+    # 📊 21/09/2026: `grep -rn "asyncio.to_thread" app --include=*.py | wc -l`
+    # → 319 pontos, todos no MESMO executor default. O default do Python é
+    # `min(32, cpu+4)`: num contêiner de 1 vCPU são CINCO threads — e por elas
+    # passam as leituras ao Supabase e o envio ao WhatsApp (`requests.post`
+    # síncrono, 30 s de timeout) de TODAS as corretoras. Com a cota desta SPEC
+    # admitindo 24 turnos, 5 threads seria o gargalo que reintroduz "uma trava a
+    # outra" uma camada ABAIXO da cota, onde ninguém olharia.
+    #
+    # ⛔ ANTES do agendador de propósito: o primeiro `check_buffers` sai 1 s
+    # depois do start, e ele já usa o poço.
+    import asyncio as _asyncio
+
+    from app.core.lider_do_agendador import instalar_poco, tamanho_do_poco
+
+    app.state.executor_threads = tamanho_do_poco()
+    app.state.executor = instalar_poco(_asyncio.get_running_loop())
+    logger.info("[STARTUP] ✅ Poço de threads explícito: %d (EXECUTOR_THREADS)",
+                app.state.executor_threads)
+
     # 3. Iniciar scheduler do WhatsApp Buffer
     logger.info("[STARTUP] Starting WhatsApp Buffer Scheduler...")
     start_buffer_scheduler()
 
     # 4. F2 — Motor de Rotinas (Claude-Rotinas): agendador em background.
-    import asyncio as _asyncio
-
     from app.services.routine_engine import routine_scheduler_loop
 
     app.state.routine_scheduler = _asyncio.create_task(routine_scheduler_loop())
@@ -134,8 +153,27 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
     # === SHUTDOWN ===
+    # 🔴 Soltar o cadeado ANTES de parar o agendador: solto, outra réplica
+    # assume em milissegundos em vez de esperar o TTL de 60 s vencer. E a
+    # soltura confere o token — nunca `DEL` cego (SPEC-EXTRA-001.8 §9.2).
+    try:
+        from app.tasks.buffer_processor import parar_lideranca
+
+        await parar_lideranca()
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("[SHUTDOWN] cadeado de lider nao solto (%s)",
+                       type(_e).__name__)
+
     logger.info("[SHUTDOWN] Stopping WhatsApp Buffer Scheduler...")
     shutdown_buffer_scheduler()
+
+    try:
+        from app.core.lider_do_agendador import fechar_poco
+
+        fechar_poco(esperar=False)
+    except Exception as _e:  # noqa: BLE001
+        logger.warning("[SHUTDOWN] poco de threads nao fechado (%s)",
+                       type(_e).__name__)
 
     logger.info("[SHUTDOWN] Closing async Redis client...")
     await close_async_redis_client()
@@ -1059,6 +1097,28 @@ async def health_check(request: Request):
     # Estes três NÃO derrubam o health para 503: o Work OS e a conversa
     # funcionam sem eles. Marcar como doente o que ainda atende faria o
     # balanceador tirar do ar um serviço que estava trabalhando.
+    # 3.5 QUEM MANDA NOS JOBS, E QUANTAS THREADS ESTE PROCESSO TEM.
+    #
+    # 🔴 `scheduler` responde a pergunta que uma segunda réplica torna urgente:
+    # "este processo é o que roda os vigias?" — `lider` (roda), `seguidor` (não
+    # roda; outro processo tem o cadeado) ou `desligado` (SCHEDULER_ENABLED).
+    # ⛔ Dentro de `try`: o `/health` nunca pode quebrar por causa disto.
+    try:
+        from app.tasks.buffer_processor import estado_do_agendador
+
+        health_status["scheduler"] = estado_do_agendador()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[HEALTH] estado do agendador indisponivel (%s)",
+                       type(exc).__name__)
+        health_status["scheduler"] = "desconhecido"
+
+    try:
+        from app.core.lider_do_agendador import tamanho_do_poco, tamanho_instalado
+
+        health_status["executor_threads"] = tamanho_instalado() or tamanho_do_poco()
+    except Exception:  # noqa: BLE001
+        health_status["executor_threads"] = None
+
     health_status["storage"] = _checar_storage()
     health_status["redis"] = _checar_redis()
     health_status["qdrant"] = _checar_qdrant()
