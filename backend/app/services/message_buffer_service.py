@@ -70,6 +70,36 @@ LUA_RENOVA_SE_FOR_MEU = (
 #: corretoras — é por isso que `abrir_turno` o RECUSA (§5.3, opção A).
 ESCOPO_SEM_INTEGRACAO = "sem-integracao"
 
+#: O prefixo do buffer, UMA vez. `chave()` e `escopo_da_chave()` são a ida e a
+#: volta do mesmo formato — escrever "whatsapp_buffer" duas vezes é como se
+#: nasce uma das duas errada.
+BUFFER_PREFIXO = "whatsapp_buffer"
+
+# =============================================================================
+# SPEC-EXTRA-001.8 · OS CONTADORES POR CORRETORA — o que a Central vai LER
+# =============================================================================
+#
+# Mesma convenção de `platform_gate:{company_id}` (`platform_outbound.py:119`):
+# chave Redis com o tenant no caminho. ⚠️ Aqui o tenant é o ESCOPO do buffer (o
+# id da integração), que é o que o varredor tem em mãos — o `company_id` só é
+# resolvido dentro do turno.
+#
+# HASH `isolamento_escopo:{escopo}`, campos:
+#   em_execucao      turnos deste escopo em voo NESTE processo, agora
+#   em_espera        chaves prontas que esta varredura ADIOU
+#   ultimo_motivo    "cota" | "turno" | "breaker" | "sem_escopo" | ""
+#   ultimo_motivo_em ISO-8601 local do último adiamento
+#   atualizado_em    ISO-8601 local da última escrita
+#   expiradas        acumulado (HINCRBY) — some junto com a chave, em 24 h
+#   timeouts         acumulado (HINCRBY) de turnos cortados pelo teto de tempo
+#
+# ⛔ Nenhum telefone e nenhum texto entram aqui: o escopo é um id de integração.
+CONTADORES_PREFIXO = "isolamento_escopo"
+
+#: 24 h: a janela que a Central mostra, e o prazo para a chave sumir sozinha se
+#: a corretora parar de falar. Contador sem TTL vira lixo permanente no Redis.
+CONTADORES_TTL_SEGUNDOS = 24 * 3600
+
 
 @dataclass(frozen=True)
 class Turno:
@@ -271,6 +301,74 @@ def janela_de_espera(t: Tracos) -> int:
     return JANELA_FRASE_COMPLETA_SEGUNDOS
 
 
+def teto_da_rajada() -> int:
+    """O teto desde a PRIMEIRA mensagem. 🔴 O env só pode DESCER dos 25 s."""
+    return min(int(settings.BUFFER_MAX_WAIT_SECONDS or TETO_DA_RAJADA_SEGUNDOS),
+               TETO_DA_RAJADA_SEGUNDOS)
+
+
+def _esta_pronta(data: Dict[str, Any], agora: datetime) -> str:
+    """A regra de debounce, UMA vez — devolve `""`, `"janela"` ou `"teto"`.
+
+    🔴 SPEC-EXTRA-001.8 §5.2: a regra saiu de dentro de `should_process` para
+    que o LOTE (`prontas`) e a chave única perguntem **a mesma coisa**. ⛔ Duas
+    réguas é o defeito clássico: a varredura acha que está pronta, o caminho de
+    uma chave só acha que não, e a rajada fica presa entre as duas.
+
+    ⚠️ O comportamento NÃO muda: é o mesmo `>=` sobre a mesma janela adaptativa
+    e o mesmo teto. O que muda é ter um dono só (CLAUDE.md §9.4).
+
+    Devolver o MOTIVO em vez de `True` é o que deixa o log de `should_process`
+    continuar dizendo qual das duas portas abriu, sem calcular nada de novo.
+    """
+    dados = data or {}
+    itens = itens_do_buffer(dados)
+    try:
+        first_at = datetime.fromisoformat(dados["first_at"])
+        last_at = datetime.fromisoformat(dados["last_at"])
+    except (KeyError, TypeError, ValueError):
+        # ⛔ Buffer sem carimbo não é buffer pronto: processá-lo às cegas
+        # consumiria a rajada sem saber se ela terminou.
+        return ""
+
+    ultimo = itens[-1] if itens else {}
+    espera = janela_de_espera(tracos_da_mensagem(
+        texto_do_item(ultimo), tipo=str(ultimo.get("tipo") or "text")))
+
+    if (agora - last_at).total_seconds() >= espera:
+        return "janela"
+    if (agora - first_at).total_seconds() >= teto_da_rajada():
+        return "teto"
+    return ""
+
+
+def escopo_da_chave(chave: str) -> str:
+    """`whatsapp_buffer:{escopo}:{telefone}` → o escopo. `""` quando não serve.
+
+    🔴 **FAIL-CLOSED, e pela mesma razão da 001.2 §5.3.** Chave malformada,
+    telefone vazio, escopo vazio ou o rótulo fixo `sem-integracao` devolvem
+    `""` — e quem recebe `""` ADIA a chave, nunca a processa às cegas. O rótulo
+    `sem-integracao` é o mesmo para TODAS as corretoras: usá-lo como balde de
+    cota poria duas corretoras no mesmo teto, que é exatamente o defeito que
+    esta SPEC existe para matar.
+
+    📊 **E isto não tira resposta de ninguém (medido em 21/09/2026, leitura do
+    código):** uma chave `sem-integracao` já hoje NÃO é respondida —
+    `abrir_turno` a recusa por `escopo_serve_para_travar` (001.2 §5.3) e o
+    varredor devolve `False`. O que ela ganha aqui é aparecer na conta
+    (`adiadas["sem_escopo"]`) em vez de sumir sem uma linha (P-E0012-J10).
+    """
+    texto = str(chave or "")
+    if not texto.startswith(BUFFER_PREFIXO + ":"):
+        return ""
+    escopo, phone = partes_da_chave(texto)
+    if not str(phone or "").strip():
+        return ""
+    if not MessageBufferService.escopo_serve_para_travar(escopo):
+        return ""
+    return escopo
+
+
 def partes_da_chave(chave: str) -> tuple:
     """`whatsapp_buffer:{escopo}:{telefone}` -> `(escopo, telefone)`."""
     texto = str(chave or "")
@@ -362,8 +460,15 @@ class MessageBufferService:
         webhook tem quando o buffer é escrito. Sem ele, cai em
         `sem-integracao`, que continua isolando por não ser o telefone sozinho.
         """
-        esc = str(escopo or "").strip() or "sem-integracao"
-        return f"whatsapp_buffer:{esc}:{phone}"
+        esc = str(escopo or "").strip() or ESCOPO_SEM_INTEGRACAO
+        return f"{BUFFER_PREFIXO}:{esc}:{phone}"
+
+    @staticmethod
+    def escopo_da_chave(chave: str) -> str:
+        """A volta de `chave()`, fail-closed. ⚠️ Delega para a função de módulo
+        (o corpo de um método não enxerga o escopo da classe, então este nome
+        resolve para a função lá de cima — e a regra continua tendo UM dono)."""
+        return escopo_da_chave(chave)
 
     # ------------------------------------------------------------------ #
     # O BUFFER
@@ -478,6 +583,10 @@ class MessageBufferService:
         ociosidade que fecha a rajada sai de `janela_de_espera` sobre os traços
         do ÚLTIMO item — 3 s para um dado curto, 8 s para uma frase completa,
         18 s para uma frase que ficou pela metade.
+
+        🔴 SPEC-EXTRA-001.8 §5.2: a REGRA mudou de casa (foi para `_esta_pronta`)
+        e continua sendo UMA. Esta função fica: é o caminho de uma chave só, e a
+        001.2 a chama.
         """
         phone = str(key).rsplit(":", 1)[-1]
         raw_data = await self.redis.get(key)
@@ -486,40 +595,150 @@ class MessageBufferService:
             return False
 
         data = json.loads(raw_data)
-        itens = itens_do_buffer(data)
-
-        now = datetime.now()
-        first_at = datetime.fromisoformat(data["first_at"])
-        last_at = datetime.fromisoformat(data["last_at"])
-
-        seconds_since_last = (now - last_at).total_seconds()
-        seconds_since_first = (now - first_at).total_seconds()
-
-        ultimo = itens[-1] if itens else {}
-        espera = janela_de_espera(tracos_da_mensagem(
-            texto_do_item(ultimo), tipo=str(ultimo.get("tipo") or "text")))
-
-        if seconds_since_last >= espera:
+        motivo = _esta_pronta(data, datetime.now())
+        if motivo:
             logger.info(
-                f"[BUFFER] Trigger JANELA ({espera}s) for {phone} "
-                f"({seconds_since_last:.1f}s idle, {len(itens)} itens buffered)"
-            )
-            return True
+                "[BUFFER] Trigger %s for %s (%d itens buffered)",
+                motivo.upper(), phone, len(itens_do_buffer(data)))
+        return bool(motivo)
 
-        # 🔴 O teto é a constante da Meta (25 s). O env só pode DESCER dele:
-        # um `BUFFER_MAX_WAIT_SECONDS` de 300 (que o `.env.example` já ensinou)
-        # seguraria o segurado cinco minutos, e o "digitando..." da Meta some
-        # sozinho aos 25 — a promessa vazia nasceria do próprio teto.
-        teto = min(int(settings.BUFFER_MAX_WAIT_SECONDS or TETO_DA_RAJADA_SEGUNDOS),
-                   TETO_DA_RAJADA_SEGUNDOS)
-        if seconds_since_first >= teto:
-            logger.info(
-                f"[BUFFER] Trigger TETO ({teto}s) for {phone} "
-                f"({seconds_since_first:.1f}s duration, {len(itens)} itens buffered)"
-            )
-            return True
+    async def prontas(self, chaves: List[str]) -> List[str]:
+        """As chaves prontas do LOTE, em UM `MGET` — SPEC-EXTRA-001.8 §5.2.
 
-        return False
+        🔴 **Por que isto existe.** Hoje a conferência de prontidão (um GET de
+        ~1 ms) acontece DENTRO do semáforo global, atrás de até 6 turnos de
+        LLM: a conversa de uma corretora não fica atrás na fila da outra, ela
+        **nem é olhada** enquanto a outra gera. Um `MGET` para o lote inteiro
+        tira a pergunta barata de trás da espera cara.
+
+        ⛔ **NÃO consome o buffer.** `get_and_clear_buffer` continua o único
+        consumidor, e continua `GET`+`DEL` atômico. Aqui só se PERGUNTA.
+
+        🔴 A ordem de saída é da mais ANTIGA para a mais nova (`first_at`). Sem
+        ela a ordem seria a do SCAN — ordem de slot do Redis, arbitrária — e
+        uma conversa velha da mesma corretora poderia passar fome atrás das
+        novas, varredura após varredura.
+        """
+        lista = [str(c) for c in (chaves or []) if c]
+        if not lista:
+            return []
+        try:
+            brutos = await self.redis.mget(lista)
+        except Exception as erro:  # noqa: BLE001
+            # ⛔ Falhar aqui NÃO pode consumir buffer nenhum: ninguém é servido
+            # nesta varredura, todo mundo continua no Redis, e a de 1 s depois
+            # tenta de novo. ⚠️ Sem PII: a chave termina no telefone.
+            logger.error("[BUFFER] MGET de prontidão falhou (%s) — %d chave(s) "
+                         "ficam para a próxima varredura",
+                         type(erro).__name__, len(lista))
+            return []
+
+        agora = datetime.now()
+        candidatas = []
+        for posicao, (chave, bruto) in enumerate(zip(lista, brutos)):
+            if not bruto:
+                continue
+            try:
+                dados = json.loads(bruto)
+            except (TypeError, ValueError):
+                continue
+            motivo = _esta_pronta(dados, agora)
+            if not motivo:
+                continue
+            # `first_at` como TEXTO ISO ordena igual ao instante que ele
+            # representa; `posicao` desempata e mantém a saída determinística.
+            candidatas.append((str(dados.get("first_at") or ""), posicao, chave))
+
+        candidatas.sort()
+        return [chave for _idade, _pos, chave in candidatas]
+
+    # ------------------------------------------------------------------ #
+    # A CONTRAPRESSÃO (SPEC-EXTRA-001.8 §8) — quem espera não morre
+    # ------------------------------------------------------------------ #
+    async def renovar_vida(self, chave: str) -> bool:
+        """`EXPIRE` — renova SÓ o relógio de VIDA da chave.
+
+        🔴 **O defeito que isto mata, lido em 21/09/2026.** `add_message` grava
+        com `setex(chave, BUFFER_TTL_SECONDS=60, …)`. Com a fila andando em
+        1 s, 60 s é rede de segurança. Com 50 conversas na frente, é o Redis
+        **apagando a mensagem do segurado** depois que o webhook já respondeu
+        `{"status":"buffered"}` — sem uma linha em lugar nenhum.
+
+        ⛔ **Nunca reescreve o conteúdo.** Um `setex` com o mesmo JSON mexeria
+        em `last_at` e rematar o debounce faria a rajada **nunca fechar**: a
+        cada varredura a janela recomeçaria e o segurado esperaria para sempre.
+        """
+        if not chave:
+            return False
+        try:
+            return bool(await self.redis.expire(chave, settings.BUFFER_TTL_SECONDS))
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[BUFFER] não consegui renovar a vida de uma chave "
+                           "(%s)", type(erro).__name__)
+            return False
+
+    async def adiar(self, chave: str, *, motivo: str) -> bool:
+        """A chave pronta que NÃO foi servida agora continua existindo.
+
+        `motivo` é uma das palavras do vocabulário fechado da §8.2 — `cota`,
+        `turno`, `breaker`, `sem_escopo` — e é ela que vai para a conta e para
+        os contadores da Central.
+
+        ⚠️ **`sem_escopo` é o único que NÃO renova a vida**, e é decisão
+        declarada: uma chave sem integração identificada **nunca** vai poder ser
+        servida (`abrir_turno` a recusa, 001.2 §5.3), então renovar seria criar
+        chave imortal no Redis. Ela expira como já expira hoje — e agora aparece
+        na conta, que é o que faltava (P-E0012-J10).
+        """
+        if motivo == "sem_escopo":
+            return False
+        return await self.renovar_vida(chave)
+
+    # ------------------------------------------------------------------ #
+    # OS CONTADORES POR CORRETORA (SPEC-EXTRA-001.8 §10) — a Central LÊ
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def chave_dos_contadores(escopo: str) -> str:
+        """`isolamento_escopo:{escopo}` — a convenção de `platform_gate`."""
+        return f"{CONTADORES_PREFIXO}:{str(escopo or '').strip()}"
+
+    async def registrar_ocupacao(self, escopo: str, *, em_execucao: int = 0,
+                                 em_espera: int = 0, motivo: str = "",
+                                 expiradas: int = 0, timeouts: int = 0) -> bool:
+        """UMA escrita por escopo, por varredura — nunca uma por chave.
+
+        ⛔ **Falhar aqui não derruba atendimento nenhum.** Contador é para
+        alguém olhar; a resposta ao segurado não depende dele. Por isso tudo
+        vive dentro de um `try` e a função devolve `False` em silêncio (log sem
+        PII: o escopo é um id de integração, não uma pessoa).
+        """
+        alvo = str(escopo or "").strip()
+        if not alvo:
+            return False
+        chave = self.chave_dos_contadores(alvo)
+        agora = datetime.now().isoformat()
+        campos = {
+            "em_execucao": str(max(0, int(em_execucao))),
+            "em_espera": str(max(0, int(em_espera))),
+            "atualizado_em": agora,
+        }
+        if motivo:
+            campos["ultimo_motivo"] = str(motivo)
+            campos["ultimo_motivo_em"] = agora
+        try:
+            await self.redis.hset(chave, mapping=campos)
+            if expiradas:
+                await self.redis.hincrby(chave, "expiradas", int(expiradas))
+            if timeouts:
+                await self.redis.hincrby(chave, "timeouts", int(timeouts))
+            # 🔴 SEMPRE com TTL: contador sem prazo é lixo permanente no Redis
+            # de uma corretora que parou de falar.
+            await self.redis.expire(chave, CONTADORES_TTL_SEGUNDOS)
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[ISOLAMENTO] contador não gravado (%s)",
+                           type(erro).__name__)
+            return False
+        return True
 
     async def get_and_clear_buffer(self, key: str) -> Optional[Dict[str, Any]]:
         """
