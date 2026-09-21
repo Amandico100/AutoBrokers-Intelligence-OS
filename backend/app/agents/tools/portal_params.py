@@ -266,7 +266,7 @@ def descricao_da_tool() -> str:
         "que decidem QUAL peca do catalogo da apolice sera pedida — a ferramenta diz "
         "quais quando souber a peca. Mande-as em `especificos`. "
         "A ferramenta busca SOZINHA os dados reais da apolice (placa, veiculo, endereco, "
-        "seguradora) na InfoCap — NAO peca placa/CEP/endereco ao cliente e NUNCA os "
+        "seguradora) no sistema da corretora — NAO peca placa/CEP/endereco ao cliente e NUNCA os "
         "invente. Se houver mais de uma apolice AUTO ativa, ela devolve as opcoes para "
         "voce perguntar qual. Ela avisa o cliente que esta abrindo e volta com o "
         "resultado. NAO finaliza sozinha o pedido."
