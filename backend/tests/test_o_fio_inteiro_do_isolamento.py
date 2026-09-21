@@ -126,6 +126,10 @@ NOMES_DA_FATIA_6 = list(V.NOMES_DO_VARREDOR) + [
     "_PROVEDOR_POR_ESCOPO", "_PROVEDOR_CACHE_PADRAO_S", "_LANGCHAIN_PARA_RESOLVER",
     "check_buffers", "avisar_os_donos_da_fila", "_corretora_do_escopo",
     "_CORRETORA_POR_ESCOPO", "_CORRETORA_CACHE_PADRAO_S", "_ESCOPOS_ESPERANDO",
+    # A segunda pergunta da varredura, do conserto unico de 21/09/2026: o
+    # meio-aberto deixa passar UMA sonda (SPEC §7.4). `check_buffers` a passa
+    # para o processador, entao ela tem de existir no recorte.
+    "provedores_em_meio_aberto",
 ]
 
 
@@ -807,8 +811,111 @@ def caso_F7():
 # ===========================================================================
 # INFRAESTRUTURA
 # ===========================================================================
+# ===========================================================================
+# F8 — 🔴 QUEM CONSOME AVISA: o re-planejamento do turno também
+# ===========================================================================
+#
+# 📊 O defeito, medido em 21/09/2026 (`juiz/medir2.py`, M5b):
+#
+#     M5b r2.adiadas.turno=1 | r3.expiradas=1
+#         (a mensagem foi RESPONDIDA no mesmo turno — não se perdeu)
+#
+# A mensagem que chega no meio do turno é absorvida pela MESMA resposta
+# (`webhook.py`, `mesclar_o_que_chegou` — §6.3). Ela sai do Redis pela mão do
+# webhook, não do varredor. A varredura seguinte não a acha no SCAN e, sem
+# aviso, chama de "mensagem de segurado perdida" uma mensagem que foi
+# respondida — na tela que o Founder olha todo dia.
+#
+# ⛔ O elo tem DOIS lados, e os dois são provados aqui:
+#   ① o webhook REAL chama `marcar_consumida` no laço do re-planejamento (AST)
+#   ② com o aviso, a conta fecha; SEM o aviso (linha de controle), ela mente
+def caso_F8():
+    _p("\n=== F8. a mensagem absorvida pelo re-planejamento NAO e' perda ===")
+
+    # ---------------------------------------------------------------- ①
+    fonte = io.open(WEBHOOK_PY, encoding="utf-8").read()
+    arvore = ast.parse(fonte)
+    alvo = [n for n in ast.walk(arvore)
+            if isinstance(n, ast.AsyncFunctionDef)
+            and n.name == "process_whatsapp_message_background"]
+    check("o caminho real do atendimento existe", bool(alvo))
+    chamou = False
+    perto_do_mesclar = False
+    if alvo:
+        for no in ast.walk(alvo[0]):
+            if isinstance(no, ast.Call) and getattr(no.func, "id", "") == \
+                    "marcar_consumida":
+                chamou = True
+        # ...e a chamada mora no MESMO laço do `mesclar_o_que_chegou`: e' de la'
+        # que a mensagem sai do Redis.
+        for no in ast.walk(alvo[0]):
+            if not isinstance(no, ast.For):
+                continue
+            texto = ast.unparse(no)
+            if "mesclar_o_que_chegou" in texto and "marcar_consumida" in texto:
+                perto_do_mesclar = True
+    check("🔴 o webhook REAL avisa o consumo (`marcar_consumida`)", chamou,
+          "sem chamador, a anotacao existiria e ninguem a escreveria")
+    check("e o aviso esta DENTRO do laco do re-planejamento", perto_do_mesclar)
+
+    # ---------------------------------------------------------------- ②
+    async def corpo(avisa):
+        duble, servico, bp = preparar(cota=2)
+        chave = V.M.MessageBufferService.chave(servico, ESCOPO_A, V.TEL % 0) \
+            if False else None
+        await semear(servico, ESCOPO_A, 1)
+        V._andar(30)
+        _c, chaves = await duble.scan(0, match="whatsapp_buffer:*")
+        chave = list(chaves)[0]
+
+        p1 = asyncio.Event(); f1 = asyncio.Event()
+        p2 = asyncio.Event(); f2 = asyncio.Event()
+
+        async def borda(payload_dict=None, chave_do_buffer="", **kw):
+            p1.set()
+            await f1.wait()
+            novos = await servico.mesclar_o_que_chegou(chave_do_buffer)
+            if novos and avisa:
+                # E' a linha que o webhook REAL executa (conferida em ① acima).
+                bp["marcar_consumida"](chave_do_buffer)
+            p2.set()
+            await f2.wait()
+
+        v1 = asyncio.create_task(bp["processar_buffers_prontos"](
+            [chave], servico, borda))
+        await p1.wait()
+        # ...uma mensagem nova do MESMO segurado chega no meio do turno.
+        await semear(servico, ESCOPO_A, 1)
+        await V._envelhecer(servico, chave, ocioso_s=30, idade_s=30)
+        # A varredura seguinte encontra a trava de turno e ADIA por `turno`.
+        r2 = await bp["processar_buffers_prontos"]([chave], servico, borda)
+        f1.set()
+        await p2.wait()          # o turno absorveu a mensagem nova
+        # E agora a varredura seguinte: a chave nao esta mais no Redis.
+        r3 = await bp["processar_buffers_prontos"]([], servico, borda)
+        f2.set()
+        await v1
+        return r2, r3
+
+    r2, r3 = asyncio.run(corpo(True))
+    _p("      📊 COM o aviso: adiadas.turno=%d -> expiradas=%d"
+       % (r2["adiadas"]["turno"], r3["expiradas"]))
+    check("a mensagem nova foi mesmo ADIADA por `turno` (o cenario aconteceu)",
+          r2["adiadas"]["turno"] == 1, r2)
+    check("🔴 e ela NAO virou 'mensagem perdida' — foi respondida no mesmo turno",
+          r3["expiradas"] == 0, r3)
+
+    # 🔴 LINHA DE CONTROLE: sem o aviso, o MESMO cenario conta uma perda falsa.
+    r2b, r3b = asyncio.run(corpo(False))
+    _p("      📊 CONTROLE (sem o aviso): expiradas=%d" % r3b["expiradas"])
+    check("CONTROLE: sem `marcar_consumida` a MESMA rajada vira perda falsa",
+          r3b["expiradas"] == 1,
+          "deu %d — se nao contasse, o merito do aviso iria para o lugar errado "
+          "(CLAUDE.md §9.2)" % r3b["expiradas"])
+
+
 CASOS = {"F1": caso_F1, "F2": caso_F2, "F4": caso_F4, "F5": caso_F5,
-         "F6": caso_F6, "F7": caso_F7}
+         "F6": caso_F6, "F7": caso_F7, "F8": caso_F8}
 
 _TRY_DO_AVISO = """        try:
             await avisar_os_donos_da_fila(resumo)
@@ -827,12 +934,14 @@ MUTACOES = {
                 [(MBS_PY, '"em_espera": str(max(0, int(em_espera))),',
                   '"em_espera_agora": str(max(0, int(em_espera))),')],
                 ["F2"]),
+    # ANCORA ATUALIZADA em 21/09/2026 (conserto unico): a expressao virou a
+    # variavel `desde_a_espera`, lida no INSTANTE DO CONSUMO — porque e' ali que
+    # a chave sai de `aguardando`. A mutacao continua sendo a MESMA ideia.
     "M-FIO-3": ("a espera pela cota volta a ser a da ULTIMA tentativa",
                 [(BUFFER_PY,
-                  """                                estado["esperando_desde"].get(
-                                    chave, entrou_na_disputa)
-                                if com_cota else entrou_na_disputa)""",
-                  "                                entrou_na_disputa)")],
+                  """                            desde_a_espera = estado["esperando_desde"].get(
+                                chave, entrou_na_disputa)""",
+                  "                            desde_a_espera = entrou_na_disputa  # MUTACAO")],
                 ["F1"]),
     "M-FIO-4": ("o aviso leva o TOTAL da varredura, e nao a fila da corretora",
                 [(BUFFER_PY,
@@ -849,6 +958,14 @@ MUTACOES = {
                   "    if not aviso.aviso_ligado():\n        return 0",
                   "    if False:\n        return 0")],
                 ["F6"]),
+    # O elo do conserto unico: o webhook deixa de avisar que consumiu a
+    # mensagem absorvida pelo re-planejamento -> a varredura seguinte chama de
+    # "mensagem perdida" uma mensagem que foi RESPONDIDA.
+    "M-FIO-7": ("o re-planejamento deixa de avisar o consumo",
+                [(WEBHOOK_PY,
+                  "                        marcar_consumida(chave_do_buffer)",
+                  "                        pass  # MUTACAO")],
+                ["F8"]),
 }
 
 

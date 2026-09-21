@@ -608,10 +608,177 @@ def cenario_j():
           bool(com) and com[0].split()[1] == "True", saida[-500:])
 
 
+# ===========================================================================
+# (k) 🔴 O 5º RECURSO COMPARTILHADO — `max_instances` TAMBÉM É UM TETO
+# ===========================================================================
+#
+# 📊 O defeito, medido em 21/09/2026 com o AGENDADOR REAL (`check_buffers` do
+# produto + `AsyncIOScheduler` de verdade + Redis dublê; 1 s do produto = 0,2 s):
+#
+#     max_instances=10  -> a 4ª corretora esperou 3,24 s (= 16 s do produto)
+#     max_instances=100 -> a 4ª corretora esperou 0,08 s   (CONTROLE)
+#
+# A varredura só termina quando os TURNOS dela terminam (`gather`). Com 10
+# turnos em voo, 10 instâncias ficam presas e o APScheduler PULA as varreduras
+# seguintes: ninguém novo é atendido **e ninguém renova o TTL de 60 s de quem
+# espera**. Dispara com 3 corretoras na cota — o cenário desta SPEC inteira.
+#
+# ⚠️ ESTE É O CENÁRIO QUE FALTAVA: todos os outros guardas chamam
+# `processar_buffers_prontos` direto. Testou-se o motor, não QUEM O CHAMA
+# (CLAUDE.md §9.4, um andar acima).
+_INSTANCIAS = r"""
+import asyncio, os, sys, time, types, logging
+
+RAIZ = os.getcwd()
+sys.path.insert(0, RAIZ); sys.path.insert(0, os.path.join(RAIZ, "tests"))
+
+import test_uma_corretora_nao_trava_a_outra as T
+import app.tasks.buffer_processor as BP
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+logging.getLogger("apscheduler").setLevel(logging.ERROR)
+
+# O teto do produto, LIDO do modulo — ou o da linha de controle.
+_forcado = os.environ.get("MAX_INSTANCIAS_DO_TESTE", "").strip()
+MAXI = int(_forcado) if _forcado else (
+    BP._env_int("WHATSAPP_BUFFER_PARALELISMO", BP._PARALELISMO_COM_COTA_PADRAO)
+    + BP._FOLGA_DE_INSTANCIAS)
+
+TICK = 0.2            # 1 s do produto
+TURNO = 6.0           # um turno LONGO (o p95 do produto e' 107 s)
+# 100% sinteticos (CLAUDE.md §13.9)
+ESCOPOS = ["integ-corretora-%s-0000-0000-0000" % x for x in "abc"]
+D = "integ-corretora-d-0000-0000-0000"
+
+
+async def main():
+    s = T.servico_novo()
+    t0 = time.monotonic(); visto = {}
+
+    async def borda(payload_dict=None, **kw):
+        e = T.escopo_do_turno(payload_dict)
+        visto.setdefault(e, []).append(round(time.monotonic() - t0, 2))
+        await asyncio.sleep(0.05 if e == D else TURNO)
+
+    falso = types.ModuleType("app.api.webhook")
+    falso.process_whatsapp_message_background = borda
+    sys.modules["app.api.webhook"] = falso
+    async def _r(): return s.redis
+    async def _s(): return s
+    BP.get_async_redis_client = _r; BP.get_message_buffer_service = _s
+    import app.core.relogio_do_modelo as R
+    _mem = R._RedisDeMemoria({})
+    async def _cli(): return _mem
+    R._cliente = _cli
+
+    sch = AsyncIOScheduler()
+    sch.add_job(BP.check_buffers, "interval", seconds=TICK, id="v",
+                max_instances=MAXI, coalesce=True, misfire_grace_time=1)
+    sch.start()
+    n = 0
+    for volta in range(4):          # 12 conversas, 3 corretoras, UMA por tick
+        for e in ESCOPOS:
+            (k,) = await T._semear(s, e, 1, inicio=n); n += 1
+            await T._envelhecer(s, k, ocioso_s=30, idade_s=30)
+            await asyncio.sleep(TICK)
+    await asyncio.sleep(0.6)
+    chegou = time.monotonic() - t0
+    # ...e SO' AGORA a QUARTA corretora manda a primeira mensagem dela.
+    (kd,) = await T._semear(s, D, 1, inicio=900)
+    await T._envelhecer(s, kd, ocioso_s=30, idade_s=30)
+    while D not in visto and time.monotonic() - t0 < 20:
+        await asyncio.sleep(0.05)
+    espera = (visto.get(D, [99])[0] - chegou)
+    print("RESULTADO %d %.2f %d" % (MAXI, espera, sum(
+        len(v) for k, v in visto.items() if k != D)))
+    sch.shutdown(wait=False)
+
+asyncio.run(main())
+"""
+
+#: 📊 Um turno de 6 s, escala 0,2 s: esperar mais de 1 s e' esperar o turno de
+#: outra corretora acabar. Abaixo disso e' o custo de uma volta do agendador.
+_ESPERA_QUE_DENUNCIA_S = 1.0
+
+
+def _medir_instancias(forcado=None):
+    ambiente = {"SCHEDULER_ENABLED": "true",
+                "SUPABASE_URL": "http://127.0.0.1:9",
+                "SUPABASE_KEY": "aaa.bbb.ccc",
+                "REDIS_URL": "redis://127.0.0.1:9/0"}
+    ambiente.pop("ISOLAMENTO_AVISO_AO_DONO", None)
+    if forcado is not None:
+        ambiente["MAX_INSTANCIAS_DO_TESTE"] = str(forcado)
+    saida = _num_subprocesso(_INSTANCIAS, env=ambiente)
+    linhas = [l for l in saida.splitlines() if l.startswith("RESULTADO")]
+    if not linhas:
+        return None, None, None, saida
+    _r, maxi, espera, em_voo = linhas[0].split()
+    return int(maxi), float(espera), int(em_voo), saida
+
+
+def cenario_k():
+    _p("\n=== (k) o AGENDADOR REAL com turnos LONGOS: a 4a corretora nao espera ===")
+
+    # --- (k1) A DECLARACAO: o numero sai da MESMA fonte do teto global -----
+    fonte = io.open(BUFFER_PY, encoding="utf-8").read()
+    arvore = ast.parse(fonte)
+    achou = None
+    for no in ast.walk(arvore):
+        if not (isinstance(no, ast.Call)
+                and getattr(no.func, "attr", "") == "add_job"):
+            continue
+        ids = [kw.value.value for kw in no.keywords
+               if kw.arg == "id" and isinstance(kw.value, ast.Constant)]
+        if ids and ids[0] == "whatsapp_buffer_check":
+            achou = no
+    check("o job da varredura existe no fonte", achou is not None)
+    if achou is not None:
+        por_nome = {kw.arg: kw.value for kw in achou.keywords}
+        mi = por_nome.get("max_instances")
+        check("🔴 `max_instances` NAO e um literal solto (envelheceria sozinho, "
+              "longe do teto global)",
+              mi is not None and not isinstance(mi, ast.Constant),
+              ast.dump(mi)[:120] if mi is not None else "AUSENTE")
+        texto = ast.unparse(mi) if mi is not None else ""
+        check("e ele deriva do teto global + uma folga NOMEADA (%s)" % texto,
+              "_FOLGA_DE_INSTANCIAS" in texto and "_teto_global" in texto, texto)
+        for chave in ("coalesce", "misfire_grace_time"):
+            check("o job declara `%s` — varredura pulada nao vira avalanche "
+                  "quando destrava" % chave, chave in por_nome, sorted(por_nome))
+
+    # --- (k2) O COMPORTAMENTO, com o agendador DE VERDADE ------------------
+    maxi, espera, em_voo, saida = _medir_instancias()
+    _p("      📊 max_instances do PRODUTO = %s | 4a corretora esperou %.2f s "
+       "(%s turnos em voo)" % (maxi, espera if espera is not None else -1, em_voo))
+    check("a medicao rodou (agendador real + check_buffers real)",
+          espera is not None, saida[-500:])
+    if espera is None:
+        return
+    check("e o cenario encheu mesmo as instancias (12 turnos LONGOS em voo)",
+          em_voo >= 10, em_voo)
+    check("🔴 a 4a corretora foi atendida SEM esperar os turnos das outras "
+          "(%.2f s < %.1f s)" % (espera, _ESPERA_QUE_DENUNCIA_S),
+          espera < _ESPERA_QUE_DENUNCIA_S,
+          "ela esperou %.2f s — com turno de 180 s no produto, e' isso que ela "
+          "espera" % espera)
+
+    # 🔴 LINHA DE CONTROLE: o MESMO cenario com o teto de 10 (o valor de antes).
+    # Sem ela, um cenario que nunca enche as instancias ficaria verde de graca.
+    _maxi10, espera10, _v10, saida10 = _medir_instancias(forcado=10)
+    _p("      📊 CONTROLE (max_instances=10, o valor de antes) = %.2f s"
+       % (espera10 if espera10 is not None else -1))
+    check("CONTROLE: com `max_instances=10` a MESMA 4a corretora ESPERA",
+          espera10 is not None and espera10 >= _ESPERA_QUE_DENUNCIA_S,
+          "deu %.2f s — se nao esperasse, o merito do teto novo iria para o "
+          "lugar errado (CLAUDE.md §9.2)"
+          % (espera10 if espera10 is not None else -1))
+
+
 CENARIOS = {
     "a": cenario_a, "b": cenario_b, "c": cenario_c, "d": cenario_d,
     "e": cenario_e, "f": cenario_f, "g": cenario_g, "h": cenario_h,
-    "i": cenario_i, "j": cenario_j,
+    "i": cenario_i, "j": cenario_j, "k": cenario_k,
 }
 
 #: Cada mutação: (arquivo, texto original, texto mutado, cenários que TÊM de
@@ -637,14 +804,23 @@ MUTACOES = {
               "    if not agendador_ligado():",
               "    if False:",
               ["f"], "start_buffer_scheduler ignora SCHEDULER_ENABLED"),
+    # ANCORA ATUALIZADA em 21/09/2026: `check_buffers` passou a fazer a SEGUNDA
+    # pergunta da varredura (`meio_abertos`), e a linha cresceu.
     "M-E-6": (BUFFER_PY,
-              "            barrados=provedores_barrados, provedor_de=provedor_do_escopo)",
+              "            barrados=provedores_barrados, provedor_de=provedor_do_escopo,\n"
+              "            meio_abertos=provedores_em_meio_aberto)",
               "            )",
               ["i"], "a costura deixa de ser ligada em check_buffers"),
     "M-E-7": (BUFFER_PY,
               "                if getattr(job, \"next_run_time\", None) is not None:\n                    scheduler.pause_job(job.id)",
               "                pass",
               ["j"], "o agendador deixa de PAUSAR o que nao pode rodar"),
+    # O 5o recurso compartilhado: o teto de instancias da varredura volta a ser
+    # um literal 10, menor que o teto global de 24 — e vira ELE o teto real.
+    "M-E-8": (BUFFER_PY,
+              "            max_instances=_teto_global + _FOLGA_DE_INSTANCIAS,",
+              "            max_instances=10,",
+              ["k"], "max_instances volta ao literal 10"),
 }
 
 

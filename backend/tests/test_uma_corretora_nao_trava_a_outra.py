@@ -109,6 +109,13 @@ NOMES_DO_VARREDOR = [
     "_semaforo_global", "_tomar_cota", "_soltar_cota", "_colher_expiradas",
     "_adiar", "_renovar_vida", "ordenar_em_rodizio", "_atraso_de_teste_ms",
     "_fechar_a_conta", "processar_buffers_prontos",
+    # 🔴 As pecas do CONSERTO UNICO (21/09/2026). Elas entram aqui e nao so no
+    # guarda da costura porque sao alcancadas pelo caminho COMUM: o aviso de
+    # consumo roda em toda conversa atendida, e a falha de teto roda em todo
+    # turno cortado. Faltando no recorte, o defeito apareceria como `NameError`
+    # dentro do teste — nunca dentro do produto, que e onde se descobriria tarde.
+    "marcar_consumida", "_contar_timeout_no_breaker", "_sonda_do_meio_aberto",
+    "_FOLGA_DE_INSTANCIAS",
 ]
 
 
@@ -317,7 +324,12 @@ def _zerar_admissao(bp):
     est = bp["_ADMISSAO"]
     est["em_voo_por_escopo"].clear()
     est["aguardando"].clear()
-    est["servidas"].clear()
+    # ⚠️ `servidas` FOI APOSENTADO no conserto unico de 21/09/2026 (era ele que
+    # transformava conversa respondida em "mensagem perdida"); a chamada fica
+    # tolerante para que scripts externos que ainda a citem continuem rodando.
+    est.get("servidas", {}).clear()
+    est["motivo_da_chave"].clear()
+    est["esperando_desde"].clear()
     est["semaforos"].clear()
     est["em_voo_global"] = 0
     est["pico_por_escopo"].clear()
@@ -588,10 +600,26 @@ def g2():
 # desligada a mesma medida vai a 2,47 s: o guarda tem 80x de margem para
 # distinguir as duas coisas.
 #
-# Por isso o piso é 0,050 s: acima do custo de olhar, muito abaixo do custo de
-# esperar. `_PISO_LONGE_DO_TURNO` é o guarda do próprio piso.
-PISO_DO_X_S = 0.050
-_TURNO_DA_DOENTE_S = 0.30
+# 🔴 **E O PISO FOI RECALIBRADO EM 21/09/2026, POR MEDIÇÃO — NÃO AFROUXADO.**
+#
+# 📊 O guarda PISCAVA no relógio do Windows: numa bateria completa deu VERMELHO
+# com `0,0529 <= 0,0511` (p95 com a doente = 0,0529 s contra um X de 0,050 s),
+# e isolado deu 5/5 verde entre 0,022 e 0,040 s. Um gate que pisca custa uma
+# triagem por SPEC e ensina a ignorá-lo (CLAUDE.md §9.3).
+#
+# A CONTA do piso novo, com os três números medidos:
+#
+#     custo de OLHAR 54 chaves (o que sobra com a cota) .. 0,024 a 0,053 s
+#     piso do X ........................................ 0,120 s   (2,3x o pior)
+#     um TURNO da corretora doente ..................... 0,600 s   (5x o piso)
+#     a MESMA rodada com a cota DESLIGADA (controle) ... ~5 s      (40x o piso)
+#
+# ⛔ O piso subiu e o turno da doente subiu JUNTO, para a razão
+# `piso x 4 <= turno` continuar valendo: calibrar ruído de relógio é mexer no
+# piso do ruído, nunca na distância entre "olhar" e "esperar". A linha de
+# controle (cota desligada) continua tendo de ficar VERMELHA.
+PISO_DO_X_S = 0.120
+_TURNO_DA_DOENTE_S = 0.60
 
 
 def _p95(amostras):
@@ -604,7 +632,7 @@ def _p95(amostras):
 
 
 async def _uma_rodada_g3(bp, *, com_doente, cota, paralelismo,
-                         lento_s=0.30, rapido_s=0.002):
+                         lento_s=0.60, rapido_s=0.002):
     """A varredura 1 satura (ou não) com a corretora DOENTE e FICA EM VOO; o que
     se mede é quanto o SEGURADO da corretora sadia espera até o motor chegar
     nele — atravessando quantas varreduras forem precisas, que é como o
@@ -891,6 +919,208 @@ def g10():
                 os.environ[k] = v
 
 
+
+# ===========================================================================
+# G11 — 🔴 A CONTA DE `expiradas` TEM DONO, E SÓ CONTA PERDA DE VERDADE
+# ===========================================================================
+#
+# 📊 O DEFEITO, reproduzido em 21/09/2026 com o motor REAL
+# (`python %TEMP%\laudos-0018\redteam\atk1b_cai_na_tela_da_outra.py`):
+#
+#     conversas respondidas: 3 de 3 (A,A,B) — NENHUMA perdida
+#     expiradas por varredura: [0, 0, 0, 1]
+#     TELA Central -> corretora-A | expiradas_acumuladas = 0
+#     TELA Central -> corretora-B | expiradas_acumuladas = 1   <- a perda FALSA
+#                                                                 de A, na tela de B
+#
+# Três defeitos na MESMA conta, e nenhum deles precisa de carga anormal — basta
+# uma varredura com duas conversas de durações DIFERENTES, que é o regime normal
+# (varredura de 1 s, turno de 10 a 100 s):
+#
+#   (a) `servidas` era limpo por QUALQUER varredura sobreposta e lido pela dona
+#       só no fim: conversa RESPONDIDA virava "expirada" duas varreduras depois;
+#   (b) `expiradas`/`timeouts` eram totais GLOBAIS gravados no hash de TODO
+#       escopo ativo: a perda de uma corretora aparecia na tela da outra;
+#   (c) turno cortado/falho era contado DUAS vezes (timeout e, depois, expirada).
+#
+# ⛔ E O GUARDA PRECISA DO CASO POSITIVO. Sem ele, um contador que nunca mais
+# contasse nada ficaria verde — e o número que o Founder olha todo dia teria
+# virado um zero permanente. Carimbo, não guarda (CLAUDE.md §9.3).
+class _LoggerQueAnota:
+    """Um logger que GUARDA o que foi dito — sem PII, é só texto de log."""
+
+    def __init__(self):
+        self.linhas = []
+
+    def _anota(self, nivel):
+        def _fn(msg, *args, **kw):
+            try:
+                self.linhas.append((nivel, str(msg) % args if args else str(msg)))
+            except Exception:  # noqa: BLE001
+                self.linhas.append((nivel, str(msg)))
+        return _fn
+
+    def __getattr__(self, nome):
+        return self._anota(nome)
+
+
+def _hash_de(s, escopo):
+    return dict(s.redis.hashes.get(
+        M.MessageBufferService.chave_dos_contadores(escopo)) or {})
+
+
+def g11():
+    _p("\n[G11] A conta de perdas: duracoes DESIGUAIS, varreduras SOBREPOSTAS, "
+       "duas corretoras")
+    bp = carregar_varredor()
+
+    # ------------------------------------------------------------------ #
+    # (a)+(b) A CORRIDA — e a segunda corretora em voo
+    # ------------------------------------------------------------------ #
+    async def corrida():
+        _zerar_admissao(bp)
+        RELOGIO[0] = datetime(2026, 9, 21, 9, 0, 0)
+        s = servico_novo()
+        await _semear(s, ESCOPO_A, 2)
+        await _semear(s, ESCOPO_B, 1, inicio=70)
+        _andar(30)
+        entregues = []
+
+        async def borda(payload_dict=None, **kw):
+            escopo = escopo_do_turno(payload_dict)
+            i = len(entregues)
+            entregues.append(escopo)
+            # 🔴 DURACOES DESIGUAIS, e a corretora B com o turno mais LONGO de
+            # todos: e' ela que continua em voo na terceira varredura, e e' por
+            # isso que a perda FALSA da corretora A caia na tela DELA.
+            if escopo == ESCOPO_B:
+                await asyncio.sleep(0.6)
+            else:
+                await asyncio.sleep(0.10 if i == 0 else 0.05)
+
+        async def varrer(atraso):
+            await asyncio.sleep(atraso)
+            _c, chaves = await s.redis.scan(match="whatsapp_buffer:*")
+            # ⚠️ COTA 1: e' o que faz a segunda conversa da corretora A ser
+            # ADIADA na primeira varredura e SERVIDA por uma varredura
+            # SOBREPOSTA depois — a corrida exata do defeito.
+            return await bp["processar_buffers_prontos"](
+                list(chaves), s, borda, cota_por_corretora=1)
+
+        resumos = await asyncio.gather(varrer(0), varrer(0.2), varrer(0.35),
+                                       varrer(0.5))
+        contas = [r["expiradas"] for r in resumos if isinstance(r, dict)]
+        return entregues, contas, _hash_de(s, ESCOPO_A), _hash_de(s, ESCOPO_B)
+
+    entregues, contas, hash_a, hash_b = asyncio.run(corrida())
+    _p("      📊 conversas respondidas: %d de 3 | expiradas por varredura: %s"
+       % (len(entregues), contas))
+    check("as 3 conversas foram RESPONDIDAS (nenhuma se perdeu de verdade)",
+          len(entregues) == 3, entregues)
+    check("🔴 `expiradas == 0` em TODA varredura — conversa respondida nao e' "
+          "perda", all(n == 0 for n in contas), contas)
+    check("e nenhuma perda falsa entrou no hash de NENHUMA das duas",
+          hash_a.get("expiradas") in (None, "0")
+          and hash_b.get("expiradas") in (None, "0"),
+          "A=%s B=%s" % (hash_a.get("expiradas"), hash_b.get("expiradas")))
+
+    # ------------------------------------------------------------------ #
+    # (b) O TIMEOUT DE UMA NAO MANCHA A OUTRA
+    # ------------------------------------------------------------------ #
+    async def timeout_com_vizinha():
+        _zerar_admissao(bp)
+        RELOGIO[0] = datetime(2026, 9, 21, 9, 0, 0)
+        s = servico_novo()
+        await _semear(s, ESCOPO_A, 1)
+        # A corretora B tem 5 conversas e cota 4: uma sobra na fila, e e' por
+        # isso que ela aparece em `por_escopo` — o cenario em que o numero
+        # global caia no hash dela.
+        await _semear(s, ESCOPO_B, 5, inicio=50)
+        _andar(30)
+
+        async def borda(payload_dict=None, **kw):
+            await asyncio.sleep(5 if escopo_do_turno(payload_dict) == ESCOPO_A
+                                else 0.01)
+
+        _c, chaves = await s.redis.scan(match="whatsapp_buffer:*")
+        r = await bp["processar_buffers_prontos"](
+            list(chaves), s, borda, timeout_s=0.2)
+        return r, _hash_de(s, ESCOPO_A), _hash_de(s, ESCOPO_B)
+
+    r, hash_a, hash_b = asyncio.run(timeout_com_vizinha())
+    check("🔴 o `timeouts` da corretora A foi gravado no hash DELA",
+          hash_a.get("timeouts") == "1", "A=%s" % hash_a.get("timeouts"))
+    check("🔴 e o hash da corretora B ficou INTACTO (nada de timeout dela)",
+          hash_b.get("timeouts") in (None, "0"),
+          "B=%s — o numero de uma corretora na tela da outra"
+          % hash_b.get("timeouts"))
+    check("e o turno cortado NAO virou tambem uma 'expirada'",
+          r["expiradas"] == 0, r)
+
+    # ------------------------------------------------------------------ #
+    # (c) O CASO POSITIVO — uma chave EXPIRA DE VERDADE
+    # ------------------------------------------------------------------ #
+    #
+    # ⛔ Sem este cenario o guarda acima ficaria verde com um contador que
+    # nunca mais contasse nada — e o numero que existe para dizer "perdi
+    # mensagem de segurado" seria um zero permanente.
+    async def perda_de_verdade():
+        _zerar_admissao(bp)
+        RELOGIO[0] = datetime(2026, 9, 21, 9, 0, 0)
+        s = servico_novo()
+        await _semear(s, ESCOPO_A, 2)
+        # A corretora B esta ATIVA na mesma varredura: e' ela quem prova que o
+        # numero vai para o DONO, e nao para todo mundo.
+        await _semear(s, ESCOPO_B, 1, inicio=70)
+        _andar(30)
+
+        async def borda(**kw):
+            await asyncio.sleep(0)
+
+        # Cota 1: uma conversa de A e' atendida, a outra e' ADIADA.
+        _c, chaves = await s.redis.scan(match="whatsapp_buffer:*")
+        r1 = await bp["processar_buffers_prontos"](
+            list(chaves), s, borda, cota_por_corretora=1)
+        # ...e agora NINGUEM varre por 90 s: o `setex` de 60 s do Redis apaga a
+        # rajada de quem estava na fila. E' a perda que o numero existe para ver.
+        _andar(90)
+        # A corretora B volta a falar com DUAS conversas e cota 1: uma e'
+        # atendida e a outra fica na FILA dela. E' isso que poe a corretora B na
+        # conta da mesma varredura que colhe a perda de A — e e' so' assim que
+        # se prova que o numero foi para o DONO, e nao para todo escopo ativo.
+        await _semear(s, ESCOPO_B, 2, inicio=80)
+        _andar(30)
+        anotador = _LoggerQueAnota()
+        guardado = bp["logger"]
+        bp["logger"] = anotador
+        try:
+            _c, chaves = await s.redis.scan(match="whatsapp_buffer:*")
+            r2 = await bp["processar_buffers_prontos"](
+                list(chaves), s, borda, cota_por_corretora=1)
+        finally:
+            bp["logger"] = guardado
+        return r1, r2, _hash_de(s, ESCOPO_A), _hash_de(s, ESCOPO_B), anotador.linhas
+
+    r1, r2, hash_a, hash_b, linhas = asyncio.run(perda_de_verdade())
+    _p("      📊 CASO POSITIVO: adiadas=%s -> expiradas=%s (hash A=%s, B=%s)"
+       % (sum(r1["adiadas"].values()), r2["expiradas"],
+          hash_a.get("expiradas"), hash_b.get("expiradas")))
+    check("a conversa foi mesmo ADIADA antes (senao nao havia o que perder)",
+          r1["adiadas"]["cota"] >= 1, r1)
+    check("🔴 POSITIVO: a chave que sumiu do Redis esperando conta 1 perda",
+          r2["expiradas"] == 1, r2)
+    check("🔴 POSITIVO: e ela foi gravada no hash do DONO (corretora A)",
+          hash_a.get("expiradas") == "1", "A=%s" % hash_a.get("expiradas"))
+    check("🔴 POSITIVO: o hash da corretora B nao recebeu nada",
+          hash_b.get("expiradas") in (None, "0"), "B=%s" % hash_b.get("expiradas"))
+    perdas = [t for n, t in linhas if "SUMIRAM" in t]
+    check("🔴 POSITIVO: a perda deixou LINHA DE LOG (antes nao deixava nenhuma)",
+          len(perdas) == 1, [t[:80] for _n, t in linhas][:4])
+    check("e a linha de log nao carrega telefone nem chave (sem PII)",
+          all("5511" not in t and "whatsapp_buffer" not in t for t in perdas),
+          perdas)
+
+
 # ===========================================================================
 # G5 — A LINHA DE CONTROLE HERDADA: os guardas vizinhos continuam verdes
 # ===========================================================================
@@ -912,7 +1142,7 @@ def g5():
 
 
 GATES = {"FIO": fio, "G1": g1, "G2": g2, "G3": g3, "G4": g4, "D1": d1,
-         "G7": g7, "G10": g10, "G5": g5}
+         "G7": g7, "G10": g10, "G11": g11, "G5": g5}
 
 
 # ===========================================================================
@@ -961,6 +1191,19 @@ MUTACOES = [
      "    if not permitidas or alvo not in permitidas:",
      "    if False:  # MUTACAO",
      "G10"),
+    # G11 — quem CONSOME deixa de avisar: a conversa respondida continua em
+    #       `aguardando` e vira "mensagem perdida" duas varreduras depois.
+    #       É o defeito (a) do red team B1, com outro nome.
+    ("M-18-11", BP,
+     "                            marcar_consumida(chave)",
+     "                            pass  # MUTACAO",
+     "G11"),
+    # G11 — o número da perda volta a ser GLOBAL e cai no hash de TODO escopo
+    #       ativo: a perda de uma corretora aparece na tela da outra.
+    ("M-18-12", BP,
+     "                expiradas=int(expiradas_por_escopo.get(escopo, 0)),",
+     "                expiradas=sum(expiradas_por_escopo.values()),  # MUTACAO",
+     "G11"),
     # D1 — o estado de admissão volta a ser LOCAL da varredura
     ("M-18-D1", BP,
      "        estado = _ADMISSAO",

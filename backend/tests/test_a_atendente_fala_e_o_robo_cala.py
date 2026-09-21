@@ -264,11 +264,19 @@ def motor():
     import app.core.database as _database
     import app.core.redis as _redis
     import app.services.integration_service as _integration
-    import app.api.webhook as w
 
     banco = BancoFalso()
     redis_falso = RedisFalso()
 
+    # 🔴 O DUBLÊ VEM **ANTES** DO IMPORT DO WEBHOOK.
+    #
+    # 📊 Achado em 21/09/2026: `app/api/webhook.py:56` roda
+    # `supabase = get_supabase_client()` no TOPO do módulo. Importar o webhook
+    # com o dublê instalado depois construía um cliente Supabase **de verdade**
+    # — com a `SUPABASE_URL` apontando para produção. Com uma URL morta o teste
+    # ficava verde (ninguém consultava), e com uma chave fora do formato JWT ele
+    # explodia em `SupabaseException: Invalid API key`. As duas leituras dizem a
+    # mesma coisa: o guarda dependia de o endereço estar quebrado.
     _database.get_supabase_client = lambda: banco
     _redis.get_redis_client = lambda: redis_falso
 
@@ -277,6 +285,8 @@ def motor():
 
     _redis.get_async_redis_client = _async_redis
     _integration.get_integration_service = lambda *_a, **_k: ServicoDeIntegracaoFalso()
+
+    import app.api.webhook as w        # ⚠️ só AGORA, com o mundo dublado
 
     w.supabase = banco
 

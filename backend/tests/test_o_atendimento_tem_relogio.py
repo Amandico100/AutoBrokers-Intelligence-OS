@@ -116,7 +116,12 @@ def _estados_do_chat() -> set:
 
 def teste_o_vocabulario_e_o_mesmo_do_chat():
     print("\n[2] VOCABULÁRIO — o atendimento fala a língua do chat, medida no chat.py")
-    import app.api.webhook as w
+    # 🔴 `H.motor()`, e NUNCA `import app.api.webhook` direto: `webhook.py:56`
+    # roda `supabase = get_supabase_client()` no topo do modulo, e importar sem
+    # o duble instalado construia um cliente Supabase DE VERDADE (📊 21/09/2026:
+    # com chave fora do formato JWT o guarda explodia em `Invalid API key`; com
+    # URL morta ficava verde sem consultar nada).
+    w = H.motor()
 
     do_chat = _chaves_do_turno_do_chat()
     checar("status" in do_chat and "total_ms" in do_chat and "stages" in do_chat,
@@ -153,7 +158,7 @@ def teste_o_vocabulario_e_o_mesmo_do_chat():
 
 def teste_a_funcao_pura_nunca_inventa_zero():
     print("\n[3] `relogio_da_fila` — ausente é None, presente é o número")
-    import app.api.webhook as w
+    w = H.motor()
 
     sem = w.montar_turno_do_atendimento(status="complete", total_ms=900)
     checar(sem["stage_ms"]["buffer_espera"] is None
@@ -191,7 +196,9 @@ async def _conversa_fixa(**_k) -> str:
 
 
 def _rodar_o_turno(*, relogio_da_fila=None, quebrar_a_gravacao: bool = False,
-                   envio_falha: bool = False, envio_explode: bool = False) -> dict:
+                   envio_falha: bool = False, envio_explode: bool = False,
+                   demora_no_modelo: float = 0.0, demora_no_envio: float = 0.0,
+                   cortar_apos_s=None) -> dict:
     """Roda `process_whatsapp_message_background` DE VERDADE.
 
     Devolve `{"enviados", "mensagens", "erro"}`. 🔴 O que se mede é o que ficou
@@ -223,7 +230,20 @@ def _rodar_o_turno(*, relogio_da_fila=None, quebrar_a_gravacao: bool = False,
                 raise RuntimeError("o canal está fora do ar")
             return True
 
-    if envio_explode:
+    class _EnvioQueDemora(H.EnvioFalso):
+        """`send_message` roda numa THREAD e NAO e' cancelavel. Depois que ela
+        comeca, o balao pode sair mesmo com o turno cortado — e e' por isso que
+        o ponto sem volta existe."""
+
+        def send_message(self, to_number=None, text=None, integration=None, *a, **k):
+            import time as _t
+            _t.sleep(demora_no_envio)
+            return super().send_message(to_number=to_number, text=text,
+                                        integration=integration)
+
+    if demora_no_envio:
+        envio = _EnvioQueDemora()
+    elif envio_explode:
         envio = _EnvioQueExplode()
     elif envio_falha:
         envio = _EnvioQueFalha()
@@ -250,6 +270,10 @@ def _rodar_o_turno(*, relogio_da_fila=None, quebrar_a_gravacao: bool = False,
             pass
 
         async def process_message(self, *_a, **_k):
+            # 🔴 O PROVEDOR PENDURADO: é aqui que o teto de turno do processador
+            # corta a corrotina, com `CancelledError`.
+            if demora_no_modelo:
+                await asyncio.sleep(demora_no_modelo)
             return "Claro! Vou verificar sua apolice agora mesmo.", {}
 
     w.LangChainService = _LangChainFalso
@@ -268,8 +292,33 @@ def _rodar_o_turno(*, relogio_da_fila=None, quebrar_a_gravacao: bool = False,
         "_integration_id": "int-1",
     }
     erro = None
+
+    async def _com_corte():
+        """O TETO DE TURNO, em escala de teste: `create_task` + `cancel`.
+
+        ⚠️ E' EXATAMENTE o que `asyncio.wait_for(chamada, timeout=teto)` faz em
+        `buffer_processor.processar_buffers_prontos` — cancelar a corrotina do
+        atendimento. O que se mede e' o comportamento do MOTOR sob cancelamento,
+        nao o de uma copia dele (CLAUDE.md §9.4).
+        """
+        tarefa = asyncio.create_task(
+            w.process_whatsapp_message_background(entrada)
+            if relogio_da_fila is None else
+            w.process_whatsapp_message_background(
+                entrada, relogio_da_fila=relogio_da_fila))
+        await asyncio.sleep(float(cortar_apos_s))
+        tarefa.cancel()
+        try:
+            await tarefa
+        finally:
+            # A thread do envio, se ja tinha comecado, ainda esta correndo:
+            # esperar por ela e' o que permite CONTAR os baloes que sairam.
+            await asyncio.sleep(0.6)
+
     try:
-        if relogio_da_fila is None:
+        if cortar_apos_s is not None:
+            asyncio.run(_com_corte())
+        elif relogio_da_fila is None:
             asyncio.run(w.process_whatsapp_message_background(entrada))
         else:
             asyncio.run(w.process_whatsapp_message_background(
@@ -324,17 +373,38 @@ def teste_o_turno_vai_ao_banco_com_o_relogio():
 
 def teste_o_contrato_da_fila_chega_ao_banco():
     print("\n[3b] MOTOR — `relogio_da_fila` atravessa até o banco")
-    r = _rodar_o_turno(relogio_da_fila={"buffer_espera_ms": 8123,
-                                        "fila_cota_ms": 46})
+    # ⚠️ 📊 OS NÚMEROS MUDARAM EM 21/09/2026, E A AFIRMAÇÃO TAMBÉM.
+    #
+    # O guarda antigo exigia `total_ms >= buffer_espera + fila_cota`. Era a soma
+    # que o webhook fazia — e ela era ERRADA: `buffer_espera` vai do `first_at`
+    # da rajada até o consumo, e a espera pela cota acontece DENTRO desse
+    # intervalo (`juiz/medir.py` M2: `{'buffer_espera_ms': 11000,
+    # 'fila_cota_ms': 1012}` virava `_antes_daqui = 12012` para um tempo real de
+    # 11000 ms). O teste guardava uma verdade vencida, e verdade vencida ensina
+    # a ignorar teste (CLAUDE.md §9.3): ele foi ATUALIZADO e a lição MIGROU —
+    # agora ele afirma que `fila_cota` **não** se soma.
+    r = _rodar_o_turno(relogio_da_fila={"buffer_espera_ms": 11000,
+                                        "fila_cota_ms": 1008})
     turno = dict((_resposta_do_agente(r["mensagens"]).get("payload") or {}).get("turn") or {})
     ms = dict(turno.get("stage_ms") or {})
-    checar(ms.get("buffer_espera") == 8123 and ms.get("fila_cota") == 46,
+    checar(ms.get("buffer_espera") == 11000 and ms.get("fila_cota") == 1008,
            "os dois números da fila chegaram inteiros ao `payload.turn`",
            repr(ms))
-    checar(isinstance(turno.get("total_ms"), int)
-           and turno["total_ms"] >= 8123 + 46,
-           "e `total_ms` passa a cobrir a espera da fila — nunca menos que a soma "
-           "do que foi medido", repr(turno.get("total_ms")))
+    total = turno.get("total_ms")
+    daqui = (int(total) - 11000) if isinstance(total, int) else None
+    checar(isinstance(total, int) and total >= 11000,
+           "`total_ms` cobre a espera no buffer (%s ms)" % total, repr(ms))
+    checar(daqui is not None and daqui < 1008,
+           "🔴 e NÃO soma `fila_cota` outra vez: o que sobra depois do buffer "
+           "(%s ms) é o turno desta função, menor que os 1008 ms da fila" % daqui,
+           "a soma dupla daria >= %d; veio %s" % (11000 + 1008, total))
+    # 🔴 A LINHA DE CONTROLE: a asserção acima CONSEGUE ficar vermelha — a conta
+    # errada (a de antes) produz exatamente o valor que ela proíbe.
+    par(not ((11000 + 1008) - 11000 < 1008),
+        "a soma dupla (`buffer_espera + fila_cota`) violaria a asserção acima",
+        "é ela que dá direito à conclusão (CLAUDE.md §9.2)")
+    checar(isinstance(ms.get("grafo"), int) and isinstance(ms.get("envio"), int),
+           "e `grafo` e `envio`, que SÃO parcelas, continuam medidos", repr(ms))
 
 
 def teste_o_relogio_que_explode_nao_derruba_o_atendimento():
@@ -399,6 +469,65 @@ def teste_o_envio_que_falha_vira_status_failed():
         "o guarda [1] e este não podem ficar verdes pelo mesmo caminho")
 
 
+
+
+# ===========================================================================
+# 🔴 O TURNO CORTADO PELO TETO DE TEMPO — E O SEGURADO NÃO FICA EM SILÊNCIO
+# ===========================================================================
+#
+# 📊 O defeito (21/09/2026): o teto de turno do processador corta com
+# `asyncio.wait_for`, que levanta `CancelledError` — e `CancelledError` **não é
+# `Exception`**. O `except Exception` do webhook, o que manda o aviso honesto,
+# NÃO rodava. A rajada já tinha saído do Redis (`get_and_clear`), nada era dito,
+# nada voltava ao buffer e nenhum humano era avisado:
+# `redteam/atk3c_teto_de_turno.py` →
+# `o segurado recebeu ATE o corte: [] | DEPOIS do corte: []`.
+#
+# ⚖️ E a regra tem DOIS lados, porque o `send_message` roda numa thread que não
+# é cancelável:
+#   envio ainda NÃO começou → RIGOR:     vai o MESMO aviso honesto
+#   envio JÁ começou        → IGUALDADE: não vai NADA a mais (duplicar é pior)
+def teste_o_turno_cortado_nao_vira_silencio():
+    print("\n[6] MOTOR — o teto de tempo corta o turno: o segurado ouve o quê?")
+
+    # (i) O CORTE ANTES DO ENVIO -> o aviso honesto SAI, e é ele mesmo.
+    antes = _rodar_o_turno(demora_no_modelo=5.0, cortar_apos_s=0.4)
+    textos = [e["texto"] for e in antes["enviados"]]
+    checar(isinstance(antes["erro"], asyncio.CancelledError),
+           "🔴 o `CancelledError` PROPAGA — engolir cancelamento é defeito",
+           type(antes["erro"]).__name__ if antes["erro"] else "nenhum erro")
+    checar(len(textos) == 1,
+           "o segurado recebeu EXATAMENTE uma mensagem",
+           "%d: %s" % (len(textos), [t[:30] for t in textos]))
+    import app.api.webhook as _w_mod
+    checar(bool(textos) and textos[0] == _w_mod.TEXTO_DA_FALHA_HONESTA,
+           "🔴 e ela é o MESMO aviso honesto do caminho de erro — nenhum texto "
+           "novo, nenhum 'não entendi'",
+           repr(textos[0][:40]) if textos else "NADA")
+
+    # (ii) O CORTE DURANTE O ENVIO -> nada a mais. O balão pode sair; o que não
+    #      pode é o segurado receber a resposta E um pedido de desculpas.
+    durante = _rodar_o_turno(demora_no_envio=1.2, cortar_apos_s=0.4)
+    textos2 = [e["texto"] for e in durante["enviados"]]
+    desculpas = [t for t in textos2 if "falha" in t.lower()]
+    checar(isinstance(durante["erro"], asyncio.CancelledError),
+           "o `CancelledError` propaga também neste caminho",
+           type(durante["erro"]).__name__ if durante["erro"] else "nenhum erro")
+    checar(not desculpas,
+           "🔴 corte DURANTE o envio: ZERO mensagens a mais — nada de resposta "
+           "duplicada nem desculpa em cima de resposta",
+           "%d envio(s): %s" % (len(textos2), [t[:30] for t in textos2]))
+
+    # 🔴 LINHA DE CONTROLE: sem corte, o MESMO cenário entrega a RESPOSTA — e
+    # não o aviso honesto. Sem ela, um pipeline que nunca falasse com o segurado
+    # deixaria (ii) verde pelo motivo errado.
+    normal = _rodar_o_turno(demora_no_envio=0.05)
+    textos3 = [e["texto"] for e in normal["enviados"]]
+    par(len(textos3) == 1 and textos3[0] != _w_mod.TEXTO_DA_FALHA_HONESTA,
+        "sem o corte, o MESMO cenário entrega a RESPOSTA do agente",
+        "%s" % [t[:30] for t in textos3])
+
+
 def main() -> int:
     print("=" * 72)
     print("O ATENDIMENTO TEM RELÓGIO — no vocabulário do chat")
@@ -409,6 +538,7 @@ def main() -> int:
     teste_o_contrato_da_fila_chega_ao_banco()
     teste_o_envio_que_falha_vira_status_failed()
     teste_o_relogio_que_explode_nao_derruba_o_atendimento()
+    teste_o_turno_cortado_nao_vira_silencio()
 
     print("\n" + "=" * 72)
     if _PROBLEMAS:

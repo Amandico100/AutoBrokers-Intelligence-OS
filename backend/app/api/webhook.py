@@ -234,6 +234,16 @@ def payload_do_pipeline(wa_message_id: Optional[str], direcao: str,
 #: As quatro etapas de um turno de atendimento, na ordem em que acontecem.
 #: ⚠️ As duas primeiras são medidas pelo PROCESSADOR (a rajada e a cota) e
 #: chegam por `relogio_da_fila`; as duas últimas são medidas aqui.
+#:
+#: 🔴 **AS QUATRO NÃO SE SOMAM — `fila_cota` MORA DENTRO DE `buffer_espera`.**
+#: 📊 Medido em 21/09/2026 (`juiz/medir.py` M2): `buffer_espera` vai do
+#: `first_at` da rajada até o consumo; a espera pela cota da corretora acontece
+#: DENTRO desse intervalo. Ela está na lista porque responde *"quanto desta
+#: espera foi fila de corretora?"* — é um RECORTE, não uma parcela. O nome do
+#: campo não podia mentir sobre o que ele guarda (CLAUDE.md §12.1), e a soma que
+#: ele induzia inflava `total_ms` justamente sob carga.
+#:
+#:     total_ms = buffer_espera + grafo + envio     (fila_cota ⊂ buffer_espera)
 ETAPAS_DO_ATENDIMENTO = ("buffer_espera", "fila_cota", "grafo", "envio")
 
 #: O `status` de um turno de atendimento. 📊 `complete` e `failed` são os
@@ -242,6 +252,24 @@ ETAPAS_DO_ATENDIMENTO = ("buffer_espera", "fila_cota", "grafo", "envio")
 STATUS_COMPLETO = "complete"
 STATUS_FALHOU = "failed"
 STATUS_TIMEOUT = "timeout"
+
+#: 🔴 O AVISO HONESTO DE FALHA — **um texto só, dois caminhos**.
+#:
+#: Ele sai quando o turno explodiu (`except Exception`) e quando o turno foi
+#: CORTADO pelo teto de tempo (`except asyncio.CancelledError`), e é o MESMO
+#: texto de propósito: o segurado não tem por que aprender a diferença entre um
+#: erro nosso e um relógio nosso. ⛔ Ele **não promete nada que não vá
+#: acontecer**: não diz que um atendente vai assumir (ninguém foi acionado), não
+#: diz que a mensagem ficou registrada (a gravação pode ter sido o que falhou) e
+#: não estima prazo. Diz o que é verdade e o que a pessoa pode fazer agora.
+#:
+#: ⚠️ É uma CONSTANTE, e não duas cópias do mesmo parágrafo: duas grafias do
+#: mesmo texto é como uma das duas nasce diferente (CLAUDE.md §5).
+TEXTO_DA_FALHA_HONESTA = (
+    "Tive uma falha técnica aqui e não consegui processar sua "
+    "última mensagem. Pode enviar de novo, por favor? "
+    "Se for urgente, ligue para a corretora."
+)
 
 
 def _ms_medido(valor: Any) -> Optional[int]:
@@ -276,6 +304,9 @@ def montar_turno_do_atendimento(
     `relogio_da_fila` é o contrato com o processador
     (`buffer_processor.processar_buffers_prontos`): `{"buffer_espera_ms": int,
     "fila_cota_ms": int}`. Ausente → as duas etapas saem `None`.
+
+    ⚠️ `fila_cota` é um RECORTE de `buffer_espera`, não uma parcela a somar —
+    ver o comentário de `ETAPAS_DO_ATENDIMENTO`.
     """
     da_fila = dict(relogio_da_fila or {})
     medidos = {
@@ -948,8 +979,16 @@ async def process_whatsapp_message_background(
     #                             DEPOIS do envio (métrica, preview, billing)
     #                             não pode virar um segundo balão dizendo que
     #                             deu errado quando deu certo.
+    #   `_envio_comecou`          🔴 O PONTO SEM VOLTA. `send_message` roda numa
+    #                             THREAD e não é cancelável: depois desta marca,
+    #                             os balões podem sair mesmo que o turno seja
+    #                             cortado. Antes dela vale o RIGOR (mandar o
+    #                             aviso honesto); depois dela vale a IGUALDADE
+    #                             (não mandar mais nada) — uma resposta
+    #                             duplicada é pior que uma resposta atrasada.
     _pode_falar_ao_cliente = False
     _resposta_ja_enviada = False
+    _envio_comecou = False
     try:
         # LOG SANITIZADO: Apenas último 4 dígitos do telefone
         safe_phone = f"...{str(payload_dict.get('phone', ''))[-4:]}"
@@ -1328,6 +1367,19 @@ async def process_whatsapp_message_background(
                     message_text = texto_combinado_dos_itens(_itens_do_turno)
                     logger.info("[TURNO] re-planejamento %d: +%d item(ns) na MESMA "
                                 "resposta", _rodada + 1, len(_novos))
+                    # 🔴 QUEM CONSOME AVISA (SPEC-EXTRA-001.8 §8.2). Esta
+                    # mensagem acabou de sair do Redis e vai ser RESPONDIDA
+                    # neste mesmo turno. 📊 Sem este aviso, a varredura seguinte
+                    # não a encontrava no SCAN e a contava como "mensagem de
+                    # segurado perdida" na tela da Central (juiz M5b:
+                    # `r2.adiadas.turno=1 | r3.expiradas=1`).
+                    try:
+                        from app.tasks.buffer_processor import marcar_consumida
+
+                        marcar_consumida(chave_do_buffer)
+                    except Exception as _e_marca:  # noqa: BLE001
+                        logger.debug("[TURNO] consumo nao anotado (%s)",
+                                     type(_e_marca).__name__)
             # A mídia da rajada é lida AQUI, dentro do turno (§6.2).
             if _itens_do_turno:
                 _extra, _url_img = await _midia_do_turno(
@@ -1687,6 +1739,7 @@ async def process_whatsapp_message_background(
         if not _pode:
             logger.info("[WEBHOOK] barrado pela porteira: %s", _motivo)
             # Enviar mensagem informativa ao usuário
+            _envio_comecou = True     # 🔴 ponto sem volta (ver a declaração)
             await asyncio.to_thread(
                 whatsapp_service.send_message,
                 to_number=payload.phone,
@@ -1991,6 +2044,9 @@ async def process_whatsapp_message_background(
         # ⚠️ `to_thread` não muda um argumento nem um retorno: o valor devolvido
         # é o mesmo `bool`, e a exceção sobe pelo mesmo caminho. O que muda é
         # que o loop continua atendendo os outros enquanto este envio acontece.
+        # 🔴 A MARCA VEM IMEDIATAMENTE ANTES DA CHAMADA, sem nenhum `await` no
+        # meio: é ela que diz ao tratador de cancelamento se ainda dá para falar.
+        _envio_comecou = True
         _comeco_do_envio = _tempo.monotonic()
         success = await asyncio.to_thread(
             whatsapp_service.send_message,
@@ -2049,12 +2105,18 @@ async def process_whatsapp_message_background(
         #
         # ⚠️ `total_ms` cobre O QUE FOI MEDIDO: quando o processador entrega o
         # relógio da fila, ele começa no instante em que a mensagem entrou no
-        # buffer; sem ele, começa na entrada desta função. Nunca menor que a
-        # soma das etapas medidas.
+        # buffer; sem ele, começa na entrada desta função.
+        #
+        # 🔴 **`fila_cota` NÃO SE SOMA — ELA JÁ ESTÁ DENTRO DE `buffer_espera`.**
+        # 📊 Medido em 21/09/2026 (`juiz/medir.py` M2): `buffer_espera_ms` vai do
+        # `first_at` da rajada até o CONSUMO, e a espera por cota acontece no
+        # meio desse intervalo — `{'buffer_espera_ms': 11000, 'fila_cota_ms':
+        # 1012}` virava `_antes_daqui = 12012` quando o tempo real era 11000. O
+        # p95 por corretora inflava exatamente no cenário que esta SPEC existe
+        # para medir: o de fila. `fila_cota` é uma FATIA, não uma parcela.
         try:
             _da_fila = dict(relogio_da_fila or {})
-            _antes_daqui = (_ms_medido(_da_fila.get("buffer_espera_ms")) or 0) + \
-                           (_ms_medido(_da_fila.get("fila_cota_ms")) or 0)
+            _antes_daqui = _ms_medido(_da_fila.get("buffer_espera_ms")) or 0
             await gravar_o_relogio_do_turno(
                 supabase.client,
                 message_id=_id_da_resposta,
@@ -2067,9 +2129,61 @@ async def process_whatsapp_message_background(
                     grafo_ms=_grafo_ms, envio_ms=_envio_ms,
                 ),
             )
-        except BaseException as _e_relogio:  # noqa: BLE001
+        except Exception as _e_relogio:  # noqa: BLE001
+            # ⚠️ `Exception`, NUNCA `BaseException`: `asyncio.CancelledError`
+            # não é `Exception`, e engoli-lo aqui faria o turno CANCELADO (teto
+            # de tempo, shutdown) seguir rodando como se nada tivesse
+            # acontecido. O relógio não pode derrubar o atendimento por um erro
+            # comum — e também não pode segurar um cancelamento.
             logger.warning("[RELOGIO] turno não medido (%s)",
                            type(_e_relogio).__name__)
+
+    except asyncio.CancelledError:
+        # =====================================================================
+        # 🔴 O TURNO FOI CORTADO — E O SEGURADO NÃO FICA EM SILÊNCIO POR ISSO
+        # =====================================================================
+        #
+        # 📊 O defeito (21/09/2026): o teto de turno do processador corta com
+        # `asyncio.wait_for`, que levanta `CancelledError` — e `CancelledError`
+        # **não é `Exception`**. O `except` de baixo, o que manda o aviso
+        # honesto, não rodava; a rajada já tinha saído do Redis
+        # (`get_and_clear`); nada era dito, nada voltava ao buffer, e nenhum
+        # humano era avisado. `redteam/atk3c_teto_de_turno.py`:
+        # `o segurado recebeu ATE o corte: [] | DEPOIS do corte: []`.
+        #
+        # ⚖️ A REGRA É O PONTO SEM VOLTA:
+        #   envio AINDA NÃO começou  -> rigor: vai o MESMO aviso honesto
+        #   envio JÁ começou         -> igualdade: não vai mais NADA. A thread
+        #                               do `send_message` não é cancelável e os
+        #                               balões restantes ainda podem sair; uma
+        #                               resposta duplicada é pior que uma
+        #                               resposta atrasada.
+        #
+        # ⛔ `shield` para que o próprio cancelamento não aborte o aviso, e
+        # `raise` no fim: engolir cancelamento é defeito, não conserto.
+        if _pode_falar_ao_cliente and not _resposta_ja_enviada \
+                and not _envio_comecou:
+            try:
+                await asyncio.shield(asyncio.to_thread(
+                    whatsapp_service.send_message,
+                    to_number=payload.phone,
+                    text=TEXTO_DA_FALHA_HONESTA,
+                    integration=integration,
+                ))
+                logger.info("[WEBHOOK BACKGROUND] turno cortado antes do envio "
+                            "— aviso honesto enviado ao cliente")
+            except BaseException:  # noqa: BLE001
+                logger.error("[WEBHOOK BACKGROUND] turno cortado e nem o aviso "
+                             "saiu — cliente SEM resposta")
+        elif _envio_comecou and not _resposta_ja_enviada:
+            # ⚠️ E o log NÃO MENTE: daqui não se sabe quantos balões saíram.
+            logger.error("[WEBHOOK BACKGROUND] turno cortado DURANTE o envio — "
+                         "não sei se o segurado recebeu; nada mais foi dito "
+                         "para não duplicar")
+        else:
+            logger.warning("[WEBHOOK BACKGROUND] turno cortado depois da "
+                           "resposta — nada a mais foi dito")
+        raise
 
     except Exception as e:
         logger.error(f"[WEBHOOK BACKGROUND] Critical Error: {str(e)}", exc_info=True)
@@ -2088,9 +2202,7 @@ async def process_whatsapp_message_background(
                 await asyncio.to_thread(
                     whatsapp_service.send_message,
                     to_number=payload.phone,
-                    text=("Tive uma falha técnica aqui e não consegui processar sua "
-                          "última mensagem. Pode enviar de novo, por favor? "
-                          "Se for urgente, ligue para a corretora."),
+                    text=TEXTO_DA_FALHA_HONESTA,
                     integration=integration,
                 )
                 logger.info("[WEBHOOK BACKGROUND] fallback honesto enviado ao cliente")

@@ -151,6 +151,8 @@ def _carregar():
     nomes = list(V.NOMES_DO_VARREDOR) + [
         "provedores_barrados", "_provedor_da_chave",
         "_PROVEDOR_POR_ESCOPO", "_PROVEDOR_CACHE_PADRAO_S",
+        # A segunda pergunta da varredura (conserto unico, 21/09/2026).
+        "provedores_em_meio_aberto",
     ]
     return V.carregar_varredor(nomes)
 
@@ -177,10 +179,12 @@ class Borda:
         return _nada()
 
 
-async def _varrer(bp, servico, duble, processar, *, barrados, provedor_de):
+async def _varrer(bp, servico, duble, processar, *, barrados, provedor_de,
+                  meio_abertos=None, timeout_s=0):
     _cursor, chaves = await duble.scan(0, match="whatsapp_buffer:*")
     return await bp["processar_buffers_prontos"](
-        chaves, servico, processar, barrados=barrados, provedor_de=provedor_de)
+        chaves, servico, processar, barrados=barrados, provedor_de=provedor_de,
+        meio_abertos=meio_abertos, timeout_s=timeout_s)
 
 
 async def _abrir_o_disjuntor(RM, provedor):
@@ -440,29 +444,257 @@ def caso_5():
     asyncio.run(corpo())
 
 
+async def _envelhecer_tudo(duble, servico):
+    """Renova o TTL de TODAS as chaves de buffer sem mexer no relogio global.
+
+    ⚠️ O produto faz isso sozinho (`adiar` -> `renovar_vida` a cada varredura);
+    aqui ele serve para o cenario poder ANDAR os 120 s que o disjuntor precisa
+    para ir a meio-aberto sem que o TTL de 60 s do buffer coma a rajada antes.
+    """
+    _c, chaves = await duble.scan(0, match="whatsapp_buffer:*")
+    for chave in list(chaves):
+        await V._envelhecer(servico, chave, ocioso_s=30, idade_s=30)
+
+
+async def _ate_o_meio_aberto(duble, servico, RM, provedor):
+    """Anda o relogio ate o disjuntor ir sozinho a MEIO-ABERTO, sem perder buffer."""
+    for _ in range(10):
+        estado = await RM.estado_do_breaker(provedor)
+        if estado.get("estado") == "meio_aberto":
+            return estado
+        # ⚠️ RENOVAR ANTES DE ANDAR: o TTL do buffer é de 60 s e o relógio anda
+        # 40 s por volta. Renovar depois seria renovar o que já morreu.
+        await _envelhecer_tudo(duble, servico)
+        V._andar(40)
+    return await RM.estado_do_breaker(provedor)
+
+
+# ===========================================================================
+# 6. A INEQUAÇÃO — o teto do TURNO é maior que o pior caso de UMA chamada
+# ===========================================================================
+#
+# 🔴 O DEFEITO, medido em 21/09/2026 (`juiz/medir.py` M4):
+#
+#     LLM_TIMEOUT_SEGUNDOS 90 s x (LLM_MAX_RETRIES 2 + 1) = 270 s por chamada
+#     WHATSAPP_TURNO_TIMEOUT_S ....................... =  180 s
+#     270 > 180  ->  o teto do turno corta ANTES de o modelo desistir
+#
+# E cortar antes não é "cortar mais cedo": o corte é `CancelledError`, que NÃO é
+# `Exception` — nenhum `except` do webhook rodava, a rajada já tinha saído do
+# Redis, e o segurado ficava em SILÊNCIO definitivo.
+#
+# ⛔ OS NÚMEROS SÃO LIDOS DOS DOIS MÓDULOS, NUNCA REESCRITOS AQUI. Reescrever o
+# 90 e o 300 neste arquivo é como a inequação passaria a valer sobre outra
+# coisa no dia em que um dos dois mudasse (CLAUDE.md §5, §9.4).
+def caso_6():
+    _p("\n=== 6. o teto do TURNO > pior caso de UMA chamada (a inequacao) ===")
+    bp = _carregar()
+    import app.core.relogio_do_modelo as RM
+
+    teto_do_turno = float(bp["_env_int"]("WHATSAPP_TURNO_TIMEOUT_S",
+                                         bp["_TURNO_TIMEOUT_PADRAO_S"]))
+    pior_caso = float(RM.TIMEOUT_S) * (int(RM.MAX_RETRIES) + 1)
+    _p("      📊 LLM_TIMEOUT_SEGUNDOS=%s x (LLM_MAX_RETRIES=%s + 1) = %.0f s"
+       % (RM.TIMEOUT_S, RM.MAX_RETRIES, pior_caso))
+    _p("      📊 WHATSAPP_TURNO_TIMEOUT_S = %.0f s" % teto_do_turno)
+
+    check("🔴 o teto do TURNO (%.0f s) e MAIOR que o pior caso de UMA chamada "
+          "(%.0f s)" % (teto_do_turno, pior_caso),
+          pior_caso < teto_do_turno,
+          "com o teto menor, `wait_for` corta com CancelledError antes de o SDK "
+          "desistir: nenhum `except Exception` roda, a rajada ja saiu do Redis "
+          "e o segurado nao ouve nem a resposta nem a desculpa honesta")
+    check("e os dois numeros foram LIDOS dos modulos, nao escritos aqui",
+          bp["_TURNO_TIMEOUT_PADRAO_S"] == teto_do_turno
+          and isinstance(RM.TIMEOUT_S, float),
+          "teto=%s TIMEOUT_S=%s" % (bp["_TURNO_TIMEOUT_PADRAO_S"], RM.TIMEOUT_S))
+
+    # 🔴 LINHA DE CONTROLE: a inequacao CONSEGUE ser falsa. Sem ela, um guarda
+    # que sempre compara dois numeros quaisquer nao guarda nada (§9.3).
+    check("CONTROLE: com o teto de 180 s (o valor de antes) a MESMA conta falha",
+          not (pior_caso < 180.0),
+          "se 180 tambem passasse, a comparacao nao estaria medindo nada")
+
+
+# ===========================================================================
+# 7. O PROVEDOR PENDURADO ABRE O DISJUNTOR — e as proximas ficam RETIDAS
+# ===========================================================================
+def caso_7():
+    _p("\n=== 7. N turnos cortados pelo teto -> o disjuntor ABRE -> as "
+       "proximas conversas ficam GUARDADAS ===")
+
+    async def corpo():
+        duble, RM, servico, bp = _preparar()
+        resolver = _resolvedor({V.ESCOPO_A: PROVEDOR_A})
+        n = RM.BREAKER_FALHAS
+
+        async def pendura(payload_dict=None, **kw):
+            """O provedor PENDURADO: a chamada nunca volta."""
+            await asyncio.sleep(3600)
+
+        estado_inicial = await RM.estado_do_breaker(PROVEDOR_A)
+        check("o disjuntor comeca FECHADO", estado_inicial.get("estado") == "fechado",
+              estado_inicial)
+
+        cortados = 0
+        for volta in range(n):
+            (chave,) = await V._semear(servico, V.ESCOPO_A, 1, inicio=200 + volta)
+            # ⚠️ O carimbo envelhece, o RELOGIO NAO anda: a janela do breaker
+            # e de 60 s (`LLM_BREAKER_JANELA_SEGUNDOS`), e andar 30 s por volta
+            # zeraria o contador de falhas no meio da medicao — o guarda ficaria
+            # verde por engano, medindo outra coisa.
+            await V._envelhecer(servico, chave, ocioso_s=30, idade_s=30)
+            r = await _varrer(bp, servico, duble, pendura,
+                              barrados=bp["provedores_barrados"],
+                              provedor_de=resolver, timeout_s=0.05)
+            cortados += r["timeouts"]
+
+        estado = await RM.estado_do_breaker(PROVEDOR_A)
+        check("os %d turnos foram cortados pelo teto" % n, cortados == n,
+              "cortados=%d" % cortados)
+        check("🔴 e o disjuntor do provedor ABRIU — o teto de turno conta como "
+              "falha DELE", estado.get("estado") == "aberto", estado)
+
+        # E agora a conversa SEGUINTE fica retida, com o buffer intacto.
+        (chave_seguinte,) = await V._semear(servico, V.ESCOPO_A, 1, inicio=300)
+        await V._envelhecer(servico, chave_seguinte, ocioso_s=30, idade_s=30)
+        borda = Borda()
+        r = await _varrer(bp, servico, duble, borda,
+                          barrados=bp["provedores_barrados"],
+                          provedor_de=resolver, timeout_s=0.05)
+        vivas = [k for k in (await duble.scan(0, match="whatsapp_buffer:*"))[1]
+                 if V.M.escopo_da_chave(k) == V.ESCOPO_A]
+        check("🔴 a conversa seguinte foi ADIADA por 'breaker', nao consumida",
+              r["adiadas"]["breaker"] == 1 and r["processadas"] == 0, r)
+        check("🔴 e o buffer dela CONTINUA no Redis (a rajada nao se perdeu)",
+              len(vivas) >= 1, vivas)
+        check("ninguem expirou em nenhuma das voltas", r["expiradas"] == 0, r)
+
+        # 🔴 LINHA DE CONTROLE: sem os cortes, o disjuntor nao abre sozinho.
+        duble2, RM2, servico2, bp2 = _preparar()
+        (chave_c,) = await V._semear(servico2, V.ESCOPO_A, 1, inicio=400)
+        await V._envelhecer(servico2, chave_c, ocioso_s=30, idade_s=30)
+        borda2 = Borda()
+        r2 = await _varrer(bp2, servico2, duble2, borda2,
+                           barrados=bp2["provedores_barrados"],
+                           provedor_de=_resolvedor({V.ESCOPO_A: PROVEDOR_A}),
+                           timeout_s=5)
+        check("CONTROLE: sem turno cortado o disjuntor fica FECHADO e a "
+              "conversa e ATENDIDA",
+              (await RM2.estado_do_breaker(PROVEDOR_A)).get("estado") == "fechado"
+              and r2["processadas"] == 1, r2)
+
+    asyncio.run(corpo())
+
+
+# ===========================================================================
+# 8. MEIO-ABERTO: PASSA **UMA**, E SÓ UMA (§7.4)
+# ===========================================================================
+def caso_8():
+    _p("\n=== 8. meio-aberto -> UMA sonda passa, as outras ficam guardadas ===")
+
+    async def corpo():
+        duble, RM, servico, bp = _preparar()
+        resolver = _resolvedor({V.ESCOPO_A: PROVEDOR_A})
+        await V._semear(servico, V.ESCOPO_A, 8, inicio=0)
+        V._andar(30)
+        await _abrir_o_disjuntor(RM, PROVEDOR_A)
+        # O relogio anda ate o `aberto` vencer: o breaker vai sozinho a
+        # meio-aberto, que e o instante que o §7.4 descreve.
+        estado = await _ate_o_meio_aberto(duble, servico, RM, PROVEDOR_A)
+        check("o disjuntor esta em MEIO-ABERTO", estado.get("estado") == "meio_aberto",
+              estado)
+
+        borda = Borda()
+        r1 = await _varrer(bp, servico, duble, borda,
+                           barrados=bp["provedores_barrados"],
+                           provedor_de=resolver,
+                           meio_abertos=bp["provedores_em_meio_aberto"])
+        check("🔴 EXATAMENTE UMA conversa passou (a sonda)",
+              r1["processadas"] == 1, r1)
+        check("🔴 e as outras 7 ficaram GUARDADAS por 'breaker' — nao consumidas",
+              r1["adiadas"]["breaker"] == 7, r1)
+        check("nenhuma expirou", r1["expiradas"] == 0, r1)
+        vivas = [k for k in (await duble.scan(0, match="whatsapp_buffer:*"))[1]
+                 if V.M.escopo_da_chave(k) == V.ESCOPO_A]
+        check("os 7 buffers continuam no Redis", len(vivas) == 7, len(vivas))
+
+        # A SONDA DEU CERTO -> o provedor volta -> as 7 passam na volta seguinte.
+        await RM.registrar_sucesso(PROVEDOR_A)
+        borda2 = Borda()
+        r2 = await _varrer(bp, servico, duble, borda2,
+                           barrados=bp["provedores_barrados"],
+                           provedor_de=resolver,
+                           meio_abertos=bp["provedores_em_meio_aberto"])
+        check("🔴 sonda com sucesso -> o disjuntor fecha e as 7 sao atendidas",
+              r2["processadas"] == 7, r2)
+        check("e ninguem sumiu do comeco ao fim",
+              r1["expiradas"] == 0 and r2["expiradas"] == 0,
+              "%s / %s" % (r1["expiradas"], r2["expiradas"]))
+
+        # A SONDA FALHOU -> o breaker REABRE -> ninguem se perde.
+        duble3, RM3, servico3, bp3 = _preparar()
+        resolver3 = _resolvedor({V.ESCOPO_A: PROVEDOR_A})
+        await V._semear(servico3, V.ESCOPO_A, 4, inicio=500)
+        V._andar(30)
+        await _abrir_o_disjuntor(RM3, PROVEDOR_A)
+        await _ate_o_meio_aberto(duble3, servico3, RM3, PROVEDOR_A)
+
+        async def explode(payload_dict=None, **kw):
+            raise asyncio.TimeoutError("o provedor continua fora")
+
+        r3 = await _varrer(bp3, servico3, duble3, explode,
+                           barrados=bp3["provedores_barrados"],
+                           provedor_de=resolver3,
+                           meio_abertos=bp3["provedores_em_meio_aberto"])
+        await RM3.registrar_falha(PROVEDOR_A, asyncio.TimeoutError("sonda falhou"))
+        check("a sonda que FALHA reabre o disjuntor",
+              (await RM3.estado_do_breaker(PROVEDOR_A)).get("estado") == "aberto")
+        check("🔴 e ninguem sumiu (`expiradas == 0`)", r3["expiradas"] == 0, r3)
+
+        # 🔴 LINHA DE CONTROLE: sem a pergunta do meio-aberto, o MESMO cenario
+        # solta TODAS de uma vez. E o que o produto fazia ate 21/09/2026.
+        duble4, RM4, servico4, bp4 = _preparar()
+        await V._semear(servico4, V.ESCOPO_A, 8, inicio=600)
+        V._andar(30)
+        await _abrir_o_disjuntor(RM4, PROVEDOR_A)
+        await _ate_o_meio_aberto(duble4, servico4, RM4, PROVEDOR_A)
+        r4 = await _varrer(bp4, servico4, duble4, Borda(),
+                           barrados=bp4["provedores_barrados"],
+                           provedor_de=_resolvedor({V.ESCOPO_A: PROVEDOR_A}),
+                           meio_abertos=None)
+        check("CONTROLE: sem a pergunta do meio-aberto, as 8 passam de uma vez",
+              r4["processadas"] == 8,
+              "deu %s — se este numero nao fosse 8, o merito do caso acima "
+              "iria para o lugar errado (CLAUDE.md §9.2)" % r4["processadas"])
+
+    asyncio.run(corpo())
+
+
 # ===========================================================================
 # INFRAESTRUTURA — mutações
 # ===========================================================================
-CASOS = {"1": caso_1_e_2, "3": caso_3, "4": caso_4, "5": caso_5}
+CASOS = {"1": caso_1_e_2, "3": caso_3, "4": caso_4, "5": caso_5,
+         "6": caso_6, "7": caso_7, "8": caso_8}
 
+# ⚠️ ÂNCORA ATUALIZADA em 21/09/2026 (conserto único): os quatro pontos de
+# adiamento passaram a chamar `_guardar`, que adia E anota o DONO da espera na
+# mesma linha. A mutação continua sendo a MESMA ideia — perguntar ao disjuntor
+# DEPOIS do `get_and_clear` —, só que sobre o texto de hoje.
 _BLOCO = """            if com_cota and provedores_fora and provedor_de is not None:
                 provedor = await _provedor_da_chave(provedor_de, escopo)
                 if provedor and provedor in provedores_fora:
-                    adiadas["breaker"] += 1
                     # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.
                     logger.info("[ISOLAMENTO] conversa guardada: disjuntor "
                                 "aberto no provedor %s", provedor)
-                    await _adiar(buffer_service, chave, "breaker")
-                    return False
+                    return await _guardar(chave, escopo, "breaker")
 """
 
 _DEPOIS_DO_CONSUMO = """                        combined_msg = buffer_service.get_combined_message(buffer)
                         if com_cota and provedores_fora and provedor_de is not None:
                             provedor = await _provedor_da_chave(provedor_de, escopo)
                             if provedor and provedor in provedores_fora:
-                                adiadas["breaker"] += 1
-                                await _adiar(buffer_service, chave, "breaker")
-                                return False
+                                return await _guardar(chave, escopo, "breaker")
 """
 
 #: (descrição, [(arquivo, velho, novo)], casos que TÊM de ficar vermelhos)
@@ -494,6 +726,23 @@ MUTACOES = {
                 "    if guardado is not None and guardado[1] > agora:",
                 "    if False:")],
               ["5"]),
+    # === AS TRÊS DO CONSERTO ÚNICO (21/09/2026) ===========================
+    "M-C-5": ("o teto do turno volta a 180 s (menor que 90 x 3 = 270)",
+              [(BUFFER_PY,
+                "_TURNO_TIMEOUT_PADRAO_S = 300",
+                "_TURNO_TIMEOUT_PADRAO_S = 180  # MUTACAO")],
+              ["6"]),
+    "M-C-6": ("a sonda do meio-aberto deixa de ser gastada (passam todas)",
+              [(BUFFER_PY,
+                "                    if not await _sonda_do_meio_aberto(provedor):",
+                "                    if False:  # MUTACAO")],
+              ["8"]),
+    "M-C-7": ("o teto de turno deixa de contar falha do provedor pendurado",
+              [(BUFFER_PY,
+                """                                await _contar_timeout_no_breaker(
+                                    provedor_de, escopo, teto_turno)""",
+                "                                pass  # MUTACAO")],
+              ["7"]),
 }
 
 

@@ -66,6 +66,51 @@ CHAVE_FALSA = "chave-falsa-de-teste-nao-existe"
 import httpx  # noqa: E402
 from langchain_core.messages import HumanMessage  # noqa: E402
 
+
+# ===========================================================================
+# 🔴 O DUBLÊ DO BANCO VEM **ANTES** DA FÁBRICA — e é por medição, não por zelo
+# ===========================================================================
+#
+# 📊 Achado em 21/09/2026: `LLMFactory.create_llm` constrói um
+# `CostCallbackHandler`, que chama `get_usage_service()`, que chama
+# `get_supabase_client()` — um cliente Supabase **de verdade**, com a
+# `SUPABASE_URL` do ambiente (`llm_factory.py:155` → `cost_callback.py:46` →
+# `usage_service.py:102` → `database.py:210`, pilha lida com o construtor
+# instrumentado). Com uma URL morta o gate ficava verde sem consultar nada; com
+# uma chave fora do formato JWT ele explodia em `SupabaseException: Invalid API
+# key`. Um guarda que só passa porque o endereço está quebrado não é um guarda.
+#
+# ⛔ `usage_service` faz `from ..core.database import get_supabase_client` no
+# topo, então o nome é trocado NOS DOIS módulos: trocar só num deles deixaria o
+# caminho vivo pelo outro.
+class _BancoMudo:
+    """Um banco que responde VAZIO a tudo. Zero rede, zero linha."""
+
+    class _Consulta:
+        data: list = []
+
+        def __getattr__(self, _nome):
+            return lambda *a, **k: self
+
+        def execute(self):
+            return self
+
+    client = None
+
+    def table(self, _nome):
+        return self._Consulta()
+
+
+def _dublar_o_banco():
+    import app.core.database as _db
+    import app.services.usage_service as _uso
+
+    _db.get_supabase_client = lambda: _BancoMudo()
+    _uso.get_supabase_client = _db.get_supabase_client
+
+
+_dublar_o_banco()
+
 import app.core.relogio_do_modelo as R  # noqa: E402
 from app.factories.llm_factory import LLMFactory  # noqa: E402
 

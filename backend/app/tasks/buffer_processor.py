@@ -40,9 +40,10 @@ def _env_int(name: str, default: int, minimum: int = 1) -> int:
 #
 # ⛔ Paralelismo aqui NÃO é novidade arriscada: o caminho direto do webhook já
 # dispara `process_whatsapp_message_background` por `background_tasks`, várias
-# ao mesmo tempo, desde sempre. E `check_buffers` roda com `max_instances=10` —
-# ou seja, dez varreduras podem se sobrepor. O serial era serial só DENTRO de
-# uma varredura; nunca foi garantia de nada.
+# ao mesmo tempo, desde sempre. E `check_buffers` roda com `max_instances` =
+# teto global + folga (`start_buffer_scheduler`) — ou seja, dezenas de
+# varreduras podem se sobrepor. O serial era serial só DENTRO de uma
+# varredura; nunca foi garantia de nada.
 #
 # 📊 O que foi conferido antes de mudar (leitura do código, 08/09/2026):
 #   `get_and_clear_buffer`  é um pipeline Redis `get`+`delete` — ATÔMICO. Duas
@@ -71,9 +72,10 @@ _PARALELISMO_PADRAO = 6
 # 📊 O elo, lido no código em 21/09/2026:
 #
 #   ① o semáforo nasce DENTRO da varredura (linha 77 de antes) e o job roda a
-#     cada 1 s com `max_instances=10`: o "teto de 6" real é até 60, e uma cota
-#     criada dentro da função teria o MESMO furo — cota 4 viraria 40. Por isso
-#     a ocupação mora em `_ADMISSAO`, no módulo: um estado por PROCESSO.
+#     cada 1 s com várias instâncias sobrepostas: o "teto de 6" real era até
+#     60, e uma cota criada dentro da função teria o MESMO furo — cota 4
+#     viraria 40. Por isso a ocupação mora em `_ADMISSAO`, no módulo: um
+#     estado por PROCESSO.
 #   ② a lista é uma só, na ordem do SCAN — ordem de slot do Redis. 50 chaves de
 #     uma corretora e 1 de outra: a de fora cai onde calhar. 📊 Medido no mesmo
 #     dia, com 40+1 chaves: a conversa da outra corretora foi atendida em
@@ -99,27 +101,56 @@ _COTA_PADRAO = 4
 #: dois.
 _PARALELISMO_COM_COTA_PADRAO = 24
 
+#: 💭 A folga de instâncias da varredura sobre o teto global (`start_buffer_
+#: scheduler`). Ela existe para as varreduras que só ADIAM: elas não ocupam
+#: vaga do teto global, terminam em milissegundos, e ainda assim consomem uma
+#: instância do agendador enquanto rodam.
+_FOLGA_DE_INSTANCIAS = 16
+
 #: 📊 Medido em produção (21/09/2026): p95 do turno do chat = 107 s, máx 136 s,
-#: n=41. 120 s cortaria turno legítimo; 180 s é ~1,3x o máximo medido.
-_TURNO_TIMEOUT_PADRAO_S = 180
+#: mediana 39 s, n=41. A query, ao lado do número (CLAUDE.md §12.1):
+#:
+#: ```sql
+#: SELECT count(*),
+#:        percentile_cont(0.5)  WITHIN GROUP (ORDER BY (payload->'turn'->>'total_ms')::bigint),
+#:        percentile_cont(0.95) WITHIN GROUP (ORDER BY (payload->'turn'->>'total_ms')::bigint),
+#:        max((payload->'turn'->>'total_ms')::bigint)
+#:   FROM messages
+#:  WHERE role = 'assistant'
+#:    AND payload->'turn'->>'status' = 'complete';
+#: ```
+#:
+#: 🔴 **E O TETO TEM DE SER MAIOR QUE O PIOR CASO DE UMA CHAMADA** — senão ele
+#: corta ANTES de o modelo desistir, e quem corta com `CancelledError` não
+#: dispara nenhum dos `except Exception` do caminho: o segurado fica em silêncio
+#: DEFINITIVO. 📊 A conta, com os defaults de `relogio_do_modelo`:
+#:
+#:     LLM_TIMEOUT_SEGUNDOS (90 s) × (LLM_MAX_RETRIES (2) + 1 tentativa) = 270 s
+#:     180 s  <  270 s   -> o teto cortava no meio da 2ª tentativa   (o defeito)
+#:     300 s  >  270 s   -> o SDK desiste primeiro, com TimeoutError (o conserto)
+#:
+#: 300 s é 2,2× o turno mais lento já medido (136 s) e 40 s acima do pior caso
+#: do SDK. ⚠️ Baixar o teto POR CHAMADA para 60 s resolveria a inequação e
+#: cortaria chamada legítima: o p95 do turno inteiro é 107 s. A desigualdade é
+#: guardada por `tests/test_a_costura_do_isolamento.py` (caso 6).
+_TURNO_TIMEOUT_PADRAO_S = 300
 
 #: O vocabulário FECHADO de por que uma chave pronta não foi servida (§8.2).
-#: ⚠️ `breaker` já existe aqui e ninguém o escreve ainda: o disjuntor por
-#: provedor é de outra fatia, e o lugar dele na conta fica reservado para que a
-#: conta não mude de forma quando ele chegar.
+#: ⚠️ `breaker` é escrito por DOIS caminhos desde a FATIA 4: o disjuntor ABERTO
+#: (retém a corretora inteira) e o MEIO-ABERTO (deixa passar a sonda e retém as
+#: outras, §7.4).
 _MOTIVOS_DE_ESPERA = ("cota", "turno", "breaker", "sem_escopo")
 
 # 🔴 O ESTADO DE ADMISSÃO É DO PROCESSO, NUNCA DA VARREDURA.
 #
-# Varreduras se SOBREPÕEM (`max_instances=10`). Ocupação que nasce dentro da
+# Varreduras se SOBREPÕEM (`max_instances` = teto global + folga). Ocupação que nasce dentro da
 # chamada é ocupação que cada varredura conta sozinha — e N varreduras em voo
 # multiplicam qualquer teto por N. É o defeito ① acima, e ele não se conserta
 # com um número maior; conserta-se com um estado só.
 _ADMISSAO = {
     "em_voo_por_escopo": {},   # escopo -> turnos deste escopo em voo AGORA
     "em_voo_global": 0,        # turnos em voo no processo inteiro
-    "aguardando": {},          # chave -> escopo, adiadas na varredura anterior
-    "servidas": {},            # chave -> True, processadas desde a última colheita
+    "aguardando": {},          # chave -> escopo, ADIADAS e ainda esperando a vez
     "semaforos": {},           # (id(loop), limite) -> asyncio.Semaphore
     "pico_por_escopo": {},     # só para os guardas: maior ocupação já vista
     "pico_global": 0,
@@ -172,7 +203,8 @@ def _tomar_cota(estado: dict, escopo: str, cota: int) -> bool:
 
     🔴 **Por que não é um semáforo por corretora.** Uma corrotina parada
     esperando semáforo segura a varredura: `check_buffers` roda a cada 1 s com
-    `max_instances=10`, e varredura que demora minutos esgota as instâncias —
+    várias instâncias sobrepostas, e varredura que demora minutos esgota as
+    instâncias do agendador —
     as novas são PULADAS pelo APScheduler, ninguém renova o TTL do buffer e a
     mensagem do segurado some. Com admissão não-bloqueante a varredura termina
     rápido, o buffer fica no Redis com a vida renovada, e a varredura de 1 s
@@ -202,32 +234,58 @@ def _soltar_cota(estado: dict, escopo: str) -> None:
         em_voo[escopo] = resta
 
 
-def _colher_expiradas(estado: dict, recebidas) -> int:
-    """Quantas chaves que esperavam SUMIRAM sem ninguém as processar.
+def marcar_consumida(chave) -> None:
+    """A rajada desta chave SAIU do Redis porque alguém deste processo a pegou.
 
-    🔴 É o único número desta SPEC que não admite "quase": uma chave que estava
-    pronta numa varredura, foi adiada, e não existe na varredura seguinte sem
-    ter sido processada, é **uma mensagem de segurado perdida**.
+    🔴 **QUEM CONSOME AVISA, NO INSTANTE EM QUE CONSOME.** É a linha inteira
+    que separa "mensagem respondida" de "mensagem perdida" na tela do Founder:
+    a varredura seguinte não acha a chave no SCAN, e sem este aviso ela conta
+    a conversa RESPONDIDA como sumida.
 
-    ⚠️ O que foi processado por QUALQUER varredura (inclusive uma sobreposta)
-    sai da conta antes — senão o sucesso de uma viraria a perda da outra.
+    ⚠️ Vale para os DOIS consumidores: o varredor (`get_and_clear_buffer`) e o
+    re-planejamento do turno (`webhook.mesclar_o_que_chegou`), que absorve na
+    MESMA resposta a mensagem que chegou no meio do turno.
+    """
+    alvo = str(chave or "")
+    if not alvo:
+        return
+    _ADMISSAO["aguardando"].pop(alvo, None)
+    _ADMISSAO["motivo_da_chave"].pop(alvo, None)
+    _ADMISSAO["esperando_desde"].pop(alvo, None)
+
+
+def _colher_expiradas(estado: dict, recebidas) -> dict:
+    """`{escopo: quantas}` — as chaves que ESPERAVAM e sumiram do Redis.
+
+    🔴 É o único número desta SPEC que não admite "quase": uma chave que foi
+    ADIADA numa varredura e não existe na varredura seguinte, sem que ninguém
+    deste processo a tenha consumido, é **uma mensagem de segurado perdida**.
+
+    ⛔ **E ELE TEM DONO.** 📊 21/09/2026 o número era GLOBAL e era gravado no
+    hash de TODO escopo ativo: a perda da corretora A aparecia na tela da B
+    (`atk1b`: `corretora-B | expiradas_acumuladas = 1`, com ZERO perdas). Por
+    isso a colheita devolve um mapa por escopo, e `_fechar_a_conta` grava cada
+    número SÓ no hash do dono.
+
+    ⚠️ **Não existe mais um mapa `servidas`.** Ele era limpo por QUALQUER
+    varredura sobreposta e lido pela varredura dona só no fim dela — e era
+    assim que uma conversa respondida virava "expirada" duas varreduras depois
+    (red team B1a, juiz B3). Agora o pertencimento a `aguardando` é a única
+    régua: quem foi ADIADO entra, quem foi CONSUMIDO sai na hora
+    (`marcar_consumida`).
     """
     aguardando = estado["aguardando"]
-    servidas = estado["servidas"]
     if not aguardando:
-        servidas.clear()
-        return 0
+        return {}
     presentes = set(str(c) for c in (recebidas or []))
-    sumiram = 0
-    for chave in list(aguardando):
+    sumiram: dict = {}
+    for chave, escopo in list(aguardando.items()):
         if chave in presentes:
             continue
-        if chave in servidas:
-            aguardando.pop(chave, None)
-            continue
         aguardando.pop(chave, None)
-        sumiram += 1
-    servidas.clear()
+        estado["motivo_da_chave"].pop(chave, None)
+        estado["esperando_desde"].pop(chave, None)
+        sumiram[escopo] = sumiram.get(escopo, 0) + 1
     return sumiram
 
 
@@ -344,9 +402,12 @@ def _atraso_de_teste_ms(company_id_ou_escopo: str) -> int:
 #         resolver os escopos                                          **90**
 #   (iii) adiar só quando TODOS os provedores estão abertos            35
 #
-# (ii) vence porque o caso normal — nenhum breaker aberto — custa QUATRO GETs no
-# Redis por varredura e ZERO consulta ao banco, independentemente de haver 1 ou
-# 200 chaves. E porque (iii) é o defeito com outro nome: com o provedor de uma
+# (ii) vence porque o caso normal — nenhum breaker aberto — custa 📊 **8 idas ao
+# Redis** por varredura COM FILA (4 provedores x 1 GET + 1 EXISTS, medido em
+# 21/09/2026 com `redteam/atk5_custo_por_varredura.py`; a proposta escreveu
+# "quatro GETs" de memória) e ZERO consulta ao banco, independentemente de
+# haver 1 ou 200 chaves — e ZERO em varredura VAZIA, que é o caso da maioria
+# dos segundos do dia. E porque (iii) é o defeito com outro nome: com o provedor de uma
 # corretora fora e o da outra de pé, (iii) não reteria ninguém, e a rajada da
 # primeira morreria na chamada.
 #
@@ -372,11 +433,12 @@ async def provedores_barrados() -> set:
 
     ⚠️ Usa `estado_do_breaker` (LEITURA) e **não** `provedor_disponivel`: este
     consome a sonda do meio-aberto (`SET NX`), e a sonda é de quem vai CHAMAR o
-    modelo. Um varredor que gastasse a sonda deixaria a conversa retida sem
-    ninguém para testar se o provedor voltou.
+    modelo — uma conversa de cada vez, dentro de `_uma`. Gastar a sonda aqui, no
+    nível da varredura, deixaria as conversas retidas sem ninguém para testar se
+    o provedor voltou.
 
-    Meio-aberto NÃO barra: é justamente o instante em que uma conversa precisa
-    passar para descobrir que o provedor voltou.
+    Esta função responde só pelo estado **aberto**. O meio-aberto é a pergunta
+    de `provedores_em_meio_aberto`, e ele não barra: deixa passar UMA sonda.
     """
     try:
         from app.core.relogio_do_modelo import PROVEDORES, estado_do_breaker
@@ -394,6 +456,83 @@ async def provedores_barrados() -> set:
         if (estado or {}).get("estado") == "aberto":
             barrados.add(provedor)
     return barrados
+
+
+async def provedores_em_meio_aberto() -> set:
+    """Quais provedores estão em MEIO-ABERTO agora. ⛔ Nunca levanta.
+
+    🔴 É a outra metade da pergunta da varredura, e ela existe porque o §7.4
+    promete que o meio-aberto *"deixa passar UMA chamada"*. 📊 21/09/2026 a
+    promessa não tinha chamador: `provedor_disponivel` (a sonda atômica) não era
+    chamada por ninguém no produto, e o varredor soltava TODAS as retidas de uma
+    vez contra um provedor que acabara de cair (`juiz/medir.py` M3:
+    `consumidas em meio-aberto = 8 | adiadas.breaker = 0`).
+
+    ⚠️ Aqui ainda é LEITURA (`estado_do_breaker`): a sonda é gasta por quem vai
+    CHAMAR o modelo, uma conversa de cada vez, dentro de `_uma`.
+    """
+    try:
+        from app.core.relogio_do_modelo import PROVEDORES, estado_do_breaker
+    except Exception:  # noqa: BLE001
+        return set()
+    meio = set()
+    for provedor in PROVEDORES:
+        try:
+            estado = await estado_do_breaker(provedor)
+        except Exception as erro:  # noqa: BLE001
+            # ⛔ FAIL-OPEN: breaker indisponível nunca retém ninguém.
+            logger.debug("[ISOLAMENTO] breaker indisponivel (%s)",
+                         type(erro).__name__)
+            continue
+        if (estado or {}).get("estado") == "meio_aberto":
+            meio.add(provedor)
+    return meio
+
+
+async def _sonda_do_meio_aberto(provedor: str) -> bool:
+    """Esta conversa é A sonda? `SET NX` atômico. ⛔ Nunca levanta.
+
+    ⛔ Fail-open na dúvida: erro ao sondar devolve `True` e a conversa é
+    atendida. Um silêncio por engano custa a conversa inteira.
+    """
+    try:
+        from app.core.relogio_do_modelo import provedor_disponivel
+
+        return bool(await provedor_disponivel(provedor))
+    except Exception as erro:  # noqa: BLE001
+        logger.debug("[ISOLAMENTO] sonda nao consultada (%s) — atendendo",
+                     type(erro).__name__)
+        return True
+
+
+async def _contar_timeout_no_breaker(provedor_de, escopo: str,
+                                     teto_turno: float) -> None:
+    """O turno foi cortado pelo teto: o PROVEDOR pendurado tem de contar falha.
+
+    🔴 **É o elo que faltava para o disjuntor abrir no caso que lhe dá nome.**
+    `asyncio.wait_for` corta com `CancelledError`, e `e_transitorio(
+    CancelledError)` é `False` (📊 `juiz/medir.py` M4) — então o callback do
+    modelo NUNCA alimentava o breaker com um provedor pendurado, e cada conversa
+    seguinte era consumida, pendurava e sumia, uma a uma. Quem sabe que o turno
+    estourou é ESTE lado, e é daqui que a falha entra na conta.
+
+    ⛔ Nunca levanta, e nunca PII: só o nome do provedor.
+    """
+    if provedor_de is None or not escopo:
+        return
+    try:
+        from app.core.relogio_do_modelo import registrar_falha
+
+        provedor = await _provedor_da_chave(provedor_de, escopo)
+        if not provedor:
+            return
+        await registrar_falha(provedor, TimeoutError(
+            "turno cortado pelo teto de %.0f s" % teto_turno))
+        logger.warning("[ISOLAMENTO] teto de turno contado como falha do "
+                       "provedor %s (o disjuntor decide se abre)", provedor)
+    except Exception as erro:  # noqa: BLE001
+        logger.debug("[ISOLAMENTO] falha de teto nao contada (%s)",
+                     type(erro).__name__)
 
 
 async def provedor_do_escopo(escopo: str):
@@ -458,7 +597,8 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                                     cota_por_corretora: int = 0,
                                     timeout_s: float = 0,
                                     barrados=None,
-                                    provedor_de=None) -> dict:
+                                    provedor_de=None,
+                                    meio_abertos=None) -> dict:
     """Processa as conversas prontas EM PARALELO, com teto — e com COTA.
 
     Recebe as peças por parâmetro (chaves, serviço, função de processamento)
@@ -550,7 +690,7 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
         cota = 0
         teto_turno = 0.0
         semaforo = asyncio.Semaphore(limite)
-        expiradas = 0
+        expiradas = {}
         adiadas = {"cota": 0, "turno": 0, "breaker": 0, "sem_escopo": 0}
 
     # 🔴 A CONFERÊNCIA DE PRONTIDÃO SAI DE DENTRO DO SEMÁFORO (§5.2).
@@ -566,26 +706,80 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
     if com_cota:
         fila = ordenar_em_rodizio(fila, escopo_de)
 
-    # 🔴 UMA pergunta por VARREDURA, não uma por chave: quatro GETs no Redis,
-    # com 1 ou com 200 chaves na fila. Conjunto vazio = nada muda para ninguém.
+    # 🔴 UMA pergunta por VARREDURA, não uma por chave: o custo é o mesmo com 1
+    # ou com 200 chaves na fila. Conjunto vazio = nada muda para ninguém.
+    #
+    # 📊 O CUSTO, MEDIDO (21/09/2026, contando as chamadas no dublê:
+    # `python %TEMP%\laudos-0018\redteam\atk5_custo_por_varredura.py`): cada
+    # `estado_do_breaker` custa 1 GET + 1 EXISTS, e são 4 provedores — a
+    # pergunta inteira custa **8 idas ao Redis**, não "quatro GETs" como o
+    # comentário antigo dizia. Com a segunda pergunta (meio-aberto) seriam 16
+    # **por varredura vazia**, 16 por segundo por processo, para descobrir que
+    # não há nada a fazer.
+    #
+    # ⛔ Por isso as duas perguntas só saem quando há FILA. 📊 Medido de novo com
+    # o mesmo comando, depois do corte:
+    #
+    #     varredura VAZIA ............ breaker = 0 idas  (era 8)
+    #     1 chave ainda em debounce .. breaker = 0 idas  (era 8)
+    #     1 chave pronta e atendida .. breaker = 8 idas por pergunta
+    #
+    # A colheita de `expiradas` acontece ACIMA e continua rodando em varredura
+    # vazia — foi um defeito de produto desta SPEC (M-18-7): com todo mundo
+    # expirando de uma vez, a perda TOTAL era justamente a que ninguém veria.
     provedores_fora = set()
-    if com_cota and barrados is not None:
-        try:
-            provedores_fora = set(await barrados())
-        except Exception as erro:  # noqa: BLE001
-            # ⛔ FAIL-OPEN, e é a regra que não se negocia: na dúvida, atende.
-            provedores_fora = set()
-            logger.warning("[ISOLAMENTO] breaker nao consultado (%s) — atendendo",
-                           type(erro).__name__)
+    em_meio_aberto = set()
+    if com_cota and fila:
+        if barrados is not None:
+            try:
+                provedores_fora = set(await barrados())
+            except Exception as erro:  # noqa: BLE001
+                # ⛔ FAIL-OPEN, e é a regra que não se negocia: na dúvida, atende.
+                provedores_fora = set()
+                logger.warning("[ISOLAMENTO] breaker nao consultado (%s) — atendendo",
+                               type(erro).__name__)
+        if meio_abertos is not None:
+            try:
+                em_meio_aberto = set(await meio_abertos()) - provedores_fora
+            except Exception as erro:  # noqa: BLE001
+                em_meio_aberto = set()
+                logger.warning("[ISOLAMENTO] meio-aberto nao consultado (%s) — "
+                               "atendendo", type(erro).__name__)
     if provedores_fora:
         logger.warning("[ISOLAMENTO] %d provedor(es) com disjuntor ABERTO — as "
                        "conversas deles ficam guardadas", len(provedores_fora))
+    if em_meio_aberto:
+        logger.info("[ISOLAMENTO] %d provedor(es) em meio-aberto — passa UMA "
+                    "sonda por provedor, as outras conversas ficam guardadas",
+                    len(em_meio_aberto))
 
-    timeouts = 0
-    sumidas = 0
+    timeouts_por_escopo: dict = {}
+    sumidas: dict = {}
+    #: chave -> escopo das que foram ADIADAS NESTA volta. 🔴 É ela, e não "quem
+    #: estava na fila e não foi servido", que diz quem continua esperando: uma
+    #: varredura sobreposta pode ter atendido a conversa no meio do caminho.
+    pendentes_da_volta: dict = {}
+
+    async def _guardar(chave: str, escopo: str, motivo: str) -> bool:
+        """Adia a chave E anota o DONO da espera — nunca um sem o outro.
+
+        ⛔ Os quatro pontos de adiamento passam por aqui de propósito: contar o
+        motivo num lugar e o dono em outro é como os dois números começam a
+        discordar (o aviso ao dono e a tela da Central leem a MESMA conta).
+        """
+        adiadas[motivo] += 1
+        if com_cota and escopo:
+            pendentes_da_volta[str(chave)] = escopo
+            # 🔴 A ESPERA COMEÇA A VALER AGORA, não no fim da varredura. 📊 Uma
+            # varredura que só fecha a conta lá no fim (quando o turno mais
+            # lento dela termina, minutos depois) reinscreveria como "esperando"
+            # uma conversa que uma varredura SOBREPOSTA já respondeu — e a
+            # varredura seguinte a contaria como mensagem perdida.
+            estado["aguardando"][str(chave)] = escopo
+        await _adiar(buffer_service, chave, motivo)
+        return False
 
     async def _uma(chave: str) -> bool:
-        nonlocal timeouts, sumidas
         escopo = escopo_de(chave) if com_cota else ""
         # O instante em que ESTA tentativa entrou na disputa pela cota. Vale
         # como começo da espera só para a conversa que nunca foi adiada — para
@@ -597,9 +791,7 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             # cegas. 📊 Hoje esta chave já não é respondida (`abrir_turno` a
             # recusa, 001.2 §5.3); o que muda é ela aparecer na conta.
             if not escopo:
-                adiadas["sem_escopo"] += 1
-                await _adiar(buffer_service, chave, "sem_escopo")
-                return False
+                return await _guardar(chave, escopo, "sem_escopo")
             # ============================================================
             # ① A COTA DA CORRETORA VEM PRIMEIRO. SEMPRE.
             # ============================================================
@@ -608,9 +800,7 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             # saturada passaria a consumir os slots do processo inteiro só para
             # esperar. É a inversão que transforma a proteção no defeito.
             if com_cota and not _tomar_cota(estado, escopo, cota):
-                adiadas["cota"] += 1
-                await _adiar(buffer_service, chave, "cota")
-                return False
+                return await _guardar(chave, escopo, "cota")
 
         try:
             # ================================================================
@@ -629,12 +819,33 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             if com_cota and provedores_fora and provedor_de is not None:
                 provedor = await _provedor_da_chave(provedor_de, escopo)
                 if provedor and provedor in provedores_fora:
-                    adiadas["breaker"] += 1
                     # ⚠️ Sem PII: nem chave, nem telefone, nem corretora.
                     logger.info("[ISOLAMENTO] conversa guardada: disjuntor "
                                 "aberto no provedor %s", provedor)
-                    await _adiar(buffer_service, chave, "breaker")
-                    return False
+                    return await _guardar(chave, escopo, "breaker")
+
+            # ================================================================
+            # 🔴 MEIO-ABERTO: PASSA **UMA**, E SÓ UMA (§7.4)
+            # ================================================================
+            #
+            # O aberto barra todo mundo; o meio-aberto é o contrário — é o
+            # instante em que UMA conversa precisa passar para descobrir se o
+            # provedor voltou. Sem a sonda, o varredor solta as até 24 retidas
+            # de uma vez contra um provedor que acabou de cair, e cada uma delas
+            # custa a rajada de um segurado (📊 `juiz/medir.py` M3: 8 de 8
+            # consumidas em meio-aberto, 0 adiadas).
+            #
+            # ⛔ A sonda é ATÔMICA (`SET NX` em `provedor_disponivel`) e é
+            # gasta AQUI, antes do `get_and_clear` — quem pergunta é quem retém.
+            # Na dúvida (erro), `_sonda_do_meio_aberto` devolve True: atende.
+            if com_cota and em_meio_aberto and provedor_de is not None:
+                provedor = await _provedor_da_chave(provedor_de, escopo)
+                if provedor and provedor in em_meio_aberto:
+                    if not await _sonda_do_meio_aberto(provedor):
+                        logger.info("[ISOLAMENTO] conversa guardada: a sonda do "
+                                    "meio-aberto e de outra conversa (%s)",
+                                    provedor)
+                        return await _guardar(chave, escopo, "breaker")
 
             if com_cota:
                 # 🔴 Renova a VIDA antes de esperar o teto global: quem espera
@@ -681,20 +892,37 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                         if token is None:
                             # 🔴 O buffer FICA. Ninguém o tocou.
                             if com_cota:
-                                adiadas["turno"] += 1
-                                await _adiar(buffer_service, chave, "turno")
+                                return await _guardar(chave, escopo, "turno")
                             return False
                         turno = Turno(escopo_do_turno, phone, token)
 
                     try:
                         buffer = await buffer_service.get_and_clear_buffer(chave)
                         if not buffer:
-                            # A chave sumiu entre a conferência e o consumo, e
-                            # a trava de turno garante que não foi outra
-                            # varredura: foi o TTL. É perda, e é contada.
-                            if com_cota:
-                                sumidas += 1
+                            # A chave sumiu entre a conferência e o consumo.
+                            #
+                            # ⚠️ O comentário antigo dizia que a trava de turno
+                            # provava ter sido o TTL. 📊 Era falso: a varredura
+                            # que consumiu já tinha TERMINADO e soltado a trava
+                            # (red team B1c), e a conta inventava uma perda.
+                            #
+                            # 🔴 A régua certa: só é perda se a chave ainda
+                            # ESTAVA ESPERANDO. Quem consome tira a chave de
+                            # `aguardando` no mesmo instante — se ela continua
+                            # lá, ninguém deste processo a pegou.
+                            if com_cota and estado["aguardando"].pop(
+                                    chave, None) is not None:
+                                sumidas[escopo] = sumidas.get(escopo, 0) + 1
                             return False
+                        # 🔴 CONSUMIDA: a rajada saiu do Redis AGORA, e a
+                        # contabilidade fica sabendo AGORA — não no fim do
+                        # turno, que pode demorar minutos e atravessar dez
+                        # varreduras (red team B1a).
+                        desde_a_espera = entrou_na_disputa
+                        if com_cota:
+                            desde_a_espera = estado["esperando_desde"].get(
+                                chave, entrou_na_disputa)
+                            marcar_consumida(chave)
                         combined_msg = buffer_service.get_combined_message(buffer)
                         # Leitura de campo, não regra: v2 traz `itens`; o v1 que
                         # ainda estiver no Redis (<= 60 s de TTL) traz `messages`.
@@ -719,11 +947,7 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                             # DE CONTROLE herdada da 001.2. Quem recebe do lado
                             # real é `process_whatsapp_message_background`, que
                             # já declara `relogio_da_fila` keyword-only.
-                            relogio = _relogio_da_fila(
-                                buffer,
-                                estado["esperando_desde"].get(
-                                    chave, entrou_na_disputa)
-                                if com_cota else entrou_na_disputa)
+                            relogio = _relogio_da_fila(buffer, desde_a_espera)
                             if relogio:
                                 extras["relogio_da_fila"] = relogio
 
@@ -752,27 +976,32 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
                             # que é pior do que uma resposta atrasada. O turno
                             # cortado entra em `timeouts` e no contador da
                             # corretora, que é onde ele tem de aparecer.
+                            #
+                            # ⚠️ QUEM FALA COM O SEGURADO É O WEBHOOK. O corte
+                            # é um `CancelledError` lá dentro, e é lá que o
+                            # aviso honesto de falha sai quando o envio ainda
+                            # não começou (`webhook.py`, o `except
+                            # asyncio.CancelledError`). Daqui não se sabe, e por
+                            # isso o log não afirma mais que nada foi dito.
                             try:
                                 await asyncio.wait_for(chamada, timeout=teto_turno)
                             except asyncio.TimeoutError:
-                                timeouts += 1
+                                timeouts_por_escopo[escopo] = \
+                                    timeouts_por_escopo.get(escopo, 0) + 1
                                 logger.error(
                                     "[ISOLAMENTO] turno cortado pelo teto de %.0f s "
-                                    "— nada foi dito ao segurado por este caminho",
+                                    "— o webhook decide o que o segurado ouve",
                                     teto_turno)
+                                # 🔴 O PROVEDOR PENDURADO TEM DE ABRIR O
+                                # DISJUNTOR: sem esta linha, cada conversa
+                                # seguinte era consumida, pendurava e sumia.
+                                await _contar_timeout_no_breaker(
+                                    provedor_de, escopo, teto_turno)
                                 return False
                         else:
                             await chamada
                         logger.info("[BUFFER] ✅ Processed: combined %d itens",
                                     msg_count)
-                        if com_cota:
-                            estado["servidas"][chave] = True
-                            estado["aguardando"].pop(chave, None)
-                            # A espera acabou: o relógio e o motivo desta chave
-                            # morrem com ela (senão a próxima rajada do mesmo
-                            # segurado nasceria "esperando desde ontem").
-                            estado["esperando_desde"].pop(chave, None)
-                            estado["motivo_da_chave"].pop(chave, None)
                         return True
                     finally:
                         if turno is not None:
@@ -800,10 +1029,19 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
         elif r:
             processadas += 1
 
+    # 🔴 A PERDA É POR DONO, E É A SOMA DAS DUAS FONTES: a chave que sumiu do
+    # SCAN esperando (`_colher_expiradas`) e a que sumiu entre a conferência e o
+    # consumo (`sumidas`).
+    perdidas_por_escopo: dict = dict(expiradas)
+    for escopo_perdido, quantas in sumidas.items():
+        if escopo_perdido:
+            perdidas_por_escopo[escopo_perdido] = \
+                perdidas_por_escopo.get(escopo_perdido, 0) + quantas
+
     if com_cota:
         adiadas_por_escopo = await _fechar_a_conta(
-            buffer_service, estado, escopo_de, fila,
-            adiadas, expiradas + sumidas, timeouts) or {}
+            buffer_service, estado, pendentes_da_volta,
+            adiadas, perdidas_por_escopo, timeouts_por_escopo) or {}
 
     return {"vistas": len(recebidas), "prontas": len(fila),
             "processadas": processadas, "adiadas": adiadas,
@@ -811,12 +1049,18 @@ async def processar_buffers_prontos(chaves, buffer_service, processar,
             # quantas}}. ⚠️ Chave sem escopo não tem dono a avisar e fica de
             # fora; ela continua contada em `adiadas["sem_escopo"]`.
             "adiadas_por_escopo": adiadas_por_escopo,
-            "falhas": falhas, "timeouts": timeouts,
-            "expiradas": expiradas + sumidas}
+            "falhas": falhas,
+            "timeouts": sum(timeouts_por_escopo.values()),
+            "timeouts_por_escopo": dict(timeouts_por_escopo),
+            "expiradas": sum(perdidas_por_escopo.values()),
+            # ⛔ A perda com DONO, para quem precisa saber DE QUEM era a
+            # mensagem — o resumo global continua sendo a soma.
+            "expiradas_por_escopo": dict(perdidas_por_escopo)}
 
 
-async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
-                          adiadas, expiradas, timeouts) -> dict:
+async def _fechar_a_conta(buffer_service, estado, pendentes,
+                          adiadas, expiradas_por_escopo,
+                          timeouts_por_escopo) -> dict:
     """Grava o que a Central de Agentes vai LER — UMA escrita por corretora.
 
     ⛔ Uma escrita por CHAVE seriam 200 idas ao Redis numa varredura de rajada,
@@ -827,14 +1071,21 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
     não de contadores espalhados pelos quatro pontos de adiamento, para que o
     número que o dono da corretora recebe no aviso e o número que a Central
     mostra na tela sejam, por construção, o mesmo número.
-    """
-    pendentes = {}
-    for chave in fila:
-        escopo = escopo_de(chave)
-        if escopo and chave not in estado["servidas"]:
-            pendentes[chave] = escopo
-    estado["aguardando"].update(pendentes)
 
+    🔴 **`pendentes` é quem foi ADIADO NESTA volta** (`{chave: escopo}`), e não
+    "quem estava na fila e não foi servido". 📊 A segunda régua contava como
+    espera a conversa que uma varredura SOBREPOSTA acabara de responder — e
+    duas varreduras depois ela virava "mensagem perdida" (red team B1a).
+
+    ⛔ **`expiradas` e `timeouts` são POR ESCOPO, e cada um vai SÓ no hash do
+    dono.** 📊 Antes eram totais globais gravados com `HINCRBY` no hash de todo
+    escopo ativo: a perda de A aparecia na tela de B, e a perda total sem outra
+    corretora ativa não era gravada em lugar nenhum (juiz B3, red team B1b).
+    """
+    # ⛔ `aguardando` NÃO é escrito aqui. Quem adia já o escreveu, no instante do
+    # adiamento (`_guardar`): reescrevê-lo no FIM da varredura reinscreveria
+    # como "esperando" a conversa que outra varredura respondeu no meio do
+    # caminho — e a varredura seguinte a chamaria de mensagem perdida.
     por_escopo = {}
     por_motivo: dict = {}
     for chave, escopo in pendentes.items():
@@ -848,6 +1099,12 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
         dela[motivo_da_chave] = dela.get(motivo_da_chave, 0) + 1
     for escopo in estado["em_voo_por_escopo"]:
         por_escopo.setdefault(escopo, 0)
+    # 🔴 O DONO DA PERDA APARECE MESMO SEM FILA E SEM TURNO EM VOO. 📊 Era o
+    # caso `M1a` do juiz: a corretora perdeu a mensagem, não tinha mais nada na
+    # fila, e o número não era gravado em lugar NENHUM.
+    for escopo in list(expiradas_por_escopo) + list(timeouts_por_escopo):
+        if escopo:
+            por_escopo.setdefault(escopo, 0)
 
     # ⛔ A PODA. Os dois mapas do `_ADMISSAO` ficam com quem AINDA espera —
     # exatamente o conjunto de `aguardando`. Sem isto, dois dicionários
@@ -863,6 +1120,16 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
             motivo = nome
             break
 
+    # 🔴 PERDA SEMPRE APARECE NO LOG, com ou sem contador de pé. 📊 Era o outro
+    # meio do achado M1a: além de não ser gravada, a perda total não deixava uma
+    # linha sequer (`grep expiradas` no log → zero). ⛔ Sem PII: quantas e em
+    # quantas corretoras — nunca a chave, o telefone ou o nome da corretora.
+    if expiradas_por_escopo:
+        logger.error(
+            "[ISOLAMENTO] 🔴 %d mensagem(ns) de segurado SUMIRAM do Redis "
+            "esperando a vez, em %d corretora(s) — este número não admite quase",
+            sum(expiradas_por_escopo.values()), len(expiradas_por_escopo))
+
     registrar = getattr(buffer_service, "registrar_ocupacao", None)
     if registrar is None:
         return por_motivo
@@ -872,7 +1139,8 @@ async def _fechar_a_conta(buffer_service, estado, escopo_de, fila,
                 escopo,
                 em_execucao=estado["em_voo_por_escopo"].get(escopo, 0),
                 em_espera=em_espera, motivo=motivo,
-                expiradas=expiradas, timeouts=timeouts)
+                expiradas=int(expiradas_por_escopo.get(escopo, 0)),
+                timeouts=int(timeouts_por_escopo.get(escopo, 0)))
         except Exception as erro:  # noqa: BLE001
             # ⛔ Contador nunca derruba atendimento.
             logger.warning("[ISOLAMENTO] contador não gravado (%s)",
@@ -999,7 +1267,7 @@ async def avisar_os_donos_da_fila(resumo) -> int:
     from app.core.database import get_supabase_client
 
     # ⑤ A trava "um por janela" mora dentro de `avisar_dono_se_fila_longa`, e é
-    # de Redis: duas varreduras sobrepostas (max_instances=10) ou duas réplicas
+    # de Redis: duas varreduras sobrepostas ou duas réplicas
     # avisariam duas vezes sobre a mesma fila.
     return await aviso.avisar_pelos_escopos(
         get_supabase_client().client, resumo, alvos)
@@ -1047,7 +1315,8 @@ async def check_buffers():
         # (protocolo §0.3, O ELO). O guarda confere que elas estão aqui.
         resumo = await processar_buffers_prontos(
             chaves, buffer_service, process_whatsapp_message_background,
-            barrados=provedores_barrados, provedor_de=provedor_do_escopo)
+            barrados=provedores_barrados, provedor_de=provedor_do_escopo,
+            meio_abertos=provedores_em_meio_aberto)
 
         # 🔴 O AVISO VEM DEPOIS, E NO TRY DELE. Ele é EFEITO da varredura, nunca
         # condição: um aviso que estoura não pode derrubar o job de 1 s que
@@ -1157,12 +1426,41 @@ def start_buffer_scheduler():
         return
 
     if not scheduler.running:
+        # ===================================================================
+        # 🔴 O 5º RECURSO COMPARTILHADO: `max_instances` É UM TETO TAMBÉM
+        # ===================================================================
+        #
+        # 📊 Medido em 21/09/2026 (`check_buffers` REAL + APScheduler REAL +
+        # Redis dublê, 1 s do produto = 0,2 s;
+        # `python %TEMP%\laudos-0018\juiz\medir_instancias.py 10`):
+        #
+        #     max_instances=10  -> a 4ª corretora esperou 3,24 s (= 16 s do produto)
+        #     max_instances=100 -> a 4ª corretora esperou 0,08 s   (CONTROLE)
+        #
+        # A varredura só termina quando os TURNOS dela terminam (`gather`).
+        # Com 10 turnos em voo, 10 instâncias ficam presas e o APScheduler PULA
+        # as varreduras seguintes: ninguém novo é atendido **e ninguém renova o
+        # TTL de 60 s de quem espera**. O teto real era 10, não o teto global.
+        #
+        # ⛔ Por isso o número NÃO é um literal: ele sai da MESMA fonte do teto
+        # global, senão os dois envelhecem separados e o menor volta a mandar.
+        # A folga cobre as instâncias que estão só ADIANDO (elas terminam em
+        # milissegundos e não ocupam vaga nenhuma do teto global).
+        _teto_global = _env_int("WHATSAPP_BUFFER_PARALELISMO",
+                                _PARALELISMO_COM_COTA_PADRAO)
         scheduler.add_job(
             check_buffers,
             "interval",
             seconds=1,
             id="whatsapp_buffer_check",
-            max_instances=10,
+            max_instances=_teto_global + _FOLGA_DE_INSTANCIAS,
+            # 📊 Os dois já eram os defaults do APScheduler 3.11.3 (medido em
+            # 21/09/2026: `job_defaults = {'coalesce': True,
+            # 'misfire_grace_time': 1, 'max_instances': 1}`). Escritos porque
+            # são eles que impedem a avalanche: varredura atrasada além de 1 s
+            # é PULADA, e as puladas COLAPSAM numa só quando destrava.
+            coalesce=True,
+            misfire_grace_time=1,
         )
         # Follow-up pós-acionamento (SPEC-031 Faixa 6): "o guincho chegou?" e
         # encerramento carinhoso — varre sessões monitoring a cada 60s.
